@@ -54,9 +54,7 @@ async function main() {
   console.log(
     "Después:",
     JSON.stringify(
-      layers
-        .filter((l) => l.type === "text")
-        .map((l) => ({ id: l.id, y: l.y, text: l.text })),
+      layers.filter((l) => l.type === "text").map((l) => ({ id: l.id, y: l.y, text: l.text })),
     ),
   );
   console.log("Listo: 1 fila actualizada (PersonalizationTemplate.photo-pack-polaroid-instagram).");

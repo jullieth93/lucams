@@ -617,7 +617,12 @@ describe("VariantSelector — stock por variante (Fase 1)", () => {
     // y se muestra el aviso junto al stepper.
     const variants = [
       makeVariant("v-s1", { shape: "rectangle", sizeCm: "6×6", quantity: 1, photoSlots: 1 }),
-      makeVariant("v-s2", { shape: "rectangle", sizeCm: "6×6", quantity: 2, photoSlots: 2 }, 100_000, 0),
+      makeVariant(
+        "v-s2",
+        { shape: "rectangle", sizeCm: "6×6", quantity: 2, photoSlots: 2 },
+        100_000,
+        0,
+      ),
       makeVariant("v-s3", { shape: "rectangle", sizeCm: "6×6", quantity: 3, photoSlots: 3 }),
     ];
     renderWithProvider(variants, "v-s1");
@@ -634,8 +639,18 @@ describe("VariantSelector — stock por variante (Fase 1)", () => {
   it("el stepper bloquea '+' cuando TODAS las cantidades superiores están agotadas", () => {
     const variants = [
       makeVariant("v-t1", { shape: "rectangle", sizeCm: "6×6", quantity: 1, photoSlots: 1 }),
-      makeVariant("v-t2", { shape: "rectangle", sizeCm: "6×6", quantity: 2, photoSlots: 2 }, 100_000, 0),
-      makeVariant("v-t3", { shape: "rectangle", sizeCm: "6×6", quantity: 3, photoSlots: 3 }, 100_000, 0),
+      makeVariant(
+        "v-t2",
+        { shape: "rectangle", sizeCm: "6×6", quantity: 2, photoSlots: 2 },
+        100_000,
+        0,
+      ),
+      makeVariant(
+        "v-t3",
+        { shape: "rectangle", sizeCm: "6×6", quantity: 3, photoSlots: 3 },
+        100_000,
+        0,
+      ),
     ];
     renderWithProvider(variants, "v-t1");
     const cantidad = screen.getByRole("group", { name: "Cantidad" });

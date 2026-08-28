@@ -99,13 +99,21 @@ async function main() {
 
   console.log("\n=== STEP 2: Sets Fotoimanes — actualizar precios variantes ===\n");
 
-  const fotoimanProducts = ["set-fotoimanes-cuadrados", "set-fotoimanes-circulares", "set-fotoimanes-polaroid", "set-fotoimanes-corazon"];
+  const fotoimanProducts = [
+    "set-fotoimanes-cuadrados",
+    "set-fotoimanes-circulares",
+    "set-fotoimanes-polaroid",
+    "set-fotoimanes-corazon",
+  ];
   for (const slug of fotoimanProducts) {
     const p = await prisma.product.findFirst({
       where: { slug, deletedAt: null },
       include: { variants: { where: { deletedAt: null } } },
     });
-    if (!p) { console.log(`  ⚠ ${slug} no existe`); continue; }
+    if (!p) {
+      console.log(`  ⚠ ${slug} no existe`);
+      continue;
+    }
     console.log(`  ${slug}:`);
     for (const v of p.variants) {
       const attrs = v.attributes;

@@ -26,7 +26,10 @@ const SLUGS = ["set-fotoimanes-polaroid", "set-fotoimanes-cuadrados"];
 const updated = await prisma.$transaction(async (tx) => {
   const out = [];
   for (const slug of SLUGS) {
-    const product = await tx.product.findUnique({ where: { slug }, select: { id: true, name: true, personalizationSchema: true } });
+    const product = await tx.product.findUnique({
+      where: { slug },
+      select: { id: true, name: true, personalizationSchema: true },
+    });
     if (!product) {
       console.log(`⚠ Producto /${slug} no encontrado — omitido`);
       continue;

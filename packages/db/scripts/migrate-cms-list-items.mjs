@@ -105,7 +105,9 @@ try {
 
   console.log("\n--- REPORTE ---");
   console.log(`Campos lista encontrados: ${report.listFields}`);
-  console.log(`Migrados: ${report.migrated} (${report.itemsCreated} items) · Saltados: ${report.skipped}`);
+  console.log(
+    `Migrados: ${report.migrated} (${report.itemsCreated} items) · Saltados: ${report.skipped}`,
+  );
   if (report.anomalies.length > 0) {
     console.log("⚠️  Anomalías (revisar a mano):");
     for (const a of report.anomalies) console.log(`   - ${a}`);

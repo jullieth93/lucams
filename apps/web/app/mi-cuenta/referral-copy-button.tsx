@@ -36,7 +36,11 @@ export function ReferralCopyButton({
       }
       aria-live="polite"
     >
-      {copied ? <Check className="h-3.5 w-3.5" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+      {copied ? (
+        <Check className="h-3.5 w-3.5" aria-hidden />
+      ) : (
+        <Copy className="h-3.5 w-3.5" aria-hidden />
+      )}
       {copied ? "¡Copiado!" : label}
     </button>
   );

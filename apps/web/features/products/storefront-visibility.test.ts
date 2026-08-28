@@ -8,10 +8,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  getStorefrontVisibility,
-  type StorefrontVisibilityInput,
-} from "./storefront-visibility";
+import { getStorefrontVisibility, type StorefrontVisibilityInput } from "./storefront-visibility";
 
 /** Base "todo en regla": producto activo, categoría activa, opciones con stock. */
 const VISIBLE: StorefrontVisibilityInput = {
@@ -94,7 +91,11 @@ describe("getStorefrontVisibility", () => {
 
   it("prioridad: categoría archivada gana a categoría pausada", () => {
     expect(
-      getStorefrontVisibility({ ...VISIBLE, categoryDeletedAt: new Date(), categoryIsActive: false }),
+      getStorefrontVisibility({
+        ...VISIBLE,
+        categoryDeletedAt: new Date(),
+        categoryIsActive: false,
+      }),
     ).toEqual({ status: "no-visible", reason: "Categoría archivada" });
   });
 

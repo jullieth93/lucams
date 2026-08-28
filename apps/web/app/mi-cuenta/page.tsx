@@ -171,8 +171,8 @@ export default async function MiCuentaPage() {
           <div className="min-w-0 flex-1">
             <h2 className="font-display text-brand-purple-dark text-xl">Invita y gana</h2>
             <p className="text-brand-muted mt-1 text-sm leading-snug">
-              Comparte tu código: cuando un amigo se registre con él y haga su primera compra,
-              los dos reciben un cupón de <strong>10% OFF</strong>.
+              Comparte tu código: cuando un amigo se registre con él y haga su primera compra, los
+              dos reciben un cupón de <strong>10% OFF</strong>.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <code className="bg-brand-purple/5 text-brand-purple-dark rounded-md px-3 py-1.5 font-mono text-sm font-bold tracking-wider">
@@ -195,7 +195,10 @@ export default async function MiCuentaPage() {
               <ul className="mt-3 space-y-1 text-xs">
                 {referrals.map((r) => (
                   <li key={r.referredEmail} className="text-brand-muted flex items-center gap-2">
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand-purple/40" aria-hidden />
+                    <span
+                      className="bg-brand-purple/40 inline-block h-1.5 w-1.5 rounded-full"
+                      aria-hidden
+                    />
                     {maskEmail(r.referredEmail)} —{" "}
                     {r.status === "REWARDED"
                       ? "🎁 Cupón entregado"

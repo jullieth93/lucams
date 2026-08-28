@@ -57,16 +57,22 @@ async function fixCuadrados() {
       deactivated++;
     }
   }
-  console.log(`✓ Cuadrados: ${toRect} variantes 8×8 → 7.5×10 · ${deactivated} variantes 10×10 desactivadas`);
+  console.log(
+    `✓ Cuadrados: ${toRect} variantes 8×8 → 7.5×10 · ${deactivated} variantes 10×10 desactivadas`,
+  );
 
   // Activar plantilla rectangular (600×800 = 3:4) como "Plantilla Rectangular"
-  const tpl = await prisma.personalizationTemplate.findUnique({ where: { slug: "foto-rectangular-simple" } });
+  const tpl = await prisma.personalizationTemplate.findUnique({
+    where: { slug: "foto-rectangular-simple" },
+  });
   if (tpl) {
     await prisma.personalizationTemplate.update({
       where: { id: tpl.id },
       data: { name: "Plantilla Rectangular", isActive: true, deletedAt: null },
     });
-    console.log("✓ Cuadrados: plantilla 'foto-rectangular-simple' activa como 'Plantilla Rectangular'");
+    console.log(
+      "✓ Cuadrados: plantilla 'foto-rectangular-simple' activa como 'Plantilla Rectangular'",
+    );
   }
 }
 
@@ -96,26 +102,40 @@ async function fixTiras() {
   if (found) {
     await prisma.productVariant.update({
       where: { id: found.id },
-      data: { productId: product.id, name: "Tira de 4 fotos · 6.5×26.5 cm", attributes: attrs4, isActive: true, deletedAt: null },
+      data: {
+        productId: product.id,
+        name: "Tira de 4 fotos · 6.5×26.5 cm",
+        attributes: attrs4,
+        isActive: true,
+        deletedAt: null,
+      },
     });
     console.log("  ~ variante 4 fotos actualizada (precio respetado)");
   } else {
     await prisma.productVariant.create({
-      data: { productId: product.id, sku: sku4, name: "Tira de 4 fotos · 6.5×26.5 cm", attributes: attrs4, price: 24000 * 100, stock: 100, isActive: true },
+      data: {
+        productId: product.id,
+        sku: sku4,
+        name: "Tira de 4 fotos · 6.5×26.5 cm",
+        attributes: attrs4,
+        price: 24000 * 100,
+        stock: 100,
+        isActive: true,
+      },
     });
     console.log("  + variante 4 fotos — $24.000 (ajustable en admin)");
   }
 
   // Plantilla 4 fotos (mismo dibujo que la de 3, escalada)
-  const tpl3 = await prisma.personalizationTemplate.findUnique({ where: { slug: "photo-strip-3-fotos" } });
+  const tpl3 = await prisma.personalizationTemplate.findUnique({
+    where: { slug: "photo-strip-3-fotos" },
+  });
   if (!tpl3) throw new Error("photo-strip-3-fotos no encontrada");
   const cd3 = tpl3.canvasData;
   const canvas4 = {
     ...cd3,
     stage: { ...cd3.stage, height: 530 },
-    layers: cd3.layers.map((l) =>
-      l.id === "photo" ? { ...l, height: 530 } : l,
-    ),
+    layers: cd3.layers.map((l) => (l.id === "photo" ? { ...l, height: 530 } : l)),
   };
   const slug4 = "photo-strip-4-fotos";
   const tplFound = await prisma.personalizationTemplate.findUnique({ where: { slug: slug4 } });

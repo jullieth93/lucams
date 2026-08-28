@@ -57,7 +57,10 @@ const OCASION_LINKS = {
   ],
   "set-fotoimanes-cuadrados": [["dia-madre", "Set de imanes con fotos familiares para mamá"]],
   "calendario-mes-a-mes-fotos": [
-    ["cumpleanos", "Calendario con 12 fotos de la familia, regalo de cumpleaños para papás y abuelos"],
+    [
+      "cumpleanos",
+      "Calendario con 12 fotos de la familia, regalo de cumpleaños para papás y abuelos",
+    ],
   ],
 };
 

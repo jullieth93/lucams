@@ -111,7 +111,8 @@ export const DEFAULT_AUTH_TEXTS: AuthTexts = {
     referralLabel: "Código de referido",
     referralOptional: "(si tienes uno)",
     referralPlaceholder: "LCS-XXXXXXXX",
-    referralHint: "Si un amigo te compartió su código, ambos ganan {percent}% OFF cuando completes tu primera compra.",
+    referralHint:
+      "Si un amigo te compartió su código, ambos ganan {percent}% OFF cuando completes tu primera compra.",
     emailLabel: "Correo electrónico",
     emailPlaceholder: "tu@email.com",
     passwordLabel: "Contraseña",

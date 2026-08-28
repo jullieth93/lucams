@@ -55,8 +55,20 @@ async function getProduct(tx, slug) {
 // Nuevas (misma lógica de descuento por volumen, definida por Lucy 2026-07-21):
 //   2→$11.000 (5500/u) · 4→$19.000 (4750/u) · 6→$25.200 (4200/u).
 const SEP_FORMAS = [
-  { key: "CUAD", label: "Cuadrado", sizeCm: "4×4.2", aspectRatio: "4:4.2", variantShape: "cuadrado" },
-  { key: "RECT", label: "Rectangular", sizeCm: "6×2", aspectRatio: "6:2", variantShape: "rectangular" },
+  {
+    key: "CUAD",
+    label: "Cuadrado",
+    sizeCm: "4×4.2",
+    aspectRatio: "4:4.2",
+    variantShape: "cuadrado",
+  },
+  {
+    key: "RECT",
+    label: "Rectangular",
+    sizeCm: "6×2",
+    aspectRatio: "6:2",
+    variantShape: "rectangular",
+  },
 ];
 const SEP_QTYS_NUEVAS = [
   { qty: 2, pesos: 11000 },
@@ -66,31 +78,34 @@ const SEP_QTYS_NUEVAS = [
 
 async function d2Separadores() {
   const product = await getProduct(prisma, "separadores-libros");
-  const results = await prisma.$transaction(async (tx) => {
-    const out = [];
-    for (const f of SEP_FORMAS) {
-      for (const q of SEP_QTYS_NUEVAS) {
-        out.push(
-          await upsertVariant(tx, {
-            productId: product.id,
-            sku: `SEP-${f.key}-${q.qty}`,
-            name: `${f.label} · ${q.qty} separadores · ${f.sizeCm} cm`,
-            price: q.pesos * 100,
-            // MISMO patrón de attributes que las variantes 1/3/5 existentes.
-            attributes: {
-              shape: "rectangle",
-              sizeCm: f.sizeCm,
-              quantity: q.qty,
-              photoSlots: q.qty,
-              aspectRatio: f.aspectRatio,
-              variantShape: f.variantShape,
-            },
-          }),
-        );
+  const results = await prisma.$transaction(
+    async (tx) => {
+      const out = [];
+      for (const f of SEP_FORMAS) {
+        for (const q of SEP_QTYS_NUEVAS) {
+          out.push(
+            await upsertVariant(tx, {
+              productId: product.id,
+              sku: `SEP-${f.key}-${q.qty}`,
+              name: `${f.label} · ${q.qty} separadores · ${f.sizeCm} cm`,
+              price: q.pesos * 100,
+              // MISMO patrón de attributes que las variantes 1/3/5 existentes.
+              attributes: {
+                shape: "rectangle",
+                sizeCm: f.sizeCm,
+                quantity: q.qty,
+                photoSlots: q.qty,
+                aspectRatio: f.aspectRatio,
+                variantShape: f.variantShape,
+              },
+            }),
+          );
+        }
       }
-    }
-    return out;
-  }, { timeout: 60000, maxWait: 15000 });
+      return out;
+    },
+    { timeout: 60000, maxWait: 15000 },
+  );
   return results;
 }
 
@@ -125,103 +140,122 @@ const FI_QTYS = [1, 2, 3, 4, 5, 6];
 
 async function d3Fotoimanes() {
   const product = await getProduct(prisma, "set-fotoimanes-cuadrados");
-  return prisma.$transaction(async (tx) => {
-    const out = [];
+  return prisma.$transaction(
+    async (tx) => {
+      const out = [];
 
-    // 1) Pausar las 9 variantes de tamaños retirados (4×4, 5×5, 7×7). NO se borran:
-    //    carritos/cotizaciones históricas conservan su referencia y Lucy las ve
-    //    como "Pausada" en /admin/productos (reversible). Filtro por sizeCm en JS
-    //    (no por "todo lo activo") para que un re-run NO pause variantes nuevas.
-    const OLD_SIZES = new Set(["4×4", "5×5", "7×7"]);
-    const activeNow = await tx.productVariant.findMany({
-      where: { productId: product.id, deletedAt: null, isActive: true },
-      select: { id: true, attributes: true },
-    });
-    const oldIds = activeNow
-      .filter((v) => OLD_SIZES.has(/** @type {any} */ (v.attributes)?.sizeCm))
-      .map((v) => v.id);
-    const paused = await tx.productVariant.updateMany({
-      where: { id: { in: oldIds } },
-      data: { isActive: false },
-    });
-    out.push({ action: "⊘", sku: `(${oldIds.length} variantes viejas 4×4/5×5/7×7)`, priceNote: `pausadas: ${paused.count}` });
+      // 1) Pausar las 9 variantes de tamaños retirados (4×4, 5×5, 7×7). NO se borran:
+      //    carritos/cotizaciones históricas conservan su referencia y Lucy las ve
+      //    como "Pausada" en /admin/productos (reversible). Filtro por sizeCm en JS
+      //    (no por "todo lo activo") para que un re-run NO pause variantes nuevas.
+      const OLD_SIZES = new Set(["4×4", "5×5", "7×7"]);
+      const activeNow = await tx.productVariant.findMany({
+        where: { productId: product.id, deletedAt: null, isActive: true },
+        select: { id: true, attributes: true },
+      });
+      const oldIds = activeNow
+        .filter((v) => OLD_SIZES.has(/** @type {any} */ (v.attributes)?.sizeCm))
+        .map((v) => v.id);
+      const paused = await tx.productVariant.updateMany({
+        where: { id: { in: oldIds } },
+        data: { isActive: false },
+      });
+      out.push({
+        action: "⊘",
+        sku: `(${oldIds.length} variantes viejas 4×4/5×5/7×7)`,
+        priceNote: `pausadas: ${paused.count}`,
+      });
 
-    // 2) Variantes nuevas: tamaño × marco × cantidad (2×2×6 = 24, matriz completa
-    //    → la PDP no muestra chips deshabilitados).
-    for (const s of FI_SIZES) {
-      for (const f of FI_FRAMES) {
-        for (const qty of FI_QTYS) {
-          out.push(
-            await upsertVariant(tx, {
-              productId: product.id,
-              sku: `FI-CUAD-${s.key}-${f.key}-${qty}`,
-              name: `${s.sizeCm} cm · ${f.label} · ${qty} ${qty === 1 ? "unidad" : "unidades"}`,
-              price: s.prices[qty] * 100,
-              attributes: {
-                shape: "rectangle",
-                sizeCm: s.sizeCm,
-                quantity: qty,
-                photoSlots: qty,
-                aspectRatio: s.aspectRatio,
-                frameStyle: f.value,
-              },
-            }),
-          );
+      // 2) Variantes nuevas: tamaño × marco × cantidad (2×2×6 = 24, matriz completa
+      //    → la PDP no muestra chips deshabilitados).
+      for (const s of FI_SIZES) {
+        for (const f of FI_FRAMES) {
+          for (const qty of FI_QTYS) {
+            out.push(
+              await upsertVariant(tx, {
+                productId: product.id,
+                sku: `FI-CUAD-${s.key}-${f.key}-${qty}`,
+                name: `${s.sizeCm} cm · ${f.label} · ${qty} ${qty === 1 ? "unidad" : "unidades"}`,
+                price: s.prices[qty] * 100,
+                attributes: {
+                  shape: "rectangle",
+                  sizeCm: s.sizeCm,
+                  quantity: qty,
+                  photoSlots: qty,
+                  aspectRatio: s.aspectRatio,
+                  frameStyle: f.value,
+                },
+              }),
+            );
+          }
         }
       }
-    }
 
-    // 3) Schema del producto: sizeCm "5×5" (tamaño retirado) → "6.5×6.5".
-    const prod = await tx.product.findUnique({
-      where: { id: product.id },
-      select: { personalizationSchema: true },
-    });
-    const schema = { ...(prod.personalizationSchema ?? {}), sizeCm: "6.5×6.5" };
-    await tx.product.update({
-      where: { id: product.id },
-      data: { personalizationSchema: schema },
-    });
-    out.push({ action: "~", sku: "product.personalizationSchema", priceNote: 'sizeCm → "6.5×6.5"' });
-
-    // 4) Plantilla rectangular dedicada (stage 600×800 = ratio 0.75) para que las
-    //    variantes 7.5×10 rutee a un canvas WYSIWYG (mismo patrón que
-    //    foto-cuadrado-simple / sep-cuadrado: [fondo, foto] sin texto).
-    //    Sin ella, el filtro por aspecto (|a-target| ≤ 0.05) dejaba esas variantes
-    //    sin plantilla → canvas cuadrado por defecto (engañoso para un imán 3:4).
-    const canvasData = {
-      version: 1,
-      stage: { width: 600, height: 800, dpiPreview: 90, dpiProduction: 300 },
-      layers: [
-        { id: "bg", type: "background", color: "#FFFFFF" },
-        { id: "photo", type: "image-placeholder", x: 0, y: 0, width: 600, height: 800, cornerRadius: 0 },
-      ],
-    };
-    const tplData = {
-      productId: product.id,
-      kind: "PHOTO_PACK",
-      mode: "EDITABLE",
-      name: "Rectangular simple",
-      description: "Fotoimán rectangular 7.5×10 — tu foto a todo el imán.",
-      previewUrl: "/brand/lucams-logo.png",
-      canvasData,
-      isActive: true,
-      order: -10,
-      deletedAt: null,
-    };
-    const tpl = await tx.personalizationTemplate.findFirst({
-      where: { slug: "foto-rectangular-simple" },
-    });
-    if (tpl) {
-      await tx.personalizationTemplate.update({ where: { id: tpl.id }, data: tplData });
-      out.push({ action: "~", sku: "plantilla foto-rectangular-simple", priceNote: "600×800" });
-    } else {
-      await tx.personalizationTemplate.create({
-        data: { slug: "foto-rectangular-simple", ...tplData },
+      // 3) Schema del producto: sizeCm "5×5" (tamaño retirado) → "6.5×6.5".
+      const prod = await tx.product.findUnique({
+        where: { id: product.id },
+        select: { personalizationSchema: true },
       });
-      out.push({ action: "+", sku: "plantilla foto-rectangular-simple", priceNote: "600×800" });
-    }
-    return out;
-  }, { timeout: 60000, maxWait: 15000 });
+      const schema = { ...(prod.personalizationSchema ?? {}), sizeCm: "6.5×6.5" };
+      await tx.product.update({
+        where: { id: product.id },
+        data: { personalizationSchema: schema },
+      });
+      out.push({
+        action: "~",
+        sku: "product.personalizationSchema",
+        priceNote: 'sizeCm → "6.5×6.5"',
+      });
+
+      // 4) Plantilla rectangular dedicada (stage 600×800 = ratio 0.75) para que las
+      //    variantes 7.5×10 rutee a un canvas WYSIWYG (mismo patrón que
+      //    foto-cuadrado-simple / sep-cuadrado: [fondo, foto] sin texto).
+      //    Sin ella, el filtro por aspecto (|a-target| ≤ 0.05) dejaba esas variantes
+      //    sin plantilla → canvas cuadrado por defecto (engañoso para un imán 3:4).
+      const canvasData = {
+        version: 1,
+        stage: { width: 600, height: 800, dpiPreview: 90, dpiProduction: 300 },
+        layers: [
+          { id: "bg", type: "background", color: "#FFFFFF" },
+          {
+            id: "photo",
+            type: "image-placeholder",
+            x: 0,
+            y: 0,
+            width: 600,
+            height: 800,
+            cornerRadius: 0,
+          },
+        ],
+      };
+      const tplData = {
+        productId: product.id,
+        kind: "PHOTO_PACK",
+        mode: "EDITABLE",
+        name: "Rectangular simple",
+        description: "Fotoimán rectangular 7.5×10 — tu foto a todo el imán.",
+        previewUrl: "/brand/lucams-logo.png",
+        canvasData,
+        isActive: true,
+        order: -10,
+        deletedAt: null,
+      };
+      const tpl = await tx.personalizationTemplate.findFirst({
+        where: { slug: "foto-rectangular-simple" },
+      });
+      if (tpl) {
+        await tx.personalizationTemplate.update({ where: { id: tpl.id }, data: tplData });
+        out.push({ action: "~", sku: "plantilla foto-rectangular-simple", priceNote: "600×800" });
+      } else {
+        await tx.personalizationTemplate.create({
+          data: { slug: "foto-rectangular-simple", ...tplData },
+        });
+        out.push({ action: "+", sku: "plantilla foto-rectangular-simple", priceNote: "600×800" });
+      }
+      return out;
+    },
+    { timeout: 60000, maxWait: 15000 },
+  );
 }
 
 // ─────────────────────────── C1 — Polaroid estilos ───────────────────────────
@@ -238,42 +272,45 @@ const POL_STYLE_LABEL = {
 
 async function c1Polaroid() {
   const product = await getProduct(prisma, "set-fotoimanes-polaroid");
-  return prisma.$transaction(async (tx) => {
-    const out = [];
-    const current = await tx.productVariant.findMany({
-      where: { productId: product.id, deletedAt: null, isActive: true },
-      select: { id: true, sku: true, name: true, price: true, attributes: true },
-      orderBy: { createdAt: "asc" },
-    });
-    // Base = las 4 originales (sin estilo) o las ya etiquetadas "instagram" en un
-    // run anterior. Así un re-run NO deriva estilos nuevos desde BC/PAS (sku-BC-BC).
-    const bases = current.filter(
-      (v) =>
-        !/-(BC|PAS)$/.test(v.sku) &&
-        (!v.attributes?.variantStyle || v.attributes?.variantStyle === "instagram"),
-    );
+  return prisma.$transaction(
+    async (tx) => {
+      const out = [];
+      const current = await tx.productVariant.findMany({
+        where: { productId: product.id, deletedAt: null, isActive: true },
+        select: { id: true, sku: true, name: true, price: true, attributes: true },
+        orderBy: { createdAt: "asc" },
+      });
+      // Base = las 4 originales (sin estilo) o las ya etiquetadas "instagram" en un
+      // run anterior. Así un re-run NO deriva estilos nuevos desde BC/PAS (sku-BC-BC).
+      const bases = current.filter(
+        (v) =>
+          !/-(BC|PAS)$/.test(v.sku) &&
+          (!v.attributes?.variantStyle || v.attributes?.variantStyle === "instagram"),
+      );
 
-    for (const v of bases) {
-      const attrs = { ...(v.attributes ?? {}), variantStyle: "instagram" };
-      const name = v.name.includes("· Instagram") ? v.name : `${v.name} · Instagram`;
-      await tx.productVariant.update({ where: { id: v.id }, data: { name, attributes: attrs } });
-      out.push({ action: "~", sku: v.sku, priceNote: 'variantStyle "instagram"' });
+      for (const v of bases) {
+        const attrs = { ...(v.attributes ?? {}), variantStyle: "instagram" };
+        const name = v.name.includes("· Instagram") ? v.name : `${v.name} · Instagram`;
+        await tx.productVariant.update({ where: { id: v.id }, data: { name, attributes: attrs } });
+        out.push({ action: "~", sku: v.sku, priceNote: 'variantStyle "instagram"' });
 
-      for (const style of ["blanco-clasico", "pasteles"]) {
-        const suffix = style === "blanco-clasico" ? "BC" : "PAS";
-        out.push(
-          await upsertVariant(tx, {
-            productId: product.id,
-            sku: `${v.sku}-${suffix}`,
-            name: `${v.name} · ${POL_STYLE_LABEL[style]}`,
-            price: v.price,
-            attributes: { ...(v.attributes ?? {}), variantStyle: style },
-          }),
-        );
+        for (const style of ["blanco-clasico", "pasteles"]) {
+          const suffix = style === "blanco-clasico" ? "BC" : "PAS";
+          out.push(
+            await upsertVariant(tx, {
+              productId: product.id,
+              sku: `${v.sku}-${suffix}`,
+              name: `${v.name} · ${POL_STYLE_LABEL[style]}`,
+              price: v.price,
+              attributes: { ...(v.attributes ?? {}), variantStyle: style },
+            }),
+          );
+        }
       }
-    }
-    return out;
-  }, { timeout: 60000, maxWait: 15000 });
+      return out;
+    },
+    { timeout: 60000, maxWait: 15000 },
+  );
 }
 
 // ────────────────── C2 — Pack Vocales modular + categorías ──────────────────
@@ -294,99 +331,121 @@ const VOC_LANGS = [
 
 async function c2Vocales() {
   const product = await getProduct(prisma, "pack-vocales");
-  return prisma.$transaction(async (tx) => {
-    const out = [];
-    const current = await tx.productVariant.findMany({
-      where: { productId: product.id, deletedAt: null, isActive: true },
-      select: { id: true, sku: true, name: true, price: true, attributes: true },
-      orderBy: { createdAt: "asc" },
-    });
-    // Base = las 6 originales (sin tema/idioma) o las ya etiquetadas animales·es
-    // en un run anterior. Así un re-run NO deriva combos desde FRU/PRO (sku-FRU-ES-PRO-EN).
-    const bases = current.filter(
-      (v) =>
-        !/-(ANI|FRU|PRO)-(ES|EN)$/.test(v.sku) &&
-        (!v.attributes?.theme ||
-          (v.attributes?.theme === "animales" && v.attributes?.language === "es")),
-    );
-
-    for (const v of bases) {
-      // Base = animales · Español (lo que Lucy vende hoy).
-      const baseAttrs = { ...(v.attributes ?? {}), theme: "animales", language: "es" };
-      const baseName = v.name.includes("· Animales") ? v.name : `${v.name} · Animales · Español`;
-      await tx.productVariant.update({
-        where: { id: v.id },
-        data: { name: baseName, attributes: baseAttrs },
+  return prisma.$transaction(
+    async (tx) => {
+      const out = [];
+      const current = await tx.productVariant.findMany({
+        where: { productId: product.id, deletedAt: null, isActive: true },
+        select: { id: true, sku: true, name: true, price: true, attributes: true },
+        orderBy: { createdAt: "asc" },
       });
-      out.push({ action: "~", sku: v.sku, priceNote: "theme animales · es" });
+      // Base = las 6 originales (sin tema/idioma) o las ya etiquetadas animales·es
+      // en un run anterior. Así un re-run NO deriva combos desde FRU/PRO (sku-FRU-ES-PRO-EN).
+      const bases = current.filter(
+        (v) =>
+          !/-(ANI|FRU|PRO)-(ES|EN)$/.test(v.sku) &&
+          (!v.attributes?.theme ||
+            (v.attributes?.theme === "animales" && v.attributes?.language === "es")),
+      );
 
-      for (const t of VOC_THEMES) {
-        for (const l of VOC_LANGS) {
-          if (t.value === "animales" && l.value === "es") continue; // ya existe (base)
-          out.push(
-            await upsertVariant(tx, {
-              productId: product.id,
-              sku: `${v.sku}-${t.key}-${l.key}`,
-              name: `${v.name} · ${t.label} · ${l.label}`,
-              price: v.price,
-              attributes: { ...(v.attributes ?? {}), theme: t.value, language: l.value },
-            }),
-          );
+      for (const v of bases) {
+        // Base = animales · Español (lo que Lucy vende hoy).
+        const baseAttrs = { ...(v.attributes ?? {}), theme: "animales", language: "es" };
+        const baseName = v.name.includes("· Animales") ? v.name : `${v.name} · Animales · Español`;
+        await tx.productVariant.update({
+          where: { id: v.id },
+          data: { name: baseName, attributes: baseAttrs },
+        });
+        out.push({ action: "~", sku: v.sku, priceNote: "theme animales · es" });
+
+        for (const t of VOC_THEMES) {
+          for (const l of VOC_LANGS) {
+            if (t.value === "animales" && l.value === "es") continue; // ya existe (base)
+            out.push(
+              await upsertVariant(tx, {
+                productId: product.id,
+                sku: `${v.sku}-${t.key}-${l.key}`,
+                name: `${v.name} · ${t.label} · ${l.label}`,
+                price: v.price,
+                attributes: { ...(v.attributes ?? {}), theme: t.value, language: l.value },
+              }),
+            );
+          }
         }
       }
-    }
-    return out;
-  }, { timeout: 60000, maxWait: 15000 });
+      return out;
+    },
+    { timeout: 60000, maxWait: 15000 },
+  );
 }
 
 async function c2CategoriasYSets() {
-  return prisma.$transaction(async (tx) => {
-    const out = [];
+  return prisma.$transaction(
+    async (tx) => {
+      const out = [];
 
-    // Categorías raíz nuevas (el árbol actual es plano: 4 raíces sin hijas).
-    const CATS = [
-      { slug: "animales", name: "Animales", order: 4, description: "Juegos y diseños con animalitos para aprender y decorar." },
-      { slug: "frutas", name: "Frutas", order: 5, description: "Juegos y diseños con frutas para aprender y decorar." },
-    ];
-    for (const c of CATS) {
-      const found = await tx.category.findFirst({ where: { slug: c.slug } });
-      if (found) {
-        await tx.category.update({
-          where: { id: found.id },
-          data: { name: c.name, description: c.description, isActive: true, deletedAt: null },
+      // Categorías raíz nuevas (el árbol actual es plano: 4 raíces sin hijas).
+      const CATS = [
+        {
+          slug: "animales",
+          name: "Animales",
+          order: 4,
+          description: "Juegos y diseños con animalitos para aprender y decorar.",
+        },
+        {
+          slug: "frutas",
+          name: "Frutas",
+          order: 5,
+          description: "Juegos y diseños con frutas para aprender y decorar.",
+        },
+      ];
+      for (const c of CATS) {
+        const found = await tx.category.findFirst({ where: { slug: c.slug } });
+        if (found) {
+          await tx.category.update({
+            where: { id: found.id },
+            data: { name: c.name, description: c.description, isActive: true, deletedAt: null },
+          });
+          out.push({
+            action: "~",
+            sku: `categoría ${c.slug}`,
+            priceNote: "reactivada/actualizada",
+          });
+        } else {
+          await tx.category.create({ data: { ...c, isActive: true } });
+          out.push({ action: "+", sku: `categoría ${c.slug}`, priceNote: "raíz, activa" });
+        }
+      }
+
+      // LetterTileSets VACÍOS para los temas/idiomas que faltan (Lucy sube las
+      // ilustraciones desde /admin/fichas). listLetterStyles omite sets sin fichas
+      // → no aparecen en el Estudio hasta tener al menos 1 ficha (degrade gracioso).
+      const SETS = [
+        { name: "Frutas · Español", language: "es" },
+        { name: "Frutas · English", language: "en" },
+        { name: "Profesiones · Español", language: "es" },
+        { name: "Profesiones · English", language: "en" },
+      ];
+      for (const s of SETS) {
+        const found = await tx.letterTileSet.findFirst({
+          where: { name: s.name, language: s.language, deletedAt: null },
         });
-        out.push({ action: "~", sku: `categoría ${c.slug}`, priceNote: "reactivada/actualizada" });
-      } else {
-        await tx.category.create({ data: { ...c, isActive: true } });
-        out.push({ action: "+", sku: `categoría ${c.slug}`, priceNote: "raíz, activa" });
+        if (found) {
+          out.push({ action: "=", sku: `letter-set "${s.name}"`, priceNote: "ya existía" });
+          continue;
+        }
+        const order = await tx.letterTileSet.count({
+          where: { language: s.language, deletedAt: null },
+        });
+        await tx.letterTileSet.create({
+          data: { name: s.name, language: s.language, isActive: true, isDefault: false, order },
+        });
+        out.push({ action: "+", sku: `letter-set "${s.name}"`, priceNote: "vacío, sin fichas" });
       }
-    }
-
-    // LetterTileSets VACÍOS para los temas/idiomas que faltan (Lucy sube las
-    // ilustraciones desde /admin/fichas). listLetterStyles omite sets sin fichas
-    // → no aparecen en el Estudio hasta tener al menos 1 ficha (degrade gracioso).
-    const SETS = [
-      { name: "Frutas · Español", language: "es" },
-      { name: "Frutas · English", language: "en" },
-      { name: "Profesiones · Español", language: "es" },
-      { name: "Profesiones · English", language: "en" },
-    ];
-    for (const s of SETS) {
-      const found = await tx.letterTileSet.findFirst({
-        where: { name: s.name, language: s.language, deletedAt: null },
-      });
-      if (found) {
-        out.push({ action: "=", sku: `letter-set "${s.name}"`, priceNote: "ya existía" });
-        continue;
-      }
-      const order = await tx.letterTileSet.count({ where: { language: s.language, deletedAt: null } });
-      await tx.letterTileSet.create({
-        data: { name: s.name, language: s.language, isActive: true, isDefault: false, order },
-      });
-      out.push({ action: "+", sku: `letter-set "${s.name}"`, priceNote: "vacío, sin fichas" });
-    }
-    return out;
-  }, { timeout: 60000, maxWait: 15000 });
+      return out;
+    },
+    { timeout: 60000, maxWait: 15000 },
+  );
 }
 
 async function main() {

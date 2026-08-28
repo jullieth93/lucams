@@ -24,10 +24,10 @@ const RUN = `ref${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
 const T = 30_000;
 
 let referrerId = "";
-let referrerEmail = `${RUN}-referrer@lucams.test`;
-let referrerCode = `LCS-${RUN.slice(-6).toUpperCase()}X`;
+const referrerEmail = `${RUN}-referrer@lucams.test`;
+const referrerCode = `LCS-${RUN.slice(-6).toUpperCase()}X`;
 let refereeId = "";
-let refereeEmail = `${RUN}-referee@lucams.test`;
+const refereeEmail = `${RUN}-referee@lucams.test`;
 
 function makeOrderNumber(tag: string) {
   return `LCM-${RUN}-${tag}`.toUpperCase();
@@ -81,7 +81,9 @@ describe.skipIf(!hasDb)("referrals/service — integración DB", { timeout: T },
 
   afterAll(async () => {
     await prisma.referral.deleteMany({ where: { referredEmail: { contains: RUN } } });
-    await prisma.coupon.deleteMany({ where: { code: { startsWith: "REF-" }, description: { contains: RUN } } });
+    await prisma.coupon.deleteMany({
+      where: { code: { startsWith: "REF-" }, description: { contains: RUN } },
+    });
     await prisma.order.deleteMany({ where: { email: { contains: RUN } } });
     await prisma.customer.deleteMany({ where: { email: { contains: RUN } } });
   }, T);
@@ -139,7 +141,13 @@ describe.skipIf(!hasDb)("referrals/service — integración DB", { timeout: T },
     });
     expect(coupons).toHaveLength(2);
     for (const c of coupons) {
-      expect(c).toMatchObject({ type: "PERCENT", value: 10, maxUses: 1, maxUsesPerCustomer: 1, isPublic: false });
+      expect(c).toMatchObject({
+        type: "PERCENT",
+        value: 10,
+        maxUses: 1,
+        maxUsesPerCustomer: 1,
+        isPublic: false,
+      });
     }
 
     // Retry de la saga (idempotente): sigue habiendo solo 2 cupones.

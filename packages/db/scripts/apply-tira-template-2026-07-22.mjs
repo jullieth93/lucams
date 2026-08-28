@@ -178,7 +178,9 @@ async function main() {
 
   // ── Comprobación de ruteo (filtro de aspect del Estudio: |a − target| ≤ 0.05) ──
   const schema = result.product.personalizationSchema ?? {};
-  const m = typeof schema.aspectRatio === "string" && schema.aspectRatio.match(/^(\d+(?:\.\d+)?)\s*[:×x]\s*(\d+(?:\.\d+)?)$/i);
+  const m =
+    typeof schema.aspectRatio === "string" &&
+    schema.aspectRatio.match(/^(\d+(?:\.\d+)?)\s*[:×x]\s*(\d+(?:\.\d+)?)$/i);
   const target = m ? parseFloat(m[1]) / parseFloat(m[2]) : null;
   const cellAspect = 390 / 400;
   if (target === null) {

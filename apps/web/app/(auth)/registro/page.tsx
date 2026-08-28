@@ -20,6 +20,8 @@ export default async function RegistroPage({
   // Referidos v1 — prefill del código desde el link de compartir (?ref=LCS-…).
   const { ref } = await searchParams;
   const initialReferralCode =
-    typeof ref === "string" && /^[A-Za-z0-9-]{4,20}$/.test(ref.trim()) ? ref.trim().toUpperCase() : undefined;
+    typeof ref === "string" && /^[A-Za-z0-9-]{4,20}$/.test(ref.trim())
+      ? ref.trim().toUpperCase()
+      : undefined;
   return <RegistroForm texts={texts.registro} initialReferralCode={initialReferralCode} />;
 }

@@ -21,5 +21,11 @@ const realActiveCats = await prisma.category.findMany({
   where: { isActive: true },
   select: { slug: true, name: true },
 });
-console.log(JSON.stringify({ totalCats, activeCats, totalProds, activeProds, badCats, realActiveCats }, null, 2));
+console.log(
+  JSON.stringify(
+    { totalCats, activeCats, totalProds, activeProds, badCats, realActiveCats },
+    null,
+    2,
+  ),
+);
 await prisma.$disconnect();

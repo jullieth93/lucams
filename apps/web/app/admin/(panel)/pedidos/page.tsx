@@ -273,9 +273,7 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
                   o.shippingAddress &&
                   typeof o.shippingAddress === "object" &&
                   !Array.isArray(o.shippingAddress)
-                    ? String(
-                        (o.shippingAddress as Record<string, unknown>).fullName ?? "",
-                      ).trim()
+                    ? String((o.shippingAddress as Record<string, unknown>).fullName ?? "").trim()
                     : "";
                 const fullName =
                   o.customer?.firstName || o.customer?.lastName

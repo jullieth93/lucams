@@ -42,7 +42,11 @@ import {
   type InventoryStatusFilter,
   type InventorySortKey,
 } from "@/features/products/inventory-service";
-import { getStockEmoji, getStockLabel, packStockHelpText } from "@/features/products/stock-constants";
+import {
+  getStockEmoji,
+  getStockLabel,
+  packStockHelpText,
+} from "@/features/products/stock-constants";
 import { parseVariantAttributes } from "@/features/products/variant-schemas";
 import { CompactStockEditor } from "@/components/admin/compact-stock-editor";
 

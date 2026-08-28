@@ -26,11 +26,10 @@ async function main() {
 
   const current =
     product.personalizationSchema && typeof product.personalizationSchema === "object"
-      ? (product.personalizationSchema)
+      ? product.personalizationSchema
       : {};
 
-  const needsUpdate =
-    current.facesPerUnit !== 2 || current.cornerRadiusPx !== 28;
+  const needsUpdate = current.facesPerUnit !== 2 || current.cornerRadiusPx !== 28;
 
   if (!needsUpdate) {
     console.log(`✓ ${SLUG} ya tiene facesPerUnit=2 y cornerRadiusPx=28.`);

@@ -310,8 +310,7 @@ export function VariantSelector({
     // COMPATIBLE con las demás dimensiones elegidas; si ninguna es compatible,
     // re-ancla a la primera variante con stock que tenga ese valor (las demás
     // dimensiones se re-evalúan contra esa nueva combinación).
-    const target =
-      findCompatibleInStock(dimKey, value) ?? findGlobalInStock(dimKey, value);
+    const target = findCompatibleInStock(dimKey, value) ?? findGlobalInStock(dimKey, value);
     if (target) selectVariant(target.id);
   }
 
@@ -531,7 +530,9 @@ export function VariantSelector({
                     type="button"
                     aria-label="Disminuir cantidad"
                     disabled={!canDecrease}
-                    onClick={() => decreaseTo !== null && handleSelectValue(dim.key, String(decreaseTo))}
+                    onClick={() =>
+                      decreaseTo !== null && handleSelectValue(dim.key, String(decreaseTo))
+                    }
                     className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-10 w-10 cursor-pointer items-center justify-center rounded-l-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
                   >
                     <Minus className="h-4 w-4" aria-hidden />
@@ -546,7 +547,9 @@ export function VariantSelector({
                     type="button"
                     aria-label="Aumentar cantidad"
                     disabled={!canIncrease}
-                    onClick={() => increaseTo !== null && handleSelectValue(dim.key, String(increaseTo))}
+                    onClick={() =>
+                      increaseTo !== null && handleSelectValue(dim.key, String(increaseTo))
+                    }
                     className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-10 w-10 cursor-pointer items-center justify-center rounded-r-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
                   >
                     <Plus className="h-4 w-4" aria-hidden />
@@ -602,7 +605,7 @@ export function VariantSelector({
                           ? "bg-brand-purple cursor-default text-white shadow-md"
                           : "bg-brand-purple cursor-pointer text-white shadow-md"
                         : soldOut
-                          ? "ring-brand-purple/10 text-brand-muted bg-brand-cream/40 cursor-not-allowed line-through decoration-brand-purple/50 decoration-2 ring-1"
+                          ? "ring-brand-purple/10 text-brand-muted bg-brand-cream/40 decoration-brand-purple/50 cursor-not-allowed line-through decoration-2 ring-1"
                           : "ring-brand-purple/20 text-brand-purple-dark hover:ring-brand-purple/50 hover:bg-brand-cream/50 cursor-pointer bg-white ring-1",
                     ].join(" ")}
                   >

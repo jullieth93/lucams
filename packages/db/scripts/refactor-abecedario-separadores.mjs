@@ -13,7 +13,13 @@ const prisma = new PrismaClient();
 // Buscar la categoría de cada producto (reuso del catálogo existente)
 async function getCategoryIdForSlug(parentSlug) {
   // Para abecedario y separadores reuso categorías existentes razonables
-  const candidates = ["juegos-aprendizaje", "abecedario-magnetico", "organiza-tu-espacio", "separadores", "imanes"];
+  const candidates = [
+    "juegos-aprendizaje",
+    "abecedario-magnetico",
+    "organiza-tu-espacio",
+    "separadores",
+    "imanes",
+  ];
   for (const c of candidates) {
     const cat = await prisma.category.findFirst({ where: { slug: c, deletedAt: null } });
     if (cat) return cat.id;
@@ -74,7 +80,14 @@ async function upsertVariant(productId, sku, name, attributes, priceCop) {
   if (existing) {
     return prisma.productVariant.update({
       where: { id: existing.id },
-      data: { name, attributes, price: priceCop * 100, isActive: true, deletedAt: null, stock: 100 },
+      data: {
+        name,
+        attributes,
+        price: priceCop * 100,
+        isActive: true,
+        deletedAt: null,
+        stock: 100,
+      },
     });
   }
   return prisma.productVariant.create({
@@ -87,7 +100,9 @@ async function main() {
 
   // ─────────── ABECEDARIO ESPAÑOL ───────────
   const physSpecsAbc = {
-    widthCm: 7, heightCm: 10, depthCm: 1,
+    widthCm: 7,
+    heightCm: 10,
+    depthCm: 1,
     weightGrams: 50, // 27 fichas × ~2g
     material: "PET laminado mate",
     magnetType: "FRIDGE",
@@ -113,9 +128,27 @@ async function main() {
     images: [],
   });
   console.log(`✓ ${abcEs.slug}`);
-  await upsertVariant(abcEs.id, "ABC-ES-FULL", "Abecedario completo · 27 letras", { variant: "full", letterCount: 27 }, 45000);
-  await upsertVariant(abcEs.id, "ABC-ES-VOWELS", "Pack vocales · 5 letras (AEIOU)", { variant: "vowels", letterCount: 5 }, 15000);
-  await upsertVariant(abcEs.id, "ABC-ES-NAME", "Nombre personalizado · 3-10 letras", { variant: "name", letterCountMin: 3, letterCountMax: 10 }, 25000);
+  await upsertVariant(
+    abcEs.id,
+    "ABC-ES-FULL",
+    "Abecedario completo · 27 letras",
+    { variant: "full", letterCount: 27 },
+    45000,
+  );
+  await upsertVariant(
+    abcEs.id,
+    "ABC-ES-VOWELS",
+    "Pack vocales · 5 letras (AEIOU)",
+    { variant: "vowels", letterCount: 5 },
+    15000,
+  );
+  await upsertVariant(
+    abcEs.id,
+    "ABC-ES-NAME",
+    "Nombre personalizado · 3-10 letras",
+    { variant: "name", letterCountMin: 3, letterCountMax: 10 },
+    25000,
+  );
   console.log("  3 variantes seteadas");
 
   // ─────────── ABECEDARIO INGLÉS ───────────
@@ -134,14 +167,34 @@ async function main() {
     images: [],
   });
   console.log(`✓ ${abcEn.slug}`);
-  await upsertVariant(abcEn.id, "ABC-EN-FULL", "Full alphabet · 26 letters", { variant: "full", letterCount: 26 }, 45000);
-  await upsertVariant(abcEn.id, "ABC-EN-VOWELS", "Vowels pack · 5 letters (AEIOU)", { variant: "vowels", letterCount: 5 }, 15000);
-  await upsertVariant(abcEn.id, "ABC-EN-NAME", "Custom name · 3-10 letters", { variant: "name", letterCountMin: 3, letterCountMax: 10 }, 25000);
+  await upsertVariant(
+    abcEn.id,
+    "ABC-EN-FULL",
+    "Full alphabet · 26 letters",
+    { variant: "full", letterCount: 26 },
+    45000,
+  );
+  await upsertVariant(
+    abcEn.id,
+    "ABC-EN-VOWELS",
+    "Vowels pack · 5 letters (AEIOU)",
+    { variant: "vowels", letterCount: 5 },
+    15000,
+  );
+  await upsertVariant(
+    abcEn.id,
+    "ABC-EN-NAME",
+    "Custom name · 3-10 letters",
+    { variant: "name", letterCountMin: 3, letterCountMax: 10 },
+    25000,
+  );
   console.log("  3 variantes seteadas");
 
   // ─────────── SEPARADORES PERSONALIZABLES ───────────
   const physSpecsSep = {
-    widthCm: 4, heightCm: 4, depthCm: 1, // 4×4.2 redondeo
+    widthCm: 4,
+    heightCm: 4,
+    depthCm: 1, // 4×4.2 redondeo
     weightGrams: 10,
     material: "PET laminado mate",
     magnetType: "BOOK", // marca-libro
@@ -167,9 +220,27 @@ async function main() {
     images: [],
   });
   console.log(`✓ ${sepPers.slug}`);
-  await upsertVariant(sepPers.id, "SEP-PERS-1", "1 separador · 1 foto", { photoSlots: 1, qty: 1 }, 5000);
-  await upsertVariant(sepPers.id, "SEP-PERS-3", "Pack 3 separadores · 3 fotos", { photoSlots: 3, qty: 3 }, 10000);
-  await upsertVariant(sepPers.id, "SEP-PERS-5", "Pack 5 separadores · 5 fotos", { photoSlots: 5, qty: 5 }, 15000);
+  await upsertVariant(
+    sepPers.id,
+    "SEP-PERS-1",
+    "1 separador · 1 foto",
+    { photoSlots: 1, qty: 1 },
+    5000,
+  );
+  await upsertVariant(
+    sepPers.id,
+    "SEP-PERS-3",
+    "Pack 3 separadores · 3 fotos",
+    { photoSlots: 3, qty: 3 },
+    10000,
+  );
+  await upsertVariant(
+    sepPers.id,
+    "SEP-PERS-5",
+    "Pack 5 separadores · 5 fotos",
+    { photoSlots: 5, qty: 5 },
+    15000,
+  );
   console.log("  3 variantes seteadas");
 
   // ─────────── SEPARADORES PREDISEÑADOS ───────────
@@ -188,20 +259,51 @@ async function main() {
     images: [],
   });
   console.log(`✓ ${sepPre.slug}`);
-  await upsertVariant(sepPre.id, "SEP-PRE-1", "1 separador · diseño a elección", { qty: 1, design: "any" }, 5000);
-  await upsertVariant(sepPre.id, "SEP-PRE-3", "Pack 3 separadores · 3 diseños", { qty: 3, design: "any" }, 10000);
-  await upsertVariant(sepPre.id, "SEP-PRE-5", "Pack 5 separadores · 5 diseños", { qty: 5, design: "any" }, 15000);
-  await upsertVariant(sepPre.id, "SEP-PRE-10", "Pack 10 separadores · sorpresa", { qty: 10, design: "any" }, 28000);
+  await upsertVariant(
+    sepPre.id,
+    "SEP-PRE-1",
+    "1 separador · diseño a elección",
+    { qty: 1, design: "any" },
+    5000,
+  );
+  await upsertVariant(
+    sepPre.id,
+    "SEP-PRE-3",
+    "Pack 3 separadores · 3 diseños",
+    { qty: 3, design: "any" },
+    10000,
+  );
+  await upsertVariant(
+    sepPre.id,
+    "SEP-PRE-5",
+    "Pack 5 separadores · 5 diseños",
+    { qty: 5, design: "any" },
+    15000,
+  );
+  await upsertVariant(
+    sepPre.id,
+    "SEP-PRE-10",
+    "Pack 10 separadores · sorpresa",
+    { qty: 10, design: "any" },
+    28000,
+  );
   console.log("  4 variantes seteadas");
 
   console.log("\n✓ DONE. Productos finales activos:");
   const finalActive = await prisma.product.findMany({
     where: { deletedAt: null, isActive: true },
-    select: { slug: true, name: true, personalizationKind: true, _count: { select: { variants: true } } },
+    select: {
+      slug: true,
+      name: true,
+      personalizationKind: true,
+      _count: { select: { variants: true } },
+    },
     orderBy: { slug: "asc" },
   });
   for (const p of finalActive) {
-    console.log(`  ${p.slug.padEnd(40)} | ${p.personalizationKind.padEnd(12)} | ${p._count.variants} variantes`);
+    console.log(
+      `  ${p.slug.padEnd(40)} | ${p.personalizationKind.padEnd(12)} | ${p._count.variants} variantes`,
+    );
   }
   console.log(`\nTotal: ${finalActive.length} productos activos`);
   await prisma.$disconnect();

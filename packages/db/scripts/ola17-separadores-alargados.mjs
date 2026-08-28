@@ -94,7 +94,10 @@ async function main() {
   const description =
     "Marcapáginas alargado PLANO (sin doblez) personalizado con tu foto o diseño en AMBAS caras. Elige el tamaño: 15×4 cm o 12×4 cm. Impresión full color en PET laminado mate imantado, bordes redondeados. Perfecto para marcar tu lectura con estilo propio.";
 
-  const existing = await prisma.product.findFirst({ where: { slug: PRODUCT_SLUG }, select: { id: true } });
+  const existing = await prisma.product.findFirst({
+    where: { slug: PRODUCT_SLUG },
+    select: { id: true },
+  });
   const data = {
     name: "Alargados",
     description,
@@ -125,7 +128,9 @@ async function main() {
     productId = existing.id;
     console.log("✓ Producto Alargados actualizado");
   } else {
-    const created = await prisma.product.create({ data: { slug: PRODUCT_SLUG, sku: PRODUCT_SKU, ...data } });
+    const created = await prisma.product.create({
+      data: { slug: PRODUCT_SLUG, sku: PRODUCT_SKU, ...data },
+    });
     productId = created.id;
     console.log("✓ Producto Alargados creado");
   }
@@ -149,9 +154,19 @@ async function main() {
       console.log(`  ~ variante ${v.sku} (${v.name}) actualizada (precio respetado)`);
     } else {
       await prisma.productVariant.create({
-        data: { productId, sku: v.sku, name: v.name, attributes, price: PRICE_CENTS, stock: 100, isActive: true },
+        data: {
+          productId,
+          sku: v.sku,
+          name: v.name,
+          attributes,
+          price: PRICE_CENTS,
+          stock: 100,
+          isActive: true,
+        },
       });
-      console.log(`  + variante ${v.sku} (${v.name}) — $${(PRICE_CENTS / 100).toLocaleString("es-CO")}`);
+      console.log(
+        `  + variante ${v.sku} (${v.name}) — $${(PRICE_CENTS / 100).toLocaleString("es-CO")}`,
+      );
     }
   }
 
@@ -175,7 +190,9 @@ async function main() {
         },
       ],
     };
-    const found = await prisma.personalizationTemplate.findUnique({ where: { slug: v.templateSlug } });
+    const found = await prisma.personalizationTemplate.findUnique({
+      where: { slug: v.templateSlug },
+    });
     const tplData = {
       name: "Separador alargado",
       kind: "PHOTO_PACK",

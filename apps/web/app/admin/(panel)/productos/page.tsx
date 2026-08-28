@@ -319,69 +319,71 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                   inStockAny: p.inStockAny,
                 });
                 return (
-                <AdminTableRow key={p.id}>
-                  {showBulkColumn && (
-                    <td className="w-10 px-3 py-3 align-middle">
-                      {p.deletedAt === null && (
-                        <input
-                          type="checkbox"
-                          name="productIds"
-                          value={p.id}
-                          aria-label={`Seleccionar ${p.name}`}
-                          className="text-brand-purple focus:ring-brand-purple/40 border-brand-purple/30 h-4 w-4 cursor-pointer rounded"
-                        />
-                      )}
-                    </td>
-                  )}
-                  <td className="px-4 py-3">
-                    <div className="text-brand-purple-dark font-medium">{p.name}</div>
-                    <div className="text-brand-muted text-xs">/{p.slug}</div>
-                  </td>
-                  <td className="text-brand-purple-dark/75 px-4 py-3 font-mono text-xs">{p.sku}</td>
-                  <td className="text-brand-purple-dark/85 px-4 py-3">{p.category.name}</td>
-                  <td className="text-brand-purple-dark px-4 py-3 text-right font-semibold tabular-nums">
-                    {/* "desde $X" cuando hay varias opciones con precios distintos */}
-                    {p.variantsCount > 1 && (
-                      <span className="text-brand-muted mr-1 text-[10px] font-normal">desde</span>
+                  <AdminTableRow key={p.id}>
+                    {showBulkColumn && (
+                      <td className="w-10 px-3 py-3 align-middle">
+                        {p.deletedAt === null && (
+                          <input
+                            type="checkbox"
+                            name="productIds"
+                            value={p.id}
+                            aria-label={`Seleccionar ${p.name}`}
+                            className="text-brand-purple focus:ring-brand-purple/40 border-brand-purple/30 h-4 w-4 cursor-pointer rounded"
+                          />
+                        )}
+                      </td>
                     )}
-                    {formatCOP(p.priceFrom)}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex flex-col items-center gap-1">
-                      <ProductStatus
-                        isActive={p.isActive}
-                        isFeatured={p.isFeatured}
-                        isArchived={p.deletedAt !== null}
-                      />
-                      <StorefrontVisibilityChip
-                        visibility={visibility}
-                        showReason={visibility.status === "no-visible"}
-                      />
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {/*
-                     * Hotfix P0-10: ambas acciones ahora con mismo tratamiento
-                     * (borde + h-9 + font-semibold + text-xs) — antes "Editar"
-                     * era link plano sin chrome al lado del button QuickActions
-                     * con borde, inconsistencia visual.
-                     */}
-                    <div className="flex items-center justify-end gap-2">
-                      <ProductQuickActions
-                        productId={p.id}
-                        isActive={p.isActive}
-                        isArchived={p.deletedAt !== null}
-                      />
-                      <Link
-                        href={`/admin/productos/${p.id}`}
-                        className="border-brand-purple/25 text-brand-purple hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-semibold"
-                      >
-                        <Edit3 className="h-3.5 w-3.5" />
-                        Editar
-                      </Link>
-                    </div>
-                  </td>
-                </AdminTableRow>
+                    <td className="px-4 py-3">
+                      <div className="text-brand-purple-dark font-medium">{p.name}</div>
+                      <div className="text-brand-muted text-xs">/{p.slug}</div>
+                    </td>
+                    <td className="text-brand-purple-dark/75 px-4 py-3 font-mono text-xs">
+                      {p.sku}
+                    </td>
+                    <td className="text-brand-purple-dark/85 px-4 py-3">{p.category.name}</td>
+                    <td className="text-brand-purple-dark px-4 py-3 text-right font-semibold tabular-nums">
+                      {/* "desde $X" cuando hay varias opciones con precios distintos */}
+                      {p.variantsCount > 1 && (
+                        <span className="text-brand-muted mr-1 text-[10px] font-normal">desde</span>
+                      )}
+                      {formatCOP(p.priceFrom)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex flex-col items-center gap-1">
+                        <ProductStatus
+                          isActive={p.isActive}
+                          isFeatured={p.isFeatured}
+                          isArchived={p.deletedAt !== null}
+                        />
+                        <StorefrontVisibilityChip
+                          visibility={visibility}
+                          showReason={visibility.status === "no-visible"}
+                        />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {/*
+                       * Hotfix P0-10: ambas acciones ahora con mismo tratamiento
+                       * (borde + h-9 + font-semibold + text-xs) — antes "Editar"
+                       * era link plano sin chrome al lado del button QuickActions
+                       * con borde, inconsistencia visual.
+                       */}
+                      <div className="flex items-center justify-end gap-2">
+                        <ProductQuickActions
+                          productId={p.id}
+                          isActive={p.isActive}
+                          isArchived={p.deletedAt !== null}
+                        />
+                        <Link
+                          href={`/admin/productos/${p.id}`}
+                          className="border-brand-purple/25 text-brand-purple hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-semibold"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                          Editar
+                        </Link>
+                      </div>
+                    </td>
+                  </AdminTableRow>
                 );
               })}
             </AdminTableBody>

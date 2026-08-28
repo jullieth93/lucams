@@ -9,19 +9,23 @@ packages:
 #   - prisma / @prisma/client / @prisma/engines: download Prisma query engine binary
 #   - msw: mock service worker — required for tests (postinstall sets up SW)
 allowBuilds:
-  '@prisma/client': true
-  '@prisma/engines': true
+  "@prisma/client": true
+  "@prisma/engines": true
   msw: true
   prisma: true
   sharp: true
   unrs-resolver: true
 
 overrides:
-  # postcss ≥8.5.23 + nanoid ≥3.3.17: GHSA-6g55-p6wh-862q (postcss) y
-  # GHSA-2v37-7h3g-55p8 / GHSA-m9w9-5wcm-r62h (nanoid) — gate de audit 2026-08-07.
+  # postcss ≥8.5.23 + nanoid ≥3.3.18: GHSA-6g55-p6wh-862q (postcss) y
+  # GHSA-2v37-7h3g-55p8 / GHSA-m9w9-5wcm-r62h (nanoid) — gate de audit 2026-08-07,
+  # bump 3.3.17→3.3.18 por GHSA-2v37-7h3g-55p8 (loop infinito con size 0) 2026-08-28.
   postcss: 8.5.26
-  nanoid: 3.3.17
-  '@babel/core': 7.29.6
+  nanoid: 3.3.18
+  # deepmerge-ts ≥8: GHSA-ggr8-5vv4-36mx (stack exhaustion al mergear grafos recursivos),
+  # cadena prisma→@prisma/config; solo usa deepmerge(), API estable en v8. Gate 2026-08-28.
+  deepmerge-ts: 8.0.2
+  "@babel/core": 7.29.6
 
 # sharp queda clavado en 0.34.4 a propósito: la línea 0.35.x rompía las lambdas de Vercel
 # (ERR_DLOPEN_FAILED libvips → 500 en todas las PDP; ver docs/audits/2026-07-28-certificacion-catalogo-whatsapp.md).

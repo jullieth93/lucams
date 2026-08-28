@@ -28,8 +28,11 @@ async function main() {
   console.log("Antes:", JSON.stringify(ph));
 
   const same =
-    ph && ph.x === NEW_PHOTO.x && ph.y === NEW_PHOTO.y &&
-    ph.width === NEW_PHOTO.width && ph.height === NEW_PHOTO.height;
+    ph &&
+    ph.x === NEW_PHOTO.x &&
+    ph.y === NEW_PHOTO.y &&
+    ph.width === NEW_PHOTO.width &&
+    ph.height === NEW_PHOTO.height;
   if (same) {
     console.log("Ya estaba aplicada (idempotente). 0 filas tocadas.");
     return;

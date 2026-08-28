@@ -138,7 +138,10 @@ export async function listProducts(opts: {
         // Se reusa esta MISMA selección (una sola query, sin N+1) para el
         // indicador "Visible en tienda": activeVariantCount = length e
         // inStockAny = alguna con stock > 0 (misma regla que la PDP).
-        variants: { where: { deletedAt: null, isActive: true }, select: { price: true, stock: true } },
+        variants: {
+          where: { deletedAt: null, isActive: true },
+          select: { price: true, stock: true },
+        },
       },
     }),
     prisma.product.count({ where }),

@@ -34,7 +34,8 @@ const QTYS = [1, 2, 3, 4, 5, 6];
 
 async function main() {
   const product = await prisma.product.findFirst({ where: { slug: "separadores-alargados" } });
-  if (!product) throw new Error("Producto separadores-alargados no encontrado (corre ola17 primero)");
+  if (!product)
+    throw new Error("Producto separadores-alargados no encontrado (corre ola17 primero)");
 
   for (const size of SIZES) {
     for (const qty of QTYS) {
@@ -67,7 +68,9 @@ async function main() {
             isActive: true,
           },
         });
-        console.log(`  + ${sku} (${name}) — $${((UNIT_CENTS * qty) / 100).toLocaleString("es-CO")}`);
+        console.log(
+          `  + ${sku} (${name}) — $${((UNIT_CENTS * qty) / 100).toLocaleString("es-CO")}`,
+        );
       }
     }
   }

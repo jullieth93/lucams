@@ -54,7 +54,8 @@ function makeBookmarkSVG({ title, subtitle, colors, pattern = "dots", textColor 
           `<circle cx="${40 + i * 140}" cy="400" r="40" fill="${c}" opacity="0.6"/>`,
       )
       .join(""),
-    stripes: `<rect x="0" y="0" width="${w}" height="${h}" fill="${colors[0]}"/>` +
+    stripes:
+      `<rect x="0" y="0" width="${w}" height="${h}" fill="${colors[0]}"/>` +
       colors
         .slice(1)
         .map(
@@ -68,14 +69,16 @@ function makeBookmarkSVG({ title, subtitle, colors, pattern = "dots", textColor 
           `<path d="M${100 + i * 110},120 l55,95 l-55,95 l-110,0 l-55,-95 l55,-95 z" transform="translate(0, ${i * 40})" fill="${c}" opacity="0.75"/>`,
       )
       .join(""),
-    stars: `<rect x="0" y="0" width="${w}" height="${h}" fill="${PALETTE.cream}"/>` +
+    stars:
+      `<rect x="0" y="0" width="${w}" height="${h}" fill="${PALETTE.cream}"/>` +
       colors
         .map(
           (c, i) =>
             `<path d="M${80 + (i % 3) * 180},${140 + Math.floor(i / 3) * 180} l15,-45 l45,15 l-30,30 l30,30 l-45,15 l-15,45 l-15,-45 l-45,-15 l30,-30 l-30,-30 z" fill="${c}" opacity="0.8"/>`,
         )
         .join(""),
-    waves: `<rect x="0" y="0" width="${w}" height="${h}" fill="${colors[0]}"/>` +
+    waves:
+      `<rect x="0" y="0" width="${w}" height="${h}" fill="${colors[0]}"/>` +
       colors
         .slice(1)
         .map(
@@ -131,7 +134,8 @@ function makeSquareSVG({ title, colors, pattern = "dots" }) {
           `<rect x="${i * (w / colors.length)}" y="0" width="${w / colors.length}" height="${h}" fill="${c}" opacity="0.6"/>`,
       )
       .join(""),
-    hex: `<rect x="0" y="0" width="${w}" height="${h}" fill="${colors[0]}"/>` +
+    hex:
+      `<rect x="0" y="0" width="${w}" height="${h}" fill="${colors[0]}"/>` +
       colors
         .slice(1)
         .map(
@@ -139,14 +143,16 @@ function makeSquareSVG({ title, colors, pattern = "dots" }) {
             `<path d="M${80 + (i % 2) * 260},${120 + Math.floor(i / 2) * 260} l60,104 l-60,104 l-120,0 l-60,-104 l60,-104 z" transform="translate(0,0)" fill="${c}" opacity="0.7"/>`,
         )
         .join(""),
-    stars: `<rect x="0" y="0" width="${w}" height="${h}" fill="${PALETTE.cream}"/>` +
+    stars:
+      `<rect x="0" y="0" width="${w}" height="${h}" fill="${PALETTE.cream}"/>` +
       colors
         .map(
           (c, i) =>
             `<path d="M${150 + (i % 2) * 240},${150 + Math.floor(i / 2) * 240} l25,-75 l75,25 l-50,50 l50,50 l-75,25 l-25,75 l-25,-75 l-75,-25 l50,-50 l-50,-50 z" fill="${c}" opacity="0.85"/>`,
         )
         .join(""),
-    waves: `<rect x="0" y="0" width="${w}" height="${h}" fill="${colors[0]}"/>` +
+    waves:
+      `<rect x="0" y="0" width="${w}" height="${h}" fill="${colors[0]}"/>` +
       colors
         .slice(1)
         .map(
@@ -165,7 +171,11 @@ function makeSquareSVG({ title, colors, pattern = "dots" }) {
 }
 
 function escapeXml(str) {
-  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 const DESIGNS = [

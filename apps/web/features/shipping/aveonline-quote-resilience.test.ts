@@ -65,9 +65,12 @@ const carrierFail = (nombre: string) => ({
 });
 
 const quoteResponse = (rows: Array<Record<string, unknown>>) =>
-  new Response(JSON.stringify({ status: "ok", message: "cotizaciones encontradas", cotizaciones: rows }), {
-    status: 200,
-  });
+  new Response(
+    JSON.stringify({ status: "ok", message: "cotizaciones encontradas", cotizaciones: rows }),
+    {
+      status: 200,
+    },
+  );
 
 function stubFetch(handler: (url: string) => Response | never) {
   vi.stubGlobal("fetch", async (input: RequestInfo | URL) => handler(String(input)));

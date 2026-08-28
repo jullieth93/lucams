@@ -21,7 +21,13 @@ const prisma = new PrismaClient();
 
 const SHAPES = [
   { key: "cuadrado", label: "Cuadrado", aspectRatio: "1:1", sizeCm: "6×6", shape: "rectangle" },
-  { key: "rectangular", label: "Rectangular", aspectRatio: "5:14", sizeCm: "5×14", shape: "rectangle" },
+  {
+    key: "rectangular",
+    label: "Rectangular",
+    aspectRatio: "5:14",
+    sizeCm: "5×14",
+    shape: "rectangle",
+  },
 ];
 // cantidad → precio del pack (centavos COP). Descuento por volumen.
 const QTYS = [
@@ -44,7 +50,10 @@ const basePhysicalSpecs = {
 };
 
 async function main() {
-  const cat = await prisma.category.findFirst({ where: { slug: "separadores", deletedAt: null }, select: { id: true } });
+  const cat = await prisma.category.findFirst({
+    where: { slug: "separadores", deletedAt: null },
+    select: { id: true },
+  });
   if (!cat) throw new Error("Categoría 'separadores' no encontrada");
 
   console.log("Separadores para Libros:");
@@ -59,7 +68,15 @@ async function main() {
     description,
     personalizationKind: "PHOTO_PACK",
     // galleryTag: habilita la galería de diseños PREDISEÑADOS en el editor (Fase B2).
-    personalizationSchema: { allowText: false, photoSlots: 1, aspectRatio: "1:1", shape: "rectangle", galleryTag: "separadores", facesPerUnit: 2, cornerRadiusPx: 28 },
+    personalizationSchema: {
+      allowText: false,
+      photoSlots: 1,
+      aspectRatio: "1:1",
+      shape: "rectangle",
+      galleryTag: "separadores",
+      facesPerUnit: 2,
+      cornerRadiusPx: 28,
+    },
     physicalSpecs: basePhysicalSpecs,
     basePrice: 6000 * 100,
     cost: Math.round(6000 * 100 * 0.35),
@@ -102,7 +119,15 @@ async function main() {
         console.log(`    ~ ${vsku} (precio respetado)`);
       } else {
         await prisma.productVariant.create({
-          data: { productId, sku: vsku, name, attributes, price: q.pesos * 100, stock: 100, isActive: true },
+          data: {
+            productId,
+            sku: vsku,
+            name,
+            attributes,
+            price: q.pesos * 100,
+            stock: 100,
+            isActive: true,
+          },
         });
         console.log(`    + ${vsku} — $${q.pesos.toLocaleString("es-CO")}`);
       }
@@ -121,7 +146,15 @@ async function main() {
       stage: { width: t.stage.width, height: t.stage.height, dpiPreview: 90, dpiProduction: 300 },
       layers: [
         { id: "bg", type: "background", color: "#FFFFFF" },
-        { id: "photo", type: "image-placeholder", x: 0, y: 0, width: t.stage.width, height: t.stage.height, cornerRadius: 0 },
+        {
+          id: "photo",
+          type: "image-placeholder",
+          x: 0,
+          y: 0,
+          width: t.stage.width,
+          height: t.stage.height,
+          cornerRadius: 0,
+        },
       ],
     };
     const found = await prisma.personalizationTemplate.findFirst({ where: { slug: t.slug } });
@@ -148,10 +181,19 @@ async function main() {
   // Archivar los 2 productos viejos (inactivos): personalizables + prediseñados.
   const oldSlugs = ["separadores-personalizables", "separadores-predisenados"];
   for (const os of oldSlugs) {
-    const old = await prisma.product.findFirst({ where: { slug: os, deletedAt: null }, select: { id: true } });
+    const old = await prisma.product.findFirst({
+      where: { slug: os, deletedAt: null },
+      select: { id: true },
+    });
     if (old) {
-      await prisma.productVariant.updateMany({ where: { productId: old.id }, data: { isActive: false, deletedAt: new Date() } });
-      await prisma.product.update({ where: { id: old.id }, data: { isActive: false, deletedAt: new Date() } });
+      await prisma.productVariant.updateMany({
+        where: { productId: old.id },
+        data: { isActive: false, deletedAt: new Date() },
+      });
+      await prisma.product.update({
+        where: { id: old.id },
+        data: { isActive: false, deletedAt: new Date() },
+      });
       console.log(`  ⊘ ${os} archivado`);
     }
   }
@@ -160,5 +202,8 @@ async function main() {
 }
 
 main()
-  .catch((e) => { console.error(e); process.exit(1); })
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
   .finally(() => prisma.$disconnect());

@@ -36,7 +36,9 @@ if (!product) {
 
 console.log("=== ANTES ===");
 console.log(`Product: ${product.name} (/${product.slug})`);
-console.log(`  basePrice: ${product.basePrice} centavos = $${(product.basePrice / 100).toLocaleString("es-CO")} COP`);
+console.log(
+  `  basePrice: ${product.basePrice} centavos = $${(product.basePrice / 100).toLocaleString("es-CO")} COP`,
+);
 console.log(`  description: ${product.description}`);
 console.log(`  schema: ${JSON.stringify(product.personalizationSchema)}`);
 console.log(`  physicalSpecs: ${JSON.stringify(product.physicalSpecs)}`);
@@ -124,17 +126,27 @@ const result = await prisma.$transaction(async (tx) => {
 });
 
 console.log("\n=== DESPUÉS ===");
-console.log(`✓ Product actualizado: ${result.updatedProduct.name} (id=${result.updatedProduct.id})`);
-console.log(`  PRECIO CONSERVADO: ${result.updatedProduct.basePrice} centavos = $${(result.updatedProduct.basePrice / 100).toLocaleString("es-CO")} COP`);
+console.log(
+  `✓ Product actualizado: ${result.updatedProduct.name} (id=${result.updatedProduct.id})`,
+);
+console.log(
+  `  PRECIO CONSERVADO: ${result.updatedProduct.basePrice} centavos = $${(result.updatedProduct.basePrice / 100).toLocaleString("es-CO")} COP`,
+);
 if (result.updatedVariant) {
-  console.log(`✓ Variant actualizada: ${result.updatedVariant.name} (id=${result.updatedVariant.id}) precio=${result.updatedVariant.price}`);
+  console.log(
+    `✓ Variant actualizada: ${result.updatedVariant.name} (id=${result.updatedVariant.id}) precio=${result.updatedVariant.price}`,
+  );
 } else {
   console.log("⚠ Sin variants activas que actualizar");
 }
 if (result.updatedTemplate) {
-  console.log(`✓ Template actualizado: ${result.updatedTemplate.slug} (id=${result.updatedTemplate.id}) → foto 600×450 (4:3)`);
+  console.log(
+    `✓ Template actualizado: ${result.updatedTemplate.slug} (id=${result.updatedTemplate.id}) → foto 600×450 (4:3)`,
+  );
 } else {
-  console.log("⚠ Template libre-calendar-photo-month no encontrado (re-correr make seed-templates)");
+  console.log(
+    "⚠ Template libre-calendar-photo-month no encontrado (re-correr make seed-templates)",
+  );
 }
 
 await prisma.$disconnect();

@@ -29,9 +29,10 @@ function normalizeCode(raw: string): string {
 }
 
 function couponCode(prefix: string, seed: string): string {
-  return `${prefix}-${seed.replace(/[^A-Z0-9]/gi, "").slice(-4).toUpperCase()}-${randomBytes(2)
-    .toString("hex")
-    .toUpperCase()}`;
+  return `${prefix}-${seed
+    .replace(/[^A-Z0-9]/gi, "")
+    .slice(-4)
+    .toUpperCase()}-${randomBytes(2).toString("hex").toUpperCase()}`;
 }
 
 /** Busca el dueño de un código de referido (para validar el campo del registro). */

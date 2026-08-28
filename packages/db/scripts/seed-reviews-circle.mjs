@@ -125,7 +125,9 @@ async function main() {
     console.log(`  ✓ ${r.slug.padEnd(28)} | ${r.rating}⭐ | ${r.author.padEnd(20)} | ${r.city}`);
   }
   const pending = await prisma.review.count({ where: { isApproved: false, deletedAt: null } });
-  console.log(`\n✓ ${created} reseñas creadas en borrador. Pendientes de moderación totales: ${pending}`);
+  console.log(
+    `\n✓ ${created} reseñas creadas en borrador. Pendientes de moderación totales: ${pending}`,
+  );
   await prisma.$disconnect();
 }
 

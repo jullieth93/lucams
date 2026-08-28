@@ -101,7 +101,11 @@ async function main() {
           where: { id: { in: oldIds } },
           data: { isActive: false },
         });
-        out.push({ action: "⊘", sku: `(${oldIds.length} variantes 7.5×10)`, priceNote: `pausadas: ${paused.count}` });
+        out.push({
+          action: "⊘",
+          sku: `(${oldIds.length} variantes 7.5×10)`,
+          priceNote: `pausadas: ${paused.count}`,
+        });
       } else {
         out.push({ action: "=", sku: "(variantes 7.5×10)", priceNote: "ya estaban pausadas" });
       }

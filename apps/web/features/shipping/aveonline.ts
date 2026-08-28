@@ -708,8 +708,7 @@ export class AveonlineProvider implements ShippingProvider {
     // cobertura" retorna [] como respuesta definitiva. Solo los lanzamientos
     // consultan la caché de última cotización buena.
     const cacheKey =
-      `${origenFmt}→${destinoFmt}|cod:${params.contraentrega ? 1 : 0}|` +
-      JSON.stringify(productos);
+      `${origenFmt}→${destinoFmt}|cod:${params.contraentrega ? 1 : 0}|` + JSON.stringify(productos);
     try {
       const quotes = await this.quoteLive({ params, productos, origenFmt, destinoFmt });
       // Solo se cachea cotización viva NO vacía (una vacía = sin cobertura: no es

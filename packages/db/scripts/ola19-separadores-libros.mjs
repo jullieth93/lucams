@@ -253,12 +253,16 @@ async function main() {
 
   // Asegurar que ambos productos estén en la categoría correcta
   if (magneticProductId) {
-    await prisma.product.update({ where: { id: magneticProductId }, data: { categoryId: category.id } });
+    await prisma.product.update({
+      where: { id: magneticProductId },
+      data: { categoryId: category.id },
+    });
   }
 
   // ── 4. Variantes ────────────────────────────────────────────────────────
   for (const spec of PRODUCTS) {
-    const productId = spec.slug === "separadores-magneticos" ? magneticProductId : alargadoProductId;
+    const productId =
+      spec.slug === "separadores-magneticos" ? magneticProductId : alargadoProductId;
     if (!productId) continue;
 
     for (const size of spec.sizes) {
@@ -320,7 +324,8 @@ async function main() {
   // Estas plantillas son EDITABLE y específicas de producto. El estudio las filtra
   // por productId y por aspect ratio de la variante seleccionada.
   for (const spec of PRODUCTS) {
-    const productId = spec.slug === "separadores-magneticos" ? magneticProductId : alargadoProductId;
+    const productId =
+      spec.slug === "separadores-magneticos" ? magneticProductId : alargadoProductId;
     if (!productId) continue;
 
     for (const size of spec.sizes) {
@@ -375,7 +380,8 @@ async function main() {
   // ── 6. Archivar variantes viejas de los productos activos ───────────────
   // (dejan de venderse porque el SKU no matchea el nuevo esquema homogéneo).
   for (const spec of PRODUCTS) {
-    const productId = spec.slug === "separadores-magneticos" ? magneticProductId : alargadoProductId;
+    const productId =
+      spec.slug === "separadores-magneticos" ? magneticProductId : alargadoProductId;
     if (!productId) continue;
     const expectedPrefix = `${spec.sku}-`;
     const stale = await prisma.productVariant.findMany({
@@ -395,18 +401,26 @@ async function main() {
   // ── 7. Archivar slugs legacy huérfanos ──────────────────────────────────
   const orphanSlugs = ["separadores-personalizables", "separadores-predisenados"];
   for (const os of orphanSlugs) {
-    const prod = await prisma.product.findFirst({ where: { slug: os, deletedAt: null }, select: { id: true } });
+    const prod = await prisma.product.findFirst({
+      where: { slug: os, deletedAt: null },
+      select: { id: true },
+    });
     if (prod) {
       await prisma.productVariant.updateMany({
         where: { productId: prod.id },
         data: { isActive: false, deletedAt: new Date() },
       });
-      await prisma.product.update({ where: { id: prod.id }, data: { isActive: false, deletedAt: new Date() } });
+      await prisma.product.update({
+        where: { id: prod.id },
+        data: { isActive: false, deletedAt: new Date() },
+      });
       console.log(`⊘ ${os} archivado`);
     }
   }
 
-  console.log("\n✅ DONE. Verifica /producto/separadores-magneticos y /producto/separadores-alargados");
+  console.log(
+    "\n✅ DONE. Verifica /producto/separadores-magneticos y /producto/separadores-alargados",
+  );
 }
 
 main()
