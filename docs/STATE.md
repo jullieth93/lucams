@@ -13,6 +13,22 @@
 
 ## Resumen actual
 
+**🔢 SELECTOR DE COPIAS EN PDP + ESTUDIO (2026-08-28).** Reporte Lucy: "varios productos no dejan
+escoger cantidad" (ej. calendario). Las dos "cantidades" del modelo: tamaño del pack (dimensión de
+variante `quantity`/`photoSlots`, solo donde el pack cambia la personalización) y copias idénticas
+(`CartItem.qty` — toda la cadena ya lo soportaba: carrito +/− hasta 99, checkout, y el ZIP de
+producción imprime "⚠️ IMPRIMIR N COPIAS"). El hueco era de UI: PDP mandaba `qty=1` fijo y el
+Estudio agregaba con `qty: 1`. Ahora: la ficha de compra directa tiene stepper "Unidades"
+(`copies-qty-input.tsx`) y el modal de confirmación del Estudio tiene stepper "Copias" con total
+= unitario × copias (aplica a calendario/separadores/polaroid/tiras/nombre/letras). Decisión: NO
+crear variantes de cantidad al calendario (las 12 fotos no cambian por copias; descuentos por
+volumen, si se quieren, ya se pueden modelar como variantes con precio propio sin tocar código).
+Tests 36/36 focales; tsc/eslint/prettier limpios. **Ojo: CI de develop venía ROJO desde 2026-08-12
+por deuda ajena** (lint prefer-const en referrals, prettier en ~16 archivos viejos, pnpm audit
+nanoid/deepmerge-ts) — pendiente decidir si se sanea aparte.
+
+---
+
 **🗓️ CALENDARIO CON 2 PLANTILLAS + PORTADAS POR DISEÑO, NO POR CANTIDAD (2026-08-25).**
 
 - **Nueva plantilla `calendario-mes-lateral`** (referencia visual Lucy): misma tarjeta 7.5×10 (3:4)
