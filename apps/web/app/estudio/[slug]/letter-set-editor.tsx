@@ -396,8 +396,9 @@ export function LetterSetEditor({
    * Paso 2 — "Sí, agregar al carrito": recién acá se crea el diseño, se sube el PNG aprobado y se
    * agrega al carrito. Se reusa el blob de la vista previa (no se re-dibuja) para que el archivo
    * de producción sea el mismo que el cliente aprobó.
+   * `copies` viene del stepper "Copias" de la modal (unidades idénticas del set; CartItem.qty 1..99).
    */
-  async function handleConfirmAddToCart() {
+  async function handleConfirmAddToCart(copies: number) {
     if (submitting || !previewBlob) return;
     setSubmitting(true);
     setPreviewError(null);
@@ -430,7 +431,7 @@ export function LetterSetEditor({
       }
       const added = await addPersonalizedToCartAction({
         designId: created.designId,
-        qty: 1,
+        qty: copies,
         variantId: currentVariantId,
       });
       if (!added.ok) {

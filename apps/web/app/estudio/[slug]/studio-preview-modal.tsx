@@ -19,7 +19,8 @@
  */
 
 import Image from "next/image";
-import { Loader2, Pencil, Sparkles, ShoppingCart } from "lucide-react";
+import { useState } from "react";
+import { Loader2, Minus, Pencil, Plus, Sparkles, ShoppingCart } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatCOP } from "@/lib/format";
@@ -71,7 +72,8 @@ type StudioPreviewModalProps = {
   /** Año del calendario (solo cuando productKind==="calendar"). */
   calendarYear?: number;
   onEdit: () => void;
-  onConfirm: () => void;
+  /** Recibe las COPIAS elegidas en el stepper (CartItem.qty 1..99). */
+  onConfirm: (copies: number) => void;
 };
 
 export function StudioPreviewModal({
@@ -89,6 +91,22 @@ export function StudioPreviewModal({
   onConfirm,
 }: StudioPreviewModalProps) {
   const texts = useStudioTexts();
+
+  // Copias del diseño (CartItem.qty 1..99): cuántas unidades IDÉNTICAS del
+  // diseño aprobado se imprimen — distinto del tamaño del pack, que ya va
+  // horneado en el diseño/variante elegida. El carrito +/−, el checkout y el
+  // ZIP de producción ("IMPRIMIR N COPIAS") ya soportan qty; acá se elige.
+  // Los hooks van ANTES del early-return de previewUrl (regla de orden de hooks).
+  const [copies, setCopies] = useState(1);
+  // La decisión es de ESTA agregada al carrito: cada apertura arranca en 1.
+  // Patrón "ajustar estado durante el render" (react.dev — You Might Not Need
+  // an Effect): el reset en useEffect está vetado por react-hooks/set-state-in-effect.
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
+    if (isOpen) setCopies(1);
+  }
+
   if (!previewUrl) return null;
 
   // #3 — el calendario habla de "páginas" (concordancia femenina: "las"/"Revísalas"); los imanes,
@@ -238,11 +256,59 @@ export function StudioPreviewModal({
             </div>
             {unitPrice !== null && (
               <div className="text-right">
+                {/* Total de la línea: unitario × copias (mismo cálculo del carrito). */}
                 <p className="text-brand-purple-dark font-display text-lg font-bold tabular-nums">
-                  {formatCOP(unitPrice)}
+                  {formatCOP(unitPrice * copies)}
                 </p>
+                {copies > 1 && (
+                  <p className="text-brand-muted text-xs tabular-nums">
+                    {formatCOP(unitPrice)} c/u
+                  </p>
+                )}
               </div>
             )}
+          </div>
+
+          {/* Copias (qty del carrito) — stepper − / +, min 1 / max 99 como el
+            carrito. Mismo look del stepper de cantidad del VariantSelector. */}
+          <div className="border-brand-purple/10 mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t pt-3">
+            <div className="min-w-0">
+              <p className="text-brand-purple-dark font-semibold">Copias</p>
+              <p className="text-brand-muted text-xs">
+                Imprimimos {copies} {copies === 1 ? "copia idéntica" : "copias idénticas"} de tu
+                diseño
+              </p>
+            </div>
+            <div
+              role="group"
+              aria-label="Copias"
+              className="ring-brand-purple/15 inline-flex items-center rounded-lg bg-white ring-1"
+            >
+              <button
+                type="button"
+                aria-label="Disminuir copias"
+                disabled={copies <= 1 || isFinalizing}
+                onClick={() => setCopies((c) => Math.max(1, c - 1))}
+                className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-10 w-10 cursor-pointer items-center justify-center rounded-l-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              >
+                <Minus className="h-4 w-4" aria-hidden />
+              </button>
+              <span
+                aria-live="polite"
+                className="text-brand-purple-dark min-w-12 text-center text-sm font-bold tabular-nums"
+              >
+                {copies}
+              </span>
+              <button
+                type="button"
+                aria-label="Aumentar copias"
+                disabled={copies >= 99 || isFinalizing}
+                onClick={() => setCopies((c) => Math.min(99, c + 1))}
+                className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-10 w-10 cursor-pointer items-center justify-center rounded-r-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -268,7 +334,7 @@ export function StudioPreviewModal({
           <Button
             type="button"
             size="lg"
-            onClick={onConfirm}
+            onClick={() => onConfirm(copies)}
             disabled={isFinalizing}
             className="bg-gradient-brand text-white hover:brightness-110"
           >

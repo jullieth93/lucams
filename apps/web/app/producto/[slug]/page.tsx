@@ -29,7 +29,12 @@ import { RelatedProducts } from "@/components/product-detail/related-products";
 import { ProductReviews } from "./product-reviews";
 import { TemplatesStrip } from "@/components/product-detail/templates-strip";
 import { VariantSelector } from "./variant-selector";
-import { SelectedVariantProvider, EstudioCtaLink, CartVariantIdInput, CartSubmitButton } from "./variant-actions";
+import {
+  SelectedVariantProvider,
+  EstudioCtaLink,
+  CartVariantIdInput,
+  CartSubmitButton,
+} from "./variant-actions";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
 import { buildWhatsAppUrl } from "@/lib/wa";
@@ -40,6 +45,7 @@ import {
   PDP_HIDDEN_DIMENSION_KEYS,
 } from "@/features/products/variant-schemas";
 import { NamePricePicker } from "./name-price-picker";
+import { CopiesQtyInput } from "./copies-qty-input";
 import { buildProductJsonLd } from "./product-jsonld";
 import {
   getStorefrontProductBySlug,
@@ -360,7 +366,10 @@ export default async function ProductoDetallePage({
                     ) : (
                       <form action={addToCartAction}>
                         <input type="hidden" name="slug" value={product.slug} />
-                        <input type="hidden" name="qty" value={1} />
+                        {/* Copias (CartItem.qty 1..99): stepper − / + con hidden input.
+                          Esta rama (compra directa) nunca coincide con el stepper de pack
+                          del VariantSelector, que es de productos personalizados. */}
+                        <CopiesQtyInput />
                         <input type="hidden" name="returnTo" value={`/producto/${product.slug}`} />
                         {/* ADR-057 — variante elegida en el selector (H12: sync vía Context). */}
                         <CartVariantIdInput />

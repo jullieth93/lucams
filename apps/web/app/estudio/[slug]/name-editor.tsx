@@ -321,7 +321,9 @@ export function NameEditor({
   }
 
   // ──────────── Paso 2: confirmar en la modal → crear + subir + carrito ────────────
-  async function handleConfirmAddToCart() {
+  // `copies` viene del stepper "Copias" de la modal (unidades idénticas del
+  // nombre ya renderizado; CartItem.qty 1..99).
+  async function handleConfirmAddToCart(copies: number) {
     if (!valid || submitting || !previewDataUrl) return;
     setSubmitting(true);
     setPreviewError(null);
@@ -365,7 +367,7 @@ export function NameEditor({
 
       const added = await addPersonalizedToCartAction({
         designId,
-        qty: 1,
+        qty: copies,
         variantId,
       });
       if (!added.ok) {

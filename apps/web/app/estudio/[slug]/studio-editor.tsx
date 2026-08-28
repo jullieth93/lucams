@@ -740,144 +740,152 @@ export function StudioEditor({
   // ──────────── Step 2: Confirmar → upload + add to cart + redirect ────────────
   //
   // Solo se invoca si el cliente confirma desde el modal. Si vuelve a editar,
-  // nada se sube y el editor queda intacto.
-  const handleConfirmFinalize = useCallback(async () => {
-    const state = store.getState();
-    if (!state.designId || !state.canvasData || state.isFinalizing || !previewDataUrl) return;
-    state.setIsFinalizing(true);
-    setPreviewError(null);
-    try {
-      // ADR-081 — el finalize ya NO manda los PNG de imprenta: los renderiza el servidor. Antes se
-      // generaban acá los N snapshots y viajaban en el body de la Server Action; un calendario de 12
-      // páginas pesa ~57 MB y Vercel corta el body de una Function en 4.5 MB, así que en producción
-      // esto fallaba SIEMPRE (en local no, porque el server de dev no tiene ese techo — por eso pasó
-      // desapercibido). De paso el celular se ahorra exportar 12 lienzos de 1800×2400 en el camino
-      // normal, que era lo más pesado de todo el flujo.
-      const designId = state.designId;
-      const canvasData = state.canvasData;
+  // nada se sube y el editor queda intacto. `copies` viene del stepper "Copias"
+  // de la modal (unidades idénticas del diseño; CartItem.qty 1..99).
+  const handleConfirmFinalize = useCallback(
+    async (copies: number) => {
+      const state = store.getState();
+      if (!state.designId || !state.canvasData || state.isFinalizing || !previewDataUrl) return;
+      state.setIsFinalizing(true);
+      setPreviewError(null);
+      try {
+        // ADR-081 — el finalize ya NO manda los PNG de imprenta: los renderiza el servidor. Antes se
+        // generaban acá los N snapshots y viajaban en el body de la Server Action; un calendario de 12
+        // páginas pesa ~57 MB y Vercel corta el body de una Function en 4.5 MB, así que en producción
+        // esto fallaba SIEMPRE (en local no, porque el server de dev no tiene ese techo — por eso pasó
+        // desapercibido). De paso el celular se ahorra exportar 12 lienzos de 1800×2400 en el camino
+        // normal, que era lo más pesado de todo el flujo.
+        const designId = state.designId;
+        const canvasData = state.canvasData;
 
-      // El PNG de imprenta lo renderiza el servidor desde el canvasData GUARDADO, y el auto-guardado
-      // tiene 2 s de debounce. Si el cliente mueve una foto y confirma antes de que corra, aprobaría
-      // una vista previa (que sale del estado EN MEMORIA) distinta de lo que se imprime. Forzar el
-      // guardado acá es lo que sostiene el mandato de que la pantalla sea el producto físico.
-      if (state.isDirty) {
-        state.setAutoSaveStatus({ kind: "saving" });
-        const saved = await saveCanvasAction({ designId, canvasData });
-        if (!saved.ok) {
-          state.setAutoSaveStatus({ kind: "error", message: saved.message });
+        // El PNG de imprenta lo renderiza el servidor desde el canvasData GUARDADO, y el auto-guardado
+        // tiene 2 s de debounce. Si el cliente mueve una foto y confirma antes de que corra, aprobaría
+        // una vista previa (que sale del estado EN MEMORIA) distinta de lo que se imprime. Forzar el
+        // guardado acá es lo que sostiene el mandato de que la pantalla sea el producto físico.
+        if (state.isDirty) {
+          state.setAutoSaveStatus({ kind: "saving" });
+          const saved = await saveCanvasAction({ designId, canvasData });
+          if (!saved.ok) {
+            state.setAutoSaveStatus({ kind: "error", message: saved.message });
+            state.setIsFinalizing(false);
+            setPreviewError(texts.exportar.errorGuardar);
+            return;
+          }
+          state.setAutoSaveStatus({ kind: "saved", at: Date.now() });
+          state.markClean();
+        }
+        const buildFinalizeForm = () => {
+          const fd = new FormData();
+          fd.set("designId", designId);
+          fd.set("slotCount", String(canvasData.slots.length));
+          // ADR-063 CAL2 — para calendarios mes-a-mes, el año elegido viaja al server (que lo hornea en
+          // cada página del mes y lo persiste por-diseño).
+          if (isCalendarMonth) fd.set("calendarYear", String(selectedYear));
+          fd.set("preview", dataURLtoBlob(previewDataUrl), "preview.png");
+          return fd;
+        };
+
+        let result = finalizedRef.current
+          ? ({
+              ok: true as const,
+              previewUrl: null,
+              status: "READY",
+              productionSlotsCount: 0,
+            } as Awaited<ReturnType<typeof finalizeDesignAction>>)
+          : await finalizeDesignAction(buildFinalizeForm());
+
+        // Ningún tier server-side reproduce este diseño con fidelidad (hoy solo la Polaroid, por su
+        // marco SVG con fuentes horneadas): el servidor nos devuelve URLs firmadas y los PNG suben
+        // DIRECTO a Storage. Ese camino no pasa por la Function, así que no tiene techo de tamaño.
+        if (!result.ok && result.code === "NEEDS_CLIENT_SLOTS") {
+          await ensureAllStagesMounted(); // T5: garantizar los N stages antes de snapshotear producción
+          // H5 (auditoría v3): el pixelRatio va RELATIVO al tamaño LÓGICO del stage, no al display
+          // responsive — así el PNG de imprenta sale a resolución FIJA (ancho lógico × 3, = los 3240px
+          // del render server para 1080) igual en móvil y en desktop (antes toDataURL({pixelRatio:3})
+          // sobre un slot de ~171px móvil daba ~186 DPI, borroso).
+          const logicalStageW = canvasData.unitTemplate.stage.width;
+          for (const { slotIndex, url } of result.uploads) {
+            const stage = slotStagesRef.current.get(slotIndex);
+            if (!stage) {
+              throw new Error(`No se pudo encontrar el slot ${slotIndex + 1} para snapshot`);
+            }
+            // ADR-063 T3 + H6 — archivo de imprenta LIMPIO: la sombra/glossy/edge (`name="realism"`) y
+            // los indicadores de edición (recuadro punteado + dot, `name="edit-indicator"`) son adornos
+            // de PANTALLA; NO deben hornearse en el PNG 300 DPI. Se ocultan solo durante el snapshot y
+            // se restauran de inmediato. (El preview compositado conserva el realismo, pero NO los
+            // indicadores — se ocultan también allá.)
+            const hiddenForSnapshot = [...stage.find(".realism"), ...stage.find(".edit-indicator")];
+            hiddenForSnapshot.forEach((l) => l.hide());
+            let dataUrl: string;
+            try {
+              const displayW = stage.width() || logicalStageW;
+              const pixelRatio = (logicalStageW * 3) / displayW;
+              dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
+            } finally {
+              hiddenForSnapshot.forEach((l) => l.show());
+            }
+            // FOTO1: heart/circle → recortar a la silueta (transparente afuera).
+            dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
+            const put = await fetch(url, {
+              method: "PUT",
+              headers: { "content-type": "image/png", "cache-control": "max-age=3600" },
+              body: dataURLtoBlob(dataUrl),
+            });
+            if (!put.ok) {
+              throw new Error(fillStudioText(texts.exportar.errorSubidaSlot, { n: slotIndex + 1 }));
+            }
+          }
+          const retry = buildFinalizeForm();
+          retry.set("useStagedSlots", "1");
+          result = await finalizeDesignAction(retry);
+        }
+
+        if (!result.ok) {
           state.setIsFinalizing(false);
-          setPreviewError(texts.exportar.errorGuardar);
+          setPreviewError(result.message);
           return;
         }
-        state.setAutoSaveStatus({ kind: "saved", at: Date.now() });
-        state.markClean();
-      }
-      const buildFinalizeForm = () => {
-        const fd = new FormData();
-        fd.set("designId", designId);
-        fd.set("slotCount", String(canvasData.slots.length));
-        // ADR-063 CAL2 — para calendarios mes-a-mes, el año elegido viaja al server (que lo hornea en
-        // cada página del mes y lo persiste por-diseño).
-        if (isCalendarMonth) fd.set("calendarYear", String(selectedYear));
-        fd.set("preview", dataURLtoBlob(previewDataUrl), "preview.png");
-        return fd;
-      };
+        finalizedRef.current = true;
 
-      let result = finalizedRef.current
-        ? ({
-            ok: true as const,
-            previewUrl: null,
-            status: "READY",
-            productionSlotsCount: 0,
-          } as Awaited<ReturnType<typeof finalizeDesignAction>>)
-        : await finalizeDesignAction(buildFinalizeForm());
-
-      // Ningún tier server-side reproduce este diseño con fidelidad (hoy solo la Polaroid, por su
-      // marco SVG con fuentes horneadas): el servidor nos devuelve URLs firmadas y los PNG suben
-      // DIRECTO a Storage. Ese camino no pasa por la Function, así que no tiene techo de tamaño.
-      if (!result.ok && result.code === "NEEDS_CLIENT_SLOTS") {
-        await ensureAllStagesMounted(); // T5: garantizar los N stages antes de snapshotear producción
-        // H5 (auditoría v3): el pixelRatio va RELATIVO al tamaño LÓGICO del stage, no al display
-        // responsive — así el PNG de imprenta sale a resolución FIJA (ancho lógico × 3, = los 3240px
-        // del render server para 1080) igual en móvil y en desktop (antes toDataURL({pixelRatio:3})
-        // sobre un slot de ~171px móvil daba ~186 DPI, borroso).
-        const logicalStageW = canvasData.unitTemplate.stage.width;
-        for (const { slotIndex, url } of result.uploads) {
-          const stage = slotStagesRef.current.get(slotIndex);
-          if (!stage) {
-            throw new Error(`No se pudo encontrar el slot ${slotIndex + 1} para snapshot`);
-          }
-          // ADR-063 T3 + H6 — archivo de imprenta LIMPIO: la sombra/glossy/edge (`name="realism"`) y
-          // los indicadores de edición (recuadro punteado + dot, `name="edit-indicator"`) son adornos
-          // de PANTALLA; NO deben hornearse en el PNG 300 DPI. Se ocultan solo durante el snapshot y
-          // se restauran de inmediato. (El preview compositado conserva el realismo, pero NO los
-          // indicadores — se ocultan también allá.)
-          const hiddenForSnapshot = [...stage.find(".realism"), ...stage.find(".edit-indicator")];
-          hiddenForSnapshot.forEach((l) => l.hide());
-          let dataUrl: string;
-          try {
-            const displayW = stage.width() || logicalStageW;
-            const pixelRatio = (logicalStageW * 3) / displayW;
-            dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
-          } finally {
-            hiddenForSnapshot.forEach((l) => l.show());
-          }
-          // FOTO1: heart/circle → recortar a la silueta (transparente afuera).
-          dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
-          const put = await fetch(url, {
-            method: "PUT",
-            headers: { "content-type": "image/png", "cache-control": "max-age=3600" },
-            body: dataURLtoBlob(dataUrl),
-          });
-          if (!put.ok) {
-            throw new Error(fillStudioText(texts.exportar.errorSubidaSlot, { n: slotIndex + 1 }));
-          }
+        // Add to cart — pasamos variantId del PDP (consolidación familias M.3.b.CAT).
+        // replacesCartDesignId: si venimos de "Editar" desde el carrito, reemplaza el item original.
+        // qty = copias elegidas en la modal (unidades idénticas; el finalize NO
+        // depende de ellas — el short-circuit de finalizedRef sigue intacto).
+        const addResult = await addPersonalizedToCartAction({
+          designId: state.designId,
+          qty: copies,
+          variantId,
+          replaceDesignId: replacesCartDesignId ?? undefined,
+        });
+        if (!addResult.ok) {
+          state.setIsFinalizing(false);
+          setPreviewError(
+            fillStudioText(texts.exportar.errorCarrito, { error: addResult.message }),
+          );
+          return;
         }
-        const retry = buildFinalizeForm();
-        retry.set("useStagedSlots", "1");
-        result = await finalizeDesignAction(retry);
-      }
 
-      if (!result.ok) {
+        // Cerramos modal antes de redirigir para evitar flicker visual.
+        setPreviewModalOpen(false);
+        router.push("/carrito?personalized=1");
+      } catch (err) {
         state.setIsFinalizing(false);
-        setPreviewError(result.message);
-        return;
+        setPreviewError(err instanceof Error ? err.message : String(err));
       }
-      finalizedRef.current = true;
-
-      // Add to cart — pasamos variantId del PDP (consolidación familias M.3.b.CAT).
-      // replacesCartDesignId: si venimos de "Editar" desde el carrito, reemplaza el item original.
-      const addResult = await addPersonalizedToCartAction({
-        designId: state.designId,
-        qty: 1,
-        variantId,
-        replaceDesignId: replacesCartDesignId ?? undefined,
-      });
-      if (!addResult.ok) {
-        state.setIsFinalizing(false);
-        setPreviewError(fillStudioText(texts.exportar.errorCarrito, { error: addResult.message }));
-        return;
-      }
-
-      // Cerramos modal antes de redirigir para evitar flicker visual.
-      setPreviewModalOpen(false);
-      router.push("/carrito?personalized=1");
-    } catch (err) {
-      state.setIsFinalizing(false);
-      setPreviewError(err instanceof Error ? err.message : String(err));
-    }
-  }, [
-    router,
-    store,
-    variantId,
-    previewDataUrl,
-    replacesCartDesignId,
-    productConfig.shape,
-    isCalendarMonth,
-    selectedYear,
-    ensureAllStagesMounted,
-    texts,
-  ]);
+    },
+    [
+      router,
+      store,
+      variantId,
+      previewDataUrl,
+      replacesCartDesignId,
+      productConfig.shape,
+      isCalendarMonth,
+      selectedYear,
+      ensureAllStagesMounted,
+      texts,
+    ],
+  );
 
   // Cerrar modal "Volver a editar": libera estado para no acumular preview
   // viejo si edita y vuelve a "Listo!".
