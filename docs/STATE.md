@@ -30,10 +30,16 @@ stg y prod y verificadas en vivo** (grants 0 para anon, función huérfana drope
 endurecidas, políticas backstop, pg_net convergido). G-7: prod verificado SIN reseñas (0 filas) y
 sus scripts bloqueados contra PRD. **Estado de gates:** tsc ✓ · eslint ✓ · prettier ✓ · suite
 2957/2957 ✓ · `pnpm audit --prod` exit 0 ✓ · gitleaks 983 commits 0 leaks ✓ · e2e admin
-login+MFA 5/5 ✓. **Todo SIN COMMITAR en el working tree** — pendiente commit+push (el deploy
-debe coordinarse con las 2 migraciones Prisma) y las acciones manuales de la §11.5 del informe
-(secrets Vercel/GitHub, panel AveOnline, dashboard Supabase leaked-passwords, header
-`x-cron-secret` en monitores, `git config core.hooksPath`). Detalle completo: §11 del informe +
+login+MFA 5/5 ✓. **HOMOLOGADO A PRD (2026-08-29):** commits `229b30b` + `e75b81c` (fix CI:
+stub `auth.role()` en supabase-compat + nota IA vía key CMS `estudio.ia.nota-privacidad`) en
+`develop` y `production`, CI verde en ambas, deploy PRD Ready y smoke en vivo OK (health sin
+SHA, catálogo, settings con allowlist, crons mínimo). Migraciones Prisma (hash tokens + trigger
+cupones) aplicadas en LOCAL/STG/PRD **en el mismo deploy** (ventana de segundos, verificada);
+campo CMS nuevo creado en los 3 ambientes. Pendientes cerrados además: secret
+`BACKUP_GPG_PASSPHRASE` en GitHub, `core.hooksPath` activo en la VM, prueba §2.5 (REST 401/42501
+con key vigente), G-7. Quedan solo acciones de terceros: panel AveOnline (que la URL no lleve
+`?secret=`), dashboard Supabase (leaked password protection), header `x-cron-secret` en monitores
+de uptime, y guardar la passphrase GPG de backups (entregada aparte). Detalle: §11 del informe +
 ADR-085.
 
 ---

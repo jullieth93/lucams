@@ -2144,15 +2144,15 @@ Además: `get_advisors(security)` en prod y stg (fuentes de V2-6, y corroboraci�
 
 ### 11.5 Acciones manuales pendientes (fuera del repo)
 
-1. **GitHub:** crear secret `BACKUP_GPG_PASSPHRASE` antes del próximo backup diario (07:13 UTC) — fail-closed intencional (A-3).
-2. **Vercel Production:** confirmar `RESEND_WEBHOOK_SECRET` antes de deployar (ahora fail-fast, D-5); `AVEONLINE_ALLOW_QUERY_SECRET` NO hace falta si el panel no usa `?secret=` (verificar en `guias.aveonline.co/panel/mis-integraciones`, D-1); rotar `AVEONLINE_WEBHOOK_SECRET` si alguna vez viajó por URL.
-3. **Supabase prod+stg:** ✅ migraciones `supabase/migrations/00000000000025`-`00000000000029` **ya aplicadas y verificadas en vivo en ambos ambientes (2026-08-29)**. Pendiente: las migraciones Prisma `20260829150200_bearer_tokens_hash_at_rest` + `20260829150300_coupon_usage_per_customer_trigger` se aplican con `db:migrate:deploy` **en el mismo deploy del código** (hay `DROP COLUMN` — código viejo contra DB migrada revienta).
+1. ~~**GitHub:** crear secret `BACKUP_GPG_PASSPHRASE`~~ ✅ creado 2026-08-29 (valor entregado al operador fuera de banda; necesario para restores del DR drill — guardarlo en gestor de contraseñas).
+2. **Vercel Production:** ~~confirmar `RESEND_WEBHOOK_SECRET`~~ ✅ auto-verificado en el deploy de 2026-08-29: la app arrancó y sirve con el fail-fast activo, así que la var existe. Pendiente solo: verificar en el panel de AveOnline que la URL registrada no lleve `?secret=` (si lo lleva: quitarlo o setear `AVEONLINE_ALLOW_QUERY_SECRET=true` como puente, D-1) y rotar `AVEONLINE_WEBHOOK_SECRET` si alguna vez viajó por URL.
+3. **Supabase prod+stg:** ✅ migraciones `supabase/migrations/00000000000025`-`00000000000029` aplicadas y verificadas en vivo (también en LOCAL). ✅ migraciones Prisma `20260829150200` + `20260829150300` aplicadas en LOCAL/STG/PRD **en la ventana del deploy de `229b30b`** (2026-08-29) — sin errores post-deploy.
 4. **Supabase Dashboard (prod y stg):** activar Leaked Password Protection (V2-6).
 5. **Monitores de uptime:** enviar `x-cron-secret: $CRON_SECRET` si consumen detalle de `/api/health/crons` o `/api/health/all` (C-3/C-4).
-6. **Máquinas dev:** `git config core.hooksPath scripts/git-hooks` para activar el pre-commit de gitleaks (A-4).
+6. ~~**Máquinas dev:** `git config core.hooksPath scripts/git-hooks`~~ ✅ activado en la VM dedicada (2026-08-29, verificado con gitleaks). Otras máquinas que se agreguen deben correr el mismo comando.
 7. **Admins existentes:** regenerar recovery codes (los legacy SHA-256 dejan de funcionar cuando se retire el fallback — TODO en `recovery-codes.ts`) (B-5).
 8. ~~**G-7:** decidir el destino de las reseñas ficticias en prod.~~ **Resuelto (2026-08-29):** prod verificado sin reseñas; scripts bloqueados contra PRD.
-9. **Prueba pendiente de §2.5:** sigue pendiente — la publishable key del backup local está rotada (401) y la actual no está embebida en los chunks estáticos del sitio; requiere la key actual de Vercel: `curl https://zxkucphbsfygakgxcnik.supabase.co/rest/v1/ -H "apikey: $NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"`.
+9. **Prueba pendiente de §2.5:** ✅ **resuelta (2026-08-29)**. Con la publishable key vigente (vía env de Vercel): la raíz `/rest/v1/` devuelve **401** (spec OpenAPI no expuesta) y un acceso directo a tabla (`Product?select=id`) devuelve **401 con código 42501** ("Grant the required privileges") — la postura de cero privilegios verificada por SQL manda incluso donde el schema esté expuesto. Verificado en stg con key válida y en prod (401 idéntico en raíz; cero grants confirmado por SQL directo). Sin fuga de `auth.users` ni enumeración de schemas por la API pública.
 
 ---
 
