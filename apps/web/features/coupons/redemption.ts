@@ -12,8 +12,8 @@
  * creación de la orden (re-validación atómica al finalizar el checkout).
  */
 
-import { prisma } from "@/lib/db";
-import type { Prisma, CouponType } from "@lucams/db";
+import { prisma, Prisma } from "@/lib/db";
+import type { CouponType } from "@lucams/db";
 
 export type CouponRejectReason =
   | "NOT_FOUND"
@@ -92,6 +92,34 @@ const reject = (reason: CouponRejectReason): PriceCouponResult => ({
   reason,
   message: REJECT_MESSAGES[reason],
 });
+
+/**
+ * G-5 (auditoría seguridad 2026-08-24) — el tope `maxUsesPerCustomer` se
+ * enforcea TAMBIÉN en DB con el trigger BEFORE INSERT
+ * `coupon_usage_per_customer_limit` (migración 20260829150300): dos checkouts
+ * pagados en paralelo con el mismo cupón+identidad ya no pasan ambos el conteo
+ * read-then-write; el perdedor recibe SQLSTATE 23505 → Prisma P2002 con
+ * `meta.modelName === "CouponUsage"` y `target` null (no hay constraint real —
+ * lo levanta el trigger).
+ *
+ * El único P2002 posible al insertar CouponUsage es ese (orderId es @unique
+ * por construcción de la saga). Quien lo capture debe tratarlo como el rechazo
+ * amable PER_CUSTOMER_LIMIT ("Ya usaste este cupón…"): en el saga de PAID el
+ * descuento YA se cobró, así que allá se respeta el cobro y se marca la orden
+ * para reconciliación (mismo criterio que `coupon_exhausted_at_pay`).
+ */
+export function isCouponPerCustomerLimitError(err: unknown): boolean {
+  if (!(
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2002" &&
+    (err.meta as { modelName?: unknown } | undefined)?.modelName === "CouponUsage"
+  )) {
+    return false;
+  }
+  const target = (err.meta as { target?: unknown } | undefined)?.target;
+  // Constraint real (orderId @unique) → target poblado; trigger 23505 → null.
+  return target == null || (Array.isArray(target) && target.length === 0);
+}
 
 /**
  * Núcleo puro (sin DB): valida el cupón contra el contexto del carrito y

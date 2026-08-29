@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import "../setup-env";
 import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
+import { completeMfaChallengeIfNeeded, enrollTotpFactor } from "./_helpers/mfa";
 
 /*
  * D4 — E2E del flujo de edición del CMS (roadmap D4): login admin → editar un
@@ -26,6 +27,7 @@ const ADMIN_EMAIL = `${RUN}@example.com`;
 const ADMIN_PASSWORD = "D4-Admin-918273650";
 let supabaseUserId = "";
 let adminId = "";
+let totpSecret = "";
 
 const FIELD_KEY = "home.categories.cta-all";
 const ORIGINAL = "Ver todas las categorías y productos →";
@@ -45,6 +47,8 @@ test.beforeAll(async () => {
     data: { supabaseUserId, email: ADMIN_EMAIL, role: "SUPERADMIN", isActive: true },
   });
   adminId = admin.id;
+  // MFA obligatorio (B-1): sin factor TOTP el admin efímero no pasa del enrolamiento.
+  totpSecret = await enrollTotpFactor(ADMIN_EMAIL, ADMIN_PASSWORD);
 });
 
 test.afterAll(async () => {
@@ -71,6 +75,8 @@ async function adminLogin(page: Page) {
       .first()
       .waitFor({ state: "detached", timeout: 30_000 })
       .catch(() => {});
+    // Tras el login con password viene el reto TOTP (MFA obligatorio, B-1).
+    await completeMfaChallengeIfNeeded(page, totpSecret);
   }
   await page.waitForTimeout(2000);
 }

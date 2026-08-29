@@ -18,6 +18,7 @@ import { test, expect } from "@playwright/test";
 import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
 import { mkdirSync } from "node:fs";
+import { enrollTotpFactor, loginAdminWithTotp } from "./_helpers/mfa";
 
 test.skip(
   process.env.NEXT_PUBLIC_STORE_MODE !== "catalog" || process.env.VISUAL_SHOTS !== "1",
@@ -50,6 +51,7 @@ let variantId = "";
 let quoteId = "";
 let supabaseUserId = "";
 let adminId = "";
+let totpSecret = "";
 
 test.beforeAll(async () => {
   const category = await prisma.category.create({
@@ -95,6 +97,8 @@ test.beforeAll(async () => {
     select: { id: true },
   });
   adminId = admin.id;
+  // MFA obligatorio (B-1): el admin efímero enrola TOTP para poder entrar.
+  totpSecret = await enrollTotpFactor(ADMIN_EMAIL, ADMIN_PASSWORD);
 });
 
 test.afterAll(async () => {
@@ -168,19 +172,17 @@ test("flujo completo de cotización con capturas", async ({ page }) => {
   await page.screenshot({ path: `${SHOTS}/catalog-06-confirmacion.png`, fullPage: true });
 
   const token = page.url().split("/cotizacion/")[1]!.split(/[?#]/)[0]!;
+  // F-11 — la Quote guarda solo el hash sha256 del token: lookup por hash.
+  const { createHash } = await import("node:crypto");
   const quote = await prisma.quote.findUnique({
-    where: { publicAccessToken: token },
+    where: { publicAccessTokenHash: createHash("sha256").update(token).digest("hex") },
     select: { id: true, number: true },
   });
   expect(quote, "la cotización debió persistirse en DB").toBeTruthy();
   quoteId = quote!.id;
 
   // 7. Admin: lista de cotizaciones
-  await page.goto("/admin/login");
-  await page.locator('input[name="email"]').fill(ADMIN_EMAIL);
-  await page.locator('input[name="password"]').fill(ADMIN_PASSWORD);
-  await page.getByRole("button", { name: /iniciar sesión/i }).click();
-  await page.waitForURL(/\/admin\/dashboard/, { timeout: 20_000 });
+  await loginAdminWithTotp(page, { email: ADMIN_EMAIL, password: ADMIN_PASSWORD, totpSecret });
   await page.goto("/admin/cotizaciones");
   await expect(page.getByText(quote!.number).first()).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/catalog-07-admin-lista.png`, fullPage: true });

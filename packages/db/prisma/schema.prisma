@@ -216,8 +216,10 @@ model AdminUser {
 
 // Códigos de respaldo de MFA (Lucy 2026-06-27). Supabase no provee recovery
 // codes nativos para TOTP, así que los gestionamos acá: se guarda solo el HASH
-// (sha256); el código en claro se muestra UNA vez al generarlo. Al usarse en el
-// login, se marca usedAt y se desactiva el factor TOTP (acceso de emergencia).
+// (HMAC-SHA256 con pepper CSRF_SECRET desde 2026-08-29 · auditoría B-5; antes
+// sha256 plano — consumeRecoveryCode mantiene fallback legacy para los ya
+// emitidos); el código en claro se muestra UNA vez al generarlo. Al usarse en
+// el login, se marca usedAt y se desactiva el factor TOTP (acceso de emergencia).
 model AdminRecoveryCode {
   id          String    @id @default(cuid())
   adminUserId String
@@ -573,7 +575,10 @@ model Order {
   // Token único para vista pública /pedido/[token] — guest checkout sin
   // cuenta accede a su pedido sin login con este link (Lucy 2026-05-22).
   // 32 chars hex generados con crypto.randomBytes(16).toString("hex").
-  publicAccessToken       String?            @unique
+  // F-11 (security audit 2026-08-24): at rest we store ONLY the SHA-256 hex
+  // digest of the token (lookups hash the presented token); the plain token
+  // is handed out once at creation time. Same pattern as AdminRecoveryCode.
+  publicAccessTokenHash   String?            @unique
 
   // P0-020 (Lucy 2026-06-26) — Cart de origen para idempotency cart→order.
   // NO FK (el Cart se soft-deletea al transicionar a PAID; la referencia
@@ -728,6 +733,16 @@ model Coupon {
 // PLAN_CATALOG_V2 3.9 — tracking por cliente de uso de cupones.
 // Permite enforcement de maxUsesPerCustomer + métricas admin (top códigos,
 // total descontado, clientes que usaron cupón).
+//
+// G-5 (security audit 2026-08-24): the per-customer cap is enforced AT THE DB
+// by the BEFORE INSERT trigger `coupon_usage_per_customer_limit` (migration
+// 20260829120000_coupon_usage_per_customer_trigger): it takes a
+// pg_advisory_xact_lock per (couponId, lower(email)) / (couponId, customerId)
+// and re-counts under the lock, so two concurrent PAID checkouts with the same
+// identity can no longer both pass the app's read-then-write count. The loser
+// gets SQLSTATE 23505 → Prisma P2002 (see isCouponPerCustomerLimitError in
+// features/coupons/redemption.ts). Still best-effort against identity
+// switching (a different email is a different identity by design).
 model CouponUsage {
   id         String    @id @default(cuid())
   couponId   String
@@ -861,7 +876,10 @@ model AbandonedCart {
   cart               Cart      @relation(fields: [cartId], references: [id], onDelete: Cascade)
   email              String
   // Token del link de recuperación (email → restaura la sesión del carrito anónimo). Único.
-  recoverToken       String?   @unique
+  // F-11 (security audit 2026-08-24): at rest only the SHA-256 hex digest of
+  // the token. It is generated at reminder-send time (not at abandon time) so
+  // the plain value only ever lives in the sent email.
+  recoverTokenHash     String?   @unique
   lastReminderSentAt DateTime?
   recoveredAt        DateTime?
 
@@ -1427,7 +1445,11 @@ model Design {
   metadata         Json                     @default("{}")
   // shareToken: link público read-only para colaboración (sub-bloque K+M
   // futuro: "compartí con tu pareja antes de comprar"). Genera en cliente.
-  shareToken       String?                  @unique
+  // F-11 (security audit 2026-08-24): at rest only the SHA-256 hex digest of
+  // the token (lookups hash the presented token). The plain token is only
+  // returned when (re)generated — an existing link cannot be re-read, asking
+  // to share again rotates it.
+  shareTokenHash   String?                  @unique
   assets           DesignAsset[]
   cartItems        CartItem[]
   orderItems       OrderItem[]
@@ -1761,8 +1783,10 @@ model Quote {
   subtotal           Int
   total              Int
   // Token para vista pública /cotizacion/[token] (guest sin login, mismo patrón
-  // que Order.publicAccessToken): 32 chars hex = crypto.randomBytes(16).
-  publicAccessToken  String      @unique
+  // que Order): 32 chars hex = crypto.randomBytes(16).
+  // F-11 (security audit 2026-08-24): at rest only the SHA-256 hex digest of
+  // the token (lookups hash the presented token).
+  publicAccessTokenHash String      @unique
   // Prueba de la autorización de tratamiento (Ley 1581 art. 9) SOBRE el registro que contiene la
   // PII: quién autorizó, cuándo y qué versión del aviso vio. Se guarda aquí además de en Consent
   // porque es la cotización la que materializa el dato personal; el ledger central puede depurarse

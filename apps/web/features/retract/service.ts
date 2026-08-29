@@ -79,13 +79,13 @@ export type RetractableItem = {
 };
 
 /**
- * Evalúa cada item de una orden para el retracto. Verifica pertenencia al cliente
- * (customerId) si se pasa; si no matchea, devuelve lista vacía (no filtra a nivel
- * de UI, corta acá). `now` inyectable para tests.
+ * Evalúa cada item de una orden para el retracto. La identidad es obligatoria
+ * (auditoría D-3): si el pedido no pertenece a `customerId`, devuelve lista vacía
+ * (no filtra a nivel de UI, corta acá). `now` inyectable para tests.
  */
 export async function getRetractableItems(
   orderId: string,
-  opts: { customerId?: string | null; now?: Date } = {},
+  opts: { customerId: string; now?: Date },
 ): Promise<RetractableItem[]> {
   const now = opts.now ?? new Date();
   const order = await prisma.order.findFirst({
@@ -108,9 +108,9 @@ export async function getRetractableItems(
     },
   });
   if (!order) return [];
-  // Propiedad estricta: si hay cliente logueado, el pedido DEBE ser suyo. Un pedido
-  // con customerId null (invitado / cliente borrado) NO pertenece a nadie logueado.
-  if (opts.customerId != null && order.customerId !== opts.customerId) return [];
+  // Strict ownership (D-3): the order MUST belong to the caller. An order with
+  // customerId null (guest / deleted customer) never belongs to a logged-in customer.
+  if (order.customerId !== opts.customerId) return [];
 
   const delivered = order.status === "DELIVERED" && !!order.deliveredAt;
   const withinWindow = order.deliveredAt ? isWithinRetractWindow(order.deliveredAt, now) : false;
@@ -142,11 +142,12 @@ export class RetractError extends Error {
 
 /**
  * Crea la solicitud de retracto para un item, re-validando elegibilidad de forma
- * atómica. refundAmount = línea del item. Lanza RetractError si no procede.
+ * atómica. La identidad (`customerId`) es obligatoria (auditoría D-3) — igual que
+ * `createWarrantyClaim`. refundAmount = línea del item. Lanza RetractError si no procede.
  */
 export async function createRetractRequest(
   orderItemId: string,
-  opts: { customerId?: string | null; reason?: string; now?: Date },
+  opts: { customerId: string; reason?: string; now?: Date },
 ): Promise<{ id: string; refundAmount: number }> {
   const now = opts.now ?? new Date();
   const item = await prisma.orderItem.findUnique({
@@ -173,9 +174,9 @@ export async function createRetractRequest(
     },
   });
   if (!item || item.order.deletedAt) throw new RetractError("NOT_FOUND");
-  // Propiedad estricta: el pedido debe ser del cliente logueado. customerId null
-  // (invitado / cliente borrado) nunca pertenece a un cliente logueado → FORBIDDEN.
-  if (opts.customerId != null && item.order.customerId !== opts.customerId) {
+  // Strict ownership (D-3): the order must belong to the caller. A null
+  // order.customerId (guest / deleted customer) never matches → FORBIDDEN.
+  if (item.order.customerId !== opts.customerId) {
     throw new RetractError("FORBIDDEN");
   }
   if (item.retractRequest) throw new RetractError("ALREADY_REQUESTED");

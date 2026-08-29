@@ -17,6 +17,7 @@ import { logger } from "@/lib/logger";
 import { getCurrentCustomer } from "@/lib/auth";
 import { getClientIp } from "@/lib/client-ip";
 import { rateLimit } from "@/lib/rate-limit";
+import { ipKey } from "@/lib/rate-limit-keys";
 import { recordCookieConsent } from "./service";
 import type { CookiePreferences } from "@/lib/cookie-consent";
 
@@ -47,7 +48,8 @@ export async function persistCookieConsentAction(prefs: CookiePreferences): Prom
     const ip = getClientIp(hdrs);
     // Rate-limit por IP: fire-and-forget legítimo re-consiente rara vez; 30/min frena el
     // bulk-insert malicioso sin afectar UX (la cookie client-side ya quedó seteada).
-    const { allowed } = await rateLimit(`consent_cookies:${ip}`, 30, 60);
+    // IP hasheada en la key (auditoría 2026-08-24, C-8): no queda en claro en rate_limit_buckets.
+    const { allowed } = await rateLimit(ipKey("consent_cookies", ip), 30, 60);
     if (!allowed) {
       logger.warn({ event: "consent.cookies.rate_limited" });
       return;

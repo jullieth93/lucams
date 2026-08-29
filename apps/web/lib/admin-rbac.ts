@@ -19,6 +19,10 @@ import type { AdminRole } from "@lucams/db";
 const ALL: AdminRole[] = ["SUPERADMIN", "MANAGER", "FULFILLMENT"];
 const CATALOG: AdminRole[] = ["SUPERADMIN", "MANAGER"];
 const CONTENT: AdminRole[] = ["SUPERADMIN", "CMS_EDITOR"];
+// Todos los roles del enum, CMS_EDITOR incluido. Solo para autoservicio de CUENTA
+// (seguridad/MFA): el MFA es obligatorio para TODO admin (auditoría 2026-08-24 · B-1),
+// así que la pantalla de enrolamiento no puede quedar tras el deny-by-default.
+const ALL_PLUS_CMS: AdminRole[] = ["SUPERADMIN", "MANAGER", "FULFILLMENT", "CMS_EDITOR"];
 
 /**
  * Conjuntos de rol nombrados para declarar la autorización de cada Server Action
@@ -32,12 +36,15 @@ const CONTENT: AdminRole[] = ["SUPERADMIN", "CMS_EDITOR"];
  *                   plantillas de correo).
  *   - SUPER       → finanzas, cupones, usuarios, redirects, seguridad,
  *                   integraciones, observability, reembolsos.
+ *   - ALL_PLUS_CMS → todos los roles del enum (incl. CMS_EDITOR). Reservado al
+ *                   autoservicio de cuenta: /admin/seguridad (MFA obligatorio).
  */
 export const ADMIN_ROLE_SETS = {
   ALL: ["SUPERADMIN", "MANAGER", "FULFILLMENT"] as const,
   MANAGER_UP: ["SUPERADMIN", "MANAGER"] as const,
   CONTENT: ["SUPERADMIN", "CMS_EDITOR"] as const,
   SUPER: ["SUPERADMIN"] as const,
+  ALL_PLUS_CMS: ["SUPERADMIN", "MANAGER", "FULFILLMENT", "CMS_EDITOR"] as const,
 } satisfies Record<string, readonly AdminRole[]>;
 
 const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
@@ -70,8 +77,12 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   // correo" (/admin/email-templates, redirect legacy a /admin/contenido/paginas/emails).
   { prefix: "/admin/contenido", roles: CONTENT },
   { prefix: "/admin/email-templates", roles: CONTENT },
+  // Seguridad de la cuenta (MFA + recovery codes): abierta a TODOS los roles porque
+  // el MFA es obligatorio para todo admin (B-1). Sin esta excepción, el redirect de
+  // enrolamiento forzado del guard caería en el deny-by-default (loop con el home).
+  { prefix: "/admin/seguridad", roles: ALL_PLUS_CMS },
   // Resto (finanzas, cupones, usuarios, integraciones, auditoria,
-  // seguridad, mayorista, materiales, costos, canales, bot, metricas,
+  // mayorista, materiales, costos, canales, bot, metricas,
   // performance, redirects) → SUPERADMIN únicamente.
 ];
 

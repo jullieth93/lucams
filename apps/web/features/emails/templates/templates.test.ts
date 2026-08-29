@@ -76,6 +76,7 @@ import { newsletterWelcomeEmail } from "./newsletter-welcome";
 import { supportTicketInternalEmail } from "./support-ticket-internal";
 import { supportTicketReceivedEmail } from "./support-ticket-received";
 import { designRejectedEmail } from "./design-rejected";
+import { accountExistsNoticeEmail } from "./account-exists-notice";
 
 // =============================================================================
 // Helpers de fábrica: input mínimo válido por template, con overrides.
@@ -301,15 +302,16 @@ describe("orderConfirmationEmail", () => {
     const r = await orderConfirmationEmail(ocData({ publicTrackingToken: "TOKENGUEST" }));
     expect(r.html).toContain(`${SITE_URL}/pedido/TOKENGUEST`);
     expect(r.text).toContain(`${SITE_URL}/pedido/TOKENGUEST`);
-    // No debe caer al fallback de mi-cuenta cuando hay token.
-    expect(r.html).not.toContain("/mi-cuenta/pedidos");
+    // No debe caer al fallback /rastrear cuando hay token.
+    expect(r.html).not.toContain("/rastrear");
   });
 
-  it("sin publicTrackingToken el CTA cae a /mi-cuenta/pedidos (fallback autenticado)", async () => {
+  it("sin publicTrackingToken el CTA cae a /rastrear (fallback sin login, F-11)", async () => {
     const r = await orderConfirmationEmail(ocData({ publicTrackingToken: null }));
-    expect(r.html).toContain(`${SITE_URL}/mi-cuenta/pedidos`);
-    expect(r.text).toContain(`${SITE_URL}/mi-cuenta/pedidos`);
+    expect(r.html).toContain(`${SITE_URL}/rastrear`);
+    expect(r.text).toContain(`${SITE_URL}/rastrear`);
     expect(r.html).not.toContain("/pedido/");
+    expect(r.html).not.toContain("/mi-cuenta/pedidos");
   });
 
   it("sin transportadora (null) NO agrega el paréntesis de carrier en el label de envío", async () => {
@@ -455,10 +457,11 @@ describe("orderShippedEmail", () => {
     expect(r.html).toContain("TN-99");
   });
 
-  it("sin publicTrackingToken NO agrega el CTA secundario /pedido/", async () => {
+  it("sin publicTrackingToken el CTA de rastreo cae a /rastrear (fallback sin login, F-11)", async () => {
     const r = await orderShippedEmail(shData({ publicTrackingToken: null }));
     expect(r.html).not.toContain("/pedido/");
-    expect(r.html).not.toContain("Ver mi pedido completo");
+    expect(r.html).toContain(`${SITE_URL}/rastrear`);
+    expect(r.text).toContain(`${SITE_URL}/rastrear`);
   });
 
   it("preview del layout lleva la guía y la transportadora", async () => {
@@ -505,13 +508,14 @@ describe("orderDeliveredEmail", () => {
   it("con publicTrackingToken el CTA de reseña apunta a /pedido/<token>", async () => {
     const r = await orderDeliveredEmail(dlData({ publicTrackingToken: "RTOK" }));
     expect(r.html).toContain(`${SITE_URL}/pedido/RTOK`);
-    expect(r.html).not.toContain("/mi-cuenta/pedidos");
+    expect(r.html).not.toContain("/rastrear");
   });
 
-  it("sin publicTrackingToken el CTA cae a /mi-cuenta/pedidos", async () => {
+  it("sin publicTrackingToken el CTA cae a /rastrear (fallback sin login, F-11)", async () => {
     const r = await orderDeliveredEmail(dlData({ publicTrackingToken: null }));
-    expect(r.html).toContain(`${SITE_URL}/mi-cuenta/pedidos`);
+    expect(r.html).toContain(`${SITE_URL}/rastrear`);
     expect(r.html).not.toContain("/pedido/");
+    expect(r.html).not.toContain("/mi-cuenta/pedidos");
   });
 
   it("#23 — retracto 5 días solo para NO personalizados (Ley 1480), personalizados excluidos", async () => {
@@ -530,7 +534,7 @@ describe("orderDeliveredEmail", () => {
   it("el texto plano incluye orden y link de reseña", async () => {
     const r = await orderDeliveredEmail(dlData());
     expect(r.text).toContain("LS-4001");
-    expect(r.text).toContain(`${SITE_URL}/mi-cuenta/pedidos`);
+    expect(r.text).toContain(`${SITE_URL}/pedido/dtok`);
   });
 });
 
@@ -863,13 +867,14 @@ describe("designRejectedEmail (moderación P0-2)", () => {
     const t = await designRejectedEmail({ ...data, publicTrackingToken: "GUESTTOK" });
     expect(t.html).toContain(`${SITE_URL}/pedido/GUESTTOK`);
     expect(t.text).toContain(`${SITE_URL}/pedido/GUESTTOK`);
-    expect(t.html).not.toContain("/mi-cuenta/pedidos");
+    expect(t.html).not.toContain("/rastrear");
   });
 
-  it("#10 sin token cae a /mi-cuenta/pedidos (cliente con cuenta)", async () => {
+  it("#10 sin token cae a /rastrear (fallback sin login, F-11)", async () => {
     const t = await designRejectedEmail(data);
-    expect(t.html).toContain(`${SITE_URL}/mi-cuenta/pedidos`);
+    expect(t.html).toContain(`${SITE_URL}/rastrear`);
     expect(t.html).not.toContain("/pedido/");
+    expect(t.html).not.toContain("/mi-cuenta/pedidos");
   });
 
   it("HTML incluye nombre, producto, número de pedido y motivo", async () => {
@@ -894,6 +899,32 @@ describe("designRejectedEmail (moderación P0-2)", () => {
 
   it("IDEMPOTENCIA: mismo input → misma salida", async () => {
     const [a, b] = await Promise.all([designRejectedEmail(data), designRejectedEmail(data)]);
+    expect(a).toEqual(b);
+  });
+});
+
+describe("accountExistsNoticeEmail (anti-enumeración, B-3)", () => {
+  it("subject pregunta si intentó crear una cuenta", async () => {
+    const t = await accountExistsNoticeEmail();
+    expect(t.subject).toContain("crear una cuenta");
+  });
+
+  it("enlaza a /login y /recuperar-password del SITE_URL, en HTML y texto", async () => {
+    const t = await accountExistsNoticeEmail();
+    expect(t.html).toContain(`${SITE_URL}/login`);
+    expect(t.html).toContain(`${SITE_URL}/recuperar-password`);
+    expect(t.text).toContain(`${SITE_URL}/login`);
+    expect(t.text).toContain(`${SITE_URL}/recuperar-password`);
+  });
+
+  it("tranquiliza al dueño si no fue él (nadie puede crear otra cuenta con su correo)", async () => {
+    const t = await accountExistsNoticeEmail();
+    expect(t.html).toContain("Si no fuiste tú");
+    expect(t.text).toContain("Si no fuiste tú");
+  });
+
+  it("IDEMPOTENCIA: misma salida en llamadas repetidas", async () => {
+    const [a, b] = await Promise.all([accountExistsNoticeEmail(), accountExistsNoticeEmail()]);
     expect(a).toEqual(b);
   });
 });

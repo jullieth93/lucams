@@ -40,6 +40,7 @@ const CORE_VARS = [
 const PROD_VARS = [
   "NEXT_PUBLIC_SITE_URL",
   "RESEND_API_KEY",
+  "RESEND_WEBHOOK_SECRET",
   "EMAIL_FROM",
   "EMAIL_REPLY_TO",
   "TURNSTILE_SECRET_KEY",
@@ -171,6 +172,15 @@ describe("validateEnv — modo CATÁLOGO (Etapa 1)", () => {
     expect(() => validateEnv()).toThrowError(/NEXT_PUBLIC_WA_NUMBER/);
     // y el mensaje NO debe listar las vars full (no aplican en catálogo).
     expect(() => validateEnv()).not.toThrowError(/WOMPI_PUBLIC_KEY/);
+  });
+
+  it("prod catálogo sin RESEND_WEBHOOK_SECRET → throw (los eventos de email aplican en ambos modos, D-5)", async () => {
+    stubEnvBase();
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_STORE_MODE", "catalog");
+    vi.stubEnv("RESEND_WEBHOOK_SECRET", undefined);
+    const validateEnv = await loadValidateEnv();
+    expect(() => validateEnv()).toThrowError(/RESEND_WEBHOOK_SECRET/);
   });
 
   it("dev/preview sin vars de prod → solo warn, no bloquea", async () => {

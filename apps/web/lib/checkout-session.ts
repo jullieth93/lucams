@@ -1,5 +1,5 @@
 /*
- * Checkout multi-step state — cookie firmada con HMAC.
+ * Checkout multi-step state — AES-256-GCM sealed cookie.
  *
  * Por qué cookie y no DB:
  *  - Si el cliente abandona en step 2, no queremos una Order draft en
@@ -7,8 +7,14 @@
  *  - La Order se crea atómicamente solo cuando el cliente llega a step 3
  *    y dispara "Pagar" → entonces sí se persiste en DB con status PENDING_PAYMENT.
  *
- * HMAC firma: cliente no puede manipular el JSON (cambiar precio, etc.).
- * Si la firma falla, se ignora la cookie y se manda al cliente a step 1.
+ * F-9 (security audit 2026-08-24): the state carries full PII (contact name,
+ * email, phone, document number, address), so the cookie value is SEALED with
+ * AES-256-GCM — random IV per write, key derived from CSRF_SECRET — and not
+ * merely signed: base64 is not encryption, and anyone with access to the
+ * client's browser profile could read it. The GCM auth tag replaces the old
+ * outer HMAC for integrity (tamper-evident, verified on unseal). If unsealing
+ * fails (tampered, legacy HMAC format, wrong secret) or the state expired,
+ * the cookie is ignored and the client goes back to step 1.
  *
  * TTL: 60 min — tiempo razonable para completar un checkout. Si expira,
  * el cliente vuelve al inicio.
@@ -130,7 +136,7 @@ function getSecret(): string {
   const secret = process.env.CSRF_SECRET?.trim();
   if (!secret || secret.startsWith("GENERATE_WITH")) {
     throw new Error(
-      "CSRF_SECRET no configurado (usado para firmar checkout cookie). " +
+      "CSRF_SECRET no configurado (usado para sellar la checkout cookie y firmar tokens). " +
         "Generar con: openssl rand -hex 32",
     );
   }
@@ -148,10 +154,48 @@ function verify(payload: string, signature: string): boolean {
   return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
 }
 
+// --- Cookie sealing (AES-256-GCM) ---------------------------------------------
+// Domain-separated key: the raw CSRF_SECRET still keys the HMAC of the shipping
+// offers token below, so the GCM key is derived with a purpose prefix instead of
+// reusing the secret directly for two primitives.
+function encryptionKey(): Buffer {
+  return crypto.createHash("sha256").update(`checkout-session:${getSecret()}`).digest();
+}
+
+/** Seals a JSON string as `base64url(iv).base64url(tag).base64url(ciphertext)`. */
+function sealPayload(json: string): string {
+  const iv = crypto.randomBytes(12); // 96-bit IV — GCM standard, random per write
+  const cipher = crypto.createCipheriv("aes-256-gcm", encryptionKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(json, "utf-8"), cipher.final()]);
+  return [iv, cipher.getAuthTag(), ciphertext].map((b) => b.toString("base64url")).join(".");
+}
+
+/**
+ * Opens a sealed cookie value. Returns null when the value is not a current
+ * sealed payload — including LEGACY HMAC cookies (`payload.signature`, 2
+ * segments; they live at most one 60-min TTL past deploy), tampering (GCM
+ * auth tag mismatch) or corruption.
+ */
+function unsealPayload(raw: string): string | null {
+  const parts = raw.split(".");
+  if (parts.length !== 3) return null;
+  const [iv, tag, ciphertext] = parts.map((p) => Buffer.from(p, "base64url"));
+  // Key derivation stays OUTSIDE the try: a missing CSRF_SECRET is a config
+  // error and must throw loudly, not degrade to "no session".
+  const key = encryptionKey();
+  try {
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf-8");
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Lee el state de la cookie. Devuelve null si:
  *  - no hay cookie
- *  - firma inválida (manipulada)
+ *  - no des-sella (manipulada, formato legacy HMAC, secreto equivocado)
  *  - JSON corrupto
  *  - expirada (updatedAt + TTL < ahora)
  */
@@ -160,18 +204,13 @@ export async function getCheckoutState(): Promise<CheckoutState | null> {
   const raw = jar.get(COOKIE_NAME)?.value;
   if (!raw) return null;
 
-  const dot = raw.lastIndexOf(".");
-  if (dot < 0) return null;
-  const payload = raw.slice(0, dot);
-  const signature = raw.slice(dot + 1);
-
-  if (!verify(payload, signature)) {
-    logger.warn({ event: "checkout.cookie.invalid_signature" });
+  const decoded = unsealPayload(raw);
+  if (decoded === null) {
+    logger.warn({ event: "checkout.cookie.unseal_fail" });
     return null;
   }
 
   try {
-    const decoded = Buffer.from(payload, "base64url").toString("utf-8");
     const state = JSON.parse(decoded) as CheckoutState;
     if (Date.now() - state.updatedAt > TTL_SECONDS * 1000) {
       logger.info({ event: "checkout.cookie.expired" });
@@ -188,7 +227,7 @@ export async function getCheckoutState(): Promise<CheckoutState | null> {
 }
 
 /**
- * Guarda state firmado. Merge sobre lo que ya había para que cada step
+ * Guarda state sellado. Merge sobre lo que ya había para que cada step
  * solo necesite pasar sus campos nuevos.
  */
 export async function setCheckoutState(partial: Partial<CheckoutState>): Promise<CheckoutState> {
@@ -198,9 +237,7 @@ export async function setCheckoutState(partial: Partial<CheckoutState>): Promise
     ...partial,
     updatedAt: Date.now(),
   };
-  const payload = Buffer.from(JSON.stringify(next), "utf-8").toString("base64url");
-  const signature = sign(payload);
-  const value = `${payload}.${signature}`;
+  const value = sealPayload(JSON.stringify(next));
 
   const jar = await cookies();
   jar.set(COOKIE_NAME, value, {
@@ -220,8 +257,10 @@ export async function clearCheckoutState(): Promise<void> {
 
 /**
  * Sella el set de cotizaciones de envío para que viaje por el FORM del step 2
- * (hidden input `offersToken`) sin que el cliente pueda alterarlo — mismo HMAC
- * de la cookie. La página RSC que cotiza no puede escribir cookies (Next solo
+ * (hidden input `offersToken`) sin que el cliente pueda alterarlo — HMAC
+ * (integrity only: this payload has no PII — carrier quotes + cart/dest
+ * hashes — so unlike the checkout cookie it does not need GCM sealing).
+ * La página RSC que cotiza no puede escribir cookies (Next solo
  * permite writes en Server Actions / Route Handlers), así que el set firmado
  * hace ida y vuelta dentro del HTML y la Server Action lo valida al recibirlo.
  */

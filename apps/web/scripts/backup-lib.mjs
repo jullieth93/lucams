@@ -4,9 +4,11 @@
  * poder testearlos con vitest sin cargar el SDK de AWS ni tocar la red.
  */
 
-// Patrón de una llave de backup: <prefix>/lucams-YYYY-MM-DDThhmmssZ.sql.gz
+// Patrón de una llave de backup: <prefix>/lucams-YYYY-MM-DDThhmmssZ.sql.gz.gpg
 // El timestamp es UTC y ordenable lexicográficamente (orden alfabético = cronológico).
-export const BACKUP_KEY_RE = /(^|\/)lucams-\d{4}-\d{2}-\d{2}T\d{6}Z\.sql\.gz$/;
+// El sufijo .sql.gz (sin .gpg) queda aceptado para los backups LEGACY anteriores
+// al cifrado gpg (A-3, auditoría 2026-08-24): la retención también los poda.
+export const BACKUP_KEY_RE = /(^|\/)lucams-\d{4}-\d{2}-\d{2}T\d{6}Z\.sql\.gz(\.gpg)?$/;
 
 /**
  * Normaliza R2_ACCOUNT_ID a la etiqueta DNS que va delante de `.r2.cloudflarestorage.com`.
@@ -63,14 +65,16 @@ export function explainR2ConnectError(err, accountId) {
 
 /**
  * Construye la llave del objeto en R2 para un backup en `date` (UTC).
- * Ej: buildBackupKey(new Date("2026-07-13T14:05:01Z")) → "db/lucams-2026-07-13T140501Z.sql.gz"
+ * Ej: buildBackupKey(new Date("2026-07-13T14:05:01Z")) → "db/lucams-2026-07-13T140501Z.sql.gz.gpg"
+ * (Desde 2026-08-29 el dump viaja cifrado con gpg simétrico → sufijo .gpg; A-3,
+ * auditoría 2026-08-24.)
  */
 export function buildBackupKey(date, prefix = "db") {
   const iso = date.toISOString(); // 2026-07-13T14:05:01.123Z
   const [day, time] = iso.split("T");
   const hms = time.slice(0, 8).replace(/:/g, ""); // "140501"
   const clean = prefix.replace(/\/+$/, ""); // sin barra final
-  return `${clean}/lucams-${day}T${hms}Z.sql.gz`;
+  return `${clean}/lucams-${day}T${hms}Z.sql.gz.gpg`;
 }
 
 /**

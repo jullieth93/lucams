@@ -70,6 +70,12 @@ export type WebhookEvent = {
   status: TrackingStatus["status"];
   carrierStatusRaw: string;
   timestamp: Date;
+  /**
+   * false when the payload carried no carrier `fecha`/`timestamp` and `timestamp` is a
+   * `new Date()` fallback (non-deterministic). The webhook route uses it to build a
+   * stable dedup key ("no-ts") instead of a fresh epoch per delivery (audit D-4).
+   */
+  hasCarrierTimestamp: boolean;
 };
 
 export interface ShippingProvider {

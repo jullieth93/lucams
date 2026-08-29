@@ -36,6 +36,10 @@ const CoreEnv = z.object({
 const PROD_REQUIRED = [
   "NEXT_PUBLIC_SITE_URL",
   "RESEND_API_KEY",
+  // Svix signing secret of the Resend webhook (bounces/complaints). Without it the
+  // endpoint fails closed and the suppression check in lib/resend.ts silently stops
+  // being fed. Email goes out via Resend in BOTH store modes → PROD_REQUIRED (audit D-5).
+  "RESEND_WEBHOOK_SECRET",
   "EMAIL_FROM",
   // El From vive en mail.lucamsshop.com (subdominio de envío, sin buzón). Sin Reply-To al dominio
   // principal, toda respuesta de un cliente a un correo transaccional se pierde → fail-fast en prod.

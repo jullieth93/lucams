@@ -28,20 +28,36 @@ export default async function AdminPanelLayout({ children }: { children: ReactNo
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
 
+  const supabase = await createSupabaseServerClient();
+  // Pathname autoritativo (lo setea el proxy, no spoofeable): lo comparten los
+  // gates de MFA (abajo) y el guard RBAC de ruta (más abajo).
+  const pathname = (await headers()).get("x-pathname") ?? "";
+
+  // MFA OBLIGATORIO para todo rol admin (auditoría 2026-08-24 · B-1): sin factor
+  // TOTP verificado no se renderiza ninguna pantalla del panel → enrolamiento
+  // forzado. El candado aal2 de abajo solo aplica cuando YA existe factor;
+  // este gate cubre al admin sin MFA (antes operaba el panel solo con
+  // contraseña). /admin/seguridad es la excepción: es la pantalla de
+  // enrolamiento misma (sin ella esto sería un loop de redirects).
+  const { data: factors } = await supabase.auth.mfa.listFactors();
+  const hasVerifiedTotp = (factors?.all ?? []).some(
+    (f) => f.factor_type === "totp" && f.status === "verified",
+  );
+  if (!hasVerifiedTotp && !pathname.startsWith("/admin/seguridad")) {
+    redirect("/admin/seguridad?enroll=required");
+  }
+
   // Candado MFA (Bloque C / A6): si la cuenta tiene 2 pasos activos pero la
   // sesión sigue en aal1 (solo contraseña), exigir el reto antes del panel.
-  const supabase = await createSupabaseServerClient();
   const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   if (aal && aal.nextLevel === "aal2" && aal.currentLevel === "aal1") {
     redirect("/admin/login/mfa");
   }
 
   // Guard RBAC server-side (auditoría 2026-07-13): la matriz ruta→rol se ENFORCEA aquí,
-  // no solo en el menú (que es UX, no seguridad). El pathname viene del proxy (x-pathname,
-  // autoritativo). Un rol sin permiso para la ruta se redirige a SU home (adminHomePath):
-  // para CMS_EDITOR es /admin/contenido — mandarlo al dashboard sería un loop de redirects
-  // porque tampoco tiene acceso ahí.
-  const pathname = (await headers()).get("x-pathname") ?? "";
+  // no solo en el menú (que es UX, no seguridad). Un rol sin permiso para la ruta se
+  // redirige a SU home (adminHomePath): para CMS_EDITOR es /admin/contenido — mandarlo
+  // al dashboard sería un loop de redirects porque tampoco tiene acceso ahí.
   if (pathname.startsWith("/admin") && !canAccessAdminPath(session.admin.role, pathname)) {
     redirect(`${adminHomePath(session.admin.role)}?denied=1`);
   }

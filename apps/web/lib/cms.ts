@@ -90,18 +90,67 @@ function toSettingType(type: string): SiteSettingData["valueType"] {
 }
 
 /**
- * Claves que NUNCA deben salir por endpoints públicos (/api/cms/settings):
+ * Allowlist de claves que SÍ pueden salir por endpoints públicos
+ * (/api/cms/settings). Auditoría 2026-08-24 (C-2): antes era una DENYLIST
+ * ("todo es público EXCEPTO PICKUP_* y BUSINESS_NIT") → cualquier setting
+ * futuro sensible (claves API, secretos) saldría por defecto. Invertido a
+ * fail-closed: una clave NUEVA es privada hasta que se agregue acá a propósito.
+ *
+ * La lista se construyó enumerando las claves que el storefront realmente
+ * consume (getSettingValue/getSiteSetting/<CmsSetting> en páginas públicas,
+ * footer, emails transaccionales y botones de WhatsApp). Excluidas a propósito:
  * - PICKUP_* — dirección/teléfono/contacto de recogida de Aveonline; si el
  *   negocio opera desde casa, es la dirección exacta de la casa (riesgo
- *   físico, detectado en certificación 2026-07-29 2ª pasada).
- * - BUSINESS_NIT — identificación tributaria del negocio; solo la usa la
- *   guía Aveonline server-side.
- * Esas lecturas siguen funcionando internamente vía getSettingValue (la
- * saga y el cotizador no pasan por HTTP). Si se agrega otro setting
- * sensible, extender acá — el endpoint filtra con esta función.
+ *   físico, certificación 2026-07-29 2ª pasada).
+ * - BUSINESS_NIT — identificación tributaria; solo la usa la guía Aveonline
+ *   server-side.
+ * - ALERT_EMAIL — buzón interno de alertas operativas; lo leen solo features
+ *   server-side (observability/quotes/orders), nunca se renderiza en público.
+ * - PRIVACY_POLICY_VERSION — solo la persisten los consent records server-side.
+ *
+ * Esas lecturas siguen funcionando internamente vía getSettingValue (la saga y
+ * el cotizador no pasan por HTTP); el filtro SOLO aplica al endpoint público.
  */
+const PUBLIC_SETTING_KEYS = new Set([
+  // Identidad y contacto público
+  "APP_NAME",
+  "CONTACT_EMAIL",
+  "SECURITY_EMAIL",
+  "BUSINESS_HOURS",
+  "BUSINESS_LOCATION",
+  "SITE_URL",
+  // Footer / legal
+  "COPYRIGHT_YEAR",
+  "COPYRIGHT_TAGLINE",
+  "GOVT_SIC_URL",
+  // Redes sociales (footer + home)
+  "SOCIAL_INSTAGRAM_URL",
+  "SOCIAL_INSTAGRAM_ENABLED",
+  "SOCIAL_TIKTOK_URL",
+  "SOCIAL_TIKTOK_ENABLED",
+  "SOCIAL_FACEBOOK_URL",
+  "SOCIAL_FACEBOOK_ENABLED",
+  // WhatsApp click-to-chat
+  "WA_NUMBER",
+  "WA_MSG_PRODUCT",
+  "WA_MSG_PERSONALIZE",
+  "WA_MSG_SUPPORT",
+  "WA_MSG_SUPPORT_SUBJECT",
+  "WA_MSG_ORDER",
+  "WA_MSG_QUOTE",
+  "WA_MSG_WHOLESALE",
+  // Comercio y tokens de copy pública
+  "COD_ENABLED",
+  "PRODUCTION_DAYS_DEFAULT",
+  "DELIVERY_DAYS_ESTIMATE",
+  "DELIVERY_COVERAGE_COUNT",
+  // CTAs del hero (home)
+  "home.hero.cta-primary.href",
+  "home.hero.cta-secondary.href",
+]);
+
 export function isPublicSettingKey(key: string): boolean {
-  return !key.startsWith("PICKUP_") && key !== "BUSINESS_NIT";
+  return PUBLIC_SETTING_KEYS.has(key);
 }
 
 /**
@@ -464,7 +513,10 @@ export const getAllCmsBlocks = cachedCms(
  * Devuelve top 20 results ordenados por similarity DESC.
  */
 export async function searchCmsBlocks(query: string): Promise<CmsBlockData[]> {
-  if (!query.trim()) return [];
+  // Cap de longitud (auditoría 2026-08-24, C-6 — defensa en capas; la ruta ya trunca):
+  // similarity() corre por fila contra title+body; un string enorme amplifica el coste.
+  const q = query.trim().slice(0, 120);
+  if (!q) return [];
   try {
     type Row = {
       key: string;
@@ -492,13 +544,13 @@ export async function searchCmsBlocks(query: string): Promise<CmsBlockData[]> {
         AND f."isPublished" = TRUE
         AND f."deletedAt" IS NULL
         AND (
-          unaccent(COALESCE(v.title, f.label, '')) % unaccent(${query})
-          OR unaccent(v.body) % unaccent(${query})
-          OR unaccent(f.key) % unaccent(${query})
+          unaccent(COALESCE(v.title, f.label, '')) % unaccent(${q})
+          OR unaccent(v.body) % unaccent(${q})
+          OR unaccent(f.key) % unaccent(${q})
         )
       ORDER BY GREATEST(
-        similarity(unaccent(COALESCE(v.title, f.label, '')), unaccent(${query})),
-        similarity(unaccent(f.key), unaccent(${query}))
+        similarity(unaccent(COALESCE(v.title, f.label, '')), unaccent(${q})),
+        similarity(unaccent(f.key), unaccent(${q}))
       ) DESC
       LIMIT 20
     `;

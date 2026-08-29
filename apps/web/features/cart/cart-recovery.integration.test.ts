@@ -48,11 +48,12 @@ async function makeAbandoned(
   cartId: string,
   opts: { createdAt: Date; lastReminderSentAt?: Date | null; recoveredAt?: Date | null },
 ): Promise<void> {
+  // F-11 — sin token semilla: el recoverToken se genera al ENVIAR el recordatorio
+  // (en DB solo queda su hash).
   const ab = await prisma.abandonedCart.create({
     data: {
       cartId,
       email: `${RUN}-${tag}@lucams.test`,
-      recoverToken: `${RUN}-${tag}-tok`,
       createdAt: opts.createdAt,
       lastReminderSentAt: opts.lastReminderSentAt ?? null,
       recoveredAt: opts.recoveredAt ?? null,
@@ -134,11 +135,13 @@ describe("sendCartRecoveryReminders", () => {
     // (Puede haber otros RUN corriendo en paralelo, así que verificamos POR FILA, no el total.)
     const eligible = await prisma.abandonedCart.findUnique({
       where: { id: abIds.eligible },
-      select: { lastReminderSentAt: true, recoveredAt: true },
+      select: { lastReminderSentAt: true, recoveredAt: true, recoverTokenHash: true },
     });
     // Sin RESEND_API_KEY el envío se "salta" pero igual se marca lastReminderSentAt (no reintentar en loop).
     expect(eligible!.lastReminderSentAt).not.toBeNull();
     expect(eligible!.recoveredAt).toBeNull();
+    // F-11 — el token se generó al enviar: la fila tiene SOLO su hash sha256.
+    expect(eligible!.recoverTokenHash).toMatch(/^[0-9a-f]{64}$/);
 
     const converted = await prisma.abandonedCart.findUnique({
       where: { id: abIds.converted },

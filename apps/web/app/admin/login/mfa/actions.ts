@@ -91,6 +91,8 @@ export async function useRecoveryCodeAction(
   }
 
   logger.info({ event: "security.admin_recovery_code_used", adminId: session.admin.id });
-  // Sin factor → la sesión queda aal1=aal1, el candado del layout no se dispara.
+  // Sin factor → la sesión queda aal1=aal1 (el candado aal2 no se dispara) y
+  // /admin/seguridad es la excepción del gate de enrolamiento obligatorio (B-1):
+  // aterriza directo a reconfigurar el 2º factor.
   redirect("/admin/seguridad?reconfig=1");
 }

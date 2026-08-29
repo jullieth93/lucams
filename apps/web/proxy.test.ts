@@ -17,13 +17,27 @@ const { state } = vi.hoisted(() => ({
     user: null as { id: string } | null,
     redirect: null as { toPath: string; statusCode: number } | null,
     lastLookupPath: null as string | null, // #29 — captura la llave con que el proxy consulta
+    cookieOptions: null as Record<string, unknown> | null, // B-2 — lo pasado a createServerClient
+    signOutCalls: [] as Array<{ scope?: string }>, // B-8 — revocación server-side al expirar
   },
 }));
 
 vi.mock("@supabase/ssr", () => ({
-  createServerClient: () => ({
-    auth: { getUser: async () => ({ data: { user: state.user } }) },
-  }),
+  createServerClient: (
+    _url: string,
+    _key: string,
+    options?: { cookieOptions?: Record<string, unknown> },
+  ) => {
+    state.cookieOptions = options?.cookieOptions ?? null;
+    return {
+      auth: {
+        getUser: async () => ({ data: { user: state.user } }),
+        signOut: async (opts?: { scope?: string }) => {
+          state.signOutCalls.push(opts ?? {});
+        },
+      },
+    };
+  },
 }));
 vi.mock("@/features/redirects/service", () => ({
   lookupActiveRedirect: async (p: string) => {
@@ -38,6 +52,7 @@ vi.mock("@/lib/product-redirects", () => ({
 
 import { NextRequest } from "next/server";
 import { proxy } from "./proxy";
+import { readAdminActivityMark, sealAdminActivityMark } from "@/lib/admin-activity";
 
 function makeReq(
   path: string,
@@ -57,7 +72,12 @@ beforeEach(() => {
   state.user = null;
   state.redirect = null;
   state.lastLookupPath = null;
+  state.cookieOptions = null;
+  state.signOutCalls = [];
   vi.unstubAllEnvs();
+  // B-8 — la marca de actividad va firmada con HMAC (CSRF_SECRET), mismo
+  // patrón que checkout-session: se fija acá para tests deterministas.
+  vi.stubEnv("CSRF_SECRET", "test-secret-fijo-proxy");
 });
 
 describe("proxy · gate /admin para anónimos", () => {
@@ -75,9 +95,9 @@ describe("proxy · gate /admin para anónimos", () => {
 
   it("con sesión (y marca fresca) NO redirige a login", async () => {
     state.user = { id: "u1" };
-    // Marca fresca: aísla el gate anónimo del idle-timeout (una request admin
-    // autenticada SIN marca ahora expira — ver 'marca AUSENTE' abajo).
-    const fresh = String(Date.now() - 60 * 1000);
+    // Marca fresca FIRMADA (B-8): aísla el gate anónimo del idle-timeout (una
+    // request admin autenticada SIN marca válida ahora expira — ver abajo).
+    const fresh = sealAdminActivityMark(Date.now() - 60 * 1000);
     const res = await proxy(makeReq("/admin/pedidos", { cookies: { admin_last_activity: fresh } }));
     expect(res.status).toBe(200);
     expect(res.headers.get("location") ?? "").not.toContain("/admin/login");
@@ -85,9 +105,9 @@ describe("proxy · gate /admin para anónimos", () => {
 });
 
 describe("proxy · idle-timeout admin (30 min)", () => {
-  it("expira la sesión tras 30+ min inactiva y limpia cookies sb-*", async () => {
+  it("expira la sesión tras 30+ min inactiva, limpia cookies sb-* y REVOCA server-side (B-8)", async () => {
     state.user = { id: "u1" };
-    const stale = String(Date.now() - 31 * 60 * 1000);
+    const stale = sealAdminActivityMark(Date.now() - 31 * 60 * 1000);
     const res = await proxy(
       makeReq("/admin/pedidos", {
         cookies: { admin_last_activity: stale, "sb-access-token": "tok" },
@@ -99,14 +119,22 @@ describe("proxy · idle-timeout admin (30 min)", () => {
     expect(loc).toContain("expired=1");
     // La cookie de sesión Supabase queda marcada para borrado (valor vaciado).
     expect(res.cookies.get("sb-access-token")?.value ?? "").toBe("");
+    // B-8: además del borrado local, revoca el refresh token en el Auth server.
+    expect(state.signOutCalls).toEqual([{ scope: "global" }]);
   });
 
-  it("dentro de la ventana NO expira", async () => {
+  it("dentro de la ventana NO expira y renueva la marca FIRMADA (B-8)", async () => {
     state.user = { id: "u1" };
-    const fresh = String(Date.now() - 60 * 1000);
+    const fresh = sealAdminActivityMark(Date.now() - 60 * 1000);
     const res = await proxy(makeReq("/admin/pedidos", { cookies: { admin_last_activity: fresh } }));
     expect(res.status).toBe(200);
     expect(res.headers.get("location") ?? "").not.toContain("expired");
+    expect(state.signOutCalls).toEqual([]);
+    // La marca renovada viaja firmada: verifica con el lector del módulo.
+    const renewed = res.cookies.get("admin_last_activity")?.value ?? "";
+    const ts = readAdminActivityMark(renewed);
+    expect(ts).not.toBeNull();
+    expect(Math.abs((ts ?? 0) - Date.now())).toBeLessThan(10_000);
   });
 
   it("marca AUSENTE en path admin autenticado → EXPIRA (manipulada/vencida, no 'primera visita')", async () => {
@@ -119,6 +147,32 @@ describe("proxy · idle-timeout admin (30 min)", () => {
     expect(loc).toContain("/admin/login");
     expect(loc).toContain("expired=1");
     expect(res.cookies.get("sb-access-token")?.value ?? "").toBe("");
+    expect(state.signOutCalls).toEqual([{ scope: "global" }]);
+  });
+
+  it("marca SIN FIRMA (timestamp plano, formato pre-B-8 o forjado) → EXPIRA", async () => {
+    // B-8: un atacante con cookies robadas fabricaba `admin_last_activity=<now>`
+    // y evadía el timeout; con la marca firmada el valor plano ya no verifica.
+    state.user = { id: "u1" };
+    const res = await proxy(
+      makeReq("/admin/pedidos", {
+        cookies: { admin_last_activity: String(Date.now()), "sb-access-token": "tok" },
+      }),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location") ?? "").toContain("expired=1");
+    expect(state.signOutCalls).toEqual([{ scope: "global" }]);
+  });
+
+  it("marca con firma MANIPULADA → EXPIRA", async () => {
+    state.user = { id: "u1" };
+    const good = sealAdminActivityMark(Date.now());
+    const tampered = `${good.slice(0, -2)}xx`; // firma alterada, misma longitud
+    const res = await proxy(
+      makeReq("/admin/pedidos", { cookies: { admin_last_activity: tampered } }),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location") ?? "").toContain("expired=1");
   });
 
   it("/admin/login NO borra la marca (la sella la acción de login, no el proxy)", async () => {
@@ -210,5 +264,74 @@ describe("proxy · CORS /api", () => {
   it("un origen permitido recibe Access-Control-Allow-Origin", async () => {
     const res = await proxy(makeReq("/api/algo", { origin: "https://lucamsshop.com" }));
     expect(res.headers.get("access-control-allow-origin")).toBe("https://lucamsshop.com");
+  });
+});
+
+// A-5 (auditoría 2026-08-24): los early returns del proxy salían SIN security
+// headers ni CSP porque los headers solo se seteaban sobre `response` al final.
+describe("proxy · security headers en early returns (A-5)", () => {
+  const expectSecurityHeaders = (res: { headers: Headers }) => {
+    expect(res.headers.get("x-request-id")).toBeTruthy();
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("strict-transport-security")).toContain("max-age=");
+    expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+  };
+
+  it("redirect 301 de /producto/* lleva los headers (sin CSP — 3xx sin body)", async () => {
+    const res = await proxy(makeReq("/producto/old-magnet"));
+    expect(res.status).toBe(301);
+    expectSecurityHeaders(res);
+    expect(res.headers.get("content-security-policy")).toBeNull();
+  });
+
+  it("redirect dinámico UrlRedirect lleva los headers", async () => {
+    state.redirect = { toPath: "/destino-a5", statusCode: 302 };
+    const res = await proxy(makeReq("/ruta-a5-dinamica"));
+    expect(res.status).toBe(302);
+    expectSecurityHeaders(res);
+  });
+
+  it("redirect de mantenimiento lleva los headers", async () => {
+    vi.stubEnv("NEXT_PUBLIC_MAINTENANCE_MODE", "1");
+    const res = await proxy(makeReq("/productos-listado"));
+    expectSecurityHeaders(res);
+  });
+
+  it("el 403 de CORS lleva headers Y CSP (tiene body renderizable)", async () => {
+    const res = await proxy(makeReq("/api/algo", { origin: "https://evil.example" }));
+    expect(res.status).toBe(403);
+    expectSecurityHeaders(res);
+    expect(res.headers.get("content-security-policy")).toContain("default-src");
+  });
+
+  it("el redirect del gate /admin (anónimo) lleva los headers", async () => {
+    const res = await proxy(makeReq("/admin/pedidos"));
+    expect(res.status).toBe(307);
+    expectSecurityHeaders(res);
+  });
+
+  it("el redirect de idle-timeout lleva los headers", async () => {
+    state.user = { id: "u1" };
+    const res = await proxy(makeReq("/admin/pedidos", { cookies: { "sb-access-token": "t" } }));
+    expect(res.status).toBe(307);
+    expectSecurityHeaders(res);
+  });
+});
+
+// B-2 (auditoría 2026-08-24): createServerClient recibe cookieOptions con
+// `Secure` explícito según el despliegue (IS_PROD_DEPLOY se fija a nivel de
+// módulo → la rama `true` se prueba con un import fresco del proxy).
+describe("proxy · cookieOptions de la sesión Supabase (B-2)", () => {
+  it("secure=false fuera de prod/preview (dev local HTTP)", async () => {
+    await proxy(makeReq("/api/algo", { origin: "https://lucamsshop.com" }));
+    expect(state.cookieOptions).toEqual({ secure: false, sameSite: "lax" });
+  });
+
+  it("secure=true cuando VERCEL_ENV=production", async () => {
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.resetModules();
+    const { proxy: proxyProd } = await import("./proxy");
+    await proxyProd(makeReq("/api/algo", { origin: "https://lucamsshop.com" }));
+    expect(state.cookieOptions).toEqual({ secure: true, sameSite: "lax" });
   });
 });

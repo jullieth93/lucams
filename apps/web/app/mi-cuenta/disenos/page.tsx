@@ -33,8 +33,9 @@ export default async function DisenosPage() {
     previewUrl: d.previewUrl ?? "",
     productName: d.product.name,
     productSlug: d.product.slug,
-    hasShareToken: Boolean(d.shareToken),
-    shareToken: d.shareToken,
+    // F-11 — solo sabemos SI hay link activo (hash en DB); el token plano ya no
+    // se puede releer. Pedir el link de nuevo lo ROTA (ver design-grid).
+    hasShareToken: Boolean(d.shareTokenHash),
     used: d.status === "USED_IN_ORDER",
   }));
 

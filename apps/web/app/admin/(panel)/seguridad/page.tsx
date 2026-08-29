@@ -1,6 +1,10 @@
 /*
  * Admin > Seguridad — verificación en 2 pasos (MFA/TOTP).
- * Lucy 2026-06-27 (Bloque C / A6). Decisión: MFA activa para SUPERADMIN desde día 1.
+ * Lucy 2026-06-27 (Bloque C / A6).
+ * Auditoría 2026-08-24 · B-1: el MFA es OBLIGATORIO para todo rol admin, así que
+ * esta pantalla (enrolamiento + autoservicio de la propia cuenta) es la única
+ * ruta del panel abierta a TODOS los roles (ADMIN_ROLE_SETS.ALL_PLUS_CMS). El
+ * guard redirige acá (?enroll=required) a cualquier admin sin factor verificado.
  */
 
 import type { Metadata } from "next";
@@ -13,6 +17,7 @@ import {
   AdminNotice,
 } from "@/components/admin-page";
 import { requireRole } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { countUnusedRecoveryCodes } from "@/features/admin-mfa/recovery-codes";
 import { MfaEnroll } from "./mfa-enroll";
@@ -24,7 +29,7 @@ export const metadata: Metadata = { title: "Seguridad" };
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 export default async function AdminSeguridadPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await requireRole(["SUPERADMIN"]);
+  const session = await requireRole(ADMIN_ROLE_SETS.ALL_PLUS_CMS);
   const sp = await searchParams;
 
   const supabase = await createSupabaseServerClient();
@@ -107,6 +112,12 @@ export default async function AdminSeguridadPage({ searchParams }: { searchParam
             </div>
           ) : (
             <div className="space-y-4">
+              {sp.enroll === "required" && (
+                <AdminNotice tone="info">
+                  La verificación en 2 pasos es obligatoria para usar el panel. Actívala abajo para
+                  continuar — te toma menos de un minuto.
+                </AdminNotice>
+              )}
               {sp.reconfig === "1" && (
                 <AdminNotice tone="info">
                   Desactivamos tu autenticador anterior. Escanea el código QR de abajo con tu nuevo

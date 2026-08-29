@@ -107,10 +107,14 @@ function webhookRequest(payload: unknown, secret: string = SECRET): Request {
 describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numérica", () => {
   const prevSecret = process.env.AVEONLINE_WEBHOOK_SECRET;
   const prevProvider = process.env.SHIPPING_PROVIDER;
+  const prevAllowQuery = process.env.AVEONLINE_ALLOW_QUERY_SECRET;
 
   beforeAll(() => {
     process.env.AVEONLINE_WEBHOOK_SECRET = SECRET;
     process.env.SHIPPING_PROVIDER = "aveonline";
+    // webhookRequest autentica por ?secret= → encender la vía query (D-1, default OFF)
+    // salvo en el test que valida explícitamente el flag apagado.
+    process.env.AVEONLINE_ALLOW_QUERY_SECRET = "true";
   });
 
   afterAll(async () => {
@@ -118,6 +122,8 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
     else process.env.AVEONLINE_WEBHOOK_SECRET = prevSecret;
     if (prevProvider === undefined) delete process.env.SHIPPING_PROVIDER;
     else process.env.SHIPPING_PROVIDER = prevProvider;
+    if (prevAllowQuery === undefined) delete process.env.AVEONLINE_ALLOW_QUERY_SECRET;
+    else process.env.AVEONLINE_ALLOW_QUERY_SECRET = prevAllowQuery;
 
     if (createdGuias.length > 0) {
       await prisma.webhookEvent
@@ -265,7 +271,8 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
     // externalId EXACTO que construirá el route (parse con el provider real).
     const provider = await getShippingProvider();
     const parsed = await provider.handleWebhook(JSON.stringify(payload), {});
-    const externalId = `${parsed.trackingNumber}-${parsed.status}-${parsed.timestamp.getTime()}`;
+    const tsKey = parsed.hasCarrierTimestamp ? String(parsed.timestamp.getTime()) : "no-ts";
+    const externalId = `${parsed.trackingNumber}-${parsed.status}-${tsKey}`;
     // La fila YA existe en DB (la creó el request "ganador"), pero ESTE request la
     // pierde en findUnique (mock de UNA llamada) → su create revienta contra el
     // unique real (source, externalId) de la DB.
@@ -285,5 +292,74 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
     });
     expect(order?.status).toBe("FULFILLING");
     spy.mockRestore();
+  });
+
+  it("payload SIN fecha → dedup estable 'no-ts': 2 entregas = 1 fila y 1 procesamiento (D-4)", async () => {
+    // Sin `fecha`/`timestamp` el parse cae a new Date() (distinto en cada entrega): si el
+    // externalId usara ese valor, cada reintento re-procesaría. Con "no-ts" colapsan.
+    const guia = freshGuia();
+    const orderId = await makeFulfillingOrder(String(guia));
+    const payload = {
+      status: "ok",
+      guia,
+      estado: [{ nombre_estado: "EN TRANSITO" }], // ← sin fecha
+    };
+
+    const res1 = await POST(webhookRequest(payload));
+    expect(res1.status).toBe(200);
+    expect(emailCalls.filter((e) => e.fn === "sendOrderShipped")).toHaveLength(1);
+    emailCalls.length = 0;
+
+    const res2 = await POST(webhookRequest(payload));
+    expect(res2.status).toBe(200);
+    await expect(res2.json()).resolves.toMatchObject({ note: "already processed" });
+    expect(emailCalls).toHaveLength(0); // no re-procesa ni re-envía email
+
+    const rows = await prisma.webhookEvent.count({
+      where: { source: "AVEONLINE", externalId: `${guia}-IN_TRANSIT-no-ts` },
+    });
+    expect(rows).toBe(1);
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true },
+    });
+    expect(order?.status).toBe("SHIPPED");
+  });
+
+  it("D-1: con AVEONLINE_ALLOW_QUERY_SECRET ausente, ?secret= NO autentica (401) y el header sí", async () => {
+    delete process.env.AVEONLINE_ALLOW_QUERY_SECRET; // default OFF
+    try {
+      const guia = freshGuia();
+      const orderId = await makeFulfillingOrder(String(guia));
+      const payload = {
+        status: "ok",
+        guia,
+        estado: [{ nombre_estado: "EN TRANSITO", fecha: "2026-07-11 10:00:00" }],
+      };
+
+      const byQuery = await POST(webhookRequest(payload)); // auth por ?secret=…
+      expect(byQuery.status).toBe(401);
+      let order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { status: true },
+      });
+      expect(order?.status).toBe("FULFILLING"); // intacta
+
+      const byHeader = await POST(
+        new Request("http://localhost/api/webhooks/aveonline", {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-aveonline-secret": SECRET },
+          body: JSON.stringify(payload),
+        }),
+      );
+      expect(byHeader.status).toBe(200);
+      order = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { status: true },
+      });
+      expect(order?.status).toBe("SHIPPED");
+    } finally {
+      process.env.AVEONLINE_ALLOW_QUERY_SECRET = "true";
+    }
   });
 });

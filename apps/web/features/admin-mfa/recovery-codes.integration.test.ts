@@ -4,12 +4,14 @@
  * Módulo DB-coupled (importa `prisma` de @/lib/db, vía @lucams/db). Foco
  * (Lucy 2026-06-27, módulo recién escrito):
  *   - generateRecoveryCodes: crea exactamente 10, devuelve los códigos en CLARO
- *     y persiste SOLO el hash sha256 (nunca el texto plano). Regenerar borra los
+ *     y persiste SOLO el hash (HMAC-SHA256 con pepper CSRF_SECRET desde B-5,
+ *     auditoría 2026-08-24 — nunca el texto plano). Regenerar borra los
  *     anteriores (incluidos los ya usados).
  *   - countUnusedRecoveryCodes: cuenta solo los que tienen usedAt = null.
  *   - consumeRecoveryCode: un solo uso (segunda vez con el mismo código falla),
  *     código inexistente falla, normalización de formato (mayúsculas, guiones,
- *     espacios) acepta variaciones equivalentes, aislamiento por adminUserId.
+ *     espacios) acepta variaciones equivalentes, aislamiento por adminUserId,
+ *     y fallback legacy (hashes sha256 planos emitidos antes de B-5).
  *
  * Requiere DATABASE_URL (corre vía `dotenv -e .env.local -- vitest`). Sin ella
  * se saltan (skipIf) para no romper CI sin DB.
@@ -19,7 +21,7 @@
  * (los AdminRecoveryCode caen por onDelete: Cascade) — no se toca data real.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import {
@@ -34,11 +36,22 @@ const hasDb = Boolean(process.env.DATABASE_URL);
 // supabaseUserId → la limpieza borra exactamente lo que creamos.
 const RUN = `mfaitest_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
 
+function normalize(code: string): string {
+  return code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
 // Replica de la función de hash interna del módulo (no exportada) para verificar
-// que lo persistido es realmente el sha256 del código normalizado y NO el claro.
+// que lo persistido es realmente el HMAC-SHA256 del código normalizado y NO el claro.
 function expectedHash(code: string): string {
-  const normalized = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return createHash("sha256").update(normalized).digest("hex");
+  return createHmac("sha256", process.env.CSRF_SECRET ?? "")
+    .update(normalize(code))
+    .digest("hex");
+}
+
+// Hash pre-B-5 (sha256 plano sin pepper): los códigos emitidos antes de la
+// migración deben seguir consumibles (fallback legacy en consumeRecoveryCode).
+function legacyHash(code: string): string {
+  return createHash("sha256").update(normalize(code)).digest("hex");
 }
 
 // Crea un AdminUser efímero y devuelve su id. Cada uno con identificadores únicos
@@ -100,16 +113,17 @@ describe.skipIf(!hasDb)(
         expect(unused).toBe(10);
       });
 
-      it("cada código tiene el formato XXXXX-XXXXX (alfabeto sin 0/O/1/I/L)", async () => {
+      it("cada código tiene el formato XXXX-XXXX-XXXX-XXXX (alfabeto sin 0/O/1/I/L)", async () => {
         const adminId = await makeAdmin();
         const codes = await generateRecoveryCodes(adminId);
-        const re = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}-[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$/;
+        const re =
+          /^([ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}-){3}[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$/;
         for (const code of codes) {
           expect(code).toMatch(re);
         }
       });
 
-      it("SEGURIDAD: persiste solo el HASH sha256, nunca el código en claro", async () => {
+      it("SEGURIDAD (B-5): persiste solo el HASH HMAC-SHA256 con pepper, nunca el código en claro", async () => {
         const adminId = await makeAdmin();
         const codes = await generateRecoveryCodes(adminId);
 
@@ -122,11 +136,16 @@ describe.skipIf(!hasDb)(
         // Ningún valor almacenado coincide con un código en claro (ni con/sin guion).
         for (const code of codes) {
           expect(storedHashes).not.toContain(code);
-          expect(storedHashes).not.toContain(code.replace("-", ""));
+          expect(storedHashes).not.toContain(code.replaceAll("-", ""));
         }
         // Y cada código en claro tiene su hash correspondiente almacenado.
         for (const code of codes) {
           expect(storedHashes).toContain(expectedHash(code));
+        }
+        // B-5: el hash almacenado NO es el sha256 plano de antes (el pepper aplica).
+        // (Si CSRF_SECRET está vacía en el ambiente, HMAC("") ≠ sha256 plano igualmente.)
+        for (const code of codes) {
+          expect(storedHashes).not.toContain(legacyHash(code));
         }
         // Los hashes son hex de 64 chars (sha256).
         for (const h of storedHashes) {
@@ -288,18 +307,18 @@ describe.skipIf(!hasDb)(
         expect(await countUnusedRecoveryCodes(adminId)).toBe(10);
       });
 
-      it("acepta el código con normalización: minúsculas y sin guion son equivalentes", async () => {
+      it("acepta el código con normalización: minúsculas y sin guiones son equivalentes", async () => {
         const adminId = await makeAdmin();
         const codes = await generateRecoveryCodes(adminId);
-        // El mismo código en minúsculas y sin el separador debe validar (normalize).
-        const messy = codes[0].toLowerCase().replace("-", "");
+        // El mismo código en minúsculas y sin los separadores debe validar (normalize).
+        const messy = codes[0].toLowerCase().replaceAll("-", "");
         expect(await consumeRecoveryCode(adminId, messy)).toBe(true);
       });
 
       it("acepta el código con espacios y separadores extra (se normalizan)", async () => {
         const adminId = await makeAdmin();
         const codes = await generateRecoveryCodes(adminId);
-        const raw = codes[0].replace("-", "");
+        const raw = codes[0].replaceAll("-", "");
         const messy = ` ${raw.slice(0, 5)} . ${raw.slice(5)} `;
         expect(await consumeRecoveryCode(adminId, messy)).toBe(true);
       });
@@ -319,6 +338,24 @@ describe.skipIf(!hasDb)(
 
       it("devuelve false para un adminUserId que no existe (sin lanzar)", async () => {
         expect(await consumeRecoveryCode("ckxxxxxxxxxxxxxxxxxxxxxxx", "ABCDE-FGHJK")).toBe(false);
+      });
+
+      it("B-5: fallback legacy — un código emitido con sha256 plano (pre-migración) sigue consumible", async () => {
+        const adminId = await makeAdmin();
+        const legacyCode = "VIEJO-CODE-1234";
+        // Fila como las que existían antes de B-5: hash sha256 plano, sin pepper.
+        await prisma.adminRecoveryCode.create({
+          data: { adminUserId: adminId, codeHash: legacyHash(legacyCode) },
+        });
+
+        expect(await consumeRecoveryCode(adminId, legacyCode)).toBe(true);
+        // Un solo uso también por el camino legacy (consumo atómico updateMany).
+        expect(await consumeRecoveryCode(adminId, legacyCode)).toBe(false);
+        const row = await prisma.adminRecoveryCode.findFirst({
+          where: { adminUserId: adminId, codeHash: legacyHash(legacyCode) },
+          select: { usedAt: true },
+        });
+        expect(row?.usedAt).toBeInstanceOf(Date);
       });
 
       it("consumir el código N no afecta a los demás (solo se marca el correcto)", async () => {

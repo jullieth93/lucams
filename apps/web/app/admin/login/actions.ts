@@ -25,7 +25,11 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { ADMIN_ACTIVITY_COOKIE, adminActivityCookieOptions } from "@/lib/admin-activity";
+import {
+  ADMIN_ACTIVITY_COOKIE,
+  adminActivityCookieOptions,
+  sealAdminActivityMark,
+} from "@/lib/admin-activity";
 import { adminHomePath } from "@/lib/admin-rbac";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -128,12 +132,17 @@ export async function adminLoginAction(
     adminId: admin.id,
     role: admin.role,
   });
-  // Sella la marca de actividad al autenticarse: así la primera request admin ya
-  // llega con marca fresca (no la borra el proxy), y una request admin autenticada
-  // SIN marca es inequívocamente manipulada/vencida → el idle-timeout la cierra
+  // Sella la marca de actividad al autenticarse (firmada con HMAC — el proxy
+  // rechaza marcas sin firma válida): así la primera request admin ya llega con
+  // marca fresca (no la borra el proxy), y una request admin autenticada SIN
+  // marca es inequívocamente manipulada/vencida → el idle-timeout la cierra
   // (cierra el hueco "marca ausente = primera visita"). Mismo mecanismo que las
   // cookies sb-*: se propaga a la request de destino tras el redirect.
-  (await cookies()).set(ADMIN_ACTIVITY_COOKIE, String(Date.now()), adminActivityCookieOptions());
+  (await cookies()).set(
+    ADMIN_ACTIVITY_COOKIE,
+    sealAdminActivityMark(Date.now()),
+    adminActivityCookieOptions(),
+  );
   // Destino post-login = home del rol: CMS_EDITOR no tiene acceso a /admin/dashboard
   // (solo contenido), así que aterriza en /admin/contenido (ver adminHomePath).
   redirect(adminHomePath(admin.role));

@@ -61,7 +61,7 @@ export function MfaChallenge({ factorId }: { factorId: string }) {
             name="code"
             autoFocus
             autoComplete="off"
-            placeholder="XXXXX-XXXXX"
+            placeholder="XXXX-XXXX-XXXX-XXXX"
             className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 h-12 w-full rounded-md border bg-white px-3 text-center font-mono text-lg tracking-widest uppercase focus:ring-2 focus:outline-none"
           />
           <p className="text-brand-muted mt-1 text-xs">

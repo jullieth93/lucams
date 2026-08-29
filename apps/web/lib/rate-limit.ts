@@ -25,6 +25,7 @@
 
 import "server-only";
 import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
 
 export type RateLimitResult = {
   allowed: boolean;
@@ -48,7 +49,10 @@ export async function rateLimit(
   const row = rows[0];
   if (!row) {
     // No debería pasar: la función SIEMPRE devuelve una fila. Si pasa,
-    // somos permisivos por defecto (fail-open) y se loguea aguas arriba.
+    // somos permisivos por defecto (fail-open). Se loguea para que el
+    // fail-open sea detectable (auditoría 2026-08-24, C-8) — sin este
+    // warn el bucket quedaría sin protección de forma silenciosa.
+    logger.warn({ event: "rate_limit.empty_row", key });
     return {
       allowed: true,
       count: 0,

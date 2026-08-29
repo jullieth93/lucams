@@ -226,7 +226,8 @@ Sin los secretos, los jobs quedan agendados pero fallan en runtime hasta setearl
 
 > **Tercer secreto `cron_vercel_bypass` (migración 023, 2026-08-01):** los previews de Vercel tienen
 > Deployment Protection (SSO) — sin bypass, los jobs HTTP reciben la página de login de Vercel (200
-> HTML) en vez de ejecutar el endpoint, y `/api/health/crons` reporta `lastRunAt: null` en todos.
+> HTML) en vez de ejecutar el endpoint, y `/api/health/crons` reporta `lastRunAt: null` en todos
+> (el detalle de jobs requiere `x-cron-secret` desde la auditoría 2026-08-24, C-4).
 > La migración 023 re-agenda los 8 jobs añadiendo el header `x-vercel-protection-bypass` SOLO si el
 > secreto existe en el Vault. En PRD (dominio público) no se crea → headers sin cambios. En STG ya
 > está creado (verificado 2026-08-01: `net._http_response` devuelve JSON real de los endpoints).

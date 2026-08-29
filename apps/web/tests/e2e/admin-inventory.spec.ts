@@ -2,6 +2,7 @@ import { test, type Page } from "@playwright/test";
 import "../setup-env";
 import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
+import { completeMfaChallengeIfNeeded, enrollTotpFactor } from "./_helpers/mfa";
 
 /*
  * Inventario REAL de rutas del panel admin (para la habilitación total, Lucy 2026-07-26).
@@ -24,6 +25,7 @@ const ADMIN_EMAIL = `${RUN}@example.com`;
 const ADMIN_PASSWORD = "Inv-Admin-918273650";
 let supabaseUserId = "";
 let adminId = "";
+let totpSecret = "";
 
 const ROUTES = [
   "/admin/dashboard",
@@ -79,6 +81,8 @@ test.beforeAll(async () => {
     data: { supabaseUserId, email: ADMIN_EMAIL, role: "SUPERADMIN", isActive: true },
   });
   adminId = admin.id;
+  // MFA obligatorio (B-1): sin factor TOTP el admin efímero no pasa del enrolamiento.
+  totpSecret = await enrollTotpFactor(ADMIN_EMAIL, ADMIN_PASSWORD);
 });
 
 test.afterAll(async () => {
@@ -105,6 +109,8 @@ async function adminLogin(page: Page) {
       .first()
       .waitFor({ state: "detached", timeout: 30_000 })
       .catch(() => {});
+    // Tras el login con password viene el reto TOTP (MFA obligatorio, B-1).
+    await completeMfaChallengeIfNeeded(page, totpSecret);
   }
   await page.waitForTimeout(2000);
 }

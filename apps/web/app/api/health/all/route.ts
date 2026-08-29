@@ -5,15 +5,20 @@
  * 200 si TODOS los servicios críticos están OK (db + storage).
  * 503 si alguno crítico falla. Resend, Aveonline y Wompi son "warn"/"fail"
  * NO bloqueantes: se reportan en `checks` pero no tumban el status global.
- * Incluye `version` y `environment` (mismos campos que /api/health) para que
- * el monitor externo sepa QUÉ deploy está mirando.
+ * `version` y `environment` solo se incluyen si el request trae el header
+ * `x-cron-secret` válido (auditoría 2026-08-24, C-3): el SHA exacto del deploy
+ * identifica el commit en el repo público — fingerprinting de versión. El
+ * monitor externo que quiera saber QUÉ deploy está mirando debe enviar el secreto
+ * (UptimeRobot/BetterStack aceptan headers custom).
  *
  * Útil para uptime monitors externos (BetterStack, UptimeRobot) que
  * solo aceptan un endpoint para verificar.
  */
 
+import { timingSafeEqual } from "node:crypto";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
+import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
 import { getTrustedSelfBaseUrl } from "@/lib/origin";
 
@@ -88,10 +93,19 @@ async function probe(name: string, path: string, baseUrl: string): Promise<Check
   }
 }
 
+// Mismo chequeo que las rutas /api/cron/* (comparación en tiempo constante contra CRON_SECRET).
+function secretOk(provided: string | null): boolean {
+  const expected = process.env.CRON_SECRET?.trim();
+  if (!expected || !provided) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export async function GET(req: Request): Promise<Response> {
   // Rate-limit por IP (auditoría 2026-07-13): endpoint público que dispara 5 sub-probes →
   // sin límite era amplificable. 30/min es holgado para un uptime monitor (típico cada 30-60s).
-  const { allowed } = await rateLimit(`health_all:${getClientIp(req.headers)}`, 30, 60);
+  const { allowed } = await rateLimit(ipKey("health_all", getClientIp(req.headers)), 30, 60);
   if (!allowed) {
     return new Response(JSON.stringify({ status: "rate_limited" }), {
       status: 429,
@@ -116,14 +130,19 @@ export async function GET(req: Request): Promise<Response> {
   const critical = [db, storage];
   const anyCriticalDown = critical.some((c) => c.status === "fail");
 
-  const body = {
+  const body: Record<string, unknown> = {
     status: anyCriticalDown ? "degraded" : "ok",
     totalLatencyMs: Date.now() - start,
     timestamp: new Date().toISOString(),
-    version: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_GIT_SHA ?? "dev",
-    environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "unknown",
     checks: [db, storage, resend, aveonline, wompi],
   };
+
+  // Detalle de deploy solo con secreto (C-3): el SHA completo identifica el commit exacto
+  // en el repo público. Con el header `x-cron-secret` el monitor sí puede conocerlo.
+  if (secretOk(req.headers.get("x-cron-secret"))) {
+    body.version = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_GIT_SHA ?? "dev";
+    body.environment = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "unknown";
+  }
 
   if (anyCriticalDown) {
     logger.warn({ event: "health.all.degraded", checks: body.checks });

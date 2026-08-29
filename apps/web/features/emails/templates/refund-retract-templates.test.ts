@@ -364,13 +364,14 @@ describe("reviewRequestEmail", () => {
     const r = await reviewRequestEmail({ ...base, publicTrackingToken: "REVTOK" });
     expect(r.html).toContain(`${SITE_URL}/pedido/REVTOK`);
     expect(r.text).toContain(`${SITE_URL}/pedido/REVTOK`);
-    expect(r.html).not.toContain("/mi-cuenta/pedidos");
+    expect(r.html).not.toContain("/rastrear");
   });
 
-  it("#10 sin token el CTA cae a /mi-cuenta/pedidos (cliente con cuenta)", async () => {
+  it("#10 sin token el CTA cae a /rastrear (fallback sin login, F-11)", async () => {
     const r = await reviewRequestEmail(base);
-    expect(r.html).toContain(`${SITE_URL}/mi-cuenta/pedidos`);
+    expect(r.html).toContain(`${SITE_URL}/rastrear`);
     expect(r.html).not.toContain("/pedido/");
+    expect(r.html).not.toContain("/mi-cuenta/pedidos");
   });
 
   it("HTML lista cada producto con link a su ficha (encodeURIComponent del slug)", async () => {

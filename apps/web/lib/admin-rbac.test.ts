@@ -2,6 +2,10 @@
  * Tests del RBAC del admin por rol (lógica pura, client-safe).
  * Cubre la matriz completa rol × ruta de canAccessAdminPath y el filtrado
  * de menú de filterNavByRole. Ver fuente: lib/admin-rbac.ts + SECURITY.md §113-118.
+ *
+ * Auditoría 2026-08-24 · B-1: /admin/seguridad quedó ABIERTA a los cuatro roles
+ * (MFA obligatorio para todo admin → la pantalla de enrolamiento/autoservicio
+ * no puede vivir tras el deny-by-default).
  */
 import { describe, expect, it } from "vitest";
 import type { AdminRole } from "@lucams/db";
@@ -20,6 +24,8 @@ const CATALOG_PATHS = [
 const SHARED_PATHS = ["/admin/dashboard", "/admin/pedidos", "/admin/garantias", "/admin/retractos"];
 // Contenido del sitio: SUPERADMIN + CMS_EDITOR (set CONTENT).
 const CONTENT_PATHS = ["/admin/contenido", "/admin/email-templates"];
+// Autoservicio de cuenta (MFA obligatorio, B-1): los cuatro roles.
+const ACCOUNT_PATHS = ["/admin/seguridad"];
 // Rutas NO listadas → deny-by-default (solo SUPERADMIN).
 const SUPERADMIN_ONLY_PATHS = [
   "/admin/finanzas",
@@ -27,7 +33,6 @@ const SUPERADMIN_ONLY_PATHS = [
   "/admin/usuarios",
   "/admin/integraciones",
   "/admin/auditoria",
-  "/admin/seguridad",
   "/admin/mayorista",
   "/admin/materiales",
   "/admin/costos",
@@ -44,6 +49,7 @@ describe("canAccessAdminPath — SUPERADMIN", () => {
       ...SHARED_PATHS,
       ...CATALOG_PATHS,
       ...CONTENT_PATHS,
+      ...ACCOUNT_PATHS,
       ...SUPERADMIN_ONLY_PATHS,
     ]) {
       expect(canAccessAdminPath("SUPERADMIN", p)).toBe(true);
@@ -71,10 +77,15 @@ describe("canAccessAdminPath — MANAGER", () => {
     }
   });
 
-  it("NIEGA finanzas, usuarios y seguridad (deny-by-default)", () => {
+  it("permite /admin/seguridad (autoservicio de cuenta — MFA obligatorio, B-1)", () => {
+    for (const p of ACCOUNT_PATHS) {
+      expect(canAccessAdminPath("MANAGER", p)).toBe(true);
+    }
+  });
+
+  it("NIEGA finanzas y usuarios (deny-by-default)", () => {
     expect(canAccessAdminPath("MANAGER", "/admin/finanzas")).toBe(false);
     expect(canAccessAdminPath("MANAGER", "/admin/usuarios")).toBe(false);
-    expect(canAccessAdminPath("MANAGER", "/admin/seguridad")).toBe(false);
   });
 
   it("NIEGA contenido del sitio (set CONTENT: solo SUPERADMIN/CMS_EDITOR)", () => {
@@ -97,13 +108,19 @@ describe("canAccessAdminPath — FULFILLMENT", () => {
     }
   });
 
+  it("permite /admin/seguridad (autoservicio de cuenta — MFA obligatorio, B-1)", () => {
+    for (const p of ACCOUNT_PATHS) {
+      expect(canAccessAdminPath("FULFILLMENT", p)).toBe(true);
+    }
+  });
+
   it("NIEGA todo el catálogo (incluye reseñas y clientes)", () => {
     for (const p of CATALOG_PATHS) {
       expect(canAccessAdminPath("FULFILLMENT", p)).toBe(false);
     }
   });
 
-  it("NIEGA toda ruta no listada (finanzas/usuarios/seguridad/etc.)", () => {
+  it("NIEGA toda ruta no listada (finanzas/usuarios/etc.)", () => {
     for (const p of SUPERADMIN_ONLY_PATHS) {
       expect(canAccessAdminPath("FULFILLMENT", p)).toBe(false);
     }
@@ -128,6 +145,12 @@ describe("canAccessAdminPath — CMS_EDITOR", () => {
     expect(canAccessAdminPath("CMS_EDITOR", "/admin/contenido/paginas/emails")).toBe(true);
     expect(canAccessAdminPath("CMS_EDITOR", "/admin/contenido/campos/abc123")).toBe(true);
     expect(canAccessAdminPath("CMS_EDITOR", "/admin/contenido?q=footer")).toBe(true);
+  });
+
+  it("permite /admin/seguridad (autoservicio de cuenta — MFA obligatorio, B-1)", () => {
+    for (const p of ACCOUNT_PATHS) {
+      expect(canAccessAdminPath("CMS_EDITOR", p)).toBe(true);
+    }
   });
 
   it("NIEGA el dashboard (su home es /admin/contenido — ver adminHomePath)", () => {
@@ -181,7 +204,8 @@ describe("canAccessAdminPath — matriz completa rol × ruta representativa", ()
     ["/admin/email-templates", true, false, false, true],
     ["/admin/finanzas", true, false, false, false],
     ["/admin/usuarios", true, false, false, false],
-    ["/admin/seguridad", true, false, false, false],
+    // B-1: autoservicio de cuenta (MFA obligatorio) → los cuatro roles.
+    ["/admin/seguridad", true, true, true, true],
     ["/admin/cupones", true, false, false, false],
     ["/admin/auditoria", true, false, false, false],
   ];
@@ -222,6 +246,8 @@ describe("canAccessAdminPath — bordes y entradas que NO deben coincidir", () =
     expect(canAccessAdminPath("MANAGER", "/admin/pedidos-archivados")).toBe(false);
     expect(canAccessAdminPath("FULFILLMENT", "/admin/garantias2")).toBe(false);
     expect(canAccessAdminPath("MANAGER", "/admin/productosX")).toBe(false);
+    // '/admin/seguridadX' NO hereda el acceso abierto de '/admin/seguridad'.
+    expect(canAccessAdminPath("FULFILLMENT", "/admin/seguridadX")).toBe(false);
   });
 
   it("NIEGA prefijos cortados o ascendentes para roles no-SUPERADMIN", () => {
@@ -272,7 +298,8 @@ function buildNav(): NavGroup[] {
         { label: "Reseñas", href: "/admin/resenas" },
       ],
     },
-    // Grupo 100% superadmin: desaparece para MANAGER y FULFILLMENT.
+    // Grupo casi todo superadmin: desde B-1 Seguridad es autoservicio de
+    // cuenta (todos los roles), así que el grupo sobrevive con ese solo item.
     {
       label: "Sistema",
       items: [
@@ -296,10 +323,10 @@ describe("filterNavByRole — SUPERADMIN", () => {
 });
 
 describe("filterNavByRole — MANAGER", () => {
-  it("conserva dashboard, operación (con catálogo), catálogo; descarta Sistema y Auditoría", () => {
+  it("conserva dashboard, operación, catálogo y Sistema (solo Seguridad); descarta Auditoría", () => {
     const out = filterNavByRole(buildNav(), "MANAGER");
     const labels = out.map((g) => g.label);
-    expect(labels).toEqual(["Dashboard", "Operación", "Catálogo"]);
+    expect(labels).toEqual(["Dashboard", "Operación", "Catálogo", "Sistema"]);
   });
 
   it("mantiene los 4 items de Operación (todos visibles para MANAGER)", () => {
@@ -311,6 +338,12 @@ describe("filterNavByRole — MANAGER", () => {
       "/admin/productos",
       "/admin/clientes",
     ]);
+  });
+
+  it("Sistema queda solo con Seguridad (finanzas/usuarios son solo-SUPERADMIN)", () => {
+    const out = filterNavByRole(buildNav(), "MANAGER");
+    const sistema = out.find((g) => g.label === "Sistema");
+    expect(sistema?.items?.map((i) => i.href)).toEqual(["/admin/seguridad"]);
   });
 
   it("no muta el array ni los grupos originales (clona el grupo filtrado)", () => {
@@ -327,9 +360,9 @@ describe("filterNavByRole — MANAGER", () => {
 });
 
 describe("filterNavByRole — FULFILLMENT", () => {
-  it("conserva solo dashboard y operación (con pedidos+garantías), descarta lo demás", () => {
+  it("conserva dashboard, operación (pedidos+garantías) y Sistema (solo Seguridad)", () => {
     const out = filterNavByRole(buildNav(), "FULFILLMENT");
-    expect(out.map((g) => g.label)).toEqual(["Dashboard", "Operación"]);
+    expect(out.map((g) => g.label)).toEqual(["Dashboard", "Operación", "Sistema"]);
   });
 
   it("filtra Operación a SOLO pedidos y garantías (sin catálogo)", () => {
@@ -343,9 +376,10 @@ describe("filterNavByRole — FULFILLMENT", () => {
     expect(out.find((g) => g.label === "Catálogo")).toBeUndefined();
   });
 
-  it("descarta el grupo Sistema completo (seguridad/finanzas/usuarios)", () => {
+  it("Sistema queda solo con Seguridad (autoservicio MFA, B-1)", () => {
     const out = filterNavByRole(buildNav(), "FULFILLMENT");
-    expect(out.find((g) => g.label === "Sistema")).toBeUndefined();
+    const sistema = out.find((g) => g.label === "Sistema");
+    expect(sistema?.items?.map((i) => i.href)).toEqual(["/admin/seguridad"]);
   });
 });
 
@@ -386,17 +420,20 @@ describe("filterNavByRole — CMS_EDITOR", () => {
     expect(contenido?.items?.map((i) => i.href)).toEqual(["/admin/contenido"]);
   });
 
-  it("Configuración queda solo con 'Ajustes del sitio' y 'Plantillas de correo'", () => {
+  it("Configuración queda con 'Ajustes del sitio', 'Seguridad' (B-1) y 'Plantillas de correo'", () => {
     const out = filterNavByRole(buildNavConContenido(), "CMS_EDITOR");
     const config = out.find((g) => g.label === "Configuración");
     expect(config?.items?.map((i) => i.href)).toEqual([
       "/admin/contenido/paginas/global",
+      "/admin/seguridad",
       "/admin/email-templates",
     ]);
   });
 
-  it("con el nav genérico (sin rutas de contenido) no ve NADA", () => {
-    expect(filterNavByRole(buildNav(), "CMS_EDITOR")).toEqual([]);
+  it("con el nav genérico (sin rutas de contenido) solo ve Sistema > Seguridad (B-1)", () => {
+    const out = filterNavByRole(buildNav(), "CMS_EDITOR");
+    expect(out.map((g) => g.label)).toEqual(["Sistema"]);
+    expect(out[0].items?.map((i) => i.href)).toEqual(["/admin/seguridad"]);
   });
 });
 
@@ -457,8 +494,8 @@ describe("integridad de tipos (sanity de roles del enum AdminRole)", () => {
     for (const role of roles) {
       // pedidos: accesible solo para los tres roles operativos.
       expect(canAccessAdminPath(role, "/admin/pedidos")).toBe(role !== "CMS_EDITOR");
-      // seguridad: solo SUPERADMIN.
-      expect(canAccessAdminPath(role, "/admin/seguridad")).toBe(role === "SUPERADMIN");
+      // seguridad: TODOS los roles (autoservicio de cuenta — MFA obligatorio, B-1).
+      expect(canAccessAdminPath(role, "/admin/seguridad")).toBe(true);
       // contenido: SUPERADMIN y CMS_EDITOR (set CONTENT).
       expect(canAccessAdminPath(role, "/admin/contenido")).toBe(
         role === "SUPERADMIN" || role === "CMS_EDITOR",

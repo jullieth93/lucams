@@ -2,9 +2,11 @@
  * Webhook Aveonline — recibe actualizaciones de estado de guías.
  *
  * Aveonline NO documenta HMAC. Mitigación (ADR-039 docs/INTEGRATIONS_AVEONLINE §6.2):
- *   1. Credencial compartida — cualquiera de: `?secret=<AVEONLINE_WEBHOOK_SECRET>`,
- *      header `x-aveonline-secret`, o `payload.token` (el Token del registro en el
- *      panel Mis integraciones, re-enviado en cada notificación).
+ *   1. Credencial compartida — header `x-aveonline-secret` o `payload.token` (el Token
+ *      del registro en el panel Mis integraciones, re-enviado en cada notificación).
+ *      La vía `?secret=<AVEONLINE_WEBHOOK_SECRET>` solo se acepta durante la transición
+ *      con AVEONLINE_ALLOW_QUERY_SECRET=true (default OFF — el secreto por query-string
+ *      queda en access logs de CDN/proxy y en el Referer; auditoría D-1).
  *   2. trackingNumber debe existir en DB (la saga lo persistió al crear guía).
  *   3. Estados monotónicos: NO retroceder de DELIVERED → SHIPPED, etc.
  *
@@ -17,6 +19,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { secureEquals } from "@/lib/timing-safe";
@@ -40,11 +43,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "bad request" }, { status: 400 });
   }
 
-  // 1) Validar credencial compartida (3 vías aceptadas):
-  //    - ?secret=<AVEONLINE_WEBHOOK_SECRET> (URL registrada con query)
+  // 1) Validar credencial compartida (3 vías):
   //    - header x-aveonline-secret
   //    - payload.token (registro desde el panel Mis integraciones: el Token que
   //      Lucy pega ahí se re-envía en cada notificación — doc webhookEstadosGuias)
+  //    - ?secret=<AVEONLINE_WEBHOOK_SECRET> — SOLO si AVEONLINE_ALLOW_QUERY_SECRET=true
+  //      (transición; el secreto por query viaja en logs de infraestructura, D-1)
   const expected = process.env.AVEONLINE_WEBHOOK_SECRET?.trim();
   if (!expected) {
     logger.warn({ event: "webhook.aveonline.no_secret_configured" });
@@ -67,7 +71,10 @@ export async function POST(req: Request) {
     })();
     // Comparación en tiempo constante (ADR-062 P1): `!==` filtraba bytes correctos por timing.
     const okH = providedH != null && secureEquals(providedH, expected);
-    const okQ = providedQ != null && secureEquals(providedQ, expected);
+    // D-1: query-string secret only during the panel migration, explicit opt-in (default
+    // OFF). Once Aveonline sends the header/payload token, drop this path entirely.
+    const allowQuerySecret = process.env.AVEONLINE_ALLOW_QUERY_SECRET === "true";
+    const okQ = allowQuerySecret && providedQ != null && secureEquals(providedQ, expected);
     const okT = providedT != null && secureEquals(providedT, expected);
     if (!okH && !okQ && !okT) {
       logger.warn({
@@ -95,7 +102,8 @@ export async function POST(req: Request) {
     logger.error({
       event: "webhook.aveonline.parse_fail",
       err: err instanceof Error ? err.message : String(err),
-      bodyHead: rawBody.slice(0, 200),
+      // D-5: no raw body excerpt in logs (possible PII) — truncated hash only.
+      bodyHash: createHash("sha256").update(rawBody).digest("hex").slice(0, 16),
     });
     return NextResponse.json({ error: "parse failed" }, { status: 400 });
   }
@@ -105,8 +113,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, note: "no tracking number in payload" });
   }
 
-  // 3) Idempotency: dedup por trackingNumber + status + timestamp.
-  const externalId = `${event.trackingNumber}-${event.status}-${event.timestamp.getTime()}`;
+  // 3) Idempotency: dedup por trackingNumber + status + timestamp. Si el payload no trae
+  // fecha del carrier, el parse cae a `new Date()` (no determinista — cada entrega generaría
+  // un externalId distinto y el dedup no dedup nada, D-4): se usa la clave estable "no-ts".
+  const tsKey = event.hasCarrierTimestamp ? String(event.timestamp.getTime()) : "no-ts";
+  const externalId = `${event.trackingNumber}-${event.status}-${tsKey}`;
   const existing = await prisma.webhookEvent.findUnique({
     where: { source_externalId: { source: "AVEONLINE", externalId } },
   });

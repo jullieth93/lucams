@@ -26,13 +26,17 @@ export async function orderShippedEmail(data: OrderShippedData) {
   // Rastreo (feedback Lucy 2026-08-11): el botón principal va a NUESTRA vista
   // /pedido/<token> (guía + estados en vivo vía webhook). Antes apuntaba al
   // PDF de la guía y el cliente "rastreaba" descargando una etiqueta.
+  // Nota F-11 (auditoría 2026-08-24): el token ya no se persiste en claro, así
+  // que los correos post-pago llegan sin token → fallback /rastrear (número de
+  // pedido + correo; sirve para invitados y clientes con cuenta).
   const orderPageUrl = data.publicTrackingToken
     ? `${siteUrl}/pedido/${data.publicTrackingToken}`
-    : null;
+    : `${siteUrl}/rastrear`;
   const carrierPage = carrierTrackingPageUrl(data.carrier);
 
   const trackingBlock = `
-${orderPageUrl ? ctaButton(orderPageUrl, "Rastrear mi pedido →") : `<p>Número de guía: <code style="background:#f5f0eb;padding:2px 6px;border-radius:4px;">${escapeHtml(data.trackingNumber)}</code></p>`}
+${ctaButton(orderPageUrl, "Rastrear mi pedido →")}
+${data.publicTrackingToken ? "" : `<p style="margin-top:6px;font-size:13px;color:#3D2E5C;opacity:0.75;">En «Rastrear mi pedido» te pedimos el número de pedido (${escapeHtml(data.orderNumber)}) y tu correo. Número de guía: <code style="background:#f5f0eb;padding:2px 6px;border-radius:4px;">${escapeHtml(data.trackingNumber)}</code></p>`}
 <p style="margin-top:10px;font-size:13px;color:#3D2E5C;opacity:0.75;">${
     carrierPage
       ? `También la puedes rastrear en la web de la transportadora: <a href="${carrierPage}" style="color:#7C6AAD;">${escapeHtml(carrierPage.replace(/^https:\/\//, "").replace(/\/$/, ""))}</a> (digita la guía ${escapeHtml(data.trackingNumber)}).`

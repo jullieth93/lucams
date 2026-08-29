@@ -12,9 +12,11 @@ export type DesignRejectedData = {
   productName: string;
   reason: string;
   /**
-   * #10 — token de acceso público del pedido. Un pedido de INVITADO no tiene login → el link a
-   * /mi-cuenta/pedidos moriría en el muro de autenticación. Con token, apuntamos a la vista pública
-   * /pedido/<token>; sin token (cliente con cuenta), caemos al histórico de la cuenta.
+   * #10 — token de acceso público del pedido. Con token apuntamos a la vista pública
+   * /pedido/<token>; sin token caemos a /rastrear (número de pedido + correo — sirve para
+   * invitados y clientes con cuenta; /mi-cuenta/pedidos moriría en el muro de autenticación
+   * para invitados). Nota F-11 (auditoría 2026-08-24): el token ya no se persiste en claro,
+   * así que los correos post-pago llegan con null → fallback /rastrear.
    */
   publicTrackingToken: string | null;
 };
@@ -23,7 +25,7 @@ export async function designRejectedEmail(data: DesignRejectedData) {
   const siteUrl = await getSiteUrl();
   const orderUrl = data.publicTrackingToken
     ? `${siteUrl}/pedido/${data.publicTrackingToken}`
-    : `${siteUrl}/mi-cuenta/pedidos`;
+    : `${siteUrl}/rastrear`;
   const bodyHtml = `
 <h1 style="margin:0 0 12px 0;font-size:22px;color:#3D2E5C;">Necesitamos ajustar tu diseño</h1>
 <p>Hola ${escapeHtml(data.customerName)}, revisamos el diseño de <strong>${escapeHtml(data.productName)}</strong> de tu pedido <strong>${escapeHtml(data.orderNumber)}</strong> y no podemos imprimirlo tal como está.</p>

@@ -35,6 +35,7 @@ import {
 import { PdpPage } from "./pages/pdp";
 import { CarritoPage } from "./pages/carrito";
 import { CotizacionPage } from "./pages/cotizacion";
+import { enrollTotpFactor, loginAdminWithTotp } from "./_helpers/mfa";
 
 const EVIDENCE_DIR = resolve(__dirname, "../../tmp/e2e-homologacion");
 
@@ -221,6 +222,7 @@ test("§7.4 notificaciones: filtro QUOTE · deep link al detalle · marcar todas
     // (patrón homolog-admin-cruces ④).
     if (!quoteId) {
       product ??= await createEphemeralProduct(run);
+      const { createHash } = await import("node:crypto");
       const seeded = await db().quote.create({
         data: {
           number: `E2E-${run}`,
@@ -231,10 +233,8 @@ test("§7.4 notificaciones: filtro QUOTE · deep link al detalle · marcar todas
           department: "Cundinamarca",
           subtotal: 19_900,
           total: 19_900,
-          publicAccessToken: `${run
-            .replace(/[^a-z0-9]/g, "")
-            .padEnd(32, "0")
-            .slice(0, 32)}`,
+          // F-11 — solo el hash sha256 del token se persiste (NOT NULL + unique).
+          publicAccessTokenHash: createHash("sha256").update(`e2e-${run}`).digest("hex"),
           items: {
             create: [
               { productName: product.name, variantName: "Default", unitPrice: 19_900, quantity: 1 },
@@ -353,11 +353,22 @@ test("§7.6 observability: salud técnica carga + sección de crons + /api/healt
     await expect(adminPage.getByText(/algo salió mal/i)).toHaveCount(0);
     record("pagina-carga", true, "Salud técnica + Trabajos automáticos (crons) visibles");
 
-    // Contrato real del endpoint (route.ts:50): 200↔"ok", 503↔"degraded" —
+    // Contrato real del endpoint (route.ts): 200↔"ok", 503↔"degraded" —
     // el estado es del AMBIENTE (en LOCAL el stack recién levantado deja
     // heartbeats vencidos y el 503 es la verdad, no un fallo). Lo certificable:
     // el payload es FIEL a AlertState (cron:<job>.lastSentAt) en la DB.
-    const res = await request.get("/api/health/crons");
+    // Auditoría 2026-08-24 (C-4): el detalle (jobs/overdue/disabled) exige el
+    // header x-cron-secret; sin secreto la respuesta pública es MÍNIMA.
+    const pub = await request.get("/api/health/crons");
+    expect([200, 503], "200 ok ó 503 degraded (público)").toContain(pub.status());
+    const pubBody = (await pub.json()) as Record<string, unknown>;
+    expect(pubBody.status).toBe(pub.status() === 200 ? "ok" : "degraded");
+    expect(pubBody, "sin secreto no hay detalle de jobs").not.toHaveProperty("jobs");
+
+    const cronSecret = (process.env.CRON_SECRET ?? "").trim();
+    const res = await request.get("/api/health/crons", {
+      headers: { "x-cron-secret": cronSecret },
+    });
     expect([200, 503], "200 ok ó 503 degraded").toContain(res.status());
     const body = (await res.json()) as {
       status: string;
@@ -424,6 +435,9 @@ test("§7.7 RBAC: MANAGER no entra a finanzas (redirect) ni ve el nav item, sí 
       select: { id: true },
     });
     managerRowId = mgr.id;
+    // MFA obligatorio (B-1): el MANAGER efímero enrola TOTP, si no el login
+    // caería en /admin/seguridad?enroll=required en vez del dashboard.
+    const managerTotpSecret = await enrollTotpFactor(MANAGER_EMAIL, MANAGER_PASSWORD);
 
     const context = await browser.newContext({
       baseURL: baseUrlFor(E2E_ENV),
@@ -432,13 +446,13 @@ test("§7.7 RBAC: MANAGER no entra a finanzas (redirect) ni ve el nav item, sí 
     });
     const page = await context.newPage();
     try {
-      // Login por UI (MANAGER → home /admin/dashboard).
-      await page.goto("/admin/login", { waitUntil: "domcontentloaded" });
-      await page.locator('input[name="email"]').fill(MANAGER_EMAIL);
-      await page.locator('input[name="password"]').fill(MANAGER_PASSWORD);
-      await page.getByRole("button", { name: /iniciar sesión/i }).click();
-      await page.waitForURL(/\/admin\/dashboard/, { timeout: 30_000 });
-      record("manager-login", true, "login MANAGER → /admin/dashboard");
+      // Login por UI (MANAGER → reto TOTP → home /admin/dashboard).
+      await loginAdminWithTotp(page, {
+        email: MANAGER_EMAIL,
+        password: MANAGER_PASSWORD,
+        totpSecret: managerTotpSecret,
+      });
+      record("manager-login", true, "login MANAGER (con reto TOTP) → /admin/dashboard");
 
       // Módulo restringido (finanzas = SUPERADMIN only) → redirect al home del rol.
       await page.goto("/admin/finanzas", { waitUntil: "domcontentloaded" });

@@ -37,7 +37,14 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("@/lib/auth", () => ({ getCurrentAdmin: async () => state.session }));
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({
-    auth: { mfa: { getAuthenticatorAssuranceLevel: async () => ({ data: state.aal }) } },
+    auth: {
+      mfa: {
+        getAuthenticatorAssuranceLevel: async () => ({ data: state.aal }),
+        // El escenario del test es "MFA inscrito pero sin completar" → SÍ hay
+        // factor verificado (si no, el guard mandaría a enrolar, B-1).
+        listFactors: async () => ({ data: { all: [{ factor_type: "totp", status: "verified" }] } }),
+      },
+    },
   }),
 }));
 

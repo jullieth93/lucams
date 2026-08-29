@@ -148,7 +148,14 @@ describe.skipIf(!hasDb)("referrals/service — integración DB", { timeout: T },
         maxUsesPerCustomer: 1,
         isPublic: false,
       });
+      // F-10 — el código es `REF-` + 8 chars aleatorios (≥36 bits); ya NO lleva
+      // el segmento de 4 chars derivado del email del destinatario (formato
+      // viejo REF-XXXX-XXXX, 16 bits, predecible).
+      expect(c.code).toMatch(/^REF-[A-Z0-9_-]{8}$/);
+      expect(c.code).not.toMatch(/^REF-[A-Z0-9]{4}-[A-Z0-9]{4}$/);
     }
+    // Y los dos códigos son distintos entre sí (entropía real, no derivada).
+    expect(coupons[0].code).not.toBe(coupons[1].code);
 
     // Retry de la saga (idempotente): sigue habiendo solo 2 cupones.
     await issueReferralRewardsIfFirstPaidOrder(orderId);

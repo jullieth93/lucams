@@ -41,6 +41,7 @@ import {
   updateCoupon,
 } from "./service";
 import type { CouponCreateInput } from "./schemas";
+import { isCouponPerCustomerLimitError } from "./redemption";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 
@@ -498,6 +499,151 @@ describe.skipIf(!hasDb)("coupons/service — integración DB (PLAN_CATALOG_V2 3.
       expect(m.maxUses).toBeNull();
       expect(m.totalDiscounted).toBe(0);
       expect(m.uniqueCustomers).toBe(0);
+    });
+  });
+
+  // ───────────────────── G-5: trigger maxUsesPerCustomer (DB) ─────────────────
+  // Auditoría seguridad 2026-08-24: el tope por cliente era read-then-write sin
+  // constraint → dos checkouts pagados en paralelo con la misma identidad pasaban
+  // ambos. El trigger `coupon_usage_per_customer_limit` (advisory xact lock +
+  // count bajo el lock) lo enforcea en DB; el perdedor recibe 23505 → P2002 que
+  // isCouponPerCustomerLimitError mapea al rechazo amable.
+  describe("G-5 — trigger coupon_usage_per_customer_limit", () => {
+    const g5OrderIds: string[] = [];
+    const g5CouponIds: string[] = [];
+
+    const mkCoupon = async (code: string, maxUsesPerCustomer: number | null) => {
+      const c = await createCoupon(
+        baseInput({ code: `${RUN}-G5-${code}`, maxUsesPerCustomer }),
+        ACTOR,
+      );
+      g5CouponIds.push(c.id);
+      return c.id;
+    };
+    const mkOrder = async (tag: string) => {
+      const o = await prisma.order.create({
+        data: {
+          number: `LCM-${RUN}-G5-${tag}`.slice(0, 60),
+          email: `${RUN}-g5-${tag}@lucams.test`.toLowerCase(),
+          phone: "3000000000",
+          shippingAddress: {},
+          subtotal: 100_000,
+          shipping: 0,
+          total: 100_000,
+          paymentMethod: "WOMPI",
+          status: "PAID",
+        },
+        select: { id: true },
+      });
+      g5OrderIds.push(o.id);
+      return o.id;
+    };
+    const usage = (couponId: string, orderId: string, over: Record<string, unknown> = {}) => ({
+      couponId,
+      orderId,
+      amount: 10_000,
+      ...over,
+    });
+
+    afterAll(async () => {
+      // Orders primero: CouponUsage.orderId es onDelete:Cascade (cubre también
+      // los usages que SÍ entraron). Los cupones los borra el afterAll padre.
+      const safe = (p: Promise<unknown>) => p.catch(() => {});
+      await safe(prisma.order.deleteMany({ where: { id: { in: g5OrderIds } } }));
+      await safe(prisma.couponUsage.deleteMany({ where: { couponId: { in: g5CouponIds } } }));
+    });
+
+    it("bloquea el 2do uso del mismo email (tope 1) con P2002 mapeable", async () => {
+      const couponId = await mkCoupon("EMAIL1", 1);
+      const email = `${RUN}-g5-dup@lucams.test`.toLowerCase();
+      await prisma.couponUsage.create({ data: usage(couponId, await mkOrder("e1"), { email }) });
+      const err = await prisma.couponUsage
+        .create({ data: usage(couponId, await mkOrder("e2"), { email }) })
+        .then(() => null)
+        .catch((e: unknown) => e);
+      expect(isCouponPerCustomerLimitError(err)).toBe(true);
+      expect(await prisma.couponUsage.count({ where: { couponId } })).toBe(1);
+    });
+
+    it("el match de email es case-insensitive (misma persona, otra capitalización)", async () => {
+      const couponId = await mkCoupon("CASE", 1);
+      const email = `${RUN}-g5-case@lucams.test`.toLowerCase();
+      await prisma.couponUsage.create({ data: usage(couponId, await mkOrder("c1"), { email }) });
+      const err = await prisma.couponUsage
+        .create({
+          data: usage(couponId, await mkOrder("c2"), { email: email.toUpperCase() }),
+        })
+        .then(() => null)
+        .catch((e: unknown) => e);
+      expect(isCouponPerCustomerLimitError(err)).toBe(true);
+    });
+
+    it("bloquea por customerId aunque el email venga null", async () => {
+      const couponId = await mkCoupon("CID", 1);
+      const cust = await prisma.customer.create({
+        data: {
+          email: `${RUN}-g5-cid@lucams.test`,
+          supabaseUserId: `${RUN}-g5-cid-sub`,
+          referralCode: `${RUN}-G5CID`,
+        },
+        select: { id: true },
+      });
+      try {
+        await prisma.couponUsage.create({
+          data: usage(couponId, await mkOrder("k1"), { customerId: cust.id, email: null }),
+        });
+        const err = await prisma.couponUsage
+          .create({
+            data: usage(couponId, await mkOrder("k2"), { customerId: cust.id, email: null }),
+          })
+          .then(() => null)
+          .catch((e: unknown) => e);
+        expect(isCouponPerCustomerLimitError(err)).toBe(true);
+      } finally {
+        await prisma.customer.delete({ where: { id: cust.id } }).catch(() => {});
+      }
+    });
+
+    it("permite otro email distinto y respeta topes >1 (2 usos OK, el 3ro cae)", async () => {
+      const couponId = await mkCoupon("TWO", 2);
+      const email = `${RUN}-g5-two@lucams.test`.toLowerCase();
+      await prisma.couponUsage.create({ data: usage(couponId, await mkOrder("t1"), { email }) });
+      await prisma.couponUsage.create({
+        data: usage(couponId, await mkOrder("t2"), { email }), // 2do uso: entra
+      });
+      // Email distinto del mismo cupón: identidad nueva, no cuenta.
+      await prisma.couponUsage.create({
+        data: usage(couponId, await mkOrder("t3"), { email: `${RUN}-g5-other@lucams.test` }),
+      });
+      const err = await prisma.couponUsage
+        .create({ data: usage(couponId, await mkOrder("t4"), { email }) })
+        .then(() => null)
+        .catch((e: unknown) => e);
+      expect(isCouponPerCustomerLimitError(err)).toBe(true); // 3er uso de la MISMA identidad
+    });
+
+    it("carrera real: dos inserts concurrentes de la misma identidad → exactamente uno gana", async () => {
+      const couponId = await mkCoupon("RACE", 1);
+      const email = `${RUN}-g5-race@lucams.test`.toLowerCase();
+      const [o1, o2] = await Promise.all([mkOrder("r1"), mkOrder("r2")]);
+      const results = await Promise.allSettled([
+        prisma.couponUsage.create({ data: usage(couponId, o1, { email }) }),
+        prisma.couponUsage.create({ data: usage(couponId, o2, { email }) }),
+      ]);
+      const ok = results.filter((r) => r.status === "fulfilled");
+      const failed = results.filter((r) => r.status === "rejected");
+      expect(ok).toHaveLength(1);
+      expect(failed).toHaveLength(1);
+      expect(isCouponPerCustomerLimitError((failed[0] as PromiseRejectedResult).reason)).toBe(true);
+      expect(await prisma.couponUsage.count({ where: { couponId } })).toBe(1);
+    });
+
+    it("cupón SIN tope por cliente (null) no se ve afectado por el trigger", async () => {
+      const couponId = await mkCoupon("FREE", null);
+      const email = `${RUN}-g5-free@lucams.test`.toLowerCase();
+      await prisma.couponUsage.create({ data: usage(couponId, await mkOrder("f1"), { email }) });
+      await prisma.couponUsage.create({ data: usage(couponId, await mkOrder("f2"), { email }) });
+      expect(await prisma.couponUsage.count({ where: { couponId } })).toBe(2);
     });
   });
 });

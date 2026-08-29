@@ -8,22 +8,29 @@
  * verificación E2E: la cookie ya estaba borrada y la página seguía anotada).
  * Un <form> clásico POST → 303 obliga una carga completa: HTML fresco siempre.
  *
- * - op=enable: exige sesión admin con rol de contenido (SUPERADMIN |
- *   CMS_EDITOR), siembra la cookie (8h, httpOnly) y audita. CSRF: el form es
- *   same-origin y la cookie de sesión es SameSite=Lax (un POST cross-site no
- *   la adjunta).
+ * - op=enable: exige sesión admin + MFA aal2 + rol de contenido (SUPERADMIN |
+ *   CMS_EDITOR) vía requireAdminAction — si falla, redirect() a /admin/login,
+ *   /admin/login/mfa o al home del rol (NEXT_REDIRECT debe propagarse, no
+ *   capturarse). Siembra la cookie (8h, httpOnly, Secure en prod/preview) y
+ *   audita. CSRF: el form es same-origin y la cookie de sesión es
+ *   SameSite=Lax (un POST cross-site no la adjunta).
  * - op=disable: borra la cookie propia (inofensivo, sin guard — si la sesión
- *   expiró a mitad, «Salir» igual limpia y devuelve al sitio).
+ *   expiró a mitad, «Salir» igual limpia y devuelve al sitio). El redirect
+ *   pasa por el mismo validador anti open-redirect (E-1).
  */
 
 import { NextResponse } from "next/server";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { CMS_EDIT_COOKIE } from "@/lib/cms-edit-mode";
+import { isSafeInternalPath } from "@/lib/safe-redirect";
 
+// E-1 (auditoría 2026-08-24): delegar en el validador robusto — rechaza "\\",
+// caracteres de control y "//" (el check local anterior solo filtraba "//" y
+// `next=/\evil.com` producía un 303 con Location: https://evil.com/).
 function safeNext(raw: string): string {
-  return raw.startsWith("/") && !raw.startsWith("//") ? raw : "/";
+  return isSafeInternalPath(raw) ? raw.trim() : "/";
 }
 
 export async function POST(request: Request) {
@@ -32,11 +39,8 @@ export async function POST(request: Request) {
   const next = safeNext(String(form.get("next") ?? "/"));
 
   if (op === "enable") {
-    const session = await getCurrentAdmin();
-    const contentRoles: readonly string[] = ADMIN_ROLE_SETS.CONTENT;
-    if (!session || !contentRoles.includes(session.admin.role)) {
-      return NextResponse.redirect(new URL("/admin/login", request.url), 303);
-    }
+    // B-6: sesión + aal2 + rol de contenido (antes getCurrentAdmin, sin aal2).
+    const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
     await recordAdminAction({
       actorId: session.admin.id,
       action: "cms.edit_mode.enable",
@@ -47,6 +51,7 @@ export async function POST(request: Request) {
     res.cookies.set(CMS_EDIT_COOKIE, "1", {
       httpOnly: true,
       sameSite: "lax",
+      secure: process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview",
       path: "/",
       maxAge: 60 * 60 * 8,
     });

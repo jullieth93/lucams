@@ -18,13 +18,23 @@
 import { NextResponse } from "next/server";
 import { listCatalogProducts, type ProductListFilters } from "@/lib/catalog";
 import { rateLimit } from "@/lib/rate-limit";
+import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
 
+// Guard de enteros no negativos (auditoría 2026-08-24, C-10): parseInt("abc") → NaN
+// llegaba al filtro en memoria (minPrice >= NaN → siempre false → lista vacía 200 OK
+// sin explicación) y se ecoaba como null en `filters` de la respuesta.
+const toInt = (v: string | null): number | undefined => {
+  if (!v) return undefined;
+  const n = Number.parseInt(v, 10);
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+};
+
 export async function GET(req: Request) {
   const ip = getClientIp(req.headers);
-  const { allowed } = await rateLimit(`catalog_products:${ip}`, 30, 60);
+  const { allowed } = await rateLimit(ipKey("catalog_products", ip), 30, 60);
   if (!allowed) {
     return NextResponse.json(
       { error: "Too many requests" },
@@ -45,12 +55,15 @@ export async function GET(req: Request) {
     categorySlug: sp.get("categoria") ?? undefined,
     subCategorySlug: sp.get("subcategoria") ?? undefined,
     ocasionSlug: sp.get("ocasion") ?? undefined,
-    priceMin: sp.get("priceMin") ? parseInt(sp.get("priceMin") as string, 10) : undefined,
-    priceMax: sp.get("priceMax") ? parseInt(sp.get("priceMax") as string, 10) : undefined,
+    priceMin: toInt(sp.get("priceMin")),
+    priceMax: toInt(sp.get("priceMax")),
     isPersonalizable: sp.get("isPersonalizable") ? sp.get("isPersonalizable") === "1" : undefined,
     sort,
     limit: Math.max(1, Math.min(100, parseInt(sp.get("limit") ?? "24", 10) || 24)),
-    offset: Math.max(0, parseInt(sp.get("offset") ?? "0", 10) || 0),
+    // Tope superior (auditoría 2026-08-24, C-7): los filtros son la cache-key de
+    // listCatalogProducts (unstable_cache) — offsets arbitrarios generaban entradas
+    // de caché basura que igual pegan a la DB (skip profundo = scan costoso).
+    offset: Math.min(10_000, Math.max(0, parseInt(sp.get("offset") ?? "0", 10) || 0)),
   };
 
   const products = await listCatalogProducts(filters);

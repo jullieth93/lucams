@@ -29,6 +29,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getRequestOrigin } from "@/lib/origin";
 import { rateLimit } from "@/lib/rate-limit";
+import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClientIp } from "@/lib/client-ip";
 
@@ -66,8 +67,18 @@ export async function verifyOtpAction(
   const hdrs = await headers();
   const ip = getClientIp(hdrs);
   const isProd = process.env.VERCEL_ENV === "production";
-  const rl = await rateLimit(`verify-otp:${ip}`, isProd ? 10 : 30, 15 * 60);
-  if (!rl.allowed) {
+  // Doble bucket (auditoría 2026-08-24, B-4 — patrón de login/registro/reset):
+  //   - por IP (hasheada, C-8): frena a quien ataca muchos emails desde una IP;
+  //   - por email (hasheado): frena la fuerza bruta contra el OTP de UNA víctima
+  //     aunque el atacante rote IPs (botnet). Sin este bucket, 10 intentos/15 min
+  //     por IP × N IPs multiplicaba los intentos contra un código de 6 dígitos.
+  const rlIp = await rateLimit(ipKey("verify-otp", ip), isProd ? 10 : 30, 15 * 60);
+  const rlEmail = await rateLimit(
+    emailKey("verify-otp", parsed.data.email),
+    isProd ? 5 : 30,
+    15 * 60,
+  );
+  if (!rlIp.allowed || !rlEmail.allowed) {
     return {
       error: "Demasiados intentos. Espera unos minutos antes de reintentar.",
     };
@@ -142,8 +153,16 @@ export async function resendCodeAction(
   const hdrs = await headers();
   const ip = getClientIp(hdrs);
   const isProd = process.env.VERCEL_ENV === "production";
-  const rl = await rateLimit(`resend-otp:${ip}`, isProd ? 3 : 10, 15 * 60);
-  if (!rl.allowed) {
+  // Doble bucket (auditoría 2026-08-24, B-4): IP hasheada (C-8) + bucket por email —
+  // sin este último, un atacante que rota IPs podía disparar reenvíos ilimitados
+  // (email-bombing) contra el buzón de una víctima.
+  const rlIp = await rateLimit(ipKey("resend-otp", ip), isProd ? 3 : 10, 15 * 60);
+  const rlEmail = await rateLimit(
+    emailKey("resend-otp", parsed.data.email),
+    isProd ? 3 : 10,
+    15 * 60,
+  );
+  if (!rlIp.allowed || !rlEmail.allowed) {
     return {
       error: "Espera unos minutos antes de pedir otro código.",
     };

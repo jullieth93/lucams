@@ -3,8 +3,8 @@
  *
  * - extractIp: IP del cliente vía getClientIp(headers) (@/lib/client-ip).
  * - applyRateLimit: 30 reqs/min por IP — wrapper sobre rateLimit con
- *   key "api-cms:ip:<ip>". Devuelve null si pasa, o Response 429 con
- *   problem details si excede.
+ *   key "api-cms:ip:<hash-ip>" (IP hasheada, C-8). Devuelve null si pasa,
+ *   o Response 429 con problem details si excede.
  * - withCmsCacheHeaders: agrega Cache-Control público con TTL agresivo
  *   (CMS no cambia segundo a segundo y el cache se invalida via tag
  *   "cms" al publicar desde admin).
@@ -13,6 +13,7 @@
 import "server-only";
 import { headers } from "next/headers";
 import { rateLimit } from "@/lib/rate-limit";
+import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
 
 export async function extractIp(): Promise<string> {
@@ -24,7 +25,9 @@ const RATE_LIMIT = 30;
 const RATE_WINDOW_SECONDS = 60;
 
 export async function applyRateLimit(ip: string): Promise<Response | null> {
-  const result = await rateLimit(`api-cms:ip:${ip}`, RATE_LIMIT, RATE_WINDOW_SECONDS);
+  // IP hasheada en la key (auditoría 2026-08-24, C-8): la IP es dato personal (Ley 1581)
+  // y no debe quedar en claro en rate_limit_buckets.
+  const result = await rateLimit(ipKey("api-cms", ip), RATE_LIMIT, RATE_WINDOW_SECONDS);
   if (result.allowed) return null;
   return Response.json(
     {

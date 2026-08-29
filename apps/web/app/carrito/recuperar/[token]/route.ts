@@ -15,6 +15,7 @@ import { mergeCartsAdopt } from "@/features/cart/service";
 import { getClientIp } from "@/lib/client-ip";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
+import { hashBearerToken } from "@/lib/token-hash";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -32,8 +33,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   let dest = "/carrito?success=cart-link-invalido";
   try {
     if (token) {
+      // F-11 — lookup por hash: la columna en claro ya no existe.
       const ab = await prisma.abandonedCart.findUnique({
-        where: { recoverToken: token },
+        where: { recoverTokenHash: hashBearerToken(token) },
         select: { cart: { select: { sessionId: true, deletedAt: true } } },
       });
       if (ab?.cart?.deletedAt) {

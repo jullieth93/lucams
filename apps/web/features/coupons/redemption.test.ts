@@ -4,7 +4,14 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { priceCouponPure, type CouponRow, type CouponEligibleItem } from "./redemption";
+import { Prisma } from "@/lib/db";
+import {
+  isCouponPerCustomerLimitError,
+  priceCouponPure,
+  REJECT_MESSAGES,
+  type CouponRow,
+  type CouponEligibleItem,
+} from "./redemption";
 
 const NOW = new Date("2026-07-03T12:00:00Z");
 
@@ -232,5 +239,55 @@ describe("priceCouponPure — borde de vigencia en hora Colombia (COT, #1)", () 
       ctx({ now: new Date("2026-07-18T05:00:00.000Z") }),
     );
     expect(r.ok).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G-5 (auditoría seguridad 2026-08-24) — mapeo del 23505 del trigger
+// `coupon_usage_per_customer_limit` (migración 20260829150300) al rechazo
+// amable PER_CUSTOMER_LIMIT. El trigger levanta SQLSTATE 23505 sin constraint
+// real → Prisma lo expone como P2002 con meta.modelName "CouponUsage" y
+// target null (verificado contra la DB local).
+// ─────────────────────────────────────────────────────────────────────────────
+describe("isCouponPerCustomerLimitError — forma del P2002 del trigger", () => {
+  const mkP2002 = (meta: unknown) =>
+    new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+      code: "P2002",
+      clientVersion: "test",
+      meta: meta as never,
+    });
+
+  it("true para el 23505 del trigger (modelName CouponUsage, target null)", () => {
+    expect(isCouponPerCustomerLimitError(mkP2002({ modelName: "CouponUsage", target: null }))).toBe(
+      true,
+    );
+  });
+
+  it("false para un P2002 de constraint REAL (orderId @unique trae target poblado)", () => {
+    expect(
+      isCouponPerCustomerLimitError(mkP2002({ modelName: "CouponUsage", target: ["orderId"] })),
+    ).toBe(false);
+  });
+
+  it("false para otros modelos, otros códigos y no-errores", () => {
+    expect(isCouponPerCustomerLimitError(mkP2002({ modelName: "Order", target: null }))).toBe(
+      false,
+    );
+    expect(
+      isCouponPerCustomerLimitError(
+        new Prisma.PrismaClientKnownRequestError("fk", {
+          code: "P2003",
+          clientVersion: "test",
+        }),
+      ),
+    ).toBe(false);
+    expect(isCouponPerCustomerLimitError(new Error("boom"))).toBe(false);
+    expect(isCouponPerCustomerLimitError("P2002")).toBe(false);
+  });
+
+  it("el mensaje amable mapeado es el de PER_CUSTOMER_LIMIT", () => {
+    expect(REJECT_MESSAGES.PER_CUSTOMER_LIMIT).toBe(
+      "Ya usaste este cupón el máximo de veces permitido.",
+    );
   });
 });

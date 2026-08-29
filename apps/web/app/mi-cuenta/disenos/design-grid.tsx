@@ -12,8 +12,8 @@ export type DesignCardData = {
   previewUrl: string;
   productName: string;
   productSlug: string;
+  /** Hay un link /d/<token> activo (F-11: solo el hash vive en DB). */
   hasShareToken: boolean;
-  shareToken: string | null;
   used: boolean;
 };
 
@@ -35,13 +35,17 @@ export function DesignGrid({
 
 function DesignCard({ design, texts }: { design: DesignCardData; texts: AccountTexts["designs"] }) {
   const [pending, startTransition] = useTransition();
-  const [token, setToken] = useState<string | null>(design.shareToken);
+  // F-11 — el token plano solo existe en memoria tras (re)generarlo: al cargar la
+  // página con un link ya emitido NO lo conocemos (en DB solo hay hash) y pedirlo
+  // rota el link viejo.
+  const [token, setToken] = useState<string | null>(null);
+  const [shared, setShared] = useState(design.hasShareToken);
   const [archived, setArchived] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
 
   if (archived) return null;
 
-  /** Asegura el token (genera en el server la 1ra vez) y devuelve la URL pública. */
+  /** Genera (o rota, si ya había link) el token en el server y devuelve la URL pública. */
   async function ensureUrl(): Promise<string | null> {
     let t = token;
     if (!t) {
@@ -49,6 +53,10 @@ function DesignCard({ design, texts }: { design: DesignCardData; texts: AccountT
       if (!r.ok || !r.token) return null;
       t = r.token;
       setToken(t);
+      if (shared) {
+        toast("Generamos un link nuevo: el anterior ya no funciona.");
+      }
+      setShared(true);
     }
     return buildPublicShareUrl(`/d/${t}`);
   }
@@ -111,6 +119,7 @@ function DesignCard({ design, texts }: { design: DesignCardData; texts: AccountT
       const r = await revokeShareAction(design.id);
       if (r.ok) {
         setToken(null);
+        setShared(false);
         toast.success("Dejaste de compartir. El link anterior ya no funciona.");
       } else {
         toast.error("No pudimos revocar el link.");
@@ -162,16 +171,18 @@ function DesignCard({ design, texts }: { design: DesignCardData; texts: AccountT
           >
             <MessageCircle className="h-3.5 w-3.5" />
           </button>
-          {token && (
+          {(token || shared) && (
             <>
-              <a
-                href={`/d/${token}`}
-                target="_blank"
-                rel="noopener"
-                className="text-brand-purple-dark hover:bg-brand-purple/8 border-brand-purple/20 inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-xs font-semibold"
-              >
-                <ExternalLink className="h-3.5 w-3.5" /> {texts.view}
-              </a>
+              {token && (
+                <a
+                  href={`/d/${token}`}
+                  target="_blank"
+                  rel="noopener"
+                  className="text-brand-purple-dark hover:bg-brand-purple/8 border-brand-purple/20 inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-xs font-semibold"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> {texts.view}
+                </a>
+              )}
               {/* #17 — dejar de compartir sin archivar: revoca el link /d/<token> y conserva el diseño. */}
               <button
                 type="button"

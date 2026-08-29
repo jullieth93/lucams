@@ -15,6 +15,7 @@
 import { test, expect } from "@playwright/test";
 import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
+import { enrollTotpFactor, loginAdminWithTotp } from "./_helpers/mfa";
 
 const strip = (v: string | undefined) => v?.replace(/^["']|["']$/g, "");
 const prisma = new PrismaClient();
@@ -26,6 +27,7 @@ const EMAIL = `e2e-admin-tx-${Date.now()}@example.com`;
 const PASSWORD = "E2E-Admin-Tx-918273650";
 let supabaseUserId = "";
 let adminId = "";
+let totpSecret = "";
 let orderId = "";
 let orderNumber = "";
 
@@ -57,6 +59,8 @@ test.beforeAll(async () => {
     select: { id: true },
   });
   adminId = admin.id;
+  // MFA obligatorio (B-1): sin factor TOTP el login ya no llega al dashboard.
+  totpSecret = await enrollTotpFactor(EMAIL, PASSWORD);
 });
 
 test.afterAll(async () => {
@@ -70,11 +74,7 @@ test.afterAll(async () => {
 });
 
 async function login(page: import("@playwright/test").Page) {
-  await page.goto("/admin/login");
-  await page.locator('input[name="email"]').fill(EMAIL);
-  await page.locator('input[name="password"]').fill(PASSWORD);
-  await page.getByRole("button", { name: /iniciar sesión/i }).click();
-  await page.waitForURL(/\/admin\/dashboard/, { timeout: 20_000 });
+  await loginAdminWithTotp(page, { email: EMAIL, password: PASSWORD, totpSecret });
 }
 
 test.describe("admin transaccional (modo full)", () => {

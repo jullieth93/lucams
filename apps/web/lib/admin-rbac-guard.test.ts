@@ -3,8 +3,10 @@
  *
  * El corazón del fix: una sesión aal1 (solo contraseña — p.ej. robada — con MFA
  * inscrito pero sin completar el 2º factor) DEBE ser rechazada al invocar cualquier
- * acción mutante, no solo al renderizar el layout. Verifica también el gate de rol y
- * que el chequeo de MFA solo aplica cuando la cuenta tiene 2 pasos activos.
+ * acción mutante, no solo al renderizar el layout. Verifica también el gate de rol,
+ * que el chequeo aal2 solo aplica cuando la cuenta tiene 2 pasos activos, y el
+ * enrolamiento forzado (auditoría 2026-08-24 · B-1): un admin SIN factor TOTP
+ * verificado va a /admin/seguridad?enroll=required (salvo que ya esté ahí).
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,6 +16,8 @@ const { state } = vi.hoisted(() => ({
   state: {
     session: null as { admin: { id: string; role: string } } | null,
     aal: null as { currentLevel: string; nextLevel: string } | null,
+    factors: null as { all: Array<{ factor_type: string; status: string }> } | null,
+    pathname: "",
   },
 }));
 
@@ -28,20 +32,32 @@ vi.mock("next/navigation", () => ({
     throw new RedirectError(to);
   },
 }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers(state.pathname ? { "x-pathname": state.pathname } : {}),
+}));
 vi.mock("@/lib/auth", () => ({
   getCurrentAdmin: async () => state.session,
 }));
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({
-    auth: { mfa: { getAuthenticatorAssuranceLevel: async () => ({ data: state.aal }) } },
+    auth: {
+      mfa: {
+        getAuthenticatorAssuranceLevel: async () => ({ data: state.aal }),
+        listFactors: async () => ({ data: state.factors }),
+      },
+    },
   }),
 }));
 
 import { requireAdminAction } from "./admin-rbac-guard";
 
+const VERIFIED_TOTP = { all: [{ factor_type: "totp", status: "verified" }] };
+
 beforeEach(() => {
   state.session = null;
   state.aal = null;
+  state.factors = VERIFIED_TOTP;
+  state.pathname = "";
 });
 
 async function expectRedirect(fn: () => Promise<unknown>, to: string) {
@@ -104,11 +120,39 @@ describe("requireAdminAction", () => {
     );
   });
 
-  it("sin MFA inscrito (nextLevel aal1) → no bloquea (el candado solo aplica con 2 pasos activos)", async () => {
+  it("B-1: sin factor TOTP (nextLevel aal1) → enrolamiento forzado (/admin/seguridad?enroll=required)", async () => {
     state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
     state.aal = { currentLevel: "aal1", nextLevel: "aal1" };
-    const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+    state.factors = { all: [] };
+    await expectRedirect(
+      () => requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER }),
+      "/admin/seguridad?enroll=required",
+    );
+  });
+
+  it("B-1: factor TOTP sin verificar cuenta como sin factor → enrolamiento forzado", async () => {
+    state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
+    state.aal = { currentLevel: "aal1", nextLevel: "aal1" };
+    state.factors = { all: [{ factor_type: "totp", status: "unverified" }] };
+    await expectRedirect(() => requireAdminAction(), "/admin/seguridad?enroll=required");
+  });
+
+  it("B-1: sin factor PERO ya en /admin/seguridad → no redirige (anti-loop: es la pantalla de enrolamiento)", async () => {
+    state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
+    state.aal = { currentLevel: "aal1", nextLevel: "aal1" };
+    state.factors = { all: [] };
+    state.pathname = "/admin/seguridad";
+    const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
     expect(s.admin.id).toBe("a1");
+  });
+
+  it("B-1: el check de enrolamiento también aplica con aal2:false (es anterior e independiente)", async () => {
+    state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
+    state.factors = null; // listFactors falló/vacío → fail-closed al enrolamiento
+    await expectRedirect(
+      () => requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER, aal2: false }),
+      "/admin/seguridad?enroll=required",
+    );
   });
 
   it("aal2:false salta el chequeo de MFA (para acciones donde no aplica)", async () => {
@@ -123,5 +167,12 @@ describe("requireAdminAction", () => {
     state.aal = { currentLevel: "aal2", nextLevel: "aal2" };
     const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
     expect(s.admin.id).toBe("m1");
+  });
+
+  it("CMS_EDITOR entra a /admin/seguridad (ALL_PLUS_CMS — autoservicio MFA obligatorio)", async () => {
+    state.session = { admin: { id: "c1", role: "CMS_EDITOR" } };
+    state.aal = { currentLevel: "aal2", nextLevel: "aal2" };
+    const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
+    expect(s.admin.id).toBe("c1");
   });
 });

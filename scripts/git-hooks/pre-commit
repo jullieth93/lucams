@@ -1,0 +1,17 @@
+#!/bin/sh
+# Versioned pre-commit hook — gitleaks scan of staged changes (security audit
+# 2026-08-24, findings A-2/A-4). Activate once per clone with:
+#   git config core.hooksPath scripts/git-hooks
+# If gitleaks is not installed, warn and let the commit through: the enforced
+# layers are GitHub Push Protection + the CI `secrets-scan` job (.github/workflows/ci.yml).
+
+if command -v gitleaks >/dev/null 2>&1; then
+  GITLEAKS=gitleaks
+elif [ -x "tmp/bin/gitleaks" ]; then
+  GITLEAKS=tmp/bin/gitleaks
+else
+  echo "pre-commit: gitleaks not found on PATH (or tmp/bin/) — skipping local secret scan (covered by Push Protection + CI secrets-scan)." >&2
+  exit 0
+fi
+
+exec "$GITLEAKS" git --staged --config .gitleaks.toml .

@@ -19,6 +19,7 @@ import { test, expect } from "@playwright/test";
 // desde apps/web y sin el import `server-only` de @/lib/db (rompería en Node).
 import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
+import { enrollTotpFactor, loginAdminWithTotp } from "./_helpers/mfa";
 
 test.skip(
   process.env.NEXT_PUBLIC_STORE_MODE !== "catalog",
@@ -41,6 +42,7 @@ let categoryId = "";
 let variantId = "";
 let supabaseUserId = "";
 let adminId = "";
+let totpSecret = "";
 
 test.beforeAll(async () => {
   // Producto efímero NO personalizable → la PDP muestra "Añadir al carrito"
@@ -76,7 +78,7 @@ test.beforeAll(async () => {
   slug = product.slug;
   variantId = product.variants[0]!.id;
 
-  // Admin efímero sin MFA (login directo al dashboard — patrón admin-login.spec).
+  // Admin efímero CON MFA enrolado (obligatorio desde B-1 — patrón _helpers/mfa).
   const { data, error } = await service.auth.admin.createUser({
     email: ADMIN_EMAIL,
     password: ADMIN_PASSWORD,
@@ -90,6 +92,7 @@ test.beforeAll(async () => {
     select: { id: true },
   });
   adminId = admin.id;
+  totpSecret = await enrollTotpFactor(ADMIN_EMAIL, ADMIN_PASSWORD);
 });
 
 test.afterAll(async () => {
@@ -166,11 +169,11 @@ test.describe("modo catálogo — flujo público de cotización", () => {
 
 test.describe("modo catálogo — panel admin", () => {
   test("un admin entra y /admin/cotizaciones renderiza (lista + filtros)", async ({ page }) => {
-    await page.goto("/admin/login");
-    await page.locator('input[name="email"]').fill(ADMIN_EMAIL);
-    await page.locator('input[name="password"]').fill(ADMIN_PASSWORD);
-    await page.getByRole("button", { name: /iniciar sesión/i }).click();
-    await page.waitForURL(/\/admin\/dashboard/, { timeout: 20_000 });
+    await loginAdminWithTotp(page, {
+      email: ADMIN_EMAIL,
+      password: ADMIN_PASSWORD,
+      totpSecret,
+    });
 
     // El sidebar muestra "Cotizaciones" como primer item de Ventas.
     await expect(page.getByRole("link", { name: "Cotizaciones" }).first()).toBeVisible();

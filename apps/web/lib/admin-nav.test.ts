@@ -15,8 +15,9 @@
  *   - "Cotizaciones" es el primer item de "Ventas" en AMBOS modos.
  *   - El filtrado NO muta ADMIN_NAV (el catch-all placeholder sigue viendo
  *     todos los módulos para su info contextual).
- *   - filterNavByRole(getAdminNav(), "CMS_EDITOR") deja SOLO el contenido del
- *     sitio (Páginas del sitio, Ajustes del sitio, Plantillas de correo).
+ *   - filterNavByRole(getAdminNav(), "CMS_EDITOR") deja el contenido del sitio
+ *     (Páginas del sitio, Ajustes del sitio, Plantillas de correo) + Seguridad
+ *     (autoservicio de cuenta — MFA obligatorio para todo rol, B-1 2026-08-24).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -156,7 +157,7 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
   );
 
   it.each(["full", "catalog"] as const)(
-    "modo %s: ve exactamente Páginas del sitio, Ajustes del sitio y Plantillas de correo",
+    "modo %s: ve exactamente Páginas del sitio, Ajustes del sitio, Seguridad y Plantillas de correo",
     async (mode) => {
       const { nav } = await getNavForMode(mode);
       const visible = filterNavByRole(nav, "CMS_EDITOR");
@@ -168,15 +169,17 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
       ]);
 
       const config = visible.find((g) => g.title === "Configuración");
+      // Seguridad (autoservicio MFA) quedó abierta a todos los roles en B-1.
       expect(config?.items?.map((it) => it.href)).toEqual([
         "/admin/contenido/paginas/global",
+        "/admin/seguridad",
         "/admin/email-templates",
       ]);
     },
   );
 
   it.each(["full", "catalog"] as const)(
-    "modo %s: NO ve dashboard, usuarios, seguridad, finanzas ni cupones",
+    "modo %s: NO ve dashboard, usuarios, finanzas ni cupones",
     async (mode) => {
       const { nav } = await getNavForMode(mode);
       const visible = filterNavByRole(nav, "CMS_EDITOR");
@@ -187,12 +190,15 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
       ];
       expect(allHrefs).not.toContain("/admin/dashboard");
       expect(allHrefs).not.toContain("/admin/usuarios");
-      expect(allHrefs).not.toContain("/admin/seguridad");
       expect(allHrefs).not.toContain("/admin/finanzas");
       expect(allHrefs).not.toContain("/admin/cupones");
-      // Y todo lo visible es contenido (coherente con la matriz de rutas).
+      // Y todo lo visible es contenido o autoservicio de cuenta (coherente con la matriz).
       for (const href of allHrefs) {
-        expect(href.startsWith("/admin/contenido") || href === "/admin/email-templates").toBe(true);
+        expect(
+          href.startsWith("/admin/contenido") ||
+            href === "/admin/email-templates" ||
+            href === "/admin/seguridad",
+        ).toBe(true);
       }
     },
   );

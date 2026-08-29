@@ -91,8 +91,9 @@
 
 ### MFA
 
-- **Para admins (rol `SUPERADMIN`/`MANAGER`): obligatorio** desde Fase 6. Supabase Auth soporta TOTP.
+- **Para TODOS los roles admin (`SUPERADMIN`/`MANAGER`/`FULFILLMENT`/`CMS_EDITOR`): obligatorio y ENFORCEADO por código** (auditoría 2026-08-24, hallazgo B-1 — antes era opt-in y contradecía esta política). El guard central (`lib/admin-rbac-guard.ts`) y el layout del panel redirigen a `/admin/seguridad?enroll=required` a cualquier admin sin factor TOTP verificado; el enrolamiento está abierto a todos los roles admin; las acciones admin siguen exigiendo aal2. Supabase Auth soporta TOTP.
 - **Para clientes: opcional**, ofrecida en `/cuenta/seguridad`.
+- **Recovery codes admin** (B-5, 2026-08-29): 16 chars (~79 bits), HMAC-SHA256 con `CSRF_SECRET` como pepper (nunca SHA-256 plano), consumo atómico (`updateMany` condicional — un solo uso real). Fallback de lectura para códigos legacy SHA-256 hasta su rotación (TODO en `features/admin-mfa/recovery-codes.ts`).
 
 ### Verificación de email
 
@@ -200,14 +201,14 @@ describe('RLS', () => {
 | `AVEONLINE_USUARIO` / `AVEONLINE_CLAVE`                     | Privada                   | **NO**             | —                                                                                                                       |
 | `AVEONLINE_WEBHOOK_SECRET`                                  | Privada (HMAC webhooks)   | **NO**             | —                                                                                                                       |
 | `RESEND_API_KEY`                                            | Privada                   | **NO**             | —                                                                                                                       |
-| `ANTHROPIC_API_KEY`                                         | Privada                   | **NO**             | Solo en `/api/ai/*` server                                                                                              |
+| `GEMINI_API_KEY`                                            | Privada                   | **NO**             | Server-only (`features/ai`, ADR-058): la llamada sale servidor→Google, no toca el navegador                             |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY`                            | Pública                   | Sí                 | Whitelist de dominio en Cloudflare                                                                                      |
 | `TURNSTILE_SECRET_KEY`                                      | Privada                   | **NO**             | Server-only para validación de token                                                                                    |
 | `R2_*`                                                      | Privada                   | **NO**             | —                                                                                                                       |
 
 ### Detección automática de secretos
 
-- **Pre-commit hook** con `gitleaks` o equivalente que escanea diff antes de permitir commit.
+- **Pre-commit hook** versionado en [`scripts/git-hooks/pre-commit`](../scripts/git-hooks/pre-commit): corre `gitleaks git --staged` sobre los cambios a commitear. Se activa por desarrollador con `git config core.hooksPath scripts/git-hooks` (no hay auto-instalación); si `gitleaks` no está instalado, el hook avisa y deja pasar el commit — las capas que SÍ se enforzan siempre son Push Protection + el CI `secrets-scan`.
 - **CI step** que escanea el repo completo en cada PR.
 - **GitHub Secret Scanning** habilitado a nivel de repo (gratis para repos públicos; revisar privados).
 - **GitHub Push Protection** activo a nivel de cuenta (rechaza push si detecta credenciales reales). Validado el 2026-05-09 cuando bloqueó un push con `sb_secret_*` real — ver [`docs/incidents/2026-05-09-secret-key-leak.md`](incidents/2026-05-09-secret-key-leak.md).
@@ -255,34 +256,42 @@ describe('RLS', () => {
 
 ### Set base (Fase 1)
 
-| Header                      | Valor                                          | Por qué                                                  |
-| --------------------------- | ---------------------------------------------- | -------------------------------------------------------- |
-| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | Fuerza HTTPS por 2 años en navegadores que lo cachean    |
-| `X-Frame-Options`           | `DENY`                                         | Previene clickjacking (no se embebe el sitio en iframes) |
-| `X-Content-Type-Options`    | `nosniff`                                      | Previene MIME sniffing por el navegador                  |
-| `Referrer-Policy`           | `strict-origin-when-cross-origin`              | Limita info referrer enviada a otros dominios            |
-| `Permissions-Policy`        | `camera=(), microphone=(), geolocation=()`     | Niega APIs sensibles que no usamos                       |
-| `X-DNS-Prefetch-Control`    | `on`                                           | Optimización menor para preconectar a CDN                |
+| Header                      | Valor                                          | Por qué                                                                                                                                                |
+| --------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | Fuerza HTTPS por 2 años en navegadores que lo cachean                                                                                                  |
+| `X-Frame-Options`           | `SAMEORIGIN`                                   | Clickjacking externo bloqueado; permite la vista previa en iframe del admin (roadmap C1). `frame-ancestors 'self'` en la CSP es el equivalente moderno |
+| `X-Content-Type-Options`    | `nosniff`                                      | Previene MIME sniffing por el navegador                                                                                                                |
+| `Referrer-Policy`           | `strict-origin-when-cross-origin`              | Limita info referrer enviada a otros dominios                                                                                                          |
+| `Permissions-Policy`        | `camera=(), microphone=(), geolocation=()`     | Niega APIs sensibles que no usamos                                                                                                                     |
+| `X-DNS-Prefetch-Control`    | `on`                                           | Optimización menor para preconectar a CDN                                                                                                              |
 
 ### Content-Security-Policy (CSP) — implementada con nonce (C3, ADR-043)
 
-Se construye **por request** en `apps/web/proxy.ts` (`buildCsp(nonce)`). **Dos modos:**
+Se construye **por request** con `buildCsp(nonce, isProd)` en `apps/web/lib/security-headers.ts` (la invoca `apps/web/proxy.ts`). **Dos modos:**
 
-**Producción / preview** (`VERCEL_ENV` = production|preview) — `script-src` con **nonce + `strict-dynamic`** (sin `'unsafe-inline'` ni `'unsafe-eval'`):
+**Producción / preview** (`VERCEL_ENV` = production|preview) — `script-src` con **nonce + `'self'`** (sin `'unsafe-inline'` ni `'unsafe-eval'`). **Ya NO lleva `'strict-dynamic'`** (Ola 18 fix, 2026-07-26): con strict-dynamic la allowlist de hosts quedaba inerte (comportamiento CSP3) y los chunks lazy de Next — que cargan sin trust de nonce — eran bloqueados, rompiendo la hidratación de varias páginas en prod. Con `'self'` + nonce los chunks cargan y los scripts inline siguen exigiendo nonce:
 
 ```
 default-src 'self';
-script-src 'self' 'nonce-<aleatorio-por-request>' 'strict-dynamic' https://challenges.cloudflare.com https://checkout.wompi.co;
+script-src 'self' 'nonce-<aleatorio-por-request>' https://challenges.cloudflare.com https://checkout.wompi.co;
 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com;
+img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com https://images.unsplash.com <origin de NEXT_PUBLIC_SUPABASE_URL>;
 font-src 'self' https://fonts.gstatic.com;
-connect-src 'self' https://*.supabase.co https://api.anthropic.com https://api.wompi.co;
+connect-src 'self' https://*.supabase.co https://api.wompi.co <origin de NEXT_PUBLIC_SUPABASE_URL>;
 frame-src 'self' https://challenges.cloudflare.com https://checkout.wompi.co;
+frame-ancestors 'self';
 form-action 'self' https://checkout.wompi.co;
 base-uri 'self';
 object-src 'none';
 upgrade-insecure-requests;
 ```
+
+Notas sobre el bloque de producción:
+
+- En previews (`VERCEL_ENV=preview`) se añade `https://vercel.live` a `script-src` y `frame-src` (toolbar de Vercel Live).
+- `connect-src` solo lista hosts que el **navegador** contacta: la IA (Gemini) y el envío (Aveonline) se llaman **server-side** → no aparecen.
+- El `<origin de NEXT_PUBLIC_SUPABASE_URL>` se deriva del env (cubre el stack local `http://localhost:54321`); duplicar el wildcard en prod es inocuo.
+- `images.unsplash.com` en `img-src` es TEMPORAL (fotos placeholder del seed) — retirar cuando estén las fotos reales.
 
 **Desarrollo** — `script-src 'self' 'unsafe-inline' 'unsafe-eval' …` (sin nonce). El dev server de Next inyecta scripts de HMR/overlay que con nonce se romperían; **el nonce se valida en un deploy prod-like**, no en dev.
 
@@ -368,27 +377,10 @@ export function middleware(req: NextRequest) {
 3. **Anti-CSRF token** (synchronizer token) para flujos críticos: cambio de email, eliminación de cuenta, transferencia de admin.
 4. **Tokens de un solo uso** para acciones idempotentes: confirmación de eliminación.
 
-```ts
-// apps/web/lib/csrf.ts
-import { createHash, randomBytes } from "crypto";
+No hay un `lib/csrf.ts` único: el patrón real es **firma HMAC con `CSRF_SECRET`** (variable CORE obligatoria, validada al arranque por `apps/web/lib/env.ts`; generar con `openssl rand -hex 32`), aplicado donde hace falta:
 
-export function generateCsrfToken(sessionId: string): string {
-  const salt = randomBytes(16).toString("hex");
-  const hash = createHash("sha256")
-    .update(`${sessionId}:${salt}:${process.env.CSRF_SECRET}`)
-    .digest("hex");
-  return `${salt}.${hash}`;
-}
-
-export function verifyCsrfToken(sessionId: string, token: string): boolean {
-  const [salt, expected] = token.split(".");
-  if (!salt || !expected) return false;
-  const actual = createHash("sha256")
-    .update(`${sessionId}:${salt}:${process.env.CSRF_SECRET}`)
-    .digest("hex");
-  return actual === expected;
-}
-```
+- **Cookie de estado del checkout** (`apps/web/lib/checkout-session.ts`): el payload JSON viaja como `base64url(payload).HMAC-SHA256-base64url` y la verificación usa comparación timing-safe — firma inválida → la cookie se descarta y se loguea `checkout.cookie.invalid_signature`. El mismo sellado cubre el token de ofertas de envío (`sealShippingOffersPayload` / `openShippingOffersPayload`).
+- **Token de baja del newsletter** (`apps/web/features/newsletter/unsubscribe.ts`): `SHA-256(email:CSRF_SECRET)` truncado a 32 hex. El link de baja lleva `base64url(email).token` (el email no viaja en claro por query strings/logs) y la verificación es stateless.
 
 ---
 

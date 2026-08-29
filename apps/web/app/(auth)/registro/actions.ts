@@ -32,9 +32,11 @@ import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { recordHabeasDataConsent } from "@/features/consent/service";
 import { attachReferral, findReferrerByCode } from "@/features/referrals/service";
+import { accountExistsNoticeEmail } from "@/features/emails/templates/account-exists-notice";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseService } from "@/lib/supabase/service";
 import { getClientIp } from "@/lib/client-ip";
+import { sendEmail } from "@/lib/resend";
 
 const SignupSchema = z
   .object({
@@ -230,8 +232,30 @@ export async function signupAction(
       ip,
       userId: authData.user.id,
     });
+    // Auditoría 2026-08-24 · B-3: la respuesta es la MISMA genérica de un
+    // registro exitoso — el formulario no revela si el correo existe (misma
+    // política anti-enumeración que login y recuperar-password). El aviso va
+    // por email al dueño de la cuenta. Best-effort: si el envío falla, la
+    // respuesta al cliente no cambia (tampoco debe delatar nada).
+    try {
+      const notice = await accountExistsNoticeEmail();
+      await sendEmail({
+        to: parsed.data.email,
+        subject: notice.subject,
+        html: notice.html,
+        text: notice.text,
+        tags: [{ name: "kind", value: "account-exists-notice" }],
+      });
+    } catch (mailErr) {
+      logger.warn({
+        event: "auth.signup.exists_notice_fail",
+        ip,
+        err: mailErr instanceof Error ? mailErr.message : String(mailErr),
+      });
+    }
     return {
-      error: "Este correo ya tiene una cuenta. Inicia sesión o usa 'Olvidé mi contraseña'.",
+      success:
+        "Si el correo está disponible, te enviamos un código de confirmación. Revisa tu bandeja de entrada.",
     };
   }
 

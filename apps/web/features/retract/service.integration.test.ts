@@ -34,6 +34,7 @@ const RUN = `rtr${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
 let variantId = "";
 let categoryId = "";
 let productId = "";
+let customerId = "";
 
 async function makeDeliveredOrder(opts: {
   tag: string;
@@ -41,6 +42,8 @@ async function makeDeliveredOrder(opts: {
   status?: string;
   items: Array<{ personalized: boolean }>;
   discount?: number;
+  /** true → guest order (customerId null) for the IDOR cases. */
+  guest?: boolean;
 }) {
   const subtotal = 20_000 * opts.items.length;
   const discount = opts.discount ?? 0;
@@ -58,6 +61,7 @@ async function makeDeliveredOrder(opts: {
       paymentMethod: "WOMPI",
       status: (opts.status ?? "DELIVERED") as never,
       deliveredAt: opts.deliveredAt,
+      customerId: opts.guest ? null : customerId,
       items: {
         create: opts.items.map((it) => ({
           variantId,
@@ -102,6 +106,18 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
     });
     productId = product.id;
     variantId = product.variants[0]!.id;
+    // Customer owning the test orders — identity is mandatory since D-3.
+    const customer = await prisma.customer.create({
+      data: {
+        email: `${RUN}@lucams.test`,
+        supabaseUserId: `${RUN}-sub`,
+        referralCode: `${RUN}-ref`,
+        firstName: "Cliente",
+        lastName: "Retracto",
+      },
+      select: { id: true },
+    });
+    customerId = customer.id;
   });
 
   afterAll(async () => {
@@ -124,6 +140,7 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
     const ids = orders.map((o) => o.id);
     await safe(() => prisma.orderItem.deleteMany({ where: { orderId: { in: ids } } }));
     await safe(() => prisma.order.deleteMany({ where: { id: { in: ids } } }));
+    await safe(() => prisma.customer.deleteMany({ where: { id: customerId } }));
     await safe(() => prisma.productVariant.deleteMany({ where: { productId } }));
     await safe(() => prisma.product.deleteMany({ where: { id: productId } }));
     await safe(() => prisma.category.deleteMany({ where: { id: categoryId } }));
@@ -136,7 +153,7 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
       deliveredAt: new Date(),
       items: [{ personalized: false }, { personalized: true }],
     });
-    const items = await getRetractableItems(order.id);
+    const items = await getRetractableItems(order.id, { customerId });
     expect(items).toHaveLength(2);
     const standard = items.find((i) => i.orderItemId === order.items[0]!.id);
     const custom = items.find((i) => i.orderItemId === order.items[1]!.id);
@@ -151,7 +168,7 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
       deliveredAt: new Date("2020-01-01"),
       items: [{ personalized: false }],
     });
-    const items = await getRetractableItems(order.id);
+    const items = await getRetractableItems(order.id, { customerId });
     expect(items[0]?.eligible).toBe(false);
     expect(items[0]?.reason).toBe("OUT_OF_WINDOW");
   });
@@ -163,7 +180,7 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
       deliveredAt: null,
       items: [{ personalized: false }],
     });
-    const items = await getRetractableItems(order.id);
+    const items = await getRetractableItems(order.id, { customerId });
     expect(items[0]?.reason).toBe("NOT_DELIVERED");
   });
 
@@ -174,13 +191,13 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
       items: [{ personalized: false }],
     });
     const itemId = order.items[0]!.id;
-    const res = await createRetractRequest(itemId, { customerId: null, reason: "no me gustó" });
+    const res = await createRetractRequest(itemId, { customerId, reason: "no me gustó" });
     expect(res.refundAmount).toBe(20_000);
     const rr = await prisma.retractRequest.findUnique({ where: { orderItemId: itemId } });
     expect(rr?.status).toBe("PENDING");
     expect(rr?.reason).toBe("no me gustó");
 
-    await expect(createRetractRequest(itemId, { customerId: null })).rejects.toThrow(RetractError);
+    await expect(createRetractRequest(itemId, { customerId })).rejects.toThrow(RetractError);
   });
 
   it("createRetractRequest prorratea el descuento del cupón en el refundAmount (#2)", async () => {
@@ -193,7 +210,7 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
       discount: 8_000,
     });
     const itemId = order.items[0]!.id;
-    const res = await createRetractRequest(itemId, { customerId: null });
+    const res = await createRetractRequest(itemId, { customerId });
     expect(res.refundAmount).toBe(16_000);
   });
 
@@ -203,9 +220,9 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
       deliveredAt: new Date(),
       items: [{ personalized: true }],
     });
-    await expect(
-      createRetractRequest(order.items[0]!.id, { customerId: null }),
-    ).rejects.toMatchObject({ reason: "PERSONALIZED" });
+    await expect(createRetractRequest(order.items[0]!.id, { customerId })).rejects.toMatchObject({
+      reason: "PERSONALIZED",
+    });
   });
 
   it("ciclo admin: PENDING → APPROVED → RECEIVED → REFUNDED con auditoría", async () => {
@@ -214,7 +231,7 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
       deliveredAt: new Date(),
       items: [{ personalized: false }],
     });
-    const { id } = await createRetractRequest(order.items[0]!.id, { customerId: null });
+    const { id } = await createRetractRequest(order.items[0]!.id, { customerId });
 
     await approveRetract(id, "admin-1");
     let rr = await prisma.retractRequest.findUnique({ where: { id } });
@@ -241,7 +258,7 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
       deliveredAt: new Date(),
       items: [{ personalized: false }],
     });
-    const { id } = await createRetractRequest(order.items[0]!.id, { customerId: null });
+    const { id } = await createRetractRequest(order.items[0]!.id, { customerId });
     await expect(refundRetract(id, "admin-1", "WOMPI_VOID")).rejects.toThrow(
       RetractTransitionError,
     );
@@ -252,6 +269,7 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
       tag: "idor",
       deliveredAt: new Date(),
       items: [{ personalized: false }],
+      guest: true,
     });
     // El pedido no tiene customerId (invitado) → ningún cliente logueado es dueño.
     await expect(
@@ -261,13 +279,29 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
     expect(items).toHaveLength(0);
   });
 
+  it("D-3: sin identidad no hay retracto (customerId null forzado → FORBIDDEN)", async () => {
+    const order = await makeDeliveredOrder({
+      tag: "noid",
+      deliveredAt: new Date(),
+      items: [{ personalized: false }],
+    });
+    // The identity is mandatory in the type since D-3; even bypassing TS with a
+    // cast, a null identity never matches an owned order (defense in depth).
+    const noId = null as unknown as string;
+    await expect(
+      createRetractRequest(order.items[0]!.id, { customerId: noId }),
+    ).rejects.toMatchObject({ reason: "FORBIDDEN" });
+    const items = await getRetractableItems(order.id, { customerId: noId });
+    expect(items).toHaveLength(0);
+  });
+
   it("rechazo: PENDING → REJECTED con motivo", async () => {
     const order = await makeDeliveredOrder({
       tag: "reject",
       deliveredAt: new Date(),
       items: [{ personalized: false }],
     });
-    const { id } = await createRetractRequest(order.items[0]!.id, { customerId: null });
+    const { id } = await createRetractRequest(order.items[0]!.id, { customerId });
     await rejectRetract(id, "admin-1", "Fuera de política");
     const rr = await prisma.retractRequest.findUnique({ where: { id } });
     expect(rr?.status).toBe("REJECTED");

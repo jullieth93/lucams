@@ -69,7 +69,10 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
         lineTotal: it.unitPrice * it.qty,
       })),
       shippingAddress: formatAddressLine(ship),
-      publicTrackingToken: order.publicAccessToken ?? null,
+      // F-11 — el token público ya no se guarda en claro y este email se manda
+      // tras PAID (otro proceso): no hay link /pedido/<token>. El invitado
+      // rastrea con número + correo en /rastrear.
+      publicTrackingToken: null,
       paymentMethod: order.paymentMethod,
     });
 
@@ -160,7 +163,6 @@ export async function sendOrderShipped(orderId: string): Promise<void> {
         shippingCarrier: true,
         trackingNumber: true,
         trackingUrl: true,
-        publicAccessToken: true,
       },
     });
     if (!order || !order.trackingNumber) return;
@@ -175,7 +177,7 @@ export async function sendOrderShipped(orderId: string): Promise<void> {
       trackingNumber: order.trackingNumber,
       trackingUrl: order.trackingUrl,
       estimatedDays: null,
-      publicTrackingToken: order.publicAccessToken ?? null,
+      publicTrackingToken: null, // F-11 — ver sendOrderConfirmation
     });
 
     const result = await sendEmail({
@@ -214,7 +216,6 @@ export async function sendOrderPaymentFailed(orderId: string, reason: string): P
         email: true,
         total: true,
         shippingAddress: true,
-        publicAccessToken: true,
       },
     });
     if (!order) return;
@@ -224,7 +225,7 @@ export async function sendOrderPaymentFailed(orderId: string, reason: string): P
       customerName: ship.fullName ?? "Cliente",
       total: order.total,
       reason,
-      publicTrackingToken: order.publicAccessToken ?? null,
+      publicTrackingToken: null, // F-11 — ver sendOrderConfirmation
     });
     const result = await sendEmail({
       to: order.email,
@@ -261,7 +262,6 @@ export async function sendOrderDelivered(orderId: string): Promise<void> {
         number: true,
         email: true,
         shippingAddress: true,
-        publicAccessToken: true,
       },
     });
     if (!order) return;
@@ -270,7 +270,7 @@ export async function sendOrderDelivered(orderId: string): Promise<void> {
     const tpl = await orderDeliveredEmail({
       orderNumber: order.number,
       customerName: ship.fullName ?? "Cliente",
-      publicTrackingToken: order.publicAccessToken ?? null,
+      publicTrackingToken: null, // F-11 — ver sendOrderConfirmation
     });
 
     const result = await sendEmail({

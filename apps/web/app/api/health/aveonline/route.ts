@@ -15,6 +15,7 @@ import { logger } from "@/lib/logger";
 import { InternalError, problemResponse } from "@/lib/errors";
 import { probeAveonlineHealth } from "@/features/shipping/aveonline";
 import { rateLimit } from "@/lib/rate-limit";
+import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export const runtime = "nodejs";
 export async function GET(req: Request): Promise<Response> {
   // Rate-limit por IP (auditoría experto 2026-07-26): healthcheck público que consulta
   // un tercero o la DB por hit → sin límite era amplificable. 30/min por IP.
-  const { allowed } = await rateLimit(`health_aveonline:${getClientIp(req.headers)}`, 30, 60);
+  const { allowed } = await rateLimit(ipKey("health_aveonline", getClientIp(req.headers)), 30, 60);
   if (!allowed) {
     return new Response(JSON.stringify({ status: "rate_limited" }), {
       status: 429,

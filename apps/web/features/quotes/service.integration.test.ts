@@ -27,6 +27,7 @@
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/db";
+import { hashBearerToken } from "@/lib/token-hash";
 import { createQuoteFromCart, getQuoteByToken } from "./service";
 import {
   QuoteNotFoundError,
@@ -220,10 +221,15 @@ describe.skipIf(!hasDb)(
         expect(result.token).toMatch(/^[0-9a-f]{32}$/);
 
         const quote = await prisma.quote.findUnique({
-          where: { publicAccessToken: result.token },
+          where: { publicAccessTokenHash: hashBearerToken(result.token) },
           include: { items: { orderBy: { createdAt: "asc" } } },
         });
         expect(quote).not.toBeNull();
+        // F-11 — la fila NO contiene el token plano, solo su hash sha256 hex.
+        expect(quote!.publicAccessTokenHash).toBe(hashBearerToken(result.token));
+        expect(quote!.publicAccessTokenHash).toMatch(/^[0-9a-f]{64}$/);
+        expect(quote!.publicAccessTokenHash).not.toBe(result.token);
+        expect(JSON.stringify(quote)).not.toContain(result.token);
         expect(quote!.number).toBe(result.number);
         expect(quote!.status).toBe("PENDING");
         expect(quote!.customerEmail).toBe("lucia@lucams.test");
@@ -262,7 +268,7 @@ describe.skipIf(!hasDb)(
         ]);
         const result = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
         const quote = await prisma.quote.findUnique({
-          where: { publicAccessToken: result.token },
+          where: { publicAccessTokenHash: hashBearerToken(result.token) },
         });
         expect(quote!.customerEmail).toBeNull();
       });
@@ -312,7 +318,7 @@ describe.skipIf(!hasDb)(
         const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
         // Ensuciamos la quote con nota interna + PII para verificar que NO salen.
         await prisma.quote.update({
-          where: { publicAccessToken: token },
+          where: { publicAccessTokenHash: hashBearerToken(token) },
           data: { internalNotes: "nota interna secreta" },
         });
 
@@ -394,7 +400,9 @@ describe.skipIf(!hasDb)(
           { variantId: defaultVariantId, qty: 1, unitPrice: DEFAULT_PRICE },
         ]);
         const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
-        const quote = (await prisma.quote.findUnique({ where: { publicAccessToken: token } }))!;
+        const quote = (await prisma.quote.findUnique({
+          where: { publicAccessTokenHash: hashBearerToken(token) },
+        }))!;
 
         const full = await getQuoteById(quote.id);
         expect(full).not.toBeNull();
@@ -412,7 +420,9 @@ describe.skipIf(!hasDb)(
           { variantId: defaultVariantId, qty: 1, unitPrice: DEFAULT_PRICE },
         ]);
         const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
-        const quote = (await prisma.quote.findUnique({ where: { publicAccessToken: token } }))!;
+        const quote = (await prisma.quote.findUnique({
+          where: { publicAccessTokenHash: hashBearerToken(token) },
+        }))!;
 
         const updated = await updateQuoteStatus(quote.id, "CONTACTED");
         expect(updated.status).toBe("CONTACTED");
@@ -434,7 +444,9 @@ describe.skipIf(!hasDb)(
           { variantId: defaultVariantId, qty: 1, unitPrice: DEFAULT_PRICE },
         ]);
         const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
-        const quote = (await prisma.quote.findUnique({ where: { publicAccessToken: token } }))!;
+        const quote = (await prisma.quote.findUnique({
+          where: { publicAccessTokenHash: hashBearerToken(token) },
+        }))!;
 
         const res = await updateQuoteStatus(quote.id, "PENDING");
         expect(res.status).toBe("PENDING");
@@ -453,7 +465,9 @@ describe.skipIf(!hasDb)(
           { variantId: defaultVariantId, qty: 1, unitPrice: DEFAULT_PRICE },
         ]);
         const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
-        const quote = (await prisma.quote.findUnique({ where: { publicAccessToken: token } }))!;
+        const quote = (await prisma.quote.findUnique({
+          where: { publicAccessTokenHash: hashBearerToken(token) },
+        }))!;
 
         const first = await addQuoteInternalNote(quote.id, "Cliente prefiere por la tarde");
         expect(first.internalNotes).toBe("Cliente prefiere por la tarde");
@@ -475,7 +489,9 @@ describe.skipIf(!hasDb)(
           { variantId: defaultVariantId, qty: 1, unitPrice: DEFAULT_PRICE },
         ]);
         const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
-        const quote = (await prisma.quote.findUnique({ where: { publicAccessToken: token } }))!;
+        const quote = (await prisma.quote.findUnique({
+          where: { publicAccessTokenHash: hashBearerToken(token) },
+        }))!;
 
         await expect(addQuoteInternalNote(quote.id, "   ")).rejects.toThrow(/vacía/);
         expect(auditSpy.recordAdminAction).not.toHaveBeenCalled();

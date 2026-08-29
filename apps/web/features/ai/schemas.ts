@@ -27,6 +27,28 @@ export const DesignSuggestInputSchema = z.object({
 });
 export type DesignSuggestInput = z.infer<typeof DesignSuggestInputSchema>;
 
+/*
+ * PII guard (auditoría E-2): `occasion` is free text that is sent to a third-party
+ * provider (Google Gemini). If it looks like personal data — long digit runs
+ * (document numbers), emails, Colombian cellphones (3XX XXX XXXX) — it is replaced
+ * with a neutral text instead of rejecting: the assistant keeps working and no PII
+ * leaves the server.
+ */
+const OCCASION_PII_PATTERNS: readonly RegExp[] = [
+  /\b\d{6,12}\b/, // long digit runs (cédula, NIT, account numbers)
+  /[\w.+-]+@[\w-]+\.[\w.]+/, // emails
+  /\b3\d{9}\b/, // Colombian cellphones
+];
+
+/** Neutral replacement used when `occasion` matches a PII pattern. */
+export const NEUTRAL_OCCASION = "ocasión especial";
+
+/** Returns `input` unchanged, or with `occasion` replaced by NEUTRAL_OCCASION if it has PII. */
+export function sanitizeOccasion(input: DesignSuggestInput): DesignSuggestInput {
+  if (!OCCASION_PII_PATTERNS.some((p) => p.test(input.occasion))) return input;
+  return { ...input, occasion: NEUTRAL_OCCASION };
+}
+
 /** Forma cruda que devuelve el LLM (validada con Zod tras el parseo). */
 export const RawSuggestionSchema = z.object({
   phrase: z.string().max(80).optional().nullable(),

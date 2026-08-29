@@ -27,8 +27,10 @@ export default async function AdminMfaPage() {
 
   const { data: factorsData } = await supabase.auth.mfa.listFactors();
   const totp = (factorsData?.totp ?? []).find((f) => f.status === "verified");
-  // No tiene MFA → no hay nada que retar.
-  if (!totp) redirect("/admin/dashboard");
+  // No tiene MFA → no hay nada que retar. Con MFA obligatorio (auditoría
+  // 2026-08-24 · B-1) NO se le deja entrar al panel: va al enrolamiento forzado
+  // (antes se redirigía al dashboard y operaba solo con contraseña).
+  if (!totp) redirect("/admin/seguridad?enroll=required");
 
   return (
     <div className="bg-brand-cream flex min-h-screen items-center justify-center px-4">

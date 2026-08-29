@@ -10,24 +10,27 @@
  * El user creado es SOLO Customer, NO AdminUser. Sirve para probar
  * que /admin/* rechaza correctamente a clientes no-admin.
  *
- * Uso (vía Makefile):
- *   make seed-test-customer
- *     → crea test+cliente@example.com / TestCliente2026!
+ * Uso (con el entorno cargado vía dotenv-cli, desde packages/db):
+ *   PASSWORD=Test123! npx dotenv -e ../../.env.local -- node scripts/seed-test-customer.mjs
+ *     → crea test+cliente@example.com con ese password
  *
- *   EMAIL=foo@bar.com PASSWORD=Otra123! FIRST=Pepe \
- *     make seed-test-customer
+ *   EMAIL=foo@bar.com PASSWORD=Otra123! FIRST=Pepe LAST=Pérez \
+ *     npx dotenv -e ../../.env.local -- node scripts/seed-test-customer.mjs
  *     → custom
  *
- * IMPORTANTE:
+ * IMPORTANTE (auditoría 2026-08-24, hallazgo G-6):
+ *   - PASSWORD es OBLIGATORIO: ya no hay default en el repo y NUNCA se
+ *     imprime en la salida.
+ *   - Guarda de ambiente: se niega a correr si DATABASE_URL/DIRECT_URL o
+ *     NEXT_PUBLIC_SUPABASE_URL apuntan a PRD (ver lib/env-guard.mjs).
  *   - Los usuarios creados aquí son SOLO para testing.
  *   - No reciben email de confirmación.
- *   - El password queda printed en la salida del script — visible en
- *     logs locales. No usar este flujo para users productivos.
  */
 
 import { randomBytes } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 
@@ -41,10 +44,31 @@ if (!SUPABASE_URL || !SECRET_KEY) {
   process.exit(1);
 }
 
+// Guardas de ambiente (G-6): este script crea un auth.user con
+// email_confirm=true — jamás contra PRD. env-guard cubre DATABASE_URL y
+// DIRECT_URL; la URL pública de Supabase se chequea aparte por el ref del
+// proyecto de PRD (fuente de verdad del ref: scripts/lib/env-guard.mjs).
+assertDestructiveAllowed("seed-test-customer.mjs");
+if (SUPABASE_URL.includes("zxkucphbsfygakgxcnik")) {
+  console.error(
+    "ERROR: NEXT_PUBLIC_SUPABASE_URL apunta a PRD — prohibido sembrar usuarios de test en producción.",
+  );
+  process.exit(1);
+}
+
 const email = (process.env.EMAIL ?? "test+cliente@example.com").toLowerCase().trim();
-const password = process.env.PASSWORD ?? "TestCliente2026!";
+// Sin default (G-6): el password llega SIEMPRE por entorno y nunca se imprime.
+const password = process.env.PASSWORD;
 const firstName = process.env.FIRST ?? "Test";
 const lastName = process.env.LAST ?? "Cliente";
+
+if (!password) {
+  console.error(
+    "ERROR: PASSWORD es obligatorio (ya no hay default en el repo). " +
+      "Ej: PASSWORD=Test123! npx dotenv -e ../../.env.local -- node scripts/seed-test-customer.mjs",
+  );
+  process.exit(1);
+}
 
 if (password.length < 8) {
   console.error("PASSWORD debe tener al menos 8 caracteres.");
@@ -59,7 +83,7 @@ const prisma = new PrismaClient();
 
 console.log("=== seed-test-customer ===");
 console.log(`Email:     ${email}`);
-console.log(`Password:  ${password}`);
+console.log("Password:  (el de PASSWORD — no se imprime)");
 console.log(`Nombre:    ${firstName} ${lastName}`);
 console.log("");
 
@@ -112,9 +136,7 @@ if (existing) {
 }
 
 console.log("");
-console.log("Listo. Credenciales para test:");
-console.log(`  Email:    ${email}`);
-console.log(`  Password: ${password}`);
+console.log(`Listo. Login de prueba con ${email} y el password que pasaste por PASSWORD.`);
 console.log("");
 console.log("Probar:");
 console.log("  - /login con esas credenciales → debe entrar (es cliente).");

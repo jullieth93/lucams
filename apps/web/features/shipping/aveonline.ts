@@ -1226,6 +1226,9 @@ export class AveonlineProvider implements ShippingProvider {
       status,
       carrierStatusRaw: nombreRaw,
       timestamp: parseAveonlineDate(tsRaw),
+      // Without a carrier timestamp, parseAveonlineDate falls back to `new Date()`:
+      // the route must NOT use that non-deterministic value in the dedup key (D-4).
+      hasCarrierTimestamp: tsRaw != null,
     };
   }
 }

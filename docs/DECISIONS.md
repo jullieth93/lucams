@@ -3107,3 +3107,58 @@ reordenar) sin ver JSON; el sitio no cambia de formato; revertir una versión re
 los items se re-derivan de él (migración perezosa al abrir el editor). La guarda de borrado de la
 mediateca tuvo que ampliarse a búsqueda por `contains` porque los ids de imagen quedan embebidos
 en el JSON de los campos lista (detectado en B6).
+
+---
+
+## ADR-085 — Remediación de la auditoría OWASP 2026-08-24: MFA enforceado, tokens con hash en reposo, cookie de checkout cifrada, backups cifrados (2026-08-29)
+
+**Fecha:** 2026-08-29
+**Estado:** ✅ Aceptada
+
+**Contexto.** La auditoría `docs/audits/auditoria_seguridad_lucams.md` (1 RED, 49 YELLOW) dejó
+hallazgos con decisión arquitectónica no trivial. El cierre completo está en la §11 del propio
+informe; acá quedan solo las decisiones que cambian comportamiento o postura de largo plazo.
+
+**Decisiones:**
+
+1. **MFA TOTP enforceado por código para TODOS los roles admin** (B-1, el único RED): el guard
+   central y el layout del panel redirigen a `/admin/seguridad?enroll=required` a cualquier admin
+   sin factor verificado. El enrolamiento TOTP es client-side (SDK Supabase), así que no necesita
+   excepción aal2; el resto de acciones admin sigue exigiendo aal2. La política escrita
+   (`SECURITY.md`) y el código ahora coinciden.
+2. **Tokens bearer públicos con hash en reposo** (F-11): `Order.publicAccessToken`,
+   `Quote.publicAccessToken`, `Design.shareToken` y `AbandonedCart.recoverToken` se persisten solo
+   como SHA-256 (sin sal: 128-192 bits CSPRNG la hacen innecesaria, mismo criterio que
+   `AdminRecoveryCode`). Migración con backfill vía pgcrypto (los links ya enviados siguen
+   funcionando) + `DROP COLUMN` de los planos → **debe aplicarse en el mismo deploy del código**.
+   Consecuencias aceptadas: los correos post-pago ya no llevan el link one-click (su CTA cae a
+   `/rastrear`, que verifica número+correo), `/rastrear` rota el token al usarse, y pedir el link
+   de un diseño compartido lo rota (el anterior muere).
+3. **Cookie de checkout cifrada con AES-256-GCM** (F-9) además de firmada: clave derivada de
+   `CSRF_SECRET` por SHA-256 con separación de dominio (`"checkout-session:" + secret`), IV
+   aleatorio por escritura; el auth tag GCM reemplaza el HMAC externo. Cookies viejas (TTL 60 min)
+   degradan a "sin sesión" sin romper.
+4. **Recovery codes admin con pepper HMAC** (B-5): `createHmac("sha256", CSRF_SECRET)` + 16 chars
+   - consumo atómico `updateMany`; fallback de lectura para códigos legacy SHA-256 hasta su
+     rotación (TODO en el archivo). No se introdujo env var nueva a propósito.
+5. **Backups R2 cifrados a nivel aplicación** (A-3): gpg simétrico AES256 en streaming
+   (`pg_dump | gzip | gpg -c`), passphrase en el secret `BACKUP_GPG_PASSPHRASE` (fail-closed si
+   falta); el DR drill mensual descifra → el cifrado queda cubierto por la prueba de restore.
+6. **`?secret=` del webhook AveOnline deshabilitado por defecto** (D-1) tras flag
+   `AVEONLINE_ALLOW_QUERY_SECRET` (default OFF). El registro actual es por panel con
+   `payload.token`; el flag existe solo como puente de transición documentado.
+7. **Cupones: tope por cliente enforceado en DB con trigger + advisory lock** (G-5), no con índice
+   único parcial: el admin puede crear `maxUsesPerCustomer > 1`, así que el índice
+   `(couponId, lower(email))` habría roto cupones legítimos. El perdedor de la carrera recibe
+   P2002 mapeado a "cupón ya usado"; en la saga PAID la orden cobrada se respeta y queda
+   `needsReconciliation`.
+8. **CI/supply chain:** actions de GitHub pineadas por SHA (A-1), gitleaks con reglas para
+   `sb_secret_*` y URIs postgres con password (A-2), overrides para la cadena dev hono/qs (F-5),
+   y regla ESLint que prohíbe importar `sharp` directo (F-4). El gate de CI sigue siendo
+   `pnpm audit --prod --audit-level=high`; el audit full (con dev) muestra ~35 advisories dev-only
+   adicionales que quedan para triage aparte (no rompen el gate ni llegan al runtime).
+
+**Consecuencias.** La postura documentada en `SECURITY.md` vuelve a ser cierta (6 puntos de drift
+corregidos, A-4). Quedan acciones humanas listadas en la §11 del informe (secretos GitHub, panel
+AveOnline, dashboard Supabase, aplicar migraciones, monitores con `x-cron-secret`). El riesgo G-9
+(cifrado de columna para `documentNumber`) queda explícitamente aceptado hasta la Fase 7 (DIAN).

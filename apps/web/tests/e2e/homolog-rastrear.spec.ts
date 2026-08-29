@@ -81,11 +81,11 @@ test("rastrear: número+email → /pedido/[token]; anti-enumeración; rate-limit
   const variant = product!.variants[0]!;
   const unitPrice = variant.price ?? product!.basePrice;
   orderNumber = `TEST${runDigits}`;
-  const { randomBytes } = await import("node:crypto");
+  // F-11 — la orden ya no guarda el token en claro; /rastrear lo ROTA al validar
+  // identidad, así que la semilla no necesita token alguno.
   const order = await db().order.create({
     data: {
       number: orderNumber,
-      publicAccessToken: randomBytes(16).toString("hex"),
       customerId: customer!.id,
       email: customerEmail,
       phone: "3000000000",

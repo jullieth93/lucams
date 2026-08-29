@@ -8,6 +8,7 @@
 import { logger } from "@/lib/logger";
 import { InternalError, problemResponse } from "@/lib/errors";
 import { rateLimit } from "@/lib/rate-limit";
+import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export const runtime = "nodejs";
 export async function GET(req: Request): Promise<Response> {
   // Rate-limit por IP (auditoría experto 2026-07-26): healthcheck público que consulta
   // un tercero o la DB por hit → sin límite era amplificable. 30/min por IP.
-  const { allowed } = await rateLimit(`health_storage:${getClientIp(req.headers)}`, 30, 60);
+  const { allowed } = await rateLimit(ipKey("health_storage", getClientIp(req.headers)), 30, 60);
   if (!allowed) {
     return new Response(JSON.stringify({ status: "rate_limited" }), {
       status: 429,
@@ -46,9 +47,11 @@ export async function GET(req: Request): Promise<Response> {
     const { error } = await supabase.storage.from("product-images").list("", { limit: 1 });
     if (error) {
       logger.warn({ event: "health.storage.error", message: error.message });
-      return problemResponse(
-        new InternalError(`Supabase Storage no responde: ${error.message.slice(0, 80)}`),
-      );
+      // Detalle estático a propósito (auditoría 2026-08-24, C-5): el mensaje del SDK de
+      // Supabase puede arrastrar nombres de buckets, IDs de proyecto o detalles de red
+      // internos — el mensaje real queda en el warn de arriba (mismo patrón que
+      // health/wompi).
+      return problemResponse(new InternalError("Supabase Storage no responde. Revisar logs."));
     }
     return Response.json({
       status: "ok",

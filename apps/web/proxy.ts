@@ -37,6 +37,8 @@ import {
   ADMIN_ACTIVITY_COOKIE,
   ADMIN_IDLE_LIMIT_MS,
   adminActivityCookieOptions,
+  readAdminActivityMark,
+  sealAdminActivityMark,
 } from "@/lib/admin-activity";
 import { buildCsp, isOriginAllowed, SECURITY_HEADERS } from "@/lib/security-headers";
 import { incrementRedirectHit, lookupActiveRedirect } from "@/features/redirects/service";
@@ -84,6 +86,16 @@ const IS_PROD_DEPLOY =
   process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview";
 const IS_DEV = process.env.NODE_ENV === "development";
 
+// A-5 (auditoría 2026-08-24): los early returns (redirects 3xx, 403 de CORS) también
+// llevan X-Request-Id + SECURITY_HEADERS — antes salían pelados porque los headers
+// solo se seteaban sobre `response` al final del flujo. La CSP se agrega aparte SOLO
+// al 403 (tiene body renderizable); los redirects 3xx sin body no la necesitan.
+function withSecurityHeaders(res: NextResponse, requestId: string): NextResponse {
+  res.headers.set("X-Request-Id", requestId);
+  for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.headers.set(k, v);
+  return res;
+}
+
 // CSP por nonce (C3, Lucy 2026-06-27). script-src usa nonce + 'self' (Ola 18 fix,
 // auditoría 2026-07-26: se retiró 'strict-dynamic' porque bloqueaba los chunks lazy
 // de Next — editores de sets, login, admin — ver lib/security-headers.ts): los
@@ -128,7 +140,7 @@ export async function proxy(request: NextRequest) {
         new URL(`/producto/${target}`, request.url),
         request.nextUrl.searchParams,
       );
-      return NextResponse.redirect(targetUrl, 301);
+      return withSecurityHeaders(NextResponse.redirect(targetUrl, 301), requestId);
     }
   }
 
@@ -156,7 +168,10 @@ export async function proxy(request: NextRequest) {
             new URL(dynamicRedirect.toPath, request.url),
             request.nextUrl.searchParams,
           );
-      return NextResponse.redirect(targetUrl, dynamicRedirect.statusCode);
+      return withSecurityHeaders(
+        NextResponse.redirect(targetUrl, dynamicRedirect.statusCode),
+        requestId,
+      );
     }
   }
 
@@ -173,14 +188,20 @@ export async function proxy(request: NextRequest) {
     !path.startsWith("/api/health") &&
     !path.startsWith("/_next")
   ) {
-    return NextResponse.redirect(new URL("/maintenance", request.url));
+    return withSecurityHeaders(
+      NextResponse.redirect(new URL("/maintenance", request.url)),
+      requestId,
+    );
   }
 
   if (isApi && origin && !isOriginAllowed(origin, IS_DEV)) {
-    return new NextResponse("Forbidden", {
-      status: 403,
-      headers: { "X-Request-Id": requestId },
-    });
+    // El 403 SÍ lleva CSP (tiene body "Forbidden" renderizable) — A-5.
+    const forbidden = withSecurityHeaders(
+      new NextResponse("Forbidden", { status: 403 }),
+      requestId,
+    );
+    forbidden.headers.set("Content-Security-Policy", cspValue);
+    return forbidden;
   }
 
   let response = nextWithNonce();
@@ -189,6 +210,14 @@ export async function proxy(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      // B-2 (auditoría 2026-08-24): `Secure` explícito en despliegues HTTPS
+      // (prod/preview) — sin él, la cookie sb-* viajaría por HTTP plano en el
+      // primer contacto pre-HSTS. `httpOnly` queda en false (default del
+      // paquete, no sobreescribible aquí sin romper el browser client): el
+      // cliente del navegador lee la sesión desde document.cookie (reto MFA,
+      // lib/supabase/browser.ts) — la exposición a XSS la mitiga la CSP por
+      // nonce de arriba, no httpOnly.
+      cookieOptions: { secure: IS_PROD_DEPLOY, sameSite: "lax" },
       cookies: {
         getAll() {
           return request.cookies.getAll();
@@ -220,36 +249,42 @@ export async function proxy(request: NextRequest) {
   const isAdminPath = path.startsWith("/admin") && !path.startsWith("/admin/login");
   if (isAdminPath && !user) {
     const redirectUrl = new URL("/admin/login", request.url);
-    return NextResponse.redirect(redirectUrl);
+    return withSecurityHeaders(NextResponse.redirect(redirectUrl), requestId);
   }
 
   // Idle-timeout admin (A7 · ADR-062 P1 · plan de producción): si pasaron >30 min
-  // sin actividad —O la marca está AUSENTE— limpiamos las cookies de sesión Supabase
-  // (sb-*) + la marca y forzamos re-login. La marca la SELLA la acción de login al
-  // autenticarse (lib/admin-activity), así que una request admin autenticada sin
-  // marca es manipulada/vencida → se trata como stale (cierra el hueco de "ausente =
-  // primera visita" que evadía el timeout borrando la cookie). Ventana deslizante:
-  // en cada request admin renovamos la marca.
+  // sin actividad —O la marca está AUSENTE o con FIRMA INVÁLIDA— limpiamos las
+  // cookies de sesión Supabase (sb-*) + la marca y forzamos re-login. La marca la
+  // SELLA la acción de login al autenticarse (lib/admin-activity) y va firmada con
+  // HMAC (B-8): una request admin autenticada sin marca —o con una marca forjada,
+  // p. ej. `admin_last_activity=<now>` fabricado con cookies robadas— se trata
+  // como stale (cierra el hueco de "ausente = primera visita" y el de marca no
+  // firmada). Ventana deslizante: en cada request admin renovamos la marca.
   if (isAdminPath && user) {
-    const last = Number(request.cookies.get(ADMIN_ACTIVITY_COOKIE)?.value ?? 0);
+    const last = readAdminActivityMark(request.cookies.get(ADMIN_ACTIVITY_COOKIE)?.value);
     const now = Date.now();
     if (!last || now - last > ADMIN_IDLE_LIMIT_MS) {
+      // B-8: además de borrar cookies en el browser, revocamos el refresh token
+      // server-side (scope global = todas las sesiones del user en GoTrue).
+      // Best-effort: si el Auth server falla, el borrado local igual se hace.
+      await supabase.auth.signOut({ scope: "global" }).catch(() => {});
       const url = new URL("/admin/login", request.url);
       url.searchParams.set("expired", "1");
-      const expired = NextResponse.redirect(url);
+      const expired = withSecurityHeaders(NextResponse.redirect(url), requestId);
       for (const c of request.cookies.getAll()) {
         if (c.name.startsWith("sb-")) expired.cookies.delete(c.name);
       }
       expired.cookies.delete(ADMIN_ACTIVITY_COOKIE);
       return expired;
     }
-    response.cookies.set(ADMIN_ACTIVITY_COOKIE, String(now), adminActivityCookieOptions());
+    response.cookies.set(
+      ADMIN_ACTIVITY_COOKIE,
+      sealAdminActivityMark(now),
+      adminActivityCookieOptions(),
+    );
   }
 
-  response.headers.set("X-Request-Id", requestId);
-  for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
-    response.headers.set(k, v);
-  }
+  withSecurityHeaders(response, requestId);
   response.headers.set("Content-Security-Policy", cspValue);
 
   if (isApi && origin && isOriginAllowed(origin, IS_DEV)) {

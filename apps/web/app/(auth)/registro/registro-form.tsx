@@ -185,6 +185,18 @@ export function RegistroForm({
             </div>
           )}
 
+          {/* Anti-enumeración (B-3): el registro con un correo ya existente devuelve
+              el mismo éxito genérico (el aviso real va por email al dueño). */}
+          {state?.success && (
+            <div
+              role="status"
+              className="bg-success/10 border-success/20 rounded-md border px-3 py-2 text-sm"
+              style={{ color: "var(--success)" }}
+            >
+              {state.success}
+            </div>
+          )}
+
           {/* Ley 1581 art. 9: la autorización debe ser expresa y verificable, no inferida de un
               aviso pasivo. El texto de la casilla es administrable desde el CMS (roadmap B7,
               campo auth.registro.consent en markdown — links y negrita preservados). */}

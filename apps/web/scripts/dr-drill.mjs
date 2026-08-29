@@ -3,16 +3,20 @@
  * DR drill #2 — verifica que el backup de R2 es RESTAURABLE de verdad (ADR-059).
  *
  * Por qué existe: un backup que nunca se restaura no es un backup, es una
- * esperanza. Este script baja el dump MÁS NUEVO del bucket R2, lo restaura en
- * un Postgres vacío (el service container del runner, imagen supabase/postgres
- * — el mismo engine de prod) y verifica conteos de tablas clave. Si el dump no
- * sirve, el workflow sale ROJO el día tranquilo, no el día del desastre.
+ * esperanza. Este script baja el dump MÁS NUEVO del bucket R2, lo DESCIFRA
+ * (gpg — los backups se suben cifrados con AES256 desde 2026-08-29, A-3 de la
+ * auditoría 2026-08-24), lo restaura en un Postgres vacío (el service container
+ * del runner, imagen supabase/postgres — el mismo engine de prod) y verifica
+ * conteos de tablas clave. Si el dump no sirve, el workflow sale ROJO el día
+ * tranquilo, no el día del desastre.
  *
  * Corre desde .github/workflows/dr-drill.yml (mensual + manual). NUNCA imprime
  * secretos. Env requerido: R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID,
- * R2_SECRET_ACCESS_KEY. Opcional: BACKUP_PREFIX (default "db"),
- * DRILL_DATABASE_URL (default postgres local del runner), DRILL_MIN_PRODUCTS
- * (default 100 — umbral de sanidad del catálogo restaurado).
+ * R2_SECRET_ACCESS_KEY, BACKUP_GPG_PASSPHRASE (la misma del backup — sin ella
+ * no se puede descifrar y el drill falla de inmediato). Opcional:
+ * BACKUP_PREFIX (default "db"), DRILL_DATABASE_URL (default postgres local del
+ * runner), DRILL_MIN_PRODUCTS (default 100 — umbral de sanidad del catálogo
+ * restaurado).
  */
 
 import { spawn } from "node:child_process";
@@ -44,6 +48,8 @@ async function main() {
   const bucket = requireEnv("R2_BUCKET");
   const accessKeyId = requireEnv("R2_ACCESS_KEY_ID");
   const secretAccessKey = requireEnv("R2_SECRET_ACCESS_KEY");
+  // Fail-closed (A-3): sin la passphrase no se puede descifrar el dump.
+  const gpgPassphrase = requireEnv("BACKUP_GPG_PASSPHRASE");
   const prefix = (process.env.BACKUP_PREFIX || "db").replace(/\/+$/, "");
   const drillUrl =
     process.env.DRILL_DATABASE_URL ||
@@ -56,32 +62,73 @@ async function main() {
     credentials: { accessKeyId, secretAccessKey },
   });
 
-  // 1. Localizar el dump MÁS NUEVO del bucket.
+  // 1. Localizar el dump cifrado MÁS NUEVO del bucket. Solo entran llaves .gpg:
+  //    los backups legacy sin cifrar (anteriores a 2026-08-29) ya no son
+  //    candidatos del drill — la retención de backup-db-to-r2.mjs los poda.
   const listed = await client.send(
     new ListObjectsV2Command({ Bucket: bucket, Prefix: `${prefix}/` }),
   );
   const keys = (listed.Contents || [])
     .map((o) => o.Key)
-    .filter((k) => k && BACKUP_KEY_RE.test(k))
+    .filter((k) => k && k.endsWith(".gpg") && BACKUP_KEY_RE.test(k))
     .sort();
   if (keys.length === 0)
-    throw new Error(`No hay backups con forma de dump en r2://${bucket}/${prefix}/`);
+    throw new Error(`No hay backups cifrados (.sql.gz.gpg) en r2://${bucket}/${prefix}/`);
   const latest = keys[keys.length - 1];
   console.log(`→ dump a restaurar: ${latest} (de ${keys.length} disponibles)`);
 
-  // 2. Descargar + descomprimir.
+  // 2. Descargar + descifrar (gpg) + descomprimir. La passphrase entra por el
+  //    fd 3 (nunca por argv/env) y el stream cifrado por stdin; gpg -d escribe
+  //    el gzip en claro a stdout y de ahí al gunzip — nada toca disco sin cifrar.
   let dump;
   try {
     dump = await client.send(new GetObjectCommand({ Bucket: bucket, Key: latest }));
   } catch (err) {
     throw explainR2ConnectError(err, accountId);
   }
-  const chunks = [];
+  const gpg = spawn("gpg", ["-d", "--batch", "--yes", "--passphrase-fd", "3", "-o", "-"], {
+    stdio: ["pipe", "pipe", "pipe", "pipe"],
+  });
+  let gpgStderr = "";
+  gpg.stderr.on("data", (d) => {
+    gpgStderr += d.toString();
+  });
+  const gpgDone = new Promise((resolve, reject) => {
+    gpg.on("error", (e) =>
+      reject(e.code === "ENOENT" ? new Error("gpg no está instalado en este ambiente") : e),
+    );
+    gpg.on("close", (code) =>
+      code === 0
+        ? resolve()
+        : reject(
+            new Error(
+              `gpg -d salió con código ${code} (¿BACKUP_GPG_PASSPHRASE incorrecta?): ` +
+                gpgStderr.trim().slice(0, 300),
+            ),
+          ),
+    );
+  });
   const gunzip = createGunzip();
-  dump.Body.pipe(gunzip);
-  for await (const chunk of gunzip) chunks.push(chunk);
-  const sql = Buffer.concat(chunks);
-  console.log(`→ descargado y descomprimido (${(sql.length / 1024 / 1024).toFixed(2)} MB de SQL)`);
+  const sqlPromise = (async () => {
+    const chunks = [];
+    for await (const chunk of gunzip) chunks.push(chunk);
+    return Buffer.concat(chunks);
+  })();
+  dump.Body.pipe(gpg.stdin);
+  gpg.stdio[3].end(`${gpgPassphrase}\n`);
+  gpg.stdout.pipe(gunzip);
+  let sql;
+  try {
+    sql = (await Promise.all([sqlPromise, gpgDone]))[0];
+  } catch (err) {
+    throw new Error(
+      `No se pudo descifrar/descomprimir ${latest} (¿BACKUP_GPG_PASSPHRASE incorrecta ` +
+        `o dump sin cifrar?): ${err.message}`,
+    );
+  }
+  console.log(
+    `→ descargado, descifrado y descomprimido (${(sql.length / 1024 / 1024).toFixed(2)} MB de SQL)`,
+  );
 
   // 3. Restaurar (vía archivo temporal — el SQL no cabe en argv y psql lee de
   //    archivo con -f).

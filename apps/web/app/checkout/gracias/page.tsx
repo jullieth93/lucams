@@ -116,7 +116,8 @@ export default async function CheckoutGraciasPage({
       email: true,
       shippingCarrier: true,
       shippingAddress: true,
-      publicAccessToken: true, // #24 — link a /pedido/<token> para invitados (sin login)
+      // F-11 — el publicAccessToken ya no se puede releer de la DB (solo hash);
+      // el invitado rastrea su pedido desde /rastrear (número + correo).
       // ADR-070 (pieza #1) — miniaturas de lo que pediste; el diseño usa su snapshot autocontenido.
       items: {
         select: {
@@ -187,7 +188,6 @@ export default async function CheckoutGraciasPage({
             email: true,
             shippingCarrier: true,
             shippingAddress: true,
-            publicAccessToken: true, // #24
             items: {
               select: {
                 id: true,
@@ -254,7 +254,6 @@ function ApprovedPage({
     email: string;
     shippingCarrier: string | null;
     shippingAddress: unknown;
-    publicAccessToken: string | null;
     // ADR-070 (pieza #1) — miniaturas del pedido (snapshot del diseño autocontenido).
     items: {
       id: string;
@@ -267,11 +266,9 @@ function ApprovedPage({
   txId: string;
   isGuest: boolean;
 }) {
-  // #24 — invitado con token → vista pública del pedido; con cuenta → histórico.
-  const orderUrl =
-    isGuest && order?.publicAccessToken
-      ? `/pedido/${order.publicAccessToken}`
-      : "/mi-cuenta/pedidos";
+  // #24 — invitado → /rastrear (prueba número+correo y emite un token fresco;
+  // F-11: el token original ya no se puede releer de la DB). Con cuenta → histórico.
+  const orderUrl = isGuest ? "/rastrear" : "/mi-cuenta/pedidos";
   const addr = order?.shippingAddress as
     { fullName?: string; addressLine1?: string; city?: string; department?: string } | undefined;
 
@@ -411,7 +408,7 @@ function ApprovedPage({
         </Link>
         <Button asChild size="lg" className="bg-gradient-brand text-white hover:brightness-110">
           <Link href={orderUrl}>
-            {isGuest && order?.publicAccessToken ? (
+            {isGuest ? (
               <CmsText blockKey="checkout.gracias.order-cta-guest" fallback="Ver mi pedido" />
             ) : (
               <CmsText blockKey="checkout.gracias.order-cta-account" fallback="Ver mis pedidos" />

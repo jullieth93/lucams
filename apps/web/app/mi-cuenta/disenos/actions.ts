@@ -9,8 +9,10 @@ import {
 } from "@/features/personalization/service";
 
 /**
- * Genera (o devuelve) el token público del diseño para compartirlo. El cliente arma
- * la URL con su propio origin (/d/<token>). Gated a dueño vía getCurrentCustomer.
+ * Genera el token público del diseño para compartirlo. Si ya había un link activo
+ * lo ROTA (F-11: en DB solo vive el hash, el plano no se puede releer) — la UI lo
+ * advierte con un toast. El cliente arma la URL con su propio origin (/d/<token>).
+ * Gated a dueño vía getCurrentCustomer.
  */
 export async function shareDesignAction(
   designId: string,

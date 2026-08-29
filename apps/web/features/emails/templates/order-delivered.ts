@@ -25,7 +25,7 @@ export async function orderDeliveredEmail(data: OrderDeliveredData) {
 ${ctaButton(
   data.publicTrackingToken
     ? `${siteUrl}/pedido/${data.publicTrackingToken}`
-    : `${siteUrl}/mi-cuenta/pedidos`,
+    : `${siteUrl}/rastrear`,
   "Dejar una reseña ⭐",
 )}
 
@@ -39,7 +39,7 @@ Hola ${data.customerName},
 Tu pedido ${data.orderNumber} ya está en tus manos según la transportadora.
 
 ¿Nos cuentas cómo te fue? Una reseña nos ayuda mucho:
-${siteUrl}/mi-cuenta/pedidos
+${data.publicTrackingToken ? `${siteUrl}/pedido/${data.publicTrackingToken}` : `${siteUrl}/rastrear`}
 
 ¿Algún inconveniente? Responde este correo o escríbenos por WhatsApp.`;
 

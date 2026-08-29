@@ -14,19 +14,24 @@ import {
 } from "./backup-lib.mjs";
 
 describe("buildBackupKey", () => {
-  it("arma la llave UTC ordenable con prefijo por defecto 'db'", () => {
+  it("arma la llave UTC ordenable con prefijo por defecto 'db' y sufijo .gpg (cifrado)", () => {
     const key = buildBackupKey(new Date("2026-07-13T14:05:01.123Z"));
-    expect(key).toBe("db/lucams-2026-07-13T140501Z.sql.gz");
+    expect(key).toBe("db/lucams-2026-07-13T140501Z.sql.gz.gpg");
   });
 
   it("respeta un prefijo custom y le quita la barra final", () => {
     expect(buildBackupKey(new Date("2026-01-02T03:04:05Z"), "prod/")).toBe(
-      "prod/lucams-2026-01-02T030405Z.sql.gz",
+      "prod/lucams-2026-01-02T030405Z.sql.gz.gpg",
     );
   });
 
   it("la llave generada matchea el patrón de backup", () => {
     expect(BACKUP_KEY_RE.test(buildBackupKey(new Date("2026-12-31T23:59:59Z")))).toBe(true);
+  });
+
+  it("el patrón también acepta llaves LEGACY sin cifrar (.sql.gz) — la retención las poda", () => {
+    expect(BACKUP_KEY_RE.test("db/lucams-2026-01-01T000000Z.sql.gz")).toBe(true);
+    expect(BACKUP_KEY_RE.test("db/lucams-2026-01-01T000000Z.sql.gz.gpg")).toBe(true);
   });
 
   it("llaves de fechas crecientes ordenan cronológicamente (sort lexical)", () => {

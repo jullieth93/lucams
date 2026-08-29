@@ -11,7 +11,12 @@ export class AdminLoginPage {
     await this.page.goto("/admin/login", { waitUntil: "domcontentloaded" });
   }
 
-  /** Login con admin SIN MFA → entra directo al dashboard. */
+  /**
+   * @deprecated Sin uso y OBSOLETO (B-1, auditoría 2026-08-24): el MFA es
+   * obligatorio para todo admin — un admin sin factor ya NO entra al dashboard,
+   * cae en /admin/seguridad?enroll=required. Para specs nuevos:
+   * _helpers/mfa.ts (`loginAdminWithTotp`).
+   */
   async login(email: string, password: string) {
     await this.page.locator('input[name="email"]').fill(email);
     await this.page.locator('input[name="password"]').fill(password);

@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { DesignSuggestInputSchema, BRAND_COLORS } from "./schemas";
+import {
+  DesignSuggestInputSchema,
+  BRAND_COLORS,
+  sanitizeOccasion,
+  NEUTRAL_OCCASION,
+} from "./schemas";
 import { AiUnavailableError } from "./provider";
 
 // Guard de etapa: suggestDesignAction debe rechazar en modo catálogo (la UI la oculta,
@@ -36,6 +41,32 @@ describe("IA — validación de entrada", () => {
   });
   it("acepta entrada válida", () => {
     expect(DesignSuggestInputSchema.safeParse(VALID_INPUT).success).toBe(true);
+  });
+});
+
+describe("IA — filtro PII de la ocasión (auditoría E-2)", () => {
+  it("sustituye un número de documento por el texto neutro", () => {
+    const out = sanitizeOccasion({ ...VALID_INPUT, occasion: "cumple de mi mamá, cc 1023456789" });
+    expect(out.occasion).toBe(NEUTRAL_OCCASION);
+    expect(out.productName).toBe(VALID_INPUT.productName); // el resto del input no cambia
+  });
+  it("sustituye un email", () => {
+    const out = sanitizeOccasion({
+      ...VALID_INPUT,
+      occasion: "aniversario, escríbeme a ana@correo.com",
+    });
+    expect(out.occasion).toBe(NEUTRAL_OCCASION);
+  });
+  it("sustituye un celular colombiano", () => {
+    const out = sanitizeOccasion({
+      ...VALID_INPUT,
+      occasion: "fiesta sorpresa, llámame 3001234567",
+    });
+    expect(out.occasion).toBe(NEUTRAL_OCCASION);
+  });
+  it("no toca una ocasión normal (devuelve el mismo objeto)", () => {
+    const input = { ...VALID_INPUT, occasion: "bautizo de mi sobrina" };
+    expect(sanitizeOccasion(input)).toBe(input);
   });
 });
 

@@ -28,11 +28,12 @@ function normalizeCode(raw: string): string {
   return raw.trim().toUpperCase();
 }
 
-function couponCode(prefix: string, seed: string): string {
-  return `${prefix}-${seed
-    .replace(/[^A-Z0-9]/gi, "")
-    .slice(-4)
-    .toUpperCase()}-${randomBytes(2).toString("hex").toUpperCase()}`;
+function couponCode(prefix: string): string {
+  // F-10 (security audit 2026-08-24): the old middle segment derived from the
+  // recipient's email — predictable and it leaked 4 email chars into a code
+  // that travels by plain email. Now the whole secret is 6 CSPRNG bytes →
+  // 8 base64url chars uppercased (≈42 effective bits; it was 16).
+  return `${prefix}-${randomBytes(6).toString("base64url").toUpperCase()}`;
 }
 
 /** Busca el dueño de un código de referido (para validar el campo del registro). */
@@ -136,8 +137,8 @@ export async function issueReferralRewardsIfFirstPaidOrder(orderId: string): Pro
     });
     const validTo = new Date(Date.now() + REWARD_DAYS * 24 * 60 * 60 * 1000);
 
-    const refereeCouponCode = couponCode("REF", email);
-    const referrerCouponCode = couponCode("REF", referrer.email);
+    const refereeCouponCode = couponCode("REF");
+    const referrerCouponCode = couponCode("REF");
 
     await prisma.$transaction(async (tx) => {
       const base = {

@@ -4,6 +4,8 @@
  */
 
 import type { Metadata } from "next";
+import { requireRole } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { listLetterSets, getLetterSet, ALPHABET } from "@/features/personalization/letter-tiles";
 import { LetterGrid } from "./letter-grid";
 import { CreateSetForm } from "./create-set-form";
@@ -12,6 +14,10 @@ export const metadata: Metadata = { title: "Fichas del abecedario" };
 export const dynamic = "force-dynamic";
 
 export default async function FichasAdminPage() {
+  // B-7 (auditoría 2026-08-24): guard propio — el layout de (panel) NO se
+  // re-ejecuta en navegaciones soft, así que un admin degradado a mitad de
+  // sesión conservaría acceso de lectura sin este check. Mismo set que ./actions.ts.
+  await requireRole(ADMIN_ROLE_SETS.MANAGER_UP);
   const sets = await listLetterSets();
   const detailed = (await Promise.all(sets.map((s) => getLetterSet(s.id)))).filter(
     (s): s is NonNullable<typeof s> => Boolean(s),

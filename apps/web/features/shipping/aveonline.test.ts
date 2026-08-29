@@ -120,6 +120,7 @@ describe("handleWebhook — parseo de la notificación de estado", () => {
     expect(ev.trackingNumber).toBe("892349021");
     expect(typeof ev.trackingNumber).toBe("string");
     expect(ev.status).toBe("DELIVERED");
+    expect(ev.hasCarrierTimestamp).toBe(true); // payload trae `fecha`
   });
 
   it("interpreta la fecha en hora de Colombia (UTC-5), no en la TZ del servidor", async () => {
@@ -132,6 +133,7 @@ describe("handleWebhook — parseo de la notificación de estado", () => {
     );
     // 11:04:43 en Bogotá (-05:00) == 16:04:43 UTC.
     expect(ev.timestamp.toISOString()).toBe("2020-12-11T16:04:43.000Z");
+    expect(ev.hasCarrierTimestamp).toBe(true);
   });
 
   it("acepta el shape AveCRM (estado como objeto único con `nombre`)", async () => {
@@ -141,5 +143,8 @@ describe("handleWebhook — parseo de la notificación de estado", () => {
     );
     expect(ev.trackingNumber).toBe("77");
     expect(ev.status).toBe("RETURNED");
+    // Sin `fecha`/`timestamp`: el timestamp es fallback new Date() → el route dedup
+    // por "no-ts", no por ese valor (D-4).
+    expect(ev.hasCarrierTimestamp).toBe(false);
   });
 });

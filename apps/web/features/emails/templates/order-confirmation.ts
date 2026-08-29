@@ -89,7 +89,7 @@ ${codCallout}
 ${ctaButton(
   data.publicTrackingToken
     ? `${siteUrl}/pedido/${data.publicTrackingToken}`
-    : `${siteUrl}/mi-cuenta/pedidos`,
+    : `${siteUrl}/rastrear`,
   "Ver mi pedido →",
 )}
 
@@ -118,7 +118,7 @@ Total: ${formatCOP(data.total)}
 
 Enviamos a: ${data.shippingAddress}
 
-Ver mi pedido: ${data.publicTrackingToken ? `${siteUrl}/pedido/${data.publicTrackingToken}` : `${siteUrl}/mi-cuenta/pedidos`}
+Ver mi pedido: ${data.publicTrackingToken ? `${siteUrl}/pedido/${data.publicTrackingToken}` : `${siteUrl}/rastrear`}
 
 Los valores están en pesos colombianos (COP) y son el total que pagas.
 Retracto (5 días hábiles, catálogo estándar): ${siteUrl}/legal/devoluciones

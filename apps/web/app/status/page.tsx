@@ -55,13 +55,12 @@ async function checkService(
       status: "ok",
       latencyMs: typeof data.latencyMs === "number" ? data.latencyMs : undefined,
     };
-  } catch (err) {
-    return {
-      name: label,
-      description,
-      status: "down",
-      detail: err instanceof Error ? err.message.slice(0, 60) : "desconocido",
-    };
+  } catch {
+    // Detalle genérico a propósito (auditoría 2026-08-24, A-6): `err.message` de un
+    // fetch server-side puede arrastrar hostnames internos o causas de red
+    // ("getaddrinfo ENOTFOUND …") — reconocimiento gratis en una página pública.
+    // El error real queda server-side vía instrumentation.ts (onRequestError → ErrorLog).
+    return { name: label, description, status: "down", detail: "sin respuesta" };
   }
 }
 

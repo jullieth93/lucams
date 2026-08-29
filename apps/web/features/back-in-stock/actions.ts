@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { getCurrentCustomer } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
+import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
 import { subscribeBackInStock } from "./service";
 
@@ -29,7 +30,9 @@ export async function subscribeBackInStockAction(input: {
 
   const hdrs = await headers();
   const ip = getClientIp(hdrs);
-  const { allowed } = await rateLimit(`back_in_stock:${ip}`, 20, 3600); // 20/hora por IP
+  // IP hasheada en la key (auditoría 2026-08-24, C-8): la IP es dato personal y no debe
+  // quedar en claro en rate_limit_buckets.
+  const { allowed } = await rateLimit(ipKey("back_in_stock", ip), 20, 3600); // 20/hora por IP
   if (!allowed) {
     return { ok: false, message: "Demasiadas solicitudes. Intenta más tarde." };
   }

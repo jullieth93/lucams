@@ -853,7 +853,10 @@ export type CatalogSearchResult = CatalogProductSummary & { rank: number };
 export async function searchCatalog(query: string, limit = 20): Promise<CatalogSearchResult[]> {
   if (!query || query.trim().length < 2) return [];
   try {
-    const q = query.trim().toLowerCase();
+    // Cap de longitud (auditoría 2026-08-24, C-6 — defensa en capas; la ruta ya trunca):
+    // similarity() corre por fila contra name+richDescription; un string enorme amplifica
+    // el coste de la query trigram.
+    const q = query.trim().toLowerCase().slice(0, 120);
     // pg_trgm + unaccent. Búsqueda en name + richDescription + idealFor concatenado.
     // Usamos $queryRaw para soporte de pg_trgm similarity().
     const rows = await prisma.$queryRaw<Array<{ id: string; rank: number }>>`

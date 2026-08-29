@@ -19,8 +19,10 @@ export async function POST(req: NextRequest) {
   // (sin token válido no hay unsubscribe), pero sin límite el endpoint era fuerza-brutable
   // para enumerar tokens. 30/min por IP es invisible para un clic real de baja.
   const { rateLimit } = await import("@/lib/rate-limit");
+  const { ipKey } = await import("@/lib/rate-limit-keys");
   const { getClientIp } = await import("@/lib/client-ip");
-  const { allowed } = await rateLimit(`unsubscribe:${getClientIp(req.headers)}`, 30, 60);
+  // IP hasheada en la key (auditoría 2026-08-24, C-8): no queda en claro en rate_limit_buckets.
+  const { allowed } = await rateLimit(ipKey("unsubscribe", getClientIp(req.headers)), 30, 60);
   if (!allowed) {
     return Response.json({ ok: false, error: "rate_limited" }, { status: 429 });
   }

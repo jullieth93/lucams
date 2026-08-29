@@ -21,7 +21,9 @@ async function unenrollAllTotp(): Promise<void> {
 
 /** Desactiva (unenroll) los factores TOTP del admin actual + borra recovery codes. */
 export async function disableMfaAction(): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  // Autoservicio de la PROPIA cuenta (session.admin.id): con MFA obligatorio para
+  // todo rol (B-1), la pantalla y sus acciones son ALL_PLUS_CMS. aal2 se mantiene.
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
 
   await unenrollAllTotp();
   await prismaDeleteRecoveryCodes(session.admin.id);
@@ -38,11 +40,12 @@ export async function disableMfaAction(): Promise<void> {
 
 /**
  * Cambiar de autenticador/dispositivo: desactiva el TOTP actual y manda a
- * configurar uno nuevo. El candado del layout no se dispara porque, sin factor
- * verificado, la sesión es aal1 = aal1 (nextLevel baja a aal1).
+ * configurar uno nuevo. Tras el unenroll la sesión queda sin factor: el gate de
+ * enrolamiento obligatorio (B-1) la deja justo donde va el redirect de abajo
+ * (/admin/seguridad, la excepción abierta a todos los roles).
  */
 export async function changeMfaDeviceAction(): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
 
   await unenrollAllTotp();
   logger.info({ event: "security.admin_mfa_device_change", adminId: session.admin.id });
@@ -60,7 +63,7 @@ export type RecoveryCodesState = { codes?: string[]; error?: string };
 
 /** Genera (o regenera) los códigos de respaldo y los devuelve para mostrarlos una vez. */
 export async function generateRecoveryCodesAction(): Promise<RecoveryCodesState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
 
   const codes = await generateRecoveryCodes(session.admin.id);
   logger.info({ event: "security.admin_mfa_recovery_generated", adminId: session.admin.id });

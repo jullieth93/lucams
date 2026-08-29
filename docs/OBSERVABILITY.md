@@ -247,12 +247,12 @@ Evaluar OpenTelemetry SDK con exporter a un backend gratuito (Honeycomb Free, Gr
 ### Implementación
 
 ```ts
-// app/api/health/route.ts
+// app/api/health/route.ts — respuesta pública mínima (auditoría 2026-08-24, C-3):
+// sin version/entorno (el repo es público; el SHA exacto es reconocimiento gratis).
 export async function GET() {
   return Response.json({
     status: "ok",
     timestamp: new Date().toISOString(),
-    version: process.env.NEXT_PUBLIC_GIT_SHA ?? "unknown",
   });
 }
 ```
@@ -273,7 +273,7 @@ export async function GET() {
 
 ### Monitoreo externo
 
-Post-lanzamiento: configurar **UptimeRobot** o **BetterStack** (Free) para pingear `/api/health` cada 5 min y alertar si cae > 3 min.
+Post-lanzamiento: configurar **UptimeRobot** o **BetterStack** (Free) para pingear `/api/health` cada 5 min y alertar si cae > 3 min. Detalle de jobs en `/api/health/crons` y de versión/entorno en `/api/health/all` requieren el header `x-cron-secret` (auditoría 2026-08-24, C-3/C-4) — ambos monitores soportan headers custom; la respuesta pública queda mínima (`status` + `timestamp`, 503 si degradado).
 
 ---
 

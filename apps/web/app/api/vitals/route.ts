@@ -17,6 +17,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
+import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
 
 // Endpoint dinámico (no pre-renderizable). En Next 16 con turbopack, los
@@ -47,8 +48,16 @@ export async function POST(request: Request) {
   try {
     // Rate-limit por IP (auditoría 2026-07-13): endpoint público que escribe WebVital →
     // sin límite era un vector de inflado de la tabla. 120/min es holgado para RUM real.
-    const { allowed } = await rateLimit(`vitals:${getClientIp(request.headers)}`, 120, 60);
+    // La key lleva la IP hasheada (auditoría 2026-08-24, C-8): la IP es dato personal
+    // y no debe quedar en claro en rate_limit_buckets.
+    const { allowed } = await rateLimit(ipKey("vitals", getClientIp(request.headers)), 120, 60);
     if (!allowed) return NextResponse.json({ ok: false }, { status: 429 });
+
+    // Backstop global (auditoría 2026-08-24, C-1): tope de filas nuevas sin importar la IP
+    // de origen (un botnet rota IPs y multiplica el límite por-IP). Mismo patrón que
+    // NEW_ROW_LIMIT de lib/error-capture.ts. 200 (no 429) para que el beacon no reintente.
+    const rlGlobal = await rateLimit("vitals:new-row:global", 3000, 5 * 60);
+    if (!rlGlobal.allowed) return NextResponse.json({ ok: false });
 
     const body = await request.json();
     const parsed = VitalSchema.safeParse(body);

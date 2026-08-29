@@ -8,12 +8,12 @@
  * Endpoint público sin auth — los settings son configurables visibles
  * al usuario final (email contacto, horarios, redes, etc.).
  *
- * Filtro de sensibilidad (certificación 2026-07-29, 2ª pasada): las claves
- * PICKUP_* (dirección/teléfono/contacto de recogida — puede ser la casa del
- * negocio) y BUSINESS_NIT NUNCA salen por este endpoint. Solo se leen
- * server-side (saga de guías, cotizador Aveonline) vía getSettingValue.
- * Cuidado: si en el futuro se agregan settings con info sensible (claves
- * API, secretos), extender isPublicSettingKey en lib/cms.ts.
+ * Filtro de sensibilidad (certificación 2026-07-29 2ª pasada; auditoría
+ * 2026-08-24, C-2): isPublicSettingKey es una ALLOWLIST explícita en
+ * lib/cms.ts — una clave nueva es PRIVADA por defecto y solo sale por este
+ * endpoint si se agrega a PUBLIC_SETTING_KEYS. PICKUP_* (dirección/teléfono
+ * de recogida — puede ser la casa del negocio), BUSINESS_NIT y ALERT_EMAIL
+ * nunca salen; solo se leen server-side vía getSettingValue.
  *
  * Rate-limit 30/min por IP. Cache HTTP 1 h.
  */

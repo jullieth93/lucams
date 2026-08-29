@@ -36,11 +36,47 @@ description = "Resend API key"
 regex = '''re_[A-Za-z0-9_-]{20,}'''
 keywords = ["re_"]
 
+# Auditoría 2026-08-24 (A-2, verificado con gitleaks 8.24.3): la regla
+# supabase-secret-key-pattern exige el keyword + formato JWT eyJ..., pero las
+# secret keys NUEVAS de Supabase son sb_secret_* (formato del leak real de
+# 2026-05-09) y un DATABASE_URL con password embebido pasaba sin detección.
+[[rules]]
+id = "supabase-sb-secret"
+description = "Supabase new-format secret key (sb_secret_*)"
+regex = '''sb_secret_[A-Za-z0-9_\-]{20,}'''
+keywords = ["sb_secret_"]
+
+[[rules]]
+id = "supabase-sb-publishable-hardcode"
+description = "Publishable key hardcodeada fuera de .env* (debería venir de env)"
+regex = '''sb_publishable_[A-Za-z0-9_\-]{20,}'''
+keywords = ["sb_publishable_"]
+
+[[rules]]
+id = "postgres-uri-with-password"
+description = "Connection string Postgres con password embebido"
+regex = '''postgres(?:ql)?://[^:\s/]+:[^@\s]{6,}@'''
+keywords = ["postgresql://", "postgres://"]
+# Falso positivo verificado 2026-08-29 (gitleaks 8.24.3): URIs Postgres que
+# apuntan a un host LOCAL son de ambiente desechable por definición (service
+# containers de CI, stack local de Supabase) — su password no abre ningún
+# destino real. regexTarget=line porque el secreto capturado por la regla
+# termina en "@" (no incluye el host).
+[rules.allowlist]
+regexTarget = "line"
+regexes = [
+    '''postgres(?:ql)?://[^@\s]+@(?:localhost|127\.0\.0\.1|host\.docker\.internal|::1)''',
+    # Placeholder de docs: postgresql://postgres:[password]@…
+    '''\[password\]''',
+]
+
 [allowlist]
 description = "Placeholders y ejemplos en docs/env.example son seguros"
+# 2026-08-29 (A-2): se quitó la exención por path '''docs/.*\.md$''' — un secreto
+# REAL pegado en cualquier doc pasaba el escáner. Los placeholders de docs siguen
+# cubiertos por los regexes de abajo.
 paths = [
     '''\.env\.example$''',
-    '''docs/.*\.md$''',
     '''README\.md$''',
     '''\.gitleaks\.toml$''',
 ]
@@ -59,5 +95,16 @@ regexes = [
     # borran las specs e2e (tests/e2e/*audit*.spec.ts, release-check-a1.spec.ts)
     # contra la Supabase de dev — no son credenciales reales, viven minutos en
     # una corrida de tests. Mismo valor en varias specs por convención.
-    '''[A-Za-z0-9]+-Admin-918273650''',
+    # (2026-08-29: generalizado a toda la familia *-918273650 — A1-Smoke,
+    # E2E-Shots-Test, E2E-Mfa-Test — al quitar la exención por path de docs/.)
+    '''[A-Za-z0-9-]+-918273650''',
+    # Secret dummy de Turnstile en tests unitarios (apps/web/lib/turnstile.test.ts).
+    '''0x_test_secret_FIXED''',
+    # Anchor de ADR en DECISIONS.md: "sto(re_)mode-por-flag-…" dispara la regla
+    # resend-api-key (matchea dentro de una palabra). No es una key.
+    '''re_mode-por-flag''',
+    # Token ficticio de las previews de email (apps/web/app/internal/correos/page.tsx).
+    '''a1b2c3d4e5f6''',
+    # IDs públicos de advisories (GHSA-…) citados en docs y comentarios.
+    '''GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}''',
 ]

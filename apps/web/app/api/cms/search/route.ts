@@ -25,7 +25,10 @@ export async function GET(req: Request): Promise<Response> {
   if (limited) return limited;
 
   const url = new URL(req.url);
-  const q = url.searchParams.get("q")?.trim() ?? "";
+  // Cap de longitud (auditoría 2026-08-24, C-6): la query pg_trgm similarity() corre por
+  // fila contra title+body; un string de varios KB amplifica el coste. 120 chars sobra
+  // (mismo límite que app/actions/search.ts).
+  const q = url.searchParams.get("q")?.trim().slice(0, 120) ?? "";
 
   if (q.length < 2) {
     return Response.json(

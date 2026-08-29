@@ -13,6 +13,31 @@
 
 ## Resumen actual
 
+**🔐 AUDITORÍA OWASP REMEDIADA Y CERRADA (2026-08-29).** Se validó y cerró
+`docs/audits/auditoria_seguridad_lucams.md` (1 RED + 49 YELLOW, del 2026-08-24): cada hallazgo se
+re-verificó contra el código vigente antes de tocarlo. El RED (B-1: MFA admin opt-in que
+contradecía la política) ahora está enforceado por código — admin sin TOTP cae en enrolamiento
+forzado (`/admin/seguridad?enroll=required`, abierto a los 4 roles). Resto: recovery codes con
+pepper HMAC + consumo atómico, cookie de checkout cifrada AES-256-GCM, tokens bearer públicos con
+hash en reposo (4 modelos, migración con backfill + DROP COLUMN — **aplicar en el mismo deploy**),
+webhooks endurecidos (AveOnline sin `?secret=` por defecto, Resend sin last-write-wins, dedup
+determinista sin fecha, logs con hash en vez de body crudo), rutas públicas con límites/claves
+hasheadas, PII scrubbed en ErrorLog/ErrorReport + retención 90d, actions de CI pineadas por SHA,
+gitleaks con reglas `sb_secret_`/URI postgres (verificado empíricamente, repo limpio), backups R2
+cifrados gpg (⚠️ **crear secret `BACKUP_GPG_PASSPHRASE` antes del próximo backup diario**),
+SECURITY.md sin drift + hook pre-commit versionado. **Migraciones Supabase 025-029 ya aplicadas a
+stg y prod y verificadas en vivo** (grants 0 para anon, función huérfana dropeada, funciones
+endurecidas, políticas backstop, pg_net convergido). G-7: prod verificado SIN reseñas (0 filas) y
+sus scripts bloqueados contra PRD. **Estado de gates:** tsc ✓ · eslint ✓ · prettier ✓ · suite
+2957/2957 ✓ · `pnpm audit --prod` exit 0 ✓ · gitleaks 983 commits 0 leaks ✓ · e2e admin
+login+MFA 5/5 ✓. **Todo SIN COMMITAR en el working tree** — pendiente commit+push (el deploy
+debe coordinarse con las 2 migraciones Prisma) y las acciones manuales de la §11.5 del informe
+(secrets Vercel/GitHub, panel AveOnline, dashboard Supabase leaked-passwords, header
+`x-cron-secret` en monitores, `git config core.hooksPath`). Detalle completo: §11 del informe +
+ADR-085.
+
+---
+
 **🔢 SELECTOR DE COPIAS EN PDP + ESTUDIO (2026-08-28).** Reporte Lucy: "varios productos no dejan
 escoger cantidad" (ej. calendario). Las dos "cantidades" del modelo: tamaño del pack (dimensión de
 variante `quantity`/`photoSlots`, solo donde el pack cambia la personalización) y copias idénticas

@@ -1,29 +1,31 @@
 /*
  * Tests para checkout-session — estado multi-step del checkout en una cookie
- * firmada con HMAC-SHA256.
+ * SELLADA con AES-256-GCM (F-9, auditoría 2026-08-24: antes solo firmada HMAC
+ * y el JSON con PII era legible en base64).
  *
  * Estrategia: COOKIES + CRYPTO. Mockeamos `cookies()` de next/headers con un
  * store en memoria que imita la superficie de RequestCookies/ResponseCookies
- * que consume el módulo (get/set/delete). Para el HMAC fijamos `CSRF_SECRET`
+ * que consume el módulo (get/set/delete). Para el sellado fijamos `CSRF_SECRET`
  * con vi.stubEnv → totalmente determinista y offline, sin depender del valor
  * real de .env.local.
  *
- * Reproducimos la firma del módulo (HMAC-SHA256 → base64url, payload base64url
- * unidos por ".") con `crypto` nativo en los helpers de test, para poder
- * sembrar cookies válidas, expiradas y manipuladas y afirmar comportamiento
- * concreto en cada rama.
+ * Reproducimos el wire-format del módulo (base64url(iv).base64url(tag).
+ * base64url(ciphertext), clave sha256("checkout-session:"+CSRF_SECRET)) con
+ * `crypto` nativo en los helpers de test, para sembrar cookies válidas,
+ * manipuladas, legacy (HMAC pre-F-9) y corruptas, y afirmar cada rama.
  *
  * Cubrimos:
- *   - getCheckoutState: ausente, firma válida, firma manipulada, secreto
- *     equivocado, JSON corrupto, sin punto separador, expirada vs vigente,
- *     borde exacto del TTL, payloads no-objeto (null/number), round-trip.
+ *   - getCheckoutState: ausente, round-trip, tag manipulado, ct manipulado,
+ *     secreto equivocado, segmentos malformados, JSON corrupto, legacy HMAC
+ *     (degrada a "sin sesión"), expirada vs vigente, borde exacto del TTL,
+ *     payloads no-objeto (null/number).
  *   - setCheckoutState: merge sobre estado previo, defaults cuando no hay
- *     cookie, refresco de updatedAt, opciones de cookie (httpOnly/sameSite/
- *     path/maxAge) y `secure` según NODE_ENV (SEGURIDAD).
+ *     cookie o es legacy/inválida, refresco de updatedAt, opciones de cookie
+ *     (httpOnly/sameSite/path/maxAge) y `secure` según NODE_ENV (SEGURIDAD),
+ *     IV aleatorio por escritura, y que la cookie NO expone PII legible (F-9).
  *   - clearCheckoutState: borra la cookie.
  *   - getSecret: lanza si CSRF_SECRET falta o es el placeholder GENERATE_WITH*.
- *   - SEGURIDAD: un atacante no puede cambiar el JSON (precio/step) sin
- *     invalidar la firma; el secreto equivocado no verifica.
+ *   - SEGURIDAD: un atacante no puede leer NI cambiar el JSON (precio/step).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -79,20 +81,26 @@ const TTL_SECONDS = 60 * 60;
 const TEST_SECRET = "test-csrf-secret-deadbeefcafebabe1234567890abcdef";
 
 // --- Helpers que reproducen el wire-format del módulo ------------------------
-// El módulo firma: payload = base64url(JSON.stringify(state)); cookie =
-// `${payload}.${base64url(HMAC-SHA256(payload, secret))}`. La replicamos para
-// sembrar cookies válidas/manipuladas con un secreto controlado.
-function signWith(secret: string, payload: string): string {
-  return crypto.createHmac("sha256", secret).update(payload).digest("base64url");
-}
-
-function encodePayload(value: unknown): string {
-  return Buffer.from(JSON.stringify(value), "utf-8").toString("base64url");
+// El módulo sella: `base64url(iv).base64url(tag).base64url(ct)` con
+// AES-256-GCM y clave sha256("checkout-session:" + CSRF_SECRET). Lo replicamos
+// para sembrar cookies válidas/manipuladas con un secreto controlado.
+function sealRawWith(secret: string, json: string): string {
+  const key = crypto.createHash("sha256").update(`checkout-session:${secret}`).digest();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const ciphertext = Buffer.concat([cipher.update(json, "utf-8"), cipher.final()]);
+  return [iv, cipher.getAuthTag(), ciphertext].map((b) => b.toString("base64url")).join(".");
 }
 
 function buildCookie(value: unknown, secret = TEST_SECRET): string {
-  const payload = encodePayload(value);
-  return `${payload}.${signWith(secret, payload)}`;
+  return sealRawWith(secret, JSON.stringify(value));
+}
+
+/** Formato LEGACY pre-F-9 (HMAC): `base64url(payload).base64url(firma)`. */
+function buildLegacyCookie(value: unknown, secret = TEST_SECRET): string {
+  const payload = Buffer.from(JSON.stringify(value), "utf-8").toString("base64url");
+  const sig = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
 }
 
 function validState(overrides: Partial<CheckoutState> = {}): CheckoutState {
@@ -171,25 +179,24 @@ describe("getCheckoutState", () => {
     expect(store.deleteCalls).toHaveLength(0);
   });
 
-  // --- Firma / integridad (SEGURIDAD) ----------------------------------------
+  // --- Sello / integridad (SEGURIDAD) ----------------------------------------
   it("returns null when the cookie has no '.' separator", async () => {
     store.seed(COOKIE_NAME, "no-dot-here-just-garbage");
     await expect(getCheckoutState()).resolves.toBeNull();
   });
 
-  it("returns null when the signature is tampered (single char flip)", async () => {
+  it("returns null when the auth tag is tampered (single char flip)", async () => {
     const good = buildCookie(validState({ step: 2 }));
-    const dot = good.lastIndexOf(".");
-    const payload = good.slice(0, dot);
-    const sig = good.slice(dot + 1);
-    // Cambiamos el primer char de la firma por otro distinto del mismo largo.
-    const flipped = (sig[0] === "A" ? "B" : "A") + sig.slice(1);
-    store.seed(COOKIE_NAME, `${payload}.${flipped}`);
+    const [iv, tag, ct] = good.split(".");
+    // Cambiamos el primer char del tag por otro distinto del mismo largo.
+    const flipped = (tag[0] === "A" ? "B" : "A") + tag.slice(1);
+    store.seed(COOKIE_NAME, [iv, flipped, ct].join("."));
     await expect(getCheckoutState()).resolves.toBeNull();
   });
 
-  it("returns null when the PAYLOAD is mutated but the old signature is kept (attacker rewrites JSON)", async () => {
-    // Cliente intenta bajar el flete a 0 sin re-firmar.
+  it("returns null when the CIPHERTEXT is swapped from another valid cookie (attacker rewrites state)", async () => {
+    // Cliente intenta bajar el flete a 0: sella su propio estado manipulado... no
+    // puede (no tiene la clave); lo único que puede hacer es recombinar segmentos.
     const honest = validState({
       step: 3,
       shippingSelection: {
@@ -201,38 +208,37 @@ describe("getCheckoutState", () => {
         quoteId: "q-1",
       },
     });
-    const honestCookie = buildCookie(honest);
-    const dot = honestCookie.lastIndexOf(".");
-    const honestSig = honestCookie.slice(dot + 1);
-
-    const tampered = { ...honest, shippingSelection: { ...honest.shippingSelection, fleteCop: 0 } };
-    const tamperedPayload = encodePayload(tampered);
-    // Reusa la firma del payload honesto → no verifica.
-    store.seed(COOKIE_NAME, `${tamperedPayload}.${honestSig}`);
-
+    const other = buildCookie(validState({ step: 1 }));
+    const [iv, tag] = buildCookie(honest).split(".");
+    const otherCt = other.split(".")[2];
+    // ct ajeno + iv/tag propios → el auth tag no verifica → null.
+    store.seed(COOKIE_NAME, [iv, tag, otherCt].join("."));
     await expect(getCheckoutState()).resolves.toBeNull();
   });
 
-  it("returns null when the cookie was signed with a DIFFERENT secret", async () => {
-    // Mismo payload, firma válida pero con otro secreto. Como el módulo usa
-    // TEST_SECRET (vía stubEnv), la verificación debe fallar.
+  it("returns null when the cookie was sealed with a DIFFERENT secret", async () => {
+    // Mismo estado, sello válido pero con otro secreto. Como el módulo usa
+    // TEST_SECRET (vía stubEnv), el unseal debe fallar.
     store.seed(COOKIE_NAME, buildCookie(validState({ step: 2 }), "some-other-secret"));
     await expect(getCheckoutState()).resolves.toBeNull();
   });
 
-  it("returns null when a signature of a different LENGTH is supplied (length guard before timingSafeEqual)", async () => {
-    const good = buildCookie(validState({ step: 1 }));
-    const payload = good.slice(0, good.lastIndexOf("."));
-    // Firma demasiado corta: timingSafeEqual lanzaría con largos distintos,
-    // pero verify() corta antes por la guarda de longitud → null limpio.
-    store.seed(COOKIE_NAME, `${payload}.abc`);
+  it("returns null for malformed 3-segment values (bad iv/tag lengths throw inside unseal)", async () => {
+    store.seed(COOKIE_NAME, "aa.bb.cc");
     await expect(getCheckoutState()).resolves.toBeNull();
   });
 
-  it("returns null when the payload is valid-signed but decodes to corrupt JSON", async () => {
-    // Firmamos un payload base64url cuyo contenido NO es JSON válido.
-    const payload = Buffer.from("{not json at all", "utf-8").toString("base64url");
-    store.seed(COOKIE_NAME, `${payload}.${signWith(TEST_SECRET, payload)}`);
+  it("returns null when the sealed payload decodes to corrupt JSON", async () => {
+    // Sellamos un cuerpo cuyo contenido NO es JSON válido.
+    store.seed(COOKIE_NAME, sealRawWith(TEST_SECRET, "{not json at all"));
+    await expect(getCheckoutState()).resolves.toBeNull();
+  });
+
+  // --- Formato LEGACY (HMAC pre-F-9): degrada a "sin sesión" ------------------
+  it("treats a legacy HMAC cookie (payload.signature) as NO session", async () => {
+    // Cookies escritas antes del despliegue de F-9 (TTL 60 min): el cliente
+    // simplemente vuelve al step 1 en vez de reventar.
+    store.seed(COOKIE_NAME, buildLegacyCookie(validState({ step: 3 })));
     await expect(getCheckoutState()).resolves.toBeNull();
   });
 
@@ -288,20 +294,18 @@ describe("getCheckoutState", () => {
   });
 
   // --- Payloads no-objeto: documentan el comportamiento ACTUAL ---------------
-  it("returns null when the signed payload is literal `null` (null.updatedAt throws → caught)", async () => {
-    const payload = encodePayload(null);
-    store.seed(COOKIE_NAME, `${payload}.${signWith(TEST_SECRET, payload)}`);
+  it("returns null when the sealed payload is literal `null` (null.updatedAt throws → caught)", async () => {
+    store.seed(COOKIE_NAME, buildCookie(null));
     // JSON.parse → null; luego `null.updatedAt` lanza TypeError → catch → null.
     await expect(getCheckoutState()).resolves.toBeNull();
   });
 
   it("returns a non-object payload as-is when it has no updatedAt (NaN-expiry quirk, documented)", async () => {
-    // BUG benigno: no hay validación de esquema. Un número firmado pasa porque
+    // BUG benigno: no hay validación de esquema. Un número sellado pasa porque
     // (number).updatedAt es undefined → Date.now()-undefined = NaN → NaN > x es
-    // false → el código devuelve el valor crudo (5). El módulo confía en la
-    // firma HMAC para garantizar la forma, no en un schema runtime.
-    const payload = encodePayload(5);
-    store.seed(COOKIE_NAME, `${payload}.${signWith(TEST_SECRET, payload)}`);
+    // false → el código devuelve el valor crudo (5). El módulo confía en el
+    // sellado GCM para garantizar la forma, no en un schema runtime.
+    store.seed(COOKIE_NAME, buildCookie(5));
     const result = await getCheckoutState();
     expect(result).toBe(5 as unknown as CheckoutState);
   });
@@ -309,8 +313,7 @@ describe("getCheckoutState", () => {
   it("returns an object WITHOUT updatedAt as-is (missing updatedAt → NaN compare → not expired)", async () => {
     // Mismo quirk con un objeto: sin updatedAt, nunca se considera expirada.
     const noTimestamp = { step: 2, contact: { fullName: "X" } };
-    const payload = encodePayload(noTimestamp);
-    store.seed(COOKIE_NAME, `${payload}.${signWith(TEST_SECRET, payload)}`);
+    store.seed(COOKIE_NAME, buildCookie(noTimestamp));
     const result = await getCheckoutState();
     expect(result).toEqual(noTimestamp);
   });
@@ -407,14 +410,21 @@ describe("setCheckoutState", () => {
     expect(written.paymentMethod).toBe("WOMPI");
   });
 
-  it("starts from defaults when the existing cookie has a tampered signature", async () => {
+  it("starts from defaults when the existing cookie has a tampered ciphertext", async () => {
     const honest = buildCookie(validState({ step: 3, paymentMethod: "COD" }));
-    const dot = honest.lastIndexOf(".");
-    const badSig = (honest.slice(dot + 1)[0] === "A" ? "B" : "A") + honest.slice(dot + 2);
-    store.seed(COOKIE_NAME, `${honest.slice(0, dot)}.${badSig}`);
+    const [iv, tag, ct] = honest.split(".");
+    const badCt = (ct[0] === "A" ? "B" : "A") + ct.slice(1);
+    store.seed(COOKIE_NAME, [iv, tag, badCt].join("."));
 
     const written = await setCheckoutState({ step: 2 });
     // Cookie manipulada se ignora → no hereda paymentMethod COD.
+    expect(written.paymentMethod).toBeUndefined();
+    expect(written.step).toBe(2);
+  });
+
+  it("starts from defaults when the existing cookie is LEGACY HMAC format (pre-F-9)", async () => {
+    store.seed(COOKIE_NAME, buildLegacyCookie(validState({ step: 3, paymentMethod: "COD" })));
+    const written = await setCheckoutState({ step: 2 });
     expect(written.paymentMethod).toBeUndefined();
     expect(written.step).toBe(2);
   });
@@ -431,18 +441,54 @@ describe("setCheckoutState", () => {
     expect(options.maxAge).toBe(TTL_SECONDS);
   });
 
-  it("writes a cookie value of the form `<payload>.<signature>` (single dot, base64url)", async () => {
+  it("writes a cookie value of the form `<iv>.<tag>.<ciphertext>` (3 base64url segments)", async () => {
     await setCheckoutState({ step: 1 });
     const { value } = store.setCalls[0];
-    const dot = value.lastIndexOf(".");
-    expect(dot).toBeGreaterThan(0);
-    const payload = value.slice(0, dot);
-    const sig = value.slice(dot + 1);
-    // base64url: solo A-Za-z0-9-_ (sin '.', '+' ni '/').
-    expect(payload).toMatch(/^[A-Za-z0-9_-]+$/);
-    expect(sig).toMatch(/^[A-Za-z0-9_-]+$/);
-    // La firma escrita debe coincidir con HMAC(payload, TEST_SECRET).
-    expect(sig).toBe(signWith(TEST_SECRET, payload));
+    const parts = value.split(".");
+    expect(parts).toHaveLength(3);
+    for (const seg of parts) {
+      // base64url: solo A-Za-z0-9-_ (sin '.', '+' ni '/').
+      expect(seg).toMatch(/^[A-Za-z0-9_-]+$/);
+    }
+    // iv de 12 bytes → 16 chars base64url; tag GCM de 16 bytes → 22 chars.
+    expect(parts[0]).toHaveLength(16);
+    expect(parts[1]).toHaveLength(22);
+  });
+
+  it("uses a random IV per write: two identical states produce different cookie values", async () => {
+    const state = { step: 2 as const, contact: { fullName: "E", email: "e@x.co", phone: "3" } };
+    await setCheckoutState(state);
+    const first = store.setCalls[0].value;
+    await clearCheckoutState();
+    await setCheckoutState(state);
+    const second = store.setCalls[1].value;
+    expect(second).not.toBe(first);
+    // Ambos des-sellan al mismo estado.
+    expect((await getCheckoutState())?.contact?.email).toBe("e@x.co");
+  });
+
+  it("F-9: the sealed cookie carries NO readable PII (plaintext or base64-decodable)", async () => {
+    const pii = {
+      fullName: "María Fernanda Ríos",
+      email: "mafer.rios@example.co",
+      phone: "3009998877",
+      documentType: "CC" as const,
+      documentNumber: "1037654321",
+    };
+    await setCheckoutState({ step: 2, contact: pii });
+    const { value } = store.setCalls[0];
+
+    // Ni el valor crudo ni NINGÚN segmento decodificado exponen la PII.
+    expect(value).not.toContain(pii.email);
+    for (const seg of value.split(".")) {
+      const decoded = Buffer.from(seg, "base64url").toString("utf-8");
+      expect(decoded).not.toContain(pii.email);
+      expect(decoded).not.toContain(pii.fullName);
+      expect(decoded).not.toContain(pii.documentNumber);
+    }
+    // Y el valor completo no es base64url-decodificable al JSON (era el leak F-9).
+    const whole = Buffer.from(value, "base64url").toString("utf-8");
+    expect(whole).not.toContain(pii.email);
   });
 
   it("marks the cookie Secure in production (SECURITY)", async () => {
@@ -484,17 +530,17 @@ describe("clearCheckoutState", () => {
 describe("getSecret (CSRF_SECRET configuration guard)", () => {
   it("throws on read when CSRF_SECRET is unset", async () => {
     vi.stubEnv("CSRF_SECRET", "");
-    store.seed(COOKIE_NAME, "anything.with.dots"); // fuerza llegar a verify()→sign()→getSecret()
+    store.seed(COOKIE_NAME, "anything.with.dots"); // 3 segmentos → fuerza llegar a unseal→getSecret()
     await expect(getCheckoutState()).rejects.toThrow(/CSRF_SECRET no configurado/);
   });
 
   it("throws when CSRF_SECRET is the placeholder (starts with GENERATE_WITH)", async () => {
     vi.stubEnv("CSRF_SECRET", "GENERATE_WITH_openssl_rand_hex_32");
-    store.seed(COOKIE_NAME, "anything.x");
+    store.seed(COOKIE_NAME, "aa.bb.cc"); // 3 segmentos → llega a derivar la clave
     await expect(getCheckoutState()).rejects.toThrow(/CSRF_SECRET no configurado/);
   });
 
-  it("throws on setCheckoutState when CSRF_SECRET is unset (cannot sign)", async () => {
+  it("throws on setCheckoutState when CSRF_SECRET is unset (cannot seal)", async () => {
     vi.stubEnv("CSRF_SECRET", "   "); // solo whitespace → trim() vacío
     await expect(setCheckoutState({ step: 1 })).rejects.toThrow(/CSRF_SECRET no configurado/);
   });

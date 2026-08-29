@@ -8,7 +8,7 @@
 
 import crypto from "node:crypto";
 import { prisma } from "@/lib/db";
-import { logger } from "@/lib/logger";
+import { logger, scrubPii } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 
 export type CapturedError = {
@@ -25,9 +25,12 @@ export async function captureServerError(e: CapturedError): Promise<void> {
   try {
     await prisma.errorLog.create({
       data: {
-        message: (e.message || "unknown").slice(0, 2000),
+        // scrubPii (F-6): un error de DB/validación puede traer PII embebida
+        // (`Key (email)=(cliente@x.com) already exists`) — la misma redacción
+        // que el logger aplica a stdout se aplica a lo que persiste en DB.
+        message: scrubPii((e.message || "unknown").slice(0, 2000)),
         digest: e.digest ?? null,
-        stack: e.stack ? e.stack.slice(0, 4000) : null,
+        stack: e.stack ? scrubPii(e.stack.slice(0, 4000)) : null,
         routePath: e.routePath ?? null,
         requestPath: e.requestPath ?? null,
         method: e.method ?? null,
@@ -106,9 +109,13 @@ const NEW_ROW_WINDOW_S = 5 * 60;
  *  - race de create concurrente (P2002) → cae al catch y trata como incremento.
  */
 export async function captureClientError(e: ClientErrorReport): Promise<void> {
-  const message = (e.message || "unknown").slice(0, 2000);
-  const stack = e.stack ? e.stack.slice(0, 4000) : null;
-  const fingerprint = fingerprintOf(message, e.stack, e.digest);
+  // scrubPii ANTES de persistir (F-6): el payload viene de /api/log-error (público,
+  // controlado por el cliente) y los errores de DB traen PII embebida. El fingerprint
+  // se calcula sobre los valores YA redactados: lo persistido y lo deduplicado son lo
+  // mismo, y dos ocurrencias que solo difieren en la PII embebida colapsan en una fila.
+  const message = scrubPii((e.message || "unknown").slice(0, 2000));
+  const stack = e.stack ? scrubPii(e.stack.slice(0, 4000)) : null;
+  const fingerprint = fingerprintOf(message, stack ?? undefined, e.digest);
   try {
     const existing = await prisma.errorReport.findUnique({
       where: { fingerprint },

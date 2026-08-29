@@ -11,9 +11,11 @@ export type ReviewRequestData = {
   customerName: string;
   products: Array<{ name: string; slug: string }>;
   /**
-   * #10 — token de acceso público del pedido. Un pedido de INVITADO no tiene login → el link a
-   * /mi-cuenta/pedidos moriría en el muro de autenticación. Con token, apuntamos a la vista pública
-   * /pedido/<token>; sin token (cliente con cuenta), caemos al histórico de la cuenta.
+   * #10 — token de acceso público del pedido. Con token apuntamos a la vista pública
+   * /pedido/<token>; sin token caemos a /rastrear (número de pedido + correo — sirve para
+   * invitados y clientes con cuenta; /mi-cuenta/pedidos moriría en el muro de autenticación
+   * para invitados). Nota F-11 (auditoría 2026-08-24): el token ya no se persiste en claro,
+   * así que los correos post-pago llegan con null → fallback /rastrear.
    */
   publicTrackingToken: string | null;
   /** Enlace de baja visible (correo comercial). */
@@ -24,7 +26,7 @@ export async function reviewRequestEmail(data: ReviewRequestData) {
   const siteUrl = await getSiteUrl();
   const orderUrl = data.publicTrackingToken
     ? `${siteUrl}/pedido/${data.publicTrackingToken}`
-    : `${siteUrl}/mi-cuenta/pedidos`;
+    : `${siteUrl}/rastrear`;
 
   // Lista de productos con link directo a su ficha (donde está el formulario de reseña).
   const productList = data.products

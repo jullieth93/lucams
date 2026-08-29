@@ -24,6 +24,7 @@
  */
 
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { verifyWebhookSignature, getWompiExpectedWebhookEnv } from "@/lib/wompi";
@@ -70,7 +71,10 @@ export async function POST(req: Request) {
     logger.warn({
       event: "webhook.wompi.invalid_signature",
       reason: verification.reason,
-      bodyHead: rawBody.slice(0, 200),
+      // D-5: no raw body in logs (reachable WITHOUT auth → PII in payloads + log
+      // injection). A truncated hash keeps the diagnostic value (spot identical
+      // bodies across retries/rotations) with zero content exposure.
+      bodyHash: createHash("sha256").update(rawBody).digest("hex").slice(0, 16),
     });
     return NextResponse.json({ error: "invalid signature" }, { status: 401 });
   }

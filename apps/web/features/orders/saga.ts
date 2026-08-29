@@ -40,6 +40,7 @@ import {
   sendOrderRefunded,
 } from "./emails";
 import { issueReferralRewardsIfFirstPaidOrder } from "@/features/referrals/service";
+import { isCouponPerCustomerLimitError } from "@/features/coupons/redemption";
 
 /**
  * 2026-05-22 — actualizado: descubrimos que la cuenta demo `demointegracion`
@@ -223,21 +224,43 @@ export async function processPaidOrder(
           });
           if (inc.count === 1) {
             // Ganamos el cupo → registramos el uso (contador === nº de CouponUsage).
-            await tx.couponUsage.create({
-              data: {
-                couponId: order.couponId,
-                customerId: order.customerId,
-                // Email normalizado del pedido: ancla el tope por-cliente también para invitados (#4).
-                email: order.email ? order.email.trim().toLowerCase() : null,
+            try {
+              await tx.couponUsage.create({
+                data: {
+                  couponId: order.couponId,
+                  customerId: order.customerId,
+                  // Email normalizado del pedido: ancla el tope por-cliente también para invitados (#4).
+                  email: order.email ? order.email.trim().toLowerCase() : null,
+                  orderId: order.id,
+                  amount: order.discount,
+                },
+              });
+            } catch (err) {
+              // G-5 — el trigger DB `coupon_usage_per_customer_limit` rechazó el insert:
+              // esta identidad YA consumió su tope en un checkout pagado en paralelo
+              // (el conteo read-then-write dejó pasar ambos). El descuento de ESTA
+              // orden ya se cobró → se respeta, no se registra el uso y se marca
+              // para reconciliación (mismo criterio que el cupo global agotado).
+              // Cualquier otro error sí aborta la tx.
+              if (!isCouponPerCustomerLimitError(err)) throw err;
+              logger.warn({
+                event: "order.saga.coupon_per_customer_limit_at_pay",
                 orderId: order.id,
-                amount: order.discount,
-              },
-            });
+                couponId: order.couponId,
+              });
+              await tx.order.updateMany({
+                where: { id: order.id, needsReconciliation: false },
+                data: {
+                  needsReconciliation: true,
+                  reconciliationReason: `Tope por cliente del cupón excedido al pagar (checkout concurrente con la misma identidad): se cobró un descuento de ${order.discount} centavos por encima de maxUsesPerCustomer. Revisa y decide.`,
+                },
+              });
+            }
           } else {
             // Cupón agotado entre crear la orden y pagar: no registramos uso (el
             // descuento ya aplicado a ESTA orden se respeta; el contador no se corrompe).
-            // Residual conocido: maxUsesPerCustomer es best-effort (evadirlo exige
-            // pagar 2 veces en paralelo — riesgo bajo).
+            // (maxUsesPerCustomer quedó enforceado en DB por el trigger G-5 — ver
+            // el catch de couponUsage.create arriba.)
             logger.warn({
               event: "order.saga.coupon_exhausted_at_pay",
               orderId: order.id,

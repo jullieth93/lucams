@@ -18,10 +18,15 @@
  */
 
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
 process.env.DIRECT_URL = stripQuotes(process.env.DIRECT_URL);
+
+// Auditoría 2026-08-24 (G-7): estas reseñas ficticias NO deben volver a
+// producción — la guarda bloquea PRD y cualquier Supabase remoto desconocido.
+assertDestructiveAllowed("seed-reviews-circle.mjs");
 
 const prisma = new PrismaClient();
 

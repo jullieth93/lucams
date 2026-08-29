@@ -11,6 +11,7 @@
 
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
+import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
 import { getWompiConfig } from "@/lib/wompi";
 
@@ -20,7 +21,7 @@ export const runtime = "nodejs";
 export async function GET(req: Request): Promise<Response> {
   // Rate-limit por IP (mismo criterio que los demás healthchecks que consultan un tercero):
   // 30/min por IP — holgado para un uptime monitor (típico cada 30-60s).
-  const { allowed } = await rateLimit(`health_wompi:${getClientIp(req.headers)}`, 30, 60);
+  const { allowed } = await rateLimit(ipKey("health_wompi", getClientIp(req.headers)), 30, 60);
   if (!allowed) {
     return new Response(JSON.stringify({ status: "rate_limited" }), {
       status: 429,

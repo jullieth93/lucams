@@ -4,6 +4,8 @@
  */
 
 import type { Metadata } from "next";
+import { requireRole } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { listGalleryAdmin, listGalleryTagOptions } from "@/features/personalization/design-gallery";
 import { GalleryManager } from "./gallery-manager";
 
@@ -11,6 +13,10 @@ export const metadata: Metadata = { title: "Diseños prediseñados" };
 export const dynamic = "force-dynamic";
 
 export default async function DisenosAdminPage() {
+  // B-7 (auditoría 2026-08-24): guard propio — el layout de (panel) NO se
+  // re-ejecuta en navegaciones soft, así que un admin degradado a mitad de
+  // sesión conservaría acceso de lectura sin este check. Mismo set que ./actions.ts.
+  await requireRole(ADMIN_ROLE_SETS.MANAGER_UP);
   // tagOptions = productos activos que declaran galleryTag (fuente única: la BD).
   // El selector del client y la validación del upload leen de la misma lista.
   const [items, tagOptions] = await Promise.all([listGalleryAdmin(), listGalleryTagOptions()]);

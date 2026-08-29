@@ -36,6 +36,7 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
+import { hashBearerToken } from "@/lib/token-hash";
 import {
   createOrderFromCart,
   getOrder,
@@ -329,7 +330,11 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       expect(row!.cartId).toBe(cartId);
       expect(row!.tax).toBe(0);
       expect(row!.currency).toBe("COP");
-      expect(row!.publicAccessToken).toMatch(/^[0-9a-f]{32}$/); // crypto.randomBytes(16).toString("hex")
+      // F-11 — la fila guarda SOLO el hash sha256 del token; el plano va en el resultado.
+      expect(result.publicAccessToken).toMatch(/^[0-9a-f]{32}$/); // crypto.randomBytes(16).toString("hex")
+      expect(row!.publicAccessTokenHash).toBe(hashBearerToken(result.publicAccessToken!));
+      expect(row!.publicAccessTokenHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(JSON.stringify(row)).not.toContain(result.publicAccessToken);
 
       // Items snapshoteados 1:1 con el cart (qty + unitPrice congelados).
       expect(row!.items).toHaveLength(2);

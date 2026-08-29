@@ -30,6 +30,7 @@ import {
   PREVIEWS_BUCKET,
 } from "@/features/personalization/retention-service";
 import { supabaseService } from "@/lib/supabase/service";
+import { hashBearerToken } from "@/lib/token-hash";
 import { parsePhotoProductConfig } from "./schemas";
 import { listStagedSlotPaths, stagedSlotPath } from "./staged-slots";
 import { resolvePersonalizationSurface } from "./surface";
@@ -1281,7 +1282,7 @@ export async function listCustomerDesigns(customerId: string) {
       id: true,
       previewUrl: true,
       status: true,
-      shareToken: true,
+      shareTokenHash: true,
       createdAt: true,
       product: { select: { name: true, slug: true } },
     },
@@ -1289,9 +1290,14 @@ export async function listCustomerDesigns(customerId: string) {
 }
 
 /**
- * Genera (o devuelve, idempotente) el shareToken de un diseño del cliente para
- * compartirlo por link público /d/<token>. Solo el dueño (customerId). El token es
- * imposible de adivinar (16 bytes hex) → sin IDOR.
+ * Genera el shareToken de un diseño del cliente para compartirlo por link
+ * público /d/<token>. Solo el dueño (customerId). El token es imposible de
+ * adivinar (16 bytes hex) → sin IDOR.
+ *
+ * F-11 (auditoría seguridad 2026-08-24): en DB solo queda el hash sha256 del
+ * token, así que un link ya emitido NO se puede releer — si el diseño ya tiene
+ * hash, pedir el link de nuevo ROTA el token (el link anterior deja de
+ * funcionar) y devuelve el plano fresco. La UI avisa con un toast.
  */
 export async function ensureDesignShareToken(
   designId: string,
@@ -1299,29 +1305,40 @@ export async function ensureDesignShareToken(
 ): Promise<string | null> {
   const design = await prisma.design.findFirst({
     where: { id: designId, customerId, status: { in: ["READY", "USED_IN_ORDER"] } },
-    select: { id: true, shareToken: true },
+    select: { id: true, shareTokenHash: true },
   });
   if (!design) return null;
-  if (design.shareToken) return design.shareToken;
   const token = crypto.randomBytes(16).toString("hex");
-  // Update atómico condicional (where shareToken:null): si dos llamadas concurrentes
-  // (misma cuenta en dos pestañas) generan tokens distintos, solo una gana; la que
-  // pierde re-lee el valor persistido en vez de devolver un token muerto (link 404).
+  const tokenHash = hashBearerToken(token);
+  if (design.shareTokenHash) {
+    // Link ya emitido: el plano no es recuperable (solo queda el hash) → rotar.
+    await prisma.design.update({
+      where: { id: design.id },
+      data: { shareTokenHash: tokenHash },
+    });
+    return token;
+  }
+  // Primera vez. Update atómico condicional (where shareTokenHash:null): si dos
+  // llamadas concurrentes (misma cuenta en dos pestañas) generan tokens distintos,
+  // solo una gana; la que pierde rota sobre el hash ganador con SU token — ambas
+  // devuelven un token válido pero solo el último persistido resuelve (el cliente
+  // usa el link que acaba de ver; el otro muere, igual que en la rotación).
   const res = await prisma.design.updateMany({
-    where: { id: design.id, shareToken: null },
-    data: { shareToken: token },
+    where: { id: design.id, shareTokenHash: null },
+    data: { shareTokenHash: tokenHash },
   });
   if (res.count === 1) return token;
-  const fresh = await prisma.design.findUnique({
+  const fresh = crypto.randomBytes(16).toString("hex");
+  await prisma.design.update({
     where: { id: design.id },
-    select: { shareToken: true },
+    data: { shareTokenHash: hashBearerToken(fresh) },
   });
-  return fresh?.shareToken ?? null;
+  return fresh;
 }
 
 /**
  * Archiva un diseño del cliente (status ARCHIVED → sale de "Mis diseños") y REVOCA el
- * link público (shareToken=null), reforzando el filtro ARCHIVED de getSharedDesign: el
+ * link público (shareTokenHash=null), reforzando el filtro ARCHIVED de getSharedDesign: el
  * /d/<token> que la clienta compartió deja de resolver.
  *
  * NO borramos previewUrl ni el objeto del bucket: las vistas de pedido (cliente,
@@ -1347,7 +1364,7 @@ export async function archiveCustomerDesign(
 
   await prisma.design.update({
     where: { id: design.id },
-    data: { status: "ARCHIVED", shareToken: null },
+    data: { status: "ARCHIVED", shareTokenHash: null },
   });
 
   // #1 (safe slice) — un diseño READY SIN pedido no lo referencia ninguna vista: al archivar borramos
@@ -1366,8 +1383,8 @@ export async function archiveCustomerDesign(
 
 /**
  * #17 — Dejar de compartir un diseño SIN archivarlo: mata el /d/<token> viejo (getSharedDesign
- * resuelve por shareToken) pero conserva el diseño en "Mis diseños". Antes revocar el link exigía
- * archivar, que es irreversible. Reusa la semántica shareToken=null (sin columna ni migración nueva);
+ * resuelve por shareTokenHash) pero conserva el diseño en "Mis diseños". Antes revocar el link exigía
+ * archivar, que es irreversible. Reusa la semántica shareTokenHash=null (sin columna ni migración nueva);
  * volver a compartir regenera el token con ensureDesignShareToken.
  */
 export async function revokeDesignShareToken(
@@ -1376,7 +1393,7 @@ export async function revokeDesignShareToken(
 ): Promise<boolean> {
   const res = await prisma.design.updateMany({
     where: { id: designId, customerId, status: { in: ["READY", "USED_IN_ORDER"] } },
-    data: { shareToken: null },
+    data: { shareTokenHash: null },
   });
   return res.count > 0;
 }
@@ -1385,11 +1402,13 @@ export async function revokeDesignShareToken(
  * Vista PÚBLICA de un diseño compartido por token — sin PII, solo el preview + el
  * producto. No expone diseños archivados/borrador. El cliente decide compartir
  * (el preview puede incluir su foto); el token va solo a quien él se lo mande.
+ *
+ * F-11: el lookup es por el hash sha256 del token (la columna en claro ya no existe).
  */
 export async function getSharedDesign(shareToken: string) {
   if (!/^[a-f0-9]{32}$/.test(shareToken)) return null;
   const design = await prisma.design.findUnique({
-    where: { shareToken },
+    where: { shareTokenHash: hashBearerToken(shareToken) },
     select: {
       previewUrl: true,
       status: true,

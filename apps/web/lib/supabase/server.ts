@@ -31,6 +31,16 @@ export async function createSupabaseServerClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      // B-2 (auditoría 2026-08-24): `Secure` explícito en despliegues HTTPS
+      // (prod/preview) — sin él, la cookie sb-* viajaría por HTTP plano en el
+      // primer contacto pre-HSTS. `httpOnly` queda en false (default del
+      // paquete): el browser client lee la sesión desde document.cookie
+      // (reto MFA, lib/supabase/browser.ts) — la exposición a XSS la mitiga
+      // la CSP por nonce que setea proxy.ts, no httpOnly.
+      cookieOptions: {
+        secure: process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview",
+        sameSite: "lax",
+      },
       cookies: {
         getAll() {
           return cookieStore.getAll();

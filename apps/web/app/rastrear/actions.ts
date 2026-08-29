@@ -4,18 +4,24 @@
  * Rastreo público de pedidos (#14) — puerta de entrada segura al detalle del pedido.
  *
  * El cliente ingresa NÚMERO de pedido + CORREO. Si coinciden, lo mandamos a la vista pública
- * /pedido/<publicAccessToken> (que ya muestra estado, timeline y guía). Requerir AMBOS datos +
- * mensaje genérico + rate-limit evita enumerar pedidos por número. El token sigue siendo el permiso
- * real de acceso; /rastrear solo lo resuelve tras validar la identidad.
+ * /pedido/<token> (que ya muestra estado, timeline y guía). Requerir AMBOS datos + mensaje
+ * genérico + rate-limit evita enumerar pedidos por número.
+ *
+ * F-11 (auditoría seguridad 2026-08-24): el token ya no se guarda en claro, así que no podemos
+ * releer el original. Tras la prueba de identidad ROTAMOS el token (hash nuevo en DB, plano en
+ * el redirect) — los links emitidos antes para esa orden dejan de funcionar. El token sigue
+ * siendo el permiso real de acceso; /rastrear solo emite uno nuevo tras validar la identidad.
  */
 
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import crypto from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
+import { hashBearerToken } from "@/lib/token-hash";
 import { logger } from "@/lib/logger";
 import { getCmsBlock } from "@/lib/cms";
 
@@ -67,11 +73,11 @@ export async function rastrearAction(
       email: { equals: parsed.data.email, mode: "insensitive" },
       deletedAt: null,
     },
-    select: { publicAccessToken: true },
+    select: { id: true },
   });
 
   // Mensaje genérico (no revela si el número existe) — anti-enumeración.
-  if (!order?.publicAccessToken) {
+  if (!order) {
     logger.info({ event: "rastrear.miss", ip });
     return {
       error: await cmsErrorText(
@@ -81,5 +87,13 @@ export async function rastrearAction(
     };
   }
 
-  redirect(`/pedido/${order.publicAccessToken}`);
+  // F-11 — identidad probada (número + correo, rate-limited): emitimos un token
+  // NUEVO y redirigimos a él. Rotación: invalida los links previos de la orden
+  // (el original no se puede releer — en DB solo queda su hash).
+  const token = crypto.randomBytes(16).toString("hex");
+  await prisma.order.update({
+    where: { id: order.id },
+    data: { publicAccessTokenHash: hashBearerToken(token) },
+  });
+  redirect(`/pedido/${token}`);
 }

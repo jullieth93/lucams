@@ -10,13 +10,14 @@
 import { NextResponse } from "next/server";
 import { getOcasionBySlug, listCatalogProducts } from "@/lib/catalog";
 import { rateLimit } from "@/lib/rate-limit";
+import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const ip = getClientIp(req.headers);
-  const { allowed } = await rateLimit(`catalog_ocasion_detail:${ip}`, 30, 60);
+  const { allowed } = await rateLimit(ipKey("catalog_ocasion_detail", ip), 30, 60);
   if (!allowed) {
     return NextResponse.json(
       { error: "Too many requests" },

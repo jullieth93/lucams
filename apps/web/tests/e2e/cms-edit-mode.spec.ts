@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import "../setup-env";
 import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
+import { completeMfaChallengeIfNeeded, enrollTotpFactor } from "./_helpers/mfa";
 
 /*
  * Verificación del modo edición in-place (roadmap C1 paso 2).
@@ -29,6 +30,7 @@ const ADMIN_EMAIL = `${RUN}@example.com`;
 const ADMIN_PASSWORD = "C1P2-Admin-918273650";
 let supabaseUserId = "";
 let adminId = "";
+let totpSecret = "";
 
 test.setTimeout(180_000);
 
@@ -44,6 +46,8 @@ test.beforeAll(async () => {
     data: { supabaseUserId, email: ADMIN_EMAIL, role: "SUPERADMIN", isActive: true },
   });
   adminId = admin.id;
+  // MFA obligatorio (B-1): sin factor TOTP el admin efímero no pasa del enrolamiento.
+  totpSecret = await enrollTotpFactor(ADMIN_EMAIL, ADMIN_PASSWORD);
 });
 
 test.afterAll(async () => {
@@ -69,6 +73,8 @@ async function adminLogin(page: Page) {
       .locator('input[name="email"], input[type="email"]')
       .first()
       .waitFor({ state: "detached", timeout: 30_000 });
+    // Tras el login con password viene el reto TOTP (MFA obligatorio, B-1).
+    await completeMfaChallengeIfNeeded(page, totpSecret);
   }
 }
 

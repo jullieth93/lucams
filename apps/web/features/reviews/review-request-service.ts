@@ -40,7 +40,6 @@ export async function sendReviewRequests(
       number: true,
       email: true,
       shippingAddress: true,
-      publicAccessToken: true,
       items: {
         select: { variant: { select: { product: { select: { name: true, slug: true } } } } },
       },
@@ -75,7 +74,9 @@ export async function sendReviewRequests(
         customerName: ship.fullName ?? "Cliente",
         products,
         // #10 — link a la vista pública por token (invitados sin login); null → /mi-cuenta.
-        publicTrackingToken: order.publicAccessToken ?? null,
+        // F-11 — el token ya no se puede releer de la DB (solo hash); el
+        // invitado rastrea con número + correo en /rastrear.
+        publicTrackingToken: null,
         unsubscribeUrl: `${siteUrl}/unsubscribe?u=${encodeUnsubscribeParam(order.email)}`,
       });
       const result = await sendEmail({

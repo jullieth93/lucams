@@ -38,17 +38,17 @@ jobs:
       # (finalize-server-render y letter-tiles exigen la DB compartida de dev).
       NIGHTLY_LOCALSTACK: "1"
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @lucams/db db:generate
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
         with:
           # Versión FIJADA: `latest` obliga a consultar la API de GitHub y se
           # topa con su rate limit (run 30654889313). La default vieja (2.20.3)
@@ -117,17 +117,17 @@ jobs:
       WOMPI_EVENTS_SECRET: ${{ secrets.WOMPI_EVENTS_SECRET || 'test_events_ci' }}
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
           version: ${{ env.PNPM_VERSION }}
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @lucams/db db:generate
-      - uses: supabase/setup-cli@v1
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
         with:
           # Versión FIJADA: `latest` obliga a consultar la API de GitHub y se
           # topa con su rate limit (run 30654889313). La default vieja (2.20.3)
@@ -191,7 +191,7 @@ jobs:
         run: pnpm --filter web exec playwright test --project=desktop-firefox --project=desktop-webkit
       - name: Subir reporte Playwright (si falla)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report-nightly
           path: apps/web/playwright-report/

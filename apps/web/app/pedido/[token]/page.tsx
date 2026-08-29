@@ -3,12 +3,12 @@
  *
  * Usado por guest checkout: el email transaccional incluye un link
  * https://lucamsshop.com/pedido/<token> con un token único de 32 hex chars
- * (Order.publicAccessToken). El cliente entra y ve timeline + tracking
- * sin autenticarse.
+ * (Order.publicAccessTokenHash, F-11: en DB solo vive el hash sha256 del token).
+ * El cliente entra y ve timeline + tracking sin autenticarse.
  *
  * Seguridad:
  *   - Token de 16 bytes (128 bits) random — imposible adivinar
- *   - Token vive en Order.publicAccessToken @unique
+ *   - Lookup por hash del token (la columna en claro ya no existe — F-11)
  *   - Vista read-only: NO permite editar nada
  *   - NO indexable (robots noindex)
  *
@@ -25,6 +25,7 @@ import { LucamsLogo } from "@/components/lucams-logo";
 import { getCmsBlock } from "@/lib/cms";
 import { prisma } from "@/lib/db";
 import { formatCOP, maskEmail } from "@/lib/format";
+import { hashBearerToken } from "@/lib/token-hash";
 import { carrierTrackingPageUrl } from "@/features/shipping/tracking-urls";
 import { buildWhatsAppUrl } from "@/lib/wa";
 
@@ -84,7 +85,7 @@ export default async function PublicOrderPage({
   if (!/^[a-f0-9]{32}$/.test(token)) notFound();
 
   const order = await prisma.order.findFirst({
-    where: { publicAccessToken: token, deletedAt: null },
+    where: { publicAccessTokenHash: hashBearerToken(token), deletedAt: null },
     include: {
       items: {
         include: {

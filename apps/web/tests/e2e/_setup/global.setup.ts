@@ -10,9 +10,10 @@
  *      ni en remotos desconocidos.
  *   2. Crea un admin y un cliente EFÍMEROS vía service role (precedente del
  *      repo: release-check-a1 / cms-editing-flow / admin-mfa / catalog-mode).
- *      El admin real tiene MFA enrolado y su secret TOTP no está disponible
- *      para automatización; el efímero recorre el mismo login por UI y se
- *      borra en el teardown. El reto MFA tiene su propio spec (admin-mfa).
+ *      El admin efímero ENROLA TOTP vía API y completa el reto en el login por
+ *      UI: desde B-1 (auditoría 2026-08-24) el MFA es obligatorio y un admin
+ *      sin factor cae en /admin/seguridad?enroll=required en vez del dashboard.
+ *      El efímero se borra en el teardown.
  *   3. Login por UI de cada uno y guarda el storageState en
  *      tests/e2e/.auth/<env>/{admin,client}.json (gitignored).
  *   4. Escribe .auth/<env>/manifest.json con los ids creados: el teardown los
@@ -25,6 +26,8 @@ import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
 // Guarda de ambiente compartida con los scripts destructivos del repo.
 import { checkDestructiveAllowed } from "../../../../../packages/db/scripts/lib/env-guard.mjs";
+import { enrollTotpFactor } from "../_helpers/mfa";
+import { totp } from "../_helpers/totp";
 import {
   authManifestPath,
   authStatePath,
@@ -100,6 +103,9 @@ export default async function globalSetup() {
     },
     select: { id: true },
   });
+  // MFA obligatorio (B-1): el admin efímero enrola TOTP vía API; su secret se
+  // usa para completar el reto en el login por UI de abajo.
+  const adminTotpSecret = await enrollTotpFactor(adminEmail, ADMIN_PASSWORD);
 
   const { data: clientAuth, error: clientErr } = await service.auth.admin.createUser({
     email: clientEmail,
@@ -140,11 +146,14 @@ export default async function globalSetup() {
     });
     const page = await context.newPage();
 
-    // Admin (sin MFA → entra directo al dashboard; patrón catalog-mode.spec).
+    // Admin (MFA obligatorio desde B-1: login → reto TOTP → dashboard).
     await page.goto("/admin/login", { waitUntil: "domcontentloaded" });
     await page.locator('input[name="email"]').fill(adminEmail);
     await page.locator('input[name="password"]').fill(ADMIN_PASSWORD);
     await page.getByRole("button", { name: /iniciar sesión/i }).click();
+    await page.waitForURL(/\/admin\/login\/mfa/, { timeout: 30_000 });
+    await page.getByPlaceholder("123456").fill(totp(adminTotpSecret, Date.now()));
+    await page.getByRole("button", { name: /verificar y entrar/i }).click();
     await page.waitForURL(/\/admin\/dashboard/, { timeout: 30_000 });
     await context.storageState({ path: authStatePath(env, "admin") });
 

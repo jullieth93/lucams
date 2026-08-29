@@ -1,7 +1,8 @@
 /*
  * Integración — compartir diseño (Fase 3). Cubre la superficie de SEGURIDAD del
  * feature: aislamiento por customerId (nadie ve ni comparte ni archiva el diseño de
- * otro), idempotencia del shareToken, y que la vista pública /d/<token> NO filtre
+ * otro), rotación del shareToken (F-11: en DB solo vive su hash sha256; pedir el
+ * link de nuevo lo rota), y que la vista pública /d/<token> NO filtre
  * diseños en DRAFT/ARCHIVED ni acepte tokens malformados.
  *
  * Comparte la Supabase de dev (DIRECT_URL). Todo fixture lleva prefijo RUN único y se
@@ -143,11 +144,23 @@ describe("listCustomerDesigns", () => {
 });
 
 describe("ensureDesignShareToken", () => {
-  it("genera un token de 32 hex y es idempotente", async () => {
+  it("genera un token de 32 hex; una segunda llamada ROTA el link (F-11: el plano no se relee)", async () => {
     const t1 = await ensureDesignShareToken(readyId, ownerId);
     expect(t1).toMatch(/^[a-f0-9]{32}$/);
+    // F-11 — la fila guarda SOLO el hash sha256, no el plano.
+    const row = await prisma.design.findUnique({
+      where: { id: readyId },
+      select: { shareTokenHash: true },
+    });
+    expect(row!.shareTokenHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(row!.shareTokenHash).not.toBe(t1);
+    expect(await getSharedDesign(t1!)).not.toBeNull(); // resuelve por hash
+
     const t2 = await ensureDesignShareToken(readyId, ownerId);
-    expect(t2).toBe(t1); // no regenera
+    expect(t2).toMatch(/^[a-f0-9]{32}$/);
+    expect(t2).not.toBe(t1); // rotación: el link viejo muere, el nuevo resuelve
+    expect(await getSharedDesign(t1!)).toBeNull();
+    expect(await getSharedDesign(t2!)).not.toBeNull();
   });
 
   it("comparte un USED_IN_ORDER", async () => {
@@ -192,13 +205,13 @@ describe("getSharedDesign (vista pública)", () => {
     expect(archived).toBe(true);
     expect(await getSharedDesign(token)).toBeNull(); // link muerto tras archivar
 
-    // Revocación real: el shareToken se anula (no solo se apoya en el filtro ARCHIVED).
+    // Revocación real: el shareTokenHash se anula (no solo se apoya en el filtro ARCHIVED).
     const row = await prisma.design.findUnique({
       where: { id: shareId },
-      select: { shareToken: true, status: true },
+      select: { shareTokenHash: true, status: true },
     });
     expect(row!.status).toBe("ARCHIVED");
-    expect(row!.shareToken).toBeNull();
+    expect(row!.shareTokenHash).toBeNull();
   });
 });
 

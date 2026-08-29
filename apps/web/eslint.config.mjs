@@ -53,6 +53,31 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  // Anti-import-directo de sharp (auditoría 2026-08-24, F-4): sharp@0.34.4 está
+  // clavado por ERR_DLOPEN_FAILED en lambdas de Vercel y su GHSA-f88m-g3jw-g9cj
+  // quedó mitigada SOLO porque todo el código de runtime pasa por
+  // features/personalization/sharp-safe.ts (bloquea los loaders GIF/TIFF/VIPS).
+  // Un import directo nuevo saltaría ese bloqueo → prohibido. Exentos:
+  // sharp-safe.ts (la puerta única) y los tests/specs (corren en CI/local,
+  // nunca en una lambda de prod ni procesan input no confiable en runtime).
+  {
+    files: ["**/*.ts", "**/*.tsx"],
+    ignores: ["features/personalization/sharp-safe.ts", "**/*.test.ts", "tests/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "sharp",
+              message:
+                "Importa sharp desde @/features/personalization/sharp-safe (bloquea los loaders vulnerables de libvips), nunca desde 'sharp' directo.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   // Playwright fixtures: el callback `use(...)` de test.extend dispara un falso
   // positivo de react-hooks/rules-of-hooks (no es React). Solo en tests E2E.
   {

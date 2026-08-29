@@ -466,7 +466,10 @@ Errores no numéricos comunes:
 > **Webhook Personalizado** — por panel (guias.aveonline.co/panel/mis-integraciones → tipo
 > "Webhook Personalizado", URL + Token que Aveonline re-envía como `payload.token` en cada
 > notificación, docs oficiales `webhookEstadosGuias` / `webhookPersonalizadoApi`). El endpoint
-> propio (`/api/webhooks/aveonline`) valida `?secret=` / header / `payload.token`.
+> propio (`/api/webhooks/aveonline`) valida header `x-aveonline-secret` / `payload.token`.
+> **La vía `?secret=` quedó DESHABILITADA por defecto (auditoría 2026-08-24, D-1)**: viaja en
+> logs de infraestructura. Solo se acepta con `AVEONLINE_ALLOW_QUERY_SECRET=true` (puente
+> transitorio si el panel quedó registrado con `?secret=` — verificar y reconfigurar).
 > **Gap confirmado de la API nueva:** los hosts nuevos (`api.aveonline.co`,
 > `envios.api.aveonline.co`) RECHAZAN el JWT legacy de `autenticarusuario.php`
 > ("Incorrect key for this algorithm", firebase/php-jwt) — el alta/lectura vía

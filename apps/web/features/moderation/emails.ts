@@ -31,7 +31,7 @@ export async function sendDesignRejectedEmails(
     try {
       const order = await prisma.order.findFirst({
         where: { number: o.number, deletedAt: null },
-        select: { shippingAddress: true, publicAccessToken: true },
+        select: { shippingAddress: true },
       });
       const name = (order?.shippingAddress as ShippingAddrSnapshot | null)?.fullName ?? "Cliente";
       const tpl = await designRejectedEmail({
@@ -40,7 +40,9 @@ export async function sendDesignRejectedEmails(
         productName: result.productName,
         reason,
         // #10 — link a la vista pública por token (invitados sin login); null → /mi-cuenta.
-        publicTrackingToken: order?.publicAccessToken ?? null,
+        // F-11 — el token ya no se puede releer de la DB (solo hash); el
+        // invitado rastrea con número + correo en /rastrear.
+        publicTrackingToken: null,
       });
       await sendEmail({
         to: o.email,

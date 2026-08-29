@@ -93,8 +93,11 @@ const PHONE_RE = /(\+?57[\s-]?)?3\d{2}[\s-]?\d{3}[\s-]?\d{4}|\b\d{3}[\s-]\d{3}[\
  * alcanza el CONTENIDO de un mensaje — un unique-violation de Postgres trae la PII embebida
  * (`Key (email)=(cliente@x.com) already exists`). Se enmascaran emails y teléfonos antes de
  * serializar Error.message/stack para que los logs de Vercel no registren datos personales.
+ *
+ * Exportada (auditoría 2026-08-24, F-6): lib/error-capture.ts la aplica a message/stack ANTES
+ * de persistir en ErrorLog/ErrorReport — la misma PII tampoco debe quedar en claro en DB.
  */
-function scrubPii(text: string): string {
+export function scrubPii(text: string): string {
   return text.replace(EMAIL_RE, "[EMAIL]").replace(PHONE_RE, "[PHONE]");
 }
 

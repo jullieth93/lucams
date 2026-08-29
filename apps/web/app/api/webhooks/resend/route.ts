@@ -124,22 +124,38 @@ export async function POST(req: Request): Promise<Response> {
     // Cast a Prisma JSON: la data del webhook es structurally compatible
     // (sólo strings/numbers/bools/arrays/objects anidados serializables).
     const metadata = JSON.parse(JSON.stringify(event.data));
-    await prisma.emailEvent.upsert({
-      where: { resendId: event.data.email_id },
-      update: {
-        type: event.type,
-        occurredAt: new Date(event.created_at),
-        metadata,
-      },
-      create: {
-        resendId: event.data.email_id,
-        type: event.type,
-        to: Array.isArray(event.data.to) ? event.data.to.join(",") : String(event.data.to),
-        fromEmail: event.data.from,
-        subject: event.data.subject ?? null,
-        occurredAt: new Date(event.created_at),
-        metadata,
-      },
+    const occurredAt = new Date(event.created_at);
+    // D-2: el upsert last-write-wins permitía que un evento viejo/reordenado pisara
+    // email.bounced/email.complained → la supresión de lib/resend.ts dejaba de aplicar
+    // y se re-escribía a direcciones rebotadas/quejadas. En transacción: un tipo
+    // supresor nunca se degrada por un evento no-supresor, y un evento con occurredAt
+    // más viejo que el almacenado se ignora.
+    const SUPPRESSING = ["email.bounced", "email.complained"];
+    await prisma.$transaction(async (tx) => {
+      const existing = await tx.emailEvent.findUnique({
+        where: { resendId: event.data.email_id },
+      });
+      if (existing && SUPPRESSING.includes(existing.type) && !SUPPRESSING.includes(event.type)) {
+        return; // el rebote/queja manda: no degradar el registro
+      }
+      if (existing && existing.occurredAt > occurredAt) return; // evento viejo: ignorar
+      await tx.emailEvent.upsert({
+        where: { resendId: event.data.email_id },
+        update: {
+          type: event.type,
+          occurredAt,
+          metadata,
+        },
+        create: {
+          resendId: event.data.email_id,
+          type: event.type,
+          to: Array.isArray(event.data.to) ? event.data.to.join(",") : String(event.data.to),
+          fromEmail: event.data.from,
+          subject: event.data.subject ?? null,
+          occurredAt,
+          metadata,
+        },
+      });
     });
 
     if (event.type === "email.bounced") {

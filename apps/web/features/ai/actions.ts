@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey, ownerKey } from "@/lib/rate-limit-keys";
-import { DesignSuggestInputSchema, type DesignSuggestion } from "./schemas";
+import { DesignSuggestInputSchema, sanitizeOccasion, type DesignSuggestion } from "./schemas";
 import { getDesignSuggestion, AiUnavailableError } from "./service";
 import { getClientIp } from "@/lib/client-ip";
 import { getCurrentCustomer } from "@/lib/auth";
@@ -36,6 +36,9 @@ export async function suggestDesignAction(raw: unknown): Promise<Result> {
   if (!parsed.success) {
     return { ok: false, message: "Cuéntanos un poco más sobre la ocasión (mínimo unas palabras)." };
   }
+  // E-2 — `occasion` is free text that leaves to Google Gemini: anything that looks like
+  // PII is replaced by a neutral text (never rejected) before calling the provider.
+  const input = sanitizeOccasion(parsed.data);
 
   const hdrs = await headers();
   const ip = getClientIp(hdrs);
@@ -67,7 +70,7 @@ export async function suggestDesignAction(raw: unknown): Promise<Result> {
   }
 
   try {
-    const suggestion = await getDesignSuggestion(parsed.data);
+    const suggestion = await getDesignSuggestion(input);
     return { ok: true, suggestion };
   } catch (err) {
     if (err instanceof AiUnavailableError) {

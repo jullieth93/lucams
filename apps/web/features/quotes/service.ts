@@ -26,6 +26,7 @@ import { buildWhatsAppUrl } from "@/lib/wa";
 import { buildPublicShareUrl } from "@/lib/public-url";
 import { getCartDetail } from "@/features/cart/service";
 import { buildQuoteConsentRow } from "@/features/consent/service";
+import { hashBearerToken } from "@/lib/token-hash";
 
 export class QuoteError extends Error {
   constructor(
@@ -116,7 +117,8 @@ export async function createQuoteFromCart(
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const number = generateQuoteNumber();
     // Token público para la vista /cotizacion/<token> (guest sin login) —
-    // mismo patrón que Order.publicAccessToken: 32 chars hex (128 bits).
+    // mismo patrón que Order: 32 chars hex (128 bits). F-11: se persiste SOLO
+    // el hash sha256; el plano se devuelve en el resultado (link de confirmación).
     const publicAccessToken = crypto.randomBytes(16).toString("hex");
     try {
       // El id de la Quote creada se captura para devolverlo (aviso al admin).
@@ -144,7 +146,7 @@ export async function createQuoteFromCart(
         const created = await tx.quote.create({
           data: {
             number,
-            publicAccessToken,
+            publicAccessTokenHash: hashBearerToken(publicAccessToken),
             customerName: input.customerName,
             customerWhatsapp: input.customerWhatsapp,
             customerEmail: input.customerEmail ?? null,
@@ -183,7 +185,7 @@ export async function createQuoteFromCart(
       });
       return { id: createdId, number, token: publicAccessToken };
     } catch (err) {
-      // Colisión de number o publicAccessToken → reintentar con valores nuevos.
+      // Colisión de number o publicAccessTokenHash → reintentar con valores nuevos.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
         logger.warn({ event: "quote.create.unique_collision", attempt });
         continue;
@@ -203,7 +205,7 @@ export async function createQuoteFromCart(
  */
 export async function getQuoteByToken(token: string) {
   return prisma.quote.findFirst({
-    where: { publicAccessToken: token, deletedAt: null },
+    where: { publicAccessTokenHash: hashBearerToken(token), deletedAt: null },
     select: {
       id: true,
       number: true,

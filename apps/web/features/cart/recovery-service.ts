@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
+import { hashBearerToken } from "@/lib/token-hash";
 import { getSiteUrl } from "@/features/emails/layout";
 import { peekCartSession } from "@/lib/cart-session";
 import {
@@ -14,9 +15,15 @@ import { cartRecoveryEmail } from "@/features/emails/templates/cart-recovery";
 /*
  * Recuperación de carrito abandonado (palanca de ingreso, auditoría 2026-07-13).
  *  - recordAbandonedCartEmail: hook ADITIVO del checkout (al escribir el email) que registra el
- *    carrito como abandonable + genera un token de recuperación. Best-effort → nunca rompe checkout.
+ *    carrito como abandonable. Best-effort → nunca rompe checkout.
  *  - sendCartRecoveryReminders: cron que envía UN recordatorio a carritos con email, inactivos ≥4h,
  *    y detecta conversión (el saga soft-deletea el cart tras PAID → recoveredAt).
+ *
+ * F-11 (auditoría seguridad 2026-08-24): el recoverToken se genera RECIÉN al
+ * enviar el recordatorio (no al registrar el abandono) y en DB solo queda su
+ * hash sha256 — el plano vive únicamente en el email enviado. Si un envío falla
+ * tras persistir el hash, el próximo ciclo ROTA el token (no podemos releerlo)
+ * y manda un link nuevo; el link del intento anterior nunca llegó al cliente.
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -31,12 +38,13 @@ export async function recordAbandonedCartEmail(email: string): Promise<void> {
       select: { id: true, _count: { select: { items: true } } },
     });
     if (!cart || cart._count.items === 0) return;
+    // F-11: el token de recuperación NO se genera acá sino al enviar el
+    // recordatorio (solo su hash toca la DB).
     await prisma.abandonedCart.upsert({
       where: { cartId: cart.id },
       create: {
         cartId: cart.id,
         email,
-        recoverToken: crypto.randomBytes(24).toString("base64url"),
       },
       // Solo refresca el email si cambió; NO toca token/recovered/reminder (idempotente).
       update: { email },
@@ -66,7 +74,6 @@ export async function sendCartRecoveryReminders(
     select: {
       id: true,
       email: true,
-      recoverToken: true,
       cart: {
         select: {
           deletedAt: true,
@@ -91,16 +98,24 @@ export async function sendCartRecoveryReminders(
         continue;
       }
       const items = row.cart.items.map((i) => ({ name: i.variant.product.name, qty: i.qty }));
-      // Carrito vaciado o sin token → marcar reminder para no reconsiderarlo cada corrida.
-      if (items.length === 0 || !row.recoverToken) {
+      // Carrito vaciado → marcar reminder para no reconsiderarlo cada corrida.
+      if (items.length === 0) {
         await prisma.abandonedCart.update({
           where: { id: row.id },
           data: { lastReminderSentAt: now },
         });
         continue;
       }
+      // F-11 — token fresco por intento de envío: persistimos SOLO su hash
+      // (reemplaza cualquier hash previo: el plano viejo no es recuperable y su
+      // email nunca se envió con éxito, o no estaríamos reintentando).
+      const recoverToken = crypto.randomBytes(24).toString("base64url");
+      await prisma.abandonedCart.update({
+        where: { id: row.id },
+        data: { recoverTokenHash: hashBearerToken(recoverToken) },
+      });
       const tpl = await cartRecoveryEmail({
-        recoverToken: row.recoverToken,
+        recoverToken,
         items,
         unsubscribeUrl: `${siteUrl}/unsubscribe?u=${encodeUnsubscribeParam(row.email)}`,
       });

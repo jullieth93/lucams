@@ -8,6 +8,13 @@ import { z } from "zod";
 
 // Mismas enums que Prisma — duplicadas como string union acá para
 // evitar import circular y porque Zod no infiere bien de Prisma enums.
+//
+// SEGURIDAD (auditoría 2026-08-24, E-3): el tipo "HTML" NO tiene sink de
+// renderizado crudo en el storefront (hoy se muestra vía CmsMarkdown, que
+// sanitiza con rehype-sanitize y no usa rehype-raw). Si en el futuro se
+// agrega un renderer `format === "HTML"` con dangerouslySetInnerHTML, DEBE
+// sanitizarse server-side primero — de lo contrario es XSS almacenado por
+// cualquier admin/CMS_EDITOR.
 const FIELD_TYPES = [
   "TEXT",
   "TEXTAREA",

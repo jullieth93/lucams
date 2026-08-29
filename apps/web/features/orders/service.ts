@@ -26,6 +26,7 @@ import { OrderAmountTooLargeError } from "./errors";
 import { fitsMoneyInt4 } from "@/lib/money";
 import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/redemption";
 import { computeShippingAddressKey } from "@/features/checkout/address-key";
+import { hashBearerToken } from "@/lib/token-hash";
 import { sendOrderRefunded } from "./emails";
 import { assertTransactionalAllowed } from "@/lib/stage-guard";
 
@@ -158,18 +159,28 @@ export async function createOrderFromCart(
             subtotal: true,
             shipping: true,
             discount: true,
-            publicAccessToken: true,
             paymentMethod: true,
           },
         });
         if (winner) {
+          // F-11 — el token ya no se persiste en claro, así que no podemos
+          // devolver el de la orden ganadora: rotamos (hash nuevo) y entregamos
+          // el plano fresco. Es seguro: la orden sigue PENDING_PAYMENT y ese
+          // token aún no se le había entregado a nadie (el link /pedido/<token>
+          // sale solo DESPUÉS de esta llamada; el email de confirmación ya no lo
+          // incluye).
+          const publicAccessToken = crypto.randomBytes(16).toString("hex");
+          await prisma.order.update({
+            where: { id: winner.id },
+            data: { publicAccessTokenHash: hashBearerToken(publicAccessToken) },
+          });
           logger.info({
             event: "order.create.concurrent_idempotent",
             cartId: input.cartId,
             orderId: winner.id,
             orderNumber: winner.number,
           });
-          return winner;
+          return { ...winner, publicAccessToken };
         }
         throw err;
       }
@@ -240,7 +251,8 @@ async function createOrderFromCartTx(
     // impide igual). Antes la devolvíamos TAL CUAL: si el cliente cambiaba algo entre "ir a pagar" y
     // "pagar" (items, cupón, envío, o el MÉTODO tras un COD bloqueado → Wompi) se cobraba lo viejo
     // (auditoría v3 · B1/H1/H3). Ahora: si nada cambió, refresh idempotente; si cambió, la
-    // reconciliamos en el sitio con los datos frescos (mismo id/token/número).
+    // reconciliamos en el sitio con los datos frescos (mismo id/número; el token público rota —
+    // F-11: ya no se guarda en claro para releerlo).
     const existing = await tx.order.findFirst({
       where: {
         cartId: input.cartId,
@@ -252,7 +264,6 @@ async function createOrderFromCartTx(
         id: true,
         number: true,
         total: true,
-        publicAccessToken: true,
         paymentMethod: true,
         email: true,
         shippingCarrier: true,
@@ -260,6 +271,15 @@ async function createOrderFromCartTx(
         items: { select: { variantId: true, qty: true, designId: true, unitPrice: true } },
       },
     });
+
+    // F-11 — el token público se genera fresco en CADA intento y solo se
+    // persiste su hash sha256 (hashBearerToken). El plano se devuelve al caller
+    // (link /pedido/<token>) y nunca toca la DB. En los caminos que reusan una
+    // orden PENDING existente (idempotente/reconciliación) no podemos releer
+    // el token viejo (solo queda el hash) → lo ROTAMOS: es seguro porque la
+    // orden sigue PENDING_PAYMENT y ese token no se había entregado a nadie.
+    const publicAccessToken = crypto.randomBytes(16).toString("hex");
+    const publicAccessTokenHash = hashBearerToken(publicAccessToken);
 
     const subtotal = cart.items.reduce((acc, it) => acc + it.unitPrice * it.qty, 0);
     const shippingCost = input.shippingSelection.fleteCop;
@@ -388,7 +408,6 @@ async function createOrderFromCartTx(
       subtotal: true,
       shipping: true,
       discount: true,
-      publicAccessToken: true,
       paymentMethod: true,
     } as const;
 
@@ -421,6 +440,11 @@ async function createOrderFromCartTx(
         itemSignature(existing.items) === cartSig;
       if (identical) {
         // Refresh idempotente (reload de /checkout/pago sin cambios) → misma orden.
+        // F-11: rotamos el token (solo hay hash del viejo) y devolvemos el plano fresco.
+        await tx.order.update({
+          where: { id: existing.id },
+          data: { publicAccessTokenHash },
+        });
         return {
           id: existing.id,
           number: existing.number,
@@ -428,17 +452,18 @@ async function createOrderFromCartTx(
           subtotal,
           shipping: shippingCost,
           discount,
-          publicAccessToken: existing.publicAccessToken,
+          publicAccessToken,
           paymentMethod: existing.paymentMethod,
         };
       }
       // RECONCILIAR (auditoría v3 · B1/H1/H3): el cliente cambió items/cupón/envío/método entre "ir a
-      // pagar" y "pagar". Actualizamos la MISMA orden (mismo id/token/número) con datos frescos, en
-      // vez de devolver la vieja — que cobraría el total, los items o el MÉTODO obsoletos.
+      // pagar" y "pagar". Actualizamos la MISMA orden (mismo id/número; el token rota — F-11: ya no
+      // se guarda en claro para releerlo) con datos frescos, en vez de devolver la vieja — que
+      // cobraría el total, los items o el MÉTODO obsoletos.
       await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
       const reconciled = await tx.order.update({
         where: { id: existing.id },
-        data: { ...orderScalars, items: { create: orderItemsCreate } },
+        data: { ...orderScalars, publicAccessTokenHash, items: { create: orderItemsCreate } },
         select: returnSelect,
       });
       await markDesignsUsed();
@@ -448,13 +473,13 @@ async function createOrderFromCartTx(
         orderId: existing.id,
         orderNumber: existing.number,
       });
-      return reconciled;
+      return { ...reconciled, publicAccessToken };
     }
 
     // No hay orden PENDING para este cart → crear una nueva.
     const number = await generateOrderNumber(tx);
-    // Token público para vista guest /pedido/<token> sin login.
-    const publicAccessToken = crypto.randomBytes(16).toString("hex");
+    // Token público para vista guest /pedido/<token> sin login (F-11: se
+    // persiste SOLO el hash; el plano viaja en el retorno para el link/email).
     const order = await tx.order.create({
       data: {
         number,
@@ -463,13 +488,13 @@ async function createOrderFromCartTx(
         ...orderScalars,
         currency: cart.currency,
         status: "PENDING_PAYMENT",
-        publicAccessToken,
+        publicAccessTokenHash,
         items: { create: orderItemsCreate },
       },
       select: returnSelect,
     });
     await markDesignsUsed();
-    return order;
+    return { ...order, publicAccessToken };
   });
 }
 

@@ -430,10 +430,11 @@ test("webhook Aveonline §8: secret por header (timing-safe) · dedup", async ({
     expect(rows, "una sola fila para el evento duplicado").toBe(1);
     record("dedup-reintento", true, `reintento → 200 "already processed" · 1 fila`);
 
-    // Rama por query-string (aceptada pero logueada como deuda: viaja en logs).
+    // Rama por query-string: DESHABILITADA por defecto (auditoría 2026-08-24, D-1)
+    // — solo se acepta con AVEONLINE_ALLOW_QUERY_SECRET=true. Acá debe dar 401.
     const byQuery = await post({}, `?secret=${encodeURIComponent(AVE_SECRET!.trim())}`);
-    expect(byQuery.status()).toBe(200);
-    record("secret-por-query-200", true, "?secret=… también aceptado (rama documentada)");
+    expect(byQuery.status()).toBe(401);
+    record("secret-por-query-401", true, "?secret=… rechazado por defecto (D-1: flag OFF)");
 
     write("pass");
   } catch (err) {

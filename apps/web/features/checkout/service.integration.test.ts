@@ -4,7 +4,7 @@
  * El módulo @/features/checkout/service.ts orquesta el flow de checkout:
  *   - calculateTotals(): cálculo de subtotal/envío/descuento/IVA/total (PURO).
  *   - los step savers (saveContactStep, savePaymentMethodStep, etc.): escriben
- *     la cookie firmada checkout_state (COOKIE).
+ *     la cookie sellada checkout_state (AES-256-GCM, F-9).
  *   - loadCheckoutContext(): cart + customer + state desde cookie/DB.
  *   - finalizeCheckout(): crea Order en DB + idempotencia + URL de Wompi (DB).
  *
@@ -16,8 +16,8 @@
  *
  * Mocks (offline + determinista — NUNCA pega a servicios externos):
  *   - next/headers cookies(): jar en memoria stateful → setCheckoutState y
- *     peekCartSession round-trip real con la firma HMAC real (CSRF_SECRET de
- *     .env.local). Esto ejerce la verificación de firma de verdad.
+ *     peekCartSession round-trip real con el sellado GCM real (CSRF_SECRET de
+ *     .env.local). Esto ejerce el unseal de verdad.
  *   - @/lib/auth getCurrentUser(): controla si hay user logueado (default null).
  *   - @/features/payments/provider getPaymentProvider(): stub Wompi → no red.
  *   - @/features/shipping/provider getShippingProvider(): stub Aveonline.
@@ -469,11 +469,11 @@ describe("step savers — persisten state firmado en la cookie (round-trip HMAC)
   });
 
   it.skipIf(!hasSecret)(
-    "SEGURIDAD: una cookie con firma manipulada se ignora (getCheckoutState → null)",
+    "SEGURIDAD: una cookie con el sello manipulado se ignora (getCheckoutState → null)",
     async () => {
       await saveContactStep(validContact);
       const raw = cookieStore.get("checkout_state")!;
-      // Corromper la firma (parte tras el último ".").
+      // Corromper el ciphertext (parte tras el último ".") → el auth tag GCM no verifica.
       const dot = raw.lastIndexOf(".");
       const tampered = raw.slice(0, dot + 1) + "deadbeefdeadbeefdeadbeefdeadbeef";
       cookieStore.set("checkout_state", tampered);

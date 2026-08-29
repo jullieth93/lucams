@@ -14,7 +14,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { totp } from "./_helpers/totp";
 
 const strip = (v: string | undefined) => v?.replace(/^["']|["']$/g, "");
@@ -31,9 +31,10 @@ let supabaseUserId = "";
 let adminId = "";
 let totpSecret = "";
 
-// Mismo hash que features/admin-mfa/recovery-codes.ts (sha256 del código normalizado).
+// Mismo hash que features/admin-mfa/recovery-codes.ts (HMAC-SHA256 del código
+// normalizado, keyed con CSRF_SECRET — pepper de servidor desde B-5).
 function hashCode(code: string): string {
-  return createHash("sha256")
+  return createHmac("sha256", strip(process.env.CSRF_SECRET) ?? "")
     .update(code.toUpperCase().replace(/[^A-Z0-9]/g, ""))
     .digest("hex");
 }
@@ -123,7 +124,7 @@ test.describe.serial("admin — reto MFA", () => {
   }) => {
     await loginToMfa(page);
     await page.getByRole("button", { name: /usar un código de respaldo/i }).click();
-    await page.getByPlaceholder("XXXXX-XXXXX").fill(RECOVERY_CODE);
+    await page.getByPlaceholder("XXXX-XXXX-XXXX-XXXX").fill(RECOVERY_CODE);
     await page.getByRole("button", { name: /entrar con código de respaldo/i }).click();
     await page.waitForURL(/\/admin\/seguridad\?reconfig=1/, { timeout: 20_000 });
     await expect(page).toHaveURL(/reconfig=1/);
