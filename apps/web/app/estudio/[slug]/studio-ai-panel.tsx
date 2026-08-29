@@ -108,13 +108,8 @@ export function StudioAiPanel({
             placeholder={texts.ia.placeholder}
             className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
           />
-          {/* E-2 — privacy notice: this text goes to a third-party AI provider. Fixed copy
-              (not CMS-backed): a new `estudio.ia.*` key would require the site map in
-              packages/db, outside the scope of this change. */}
-          <p className="text-brand-muted text-[11px]">
-            Evita escribir datos personales (nombres, cédulas, teléfonos) — cuéntanos solo la
-            ocasión.
-          </p>
+          {/* E-2 — privacy notice: this text goes to a third-party AI provider. */}
+          <p className="text-brand-muted text-[11px]">{texts.ia.notaPrivacidad}</p>
           <button
             type="submit"
             disabled={loading || occasion.trim().length < 3}

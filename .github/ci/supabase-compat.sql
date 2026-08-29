@@ -20,6 +20,11 @@ GRANT anon, authenticated, service_role TO authenticator;
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS
   $fn$ SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid $fn$;
+-- auth.role() (usado por los triggers de guarda de columnas sensibles de la
+-- migración 00000000000028 — auditoría 2026-08-24, G-4). Fuera de PostgREST no
+-- hay JWT → NULL (comportamiento real: rol directo de la app).
+CREATE OR REPLACE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS
+  $fn$ SELECT NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role' $fn$;
 
 -- Esquema storage (migraciones de storage/personalización lo referencian).
 CREATE SCHEMA IF NOT EXISTS storage;

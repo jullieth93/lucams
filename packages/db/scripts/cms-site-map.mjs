@@ -8897,6 +8897,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 30,
             },
             {
+              key: "estudio.ia.nota-privacidad",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Campo ocasión: nota de privacidad",
+              helpText:
+                "Aviso bajo el campo de la ocasión: el texto viaja a un proveedor de IA externo (auditoría 2026-08-24, E-2).",
+              category: "HOME",
+              body: "Evita escribir datos personales (nombres, cédulas, teléfonos) — cuéntanos solo la ocasión.",
+              sortOrder: 35,
+            },
+            {
               key: "estudio.ia.enviar",
               kind: "BLOCK",
               type: "TEXT",

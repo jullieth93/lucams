@@ -391,6 +391,7 @@ export type StudioTexts = {
     titulo: string;
     label: string;
     placeholder: string;
+    notaPrivacidad: string;
     enviar: string;
     cargando: string;
     fraseLabel: string;
@@ -801,6 +802,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     titulo: "¿Sin ideas? Te ayudo",
     label: "¿Para qué es? (ej. “cumpleaños de mi mamá”, “aniversario”)",
     placeholder: "Cuéntame la ocasión…",
+    notaPrivacidad:
+      "Evita escribir datos personales (nombres, cédulas, teléfonos) — cuéntanos solo la ocasión.",
     enviar: "Dame ideas",
     cargando: "Pensando ideas…",
     fraseLabel: "Frase sugerida",
@@ -1174,6 +1177,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "ia.titulo": "estudio.ia.titulo",
   "ia.label": "estudio.ia.label",
   "ia.placeholder": "estudio.ia.placeholder",
+  "ia.notaPrivacidad": "estudio.ia.nota-privacidad",
   "ia.enviar": "estudio.ia.enviar",
   "ia.cargando": "estudio.ia.cargando",
   "ia.fraseLabel": "estudio.ia.frase-label",
