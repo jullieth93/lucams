@@ -18,11 +18,12 @@
  */
 
 import { useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Pencil, X } from "lucide-react";
 
 export function CmsEditOverlay() {
   const pathname = usePathname();
+  const router = useRouter();
 
   useEffect(() => {
     document.documentElement.classList.add("cms-edit-mode");
@@ -32,14 +33,14 @@ export function CmsEditOverlay() {
       if (!key) return;
       e.preventDefault();
       e.stopPropagation();
-      window.location.assign(`/admin/contenido/campos/por-key/${encodeURIComponent(key)}`);
+      router.push(`/admin/contenido/campos/por-key/${encodeURIComponent(key)}`);
     };
     document.addEventListener("click", onClick, true);
     return () => {
       document.documentElement.classList.remove("cms-edit-mode");
       document.removeEventListener("click", onClick, true);
     };
-  }, []);
+  }, [router]);
 
   // Dentro del panel el overlay estorba (y no hay [data-cms-key] que editar).
   if (pathname.startsWith("/admin")) return null;
