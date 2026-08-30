@@ -12,7 +12,15 @@ import { prisma } from "@/lib/db";
 import { captureClientError } from "./error-capture";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
-const RUN = `ITESTCLIENTERR${Date.now()}${Math.floor(Math.random() * 1e6)}`;
+// F-6 (auditoría 2026-08-24): message/stack se persisten con scrubPii, que redacta
+// ventanas de 10 dígitos tipo teléfono — un RUN con Timestamp en dígitos podía
+// contener una y los queries por el mensaje crudo ya no encontraban la fila
+// (flake "expected [] to have length 1", todo-o-nada por corrida). Letras: el
+// RUN nunca es scrubbed y el almacenado coincide byte a byte con el consultado.
+const RUN = `ITESTCLIENTERR${Date.now()}${Math.floor(Math.random() * 1e6)}`.replace(
+  /\d/g,
+  (d) => "ABCDEFGHIJ"[Number(d)],
+);
 
 // Cada captureClientError hace ~2 round-trips al pooler remoto compartido (upsert +
 // select): el default de 5s no alcanza bajo latencia — mismo criterio que el resto

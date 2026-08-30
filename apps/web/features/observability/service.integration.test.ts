@@ -9,7 +9,13 @@ import { prisma } from "@/lib/db";
 import { getTechHealth, setErrorReportStatus } from "./service";
 
 const hasDb = !!process.env.DATABASE_URL;
-const RUN = `obs${Date.now()}${Math.floor(Math.random() * 1e6)}`;
+// F-6 (auditoría 2026-08-24): los mensajes se persisten con scrubPii (ver
+// lib/error-capture.integration.test.ts) — RUN solo con letras para que el
+// valor almacenado coincida con el consultado.
+const RUN = `obs${Date.now()}${Math.floor(Math.random() * 1e6)}`.replace(
+  /\d/g,
+  (d) => "ABCDEFGHIJ"[Number(d)],
+);
 const MSG = `${RUN} error de prueba`;
 
 describe.skipIf(!hasDb)("observability/service — integración DB", { timeout: 30_000 }, () => {

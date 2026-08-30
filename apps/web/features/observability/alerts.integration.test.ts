@@ -22,7 +22,13 @@ import { prisma } from "@/lib/db";
 import { evaluateAlerts, dispatchAlerts } from "./alerts";
 
 const hasDb = !!process.env.DATABASE_URL;
-const RUN = `alr${Date.now()}${Math.floor(Math.random() * 1e6)}`;
+// F-6 (auditoría 2026-08-24): los mensajes se persisten con scrubPii (ver
+// lib/error-capture.integration.test.ts) — RUN solo con letras para que el
+// valor almacenado coincida con el consultado.
+const RUN = `alr${Date.now()}${Math.floor(Math.random() * 1e6)}`.replace(
+  /\d/g,
+  (d) => "ABCDEFGHIJ"[Number(d)],
+);
 const MSG = `${RUN} boom`;
 const ALERT_KEYS = ["errors_spike", "pending_payment_wompi_stale"];
 let staleOrderId: string | null = null;
