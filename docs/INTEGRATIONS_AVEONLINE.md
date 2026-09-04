@@ -9,6 +9,8 @@
 
 ## 0. TL;DR — Hallazgo crítico
 
+> **ESTADO 2026-09-03: RESUELTO.** El P0 de §18 se aplicó el 2026-05-21 (commit `34d6567`): el provider usa `cotizarDoble` + filtro `numbererror !== "-0-"` y el formato de ciudad `CIUDAD(DEPTO)` uppercase. El texto abajo queda como registro del hallazgo original.
+
 **El error 999 que vemos en producción NO es por credenciales ni por cuenta sin activar.** Es porque el código del repo (`apps/web/features/shipping/aveonline.ts:97-111`) usa el endpoint `tipo: "cotizar2"` que cotiza **una sola** transportadora pasada en `idtransportador`. Cuando esa transportadora no cubre el trayecto o no está habilitada en la cuenta → `numbererror: "999"`.
 
 **Verificación contra cuenta real (probe 2026-05-21, cuenta `crittan01@gmail.com`):**
@@ -130,11 +132,11 @@ Con `cotizarDoble` + formato `BOGOTA(CUNDINAMARCA)` uppercase + valorDeclarado �
 
 ### 3.2 Variantes de `tipo` para cotizar
 
-| `tipo`             | Comportamiento                                                                                 | Quién lo usa                                                                         |
-| ------------------ | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| **`cotizarDoble`** | Cotiza **todas** las transportadoras habilitadas en la cuenta + variantes contraentrega/normal | Plugin WooCommerce oficial (recomendado)                                             |
-| `cotizar2`         | Cotiza **una sola** transportadora indicada en `idtransportador`                               | Doc oficial Aveonline. **Usado por el código actual de Lucams_shop — causa del 999** |
-| `cotizar`          | Legacy v1                                                                                      | —                                                                                    |
+| `tipo`             | Comportamiento                                                                                 | Quién lo usa                                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **`cotizarDoble`** | Cotiza **todas** las transportadoras habilitadas en la cuenta + variantes contraentrega/normal | Plugin WooCommerce oficial (recomendado) y **el código actual de Lucams_shop** (desde 2026-05-21)                                 |
+| `cotizar2`         | Cotiza **una sola** transportadora indicada en `idtransportador`                               | Doc oficial Aveonline. Lucams_shop lo usó hasta el 2026-05-21 — era la causa del 999 (migrado a `cotizarDoble`, commit `34d6567`) |
+| `cotizar`          | Legacy v1                                                                                      | —                                                                                                                                 |
 
 ### 3.3 Body completo `cotizarDoble` (RECOMENDADO)
 
@@ -476,6 +478,13 @@ Errores no numéricos comunes:
 > `api-integrations/…/custom-webhook` NO es usable con nuestras credenciales hoy; se registró
 > por panel. También quedó verificado en vivo: PRD acepta el token nuevo (200) y rechaza falsos
 > (401); STG end-to-end FULFILLING→SHIPPED por evento simulado.
+>
+> **Idempotencia del endpoint (D-4, auditoría 2026-08-24):** dedup en `WebhookEvent (source=AVEONLINE, externalId)`
+> con clave `${trackingNumber}-${status}-${timestamp}`. Si el payload NO trae fecha del carrier, el parse cae a
+> `new Date()` (no determinista — cada re-entrega generaría una clave distinta y el dedup no dedupiría nada): por
+> eso la clave usa el literal estable **`no-ts`** cuando `hasCarrierTimestamp` es false. La carrera de entregas
+> concurrentes la resuelve el unique de DB (P2002 → 200 "concurrent duplicate"). Ante una excepción de la saga,
+> el evento queda SIN `processedAt` para que Aveonline reintente y la alerta `webhooks_stuck` lo levante.
 
 | Campo              | Valor                                                                                                                                                                                                 |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -506,7 +515,7 @@ Aveonline explícitamente dice "el contenido y formato es definido por el provee
 
 Novedades comunes: `DIRECCION ERRONEA`, `CLIENTE NO TIENE EFECTIVO`, `CLIENTE AUSENTE`, `RECHAZA PRODUCTO`.
 
-> Mapping recomendado a estados internos Lucams `{pendiente, en_transito, entregado, novedad, devuelto}` configurable, no hardcoded.
+> **Mapping implementado (2026-07-28, §21.3):** `mapAveonlineStatus` en `features/shipping/aveonline.ts` (hardcoded, no configurable como se recomendaba) mapea por substring uppercase a los estados internos `PENDING` / `DISPATCHED` / `IN_TRANSIT` / `DELIVERED` / `RETURNED` / `EXCEPTION`: `ENTREGAD*`→DELIVERED; `DEVUELT*`/`RETORN*`→RETURNED; `NOVEDAD`/`EXCEPCI*`/`ANULAD*`/`CANCEL*`→EXCEPTION; `REPARTO`/`TRANSITO`/`TRÁNSITO`/`CAMINO`→IN_TRANSIT; `DESPACHO`/`DESPACHAD*`/`ADMITID*`/`PRODUCIDA`→DISPATCHED; cualquier otro→PENDING. Ojo: `DEVOLUCION` (con O, presente en la lista de arriba) NO matchea `DEVUELT*` → cae a PENDING (gap conocido). La saga (`processTrackingUpdate`) NO retrocede estados (monotónico) y marca `needsReconciliation` en RETURNED/EXCEPTION (decisión humana, no auto-cancelación).
 
 ### 6.5 Webhook tramas operadores (proveedor — no aplica para nosotros)
 
@@ -681,18 +690,24 @@ Aveonline acepta **ambos** formatos en `origen`/`destino`:
 
 Único parámetro documentado tipo "dry-run" en toda la API. Doc oficial: https://integraciones.aveonline.co/docs/nacional/generacionGuia/ → _"Si desea generar la guia: 1. Si no: 0"_.
 
-### 12.3 Implementación en Lucams_shop (2026-05-21)
+> **⚠️ Contradicción doc-vs-vivo (§21.4):** verificado en vivo, la semántica es INVERTIDA respecto a la tabla de arriba — `"1"` devuelve numguia + PDF SIN facturar (seguro) y `"0"` genera guía real con cartera pendiente. El código de Lucams_shop usa la semántica en vivo con doble gate (`AVEONLINE_GENERATE_REAL` + entorno) — ver §12.3. Pendiente confirmación final con la cuenta de producción.
 
-Switch controlado por **env var `AVEONLINE_ENV`** (default `test`):
+### 12.3 Implementación en Lucams_shop (actualizado 2026-09-03)
 
-| Modo             | Credenciales auth                                  | `bloquegenerarguia` | Cuándo usar                                |
-| ---------------- | -------------------------------------------------- | ------------------- | ------------------------------------------ |
-| `test` (default) | `demointegracion` / `demointegra2021` (hardcoded)  | `"0"` (no factura)  | dev local, Vercel preview, QA, smoke tests |
-| `production`     | `AVEONLINE_USUARIO` + `AVEONLINE_CLAVE` del `.env` | `"1"` (factura)     | Vercel production únicamente               |
+> **Cambio de modelo (2026-06-26, doble gate):** la descripción original de esta sección (credenciales demo HARDCODEADAS + `AVEONLINE_ENV` seleccionando credenciales + `bloquegenerarguia:"0"` en test) quedó obsoleta. Estado actual en `apps/web/features/shipping/aveonline.ts`:
 
-Configurado en `apps/web/features/shipping/aveonline.ts` (constantes `DEMO_CREDENTIALS` + función `isProductionEnv()`).
+- **Un solo set de credenciales:** `AVEONLINE_USUARIO` + `AVEONLINE_CLAVE` son **requeridas en TODOS los ambientes**; lo que cambia por ambiente es el VALOR (cuenta demo pública fuera de prod, reales solo en Vercel production). Ya no hay `DEMO_CREDENTIALS` hardcoded.
+- **`AVEONLINE_ENV` ya no selecciona credenciales.** Su uso actual: (a) guard del health check — en modo `production` la cuenta autenticada NO puede ser la demo pública (misconfig cara y silenciosa); (b) etiqueta `env` en logs de auth.
+- **Facturación (doble gate):** `bloquegenerarguia` se setea `"0"` (guía REAL facturable) SOLO si `AVEONLINE_GENERATE_REAL === "true"` Y (`NODE_ENV === "production"` O `AVEONLINE_FORCE_BILLING === "true"` — escape hatch para pruebas). Default seguro `"1"`: devuelve numguia + PDF para validar E2E pero NO factura.
+- **Semántica invertida vs doc oficial** (ver §21.4): la doc dice "Si desea generar la guia: 1. Si no: 0", pero verificado en vivo `"1"` = bloquea generación facturable (SEGURO) y `"0"` = genera guía real con cartera. El código usa la semántica EN VIVO.
 
-> **Seguridad.** Nunca setear `AVEONLINE_ENV=production` en preview ni dev — el flag deber estar solo en Vercel production env. El default `test` garantiza fail-safe.
+| Ambiente           | Credenciales (valor del env)    | `bloquegenerarguia`                           | Factura |
+| ------------------ | ------------------------------- | --------------------------------------------- | ------- |
+| dev local          | cuenta DEMO (`demointegracion`) | `"1"` (default)                               | NO      |
+| Vercel preview/stg | cuenta DEMO                     | `"1"` (default)                               | NO      |
+| Vercel production  | cuenta real de Lucy             | `"0"` solo con `AVEONLINE_GENERATE_REAL=true` | SÍ      |
+
+> **Seguridad.** Nunca setear `AVEONLINE_ENV=production` ni `AVEONLINE_GENERATE_REAL=true` en preview ni dev — ambas vars deben estar solo en Vercel production env. El default (`test` + `false`) garantiza fail-safe.
 
 ### 12.4 Subdominios alternos descubiertos (NO usar)
 
@@ -723,18 +738,22 @@ Conclusión: solo v1 acepta la cuenta demo. v2/v3 requieren credenciales product
 ```bash
 # .env.local — desarrollo local
 AVEONLINE_ENV=test
-# AVEONLINE_USUARIO + AVEONLINE_CLAVE no necesarias en modo test
+AVEONLINE_USUARIO=demointegracion      # cuenta DEMO pública (§12.1)
+AVEONLINE_CLAVE=demointegra2021        # requeridas en TODOS los ambientes desde 2026-06-26
 
 # Vercel preview — staging
 AVEONLINE_ENV=test
+AVEONLINE_USUARIO=demointegracion
+AVEONLINE_CLAVE=demointegra2021
 
 # Vercel production — venta real
 AVEONLINE_ENV=production
 AVEONLINE_USUARIO=<usuario_real>
 AVEONLINE_CLAVE=<clave_real>
+AVEONLINE_GENERATE_REAL=true           # habilita guía facturable (doble gate con NODE_ENV)
 ```
 
-El switch toma efecto en el siguiente request (no requiere redeploy si se cambia env var en Vercel y se hace `redeploy` del último build).
+El switch toma efecto en el siguiente request (no requiere redeploy si se cambia env var en Vercel y se hace `redeploy` del último build). `AVEONLINE_ENV=production` con credenciales demo es rechazado por el health check (guard anti-misconfig).
 
 ---
 
@@ -840,6 +859,8 @@ El switch toma efecto en el siguiente request (no requiere redeploy si se cambia
 
 ## 16. Auditoría del código actual (estado pre-ajuste 2026-05-21)
 
+> **⚠️ SNAPSHOT HISTÓRICO — no refleja el código actual (verificado 2026-09-03).** Esta auditoría describe el estado ANTES del plan de §18. Hoy: el route handler `/api/webhooks/aveonline` SÍ existe (con credencial compartida por header `x-aveonline-secret`/`payload.token` — §6.2), hay tests (`aveonline.coverage-probe.live.test.ts` y unitarios), `quote()` usa `cotizarDoble` con filtro `numbererror`, el origen sale de SiteSettings `PICKUP_*` (vía la saga), la guía incluye `dscorreop` del destinatario y `dsnit` del documento del cliente, y el flujo Order completo (PAID → guía → FULFILLING → SHIPPED → DELIVERED) está implementado en `features/orders/saga.ts` (ver §16.6 actualizado abajo). Lo demás de §16 queda como registro del diagnóstico original.
+
 ### 16.1 Archivos
 
 | Archivo                                                 | Estado                                              |
@@ -919,6 +940,8 @@ El switch toma efecto en el siguiente request (no requiere redeploy si se cambia
 
 ### 16.6 Integración con Order state machine
 
+**Estado actual (2026-09-03):** flujo COMPLETO implementado, distinto del plan (sin pgmq ni Edge Functions): el webhook Wompi APPROVED llama inline a `processPaidOrder` (`features/orders/saga.ts`) → transición PAID atómica con decremento de stock → email de confirmación → `createShipment` con claim atómico `Order.shipmentClaimedAt` (anti doble-guía; stale-reclaim a los 10 min) → tracking persistido ANTES de transicionar a FULFILLING → tracking por webhook `/api/webhooks/aveonline` (SHIPPED/DELIVERED). Reintentos: re-delivery del webhook Wompi o retry manual admin. El diagrama de abajo queda como registro del plan ADR-039 original.
+
 ```
 ORDER_TRANSITIONS:
   DRAFT → PENDING_PAYMENT → PAID → FULFILLING → SHIPPED → DELIVERED
@@ -938,7 +961,7 @@ Plan ADR-039 (no implementado):
                           Order FULFILLING
 ```
 
-**Estado actual:** Solo `PENDING_PAYMENT → PAID` parcialmente implementado. El resto del flujo está pendiente.
+**Estado al 2026-05-21 (histórico):** solo `PENDING_PAYMENT → PAID` parcialmente implementado. Superado — ver la nota "Estado actual (2026-09-03)" arriba.
 
 ---
 
@@ -997,6 +1020,15 @@ Mismas 10 transportadoras pero TODAS devuelven 999 porque el `idtransportador` e
 ---
 
 ## 18. Plan de ajustes priorizado
+
+> **ESTADO 2026-09-03 (verificado contra código):**
+>
+> - **P0 completo** (2026-05-21, commit `34d6567`): `cotizarDoble` + filtro `numbererror`, origen desde SiteSettings, formato `CIUDAD(DEPTO)` uppercase, `listarTransportadorasPorEmpresa` cacheado 24h, logs con `numbererror`/`dataerror`.
+> - **P1.1/P1.2 hechos:** route handler `/api/webhooks/aveonline` con credencial compartida (header/payload token; NO IP whitelist — estrategia reemplazada por secreto + trackingNumber-en-DB + estados monotónicos, ADR-062) y webhook registrado vía panel "Mis integraciones" (2026-08-11, §6.2).
+> - **P1.4/P1.5 hechos con otro diseño:** caché de cotización = última-buena en memoria TTL 10 min SOLO como fallback de resiliencia (no tabla Postgres), y `createShipment` se invoca inline desde la saga post-PAID (sin pgmq/Edge Function — el proyecto pivotó a pg_cron + `/api/cron/*`, ver INTEGRATIONS.md §9).
+> - **P1.6 hecho:** `dsnit` usa el documento del cliente (placeholder `"100001"` si falta — §21.3).
+> - **Pendientes reales:** P1.3 (recogidas por API — hoy manual en panel), P1.7 (cancelación de guía), P1.8 (polling backup `obtenerEstadoAuth`), P1.9 parcial (parseo defensivo manual, sin Zod), P2 varios.
+>   La tabla de abajo queda como registro del plan original.
 
 ### P0 — Bloqueante producción (no se puede vender real sin esto)
 
@@ -1091,6 +1123,8 @@ Probe en vivo contra cuenta `crittan01@gmail.com` ejecutado desde `packages/db/s
 
 ## 20. Cambios pendientes a otros docs
 
+> **ESTADO 2026-09-03: TODOS APLICADOS** — ADR-040 existe en DECISIONS.md; Aveonline documentado en SECURITY.md, COMPLIANCE.md (subprocesadores, con carriers), OBSERVABILITY.md y `.env.example`. La tabla queda como registro.
+
 | Doc                     | Cambio                                                                          |
 | ----------------------- | ------------------------------------------------------------------------------- |
 | `docs/DECISIONS.md`     | Agregar ADR-040 "Migración cotizar2 → cotizarDoble + filtro numbererror"        |
@@ -1133,5 +1167,5 @@ Cotización y guía comparten ahora `computePackedPackage(items)`: UN bulto con 
 
 - **`bloquegenerarguia`:** la doc dice "Si desea generar la guia: 1. Si no: 0" y su ejemplo envía `"1"`; nuestro gate usa semántica inversa (`"1"`=no facturable/seguro, `"0"`=facturable) basada en un bug histórico "verificado en vivo". En sandbox con `"1"` SÍ se genera guía + PDF (no facturable). Resolver exige probe con la cuenta de producción (revisar cartera en el panel tras generar con cada valor). **No se toca hasta esa verificación.**
 - **`cotizarDoble`:** sigue sin aparecer en la doc oficial (solo `cotizar2`). Funciona en vivo (multi-carrier); contrato invisible — pedir spec formal a Aveonline.
-- **Webhook oficial:** existe registro por API (`/api-integrations/public/api/integrations/custom-webhook`) que devuelve un `token` de integración reenviado en cada notificación. Hoy usamos el endpoint legacy AveCRM + secret en query (deuda registrada en `route.ts`).
+- **Webhook oficial:** existe registro por API (`/api-integrations/public/api/integrations/custom-webhook`) que devuelve un `token` de integración reenviado en cada notificación — pero los hosts nuevos RECHAZAN nuestro JWT legacy (§6.2), así que el registro se hizo por panel ("Webhook Personalizado", 2026-08-11). El endpoint ya valida `x-aveonline-secret` / `payload.token` y la vía `?secret=` quedó DESHABILITADA por defecto (2026-08-24, D-1; puente transitorio con `AVEONLINE_ALLOW_QUERY_SECRET=true`). Pendiente humano: verificar que el panel quedó enviando header/token y apagar el puente.
 - **Pendientes no críticos:** recogidas por API (`generarRecogida2`, hoy manual en panel), reimpresión de rótulo (API V3), entrega en oficina (`IdTipoEntrega="2"`), fechas `fechacreacion`/`fechanovedad` del webhook (formato con AM/PM no parseado — solo afecta dedup key).

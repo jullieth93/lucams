@@ -2,15 +2,15 @@
 
 ## Visión general
 
-Aplicación monolítica modular en **Next.js 15 (App Router)** desplegada en Vercel, con backend serverless integrado, persistencia en **Supabase Postgres** vía **Prisma**, autenticación con **Supabase Auth**, almacenamiento de imágenes en **Supabase Storage**, e integraciones externas con Wompi (pagos), Aveonline (logística) y Claude API (IA).
+Aplicación monolítica modular en **Next.js 16.3.3 (App Router)** desplegada en Vercel, con backend serverless integrado, persistencia en **Supabase Postgres** vía **Prisma**, autenticación con **Supabase Auth**, almacenamiento de imágenes en **Supabase Storage**, e integraciones externas con Wompi (pagos), Aveonline (logística), Gemini API (IA, ADR-058) y Resend (email).
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │                         Vercel (Next.js)                          │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
 │  │  Storefront  │  │  Admin Panel │  │   API Routes         │  │
-│  │  (RSC + ISR) │  │  (RBAC)      │  │   (webhooks, cart,   │  │
-│  │              │  │              │  │    checkout, AI)     │  │
+│  │  (RSC        │  │  (RBAC + MFA)│  │   (webhooks, cron,   │  │
+│  │   dinámico)  │  │              │  │    catálogo, CMS)    │  │
 │  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘  │
 └─────────┼─────────────────┼──────────────────────┼──────────────┘
           │                 │                      │
@@ -25,7 +25,7 @@ Aplicación monolítica modular en **Next.js 15 (App Router)** desplegada en Ver
           │                                    ▲
           ▼                                    │
    ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐
-   │   Wompi      │  │  Aveonline   │  │  Claude API      │
+   │   Wompi      │  │  Aveonline   │  │  Gemini API      │
    │ (pagos)      │  │ (logística)  │  │  (IA diseño)     │
    └──────────────┘  └──────────────┘  └──────────────────┘
                               │
@@ -41,80 +41,84 @@ Aplicación monolítica modular en **Next.js 15 (App Router)** desplegada en Ver
 ```
 lucams_shop/
 ├── apps/
-│   └── web/                              # Next.js 15 (App Router)
+│   └── web/                              # Next.js 16 (App Router)
 │       ├── app/
-│       │   ├── (storefront)/             # Tienda pública
-│       │   │   ├── layout.tsx            # Header + Footer + WhatsApp flotante
-│       │   │   ├── page.tsx              # Home
-│       │   │   ├── catalogo/
-│       │   │   ├── categoria/[slug]/
-│       │   │   ├── producto/[slug]/
-│       │   │   ├── personalizar/[slug]/  # Estudio de personalización
-│       │   │   ├── bundle/               # Bundle creator
-│       │   │   ├── carrito/
-│       │   │   ├── checkout/
-│       │   │   ├── orden/[id]/
-│       │   │   ├── cuenta/               # Mi cuenta (Supabase Auth)
-│       │   │   ├── mayorista/            # Portal B2B
-│       │   │   └── blog/[slug]/
-│       │   ├── admin/                    # Backoffice
-│       │   │   ├── layout.tsx            # Guard de auth + rol
-│       │   │   ├── productos/
-│       │   │   ├── inventario/
-│       │   │   ├── ordenes/
-│       │   │   ├── clientes/
-│       │   │   ├── envios/
-│       │   │   ├── cupones/
-│       │   │   ├── reseñas/
-│       │   │   ├── blog/
-│       │   │   └── analytics/
-│       │   └── api/
-│       │       ├── wompi/webhook/route.ts
-│       │       ├── checkout/create/route.ts
-│       │       ├── shipping/quote/route.ts
-│       │       ├── ai/design-suggest/route.ts
-│       │       └── upload/sign/route.ts
-│       ├── components/
-│       │   ├── storefront/
-│       │   ├── studio/                   # Editor react-konva
-│       │   ├── preview3d/                # Three.js
-│       │   └── admin/
+│       │   ├── page.tsx                  # Home (force-dynamic)
+│       │   ├── productos/                # Catálogo con filtros (SSR puro)
+│       │   ├── producto/[slug]/          # PDP
+│       │   ├── ocasion/[slug]/
+│       │   ├── estudio/[slug]/           # Estudio de personalización (react-konva + three.js)
+│       │   ├── carrito/
+│       │   ├── checkout/                 # Multi-step: datos/ → envio/ → pago/ → gracias/
+│       │   ├── pedido/[token]/           # Vista guest por token (hash en DB)
+│       │   ├── cotizacion/               # Cotizador B2B
+│       │   ├── mi-cuenta/                # Cuenta cliente (pedidos, perfil, direcciones…)
+│       │   ├── (auth)/                   # login, registro, recuperar-password…
+│       │   ├── legal/                    # terminos, privacidad, habeas-data…
+│       │   ├── admin/
+│       │   │   ├── login/                # Login + MFA challenge
+│       │   │   └── (panel)/              # Backoffice (~35 secciones: productos,
+│       │   │                             #   pedidos, inventario, contenido (CMS),
+│       │   │                             #   cupones, clientes, seguridad…)
+│       │   ├── api/
+│       │   │   ├── webhooks/             # wompi/, aveonline/, resend/
+│       │   │   ├── cron/                 # jobs pg_cron (x-cron-secret): alerts,
+│       │   │   │                         #   cart-recovery, purge-event-logs…
+│       │   │   ├── catalog/              # products, search, filters, categories…
+│       │   │   ├── coupons/public/
+│       │   │   ├── cms/
+│       │   │   └── health/, vitals/, log-error/, unsubscribe/, admin/
+│       │   ├── error.tsx                 # Error boundary global
+│       │   ├── not-found.tsx             # 404
+│       │   ├── global-error.tsx          # Catch-all (root)
+│       │   ├── sitemap.ts / robots.ts / manifest.ts
+│       │   └── layout.tsx
+│       ├── components/                   # ui/ (shadcn), admin/, cms/, home/,
+│       │                                 # product-detail/, address/, legal/ + sueltos
+│       ├── features/                     # ~35 features: checkout, orders, cart,
+│       │                                 # payments, shipping, personalization, cms,
+│       │                                 # coupons, ai, emails, observability…
+│       │                                 # (actions.ts + service.ts + schemas.ts)
 │       ├── lib/
 │       │   ├── supabase/
 │       │   │   ├── server.ts             # Cliente con cookies (SSR)
-│       │   │   ├── browser.ts            # Cliente con publishable key (rol Postgres `anon`)
-│       │   │   └── service.ts            # Cliente con secret key (rol Postgres `service_role`, admin only)
-│       │   ├── payment/
-│       │   │   ├── types.ts              # Interface PaymentProvider
-│       │   │   ├── wompi.ts              # WompiProvider
-│       │   │   └── index.ts              # getProvider()
-│       │   ├── whatsapp.ts
-│       │   ├── ai.ts
-│       │   ├── cart.ts                   # Zustand persistido
-│       │   ├── i18n.ts
-│       │   └── format.ts                 # formatCOP, fechas
-│       ├── messages/                     # i18n
-│       │   ├── es-CO.json
-│       │   └── en.json
-│       ├── middleware.ts                 # Auth guard /admin/*
-│       ├── next.config.mjs
-│       ├── tailwind.config.ts
+│       │   │   ├── browser.ts            # Cliente browser — solo Auth (MFA login)
+│       │   │   └── service.ts            # Cliente service_role (server-only)
+│       │   ├── db.ts                     # Prisma client
+│       │   ├── wompi.ts                  # Cliente Wompi (fetch + circuit breaker)
+│       │   ├── resend.ts                 # Cliente Resend vía fetch
+│       │   ├── cms.ts                    # Lectura CMS v2 (unstable_cache tag "cms")
+│       │   ├── checkout-session.ts       # Cookie de checkout sellada AES-256-GCM
+│       │   ├── cart-session.ts           # Cookie de sesión de carrito anónimo
+│       │   ├── token-hash.ts             # SHA-256 de bearer tokens (F-11)
+│       │   ├── admin-rbac-guard.ts       # Guard de rol + MFA obligatorio (B-1)
+│       │   ├── error-capture.ts          # ErrorLog/ErrorReport con scrubPii (F-6)
+│       │   ├── rate-limit.ts             # Postgres-based (ADR-016)
+│       │   ├── errors.ts                 # AppError + ProblemDetails (RFC 7807)
+│       │   ├── logger.ts                 # JSON estructurado con redact PII
+│       │   ├── fetch-with-timeout.ts / retry.ts / circuit-breaker.ts
+│       │   ├── security-headers.ts / turnstile.ts / storage.ts / format.ts…
+│       ├── proxy.ts                      # Proxy (ex-middleware, Next 16): request ID,
+│       │                                 #   CORS, security headers, gate /admin/*
+│       ├── next.config.ts
 │       └── package.json
 ├── packages/
-│   ├── db/
-│   │   ├── prisma/
-│   │   │   ├── schema.prisma
-│   │   │   ├── migrations/
-│   │   │   └── seed.ts
-│   │   └── package.json
-│   └── ui/                               # Componentes compartidos shadcn
+│   └── db/
+│       ├── prisma/
+│       │   ├── schema.prisma
+│       │   └── migrations/               # prisma migrate (schema de dominio)
+│       ├── scripts/                      # cms-site-map.mjs, migrate-cms-v2.mjs,
+│       │                                 # audit-content-coverage.mjs, seeds…
 │       └── package.json
 ├── supabase/
-│   ├── migrations/                       # SQL adicional (RLS, funciones)
-│   └── functions/                        # Edge functions (cron, webhooks alternos)
+│   └── migrations/                       # SQL no-Prisma (RLS, grants, storage,
+│                                         #   funciones, pg_cron) 00000000000002…29
 ├── .github/workflows/
-│   ├── ci.yml                            # typecheck + lint + tests
-│   └── lighthouse.yml
+│   ├── ci.yml                            # quality + unit-tests + lighthouse +
+│   │                                     #   secrets-scan + format-check + dep-audit
+│   ├── backup.yml                        # Backup DB → R2 cifrado gpg (A-3)
+│   ├── nightly-full.yml                  # Tests que necesitan Supabase real
+│   └── dr-drill.yml                      # DR drill — restore desde R2
 ├── docs/                                 # Documentación (este archivo entre otros)
 ├── README.md
 ├── CLAUDE.md
@@ -126,33 +130,34 @@ lucams_shop/
 
 ## Stack y versiones objetivo
 
-| Capa            | Tecnología                    | Versión objetivo                                                                                          |
-| --------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Runtime         | Node.js                       | 22 LTS                                                                                                    |
-| Package manager | pnpm                          | 9.x                                                                                                       |
-| Framework       | Next.js                       | **16.x (App Router, RSC, Server Actions, Turbopack default)** — actualizado al hacer scaffolding (Fase 1) |
-| Lenguaje        | TypeScript                    | 5.x estricto                                                                                              |
-| UI              | Tailwind CSS                  | **4.x (sintaxis CSS-first con `@theme`)**                                                                 |
-| Componentes     | shadcn/ui                     | latest (style `new-york`, soporte oficial v4)                                                             |
-| Animaciones     | `tw-animate-css`              | latest (reemplaza `tailwindcss-animate` deprecado en v4)                                                  |
-| Toast/notif     | `sonner`                      | latest (reemplaza `toast` deprecado en v4)                                                                |
-| State (cliente) | Zustand                       | 5.x                                                                                                       |
-| Validación      | Zod                           | 3.x                                                                                                       |
-| ORM             | Prisma                        | 6.x                                                                                                       |
-| DB              | Postgres                      | Supabase managed                                                                                          |
-| Auth            | Supabase Auth                 | latest                                                                                                    |
-| Editor canvas   | react-konva                   | 18.x                                                                                                      |
-| 3D              | three.js + react-three-fiber  | latest                                                                                                    |
-| Email           | Resend SDK                    | latest                                                                                                    |
-| IA              | `@anthropic-ai/sdk`           | latest                                                                                                    |
-| Tests unit      | Vitest                        | 2.x                                                                                                       |
-| Tests E2E       | Playwright                    | latest                                                                                                    |
-| Lint            | ESLint + `eslint-config-next` | latest                                                                                                    |
-| Format          | Prettier                      | 3.x                                                                                                       |
+| Capa            | Tecnología                    | Versión objetivo                                                       |
+| --------------- | ----------------------------- | ---------------------------------------------------------------------- |
+| Runtime         | Node.js                       | 22 LTS (`engines.node >= 22`)                                          |
+| Package manager | pnpm                          | 11.x (`packageManager: pnpm@11.0.9`)                                   |
+| Framework       | Next.js                       | **16.3.3 (App Router, RSC, Server Actions, Turbopack)**                |
+| UI runtime      | React                         | 19.x                                                                   |
+| Lenguaje        | TypeScript                    | 5.x estricto                                                           |
+| UI              | Tailwind CSS                  | **4.x (sintaxis CSS-first con `@theme`, sin `tailwind.config`)**       |
+| Componentes     | shadcn/ui                     | latest (style `radix-nova`, soporte oficial v4)                        |
+| Animaciones     | `tw-animate-css`              | latest (reemplaza `tailwindcss-animate` deprecado en v4)               |
+| Toast/notif     | `sonner`                      | latest (reemplaza `toast` deprecado en v4)                             |
+| State (cliente) | Zustand                       | 5.x                                                                    |
+| Validación      | Zod                           | 4.x                                                                    |
+| ORM             | Prisma                        | 6.x                                                                    |
+| DB              | Postgres                      | Supabase managed                                                       |
+| Auth            | Supabase Auth                 | latest (MFA TOTP obligatorio en /admin)                                |
+| Editor canvas   | react-konva                   | 19.x                                                                   |
+| 3D              | three.js + react-three-fiber  | latest                                                                 |
+| Email           | Resend                        | API REST vía fetch server-side (`lib/resend.ts`, sin SDK)              |
+| IA              | Gemini API                    | REST vía fetch server-side (`features/ai/gemini-provider.ts`, ADR-058) |
+| Tests unit      | Vitest                        | 4.x                                                                    |
+| Tests E2E       | Playwright                    | latest                                                                 |
+| Lint            | ESLint + `eslint-config-next` | 9.x / 16.x (flat config)                                               |
+| Format          | Prettier                      | 3.x                                                                    |
 
 ## Modelo de datos (Prisma)
 
-> **Nota:** el schema mostrado abajo es la base lógica del dominio. Cada modelo de dominio (no auxiliares de infra como `rate_limit_buckets`) además gana los **audit fields estándar** (`createdAt`, `updatedAt`, `createdBy?`, `updatedBy?`, `deletedAt?`, `deletedBy?`) per [`CONVENTIONS.md` § Soft delete + audit fields](./CONVENTIONS.md#db--soft-delete--audit-fields). Para no inflar el schema visual, esos campos no se repiten en cada modelo aquí — pero el repository llena `createdBy/updatedBy` automáticamente y los queries por defecto filtran `WHERE "deletedAt" IS NULL`.
+> **Nota:** el schema mostrado abajo es la base lógica del dominio. Cada modelo de dominio (no auxiliares de infra como `rate_limit_buckets`) además gana los **audit fields estándar** (`createdAt`, `updatedAt`, `createdBy?`, `updatedBy?`, `deletedAt?`, `deletedBy?`) per [`CONVENTIONS.md` § Soft delete + audit fields](./CONVENTIONS.md#db--soft-delete--audit-fields). Para no inflar el schema visual, esos campos no se repiten en cada modelo aquí — pero la capa de servicio llena `createdBy/updatedBy` al crear/actualizar (p.ej. `features/products/service.ts`) y los queries por defecto filtran `WHERE "deletedAt" IS NULL`.
 
 ```prisma
 // prisma/schema.prisma
@@ -207,6 +212,7 @@ enum AdminRole {
   SUPERADMIN
   MANAGER
   FULFILLMENT
+  CMS_EDITOR  // solo contenido del sitio
 }
 
 model AdminUser {
@@ -466,44 +472,46 @@ model WebhookEvent {
 - **Precios en enteros (centavos COP)** para evitar errores de coma flotante. Wompi también los maneja así.
 - `WebhookEvent.@@unique([source, externalId])` garantiza idempotencia ante reintentos.
 - `cuid()` para todos los IDs (compactos, ordenables, sin colisión).
-- Soft delete: usar `isActive` o `deletedAt` en lugar de borrar; nunca perder histórico.
-- **Reserva de stock al `PENDING_PAYMENT`** (TTL 15 min, transacción atómica con `SELECT FOR UPDATE`) y descuento al `PAID` (ADR-014).
+- Soft delete: `deletedAt`/`deletedBy` en lugar de borrar (`isActive` solo para publicado/no-publicado); nunca perder histórico.
+- **Bearer tokens públicos hasheados en reposo** (F-11, auditoría 2026-08-24): `Order.publicAccessTokenHash`, `Quote.publicAccessTokenHash`, `Design.shareTokenHash` y `AbandonedCart.recoverTokenHash` guardan solo el digest SHA-256 (`lib/token-hash.ts`); el token en claro se entrega una vez (link/email) y los lookups hashean el token presentado. Mismo patrón que `AdminRecoveryCode.codeHash` (HMAC-SHA256 con pepper).
+- **Stock: decremento atómico al transicionar a `PAID`** (no reserva en `PENDING_PAYMENT` — evita secuestrar stock de carritos abandonados): `updateMany` con `WHERE stock >= qty` (row-lock implícito, compatible con pgBouncer; sin `SELECT FOR UPDATE`), revert al `CANCELLED`/`REFUNDED` solo si hubo decremento previo, idempotencia física con índice parcial único en `InventoryLog(orderId, reason, variantId)`. `StockReservation` queda en el schema **sin consumidores** (ADR-014 diferida). Ver `features/orders/stock.ts`.
+- **Tope de cupón por cliente en la DB** (G-5, auditoría 2026-08-24): `CouponUsage` registra cada redención (por `customerId` o email normalizado) y el trigger `coupon_usage_per_customer_limit` (migración Prisma `20260829120000_coupon_usage_per_customer_trigger`) toma un `pg_advisory_xact_lock` por (couponId, identidad) y re-cuenta bajo el lock, cerrando la carrera de checkouts concurrentes.
 - **Audit log** (`AdminActionLog`): toda acción admin con `actorId`, `action`, `entityType`, `entityId`, `metadata`, `createdAt`.
 
-### Modelos adicionales (ADR-014, ADR-016, ADR-017)
+### Modelos adicionales (ADR-014, ADR-016)
 
 ```prisma
-// ──────────────── RESERVA DE STOCK (ADR-014) ────────────────
+// ──────────────── RESERVA DE STOCK (ADR-014, diferida) ────────────────
+// Existe en el schema pero SIN consumidores: el decremento es directo al
+// PAID (ver § Reglas). Se mantiene por si el volumen justifica reservas
+// con TTL en el futuro.
 
 model StockReservation {
   id          String         @id @default(cuid())
   orderId     String
   variantId   String
-  variant     ProductVariant @relation(fields: [variantId], references: [id])
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
   qty         Int
   expiresAt   DateTime
   createdAt   DateTime       @default(now())
 
-  @@index([expiresAt])  // Para cleanup vía pg_cron
+  @@index([expiresAt])
   @@index([orderId])
+  @@index([variantId])
 }
 
-// ──────────────── RATE LIMIT Y CACHE EN POSTGRES (ADR-016) ────────────────
-// Estas tablas se crean vía SQL migration, no vía Prisma, por simplicidad.
-// El cliente Prisma no las necesita: se acceden desde lib/rate-limit.ts y lib/cache.ts.
+// ──────────────── RATE LIMIT EN POSTGRES (ADR-016) ────────────────
+// Tabla + función creadas vía SQL migration (supabase/migrations/
+// 00000000000003_rate_limit.sql), no vía Prisma. Se accede desde
+// lib/rate-limit.ts, que llama la función rate_limit_check (increment +
+// check atómico, sin race condition).
 
 // CREATE TABLE rate_limit_buckets (
-//   key         TEXT        PRIMARY KEY,
-//   count       INT         NOT NULL DEFAULT 0,
+//   key          TEXT        PRIMARY KEY,
+//   count        INT         NOT NULL DEFAULT 0,
 //   window_start TIMESTAMPTZ NOT NULL DEFAULT NOW()
 // );
-//
-// CREATE TABLE cache_entries (
-//   key         TEXT        PRIMARY KEY,
-//   value       JSONB       NOT NULL,
-//   expires_at  TIMESTAMPTZ NOT NULL
-// );
-// CREATE INDEX cache_entries_expires_idx ON cache_entries(expires_at);
+// CREATE FUNCTION rate_limit_check(p_key TEXT, p_limit INT, p_window_seconds INT) ...
 
 // ──────────────── AUDIT LOG ADMIN ────────────────
 
@@ -526,8 +534,8 @@ model AdminActionLog {
 ## CMS v2 — contenido administrable (2026-07-30)
 
 El 100% del contenido visible del sitio lo edita una persona NO técnica desde
-`/admin/contenido`. El modelo viejo (`CmsBlock` + `SiteSetting`, DEPRECATED — en DB solo como
-respaldo hasta la fase A2) se reemplazó por una jerarquía de 4 tablas (migración
+`/admin/contenido`. El modelo viejo (`CmsBlock` + `SiteSetting`, dropeado en la fase A2 —
+migración `20260731130000_drop_cms_legacy`) se reemplazó por una jerarquía de 4 tablas (migración
 `20260730120000_add_cms_v2`, RLS deny-by-default en `supabase/migrations/00000000000018`):
 
 ```
@@ -567,234 +575,133 @@ CmsPage ─┬─ CmsSection ─┬─ CmsField ───── CmsFieldVersion 
 
 ## Extensiones Postgres habilitadas
 
-> Configuradas en Supabase vía dashboard o migración SQL. Verificar disponibilidad en plan Free contra [supabase.com/docs/guides/database/extensions](https://supabase.com/docs/guides/database/extensions).
+> Habilitadas en Supabase vía dashboard o migración SQL. Solo se listan las que el proyecto usa hoy.
 
-| Extensión            | Propósito                                                                    | ADR      |
-| -------------------- | ---------------------------------------------------------------------------- | -------- |
-| `uuid-ossp`          | Generación de UUIDs (alternativa a `cuid()` cuando aplique)                  | —        |
-| `pgcrypto`           | Hashing de tokens internos, generación segura de slugs aleatorios            | —        |
-| `pg_cron`            | Schedule de jobs internos (cleanup, enqueue de pgmq, expiración de reservas) | 016, 017 |
-| `pgmq`               | Cola de mensajes durable con exactly-once delivery                           | 017      |
-| `pg_stat_statements` | Observabilidad de queries (top consumidores) en producción                   | —        |
+| Extensión  | Propósito                                                                               | Dónde se habilita                                                         |
+| ---------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| `pg_trgm`  | Búsqueda fuzzy de productos (operador `%`, `similarity()`)                              | `supabase/migrations/00000000000005`                                      |
+| `unaccent` | Búsqueda insensible a tildes                                                            | `supabase/migrations/00000000000005`                                      |
+| `pg_cron`  | Schedule de jobs internos (cleanups DB-side y disparo de jobs HTTP hacia `/api/cron/*`) | dashboard + `supabase/migrations/00000000000012, 015, 016, 021, 023`      |
+| `pg_net`   | `net.http_get` desde pg_cron hacia los endpoints `/api/cron/*` (schema `extensions`)    | `supabase/migrations/00000000000029`                                      |
+| `pgcrypto` | Disponible para hashing en DB (los bearer tokens se hashean en app con SHA-256, F-11)   | `packages/db/prisma/migrations/20260829150200_bearer_tokens_hash_at_rest` |
 
-### Ejemplo de migración SQL para extensiones y jobs base
+> **No se usan** `pgmq` (los background jobs son HTTP vía pg_cron + pg_net, ver § Background jobs), ni `uuid-ossp`, ni `pg_stat_statements`.
 
-```sql
--- supabase/migrations/00000000000001_extensions_and_cron.sql
+### Jobs pg_cron versionados
 
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-CREATE EXTENSION IF NOT EXISTS "pg_cron";
-CREATE EXTENSION IF NOT EXISTS "pgmq";
-CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";
-
--- Crear colas pgmq
-SELECT pgmq.create('cart_recovery_1h');
-SELECT pgmq.create('cart_recovery_24h');
-SELECT pgmq.create('order_reconciliation');
-SELECT pgmq.create('shipment_creation_retry');
-SELECT pgmq.create('email_send');
-
--- Crear tablas de rate limit y cache
-CREATE TABLE IF NOT EXISTS public.rate_limit_buckets (
-  key          TEXT        PRIMARY KEY,
-  count        INT         NOT NULL DEFAULT 0,
-  window_start TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS public.cache_entries (
-  key         TEXT        PRIMARY KEY,
-  value       JSONB       NOT NULL,
-  expires_at  TIMESTAMPTZ NOT NULL
-);
-CREATE INDEX IF NOT EXISTS cache_entries_expires_idx
-  ON public.cache_entries(expires_at);
-
--- Cleanup horario de cache expirado y rate-limit windows viejos
-SELECT cron.schedule(
-  'cleanup-cache-and-ratelimit',
-  '*/5 * * * *',  -- cada 5 minutos
-  $$
-    DELETE FROM public.cache_entries WHERE expires_at < NOW();
-    DELETE FROM public.rate_limit_buckets WHERE window_start < NOW() - INTERVAL '1 hour';
-  $$
-);
-
--- Cleanup minutual de reservas de stock expiradas (ADR-014)
-SELECT cron.schedule(
-  'release-expired-stock-reservations',
-  '* * * * *',  -- cada minuto
-  $$
-    DELETE FROM public."StockReservation" WHERE "expiresAt" < NOW();
-  $$
-);
-```
-
-> **Verificación pendiente (mandato #9):** confirmar que `pgmq` y `pg_cron` están disponibles en el plan Free de Supabase antes de Fase 1. Doc: [supabase.com/docs/guides/queues](https://supabase.com/docs/guides/queues).
+Las migraciones `00000000000012/015/016/021/023` agendan los jobs (idempotentes: `unschedule` → `schedule`; leen `cron_base_url` y `cron_secret` del Vault de Supabase en runtime, sin secretos en el SQL; el header `x-cron-secret` viaja en headers, nunca en la URL). Son **guardados**: si `pg_cron`/`pg_net` no están instalados en el ambiente, el job se omite con `RAISE NOTICE` en vez de romper la migración.
 
 ---
 
-## Background jobs (ADR-017)
+## Background jobs
+
+> ADR-017 decidió `pgmq` como cola durable; en la práctica **pgmq no se adoptó**: los jobs son endpoints HTTP `/api/cron/*` disparados por `pg_cron` + `pg_net` (migraciones `00000000000015/016/021/023`), y el reintento de guía Aveonline quedó manual con alerta (ADR posterior a ADR-060). No se usa Vercel Cron.
 
 ```
-┌─────────────────────────────┐         ┌─────────────────────────────┐
-│  Productor (pg_cron job)    │         │ Productor (Server Action /  │
-│  - Detecta carritos         │         │ Webhook handler de Wompi/   │
-│    abandonados              │  ──────►│ Aveonline)                  │
-│  - Detecta órdenes en       │         │ - Encola "send_email"       │
-│    PENDING > 1h             │         │ - Encola "shipment_retry"   │
-└──────────┬──────────────────┘         └──────────┬──────────────────┘
-           │                                       │
-           ▼                                       ▼
+┌──────────────────────────────────────────────────────────┐
+│  pg_cron (Supabase) — jobs versionados en migraciones     │
+│  HTTP (015/016/021/023, header x-cron-secret desde Vault):│
+│    lucams-alerts (*/5min)        → /api/cron/alerts       │
+│    lucams-daily-summary (13:00)  → /api/cron/daily-summary│
+│    lucams-review-request (17:00) → /api/cron/review-request│
+│    lucams-cart-recovery (c/1h)   → /api/cron/cart-recovery│
+│    lucams-back-in-stock (*/30min)→ /api/cron/back-in-stock│
+│    lucams-purge-anon-designs (08:00) → /api/cron/purge-anon-designs│
+│    lucams-purge-event-logs (03:00)   → /api/cron/purge-event-logs  │
+│    lucams-cms-publish-scheduled (*/5min) → /api/cron/cms-publish-scheduled│
+│  SQL puros (012):                                           │
+│    rate_limit_cleanup (*/15min) — buckets > 1 día           │
+│    stock_reservation_cleanup (c/1min) — reservas expiradas  │
+└──────────────────────┬───────────────────────────────────┘
+                       │  net.http_get(url = Vault:cron_base_url + path,
+                       │              headers = x-cron-secret [+
+                       │              x-vercel-protection-bypass en STG])
+                       ▼
         ┌─────────────────────────────────────────────┐
-        │           Cola pgmq (Postgres)               │
-        │  cart_recovery_1h | cart_recovery_24h |      │
-        │  order_reconciliation | shipment_retry |     │
-        │  email_send                                  │
-        └──────────┬───────────────────────────────────┘
-                   │
-                   │  pgmq.read(queue, vt=30s, count=10)
-                   ▼
-        ┌─────────────────────────────────────────────┐
-        │  Consumidor (Edge Function / API route)      │
-        │  - Lee con visibility timeout                │
-        │  - Procesa idempotentemente                  │
-        │  - Borra (pgmq.delete) o archiva (pgmq.archive)│
-        │  - En error: deja que el VT expire → reintento│
-        └──────────────────────────────────────────────┘
+        │  API routes /api/cron/* (Next.js, Vercel)    │
+        │  - Validan x-cron-secret (timing-safe)       │
+        │  - Procesan idempotentemente                 │
+        │  - recordCronHeartbeat (dead-man switch)     │
+        │  - En error: captureServerError +            │
+        │    notifyCronFailure (centro de notific.)    │
+        └─────────────────────────────────────────────┘
 ```
 
-**Patrón de consumer (pseudo-código):**
-
-```ts
-// supabase/functions/cart-recovery-consumer/index.ts
-import { supabaseAdmin } from "@/lib/supabase/service";
-
-export async function POST() {
-  const { data: messages } = await supabaseAdmin
-    .schema("pgmq_public")
-    .rpc("read", { queue_name: "cart_recovery_1h", vt: 30, qty: 10 });
-
-  for (const msg of messages) {
-    try {
-      await processCartRecovery(msg.message);
-      await supabaseAdmin
-        .schema("pgmq_public")
-        .rpc("delete", { queue_name: "cart_recovery_1h", msg_id: msg.msg_id });
-    } catch (err) {
-      console.error("Error processing message", msg.msg_id, err);
-      // Dejar que VT expire → reintento automático
-    }
-  }
-  return Response.json({ processed: messages.length });
-}
-```
+**Patrón de endpoint cron** (`apps/web/app/api/cron/*/route.ts`): handler `GET` con `force-dynamic`, valida el header `x-cron-secret` contra `CRON_SECRET` con comparación timing-safe, ejecuta la lógica delegando al feature (`features/observability/event-log-retention.ts`, `features/cart/cart-recovery.ts`, etc.), registra heartbeat en éxito y captura el error + notifica en fallo.
 
 ---
 
-## Row-Level Security (Supabase)
+## Row-Level Security y grants (Supabase)
 
-Cuando una tabla se accede desde el cliente browser (con la **publishable key** `sb_publishable_*`, que mapea al rol Postgres `anon`), debe tener RLS habilitada.
+**Postura actual (verificada en prod 2026-06-29, endurecida en la auditoría 2026-08): los roles `anon` y `authenticated` NO tienen ningún privilegio de tabla en el schema `public`.** La API pública (PostgREST) responde `42501 permission denied` en todas las tablas — la publishable key (`sb_publishable_*`) no lee ni escribe datos de dominio. Todo el acceso a datos es server-side vía **Prisma** (conexión directa, rol `postgres`); el cliente Supabase del browser (`lib/supabase/browser.ts`) se usa **solo para Auth** (login MFA del admin). Migraciones al respecto:
 
-| Tabla                                                                                       | Política                                                                                                     |
-| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `Customer`                                                                                  | Un cliente solo puede leer/actualizar su propio registro (`auth.uid() = supabase_user_id`).                  |
-| `Address`                                                                                   | Solo el dueño (`customer_id` corresponde al cliente autenticado).                                            |
-| `Cart`                                                                                      | Cliente autenticado o cookie de sesión que coincida con `session_id`.                                        |
-| `Order`                                                                                     | Cliente solo lee sus propias órdenes.                                                                        |
-| `OrderItem`                                                                                 | Hereda permisos de `Order`.                                                                                  |
-| `Review`                                                                                    | Lectura pública si `is_approved = true`. Escritura solo del autor.                                           |
-| `Product`, `Category`, `BlogPost`                                                           | Lectura pública si `is_active`/`is_published`. Escritura solo admin.                                         |
-| `Coupon`, `InventoryLog`, `StockReservation`, `WebhookEvent`, `AdminUser`, `AdminActionLog` | Sin acceso desde el rol `anon` (publishable key) — solo `service_role` (secret key, server-side).            |
-| `rate_limit_buckets`, `cache_entries`                                                       | Sin acceso desde `anon` — solo `service_role`.                                                               |
-| `pgmq.*`                                                                                    | Acceso solo vía `service_role` (secret key); los consumers viven en Edge Functions o API routes server-side. |
+- `00000000000022` — `REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated` (+ default privileges para tablas futuras).
+- `00000000000026` — revoca los grants residuales `REFERENCES/TRIGGER/TRUNCATE` de anon/authenticated y el DML de `service_role` (la app no lo necesita: Prisma conecta como `postgres`).
+- `00000000000028` — policies backstop y triggers de guarda menos permisivos, por si un GRANT reaparece: impiden auto-aprobar reseñas, que el cliente se toque `loyaltyPoints`/`referralCode`, o reescribir `CartItem.unitPrice` vía PostgREST.
+- `00000000000027` — endurece las funciones de `public`: `search_path` fijo (anti schema-hijack), `EXECUTE` revocado a `PUBLIC`/anon/authenticated donde no hace falta, y `is_active_admin()` recreada con nombres calificados.
+- `00000000000025` — elimina el event trigger que re-habilitaba RLS automáticamente (huérfano).
 
-Las rutas `/api/*` que necesiten escribir tablas restringidas usan `lib/supabase/service.ts` (secret key `sb_secret_*` que mapea al rol `service_role`, server-only).
+**RLS queda habilitada en todas las tablas como backstop (defensa en profundidad)**, con policies deny-by-default salvo las excepciones originales (`00000000000002/007/010/017/018/019/024`: p.ej. lectura pública de `Review` aprobadas o `Product` activos, hoy dormidas tras la revocación de grants). La matriz completa se prueba en CI nightly con un cliente impostor (`apps/web/features/security/rls-matrix.integration.test.ts`): falla si alguna tabla con PII empieza a responder vía API pública.
+
+Las rutas `/api/*` y Server Actions que escriben tablas lo hacen vía Prisma; el cliente `service_role` de `lib/supabase/service.ts` (secret key `sb_secret_*`, server-only) se reserva para Auth admin y Storage.
 
 ## Abstracción `PaymentProvider`
 
-Diseño desde el día 1 para no acoplarse a Wompi y permitir agregar Mercado Pago u otros sin reescribir el checkout.
+Diseño desde el día 1 para no acoplarse a Wompi y permitir agregar Mercado Pago u otros sin reescribir el checkout (ADR-004). Vive en `apps/web/features/payments/`:
+
+- `provider.ts` — la interface `PaymentProvider` y el singleton `getPaymentProvider()`; el provider activo se controla por env `PAYMENT_PROVIDER` (default `wompi`, el único soportado hoy).
+- `wompi.ts` — `WompiPaymentProvider` (sandbox + producción).
+
+La interface (simplificada; ver `provider.ts` para los tipos completos):
 
 ```ts
-// lib/payment/types.ts
-import type { Order } from "@prisma/client";
-
+// features/payments/provider.ts
 export interface PaymentProvider {
   readonly name: "wompi" | "mercadopago";
 
-  /** Crea la sesión de pago y devuelve URL de redirección o config para widget */
-  createCheckout(order: Order): Promise<{
-    redirectUrl?: string;
-    widgetConfig?: Record<string, unknown>;
-    externalId: string;
-  }>;
+  /** Crea la URL hosted de pago (redirect inmediato; NO es un cargo todavía) */
+  createCheckout(input: CreateCheckoutInput): Promise<CreateCheckoutResult>;
 
-  /** Verifica firma del webhook entrante */
-  verifyWebhook(req: Request): Promise<{
-    isValid: boolean;
-    event?: PaymentEvent;
-  }>;
+  /** Consulta estado real de una transacción (no confiar en query params del redirect) */
+  getPaymentDetails(providerTransactionId: string): Promise<PaymentDetails>;
 
-  /** Consulta estado actual de una transacción */
-  getStatus(externalId: string): Promise<PaymentStatus>;
+  /** Verifica firma del webhook entrante y normaliza el evento */
+  verifyWebhook(rawBody: string, headers: Record<string, string>): WebhookVerificationResult;
 }
 
-export type PaymentStatus =
-  | { status: "PENDING" }
-  | { status: "APPROVED"; paidAt: Date }
-  | { status: "DECLINED"; reason: string }
-  | { status: "VOIDED" };
-
-export type PaymentEvent = {
-  externalId: string;
-  status: PaymentStatus["status"];
-  amount: number;
-  currency: string;
-  raw: unknown;
-};
+export type PaymentStatus = "PENDING" | "APPROVED" | "DECLINED" | "VOIDED" | "ERROR";
 ```
 
-```ts
-// lib/payment/index.ts
-import { WompiProvider } from "./wompi";
-
-export function getPaymentProvider(name = "wompi"): PaymentProvider {
-  switch (name) {
-    case "wompi":
-      return new WompiProvider();
-    // case 'mercadopago':
-    //   return new MercadoPagoProvider();
-    default:
-      throw new Error(`Unknown payment provider: ${name}`);
-  }
-}
-```
+El mismo patrón se usa para envíos: `features/shipping/provider.ts` (`getShippingProvider()`, Aveonline activa, ADR-039) e IA: `features/ai/provider.ts` (Gemini activa, ADR-058).
 
 ## Storage (Supabase)
 
-Tres buckets con políticas distintas (detalle exhaustivo en [`SECURITY.md` § File upload](./SECURITY.md#file-upload-y-storage)):
+Cinco buckets con políticas distintas (detalle exhaustivo en [`SECURITY.md` § File upload](./SECURITY.md#file-upload-y-storage); buckets creados en `supabase/migrations/00000000000005/006/020`):
 
-| Bucket              | Visibilidad               | Uso                                                                                                 | TTL URL firmada |
-| ------------------- | ------------------------- | --------------------------------------------------------------------------------------------------- | --------------- |
-| `products`          | Público (lectura abierta) | Imágenes oficiales del catálogo                                                                     | —               |
-| `customer-uploads`  | Privado                   | Fotos que sube el cliente al estudio de personalización                                             | 1 hora          |
-| `production-assets` | Privado                   | PNG alta resolución generados al confirmar orden, descargables solo por admin con rol `FULFILLMENT` | 15 minutos      |
+| Bucket              | Visibilidad               | Uso                                                                                | TTL URL firmada       |
+| ------------------- | ------------------------- | ---------------------------------------------------------------------------------- | --------------------- |
+| `product-images`    | Público (lectura abierta) | Imágenes oficiales del catálogo (`<productId>/<uuid>.webp`, cacheControl 1 año)    | —                     |
+| `customer-uploads`  | Privado                   | Fotos que sube el cliente al estudio de personalización (máx 10 MB)                | 1 hora                |
+| `design-previews`   | Público                   | Previews renderizados de diseños (galería, compartir)                              | —                     |
+| `production-assets` | Privado                   | PNG alta resolución generados al confirmar orden, descargables por admin (ADR-063) | 1 hora (configurable) |
+| `cms-media`         | Público                   | Assets de campos IMAGE del CMS v2 (máx 5 MB)                                       | —                     |
 
 **Reglas:**
 
-- Validación de tipo MIME + tamaño en server (no confiar en cliente).
-- Nombres de archivo aleatorios (`pgcrypto`) para evitar enumeración.
-- Allowlist de extensiones: `jpg`, `png`, `webp`, `heic` (convertido a webp en server).
-- Tamaño máximo: 10 MB por imagen original; el render server-side a 300 DPI vive en `production-assets`.
+- Validación de tipo MIME (sniffing real del archivo, no el header del cliente) + tamaño en server (no confiar en cliente) — `lib/storage.ts`.
+- Nombres de archivo aleatorios (UUID) para evitar enumeración.
+- Allowlist de extensiones: `jpg`, `png`, `webp`, `avif`; el bucket `customer-uploads` acepta además `heic`/`heif` (fotos de iPhone, decodificadas en server con `heic-decode`).
+- Tamaño máximo: 10 MB por imagen original en `customer-uploads`; el render server-side a 300 DPI vive en `production-assets`.
 
 ---
 
 ## Caching y revalidación
 
-- **ISR** (`revalidate: 60s`) en home y catálogo: balance entre frescura y costo.
-- **On-demand revalidate** desde el admin cuando se actualiza producto, precio o stock significativo.
+- **SSR dinámico** en storefront: home `force-dynamic`, catálogo y PDP consultan DB por request (SSR puro). Si el catálogo crece y se vuelve lento, la mejora prevista es `unstable_cache` con tag `products` invalidado desde el admin.
+- **CMS v2**: lecturas con `unstable_cache` tag `cms`, TTL 1h (`apps/web/lib/cms.ts`); invalidación on-demand con `updateTag("cms")` desde las Server Actions del admin al publicar.
+- **Redirects**: cache in-memory 60 s en `proxy.ts` para `UrlRedirect` lookups.
 - **Server Components** por defecto; client components solo donde haya interactividad real (carrito, editor, filtros).
-- **Cache de imágenes** automático en Vercel (`next/image` con AVIF/WebP).
+- **Cache de imágenes** automático en Vercel (`next/image` con AVIF/WebP; `product-images` se sube con `cacheControl` de 1 año — nombres con UUID, inmutables).
 
 ## Accesibilidad (WCAG 2.1 AA)
 
@@ -832,17 +739,17 @@ shadcn/ui usa Radix primitives, que ya cumplen ARIA. Mantener `aria-*` props cua
 
 ## Performance budget
 
-| Métrica                           | Objetivo    |
-| --------------------------------- | ----------- |
-| Lighthouse Performance            | ≥ 95        |
-| Lighthouse SEO                    | ≥ 95        |
-| Lighthouse A11y                   | ≥ 95        |
-| Lighthouse Best Practices         | ≥ 95        |
-| Largest Contentful Paint          | < 2.5 s     |
-| Time to First Byte (home con ISR) | < 200 ms    |
-| Cumulative Layout Shift           | < 0.1       |
-| First Input Delay / INP           | < 200 ms    |
-| Bundle JS (page)                  | < 200 KB gz |
+| Métrica                                 | Objetivo    |
+| --------------------------------------- | ----------- |
+| Lighthouse Performance                  | ≥ 95        |
+| Lighthouse SEO                          | ≥ 95        |
+| Lighthouse A11y                         | ≥ 95        |
+| Lighthouse Best Practices               | ≥ 95        |
+| Largest Contentful Paint                | < 2.5 s     |
+| Time to First Byte (home, SSR dinámico) | < 200 ms    |
+| Cumulative Layout Shift                 | < 0.1       |
+| First Input Delay / INP                 | < 200 ms    |
+| Bundle JS (page)                        | < 200 KB gz |
 
 ## Testing
 
@@ -872,7 +779,7 @@ Para no duplicar contenido, esta sección referencia las fuentes únicas de patr
 | Formato estándar de errores (RFC 7807)                                 | [`CONVENTIONS.md` § Errores RFC 7807](./CONVENTIONS.md#backend--formato-estándar-de-errores-rfc-7807) |
 | Capa de servicio (service.ts / repository.ts)                          | [`CONVENTIONS.md` § Capa de servicio](./CONVENTIONS.md#backend--capa-de-servicio)                     |
 | **Saga pattern** (Wompi → Aveonline → Email)                           | [`CONVENTIONS.md` § Saga pattern](./CONVENTIONS.md#backend--saga-pattern-para-flujos-distribuidos)    |
-| **Idempotency keys**                                                   | [`CONVENTIONS.md` § Idempotency](./CONVENTIONS.md#backend--idempotency-keys)                          |
+| **Idempotencia**                                                       | [`CONVENTIONS.md` § Idempotencia](./CONVENTIONS.md#backend--idempotencia)                             |
 | Naming SQL (snake_case vs PascalCase)                                  | [`CONVENTIONS.md` § DB naming](./CONVENTIONS.md#db--naming-sql)                                       |
 | **Migration strategy** (expand-then-contract)                          | [`CONVENTIONS.md` § Migration strategy](./CONVENTIONS.md#db--migration-strategy-expand-then-contract) |
 | **Indexing strategy**                                                  | [`CONVENTIONS.md` § Indexing](./CONVENTIONS.md#db--indexing-strategy)                                 |

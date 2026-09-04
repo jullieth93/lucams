@@ -21,9 +21,11 @@ Por eso M.3.b se construye con estas reglas no negociables:
    por kind (productos NONE no descargan canvas engine).
 5. **Tests rigurosos** — unit cobertura ≥ 80%, integration, E2E playwright,
    visual regression, axe a11y, Lighthouse CI.
-6. **Plantillas son producto** — 30 SVG mockups custom diseñados a mano, no
-   placeholders Unsplash genéricos.
-7. **Telemetry production-grade** — embudo de conversión observable en admin.
+6. **Plantillas son producto** — mockups SVG profesionales en `apps/web/public/templates/`
+   (claro/oscuro y variantes `*_noborder.svg`), no placeholders genéricos.
+7. ~~**Telemetry production-grade**~~ — **no implementado**: el módulo
+   `lib/estudio-telemetry.ts` y los eventos `estudio.*` de abajo quedaron como contrato
+   de diseño (ver sección Telemetry); hoy el embudo no se observa por eventos.
 
 ## Paradigma técnico: slot-por-imán
 
@@ -102,40 +104,94 @@ Migración es idempotente: re-llamar con data V2 retorna data V2 sin cambios.
 apps/web/app/estudio/[slug]/
 ├── README.md                          # Este archivo
 ├── page.tsx                           # Server entry (auth + load product + templates)
+├── loading.tsx                        # Fallback de la ruta
+├── studio-editor-loader.tsx           # Frontera client: carga el editor con ssr:false
 ├── studio-editor.tsx                  # Orquestador client (state, auto-save, finalize)
 ├── studio-canvas-grid.tsx             # Grid responsive de N StudioSlots
 ├── studio-slot.tsx                    # 1 mini-canvas Konva por imán
 ├── studio-sidebar.tsx                 # Mis fotos + Plantillas + Auto-fill
 ├── studio-message-field.tsx           # "Tu mensaje" pack-level en sidebar (Ola 3c)
-├── studio-ig-border-toggle.tsx        # Polaroid Instagram: foto con/sin borde (Ola 3c)
 ├── studio-toolbar.tsx                 # Header con auto-save + progress + ¡Listo!
 ├── studio-realism-overlay.tsx         # Bleed/safe area/grosor/sombra Konva layers
 ├── studio-asset-picker-modal.tsx      # Modal tap-on-slot picker
 ├── studio-photo-adjust-modal.tsx      # Encuadre (zoom/pan/rotar) + filtros
-├── studio-size-modal.tsx              # "Ver tamaño real" con calibración
+├── studio-slot-edit-modal.tsx         # Editor de slot a pantalla completa (Ola 6)
+├── studio-text-editor-modal.tsx       # Edición de capas de texto del canvas (M.3.b.D)
+├── studio-preview-modal.tsx           # "Así se verá tu pedido": preview final + stepper
+│                                      #   de copias (unitario × N) → recién ahí al carrito
+├── studio-onboarding.tsx              # Modal de bienvenida / tour inicial
+├── studio-gestures-hint.tsx           # Pista de gestos táctiles (drag/pinch/doble-tap)
+├── studio-consent-text.tsx            # Consentimiento de derechos de imagen (Ley 1581)
+├── studio-ai-panel.tsx                # Asistente IA de ideas (ADR-058) — copy CMS estudio.ia.*
+├── studio-style-toolbar.tsx           # Toolbar de estilo: marco, fondo, tipografía (Ola 10)
+├── studio-photo-preview.tsx           # Preview de foto subida (Ola 9)
+├── studio-texts.ts                    # Tipos + defaults del copy del Estudio
+├── studio-texts-provider.tsx          # Context client del copy (useStudioTexts)
+├── studio-texts.server.ts             # getStudioTexts: 1 query por prefijo estudio.* (CMS B1)
+├── name-editor.tsx                    # Editor de Nombre Personalizado (fichas de letras)
+├── letter-set-editor.tsx              # Editor de sets de letras — Abecedario/Vocales (ADR-057)
+├── letter-tile.tsx                    # Ficha de letra individual
+├── letter-color-controls.tsx          # ThemePicker + SwatchRow (tema + color por ficha)
+├── letter-style-picker.tsx            # Picker de estilo de letra
+├── use-letter-colors.ts               # Estado de colores de fichas (tema/barajar/por ficha)
+├── calendar-card-focus.tsx            # Visor detalle 1-a-1 de tarjetas mes (Ola 2C)
+├── client-image-compress.ts           # Compresión de foto en el cliente antes de subir
 ├── types.ts                           # Types V2 client-safe
+├── use-dialog-a11y.ts                 # Hook a11y de modales (focus trap, Esc, retorno foco)
+├── use-is-touch.ts                    # Detección de dispositivo táctil
+├── use-prefers-reduced-motion.ts      # Respeta prefers-reduced-motion
+├── magnet-3d.tsx                      # Escena 3D base del imán (react-three-fiber)
+├── polaroid-3d-view.tsx               # Vista 3D polaroid
+├── calendar-view-3d.tsx               # Vista 3D calendario
+├── book-view-3d.tsx                   # Vista 3D libro (separadores — ADR-063)
+├── fridge-3d-view.tsx                 # Vista 3D nevera
+├── room-board-view-3d.tsx             # Vista 3D tablero magnético en pared
+├── scene-gallery.tsx                  # Galería "míralo en tu espacio" (ADR-063)
+├── studio-3d-environment.tsx          # Entorno/luces compartido de las escenas 3D
+├── fit-camera.tsx / fit-camera-polar.tsx  # Encuadre de cámara 3D
+├── use-window-textures.ts             # Texturas de ventana para escenas
 └── lib/
     ├── grid-layout.ts                 # generateGridLayout(N, stage) → cols/rows
     ├── canvas-migrate.ts              # migrateCanvasV1ToV2
-    ├── photo-validation.ts            # sharp checks (resolution, dark, blur)
     ├── photo-filters.ts               # 5 presets + apply Konva filters
+    ├── smart-crop.ts                  # Smart auto-crop (smartcrop.js) de fotos nuevas
+    ├── upload-guidance.ts             # accept (JPG/PNG/WebP/HEIC) + texto de resolución
+    ├── size-comparator.ts             # "5×5 cm" vs objeto cotidiano (reemplazó al
+    │                                  #   modal "Ver tamaño real")
+    ├── calendar-card-preview.ts       # drawCalendarPage en vivo en el slot de calendario
+    ├── compose-calendar-page.ts       # Composición de página de calendario (3D/confirmación)
+    ├── compose-gift-flatlay.ts        # Flat-lay de regalo del fotoimán (ADR-063)
+    ├── compose-shelf-flatlay.ts       # Flat-lay de repisa (ADR-063)
+    ├── letter-set-resolve.ts          # Resuelve la variante exacta del set (tema/idioma/tamaño)
+    ├── letter-tile-textures.ts        # Texturas de las fichas de letra
+    ├── faces.ts                       # Caras por unidad física (separadores 2 caras, Ola 3)
+    ├── fonts.ts                       # Font picker (M.3.b.D)
+    ├── procedural-textures.ts         # Texturas procedurales canvas 2D → CanvasTexture
+    ├── book-geometry.ts               # Geometría del libro 3D
     └── store.ts                       # zustand store interno (undo/redo)
 
 apps/web/features/personalization/
 ├── schemas.ts                         # Zod V2 + retro-compat V1
 ├── service.ts                         # server-only: createDraft, save, finalize
-└── actions.ts                         # Server Actions con Zod + ownership
+├── actions.ts                         # Server Actions con Zod + ownership
+├── letter-tiles.ts                    # Lógica de sets de letras (ADR-057)
+├── calendar-layout.ts / calendar-draw.ts  # Layouts y draw de calendarios
+├── production-render*.ts              # Render de producción 300 DPI (tiers sharp/canvas)
+└── … (frame-palette, surface, staged-slots, assembly-sheet, etc.)
+
+apps/web/features/ai/
+├── schemas.ts                         # DesignSuggestInputSchema + sanitizeOccasion
+│                                      #   (quita PII de la ocasión antes de llamar al LLM)
+└── actions.ts                         # suggestDesignAction (Claude API, ADR-058)
 
 apps/web/lib/
 ├── storage.ts                         # uploadCustomerPhoto extendido con validation
-└── estudio-telemetry.ts               # logger structured estudio.<step>.<result>
+└── photo-validation.ts                # sharp checks (resolution, dark, blur)
 
 packages/db/scripts/
-├── seed-templates.mjs                 # 30 templates V2 + generateTemplatePreview
-└── template-mockups/                  # SVG inline por plantilla
-    ├── photo-pack-polaroid-clasico.svg.ts
-    ├── photo-pack-corazon-rosa.svg.ts
-    └── ... (28 más)
+├── seed-templates.mjs                 # Plantillas V2; los SVG mockup viven en
+│                                      #   apps/web/public/templates/ (ig_post_3x4.svg, …)
+└── seed-letter-sets.mjs               # Sets de fichas por defecto es/en (ADR-057)
 ```
 
 ### Ola 3b/3c (Lucy 2026-07-22) — marco full-bleed, tira, rotación, texto, táctil
@@ -228,6 +284,33 @@ packages/db/scripts/
   fotos", modal de elegir foto, onboarding): "…máx 10 MB por foto · para que se vea nítida
   al imprimir, que el lado menor tenga al menos ~N px (salida 300 DPI)", con N de la misma
   fórmula del quality-check (`PX_PER_CM_300DPI` × lado menor del tamaño físico).
+
+## Piezas posteriores (2026-07 en adelante) — confirmación con copias, letras, IA, 3D, copy CMS
+
+- **Modal de confirmación con stepper de copias** (`studio-preview-modal.tsx`): «Así se verá
+  tu pedido» muestra el PNG final (el MISMO que se sube como archivo de producción — la
+  promesa WYSIWYG) con stepper de copias (1–99) y total `unitario × copias`. El diseño se
+  crea/finaliza y se agrega al carrito RECIÉN al confirmar; si el cliente vuelve a editar no
+  queda nada creado. Lo usan tanto el Estudio principal como los editores de letras.
+- **Sets de letras / Abecedario (ADR-057)**: `letter-set-editor.tsx` (Abecedario Completo /
+  Pack Vocales) y `name-editor.tsx` (Nombre Personalizado). El TEMA y el IDIOMA se eligen EN
+  el Estudio (ya no son variantes de la PDP — si la PDP los traía, se preseleccionan);
+  `lib/letter-set-resolve.ts` re-resuelve la variante exacta (tamaño/imantado) para que la
+  cotización quede precisa; `use-letter-colors.ts` maneja tema + barajar + color por ficha.
+  Sets por defecto es/en con `make seed-letter-sets`.
+- **Asistente IA de ideas (ADR-058)**: `studio-ai-panel.tsx` — el cliente cuenta la ocasión y
+  recibe color de marca, frase (si el producto lleva texto), composición y un tip. Server:
+  `features/ai/actions.ts → suggestDesignAction` (Claude API); `sanitizeOccasion`
+  (`features/ai/schemas.ts`) remueve PII de la ocasión antes de llamar al LLM. Falla-seguro:
+  si el asistente no está disponible, mensaje amable y nada se rompe.
+- **Copy 100% administrable (CMS v2, roadmap B1)**: `studio-texts.server.ts` resuelve UNA
+  query por prefijo `estudio.*` (cache tag `cms`) e inyecta con `<StudioTextsProvider>`; los
+  defaults de `studio-texts.ts` son el copy exacto pre-CMS (regla de oro). Incluye el panel IA
+  (`estudio.ia.*`, ej. la nota de privacidad `estudio.ia.nota-privacidad`, 2026-08-29) y los
+  nombres audibles (aria-label/alt/sr-only).
+- **Vistas 3D «míralo en tu espacio» (ADR-063)**: nevera, tablero magnético, libro
+  (separadores), calendario y flat-lays de regalo/repisa — react-three-fiber con entorno
+  compartido (`studio-3d-environment.tsx`) y texturas procedurales (`lib/procedural-textures.ts`).
 
 ## Wireframes ASCII
 
@@ -323,6 +406,11 @@ Canvas fullscreen + sheet drawer pull-up con tabs. Bottom sticky CTA cuando comp
 
 ### Modal: "Ver tamaño real"
 
+> **Reemplazado (2026-05-14, P0.5):** ya no existe `studio-size-modal.tsx`; la comparación de
+> tamaño se hace inline con `lib/size-comparator.ts` (el tamaño en cm contra un objeto cotidiano
+> colombiano, usado en `magnet-3d.tsx` y la leyenda de `studio-toolbar.tsx`). El wireframe de
+> abajo queda como registro del diseño original.
+
 ```
 ╔═══════════════════════════════════════╗
 ║  Tamaño real                  [ × ]   ║
@@ -407,13 +495,17 @@ Extensión de los tokens brand globales (definidos en `apps/web/app/globals.css`
 3. **Seed templates**: agregar plantilla(s) en `seed-templates.mjs` con `kind: 'NEW_KIND'`
    - `unitTemplate`: shape canvas V1 con layers (background, image-placeholder, text, shape)
    - Definir `personalizationSchema` por defecto en el `Product` que use este kind
-4. **SVG mockup**: agregar archivo `packages/db/scripts/template-mockups/<slug>.svg.ts`
-   con función `getSvgMockup({width, height, brand}): string` retornando SVG inline
+4. **SVG mockup**: agregar el archivo en `apps/web/public/templates/<slug>.svg` (claro, más
+   `_dark` / `_noborder` si aplica) y referenciarlo como asset/preview de la plantilla
 5. **Grid layout**: si requiere layout no-standard, agregar caso en `lib/grid-layout.ts`
 6. **Sub-editor opcional**: si el kind requiere UI específica (ej. EVENT_FAVOR con
    campos de texto evento), agregar `studio-sub-editor-<kind>.tsx` y switch en `studio-editor.tsx`
 
 ## Telemetry events estandarizados
+
+> **Contrato de diseño — NO implementado.** El módulo `apps/web/lib/estudio-telemetry.ts`
+> nunca se construyó y hoy ningún evento `estudio.*` se emite. La tabla queda como spec para
+> cuando se retome el embudo de conversión del Estudio.
 
 | Event                             | Payload                                                  | Cuándo se emite                |
 | --------------------------------- | -------------------------------------------------------- | ------------------------------ |
@@ -475,16 +567,17 @@ Estrategias aplicadas:
 
 ## Tests
 
-Ver `tests/unit/`, `tests/integration/`, `tests/e2e/` para los specs.
+Los specs unit/integration viven **colocados junto al código** (`*.test.ts` en este
+directorio, `lib/`, `features/personalization/`, etc.) y los E2E en `apps/web/tests/e2e/`
+(incluye `axe.spec.ts` / `a11y.spec.ts` con axe-core y `mobile-storefront-audit.spec.ts`).
 
-Comandos:
+Comandos (desde la raíz):
 
 ```bash
-make test-unit        # vitest
-make test-integration # vitest con DB de test
-make test-e2e         # playwright (incluye visual regression)
-make test-a11y        # axe-core CLI sobre /estudio en preview
-make test-lighthouse  # lighthouse-ci sobre /estudio
+make test-unit        # vitest (unit + integration)
+make test-e2e         # playwright (incluye axe a11y)
+make test-coverage    # vitest con cobertura
+pnpm lhci autorun     # Lighthouse CI (budgets en lighthouserc.json)
 ```
 
 ## Referencias

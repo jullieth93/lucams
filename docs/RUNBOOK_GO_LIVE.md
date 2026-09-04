@@ -24,15 +24,15 @@
 
 ## 🗺️ Mapa: qué hace cada cuenta
 
-| Servicio       | Para qué sirve                              | ¿Ya existe?                        |
-| -------------- | ------------------------------------------- | ---------------------------------- |
-| **mi.com.co**  | Donde COMPRASTE el dominio (el registro)    | ✅ Sí — `lucamsshop.com`           |
-| **Cloudflare** | DNS (la "guía telefónica") + Turnstile + R2 | Cuenta gratis (crear si no hay)    |
-| **Vercel**     | Donde vive y se sirve el sitio              | ✅ Sí (plan Hobby → subir a Pro)   |
-| **Supabase**   | Base de datos + login de clientes           | ✅ Sí (Free → subir a Pro)         |
-| **Resend**     | Envía los correos (confirmación, envío…)    | ✅ Sí (dominio por verificar)      |
-| **Wompi**      | Cobra con tarjeta/PSE/Nequi                 | ⚠️ Hoy es sandbox de OTRO comercio |
-| **Aveonline**  | Genera las guías de envío                   | ⚠️ Sandbox                         |
+| Servicio       | Para qué sirve                              | ¿Ya existe?                                                                                        |
+| -------------- | ------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| **mi.com.co**  | Donde COMPRASTE el dominio (el registro)    | ✅ Sí — `lucamsshop.com`                                                                           |
+| **Cloudflare** | DNS (la "guía telefónica") + Turnstile + R2 | Cuenta gratis (crear si no hay)                                                                    |
+| **Vercel**     | Donde vive y se sirve el sitio              | ✅ Sí (plan Hobby → subir a Pro)                                                                   |
+| **Supabase**   | Base de datos + login de clientes           | ✅ Sí (Free → subir a Pro)                                                                         |
+| **Resend**     | Envía los correos (confirmación, envío…)    | ✅ Sí — dominio `mail.lucamsshop.com` verificado (FASE 5, 2026-07-20)                              |
+| **Wompi**      | Cobra con tarjeta/PSE/Nequi                 | ✅ Cuenta propia creada 2026-08-02 (llaves prod ya en Vercel Production)                           |
+| **Aveonline**  | Genera las guías de envío                   | ✅ Cuenta real en Vercel Production desde 2026-08-04 (sin guías aún: el modo catálogo es el freno) |
 
 **Analogía:** mi.com.co es _la escritura_ de tu casa. Cloudflare es _la dirección_ que le dices a la
 gente. Vercel es _la casa_ donde vive la tienda.
@@ -292,6 +292,9 @@ panel el dominio aparece **Active** (no "Pending"). Puede tardar de minutos a 24
    - **Node.js Version** = `22.x`.
 2. Settings → **Functions**: confirma que **Fluid Compute** esté activo (el render de las fotos en alta
    resolución necesita hasta 60s de ejecución).
+3. Settings → **Git** → **Production Branch** = `production` (✅ hecho 2026-08-05): los push a
+   `develop` generan previews; solo el release (fast-forward de `develop` a `production`) actualiza
+   el sitio en vivo.
 
 ✅ **Cómo sabes que quedó bien:** el último deploy en Vercel dice **Ready**.
 
@@ -317,22 +320,30 @@ Vercel → Settings → **Environment Variables** → cada una con ambiente **Pr
 
 ### Grupo B — Obligatorias en producción real
 
-| Variable                         | Valor / de dónde sale                    |
-| -------------------------------- | ---------------------------------------- |
-| `NEXT_PUBLIC_SITE_URL`           | `https://lucamsshop.com`                 |
-| `WOMPI_PUBLIC_KEY`               | Wompi producción (FASE 7)                |
-| `WOMPI_PRIVATE_KEY`              | Wompi producción                         |
-| `WOMPI_EVENTS_SECRET`            | Wompi producción                         |
-| `WOMPI_INTEGRITY_SECRET`         | Wompi producción                         |
-| `AVEONLINE_USUARIO`              | Aveonline producción (FASE 8)            |
-| `AVEONLINE_CLAVE`                | Aveonline producción                     |
-| `AVEONLINE_WEBHOOK_SECRET`       | Lo inventas tú (texto largo aleatorio)   |
-| `RESEND_API_KEY`                 | Resend (FASE 5)                          |
-| `EMAIL_FROM`                     | `Lucams_shop <hola@mail.lucamsshop.com>` |
-| `TURNSTILE_SECRET_KEY`           | Cloudflare Turnstile (FASE 11)           |
-| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile (FASE 11)           |
-| `CRON_SECRET`                    | Lo inventas tú (texto largo aleatorio)   |
-| `NEXT_PUBLIC_WA_NUMBER`          | `573208873826`                           |
+Las exige `validateEnv()` al arranque (`apps/web/lib/env.ts`). Las de la columna **"Siempre"**
+(PROD_REQUIRED) bloquean el arranque de producción en CUALQUIER modo de tienda; las de **modo
+`full`** solo se exigen con `NEXT_PUBLIC_STORE_MODE=full` (Etapa 2) — en modo `catalog` no aplican.
+
+| Variable                         | Valor / de dónde sale                                                                           | Cuándo la exige  |
+| -------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------- |
+| `NEXT_PUBLIC_STORE_MODE`         | `catalog` (Etapa 1) — valor exacto obligatorio en prod; si falta o es otro, el arranque aborta  | Siempre          |
+| `NEXT_PUBLIC_SITE_URL`           | `https://lucamsshop.com`                                                                        | Siempre          |
+| `RESEND_API_KEY`                 | Resend (FASE 5)                                                                                 | Siempre          |
+| `RESEND_WEBHOOK_SECRET`          | Resend → Webhooks → Signing secret (`whsec_…`) — sin él rebotes/bajas no alimentan la supresión | Siempre          |
+| `EMAIL_FROM`                     | `Lucams_shop <hola@mail.lucamsshop.com>`                                                        | Siempre          |
+| `EMAIL_REPLY_TO`                 | `hola@lucamsshop.com` (FASE 5.d — sin él las respuestas de clientes se pierden)                 | Siempre          |
+| `TURNSTILE_SECRET_KEY`           | Cloudflare Turnstile (FASE 11)                                                                  | Siempre          |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile (FASE 11)                                                                  | Siempre          |
+| `CRON_SECRET`                    | Lo inventas tú (texto largo aleatorio)                                                          | Siempre          |
+| `NEXT_PUBLIC_WA_NUMBER`          | `573208873826`                                                                                  | Siempre          |
+| `WOMPI_PUBLIC_KEY`               | Wompi producción (FASE 7)                                                                       | Solo modo `full` |
+| `WOMPI_PRIVATE_KEY`              | Wompi producción                                                                                | Solo modo `full` |
+| `WOMPI_EVENTS_SECRET`            | Wompi producción                                                                                | Solo modo `full` |
+| `WOMPI_INTEGRITY_SECRET`         | Wompi producción                                                                                | Solo modo `full` |
+| `AVEONLINE_USUARIO`              | Aveonline producción (FASE 8)                                                                   | Solo modo `full` |
+| `AVEONLINE_CLAVE`                | Aveonline producción                                                                            | Solo modo `full` |
+| `AVEONLINE_WEBHOOK_SECRET`       | Lo inventas tú (texto largo aleatorio)                                                          | Solo modo `full` |
+| `GEMINI_API_KEY`                 | Google AI Studio (asistente de diseño)                                                          | Solo modo `full` |
 
 ### 🧹 Depuración de las env de Vercel (auditado 2026-07-20)
 
@@ -352,20 +363,30 @@ CMS), no en variables. Registro de lo borrado:
 **❌ FALTAN — el envío no está configurado en producción:** `AVEONLINE_USUARIO`, `AVEONLINE_CLAVE`,
 `AVEONLINE_WEBHOOK_SECRET` (las 3 son obligatorias en prod) y `AVEONLINE_ENV`. Verificar también que
 exista `CSRF_SECRET` (es CORE: sin ella la app no arranca en ningún entorno).
+→ **RESUELTO 2026-08-04:** cuenta real de Aveonline propagada al scope Production +
+`AVEONLINE_ENV=production` (verificado en vivo: `/api/health/aveonline` → `idempresa 43581,
+isDemoAccount: false, mode: production`); la facturación quedó armada el mismo día con el doble
+gate — ver FASE 8 y el changelog de `OPERATIONS.md`.
 
 **🔴 ROTA — `RESEND_API_KEY` devuelve HTTP 401.** Verificado contra el sitio en vivo:
 `GET /api/health/resend` → `"Resend devolvió HTTP 401"`. **Ningún correo sale** (confirmación de
 compra, envío, entrega). Hay que regenerar la llave en Resend y reemplazarla.
+→ **RESUELTO 2026-08-01:** llave operativa y webhook de Resend activo (verificado end-to-end:
+evento `email.delivered` firmado Svix → 200 + `EmailEvent` creada — changelog de `OPERATIONS.md`).
 
-> ℹ️ **Falsa alarma conocida:** `/api/health/all` reporta `postgres` y `storage` como caídos, pero es
-> el bug de ese endpoint (deriva la URL base del host del request). Verificado uno por uno:
-> `/api/health/db` → **ok**, `/api/health/storage` → **ok**, y el catálogo lista productos reales.
-> No hay problema de base de datos.
+> ℹ️ **Falsa alarma conocida (ya corregida):** `/api/health/all` reportaba `postgres` y `storage`
+> como caídos por un bug del endpoint (derivaba la URL base del header `Host` del request). Hoy la
+> base sale de una fuente confiable del propio deployment (ADR-062). Ojo además: desde la auditoría
+> 2026-08-24, `version`/`environment` de `/api/health/all` y el detalle de jobs de
+> `/api/health/crons` solo se devuelven con el header `x-cron-secret` (ver `OPERATIONS.md §
+Healthchecks`).
 
 ### Grupo C — Opcionales
 
-`GEMINI_API_KEY` (asistente de diseño; si falta, esa función se apaga sola), `R2_*` (backups, FASE 10),
-`LOG_LEVEL=info`.
+`R2_*` (backups, FASE 10 — en Vercel no hacen falta: los valores reales viven en GitHub Secrets,
+igual que `BACKUP_GPG_PASSPHRASE`), `LOG_LEVEL=info`. `GEMINI_API_KEY` es opcional en dev/preview y
+en modo `catalog` (si falta, el asistente de diseño se apaga solo), pero **obligatoria en producción
+modo `full`** (la exige env.ts — por eso está en el Grupo B con esa columna).
 
 > 🚫 **NO pongas** `WOMPI_DISABLE_TIMESTAMP_CHECK` en producción. Es solo para depurar en local y apaga
 > una defensa del webhook de pagos. Si queda en `true`, el sitio se niega a arrancar (a propósito).
@@ -610,8 +631,12 @@ Y creas una cuenta de cliente de prueba en el sitio: el correo de confirmación 
 
 ## FASE 7 — Wompi producción (cobrar de verdad) 🙋
 
-> ⚠️ **Hoy el sitio usa un sandbox que NO es tuyo** (aparece el comercio "KAIU"). Con eso **no puedes
-> recibir plata**.
+> ✅ **Actualización 2026-08-02:** ya existe cuenta Wompi PROPIA (el sandbox del comercio "KAIU"
+> quedó atrás). Las llaves de **producción** ya están en Vercel scope Production
+> (`WOMPI_ENV=production`), las sandbox propias en Preview, y los webhooks ya están registrados en
+> el dashboard de Wompi (PRD → `https://lucamsshop.com/api/webhooks/wompi`). **Restricción acordada:
+> cero compras reales hasta el lanzamiento de Etapa 2.** Lo que falta de esta fase es la validación
+> comercial (abajo) y la compra real de verificación (FASE 12).
 
 ### ¿Por qué esta fase depende del NIT?
 
@@ -652,6 +677,14 @@ Luego te reembolsas.
 ---
 
 ## FASE 8 — Aveonline producción (envíos reales) 🙋
+
+> ✅ **Actualización 2026-08-04:** la cuenta REAL ya está en Vercel scope Production
+> (`AVEONLINE_USUARIO`/`AVEONLINE_CLAVE` + `AVEONLINE_ENV=production`; verificado en vivo:
+> `idempresa 43581, isDemoAccount: false`) y la facturación quedó ARMADA
+> (`AVEONLINE_GENERATE_REAL=true` + `AVEONLINE_FORCE_BILLING=true`). **El único freno restante es el
+> modo de tienda:** en `catalog` ningún camino genera guías (UI oculta, actions con stage-guard); el
+> flip `NEXT_PUBLIC_STORE_MODE=full` en Production activa cobro real en la primera guía → SOLO el día
+> del lanzamiento de Etapa 2. Preview/local/stg quedan en cuenta demo + gates en `false`.
 
 ### Estado auditado (2026-07-20) — la tienda está en modo PRUEBA
 
@@ -697,6 +730,15 @@ número de rastreo en el detalle del pedido.
 > `status: ok`, `overdue: []`, los **7 jobs** con `lastRunAt` reciente (`alerts`, `daily-summary`,
 > `review-request`, `cart-recovery`, `back-in-stock`, `purge-anon-designs`, `purge-event-logs`).
 > `pg_cron` ya estaba agendado y corriendo; no hubo que crear nada.
+>
+> **Hoy son 8 jobs HTTP** (se sumó `cms-publish-scheduled`, migración 021) + 2 jobs SQL puros
+> (`rate_limit_cleanup`, `stock_reservation_cleanup`). Y desde la auditoría 2026-08-24 el detalle de
+> `/api/health/crons` (nombres de jobs, `lastRunAt`) **exige el header `x-cron-secret`** — sin él la
+> respuesta pública es solo `{ status, timestamp }` (alcanza para el monitor: 200/503):
+>
+> ```bash
+> curl -s -H "x-cron-secret: $CRON_SECRET" https://lucamsshop.com/api/health/crons
+> ```
 
 Sin esto **no corren** las alertas ni el resumen diario de las 8am, ni los recordatorios de carrito
 abandonado. Trabajas a ciegas.
@@ -714,11 +756,18 @@ abandonado. Trabajas a ciegas.
 
 ---
 
-## FASE 10 — Backups fuera de Supabase (R2) 🟡 EN CURSO
+## FASE 10 — Backups fuera de Supabase (R2) ✅ COMPLETADA
 
-> **Estado 2026-07-21: falta un solo eslabón — el endpoint S3 de R2.** El workflow se ejecutó de
-> verdad por primera vez (6 corridas) y se arreglaron tres fallos reales en el camino. **El respaldo
-> de la base ya se genera correctamente (0.65 MB); lo único que falta es entregarlo.**
+> **Estado actual (2026-09-03): operando y cifrado.** R2 quedó provisionado el 2026-07-27 y el
+> workflow corre verde **a diario** desde entonces (07:13 UTC; era semanal hasta 2026-08-04). Desde
+> **2026-08-29** el pipeline es `pg_dump | gzip | gpg -c` (simétrico AES256) — los objetos del bucket
+> terminan `.sql.gz.gpg` y el secret `BACKUP_GPG_PASSPHRASE` vive en GitHub (sin él el backup FALLA a
+> propósito). El **DR drill está automatizado**: `dr-drill.yml` corre mensual (día 2, 08:27 UTC),
+> baja el dump más nuevo, lo descifra con gpg y lo restaura en un Postgres del runner verificando
+> conteos. Detalle operativo en `OPERATIONS.md § Backup y recuperación` y `§ DR drills`.
+>
+> Histórico del montaje (2026-07-21): el workflow se ejecutó de verdad por primera vez (6 corridas) y
+> se arreglaron tres fallos reales en el camino:
 
 ### Lo ya resuelto (no repetir)
 
@@ -733,30 +782,32 @@ abandonado. Trabajas a ciegas.
 Para copiar un valor de `.env.local` a un secret, **sourcear el archivo** y `printf '%s' "$VAR" |
 gh secret set …` — nunca `cut`/`tr`, que corrompen el valor en silencio.
 
-### 🔴 Lo pendiente: el endpoint S3 no está servido
+### 🔴 Lo pendiente ENTONCES (resuelto 2026-07-27): el endpoint S3 no estaba servido
 
 ```
 ✗ write EPROTO … ssl/tls alert handshake failure … SSL alert number 40
 ```
 
-Verificado que **no** es el Account ID (se probó el real de la cuenta,
-`dash.cloudflare.com/<id>/r2/overview`): el handshake falla igual con TLS 1.2 y 1.3, con y sin ALPN,
+Se verificó que **no** era el Account ID (se probó el real de la cuenta,
+`dash.cloudflare.com/<id>/r2/overview`): el handshake fallaba igual con TLS 1.2 y 1.3, con y sin ALPN,
 desde dos redes distintas (esta VM y los runners de GitHub). El DNS resuelve por comodín, así que
-Cloudflare rechaza por **SNI**: no hay endpoint S3 servido para esa cuenta.
+Cloudflare rechazaba por **SNI**: no había endpoint S3 servido para esa cuenta.
 
-**Hipótesis viva:** R2 no quedó aprovisionado — el **API Token se puede crear sin R2 activo**, pero
-el bucket no. **Comprobación pendiente (🙋 Lucy):** entrar a **R2 → Overview** y ver si aparece
-`lucams-backups` o si sigue el botón **`Add R2 subscription to my account`**.
+**Causa confirmada:** R2 no quedó aprovisionado — el **API Token se puede crear sin R2 activo**, pero
+el bucket no. Se activó la suscripción de R2, el endpoint respondió y los backups corren verdes desde
+el 2026-07-27.
 
-### Cuando el endpoint responda
+### Cómo verificar hoy
 
-1. `gh workflow run backup.yml --repo jullieth93/lucams --ref develop`
-2. Debe imprimir `✓ backup listo: db/lucams-…sql.gz`.
+1. `gh workflow run backup.yml --repo jullieth93/lucams --ref develop` (o esperar el diario 07:13 UTC).
+2. Debe imprimir `✓ backup listo: db/lucams-…sql.gz.gpg`.
 3. Verificar el objeto **dentro del bucket**, no solo el log verde.
-4. **Simulacro de restauración** (DR drill) antes de manejar plata real.
+4. El **DR drill mensual automatizado** (`dr-drill.yml`) ya hace el simulacro de restauración: baja el
+   dump, lo descifra con gpg (`BACKUP_GPG_PASSPHRASE`) y lo restaura verificando conteos. Manual:
+   `gh workflow run dr-drill.yml --repo jullieth93/lucams`.
 
-✅ **Cómo sabes que quedó bien:** ves el archivo de backup dentro del bucket R2, con fecha de hoy.
-Un backup que nunca se restauró no cuenta como backup.
+✅ **Cómo sabes que quedó bien:** ves el archivo de backup `.sql.gz.gpg` dentro del bucket R2, con
+fecha de hoy, y el último run del drill en verde. Un backup que nunca se restauró no cuenta como backup.
 
 ---
 
@@ -906,6 +957,15 @@ da 0 cuando la página no cargó, así que sin ese control un 0 podría estar mi
 y 5 **ya pasan**; los 3 y 4 **todavía no** (`pago en línea seguro` → 1, `schema.org/InStock` → 1)
 porque la rama `catalogo-whatsapp` aún no está desplegada. Esos dos son justamente los que te avisan
 si el deploy nuevo llegó o si Vercel te dejó el build viejo.
+
+📌 **Re-verificado 2026-09-03 (en vivo):** los 5 pasos devuelven hoy la firma de **modo FULL**, no de
+catálogo (`/checkout/pago` → 307 `location: /carrito`; `/checkout/datos` muestra "Pago seguro Wompi";
+el manifest promete "pago en línea seguro"; el JSON-LD trae `schema.org/InStock`). Según la matriz de
+env vars (OPERATIONS.md, 2026-08-01) Production debería tener `NEXT_PUBLIC_STORE_MODE=catalog` —
+**hay que revisar el valor real del scope Production en Vercel**: si quedó en `full`, corregirla a
+`catalog` + **Redeploy** (es `NEXT_PUBLIC_*`: se inlinea en el build) y repetir esta fase. (Preview
+pasó a `full` a propósito el 2026-08-07 para la suite E2E §7.5 — sospecha: esa edición pudo tocar
+ambos scopes.)
 
 ⚠️ **Tres trampas verificadas el 2026-07-24 contra el sitio en vivo — no saques conclusiones falsas:**
 

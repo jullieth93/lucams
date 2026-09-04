@@ -386,7 +386,7 @@ Tras 12 preguntas a soporte Venndelo + pruebas reales con `POST /orders/quotatio
 ## ADR-016 — Rate limit y cache en Postgres + `pg_cron`, sin proveedor externo
 
 **Fecha:** 2026-05-09
-**Estado:** ✅ Aceptada
+**Estado:** ✅ Aceptada · ⚠️ **Parcialmente SUPERSEDED (2026-09-03):** el rate limit en Postgres sí se implementó (`rate_limit_check`, migración `00000000000003`); el **cache en Postgres nunca se implementó** (no existe `lib/cache.ts` ni tabla `cache_entries` — el caching real es `unstable_cache` de Next con tag `cms`). Leer solo la mitad de rate limit como vigente.
 
 **Contexto:** Auditoría detectó (H14) que PLAN/INTEGRATIONS mencionaban "Vercel KV o Upstash Free" para rate limit y cache. Verificación contra [vercel.com/docs/redis](https://vercel.com/docs/redis) (consultada 2026-05-09) confirmó que **Vercel KV está deprecado desde diciembre 2024**: _"Vercel KV is no longer available... we automatically moved it to Upstash Redis in December 2024."_ Verificación contra [upstash.com/pricing](https://upstash.com/pricing): Upstash Free es 500.000 cmd/mes + 256 MB.
 
@@ -418,7 +418,7 @@ Tras 12 preguntas a soporte Venndelo + pruebas reales con `POST /orders/quotatio
 ## ADR-017 — Background jobs en Supabase Queues (`pgmq`) + `pg_cron`, no Vercel Cron
 
 **Fecha:** 2026-05-09
-**Estado:** ✅ Aceptada
+**Estado:** 🔄 **SUPERSEDED (2026-09-03)** — pgmq nunca se adoptó: la implementación real es **pg_cron + pg_net → HTTP `GET /api/cron/*`** con `x-cron-secret` desde Supabase Vault (migraciones 015/016/021/023, 8 jobs HTTP + 2 cleanups SQL). Los emails tienen idempotencia por `idempotencyKey` en vez de cola durable. Este ADR queda como registro de la decisión original.
 
 **Contexto:** Auditoría detectó (H21) que ROADMAP mencionaba "Cron Vercel" y OPERATIONS hablaba de "cron de reconciliación" sin un sistema concreto. Pregunta del usuario sobre si Supabase Queues podría servir. Verificación contra [supabase.com/docs/guides/queues](https://supabase.com/docs/guides/queues) (consultada 2026-05-09) confirmó que **Supabase Queues** (basado en `pgmq`) es _"Postgres-native durable Message Queue system with guaranteed delivery"_ con exactly-once delivery y archivado.
 

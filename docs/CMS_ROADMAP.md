@@ -1,6 +1,6 @@
 # ROADMAP — Ecosistema CMS completo (CMS v2 → CMS total)
 
-**Estado:** en ejecución · Base construida: CMS v2 (2026-07-30 — ver ADR-082/083/084 en DECISIONS.md)
+**Estado:** ✅ **completado y certificado** — roadmap original 20/20 (2026-08-01) + backlog posterior (B7/B8/B9, E4, C1 paso 2, gestos del canvas). Base construida: CMS v2 (2026-07-30 — ver ADR-082/083/084 en DECISIONS.md). El CMS sigue creciendo por el mismo mecanismo (site map → `make migrate-cms-v2`): ej. el campo `estudio.ia.nota-privacidad` se agregó 2026-08-29 tras la auditoría de seguridad, fuera de este roadmap.
 **Propósito:** que el 100% del contenido visible del sitio sea administrable por una persona NO técnica desde `/admin/contenido`, con modularidad a futuro (listas, imágenes, banners, roles, preview) sin rehacer el modelo.
 
 **Progreso (se actualiza con cada fase):**
@@ -38,7 +38,7 @@
 - Admin por páginas con edición inline, editor Markdown/JSON, historial de versiones con revert.
 - Capa de lectura compatible (`lib/cms.ts`) con cache tag `cms` e invalidación desde el admin.
 - Site map declarativo (`packages/db/scripts/cms-site-map.mjs`) + migrador idempotente (`make migrate-cms-v2`) + verificador de paridad.
-- Tablas legacy `CmsBlock`/`CmsBlockVersion`/`SiteSetting` vivas como respaldo (DEPRECATED).
+- ~~Tablas legacy `CmsBlock`/`CmsBlockVersion`/`SiteSetting` vivas como respaldo (DEPRECATED).~~ → **Dropeadas en A2** (2026-07-31, commit `c436195`, con respaldo JSON fuera del repo). Ya no existe compat legacy: solo el modelo v2.
 
 **Convenciones de este documento:** cada tarea indica los cambios de DB/migración que implica (o "sin migración"), archivos clave, dependencias y verificación. Estimaciones: **S** < medio día · **M** 1-2 días · **L** 3-5 días (trabajo asistido por agente como el de CMS v2).
 
@@ -125,6 +125,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Site map: páginas `pedido`, `rastrear`, `transaccionales` según corresponda. Sin migración DB.
 - Esfuerzo **M**. Dependencia: ninguna.
 
+> **✅ RESULTADO — commit `0e9b52b`.** Páginas transaccionales al CMS: pedido, rastrear, unsubscribe y gracias (94 campos). Ver lista de progreso al inicio.
+
 ### B3 — Iconos/gradientes de categorías administrables
 
 - Hoy: `CATEGORY_STYLES` e `ICONS` quemados por slug (`category-grid.tsx`, `shop-mega-menu.tsx`); una categoría nueva exige tocar código.
@@ -132,6 +134,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Migración: `add_category_visuals` (2 columnas; datos por defecto = estilos actuales por slug).
 - Lectura: `listStorefrontCategories` devuelve los campos; fallback al mapa hardcodeado por slug.
 - Esfuerzo **M**.
+
+> **✅ RESULTADO — commit `73bbbfc`.** Columnas `icon`/`gradient` en `Category` + edición desde `/admin/categorias` (ADR-083). Ver lista de progreso al inicio.
 
 ### B4 — Campos de lista (adiós al JSON crudo) — pieza estructural
 
@@ -142,6 +146,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - **Migración de datos:** convertir `footer.legal.links` (JSON actual) a items; FAQs: evaluar migrar `faq.*` a una lista con `{pregunta, respuesta}` (decidir en ejecución; no obligatorio).
 - **Lectura:** el helper actual de parse seguro se mueve a `lib/cms.ts` como `getCmsList(key, fallback)` tipado.
 - Esfuerzo **L**. Dependencia: ninguna (pero B6 la usa).
+
+> **✅ RESULTADO — commit `05fac56`.** Tabla `CmsListItem` + editor de filas con subcampos tipados en el admin (ADR-084); el `body` público sigue siendo el JSON serializado (lectura sin cambios). Extendido en B6 con subcampos IMAGE y BOOLEAN. Ver lista de progreso al inicio.
 
 ### B5 — Campos de imagen (`type: IMAGE`) + mediateca mínima
 
@@ -204,6 +210,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - RBAC (`lib/admin-rbac.ts`): `ROUTE_ROLES["/admin/contenido"] = SUPER | CMS_EDITOR`; el guard de actions acepta ambos; el menú filtra todo lo demás para ese rol (solo ve Contenido).
 - `/admin/usuarios`: permitir asignar el rol.
 - Esfuerzo **M**. Dependencia: ninguna. (Nombre tentativo; alinear con convención de roles existente SUPERADMIN/MANAGER/FULFILLMENT.)
+
+> **✅ RESULTADO — commit `06a8384`.** Rol `CMS_EDITOR` en el enum `AdminRole` + RBAC: edita contenido y nada más. Ver lista de progreso al inicio.
 
 ### C3 — Publicación programada
 

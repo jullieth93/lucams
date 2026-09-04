@@ -4,7 +4,7 @@ name: CI
 # `production` y `catalogo-whatsapp`. **`main` NO EXISTE** — la rama de producción se llama
 # `production` (ver docs/OPERATIONS.md § Estrategia de ramas y releases). Mientras el trigger
 # apuntó a la rama fantasma `main`, todo merge a `production` — la que ven los clientes — se
-# desplegaba SIN typecheck, sin lint, sin los ~1.400 vitest, sin E2E/a11y, sin Lighthouse y sin
+# desplegaba SIN typecheck, sin lint, sin los ~3.000 vitest, sin E2E/a11y, sin Lighthouse y sin
 # gitleaks: el único gate era el `next build` de Vercel. Auditoría 2026-07-21, hallazgo A4.
 # `master` queda fuera a propósito: es legado local, no existe en `origin`.
 on:
@@ -178,7 +178,7 @@ jobs:
     # (#5 — el diferenciador #1 ya tiene gate por-PR: la spec navega anónima y solo usa Prisma, NO
     # necesita GoTrue). FUERA del gate por-PR: admin-login/admin-mfa (crean usuarios vía service role
     # → necesitan GoTrue real) → corren en `.github/workflows/nightly-full.yml` (scheduled +
-    # on-demand, contra una Supabase real vía secrets STAGING_*). La regresión visual (snapshots
+    # on-demand, levantando su propio localstack Supabase in-runner). La regresión visual (snapshots
     # por-píxel) sigue local/preview. Ver docs/TESTING.md.
     services:
       postgres:

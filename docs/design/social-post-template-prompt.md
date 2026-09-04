@@ -48,6 +48,7 @@ Todas las zonas de texto deben ser capas `text` editables en el `unitTemplate` (
 - El SVG base debe dejar suficiente aire para que la foto pueda crecer a sangre sin cortar el chrome.
 - En el seed de la plantilla se define la geometría normal (`x, y, width, height`) para "con borde".
 - El código del editor reescribe la ventana de foto para modo "sin borde" (a sangre vertical hasta los iconos).
+- **Estado (2026-07+):** el modo "sin borde" además tiene sus propios SVG horneados (`ig_post_3x4_noborder.svg`, `ig_post_3x4_dark_noborder.svg`) y el editor detecta el modo por el rect del placeholder (`isInstagramNoBorder` en `studio-slot.tsx`).
 
 ### Entregables esperados
 

@@ -147,4 +147,17 @@ describe("handleWebhook — parseo de la notificación de estado", () => {
     // por "no-ts", no por ese valor (D-4).
     expect(ev.hasCarrierTimestamp).toBe(false);
   });
+
+  it("mapea DEVOLUCION/DEVOLUCIÓN (con O, sin U) a RETURNED — gap encontrado 2026-09-03", async () => {
+    for (const nombre of ["DEVOLUCION", "En devolución", "DEVOLUCIÓN EN TRANSITO"]) {
+      const ev = await provider.handleWebhook(
+        JSON.stringify({
+          guia: "78",
+          estado: [{ nombre_estado: nombre, fecha: "2026-09-03 10:00:00" }],
+        }),
+        {},
+      );
+      expect(ev.status).toBe("RETURNED");
+    }
+  });
 });

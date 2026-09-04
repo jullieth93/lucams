@@ -3,6 +3,8 @@
 > **Documento vivo**. La discusión ocurre en chat. Acá solo se documenta lo que **cerramos**.
 > Iniciado: 2026-05-15. Última modificación: 2026-05-15.
 
+> **Estado al 2026-09-03: plan cerrado (80 decisiones) e implementado.** Las migraciones, endpoints `/api/catalog/*`, pantallas admin y componentes listados en «Próximas acciones» ya existen (los headers de código referencian este plan y ADR-038). Este documento queda como **registro histórico de los consensos de diseño**; ante cualquier divergencia, la fuente de verdad del modelo es `packages/db/prisma/schema.prisma`. Divergencias conocidas del texto original: los roles de admin quedaron `SUPERADMIN / MANAGER / FULFILLMENT` (más `CMS_EDITOR` después — CMS_ROADMAP C2), no `EDITOR/OPERATOR`; los settings DIAN como filas de `SiteSetting` no se materializaron (la tabla se dropeó con CMS v2 A2 el 2026-07-31; DIAN queda como integración de Etapa 2 con campos en `Order`); y los renombres/redirects viven en la tabla `UrlRedirect` administrable, no en `proxy.ts`.
+
 ## Cómo trabajamos
 
 1. **Discusión en chat**, una área a la vez en orden de dependencia.
@@ -1500,9 +1502,9 @@ Las migraciones se agruparán en sub-bloques temáticos para no romper datos:
 3. **`add_variant_description`**: `ProductVariant.description`.
 4. **`add_template_kind`**: `PersonalizationTemplate.kind` (enum EDITABLE | PREMADE), default EDITABLE para los existentes.
 5. **`add_coupon_advanced`**: `Coupon.appliesToCategories`, `appliesToProductSlugs`, `maxUsesPerCustomer`, `isPublic`, `description`, `requiresMinQuantity`. Tabla `CouponUsage`.
-6. **`add_admin_roles`**: `AdminUser.role` enum SUPERADMIN | EDITOR | OPERATOR (default SUPERADMIN existentes).
+6. **`add_admin_roles`**: `AdminUser.role` enum SUPERADMIN | EDITOR | OPERATOR (default SUPERADMIN existentes). _(Implementado con nombres distintos: `SUPERADMIN | MANAGER | FULFILLMENT`; luego se sumó `CMS_EDITOR` — CMS_ROADMAP C2.)_
 7. **`add_recommendation_log`**: tabla `RecommendationLog`.
-8. **`add_dian_settings`**: filas seed en `SiteSetting` categoría `FACTURACION` (6 settings DIAN).
+8. **`add_dian_settings`**: filas seed en `SiteSetting` categoría `FACTURACION` (6 settings DIAN). _(No se materializó así: `SiteSetting` se dropeó con CMS v2 A2 (2026-07-31) y DIAN quedó como integración Etapa 2 con campos en `Order` — `dianStatus`/`dianCufe`/`dianXmlUrl`.)_
 9. **`add_shipping_fields_to_order`**: `Order.shippingCarrier`, `trackingNumber`, `trackingUrl`, `labelUrl` (preparado para Fase 4).
 
 ### Refactors críticos en seed

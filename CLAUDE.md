@@ -8,6 +8,8 @@
 
 ## Lectura condicional (según la tarea)
 
+> El mapa completo de la documentación (qué doc cubre qué dominio) está en `docs/README.md`.
+
 | Tarea                                                                          | Lee                                             |
 | ------------------------------------------------------------------------------ | ----------------------------------------------- |
 | UI, componentes, colores, tipografías, copy                                    | `docs/BRANDING.md`                              |

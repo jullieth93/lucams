@@ -1,6 +1,6 @@
 # QA Checklist pre-launch — Lucams_shop
 
-> Última actualización: 2026-05-12 · Sub-bloque L
+> Última actualización: 2026-05-12 · Sub-bloque L · verificado contra el código 2026-09-03 (MFA admin obligatorio, checkout en modo full, /rastrear)
 >
 > Esta checklist se recorre **manualmente con Lucy + Claude** antes del go-live productivo. Es el último filtro: nada se lanza si quedan rojos. Marcar cada item con ✅ / ⚠️ / ❌ y fecha de verificación.
 
@@ -31,15 +31,19 @@
 ## B. Auth admin
 
 - [ ] /admin/login rechaza credenciales no-admin con "Credenciales incorrectas" (anti-enumeration)
+- [ ] Admin SIN factor TOTP: tras login → redirect forzado a /admin/seguridad?enroll=required (MFA obligatorio para TODO rol admin, auditoría 2026-08-24 · B-1)
+- [ ] Enrolamiento TOTP en /admin/seguridad → muestra 10 códigos de respaldo de 16 caracteres (4 grupos de 4) UNA sola vez
+- [ ] Login con MFA: password → reto TOTP en /admin/login/mfa → dashboard (sesión aal2)
+- [ ] Código de respaldo válido → entra, marca el código como usado y desactiva el factor TOTP (acceso de emergencia: hay que re-enrolar)
 - [ ] Admin logueado: chip "Panel admin" visible en SiteHeader
 - [ ] Acceso directo a /admin/\* sin sesión → redirect /admin/login
-- [ ] /admin/dashboard muestra 4 métricas (customers/orders/products/reseñas pending)
-- [ ] AdminActionLog registra cada login admin con IP
+- [ ] /admin/dashboard muestra las métricas de operación (clientes, pedidos en producción/pendientes, productos, reseñas pendientes, inventario, tickets, garantías)
+- [ ] AdminActionLog registra cada acción admin con IP (visible en /admin/auditoria); los logins quedan en logs estructurados (`security.admin_login.*`)
 
 ## C. Catálogo público
 
-- [ ] /productos lista 37 productos visibles (mayorista oculta)
-- [ ] 7 categorías visibles en chips
+- [ ] /productos lista los productos activos del canal retail (el canal mayorista queda oculto al público)
+- [ ] Las categorías top-level visibles en chips
 - [ ] Filtro categoría reduce la lista correctamente
 - [ ] Filtro precio (slider) excluye productos fuera del rango
 - [ ] Checkbox "Personalizable" muestra solo isPersonalizable=true
@@ -77,11 +81,20 @@
 - [ ] +/- buttons actualizan qty
 - [ ] Remove product → fila desaparece + total recalcula
 - [ ] Subtotal correctamente formateado COP
-- [ ] Botón "Ir a pagar" disabled con tooltip "Próximamente"
+- [ ] Botón "Ir a pagar" lleva a /checkout/datos (modo full; en modo catálogo el CTA es "Cotizar por WhatsApp")
 - [ ] Empty state cuando cart está vacío
 - [ ] Merge anon → customer cart al login (sum qty por variantId)
 - [ ] Toast "Agregado al carrito ✨" con CTA "Ver carrito"
 - [ ] Cart icon header con badge muestra count correcto
+
+## E2. Checkout + pedido (modo full)
+
+- [ ] /checkout/datos → /checkout/envio → /checkout/pago completan con datos válidos
+- [ ] Pago Wompi sandbox aprobado → webhook confirma → orden PAID + email de confirmación
+- [ ] Pago COD (contraentrega) → orden queda PENDING_PAYMENT con ledger COD para conciliar al entregar
+- [ ] /checkout/gracias?id=TX_ID muestra confirmación con número de pedido (el estado se verifica contra Wompi, no contra el query param)
+- [ ] /rastrear (invitado, sin cuenta): número de pedido + correo → vista pública /pedido/<token> con estado, timeline y guía
+- [ ] /rastrear con datos que no cruzan → error genérico anti-enumeración (no revela si el pedido o el correo existen)
 
 ## F. Newsletter
 
@@ -178,7 +191,7 @@
 - [ ] aria-labels en botones icon-only (trash, expand, etc.)
 - [ ] alt text en todas las imágenes (productos, mascote, logos)
 - [ ] Contrast ratios AA en pares texto/fondo brand
-- [ ] Skip-to-content link (futuro)
+- [ ] Skip-to-content link "Saltar al contenido" → salta al `<main id="contenido">` (implementado — verificar con Tab)
 - [ ] Screen reader smoke test (NVDA/VoiceOver) en /productos + PDP
 
 ## N. Performance Lighthouse

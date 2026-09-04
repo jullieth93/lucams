@@ -1,36 +1,64 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# apps/web — Storefront + admin Lucams_shop
 
-## Getting Started
+Aplicación Next.js 16 (App Router) del e-commerce: storefront público, panel `/admin`,
+Estudio de Personalización (`app/estudio/`), checkout y APIs. Parte del monorepo pnpm;
+el ORM y los seeds viven en `packages/db`.
 
-First, run the development server:
+## Comandos
+
+Desde la **raíz del repo** (recomendado — ver `Makefile`):
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+make web-start     # dev server en http://localhost:4000 (nohup; log en tmp/logs/)
+make build         # build de producción (genera el cliente Prisma primero)
+make test-unit     # vitest
+make test-e2e      # playwright
+make typecheck     # tsc --noEmit
+make lint          # eslint --max-warnings 0
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Equivalentes directos (desde la raíz con `--filter`, o parado en `apps/web`):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Script          | Comando                                                                                                              |
+| --------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `dev`           | `pnpm --filter web dev` (arranca en :3000 — Next no lee `PORT` del .env; `make web-start` sí lo exporta y usa :4000) |
+| `build`         | `pnpm --filter web build`                                                                                            |
+| `start`         | `pnpm --filter web start`                                                                                            |
+| `lint`          | `pnpm --filter web lint`                                                                                             |
+| `typecheck`     | `pnpm --filter web typecheck`                                                                                        |
+| `test`          | `pnpm --filter web test` (vitest run)                                                                                |
+| `test:watch`    | vitest en modo watch                                                                                                 |
+| `test:coverage` | vitest con cobertura                                                                                                 |
+| `test:e2e`      | Playwright                                                                                                           |
+| `test:e2e:ui`   | Playwright con UI interactiva                                                                                        |
+| `db:backup`     | backup cifrado de la DB a R2 (`scripts/backup-db-to-r2.mjs`)                                                         |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+La app necesita variables de entorno: `.env.local` en la **raíz del repo**
+(ver [docs/OPERATIONS.md](../../docs/OPERATIONS.md)). Para la DB local:
+`make db-local-start && make db-local-setup && make db-local-on && make db-local-seed`.
 
-## Learn More
+## Estructura
 
-To learn more about Next.js, take a look at the following resources:
+```
+apps/web/
+├── app/            # Rutas App Router: storefront, /admin, /estudio, /api, /legal…
+├── assets/fonts/   # TTF de marca (Fredoka/Inter) para render server-side (canvas/sharp)
+├── components/     # Componentes compartidos (ui/ shadcn + brand, header, home…)
+├── features/       # Lógica de dominio por feature (cart, checkout, orders, cms,
+│                   #   personalization, ai, payments, shipping, security…)
+├── lib/            # Utilidades transversales (supabase clients, cms readers, seguridad)
+├── public/         # Assets estáticos (brand/, icons/, templates/ del Estudio)
+├── tests/          # e2e/ (Playwright) + fixtures/stubs; los unit/integration
+│                   #   viven colocados junto al código (*.test.ts)
+├── scripts/        # Utilidades operativas (backup DB → R2, DR drill)
+├── proxy.ts        # Proxy de requests (redirects 301, guards)
+└── types/          # Tipos compartidos
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Notas
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Tailwind v4 CSS-first: los tokens de marca están en `app/globals.css` (`@theme`),
+  documentados en [docs/BRANDING.md](../../docs/BRANDING.md).
+- Fuentes: Fredoka (display) + Inter (body) vía `next/font/google` en `app/layout.tsx`.
+- El Estudio de Personalización tiene su propio README: `app/estudio/[slug]/README.md`.
+- Este repo usa APIs nuevas de Next 16 — ver `AGENTS.md` de esta carpeta antes de codear.

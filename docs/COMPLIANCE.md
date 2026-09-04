@@ -44,7 +44,7 @@
    - **Previa** (antes del tratamiento).
    - **Expresa** (no inferida).
    - **Informada** (que se le diga al titular qué se hará con sus datos).
-   - **Verificable** (registrada — guardamos `Consent(customerId, scope, version, acceptedAt, ip)` en DB).
+   - **Verificable** (registrada — guardamos `Consent(customerId?, email?, phone?, scope, accepted, version, acceptedAt, ipAddress, userAgent)` en DB; `phone` ancla consentimientos de titulares sin email, ej. cotización por WhatsApp).
 4. **Atender peticiones, quejas y reclamos (PQR)** en máximo **15 días hábiles**.
 5. **Reportar incidentes de seguridad** a la SIC (Superintendencia de Industria y Comercio) si comprometen datos personales (notificación dentro de 15 días hábiles del descubrimiento).
 6. **Registro Nacional de Bases de Datos (RNBD)** ante la SIC: obligatorio si:
@@ -56,36 +56,52 @@
 
 #### Tabla `Consent`
 
-```prisma
-model Consent {
-  id          String   @id @default(cuid())
-  customerId  String?
-  email       String?  // Para consentimientos pre-registro (newsletter, cookies)
-  scope       String   // "data-processing", "marketing", "cookies-marketing", etc.
-  version     String   // Versión del documento aceptado: "v1.2-2026-05-09"
-  acceptedAt  DateTime @default(now())
-  ip          String?
-  userAgent   String?
-  revoked     Boolean  @default(false)
-  revokedAt   DateTime?
+Modelo real (`packages/db/prisma/schema.prisma`): append-only — revocar crea una fila nueva con `accepted=false` y `revokesId` apuntando al consentimiento revocado.
 
-  @@index([customerId])
-  @@index([email])
+```prisma
+enum ConsentScope {
+  COOKIES_NECESSARY // siempre on
+  COOKIES_FUNCTIONAL
+  COOKIES_ANALYTICS
+  COOKIES_MARKETING
+  NEWSLETTER
+  BACK_IN_STOCK // "avísame cuando vuelva" — notificación pedida por el titular
+  MARKETING_PROFILING // perfilamiento (segmentación, recomendaciones)
+  HABEAS_DATA // autorización general tratamiento de datos personales
+}
+
+model Consent {
+  id         String       @id @default(cuid())
+  customerId String?      // null para guests (newsletter, cookies, cotización)
+  email      String?      // ancla para consentimientos sin cuenta
+  phone      String?      // ancla alterna (cotización por WhatsApp, móvil a 10 dígitos)
+  scope      ConsentScope
+  accepted   Boolean
+  version    String       // versión del aviso de privacidad aceptado (setting PRIVACY_POLICY_VERSION)
+  ipAddress  String?
+  userAgent  String?
+  revokesId  String?      // si revoca uno previo, apunta a su id
+  acceptedAt DateTime     @default(now())
+
+  @@index([customerId, scope])
+  @@index([email, scope])
+  @@index([phone, scope])
+  @@index([scope, acceptedAt])
 }
 ```
 
-#### Endpoints
+#### Registro y ejercicio de derechos
 
-- `POST /api/consent` — registrar nuevo consentimiento.
-- `DELETE /api/consent/:id` — revocar.
-- `GET /api/me/consents` — listar los míos.
-- `GET /api/me/data-export` — exportación completa (Habeas Data art. 8 lit. b).
-- `DELETE /api/me/account` — eliminación con soft delete + hard delete a 30 días.
+No hay endpoints REST públicos de consentimiento: el registro lo hacen **Server Actions** en `apps/web/features/consent/` (banner de cookies, newsletter, cotización por WhatsApp, checkout, back-in-stock — cada una escribe sus scopes con IP/UA).
+
+- **Consentimiento de cookies:** `persistCookieConsentAction` (una fila por scope, ver § Cookie consent).
+- **Supresión de cuenta (art. 8 lit. e):** self-service en `/mi-cuenta/seguridad → Eliminar mi cuenta` (ver § Derecho de supresión abajo).
+- **Exportación, rectificación formal y PQR:** canal manual `habeas-data@lucamsshop.com` (un endpoint self-service de exportación queda como mejora pendiente — no existe hoy).
 
 #### Página `/legal/habeas-data`
 
-- Formulario para PQR formales.
-- Email destino: `habeas-data@lucamsshop.com`.
+- Publica la Política de Tratamiento (texto en `packages/db/legal-content/legal.habeas-data.md`) y los canales para PQR.
+- Canal formal: email `habeas-data@lucamsshop.com` (además del formulario general de `/contacto`, que crea `SupportTicket`).
 - SLA: respuesta inicial 5 días hábiles, resolución 15 días hábiles.
 
 ### Aviso de Privacidad — texto base
@@ -166,6 +182,20 @@ pedido), ni `READY`/`USED_IN_ORDER`/`ARCHIVED`, ni nada referenciado por un carr
 finalidad vigente). El borrado de bytes es **best-effort con reintento**: si la remoción del bucket falla,
 las filas NO se borran → el siguiente ciclo reintenta (nunca deja bytes sin registro en DB).
 
+### Retención de logs de eventos con PII (2026-08-29)
+
+Mismo principio de temporalidad aplicado a los logs que el sistema acumula solo
+(`features/observability/event-log-retention.ts`, vía el cron `/api/cron/purge-event-logs`):
+
+| Tabla          | Contenido con PII                                                             | Retención | Criterio de purga                                            |
+| -------------- | ----------------------------------------------------------------------------- | --------- | ------------------------------------------------------------ |
+| `EmailEvent`   | `to` = email del cliente                                                      | 180 días  | `createdAt`                                                  |
+| `WebhookEvent` | `payload` crudo (Wompi trae `customer_email`)                                 | 180 días  | `createdAt` y solo si `processedAt` (no romper idempotencia) |
+| `ErrorLog`     | message+stack de errores server (PII ya redactada por `scrubPii` al capturar) | 90 días   | `createdAt`                                                  |
+| `ErrorReport`  | reportes de error del cliente (`/api/log-error`)                              | 90 días   | `lastSeenAt` (un error que sigue ocurriendo NO se borra)     |
+
+Las purgas son `deleteMany` con cutoff y quedan logueadas (`retention.purge_event_logs`).
+
 ---
 
 ## Ley 1480 de 2011 — Estatuto del Consumidor
@@ -206,59 +236,56 @@ Antes de la compra, el sitio debe mostrar:
 
 #### Implementación técnica
 
-```prisma
-model Product {
-  // ...
-  isPersonalizable      Boolean  @default(false)
-  retractApplies        Boolean  @default(true)   // Default: aplica. Cambiar a false al confirmar personalización.
-  // ...
-}
-
-model OrderItem {
-  // ...
-  customDesign          Json?
-  retractEligible       Boolean  // Calculado al checkout: true si product.retractApplies && customDesign IS NULL
-}
-```
+La elegibilidad se calcula **al vuelo** (no hay flag persistido por item): un `OrderItem` es
+personalizado —y por tanto exceptuado— si tiene `customDesign` (legacy) o `designId`
+(`isItemPersonalized` en `apps/web/features/retract/service.ts`). El resto de condiciones:
+orden `DELIVERED`, dentro de la ventana de 5 días hábiles (en calendario colombiano COT) y sin
+solicitud previa. La identidad es obligatoria: toda operación del servicio exige `customerId`
+(tipo estricto, auditoría D-3 — un guest nunca coincide, sin hueco IDOR).
 
 #### Flujo de retracto
 
-1. Cliente solicita retracto vía `/cuenta/orden/:id/retractar` o email a `retracto@lucamsshop.com`.
+1. Cliente solicita retracto desde el detalle del pedido (`/mi-cuenta/pedidos/[number]`, control
+   por item) o email a `retracto@lucamsshop.com`.
 2. Validar elegibilidad:
    - ¿Está dentro de los 5 días hábiles desde la entrega?
-   - ¿El item tiene `retractEligible = true`?
+   - ¿El item NO está personalizado (`isItemPersonalized = false`)?
 3. Si elegible:
-   - Crear `RetractRequest(orderItemId, requestedAt, reason?, status='PENDING')`.
-   - Enviar email al cliente con instrucciones de devolución (5 días hábiles desde la confirmación).
+   - Crear `RetractRequest(orderItemId, reason?, status='PENDING', refundAmount=<línea del item>)`.
+   - El admin aprueba en `/admin/retractos` → email al cliente con instrucciones de devolución.
 4. Cliente devuelve el producto vía Coordinadora (a costo del proveedor — nosotros).
 5. Recepción → `RetractRequest.status='RECEIVED'`.
-6. Reembolso vía Wompi (`POST /v1/transactions/:id/void` o equivalente) o transferencia bancaria si COD.
+6. Reembolso **manual** vía panel Wompi o transferencia bancaria si COD; se registra
+   `refundMethod` (`"WOMPI_VOID" | "BANK_TRANSFER"`) + `refundedAt` y se avisa al cliente por email.
    - Plazo legal: 15 días calendario desde la solicitud.
-7. `RetractRequest.status='REFUNDED'`, `OrderItem.status='RETURNED'`.
+   - No restaura stock automáticamente ni cambia el estado de la orden (la entrega ya ocurrió).
+7. `RetractRequest.status='REFUNDED'`.
 
 #### Schema Prisma
 
 ```prisma
 enum RetractStatus {
-  PENDING
-  APPROVED
-  RECEIVED
-  REFUNDED
-  REJECTED
+  PENDING // solicitado, pendiente de aprobar
+  APPROVED // aprobado, esperando que el cliente devuelva el producto
+  RECEIVED // producto recibido de vuelta
+  REFUNDED // reembolso emitido (dinero Wompi manual)
+  REJECTED // rechazado (no elegible / fuera de ventana)
 }
 
 model RetractRequest {
   id            String        @id @default(cuid())
   orderItemId   String        @unique
-  orderItem     OrderItem     @relation(fields: [orderItemId], references: [id])
+  orderItem     OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  status        RetractStatus @default(PENDING)
+  reason        String? // texto libre del cliente
+  rejectionNote String? // motivo si REJECTED
+  refundAmount  Int // línea del item al solicitar (COP centavos)
+  refundMethod  String? // "WOMPI_VOID" | "BANK_TRANSFER" — al reembolsar
   requestedAt   DateTime      @default(now())
+  approvedAt    DateTime?
   receivedAt    DateTime?
   refundedAt    DateTime?
-  status        RetractStatus @default(PENDING)
-  reason        String?       // Texto libre del cliente
-  rejectionNote String?       // Si REJECTED por motivo legal
-  refundAmount  Int           // En centavos COP
-  refundMethod  String        // "WOMPI_VOID" | "BANK_TRANSFER"
+  processedBy   String? // AdminUser.id que gestionó la solicitud
 }
 ```
 
@@ -271,8 +298,16 @@ model RetractRequest {
 #### Implementación
 
 - Política de garantía publicada en `/legal/garantias`.
-- Endpoint `/cuenta/orden/:id/garantia` para solicitar.
+- Solicitud desde el detalle del pedido (`/mi-cuenta/pedidos/[number]`, control por item) y gestión admin en `/admin/garantias`.
 - Tabla `WarrantyClaim` similar a `RetractRequest`.
+
+### Reseñas y moderación (publicidad no engañosa)
+
+Publicar reseñas ficticias sería publicidad engañosa (riesgo SIC). Postura verificada:
+
+- **Toda reseña entra con `isApproved=false`** y solo se publica tras moderación en `/admin/resenas` — la policy RLS `review insert own` lo **fuerza a nivel DB** (migración 028: `isApproved=false`/`featured=false` en el INSERT, no solo en la app).
+- **Producción tiene 0 reseñas** (verificado en vivo 2026-08-29): las ficticias del seed inicial se retiraron y la decisión fue no republicarlas.
+- Los scripts de seed de reseñas (`packages/db/scripts/seed-reviews-*.mjs`) quedaron **bloqueados contra prod** (y remotos desconocidos) por `env-guard` — solo corren contra el stack local/stg.
 
 ### Términos y Condiciones — secciones obligatorias
 
@@ -293,7 +328,7 @@ model RetractRequest {
 
 > Si el consumidor reporta a su banco que la compra fue fraudulenta o el producto no llegó, el banco puede revertir el pago. **Tenemos 21 días calendario para responder y demostrar lo contrario.**
 
-- Implementación: webhook de Wompi nos avisa de chargebacks → email automático al operador → tabla `Chargeback` para tracking.
+- Implementación (pendiente — se construye con la tienda full): webhook de Wompi nos avisa de chargebacks → alerta al operador → tabla `Chargeback` para tracking. Hoy no existe esa tabla ni el flujo; mientras tanto el canal es el email del banco/Wompi al operador.
 
 ---
 
@@ -448,18 +483,18 @@ export function calculateTax(subtotalCents: number): { iva: number; total: numbe
 
 ## Documentos legales requeridos en el sitio
 
-| Documento                                                   | URL                                    | Origen                                    | Verificación                   |
-| ----------------------------------------------------------- | -------------------------------------- | ----------------------------------------- | ------------------------------ |
-| **Política de Privacidad** (Habeas Data)                    | `/legal/privacidad`                    | Plantilla CO + revisión legal             | Versión y fecha visibles       |
-| **Términos y Condiciones**                                  | `/legal/terminos`                      | Idem                                      | Idem                           |
-| **Política de Cookies**                                     | `/legal/cookies`                       | Idem                                      | Idem                           |
-| **Política de Devoluciones y Retracto**                     | `/legal/devoluciones`                  | Idem                                      | Idem                           |
-| **Política de Garantía**                                    | `/legal/garantias`                     | Idem                                      | Idem                           |
-| **Política de Tratamiento de Datos Personales**             | `/legal/tratamiento-datos`             | Plantilla SIC + revisión legal            | Idem                           |
-| **Aviso de Privacidad**                                     | Modal al primer contacto + footer link | Idem                                      | Idem                           |
-| **Habeas Data — formulario PQR**                            | `/legal/habeas-data`                   | Form + email `habeas-data@lucamsshop.com` | —                              |
-| **Lista de subprocesadores**                                | `/legal/subprocesadores`               | Generada de `docs/COMPLIANCE.md`          | Actualización al cambiar stack |
-| **Política de seguridad / divulgación de vulnerabilidades** | `/legal/security`                      | Texto interno                             | —                              |
+| Documento                                                   | URL                                                         | Origen                                           | Verificación                   |
+| ----------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------ | ------------------------------ |
+| **Política de Privacidad** (Habeas Data)                    | `/legal/privacidad`                                         | Plantilla CO + revisión legal                    | Versión y fecha visibles       |
+| **Términos y Condiciones**                                  | `/legal/terminos`                                           | Idem                                             | Idem                           |
+| **Política de Cookies**                                     | `/legal/cookies`                                            | Idem                                             | Idem                           |
+| **Política de Devoluciones y Retracto**                     | `/legal/devoluciones`                                       | Idem                                             | Idem                           |
+| **Política de Garantía**                                    | `/legal/garantias`                                          | Idem                                             | Idem                           |
+| **Política de Tratamiento de Datos Personales**             | `/legal/privacidad` (cubierta ahí mismo; no hay URL aparte) | Plantilla SIC + revisión legal                   | Idem                           |
+| **Aviso de Privacidad**                                     | Modal al primer contacto + footer link                      | Idem                                             | Idem                           |
+| **Habeas Data — PQR**                                       | `/legal/habeas-data`                                        | Texto legal + email `habeas-data@lucamsshop.com` | —                              |
+| **Lista de subprocesadores**                                | `/legal/subprocesadores`                                    | Generada de `docs/COMPLIANCE.md`                 | Actualización al cambiar stack |
+| **Política de seguridad / divulgación de vulnerabilidades** | `/legal/security`                                           | Texto interno                                    | —                              |
 
 > Cada documento tiene **versionado**: header `Versión X.Y — vigente desde YYYY-MM-DD`. Cambios mayores requieren re-aceptación del usuario activo.
 
@@ -474,29 +509,30 @@ Aunque la Ley 1581 colombiana no exige banner de cookies tan estricto como GDPR,
 | Categoría                                                            | Default      | Bloqueable por usuario                 |
 | -------------------------------------------------------------------- | ------------ | -------------------------------------- |
 | **Estrictamente necesarias**                                         | ON           | ❌ No (sin estas el sitio no funciona) |
-| **Funcionales** (idioma, dark mode, último carrito visto)            | ON           | ✅ Sí                                  |
+| **Funcionales** (idioma, dark mode, último carrito visto)            | OFF (opt-in) | ✅ Sí                                  |
 | **Analíticas** (Vercel Analytics si se activa, conteos agregados)    | OFF (opt-in) | ✅ Sí                                  |
 | **Marketing** (remarketing, pixels de Facebook/Google si se activan) | OFF (opt-in) | ✅ Sí                                  |
 
 ### Implementación
 
-- Banner en primer visit (con detección por cookie `__lc_consent`).
+- Banner en primer visit (con detección por cookie `cookie_consent_v1`) — componente `apps/web/components/cookies-banner.tsx`, helpers en `apps/web/lib/cookie-consent.ts`.
 - Tres opciones: "Solo necesarias", "Personalizar", "Aceptar todas".
-- Persistir consentimiento en `Consent` (con `scope='cookies-marketing'` etc.).
-- Versión del banner en cookie → cambio de versión = re-consent.
-- Página `/legal/cookies` con detalle y revocación granular.
+- Persistir consentimiento en `Consent` (una fila por scope: `COOKIES_NECESSARY` / `COOKIES_FUNCTIONAL` / `COOKIES_ANALYTICS` / `COOKIES_MARKETING`, con `accepted: true|false`).
+- Versión del banner en la cookie (`v: 1`) → cambio de versión = re-consent.
+- Página `/legal/cookies` con detalle y revocación granular (reabre el modal de preferencias).
 
 ### Cookies que usamos (catálogo a mantener actualizado)
 
-| Cookie             | Propósito                            | Tipo      | TTL     |
-| ------------------ | ------------------------------------ | --------- | ------- |
-| `sb-access-token`  | Supabase Auth                        | Necesaria | 1 h     |
-| `sb-refresh-token` | Supabase Auth                        | Necesaria | 30 días |
-| `__rid`            | Request ID correlation               | Necesaria | sesión  |
-| `__lc_consent`     | Estado del consentimiento de cookies | Necesaria | 1 año   |
-| `__lc_session`     | Cart sessionId (anónimo)             | Necesaria | 90 días |
-| `__lc_locale`      | Idioma elegido                       | Funcional | 1 año   |
-| `__lc_theme`       | Modo oscuro/claro                    | Funcional | 1 año   |
+| Cookie                        | Propósito                                       | Tipo      | TTL                                                                                           | Notas                                                                                                              |
+| ----------------------------- | ----------------------------------------------- | --------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `sb-<project-ref>-auth-token` | Supabase Auth (sesión, puede venir fragmentada) | Necesaria | 400 días (default de `@supabase/ssr`; los tokens internos rotan: access 1 h, refresh 30 días) | `SameSite=Lax`, `Secure` en prod/preview; `httpOnly: false` (el browser client la lee — ver SECURITY.md § Cookies) |
+| `cart_session`                | Carrito anónimo                                 | Necesaria | 30 días                                                                                       | HttpOnly                                                                                                           |
+| `checkout_state`              | Estado del checkout multi-step                  | Necesaria | 60 min                                                                                        | HttpOnly, **cifrada AES-256-GCM** (lleva PII — F-9)                                                                |
+| `cookie_consent_v1`           | Estado del consentimiento de cookies            | Necesaria | 1 año                                                                                         | Client-readable a propósito (futuros scripts la consultan)                                                         |
+| `admin_last_activity`         | Marca de actividad admin (idle-timeout)         | Necesaria | 30 días                                                                                       | HttpOnly, firmada HMAC, `path=/admin` (solo admins)                                                                |
+| `lucams_cms_edit`             | Modo edición CMS en vivo                        | Necesaria | 8 h                                                                                           | HttpOnly, `Secure` en prod/preview (solo admins con rol CONTENT)                                                   |
+
+No usamos cookies de idioma/tema ni un request-id en cookie (el `X-Request-Id` va en headers). No hay cookies de terceros de analytics/marketing activas hoy.
 
 ---
 
@@ -506,22 +542,23 @@ Aunque la Ley 1581 colombiana no exige banner de cookies tan estricto como GDPR,
 
 ### Subprocesadores activos
 
-| Servicio                                        | Propósito                          | País                               | Datos transferidos                                           | Base legal                              |
-| ----------------------------------------------- | ---------------------------------- | ---------------------------------- | ------------------------------------------------------------ | --------------------------------------- |
-| **Supabase**                                    | DB, Auth, Storage                  | EE.UU. (AWS us-east-1 o sa-east-1) | Todos los datos del cliente (RLS aplicado)                   | Consentimiento + ejecución del contrato |
-| **Vercel**                                      | Hosting de la app                  | EE.UU. (edge global)               | Datos en tránsito durante la sesión + logs                   | Idem                                    |
-| **Wompi**                                       | Procesamiento de pagos             | Colombia                           | Datos de la transacción + datos del cliente para anti-fraude | Necesidad contractual                   |
-| **Aveonline** (agregador) + Coordinadora/otras  | Logística                          | Colombia                           | Nombre, dirección, teléfono                                  | Necesidad contractual                   |
-| **Resend**                                      | Email transaccional                | EE.UU.                             | Email + contenido del mensaje                                | Necesidad contractual                   |
-| **Google (Gemini API)**                         | Asistente IA del estudio           | EE.UU.                             | Prompt del estudio (sin PII directa)                         | Consentimiento explícito                |
-| **Cloudflare**                                  | DNS + CDN + Turnstile + R2 backups | Global                             | Datos en tránsito + IP + backups encriptados                 | Idem                                    |
-| **Mi.com.co**                                   | Registrador de dominio             | Colombia                           | Datos del registrante (operador, no cliente)                 | Necesidad contractual                   |
-| **GitHub**                                      | Repositorio de código              | EE.UU.                             | No procesa datos de clientes                                 | —                                       |
-| **Proveedor DIAN** (Alegra/Siigo/Facture — TBD) | Facturación electrónica            | Colombia                           | Datos de la factura (NIT/CC, nombre, items)                  | Obligación legal                        |
+| Servicio                                        | Propósito                          | País                               | Datos transferidos                                                                                                                                                                                                                                                                                        | Base legal                              |
+| ----------------------------------------------- | ---------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| **Supabase**                                    | DB, Auth, Storage                  | EE.UU. (AWS us-east-1 o sa-east-1) | Todos los datos del cliente (RLS aplicado)                                                                                                                                                                                                                                                                | Consentimiento + ejecución del contrato |
+| **Vercel**                                      | Hosting de la app                  | EE.UU. (edge global)               | Datos en tránsito durante la sesión + logs                                                                                                                                                                                                                                                                | Idem                                    |
+| **Wompi**                                       | Procesamiento de pagos             | Colombia                           | Datos de la transacción + datos del cliente para anti-fraude                                                                                                                                                                                                                                              | Necesidad contractual                   |
+| **Aveonline** (agregador) + Coordinadora/otras  | Logística                          | Colombia                           | Nombre, dirección, teléfono                                                                                                                                                                                                                                                                               | Necesidad contractual                   |
+| **Resend**                                      | Email transaccional                | EE.UU.                             | Email + contenido del mensaje                                                                                                                                                                                                                                                                             | Necesidad contractual                   |
+| **Google (Gemini API)**                         | Asistente IA del estudio           | EE.UU.                             | Solo el texto de la "ocasión" que escribe el cliente — pasa por un **filtro de PII** server-side (`sanitizeOccasion`, desde 2026-08-29: documentos, emails y celulares CO se reemplazan por texto neutro antes de llamar a Google) y la UI del Estudio muestra la nota "Evita escribir datos personales…" | Consentimiento explícito                |
+| **Cloudflare**                                  | DNS + CDN + Turnstile + R2 backups | Global                             | Datos en tránsito + IP + backups encriptados                                                                                                                                                                                                                                                              | Idem                                    |
+| **Mi.com.co**                                   | Registrador de dominio             | Colombia                           | Datos del registrante (operador, no cliente)                                                                                                                                                                                                                                                              | Necesidad contractual                   |
+| **GitHub**                                      | Repositorio de código              | EE.UU.                             | No procesa datos de clientes                                                                                                                                                                                                                                                                              | —                                       |
+| **Proveedor DIAN** (Alegra/Siigo/Facture — TBD) | Facturación electrónica            | Colombia                           | Datos de la factura (NIT/CC, nombre, items)                                                                                                                                                                                                                                                               | Obligación legal                        |
 
 ### Política
 
 - Lista publicada en `/legal/subprocesadores`.
+- **Estado por etapa:** mientras la tienda opere en **modo catálogo** (Etapa 1, `NEXT_PUBLIC_STORE_MODE=catalog`), Wompi, Aveonline y Gemini están **inactivos** en producción (sin pagos en línea, sin envíos integrados, sin asistente IA — la cotización es por WhatsApp); en la página pública figuran marcados "cuando lo activemos". La lista aplica plenamente al activar el modo tienda completa.
 - **Notificación de cambio:** 30 días antes de agregar/cambiar un subprocesador, email a clientes activos.
 - Al firmar Pro con cualquiera, **revisar DPA (Data Processing Agreement)** ofrecido por el vendor — la mayoría lo ofrecen estándar.
 
@@ -536,23 +573,23 @@ Aunque la Ley 1581 colombiana no exige banner de cookies tan estricto como GDPR,
 
 ## Calendario de cumplimiento
 
-| Hito                                                        | Cuándo                     | Bloqueante      |
-| ----------------------------------------------------------- | -------------------------- | --------------- |
-| Constituir el negocio (RUES + Cámara de Comercio)           | Antes de Fase 7            | ✅ Sí           |
-| Obtener RUT con responsabilidad 42 (facturador electrónico) | Antes de Fase 7            | ✅ Sí           |
-| Solicitar resolución de numeración a DIAN                   | Antes de Fase 7            | ✅ Sí           |
-| Firmar contrato con proveedor de facturación electrónica    | Antes de Fase 7            | ✅ Sí           |
-| Revisión legal de los 9 documentos del sitio                | Antes de Fase 7            | ✅ Sí (ADR-020) |
-| Política de privacidad y T&C publicados                     | Antes de Fase 7            | ✅ Sí           |
-| Banner de consentimiento de cookies funcional               | Antes de Fase 7            | ✅ Sí           |
-| Habilitación de proveedor DIAN (si software propio)         | N/A (usamos PT autorizado) | —               |
-| Registro Nacional de Bases de Datos (RNBD) si aplica        | Confirmar con abogado      | Posible         |
-| Email `habeas-data@lucamsshop.com` operativo + SLA de PQR   | Lanzamiento                | ✅ Sí           |
-| Email `retracto@lucamsshop.com` operativo                   | Lanzamiento                | ✅ Sí           |
-| Tabla `Consent` registrando cada autorización               | Fase 1                     | ✅ Sí           |
-| Endpoint `/api/me/data-export`                              | Fase 1                     | ✅ Sí           |
-| Endpoint `DELETE /api/me/account` con flujo 30 días         | Fase 1                     | ✅ Sí           |
-| Cron `pg_cron` de hard delete tras 30 días                  | Fase 1                     | ✅ Sí           |
-| Flujo de retracto end-to-end                                | Fase 4                     | ✅ Sí           |
-| Flujo de garantía                                           | Fase 6                     | ✅ Sí           |
-| Reporte de incidente a SIC ante brecha (procedimiento)      | Documentar en Fase 7       | ✅ Sí           |
+| Hito                                                             | Cuándo                                                               | Bloqueante      |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------- | --------------- |
+| Constituir el negocio (RUES + Cámara de Comercio)                | Antes de Fase 7                                                      | ✅ Sí           |
+| Obtener RUT con responsabilidad 42 (facturador electrónico)      | Antes de Fase 7                                                      | ✅ Sí           |
+| Solicitar resolución de numeración a DIAN                        | Antes de Fase 7                                                      | ✅ Sí           |
+| Firmar contrato con proveedor de facturación electrónica         | Antes de Fase 7                                                      | ✅ Sí           |
+| Revisión legal de los 9 documentos del sitio                     | Antes de Fase 7                                                      | ✅ Sí (ADR-020) |
+| Política de privacidad y T&C publicados                          | Antes de Fase 7                                                      | ✅ Sí           |
+| Banner de consentimiento de cookies funcional                    | Antes de Fase 7                                                      | ✅ Sí           |
+| Habilitación de proveedor DIAN (si software propio)              | N/A (usamos PT autorizado)                                           | —               |
+| Registro Nacional de Bases de Datos (RNBD) si aplica             | Confirmar con abogado                                                | Posible         |
+| Email `habeas-data@lucamsshop.com` operativo + SLA de PQR        | Lanzamiento                                                          | ✅ Sí           |
+| Email `retracto@lucamsshop.com` operativo                        | Lanzamiento                                                          | ✅ Sí           |
+| Tabla `Consent` registrando cada autorización                    | ✅ Implementado                                                      | ✅ Sí           |
+| Exportación de datos self-service                                | Pendiente (hoy: canal manual `habeas-data@`)                         | ✅ Sí           |
+| Eliminación de cuenta self-service (anonimización + soft-delete) | ✅ Implementado en `/mi-cuenta/seguridad → Eliminar mi cuenta`       | ✅ Sí           |
+| Purga por retención de logs con PII (`purge-event-logs`)         | ✅ Implementado (90/180 días)                                        | ✅ Sí           |
+| Flujo de retracto end-to-end                                     | ✅ Implementado (`/mi-cuenta/pedidos/[number]` + `/admin/retractos`) | ✅ Sí           |
+| Flujo de garantía                                                | ✅ Implementado (`/mi-cuenta/pedidos/[number]` + `/admin/garantias`) | ✅ Sí           |
+| Reporte de incidente a SIC ante brecha (procedimiento)           | Documentar en Fase 7                                                 | ✅ Sí           |

@@ -44,16 +44,16 @@
 
 ## Stack
 
-| Capa                      | Herramienta                                         | Por qué                                                                  |
-| ------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------ |
-| Unit + integración rápida | **Vitest**                                          | Rápido, ESM-native, compatible con TS, mejor DX que Jest                 |
-| Component (React)         | **Vitest + Testing Library**                        | Idem + RTL para query semántico                                          |
-| E2E navegador             | **Playwright**                                      | Soporta multi-browser, autoespera, generación de codegen, paralelización |
-| Visual regression         | **Playwright screenshots** + comparación Pixelmatch | Suficiente sin pagar Chromatic/Percy en MVP                              |
-| Performance               | **Lighthouse CI** + **k6** (load testing)           | Lighthouse para web vitals, k6 para load API                             |
-| Accesibilidad             | **`@axe-core/playwright`** + **`@axe-core/react`**  | Automatiza WCAG 2.1 AA                                                   |
-| Mocking de red            | **MSW** (Mock Service Worker)                       | Intercepta fetch sin tocar el código bajo test                           |
-| DB tests (RLS)            | **Supabase local** + Vitest                         | DB real, no mock, único modo de validar RLS                              |
+| Capa                      | Herramienta                                                                                                                     | Por qué                                                                  |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Unit + integración rápida | **Vitest**                                                                                                                      | Rápido, ESM-native, compatible con TS, mejor DX que Jest                 |
+| Component (React)         | **Vitest + Testing Library**                                                                                                    | Idem + RTL para query semántico                                          |
+| E2E navegador             | **Playwright**                                                                                                                  | Soporta multi-browser, autoespera, generación de codegen, paralelización |
+| Visual regression         | **Playwright screenshots** + comparación Pixelmatch                                                                             | Suficiente sin pagar Chromatic/Percy en MVP                              |
+| Performance               | **Lighthouse CI** + **k6** (load testing)                                                                                       | Lighthouse para web vitals, k6 para load API                             |
+| Accesibilidad             | **`@axe-core/playwright`** (helper `tests/e2e/_helpers/axe-scan.ts`) + test propio de contraste (`tests/a11y-contrast.test.ts`) | Automatiza WCAG 2.1 AA                                                   |
+| Mocking de red            | **`vi.stubGlobal("fetch", ...)`** por test (MSW no está instalado)                                                              | Intercepta fetch sin tocar el código bajo test                           |
+| DB tests (RLS)            | **Supabase local** + Vitest                                                                                                     | DB real, no mock, único modo de validar RLS                              |
 
 ---
 
@@ -61,8 +61,8 @@
 
 ### Naming
 
-- Archivos: `*.test.ts` o `*.test.tsx` al lado del archivo bajo test.
-- E2E: `e2e/<flujo>.spec.ts` en raíz del repo o `apps/web/e2e/`.
+- Archivos: `*.test.ts` o `*.test.tsx` al lado del archivo bajo test (vitest los recoge en cualquier ubicación de `apps/web` — ver `vitest.config.ts`).
+- E2E: `apps/web/tests/e2e/<flujo>.spec.ts` (helpers en `tests/e2e/_helpers/`, setup de ambiente en `tests/e2e/_setup/`).
 - Bloques: `describe('Service: createOrder', ...)`, `it('rejects invalid email', ...)`.
 - Mensajes en presente, en español es OK: `it('rechaza email inválido', ...)`.
 
@@ -82,15 +82,11 @@ features/checkout/
 
 ### Hooks comunes
 
-```ts
-// __tests__/setup.ts
-import { beforeAll, afterAll, afterEach } from "vitest";
-import { server } from "./msw-server";
+El setup real de la suite (no hay MSW):
 
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterEach(() => server.resetHandlers());
-afterAll(() => server.close());
-```
+- `tests/setup-env.ts` (`setupFiles`): carga `.env.local` vía dotenv sin pisar vars de shell (la shell/CI manda) y fija `NEXT_PUBLIC_STORE_MODE=full` si la shell no la trae.
+- `tests/vitest-global-teardown.ts` (`globalSetup`): tras TODA la suite, purga suave por patrón de test (slugs/emails con run-id o prefijo conocido) sin tocar el catálogo sembrado.
+- Mocking de red: `vi.stubGlobal("fetch", ...)` dentro de cada test que pega a una API externa.
 
 ---
 
@@ -100,17 +96,17 @@ afterAll(() => server.close());
 
 > **Mock cuando el dependiente cuesta dinero, lentitud o flakiness. Real en todo lo demás.**
 
-| Dependencia                                             | Estrategia                            | Razón                                                         |
-| ------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------- |
-| **Postgres**                                            | Real (Supabase local)                 | RLS, transacciones, pgmq, pg_cron solo se validan con DB real |
-| **Wompi API**                                           | MSW intercept con respuestas grabadas | Cuenta de costo + sandbox lento                               |
-| **Aveonline API**                                       | MSW intercept                         | Idem                                                          |
-| **Anthropic API**                                       | MSW intercept                         | Costo + lentitud + variabilidad de respuesta IA               |
-| **Resend API**                                          | MSW intercept                         | Costo del free tier                                           |
-| **Supabase Storage**                                    | Real (Supabase local)                 | Validar URL firmada, MIME, etc.                               |
-| **Supabase Auth**                                       | Real (Supabase local)                 | Sesiones, MFA, etc.                                           |
-| **Lib internas** (`lib/cart.ts`, `lib/format.ts`, etc.) | Sin mock — funciones puras            | Mock de funciones puras es antipatrón                         |
-| **Repository**                                          | Mock en unit, real en integración     | Permite separar lógica de dominio de infraestructura          |
+| Dependencia                                             | Estrategia                                            | Razón                                                    |
+| ------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------- |
+| **Postgres**                                            | Real (Supabase local)                                 | RLS, transacciones y pg_cron solo se validan con DB real |
+| **Wompi API**                                           | `vi.stubGlobal("fetch", ...)` con respuestas grabadas | Cuenta de costo + sandbox lento                          |
+| **Aveonline API**                                       | `vi.stubGlobal("fetch", ...)`                         | Idem                                                     |
+| **Anthropic API**                                       | `vi.stubGlobal("fetch", ...)`                         | Costo + lentitud + variabilidad de respuesta IA          |
+| **Resend API**                                          | `vi.stubGlobal("fetch", ...)`                         | Costo del free tier                                      |
+| **Supabase Storage**                                    | Real (Supabase local)                                 | Validar URL firmada, MIME, etc.                          |
+| **Supabase Auth**                                       | Real (Supabase local)                                 | Sesiones, MFA, etc.                                      |
+| **Lib internas** (`lib/cart.ts`, `lib/format.ts`, etc.) | Sin mock — funciones puras                            | Mock de funciones puras es antipatrón                    |
+| **Repository**                                          | Mock en unit, real en integración                     | Permite separar lógica de dominio de infraestructura     |
 
 ### Anti-patrones a evitar
 
@@ -125,30 +121,42 @@ afterAll(() => server.close());
 ### Qué cubrimos
 
 - `lib/format.ts` (formatCOP, fechas, etc.)
-- `lib/payment/wompi.ts` — cálculo de firma de integridad y verificación de webhook
-- `lib/csrf.ts` — generación y verificación de tokens
-- `lib/idempotency.ts` — cache hit/miss/conflict
-- `lib/redirects.ts` — `safeRedirectTarget` (open redirect prevention)
+- `lib/wompi.ts` — cálculo de firma de integridad y verificación de webhook
+- Defensa CSRF por header `Origin` en `proxy.ts` (`isOriginAllowed` sobre `/api/*`; las Server Actions son inmunes por SameSite=Lax)
+- Idempotencia por feature (ej. `features/quotes/idempotency.test.ts`) — cache hit/miss/conflict
+- `lib/safe-redirect.ts` — `safeRedirectTarget` (open redirect prevention)
 - `lib/retry.ts`, `lib/circuit-breaker.ts`
-- `lib/validation/*` — schemas Zod (casos válidos e inválidos)
+- `features/<feature>/schemas.ts` — schemas Zod (casos válidos e inválidos)
 - `features/<feature>/service.ts` — toda la lógica de dominio con repo mockeado
 
 ### Ejemplo
 
 ```ts
-// lib/payment/wompi.test.ts
+// lib/wompi.test.ts
 import { describe, it, expect } from "vitest";
 import { generateIntegritySignature } from "./wompi";
 
 describe("Wompi integrity signature", () => {
   it("genera SHA256 correcto del concatenado", () => {
-    const sig = generateIntegritySignature("REF-123", 1500000, "COP", "test_secret");
+    const sig = generateIntegritySignature({
+      reference: "REF-123",
+      amountInCents: 1500000,
+      currency: "COP",
+    });
     expect(sig).toBe("e8a4f..."); // valor pre-calculado
   });
 
   it("valor distinto si cambia un solo carácter", () => {
-    const a = generateIntegritySignature("REF-123", 1500000, "COP", "test_secret");
-    const b = generateIntegritySignature("REF-124", 1500000, "COP", "test_secret");
+    const a = generateIntegritySignature({
+      reference: "REF-123",
+      amountInCents: 1500000,
+      currency: "COP",
+    });
+    const b = generateIntegritySignature({
+      reference: "REF-124",
+      amountInCents: 1500000,
+      currency: "COP",
+    });
     expect(a).not.toBe(b);
   });
 });
@@ -183,6 +191,16 @@ describe("ProductCard", () => {
 
 ### Setup
 
+> **Setup real (verificado 2026-09-03):** los tests de integración NO levantan Supabase solos —
+> corren contra la DB que apunte `DATABASE_URL` de `.env.local` (cargado por `tests/setup-env.ts`).
+> El stack local completo (Supabase en podman, espejo de la nube) se maneja con Make:
+> `make db-local-start` → `make db-local-setup` (extensiones + migraciones) → `make db-local-on`
+> (apunta `.env.local` al stack local) → `make db-local-seed`. Contra ese stack corre
+> `make test-local` (`NIGHTLY_LOCALSTACK=1 pnpm --filter web test`, que excluye las 2 suites que
+> exigen el universo de datos de la DB compartida de dev). En CI el Postgres es un service
+> container pelado + compat SQL (ver § CI workflow). El sketch de abajo queda como referencia
+> conceptual del patrón (arranque + migraciones + seed).
+
 ```ts
 // __tests__/integration/setup.ts
 import { execSync } from "child_process";
@@ -208,9 +226,9 @@ afterAll(() => {
 
 - `repository.ts` directo contra Postgres real (transacciones, FK cascades, constraints).
 - `service.ts` con repository real (saga pattern, idempotencia, transacciones).
-- `lib/queue.ts` — enqueue + read + delete contra `pgmq` real.
-- `lib/rate-limit.ts` y `lib/cache.ts` — UPSERT atómico, TTL, cleanup.
-- Webhook handlers con request mock (firma válida e inválida).
+- `lib/rate-limit.ts` — UPSERT atómico, TTL, cleanup (`lib/rate-limit.integration.test.ts`).
+- `features/observability/*` — alertas, resumen diario, retención y salud de crons contra DB real.
+- Webhook handlers con request mock (firma válida e inválida) — `app/api/webhooks/*/route.integration.test.ts`.
 
 ### Ejemplo
 
@@ -260,6 +278,14 @@ describe("createOrder (integration)", () => {
 > approve/reject/toggleFeatured/archive/restore + bulk; `actions.integration.test.ts` cubre
 > `submitReviewAction` (gate de sesión, gate de compra, validación, creación pendiente y unicidad
 > por cliente/producto — respaldada por el índice único parcial `Review_productId_customerId_active_unique`).
+
+> **Convención del prefijo RUN — solo letras donde aplique `scrubPii` (fix 2026-08-29).** En los
+> tests que escriben en tablas cuyo contenido se persiste con `scrubPii` (ErrorLog/ErrorReport vía
+> `lib/error-capture.ts`), el RUN no puede llevar dígitos: `scrubPii` redacta ventanas de 10
+> dígitos tipo teléfono, así que un RUN con timestamp numérico podía quedar redactado al
+> persistirse y el query de limpieza ya no encontraba la fila (flake todo-o-nada por corrida).
+> `lib/error-capture.integration.test.ts` mapea cada dígito a una letra (`0-9` → `A-J`) justo por
+> esto: el RUN nunca es scrubbed y el almacenado coincide byte a byte con el consultado.
 
 ---
 
@@ -357,6 +383,27 @@ describe("RLS: Customer isolation", () => {
 > retorno + webhook) — pendiente por fragilidad de red; hoy el pago se valida a nivel de webhook
 > en integración, no end-to-end en navegador.
 
+### Ambiente E2E (`E2E_ENV`)
+
+`tests/e2e/_setup/env.ts` resuelve el ambiente con `E2E_ENV=local|stg|prd` (default `local`,
+inválido = error ruidoso): qué `.env` carga el runner (`.env.local` o `.env.stg`, sin pisar vars
+de shell — la shell/CI siempre manda), el `baseURL` (STG sale de `NEXT_PUBLIC_SITE_URL`; PRD es
+solo-lectura contra lucamsshop.com; LOCAL del `PORT`, default :4000) y el header de bypass de
+Deployment Protection de Vercel (solo STG con `VERCEL_BYPASS_TOKEN`). `PLAYWRIGHT_BASE_URL`
+explícita siempre gana (corridas puntuales contra previews). El `_setup/global.setup.ts` crea
+usuarios efímeros por corrida vía service role y guarda el `storageState` por ambiente en
+`tests/e2e/.auth/<env>/` (gitignored).
+
+### MFA en los specs de admin
+
+El MFA es OBLIGATORIO para todo rol admin desde 2026-08-29 (auditoría 2026-08-24 · B-1): un admin
+sin factor TOTP ya no aterriza en el dashboard tras el login — el layout lo manda a
+`/admin/seguridad?enroll=required`. Los specs que crean su propio AdminUser deben enrolar TOTP con
+los helpers de `tests/e2e/_helpers/mfa.ts`: `enrollTotpFactor` (enrola + verifica el factor vía
+API GoTrue y devuelve el secret base32), `completeMfaChallengeIfNeeded` (resuelve el reto de
+`/admin/login/mfa` si aparece) y `loginAdminWithTotp` (login completo: credenciales → reto →
+dashboard). Los códigos TOTP se generan con `tests/e2e/_helpers/totp.ts`.
+
 ### Flujos críticos (ESTADO OBJETIVO — no todos tienen E2E real)
 
 | Flujo                                 | Descripción                                                                          | Frecuencia objetivo         | Estado real (2026-08-01)                                                       |
@@ -396,8 +443,9 @@ test.describe("Compra Wompi sandbox", () => {
     // Mock o sandbox real de Wompi: usar tarjeta 4242
     // ... interactuar con widget
 
-    // Volver al sitio
-    await expect(page).toHaveURL(/\/orden\//);
+    // Volver al sitio (Wompi redirige a /checkout/gracias?id=TX_ID — el estado
+    // real se verifica contra la API de Wompi, no contra el query param)
+    await expect(page).toHaveURL(/\/checkout\/gracias/);
     await expect(page.getByText(/pedido confirmado/i)).toBeVisible();
   });
 });
@@ -408,7 +456,7 @@ test.describe("Compra Wompi sandbox", () => {
 - **Selectores accesibles primero:** `getByRole`, `getByLabel`, `getByText`. Evitar CSS selectors frágiles.
 - **No usar `waitForTimeout`** salvo último recurso. Usar `waitForResponse`, `expect().toBeVisible()`.
 - **Una sola aserción crítica por test** cuando sea posible (otros chequeos como soft-asserts).
-- **Test data factory** en `e2e/fixtures.ts` para crear cuentas test, productos test, etc.
+- **Test data factory** en `tests/e2e/fixtures/` (`data-factory.ts` y compañía) para crear cuentas test, productos test, etc.
 
 ---
 
@@ -417,7 +465,7 @@ test.describe("Compra Wompi sandbox", () => {
 ### Setup mínimo (sin Chromatic/Percy)
 
 ```ts
-// e2e/visual.spec.ts
+// tests/e2e/visual.spec.ts
 test("home se ve igual que el snapshot", async ({ page }) => {
   await page.goto("/");
   await expect(page).toHaveScreenshot("home.png", { maxDiffPixels: 100 });
@@ -426,7 +474,7 @@ test("home se ve igual que el snapshot", async ({ page }) => {
 
 - **Máscaras** sobre regiones dinámicas (timestamps, contador de stock).
 - **Snapshots por viewport:** mobile-only y desktop-only se generan separados.
-- **Update workflow:** `pnpm test:e2e --update-snapshots` cuando UI cambia intencionalmente.
+- **Update workflow:** `pnpm --filter web test:e2e --update-snapshots` cuando UI cambia intencionalmente.
 
 ### Páginas con visual regression obligatorio
 
@@ -445,31 +493,27 @@ test("home se ve igual que el snapshot", async ({ page }) => {
 
 ### En unit (RTL)
 
-```tsx
-import { axe } from "jest-axe"; // o vitest-axe
-test("ProductCard no tiene violaciones de a11y", async () => {
-  const { container } = render(<ProductCard product={mockProduct} />);
-  const results = await axe(container);
-  expect(results).toHaveNoViolations();
-});
-```
+No hay jest-axe/vitest-axe instalado. Lo que sí existe: `tests/a11y-contrast.test.ts`, test
+propio que congela el contraste WCAG 1.4.3/1.4.11 de la paleta de marca (los pares texto/fondo
+reales del storefront y el Estudio).
 
 ### En E2E (Playwright)
 
+Con `@axe-core/playwright` vía el helper `tests/e2e/_helpers/axe-scan.ts` (tags WCAG 2.1 A/AA):
+
 ```ts
-import { injectAxe, checkA11y } from "axe-playwright";
+// tests/e2e/axe.spec.ts (real)
+import { scanA11y, formatViolations } from "./_helpers/axe-scan";
 
 test("home cumple WCAG 2.1 AA", async ({ page }) => {
   await page.goto("/");
-  await injectAxe(page);
-  await checkA11y(page, null, {
-    detailedReport: true,
-    detailedReportOptions: { html: true },
-  });
+  const violations = await scanA11y(page);
+  expect(violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
 });
 ```
 
-> **Bloqueante en CI:** una violación nueva (no presente en `main`) bloquea el merge.
+> **Bloqueante en CI:** `axe.spec` corre en el job `e2e` por PR y falla con cualquier violación
+> `serious`/`critical` en las páginas públicas (las `moderate`/`minor` quedan en el log).
 
 ---
 
@@ -508,7 +552,7 @@ test("home cumple WCAG 2.1 AA", async ({ page }) => {
 ### Load testing con k6
 
 ```js
-// load/checkout-burst.js
+// tests/load/storefront-browsing.js — el script real del repo (ver nota abajo)
 import http from "k6/http";
 import { check, sleep } from "k6";
 
@@ -534,6 +578,13 @@ export default function () {
 ```
 
 > **Cuándo:** antes de cada release de Fase 7. No en cada PR (caro).
+
+> **Script real (verificado 2026-09-03):** `tests/load/storefront-browsing.js` — escenario de
+> navegación con 50 VUs (70% home → catálogo → PDP, 20% búsqueda + `/api/cms/blocks`, 10%
+> carrito); thresholds `p(95)<500ms`, `p(99)<1000ms`, <1% errores. Se corre con `make test-load`
+> (exige k6 instalado) y acepta `-e BASE_URL=...` y `-e VERCEL_BYPASS_TOKEN=...` para previews.
+> El sketch de arriba (burst de POST /api/checkout/create) queda como referencia de un segundo
+> escenario a futuro.
 
 ---
 
@@ -575,19 +626,37 @@ test.describe.parallel("Smoke", () => {
 
 ## Tests de seguridad
 
-| Test                                | Herramienta                                        | Cuándo            |
-| ----------------------------------- | -------------------------------------------------- | ----------------- |
-| `pnpm audit --audit-level=high`     | npm audit                                          | Cada PR           |
-| `gitleaks detect` (secret scanning) | gitleaks                                           | Cada PR           |
-| Headers de seguridad presentes      | Playwright (assertions sobre `response.headers()`) | Cada deploy       |
-| Rate limit funciona                 | Playwright (loop hasta 429)                        | Cada PR (Fase 1+) |
-| Webhook firma inválida es rechazada | Vitest integration                                 | Cada PR (Fase 4+) |
-| RLS impostor falla                  | Vitest integration                                 | Cada PR           |
-| Pen test manual                     | Externo                                            | Pre-lanzamiento   |
+| Test                                   | Herramienta                                        | Cuándo            |
+| -------------------------------------- | -------------------------------------------------- | ----------------- |
+| `pnpm audit --prod --audit-level=high` | pnpm audit (job `dep-audit` de CI)                 | Cada PR           |
+| `gitleaks detect` (secret scanning)    | gitleaks                                           | Cada PR           |
+| Headers de seguridad presentes         | Playwright (assertions sobre `response.headers()`) | Cada deploy       |
+| Rate limit funciona                    | Playwright (loop hasta 429)                        | Cada PR (Fase 1+) |
+| Webhook firma inválida es rechazada    | Vitest integration                                 | Cada PR (Fase 4+) |
+| RLS impostor falla                     | Vitest integration                                 | Cada PR           |
+| Pen test manual                        | Externo                                            | Pre-lanzamiento   |
 
 ---
 
 ## CI workflow
+
+> **Estado real (verificado 2026-09-03):** el CI real es `.github/workflows/ci.yml` (ramas
+> `develop`/`production`/`catalogo-whatsapp` — `main` NO existe) con estos jobs:
+>
+> - **`quality`** — typecheck + lint + build, más dos gates propios: la **auditoría de cobertura
+>   de contenido** (`packages/db/scripts/audit-content-coverage.mjs --check` — falla si aparece
+>   copy nuevo en español fuera del CMS o si el % global baja del baseline
+>   `content-coverage-baseline.json`; reporte local con `make audit-content`) y el **lint de
+>   voseo** (el copy es-CO es tuteo).
+> - **`unit-tests`** — `pnpm --filter web test:coverage` contra un Postgres service container
+>   (+ `supabase-compat.sql` y las SQL de `supabase/migrations`); incluye el gate de coverage y
+>   `rls-coverage`. Los tests que exigen Supabase real saltan limpio.
+> - **`e2e`** — smoke + a11y + axe + compra + estudio contra el build de producción.
+> - **`lighthouse`**, **`secrets-scan`** (gitleaks), **`format-check`**, **`dep-audit`**
+>   (`pnpm audit --prod --audit-level=high`).
+>
+> El sketch de abajo queda como referencia de la estructura conceptual; RLS no es job aparte
+> (coverage corre en `unit-tests`, matrix en `.github/workflows/nightly-full.yml`).
 
 ```yaml
 # .github/workflows/ci.yml (estructura propuesta)
@@ -652,6 +721,9 @@ SÍ se mide y se enforza — `apps/web/vitest.config.ts` define `coverage.thresh
 medición real de CI) y el job de tests de CI corre `pnpm --filter web test:coverage`
 (`.github/workflows/ci.yml`), que falla si la cobertura cae por debajo del piso. Los thresholds
 se aprietan de nuevo a medida que sube la cobertura real (ratchet).
+
+**Tamaño de la suite al 2026-09-03:** ~2.967 tests en 192 archivos (`npx vitest list` en
+`apps/web`). Crece semana a semana — el gate de calidad es el coverage, no el conteo.
 
 ---
 

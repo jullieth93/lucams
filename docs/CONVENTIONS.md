@@ -14,7 +14,7 @@
 8. [Backend — formato estándar de errores (RFC 7807)](#backend--formato-estándar-de-errores-rfc-7807)
 9. [Backend — capa de servicio](#backend--capa-de-servicio)
 10. [Backend — saga pattern para flujos distribuidos](#backend--saga-pattern-para-flujos-distribuidos)
-11. [Backend — idempotency keys](#backend--idempotency-keys)
+11. [Backend — idempotencia](#backend--idempotencia)
 12. [DB — naming SQL](#db--naming-sql)
 13. [DB — migration strategy (expand-then-contract)](#db--migration-strategy-expand-then-contract)
 14. [DB — indexing strategy](#db--indexing-strategy)
@@ -45,17 +45,17 @@
 | ------------------------------ | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
 | Archivos TS/TSX                | `kebab-case.tsx` o nombre del componente PascalCase                          | `product-card.tsx`, `ProductCard.tsx` (mantener una convención por carpeta) |
 | Componentes React              | `PascalCase`                                                                 | `ProductCard`, `CheckoutStepper`                                            |
-| Hooks                          | `useXxx` camelCase                                                           | `useCart`, `useDebounce`                                                    |
+| Hooks                          | `useXxx` camelCase                                                           | `useSubmitPending`, `useDebounce`                                           |
 | Funciones / variables          | `camelCase`                                                                  | `formatCOP`, `currentUser`                                                  |
 | Constantes globales            | `SCREAMING_SNAKE_CASE`                                                       | `MAX_UPLOAD_BYTES`, `WA_NUMBER`                                             |
 | Tipos / Interfaces             | `PascalCase` (sin prefijo `I`)                                               | `Order`, `CheckoutPayload`                                                  |
 | Enums                          | `PascalCase` con valores `SCREAMING_SNAKE_CASE`                              | `OrderStatus.PENDING_PAYMENT`                                               |
 | Tablas Prisma (modelos)        | `PascalCase` singular                                                        | `Customer`, `OrderItem`                                                     |
 | Columnas Prisma                | `camelCase`                                                                  | `firstName`, `createdAt`                                                    |
-| Tablas SQL nativas (no-Prisma) | `snake_case` plural                                                          | `rate_limit_buckets`, `cache_entries`                                       |
-| Funciones SQL                  | `snake_case` con prefijo                                                     | `rate_limit_increment`                                                      |
+| Tablas SQL nativas (no-Prisma) | `snake_case` plural                                                          | `rate_limit_buckets`                                                        |
+| Funciones SQL                  | `snake_case`                                                                 | `rate_limit_check`                                                          |
 | Variables de entorno           | `SCREAMING_SNAKE_CASE` con prefijo `NEXT_PUBLIC_` solo si visible en cliente | `WOMPI_PRIVATE_KEY`, `NEXT_PUBLIC_SITE_URL`                                 |
-| Slugs (URLs)                   | `kebab-case`                                                                 | `/categoria/dia-de-la-madre`                                                |
+| Slugs (URLs)                   | `kebab-case`                                                                 | `/ocasion/dia-de-la-madre`                                                  |
 | Branches Git                   | `tipo/descripcion-corta`                                                     | `feat/checkout-multi-step`, `fix/wompi-webhook-replay`                      |
 | Commits                        | Conventional Commits                                                         | `feat(checkout): add COD as payment method`                                 |
 | Tags Git                       | `v<semver>`                                                                  | `v0.3.1`                                                                    |
@@ -68,66 +68,65 @@
 ```
 apps/web/
 ├── app/
-│   ├── (storefront)/                    # Group route público
-│   │   ├── layout.tsx                   # Header/Footer/WhatsApp FAB
-│   │   ├── page.tsx                     # Home
-│   │   ├── catalogo/
-│   │   ├── producto/[slug]/
+│   ├── page.tsx                         # Home
+│   ├── productos/                       # Catálogo (SSR puro, filtros por query param)
+│   ├── producto/[slug]/
+│   ├── estudio/[slug]/                  # Estudio: studio-editor.tsx (react-konva),
+│   │   │                                #   *-3d-view.tsx (react-three-fiber),
+│   │   │                                #   lib/store.ts (Zustand)
 │   │   └── ...
-│   ├── (admin)/                         # Group route protegido por middleware
-│   │   ├── layout.tsx
-│   │   └── admin/
-│   │       └── ...
+│   ├── checkout/                        # Multi-step: datos/ envio/ pago/ gracias/
+│   │   └── pago/actions.ts              # Server Actions del paso (junto a la ruta)
+│   ├── mi-cuenta/                       # pedidos/, perfil/, direcciones/, seguridad/…
+│   ├── (auth)/                          # login/, registro/, recuperar-password/…
+│   ├── admin/
+│   │   ├── login/                       # + mfa/ (challenge TOTP)
+│   │   └── (panel)/                     # Backoffice protegido (layout + admin-rbac-guard)
 │   ├── api/                             # Solo endpoints REST
-│   │   ├── wompi/webhook/
-│   │   ├── checkout/create/
+│   │   ├── webhooks/                    # wompi/, aveonline/, resend/
+│   │   ├── cron/                        # jobs pg_cron protegidos con x-cron-secret
+│   │   ├── catalog/ · coupons/ · cms/
 │   │   └── ...
 │   ├── error.tsx                        # Error boundary global
 │   ├── not-found.tsx                    # 404 con mascota
 │   └── global-error.tsx                 # Catch-all (root)
 ├── components/
 │   ├── ui/                              # shadcn/ui generado
-│   ├── storefront/                      # Componentes del storefront
-│   │   ├── product-card.tsx
-│   │   ├── cart-drawer.tsx
-│   │   └── ...
-│   ├── studio/                          # Editor react-konva
-│   ├── preview3d/                       # Three.js
-│   └── admin/
-├── features/                            # Feature folders (lógica + UI por feature)
-│   ├── checkout/
-│   │   ├── server-actions.ts
-│   │   ├── components/
-│   │   ├── hooks/
-│   │   ├── schemas.ts                   # Zod schemas
-│   │   └── service.ts                   # Lógica de dominio
-│   ├── cart/
-│   ├── personalization/
+│   ├── admin/ · cms/ · home/ · product-detail/ · address/ · legal/
+│   ├── product-card.tsx
+│   ├── site-header.tsx / site-footer.tsx
 │   └── ...
+├── features/                            # Feature folders (lógica por feature)
+│   ├── checkout/
+│   │   ├── service.ts                   # Lógica de dominio + acceso DB (vía @/lib/db)
+│   │   ├── schemas.ts                   # Zod schemas
+│   │   └── cod-risk.ts · address-key.ts · …
+│   ├── orders/                          # service.ts · saga.ts · stock.ts · emails.ts…
+│   ├── payments/                        # provider.ts (interface) + wompi.ts
+│   ├── shipping/                        # provider.ts + aveonline.ts
+│   └── ... (~35 features)
 ├── lib/                                 # Utilidades cross-feature
-│   ├── supabase/
-│   ├── payment/                         # Adaptador PaymentProvider
-│   ├── whatsapp.ts
-│   ├── ai.ts
-│   ├── cart.ts                          # Zustand store
-│   ├── i18n.ts
-│   ├── format.ts
-│   ├── rate-limit.ts                    # Postgres-based (ADR-016)
-│   ├── cache.ts                         # Postgres-based (ADR-016)
-│   ├── queue.ts                         # pgmq enqueue helpers (ADR-017)
-│   ├── errors.ts                        # ProblemDetails helpers (RFC 7807)
-│   ├── logger.ts                        # Pino con redact PII
-│   ├── request-id.ts                    # Generación + propagación
-│   ├── csrf.ts
-│   ├── idempotency.ts
-│   ├── circuit-breaker.ts
-│   └── validation/                      # Schemas Zod cross-feature
-├── messages/                            # i18n
-├── middleware.ts                        # Auth + CORS + headers + request ID
+│   ├── supabase/                        # server.ts · browser.ts · service.ts
+│   ├── db.ts                            # Prisma client
+│   ├── wompi.ts · resend.ts             # Clientes HTTP de terceros (fetch)
+│   ├── cms.ts                           # Lectura CMS v2 con fallback
+│   ├── cart-session.ts · checkout-session.ts   # Cookies selladas de sesión
+│   ├── token-hash.ts                    # SHA-256 de bearer tokens
+│   ├── admin-rbac-guard.ts · admin-rbac.ts · admin-roles.ts
+│   ├── error-capture.ts · errors.ts     # RFC 7807 + ErrorLog/ErrorReport
+│   ├── logger.ts                        # JSON estructurado con redact PII
+│   ├── rate-limit.ts · rate-limit-keys.ts      # Postgres-based (ADR-016)
+│   ├── fetch-with-timeout.ts · retry.ts · circuit-breaker.ts
+│   ├── security-headers.ts · turnstile.ts · origin.ts · client-ip.ts
+│   ├── storage.ts · photo-validation.ts
+│   └── format.ts · money.ts · utils.ts…
+├── proxy.ts                             # Proxy (ex-middleware, Next 16): request ID,
+│                                        #   sesión Supabase, CORS, security headers,
+│                                        #   gate /admin/*, redirects, idle-timeout admin
 └── ...
 ```
 
-> **Regla:** lógica que pertenece a una feature vive en `features/<feature>/`. Solo lo verdaderamente compartido va a `lib/`. Esto evita el "dios `lib/` con 200 archivos".
+> **Regla:** lógica que pertenece a una feature vive en `features/<feature>/`. Solo lo verdaderamente compartido va a `lib/`. Esto evita el "dios `lib/` con 200 archivos". Las Server Actions viven en `features/<feature>/actions.ts` cuando son reusables, o `app/<ruta>/actions.ts` cuando pertenecen a una sola pantalla.
 
 ---
 
@@ -146,26 +145,34 @@ apps/web/
 Cuando una página es mayormente server pero tiene una isla interactiva: el server component renderiza el árbol y solo la isla es client.
 
 ```tsx
-// app/(storefront)/producto/[slug]/page.tsx — Server Component
-export default async function ProductPage({ params }: { params: { slug: string } }) {
-  const product = await getProductBySlug(params.slug); // Server-side fetch
+// app/producto/[slug]/page.tsx — Server Component
+export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params; // En Next 16 params/searchParams son Promise
+  const product = await getProductBySlug(slug); // Server-side fetch
   if (!product) notFound();
   return (
     <article>
       <ProductGallery images={product.images} /> {/* Server */}
       <ProductInfo product={product} /> {/* Server */}
-      <AddToCartButton variantId={product.variants[0].id} /> {/* Client island */}
+      <AddToCartButton /> {/* Client island (Context + Server Action) */}
     </article>
   );
 }
 ```
 
 ```tsx
-// components/storefront/add-to-cart-button.tsx
+// app/producto/[slug]/variant-actions.tsx — client island (ejemplo real: el
+// buy-box de la PDP comparte la variante elegida vía Context y agrega al
+// carrito con una Server Action en un <form action={...}>)
 "use client";
-export function AddToCartButton({ variantId }: { variantId: string }) {
-  const addItem = useCart((s) => s.addItem);
-  return <Button onClick={() => addItem(variantId)}>Agregar al carrito</Button>;
+export function AddToCartButton() {
+  const { selectedId } = useSelectedVariant();
+  return (
+    <form action={addToCartAction}>
+      <input type="hidden" name="variantId" value={selectedId ?? ""} />
+      <SubmitButton>Agregar al carrito</SubmitButton>
+    </form>
+  );
 }
 ```
 
@@ -173,11 +180,11 @@ export function AddToCartButton({ variantId }: { variantId: string }) {
 
 | Escenario                                       | Patrón                                                            |
 | ----------------------------------------------- | ----------------------------------------------------------------- |
-| Lectura inicial en SSR/RSC                      | Server Component con `await fetch()` o Prisma directo             |
+| Lectura inicial en SSR/RSC                      | Server Component con Prisma directo (service de la feature)       |
 | Mutación de cliente (form submit, button click) | **Server Action** (preferido)                                     |
 | Mutación llamada por terceros (webhooks)        | **API route** (`app/api/.../route.ts`)                            |
 | Lectura desde cliente (búsqueda, autocomplete)  | Server Action si autenticado, API route con rate limit si público |
-| Streaming de IA                                 | API route con Edge runtime                                        |
+| IA (sugerencias de diseño)                      | Server Action que delega a `features/ai/service.ts`               |
 
 ### Hidratación selectiva
 
@@ -189,50 +196,55 @@ Imágenes pesadas no entran en client bundle: usar `next/image` con `priority` s
 
 ### Stack
 
-- **react-hook-form** para state del form.
-- **Zod** para schemas, compartidos entre cliente (UX inmediata) y servidor (validación final).
-- **`@hookform/resolvers/zod`** como puente.
+- **Server Actions + `useActionState`** (React 19) para el submit — no usamos react-hook-form: los forms son `<form action={formAction}>` nativos progresivamente mejorados.
+- **Zod** para schemas, compartidos entre cliente (UX inmediata, validación ligera opcional) y servidor (validación final obligatoria).
 
 ### Patrón
 
 ```tsx
-// features/checkout/components/checkout-form.tsx
+// app/checkout/pago/coupon-form.tsx
 "use client";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { CheckoutPayloadSchema, CheckoutPayload } from "../schemas";
-import { createOrder } from "../server-actions";
+import { useActionState } from "react";
+import { applyCouponAction, type CouponActionState } from "./actions";
 
-export function CheckoutForm() {
-  const form = useForm<CheckoutPayload>({
-    resolver: zodResolver(CheckoutPayloadSchema),
-    defaultValues: { paymentMethod: "WOMPI" },
-    mode: "onBlur", // Valida en blur, no en cada keystroke (mejor UX)
-  });
+export function CouponForm() {
+  const [state, formAction, pending] = useActionState<CouponActionState | null, FormData>(
+    applyCouponAction,
+    null,
+  );
 
-  async function onSubmit(values: CheckoutPayload) {
-    const result = await createOrder(values);
-    if (!result.ok) {
-      // Mapear errores de servidor a campos del form si aplica
-      if (result.problem.type === "https://lucamsshop.com/problems/invalid-coupon") {
-        form.setError("couponCode", { message: result.problem.detail });
-      }
-      return;
-    }
-    // redirect al pago
-  }
+  return (
+    <form action={formAction}>
+      <Input name="code" aria-invalid={!!state?.error} aria-describedby="coupon-error" />
+      {state?.error && <p id="coupon-error">{state.error}</p>}
+      <Button type="submit" disabled={pending}>
+        Aplicar
+      </Button>
+    </form>
+  );
+}
+```
 
-  return <form onSubmit={form.handleSubmit(onSubmit)}>...</form>;
+```ts
+// app/checkout/pago/actions.ts
+"use server";
+export async function applyCouponAction(
+  _prev: CouponActionState | null,
+  formData: FormData,
+): Promise<CouponActionState> {
+  const parsed = ApplyCouponSchema.safeParse({ code: formData.get("code") });
+  if (!parsed.success) return { error: "Cupón inválido." };
+  // ...delega a features/coupons; redirect() o devuelve state
 }
 ```
 
 ### Reglas
 
-- **`mode: 'onBlur'`** para campos normales; `'onChange'` solo en autocompletes y debounced search.
 - **Errores accesibles:** `aria-invalid`, `aria-describedby` apuntando al mensaje.
-- **No deshabilitar el botón "submit"** hasta que el usuario intentó submit la primera vez (deshabilitar antes oculta el motivo del error).
+- **No deshabilitar el botón "submit"** hasta que el usuario intentó submit la primera vez (deshabilitar antes oculta el motivo del error); durante el submit, `pending` de `useActionState` (o `useSubmitPending`) lo deshabilita.
 - **Server Action SIEMPRE re-valida con Zod**, no confía en lo que vino del cliente.
 - **Mensajes en español:** centralizados en el schema Zod (no en el componente).
+- **Anti-bot:** forms públicos (newsletter, contacto, auth) verifican Turnstile (`lib/turnstile.ts`) antes de procesar.
 
 ---
 
@@ -247,20 +259,17 @@ export function CheckoutForm() {
 
 ### Patrón con Suspense + error boundaries
 
-```tsx
-// app/(storefront)/cuenta/ordenes/page.tsx
-import { Suspense } from "react";
-import { ErrorBoundary } from "@/components/error-boundary";
-import { OrderListSkeleton } from "@/components/skeletons/order-list-skeleton";
-import { OrderList } from "./order-list";
+Next.js App Router ya provee los boundaries por convención de archivo: `loading.tsx` (Suspense) y `error.tsx` (error boundary) por segmento de ruta — p.ej. `app/productos/loading.tsx`, `app/admin/(panel)/error.tsx`, `app/error.tsx` y `app/global-error.tsx` para el catch-all.
 
-export default function OrdersPage() {
+```tsx
+// app/productos/loading.tsx — skeleton con el MISMO layout que la página real
+export default function Loading() {
   return (
-    <ErrorBoundary fallback={<OrderListError />}>
-      <Suspense fallback={<OrderListSkeleton />}>
-        <OrderList />
-      </Suspense>
-    </ErrorBoundary>
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="bg-muted h-64 animate-pulse rounded-xl" />
+      ))}
+    </div>
   );
 }
 ```
@@ -291,52 +300,50 @@ export default function OrdersPage() {
 
 ### Server Actions — convención
 
-- Una Server Action = una función exportada con `'use server'`.
-- Vive en `features/<feature>/server-actions.ts`.
-- **Nunca expone Prisma directo;** delega a `service.ts` de la feature.
-- Devuelve `Result<T>` discriminado:
+- Una Server Action = una función exportada de un módulo con `'use server'` en la primera línea.
+- Vive en `features/<feature>/actions.ts` (reusable entre pantallas) o `app/<ruta>/actions.ts` (de una sola pantalla, p.ej. `app/checkout/pago/actions.ts`).
+- **Nunca expone Prisma directo;** delega al `service.ts` de la feature.
+- Para forms devuelve un **state tipado** consumido por `useActionState` (`{ error?: string; ... }`); para flujos que terminan en navegación, `redirect()` de Next. Ejemplo real: `features/newsletter/actions.ts`.
 
 ```ts
-type Ok<T> = { ok: true; data: T };
-type Err = { ok: false; problem: ProblemDetails };
-type Result<T> = Ok<T> | Err;
-```
-
-```ts
-// features/checkout/server-actions.ts
+// features/newsletter/actions.ts
 "use server";
-import { CheckoutPayloadSchema, type CheckoutPayload } from "./schemas";
-import * as service from "./service";
-import { problemFromError, problem } from "@/lib/errors";
+import { SubscribeSchema } from "@/features/newsletter/schemas";
+import * as service from "@/features/newsletter/service";
 import { rateLimit } from "@/lib/rate-limit";
-import { getRequestId } from "@/lib/request-id";
+import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 
-export async function createOrder(
-  input: CheckoutPayload,
-): Promise<Result<{ orderId: string; redirectUrl?: string }>> {
-  const requestId = getRequestId();
-  const parsed = CheckoutPayloadSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, problem: problem.validation(parsed.error, requestId) };
+export type NewsletterFormState = { ok?: boolean; error?: string; message?: string };
 
-  const allowed = await rateLimit(`checkout:${parsed.data.email}`, 10, 600);
-  if (!allowed) return { ok: false, problem: problem.tooManyRequests(requestId) };
+export async function subscribeNewsletterAction(
+  _prev: NewsletterFormState | null,
+  formData: FormData,
+): Promise<NewsletterFormState> {
+  const parsed = SubscribeSchema.safeParse({
+    email: String(formData.get("email") ?? "")
+      .trim()
+      .toLowerCase(),
+    consent: formData.get("consent"),
+  });
+  if (!parsed.success) return { error: "Datos inválidos." };
 
-  try {
-    const result = await service.createOrder(parsed.data, requestId);
-    return { ok: true, data: result };
-  } catch (err) {
-    return { ok: false, problem: problemFromError(err, requestId) };
-  }
+  const ip = getClientIp(await headers());
+  const rl = await rateLimit(ipKey("newsletter", ip), 5, 3600);
+  if (!rl.allowed) return { error: "Demasiados intentos. Intenta más tarde." };
+
+  await service.subscribeNewsletter(parsed.data /* ... */);
+  return { ok: true, message: "¡Listo! Revisa tu correo." };
 }
 ```
 
 ### API routes — convención
 
 - Validar con Zod en el límite.
-- CORS aplicado por middleware.
+- CORS aplicado por `proxy.ts` (allowlist de orígenes en `/api/*`).
 - Devuelve siempre JSON, content-type correcto.
-- En errores: `application/problem+json` (RFC 7807).
-- Rate limit explícito si es público.
+- En errores: `application/problem+json` (RFC 7807) vía `problemResponse(err, requestId)` de `lib/errors.ts`.
+- Rate limit explícito si es público (`lib/rate-limit.ts`, con keys de `lib/rate-limit-keys.ts`).
+- **Webhooks: verificación de firma/secreto antes de procesar, fail-closed en producción.** Wompi: firma de eventos (sha256 de propiedades + timestamp + `WOMPI_EVENTS_SECRET`) + ventana de timestamp (~25 h, cubre los reintentos legítimos). Resend: firma `svix-signature` (HMAC sobre `svix-id.svix-timestamp.rawBody` con `RESEND_WEBHOOK_SECRET`). Aveonline: secreto compartido por header `x-aveonline-secret` o `payload.token`; la vía `?secret=` por query-string está **deshabilitada por defecto** (`AVEONLINE_ALLOW_QUERY_SECRET=true` solo durante la transición — el secreto en URL viaja en logs de infraestructura, D-1).
 
 ---
 
@@ -357,67 +364,51 @@ export type ProblemDetails = {
   requestId?: string; // Extension propia para correlación
   errors?: Record<string, string[]>; // Para validation errors (extensión típica)
 };
+```
 
-export const problem = {
-  validation(zodErr: ZodError, requestId: string): ProblemDetails {
-    return {
-      type: "https://lucamsshop.com/problems/validation",
-      title: "Datos de entrada inválidos",
-      status: 400,
-      detail: "Uno o más campos no cumplen el formato requerido.",
-      requestId,
-      errors: zodErr.flatten().fieldErrors as Record<string, string[]>,
-    };
-  },
-  notFound(resource: string, requestId: string): ProblemDetails {
-    return {
-      type: "https://lucamsshop.com/problems/not-found",
-      title: "Recurso no encontrado",
-      status: 404,
-      detail: `No se encontró ${resource}.`,
-      requestId,
-    };
-  },
-  tooManyRequests(requestId: string): ProblemDetails {
-    return {
-      type: "https://lucamsshop.com/problems/too-many-requests",
-      title: "Demasiadas solicitudes",
-      status: 429,
-      detail: "Por favor espera unos momentos antes de reintentar.",
-      requestId,
-    };
-  },
-  // ...etc por dominio
-};
+El patrón implementado: la capa de servicio lanza subclases de `AppError` (`ValidationError`, `NotFoundError`, `UnauthorizedError`, `ForbiddenError`, `ConflictError`, `UnprocessableError`, `TooManyRequestsError`, `InternalError`) sin saber de HTTP; la capa HTTP las convierte con `problemResponse`:
 
-export function problemResponse(p: ProblemDetails): Response {
-  return new Response(JSON.stringify(p), {
-    status: p.status,
-    headers: {
-      "Content-Type": "application/problem+json",
-      "X-Request-Id": p.requestId ?? "",
-    },
-  });
+```ts
+// lib/errors.ts (forma real)
+export class AppError extends Error {
+  constructor(
+    public readonly slug: ProblemSlug,
+    public readonly status: number,
+    public readonly title: string,
+    public readonly detail?: string,
+    public readonly errors?: Record<string, string[]>,
+  ) { /* ... */ }
+  toProblem(requestId?: string): ProblemDetails { /* ... */ }
+}
+
+export class ValidationError extends AppError {
+  constructor(zodErr: z.ZodError) {
+    const flat = z.flattenError(zodErr);
+    super("validation", 400, "Datos de entrada inválidos", "...", flat.fieldErrors as ...);
+  }
+}
+
+export function problemResponse(err: AppError | ProblemDetails, requestId?: string): Response {
+  // Content-Type: application/problem+json + header X-Request-Id
 }
 ```
 
 ### Catálogo de tipos `https://lucamsshop.com/problems/<slug>`
 
-> Cada tipo se documenta en `app/(legal)/problems/[slug]/page.tsx` para que los URIs sean dereferenceables (per RFC 7807).
+> Los URIs serán dereferenceables cuando se cree `app/(legal)/problems/[slug]/page.tsx` (**pendiente** — ver comentario en `lib/errors.ts`). Los slugs implementados hoy (`ProblemSlug` en `lib/errors.ts`):
 
-| Slug                        | Status | Cuándo                                        |
-| --------------------------- | ------ | --------------------------------------------- |
-| `validation`                | 400    | Body no pasa Zod                              |
-| `unauthorized`              | 401    | No autenticado                                |
-| `forbidden`                 | 403    | Autenticado pero sin permiso                  |
-| `not-found`                 | 404    | Recurso inexistente                           |
-| `conflict`                  | 409    | Idempotency key conflict, stock agotado, etc. |
-| `unprocessable`             | 422    | Estado inválido para la operación             |
-| `too-many-requests`         | 429    | Rate limit                                    |
-| `payment-declined`          | 402    | Wompi declinó                                 |
-| `shipping-unavailable`      | 503    | Aveonline no responde                         |
-| `webhook-signature-invalid` | 401    | Firma incorrecta (no revelar detalles)        |
-| `internal-error`            | 500    | Catch-all (con requestId)                     |
+| Slug                | Status | Cuándo                                    |
+| ------------------- | ------ | ----------------------------------------- |
+| `validation`        | 400    | Body no pasa Zod                          |
+| `unauthorized`      | 401    | No autenticado                            |
+| `forbidden`         | 403    | Autenticado pero sin permiso              |
+| `not-found`         | 404    | Recurso inexistente                       |
+| `conflict`          | 409    | Idempotency conflict, stock agotado, etc. |
+| `unprocessable`     | 422    | Estado inválido para la operación         |
+| `too-many-requests` | 429    | Rate limit                                |
+| `internal-error`    | 500    | Catch-all (con requestId)                 |
+
+> Los webhooks con firma inválida responden 401 genérico sin ProblemDetails (no revelar detalles al atacante) — ver `app/api/webhooks/*/route.ts`.
 
 ---
 
@@ -426,50 +417,42 @@ export function problemResponse(p: ProblemDetails): Response {
 ### Estructura
 
 ```
-features/checkout/
-├── service.ts            # Lógica de dominio. Pura. Testeable sin HTTP.
-├── repository.ts         # Acceso a DB (Prisma). Solo aquí entra Prisma.
-├── server-actions.ts     # Capa HTTP/Server Actions. Llama a service.ts.
+features/orders/
+├── service.ts            # Lógica de dominio + acceso a DB (Prisma vía @/lib/db).
+├── actions.ts            # Server Actions ('use server'). Delgada: valida → llama service.
 ├── schemas.ts            # Zod schemas
-└── components/
+├── saga.ts               # Orquestación post-PAID (ver § Saga pattern)
+├── stock.ts · emails.ts · errors.ts   # Submódulos de la feature
+└── *.test.ts             # Tests al lado del archivo
 ```
 
 ### Reglas
 
-- **`service.ts`** no importa `next/*` ni `@/lib/supabase/*` directo. Solo tipos puros + repository.
-- **`repository.ts`** es el único que importa Prisma. Si una feature crece, se subdivide.
-- **`server-actions.ts`** es delgado: valida → llama service → mapea result a `ProblemDetails` o respuesta.
-- **Tests:** `service.test.ts` con repository mockeado. Tests rápidos, sin DB.
+- **`service.ts`** concentra la lógica de dominio y el acceso a DB con el cliente `prisma` de `@/lib/db`. No importa `next/*` salvo en casos justificados (p.ej. `unstable_cache`). Si una feature crece, se subdivide en submódulos (`stock.ts`, `emails.ts`, `cod-reconciliation.ts`).
+- **No hay capa `repository.ts` separada**: la indirección no se justificó a esta escala; Prisma solo se importa en `service.ts` de features y en `lib/*` de infra (nunca en components ni pages).
+- **`actions.ts`** es delgado: valida con Zod → rate limit si es público → llama service → devuelve state tipado o `redirect()`.
+- **Tests:** `service.test.ts` unitarios con Prisma mockeado; `service.integration.test.ts` contra Supabase local (corren en nightly).
 
 ### Ejemplo
 
 ```ts
-// features/checkout/service.ts
-import * as repo from "./repository";
-import { reserveStock, releaseStock } from "@/features/inventory/service";
-import { getPaymentProvider } from "@/lib/payment";
+// features/checkout/service.ts (forma real)
+import { prisma } from "@/lib/db";
 
-export async function createOrder(payload: CheckoutPayload, requestId: string) {
-  return await repo.transaction(async (tx) => {
-    const cart = await repo.findCartById(tx, payload.cartId);
+export async function createOrderFromCart(cartId: string, payload: CheckoutPayload) {
+  return await prisma.$transaction(async (tx) => {
+    const cart = await tx.cart.findUnique({ where: { id: cartId }, include: { items: true } });
     if (!cart) throw new NotFoundError("cart");
 
-    const order = await repo.createOrder(tx, {/* ... */});
-    await reserveStock(tx, order.id, cart.items, requestId);
+    // Idempotencia cart→order (P0-020): si el cart ya tiene una Order
+    // PENDING_PAYMENT activa, se retorna esa en vez de crear otra.
+    const existing = await tx.order.findFirst({
+      where: { cartId, status: "PENDING_PAYMENT", deletedAt: null },
+    });
+    if (existing) return { orderId: existing.id, reused: true };
 
-    if (payload.paymentMethod === "WOMPI") {
-      const provider = getPaymentProvider("wompi");
-      const checkout = await provider.createCheckout(order);
-      await repo.attachPaymentReference(tx, order.id, checkout.externalId);
-      return { orderId: order.id, redirectUrl: checkout.redirectUrl };
-    }
-
-    if (payload.paymentMethod === "COD") {
-      await repo.markOrderPaid(tx, order.id, "COD");
-      return { orderId: order.id };
-    }
-
-    throw new UnprocessableError("payment-method");
+    const order = await tx.order.create({ data: { /* ... */ cartId } });
+    return { orderId: order.id, reused: false };
   });
 }
 ```
@@ -478,92 +461,22 @@ export async function createOrder(payload: CheckoutPayload, requestId: string) {
 
 ## Backend — saga pattern para flujos distribuidos
 
-> El flujo `Wompi APPROVED → reservar stock → crear guía Aveonline → enviar email` toca tres sistemas externos. Si falla a la mitad, no podemos dejar la base inconsistente.
+> El flujo `Wompi APPROVED → descontar stock → crear guía Aveonline → enviar email` toca tres sistemas externos. Si falla a la mitad, no podemos dejar la base inconsistente.
 
-### Estrategia: orchestrator-based saga con compensaciones
+### Estrategia: orquestador con pasos idempotentes y compensación explícita
 
-Un orquestador (en webhook handler de Wompi) ejecuta pasos en orden. Cada paso tiene una **acción** y una **compensación**. Si un paso falla, se ejecutan las compensaciones de los pasos anteriores en orden inverso.
+La saga real es `processPaidOrder` en `features/orders/saga.ts`, disparada por el webhook de Wompi (y reintentable desde `/admin/pedidos/[id]`). En vez de un motor genérico de compensaciones, cada paso es **idempotente por diseño** y las compensaciones son decisiones explícitas de negocio:
 
-```ts
-// features/orders/saga.ts
-type Step<TCtx> = {
-  name: string;
-  forward: (ctx: TCtx) => Promise<TCtx>;
-  compensate: (ctx: TCtx) => Promise<void>;
-};
+1. `transitionOrder(orderId, "PAID")` + guardar `wompiTransactionId`. Si ya está PAID → no-op.
+2. `decrementStockForOrder` — ledger `InventoryLog` con índice parcial único `(orderId, reason, variantId)`: el mismo decremento no se aplica dos veces ni bajo carrera. Si el stock se agotó en el gap PENDING→PAID, la orden queda `PENDING_PAYMENT` + `needsReconciliation=true` (visible en admin) — ACCIÓN HUMANA: refund o producir stock.
+3. `createShipment` (Aveonline) protegido por **claim atómico** `shipmentClaimedAt` (`updateMany` condicional `WHERE trackingNumber null AND (claim null OR stale)`) — imposible crear dos guías para la misma orden. Si la guía falla, la orden **queda PAID** (no se revierte el pago) y el admin reintenta manualmente; el claim se libera y expira a los 10 min.
+4. Emails transaccionales inline con sellos idempotentes: `confirmationSentAt` se setea al enviar la confirmación — si la saga crashea entre el commit de PAID y el envío, un reintento la manda sin duplicar (`sendOrderConfirmationOnce` en `features/orders/emails.ts`).
 
-export async function runSaga<TCtx>(
-  steps: Step<TCtx>[],
-  initial: TCtx,
-  requestId: string,
-): Promise<TCtx> {
-  let ctx = initial;
-  const completed: Step<TCtx>[] = [];
+### Compensaciones
 
-  for (const step of steps) {
-    try {
-      logger.info({ saga: "order-fulfillment", step: step.name, status: "start", requestId });
-      ctx = await step.forward(ctx);
-      completed.push(step);
-      logger.info({ saga: "order-fulfillment", step: step.name, status: "ok", requestId });
-    } catch (err) {
-      logger.error({ saga: "order-fulfillment", step: step.name, status: "fail", err, requestId });
-      // Compensar en orden inverso
-      for (const done of completed.reverse()) {
-        try {
-          await done.compensate(ctx);
-        } catch (compErr) {
-          // Si la compensación falla, ALERTA al operador (audit + email).
-          logger.fatal({
-            saga: "order-fulfillment",
-            step: done.name,
-            status: "compensation-failed",
-            compErr,
-            requestId,
-          });
-          await alertOperator(`Compensación falló en saga ${requestId}, paso ${done.name}`);
-        }
-      }
-      throw err;
-    }
-  }
-  return ctx;
-}
-```
-
-### Ejemplo concreto: `processPaidOrder`
-
-```ts
-// features/orders/saga-process-paid.ts
-const stockStep: Step<Ctx> = {
-  name: "commit-stock",
-  forward: async (ctx) => ({ ...ctx, inventoryDelta: await commitReservedStock(ctx.orderId) }),
-  compensate: async (ctx) => {
-    await rollbackInventoryDelta(ctx.inventoryDelta);
-  },
-};
-
-const shipmentStep: Step<Ctx> = {
-  name: "create-shipment",
-  forward: async (ctx) => ({ ...ctx, shipment: await aveonline.createShipment(ctx.order) }),
-  compensate: async (ctx) => {
-    if (ctx.shipment) await aveonline.cancelShipment(ctx.shipment.id);
-  },
-};
-
-const emailStep: Step<Ctx> = {
-  name: "send-confirmation-email",
-  forward: async (ctx) => {
-    await enqueue("email_send", { template: "order-confirmation", to: ctx.order.email, data: ctx });
-    return ctx;
-  },
-  compensate: async () => {
-    /* email falló al enqueue es raro; el consumer pgmq tiene retries */
-  },
-};
-
-await runSaga([stockStep, shipmentStep, emailStep], { orderId, order }, requestId);
-```
+- **Stock:** revert solo al transicionar a `CANCELLED`/`REFUNDED` y solo si existe `InventoryLog` con `reason=ORDER_PAID` para la orden (la verdad la marca el ledger, no el estado origen).
+- **Guía Aveonline:** no hay `cancelShipment` automático — el fallo deja la orden PAID con alerta; la resolución es manual.
+- **Emails:** no se compensan; el consumer con retry es el propio reintento de la saga (los sellos `confirmationSentAt`/`reviewRequestedAt` evitan duplicados).
 
 ### Cuándo NO usar saga
 
@@ -572,99 +485,53 @@ await runSaga([stockStep, shipmentStep, emailStep], { orderId, order }, requestI
 
 ### Observabilidad de sagas
 
-- Cada paso loggea `start`/`ok`/`fail` con `requestId` y `saga` name.
-- Tabla `SagaLog(sagaId, step, status, ctx, error?, createdAt)` para forensics.
-- Alerta cuando una compensación falla (estado inconsistente; requiere intervención).
+- Cada paso loggea evento estructurado (`order.paid`, `order.shipment_created`, etc.) con `orderId` y `requestId` — no hay tabla `SagaLog`; el rastro forense son los logs + `AdminActionLog` + los timestamps de la propia `Order`.
+- Fallos técnicos se capturan en `ErrorLog` (`lib/error-capture.ts`, PII scrubbed) y disparan alerta al centro de notificaciones del admin.
 
 ---
 
-## Backend — idempotency keys
+## Backend — idempotencia
 
-> Mandato para mutaciones críticas: el cliente puede reintentar sin duplicar.
+> Mandato para mutaciones críticas: el cliente (o el proveedor, en webhooks) puede reintentar sin duplicar.
 
-### Endpoints que requieren idempotency
+No hay una infraestructura genérica de `Idempotency-Key` headers ni tabla `idempotency_keys`: la idempotencia se construye **por flujo**, con anclas en la base de datos. Mecanismos vigentes:
 
-- `POST /api/checkout/create` (doble click en "Pagar" no crea dos órdenes)
-- `POST /api/cart/coupon` (aplicar el mismo cupón dos veces)
-- Cualquier API pública que mute estado y pueda ser reintentada por red
+| Flujo                               | Mecanismo                                                                                                                                                   |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Webhooks Wompi / Aveonline / Resend | `WebhookEvent @@unique([source, externalId])` — dedup físico ante reintentos (P2002 = ya procesado)                                                         |
+| Dedup Wompi                         | `externalId = txId-status-timestamp` (el timestamp va firmado: forjarlo rompe la firma; cubre los reintentos a 30 min / 3 h / 24 h)                         |
+| Dedup Aveonline                     | `externalId = guia-status-timestamp`; si el payload no trae fecha del carrier, clave estable `"no-ts"` (D-4 — sin ella cada reintento re-procesaría)        |
+| Webhook Resend                      | `upsert` last-write-wins sobre `EmailEvent`, protegiendo `email.bounced`/`email.complained` de eventos reordenados (D-2 — la supresión no se pisa)          |
+| Checkout (cart → order)             | `Order.cartId` (P0-020): si el cart ya tiene Order `PENDING_PAYMENT` activa se retorna esa — doble click en "Pagar" no crea dos órdenes                     |
+| Email de confirmación               | `Order.confirmationSentAt` — sello que hace el envío idempotente y recuperable tras crash                                                                   |
+| Creación de guía                    | `Order.shipmentClaimedAt` — claim atómico por `updateMany` condicional (stale tras 10 min)                                                                  |
+| Ledger de inventario                | Índice parcial único `InventoryLog(orderId, reason, variantId)` — no se descuenta/revierte el mismo variant 2× por orden                                    |
+| Cupón por cliente                   | Trigger `coupon_usage_per_customer_limit` con `pg_advisory_xact_lock` por (couponId, identidad) — dos checkouts concurrentes no pasan ambos el conteo (G-5) |
+| Transiciones de estado              | `transitionOrder` trata transición al mismo estado como no-op                                                                                               |
 
-### Patrón
+### Reglas
 
-```ts
-// lib/idempotency.ts
-import { supabaseAdmin } from "./supabase/service";
-import { createHash } from "crypto";
-
-export async function withIdempotency<T>(
-  key: string,
-  requestBody: unknown,
-  fn: () => Promise<T>,
-  ttlSec = 86400, // 24h
-): Promise<{ cached: boolean; result: T }> {
-  const requestHash = createHash("sha256").update(JSON.stringify(requestBody)).digest("hex");
-  const existing = await supabaseAdmin
-    .from("IdempotencyKeys")
-    .select("requestHash, response, expiresAt")
-    .eq("key", key)
-    .maybeSingle();
-
-  if (existing.data) {
-    if (existing.data.requestHash !== requestHash) {
-      throw new ConflictError("idempotency-mismatch"); // Mismo key, distinto body → 409
-    }
-    return { cached: true, result: existing.data.response as T };
-  }
-
-  const result = await fn();
-  await supabaseAdmin.from("IdempotencyKeys").insert({
-    key,
-    requestHash,
-    response: result,
-    expiresAt: new Date(Date.now() + ttlSec * 1000).toISOString(),
-  });
-  return { cached: false, result };
-}
-```
-
-```sql
--- migration
-CREATE TABLE public.idempotency_keys (
-  key         TEXT        PRIMARY KEY,
-  request_hash TEXT       NOT NULL,
-  response    JSONB       NOT NULL,
-  expires_at  TIMESTAMPTZ NOT NULL
-);
-CREATE INDEX idempotency_keys_expires_idx ON public.idempotency_keys(expires_at);
-
--- Cleanup
-SELECT cron.schedule(
-  'cleanup-idempotency-keys',
-  '*/15 * * * *',
-  $$ DELETE FROM public.idempotency_keys WHERE expires_at < NOW() $$
-);
-```
-
-### Header convention
-
-Cliente envía `Idempotency-Key: <uuid>`. Server lo valida (UUID v4) y lo usa.
+- **Toda mutación reintentable necesita un ancla de idempotencia en DB** (columna única, sello timestamp o claim) — la deduplicación solo en memoria no sobrevive al serverless.
+- El reintento con la misma clave y el mismo efecto es **no-op silencioso**; la misma clave con efecto distinto es `409 conflict`.
+- Los sellos se escriben **en la misma transacción** del efecto cuando es posible (`confirmationSentAt` al enviar, `shipmentClaimedAt` antes de llamar a Aveonline).
 
 ---
 
 ## DB — naming SQL
 
-| Elemento                                             | Convención                                                           |
-| ---------------------------------------------------- | -------------------------------------------------------------------- |
-| Tablas creadas por Prisma                            | `PascalCase` (lo que Prisma genera por defecto) — preservar          |
-| Tablas creadas por SQL nativo (migrations no-Prisma) | `snake_case` plural                                                  |
-| Columnas Prisma                                      | `camelCase`                                                          |
-| Columnas SQL nativas                                 | `snake_case`                                                         |
-| Índices                                              | `<table>_<columns>_idx`                                              |
-| Foreign keys                                         | `<from_table>_<column>_fkey`                                         |
-| Constraints check                                    | `<table>_<column>_check`                                             |
-| Funciones                                            | `snake_case` con namespace si aplica (`public.rate_limit_increment`) |
-| Triggers                                             | `<table>_<event>_<action>`                                           |
+| Elemento                                             | Convención                                                       |
+| ---------------------------------------------------- | ---------------------------------------------------------------- |
+| Tablas creadas por Prisma                            | `PascalCase` (lo que Prisma genera por defecto) — preservar      |
+| Tablas creadas por SQL nativo (migrations no-Prisma) | `snake_case` plural                                              |
+| Columnas Prisma                                      | `camelCase`                                                      |
+| Columnas SQL nativas                                 | `snake_case`                                                     |
+| Índices                                              | `<table>_<columns>_idx`                                          |
+| Foreign keys                                         | `<from_table>_<column>_fkey`                                     |
+| Constraints check                                    | `<table>_<column>_check`                                         |
+| Funciones                                            | `snake_case` con namespace si aplica (`public.rate_limit_check`) |
+| Triggers                                             | `<table>_<event>_<action>`                                       |
 
-> Mezcla intencional: las tablas de modelo de dominio (gestionadas por Prisma) usan PascalCase. Las tablas auxiliares de infra (rate limit, cache, idempotency, queues) usan snake_case porque las creamos manualmente con SQL.
+> Mezcla intencional: las tablas de modelo de dominio (gestionadas por Prisma) usan PascalCase. Las tablas auxiliares de infra (rate limit) usan snake_case porque las creamos manualmente con SQL.
 
 ---
 
@@ -675,7 +542,7 @@ Cliente envía `Idempotency-Key: <uuid>`. Server lo valida (UUID v4) y lo usa.
 ### Patrón
 
 1. **Expand:** agregar nueva columna/tabla/índice (nullable o con default). Deploy. La app sigue funcionando con el esquema viejo y el nuevo.
-2. **Migrate:** backfill de datos. Idealmente en un job (`pgmq` + `pg_cron`) para no bloquear.
+2. **Migrate:** backfill de datos. Idealmente en un script one-off (`packages/db/scripts/`) o un job `pg_cron` para no bloquear.
 3. **Cutover:** la app empieza a usar la nueva forma. Deploy.
 4. **Contract:** eliminar la forma vieja en una release posterior (días/semanas después). Deploy.
 
@@ -698,8 +565,9 @@ Cliente envía `Idempotency-Key: <uuid>`. Server lo valida (UUID v4) y lo usa.
 
 ### Archivos
 
-- `supabase/migrations/YYYYMMDDHHMMSS_<slug>.sql` — orden cronológico.
-- Cada migración es **idempotente** (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`).
+- **Schema de dominio (Prisma):** `packages/db/prisma/migrations/YYYYMMDDHHMMSS_<slug>/migration.sql` — generadas con `pnpm --filter @lucams/db db:migrate` / aplicadas con `db:migrate:deploy` en el deploy.
+- **SQL no-Prisma (RLS, grants, storage, funciones, pg_cron):** `supabase/migrations/000000000000NN_<slug>.sql` — correlativo de 14 dígitos, orden cronológico.
+- Las migraciones de `supabase/migrations/` son **idempotentes** (`CREATE TABLE IF NOT EXISTS`, `DROP POLICY IF EXISTS`, `unschedule` → `schedule`, guardas si la extensión no está instalada) — re-ejecutables sin error en cualquier ambiente.
 - Un archivo separado de "down migration" si la operación es reversible.
 
 ---
@@ -714,24 +582,27 @@ Cliente envía `Idempotency-Key: <uuid>`. Server lo valida (UUID v4) y lo usa.
 4. **Parcial cuando hay filtro fijo.** `WHERE isActive = TRUE` para `Product`.
 5. **Concurrentemente en producción.** `CREATE INDEX CONCURRENTLY` no bloquea escrituras.
 
-### Índices iniciales (Fase 1)
+### Índices vigentes (muestra representativa)
+
+Los índices de tablas Prisma viven como `@@index` en `schema.prisma`; los que Prisma no puede expresar (parciales, trigram) viven en migraciones SQL:
 
 ```sql
--- Productos activos por categoría (lookups frecuentes en /catalogo)
-CREATE INDEX product_active_category_idx ON "Product" ("categoryId") WHERE "isActive" = TRUE;
-
--- Órdenes por cliente, recientes primero
-CREATE INDEX order_customer_recent_idx ON "Order" ("customerId", "createdAt" DESC);
-
--- Órdenes en estado pendiente para reconciliación
-CREATE INDEX order_pending_idx ON "Order" ("createdAt") WHERE "status" = 'PENDING_PAYMENT';
-
--- Búsqueda full-text de productos (Fase 2)
-CREATE INDEX product_search_idx ON "Product" USING gin(to_tsvector('spanish', "name" || ' ' || "description"));
-
--- Stock bajo para alertas
-CREATE INDEX variant_low_stock_idx ON "ProductVariant" ("stock") WHERE "stock" < 5;
+-- Búsqueda fuzzy de productos con pg_trgm (supabase/migrations/00000000000005)
+CREATE INDEX IF NOT EXISTS product_name_trgm_idx
+  ON "Product" USING GIN (immutable_unaccent("name") gin_trgm_ops);
+-- (también description con unaccent; slug y sku sin unaccent)
 ```
+
+```prisma
+// schema.prisma — ejemplos reales
+@@index([customerId, deletedAt])          // Order: "mis pedidos" sin soft-deleted
+@@index([status, createdAt])              // Order: pendientes para reconciliación
+@@index([cartId, status])                 // Order: idempotencia cart→order (P0-020)
+@@index([isActive, isFeatured])           // Product: home/destacados
+@@index([productId, isApproved, deletedAt]) // Review: visibles por producto
+```
+
+- **Índice parcial único** (idempotencia del ledger de inventario): `UNIQUE (orderId, reason, variantId) WHERE reason IN ('ORDER_PAID','ORDER_CANCELLED','ORDER_REFUNDED')` — migración `20260626224910_fix_inventory_log_unique_per_variant` (Prisma no soporta `@@unique` condicional; está documentado inline en el modelo `InventoryLog`).
 
 ### Antipatrones a evitar
 
@@ -748,8 +619,8 @@ CREATE INDEX variant_low_stock_idx ON "ProductVariant" ("stock") WHERE "stock" <
 - **Columnas estándar** en entidades que requieren histórico:
   - `deletedAt: DateTime?` (soft delete con timestamp).
   - **No** usar `isActive: Boolean` cuando hay borrado real (`deletedAt` es más expresivo). `isActive` solo para "publicado/no publicado" semántico.
-- **Vista o filtro** `WHERE "deletedAt" IS NULL` por defecto en repositories.
-- **Hard delete** solo cuando legal lo exige (ej. PII tras 30 días post-cuenta-borrada — ver SECURITY § PII).
+- **Vista o filtro** `WHERE "deletedAt" IS NULL` por defecto en los services.
+- **Cuenta borrada = anonimizar + soft-delete** (no borrado físico — preserva el histórico de órdenes sin PII): `features/account/delete-service.ts` nulea nombre/teléfono/documento, placeholder en email/supabaseUserId, scrub de `Address`, y borra el usuario de Supabase Auth.
 
 ### Audit fields
 
@@ -768,8 +639,8 @@ model SomeEntity {
 }
 ```
 
-- `createdBy/updatedBy` se llenan en el repository (transparente al service).
-- `deletedAt/deletedBy` se llenan en `softDelete()` del repository.
+- `createdBy/updatedBy` se pasan desde la Server Action (que conoce el actor) al service, que los persiste al crear/actualizar (p.ej. `createProduct(input, createdBy)`).
+- `deletedAt/deletedBy` se llenan en el soft-delete del service correspondiente.
 - Para entidades del cliente final (`Order`, `Cart`, `Review`): `createdBy = customerId`. Para admin: `adminUserId`.
 
 ---
@@ -800,19 +671,22 @@ model OrderItem {
 
 ## DB — retention y archival
 
-| Datos                            | Retención online          | Después                                     | Mecanismo                 |
-| -------------------------------- | ------------------------- | ------------------------------------------- | ------------------------- |
-| `Customer` (PII directa) activos | Mientras la cuenta exista | —                                           | —                         |
-| `Customer` borrados              | 30 días post-`deletedAt`  | Hard delete + anonimización en logs/backups | Cron `pg_cron`            |
-| `Order`                          | 5 años (legal)            | Archivo a R2 (parquet) + delete             | Cron mensual              |
-| `Cart` abandonado                | 90 días                   | Hard delete                                 | Cron diario               |
-| `WebhookEvent`                   | 90 días                   | Archivo a R2 + delete                       | Cron mensual              |
-| `AdminActionLog`                 | 2 años                    | Archivo a R2 + delete                       | Cron mensual              |
-| `InventoryLog`                   | Indefinido                | Particionar por año si crece mucho          | Manual cuando se necesite |
-| `LoyaltyTxn`                     | Vigencia del programa     | Hard delete cuando programa se cierra       | Manual                    |
-| Logs Vercel                      | Lo que cubre el plan      | Sin acción (Vercel maneja)                  | —                         |
+Implementado hoy (cron `/api/cron/purge-event-logs` diario 03:00 y `/api/cron/purge-anon-designs` 08:00, más los cleanups SQL puros de la migración `00000000000012`):
 
-> **Archivado a R2:** formato Parquet comprimido. Script en `supabase/functions/archive-monthly/`. Se prueba la restauración cada trimestre.
+| Datos                                     | Retención             | Mecanismo                                                                                                            |
+| ----------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `EmailEvent` (contiene email del cliente) | 180 días              | `purgeExpiredEventLogs` (`features/observability/event-log-retention.ts`) — Ley 1581 minimización                    |
+| `WebhookEvent` (payload crudo con PII)    | 180 días              | Ídem                                                                                                                 |
+| `ErrorLog` / `ErrorReport`                | 90 días               | Ídem (F-6, auditoría 2026-08-24; `ErrorReport` se purga por `lastSeenAt`: un error que sigue ocurriendo NO se borra) |
+| `Design` anónimo abandonado               | 30 días               | `purgeAbandonedAnonymousDesigns` (`features/personalization/retention-service.ts`)                                   |
+| `Quote` cerrada                           | 90 días de gracia     | Ídem (`PURGE_AFTER_QUOTE_CLOSED_DAYS`)                                                                               |
+| `Quote` abierta sin movimiento            | 365 días              | Ídem (`PURGE_STALE_QUOTE_AFTER_DAYS`)                                                                                |
+| `rate_limit_buckets`                      | 1 día tras la ventana | `rate_limit_cleanup` (pg_cron, SQL puro)                                                                             |
+| `StockReservation` expiradas              | Inmediato             | `stock_reservation_cleanup` (pg_cron, SQL puro) — sin consumidores hoy (ADR-014 diferida)                            |
+| `Customer` borrado (PII)                  | Inmediato             | Anonimización + soft-delete al solicitar la baja (`features/account/delete-service.ts`)                              |
+| Logs Vercel                               | Lo que cubre el plan  | Sin acción (Vercel maneja)                                                                                           |
+
+> **Política no implementada todavía** (sin cron ni script): archivo de `Order` (5 años, obligación legal) y de `AdminActionLog` (2 años) a storage frío, y particionado de `InventoryLog` si crece. Cuando se implemente, actualizar esta tabla con el mecanismo real.
 
 ---
 
@@ -837,14 +711,13 @@ export async function fetchWithTimeout(
 }
 ```
 
-| Llamada                         | Timeout                                                      |
-| ------------------------------- | ------------------------------------------------------------ |
-| Wompi `/v1/transactions/<id>`   | 5 s                                                          |
-| Wompi `/v1/transactions` (POST) | 10 s                                                         |
-| Aveonline quote (cotizarDoble)  | 15 s (multi-carrier lento: medido 7–11 s; retry 2×; ADR-053) |
-| Aveonline create shipment       | 20 s (endpoint lento + no-reintentable; ADR-048)             |
-| Anthropic `/v1/messages`        | 30 s (modelo puede tardar)                                   |
-| Resend `/emails`                | 10 s                                                         |
+| Llamada                           | Timeout                                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Wompi `GET /v1/transactions/<id>` | 5 s (con retry + circuit breaker; solo hay consulta GET — el pago es redirect al checkout hosted) |
+| Aveonline quote (cotizarDoble)    | 15 s (multi-carrier lento: medido 7–11 s; retry 2×; ADR-053)                                      |
+| Aveonline create shipment         | 20 s (endpoint lento + no-reintentable; ADR-048)                                                  |
+| Gemini `generateContent`          | 12 s (por modelo; fallback a modelo secundario si falla — `features/ai/gemini-provider.ts`)       |
+| Resend `/emails`                  | 15 s (`RESEND_TIMEOUT_MS` en `lib/resend.ts`)                                                     |
 
 ### Retries con backoff exponencial
 
@@ -882,14 +755,14 @@ class CircuitBreaker {
   private state: "closed" | "open" | "half-open" = "closed";
   private lastFailureAt = 0;
 
-  constructor(private opts: { threshold: number; resetMs: number }) {}
+  constructor(private opts: { name: string; threshold: number; resetMs: number }) {}
 
   async exec<T>(fn: () => Promise<T>): Promise<T> {
     if (this.state === "open") {
       if (Date.now() - this.lastFailureAt > this.opts.resetMs) {
         this.state = "half-open";
       } else {
-        throw new Error("CIRCUIT_OPEN");
+        throw new CircuitOpenError(this.opts.name);
       }
     }
     try {
@@ -906,8 +779,10 @@ class CircuitBreaker {
   }
 }
 
-// Uso
-export const wompiCB = new CircuitBreaker({ threshold: 5, resetMs: 30000 });
+// Uso real: `wompiCB` en lib/wompi.ts y `aveonlineCB`/`aveonlineQuoteCB` en
+// features/shipping/aveonline.ts — todos { threshold: 5, resetMs: 30_000 }.
+// El retry va por FUERA del breaker (withRetry(() => cb.exec(fetch))) para que
+// cada intento cuente y, abierto, corte de una.
 ```
 
 > **Nota:** el estado del circuit breaker en serverless es per-instancia. Para coordinación global se necesitaría Redis o Postgres. Para nuestra escala, per-instancia es suficiente al inicio.
@@ -918,74 +793,40 @@ export const wompiCB = new CircuitBreaker({ threshold: 5, resetMs: 30000 });
 
 ### Request ID
 
-Cada request entrante recibe un `requestId` (UUID v4) generado en `middleware.ts`. Se propaga:
+Cada request entrante recibe un `requestId` (UUID v4) generado en **`proxy.ts`** (Next 16 renombró `middleware.ts` → `proxy.ts`, ADR-024). Se propaga:
 
-- Header de respuesta `X-Request-Id`.
-- Cookie `__rid` para correlación entre páginas (opcional).
-- Argumento implícito en logger, jobs pgmq, emails.
-
-```ts
-// lib/request-id.ts (simplificado, real impl con AsyncLocalStorage)
-import { AsyncLocalStorage } from "async_hooks";
-const als = new AsyncLocalStorage<string>();
-
-export function withRequestId<T>(id: string, fn: () => T): T {
-  return als.run(id, fn);
-}
-
-export function getRequestId(): string {
-  return als.getStore() ?? "no-request-id";
-}
-```
+- Header de respuesta `X-Request-Id` (correlación cliente ↔ logs de plataforma; el proxy no lo inyecta en los request headers aguas abajo).
+- Los errores capturados con `captureServerError` (`lib/error-capture.ts`) persisten `routePath`/`routeType` (p.ej. `/api/cron/purge-event-logs`, `cron`) para correlación.
 
 ### Logger
 
-```ts
-// lib/logger.ts
-import pino from "pino";
+`lib/logger.ts` es un logger JSON estructurado sobre `console.log` nativo (**no pino**: pino + Turbopack de Next 16 rompe `next build`; la API pública es compatible: `info` / `warn` / `error` / `debug`). Salida JSON una-línea-por-evento a stdout/stderr — Vercel la parsea automático. Nivel por `LOG_LEVEL` (default `debug` en dev, `info` en prod).
 
-const REDACT_PATHS = [
-  "req.headers.authorization",
-  "req.headers.cookie",
-  "*.email", // emails parciales
-  "*.phone", // teléfonos parciales
-  "*.password",
-  "*.*Secret",
-  "*.*Key",
-  "*.*Token",
-];
+Redacción automática:
 
-export const logger = pino({
-  level: process.env.LOG_LEVEL ?? "info",
-  redact: { paths: REDACT_PATHS, censor: "[REDACTED]" },
-  formatters: {
-    bindings: () => ({ env: process.env.NODE_ENV, app: "lucams-shop" }),
-  },
-  timestamp: pino.stdTimeFunctions.isoTime,
-});
-```
+- **Por key name** (case-insensitive): `password`, `token`, `secret`, `key`, `cookie`, `authorization`, `email`, `phone`, `document` → valor reemplazado por `[REDACTED]`.
+- **Por path absoluto:** `req.headers.authorization`, `req.headers.cookie`.
+- **`scrubPii(text)`** para texto libre (mensajes de error, stacks) antes de persistir en `ErrorLog`/`ErrorReport` — un error de DB puede traer PII embebida (F-6).
 
 Uso:
 
 ```ts
-logger.info({ event: "order.created", orderId, customerId, requestId: getRequestId() });
+logger.info({ event: "order.created", orderId, customerId });
 ```
 
-> **Nunca** `logger.info('User ' + email + ' did X')`. Usar siempre objeto estructurado con campos: `logger.info({ event, userId, requestId })`.
+> **Nunca** `logger.info('User ' + email + ' did X')`. Usar siempre objeto estructurado con campos: `logger.info({ event, userId })`.
 
 ---
 
 ## Code style
 
-- **Prettier** + **ESLint** (`eslint-config-next` + `@typescript-eslint`) en pre-commit con `lint-staged`.
-- **TypeScript estricto:** `"strict": true`, `"noUncheckedIndexedAccess": true`, `"exactOptionalPropertyTypes": true`.
+- **Prettier** (`pnpm format` / `format:check`, gate `format-check` en CI) + **ESLint** flat config (`eslint-config-next` core-web-vitals + typescript, más `no-restricted-imports` para sharp — F-4). Pre-commit hook versionado en `scripts/git-hooks/pre-commit` = scan de secretos con **gitleaks** (activar una vez por clone: `git config core.hooksPath scripts/git-hooks`); la capa forzosa es GitHub Push Protection + el job `secrets-scan` de CI.
+- **TypeScript estricto:** `"strict": true` en `apps/web/tsconfig.json`.
 - **No usar `any`.** Si no hay tipo, usar `unknown` y narrow.
-- **Imports ordenados:** node → externos → `@/...` → relativos. ESLint plugin `import/order`.
 - **Archivos < 400 líneas** (split en submódulos si crece).
 - **Funciones < 50 líneas** salvo casos justificados (saga orchestrators, etc.).
 - **Comentarios solo cuando el WHY no es obvio.** Ver mandato de CLAUDE.md.
-- **Tests al lado del archivo:** `service.ts` + `service.test.ts` en la misma carpeta.
-- **`.editorconfig`** versionado para consistencia entre IDEs.
+- **Tests al lado del archivo:** `service.ts` + `service.test.ts` en la misma carpeta (integración: `service.integration.test.ts`, corren contra Supabase real en nightly).
 
 ---
 
