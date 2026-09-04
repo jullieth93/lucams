@@ -189,6 +189,40 @@ function isContiguousFromOne(values: string[]): boolean {
   return [...nums].sort((a, b) => a - b).every((n, i) => n === i + 1);
 }
 
+/**
+ * ¿El valor de `dimKey` está determinado 1:1 por el de `keeperKey` en TODAS las
+ * variants? (biyección entre los valores presentes: cada valor de una dimensión
+ * aparece con exactamente UN valor de la otra). Una variant sin alguno de los dos
+ * atributos rompe la correlación (el dato está incompleto → no se puede afirmar).
+ * Caso real (Lucy 2026-09-03): en abecedario-completo la cantidad de fichas la
+ * define el idioma — es=27 (con Ñ), en=26 — no es una elección del cliente.
+ */
+function isOneToOnePerVariant(variants: Variant[], dimKey: string, keeperKey: string): boolean {
+  const dimToKeeper = new Map<string, string>();
+  const keeperToDim = new Map<string, string>();
+  for (const v of variants) {
+    const attrs = parseVariantAttributes(v.attributes);
+    const dimValue = attrs[dimKey as keyof ProductVariantAttributes];
+    const keeperValue = attrs[keeperKey as keyof ProductVariantAttributes];
+    if (
+      dimValue === undefined ||
+      dimValue === null ||
+      keeperValue === undefined ||
+      keeperValue === null
+    ) {
+      return false;
+    }
+    const d = String(dimValue);
+    const k = String(keeperValue);
+    if (dimToKeeper.has(d) && dimToKeeper.get(d) !== k) return false;
+    if (keeperToDim.has(k) && keeperToDim.get(k) !== d) return false;
+    dimToKeeper.set(d, k);
+    keeperToDim.set(k, d);
+  }
+  // >1 valor: con un solo valor la dimensión ni siquiera entra al selector.
+  return dimToKeeper.size > 1 && dimToKeeper.size === keeperToDim.size;
+}
+
 export function VariantSelector({
   productBasePrice,
   variants: rawVariants,
@@ -257,7 +291,28 @@ export function VariantSelector({
     // "tape" una visible idéntica (ej. theme espejo de otra clave).
     const hidden = new Set(hiddenDimensions ?? []);
     const visibleKeys = uniqueKeys.filter((key) => !hidden.has(key));
-    return visibleKeys.map((key) => {
+    // Dedupe por CORRELACIÓN 1:1 con el idioma (Lucy 2026-09-03 — abecedario-completo):
+    // si una dimensión de cantidad (quantity/photoSlots) está determinada 1:1 por la
+    // dimensión `language` visible (es↔27, en↔26), elegir idioma YA elige la cantidad —
+    // mostrarla como selector sería una falsa elección. Se oculta el grupo y su valor se
+    // muestra como texto descriptivo bajo el grupo Idioma ("Cantidad: 27 en Español ·
+    // 26 en Inglés"). El gate es SOLO language a propósito: otras correlaciones 1:1 del
+    // catálogo (photoSlots↔sizeCm en polaroid/tiras) son elección real del cliente —
+    // la foto y el tamaño se quieren ver aunque una implique la otra — y siguen visibles.
+    // Requiere el dato normalizado en TODAS las variants (script
+    // packages/db/scripts/normalize-letterset-quantity.mjs): una variant sin quantity
+    // rompe la correlación y la dimensión vuelve a mostrarse (degradación segura).
+    const hiddenByLanguage = new Map<string, string>(); // hiddenKey -> "language"
+    if (visibleKeys.includes("language")) {
+      for (const key of visibleKeys) {
+        if (key === "language" || !QUANTITY_DIM_KEYS.has(key)) continue;
+        if (isOneToOnePerVariant(variants, key, "language")) {
+          hiddenByLanguage.set(key, "language");
+        }
+      }
+    }
+    const finalKeys = visibleKeys.filter((key) => !hiddenByLanguage.has(key));
+    return finalKeys.map((key) => {
       const rawValues = Array.from(dimMap[key]);
       const order = DIMENSION_VALUE_ORDER[key];
       let values: string[];
@@ -272,7 +327,28 @@ export function VariantSelector({
       } else {
         values = rawValues.sort();
       }
-      return { key, label: DIMENSION_LABELS[key] ?? key, values };
+      // Dimensiones ocultas por correlación que ESTE grupo define (hoy: la cantidad
+      // bajo Idioma), con sus pares valor↔valor para el texto descriptivo. Los pares
+      // siguen el orden de los valores ya ordenados del grupo keeper.
+      const defined = [...hiddenByLanguage.entries()]
+        .filter(([, keeperKey]) => keeperKey === key)
+        .map(([hiddenKey]) => ({
+          key: hiddenKey,
+          label: DIMENSION_LABELS[hiddenKey] ?? hiddenKey,
+          pairs: values.map((keeperValue) => {
+            const match = variants.find((v) => {
+              const attrs = parseVariantAttributes(v.attributes);
+              return String(attrs[key as keyof ProductVariantAttributes]) === keeperValue;
+            });
+            const hiddenValue = match
+              ? parseVariantAttributes(match.attributes)[
+                  hiddenKey as keyof ProductVariantAttributes
+                ]
+              : undefined;
+            return { keeperValue, value: String(hiddenValue) };
+          }),
+        }));
+      return { key, label: DIMENSION_LABELS[key] ?? key, values, defined };
     });
   }, [variants, hiddenDimensions]);
 
@@ -615,6 +691,17 @@ export function VariantSelector({
                 );
               })}
             </div>
+            {/* Dimensiones que este grupo DEFINE (correlación 1:1, Lucy 2026-09-03):
+                la cantidad del abecedario la fija el idioma → no es selector; se
+                describe como texto ("Cantidad: 27 en Español · 26 en Inglés"). */}
+            {dim.defined?.map((d) => (
+              <p key={d.key} className="text-brand-muted mt-1.5 text-xs">
+                {d.label}:{" "}
+                {d.pairs
+                  .map((p) => `${p.value} en ${formatDimensionValue(dim.key, p.keeperValue)}`)
+                  .join(" · ")}
+              </p>
+            ))}
           </div>
         );
       })}

@@ -115,3 +115,50 @@ describe("StudioPreviewModal — stepper de copias", () => {
     expect(screen.getByLabelText("Disminuir copias")).toBeEnabled();
   });
 });
+
+describe("StudioPreviewModal — copias pre-elegidas en la PDP (initialCopies, Lucy 2026-09-03)", () => {
+  it("arranca con las copias de la PDP: stepper y total pre-cargados", () => {
+    render(<StudioPreviewModal {...baseProps()} initialCopies={4} />);
+    const copias = screen.getByRole("group", { name: "Copias" });
+    expect(within(copias).getByText("4")).toBeInTheDocument();
+    expect(screen.getByText(/Imprimimos 4 copias idénticas de tu diseño/)).toBeInTheDocument();
+    expect(screen.getByText(cop(UNIT_PRICE * 4))).toBeInTheDocument();
+    expect(screen.getByText(`${cop(UNIT_PRICE)} c/u`)).toBeInTheDocument();
+  });
+
+  it("onConfirm recibe las copias pre-cargadas si el cliente no ajusta", () => {
+    const props = baseProps();
+    render(<StudioPreviewModal {...props} initialCopies={3} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
+    expect(props.onConfirm).toHaveBeenCalledWith(3);
+  });
+
+  it("cada apertura vuelve a las copias de la PDP (no a 1 ni a la decisión anterior)", () => {
+    const props = baseProps();
+    const { rerender } = render(<StudioPreviewModal {...props} initialCopies={5} />);
+    fireEvent.click(screen.getByLabelText("Disminuir copias"));
+    fireEvent.click(screen.getByLabelText("Disminuir copias"));
+    const copias = screen.getByRole("group", { name: "Copias" });
+    expect(within(copias).getByText("3")).toBeInTheDocument();
+
+    rerender(<StudioPreviewModal {...props} initialCopies={5} isOpen={false} />);
+    rerender(<StudioPreviewModal {...props} initialCopies={5} isOpen={true} />);
+    expect(
+      within(screen.getByRole("group", { name: "Copias" })).getByText("5"),
+    ).toBeInTheDocument();
+  });
+
+  it("acota initialCopies fuera de rango (la URL la puede editar cualquiera)", () => {
+    // Instancias frescas: el valor inicial aplica al montar/abrir la modal (en la
+    // app llega fijo desde la URL; no cambia con la modal ya abierta).
+    const { unmount } = render(<StudioPreviewModal {...baseProps()} initialCopies={150} />);
+    expect(
+      within(screen.getByRole("group", { name: "Copias" })).getByText("99"),
+    ).toBeInTheDocument();
+    unmount();
+    render(<StudioPreviewModal {...baseProps()} initialCopies={0} />);
+    expect(
+      within(screen.getByRole("group", { name: "Copias" })).getByText("1"),
+    ).toBeInTheDocument();
+  });
+});

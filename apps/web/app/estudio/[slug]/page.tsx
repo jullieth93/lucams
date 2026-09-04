@@ -49,6 +49,8 @@ type SearchParams = Promise<{
   variant?: string;
   /** ADR-057 — nº de letras pre-elegido en la ficha (Nombre por ficha). Hint inicial. */
   letters?: string;
+  /** Copias pre-elegidas en el stepper "Unidades" de la PDP (Lucy 2026-09-03). */
+  copies?: string;
 }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
@@ -117,6 +119,14 @@ export default async function EstudioPage({
   // Roadmap B1 — textos CMS del Estudio (UNA query por prefijo estudio.*, con
   // fallback exacto pre-CMS por campo). Se inyectan al árbol client vía provider.
   const texts = await getStudioTexts();
+
+  // Copias pre-elegidas en la PDP (?copies=N, Lucy 2026-09-03): pre-cargan el stepper
+  // "Copias" de la modal de confirmación (ajustable ahí). Entero acotado a 1..99 —
+  // mismo rango de AddToCartSchema; la URL la puede editar cualquiera.
+  const rawCopies = Number.parseInt(typeof sp.copies === "string" ? sp.copies : "", 10);
+  const initialCopies = Number.isFinite(rawCopies)
+    ? Math.min(99, Math.max(1, rawCopies))
+    : undefined;
 
   // Set fijo (abecedario completo/vocales) o no personalizable → no abrir el Estudio.
   if (surface.surface === "direct-cart") {
@@ -217,6 +227,7 @@ export default async function EstudioPage({
               themeOptions={{ es: themeEs, en: themeEn }}
               initialTheme={variantAttrs.theme ?? null}
               stylesByLanguage={{ es: stylesEs, en: stylesEn }}
+              initialCopies={initialCopies}
               subtitle={letterSetSubtitle(
                 surface.config.letterSet,
                 letters.length,
@@ -396,6 +407,8 @@ export default async function EstudioPage({
             variantId={selectedVariant?.id}
             // Precio de la variante elegida (o base) → vista previa pre-carrito.
             unitPriceCents={selectedVariant?.price ?? product.basePrice}
+            // Copias pre-elegidas en la PDP (?copies=N) → pre-carga del stepper de la modal.
+            initialCopies={initialCopies}
             // Edición desde el carrito: reemplazar el item original al finalizar (no duplicar).
             replacesCartDesignId={replacesCartDesignId}
             templates={templates}

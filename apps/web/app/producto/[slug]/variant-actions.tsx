@@ -21,6 +21,14 @@ import { SubmitButton } from "@/components/admin/submit-button";
 type SelectedVariantCtx = {
   selectedId: string | null;
   setSelectedId: (id: string) => void;
+  /**
+   * Copias (CartItem.qty 1..99) elegidas en el stepper "Unidades" de la PDP. Única fuente de
+   * verdad de la cantidad en la ficha (Lucy 2026-09-03): la rama de compra directa la manda
+   * como `qty` del form y la rama personalizable la lleva al Estudio como `?copies=N` (el
+   * stepper "Copias" de la modal de confirmación arranca pre-cargado con ella).
+   */
+  copies: number;
+  setCopies: (n: number) => void;
 };
 
 const Ctx = createContext<SelectedVariantCtx | null>(null);
@@ -44,6 +52,8 @@ export function SelectedVariantProvider({
     if (fromUrl && variantIds.includes(fromUrl)) return fromUrl;
     return initialId;
   });
+  // Copias del stepper "Unidades" de la PDP (1..99, mismo tope de AddToCartSchema).
+  const [copies, setCopiesState] = useState(1);
 
   const setSelectedId = useCallback(
     (id: string) => {
@@ -59,17 +69,25 @@ export function SelectedVariantProvider({
     [router],
   );
 
-  return <Ctx.Provider value={{ selectedId, setSelectedId }}>{children}</Ctx.Provider>;
+  const setCopies = useCallback((n: number) => {
+    setCopiesState(Math.min(99, Math.max(1, Math.trunc(n) || 1)));
+  }, []);
+
+  return (
+    <Ctx.Provider value={{ selectedId, setSelectedId, copies, setCopies }}>{children}</Ctx.Provider>
+  );
 }
 
 /** Lee el estado compartido. Fuera del provider devuelve un no-op seguro (fallback). */
 export function useSelectedVariant(): SelectedVariantCtx {
-  return useContext(Ctx) ?? { selectedId: null, setSelectedId: () => {} };
+  return (
+    useContext(Ctx) ?? { selectedId: null, setSelectedId: () => {}, copies: 1, setCopies: () => {} }
+  );
 }
 
 /** CTA "Personalizar" al Estudio, con el ?variant= SIEMPRE en sync con el selector. */
 export function EstudioCtaLink({ slug, ctaNoun }: { slug: string; ctaNoun: string }) {
-  const { selectedId } = useSelectedVariant();
+  const { selectedId, copies } = useSelectedVariant();
   // UX selección guiada (Lucy 2026-08-12): sin variante elegida el Estudio no
   // puede abrir (photoSlots/precio dependen de la variante) → CTA deshabilitado
   // con la instrucción clara en vez de un default invisible.
@@ -89,10 +107,13 @@ export function EstudioCtaLink({ slug, ctaNoun }: { slug: string; ctaNoun: strin
       </>
     );
   }
+  // Las copias elegidas en la PDP viajan como ?copies=N: la modal de confirmación
+  // del Estudio arranca con ese valor pre-cargado (se puede ajustar ahí mismo).
+  const copiesQS = copies > 1 ? `&copies=${copies}` : "";
   return (
     <>
       <Link
-        href={`/estudio/${slug}?variant=${selectedId}`}
+        href={`/estudio/${slug}?variant=${selectedId}${copiesQS}`}
         className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 hover:shadow-brand-purple/40 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md px-6 text-base font-semibold text-white shadow-lg transition-all hover:shadow-xl"
       >
         <Sparkles className="h-5 w-5" />

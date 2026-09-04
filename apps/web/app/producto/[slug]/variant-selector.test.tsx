@@ -278,6 +278,81 @@ describe("VariantSelector — dimensiones ocultas (Ola 2A)", () => {
 });
 
 /*
+ * Dedupe por correlación 1:1 con el idioma (Lucy 2026-09-03 — abecedario-completo):
+ * la cantidad del set la DEFINE el idioma (es=27 con Ñ, en=26) — no es elección del
+ * cliente. El grupo "Cantidad" se oculta como selector y su valor se describe como
+ * texto bajo el grupo "Idioma". Requiere el dato normalizado en TODAS las variants
+ * (packages/db/scripts/normalize-letterset-quantity.mjs); si falta en alguna, la
+ * correlación se rompe y el grupo vuelve a mostrarse (degradación segura).
+ * Otras correlaciones 1:1 del catálogo (photoSlots↔sizeCm en polaroid/tiras) son
+ * elección real del cliente y SIGUEN visibles — el gate es solo language.
+ */
+describe("VariantSelector — cantidad determinada por el idioma (correlación 1:1)", () => {
+  // Espejo de abecedario-completo tras normalizar: 2 tamaños × imán sí/no × idioma,
+  // quantity 27 (es) / 26 (en) en TODAS las variants.
+  const abecedarioVariants: TestVariant[] = [];
+  for (const language of ["es", "en"]) {
+    for (const sizeCm of ["5×7", "7×10"]) {
+      for (const magnet of [true, false]) {
+        abecedarioVariants.push(
+          makeVariant(`abc-${language}-${sizeCm}-${magnet}`, {
+            sizeCm,
+            magnet,
+            language,
+            quantity: language === "es" ? 27 : 26,
+          }),
+        );
+      }
+    }
+  }
+
+  it("oculta 'Cantidad' como selector y la describe bajo Idioma cuando correlaciona 1:1", () => {
+    render(<VariantSelector productBasePrice={100_000} variants={abecedarioVariants} />);
+    expect(screen.queryByRole("group", { name: "Cantidad" })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Idioma" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Tamaño" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "¿Con imán?" })).toBeInTheDocument();
+    expect(screen.getByText("Cantidad: 27 en Español · 26 en Inglés")).toBeInTheDocument();
+  });
+
+  it("elegir idioma sigue seleccionando la variante con la cantidad correcta", () => {
+    render(
+      <SelectedVariantProvider variantIds={abecedarioVariants.map((v) => v.id)} initialId={null}>
+        <VariantSelector productBasePrice={100_000} variants={abecedarioVariants} />
+      </SelectedVariantProvider>,
+    );
+    fireEvent.click(within(screen.getByRole("group", { name: "Idioma" })).getByText("Inglés"));
+    // Sin otras dimensiones elegidas, el click ancla a la primera variante con
+    // stock en inglés (abc-en-5×7-true, quantity 26) — la cantidad viaja con ella.
+    expect(replace).toHaveBeenCalled();
+    expect(decodeURIComponent(String(replace.mock.calls[0]?.[0]))).toContain(
+      "variant=abc-en-5×7-true",
+    );
+  });
+
+  it("si una variant no trae quantity la correlación se rompe y 'Cantidad' vuelve a mostrarse", () => {
+    const variants = abecedarioVariants.map((v) =>
+      v.id === "abc-en-5×7-true"
+        ? makeVariant(v.id, { sizeCm: "5×7", magnet: true, language: "en" })
+        : v,
+    );
+    render(<VariantSelector productBasePrice={100_000} variants={variants} />);
+    expect(screen.getByRole("group", { name: "Cantidad" })).toBeInTheDocument();
+    expect(screen.queryByText(/en Español · /)).not.toBeInTheDocument();
+  });
+
+  it("NO oculta correlaciones 1:1 ajenas al idioma (photoSlots↔sizeCm, polaroid)", () => {
+    const variants = [
+      makeVariant("v-p6", { photoSlots: 6, sizeCm: "7×9" }),
+      makeVariant("v-p12", { photoSlots: 12, sizeCm: "6×8" }),
+    ];
+    render(<VariantSelector productBasePrice={100_000} variants={variants} />);
+    expect(screen.getByRole("group", { name: "Fotos" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Tamaño" })).toBeInTheDocument();
+  });
+});
+
+/*
  * Stepper de cantidad (Lucy 2026-07-22). Aplica solo cuando la dimensión de
  * cantidad es 1..N contigua; los sets no contiguos conservan chips.
  * Se envuelve en SelectedVariantProvider para ejercitar la interacción real

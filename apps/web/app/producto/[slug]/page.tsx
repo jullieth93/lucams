@@ -362,7 +362,16 @@ export default async function ProductoDetallePage({
                       />
                     ) : requiresPersonalization || isLetterSetProduct ? (
                       // CTA primaria al Estudio, reactiva a la variante del selector (H12).
-                      <EstudioCtaLink slug={product.slug} ctaNoun={ctaNoun} />
+                      // Lucy 2026-09-03 — el stepper de COPIAS también acá (antes solo en
+                      // compra directa): la PDP fija la cantidad y el Estudio la recibe
+                      // como ?copies=N (pre-carga del stepper "Copias" de la modal de
+                      // confirmación — misma fuente de verdad, el Context del buy-box).
+                      // isNamePerTile NO lo lleva: su "cantidad" son las letras del
+                      // NamePricePicker (precio por ficha), otro concepto.
+                      <>
+                        <CopiesQtyInput />
+                        <EstudioCtaLink slug={product.slug} ctaNoun={ctaNoun} />
+                      </>
                     ) : (
                       <form action={addToCartAction}>
                         <input type="hidden" name="slug" value={product.slug} />

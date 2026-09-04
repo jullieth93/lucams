@@ -61,6 +61,9 @@ type StudioPreviewModalProps = {
    *  para que el cliente sepa qué tamaño real va a recibir. */
   sizeCm?: string;
   unitPrice: number | null; // precio en centavos COP de la variant elegida
+  /** Copias pre-elegidas en la PDP (`?copies=N`, Lucy 2026-09-03): el stepper
+   *  "Copias" arranca con este valor en cada apertura. undefined → 1. */
+  initialCopies?: number;
   isFinalizing: boolean;
   errorMessage: string | null;
   /** #3 — tipo de producto: el calendario se describe en "páginas", no "imanes".
@@ -83,6 +86,7 @@ export function StudioPreviewModal({
   slotCount,
   sizeCm,
   unitPrice,
+  initialCopies,
   isFinalizing,
   errorMessage,
   productKind = "magnets",
@@ -96,15 +100,19 @@ export function StudioPreviewModal({
   // diseño aprobado se imprimen — distinto del tamaño del pack, que ya va
   // horneado en el diseño/variante elegida. El carrito +/−, el checkout y el
   // ZIP de producción ("IMPRIMIR N COPIAS") ya soportan qty; acá se elige.
+  // El valor inicial viene de la PDP (?copies=N) — acotado acá también por si
+  // el componente se usa sin el parseo del page.tsx (defensa en profundidad).
   // Los hooks van ANTES del early-return de previewUrl (regla de orden de hooks).
-  const [copies, setCopies] = useState(1);
-  // La decisión es de ESTA agregada al carrito: cada apertura arranca en 1.
+  const startCopies = Math.min(99, Math.max(1, Math.trunc(initialCopies ?? 1) || 1));
+  const [copies, setCopies] = useState(startCopies);
+  // La decisión es de ESTA agregada al carrito: cada apertura arranca en las
+  // copias pre-elegidas en la PDP (no arrastra la decisión anterior).
   // Patrón "ajustar estado durante el render" (react.dev — You Might Not Need
   // an Effect): el reset en useEffect está vetado por react-hooks/set-state-in-effect.
   const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
   if (isOpen !== prevIsOpen) {
     setPrevIsOpen(isOpen);
-    if (isOpen) setCopies(1);
+    if (isOpen) setCopies(startCopies);
   }
 
   if (!previewUrl) return null;
@@ -152,7 +160,18 @@ export function StudioPreviewModal({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isFinalizing && onEdit()}>
       <DialogContent
-        className="max-w-2xl"
+        // Lucy 2026-09-03 — la modal desbordaba el viewport: imagen (hasta 448px) +
+        // textos + resumen + stepper + CTAs superaban el alto en desktop de poca
+        // altura y en móvil, y el contenido quedaba cortado SIN scroll. Ahora:
+        //   - alto capado por dvh con scroll interno (overflow-y-auto) en todas las
+        //     resoluciones — toda la solución queda deslizable;
+        //   - en móvil (<sm) comportamiento tipo sheet: anclado abajo, ancho completo,
+        //     max 92dvh, sin borde redondeado inferior;
+        //   - en sm+ centrada como siempre, con el mismo tope de alto.
+        // OJO: el ancho se sobreescribe con la variante prefijada `sm:max-w-2xl` —
+        // la base del Dialog trae `sm:max-w-sm`, que por orden de cascada le ganaría
+        // a un `max-w-2xl` sin prefijo (el dialog nunca llegaba a 2xl en desktop).
+        className="max-h-[calc(100dvh-2rem)] overflow-y-auto max-sm:top-auto max-sm:right-0 max-sm:bottom-0 max-sm:left-0 max-sm:max-h-[92dvh] max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none sm:max-w-2xl"
         // Si está finalizando, no permitimos cerrar (race condition con upload)
         onInteractOutside={(e) => {
           if (isFinalizing) e.preventDefault();
@@ -207,8 +226,10 @@ export function StudioPreviewModal({
               {sizeCm && (
                 <>
                   {" "}
+                  {/* El texto trae DOS placeholders ({pieza} y {tamano}): se rellena
+                      pieza plano primero y StrongVar interpola tamano con <strong>. */}
                   <StrongVar
-                    template={texts.exportar.descImanTamano}
+                    template={fillStudioText(texts.exportar.descImanTamano, { pieza })}
                     varName="tamano"
                     value={sizeCm}
                   />
@@ -219,9 +240,13 @@ export function StudioPreviewModal({
           )}
         </DialogDescription>
 
-        {/* Preview compositado del grid */}
+        {/* Preview compositado del grid. La imagen se capa por ALTO de viewport
+            además de por ancho (min(28rem, 42dvh)): con aspect-square el alto sigue
+            al ancho, así que limitar el ancho en dvh garantiza que la imagen nunca
+            se coma el viewport en pantallas bajas (el resto del contenido sigue
+            accesible con el scroll del diálogo). */}
         <div className="border-brand-purple/15 from-brand-cream relative mt-3 overflow-hidden rounded-xl border bg-gradient-to-br to-white p-4">
-          <div className="relative mx-auto aspect-square max-w-md">
+          <div className="relative mx-auto aspect-square w-full max-w-[min(28rem,42dvh)]">
             <Image
               src={previewUrl}
               alt={
