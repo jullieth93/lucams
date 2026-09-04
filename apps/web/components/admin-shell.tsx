@@ -87,7 +87,7 @@ export function AdminShell({
     // Layout: COLUMNA en móvil (topbar arriba, contenido abajo), FILA en lg
     // (sidebar + contenido). Antes era fila siempre y la topbar móvil quedaba
     // como columna vertical comiéndose ~60% del ancho (auditoría E1 P0,
-    // docs/audits/2026-07-31-e1-mobile-admin-audit.md).
+    // 2026-07-31 — auditorías históricas consolidadas fuera del repo, git history).
     <div className="bg-brand-cream/40 flex min-h-screen flex-col lg:flex-row">
       {/* Sidebar desktop — gradient morado oscuro premium.
           Lucy 2026-06-27: sticky + h-screen para que NO se escape al hacer scroll.

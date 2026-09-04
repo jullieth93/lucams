@@ -1,5 +1,5 @@
 /*
- * HOMOLOGACIÓN E2E — cookies Ley 1581 (PROMPT_E2E_HOMOLOGACION §6.8):
+ * HOMOLOGACIÓN E2E — cookies Ley 1581 (docs/TESTING.md):
  *
  *   banner con 3 botones (solo necesarias / personalizar / aceptar todas) →
  *   modal con 4 switches (necesarias bloqueadas ON) → persistencia en refresh

@@ -1,5 +1,5 @@
 /*
- * Centro de notificaciones del admin (2026-08-05 — docs/PLAN_CENTRO_NOTIFICACIONES.md).
+ * Centro de notificaciones del admin (2026-08-05).
  *
  * Qué es: feed in-app de eventos del SISTEMA (alertas que disparan, crons que
  * fallan, cotizaciones nuevas, resumen diario). Es la fuente de verdad

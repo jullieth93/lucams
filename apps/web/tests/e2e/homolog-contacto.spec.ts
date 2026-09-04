@@ -1,5 +1,5 @@
 /*
- * HOMOLOGACIÓN E2E — contacto + legales/ayuda (PROMPT_E2E_HOMOLOGACION §6.18):
+ * HOMOLOGACIÓN E2E — contacto + legales/ayuda (docs/TESTING.md):
  *
  *   form de contacto con Turnstile → SupportTicket OPEN en DB (+ 2 emails
  *   donde el ambiente los envía — Resend real, documentado; el ticket es la

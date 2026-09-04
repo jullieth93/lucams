@@ -1,6 +1,6 @@
 /*
  * Data factory E2E — entidades efímeras con RUN obligatorio
- * (PROMPT_E2E_HOMOLOGACION §5.1). NUNCA toca el catálogo sembrado.
+ * (docs/TESTING.md). NUNCA toca el catálogo sembrado.
  *
  * Todo lo creado acá cumple los patrones que la limpieza global reconoce
  * (timestamp 13+ dígitos en slug, emails en dominio .test) y además se borra

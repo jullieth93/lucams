@@ -623,7 +623,7 @@ Definidos en [`ARCHITECTURE.md` § Storage](./ARCHITECTURE.md#storage-supabase).
 - Si ya estaba `processedAt`, devolver 200 sin re-procesar.
 - La saga POST-PAID tiene además idempotencia física en el ledger (índice parcial
   unique `InventoryLog(orderId, reason, variantId)`) + claim atómico de creación de
-  guía (`Order.shipmentClaimedAt`) — ver `docs/audits/2026-06-26-certify-bloque-a/`.
+  guía (`Order.shipmentClaimedAt`) — certificado en el Bloque A (2026-06-26).
 
 ### Replay protection (implementado, P1-011)
 

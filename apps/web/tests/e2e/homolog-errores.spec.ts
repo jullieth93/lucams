@@ -1,9 +1,9 @@
 /*
- * HOMOLOGACIÓN E2E — errores y resiliencia de red (PROMPT_E2E_HOMOLOGACION
- * §6.19): 404 personalizado (soft 404 con la página de marca), noindex en
+ * HOMOLOGACIÓN E2E — errores y resiliencia de red (docs/TESTING.md):
+ * 404 personalizado (soft 404 con la página de marca), noindex en
  * checkout/cotización/estudio, y con route.fulfill caídas en APIs críticas la
- * UI degrada con MENSAJE VISIBLE, nunca pantalla en blanco (regresión §4d del
- * catch del estudio y del form de cotización).
+ * UI degrada con MENSAJE VISIBLE, nunca pantalla en blanco (regresión
+ * permanente del catch del estudio y del form de cotización).
  *
  * Corre en LOCAL y STG × desktop/mobile. En PRD PROHIBIDO (la cotización de
  * prueba crea datos para el caso de fallo controlado).

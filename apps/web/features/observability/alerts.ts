@@ -2,7 +2,7 @@
  * Alertas del sistema (Bloque D, sin Sentry). Evalúa reglas contra la DB y avisa al
  * operador cuando algo se rompe. Mandato: cada alerta dice QUÉ SE ROMPIÓ + QUÉ HACER.
  *
- * Política 2026-08-05 (centro de notificaciones — docs/PLAN_CENTRO_NOTIFICACIONES.md):
+ * Política 2026-08-05 (centro de notificaciones):
  * CADA alerta que dispara deja notificación in-app en /admin/notificaciones (fuente
  * de verdad; dedupKey = key de la alerta → la que persiste actualiza, no duplica).
  * El EMAIL del lote solo sale si alguna es "crítica" — anti-spam: no re-enviar la

@@ -5,7 +5,7 @@
  * abandonados y errores. A diferencia de las alertas (solo cuando algo se rompe), esto
  * se publica SIEMPRE una vez al día.
  *
- * Política 2026-08-05 (centro de notificaciones — docs/PLAN_CENTRO_NOTIFICACIONES.md):
+ * Política 2026-08-05 (centro de notificaciones):
  * el resumen ya NO va por email — queda como notificación in-app en
  * /admin/notificaciones (fuente de verdad, cero spam de correo).
  *

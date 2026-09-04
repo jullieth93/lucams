@@ -1,5 +1,5 @@
 /*
- * Detección y carga del ambiente E2E — suite de homologación (docs/PROMPT_E2E_HOMOLOGACION.md).
+ * Detección y carga del ambiente E2E — suite de homologación (docs/TESTING.md).
  *
  * `E2E_ENV=local|stg|prd` (default `local`) decide:
  *   - qué .env carga el runner de Playwright (`.env.local` / `.env.stg` del repo,

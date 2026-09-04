@@ -53,7 +53,7 @@ const PROD_REQUIRED = [
 // Vars que SOLO aplican en modo tienda FULL (Etapa 2): pasarela Wompi, courier
 // Aveonline e IA Gemini. En modo catálogo (NEXT_PUBLIC_STORE_MODE=catalog) la
 // tienda sale SIN pagos en línea, SIN envíos integrados y SIN IA
-// (docs/PLAN_SALIDA_PRODUCCION.md) → exigirlas bloquearía el arranque de prod
+// (docs/RUNBOOK_GO_LIVE.md) → exigirlas bloquearía el arranque de prod
 // de la Etapa 1 sin necesidad.
 const FULL_MODE_REQUIRED = [
   "WOMPI_PUBLIC_KEY",

@@ -1,6 +1,5 @@
 /*
- * Playwright config — suite E2E y homologación de ambientes
- * (docs/PROMPT_E2E_HOMOLOGACION.md §9.2).
+ * Playwright config — suite E2E y homologación de ambientes (docs/TESTING.md).
  *
  * Estrategia:
  *  - Tests en `tests/e2e/*.spec.ts` (separados de unit tests vitest).

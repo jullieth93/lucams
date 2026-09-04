@@ -77,7 +77,8 @@ overrides:
   # cuando exista 2.0.2 o cuando @lhci/cli actualice @puppeteer/browsers.
 
 # sharp queda clavado en 0.34.4 a propósito: la línea 0.35.x rompía las lambdas de Vercel
-# (ERR_DLOPEN_FAILED libvips → 500 en todas las PDP; ver docs/audits/2026-07-28-certificacion-catalogo-whatsapp.md).
+# (ERR_DLOPEN_FAILED libvips → 500 en todas las PDP — detectado en la certificación del
+# 2026-07-28, auditoría histórica consolidada fuera del repo; la evidencia vive en git history).
 # GHSA-f88m-g3jw-g9cj (libvips heredado, sharp <0.35.0) se excluye del gate de audit porque
 # ya está mitigada en código por sharp-safe (bloquea los loaders alcanzables) y el riesgo
 # residual quedó aceptado y documentado en la Fase A. NO quitar este ignore sin verificar

@@ -1,5 +1,5 @@
 /*
- * HOMOLOGACIÓN E2E — auth de clientes (PROMPT_E2E_HOMOLOGACION §6.1):
+ * HOMOLOGACIÓN E2E — auth de clientes (docs/TESTING.md):
  *
  *   LOCAL (Mailpit): registro por UI → email con OTP {{ .Token }} →
  *   /confirmar-codigo → sesión + Customer + Consent HABEAS_DATA en DB →

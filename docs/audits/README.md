@@ -1,49 +1,24 @@
-# Auditorías históricas
+# Auditorías
 
-Cada auditoría queda registrada como markdown propio con fecha + slug:
-`YYYY-MM-DD-<slug>.md`.
+> **Consolidación 2026-09-03 (mandato de Lucy):** las auditorías históricas fechadas
+> (mayo–agosto 2026: coherencia, mega-audit, reestructuras de catálogo, certificaciones de
+> bloques, homologaciones e2e, sweeps de UX admin/storefront) se eliminaron del árbol — eran
+> versiones de trabajo ya ejecutado. Su contenido sigue disponible en git history
+> (`git log -- docs/audits`). Las lecciones permanentes viven en los docs canónicos
+> (SECURITY, OPERATIONS, CONVENTIONS, DECISIONS, STATE).
 
-## Tipos
+## Vigente
 
-- `*-coherencia.md` — coherencia entre docs (verificación cruzada)
-- `*-productive-readiness.md` — gap analysis pre-launch
-- `*-accessibility.md` — axe-core + screen reader smoke
-- `*-performance.md` — Lighthouse + Web Vitals analysis
-- `*-cross-browser.md` — bugs por browser/device
-- `*-load.md` — k6 results + p95/p99/throughput
-- `*-security.md` — pentest manual + npm audit + gitleaks
-- `*-seo.md` — Google Search Console + Rich Results test
-- `*-deliverability.md` — mail-tester + DKIM/SPF/DMARC
-- `*-dr-drill.md` — backup restore drill timing
-- `*-qa-<flujo>.md` — bloqueantes encontrados durante QA checklist
+- **`auditoria_seguridad_lucams.md`** — Auditoría OWASP Top 10 (2026-08-24), **remediada y
+  homologada en LOCAL/STG/PRD (2026-08-29/30)**. Su §11 es el cierre hallazgo por hallazgo y
+  la lista de acciones de operador. Es el formato de referencia para futuras auditorías de
+  seguridad.
+- Post-mortem de incidente activo: `docs/incidents/2026-05-09-secret-key-leak.md` (fuera de
+  esta carpeta, enlazado desde SECURITY.md).
 
-## Plantilla mínima
+## Convención para auditorías futuras
 
-```markdown
-# Auditoría: <título>
-
-**Fecha**: YYYY-MM-DD
-**Responsable**: Lucy + Claude
-**Tipo**: accessibility | performance | cross-browser | load | security | ...
-**Versión del sitio auditada**: commit SHA o git tag
-
-## Hallazgos
-
-### Críticos (bloqueantes)
-- ...
-
-### Warnings (no bloqueantes, mejoras post-launch)
-- ...
-
-### Notas / observaciones
-- ...
-
-## Acciones tomadas
-
-- [x] Fix commit `abc1234`
-- [ ] Issue para post-launch: ...
-
-## Decisión
-
-- GO / NO-GO / Re-auditar después de fix
-```
+Un archivo `YYYY-MM-DD-<slug>.md` con: alcance, hallazgos por severidad con evidencia
+`archivo:línea`, verificación, y sección de cierre cuando se remedie. Cuando una auditoría
+quede 100% cerrada y su contenido absorbido por los docs canónicos, se consolida (se elimina
+el archivo; git conserva la historia).

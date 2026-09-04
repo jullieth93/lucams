@@ -1,6 +1,6 @@
 /*
  * HOMOLOGACIÓN E2E — flujo de cotización Etapa 1 (modo catálogo), el embudo de
- * ingresos actual de la tienda (PROMPT_E2E_HOMOLOGACION §6.6):
+ * ingresos actual de la tienda (docs/TESTING.md):
  *
  *   PDP → carrito → "Cotizar por WhatsApp" → form (datos + consent Ley 1581 +
  *   Turnstile) → submit REAL → Quote PENDING en DB + Consent atómico +

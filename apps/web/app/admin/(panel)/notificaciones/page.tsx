@@ -1,5 +1,5 @@
 /*
- * Admin — Centro de notificaciones (2026-08-05 — docs/PLAN_CENTRO_NOTIFICACIONES.md).
+ * Admin — Centro de notificaciones (2026-08-05).
  *
  * Feed in-app de eventos del sistema: alertas que disparan (ALERT), crons que
  * fallan (CRON), cotizaciones nuevas (QUOTE) y el resumen diario (SYSTEM).

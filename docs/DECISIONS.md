@@ -2003,7 +2003,7 @@ fichas"), y evaluar **desde cero la tecnología**, dispuesta a refactorizar el c
 **Investigación.** 3 workflows en paralelo con verificación adversarial (139 agentes), cruzados contra el
 código real: (1) estándares de calidad de impresión + UX (105 agentes, fuentes citadas), (2) taxonomía de
 personalización por tipo de producto, (3) evaluación de tecnología mantener/aumentar/refactorizar. Detalle
-completo en [ESTUDIO_STRATEGY.md](ESTUDIO_STRATEGY.md). Versión visual para Lucy: artifact en claude.ai.
+completo en el README del módulo ([`apps/web/app/estudio/[slug]/README.md`](../apps/web/app/estudio/%5Bslug%5D/README.md); la estrategia original quedó en git history). Versión visual para Lucy: artifact en claude.ai.
 
 **Decisión.**
 
@@ -2013,7 +2013,8 @@ completo en [ESTUDIO_STRATEGY.md](ESTUDIO_STRATEGY.md). Versión visual para Luc
    motor. **Directiva explícita de Lucy (2026-07-12): NO atarnos a pagar una licencia (inviable por costo) —
    construir nuestra propia tecnología sobre Konva hasta tener algo igual o mejor que Polotno.** Polotno queda
    solo como _referencia_ de lo que "listo" significa (es replicable a $0 por ser el mismo motor); nunca como
-   dependencia ni opción de compra futura. Ver "Meta paridad-o-mejor que Polotno" en ESTUDIO_STRATEGY.md.
+   dependencia ni opción de compra futura. ("Meta paridad-o-mejor que Polotno" — documento de
+   estrategia del Estudio consolidado en git history; el módulo vivo está en `apps/web/app/estudio/`).
 2. **Gap #1 (arquitectura):** el archivo de impresión hoy se genera en el celular del cliente
    (`finalizeDesign` solo valida cantidad + sube los PNG del navegador). Riesgo real de degradación/fallo
    silencioso → devolución. Fix de máximo impacto/menor costo ($0, no toca el motor): **render de producción

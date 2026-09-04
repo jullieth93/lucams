@@ -9,7 +9,7 @@ E-commerce colombiano de productos magnéticos personalizados. Inspirado en [mag
 
 ## Estado del proyecto
 
-**Salida en 2 etapas (2026-07-21).** La aplicación está construida y desplegada en `lucamsshop.com`. **Etapa 1 (en curso):** modo catálogo + cotización por WhatsApp (rama `catalogo-whatsapp`, sin pagos en línea ni envíos integrados). **Etapa 2:** tienda full con Wompi + Aveonline reales — espera trámites (NIT, abogado, DIAN). El estado detallado y la bitácora siempre están en [docs/STATE.md](docs/STATE.md), el plan de salida en [docs/PLAN_SALIDA_PRODUCCION.md](docs/PLAN_SALIDA_PRODUCCION.md) y la auditoría fullstack en [docs/audits/2026-07-21-fullstack-prelaunch-audit.md](docs/audits/2026-07-21-fullstack-prelaunch-audit.md).
+**Salida en 2 etapas (2026-07-21).** La aplicación está construida y desplegada en `lucamsshop.com`. **Etapa 1 (en curso):** modo catálogo + cotización por WhatsApp (sin pagos en línea ni envíos integrados). **Etapa 2:** tienda full con Wompi + Aveonline reales — espera trámites (NIT, abogado, DIAN). El estado detallado y la bitácora siempre están en [docs/STATE.md](docs/STATE.md), el runbook de go-live en [docs/RUNBOOK_GO_LIVE.md](docs/RUNBOOK_GO_LIVE.md) y la auditoría de seguridad (cerrada y homologada) en [docs/audits/auditoria_seguridad_lucams.md](docs/audits/auditoria_seguridad_lucams.md).
 
 ## Stack
 

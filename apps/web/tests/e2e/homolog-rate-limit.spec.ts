@@ -1,6 +1,5 @@
 /*
- * HOMOLOGACIÓN E2E — rate-limit + CSRF + doble submit (PROMPT_E2E_HOMOLOGACION
- * §6.21): "429 tras N intentos en login/registro/cotización/contacto con
+ * HOMOLOGACIÓN E2E — rate-limit + CSRF + doble submit (docs/TESTING.md): "429 tras N intentos en login/registro/cotización/contacto con
  * mensaje claro; server action con origen adulterado rechazada; doble submit
  * de cotización no duplica (idempotencia en UI + DB)".
  *

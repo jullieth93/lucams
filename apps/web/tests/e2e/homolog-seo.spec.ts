@@ -1,5 +1,5 @@
 /*
- * HOMOLOGACIÓN E2E — SEO/estáticos (PROMPT_E2E_HOMOLOGACION §6.17):
+ * HOMOLOGACIÓN E2E — SEO/estáticos (docs/TESTING.md):
  *   sitemap.xml (productos + legales), robots.txt (bloquea /admin), OG image
  *   real, canonical al dominio del ambiente, JSON-LD home + PDP (en modo
  *   catálogo el Product NO emite Offer/InStock — la tienda no vende en línea).

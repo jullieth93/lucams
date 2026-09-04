@@ -1,5 +1,5 @@
 /*
- * Acceso a la DB del ambiente para los specs E2E (PROMPT_E2E_HOMOLOGACION §5.1:
+ * Acceso a la DB del ambiente para los specs E2E (docs/TESTING.md —
  * "los datos esperados se consultan, no se hardcodean").
  *
  * Singleton perezoso por worker. El runner ya cargó el .env del ambiente

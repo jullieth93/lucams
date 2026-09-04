@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Suite E2E modo FULL (Etapa 2 — docs/PROMPT_E2E_HOMOLOGACION.md §7.5). LOCAL only.
+# Suite E2E modo FULL (Etapa 2 — docs/TESTING.md). LOCAL only.
 #
 # Levanta un dev server DEDICADO en :4100 con NEXT_PUBLIC_STORE_MODE=full (el
 # stack catálogo de :4000 no se toca — Next 16 dev permite UN solo servidor por
