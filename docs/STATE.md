@@ -13,8 +13,24 @@
 
 ## Resumen actual
 
-**🔧 POST-AUDITORÍA HOMOLOGADA + DOCS REORGANIZADOS + PRD EN MODO FULL — PRÓXIMO: 3 FIXES FUNCIONALES DE UX (2026-09-03).**
-El 2026-08-29/30 se cerró y homologó toda la auditoría OWASP (`docs/audits/auditoria_seguridad_lucams.md` §11):
+**✅ 3 FIXES UX DE LUCY EJECUTADOS Y VERIFICADOS EN LOCAL/STG/PRD — PENDIENTE SOLO EL COMMIT (2026-09-03, sesión 2).**
+Los 3 pendientes funcionales registrados en la sesión 1 de hoy quedaron implementados, testeados y
+verificados (detalle en la entrada nueva de bitácora, abajo): ① stepper "Unidades" en la PDP de TODOS
+los productos — la cantidad vive en el Context del buy-box (`variant-actions.tsx`): compra directa la
+manda como `qty` del form y los personalizables la llevan al Estudio como `?copies=N` (la modal de
+confirmación arranca pre-cargada; Nombre Personalizado no lo lleva — su cantidad son las letras del
+NamePricePicker). ② Modal "Así se verá…" responsiva: alto capado por dvh + scroll interno, sheet
+anclado abajo en móvil, imagen capada por vh; fixes colaterales: el ancho real en desktop
+(`sm:max-w-2xl` — la base `sm:max-w-sm` del Dialog le ganaba por cascada) y el placeholder `{pieza}`
+del texto CMS que se veía crudo. ③ Abecedario sin "Cantidad" elegible: `attributes.quantity`
+normalizado por idioma (es=27 con Ñ, en=26; vocales=5) en las 24 variantes de LOCAL, STG y PRD con
+`packages/db/scripts/normalize-letterset-quantity.mjs` (env-guard; PRD con bypass deliberado),
+verificado por SQL; el selector oculta la dimensión que correlaciona 1:1 con `language` y la muestra
+como texto ("Cantidad: 27 en Español · 26 en Inglés"). **Gates:** tsc ✓ · eslint ✓ · prettier ✓ ·
+suite 2967/2967 ✓ · QA Playwright 17/17 con capturas (375×667, 768×1024, 1366×600). **Cambios SIN
+commitear a la espera de confirmación de Lucy.**
+
+**Contexto que sigue vigente (sesión 1 del mismo día y días previos):** el 2026-08-29/30 se cerró y homologó toda la auditoría OWASP (`docs/audits/auditoria_seguridad_lucams.md` §11):
 commits `229b30b`→`da7e97a` en `develop`≡`production`, CI verde en ambas, PRD en vivo con Next **16.3.3**
 (vía Dependabot #32), DB homologada en LOCAL/STG/PRD (migraciones Supabase 025-029 + Prisma 52/52 + campo
 CMS `estudio.ia.nota-privacidad`), primer backup cifrado gpg verificado en R2 (objeto `.sql.gz.gpg`),
@@ -32,14 +48,76 @@ facturación electrónica). Documentado en ROADMAP (E2), RUNBOOK (FASE 11.c), OP
 `.env.example` (commit `140ed40`). Pendientes de operador: activar leaked-password-protection **solo al pasar
 a plan pago de Supabase**, branch protection con checks requeridos en `production` (GitHub → Settings →
 Branches), admins regenerando recovery codes (1 ya lo hizo), panel AveOnline ya verificado OK por Lucy.
-**Próximo trabajo (feedback funcional de Lucy poniéndose del lado usuaria, 2026-09-03 — detalle y archivos en la
-entrada de bitácora de hoy abajo):** ① stepper de cantidad/copias en la PDP de TODOS los productos (hoy solo
-existe en compra directa; los personalizables no lo tienen antes de ir al Estudio), ② modal "Así se verá…" del
-Estudio desborda la pantalla en resoluciones bajas y móvil (hacerlo responsivo/scrollable), ③ "Abecedario
-Completo": la cantidad NO debe ser dimensión elegible — la define el idioma (es=27 con Ñ, en=26) y debe quedar
-descrita, igual que "Pack Vocales" (5 en ambos → no se muestra selector). **Estado de arranque: repo limpio,
-`develop`≡`production`≡`140ed40`, CI verde, suite ~2.967 tests verde; si el stack local está abajo:
-`make db-local-start`.**
+**Los 3 fixes UX del feedback de Lucy se ejecutaron el mismo día en la sesión 2 (ver la entrada nueva
+de bitácora abajo y el resumen de arriba):** cambios listos en el working tree, gates verdes, datos
+normalizados en los 3 ambientes — falta solo autorizar el commit.
+
+---
+
+**✅ 3 FIXES FUNCIONALES DEL FEEDBACK DE LUCY EJECUTADOS (2026-09-03, sesión 2).**
+La sesión 1 de hoy dejó registrado el análisis (validado contra código y datos de STG); en esta
+sesión se ejecutó todo, con verificación en los 3 ambientes:
+
+- **① Stepper "Unidades" en la PDP de TODOS los productos.** La cantidad quedó con UNA sola fuente
+  de verdad: el `SelectedVariantProvider` del buy-box ganó `copies`/`setCopies`
+  (`app/producto/[slug]/variant-actions.tsx`) y `CopiesQtyInput` dejó su estado local. Compra
+  directa: mismo hidden `qty` hacia `addToCartAction` (intacto). Personalizables
+  (`requiresPersonalization || isLetterSetProduct`): stepper nuevo en la ficha y el `EstudioCtaLink`
+  lleva `?copies=N` (solo si >1); `app/estudio/[slug]/page.tsx` lo parsea acotado a 1..99 y lo pasa
+  como `initialCopies` a StudioEditor y LetterSetEditor → el stepper "Copias" de la modal de
+  confirmación arranca pre-cargado (ajustable ahí; cada apertura vuelve al valor de la PDP, no a 1).
+  `isNamePerTile` NO recibe stepper: su cantidad son las letras del NamePricePicker (precio por
+  ficha) — sin controles duplicados. El flujo carrito→checkout→ZIP ya soportaba qty 1..99
+  ("⚠️ IMPRIMIR N COPIAS" usa `item.qty`), así que no se tocó nada más de la cadena.
+- **② Modal "Así se verá…" responsiva.** `studio-preview-modal.tsx`: `DialogContent` con
+  `max-h-[calc(100dvh-2rem)]` + `overflow-y-auto` (todo deslizable); en <sm sheet anclado abajo a
+  ancho completo (`max-sm:max-h-[92dvh]`, sin redondeado inferior); imagen capada por ALTO de
+  viewport (`max-w-[min(28rem,42dvh)]` — con aspect-square, capar el ancho en dvh capa el alto).
+  Fix colateral de ancho: la clase correcta es la variante prefijada `sm:max-w-2xl` — la base
+  `sm:max-w-sm` del Dialog le ganaba por orden de cascada a un `max-w-2xl` sin prefijo, así que la
+  modal nunca llegaba a 2xl en ≥sm. Otro colateral detectado en las capturas: el texto CMS
+  `estudio.exportar.desc-iman-tamano` traía `{pieza}` sin interpolar ("Cada {pieza} mide…") — ahora
+  se rellena antes del `<strong>` del tamaño. QA con capturas (`tmp/qa-20260903/`): 375×667 (sheet
+  con scroll), 768×1024 (cabe entera sin scroll), 1366×600 (capada con scroll) — el CTA de
+  confirmación queda alcanzable en las 3.
+- **③ Abecedario: "Cantidad" ya no es dimensión elegible.** Datos: script one-off
+  `packages/db/scripts/normalize-letterset-quantity.mjs` (dry-run por defecto, `--apply`, env-guard
+  del repo; PRD con `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`) — `attributes.quantity` normalizado en
+  TODAS las variantes de `abecedario-completo` (es=27 con Ñ / en=26) y `pack-vocales` (5 en todas —
+  a las GRANDES inactivas les faltaba y el invariante debe valer aunque se re-activen). Escritas:
+  LOCAL 24, STG 9 (el resto ya estaba), PRD 24; verificado por SQL: 24/24 correctas por ambiente.
+  UI (`variant-selector.tsx`): nueva regla de dedupe por correlación 1:1 — una dimensión de
+  cantidad (`quantity`/`photoSlots`) determinada 1:1 por `language` (biyección en TODAS las
+  variants) deja de ser selector y se describe como texto bajo el grupo Idioma ("Cantidad: 27 en
+  Español · 26 en Inglés"). Gate estricto a `language`: otras correlaciones 1:1 del catálogo
+  (photoSlots↔sizeCm en polaroid/tiras) son elección real del cliente y siguen visibles; si una
+  variante no trae `quantity` la correlación se rompe y el grupo vuelve a mostrarse (degradación
+  segura — por eso el fix de datos era requisito). No hizo falta tocar copy CMS (la descripción del
+  producto ya decía "Elige idioma, tamaño…"). Verificado también que `production-spec.ts` lee
+  `quantity` como "piezas por pack" del taller: el valor normalizado coincide con el que ya traían
+  las variantes activas, así que la ficha de taller queda consistente.
+
+**Tests nuevos:** integración stepper→`?copies=` del CTA (`copies-qty-input.test.tsx`, reescrito
+sobre el provider), `initialCopies` de la modal (`studio-preview-modal.test.tsx`, +4) y correlación
+1:1 del selector (`variant-selector.test.tsx`, +4: oculta Cantidad, selección llega a la variante
+correcta, correlación rota = grupo visible, polaroid intacto). **Gates:** tsc ✓ · eslint ✓ ·
+prettier ✓ · suite **2967/2967** ✓ (8 skipped = probes live por diseño) · QA visual Playwright
+17/17. **Repo SIN commitear a la espera de confirmación de Lucy.**
+
+**Post-cierre — logs del stack de operación (`lucams-shop-local`, dir. NO versionado):** su
+`make restart` mostraba 2 cosas. (a) ERROR ngrok `unknown shorthand flag: 'C' in -C`: bug del
+parser de ese Makefile (no del repo) — las líneas `NGROK_DOMAIN=`/`NGROK_AUTHTOKEN=` de
+`.env.local` traen comentario inline (válido en dotenv) y el `grep|cut` lo capturaba crudo, así
+que ngrok recibía el texto del comentario ("…make -C…") como flags. Corregido ahí mismo (sed que
+elimina el comentario + xargs que recorta, en TOKEN y DOMAIN) y verificado end-to-end: túnel
+`https://kebab-late-batting.ngrok-free.dev` sirviendo la app (PDP + /api/health 200, ngrok.log
+solo info). (b) Storm de `⨯ uncaughtException: Error: aborted (ECONNRESET)` justo tras el
+restart: bug conocido de **next dev** (no aplica a prod) — con middleware presente (este repo
+tiene `proxy.ts`), una conexión abortada por el cliente a mitad de stream/compilación se loguea
+como uncaughtException (issue oficial vercel/next.js#84649, 2025-10-08, abierto). No es error de
+la aplicación: barrida final de 10 requests (5 directos + 5 por túnel) → todos 200 y 0 líneas de
+error nuevas. Además quedó un proceso zombie `next-server v16.2.6` (pid 5038, previo al bump
+16.3.3, sin puerto escuchando): inofensivo, candidato a matar en la próxima limpieza.
 
 ---
 
@@ -74,10 +152,11 @@ ADR-085.
 
 ---
 
-## Sesión — 2026-09-03 (feedback funcional de Lucy: 3 fixes UX pendientes — PRÓXIMO TRABAJO)
+## Sesión — 2026-09-03 (feedback funcional de Lucy: 3 fixes UX — EJECUTADOS en la sesión 2 del mismo día)
 
-Lucy se puso del lado usuaria y levantó 3 observaciones funcionales. Quedan registradas acá con el
-análisis técnico ya hecho (validado contra código y datos de STG) para ejecutarlas en la próxima sesión:
+Lucy se puso del lado usuaria y levantó 3 observaciones funcionales. Quedaron registradas acá con el
+análisis técnico (validado contra código y datos de STG) y **se ejecutaron en la sesión siguiente del
+mismo día** — el resultado completo está en la entrada nueva de bitácora de arriba:
 
 **① Cantidad/copias seleccionable en la PDP de TODOS los productos (antes de personalizar).**
 Hoy el stepper de copias (`CopiesQtyInput`, CartItem.qty 1-99) solo existe en la rama de **compra
@@ -113,9 +192,10 @@ dimensiones de `variant-selector.tsx:240-254` para ocultar una dimensión cuando
 otra (quantity ↔ language), y/o mostrarla como texto descriptivo ("27 imanes en español · 26 en
 inglés") en vez de selector. Actualizar copy si hace falta vía CMS.
 
-**Estado de arranque para la próxima sesión:** repo limpio (`develop`≡`production`≡`140ed40`), stack
-local operativo (`make db-local-start` — se cae si la VM duerme), suite ~2.967 tests verde. Prompt de
-continuación entregado a Lucy en el chat de la sesión anterior.
+**Estado al cierre de la sesión 2 (mismo día):** los 3 fixes EJECUTADOS y verificados (LOCAL/STG/PRD,
+gates verdes: tsc + eslint + prettier + suite 2967/2967 + QA Playwright 17/17 con capturas). Cambios
+en el working tree SIN commitear — pendiente la confirmación de Lucy para el commit. Si el stack local
+está abajo: `make db-local-start`.
 **Consolidación documental (mandato Lucy, mismo día, commit `f927c34`):** el árbol de markdown pasó de
 134 → 41 archivos — eliminadas las auditorías históricas fechadas de `docs/audits/` (trabajo ya ejecutado,
 recuperable vía git history), `HANDOFF.md`, `docs/claude-project/` y 6 planes/prompts de trabajo terminado;
