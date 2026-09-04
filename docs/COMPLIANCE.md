@@ -558,7 +558,7 @@ No usamos cookies de idioma/tema ni un request-id en cookie (el `X-Request-Id` v
 ### Política
 
 - Lista publicada en `/legal/subprocesadores`.
-- **Estado por etapa:** mientras la tienda opere en **modo catálogo** (Etapa 1, `NEXT_PUBLIC_STORE_MODE=catalog`), Wompi, Aveonline y Gemini están **inactivos** en producción (sin pagos en línea, sin envíos integrados, sin asistente IA — la cotización es por WhatsApp); en la página pública figuran marcados "cuando lo activemos". La lista aplica plenamente al activar el modo tienda completa.
+- **Estado por etapa:** producción opera en **modo tienda completa** (`NEXT_PUBLIC_STORE_MODE=full`) por decisión de Lucy desde 2026-09-03 — Wompi, Aveonline y Gemini están **activos** en producción, y la lista de subprocesadores aplica plenamente. (Antes, en Etapa 1 "catalog", figuraban como "cuando lo activemos" en la página pública — si se vuelve a catalog, actualizar esa página.)
 - **Notificación de cambio:** 30 días antes de agregar/cambiar un subprocesador, email a clientes activos.
 - Al firmar Pro con cualquiera, **revisar DPA (Data Processing Agreement)** ofrecido por el vendor — la mayoría lo ofrecen estándar.
 

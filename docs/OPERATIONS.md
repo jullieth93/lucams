@@ -419,9 +419,10 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000        # dev
 
 NEXT_PUBLIC_WA_NUMBER=573208873826                # WhatsApp temporal del usuario
 
-# STORE_MODE (ADR pendiente, plan de salida 2026-07-21): "catalog" = tienda
+# STORE_MODE (ADR-077, plan de salida 2026-07-21): "catalog" = tienda
 # catálogo + cotización por WhatsApp (Etapa 1, sin pagos/envíos/IA);
-# "full" (default si falta) = tienda completa. En "catalog" las vars de
+# "full" = tienda completa. **Producción corre en "full" por decisión de Lucy
+# (2026-09-03)** — la tienda vende con pagos reales. En "catalog" las vars de
 # Wompi/Aveonline/Gemini NO se exigen en producción.
 # NEXT_PUBLIC_STORE_MODE=catalog
 

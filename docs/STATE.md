@@ -110,6 +110,13 @@ recuperable vía git history), `HANDOFF.md`, `docs/claude-project/` y 6 planes/p
 corregidas TODAS las referencias en docs vivos y comentarios de código (quedan apuntando a TESTING.md /
 RUNBOOK_GO_LIVE.md o autocontenidas). Convención nueva en `docs/audits/README.md`: una auditoría cerrada y
 absorbida por los docs canónicos se consolida (se borra; git conserva la historia).
+**Reorganización total de la documentación (commit `892853f`):** cada doc canónico verificado línea por
+línea contra el código y corregido (drift con evidencia archivo:línea); nuevo mapa `docs/README.md`;
+ADR-016/017 marcados SUPERSEDED (cache en Postgres nunca existió; pgmq nunca se adoptó — el modelo real es
+pg_cron + pg_net → `/api/cron/*`). Bug real encontrado verificando docs: `mapAveonlineStatus` no mapeaba
+`DEVOLUCION` → RETURNED (fix + test). **Decisión de Lucy (2026-09-03): producción opera en modo `full` a
+propósito** (la verificación en vivo la encontró sirviendo full; se documenta en ROADMAP/RUNBOOK/OPERATIONS/
+COMPLIANCE — los trámites NIT/DIAN quedan pendientes solo para facturación electrónica).
 
 ---
 

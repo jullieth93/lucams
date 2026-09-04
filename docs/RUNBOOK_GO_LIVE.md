@@ -324,26 +324,26 @@ Las exige `validateEnv()` al arranque (`apps/web/lib/env.ts`). Las de la columna
 (PROD_REQUIRED) bloquean el arranque de producción en CUALQUIER modo de tienda; las de **modo
 `full`** solo se exigen con `NEXT_PUBLIC_STORE_MODE=full` (Etapa 2) — en modo `catalog` no aplican.
 
-| Variable                         | Valor / de dónde sale                                                                           | Cuándo la exige  |
-| -------------------------------- | ----------------------------------------------------------------------------------------------- | ---------------- |
-| `NEXT_PUBLIC_STORE_MODE`         | `catalog` (Etapa 1) — valor exacto obligatorio en prod; si falta o es otro, el arranque aborta  | Siempre          |
-| `NEXT_PUBLIC_SITE_URL`           | `https://lucamsshop.com`                                                                        | Siempre          |
-| `RESEND_API_KEY`                 | Resend (FASE 5)                                                                                 | Siempre          |
-| `RESEND_WEBHOOK_SECRET`          | Resend → Webhooks → Signing secret (`whsec_…`) — sin él rebotes/bajas no alimentan la supresión | Siempre          |
-| `EMAIL_FROM`                     | `Lucams_shop <hola@mail.lucamsshop.com>`                                                        | Siempre          |
-| `EMAIL_REPLY_TO`                 | `hola@lucamsshop.com` (FASE 5.d — sin él las respuestas de clientes se pierden)                 | Siempre          |
-| `TURNSTILE_SECRET_KEY`           | Cloudflare Turnstile (FASE 11)                                                                  | Siempre          |
-| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile (FASE 11)                                                                  | Siempre          |
-| `CRON_SECRET`                    | Lo inventas tú (texto largo aleatorio)                                                          | Siempre          |
-| `NEXT_PUBLIC_WA_NUMBER`          | `573208873826`                                                                                  | Siempre          |
-| `WOMPI_PUBLIC_KEY`               | Wompi producción (FASE 7)                                                                       | Solo modo `full` |
-| `WOMPI_PRIVATE_KEY`              | Wompi producción                                                                                | Solo modo `full` |
-| `WOMPI_EVENTS_SECRET`            | Wompi producción                                                                                | Solo modo `full` |
-| `WOMPI_INTEGRITY_SECRET`         | Wompi producción                                                                                | Solo modo `full` |
-| `AVEONLINE_USUARIO`              | Aveonline producción (FASE 8)                                                                   | Solo modo `full` |
-| `AVEONLINE_CLAVE`                | Aveonline producción                                                                            | Solo modo `full` |
-| `AVEONLINE_WEBHOOK_SECRET`       | Lo inventas tú (texto largo aleatorio)                                                          | Solo modo `full` |
-| `GEMINI_API_KEY`                 | Google AI Studio (asistente de diseño)                                                          | Solo modo `full` |
+| Variable                         | Valor / de dónde sale                                                                                                                                           | Cuándo la exige  |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| `NEXT_PUBLIC_STORE_MODE`         | `full` en producción desde 2026-09-03 (decisión de Lucy — antes `catalog` en Etapa 1); valor exacto obligatorio en prod: si falta o es otro, el arranque aborta | Siempre          |
+| `NEXT_PUBLIC_SITE_URL`           | `https://lucamsshop.com`                                                                                                                                        | Siempre          |
+| `RESEND_API_KEY`                 | Resend (FASE 5)                                                                                                                                                 | Siempre          |
+| `RESEND_WEBHOOK_SECRET`          | Resend → Webhooks → Signing secret (`whsec_…`) — sin él rebotes/bajas no alimentan la supresión                                                                 | Siempre          |
+| `EMAIL_FROM`                     | `Lucams_shop <hola@mail.lucamsshop.com>`                                                                                                                        | Siempre          |
+| `EMAIL_REPLY_TO`                 | `hola@lucamsshop.com` (FASE 5.d — sin él las respuestas de clientes se pierden)                                                                                 | Siempre          |
+| `TURNSTILE_SECRET_KEY`           | Cloudflare Turnstile (FASE 11)                                                                                                                                  | Siempre          |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile (FASE 11)                                                                                                                                  | Siempre          |
+| `CRON_SECRET`                    | Lo inventas tú (texto largo aleatorio)                                                                                                                          | Siempre          |
+| `NEXT_PUBLIC_WA_NUMBER`          | `573208873826`                                                                                                                                                  | Siempre          |
+| `WOMPI_PUBLIC_KEY`               | Wompi producción (FASE 7)                                                                                                                                       | Solo modo `full` |
+| `WOMPI_PRIVATE_KEY`              | Wompi producción                                                                                                                                                | Solo modo `full` |
+| `WOMPI_EVENTS_SECRET`            | Wompi producción                                                                                                                                                | Solo modo `full` |
+| `WOMPI_INTEGRITY_SECRET`         | Wompi producción                                                                                                                                                | Solo modo `full` |
+| `AVEONLINE_USUARIO`              | Aveonline producción (FASE 8)                                                                                                                                   | Solo modo `full` |
+| `AVEONLINE_CLAVE`                | Aveonline producción                                                                                                                                            | Solo modo `full` |
+| `AVEONLINE_WEBHOOK_SECRET`       | Lo inventas tú (texto largo aleatorio)                                                                                                                          | Solo modo `full` |
+| `GEMINI_API_KEY`                 | Google AI Studio (asistente de diseño)                                                                                                                          | Solo modo `full` |
 
 ### 🧹 Depuración de las env de Vercel (auditado 2026-07-20)
 
@@ -958,14 +958,12 @@ y 5 **ya pasan**; los 3 y 4 **todavía no** (`pago en línea seguro` → 1, `sch
 porque la rama `catalogo-whatsapp` aún no está desplegada. Esos dos son justamente los que te avisan
 si el deploy nuevo llegó o si Vercel te dejó el build viejo.
 
-📌 **Re-verificado 2026-09-03 (en vivo):** los 5 pasos devuelven hoy la firma de **modo FULL**, no de
+📌 **Re-verificado 2026-09-03 (en vivo):** los 5 pasos devolvieron la firma de **modo FULL**, no de
 catálogo (`/checkout/pago` → 307 `location: /carrito`; `/checkout/datos` muestra "Pago seguro Wompi";
-el manifest promete "pago en línea seguro"; el JSON-LD trae `schema.org/InStock`). Según la matriz de
-env vars (OPERATIONS.md, 2026-08-01) Production debería tener `NEXT_PUBLIC_STORE_MODE=catalog` —
-**hay que revisar el valor real del scope Production en Vercel**: si quedó en `full`, corregirla a
-`catalog` + **Redeploy** (es `NEXT_PUBLIC_*`: se inlinea en el build) y repetir esta fase. (Preview
-pasó a `full` a propósito el 2026-08-07 para la suite E2E §7.5 — sospecha: esa edición pudo tocar
-ambos scopes.)
+el manifest promete "pago en línea seguro"; el JSON-LD trae `schema.org/InStock`). **Decisión de Lucy
+(2026-09-03): producción queda en `full` A PROPÓSITO** — la tienda vende con pagos reales; esta fase
+(11.c) queda como registro histórico de la Etapa 1 y no aplica mientras prod esté en modo full. Si
+algún día se vuelve a `catalog`, esta fase vuelve a ser la verificación correcta.
 
 ⚠️ **Tres trampas verificadas el 2026-07-24 contra el sitio en vivo — no saques conclusiones falsas:**
 
