@@ -84,10 +84,14 @@ export function buildBackupKey(date, prefix = "db") {
  *
  * - keep <= 0 → no borra nada (salvaguarda: jamás vaciar el bucket por un mal valor).
  * - Conserva los `keep` más recientes; devuelve el resto (los más viejos).
+ *
+ * `pattern` (optional, defaults to BACKUP_KEY_RE) selects which keys count as
+ * backups — the Storage mirror passes its own archive/manifest patterns so the
+ * same retention logic prunes `db-storage/` without ever touching DB dumps.
  */
-export function selectStaleKeys(keys, keep) {
+export function selectStaleKeys(keys, keep, pattern = BACKUP_KEY_RE) {
   if (!Number.isFinite(keep) || keep <= 0) return [];
-  const backups = keys.filter((k) => BACKUP_KEY_RE.test(k)).sort(); // ascendente = viejo→nuevo
+  const backups = keys.filter((k) => pattern.test(k)).sort(); // ascendente = viejo→nuevo
   if (backups.length <= keep) return [];
   return backups.slice(0, backups.length - keep); // todos menos los `keep` más nuevos
 }
