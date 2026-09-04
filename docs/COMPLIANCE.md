@@ -47,10 +47,7 @@
    - **Verificable** (registrada — guardamos `Consent(customerId?, email?, phone?, scope, accepted, version, acceptedAt, ipAddress, userAgent)` en DB; `phone` ancla consentimientos de titulares sin email, ej. cotización por WhatsApp).
 4. **Atender peticiones, quejas y reclamos (PQR)** en máximo **15 días hábiles**.
 5. **Reportar incidentes de seguridad** a la SIC (Superintendencia de Industria y Comercio) si comprometen datos personales (notificación dentro de 15 días hábiles del descubrimiento).
-6. **Registro Nacional de Bases de Datos (RNBD)** ante la SIC: obligatorio si:
-   - Es persona jurídica con activos > 100.000 UVT, **o**
-   - Procesa datos sensibles a gran escala.
-   - Para nosotros (al inicio): probablemente **no obligatorio**, pero confirmar con abogado.
+6. **Registro Nacional de Bases de Datos (RNBD)** ante la SIC: según el Decreto 090 de 2018 (modifica el art. 2.2.2.26.1.2 del Decreto 1074 de 2015), la obligación aplica a **sociedades comerciales y ESAL con activos ≥ 100.000 UVT** (2026: UVT $52.374 → ≈ $5.237.400.000). Una **persona natural no está en el ámbito obligatorio** (puede registrarse voluntariamente). _(Verificado 2026-09-04 contra el Decreto 090/2018: el criterio "procesa datos sensibles a gran escala" que figuraba aquí no existe en la norma — eliminado. Confirmar la decisión de no registrar con el abogado.)_
 
 ### Implementación técnica
 
@@ -419,7 +416,7 @@ Antes de elegir proveedor:
 
 > Decisión Lucy en `docs/PLAN_CATALOG_V2.md` 1.8 (2026-05-15).
 
-Persona natural NO responsable de IVA en Colombia **NO está obligada** a emitir factura electrónica si sus ingresos brutos anuales del año anterior están por debajo de **3.500 UVT** ([pendiente verificación monto UVT 2026]).
+Persona natural NO responsable de IVA en Colombia **NO está obligada** a emitir factura electrónica si sus ingresos brutos anuales del año anterior están por debajo de **3.500 UVT** (UVT 2026 = **$52.374**, Resolución DIAN 000238 del 15-12-2025 → umbral 2026 = **$183.309.000**; verificado 2026-09-04 — re-verificar el UVT cada diciembre).
 
 Por debajo del umbral, puede emitir:
 
