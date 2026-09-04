@@ -857,21 +857,26 @@ export async function searchCatalog(query: string, limit = 20): Promise<CatalogS
     // similarity() corre por fila contra name+richDescription; un string enorme amplifica
     // el coste de la query trigram.
     const q = query.trim().toLowerCase().slice(0, 120);
-    // pg_trgm + unaccent. Búsqueda en name + richDescription + idealFor concatenado.
+    // pg_trgm + unaccent. Búsqueda en name + richDescription + description.
     // Usamos $queryRaw para soporte de pg_trgm similarity().
+    // Se usa public.immutable_unaccent (wrapper IMMUTABLE de unaccent, migración
+    // 00000000000005) y NO unaccent() a secas (STABLE): solo así los predicados
+    // matchean estructuralmente los índices GIN de expresión de la migración
+    // 00000000000031 (F-13, auditoría 2026-09-04) y el planner puede usarlos.
+    // Semántica idéntica: el wrapper ejecuta el mismo unaccent por dentro.
     const rows = await prisma.$queryRaw<Array<{ id: string; rank: number }>>`
       SELECT id,
              GREATEST(
-               similarity(unaccent(lower(name)), unaccent(lower(${q}))),
-               similarity(unaccent(lower(COALESCE("richDescription", ''))), unaccent(lower(${q})))
+               similarity(public.immutable_unaccent(lower(name)), public.immutable_unaccent(lower(${q}))),
+               similarity(public.immutable_unaccent(lower(COALESCE("richDescription", ''))), public.immutable_unaccent(lower(${q})))
              ) as rank
       FROM "Product"
       WHERE "isActive" = true
         AND "deletedAt" IS NULL
         AND (
-          unaccent(lower(name)) % unaccent(lower(${q}))
-          OR unaccent(lower(COALESCE("richDescription", ''))) % unaccent(lower(${q}))
-          OR unaccent(lower(COALESCE("description", ''))) % unaccent(lower(${q}))
+          public.immutable_unaccent(lower(name)) % public.immutable_unaccent(lower(${q}))
+          OR public.immutable_unaccent(lower(COALESCE("richDescription", ''))) % public.immutable_unaccent(lower(${q}))
+          OR public.immutable_unaccent(lower(COALESCE("description", ''))) % public.immutable_unaccent(lower(${q}))
         )
       ORDER BY rank DESC
       LIMIT ${limit}

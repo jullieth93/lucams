@@ -364,6 +364,19 @@ model Product {
   deletedAt DateTime?
   deletedBy String?
 
+  // NOTA F-13 (auditoría 2026-09-04): los índices GIN trigram de búsqueda de
+  // este modelo son de EXPRESIÓN (public.immutable_unaccent(lower(...))) y
+  // viven en supabase/migrations/00000000000031_product_search_trgm_expression_indexes.sql
+  // — reemplazan a los de la 00000000000005 y a Product_richDescription_trgm_idx
+  // (Prisma 20260515), que no matcheaban las queries reales. Si cambian las
+  // expresiones de búsqueda en apps/web/lib/catalog.ts, hay que cambiar los
+  // índices: el planner exige match estructural o no los usa.
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+
   @@index([deletedAt])
   @@index([categoryId])
   @@index([isActive, isFeatured])
@@ -404,6 +417,12 @@ model ProductVariant {
   updatedBy String?
   deletedAt DateTime?
   deletedBy String?
+
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([productId, deletedAt])
   @@index([stock])
@@ -478,6 +497,12 @@ model CartItem {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([cartId])
   @@index([variantId])
@@ -594,6 +619,12 @@ model Order {
   deletedAt DateTime?
   deletedBy String?
 
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+
   @@index([customerId, deletedAt])
   @@index([status, createdAt])
   @@index([wompiTransactionId])
@@ -648,6 +679,12 @@ model CodReconciliation {
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
 
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+
   @@index([status, updatedAt])
 }
 
@@ -681,6 +718,12 @@ model OrderItem {
   warrantyClaims WarrantyClaim[]
 
   createdAt DateTime @default(now())
+
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([orderId])
   @@index([variantId])
@@ -725,6 +768,14 @@ model Coupon {
   deletedAt DateTime?
   deletedBy String?
 
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+  // OJO: `value` queda en `>= 0` (no `> 0`) porque FREE_SHIPPING lo ignora
+  // y los cupones de envío gratis lo persisten en 0 (features/coupons/schemas.ts).
+
   @@index([code, isActive, deletedAt])
   @@index([validFrom, validTo])
   @@index([isPublic, isActive, deletedAt])
@@ -757,6 +808,12 @@ model CouponUsage {
   order      Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   appliedAt  DateTime  @default(now())
   amount     Int // descuento aplicado en COP centavos
+
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([customerId, couponId])
   @@index([couponId, email])
@@ -794,6 +851,12 @@ model RetractRequest {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([status, requestedAt])
 }
@@ -960,6 +1023,12 @@ model StockReservation {
   qty       Int
   expiresAt DateTime
   createdAt DateTime       @default(now())
+
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([expiresAt])
   @@index([orderId])
@@ -1803,6 +1872,12 @@ model Quote {
   deletedAt DateTime?
   deletedBy String?
 
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+
   @@index([status, createdAt])
   @@index([deletedAt])
 }
@@ -1830,6 +1905,12 @@ model QuoteItem {
 
   createdAt DateTime @default(now())
 
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+
   @@index([quoteId])
 }
 
@@ -1854,6 +1935,12 @@ model WholesaleTier {
   deletedAt DateTime?
   deletedBy String?
 
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+
   @@index([productId, isActive])
   @@index([deletedAt])
 }
@@ -1876,6 +1963,12 @@ model Material {
   updatedBy String?
   deletedAt DateTime?
   deletedBy String?
+
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([isActive])
   @@index([deletedAt])
