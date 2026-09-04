@@ -2,22 +2,22 @@
 
 E-commerce colombiano de productos magnéticos personalizados. Inspirado en [magneticas.cl](https://www.magneticas.cl) pero con valor agregado fuerte (estudio de personalización en vivo, vista 3D, IA, contraentrega).
 
-- **Sitio en producción:** [lucamsshop.com](https://lucamsshop.com) — Etapa 1 en vivo desde 2026-07-22 (catálogo + cotización por WhatsApp; ver [docs/RUNBOOK_GO_LIVE.md](docs/RUNBOOK_GO_LIVE.md))
+- **Sitio en producción:** [lucamsshop.com](https://lucamsshop.com) — en vivo desde 2026-07-22 y vendiendo en modo `full` (pagos reales Wompi + envíos Aveonline) desde 2026-09-03 (ver [docs/RUNBOOK_GO_LIVE.md](docs/RUNBOOK_GO_LIVE.md))
 - **Instagram:** [@lucams_shop](https://www.instagram.com/lucams_shop)
 - **Linktree actual:** [linktr.ee/Lucams_shop](https://linktr.ee/Lucams_shop)
 - **WhatsApp (temporal):** +57 320 887 3826
 
 ## Estado del proyecto
 
-**Salida en 2 etapas (2026-07-21).** La aplicación está construida y desplegada en `lucamsshop.com`. **Etapa 1 (en curso):** modo catálogo + cotización por WhatsApp (sin pagos en línea ni envíos integrados). **Etapa 2:** tienda full con Wompi + Aveonline reales — espera trámites (NIT, abogado, DIAN). El estado detallado y la bitácora siempre están en [docs/STATE.md](docs/STATE.md), el runbook de go-live en [docs/RUNBOOK_GO_LIVE.md](docs/RUNBOOK_GO_LIVE.md) y la auditoría de seguridad (cerrada y homologada) en [docs/audits/auditoria_seguridad_lucams.md](docs/audits/auditoria_seguridad_lucams.md).
+**Salida en 2 etapas (2026-07-21).** La aplicación está construida y desplegada en `lucamsshop.com`. **Etapa 1 (superada):** modo catálogo + cotización por WhatsApp (sin pagos en línea ni envíos integrados). **Etapa 2 (activa en PRD desde 2026-09-03, decisión de Lucy):** tienda full con Wompi + Aveonline reales — lo pendiente son los trámites de facturación electrónica (NIT, abogado, DIAN). El estado detallado y la bitácora siempre están en [docs/STATE.md](docs/STATE.md), el runbook de go-live en [docs/RUNBOOK_GO_LIVE.md](docs/RUNBOOK_GO_LIVE.md) y la auditoría de seguridad (cerrada y homologada) en [docs/audits/auditoria_seguridad_lucams.md](docs/audits/auditoria_seguridad_lucams.md).
 
 ## Stack
 
 - **Repo**: monorepo `pnpm` con `apps/web` + `packages/db`
 - **Frontend / Backend**: Next.js 16 (App Router) + TypeScript + **Tailwind v4** + shadcn/ui
-- **DB / Auth / Storage**: Supabase (Postgres + Auth + Storage + `pgmq` + `pg_cron`)
+- **DB / Auth / Storage**: Supabase (Postgres + Auth + Storage + `pg_cron` + `pg_net`)
 - **ORM**: Prisma
-- **Background jobs**: Supabase Queues (`pgmq`) + `pg_cron` (no Vercel Cron — ADR-017)
+- **Background jobs**: `pg_cron` + `pg_net` → HTTP GET a `/api/cron/*` con secreto en Vault (no Vercel Cron — ADR-017 SUPERSEDED; pgmq descartado)
 - **Rate limit + cache**: Postgres + `pg_cron` (no Redis externo — ADR-016)
 - **Pasarela de pago**: Wompi (Etapa 2; con adaptador `PaymentProvider` para sumar Mercado Pago después)
 - **Logística**: Aveonline (Etapa 2, ADR-039)
@@ -37,7 +37,7 @@ E-commerce colombiano de productos magnéticos personalizados. Inspirado en [mag
 | [docs/BRANDING.md](docs/BRANDING.md)                             | Logo, paleta, mascota, tipografías, tono                                                   |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                     | Stack, estructura de carpetas, modelo de datos, RLS, extensiones Postgres, background jobs |
 | [docs/CONVENTIONS.md](docs/CONVENTIONS.md)                       | Convenciones de código y de trabajo (incl. cómo agregar un campo CMS)                      |
-| [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)                     | Wompi, Aveonline, Claude API, Resend, WhatsApp, pgmq                                       |
+| [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)                     | Wompi, Aveonline, Gemini API, Resend, WhatsApp, pg_cron + pg_net                           |
 | [docs/INTEGRATIONS_AVEONLINE.md](docs/INTEGRATIONS_AVEONLINE.md) | Integración Aveonline en detalle (Etapa 2)                                                 |
 | [docs/SECURITY.md](docs/SECURITY.md)                             | RLS, CORS, headers, rate limit, secrets, auth, RBAC, CSP, validación, file upload, PII     |
 | [docs/COMPLIANCE.md](docs/COMPLIANCE.md)                         | Cumplimiento legal colombiano (Ley 1581, Ley 1480, DIAN, retracto)                         |

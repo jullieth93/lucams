@@ -592,14 +592,18 @@ invalidan solas (`updateTag("cms")`), pero **un script de `packages/db/scripts` 
 CMS directo en DB NO puede invalidarlo** (`updateTag` solo corre dentro de una Server
 Action de Next — confirmado: la opción "script que dispara el tag" no es viable fuera de
 un request). Después de correr cualquiera de esos scripts (`migrate-cms-v2.mjs`,
-`seed-legal-content-2026-07.mjs`, `update-legal-ley-2439.mjs`,
-`update-delivery-copy-20260801.mjs`, `fix-voseo-cms.mjs`):
+`update-delivery-copy-20260801.mjs`):
 
 1. Entra a **`/admin/contenido`** (índice de páginas).
 2. Click en **"Actualizar caché de contenido"**.
 
 Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminActionLog`
 (`cms.cache.refresh`). Si no se hace, el sitio sirve la versión vieja hasta 1 hora.
+
+> **Nota (2026-09-04):** los scripts one-shot `seed-legal-content-2026-07.mjs`,
+> `update-legal-ley-2439.mjs` y `fix-voseo-cms.mjs` ya se ejecutaron y se eliminaron
+> (commit `c436195`); la publicación de textos legales hoy es manual vía
+> `/admin/contenido` (CMS v2, campos `legal.*`).
 
 ---
 
@@ -626,7 +630,7 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 **Prevención:**
 
-- Implementar reintentos con backoff cuando el webhook handler falle (vía `pgmq` con visibility timeout, ADR-017).
+- Implementar reintentos con backoff cuando el webhook handler falle (vía `pgmq` con visibility timeout, ADR-017). (2026-09-04: pgmq nunca se adoptó — ADR-017 SUPERSEDED; si esta prevención sigue pendiente, rediseñar sobre pg_cron + pg_net).
 - Job `pg_cron` cada 15 min que enqueue en `order_reconciliation` las órdenes en `PENDING_PAYMENT` con > 1h y consume los mensajes consultando Wompi por su estado real.
 
 ---
@@ -729,7 +733,7 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 **Prevención:**
 
-- Cola `shipment_creation_retry` en `pgmq` con visibility timeout 60s y backoff implícito por reintentos del consumer.
+- Cola `shipment_creation_retry` en `pgmq` con visibility timeout 60s y backoff implícito por reintentos del consumer. (2026-09-04: pgmq nunca se adoptó — ADR-017 SUPERSEDED; si esta prevención sigue pendiente, rediseñar sobre pg_cron + pg_net).
 - Job `pg_cron` cada 15 min: detecta órdenes `PAID` sin `trackingNumber` con > 1h y las enqueue.
 - Consumer idempotente: chequea `trackingNumber` antes de crear (no duplicar guías en Aveonline).
 
@@ -772,6 +776,13 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
   - Workflow: [`.github/workflows/backup.yml`](../.github/workflows/backup.yml) — cron diario (07:13 UTC; era semanal — lunes 07:00 — hasta 2026-08-04) + `workflow_dispatch`. Instala `postgresql-client-17` (el server Supabase es PG17; `pg_dump` < 17 rechaza el volcado). Un job `gate` **salta limpio** si faltan los secrets (sin correos de error hasta configurar).
   - **R2 ya provisionado (opera desde 2026-07-27):** bucket `lucams-backups` + token de API R2 creados en Cloudflare y los GitHub secrets `BACKUP_DATABASE_URL` (conexión DIRECTA, no pooler), `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` configurados; workflow validado en corrida manual. Los `R2_*` de los `.env*` quedan como placeholder — los reales viven solo en GitHub Secrets (llenarlos solo para correr `pnpm db:backup` a mano). **`BACKUP_GPG_PASSPHRASE`** (GitHub Secret desde 2026-08-29; el valor está en el gestor de Lucy): sin ella el backup **falla a propósito** (fail-closed — un dump sin cifrar en R2 es peor que un correo de error) y el DR drill la usa para descifrar.
   - Local: `pnpm --filter web db:backup` con el entorno cargado (requiere `pg_dump` 17 y `gpg` locales + `BACKUP_GPG_PASSPHRASE`).
+- **Mirror diario de Supabase Storage a R2** (hallazgo F-16, auditoría 2026-09-04) — implementado:
+  - Script: [`apps/web/scripts/backup-storage-to-r2.mjs`](../apps/web/scripts/backup-storage-to-r2.mjs) — lista TODOS los objetos de cada bucket con la API de Storage (service key server-side; recorrido recursivo + paginación de a 1000), los empaqueta en `tar.gz` por bucket con un ustar mínimo propio (sin dependencias nuevas), los cifra con **gpg simétrico AES256** (misma `BACKUP_GPG_PASSPHRASE` del backup de la DB — las fotos de `customer-uploads` son PII, Ley 1581) y sube a R2 en streaming (solo el CIFRADO toca disco, en un temp 0600; la memoria no crece con el tamaño de los objetos). Snapshot COMPLETO por bucket (no incremental): a esta escala (cientos de objetos) un archivo autocontenido por bucket y día es lo más simple de verificar y restaurar. Llaves `db-storage/<bucket>/lucams-<UTC>.tar.gz.gpg`; manifiesto JSON por corrida en `db-storage/lucams-<UTC>.manifest.json` (solo conteos por bucket: objetos y bytes — NUNCA paths ni datos personales, el manifiesto va sin cifrar para que el drill elija qué verificar). Retención `BACKUP_KEEP` por bucket y para manifiestos (el workflow fija 30).
+  - Buckets cubiertos (configurable vía `BACKUP_STORAGE_BUCKETS`): `customer-uploads`, `production-assets`, `design-previews`, `cms-media`, `product-images`.
+  - Workflow: job `backup-storage` de [`.github/workflows/backup.yml`](../.github/workflows/backup.yml), tras el backup de la DB, con gate propio (`storage_configured`): si faltan los secrets nuevos el job se SALTA limpio sin apagar el backup de la DB.
+  - **Acción de operador requerida (Lucy):** crear los GitHub Secrets `BACKUP_SUPABASE_URL` y `BACKUP_SUPABASE_SECRET_KEY` (Settings → Secrets and variables → Actions) con la URL y la secret key (service) de `lucams-prod`. Hasta crearlos, el mirror queda inactivo con aviso amarillo.
+  - Local: `pnpm --filter web storage:backup` (cae a `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SECRET_KEY` si no hay `BACKUP_SUPABASE_*`; requiere `gpg` y `BACKUP_GPG_PASSPHRASE`).
+  - **Lo que el backup NO cubre:** `auth.users` sigue sin restore validado (el dump `pg_dump` la incluye como schema `auth`, pero nunca se ha ensayado re-enlazarla con GoTrue en un restore real — el drill #2 verifica solo tablas públicas). Tampoco cubre la configuración del proyecto Supabase (auth providers, políticas de Storage, Vault, edge functions): se recrean a mano desde el repo/dashboard.
 - Verificar restauración cada trimestre con un environment de testing.
 
 ---
@@ -884,7 +895,7 @@ Cuando se rompan estos límites, abrir issue automático:
 - **`develop`** es la rama de trabajo diario: commits atómicos, push al cerrar cada tanda, CI en cada push. **No existe `main`** (decisión de Lucy).
 - **`production`** es la rama en vivo: solo avanza por release (`git merge --ff-only develop`, con OK explícito de Lucy). Es la **Production Branch** de Vercel (Settings → Git).
 - **Ramas de feature de largo aliento** (ej. `catalogo-whatsapp`): nacen de `develop` y vuelven con merge; `ci.yml` las vigila igual (dispara en `develop`, `production`, `catalogo-whatsapp`).
-- **Rollback:** tag de restauración antes de cada cambio grande (ej. `pre-cms-v2`); el procedimiento se documenta en HANDOFF al usarlo.
+- **Rollback:** tag de restauración antes de cada cambio grande (ej. `pre-cms-v2`); el procedimiento se documenta en `docs/STATE.md` al usarlo.
 
 ### Release strategy
 
@@ -961,7 +972,7 @@ Los 3 ambientes están homologados en **catálogo y configuración**; difieren s
 5. **Secretos Vault para pg_cron** (los jobs leen `cron_base_url`/`cron_secret` del Vault en runtime): creados con los comandos del header de `scripts/db-stg-setup.sh` — `cron_base_url` = `https://lucams-shop-git-develop-jullieth93s-projects.vercel.app` (alias estable del preview de `develop`) y `cron_secret` = el MISMO valor de `CRON_SECRET` scope Preview.
 6. **Vercel env vars (vía CLI/API):** la matriz completa quedó con scope por ambiente (ver «Variables de entorno por ambiente» arriba) — mecánica: la existente se acota a `["production"]` (`PATCH /v9/projects/{id}/env/{envId}`) y se crea el valor stg con `["preview"]` (`POST /v10/projects/{id}/env`, type `sensitive`). Ojo: las vars `sensitive` NO se pueden leer por API (`decrypted: false`) — los valores de preview salieron de la copia local `.env.local.nube-backup` (mismas claves test) o se generaron nuevos (`CRON_SECRET`, `CSRF_SECRET`).
 7. **Verificar:** los previews tienen **Vercel Authentication** (SSO) — para el smoke automatizado generar un bypass: `PATCH /v1/projects/{id}/protection-bypass` con `{}` y usar el header `x-vercel-protection-bypass: <secret>`. Smoke ejecutado: home/`/productos`/`/admin/login` 200 + categoría «Separadores Magnéticos» servida desde stg. (`vercel deploy` CLI desde la raíz NO sirve: sube 250 MB y revienta el límite de 100 MB — el deploy debe ser vía git o `POST /v13/deployments` con `gitSource`.)
-8. **Documentar:** STG ✅ en la tabla de arriba + HANDOFF al día.
+8. **Documentar:** STG ✅ en la tabla de arriba + `docs/STATE.md` al día.
 
 ### Feature flags
 
@@ -1012,13 +1023,13 @@ if (await isFeatureEnabled("ai-design-suggest", user?.id)) {
 
 ### Capas de defensa
 
-| Capa                 | Mecanismo                                                                                                                                                                                          | Recuperación                                                                                |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| App (Vercel)         | Inmutable deploys + Git                                                                                                                                                                            | Rollback a deployment previo: `vercel rollback <url>` (segundos)                            |
-| DB (Supabase)        | La capa real hoy es el backup diario a R2 (fila de abajo). **`lucams-prod` sigue en tier Free: sin PITR ni backups del dashboard** — PITR 7 días aplica al subir a Pro (RUNBOOK_GO_LIVE FASE 11.b) | Con Pro: restore PITR desde dashboard (~30 min). Hoy (Free): restore desde el dump R2 (~2h) |
-| Storage (Supabase)   | Replicación interna AWS                                                                                                                                                                            | — (transparente)                                                                            |
-| Backup off-site (R2) | Export diario a R2, **cifrado gpg AES256 desde 2026-08-29**; restore verificado por drill automatizado mensual (`dr-drill.yml`)                                                                    | Restore manual: `gpg -d` con `BACKUP_GPG_PASSPHRASE` + `psql` (~2h)                         |
-| DNS (Cloudflare)     | Configuración versionada en repo (Terraform o manual)                                                                                                                                              | Recreación manual (~30 min)                                                                 |
+| Capa                 | Mecanismo                                                                                                                                                                                          | Recuperación                                                                                             |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| App (Vercel)         | Inmutable deploys + Git                                                                                                                                                                            | Rollback a deployment previo: `vercel rollback <url>` (segundos)                                         |
+| DB (Supabase)        | La capa real hoy es el backup diario a R2 (fila de abajo). **`lucams-prod` sigue en tier Free: sin PITR ni backups del dashboard** — PITR 7 días aplica al subir a Pro (RUNBOOK_GO_LIVE FASE 11.b) | Con Pro: restore PITR desde dashboard (~30 min). Hoy (Free): restore desde el dump R2 (~2h)              |
+| Storage (Supabase)   | Replicación interna AWS + **mirror diario cifrado a R2** (`backup-storage-to-r2.mjs`, F-16 2026-09-04); legibilidad verificada por el drill mensual `drill-storage` (`dr-drill.yml`)               | Restore manual: `gpg -d` con `BACKUP_GPG_PASSPHRASE` + `tar xzf` + re-subida por la API de Storage (~2h) |
+| Backup off-site (R2) | Export diario a R2, **cifrado gpg AES256 desde 2026-08-29**; restore verificado por drill automatizado mensual (`dr-drill.yml`)                                                                    | Restore manual: `gpg -d` con `BACKUP_GPG_PASSPHRASE` + `psql` (~2h)                                      |
+| DNS (Cloudflare)     | Configuración versionada en repo (Terraform o manual)                                                                                                                                              | Recreación manual (~30 min)                                                                              |
 
 ### Procedimiento de recuperación end-to-end
 
@@ -1027,7 +1038,9 @@ if (await isFeatureEnabled("ai-design-suggest", user?.id)) {
    - Solo Vercel: rollback al deployment previo. ETA 5 min.
    - Solo DB: restore PITR al punto sano (requiere Supabase Pro — hoy Free). ETA 30 min.
      Sin Pro: restaurar el último dump de R2 (descifrando con gpg). ETA ~2 h.
-   - Storage: depender de replicación interna o R2 backup. ETA 2 h.
+   - Storage: restaurar desde el mirror de R2 (`gpg -d` + `tar xzf` del archivo del bucket
+     + re-subir los objetos con la API de Storage y la service key). ETA 2 h.
+     (Antes de 2026-09-04 no había copia off-site: solo la replicación interna de AWS.)
    - Todo: combinación de los anteriores.
 
 2. Comunicar a clientes (status page o email masivo si los emails funcionan).
@@ -1100,6 +1113,8 @@ cerrado mientras seguía atendiendo tráfico.
 #### Drill #2: Restore desde backup R2 — automatizado (2026-08-05)
 
 El workflow [`.github/workflows/dr-drill.yml`](../.github/workflows/dr-drill.yml) corre **mensual** (día 2 a las 08:27 UTC — el backup, **diario desde 2026-08-05**, ya habrá corrido) y a demanda (`workflow_dispatch`): baja el dump más nuevo de R2 (solo llaves `.sql.gz.gpg` — los legacy sin cifrar ya no son candidatos), lo **descifra con gpg** (`BACKUP_GPG_PASSPHRASE`, el mismo secret del backup — desde 2026-08-29 los dumps viajan cifrados), lo restaura en un Postgres vacío del runner (imagen `supabase/postgres`, el mismo engine de prod) y verifica conteos de tablas clave. **Ya verificado:** run 30972179553 — `Product=612 · Category=572 · OcasionTag=115 · CmsField=979`, 0 errores SQL (era el dump aún sin cifrar); el primer backup cifrado quedó verificado en R2 el 2026-08-29. Un backup que no se restaura no es un backup.
+
+Desde 2026-09-04 (F-16) el mismo workflow corre el job **`drill-storage`**: prueba de legibilidad del mirror de Supabase Storage ([`apps/web/scripts/dr-drill-storage.mjs`](../apps/web/scripts/dr-drill-storage.mjs)) — baja el manifiesto más nuevo de `db-storage/`, elige un bucket con N>0 objetos (o el forzado por `DRILL_STORAGE_BUCKET`), descarga su `lucams-<UTC>.tar.gz.gpg`, lo descifra y cuenta las entradas del tar en streaming (el plaintext jamás toca disco), y exige que conteo y bytes cuadren EXACTO con el manifiesto. No restaura nada: verifica que el archivo se puede leer, que es un tar válido y que el cifrado cuadra. Corre bajo el gate `storage_configured` (mismos secrets `BACKUP_SUPABASE_*` que activan el mirror — sin ellos se salta limpio).
 
 > **Privacidad (PII):** el drill restaura datos reales de prod en el runner de CI. La máquina es **efímera** (GitHub la destruye al terminar el job) y los logs solo publican **conteos** y líneas `^ERROR` del restore — nunca filas. Ojo: el repo es **público**, así que los logs de Actions también lo son; que el script nunca imprima datos de filas es lo que mantiene la PII fuera.
 
@@ -1209,6 +1224,8 @@ El drill manual sigue vigente para el calendario cuatrimestral de abajo:
 | Claude Opus 4.7 (más potente)                       | $5             | $25             | 1M tokens   | 128k tokens |
 
 > **Modelo elegido:** Sonnet 4.6 (per `INTEGRATIONS.md § Claude API`). Estimación de costo por sugerencia: ~500 tokens input + ~300 tokens output = **~$0.006 USD por sugerencia única**. Con cache 24h en Postgres (ADR-016) y rate limit por usuario, 1.000 sugerencias únicas/mes ≈ **$6 USD/mes**. Manejable. Tokens "Priority Tier" disponibles para escalado futuro.
+>
+> (2026-09-04: el proveedor real implementado es Gemini — ADR-058; Claude nunca se integró; ANTHROPIC_* eliminadas 2026-08-01).
 
 ### Cloudflare R2 Free — [developers.cloudflare.com/r2/pricing](https://developers.cloudflare.com/r2/pricing/)
 
@@ -1252,6 +1269,7 @@ El drill manual sigue vigente para el calendario cuatrimestral de abajo:
 
 > Registrar cambios en infraestructura, vars o procesos.
 
+- **2026-09-04** — **F-16 (ALTA) cerrado: mirror cifrado de Supabase Storage a R2.** El backup diario solo cubría la DB; los objetos de Storage (`customer-uploads` — fotos de clientas, PII y materia prima de producción —, `production-assets`, `design-previews`, `cms-media`, `product-images`) no tenían copia off-site. Aprobado por Lucy: mirror cifrado. (a) Nuevo `apps/web/scripts/backup-storage-to-r2.mjs` (+ helpers puros testeados en `backup-storage-lib.mjs`): snapshot completo por bucket en streaming (ustar propio → gzip → gpg AES256 con passphrase por fd, misma `BACKUP_GPG_PASSPHRASE`) → `db-storage/<bucket>/lucams-<UTC>.tar.gz.gpg` + manifiesto JSON por corrida (solo conteos) + retención `BACKUP_KEEP`=30 por bucket. (b) Job `backup-storage` en `backup.yml` con gate propio (salta limpio si faltan los secrets nuevos). (c) Job `drill-storage` en `dr-drill.yml` (mensual): descifra el archivo de un bucket y lo cuadra contra el manifiesto (prueba de legibilidad, no restore completo). (d) **ACCIÓN HUMANA pendiente (Lucy):** crear los GitHub Secrets `BACKUP_SUPABASE_URL` y `BACKUP_SUPABASE_SECRET_KEY` — hasta entonces el mirror corre inactivo con aviso amarillo. **Sigue sin cubrir:** restore validado de `auth.users` y la config del proyecto Supabase (auth providers, policies, Vault).
 - **2026-09-03** — **Sync documental contra el repo + ⚠️ hallazgo en vivo: PRD responde con señales de modo FULL.** Verificación de este documento contra el código y el sitio en vivo: las 5 comprobaciones del runbook (RUNBOOK_GO_LIVE FASE 11.c) devuelven hoy la firma de modo **full** (`/checkout/pago` → 307 `/carrito`, `/checkout/datos` con "Pago seguro Wompi", manifest con "pago en línea seguro", JSON-LD con `schema.org/InStock`), cuando la matriz de env vars declara `NEXT_PUBLIC_STORE_MODE=catalog` en Production (Preview pasó a `full` a propósito el 2026-08-07). **Pendiente humano:** confirmar el valor real de `NEXT_PUBLIC_STORE_MODE` en el scope Production de Vercel — si quedó en `full` (sospecha: la edición del 2026-08-07 pudo tocar ambos scopes), corregir a `catalog` + redeploy (es `NEXT_PUBLIC_*`: se inlinea en build). También verificado hoy: `production` sigue SIN branch protection (API GitHub: "Branch not protected") — la ACCIÓN HUMANA de «Estrategia de ramas y releases» sigue pendiente.
 - **2026-08-29** — **Auditoría OWASP cerrada: backups cifrados gpg, DR drill con descifrado, audit gate y hook pre-commit.** (a) El backup diario a R2 pasa a `pg_dump | gzip | gpg -c` (simétrico AES256; llaves `.sql.gz.gpg`) — nuevo GitHub secret `BACKUP_GPG_PASSPHRASE` (fail-closed; el valor quedó en el gestor de Lucy); primer backup cifrado verificado en R2 el mismo día. (b) `apps/web/scripts/dr-drill.mjs` descifra con gpg antes de restaurar (solo llaves `.gpg` candidatas). (c) `pnpm audit --prod` verde vía `overrides` + `auditConfig.ignoreGhsas` documentados en `pnpm-workspace.yaml` (gate `dep-audit` de CI). (d) Hook pre-commit versionado en `scripts/git-hooks/pre-commit` (gitleaks sobre lo staged) — activado en esta VM con `git config core.hooksPath scripts/git-hooks`. (e) Migraciones Supabase **025–029** aplicadas en LOCAL/STG/PRD y verificadas en vivo + migraciones Prisma **51–52** (52/52 en los 3 ambientes, mismo deploy). (f) Actions de los workflows pineadas por SHA. (g) Health públicos minimizados (C-3/C-4): `/api/health` sin `version`/`environment`; el detalle de `/api/health/crons` y `/api/health/all` quedó tras `x-cron-secret` (pendiente configurar ese header en los monitores de uptime).
 - **2026-08-01** — **Webhook de Resend ACTIVO + higiene de `.env*`.** `RESEND_WEBHOOK_SECRET` distribuido (Vercel Production + `.env.local` + `.env.local.nube-backup`) y verificado end-to-end tras redeploy: evento `email.delivered` firmado Svix → 200 + `EmailEvent` creada (fila de prueba borrada). El webhook llevaba inoperativo desde siempre (sin secreto, rechazaba fail-closed). **OJO:** la selección de eventos del webhook en el dashboard de Resend debe quedar SOLO en el grupo _emails_ — contacts/domains/suppression no traen `email_id` y la ruta responde 400 (reintentos Svix → auto-deshabilitaría el endpoint). Higiene `.env*`: eliminadas vars muertas (`ANTHROPIC_*`, `NEXT_PUBLIC_WOMPI_PUBLIC_KEY`), `.env.stg` sin Resend/Aveonline reales ni R2/ngrok, archivos reordenados por secciones, `apps/web/.env.local` → symlink a la raíz (era copia estática apuntando a prod).
