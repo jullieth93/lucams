@@ -101,9 +101,15 @@ dimensiones de `variant-selector.tsx:240-254` para ocultar una dimensión cuando
 otra (quantity ↔ language), y/o mostrarla como texto descriptivo ("27 imanes en español · 26 en
 inglés") en vez de selector. Actualizar copy si hace falta vía CMS.
 
-**Estado de arranque para la próxima sesión:** repo limpio (`develop`≡`production`≡`da7e97a`), stack
+**Estado de arranque para la próxima sesión:** repo limpio (`develop`≡`production`≡`f927c34`), stack
 local operativo (`make db-local-start` — se cae si la VM duerme), suite 2957 tests verde. Prompt de
 continuación entregado a Lucy en el chat de la sesión anterior.
+**Consolidación documental (mandato Lucy, mismo día, commit `f927c34`):** el árbol de markdown pasó de
+134 → 41 archivos — eliminadas las auditorías históricas fechadas de `docs/audits/` (trabajo ya ejecutado,
+recuperable vía git history), `HANDOFF.md`, `docs/claude-project/` y 6 planes/prompts de trabajo terminado;
+corregidas TODAS las referencias en docs vivos y comentarios de código (quedan apuntando a TESTING.md /
+RUNBOOK_GO_LIVE.md o autocontenidas). Convención nueva en `docs/audits/README.md`: una auditoría cerrada y
+absorbida por los docs canónicos se consolida (se borra; git conserva la historia).
 
 ---
 
