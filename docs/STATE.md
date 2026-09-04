@@ -13,24 +13,30 @@
 
 ## Resumen actual
 
-**✅ 3 FIXES UX DE LUCY EJECUTADOS Y VERIFICADOS EN LOCAL/STG/PRD — PENDIENTE SOLO EL COMMIT (2026-09-03, sesión 2).**
-Los 3 pendientes funcionales registrados en la sesión 1 de hoy quedaron implementados, testeados y
-verificados (detalle en la entrada nueva de bitácora, abajo): ① stepper "Unidades" en la PDP de TODOS
-los productos — la cantidad vive en el Context del buy-box (`variant-actions.tsx`): compra directa la
-manda como `qty` del form y los personalizables la llevan al Estudio como `?copies=N` (la modal de
-confirmación arranca pre-cargada; Nombre Personalizado no lo lleva — su cantidad son las letras del
-NamePricePicker). ② Modal "Así se verá…" responsiva: alto capado por dvh + scroll interno, sheet
-anclado abajo en móvil, imagen capada por vh; fixes colaterales: el ancho real en desktop
-(`sm:max-w-2xl` — la base `sm:max-w-sm` del Dialog le ganaba por cascada) y el placeholder `{pieza}`
-del texto CMS que se veía crudo. ③ Abecedario sin "Cantidad" elegible: `attributes.quantity`
-normalizado por idioma (es=27 con Ñ, en=26; vocales=5) en las 24 variantes de LOCAL, STG y PRD con
-`packages/db/scripts/normalize-letterset-quantity.mjs` (env-guard; PRD con bypass deliberado),
-verificado por SQL; el selector oculta la dimensión que correlaciona 1:1 con `language` y la muestra
-como texto ("Cantidad: 27 en Español · 26 en Inglés"). **Gates:** tsc ✓ · eslint ✓ · prettier ✓ ·
-suite 2967/2967 ✓ · QA Playwright 17/17 con capturas (375×667, 768×1024, 1366×600). **Cambios SIN
-commitear a la espera de confirmación de Lucy.**
+**🔍 AUDITORÍA INTEGRAL PRELANZAMIENTO + REMEDIACIÓN EJECUTADA (2026-09-04) — TODO SIN COMMIT, ESPERANDO REVISIÓN DE LUCY.**
+Veredicto de la auditoría: **LANZAMIENTO CONDICIONADO** — postura técnica fuerte (0 regresiones vs la
+auditoría OWASP 2026-08; RLS/grants/webhooks/MFA/CI verificados en código), los bloqueantes eran
+legales/operativos, no técnicos. En la misma sesión se remediaron 20+ hallazgos (detalle en la entrada
+de sesión abajo): textos legales v5 (modo `full` real), reversión del pago con procedimiento manual,
+step-up MFA en reembolsos/roles admin, rate-limit por IP en subidas, consentimiento de analíticas
+efectivo, mirror cifrado de Storage a R2, 3 migraciones nuevas (EXECUTE residual, 39 CHECK de
+dinero/stock, índices de búsqueda que la query sí usa), PII local sin cifrar DESTRUIDA (9 archivos,
+shred, con backup R2 verificado 8/8 verde antes), y docs alineados (CLAUDE.md/README/STATE/ROADMAP/
+OPERATIONS/Makefile). **NUEVO hallazgo:** el DR drill fallaba desde 2026-09-02 — causa raíz: umbral
+`DRILL_MIN_PRODUCTS=100` obsoleto tras la depuración del catálogo (11 productos reales) + contador de
+errores SQL que era código muerto; reparado (conteo exacto vs COPY del dump + allowlist de colisiones
+internas Supabase). **Gates finales:** lint ✓ · typecheck ✓ · prettier ✓ · build ✓ · unit
+**2187/2187** ✓ (1 archivo DB-dependent falla por Supabase local apagada — preexistente, ambiental).
+**Pendientes de Lucy/operador:** ① revisar y commitear; ② publicar textos legales en `/admin/contenido`
+(campos `legal.*` + `legal.last-updated` + decisión de subir `PRIVACY_POLICY_VERSION` a v5 → dispara
+re-consent); ③ crear secrets GitHub `BACKUP_SUPABASE_URL` + `BACKUP_SUPABASE_SECRET_KEY` (activa el
+mirror de Storage); ④ re-correr `dr-drill.yml` (workflow_dispatch) tras el push para verificar el fix;
+⑤ validación STG de las migraciones 030/031 + `20260904144657` (plan EXPLAIN en sus cabeceras);
+⑥ checklist de dashboards (branch protection, plan Vercel, TURNSTILE_SECRET_KEY, límites GoTrue, tier
+Gemini, cuota Resend); ⑦ abogado: textos v5, reversión art. 51, DIAN/comprobantes, identidad del
+vendedor (ADR-072).
 
-**Contexto que sigue vigente (sesión 1 del mismo día y días previos):** el 2026-08-29/30 se cerró y homologó toda la auditoría OWASP (`docs/audits/auditoria_seguridad_lucams.md` §11):
+**Contexto que sigue vigente (2026-09-03 y días previos):** el 2026-08-29/30 se cerró y homologó toda la auditoría OWASP (`docs/audits/auditoria_seguridad_lucams.md` §11):
 commits `229b30b`→`da7e97a` en `develop`≡`production`, CI verde en ambas, PRD en vivo con Next **16.3.3**
 (vía Dependabot #32), DB homologada en LOCAL/STG/PRD (migraciones Supabase 025-029 + Prisma 52/52 + campo
 CMS `estudio.ia.nota-privacidad`), primer backup cifrado gpg verificado en R2 (objeto `.sql.gz.gpg`),
@@ -49,8 +55,8 @@ facturación electrónica). Documentado en ROADMAP (E2), RUNBOOK (FASE 11.c), OP
 a plan pago de Supabase**, branch protection con checks requeridos en `production` (GitHub → Settings →
 Branches), admins regenerando recovery codes (1 ya lo hizo), panel AveOnline ya verificado OK por Lucy.
 **Los 3 fixes UX del feedback de Lucy se ejecutaron el mismo día en la sesión 2 (ver la entrada nueva
-de bitácora abajo y el resumen de arriba):** cambios listos en el working tree, gates verdes, datos
-normalizados en los 3 ambientes — falta solo autorizar el commit.
+de bitácora abajo y el resumen de arriba):** cambios commiteados en `407ac7e` + `f48238d`, gates verdes,
+datos normalizados en los 3 ambientes.
 
 ---
 
@@ -151,6 +157,70 @@ de uptime, y guardar la passphrase GPG de backups (entregada aparte). Detalle: �
 ADR-085.
 
 ---
+
+## Sesión — 2026-09-04 (auditoría integral prelanzamiento + remediación P0/P1)
+
+**Auditoría diferencial basada en evidencia** (rama `develop` @ `f48238d`, tree limpio al iniciar):
+8 frentes de revisión en paralelo (DB/RLS, auth/admin, APIs/webhooks/uploads, frontend/SEO/a11y,
+privacidad/legal Colombia, rendimiento/confiabilidad, coherencia documental, CI/CD+secretos) +
+gates ejecutados. Informe completo con 30 hallazgos + matriz de cobertura + plan P0/P1/P2 presentado
+en la sesión (formato A–L). **0 regresiones** vs la auditoría OWASP 2026-08-24 (25/25 remediaciones
+verificadas presentes en código). Lo más importante: los bloqueantes eran **legales/operativos** —
+los textos legales v4 describían "todavía no cobramos en línea" con la tienda ya cobrando en modo
+`full` (F-01 CRÍTICA).
+
+**Remediación ejecutada en la misma sesión** (decisiones de Lucy vía preguntas guiadas: destruir
+dumps tras verificar R2, redactar textos v5 ya, reversión del pago manual, mirror de Storage a R2):
+
+- **F-01/F-02/F-04/F-07 (legal):** 6 textos legales v5 en `packages/db/legal-content/` + fallbacks de
+  `/legal/*` regenerados + guard de veracidad del sync test INVERTIDO (el encuadre de catálogo ahora
+  está prohibido donde se menciona pago en línea). Wompi/Aveonline/Gemini activos, Meta/WhatsApp y
+  Cloudflare R2 añadidos como encargados, plazos de retención concretos publicados, reversión del
+  pago como derecho vigente con procedimiento manual (retracto@/WhatsApp, 15 días hábiles, tramitación
+  con Wompi). **Publicación en PRD es MANUAL vía `/admin/contenido`** (los textos se sirven desde
+  CmsField `legal.*`; el .md es fallback) — pasos exactos en el reporte de la sesión.
+- **F-08 (rate-limit):** `uploadDesignAssetAction` añade capa `ipKey` (40/10min prod) — un bot sin
+  cookies ya no rota el bucket por sesión (`features/personalization/actions.ts`).
+- **F-30 (errores):** las acciones públicas del Estudio devuelven solo copies de dominio es-CO;
+  errores internos → genérico + detalle en log server-side (patrón de checkout).
+- **F-10 (step-up MFA):** reembolsos de pedido/retracto y promover/cambiar-rol/desactivar admin
+  exigen TOTP reciente (≤10 min, claim `amr` del JWT) — modal `MfaReauthModal` + verify server-side +
+  rate-limit doble + audit `mfa.reauth.*` (`lib/admin-reauth.ts`, 34 tests nuevos).
+- **F-12 (PII local):** 9 archivos destruidos con shred tras verificar backup R2 verde 8/8 vía `gh`
+  (5 dumps de PRD sin cifrar, 2 `.err`, respaldo `.env` de prod, `.vercel/.env.development.local`).
+  Queda `tmp/backups/cms-legacy-20260731.json` (export CMS, sin PII evidente) — decisión de Lucy.
+- **F-13 (búsqueda):** `catalog.ts` migra a `immutable_unaccent` (indexable) + migración 031 con 3
+  índices de expresión que matchean los predicados reales (incl. `richDescription`) y drop de 5-6
+  índices muertos. Validación EXPLAIN pendiente en STG (plan en la cabecera de la migración).
+- **F-14 (pool Prisma):** `PRISMA_CONNECTION_LIMIT` (default 3) solo en runtime/pooler vía override
+  de datasource; DIRECT_URL y scripts intactos (`packages/db/src/index.ts` + `.env.example`).
+- **F-16 (backup Storage):** nuevo `scripts/backup-storage-to-r2.mjs` — tar streaming → gzip → gpg
+  AES256 (passphrase por fd) → R2 por bucket, manifiesto sin PII, poda BACKUP_KEEP=30; job propio en
+  `backup.yml` con gate separado + prueba de legibilidad en `dr-drill.yml` (`dr-drill-storage.mjs`).
+  **Requiere secrets nuevos `BACKUP_SUPABASE_URL`/`BACKUP_SUPABASE_SECRET_KEY` en GitHub.**
+- **F-19 (consentimiento):** el beacon de Web Vitals solo se envía con "Analíticas" aceptada
+  (opt-in real; revocación mid-session efectiva) — 11 tests.
+- **F-20/F-21:** `Cache-Control: private, no-store` en GETs de `/mi-cuenta|/checkout|/admin`
+  (proxy.ts); noindex en carrito/login/registro/recuperar/confirmar/restablecer.
+- **F-23/F-24 (DB):** migración 030 revoca EXECUTE residual de 3 funciones (guarda anti-regresión de
+  `is_active_admin`); migración Prisma `20260904144657` con 39 CHECK no-negativos/positivos en 14
+  tablas (NOT VALID + VALIDATE; pre-flight para STG en cabecera).
+- **F-25/F-26 (docs):** CLAUDE.md (mandatos #3/#11, estado actual), README.md, STATE.md, ROADMAP.md
+  (E1 superada, Fases 3/5 re-marcadas), OPERATIONS.md (HANDOFF→STATE, notas pgmq SUPERSEDED),
+  Makefile (3 targets rotos eliminados — scripts borrados en c436195).
+- **NUEVO — DR drill reparado:** falla del 2026-09-02 = umbral `DRILL_MIN_PRODUCTS=100` calibrado al
+  catálogo semilla (la depuración 2026-08-10 dejó 11 productos reales) + contador de errores SQL que
+  era código muerto (prefijo `psql:<file>:<line>:` nunca matcheaba `startsWith("ERROR")`). Fix:
+  conteos EXACTOS vs filas COPY del dump + clasificación fail-closed con allowlist de colisiones
+  internas Supabase + piso anti-husks recalibrado a 5 (`dr-drill-lib.mjs`, 81 tests). **Pendiente:
+  re-run del drill tras el push** (corre desde la rama, necesita el fix commiteado).
+
+**Gates finales (2026-09-04 16:15):** `pnpm lint` 0 · `pnpm typecheck` 0 · `pnpm format:check` 0 ·
+`pnpm build` 0 · vitest unit **2187/2187 + 10 skip** (excluidos integration; el único archivo rojo,
+`retention-service.storage-failure.test.ts`, exige DB local y ya fallaba igual antes — ambiental).
+Suite total hoy: ~2977 tests listados; los integration/RLS corren en CI nightly con Supabase local.
+
+**Sin commit a propósito** — esperando revisión de Lucy (68 archivos tocados, +1070/−257).
 
 ## Sesión — 2026-09-03 (feedback funcional de Lucy: 3 fixes UX — EJECUTADOS en la sesión 2 del mismo día)
 

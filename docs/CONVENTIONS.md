@@ -560,7 +560,7 @@ No hay una infraestructura genérica de `Idempotency-Key` headers ni tabla `idem
 - **Nunca `DROP COLUMN`/`DROP TABLE`** en la misma release que cambia la app.
 - **Nunca `ALTER COLUMN ... NOT NULL`** sin backfill previo.
 - **Renombrar:** crear nueva, copiar, deprecar vieja, eliminar después.
-- **Foreign keys nuevas:** `NOT VALID` primero, luego `VALIDATE CONSTRAINT` para no bloquear escrituras.
+- **Foreign keys nuevas:** `NOT VALID` primero, luego `VALIDATE CONSTRAINT` para no bloquear escrituras. Mismo patrón para CHECK constraints SQL-only (precedente: `20260904144657_money_stock_nonnegative_checks`, F-24).
 - **Índices grandes:** `CREATE INDEX CONCURRENTLY` (Postgres lo soporta).
 
 ### Archivos
@@ -587,10 +587,13 @@ No hay una infraestructura genérica de `Idempotency-Key` headers ni tabla `idem
 Los índices de tablas Prisma viven como `@@index` en `schema.prisma`; los que Prisma no puede expresar (parciales, trigram) viven en migraciones SQL:
 
 ```sql
--- Búsqueda fuzzy de productos con pg_trgm (supabase/migrations/00000000000005)
-CREATE INDEX IF NOT EXISTS product_name_trgm_idx
-  ON "Product" USING GIN (immutable_unaccent("name") gin_trgm_ops);
--- (también description con unaccent; slug y sku sin unaccent)
+-- Búsqueda fuzzy de productos con pg_trgm (supabase/migrations/00000000000031)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS product_search_name_trgm_idx
+  ON "Product" USING GIN ((public.immutable_unaccent(lower("name"))) gin_trgm_ops);
+-- (también description y richDescription con la MISMA expresión textual que
+-- usan las queries de apps/web/lib/catalog.ts — el planner exige match
+-- estructural. Los índices originales de la 00000000000005 no matcheaban los
+-- predicados reales y fueron dropeados en la 00000000000031 — F-13.)
 ```
 
 ```prisma

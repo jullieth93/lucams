@@ -232,26 +232,6 @@ seed-letter-sets:
 consolidate-product-families:
 	pnpm --filter @lucams/db exec node scripts/consolidate-product-families.mjs
 
-# ONE-SHOT (2026-05-13): actualiza /legal/* con texto Ley 2439/2024.
-# Preserva ediciones manuales (heurística: solo actualiza body que matchea seed v1).
-# Después de correr una vez, este target queda para histórico.
-update-legal-ley-2439:
-	pnpm --filter @lucams/db exec node scripts/update-legal-ley-2439.mjs
-
-# Barrido legal 2026-07 (ADR-072): publica los 8 bloques legal.* compliant desde
-# packages/db/legal-content/*.md (persona natural, Ley 1581/1480/2439, IVA régimen-agnóstico,
-# subprocesadores reales). Reproducible: correr contra la BD de PROD al lanzar.
-seed-legal-2026-07:
-	pnpm --filter @lucams/db exec node scripts/seed-legal-content-2026-07.mjs
-
-# ONE-SHOT (2026-05-18): elimina voseo (argentino/uruguayo) de CmsBlock,
-# CmsBlockVersion, SiteSetting, Product.description y OcasionTag.description.
-# Idempotente — si no hay voseo, no escribe nada. Aplica word-boundary
-# regex para no tocar palabras como "automáticamente". Tras correr,
-# reiniciar dev o publicar cualquier bloque para invalidar cache CMS.
-fix-voseo-cms:
-	pnpm --filter @lucams/db exec node scripts/fix-voseo-cms.mjs
-
 # ONE-SHOT (2026-05-18): renombra los slugs base de familias consolidadas
 # para que queden limpios (sin sufijos numéricos del producto inicial).
 # Agrega redirect 301 del slug viejo al nuevo. Idempotente.
