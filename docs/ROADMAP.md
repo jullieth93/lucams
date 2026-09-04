@@ -473,10 +473,10 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
   - [x] Verificar RLS con cliente impostor (tests RLS + deny-by-default verificado en vivo: 59/59 tablas, 0 grants anon)
   - [x] **Threat model formal por flujo crítico** (STRIDE en `docs/SECURITY.md`)
   - [ ] **Pen test externo** (proveedor + alcance + reporte resuelto) — sigue pendiente
-- [ ] **Fixes UX pre-lanzamiento (feedback Lucy 2026-09-03, detalle técnico en `docs/STATE.md` entrada de hoy):**
-  - [ ] Stepper de cantidad/copias en la PDP de todos los productos (hoy solo en compra directa; los personalizables lo tienen recién en el modal del Estudio)
-  - [ ] Modal "Así se verá…" del Estudio responsivo/scrollable (desborda viewport en resoluciones bajas y móvil)
-  - [ ] Abecedario Completo: `quantity` no como dimensión elegible — la define el idioma (normalizar datos STG/PRD + ajuste selector/copy)
+- [x] **Fixes UX pre-lanzamiento (feedback Lucy 2026-09-03, EJECUTADOS el mismo día — detalle técnico en `docs/STATE.md`):**
+  - [x] Stepper de cantidad/copias en la PDP de todos los productos (fuente de verdad única en el Context del buy-box; viaja al Estudio como `?copies=N` y pre-carga el stepper de la modal de confirmación; Nombre Personalizado excluido por su NamePricePicker)
+  - [x] Modal "Así se verá…" del Estudio responsivo/scrollable (`max-h` en dvh + `overflow-y-auto`; sheet anclado abajo en móvil; imagen capada por vh; fix de ancho real en desktop vía `sm:max-w-2xl`) — QA con capturas en 375×667, 768×1024 y 1366×600
+  - [x] Abecedario Completo: `quantity` normalizado por idioma en LOCAL/STG/PRD (es=27, en=26, vocales=5; script `normalize-letterset-quantity.mjs` + verificación SQL) y oculto como selector — correlación 1:1 con `language` → texto descriptivo bajo "Idioma"
 - [ ] Tests E2E con Playwright
   - [ ] Flujo de compra Wompi sandbox
   - [ ] Flujo de compra COD
