@@ -37,7 +37,8 @@ Puedes contactarnos por:
 - **Identificación:** nombre, correo electrónico y teléfono.
 - **Contacto y envío:** dirección de entrega.
 - **Cotización por WhatsApp:** tu nombre, tu número de WhatsApp, tu ciudad y departamento, tu correo (opcional) y las notas que nos escribas en el formulario.
-- **Pago:** información mínima de la transacción. Cuando activemos el pago en línea, los datos sensibles de tu tarjeta los procesará **Wompi**, nuestra pasarela de pagos — nosotros no los almacenamos.
+- **Pago:** cuando pagas en línea, los datos sensibles de tu tarjeta los procesa **Wompi**, nuestra pasarela de pagos, en su propia página segura — **nosotros no los vemos ni los almacenamos**. Solo conservamos la información mínima de la transacción (referencia, valor y estado del pago).
+- **Asistente de diseño con IA:** solo el **texto de la ocasión** que describes (por ejemplo, "el cumpleaños de mi mamá"). No enviamos tus fotos ni tus datos de contacto; y si el texto parece contener datos personales (números de documento, correos o celulares), lo reemplazamos por un texto neutro antes de enviarlo.
 - **Comportamiento:** historial de pedidos, productos vistos y reseñas.
 - **Imágenes:** las fotos que subes al **Estudio de Personalización**.
 
@@ -46,6 +47,7 @@ Puedes contactarnos por:
 - Atender tu **cotización** y contactarte por WhatsApp para cerrarla contigo.
 - Procesar tu pedido, cobrarlo y enviártelo.
 - Enviarte comunicaciones sobre tu compra (confirmación, despacho, entrega).
+- Sugerirte **ideas de diseño** con el asistente de IA del Estudio, a partir del texto de la ocasión que nos cuentas.
 - Enviarte novedades y promociones **solo si nos das tu consentimiento** — es opcional y puedes cancelarlo cuando quieras.
 - Mejorar el servicio con analítica **agregada y anonimizada**.
 
@@ -111,7 +113,7 @@ Si cambiamos este aviso de forma sustancial, te lo informaremos y actualizaremos
 
 ---
 
-_Versión 4 · vigente desde 2026-07-25 · en revisión por asesoría legal antes del lanzamiento._
+_Versión 5 · vigente desde 2026-09-04 · actualizada: el pago en línea con Wompi y el asistente de diseño con IA ya están activos · en revisión por asesoría legal._
 `;
 
 export default function Page() {

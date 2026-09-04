@@ -1,6 +1,6 @@
 Al comprar en **lucamsshop.com** aceptas estos Términos y Condiciones. Léelos con calma: aquí te contamos quiénes somos, cómo funciona la compra y cuáles son tus derechos. Toda venta se rige por la legislación colombiana, en especial la **Ley 1480 de 2011 (Estatuto del Consumidor)** y la **Ley 1581 de 2012 (Protección de Datos Personales)**.
 
-> **Cómo operamos hoy: venta por cotización.** En esta etapa lucamsshop.com es un **catálogo con cotización por WhatsApp**. Eliges tus productos, nos dejas tus datos y cerramos el pedido contigo por WhatsApp, donde acordamos el pago y la entrega. **Todavía no cobramos en línea en el sitio.** Las partes de estos Términos que hablan de pago en línea, contraentrega y cálculo del envío en el sitio aplican **cuando activemos la compra en línea**; cuando eso pase, lo publicaremos aquí con una versión nueva. Tus derechos de **garantía legal** y **retracto** te los da la ley y no dependen del canal: aplican igual si cerramos tu pedido por WhatsApp a partir de una cotización del sitio, porque sigue siendo una **venta a distancia** (Ley 1480 de 2011, arts. 5 num. 16, 47 y 49). La **reversión del pago** es distinta: la ley la condiciona a haber pagado con tarjeta u otro medio electrónico (art. 51), así que aplicará cuando activemos la compra en línea.
+> **Cómo operamos hoy: tienda en línea activa.** En lucamsshop.com compras directamente en el sitio: eliges tus productos, confirmas tus datos de envío, ves el costo del envío y el total **antes** de pagar, y pagas en línea con **tarjeta de crédito o débito o PSE** a través de **Wompi**, nuestra pasarela de pagos. Donde esté disponible también puedes elegir **pago contraentrega**. **WhatsApp** sigue siendo nuestro canal de apoyo: ahí resolvemos tus dudas, cotizamos pedidos especiales y te ayudamos a ejercer tus derechos. Tus derechos de **garantía legal**, **retracto** y **reversión del pago** te los da la ley y aplican a las compras que haces en el sitio, por ser **ventas a distancia** (Ley 1480 de 2011, arts. 5 num. 16, 47, 49 y 51).
 
 ## Quiénes somos
 
@@ -25,33 +25,26 @@ Los colores y acabados pueden variar levemente respecto a lo que ves en pantalla
 
 ## Cómo comprar
 
-**Hoy, con la tienda operando por cotización:**
-
-1. Eliges tu producto y, si es personalizable, lo diseñas en el Estudio.
-2. Lo agregas al carrito y pides tu cotización dejándonos tu nombre, tu WhatsApp y tu ciudad.
-3. Te damos un número de cotización y seguimos la conversación por WhatsApp.
-4. Ahí te confirmamos el total, el costo del envío y el medio de pago **antes** de que pagues, y coordinamos la entrega.
-
-**Cuando activemos la compra en línea**, el flujo será:
-
 1. Eliges tu producto y, si es personalizable, lo diseñas en el Estudio.
 2. Lo agregas al carrito y confirmas los datos de envío.
 3. Ves el costo de envío y el total **antes** de pagar.
-4. Eliges el medio de pago y confirmas el pedido.
+4. Eliges el medio de pago —**tarjeta de crédito o débito, PSE o pago contraentrega** donde esté disponible— y confirmas el pedido.
 5. Recibes la confirmación por correo y, cuando despachamos, el número de guía para hacer seguimiento.
+
+Si prefieres que te acompañemos o quieres un pedido especial, escríbenos por **WhatsApp**: te ayudamos con la compra y, si lo tuyo no está en el catálogo, lo cotizamos contigo por ese canal.
 
 ## Precios y pago
 
 - Los precios están en **pesos colombianos (COP)** y son el **valor final que pagas** por el producto.
-- El **costo de envío** se te informa **antes** de que pagues: hoy por WhatsApp al confirmar tu cotización y, cuando activemos la compra en línea, calculado en el sitio. No hay cobros ocultos.
-- Mientras la tienda opere por cotización, el **medio de pago lo acordamos contigo por WhatsApp** antes de producir tu pedido. Cuando activemos la compra en línea aceptaremos **tarjeta de crédito y débito, PSE y otros medios** a través de **Wompi**, y **pago contraentrega** donde esté disponible.
+- El **costo de envío** se calcula en el sitio y se te muestra **antes** de que pagues, a través de nuestro operador logístico. No hay cobros ocultos. Si tu pedido nace de una cotización especial por WhatsApp, te confirmamos el costo del envío por ese canal, también **antes** de que pagues.
+- Aceptamos **tarjeta de crédito y débito y PSE** a través de **Wompi**, nuestra pasarela de pagos, y **pago contraentrega** donde esté disponible. El pago en línea lo haces en la página segura de Wompi: **nosotros no vemos ni almacenamos los datos de tu tarjeta**. Si cerramos contigo una cotización por WhatsApp, el medio de pago lo acordamos por ese canal antes de producir tu pedido.
 - **Sobre comprobantes.** Hoy la vendedora **no está obligada a expedir factura de venta**, por ser persona natural **no responsable de IVA** (Estatuto Tributario, art. 437 parágrafo 3, y Decreto 1625 de 2016, art. 1.6.1.4.3 numeral 3). Por cada compra te entregamos la **constancia de la operación** con el detalle de lo que pediste, lo que pagaste y la fecha. Si en el futuro quedamos obligadas a facturar, lo publicaremos aquí antes de que aplique.
 
 ## Envío y entrega
 
 Despachamos a través de **transportadoras aliadas** (ver [Subprocesadores](/legal/subprocesadores)). El tiempo de entrega depende de tu ciudad y se te informa **antes** de que pagues. Cuando el pedido incluye personalización, al plazo de envío se suma el tiempo de producción, que también se indica en el producto.
 
-Hoy el envío se **coordina y se cotiza por WhatsApp** al cerrar tu cotización. Cuando activemos la compra en línea, el costo se calculará en el sitio a través de nuestro operador logístico y, donde ofrezcamos **contraentrega**, el recaudo del pago lo gestionará ese operador al momento de la entrega.
+El costo del envío se **calcula en el sitio durante el checkout**, a través de nuestro operador logístico (**Aveonline**). Donde ofrezcamos **contraentrega**, el recaudo del pago lo gestiona ese operador al momento de la entrega. Si tu pedido se cierra por WhatsApp, el envío se cotiza y se coordina por ese canal.
 
 ## Derecho de retracto
 
@@ -71,9 +64,19 @@ Ante un defecto cubierto, primero lo **reparamos totalmente gratis**, y el trans
 
 ## Reversión del pago
 
-Este derecho aplica **cuando activemos la compra en línea**, porque la ley lo condiciona a que hayas pagado con **tarjeta de crédito, débito u otro instrumento de pago electrónico** (Ley 1480 de 2011, art. 51). Mientras el pago se acuerde por WhatsApp, tus derechos son la **garantía** y el **retracto**, que sí aplican siempre.
+Si pagaste con **tarjeta de crédito, débito, PSE u otro instrumento de pago electrónico**, la ley te da el derecho a pedir la **reversión del pago** (Ley 1480 de 2011, art. 51) cuando:
 
-Cuando aplique: si ocurre una compra no solicitada o fraudulenta, el producto **no se entrega**, o lo entregado **no corresponde** con lo pedido o está defectuoso, pides la reversión ante la entidad que emitió tu medio de pago y nos avisas. El plazo para atenderla corre contra **los participantes del proceso de pago** —tu banco, la pasarela, el emisor de la tarjeta—, que tienen **quince (15) días hábiles** para devolver el dinero (Decreto 1074 de 2015, art. 2.2.2.51.8). Nosotras te acompañamos en el trámite y respondemos lo que nos corresponda.
+- fuiste víctima de **fraude**,
+- la compra corresponde a una **operación no solicitada**,
+- el producto **no fue recibido**,
+- el producto entregado **no corresponde** a lo que pediste, o
+- el producto resultó **defectuoso**.
+
+**Cómo pedirla (procedimiento manual):**
+
+1. Escríbenos a **retracto@lucamsshop.com** o por **WhatsApp** dentro de los **quince (15) días hábiles** siguientes al cobro, indicándonos tu **número de pedido** y la **causal** (fraude, cobro no solicitado, producto no recibido, defectuoso o distinto al pedido).
+2. Te confirmamos la recepción de tu solicitud y la tramitamos con la **pasarela de pagos (Wompi)** y los demás participantes del proceso de pago.
+3. La devolución del dinero corre contra **los participantes del proceso de pago** —tu banco, la pasarela y el emisor de la tarjeta—, que tienen **quince (15) días hábiles** para devolver el dinero (Decreto 1074 de 2015, art. 2.2.2.51.8). Nosotras te acompañamos en el trámite y respondemos lo que nos corresponda.
 
 ## Personalización y contenido que subes
 
@@ -112,4 +115,4 @@ Podemos actualizar estos Términos para reflejar cambios legales o de nuestro se
 
 ---
 
-_Versión 4 · vigente desde 2026-07-25 · en revisión por asesoría legal antes del lanzamiento_
+_Versión 5 · vigente desde 2026-09-04 · actualizada para describir la tienda en línea ya activa (pago en línea con Wompi, envío calculado en el sitio con Aveonline y asistente de diseño con IA) · en revisión por asesoría legal_

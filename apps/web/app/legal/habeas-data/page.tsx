@@ -30,8 +30,9 @@ Según cómo uses la tienda, podemos recolectar y tratar:
 
 - **Identificación y contacto:** nombre, correo electrónico y teléfono.
 - **Datos de envío:** dirección de entrega y ciudad.
-- **Datos de tu cotización:** los productos que elegiste, tu nombre, tu número de WhatsApp, tu ciudad y las notas que nos dejes. Hoy es la vía principal por la que cerramos un pedido contigo.
-- **Datos de la compra:** productos, historial de pedidos, reseñas y favoritos. **Cuando activemos la compra en línea**, los **datos sensibles de pago** (número de tarjeta, etc.) los procesará directamente nuestra pasarela **Wompi**; nosotros no los almacenamos en ningún caso.
+- **Datos de tu cotización:** cuando pides una cotización especial por WhatsApp, los productos que elegiste, tu nombre, tu número de WhatsApp, tu ciudad y las notas que nos dejes.
+- **Datos de la compra:** productos, historial de pedidos, reseñas y favoritos. Los **datos sensibles de pago** (número de tarjeta, etc.) los procesa directamente nuestra pasarela **Wompi** en su propia página segura; nosotros no los almacenamos en ningún caso.
+- **Datos del asistente de IA:** el texto de la ocasión que describes en el Estudio (sin fotos ni datos de contacto; si parece contener datos personales lo reemplazamos por un texto neutro antes de enviarlo).
 - **Fotos e imágenes** que subes al **Estudio de Personalización** para crear tu producto.
 - **Datos de navegación:** cookies y datos técnicos (ver nuestra [Política de Cookies](/legal/cookies)).
 
@@ -41,6 +42,7 @@ Tratamos tus datos únicamente para estas finalidades:
 
 - **Procesar tu pedido**, cobrarlo y coordinar el envío hasta tu puerta.
 - **Atender tu cotización:** responderte por WhatsApp, confirmarte el total y el envío, y coordinar la entrega.
+- **Sugerirte ideas de diseño** con el asistente de IA del Estudio, a partir del texto de la ocasión que describes.
 - **Comunicarnos contigo** sobre el estado de tu compra (correos y mensajes transaccionales).
 - **Producir tu diseño personalizado** a partir de las fotos y textos que subes al Estudio.
 - **Atender tus peticiones, quejas y reclamos** (PQR) y el ejercicio de tus derechos.
@@ -60,15 +62,17 @@ Nuestra tienda no está dirigida a menores de edad. Si eres madre, padre o repre
 
 Para operar la tienda usamos proveedores de tecnología ("encargados del tratamiento"). Algunos están **fuera de Colombia**, por lo que tus datos pueden almacenarse o procesarse en el exterior:
 
-| Proveedor                | Para qué                                                    | País        |
-| ------------------------ | ----------------------------------------------------------- | ----------- |
-| Supabase                 | Base de datos, cuentas y almacenamiento                     | EE.UU. / UE |
-| Vercel                   | Hospedaje de la tienda                                      | EE.UU.      |
-| Resend                   | Correos transaccionales                                     | EE.UU.      |
-| Google (Gemini API)      | Asistente de diseño con IA (sin datos de contacto directos) | EE.UU.      |
-| Cloudflare               | Seguridad anti-bot y protección contra ataques              | EE.UU.      |
-| Wompi                    | Procesamiento de pagos                                      | Colombia    |
-| Aveonline / Coordinadora | Logística y envíos                                          | Colombia    |
+| Proveedor                   | Para qué                                                                                 | País            |
+| --------------------------- | ---------------------------------------------------------------------------------------- | --------------- |
+| Supabase                    | Base de datos, cuentas y almacenamiento                                                  | EE.UU. / UE     |
+| Vercel                      | Hospedaje de la tienda                                                                   | EE.UU.          |
+| Resend                      | Correos transaccionales                                                                  | EE.UU.          |
+| Google (Gemini API)         | Asistente de diseño con IA (solo el texto de la ocasión; sin fotos ni datos de contacto) | EE.UU.          |
+| Cloudflare                  | Seguridad anti-bot y protección contra ataques                                           | EE.UU. / global |
+| Cloudflare R2               | Respaldo cifrado de la base de datos (continuidad del negocio; retención de ~30 días)    | EE.UU. / global |
+| Meta / WhatsApp             | Canal de atención, cotizaciones y ejercicio de derechos                                  | EE.UU. / global |
+| Wompi                       | Procesamiento de pagos en línea                                                          | Colombia        |
+| Aveonline y transportadoras | Logística y envíos (cotización del envío, guía y recaudo contraentrega)                  | Colombia        |
 
 **Base de legitimación:** estas transferencias y transmisiones se realizan con **tu autorización** y porque son **necesarias para ejecutar tu compra**, con acuerdos de tratamiento (DPA) y medidas de seguridad (cifrado en tránsito y en reposo) con cada proveedor. La lista completa y actualizada vive en [Subprocesadores](/legal/subprocesadores).
 
@@ -113,17 +117,31 @@ Tienes dos caminos:
 - **Reclamos:** los atendemos en máximo **15 días hábiles**. Si necesitamos más, te informamos el motivo y la nueva fecha, que no superará **8 días hábiles** adicionales.
 - Si tu reclamo llega incompleto, te pediremos completarlo dentro de los **5 días** siguientes; si pasan **2 meses** sin tu respuesta, se entenderá que desististe.
 
+> **Sobre los respaldos:** cuando pides la supresión de tus datos, los eliminamos de la base de datos activa. Esa supresión **no se propaga retroactivamente** a los respaldos cifrados que ya se hayan creado (existen para recuperar la tienda ante un desastre); esos respaldos se eliminan solos por **rotación, en aproximadamente 30 días**.
+
+## Cuánto tiempo conservamos tus datos
+
+Conservamos tus datos **mientras exista una relación contigo** y durante los **plazos que la ley exija** (por ejemplo, la conservación de los comprobantes de tus compras por obligaciones tributarias). Cumplidos esos plazos, los suprimimos o anonimizamos. Estos son los plazos concretos que aplican hoy:
+
+| Dato                                                                         | Plazo de conservación                                                                 |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Diseños y fotos **anónimos abandonados** (sin cuenta y sin actividad)        | Se borran automáticamente a los **30 días**                                           |
+| Fotos de una **cotización cerrada** (concretada o descartada)                | **90 días** de gracia desde el último movimiento, para producir, reimprimir o reponer |
+| Fotos de **cotizaciones abiertas sin movimiento**                            | Techo de **365 días**; después se purgan                                              |
+| Registros técnicos con datos personales (correos enviados y eventos de pago) | **180 días**                                                                          |
+| Respaldos cifrados de la base de datos                                       | Rotación de **~30 días**                                                              |
+
 ## Reclamo ante la SIC
 
 Si no quedas conforme con nuestra respuesta, puedes acudir a la **Superintendencia de Industria y Comercio (SIC)**, autoridad colombiana de protección de datos: [sic.gov.co](https://www.sic.gov.co). Antes de presentar el reclamo ante la SIC, la ley pide que primero hayas agotado el trámite de consulta o reclamo con nosotros.
 
 ## Vigencia y cambios
 
-Esta política rige desde su fecha de entrada en vigencia y se mantiene mientras Lucams_shop trate datos personales. Conservamos tus datos **mientras exista una relación contigo** y durante los **plazos que la ley exija** (por ejemplo, la retención tributaria de tus comprobantes de compra); cumplidos esos plazos, los suprimimos o anonimizamos. Si cambiamos esta política, publicaremos la nueva versión aquí y, si el cambio es relevante, te lo informaremos.
+Esta política rige desde su fecha de entrada en vigencia y se mantiene mientras Lucams_shop trate datos personales. Los plazos concretos de conservación están en la tabla **"Cuánto tiempo conservamos tus datos"** de arriba. Si cambiamos esta política, publicaremos la nueva versión aquí y, si el cambio es relevante, te lo informaremos.
 
 ---
 
-_Versión 4 · vigente desde 2026-07-25 · en revisión por asesoría legal antes del lanzamiento_
+_Versión 5 · vigente desde 2026-09-04 · actualizada: terceros activos (Wompi, Aveonline, IA, WhatsApp, respaldos en R2) y plazos concretos de retención · en revisión por asesoría legal_
 `;
 
 export default function Page() {

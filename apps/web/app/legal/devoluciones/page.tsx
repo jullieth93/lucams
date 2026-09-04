@@ -20,7 +20,7 @@ const FALLBACK = `
 
 En **Lucams_shop** queremos que ames lo que recibes. Aquí te contamos, en cristiano, cómo funciona el **derecho de retracto**, cuándo puedes devolver un producto y cómo te regresamos tu dinero. Nuestro mapache está pendiente de que todo salga bien.
 
-> Esta política aplica a las compras hechas en **lucamsshop.com**, incluidas las que hoy cerramos por **WhatsApp** a partir de una cotización del sitio: el retracto protege las ventas a distancia, sin importar por cuál de esos dos canales compres. Para defectos de fabricación revisa además nuestra [Política de Garantía](/legal/garantias).
+> Esta política aplica a las compras hechas en **lucamsshop.com** y también a los pedidos que cerremos contigo por **WhatsApp** a partir de una cotización del sitio: el retracto protege las ventas a distancia, sin importar por cuál de esos dos canales compres. Para defectos de fabricación revisa además nuestra [Política de Garantía](/legal/garantias).
 
 ## Tu derecho de retracto
 
@@ -57,12 +57,12 @@ Cuando te retractas (o sea, cambiaste de opinión, sin que el producto tenga nin
 
 Una vez ejerces el retracto y devuelves el producto, te regresamos **todo el dinero que pagaste**, en un plazo máximo de **15 días calendario** contados **desde el día en que ejerciste el retracto** (Ley 1480, art. 47, modificado por la **Ley 2439 de 2024**).
 
-- Si acordamos el pago por **transferencia** al cerrar tu cotización por WhatsApp, el reembolso se hace por **transferencia** a la cuenta que nos indiques.
-- Cuando activemos la compra en línea: si pagaste con **tarjeta, PSE o botón de pago**, el reembolso se hace al **mismo medio de pago**; si pagaste **contraentrega (en efectivo)**, se hace por **transferencia bancaria** a la cuenta que nos indiques.
+- Si pagaste con **tarjeta o PSE**, el reembolso se hace al **mismo medio de pago**, a través de la pasarela de pagos (Wompi).
+- Si pagaste **contraentrega (en efectivo)**, o si acordamos el pago por **transferencia** al cerrar una cotización por WhatsApp, el reembolso se hace por **transferencia bancaria** a la cuenta que nos indiques.
 
 ## Reversión del pago
 
-Si pagaste con **medios electrónicos** (tarjeta, PSE, botón de pago), la **Ley 1480 (art. 51)** te da además el derecho a solicitar la **reversión del pago** cuando:
+Si pagaste con **medios electrónicos** (tarjeta, PSE u otro instrumento de pago electrónico), la **Ley 1480 (art. 51)** te da además el derecho a solicitar la **reversión del pago** cuando:
 
 - fuiste víctima de **fraude**,
 - la compra corresponde a una **operación no solicitada**,
@@ -70,7 +70,11 @@ Si pagaste con **medios electrónicos** (tarjeta, PSE, botón de pago), la **Ley
 - el producto entregado **no corresponde** a lo que pediste, o
 - el producto resultó **defectuoso**.
 
-Para pedirla, avísanos a **retracto@lucamsshop.com** (o al canal de contacto) y solicita la reversión ante la entidad que emitió tu medio de pago. El plazo de **quince (15) días hábiles** para devolverte el dinero corre contra **los participantes del proceso de pago** —tu banco, la pasarela y el emisor de la tarjeta—, no contra la tienda (Decreto 1074 de 2015, art. 2.2.2.51.8). Nosotras te acompañamos en el trámite.
+**Cómo pedirla (procedimiento manual):**
+
+1. Escríbenos a **retracto@lucamsshop.com** o por **WhatsApp** dentro de los **quince (15) días hábiles** siguientes al cobro, indicándonos tu **número de pedido** y la **causal** (fraude, cobro no solicitado, producto no recibido, defectuoso o distinto al pedido).
+2. Te confirmamos la recepción de tu solicitud y la tramitamos con la **pasarela de pagos (Wompi)** y los demás participantes del proceso de pago.
+3. El plazo de **quince (15) días hábiles** para devolverte el dinero corre contra **los participantes del proceso de pago** —tu banco, la pasarela y el emisor de la tarjeta—, no contra la tienda (Decreto 1074 de 2015, art. 2.2.2.51.8). Nosotras te acompañamos en el trámite.
 
 ## ¿Dudas?
 
@@ -78,7 +82,7 @@ Estamos para ayudarte. Escríbenos a **retracto@lucamsshop.com**, a **hola@lucam
 
 ---
 
-_Versión 4 · vigente desde 2026-07-25 · en revisión por asesoría legal antes del lanzamiento_
+_Versión 5 · vigente desde 2026-09-04 · actualizada: la reversión del pago ya es un procedimiento vigente (pago en línea activo con Wompi) · en revisión por asesoría legal_
 `;
 
 export default function Page() {
