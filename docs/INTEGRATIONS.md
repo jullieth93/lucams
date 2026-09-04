@@ -4,18 +4,18 @@ Detalle de cada integración externa: cómo se conecta, qué endpoints/webhooks 
 
 ## Tabla resumen
 
-| Integración              | Propósito                                      | SDK / método                                | Webhooks                        | Sandbox                    |
-| ------------------------ | ---------------------------------------------- | ------------------------------------------- | ------------------------------- | -------------------------- |
-| **Wompi**                | Pasarela de pago                               | REST + Web Checkout                         | `transaction.updated`           | Sí                         |
-| **Aveonline**            | Logística multi-carrier + COD                  | REST API                                    | Tracking (webhook AveCRM)       | Cuenta DEMO pública        |
-| **Supabase**             | DB + Auth + Storage                            | `@supabase/supabase-js`                     | —                               | Mismo proyecto Free        |
-| **Resend**               | Email transaccional                            | REST por `fetch` (`lib/resend.ts`, sin SDK) | Eventos de email (Svix, activo) | Subdominio `resend.dev`    |
-| **Gemini**               | Asistente IA de ideas del estudio              | REST `generateContent` (sin SDK)            | —                               | Free tier de AI Studio     |
-| **WhatsApp**             | CTAs con mensaje pre-armado (sin API)          | `wa.me` URL scheme                          | —                               | —                          |
-| **Cloudflare Turnstile** | Anti-bot en formularios públicos               | REST `siteverify` (sin SDK)                 | —                               | Keys de test de Cloudflare |
-| **HIBP Pwned Passwords** | Rechazo de contraseñas filtradas (k-anonymity) | REST `api.pwnedpasswords.com` (sin SDK)     | —                               | Gratis, sin key            |
-| **Cloudflare R2**        | Backups diarios de DB, cifrados gpg (ADR-059)  | S3 API vía GitHub Actions                   | —                               | Bucket propio              |
-| **Vercel**               | Hosting/deploy de `apps/web` (sin Vercel Cron) | Git integration                             | —                               | Preview deployments        |
+| Integración              | Propósito                                                             | SDK / método                                | Webhooks                        | Sandbox                    |
+| ------------------------ | --------------------------------------------------------------------- | ------------------------------------------- | ------------------------------- | -------------------------- |
+| **Wompi**                | Pasarela de pago                                                      | REST + Web Checkout                         | `transaction.updated`           | Sí                         |
+| **Aveonline**            | Logística multi-carrier + COD                                         | REST API                                    | Tracking (webhook AveCRM)       | Cuenta DEMO pública        |
+| **Supabase**             | DB + Auth + Storage                                                   | `@supabase/supabase-js`                     | —                               | Mismo proyecto Free        |
+| **Resend**               | Email transaccional                                                   | REST por `fetch` (`lib/resend.ts`, sin SDK) | Eventos de email (Svix, activo) | Subdominio `resend.dev`    |
+| **Gemini**               | Asistente IA de ideas del estudio                                     | REST `generateContent` (sin SDK)            | —                               | Free tier de AI Studio     |
+| **WhatsApp**             | CTAs con mensaje pre-armado (sin API)                                 | `wa.me` URL scheme                          | —                               | —                          |
+| **Cloudflare Turnstile** | Anti-bot en formularios públicos                                      | REST `siteverify` (sin SDK)                 | —                               | Keys de test de Cloudflare |
+| **HIBP Pwned Passwords** | Rechazo de contraseñas filtradas (k-anonymity)                        | REST `api.pwnedpasswords.com` (sin SDK)     | —                               | Gratis, sin key            |
+| **Cloudflare R2**        | Backups diarios de DB + mirror de Storage, cifrados gpg (ADR-059/086) | S3 API vía GitHub Actions                   | —                               | Bucket propio              |
+| **Vercel**               | Hosting/deploy de `apps/web` (sin Vercel Cron)                        | Git integration                             | —                               | Preview deployments        |
 
 ---
 
@@ -698,12 +698,13 @@ TURNSTILE_SECRET_KEY=xxxxxxxxxxxxxx                   # Server-only, NUNCA al cl
 - **Timeout 3 s; fail-open con log** (`security.pwned.*`) si la API cae — no se bloquea el signup por una dependencia externa.
 - **3 call sites:** registro, restablecer-password y mi-cuenta/seguridad (cambio de contraseña). Si el hash está en breaches → se rechaza la contraseña con el conteo de apariciones.
 
-## 13. Cloudflare R2 (backups DB off-site) — ADR-059
+## 13. Cloudflare R2 (backups off-site de DB y Storage) — ADR-059 y ADR-086
 
 - **Workflow `.github/workflows/backup.yml`:** `pg_dump` DIARIO → bucket R2 (S3 API) vía `apps/web/scripts/backup-db-to-r2.mjs` (`pnpm db:backup`). **Cifrado gpg AES256 con passphrase desde 2026-08-29** (hallazgo A-3 de la auditoría 2026-08-24) — fail-closed: sin `BACKUP_GPG_PASSPHRASE` el backup no corre.
-- **DR drill mensual** (`.github/workflows/dr-drill.yml` + `apps/web/scripts/dr-drill.mjs`): baja el backup más nuevo de R2, lo descifra con gpg y verifica restaurabilidad real.
-- **Corre en GitHub Actions, NO en Vercel Cron** (mandato #11). Si faltan secrets, el job se salta con warning (gate `HAS_DB`/`HAS_R2`).
-- **Secrets (GitHub → Actions):** `BACKUP_DATABASE_URL`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` (`lucams-backups`), `BACKUP_GPG_PASSPHRASE`.
+- **Mirror de Storage (desde 2026-09-04, ADR-086):** el mismo workflow corre el job `backup-storage` (`apps/web/scripts/backup-storage-to-r2.mjs`, `pnpm storage:backup`): tar streaming → gzip → gpg AES256 por bucket (`db-storage/<bucket>/lucams-<UTC>.tar.gz.gpg`), manifiesto con conteos solamente, misma retención (30). Cubre `customer-uploads` (fotos de clientes), `production-assets`, `design-previews`, `cms-media`, `product-images`.
+- **DR drill mensual** (`.github/workflows/dr-drill.yml` + `apps/web/scripts/dr-drill.mjs`): baja el backup más nuevo de R2, lo descifra con gpg y verifica restaurabilidad real (conteos exactos vs filas COPY del dump; colisiones internas Supabase clasificadas por allowlist fail-closed — reparado 2026-09-04 tras la falla del 09-02). El job `drill-storage` prueba la legibilidad del mirror de Storage.
+- **Corre en GitHub Actions, NO en Vercel Cron** (mandato #11). Si faltan secrets, el job se salta con warning (gates `HAS_DB`/`HAS_R2`/`storage_configured`).
+- **Secrets (GitHub → Actions):** `BACKUP_DATABASE_URL`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` (`lucams-backups`), `BACKUP_GPG_PASSPHRASE`, y para el mirror de Storage `BACKUP_SUPABASE_URL` + `BACKUP_SUPABASE_SECRET_KEY` (creados 2026-09-04).
 
 ## 14. Vercel (plataforma de hosting)
 
