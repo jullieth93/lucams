@@ -1,13 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
 import { promoteAdminAction, type PromoteAdminState } from "./actions";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 
 export function PromoteForm() {
-  const [state, formAction, isPending] = useActionState<PromoteAdminState | null, FormData>(
-    promoteAdminAction,
-    null,
-  );
+  // F-10: promover exige aal2 reciente; si el server pide re-auth, el hook abre
+  // el modal TOTP y reintenta esta acción tras verificar.
+  const [state, formAction, isPending, reauthModal] =
+    useMfaReauthAction<PromoteAdminState>(promoteAdminAction);
 
   return (
     <form action={formAction} className="space-y-3">
@@ -69,6 +69,7 @@ export function PromoteForm() {
       >
         {isPending ? "Promoviendo…" : "Promover a admin"}
       </button>
+      {reauthModal}
     </form>
   );
 }

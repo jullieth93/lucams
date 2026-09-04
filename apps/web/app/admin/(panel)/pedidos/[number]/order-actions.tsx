@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { RefreshCw, ArrowRight, X, Undo2, Ban, PackageX } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import {
   blockOrderAddressAction,
   markOrderNoShowAction,
@@ -34,7 +35,10 @@ export function OrderActions({
 }) {
   const [retryState, retryAction, retryPending] = useActionState(retryShipmentAction, null);
   const [transState, transAction, transPending] = useActionState(transitionOrderAction, null);
-  const [refundState, refundAction, refundPending] = useActionState(refundOrderAction, null);
+  // F-10: el reembolso exige aal2 RECIENTE; si el server pide re-auth, el hook
+  // abre el modal TOTP y reintenta esta misma acción tras verificar.
+  const [refundState, refundAction, refundPending, reauthModal] =
+    useMfaReauthAction(refundOrderAction);
   const [noShowState, noShowAction, noShowPending] = useActionState(markOrderNoShowAction, null);
   const [blockState, blockAction, blockPending] = useActionState(blockOrderAddressAction, null);
   const isCod = paymentMethod === "COD";
@@ -79,6 +83,7 @@ export function OrderActions({
   return (
     <section className="border-brand-purple/10 space-y-2 rounded-xl border bg-white p-5 shadow-sm">
       <h2 className="text-brand-purple-dark mb-2 text-sm font-bold">Acciones</h2>
+      {reauthModal}
 
       {(retryState?.success || retryState?.error) && (
         <div

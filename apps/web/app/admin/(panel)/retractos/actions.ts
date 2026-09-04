@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import {
@@ -12,7 +13,7 @@ import {
   refundRetract,
 } from "@/features/retract/service";
 
-type St = { error?: string; success?: string } | null;
+type St = { error?: string; success?: string; reauthRequired?: boolean } | null;
 
 async function guard(): Promise<{ adminId: string } | { error: string }> {
   // Retractos incluye reembolsos → SUPERADMIN. Sesión + MFA aal2 + rol server-side
@@ -94,6 +95,15 @@ export async function receiveRetractAction(_p: St, fd: FormData): Promise<St> {
 export async function refundRetractAction(_p: St, fd: FormData): Promise<St> {
   const g = await guard();
   if ("error" in g) return g;
+  // F-10 (auditoría 2026-09-04): registrar un reembolso es operación de dinero →
+  // aal2 RECIENTE (mismo estándar que refundOrderAction). La UI abre el modal
+  // TOTP ante `reauthRequired` y reintenta.
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+    throw err;
+  }
   const id = String(fd.get("id") ?? "");
   const method = String(fd.get("method") ?? "WOMPI_VOID");
   if (!id) return { error: "Falta id" };
