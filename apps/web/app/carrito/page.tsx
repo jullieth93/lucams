@@ -28,6 +28,7 @@ import { IconSubmitButton } from "./qty-button";
 
 export const metadata: Metadata = {
   title: "Carrito",
+  robots: { index: false, follow: false },
 };
 
 export default async function CarritoPage() {

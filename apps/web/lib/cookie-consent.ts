@@ -90,6 +90,17 @@ export function readClientCookiePreferences(): CookiePreferences | null {
   }
 }
 
+/**
+ * True only when the visitor explicitly accepted the "Analíticas" category.
+ * No cookie stored yet (visitor has not answered the banner) → false:
+ * optional categories are opt-in, so nothing analytics-related runs until
+ * there is an affirmative answer. Re-read on every call so a mid-session
+ * choice takes effect without reloading.
+ */
+export function hasAnalyticsConsent(): boolean {
+  return readClientCookiePreferences()?.analytics === true;
+}
+
 /** Persiste la cookie + dispara evento custom para que listeners reaccionen. */
 export function writeClientCookiePreferences(prefs: CookiePreferences) {
   if (typeof document === "undefined") return;

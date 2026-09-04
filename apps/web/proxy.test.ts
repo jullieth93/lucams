@@ -318,6 +318,54 @@ describe("proxy · security headers en early returns (A-5)", () => {
   });
 });
 
+// F-20 (pre-launch audit 2026-09-04): private pages must emit `Cache-Control: private, no-store`
+// explicitly, not implicitly via their rendering strategy. Page GETs only: POSTs to these paths
+// are Server Actions and /api/* manages its own Cache-Control.
+describe("proxy · Cache-Control en páginas privadas (F-20)", () => {
+  it("GET /mi-cuenta → private, no-store", async () => {
+    const res = await proxy(makeReq("/mi-cuenta"));
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("GET /mi-cuenta/pedidos (subruta) → private, no-store", async () => {
+    const res = await proxy(makeReq("/mi-cuenta/pedidos"));
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("GET /checkout/datos → private, no-store", async () => {
+    const res = await proxy(makeReq("/checkout/datos"));
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("GET /admin/login (público pero bajo el prefijo /admin) → private, no-store", async () => {
+    const res = await proxy(makeReq("/admin/login"));
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("GET /admin/pedidos autenticado (marca fresca) → private, no-store", async () => {
+    state.user = { id: "u1" };
+    const fresh = sealAdminActivityMark(Date.now() - 60 * 1000);
+    const res = await proxy(makeReq("/admin/pedidos", { cookies: { admin_last_activity: fresh } }));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+  });
+
+  it("POST bajo /mi-cuenta (Server Action) → SIN el header", async () => {
+    const res = await proxy(makeReq("/mi-cuenta", { method: "POST" }));
+    expect(res.headers.get("cache-control")).toBeNull();
+  });
+
+  it("GET /api/* → SIN el header (las API gestionan el suyo)", async () => {
+    const res = await proxy(makeReq("/api/algo", { origin: "https://lucamsshop.com" }));
+    expect(res.headers.get("cache-control")).toBeNull();
+  });
+
+  it("GET de página pública → SIN el header", async () => {
+    const res = await proxy(makeReq("/pagina-publica-f20"));
+    expect(res.headers.get("cache-control")).toBeNull();
+  });
+});
+
 // B-2 (auditoría 2026-08-24): createServerClient recibe cookieOptions con
 // `Secure` explícito según el despliegue (IS_PROD_DEPLOY se fija a nivel de
 // módulo → la rama `true` se prueba con un import fresco del proxy).

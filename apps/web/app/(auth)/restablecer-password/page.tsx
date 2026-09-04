@@ -6,6 +6,7 @@ import { getAuthTexts } from "../auth-texts.server";
 export const metadata: Metadata = {
   title: "Restablecer contraseña",
   description: "Ingresa el código que te enviamos por correo y tu nueva contraseña.",
+  robots: { index: false, follow: false },
 };
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;

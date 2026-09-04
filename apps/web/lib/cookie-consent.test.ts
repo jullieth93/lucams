@@ -5,6 +5,7 @@ import {
   COOKIE_CONSENT_NAME,
   COOKIE_CONSENT_VERSION,
   emptyPreferences,
+  hasAnalyticsConsent,
   readClientCookiePreferences,
   rejectAllPreferences,
   writeClientCookiePreferences,
@@ -68,5 +69,37 @@ describe("read/write client cookie", () => {
   it("returns null if cookie value is malformed JSON", () => {
     document.cookie = `${COOKIE_CONSENT_NAME}=not-a-json-value; Path=/`;
     expect(readClientCookiePreferences()).toBeNull();
+  });
+});
+
+describe("hasAnalyticsConsent (F-19 gate)", () => {
+  it("returns false when the visitor has not answered yet (no cookie)", () => {
+    // Opt-in: sin respuesta explícita no corre nada de analítica.
+    expect(hasAnalyticsConsent()).toBe(false);
+  });
+
+  it("returns false after 'Solo necesarias' (reject all)", () => {
+    writeClientCookiePreferences(rejectAllPreferences());
+    expect(hasAnalyticsConsent()).toBe(false);
+  });
+
+  it("returns true after 'Aceptar todas'", () => {
+    writeClientCookiePreferences(acceptAllPreferences());
+    expect(hasAnalyticsConsent()).toBe(true);
+  });
+
+  it("returns true with a granular choice of analytics only", () => {
+    writeClientCookiePreferences({
+      ...rejectAllPreferences(),
+      analytics: true,
+    });
+    expect(hasAnalyticsConsent()).toBe(true);
+  });
+
+  it("reflects a mid-session revocation without reload", () => {
+    writeClientCookiePreferences(acceptAllPreferences());
+    expect(hasAnalyticsConsent()).toBe(true);
+    writeClientCookiePreferences(rejectAllPreferences());
+    expect(hasAnalyticsConsent()).toBe(false);
   });
 });

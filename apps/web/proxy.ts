@@ -86,6 +86,23 @@ const IS_PROD_DEPLOY =
   process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview";
 const IS_DEV = process.env.NODE_ENV === "development";
 
+// F-20 (pre-launch audit 2026-09-04): pin `Cache-Control: private, no-store` on private page
+// GETs so the header does not depend on each route's rendering strategy — Next sends it on its
+// own only for DYNAMIC pages, while a prerendered segment would go out with `s-maxage=31536000`
+// (next/dist/docs/01-app/02-guides/cdn-caching.md). Only page GETs: POSTs to these paths are
+// Server Actions and /api/* manages its own Cache-Control. RSC fetches for client navigations
+// are GETs on the same path and take the same header — they feed the client router's in-memory
+// cache, not the HTTP cache, so there is no interference with the RSC payload.
+const PRIVATE_PAGE_PREFIXES = ["/mi-cuenta", "/checkout", "/admin"];
+
+function isPrivatePageGet(method: string, path: string, isApi: boolean): boolean {
+  return (
+    method === "GET" &&
+    !isApi &&
+    PRIVATE_PAGE_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))
+  );
+}
+
 // A-5 (auditoría 2026-08-24): los early returns (redirects 3xx, 403 de CORS) también
 // llevan X-Request-Id + SECURITY_HEADERS — antes salían pelados porque los headers
 // solo se seteaban sobre `response` al final del flujo. La CSP se agrega aparte SOLO
@@ -286,6 +303,10 @@ export async function proxy(request: NextRequest) {
 
   withSecurityHeaders(response, requestId);
   response.headers.set("Content-Security-Policy", cspValue);
+
+  if (isPrivatePageGet(request.method, path, isApi)) {
+    response.headers.set("Cache-Control", "private, no-store");
+  }
 
   if (isApi && origin && isOriginAllowed(origin, IS_DEV)) {
     response.headers.set("Access-Control-Allow-Origin", origin);
