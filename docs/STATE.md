@@ -13,6 +13,24 @@
 
 ## Resumen actual
 
+**🔧 POST-AUDITORÍA HOMOLOGADA + DEPENDABOT AL DÍA — PRÓXIMO: 3 FIXES FUNCIONALES DE UX (2026-09-03).**
+El 2026-08-29/30 se cerró y homologó toda la auditoría OWASP (`docs/audits/auditoria_seguridad_lucams.md` §11):
+commits `229b30b`→`da7e97a` en `develop`≡`production`, CI verde en ambas, PRD en vivo con Next **16.3.3**
+(vía Dependabot #32), DB homologada en LOCAL/STG/PRD (migraciones Supabase 025-029 + Prisma 52/52 + campo
+CMS `estudio.ia.nota-privacidad`), primer backup cifrado gpg verificado en R2 (objeto `.sql.gz.gpg`),
+secret `BACKUP_GPG_PASSPHRASE` en GitHub (valor en el gestor de Lucy), hook pre-commit gitleaks activo en la VM,
+Dependabot al día (PRs #22/#30/#32 mergeados). Pendientes de operador: activar leaked-password-protection
+**solo al pasar a plan pago de Supabase** (decisión registrada), admins regenerando recovery codes (1 ya lo hizo),
+panel AveOnline ya verificado OK por Lucy. Flake de tests `error-capture` corregido (`9d2d630`).
+**Próximo trabajo (feedback funcional de Lucy poniéndose del lado usuaria, 2026-09-03 — detalle y archivos en la
+entrada de bitácora de hoy abajo):** ① stepper de cantidad/copias en la PDP de TODOS los productos (hoy solo
+existe en compra directa; los personalizables no lo tienen antes de ir al Estudio), ② modal "Así se verá…" del
+Estudio desborda la pantalla en resoluciones bajas y móvil (hacerlo responsivo/scrollable), ③ "Abecedario
+Completo": la cantidad NO debe ser dimensión elegible — la define el idioma (es=27 con Ñ, en=26) y debe quedar
+descrita, igual que "Pack Vocales" (5 en ambos → no se muestra selector).
+
+---
+
 **🔐 AUDITORÍA OWASP REMEDIADA Y CERRADA (2026-08-29).** Se validó y cerró
 `docs/audits/auditoria_seguridad_lucams.md` (1 RED + 49 YELLOW, del 2026-08-24): cada hallazgo se
 re-verificó contra el código vigente antes de tocarlo. El RED (B-1: MFA admin opt-in que
@@ -41,6 +59,51 @@ con key vigente), G-7. Quedan solo acciones de terceros: panel AveOnline (que la
 `?secret=`), dashboard Supabase (leaked password protection), header `x-cron-secret` en monitores
 de uptime, y guardar la passphrase GPG de backups (entregada aparte). Detalle: §11 del informe +
 ADR-085.
+
+---
+
+## Sesión — 2026-09-03 (feedback funcional de Lucy: 3 fixes UX pendientes — PRÓXIMO TRABAJO)
+
+Lucy se puso del lado usuaria y levantó 3 observaciones funcionales. Quedan registradas acá con el
+análisis técnico ya hecho (validado contra código y datos de STG) para ejecutarlas en la próxima sesión:
+
+**① Cantidad/copias seleccionable en la PDP de TODOS los productos (antes de personalizar).**
+Hoy el stepper de copias (`CopiesQtyInput`, CartItem.qty 1-99) solo existe en la rama de **compra
+directa** de la PDP (`app/producto/[slug]/page.tsx:367-372`, condición `else` = no personalizable).
+Los productos personalizables (`requiresPersonalization || isLetterSetProduct`, :363-365) solo tienen
+el CTA al Estudio — la cantidad se elige recién en el modal de confirmación del Estudio (stepper
+"Copias" de `studio-preview-modal.tsx`, ola 2026-08-28). Pedido: el stepper visible en la PDP de
+cualquier producto de cualquier categoría (ej. "Calendario Set 12 Tarjetas" solo muestra Tamaño).
+**Diseño a decidir al implementar:** una sola fuente de verdad para la cantidad (la PDP la fija y el
+Estudio la respeta/pre-carga, o se mantiene solo en el modal pero visible también en PDP); cuidar el
+caso `isNamePerTile` (Nombre Personalizado tiene su propio `NamePricePicker` con cantidad por fichas,
+:354-362 — no duplicar controles ahí).
+
+**② Modal "Así se verá…" del Estudio desborda la pantalla (desktop baja resolución y móvil).**
+`app/estudio/[slug]/studio-preview-modal.tsx`: `DialogContent` con `max-w-2xl` (:155) sin tope de
+alto ni scroll — la imagen (`aspect-square max-w-md`, :223-235) + textos + stepper + CTAs superan el
+viewport alto y el contenido queda cortado arriba/abajo sin poder desplazarse. Fix esperado: capar la
+altura del diálogo (`max-h-[100dvh]` con márgenes) con scroll interno (`overflow-y-auto`), limitar la
+imagen por `vh` además de `w`, y en móvil comportamiento tipo sheet a pantalla casi completa con
+desplazamiento. Revisar el wrapper `components/ui/dialog.tsx`. QA: capturas en 375px, 768px y
+viewport de poca altura (ej. 1366×600).
+
+**③ "Abecedario Completo": la cantidad NO debe ser dimensión elegible — la define el idioma.**
+Datos STG/PRD (verificados por SQL): las variantes de `abecedario-completo` traen `quantity` 27
+(español, con Ñ) / 26 (inglés) **solo en algunas** (las 10×14 no lo tienen; "5×7 Sin imán Inglés"
+tampoco) → al variar entre variantes, el selector la expone como dimensión "Cantidad"
+(`variant-selector.tsx:220-269`, `QUANTITY_DIM_KEYS` :177). Referencia de comportamiento correcto:
+`pack-vocales` tiene `quantity: 5` en TODAS sus variantes → un solo valor → no se muestra.
+**Fix de datos:** normalizar `quantity` en TODAS las variantes del abecedario según idioma (es=27,
+en=26) en STG y PRD (script one-off en `packages/db/scripts/` con env-guard, convención del repo).
+**Fix de UI (decidir):** como es≠en, quantity sigue teniendo 2 valores → extender el dedupe de
+dimensiones de `variant-selector.tsx:240-254` para ocultar una dimensión cuando correlaciona 1:1 con
+otra (quantity ↔ language), y/o mostrarla como texto descriptivo ("27 imanes en español · 26 en
+inglés") en vez de selector. Actualizar copy si hace falta vía CMS.
+
+**Estado de arranque para la próxima sesión:** repo limpio (`develop`≡`production`≡`da7e97a`), stack
+local operativo (`make db-local-start` — se cae si la VM duerme), suite 2957 tests verde. Prompt de
+continuación entregado a Lucy en el chat de la sesión anterior.
 
 ---
 

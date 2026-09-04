@@ -466,13 +466,17 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 
 ### Tareas pre-lanzamiento
 
-- [ ] Auditoría de seguridad
-  - [ ] Headers CSP, X-Frame-Options, Referrer-Policy, HSTS, Permissions-Policy verificados con `curl -I`
-  - [ ] Rate limit en endpoints públicos validado con load test
-  - [ ] CAPTCHA Turnstile en checkout y registro
-  - [ ] Verificar RLS con cliente impostor (tests automatizados verdes)
-  - [ ] **Threat model formal por flujo crítico** (STRIDE) revisado
-  - [ ] **Pen test externo** (proveedor + alcance + reporte resuelto)
+- [x] Auditoría de seguridad — **OWASP Top 10 completa 2026-08-24, remediada y homologada 2026-08-29/30** (`docs/audits/auditoria_seguridad_lucams.md` §11: 1 RED + 49 YELLOW cerrados, LOCAL/STG/PRD)
+  - [x] Headers CSP, X-Frame-Options, Referrer-Policy, HSTS, Permissions-Policy verificados (auditoría §5 A05 + tests `security-headers.test.ts`)
+  - [x] Rate limit en endpoints públicos validado (auditoría §5 A04; caps + keys hasheadas en todas las rutas públicas)
+  - [x] CAPTCHA Turnstile en checkout y registro (8 flujos protegidos, fail-closed en prod)
+  - [x] Verificar RLS con cliente impostor (tests RLS + deny-by-default verificado en vivo: 59/59 tablas, 0 grants anon)
+  - [x] **Threat model formal por flujo crítico** (STRIDE en `docs/SECURITY.md`)
+  - [ ] **Pen test externo** (proveedor + alcance + reporte resuelto) — sigue pendiente
+- [ ] **Fixes UX pre-lanzamiento (feedback Lucy 2026-09-03, detalle técnico en `docs/STATE.md` entrada de hoy):**
+  - [ ] Stepper de cantidad/copias en la PDP de todos los productos (hoy solo en compra directa; los personalizables lo tienen recién en el modal del Estudio)
+  - [ ] Modal "Así se verá…" del Estudio responsivo/scrollable (desborda viewport en resoluciones bajas y móvil)
+  - [ ] Abecedario Completo: `quantity` no como dimensión elegible — la define el idioma (normalizar datos STG/PRD + ajuste selector/copy)
 - [ ] Tests E2E con Playwright
   - [ ] Flujo de compra Wompi sandbox
   - [ ] Flujo de compra COD
