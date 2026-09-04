@@ -13,21 +13,33 @@
 
 ## Resumen actual
 
-**🔧 POST-AUDITORÍA HOMOLOGADA + DEPENDABOT AL DÍA — PRÓXIMO: 3 FIXES FUNCIONALES DE UX (2026-09-03).**
+**🔧 POST-AUDITORÍA HOMOLOGADA + DOCS REORGANIZADOS + PRD EN MODO FULL — PRÓXIMO: 3 FIXES FUNCIONALES DE UX (2026-09-03).**
 El 2026-08-29/30 se cerró y homologó toda la auditoría OWASP (`docs/audits/auditoria_seguridad_lucams.md` §11):
 commits `229b30b`→`da7e97a` en `develop`≡`production`, CI verde en ambas, PRD en vivo con Next **16.3.3**
 (vía Dependabot #32), DB homologada en LOCAL/STG/PRD (migraciones Supabase 025-029 + Prisma 52/52 + campo
 CMS `estudio.ia.nota-privacidad`), primer backup cifrado gpg verificado en R2 (objeto `.sql.gz.gpg`),
 secret `BACKUP_GPG_PASSPHRASE` en GitHub (valor en el gestor de Lucy), hook pre-commit gitleaks activo en la VM,
-Dependabot al día (PRs #22/#30/#32 mergeados). Pendientes de operador: activar leaked-password-protection
-**solo al pasar a plan pago de Supabase** (decisión registrada), admins regenerando recovery codes (1 ya lo hizo),
-panel AveOnline ya verificado OK por Lucy. Flake de tests `error-capture` corregido (`9d2d630`).
+Dependabot al día (PRs #22/#30/#32 mergeados). Flake de tests `error-capture` corregido (`9d2d630`).
+**El 2026-09-03, dos mandatos de Lucy ejecutados:** ① **consolidación documental** (`f927c34`): 134 → 41
+archivos MD — eliminadas las auditorías fechadas de `docs/audits/` (git history las conserva), `HANDOFF.md`,
+`docs/claude-project/` y 6 planes/prompts de trabajo terminado; referencias corregidas en docs vivos y código.
+② **reorganización/verificación total de la documentación** (`892853f`): cada doc canónico verificado línea
+por línea contra el código y corregido; nuevo mapa **`docs/README.md`**; ADR-016/017 SUPERSEDED; bug real
+encontrado y corregido (`mapAveonlineStatus` no mapeaba `DEVOLUCION` → RETURNED, fix + test). **Decisión de
+producto registrada (2026-09-03): producción opera en modo `full` A PROPÓSITO** (la verificación en vivo la
+encontró así; Lucy lo confirmó — la tienda vende con pagos reales; NIT/DIAN quedan pendientes solo para
+facturación electrónica). Documentado en ROADMAP (E2), RUNBOOK (FASE 11.c), OPERATIONS, COMPLIANCE,
+`.env.example` (commit `140ed40`). Pendientes de operador: activar leaked-password-protection **solo al pasar
+a plan pago de Supabase**, branch protection con checks requeridos en `production` (GitHub → Settings →
+Branches), admins regenerando recovery codes (1 ya lo hizo), panel AveOnline ya verificado OK por Lucy.
 **Próximo trabajo (feedback funcional de Lucy poniéndose del lado usuaria, 2026-09-03 — detalle y archivos en la
 entrada de bitácora de hoy abajo):** ① stepper de cantidad/copias en la PDP de TODOS los productos (hoy solo
 existe en compra directa; los personalizables no lo tienen antes de ir al Estudio), ② modal "Así se verá…" del
 Estudio desborda la pantalla en resoluciones bajas y móvil (hacerlo responsivo/scrollable), ③ "Abecedario
 Completo": la cantidad NO debe ser dimensión elegible — la define el idioma (es=27 con Ñ, en=26) y debe quedar
-descrita, igual que "Pack Vocales" (5 en ambos → no se muestra selector).
+descrita, igual que "Pack Vocales" (5 en ambos → no se muestra selector). **Estado de arranque: repo limpio,
+`develop`≡`production`≡`140ed40`, CI verde, suite ~2.967 tests verde; si el stack local está abajo:
+`make db-local-start`.**
 
 ---
 
@@ -101,8 +113,8 @@ dimensiones de `variant-selector.tsx:240-254` para ocultar una dimensión cuando
 otra (quantity ↔ language), y/o mostrarla como texto descriptivo ("27 imanes en español · 26 en
 inglés") en vez de selector. Actualizar copy si hace falta vía CMS.
 
-**Estado de arranque para la próxima sesión:** repo limpio (`develop`≡`production`≡`f927c34`), stack
-local operativo (`make db-local-start` — se cae si la VM duerme), suite 2957 tests verde. Prompt de
+**Estado de arranque para la próxima sesión:** repo limpio (`develop`≡`production`≡`140ed40`), stack
+local operativo (`make db-local-start` — se cae si la VM duerme), suite ~2.967 tests verde. Prompt de
 continuación entregado a Lucy en el chat de la sesión anterior.
 **Consolidación documental (mandato Lucy, mismo día, commit `f927c34`):** el árbol de markdown pasó de
 134 → 41 archivos — eliminadas las auditorías históricas fechadas de `docs/audits/` (trabajo ya ejecutado,
