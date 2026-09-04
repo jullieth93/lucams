@@ -219,6 +219,7 @@ export function LetterSetEditor({
   themeOptions,
   initialTheme,
   stylesByLanguage,
+  initialCopies,
   subtitle,
 }: {
   product: { id: string; slug: string; name: string };
@@ -234,6 +235,9 @@ export function LetterSetEditor({
   /** Tema que venía en la variante de la PDP (preselección). null = "Solo letra". */
   initialTheme: string | null;
   stylesByLanguage: { es: LetterStyle[]; en: LetterStyle[] };
+  /** Copias pre-elegidas en la PDP (`?copies=N`, Lucy 2026-09-03): valor inicial del
+   *  stepper "Copias" de la modal. undefined → arranca en 1. */
+  initialCopies?: number;
   subtitle?: string;
 }) {
   const router = useRouter();
@@ -691,6 +695,7 @@ export function LetterSetEditor({
         // El atributo se guarda sin unidad ("5×7"); sin esto la modal decía "Cada imán mide 7×10.".
         sizeCm={currentVariant?.sizeCm ? `${currentVariant.sizeCm} cm` : undefined}
         unitPrice={unitPriceCents}
+        initialCopies={initialCopies}
         isFinalizing={submitting}
         errorMessage={previewError}
         onEdit={handleClosePreview}

@@ -137,6 +137,9 @@ export type StudioEditorProps = {
   variantId?: string;
   /** Precio (centavos COP) de la variante elegida — se muestra en la vista previa pre-carrito. */
   unitPriceCents: number;
+  /** Copias pre-elegidas en la PDP (`?copies=N`, Lucy 2026-09-03): valor inicial del
+   *  stepper "Copias" de la modal de confirmación. undefined → arranca en 1. */
+  initialCopies?: number;
   /** Edición desde el carrito: id del diseño original a reemplazar al finalizar (no duplicar). */
   replacesCartDesignId?: string | null;
   /** ADR-057 B2 — diseños prediseñados aplicables por slot (galería). */
@@ -156,6 +159,7 @@ export function StudioEditor({
   photoSlots,
   variantId,
   unitPriceCents,
+  initialCopies,
   replacesCartDesignId,
   predesigned = [],
   slotLabels,
@@ -1301,6 +1305,7 @@ export function StudioEditor({
         slotCount={photoSlots}
         sizeCm={productConfig.sizeCm}
         unitPrice={unitPriceCents}
+        initialCopies={initialCopies}
         isFinalizing={isFinalizingFlag}
         errorMessage={previewError}
         productKind={isCalendarMonth ? "calendar" : facesPerUnit === 2 ? "bookmarks" : "magnets"}
