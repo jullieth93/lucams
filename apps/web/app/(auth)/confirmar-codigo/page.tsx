@@ -6,6 +6,7 @@ import { getAuthTexts } from "../auth-texts.server";
 export const metadata: Metadata = {
   title: "Confirma tu cuenta",
   description: "Ingresa el código de 6 dígitos que te enviamos por correo.",
+  robots: { index: false, follow: false },
 };
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
