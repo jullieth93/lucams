@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { addBlockedIdentity, BlocklistError } from "@/features/anti-abuse/blocklist-service";
@@ -137,12 +138,21 @@ export async function transitionOrderAction(
  * órdenes PAID o DELIVERED (la máquina de estados lo valida).
  */
 export async function refundOrderAction(
-  _prev: { error?: string; success?: string } | null,
+  _prev: { error?: string; success?: string; reauthRequired?: boolean } | null,
   formData: FormData,
-): Promise<{ error?: string; success?: string }> {
+): Promise<{ error?: string; success?: string; reauthRequired?: boolean }> {
   // El reembolso es una operación financiera → SUPERADMIN + MFA aal2 (ADR-062 P0-1).
   // El guard vive acá porque las Server Actions son endpoints POST invocables directo.
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+
+  // F-10 (auditoría 2026-09-04): operación destructiva → aal2 RECIENTE. Si la
+  // elevación es vieja, la UI abre el modal TOTP (MfaReauthModal) y reintenta.
+  try {
+    await requireRecentMfa();
+  } catch (err) {
+    if (isMfaReauthRequired(err)) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+    throw err;
+  }
 
   const orderId = String(formData.get("orderId") ?? "");
   const reason = String(formData.get("reason") ?? "").trim();

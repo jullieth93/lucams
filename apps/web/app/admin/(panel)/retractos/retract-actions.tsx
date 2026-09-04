@@ -7,6 +7,7 @@
  */
 
 import { useActionState } from "react";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import {
   approveRetractAction,
   rejectRetractAction,
@@ -14,7 +15,7 @@ import {
   refundRetractAction,
 } from "./actions";
 
-type St = { error?: string; success?: string } | null;
+type St = { error?: string; success?: string; reauthRequired?: boolean } | null;
 
 export function RetractActions({ id, status }: { id: string; status: string }) {
   const [approveSt, approve, approvePending] = useActionState<St, FormData>(
@@ -26,12 +27,15 @@ export function RetractActions({ id, status }: { id: string; status: string }) {
     receiveRetractAction,
     null,
   );
-  const [refundSt, refund, refundPending] = useActionState<St, FormData>(refundRetractAction, null);
+  // F-10: el reembolso exige aal2 reciente; ante `reauthRequired` el hook abre
+  // el modal TOTP y reintenta esta acción tras verificar.
+  const [refundSt, refund, refundPending, reauthModal] = useMfaReauthAction(refundRetractAction);
 
   const msg = approveSt ?? rejectSt ?? receiveSt ?? refundSt;
 
   return (
     <div className="space-y-2">
+      {reauthModal}
       {msg && (msg.success || msg.error) && (
         <p className={`text-xs ${msg.success ? "text-emerald-700" : "text-rose-700"}`}>
           {msg.success ?? msg.error}
