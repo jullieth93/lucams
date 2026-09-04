@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 // P0-007 (Bloque B 2026-06-27) — texto verificado contra Ley 1480 art. 47 +
 // Ley 2439 de 2024. El retracto sigue siendo 5 días hábiles; lo que la Ley 2439
-// cambió es el plazo de reembolso para comercio electrónico: de 30 días hábiles
+// cambió es el plazo de reembolso para comercio electrónico: de 30 días calendario
 // a 15 días CALENDARIO desde que ejerces el retracto. Ver memoria
 // reference_retracto_ley_2439_2024 + docs/COMPLIANCE.md.
 // Fallback que se renderiza cuando el CmsBlock no existe, no está publicado o la DB falla.
@@ -35,7 +35,7 @@ De acuerdo con la **Ley 1480 de 2011 (art. 47)**, tienes **5 días hábiles** co
 | **Combos del catálogo estándar**                                               | ✅ **Sí**                                   |
 | **Combos que incluyen al menos un producto personalizado**                     | ❌ **No**                                   |
 
-Los productos personalizados quedan por fuera del retracto porque la ley exceptúa los bienes _"confeccionados conforme a las especificaciones del consumidor o claramente personalizados"_ (Ley 1480, art. 47). Como los hacemos con tu foto o tu texto, no podemos revenderlos: por eso no tienen retracto. Esto también te lo avisamos en la página de cada producto antes de comprar.
+Los productos personalizados quedan por fuera del retracto porque la ley exceptúa los bienes _"confeccionados conforme a las especificaciones del consumidor o claramente personalizados"_ (Ley 1480, art. 47, parágrafo 3, literal c). Como los hacemos con tu foto o tu texto, no podemos revenderlos: por eso no tienen retracto. Esto también te lo avisamos en la página de cada producto antes de comprar.
 
 ## ¿Cómo ejerces el retracto?
 
@@ -72,7 +72,7 @@ Si pagaste con **medios electrónicos** (tarjeta, PSE u otro instrumento de pago
 
 **Cómo pedirla (procedimiento manual):**
 
-1. Escríbenos a **retracto@lucamsshop.com** o por **WhatsApp** dentro de los **quince (15) días hábiles** siguientes al cobro, indicándonos tu **número de pedido** y la **causal** (fraude, cobro no solicitado, producto no recibido, defectuoso o distinto al pedido).
+1. Escríbenos a **retracto@lucamsshop.com** o por **WhatsApp** **cuanto antes**: la ley te da **cinco (5) días hábiles** desde que te diste cuenta del cobro fraudulento o no solicitado, o desde que debiste recibir el producto o lo recibiste defectuoso o distinto a lo pedido (Decreto 1074 de 2015, arts. 2.2.2.51.4 y 2.2.2.51.6). Indícanos tu **número de pedido** y la **causal** (fraude, cobro no solicitado, producto no recibido, defectuoso o distinto al pedido). La queja se presenta ante nosotras como proveedor y, dentro del mismo plazo, se notifica al **emisor de tu medio de pago** (tu banco o billetera) — nosotras te guiamos para que no se te pase el plazo.
 2. Te confirmamos la recepción de tu solicitud y la tramitamos con la **pasarela de pagos (Wompi)** y los demás participantes del proceso de pago.
 3. El plazo de **quince (15) días hábiles** para devolverte el dinero corre contra **los participantes del proceso de pago** —tu banco, la pasarela y el emisor de la tarjeta—, no contra la tienda (Decreto 1074 de 2015, art. 2.2.2.51.8). Nosotras te acompañamos en el trámite.
 
@@ -82,7 +82,7 @@ Estamos para ayudarte. Escríbenos a **retracto@lucamsshop.com**, a **hola@lucam
 
 ---
 
-_Versión 5 · vigente desde 2026-09-04 · actualizada: la reversión del pago ya es un procedimiento vigente (pago en línea activo con Wompi) · en revisión por asesoría legal_
+_Versión 5 · vigente desde 2026-09-04 · actualizada: la reversión del pago ya es un procedimiento vigente (pago en línea activo con Wompi); plazo del consumidor corregido a 5 días hábiles (Decreto 1074 de 2015, arts. 2.2.2.51.4 y 2.2.2.51.6) y derechos de la Ley 2439 de 2024 añadidos · en revisión por asesoría legal_
 `;
 
 export default function Page() {

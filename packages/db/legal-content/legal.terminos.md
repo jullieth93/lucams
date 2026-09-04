@@ -46,13 +46,15 @@ Despachamos a través de **transportadoras aliadas** (ver [Subprocesadores](/leg
 
 El costo del envío se **calcula en el sitio durante el checkout**, a través de nuestro operador logístico (**Aveonline**). Donde ofrezcamos **contraentrega**, el recaudo del pago lo gestiona ese operador al momento de la entrega. Si tu pedido se cierra por WhatsApp, el envío se cotiza y se coordina por ese canal.
 
+**Plazo máximo de entrega.** Tu pedido se entrega en el plazo que te informamos antes de pagar y, en cualquier caso, en un máximo de **treinta (30) días calendario**. Si no cumplimos, puedes **terminar el pedido** y te devolvemos la totalidad del dinero en máximo **quince (15) días calendario** (Ley 1480 de 2011, art. 50, adicionado por la Ley 2439 de 2024).
+
 ## Derecho de retracto
 
 Como consumidor tienes **derecho de retracto** (Ley 1480 de 2011, art. 47): dentro de los **cinco (5) días hábiles** siguientes a la entrega puedes retractarte de la compra **sin dar explicaciones**, siempre que devuelvas el producto en las mismas condiciones en que lo recibiste. Es un derecho de las **ventas a distancia**, así que también cubre los pedidos que cerramos contigo por WhatsApp a partir de una cotización del sitio.
 
 Cuando ejerces el retracto, te **devolvemos el dinero en un máximo de quince (15) días calendario** contados desde que ejerces el derecho (plazo de la **Ley 2439 de 2024**, que modificó el art. 47).
 
-**Excepción — productos personalizados:** conforme al mismo art. 47, los productos **claramente personalizados o confeccionados según tus especificaciones** —los que llevan tu foto, tu texto o tu diseño hecho en el Estudio— **no admiten retracto**, porque se elaboran solo para ti. Los productos del **catálogo estándar** (sin personalización tuya) **sí tienen retracto**.
+**Excepción — productos personalizados:** conforme al mismo art. 47 (parágrafo 3, literal c), los productos **claramente personalizados o confeccionados según tus especificaciones** —los que llevan tu foto, tu texto o tu diseño hecho en el Estudio— **no admiten retracto**, porque se elaboran solo para ti. Los productos del **catálogo estándar** (sin personalización tuya) **sí tienen retracto**.
 
 Para ejercerlo, escríbenos a **retracto@lucamsshop.com** o por WhatsApp. Más detalle en [Devoluciones y Retracto](/legal/devoluciones).
 
@@ -74,7 +76,7 @@ Si pagaste con **tarjeta de crédito, débito, PSE u otro instrumento de pago el
 
 **Cómo pedirla (procedimiento manual):**
 
-1. Escríbenos a **retracto@lucamsshop.com** o por **WhatsApp** dentro de los **quince (15) días hábiles** siguientes al cobro, indicándonos tu **número de pedido** y la **causal** (fraude, cobro no solicitado, producto no recibido, defectuoso o distinto al pedido).
+1. Escríbenos a **retracto@lucamsshop.com** o por **WhatsApp** **cuanto antes**: la ley te da **cinco (5) días hábiles** desde que te diste cuenta del cobro fraudulento o no solicitado, o desde que debiste recibir el producto o lo recibiste defectuoso o distinto a lo pedido (Decreto 1074 de 2015, arts. 2.2.2.51.4 y 2.2.2.51.6). Indícanos tu **número de pedido** y la **causal** (fraude, cobro no solicitado, producto no recibido, defectuoso o distinto al pedido). La queja se presenta ante nosotras como proveedor y, dentro del mismo plazo, se notifica al **emisor de tu medio de pago** (tu banco o billetera) — nosotras te guiamos para que no se te pase el plazo.
 2. Te confirmamos la recepción de tu solicitud y la tramitamos con la **pasarela de pagos (Wompi)** y los demás participantes del proceso de pago.
 3. La devolución del dinero corre contra **los participantes del proceso de pago** —tu banco, la pasarela y el emisor de la tarjeta—, que tienen **quince (15) días hábiles** para devolver el dinero (Decreto 1074 de 2015, art. 2.2.2.51.8). Nosotras te acompañamos en el trámite y respondemos lo que nos corresponda.
 
@@ -102,8 +104,9 @@ Algunos de nuestros proveedores tecnológicos están fuera de Colombia (por ejem
 
 Estamos para ayudarte. Escríbenos a **hola@lucamsshop.com**, por WhatsApp, o —para temas de datos— a **habeas-data@lucamsshop.com**.
 
+- Toda **petición, queja o reclamo (PQR)** que presentes la radicamos con **número y fecha-hora** y te confirmamos la radicación por el mismo canal; puedes pedir seguimiento en cualquier momento (Ley 1480 de 2011, art. 50, adicionado por la Ley 2439 de 2024).
 - Respondemos tus **consultas** en máximo **diez (10) días hábiles**.
-- Respondemos tus **reclamos** en máximo **quince (15) días hábiles** (Ley 1581 de 2012, arts. 14 y 15).
+- Respondemos tus **reclamos** en máximo **quince (15) días hábiles** (Ley 1480 de 2011, art. 58; Ley 1581 de 2012, arts. 14 y 15).
 
 ## Ley aplicable y solución de controversias
 
@@ -115,4 +118,4 @@ Podemos actualizar estos Términos para reflejar cambios legales o de nuestro se
 
 ---
 
-_Versión 5 · vigente desde 2026-09-04 · actualizada para describir la tienda en línea ya activa (pago en línea con Wompi, envío calculado en el sitio con Aveonline y asistente de diseño con IA) · en revisión por asesoría legal_
+_Versión 5 · vigente desde 2026-09-04 · actualizada para describir la tienda en línea ya activa (pago en línea con Wompi, envío calculado en el sitio con Aveonline y asistente de diseño con IA); plazo de reversión del consumidor corregido a 5 días hábiles y derechos de la Ley 2439 de 2024 añadidos (entrega máx. 30 días calendario, PQR con radicado) · en revisión por asesoría legal_
