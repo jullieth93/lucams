@@ -722,7 +722,7 @@ medición real de CI) y el job de tests de CI corre `pnpm --filter web test:cove
 (`.github/workflows/ci.yml`), que falla si la cobertura cae por debajo del piso. Los thresholds
 se aprietan de nuevo a medida que sube la cobertura real (ratchet).
 
-**Tamaño de la suite al 2026-09-03:** ~2.967 tests en 192 archivos (`npx vitest list` en
+**Tamaño de la suite al 2026-09-04:** ~3.148 tests en 203 archivos (`npx vitest list` en
 `apps/web`). Crece semana a semana — el gate de calidad es el coverage, no el conteo.
 
 ---

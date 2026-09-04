@@ -3163,3 +3163,79 @@ informe; acá quedan solo las decisiones que cambian comportamiento o postura de
 corregidos, A-4). Quedan acciones humanas listadas en la §11 del informe (secretos GitHub, panel
 AveOnline, dashboard Supabase, aplicar migraciones, monitores con `x-cron-secret`). El riesgo G-9
 (cifrado de columna para `documentNumber`) queda explícitamente aceptado hasta la Fase 7 (DIAN).
+
+---
+
+## ADR-086 — Mirror cifrado de Supabase Storage a R2 (2026-09-04)
+
+**Fecha:** 2026-09-04
+**Estado:** ✅ Aceptada
+
+**Contexto.** La auditoría prelanzamiento 2026-09-04 (F-16) encontró que el backup diario a R2
+cubría solo la base de datos: los objetos de Supabase Storage —incluido `customer-uploads`, las
+fotos que las clientas suben para producir (PII y materia prima del negocio)— no tenían copia
+off-site. Una pérdida del proyecto Supabase restauraba la DB pero perdía las fotos de los pedidos
+en curso.
+
+**Decisión.** Nuevo script `apps/web/scripts/backup-storage-to-r2.mjs` (job propio `backup-storage`
+en `backup.yml`, gate de secrets separado para no apagar el backup de DB si faltan): por bucket,
+snapshot completo en tar streaming → gzip → **gpg AES256** (misma `BACKUP_GPG_PASSPHRASE` por fd,
+fail-closed) → R2 (`db-storage/<bucket>/lucams-<UTC>.tar.gz.gpg`), manifiesto JSON solo con conteos
+(nunca rutas ni PII), retención `BACKUP_KEEP=30`. Snapshot completo y no incremental: a esta escala
+(cientos de objetos pequeños) un archivo auto-contenido por bucket/día es lo que el drill puede
+verificar y lo que un restore quiere desempacar. El DR drill gana el job `drill-storage`
+(`dr-drill-storage.mjs`): prueba de legibilidad (descifra un archivo y cuadra conteo/bytes contra el
+manifiesto) sin restauración completa. Secrets nuevos en GitHub: `BACKUP_SUPABASE_URL` y
+`BACKUP_SUPABASE_SECRET_KEY` (creados por Lucy el 2026-09-04). `auth.users` sigue sin restore
+validado end-to-end — queda como brecha conocida del DR.
+
+## ADR-087 — Step-up MFA (aal2 reciente) en acciones admin destructivas (2026-09-04)
+
+**Fecha:** 2026-09-04
+**Estado:** ✅ Aceptada
+
+**Contexto.** La auditoría (F-10) encontró que bastaba una sesión admin con aal2 fresco para emitir
+reembolsos o elevar privilegios: el panel verificaba rol + aal2 pero nunca re-probaba identidad
+(a diferencia del área de cliente, que re-autentica con password para cambios sensibles).
+
+**Decisión.** Las acciones destructivas (`refundOrderAction`, `refundRetractAction`,
+`promoteAdminAction`, `changeAdminRoleAction`, `toggleAdminActiveAction`) exigen un **aal2 con
+antigüedad ≤10 minutos**, medido por el timestamp del claim `amr` del JWT (no `auth_time`, que marca
+el login con password). Si está vencido, la acción responde `MFA_REAUTH_REQUIRED` y la UI abre un
+modal TOTP que verifica server-side (la Server Action muta las cookies y deja el JWT fresco) y
+reintenta una vez. Fail-closed ante cualquier ambigüedad del claim; rate-limit doble IP+admin
+(`admin-mfa-reauth`, 5/15 min) y audit `mfa.reauth.*`. Se protege **dinero y privilegios**, no la
+operación diaria (cupones, precios, conciliación COD) — meter TOTP ahí rompería el flujo de trabajo
+sin riesgo equivalente. Limitación conocida: un Custom Access Token Hook que emita `amr` plano
+(RFC-8176) haría fallar-cerrado el chequeo (no hay hook configurado).
+
+## ADR-088 — Telemetría Web Vitals estrictamente opt-in (2026-09-04)
+
+**Fecha:** 2026-09-04
+**Estado:** ✅ Aceptada
+
+**Contexto.** El banner de cookies capturaba la preferencia "Analíticas" pero nada la consumía: el
+beacon de Web Vitals (`/api/vitals`) se enviaba igual (F-19). La política publicada prometía
+"desactivadas por defecto y solo si las aceptas" — era falsa en la práctica.
+
+**Decisión.** `WebVitalsReporter` lee la cookie de consentimiento en cada disparo y solo envía si
+`analytics === true`; **sin respuesta no se envía nada** (opt-in estricto, el único comportamiento
+coherente con el texto legal y la Ley 1581). Lectura perezosa en vez de estado React porque Next 16
+re-reporta métricas bufferadas a callbacks nuevos — así aceptar/revocar a mitad de sesión toma
+efecto sin duplicar beacons. Consecuencia aceptada: los dashboards de rendimiento solo reflejan
+usuarias con opt-in (volumen menor y más honesto).
+
+## ADR-089 — `connection_limit` fijado en el cliente Prisma serverless (2026-09-04)
+
+**Fecha:** 2026-09-04
+**Estado:** ✅ Aceptada
+
+**Contexto.** Prisma arma por proceso un pool de `num_cpus×2+1` conexiones; en Vercel cada lambda
+caliente abre su propio pool contra el pooler de Supabase (PgBouncer transaction, 6543) y los slots
+upstream del plan son finitos — un pico de tráfico los agota antes de saturar CPU (F-14).
+
+**Decisión.** El runtime fija `connection_limit` (env `PRISMA_CONNECTION_LIMIT`, default **3**)
+inyectado como query param vía override de `datasources`, sin re-serializar la URL (un param
+explícito en `DATABASE_URL` gana). Aplica **solo** al runtime por pooler: `DIRECT_URL` (5432,
+migraciones) y los scripts one-off de `packages/db/scripts` (que construyen su propio cliente) quedan
+intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar código.

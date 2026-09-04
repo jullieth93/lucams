@@ -472,6 +472,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 ### Tareas pre-lanzamiento
 
 - [x] Auditoría de seguridad — **OWASP Top 10 completa 2026-08-24, remediada y homologada 2026-08-29/30** (`docs/audits/auditoria_seguridad_lucams.md` §11: 1 RED + 49 YELLOW cerrados, LOCAL/STG/PRD)
+- [x] **Auditoría integral prelanzamiento 2026-09-04 — remediada y desplegada el mismo día** (30 hallazgos; 0 regresiones vs OWASP; bloqueantes legales/operativos. Legal v5 con verificación de fuentes oficiales, step-up MFA, mirror cifrado de Storage a R2, DR drill reparado y re-corrido verde, migraciones 030/031 + CHECKs de dinero/stock aplicadas en STG y PRD. Pendiente solo: visto bueno del abogado → publicar textos en CMS; smoke en vivo. Detalle en `docs/STATE.md`, sesión 2026-09-04)
   - [x] Headers CSP, X-Frame-Options, Referrer-Policy, HSTS, Permissions-Policy verificados (auditoría §5 A05 + tests `security-headers.test.ts`)
   - [x] Rate limit en endpoints públicos validado (auditoría §5 A04; caps + keys hasheadas en todas las rutas públicas)
   - [x] CAPTCHA Turnstile en checkout y registro (8 flujos protegidos, fail-closed en prod)

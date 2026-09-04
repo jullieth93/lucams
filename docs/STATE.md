@@ -13,28 +13,23 @@
 
 ## Resumen actual
 
-**🔍 AUDITORÍA INTEGRAL PRELANZAMIENTO + REMEDIACIÓN EJECUTADA (2026-09-04) — TODO SIN COMMIT, ESPERANDO REVISIÓN DE LUCY.**
-Veredicto de la auditoría: **LANZAMIENTO CONDICIONADO** — postura técnica fuerte (0 regresiones vs la
-auditoría OWASP 2026-08; RLS/grants/webhooks/MFA/CI verificados en código), los bloqueantes eran
-legales/operativos, no técnicos. En la misma sesión se remediaron 20+ hallazgos (detalle en la entrada
-de sesión abajo): textos legales v5 (modo `full` real), reversión del pago con procedimiento manual,
-step-up MFA en reembolsos/roles admin, rate-limit por IP en subidas, consentimiento de analíticas
-efectivo, mirror cifrado de Storage a R2, 3 migraciones nuevas (EXECUTE residual, 39 CHECK de
-dinero/stock, índices de búsqueda que la query sí usa), PII local sin cifrar DESTRUIDA (9 archivos,
-shred, con backup R2 verificado 8/8 verde antes), y docs alineados (CLAUDE.md/README/STATE/ROADMAP/
-OPERATIONS/Makefile). **NUEVO hallazgo:** el DR drill fallaba desde 2026-09-02 — causa raíz: umbral
-`DRILL_MIN_PRODUCTS=100` obsoleto tras la depuración del catálogo (11 productos reales) + contador de
-errores SQL que era código muerto; reparado (conteo exacto vs COPY del dump + allowlist de colisiones
-internas Supabase). **Gates finales:** lint ✓ · typecheck ✓ · prettier ✓ · build ✓ · unit
-**2187/2187** ✓ (1 archivo DB-dependent falla por Supabase local apagada — preexistente, ambiental).
-**Pendientes de Lucy/operador:** ① revisar y commitear; ② publicar textos legales en `/admin/contenido`
-(campos `legal.*` + `legal.last-updated` + decisión de subir `PRIVACY_POLICY_VERSION` a v5 → dispara
-re-consent); ③ crear secrets GitHub `BACKUP_SUPABASE_URL` + `BACKUP_SUPABASE_SECRET_KEY` (activa el
-mirror de Storage); ④ re-correr `dr-drill.yml` (workflow_dispatch) tras el push para verificar el fix;
-⑤ validación STG de las migraciones 030/031 + `20260904144657` (plan EXPLAIN en sus cabeceras);
-⑥ checklist de dashboards (branch protection, plan Vercel, TURNSTILE_SECRET_KEY, límites GoTrue, tier
-Gemini, cuota Resend); ⑦ abogado: textos v5, reversión art. 51, DIAN/comprobantes, identidad del
-vendedor (ADR-072).
+**🚀 AUDITORÍA PRELANZAMIENTO REMEDIADA Y DESPLEGADA A PRODUCCIÓN (2026-09-04).** Auditoría integral
+basada en evidencia (veredicto: LANZAMIENTO CONDICIONADO — bloqueantes legales/operativos, no
+técnicos; 0 regresiones vs OWASP 2026-08) + remediación de 20+ hallazgos aprobada punto por punto por
+Lucy y **ya en producción**: PR #36 y #37 fusionados (rama `production` ≡ `develop` en `efc1553`), CI
+7/7 verde ×2, deploy verificado en vivo (headers privados, noindex), **migraciones aplicadas y
+verificadas en STG y PRD** (pre-flight 39/39 sin violaciones en ambas; búsqueda usa los índices
+nuevos — `EXPLAIN` lo confirma; smoke CHECK rechaza stock negativo con 23514), **DR drill reparado y
+re-corrido en VERDE** (run 33926922592: conteos exactos vs COPY del dump, 60 errores esperados/0
+inesperados), **secrets `BACKUP_SUPABASE_*` creados** (el mirror cifrado de Storage corre en la
+próxima corrida diaria) y **textos legales v5 corregidos tras verificación legal del mismo día**
+(plazo de reversión del consumidor = 5 días hábiles, no 15; derechos Ley 2439/2024 añadidos).
+**Lo único pendiente NO es técnico:** ① visto bueno del abogado a los textos v5 (2 puntos: identidad
+del vendedor art. 50 lit. a, formato de la "constancia" ET art. 615) y después **publicar los textos
+en `/admin/contenido`** (6 campos `legal.*` + `legal.last-updated`; decisión de subir
+`PRIVACY_POLICY_VERSION` a v5 → dispara re-consent); ② smoke en vivo con Lucy (búsqueda + modal TOTP
+del admin); ③ dashboard por confirmar cuando haya tiempo (branch protection, plan Vercel, límites
+GoTrue, tier Gemini, cuota Resend). Detalle completo en la entrada de sesión de abajo.
 
 **Contexto que sigue vigente (2026-09-03 y días previos):** el 2026-08-29/30 se cerró y homologó toda la auditoría OWASP (`docs/audits/auditoria_seguridad_lucams.md` §11):
 commits `229b30b`→`da7e97a` en `develop`≡`production`, CI verde en ambas, PRD en vivo con Next **16.3.3**
@@ -218,9 +213,23 @@ dumps tras verificar R2, redactar textos v5 ya, reversión del pago manual, mirr
 **Gates finales (2026-09-04 16:15):** `pnpm lint` 0 · `pnpm typecheck` 0 · `pnpm format:check` 0 ·
 `pnpm build` 0 · vitest unit **2187/2187 + 10 skip** (excluidos integration; el único archivo rojo,
 `retention-service.storage-failure.test.ts`, exige DB local y ya fallaba igual antes — ambiental).
-Suite total hoy: ~2977 tests listados; los integration/RLS corren en CI nightly con Supabase local.
+Suite total hoy: **3148 tests en 203 archivos** (`vitest list`); los integration/RLS corren en CI
+nightly con Supabase local.
 
-**Sin commit a propósito** — esperando revisión de Lucy (68 archivos tocados, +1070/−257).
+**Revisión y despliegue (tarde del 2026-09-04):** Lucy aprobó los cambios punto por punto (6 bloques:
+legal, docs, migraciones, código, re-auth admin, backup/drill). 7 commits en `develop`, push con CI
+7/7 verde ×2, **PR #36 y #37 fusionados a `production`** (rebase; develop re-sincronizada después —
+`develop` ≡ `production` en `efc1553`). Deploy verificado en vivo (Cache-Control privado en
+/mi-cuenta, noindex en /carrito, HSTS). **Migraciones aplicadas a STG y PRD** con pre-flight 39/39 en
+cero en ambas (PRD con `.env.local.nube-backup`, que sigue en disco como copia de trabajo de Lucy).
+**DR drill re-corrido: VERDE** (run 33926922592). **Verificación legal contra fuentes oficiales el
+mismo día** (Decreto 1074 arts. 2.2.2.51.4/.6/.8, Ley 2439/2024 + C-192/26, ET 437 par. 3, Decreto
+090/2018 RNBD, UVT 2026 $52.374): encontró 1 error sustantivo (plazo de reversión del consumidor = 5
+días hábiles, no 15) → corregido y desplegado en `efc1553`; añadidos derechos Ley 2439 (entrega ≤30
+días calendario con terminación + devolución 15 días, PQR con radicado). Secrets `BACKUP_SUPABASE_*`
+creados en GitHub por Lucy. **Queda NO técnico:** visto bueno del abogado (2 puntos: identidad del
+vendedor art. 50 lit. a; constancia ET art. 615) → publicar textos en `/admin/contenido`; smoke en
+vivo; checklist de dashboards.
 
 ## Sesión — 2026-09-03 (feedback funcional de Lucy: 3 fixes UX — EJECUTADOS en la sesión 2 del mismo día)
 
