@@ -31,6 +31,17 @@ en `/admin/contenido`** (6 campos `legal.*` + `legal.last-updated`; decisión de
 del admin); ③ dashboard por confirmar cuando haya tiempo (branch protection, plan Vercel, límites
 GoTrue, tier Gemini, cuota Resend). Detalle completo en la entrada de sesión de abajo.
 
+**Decisiones de Lucy (2026-09-05, tras revisar los puntos abiertos de la auditoría):** ① identidad
+de la vendedora — **mantener "a requerimiento"** hasta que opine el abogado (preocupación legítima
+de exposición de PII/suplantación; cuando exista NIT la identificación se vuelve empresarial y el
+problema casi desaparece); ② al publicar los textos legales, **sí subir `PRIVACY_POLICY_VERSION` a
+v5** (re-consent deliberado: el aviso cambió de fondo); ③ **solo reseñas de compras verificadas** —
+la capacidad de testimonios curados (`Review.customerId = null`) queda APAGADA por política (la SIC
+sanciona testimonios inventados como publicidad engañosa); ④ crecimiento: **sin cambios de código** —
+la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia verificados; cuando haya
+campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
+plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
+
 **Contexto que sigue vigente (2026-09-03 y días previos):** el 2026-08-29/30 se cerró y homologó toda la auditoría OWASP (`docs/audits/auditoria_seguridad_lucams.md` §11):
 commits `229b30b`→`da7e97a` en `develop`≡`production`, CI verde en ambas, PRD en vivo con Next **16.3.3**
 (vía Dependabot #32), DB homologada en LOCAL/STG/PRD (migraciones Supabase 025-029 + Prisma 52/52 + campo
