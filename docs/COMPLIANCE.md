@@ -305,6 +305,7 @@ Publicar reseñas ficticias sería publicidad engañosa (riesgo SIC). Postura ve
 - **Toda reseña entra con `isApproved=false`** y solo se publica tras moderación en `/admin/resenas` — la policy RLS `review insert own` lo **fuerza a nivel DB** (migración 028: `isApproved=false`/`featured=false` en el INSERT, no solo en la app).
 - **Producción tiene 0 reseñas** (verificado en vivo 2026-08-29): las ficticias del seed inicial se retiraron y la decisión fue no republicarlas.
 - Los scripts de seed de reseñas (`packages/db/scripts/seed-reviews-*.mjs`) quedaron **bloqueados contra prod** (y remotos desconocidos) por `env-guard` — solo corren contra el stack local/stg.
+- **Política de la dueña (2026-09-05): SOLO reseñas de compras verificadas.** La capacidad de testimonios "curados" (`Review.customerId = null`, sin compra asociada) queda **apagada por política** — no se usa aunque el código la soporte. Si algún día se reconsidera, exige etiqueta pública visible que los distinga de compras verificadas (Ley 1480 art. 23: publicidad engañosa).
 
 ### Términos y Condiciones — secciones obligatorias
 
