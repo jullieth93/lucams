@@ -42,6 +42,26 @@ la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia veri
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
 
+## Próxima sesión — plan trazado (2026-09-05)
+
+1. **Smoke en vivo post-auditoría (pendiente):** búsqueda de producto en la tienda (sentir los
+   índices nuevos) + modal TOTP del admin (reembolso de prueba con aal2 >10 min) + confirmar que el
+   mirror de Storage corrió en la noche (backup.yml → job `backup-storage` verde).
+2. **Estudio — opción "con borde / sin borde" para Abecedario y Pack Vocales** (productos
+   `personalizationKind = LETTER_SET`). Hoy las letras usan texturas (`app/estudio/[slug]/lib/letter-tile-textures.ts`)
+   y el editor es `letter-set-editor.tsx`; la superficie/opciones viven en
+   `features/personalization/surface.ts`. Hay que decidir si el borde es atributo de variante
+   (catálogo) u opción de lienzo (diseño), con render fiel en editor + preview + **impresión**
+   (server render @napi-rs/canvas, ADR-057/081).
+3. **Estudio — bug overlay Instagram en fotos polaroid:** en la vista "cómo quedarían" del editor de
+   espacio (modal "Editar Espacio"), la fila de iconos (corazón/comentario/compartir) se monta sobre
+   el texto "me gusta" + caption (evidencia: capturas de Lucy 2026-09-05 en preview
+   `lucams-shop-p9rgmgj9q`). Archivos: `app/estudio/[slug]/studio-slot.tsx`,
+   `studio-photo-preview.tsx`, `studio-style-toolbar.tsx`. **Requisito de Lucy: certificar que el
+   marco sea una réplica fiel de Instagram real — visual, diseño e impresión** (el PNG de producción
+   server-side debe coincidir con el preview). Prompt completo listo para esa sesión: ver la entrada
+   de sesión 2026-09-05 o pedirlo como "prompt Estudio pendiente".
+
 **Contexto que sigue vigente (2026-09-03 y días previos):** el 2026-08-29/30 se cerró y homologó toda la auditoría OWASP (`docs/audits/auditoria_seguridad_lucams.md` §11):
 commits `229b30b`→`da7e97a` en `develop`≡`production`, CI verde en ambas, PRD en vivo con Next **16.3.3**
 (vía Dependabot #32), DB homologada en LOCAL/STG/PRD (migraciones Supabase 025-029 + Prisma 52/52 + campo
