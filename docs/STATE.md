@@ -2803,6 +2803,47 @@ sidebar fijo, Cancelar en cupones.
 
 ## Bitácora (append-only, más reciente arriba)
 
+### 2026-09-08 — RELEASE f88aeef (ítems 1-6 + cobertura) + sync catálogo STG→PRD (Lucy: "STG es fuente de verdad")
+
+- **Release:** CI del push de cobertura verde (run 34188705407) → fast-forward `develop`→`production`
+  (`2097a52..f88aeef`, 10 commits: ítems 1-6 QA de Lucy + fix tiras STG + cobertura branches
+  62.4→66.8% + gate CI). Deploy Vercel production `dpl_4RLvr1Y6DBbZZs9CMeKV5UhdvEQH` Ready con
+  alias lucamsshop.com (build ~2 min).
+- **Sync STG→PRD (autorizado por Lucy 2026-09-07):** procedimiento OPERATIONS.md:954 adaptado
+  (script efímero `tmp/sync-stg-prd-env.sh` + dumps en `tmp/backups/`):
+  safety dump PRD pre-sync (`catalogo-prd-pre-sync-*.dump`), dump fuente STG fresco,
+  TRUNCATE … RESTART IDENTITY CASCADE de las 19 tablas de catálogo en PRD, `pg_restore` desde
+  archivo (nunca stdin), FKs recreadas (10 canónicas extraídas de PRD + 3 circulares —
+  publicadales, CmsFieldVersion_fieldId, CmsListItem_fieldId; DDL en
+  `tmp/backups/fks-circulares-prd.sql`). Conteos post == STG (Product 11, Variant 85,
+  Template 19, LetterTile 53, CmsFieldVersion 1053).
+  - Diff real STG vs PRD: 73 variantes con cambios de verdad (precios/stock/atributos), 11
+    productos (nombre-personalizado DESACTIVADO en STG → replicado; imágenes/basePrice varios),
+    52 LetterTile nuevas (ilustraciones subidas por Lucy en STG), plantilla
+    `calendario-mes-lateral` nueva, IG polaroid solo difería en ORDEN de capas (frame sobre p1),
+    `set-fotoimanes-circulares/corazón` soft-deleted en ambos (falso positivo de timestamps).
+  - ⚠ **Efecto colateral del CASCADE:** la chequeo de "FK externas hacia catálogo" devolvió 0
+    por el trap de `regclass::text` (folding de mayúsculas) → TRUNCATE CASCADE barrió también las
+    tablas operativas de PRD (Order, OrderItem, Design, Review, CouponUsage, etc. — 15 tablas).
+    PRD no es productivo; **ruta de recuperación: backup R2 de hoy 12:07Z (run 34224335960) es
+    PRE-truncate** y cubre esas tablas si Lucy quiere rescatar algo.
+  - ⚠ Datos de STG referencian imágenes del storage de STG (`mjbdiqdkykhsixvqlrrp.supabase.co`)
+    — si STG se desmantela, esas URLs dejan de servir en PRD.
+  - ⚠ El preview de develop en Vercel (URL de STG) quedó bajo **SSO de Vercel** (302 a login) —
+    Lucy puede entrar con su cuenta Vercel; verificación automatizada por HTTP ya no es posible.
+- **Post-sync:** ola17 (foto de perfil IG) aplicada en STG (`--apply`, guard env-guard la permite;
+  capa `profile_photo` después de `frame`). PRD la recibirá en el próximo sync de datos (el guard
+  bloquea PRD por diseño). migrate-cms-v2 en PRD y STG: OK en ambos (23 campos nuevos del site
+  map creados en PRD, 954 BLOCK + 51 SETTING, 0 anomalías). **Lección operativa:** el pooler
+  Supavisor (:6543) estuvo intermitente desde este host (P1017 + 57014 a los 20s); corriendo con
+  `DATABASE_URL=$DIRECT_URL` (export en el shell, sin tocar .env) ambas corridas salieron limpias
+  en ~3.5 min. El app en Vercel nunca se afectó (health/db 200).
+- **Verificación en vivo (lucamsshop.com post-deploy):** búsqueda `/api/catalog/search` 200 ~0.9s;
+  estudio abecedario muestra "Borde de foto: Con/Sin borde" (ítem 6 ✅); API tiras
+  FI-TIRA-01-DEFAULT photoSlots=3 / FI-TIRA-4FOTOS=4 (ítem 2 ✅); PDP separadores-alargados con
+  único control "Copias idénticas" (ítem 1 ✅); estudio calendario con "Tipo de letra" + Caveat
+  (ítem 5 ✅). Ítems 3.2/4 visuales quedan para QA GUI de Lucy. Smoke TOTP (F-10) pendiente de Lucy.
+
 ### 2026-09-07 — QA de Lucy: 6 comentarios investigados + plan detallado trazado (sin codificar)
 
 - Investigación con evidencia (navegador real contra LOCAL/PRD + SELECT read-only STG, artefactos en
