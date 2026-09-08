@@ -271,3 +271,97 @@ describe("computeFlatSlotDisplaySize — IG más grande", () => {
     expect(size).toBe(CALENDAR_MIN_SLOT_SIZE);
   });
 });
+
+describe("slotHeightCapByCount — ramas por franja de ancho no cubiertas", () => {
+  it("few (1-2 slots): narrow <380 / tablet <1024 / desktop", () => {
+    expect(slotHeightCapByCount(1, 360, false)).toBe(SLOT_HEIGHT_CAP_BY_COUNT.few.mobile);
+    expect(slotHeightCapByCount(2, 800, false)).toBe(SLOT_HEIGHT_CAP_BY_COUNT.few.tablet);
+    expect(slotHeightCapByCount(2, 1400, false)).toBe(SLOT_HEIGHT_CAP_BY_COUNT.few.desktop);
+  });
+
+  it("medium (3-6 slots): narrow / tablet / desktop", () => {
+    expect(slotHeightCapByCount(4, 360, false)).toBe(SLOT_HEIGHT_CAP_BY_COUNT.medium.mobile);
+    expect(slotHeightCapByCount(6, 800, false)).toBe(SLOT_HEIGHT_CAP_BY_COUNT.medium.tablet);
+    expect(slotHeightCapByCount(3, 1400, false)).toBe(SLOT_HEIGHT_CAP_BY_COUNT.medium.desktop);
+  });
+
+  it("calendario (>6 slots): 1 col móvil <640 / 2 cols tablet / 3 cols desktop", () => {
+    expect(slotHeightCapByCount(12, 500, true)).toBe(560); // < BP_MOBILE: tarjeta casi full-width
+    expect(slotHeightCapByCount(12, 800, true)).toBe(640); // 2 cols
+    expect(slotHeightCapByCount(12, 1400, true)).toBe(920); // 3 cols
+  });
+
+  it("calendario en narrow (<380) sigue la rama móvil (el check es < BP_MOBILE)", () => {
+    expect(slotHeightCapByCount(12, 360, true)).toBe(560);
+  });
+
+  it("many no-calendario (>6 slots): narrow / tablet / desktop", () => {
+    expect(slotHeightCapByCount(8, 360, false)).toBe(SLOT_HEIGHT_CAP_BY_COUNT.many.mobile);
+    expect(slotHeightCapByCount(8, 800, false)).toBe(SLOT_HEIGHT_CAP_BY_COUNT.many.tablet);
+    expect(slotHeightCapByCount(16, 1400, false)).toBe(SLOT_HEIGHT_CAP_BY_COUNT.many.desktop);
+  });
+});
+
+describe("resolveMaxCols — frontera BP_NARROW y hasEditableText en tablet", () => {
+  it("viewport <380px → 1 columna siempre (con o sin texto editable)", () => {
+    expect(
+      resolveMaxCols({
+        containerWidth: 360,
+        isCalendar: false,
+        hasEditableText: true,
+        gridCols: 3,
+      }),
+    ).toBe(1);
+    expect(
+      resolveMaxCols({
+        containerWidth: 360,
+        isCalendar: false,
+        hasEditableText: false,
+        gridCols: 3,
+      }),
+    ).toBe(1);
+  });
+
+  it("texto editable en tablet (640-1023) → 3 columnas como el resto", () => {
+    expect(
+      resolveMaxCols({
+        containerWidth: 900,
+        isCalendar: false,
+        hasEditableText: true,
+        gridCols: 4,
+      }),
+    ).toBe(3);
+  });
+});
+
+describe("computeFlatSlotDisplaySize — maxFrameH null vs con alto límite", () => {
+  it("maxFrameH null → manda solo el ancho (con piso)", () => {
+    expect(
+      computeFlatSlotDisplaySize({
+        availableW: 700,
+        cols: 2,
+        slotAspect: IG_ASPECT,
+        rows: 1,
+        gap: 16,
+        reserve: ACTION_BAR_RESERVE,
+        maxFrameH: null,
+        minSize: MIN_SLOT_SIZE,
+      }),
+    ).toBe(350); // floor(700/2), sobre el piso
+  });
+
+  it("el alto del marco puede ser el constraint (byHeight < byWidth)", () => {
+    const size = computeFlatSlotDisplaySize({
+      availableW: 2000,
+      cols: 1,
+      slotAspect: IG_ASPECT,
+      rows: 1,
+      gap: 16,
+      reserve: ACTION_BAR_RESERVE,
+      maxFrameH: 500,
+      minSize: MIN_SLOT_SIZE,
+    });
+    // usableH = 500 − 44 = 456 → byHeight = floor(456 / (4/3)) = 342 < byWidth 2000
+    expect(size).toBe(342);
+  });
+});

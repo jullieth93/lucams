@@ -8,7 +8,10 @@
 import { describe, expect, it } from "vitest";
 import {
   SlotStateSchema,
+  CanvasDataV1Schema,
   CanvasDataV2Schema,
+  SaveCanvasSchema,
+  FinalizeDesignSchema,
   UploadAssetMetadataSchema,
   PhotoProductConfigSchema,
   parsePhotoProductConfig,
@@ -233,5 +236,112 @@ describe("PhotoProductConfigSchema — flags Ola 3 (allowText / facesPerUnit)", 
     expect(parsed.noFold).toBe(true);
     expect(PhotoProductConfigSchema.parse({ photoSlots: 1 }).noFold).toBeUndefined();
     expect(PhotoProductConfigSchema.safeParse({ photoSlots: 1, noFold: "si" }).success).toBe(false);
+  });
+});
+
+describe("CanvasLayerSchema — validación defensiva del src de AssetLayer (M.3.b.A2)", () => {
+  it("rechaza src que no sea path local /templates/<slug> (URL externa = XSS via SVG)", () => {
+    const layer = { id: "a", type: "asset", src: "https://evil.example/x.svg" };
+    const parsed = CanvasDataV1Schema.safeParse({
+      version: 1,
+      stage: { width: 450, height: 600 },
+      layers: [layer],
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rechaza asset layer sin src", () => {
+    const parsed = CanvasDataV1Schema.safeParse({
+      version: 1,
+      stage: { width: 450, height: 600 },
+      layers: [{ id: "a", type: "asset" }],
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("acepta paths locales con guion bajo (ig_post_3x4.svg) y otras extensiones válidas", () => {
+    for (const src of [
+      "/templates/ig_post_3x4.svg",
+      "/templates/polaroid-clasico.png",
+      "/templates/foto.jpg",
+      "/templates/mia.webp",
+    ]) {
+      const parsed = CanvasDataV1Schema.safeParse({
+        version: 1,
+        stage: { width: 450, height: 600 },
+        layers: [{ id: "a", type: "asset", src }],
+      });
+      expect(parsed.success, src).toBe(true);
+    }
+  });
+
+  it("rechaza path con .. (directory traversal) y subcarpetas", () => {
+    for (const src of ["/templates/../secret.svg", "/templates/sub/x.svg", "templates/x.svg"]) {
+      const parsed = CanvasDataV1Schema.safeParse({
+        version: 1,
+        stage: { width: 450, height: 600 },
+        layers: [{ id: "a", type: "asset", src }],
+      });
+      expect(parsed.success, src).toBe(false);
+    }
+  });
+
+  it("capas no-asset no exigen src (superRefine solo mira type === 'asset')", () => {
+    const parsed = CanvasDataV1Schema.safeParse({
+      version: 1,
+      stage: { width: 450, height: 600 },
+      layers: [{ id: "bg", type: "background", color: "#FFF" }],
+    });
+    expect(parsed.success).toBe(true);
+  });
+});
+
+describe("SaveCanvasSchema — cap defensivo de tamaño del canvasData", () => {
+  it("rechaza un canvasData > 1 MB (posible payload corrupto con dataURL base64)", () => {
+    const bigLayer = { id: "x", type: "text", text: "a".repeat(1_100_000) };
+    const result = SaveCanvasSchema.safeParse({
+      designId: "d1",
+      canvasData: {
+        version: 1,
+        stage: { width: 450, height: 600 },
+        layers: [bigLayer],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("canvasData típico (< 1 MB) pasa", () => {
+    const result = SaveCanvasSchema.safeParse({
+      designId: "d1",
+      canvasData: {
+        version: 1,
+        stage: { width: 450, height: 600 },
+        layers: [{ id: "bg", type: "background", color: "#FFF" }],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("FinalizeDesignSchema — cap del tamaño TOTAL de producción", () => {
+  const png = (kb: number) => `data:image/png;base64,${"A".repeat(kb * 1024)}`;
+
+  it("rechaza cuando la suma de slots supera 120 MB", () => {
+    // 7 × 18 MB = 126 MB > 120 MB (cada url < 20 MB individual → pasa el cap por elemento).
+    const result = FinalizeDesignSchema.safeParse({
+      designId: "d1",
+      previewDataUrl: png(100),
+      productionDataUrls: Array.from({ length: 7 }, () => png(18 * 1024)),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("suma bajo el cap pasa", () => {
+    const result = FinalizeDesignSchema.safeParse({
+      designId: "d1",
+      previewDataUrl: png(100),
+      productionDataUrls: [png(1024), png(1024)],
+    });
+    expect(result.success).toBe(true);
   });
 });
