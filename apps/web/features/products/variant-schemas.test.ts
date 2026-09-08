@@ -219,6 +219,14 @@ describe("packs de fotoimanes — catálogo y PDP (Lucy 2026-09-05)", () => {
     expect(PDP_HIDDEN_DIMENSION_KEYS["pack-vocales"]).toEqual(["theme"]);
   });
 
+  // (2026-09-07) Productos INACTIVOS: cobertura preventiva por si Lucy los
+  // reactiva. Sus variantes del seed (FI-CIRC/FI-COR) declaran SOLO photoSlots
+  // (quantity no aparece en attributes), a diferencia de los 5 packs activos.
+  it("los 2 packs inactivos (circulares/corazón) ocultan exactamente photoSlots", () => {
+    expect(PDP_HIDDEN_DIMENSION_KEYS["set-fotoimanes-circulares"]).toEqual(["photoSlots"]);
+    expect(PDP_HIDDEN_DIMENSION_KEYS["set-fotoimanes-corazon"]).toEqual(["photoSlots"]);
+  });
+
   it("isPhotoPackCatalog: solo PHOTO_PACK con variantes que declaran photoSlots", () => {
     const packVariant = { attributes: { photoSlots: 4, sizeCm: "7.5×10" } };
     expect(isPhotoPackCatalog("PHOTO_PACK", [packVariant])).toBe(true);

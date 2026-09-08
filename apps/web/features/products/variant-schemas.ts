@@ -219,6 +219,12 @@ export const PDP_HIDDEN_DIMENSION_KEYS: Readonly<Record<string, readonly string[
   "separadores-magneticos": ["photoSlots", "quantity"],
   "separadores-alargados": ["photoSlots", "quantity"],
   "tiras-magneticas-fotos": ["photoSlots", "quantity"],
+  // (2026-09-07) Cobertura preventiva: INACTIVOS hoy, pero si Lucy los reactiva
+  // sin esta entrada la PDP les mostraría el grupo "Fotos". Sus variantes del
+  // seed (FI-CIRC/FI-COR) declaran SOLO photoSlots (sin quantity): ocultar
+  // quantity sería un no-op, así que la lista es exactamente ["photoSlots"].
+  "set-fotoimanes-circulares": ["photoSlots"],
+  "set-fotoimanes-corazon": ["photoSlots"],
 };
 
 /**
