@@ -26,6 +26,7 @@ import { StudioSlot } from "./studio-slot";
 import { StudioSlotEditModal } from "./studio-slot-edit-modal";
 import type { CanvasDataV2, StudioAsset, TextLayer } from "./types";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
+import type { CalendarFontKey } from "@/features/personalization/schemas";
 import { selectUnitImagePlaceholder, type StudioStoreState } from "./lib/store";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { unitIndexOfSlot } from "./lib/faces";
@@ -34,29 +35,19 @@ import { fillStudioText } from "./studio-texts";
 
 const MAX_VIEWPORT_WIDTH = 1024; // px lógicos máximo del grid en desktop (aumentado: calendarios/separadores se veían diminutos)
 
-// Ola 21 (Lucy 2026-07-27) — marco máximo TAMBIÉN EN ALTO: el tamaño de celda se deriva
-// del ancho Y del alto disponible, así ningún estudio se desborda (calendario 4×3,
-// polaroid 1-slot, tira 1-col se veían gigantes) ni queda diminuto. El marco es
-// proporcional al viewport (82% del alto, acotado entre 440 y 1100px) y el grid queda
-// centrado siempre (width fija = celdas + gaps, margin auto).
-const FRAME_HEIGHT_VH = 0.82;
-const FRAME_HEIGHT_MIN = 440;
-const FRAME_HEIGHT_MAX = 1100;
-
-// Ola 21 (Lucy 2026-07-27) — límite de alto por slot según cantidad de slots,
-// para que productos de pocos slots no ocupen toda la pantalla y los de muchos slots
-// (calendario 12) no queden con recuadros tapados.
-const SLOT_HEIGHT_CAP_BY_COUNT = {
-  few: { desktop: 460, tablet: 360, mobile: 300 }, // 1-2 slots
-  medium: { desktop: 560, tablet: 440, mobile: 360 }, // 3-6 slots
-  many: { desktop: 520, tablet: 400, mobile: 320 }, // 7-12 slots
-};
-
-// Ola 2A (Lucy 2026-07-22) — espacio RESERVADO bajo cada slot para su barra de acciones
-// (Centrar / Ajustar filtros / Eliminar). Antes el wrapper medía solo el canvas → la barra
-// se superponía a la fila de miniaturas de abajo y los botones "se perdían". Reservar el
-// alto SIEMPRE (lleno o vacío) mantiene el ritmo del grid sin layout shift.
-const ACTION_BAR_RESERVE = 44;
+// Constantes y funciones puras de tamaño de stage extraídas a studio-canvas-grid-size.ts
+// (Lucy 2026-09-07) para testear unitariamente el cálculo sin montar Konva/React.
+import {
+  ACTION_BAR_RESERVE,
+  MIN_SLOT_SIZE,
+  computeFlatSlotDisplaySize,
+  computeMaxFrameH,
+  hasEditableTextLayers,
+  resolveMaxCols,
+  resolveMinSlotSize,
+  slotHeightCapByCount,
+  BP_MOBILE,
+} from "./studio-canvas-grid-size";
 
 // ADR-063 T5 — lazy-mount de stages Konva. Cada StudioSlot monta un Konva Stage (varios <canvas>
 // + capas de realismo). Con muchos slots (calendario = 12) eso es pesado en móvil. Por encima de
@@ -65,17 +56,10 @@ const ACTION_BAR_RESERVE = 44;
 // stage registrado para el snapshot). Packs chicos (≤ umbral, incluye heart/circle) siguen eager.
 const LAZY_MOUNT_THRESHOLD = 6;
 
-// M.3.b.UX.7 — Responsive progresivo. 4 breakpoints en vez de 1.
-// Min slot displaySize 120px (slot chico pero acciones tappeables ≥44px).
-const BP_NARROW = 380; // <380px → 1 columna (slot fullwidth)
-const BP_MOBILE = 640; // 380-639 → 2 columnas
-const BP_TABLET = 1024; // 640-1023 → 3 columnas
-const MIN_SLOT_SIZE = 120; // garantía mínima para tappeables
-// Calendario (12 meses): las tarjetas deben leer la foto + la grilla del mes,
-// así que el piso es mucho más alto que el genérico — una tarjeta de 120px era
-// ilegible. Con 1 col en móvil y 3 en desktop el ancho disponible ya supera
-// este piso; queda como garantía para viewports angostos extremos.
-const CALENDAR_MIN_SLOT_SIZE = 280;
+// M.3.b.UX.7 — Responsive progresivo. 4 breakpoints (definidos en
+// studio-canvas-grid-size.ts junto al resto de las reglas de tamaño).
+// MIN_SLOT_SIZE / CALENDAR_MIN_SLOT_SIZE / TEXT_MIN_SLOT_SIZE: pisos de
+// displaySize según tipo de producto.
 
 type StudioCanvasGridProps = {
   store: StoreApi<StudioStoreState>;
@@ -96,7 +80,13 @@ type StudioCanvasGridProps = {
    * (foto + título + grilla) en vez de la foto suelta. `startMonth` = mes (0-11) del slot 0;
    * `year` = año elegido en el banner del Estudio (estado selectedYear del editor).
    */
-  calendarPreview?: { year: number; startMonth: number; layout?: CalendarLayoutKey } | null;
+  calendarPreview?: {
+    year: number;
+    startMonth: number;
+    layout?: CalendarLayoutKey;
+    /** Lucy 2026-09-07 — tipo de letra del título/mes elegido en el banner (default "fredoka"). */
+    font?: CalendarFontKey;
+  } | null;
   /** #14 — sustantivo del slot ("imán" | "separador") para el fallback y aria de cada StudioSlot. */
   slotNoun?: string;
   /** Ola 3 — ¿el producto admite texto editable? false oculta las capas de texto (Cuadrados). */
@@ -126,6 +116,12 @@ type StudioCanvasGridProps = {
   onEditClose?: () => void;
   /** Ola 10 — solicitud de cambiar la foto desde el editor unificado: el padre abre el picker. */
   onRequestChangePhoto?: (slotIndex: number) => void;
+  /**
+   * Ola 17 — solicitud de cambiar la FOTO DE PERFIL desde el editor unificado: el
+   * padre abre el picker en modo profile (solo aplica cuando la plantilla trae la
+   * capa `profile-photo`, ej. Polaroid Instagram).
+   */
+  onRequestChangeProfilePhoto?: (slotIndex: number) => void;
   registerSlotStages: (stages: Map<number, Konva.Stage | null>) => void;
   /** ADR-063 T5 — forzar el montaje de TODOS los slots (antes de snapshot/preview/3D). */
   forceMountAll?: boolean;
@@ -150,6 +146,7 @@ export function StudioCanvasGrid({
   onEditClose,
   registerSlotStages,
   onRequestChangePhoto,
+  onRequestChangeProfilePhoto,
   forceMountAll = false,
 }: StudioCanvasGridProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -222,31 +219,31 @@ export function StudioCanvasGrid({
   // regla progresiva de abajo. Se declara antes del useMemo para capear cols.
   const isCalendar = calendarPreview !== null;
 
+  // Lucy 2026-09-07 — plantillas con texto editable en el lienzo (Polaroid
+  // Instagram y similares): les corresponde el mismo stage grande que al
+  // calendario, porque el cliente tappea textos chicos sobre el slot. Requiere
+  // allowText: si el producto oculta el texto (Cuadrados), no aplica.
+  const hasEditableText = allowText && hasEditableTextLayers(canvasData?.unitTemplate.layers ?? []);
+
   const layout = useMemo(() => {
     if (!canvasData) return null;
     // M.3.b.UX.7 — Responsive progresivo: cap de cols según viewport.
     //   <380px  → max 1 col (slot fullwidth)
-    //   <640px  → max 2 cols
+    //   <640px  → max 2 cols (1 col si el template tiene texto editable)
     //   <1024px → max 3 cols
     //   ≥1024px → cols del gridLayout original (3-5 según slotCount)
-    let maxCols: number;
-    if (isCalendar) {
-      // Calendario 12 meses: tarjetas GRANDES aunque el grid haga scroll
-      // vertical. 1 col móvil / 2 tablet / 3 desktop (también capea drafts
-      // viejos persistidos con gridLayout 4×3).
-      if (containerWidth < BP_MOBILE) maxCols = 1;
-      else if (containerWidth < BP_TABLET) maxCols = 2;
-      else maxCols = 3;
-    } else if (containerWidth < BP_NARROW) maxCols = 1;
-    else if (containerWidth < BP_MOBILE) maxCols = 2;
-    else if (containerWidth < BP_TABLET) maxCols = 3;
-    else maxCols = canvasData.gridLayout.cols; // sin cap en desktop
+    const maxCols = resolveMaxCols({
+      containerWidth,
+      isCalendar,
+      hasEditableText,
+      gridCols: canvasData.gridLayout.cols,
+    });
 
     const cols = Math.min(maxCols, canvasData.gridLayout.cols);
     if (cols === canvasData.gridLayout.cols) return canvasData.gridLayout;
     const rows = Math.ceil(canvasData.slotCount / cols);
     return { ...canvasData.gridLayout, cols, rows };
-  }, [canvasData, containerWidth, isCalendar]);
+  }, [canvasData, containerWidth, isCalendar, hasEditableText]);
 
   // A2.6 — Crossfade visual al cambiar plantilla. Detectamos cambio en
   // unitTemplate (referencia distinta = template aplicado nuevo) y disparamos
@@ -345,43 +342,25 @@ export function StudioCanvasGrid({
   // ~340px de ancho para leerse; como el marco ya no se limita por el viewport
   // (ver maxFrameH abajo), estos caps solo evitan tarjetas desproporcionadas
   // y casi siempre manda el ancho disponible.
-  const slotMaxHeight = (() => {
-    if (canvasData.slotCount <= 2) {
-      if (containerWidth < BP_NARROW) return SLOT_HEIGHT_CAP_BY_COUNT.few.mobile;
-      if (containerWidth < BP_TABLET) return SLOT_HEIGHT_CAP_BY_COUNT.few.tablet;
-      return SLOT_HEIGHT_CAP_BY_COUNT.few.desktop;
-    }
-    if (canvasData.slotCount <= 6) {
-      if (containerWidth < BP_NARROW) return SLOT_HEIGHT_CAP_BY_COUNT.medium.mobile;
-      if (containerWidth < BP_TABLET) return SLOT_HEIGHT_CAP_BY_COUNT.medium.tablet;
-      return SLOT_HEIGHT_CAP_BY_COUNT.medium.desktop;
-    }
-    if (isCalendar) {
-      if (containerWidth < BP_MOBILE) return 560; // 1 col: tarjeta casi full-width
-      if (containerWidth < BP_TABLET) return 640; // 2 cols
-      return 920; // 3 cols: el ancho (≈333px) gobierna antes que este cap
-    }
-    if (containerWidth < BP_NARROW) return SLOT_HEIGHT_CAP_BY_COUNT.many.mobile;
-    if (containerWidth < BP_TABLET) return SLOT_HEIGHT_CAP_BY_COUNT.many.tablet;
-    return SLOT_HEIGHT_CAP_BY_COUNT.many.desktop;
-  })();
+  // Plantillas con texto editable: el cap SIGUE calculándose pero computeMaxFrameH
+  // lo ignora (Lucy 2026-09-07: la Polaroid Instagram se veía pequeña y sus
+  // textos eran imposibles de tappear).
+  const slotMaxHeight = slotHeightCapByCount(canvasData.slotCount, containerWidth, isCalendar);
 
   // Ola 4 — marco máximo en ALTO (82% del viewport, acotado): las celdas se achican
   // si el grid completo no cabe en pantalla. Ola 6: se respeta también el cap por slot.
   // Calendario: el marco lo define el CONTENIDO (maxFrameHBySlots), no el viewport —
   // las 12 tarjetas se apilan a tamaño completo y el grid scrollea vertical.
   const reserve = stripMode ? 0 : ACTION_BAR_RESERVE;
-  const maxFrameHBySlots =
-    slotMaxHeight * layout.rows + layout.gap * (layout.rows - 1) + layout.rows * reserve;
-  const maxFrameH = viewportH
-    ? isCalendar
-      ? maxFrameHBySlots
-      : Math.min(
-          FRAME_HEIGHT_MAX,
-          Math.max(FRAME_HEIGHT_MIN, Math.round(viewportH * FRAME_HEIGHT_VH)),
-          maxFrameHBySlots,
-        )
-    : null;
+  const maxFrameH = computeMaxFrameH({
+    viewportH,
+    isCalendar,
+    hasEditableText,
+    slotMaxHeight,
+    rows: layout.rows,
+    gap: layout.gap,
+    reserve,
+  });
 
   const slotDisplaySize = grouped
     ? // Ola 19 — separadores: el ancho de cara se limita también por el ALTO útil del
@@ -397,18 +376,20 @@ export function StudioCanvasGrid({
         const byHeight = Math.floor(usableH / layout.rows / slotAspect);
         return Math.max(MIN_SLOT_SIZE, Math.min(byWidth, byHeight));
       })()
-    : (() => {
+    : computeFlatSlotDisplaySize({
+        availableW,
+        cols: layout.cols,
+        slotAspect,
+        rows: layout.rows,
+        gap: layout.gap,
+        reserve,
+        maxFrameH,
         // Calendario: piso propio (280px) — con el genérico (120px) la tarjeta
-        // del mes quedaba ilegible cuando el cap de alto gobernaba.
-        const minSize = isCalendar ? CALENDAR_MIN_SLOT_SIZE : MIN_SLOT_SIZE;
-        const byWidth = Math.floor(availableW / layout.cols);
-        if (!maxFrameH) return Math.max(minSize, byWidth);
-        // Alto útil del marco: menos gaps entre filas y la reserva de la barra de
-        // acciones por fila (en modo tira no hay reserva: la barra flota).
-        const usableH = maxFrameH - layout.gap * (layout.rows - 1) - layout.rows * reserve;
-        const byHeight = Math.floor(usableH / layout.rows / slotAspect);
-        return Math.max(minSize, Math.min(byWidth, byHeight));
-      })();
+        // del mes quedaba ilegible cuando el cap de alto gobernaba. Texto
+        // editable: piso 260px (TEXT_MIN_SLOT_SIZE) para que los textos del
+        // lienzo tengan target de tap usable.
+        minSize: resolveMinSlotSize({ isCalendar, hasEditableText }),
+      });
   const slotHeight = slotDisplaySize * slotAspect;
   // Ola 4 — ancho EXPLÍCITO del grid (celdas + gaps): si el cap de alto achicó las
   // celdas, el grid no se estira a lo ancho — queda centrado en el marco (margin auto).
@@ -484,6 +465,7 @@ export function StudioCanvasGrid({
                     // monthIndex0 = (startMonth + slotIndex) mod 12.
                     monthIndex0: (((calendarPreview.startMonth + slot.slotIndex) % 12) + 12) % 12,
                     layout: calendarPreview.layout,
+                    font: calendarPreview.font,
                   }
                 : null
             }
@@ -623,6 +605,7 @@ export function StudioCanvasGrid({
         frameFullBleed={frameFullBleed}
         calendarPreview={calendarPreview}
         onChangePhoto={onRequestChangePhoto}
+        onRequestChangeProfilePhoto={onRequestChangeProfilePhoto}
       />
 
       {/* A2.6 — Overlay de transición al cambiar plantilla */}
@@ -714,6 +697,7 @@ function StudioSlotEditModalWrapper({
   frameFullBleed = false,
   calendarPreview = null,
   onChangePhoto,
+  onRequestChangeProfilePhoto,
 }: {
   store: StoreApi<StudioStoreState>;
   editModal: { slotIndex: number; tab: "photo" | "text"; focusTextLayerId?: string } | null;
@@ -722,9 +706,17 @@ function StudioSlotEditModalWrapper({
   slotLabels?: string[];
   allowText?: boolean;
   frameFullBleed?: boolean;
-  calendarPreview?: { year: number; startMonth: number; layout?: CalendarLayoutKey } | null;
+  calendarPreview?: {
+    year: number;
+    startMonth: number;
+    layout?: CalendarLayoutKey;
+    /** Lucy 2026-09-07 — tipo de letra del título/mes elegido en el banner (default "fredoka"). */
+    font?: CalendarFontKey;
+  } | null;
   /** Ola 10 — solicitud de cambiar la foto: el padre abre el picker. */
   onChangePhoto?: (slotIndex: number) => void;
+  /** Ola 17 — solicitud de cambiar la foto de perfil: el padre abre el picker en modo profile. */
+  onRequestChangeProfilePhoto?: (slotIndex: number) => void;
 }) {
   const slotIndex = editModal?.slotIndex ?? null;
   const slotAssetUrl = useStore(store, (s) =>
@@ -765,13 +757,27 @@ function StudioSlotEditModalWrapper({
       ? s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.textOverrides
       : undefined,
   );
+  // Ola 17 — foto de perfil del slot (POR SLOT) + si la plantilla trae la capa.
+  const slotProfileAssetUrl = useStore(store, (s) =>
+    slotIndex !== null
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.profileAssetUrl ?? null)
+      : null,
+  );
   const unitTemplate = useStore(store, (s) => s.canvasData?.unitTemplate);
   const slotCount = useStore(store, (s) => s.canvasData?.slotCount ?? 0);
   const borderColor = useStore(store, (s) => s.canvasData?.borderColor ?? null);
   const setSlotFilter = useStore(store, (s) => s.setSlotFilter);
   const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
   const setSlotTextOverride = useStore(store, (s) => s.setSlotTextOverride);
+  const setSlotProfilePhoto = useStore(store, (s) => s.setSlotProfilePhoto);
   const texts = useStudioTexts();
+
+  // Ola 17 — la plantilla (unitTemplate) declara la capa `profile-photo` que
+  // habilita el control "Foto de perfil" en la pestaña Foto del editor.
+  const hasProfilePhoto = useMemo(
+    () => !!unitTemplate?.layers.some((l) => l.type === "profile-photo"),
+    [unitTemplate],
+  );
 
   const textLayers = useMemo(() => {
     if (!unitTemplate) return [];
@@ -838,6 +844,14 @@ function StudioSlotEditModalWrapper({
       onChangePhoto={() => {
         if (slotIndex !== null) onChangePhoto?.(slotIndex);
       }}
+      hasProfilePhoto={hasProfilePhoto}
+      profilePhotoUrl={slotProfileAssetUrl}
+      onChangeProfilePhoto={() => {
+        if (slotIndex !== null) onRequestChangeProfilePhoto?.(slotIndex);
+      }}
+      onClearProfilePhoto={() => {
+        if (slotIndex !== null) setSlotProfilePhoto(slotIndex, null);
+      }}
       preview={
         unitTemplate
           ? {
@@ -853,6 +867,7 @@ function StudioSlotEditModalWrapper({
                       // Misma matemática de mes que el slot de la grilla y producción.
                       monthIndex0: (((calendarPreview.startMonth + slotIndex) % 12) + 12) % 12,
                       layout: calendarPreview.layout,
+                      font: calendarPreview.font,
                     }
                   : null,
               onTransformChange: (t) => {
