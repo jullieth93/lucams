@@ -129,10 +129,23 @@ export type StudioEditorProps = {
   initialDesignAssets: StudioAsset[];
   photoSlots: number;
   /**
+   * Lucy 2026-09-05 — packs de fotoimanes: catálogo elegible {photoSlots, price}
+   * YA FILTRADO al tamaño físico elegido (PDP o diseño recuperado). Solo se pasa
+   * para PHOTO_PACK con variantes que declaran photoSlots. Alimenta el stepper
+   * "¿Cuántas fotos lleva tu imán?" y el precio vivo de la modal de confirmación.
+   * El cobro final lo resuelve el SERVIDOR desde el canvasData guardado — esto
+   * es solo vista.
+   */
+  packVariants?: PhotoPackVariantOption[];
+  /**
    * Variant ID elegido en PDP (`/estudio/[slug]?variant=X`). Se propaga
    * al cart al finalizar para que el CartItem use la variant correcta
    * (cantidad/tamaño/etc.) — antes de M.3.b.CAT había siempre 1 variant
    * "-DEFAULT" por producto, ahora hay N por size/qty.
+   *
+   * Lucy 2026-09-05 — packs: NO se propaga (el Estudio elige el N de fotos y
+   * el servidor resuelve la variante desde el diseño). Queda para name/letterset
+   * y deep-links legacy de otros productos.
    */
   variantId?: string;
   /** Precio (centavos COP) de la variante elegida — se muestra en la vista previa pre-carrito. */
@@ -150,6 +163,12 @@ export type StudioEditorProps = {
   calendarYear?: number;
 };
 
+/** Variante elegible de un pack: N de fotos por imán + precio (centavos, ya resuelto). */
+export type PhotoPackVariantOption = {
+  photoSlots: number;
+  price: number;
+};
+
 export function StudioEditor({
   product,
   templates,
@@ -157,6 +176,7 @@ export function StudioEditor({
   initialDesignCanvas,
   initialDesignAssets,
   photoSlots,
+  packVariants = [],
   variantId,
   unitPriceCents,
   initialCopies,
@@ -291,7 +311,18 @@ export function StudioEditor({
   // stroke sobre blanco. Misma regla en producción (service.ts → frameFullBleed).
   const frameFullBleed = (productConfig.frameOptions?.length ?? 0) > 0;
   const facesPerUnit = productConfig.facesPerUnit === 2 ? 2 : 1;
-  const slotCount = photoSlots * facesPerUnit;
+  // Lucy 2026-09-05 — packs de fotoimanes: el N de fotos por imán se elige en el
+  // Estudio (prop packVariants). Los demás productos foto mantienen N fijo del
+  // schema/variante (packVariants vacío → isPhotoPack false → cero cambios).
+  const isPhotoPack = packVariants.length > 0;
+  // slotCount INICIAL (boot del canvasData). Durante la sesión el vivo sale del
+  // store (canvasData.slotCount) porque el stepper de fotos lo reconstruye.
+  const initialSlotCount = photoSlots * facesPerUnit;
+  // Tamaño físico efectivo (PDP o diseño recuperado — la página ya lo resolvió).
+  const packSizeCm = productConfig.sizeCm;
+  // Mín/máx de fotos del tamaño actual (catálogo ya filtrado por tamaño en la página).
+  const packMinSlots = isPhotoPack ? Math.min(...packVariants.map((v) => v.photoSlots)) : 1;
+  const packMaxSlots = isPhotoPack ? Math.max(...packVariants.map((v) => v.photoSlots)) : 1;
   // Ola 2A — marco inicial del Estudio: la variante elegida en la PDP aún trae
   // "Estilo"/"Marco" como dato (ya no es dimensión visible) → preselecciona el
   // color equivalente de la paleta; el cliente lo cambia libre en la sidebar.
@@ -299,6 +330,18 @@ export function StudioEditor({
     () => initialFrameColorFromSchema(product.personalizationSchema),
     [product.personalizationSchema],
   );
+
+  // ── Valores VIVOS del canvasData (Lucy 2026-09-05, packs) ──
+  // Mientras no hay canvasData (boot) caen al inicial de la prop. Selectores
+  // atómicos (primitivos) → sin re-render en cascada.
+  const livePhotoSlots = useStore(store, (s) => s.canvasData?.photoSlots ?? photoSlots);
+  const liveSlotCount = useStore(store, (s) => s.canvasData?.slotCount ?? initialSlotCount);
+  // Precio VIVO del pack para el N actual (vista de la modal; el cobro lo
+  // resuelve el servidor al agregar al carrito — nunca se confía en este valor).
+  const effectiveUnitPrice = useMemo(() => {
+    if (!isPhotoPack) return unitPriceCents;
+    return packVariants.find((v) => v.photoSlots === livePhotoSlots)?.price ?? unitPriceCents;
+  }, [isPhotoPack, packVariants, livePhotoSlots, unitPriceCents]);
 
   // ADR-063 CAL2 — el año del calendario lo ELIGE el cliente (antes era un badge fijo del schema
   // del producto, y podía venir vacío). Default = año del producto → próximo año. Se ofrece un
@@ -349,7 +392,7 @@ export function StudioEditor({
 
         if (designId && initialDesignCanvas) {
           // Design existente: asegurar V2 (migrar V1 si hace falta)
-          canvasData = ensureCanvasV2(initialDesignCanvas, slotCount);
+          canvasData = ensureCanvasV2(initialDesignCanvas, initialSlotCount);
         } else {
           // Crear draft nuevo
           const result = await createDraftDesignAction({ productId: product.id });
@@ -387,14 +430,18 @@ export function StudioEditor({
             // Ola 3 — con facesPerUnit=2 (separadores) hay 2 slots de diseño por
             // unidad física: slot 2k = cara A, slot 2k+1 = cara B (convención
             // compartida con producción y con el frente 3D).
-            slotCount,
-            slots: Array.from({ length: slotCount }, (_, idx) => ({
+            slotCount: initialSlotCount,
+            // Lucy 2026-09-05 — packs: el canvasData nuevo ya declara el N de
+            // fotos y el tamaño en raíz (fuente de la resolución server-side
+            // de la variante en el carrito). Los demás productos no lo llevan.
+            ...(isPhotoPack ? { photoSlots, ...(packSizeCm ? { sizeCm: packSizeCm } : {}) } : {}),
+            slots: Array.from({ length: initialSlotCount }, (_, idx) => ({
               slotIndex: idx,
               assetId: null,
               assetUrl: null,
             })),
             gridLayout: defaultGridFor(
-              slotCount,
+              initialSlotCount,
               unitTemplate.stage,
               // Ola 2A — la plantilla puede fijar las columnas (tira fotobooth: gridCols=1).
               typeof (unitTemplate as { gridCols?: unknown }).gridCols === "number"
@@ -409,6 +456,23 @@ export function StudioEditor({
         }
 
         if (cancelled) return;
+
+        // Lucy 2026-09-05 — packs: el canvasData recuperado (edición desde
+        // carrito/diseños) puede ser de ANTES del control de N fotos y no
+        // declarar photoSlots en raíz → se fija con el N inicial del deep-link
+        // /schema. El guard del N del diseño: si ya lo trae, se respeta
+        // (el stepper arranca con el N guardado — flujo "Editar").
+        if (isPhotoPack) {
+          const normalized: number = canvasData.photoSlots ?? photoSlots;
+          const normalizedSize = canvasData.sizeCm ?? packSizeCm;
+          if (canvasData.photoSlots !== normalized || canvasData.sizeCm !== normalizedSize) {
+            canvasData = {
+              ...canvasData,
+              photoSlots: normalized,
+              ...(normalizedSize ? { sizeCm: normalizedSize } : {}),
+            };
+          }
+        }
 
         // Ola 2A — preselección del marco: solo si el diseño no trae uno ya elegido
         // (un diseño recuperado conserva la elección del cliente).
@@ -449,7 +513,9 @@ export function StudioEditor({
     product.id,
     product.slug,
     photoSlots,
-    slotCount,
+    initialSlotCount,
+    isPhotoPack,
+    packSizeCm,
     templates,
     store,
     initialBorderColor,
@@ -855,10 +921,15 @@ export function StudioEditor({
         // replacesCartDesignId: si venimos de "Editar" desde el carrito, reemplaza el item original.
         // qty = copias elegidas en la modal (unidades idénticas; el finalize NO
         // depende de ellas — el short-circuit de finalizedRef sigue intacto).
+        // Lucy 2026-09-05 — packs: SIN variantId. El N de fotos se eligió en el
+        // Estudio y viaja en el canvasData guardado; el SERVIDOR resuelve la
+        // variante exacta (photoSlots+sizeCm) con precio y stock server-side.
+        // Mandar el variantId de la PDP cobraría la combinación vieja si el
+        // cliente cambió N acá (la ruta del dinero no confía en el cliente).
         const addResult = await addPersonalizedToCartAction({
           designId: state.designId,
           qty: copies,
-          variantId,
+          variantId: isPhotoPack ? undefined : variantId,
           replaceDesignId: replacesCartDesignId ?? undefined,
         });
         if (!addResult.ok) {
@@ -881,6 +952,7 @@ export function StudioEditor({
       router,
       store,
       variantId,
+      isPhotoPack,
       previewDataUrl,
       replacesCartDesignId,
       productConfig.shape,
@@ -1006,9 +1078,19 @@ export function StudioEditor({
         productSlug={product.slug}
         productImageUrl={product.images?.[0]}
         productSizeCm={productConfig.sizeCm}
-        productSlotCount={photoSlots}
+        productSlotCount={livePhotoSlots}
         slotNoun={slotNoun}
         showRealismGuides={false}
+        photoCount={
+          isPhotoPack
+            ? {
+                min: packMinSlots,
+                max: packMaxSlots,
+                facesPerUnit,
+                sizeCm: packSizeCm,
+              }
+            : undefined
+        }
         onOpenGesturesHint={() => {
           setGesturesHintPersistent(true);
           setGesturesHintOpen(true);
@@ -1132,7 +1214,7 @@ export function StudioEditor({
             cornerRadiusPx={productConfig.cornerRadiusPx}
             showRealismGuides={showRealismGuides}
             // Ola 3 — calendario: meses; separadores 2 caras: "1A","1B",… por unidad.
-            slotLabels={isCalendarMonth ? slotLabels : faceSlotLabels(photoSlots, facesPerUnit)}
+            slotLabels={isCalendarMonth ? slotLabels : faceSlotLabels(livePhotoSlots, facesPerUnit)}
             // Ola 4 (Lucy 2026-07-23) — calendario: cada slot previsualiza la TARJETA
             // compuesta del mes (foto + título + grilla), no la foto a sangre.
             calendarPreview={
@@ -1168,7 +1250,7 @@ export function StudioEditor({
           open={aiOpen}
           onClose={() => setAiOpen(false)}
           productName={product.name}
-          slotCount={slotCount}
+          slotCount={liveSlotCount}
           allowText={allowText}
         />
       )}
@@ -1283,7 +1365,7 @@ export function StudioEditor({
         isOpen={pickerSlotIndex !== null}
         slotIndex={pickerSlotIndex}
         // Ola 3 — con separadores 2 caras hay 2N slots de diseño (cara A/B por unidad).
-        totalSlots={slotCount}
+        totalSlots={liveSlotCount}
         assets={modalAssets}
         designId={modalDesignId}
         predesigned={predesigned}
@@ -1301,10 +1383,11 @@ export function StudioEditor({
         previewUrl={previewDataUrl}
         productName={product.name}
         // Ola 3 — en separadores la unidad física es la tira (2 caras): el conteo
-        // del modal es de UNIDADES (photoSlots), no de slots de diseño (2N).
-        slotCount={photoSlots}
+        // del modal es de UNIDADES (N fotos vivo del stepper), no de slots de
+        // diseño (2N).
+        slotCount={livePhotoSlots}
         sizeCm={productConfig.sizeCm}
-        unitPrice={unitPriceCents}
+        unitPrice={effectiveUnitPrice}
         initialCopies={initialCopies}
         isFinalizing={isFinalizingFlag}
         errorMessage={previewError}

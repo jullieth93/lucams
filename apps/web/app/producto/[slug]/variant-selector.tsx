@@ -74,6 +74,16 @@ type VariantSelectorProps = {
    * variantStyle/frameStyle/theme/language según el producto). Las variantes siguen intactas;
    * solo se filtra el grupo del UI. */
   hiddenDimensions?: readonly string[];
+  /**
+   * Lucy 2026-09-05 — packs de fotoimanes: con photoSlots/quantity ocultos puede
+   * quedar UNA sola dimensión visible (Tamaño) con >1 valor. El modo lista
+   * vertical pintaría una fila por CADA variante (18 filas en cuadrados) —
+   * combinaciones que ya ni se compran en la PDP (el N de fotos se elige en el
+   * Estudio). Con esta prop esa dimensión única se pinta como CHIPS (un click
+   * = tamaño, ancla a la variante N=1 de ese tamaño), re usando el render
+   * multi-dim. Los demás productos no se tocan.
+   */
+  singleDimAsChips?: boolean;
 };
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -151,8 +161,13 @@ function formatDimensionValue(key: string, value: unknown): string {
 
 const VISIBLE_DIMENSIONS: (keyof ProductVariantAttributes)[] = [
   "language",
-  "quantity",
+  // photoSlots ANTES que quantity (Lucy 2026-09-05): cuando ambas coinciden en
+  // todas las variants (packs de fotoimanes/separadores: cada unidad lleva 1 foto
+  // por slot), el dedupe conserva la PRIMERA — y "Fotos" describe lo que el
+  // cliente elige (fotos por unidad), no "Cantidad", que hoy colisiona con el
+  // stepper de compra "Unidades" (CopiesQtyInput) en la PDP de personalizables.
   "photoSlots",
+  "quantity",
   "sizeCm",
   "shape",
   "color",
@@ -228,6 +243,7 @@ export function VariantSelector({
   variants: rawVariants,
   perTile = false,
   hiddenDimensions,
+  singleDimAsChips = false,
 }: VariantSelectorProps) {
   // ──── SINGLE SOURCE OF TRUTH: el Context del buy-box (H12) ────
   // Antes el estado vivía LOCAL acá + router.replace; las acciones (CTA/carrito/precio) no se
@@ -464,7 +480,9 @@ export function VariantSelector({
   // mismo acento púrpura de selección (antes turquesa, desentonaba), mismo ring-2 +
   // shadow-md al seleccionar y mismo hover que el resto de la PDP. La lógica de
   // selección (single source en Context) no cambia.
-  if (dimensions.length <= 1 && !singleQuantityStepper && !singleStaticDim) {
+  // singleDimAsChips (Lucy 2026-09-05): packs con la dimensión única de Tamaño
+  // saltan este modo → caen al render multi-dim de abajo (chips por tamaño).
+  if (dimensions.length <= 1 && !singleQuantityStepper && !singleStaticDim && !singleDimAsChips) {
     return (
       <div className="mb-4">
         <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">
@@ -548,15 +566,16 @@ export function VariantSelector({
     <div className="mb-4 space-y-4">
       {dimensions.map((dim) => {
         // Stepper de cantidad (Lucy 2026-07-22): solo si la dimensión es de cantidad
-        // y sus valores son 1..N contiguos (fotoimanes/separadores 1–6). Sets no
-        // contiguos (polaroid 6/9/12/20) siguen con chips, más abajo.
+        // y sus valores son 1..N contiguos (fotoimanes/separadores 1–6, polaroid
+        // 1–10). Sets NO contiguos siguen con chips, más abajo.
         const useStepper = QUANTITY_DIM_KEYS.has(dim.key) && isContiguousFromOne(dim.values);
         if (useStepper) {
           const maxQty = dim.values.length; // values = ["1",…,"N"] contiguos
           const parsed = Number.parseInt(currentValues[dim.key] ?? "", 10);
           const qty = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), maxQty) : 1;
           // La variante de la cantidad actual (misma combinación de las otras
-          // dimensiones) da el total de la línea; el c/u deriva de él.
+          // dimensiones) da el precio del pack; el c/u deriva de él (precio por
+          // foto cuando la dimensión es photoSlots).
           const qtyVariant =
             findExactVariant(dim.key, String(qty)) ??
             variants.find(
@@ -617,7 +636,18 @@ export function VariantSelector({
                     aria-live="polite"
                     className="text-brand-purple-dark min-w-20 text-center text-sm font-bold tabular-nums"
                   >
-                    {qty} {qty === 1 ? "unidad" : "unidades"}
+                    {/* Sustantivo según la dimensión: photoSlots = fotos por unidad
+                      (composición del pack); quantity = unidades. Lucy 2026-09-05:
+                      el stepper ya no dice "unidad/es" — colisionaba con el stepper
+                      de compra "Unidades" (CopiesQtyInput) bajo la ficha. */}
+                    {qty}{" "}
+                    {dim.key === "photoSlots"
+                      ? qty === 1
+                        ? "foto"
+                        : "fotos"
+                      : qty === 1
+                        ? "unidad"
+                        : "unidades"}
                   </span>
                   <button
                     type="button"
@@ -635,9 +665,11 @@ export function VariantSelector({
                   {formatCOP(unitPrice)} c/u
                 </span>
                 {nextSoldOut && <span className="text-brand-muted text-xs">· Agotado</span>}
-                <span className="text-brand-purple-dark text-sm font-bold tabular-nums">
-                  Total: {formatCOP(totalPrice)}
-                </span>
+                {/* SIN "Total: $X" acá (Lucy 2026-09-05): este stepper elige la
+                  COMPOSICIÓN del pack (fotos por unidad), no la cantidad de compra
+                  — ese total lo fija el stepper "Unidades" (CopiesQtyInput) y el
+                  precio del pack ya está en el bloque PRECIO. Mostrar un "Total"
+                  acá duplicaba la cantidad y confundía (bug reportado en vivo). */}
               </div>
             </div>
           );

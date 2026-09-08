@@ -26,10 +26,15 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { parseVariantAttributes } from "@/features/products/variant-schemas";
+import {
+  readPhotoPackDesignInfo,
+  resolvePhotoPackVariant,
+} from "@/features/products/photo-pack-resolve";
 import { logger } from "@/lib/logger";
 import { designIdentity } from "./design-identity";
 import { describePieces, pieceKindFor } from "./line-preview";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
+import { letterSetBorderNote } from "@/features/personalization/letter-set-border";
 
 export type CartLineItem = {
   itemId: string;
@@ -52,6 +57,11 @@ export type CartLineItem = {
    * `null` cuando no hay nada verdadero que decir.
    */
   pieceSummary: string | null;
+  /**
+   * "Con borde" / "Sin borde" para sets de letras (opción de diseño persistida en el Design,
+   * Lucy 2026-09-05). `null` para cualquier otro producto.
+   */
+  borderNote: string | null;
 };
 
 export type CartDetail = {
@@ -126,6 +136,10 @@ const cartItemsInclude = {
           id: true,
           previewUrl: true,
           status: true,
+          // Metadata del diseño: opciones de diseño que se muestran en el resumen (p. ej.
+          // "Sin borde" de los sets de letras, Lucy 2026-09-05). El PNG las refleja; el texto
+          // evita que el cliente tenga que deducirlas de la imagen.
+          metadata: true,
         },
       },
     },
@@ -224,6 +238,7 @@ function toDetail(cart: RawCart): CartDetail {
       designId: i.designId,
       designPreviewUrl: i.design?.previewUrl ?? null,
       pieceSummary: describeLine(i),
+      borderNote: letterSetBorderNote(i.design?.metadata),
     }));
   return {
     cartId: cart.id,
@@ -352,6 +367,12 @@ export async function addPersonalizedToCart(opts: {
    * (`/estudio/[slug]?variant=X`). Si se omite, fallback a la primera
    * variant activa del producto (mantiene compat con productos sin variants).
    *
+   * EXCEPCIÓN (Lucy 2026-09-05): los packs de fotoimanes eligen el N de fotos
+   * DENTRO del Estudio y el flujo NO lo manda — el servidor lo resuelve desde
+   * el canvasData del diseño (photoSlots + sizeCm). Así el precio cobrado
+   * siempre corresponde a las fotos que el cliente diseñó, aunque el variantId
+   * que fijó la PDP quedara desactualizado.
+   *
    * Si se pasa, se valida que pertenece a design.product.id (anti-tamper).
    */
   variantId?: string;
@@ -375,6 +396,10 @@ export async function addPersonalizedToCart(opts: {
       // ADR-057 — metadata.surface + metadata.letters: para Nombre (precio por ficha) el
       // unitPrice = nº de letras × precio-por-ficha. Para el resto, es el precio de variante.
       metadata: true,
+      // Lucy 2026-09-05 — packs de fotoimanes: el canvasData trae photoSlots/sizeCm
+      // elegidos en el Estudio → resolución server-side de la variante cuando el
+      // caller no manda variantId (features/products/photo-pack-resolve.ts).
+      canvasData: true,
       product: {
         select: {
           id: true,
@@ -413,9 +438,26 @@ export async function addPersonalizedToCart(opts: {
       throw new CartError("NO_DEFAULT_VARIANT");
     }
   } else {
-    // Compat: primera variant activa (orden por createdAt). Para productos
-    // mono-variant queda igual; para multi-variant es elección arbitraria.
-    variant = design.product.variants[0];
+    // Lucy 2026-09-05 — packs de fotoimanes: el N de fotos (y el tamaño) se
+    // eligen en el Estudio y viajan en el canvasData guardado del diseño. El
+    // cliente NO manda variantId para estos packs: el servidor resuelve la
+    // variante exacta (precio + stock SIEMPRE server-side). Si el diseño no
+    // declara photoSlots (legacy / otros kinds), se mantiene el fallback
+    // histórico: primera variante activa.
+    const packInfo = readPhotoPackDesignInfo(design.canvasData);
+    if (packInfo) {
+      variant = resolvePhotoPackVariant(design.product.variants, packInfo) ?? undefined;
+      if (!variant) {
+        // El catálogo ya no reproduce este diseño (Lucy pausó esa combinación
+        // de fotos/tamaño). Error claro: sin variante exacta no hay precio
+        // que cobrar — nunca se inventa uno de otra variante.
+        throw new CartError("NO_DEFAULT_VARIANT");
+      }
+    } else {
+      // Compat: primera variant activa (orden por createdAt). Para productos
+      // mono-variant queda igual; para multi-variant es elección arbitraria.
+      variant = design.product.variants[0];
+    }
   }
   if (!variant) throw new CartError("NO_DEFAULT_VARIANT");
   // Fase 1 (stock por variante): misma regla que addProductToCart — la variante

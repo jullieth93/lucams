@@ -126,6 +126,15 @@ export const CanvasDataV2Schema = z.object({
     .regex(/^#[0-9A-Fa-f]{6}$/)
     .nullable()
     .optional(),
+  // Lucy 2026-09-05 — packs de fotoimanes: N de fotos por imán elegido DENTRO del
+  // Estudio (antes era dimensión de variante elegida en la PDP) + tamaño físico
+  // elegido en la PDP. Persisten en el canvasData para que el carrito resuelva
+  // la variante server-side sin confiar en un variantId del cliente
+  // (features/products/photo-pack-resolve.ts). SIN catchall en este schema: Zod
+  // stripea claves desconocidas, así que declararlas acá es lo que las hace
+  // sobrevivir el auto-save.
+  photoSlots: z.number().int().min(1).max(50).optional(),
+  sizeCm: z.string().max(40).optional(),
 });
 
 export type CanvasDataV2 = z.infer<typeof CanvasDataV2Schema>;

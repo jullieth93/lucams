@@ -24,6 +24,7 @@ import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { compareSizeToObject } from "./lib/size-comparator";
 import { LucamsLogo } from "@/components/lucams-logo";
+import { StudioPhotoCountControl } from "./studio-photo-count-control";
 import {
   selectFilledSlotCount,
   selectIsComplete,
@@ -55,6 +56,17 @@ type StudioToolbarProps = {
    *  (drag/zoom/dblclick). El cliente puede re-leer las instrucciones cuando
    *  quiera. */
   onOpenGesturesHint?: () => void;
+  /**
+   * Lucy 2026-09-05 — packs de fotoimanes: config del stepper "¿Cuántas fotos
+   * lleva tu imán?" (fila propia bajo el header). undefined = producto no pack:
+   * el control no se renderiza.
+   */
+  photoCount?: {
+    min: number;
+    max: number;
+    facesPerUnit: number;
+    sizeCm?: string;
+  };
   onFinalize: () => void;
 };
 
@@ -69,6 +81,7 @@ export function StudioToolbar({
   showRealismGuides,
   onToggleRealismGuides: _onToggleRealismGuides,
   onOpenGesturesHint,
+  photoCount,
   onFinalize,
 }: StudioToolbarProps) {
   const autoSaveStatus = useStore(store, (s) => s.autoSaveStatus);
@@ -172,6 +185,18 @@ export function StudioToolbar({
           </div>
         </div>
       </div>
+
+      {/* Lucy 2026-09-05 — packs de fotoimanes: el N de fotos por imán se elige ACÁ
+          (en el Estudio), no en la PDP. Fila propia visible en mobile y desktop. */}
+      {photoCount && (
+        <StudioPhotoCountControl
+          store={store}
+          min={photoCount.min}
+          max={photoCount.max}
+          facesPerUnit={photoCount.facesPerUnit}
+          sizeCm={photoCount.sizeCm}
+        />
+      )}
 
       {/* Progress badge mobile (visible solo < md) */}
       <div className="border-brand-purple/10 bg-brand-cream/50 flex items-center justify-center gap-2 border-t py-2 md:hidden">

@@ -43,6 +43,9 @@ import {
   selectableVariants,
   parseVariantAttributes,
   PDP_HIDDEN_DIMENSION_KEYS,
+  isPhotoPackCatalog,
+  photoPackDistinctSizes,
+  photoPackMinPrice,
 } from "@/features/products/variant-schemas";
 import { NamePricePicker } from "./name-price-picker";
 import { CopiesQtyInput } from "./copies-qty-input";
@@ -110,8 +113,18 @@ export default async function ProductoDetallePage({
   const selectedVariant =
     selectable.find((v) => v.id === requestedVariantId) ??
     (selectable.length === 1 ? (selectable[0] ?? null) : null);
+  // Lucy 2026-09-05 — packs de fotoimanes: las fotos se eligen en el ESTUDIO, no
+  // en la PDP (photoSlots/quantity van ocultos vía PDP_HIDDEN_DIMENSION_KEYS; el
+  // selector queda solo con Tamaño cuando hay >1). El precio se exhibe "Desde $X"
+  // (mínimo del tamaño elegido — con selección guiada la variante seleccionada es
+  // la de N=1 de ese tamaño — o del producto entero sin selección).
+  const isPhotoPack = isPhotoPackCatalog(product.personalizationKind, selectable);
+  const packSizes = isPhotoPack ? photoPackDistinctSizes(selectable) : [];
+  const packMinPrice = isPhotoPack ? photoPackMinPrice(selectable, product.basePrice) : null;
   // Precio final: variant.price override o basePrice
-  const displayPrice = selectedVariant?.price ?? product.basePrice;
+  const displayPrice =
+    selectedVariant?.price ??
+    (isPhotoPack && packMinPrice != null ? packMinPrice : product.basePrice);
   // H12 (auditoría v3) — ids para las acciones reactivas a la URL (CTA Estudio + variantId del
   // carrito), que reaccionan al selector SIN esperar el re-render del RSC.
   const variantIds = selectable.map((v) => v.id);
@@ -304,6 +317,11 @@ export default async function ProductoDetallePage({
                   </>
                 ) : (
                   <>
+                    {/* Lucy 2026-09-05 — packs: el precio es "Desde" porque el N de
+                        fotos (y con ello el precio final) se elige dentro del Estudio. */}
+                    {isPhotoPack && (
+                      <span className="text-brand-muted text-lg font-semibold">Desde</span>
+                    )}
                     <span className="text-brand-purple-dark text-3xl font-bold tabular-nums">
                       {formatCOP(displayPrice)}
                     </span>
@@ -336,10 +354,17 @@ export default async function ProductoDetallePage({
                       ficha: se eligen como plantilla dentro del Estudio. */}
                   {selectable.length > 0 && (
                     <VariantSelector
-                      productBasePrice={product.basePrice}
+                      // Lucy 2026-09-05 — packs: el fallback del card "Precio" es el
+                      // mínimo del pack (consistente con el "Desde $X" del header),
+                      // no el basePrice (desactualizado en varios packs).
+                      productBasePrice={
+                        isPhotoPack && packMinPrice != null ? packMinPrice : product.basePrice
+                      }
                       variants={selectable}
                       perTile={isNamePerTile}
                       hiddenDimensions={PDP_HIDDEN_DIMENSION_KEYS[product.slug]}
+                      // Packs: dimensión única de Tamaño como chips, no lista por variante.
+                      singleDimAsChips={isPhotoPack}
                     />
                   )}
 
@@ -370,7 +395,17 @@ export default async function ProductoDetallePage({
                       // NamePricePicker (precio por ficha), otro concepto.
                       <>
                         <CopiesQtyInput />
-                        <EstudioCtaLink slug={product.slug} ctaNoun={ctaNoun} />
+                        <EstudioCtaLink
+                          slug={product.slug}
+                          ctaNoun={ctaNoun}
+                          // Lucy 2026-09-05 — packs: el CTA ya NO exige la variante
+                          // completa (las fotos se eligen en el Estudio). Exige solo
+                          // Tamaño cuando el producto tiene >1 tamaño; con 1 tamaño
+                          // abre directo (el schema fija tamaño y N inicial).
+                          requiredSelection={
+                            isPhotoPack ? (packSizes.length > 1 ? "size" : "none") : "variant"
+                          }
+                        />
                       </>
                     ) : (
                       <form action={addToCartAction}>

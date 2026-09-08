@@ -118,6 +118,18 @@ export type StudioStoreState = {
   applyTemplate: (template: StudioTemplate) => void;
   /** Ola 2A — color del marco alrededor de la foto (hex #RRGGBB) o null = sin marco. */
   setBorderColor: (color: string | null) => void;
+  /**
+   * Lucy 2026-09-05 — packs de fotoimanes: cambiar el N de fotos por imán desde
+   * el Estudio. Reconstruye slots (slotCount = n × facesPerUnit) PRESERVANDO las
+   * fotos ya subidas por índice hasta donde quepan (el resto queda vacío;
+   * convención 2k/2k+1 de caras en separadores intacta), recalcula el grid y
+   * persiste photoSlots/sizeCm en el canvasData para la resolución server-side
+   * de la variante en el carrito. Va por setCanvasData → undo + auto-save.
+   */
+  setPhotoSlotsPerUnit: (
+    n: number,
+    opts: { facesPerUnit: number; max: number; sizeCm?: string },
+  ) => void;
   addAsset: (asset: StudioAsset) => void;
   removeAsset: (assetId: string) => void;
   setAutoSaveStatus: (status: AutoSaveStatus) => void;
@@ -398,6 +410,48 @@ export function createStudioStore() {
       if (!canvasData) return;
       if ((canvasData.borderColor ?? null) === color) return;
       get().setCanvasData({ ...canvasData, borderColor: color });
+    },
+
+    setPhotoSlotsPerUnit: (n, opts) => {
+      const { canvasData, selectedSlotIndex } = get();
+      if (!canvasData) return;
+      const current = canvasData.photoSlots ?? Math.ceil(canvasData.slotCount / opts.facesPerUnit);
+      const target = Math.min(opts.max, Math.max(1, Math.trunc(n)));
+      if (!Number.isFinite(target) || target === current) return;
+      const newSlotCount = target * opts.facesPerUnit;
+      // Preservar fotos por ÍNDICE hasta donde quepen; los slots nuevos quedan
+      // vacíos (los assets siguen en la sidebar para reasignar). Los slots que
+      // se caen sueltan su foto pero no la borran del listado de subidas.
+      const oldSlots = canvasData.slots;
+      const slots: SlotState[] = Array.from({ length: newSlotCount }, (_, idx) => {
+        const prev = oldSlots[idx];
+        return prev
+          ? { ...prev, slotIndex: idx }
+          : { slotIndex: idx, assetId: null, assetUrl: null };
+      });
+      const unitTemplate = canvasData.unitTemplate;
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        photoSlots: target,
+        sizeCm: opts.sizeCm ?? canvasData.sizeCm,
+        slotCount: newSlotCount,
+        slots,
+        gridLayout: recalcGridLayout(
+          newSlotCount,
+          unitTemplate.stage,
+          typeof (unitTemplate as { gridCols?: unknown }).gridCols === "number"
+            ? (unitTemplate as { gridCols?: number }).gridCols
+            : undefined,
+          typeof (unitTemplate as { gridGap?: unknown }).gridGap === "number"
+            ? (unitTemplate as { gridGap?: number }).gridGap
+            : undefined,
+        ),
+      };
+      get().setCanvasData(next);
+      // Si el slot seleccionado quedó fuera del nuevo conteo, soltar la selección.
+      if (selectedSlotIndex !== null && selectedSlotIndex >= newSlotCount) {
+        set({ selectedSlotIndex: null });
+      }
     },
 
     addAsset: (asset) => {

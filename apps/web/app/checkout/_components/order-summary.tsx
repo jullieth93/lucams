@@ -80,6 +80,9 @@ export function OrderSummary({
                 {item.isPersonalizable && item.designPreviewUrl && (
                   <p className="text-brand-muted text-[10px]">{texts.personalized}</p>
                 )}
+                {item.borderNote && (
+                  <p className="text-brand-muted text-[10px]">{item.borderNote}</p>
+                )}
               </div>
               <div className="text-brand-purple-dark flex-shrink-0 text-xs font-semibold tabular-nums">
                 {formatCOP(item.lineTotal)}

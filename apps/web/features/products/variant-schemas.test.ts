@@ -13,6 +13,10 @@ import {
   parseVariantAttributes,
   sameImageArrays,
   variantCoverSignature,
+  PDP_HIDDEN_DIMENSION_KEYS,
+  isPhotoPackCatalog,
+  photoPackDistinctSizes,
+  photoPackMinPrice,
 } from "./variant-schemas";
 
 describe("mergePreservingUnmanagedAttributes", () => {
@@ -183,5 +187,69 @@ describe("sameImageArrays", () => {
     expect(sameImageArrays(["b", "a"], ["a", "b"])).toBe(false);
     expect(sameImageArrays(["a"], ["a", "b"])).toBe(false);
     expect(sameImageArrays(["a", "b"], ["a", "c"])).toBe(false);
+  });
+});
+
+/*
+ * Lucy 2026-09-05 — "las fotos se eligen en el Estudio, no en la PDP": los 5
+ * packs de fotoimanes ocultan photoSlots/quantity del selector (queda solo
+ * Tamaño cuando hay >1) y el CTA al Estudio exige a lo sumo el tamaño. El N de
+ * fotos y el precio final se resuelven en el Estudio/carrito server-side.
+ */
+describe("packs de fotoimanes — catálogo y PDP (Lucy 2026-09-05)", () => {
+  const PACK_SLUGS = [
+    "set-fotoimanes-polaroid",
+    "set-fotoimanes-cuadrados",
+    "separadores-magneticos",
+    "separadores-alargados",
+    "tiras-magneticas-fotos",
+  ];
+
+  it("los 5 packs ocultan photoSlots y quantity en la PDP (sumado a lo que ya ocultaba cada slug)", () => {
+    for (const slug of PACK_SLUGS) {
+      const hidden = PDP_HIDDEN_DIMENSION_KEYS[slug];
+      expect(hidden, slug).toBeDefined();
+      expect(hidden, slug).toContain("photoSlots");
+      expect(hidden, slug).toContain("quantity");
+    }
+    // Ocultar fotoSlots NO tira las ocultas previas de cada familia.
+    expect(PDP_HIDDEN_DIMENSION_KEYS["set-fotoimanes-polaroid"]).toContain("variantStyle");
+    expect(PDP_HIDDEN_DIMENSION_KEYS["set-fotoimanes-cuadrados"]).toContain("frameStyle");
+    // pack-vocales (LETTER_SET) sigue igual: theme oculto, fotos NO aplica.
+    expect(PDP_HIDDEN_DIMENSION_KEYS["pack-vocales"]).toEqual(["theme"]);
+  });
+
+  it("isPhotoPackCatalog: solo PHOTO_PACK con variantes que declaran photoSlots", () => {
+    const packVariant = { attributes: { photoSlots: 4, sizeCm: "7.5×10" } };
+    expect(isPhotoPackCatalog("PHOTO_PACK", [packVariant])).toBe(true);
+    // Kind foto pero sin variantes con photoSlots (ej. catálogo legacy) → no.
+    expect(isPhotoPackCatalog("PHOTO_PACK", [{ attributes: { sizeCm: "5×5" } }])).toBe(false);
+    // Calendario/grid no son packs aunque traigan photoSlots en el schema.
+    expect(isPhotoPackCatalog("CALENDAR_PHOTO_MONTH", [packVariant])).toBe(false);
+    expect(isPhotoPackCatalog("CUSTOM_DECOR", [packVariant])).toBe(false);
+  });
+
+  it("photoPackDistinctSizes: tamaños únicos sin vacíos", () => {
+    const variants = [
+      { attributes: { photoSlots: 1, sizeCm: "6.5×6.5" } },
+      { attributes: { photoSlots: 2, sizeCm: "6.5×6.5" } },
+      { attributes: { photoSlots: 1, sizeCm: "10×10" } },
+      { attributes: { photoSlots: 3 } }, // sin tamaño → no entra
+    ];
+    expect(photoPackDistinctSizes(variants)).toEqual(["6.5×6.5", "10×10"]);
+  });
+
+  it('photoPackMinPrice: "Desde" = mínimo entre variantes, nunca basePrice desactualizado', () => {
+    // Réplica de set-fotoimanes-cuadrados: basePrice 45.000, variante mínima 16.000.
+    const variants = [
+      { price: 16_000 },
+      { price: 24_000 },
+      { price: null }, // hereda base
+    ];
+    expect(photoPackMinPrice(variants, 45_000_000)).toBe(16_000);
+    // price=null hereda basePrice.
+    expect(photoPackMinPrice([{ price: null }], 45_000)).toBe(45_000);
+    // Sin variantes → basePrice.
+    expect(photoPackMinPrice([], 45_000)).toBe(45_000);
   });
 });

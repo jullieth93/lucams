@@ -24,6 +24,7 @@ import {
 } from "@/features/personalization/service";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { resolvePersonalizationSurface } from "@/features/personalization/surface";
+import { readPhotoPackDesignInfo } from "@/features/products/photo-pack-resolve";
 import {
   listLetterStyles,
   listLetterThemeOptions,
@@ -386,6 +387,33 @@ export default async function EstudioPage({
     }
   }
 
+  // ── Lucy 2026-09-05 — packs de fotoimanes: N de fotos en el Estudio ──
+  // Catálogo elegible para el stepper "¿Cuántas fotos lleva tu imán?": las
+  // variantes que declaran photoSlots, con precio resuelto (override o base).
+  // El N y el tamaño EFECTIVOS los manda el diseño recuperado (canvasData
+  // guardado) sobre el variant del deep-link: al re-abrir un pack en el Estudio
+  // (flujo "Editar") el control arranca con el N del diseño y las medidas
+  // mostradas son las de su tamaño.
+  const designPackInfo = readPhotoPackDesignInfo(initialDesignCanvas);
+  const effectivePhotoSlots = designPackInfo?.photoSlots ?? photoConfig.photoSlots;
+  const effectiveSizeCm = designPackInfo?.sizeCm ?? photoConfig.sizeCm;
+  const selectable = selectableVariants(product.variants);
+  const packCatalog = selectable
+    .map((v) => {
+      const a = parseVariantAttributes(v.attributes);
+      return { photoSlots: a.photoSlots, sizeCm: a.sizeCm, price: v.price ?? product.basePrice };
+    })
+    .filter(
+      (v): v is { photoSlots: number; sizeCm: string | undefined; price: number } =>
+        v.photoSlots != null,
+    );
+  // Solo PHOTO_PACK con catálogo de fotos: calendarios/grid/custom quedan intactos.
+  const isPhotoPackStudio = product.personalizationKind === "PHOTO_PACK" && packCatalog.length > 0;
+  // Filtrado al tamaño efectivo: el stepper ofrece 1..max fotos DE ESE tamaño.
+  const packVariants = isPhotoPackStudio
+    ? packCatalog.filter((v) => v.sizeCm === undefined || v.sizeCm === effectiveSizeCm)
+    : [];
+
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
@@ -399,13 +427,25 @@ export default async function EstudioPage({
               name: product.name,
               sku: product.sku,
               personalizationKind: product.personalizationKind,
-              // M.3.b.CAT.4 — pasar mergedSchema (variant attributes sobre base)
-              personalizationSchema: mergedSchema,
+              // M.3.b.CAT.4 — pasar mergedSchema (variant attributes sobre base);
+              // Lucy 2026-09-05 — packs: photoSlots/sizeCm EFECTIVOS (del diseño
+              // recuperado si existe) para que el editor muestre el N y la medida
+              // correctos desde el primer paint.
+              personalizationSchema: {
+                ...mergedSchema,
+                ...(isPhotoPackStudio
+                  ? {
+                      photoSlots: effectivePhotoSlots,
+                      ...(effectiveSizeCm ? { sizeCm: effectiveSizeCm } : {}),
+                    }
+                  : {}),
+              },
               images: product.images,
             }}
             // M.3.b.CAT — variant elegido en PDP, propagado al cart al finalizar
+            // (NO para packs: el carrito resuelve la variante desde el diseño).
             variantId={selectedVariant?.id}
-            // Precio de la variante elegida (o base) → vista previa pre-carrito.
+            // Precio de la variante elegida (o base) → fallback de la vista previa.
             unitPriceCents={selectedVariant?.price ?? product.basePrice}
             // Copias pre-elegidas en la PDP (?copies=N) → pre-carga del stepper de la modal.
             initialCopies={initialCopies}
@@ -415,7 +455,9 @@ export default async function EstudioPage({
             initialDesignId={initialDesignId}
             initialDesignCanvas={initialDesignCanvas}
             initialDesignAssets={initialDesignAssets}
-            photoSlots={photoConfig.photoSlots}
+            photoSlots={effectivePhotoSlots}
+            // Lucy 2026-09-05 — catálogo del stepper de N fotos (packs; vacío = no pack).
+            packVariants={packVariants}
             predesigned={predesigned}
             slotLabels={slotLabels}
             calendarYear={calendarYear}

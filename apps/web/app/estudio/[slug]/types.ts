@@ -272,6 +272,15 @@ export type MultiSlotCanvasData = {
    * null/undefined = sin marco. Viaja con el diseño a la cotización y al render de producción.
    */
   borderColor?: string | null;
+  /**
+   * Lucy 2026-09-05 — packs de fotoimanes: N de fotos por imán elegido con el
+   * control del Estudio (antes dimensión `photoSlots` de variante en la PDP).
+   * slotCount sigue siendo N × facesPerUnit. Persiste en el canvasData (auto-save)
+   * para que el carrito resuelva la variante server-side sin variantId del cliente.
+   */
+  photoSlots?: number;
+  /** Mismo feature — tamaño físico elegido en la PDP (deep-link ?variant=). */
+  sizeCm?: string;
 };
 
 /** Alias de conveniencia — algunos consumidores usan `CanvasDataV2` por simetría con V1. */

@@ -85,13 +85,35 @@ export function useSelectedVariant(): SelectedVariantCtx {
   );
 }
 
-/** CTA "Personalizar" al Estudio, con el ?variant= SIEMPRE en sync con el selector. */
-export function EstudioCtaLink({ slug, ctaNoun }: { slug: string; ctaNoun: string }) {
+/**
+ * CTA "Personalizar" al Estudio, con el ?variant= SIEMPRE en sync con el selector.
+ *
+ * Lucy 2026-09-05 — `requiredSelection` define qué exige el CTA antes de habilitarse:
+ *   - "variant" (default): variante completa elegida (productos personalizables
+ *     clásicos: forma/tamaño/etc. definen la pieza).
+ *   - "size": packs de fotoimanes con >1 tamaño. El selector quedó reducido a
+ *     Tamaño (photoSlots/quantity se eligen en el Estudio), así que la variante
+ *     seleccionada solo fija tamaño + N inicial — se pasa como ?variant= (mismo
+ *     contrato de deep-link de siempre).
+ *   - "none": packs de 1 solo tamaño — el Estudio abre sin variant (el schema
+ *     del producto fija tamaño y N inicial).
+ */
+export function EstudioCtaLink({
+  slug,
+  ctaNoun,
+  requiredSelection = "variant",
+}: {
+  slug: string;
+  ctaNoun: string;
+  requiredSelection?: "variant" | "size" | "none";
+}) {
   const { selectedId, copies } = useSelectedVariant();
-  // UX selección guiada (Lucy 2026-08-12): sin variante elegida el Estudio no
-  // puede abrir (photoSlots/precio dependen de la variante) → CTA deshabilitado
-  // con la instrucción clara en vez de un default invisible.
-  if (!selectedId) {
+  // UX selección guiada (Lucy 2026-08-12): sin la elección requerida el Estudio
+  // no puede abrir con el contexto correcto → CTA deshabilitado con la
+  // instrucción clara en vez de un default invisible. "none" nunca deshabilita.
+  if (requiredSelection !== "none" && !selectedId) {
+    const hint =
+      requiredSelection === "size" ? "Elige el tamaño primero ↑" : "Elige las opciones primero ↑";
     return (
       <>
         <span
@@ -101,19 +123,22 @@ export function EstudioCtaLink({ slug, ctaNoun }: { slug: string; ctaNoun: strin
           <Sparkles className="h-5 w-5" />
           Personalizar {ctaNoun} →
         </span>
-        <p className="text-brand-purple-dark text-center text-xs font-semibold">
-          Elige las opciones primero ↑
-        </p>
+        <p className="text-brand-purple-dark text-center text-xs font-semibold">{hint}</p>
       </>
     );
   }
   // Las copias elegidas en la PDP viajan como ?copies=N: la modal de confirmación
   // del Estudio arranca con ese valor pre-cargado (se puede ajustar ahí mismo).
-  const copiesQS = copies > 1 ? `&copies=${copies}` : "";
+  // "none" abre sin ?variant= (el Estudio cae al schema del producto); "size" y
+  // "variant" pasan la variante seleccionada (deep-link existente, sin cambios).
+  const params = new URLSearchParams();
+  if (selectedId) params.set("variant", selectedId);
+  if (copies > 1) params.set("copies", String(copies));
+  const qs = params.toString();
   return (
     <>
       <Link
-        href={`/estudio/${slug}?variant=${selectedId}${copiesQS}`}
+        href={`/estudio/${slug}${qs ? `?${qs}` : ""}`}
         className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 hover:shadow-brand-purple/40 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md px-6 text-base font-semibold text-white shadow-lg transition-all hover:shadow-xl"
       >
         <Sparkles className="h-5 w-5" />

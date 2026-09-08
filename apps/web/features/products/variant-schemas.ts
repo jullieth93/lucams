@@ -213,12 +213,54 @@ const FORM_MANAGED_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
  * Llave = slug del producto (familia). Valor = claves de attributes a ocultar.
  */
 export const PDP_HIDDEN_DIMENSION_KEYS: Readonly<Record<string, readonly string[]>> = {
-  "set-fotoimanes-polaroid": ["variantStyle"],
-  "set-fotoimanes-cuadrados": ["frameStyle"],
+  "set-fotoimanes-polaroid": ["variantStyle", "photoSlots", "quantity"],
+  "set-fotoimanes-cuadrados": ["frameStyle", "photoSlots", "quantity"],
   "pack-vocales": ["theme"],
-  "separadores-magneticos": ["photoSlots"],
-  "separadores-alargados": ["photoSlots"],
+  "separadores-magneticos": ["photoSlots", "quantity"],
+  "separadores-alargados": ["photoSlots", "quantity"],
+  "tiras-magneticas-fotos": ["photoSlots", "quantity"],
 };
+
+/**
+ * Lucy 2026-09-05 — "las fotos se eligen en el Estudio, no en la PDP": para los
+ * packs de fotoimanes (PHOTO_PACK con variantes que declaran photoSlots), la
+ * cantidad de fotos por imán deja de ser dimensión de la ficha y pasa a ser una
+ * decisión de DISEÑO dentro del Estudio (control "¿Cuántas fotos lleva tu imán?").
+ * En la PDP queda UNA sola cantidad: el stepper "Unidades" (copias de compra).
+ * La cantidad de fotos se resuelve en el servidor al agregar al carrito, desde
+ * el canvasData guardado del diseño (ver features/products/photo-pack-resolve.ts).
+ */
+export function isPhotoPackCatalog(
+  kind: string,
+  variants: ReadonlyArray<{ attributes: unknown }>,
+): boolean {
+  if (kind !== "PHOTO_PACK") return false;
+  return variants.some((v) => parseVariantAttributes(v.attributes).photoSlots != null);
+}
+
+/** Tamaños físicos distintos declarados en las variantes (attrs.sizeCm), sin vacíos. */
+export function photoPackDistinctSizes(variants: ReadonlyArray<{ attributes: unknown }>): string[] {
+  const sizes = new Set<string>();
+  for (const v of variants) {
+    const sizeCm = parseVariantAttributes(v.attributes).sizeCm;
+    if (sizeCm) sizes.add(sizeCm);
+  }
+  return [...sizes];
+}
+
+/**
+ * Precio "Desde $X" de un pack: el mínimo efectivo entre las variantes
+ * (price override o basePrice). NUNCA basePrice solo: en varios packs el
+ * basePrice quedó desactualizado vs el menor price de variante (ej.
+ * set-fotoimanes-cuadrados: basePrice 45.000 vs variante desde 16.000).
+ */
+export function photoPackMinPrice(
+  variants: ReadonlyArray<{ price: number | null }>,
+  basePrice: number,
+): number {
+  if (variants.length === 0) return basePrice;
+  return Math.min(...variants.map((v) => v.price ?? basePrice));
+}
 
 /**
  * Merge para el update del admin: las claves del form mandan, pero las claves

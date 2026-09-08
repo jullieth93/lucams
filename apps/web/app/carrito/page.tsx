@@ -99,6 +99,9 @@ export default async function CarritoPage() {
                               <p className="text-brand-muted text-xs">Personalizable</p>
                             )
                           )}
+                          {item.borderNote && (
+                            <p className="text-brand-muted text-xs">{item.borderNote}</p>
+                          )}
                           <p className="text-brand-purple-dark/70 mt-1 text-sm tabular-nums">
                             {formatCOP(item.unitPrice)} c/u
                           </p>

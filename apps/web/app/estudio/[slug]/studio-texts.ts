@@ -87,6 +87,15 @@ export type StudioTexts = {
     calBannerTitulo: string;
     calBannerAno: string;
     calBannerHint: string;
+    /** Lucy 2026-09-05 — packs: stepper "¿Cuántas fotos lleva tu imán?" (junto a la toolbar). */
+    photoCountLabel: string;
+    photoCountHint: string;
+    photoCountFixedHint: string;
+    photoCountOne: string;
+    photoCountMany: string;
+    photoCountGroupAria: string;
+    photoCountMinusAria: string;
+    photoCountPlusAria: string;
     gesturesTitulo: string;
     gesturesTouchMoverLead: string;
     gesturesTouchZoomLead: string;
@@ -385,6 +394,10 @@ export type StudioTexts = {
     pintarAria: string;
     letraAlt: string;
     listoSr: string;
+    bordeTitulo: string;
+    bordeHint: string;
+    bordeCon: string;
+    bordeSin: string;
   };
   /** Asistente de ideas (IA). */
   ia: {
@@ -488,6 +501,14 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     calBannerTitulo: "📅 Tu calendario",
     calBannerAno: "Año del calendario:",
     calBannerHint: "· una foto por mes (toca cada mes para elegir tu foto)",
+    photoCountLabel: "¿Cuántas fotos lleva tu imán?",
+    photoCountHint: "Tus fotos se conservan al cambiar el número",
+    photoCountFixedHint: "Este tamaño lleva {n} fotos",
+    photoCountOne: "foto",
+    photoCountMany: "fotos",
+    photoCountGroupAria: "Cantidad de fotos por imán",
+    photoCountMinusAria: "Quitar una foto",
+    photoCountPlusAria: "Agregar una foto",
     gesturesTitulo: "¡Tip! Cómo editar tu foto:",
     gesturesTouchMoverLead: "1 dedo arrastra",
     gesturesTouchZoomLead: "Pellizca con 2 dedos",
@@ -797,6 +818,10 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     pintarAria: "Pintar la ficha {letra}",
     letraAlt: "Letra {letra}",
     listoSr: ": mira cómo se verá tu pedido antes de agregarlo",
+    bordeTitulo: "Borde de las fichas",
+    bordeHint: "· mismo precio con o sin borde",
+    bordeCon: "Con borde",
+    bordeSin: "Sin borde",
   },
   ia: {
     titulo: "¿Sin ideas? Te ayudo",
@@ -897,6 +922,14 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.calBannerTitulo": "estudio.lienzo.cal-banner-titulo",
   "lienzo.calBannerAno": "estudio.lienzo.cal-banner-ano",
   "lienzo.calBannerHint": "estudio.lienzo.cal-banner-hint",
+  "lienzo.photoCountLabel": "estudio.lienzo.photo-count-label",
+  "lienzo.photoCountHint": "estudio.lienzo.photo-count-hint",
+  "lienzo.photoCountFixedHint": "estudio.lienzo.photo-count-fixed-hint",
+  "lienzo.photoCountOne": "estudio.lienzo.photo-count-one",
+  "lienzo.photoCountMany": "estudio.lienzo.photo-count-many",
+  "lienzo.photoCountGroupAria": "estudio.lienzo.photo-count-group-aria",
+  "lienzo.photoCountMinusAria": "estudio.lienzo.photo-count-minus-aria",
+  "lienzo.photoCountPlusAria": "estudio.lienzo.photo-count-plus-aria",
   "lienzo.gesturesTitulo": "estudio.lienzo.gestures-titulo",
   "lienzo.gesturesTouchMoverLead": "estudio.lienzo.gestures-touch-mover-lead",
   "lienzo.gesturesTouchZoomLead": "estudio.lienzo.gestures-touch-zoom-lead",
@@ -1174,6 +1207,10 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "letras.pintarAria": "estudio.letras.pintar-aria",
   "letras.letraAlt": "estudio.letras.letra-alt",
   "letras.listoSr": "estudio.letras.listo-sr",
+  "letras.bordeTitulo": "estudio.letras.borde-titulo",
+  "letras.bordeHint": "estudio.letras.borde-hint",
+  "letras.bordeCon": "estudio.letras.borde-con",
+  "letras.bordeSin": "estudio.letras.borde-sin",
   "ia.titulo": "estudio.ia.titulo",
   "ia.label": "estudio.ia.label",
   "ia.placeholder": "estudio.ia.placeholder",
