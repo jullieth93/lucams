@@ -6,8 +6,8 @@
  *   - Cabecera más limpia (username y=28, location y=46).
  *   - Ventana de foto con marco blanco: x=29 y=58 392×392.
  *   - Área máxima foto a sangre (sin borde): x=15 y=58 420×400.
- *   - Pie re-espaciado: iconos de acción en y=468, likes y=486, caption y=502,
- *     hashtags y=518.
+ *   - Pie re-espaciado: iconos de acción en y≈468–496, "me gusta" y=510,
+ *     caption y=526, hashtags y=542 (~7px de aire bajo los iconos).
  *   - Sin timestamp "Hace 2 días"; sin contador estático de comentarios.
  *
  * Solo toca el canvasData de la plantilla (capas text). Los drafts/cotizaciones

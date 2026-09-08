@@ -142,11 +142,13 @@ const TEMPLATES = [
           align: "left",
           editable: true,
         },
+        // Footer alineado al fix 2026-07-24 (ola9): los iconos del chrome ocupan
+        // y≈468–496; el texto debe caer bajo ellos (top = y − fontSize/2).
         {
           id: "likes_count",
           type: "text",
           x: 22,
-          y: 486,
+          y: 510,
           text: "362 me gusta",
           fontFamily: "Inter",
           fontSize: 15,
@@ -159,7 +161,7 @@ const TEMPLATES = [
           id: "caption",
           type: "text",
           x: 22,
-          y: 502,
+          y: 526,
           text: "Tu título acá",
           fontFamily: "Inter",
           fontSize: 16,
@@ -172,7 +174,7 @@ const TEMPLATES = [
           id: "hashtags",
           type: "text",
           x: 22,
-          y: 518,
+          y: 542,
           text: "#mirecuerdo #lucamsshop",
           fontFamily: "Inter",
           fontSize: 13,

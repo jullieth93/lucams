@@ -292,7 +292,16 @@ const templatesData = [
           width: 450,
           height: 600,
         }),
-        // Ola 16 — chrome re-espaciado: header más limpio, footer con aire.
+        // Ola 16 + fix 2026-07-24 — Spec "réplica fiel" de un post real de Instagram
+        // (stage 450×600, fuente Inter, orden igual al post real de IG):
+        //   - header: avatar con anillo de historia + username/location.
+        //   - foto cuadrada 392×392 centrada (y=58), ventana con borde blanco.
+        //   - fila de acción INMEDIATAMENTE bajo la foto: iconos like/comment/share
+        //     del chrome SVG en y≈468–496 (24px escalados ×1.17).
+        //   - "me gusta" en negrita BAJO la fila de acción con ~7px de aire
+        //     (y=510, fs 15). NUNCA y≤496: el texto (top = y − fontSize/2) se
+        //     montaría encima de los iconos (bug corregido 2026-07-24).
+        //   - caption (y=526, fs 16) y hashtags azul #00376B (y=542, fs 13).
         text({
           id: "user_name",
           x: 68,
@@ -319,7 +328,7 @@ const templatesData = [
         text({
           id: "likes_count",
           x: 22,
-          y: 486,
+          y: 510,
           text: "362 me gusta",
           fontFamily: "Inter",
           fontSize: 15,
@@ -331,7 +340,7 @@ const templatesData = [
         text({
           id: "caption",
           x: 22,
-          y: 502,
+          y: 526,
           text: "Tu título acá",
           fontFamily: "Inter",
           fontSize: 16,
@@ -343,7 +352,7 @@ const templatesData = [
         text({
           id: "hashtags",
           x: 22,
-          y: 518,
+          y: 542,
           text: "#mirecuerdo #lucamsshop",
           fontFamily: "Inter",
           fontSize: 13,
