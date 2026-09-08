@@ -56,6 +56,13 @@ type StudioAssetPickerModalProps = {
   productSizeCm?: string;
   /** Ola 21 — separadores de 2 caras: permite aplicar el par A/B a la unidad. */
   facesPerUnit?: number;
+  /**
+   * Ola 17 — propósito del picker: "photo" (default) asigna la foto principal del
+   * slot; "profile" asigna la FOTO DE PERFIL del header del post (plantilla Polaroid
+   * Instagram). En modo profile cambia título/bajada y oculta los diseños
+   * prediseñados (no aplican a la foto de perfil).
+   */
+  mode?: "photo" | "profile";
   onClose: () => void;
   /** Ola 21 — ahora recibe el slot target para poder reubicar A/B en separadores. */
   onSelectAsset: (slotIndex: number, asset: StudioAsset) => void;
@@ -73,6 +80,7 @@ export function StudioAssetPickerModal({
   predesigned = [],
   productSizeCm,
   facesPerUnit,
+  mode = "photo",
   onClose,
   onSelectAsset,
   onSelectAssetB,
@@ -230,13 +238,15 @@ export function StudioAssetPickerModal({
                 <div className="border-brand-purple/10 flex items-center justify-between border-b px-5 py-4">
                   <div>
                     <h2 id={titleId} className="text-brand-purple-dark font-display text-lg">
-                      {fillStudioText(texts.fotos.pickerTitulo, {
-                        n: (slotIndex ?? 0) + 1,
-                        total: totalSlots,
-                      })}
+                      {mode === "profile"
+                        ? texts.texto.perfilPickerTitulo
+                        : fillStudioText(texts.fotos.pickerTitulo, {
+                            n: (slotIndex ?? 0) + 1,
+                            total: totalSlots,
+                          })}
                     </h2>
                     <p id={descId} className="text-brand-muted mt-0.5 text-xs">
-                      {texts.fotos.pickerDesc}
+                      {mode === "profile" ? texts.texto.perfilPickerDesc : texts.fotos.pickerDesc}
                     </p>
                   </div>
                   <button
@@ -311,8 +321,9 @@ export function StudioAssetPickerModal({
                     </div>
                   )}
 
-                  {/* ADR-057 B2 — Diseños prediseñados: aplica uno listo al slot */}
-                  {predesigned.length > 0 && (
+                  {/* ADR-057 B2 — Diseños prediseñados: aplica uno listo al slot.
+                      Ola 17 — no aplican a la foto de perfil (modo profile los oculta). */}
+                  {mode !== "profile" && predesigned.length > 0 && (
                     <div className="mt-5">
                       <h3 className="text-brand-purple-dark mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase">
                         <Sparkles className="text-brand-purple h-3.5 w-3.5" />

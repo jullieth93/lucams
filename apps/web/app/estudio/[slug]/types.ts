@@ -172,6 +172,25 @@ export type FrameCardLayer = {
   cornerRadius?: number;
 };
 
+/**
+ * ProfilePhotoLayer (Ola 17, Lucy 2026-09-07) — FOTO DE PERFIL del header del post
+ * de Instagram (plantilla Polaroid Instagram). El chrome SVG trae un avatar
+ * placeholder horneado; esta capa lo cubre con la foto real del cliente recortada
+ * a círculo, dejando el anillo de historia visible alrededor.
+ * `x`/`y` son el CENTRO del círculo y `radius` su radio (coords del stage).
+ * La imagen NO vive en la capa: el slot la aporta vía
+ * `slots[i].profileAssetUrl` (igual que image-placeholder usa assetUrl) — cada
+ * imán del pack es un post independiente con su propio usuario → POR SLOT.
+ * Va INMEDIATAMENTE DESPUÉS del asset "frame" en el orden de capas (encima del SVG).
+ */
+export type ProfilePhotoLayer = {
+  id: string;
+  type: "profile-photo";
+  x: number;
+  y: number;
+  radius: number;
+};
+
 type UnknownLayer = {
   id: string;
   type: string;
@@ -185,6 +204,7 @@ export type CanvasLayer =
   | ShapeLayer
   | AssetLayer
   | FrameCardLayer
+  | ProfilePhotoLayer
   | UnknownLayer;
 
 export type CanvasDataV1 = {
@@ -209,6 +229,14 @@ export type SlotState = {
   slotIndex: number;
   assetId: string | null;
   assetUrl: string | null;
+  /**
+   * Ola 17 (Lucy 2026-09-07) — FOTO DE PERFIL del header del post de Instagram
+   * (plantilla Polaroid Instagram), POR SLOT: cada imán del pack es un post
+   * independiente con su propio usuario. La capa `profile-photo` del unitTemplate
+   * las consume. null/ausente = se ve el avatar placeholder horneado del SVG.
+   */
+  profileAssetId?: string | null;
+  profileAssetUrl?: string;
   // Per-slot overrides (Capa 4 — filtros y ajustes foto in-canvas):
   cropX?: number;
   cropY?: number;
@@ -281,6 +309,13 @@ export type MultiSlotCanvasData = {
   photoSlots?: number;
   /** Mismo feature — tamaño físico elegido en la PDP (deep-link ?variant=). */
   sizeCm?: string;
+  /**
+   * Lucy 2026-09-07 — tipo de letra del TÍTULO/mes del calendario (selector del banner del
+   * Estudio): "fredoka" (default, ausente = look histórico) | "inter" | "caveat". Persiste
+   * en el canvasData (auto-save) → producción lo re-mapea a la familia registrada vía lista
+   * blanca. La grilla/body del calendario SIEMPRE es Inter (no cambia con esta clave).
+   */
+  calendarFont?: import("@/features/personalization/schemas").CalendarFontKey;
 };
 
 /** Alias de conveniencia — algunos consumidores usan `CanvasDataV2` por simetría con V1. */

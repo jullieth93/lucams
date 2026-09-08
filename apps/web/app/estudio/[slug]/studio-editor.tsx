@@ -32,7 +32,7 @@ import {
   finalizeDesignAction,
   saveCanvasAction,
 } from "@/features/personalization/actions";
-import { parsePhotoProductConfig } from "@/features/personalization/schemas";
+import { parsePhotoProductConfig, CALENDAR_FONT_OPTIONS } from "@/features/personalization/schemas";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { StudioCanvasGrid } from "./studio-canvas-grid";
 import { StudioSidebar } from "./studio-sidebar";
@@ -198,7 +198,12 @@ export function StudioEditor({
       };
     }
   }, [store]);
-  const [pickerSlotIndex, setPickerSlotIndex] = useState<number | null>(null);
+  // Ola 17 — el picker ahora tiene PROPÓSITO: "photo" asigna la foto principal del
+  // slot; "profile" asigna la foto de perfil del header del post (Polaroid Instagram).
+  const [pickerRequest, setPickerRequest] = useState<{
+    slotIndex: number;
+    purpose: "photo" | "profile";
+  } | null>(null);
   // Ola 8 — Modal unificado de edición por slot (tabs Foto/Texto). Se abre desde el
   // clic en un slot lleno o desde el botón lápiz de la action bar del slot.
   const [openEditSlot, setOpenEditSlot] = useState<{
@@ -376,6 +381,16 @@ export function StudioEditor({
   const calendarLayout = useStore(store, (s) =>
     calendarLayoutFromUnitTemplate(s.canvasData?.unitTemplate),
   );
+  // Lucy 2026-09-07 — tipo de letra del título/mes del calendario (selector del banner).
+  // Vivo del canvasData (persistido en el auto-save → producción lo usa tal cual).
+  const liveCalendarFont = useStore(store, (s) => s.canvasData?.calendarFont ?? "fredoka");
+  const setCalendarFont = useStore(store, (s) => s.setCalendarFont);
+  // Labels de las 3 opciones del selector (textos CMS).
+  const calendarFontLabels: Record<string, string> = {
+    fredoka: texts.lienzo.calFontOptionFredoka,
+    inter: texts.lienzo.calFontOptionInter,
+    caveat: texts.lienzo.calFontOptionCaveat,
+  };
 
   // ──────────── Boot: crear draft (o recuperar existente) ────────────
   useEffect(() => {
@@ -563,7 +578,7 @@ export function StudioEditor({
       if (filled) {
         setOpenEditSlot({ slotIndex, tab: "photo" });
       } else {
-        setPickerSlotIndex(slotIndex);
+        setPickerRequest({ slotIndex, purpose: "photo" });
       }
     },
     [store],
@@ -573,16 +588,32 @@ export function StudioEditor({
   const handleRequestChangePhoto = useCallback(
     (slotIndex: number) => {
       setOpenEditSlot(null);
-      setPickerSlotIndex(slotIndex);
+      setPickerRequest({ slotIndex, purpose: "photo" });
+    },
+    [setOpenEditSlot],
+  );
+
+  // Ola 17 — solicitud de cambiar la FOTO DE PERFIL desde el editor unificado:
+  // cerrar editor + abrir el picker en modo profile.
+  const handleRequestChangeProfilePhoto = useCallback(
+    (slotIndex: number) => {
+      setOpenEditSlot(null);
+      setPickerRequest({ slotIndex, purpose: "profile" });
     },
     [setOpenEditSlot],
   );
 
   const handleAssetSelected = useCallback(
     (slotIndex: number, asset: StudioAsset) => {
-      store.getState().assignAssetToSlot(slotIndex, asset);
+      // Ola 17 — el propósito decide el target: foto principal o foto de perfil
+      // (ambas viven en el SlotState, independientes entre sí).
+      if (pickerRequest?.purpose === "profile") {
+        store.getState().setSlotProfilePhoto(slotIndex, asset);
+      } else {
+        store.getState().assignAssetToSlot(slotIndex, asset);
+      }
     },
-    [store],
+    [store, pickerRequest],
   );
 
   const handleAssetBSelected = useCallback(
@@ -620,7 +651,7 @@ export function StudioEditor({
           startMonth,
           state.canvasData.unitTemplate.stage.width,
         );
-        const pages = await composeCalendarPages(inputs, selectedYear, calendarLayout);
+        const pages = await composeCalendarPages(inputs, selectedYear, calendarLayout, liveCalendarFont);
         setPreviewDataUrl(await buildCalendarPreviewMontage(pages));
         setPreviewModalOpen(true);
         return;
@@ -663,6 +694,7 @@ export function StudioEditor({
     facesPerUnit,
     selectedYear,
     calendarLayout,
+    liveCalendarFont,
     product.personalizationSchema,
     texts,
   ]);
@@ -782,7 +814,7 @@ export function StudioEditor({
         startMonth,
         state.canvasData.unitTemplate.stage.width,
       );
-      const pages = await composeCalendarPages(inputs, selectedYear, calendarLayout);
+      const pages = await composeCalendarPages(inputs, selectedYear, calendarLayout, liveCalendarFont);
       // Cada tarjeta compuesta (1080×1440 = 3:4 exacto) es un imán de nevera de 7.5×10 cm.
       const cards: Magnet3D[] = pages.map((dataUrl) => ({
         dataUrl,
@@ -802,7 +834,7 @@ export function StudioEditor({
     } finally {
       setCalendarBuilding(false);
     }
-  }, [store, product.personalizationSchema, selectedYear, calendarLayout, calendarBuilding, texts]);
+  }, [store, product.personalizationSchema, selectedYear, calendarLayout, liveCalendarFont, calendarBuilding, texts]);
 
   // El Escape de ambos overlays 3D lo maneja ahora useDialogA11y (#15, arriba); la galería de
   // escenas maneja el suyo internamente.
@@ -1144,6 +1176,29 @@ export function StudioEditor({
                   ))}
                 </select>
               </label>
+              {/* Lucy 2026-09-07 — selector de TIPO DE LETRA del título/mes ("sería bueno que
+                  el usuario pudiera ser más versátil, como es coger el tipo de letra").
+                  Persiste en canvasData.calendarFont → el preview y producción lo usan. El
+                  body/grilla siempre es Inter; acá solo cambia el lettering del mes. */}
+              <label className="flex items-center gap-2">
+                <span className="text-brand-purple-dark/80 text-sm font-semibold">
+                  {texts.lienzo.calFontLabel}
+                </span>
+                <select
+                  value={liveCalendarFont}
+                  onChange={(e) =>
+                    setCalendarFont(e.target.value as (typeof CALENDAR_FONT_OPTIONS)[number])
+                  }
+                  className="border-brand-purple/50 focus-visible:ring-brand-purple/40 text-brand-purple-dark font-display cursor-pointer rounded-xl border-2 bg-white px-3 py-1.5 text-xl font-bold focus-visible:ring-2 focus-visible:outline-none"
+                  aria-label={texts.lienzo.calFontAria}
+                >
+                  {CALENDAR_FONT_OPTIONS.map((key) => (
+                    <option key={key} value={key}>
+                      {calendarFontLabels[key] ?? key}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <span className="text-brand-purple-dark/70 text-sm font-medium">
                 {texts.lienzo.calBannerHint}
               </span>
@@ -1224,6 +1279,7 @@ export function StudioEditor({
                     startMonth:
                       (product.personalizationSchema as { startMonth?: number })?.startMonth ?? 0,
                     layout: calendarLayout,
+                    font: liveCalendarFont,
                   }
                 : null
             }
@@ -1236,6 +1292,7 @@ export function StudioEditor({
             openEditSlot={openEditSlot}
             onEditClose={() => setOpenEditSlot(null)}
             onRequestChangePhoto={handleRequestChangePhoto}
+            onRequestChangeProfilePhoto={handleRequestChangeProfilePhoto}
             registerSlotStages={(stages) => {
               slotStagesRef.current = stages;
             }}
@@ -1362,8 +1419,10 @@ export function StudioEditor({
       </Sheet>
 
       <StudioAssetPickerModal
-        isOpen={pickerSlotIndex !== null}
-        slotIndex={pickerSlotIndex}
+        isOpen={pickerRequest !== null}
+        slotIndex={pickerRequest?.slotIndex ?? null}
+        // Ola 17 — propósito del picker: foto principal o foto de perfil.
+        mode={pickerRequest?.purpose ?? "photo"}
         // Ola 3 — con separadores 2 caras hay 2N slots de diseño (cara A/B por unidad).
         totalSlots={liveSlotCount}
         assets={modalAssets}
@@ -1371,7 +1430,7 @@ export function StudioEditor({
         predesigned={predesigned}
         productSizeCm={productConfig.sizeCm}
         facesPerUnit={facesPerUnit}
-        onClose={() => setPickerSlotIndex(null)}
+        onClose={() => setPickerRequest(null)}
         onSelectAsset={handleAssetSelected}
         onSelectAssetB={handleAssetBSelected}
         onAssetUploaded={handleAssetUploaded}

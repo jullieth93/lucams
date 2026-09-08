@@ -312,6 +312,31 @@ packages/db/scripts/
   (separadores), calendario y flat-lays de regalo/repisa — react-three-fiber con entorno
   compartido (`studio-3d-environment.tsx`) y texturas procedurales (`lib/procedural-textures.ts`).
 
+### Ola 17 (Lucy 2026-09-07) — Polaroid Instagram: foto de perfil editable
+
+- **Nueva capa `profile-photo`** (`{ id, type: "profile-photo", x, y, radius }` — x/y =
+  CENTRO del círculo): cubre el avatar placeholder horneado del chrome SVG
+  (`public/templates/ig_post_3x4.svg` trae `circle cx=34 cy=34 r=16`) con la foto del
+  cliente recortada a círculo (clipFunc `ctx.arc`, cover), dejando el anillo de historia
+  (r=20, stroke 2.5) visible alrededor. Va INMEDIATAMENTE DESPUÉS del asset "frame" en el
+  orden de capas. Sin foto elegida no dibuja nada → placeholder del SVG intacto.
+- **La imagen vive en el SlotState, no en la capa**: `slots[i].profileAssetId` /
+  `profileAssetUrl` (declaradas en `SlotStateSchema` — sin catchall, Zod stripea lo no
+  declarado). POR SLOT: cada imán del pack es un post independiente con su propio usuario.
+- **UI**: sección "Foto de perfil" en la pestaña Foto del `StudioSlotEditModal` (solo si la
+  plantilla trae la capa) → abre el `StudioAssetPickerModal` en `mode="profile"` (título
+  propio, sin diseños prediseñados). Store: `setSlotProfilePhoto(slotIndex, asset|null)`
+  (patrón `assignAssetToSlot`; `clearSlot`/`removeAsset` también la sueltan).
+- **Clonado (editar desde el carrito)**: `canvas-remap.ts` remapea `profileAssetId` además
+  de `assetId` (bug silencioso corregido, test de regresión en `remap-canvas.test.ts`).
+- **Producción**: sin cambios — la plantilla ya horneaba PNG del cliente (asset SVG →
+  NEEDS_KONVA); el tier server ignora la capa nueva vía el mismo fallback.
+- **Geometría congelada** en `features/personalization/instagram-template-spec.ts`
+  (`IG_PROFILE_PHOTO_LAYER`) con test (`instagram-template-spec.test.ts`). Seed +
+  migración: `packages/db/scripts/ola17-polaroid-instagram-profile-photo.mjs` (dry-run
+  default, `--apply`, env-guard). Drafts/cotizaciones viejas no ganan la capa (aceptado).
+
+
 ## Wireframes ASCII
 
 ### Desktop (≥ 1024px)

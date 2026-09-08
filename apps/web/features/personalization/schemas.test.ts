@@ -12,6 +12,7 @@ import {
   UploadAssetMetadataSchema,
   PhotoProductConfigSchema,
   parsePhotoProductConfig,
+  calendarFontOrDefault,
 } from "./schemas";
 
 describe("SlotStateSchema — encuadre + texto del usuario sobreviven (ADR-057 Fase A)", () => {
@@ -70,6 +71,40 @@ describe("SlotStateSchema — encuadre + texto del usuario sobreviven (ADR-057 F
     expect(parsed.photoTransform).toBeUndefined();
   });
 
+  it("Ola 17 — conserva la foto de perfil (profileAssetId/profileAssetUrl) por slot", () => {
+    const parsed = SlotStateSchema.parse({
+      slotIndex: 0,
+      assetId: "a",
+      assetUrl: "u",
+      profileAssetId: "pa-1",
+      profileAssetUrl: "https://x/avatar.png",
+    });
+    expect(parsed.profileAssetId).toBe("pa-1");
+    expect(parsed.profileAssetUrl).toBe("https://x/avatar.png");
+  });
+
+  it("Ola 17 — profileAssetId admite null y ambos campos son opcionales (retrocompatible)", () => {
+    expect(
+      SlotStateSchema.parse({ slotIndex: 0, assetId: "a", assetUrl: "u", profileAssetId: null })
+        .profileAssetId,
+    ).toBeNull();
+    const parsed = SlotStateSchema.parse({ slotIndex: 0, assetId: "a", assetUrl: "u" });
+    expect(parsed.profileAssetId).toBeUndefined();
+    expect(parsed.profileAssetUrl).toBeUndefined();
+  });
+
+  it("Ola 17 — rechaza profileAssetUrl absurdamente larga (anti-tamper)", () => {
+    expect(
+      SlotStateSchema.safeParse({
+        slotIndex: 0,
+        assetId: "a",
+        assetUrl: "u",
+        profileAssetId: "pa-1",
+        profileAssetUrl: `https://x/${"a".repeat(2100)}`,
+      }).success,
+    ).toBe(false);
+  });
+
   it("un canvasData V2 completo round-trips el encuadre de cada slot", () => {
     const canvas = {
       version: 2 as const,
@@ -93,6 +128,51 @@ describe("SlotStateSchema — encuadre + texto del usuario sobreviven (ADR-057 F
     const parsed = CanvasDataV2Schema.parse(canvas);
     expect(parsed.slots[0].photoTransform).toEqual({ offsetX: 10, offsetY: -5, scale: 1.2 });
     expect(parsed.slots[1].filter).toBe("vivid");
+  });
+});
+
+describe("CanvasDataV2Schema — calendarFont (Lucy 2026-09-07, selector de tipo de letra)", () => {
+  const base = {
+    version: 2 as const,
+    unitTemplate: {
+      version: 1 as const,
+      stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
+      layers: [{ id: "bg", type: "background", color: "#FFFFFF" }],
+    },
+    slotCount: 1,
+    slots: [{ slotIndex: 0, assetId: null, assetUrl: null }],
+    gridLayout: { cols: 1, rows: 1, gap: 8 },
+  };
+
+  it("acepta las 3 claves curadas del selector", () => {
+    for (const font of ["fredoka", "inter", "caveat"] as const) {
+      const parsed = CanvasDataV2Schema.parse({ ...base, calendarFont: font });
+      expect(parsed.calendarFont).toBe(font);
+    }
+  });
+
+  it("rechaza una fuente fuera de la lista blanca (Zod nunca la persiste)", () => {
+    expect(
+      CanvasDataV2Schema.safeParse({ ...base, calendarFont: "Comic Sans MS" }).success,
+    ).toBe(false);
+    expect(CanvasDataV2Schema.safeParse({ ...base, calendarFont: "system-ui" }).success).toBe(
+      false,
+    );
+  });
+
+  it("retrocompatible: canvasData sin la clave sigue siendo válido (= fredoka implícito)", () => {
+    const parsed = CanvasDataV2Schema.parse(base);
+    expect(parsed.calendarFont).toBeUndefined();
+    expect(calendarFontOrDefault(parsed.calendarFont)).toBe("fredoka");
+  });
+
+  it("calendarFontOrDefault: ausente/inválido → fredoka, nunca un string libre", () => {
+    expect(calendarFontOrDefault(undefined)).toBe("fredoka");
+    expect(calendarFontOrDefault(null)).toBe("fredoka");
+    expect(calendarFontOrDefault("caveat")).toBe("caveat");
+    expect(calendarFontOrDefault("inter")).toBe("inter");
+    expect(calendarFontOrDefault("Papyrus")).toBe("fredoka");
+    expect(calendarFontOrDefault({ family: "Fredoka" })).toBe("fredoka");
   });
 });
 

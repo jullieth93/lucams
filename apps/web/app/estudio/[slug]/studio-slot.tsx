@@ -49,6 +49,7 @@ import type {
   CanvasLayer,
   FrameCardLayer,
   ImagePlaceholderLayer,
+  ProfilePhotoLayer,
   SlotState,
   StudioAsset,
   TextLayer,
@@ -70,6 +71,7 @@ import {
 import { RealismShadowLayer, RealismOverlayLayer } from "./studio-realism-overlay";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
+import type { CalendarFontKey } from "@/features/personalization/schemas";
 
 import { getFilterParams } from "./lib/photo-filters";
 import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
@@ -135,7 +137,13 @@ type StudioSlotProps = {
    * la foto a sangre sobre fondo blanco. Cuando está set, reemplaza las capas del
    * unitTemplate (background + image-placeholder) por el canvas compuesto.
    */
-  calendarCard?: { year: number; monthIndex0: number; layout?: CalendarLayoutKey } | null;
+  calendarCard?: {
+    year: number;
+    monthIndex0: number;
+    layout?: CalendarLayoutKey;
+    /** Lucy 2026-09-07 — tipo de letra del título/mes (default "fredoka"). */
+    font?: CalendarFontKey;
+  } | null;
   onClick: () => void;
   onClear: () => void;
   /**
@@ -751,6 +759,7 @@ function StudioSlotImpl({
                   year={calendarCard.year}
                   monthIndex0={calendarCard.monthIndex0}
                   layout={calendarCard.layout}
+                  calendarFont={calendarCard.font ?? "fredoka"}
                   templateStageWidth={unitTemplate.stage.width}
                   stageWidth={unitTemplate.stage.width}
                   stageHeight={unitTemplate.stage.height}
@@ -928,8 +937,12 @@ function StudioSlotImpl({
             />
           )}
 
-          {/* Badge top-left: mes (calendario, abreviado) o número de slot. NO tapa la foto. */}
-          {slotState.assetUrl && (
+          {/* Badge top-left: SOLO mes (calendario, abreviado). El número de slot se
+              movió a la barra de acciones como chip (Lucy 2026-09-07): flotando acá
+              tapaba el avatar del chrome de la Polaroid Instagram. Calendario conserva
+              este badge porque identifica el mes de la tarjeta. Modo tira
+              (overlayActions): también se conserva acá, la barra flota sobre la foto. */}
+          {slotState.assetUrl && (slotLabel || overlayActions) && (
             <div
               className="bg-brand-purple/80 absolute top-1.5 left-1.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white shadow-sm"
               aria-hidden
@@ -986,6 +999,27 @@ function StudioSlotImpl({
           }
           style={overlayActions ? undefined : { width: slotWidth }}
         >
+          {/* Número de slot — chip al inicio de la barra (Lucy 2026-09-07).
+              Antes era un badge absoluto top-left dentro del slot que caía sobre el
+              avatar del chrome de la Polaroid Instagram. Mismo estilo del chip de
+              tamaño. Calendario (slotLabel) sigue usando su badge de mes y la tira
+              (overlayActions) conserva el badge flotante. */}
+          {slotState.assetUrl && !slotLabel && !overlayActions && (
+            <span
+              className="text-brand-purple-dark/70 bg-brand-cream/90 ring-brand-purple/10 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[9px] font-bold ring-1"
+              aria-label={fillStudioText(texts.lienzo.slotIndicator, {
+                sustantivo: nounCap,
+                n: slotState.slotIndex + 1,
+              })}
+              title={fillStudioText(texts.lienzo.slotIndicator, {
+                sustantivo: nounCap,
+                n: slotState.slotIndex + 1,
+              })}
+            >
+              {slotState.slotIndex + 1}
+            </span>
+          )}
+
           {/* Tamaño físico — chip a la izquierda con orientación explícita.
               En slots angostos se omite: el tamaño ya lo muestra el toolbar.
               En modo tira (overlay) también: estorbaría sobre la foto. */}
@@ -1126,6 +1160,7 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.slotState.slotIndex === next.slotState.slotIndex &&
     prev.slotState.assetUrl === next.slotState.assetUrl &&
     prev.slotState.assetId === next.slotState.assetId &&
+    prev.slotState.profileAssetUrl === next.slotState.profileAssetUrl &&
     prev.slotState.filter === next.slotState.filter &&
     prev.slotState.textOverrides === next.slotState.textOverrides &&
     prev.slotState.photoTransform === next.slotState.photoTransform &&
@@ -1145,7 +1180,8 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.interactiveSlots === next.interactiveSlots &&
     prev.calendarCard?.year === next.calendarCard?.year &&
     prev.calendarCard?.monthIndex0 === next.calendarCard?.monthIndex0 &&
-    prev.calendarCard?.layout === next.calendarCard?.layout
+    prev.calendarCard?.layout === next.calendarCard?.layout &&
+    prev.calendarCard?.font === next.calendarCard?.font
   );
 });
 StudioSlot.displayName = "StudioSlot";
@@ -1341,9 +1377,67 @@ export function renderLayer(
           noBorder={isIg && noBorder}
         />
       );
+    case "profile-photo":
+      // Ola 17 (Lucy 2026-09-07) — foto de perfil del header del post de Instagram.
+      // Cubre el avatar placeholder horneado del chrome SVG (mismo centro/radio) con
+      // la foto del cliente recortada a círculo; el anillo de historia queda visible
+      // alrededor. Sin foto elegida no dibuja nada → se ve el placeholder del SVG.
+      return (
+        <ProfilePhotoLayerRenderer
+          key={layer.id}
+          layer={layer as ProfilePhotoLayer}
+          profileAssetUrl={slotState.profileAssetUrl ?? null}
+        />
+      );
     default:
       return null;
   }
+}
+
+/**
+ * Ola 17 — Renderer de la capa `profile-photo`. La imagen la aporta el slot
+ * (slotState.profileAssetUrl, subida/elegida con el control "Foto de perfil" del
+ * modal de edición). Recorte circular con clipFunc (ctx.arc) en coords del Group,
+ * igual que el rounded-rect de ImagePlaceholder. Sin URL (o cargando) no dibuja
+ * nada: el avatar placeholder horneado del SVG se ve intacto.
+ */
+function ProfilePhotoLayerRenderer({
+  layer,
+  profileAssetUrl,
+}: {
+  layer: ProfilePhotoLayer;
+  profileAssetUrl: string | null;
+}) {
+  const [image] = useImage(profileAssetUrl ?? "", "anonymous");
+  if (!profileAssetUrl || !image) return null;
+
+  const d = layer.radius * 2;
+  // Cover dentro del círculo: la foto más chica se agrupa hasta cubrirlo y se
+  // centra (misma matemática cover que el image-placeholder, sin overscan).
+  const scale = Math.max(d / image.width, d / image.height);
+  const w = image.width * scale;
+  const h = image.height * scale;
+
+  return (
+    <Group
+      x={layer.x - layer.radius}
+      y={layer.y - layer.radius}
+      clipFunc={(ctx: Konva.Context) => {
+        ctx.beginPath();
+        ctx.arc(layer.radius, layer.radius, layer.radius, 0, Math.PI * 2);
+        ctx.closePath();
+      }}
+      listening={false}
+    >
+      <KonvaImage
+        image={image}
+        x={(d - w) / 2}
+        y={(d - h) / 2}
+        width={w}
+        height={h}
+      />
+    </Group>
+  );
 }
 
 type AssetLayerData = {

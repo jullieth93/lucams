@@ -23,6 +23,22 @@ export const IG_PHOTO_SLOT = { x: 29, y: 58, width: 392, height: 392 } as const;
 // translate(22,468) con glifos de 24px escalados ×1.17 → y≈468–496.
 export const IG_ACTION_ICON_ZONE = { top: 468, bottom: 496 } as const;
 
+// Capa de FOTO DE PERFIL (Ola 17, Lucy 2026-09-07) — el chrome SVG trae un avatar
+// placeholder horneado (circle cx=34 cy=34 r=16 + silueta gris) rodeado por el anillo
+// de historia (circle r=20, stroke 2.5 → borde externo ~21.25). La capa Konva cubre
+// EXACTAMENTE el círculo horneado con la foto real del cliente recortada a círculo,
+// dejando el anillo de historia visible alrededor. Centro/radio copiados del SVG:
+// el círculo nuevo coincide con el avatar placeholder (mismo centro y radio).
+// En el orden de capas va INMEDIATAMENTE DESPUÉS del asset "frame" (queda por encima
+// del SVG). Sin foto elegida, la capa no dibuja nada y se ve el placeholder horneado.
+export const IG_PROFILE_PHOTO_LAYER = {
+  id: "profile_photo",
+  type: "profile-photo",
+  x: 34,
+  y: 34,
+  radius: 16,
+} as const;
+
 export const igTextTop = (y: number, fontSize: number): number => y - fontSize / 2;
 
 // Capas de texto del footer, en el orden real de un post de IG.

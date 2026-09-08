@@ -14,6 +14,7 @@ import {
   IG_PHOTO_SLOT,
   IG_ACTION_ICON_ZONE,
   IG_FOOTER_TEXT_LAYERS,
+  IG_PROFILE_PHOTO_LAYER,
   igTextTop,
 } from "./instagram-template-spec";
 
@@ -61,5 +62,38 @@ describe("instagram-template-spec (geometría footer vs fila de iconos)", () => 
       igTextTop(IG_FOOTER_TEXT_LAYERS[0].y, IG_FOOTER_TEXT_LAYERS[0].fontSize),
     );
     expect(IG_PHOTO_SLOT.width).toBe(IG_PHOTO_SLOT.height); // cuadrada
+  });
+});
+
+describe("instagram-template-spec (geometría foto de perfil — Ola 17)", () => {
+  it("congela la capa profile-photo (centro 34,34 r=16, id profile_photo)", () => {
+    expect(IG_PROFILE_PHOTO_LAYER).toEqual({
+      id: "profile_photo",
+      type: "profile-photo",
+      x: 34,
+      y: 34,
+      radius: 16,
+    });
+  });
+
+  it("el círculo cubre EXACTAMENTE el avatar placeholder horneado del SVG", () => {
+    // SVG public/templates/ig_post_3x4.svg: avatar placeholder = circle cx=34 cy=34 r=16.
+    expect(IG_PROFILE_PHOTO_LAYER.x).toBe(34);
+    expect(IG_PROFILE_PHOTO_LAYER.y).toBe(34);
+    expect(IG_PROFILE_PHOTO_LAYER.radius).toBe(16);
+  });
+
+  it("la foto queda DENTRO del anillo de historia sin comérselo", () => {
+    // Anillo: circle r=20 con stroke-width 2.5 → borde externo ≈ 21.25, interno ≈ 18.75.
+    const ringInner = 20 - 2.5 / 2;
+    expect(IG_PROFILE_PHOTO_LAYER.radius).toBeLessThanOrEqual(ringInner);
+  });
+
+  it("el avatar entero cae dentro de la tarjeta 450×600 y en el header (y<58)", () => {
+    const { x, y, radius } = IG_PROFILE_PHOTO_LAYER;
+    expect(x - radius).toBeGreaterThanOrEqual(0);
+    expect(y - radius).toBeGreaterThanOrEqual(0);
+    expect(x + radius).toBeLessThanOrEqual(IG_CARD.width);
+    expect(y + radius).toBeLessThanOrEqual(58); // inicio de la foto y=58
   });
 });

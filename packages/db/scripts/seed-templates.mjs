@@ -292,6 +292,22 @@ const templatesData = [
           width: 450,
           height: 600,
         }),
+        // Ola 17 (Lucy 2026-09-07) — FOTO DE PERFIL del header, editable por slot.
+        // El chrome SVG trae un avatar placeholder horneado (circle cx=34 cy=34 r=16
+        // en public/templates/ig_post_3x4.svg); esta capa lo cubre con la foto real
+        // del cliente recortada a círculo, dejando el anillo de historia (r=20,
+        // stroke 2.5) visible alrededor. Centro/radio = los del placeholder horneado.
+        // La imagen la aporta slots[i].profileAssetUrl (POR SLOT: cada imán del pack
+        // es un post independiente con su propio usuario). Sin foto elegida no dibuja
+        // nada → se ve el placeholder. DEBE ir después del asset "frame" (encima del
+        // SVG). Geometría congelada en features/personalization/instagram-template-spec.ts.
+        {
+          id: "profile_photo",
+          type: "profile-photo",
+          x: 34,
+          y: 34,
+          radius: 16,
+        },
         // Ola 16 + fix 2026-07-24 — Spec "réplica fiel" de un post real de Instagram
         // (stage 450×600, fuente Inter, orden igual al post real de IG):
         //   - header: avatar con anillo de historia + username/location.

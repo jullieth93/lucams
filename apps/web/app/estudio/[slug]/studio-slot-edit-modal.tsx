@@ -25,6 +25,7 @@ import { StudioPhotoPreview } from "./studio-photo-preview";
 import { StudioTextEditorForm } from "./studio-text-editor-modal";
 import type { CanvasDataV1, PhotoFilterPreset, TextLayer, TextOverride } from "./types";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
+import type { CalendarFontKey } from "@/features/personalization/schemas";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 
@@ -53,6 +54,16 @@ type StudioSlotEditModalProps = {
   /** Ola 10 — solicitud de cambiar la foto: cierra el editor y abre el picker. */
   onChangePhoto?: () => void;
   /**
+   * Ola 17 — control de FOTO DE PERFIL del header del post (plantilla Polaroid
+   * Instagram, capa `profile-photo` del unitTemplate). Solo se muestra cuando la
+   * plantilla trae esa capa. `onChangeProfilePhoto` cierra el editor y abre el
+   * picker en modo profile; `onClearProfilePhoto` quita la foto.
+   */
+  hasProfilePhoto?: boolean;
+  profilePhotoUrl?: string | null;
+  onChangeProfilePhoto?: () => void;
+  onClearProfilePhoto?: () => void;
+  /**
    * Ola 9 — datos para el preview interactivo de la pestaña Foto (gestos de
    * zoom/pan directos sobre la foto; reemplaza al slider eliminado).
    */
@@ -62,7 +73,13 @@ type StudioSlotEditModalProps = {
     borderColor: string | null;
     allowText: boolean;
     frameFullBleed: boolean;
-    calendarCard: { year: number; monthIndex0: number; layout?: CalendarLayoutKey } | null;
+    calendarCard: {
+      year: number;
+      monthIndex0: number;
+      layout?: CalendarLayoutKey;
+      /** Lucy 2026-09-07 — tipo de letra del título/mes (default "fredoka"). */
+      font?: CalendarFontKey;
+    } | null;
     onTransformChange: (t: Partial<{ offsetX: number; offsetY: number; scale: number }>) => void;
   };
 };
@@ -88,11 +105,29 @@ export function StudioSlotEditModal({
   focusTextLayerId,
   preview,
   onChangePhoto,
+  hasProfilePhoto = false,
+  profilePhotoUrl = null,
+  onChangeProfilePhoto,
+  onClearProfilePhoto,
 }: StudioSlotEditModalProps) {
   // Tab activa: Foto por default si hay foto; si no, Texto (si aplica).
   const defaultTab = hasPhoto ? "photo" : "text";
   const [activeTab, setActiveTab] = useState(defaultTab);
   const texts = useStudioTexts();
+
+  // Bug 2026-09-07 — este componente está SIEMPRE montado (el wrapper del grid lo
+  // renderiza aunque el diálogo esté cerrado), así que useState(defaultTab) se
+  // inicializa UNA vez con hasPhoto=false (slot vacío en el primer render) y
+  // nunca se actualizaba: al abrir el editor de un slot LLENO la pestaña activa
+  // quedaba en Texto en vez de Foto. Se re-sincroniza al abrir el diálogo (y si
+  // cambia hasPhoto mientras está abierto) ajustando el estado DURANTE el render
+  // (patrón oficial de React para "derive el estado de las props"), porque
+  // react-hooks/set-state-in-effect prohíbe el setState sincrónico en efectos.
+  const [tabSync, setTabSync] = useState({ open: isOpen, hasPhoto });
+  if (tabSync.open !== isOpen || tabSync.hasPhoto !== hasPhoto) {
+    setTabSync({ open: isOpen, hasPhoto });
+    if (isOpen) setActiveTab(hasPhoto ? "photo" : "text");
+  }
 
   const title = slotLabel
     ? fillStudioText(texts.texto.slotEditTitulo, { etiqueta: slotLabel })
@@ -163,6 +198,8 @@ export function StudioSlotEditModal({
                         filter: currentFilter,
                         photoTransform: currentTransform ?? undefined,
                         textOverrides: currentTextOverrides,
+                        // Ola 17 — la vista previa del editor muestra la foto de perfil.
+                        profileAssetUrl: profilePhotoUrl ?? undefined,
                       }}
                       totalSlots={preview.totalSlots}
                       borderColor={preview.borderColor}
@@ -183,6 +220,60 @@ export function StudioSlotEditModal({
                     >
                       {texts.texto.cambiarFoto}
                     </button>
+                  )}
+                  {/* Ola 17 — foto de perfil del header del post (solo plantillas con
+                      la capa `profile-photo`, ej. Polaroid Instagram). El avatar se ve
+                      en círculo dentro del anillo del encabezado del post. */}
+                  {hasProfilePhoto && (
+                    <div className="border-brand-purple/15 rounded-xl border p-3">
+                      <div className="flex items-center gap-3">
+                        {profilePhotoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={profilePhotoUrl}
+                            alt={texts.texto.perfilTitulo}
+                            className="border-brand-purple/20 h-12 w-12 rounded-full border-2 object-cover"
+                          />
+                        ) : (
+                          <span
+                            aria-hidden
+                            className="border-brand-purple/20 bg-brand-cream/60 flex h-12 w-12 items-center justify-center rounded-full border-2 border-dashed"
+                          >
+                            <ImageIcon className="text-brand-muted h-5 w-5" />
+                          </span>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-brand-purple-dark text-sm font-semibold">
+                            {texts.texto.perfilTitulo}
+                          </p>
+                          <p className="text-brand-muted text-xs leading-snug">
+                            {texts.texto.perfilHint}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-2.5 flex items-center gap-3">
+                        {onChangeProfilePhoto && (
+                          <button
+                            type="button"
+                            onClick={onChangeProfilePhoto}
+                            className="text-brand-purple-dark hover:text-brand-purple text-xs font-semibold underline"
+                          >
+                            {profilePhotoUrl
+                              ? texts.texto.perfilCambiar
+                              : texts.texto.perfilPickerTitulo}
+                          </button>
+                        )}
+                        {profilePhotoUrl && onClearProfilePhoto && (
+                          <button
+                            type="button"
+                            onClick={onClearProfilePhoto}
+                            className="text-xs font-semibold text-red-600 underline hover:text-red-700"
+                          >
+                            {texts.texto.perfilQuitar}
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   )}
                   <StudioPhotoAdjustForm
                     photoUrl={photoUrl}

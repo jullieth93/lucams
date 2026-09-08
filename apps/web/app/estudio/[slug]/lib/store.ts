@@ -24,6 +24,7 @@
  */
 
 import { create } from "zustand";
+import type { CalendarFontKey } from "@/features/personalization/schemas";
 import type {
   CanvasDataV2,
   ImagePlaceholderLayer,
@@ -85,6 +86,13 @@ export type StudioStoreState = {
   autoFillSlots: () => void;
   /** M.3.b.B.3 — Aplicar/quitar filter preset a un slot específico. */
   setSlotFilter: (slotIndex: number, filter: import("../types").PhotoFilterPreset | null) => void;
+  /**
+   * Ola 17 (Lucy 2026-09-07) — Foto de perfil del header del post de Instagram
+   * (capa `profile-photo` de la plantilla Polaroid Instagram), POR SLOT.
+   * `asset = null` quita la foto (vuelve el avatar placeholder horneado del SVG).
+   * Va por setCanvasData → undo + auto-save.
+   */
+  setSlotProfilePhoto: (slotIndex: number, asset: StudioAsset | null) => void;
   /** M.3.b.D — Aplicar/quitar override de un text layer editable en un slot.
    *  Si `override === null`, limpia el override del textLayerId (vuelve al
    *  texto/color/fuente base del template). */
@@ -118,6 +126,12 @@ export type StudioStoreState = {
   applyTemplate: (template: StudioTemplate) => void;
   /** Ola 2A — color del marco alrededor de la foto (hex #RRGGBB) o null = sin marco. */
   setBorderColor: (color: string | null) => void;
+  /**
+   * Lucy 2026-09-07 — tipo de letra del título/mes del calendario ("fredoka" | "inter" |
+   * "caveat"). Persiste en canvasData.calendarFont → el render de producción la re-mapea
+   * a la familia registrada vía lista blanca. Va por setCanvasData → undo + auto-save.
+   */
+  setCalendarFont: (font: CalendarFontKey) => void;
   /**
    * Lucy 2026-09-05 — packs de fotoimanes: cambiar el N de fotos por imán desde
    * el Estudio. Reconstruye slots (slotCount = n × facesPerUnit) PRESERVANDO las
@@ -232,6 +246,9 @@ export function createStudioStore() {
                 filter: null,
                 textOverrides: undefined,
                 photoTransform: undefined,
+                // Ola 17 — el reset del slot también suelta la foto de perfil.
+                profileAssetId: null,
+                profileAssetUrl: undefined,
               }
             : s,
         ),
@@ -245,6 +262,24 @@ export function createStudioStore() {
       const next: CanvasDataV2 = {
         ...canvasData,
         slots: canvasData.slots.map((s) => (s.slotIndex === slotIndex ? { ...s, filter } : s)),
+      };
+      get().setCanvasData(next);
+    },
+
+    setSlotProfilePhoto: (slotIndex, asset) => {
+      const { canvasData } = get();
+      if (!canvasData) return;
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        slots: canvasData.slots.map((s) =>
+          s.slotIndex === slotIndex
+            ? {
+                ...s,
+                profileAssetId: asset ? asset.id : null,
+                profileAssetUrl: asset ? asset.signedUrl : undefined,
+              }
+            : s,
+        ),
       };
       get().setCanvasData(next);
     },
@@ -412,6 +447,13 @@ export function createStudioStore() {
       get().setCanvasData({ ...canvasData, borderColor: color });
     },
 
+    setCalendarFont: (font) => {
+      const { canvasData } = get();
+      if (!canvasData) return;
+      if ((canvasData.calendarFont ?? "fredoka") === font) return;
+      get().setCanvasData({ ...canvasData, calendarFont: font });
+    },
+
     setPhotoSlotsPerUnit: (n, opts) => {
       const { canvasData, selectedSlotIndex } = get();
       if (!canvasData) return;
@@ -462,13 +504,24 @@ export function createStudioStore() {
       const { canvasData, assets } = get();
       set({ assets: assets.filter((a) => a.id !== assetId) });
       if (!canvasData) return;
-      // Limpiar también el asset de cualquier slot que lo tenga asignado
-      const affected = canvasData.slots.some((s) => s.assetId === assetId);
+      // Limpiar también el asset de cualquier slot que lo tenga asignado (foto o
+      // foto de perfil, Ola 17).
+      const affected = canvasData.slots.some(
+        (s) => s.assetId === assetId || s.profileAssetId === assetId,
+      );
       if (affected) {
         const next: CanvasDataV2 = {
           ...canvasData,
           slots: canvasData.slots.map((s) =>
-            s.assetId === assetId ? { ...s, assetId: null, assetUrl: null } : s,
+            s.assetId === assetId || s.profileAssetId === assetId
+              ? {
+                  ...s,
+                  ...(s.assetId === assetId ? { assetId: null, assetUrl: null } : {}),
+                  ...(s.profileAssetId === assetId
+                    ? { profileAssetId: null, profileAssetUrl: undefined }
+                    : {}),
+                }
+              : s,
           ),
         };
         get().setCanvasData(next);
