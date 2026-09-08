@@ -87,6 +87,12 @@ export type StudioTexts = {
     calBannerTitulo: string;
     calBannerAno: string;
     calBannerHint: string;
+    /** Lucy 2026-09-07 — selector de tipo de letra del título/mes del calendario (banner). */
+    calFontLabel: string;
+    calFontOptionFredoka: string;
+    calFontOptionInter: string;
+    calFontOptionCaveat: string;
+    calFontAria: string;
     /** Lucy 2026-09-05 — packs: stepper "¿Cuántas fotos lleva tu imán?" (junto a la toolbar). */
     photoCountLabel: string;
     photoCountHint: string;
@@ -245,6 +251,13 @@ export type StudioTexts = {
     tabFoto: string;
     tabTexto: string;
     cambiarFoto: string;
+    // Ola 17 — foto de perfil del header del post (plantilla Polaroid Instagram).
+    perfilTitulo: string;
+    perfilHint: string;
+    perfilCambiar: string;
+    perfilQuitar: string;
+    perfilPickerTitulo: string;
+    perfilPickerDesc: string;
     slotEditListo: string;
     capasVolver: string;
     capasElegir: string;
@@ -501,6 +514,11 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     calBannerTitulo: "📅 Tu calendario",
     calBannerAno: "Año del calendario:",
     calBannerHint: "· una foto por mes (toca cada mes para elegir tu foto)",
+    calFontLabel: "Tipo de letra:",
+    calFontOptionFredoka: "Redondeada (Fredoka)",
+    calFontOptionInter: "Moderna (Inter)",
+    calFontOptionCaveat: "Manuscrita (Caveat)",
+    calFontAria: "Tipo de letra del título del calendario",
     photoCountLabel: "¿Cuántas fotos lleva tu imán?",
     photoCountHint: "Tus fotos se conservan al cambiar el número",
     photoCountFixedHint: "Este tamaño lleva {n} fotos",
@@ -665,6 +683,13 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     tabFoto: "Foto",
     tabTexto: "Texto",
     cambiarFoto: "Cambiar foto",
+    // Ola 17 — foto de perfil del header del post (plantilla Polaroid Instagram).
+    perfilTitulo: "Foto de perfil",
+    perfilHint: "Aparece en el círculo del encabezado, junto al nombre de usuario.",
+    perfilCambiar: "Cambiar foto de perfil",
+    perfilQuitar: "Quitar",
+    perfilPickerTitulo: "Elige tu foto de perfil",
+    perfilPickerDesc: "Se recorta en círculo dentro del anillo del encabezado.",
     slotEditListo: "Listo",
     capasVolver: "Volver a capas",
     capasElegir: "Elige un texto para editar",
@@ -922,6 +947,11 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.calBannerTitulo": "estudio.lienzo.cal-banner-titulo",
   "lienzo.calBannerAno": "estudio.lienzo.cal-banner-ano",
   "lienzo.calBannerHint": "estudio.lienzo.cal-banner-hint",
+  "lienzo.calFontLabel": "estudio.lienzo.cal-font-label",
+  "lienzo.calFontOptionFredoka": "estudio.lienzo.cal-font-option-fredoka",
+  "lienzo.calFontOptionInter": "estudio.lienzo.cal-font-option-inter",
+  "lienzo.calFontOptionCaveat": "estudio.lienzo.cal-font-option-caveat",
+  "lienzo.calFontAria": "estudio.lienzo.cal-font-aria",
   "lienzo.photoCountLabel": "estudio.lienzo.photo-count-label",
   "lienzo.photoCountHint": "estudio.lienzo.photo-count-hint",
   "lienzo.photoCountFixedHint": "estudio.lienzo.photo-count-fixed-hint",
@@ -1070,6 +1100,12 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.tabFoto": "estudio.texto.tab-foto",
   "texto.tabTexto": "estudio.texto.tab-texto",
   "texto.cambiarFoto": "estudio.texto.cambiar-foto",
+  "texto.perfilTitulo": "estudio.texto.perfil-titulo",
+  "texto.perfilHint": "estudio.texto.perfil-hint",
+  "texto.perfilCambiar": "estudio.texto.perfil-cambiar",
+  "texto.perfilQuitar": "estudio.texto.perfil-quitar",
+  "texto.perfilPickerTitulo": "estudio.texto.perfil-picker-titulo",
+  "texto.perfilPickerDesc": "estudio.texto.perfil-picker-desc",
   "texto.slotEditListo": "estudio.texto.slot-edit-listo",
   "texto.capasVolver": "estudio.texto.capas-volver",
   "texto.capasElegir": "estudio.texto.capas-elegir",

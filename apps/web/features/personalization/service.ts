@@ -175,6 +175,10 @@ async function tryServerRenderProduction(
         templateStageWidth: canvasData.unitTemplate?.stage?.width,
         // Layout de la tarjeta ("classic" default | "split" lateral) — lo declara la plantilla.
         layout: calendarLayoutFromUnitTemplate(canvasData.unitTemplate),
+        // Lucy 2026-09-07 — tipo de letra del título/mes elegido en el Estudio. Viaja en el
+        // canvasData persistido; el compositor lo valida contra su lista blanca (ausente o
+        // desconocido → Fredoka). Nunca un string libre del cliente.
+        calendarFont: canvasData.calendarFont,
       });
       logger.info(
         {

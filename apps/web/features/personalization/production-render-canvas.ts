@@ -64,12 +64,25 @@ function ensureFonts(mod: CanvasMod): boolean {
     const dir = path.join(process.cwd(), "assets", "fonts");
     const ok =
       mod.GlobalFonts.registerFromPath(path.join(dir, "Fredoka.ttf"), "Fredoka") &&
-      mod.GlobalFonts.registerFromPath(path.join(dir, "Inter.ttf"), "Inter");
+      mod.GlobalFonts.registerFromPath(path.join(dir, "Inter.ttf"), "Inter") &&
+      // Lucy 2026-09-07 — selector de tipo de letra del calendario: Caveat (handwriting
+      // OFL, TTF variable — @napi-rs/canvas la registra como familia "Caveat" y
+      // setBrandFont fuerza el eje wght via fontVariationSettings, igual que Fredoka).
+      mod.GlobalFonts.registerFromPath(path.join(dir, "Caveat.ttf"), "Caveat");
     fontsReady = Boolean(ok);
   } catch {
     fontsReady = false;
   }
   return fontsReady;
+}
+
+/**
+ * Lista blanca key→familia registrada para el TÍTULO/mes del calendario. NUNCA se acepta
+ * un string libre del cliente: cualquier valor fuera de la enum (o ausente) cae a Fredoka
+ * (look histórico, retrocompatible). El body/grilla SIEMPRE es Inter (drawCalendarPage).
+ */
+export function calendarFontFamilyForKey(key: unknown): "Fredoka" | "Inter" | "Caveat" {
+  return key === "inter" ? "Inter" : key === "caveat" ? "Caveat" : "Fredoka";
 }
 
 // ── Tipos (mismos que production-render.ts, minimal) ────────────────────────
@@ -606,6 +619,8 @@ async function renderCalendarPage(
   loadAsset: LoadAssetBytes,
   templateStageWidth?: number,
   layout?: CalendarLayoutKey,
+  /** Familia del título/mes ya resuelta por la lista blanca (default Fredoka). */
+  titleFamily?: string,
 ): Promise<Buffer> {
   const S = PRODUCTION_SCALE;
   const W = clampInt(CALENDAR_PAGE.width * S, 1, MAX_STAGE_DIM * S);
@@ -635,6 +650,7 @@ async function renderCalendarPage(
     year,
     monthIndex0,
     fontsOk,
+    fonts: titleFamily ? { title: titleFamily } : undefined,
     layout,
   });
 
@@ -655,9 +671,16 @@ export async function renderCalendarMonthPagesCanvas(opts: {
   templateStageWidth?: number;
   /** Layout de la tarjeta declarado por la plantilla ("classic" default | "split" lateral). */
   layout?: CalendarLayoutKey;
+  /**
+   * Tipo de letra del título/mes elegido en el Estudio (canvasData.calendarFont). Se
+   * valida contra la lista blanca (`calendarFontFamilyForKey`): un valor ausente o
+   * desconocido cae a Fredoka — NUNCA se usa un string libre del cliente (anti-tamper).
+   */
+  calendarFont?: unknown;
 }): Promise<Buffer[]> {
   const mod = await loadCanvas();
   const fontsOk = ensureFonts(mod);
+  const titleFamily = fontsOk ? calendarFontFamilyForKey(opts.calendarFont) : undefined;
   const start = opts.startMonth ?? 0;
   const out: Buffer[] = [];
   const slots = [...opts.slots].sort((a, b) => a.slotIndex - b.slotIndex);
@@ -673,6 +696,7 @@ export async function renderCalendarMonthPagesCanvas(opts: {
         opts.loadAsset,
         opts.templateStageWidth,
         opts.layout,
+        titleFamily,
       ),
     );
   }

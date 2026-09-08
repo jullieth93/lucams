@@ -27,13 +27,18 @@ import { Image as KonvaImage } from "react-konva";
 import useImage from "use-image";
 import type Konva from "konva";
 import { drawCalendarPage } from "@/features/personalization/calendar-draw";
+import type { CalendarFontKey } from "@/features/personalization/schemas";
 import {
   CALENDAR_PAGE,
   calendarPhotoFor,
   scalePhotoTransformToPage,
   type CalendarLayoutKey,
 } from "@/features/personalization/calendar-layout";
-import { ensureBrandCanvasFontsLoaded, type BrandCanvasFonts } from "./lib/calendar-card-preview";
+import {
+  ensureBrandCanvasFontsLoaded,
+  ensureCalendarTitleFontLoaded,
+  type BrandCanvasFonts,
+} from "./lib/calendar-card-preview";
 import { analyzeSmartCrop } from "./lib/smart-crop";
 
 /** Resolución del canvas offscreen: 0.5× de la página 1080×1440 → 540×720.
@@ -50,6 +55,8 @@ export function CalendarCardLayer({
   monthIndex0,
   /** Layout de la tarjeta ("classic" default | "split" lateral) — viene de la plantilla. */
   layout = "classic",
+  /** Tipo de letra del título/mes elegido en el banner (default "fredoka" — Lucy 2026-09-07). */
+  calendarFont = "fredoka",
   /** Ancho del stage de la plantilla (600): los offsets del transform viven en esas unidades. */
   templateStageWidth,
   /** Dimensiones del stage Konva donde se dibuja la tarjeta (600×800 en la plantilla actual). */
@@ -64,6 +71,7 @@ export function CalendarCardLayer({
   year: number;
   monthIndex0: number;
   layout?: CalendarLayoutKey;
+  calendarFont?: CalendarFontKey;
   templateStageWidth: number;
   stageWidth: number;
   stageHeight: number;
@@ -76,6 +84,9 @@ export function CalendarCardLayer({
   const [photo] = useImage(assetUrl ?? "", "anonymous");
   const imageNodeRef = useRef<Konva.Image | null>(null);
   const [brandFonts, setBrandFonts] = useState<BrandCanvasFonts | null>(null);
+  // Familia real del TÍTULO según el selector de tipo de letra (null hasta resolver →
+  // el primer redraw usa la de marca y se repinta al llegar, igual que brandFonts).
+  const [titleFont, setTitleFont] = useState<string | null>(null);
   // Pan en vivo durante el drag (Lucy 2026-08-07): antes el NODO de la tarjeta
   // completa (foto+calendario+marco) flotaba con el cursor y al soltar "volvía"
   // — se veía roto. Ahora el marco queda quieto y la foto se re-encuadra en
@@ -116,6 +127,18 @@ export function CalendarCardLayer({
     };
   }, []);
 
+  // Familia del título según la key elegida — se re-resuelve (y recarga la cara) cada
+  // vez que el cliente cambia el selector del banner.
+  useEffect(() => {
+    let cancelled = false;
+    void ensureCalendarTitleFontLoaded(calendarFont).then((f) => {
+      if (!cancelled) setTitleFont(f);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [calendarFont]);
+
   // Ventana de foto en unidades del stage de la plantilla (para el smart-crop inicial,
   // misma matemática que ImagePlaceholder: la franja de foto top, espejo de la región de
   // foto del layout — full-bleed 4:3 en clásico, redondeada 9:7 con margen en split).
@@ -137,11 +160,11 @@ export function CalendarCardLayer({
       year,
       monthIndex0,
       fontsOk: true,
-      fonts: brandFonts ?? undefined,
+      fonts: { title: titleFont ?? brandFonts?.title, body: brandFonts?.body },
       layout,
     });
     imageNodeRef.current?.getLayer()?.batchDraw();
-  }, [canvas, photo, liveTransform, year, monthIndex0, brandFonts, templateStageWidth, layout]);
+  }, [canvas, photo, liveTransform, year, monthIndex0, titleFont, brandFonts, templateStageWidth, layout]);
 
   // Smart auto-crop inicial (paridad con ImagePlaceholder): solo foto NUEVA sin encuadre
   // persistido, y solo si el offset sugerido es significativo (>5% de la ventana).

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Fredoka, Inter } from "next/font/google";
+import { Caveat, Fredoka, Inter } from "next/font/google";
 import { Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { WebVitalsReporter } from "@/components/web-vitals";
@@ -14,6 +14,8 @@ import "./globals.css";
 /*
  * Fredoka (display) — bubble redondeada, encaja con el logo "LUCAMS" multicolor.
  * Inter (body)     — sans serif estándar e-commerce, con tabular-nums para precios.
+ * Caveat (script)  — handwriting kawaii, opción del selector de tipo de letra del
+ *                    calendario (Lucy 2026-09-07) — solo título/mes de la tarjeta.
  * ADR-021: docs/DECISIONS.md
  */
 
@@ -28,6 +30,13 @@ const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const caveat = Caveat({
+  variable: "--font-caveat",
+  subsets: ["latin"],
+  weight: ["400", "700"],
   display: "swap",
 });
 
@@ -96,7 +105,10 @@ export default async function RootLayout({
   // admin de contenido; monta el overlay (banner + click → editor del campo).
   const editMode = await isCmsEditMode();
   return (
-    <html lang="es-CO" className={`${fredoka.variable} ${inter.variable} h-full antialiased`}>
+    <html
+      lang="es-CO"
+      className={`${fredoka.variable} ${inter.variable} ${caveat.variable} h-full antialiased`}
+    >
       <body className="flex min-h-full flex-col">
         {/* Skip-link (WCAG 2.4.1 Bypass Blocks): primer elemento enfocable —
             oculto hasta recibir foco por teclado (Tab), salta al <main id="contenido">
