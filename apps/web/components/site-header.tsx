@@ -110,7 +110,12 @@ export async function SiteHeader() {
         <nav className="flex items-center gap-1 sm:gap-3">
           {/* Entrada única al catálogo: el mega-menú (trigger "Catálogo").
               Antes había además un link plano "Catálogo" → redundante. */}
-          <ShopMegaMenu tree={categoryTree} isLoggedIn={!!session} texts={megaMenuTexts} />
+          <ShopMegaMenu
+            tree={categoryTree}
+            isLoggedIn={!!session}
+            isAdmin={!!admin}
+            texts={megaMenuTexts}
+          />
 
           <Link
             href="/recomendador"

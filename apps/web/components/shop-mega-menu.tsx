@@ -60,10 +60,12 @@ export type MegaMenuTexts = {
 export function ShopMegaMenu({
   tree,
   isLoggedIn,
+  isAdmin,
   texts,
 }: {
   tree: CategoryNode[];
   isLoggedIn: boolean;
+  isAdmin: boolean;
   texts: MegaMenuTexts;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -238,6 +240,18 @@ export function ShopMegaMenu({
                 {texts.accountTitle}
               </p>
               <div className="flex flex-col">
+                {/* Acceso admin en móvil (2026-09-07): el chip "Panel admin" del
+                    header es sm:inline-flex → en el teléfono no había forma de
+                    entrar al admin. Primer ítem de la sección, solo si es admin. */}
+                {isAdmin && (
+                  <Link
+                    href="/admin/dashboard"
+                    onClick={() => setMobileOpen(false)}
+                    className="text-brand-purple-dark hover:bg-brand-purple/5 rounded-md px-2 py-2 text-sm font-medium"
+                  >
+                    Panel admin
+                  </Link>
+                )}
                 <Link
                   href={isLoggedIn ? "/mi-cuenta" : "/login"}
                   onClick={() => setMobileOpen(false)}
