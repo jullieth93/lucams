@@ -13,23 +13,40 @@
 
 ## Resumen actual
 
-**🚀 AUDITORÍA PRELANZAMIENTO REMEDIADA Y DESPLEGADA A PRODUCCIÓN (2026-09-04).** Auditoría integral
-basada en evidencia (veredicto: LANZAMIENTO CONDICIONADO — bloqueantes legales/operativos, no
-técnicos; 0 regresiones vs OWASP 2026-08) + remediación de 20+ hallazgos aprobada punto por punto por
-Lucy y **ya en producción**: PR #36 y #37 fusionados (rama `production` ≡ `develop` en `efc1553`), CI
-7/7 verde ×2, deploy verificado en vivo (headers privados, noindex), **migraciones aplicadas y
-verificadas en STG y PRD** (pre-flight 39/39 sin violaciones en ambas; búsqueda usa los índices
-nuevos — `EXPLAIN` lo confirma; smoke CHECK rechaza stock negativo con 23514), **DR drill reparado y
-re-corrido en VERDE** (run 33926922592: conteos exactos vs COPY del dump, 60 errores esperados/0
-inesperados), **secrets `BACKUP_SUPABASE_*` creados** (el mirror cifrado de Storage corre en la
-próxima corrida diaria) y **textos legales v5 corregidos tras verificación legal del mismo día**
-(plazo de reversión del consumidor = 5 días hábiles, no 15; derechos Ley 2439/2024 añadidos).
-**Lo único pendiente NO es técnico:** ① visto bueno del abogado a los textos v5 (2 puntos: identidad
-del vendedor art. 50 lit. a, formato de la "constancia" ET art. 615) y después **publicar los textos
-en `/admin/contenido`** (6 campos `legal.*` + `legal.last-updated`; decisión de subir
-`PRIVACY_POLICY_VERSION` a v5 → dispara re-consent); ② smoke en vivo con Lucy (búsqueda + modal TOTP
-del admin); ③ dashboard por confirmar cuando haya tiempo (branch protection, plan Vercel, límites
-GoTrue, tier Gemini, cuota Resend). Detalle completo en la entrada de sesión de abajo.
+**🧲 SESIÓN ESTUDIO 2026-09-05 — SMOKE EN VIVO PARCIAL + 2 TAREAS DEL ESTUDIO IMPLEMENTADAS (en
+`develop`, sin desplegar aún).** ① Smoke post-auditoría: búsqueda en vivo medida con navegador real
+(~0.8s caliente, resultados correctos) y **backup de la mañana VERDE** (run 33962842872: pg_dump 48s +
+**mirror de Storage → R2 5m17s, primera corrida real**); el modal TOTP del reembolso admin quedó
+pendiente de ejecutar por Lucy. ② **Opción "Con borde / Sin borde" para LETTER_SET** implementada
+como opción de lienzo (`metadata.withBorder`, default con borde — decisión de Lucy: mismo precio,
+imagen + texto en resumen): toggle en el editor, los 3 dibujos sincronizados (DOM, PNG que ES el de
+producción, textura 3D), fuente única de geometría (`LETTER_TILE_CORNER_RATIO` — deuda de radio
+cerrada), línea "Con/Sin borde" en carrito/checkout/pedido y en la ficha de taller, textos CMS
+`estudio.letras.borde-*`. ③ **Bug overlay Instagram (polaroid) corregido: era dato de plantilla**,
+no CSS — el seed y el script ola3 tenían y stale (486/502/518 sobre los iconos 468–496); STG estaba
+afectado y se corrigió a 510/526/542 (idempotente), LOCAL y PRD ya estaban bien. Spec de "réplica
+fiel" documentada y test de regresión de la geometría del footer. Gates finales combinados en verde
+(lint + typecheck + **3166 tests**). ④ **PDP de packs rediseñada (opción 2, decisión de Lucy):
+"las fotos se eligen en el Estudio, no en la PDP".** La ficha de los 5 packs quedó con UNA SOLA
+cantidad: "Unidades" (copias de compra). El selector de la PDP ya no muestra fotos/cantidad (solo
+"Tamaño" cuando hay >1), el precio es **"Desde $X"** (mínimo real de las variantes, no basePrice), y
+en el Estudio hay un control nuevo **"¿Cuántas fotos lleva tu imán?"** (1..max del tamaño) que
+reconstruye el lienzo conservando las fotos ya subidas. La variante y el precio se resuelven **en el
+servidor** desde el diseño al añadir al carrito (`photo-pack-resolve.ts`, patrón letter-set-resolve);
+deep-links `?variant=` antiguos siguen válidos. Gates verdes: **207 archivos / 3201 tests**.
+**Pendiente:** QA en vivo (PDP → Estudio → carrito de un pack + toggle de borde + marco Instagram) y
+smoke TOTP; al aprobar, commit + deploy; lo no-técnico de la auditoría sigue igual (abogado →
+publicar textos legales v5). Detalle en la entrada de sesión de abajo.
+
+**📋 2026-09-07 — 6 comentarios de Lucy tras su QA: investigados con evidencia (incluida
+reproducción en vivo en PRD/STG/LOCAL) y plan detallado trazado abajo, sin codificar.** Hallazgos
+clave: ① "Separadores de Libros" es la categoría — el bug ya está corregido en el working tree (falta
+deploy); ② el "20 fotos" de Tiras es un **dato viejo de STG** (`FI-TIRA-01-DEFAULT` con
+photoSlots:20) — fix de datos con script; ③ perfil IG editable es factible (nueva capa Konva +
+imprimir vía PNG cliente) y el stage pequeño del polaroid se debe al cap de alto por conteo de slots;
+④ el acceso admin en móvil no existe (chip `hidden sm:inline-flex`); ⑤ fuentes del calendario:
+factible con plomería ya existente (`opts.fonts`), exige TTF + registro server-side; ⑥ el borde de
+Juegos ya está hecho (falta deploy). El plan completo está en la sección siguiente.
 
 **Decisiones de Lucy (2026-09-05, tras revisar los puntos abiertos de la auditoría):** ① identidad
 de la vendedora — **mantener "a requerimiento"** hasta que opine el abogado (preocupación legítima
@@ -42,25 +59,198 @@ la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia veri
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
 
-## Próxima sesión — plan trazado (2026-09-05)
+## Próxima sesión — plan detallado de los 6 comentarios de Lucy (trazado 2026-09-07, con evidencia)
 
-1. **Smoke en vivo post-auditoría (pendiente):** búsqueda de producto en la tienda (sentir los
-   índices nuevos) + modal TOTP del admin (reembolso de prueba con aal2 >10 min) + confirmar que el
-   mirror de Storage corrió en la noche (backup.yml → job `backup-storage` verde).
-2. **Estudio — opción "con borde / sin borde" para Abecedario y Pack Vocales** (productos
-   `personalizationKind = LETTER_SET`). Hoy las letras usan texturas (`app/estudio/[slug]/lib/letter-tile-textures.ts`)
-   y el editor es `letter-set-editor.tsx`; la superficie/opciones viven en
-   `features/personalization/surface.ts`. Hay que decidir si el borde es atributo de variante
-   (catálogo) u opción de lienzo (diseño), con render fiel en editor + preview + **impresión**
-   (server render @napi-rs/canvas, ADR-057/081).
-3. **Estudio — bug overlay Instagram en fotos polaroid:** en la vista "cómo quedarían" del editor de
-   espacio (modal "Editar Espacio"), la fila de iconos (corazón/comentario/compartir) se monta sobre
-   el texto "me gusta" + caption (evidencia: capturas de Lucy 2026-09-05 en preview
-   `lucams-shop-p9rgmgj9q`). Archivos: `app/estudio/[slug]/studio-slot.tsx`,
-   `studio-photo-preview.tsx`, `studio-style-toolbar.tsx`. **Requisito de Lucy: certificar que el
-   marco sea una réplica fiel de Instagram real — visual, diseño e impresión** (el PNG de producción
-   server-side debe coincidir con el preview). Prompt completo listo para esa sesión: ver la entrada
-   de sesión 2026-09-05 o pedirlo como "prompt Estudio pendiente".
+**Prerequisito 0 — commit + deploy del working tree (42 archivos, todo de 2026-09-05).** Los
+comentarios 1, 2 (en parte) y 6 son síntomas de que PRD corre el código viejo: opción 2 de packs,
+toggle de borde letter-set y fix Instagram están SIN commitear ni desplegar. Secuencia: gates en
+verde → commit(s) convencionales → push develop → CI → merge a production → deploy → verificación en
+vivo. Sin este paso, NADA de lo de abajo se ve en lucamsshop.com. Además: sembrar en los 3 ambientes
+los campos CMS nuevos (`estudio.letras.borde-*`, `estudio.lienzo.photo-count-*` — ya están en
+`cms-site-map.mjs`) y el smoke TOTP del reembolso (F-10) sigue pendiente de Lucy.
+
+**1. "Separadores de Libros" muestra Cantidad + Unidades.** NO existe producto con ese nombre: es la
+CATEGORÍA "Separadores de Libros (Marcapáginas)"; sus productos son `separadores-magneticos`
+("Magnéticos") y `separadores-alargados` ("Alargados"), ambos YA cubiertos en
+`PDP_HIDDEN_DIMENSION_KEYS` (`features/products/variant-schemas.ts:215-222`). Verificado en vivo:
+PRD muestra CANTIDAD+TAMAÑO+UNIDADES (código viejo); LOCAL (working tree) muestra solo
+TAMAÑO+UNIDADES. **Fix = prerequisito 0.** Extra: 2 productos inactivos (`set-fotoimanes-circulares`,
+`set-fotoimanes-corazon`) quedarían sin cobertura si se reactivan → añadirlos preventivamente a
+`PDP_HIDDEN_DIMENSION_KEYS` + caso en `variant-schemas.test.ts`. Opcional (dato, admin): renombrar
+los productos a "Separadores de Libros" si Lucy quiere ese nombre comercial.
+
+**2. Tiras Magnéticas pide ~20 fotos con 1 unidad (BUG GRAVE) — es DATO de STG, no código.** Causa
+raíz verificada: la única variante activa de tiras en STG es `FI-TIRA-01-DEFAULT` = "Pack 5 Tiras de
+4 fotos" con `photoSlots:20, quantity:5`; la de 4 fotos está inactiva. LOCAL y PRD ya tienen el
+catálogo correcto (3 fotos 6.5×20 / 4 fotos 6.5×26.5, quantity 1). Probado en vivo: el código actual
+da 3/4 slots según tamaño y las copias NUNCA multiplican slots (`studio-editor.tsx:313,320,929-932`).
+Fix: script one-off `packages/db/scripts/fix-tiras-stg-2026-09-07.mjs` (patrón
+`normalize-letterset-quantity.mjs`: dry-run por defecto, `--apply`, env-guard) que en STG: ①
+`FI-TIRA-01-DEFAULT` → name "Tira de 3 fotos · 6.5×20 cm", attrs `{sizeCm:"6.5×20", quantity:1,
+photoSlots:3, aspectRatio:"1:1"}`, price 1900000; ② reactivar `FI-TIRA-4FOTOS` → `{6.5×26.5,
+quantity:1, photoSlots:4, aspectRatio:"3:4"}`, price 2400000. Verificar con SELECT y QA en STG
+(PDP→Estudio→3/4 slots). PRD: solo SELECT de verificación. Divergencias menores STG detectadas
+(decidir con Lucy, no romper): separadores-magneticos usa `sizeCm:"6x2"` ASCII (cambiar a "6×2" rompe
+matching con diseños viejos — evaluar) y el schema de tiras trae `frameOptions` en STG/PRD ausente en
+LOCAL.
+
+**3. Fotoimanes Polaroid (marco Instagram):**
+
+3.1 **Foto de perfil editable + badge ① encima del avatar.**
+
+- Perfil: nueva capa `profile-photo` `{id:"profile_photo", x:34, y:34, radius:16}` en
+  `seed-templates.mjs` tras la capa `asset` del chrome (el anillo de historia del SVG queda encima;
+  no hay que perforar masks). Render Konva en `renderLayer` (`studio-slot.tsx:1211`) con clip
+  circular (patrón `groupClipFunc` de ImagePlaceholder `:1898-1914`). Estado:
+  `SlotState.profileAssetId/Url` — **declarar en `SlotStateSchema`** (`features/personalization/schemas.ts:78-108`,
+  es plano y Zod stripea claves no declaradas) + acción `setSlotProfilePhoto` en el store +
+  **`canvas-remap.ts` debe remapear también `profileAssetId`** (hoy solo remapea `assetId` —
+  riesgo de foto vieja al editar desde el carrito). UI: tap sobre el avatar (círculo Konva
+  listening → asset picker) o pestaña/botón "Perfil" en `studio-slot-edit-modal.tsx`. **Decisión
+  pendiente de Lucy:** default = la misma foto del imán (MVP sin schema nuevo) o siempre foto
+  independiente. Producción: gratis (esta plantilla imprime vía PNG del cliente). Actualizar
+  `instagram-template-spec.ts` + test. Drafts viejos no ganan la capa (aceptable, documentarlo).
+- Badge: hoy es un div absoluto top-1.5/left-1.5 dentro del slot (`studio-slot.tsx:931-939`) →
+  cae exacto sobre el avatar (stage x∈[14,54]). Fix recomendado: mover el número de slot a la barra
+  de acciones inferior del grid (ya reservada, `studio-canvas-grid.tsx:59`, chip junto al de tamaño
+  `:992-999`). Verificar que el calendario no pierda su etiqueta de mes.
+
+3.2 **El marco se ve pequeño (web y móvil) vs calendario.** Causa: cap por conteo de slots
+`SLOT_HEIGHT_CAP_BY_COUNT` (`studio-canvas-grid.tsx:49-53`): 1-2 slots → alto 460 desktop / 300
+móvil → la polaroid IG sale a ~345px desktop / **225px móvil** (scale 0.5: caption 16px ≈ 8px en
+pantalla, target de tap muy por debajo de 44px). El calendario "se ve perfecto" porque es la
+excepción (caps propios 560/640/920, full-width móvil, piso 280px). Fix (consistencia que pide
+Lucy): relajar/unificar la regla de marco — marco `min(1100, max(440, 82vh))` para TODAS las
+plantillas (`:374-384`), piso por plantilla con texto editable (~240-280px, patrón
+`CALENDAR_MIN_SLOT_SIZE`), y en móvil la IG a 1 columna. Revisar visualmente separadores/tiras (Ola
+21 los achicó a propósito). El PNG 300DPI no se degrada: el snapshot compensa con pixelRatio
+(`studio-editor.tsx:892`). QA con capturas (375×667 y 1366×768).
+
+**4. Admin en móvil.** Causa: el chip "Panel admin" del header lleva `hidden sm:inline-flex`
+(`site-header.tsx:166-173`) → en móvil nunca aparece; el drawer hamburguesa (`shop-mega-menu.tsx:236-272`,
+sección "Tu cuenta") no recibe info de admin. Fix: pasar `isAdmin={!!admin}` de SiteHeader (server)
+al drawer (mismo patrón que `isLoggedIn`) + link "Panel admin" → /admin/dashboard. Opcional barato:
+ícono junto al de cuenta (header móvil ya va apretado). NO footer (lo vería todo el mundo). Test de
+componente del header/drawer.
+
+**5. Calendario: selector de tipo de letra.** Hechos: los textos del calendario los dibuja
+`drawCalendarPage` (`features/personalization/calendar-draw.ts:125`) con fuentes hardcodeadas PERO la
+plomería ya acepta `opts.fonts={title,body}` (`:141`); 3 call-sites a tocar para paridad
+(`studio-calendar-card-layer.tsx:134`, `lib/compose-calendar-page.ts:102`,
+`production-render-canvas.ts:632`). Restricción dura: server solo registra Fredoka/Inter
+(`ensureFonts`, `production-render-canvas.ts:60-73`) y otra familia en texto lanza RenderNeedsKonvaError
+→ fallback PNG del cliente, INACEPTABLE para calendario (siempre compone server-side). Diseño: lista
+curada 3-4 (Fredoka, Inter + 1-2 nuevas, p. ej. handwriting OFL). Por fuente nueva: `next/font` en
+`layout.tsx` + TTF en `assets/fonts/` + registro en `ensureFonts`. Persistencia: `calendarFont` en
+`MultiSlotCanvasData` + **declararlo en `CanvasDataV2Schema`** (stripea sin catchall) + acción del
+store (patrón `setBorderColor`, `lib/store.ts:408`). Control junto al selector de año
+(`studio-editor.tsx:1127-1151`), textos CMS. Server valida contra lista blanca (nunca string libre).
+Generalizar `resolveBrandCanvasFonts` para nombres hasheados de next/font en los 3 call-sites.
+Riesgos: pesos variables (`fontVariationSettings`), fallback silencioso (validar registro + log),
+título puede desbordar con fuente ancha (medir), licencias OFL.
+
+**6. Juegos y Aprendizaje: el borde YA EXISTE** (implementado 2026-09-05, sin desplegar):
+radiogroup "Borde de las fichas · Con/Sin borde" en el letter-set editor (`letter-set-editor.tsx:594-638`),
+default con borde, persiste en `metadata.withBorder`. En PRD no aparece por falta de deploy →
+prerequisito 0. Nota de UX: ojo con el doble significado de "borde" — el polaroid ya tenía "Borde de
+foto" (marco) y letter-set ahora tiene "Borde de las fichas" (letra); textos distintos, no confundir
+en QA.
+
+**Orden sugerido de ejecución:** prerequisito 0 (deploy) → 2 (datos STG, rápido) → 3.1 badge + 3.2
+tamaño (fixes chicos) → 3.1 perfil (feature) → 4 (admin móvil, chico) → 5 (fuentes calendario,
+mediana) → verificación en vivo de 1 y 6. Gates en verde antes de cada commit; nada se despliega sin
+aprobación de Lucy.
+
+## Sesión — 2026-09-05 (smoke en vivo + Estudio: borde LETTER_SET + fix plantilla Instagram)
+
+**✅ SMOKE EN VIVO PARCIAL.** ① Búsqueda en PRD medida con Chromium headless real: home 200 (TTFB
+~4.7s frío); consultas "abecedario"/"polaroid"/"vocales"/"iman" → resultados correctos en ~0.8s
+caliente (2.3s la primera, fría) — los índices nuevos se sienten bien. ③ Backup de la mañana VERDE:
+run `33962842872` (11:15 UTC), jobs "secrets", "pg_dump → R2" (48s) y **"Mirror de Supabase Storage
+→ R2" (5m17s — primera corrida real del mirror cifrado)**. ② Modal TOTP del reembolso admin: pendiente
+de ejecutar por Lucy (quedó en el plan de la próxima sesión).
+
+**✅ TAREA 1 — Opción "Con borde / Sin borde" para LETTER_SET (Abecedario/Pack Vocales).**
+Decisión con evidencia (investigación previa): **opción de lienzo en `Design.metadata`** — el
+precedente Ola 2A (`PDP_HIDDEN_DIMENSION_KEYS`) ya movió estas decisiones al Estudio; el precio solo
+discrimina tamaño/imán; y para LETTER_SET el PNG de producción lo dibuja el cliente y se sube byte a
+byte (server render @napi-rs/canvas no aplica hoy; `drawLetterTile` sigue siendo puro/node-compatible
+para cuando aplique). Lucy confirmó: **mismo precio + texto en resumen/taller**.
+
+- `metadata.withBorder` (boolean, default `true`; retrocompatible: diseños sin la clave = con borde).
+  Zod `z.boolean().default(true)` en `actions.ts`; persistido en `service.ts`.
+- Toggle radiogroup junto al ThemePicker (`letter-set-editor.tsx`); la opción fluye a los 3 dibujos:
+  DOM en vivo, `renderLetterSetBlob` (preview "Así se verá…" Y PNG de producción) y
+  `buildLetterTileTextures` (3D). **Deuda cerrada:** radio único `LETTER_TILE_CORNER_RATIO` (10%) —
+  el compositor usaba 18/120 (15%) divergente de la textura 3D.
+- Texto "Con borde"/"Sin borde" en carrito, checkout order-summary y `/pedido/[token]` (helper nuevo
+  `letter-set-border.ts`; `CartLineItem.borderNote`); ficha de taller lo anota cuando es "sin borde"
+  (mismo patrón que "Sin marco" de fotoimanes). ZIP de producción sin cambios (el PNG ya lo trae).
+- Textos CMS nuevos `estudio.letras.borde-*` (defaults + `cms-site-map.mjs` para el admin).
+- Tests: dibujo con/sin borde con @napi-rs/canvas, payload del editor, schemas, production-spec,
+  helper. Gates finales combinados: **lint + typecheck + 3166 tests verdes**.
+
+**✅ TAREA 2 — Bug overlay Instagram (polaroid): era dato de plantilla, no CSS.** Causa raíz: el seed
+(`seed-templates.mjs`) y el upsert de `ola3-templates-2caras-polaroid.mjs` tenían las capas de texto
+con y stale (likes 486 / caption 502 / hashtags 518 — los iconos del SVG ocupan y≈468–496, o sea
+que el texto quedaba montado encima); el fix correcto (510/526/542, ~7px de aire) existía solo en el
+script ola9 del 2026-07-24. Verificación por ambiente: **STG afectado → corregido** (re-corridó el
+script ola9, idempotente; re-verificado con SELECT); LOCAL y PRD ya tenían los valores correctos. Los
+3 scripts fuente quedaron consistentes + spec de "réplica fiel de post real de Instagram" documentada
+en el seed (tarjeta 450×600, foto 392×392 en y=58, iconos ×1.17, me-gusta y=510, caption 526,
+hashtags #00376B 542, Inter). Preview e impresión coinciden por construcción (mismo rasterizador
+Konva; el PNG del cliente es el de imprenta para plantillas SVG). Regresión: módulo
+`instagram-template-spec.ts` + 5 tests que congelan footer vs zona de iconos.
+
+**✅ BUG EXTRA EN LA MISMA SESIÓN — PDP: "hay cantidad y a la vez unidades" (Lucy, captura del
+Fotoimanes Polaroid).** Los packs de fotoimanes personalizables mostraban DOS steppers que parecían
+ambos cantidad de compra: el de la dimensión de composición (`photoSlots`/`quantity`, etiquetado
+"CANTIDAD", con "{qty} unidad/es" y un "Total: $X" engañoso) y el stepper "UNIDADES"
+(`CopiesQtyInput`, las copias idénticas — la verdadera cantidad de compra desde el cambio del
+2026-09-03). Auditado contra el catálogo real (LOCAL): afecta a set-fotoimanes-polaroid (1–10),
+set-fotoimanes-cuadrados (1–6), separadores-magneticos/alargados (1–6) y tiras (chips 3/4);
+abecedario/vocales (oculta por correlación con idioma) y calendario (1 valor) no se tocan. Fix en
+`variant-selector.tsx`: ① `photoSlots` antes que `quantity` en `VISIBLE_DIMENSIONS` → cuando ambas
+coinciden (todos los packs: cada unidad lleva 1 foto por slot) el grupo se etiqueta **"Fotos"**;
+② el stepper dice "N fotos" para photoSlots ("unidad/es" solo si algún catálogo usa `quantity`
+suelta); ③ se elimina el "Total: $X" del stepper — el precio del pack ya está en el bloque PRECIO y
+el total de compra lo fija "Unidades". Los dos conceptos quedan distinguibles: FOTOS = composición
+del pack (elige la variante y su precio; requisito del Estudio, que no abre sin variante) ·
+UNIDADES = copias idénticas de la compra. Tests del selector migrados (36/36 verdes) con regresión
+de que el "Total" no vuelva al stepper. Copy pendiente de Lucy: la descripción del Polaroid dice
+"Elige la cantidad en el selector" — ajustarla en el admin de contenido a "elige las fotos".
+
+**✅ ⑤ OPCIÓN 2 — "LAS FOTOS SE ELIGEN EN EL ESTUDIO, NO EN LA PDP" (Lucy, misma sesión).** La
+interina (④) quedó desplazada: la dueña confirmó que la PDP debe tener UNA SOLA cantidad ("Unidades")
+y la elección de fotos por imán pasa al Estudio como decisión de diseño. Implementado completo:
+
+- **PDP (5 packs: polaroid, cuadrados, separadores ×2, tiras):** `PDP_HIDDEN_DIMENSION_KEYS` oculta
+  `photoSlots`+`quantity`; el selector deja solo "Tamaño" (chips; prop nueva `singleDimAsChips` para
+  no caer en la lista vertical al quedar 1 dimensión); precio **"Desde $X"** = mínimo real entre
+  variantes del tamaño (hallazgo: `basePrice` está desactualizado en cuadrados — el "desde" se
+  calcula sobre variantes, nunca sobre basePrice); `EstudioCtaLink` con `requiredSelection` tamaño
+  (solo si >1 tamaño) o none; deep-link `?variant=` antiguo sigue válido (fija tamaño + N inicial).
+- **Estudio:** control nuevo "¿Cuántas fotos lleva tu imán?" (`studio-photo-count-control.tsx`,
+  textos CMS `estudio.lienzo.photo-count-*`), stepper 1..max del tamaño (fijo en tiras); cambiar N
+  reconstruye el lienzo (`slotCount = N × caras`) **conservando las fotos por índice**, con undo y
+  auto-save; `photoSlots`/`sizeCm` se persisten en canvasData (ojo técnico: `CanvasDataV2Schema` no
+  tiene catchall — Zod stripea claves no declaradas; se declararon explícitamente). Editar-desde-
+  carrito arranca con el N guardado.
+- **Ruta del dinero:** `addPersonalizedToCartAction` acepta `variantId` ausente; para packs el
+  **servidor** resuelve la variante desde el canvasData guardado (`features/products/photo-pack-resolve.ts`,
+  patrón letter-set-resolve) — precio y stock siempre server-side; sin variante exacta → error claro
+  (`NO_DEFAULT_VARIANT`), diseños legacy sin el campo → fallback histórico 1ª variante.
+- **Tests nuevos:** photo-pack-resolve (11), integración cart contra DB local (5: exacta+precio,
+  legacy, sin-match, agotada, tamper), control de N (5), variant-actions (7) + casos packs en
+  selector/schemas. Gates: lint + typecheck + **207 archivos / 3201 tests verdes**.
+- **Deuda/riesgos:** sin E2E de navegador (smoke manual PDP→Estudio→carrito recomendado en STG);
+  `basePrice` desactualizado de cuadrados queda como deuda de catálogo; si Lucy pausa una
+  combinación fotoSlots+tamaño, el carrito responde error claro (no cobra otra variante).
+
+**Entrega:** todo en `develop` local, sin commit (a la espera del visto bueno de Lucy tras QA GUI).
+Sin push. `.env*` intocados (las verificaciones de DB fueron SELECT read-only + el script ola9 en STG).
+
+---
 
 **Contexto que sigue vigente (2026-09-03 y días previos):** el 2026-08-29/30 se cerró y homologó toda la auditoría OWASP (`docs/audits/auditoria_seguridad_lucams.md` §11):
 commits `229b30b`→`da7e97a` en `develop`≡`production`, CI verde en ambas, PRD en vivo con Next **16.3.3**
@@ -2612,6 +2802,43 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-09-07 — QA de Lucy: 6 comentarios investigados + plan detallado trazado (sin codificar)
+
+- Investigación con evidencia (navegador real contra LOCAL/PRD + SELECT read-only STG, artefactos en
+  /tmp/qa-20260907/): ① "Separadores de Libros" = categoría, productos ya cubiertos por la opción 2
+  (falta deploy); ② bug "20 fotos" de Tiras = dato viejo de STG (variante FI-TIRA-01-DEFAULT con
+  photoSlots:20) → script de datos; ③ marco IG: perfil editable factible (capa `profile-photo` +
+  ojo con SlotStateSchema que stripea + canvas-remap), badge ① moverse a la barra inferior, stage
+  pequeño = cap de alto por conteo de slots (`SLOT_HEIGHT_CAP_BY_COUNT`); ④ admin móvil: chip del
+  header oculto en <sm → entrada en el drawer hamburguesa; ⑤ calendario: selector de fuentes
+  factible (opts.fonts ya inyectable; exige TTF + registro en ensureFonts + validación server);
+  ⑥ borde letter-set ya existe (sin desplegar). Plan completo con archivos/pasos/tests en
+  "Próxima sesión — plan detallado".
+
+### 2026-09-05 — Smoke en vivo parcial + Estudio: borde LETTER_SET (lienzo) + fix dato plantilla Instagram
+
+- **Smoke post-auditoría:** búsqueda PRD medida en vivo (Chromium headless): ~0.8s caliente,
+  resultados correctos; backup matutino VERDE (run 33962842872, mirror Storage→R2 5m17s — primera
+  corrida real). Smoke TOTP admin pendiente de Lucy.
+- **Borde LETTER_SET:** `metadata.withBorder` (default true, retrocompatible), toggle en editor,
+  3 dibujos sincronizados, radio único `LETTER_TILE_CORNER_RATIO` (deuda cerrada), texto "Con/Sin
+  borde" en carrito/checkout/pedido + ficha de taller, CMS `estudio.letras.borde-*`. Sin migración
+  ni cambio de catálogo (decisión: opción de lienzo, mismo precio).
+- **Instagram polaroid:** bug de DATO (seed + script ola3 con y stale 486/502/518 vs iconos
+  468–496). STG corregido (script ola9 idempotente; LOCAL/PRD ya estaban bien). Spec de réplica
+  fiel documentada en seed; test de regresión de geometría del footer (5 tests).
+- **PDP doble stepper (Lucy, captura Polaroid):** "Cantidad" (photoSlots, con Total engañoso) +
+  "Unidades" (copias) en packs personalizables. Fix interino: photoSlots gana el dedupe → grupo "Fotos"
+  ("N fotos", $/foto), "Total:" fuera del stepper, "Unidades" = única cantidad de compra.
+  Polaroid/cuadrados/separadores/tiras cubiertos; tests migrados 36/36 + regresión.
+- **OPCIÓN 2 (Lucy): fotos dentro del Estudio.** PDP de los 5 packs con UNA sola cantidad
+  ("Unidades"), "Tamaño" como único selector, precio "Desde $X" (mínimo de variantes); control
+  "¿Cuántas fotos lleva tu imán?" en el Estudio (reconstruye slots conservando fotos); variante y
+  precio resueltos en el servidor desde el diseño (`photo-pack-resolve.ts`). 207 archivos / 3201
+  tests verdes. Deuda: basePrice de cuadrados desactualizado; smoke manual de navegador pendiente.
+- Gates finales combinados verdes: lint + typecheck + 3201 tests. Todo sin commit, a la espera del
+  QA GUI de Lucy.
 
 ### 2026-08-07 (cierre 7) — RELEASE: H19 + H20 + deps a producción (`c86d206` → `8430163`)
 
