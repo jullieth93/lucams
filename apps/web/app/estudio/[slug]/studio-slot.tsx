@@ -1429,13 +1429,7 @@ function ProfilePhotoLayerRenderer({
       }}
       listening={false}
     >
-      <KonvaImage
-        image={image}
-        x={(d - w) / 2}
-        y={(d - h) / 2}
-        width={w}
-        height={h}
-      />
+      <KonvaImage image={image} x={(d - w) / 2} y={(d - h) / 2} width={w} height={h} />
     </Group>
   );
 }

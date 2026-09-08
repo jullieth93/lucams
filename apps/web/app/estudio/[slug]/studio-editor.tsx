@@ -651,7 +651,12 @@ export function StudioEditor({
           startMonth,
           state.canvasData.unitTemplate.stage.width,
         );
-        const pages = await composeCalendarPages(inputs, selectedYear, calendarLayout, liveCalendarFont);
+        const pages = await composeCalendarPages(
+          inputs,
+          selectedYear,
+          calendarLayout,
+          liveCalendarFont,
+        );
         setPreviewDataUrl(await buildCalendarPreviewMontage(pages));
         setPreviewModalOpen(true);
         return;
@@ -814,7 +819,12 @@ export function StudioEditor({
         startMonth,
         state.canvasData.unitTemplate.stage.width,
       );
-      const pages = await composeCalendarPages(inputs, selectedYear, calendarLayout, liveCalendarFont);
+      const pages = await composeCalendarPages(
+        inputs,
+        selectedYear,
+        calendarLayout,
+        liveCalendarFont,
+      );
       // Cada tarjeta compuesta (1080×1440 = 3:4 exacto) es un imán de nevera de 7.5×10 cm.
       const cards: Magnet3D[] = pages.map((dataUrl) => ({
         dataUrl,
@@ -834,7 +844,15 @@ export function StudioEditor({
     } finally {
       setCalendarBuilding(false);
     }
-  }, [store, product.personalizationSchema, selectedYear, calendarLayout, liveCalendarFont, calendarBuilding, texts]);
+  }, [
+    store,
+    product.personalizationSchema,
+    selectedYear,
+    calendarLayout,
+    liveCalendarFont,
+    calendarBuilding,
+    texts,
+  ]);
 
   // El Escape de ambos overlays 3D lo maneja ahora useDialogA11y (#15, arriba); la galería de
   // escenas maneja el suyo internamente.

@@ -164,7 +164,17 @@ export function CalendarCardLayer({
       layout,
     });
     imageNodeRef.current?.getLayer()?.batchDraw();
-  }, [canvas, photo, liveTransform, year, monthIndex0, titleFont, brandFonts, templateStageWidth, layout]);
+  }, [
+    canvas,
+    photo,
+    liveTransform,
+    year,
+    monthIndex0,
+    titleFont,
+    brandFonts,
+    templateStageWidth,
+    layout,
+  ]);
 
   // Smart auto-crop inicial (paridad con ImagePlaceholder): solo foto NUEVA sin encuadre
   // persistido, y solo si el offset sugerido es significativo (>5% de la ventana).

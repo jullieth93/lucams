@@ -49,9 +49,7 @@ export function resolveCalendarTitleFont(key: CalendarFontKey): string | null {
  * 700 + 500 split) y espera a que estén listas (anti-FOUT). Tolerante a fallos: devuelve
  * la familia resuelta (o null) igual — el dibujo degrada al fallback.
  */
-export async function ensureCalendarTitleFontLoaded(
-  key: CalendarFontKey,
-): Promise<string | null> {
+export async function ensureCalendarTitleFontLoaded(key: CalendarFontKey): Promise<string | null> {
   const family = resolveCalendarTitleFont(key);
   if (!family || typeof document === "undefined" || !document.fonts) return family;
   try {

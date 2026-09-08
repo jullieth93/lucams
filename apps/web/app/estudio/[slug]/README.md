@@ -336,7 +336,6 @@ packages/db/scripts/
   migración: `packages/db/scripts/ola17-polaroid-instagram-profile-photo.mjs` (dry-run
   default, `--apply`, env-guard). Drafts/cotizaciones viejas no ganan la capa (aceptado).
 
-
 ## Wireframes ASCII
 
 ### Desktop (≥ 1024px)

@@ -152,9 +152,9 @@ describe("CanvasDataV2Schema — calendarFont (Lucy 2026-09-07, selector de tipo
   });
 
   it("rechaza una fuente fuera de la lista blanca (Zod nunca la persiste)", () => {
-    expect(
-      CanvasDataV2Schema.safeParse({ ...base, calendarFont: "Comic Sans MS" }).success,
-    ).toBe(false);
+    expect(CanvasDataV2Schema.safeParse({ ...base, calendarFont: "Comic Sans MS" }).success).toBe(
+      false,
+    );
     expect(CanvasDataV2Schema.safeParse({ ...base, calendarFont: "system-ui" }).success).toBe(
       false,
     );

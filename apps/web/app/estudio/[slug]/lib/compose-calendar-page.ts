@@ -14,7 +14,10 @@ import {
   scalePhotoTransformToPage,
   type CalendarLayoutKey,
 } from "@/features/personalization/calendar-layout";
-import { ensureBrandCanvasFontsLoaded, ensureCalendarTitleFontLoaded } from "./calendar-card-preview";
+import {
+  ensureBrandCanvasFontsLoaded,
+  ensureCalendarTitleFontLoaded,
+} from "./calendar-card-preview";
 
 // Escala del preview: 1080×1520 → ~810×1140. Nítido como textura 3D sin ser pesado.
 const PREVIEW_SCALE = 0.75;
