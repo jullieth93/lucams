@@ -150,6 +150,28 @@ describe("lo que NO está horneado en el PNG y hay que escribir", () => {
     expect(porFicha).toContain("C=amarillo");
   });
 
+  // Lucy 2026-09-05 — opción "Sin borde" del Estudio: el PNG la refleja, pero la ficha de taller
+  // debe decirla explícita. Solo se anota el caso distinto: default (sin clave) = con borde.
+  it("anota «Sin borde» en la ficha de taller cuando el diseño de set de letras lo eligió", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      designMetadata: {
+        surface: "letterset",
+        letters: ["A", "B", "C"],
+        withBorder: false,
+      },
+    });
+    expect(spec.personalizacion.find((x) => x.etiqueta === "Borde")?.valor).toMatch(/Sin borde/);
+  });
+
+  it("diseño de set de letras sin la clave (previo a la opción) NO genera línea de borde", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      designMetadata: { surface: "letterset", letters: ["A", "B", "C"] },
+    });
+    expect(spec.personalizacion.find((x) => x.etiqueta === "Borde")).toBeUndefined();
+  });
+
   it("recoge los textos que escribió el cliente, para cotejar tildes", () => {
     const spec = resolveProductionSpec({
       ...vacio,

@@ -151,6 +151,10 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
       qty: 1,
       variantId: "var-1",
     });
+    // Default retrocompatible: sin tocar el selector, el diseño se crea CON borde (Lucy 2026-09-05).
+    expect(createLetterSetDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({ withBorder: true }),
+    );
 
     // El set se imprime como UNA lámina: preview y producción son el mismo PNG aprobado.
     const fd = finalizeDesignAction.mock.calls[0]![0];
@@ -173,5 +177,30 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
     expect(push).not.toHaveBeenCalled();
     // La vista previa sigue abierta para reintentar sin perder el diseño de la pantalla.
     expect(screen.getByText("Así se verá tu pedido")).toBeInTheDocument();
+  });
+
+  describe("opción Con borde / Sin borde (Lucy 2026-09-05)", () => {
+    it("el selector aparece junto al picker de tema y arranca en «Con borde»", () => {
+      renderEditor();
+      const con = screen.getByRole("radio", { name: /Con borde/ });
+      expect(con).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("radio", { name: /Sin borde/ })).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
+    });
+
+    it("al elegir «Sin borde», el diseño se crea con withBorder: false", async () => {
+      renderEditor();
+      fireEvent.click(screen.getByRole("radio", { name: /Sin borde/ }));
+      await openPreview();
+
+      fireEvent.click(screen.getByRole("button", { name: /Sí, agregar al carrito/ }));
+
+      await waitFor(() => expect(push).toHaveBeenCalledWith("/carrito?personalized=1"));
+      expect(createLetterSetDesignAction).toHaveBeenCalledWith(
+        expect.objectContaining({ withBorder: false }),
+      );
+    });
   });
 });

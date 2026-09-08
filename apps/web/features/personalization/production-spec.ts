@@ -267,6 +267,14 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
   const estilo = s(e.designMetadata?.styleSetId);
   if (estilo) personalizacion.push({ etiqueta: "Estilo ilustrado", valor: estilo });
 
+  // Lucy 2026-09-05 — opción de diseño "Sin borde" de los sets de letras. El PNG la refleja, pero
+  // la ficha debe decirla explícita: sin borde la lámina se recorta por el contorno de cada
+  // ficha, no por el marco de color. Default retrocompatible: metadata sin la clave = con borde
+  // (lo histórico), así que solo se anota el caso distinto.
+  if (e.designMetadata?.surface === "letterset" && e.designMetadata.withBorder === false) {
+    personalizacion.push({ etiqueta: "Borde", valor: "Sin borde — recortar a ras del contorno" });
+  }
+
   // Textos que escribió el cliente: hay que cotejarlos con lo impreso (tildes incluidas).
   const slots = e.canvasData?.slots;
   if (Array.isArray(slots)) {

@@ -7,6 +7,11 @@
  * su marco — un cambio físico real → WYSIWYG. Reutiliza createLetterSetDesign + finalize +
  * carrito.
  *
+ * Lucy 2026-09-05 — opción de diseño "Con borde / Sin borde" (mismo precio): es una decisión de
+ * LIENZO que se persiste en Design.metadata.withBorder (NO es variante de catálogo) y se refleja
+ * en los 3 dibujos de la ficha (DOM del editor, PNG de producción y textura 3D). Default "con
+ * borde": lo que siempre se imprimió, así los diseños previos sin la clave quedan válidos.
+ *
  * Ola 2A (Lucy 2026-07-22) — el TEMA (default/animales/frutas/profesiones) y el IDIOMA ya NO
  * son variantes de la PDP: se eligen ACÁ en el Estudio. El tema preselecciona el LetterTileSet
  * correspondiente (los sets vacíos degradan a letra estándar — se ve tal cual se imprime).
@@ -39,7 +44,7 @@ import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { StudioPreviewModal } from "./studio-preview-modal";
 import { resolveLetterSetVariant, type LetterSetVariant } from "./lib/letter-set-resolve";
 import type { Magnet3D } from "./fridge-3d-view";
-import { buildLetterTileTextures } from "./lib/letter-tile-textures";
+import { buildLetterTileTextures, LETTER_TILE_CORNER_RATIO } from "./lib/letter-tile-textures";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { useIsTouch } from "./use-is-touch";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -107,6 +112,7 @@ async function renderLetterSetBlob(
   tiles: LetterTileMap,
   colors: readonly string[],
   useTiles = true,
+  withBorder = true,
 ): Promise<Blob> {
   const cols = Math.min(9, Math.max(5, Math.ceil(Math.sqrt(letters.length))));
   const rows = Math.ceil(letters.length / cols);
@@ -117,6 +123,9 @@ async function renderLetterSetBlob(
   const w = pad * 2 + cols * tileW + (cols - 1) * gap;
   const h = pad * 2 + rows * tileH + (rows - 1) * gap;
   const scale = 3;
+  // Radio de esquina ÚNICO para editor/PNG/textura 3D (antes acá era 18 = 15% y divergía de la
+  // textura 3D, 10% — deuda cerrada 2026-09-05 alineando el compositor a LETTER_TILE_CORNER_RATIO).
+  const radius = LETTER_TILE_CORNER_RATIO * tileW;
 
   const imgs = useTiles
     ? await Promise.all(
@@ -139,16 +148,18 @@ async function renderLetterSetBlob(
     const x = pad + (i % cols) * (tileW + gap);
     const y = pad + Math.floor(i / cols) * (tileH + gap);
     const color = colors[i % colors.length];
-    roundRect(ctx, x, y, tileW, tileH, 18);
+    roundRect(ctx, x, y, tileW, tileH, radius);
     ctx.fillStyle = "#ffffff";
     ctx.fill();
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = color;
-    ctx.stroke();
+    if (withBorder) {
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+    }
     const img = imgs[i];
     if (img) {
       ctx.save();
-      roundRect(ctx, x + 4, y + 4, tileW - 8, tileH - 8, 14);
+      roundRect(ctx, x + 4, y + 4, tileW - 8, tileH - 8, radius - 4);
       ctx.clip();
       const s = Math.min((tileW - 12) / img.width, (tileH - 12) / img.height);
       ctx.drawImage(
@@ -263,6 +274,9 @@ export function LetterSetEditor({
   });
   // Variante efectiva (se re-resuelve al cambiar tema/idioma → cotización precisa).
   const [currentVariantId, setCurrentVariantId] = useState(variantId);
+  // Lucy 2026-09-05 — opción de diseño "Con borde / Sin borde" (mismo precio). Default CON borde:
+  // es el comportamiento histórico, así los diseños guardados antes de la opción quedan válidos.
+  const [withBorder, setWithBorder] = useState(true);
 
   const letters = useMemo(
     () => (letterSet === "vowels" ? VOWELS : (alphabets[language] ?? alphabets.es)),
@@ -323,7 +337,7 @@ export function LetterSetEditor({
     if (building3D) return;
     setBuilding3D(true);
     try {
-      setBoard3D(await buildLetterTileTextures(letters, activeTiles, effectiveColors));
+      setBoard3D(await buildLetterTileTextures(letters, activeTiles, effectiveColors, withBorder));
     } catch (err) {
       // #14 — detalle técnico al log; al cliente un mensaje claro es-CO.
       console.error("[studio.letter-set.3d]", err);
@@ -379,11 +393,11 @@ export function LetterSetEditor({
     try {
       let blob: Blob;
       try {
-        blob = await renderLetterSetBlob(letters, activeTiles, effectiveColors);
+        blob = await renderLetterSetBlob(letters, activeTiles, effectiveColors, true, withBorder);
       } catch {
         // Si alguna ficha ilustrada no carga, el set se dibuja con la letra de color: el cliente
         // ve —y aprueba— exactamente lo que se imprimiría en ese caso.
-        blob = await renderLetterSetBlob(letters, activeTiles, effectiveColors, false);
+        blob = await renderLetterSetBlob(letters, activeTiles, effectiveColors, false, withBorder);
       }
       setPreviewBlob(blob);
       setPreviewDataUrl(await blobToDataUrl(blob));
@@ -414,6 +428,7 @@ export function LetterSetEditor({
         colors: effectiveColors,
         styleSetId: styleId,
         language,
+        withBorder,
       });
       if (!created.ok) {
         setPreviewError(created.message);
@@ -576,6 +591,52 @@ export function LetterSetEditor({
         {/* Picker de tema de color — control compartido con Nombre (barajar al re-clic). */}
         <ThemePicker themeId={themeId} customized={customized} onApply={applyTheme} />
 
+        {/* Lucy 2026-09-05 — opción de diseño "Con borde / Sin borde" (mismo precio). Es una
+            decisión de LIENZO que viaja en Design.metadata y se refleja en el PNG de producción,
+            no una variante del catálogo. Default "Con borde": lo que siempre se imprimió. */}
+        <div className="mt-5">
+          <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
+            {texts.letras.bordeTitulo}
+            <span className="text-brand-muted ml-2 text-xs font-normal">
+              {texts.letras.bordeHint}
+            </span>
+          </p>
+          <div
+            role="radiogroup"
+            aria-label={texts.letras.bordeTitulo}
+            className="flex flex-wrap gap-2"
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={withBorder}
+              onClick={() => setWithBorder(true)}
+              className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
+                withBorder
+                  ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                  : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
+              }`}
+            >
+              <span aria-hidden="true">◻️</span>
+              {texts.letras.bordeCon}
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!withBorder}
+              onClick={() => setWithBorder(false)}
+              className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
+                !withBorder
+                  ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                  : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
+              }`}
+            >
+              <span aria-hidden="true">⬜</span>
+              {texts.letras.bordeSin}
+            </button>
+          </div>
+        </div>
+
         {/* Preview del set (WYSIWYG) — cada ficha es seleccionable para pintarla a gusto. */}
         <div className="bg-brand-cream/50 mt-5 rounded-2xl p-5">
           {selectedIndex === null && (
@@ -601,10 +662,14 @@ export function LetterSetEditor({
                     isSel ? "ring-brand-purple scale-105 ring-2 ring-offset-2" : "hover:scale-105"
                   }`}
                 >
-                  {/* Ficha VERTICAL (aspect 5/6.5) — espeja el imán físico rectangular. */}
+                  {/* Ficha VERTICAL (aspect 5/6.5) — espeja el imán físico rectangular. Sin borde:
+                      la ficha queda blanca a ras (el PNG y la textura 3D hacen lo mismo). */}
                   <div
                     className="flex aspect-[5/6.5] w-full items-center justify-center overflow-hidden rounded-xl bg-white"
-                    style={{ border: `2px solid ${color}`, boxShadow: `0 3px 10px ${color}22` }}
+                    style={{
+                      border: withBorder ? `2px solid ${color}` : "2px solid transparent",
+                      boxShadow: `0 3px 10px ${color}22`,
+                    }}
                   >
                     {tile ? (
                       // eslint-disable-next-line @next/next/no-img-element -- ficha del bucket público

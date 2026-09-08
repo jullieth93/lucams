@@ -431,6 +431,10 @@ const LetterSetDesignInputSchema = z.object({
   styleSetId: z.string().max(40).nullable().optional(),
   // Ola 2A — idioma elegido en el Estudio (opcional; default = el de la variante).
   language: z.enum(["es", "en"]).optional(),
+  // Lucy 2026-09-05 — opción de diseño "Con borde / Sin borde" (mismo precio). Default true:
+  // es lo que siempre se imprimió, así los clientes con JS cacheado previo quedan retrocompatibles.
+  // z.boolean() rechaza valores que no sean booleanos de plano.
+  withBorder: z.boolean().default(true),
 });
 
 export async function createLetterSetDesignAction(

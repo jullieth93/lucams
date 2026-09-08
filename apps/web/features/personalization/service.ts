@@ -686,9 +686,10 @@ export async function createNameDesign(opts: {
 //  Diseño de SET DE LETRAS (Completo/Vocales) con color de marco (ADR-057)
 // ──────────────────────────────────────────────────────────────────
 //
-// El producto es un set fijo (todas las letras); lo único que el cliente personaliza es
-// el COLOR DEL MARCO (un cambio físico real — WYSIWYG). Se guarda el tema + las letras en
-// metadata; canvasData v1 → reutiliza finalize/carrito. Valida el marcador letterSet.
+// El producto es un set fijo (todas las letras); el cliente personaliza el COLOR DEL MARCO por
+// ficha y (Lucy 2026-09-05) la opción de diseño "Con borde / Sin borde" — ambos cambios físicos
+// reales reflejados en el PNG de producción que sube el cliente (WYSIWYG). Se guarda el tema +
+// las letras en metadata; canvasData v1 → reutiliza finalize/carrito. Valida el marcador letterSet.
 
 export async function createLetterSetDesign(opts: {
   productId: string;
@@ -701,6 +702,10 @@ export async function createLetterSetDesign(opts: {
   /** Ola 2A — idioma elegido EN EL ESTUDIO (el cliente ya no lo elige en la PDP). Si viene,
    *  manda sobre el de la variante: define el alfabeto (es incluye Ñ) y queda en metadata. */
   language?: "es" | "en";
+  /** Lucy 2026-09-05 — opción de diseño "Con borde / Sin borde" (mismo precio). Default true
+   *  (retrocompatible): los diseños guardados antes de la opción no traen la clave y se tratan
+   *  como con borde. */
+  withBorder?: boolean;
   customerId: string | null;
   sessionId: string | null;
 }): Promise<{ id: string; letters: string[]; language: string }> {
@@ -765,6 +770,10 @@ export async function createLetterSetDesign(opts: {
         colors: Array.isArray(opts.colors) ? opts.colors.slice(0, letters.length) : [],
         // Estilo ilustrado elegido (para producción). null = "Solo letra".
         styleSetId: opts.styleSetId ?? null,
+        // Opción de diseño "Con borde / Sin borde" (Lucy 2026-09-05). Siempre se persiste el
+        // booleano: default true = con borde (comportamiento histórico, retrocompatible con
+        // diseños que no traen la clave).
+        withBorder: opts.withBorder !== false,
       },
     },
   });

@@ -100,7 +100,7 @@ vi.mock("./service", () => ({
   },
   createDraftDesign: vi.fn(),
   createNameDesign: vi.fn(),
-  createLetterSetDesign: vi.fn(),
+  createLetterSetDesign: vi.fn(async () => ({ id: "design_ls1", letters: ["A"], language: "es" })),
   finalizeDesign: async () => {
     state.finalizeCalls += 1;
     if (state.finalizeError) throw state.finalizeError;
@@ -117,7 +117,55 @@ vi.mock("./service", () => ({
   },
 }));
 
-import { finalizeDesignAction, saveCanvasAction, uploadDesignAssetAction } from "./actions";
+import {
+  createLetterSetDesignAction,
+  finalizeDesignAction,
+  saveCanvasAction,
+  uploadDesignAssetAction,
+} from "./actions";
+import { createLetterSetDesign } from "./service";
+
+const VALID_LETTERSET_INPUT = {
+  productId: "prod_1",
+  variantId: "var_1",
+  frameTheme: "arcoiris",
+};
+
+describe("createLetterSetDesignAction · opción de borde (Lucy 2026-09-05)", () => {
+  beforeEach(() => {
+    vi.mocked(createLetterSetDesign).mockClear();
+  });
+
+  it("acepta withBorder: false y lo pasa al service", async () => {
+    const result = await createLetterSetDesignAction({
+      ...VALID_LETTERSET_INPUT,
+      withBorder: false,
+    });
+    expect(result).toMatchObject({ ok: true, designId: "design_ls1" });
+    expect(createLetterSetDesign).toHaveBeenCalledWith(
+      expect.objectContaining({ withBorder: false }),
+    );
+  });
+
+  it("sin withBorder defaultea a true (retrocompatible con clientes cacheados previos)", async () => {
+    const result = await createLetterSetDesignAction(VALID_LETTERSET_INPUT);
+    expect(result.ok).toBe(true);
+    expect(createLetterSetDesign).toHaveBeenCalledWith(
+      expect.objectContaining({ withBorder: true }),
+    );
+  });
+
+  it("rechaza valores inválidos (string/number/null) sin tocar el service", async () => {
+    for (const bad of ["sin", 0, 1, null]) {
+      const result = await createLetterSetDesignAction({
+        ...VALID_LETTERSET_INPUT,
+        withBorder: bad,
+      });
+      expect(result).toMatchObject({ ok: false, message: "Datos inválidos." });
+    }
+    expect(createLetterSetDesign).not.toHaveBeenCalled();
+  });
+});
 
 function makeUploadForm(): FormData {
   const fd = new FormData();
