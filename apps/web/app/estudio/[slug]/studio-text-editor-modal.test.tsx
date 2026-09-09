@@ -68,3 +68,68 @@ describe("StudioTextEditorForm — estado de procesamiento de «Aplicar» (Lucy 
     await waitFor(() => expect(onApply).toHaveBeenCalledWith(null));
   });
 });
+
+describe("StudioTextEditorForm — placeholder gris, nunca valor precargado (Ola 25, 2026-09-09)", () => {
+  it("el input arranca VACÍO y muestra el default de la plantilla como placeholder", () => {
+    render(<StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />);
+    const input = screen.getByRole("textbox");
+    // Regla del dueño: la tarjeta nace sin texto — el default NO es el valor.
+    expect(input).toHaveValue("");
+    expect(input).toHaveAttribute("placeholder", "Escribe tu mensaje");
+  });
+
+  it("aplicar SIN escribir nada → null (la tarjeta queda sin texto, nada se imprime)", async () => {
+    const onApply = vi.fn();
+    render(<StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />);
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    await waitFor(() => expect(onApply).toHaveBeenCalledWith(null));
+  });
+
+  it("escribir EXACTAMENTE el default SÍ guarda override.text (el cliente lo eligió)", async () => {
+    // Antes el default precargado hacía que escribirlo fuera un no-op (text ===
+    // layer.text → sin override → no se imprimía). Con el input vacío de entrada,
+    // tipearlo es una elección explícita → viaja como texto del cliente.
+    const onApply = vi.fn();
+    render(<StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Escribe tu mensaje" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    await waitFor(() => expect(onApply).toHaveBeenCalledWith({ text: "Escribe tu mensaje" }));
+  });
+
+  it("con texto del cliente previo, el input SÍ arranca con ese texto (re-edición)", () => {
+    render(
+      <StudioTextEditorForm
+        layer={LAYER}
+        currentOverride={{ text: "Mi viaje" }}
+        onApply={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("textbox")).toHaveValue("Mi viaje");
+  });
+
+  it("borrar el texto que tenía y aplicar → null (vacío = sin texto en la tarjeta)", async () => {
+    const onApply = vi.fn();
+    render(
+      <StudioTextEditorForm
+        layer={LAYER}
+        currentOverride={{ text: "Mi viaje" }}
+        onApply={onApply}
+      />,
+    );
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    await waitFor(() => expect(onApply).toHaveBeenCalledWith(null));
+  });
+
+  it("«Volver al original» deja el input vacío (el default vuelve como placeholder gris)", () => {
+    render(
+      <StudioTextEditorForm
+        layer={LAYER}
+        currentOverride={{ text: "Mi viaje" }}
+        onApply={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /volver al original/i }));
+    expect(screen.getByRole("textbox")).toHaveValue("");
+  });
+});

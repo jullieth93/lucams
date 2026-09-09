@@ -356,8 +356,9 @@ async function renderSlotCanvas(
       //     Instagram conserva la geometría de su chrome (sin inset).
       //  3. Tira photobooth: la ventana se inserta por posición (stripPhotoRect):
       //     borde exterior first/last + media canaleta entre fotos (2026-09-08).
-      //     Ola 23 — placeholder a sangre total (toggle "Sin borde") → SIN marco
-      //     exterior, canaletas intactas (isStripBorderless, misma detección del editor).
+      //     Ola 25 — placeholder a sangre total (toggle "Sin borde") → celda
+      //     CONTINUA: sin marco exterior NI canaletas (isStripBorderless, misma
+      //     detección del editor).
       let ph = phRaw;
       if (frameFullBleed && simpleCard && !useFullStage) {
         ph = {
@@ -609,9 +610,10 @@ export async function renderProductionSlotsCanvas(opts: {
   const mod = await loadCanvas(); // lazy: un binario faltante → NEEDS_KONVA (fallback), no crash.
   const out: Buffer[] = [];
   const slots = [...opts.slots].sort((a, b) => a.slotIndex - b.slotIndex);
-  // Ola 4 — tira photobooth (gridCols=1 + gridGap=0): el borde exterior de la pieza
-  // continua va solo en la primera/última celda; entre fotos consecutivas va la
-  // media canaleta del color del marco (stripPhotoRect, regla 2026-09-08).
+  // Ola 4 — tira photobooth (gridCols=1 + gridGap=0): CON borde la pieza continua
+  // lleva borde exterior solo en la primera/última celda y media canaleta del color
+  // del marco entre fotos; SIN borde (Ola 25) las fotos se tocan sin líneas
+  // (stripPhotoRect, regla 2026-09-08/09 — misma matemática que el editor).
   const strip = isStripTemplate(opts.unitTemplate);
   for (const [index, slot] of slots.entries()) {
     out.push(

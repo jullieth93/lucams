@@ -877,9 +877,10 @@ describe("renderProductionSlotsCanvas — Ola 4 (Lucy 2026-07-23)", () => {
     expect((await rgbaAt(first, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(PINK);
   });
 
-  // T5b — Ola 23 (Lucy 2026-09-08): tira SIN BORDE (toggle "Sin borde" de la toolbar →
-  // placeholder reescrito a sangre total de la celda). Sin marco exterior (las fotos
-  // llegan a los bordes de la tira) pero las canaletas entre fotos se conservan.
+  // T5b — Ola 25 (Lucy 2026-09-09): tira SIN BORDE (toggle "Sin borde" de la toolbar →
+  // placeholder reescrito a sangre total de la celda). La pieza queda CONTINUA de
+  // verdad: sin marco exterior Y SIN CANALETAS — las fotos se tocan borde con borde
+  // (Ola 23 conservaba las canaletas; el dueño las marcó con X en STG: sin líneas).
   const stripUnitSinBorde = {
     ...stripUnit,
     layers: [
@@ -890,7 +891,7 @@ describe("renderProductionSlotsCanvas — Ola 4 (Lucy 2026-07-23)", () => {
     ],
   };
 
-  it("T5b tira SIN borde: foto a sangre en los bordes externos, canaletas intactas", async () => {
+  it("T5b tira SIN borde: foto a sangre en TODOS los bordes de la celda, sin líneas entre fotos", async () => {
     const bufs = await renderProductionSlotsCanvas({
       unitTemplate: stripUnitSinBorde,
       slots: stripSlots,
@@ -900,21 +901,23 @@ describe("renderProductionSlotsCanvas — Ola 4 (Lucy 2026-07-23)", () => {
       frameFullBleed: true,
     });
     const [first, middle, last] = bufs;
-    // Primera celda: la foto toca el borde SUPERIOR de la tira (antes quedaba el inset de 12px)…
+    // Primera celda: la foto toca el borde SUPERIOR de la tira y el INFERIOR de la
+    // celda (sin canaleta hacia la segunda foto — antes quedaban 8px blancos).
     expect((await rgbaAt(first, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(BLUE);
-    // …pero la canaleta hacia la segunda foto se conserva.
-    expect((await rgbaAt(first, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
-    // Celda del medio: canaleta arriba y abajo (sin cambios vs. con borde)…
-    expect((await rgbaAt(middle, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
-    expect((await rgbaAt(middle, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    expect((await rgbaAt(first, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(BLUE);
+    // Celda del medio: foto de borde a borde, arriba y abajo (cero canaletas)…
+    expect((await rgbaAt(middle, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(BLUE);
+    expect((await rgbaAt(middle, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(BLUE);
     // …y los LADOS van a sangre (x=1 ya es foto; con borde había margen de 12px).
     expect((await rgbaAt(middle, 1 * 3, 200 * 3)).slice(0, 3)).toEqual(BLUE);
-    // Última celda: la foto toca el borde INFERIOR de la tira.
+    // Última celda: la foto toca el borde INFERIOR de la tira y el superior.
     expect((await rgbaAt(last, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(BLUE);
-    expect((await rgbaAt(last, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    expect((await rgbaAt(last, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(BLUE);
   });
 
-  it("T5b tira SIN borde CON color: canaletas del color elegido, bordes externos a sangre", async () => {
+  it("T5b tira SIN borde CON color residual: tampoco hay líneas — la foto lo cubre todo", async () => {
+    // Otro agente desactiva la paleta en sin-borde (el color no aplica), pero si un
+    // canvasData viejo trae borderColor, la regla manda igual: SIN canaletas ni marco.
     const bufs = await renderProductionSlotsCanvas({
       unitTemplate: stripUnitSinBorde,
       slots: stripSlots,
@@ -926,8 +929,8 @@ describe("renderProductionSlotsCanvas — Ola 4 (Lucy 2026-07-23)", () => {
     const [first] = bufs;
     // Borde superior externo: foto a sangre (NADA de marco rosa)…
     expect((await rgbaAt(first, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(BLUE);
-    // …y la canaleta entre fotos sí toma el color elegido.
-    expect((await rgbaAt(first, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(PINK);
+    // …y el borde inferior de la celda también es foto (sin canaleta del color).
+    expect((await rgbaAt(first, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(BLUE);
   });
 
   // T6 — Ola 23 (Lucy 2026-09-08): el MARCO es de ancho CONSTANTE bajo zoom-out/pan.
@@ -1006,13 +1009,12 @@ describe("renderProductionSlotsCanvas — Ola 24 (Lucy 2026-09-09)", () => {
     photoTransform: { offsetX: 0, offsetY: 0, scale: 1 },
   };
   const BLUE: [number, number, number] = [0x3a, 0xa0, 0xff]; // fakePhoto
-  const PINK: [number, number, number] = [0xe8, 0x5b, 0x9f];
   const nearWhiteRgb = [255, 255, 255];
 
-  // T7 — Tira SIN BORDE + zoom-out: las canaletas entre fotos conservan el color y
-  // su ancho; el hueco que deja la foto alejada es NEUTRO (blanco de la tarjeta sin
-  // teñir), NUNCA el color del marco (no hay inundación). Los bordes externos de la
-  // tira siguen a sangre cuando la foto cubre la celda (T5b, scale 1).
+  // T7 — Tira SIN BORDE + zoom-out: CERO líneas entre fotos (Ola 25: las canaletas
+  // se retiraron del modo sin borde) y el hueco que deja la foto alejada es NEUTRO
+  // (blanco de la tarjeta sin teñir), NUNCA el color del marco (no hay inundación).
+  // Con la foto cubriendo la celda (scale 1) los bordes quedan a sangre (T5b).
   const stripUnitSinBorde = {
     version: 1 as const,
     stage: { width: 390, height: 400 },
@@ -1032,7 +1034,7 @@ describe("renderProductionSlotsCanvas — Ola 24 (Lucy 2026-09-09)", () => {
     photoTransform: { offsetX: 0, offsetY: 0, scale: 0.5 },
   }));
 
-  it("T7 tira SIN borde + zoom-out: canaletas del color CONSTANTES, hueco neutro, sin inundación", async () => {
+  it("T7 tira SIN borde + zoom-out: sin canaletas NI inundación — hueco neutro en toda la celda", async () => {
     const bufs = await renderProductionSlotsCanvas({
       unitTemplate: stripUnitSinBorde,
       slots: stripSlotsOut,
@@ -1042,28 +1044,33 @@ describe("renderProductionSlotsCanvas — Ola 24 (Lucy 2026-09-09)", () => {
       frameFullBleed: true,
     });
     const [first, middle] = bufs;
-    // Celda del medio: ventana = (0,8)-(390,392). Con scale 0.5 la foto cubre
-    // 195×195 centrada (x 97.5..292.5, y 102.5..297.5 en px de stage).
-    // Hueco DENTRO de la ventana (x=30 y x=360) → blanco neutro, NO rosa.
+    // Celda del medio: ventana = celda completa (0,0)-(390,400). Con scale 0.5 la
+    // foto cubre 195×195 centrada (x 97.5..292.5, y 102.5..297.5 en px de stage).
+    // Hueco DENTRO de la celda (x=30 y x=360) → blanco neutro, NO rosa.
     expect((await rgbaAt(middle, 30 * 3, 200 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
     expect((await rgbaAt(middle, 360 * 3, 200 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
-    // Canaletas arriba/abajo → rosa del marco, ancho intacto (8px de stage).
-    expect((await rgbaAt(middle, 195 * 3, 2 * 3)).slice(0, 3)).toEqual(PINK);
-    expect((await rgbaAt(middle, 195 * 3, 396 * 3)).slice(0, 3)).toEqual(PINK);
+    // Arriba/abajo de la celda → blanco neutro también: las canaletas rosas de Ola 23
+    // ya NO existen en sin borde (el dueño las tachó en STG 2026-09-09).
+    expect((await rgbaAt(middle, 195 * 3, 2 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    expect((await rgbaAt(middle, 195 * 3, 396 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
     // Centro: la foto achicada sigue ahí.
     expect((await rgbaAt(middle, 195 * 3, 200 * 3)).slice(0, 3)).toEqual(BLUE);
-    // Primera celda: el borde EXTERIOR superior (y=1) tampoco se inunda — hueco
-    // neutro (la foto a sangre solo cuando cubre la celda, ver T5b con scale 1).
+    // Primera celda: misma regla — ni borde exterior ni canaleta, todo hueco neutro.
     expect((await rgbaAt(first, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
-    expect((await rgbaAt(first, 195 * 3, 396 * 3)).slice(0, 3)).toEqual(PINK);
+    expect((await rgbaAt(first, 195 * 3, 396 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    // Y NADA del color del marco en toda la franja vertical de la celda.
+    const pinkInk = (r: number, g: number, b: number, a: number) =>
+      a > 200 && r > 200 && g < 140 && b > 120;
+    expect(await hasPixel(middle, { x: 0, y: 0, w: 390 * 3, h: 400 * 3 }, pinkInk)).toBe(false);
   });
 
   // T8 — Textos de la plantilla INSTAGRAM ("@tu_usuario", "Bogotá, Colombia",
   // "362 me gusta", "Tu título acá", "#mirecuerdo #lucamsshop"): todos son capas
-  // EDITABLES → placeholder de pantalla que NUNCA se imprime sin override del
-  // cliente (misma regla que la Clásica, T3). Sin capa asset acá: el chrome SVG
-  // real siempre cae al cliente (fuentes horneadas) — lo que se congela es la
-  // regla de TEXTO, que es la que imprime o no imprime.
+  // EDITABLES → placeholder que NUNCA se imprime sin override del cliente (misma
+  // regla que la Clásica, T3) y que desde Ola 25 TAMPOCO se dibuja en pantalla.
+  // Sin capa asset acá: el chrome SVG real siempre cae al cliente (fuentes
+  // horneadas) — lo que se congela es la regla de TEXTO, que es la que imprime
+  // o no imprime.
   const igTextsUnit = {
     version: 1 as const,
     stage: { width: 450, height: 600 },
@@ -1080,6 +1087,18 @@ describe("renderProductionSlotsCanvas — Ola 24 (Lucy 2026-09-09)", () => {
         fontSize: 16,
         fill: "#262626",
         fontWeight: "bold",
+        align: "left",
+        editable: true,
+      },
+      {
+        id: "location",
+        type: "text",
+        x: 68,
+        y: 46,
+        text: "Bogotá, Colombia",
+        fontFamily: "Inter",
+        fontSize: 12,
+        fill: "#8E8E8E",
         align: "left",
         editable: true,
       },
@@ -1123,11 +1142,15 @@ describe("renderProductionSlotsCanvas — Ola 24 (Lucy 2026-09-09)", () => {
       },
     ],
   };
-  // Zonas en px de salida (stage × 3): header (username) y footer (likes/caption/hashtags).
-  const igHeaderZone = { x: 60 * 3, y: 14 * 3, w: 240 * 3, h: 30 * 3 };
+  // Zonas en px de salida (stage × 3): header (username y=28 + location y=46) y
+  // footer (likes/caption/hashtags).
+  const igHeaderZone = { x: 60 * 3, y: 14 * 3, w: 240 * 3, h: 44 * 3 };
   const igFooterZone = { x: 15 * 3, y: 498 * 3, w: 420 * 3, h: 60 * 3 };
   const darkInk = (r: number, g: number, b: number, a: number) =>
     a > 200 && r < 120 && g < 120 && b < 160;
+  // Tinta gris de la ubicación (#8E8E8E) — el header zone también la barre.
+  const grayInk = (r: number, g: number, b: number, a: number) =>
+    a > 200 && Math.abs(r - g) < 12 && Math.abs(g - b) < 12 && r > 100 && r < 190;
   const hashtagBlue = (r: number, g: number, b: number, a: number) =>
     a > 200 && b > 90 && r < 60 && g < 90;
 
@@ -1140,6 +1163,7 @@ describe("renderProductionSlotsCanvas — Ola 24 (Lucy 2026-09-09)", () => {
       borderColor: null,
     });
     expect(await hasPixel(bufs[0], igHeaderZone, darkInk)).toBe(false);
+    expect(await hasPixel(bufs[0], igHeaderZone, grayInk)).toBe(false); // "Bogotá, Colombia"
     expect(await hasPixel(bufs[0], igFooterZone, darkInk)).toBe(false);
     expect(await hasPixel(bufs[0], igFooterZone, hashtagBlue)).toBe(false);
   });

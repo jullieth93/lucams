@@ -97,8 +97,13 @@ export function StudioTextEditorForm({
   onApply,
 }: StudioTextEditorFormProps) {
   const texts = useStudioTexts();
-  // Estado local inicializado con valores del layer + override actual.
-  const [text, setText] = useState(currentOverride?.text ?? layer.text ?? "");
+  // Ola 25 (Lucy 2026-09-09) — el input arranca VACÍO cuando no hay texto del
+  // cliente: el default de la plantilla ("Escribe tu mensaje", "@tu_usuario"…) se
+  // muestra como PLACEHOLDER gris del input (atributo HTML), no como valor
+  // precargado. Aplicar sin escribir → la tarjeta queda sin texto (nada se
+  // imprime); el default nunca viaja como override. El estado inicial solo toma
+  // el texto si el cliente ya escribió uno (re-editar).
+  const [text, setText] = useState(currentOverride?.text ?? "");
   const [fontFamily, setFontFamily] = useState(
     currentOverride?.fontFamily ?? layer.fontFamily ?? FONT_PRESETS[0].fontFamily,
   );
@@ -143,13 +148,17 @@ export function StudioTextEditorForm({
   const handleApply = () => {
     if (applying) return;
     const override: TextOverride = {};
-    if (text !== layer.text) override.text = text;
+    // Ola 25 — el texto solo viaja si el cliente ESCRIBIÓ algo (y difiere de lo
+    // que ya tenía). Vacío = sin texto en la tarjeta: no se guarda override.text
+    // (el default de la plantilla es solo el placeholder gris del input).
+    const currentText = currentOverride?.text ?? "";
+    if (text.trim() !== "" && text !== currentText) override.text = text;
     if (fontFamily !== (layer.fontFamily ?? FONT_PRESETS[0].fontFamily))
       override.fontFamily = fontFamily;
     if (fill !== (layer.fill ?? "#262626")) override.fill = fill;
     if (fontSize !== baseFontSize) override.fontSize = fontSize;
     if (computedFontWeight !== baseFontWeight) override.fontWeight = computedFontWeight;
-    // Si nada cambió, limpiar el override existente (null)
+    // Si nada cambió (o solo se borró el texto), limpiar el override existente (null)
     const hasChanges = Object.keys(override).length > 0;
     setApplying(true);
     // El commit va un frame DESPUÉS para que el spinner pinte primero (si el commit
@@ -161,7 +170,9 @@ export function StudioTextEditorForm({
   };
 
   const handleReset = () => {
-    setText(layer.text);
+    // Ola 25 — "vacío" es el estado por defecto del texto: el input queda en
+    // blanco y el default de la plantilla se ve como placeholder gris.
+    setText("");
     setFontFamily(layer.fontFamily ?? FONT_PRESETS[0].fontFamily);
     setFill(layer.fill ?? "#262626");
     setFontSize(baseFontSize);
@@ -205,7 +216,9 @@ export function StudioTextEditorForm({
           onChange={(e) => setText(e.target.value)}
           maxLength={120}
           className="border-brand-purple/15 text-brand-purple-dark focus:border-brand-turquoise focus:ring-brand-turquoise/30 w-full rounded-md border px-3 py-2 text-sm transition-colors focus:ring-2 focus:outline-none"
-          placeholder={texts.texto.campoPlaceholder}
+          // Ola 25 — el default de la plantilla se muestra como placeholder gris
+          // del input (no como valor): aplicar sin escribir deja la tarjeta vacía.
+          placeholder={layer.text?.trim() ? layer.text : texts.texto.campoPlaceholder}
           autoFocus
         />
       </div>

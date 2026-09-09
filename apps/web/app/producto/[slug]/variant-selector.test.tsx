@@ -18,9 +18,14 @@
  * fija el carrito; el precio del pack está en el bloque PRECIO). Se mantiene
  * el "$X c/u".
  *
- * Stepper de cantidad (Lucy 2026-07-22): cuando la dimensión de cantidad es
- * 1..N contigua (fotoimanes/separadores 1–6), se muestra stepper +/− con
- * "$X c/u" en vez de chips. Los tests del stepper envuelven el selector en
+ * Stepper de cantidad (Lucy 2026-07-22; universal 2026-09-09, owner): TODA
+ * dimensión de cantidad (quantity/photoSlots) con valores enteros positivos se
+ * muestra como stepper +/− con "$X c/u" en vez de chips — el ± salta entre los
+ * tamaños que EXISTEN como variante (sets no contiguos incluidos: polaroid
+ * {1,10} de STG salta de 1 a 10). EXCEPCIÓN: la composición de los híbridos
+ * (quantityStepperExclusions — tiras "Fotos por tira" 3/4) conserva chips; el
+ * test de tiras pasa la exclusión tal como lo hace la página
+ * (PDP_QUANTITY_CHIP_DIMS). Los tests del stepper envuelven el selector en
  * SelectedVariantProvider (la fuente de verdad del buy-box, H12) para ejercitar
  * la interacción real: click +/− → setSelectedId → re-render.
  */
@@ -87,9 +92,12 @@ describe("VariantSelector", () => {
     expect(screen.getAllByRole("group", { name: "Fotos" })).toHaveLength(1);
     expect(screen.queryByRole("group", { name: "Cantidad" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
-    // Los chips de fotos y tamaño siguen completos.
+    // Fotos es el stepper de pack size (2026-09-09 — universal en dims de
+    // cantidad numéricas, aunque el set 1/3/5 no sea contiguo): solo −/+.
     const fotos = screen.getByRole("group", { name: "Fotos" });
-    expect(within(fotos).getAllByRole("button")).toHaveLength(3);
+    expect(within(fotos).getAllByRole("button")).toHaveLength(2);
+    expect(within(fotos).getByLabelText("Aumentar unidades")).toBeInTheDocument();
+    // Los chips de tamaño siguen completos.
     const tamano = screen.getByRole("group", { name: "Tamaño" });
     expect(within(tamano).getAllByRole("button")).toHaveLength(2);
   });
@@ -106,8 +114,14 @@ describe("VariantSelector", () => {
     render(<VariantSelector productBasePrice={100_000} variants={variants} />);
     expect(screen.getAllByRole("group", { name: "Fotos" })).toHaveLength(1);
     expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
-    expect(screen.getByText("6 fotos")).toBeInTheDocument();
-    expect(screen.getByText("12 fotos")).toBeInTheDocument();
+    // Fotos es stepper de pack size (2026-09-09 — universal en packs numéricos);
+    // sin selección muestra el mínimo del rango (6) y solo los botones −/+.
+    const fotos = screen.getByRole("group", { name: "Fotos" });
+    expect(within(fotos).getByLabelText("Aumentar unidades")).toBeInTheDocument();
+    expect(within(fotos).getByText("6 fotos")).toBeInTheDocument();
+    // Tamaño sigue en chips (no es dimensión de cantidad).
+    expect(screen.getByText("7×9 cm")).toBeInTheDocument();
+    expect(screen.getByText("6×8 cm")).toBeInTheDocument();
   });
 
   it("muestra la dimensión Forma cuando shape tiene más de un valor", () => {
@@ -477,10 +491,14 @@ describe("VariantSelector — pack size 'Unidades' en la PDP (regla 2026-09-08b)
         variants={variants}
         hiddenDimensions={["quantity"]}
         dimensionLabels={{ photoSlots: "Fotos por tira" }}
+        // Composición del híbrido → chips, NO stepper (la página la pasa vía
+        // PDP_QUANTITY_CHIP_DIMS; sin ella el stepper universal de pack size
+        // — 2026-09-09, owner — se tomaría el 3/4 por ser numérico).
+        quantityStepperExclusions={["photoSlots"]}
       />,
     );
     const fotosPorTira = screen.getByRole("group", { name: "Fotos por tira" });
-    // No contiguo desde 1 (3..4) → chips, no stepper.
+    // Composición del híbrido → chips 3/4, no stepper.
     expect(within(fotosPorTira).getByText("3 fotos")).toBeInTheDocument();
     expect(within(fotosPorTira).getByText("4 fotos")).toBeInTheDocument();
     expect(within(fotosPorTira).queryByLabelText("Aumentar unidades")).not.toBeInTheDocument();
@@ -686,19 +704,124 @@ describe("VariantSelector — stepper de cantidad", () => {
     expect(within(fotos).getByLabelText("Disminuir unidades")).toBeEnabled();
   });
 
-  it("conserva chips (sin stepper) cuando la cantidad NO es 1..N contigua (polaroid 6/9/12/20)", () => {
-    // Ola 18 — photoSlots se etiqueta "Fotos" (fotos por unidad).
+  it("set NO contiguo (6/9/12/20): el stepper salta entre los tamaños que existen, con variante y c/u exactos", () => {
+    // Regla 2026-09-09 (owner): el stepper es el UI UNIVERSAL del pack size en
+    // las familias de tamaño variable — el ± salta entre los valores que tienen
+    // variante real (nunca ofrece tamaños intermedios sin variante). Antes este
+    // set mostraba chips de elección única ("6 fotos o 20 fotos"). Fixture con
+    // la forma real de un pack: UN tamaño, conteos no contiguos.
     const variants = [
-      makeVariant("v-p6", { photoSlots: 6, sizeCm: "7×9", variantStyle: "instagram" }),
-      makeVariant("v-p9", { photoSlots: 9, sizeCm: "6×8", variantStyle: "instagram" }),
-      makeVariant("v-p12", { photoSlots: 12, sizeCm: "6×8", variantStyle: "instagram" }),
-      makeVariant("v-p20", { photoSlots: 20, sizeCm: "4×5", variantStyle: "instagram" }),
+      makeVariant("v-p6", { photoSlots: 6, sizeCm: "7.5×10", variantStyle: "instagram" }, 600_000),
+      makeVariant(
+        "v-p9",
+        { photoSlots: 9, sizeCm: "7.5×10", variantStyle: "instagram" },
+        1_170_000,
+      ),
+      makeVariant(
+        "v-p12",
+        { photoSlots: 12, sizeCm: "7.5×10", variantStyle: "instagram" },
+        1_440_000,
+      ),
+      makeVariant(
+        "v-p20",
+        { photoSlots: 20, sizeCm: "7.5×10", variantStyle: "instagram" },
+        2_200_000,
+      ),
     ];
-    render(<VariantSelector productBasePrice={100_000} variants={variants} />);
+    renderWithProvider(variants, "v-p6");
     const fotos = screen.getByRole("group", { name: "Fotos" });
+    // Sin chips: solo los 2 botones del stepper, arrancando en el mínimo (6).
+    expect(within(fotos).getAllByRole("button")).toHaveLength(2);
     expect(within(fotos).getByText("6 fotos")).toBeInTheDocument();
+    expect(within(fotos).getByLabelText("Disminuir unidades")).toBeDisabled();
+
+    // + salta al siguiente tamaño EXISTENTE (9): variante y c/u exactos.
+    fireEvent.click(within(fotos).getByLabelText("Aumentar unidades"));
+    expect(within(fotos).getByText("9 fotos")).toBeInTheDocument();
+    expect(within(fotos).getByText(`${cop(130_000)} c/u`)).toBeInTheDocument();
+    expect(replace).toHaveBeenLastCalledWith(
+      expect.stringContaining("variant=v-p9"),
+      expect.anything(),
+    );
+
+    // 9 → 12 → 20: al tope del rango, "+" se deshabilita.
+    fireEvent.click(within(fotos).getByLabelText("Aumentar unidades"));
+    fireEvent.click(within(fotos).getByLabelText("Aumentar unidades"));
     expect(within(fotos).getByText("20 fotos")).toBeInTheDocument();
-    expect(within(fotos).queryByLabelText("Aumentar unidades")).not.toBeInTheDocument();
+    expect(within(fotos).getByLabelText("Aumentar unidades")).toBeDisabled();
+
+    // − devuelve al tamaño anterior existente (12), no al entero adyacente (19).
+    fireEvent.click(within(fotos).getByLabelText("Disminuir unidades"));
+    expect(within(fotos).getByText("12 fotos")).toBeInTheDocument();
+    expect(within(fotos).getByText(`${cop(120_000)} c/u`)).toBeInTheDocument();
+    expect(replace).toHaveBeenLastCalledWith(
+      expect.stringContaining("variant=v-p12"),
+      expect.anything(),
+    );
+  });
+
+  it("polaroid {1,10} (set no contiguo del catálogo STG 2026-09): stepper 'Unidades' salta 1 → 10 y vuelve", () => {
+    // Réplica del catálogo real de STG (set-fotoimanes-polaroid): solo existen
+    // las variantes de 1 y 10 fotos (par Con/Sin imán). Reporte del owner: la
+    // PDP mostraba chips de elección única ("1 fotos o 10 fotos"). Con la regla
+    // 2026-09-09 el pack size es stepper −/+ y el ± salta entre 1 y 10 (los
+    // tamaños que EXISTEN) — nunca ofrece los intermedios sin variante.
+    const variants = [
+      makeVariant(
+        "v-pol-1",
+        { sizeCm: "7.5×10", quantity: 1, photoSlots: 1, magnet: true },
+        1_830_000,
+      ),
+      makeVariant(
+        "v-pol-1-sin",
+        { sizeCm: "7.5×10", quantity: 1, photoSlots: 1, magnet: false },
+        1_830_000,
+      ),
+      makeVariant(
+        "v-pol-10",
+        { sizeCm: "7.5×10", quantity: 10, photoSlots: 10, magnet: true },
+        3_480_000,
+      ),
+      makeVariant(
+        "v-pol-10-sin",
+        { sizeCm: "7.5×10", quantity: 10, photoSlots: 10, magnet: false },
+        3_480_000,
+      ),
+    ];
+    render(
+      <SelectedVariantProvider variantIds={variants.map((v) => v.id)} initialId="v-pol-1">
+        <VariantSelector
+          productBasePrice={1_830_000}
+          variants={variants}
+          hiddenDimensions={["variantStyle"]}
+          dimensionLabels={{ photoSlots: "Unidades" }}
+        />
+      </SelectedVariantProvider>,
+    );
+    const unidades = screen.getByRole("group", { name: "Unidades" });
+    // Stepper (no chips): solo −/+ y el conteo; arranca en 1 (mínimo del rango).
+    expect(within(unidades).getAllByRole("button")).toHaveLength(2);
+    expect(within(unidades).getByText("1 foto")).toBeInTheDocument();
+    expect(within(unidades).getByLabelText("Disminuir unidades")).toBeDisabled();
+
+    // + salta al ÚNICO tamaño restante (10): queda elegida la variante de 10
+    // fotos (deep-link, Con imán por el orden magnet-first) y el c/u es exacto.
+    fireEvent.click(within(unidades).getByLabelText("Aumentar unidades"));
+    expect(within(unidades).getByText("10 fotos")).toBeInTheDocument();
+    expect(within(unidades).getByText(`${cop(348_000)} c/u`)).toBeInTheDocument();
+    expect(replace).toHaveBeenLastCalledWith(
+      expect.stringContaining("variant=v-pol-10"),
+      expect.anything(),
+    );
+    expect(within(unidades).getByLabelText("Aumentar unidades")).toBeDisabled();
+
+    // − vuelve a 1.
+    fireEvent.click(within(unidades).getByLabelText("Disminuir unidades"));
+    expect(within(unidades).getByText("1 foto")).toBeInTheDocument();
+    expect(replace).toHaveBeenLastCalledWith(
+      expect.stringContaining("variant=v-pol-1"),
+      expect.anything(),
+    );
   });
 
   it("usa stepper también con UNA sola dimensión de elección (polaroid 7.5×10 qty 1..10, Lucy 2026-07-22)", () => {

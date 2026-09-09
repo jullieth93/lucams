@@ -266,6 +266,8 @@ export type StudioTexts = {
     estiloSinBorde: string;
     /** Ola 24 — aviso cuando la paleta de color queda desactivada por «Sin borde». */
     estiloColorDeshabilitadoHint: string;
+    /** Ola 24 (tiras) — variante del aviso para la tira photobooth (foto a foto, sin canaletas). */
+    estiloColorDeshabilitadoHintTira: string;
     slotEditTitulo: string;
     slotEditTituloIndice: string;
     slotEditDesc: string;
@@ -408,6 +410,12 @@ export type StudioTexts = {
     estiloHint: string;
     coloresTitulo: string;
     coloresHint: string;
+    /** Lucy 2026-09-09 — opción «Con borde / Sin borde» de las fichas (espejo del set de letras). */
+    bordeTitulo: string;
+    bordeHint: string;
+    bordeCon: string;
+    bordeSin: string;
+    bordeSinColoresHint: string;
     swatchTitulo: string;
     menosAria: string;
     masAria: string;
@@ -722,6 +730,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     estiloSinBorde: "Sin borde",
     estiloColorDeshabilitadoHint:
       "Con «Sin borde» la foto cubre toda la tarjeta — el color no aplica.",
+    estiloColorDeshabilitadoHintTira:
+      "Con «Sin borde» las fotos cubren toda la tira — el color no aplica.",
     slotEditTitulo: "Editar {etiqueta}",
     slotEditTituloIndice: "Editar espacio {n}",
     slotEditDesc: "Ajusta la foto y el texto de este espacio",
@@ -867,6 +877,12 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     estiloHint: "· el dibujo de cada ficha 🎨",
     coloresTitulo: "Elige los colores",
     coloresHint: "· toca un tema otra vez para barajar 🎲",
+    bordeTitulo: "Borde de las fichas",
+    bordeHint: "· mismo precio con o sin borde",
+    bordeCon: "Con borde",
+    bordeSin: "Sin borde",
+    bordeSinColoresHint:
+      "Sin borde, las fichas se imprimen sin el marco de color — por eso los colores se desactivan. Vuelve a «Con borde» para pintarlas.",
     swatchTitulo: "Color de la letra {letra}",
     menosAria: "Menos letras",
     masAria: "Más letras",
@@ -1158,6 +1174,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.estiloConBorde": "estudio.texto.estilo-con-borde",
   "texto.estiloSinBorde": "estudio.texto.estilo-sin-borde",
   "texto.estiloColorDeshabilitadoHint": "estudio.texto.estilo-color-deshabilitado-hint",
+  "texto.estiloColorDeshabilitadoHintTira": "estudio.texto.estilo-color-deshabilitado-hint-tira",
   "texto.slotEditTitulo": "estudio.texto.slot-edit-titulo",
   "texto.slotEditTituloIndice": "estudio.texto.slot-edit-titulo-indice",
   "texto.slotEditDesc": "estudio.texto.slot-edit-desc",
@@ -1287,6 +1304,11 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "nombre.estiloHint": "estudio.nombre.estilo-hint",
   "nombre.coloresTitulo": "estudio.nombre.colores-titulo",
   "nombre.coloresHint": "estudio.nombre.colores-hint",
+  "nombre.bordeTitulo": "estudio.nombre.borde-titulo",
+  "nombre.bordeHint": "estudio.nombre.borde-hint",
+  "nombre.bordeCon": "estudio.nombre.borde-con",
+  "nombre.bordeSin": "estudio.nombre.borde-sin",
+  "nombre.bordeSinColoresHint": "estudio.nombre.borde-sin-colores-hint",
   "nombre.swatchTitulo": "estudio.nombre.swatch-titulo",
   "nombre.menosAria": "estudio.nombre.menos-aria",
   "nombre.masAria": "estudio.nombre.mas-aria",

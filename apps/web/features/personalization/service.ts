@@ -602,6 +602,10 @@ export async function createNameDesign(opts: {
   colors?: string[];
   /** ADR-057 — estilo ilustrado elegido (LetterTileSet.id) o null = "Solo letra". */
   styleSetId?: string | null;
+  /** Lucy 2026-09-09 — opción de diseño "Con borde / Sin borde" (mismo precio), espejo del
+   *  set de letras (Lucy 2026-09-05). Default true (retrocompatible): los diseños guardados
+   *  antes de la opción no traen la clave y se tratan como con borde. */
+  withBorder?: boolean;
   customerId: string | null;
   sessionId: string | null;
 }): Promise<{ id: string; display: string; letters: string[] }> {
@@ -667,6 +671,10 @@ export async function createNameDesign(opts: {
         colors: Array.isArray(opts.colors) ? opts.colors.slice(0, norm.letters.length) : [],
         // Estilo ilustrado elegido (para producción). null = "Solo letra".
         styleSetId: opts.styleSetId ?? null,
+        // Opción de diseño "Con borde / Sin borde" (Lucy 2026-09-09, espejo del set de
+        // letras). Siempre se persiste el booleano: default true = con borde (comportamiento
+        // histórico, retrocompatible con diseños que no traen la clave).
+        withBorder: opts.withBorder !== false,
       },
     },
   });

@@ -721,9 +721,10 @@ describe("renderLayer — image-placeholder", () => {
     expect(el.props.layer.y).not.toBe(58);
   });
 
-  it("Ola 23 — tira SIN BORDE (placeholder a sangre total): sin inset exterior, canaleta intacta", () => {
+  it("Ola 25 — tira SIN BORDE (placeholder a sangre total): celda continua, SIN canaletas", () => {
     // El toggle "Sin borde" de la toolbar reescribe el placeholder a sangre total
-    // de la celda → isStripBorderless → stripPhotoRect no aplica el borde exterior.
+    // de la celda → isStripBorderless → stripPhotoRect no aplica NI el borde
+    // exterior NI las canaletas: las fotos se tocan (regla del dueño 2026-09-09).
     const phFullBleed = {
       ...phLayer,
       x: 0,
@@ -744,10 +745,9 @@ describe("renderLayer — image-placeholder", () => {
       undefined,
       { stripPosition: "first" },
     ) as React.ReactElement<{ layer: ImagePlaceholderLayer }>;
-    // Sin inset exterior arriba (la foto toca el borde de la tira)…
+    // La ventana queda INTACTA (sangre total): sin inset arriba y sin canaleta abajo.
     expect(el.props.layer.y).toBe(0);
-    // …y la canaleta hacia la siguiente foto se conserva (gutter = 2% de 450 = 9).
-    expect(el.props.layer.height).toBe(600 - 9);
+    expect(el.props.layer.height).toBe(600);
   });
 
   it("Ola 23 — con photoBackingHex la ventana lleva Rect de respaldo bajo la foto", () => {
@@ -814,7 +814,10 @@ describe("renderLayer — text", () => {
     expect(renderLayer(textLayer, slot(), STAGE, undefined, "rectangle")).toBeNull();
   });
 
-  it("editable sin override → guía atenuada con name edit-indicator", () => {
+  it("editable sin override → SIN texto en la tarjeta: solo la zona de edición vacía", () => {
+    // Ola 25 (Lucy 2026-09-09) — regla estricta: la tarjeta nace VACÍA; el default
+    // de la plantilla no se dibuja en ninguna superficie. En la grilla (editable)
+    // solo queda la zona punteada turquesa + dot + hit invisible (edit-indicator).
     const el = renderLayer(
       textLayer,
       slot(),
@@ -829,32 +832,25 @@ describe("renderLayer — text", () => {
         allowText: true,
       },
     ) as React.ReactElement;
-    // renderText envuelve en Group con Rect dashed + dot + Text
-    const text = (el.props as { children: Array<React.ReactElement | null> }).children
-      .filter(Boolean)
-      .find((c) => (c as React.ReactElement).key === "caption-text") as React.ReactElement<{
-      name?: string;
-      opacity?: number;
-      listening?: boolean;
-      text?: string;
-      fill?: string;
-      fontSize?: number;
-    }>;
-    expect(text.props.name).toBe("edit-indicator");
-    expect(text.props.opacity).toBe(0.45);
-    expect(text.props.listening).toBe(true); // editable + onTextEdit provisto
+    const children = (
+      (el.props as { children: Array<React.ReactElement | null> }).children ?? []
+    ).filter(Boolean);
+    // NINGÚN nodo de texto.
+    expect(children.some((c) => (c as React.ReactElement).key === "caption-text")).toBe(false);
+    // Zona de edición: rect punteado + dot, ambos edit-indicator (no se hornean).
+    const zone = children[0] as React.ReactElement<{ name?: string; dash?: number[] }>;
+    expect(zone.props.name).toBe("edit-indicator");
+    expect(zone.props.dash).toEqual([5, 3]);
   });
 
-  it("Ola 24 — la guía placeholder es INCONFUNDIBLE: itálica + subrayado punteado", () => {
-    // El 45% de opacidad solo seguía leyéndose como texto real (Lucy 2026-09-09):
-    // la guía se fuerza a itálica y lleva una línea dashed bajo el texto, todo
-    // marcado edit-indicator → se VE como guía pero NUNCA se hornea.
+  it("Ola 25 — la zona vacía es tappeable: el hit invisible abre el editor de texto", () => {
+    const onTextEdit = vi.fn();
     render(
       renderLayer(
         textLayer,
         slot(),
         STAGE,
-        vi.fn(),
+        onTextEdit,
         "rectangle",
         undefined,
         undefined,
@@ -865,98 +861,46 @@ describe("renderLayer — text", () => {
         },
       ) as React.ReactElement,
     );
-    const text = lastKonva("Text");
-    expect(text!.name).toBe("edit-indicator");
-    expect(text!.fontStyle).toBe("italic"); // la capa no trae peso → itálica sola
-    // Subrayado punteado del color del texto, marcado edit-indicator.
-    const underline = mocks.konvaProps.find(
-      (k) => k.name === "Line" && k.props.name === "edit-indicator",
-    );
-    expect(underline).toBeDefined();
-    expect(underline!.props.dash).toEqual([4, 3]);
-    expect(underline!.props.stroke).toBe("#3D2E5C"); // default fill de la capa
-    expect(underline!.props.listening).toBe(false);
+    // No hay NINGÚN Text en el árbol Konva (la tarjeta no muestra el default).
+    expect(mocks.konvaProps.some((k) => k.name === "Text")).toBe(false);
+    // El hit es un Rect transparente (último del grupo) con el handler.
+    const hit = [...mocks.konvaProps]
+      .reverse()
+      .find((k) => k.name === "Rect" && typeof k.props.onClick === "function");
+    expect(hit).toBeDefined();
+    expect(hit!.props.fill).toBe("rgba(0, 0, 0, 0)");
+    const stopPropagation = vi.fn();
+    (hit!.props.onClick as (e: unknown) => void)({
+      cancelBubble: false,
+      evt: { stopPropagation },
+    });
+    expect(stopPropagation).toHaveBeenCalled();
+    expect(onTextEdit).toHaveBeenCalledWith("caption");
   });
 
-  it("Ola 24 — guía con peso propio conserva la negrita: 'italic bold'", () => {
-    const boldLayer = { ...textLayer, fontWeight: "bold" } as unknown as CanvasLayer;
-    render(
-      renderLayer(
-        boldLayer,
-        slot(),
-        STAGE,
-        vi.fn(),
-        "rectangle",
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        {
-          allowText: true,
-        },
-      ) as React.ReactElement,
+  it("Ola 25 — superficie NO editable (preview del modal / 3D / confirmación): no se dibuja NADA", () => {
+    // StudioPhotoPreview llama renderLayer SIN onTextEdit: el placeholder no pinta
+    // ni texto ni zona — la tarjeta se ve exactamente como se imprimirá (vacía).
+    const el = renderLayer(
+      textLayer,
+      slot(),
+      STAGE,
+      undefined,
+      "rectangle",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        allowText: true,
+      },
     );
-    expect(lastKonva("Text")!.fontStyle).toBe("italic bold");
+    expect(el).toBeNull();
   });
 
-  it("Ola 24 — superficie NO editable (preview del modal): la guía también lleva itálica + subrayado", () => {
-    // StudioPhotoPreview llama renderLayer SIN onTextEdit: la guía placeholder se
-    // envuelve en Group con el subrayado punteado (antes salía como texto plano
-    // atenuado — seguía pareciendo texto físico dentro del modal de edición).
-    render(
-      renderLayer(
-        textLayer,
-        slot(),
-        STAGE,
-        undefined,
-        "rectangle",
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        {
-          allowText: true,
-        },
-      ) as React.ReactElement,
-    );
-    const text = lastKonva("Text");
-    expect(text!.name).toBe("edit-indicator");
-    expect(text!.opacity).toBe(0.45);
-    expect(text!.fontStyle).toBe("italic");
-    expect(text!.listening).toBe(false); // no editable acá
-    const underline = mocks.konvaProps.find(
-      (k) => k.name === "Line" && k.props.name === "edit-indicator",
-    );
-    expect(underline).toBeDefined();
-  });
-
-  it("con override de texto NO hay subrayado de guía (es texto real del cliente)", () => {
-    render(
-      renderLayer(
-        textLayer,
-        slot({ textOverrides: { caption: { text: "Mi viaje" } } }),
-        STAGE,
-        vi.fn(),
-        "rectangle",
-        undefined,
-        undefined,
-        undefined,
-        undefined,
-        { allowText: true },
-      ) as React.ReactElement,
-    );
-    const text = lastKonva("Text");
-    expect(text!.name).toBeUndefined(); // se hornea (es del cliente)
-    expect(text!.fontStyle).toBeUndefined();
-    expect(
-      mocks.konvaProps.some((k) => k.name === "Line" && k.props.name === "edit-indicator"),
-    ).toBe(false);
-  });
-
-  it("override SOLO de estilo (sin text) → sigue siendo guía placeholder atenuada", () => {
-    // Ola 23 — el cliente cambió solo el color: el default de la plantilla se VE
-    // atenuado con el color elegido, pero sigue marcado edit-indicator → NUNCA se
-    // hornea en producción (renderTextLayer tampoco imprime sin override.text).
+  it("override SOLO de estilo (sin text) → sigue siendo placeholder: tarjeta vacía", () => {
+    // Ola 23/25 — el cliente cambió solo el color: sin texto del cliente no hay
+    // nada que mostrar ni imprimir (renderTextLayer tampoco imprime sin text).
     const el = renderLayer(
       textLayer,
       slot({ textOverrides: { caption: { fill: "#E85B9F" } } }),
@@ -971,18 +915,29 @@ describe("renderLayer — text", () => {
         allowText: true,
       },
     ) as React.ReactElement;
-    const text = (el.props as { children: Array<React.ReactElement | null> }).children
-      .filter(Boolean)
-      .find((c) => (c as React.ReactElement).key === "caption-text") as React.ReactElement<{
-      name?: string;
-      opacity?: number;
-      text?: string;
-      fill?: string;
-    }>;
-    expect(text.props.name).toBe("edit-indicator");
-    expect(text.props.opacity).toBe(0.45);
-    expect(text.props.text).toBe("Escribe tu mensaje"); // guía con el default
-    expect(text.props.fill).toBe("#E85B9F"); // …en el color que eligió
+    const children = (
+      (el.props as { children: Array<React.ReactElement | null> }).children ?? []
+    ).filter(Boolean);
+    expect(children.some((c) => (c as React.ReactElement).key === "caption-text")).toBe(false);
+    expect((children[0] as React.ReactElement<{ name?: string }>).props.name).toBe(
+      "edit-indicator",
+    );
+  });
+
+  it('override de texto vacío ("") → placeholder también (vacío = sin texto)', () => {
+    const el = renderLayer(
+      textLayer,
+      slot({ textOverrides: { caption: { text: "" } } }),
+      STAGE,
+      undefined,
+      "rectangle",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { allowText: true },
+    );
+    expect(el).toBeNull();
   });
 
   it("con override: manda el texto del cliente y su estilo", () => {
@@ -1040,12 +995,12 @@ describe("renderLayer — text", () => {
     expect(text.props.fill).toBe("#FFFFFF");
   });
 
-  it("click en texto editable abre el editor (stopPropagation + callback)", () => {
+  it("click en texto editable (con texto del cliente) abre el editor (stopPropagation + callback)", () => {
     const onTextEdit = vi.fn();
     render(
       renderLayer(
         textLayer,
-        slot(),
+        slot({ textOverrides: { caption: { text: "Mi viaje" } } }),
         STAGE,
         onTextEdit,
         "rectangle",

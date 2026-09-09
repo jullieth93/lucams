@@ -20,7 +20,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Stage, Layer } from "react-konva";
 import type Konva from "konva";
-import { renderLayer, nextWheelScale } from "./studio-slot";
+import {
+  renderLayer,
+  nextWheelScale,
+  WHITE_CARD_CHECKER,
+  WHITE_CARD_TRAY_PAD,
+} from "./studio-slot";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
 import {
   isDarkColor,
@@ -112,7 +117,6 @@ export function StudioPhotoPreview({
     displayHeight = MAX_H;
     displayWidth = Math.max(220, Math.round(displayHeight / aspect));
   }
-  const scale = displayWidth / unitTemplate.stage.width;
 
   // ── Estilo de tarjeta — misma clasificación que StudioSlot (WYSIWYG) ──
   const hasFrameCard = useMemo(
@@ -171,6 +175,16 @@ export function StudioPhotoPreview({
     isIg,
     igNoBorder: noBorder,
   });
+
+  // Ola 25 (Lucy 2026-09-09) — tarjeta BLANCA dentro del modal (fondo blanco):
+  // la MISMA bandeja cuadriculada gris/blanco del slot de la grilla (patrón
+  // "transparencia") para que la Polaroid Clásica blanca se lea acá también.
+  // Adorno 100% DOM/pantalla alrededor del Stage — nunca entra al snapshot.
+  // Misma exclusión que en la grilla: modo tira (dibujaría costuras entre celdas).
+  const whiteCardTray = cardBgHex.toUpperCase() === "#FFFFFF" && !isStrip;
+  const stageWidth = whiteCardTray ? displayWidth - WHITE_CARD_TRAY_PAD * 2 : displayWidth;
+  const stageHeight = whiteCardTray ? displayHeight - WHITE_CARD_TRAY_PAD * 2 : displayHeight;
+  const stageScale = stageWidth / unitTemplate.stage.width;
 
   // ── Gestos de zoom (rueda en desktop, pellizco en táctil) ──
   const clampScale = useCallback((s: number) => Math.max(SCALE_MIN, Math.min(SCALE_MAX, s)), []);
@@ -249,14 +263,26 @@ export function StudioPhotoPreview({
   return (
     <div ref={containerRef} className="mx-auto w-full max-w-[520px]">
       <div
-        className="ring-brand-purple/15 relative mx-auto overflow-hidden rounded-lg shadow-md ring-1"
-        style={{ width: displayWidth, height: displayHeight, touchAction: "none" }}
+        className={[
+          "ring-brand-purple/15 relative mx-auto overflow-hidden rounded-lg shadow-md ring-1",
+          whiteCardTray ? "flex items-center justify-center" : "",
+        ].join(" ")}
+        style={{
+          width: displayWidth,
+          height: displayHeight,
+          touchAction: "none",
+          // Ola 25 — bandeja cuadriculada bajo la tarjeta BLANCA (adorno DOM de
+          // pantalla; el Stage queda inset y centrado, como en la grilla).
+          ...(whiteCardTray
+            ? { backgroundImage: WHITE_CARD_CHECKER, backgroundSize: "12px 12px" }
+            : {}),
+        }}
       >
         <Stage
-          width={displayWidth}
-          height={displayHeight}
-          scaleX={scale}
-          scaleY={scale}
+          width={stageWidth}
+          height={stageHeight}
+          scaleX={stageScale}
+          scaleY={stageScale}
           listening
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}

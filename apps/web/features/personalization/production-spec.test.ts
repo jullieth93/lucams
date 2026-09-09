@@ -172,6 +172,30 @@ describe("lo que NO está horneado en el PNG y hay que escribir", () => {
     expect(spec.personalizacion.find((x) => x.etiqueta === "Borde")).toBeUndefined();
   });
 
+  // Lucy 2026-09-09 — la MISMA opción en las tiras de nombre: la ficha de taller anota
+  // «Sin borde» igual que en el set de letras (sin borde se recorta a ras del contorno).
+  it("anota «Sin borde» cuando el diseño de NOMBRE lo eligió (misma nota que el set)", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      designMetadata: {
+        surface: "name",
+        letters: ["L", "U", "C", "I", "A"],
+        withBorder: false,
+      },
+    });
+    expect(spec.personalizacion.find((x) => x.etiqueta === "Borde")?.valor).toBe(
+      "Sin borde — recortar a ras del contorno",
+    );
+  });
+
+  it("diseño de nombre sin la clave (previo a la opción) NO genera línea de borde", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      designMetadata: { surface: "name", letters: ["L", "U", "C", "I", "A"] },
+    });
+    expect(spec.personalizacion.find((x) => x.etiqueta === "Borde")).toBeUndefined();
+  });
+
   it("recoge los textos que escribió el cliente, para cotejar tildes", () => {
     const spec = resolveProductionSpec({
       ...vacio,

@@ -31,7 +31,11 @@ import path from "node:path";
  *      "¡Listo!") sin stepper "Copias"
  *      la cubre estudio-letterset.spec.ts (llega a la modal sin uploads); este
  *      spec blinda además que las copias de la PDP (?copies=2) llegan a la
- *      modal de tiras como dato ("2 copias idénticas de tu diseño").
+ *      modal de tiras como dato ("2 copias idénticas de tu diseño") Y QUE
+ *      CONFIRMAR deja el carrito con qty=2 (UI "Subtotal (2 ítems)" + stepper
+ *      de la línea + oracle DB por la cookie cart_session — regresión del
+ *      reporte del owner 2026-09-09: "si agrego 2 unidades NO aparecen 2
+ *      Tiras Magnéticas"). El carrito de la corrida se limpia en afterAll.
  *
  * Productos reales leídos de la DB del ambiente (nada hardcodeado). Crea un
  * asset de prueba (tiras) → LOCAL/STG solamente (prohibido en PRD, como la
@@ -65,6 +69,10 @@ type Ctx = {
   tirasSlug: string;
   tirasProductId: string;
   tirasVariantId: string;
+  tirasName: string;
+  /** Sesión de carrito de la corrida (cookie cart_session) — para el oracle
+   *  DB del qty y la limpieza del carrito creado al confirmar la modal. */
+  cartSessionId: string;
 };
 
 const ctx: Ctx = {
@@ -74,6 +82,8 @@ const ctx: Ctx = {
   tirasSlug: "",
   tirasProductId: "",
   tirasVariantId: "",
+  tirasName: "",
+  cartSessionId: "",
 };
 
 test.setTimeout(300_000);
@@ -121,6 +131,7 @@ test.beforeAll(async () => {
       select: {
         id: true,
         slug: true,
+        name: true,
         variants: {
           where: { isActive: true, deletedAt: null },
           select: { id: true, attributes: true },
@@ -131,6 +142,7 @@ test.beforeAll(async () => {
   if (tiras) {
     ctx.tirasSlug = tiras.slug;
     ctx.tirasProductId = tiras.id;
+    ctx.tirasName = tiras.name;
     const v3 = tiras.variants.find(
       (v) => (v.attributes as { photoSlots?: number } | null)?.photoSlots === 3,
     );
@@ -140,6 +152,14 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   // Limpieza de la ventana de la corrida (como studio-gestures / studio-ux).
+  // El carrito de la corrida (si la prueba llegó a confirmar la modal) se borra
+  // por su sessionId exacto — nunca se tocan carritos ajenos.
+  if (ctx.cartSessionId) {
+    await prisma.cartItem
+      .deleteMany({ where: { cart: { sessionId: ctx.cartSessionId } } })
+      .catch(() => {});
+    await prisma.cart.deleteMany({ where: { sessionId: ctx.cartSessionId } }).catch(() => {});
+  }
   const productIds = [ctx.sepProductId, ctx.tirasProductId].filter(Boolean);
   if (productIds.length > 0) {
     await prisma.design
@@ -446,5 +466,41 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
     await expect(previewDialog.getByRole("group", { name: "Copias" })).toHaveCount(0);
     await previewDialog.getByRole("button", { name: /Volver a editar/i }).click();
     await expect(previewDialog).toBeHidden({ timeout: 10_000 });
+
+    // Reporte del owner (2026-09-09): "si agrego 2 unidades NO aparecen 2 Tiras
+    // Magnéticas". Se blinda el camino COMPLETO hasta el carrito: confirmar la
+    // modal con las 2 copias de la PDP debe dejar la línea de la tira con qty=2
+    // (CartItem.qty), visible en la UI y verificado contra la DB.
+    await expect(vistaPrevia).toBeEnabled({ timeout: 30_000 });
+    await vistaPrevia.click();
+    await expect(previewDialog).toBeVisible({ timeout: 30_000 });
+    await expect(previewDialog.getByText("2 copias idénticas de tu diseño")).toBeVisible();
+    await previewDialog.getByRole("button", { name: /agregar al carrito/i }).click();
+
+    // Redirect a /carrito?personalized=1 (el finalize + subida de imprenta tarda).
+    await expect(page).toHaveURL(/\/carrito/, { timeout: 180_000 });
+    // La única línea del carrito es la tira con qty=2 → el subtotal cuenta 2 ítems
+    // y el stepper de la línea muestra 2 (su "−" habilitado delata qty>1).
+    await expect(page.getByText("Subtotal (2 ítems)")).toBeVisible({ timeout: 30_000 });
+    const cartLine = page.locator("li", {
+      has: page.getByRole("link", { name: ctx.tirasName }),
+    });
+    await expect(cartLine.getByText("2", { exact: true })).toBeVisible();
+    await expect(cartLine.getByLabel("Disminuir cantidad")).toBeEnabled();
+
+    // Oracle DB: el CartItem de ESTA sesión (cookie cart_session) tiene qty=2 y
+    // la variante de 3 fotos que abrió el Estudio.
+    const cookies = await page.context().cookies();
+    const sessionId = cookies.find((c) => c.name === "cart_session")?.value ?? "";
+    expect(sessionId).not.toBe("");
+    ctx.cartSessionId = sessionId;
+    const cart = await withDbRetry(() =>
+      prisma.cart.findUnique({
+        where: { sessionId },
+        select: { items: { select: { variantId: true, qty: true } } },
+      }),
+    );
+    const cartItem = cart?.items.find((i) => i.variantId === ctx.tirasVariantId);
+    expect(cartItem?.qty).toBe(2);
   });
 });

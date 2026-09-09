@@ -17,10 +17,12 @@ import path from "node:path";
  *   2. AVATAR TAPPEABLE (Polaroid Instagram) — tocar el círculo del header del
  *      post (34,34 r=16 en coords de stage 450×600) abre directo el picker de
  *      foto de perfil ("Elige tu foto de perfil").
- *   3. ZOOM DE LIENZO (desktop) — control flotante −/+%/reset en la esquina
- *      SUPERIOR derecha del lienzo (2026-09-09), siempre visible: acerca hasta
- *      el tope por ancho y ALEJA hasta el 50%; reset vuelve a 100% desde
- *      cualquier lado. Display-only (no toca el diseño).
+ *   3. ZOOM DE LIENZO (desktop) — control −/+%/reset INLINE en la fila de pills
+ *      superior del editor (junto a «Ideas» / «Ver en tu espacio», 2026-09-09:
+ *      antes flotaba sobre la esquina del lienzo e "invadía el canvas"): acerca
+ *      hasta el tope por ancho y ALEJA hasta el 50%; reset vuelve a 100% desde
+ *      cualquier lado. Display-only (no toca el diseño). Assert geométrico: el
+ *      control NUNCA se superpone al <canvas>.
  *   4. FUENTE DEL CALENDARIO EN "AJUSTAR FOTO" — el modal de edición del slot
  *      (pestaña Foto) trae #cal-font-select; cambiarlo persiste en
  *      canvasData.calendarFont (oráculo: DB tras el auto-save) y el selector
@@ -385,7 +387,7 @@ test.describe("estudio Ola 22 — identificador fuera del template + avatar tapp
 });
 
 test.describe("estudio Ola 22 — zoom de lienzo", () => {
-  test("control −/+%/reset: acercar Y alejar (top-right), reset vuelve a 100% (display-only)", async ({
+  test("control −/+%/reset inline en la fila de pills: acercar Y alejar, reset vuelve a 100% (display-only)", async ({
     page,
   }, testInfo) => {
     test.skip(testInfo.project.name === "mobile-chrome", "el zoom de lienzo es desktop-first");
@@ -408,18 +410,20 @@ test.describe("estudio Ola 22 — zoom de lienzo", () => {
     await igRadio.click();
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 30_000 });
 
-    // Lucy 2026-09-09 — el control se movió a la esquina SUPERIOR derecha del área
-    // del lienzo y ya no se esconde: además de acercar (tope = ancho disponible),
-    // ALEJA hasta el 50% para ver la plantilla entera de un vistazo.
+    // Lucy 2026-09-09 — el control vive INLINE en la fila de pills superior
+    // (junto a «Ideas» / «Ver en tu espacio»), nunca flotando sobre el lienzo:
+    // además de acercar (tope = ancho disponible), ALEJA hasta el 50% para ver
+    // la plantilla entera de un vistazo.
     const zoomGroup = page.getByRole("group", { name: /Zoom del lienzo \d+%/ });
     await expect(zoomGroup).toBeVisible({ timeout: 15_000 });
     await expect(zoomGroup).toContainText("100%");
 
     const canvasBefore = (await page.locator("canvas").first().boundingBox())!;
-    // Assert de posición: el control queda ANCLADO ARRIBA del lienzo (no abajo
-    // como antes) — su borde superior no puede estar por debajo del del canvas.
+    // Assert de posición: el control queda EN LA FILA DE PILLS, ENTERO POR ENCIMA
+    // del canvas — su borde INFERIOR no puede tocar el borde superior del lienzo
+    // (antes era un overlay absolute top-right que sí lo pisaba).
     const zoomBox = (await zoomGroup.boundingBox())!;
-    expect(zoomBox.y).toBeLessThanOrEqual(canvasBefore.y + 8);
+    expect(zoomBox.y + zoomBox.height).toBeLessThanOrEqual(canvasBefore.y + 1);
 
     await zoomGroup.getByRole("button", { name: "Acercar el lienzo" }).click();
     await expect(zoomGroup).toContainText(/1(0[5-9]|1\d|2\d|25)%/);
@@ -550,5 +554,291 @@ test.describe("estudio — «¿Con imán?» del pack (PDP elige, Estudio muestra
         { timeout: 30_000, intervals: [1500, 2000, 3000, 4000] },
       )
       .toBe(true);
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Ola 25 (Lucy 2026-09-09) — reglas del dueño validadas en STG:
+//   A. TEXTOS POR DEFECTO INVISIBLES: la tarjeta nace VACÍA — "Escribe tu
+//      mensaje", "@tu_usuario", "362 me gusta"… NO se dibujan en el canvas
+//      hasta que el cliente escribe (el default solo es placeholder gris del
+//      input en la pestaña Texto). Probe: conteo de píxeles de tinta en las
+//      zonas de texto del slot real (Konva compone varios <canvas> por stage).
+//   B. MARCO INSTAGRAM CONSTANTE: con «Negro» elegido, la ventana de foto NO
+//      se inunda del color del borde al alejar la foto (zoom rueda → 50%):
+//      el hueco queda blanco (respaldo neutro) en la grilla Y en el preview
+//      del modal de edición (WYSIWYG).
+//   C. TIRA SIN BORDE CONTINUA: el toggle «Sin borde» deja las fotos PEGADAS
+//      — sin canaletas/líneas entre celdas (probe del borde inferior de la
+//      celda 1 y superior de la 2: foto, nunca blanco).
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Píxeles RGBA del slot en coords del STAGE, componiendo todos sus <canvas>. */
+async function probeSlotPixels(
+  page: Page,
+  slotIndex: number,
+  stageW: number,
+  stageH: number,
+  points: Array<[number, number]>,
+): Promise<Array<number[]>> {
+  return page.evaluate(
+    ({ slotIndex: idx, stageW: w0, stageH: h0, points: pts }) => {
+      const slotEl = document.querySelector(`[data-slot-index='${idx}']`);
+      if (!slotEl) return [];
+      const canvases = [...slotEl.querySelectorAll("canvas")];
+      if (!canvases.length) return [];
+      const w = canvases[0]!.width;
+      const h = canvases[0]!.height;
+      const off = document.createElement("canvas");
+      off.width = w;
+      off.height = h;
+      const octx = off.getContext("2d")!;
+      for (const c of canvases) octx.drawImage(c, 0, 0, w, h);
+      const sx = w / w0;
+      const sy = h / h0;
+      return pts.map(([x, y]) =>
+        Array.from(octx.getImageData(Math.round(x * sx), Math.round(y * sy), 1, 1).data),
+      );
+    },
+    { slotIndex, stageW, stageH, points },
+  );
+}
+
+/**
+ * Conteo de píxeles "tinta de texto" (grisáceos oscuros) en una zona del slot.
+ * El matcher exige |r−g|,|g−b| pequeños (gris/negro de la tipografía) → NO cuenta
+ * el turquesa de las zonas de edición punteadas (g−r ≈ 124) ni la foto a color.
+ */
+async function countTextInkInZone(
+  page: Page,
+  slotIndex: number,
+  stageW: number,
+  stageH: number,
+  zone: { x: number; y: number; w: number; h: number },
+): Promise<number> {
+  return page.evaluate(
+    ({ slotIndex: idx, stageW: w0, stageH: h0, zone: z }) => {
+      const slotEl = document.querySelector(`[data-slot-index='${idx}']`);
+      if (!slotEl) return -1;
+      const canvases = [...slotEl.querySelectorAll("canvas")];
+      if (!canvases.length) return -1;
+      const w = canvases[0]!.width;
+      const h = canvases[0]!.height;
+      const off = document.createElement("canvas");
+      off.width = w;
+      off.height = h;
+      const octx = off.getContext("2d")!;
+      for (const c of canvases) octx.drawImage(c, 0, 0, w, h);
+      const sx = w / w0;
+      const sy = h / h0;
+      const img = octx.getImageData(
+        Math.round(z.x * sx),
+        Math.round(z.y * sy),
+        Math.round(z.w * sx),
+        Math.round(z.h * sy),
+      ).data;
+      let ink = 0;
+      for (let i = 0; i < img.length; i += 4) {
+        const r = img[i]!;
+        const g = img[i + 1]!;
+        const b = img[i + 2]!;
+        const a = img[i + 3]!;
+        if (a > 200 && Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && r < 225) ink++;
+      }
+      return ink;
+    },
+    { slotIndex, stageW, stageH, zone },
+  );
+}
+
+const nearWhite = (px: number[]) => px[0]! > 235 && px[1]! > 235 && px[2]! > 235;
+
+test.describe("estudio Ola 25 — textos por defecto invisibles + marco IG constante (Polaroid Instagram)", () => {
+  test("la tarjeta nace SIN textos por defecto y el marco Negro no inunda la ventana al 50% (grilla + modal)", async ({
+    page,
+  }, testInfo) => {
+    test.skip(!ctx.igSlug, "no hay producto con plantilla photo-pack-polaroid-instagram en la DB");
+    test.skip(testInfo.project.name === "mobile-chrome", "zoom por rueda = desktop");
+    test.slow();
+
+    await page.goto(`/estudio/${ctx.igSlug}`, { waitUntil: "domcontentloaded" });
+    await expect(page.locator("canvas").first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(2_500);
+    await dismissOverlays(page);
+    const panel = await resolvePanel(page);
+    const igRadio = panel.getByRole("radio", { name: /Instagram/ });
+    await igRadio.click();
+    await expect(page.locator("canvas").first()).toBeVisible({ timeout: 30_000 });
+    await uploadAndFillSlot1(page, panel, ctx.igProductId);
+
+    // A) NADA de texto por defecto en el canvas (Ola 25): las zonas del header
+    // (username/location) y del footer (likes/caption/hashtags) del stage 450×600
+    // no pueden tener tinta de texto. Antes de Ola 25 ahí iba la guía atenuada
+    // (gris ~158) → este conteo era > 0.
+    const headerInk = await countTextInkInZone(page, 0, 450, 600, {
+      x: 60,
+      y: 16,
+      w: 240,
+      h: 38,
+    });
+    const footerInk = await countTextInkInZone(page, 0, 450, 600, {
+      x: 15,
+      y: 498,
+      w: 425,
+      h: 60,
+    });
+    expect(headerInk).toBe(0);
+    expect(footerInk).toBe(0);
+
+    // B) Marco Negro + zoom rueda → 50%: el hueco de la ventana queda BLANCO
+    // (respaldo neutro), NUNCA del color del borde (inundación reportada en STG).
+    await page.getByRole("radio", { name: "Negro" }).first().click();
+    await page.waitForTimeout(800);
+    const slot = page.locator("[data-slot-index='0']");
+    await slot.scrollIntoViewIfNeeded();
+    const box = (await slot.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    for (let i = 0; i < 18; i++) {
+      await page.mouse.wheel(0, 100);
+      await page.waitForTimeout(60);
+    }
+    await page.waitForTimeout(600);
+    // Huecos laterales de la ventana (la foto al 50% cubre x≈127..323 del stage).
+    const gridProbe = await probeSlotPixels(page, 0, 450, 600, [
+      [40, 250],
+      [410, 250],
+      [15, 300], // tarjeta (fuera de la ventana) → negro
+    ]);
+    expect(gridProbe).toHaveLength(3);
+    expect(nearWhite(gridProbe[0]!)).toBe(true);
+    expect(nearWhite(gridProbe[1]!)).toBe(true);
+    expect(gridProbe[2]![0]!).toBeLessThan(60); // tarjeta oscura intacta
+
+    // B2) MISMA regla en el preview del modal de edición (WYSIWYG entre superficies).
+    await page
+      .getByRole("button", { name: /^Editar / })
+      .first()
+      .click();
+    const dialog = page.locator('[role="dialog"]').first();
+    await expect(dialog.locator("canvas").first()).toBeVisible({ timeout: 15_000 });
+    const modalProbe = await page.evaluate(() => {
+      const dlg = document.querySelector('[role="dialog"]');
+      if (!dlg) return [];
+      const canvases = [...dlg.querySelectorAll("canvas")];
+      if (!canvases.length) return [];
+      const w = canvases[0]!.width;
+      const h = canvases[0]!.height;
+      const off = document.createElement("canvas");
+      off.width = w;
+      off.height = h;
+      const octx = off.getContext("2d")!;
+      for (const c of canvases) octx.drawImage(c, 0, 0, w, h);
+      const sx = w / 450;
+      const sy = h / 600;
+      const sample = (x: number, y: number) =>
+        Array.from(octx.getImageData(Math.round(x * sx), Math.round(y * sy), 1, 1).data);
+      return [sample(40, 250), sample(410, 250), sample(15, 300)];
+    });
+    expect(modalProbe).toHaveLength(3);
+    expect(nearWhite(modalProbe[0]!)).toBe(true);
+    expect(nearWhite(modalProbe[1]!)).toBe(true);
+    expect(modalProbe[2]![0]!).toBeLessThan(60);
+    await page.keyboard.press("Escape");
+  });
+});
+
+test.describe("estudio Ola 25 — tira SIN borde continua (tiras-magneticas-fotos)", () => {
+  let stripProductId = "";
+  let stripSlug = "";
+
+  test.beforeAll(async () => {
+    const stripProduct = await withDbRetry(() =>
+      prisma.product.findFirst({
+        where: {
+          isActive: true,
+          deletedAt: null,
+          templates: { some: { slug: "photo-strip-3-fotos", isActive: true } },
+        },
+        select: { id: true, slug: true },
+      }),
+    );
+    stripProductId = stripProduct?.id ?? "";
+    stripSlug = stripProduct?.slug ?? "";
+  });
+
+  test.afterAll(async () => {
+    // Limpieza propia del producto tira (el afterAll global cubre IG/calendario).
+    if (stripProductId) {
+      await prisma.design
+        .deleteMany({
+          where: { productId: stripProductId, createdAt: { gte: ctx.runStartedAt } },
+        })
+        .catch(() => {});
+    }
+  });
+
+  test("sin líneas entre fotos: el borde inferior de la celda 1 y el superior de la 2 son FOTO", async ({
+    page,
+  }) => {
+    test.skip(!stripSlug, "no hay producto con plantilla photo-strip-3-fotos en la DB");
+    test.slow();
+
+    await page.goto(`/estudio/${stripSlug}`, { waitUntil: "domcontentloaded" });
+    await expect(page.locator("canvas").first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(2_500);
+    await dismissOverlays(page);
+    const panel = await resolvePanel(page);
+
+    // Subir la foto ×2 para llenar los slots 1 y 2 (autoFill no repite assets).
+    const consent = page.getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i });
+    if (await consent.count()) await consent.first().check();
+    await panel.locator('input[type="file"]').first().setInputFiles([PHOTO_PATH, PHOTO_PATH]);
+    await expect
+      .poll(
+        async () =>
+          (await withDbRetry(() =>
+            prisma.designAsset.count({ where: { createdAt: { gte: ctx.runStartedAt } } }),
+          )) >= 2,
+        { timeout: 300_000, intervals: [3000, 5000, 8000, 10000] },
+      )
+      .toBe(true);
+    const wand = page.getByRole("button").filter({ hasText: /Llenar slots con mis fotos/i });
+    await expect(wand.first()).toBeVisible({ timeout: 60_000 });
+    await wand.first().click();
+    await expect
+      .poll(
+        async () => {
+          const design = await withDbRetry(() =>
+            prisma.design.findFirst({
+              where: { productId: stripProductId, createdAt: { gte: ctx.runStartedAt } },
+              orderBy: { createdAt: "desc" },
+              select: { canvasData: true },
+            }),
+          );
+          const slots = (
+            design?.canvasData as { slots?: Array<{ assetUrl?: string | null }> } | null
+          )?.slots;
+          return Boolean(slots?.[0]?.assetUrl && slots?.[1]?.assetUrl);
+        },
+        { timeout: 120_000, intervals: [2000, 3000, 4000, 5000] },
+      )
+      .toBe(true);
+    await page.waitForTimeout(AUTOSAVE_WAIT);
+    await page.keyboard.press("Escape").catch(() => {});
+
+    // Toggle «Sin borde» (toolbar de estilo, sobre el lienzo).
+    await page.getByRole("radio", { name: "Sin borde" }).first().click();
+    await page.waitForTimeout(1_000);
+
+    // Celda 390×400 (stage de la plantilla tira). Con borde había canaleta blanca
+    // de 8px al pie de cada celda (Ola 23); Ola 25: la foto toca el borde.
+    const [bottomCell1] = await probeSlotPixels(page, 0, 390, 400, [[195, 398]]);
+    const [topCell2] = await probeSlotPixels(page, 1, 390, 400, [[195, 2]]);
+    const [leftEdge] = await probeSlotPixels(page, 0, 390, 400, [[1, 200]]);
+    expect(bottomCell1).toBeDefined();
+    expect(topCell2).toBeDefined();
+    expect(nearWhite(bottomCell1!)).toBe(false); // era la canaleta (blanca)
+    expect(nearWhite(topCell2!)).toBe(false);
+    expect(nearWhite(leftEdge!)).toBe(false); // lados también a sangre
   });
 });

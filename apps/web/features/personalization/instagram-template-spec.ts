@@ -13,12 +13,14 @@
  * OJO: Konva dibuja el texto con top = y − fontSize/2 (el renderer resta
  * fontSize/2 a la y, que es el centro vertical del texto).
  *
- * PLACEHOLDERS NO IMPRIMIBLES (regla global, Ola 23 2026-09-08; tratamiento visual
- * endurecido Ola 24 2026-09-09): los textos por defecto de esta plantilla
- * ("@tu_usuario", "Bogotá, Colombia", "362 me gusta", "Tu título acá",
- * "#mirecuerdo #lucamsshop") son capas `editable: true` — en el Estudio se ven
- * ATENUADOS + ITÁLICA + SUBRAYADO PUNTEADO (guía inconfundible de lo que el cliente
- * puede escribir) pero NUNCA se hornean en el PNG de producción: solo se imprime el
+ * PLACEHOLDERS NO IMPRIMIBLES (regla global, Ola 23 2026-09-08; estricta Ola 25
+ * 2026-09-09): los textos por defecto de esta plantilla ("@tu_usuario",
+ * "Bogotá, Colombia", "362 me gusta", "Tu título acá", "#mirecuerdo #lucamsshop")
+ * son capas `editable: true` — NADA de eso aparece en la tarjeta (grilla, preview
+ * del modal, 3D, confirmación) hasta que el cliente escribe su propio texto; en la
+ * grilla el campo se descubre como ZONA DE EDICIÓN vacía (recuadro punteado
+ * turquesa, `edit-indicator`) y en el editor el input muestra el default como
+ * placeholder gris. NUNCA se hornean en el PNG de producción: solo se imprime el
  * texto que el cliente escribió explícitamente (TextOverride). Misma regla en el
  * render server-side (production-render-canvas) y en el snapshot del cliente
  * (edit-indicator).

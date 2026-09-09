@@ -11,10 +11,11 @@
  *   - Borde de foto: con borde / sin borde (foto a sangre). PRIMERO (Ola 24).
  *   - Color de tarjeta / marco (paleta completa o binario blanco/negro para Instagram).
  *     DEBAJO del borde (Ola 24) y DESACTIVADO cuando el borde es «Sin borde» en las
- *     plantillas Polaroid (la foto cubre toda la tarjeta → el color no aplica) — mismo
- *     patrón que los sets de letras: sección visible pero inerte (aria-disabled +
- *     atenuada + aviso del porqué); el estado de color NO se resetea, al volver a
- *     «Con borde» el color elegido sigue ahí.
+ *     plantillas Polaroid (la foto cubre toda la tarjeta → el color no aplica) y en las
+ *     TIRAS photobooth (sin borde ya no hay canaletas entre fotos → borderColor no
+ *     pinta nada) — mismo patrón que los sets de letras: sección visible pero inerte
+ *     (aria-disabled + atenuada + aviso del porqué); el estado de color NO se resetea,
+ *     al volver a «Con borde» el color elegido sigue ahí.
  *
  * El componente es store-aware: lee la plantilla activa, el color actual y el
  * rect base del placeholder, y escribe en canvasData.borderColor y
@@ -123,12 +124,18 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
     }
   };
 
-  // Ola 24 (Lucy 2026-09-09) — en las plantillas Polaroid (Clásica e Instagram), con
-  // «Sin borde» la foto cubre TODA la tarjeta y el color deja de aplicar: la paleta
-  // queda desactivada (visible pero inerte, con aviso) hasta volver a «Con borde».
-  // En tiras/cuadrados NO se desactiva: ahí el color sigue pintando (canaletas de la
-  // tira / franja uniforme de la tarjeta simple usan borderColor aun sin borde).
-  const colorDisabled = (isIg || isPolaroidClasica) && isFullBleed;
+  // Ola 24 (Lucy 2026-09-09) — en las plantillas Polaroid (Clásica e Instagram) Y en las
+  // TIRAS photobooth, con «Sin borde» la foto cubre TODA la tarjeta/celda y el color deja
+  // de aplicar (en la tira sin borde ya no hay canaletas entre fotos — la separación era
+  // lo único que pintaba borderColor): la paleta queda desactivada (visible pero inerte,
+  // con aviso) hasta volver a «Con borde». El estado de color NO se resetea: al volver a
+  // «Con borde» el color elegido sigue ahí (y en la tira vuelve a pintar las canaletas).
+  // En cuadrados NO se desactiva: la franja uniforme de la tarjeta simple usa borderColor
+  // aun sin borde.
+  // Tira = 1 columna + gap 0 + varios slots (misma detección que isStripPreview del editor).
+  const isStrip =
+    canvasData.gridLayout.cols === 1 && canvasData.gridLayout.gap === 0 && canvasData.slotCount > 1;
+  const colorDisabled = (isIg || isPolaroidClasica || isStrip) && isFullBleed;
 
   return (
     <div className="border-brand-purple/10 mb-4 w-full max-w-xl rounded-2xl border bg-white/95 px-4 py-3 shadow-sm">
@@ -201,7 +208,9 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
             </div>
             {colorDisabled && (
               <p role="note" className="text-brand-muted text-center text-xs">
-                {texts.texto.estiloColorDeshabilitadoHint}
+                {isStrip
+                  ? texts.texto.estiloColorDeshabilitadoHintTira
+                  : texts.texto.estiloColorDeshabilitadoHint}
               </p>
             )}
           </div>

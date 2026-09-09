@@ -169,20 +169,19 @@ describe("frame-palette — Ola 4 (cuadrados / tira / instagram)", () => {
     expect(stripPhotoRect(ph, stage, "single")).toEqual({ ...ph, y: 12, height: 376 });
   });
 
-  it("stripPhotoRect SIN BORDE (Ola 23): sin marco exterior, canaletas intactas", async () => {
+  it("stripPhotoRect SIN BORDE (Ola 25): celda CONTINUA — sin marco exterior NI canaletas", async () => {
     const { stripPhotoRect } = await import("./frame-palette");
     const stage = { width: 390, height: 400 };
     // Toggle "Sin borde" de la toolbar: placeholder reescrito a sangre total de la celda.
     const ph = { x: 0, y: 0, width: 390, height: 400 };
     const borderless = { borderless: true };
-    // First: la foto llega al borde SUPERIOR de la tira (sin inset); canaleta abajo.
-    expect(stripPhotoRect(ph, stage, "first", borderless)).toEqual({ ...ph, y: 0, height: 392 });
-    // Middle: canaletas arriba y abajo, igual que con borde (se conservan).
-    expect(stripPhotoRect(ph, stage, "middle", borderless)).toEqual({ ...ph, y: 8, height: 384 });
-    // Last: canaleta arriba; la foto llega al borde INFERIOR de la tira.
-    expect(stripPhotoRect(ph, stage, "last", borderless)).toEqual({ ...ph, y: 8, height: 392 });
-    // Single: sangre total vertical (sin canaletas ni marco exterior).
-    expect(stripPhotoRect(ph, stage, "single", borderless)).toEqual({ ...ph, y: 0, height: 400 });
+    // Todas las posiciones quedan INTACTAS: la foto toca los bordes de la celda y
+    // las fotos consecutivas se tocan entre sí (regla del dueño 2026-09-09: sin
+    // líneas en la tira sin borde; Ola 23 conservaba canaletas — retiradas).
+    expect(stripPhotoRect(ph, stage, "first", borderless)).toEqual(ph);
+    expect(stripPhotoRect(ph, stage, "middle", borderless)).toEqual(ph);
+    expect(stripPhotoRect(ph, stage, "last", borderless)).toEqual(ph);
+    expect(stripPhotoRect(ph, stage, "single", borderless)).toEqual(ph);
   });
 
   it("isStripBorderless: placeholder a sangre total de la celda (toggle Sin borde) → true", async () => {

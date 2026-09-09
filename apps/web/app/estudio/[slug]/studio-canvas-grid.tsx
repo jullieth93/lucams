@@ -49,7 +49,6 @@ import {
   resolveMaxCols,
   resolveMinSlotSize,
   slotHeightCapByCount,
-  stepStageZoom,
   BP_MOBILE,
   STAGE_ZOOM_MIN,
 } from "./studio-canvas-grid-size";
@@ -115,6 +114,15 @@ type StudioCanvasGridProps = {
    */
   interactiveSlots?: boolean;
   onSlotClick: (slotIndex: number) => void;
+  /**
+   * Ola 22 (Lucy 2026-09-09) — zoom de LIENZO controlado desde la fila de pills
+   * superior (studio-editor): `stageZoomRaw` es el valor PEDIDO (se clampa al render
+   * contra el tope por ancho); el grid reporta el estado efectivo vía
+   * `onStageZoomState` para que el control (StudioStageZoomControl) pinte el % y
+   * habilite/deshabilite −/+.
+   */
+  stageZoomRaw: number;
+  onStageZoomState: (state: { zoom: number; cap: number }) => void;
   /** Ola 8 — Abre el modal unificado de edición para el slot indicado (desde clic en slot lleno). */
   openEditSlot?: { slotIndex: number; tab: "photo" | "text" } | null;
   /** Ola 8 — Callback cuando el modal unificado se cierra. */
@@ -147,6 +155,8 @@ export function StudioCanvasGrid({
   facesPerUnit = 1,
   interactiveSlots = true,
   onSlotClick,
+  stageZoomRaw,
+  onStageZoomState,
   openEditSlot,
   onEditClose,
   registerSlotStages,
@@ -169,10 +179,9 @@ export function StudioCanvasGrid({
     focusTextLayerId?: string;
   } | null>(null);
   // Ola 22 (Lucy 2026-09-08) — zoom de LIENZO: acerca TODA la plantilla (display-only,
-  // no toca el diseño ni la exportación). El tope depende del ancho disponible, así
-  // que el valor crudo se guarda y se clampa al render (si el viewport se achica,
-  // el zoom efectivo baja solo).
-  const [stageZoomRaw, setStageZoomRaw] = useState(1);
+  // no toca el diseño ni la exportación). El valor crudo lo pide el padre (prop
+  // `stageZoomRaw`, control en la fila de pills); el tope depende del ancho disponible,
+  // así que se clampa al render (si el viewport se achica, el zoom efectivo baja solo).
 
   // Ola 8 — cuando el padre pide abrir el editor unificado (ej. clic en slot lleno),
   // reflejamos la petición en el estado local y limpiamos el callback del padre.
@@ -633,62 +642,13 @@ export function StudioCanvasGrid({
         </AnimatePresence>
       </motion.div>
 
-      {/* Ola 22 (Lucy 2026-09-08) — zoom de LIENZO: acercar/alejar TODA la plantilla
-        para ver y editar detalles finos (textos chicos del chrome, avatar, hashtags).
-        Es display-only: la exportación usa el tamaño LÓGICO del stage (pixelRatio
-        relativo), así el PNG de imprenta sale igual con cualquier zoom.
-        Lucy 2026-09-09 — el control se MUEVE a la esquina SUPERIOR derecha del área
-        del lienzo (antes flotaba bajo el grid) y además ALEJA hasta STAGE_ZOOM_MIN:
-        como alejar siempre es posible, el control ya no se esconde cuando no hay
-        margen para acercar. Flota sobre la esquina del grid con fondo casi opaco —
-        no choca ni con el toolbar sticky ni con la fila de pills 3D/Ideas, que vive
-        arriba con su propio margen (mb-6/lg:mb-8). */}
-      <div
-        className="absolute top-2 right-2 z-20 flex items-center gap-0.5 rounded-full bg-white/95 px-1 py-1 shadow-md ring-1 ring-black/5 backdrop-blur-sm"
-        role="group"
-        aria-label={fillStudioText(texts.lienzo.stageZoomTitle, {
-          pct: Math.round(stageZoom * 100),
-        })}
-      >
-        <button
-          type="button"
-          onClick={() => setStageZoomRaw((z) => stepStageZoom(z, -1, stageZoomCap))}
-          disabled={stageZoom <= STAGE_ZOOM_MIN + 0.001}
-          aria-label={texts.lienzo.stageZoomOutAria}
-          title={texts.lienzo.stageZoomOutAria}
-          className="text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent"
-        >
-          <Minus className="h-4 w-4" aria-hidden />
-        </button>
-        <span
-          className="text-brand-purple-dark w-11 text-center text-xs font-bold tabular-nums"
-          aria-hidden
-        >
-          {Math.round(stageZoom * 100)}%
-        </span>
-        <button
-          type="button"
-          onClick={() => setStageZoomRaw((z) => stepStageZoom(z, 1, stageZoomCap))}
-          disabled={stageZoom >= stageZoomCap - 0.001}
-          aria-label={texts.lienzo.stageZoomInAria}
-          title={texts.lienzo.stageZoomInAria}
-          className="text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent"
-        >
-          <Plus className="h-4 w-4" aria-hidden />
-        </button>
-        {/* Reset disponible tanto alejado como acercado (≠ 100%). */}
-        {Math.abs(stageZoom - 1) > 0.001 && (
-          <button
-            type="button"
-            onClick={() => setStageZoomRaw(1)}
-            aria-label={texts.lienzo.stageZoomResetAria}
-            title={texts.lienzo.stageZoomResetAria}
-            className="text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
-          >
-            <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-          </button>
-        )}
-      </div>
+      {/* Ola 22 (Lucy 2026-09-09) — el control del zoom de LIENZO vive en la fila de
+        pills superior del editor (junto a «Ideas» / «Ver en tu espacio»), NUNCA flotando
+        sobre el canvas. Acá solo se REPORTA el estado efectivo (zoom clampado + tope por
+        ancho) para que aquel control pinte el % y habilite −/+. Display-only: la
+        exportación usa el tamaño LÓGICO del stage (pixelRatio relativo), así el PNG de
+        imprenta sale igual con cualquier zoom. */}
+      <StageZoomReporter zoom={stageZoom} cap={stageZoomCap} onReport={onStageZoomState} />
 
       {/* Ola 6 — Modal unificado de edición por slot (tabs Foto/Texto). */}
       <StudioSlotEditModalWrapper
@@ -783,6 +743,104 @@ function LazySlotPlaceholder({
 // Re-export para que componentes consumidores tengan acceso directo
 export { selectUnitImagePlaceholder };
 export type { CanvasDataV2 };
+
+// ──────────────────────────────────────────────────────────────────
+//  Ola 22 — zoom de LIENZO: reporter de estado + control de la fila de pills
+// ──────────────────────────────────────────────────────────────────
+
+// Puente de estado del zoom: el valor efectivo y el tope se calculan DESPUÉS del
+// early-return de carga del grid (necesitan el layout y el ancho medido del
+// contenedor), así que el reporte al padre vive en este mini-componente con su
+// propio effect (los hooks no pueden ir tras el early return).
+function StageZoomReporter({
+  zoom,
+  cap,
+  onReport,
+}: {
+  zoom: number;
+  cap: number;
+  onReport: (state: { zoom: number; cap: number }) => void;
+}) {
+  useEffect(() => {
+    onReport({ zoom, cap });
+  }, [zoom, cap, onReport]);
+  return null;
+}
+
+/**
+ * Control del zoom de LIENZO (− / % / + / reset) para la fila de pills superior del
+ * Estudio (studio-editor, junto a «Ideas» / «Ver en tu espacio»). Lucy 2026-09-09:
+ * antes flotaba sobre la esquina del lienzo e "invadía el canvas" — ahora es un pill
+ * inline con el mismo lenguaje visual de la fila (rounded-full, h-12, shadow-xl,
+ * ring-4) y jamás se superpone a la plantilla. Es presentacional puro: el valor crudo
+ * lo guarda el padre y el grid lo clampa contra el tope de ancho (rango 0.5–2.5,
+ * helpers en studio-canvas-grid-size.ts).
+ */
+export function StudioStageZoomControl({
+  zoom,
+  cap,
+  onStep,
+  onReset,
+}: {
+  /** Zoom efectivo ya clampado por el grid (lo que se ve en el %). */
+  zoom: number;
+  /** Tope de ACERCAR (ancho disponible / ancho del contenido, ≥ 1). */
+  cap: number;
+  onStep: (direction: 1 | -1) => void;
+  onReset: () => void;
+}) {
+  const texts = useStudioTexts();
+  const zoomButtonClass =
+    "text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-9 w-9 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent";
+  return (
+    <div
+      role="group"
+      aria-label={fillStudioText(texts.lienzo.stageZoomTitle, {
+        pct: Math.round(zoom * 100),
+      })}
+      className="ring-brand-purple/15 inline-flex h-12 items-center gap-0.5 rounded-full bg-white px-1.5 shadow-xl ring-4"
+    >
+      <button
+        type="button"
+        onClick={() => onStep(-1)}
+        disabled={zoom <= STAGE_ZOOM_MIN + 0.001}
+        aria-label={texts.lienzo.stageZoomOutAria}
+        title={texts.lienzo.stageZoomOutAria}
+        className={zoomButtonClass}
+      >
+        <Minus className="h-4 w-4" aria-hidden />
+      </button>
+      <span
+        className="text-brand-purple-dark w-11 text-center text-xs font-bold tabular-nums"
+        aria-hidden
+      >
+        {Math.round(zoom * 100)}%
+      </span>
+      <button
+        type="button"
+        onClick={() => onStep(1)}
+        disabled={zoom >= cap - 0.001}
+        aria-label={texts.lienzo.stageZoomInAria}
+        title={texts.lienzo.stageZoomInAria}
+        className={zoomButtonClass}
+      >
+        <Plus className="h-4 w-4" aria-hidden />
+      </button>
+      {/* Reset disponible tanto alejado como acercado (≠ 100%). */}
+      {Math.abs(zoom - 1) > 0.001 && (
+        <button
+          type="button"
+          onClick={onReset}
+          aria-label={texts.lienzo.stageZoomResetAria}
+          title={texts.lienzo.stageZoomResetAria}
+          className={zoomButtonClass}
+        >
+          <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+        </button>
+      )}
+    </div>
+  );
+}
 
 // Ola 6 — Wrapper para el modal unificado de edición por slot. Vive dentro del
 // grid para tener acceso directo al store sin modificar StudioEditor.

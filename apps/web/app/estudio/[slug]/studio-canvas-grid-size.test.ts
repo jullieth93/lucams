@@ -403,6 +403,15 @@ describe("zoom de lienzo (Ola 22 + zoom-out 2026-09-09) — tope por ancho y pas
     expect(stepStageZoom(0.5, -1, 2)).toBe(STAGE_ZOOM_MIN); // piso firme
   });
 
+  it("sin margen para acercar (cap 1): el paso + queda inerte en 100% (el control lo deshabilita)", () => {
+    // Contrato del control inline de la fila de pills (StudioStageZoomControl):
+    // con tope 1 el botón + se deshabilita (zoom >= cap); si igual se llamara,
+    // el valor no se mueve del 100%.
+    expect(stepStageZoom(1, 1, 1)).toBe(1);
+    // …y alejar sigue disponible aunque acercar no lo esté.
+    expect(stepStageZoom(1, -1, 1)).toBe(0.75);
+  });
+
   it("con anchos inválidos → tope 1 (defensivo, nunca NaN)", () => {
     expect(computeStageZoomCap(0, 500)).toBe(1);
     expect(computeStageZoomCap(500, 0)).toBe(1);

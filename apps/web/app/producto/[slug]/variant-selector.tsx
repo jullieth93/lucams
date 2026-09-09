@@ -21,16 +21,20 @@
  *
  * Modo single-dim: lista vertical con price por variant. EXCEPCIÓN (Lucy
  * 2026-07-22, polaroid 7.5×10 qty 1–10): si la ÚNICA dimensión visible es la
- * cantidad 1..N contigua, se usa el stepper +/− del modo multi-dim en vez de
- * la lista vertical de N filas.
+ * cantidad (numérica — ver la regla del stepper abajo), se usa el stepper +/−
+ * del modo multi-dim en vez de la lista vertical de N filas.
  * Modo multi-dim: chips por dimensión + card de Precio prominente.
  *   - La dimensión de pack size (quantity/photoSlots — label visible "Unidades"
  *     por override de familia, regla 2026-09-08b) se muestra como stepper +/−
- *     con "$X c/u" cuando sus valores son 1..N contiguos (fotoimanes/
- *     separadores 1–6, polaroid 1–10); sets no contiguos (tiras 3/4 fotos)
- *     conservan chips. La selección siempre mapea a la variant con esa
- *     cantidad (mismo handleSelectValue que los chips) → deep-link ?variant=
- *     y dedupe quantity/photoSlots intactos.
+ *     con "$X c/u" en TODA familia de tamaño variable (2026-09-09, owner):
+ *     polaroid 1–10, cuadrados y separadores 1–6. El rango es min..max de las
+ *     variantes REALES y el ± salta entre los tamaños que EXISTEN (un set no
+ *     contiguo como el polaroid {1,10} de STG salta de 1 a 10 — nunca ofrece
+ *     un tamaño sin variante que lo respalde). EXCEPCIÓN: las dims de
+ *     COMPOSICIÓN de los híbridos (quantityStepperExclusions — tiras "Fotos
+ *     por tira" 3/4) conservan chips. La selección siempre mapea a la variant
+ *     con esa cantidad (mismo handleSelectValue que los chips) → deep-link
+ *     ?variant= y dedupe quantity/photoSlots intactos.
  *   - Dimensión de 1 SOLO valor (Lucy 2026-07-22): normalmente se oculta por
  *     redundante (Forma igual en todas las variants). EXCEPCIÓN: las claves en
  *     SINGLE_VALUE_VISIBLE_DIMS (hoy `sizeCm`) se muestran igual como chip
@@ -92,6 +96,14 @@ type VariantSelectorProps = {
    * reusando el render multi-dim. Los demás productos no se tocan.
    */
   singleDimAsChips?: boolean;
+  /**
+   * (2026-09-09, owner) — dims de cantidad que se quedan en CHIPS aunque sus
+   * valores sean numéricos: la COMPOSICIÓN de los híbridos
+   * (PDP_QUANTITY_CHIP_DIMS — tiras: photoSlots relabelado "Fotos por tira"
+   * 3/4), porque en esa ficha el stepper "Unidades" es el de COPIAS
+   * (CopiesQtyInput), no el pack size.
+   */
+  quantityStepperExclusions?: readonly string[];
 };
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -205,16 +217,32 @@ const SINGLE_VALUE_VISIBLE_DIMS: ReadonlySet<string> = new Set(["sizeCm"]);
 const QUANTITY_DIM_KEYS: ReadonlySet<string> = new Set(["quantity", "photoSlots"]);
 
 /**
- * ¿Los valores de la dimensión son exactamente 1..N contiguos? Solo así la cantidad
- * se elige con stepper +/− (fotoimanes cuadrados y separadores: 1–6, Lucy 2026-07-22).
- * Sets NO contiguos (polaroid 6/9/12/20) conservan chips: un stepper insinuaría que
- * existen todos los tamaños intermedios. La regla es por-producto, derivada de los
- * valores reales de sus variants — no de una lista fija.
+ * ¿Los valores de la dimensión son todos enteros positivos ("1", "2", …)? Es el
+ * gate del stepper +/− de pack size (2026-09-09, owner — UNIVERSAL en las
+ * familias de tamaño variable: polaroid 1–10, cuadrados/separadores 1–6).
+ * NO exige continuidad: el ± salta entre los valores que EXISTEN como variante
+ * (un set no contiguo como el polaroid {1,10} de STG salta de 1 a 10), así el
+ * stepper nunca ofrece un tamaño sin variante que lo respalde. La excepción de
+ * composición de los híbridos (tiras 3/4 → chips) la aplica el caller vía
+ * quantityStepperExclusions, no esta función.
  */
-function isContiguousFromOne(values: string[]): boolean {
-  const nums = values.map((v) => Number.parseInt(v, 10));
-  if (nums.length === 0 || nums.some((n) => !Number.isFinite(n))) return false;
-  return [...nums].sort((a, b) => a - b).every((n, i) => n === i + 1);
+function allPositiveIntegers(values: string[]): boolean {
+  return (
+    values.length > 0 &&
+    values.every((v) => {
+      const n = Number.parseInt(v, 10);
+      return Number.isFinite(n) && n >= 1 && String(n) === v;
+    })
+  );
+}
+
+/** ¿La dimensión es de cantidad (pack size) y se pinta como stepper +/−? */
+function isStepperQuantityDim(
+  key: string,
+  values: string[],
+  excluded: ReadonlySet<string>,
+): boolean {
+  return QUANTITY_DIM_KEYS.has(key) && !excluded.has(key) && allPositiveIntegers(values);
 }
 
 /**
@@ -258,6 +286,7 @@ export function VariantSelector({
   hiddenDimensions,
   dimensionLabels,
   singleDimAsChips = false,
+  quantityStepperExclusions,
 }: VariantSelectorProps) {
   // ──── SINGLE SOURCE OF TRUTH: el Context del buy-box (H12) ────
   // Antes el estado vivía LOCAL acá + router.replace; las acciones (CTA/carrito/precio) no se
@@ -298,6 +327,7 @@ export function VariantSelector({
   // catálogo, el chip correspondiente se muestra deshabilitado ("no
   // disponible") en lugar de cambiar la dimensión no-clickeada automáticamente.
   const dimensions = useMemo(() => {
+    const stepperExclusions: ReadonlySet<string> = new Set(quantityStepperExclusions ?? []);
     const dimMap: Record<string, Set<string>> = {};
     for (const v of variants) {
       const attrs = parseVariantAttributes(v.attributes);
@@ -397,9 +427,14 @@ export function VariantSelector({
         label: dimensionLabels?.[key] ?? DIMENSION_LABELS[key] ?? key,
         values,
         defined,
+        // Stepper de pack size (2026-09-09, owner — UNIVERSAL en las familias
+        // de tamaño variable): toda dim de cantidad con valores enteros
+        // positivos, salvo la composición de los híbridos (exclusiones —
+        // tiras "Fotos por tira" 3/4 se queda en chips).
+        useStepper: isStepperQuantityDim(key, values, stepperExclusions),
       };
     });
-  }, [variants, hiddenDimensions, dimensionLabels]);
+  }, [variants, hiddenDimensions, dimensionLabels, quantityStepperExclusions]);
 
   // Valor actual por dimensión (del variant seleccionado) — refleja
   // INMEDIATO porque selectedVariant depende de selectedId (local).
@@ -491,16 +526,12 @@ export function VariantSelector({
 
   if (variants.length < 2 && dimensions.length === 0) return null;
 
-  // Polaroid qty 1–10 (Lucy 2026-07-22): con UNA sola dimensión visible que es la
-  // cantidad 1..N contigua, ir directo al modo multi-dim (que pinta el stepper +/−)
-  // en vez de la lista vertical. Sin esto, pausar los sets viejos dejaba la PDP con
-  // una lista de 10 filas y sin stepper.
+  // Polaroid qty 1–10 (Lucy 2026-07-22): con UNA sola dimensión visible que es
+  // la cantidad, ir directo al modo multi-dim (que pinta el stepper +/−) en vez
+  // de la lista vertical. Sin esto, pausar los sets viejos dejaba la PDP con
+  // una lista de N filas y sin stepper.
   const firstDim = dimensions[0];
-  const singleQuantityStepper =
-    dimensions.length === 1 &&
-    firstDim !== undefined &&
-    QUANTITY_DIM_KEYS.has(firstDim.key) &&
-    isContiguousFromOne(firstDim.values);
+  const singleQuantityStepper = dimensions.length === 1 && firstDim?.useStepper === true;
 
   // Dimensión de 1 SOLO valor visible (Tamaño fijo, Lucy 2026-07-22): se pinta
   // como chip estático en el modo multi-dim; la lista vertical "Elige tu opción"
@@ -598,14 +629,21 @@ export function VariantSelector({
   return (
     <div className="mb-4 space-y-4">
       {dimensions.map((dim) => {
-        // Stepper de cantidad (Lucy 2026-07-22): solo si la dimensión es de cantidad
-        // y sus valores son 1..N contiguos (fotoimanes/separadores 1–6, polaroid
-        // 1–10). Sets NO contiguos siguen con chips, más abajo.
-        const useStepper = QUANTITY_DIM_KEYS.has(dim.key) && isContiguousFromOne(dim.values);
-        if (useStepper) {
-          const maxQty = dim.values.length; // values = ["1",…,"N"] contiguos
+        // Stepper de pack size (2026-09-09, owner — universal en las familias
+        // de tamaño variable): la flag la calcula el memo de dimensions
+        // (dim de cantidad numérica, no excluida). La composición de los
+        // híbridos (tiras "Fotos por tira" 3/4) sigue con chips, más abajo.
+        if (dim.useStepper) {
+          // El rango es min..max de los tamaños que EXISTEN como variante; el
+          // ± salta entre ellos (un set no contiguo como el polaroid {1,10} de
+          // STG salta de 1 a 10 — nunca ofrece un tamaño sin variante).
+          const steps = [...new Set(dim.values.map((v) => Number.parseInt(v, 10)))].sort(
+            (a, b) => a - b,
+          );
+          const minQty = steps[0] ?? 1;
+          const maxQty = steps[steps.length - 1] ?? 1;
           const parsed = Number.parseInt(currentValues[dim.key] ?? "", 10);
-          const qty = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), maxQty) : 1;
+          const qty = Number.isFinite(parsed) ? Math.min(Math.max(parsed, minQty), maxQty) : minQty;
           // La variante de la cantidad actual (misma combinación de las otras
           // dimensiones) da el precio del pack; el c/u deriva de él (precio por
           // foto cuando la dimensión es photoSlots).
@@ -619,13 +657,16 @@ export function VariantSelector({
             );
           const totalPrice = qtyVariant?.price ?? productBasePrice;
           const unitPrice = Math.round(totalPrice / qty);
-          // Fase 1 — el stepper salta cantidades agotadas: "+"/"−" apuntan a la
-          // siguiente/anterior cantidad que EXISTA y TENGA stock (no al entero
-          // adyacente); si el adyacente está agotado se avisa "· Agotado" (mismo
-          // término de las cards). Sin el salto, una cantidad agotada intermedia
-          // (ej. "2 unidades" en 0) bloqueaba el acceso a todas las superiores.
+          // Fase 1 — el stepper salta cantidades agotadas: "+"/"−" apuntan al
+          // tamaño siguiente/anterior que EXISTA y TENGA stock (no al valor
+          // adyacente del set); si el siguiente existe pero está agotado se
+          // avisa "· Agotado" (mismo término de las cards). Sin el salto, una
+          // cantidad agotada intermedia (ej. "2 unidades" en 0) bloqueaba el
+          // acceso a todas las superiores.
           const stepTarget = (dir: 1 | -1): number | null => {
-            for (let q = qty + dir; q >= 1 && q <= maxQty; q += dir) {
+            const candidates =
+              dir === 1 ? steps.filter((s) => s > qty) : steps.filter((s) => s < qty).reverse();
+            for (const q of candidates) {
               if (
                 isCombinationAvailable(dim.key, String(q)) &&
                 hasStockForCombination(dim.key, String(q))
@@ -639,10 +680,11 @@ export function VariantSelector({
           const increaseTo = stepTarget(1);
           const canDecrease = decreaseTo !== null;
           const canIncrease = increaseTo !== null;
+          const nextStep = steps.find((s) => s > qty);
           const nextSoldOut =
-            qty < maxQty &&
-            isCombinationAvailable(dim.key, String(qty + 1)) &&
-            !hasStockForCombination(dim.key, String(qty + 1));
+            nextStep !== undefined &&
+            isCombinationAvailable(dim.key, String(nextStep)) &&
+            !hasStockForCombination(dim.key, String(nextStep));
           return (
             <div key={dim.key}>
               <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">

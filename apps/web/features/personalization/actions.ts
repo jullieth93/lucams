@@ -376,6 +376,11 @@ const NameDesignInputSchema = z.object({
     .optional(),
   // ADR-057 — estilo ilustrado elegido (LetterTileSet.id) o null = "Solo letra".
   styleSetId: z.string().max(40).nullable().optional(),
+  // Lucy 2026-09-09 — opción de diseño "Con borde / Sin borde" (mismo precio), espejo del
+  // set de letras (Lucy 2026-09-05). Default true: es lo que siempre se imprimió, así los
+  // clientes con JS cacheado previo quedan retrocompatibles. z.boolean() rechaza de plano
+  // valores que no sean booleanos.
+  withBorder: z.boolean().default(true),
 });
 
 export async function createNameDesignAction(

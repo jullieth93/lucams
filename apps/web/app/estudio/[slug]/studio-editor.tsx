@@ -34,7 +34,8 @@ import {
 } from "@/features/personalization/actions";
 import { parsePhotoProductConfig, CALENDAR_FONT_OPTIONS } from "@/features/personalization/schemas";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
-import { StudioCanvasGrid } from "./studio-canvas-grid";
+import { StudioCanvasGrid, StudioStageZoomControl } from "./studio-canvas-grid";
+import { stepStageZoom } from "./studio-canvas-grid-size";
 import { StudioSidebar } from "./studio-sidebar";
 import { StudioToolbar, StudioFinalizeFab } from "./studio-toolbar";
 import { StudioStyleToolbar } from "./studio-style-toolbar";
@@ -319,6 +320,14 @@ export function StudioEditor({
   // Etapa 1 (modo catálogo): el asistente IA queda APAGADO — ni el botón
   // "Ideas" ni el panel se renderizan; el resto del Estudio sigue intacto.
   const aiEnabled = !isCatalogMode();
+
+  // Ola 22 (Lucy 2026-09-09) — zoom de LIENZO: el valor crudo vive ACÁ porque el
+  // control (− / % / + / reset) se renderiza en la fila de pills superior (junto a
+  // «Ideas» / «Ver en tu espacio»), nunca flotando sobre el canvas ("invadía el
+  // lienzo"). El grid lo clampa contra el tope por ancho y reporta el estado
+  // efectivo (zoom real + cap) para el % y los disabled de −/+.
+  const [stageZoomRaw, setStageZoomRaw] = useState(1);
+  const [stageZoomState, setStageZoomState] = useState({ zoom: 1, cap: 1 });
 
   // M.3.b.A2.5 — Lee `sizeCm` del producto para badge visual en cada slot.
   // Producto config viene como JSON unknown, parsePhotoProductConfig hace
@@ -1370,6 +1379,15 @@ export function StudioEditor({
                 <span className="sr-only">{texts.lienzo.espacioBtnSr}</span>
               </button>
             )}
+            {/* Ola 22 (Lucy 2026-09-09) — zoom de lienzo: pill INLINE en esta misma
+                fila (antes flotaba sobre la esquina superior derecha del lienzo e
+                "invadía el canvas"). Display-only; el grid aplica y clampa el valor. */}
+            <StudioStageZoomControl
+              zoom={stageZoomState.zoom}
+              cap={stageZoomState.cap}
+              onStep={(dir) => setStageZoomRaw((z) => stepStageZoom(z, dir, stageZoomState.cap))}
+              onReset={() => setStageZoomRaw(1)}
+            />
           </div>
 
           <StudioCanvasGrid
@@ -1400,6 +1418,8 @@ export function StudioEditor({
             facesPerUnit={facesPerUnit}
             interactiveSlots={!isTouch}
             onSlotClick={handleSlotClick}
+            stageZoomRaw={stageZoomRaw}
+            onStageZoomState={setStageZoomState}
             openEditSlot={openEditSlot}
             onEditClose={() => setOpenEditSlot(null)}
             onRequestChangePhoto={handleRequestChangePhoto}

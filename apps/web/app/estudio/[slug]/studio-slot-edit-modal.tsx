@@ -305,13 +305,18 @@ export function StudioSlotEditModal({
                           </p>
                         </div>
                       </div>
-                      <div className="mt-2.5 flex items-center gap-3">
+                      <div className="mt-2.5 flex flex-wrap items-center gap-3">
                         {onChangeProfilePhoto && (
+                          // Lucy 2026-09-09 — la acción principal de la sección es un
+                          // BOTÓN de marca (pill sólido, como los demás botones de la
+                          // ventana), no un texto subrayado: se leía como hint, no como
+                          // acción. «Quitar» queda como acción secundaria destructiva.
                           <button
                             type="button"
                             onClick={onChangeProfilePhoto}
-                            className="text-brand-purple-dark hover:text-brand-purple text-xs font-semibold underline"
+                            className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 focus-visible:ring-brand-turquoise inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg focus-visible:ring-2 focus-visible:outline-none active:scale-[0.98]"
                           >
+                            <ImageIcon className="h-4 w-4" aria-hidden />
                             {profilePhotoUrl
                               ? texts.texto.perfilCambiar
                               : texts.texto.perfilPickerTitulo}

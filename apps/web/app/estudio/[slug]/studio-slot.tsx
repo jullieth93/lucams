@@ -33,17 +33,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent
 import { motion, AnimatePresence } from "framer-motion";
 import { Trash2, RotateCcw, Pencil } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
-import {
-  Stage,
-  Layer,
-  Rect,
-  Image as KonvaImage,
-  Group,
-  Text,
-  Circle,
-  Path,
-  Line,
-} from "react-konva";
+import { Stage, Layer, Rect, Image as KonvaImage, Group, Text, Circle, Path } from "react-konva";
 import useImage from "use-image";
 import type Konva from "konva";
 import type { FilterFunction } from "konva/lib/Node";
@@ -109,8 +99,11 @@ export function nextWheelScale(current: number, deltaY: number, min = 0.5, max =
 // "transparencia" de los editores de foto) para que la tarjeta BLANCA se lea
 // sobre el lienzo claro del Estudio (white-on-white). Adorno 100% de pantalla:
 // vive en el DOM alrededor del Stage, nunca entra al snapshot de producción.
-const WHITE_CARD_CHECKER = "repeating-conic-gradient(#ECE9F1 0% 25%, #FFFFFF 0% 50%)";
-const WHITE_CARD_TRAY_PAD = 6;
+// Ola 25 — exportados para reutilizar la MISMA bandeja en el preview del modal
+// de edición (studio-photo-preview): la tarjeta blanca también se perdía contra
+// el fondo blanco del modal.
+export const WHITE_CARD_CHECKER = "repeating-conic-gradient(#ECE9F1 0% 25%, #FFFFFF 0% 50%)";
+export const WHITE_CARD_TRAY_PAD = 6;
 
 type StudioSlotProps = {
   slotState: SlotState;
@@ -352,9 +345,10 @@ function StudioSlotImpl({
   //  - "tarjeta simple" (Cuadrados): sin chrome ni texto visible → sin borde = foto a
   //    sangre TOTAL; con borde = franja UNIFORME de color.
   //  - Instagram (chrome SVG): fondo BINARIO blanco/negro + textos en contraste auto.
-  //  - Tira photobooth (gridCols=1 + gridGap=0): pieza continua con borde exterior
-  //    por posición + canaleta del color del marco ENTRE fotos (stripPhotoRect,
-  //    regla 2026-09-08 — misma matemática en producción).
+  //  - Tira photobooth (gridCols=1 + gridGap=0): pieza continua; CON borde = borde
+  //    exterior por posición + canaleta del color del marco ENTRE fotos; SIN borde
+  //    (Ola 25) = fotos pegadas sin líneas (stripPhotoRect, misma matemática en
+  //    producción).
   const isIg = useMemo(() => isInstagramTemplate(unitTemplate.layers), [unitTemplate]);
   const simpleCard = useMemo(
     () =>
@@ -1442,8 +1436,8 @@ export function renderLayer(
       //     (Instagram conserva la geometría de su chrome: sin inset).
       //  3. Tira photobooth: la ventana se inserta por posición (stripPhotoRect):
       //     borde exterior first/last + media canaleta entre fotos (2026-09-08).
-      //     Ola 23 — si el placeholder quedó a sangre total (toggle "Sin borde" de la
-      //     toolbar), el marco exterior desaparece y solo quedan las canaletas.
+      //     Ola 25 — si el placeholder quedó a sangre total (toggle "Sin borde" de
+      //     la toolbar), la celda va CONTINUA: sin marco exterior ni canaletas.
       let photoRect = {
         x: baseLayer.x,
         y: baseLayer.y,
@@ -1768,38 +1762,34 @@ function renderText(
   // sobrescribe el layer base si está definido.
   //
   // REGLA GLOBAL DE PLACEHOLDERS (Ola 4 2026-07-23, reforzada Ola 23 2026-09-08,
-  // endurecida Ola 24 2026-09-09): el texto por defecto de TODA capa editable de
+  // endurecida Ola 25 2026-09-09): el texto por defecto de TODA capa editable de
   // CUALQUIER plantilla ("Escribe tu mensaje", "@tu_usuario", "362 me gusta",
-  // "Bogotá, Colombia"…) es un PLACEHOLDER de pantalla, nunca contenido imprimible:
-  //   - En el EDITOR y en TODA superficie de preview (grilla, modal de edición) se
-  //     dibuja INCONFUNDIBLE como guía: atenuado (opacity 0.45) + ITÁLICA +
-  //     SUBRAYADO PUNTEADO, todo con name="edit-indicator" → el cliente VE lo que
-  //     puede escribir, pero el snapshot de producción/preview (studio-editor
-  //     esconde ".edit-indicator" antes de toDataURL) NO lo hornea. (Ola 24: el
-  //     45% solo seguía leyéndose como texto real — de ahí la itálica+subrayado.)
+  // "Bogotá, Colombia"…) es un PLACEHOLDER, nunca contenido de la tarjeta:
+  //   - NADA se dibuja en la tarjeta hasta que el cliente escribe su texto: ni en
+  //     la grilla, ni en el preview del modal, ni en texturas 3D ni en el
+  //     compositado de confirmación. (Ola 23/24 lo atenuaban con itálica +
+  //     subrayado punteado; el dueño validó en STG que aun así se leía como
+  //     texto físico → regla estricta: la tarjeta nace VACÍA.)
+  //   - En la GRILLA (superficie editable) el campo se descubre como ZONA DE
+  //     EDICIÓN vacía: recuadro punteado turquesa + dot, todo name="edit-indicator"
+  //     (adorno de pantalla: el snapshot de producción/preview lo esconde antes de
+  //     toDataURL). La vía principal de edición es la pestaña Texto del modal de
+  //     edición del slot; el input ahí muestra el default como placeholder gris
+  //     (atributo HTML), no como valor precargado.
   //   - En PRODUCCIÓN (renderTextLayer) una capa editable imprime SOLO el override
   //     del cliente; sin override.text no se imprime nada.
   //   - Ojo WYSIWYG: un override SIN texto (ej. solo cambió el color) sigue siendo
-  //     placeholder — la guía se ve con el color elegido pero no se imprime.
+  //     placeholder — la tarjeta queda vacía y no se imprime nada.
   // Las capas NO editables (texto fijo decorativo de la plantilla) sí imprimen su
   // texto base: no son placeholder de nada (no hay forma de editarlas).
-  const isPlaceholderGuide = layer.editable === true && override?.text === undefined;
-  const finalText = override?.text ?? layer.text;
+  const customerText =
+    typeof override?.text === "string" && override.text.trim() !== "" ? override.text : undefined;
+  const isPlaceholderGuide = layer.editable === true && customerText === undefined;
+  const finalText = customerText ?? layer.text;
   const fontSize = override?.fontSize ?? layer.fontSize ?? 48;
   const fontFamily = override?.fontFamily ?? layer.fontFamily ?? "Fredoka, Inter, sans-serif";
   const fill = override?.fill ?? (darkCard ? "#FFFFFF" : (layer.fill ?? "#3D2E5C"));
   const fontStyle = override?.fontWeight ?? layer.fontWeight;
-  // Ola 24 — la guía placeholder se fuerza a ITÁLICA (conservando negrita si la
-  // trae): señal visual universal de "texto de ejemplo". Seguro para producción:
-  // la guía nunca se hornea (edit-indicator) y el render server-side solo ve
-  // overrides reales del cliente (un override itálico cae al cliente, fiel).
-  const guideFontStyle = isPlaceholderGuide
-    ? fontStyle
-      ? fontStyle.toLowerCase().includes("italic")
-        ? fontStyle
-        : `italic ${fontStyle}`
-      : "italic"
-    : fontStyle;
   const align = layer.align ?? "center";
 
   // Styling adicional cuando el texto va sobre foto.
@@ -1822,44 +1812,84 @@ function renderText(
   // alrededor del texto que indica "esto se puede editar".
   // El cálculo es aproximado (text.length × fontSize × 0.55) — Konva no
   // expone bounding box exacto sin medirlo. Funciona OK para textos cortos.
+  // Ola 25 — para la ZONA VACÍA (placeholder) el ancho se estima con el texto
+  // base de la plantilla: la zona queda donde aparecerá el texto al escribirlo.
   const textY = layer.y - fontSize / 2;
   const textX = align === "center" ? 0 : layer.x;
-  const estWidth =
-    align === "center" ? stage.width : Math.max(60, finalText.length * fontSize * 0.55);
+  const guideLength = (isPlaceholderGuide ? layer.text : finalText).length;
+  const estWidth = align === "center" ? stage.width : Math.max(60, guideLength * fontSize * 0.55);
   const estHeight = fontSize * 1.2;
   const padding = Math.max(2, fontSize * 0.1);
 
-  // Ola 24 — subrayado PUNTEADO de la guía placeholder (segunda señal después de la
-  // itálica): una línea dashed del color del texto bajo la línea de base. Ancho
-  // estimado del TEXTO (no del stage), centrado según el align. Marcada
-  // "edit-indicator" → nunca se hornea en producción/preview compositado.
-  const guideTextWidth = Math.max(
-    60,
-    Math.min(stage.width - 8, finalText.length * fontSize * 0.55),
-  );
-  const underlineY = textY + fontSize * 1.15;
-  const underlineX0 = align === "center" ? (stage.width - guideTextWidth) / 2 : layer.x;
-  const placeholderUnderline = isPlaceholderGuide ? (
-    <Line
-      key={`${layer.id}-placeholder-underline`}
-      name="edit-indicator"
-      points={[underlineX0, underlineY, underlineX0 + guideTextWidth, underlineY]}
-      stroke={fill}
-      strokeWidth={Math.max(1, fontSize * 0.05)}
-      dash={[4, 3]}
-      opacity={0.6}
-      listening={false}
-      preventDefault={false}
-    />
-  ) : null;
+  // Ola 25 (Lucy 2026-09-09) — PLACEHOLDER (capa editable sin texto del cliente):
+  // la tarjeta NO muestra contenido de texto. En superficies no editables (preview
+  // del modal, texturas 3D, confirmación) no se dibuja NADA. En la grilla solo va
+  // la ZONA DE EDICIÓN vacía (recuadro punteado turquesa + dot + hit invisible que
+  // abre el editor), todo `edit-indicator` → jamás se hornea en el snapshot.
+  if (isPlaceholderGuide) {
+    if (!isEditable) return null;
+    const zone = {
+      x: textX - padding,
+      y: textY - padding,
+      width: estWidth + padding * 2,
+      height: estHeight + padding * 2,
+    };
+    return (
+      <Group key={layer.id} listening={true}>
+        <Rect
+          name="edit-indicator"
+          {...zone}
+          fill="rgba(93, 217, 209, 0.10)"
+          stroke="#5DD9D1"
+          strokeWidth={1.5}
+          dash={[5, 3]}
+          cornerRadius={4}
+          opacity={0.85}
+          listening={false}
+        />
+        <Circle
+          name="edit-indicator"
+          x={zone.x + zone.width - 2}
+          y={zone.y + 2}
+          radius={3.5}
+          fill="#5DD9D1"
+          stroke="#FFFFFF"
+          strokeWidth={1.5}
+          listening={false}
+        />
+        {/* Hit invisible sobre la zona vacía: tocarla abre el editor de texto.
+            Mismo patrón anti-doble-panel que el texto real (stopPropagation al DOM;
+            el wrapper filtra el click sintético con canvasActionTapAt). */}
+        <Rect
+          {...zone}
+          fill="rgba(0, 0, 0, 0)"
+          preventDefault={false}
+          onMouseEnter={(e) => {
+            const stageNode = e.target.getStage();
+            if (stageNode) stageNode.container().style.cursor = "text";
+          }}
+          onMouseLeave={(e) => {
+            const stageNode = e.target.getStage();
+            if (stageNode) stageNode.container().style.cursor = "";
+          }}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            e.evt.stopPropagation();
+            onTextEdit?.(layer.id);
+          }}
+          onTap={(e) => {
+            e.cancelBubble = true;
+            e.evt.stopPropagation();
+            onTextEdit?.(layer.id);
+          }}
+        />
+      </Group>
+    );
+  }
 
   const textNode = (
     <Text
       key={`${layer.id}-text`}
-      // Ola 4 — la GUÍA del placeholder (sin override) se marca "edit-indicator":
-      // no se hornea en el snapshot de producción/preview (vacío = no se imprime nada).
-      name={isPlaceholderGuide ? "edit-indicator" : undefined}
-      opacity={isPlaceholderGuide ? 0.45 : 1}
       x={textX}
       y={textY}
       width={align === "center" ? stage.width : undefined}
@@ -1867,7 +1897,7 @@ function renderText(
       fontFamily={fontFamily}
       fontSize={fontSize}
       fill={fill}
-      fontStyle={guideFontStyle}
+      fontStyle={fontStyle}
       align={align}
       listening={isEditable}
       // Ola 3c — NO bloquear el scroll táctil sobre la franja de texto (Konva haría
@@ -1908,18 +1938,9 @@ function renderText(
     />
   );
 
-  // Si NO es editable: render del text plano — salvo la GUÍA placeholder, que también
-  // en superficies no editables (preview del modal de edición, donde onTextEdit no se
-  // cablea) debe leerse como guía → va envuelta con su subrayado punteado (Ola 24).
+  // Si NO es editable: render del text plano (texto fijo de la plantilla o texto
+  // del cliente en superficies sin edición, como el preview del modal).
   if (!isEditable) {
-    if (isPlaceholderGuide) {
-      return (
-        <Group key={layer.id} listening={false}>
-          {placeholderUnderline}
-          {textNode}
-        </Group>
-      );
-    }
     return textNode;
   }
 
@@ -1958,10 +1979,6 @@ function renderText(
         strokeWidth={1.5}
         listening={false}
       />
-      {/* Ola 24 — subrayado punteado de la guía placeholder (además del recuadro
-          turquesa de "editable"): la itálica + esta línea dashed la hacen
-          inconfundible como texto de ejemplo. edit-indicator → no se hornea. */}
-      {placeholderUnderline}
       {textNode}
     </Group>
   );

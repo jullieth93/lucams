@@ -266,6 +266,18 @@ export const PDP_HIDDEN_DIMENSION_KEYS: Readonly<Record<string, readonly string[
 export const PDP_PACK_PLUS_COPIES_SLUGS: ReadonlySet<string> = new Set(["tiras-magneticas-fotos"]);
 
 /**
+ * (2026-09-09, owner) — dims de cantidad que se quedan en CHIPS aunque sus
+ * valores sean numéricos (excepción al stepper universal de pack size del
+ * VariantSelector): la COMPOSICIÓN de los híbridos (PDP_PACK_PLUS_COPIES_SLUGS).
+ * En tiras, photoSlots ("Fotos por tira", 3/4) es composición — el stepper
+ * "Unidades" de esa ficha es el de COPIAS (CopiesQtyInput). Llave = slug del
+ * producto → claves de attributes excluidas del stepper.
+ */
+export const PDP_QUANTITY_CHIP_DIMS: Readonly<Record<string, readonly string[]>> = {
+  "tiras-magneticas-fotos": ["photoSlots"],
+};
+
+/**
  * Regla 2026-09-08b (Lucy) — UN concepto, UN label: la dimensión de pack size se
  * llama "Unidades" en TODA PDP. La CLAVE que lo transporta varía por familia:
  * en separadores es `quantity`; en polaroid/cuadrados es `photoSlots`

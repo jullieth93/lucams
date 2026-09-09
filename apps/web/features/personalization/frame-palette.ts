@@ -157,14 +157,15 @@ export function simpleCardPhotoRect(
 // es solo CSS entre celdas del Estudio y NO entraría al PNG de producción (que
 // renderiza celda por celda) — rompería el WYSIWYG.
 //
-// Ola 23 (Lucy 2026-09-08) — modo SIN BORDE de la tira: el toggle "Borde de
+// Ola 25 (Lucy 2026-09-09) — modo SIN BORDE de la tira: el toggle "Borde de
 // foto → Sin borde" de la toolbar del Estudio reescribe el image-placeholder a
 // SANGRE TOTAL de la celda (x=0, ancho = stage — igual que el modo sin-borde de
-// la Instagram y la sangre total de los Cuadrados). En ese modo el marco
-// EXTERIOR desaparece (las fotos llegan a sangre hasta los bordes externos de
-// la tira) pero las CANALETAS entre fotos se conservan: siguen separando foto
-// de foto con el color de la tarjeta, como en la tira física. El rect viaja en
-// canvasData → producción detecta el mismo modo por geometría (isStripBorderless).
+// la Instagram y la sangre total de los Cuadrados). En ese modo la tira es
+// CONTINUA DE VERDAD: sin marco exterior Y SIN CANALETAS — las fotos se tocan
+// borde con borde, como la tira photobooth impresa sin marco. (Ola 23 conservaba
+// las canaletas en sin-borde; el dueño validó en STG que ahí no van líneas.)
+// El rect viaja en canvasData → producción detecta el mismo modo por geometría
+// (isStripBorderless) y aplica la misma matemática (WYSIWYG).
 // ──────────────────────────────────────────────────────────────────────────
 
 /** ¿La plantilla es una celda de tira photobooth? (marcadores gridCols=1 + gridGap=0). */
@@ -201,9 +202,9 @@ export function stripGutterPx(stage: { width: number; height: number }): number 
 }
 
 /**
- * Ola 23 — ¿la celda de la tira está en modo SIN BORDE? Se detecta por el rect del
+ * ¿La celda de la tira está en modo SIN BORDE? Se detecta por el rect del
  * image-placeholder: si cubre TODO el ancho del stage (el toggle "Sin borde" lo
- * reescribió a sangre), no hay marco exterior que dibujar — solo las canaletas.
+ * reescribió a sangre), la celda va continua: sin marco exterior ni canaletas.
  */
 export function isStripBorderless(
   ph: { x?: number; y?: number; width?: number; height?: number } | undefined,
@@ -220,9 +221,8 @@ export function isStripBorderless(
  *  - Entre fotos consecutivas → media canaleta (stripGutterPx) arriba y abajo
  *    de CADA foto: dos medias canaletas vecinas arman la separación visible del
  *    producto físico (regla 2026-09-08 — antes las fotos se tocaban, gap 0 real).
- *  - Ola 23 — `borderless` (sin borde): el inset EXTERIOR es 0 (la foto llega a
- *    sangre hasta los bordes de la tira) pero las canaletas entre fotos se
- *    conservan intactas.
+ *  - Ola 25 — `borderless` (sin borde): CERO inset y CERO canaleta — la celda
+ *    queda a sangre total y las fotos se tocan (tira continua sin líneas).
  * Los lados los maneja la plantilla (ventana con margen lateral uniforme).
  */
 export function stripPhotoRect(
@@ -231,8 +231,9 @@ export function stripPhotoRect(
   position: StripPosition,
   opts?: { borderless?: boolean },
 ): PhotoRect {
-  const inset = opts?.borderless ? 0 : stripOuterInset(stage);
-  const gutter = stripGutterPx(stage);
+  const borderless = opts?.borderless === true;
+  const inset = borderless ? 0 : stripOuterInset(stage);
+  const gutter = borderless ? 0 : stripGutterPx(stage);
   const top = position === "first" || position === "single" ? inset : gutter;
   const bottom = position === "last" || position === "single" ? inset : gutter;
   return { ...ph, y: ph.y + top, height: Math.max(10, ph.height - top - bottom) };

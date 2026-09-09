@@ -119,17 +119,55 @@ vi.mock("./service", () => ({
 
 import {
   createLetterSetDesignAction,
+  createNameDesignAction,
   finalizeDesignAction,
   saveCanvasAction,
   uploadDesignAssetAction,
 } from "./actions";
-import { createLetterSetDesign } from "./service";
+import { createLetterSetDesign, createNameDesign } from "./service";
 
 const VALID_LETTERSET_INPUT = {
   productId: "prod_1",
   variantId: "var_1",
   frameTheme: "arcoiris",
 };
+
+const VALID_NAME_INPUT = {
+  productId: "prod_1",
+  variantId: "var_1",
+  name: "LUCIA",
+};
+
+describe("createNameDesignAction · opción de borde (Lucy 2026-09-09)", () => {
+  beforeEach(() => {
+    vi.mocked(createNameDesign).mockReset();
+    vi.mocked(createNameDesign).mockResolvedValue({
+      id: "design_n1",
+      display: "LUCIA",
+      letters: ["L", "U", "C", "I", "A"],
+    });
+  });
+
+  it("acepta withBorder: false y lo pasa al service (se persiste en metadata)", async () => {
+    const result = await createNameDesignAction({ ...VALID_NAME_INPUT, withBorder: false });
+    expect(result).toMatchObject({ ok: true, designId: "design_n1" });
+    expect(createNameDesign).toHaveBeenCalledWith(expect.objectContaining({ withBorder: false }));
+  });
+
+  it("sin withBorder defaultea a true (retrocompatible con clientes cacheados previos)", async () => {
+    const result = await createNameDesignAction(VALID_NAME_INPUT);
+    expect(result.ok).toBe(true);
+    expect(createNameDesign).toHaveBeenCalledWith(expect.objectContaining({ withBorder: true }));
+  });
+
+  it("rechaza valores inválidos (string/number/null) sin tocar el service", async () => {
+    for (const bad of ["sin", 0, 1, null]) {
+      const result = await createNameDesignAction({ ...VALID_NAME_INPUT, withBorder: bad });
+      expect(result).toMatchObject({ ok: false, message: "Datos inválidos." });
+    }
+    expect(createNameDesign).not.toHaveBeenCalled();
+  });
+});
 
 describe("createLetterSetDesignAction · opción de borde (Lucy 2026-09-05)", () => {
   beforeEach(() => {

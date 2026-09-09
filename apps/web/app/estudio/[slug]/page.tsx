@@ -159,6 +159,23 @@ export default async function EstudioPage({
       listLetterStyles(surface.config.language),
       listLetterThemeOptions(surface.config.language),
     ]);
+    // Re-abrir un diseño guardado (?designId= — "Editar" desde el carrito): la opción
+    // «Con borde / Sin borde» vive en Design.metadata.withBorder (Lucy 2026-09-09) y hay
+    // que devolvérsela al editor, si no el toggle reaparece en el default y sobrescribiría
+    // la elección al guardar de nuevo. Sin la clave (diseños previos a la opción) queda en
+    // undefined → el editor arranca en CON borde, lo histórico. El editor nunca reusa el id:
+    // al confirmar crea un diseño NUEVO, así que acá solo se LEE el metadata (sin clonar).
+    let initialWithBorder: boolean | undefined;
+    if (sp.designId) {
+      const customer = await getCurrentCustomer();
+      const sessionId = customer ? null : await peekCartSession();
+      const design = await getOwnedDesign(sp.designId, {
+        customerId: customer?.customer.id ?? null,
+        sessionId,
+      });
+      const meta = design?.metadata as Record<string, unknown> | null;
+      if (meta && typeof meta.withBorder === "boolean") initialWithBorder = meta.withBorder;
+    }
     return (
       <div className="bg-brand-cream flex min-h-screen flex-col">
         <SiteHeader />
@@ -176,6 +193,8 @@ export default async function EstudioPage({
               // "Vista previa" lo confirma tal cual (igual que letterset y el
               // editor de foto).
               initialCopies={initialCopies}
+              // ?designId= (re-apertura) → opción de borde guardada en el diseño.
+              initialWithBorder={initialWithBorder}
             />
           </StudioTextsProvider>
         </main>

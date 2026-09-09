@@ -21,10 +21,8 @@
   </defs>
   <!-- Corazoncito Lucams centrado en la foto -->
   <path d="M225 270 C205 252 180 238 180 210 C180 192 193 180 208 180 C217 180 222 184 225 192 C228 184 233 180 242 180 C257 180 270 192 270 210 C270 238 245 252 225 270 Z" fill="#E85B9F" opacity="0.55"/>
-  <!-- Mensaje manuscrito en la franja inferior: es el PLACEHOLDER del texto editable
-       (regla global 2026-09-08, endurecida 2026-09-09): atenuado + itálica + subrayado
-       punteado para leerse como guía, no como texto impreso. Nunca se hornea — esta
-       miniatura es solo del selector; la tarjeta real dibuja el texto por capas. -->
-  <text x="225" y="522" font-family="'Comic Sans MS','Segoe Script',cursive" font-size="34" font-style="italic" fill="#3D2E5C" opacity="0.45" text-anchor="middle">Escribe tu mensaje</text>
-  <line x1="102" y1="534" x2="348" y2="534" stroke="#3D2E5C" stroke-width="2" stroke-dasharray="5 4" opacity="0.45"/>
+  <!-- Franja inferior del mensaje: VACÍA (regla global de placeholders, estricta
+       2026-09-09 — la tarjeta nace sin texto hasta que el cliente escribe el suyo;
+       el default "Escribe tu mensaje" ya no se dibuja en NINGUNA superficie, ni
+       siquiera en esta miniatura del selector). -->
 </svg>

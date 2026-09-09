@@ -48,6 +48,7 @@ import {
   photoPackMinPrice,
   PDP_DIMENSION_LABEL_OVERRIDES,
   PDP_PACK_PLUS_COPIES_SLUGS,
+  PDP_QUANTITY_CHIP_DIMS,
   conImanDefaultVariant,
 } from "@/features/products/variant-schemas";
 import { NamePricePicker } from "./name-price-picker";
@@ -388,6 +389,11 @@ export default async function ProductoDetallePage({
                       // Excepción tiras (2026-09-09): photoSlots → "Fotos por tira"
                       // y "Unidades" es el stepper de copias de abajo.
                       dimensionLabels={PDP_DIMENSION_LABEL_OVERRIDES[product.slug]}
+                      // (2026-09-09, owner) — excepción al stepper universal de
+                      // pack size: la COMPOSICIÓN de los híbridos se queda en
+                      // chips (tiras: "Fotos por tira" 3/4); su stepper
+                      // "Unidades" es el de copias (CopiesQtyInput, abajo).
+                      quantityStepperExclusions={PDP_QUANTITY_CHIP_DIMS[product.slug]}
                       // Packs: dimensión única de Tamaño como chips, no lista por variante.
                       singleDimAsChips={isPhotoPack}
                     />

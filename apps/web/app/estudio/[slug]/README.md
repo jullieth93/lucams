@@ -284,17 +284,19 @@ packages/db/scripts/
 
 ### Ola 23 (Lucy 2026-09-08) — placeholders no imprimibles, marco constante, tira sin borde
 
-- **Textos por defecto = placeholders NO imprimibles (TODAS las plantillas).** El default
-  de cualquier capa `editable` ("Escribe tu mensaje", "@tu_usuario", "362 me gusta"…) es
-  guía de pantalla: se VE atenuada (45%, `edit-indicator`) pero NUNCA se hornea — ni en el
-  snapshot del cliente (se esconde antes de `toDataURL`) ni en el render server
-  (`renderTextLayer` imprime solo `override.text`; el tier sharp ya no cae al canvas por un
-  placeholder sin override). Un override solo de estilo (sin texto) sigue sin imprimir.
-  **Ola 24:** la guía se endureció visualmente (el 45% solo seguía leyéndose como texto
-  real): ITÁLICA forzada + SUBRAYADO PUNTEADO del color del texto bajo la línea de base,
-  en TODA superficie (grilla, preview del modal de edición — ahí sin recuadro turquesa
-  porque no es editable, pero sí con itálica+subrayado). La miniatura `polaroid_clasica.svg`
-  (selector de plantillas) dibuja su "Escribe tu mensaje" horneado con el mismo tratamiento.
+- **Textos por defecto = placeholders NO imprimibles Y NO VISIBLES (TODAS las plantillas).**
+  El default de cualquier capa `editable` ("Escribe tu mensaje", "@tu_usuario", "362 me gusta"…)
+  nunca es contenido de la tarjeta: NADA se dibuja (grilla, preview del modal, 3D,
+  confirmación) hasta que el cliente escribe su texto. En la grilla el campo se descubre
+  como ZONA DE EDICIÓN vacía (recuadro punteado turquesa + dot + hit invisible,
+  `edit-indicator` — se esconde antes de `toDataURL`); la vía principal es la pestaña
+  Texto del modal de edición, cuyo input muestra el default como placeholder gris
+  (atributo HTML, no valor precargado). El render server (`renderTextLayer`) imprime solo
+  `override.text`; un override solo de estilo (sin texto) sigue sin imprimir.
+  **Historia:** Ola 23 los atenuaba (45%, `edit-indicator`) y Ola 24 endureció con
+  itálica + subrayado punteado (también en la miniatura `polaroid_clasica.svg`); el dueño
+  validó en STG que aun atenuados se leían como texto físico → Ola 25: la tarjeta nace
+  VACÍA y la miniatura ya no hornea el texto.
 - **El marco es MARCO, no fondo (marco de ancho constante bajo zoom/pan).** Con tarjeta de
   color (frame-card/full-bleed), el hueco que deja la foto al alejarla (zoom-out) o moverla
   se rellena con el color de la tarjeta SIN marco (capa `background`) — antes asomaba
@@ -306,16 +308,19 @@ packages/db/scripts/
   Instagram SIN BORDE sigue sin aplicar (el hueco es el color de tarjeta del diseño).
 - **Tira SIN borde (toggle "Borde de foto" de la toolbar).** El toggle reescribe el
   placeholder a sangre total de la celda → `isStripBorderless` + `stripPhotoRect(…,
-{ borderless: true })`: sin marco exterior (fotos a sangre en los bordes de la tira),
-  canaletas entre fotos intactas. Detección por geometría → producción consume la misma
-  regla (el rect viaja en canvasData).
+{ borderless: true })`: la tira queda CONTINUA de verdad — sin marco exterior Y SIN
+  canaletas entre fotos (las fotos se tocan; Ola 25 — Ola 23 conservaba las canaletas
+  y el dueño las marcó con X en STG). Detección por geometría → producción consume la
+  misma regla (el rect viaja en canvasData).
 - **Tarjeta clara sobre lienzo claro (white-on-white).** El slot lleva un filete DOM de
   contraste (`outline` brand-purple/35) cuando la tarjeta es clara — adorno de pantalla,
   nunca entra al PNG de producción. **Ola 24:** para la tarjeta BLANCA el filete se
   reemplaza por una bandeja cuadriculada gris/blanco (patrón "transparencia" de los
   editores de foto): el Stage se dibuja 6px inset dentro del mismo footprint del slot
   (`WHITE_CARD_CHECKER` en studio-slot) → la tarjeta blanca se lee en pantalla. Sigue
-  siendo 100% DOM: el snapshot captura solo el canvas Konva.
+  siendo 100% DOM: el snapshot captura solo el canvas Konva. **Ola 25:** la MISMA bandeja
+  se aplica en el preview del modal de edición (`StudioPhotoPreview`) — la tarjeta blanca
+  también se perdía contra el fondo blanco del modal.
 - **Marco máximo consistente del lienzo (T9).** El grid ahora se dimensiona por ancho Y
   por alto: `slotDisplaySize = min(porAncho, porAlto)` donde porAlto sale de un marco del
   78% del alto del viewport (acotado 420–900px). El grid usa ancho explícito (celdas+gaps)
@@ -333,9 +338,11 @@ packages/db/scripts/
   (ambas Polaroids y el resto de productos con marcos). Con «Sin borde» la paleta de
   color queda DESACTIVADA (visible pero inerte: `aria-disabled` + atenuada + aviso CMS
   `estudio.texto.estilo-color-deshabilitado-hint`) en las plantillas Polaroid — la foto
-  cubre toda la tarjeta y el color no aplica; el estado NO se resetea (al volver a
-  «Con borde» el color sigue). Tiras/cuadrados NO se desactivan: su color sigue
-  pintando (canaletas / franja uniforme) aun sin borde.
+  cubre toda la tarjeta y el color no aplica — y en las TIRAS photobooth (aviso propio
+  `estudio.texto.estilo-color-deshabilitado-hint-tira`): sin borde ya no hay canaletas
+  entre fotos, así que `borderColor` no pinta nada. El estado NO se resetea (al volver
+  a «Con borde» el color sigue, y en la tira vuelve a pintar las canaletas). Cuadrados
+  NO se desactivan: su franja uniforme usa `borderColor` aun sin borde.
 - **Zoom de foto "milimétrico"**: la rueda del mouse avanza ×1.04 por notch (antes
   ×1.15 — saltos toscos). La función `nextWheelScale` (studio-slot) la comparten el
   handler Konva, el listener nativo del slot y el preview del modal; el pinch sigue
@@ -407,9 +414,13 @@ packages/db/scripts/
 ### Ola 22 (Lucy 2026-09-08) — zoom de lienzo, badge a la barra, avatar tappeable, fuente del calendario
 
 - **Stage más grande + zoom de lienzo (display-only)**: `MAX_VIEWPORT_WIDTH` 1024 → 1280.
-  Control flotante (−/+%/reset) sobre la esquina del stage cuando el contenido lo permite
-  (`stageZoomCap = containerWidth/contentWidth`, clamp [1, 2.5], pasos de 0.25 — helpers en
-  `studio-canvas-grid-size.ts`). Los tamaños zoomados alimentan celdas, slots y placeholders,
+  Control −/+%/reset INLINE en la fila de pills superior del editor (junto a «Ideas» /
+  «Ver en tu espacio» — 2026-09-09: antes flotaba sobre la esquina del lienzo e "invadía
+  el canvas"). El estado crudo vive en `studio-editor.tsx`; el grid lo clampa contra el
+  tope por ancho (`stageZoomCap = containerWidth/contentWidth`, acercar hasta 2.5, alejar
+  hasta 0.5, pasos de 0.25 — helpers en `studio-canvas-grid-size.ts`) y reporta el estado
+  efectivo al pill (`StudioStageZoomControl`, exportado desde `studio-canvas-grid.tsx`).
+  Los tamaños zoomados alimentan celdas, slots y placeholders,
   así el slot crece completo (no estira la foto): nada se desborda horizontalmente. Solo
   botones (no wheel/pinch del stage) para no pisar el wheel de zoom de la FOTO en edición.
   Exportación inmune: `pixelRatio` del export ya es relativo al tamaño lógico del stage

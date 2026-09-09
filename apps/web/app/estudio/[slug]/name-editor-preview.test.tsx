@@ -83,7 +83,7 @@ beforeEach(() => {
   addPersonalizedToCartAction.mockResolvedValue({ ok: true });
 });
 
-function renderEditor(extraProps?: { initialCopies?: number }) {
+function renderEditor(extraProps?: { initialCopies?: number; initialWithBorder?: boolean }) {
   return render(
     <NameEditor
       product={{ id: "prod-1", slug: "nombre-personalizado", name: "Nombre Personalizado" }}
@@ -211,5 +211,124 @@ describe("NameEditor — vista previa antes del carrito", () => {
     // Y tampoco se crea un diseño huérfano nuevo.
     expect(createNameDesignAction).toHaveBeenCalledTimes(1);
     expect(push).toHaveBeenCalledWith("/carrito?personalized=1");
+  });
+});
+
+/*
+ * Opción «Con borde / Sin borde» (Lucy 2026-09-09) — espejo de la regla ya shipped en
+ * el set de letras (2026-09-05/08): el selector «Borde de las fichas» SIEMPRE queda
+ * habilitado; con «Sin borde» la sección «Elige los colores» se desactiva (las fichas
+ * no llevan el marco de color) con aviso del porqué, y al volver a «Con borde» se
+ * reactiva conservando la selección (useLetterColors nunca se resetea).
+ */
+describe("NameEditor — opción «Con borde / Sin borde» (regla del set de letras)", () => {
+  it("el selector «Borde de las fichas» aparece y arranca en «Con borde» (default histórico)", () => {
+    renderEditor();
+
+    expect(screen.getByRole("radiogroup", { name: "Borde de las fichas" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Con borde" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("radio", { name: "Sin borde" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    // Con borde: los colores arrancan habilitados y sin aviso.
+    expect(screen.getByRole("button", { name: /Arcoíris/ })).toBeEnabled();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+
+  it("«Sin borde» desactiva «Elige los colores» con aviso, y el selector de borde sigue habilitado", () => {
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Sin borde" }));
+
+    for (const tema of ["Arcoíris", "Vibrante", "Neutro"]) {
+      expect(screen.getByRole("button", { name: new RegExp(tema) })).toBeDisabled();
+    }
+    expect(screen.getByRole("note")).toHaveTextContent(/los colores se desactivan/);
+    // El selector de borde NUNCA se desactiva: es la vía para recuperar los colores.
+    expect(screen.getByRole("radio", { name: "Con borde" })).toBeEnabled();
+    expect(screen.getByRole("radio", { name: "Sin borde" })).toBeEnabled();
+  });
+
+  it("al volver a «Con borde» los colores se reactivan conservando la selección", () => {
+    renderEditor();
+
+    // El cliente elige un tema distinto al default…
+    fireEvent.click(screen.getByRole("button", { name: /Vibrante/ }));
+    expect(screen.getByRole("button", { name: /Vibrante/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // …apaga el borde (colores desactivados) y lo vuelve a encender.
+    fireEvent.click(screen.getByRole("radio", { name: "Sin borde" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Con borde" }));
+
+    expect(screen.getByRole("button", { name: /Vibrante/ })).toBeEnabled();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    // La selección previa se conserva: el estado de colores nunca se resetea.
+    expect(screen.getByRole("button", { name: /Vibrante/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  /*
+   * Persistencia (Lucy 2026-09-09) — la elección viaja en Design.metadata.withBorder
+   * (espejo del set de letras): se envía al crear el diseño y, al re-abrir uno guardado
+   * (?designId=), el toggle arranca con el valor persistido. Sin la clave (diseños
+   * previos a la opción) el default es CON borde, lo histórico.
+   */
+  it("sin tocar el selector, el diseño se crea con withBorder: true (default histórico)", async () => {
+    renderEditor();
+    await openPreviewWith("LUCIA");
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
+    expect(createNameDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({ withBorder: true }),
+    );
+  });
+
+  it("al elegir «Sin borde», el diseño se crea con withBorder: false", async () => {
+    renderEditor();
+    fireEvent.click(screen.getByRole("radio", { name: "Sin borde" }));
+    await openPreviewWith("LUCIA");
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
+    expect(createNameDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({ withBorder: false }),
+    );
+  });
+
+  it("re-abrir un diseño guardado sin borde arranca el toggle en «Sin borde» (round-trip)", () => {
+    renderEditor({ initialWithBorder: false });
+
+    expect(screen.getByRole("radio", { name: "Sin borde" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("radio", { name: "Con borde" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    // …y la sección de colores arranca desactivada, coherente con la elección guardada.
+    expect(screen.getByRole("button", { name: /Arcoíris/ })).toBeDisabled();
+  });
+
+  it("un diseño viejo SIN la clave withBorder arranca en «Con borde» (retrocompatible)", () => {
+    renderEditor({ initialWithBorder: undefined });
+
+    expect(screen.getByRole("radio", { name: "Con borde" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /Arcoíris/ })).toBeEnabled();
   });
 });

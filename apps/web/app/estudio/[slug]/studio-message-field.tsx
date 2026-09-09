@@ -16,8 +16,9 @@
  *
  * El mensaje es PACK-LEVEL: escribe el override en TODOS los slots (la misma
  * frase va impresa en cada imán del pack). Ola 4 (Lucy 2026-07-23): el mensaje es
- * OPCIONAL — vacío = NO se imprime nada (el placeholder "Escribe tu mensaje" es
- * solo guía, en el canvas se ve atenuado y nunca se hornea en producción).
+ * OPCIONAL — vacío = NO se imprime nada. Ola 25 (2026-09-09): el placeholder
+ * "Escribe tu mensaje" ya no se dibuja NI atenuado en el canvas — la tarjeta nace
+ * vacía y el default solo se ve como placeholder gris de este campo.
  */
 
 import { useStore } from "zustand";
