@@ -19,13 +19,17 @@ import {
   FRAME_HEIGHT_MIN,
   MIN_SLOT_SIZE,
   SLOT_HEIGHT_CAP_BY_COUNT,
+  STAGE_ZOOM_MAX,
+  STAGE_ZOOM_MIN,
   TEXT_MIN_SLOT_SIZE,
   computeFlatSlotDisplaySize,
   computeMaxFrameH,
+  computeStageZoomCap,
   hasEditableTextLayers,
   resolveMaxCols,
   resolveMinSlotSize,
   slotHeightCapByCount,
+  stepStageZoom,
 } from "./studio-canvas-grid-size";
 
 // Stage 450×600 (aspect 4:3) de la Polaroid Instagram.
@@ -363,5 +367,34 @@ describe("computeFlatSlotDisplaySize — maxFrameH null vs con alto límite", ()
     });
     // usableH = 500 − 44 = 456 → byHeight = floor(456 / (4/3)) = 342 < byWidth 2000
     expect(size).toBe(342);
+  });
+});
+
+describe("zoom de lienzo (Ola 22) — tope por ancho y pasos", () => {
+  it("grid que ya llena el ancho → tope 1 (sin zoom ofrecido)", () => {
+    expect(computeStageZoomCap(1000, 1000)).toBe(1);
+    expect(computeStageZoomCap(800, 1000)).toBe(1); // contenido más ancho que el contenedor
+  });
+
+  it("grid con margen → tope = ancho disponible / ancho del contenido", () => {
+    // Polaroid 1 slot de 520px centrada en 1280: tope = 1280/520 ≈ 2.46
+    expect(computeStageZoomCap(1280, 520)).toBeCloseTo(2.46, 2);
+    // Nunca supera STAGE_ZOOM_MAX.
+    expect(computeStageZoomCap(4000, 500)).toBe(STAGE_ZOOM_MAX);
+  });
+
+  it("stepStageZoom avanza en pasos de 0.25 y respeta min/cap", () => {
+    expect(stepStageZoom(1, 1, 2)).toBe(1.25);
+    expect(stepStageZoom(1.25, -1, 2)).toBe(1);
+    // No baja del mínimo.
+    expect(stepStageZoom(1, -1, 2)).toBe(STAGE_ZOOM_MIN);
+    // No supera el cap.
+    expect(stepStageZoom(2, 1, 2)).toBe(2);
+    expect(stepStageZoom(2.4, 1, 2.46)).toBe(2.46);
+  });
+
+  it("con anchos inválidos → tope 1 (defensivo, nunca NaN)", () => {
+    expect(computeStageZoomCap(0, 500)).toBe(1);
+    expect(computeStageZoomCap(500, 0)).toBe(1);
   });
 });

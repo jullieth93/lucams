@@ -310,6 +310,16 @@ export type MultiSlotCanvasData = {
   /** Mismo feature — tamaño físico elegido en la PDP (deep-link ?variant=). */
   sizeCm?: string;
   /**
+   * Lucy 2026-09-08 — "¿Con imán?" también en los packs de foto: la PDP elige
+   * Con/Sin imán (dimensión `magnet` de la variante) y el Estudio lo MUESTRA
+   * (badge read-only junto al stepper de fotos), no lo cambia — una sola fuente
+   * de verdad. Persiste en el canvasData (auto-save) para que el carrito resuelva
+   * la variante server-side incluyendo el imán (features/products/photo-pack-resolve.ts).
+   * Ausente = diseño legacy de antes de esta ola → la resolución cae a Con imán
+   * (magnet: true), que es lo que el producto siempre fue.
+   */
+  magnet?: boolean;
+  /**
    * Lucy 2026-09-07 — tipo de letra del TÍTULO/mes del calendario (selector del banner del
    * Estudio): "fredoka" (default, ausente = look histórico) | "inter" | "caveat". Persiste
    * en el canvasData (auto-save) → producción lo re-mapea a la familia registrada vía lista

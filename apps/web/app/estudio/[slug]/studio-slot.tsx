@@ -63,6 +63,7 @@ import {
   isStripTemplate,
   stripPhotoRect,
   stripPositionOf,
+  isStripBorderless,
   isInstagramTemplate,
   instagramBackgroundHex,
   noBorderChromeSrc,
@@ -121,7 +122,9 @@ type StudioSlotProps = {
   /**
    * Ola 3c — modo TIRA (gridGap=0): las celdas se tocan para leerse como UNA pieza
    * continua; la barra de acciones flota SOBRE la foto en vez de reservar una franja
-   * blanca entre celdas (rompería la continuidad de la tira).
+   * blanca entre celdas (rompería la continuidad de la tira). Regla 2026-09-08: la
+   * separación visible ENTRE fotos (canaleta del color del marco) vive DENTRO de
+   * cada celda vía stripPhotoRect — las celdas siguen pegadas entre sí.
    */
   overlayActions?: boolean;
   /**
@@ -153,6 +156,12 @@ type StudioSlotProps = {
   onEdit?: (tab: "photo" | "text") => void;
   /** M.3.b.D — Click sobre text layer editable abre el editor inline. */
   onTextEdit?: (textLayerId: string) => void;
+  /**
+   * Ola 22 (Lucy 2026-09-08) — Tap/click sobre el AVATAR del header del post
+   * (capa `profile-photo`, ej. Polaroid Instagram) abre directo el picker de
+   * foto de perfil, sin pasar por el modal genérico.
+   */
+  onProfilePhotoEdit?: () => void;
   /**
    * FB4 — si es false, la grilla no captura gestos inline (drag/pinch/wheel);
    * el dedo scrollea la página. El callback de transform sigue disponible
@@ -198,6 +207,7 @@ function StudioSlotImpl({
   onClear,
   onEdit,
   onTextEdit,
+  onProfilePhotoEdit,
   onPhotoTransformChange,
   onCenterPhoto,
   onAssetDrop,
@@ -219,20 +229,27 @@ function StudioSlotImpl({
   // capturaban el ref. State es seguro y el extra rerender por drag start/end
   // es aceptable (1 vez por drag).
   const [wasDraggingPhoto, setWasDraggingPhoto] = useState(false);
-  // Ola 3c (Lucy 2026-07-22) — guard del doble disparo táctil del TEXTO editable:
-  // el tap sobre el texto abre "Editar texto" vía Konva onTap, pero el browser
-  // sintetiza ADEMÁS un click que burbujea al wrapper → abría el picker/foco y
-  // cerraba el modal de texto al instante ("no deja modificar texto"). Marcamos
-  // el tap y el click sintético subsiguiente (<400ms) se ignora. useState (no ref)
-  // por la regla `react-hooks/refs` (mismo patrón que wasDraggingPhoto arriba).
-  const [textEditTapAt, setTextEditTapAt] = useState(0);
+  // Ola 3c (Lucy 2026-07-22) — guard del doble disparo táctil de acciones del CANVAS:
+  // el tap sobre un elemento interactivo de Konva (texto editable, avatar de perfil)
+  // dispara su acción vía onTap/onClick, pero el browser sintetiza ADEMÁS un click que
+  // burbujea al wrapper → abriría el picker/foco de foto encima y cerraría el panel al
+  // instante ("no deja modificar texto"). Marcamos el tap y el click sintético
+  // subsiguiente (<400ms) se ignora. useState (no ref) por la regla `react-hooks/refs`
+  // (mismo patrón que wasDraggingPhoto arriba).
+  const [canvasActionTapAt, setCanvasActionTapAt] = useState(0);
   const handleTextEdit = useCallback(
     (textLayerId: string) => {
-      setTextEditTapAt(Date.now());
+      setCanvasActionTapAt(Date.now());
       onTextEdit?.(textLayerId);
     },
     [onTextEdit],
   );
+  // Ola 22 — mismo guard que el texto editable: el tap/click sobre el avatar del
+  // header abre el picker de foto de perfil directo (patrón anti-doble-panel).
+  const handleProfilePhotoEdit = useCallback(() => {
+    setCanvasActionTapAt(Date.now());
+    onProfilePhotoEdit?.();
+  }, [onProfilePhotoEdit]);
 
   // M.3.b.UX.v13 (Lucy 2026-05-15) — CSS clip-path para que el slot wrapper
   // SE VEA con el shape físico del imán (heart/circle/rect). useId genera
@@ -304,7 +321,9 @@ function StudioSlotImpl({
   //  - "tarjeta simple" (Cuadrados): sin chrome ni texto visible → sin borde = foto a
   //    sangre TOTAL; con borde = franja UNIFORME de color.
   //  - Instagram (chrome SVG): fondo BINARIO blanco/negro + textos en contraste auto.
-  //  - Tira photobooth (gridCols=1 + gridGap=0): pieza continua, borde exterior por posición.
+  //  - Tira photobooth (gridCols=1 + gridGap=0): pieza continua con borde exterior
+  //    por posición + canaleta del color del marco ENTRE fotos (stripPhotoRect,
+  //    regla 2026-09-08 — misma matemática en producción).
   const isIg = useMemo(() => isInstagramTemplate(unitTemplate.layers), [unitTemplate]);
   const simpleCard = useMemo(
     () =>
@@ -319,19 +338,42 @@ function StudioSlotImpl({
     [unitTemplate],
   );
   const stripPosition = isStrip ? stripPositionOf(slotState.slotIndex, totalSlots) : null;
-  // Fondo efectivo de la tarjeta → contraste automático del texto (blanco si es oscuro).
-  const cardBgHex = useMemo(() => {
+  // Color de la capa background de la plantilla (blanco en todas las activas).
+  const bgLayerHex = useMemo(() => {
     const bgLayer = unitTemplate.layers.find((l) => l.type === "background") as
       { color?: string } | undefined;
-    const bgHex = bgLayer?.color ?? "#FFFFFF";
+    return bgLayer?.color ?? "#FFFFFF";
+  }, [unitTemplate]);
+  // Fondo efectivo de la tarjeta → contraste automático del texto (blanco si es oscuro).
+  const cardBgHex = useMemo(() => {
+    const bgHex = bgLayerHex;
     const fcLayer = unitTemplate.layers.find((l) => l.type === "frame-card") as
       { fill?: string } | undefined;
     if (isIg) return instagramBackgroundHex(borderColor ?? null, bgHex);
     if (fullBleed && borderColor) return borderColor;
     if (hasFrameCard) return borderColor ?? fcLayer?.fill ?? "#FFFFFF";
     return bgHex;
-  }, [unitTemplate, isIg, fullBleed, borderColor, hasFrameCard]);
+  }, [unitTemplate, isIg, fullBleed, borderColor, hasFrameCard, bgLayerHex]);
   const darkCardBg = isDarkColor(cardBgHex);
+  // Ola 23 (Lucy 2026-09-08) — "el marco es MARCO, no fondo": con tarjeta de color
+  // (frame-card o full-bleed) el hueco que deja la foto al ALEJARLA (zoom-out) o
+  // moverla se rellena con el color de la tarjeta SIN marco (la capa background),
+  // NO con borderColor — si no, la franja de color "crecería" dentro de la ventana
+  // al alejar la foto. Así el ancho del marco/canaleta queda CONSTANTE bajo
+  // cualquier zoom/pan. Producción aplica la misma regla (production-render-canvas).
+  // Instagram NO: su marco viene horneado en el chrome SVG (ya es constante).
+  const photoBackingHex =
+    borderColor && !isIg && (hasFrameCard || fullBleed) && shape !== "heart" && shape !== "circle"
+      ? bgLayerHex
+      : null;
+  // Ola 23 (Lucy 2026-09-08) — tarjeta CLARA (ej. Polaroid Clásica en Blanco) sobre el
+  // lienzo claro del Estudio: filete de contraste sutil alrededor del slot para que el
+  // borde de la tarjeta se lea en pantalla (white-on-white). Es adorno de PANTALLA a
+  // nivel DOM — el snapshot de producción (stage.toDataURL) captura solo el canvas
+  // Konva → NUNCA se hornea en el PNG de imprenta (lo impreso no cambia). En modo tira
+  // se omite por celda (dibujaría costuras entre fotos; la sombra de la pieza continua
+  // la pone el contenedor del grid) y en heart/circle la silueta ya va recortada.
+  const cardContrastEdge = !darkCardBg && !isStrip && !slotClipPath;
   // Ola 21 — Instagram: detectar modo SIN BORDE por el rect del placeholder
   // (foto a sangre total x=0 y=0 w=450 h=600 en el stage 450×600).
   const noBorder = useMemo(() => {
@@ -621,10 +663,11 @@ function StudioSlotImpl({
               e.preventDefault();
               return;
             }
-            // Ola 3c — click sintético tras un tap de TEXTO editable (móvil):
-            // "Editar texto" ya se abrió vía Konva onTap; este click abriría el
-            // picker/foco encima y lo cerraría al instante. Ignorarlo.
-            if (Date.now() - textEditTapAt < 400) {
+            // Ola 3c / Ola 22 — click sintético tras un tap de elemento interactivo
+            // del canvas (texto editable, avatar de perfil): la acción ya se abrió
+            // vía Konva onTap; este click abriría el picker/foco encima y lo cerraría
+            // al instante. Ignorarlo.
+            if (Date.now() - canvasActionTapAt < 400) {
               e.preventDefault();
               return;
             }
@@ -680,6 +723,9 @@ function StudioSlotImpl({
                   ? Math.max(2, cornerRadiusPx * scale)
                   : 8,
             clipPath: slotClipPath,
+            // Ola 23 — filete de contraste para tarjetas claras (white-on-white);
+            // adorno DOM de pantalla: no entra al snapshot de producción.
+            outline: cardContrastEdge ? "1px solid rgba(124, 106, 173, 0.35)" : undefined,
             // Pinch-zoom (WCAG 1.4.4): la página NUNCA bloquea el zoom a nivel viewport;
             // solo el canvas INTERACTIVO captura el gesto (touch-action:none) para que el
             // pellizco/arrastre actúe sobre la foto y no dispare zoom/scroll de la página
@@ -796,6 +842,15 @@ function StudioSlotImpl({
                       frameFullBleed,
                       noBorder,
                       stripPosition,
+                      // Ola 23 — color del hueco de la ventana cuando la foto no la
+                      // cubre (zoom-out/pan): la tarjeta SIN marco, para que el marco
+                      // no "crezca" al alejar la foto (marco constante).
+                      photoBackingHex,
+                      // Ola 22 — el avatar del header (capa profile-photo) abre el
+                      // picker de foto de perfil al tocarlo, directo. Solo cuando el
+                      // padre cablea el flujo (la vista previa del modal no lo hace).
+                      onProfilePhotoEdit: onProfilePhotoEdit ? handleProfilePhotoEdit : undefined,
+                      profilePhotoHint: texts.texto.perfilAvatarHint,
                     },
                   ),
                 )
@@ -937,23 +992,17 @@ function StudioSlotImpl({
             />
           )}
 
-          {/* Badge top-left: SOLO mes (calendario, abreviado). El número de slot se
-              movió a la barra de acciones como chip (Lucy 2026-09-07): flotando acá
-              tapaba el avatar del chrome de la Polaroid Instagram. Calendario conserva
-              este badge porque identifica el mes de la tarjeta. Modo tira
-              (overlayActions): también se conserva acá, la barra flota sobre la foto. */}
-          {slotState.assetUrl && (slotLabel || overlayActions) && (
-            <div
-              className="bg-brand-purple/80 absolute top-1.5 left-1.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white shadow-sm"
-              aria-hidden
-            >
-              {slotLabel ? slotLabel.slice(0, 3) : slotState.slotIndex + 1}
-            </div>
-          )}
+          {/* Ola 22 (Lucy 2026-09-08) — YA NO hay badge flotante dentro del slot.
+              Antes el número (y en modo tira / calendario también) flotaba
+              top-left SOBRE la plantilla y tapaba el avatar del chrome de la
+              Polaroid Instagram (que vive en (34,34) r=16). Ahora el número/mes
+              va SIEMPRE en la barra de acciones de ABAJO (chip, fuera del
+              template) — ver el chip al inicio de la action bar. */}
 
           {/* M.3.b.UX.v10 — chip de zoom visible cuando scale != 100% (foto fue
           modificada). Feedback al cliente de cuánto zoom tiene actualmente.
-          Top-right del slot para no chocar con el badge slot # ni con action bar.
+          Top-right del slot para no chocar con la action bar (Ola 22: ya no
+          existe badge flotante # dentro del slot).
           Solo se muestra si fluctúa del default — si está en 100%, no estorba. */}
           {slotState.assetUrl &&
             slotState.photoTransform?.scale &&
@@ -999,24 +1048,33 @@ function StudioSlotImpl({
           }
           style={overlayActions ? undefined : { width: slotWidth }}
         >
-          {/* Número de slot — chip al inicio de la barra (Lucy 2026-09-07).
-              Antes era un badge absoluto top-left dentro del slot que caía sobre el
-              avatar del chrome de la Polaroid Instagram. Mismo estilo del chip de
-              tamaño. Calendario (slotLabel) sigue usando su badge de mes y la tira
-              (overlayActions) conserva el badge flotante. */}
-          {slotState.assetUrl && !slotLabel && !overlayActions && (
+          {/* Identificador del slot — chip al inicio de la barra (Lucy 2026-09-07,
+              extendido Ola 22 2026-09-08 a TODOS los modos). Muestra el número de
+              slot, o el mes abreviado para calendario (slotLabel). Antes el número
+              era un badge absoluto top-left DENTRO del slot (tapaba el avatar del
+              chrome de la Polaroid Instagram) y en modo tira / calendario seguía
+              flotando sobre la plantilla. Acuerdo con Lucy: el identificador vive
+              SIEMPRE en esta barra, FUERA del template — incluido el modo tira
+              (overlayActions), donde la barra flota sobre la foto como unidad. */}
+          {slotState.assetUrl && (
             <span
               className="text-brand-purple-dark/70 bg-brand-cream/90 ring-brand-purple/10 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[9px] font-bold ring-1"
-              aria-label={fillStudioText(texts.lienzo.slotIndicator, {
-                sustantivo: nounCap,
-                n: slotState.slotIndex + 1,
-              })}
-              title={fillStudioText(texts.lienzo.slotIndicator, {
-                sustantivo: nounCap,
-                n: slotState.slotIndex + 1,
-              })}
+              aria-label={
+                slotLabel ??
+                fillStudioText(texts.lienzo.slotIndicator, {
+                  sustantivo: nounCap,
+                  n: slotState.slotIndex + 1,
+                })
+              }
+              title={
+                slotLabel ??
+                fillStudioText(texts.lienzo.slotIndicator, {
+                  sustantivo: nounCap,
+                  n: slotState.slotIndex + 1,
+                })
+              }
             >
-              {slotState.slotIndex + 1}
+              {slotLabel ? slotLabel.slice(0, 3) : slotState.slotIndex + 1}
             </span>
           )}
 
@@ -1232,6 +1290,22 @@ export function renderLayer(
     frameFullBleed?: boolean;
     noBorder?: boolean;
     stripPosition?: import("@/features/personalization/frame-palette").StripPosition | null;
+    /**
+     * Ola 23 (Lucy 2026-09-08) — color de respaldo de la ventana de foto cuando hay
+     * tarjeta de color (frame-card / full-bleed): el hueco que deja la foto al
+     * alejarla (zoom-out) o moverla se pinta de este color (la tarjeta SIN marco) en
+     * vez del color del marco → el ancho del marco/canaleta queda CONSTANTE bajo
+     * cualquier zoom/pan. null = sin respaldo (el hueco muestra lo que haya debajo).
+     */
+    photoBackingHex?: string | null;
+    /**
+     * Ola 22 (Lucy 2026-09-08) — tap/click sobre el AVATAR del header del post
+     * (capa `profile-photo`) abre directo el picker de foto de perfil. Sin
+     * callback la capa queda no interactiva (vista previa del modal).
+     */
+    onProfilePhotoEdit?: () => void;
+    /** Tooltip del avatar (copy CMS) — solo se usa cuando onProfilePhotoEdit está set. */
+    profilePhotoHint?: string;
   },
 ) {
   const borderColor = opts?.borderColor ?? null;
@@ -1244,6 +1318,7 @@ export function renderLayer(
   const frameFullBleed = opts?.frameFullBleed ?? false;
   const noBorder = opts?.noBorder ?? false;
   const stripPosition = opts?.stripPosition ?? null;
+  const photoBackingHex = opts?.photoBackingHex ?? null;
   switch (layer.type) {
     case "background":
       return (
@@ -1310,8 +1385,10 @@ export function renderLayer(
       //     con borde → franja UNIFORME de color (simpleCardPhotoRect).
       //  2. Ola 3b resto de plantillas full-bleed: inserta respetando márgenes mayores
       //     (Instagram conserva la geometría de su chrome: sin inset).
-      //  3. Tira photobooth: la ventana viene a sangre vertical (fotos que se tocan);
-      //     el borde exterior lo pone la posición (first/last).
+      //  3. Tira photobooth: la ventana se inserta por posición (stripPhotoRect):
+      //     borde exterior first/last + media canaleta entre fotos (2026-09-08).
+      //     Ola 23 — si el placeholder quedó a sangre total (toggle "Sin borde" de la
+      //     toolbar), el marco exterior desaparece y solo quedan las canaletas.
       let photoRect = {
         x: baseLayer.x,
         y: baseLayer.y,
@@ -1327,7 +1404,9 @@ export function renderLayer(
         photoRect = insetToMinMargin(photoRect, stage, frameBleedMargin(stage));
       }
       if (stripPosition) {
-        photoRect = stripPhotoRect(photoRect, stage, stripPosition);
+        photoRect = stripPhotoRect(photoRect, stage, stripPosition, {
+          borderless: isStripBorderless(photoRect, stage),
+        });
       }
       const effectiveLayer = {
         ...baseLayer,
@@ -1339,6 +1418,7 @@ export function renderLayer(
           key={layer.id}
           layer={effectiveLayer}
           slotState={slotState}
+          backingColor={photoBackingHex}
           onPhotoTransformChange={onPhotoTransformChange}
           onPhotoDragStart={onPhotoDragStart}
           onPhotoDragEnd={onPhotoDragEnd}
@@ -1381,12 +1461,18 @@ export function renderLayer(
       // Ola 17 (Lucy 2026-09-07) — foto de perfil del header del post de Instagram.
       // Cubre el avatar placeholder horneado del chrome SVG (mismo centro/radio) con
       // la foto del cliente recortada a círculo; el anillo de historia queda visible
-      // alrededor. Sin foto elegida no dibuja nada → se ve el placeholder del SVG.
+      // alrededor. Sin foto elegida no dibuja la imagen → se ve el placeholder del SVG.
+      // Ola 22 (Lucy 2026-09-08) — el círculo ES tappeable: abre directo el picker de
+      // foto de perfil (hit region + anillo turquesa + tooltip, todo `edit-indicator`
+      // → nunca se hornea en el PNG de producción).
       return (
         <ProfilePhotoLayerRenderer
           key={layer.id}
           layer={layer as ProfilePhotoLayer}
           profileAssetUrl={slotState.profileAssetUrl ?? null}
+          stageWidth={stage.width}
+          onEdit={opts?.onProfilePhotoEdit}
+          hint={opts?.profilePhotoHint}
         />
       );
     default:
@@ -1398,38 +1484,147 @@ export function renderLayer(
  * Ola 17 — Renderer de la capa `profile-photo`. La imagen la aporta el slot
  * (slotState.profileAssetUrl, subida/elegida con el control "Foto de perfil" del
  * modal de edición). Recorte circular con clipFunc (ctx.arc) en coords del Group,
- * igual que el rounded-rect de ImagePlaceholder. Sin URL (o cargando) no dibuja
- * nada: el avatar placeholder horneado del SVG se ve intacto.
+ * igual que el rounded-rect de ImagePlaceholder.
+ *
+ * Ola 22 (Lucy 2026-09-08) — el círculo del avatar ES tappeable: tocarlo abre
+ * directo el picker de foto de perfil (sin pasar por el modal genérico). Hit
+ * region = círculo transparente un poco mayor que el avatar (target cómodo),
+ * con anillo turquesa punteado PERMANENTE (mismo lenguaje que los textos
+ * editables: "esto se puede tocar") que se refuerza en hover + tooltip. Todo el
+ * adorno va marcado `name="edit-indicator"` → NUNCA se hornea en el snapshot de
+ * producción/preview. Funciona también SIN foto elegida (ahí es el uso principal:
+ * elegirla por primera vez) — el placeholder horneado del SVG queda visible.
  */
 function ProfilePhotoLayerRenderer({
   layer,
   profileAssetUrl,
+  stageWidth,
+  onEdit,
+  hint,
 }: {
   layer: ProfilePhotoLayer;
   profileAssetUrl: string | null;
+  stageWidth: number;
+  /** Ola 22 — si viene, el avatar abre el picker de foto de perfil al tocarlo. */
+  onEdit?: () => void;
+  /** Tooltip de hover (copy CMS estudio.texto.perfil-avatar-hint). */
+  hint?: string;
 }) {
   const [image] = useImage(profileAssetUrl ?? "", "anonymous");
-  if (!profileAssetUrl || !image) return null;
+  const [hover, setHover] = useState(false);
+  const interactive = !!onEdit;
+  // Sin foto y sin interactividad no hay NADA que pintar (contrato Ola 17: el
+  // placeholder horneado del SVG se ve intacto y el árbol Konva queda vacío).
+  if ((!profileAssetUrl || !image) && !interactive) return null;
 
   const d = layer.radius * 2;
   // Cover dentro del círculo: la foto más chica se agrupa hasta cubrirlo y se
   // centra (misma matemática cover que el image-placeholder, sin overscan).
-  const scale = Math.max(d / image.width, d / image.height);
-  const w = image.width * scale;
-  const h = image.height * scale;
+  const scale = image ? Math.max(d / image.width, d / image.height) : 1;
+  const w = image ? image.width * scale : 0;
+  const h = image ? image.height * scale : 0;
+
+  // Tooltip bajo el avatar (el header no tiene aire arriba: el anillo de historia
+  // llega a y≈14). Se clampa al ancho del stage para no cortarse en el borde.
+  const hintText = interactive ? (hint ?? "") : "";
+  const hintFont = 11;
+  const hintW = Math.max(90, Math.min(stageWidth - 8, hintText.length * hintFont * 0.55 + 16));
+  const hintH = hintFont * 1.3 + 8;
+  const hintX = Math.max(4, Math.min(stageWidth - hintW - 4, layer.x - hintW / 2));
 
   return (
-    <Group
-      x={layer.x - layer.radius}
-      y={layer.y - layer.radius}
-      clipFunc={(ctx: Konva.Context) => {
-        ctx.beginPath();
-        ctx.arc(layer.radius, layer.radius, layer.radius, 0, Math.PI * 2);
-        ctx.closePath();
-      }}
-      listening={false}
-    >
-      <KonvaImage image={image} x={(d - w) / 2} y={(d - h) / 2} width={w} height={h} />
+    <Group x={layer.x - layer.radius} y={layer.y - layer.radius}>
+      {/* Foto del cliente recortada a círculo (Ola 17). Sin foto → solo el hit. */}
+      {profileAssetUrl && image && (
+        <Group
+          clipFunc={(ctx: Konva.Context) => {
+            ctx.beginPath();
+            ctx.arc(layer.radius, layer.radius, layer.radius, 0, Math.PI * 2);
+            ctx.closePath();
+          }}
+          listening={false}
+        >
+          <KonvaImage image={image} x={(d - w) / 2} y={(d - h) / 2} width={w} height={h} />
+        </Group>
+      )}
+      {/* Anillo de affordance PERMANENTE (punteado turquesa, como los textos
+        editables) — refuerzo sólido en hover. `edit-indicator` → no se hornea. */}
+      {interactive && (
+        <Circle
+          name="edit-indicator"
+          x={layer.radius}
+          y={layer.radius}
+          radius={layer.radius + 3.5}
+          stroke="#5DD9D1"
+          strokeWidth={hover ? 2.5 : 1.5}
+          dash={hover ? undefined : [4, 3]}
+          opacity={hover ? 1 : 0.75}
+          listening={false}
+        />
+      )}
+      {/* Hit region: círculo transparente un poco mayor que el avatar. Escucha
+        click/tap SOLO cuando hay callback; preventDefault={false} para no matar
+        el scroll táctil de la página sobre el avatar (mismo criterio que los
+        textos editables). */}
+      {interactive && (
+        <Circle
+          x={layer.radius}
+          y={layer.radius}
+          radius={layer.radius + 8}
+          fill="rgba(0,0,0,0)"
+          preventDefault={false}
+          onMouseEnter={(e) => {
+            setHover(true);
+            const stageNode = e.target.getStage();
+            if (stageNode) stageNode.container().style.cursor = "pointer";
+          }}
+          onMouseLeave={(e) => {
+            setHover(false);
+            const stageNode = e.target.getStage();
+            if (stageNode) stageNode.container().style.cursor = "";
+          }}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            // Mismo anti-doble-panel que los textos: cortar la propagación al
+            // wrapper DOM (que abriría el picker de foto genérico encima).
+            e.evt.stopPropagation();
+            onEdit?.();
+          }}
+          onTap={(e) => {
+            e.cancelBubble = true;
+            e.evt.stopPropagation();
+            onEdit?.();
+          }}
+        />
+      )}
+      {/* Tooltip de hover — hint para descubrir el atajo (solo desktop; en
+        táctil el primer tap ya abre el picker). `edit-indicator` → no se hornea. */}
+      {interactive && hover && hintText && (
+        <Group
+          name="edit-indicator"
+          x={hintX}
+          y={Math.max(4, layer.y + layer.radius + 10)}
+          listening={false}
+        >
+          <Rect
+            width={hintW}
+            height={hintH}
+            fill="rgba(61, 46, 92, 0.92)"
+            cornerRadius={hintH / 2}
+          />
+          <Text
+            text={hintText}
+            x={0}
+            y={4}
+            width={hintW}
+            align="center"
+            fontSize={hintFont}
+            fontStyle="bold"
+            fill="#FFFFFF"
+            listening={false}
+          />
+        </Group>
+      )}
     </Group>
   );
 }
@@ -1516,11 +1711,20 @@ function renderText(
 ) {
   // Combinar layer base + override del slot. Cada campo del override
   // sobrescribe el layer base si está definido.
-  // Ola 4 (Lucy 2026-07-23) — texto OPCIONAL: si la capa es EDITABLE y el cliente no
-  // escribió nada (sin override), el texto base ("Escribe tu mensaje") se dibuja como
-  // GUÍA atenuada con name="edit-indicator" → NUNCA se hornea en el snapshot de
-  // producción/preview (producción tampoco imprime nada sin override: mismo criterio
-  // en renderTextLayer). Con override (incluso ""), manda el override del cliente.
+  //
+  // REGLA GLOBAL DE PLACEHOLDERS (Ola 4 2026-07-23, reforzada Ola 23 2026-09-08):
+  // el texto por defecto de TODA capa editable de CUALQUIER plantilla
+  // ("Escribe tu mensaje", "@tu_usuario", "362 me gusta", "Bogotá, Colombia"…) es un
+  // PLACEHOLDER de pantalla, nunca contenido imprimible:
+  //   - En el EDITOR se dibuja atenuado (opacity 0.45) con name="edit-indicator" →
+  //     el cliente VE lo que puede escribir, pero el snapshot de producción/preview
+  //     (studio-editor esconde ".edit-indicator" antes de toDataURL) NO lo hornea.
+  //   - En PRODUCCIÓN (renderTextLayer) una capa editable imprime SOLO el override
+  //     del cliente; sin override.text no se imprime nada.
+  //   - Ojo WYSIWYG: un override SIN texto (ej. solo cambió el color) sigue siendo
+  //     placeholder — la guía se ve con el color elegido pero no se imprime.
+  // Las capas NO editables (texto fijo decorativo de la plantilla) sí imprimen su
+  // texto base: no son placeholder de nada (no hay forma de editarlas).
   const isPlaceholderGuide = layer.editable === true && override?.text === undefined;
   const finalText = override?.text ?? layer.text;
   const fontSize = override?.fontSize ?? layer.fontSize ?? 48;
@@ -1835,6 +2039,7 @@ export function getShapeBoundingBox(
 function ImagePlaceholder({
   layer,
   slotState,
+  backingColor,
   onPhotoTransformChange,
   onPhotoDragStart,
   onPhotoDragEnd,
@@ -1842,6 +2047,16 @@ function ImagePlaceholder({
 }: {
   layer: ImagePlaceholderLayer;
   slotState: SlotState;
+  /**
+   * Ola 23 (Lucy 2026-09-08) — color del RESPALDO de la ventana de foto. Con tarjeta
+   * de color (frame-card/full-bleed) el hueco que deja la foto al alejarla
+   * (zoom-out < 100% del cover) o al hacer pan se pinta de este color (la tarjeta SIN
+   * marco) en vez de dejar ver el borderColor de debajo — el marco/canal queda de
+   * ancho CONSTANTE bajo cualquier zoom/pan ("el marco es marco, no fondo"). Es
+   * CONTENIDO del diseño (no edit-indicator): SÍ se hornea en el snapshot de
+   * producción, igual que el fillRect equivalente de production-render-canvas.
+   */
+  backingColor?: string | null;
   /** M.3.b.UX.v9+ — callback parcial: drag manda offsetX/Y, zoom manda scale.
    * `undefined` = drag deshabilitado (modo vista previa). */
   onPhotoTransformChange?: (
@@ -2012,6 +2227,20 @@ function ImagePlaceholder({
           ? { clipFunc: groupClipFunc }
           : { clip: { x: 0, y: 0, width: layer.width, height: layer.height } })}
       >
+        {/* Ola 23 — respaldo de la ventana: si la foto no la cubre (zoom-out/pan),
+          el hueco sale del color de la tarjeta SIN marco, no del color del marco
+          → el marco no "crece" al alejar la foto. Misma regla en producción. */}
+        {backingColor && (
+          <Rect
+            x={0}
+            y={0}
+            width={layer.width}
+            height={layer.height}
+            fill={backingColor}
+            listening={false}
+            preventDefault={false}
+          />
+        )}
         <KonvaImage
           ref={(n) => {
             imageNodeRef.current = n;

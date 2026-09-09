@@ -11,6 +11,9 @@
  * LIENZO que se persiste en Design.metadata.withBorder (NO es variante de catálogo) y se refleja
  * en los 3 dibujos de la ficha (DOM del editor, PNG de producción y textura 3D). Default "con
  * borde": lo que siempre se imprimió, así los diseños previos sin la clave quedan válidos.
+ * Lucy 2026-09-08 — el selector de borde SIEMPRE queda habilitado; con "Sin borde" la sección
+ * "Elige los colores" se desactiva (las fichas no llevan el marco de color) y se reactiva al
+ * volver a "Con borde" conservando la selección de colores.
  *
  * Ola 2A (Lucy 2026-07-22) — el TEMA (default/animales/frutas/profesiones) y el IDIOMA ya NO
  * son variantes de la PDP: se eligen ACÁ en el Estudio. El tema preselecciona el LetterTileSet
@@ -246,8 +249,9 @@ export function LetterSetEditor({
   /** Tema que venía en la variante de la PDP (preselección). null = "Solo letra". */
   initialTheme: string | null;
   stylesByLanguage: { es: LetterStyle[]; en: LetterStyle[] };
-  /** Copias pre-elegidas en la PDP (`?copies=N`, Lucy 2026-09-03): valor inicial del
-   *  stepper "Copias" de la modal. undefined → arranca en 1. */
+  /** Copias (CartItem.qty) elegidas en la PDP con el stepper "Unidades"
+   *  (`?copies=N`, regla 2026-09-08b): las confirma la modal "¡Listo!" — que ya
+   *  NO tiene stepper propio. undefined → 1. */
   initialCopies?: number;
   subtitle?: string;
 }) {
@@ -414,7 +418,8 @@ export function LetterSetEditor({
    * Paso 2 — "Sí, agregar al carrito": recién acá se crea el diseño, se sube el PNG aprobado y se
    * agrega al carrito. Se reusa el blob de la vista previa (no se re-dibuja) para que el archivo
    * de producción sea el mismo que el cliente aprobó.
-   * `copies` viene del stepper "Copias" de la modal (unidades idénticas del set; CartItem.qty 1..99).
+   * `copies` son las unidades idénticas del set (CartItem.qty 1..99) que fijó la PDP (stepper
+   * "Unidades", ?copies=N) — la modal las confirma tal cual, ya sin stepper propio.
    */
   async function handleConfirmAddToCart(copies: number) {
     if (submitting || !previewBlob) return;
@@ -588,12 +593,24 @@ export function LetterSetEditor({
           </div>
         )}
 
-        {/* Picker de tema de color — control compartido con Nombre (barajar al re-clic). */}
-        <ThemePicker themeId={themeId} customized={customized} onApply={applyTheme} />
+        {/* Picker de tema de color — control compartido con Nombre (barajar al re-clic).
+            Lucy 2026-09-08 — con «Sin borde» las fichas no llevan el marco de color, así que
+            la sección «Elige los colores» se DESACTIVA (visible + inerte, con el porqué).
+            Al volver a «Con borde» se reactiva conservando la selección: el estado de
+            colores (useLetterColors) nunca se resetea al desactivar. */}
+        <ThemePicker
+          themeId={themeId}
+          customized={customized}
+          onApply={applyTheme}
+          disabled={!withBorder}
+          disabledHint={texts.letras.bordeSinColoresHint}
+        />
 
         {/* Lucy 2026-09-05 — opción de diseño "Con borde / Sin borde" (mismo precio). Es una
             decisión de LIENZO que viaja en Design.metadata y se refleja en el PNG de producción,
-            no una variante del catálogo. Default "Con borde": lo que siempre se imprimió. */}
+            no una variante del catálogo. Default "Con borde": lo que siempre se imprimió.
+            Lucy 2026-09-08 — el selector SIEMPRE queda habilitado (es la vía para reactivar
+            los colores); "Sin borde" solo desactiva la sección de colores de arriba. */}
         <div className="mt-5">
           <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
             {texts.letras.bordeTitulo}

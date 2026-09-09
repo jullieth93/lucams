@@ -145,6 +145,14 @@ export function StudioPhotoPreview({
     return bgHex;
   }, [unitTemplate, isIg, fullBleed, borderColor, hasFrameCard]);
   const darkCardBg = isDarkColor(cardBgHex);
+  // Ola 23 — respaldo de la ventana de foto bajo zoom-out/pan (marco constante):
+  // MISMA regla que el slot de la grilla (WYSIWYG entre grilla, modal y producción).
+  const bgLayerHex = useMemo(() => {
+    const bgLayer = unitTemplate.layers.find((l) => l.type === "background") as
+      { color?: string } | undefined;
+    return bgLayer?.color ?? "#FFFFFF";
+  }, [unitTemplate]);
+  const photoBackingHex = borderColor && !isIg && (hasFrameCard || fullBleed) ? bgLayerHex : null;
   // Ola 16 — Instagram: detectar modo SIN BORDE por el rect del placeholder.
   const noBorder = useMemo(() => {
     if (!isIg) return false;
@@ -283,6 +291,7 @@ export function StudioPhotoPreview({
                     frameFullBleed,
                     noBorder,
                     stripPosition,
+                    photoBackingHex,
                   },
                 ),
               )

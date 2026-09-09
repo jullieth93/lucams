@@ -1,12 +1,19 @@
 // @vitest-environment jsdom
 
 /*
- * Test del badge de número de slot — fix Lucy 2026-09-07.
+ * Test del identificador de slot (número / mes) — fix Lucy 2026-09-07 +
+ * extensión Ola 22 (Lucy 2026-09-08).
  *
- * Antes el número de slot era un div absoluto top-1.5 left-1.5 dentro del slot,
- * que caía EXACTAMENTE sobre el avatar del chrome de la Polaroid Instagram.
- * Ahora es un chip al inicio de la barra de acciones (mismo estilo del chip de
- * tamaño). El calendario (slotLabel) conserva su badge de mes dentro del slot.
+ * Contrato blindado: el identificador vive SIEMPRE en la barra de acciones de
+ * ABAJO (chip), FUERA del template — para todos los modos:
+ *   - slot genérico con foto → chip con el número.
+ *   - calendario (slotLabel) → chip con el mes abreviado (antes era un badge
+ *     absoluto top-left dentro de la tarjeta, encima de la plantilla).
+ *   - modo tira (overlayActions) → chip dentro de la barra flotante (antes el
+ *     badge flotaba sobre la foto).
+ * YA NO existe ningún badge absoluto top-left dentro del slot: flotaba sobre
+ * la plantilla y tapaba el avatar del chrome de la Polaroid Instagram
+ * (círculo en (34,34) r=16, ver instagram-template-spec.ts).
  *
  * Konva no corre en jsdom → se mockea react-konva (passthrough de children) y
  * use-image, igual que el patrón de studio-slot-edit-modal.test.tsx.
@@ -71,10 +78,10 @@ function renderSlot(overrides: Partial<Parameters<typeof StudioSlot>[0]> = {}) {
   );
 }
 
-// Selector CSS de las clases Tailwind del badge absoluto (top-1.5 left-1.5).
+// Selector CSS de las clases Tailwind del viejo badge absoluto (top-1.5 left-1.5).
 const ABSOLUTE_BADGE_SELECTOR = ".top-1\\.5.left-1\\.5";
 
-describe("StudioSlot — badge de número de slot", () => {
+describe("StudioSlot — identificador de slot (chip en la barra de acciones)", () => {
   it("slot con foto (sin slotLabel): el número va como chip en la barra de acciones, NO como badge absoluto", () => {
     const { container } = renderSlot();
 
@@ -97,21 +104,23 @@ describe("StudioSlot — badge de número de slot", () => {
     expect(container.querySelector(ABSOLUTE_BADGE_SELECTOR)).toBeNull();
   });
 
-  it("calendario (slotLabel): conserva el badge de mes abreviado dentro del slot", () => {
+  it("calendario (slotLabel): el mes va como chip en la barra de acciones, NO como badge sobre la tarjeta", () => {
     const { container } = renderSlot({ slotLabel: "Enero" });
 
-    const badge = container.querySelector(ABSOLUTE_BADGE_SELECTOR);
-    expect(badge).not.toBeNull();
-    expect(badge!.textContent).toBe("Ene");
-
-    // El chip numérico NO aparece (el calendario identifica por mes).
-    expect(container.querySelector('[aria-label="Imán #1"]')).toBeNull();
+    // Nada flota sobre la plantilla.
+    expect(container.querySelector(ABSOLUTE_BADGE_SELECTOR)).toBeNull();
+    // El chip lleva el mes abreviado (mismo formato que el viejo badge).
+    const chip = container.querySelector('[aria-label="Enero"]');
+    expect(chip).not.toBeNull();
+    expect(chip!.textContent).toBe("Ene");
   });
 
-  it("modo tira (overlayActions): conserva el badge absoluto (la barra flota sobre la foto)", () => {
+  it("modo tira (overlayActions): el número va como chip en la barra flotante, NO como badge sobre la foto", () => {
     const { container } = renderSlot({ overlayActions: true });
-    expect(container.querySelector(ABSOLUTE_BADGE_SELECTOR)).not.toBeNull();
-    expect(container.querySelector('[aria-label="Imán #1"]')).toBeNull();
+    expect(container.querySelector(ABSOLUTE_BADGE_SELECTOR)).toBeNull();
+    const chip = container.querySelector('[aria-label="Imán #1"]');
+    expect(chip).not.toBeNull();
+    expect(chip!.textContent).toBe("1");
   });
 
   it("el chip de zoom % (top-right) no se vio afectado por el cambio", () => {

@@ -102,6 +102,10 @@ export type StudioTexts = {
     photoCountGroupAria: string;
     photoCountMinusAria: string;
     photoCountPlusAria: string;
+    /** Lucy 2026-09-08 — badge read-only "¿Con imán?" junto al stepper (lo fija la PDP). */
+    magnetCon: string;
+    magnetSin: string;
+    magnetHint: string;
     gesturesTitulo: string;
     gesturesTouchMoverLead: string;
     gesturesTouchZoomLead: string;
@@ -151,6 +155,11 @@ export type StudioTexts = {
     espacioBtnSr: string;
     tamanoChipAria: string;
     zoomAria: string;
+    /** Ola 22 — zoom de LIENZO (botones +/−): acerca toda la plantilla, no la foto. */
+    stageZoomTitle: string;
+    stageZoomInAria: string;
+    stageZoomOutAria: string;
+    stageZoomResetAria: string;
     slotTamanoAria: string;
     slotCentrarAria: string;
     slotEditarAria: string;
@@ -227,6 +236,8 @@ export type StudioTexts = {
     mensajeOpcional: string;
     mensajePlaceholder: string;
     mensajeAyuda: string;
+    /** Lucy 2026-09-08 — aviso de que el mensaje aplica a TODO el set (pack-level). */
+    mensajeGlobalAviso: string;
     editorTitulo: string;
     editorDesc: string;
     editorCerrar: string;
@@ -240,6 +251,8 @@ export type StudioTexts = {
     tipografiaLabel: string;
     reset: string;
     aplicar: string;
+    /** Lucy 2026-09-08 — estado de PROCESANDO del botón «Aplicar» (spinner + disabled). */
+    aplicando: string;
     estiloColorTitulo: string;
     estiloSinColor: string;
     estiloBordeTitulo: string;
@@ -258,6 +271,8 @@ export type StudioTexts = {
     perfilQuitar: string;
     perfilPickerTitulo: string;
     perfilPickerDesc: string;
+    /** Ola 22 — tooltip del avatar tappeable del chrome IG (abre el picker de perfil). */
+    perfilAvatarHint: string;
     slotEditListo: string;
     capasVolver: string;
     capasElegir: string;
@@ -265,7 +280,8 @@ export type StudioTexts = {
     capaEditando: string;
     ajustarReset: string;
     ajustarRotar: string;
-    ajustarMover: string;
+    /** Lucy 2026-09-08 — selector de letra del calendario DENTRO de "Ajustar Foto". */
+    calFontModalHint: string;
     previewHint: string;
     filtrosTitulo: string;
     filtroSinLabel: string;
@@ -411,6 +427,7 @@ export type StudioTexts = {
     bordeHint: string;
     bordeCon: string;
     bordeSin: string;
+    bordeSinColoresHint: string;
   };
   /** Asistente de ideas (IA). */
   ia: {
@@ -527,6 +544,9 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     photoCountGroupAria: "Cantidad de fotos por imán",
     photoCountMinusAria: "Quitar una foto",
     photoCountPlusAria: "Agregar una foto",
+    magnetCon: "🧲 Con imán",
+    magnetSin: "✨ Sin imán",
+    magnetHint: "se elige en la página del producto",
     gesturesTitulo: "¡Tip! Cómo editar tu foto:",
     gesturesTouchMoverLead: "1 dedo arrastra",
     gesturesTouchZoomLead: "Pellizca con 2 dedos",
@@ -581,6 +601,11 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     espacioBtnSr: ": nevera, mural, repisa o regalo",
     tamanoChipAria: "Tamaño físico {size} cm. Click para ver comparación con objeto cotidiano.",
     zoomAria: "Zoom actual {pct}%",
+    // Ola 22 — zoom de LIENZO (acerca toda la plantilla; distinto del zoom de foto).
+    stageZoomTitle: "Zoom del lienzo {pct}%",
+    stageZoomInAria: "Acercar el lienzo",
+    stageZoomOutAria: "Alejar el lienzo",
+    stageZoomResetAria: "Volver al tamaño original del lienzo",
     slotTamanoAria: "Tamaño físico {size}",
     slotCentrarAria: "Centrar la foto del imán {n}",
     slotEditarAria: "Editar {nombre}",
@@ -659,6 +684,11 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     mensajePlaceholder: "Escribe tu mensaje",
     mensajeAyuda:
       "Si lo dejas vacío, la franja queda limpia (no se imprime nada). Para cambiar fuente o color, toca el texto en la imagen.",
+    // Lucy 2026-09-08 — aviso visible de que el mensaje es PACK-LEVEL ("Mantener
+    // con aviso", aprobado por el owner): se imprime igual en TODAS las fotos del
+    // set, no es un mensaje por foto.
+    mensajeGlobalAviso:
+      "Ojo: este mensaje se imprime igual en TODAS las fotos del set, no una por una.",
     editorTitulo: "Editar texto",
     editorDesc: 'Click "Aplicar" para guardar',
     editorCerrar: "Cerrar",
@@ -672,6 +702,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     tipografiaLabel: "Tipografía",
     reset: "Volver al original",
     aplicar: "Aplicar",
+    aplicando: "Aplicando…",
     estiloColorTitulo: "Color de tarjeta",
     estiloSinColor: "Sin color",
     estiloBordeTitulo: "Borde de foto",
@@ -690,6 +721,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     perfilQuitar: "Quitar",
     perfilPickerTitulo: "Elige tu foto de perfil",
     perfilPickerDesc: "Se recorta en círculo dentro del anillo del encabezado.",
+    // Ola 22 — tooltip del avatar tappeable del chrome IG (abre el picker de perfil).
+    perfilAvatarHint: "Foto de perfil — toca para cambiarla",
     slotEditListo: "Listo",
     capasVolver: "Volver a capas",
     capasElegir: "Elige un texto para editar",
@@ -697,7 +730,9 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     capaEditando: "Editando: {texto}",
     ajustarReset: "Centrar y resetear zoom",
     ajustarRotar: "Rotar 90°",
-    ajustarMover: "Mover",
+    // Lucy 2026-09-08 — la letra del calendario también se elige desde "Ajustar Foto"
+    // (no solo en el banner): aplica a los 12 meses, igual que el selector del banner.
+    calFontModalHint: "Esta letra aplica a los 12 meses de tu calendario.",
     previewHint:
       "Arrastra la foto para encuadrar · Rueda del mouse o pellizco para zoom · Doble toque para centrar",
     filtrosTitulo: "Filtros",
@@ -847,6 +882,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     bordeHint: "· mismo precio con o sin borde",
     bordeCon: "Con borde",
     bordeSin: "Sin borde",
+    bordeSinColoresHint:
+      "Sin borde, las fichas se imprimen sin el marco de color — por eso los colores se desactivan. Vuelve a «Con borde» para pintarlas.",
   },
   ia: {
     titulo: "¿Sin ideas? Te ayudo",
@@ -960,6 +997,9 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.photoCountGroupAria": "estudio.lienzo.photo-count-group-aria",
   "lienzo.photoCountMinusAria": "estudio.lienzo.photo-count-minus-aria",
   "lienzo.photoCountPlusAria": "estudio.lienzo.photo-count-plus-aria",
+  "lienzo.magnetCon": "estudio.lienzo.magnet-con",
+  "lienzo.magnetSin": "estudio.lienzo.magnet-sin",
+  "lienzo.magnetHint": "estudio.lienzo.magnet-hint",
   "lienzo.gesturesTitulo": "estudio.lienzo.gestures-titulo",
   "lienzo.gesturesTouchMoverLead": "estudio.lienzo.gestures-touch-mover-lead",
   "lienzo.gesturesTouchZoomLead": "estudio.lienzo.gestures-touch-zoom-lead",
@@ -1009,6 +1049,10 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.espacioBtnSr": "estudio.lienzo.espacio-btn-sr",
   "lienzo.tamanoChipAria": "estudio.lienzo.tamano-chip-aria",
   "lienzo.zoomAria": "estudio.lienzo.zoom-aria",
+  "lienzo.stageZoomTitle": "estudio.lienzo.stage-zoom-title",
+  "lienzo.stageZoomInAria": "estudio.lienzo.stage-zoom-in-aria",
+  "lienzo.stageZoomOutAria": "estudio.lienzo.stage-zoom-out-aria",
+  "lienzo.stageZoomResetAria": "estudio.lienzo.stage-zoom-reset-aria",
   "lienzo.slotTamanoAria": "estudio.lienzo.slot-tamano-aria",
   "lienzo.slotCentrarAria": "estudio.lienzo.slot-centrar-aria",
   "lienzo.slotEditarAria": "estudio.lienzo.slot-editar-aria",
@@ -1076,6 +1120,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.mensajeOpcional": "estudio.texto.mensaje-opcional",
   "texto.mensajePlaceholder": "estudio.texto.mensaje-placeholder",
   "texto.mensajeAyuda": "estudio.texto.mensaje-ayuda",
+  "texto.mensajeGlobalAviso": "estudio.texto.mensaje-global-aviso",
   "texto.editorTitulo": "estudio.texto.editor-titulo",
   "texto.editorDesc": "estudio.texto.editor-desc",
   "texto.editorCerrar": "estudio.texto.editor-cerrar",
@@ -1089,6 +1134,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.tipografiaLabel": "estudio.texto.tipografia-label",
   "texto.reset": "estudio.texto.reset",
   "texto.aplicar": "estudio.texto.aplicar",
+  "texto.aplicando": "estudio.texto.aplicando",
   "texto.estiloColorTitulo": "estudio.texto.estilo-color-titulo",
   "texto.estiloSinColor": "estudio.texto.estilo-sin-color",
   "texto.estiloBordeTitulo": "estudio.texto.estilo-borde-titulo",
@@ -1106,6 +1152,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.perfilQuitar": "estudio.texto.perfil-quitar",
   "texto.perfilPickerTitulo": "estudio.texto.perfil-picker-titulo",
   "texto.perfilPickerDesc": "estudio.texto.perfil-picker-desc",
+  "texto.perfilAvatarHint": "estudio.texto.perfil-avatar-hint",
   "texto.slotEditListo": "estudio.texto.slot-edit-listo",
   "texto.capasVolver": "estudio.texto.capas-volver",
   "texto.capasElegir": "estudio.texto.capas-elegir",
@@ -1113,7 +1160,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.capaEditando": "estudio.texto.capa-editando",
   "texto.ajustarReset": "estudio.texto.ajustar-reset",
   "texto.ajustarRotar": "estudio.texto.ajustar-rotar",
-  "texto.ajustarMover": "estudio.texto.ajustar-mover",
+  "texto.calFontModalHint": "estudio.texto.cal-font-modal-hint",
   "texto.previewHint": "estudio.texto.preview-hint",
   "texto.filtrosTitulo": "estudio.texto.filtros-titulo",
   "texto.filtroSinLabel": "estudio.texto.filtro-sin-label",
@@ -1247,6 +1294,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "letras.bordeHint": "estudio.letras.borde-hint",
   "letras.bordeCon": "estudio.letras.borde-con",
   "letras.bordeSin": "estudio.letras.borde-sin",
+  "letras.bordeSinColoresHint": "estudio.letras.borde-sin-colores-hint",
   "ia.titulo": "estudio.ia.titulo",
   "ia.label": "estudio.ia.label",
   "ia.placeholder": "estudio.ia.placeholder",

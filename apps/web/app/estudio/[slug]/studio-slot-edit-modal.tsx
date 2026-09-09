@@ -25,7 +25,7 @@ import { StudioPhotoPreview } from "./studio-photo-preview";
 import { StudioTextEditorForm } from "./studio-text-editor-modal";
 import type { CanvasDataV1, PhotoFilterPreset, TextLayer, TextOverride } from "./types";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
-import type { CalendarFontKey } from "@/features/personalization/schemas";
+import { CALENDAR_FONT_OPTIONS, type CalendarFontKey } from "@/features/personalization/schemas";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 
@@ -46,7 +46,6 @@ type StudioSlotEditModalProps = {
   onClose: () => void;
   onApplyFilter: (filter: PhotoFilterPreset | null) => void;
   onResetTransform: () => void;
-  onNudge: (dx: number, dy: number) => void;
   onRotate: () => void;
   onApplyTextOverride: (layerId: string, override: TextOverride | null) => void;
   /** Text layer a preseleccionar al abrir la pestaña Texto (ej. al tocar un texto en el canvas). */
@@ -63,6 +62,14 @@ type StudioSlotEditModalProps = {
   profilePhotoUrl?: string | null;
   onChangeProfilePhoto?: () => void;
   onClearProfilePhoto?: () => void;
+  /**
+   * Lucy 2026-09-08 — tipo de letra del calendario DENTRO de "Ajustar Foto".
+   * Solo se pasa para productos calendario (el wrapper lo cablea al store).
+   * Persiste en canvasData.calendarFont, igual que el selector del banner, y
+   * aplica a classic y split (ambos consumen la misma clave).
+   */
+  calendarFont?: CalendarFontKey;
+  onCalendarFontChange?: (font: CalendarFontKey) => void;
   /**
    * Ola 9 — datos para el preview interactivo de la pestaña Foto (gestos de
    * zoom/pan directos sobre la foto; reemplaza al slider eliminado).
@@ -99,7 +106,6 @@ export function StudioSlotEditModal({
   onClose,
   onApplyFilter,
   onResetTransform,
-  onNudge,
   onRotate,
   onApplyTextOverride,
   focusTextLayerId,
@@ -109,6 +115,8 @@ export function StudioSlotEditModal({
   profilePhotoUrl = null,
   onChangeProfilePhoto,
   onClearProfilePhoto,
+  calendarFont = "fredoka",
+  onCalendarFontChange,
 }: StudioSlotEditModalProps) {
   // Tab activa: Foto por default si hay foto; si no, Texto (si aplica).
   const defaultTab = hasPhoto ? "photo" : "text";
@@ -134,6 +142,13 @@ export function StudioSlotEditModal({
     : slotIndex !== null
       ? fillStudioText(texts.texto.slotEditTituloIndice, { n: slotIndex + 1 })
       : texts.comun.editar;
+
+  // Labels de las 3 opciones de letra del calendario (mismas keys CMS que el banner).
+  const calendarFontLabels: Record<string, string> = {
+    fredoka: texts.lienzo.calFontOptionFredoka,
+    inter: texts.lienzo.calFontOptionInter,
+    caveat: texts.lienzo.calFontOptionCaveat,
+  };
 
   return (
     <Dialog key={slotIndex ?? "closed"} open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -221,6 +236,45 @@ export function StudioSlotEditModal({
                       {texts.texto.cambiarFoto}
                     </button>
                   )}
+                  {/* Lucy 2026-09-08 — bug reportado por Lucy: en "Calendario Set 12
+                      Tarjetas" el tipo de letra NO se podía elegir desde "Ajustar
+                      Foto". Root cause: el selector solo existía en el banner del
+                      Estudio (studio-editor.tsx), inalcanzable mientras esta ventana
+                      está abierta. Acá va el MISMO selector, cableado al store
+                      (canvasData.calendarFont) → aplica a los 12 meses y a ambos
+                      layouts (classic y split consumen la misma clave). */}
+                  {onCalendarFontChange && (
+                    <div className="border-brand-purple/15 rounded-xl border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <label
+                          htmlFor="cal-font-select"
+                          className="text-brand-purple-dark text-sm font-semibold"
+                        >
+                          {texts.lienzo.calFontLabel}
+                        </label>
+                        <select
+                          id="cal-font-select"
+                          value={calendarFont}
+                          onChange={(e) => onCalendarFontChange(e.target.value as CalendarFontKey)}
+                          className="border-brand-purple/50 focus-visible:ring-brand-purple/40 text-brand-purple-dark cursor-pointer rounded-xl border-2 bg-white px-3 py-1.5 text-sm font-bold focus-visible:ring-2 focus-visible:outline-none"
+                          // Nombre accesible vía el <label htmlFor> visible ("Tipo de letra:").
+                          // Sin aria-label propio: duplicaba el del banner del editor
+                          // ("Tipo de letra del título del calendario") cuando ambos
+                          // selects coexisten (modal abierto sobre el lienzo) — nombre
+                          // ambiguo para SR y locator ambiguo en e2e.
+                        >
+                          {CALENDAR_FONT_OPTIONS.map((key) => (
+                            <option key={key} value={key}>
+                              {calendarFontLabels[key] ?? key}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <p className="text-brand-muted mt-1.5 text-xs leading-snug">
+                        {texts.texto.calFontModalHint}
+                      </p>
+                    </div>
+                  )}
                   {/* Ola 17 — foto de perfil del header del post (solo plantillas con
                       la capa `profile-photo`, ej. Polaroid Instagram). El avatar se ve
                       en círculo dentro del anillo del encabezado del post. */}
@@ -281,7 +335,6 @@ export function StudioSlotEditModal({
                     currentTransform={currentTransform}
                     onApplyFilter={onApplyFilter}
                     onResetTransform={onResetTransform}
-                    onNudge={onNudge}
                     onRotate={onRotate}
                     allowFilters={allowFilters}
                   />

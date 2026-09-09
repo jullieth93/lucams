@@ -32,6 +32,13 @@ export type StudioPhotoCountControlProps = {
   facesPerUnit: number;
   /** Tamaño físico elegido en la PDP — persiste en el canvasData para el carrito. */
   sizeCm?: string;
+  /**
+   * "¿Con imán?" (Lucy 2026-09-08): badge READ-ONLY con la elección de la PDP
+   * (ya persistida en el canvasData). No es un control — cambiarla implica otra
+   * variante (precio/producto físico distinto) y eso se hace en la PDP; acá solo
+   * se muestra para que el cliente vea qué va a recibir. undefined = no mostrar.
+   */
+  magnet?: boolean;
 };
 
 export function StudioPhotoCountControl({
@@ -40,6 +47,7 @@ export function StudioPhotoCountControl({
   max,
   facesPerUnit,
   sizeCm,
+  magnet,
 }: StudioPhotoCountControlProps) {
   const texts = useStudioTexts();
   // N vivo del canvasData (primitivo → comparación Object.is sin re-render extra).
@@ -103,6 +111,15 @@ export function StudioPhotoCountControl({
           ? fillStudioText(texts.lienzo.photoCountFixedHint, { n: value })
           : texts.lienzo.photoCountHint}
       </span>
+      {/* "¿Con imán?" (2026-09-08) — badge read-only de la elección hecha en la
+          PDP. No es control: cambiarla es cambiar de variante (otro precio y otro
+          físico) y eso pasa en la ficha del producto, no en el lienzo. */}
+      {typeof magnet === "boolean" && (
+        <span className="ring-brand-purple/20 text-brand-purple-dark inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-bold ring-1">
+          {magnet ? texts.lienzo.magnetCon : texts.lienzo.magnetSin}
+          <span className="text-brand-muted font-medium">· {texts.lienzo.magnetHint}</span>
+        </span>
+      )}
     </div>
   );
 }

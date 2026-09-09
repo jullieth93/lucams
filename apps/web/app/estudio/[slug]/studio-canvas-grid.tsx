@@ -19,6 +19,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Minus, Plus, RotateCcw } from "lucide-react";
 import type Konva from "konva";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
@@ -33,19 +34,22 @@ import { unitIndexOfSlot } from "./lib/faces";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 
-const MAX_VIEWPORT_WIDTH = 1024; // px lógicos máximo del grid en desktop (aumentado: calendarios/separadores se veían diminutos)
+const MAX_VIEWPORT_WIDTH = 1280; // px lógicos máximo del grid en desktop (Lucy 2026-09-08: 1024→1280 — la plantilla se veía chica con márgenes vacíos en pantallas anchas)
 
 // Constantes y funciones puras de tamaño de stage extraídas a studio-canvas-grid-size.ts
 // (Lucy 2026-09-07) para testear unitariamente el cálculo sin montar Konva/React.
+// Ola 22 (Lucy 2026-09-08) — zoom de lienzo: helpers puros (tope por ancho + pasos).
 import {
   ACTION_BAR_RESERVE,
   MIN_SLOT_SIZE,
   computeFlatSlotDisplaySize,
   computeMaxFrameH,
+  computeStageZoomCap,
   hasEditableTextLayers,
   resolveMaxCols,
   resolveMinSlotSize,
   slotHeightCapByCount,
+  stepStageZoom,
   BP_MOBILE,
 } from "./studio-canvas-grid-size";
 
@@ -163,6 +167,11 @@ export function StudioCanvasGrid({
     tab: "photo" | "text";
     focusTextLayerId?: string;
   } | null>(null);
+  // Ola 22 (Lucy 2026-09-08) — zoom de LIENZO: acerca TODA la plantilla (display-only,
+  // no toca el diseño ni la exportación). El tope depende del ancho disponible, así
+  // que el valor crudo se guarda y se clampa al render (si el viewport se achica,
+  // el zoom efectivo baja solo).
+  const [stageZoomRaw, setStageZoomRaw] = useState(1);
 
   // Ola 8 — cuando el padre pide abrir el editor unificado (ej. clic en slot lleno),
   // reflejamos la petición en el estado local y limpiamos el callback del padre.
@@ -320,7 +329,9 @@ export function StudioCanvasGrid({
   const grouped = facesPerUnit === 2 && canvasData.slotCount % 2 === 0;
   // Ola 3c — modo TIRA (gridGap=0, tira photobooth): las celdas se tocan → la tira
   // se lee como UNA pieza continua de color. Sin reserva de barra de acciones entre
-  // celdas (flota sobre la foto, ver StudioSlot overlayActions).
+  // celdas (flota sobre la foto, ver StudioSlot overlayActions). Regla 2026-09-08:
+  // la separación visible ENTRE fotos la dibuja stripPhotoRect DENTRO de cada celda
+  // (media canaleta del color del marco) — el gap CSS entre celdas sigue en 0.
   const stripMode = !grouped && canvasData.gridLayout.gap === 0;
   const unitCount = grouped ? canvasData.slotCount / 2 : canvasData.slotCount;
   const stripAspect = grouped
@@ -391,11 +402,26 @@ export function StudioCanvasGrid({
         minSize: resolveMinSlotSize({ isCalendar, hasEditableText }),
       });
   const slotHeight = slotDisplaySize * slotAspect;
+
+  // Ola 22 — tope y valor efectivo del zoom de lienzo. El ancho del contenido a
+  // zoom 1 es el que el grid ya ocuparía sin zoom; acercar nunca debe desbordar
+  // el contenedor en horizontal (el scroll vertical de página absorbe el extra).
+  // Modo agrupado (separadores): ancho de tarjeta-unidad = 2 caras + paddings
+  // (mismos 16+8 de la fórmula byWidth de arriba).
+  const contentWidthBase = grouped
+    ? unitCols * (slotDisplaySize * 2 + 16 + 8) + layout.gap * (unitCols - 1)
+    : slotDisplaySize * layout.cols + layout.gap * (layout.cols - 1);
+  const stageZoomCap = computeStageZoomCap(containerWidth, contentWidthBase);
+  const stageZoom = Math.min(stageZoomRaw, stageZoomCap);
+  const zoomedSlotW = Math.round(slotDisplaySize * stageZoom);
+  const zoomedSlotH = Math.round(slotHeight * stageZoom);
+
   // Ola 4 — ancho EXPLÍCITO del grid (celdas + gaps): si el cap de alto achicó las
   // celdas, el grid no se estira a lo ancho — queda centrado en el marco (margin auto).
+  // Ola 22 — a zoom de lienzo, el ancho explícito usa el tamaño zoomado.
   const gridContentW = grouped
     ? undefined
-    : slotDisplaySize * layout.cols + layout.gap * (layout.cols - 1);
+    : zoomedSlotW * layout.cols + layout.gap * (layout.cols - 1);
 
   // Keyboard navigation entre slots
   const handleKeyboardNav = (
@@ -439,7 +465,9 @@ export function StudioCanvasGrid({
         key={slot.slotIndex}
         data-slot-observe={slot.slotIndex}
         className="flex items-start justify-center"
-        style={{ height: slotHeight + (stripMode ? 0 : ACTION_BAR_RESERVE) }}
+        // Ola 22 — la celda crece con el zoom de lienzo para que la barra de
+        // acciones de la fila de abajo nunca se solape con el slot zoomado.
+        style={{ height: zoomedSlotH + (stripMode ? 0 : ACTION_BAR_RESERVE) }}
         initial={reducedMotion ? false : { opacity: 0, scale: 0.85 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{
@@ -452,8 +480,11 @@ export function StudioCanvasGrid({
           <StudioSlot
             slotState={slot}
             unitTemplate={canvasData.unitTemplate}
-            displaySize={slotDisplaySize}
-            displayHeight={slotHeight}
+            // Ola 22 — displaySize zoomado: el Stage Konva crece y su scale sigue
+            // siendo width/lógico, así la exportación (pixelRatio relativo al
+            // tamaño lógico) sale idéntica con cualquier zoom.
+            displaySize={zoomedSlotW}
+            displayHeight={zoomedSlotH}
             isSelected={selectedSlotIndex === slot.slotIndex}
             totalSlots={canvasData.slotCount}
             slotLabel={slotLabels?.[slot.slotIndex]}
@@ -492,6 +523,14 @@ export function StudioCanvasGrid({
                 focusTextLayerId: textLayerId,
               })
             }
+            // Ola 22 — tap sobre el avatar del header (plantillas con capa
+            // `profile-photo`, ej. Polaroid Instagram): abre directo el picker
+            // de foto de perfil (mismo flujo que el control del modal).
+            onProfilePhotoEdit={
+              onRequestChangeProfilePhoto
+                ? () => onRequestChangeProfilePhoto(slot.slotIndex)
+                : undefined
+            }
             // Ola 6 — el callback de transform está siempre disponible para el
             // editor a pantalla completa; los gestos inline se habilitan/deshabilitan
             // vía interactiveSlots.
@@ -505,8 +544,8 @@ export function StudioCanvasGrid({
         ) : (
           <LazySlotPlaceholder
             assetUrl={slot.assetUrl}
-            displaySize={slotDisplaySize}
-            displayHeight={slotHeight}
+            displaySize={zoomedSlotW}
+            displayHeight={zoomedSlotH}
             shape={shape}
             label={slotLabels?.[slot.slotIndex]}
             onClick={() => {
@@ -590,6 +629,61 @@ export function StudioCanvasGrid({
             : canvasData.slots.map((slot) => renderSlotCell(slot))}
         </AnimatePresence>
       </motion.div>
+
+      {/* Ola 22 (Lucy 2026-09-08) — zoom de LIENZO: acercar/alejar TODA la plantilla
+        para ver y editar detalles finos (textos chicos del chrome, avatar, hashtags).
+        Es display-only: la exportación usa el tamaño LÓGICO del stage (pixelRatio
+        relativo), así el PNG de imprenta sale igual con cualquier zoom. Solo se
+        ofrece cuando hay margen real para acercar (tope = ancho del contenedor);
+        si el grid ya llena el ancho, el detalle fino sigue resolviéndose con el
+        zoom de FOTO por gestos (rueda/pellizco sobre la foto). */}
+      {stageZoomCap > 1.001 && (
+        <div
+          className="absolute top-full right-0 z-20 mt-2 flex items-center gap-0.5 rounded-full bg-white/95 px-1 py-1 shadow-md ring-1 ring-black/5 backdrop-blur-sm"
+          role="group"
+          aria-label={fillStudioText(texts.lienzo.stageZoomTitle, {
+            pct: Math.round(stageZoom * 100),
+          })}
+        >
+          <button
+            type="button"
+            onClick={() => setStageZoomRaw((z) => stepStageZoom(z, -1, stageZoomCap))}
+            disabled={stageZoom <= 1.001}
+            aria-label={texts.lienzo.stageZoomOutAria}
+            title={texts.lienzo.stageZoomOutAria}
+            className="text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            <Minus className="h-4 w-4" aria-hidden />
+          </button>
+          <span
+            className="text-brand-purple-dark w-11 text-center text-xs font-bold tabular-nums"
+            aria-hidden
+          >
+            {Math.round(stageZoom * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={() => setStageZoomRaw((z) => stepStageZoom(z, 1, stageZoomCap))}
+            disabled={stageZoom >= stageZoomCap - 0.001}
+            aria-label={texts.lienzo.stageZoomInAria}
+            title={texts.lienzo.stageZoomInAria}
+            className="text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+          </button>
+          {stageZoom > 1.001 && (
+            <button
+              type="button"
+              onClick={() => setStageZoomRaw(1)}
+              aria-label={texts.lienzo.stageZoomResetAria}
+              title={texts.lienzo.stageZoomResetAria}
+              className="text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
+            >
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Ola 6 — Modal unificado de edición por slot (tabs Foto/Texto). */}
       <StudioSlotEditModalWrapper
@@ -766,6 +860,10 @@ function StudioSlotEditModalWrapper({
   const unitTemplate = useStore(store, (s) => s.canvasData?.unitTemplate);
   const slotCount = useStore(store, (s) => s.canvasData?.slotCount ?? 0);
   const borderColor = useStore(store, (s) => s.canvasData?.borderColor ?? null);
+  // Lucy 2026-09-08 — letra del calendario VIVA del store (mismo mecanismo que el
+  // banner): el selector de "Ajustar Foto" persiste en canvasData.calendarFont.
+  const calendarFont = useStore(store, (s) => s.canvasData?.calendarFont ?? "fredoka");
+  const setCalendarFont = useStore(store, (s) => s.setCalendarFont);
   const setSlotFilter = useStore(store, (s) => s.setSlotFilter);
   const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
   const setSlotTextOverride = useStore(store, (s) => s.setSlotTextOverride);
@@ -827,13 +925,6 @@ function StudioSlotEditModalWrapper({
       onResetTransform={() => {
         if (slotIndex !== null) setSlotPhotoTransform(slotIndex, null);
       }}
-      onNudge={(dx, dy) => {
-        if (slotIndex !== null)
-          setSlotPhotoTransform(slotIndex, {
-            offsetX: slotOffsetX + dx,
-            offsetY: slotOffsetY + dy,
-          });
-      }}
       onRotate={() => {
         if (slotIndex !== null)
           setSlotPhotoTransform(slotIndex, { rotation: (slotRotation + 90) % 360 });
@@ -842,16 +933,32 @@ function StudioSlotEditModalWrapper({
         if (slotIndex !== null) setSlotTextOverride(slotIndex, layerId, override);
       }}
       onChangePhoto={() => {
-        if (slotIndex !== null) onChangePhoto?.(slotIndex);
+        if (slotIndex === null) return;
+        // Lucy 2026-09-08 — bug de z-index: el editor unificado (Radix Dialog, z-50)
+        // quedaba ABIERTO y el picker (z-40) abría DEBAJO, inalcanzable. Root cause:
+        // el `setOpenEditSlot(null)` del editor es un no-op una vez abierto el modal
+        // (ese estado es solo la petición de apertura; el open real vive acá, en
+        // `editModal`). El diseño original ya decía "cierra el editor y abre el
+        // picker" — ahora sí: cerramos el modal ANTES de pedir el picker.
+        onClose();
+        onChangePhoto?.(slotIndex);
       }}
       hasProfilePhoto={hasProfilePhoto}
       profilePhotoUrl={slotProfileAssetUrl}
       onChangeProfilePhoto={() => {
-        if (slotIndex !== null) onRequestChangeProfilePhoto?.(slotIndex);
+        if (slotIndex === null) return;
+        // Mismo bug de z-index que "Cambiar foto" (picker de perfil = mismo modal).
+        onClose();
+        onRequestChangeProfilePhoto?.(slotIndex);
       }}
       onClearProfilePhoto={() => {
         if (slotIndex !== null) setSlotProfilePhoto(slotIndex, null);
       }}
+      // Lucy 2026-09-08 — selector de letra del calendario dentro de "Ajustar Foto"
+      // (solo productos calendario). Persiste vía store; el preview de esta misma
+      // ventana reacciona porque calendarCard.font viene del editor (live).
+      calendarFont={calendarFont}
+      onCalendarFontChange={calendarPreview ? setCalendarFont : undefined}
       preview={
         unitTemplate
           ? {

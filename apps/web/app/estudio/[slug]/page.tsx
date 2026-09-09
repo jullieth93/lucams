@@ -50,7 +50,11 @@ type SearchParams = Promise<{
   variant?: string;
   /** ADR-057 — nº de letras pre-elegido en la ficha (Nombre por ficha). Hint inicial. */
   letters?: string;
-  /** Copias pre-elegidas en el stepper "Unidades" de la PDP (Lucy 2026-09-03). */
+  /**
+   * Copias (CartItem.qty) elegidas en la PDP con el stepper "Unidades" de los
+   * productos de composición fija (regla 2026-09-08b). La modal "¡Listo!" ya NO
+   * tiene stepper propio: confirma con este valor (sin parámetro arranca en 1).
+   */
   copies?: string;
 }>;
 
@@ -121,9 +125,10 @@ export default async function EstudioPage({
   // fallback exacto pre-CMS por campo). Se inyectan al árbol client vía provider.
   const texts = await getStudioTexts();
 
-  // Copias pre-elegidas en la PDP (?copies=N, Lucy 2026-09-03): pre-cargan el stepper
-  // "Copias" de la modal de confirmación (ajustable ahí). Entero acotado a 1..99 —
-  // mismo rango de AddToCartSchema; la URL la puede editar cualquiera.
+  // Copias (CartItem.qty) vía ?copies=N — las eligió la PDP con su stepper
+  // "Unidades" (productos de composición fija, regla 2026-09-08b); sin parámetro
+  // el Estudio arranca en 1. Entero acotado a 1..99 — mismo rango de
+  // AddToCartSchema; la URL la puede editar cualquiera.
   const rawCopies = Number.parseInt(typeof sp.copies === "string" ? sp.copies : "", 10);
   const initialCopies = Number.isFinite(rawCopies)
     ? Math.min(99, Math.max(1, rawCopies))
@@ -166,6 +171,9 @@ export default async function EstudioPage({
               initialCount={initialCount}
               styles={styles}
               themeOptions={themeOptions}
+              // ?copies=N (stepper "Unidades" de la PDP) → la modal "¡Listo!" lo
+              // confirma tal cual (igual que letterset y el editor de foto).
+              initialCopies={initialCopies}
             />
           </StudioTextsProvider>
         </main>
@@ -397,15 +405,33 @@ export default async function EstudioPage({
   const designPackInfo = readPhotoPackDesignInfo(initialDesignCanvas);
   const effectivePhotoSlots = designPackInfo?.photoSlots ?? photoConfig.photoSlots;
   const effectiveSizeCm = designPackInfo?.sizeCm ?? photoConfig.sizeCm;
+  // "¿Con imán?" (Lucy 2026-09-08 — también en los packs de foto): la elección
+  // la hace la PDP (dimensión `magnet` de la variante del deep-link) y viaja en
+  // el mergedSchema; al re-abrir un diseño ("Editar" desde el carrito) manda el
+  // magnet GUARDADO en su canvasData — misma precedencia que photoSlots/sizeCm.
+  const schemaMagnet = (mergedSchema as { magnet?: unknown }).magnet;
+  const effectiveMagnet =
+    designPackInfo?.magnet ?? (typeof schemaMagnet === "boolean" ? schemaMagnet : undefined);
   const selectable = selectableVariants(product.variants);
   const packCatalog = selectable
     .map((v) => {
       const a = parseVariantAttributes(v.attributes);
-      return { photoSlots: a.photoSlots, sizeCm: a.sizeCm, price: v.price ?? product.basePrice };
+      return {
+        photoSlots: a.photoSlots,
+        sizeCm: a.sizeCm,
+        magnet: a.magnet,
+        price: v.price ?? product.basePrice,
+      };
     })
     .filter(
-      (v): v is { photoSlots: number; sizeCm: string | undefined; price: number } =>
-        v.photoSlots != null,
+      (
+        v,
+      ): v is {
+        photoSlots: number;
+        sizeCm: string | undefined;
+        magnet: boolean | undefined;
+        price: number;
+      } => v.photoSlots != null,
     );
   // Solo PHOTO_PACK con catálogo de fotos: calendarios/grid/custom quedan intactos.
   const isPhotoPackStudio = product.personalizationKind === "PHOTO_PACK" && packCatalog.length > 0;
@@ -447,7 +473,8 @@ export default async function EstudioPage({
             variantId={selectedVariant?.id}
             // Precio de la variante elegida (o base) → fallback de la vista previa.
             unitPriceCents={selectedVariant?.price ?? product.basePrice}
-            // Copias pre-elegidas en la PDP (?copies=N) → pre-carga del stepper de la modal.
+            // ?copies=N (stepper "Unidades" de la PDP en productos de composición
+            // fija) → copias que confirma la modal "¡Listo!"; sin parámetro = 1.
             initialCopies={initialCopies}
             // Edición desde el carrito: reemplazar el item original al finalizar (no duplicar).
             replacesCartDesignId={replacesCartDesignId}
@@ -458,6 +485,9 @@ export default async function EstudioPage({
             photoSlots={effectivePhotoSlots}
             // Lucy 2026-09-05 — catálogo del stepper de N fotos (packs; vacío = no pack).
             packVariants={packVariants}
+            // Lucy 2026-09-08 — "¿Con imán?" de la PDP (o del diseño recuperado):
+            // el Estudio lo persiste en el canvasData y lo muestra read-only.
+            initialMagnet={effectiveMagnet}
             predesigned={predesigned}
             slotLabels={slotLabels}
             calendarYear={calendarYear}

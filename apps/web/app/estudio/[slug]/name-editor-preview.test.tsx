@@ -82,7 +82,7 @@ beforeEach(() => {
   addPersonalizedToCartAction.mockResolvedValue({ ok: true });
 });
 
-function renderEditor() {
+function renderEditor(extraProps?: { initialCopies?: number }) {
   return render(
     <NameEditor
       product={{ id: "prod-1", slug: "nombre-personalizado", name: "Nombre Personalizado" }}
@@ -90,6 +90,7 @@ function renderEditor() {
       config={{ min: 3, max: 10, language: "es" }}
       pricePerTile={PRICE_PER_TILE}
       styles={[]}
+      {...extraProps}
     />,
   );
 }
@@ -157,6 +158,33 @@ describe("NameEditor — vista previa antes del carrito", () => {
       .getAllByText(/\$/)
       .map((el) => (el.textContent ?? "").replace(/\D/g, ""));
     expect(enPantalla).toContain(soloDigitos);
+  });
+
+  // Regla 2026-09-08b — el stepper "Unidades" de la PDP viaja como ?copies=N y la
+  // modal lo confirma tal cual (ya sin stepper propio): la qty del carrito es la
+  // que el cliente eligió en la ficha, no 1 por omisión.
+  it("las copias de la PDP (?copies=N) se muestran en la modal y llegan al carrito como qty", async () => {
+    renderEditor({ initialCopies: 3 });
+    await openPreviewWith("LUCIA");
+
+    expect(screen.getByText(/3 copias idénticas/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
+    expect(addPersonalizedToCartAction).toHaveBeenCalledWith(
+      expect.objectContaining({ designId: "design-name-1", variantId: "var-1", qty: 3 }),
+    );
+  });
+
+  it("sin ?copies= la confirmación agrega 1 sola unidad", async () => {
+    renderEditor();
+    await openPreviewWith("LUCIA");
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
+    expect(addPersonalizedToCartAction).toHaveBeenCalledWith(expect.objectContaining({ qty: 1 }));
   });
 
   /*

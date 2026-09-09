@@ -150,8 +150,18 @@ export type StudioEditorProps = {
   variantId?: string;
   /** Precio (centavos COP) de la variante elegida — se muestra en la vista previa pre-carrito. */
   unitPriceCents: number;
-  /** Copias pre-elegidas en la PDP (`?copies=N`, Lucy 2026-09-03): valor inicial del
-   *  stepper "Copias" de la modal de confirmación. undefined → arranca en 1. */
+  /**
+   * Lucy 2026-09-08 — "¿Con imán?" en los packs de foto: la elección de la PDP
+   * (dimensión `magnet` de la variante, o la guardada en el diseño recuperado).
+   * El Estudio la PERSISTE en el canvasData (el carrito la usa para resolver la
+   * variante server-side) y la MUESTRA read-only junto al stepper de fotos — no
+   * se cambia acá: una sola fuente de verdad (la PDP). undefined = catálogo sin
+   * la dimensión (seed de imán no corrido) → no se escribe ni se muestra.
+   */
+  initialMagnet?: boolean;
+  /** Copias (CartItem.qty) elegidas en la PDP con el stepper "Unidades" de los
+   *  productos de composición fija (`?copies=N`, regla 2026-09-08b): la modal de
+   *  confirmación las confirma tal cual — ya sin stepper propio. undefined → 1. */
   initialCopies?: number;
   /** Edición desde el carrito: id del diseño original a reemplazar al finalizar (no duplicar). */
   replacesCartDesignId?: string | null;
@@ -166,6 +176,9 @@ export type StudioEditorProps = {
 /** Variante elegible de un pack: N de fotos por imán + precio (centavos, ya resuelto). */
 export type PhotoPackVariantOption = {
   photoSlots: number;
+  /** "¿Con imán?" (2026-09-08): el par Con/Sin imán comparte photoSlots — el precio
+   *  vivo se lee de la opción que coincide con el magnet del diseño. */
+  magnet?: boolean;
   price: number;
 };
 
@@ -179,6 +192,7 @@ export function StudioEditor({
   packVariants = [],
   variantId,
   unitPriceCents,
+  initialMagnet,
   initialCopies,
   replacesCartDesignId,
   predesigned = [],
@@ -341,12 +355,22 @@ export function StudioEditor({
   // atómicos (primitivos) → sin re-render en cascada.
   const livePhotoSlots = useStore(store, (s) => s.canvasData?.photoSlots ?? photoSlots);
   const liveSlotCount = useStore(store, (s) => s.canvasData?.slotCount ?? initialSlotCount);
+  // Lucy 2026-09-08 — "¿Con imán?" del pack: vivo del canvasData (persistido en el
+  // auto-save → el carrito resuelve la variante con él). Read-only: lo fija la PDP.
+  const liveMagnet = useStore(store, (s) => s.canvasData?.magnet ?? initialMagnet);
   // Precio VIVO del pack para el N actual (vista de la modal; el cobro lo
   // resuelve el servidor al agregar al carrito — nunca se confía en este valor).
   const effectiveUnitPrice = useMemo(() => {
     if (!isPhotoPack) return unitPriceCents;
-    return packVariants.find((v) => v.photoSlots === livePhotoSlots)?.price ?? unitPriceCents;
-  }, [isPhotoPack, packVariants, livePhotoSlots, unitPriceCents]);
+    // Con el par Con/Sin imán (2026-09-08) el mismo N existe dos veces: se lee el
+    // precio de la opción que coincide con el magnet elegido (fallback: la primera
+    // con ese N — precios espejo mientras Lucy no los diferencie en el admin).
+    return (
+      packVariants.find((v) => v.photoSlots === livePhotoSlots && v.magnet === liveMagnet)?.price ??
+      packVariants.find((v) => v.photoSlots === livePhotoSlots)?.price ??
+      unitPriceCents
+    );
+  }, [isPhotoPack, packVariants, livePhotoSlots, liveMagnet, unitPriceCents]);
 
   // ADR-063 CAL2 — el año del calendario lo ELIGE el cliente (antes era un badge fijo del schema
   // del producto, y podía venir vacío). Default = año del producto → próximo año. Se ofrece un
@@ -449,7 +473,16 @@ export function StudioEditor({
             // Lucy 2026-09-05 — packs: el canvasData nuevo ya declara el N de
             // fotos y el tamaño en raíz (fuente de la resolución server-side
             // de la variante en el carrito). Los demás productos no lo llevan.
-            ...(isPhotoPack ? { photoSlots, ...(packSizeCm ? { sizeCm: packSizeCm } : {}) } : {}),
+            // Lucy 2026-09-08 — también el magnet ("¿Con imán?" de la PDP): la
+            // resolución del carrito lo incluye para que el par Con/Sin imán
+            // del catálogo no vuelva ambiguo el match.
+            ...(isPhotoPack
+              ? {
+                  photoSlots,
+                  ...(packSizeCm ? { sizeCm: packSizeCm } : {}),
+                  ...(typeof initialMagnet === "boolean" ? { magnet: initialMagnet } : {}),
+                }
+              : {}),
             slots: Array.from({ length: initialSlotCount }, (_, idx) => ({
               slotIndex: idx,
               assetId: null,
@@ -477,14 +510,23 @@ export function StudioEditor({
         // declarar photoSlots en raíz → se fija con el N inicial del deep-link
         // /schema. El guard del N del diseño: si ya lo trae, se respeta
         // (el stepper arranca con el N guardado — flujo "Editar").
+        // Lucy 2026-09-08 — misma regla para `magnet` ("¿Con imán?"): un diseño
+        // de antes de la ola no la declara → se fija con la elección de la PDP;
+        // si ya la trae, se respeta (una sola fuente de verdad al cobrar).
         if (isPhotoPack) {
           const normalized: number = canvasData.photoSlots ?? photoSlots;
           const normalizedSize = canvasData.sizeCm ?? packSizeCm;
-          if (canvasData.photoSlots !== normalized || canvasData.sizeCm !== normalizedSize) {
+          const normalizedMagnet = canvasData.magnet ?? initialMagnet;
+          if (
+            canvasData.photoSlots !== normalized ||
+            canvasData.sizeCm !== normalizedSize ||
+            canvasData.magnet !== normalizedMagnet
+          ) {
             canvasData = {
               ...canvasData,
               photoSlots: normalized,
               ...(normalizedSize ? { sizeCm: normalizedSize } : {}),
+              ...(typeof normalizedMagnet === "boolean" ? { magnet: normalizedMagnet } : {}),
             };
           }
         }
@@ -531,6 +573,7 @@ export function StudioEditor({
     initialSlotCount,
     isPhotoPack,
     packSizeCm,
+    initialMagnet,
     templates,
     store,
     initialBorderColor,
@@ -860,8 +903,9 @@ export function StudioEditor({
   // ──────────── Step 2: Confirmar → upload + add to cart + redirect ────────────
   //
   // Solo se invoca si el cliente confirma desde el modal. Si vuelve a editar,
-  // nada se sube y el editor queda intacto. `copies` viene del stepper "Copias"
-  // de la modal (unidades idénticas del diseño; CartItem.qty 1..99).
+  // nada se sube y el editor queda intacto. `copies` son las unidades idénticas
+  // del diseño (CartItem.qty 1..99) que fijó la PDP (stepper "Unidades" de los
+  // productos de composición fija) — la modal las confirma, ya no las elige.
   const handleConfirmFinalize = useCallback(
     async (copies: number) => {
       const state = store.getState();
@@ -969,11 +1013,12 @@ export function StudioEditor({
 
         // Add to cart — pasamos variantId del PDP (consolidación familias M.3.b.CAT).
         // replacesCartDesignId: si venimos de "Editar" desde el carrito, reemplaza el item original.
-        // qty = copias elegidas en la modal (unidades idénticas; el finalize NO
+        // qty = copias elegidas en la PDP (?copies=N vía la modal; el finalize NO
         // depende de ellas — el short-circuit de finalizedRef sigue intacto).
         // Lucy 2026-09-05 — packs: SIN variantId. El N de fotos se eligió en el
         // Estudio y viaja en el canvasData guardado; el SERVIDOR resuelve la
-        // variante exacta (photoSlots+sizeCm) con precio y stock server-side.
+        // variante exacta (photoSlots+sizeCm, +magnet desde 2026-09-08) con
+        // precio y stock server-side.
         // Mandar el variantId de la PDP cobraría la combinación vieja si el
         // cliente cambió N acá (la ruta del dinero no confía en el cliente).
         const addResult = await addPersonalizedToCartAction({
@@ -1138,6 +1183,9 @@ export function StudioEditor({
                 max: packMaxSlots,
                 facesPerUnit,
                 sizeCm: packSizeCm,
+                // "¿Con imán?" (2026-09-08): badge read-only junto al stepper —
+                // lo fija la PDP, el Estudio solo lo muestra y lo persiste.
+                magnet: liveMagnet,
               }
             : undefined
         }
@@ -1226,8 +1274,10 @@ export function StudioEditor({
           {/* P1.4/P1.5 — Botones de acción global: Ideas (IA) + Ver en 3D/tu espacio.
               Ahora siempre fluyen dentro del section: en mobile quedan justo debajo del banner
               y arriba del grid para no tapar los slots; en desktop se sientan debajo del banner.
-              Se elimina el posicionamiento fixed que superponía los botones de edición/eliminación. */}
-          <div className="mt-2 mb-2 flex flex-wrap items-center justify-center gap-2 px-4">
+              Se elimina el posicionamiento fixed que superponía los botones de edición/eliminación.
+              Lucy 2026-09-08 — separación vertical real respecto al lienzo (mb-6/lg:mb-8):
+              con mb-2 los pills (h-12 + ring-4) quedaban pegados al borde superior del canvas. */}
+          <div className="mt-2 mb-6 flex flex-wrap items-center justify-center gap-2 px-4 lg:mb-8">
             {aiEnabled && (
               <button
                 type="button"

@@ -24,10 +24,10 @@
  * misma UI dentro del modal unificado de edición por slot.
  */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Slider } from "@/components/ui/slider";
-import { Bold, Check, Italic, Type } from "lucide-react";
+import { Bold, Check, Italic, Loader2, Type } from "lucide-react";
 import { FONT_PRESETS, TEXT_COLOR_PRESETS } from "./lib/fonts";
 import type { TextLayer, TextOverride } from "./types";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -125,8 +125,23 @@ export function StudioTextEditorForm({
     return "normal";
   })();
 
+  // Lucy 2026-09-08 — estado de PROCESANDO del botón «Aplicar»: antes el click no
+  // mostraba NINGÚN feedback (el commit al store es casi instantáneo pero el
+  // re-render Konva de la grilla puede tardar un frame largo, y el usuario no sabía
+  // si había funcionado). Spinner + disabled hasta completar, con un mínimo visible
+  // para que el feedback se perciba (mismo patrón Loader2 del resto del Estudio).
+  const [applying, setApplying] = useState(false);
+  const applyingTimerRef = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (applyingTimerRef.current !== null) window.clearTimeout(applyingTimerRef.current);
+    },
+    [],
+  );
+
   // Construir el override final: solo incluye fields que difieren del base.
   const handleApply = () => {
+    if (applying) return;
     const override: TextOverride = {};
     if (text !== layer.text) override.text = text;
     if (fontFamily !== (layer.fontFamily ?? FONT_PRESETS[0].fontFamily))
@@ -136,7 +151,13 @@ export function StudioTextEditorForm({
     if (computedFontWeight !== baseFontWeight) override.fontWeight = computedFontWeight;
     // Si nada cambió, limpiar el override existente (null)
     const hasChanges = Object.keys(override).length > 0;
-    onApply(hasChanges ? override : null);
+    setApplying(true);
+    // El commit va un frame DESPUÉS para que el spinner pinte primero (si el commit
+    // y el repaint pesado corren en el mismo tick, el spinner nunca se ve).
+    requestAnimationFrame(() => {
+      onApply(hasChanges ? override : null);
+      applyingTimerRef.current = window.setTimeout(() => setApplying(false), 450);
+    });
   };
 
   const handleReset = () => {
@@ -323,9 +344,18 @@ export function StudioTextEditorForm({
         <button
           type="button"
           onClick={handleApply}
-          className="bg-brand-purple hover:bg-brand-purple-dark rounded-md px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors"
+          disabled={applying}
+          aria-busy={applying}
+          className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1.5 rounded-md px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors disabled:cursor-wait disabled:opacity-80"
         >
-          {texts.texto.aplicar}
+          {applying ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              <span>{texts.texto.aplicando}</span>
+            </>
+          ) : (
+            texts.texto.aplicar
+          )}
         </button>
       </div>
     </div>

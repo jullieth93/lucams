@@ -46,7 +46,11 @@ import { analyzeSmartCrop } from "./lib/smart-crop";
  *  ≈ 18MB de bitmap en el peor caso. */
 const RENDER_SCALE = 0.5;
 
-type PhotoTransform = { offsetX: number; offsetY: number; scale: number };
+// Lucy 2026-09-08 — incluye `rotation` (pasos de 90°): la tarjeta la pasa a
+// drawCalendarPage (preview = producción). Antes el tipo no la declaraba y el
+// pan en vivo (dragDelta) la DESCARTABA → la foto "enderezada" volvía a 0°
+// mientras se arrastraba.
+type PhotoTransform = { offsetX: number; offsetY: number; scale: number; rotation?: number };
 
 export function CalendarCardLayer({
   assetUrl,
@@ -102,6 +106,7 @@ export function CalendarCardLayer({
             offsetX: (photoTransform?.offsetX ?? 0) + dragDelta.x,
             offsetY: (photoTransform?.offsetY ?? 0) + dragDelta.y,
             scale: photoTransform?.scale ?? 1,
+            rotation: photoTransform?.rotation,
           }
         : (photoTransform ?? null),
     [dragDelta, photoTransform],

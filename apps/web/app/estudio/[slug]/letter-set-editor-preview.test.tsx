@@ -202,5 +202,45 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
         expect.objectContaining({ withBorder: false }),
       );
     });
+
+    // Lucy 2026-09-08 — con «Sin borde» las fichas no llevan el marco de color: la sección
+    // «Elige los colores» se desactiva (visible + inerte, con el porqué) y el selector de
+    // borde SIEMPRE queda habilitado para poder volver.
+    it("«Sin borde» desactiva «Elige los colores» con aviso, y el selector de borde sigue habilitado", () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("radio", { name: /Sin borde/ }));
+
+      for (const tema of ["Arcoíris", "Vibrante", "Neutro"]) {
+        expect(screen.getByRole("button", { name: new RegExp(tema) })).toBeDisabled();
+      }
+      expect(screen.getByRole("note")).toHaveTextContent(/los colores se desactivan/);
+      // El selector de borde NUNCA se desactiva: es la vía para recuperar los colores.
+      expect(screen.getByRole("radio", { name: /Con borde/ })).toBeEnabled();
+      expect(screen.getByRole("radio", { name: /Sin borde/ })).toBeEnabled();
+    });
+
+    it("al volver a «Con borde» los colores se reactivan conservando la selección", () => {
+      renderEditor();
+
+      // El cliente elige un tema distinto al default…
+      fireEvent.click(screen.getByRole("button", { name: /Vibrante/ }));
+      expect(screen.getByRole("button", { name: /Vibrante/ })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+
+      // …apaga el borde (colores desactivados) y lo vuelve a encender.
+      fireEvent.click(screen.getByRole("radio", { name: /Sin borde/ }));
+      fireEvent.click(screen.getByRole("radio", { name: /Con borde/ }));
+
+      expect(screen.getByRole("button", { name: /Vibrante/ })).toBeEnabled();
+      // La selección previa se conserva: el estado de colores nunca se resetea.
+      expect(screen.getByRole("button", { name: /Vibrante/ })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    });
   });
 });

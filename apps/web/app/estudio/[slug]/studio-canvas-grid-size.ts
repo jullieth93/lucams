@@ -154,6 +154,38 @@ export function resolveMinSlotSize(opts: {
   return MIN_SLOT_SIZE;
 }
 
+// ──────────────────────────────────────────────────────────────────
+//  Zoom de LIENZO (Lucy 2026-09-08) — acercar TODA la plantilla, no la foto
+// ──────────────────────────────────────────────────────────────────
+
+// Zoom de stage (Ola 22, Lucy 2026-09-08): los botones +/− acercan el lienzo
+// COMPLETO (la plantilla con sus textos y chrome) para ver/editar detalles
+// finos. Es DISTINTO del zoom de FOTO (photoTransform.scale, gestos sobre la
+// foto): este solo cambia el tamaño de PANTALLA de los slots, nunca el diseño.
+// Por eso la exportación es inmune: el snapshot de producción calcula el
+// pixelRatio RELATIVO al tamaño lógico (logicalW × 3 / stage.width()), así el
+// PNG de imprenta sale siempre a resolución fija sin importar el zoom.
+export const STAGE_ZOOM_MIN = 1;
+export const STAGE_ZOOM_MAX = 2.5;
+export const STAGE_ZOOM_STEP = 0.25;
+
+/**
+ * Tope de zoom del lienzo para que el grid NUNCA se desborde en horizontal:
+ * el ancho del grid ya calculado (a zoom 1) escalado no puede superar el
+ * ancho del contenedor. Si el grid ya llena el ancho, el tope es 1 (sin zoom)
+ * — el detalle fino sigue resolviéndose con el zoom de FOTO por gestos.
+ */
+export function computeStageZoomCap(containerWidth: number, contentWidth: number): number {
+  if (contentWidth <= 0 || containerWidth <= 0) return STAGE_ZOOM_MIN;
+  return Math.min(STAGE_ZOOM_MAX, Math.max(STAGE_ZOOM_MIN, containerWidth / contentWidth));
+}
+
+/** Acercar/alejar en pasos fijos, clampado al rango [min, cap]. */
+export function stepStageZoom(current: number, direction: 1 | -1, cap: number): number {
+  const next = Math.round((current + direction * STAGE_ZOOM_STEP) * 100) / 100;
+  return Math.min(cap, Math.max(STAGE_ZOOM_MIN, next));
+}
+
 /**
  * Ancho de slot (grid plano, no agrupado): el menor entre el ancho disponible
  * por columna y el alto útil del marco / aspecto, con el piso que corresponda.

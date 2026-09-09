@@ -48,7 +48,7 @@ function makeCanvasData(photoSlots: number): CanvasDataV2 {
   };
 }
 
-function setup(photoSlots = 3, opts?: { min?: number; max?: number }) {
+function setup(photoSlots = 3, opts?: { min?: number; max?: number; magnet?: boolean }) {
   const store = createStudioStore();
   const canvasData = makeCanvasData(photoSlots);
   store.getState().init({
@@ -64,6 +64,7 @@ function setup(photoSlots = 3, opts?: { min?: number; max?: number }) {
       max={opts?.max ?? 6}
       facesPerUnit={2}
       sizeCm="6×6"
+      magnet={opts?.magnet}
     />,
   );
   return store;
@@ -123,5 +124,27 @@ describe("StudioPhotoCountControl", () => {
     expect(
       screen.queryByText("Tus fotos se conservan al cambiar el número"),
     ).not.toBeInTheDocument();
+  });
+
+  // Lucy 2026-09-08 — "¿Con imán?" en los packs: badge read-only de la elección
+  // de la PDP (no es un control; cambiarla es cambiar de variante, eso pasa en la ficha).
+  it("muestra el badge «Con imán» read-only cuando la PDP lo eligió", () => {
+    setup(3, { magnet: true });
+    expect(screen.getByText(/Con imán/)).toBeInTheDocument();
+    expect(screen.getByText(/se elige en la página del producto/)).toBeInTheDocument();
+    // No es un botón ni un control: no hay nada clicable del imán.
+    expect(screen.queryByRole("button", { name: /imán/i })).not.toBeInTheDocument();
+  });
+
+  it("muestra el badge «Sin imán» cuando la PDP eligió esa opción", () => {
+    setup(3, { magnet: false });
+    expect(screen.getByText(/Sin imán/)).toBeInTheDocument();
+    expect(screen.queryByText(/Con imán/)).not.toBeInTheDocument();
+  });
+
+  it("sin dato de magnet (catálogo sin la dimensión) no renderiza badge", () => {
+    setup(3);
+    expect(screen.queryByText(/Con imán/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sin imán/)).not.toBeInTheDocument();
   });
 });

@@ -65,6 +65,10 @@ type NameEditorProps = {
   pricePerTile: number;
   /** Nº de letras pre-elegido en la ficha (solo hint visual antes de escribir). */
   initialCount?: number;
+  /** Copias (CartItem.qty) elegidas en la PDP con el stepper "Unidades"
+   *  (`?copies=N`, regla 2026-09-08b): las confirma la modal "¡Listo!" — que ya
+   *  NO tiene stepper propio. undefined → 1. */
+  initialCopies?: number;
   /** Estilos ilustrados disponibles (Animales, Navidad…). Vacío = solo "Solo letra". */
   styles: LetterStyle[];
   /**
@@ -208,6 +212,7 @@ export function NameEditor({
   initialCount,
   styles,
   themeOptions,
+  initialCopies,
 }: NameEditorProps) {
   const router = useRouter();
   const [raw, setRaw] = useState("");
@@ -321,8 +326,9 @@ export function NameEditor({
   }
 
   // ──────────── Paso 2: confirmar en la modal → crear + subir + carrito ────────────
-  // `copies` viene del stepper "Copias" de la modal (unidades idénticas del
-  // nombre ya renderizado; CartItem.qty 1..99).
+  // `copies` son las unidades idénticas del nombre ya renderizado (CartItem.qty
+  // 1..99): las eligió la PDP (stepper "Unidades", ?copies=N) y la modal "¡Listo!"
+  // las confirma tal cual — ya sin stepper propio (regla 2026-09-08b).
   async function handleConfirmAddToCart(copies: number) {
     if (!valid || submitting || !previewDataUrl) return;
     setSubmitting(true);
@@ -757,6 +763,8 @@ export function NameEditor({
         // ADR-057 — el precio es POR FICHA, así que el total que se confirma es
         // letras × pricePerTile (enteros en centavos COP): el MISMO cálculo del carrito.
         unitPrice={liveTotal}
+        // Copias de la PDP (?copies=N) — la modal las confirma, no las elige.
+        initialCopies={initialCopies}
         isFinalizing={submitting}
         errorMessage={previewError}
         productKind="magnets"

@@ -719,6 +719,77 @@ describe("renderLayer — image-placeholder", () => {
     // stripPhotoRect("first") aplica el inset del borde superior (y) de la tira
     expect(el.props.layer.y).not.toBe(58);
   });
+
+  it("Ola 23 — tira SIN BORDE (placeholder a sangre total): sin inset exterior, canaleta intacta", () => {
+    // El toggle "Sin borde" de la toolbar reescribe el placeholder a sangre total
+    // de la celda → isStripBorderless → stripPhotoRect no aplica el borde exterior.
+    const phFullBleed = {
+      ...phLayer,
+      x: 0,
+      y: 0,
+      width: 450,
+      height: 600,
+      cornerRadius: 0,
+    } as unknown as ImagePlaceholderLayer;
+    const el = renderLayer(
+      phFullBleed,
+      slot(),
+      STAGE,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { stripPosition: "first" },
+    ) as React.ReactElement<{ layer: ImagePlaceholderLayer }>;
+    // Sin inset exterior arriba (la foto toca el borde de la tira)…
+    expect(el.props.layer.y).toBe(0);
+    // …y la canaleta hacia la siguiente foto se conserva (gutter = 2% de 450 = 9).
+    expect(el.props.layer.height).toBe(600 - 9);
+  });
+
+  it("Ola 23 — con photoBackingHex la ventana lleva Rect de respaldo bajo la foto", () => {
+    // Marco constante bajo zoom-out: el hueco de la ventana se pinta del color de la
+    // tarjeta SIN marco (respaldo), no del color del marco (que está debajo).
+    mocks.image = { width: 800, height: 600, naturalWidth: 800, naturalHeight: 600 };
+    mocks.status = "loaded";
+    render(
+      renderLayer(
+        phLayer,
+        slot({ assetUrl: "https://x/f.png" }),
+        STAGE,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { photoBackingHex: "#FFFFFF" },
+      ) as React.ReactElement,
+    );
+    const backing = mocks.konvaProps.find(
+      (k) => k.name === "Rect" && k.props.fill === "#FFFFFF" && k.props.width === 392,
+    );
+    expect(backing).toBeDefined();
+    expect(backing!.props.listening).toBe(false);
+    // Contenido del diseño (SÍ se hornea): NO es un adorno edit-indicator/realism.
+    expect(backing!.props.name).toBeUndefined();
+  });
+
+  it("Ola 23 — sin photoBackingHex no hay Rect de respaldo (control)", () => {
+    mocks.image = { width: 800, height: 600, naturalWidth: 800, naturalHeight: 600 };
+    mocks.status = "loaded";
+    render(
+      renderLayer(
+        phLayer,
+        slot({ assetUrl: "https://x/f.png" }),
+        STAGE,
+        undefined,
+      ) as React.ReactElement,
+    );
+    expect(mocks.konvaProps.some((k) => k.name === "Rect")).toBe(false);
+  });
 });
 
 // ── renderLayer — texto editable ─────────────────────────────────────
@@ -771,6 +842,38 @@ describe("renderLayer — text", () => {
     expect(text.props.name).toBe("edit-indicator");
     expect(text.props.opacity).toBe(0.45);
     expect(text.props.listening).toBe(true); // editable + onTextEdit provisto
+  });
+
+  it("override SOLO de estilo (sin text) → sigue siendo guía placeholder atenuada", () => {
+    // Ola 23 — el cliente cambió solo el color: el default de la plantilla se VE
+    // atenuado con el color elegido, pero sigue marcado edit-indicator → NUNCA se
+    // hornea en producción (renderTextLayer tampoco imprime sin override.text).
+    const el = renderLayer(
+      textLayer,
+      slot({ textOverrides: { caption: { fill: "#E85B9F" } } }),
+      STAGE,
+      vi.fn(),
+      "rectangle",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        allowText: true,
+      },
+    ) as React.ReactElement;
+    const text = (el.props as { children: Array<React.ReactElement> }).children.find(
+      (c) => (c as React.ReactElement).key === "caption-text",
+    ) as React.ReactElement<{
+      name?: string;
+      opacity?: number;
+      text?: string;
+      fill?: string;
+    }>;
+    expect(text.props.name).toBe("edit-indicator");
+    expect(text.props.opacity).toBe(0.45);
+    expect(text.props.text).toBe("Escribe tu mensaje"); // guía con el default
+    expect(text.props.fill).toBe("#E85B9F"); // …en el color que eligió
   });
 
   it("con override: manda el texto del cliente y su estilo", () => {

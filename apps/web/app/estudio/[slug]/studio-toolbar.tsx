@@ -66,6 +66,9 @@ type StudioToolbarProps = {
     max: number;
     facesPerUnit: number;
     sizeCm?: string;
+    /** "¿Con imán?" (Lucy 2026-09-08): badge read-only junto al stepper — lo fija
+     *  la PDP, el Estudio solo lo muestra. undefined = catálogo sin la dimensión. */
+    magnet?: boolean;
   };
   onFinalize: () => void;
 };
@@ -108,11 +111,13 @@ export function StudioToolbar({
         {/* FB2 (feedback Lucy) — la salida del estudio no se veía en móvil (solo el ícono, sepultado
           bajo el header del sitio). Ahora es un botón con etiqueta "Salir" siempre visible, con
           fondo suave para que se lea como control tocable. Vuelve a la ficha del producto (el
-          borrador se autoguarda, no se pierde nada). */}
+          borrador se autoguarda, no se pierde nada).
+          Lucy 2026-09-08 — se vuelve BOTÓN SÓLIDO morado de marca (mismo lenguaje visual del
+          botón «¡Listo!»): el pill con fondo suave seguía leyéndose como texto, no como acción. */}
         <Link
           href={`/producto/${productSlug}`}
           aria-label={fillStudioText(texts.lienzo.salirAria, { producto: productName })}
-          className="text-brand-purple-dark/80 hover:text-brand-purple-dark bg-brand-purple/8 hover:bg-brand-purple/15 focus:ring-brand-purple inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors focus:ring-2 focus:outline-none"
+          className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 focus:ring-brand-purple inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md px-4 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg focus:ring-2 focus:ring-offset-2 focus:outline-none"
         >
           <ArrowLeft className="h-4 w-4" />
           <span>{texts.lienzo.headerExit}</span>
@@ -195,6 +200,7 @@ export function StudioToolbar({
           max={photoCount.max}
           facesPerUnit={photoCount.facesPerUnit}
           sizeCm={photoCount.sizeCm}
+          magnet={photoCount.magnet}
         />
       )}
 

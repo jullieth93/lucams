@@ -117,8 +117,8 @@ apps/web/app/estudio/[slug]/
 ├── studio-photo-adjust-modal.tsx      # Encuadre (zoom/pan/rotar) + filtros
 ├── studio-slot-edit-modal.tsx         # Editor de slot a pantalla completa (Ola 6)
 ├── studio-text-editor-modal.tsx       # Edición de capas de texto del canvas (M.3.b.D)
-├── studio-preview-modal.tsx           # "Así se verá tu pedido": preview final + stepper
-│                                      #   de copias (unitario × N) → recién ahí al carrito
+├── studio-preview-modal.tsx           # "Así se verá tu pedido": preview final + total
+│                                      #   (unitario × copias de la PDP) → recién ahí al carrito
 ├── studio-onboarding.tsx              # Modal de bienvenida / tour inicial
 ├── studio-gestures-hint.tsx           # Pista de gestos táctiles (drag/pinch/doble-tap)
 ├── studio-consent-text.tsx            # Consentimiento de derechos de imagen (Ley 1581)
@@ -204,8 +204,9 @@ packages/db/scripts/
   `insetToMinMargin`).
 - **Tira photobooth 6.5×20**: plantilla `photo-strip-3-fotos` = celda 390×400 con
   `frame-card` + foto casi a sangre; `gridCols: 1` + `gridGap: 0` (la plantilla puede
-  fijar columnas y gap) → 3 celdas pegadas = tira continua. En modo tira la barra de
-  acciones flota sobre la foto (`overlayActions`).
+  fijar columnas y gap) → 3 celdas pegadas = tira continua (con canaleta del color
+  del marco ENTRE fotos vía `stripPhotoRect`, regla 2026-09-08 — ver Ola 4 abajo).
+  En modo tira la barra de acciones flota sobre la foto (`overlayActions`).
 - **Rotación de foto**: `photoTransform.rotation` (pasos de 90°) desde "Ajustar foto"
   (modal desktop y editor táctil a pantalla completa). Konva + tier canvas la
   dibujan; el tier sharp la rechaza (NEEDS_KONVA). Apagada en calendarios.
@@ -266,14 +267,43 @@ packages/db/scripts/
   asimétricos de la plantilla). Misma geometría en Konva y en `production-render-canvas`;
   `service.ts` manda los productos con frameOptions directo al tier canvas (el tier sharp
   no conoce la regla). Tests pixel-level en `production-render-canvas.test.ts` (Ola 4).
-- **Tira photobooth — UNA pieza continua.** La celda trae la foto a sangre VERTICAL
-  (y=0 → las fotos de celdas vecinas se tocan, gap 0 REAL); lados 12px (~2mm) de color y
-  borde EXTERIOR 12px solo en first/last (`stripPhotoRect` por posición — la plantilla es
-  uniforme por celda y no puede expresarlo). Sin sombra ni radio por celda (separaban la
-  tira): UNA sombra CSS alrededor de la columna (`studio-canvas-grid` stripMode) y radio
-  solo en las puntas. Preview compositado: sin stroke morado por celda, un solo borde
-  exterior. Decisión: gutter entre fotos = 0 (referencia de Lucy acepta separación fina;
-  si la pide, `stripPhotoRect` con inset>0 la añade en 1 línea).
+- **Tira photobooth — UNA pieza continua, con canaletas entre fotos (regla
+  2026-09-08, Lucy validó en local).** La celda trae la foto a sangre VERTICAL
+  (y=0) y la geometría final la pone `stripPhotoRect` por posición (la plantilla
+  es uniforme por celda y no puede expresarlo): lados 12px (~2mm) de color, borde
+  EXTERIOR 12px solo en first/last y —nuevo— media canaleta de 8px
+  (`stripGutterPx` ≈ 0.7mm por cara) arriba/abajo de cada foto → 16px (~1.3mm)
+  visibles entre fotos consecutivas, del color del marco (frame-card), como la
+  tira física. Las celdas SIGUEN pegadas (gap CSS 0: el gap del grid no entraría
+  al PNG de producción, que renderiza celda a celda — la canaleta vive dentro de
+  cada celda para que preview Konva y `production-render-canvas` consuman la
+  misma matemática, WYSIWYG). Sin sombra ni radio por celda (separaban la
+  tira): UNA sombra CSS alrededor de la columna (`studio-canvas-grid` stripMode)
+  y radio solo en las puntas. Preview compositado: sin stroke morado por celda,
+  un solo borde exterior.
+
+### Ola 23 (Lucy 2026-09-08) — placeholders no imprimibles, marco constante, tira sin borde
+
+- **Textos por defecto = placeholders NO imprimibles (TODAS las plantillas).** El default
+  de cualquier capa `editable` ("Escribe tu mensaje", "@tu_usuario", "362 me gusta"…) es
+  guía de pantalla: se VE atenuada (45%, `edit-indicator`) pero NUNCA se hornea — ni en el
+  snapshot del cliente (se esconde antes de `toDataURL`) ni en el render server
+  (`renderTextLayer` imprime solo `override.text`; el tier sharp ya no cae al canvas por un
+  placeholder sin override). Un override solo de estilo (sin texto) sigue sin imprimir.
+- **El marco es MARCO, no fondo (marco de ancho constante bajo zoom/pan).** Con tarjeta de
+  color (frame-card/full-bleed), el hueco que deja la foto al alejarla (zoom-out) o moverla
+  se rellena con el color de la tarjeta SIN marco (capa `background`) — antes asomaba
+  `borderColor` y la franja "crecía". Editor: Rect de respaldo en `ImagePlaceholder`
+  (`photoBackingHex`, también en `StudioPhotoPreview`); producción: fillRect equivalente en
+  `production-render-canvas`. Instagram no aplica (su marco vive en el chrome SVG).
+- **Tira SIN borde (toggle "Borde de foto" de la toolbar).** El toggle reescribe el
+  placeholder a sangre total de la celda → `isStripBorderless` + `stripPhotoRect(…,
+{ borderless: true })`: sin marco exterior (fotos a sangre en los bordes de la tira),
+  canaletas entre fotos intactas. Detección por geometría → producción consume la misma
+  regla (el rect viaja en canvasData).
+- **Tarjeta clara sobre lienzo claro (white-on-white).** El slot lleva un filete DOM de
+  contraste (`outline` brand-purple/35) cuando la tarjeta es clara — adorno de pantalla,
+  nunca entra al PNG de producción.
 - **Marco máximo consistente del lienzo (T9).** El grid ahora se dimensiona por ancho Y
   por alto: `slotDisplaySize = min(porAncho, porAlto)` donde porAlto sale de un marco del
   78% del alto del viewport (acotado 420–900px). El grid usa ancho explícito (celdas+gaps)
@@ -287,11 +317,13 @@ packages/db/scripts/
 
 ## Piezas posteriores (2026-07 en adelante) — confirmación con copias, letras, IA, 3D, copy CMS
 
-- **Modal de confirmación con stepper de copias** (`studio-preview-modal.tsx`): «Así se verá
-  tu pedido» muestra el PNG final (el MISMO que se sube como archivo de producción — la
-  promesa WYSIWYG) con stepper de copias (1–99) y total `unitario × copias`. El diseño se
-  crea/finaliza y se agrega al carrito RECIÉN al confirmar; si el cliente vuelve a editar no
-  queda nada creado. Lo usan tanto el Estudio principal como los editores de letras.
+- **Modal de confirmación** (`studio-preview-modal.tsx`): «Así se verá tu pedido» muestra el
+  PNG final (el MISMO que se sube como archivo de producción — la promesa WYSIWYG) y el total
+  `unitario × copias`. Desde la regla 2026-09-08b la modal YA NO tiene stepper de copias: las
+  copias (CartItem.qty 1–99) las fija la PDP con su stepper "Unidades" en los productos de
+  composición fija (viajan como `?copies=N` → prop `initialCopies`) y se ajustan en el carrito.
+  El diseño se crea/finaliza y se agrega al carrito RECIÉN al confirmar; si el cliente vuelve
+  a editar no queda nada creado. Lo usan tanto el Estudio principal como los editores de letras.
 - **Sets de letras / Abecedario (ADR-057)**: `letter-set-editor.tsx` (Abecedario Completo /
   Pack Vocales) y `name-editor.tsx` (Nombre Personalizado). El TEMA y el IDIOMA se eligen EN
   el Estudio (ya no son variantes de la PDP — si la PDP los traía, se preseleccionan);
@@ -311,6 +343,12 @@ packages/db/scripts/
 - **Vistas 3D «míralo en tu espacio» (ADR-063)**: nevera, tablero magnético, libro
   (separadores), calendario y flat-lays de regalo/repisa — react-three-fiber con entorno
   compartido (`studio-3d-environment.tsx`) y texturas procedurales (`lib/procedural-textures.ts`).
+- **Packs de foto: variante resuelta server-side (Lucy 2026-09-05 + 2026-09-08)**: la PDP elige
+  "Unidades" (pack size) y "¿Con imán?"; el Estudio persiste `photoSlots`, `sizeCm` y `magnet`
+  en la raíz del canvasData V2 (auto-save) y muestra el imán como badge read-only junto al
+  stepper de fotos (`studio-photo-count-control.tsx`) — la PDP es la única fuente de verdad.
+  Al agregar al carrito SIN variantId, `features/products/photo-pack-resolve.ts` resuelve la
+  variante exacta (photoSlots + sizeCm + magnet → una sola) con precio y stock del servidor.
 
 ### Ola 17 (Lucy 2026-09-07) — Polaroid Instagram: foto de perfil editable
 
@@ -319,7 +357,9 @@ packages/db/scripts/
   (`public/templates/ig_post_3x4.svg` trae `circle cx=34 cy=34 r=16`) con la foto del
   cliente recortada a círculo (clipFunc `ctx.arc`, cover), dejando el anillo de historia
   (r=20, stroke 2.5) visible alrededor. Va INMEDIATAMENTE DESPUÉS del asset "frame" en el
-  orden de capas. Sin foto elegida no dibuja nada → placeholder del SVG intacto.
+  orden de capas. Sin foto elegida no dibuja nada → placeholder del SVG intacto
+  (excepto el hit region interactivo de Ola 22, marcado `edit-indicator` — nunca
+  se hornea).
 - **La imagen vive en el SlotState, no en la capa**: `slots[i].profileAssetId` /
   `profileAssetUrl` (declaradas en `SlotStateSchema` — sin catchall, Zod stripea lo no
   declarado). POR SLOT: cada imán del pack es un post independiente con su propio usuario.
@@ -335,6 +375,35 @@ packages/db/scripts/
   (`IG_PROFILE_PHOTO_LAYER`) con test (`instagram-template-spec.test.ts`). Seed +
   migración: `packages/db/scripts/ola17-polaroid-instagram-profile-photo.mjs` (dry-run
   default, `--apply`, env-guard). Drafts/cotizaciones viejas no ganan la capa (aceptado).
+
+### Ola 22 (Lucy 2026-09-08) — zoom de lienzo, badge a la barra, avatar tappeable, fuente del calendario
+
+- **Stage más grande + zoom de lienzo (display-only)**: `MAX_VIEWPORT_WIDTH` 1024 → 1280.
+  Control flotante (−/+%/reset) sobre la esquina del stage cuando el contenido lo permite
+  (`stageZoomCap = containerWidth/contentWidth`, clamp [1, 2.5], pasos de 0.25 — helpers en
+  `studio-canvas-grid-size.ts`). Los tamaños zoomados alimentan celdas, slots y placeholders,
+  así el slot crece completo (no estira la foto): nada se desborda horizontalmente. Solo
+  botones (no wheel/pinch del stage) para no pisar el wheel de zoom de la FOTO en edición.
+  Exportación inmune: `pixelRatio` del export ya es relativo al tamaño lógico del stage
+  (`studio-editor.tsx`), y previews/3D reescalan con pixelRatio fijo.
+- **Identificador SIEMPRE en la barra de acciones**: el badge absoluto top-left del canvas
+  (desde M.3.b, el editor multi-slot) se eliminó de `StudioSlot`; el número/identificador va
+  como chip dentro de la barra de acciones del slot, renderizado siempre que haya foto —
+  sin exclusions. Calendario
+  lo muestra como "Ene"/"Feb"… (mes legible, no número), tira como "1", "2"… Nada invade la
+  zona imprimible del template. Contrato cubierto por `studio-slot-badge.test.tsx`.
+- **Avatar tappeable (Polaroid Instagram)**: el círculo de la capa `profile-photo` es un
+  hit region (radio +8px, transparente) que abre el picker de foto de perfil al tocarlo,
+  cableado `StudioCanvasGrid → StudioSlot → ProfilePhotoLayerRenderer` vía
+  `onRequestChangeProfilePhoto`. Funciona con o sin foto elegida y solo cuando el padre
+  cablea el callback. Anillo turquesa punteado permanente + sólido en hover + tooltip Konva
+  ("Foto de perfil — toca para cambiarla") como affordance. Cobertura en
+  `studio-slot-profile-photo.test.tsx`.
+- **Fuente del calendario dentro de "Ajustar Foto"**: el `StudioSlotEditModal` acepta
+  `calendarFont` + `onCalendarFontChange` (del store, solo en modo `calendarPreview`) y
+  muestra el selector `#cal-font-select` en la pestaña Foto (después de "Cambiar foto").
+  El banner del editor sigue existiendo; ambos comparten el mismo estado del store.
+  Contrato en `studio-slot-edit-modal.test.tsx`.
 
 ## Wireframes ASCII
 
