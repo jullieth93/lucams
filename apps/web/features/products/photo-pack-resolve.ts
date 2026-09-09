@@ -10,6 +10,12 @@
  * y el stock salen SIEMPRE de la variante resuelta server-side — la ruta del
  * dinero no confía en el cliente.
  *
+ * Lucy 2026-09-08 — "¿Con imán?" en los packs: el canvasData también persiste
+ * `magnet` (la elección Con/Sin imán de la PDP) y la resolución la incluye, así
+ * el par Con/Sin imán del catálogo NO vuelve ambiguo el match (misma combinación
+ * photoSlots+sizeCm existe en las dos versiones). Diseños sin la clave (legacy)
+ * resuelven a Con imán — lo que el producto siempre fue.
+ *
  * Puro y client-safe (sin imports de servidor) → testeable sin mocks. Patrón:
  * lib/letter-set-resolve.ts del Estudio.
  */
@@ -28,6 +34,8 @@ export type PhotoPackVariant = {
 export type PhotoPackDesignInfo = {
   photoSlots: number;
   sizeCm?: string;
+  /** Elección "¿Con imán?" de la PDP (2026-09-08). Ausente = legacy → Con imán. */
+  magnet?: boolean;
 };
 
 /**
@@ -41,19 +49,30 @@ export type PhotoPackDesignInfo = {
  */
 export function readPhotoPackDesignInfo(canvasData: unknown): PhotoPackDesignInfo | null {
   if (!canvasData || typeof canvasData !== "object") return null;
-  const cd = canvasData as { version?: unknown; photoSlots?: unknown; sizeCm?: unknown };
+  const cd = canvasData as {
+    version?: unknown;
+    photoSlots?: unknown;
+    sizeCm?: unknown;
+    magnet?: unknown;
+  };
   if (cd.version !== 2) return null;
   if (typeof cd.photoSlots !== "number" || !Number.isInteger(cd.photoSlots)) return null;
   const photoSlots = Math.min(50, Math.max(1, cd.photoSlots));
   const sizeCm = typeof cd.sizeCm === "string" && cd.sizeCm.length > 0 ? cd.sizeCm : undefined;
-  return sizeCm ? { photoSlots, sizeCm } : { photoSlots };
+  const magnet = typeof cd.magnet === "boolean" ? cd.magnet : undefined;
+  return { photoSlots, ...(sizeCm ? { sizeCm } : {}), ...(magnet !== undefined ? { magnet } : {}) };
 }
 
 /**
- * Resuelve la variante exacta del catálogo para (photoSlots [, sizeCm]):
+ * Resuelve la variante exacta del catálogo para (photoSlots [, sizeCm] [, magnet]):
  *   1. candidatas = variantes con attrs.photoSlots === photoSlots
- *   2. si hay sizeCm → entre las candidatas, la de attrs.sizeCm === sizeCm
- *   3. si NO hay sizeCm → la única candidata (si hay exactamente 1; si el
+ *   2. si hay sizeCm → entre las candidatas, las de attrs.sizeCm === sizeCm
+ *   3. "¿Con imán?" (2026-09-08): si las candidatas declaran la dimensión `magnet`
+ *      (par Con/Sin imán del seed), se filtra por ella — el diseño sin la clave
+ *      (legacy) quiere Con imán, que es lo que el producto siempre fue. Si el
+ *      catálogo NO la declara, este paso no filtra nada (compat con ambientes
+ *      donde el seed aún no corrió).
+ *   4. si NO hay sizeCm → la única candidata (si hay exactamente 1; si el
  *      catálogo repite ese photoSlots en varios tamaños es ambiguo → null)
  * Devuelve null cuando no hay variante exacta: el caller decide el error
  * (el carrito mapea eso a NO_DEFAULT_VARIANT — mensaje claro al cliente).
@@ -65,15 +84,27 @@ export function resolvePhotoPackVariant<T extends PhotoPackVariant>(
   variants: ReadonlyArray<T>,
   info: PhotoPackDesignInfo,
 ): T | null {
-  const candidates = variants.filter((v) => {
+  let candidates = variants.filter((v) => {
     const attrs = parseVariantAttributes(v.attributes);
     return attrs.photoSlots === info.photoSlots;
   });
   if (candidates.length === 0) return null;
   if (info.sizeCm !== undefined) {
-    return (
-      candidates.find((v) => parseVariantAttributes(v.attributes).sizeCm === info.sizeCm) ?? null
+    candidates = candidates.filter(
+      (v) => parseVariantAttributes(v.attributes).sizeCm === info.sizeCm,
     );
+    if (candidates.length === 0) return null;
   }
+  // "¿Con imán?" — solo discrimina cuando el catálogo declara la dimensión en
+  // las candidatas; sin el filtro, el par Con/Sin imán haría ambiguo el match.
+  if (
+    candidates.length > 1 &&
+    candidates.some((v) => parseVariantAttributes(v.attributes).magnet !== undefined)
+  ) {
+    const want = info.magnet ?? true; // diseño legacy (sin la clave) = Con imán
+    const byMagnet = candidates.filter((v) => parseVariantAttributes(v.attributes).magnet === want);
+    if (byMagnet.length > 0) candidates = byMagnet;
+  }
+  if (info.sizeCm !== undefined) return candidates[0] ?? null;
   return candidates.length === 1 ? candidates[0] : null;
 }

@@ -22,10 +22,13 @@ type SelectedVariantCtx = {
   selectedId: string | null;
   setSelectedId: (id: string) => void;
   /**
-   * Copias (CartItem.qty 1..99) elegidas en el stepper "Unidades" de la PDP. Única fuente de
-   * verdad de la cantidad en la ficha (Lucy 2026-09-03): la rama de compra directa la manda
-   * como `qty` del form y la rama personalizable la lleva al Estudio como `?copies=N` (el
-   * stepper "Copias" de la modal de confirmación arranca pre-cargado con ella).
+   * Copias (CartItem.qty 1..99) elegidas en el stepper "Unidades" de la PDP —
+   * SOLO productos de composición FIJA (regla 2026-09-08b: calendario, sets de
+   * letras, nombre y compra directa; en los packs de tamaño variable "Unidades"
+   * es el pack size y vive en el VariantSelector). Única fuente de verdad de la
+   * cantidad en la ficha: la compra directa la manda como `qty` del form y la
+   * rama personalizable la lleva al Estudio como `?copies=N` (la modal de
+   * confirmación ya NO tiene stepper — confirma con ese valor).
    */
   copies: number;
   setCopies: (n: number) => void;
@@ -90,13 +93,19 @@ export function useSelectedVariant(): SelectedVariantCtx {
  *
  * Lucy 2026-09-05 — `requiredSelection` define qué exige el CTA antes de habilitarse:
  *   - "variant" (default): variante completa elegida (productos personalizables
- *     clásicos: forma/tamaño/etc. definen la pieza).
- *   - "size": packs de fotoimanes con >1 tamaño. El selector quedó reducido a
- *     Tamaño (photoSlots/quantity se eligen en el Estudio), así que la variante
- *     seleccionada solo fija tamaño + N inicial — se pasa como ?variant= (mismo
- *     contrato de deep-link de siempre).
- *   - "none": packs de 1 solo tamaño — el Estudio abre sin variant (el schema
- *     del producto fija tamaño y N inicial).
+ *     clásicos: forma/tamaño/etc. definen la pieza). Regla 2026-09-08b: TODOS los
+ *     packs (su "Unidades" = pack size se elige en la PDP) — la variante elegida
+ *     fija tamaño + N y el Estudio abre con ese N (merge de attributes sobre el
+ *     schema vía ?variant=; su control de N arranca de ahí).
+ *   - "size"/"none": modos legacy de cuando el N se elegía en el Estudio
+ *     (2026-09-05→2026-09-08). Ninguna PDP activa los usa hoy; se conservan
+ *     por compatibilidad del contrato.
+ *
+ * Regla 2026-09-08b — copias: los productos de composición FIJA llevan el
+ * stepper "Unidades" en la PDP (CopiesQtyInput) y este CTA las lleva al Estudio
+ * como ?copies=N (solo cuando N>1; el default del Estudio es 1). La modal de
+ * confirmación ya NO tiene stepper "Copias": confirma con ese qty. Los packs de
+ * tamaño variable no emiten ?copies= (su stepper no se renderiza → copies=1).
  */
 export function EstudioCtaLink({
   slug,
@@ -127,8 +136,6 @@ export function EstudioCtaLink({
       </>
     );
   }
-  // Las copias elegidas en la PDP viajan como ?copies=N: la modal de confirmación
-  // del Estudio arranca con ese valor pre-cargado (se puede ajustar ahí mismo).
   // "none" abre sin ?variant= (el Estudio cae al schema del producto); "size" y
   // "variant" pasan la variante seleccionada (deep-link existente, sin cambios).
   const params = new URLSearchParams();

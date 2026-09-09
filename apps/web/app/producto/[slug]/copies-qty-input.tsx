@@ -1,25 +1,31 @@
 "use client";
 
 /*
- * CopiesQtyInput — selector de COPIAS (unidades) en la PDP, en TODOS los productos
- * (Lucy 2026-09-03: antes solo existía en la rama de compra directa).
+ * CopiesQtyInput — stepper "Unidades" (COPIAS de compra) en la PDP, SOLO en
+ * productos de composición FIJA (regla 2026-09-08b, Lucy: calendario set 12,
+ * abecedario completo, pack vocales, nombre personalizado y toda compra
+ * directa).
  *
  * Un producto puede tener dos "cantidades" distintas que NO se deben confundir:
- *   - Tamaño del pack: dimensión de variante (quantity/photoSlots — cuántas
- *     piezas trae CADA unidad; se elige en VariantSelector como chips/stepper
- *     de "Cantidad"). Es composición del producto, no copias.
+ *   - Pack size: dimensión de variante (quantity/photoSlots — cuántas piezas
+ *     trae CADA set; se elige en el VariantSelector, cuyo grupo también se
+ *     llama "Unidades"). Es composición del producto, no copias. Los packs de
+ *     tamaño variable (fotoimanes/separadores/tiras) llevan SOLO esa.
  *   - Copias: CartItem.qty — cuántas unidades IDÉNTICAS agregar al carrito
  *     (el checkout multiplica y producción imprime "IMPRIMIR N COPIAS").
  *
- * Este stepper cubre lo segundo. El estado vive en el SelectedVariantProvider
- * (única fuente de verdad del buy-box) para que llegue a AMBAS ramas:
+ * Este stepper cubre lo segundo y NUNCA convive con la primera en la misma
+ * ficha (un concepto de cantidad por producto — la página decide cuál).
+ * El estado vive en el SelectedVariantProvider (única fuente de verdad del
+ * buy-box) para que llegue a AMBAS ramas:
  *   - Compra directa: lo expone como <input type="hidden" name="qty"> dentro
  *     del form de addToCartAction.
- *   - Personalizable: el EstudioCtaLink lo lleva al Estudio como ?copies=N y
- *     la modal de confirmación arranca pre-cargada con ese valor.
+ *   - Personalizable: el EstudioCtaLink / NamePricePicker lo llevan al Estudio
+ *     como ?copies=N y la modal de confirmación lo confirma tal cual (ya sin
+ *     stepper propio — la PDP es la fuente).
  * El tope 1..99 es el mismo de AddToCartSchema y del +/− del carrito.
  *
- * Look & feel copiado del stepper de cantidad del VariantSelector
+ * Look & feel copiado del stepper de pack size del VariantSelector
  * (Lucy 2026-07-22): botones redondeados con Minus/Plus y conteo centrado.
  */
 
@@ -39,9 +45,9 @@ export function CopiesQtyInput() {
 
   return (
     <div className="mb-3">
-      {/* "Unidades" y NO "Cantidad": esa palabra ya la usan los chips de
-        dimensión de pack (ej. abecedario 26/27 letras) y significa
-        composición, no copias. */}
+      {/* "Unidades" — label unificado 2026-09-08b: en esta ficha no hay otra
+        dimensión de cantidad (la composición del set es fija), así que no hay
+        ambigüedad con el pack size de los packs variables. */}
       <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">
         Unidades
       </p>

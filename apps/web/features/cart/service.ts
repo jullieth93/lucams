@@ -397,8 +397,9 @@ export async function addPersonalizedToCart(opts: {
       // unitPrice = nº de letras × precio-por-ficha. Para el resto, es el precio de variante.
       metadata: true,
       // Lucy 2026-09-05 — packs de fotoimanes: el canvasData trae photoSlots/sizeCm
-      // elegidos en el Estudio → resolución server-side de la variante cuando el
-      // caller no manda variantId (features/products/photo-pack-resolve.ts).
+      // (y magnet desde 2026-09-08, "¿Con imán?") elegidos por el cliente → resolución
+      // server-side de la variante cuando el caller no manda variantId
+      // (features/products/photo-pack-resolve.ts).
       canvasData: true,
       product: {
         select: {
@@ -438,9 +439,9 @@ export async function addPersonalizedToCart(opts: {
       throw new CartError("NO_DEFAULT_VARIANT");
     }
   } else {
-    // Lucy 2026-09-05 — packs de fotoimanes: el N de fotos (y el tamaño) se
-    // eligen en el Estudio y viajan en el canvasData guardado del diseño. El
-    // cliente NO manda variantId para estos packs: el servidor resuelve la
+    // Lucy 2026-09-05 — packs de fotoimanes: el N de fotos, el tamaño y (desde
+    // 2026-09-08) el "¿Con imán?" viajan en el canvasData guardado del diseño.
+    // El cliente NO manda variantId para estos packs: el servidor resuelve la
     // variante exacta (precio + stock SIEMPRE server-side). Si el diseño no
     // declara photoSlots (legacy / otros kinds), se mantiene el fallback
     // histórico: primera variante activa.

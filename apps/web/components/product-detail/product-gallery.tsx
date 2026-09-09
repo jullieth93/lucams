@@ -54,7 +54,11 @@ export function ProductGallery({ images, alt }: { images: string[]; alt: string 
           </div>
         </button>
         {images.length > 1 && (
-          <div className="grid grid-cols-5 gap-2">
+          /* Fondo tenue + gap generoso: las miniaturas blancas sobre el fondo
+            crema de la página hacían invisible el gap de 8px. El tinte
+            purple/5 de la tira hace que los gutters lean como "espacio"
+            dedicado (paleta crema/morada de marca). El hero de arriba no se toca. */
+          <div className="bg-brand-purple/5 grid grid-cols-5 gap-3 rounded-xl p-3">
             {/* ADR-057 cert: todas las miniaturas (admin permite hasta 8/10); la grilla envuelve. */}
             {images.map((img, idx) => (
               <button

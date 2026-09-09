@@ -3,21 +3,20 @@
 /*
  * Test de componente — EstudioCtaLink (Lucy 2026-09-05).
  *
- * "Las fotos se eligen en el Estudio": el CTA al Estudio ya NO exige la variante
- * completa para los packs. Contrato por `requiredSelection`:
+ * Contrato por `requiredSelection`:
  *   - "variant" (default, comportamiento clásico): sin selección → deshabilitado
  *     con "Elige las opciones primero ↑"; con selección → ?variant=<id>.
- *   - "size" (packs con >1 tamaño): exige SOLO el tamaño (el selector quedó
- *     reducido a Tamaño; las fotos se eligen en el Estudio). Sin selección →
- *     "Elige el tamaño primero ↑".
- *   - "none" (packs de 1 tamaño): habilitado siempre, abre SIN ?variant=.
- * Las copias (>1) viajan como ?copies=N en todos los modos.
+ *   - "size"/"none": modos legacy de cuando el N del pack se elegía en el
+ *     Estudio (2026-09-05→2026-09-08); ninguna PDP activa los usa hoy.
+ * Regla 2026-09-08b: las copias (stepper "Unidades" de los productos de
+ * composición fija) viajan como ?copies=N SOLO cuando N>1 — con el default
+ * (1) la URL queda limpia (cubierto en copies-qty-input.test.tsx).
  */
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import type { ReactNode } from "react";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup } from "@testing-library/react";
 
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -41,12 +40,11 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-import { EstudioCtaLink, SelectedVariantProvider, useSelectedVariant } from "./variant-actions";
+import { EstudioCtaLink, SelectedVariantProvider } from "./variant-actions";
 
 afterEach(() => cleanup());
 beforeEach(() => replace.mockClear());
 
-/** Harness: permite fijar las copias del Context para probar ?copies=N. */
 function Harness({
   requiredSelection,
   withSelection,
@@ -58,15 +56,9 @@ function Harness({
 }) {
   return (
     <SelectedVariantProvider variantIds={["v1", "v2"]} initialId={withSelection ? "v1" : null}>
-      <CopiesSetter />
       <EstudioCtaLink slug={slug} ctaNoun="producto" requiredSelection={requiredSelection} />
     </SelectedVariantProvider>
   );
-}
-
-function CopiesSetter() {
-  const { setCopies } = useSelectedVariant();
-  return <button onClick={() => setCopies(3)}>copias-3</button>;
 }
 
 describe("EstudioCtaLink — requiredSelection", () => {
@@ -103,24 +95,6 @@ describe("EstudioCtaLink — requiredSelection", () => {
     expect(screen.getByRole("link", { name: /Personalizar producto/ })).toHaveAttribute(
       "href",
       "/estudio/set-fotoimanes-polaroid",
-    );
-  });
-
-  it("las copias (>1) viajan como ?copies=N en cualquier modo", () => {
-    render(<Harness requiredSelection="none" />);
-    fireEvent.click(screen.getByText("copias-3"));
-    expect(screen.getByRole("link", { name: /Personalizar producto/ })).toHaveAttribute(
-      "href",
-      "/estudio/set-fotoimanes-polaroid?copies=3",
-    );
-  });
-
-  it("con tamaño seleccionado y copias, el deep-link combina ambos params", () => {
-    render(<Harness requiredSelection="size" withSelection />);
-    fireEvent.click(screen.getByText("copias-3"));
-    expect(screen.getByRole("link", { name: /Personalizar producto/ })).toHaveAttribute(
-      "href",
-      "/estudio/set-fotoimanes-polaroid?variant=v1&copies=3",
     );
   });
 });

@@ -129,6 +129,10 @@ export function parseVariantAttributes(raw: unknown): ProductVariantAttributes {
  * Estas claves de attributes NO distinguen diseño y se excluyen de la firma:
  *  - quantity / photoSlots: cuántas unidades/fotos lleva el set (el diseño es el mismo).
  *  - pricePerTile: es pricing por ficha (ADR-057), no presentación.
+ *  - magnet (2026-09-08, "¿Con imán?" para TODOS los productos): el imán va en la
+ *    parte de ATRÁS — la portada (frente) de la opción Con imán y de la Sin imán
+ *    es la misma foto. Sin esta exclusión Lucy tendría que subir las fotos de
+ *    portada DOS veces por diseño (mismo reporte del 2026-08-25).
  *
  * Las opciones del mismo diseño comparten el mismo array de fotos (las URLs de
  * Storage se escriben una sola vez y se referencian desde cada opción).
@@ -137,6 +141,7 @@ const COVER_SIGNATURE_IGNORED_KEYS: ReadonlySet<string> = new Set([
   "quantity",
   "photoSlots",
   "pricePerTile",
+  "magnet",
 ]);
 
 /**
@@ -185,8 +190,10 @@ export function sameImageArrays(a: string[], b: string[]): boolean {
 /**
  * Claves de attributes que el form de /admin/productos/[id]/variants EDITA
  * explícitamente (parseAttributesFromForm). Toda otra clave conocida del schema
- * (frameStyle, variantStyle, theme, language, magnet, size, letterCount…) NO
- * tiene campo en el form.
+ * (frameStyle, variantStyle, theme, language, size, letterCount…) NO tiene
+ * campo en el form. `magnet` entró al form el 2026-09-08 ("¿Con imán?" first-class:
+ * select Sí/No con precio por opción — regla Lucy: TODOS los productos ofrecen
+ * las dos opciones).
  */
 const FORM_MANAGED_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
   "sizeCm",
@@ -196,6 +203,7 @@ const FORM_MANAGED_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
   "aspectRatio",
   "shape",
   "finish",
+  "magnet",
 ]);
 
 /**
@@ -213,28 +221,97 @@ const FORM_MANAGED_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
  * Llave = slug del producto (familia). Valor = claves de attributes a ocultar.
  */
 export const PDP_HIDDEN_DIMENSION_KEYS: Readonly<Record<string, readonly string[]>> = {
-  "set-fotoimanes-polaroid": ["variantStyle", "photoSlots", "quantity"],
-  "set-fotoimanes-cuadrados": ["frameStyle", "photoSlots", "quantity"],
+  // Regla 2026-09-08b (Lucy, unificación "Unidades"): la PDP muestra UN solo
+  // concepto de cantidad — la dimensión "Unidades" (pack size: cuántas piezas
+  // trae el set) — en TODAS las familias de tamaño variable, polaroid y
+  // cuadrados incluidos (antes elegían el N DENTRO del Estudio). El N elegido
+  // viaja en ?variant= → el Estudio abre con ese N (merge de la variante sobre
+  // el schema: su control de N arranca en ese valor) y, si el cliente lo cambia
+  // allá, el carrito re-resuelve la variante desde el canvasData guardado
+  // (photo-pack-resolve.ts) — una sola fuente de verdad al cobrar.
+  // Lo que sigue oculto acá es lo que se elige como PLANTILLA/estilo en el
+  // Estudio (variantStyle/frameStyle/theme), nunca la cantidad.
+  "set-fotoimanes-polaroid": ["variantStyle"],
+  "set-fotoimanes-cuadrados": ["frameStyle"],
   "pack-vocales": ["theme"],
-  "separadores-magneticos": ["photoSlots", "quantity"],
-  "separadores-alargados": ["photoSlots", "quantity"],
-  "tiras-magneticas-fotos": ["photoSlots", "quantity"],
-  // (2026-09-07) Cobertura preventiva: INACTIVOS hoy, pero si Lucy los reactiva
-  // sin esta entrada la PDP les mostraría el grupo "Fotos". Sus variantes del
-  // seed (FI-CIRC/FI-COR) declaran SOLO photoSlots (sin quantity): ocultar
-  // quantity sería un no-op, así que la lista es exactamente ["photoSlots"].
-  "set-fotoimanes-circulares": ["photoSlots"],
-  "set-fotoimanes-corazon": ["photoSlots"],
+  // Separadores: quantity == photoSlots 1:1 (cada separador lleva 1 foto por
+  // cara): se oculta photoSlots (dato técnico del Estudio) y queda quantity →
+  // grupo "Unidades" con stepper 1..6 (label vía PDP_DIMENSION_LABEL_OVERRIDES).
+  "separadores-magneticos": ["photoSlots"],
+  "separadores-alargados": ["photoSlots"],
+  // Tiras: quantity es 1 en todas las variantes (la tira es 1 unidad); la
+  // elección real es photoSlots (3 ó 4 fotos por tira, 1:1 con el tamaño) → se
+  // oculta quantity (además tiene 1 solo valor → ni siquiera entraría al
+  // selector) y photoSlots queda visible con label "Unidades".
+  "tiras-magneticas-fotos": ["quantity"],
 };
 
 /**
- * Lucy 2026-09-05 — "las fotos se eligen en el Estudio, no en la PDP": para los
- * packs de fotoimanes (PHOTO_PACK con variantes que declaran photoSlots), la
- * cantidad de fotos por imán deja de ser dimensión de la ficha y pasa a ser una
- * decisión de DISEÑO dentro del Estudio (control "¿Cuántas fotos lleva tu imán?").
- * En la PDP queda UNA sola cantidad: el stepper "Unidades" (copias de compra).
- * La cantidad de fotos se resuelve en el servidor al agregar al carrito, desde
- * el canvasData guardado del diseño (ver features/products/photo-pack-resolve.ts).
+ * Regla 2026-09-08b (Lucy) — UN concepto, UN label: la dimensión de pack size se
+ * llama "Unidades" en TODA PDP. La CLAVE que lo transporta varía por familia:
+ * en separadores es `quantity`; en tiras/polaroid/cuadrados es `photoSlots`
+ * (quantity == photoSlots y el dedupe conserva photoSlots, primera en
+ * VISIBLE_DIMENSIONS). Los valores mantienen su sustantivo descriptivo
+ * ("3 fotos" en tiras — la tira es UNA pieza con 3 fotos); lo unificado es el
+ * nombre de la dimensión. Llave = slug del producto → dimKey → label visible.
+ */
+export const PDP_DIMENSION_LABEL_OVERRIDES: Readonly<
+  Record<string, Readonly<Record<string, string>>>
+> = {
+  "separadores-magneticos": { quantity: "Unidades" },
+  "separadores-alargados": { quantity: "Unidades" },
+  "tiras-magneticas-fotos": { photoSlots: "Unidades" },
+  "set-fotoimanes-polaroid": { photoSlots: "Unidades" },
+  "set-fotoimanes-cuadrados": { photoSlots: "Unidades" },
+  // (2026-09-07) Cobertura preventiva: INACTIVOS hoy; si Lucy los reactiva, su
+  // pack size (sus variantes del seed FI-CIRC/FI-COR declaran SOLO photoSlots)
+  // también sale como "Unidades" — no se oculta nada en PDP_HIDDEN_DIMENSION_KEYS.
+  "set-fotoimanes-circulares": { photoSlots: "Unidades" },
+  "set-fotoimanes-corazon": { photoSlots: "Unidades" },
+};
+
+/**
+ * Default "Con imán" (regla 2026-09-08b — ¿Con imán? en TODOS los productos):
+ * cuando TODAS las variantes seleccionables del producto son idénticas salvo por
+ * `magnet` (mismo diseño, solo cambia con/sin imán) y hay al menos una de cada
+ * opción, la PDP preselecciona la primera variante CON imán — el cliente no debe
+ * hacer un click para quedarse con el default que la mayoría quiere. Devuelve
+ * esa variante, o null si el producto tiene más dimensiones de elección (esas
+ * siguen con selección guiada: el re-anchor del selector prefiere Con imán).
+ */
+export function conImanDefaultVariant<T extends { attributes: unknown }>(
+  variants: readonly T[],
+): T | null {
+  if (variants.length < 2) return null;
+  let sawCon = false;
+  let sawSin = false;
+  let signature: string | null = null;
+  for (const v of variants) {
+    const attrs = parseVariantAttributes(v.attributes);
+    const { magnet, ...rest } = attrs;
+    if (magnet === true) sawCon = true;
+    else if (magnet === false) sawSin = true;
+    else return null; // variante sin la dimensión: no aplica el default
+    const sig = JSON.stringify(
+      Object.entries(rest)
+        .filter(([, value]) => value !== undefined)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+    );
+    if (signature === null) signature = sig;
+    else if (signature !== sig) return null; // difieren en más que el imán
+  }
+  if (!sawCon || !sawSin) return null;
+  return variants.find((v) => parseVariantAttributes(v.attributes).magnet === true) ?? null;
+}
+
+/**
+ * Lucy 2026-09-05 — packs de fotoimanes (PHOTO_PACK con variantes que declaran
+ * photoSlots). Regla 2026-09-08b: la PDP muestra la dimensión "Unidades" (pack
+ * size) en TODAS las familias y la selección fija la variante (precio EXACTO;
+ * "Desde" solo antes de elegir); el Estudio abre con ese N vía ?variant= y, si
+ * el cliente cambia el N allá, la cantidad de fotos se re-resuelve en el
+ * servidor al agregar al carrito, desde el canvasData guardado del diseño (ver
+ * features/products/photo-pack-resolve.ts).
  */
 export function isPhotoPackCatalog(
   kind: string,
@@ -274,7 +351,8 @@ export function photoPackMinPrice(
  * perderse. Sin esto, editar el precio de una variante desde /admin/productos
  * BORRABA silenciosamente sus dimensiones sin campo en el form (ej. frameStyle
  * del fotoimán, variantStyle de la Polaroid, theme/language del Pack Vocales —
- * catálogo WhatsApp 2026-07-22; ya pasaba con magnet/size/variantShape).
+ * catálogo WhatsApp 2026-07-22; ya pasaba con size/variantShape, y con magnet
+ * hasta que entró al form el 2026-09-08).
  */
 export function mergePreservingUnmanagedAttributes(
   existingRaw: unknown,
@@ -306,6 +384,48 @@ export function generateVariantLabel(attrs: ProductVariantAttributes): string {
 }
 
 // ─────────────────── Admin CRUD schemas (Lucy edita variants) ───────────────────
+
+/**
+ * Parsea los attributes opcionales que vienen del form de
+ * /admin/productos/[id]/variants (todos como strings `attr_*`) y los convierte
+ * a tipo fuerte. Vacíos quedan undefined para que Zod los omita.
+ * Las claves que parsea son exactamente FORM_MANAGED_ATTRIBUTE_KEYS.
+ *
+ * ¿Con imán? (2026-09-08b — first-class en el form): select Sí/No; vacío =
+ * sin definir (no se escribe la clave). Antes `magnet` se preservaba del valor
+ * existente pero no se podía EDITAR desde el admin.
+ */
+export function parseAttributesFromForm(fd: FormData): ProductVariantAttributes {
+  const attrs: ProductVariantAttributes = {};
+  const sizeCm = String(fd.get("attr_sizeCm") ?? "").trim();
+  if (sizeCm) attrs.sizeCm = sizeCm;
+  const photoSlots = String(fd.get("attr_photoSlots") ?? "").trim();
+  if (photoSlots) {
+    const n = Number(photoSlots);
+    if (Number.isInteger(n) && n > 0) attrs.photoSlots = n;
+  }
+  const quantity = String(fd.get("attr_quantity") ?? "").trim();
+  if (quantity) {
+    const n = Number(quantity);
+    if (Number.isInteger(n) && n > 0) attrs.quantity = n;
+  }
+  const color = String(fd.get("attr_color") ?? "").trim();
+  if (color) attrs.color = color;
+  const aspectRatio = String(fd.get("attr_aspectRatio") ?? "").trim();
+  if (aspectRatio) attrs.aspectRatio = aspectRatio;
+  const shape = String(fd.get("attr_shape") ?? "").trim();
+  if (shape && ["rectangle", "circle", "heart", "custom"].includes(shape)) {
+    attrs.shape = shape as ProductVariantAttributes["shape"];
+  }
+  const finish = String(fd.get("attr_finish") ?? "").trim();
+  if (finish && ["matte", "glossy", "soft-touch", "glass"].includes(finish)) {
+    attrs.finish = finish as ProductVariantAttributes["finish"];
+  }
+  const magnet = String(fd.get("attr_magnet") ?? "").trim();
+  if (magnet === "true") attrs.magnet = true;
+  else if (magnet === "false") attrs.magnet = false;
+  return attrs;
+}
 
 /**
  * Input para crear variant nueva. SKU debe ser único globalmente
