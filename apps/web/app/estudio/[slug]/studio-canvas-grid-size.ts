@@ -165,19 +165,27 @@ export function resolveMinSlotSize(opts: {
 // Por eso la exportación es inmune: el snapshot de producción calcula el
 // pixelRatio RELATIVO al tamaño lógico (logicalW × 3 / stage.width()), así el
 // PNG de imprenta sale siempre a resolución fija sin importar el zoom.
-export const STAGE_ZOOM_MIN = 1;
+// Lucy 2026-09-09 — el zoom también ALEJA (min 0.5): con grids de muchos slots
+// (calendario 12, packs grandes) el cliente pedía ver la plantilla entera de un
+// vistazo. Alejar nunca desborda el ancho (el contenido se encoge), así que el
+// piso es fijo; el zoom 1 (100%) siempre queda alcanzable porque el contenido
+// a zoom 1 ya entra en el contenedor por construcción.
+export const STAGE_ZOOM_MIN = 0.5;
 export const STAGE_ZOOM_MAX = 2.5;
 export const STAGE_ZOOM_STEP = 0.25;
 
 /**
- * Tope de zoom del lienzo para que el grid NUNCA se desborde en horizontal:
+ * Tope de ACERCAR el lienzo para que el grid NUNCA se desborde en horizontal:
  * el ancho del grid ya calculado (a zoom 1) escalado no puede superar el
- * ancho del contenedor. Si el grid ya llena el ancho, el tope es 1 (sin zoom)
- * — el detalle fino sigue resolviéndose con el zoom de FOTO por gestos.
+ * ancho del contenedor. Si el grid ya llena el ancho, el tope es 1 (sin zoom
+ * in) — el detalle fino sigue resolviéndose con el zoom de FOTO por gestos.
+ * El piso del tope es 1 (no STAGE_ZOOM_MIN): el 100% siempre es alcanzable,
+ * aunque el contenido se pase un pelín del ancho medido. Para ALEJAR manda
+ * STAGE_ZOOM_MIN (ver stepStageZoom).
  */
 export function computeStageZoomCap(containerWidth: number, contentWidth: number): number {
-  if (contentWidth <= 0 || containerWidth <= 0) return STAGE_ZOOM_MIN;
-  return Math.min(STAGE_ZOOM_MAX, Math.max(STAGE_ZOOM_MIN, containerWidth / contentWidth));
+  if (contentWidth <= 0 || containerWidth <= 0) return 1;
+  return Math.min(STAGE_ZOOM_MAX, Math.max(1, containerWidth / contentWidth));
 }
 
 /** Acercar/alejar en pasos fijos, clampado al rango [min, cap]. */

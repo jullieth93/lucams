@@ -66,12 +66,13 @@ vi.mock("react-konva", async () => {
     Text: make("Text"),
     Circle: make("Circle"),
     Path: make("Path"),
+    Line: make("Line"),
   };
 });
 
 vi.mock("use-image", () => ({ default: () => [mocks.image, mocks.status] }));
 
-import { getShapeBoundingBox, makeShapeClipFunc, renderLayer } from "./studio-slot";
+import { getShapeBoundingBox, makeShapeClipFunc, nextWheelScale, renderLayer } from "./studio-slot";
 import type { CanvasLayer, ImagePlaceholderLayer, SlotState } from "./types";
 
 afterEach(() => cleanup());
@@ -829,9 +830,9 @@ describe("renderLayer — text", () => {
       },
     ) as React.ReactElement;
     // renderText envuelve en Group con Rect dashed + dot + Text
-    const text = (el.props as { children: Array<React.ReactElement> }).children.find(
-      (c) => (c as React.ReactElement).key === "caption-text",
-    ) as React.ReactElement<{
+    const text = (el.props as { children: Array<React.ReactElement | null> }).children
+      .filter(Boolean)
+      .find((c) => (c as React.ReactElement).key === "caption-text") as React.ReactElement<{
       name?: string;
       opacity?: number;
       listening?: boolean;
@@ -842,6 +843,114 @@ describe("renderLayer — text", () => {
     expect(text.props.name).toBe("edit-indicator");
     expect(text.props.opacity).toBe(0.45);
     expect(text.props.listening).toBe(true); // editable + onTextEdit provisto
+  });
+
+  it("Ola 24 — la guía placeholder es INCONFUNDIBLE: itálica + subrayado punteado", () => {
+    // El 45% de opacidad solo seguía leyéndose como texto real (Lucy 2026-09-09):
+    // la guía se fuerza a itálica y lleva una línea dashed bajo el texto, todo
+    // marcado edit-indicator → se VE como guía pero NUNCA se hornea.
+    render(
+      renderLayer(
+        textLayer,
+        slot(),
+        STAGE,
+        vi.fn(),
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          allowText: true,
+        },
+      ) as React.ReactElement,
+    );
+    const text = lastKonva("Text");
+    expect(text!.name).toBe("edit-indicator");
+    expect(text!.fontStyle).toBe("italic"); // la capa no trae peso → itálica sola
+    // Subrayado punteado del color del texto, marcado edit-indicator.
+    const underline = mocks.konvaProps.find(
+      (k) => k.name === "Line" && k.props.name === "edit-indicator",
+    );
+    expect(underline).toBeDefined();
+    expect(underline!.props.dash).toEqual([4, 3]);
+    expect(underline!.props.stroke).toBe("#3D2E5C"); // default fill de la capa
+    expect(underline!.props.listening).toBe(false);
+  });
+
+  it("Ola 24 — guía con peso propio conserva la negrita: 'italic bold'", () => {
+    const boldLayer = { ...textLayer, fontWeight: "bold" } as unknown as CanvasLayer;
+    render(
+      renderLayer(
+        boldLayer,
+        slot(),
+        STAGE,
+        vi.fn(),
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          allowText: true,
+        },
+      ) as React.ReactElement,
+    );
+    expect(lastKonva("Text")!.fontStyle).toBe("italic bold");
+  });
+
+  it("Ola 24 — superficie NO editable (preview del modal): la guía también lleva itálica + subrayado", () => {
+    // StudioPhotoPreview llama renderLayer SIN onTextEdit: la guía placeholder se
+    // envuelve en Group con el subrayado punteado (antes salía como texto plano
+    // atenuado — seguía pareciendo texto físico dentro del modal de edición).
+    render(
+      renderLayer(
+        textLayer,
+        slot(),
+        STAGE,
+        undefined,
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          allowText: true,
+        },
+      ) as React.ReactElement,
+    );
+    const text = lastKonva("Text");
+    expect(text!.name).toBe("edit-indicator");
+    expect(text!.opacity).toBe(0.45);
+    expect(text!.fontStyle).toBe("italic");
+    expect(text!.listening).toBe(false); // no editable acá
+    const underline = mocks.konvaProps.find(
+      (k) => k.name === "Line" && k.props.name === "edit-indicator",
+    );
+    expect(underline).toBeDefined();
+  });
+
+  it("con override de texto NO hay subrayado de guía (es texto real del cliente)", () => {
+    render(
+      renderLayer(
+        textLayer,
+        slot({ textOverrides: { caption: { text: "Mi viaje" } } }),
+        STAGE,
+        vi.fn(),
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { allowText: true },
+      ) as React.ReactElement,
+    );
+    const text = lastKonva("Text");
+    expect(text!.name).toBeUndefined(); // se hornea (es del cliente)
+    expect(text!.fontStyle).toBeUndefined();
+    expect(
+      mocks.konvaProps.some((k) => k.name === "Line" && k.props.name === "edit-indicator"),
+    ).toBe(false);
   });
 
   it("override SOLO de estilo (sin text) → sigue siendo guía placeholder atenuada", () => {
@@ -862,9 +971,9 @@ describe("renderLayer — text", () => {
         allowText: true,
       },
     ) as React.ReactElement;
-    const text = (el.props as { children: Array<React.ReactElement> }).children.find(
-      (c) => (c as React.ReactElement).key === "caption-text",
-    ) as React.ReactElement<{
+    const text = (el.props as { children: Array<React.ReactElement | null> }).children
+      .filter(Boolean)
+      .find((c) => (c as React.ReactElement).key === "caption-text") as React.ReactElement<{
       name?: string;
       opacity?: number;
       text?: string;
@@ -889,9 +998,9 @@ describe("renderLayer — text", () => {
       undefined,
       { allowText: true },
     ) as React.ReactElement;
-    const text = (el.props as { children: Array<React.ReactElement> }).children.find(
-      (c) => (c as React.ReactElement).key === "caption-text",
-    ) as React.ReactElement<{
+    const text = (el.props as { children: Array<React.ReactElement | null> }).children
+      .filter(Boolean)
+      .find((c) => (c as React.ReactElement).key === "caption-text") as React.ReactElement<{
       name?: string;
       opacity?: number;
       listening?: boolean;
@@ -918,9 +1027,9 @@ describe("renderLayer — text", () => {
       undefined,
       { allowText: true, darkCardBg: true },
     ) as React.ReactElement;
-    const text = (el.props as { children: Array<React.ReactElement> }).children.find(
-      (c) => (c as React.ReactElement).key === "caption-text",
-    ) as React.ReactElement<{
+    const text = (el.props as { children: Array<React.ReactElement | null> }).children
+      .filter(Boolean)
+      .find((c) => (c as React.ReactElement).key === "caption-text") as React.ReactElement<{
       name?: string;
       opacity?: number;
       listening?: boolean;
@@ -1041,5 +1150,31 @@ describe("renderLayer — profile-photo (foto de perfil del post IG)", () => {
     expect(img!.width).toBeCloseTo(100 * 0.64, 5);
     expect(img!.x).toBeCloseTo((32 - 100 * 0.64) / 2, 5);
     expect(img!.y).toBeCloseTo((32 - 50 * 0.64) / 2, 5);
+  });
+});
+
+// ── nextWheelScale (Ola 24 — zoom de rueda "milimétrico") ────────────
+
+describe("nextWheelScale — paso fino de zoom por rueda (Ola 24)", () => {
+  it("un notch = ×1.04 (4%): paso milimétrico, no el salto tosco de ×1.15", () => {
+    // Lucy 2026-09-09: la rueda saltaba ×1.15 por notch y no dejaba afinar el
+    // encuadre. El paso fino es multiplicativo y compartido por slot + modal.
+    expect(nextWheelScale(1, -100)).toBeCloseTo(1.04, 10);
+    expect(nextWheelScale(1, 100)).toBeCloseTo(1 / 1.04, 10);
+    // El chip de zoom del slot (Math.round(scale × 100)) marcaría 104% / 96%.
+    expect(Math.round(nextWheelScale(1, -100) * 100)).toBe(104);
+  });
+
+  it("varios notches componen suave (1.04^n) y permiten aterrizar fino", () => {
+    let s = 1;
+    for (let i = 0; i < 5; i++) s = nextWheelScale(s, -100);
+    expect(s).toBeCloseTo(Math.pow(1.04, 5), 10); // ≈ 1.217, no 2.01 (1.15^5)
+  });
+
+  it("clamp a los límites del gesto (0.5–3.0 por defecto)", () => {
+    expect(nextWheelScale(2.99, -100)).toBe(3);
+    expect(nextWheelScale(0.51, 100)).toBe(0.5);
+    // Respeta límites personalizados si el caller los pasa.
+    expect(nextWheelScale(1, -100, 1, 2)).toBe(1.04);
   });
 });

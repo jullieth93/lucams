@@ -18,6 +18,9 @@
 export type StudioTexts = {
   /** Textos compartidos. */
   comun: {
+    /** Lucy 2026-09-09 — rótulo del CTA de cierre en los editores de nombre y
+     *  letras (antes «¡Listo!», renombrado por el owner): abre la vista previa
+     *  de confirmación, no agrega nada al carrito todavía. */
     listo: string;
     armando: string;
     preparando: string;
@@ -49,6 +52,9 @@ export type StudioTexts = {
     autosaveGuardadoM: string;
     autosaveError: string;
     progressBadge: string;
+    /** Lucy 2026-09-09 — rótulo del botón de cierre del editor (antes «¡Listo!»,
+     *  renombrado por el owner: abre la vista previa de confirmación, no finaliza). */
+    finalizeBtn: string;
     finalizeTooltip: string;
     finalizeGuardando: string;
     gesturesButtonTitle: string;
@@ -258,6 +264,8 @@ export type StudioTexts = {
     estiloBordeTitulo: string;
     estiloConBorde: string;
     estiloSinBorde: string;
+    /** Ola 24 — aviso cuando la paleta de color queda desactivada por «Sin borde». */
+    estiloColorDeshabilitadoHint: string;
     slotEditTitulo: string;
     slotEditTituloIndice: string;
     slotEditDesc: string;
@@ -460,7 +468,7 @@ export type StudioTexts = {
 
 export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
   comun: {
-    listo: "¡Listo!",
+    listo: "Vista previa",
     armando: "Armando…",
     preparando: "Preparando…",
     agregando: "Agregando…",
@@ -491,7 +499,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     autosaveGuardadoM: "Guardado hace {n}m",
     autosaveError: "Error al guardar",
     progressBadge: "{n}/{total} fotos",
-    finalizeTooltip: "Faltan {n} fotos por cargar antes de poder finalizar",
+    finalizeBtn: "Vista previa",
+    finalizeTooltip: "Faltan {n} fotos por cargar para ver la vista previa",
     finalizeGuardando: "Guardando diseño...",
     gesturesButtonTitle: "Cómo editar tu foto (drag, zoom, doble click)",
     slotEmptyInvite: "Pásame una foto",
@@ -574,8 +583,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "Si la plantilla tiene textos editables (los marcados con punto turquesa), tócalos para cambiar el contenido, color y tipografía.",
     onboardingCtaEmpezar: "¡Empezar!",
     onboardingSaltar: "Saltar",
-    finalizeAria: "Listo, generar diseño final",
-    finalizeAriaBloqueado: "No se puede finalizar todavía",
+    finalizeAria: "Vista previa de tu pedido",
+    finalizeAriaBloqueado: "Vista previa no disponible todavía",
     guiaLinea: "Línea morada",
     guiaDescripcion: "= mantén texto y caras adentro para que no se corten al imprimir",
     guiaTamano: "· Tu imán físico mide {size} cm",
@@ -708,6 +717,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     estiloBordeTitulo: "Borde de foto",
     estiloConBorde: "Con borde",
     estiloSinBorde: "Sin borde",
+    estiloColorDeshabilitadoHint:
+      "Con «Sin borde» la foto cubre toda la tarjeta — el color no aplica.",
     slotEditTitulo: "Editar {etiqueta}",
     slotEditTituloIndice: "Editar espacio {n}",
     slotEditDesc: "Ajusta la foto y el texto de este espacio",
@@ -946,6 +957,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.autosaveGuardadoM": "estudio.lienzo.autosave-guardado-m",
   "lienzo.autosaveError": "estudio.lienzo.autosave-error",
   "lienzo.progressBadge": "estudio.lienzo.progress-badge",
+  "lienzo.finalizeBtn": "estudio.lienzo.finalize-btn",
   "lienzo.finalizeTooltip": "estudio.lienzo.finalize-tooltip",
   "lienzo.finalizeGuardando": "estudio.lienzo.finalize-guardando",
   "lienzo.gesturesButtonTitle": "estudio.lienzo.gestures-button-title",
@@ -1140,6 +1152,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.estiloBordeTitulo": "estudio.texto.estilo-borde-titulo",
   "texto.estiloConBorde": "estudio.texto.estilo-con-borde",
   "texto.estiloSinBorde": "estudio.texto.estilo-sin-borde",
+  "texto.estiloColorDeshabilitadoHint": "estudio.texto.estilo-color-deshabilitado-hint",
   "texto.slotEditTitulo": "estudio.texto.slot-edit-titulo",
   "texto.slotEditTituloIndice": "estudio.texto.slot-edit-titulo-indice",
   "texto.slotEditDesc": "estudio.texto.slot-edit-desc",

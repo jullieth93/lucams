@@ -111,7 +111,7 @@ apps/web/app/estudio/[slug]/
 ├── studio-slot.tsx                    # 1 mini-canvas Konva por imán
 ├── studio-sidebar.tsx                 # Mis fotos + Plantillas + Auto-fill
 ├── studio-message-field.tsx           # "Tu mensaje" pack-level en sidebar (Ola 3c)
-├── studio-toolbar.tsx                 # Header con auto-save + progress + ¡Listo!
+├── studio-toolbar.tsx                 # Header con auto-save + progress + Vista previa
 ├── studio-realism-overlay.tsx         # Bleed/safe area/grosor/sombra Konva layers
 ├── studio-asset-picker-modal.tsx      # Modal tap-on-slot picker
 ├── studio-photo-adjust-modal.tsx      # Encuadre (zoom/pan/rotar) + filtros
@@ -290,12 +290,20 @@ packages/db/scripts/
   snapshot del cliente (se esconde antes de `toDataURL`) ni en el render server
   (`renderTextLayer` imprime solo `override.text`; el tier sharp ya no cae al canvas por un
   placeholder sin override). Un override solo de estilo (sin texto) sigue sin imprimir.
+  **Ola 24:** la guía se endureció visualmente (el 45% solo seguía leyéndose como texto
+  real): ITÁLICA forzada + SUBRAYADO PUNTEADO del color del texto bajo la línea de base,
+  en TODA superficie (grilla, preview del modal de edición — ahí sin recuadro turquesa
+  porque no es editable, pero sí con itálica+subrayado). La miniatura `polaroid_clasica.svg`
+  (selector de plantillas) dibuja su "Escribe tu mensaje" horneado con el mismo tratamiento.
 - **El marco es MARCO, no fondo (marco de ancho constante bajo zoom/pan).** Con tarjeta de
   color (frame-card/full-bleed), el hueco que deja la foto al alejarla (zoom-out) o moverla
   se rellena con el color de la tarjeta SIN marco (capa `background`) — antes asomaba
   `borderColor` y la franja "crecía". Editor: Rect de respaldo en `ImagePlaceholder`
   (`photoBackingHex`, también en `StudioPhotoPreview`); producción: fillRect equivalente en
-  `production-render-canvas`. Instagram no aplica (su marco vive en el chrome SVG).
+  `production-render-canvas`. **Ola 24:** la decisión vive en `photoBackingHexFor`
+  (frame-palette, compartida por las 3 superficies) y la Instagram CON borde YA NO está
+  excluida (su ventana también se inundaba del color del borde con tarjeta oscura); en
+  Instagram SIN BORDE sigue sin aplicar (el hueco es el color de tarjeta del diseño).
 - **Tira SIN borde (toggle "Borde de foto" de la toolbar).** El toggle reescribe el
   placeholder a sangre total de la celda → `isStripBorderless` + `stripPhotoRect(…,
 { borderless: true })`: sin marco exterior (fotos a sangre en los bordes de la tira),
@@ -303,7 +311,11 @@ packages/db/scripts/
   regla (el rect viaja en canvasData).
 - **Tarjeta clara sobre lienzo claro (white-on-white).** El slot lleva un filete DOM de
   contraste (`outline` brand-purple/35) cuando la tarjeta es clara — adorno de pantalla,
-  nunca entra al PNG de producción.
+  nunca entra al PNG de producción. **Ola 24:** para la tarjeta BLANCA el filete se
+  reemplaza por una bandeja cuadriculada gris/blanco (patrón "transparencia" de los
+  editores de foto): el Stage se dibuja 6px inset dentro del mismo footprint del slot
+  (`WHITE_CARD_CHECKER` en studio-slot) → la tarjeta blanca se lee en pantalla. Sigue
+  siendo 100% DOM: el snapshot captura solo el canvas Konva.
 - **Marco máximo consistente del lienzo (T9).** El grid ahora se dimensiona por ancho Y
   por alto: `slotDisplaySize = min(porAncho, porAlto)` donde porAlto sale de un marco del
   78% del alto del viewport (acotado 420–900px). El grid usa ancho explícito (celdas+gaps)
@@ -315,13 +327,29 @@ packages/db/scripts/
   al imprimir, que el lado menor tenga al menos ~N px (salida 300 DPI)", con N de la misma
   fórmula del quality-check (`PX_PER_CM_300DPI` × lado menor del tamaño físico).
 
+### Ola 24 (Lucy 2026-09-09) — toolbar de estilo reordenada + zoom milimétrico
+
+- **«Borde de foto» PRIMERO, «Color de tarjeta» DEBAJO** en `studio-style-toolbar.tsx`
+  (ambas Polaroids y el resto de productos con marcos). Con «Sin borde» la paleta de
+  color queda DESACTIVADA (visible pero inerte: `aria-disabled` + atenuada + aviso CMS
+  `estudio.texto.estilo-color-deshabilitado-hint`) en las plantillas Polaroid — la foto
+  cubre toda la tarjeta y el color no aplica; el estado NO se resetea (al volver a
+  «Con borde» el color sigue). Tiras/cuadrados NO se desactivan: su color sigue
+  pintando (canaletas / franja uniforme) aun sin borde.
+- **Zoom de foto "milimétrico"**: la rueda del mouse avanza ×1.04 por notch (antes
+  ×1.15 — saltos toscos). La función `nextWheelScale` (studio-slot) la comparten el
+  handler Konva, el listener nativo del slot y el preview del modal; el pinch sigue
+  siendo continuo (ratio de distancia). El chip de % del slot refleja el valor exacto.
+
 ## Piezas posteriores (2026-07 en adelante) — confirmación con copias, letras, IA, 3D, copy CMS
 
 - **Modal de confirmación** (`studio-preview-modal.tsx`): «Así se verá tu pedido» muestra el
   PNG final (el MISMO que se sube como archivo de producción — la promesa WYSIWYG) y el total
   `unitario × copias`. Desde la regla 2026-09-08b la modal YA NO tiene stepper de copias: las
   copias (CartItem.qty 1–99) las fija la PDP con su stepper "Unidades" en los productos de
-  composición fija (viajan como `?copies=N` → prop `initialCopies`) y se ajustan en el carrito.
+  composición fija — y en el híbrido tiras-magneticas-fotos (2026-09-09, owner: allí convive con
+  la dimensión de composición "Fotos por tira") — (viajan como `?copies=N` → prop `initialCopies`)
+  y se ajustan en el carrito.
   El diseño se crea/finaliza y se agrega al carrito RECIÉN al confirmar; si el cliente vuelve
   a editar no queda nada creado. Lo usan tanto el Estudio principal como los editores de letras.
 - **Sets de letras / Abecedario (ADR-057)**: `letter-set-editor.tsx` (Abecedario Completo /
@@ -411,7 +439,7 @@ packages/db/scripts/
 
 ```
 ╔═══════════════════════════════════════════════════════════════════════════╗
-║ ← Volver | Personalizar: Set 6 Polaroid Grande | ✓ 3/6 fotos | ¡Listo! ✨ ║
+║ ← Volver | Personalizar: Set 6 Polaroid Grande | ✓ 3/6 fotos | Vista previa ✨ ║
 ╠═══════════════════════════╦═══════════════════════════════════════════════╣
 ║                           ║                                               ║
 ║  MIS FOTOS (4)            ║         PREVIEW GENERAL (6 imanes)            ║
@@ -445,7 +473,7 @@ Canvas fullscreen + sheet drawer pull-up con tabs. Bottom sticky CTA cuando comp
 
 ```
 ┌─────────────────────────────────────┐
-│ ←  Personalizar    3/6  |  ¡Listo! │ ← header sticky
+│ ←  Personalizar    3/6  |  Vista previa │ ← header sticky
 ├─────────────────────────────────────┤
 │                                     │
 │         ┌───────┬───────┐           │
@@ -610,7 +638,7 @@ Extensión de los tokens brand globales (definidos en `apps/web/app/globals.css`
 | `estudio.slot.clear`              | `slotIndex, designId`                                    | Foto quitada de slot           |
 | `estudio.template.change`         | `fromTemplate, toTemplate, preservedAssets`              | Plantilla cambiada             |
 | `estudio.photo.adjust`            | `slotIndex, changes (brightness/etc.)`                   | Foto ajustada                  |
-| `estudio.finalize.start`          | `designId, slotCount`                                    | Click "¡Listo!"                |
+| `estudio.finalize.start`          | `designId, slotCount`                                    | Click "Vista previa"           |
 | `estudio.finalize.success`        | `designId, productionUrlsCount, durationMs`              | Snapshot generado + cart added |
 | `estudio.finalize.fail`           | `designId, reason`                                       | Finalize falló                 |
 | `estudio.abandon`                 | `designId, lastStep, slotsCompleted/slotCount`           | beforeunload sin finalizar     |

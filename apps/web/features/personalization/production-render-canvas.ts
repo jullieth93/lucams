@@ -34,7 +34,9 @@ import {
   stripPositionOf,
   isStripBorderless,
   isInstagramTemplate,
+  isInstagramNoBorder,
   instagramBackgroundHex,
+  photoBackingHexFor,
   type StripPosition,
 } from "./frame-palette";
 
@@ -406,16 +408,25 @@ async function renderSlotCanvas(
         ctx.rect(ph.x, ph.y, ph.width, ph.height);
       }
       ctx.clip();
-      // Ola 23 (Lucy 2026-09-08) — "el marco es MARCO, no fondo": con tarjeta de color
-      // (frame-card o full-bleed), el hueco que deja la foto al alejarla (zoom-out) o
-      // moverla se rellena con el color de la tarjeta SIN marco (la capa background),
-      // NO con borderColor. Antes el hueco mostraba el color del marco → la franja de
-      // color "crecía" dentro de la ventana al hacer zoom-out. Con el respaldo, el
-      // ancho del marco/canaleta queda CONSTANTE bajo cualquier zoom/pan. Misma regla
-      // en el editor (ImagePlaceholder, Rect de respaldo en studio-slot) → WYSIWYG.
-      // Instagram NO: su marco vive en el chrome SVG (constante por construcción).
-      if (borderColor && !isIg && (hasFrameCard || fullBleed) && !useFullStage) {
-        ctx.fillStyle = bgLayerHex;
+      // Ola 23/24 — respaldo neutro de la ventana de foto ("el marco es MARCO, no
+      // fondo"): el hueco que deja la foto al alejarla (zoom-out) o moverla se
+      // rellena con el color de la tarjeta SIN teñir (la capa background), NO con
+      // borderColor → el ancho del marco/canaleta queda CONSTANTE bajo cualquier
+      // zoom/pan. La DECISIÓN vive en photoBackingHexFor (frame-palette), compartida
+      // con el editor (studio-slot) y el preview del modal → WYSIWYG por
+      // construcción. Ola 24: incluye la Instagram CON borde (su ventana se inundaba
+      // del color del borde con tarjeta oscura); en SIN BORDE no aplica.
+      const backingHex = photoBackingHexFor({
+        borderColor,
+        backgroundHex: bgLayerHex,
+        hasFrameCard,
+        fullBleed,
+        isIg,
+        igNoBorder: isInstagramNoBorder(phRaw, unit.stage),
+        useFullStage,
+      });
+      if (backingHex) {
+        ctx.fillStyle = backingHex;
         ctx.fillRect(ph.x, ph.y, ph.width, ph.height);
       }
       // Centro de la imagen en coords del stage (idéntico a Konva ImagePlaceholder).

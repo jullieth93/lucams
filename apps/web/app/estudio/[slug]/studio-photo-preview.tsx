@@ -20,7 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Stage, Layer } from "react-konva";
 import type Konva from "konva";
-import { renderLayer } from "./studio-slot";
+import { renderLayer, nextWheelScale } from "./studio-slot";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
 import {
   isDarkColor,
@@ -30,6 +30,7 @@ import {
   isInstagramTemplate,
   instagramBackgroundHex,
   isInstagramNoBorder,
+  photoBackingHexFor,
 } from "@/features/personalization/frame-palette";
 import type { CanvasDataV1, SlotState } from "./types";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
@@ -145,14 +146,13 @@ export function StudioPhotoPreview({
     return bgHex;
   }, [unitTemplate, isIg, fullBleed, borderColor, hasFrameCard]);
   const darkCardBg = isDarkColor(cardBgHex);
-  // Ola 23 — respaldo de la ventana de foto bajo zoom-out/pan (marco constante):
-  // MISMA regla que el slot de la grilla (WYSIWYG entre grilla, modal y producción).
+  // Color de la capa background de la plantilla (blanco en todas las activas) — es el
+  // "respaldo neutro" de la ventana de foto (la tarjeta SIN el tinte del borde).
   const bgLayerHex = useMemo(() => {
     const bgLayer = unitTemplate.layers.find((l) => l.type === "background") as
       { color?: string } | undefined;
     return bgLayer?.color ?? "#FFFFFF";
   }, [unitTemplate]);
-  const photoBackingHex = borderColor && !isIg && (hasFrameCard || fullBleed) ? bgLayerHex : null;
   // Ola 16 — Instagram: detectar modo SIN BORDE por el rect del placeholder.
   const noBorder = useMemo(() => {
     if (!isIg) return false;
@@ -160,6 +160,17 @@ export function StudioPhotoPreview({
       { x?: number; y?: number; width?: number; height?: number } | undefined;
     return isInstagramNoBorder(ph, unitTemplate.stage);
   }, [unitTemplate, isIg]);
+  // Ola 23/24 — respaldo neutro de la ventana de foto bajo zoom-out/pan (marco
+  // constante): la DECISIÓN vive en photoBackingHexFor (frame-palette), compartida
+  // con la grilla y con producción (WYSIWYG entre grilla, modal e imprenta).
+  const photoBackingHex = photoBackingHexFor({
+    borderColor,
+    backgroundHex: bgLayerHex,
+    hasFrameCard,
+    fullBleed,
+    isIg,
+    igNoBorder: noBorder,
+  });
 
   // ── Gestos de zoom (rueda en desktop, pellizco en táctil) ──
   const clampScale = useCallback((s: number) => Math.max(SCALE_MIN, Math.min(SCALE_MAX, s)), []);
@@ -167,22 +178,22 @@ export function StudioPhotoPreview({
   // Listener NATIVO con passive:false — el único camino de zoom por rueda.
   // Es el mismo patrón del slot: garantiza preventDefault incluso dentro del
   // Radix Dialog (sin esto la página/el modal scrollearía en vez de hacer zoom).
+  // Ola 24 — paso fino compartido (nextWheelScale, ×1.04 por notch): zoom milimétrico.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     function onWheelNative(e: WheelEvent) {
       e.preventDefault();
       e.stopPropagation();
-      const factor = e.deltaY > 0 ? 1 / 1.15 : 1.15;
       const current = slotState.photoTransform?.scale ?? 1;
-      const next = clampScale(current * factor);
+      const next = nextWheelScale(current, e.deltaY, SCALE_MIN, SCALE_MAX);
       if (Math.abs(next - current) > 0.001) {
         onTransformChange({ scale: next });
       }
     }
     el.addEventListener("wheel", onWheelNative, { passive: false });
     return () => el.removeEventListener("wheel", onWheelNative);
-  }, [slotState.photoTransform?.scale, onTransformChange, clampScale]);
+  }, [slotState.photoTransform?.scale, onTransformChange]);
 
   // Pinch — distancia entre 2 dedos al inicio + scale al inicio (misma curva
   // suavizada del slot, Ola 6). Al caer el 2º dedo se corta cualquier drag

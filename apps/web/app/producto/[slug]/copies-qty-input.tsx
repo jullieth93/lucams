@@ -1,21 +1,24 @@
 "use client";
 
 /*
- * CopiesQtyInput — stepper "Unidades" (COPIAS de compra) en la PDP, SOLO en
+ * CopiesQtyInput — stepper "Unidades" (COPIAS de compra) en la PDP, en
  * productos de composición FIJA (regla 2026-09-08b, Lucy: calendario set 12,
  * abecedario completo, pack vocales, nombre personalizado y toda compra
- * directa).
+ * directa) y en el HÍBRIDO tiras-magneticas-fotos (2026-09-09, owner —
+ * PDP_PACK_PLUS_COPIES_SLUGS: allí convive con la dimensión de composición
+ * "Fotos por tira" del VariantSelector, relabelada para no chocar).
  *
  * Un producto puede tener dos "cantidades" distintas que NO se deben confundir:
- *   - Pack size: dimensión de variante (quantity/photoSlots — cuántas piezas
- *     trae CADA set; se elige en el VariantSelector, cuyo grupo también se
- *     llama "Unidades"). Es composición del producto, no copias. Los packs de
- *     tamaño variable (fotoimanes/separadores/tiras) llevan SOLO esa.
+ *   - Pack size / composición: dimensión de variante (quantity/photoSlots —
+ *     cuántas piezas/fotos trae CADA set; se elige en el VariantSelector, cuyo
+ *     grupo se llama "Unidades" — o "Fotos por tira" en tiras). Los packs de
+ *     tamaño variable (fotoimanes/separadores) llevan SOLO esa.
  *   - Copias: CartItem.qty — cuántas unidades IDÉNTICAS agregar al carrito
  *     (el checkout multiplica y producción imprime "IMPRIMIR N COPIAS").
  *
- * Este stepper cubre lo segundo y NUNCA convive con la primera en la misma
- * ficha (un concepto de cantidad por producto — la página decide cuál).
+ * Este stepper cubre lo segundo y, salvo el híbrido tiras, NUNCA convive con
+ * la primera en la misma ficha (un concepto de cantidad por producto — la
+ * página decide cuál).
  * El estado vive en el SelectedVariantProvider (única fuente de verdad del
  * buy-box) para que llegue a AMBAS ramas:
  *   - Compra directa: lo expone como <input type="hidden" name="qty"> dentro
@@ -46,8 +49,9 @@ export function CopiesQtyInput() {
   return (
     <div className="mb-3">
       {/* "Unidades" — label unificado 2026-09-08b: en esta ficha no hay otra
-        dimensión de cantidad (la composición del set es fija), así que no hay
-        ambigüedad con el pack size de los packs variables. */}
+        dimensión llamada "Unidades" (la composición del set es fija o, en el
+        híbrido tiras, se relabela "Fotos por tira"), así que no hay ambigüedad
+        con el pack size de los packs variables. */}
       <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">
         Unidades
       </p>

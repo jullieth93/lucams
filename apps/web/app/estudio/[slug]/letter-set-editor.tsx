@@ -23,7 +23,8 @@
  * re-resuelve la variante exacta (mismo tamaño/imantado) para que la cotización quede precisa.
  *
  * Vista previa pre-carrito (Lucy 2026-07-25) — antes este editor mandaba el set al carrito sin que
- * el cliente viera cómo iba a quedar. Ahora "¡Listo!" solo DIBUJA el PNG del set y lo muestra en
+ * el cliente viera cómo iba a quedar. Ahora "Vista previa" (antes "¡Listo!", renombrado 2026-09-09)
+ * solo DIBUJA el PNG del set y lo muestra en
  * StudioPreviewModal ("Así se verá tu pedido", el mismo componente del Estudio principal): el
  * diseño se crea, se finaliza y se agrega al carrito RECIÉN al confirmar. Si el cliente vuelve a
  * editar no queda nada creado en la base. El PNG que se ve es exactamente el que se sube como
@@ -250,7 +251,7 @@ export function LetterSetEditor({
   initialTheme: string | null;
   stylesByLanguage: { es: LetterStyle[]; en: LetterStyle[] };
   /** Copias (CartItem.qty) elegidas en la PDP con el stepper "Unidades"
-   *  (`?copies=N`, regla 2026-09-08b): las confirma la modal "¡Listo!" — que ya
+   *  (`?copies=N`, regla 2026-09-08b): las confirma la modal de "Vista previa" — que ya
    *  NO tiene stepper propio. undefined → 1. */
   initialCopies?: number;
   subtitle?: string;
@@ -383,7 +384,7 @@ export function LetterSetEditor({
   }
 
   /**
-   * Paso 1 — "¡Listo!": dibuja el set y abre la vista previa. No toca la red ni la base: si el
+   * Paso 1 — "Vista previa": dibuja el set y abre la vista previa. No toca la red ni la base: si el
    * cliente decide seguir editando, no queda ningún diseño creado ni ningún archivo subido.
    */
   async function handleShowPreview() {
@@ -489,7 +490,7 @@ export function LetterSetEditor({
     <div className="mx-auto w-full max-w-3xl px-5 py-8">
       <Link
         href={`/producto/${product.slug}`}
-        className="text-brand-muted hover:text-brand-purple mb-4 inline-flex items-center gap-1 text-sm"
+        className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 mb-4 inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg active:scale-[0.98]"
       >
         <ChevronLeft className="h-4 w-4" />
         {texts.comun.volver}
@@ -734,9 +735,9 @@ export function LetterSetEditor({
             )}
             {building3D ? texts.comun.armando : texts.escenas.setBtnTablero}
           </button>
-          {/* El botón ya no agrega al carrito: abre la vista previa. El texto lo dice ("¡Listo!",
-              igual que el Estudio principal) y el sr-only completa la promesa sin romper WCAG
-              2.5.3 (el nombre accesible empieza por el texto visible). */}
+          {/* El botón ya no agrega al carrito: abre la vista previa. El texto lo dice ("Vista
+              previa", igual que el Estudio principal) y el sr-only completa la promesa sin romper
+              WCAG 2.5.3 (el nombre accesible empieza por el texto visible). */}
           <button
             type="button"
             onClick={handleShowPreview}

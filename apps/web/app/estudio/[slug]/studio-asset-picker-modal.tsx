@@ -91,6 +91,19 @@ export function StudioAssetPickerModal({
   const firstFocusableRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [applyingId, setApplyingId] = useState<string | null>(null);
+  // Lucy 2026-09-09 — estado de PROCESANDO al elegir una foto ya subida
+  // ("Cambiar foto"): el commit al store es instantáneo pero el re-render
+  // Konva de la grilla tarda un frame largo; sin feedback el pick parecía
+  // no haber funcionado. Spinner sobre la miniatura + resto deshabilitado,
+  // mismo patrón Loader2 del botón «Aplicar» (texto/filtros).
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const assigningTimerRef = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (assigningTimerRef.current !== null) window.clearTimeout(assigningTimerRef.current);
+    },
+    [],
+  );
   const [error, setError] = useState<string | null>(null);
   // Consentimiento de derechos de imagen (Ley 1581): obligatorio antes de subir.
   const [rightsAccepted, setRightsAccepted] = useState(false);
@@ -141,6 +154,22 @@ export function StudioAssetPickerModal({
     } finally {
       setApplyingId(null);
     }
+  };
+
+  // Elegir una foto ya subida: el commit va un frame DESPUÉS para que el
+  // spinner pinte primero (mismo motivo que «Aplicar»: commit + repaint pesado
+  // en el mismo tick = spinner invisible). El cierre espera un mínimo visible
+  // para que el feedback se perciba antes de que la modal desaparezca.
+  const handlePickAsset = (asset: StudioAsset) => {
+    if (assigningId || slotIndex === null) {
+      if (slotIndex === null) onClose();
+      return;
+    }
+    setAssigningId(asset.id);
+    requestAnimationFrame(() => {
+      onSelectAsset(slotIndex, asset);
+      assigningTimerRef.current = window.setTimeout(() => onClose(), 450);
+    });
   };
 
   // #15 — foco inicial + trap + Escape + retorno de foco (reutiliza modalRef; activo si isOpen).
@@ -377,17 +406,16 @@ export function StudioAssetPickerModal({
                             key={asset.id}
                             type="button"
                             role="gridcell"
-                            onClick={() => {
-                              if (slotIndex !== null) onSelectAsset(slotIndex, asset);
-                              onClose();
-                            }}
+                            onClick={() => handlePickAsset(asset)}
+                            disabled={assigningId !== null}
+                            aria-busy={assigningId === asset.id}
                             aria-label={
                               asset.validationMessage
                                 ? `Asignar foto al slot. Aviso: ${asset.validationMessage}`
                                 : "Asignar esta foto al slot"
                             }
                             title={asset.validationMessage}
-                            className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none"
+                            className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none disabled:scale-100 disabled:opacity-50"
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
@@ -396,6 +424,13 @@ export function StudioAssetPickerModal({
                               className="h-full w-full object-cover"
                               loading="lazy"
                             />
+                            {/* Lucy 2026-09-09 — spinner sobre la miniatura elegida
+                                mientras el commit + re-render Konva corren. */}
+                            {assigningId === asset.id && (
+                              <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
+                                <Loader2 className="h-5 w-5 animate-spin text-white" />
+                              </div>
+                            )}
                             {/* M.3.b.B.2 — Badge de validación calidad foto */}
                             {asset.validationLevel === "warning-strong" && (
                               <div

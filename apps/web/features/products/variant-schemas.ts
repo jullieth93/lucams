@@ -229,6 +229,9 @@ export const PDP_HIDDEN_DIMENSION_KEYS: Readonly<Record<string, readonly string[
   // el schema: su control de N arranca en ese valor) y, si el cliente lo cambia
   // allá, el carrito re-resuelve la variante desde el canvasData guardado
   // (photo-pack-resolve.ts) — una sola fuente de verdad al cobrar.
+  // (2026-09-09, owner) EXCEPCIÓN híbrida: tiras-magneticas-fotos muestra DOS
+  // selectores ("Fotos por tira" = composición + "Unidades" = copias) — ver
+  // PDP_PACK_PLUS_COPIES_SLUGS.
   // Lo que sigue oculto acá es lo que se elige como PLANTILLA/estilo en el
   // Estudio (variantStyle/frameStyle/theme), nunca la cantidad.
   "set-fotoimanes-polaroid": ["variantStyle"],
@@ -240,27 +243,50 @@ export const PDP_HIDDEN_DIMENSION_KEYS: Readonly<Record<string, readonly string[
   "separadores-magneticos": ["photoSlots"],
   "separadores-alargados": ["photoSlots"],
   // Tiras: quantity es 1 en todas las variantes (la tira es 1 unidad); la
-  // elección real es photoSlots (3 ó 4 fotos por tira, 1:1 con el tamaño) → se
-  // oculta quantity (además tiene 1 solo valor → ni siquiera entraría al
-  // selector) y photoSlots queda visible con label "Unidades".
+  // elección de composición es photoSlots (3 ó 4 fotos por tira, 1:1 con el
+  // tamaño) → se oculta quantity (además tiene 1 solo valor → ni siquiera
+  // entraría al selector) y photoSlots queda visible. (2026-09-09, owner) Esa
+  // dimensión se RELABELA a "Fotos por tira" (PDP_DIMENSION_LABEL_OVERRIDES)
+  // porque "Unidades" pasa a ser el stepper de copias (PDP_PACK_PLUS_COPIES_SLUGS).
   "tiras-magneticas-fotos": ["quantity"],
 };
 
 /**
+ * (2026-09-09, owner) — Excepción HÍBRIDA a la regla 2026-09-08b ("un concepto
+ * de cantidad por producto"): Tiras Magnéticas muestra DOS selectores en la PDP:
+ *   - "Fotos por tira" (chips 3/4 — COMPOSICIÓN, dimensión photoSlots del
+ *     VariantSelector: fija la variante, el tamaño físico y el N del Estudio);
+ *   - "Unidades" (stepper 1..99 — COPIAS, CartItem.qty: cuántas tiras idénticas;
+ *     viaja como ?copies=N al Estudio y de ahí al carrito, igual que en los
+ *     productos de composición fija).
+ * El resto de los packs de tamaño variable (separadores/polaroid/cuadrados)
+ * sigue con UN solo concepto: su "Unidades" es el pack size y NO renderizan el
+ * stepper de copias (se ajusta en el carrito).
+ */
+export const PDP_PACK_PLUS_COPIES_SLUGS: ReadonlySet<string> = new Set(["tiras-magneticas-fotos"]);
+
+/**
  * Regla 2026-09-08b (Lucy) — UN concepto, UN label: la dimensión de pack size se
  * llama "Unidades" en TODA PDP. La CLAVE que lo transporta varía por familia:
- * en separadores es `quantity`; en tiras/polaroid/cuadrados es `photoSlots`
+ * en separadores es `quantity`; en polaroid/cuadrados es `photoSlots`
  * (quantity == photoSlots y el dedupe conserva photoSlots, primera en
  * VISIBLE_DIMENSIONS). Los valores mantienen su sustantivo descriptivo
  * ("3 fotos" en tiras — la tira es UNA pieza con 3 fotos); lo unificado es el
  * nombre de la dimensión. Llave = slug del producto → dimKey → label visible.
+ *
+ * EXCEPCIÓN (2026-09-09, owner): en tiras la dimensión photoSlots se relabela
+ * "Fotos por tira" (es COMPOSICIÓN, no cantidad de compra) porque "Unidades"
+ * pasa a nombrar el stepper de copias que convive en la misma ficha
+ * (PDP_PACK_PLUS_COPIES_SLUGS) — dos conceptos, dos labels distintos.
  */
 export const PDP_DIMENSION_LABEL_OVERRIDES: Readonly<
   Record<string, Readonly<Record<string, string>>>
 > = {
   "separadores-magneticos": { quantity: "Unidades" },
   "separadores-alargados": { quantity: "Unidades" },
-  "tiras-magneticas-fotos": { photoSlots: "Unidades" },
+  // (2026-09-09, owner) Tiras híbrido: photoSlots = "Fotos por tira" (composición);
+  // "Unidades" es el stepper de copias del buy-box (PDP_PACK_PLUS_COPIES_SLUGS).
+  "tiras-magneticas-fotos": { photoSlots: "Fotos por tira" },
   "set-fotoimanes-polaroid": { photoSlots: "Unidades" },
   "set-fotoimanes-cuadrados": { photoSlots: "Unidades" },
   // (2026-09-07) Cobertura preventiva: INACTIVOS hoy; si Lucy los reactiva, su

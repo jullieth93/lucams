@@ -3,8 +3,9 @@
 /*
  * Test de la VISTA PREVIA pre-carrito del editor de nombre (Lucy 2026-07-25).
  *
- * Blinda el mismo contrato que su hermano del set de letras —pulsar "¡Listo!" no puede crear nada;
- * la cadena crear → finalizar → agregar solo corre al confirmar— más lo propio de este editor:
+ * Blinda el mismo contrato que su hermano del set de letras —pulsar "Vista previa" (antes
+ * "¡Listo!", renombrado 2026-09-09) no puede crear nada; la cadena crear → finalizar → agregar
+ * solo corre al confirmar— más lo propio de este editor:
  *
  *   1. El precio de la modal es el TOTAL (nº de letras × precio por ficha), no el de una ficha
  *      suelta. Mostrar $3.500 cuando el cliente escribió 7 letras y le van a cobrar $24.500 sería
@@ -99,13 +100,13 @@ function renderEditor(extraProps?: { initialCopies?: number }) {
 async function openPreviewWith(name: string): Promise<number> {
   const input = screen.getByRole("textbox");
   fireEvent.change(input, { target: { value: name } });
-  fireEvent.click(screen.getByRole("button", { name: /¡Listo!/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Vista previa/ }));
   await waitFor(() => expect(screen.getByText(/Así se verá tu pedido/i)).toBeInTheDocument());
   return name.length;
 }
 
 describe("NameEditor — vista previa antes del carrito", () => {
-  it('"¡Listo!" abre la previa SIN crear nada en el servidor', async () => {
+  it('"Vista previa" abre la previa SIN crear nada en el servidor', async () => {
     renderEditor();
 
     await openPreviewWith("LUCIA");

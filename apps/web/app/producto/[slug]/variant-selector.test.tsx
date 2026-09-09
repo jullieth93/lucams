@@ -453,9 +453,12 @@ describe("VariantSelector — pack size 'Unidades' en la PDP (regla 2026-09-08b)
     );
   });
 
-  it("tiras: photoSlots visible con label override 'Unidades' (chips 3/4 fotos) y quantity oculta", () => {
+  it("tiras (híbrido 2026-09-09): photoSlots visible con label 'Fotos por tira' (chips 3/4) y quantity oculta", () => {
     // Catálogo real (fix-tiras 2026-09-07): 2 variantes de 1 unidad, 3 y 4 fotos
     // (1:1 con el tamaño 6.5×20 / 6.5×26.5). quantity=1 en ambas → no es elección.
+    // 2026-09-09 (owner): photoSlots es COMPOSICIÓN → "Fotos por tira"; "Unidades"
+    // pasa a ser el stepper de copias del buy-box (CopiesQtyInput, fuera de este
+    // componente) → acá NO debe quedar ningún grupo "Unidades".
     const variants = [
       makeVariant(
         "v-tira-3",
@@ -473,17 +476,18 @@ describe("VariantSelector — pack size 'Unidades' en la PDP (regla 2026-09-08b)
         productBasePrice={1_900_000}
         variants={variants}
         hiddenDimensions={["quantity"]}
-        dimensionLabels={{ photoSlots: "Unidades" }}
+        dimensionLabels={{ photoSlots: "Fotos por tira" }}
       />,
     );
-    const unidades = screen.getByRole("group", { name: "Unidades" });
+    const fotosPorTira = screen.getByRole("group", { name: "Fotos por tira" });
     // No contiguo desde 1 (3..4) → chips, no stepper.
-    expect(within(unidades).getByText("3 fotos")).toBeInTheDocument();
-    expect(within(unidades).getByText("4 fotos")).toBeInTheDocument();
-    expect(within(unidades).queryByLabelText("Aumentar unidades")).not.toBeInTheDocument();
+    expect(within(fotosPorTira).getByText("3 fotos")).toBeInTheDocument();
+    expect(within(fotosPorTira).getByText("4 fotos")).toBeInTheDocument();
+    expect(within(fotosPorTira).queryByLabelText("Aumentar unidades")).not.toBeInTheDocument();
     // El tamaño sigue visible aunque correlacione 1:1 con la cantidad (elección real).
     expect(screen.getByRole("group", { name: "Tamaño" })).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Fotos" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Unidades" })).not.toBeInTheDocument();
   });
 });
 

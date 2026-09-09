@@ -20,7 +20,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, it, expect } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StudioPhotoCountControl } from "./studio-photo-count-control";
 import { createStudioStore } from "./lib/store";
 import type { CanvasDataV2 } from "./types";
@@ -79,11 +79,14 @@ describe("StudioPhotoCountControl", () => {
     expect(screen.getByText("Tus fotos se conservan al cambiar el número")).toBeInTheDocument();
   });
 
-  it("subir N reconstruye slots preservando fotos por índice y recalcula el grid", () => {
+  // El cambio de N se aplica en el frame siguiente al click (feedback de
+  // procesamiento 2026-09-09: spinner + stepper bloqueado mientras el lienzo
+  // Konva se redibuja) → los asserts del store esperan el apply con waitFor.
+  it("subir N reconstruye slots preservando fotos por índice y recalcula el grid", async () => {
     const store = setup(3);
     fireEvent.click(screen.getByLabelText("Agregar una foto"));
+    await waitFor(() => expect(store.getState().canvasData!.photoSlots).toBe(4));
     const cd = store.getState().canvasData!;
-    expect(cd.photoSlots).toBe(4);
     expect(cd.slotCount).toBe(8); // 4 unidades × 2 caras
     expect(cd.slots).toHaveLength(8);
     // Fotos preservadas por índice (slots 0 y 4), el resto vacío.
@@ -98,15 +101,32 @@ describe("StudioPhotoCountControl", () => {
     expect(store.getState().isDirty).toBe(true);
   });
 
-  it("bajar N recorta slots: las fotos dentro del nuevo conteo se conservan", () => {
+  it("bajar N recorta slots: las fotos dentro del nuevo conteo se conservan", async () => {
     const store = setup(3);
     fireEvent.click(screen.getByLabelText("Quitar una foto"));
+    await waitFor(() => expect(store.getState().canvasData!.photoSlots).toBe(2));
     const cd = store.getState().canvasData!;
-    expect(cd.photoSlots).toBe(2);
     expect(cd.slotCount).toBe(4);
     // Slot 0 conserva su foto; el slot 4 quedó fuera del conteo (se suelta).
     expect(cd.slots[0].assetId).toBe("asset-0");
     expect(cd.slots).toHaveLength(4);
+  });
+
+  it("mientras reconstruye el lienzo da feedback: spinner y stepper bloqueado", async () => {
+    const store = setup(3);
+    fireEvent.click(screen.getByLabelText("Agregar una foto"));
+    // Feedback inmediato (antes de que corra el rebuild síncrono del canvas):
+    // ambos botones bloqueados y el grupo marcado ocupado.
+    expect(screen.getByLabelText("Agregar una foto")).toBeDisabled();
+    expect(screen.getByLabelText("Quitar una foto")).toBeDisabled();
+    expect(screen.getByRole("group", { name: "Cantidad de fotos por imán" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    await waitFor(() => expect(store.getState().canvasData!.photoSlots).toBe(4));
+    // Terminó: el stepper vuelve a la normalidad con el nuevo N.
+    expect(screen.getByLabelText("Agregar una foto")).toBeEnabled();
+    expect(screen.getByText("4 fotos")).toBeInTheDocument();
   });
 
   it("respeta max: en el tope del catálogo el + se deshabilita", () => {

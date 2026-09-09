@@ -2,10 +2,11 @@
 /*
  * Test de componente — CopiesQtyInput (stepper "Unidades" de copias en la PDP).
  *
- * Blinda el contrato del stepper de COPIAS (regla 2026-09-08b: SOLO productos
- * de composición fija — calendario, sets de letras, nombre, compra directa;
- * los packs de tamaño variable tienen su "Unidades" = pack size en el
- * VariantSelector y NUNCA este stepper):
+ * Blinda el contrato del stepper de COPIAS (regla 2026-09-08b: productos de
+ * composición fija — calendario, sets de letras, nombre, compra directa — y,
+ * desde 2026-09-09, el HÍBRIDO tiras-magneticas-fotos, donde convive con la
+ * dimensión "Fotos por tira"; el resto de los packs de tamaño variable tiene
+ * su "Unidades" = pack size en el VariantSelector y NUNCA este stepper):
  *   1. Arranca en 1 y lo expone como <input type="hidden" name="qty"> para
  *      que viaje en el form de addToCartAction (rama de compra directa).
  *   2. +/− actualizan el hidden input (el valor que multiplica el checkout).

@@ -52,8 +52,9 @@ type SearchParams = Promise<{
   letters?: string;
   /**
    * Copias (CartItem.qty) elegidas en la PDP con el stepper "Unidades" de los
-   * productos de composición fija (regla 2026-09-08b). La modal "¡Listo!" ya NO
-   * tiene stepper propio: confirma con este valor (sin parámetro arranca en 1).
+   * productos de composición fija (regla 2026-09-08b). La modal que abre
+   * "Vista previa" ya NO tiene stepper propio: confirma con este valor (sin
+   * parámetro arranca en 1).
    */
   copies?: string;
 }>;
@@ -171,8 +172,9 @@ export default async function EstudioPage({
               initialCount={initialCount}
               styles={styles}
               themeOptions={themeOptions}
-              // ?copies=N (stepper "Unidades" de la PDP) → la modal "¡Listo!" lo
-              // confirma tal cual (igual que letterset y el editor de foto).
+              // ?copies=N (stepper "Unidades" de la PDP) → la modal de
+              // "Vista previa" lo confirma tal cual (igual que letterset y el
+              // editor de foto).
               initialCopies={initialCopies}
             />
           </StudioTextsProvider>
@@ -308,12 +310,18 @@ export default async function EstudioPage({
 
   const photoConfig = parsePhotoProductConfig(mergedSchema);
 
-  // ADR-057 B2 — diseños prediseñados de la galería (si el producto define un galleryTag).
-  const galleryTag =
+  // ADR-057 B2 — diseños prediseñados de la galería. Default-on (2026-09-09,
+  // owner): si el producto NO declara `galleryTag` explícito, el tag cae por
+  // convención a su slug — TODA superficie de foto ofrece la galería (el
+  // picker/sidebar muestran la sección cuando hay diseños del tag; sin uploads
+  // del admin la lista llega vacía = empty state). El admin ve el mismo tag
+  // efectivo en /admin/disenos (listGalleryTagOptions aplica el mismo fallback).
+  const explicitGalleryTag =
     typeof (mergedSchema as { galleryTag?: unknown }).galleryTag === "string"
       ? (mergedSchema as { galleryTag: string }).galleryTag
       : null;
-  const predesigned = galleryTag ? await listGalleryImages(galleryTag) : [];
+  const galleryTag = explicitGalleryTag ?? product.slug;
+  const predesigned = await listGalleryImages(galleryTag);
 
   // ADR-057 Fase D — Calendario: slots etiquetados por mes (Ene…Dic) + año, para que el cliente
   // sepa qué foto va en qué mes (hoy son 12 fotos sueltas sin etiqueta).
@@ -474,7 +482,7 @@ export default async function EstudioPage({
             // Precio de la variante elegida (o base) → fallback de la vista previa.
             unitPriceCents={selectedVariant?.price ?? product.basePrice}
             // ?copies=N (stepper "Unidades" de la PDP en productos de composición
-            // fija) → copias que confirma la modal "¡Listo!"; sin parámetro = 1.
+            // fija) → copias que confirma la modal de "Vista previa"; sin parámetro = 1.
             initialCopies={initialCopies}
             // Edición desde el carrito: reemplazar el item original al finalizar (no duplicar).
             replacesCartDesignId={replacesCartDesignId}

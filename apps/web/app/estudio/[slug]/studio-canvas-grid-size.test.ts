@@ -370,10 +370,16 @@ describe("computeFlatSlotDisplaySize — maxFrameH null vs con alto límite", ()
   });
 });
 
-describe("zoom de lienzo (Ola 22) — tope por ancho y pasos", () => {
-  it("grid que ya llena el ancho → tope 1 (sin zoom ofrecido)", () => {
+describe("zoom de lienzo (Ola 22 + zoom-out 2026-09-09) — tope por ancho y pasos", () => {
+  it("grid que ya llena el ancho → tope de ACERCAR 1 (sin zoom in ofrecido)", () => {
     expect(computeStageZoomCap(1000, 1000)).toBe(1);
     expect(computeStageZoomCap(800, 1000)).toBe(1); // contenido más ancho que el contenedor
+  });
+
+  it("el tope nunca baja de 1 aunque el piso general permita alejar (el 100% siempre es alcanzable)", () => {
+    // STAGE_ZOOM_MIN es 0.5, pero eso es piso de ALEJAR — no del tope de acercar.
+    expect(STAGE_ZOOM_MIN).toBe(0.5);
+    expect(computeStageZoomCap(400, 1000)).toBe(1);
   });
 
   it("grid con margen → tope = ancho disponible / ancho del contenido", () => {
@@ -386,11 +392,15 @@ describe("zoom de lienzo (Ola 22) — tope por ancho y pasos", () => {
   it("stepStageZoom avanza en pasos de 0.25 y respeta min/cap", () => {
     expect(stepStageZoom(1, 1, 2)).toBe(1.25);
     expect(stepStageZoom(1.25, -1, 2)).toBe(1);
-    // No baja del mínimo.
-    expect(stepStageZoom(1, -1, 2)).toBe(STAGE_ZOOM_MIN);
     // No supera el cap.
     expect(stepStageZoom(2, 1, 2)).toBe(2);
     expect(stepStageZoom(2.4, 1, 2.46)).toBe(2.46);
+  });
+
+  it("zoom-out: permite bajar del 100% hasta STAGE_ZOOM_MIN (0.5), nunca menos", () => {
+    expect(stepStageZoom(1, -1, 2)).toBe(0.75);
+    expect(stepStageZoom(0.75, -1, 2)).toBe(0.5);
+    expect(stepStageZoom(0.5, -1, 2)).toBe(STAGE_ZOOM_MIN); // piso firme
   });
 
   it("con anchos inválidos → tope 1 (defensivo, nunca NaN)", () => {

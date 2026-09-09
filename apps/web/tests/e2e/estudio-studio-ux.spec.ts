@@ -17,9 +17,10 @@ import path from "node:path";
  *   2. AVATAR TAPPEABLE (Polaroid Instagram) — tocar el círculo del header del
  *      post (34,34 r=16 en coords de stage 450×600) abre directo el picker de
  *      foto de perfil ("Elige tu foto de perfil").
- *   3. ZOOM DE LIENZO (desktop) — control flotante −/+%/reset solo cuando hay
- *      margen real para acercar (tope = ancho del contenedor); acercar sube el
- *      % y reset vuelve a 100%. Display-only (no toca el diseño).
+ *   3. ZOOM DE LIENZO (desktop) — control flotante −/+%/reset en la esquina
+ *      SUPERIOR derecha del lienzo (2026-09-09), siempre visible: acerca hasta
+ *      el tope por ancho y ALEJA hasta el 50%; reset vuelve a 100% desde
+ *      cualquier lado. Display-only (no toca el diseño).
  *   4. FUENTE DEL CALENDARIO EN "AJUSTAR FOTO" — el modal de edición del slot
  *      (pestaña Foto) trae #cal-font-select; cambiarlo persiste en
  *      canvasData.calendarFont (oráculo: DB tras el auto-save) y el selector
@@ -384,7 +385,7 @@ test.describe("estudio Ola 22 — identificador fuera del template + avatar tapp
 });
 
 test.describe("estudio Ola 22 — zoom de lienzo", () => {
-  test("control −/+%/reset: acercar sube el % y reset vuelve a 100% (display-only)", async ({
+  test("control −/+%/reset: acercar Y alejar (top-right), reset vuelve a 100% (display-only)", async ({
     page,
   }, testInfo) => {
     test.skip(testInfo.project.name === "mobile-chrome", "el zoom de lienzo es desktop-first");
@@ -407,20 +408,33 @@ test.describe("estudio Ola 22 — zoom de lienzo", () => {
     await igRadio.click();
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 30_000 });
 
-    // El control SOLO aparece cuando el ancho del grid a zoom 1 no llena el
-    // contenedor (tope = ancho disponible). En desktop 1280 el stage IG de 1
-    // slot queda capado por alto → hay margen real para acercar.
+    // Lucy 2026-09-09 — el control se movió a la esquina SUPERIOR derecha del área
+    // del lienzo y ya no se esconde: además de acercar (tope = ancho disponible),
+    // ALEJA hasta el 50% para ver la plantilla entera de un vistazo.
     const zoomGroup = page.getByRole("group", { name: /Zoom del lienzo \d+%/ });
     await expect(zoomGroup).toBeVisible({ timeout: 15_000 });
     await expect(zoomGroup).toContainText("100%");
 
     const canvasBefore = (await page.locator("canvas").first().boundingBox())!;
+    // Assert de posición: el control queda ANCLADO ARRIBA del lienzo (no abajo
+    // como antes) — su borde superior no puede estar por debajo del del canvas.
+    const zoomBox = (await zoomGroup.boundingBox())!;
+    expect(zoomBox.y).toBeLessThanOrEqual(canvasBefore.y + 8);
+
     await zoomGroup.getByRole("button", { name: "Acercar el lienzo" }).click();
     await expect(zoomGroup).toContainText(/1(0[5-9]|1\d|2\d|25)%/);
     // El slot CRECIÓ en pantalla (display-size mayor)…
     const canvasAfter = (await page.locator("canvas").first().boundingBox())!;
     expect(canvasAfter.width).toBeGreaterThan(canvasBefore.width);
-    // …y el reset devuelve al 100%.
+
+    // Zoom OUT (2026-09-09): se puede bajar del 100% y el slot se encoge.
+    await zoomGroup.getByRole("button", { name: "Alejar el lienzo" }).click(); // 125% → 100%
+    await zoomGroup.getByRole("button", { name: "Alejar el lienzo" }).click(); // 100% → 75%
+    await expect(zoomGroup).toContainText("75%");
+    const canvasOut = (await page.locator("canvas").first().boundingBox())!;
+    expect(canvasOut.width).toBeLessThan(canvasBefore.width);
+
+    // …y el reset devuelve al 100% también desde el zoom-out.
     await zoomGroup.getByRole("button", { name: "Volver al tamaño original del lienzo" }).click();
     await expect(zoomGroup).toContainText("100%");
     const canvasReset = (await page.locator("canvas").first().boundingBox())!;

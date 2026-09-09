@@ -118,14 +118,15 @@ test.describe("estudio — sets de letras: selector «Con borde / Sin borde»", 
 
 /*
  * Regla 2026-09-08b (Lucy, unificación "Unidades"): la modal de confirmación
- * "¡Listo!" ya NO tiene stepper "Copias" — las copias se eligen en la PDP
+ * que abre el botón "Vista previa" (antes "¡Listo!", renombrado 2026-09-09)
+ * ya NO tiene stepper "Copias" — las copias se eligen en la PDP
  * (stepper "Unidades" de los productos de composición fija) y llegan como
  * ?copies=N, o se ajustan en el carrito. El estudio de letter-set llega a la
  * modal sin uploads (el preview se dibuja client-side), así que es la vía
  * barata de blindarlo end-to-end. Sin mutación: se cierra con "Volver a
  * editar" (nada llega al carrito).
  */
-test.describe("estudio — modal ¡Listo! sin stepper «Copias» (regla 2026-09-08b)", () => {
+test.describe("estudio — modal «Vista previa» sin stepper «Copias» (regla 2026-09-08b)", () => {
   test("la modal confirma sin stepper y muestra las copias de la PDP como dato", async ({
     page,
   }) => {
@@ -136,7 +137,7 @@ test.describe("estudio — modal ¡Listo! sin stepper «Copias» (regla 2026-09-
     // modal se acota por su título ("Así se verá tu pedido") para no confundirla.
     // El banner monta TARDE (tras la hidratación, después de domcontentloaded):
     // sin el waitFor corto, `count()` corre antes de que exista, no se cierra y
-    // luego TAPA el botón ¡Listo! (z-[9000]) — el click queda interceptado (flake
+    // luego TAPA el botón «Vista previa» (z-[9000]) — el click queda interceptado (flake
     // mobile 2026-09-08).
     const dismissCookies = async () => {
       const accept = page.getByRole("button", { name: /Aceptar todas/i });
@@ -152,7 +153,7 @@ test.describe("estudio — modal ¡Listo! sin stepper «Copias» (regla 2026-09-
     // Sin ?copies= → 1 copia (default): modal sin desglose de copias.
     await page.goto(`/estudio/${product.slug}`, { waitUntil: "domcontentloaded" });
     await dismissCookies();
-    const listo = page.getByRole("button", { name: /¡Listo!/ });
+    const listo = page.getByRole("button", { name: /Vista previa/ });
     await expect(listo).toBeVisible({ timeout: 30_000 });
     await listo.click();
     await expect(previewDialog).toBeVisible({ timeout: 30_000 });

@@ -17,6 +17,7 @@ import {
   variantCoverSignature,
   PDP_HIDDEN_DIMENSION_KEYS,
   PDP_DIMENSION_LABEL_OVERRIDES,
+  PDP_PACK_PLUS_COPIES_SLUGS,
   isPhotoPackCatalog,
   photoPackDistinctSizes,
   photoPackMinPrice,
@@ -215,6 +216,9 @@ describe("sameImageArrays", () => {
  * quedan ocultas las dimensiones que se eligen como plantilla/estilo en el
  * Estudio (variantStyle/frameStyle/theme). El N elegido viaja en ?variant= → el
  * Estudio abre con ese N (merge de la variante sobre el schema).
+ * EXCEPCIÓN (2026-09-09, owner): tiras-magneticas-fotos es HÍBRIDA — su
+ * photoSlots se relabela "Fotos por tira" (composición) y además lleva el
+ * stepper "Unidades" de copias (PDP_PACK_PLUS_COPIES_SLUGS → ?copies=N).
  */
 describe("packs — dimensión 'Unidades' en la PDP (regla 2026-09-08b)", () => {
   it("fotoimanes (polaroid/cuadrados): solo se ocultan las dimensiones de estilo del Estudio", () => {
@@ -238,17 +242,27 @@ describe("packs — dimensión 'Unidades' en la PDP (regla 2026-09-08b)", () => 
     });
   });
 
-  it("tiras/polaroid/cuadrados: el pack size viaja en photoSlots con label 'Unidades'", () => {
-    expect(PDP_HIDDEN_DIMENSION_KEYS["tiras-magneticas-fotos"]).toEqual(["quantity"]);
-    expect(PDP_DIMENSION_LABEL_OVERRIDES["tiras-magneticas-fotos"]).toEqual({
-      photoSlots: "Unidades",
-    });
+  it("polaroid/cuadrados: el pack size viaja en photoSlots con label 'Unidades'", () => {
     expect(PDP_DIMENSION_LABEL_OVERRIDES["set-fotoimanes-polaroid"]).toEqual({
       photoSlots: "Unidades",
     });
     expect(PDP_DIMENSION_LABEL_OVERRIDES["set-fotoimanes-cuadrados"]).toEqual({
       photoSlots: "Unidades",
     });
+  });
+
+  // (2026-09-09, owner) Tiras es HÍBRIDO: photoSlots es COMPOSICIÓN y se
+  // relabela "Fotos por tira"; "Unidades" pasa a ser el stepper de copias del
+  // buy-box (PDP_PACK_PLUS_COPIES_SLUGS) — quantity sigue oculto (es 1 siempre).
+  it("tiras (híbrido): photoSlots → 'Fotos por tira' y el stepper de copias sí aplica", () => {
+    expect(PDP_HIDDEN_DIMENSION_KEYS["tiras-magneticas-fotos"]).toEqual(["quantity"]);
+    expect(PDP_DIMENSION_LABEL_OVERRIDES["tiras-magneticas-fotos"]).toEqual({
+      photoSlots: "Fotos por tira",
+    });
+    expect(PDP_PACK_PLUS_COPIES_SLUGS.has("tiras-magneticas-fotos")).toBe(true);
+    // El resto de los packs sigue SIN stepper de copias (su "Unidades" = pack size).
+    expect(PDP_PACK_PLUS_COPIES_SLUGS.has("separadores-magneticos")).toBe(false);
+    expect(PDP_PACK_PLUS_COPIES_SLUGS.has("set-fotoimanes-polaroid")).toBe(false);
   });
 
   // (2026-09-07) Productos INACTIVOS: si Lucy los reactiva, su pack size (sus

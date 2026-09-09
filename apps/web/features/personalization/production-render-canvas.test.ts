@@ -998,3 +998,208 @@ describe("renderProductionSlotsCanvas — Ola 4 (Lucy 2026-07-23)", () => {
     expect(await hasPixel(bufs[0], msgBand, darkInk)).toBe(false);
   });
 });
+
+describe("renderProductionSlotsCanvas — Ola 24 (Lucy 2026-09-09)", () => {
+  const slotOk4 = {
+    slotIndex: 0,
+    assetId: "a0",
+    photoTransform: { offsetX: 0, offsetY: 0, scale: 1 },
+  };
+  const BLUE: [number, number, number] = [0x3a, 0xa0, 0xff]; // fakePhoto
+  const PINK: [number, number, number] = [0xe8, 0x5b, 0x9f];
+  const nearWhiteRgb = [255, 255, 255];
+
+  // T7 — Tira SIN BORDE + zoom-out: las canaletas entre fotos conservan el color y
+  // su ancho; el hueco que deja la foto alejada es NEUTRO (blanco de la tarjeta sin
+  // teñir), NUNCA el color del marco (no hay inundación). Los bordes externos de la
+  // tira siguen a sangre cuando la foto cubre la celda (T5b, scale 1).
+  const stripUnitSinBorde = {
+    version: 1 as const,
+    stage: { width: 390, height: 400 },
+    gridCols: 1,
+    gridGap: 0,
+    layers: [
+      { id: "bg", type: "background", color: "#FFFFFF" },
+      { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 0 },
+      // Ventana reescrita por el toggle "Sin borde": sangre total de la celda.
+      { id: "ph", type: "image-placeholder", x: 0, y: 0, width: 390, height: 400 },
+    ],
+  };
+  const stripSlotsOut = [0, 1, 2].map((i) => ({
+    ...slotOk4,
+    slotIndex: i,
+    assetId: `a${i}`,
+    photoTransform: { offsetX: 0, offsetY: 0, scale: 0.5 },
+  }));
+
+  it("T7 tira SIN borde + zoom-out: canaletas del color CONSTANTES, hueco neutro, sin inundación", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: stripUnitSinBorde,
+      slots: stripSlotsOut,
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: "#E85B9F",
+      frameFullBleed: true,
+    });
+    const [first, middle] = bufs;
+    // Celda del medio: ventana = (0,8)-(390,392). Con scale 0.5 la foto cubre
+    // 195×195 centrada (x 97.5..292.5, y 102.5..297.5 en px de stage).
+    // Hueco DENTRO de la ventana (x=30 y x=360) → blanco neutro, NO rosa.
+    expect((await rgbaAt(middle, 30 * 3, 200 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    expect((await rgbaAt(middle, 360 * 3, 200 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    // Canaletas arriba/abajo → rosa del marco, ancho intacto (8px de stage).
+    expect((await rgbaAt(middle, 195 * 3, 2 * 3)).slice(0, 3)).toEqual(PINK);
+    expect((await rgbaAt(middle, 195 * 3, 396 * 3)).slice(0, 3)).toEqual(PINK);
+    // Centro: la foto achicada sigue ahí.
+    expect((await rgbaAt(middle, 195 * 3, 200 * 3)).slice(0, 3)).toEqual(BLUE);
+    // Primera celda: el borde EXTERIOR superior (y=1) tampoco se inunda — hueco
+    // neutro (la foto a sangre solo cuando cubre la celda, ver T5b con scale 1).
+    expect((await rgbaAt(first, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    expect((await rgbaAt(first, 195 * 3, 396 * 3)).slice(0, 3)).toEqual(PINK);
+  });
+
+  // T8 — Textos de la plantilla INSTAGRAM ("@tu_usuario", "Bogotá, Colombia",
+  // "362 me gusta", "Tu título acá", "#mirecuerdo #lucamsshop"): todos son capas
+  // EDITABLES → placeholder de pantalla que NUNCA se imprime sin override del
+  // cliente (misma regla que la Clásica, T3). Sin capa asset acá: el chrome SVG
+  // real siempre cae al cliente (fuentes horneadas) — lo que se congela es la
+  // regla de TEXTO, que es la que imprime o no imprime.
+  const igTextsUnit = {
+    version: 1 as const,
+    stage: { width: 450, height: 600 },
+    layers: [
+      { id: "bg", type: "background", color: "#FFFFFF" },
+      { id: "ph", type: "image-placeholder", x: 29, y: 58, width: 392, height: 392 },
+      {
+        id: "user_name",
+        type: "text",
+        x: 68,
+        y: 28,
+        text: "@tu_usuario",
+        fontFamily: "Inter",
+        fontSize: 16,
+        fill: "#262626",
+        fontWeight: "bold",
+        align: "left",
+        editable: true,
+      },
+      {
+        id: "likes_count",
+        type: "text",
+        x: 22,
+        y: 510,
+        text: "362 me gusta",
+        fontFamily: "Inter",
+        fontSize: 15,
+        fill: "#262626",
+        fontWeight: "bold",
+        align: "left",
+        editable: true,
+      },
+      {
+        id: "caption",
+        type: "text",
+        x: 22,
+        y: 526,
+        text: "Tu título acá",
+        fontFamily: "Inter",
+        fontSize: 16,
+        fill: "#262626",
+        fontWeight: "bold",
+        align: "left",
+        editable: true,
+      },
+      {
+        id: "hashtags",
+        type: "text",
+        x: 22,
+        y: 542,
+        text: "#mirecuerdo #lucamsshop",
+        fontFamily: "Inter",
+        fontSize: 13,
+        fill: "#00376B",
+        align: "left",
+        editable: true,
+      },
+    ],
+  };
+  // Zonas en px de salida (stage × 3): header (username) y footer (likes/caption/hashtags).
+  const igHeaderZone = { x: 60 * 3, y: 14 * 3, w: 240 * 3, h: 30 * 3 };
+  const igFooterZone = { x: 15 * 3, y: 498 * 3, w: 420 * 3, h: 60 * 3 };
+  const darkInk = (r: number, g: number, b: number, a: number) =>
+    a > 200 && r < 120 && g < 120 && b < 160;
+  const hashtagBlue = (r: number, g: number, b: number, a: number) =>
+    a > 200 && b > 90 && r < 60 && g < 90;
+
+  it("T8 Instagram SIN overrides → NINGÚN texto placeholder se imprime (header ni footer)", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: igTextsUnit,
+      slots: [slotOk4],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+    });
+    expect(await hasPixel(bufs[0], igHeaderZone, darkInk)).toBe(false);
+    expect(await hasPixel(bufs[0], igFooterZone, darkInk)).toBe(false);
+    expect(await hasPixel(bufs[0], igFooterZone, hashtagBlue)).toBe(false);
+  });
+
+  it("T8 Instagram con override SOLO de estilo (sin text) → tampoco se imprime", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: igTextsUnit,
+      slots: [{ ...slotOk4, textOverrides: { caption: { fill: "#E85B9F" } } }],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+    });
+    expect(await hasPixel(bufs[0], igFooterZone, darkInk)).toBe(false);
+  });
+
+  it("T8 Instagram CON texto del cliente → SÍ se imprime (control: la regla no borra texto real)", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: igTextsUnit,
+      slots: [
+        {
+          ...slotOk4,
+          textOverrides: { user_name: { text: "@lucy" }, hashtags: { text: "#viaje" } },
+        },
+      ],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+    });
+    expect(await hasPixel(bufs[0], igHeaderZone, darkInk)).toBe(true);
+    expect(await hasPixel(bufs[0], igFooterZone, hashtagBlue)).toBe(true);
+  });
+
+  // T9 — Instagram con chrome SVG: la plantilla real SIEMPRE cae al cliente
+  // (fuentes horneadas en el SVG) → lo que se imprime es el snapshot de Konva, que
+  // incluye el Rect de respaldo neutro de la ventana (Ola 24, studio-slot). El
+  // fillRect equivalente de este tier queda cubierto por photoBackingHexFor.
+  it("T9 Instagram (chrome SVG) → NEEDS_KONVA: imprime el snapshot del cliente (que ya lleva el respaldo)", async () => {
+    const igUnit = {
+      ...igTextsUnit,
+      layers: [
+        ...igTextsUnit.layers,
+        {
+          id: "frame",
+          type: "asset",
+          src: "/templates/ig_post_3x4.svg",
+          x: 0,
+          y: 0,
+          width: 450,
+          height: 600,
+        },
+      ],
+    };
+    await expect(
+      renderProductionSlotsCanvas({
+        unitTemplate: igUnit,
+        slots: [slotOk4],
+        shape: "rectangle",
+        loadAsset: async () => fakePhoto(600, 600),
+        borderColor: "#221E25",
+      }),
+    ).rejects.toBeInstanceOf(RenderNeedsKonvaError);
+  });
+});

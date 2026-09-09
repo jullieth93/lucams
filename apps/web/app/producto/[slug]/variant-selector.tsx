@@ -78,7 +78,9 @@ type VariantSelectorProps = {
   /**
    * Regla 2026-09-08b (Lucy) — override de label por dimensión (PDP_DIMENSION_LABEL_OVERRIDES):
    * el pack size visible se llama "Unidades" en TODA PDP, pero la clave que lo
-   * transporta varía (separadores: quantity; tiras/polaroid/cuadrados: photoSlots).
+   * transporta varía (separadores: quantity; polaroid/cuadrados: photoSlots).
+   * Excepción (2026-09-09, owner): en tiras photoSlots se relabela "Fotos por
+   * tira" (composición) porque "Unidades" pasa a ser el stepper de copias.
    */
   dimensionLabels?: Readonly<Record<string, string>>;
   /**
@@ -175,7 +177,8 @@ const VISIBLE_DIMENSIONS: (keyof ProductVariantAttributes)[] = [
   // concepto, un label. Excepción por familia: en separadores photoSlots va
   // OCULTA (PDP_HIDDEN_DIMENSION_KEYS) y el dedupe corre DESPUÉS del filtro de
   // ocultas, así que sobrevive quantity → el pack size se muestra con su label
-  // override "Unidades"; en tiras el visible es photoSlots con el mismo override.
+  // override "Unidades"; en tiras el visible es photoSlots, relabelado "Fotos
+  // por tira" (2026-09-09 — "Unidades" es allí el stepper de copias).
   "photoSlots",
   "quantity",
   "sizeCm",

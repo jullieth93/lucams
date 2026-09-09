@@ -52,7 +52,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useIsTouch } from "./use-is-touch";
-import { Sparkles, Box, X, CalendarDays } from "lucide-react";
+import { Sparkles, Box, X, CalendarDays, Loader2 } from "lucide-react";
 import nextDynamic from "next/dynamic";
 import type { Magnet3D } from "./fridge-3d-view";
 import { StudioAiPanel } from "./studio-ai-panel";
@@ -230,13 +230,19 @@ export function StudioEditor({
   const [gesturesHintPersistent, setGesturesHintPersistent] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
-  // PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito: al click "Listo!"
-  // generamos preview compositado client-side y abrimos modal. El upload
-  // real (production PNGs + finalize + addToCart) solo se dispara si el
-  // cliente confirma "Sí, agregar al carrito" desde el modal.
+  // PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito: al click «Vista
+  // previa» (antes «¡Listo!») generamos preview compositado client-side y
+  // abrimos modal. El upload real (production PNGs + finalize + addToCart)
+  // solo se dispara si el cliente confirma "Sí, agregar al carrito" desde
+  // el modal.
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // Lucy 2026-09-09 — feedback de PROCESAMIENTO del botón «Vista previa»:
+  // componer el preview (snapshots Konva o páginas del calendario) tarda un
+  // tramo perceptible y antes el click no mostraba NADA. Mientras corre, el
+  // botón del toolbar y el FAB muestran spinner + disabled (patrón Loader2).
+  const [previewBuilding, setPreviewBuilding] = useState(false);
   // Lucy 2026-05-21 round 4: guías eliminadas. La línea punteada del
   // "safe area" confundía al cliente porque no matcheaba visualmente la
   // silueta del corazón/círculo. La silueta del producto ya define el
@@ -300,6 +306,9 @@ export function StudioEditor({
   const [calendarBuilding, setCalendarBuilding] = useState(false);
   // SEP1 — preview inmersivo de separadores en un libro. null = cerrado; array = texturas de marcador.
   const [book3D, setBook3D] = useState<Magnet3D[] | null>(null);
+  // Lucy 2026-09-09 — el libro 3D tarda en ARMAR las texturas (snapshot por
+  // slot): el botón necesita spinner + disabled como los de escena/calendario.
+  const [bookBuilding, setBookBuilding] = useState(false);
   // #15 — a11y del overlay 3D del libro (foco inicial + trap + Escape + retorno). onClose estable
   // (useCallback) para no re-armar el trap en cada render. La galería maneja la suya internamente.
   const book3DRef = useRef<HTMLDivElement>(null);
@@ -673,15 +682,16 @@ export function StudioEditor({
     [store],
   );
 
-  // ──────────── Step 1: Listo! → genera preview compositado + abre modal ────────────
+  // ─────── Step 1: «Vista previa» → genera preview compositado + abre modal ───────
   //
   // PR A.3 (Lucy 2026-05-21): partimos el finalize en 2 fases. Esta solo
   // genera el preview client-side (rápido, sin red), abre el modal para
   // que el cliente confirme. No sube nada todavía.
   const handleFinalize = useCallback(async () => {
     const state = store.getState();
-    if (!state.designId || !state.canvasData || state.isFinalizing) return;
+    if (!state.designId || !state.canvasData || state.isFinalizing || previewBuilding) return;
     setPreviewError(null);
+    setPreviewBuilding(true);
     try {
       // #3 (auditoría v3) — CALENDARIO: el preview de confirmación debe mostrar las PÁGINAS reales
       // (mes + grilla + festivos), no las fotos sueltas rotuladas "imanes". Reusa composeCalendarPages
@@ -732,6 +742,8 @@ export function StudioEditor({
         kind: "error",
         message: texts.errores.preview,
       });
+    } finally {
+      setPreviewBuilding(false);
     }
   }, [
     store,
@@ -744,6 +756,7 @@ export function StudioEditor({
     calendarLayout,
     liveCalendarFont,
     product.personalizationSchema,
+    previewBuilding,
     texts,
   ]);
 
@@ -752,7 +765,8 @@ export function StudioEditor({
   // un libro, no la nevera). Si la captura falla, no rompemos el Estudio — solo no abrimos el 3D.
   const handleOpen3D = useCallback(async () => {
     const state = store.getState();
-    if (!state.canvasData) return;
+    if (!state.canvasData || bookBuilding) return;
+    setBookBuilding(true);
     try {
       await ensureAllStagesMounted(); // T5: la vista 3D necesita la textura de TODOS los slots
       let textures = await buildMagnetTextures(
@@ -774,8 +788,18 @@ export function StudioEditor({
         message: texts.errores.vista3d,
       });
       void err;
+    } finally {
+      setBookBuilding(false);
     }
-  }, [store, productConfig.shape, productConfig.noFold, ensureAllStagesMounted, isBookmark, texts]);
+  }, [
+    store,
+    productConfig.shape,
+    productConfig.noFold,
+    ensureAllStagesMounted,
+    isBookmark,
+    bookBuilding,
+    texts,
+  ]);
 
   // FOTO4 — Abrir la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo). Calcula UNA vez
   // la textura por imán (recortada a su silueta) y la pasa a la galería, que arma cada escena bajo
@@ -1059,7 +1083,7 @@ export function StudioEditor({
   );
 
   // Cerrar modal "Volver a editar": libera estado para no acumular preview
-  // viejo si edita y vuelve a "Listo!".
+  // viejo si edita y vuelve a «Vista previa».
   const handleClosePreviewModal = useCallback(() => {
     setPreviewModalOpen(false);
     setPreviewDataUrl(null);
@@ -1193,6 +1217,7 @@ export function StudioEditor({
           setGesturesHintPersistent(true);
           setGesturesHintOpen(true);
         }}
+        isPreviewBuilding={previewBuilding}
         onFinalize={handleFinalize}
       />
 
@@ -1298,9 +1323,16 @@ export function StudioEditor({
                 type="button"
                 onClick={handleOpenCalendar3D}
                 disabled={calendarBuilding}
-                className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
+                aria-busy={calendarBuilding}
+                className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60"
               >
-                <CalendarDays className="h-5 w-5" aria-hidden />
+                {/* Lucy 2026-09-09 — spinner visible mientras se componen las 12 tarjetas
+                    (antes solo cambiaba el texto y parecía no haber pasado nada). */}
+                {calendarBuilding ? (
+                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                ) : (
+                  <CalendarDays className="h-5 w-5" aria-hidden />
+                )}
                 <span>{calendarBuilding ? texts.comun.armando : texts.lienzo.btnCalendario}</span>
                 <span className="sr-only">{texts.lienzo.calBtnSr}</span>
               </button>
@@ -1308,10 +1340,16 @@ export function StudioEditor({
               <button
                 type="button"
                 onClick={handleOpen3D}
-                className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
+                disabled={bookBuilding}
+                aria-busy={bookBuilding}
+                className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60"
               >
-                <Box className="h-5 w-5" aria-hidden />
-                <span>{texts.lienzo.btnLibro}</span>
+                {bookBuilding ? (
+                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                ) : (
+                  <Box className="h-5 w-5" aria-hidden />
+                )}
+                <span>{bookBuilding ? texts.comun.armando : texts.lienzo.btnLibro}</span>
                 <span className="sr-only">&nbsp;{texts.lienzo.libroBtnSr}</span>
               </button>
             ) : (
@@ -1320,9 +1358,14 @@ export function StudioEditor({
                 type="button"
                 onClick={handleOpenScene}
                 disabled={sceneBuilding}
-                className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
+                aria-busy={sceneBuilding}
+                className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60"
               >
-                <Box className="h-5 w-5" aria-hidden />
+                {sceneBuilding ? (
+                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                ) : (
+                  <Box className="h-5 w-5" aria-hidden />
+                )}
                 <span>{sceneBuilding ? texts.comun.armando : texts.lienzo.btnEspacio}</span>
                 <span className="sr-only">{texts.lienzo.espacioBtnSr}</span>
               </button>
@@ -1524,8 +1567,12 @@ export function StudioEditor({
         onConfirm={handleConfirmFinalize}
       />
 
-      {/* M.3.b.UX.1 — FAB ¡Listo! mobile (visible solo <sm, fixed bottom-right) */}
-      <StudioFinalizeFab store={store} onFinalize={handleFinalize} />
+      {/* M.3.b.UX.1 — FAB «Vista previa» mobile (visible solo <sm, fixed bottom-right) */}
+      <StudioFinalizeFab
+        store={store}
+        isPreviewBuilding={previewBuilding}
+        onFinalize={handleFinalize}
+      />
 
       {/* M.3.b.UX.5 — Onboarding tutorial primera vez. Se auto-detecta via
           localStorage; si ya se onboardeó (key="v1"), no muestra nada. */}

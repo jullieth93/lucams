@@ -23,9 +23,12 @@ type SelectedVariantCtx = {
   setSelectedId: (id: string) => void;
   /**
    * Copias (CartItem.qty 1..99) elegidas en el stepper "Unidades" de la PDP —
-   * SOLO productos de composición FIJA (regla 2026-09-08b: calendario, sets de
-   * letras, nombre y compra directa; en los packs de tamaño variable "Unidades"
-   * es el pack size y vive en el VariantSelector). Única fuente de verdad de la
+   * productos de composición FIJA (regla 2026-09-08b: calendario, sets de
+   * letras, nombre y compra directa) y el HÍBRIDO tiras (2026-09-09, owner —
+   * PDP_PACK_PLUS_COPIES_SLUGS: allí "Unidades" del VariantSelector es la
+   * composición "Fotos por tira" y el stepper es las copias). En el resto de
+   * los packs de tamaño variable "Unidades" es el pack size y vive en el
+   * VariantSelector (sin stepper de copias). Única fuente de verdad de la
    * cantidad en la ficha: la compra directa la manda como `qty` del form y la
    * rama personalizable la lleva al Estudio como `?copies=N` (la modal de
    * confirmación ya NO tiene stepper — confirma con ese valor).
@@ -105,7 +108,10 @@ export function useSelectedVariant(): SelectedVariantCtx {
  * stepper "Unidades" en la PDP (CopiesQtyInput) y este CTA las lleva al Estudio
  * como ?copies=N (solo cuando N>1; el default del Estudio es 1). La modal de
  * confirmación ya NO tiene stepper "Copias": confirma con ese qty. Los packs de
- * tamaño variable no emiten ?copies= (su stepper no se renderiza → copies=1).
+ * tamaño variable no emiten ?copies= (su stepper no se renderiza → copies=1),
+ * SALVO el híbrido tiras (2026-09-09 — PDP_PACK_PLUS_COPIES_SLUGS): allí el
+ * stepper sí se renderiza y las copias viajan junto al ?variant= (que fija las
+ * fotos por tira).
  */
 export function EstudioCtaLink({
   slug,

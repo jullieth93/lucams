@@ -66,7 +66,7 @@ describe.skipIf(!hasDb)("design-gallery — integración", { timeout: 30000 }, (
     await prisma.designGalleryImage.deleteMany({ where: { tag: `${TAG}-x` } });
   });
 
-  // Lucy 2026-09-08 — el opt-in de la galería es `personalizationSchema.galleryTag`
+  // Lucy 2026-09-08 — la galería usa `personalizationSchema.galleryTag` cuando existe
   // (convención: el slug del producto). Este test blinda que los separadores lo declaran
   // y que el admin (/admin/disenos) los ofrece con cara B (facesPerUnit=2): es el cable
   // que una corrida vieja de un seed histórico podría romper en silencio (tag compartido
@@ -89,6 +89,35 @@ describe.skipIf(!hasDb)("design-gallery — integración", { timeout: 30000 }, (
       const option = options.find((o) => o.tag === p.slug);
       expect(option, p.slug).toBeDefined();
       expect(option?.needsFaceB, p.slug).toBe(true);
+    }
+  });
+
+  // Default-on (2026-09-09, owner): la galería ya NO es opt-in por producto. Todo
+  // producto activo con superficie de FOTO aparece en /admin/disenos con tag =
+  // galleryTag explícito ?? slug — el mismo fallback que aplica el Estudio
+  // (app/estudio/[slug]/page.tsx). Sin este cable, subir diseños para un producto
+  // sin galleryTag fallaría con "Producto inválido" aunque el Estudio sí los lee.
+  it("todo producto con superficie de foto tiene tag de galería (explícito ?? slug)", async () => {
+    const { resolvePersonalizationSurface } = await import("./surface");
+    const products = await prisma.product.findMany({
+      where: { isActive: true, deletedAt: null },
+      select: { slug: true, personalizationKind: true, personalizationSchema: true },
+    });
+    const photoProducts = products.filter(
+      (p) =>
+        resolvePersonalizationSurface(
+          p.personalizationKind,
+          p.personalizationSchema as Record<string, unknown> | null,
+        ).surface === "photo",
+    );
+    if (photoProducts.length === 0) return;
+
+    const options = await listGalleryTagOptions();
+    const tags = new Set(options.map((o) => o.tag));
+    for (const p of photoProducts) {
+      const schema = p.personalizationSchema as { galleryTag?: unknown } | null;
+      const expected = typeof schema?.galleryTag === "string" ? schema.galleryTag : p.slug;
+      expect(tags.has(expected), `${p.slug} → tag ${expected}`).toBe(true);
     }
   });
 });

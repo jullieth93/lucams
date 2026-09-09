@@ -465,7 +465,7 @@ function TextLayersEditor({
             <button
               type="button"
               onClick={() => setSelectedLayerId(null)}
-              className="text-brand-purple-dark/70 hover:text-brand-purple-dark flex items-center gap-1 text-xs font-semibold underline"
+              className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-white shadow-md transition-all hover:shadow-lg active:scale-[0.98]"
             >
               <ChevronLeft className="h-3.5 w-3.5" />
               {texts.comun.volver}

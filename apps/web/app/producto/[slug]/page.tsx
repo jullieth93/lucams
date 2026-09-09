@@ -47,6 +47,7 @@ import {
   photoPackDistinctSizes,
   photoPackMinPrice,
   PDP_DIMENSION_LABEL_OVERRIDES,
+  PDP_PACK_PLUS_COPIES_SLUGS,
   conImanDefaultVariant,
 } from "@/features/products/variant-schemas";
 import { NamePricePicker } from "./name-price-picker";
@@ -383,7 +384,9 @@ export default async function ProductoDetallePage({
                       hiddenDimensions={PDP_HIDDEN_DIMENSION_KEYS[product.slug]}
                       // Regla 2026-09-08b — label "Unidades" del pack size en toda
                       // PDP; la clave que lo transporta varía por familia
-                      // (separadores: quantity; tiras/polaroid/cuadrados: photoSlots).
+                      // (separadores: quantity; polaroid/cuadrados: photoSlots).
+                      // Excepción tiras (2026-09-09): photoSlots → "Fotos por tira"
+                      // y "Unidades" es el stepper de copias de abajo.
                       dimensionLabels={PDP_DIMENSION_LABEL_OVERRIDES[product.slug]}
                       // Packs: dimensión única de Tamaño como chips, no lista por variante.
                       singleDimAsChips={isPhotoPack}
@@ -421,14 +424,20 @@ export default async function ProductoDetallePage({
                       //     COPIAS acá (CopiesQtyInput) → viaja como ?copies=N y la modal
                       //     de confirmación del Estudio lo confirma tal cual (ya sin
                       //     stepper propio).
-                      //   - Tamaño VARIABLE (packs de fotoimanes/separadores/tiras): el
+                      //   - Tamaño VARIABLE (packs de fotoimanes/separadores): el
                       //     pack size ya se eligió arriba como dimensión "Unidades" del
                       //     VariantSelector → SIN stepper de copias (qty=1; se ajusta en
                       //     el carrito). El CTA exige la variante completa ("variant") y
                       //     el Estudio abre con ese N vía el merge de la variante sobre
                       //     el schema (?variant=).
+                      //   - HÍBRIDO (2026-09-09, owner — PDP_PACK_PLUS_COPIES_SLUGS):
+                      //     tiras muestra AMBOS: "Fotos por tira" (composición, en el
+                      //     VariantSelector) + "Unidades" (copias, stepper acá) → el
+                      //     Estudio abre con el N de fotos Y las copias (?copies=N).
                       <>
-                        {!isPhotoPack && <CopiesQtyInput />}
+                        {(!isPhotoPack || PDP_PACK_PLUS_COPIES_SLUGS.has(product.slug)) && (
+                          <CopiesQtyInput />
+                        )}
                         <EstudioCtaLink
                           slug={product.slug}
                           ctaNoun={ctaNoun}

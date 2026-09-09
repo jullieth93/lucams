@@ -5,7 +5,8 @@
  * la variante "nombre": escribe un nombre → ve en vivo la tira de fichas kawaii que vas
  * a recibir. Sin foto, sin cajita. Reemplaza el editor de foto genérico para este caso.
  *
- * "¡Listo!" NO agrega nada todavía: renderiza la tira a PNG en el navegador y abre la vista
+ * "Vista previa" (antes "¡Listo!", renombrado 2026-09-09) NO agrega nada todavía: renderiza la
+ * tira a PNG en el navegador y abre la vista
  * previa "Así se verá tu pedido" (Lucy 2026-07-25). Solo si el cliente confirma ahí se crea
  * el diseño (createNameDesignAction, valida en servidor) y se reutilizan finalizeDesignAction +
  * addPersonalizedToCartAction (la ruta del dinero probada) → /carrito. El nombre real se guarda
@@ -66,7 +67,7 @@ type NameEditorProps = {
   /** Nº de letras pre-elegido en la ficha (solo hint visual antes de escribir). */
   initialCount?: number;
   /** Copias (CartItem.qty) elegidas en la PDP con el stepper "Unidades"
-   *  (`?copies=N`, regla 2026-09-08b): las confirma la modal "¡Listo!" — que ya
+   *  (`?copies=N`, regla 2026-09-08b): las confirma la modal de "Vista previa" — que ya
    *  NO tiene stepper propio. undefined → 1. */
   initialCopies?: number;
   /** Estilos ilustrados disponibles (Animales, Navidad…). Vacío = solo "Solo letra". */
@@ -296,7 +297,7 @@ export function NameEditor({
     .map((e) => e.trim())
     .filter(Boolean);
 
-  // ──────────── Paso 1: ¡Listo! → dibuja la tira y abre "Así se verá tu pedido" ────────────
+  // ──────────── Paso 1: Vista previa → dibuja la tira y abre "Así se verá tu pedido" ────────────
   //
   // Todo pasa en el navegador (canvas), sin server actions: si el cliente vuelve a editar no
   // quedó ningún diseño creado ni ningún archivo subido.
@@ -327,8 +328,8 @@ export function NameEditor({
 
   // ──────────── Paso 2: confirmar en la modal → crear + subir + carrito ────────────
   // `copies` son las unidades idénticas del nombre ya renderizado (CartItem.qty
-  // 1..99): las eligió la PDP (stepper "Unidades", ?copies=N) y la modal "¡Listo!"
-  // las confirma tal cual — ya sin stepper propio (regla 2026-09-08b).
+  // 1..99): las eligió la PDP (stepper "Unidades", ?copies=N) y la modal de
+  // "Vista previa" las confirma tal cual — ya sin stepper propio (regla 2026-09-08b).
   async function handleConfirmAddToCart(copies: number) {
     if (!valid || submitting || !previewDataUrl) return;
     setSubmitting(true);
@@ -396,7 +397,7 @@ export function NameEditor({
   }
 
   // "Volver a editar": el editor queda intacto y nada se creó. Se descarta la previa (y el diseño
-  // a medio camino de un intento fallido) para que el próximo "¡Listo!" dibuje el nombre actual.
+  // a medio camino de un intento fallido) para que la próxima "Vista previa" dibuje el nombre actual.
   const handleEditFromPreview = useCallback(() => {
     setPreviewOpen(false);
     setPreviewDataUrl(null);
@@ -443,7 +444,7 @@ export function NameEditor({
     <div className="mx-auto w-full max-w-3xl px-5 py-8">
       <Link
         href={`/producto/${product.slug}`}
-        className="text-brand-muted hover:text-brand-purple mb-4 inline-flex items-center gap-1 text-sm"
+        className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 mb-4 inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg active:scale-[0.98]"
       >
         <ChevronLeft className="h-4 w-4" />
         {texts.comun.volver}

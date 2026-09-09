@@ -7,24 +7,31 @@ import fs from "node:fs";
 import path from "node:path";
 
 /*
- * E2E — Regla 2026-09-08b (Lucy, unificación "Unidades"): la PDP de los packs
- * de la familia separadores/tiras muestra UN concepto de cantidad — "Unidades"
- * (pack size) — y el N elegido ABRE el Estudio con ese N (una sola fuente de
- * verdad: ?variant= → merge de attributes sobre el schema → photoSlots inicial).
+ * E2E — Regla 2026-09-08b (Lucy, unificación "Unidades") + excepción HÍBRIDA de
+ * tiras (2026-09-09, owner). Los packs de la familia separadores muestran UN
+ * concepto de cantidad — "Unidades" (pack size) — y el N elegido ABRE el Estudio
+ * con ese N (una sola fuente de verdad: ?variant= → merge de attributes sobre el
+ * schema → photoSlots inicial). Tiras muestra DOS selectores: "Fotos por tira"
+ * (composición, photoSlots) + "Unidades" (copias, CartItem.qty → ?copies=N).
  *
  *   1. PDP separadores-alargados: grupo "Unidades" (stepper 1..6) + "Tamaño";
  *      NUNCA un grupo "Fotos"/"Cantidad" ni un segundo stepper de copias.
  *      Elegir tamaño 4×12 + Unidades=3 → CTA "Personalizar" lleva ?variant= de
  *      la variante qty=3 y el Estudio abre con 3 unidades (slots 3A/3B).
- *   2. PDP tiras-magneticas-fotos: "Unidades" son las fotos por tira (chips
- *      "3 fotos"/"4 fotos", photoSlots con label override) + "Tamaño".
+ *   2. PDP tiras-magneticas-fotos (híbrido): "Fotos por tira" (chips "3 fotos"/
+ *      "4 fotos", photoSlots relabelado) + stepper "Unidades" (copias 1..99) +
+ *      "Tamaño". Elegir 4 fotos + 2 unidades → CTA con ?variant= Y ?copies=2 →
+ *      el Estudio abre con 4 fotos (control de N arranca en 4).
  *   3. Estudio de tiras: CANALETA visible entre fotos (media canaleta del
  *      color del marco DENTRO de cada celda, stripPhotoRect — WYSIWYG con el
  *      render de producción, que consume la misma matemática). Oráculo de
  *      píxel: la franja inferior del canvas de contenido de la PRIMERA celda
  *      es el color de la tarjeta (blanco), no la foto (regresión: antes las
- *      fotos se tocaban, gap 0 real). La modal "¡Listo!" sin stepper "Copias"
- *      la cubre estudio-letterset.spec.ts (llega a la modal sin uploads).
+ *      fotos se tocaban, gap 0 real). La modal que abre "Vista previa" (antes
+ *      "¡Listo!") sin stepper "Copias"
+ *      la cubre estudio-letterset.spec.ts (llega a la modal sin uploads); este
+ *      spec blinda además que las copias de la PDP (?copies=2) llegan a la
+ *      modal de tiras como dato ("2 copias idénticas de tu diseño").
  *
  * Productos reales leídos de la DB del ambiente (nada hardcodeado). Crea un
  * asset de prueba (tiras) → LOCAL/STG solamente (prohibido en PRD, como la
@@ -259,18 +266,66 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     await expect(page.getByText("3 fotos", { exact: true })).toBeVisible();
   });
 
-  test("PDP tiras: 'Unidades' son las fotos por tira (chips 3/4 fotos) + Tamaño", async ({
+  test("PDP tiras (híbrido 2026-09-09): 'Fotos por tira' (chips 3/4) + stepper 'Unidades' de copias + Tamaño", async ({
     page,
   }) => {
     test.skip(!ctx.tirasSlug, "tiras-magneticas-fotos no está activo en la DB");
     await page.goto(`/producto/${ctx.tirasSlug}`, { waitUntil: "domcontentloaded" });
-    const unidades = page.getByRole("group", { name: "Unidades" });
-    await expect(unidades).toBeVisible({ timeout: 15_000 });
-    await expect(unidades.getByText("3 fotos")).toBeVisible();
-    await expect(unidades.getByText("4 fotos")).toBeVisible();
+
+    // Composición: la dimensión photoSlots se relabeló a "Fotos por tira".
+    const fotosPorTira = page.getByRole("group", { name: "Fotos por tira" });
+    await expect(fotosPorTira).toBeVisible({ timeout: 15_000 });
+    await expect(fotosPorTira.getByText("3 fotos")).toBeVisible();
+    await expect(fotosPorTira.getByText("4 fotos")).toBeVisible();
     await expect(page.getByRole("group", { name: "Tamaño" })).toBeVisible();
-    await expect(page.getByRole("group", { name: "Fotos" })).toHaveCount(0);
+
+    // Copias: UN SOLO grupo "Unidades" — el stepper de copias (1..99), con
+    // −/+ y arranque en 1. NUNCA los labels viejos "Fotos" (exacto: "Fotos por
+    // tira" lo contiene como subcadena)/"Cantidad".
+    const unidades = page.getByRole("group", { name: "Unidades" });
+    await expect(unidades).toHaveCount(1);
+    await expect(unidades.getByLabel("Aumentar unidades")).toBeVisible();
+    await expect(unidades.getByLabel("Disminuir unidades")).toBeVisible();
+    await expect(unidades.getByText("1", { exact: true })).toBeVisible();
+    await expect(page.getByRole("group", { name: "Fotos", exact: true })).toHaveCount(0);
     await expect(page.getByRole("group", { name: "Cantidad" })).toHaveCount(0);
+  });
+
+  test("PDP tiras: 4 fotos + 2 unidades → el Estudio abre con 4 fotos y ?copies=2", async ({
+    page,
+  }) => {
+    test.skip(!ctx.tirasSlug, "tiras-magneticas-fotos no está activo en la DB");
+    test.slow(); // cold-compile de la ruta Konva en `next dev`
+    await page.goto(`/producto/${ctx.tirasSlug}`, { waitUntil: "domcontentloaded" });
+    await dismissOverlays(page);
+
+    // Selección guiada: composición (4 fotos) — el re-anchor resuelve tamaño e
+    // imán solos (1:1 con photoSlots; prefiere Con imán) → CTA habilitado.
+    const fotosPorTira = page.getByRole("group", { name: "Fotos por tira" });
+    await expect(fotosPorTira).toBeVisible({ timeout: 15_000 });
+    await fotosPorTira.getByRole("button", { name: "4 fotos" }).click();
+
+    // Copias: stepper "Unidades" hasta 2.
+    const unidades = page.getByRole("group", { name: "Unidades" });
+    await unidades.getByLabel("Aumentar unidades").click();
+    await expect(unidades.getByText("2", { exact: true })).toBeVisible();
+
+    // El CTA lleva AMBOS: ?variant= (composición) y ?copies=2 (copias).
+    const cta = page.getByRole("link", { name: /Personalizar producto/i });
+    await expect(cta).toBeVisible();
+    const href = (await cta.getAttribute("href")) ?? "";
+    expect(href).toContain(`/estudio/${ctx.tirasSlug}?variant=`);
+    expect(href).toContain("copies=2");
+    await cta.click();
+
+    // El Estudio abre con N=4 fotos (merge de la variante sobre el schema) y
+    // conserva las copias en la URL — la modal de «Vista previa» las confirma tal cual.
+    await expect(page).toHaveURL(new RegExp(`/estudio/${ctx.tirasSlug}\\?variant=.*copies=2`));
+    await expect(page.locator("canvas").first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(2_500); // el onboarding monta tarde (race histórica)
+    await dismissOverlays(page);
+    await expect(page.getByText("4 fotos", { exact: true })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("3 fotos", { exact: true })).toHaveCount(0);
   });
 });
 
@@ -279,8 +334,12 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
     test.skip(!ctx.tirasSlug, "tiras-magneticas-fotos no está activo en la DB");
     test.slow(); // cold-compile + upload real
 
+    // Híbrido 2026-09-09: el Estudio de tiras también recibe las copias de la
+    // PDP (?copies=2) — al final se blinda que la modal de confirmación
+    // ("Vista previa" → "Así se verá tu pedido") las muestra tal cual.
+    const copiesParam = "&copies=2";
     await page.goto(
-      `/estudio/${ctx.tirasSlug}${ctx.tirasVariantId ? `?variant=${ctx.tirasVariantId}` : ""}`,
+      `/estudio/${ctx.tirasSlug}${ctx.tirasVariantId ? `?variant=${ctx.tirasVariantId}${copiesParam}` : ""}`,
       { waitUntil: "domcontentloaded" },
     );
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 60_000 });
@@ -290,25 +349,30 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
     const panel = await resolvePanel(page);
     const consent = page.getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i });
     if (await consent.count()) await consent.first().check();
-    await panel.locator('input[type="file"]').first().setInputFiles([PHOTO_PATH]);
+    // 3 fotos (la misma imagen ×3): el auto-fill NO repite fotos y el botón
+    // "Vista previa" exige TODOS los slots llenos — con 1 sola quedaría
+    // bloqueado y la verificación de la modal (copias) sería inalcanzable.
+    await panel
+      .locator('input[type="file"]')
+      .first()
+      .setInputFiles([PHOTO_PATH, PHOTO_PATH, PHOTO_PATH]);
 
-    // Oracle DB: la fila DesignAsset aparece cuando el server validó y guardó.
+    // Oracle DB: las 3 filas DesignAsset aparecen cuando el server validó y guardó.
     await expect
       .poll(
         async () => {
-          const asset = await withDbRetry(() =>
-            prisma.designAsset.findFirst({
+          const count = await withDbRetry(() =>
+            prisma.designAsset.count({
               where: { createdAt: { gte: ctx.runStartedAt } },
-              select: { id: true },
             }),
           );
-          return Boolean(asset);
+          return count;
         },
         { timeout: 300_000, intervals: [3000, 5000, 8000, 10000] },
       )
-      .toBe(true);
+      .toBeGreaterThanOrEqual(3);
 
-    // Reparte la foto al primer slot (celda 0 de la tira).
+    // Reparte las fotos en los slots de la tira (celda 0 y siguientes).
     const wand = page.getByRole("button").filter({ hasText: /Llenar slots con mis fotos/i });
     await expect(wand.first()).toBeVisible({ timeout: 60_000 });
     await wand.first().click();
@@ -325,7 +389,7 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
           const slots = (
             design?.canvasData as { slots?: Array<{ assetUrl?: string | null }> } | null
           )?.slots;
-          return Boolean(slots?.[0]?.assetUrl);
+          return Boolean(slots?.length) && slots!.every((s) => Boolean(s.assetUrl));
         },
         { timeout: 60_000, intervals: [2000, 3000, 4000, 5000] },
       )
@@ -362,5 +426,25 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
     // …y el centro de la celda SÍ es la foto (turquesa/púrpura, nunca blanco):
     // la foto no desapareció, solo deja la canaleta visible.
     expect(nearWhite(probe!.center)).toBe(false);
+
+    // Híbrido 2026-09-09 — las copias de la PDP (?copies=2) llegan a la modal de
+    // confirmación como DATO (sin stepper propio — regla 2026-09-08b). El gatillo
+    // es el botón "Vista previa" (renombrado; antes «¡Listo!»). Su NOMBRE ACCESIBLE
+    // es un aria-label CMS (estudio.lienzo.finalize-aria — en LOCAL sobreescrito a
+    // "Listo, generar diseño final"), así que el locator acepta ambas variantes y
+    // filtra al visible (inline en desktop / FAB en mobile).
+    const vistaPrevia = page
+      .getByRole("button", { name: /Vista previa|Listo/i })
+      .and(page.locator(":visible"))
+      .first();
+    await expect(vistaPrevia).toBeVisible({ timeout: 30_000 });
+    await expect(vistaPrevia).toBeEnabled({ timeout: 30_000 });
+    await vistaPrevia.click();
+    const previewDialog = page.getByRole("dialog", { name: /Así se verá/i });
+    await expect(previewDialog).toBeVisible({ timeout: 30_000 });
+    await expect(previewDialog.getByText("2 copias idénticas de tu diseño")).toBeVisible();
+    await expect(previewDialog.getByRole("group", { name: "Copias" })).toHaveCount(0);
+    await previewDialog.getByRole("button", { name: /Volver a editar/i }).click();
+    await expect(previewDialog).toBeHidden({ timeout: 10_000 });
   });
 });

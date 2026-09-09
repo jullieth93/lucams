@@ -249,3 +249,45 @@ describe("frame-palette — Ola 4 (cuadrados / tira / instagram)", () => {
     expect(isInstagramNoBorder(undefined, stage)).toBe(false);
   });
 });
+
+describe("frame-palette — Ola 24 (photoBackingHexFor: respaldo neutro compartido)", () => {
+  // UNA función de decisión para las 3 superficies (grilla, modal, producción):
+  // "el marco es MARCO, no fondo" — el hueco de la ventana bajo zoom-out/pan se
+  // rellena con la tarjeta SIN teñir, nunca con borderColor.
+  const base = {
+    borderColor: "#E85B9F",
+    backgroundHex: "#FFFFFF",
+    hasFrameCard: false,
+    fullBleed: false,
+    isIg: false,
+    igNoBorder: false,
+  };
+
+  it("Instagram CON borde + color → respaldo neutro (bug 2026-09-09: la ventana se inundaba)", async () => {
+    const { photoBackingHexFor } = await import("./frame-palette");
+    // Antes IG estaba excluida ("marco constante por construcción") — falso: con
+    // tarjeta oscura el hueco mostraba el fondo teñido por borderColor.
+    expect(photoBackingHexFor({ ...base, isIg: true, borderColor: "#221E25" })).toBe("#FFFFFF");
+    // Con borde blanco también aplica (no-op visual: blanco sobre blanco).
+    expect(photoBackingHexFor({ ...base, isIg: true, borderColor: "#FFFFFF" })).toBe("#FFFFFF");
+  });
+
+  it("Instagram SIN BORDE → sin respaldo (el hueco es el color de tarjeta del diseño)", async () => {
+    const { photoBackingHexFor } = await import("./frame-palette");
+    expect(photoBackingHexFor({ ...base, isIg: true, igNoBorder: true })).toBeNull();
+  });
+
+  it("frame-card / full-bleed con color → respaldo; tarjeta simple sin color → null", async () => {
+    const { photoBackingHexFor } = await import("./frame-palette");
+    expect(photoBackingHexFor({ ...base, hasFrameCard: true })).toBe("#FFFFFF");
+    expect(photoBackingHexFor({ ...base, fullBleed: true })).toBe("#FFFFFF");
+    expect(photoBackingHexFor(base)).toBeNull(); // sin frame-card ni full-bleed
+    expect(photoBackingHexFor({ ...base, hasFrameCard: true, borderColor: null })).toBeNull();
+  });
+
+  it("heart/circle (useFullStage) → sin respaldo (la silueta troquelada manda)", async () => {
+    const { photoBackingHexFor } = await import("./frame-palette");
+    expect(photoBackingHexFor({ ...base, hasFrameCard: true, useFullStage: true })).toBeNull();
+    expect(photoBackingHexFor({ ...base, isIg: true, useFullStage: true })).toBeNull();
+  });
+});

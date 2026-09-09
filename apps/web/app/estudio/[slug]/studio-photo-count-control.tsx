@@ -15,7 +15,8 @@
  * elección que no existe.
  */
 
-import { Minus, Plus } from "lucide-react";
+import { Loader2, Minus, Plus } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import type { StudioStoreState } from "./lib/store";
@@ -65,11 +66,33 @@ export function StudioPhotoCountControl({
   const canIncrease = value < clampedMax;
   const fixed = clampedMin === clampedMax;
 
+  // Feedback de procesamiento (Lucy 2026-09-09, mismo patrón del botón «Vista
+  // previa» del toolbar): cambiar N reconstruye los slots y eso dispara un
+  // re-render SÍNCRONO del lienzo Konva — sin aviso, el click parecía no hacer
+  // nada mientras el stage se redibuja. Primero se pinta el estado ocupado
+  // (spinner + stepper bloqueado) y recién en el próximo frame se aplica el
+  // cambio en el store.
+  const [pendingDir, setPendingDir] = useState<1 | -1 | null>(null);
+
   const step = (dir: 1 | -1) => {
+    if (pendingDir !== null) return;
     const next = value + dir;
     if (next < clampedMin || next > clampedMax) return;
-    store.getState().setPhotoSlotsPerUnit(next, { facesPerUnit, max: clampedMax, sizeCm });
+    setPendingDir(dir);
   };
+
+  useEffect(() => {
+    if (pendingDir === null) return;
+    const raf = requestAnimationFrame(() => {
+      store
+        .getState()
+        .setPhotoSlotsPerUnit(value + pendingDir, { facesPerUnit, max: clampedMax, sizeCm });
+      setPendingDir(null);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [pendingDir, store, value, facesPerUnit, clampedMax, sizeCm]);
+
+  const busy = pendingDir !== null;
 
   return (
     <div className="border-brand-purple/10 bg-brand-cream/50 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t px-4 py-2">
@@ -79,12 +102,13 @@ export function StudioPhotoCountControl({
       <div
         role="group"
         aria-label={texts.lienzo.photoCountGroupAria}
+        aria-busy={busy}
         className="ring-brand-purple/15 inline-flex items-center rounded-lg bg-white ring-1"
       >
         <button
           type="button"
           aria-label={texts.lienzo.photoCountMinusAria}
-          disabled={!canDecrease}
+          disabled={!canDecrease || busy}
           onClick={() => step(-1)}
           className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-9 w-9 cursor-pointer items-center justify-center rounded-l-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
         >
@@ -92,14 +116,18 @@ export function StudioPhotoCountControl({
         </button>
         <span
           aria-live="polite"
-          className="text-brand-purple-dark min-w-14 text-center text-sm font-bold tabular-nums"
+          className="text-brand-purple-dark flex min-w-14 items-center justify-center text-center text-sm font-bold tabular-nums"
         >
-          {value} {value === 1 ? texts.lienzo.photoCountOne : texts.lienzo.photoCountMany}
+          {busy ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            `${value} ${value === 1 ? texts.lienzo.photoCountOne : texts.lienzo.photoCountMany}`
+          )}
         </span>
         <button
           type="button"
           aria-label={texts.lienzo.photoCountPlusAria}
-          disabled={!canIncrease}
+          disabled={!canIncrease || busy}
           onClick={() => step(1)}
           className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-9 w-9 cursor-pointer items-center justify-center rounded-r-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
         >

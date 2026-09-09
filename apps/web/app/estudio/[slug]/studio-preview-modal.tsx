@@ -3,9 +3,10 @@
 /*
  * StudioPreviewModal — Vista previa final pre-carrito (Lucy 2026-05-21).
  *
- * Después de click "¡Listo!" en el Estudio, mostramos al cliente cómo va
- * a verse su pedido (grid de los N imanes compositado) ANTES de subir a
- * Storage + agregar al carrito.
+ * Después de click «Vista previa» en el Estudio (botón renombrado desde
+ * «¡Listo!» — Lucy 2026-09-09), mostramos al cliente cómo va a verse su
+ * pedido (grid de los N imanes compositado) ANTES de subir a Storage +
+ * agregar al carrito.
  *
  * Beneficio UX:
  *   - Cliente confirma visualmente sin commit.
@@ -307,13 +308,18 @@ export function StudioPreviewModal({
 
         {/* Acciones */}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+          {/* Lucy 2026-09-09 — "Volver a editar" se vuelve BOTÓN SÓLIDO morado de
+              marca (mismo lenguaje del botón «Salir» del toolbar): el outline suave
+              se leía como texto secundario y el cliente no encontraba la salida de
+              la modal. Animación sutil del design system: transition-all + sombra
+              que crece en hover + leve compresión al presionar (active:scale). */}
           <Button
             type="button"
             variant="outline"
             size="lg"
             onClick={onEdit}
             disabled={isFinalizing}
-            className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5"
+            className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 border-transparent text-white shadow-md transition-all hover:shadow-lg active:scale-[0.98]"
           >
             <Pencil className="mr-1.5 h-4 w-4" />
             {texts.exportar.volverEditar}
@@ -323,6 +329,7 @@ export function StudioPreviewModal({
             size="lg"
             onClick={() => onConfirm(copies)}
             disabled={isFinalizing}
+            aria-busy={isFinalizing}
             className="bg-gradient-brand text-white hover:brightness-110"
           >
             {isFinalizing ? (

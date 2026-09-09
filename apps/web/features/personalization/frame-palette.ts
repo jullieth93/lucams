@@ -239,6 +239,46 @@ export function stripPhotoRect(
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// Ola 24 (Lucy 2026-09-09) — RESPALDO NEUTRO de la ventana de foto ("el marco es
+// MARCO, no fondo"), UNA sola función de decisión compartida por las TRES
+// superficies: grilla del Estudio (studio-slot), preview del modal de edición
+// (studio-photo-preview) y producción (production-render-canvas) → la regla no
+// puede divergir (WYSIWYG por construcción).
+//
+// Regla: con tarjeta teñida por borderColor, el hueco que deja la foto al alejarla
+// (zoom-out) o moverla se rellena con el color de la tarjeta SIN teñir (la capa
+// background), NO con borderColor → el ancho del marco/canaleta queda CONSTANTE
+// bajo cualquier zoom/pan. Aplica a:
+//   - frame-card (Polaroid Clásica) y full-bleed (Cuadrados/tarjeta simple).
+//   - Polaroid Instagram CON borde (Ola 24 — antes excluida por "constante por
+//     construcción", pero con tarjeta oscura la ventana se inundaba del color del
+//     borde al alejar la foto: parecía fondo, no marco).
+// NO aplica a:
+//   - Instagram SIN BORDE (foto a sangre total): ahí el hueco muestra el color de
+//     tarjeta, que en ese modo ES el fondo del diseño.
+//   - heart/circle (la silueta troquelada manda) y diseños sin borderColor.
+// ──────────────────────────────────────────────────────────────────────────
+
+/** Color de respaldo de la ventana de foto, o null si la ventana no lleva respaldo. */
+export function photoBackingHexFor(opts: {
+  borderColor: string | null | undefined;
+  /** Hex de la capa background de la plantilla (la tarjeta SIN teñir). */
+  backgroundHex: string;
+  hasFrameCard: boolean;
+  fullBleed: boolean;
+  isIg: boolean;
+  /** Instagram en modo SIN BORDE (placeholder a sangre total — isInstagramNoBorder). */
+  igNoBorder: boolean;
+  /** heart/circle: la foto cubre el stage completo recortado a la silueta. */
+  useFullStage?: boolean;
+}): string | null {
+  const { borderColor, backgroundHex, hasFrameCard, fullBleed, isIg, igNoBorder } = opts;
+  if (!borderColor || opts.useFullStage) return null;
+  if (isIg) return igNoBorder ? null : backgroundHex;
+  return hasFrameCard || fullBleed ? backgroundHex : null;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // Ola 4 (Lucy 2026-07-23) — Polaroid Instagram: fondo SOLO blanco/negro con
 // contraste automático de textos (fondo blanco → textos negros; fondo negro →
 // textos blancos). El chrome (SVG) también tiene variante oscura.

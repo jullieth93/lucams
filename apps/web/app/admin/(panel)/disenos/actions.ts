@@ -27,8 +27,9 @@ export async function uploadGalleryImageAction(formData: FormData): Promise<Acti
   const name = String(formData.get("name") ?? "").trim();
   const file = formData.get("file");
   const fileB = formData.get("fileB");
-  // El tag es válido solo si un producto ACTIVO lo declara como galleryTag
-  // (misma fuente que el selector del admin — nada hardcodeado, no se desalinea).
+  // El tag es válido solo si un producto ACTIVO lo resuelve como su tag de
+  // galería (galleryTag explícito o, sin él, su slug — default-on 2026-09-09;
+  // misma fuente que el selector del admin — nada hardcodeado, no se desalinea).
   const tagOptions = await listGalleryTagOptions();
   if (!tagOptions.some((o) => o.tag === tag)) return { error: "Producto inválido." };
   if (name.length < 2 || name.length > 60)

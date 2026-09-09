@@ -7,6 +7,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { parsePhotoProductConfig } from "./schemas";
+import { resolvePersonalizationSurface } from "./surface";
 
 export type GalleryImage = {
   id: string;
@@ -49,7 +50,11 @@ export async function getGalleryImageById(
 // ──────────────────────── Admin ────────────────────────
 
 export type GalleryTagOption = {
-  /** galleryTag declarado en el personalizationSchema del producto (convención: su slug). */
+  /**
+   * galleryTag declarado en el personalizationSchema del producto o, si no lo
+   * declara, su slug (default-on 2026-09-09: el Estudio aplica el mismo fallback,
+   * ver app/estudio/[slug]/page.tsx).
+   */
   tag: string;
   /** Nombre del producto (label del selector en el admin). */
   label: string;
@@ -58,18 +63,21 @@ export type GalleryTagOption = {
 };
 
 /**
- * Tags de galería disponibles = productos ACTIVOS que declaran
- * `personalizationSchema.galleryTag` (el Estudio lee la galería con ese exacto tag).
+ * Tags de galería disponibles = TODO producto ACTIVO cuya superficie del Estudio
+ * es la de FOTO (los editores de letras/nombre no muestran galería). El tag es el
+ * `personalizationSchema.galleryTag` explícito si existe; si no, el SLUG del
+ * producto (default-on 2026-09-09, owner: la galería deja de ser opt-in por
+ * producto — el Estudio usa ese mismo fallback, así que lo que el admin sube bajo
+ * el slug aparece en el editor del producto sin tocar código ni el schema).
  * ÚNICA fuente de verdad compartida por el selector del admin y la validación del
  * upload: antes ambos lados tenían listas hardcodeadas y desalineadas
  * ("separadores"/"fotoimanes" vs "separadores-magneticos") → subir separadores
  * siempre fallaba con "Producto inválido" y la cara B era inalcanzable.
- * Si un producto nuevo declara galleryTag, aparece acá solo — sin tocar código.
  */
 export async function listGalleryTagOptions(): Promise<GalleryTagOption[]> {
   const products = await prisma.product.findMany({
     where: { isActive: true, deletedAt: null },
-    select: { name: true, personalizationSchema: true },
+    select: { name: true, slug: true, personalizationKind: true, personalizationSchema: true },
     orderBy: { name: "asc" },
   });
   const seen = new Set<string>();
@@ -78,7 +86,17 @@ export async function listGalleryTagOptions(): Promise<GalleryTagOption[]> {
     // galleryTag NO está en PhotoProductConfigSchema (Zod lo strippea): se lee
     // directo del JSON, igual que app/estudio/[slug]/page.tsx.
     const schema = p.personalizationSchema as { galleryTag?: unknown } | null;
-    const tag = typeof schema?.galleryTag === "string" ? schema.galleryTag : null;
+    const explicit = typeof schema?.galleryTag === "string" ? schema.galleryTag : null;
+    // Sin galleryTag explícito: solo productos con superficie de FOTO (el Estudio
+    // aplica el fallback al slug solo en esa ruta — admin↔cliente alineados).
+    const tag =
+      explicit ??
+      (resolvePersonalizationSurface(
+        p.personalizationKind,
+        p.personalizationSchema as Record<string, unknown> | null,
+      ).surface === "photo"
+        ? p.slug
+        : null);
     if (!tag || seen.has(tag)) continue;
     seen.add(tag);
     options.push({

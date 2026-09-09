@@ -3,10 +3,10 @@
 /*
  * Test de la VISTA PREVIA pre-carrito del editor de sets de letras (Lucy 2026-07-25).
  *
- * El contrato que blinda: pulsar "¡Listo!" NO puede crear nada — ni diseño, ni archivo subido, ni
- * línea de carrito. Primero se muestra "Así se verá tu pedido" y solo la confirmación dispara la
- * cadena crear → finalizar → agregar. Es la promesa WYSIWYG de la tienda: el cliente aprueba la
- * imagen ANTES de que exista un pedido.
+ * El contrato que blinda: pulsar "Vista previa" (antes "¡Listo!", renombrado 2026-09-09) NO puede
+ * crear nada — ni diseño, ni archivo subido, ni línea de carrito. Primero se muestra "Así se verá
+ * tu pedido" y solo la confirmación dispara la cadena crear → finalizar → agregar. Es la promesa
+ * WYSIWYG de la tienda: el cliente aprueba la imagen ANTES de que exista un pedido.
  *
  * jsdom no trae canvas 2D ni toBlob → se stubbean (el dibujo real de la lámina lo cubren los tests
  * puros de letter-tile-textures). Las server actions se mockean: acá se verifica el ORDEN, no el
@@ -95,14 +95,14 @@ function renderEditor() {
   );
 }
 
-/** Pulsa "¡Listo!" y espera a que la vista previa esté en pantalla. */
+/** Pulsa "Vista previa" (antes "¡Listo!") y espera a que la vista previa esté en pantalla. */
 async function openPreview() {
-  fireEvent.click(screen.getByRole("button", { name: /¡Listo!/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Vista previa/ }));
   await screen.findByText("Así se verá tu pedido");
 }
 
 describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)", () => {
-  it("'¡Listo!' abre la vista previa sin crear diseño ni tocar el carrito", async () => {
+  it("'Vista previa' abre la vista previa sin crear diseño ni tocar el carrito", async () => {
     renderEditor();
     await openPreview();
 

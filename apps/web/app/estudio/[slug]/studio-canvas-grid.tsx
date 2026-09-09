@@ -51,6 +51,7 @@ import {
   slotHeightCapByCount,
   stepStageZoom,
   BP_MOBILE,
+  STAGE_ZOOM_MIN,
 } from "./studio-canvas-grid-size";
 
 // ADR-063 T5 — lazy-mount de stages Konva. Cada StudioSlot monta un Konva Stage (varios <canvas>
@@ -406,13 +407,15 @@ export function StudioCanvasGrid({
   // Ola 22 — tope y valor efectivo del zoom de lienzo. El ancho del contenido a
   // zoom 1 es el que el grid ya ocuparía sin zoom; acercar nunca debe desbordar
   // el contenedor en horizontal (el scroll vertical de página absorbe el extra).
+  // Lucy 2026-09-09 — el zoom también ALEJA (piso STAGE_ZOOM_MIN): el valor
+  // efectivo se clampa por ambos lados (alejar jamás desborda el ancho).
   // Modo agrupado (separadores): ancho de tarjeta-unidad = 2 caras + paddings
   // (mismos 16+8 de la fórmula byWidth de arriba).
   const contentWidthBase = grouped
     ? unitCols * (slotDisplaySize * 2 + 16 + 8) + layout.gap * (unitCols - 1)
     : slotDisplaySize * layout.cols + layout.gap * (layout.cols - 1);
   const stageZoomCap = computeStageZoomCap(containerWidth, contentWidthBase);
-  const stageZoom = Math.min(stageZoomRaw, stageZoomCap);
+  const stageZoom = Math.max(STAGE_ZOOM_MIN, Math.min(stageZoomRaw, stageZoomCap));
   const zoomedSlotW = Math.round(slotDisplaySize * stageZoom);
   const zoomedSlotH = Math.round(slotHeight * stageZoom);
 
@@ -633,57 +636,59 @@ export function StudioCanvasGrid({
       {/* Ola 22 (Lucy 2026-09-08) — zoom de LIENZO: acercar/alejar TODA la plantilla
         para ver y editar detalles finos (textos chicos del chrome, avatar, hashtags).
         Es display-only: la exportación usa el tamaño LÓGICO del stage (pixelRatio
-        relativo), así el PNG de imprenta sale igual con cualquier zoom. Solo se
-        ofrece cuando hay margen real para acercar (tope = ancho del contenedor);
-        si el grid ya llena el ancho, el detalle fino sigue resolviéndose con el
-        zoom de FOTO por gestos (rueda/pellizco sobre la foto). */}
-      {stageZoomCap > 1.001 && (
-        <div
-          className="absolute top-full right-0 z-20 mt-2 flex items-center gap-0.5 rounded-full bg-white/95 px-1 py-1 shadow-md ring-1 ring-black/5 backdrop-blur-sm"
-          role="group"
-          aria-label={fillStudioText(texts.lienzo.stageZoomTitle, {
-            pct: Math.round(stageZoom * 100),
-          })}
+        relativo), así el PNG de imprenta sale igual con cualquier zoom.
+        Lucy 2026-09-09 — el control se MUEVE a la esquina SUPERIOR derecha del área
+        del lienzo (antes flotaba bajo el grid) y además ALEJA hasta STAGE_ZOOM_MIN:
+        como alejar siempre es posible, el control ya no se esconde cuando no hay
+        margen para acercar. Flota sobre la esquina del grid con fondo casi opaco —
+        no choca ni con el toolbar sticky ni con la fila de pills 3D/Ideas, que vive
+        arriba con su propio margen (mb-6/lg:mb-8). */}
+      <div
+        className="absolute top-2 right-2 z-20 flex items-center gap-0.5 rounded-full bg-white/95 px-1 py-1 shadow-md ring-1 ring-black/5 backdrop-blur-sm"
+        role="group"
+        aria-label={fillStudioText(texts.lienzo.stageZoomTitle, {
+          pct: Math.round(stageZoom * 100),
+        })}
+      >
+        <button
+          type="button"
+          onClick={() => setStageZoomRaw((z) => stepStageZoom(z, -1, stageZoomCap))}
+          disabled={stageZoom <= STAGE_ZOOM_MIN + 0.001}
+          aria-label={texts.lienzo.stageZoomOutAria}
+          title={texts.lienzo.stageZoomOutAria}
+          className="text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent"
         >
+          <Minus className="h-4 w-4" aria-hidden />
+        </button>
+        <span
+          className="text-brand-purple-dark w-11 text-center text-xs font-bold tabular-nums"
+          aria-hidden
+        >
+          {Math.round(stageZoom * 100)}%
+        </span>
+        <button
+          type="button"
+          onClick={() => setStageZoomRaw((z) => stepStageZoom(z, 1, stageZoomCap))}
+          disabled={stageZoom >= stageZoomCap - 0.001}
+          aria-label={texts.lienzo.stageZoomInAria}
+          title={texts.lienzo.stageZoomInAria}
+          className="text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          <Plus className="h-4 w-4" aria-hidden />
+        </button>
+        {/* Reset disponible tanto alejado como acercado (≠ 100%). */}
+        {Math.abs(stageZoom - 1) > 0.001 && (
           <button
             type="button"
-            onClick={() => setStageZoomRaw((z) => stepStageZoom(z, -1, stageZoomCap))}
-            disabled={stageZoom <= 1.001}
-            aria-label={texts.lienzo.stageZoomOutAria}
-            title={texts.lienzo.stageZoomOutAria}
-            className="text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent"
+            onClick={() => setStageZoomRaw(1)}
+            aria-label={texts.lienzo.stageZoomResetAria}
+            title={texts.lienzo.stageZoomResetAria}
+            className="text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
           >
-            <Minus className="h-4 w-4" aria-hidden />
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden />
           </button>
-          <span
-            className="text-brand-purple-dark w-11 text-center text-xs font-bold tabular-nums"
-            aria-hidden
-          >
-            {Math.round(stageZoom * 100)}%
-          </span>
-          <button
-            type="button"
-            onClick={() => setStageZoomRaw((z) => stepStageZoom(z, 1, stageZoomCap))}
-            disabled={stageZoom >= stageZoomCap - 0.001}
-            aria-label={texts.lienzo.stageZoomInAria}
-            title={texts.lienzo.stageZoomInAria}
-            className="text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent"
-          >
-            <Plus className="h-4 w-4" aria-hidden />
-          </button>
-          {stageZoom > 1.001 && (
-            <button
-              type="button"
-              onClick={() => setStageZoomRaw(1)}
-              aria-label={texts.lienzo.stageZoomResetAria}
-              title={texts.lienzo.stageZoomResetAria}
-              className="text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
-            >
-              <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-            </button>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Ola 6 — Modal unificado de edición por slot (tabs Foto/Texto). */}
       <StudioSlotEditModalWrapper

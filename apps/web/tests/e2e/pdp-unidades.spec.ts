@@ -28,6 +28,9 @@ import { PrismaClient } from "@lucams/db";
  *      y separadores (Con imán primero); en polaroid queda preseleccionado
  *      (la variante default N=1 es la Con imán) y elegir Sin imán cambia la
  *      variante del CTA — la elección viaja ?variant= → Estudio → canvasData.
+ *   6. HÍBRIDO tiras (2026-09-09, owner): DOS selectores — "Fotos por tira"
+ *      (composición 3/4, photoSlots relabelado) + "Unidades" (stepper de
+ *      copias 1..99 → ?copies=N junto al ?variant= del CTA).
  */
 
 const prisma = new PrismaClient();
@@ -216,22 +219,48 @@ test.describe("regla 2026-09-08b — 'Unidades' en TODA PDP (un concepto, un lab
     expect(hrefSin).not.toBe(hrefCon);
   });
 
-  test("tiras y separadores: «¿Con imán?» visible junto a «Unidades» (Con imán primero)", async ({
+  test("separadores: «¿Con imán?» visible junto a «Unidades» (pack size; Con imán primero)", async ({
     page,
   }) => {
-    test.skip(
-      !active.get("tiras-magneticas-fotos") || !active.get("separadores-magneticos"),
-      "tiras o separadores no activos en la DB",
-    );
-    for (const slug of ["tiras-magneticas-fotos", "separadores-magneticos"] as const) {
-      await page.goto(`/producto/${slug}`, { waitUntil: "domcontentloaded" });
-      await dismissCookies(page);
+    test.skip(!active.get("separadores-magneticos"), "separadores-magneticos no activo en la DB");
+    await page.goto("/producto/separadores-magneticos", { waitUntil: "domcontentloaded" });
+    await dismissCookies(page);
 
-      const unidades = page.getByRole("group", { name: "Unidades" });
-      await expect(unidades, `${slug}: falta el grupo Unidades`).toBeVisible({ timeout: 15_000 });
-      const iman = page.getByRole("group", { name: "¿Con imán?" });
-      await expect(iman, `${slug}: falta el grupo ¿Con imán?`).toBeVisible();
-      await expect(iman.getByRole("button").first()).toHaveText(/Con imán/);
-    }
+    const unidades = page.getByRole("group", { name: "Unidades" });
+    await expect(unidades).toBeVisible({ timeout: 15_000 });
+    const iman = page.getByRole("group", { name: "¿Con imán?" });
+    await expect(iman).toBeVisible();
+    await expect(iman.getByRole("button").first()).toHaveText(/Con imán/);
+  });
+
+  test("tiras (híbrido 2026-09-09): «Fotos por tira» (composición) + «Unidades» (copias) + «¿Con imán?»", async ({
+    page,
+  }) => {
+    test.skip(!active.get("tiras-magneticas-fotos"), "tiras-magneticas-fotos no activo en la DB");
+    await page.goto("/producto/tiras-magneticas-fotos", { waitUntil: "domcontentloaded" });
+    await dismissCookies(page);
+
+    // Dos conceptos, dos labels: la composición YA NO se llama "Unidades".
+    const fotosPorTira = page.getByRole("group", { name: "Fotos por tira" });
+    await expect(fotosPorTira).toBeVisible({ timeout: 15_000 });
+    await expect(fotosPorTira.getByText("3 fotos")).toBeVisible();
+    await expect(fotosPorTira.getByText("4 fotos")).toBeVisible();
+
+    // "Unidades" = stepper de copias (1..99) → viaja como ?copies=N al Estudio.
+    const unidades = page.getByRole("group", { name: "Unidades" });
+    await expect(unidades).toHaveCount(1);
+    await expect(unidades.getByLabel("Aumentar unidades")).toBeVisible();
+
+    const iman = page.getByRole("group", { name: "¿Con imán?" });
+    await expect(iman).toBeVisible();
+    await expect(iman.getByRole("button").first()).toHaveText(/Con imán/);
+
+    // Con la composición elegida, el CTA emite variant + copies juntos.
+    await fotosPorTira.getByRole("button", { name: "3 fotos" }).click();
+    const cta = page.getByRole("link", { name: /Personalizar producto/i });
+    await expect(cta).toBeVisible();
+    expect((await cta.getAttribute("href")) ?? "").not.toContain("copies=");
+    await unidades.getByLabel("Aumentar unidades").click();
+    await expect(cta).toHaveAttribute("href", /copies=2/);
   });
 });
