@@ -13,6 +13,17 @@
 
 ## Resumen actual
 
+**🛒 2026-09-08 — REGLA GLOBAL: la PDP ya NO muestra el stepper de copias "Unidades" (acordado con
+Lucy, aplica a TODAS las categorías).** Las copias se eligen al final del Estudio (stepper "Copias"
+de la modal de confirmación, ya existente) o en el carrito (`QtyControls` +/−, ya existente). En la
+PDP: ① compra directa manda `qty=1` fijo (hidden input; `addToCartAction` también defaultea a 1) y
+② el CTA al Estudio ya NO emite `?copies=N` (el Estudio sigue soportándolo como deep-link manual).
+Código muerto retirado: `copies-qty-input.tsx` (+ su test) y el estado `copies`/`setCopies` del
+`SelectedVariantProvider`. Las dimensiones de variante (Cantidad/Fotos/Tamaño) siguen en la PDP.
+**② Galería del PDP:** la tira de miniaturas pasó de `gap-2` pelado sobre crema a `gap-3` + tinte
+`bg-brand-purple/5` con `rounded-xl p-3`, para que la separación entre thumbs se lea como espacio
+(hero sin cambios). Gates: tests focales 55/55, tsc/eslint/prettier limpios.
+
 **🧲 SESIÓN ESTUDIO 2026-09-05 — SMOKE EN VIVO PARCIAL + 2 TAREAS DEL ESTUDIO IMPLEMENTADAS (en
 `develop`, sin desplegar aún).** ① Smoke post-auditoría: búsqueda en vivo medida con navegador real
 (~0.8s caliente, resultados correctos) y **backup de la mañana VERDE** (run 33962842872: pg_dump 48s +
@@ -91,8 +102,9 @@ photoSlots:3, aspectRatio:"1:1"}`, price 1900000; ② reactivar `FI-TIRA-4FOTOS`
 quantity:1, photoSlots:4, aspectRatio:"3:4"}`, price 2400000. Verificar con SELECT y QA en STG
 (PDP→Estudio→3/4 slots). PRD: solo SELECT de verificación. Divergencias menores STG detectadas
 (decidir con Lucy, no romper): separadores-magneticos usa `sizeCm:"6x2"` ASCII (cambiar a "6×2" rompe
-matching con diseños viejos — evaluar) y el schema de tiras trae `frameOptions` en STG/PRD ausente en
-LOCAL.
+matching con diseños viejos — evaluar) y el schema de tiras trae `frameOptions` en STG/PRD.
+(2026-09-08: LOCAL ya tiene `frameOptions` en tiras — verificado por SELECT directo; la nota
+"ausente en LOCAL" quedó desactualizada y el toggle "Borde de foto" del Estudio ya aparece en local.)
 
 **3. Fotoimanes Polaroid (marco Instagram):**
 
@@ -2802,6 +2814,27 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-09-08 — PDP sin stepper de copias (regla global) + separación visible en galería
+
+- **Regla (acordada con la dueña del producto):** la PDP nunca muestra el stepper "Unidades" de
+  copias, en ninguna categoría — ni en compra directa ni en personalizables. Las copias se eligen
+  ① al final del Estudio (stepper "Copias" de `studio-preview-modal.tsx`, ya existente) y ② en el
+  carrito (`QtyControls` de `app/carrito/page.tsx`, ya existente — no se duplicó nada).
+- **Cambios:** `page.tsx` ya no renderiza `<CopiesQtyInput>` en ninguna rama; la compra directa
+  manda `<input type="hidden" name="qty" value={1}>` (contrato explícito; `addToCartAction` ya
+  defaulteaba a 1). `variant-actions.tsx`: fuera el estado `copies`/`setCopies` del Context y el
+  `?copies=N` del `EstudioCtaLink` — el Estudio conserva el parseo acotado 1..99 del parámetro
+  (deep-link manual; sin él arranca en 1). Eliminados `copies-qty-input.tsx` y su test; comentarios
+  actualizados en `variant-selector(.test).tsx`, `variant-schemas.ts`, estudio `page.tsx` y
+  `studio-preview-modal(.test).tsx`. Las dimensiones de variante (Cantidad pack / Fotos / Tamaño)
+  NO se tocan: con el stepper de copias fuera de la ficha ya no hay redundancia visual en ningún
+  producto (`PDP_HIDDEN_DIMENSION_KEYS` sigue igual).
+- **Galería (`product-gallery.tsx`):** tira de miniaturas de `grid-cols-5 gap-2` → `gap-3` con
+  `bg-brand-purple/5 rounded-xl p-3`: los gutters leen como espacio dedicado en paleta crema/morada.
+  El hero (gradiente turquoise/cream/pink) quedó intacto.
+- **Verificación:** vitest focal 55/55 (`app/producto/[slug]` + `studio-preview-modal`), `tsc
+--noEmit` limpio, `eslint --max-warnings 0` limpio, prettier OK. Sin commit (instrucción).
 
 ### 2026-09-08 — RELEASE f88aeef (ítems 1-6 + cobertura) + sync catálogo STG→PRD (Lucy: "STG es fuente de verdad")
 
