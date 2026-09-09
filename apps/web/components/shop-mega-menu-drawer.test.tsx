@@ -43,6 +43,7 @@ const TEXTS: MegaMenuTexts = {
   viewAllMobile: "Ver todo el catálogo",
   accountTitle: "Tu cuenta",
   accountMobile: "Mi cuenta",
+  admin: "Panel admin",
   login: "Ingresar",
   signup: "Crear cuenta",
   // Solo algunas ocasiones tienen label del CMS → el resto cae al fallback.

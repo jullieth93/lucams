@@ -52,6 +52,7 @@ export type MegaMenuTexts = {
   viewAllMobile: string;
   accountTitle: string;
   accountMobile: string;
+  admin: string;
   login: string;
   signup: string;
   occasions: Record<string, string>;
@@ -240,16 +241,18 @@ export function ShopMegaMenu({
                 {texts.accountTitle}
               </p>
               <div className="flex flex-col">
-                {/* Acceso admin en móvil (2026-09-07): el chip "Panel admin" del
-                    header es sm:inline-flex → en el teléfono no había forma de
-                    entrar al admin. Primer ítem de la sección, solo si es admin. */}
+                {/* Entrada admin del drawer: el chip "Panel admin" del header
+                    solo existe en desktop (sm+), así que en móvil la entrada
+                    vive acá, como primer ítem de "Tu cuenta" y con el mismo
+                    estilo chip brand-yellow. Label vía CMS (texts.admin =
+                    header.menu.admin). Solo admins. */}
                 {isAdmin && (
                   <Link
                     href="/admin/dashboard"
                     onClick={() => setMobileOpen(false)}
-                    className="text-brand-purple-dark hover:bg-brand-purple/5 rounded-md px-2 py-2 text-sm font-medium"
+                    className="bg-brand-yellow/30 text-brand-purple-dark hover:bg-brand-yellow/50 mb-1 inline-flex items-center rounded-md px-2.5 py-1.5 text-[11px] font-semibold tracking-wider uppercase transition-colors"
                   >
-                    Panel admin
+                    {texts.admin}
                   </Link>
                 )}
                 <Link

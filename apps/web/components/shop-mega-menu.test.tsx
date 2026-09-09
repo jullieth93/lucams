@@ -5,10 +5,12 @@
  * Mismo estilo/setup que global-search.test.tsx: queries ACCESIBLES,
  * cleanup manual (globals:false) y mocks de las deps de Next.
  *
- * Foco (2026-09-07): el chip "Panel admin" del header es `hidden sm:inline-flex`,
- * así que en móvil no había forma de entrar al admin. El drawer (Radix Sheet)
- * recibe `isAdmin` y, cuando es true, muestra el link "Panel admin" como primer
- * ítem de la sección "Tu cuenta".
+ * Foco (2026-09-07/08): el chip "Panel admin" del header es `hidden sm:inline-flex`,
+ * así que en móvil la entrada vive en el drawer (Radix Sheet): recibe `isAdmin`
+ * y, cuando es true, muestra el link como primer ítem de la sección "Tu cuenta",
+ * con estilo chip brand-yellow (mismo peso visual que el desktop). El label sale
+ * de texts.admin (CMS `header.menu.admin`), no está quemado — un cambio en el
+ * CMS se refleja en desktop y móvil a la vez.
  *
  * El drawer monta su contenido en un PORTAL (document.body) → las queries van
  * por screen, no por el container del render. El trigger del menú móvil es el
@@ -54,6 +56,7 @@ const TEXTS: MegaMenuTexts = {
   viewAllMobile: "Ver todo el catálogo",
   accountTitle: "Tu cuenta",
   accountMobile: "Mi cuenta",
+  admin: "Panel admin",
   login: "Ingresar",
   signup: "Crear cuenta",
   occasions: {},
@@ -98,6 +101,22 @@ describe("ShopMegaMenu — acceso admin en el drawer móvil (2026-09-07)", () =>
     // contenedor de la sección; dentro de él, el primer link del bloque).
     const section = screen.getByText("Tu cuenta").parentElement!;
     expect(section.querySelector("a")?.textContent).toBe("Panel admin");
+  });
+
+  it("el label del link sale del CMS (texts.admin), no está quemado", async () => {
+    render(
+      <ShopMegaMenu
+        tree={[makeCategory()]}
+        isLoggedIn
+        isAdmin
+        texts={{ ...TEXTS, admin: "Panel de administración" }}
+      />,
+    );
+    await openDrawer();
+
+    const link = screen.getByRole("link", { name: "Panel de administración" });
+    expect(link).toHaveAttribute("href", "/admin/dashboard");
+    expect(screen.queryByRole("link", { name: "Panel admin" })).not.toBeInTheDocument();
   });
 
   it("con isAdmin=false NO aparece el link 'Panel admin'", async () => {
