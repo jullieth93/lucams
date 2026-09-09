@@ -179,6 +179,34 @@ describe("CanvasDataV2Schema — calendarFont (Lucy 2026-09-07, selector de tipo
   });
 });
 
+describe("CanvasDataV2Schema — magnet (Lucy 2026-09-08, «¿Con imán?» en los packs de foto)", () => {
+  const base = {
+    version: 2 as const,
+    unitTemplate: {
+      version: 1 as const,
+      stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
+      layers: [{ id: "bg", type: "background", color: "#FFFFFF" }],
+    },
+    slotCount: 1,
+    slots: [{ slotIndex: 0, assetId: null, assetUrl: null }],
+    gridLayout: { cols: 1, rows: 1, gap: 8 },
+  };
+
+  it("acepta true y false y los conserva en el parse (sobrevive el auto-save)", () => {
+    expect(CanvasDataV2Schema.parse({ ...base, magnet: true }).magnet).toBe(true);
+    expect(CanvasDataV2Schema.parse({ ...base, magnet: false }).magnet).toBe(false);
+  });
+
+  it("retrocompatible: canvasData sin la clave sigue siendo válido (ausente = legacy)", () => {
+    expect(CanvasDataV2Schema.parse(base).magnet).toBeUndefined();
+  });
+
+  it("rechaza valores no booleanos (Zod nunca los persiste)", () => {
+    expect(CanvasDataV2Schema.safeParse({ ...base, magnet: "si" }).success).toBe(false);
+    expect(CanvasDataV2Schema.safeParse({ ...base, magnet: 1 }).success).toBe(false);
+  });
+});
+
 describe("UploadAssetMetadataSchema — consentimiento de derechos de imagen (Ley 1581 · plan de producción)", () => {
   const base = { mimeType: "image/jpeg" as const, sizeBytes: 1000 };
 

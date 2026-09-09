@@ -141,10 +141,30 @@ export function simpleCardPhotoRect(
 // ──────────────────────────────────────────────────────────────────────────
 // Ola 4 (Lucy 2026-07-23) — TIRA photobooth: UNA pieza continua.
 //
-// La plantilla de celda (gridCols:1 + gridGap:0) trae la foto a sangre vertical
-// (y=0) para que las fotos de celdas vecinas SE TOQUEN (gap 0 real). El borde
-// EXTERIOR de la tira (arriba de la 1ª foto, abajo de la última) no puede vivir
-// en la plantilla (es uniforme por celda) → lo aplica el código por posición.
+// La plantilla de celda (gridCols:1 + gridGap:0) apila las celdas sin aire CSS
+// entre ellas (el grid del Estudio usa gap=0 → la tira se lee como una sola
+// pieza). El borde EXTERIOR de la tira (arriba de la 1ª foto, abajo de la
+// última) no puede vivir en la plantilla (es uniforme por celda) → lo aplica
+// el código por posición.
+//
+// Regla 2026-09-08 (Lucy, validado en local) — la tira FÍSICA tiene canales
+// visibles del color del marco ENTRE foto y foto; el render las tenía pegadas
+// (a sangre vertical). La separación se dibuja DENTRO de cada celda
+// (stripPhotoRect: media canaleta arriba y abajo de cada foto, salvo el borde
+// exterior que conserva su inset mayor) → preview (Konva, studio-slot) y
+// producción (production-render-canvas) consumen la MISMA matemática (WYSIWYG:
+// lo que se ve es lo que se imprime). No se usa gridGap del template: ese gap
+// es solo CSS entre celdas del Estudio y NO entraría al PNG de producción (que
+// renderiza celda por celda) — rompería el WYSIWYG.
+//
+// Ola 23 (Lucy 2026-09-08) — modo SIN BORDE de la tira: el toggle "Borde de
+// foto → Sin borde" de la toolbar del Estudio reescribe el image-placeholder a
+// SANGRE TOTAL de la celda (x=0, ancho = stage — igual que el modo sin-borde de
+// la Instagram y la sangre total de los Cuadrados). En ese modo el marco
+// EXTERIOR desaparece (las fotos llegan a sangre hasta los bordes externos de
+// la tira) pero las CANALETAS entre fotos se conservan: siguen separando foto
+// de foto con el color de la tarjeta, como en la tira física. El rect viaja en
+// canvasData → producción detecta el mismo modo por geometría (isStripBorderless).
 // ──────────────────────────────────────────────────────────────────────────
 
 /** ¿La plantilla es una celda de tira photobooth? (marcadores gridCols=1 + gridGap=0). */
@@ -171,18 +191,50 @@ export function stripOuterInset(stage: { width: number; height: number }): numbe
 }
 
 /**
- * Aplica el borde EXTERIOR de la tira a la ventana de foto de una celda:
- * first/single → inset arriba; last/single → inset abajo; middle → fotos se tocan.
+ * Regla 2026-09-08 — media canaleta entre fotos consecutivas de la tira (px del
+ * stage), del color del marco (la capa frame-card asoma donde la foto se inserta).
+ * ≈0.7 mm por cara a 300 DPI sobre 6.5 cm de ancho (390 px → 8 px) → la canaleta
+ * visible entre dos fotos es 2× (16 px ≈ 1.3 mm), como en la tira física.
+ */
+export function stripGutterPx(stage: { width: number; height: number }): number {
+  return Math.max(4, Math.round(stage.width * 0.02));
+}
+
+/**
+ * Ola 23 — ¿la celda de la tira está en modo SIN BORDE? Se detecta por el rect del
+ * image-placeholder: si cubre TODO el ancho del stage (el toggle "Sin borde" lo
+ * reescribió a sangre), no hay marco exterior que dibujar — solo las canaletas.
+ */
+export function isStripBorderless(
+  ph: { x?: number; y?: number; width?: number; height?: number } | undefined,
+  stage: { width: number; height: number },
+): boolean {
+  if (!ph) return false;
+  const x = ph.x ?? 0;
+  return x <= 0 && x + (ph.width ?? 0) >= stage.width;
+}
+
+/**
+ * Ventana de foto de una celda de la tira:
+ *  - first/single → inset del borde EXTERIOR arriba; last/single → abajo.
+ *  - Entre fotos consecutivas → media canaleta (stripGutterPx) arriba y abajo
+ *    de CADA foto: dos medias canaletas vecinas arman la separación visible del
+ *    producto físico (regla 2026-09-08 — antes las fotos se tocaban, gap 0 real).
+ *  - Ola 23 — `borderless` (sin borde): el inset EXTERIOR es 0 (la foto llega a
+ *    sangre hasta los bordes de la tira) pero las canaletas entre fotos se
+ *    conservan intactas.
  * Los lados los maneja la plantilla (ventana con margen lateral uniforme).
  */
 export function stripPhotoRect(
   ph: PhotoRect,
   stage: { width: number; height: number },
   position: StripPosition,
+  opts?: { borderless?: boolean },
 ): PhotoRect {
-  const inset = stripOuterInset(stage);
-  const top = position === "first" || position === "single" ? inset : 0;
-  const bottom = position === "last" || position === "single" ? inset : 0;
+  const inset = opts?.borderless ? 0 : stripOuterInset(stage);
+  const gutter = stripGutterPx(stage);
+  const top = position === "first" || position === "single" ? inset : gutter;
+  const bottom = position === "last" || position === "single" ? inset : gutter;
   return { ...ph, y: ph.y + top, height: Math.max(10, ph.height - top - bottom) };
 }
 

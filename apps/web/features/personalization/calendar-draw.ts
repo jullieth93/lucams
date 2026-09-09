@@ -44,6 +44,10 @@ export interface CalendarDrawCtx {
   textBaseline: CanvasTextBaseline;
   save(): void;
   restore(): void;
+  // Lucy 2026-09-08 — rotación de la foto del mes (Ola 3c llevada al calendario).
+  // Ambos backends los soportan (CanvasRenderingContext2D y SKRSContext2D).
+  translate(x: number, y: number): void;
+  rotate(angle: number): void;
   beginPath(): void;
   rect(x: number, y: number, w: number, h: number): void;
   // Trazado de la esquina redondeada de la foto en layout "split" (ambos backends los
@@ -67,7 +71,15 @@ export interface CalendarDrawCtx {
   ): void;
 }
 
-export type CalendarPhotoTransform = { offsetX: number; offsetY: number; scale: number };
+// Lucy 2026-09-08 — `rotation` (pasos de 90° desde "Ajustar foto" del Estudio): antes el
+// tipo no la declaraba y AMBAS ramas la ignoraban → "Rotar 90°" no hacía nada en el
+// calendario (ni preview ni PNG de producción). Misma matemática que renderSlotCanvas.
+export type CalendarPhotoTransform = {
+  offsetX: number;
+  offsetY: number;
+  scale: number;
+  rotation?: number;
+};
 
 /**
  * Contrato del photoTransform (2026-07-22): los offsets llegan ya en UNIDADES DE LA PÁGINA
@@ -118,6 +130,52 @@ function roundRectPath(
 }
 
 /**
+ * Foto del mes dentro de su ventana (clip + cover + encuadre del cliente).
+ * Lucy 2026-09-08 — soporta `rotation` (pasos de 90°): con 90/270 el cover se
+ * calcula con las dimensiones INTERCAMBIADAS (la foto girada cubre la ventana
+ * sin huecos) y el dibujo rota alrededor del centro ya paneado. Misma matemática
+ * que el nodo Konva del editor y que renderSlotCanvas (WYSIWYG total).
+ */
+function drawCalendarPhoto(
+  ctx: CalendarDrawCtx,
+  photo: DrawableImage,
+  ph: { x: number; y: number; width: number; height: number; cornerRadius?: number },
+  photoTransform: CalendarPhotoTransform | null | undefined,
+  roundedClip: boolean,
+): void {
+  const rot = (((photoTransform?.rotation ?? 0) % 360) + 360) % 360;
+  const swapDims = rot === 90 || rot === 270;
+  const srcW = swapDims ? photo.height : photo.width;
+  const srcH = swapDims ? photo.width : photo.height;
+  const coverBase = Math.max(ph.width / srcW, ph.height / srcH);
+  const eff = Math.max(0.5, Math.min(3, photoTransform?.scale ?? 1));
+  const finalScale = coverBase * eff;
+  const rw = photo.width * finalScale;
+  const rh = photo.height * finalScale;
+  const offX = photoTransform?.offsetX ?? 0;
+  const offY = photoTransform?.offsetY ?? 0;
+  ctx.save();
+  if (roundedClip && (ph.cornerRadius ?? 0) > 0) {
+    roundRectPath(ctx, ph.x, ph.y, ph.width, ph.height, ph.cornerRadius ?? 0);
+  } else {
+    ctx.beginPath();
+    ctx.rect(ph.x, ph.y, ph.width, ph.height);
+  }
+  ctx.clip();
+  const cx = ph.x + ph.width / 2 + offX;
+  const cy = ph.y + ph.height / 2 + offY;
+  if (rot !== 0) {
+    // Rotación alrededor del centro (pan ya aplicado), igual que el nodo Konva.
+    ctx.translate(cx, cy);
+    ctx.rotate((rot * Math.PI) / 180);
+    ctx.drawImage(photo, -rw / 2, -rh / 2, rw, rh);
+  } else {
+    ctx.drawImage(photo, cx - rw / 2, cy - rh / 2, rw, rh);
+  }
+  ctx.restore();
+}
+
+/**
  * Dibuja una página de mes en `ctx` (que debe estar en coords lógicas de CALENDAR_PAGE: 1080×1520).
  * `photo` = imagen decodificada del mes (o null → recuadro suave). `fontsOk` decide si usar las
  * fuentes de marca (Fredoka/Inter) o el fallback sans-serif.
@@ -165,21 +223,7 @@ export function drawCalendarPage(
   const ph = CALENDAR_PHOTO;
   let photoDrawn = false;
   if (photo && photo.width && photo.height) {
-    const coverBase = Math.max(ph.width / photo.width, ph.height / photo.height);
-    const eff = Math.max(0.5, Math.min(3, photoTransform?.scale ?? 1));
-    const finalScale = coverBase * eff;
-    const rw = photo.width * finalScale;
-    const rh = photo.height * finalScale;
-    const offX = photoTransform?.offsetX ?? 0;
-    const offY = photoTransform?.offsetY ?? 0;
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(ph.x, ph.y, ph.width, ph.height);
-    ctx.clip();
-    const cx = ph.x + ph.width / 2 + offX;
-    const cy = ph.y + ph.height / 2 + offY;
-    ctx.drawImage(photo, cx - rw / 2, cy - rh / 2, rw, rh);
-    ctx.restore();
+    drawCalendarPhoto(ctx, photo, ph, photoTransform, false);
     photoDrawn = true;
   }
   if (!photoDrawn) {
@@ -277,20 +321,7 @@ function drawCalendarPageSplit(
   const ph = CALENDAR_PHOTO_SPLIT;
   let photoDrawn = false;
   if (photo && photo.width && photo.height) {
-    const coverBase = Math.max(ph.width / photo.width, ph.height / photo.height);
-    const eff = Math.max(0.5, Math.min(3, photoTransform?.scale ?? 1));
-    const finalScale = coverBase * eff;
-    const rw = photo.width * finalScale;
-    const rh = photo.height * finalScale;
-    const offX = photoTransform?.offsetX ?? 0;
-    const offY = photoTransform?.offsetY ?? 0;
-    ctx.save();
-    roundRectPath(ctx, ph.x, ph.y, ph.width, ph.height, ph.cornerRadius);
-    ctx.clip();
-    const cx = ph.x + ph.width / 2 + offX;
-    const cy = ph.y + ph.height / 2 + offY;
-    ctx.drawImage(photo, cx - rw / 2, cy - rh / 2, rw, rh);
-    ctx.restore();
+    drawCalendarPhoto(ctx, photo, ph, photoTransform, true);
     photoDrawn = true;
   }
   if (!photoDrawn) {

@@ -160,6 +160,10 @@ export const CanvasDataV2Schema = z.object({
   // sobrevivir el auto-save.
   photoSlots: z.number().int().min(1).max(50).optional(),
   sizeCm: z.string().max(40).optional(),
+  // Lucy 2026-09-08 — "¿Con imán?" en los packs de foto: la elección de la PDP
+  // (dimensión `magnet` de la variante) persiste acá para que el carrito la incluya
+  // al resolver la variante server-side. Ausente = legacy → resuelve a Con imán.
+  magnet: z.boolean().optional(),
   // Lucy 2026-09-07 — tipo de letra del título/mes del calendario (selector en el banner
   // del Estudio). Ausente = "fredoka" (retrocompatible con diseños guardados antes de
   // esta ola). Sin catchall en este schema: declararla acá es lo que la hace sobrevivir

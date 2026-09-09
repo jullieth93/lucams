@@ -152,16 +152,46 @@ describe("frame-palette — Ola 4 (cuadrados / tira / instagram)", () => {
     expect(isStripTemplate({})).toBe(false);
   });
 
-  it("stripPhotoRect: el borde exterior solo en first/last; middle se toca", async () => {
-    const { stripPhotoRect, stripOuterInset } = await import("./frame-palette");
+  it("stripPhotoRect: borde exterior en first/last + media canaleta entre fotos (regla 2026-09-08)", async () => {
+    const { stripPhotoRect, stripOuterInset, stripGutterPx } = await import("./frame-palette");
     const stage = { width: 390, height: 400 };
     const inset = stripOuterInset(stage); // 12
     expect(inset).toBe(12);
+    const gutter = stripGutterPx(stage); // 8 (≈0.7mm por cara a 300 DPI sobre 6.5cm)
+    expect(gutter).toBe(8);
     const ph = { x: 12, y: 0, width: 366, height: 400 };
-    expect(stripPhotoRect(ph, stage, "middle")).toEqual(ph);
-    expect(stripPhotoRect(ph, stage, "first")).toEqual({ ...ph, y: 12, height: 388 });
-    expect(stripPhotoRect(ph, stage, "last")).toEqual({ ...ph, y: 0, height: 388 });
+    // Middle: media canaleta arriba y abajo — dos medias vecinas arman la
+    // separación visible (16px) del producto físico entre foto y foto.
+    expect(stripPhotoRect(ph, stage, "middle")).toEqual({ ...ph, y: 8, height: 384 });
+    // First/last: borde exterior de un lado, media canaleta del otro.
+    expect(stripPhotoRect(ph, stage, "first")).toEqual({ ...ph, y: 12, height: 380 });
+    expect(stripPhotoRect(ph, stage, "last")).toEqual({ ...ph, y: 8, height: 380 });
     expect(stripPhotoRect(ph, stage, "single")).toEqual({ ...ph, y: 12, height: 376 });
+  });
+
+  it("stripPhotoRect SIN BORDE (Ola 23): sin marco exterior, canaletas intactas", async () => {
+    const { stripPhotoRect } = await import("./frame-palette");
+    const stage = { width: 390, height: 400 };
+    // Toggle "Sin borde" de la toolbar: placeholder reescrito a sangre total de la celda.
+    const ph = { x: 0, y: 0, width: 390, height: 400 };
+    const borderless = { borderless: true };
+    // First: la foto llega al borde SUPERIOR de la tira (sin inset); canaleta abajo.
+    expect(stripPhotoRect(ph, stage, "first", borderless)).toEqual({ ...ph, y: 0, height: 392 });
+    // Middle: canaletas arriba y abajo, igual que con borde (se conservan).
+    expect(stripPhotoRect(ph, stage, "middle", borderless)).toEqual({ ...ph, y: 8, height: 384 });
+    // Last: canaleta arriba; la foto llega al borde INFERIOR de la tira.
+    expect(stripPhotoRect(ph, stage, "last", borderless)).toEqual({ ...ph, y: 8, height: 392 });
+    // Single: sangre total vertical (sin canaletas ni marco exterior).
+    expect(stripPhotoRect(ph, stage, "single", borderless)).toEqual({ ...ph, y: 0, height: 400 });
+  });
+
+  it("isStripBorderless: placeholder a sangre total de la celda (toggle Sin borde) → true", async () => {
+    const { isStripBorderless } = await import("./frame-palette");
+    const stage = { width: 390, height: 400 };
+    expect(isStripBorderless({ x: 0, y: 0, width: 390, height: 400 }, stage)).toBe(true);
+    // Con borde: la plantilla trae margen lateral de 12px.
+    expect(isStripBorderless({ x: 12, y: 0, width: 366, height: 400 }, stage)).toBe(false);
+    expect(isStripBorderless(undefined, stage)).toBe(false);
   });
 
   it("isInstagramTemplate: detecta el chrome ig_post", async () => {

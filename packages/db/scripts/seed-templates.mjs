@@ -481,8 +481,13 @@ const templatesData = [
   // tira → stage 390×400 (6.5 × 6.667 cm); las 3 celdas apiladas con gridGap=0 arman
   // la tira 6.5×20 continua. La celda trae capa "frame-card" (fondo = borderColor,
   // mismo mecanismo de la Polaroid Clásica). Ola 4 (Lucy 2026-07-23): la foto va a
-  // sangre VERTICAL → las fotos se TOCAN (pieza continua); el color queda en los
-  // lados (12px) y en el borde exterior first/last (12px, lo pone el código).
+  // sangre VERTICAL en la plantilla y la geometría final la pone el CÓDIGO por
+  // posición (stripPhotoRect): borde exterior first/last (12px) y —regla 2026-09-08,
+  // Lucy validó en local— media canaleta del color del marco ENTRE fotos (8px por
+  // cara → separación visible de 16px ≈ 1.3 mm, como la tira física). El gridGap
+  // sigue en 0: la canaleta se dibuja dentro de cada celda para que el PNG de
+  // producción (render celda a celda) la incluya — un gap CSS del Estudio NO se
+  // imprimiría (rompería el WYSIWYG).
   ...(tirasProduct
     ? [
         {
@@ -503,10 +508,11 @@ const templatesData = [
               // Sin esquinas redondeadas: la tira es una pieza continua (el troquel
               // exterior lo da el cornerRadiusPx del producto, no la plantilla).
               { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 0 },
-              // Ola 4 (Lucy 2026-07-23) — foto a sangre VERTICAL (y0, alto completo):
-              // las fotos de celdas vecinas SE TOCAN (gap 0 real, tira de una pieza).
-              // Los lados llevan 12px (~2mm) de color; el borde EXTERIOR (arriba/abajo)
-              // lo aplica el código por posición (stripPhotoRect, first/last 12px).
+              // Ola 4 (Lucy 2026-07-23) — foto a sangre VERTICAL en la plantilla
+              // (y0, alto completo): el inserto final lo aplica el código por
+              // posición (stripPhotoRect: borde exterior first/last 12px + media
+              // canaleta de 8px entre fotos, regla 2026-09-08). Los lados llevan
+              // 12px (~2mm) de color.
               photoSlot({
                 id: "photo",
                 x: 12,

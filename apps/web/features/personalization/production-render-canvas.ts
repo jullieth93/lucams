@@ -32,6 +32,7 @@ import {
   isStripTemplate,
   stripPhotoRect,
   stripPositionOf,
+  isStripBorderless,
   isInstagramTemplate,
   instagramBackgroundHex,
   type StripPosition,
@@ -260,7 +261,9 @@ async function renderSlotCanvas(
   //  - "tarjeta simple" (Cuadrados: fondo + foto, sin chrome ni texto visible):
   //    borderColor null → foto a sangre TOTAL; borderColor set → franja UNIFORME.
   //  - Instagram (chrome SVG): fondo BINARIO blanco/negro (un pastel residual cae a blanco).
-  //  - Tira photobooth (gridCols=1+gridGap=0): borde exterior solo en first/last.
+  //  - Tira photobooth (gridCols=1+gridGap=0): borde exterior solo en first/last;
+  //    canaleta del color del marco ENTRE fotos (stripPhotoRect, regla 2026-09-08 —
+  //    misma matemática que el editor Konva → WYSIWYG).
   const textVisible = includeText && unit.layers.some((l) => l.type === "text");
   const simpleCard = isSimpleCardTemplate(unit.layers, {
     hasFrameCard,
@@ -349,8 +352,10 @@ async function renderSlotCanvas(
       //     borderColor set → franja UNIFORME de color en los 4 lados.
       //  2. Ola 3b (resto de plantillas full-bleed): inserta respetando márgenes mayores.
       //     Instagram conserva la geometría de su chrome (sin inset).
-      //  3. Tira photobooth: la ventana viene a sangre vertical (fotos que se tocan);
-      //     el borde exterior lo pone la posición (first/last).
+      //  3. Tira photobooth: la ventana se inserta por posición (stripPhotoRect):
+      //     borde exterior first/last + media canaleta entre fotos (2026-09-08).
+      //     Ola 23 — placeholder a sangre total (toggle "Sin borde") → SIN marco
+      //     exterior, canaletas intactas (isStripBorderless, misma detección del editor).
       let ph = phRaw;
       if (frameFullBleed && simpleCard && !useFullStage) {
         ph = {
@@ -364,7 +369,12 @@ async function renderSlotCanvas(
         };
       }
       if (strip && stripPosition) {
-        ph = { ...stripPhotoRect(ph, unit.stage, stripPosition), cornerRadius: ph.cornerRadius };
+        ph = {
+          ...stripPhotoRect(ph, unit.stage, stripPosition, {
+            borderless: isStripBorderless(ph, unit.stage),
+          }),
+          cornerRadius: ph.cornerRadius,
+        };
       }
 
       // Ola 3c — rotación de la foto (pasos de 90° desde "Ajustar foto"): con 90/270
@@ -396,6 +406,18 @@ async function renderSlotCanvas(
         ctx.rect(ph.x, ph.y, ph.width, ph.height);
       }
       ctx.clip();
+      // Ola 23 (Lucy 2026-09-08) — "el marco es MARCO, no fondo": con tarjeta de color
+      // (frame-card o full-bleed), el hueco que deja la foto al alejarla (zoom-out) o
+      // moverla se rellena con el color de la tarjeta SIN marco (la capa background),
+      // NO con borderColor. Antes el hueco mostraba el color del marco → la franja de
+      // color "crecía" dentro de la ventana al hacer zoom-out. Con el respaldo, el
+      // ancho del marco/canaleta queda CONSTANTE bajo cualquier zoom/pan. Misma regla
+      // en el editor (ImagePlaceholder, Rect de respaldo en studio-slot) → WYSIWYG.
+      // Instagram NO: su marco vive en el chrome SVG (constante por construcción).
+      if (borderColor && !isIg && (hasFrameCard || fullBleed) && !useFullStage) {
+        ctx.fillStyle = bgLayerHex;
+        ctx.fillRect(ph.x, ph.y, ph.width, ph.height);
+      }
       // Centro de la imagen en coords del stage (idéntico a Konva ImagePlaceholder).
       const cx = ph.x + ph.width / 2 + offX;
       const cy = ph.y + ph.height / 2 + offY;
@@ -483,9 +505,12 @@ async function renderSlotCanvas(
 /** Replica renderText de studio-slot.tsx: fontSize/family/fill/weight/align + stroke/shadow.
  *  Ola 3 — `darkCard`: la tarjeta del borde es oscura → el texto POR DEFECTO sale claro
  *  (el override de color del cliente siempre manda).
- *  Ola 4 — texto OPCIONAL (Lucy 2026-07-23): una capa EDITABLE imprime solo su override;
- *  el texto base de la plantilla es una guía del editor ("Escribe tu mensaje") y NO se
- *  imprime. Las capas NO editables (decorativas de la plantilla) imprimen su texto base. */
+ *  REGLA GLOBAL DE PLACEHOLDERS (Ola 4 2026-07-23, reforzada Ola 23 2026-09-08): el texto
+ *  por defecto de una capa EDITABLE es un placeholder de pantalla ("Escribe tu mensaje",
+ *  "@tu_usuario", "362 me gusta"…) — se VE atenuado en el editor pero NUNCA se imprime:
+ *  solo se imprime el override que el cliente escribió (override.text no vacío). Un
+ *  override sin texto (solo estilo) tampoco imprime. Las capas NO editables (texto fijo
+ *  decorativo de la plantilla) imprimen su texto base. */
 function renderTextLayer(
   ctx: SKRSContext2D,
   layer: AnyLayer,
@@ -574,7 +599,8 @@ export async function renderProductionSlotsCanvas(opts: {
   const out: Buffer[] = [];
   const slots = [...opts.slots].sort((a, b) => a.slotIndex - b.slotIndex);
   // Ola 4 — tira photobooth (gridCols=1 + gridGap=0): el borde exterior de la pieza
-  // continua va solo en la primera/última celda; las fotos del medio se tocan.
+  // continua va solo en la primera/última celda; entre fotos consecutivas va la
+  // media canaleta del color del marco (stripPhotoRect, regla 2026-09-08).
   const strip = isStripTemplate(opts.unitTemplate);
   for (const [index, slot] of slots.entries()) {
     out.push(
