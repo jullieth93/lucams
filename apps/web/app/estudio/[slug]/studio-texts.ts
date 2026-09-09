@@ -345,6 +345,9 @@ export type StudioTexts = {
     piezaFicha: string;
     piezaImanes: string;
     piezaFichas: string;
+    /** Dato de copias cuando la PDP fijó N>1 (regla 2026-09-08b: sin stepper acá). */
+    copiasIdenticas: string;
+    copiasAjusteCarrito: string;
   };
   /** Vistas 3D y escenas. */
   escenas: {
@@ -800,6 +803,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     piezaFicha: "ficha",
     piezaImanes: "imanes",
     piezaFichas: "fichas",
+    copiasIdenticas: "{n} copias idénticas de tu diseño",
+    copiasAjusteCarrito: "Puedes ajustar la cantidad en el carrito.",
   },
   escenas: {
     titulo: "✨ Míralo en tu espacio",
@@ -1226,6 +1231,8 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "exportar.piezaFicha": "estudio.exportar.pieza-ficha",
   "exportar.piezaImanes": "estudio.exportar.pieza-imanes",
   "exportar.piezaFichas": "estudio.exportar.pieza-fichas",
+  "exportar.copiasIdenticas": "estudio.exportar.copias-identicas",
+  "exportar.copiasAjusteCarrito": "estudio.exportar.copias-ajuste-carrito",
   "escenas.titulo": "estudio.escenas.titulo",
   "escenas.volverDetalle": "estudio.escenas.volver-detalle",
   "escenas.chipNevera": "estudio.escenas.chip-nevera",

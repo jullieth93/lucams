@@ -8368,6 +8368,27 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               body: "fichas",
               sortOrder: 320,
             },
+            {
+              key: "estudio.exportar.copias-identicas",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Vista previa: dato de copias",
+              helpText:
+                "Se muestra cuando la página del producto fijó más de 1 unidad (sin stepper en esta ventana). {n} = número de copias.",
+              category: "HOME",
+              body: "{n} copias idénticas de tu diseño",
+              sortOrder: 330,
+            },
+            {
+              key: "estudio.exportar.copias-ajuste-carrito",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Vista previa: nota de ajuste en carrito",
+              helpText: "Nota bajo el dato de copias: recuerda que la cantidad se ajusta en el carrito.",
+              category: "HOME",
+              body: "Puedes ajustar la cantidad en el carrito.",
+              sortOrder: 340,
+            },
           ],
         },
         {

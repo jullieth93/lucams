@@ -293,9 +293,9 @@ export function StudioPreviewModal({
           {copies > 1 && (
             <div className="border-brand-purple/10 mt-3 border-t pt-3">
               <p className="text-brand-purple-dark text-sm font-semibold">
-                {copies} copias idénticas de tu diseño
+                {fillStudioText(texts.exportar.copiasIdenticas, { n: copies })}
               </p>
-              <p className="text-brand-muted text-xs">Puedes ajustar la cantidad en el carrito.</p>
+              <p className="text-brand-muted text-xs">{texts.exportar.copiasAjusteCarrito}</p>
             </div>
           )}
         </div>
