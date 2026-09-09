@@ -244,7 +244,21 @@ jobs:
         run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs
 
       - name: Instalar navegador Playwright (chromium + deps)
-        run: pnpm --filter web exec playwright install --with-deps chromium
+        # Reintentos con apt-get update entre cada uno: el repo apt de Chrome
+        # (dl.google.com) a veces sirve índices a medio actualizar ("Hash Sum
+        # mismatch") y tumbaba el job entero pese a ser un flake de infra
+        # (2026-09-09: 3 corridas seguidas rojas por eso).
+        run: |
+          for i in 1 2 3 4; do
+            if pnpm --filter web exec playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "::warning::playwright install falló (intento $i/4) — reintentando tras apt-get update"
+            sudo apt-get update || true
+            sleep 15
+          done
+          echo "::error::playwright install falló tras 4 intentos"
+          exit 1
 
       - name: Build de producción (necesario para el next start del webServer)
         run: pnpm --filter web build
