@@ -584,4 +584,163 @@ describe("setPhotoSlotsPerUnit — packs de fotoimanes (N elegido en el Estudio)
     store.getState().setPhotoSlotsPerUnit(2, { facesPerUnit: 1, max: 6 });
     expect(store.getState().canvasData).toBeNull();
   });
+
+  it("multi-unidad (tiras): el N es la COMPOSICIÓN de cada unidad — unitCount se conserva", () => {
+    // 2 tiras de 3 fotos declaradas (unitCount=2, unitSlots=3) → subir a 4 fotos
+    // por tira da 2 × 4 = 8 slots y el modelo se re-declara con la composición nueva.
+    const store = setup(
+      makeCanvasData({
+        // Plantilla de TIRA (gridCols=1/gridGap=0 forzados, como photo-strip-*).
+        unitTemplate: makeUnitTemplate({ gridCols: 1, gridGap: 0 } as Partial<CanvasDataV1>),
+        slotCount: 6,
+        unitCount: 2,
+        unitSlots: 3,
+        photoSlots: 3,
+        slots: [
+          { slotIndex: 0, assetId: "a0", assetUrl: "https://x/0.png" },
+          { slotIndex: 1, assetId: null, assetUrl: null },
+          { slotIndex: 2, assetId: null, assetUrl: null },
+          { slotIndex: 3, assetId: null, assetUrl: null },
+          { slotIndex: 4, assetId: null, assetUrl: null },
+          { slotIndex: 5, assetId: null, assetUrl: null },
+        ],
+        gridLayout: { cols: 1, rows: 3, gap: 0 },
+      }),
+    );
+    store.getState().setPhotoSlotsPerUnit(4, { facesPerUnit: 1, max: 4 });
+    const cd = store.getState().canvasData;
+    expect(cd?.photoSlots).toBe(4);
+    expect(cd?.unitCount).toBe(2);
+    expect(cd?.unitSlots).toBe(4);
+    expect(cd?.slotCount).toBe(8);
+    expect(cd?.slots).toHaveLength(8);
+    expect(cd?.slots[0].assetId).toBe("a0"); // preservada por índice
+    // gridLayout por UNIDAD (tira de 4): 1 columna, 4 filas, gap 0.
+    expect(cd?.gridLayout).toMatchObject({ cols: 1, rows: 4, gap: 0 });
+  });
+
+  it("packs de unidad suelta (separadores): el N ES el nº de unidades", () => {
+    // 3 separadores declarados (unitCount=3, unitSlots=2) → subir a 4 unidades
+    // da 4 × 2 = 8 slots con el modelo re-declarado.
+    const store = setup(
+      makeCanvasData({
+        slotCount: 6,
+        unitCount: 3,
+        unitSlots: 2,
+        photoSlots: 3,
+        slots: Array.from({ length: 6 }, (_, i) => ({
+          slotIndex: i,
+          assetId: null,
+          assetUrl: null,
+        })),
+        gridLayout: { cols: 3, rows: 2, gap: 16 },
+      }),
+    );
+    store.getState().setPhotoSlotsPerUnit(4, { facesPerUnit: 2, max: 6 });
+    const cd = store.getState().canvasData;
+    expect(cd?.photoSlots).toBe(4);
+    expect(cd?.unitCount).toBe(4);
+    expect(cd?.unitSlots).toBe(2);
+    expect(cd?.slotCount).toBe(8);
+  });
+});
+
+describe("applyUnitToAllUnits — 'Aplicar este diseño a todas' (multi-unidad 2026-09-09)", () => {
+  function makeMultiUnit() {
+    return makeCanvasData({
+      slotCount: 6,
+      unitCount: 2,
+      unitSlots: 3,
+      photoSlots: 3,
+      slots: [
+        {
+          slotIndex: 0,
+          assetId: "a0",
+          assetUrl: "https://x/0.png",
+          filter: "bw",
+          textOverrides: { msg: { text: "Hola" } },
+          photoTransform: { offsetX: 5, offsetY: -3, scale: 1.4 },
+          profileAssetId: "p0",
+          profileAssetUrl: "https://x/p0.png",
+        },
+        { slotIndex: 1, assetId: "a1", assetUrl: "https://x/1.png" },
+        { slotIndex: 2, assetId: "a2", assetUrl: "https://x/2.png" },
+        { slotIndex: 3, assetId: null, assetUrl: null },
+        { slotIndex: 4, assetId: null, assetUrl: null },
+        { slotIndex: 5, assetId: null, assetUrl: null },
+      ],
+      gridLayout: { cols: 1, rows: 3, gap: 0 },
+    });
+  }
+
+  it("copia TODOS los campos del slot de la unidad origen a las demás unidades", () => {
+    const store = setup(makeMultiUnit());
+    store.getState().applyUnitToAllUnits(0);
+    const cd = store.getState().canvasData;
+    expect(cd?.slots).toHaveLength(6);
+    // Unidad 1 (slots 0-2) intacta (mismo slotIndex).
+    expect(cd?.slots[0].slotIndex).toBe(0);
+    expect(cd?.slots[0].filter).toBe("bw");
+    // Unidad 2 (slots 3-5) = copia exacta de la 1, conservando SU slotIndex.
+    expect(cd?.slots[3]).toMatchObject({
+      slotIndex: 3,
+      assetId: "a0",
+      assetUrl: "https://x/0.png",
+      filter: "bw",
+      profileAssetId: "p0",
+      photoTransform: { offsetX: 5, offsetY: -3, scale: 1.4 },
+    });
+    expect(cd?.slots[3].textOverrides).toEqual({ msg: { text: "Hola" } });
+    expect(cd?.slots[4]).toMatchObject({ slotIndex: 4, assetId: "a1" });
+    expect(cd?.slots[5]).toMatchObject({ slotIndex: 5, assetId: "a2" });
+  });
+
+  it("la fuente puede ser cualquier unidad (aplicar la 2ª a todas)", () => {
+    const store = setup(makeMultiUnit());
+    store.getState().clearSlot(3);
+    store.getState().assignAssetToSlot(3, asset("b3"));
+    store.getState().applyUnitToAllUnits(1);
+    const cd = store.getState().canvasData;
+    expect(cd?.slots[0].assetId).toBe("b3");
+    expect(cd?.slots[0].filter).toBeNull(); // la unidad 2 no tiene filtro (clearSlot lo resetea)
+    expect(cd?.slots[3].assetId).toBe("b3");
+  });
+
+  it("es undoable (va por setCanvasData) y marca dirty para el auto-save", () => {
+    const store = setup(makeMultiUnit());
+    const before = store.getState().canvasData;
+    store.getState().applyUnitToAllUnits(0);
+    expect(store.getState().isDirty).toBe(true);
+    store.getState().undo();
+    expect(store.getState().canvasData).toBe(before);
+  });
+
+  it("con imán suelto SIN declarar unidades (polaroid): el slot ES la unidad", () => {
+    // Diseño plano de 4 slots (unitSlots sin declarar): copia el slot 0 a todos.
+    const store = setup(); // makeCanvasData default: 4 slots, 0 y 3 con foto
+    store.getState().applyUnitToAllUnits(0);
+    const cd = store.getState().canvasData;
+    expect(cd?.slots.map((s) => s.assetId)).toEqual(["a0", "a0", "a0", "a0"]);
+    expect(cd?.slots.map((s) => s.slotIndex)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("no-ops seguros: 1 sola unidad, índice fuera de rango, sin canvasData", () => {
+    // 1 unidad declarada → nada que copiar.
+    const oneUnit = setup(
+      makeCanvasData({ slotCount: 3, unitCount: 1, unitSlots: 3, photoSlots: 3 }),
+    );
+    oneUnit.getState().markClean();
+    oneUnit.getState().applyUnitToAllUnits(0);
+    expect(oneUnit.getState().isDirty).toBe(false);
+
+    const store = setup(makeMultiUnit());
+    store.getState().markClean();
+    store.getState().applyUnitToAllUnits(9);
+    store.getState().applyUnitToAllUnits(-1);
+    expect(store.getState().isDirty).toBe(false);
+
+    const empty = createStudioStore();
+    empty.getState().applyUnitToAllUnits(0); // sin init → no explota
+    expect(empty.getState().canvasData).toBeNull();
+  });
 });

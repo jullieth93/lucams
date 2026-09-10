@@ -34,6 +34,7 @@ import { hashBearerToken } from "@/lib/token-hash";
 import { parsePhotoProductConfig } from "./schemas";
 import { listStagedSlotPaths, stagedSlotPath } from "./staged-slots";
 import { resolvePersonalizationSurface } from "./surface";
+import { unitCountOf, MAX_LETTER_SET_UNITS } from "./design-units";
 import { normalizeName } from "./name-input";
 import { remapCanvasAssetIds } from "./canvas-remap";
 import { calendarLayoutFromUnitTemplate } from "./calendar-layout";
@@ -718,11 +719,29 @@ export async function createLetterSetDesign(opts: {
    *  (retrocompatible): los diseños guardados antes de la opción no traen la clave y se tratan
    *  como con borde. */
   withBorder?: boolean;
+  /**
+   * Modelo MULTI-UNIDAD (owner 2026-09-09) — TODOS los sets del diseño con sus
+   * colores por ficha. El server valida `units.length === unitCount` y los persiste
+   * en metadata.units; el precio ×N sale de `letterSetUnitCount(metadata)` en el
+   * carrito (nunca del cliente: units es la única fuente de verdad del N).
+   */
+  units?: { colors?: string[] }[];
+  /** Sets del diseño (1..MAX_LETTER_SET_UNITS). Default 1 (diseño de un set). */
+  unitCount?: number;
   customerId: string | null;
   sessionId: string | null;
 }): Promise<{ id: string; letters: string[]; language: string }> {
   if (!opts.customerId && !opts.sessionId) {
     throw new Error("createLetterSetDesign: requires customerId or sessionId");
+  }
+  // Multi-unidad: validar la coherencia del N ANTES de escribir (el precio sale de acá).
+  const unitCount = Math.min(
+    MAX_LETTER_SET_UNITS,
+    Math.max(1, Math.trunc(opts.unitCount ?? 1) || 1),
+  );
+  const units = opts.units ?? [];
+  if (unitCount > 1 && units.length !== unitCount) {
+    throw new Error(`UNITS_MISMATCH: ${units.length} sets para unitCount=${unitCount}`);
   }
   const product = await prisma.product.findUnique({
     where: { id: opts.productId },
@@ -780,6 +799,18 @@ export async function createLetterSetDesign(opts: {
         letters,
         // Color efectivo por ficha (para producción). Acotado al nº de letras del set.
         colors: Array.isArray(opts.colors) ? opts.colors.slice(0, letters.length) : [],
+        // Multi-unidad (2026-09-09) — TODOS los sets con sus colores por ficha
+        // (validados arriba: units.length === unitCount). El carrito deriva el
+        // precio ×N de `unitCount` (letterSetUnitCount) y producción ve las N
+        // láminas. Con 1 set no se escribe (retrocompatible con diseños viejos).
+        ...(unitCount > 1
+          ? {
+              unitCount,
+              units: units.map((u) => ({
+                colors: Array.isArray(u.colors) ? u.colors.slice(0, letters.length) : [],
+              })),
+            }
+          : {}),
         // Estilo ilustrado elegido (para producción). null = "Solo letra".
         styleSetId: opts.styleSetId ?? null,
         // Opción de diseño "Con borde / Sin borde" (Lucy 2026-09-05). Siempre se persiste el
@@ -882,6 +913,13 @@ export async function createClientSlotUploadTickets(opts: {
   }
   const canvasData = design.canvasData as unknown as CanvasData;
   const slotCount = canvasData.version === 2 ? (canvasData as CanvasDataV2).slotCount : 1;
+  // Modelo multi-unidad (2026-09-09): las unidades declaradas en el diseño (tiras
+  // ×2, calendarios ×2) multiplican los snapshots esperados. El canvas lo escribe
+  // el cliente, pero el tope queda acotado por slotCount ≤ 50 (Zod) y por el cap
+  // de abajo contra el producto — inflarlo no regala más de 50 tickets de la
+  // propia área de paso del diseño (que además se limpia tras el finalize).
+  const declaredUnits =
+    canvasData.version === 2 ? unitCountOf(canvasData as CanvasDataV2) : 1;
 
   const product = await prisma.product.findUnique({
     where: { id: design.productId },
@@ -892,7 +930,7 @@ export async function createClientSlotUploadTickets(opts: {
   const faces = product
     ? (parsePhotoProductConfig(product.personalizationSchema).facesPerUnit ?? 1)
     : 1;
-  const maxSlots = Math.max(1, allowed * faces);
+  const maxSlots = Math.max(1, allowed * faces * declaredUnits);
   if (slotCount > maxSlots) {
     throw new Error(
       `INCOMPLETE_SLOTS: el diseño declara ${slotCount} piezas y el producto admite ${maxSlots}`,
@@ -1158,14 +1196,19 @@ export async function finalizeDesign(opts: {
   // el PNG ya lo trae horneado). Merge para no pisar el resto de metadata (kind, schemaVersion…).
   // Ola 3 — también se registra cuando el diseño salió como TIRAS 2-caras compuestas
   // (separadores): el admin/imprenta sabe que cada PNG es una unidad desplegada A|B.
+  // Multi-unidad (2026-09-09) — también las UNIDADES del diseño (unitCount): el
+  // carrito/checkout y el spec de producción las leen de metadata sin deserializar
+  // el canvas completo (1 = diseño de una unidad; siempre se escribe en V2).
+  const designUnits = canvasData.version === 2 ? unitCountOf(canvasData as CanvasDataV2) : 1;
   const mergedMetadata =
-    typeof opts.calendarYear === "number" || facesComposed
+    typeof opts.calendarYear === "number" || facesComposed || canvasData.version === 2
       ? {
           ...((design.metadata as Record<string, unknown> | null) ?? {}),
           ...(typeof opts.calendarYear === "number" ? { calendarYear: opts.calendarYear } : {}),
           ...(facesComposed
             ? { faceStrips: { facesPerUnit: 2, strips: productionPaths.length } }
             : {}),
+          ...(canvasData.version === 2 ? { unitCount: designUnits } : {}),
         }
       : undefined;
 

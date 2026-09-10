@@ -652,25 +652,13 @@ export function NameEditor({
           </div>
         )}
 
-        {/* Paleta de colores (tema de las fichas) — control compartido con Set de letras.
-            Lucy 2026-09-09 — misma regla que el set de letras: con «Sin borde» las fichas
-            no llevan el marco de color, así que la sección se DESACTIVA (visible + inerte,
-            con el porqué) hasta volver a «Con borde». El estado de colores (useLetterColors)
-            nunca se resetea al desactivar. */}
-        <div className="mt-5">
-          <ThemePicker
-            themeId={themeId}
-            customized={customized}
-            onApply={applyTheme}
-            disabled={!withBorder}
-            disabledHint={texts.nombre.bordeSinColoresHint}
-          />
-        </div>
-
         {/* Opción de diseño "Con borde / Sin borde" (mismo precio), espejo del selector del
             set de letras: se refleja en las fichas del preview, en el PNG de producción y en
             la vista 3D (WYSIWYG). El selector SIEMPRE queda habilitado: es la vía para
-            reactivar los colores. */}
+            reactivar los colores.
+            Ola 26 (owner 2026-09-09) — va ARRIBA de «Elige los colores»: primero se define
+            el borde y debajo queda la paleta que se desactiva con «Sin borde» (mismo orden
+            que la barra de estilo del Estudio de foto, Ola 24). */}
         <div className="mt-5">
           <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
             {texts.nombre.bordeTitulo}
@@ -712,6 +700,21 @@ export function NameEditor({
               {texts.nombre.bordeSin}
             </button>
           </div>
+        </div>
+
+        {/* Paleta de colores (tema de las fichas) — control compartido con Set de letras.
+            Lucy 2026-09-09 — misma regla que el set de letras: con «Sin borde» las fichas
+            no llevan el marco de color, así que la sección se DESACTIVA (visible + inerte,
+            con el porqué) hasta volver a «Con borde». El estado de colores (useLetterColors)
+            nunca se resetea al desactivar. */}
+        <div className="mt-5">
+          <ThemePicker
+            themeId={themeId}
+            customized={customized}
+            onApply={applyTheme}
+            disabled={!withBorder}
+            disabledHint={texts.nombre.bordeSinColoresHint}
+          />
         </div>
 
         {/* Preview de la tira de fichas (cada una seleccionable para pintarla) */}

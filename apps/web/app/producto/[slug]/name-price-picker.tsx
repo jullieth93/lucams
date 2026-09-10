@@ -28,14 +28,14 @@ export function NamePricePicker({
   /** Sustantivo del CTA ("producto" — genérico para todo el catálogo). */
   ctaNoun: string;
 }) {
-  // H12 — variante y copias del Context compartido (en sync instantáneo con el
-  // selector y con el stepper "Unidades" de la ficha, regla 2026-09-08b).
+  // H12 — variante y unidades del Context compartido (en sync instantáneo con el
+  // selector y con el stepper "Unidades" de la ficha, modelo multi-unidad 2026-09-09).
   const { selectedId: variantId, copies } = useSelectedVariant();
   // Arranca en un ejemplo cómodo (5 letras) acotado a [min, max].
   const [count, setCount] = useState(() => Math.min(max, Math.max(min, 5)));
   const total = count * perTilePrice;
-  // Las copias viajan como ?copies=N (solo cuando N>1; el Estudio arranca en 1
-  // por defecto) — la modal de confirmación ya no tiene stepper propio.
+  // Las unidades a diseñar viajan como ?copies=N (solo cuando N>1; el Estudio
+  // arranca en 1 por defecto — nombre del parámetro conservado por compat).
   const params = new URLSearchParams();
   if (variantId) params.set("variant", variantId);
   params.set("letters", String(count));

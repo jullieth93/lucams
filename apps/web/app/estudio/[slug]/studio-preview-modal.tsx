@@ -57,27 +57,41 @@ type StudioPreviewModalProps = {
   previewUrl: string | null; // dataURL del grid compositado (client-side)
   productName: string;
   slotCount: number;
+  /** Piezas por unidad (tiras: fotos por tira; calendario: páginas por set).
+   *  Solo cuando productKind es "strips" o "calendar" multi-unidad. */
+  slotsPerUnit?: number;
   /** Tamaño físico de cada imán (ej. "5×5 cm"). Lucy 2026-05-21 — mostrarlo
    *  para que el cliente sepa qué tamaño real va a recibir. */
   sizeCm?: string;
   unitPrice: number | null; // precio en centavos COP de la variant elegida
-  /** Copias (CartItem.qty) elegidas en la PDP vía `?copies=N` (stepper
-   *  "Unidades" de los productos de composición fija — regla 2026-09-08b).
-   *  La modal ya NO tiene stepper propio: confirma con este valor y el
-   *  cliente puede ajustar después en el carrito. undefined → 1. */
+  /**
+   * Modelo MULTI-UNIDAD (owner 2026-09-09): unidades que contiene el DISEÑO
+   * (cada una diseñada por separado en el Estudio). El total = unitario ×
+   * unidades y el carrito recibe UNA línea con qty=1 (onConfirm recibe 1).
+   * undefined → 1 (diseño de una unidad: total = unitario).
+   */
+  unitCount?: number;
+  /**
+   * LEGACY (superficie "nombre", editor hermano): copias IDÉNTICAS de la PDP
+   * vía `?copies=N` — la modal las confirma como qty del carrito. Solo se usa
+   * cuando `unitCount` no viene; el modelo nuevo prefiere `unitCount`.
+   */
   initialCopies?: number;
   isFinalizing: boolean;
   errorMessage: string | null;
   /** #3 — tipo de producto: el calendario se describe en "páginas", no "imanes".
    *  Ola 3 — "bookmarks": separadores de libros (tiras 2 caras), concordancia propia.
+   *  Multi-unidad (2026-09-09) — "strips": tiras photobooth (cada unidad es una
+   *  tira continua de N fotos — antes se describían como "N imanes", incorrecto).
    *  "tiles": fichas SIN imán. Los sets de letras y el nombre tienen variantes "Con imán" y
    *  "Sin imán"; llamarle "imán" a la que no lo lleva es una afirmación falsa sobre el producto
    *  físico, hecha justo en la pantalla de confirmación (revisión 2026-07-25, Ley 1480 art. 23). */
-  productKind?: "magnets" | "calendar" | "bookmarks" | "tiles";
+  productKind?: "magnets" | "calendar" | "bookmarks" | "tiles" | "strips";
   /** Año del calendario (solo cuando productKind==="calendar"). */
   calendarYear?: number;
   onEdit: () => void;
-  /** Recibe las COPIAS a agregar (CartItem.qty 1..99) — las de la PDP. */
+  /** Recibe el qty para el carrito: 1 en el modelo multi-unidad (el diseño ya
+   *  contiene las unidades); las copias de la PDP en el path legacy (nombre). */
   onConfirm: (copies: number) => void;
 };
 
@@ -86,8 +100,10 @@ export function StudioPreviewModal({
   previewUrl,
   productName,
   slotCount,
+  slotsPerUnit,
   sizeCm,
   unitPrice,
+  unitCount,
   initialCopies,
   isFinalizing,
   errorMessage,
@@ -98,14 +114,15 @@ export function StudioPreviewModal({
 }: StudioPreviewModalProps) {
   const texts = useStudioTexts();
 
-  // Copias del diseño (CartItem.qty 1..99): cuántas unidades IDÉNTICAS del
-  // diseño aprobado se imprimen — distinto del tamaño del pack, que ya va
-  // horneado en el diseño/variante elegida. Regla 2026-09-08b: las copias se
-  // eligen en la PDP (stepper "Unidades" de los productos de composición fija)
-  // o se ajustan en el carrito — la modal YA NO tiene stepper propio, solo
-  // confirma. Acotado acá también por si el componente se usa sin el parseo
-  // del page.tsx (defensa en profundidad; la URL la puede editar cualquiera).
+  // Modelo multi-unidad (2026-09-09): las unidades van DENTRO del diseño → el
+  // carrito recibe qty=1. Path legacy (nombre): copias idénticas (qty 1..99).
+  const units = Math.min(99, Math.max(1, Math.trunc(unitCount ?? 1) || 1));
+  const isMultiUnit = units > 1;
   const copies = Math.min(99, Math.max(1, Math.trunc(initialCopies ?? 1) || 1));
+  // Qty al confirmar: multi-unidad → 1; legacy → las copias de la PDP.
+  const confirmQty = unitCount !== undefined ? 1 : copies;
+  // Multiplicador del total mostrado: unidades del diseño (nuevo) o copias (legacy).
+  const totalMultiplier = unitCount !== undefined ? units : copies;
 
   if (!previewUrl) return null;
 
@@ -113,36 +130,54 @@ export function StudioPreviewModal({
   // de "imanes". Ola 3 — los separadores hablan de "separadores" (cada uno con sus 2 caras).
   const isCalendar = productKind === "calendar";
   const isBookmarks = productKind === "bookmarks";
+  const isStrips = productKind === "strips";
   // Cómo nombrar la pieza: con imán es un "imán"; sin él, una "ficha".
   const pieza = productKind === "tiles" ? texts.exportar.piezaFicha : texts.exportar.piezaIman;
   const piezas = productKind === "tiles" ? texts.exportar.piezaFichas : texts.exportar.piezaImanes;
-  // Roadmap B1 — textos CMS (estudio.exportar.*): la concordancia de género/número se
-  // resuelve acá (pieza/piezas/o/os) y los textos llevan placeholders documentados.
-  const descCalendar = fillStudioText(texts.exportar.descCalendario, {
-    n: slotCount,
-    año: calendarYear ? ` ${calendarYear}` : "",
-  });
+  // Roadmap B1 — textos CMS (estudio.exportar.* / estudio.unidades.*): la concordancia de
+  // género/número se resuelve acá y los textos llevan placeholders documentados.
+  const perUnit = slotsPerUnit ?? slotCount;
+  const descCalendar = isMultiUnit
+    ? fillStudioText(texts.unidades.descCalendarios, {
+        n: slotCount,
+        m: perUnit,
+        año: calendarYear ? ` ${calendarYear}` : "",
+      })
+    : fillStudioText(texts.exportar.descCalendario, {
+        n: slotCount,
+        año: calendarYear ? ` ${calendarYear}` : "",
+      });
   const descMagnets =
     slotCount === 1
       ? fillStudioText(texts.exportar.descImanUno, { pieza })
       : fillStudioText(texts.exportar.descImanes, { n: slotCount, piezas });
+  const descStrips =
+    slotCount === 1
+      ? fillStudioText(texts.unidades.descTiraUna, { m: perUnit })
+      : fillStudioText(texts.unidades.descTiras, { n: slotCount, m: perUnit });
   const summaryLine = isCalendar
-    ? fillStudioText(texts.exportar.resumenCalendario, { n: slotCount })
+    ? isMultiUnit
+      ? fillStudioText(texts.unidades.resumenCalendarios, { n: slotCount, m: perUnit })
+      : fillStudioText(texts.exportar.resumenCalendario, { n: slotCount })
     : isBookmarks
       ? slotCount === 1
         ? fillStudioText(texts.exportar.resumenSeparadorUno, { n: slotCount })
         : fillStudioText(texts.exportar.resumenSeparadores, { n: slotCount })
-      : slotCount === 1
-        ? fillStudioText(texts.exportar.resumenUno, {
-            n: slotCount,
-            pieza,
-            o: pieza === texts.exportar.piezaFicha ? "a" : "o",
-          })
-        : fillStudioText(texts.exportar.resumenMuchos, {
-            n: slotCount,
-            piezas,
-            os: piezas === texts.exportar.piezaFichas ? "as" : "os",
-          });
+      : isStrips
+        ? slotCount === 1
+          ? fillStudioText(texts.unidades.resumenTiraUna, { n: slotCount, m: perUnit })
+          : fillStudioText(texts.unidades.resumenTiras, { n: slotCount, m: perUnit })
+        : slotCount === 1
+          ? fillStudioText(texts.exportar.resumenUno, {
+              n: slotCount,
+              pieza,
+              o: pieza === texts.exportar.piezaFicha ? "a" : "o",
+            })
+          : fillStudioText(texts.exportar.resumenMuchos, {
+              n: slotCount,
+              piezas,
+              os: piezas === texts.exportar.piezaFichas ? "as" : "os",
+            });
   const summarySize = sizeCm
     ? isCalendar
       ? fillStudioText(texts.exportar.resumenTamano, { tamano: sizeCm })
@@ -212,6 +247,21 @@ export function StudioPreviewModal({
               )}{" "}
               {texts.exportar.descRevisaMuchos}
             </>
+          ) : isStrips ? (
+            <>
+              {descStrips}
+              {sizeCm && (
+                <>
+                  {" "}
+                  <StrongVar
+                    template={fillStudioText(texts.exportar.descImanTamano, { pieza: "tira" })}
+                    varName="tamano"
+                    value={sizeCm}
+                  />
+                </>
+              )}{" "}
+              {texts.exportar.descRevisaMuchos}
+            </>
           ) : (
             <>
               {descMagnets}
@@ -246,7 +296,9 @@ export function StudioPreviewModal({
                   ? `Vista previa de las ${slotCount} páginas de tu calendario${calendarYear ? ` ${calendarYear}` : ""}`
                   : isBookmarks
                     ? `Vista previa de ${slotCount} separadores desplegados con sus 2 caras`
-                    : `Vista previa de ${slotCount} imanes`
+                    : isStrips
+                      ? `Vista previa de ${slotCount === 1 ? "tu tira" : `tus ${slotCount} tiras`} — cada una con ${perUnit} fotos`
+                      : `Vista previa de ${slotCount} imanes`
               }
               fill
               sizes="(max-width: 640px) 90vw, 480px"
@@ -273,11 +325,13 @@ export function StudioPreviewModal({
             </div>
             {unitPrice !== null && (
               <div className="text-right">
-                {/* Total de la línea: unitario × copias (mismo cálculo del carrito). */}
+                {/* Total de la línea: unitario × unidades del diseño (modelo
+                    multi-unidad; en el path legacy, × copias de la PDP) — el
+                    MISMO cálculo que el servidor aplica en el carrito. */}
                 <p className="text-brand-purple-dark font-display text-lg font-bold tabular-nums">
-                  {formatCOP(unitPrice * copies)}
+                  {formatCOP(unitPrice * totalMultiplier)}
                 </p>
-                {copies > 1 && (
+                {totalMultiplier > 1 && (
                   <p className="text-brand-muted text-xs tabular-nums">
                     {formatCOP(unitPrice)} c/u
                   </p>
@@ -286,18 +340,25 @@ export function StudioPreviewModal({
             )}
           </div>
 
-          {/* Copias (qty del carrito) — ya NO se eligen acá (regla 2026-09-08b):
-            las fija la PDP (stepper "Unidades" de composición fija) y se ajustan
-            en el carrito. Se muestran como dato cuando son >1 para que el total
-            (unitario × copias) no sorprenda. */}
-          {copies > 1 && (
+          {/* Unidades del DISEÑO (modelo multi-unidad 2026-09-09): el cliente ya
+            las diseñó una a una — la línea del carrito es UNA (qty 1) y producción
+            recibe TODAS las unidades. Path legacy (nombre): copias idénticas de la
+            PDP como dato. */}
+          {unitCount !== undefined && isMultiUnit ? (
+            <div className="border-brand-purple/10 mt-3 border-t pt-3">
+              <p className="text-brand-purple-dark text-sm font-semibold">
+                {fillStudioText(texts.unidades.modalUnidades, { n: units })}
+              </p>
+              <p className="text-brand-muted text-xs">{texts.exportar.copiasAjusteCarrito}</p>
+            </div>
+          ) : unitCount === undefined && copies > 1 ? (
             <div className="border-brand-purple/10 mt-3 border-t pt-3">
               <p className="text-brand-purple-dark text-sm font-semibold">
                 {fillStudioText(texts.exportar.copiasIdenticas, { n: copies })}
               </p>
               <p className="text-brand-muted text-xs">{texts.exportar.copiasAjusteCarrito}</p>
             </div>
-          )}
+          ) : null}
         </div>
 
         {errorMessage && (
@@ -327,7 +388,7 @@ export function StudioPreviewModal({
           <Button
             type="button"
             size="lg"
-            onClick={() => onConfirm(copies)}
+            onClick={() => onConfirm(confirmQty)}
             disabled={isFinalizing}
             aria-busy={isFinalizing}
             className="bg-gradient-brand text-white hover:brightness-110"

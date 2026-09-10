@@ -24,6 +24,7 @@ import {
   renderLayer,
   nextWheelScale,
   WHITE_CARD_CHECKER,
+  WHITE_CARD_CHECKER_SIZE,
   WHITE_CARD_TRAY_PAD,
 } from "./studio-slot";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
@@ -274,7 +275,7 @@ export function StudioPhotoPreview({
           // Ola 25 — bandeja cuadriculada bajo la tarjeta BLANCA (adorno DOM de
           // pantalla; el Stage queda inset y centrado, como en la grilla).
           ...(whiteCardTray
-            ? { backgroundImage: WHITE_CARD_CHECKER, backgroundSize: "12px 12px" }
+            ? { backgroundImage: WHITE_CARD_CHECKER, backgroundSize: WHITE_CARD_CHECKER_SIZE }
             : {}),
         }}
       >

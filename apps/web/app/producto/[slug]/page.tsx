@@ -54,6 +54,7 @@ import {
 import { NamePricePicker } from "./name-price-picker";
 import { CopiesQtyInput } from "./copies-qty-input";
 import { buildProductJsonLd } from "./product-jsonld";
+import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import {
   getStorefrontProductBySlug,
   listRelatedProducts,
@@ -179,6 +180,23 @@ export default async function ProductoDetallePage({
   // CTA genérico: no todos los productos son imanes (separadores, fichas, sets)
   // → "Personalizar producto" sirve para todo el catálogo.
   const ctaNoun = "producto";
+  // Modelo multi-unidad (owner 2026-09-09): tope de UNIDADES A DISEÑAR del stepper
+  // "Unidades" de la PDP. El Estudio capa el diseño en 50 slots (Zod) → calendario
+  // 4 sets de 12 tarjetas; tiras floor(50/fotos-por-tira máx del catálogo); sets de
+  // letras 10 láminas. Los packs variables no usan este stepper (su "Unidades" es
+  // pack size del VariantSelector) y la compra directa queda en 99 (qty clásico).
+  const photoSlotsForCap = Math.max(
+    selectedAttrs.photoSlots ?? 0,
+    ...selectable.map((v) => parseVariantAttributes(v.attributes).photoSlots ?? 0),
+    parsePhotoProductConfig(product.personalizationSchema).photoSlots,
+    1,
+  );
+  const maxDesignUnits = isLetterSetProduct
+    ? 10
+    : product.personalizationKind === "CALENDAR_PHOTO_MONTH" ||
+        PDP_PACK_PLUS_COPIES_SLUGS.has(product.slug)
+      ? Math.max(1, Math.floor(50 / photoSlotsForCap))
+      : 99;
   // Etapa 1 (modo catálogo): el strip de confianza NO promete pago en línea ni
   // envío calculado — la compra se cierra por WhatsApp tras la cotización.
   const catalog = isCatalogMode();
@@ -409,12 +427,13 @@ export default async function ProductoDetallePage({
                       </div>
                     ) : isNamePerTile ? (
                       // Nombre Personalizado: precio POR FICHA → selector de letras + CTA al
-                      // Estudio. Regla 2026-09-08b: composición FIJA → también el stepper
-                      // "Unidades" (copias, CartItem.qty); viaja al Estudio como ?copies=N
-                      // en el link del NamePricePicker. Las letras NO son cantidad de
-                      // compra (son el largo del nombre a precio por ficha) → no colisionan.
+                      // Estudio. Modelo multi-unidad (2026-09-09): también el stepper
+                      // "Unidades" (N nombres a diseñar, cada uno con su texto y colores);
+                      // viaja al Estudio como ?copies=N en el link del NamePricePicker.
+                      // Las letras NO son cantidad de compra (son el largo del nombre a
+                      // precio por ficha) → no colisionan.
                       <>
-                        <CopiesQtyInput />
+                        <CopiesQtyInput max={maxDesignUnits} />
                         <NamePricePicker
                           slug={product.slug}
                           perTilePrice={displayPrice}
@@ -425,24 +444,24 @@ export default async function ProductoDetallePage({
                       </>
                     ) : requiresPersonalization || isLetterSetProduct ? (
                       // CTA primaria al Estudio, reactiva a la variante del selector (H12).
-                      // Regla 2026-09-08b — "Unidades" en TODA PDP, un solo concepto:
-                      //   - Composición FIJA (calendario, sets de letras): stepper de
-                      //     COPIAS acá (CopiesQtyInput) → viaja como ?copies=N y la modal
-                      //     de confirmación del Estudio lo confirma tal cual (ya sin
-                      //     stepper propio).
+                      // Modelo multi-unidad (2026-09-09 — owner, regla general):
+                      //   - Composición FIJA (calendario, sets de letras): el stepper
+                      //     "Unidades" acá son las N unidades A DISEÑAR → viaja como
+                      //     ?copies=N y el Estudio abre con N unidades (cada una
+                      //     editable; la Vista previa las muestra todas; el carrito
+                      //     recibe 1 línea con el diseño completo, qty 1).
                       //   - Tamaño VARIABLE (packs de fotoimanes/separadores): el
                       //     pack size ya se eligió arriba como dimensión "Unidades" del
-                      //     VariantSelector → SIN stepper de copias (qty=1; se ajusta en
-                      //     el carrito). El CTA exige la variante completa ("variant") y
-                      //     el Estudio abre con ese N vía el merge de la variante sobre
-                      //     el schema (?variant=).
-                      //   - HÍBRIDO (2026-09-09, owner — PDP_PACK_PLUS_COPIES_SLUGS):
-                      //     tiras muestra AMBOS: "Fotos por tira" (composición, en el
-                      //     VariantSelector) + "Unidades" (copias, stepper acá) → el
-                      //     Estudio abre con el N de fotos Y las copias (?copies=N).
+                      //     VariantSelector → SIN stepper acá. El CTA exige la variante
+                      //     completa ("variant") y el Estudio abre con ese N vía el
+                      //     merge de la variante sobre el schema (?variant=).
+                      //   - HÍBRIDO (tiras — PDP_PACK_PLUS_COPIES_SLUGS): AMBOS:
+                      //     "Fotos por tira" (composición, en el VariantSelector) +
+                      //     "Unidades" (tiras a diseñar, stepper acá) → el Estudio
+                      //     abre con N tiras de M fotos (?variant= + ?copies=N).
                       <>
                         {(!isPhotoPack || PDP_PACK_PLUS_COPIES_SLUGS.has(product.slug)) && (
-                          <CopiesQtyInput />
+                          <CopiesQtyInput max={maxDesignUnits} />
                         )}
                         <EstudioCtaLink
                           slug={product.slug}
@@ -453,10 +472,11 @@ export default async function ProductoDetallePage({
                     ) : (
                       <form action={addToCartAction}>
                         <input type="hidden" name="slug" value={product.slug} />
-                        {/* Compra directa (composición fija): el stepper "Unidades"
-                          fija CartItem.qty vía su input oculto (regla 2026-09-08b).
-                          El cliente puede ajustar después en el carrito (QtyControls). */}
-                        <CopiesQtyInput />
+                        {/* Compra directa (sin personalización): el stepper "Unidades"
+                          fija CartItem.qty (unidades idénticas, qty clásico 1..99)
+                          vía su input oculto. El cliente puede ajustar después en
+                          el carrito (QtyControls). */}
+                        <CopiesQtyInput hint="Copias idénticas del mismo producto" />
                         <input type="hidden" name="returnTo" value={`/producto/${product.slug}`} />
                         {/* ADR-057 — variante elegida en el selector (H12: sync vía Context). */}
                         <CartVariantIdInput />

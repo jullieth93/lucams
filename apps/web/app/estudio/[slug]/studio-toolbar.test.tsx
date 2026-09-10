@@ -100,4 +100,43 @@ describe("StudioToolbar — botón «Vista previa»", () => {
     expect(btn).toHaveAttribute("aria-busy", "true");
     expect(btn).toHaveTextContent("Guardando diseño...");
   });
+
+  it("Ola 26 — finalizeBlockReason (textos requeridos IG): bloqueado CON las fotos completas, tooltip con los campos", () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "fotoimanes-polaroid",
+      canvasData: makeCanvasData(2), // fotos completas: el bloqueo es por TEXTOS
+      templates: [],
+    });
+    const onFinalize = vi.fn();
+    const reason = "Completa los textos de tu diseño para ver la vista previa: usuario, hashtags";
+    const { rerender } = render(
+      <StudioToolbar
+        store={store}
+        productName="Fotoimanes Polaroid"
+        productSlug="fotoimanes-polaroid"
+        finalizeBlockReason={reason}
+        onFinalize={onFinalize}
+      />,
+    );
+    // Botón deshabilitado con el motivo como tooltip y nombre audible (patrón
+    // del bloqueo por fotos faltantes).
+    const btn = screen.getByRole("button", { name: reason });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("title", reason);
+    btn.click();
+    expect(onFinalize).not.toHaveBeenCalled();
+    // Sin el motivo (el cliente ya escribió los textos) → habilitado de nuevo.
+    rerender(
+      <StudioToolbar
+        store={store}
+        productName="Fotoimanes Polaroid"
+        productSlug="fotoimanes-polaroid"
+        finalizeBlockReason={null}
+        onFinalize={onFinalize}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Vista previa de tu pedido" })).toBeEnabled();
+  });
 });

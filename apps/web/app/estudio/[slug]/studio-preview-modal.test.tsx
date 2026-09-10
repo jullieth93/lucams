@@ -99,3 +99,76 @@ describe("StudioPreviewModal — sin stepper de copias (regla 2026-09-08b)", () 
     expect(propsBajo.onConfirm).toHaveBeenCalledWith(1);
   });
 });
+
+describe("StudioPreviewModal — modelo MULTI-UNIDAD (unitCount: las unidades van EN el diseño)", () => {
+  it("con N unidades: total = unitario × N, dato de unidades y onConfirm recibe 1 (qty del carrito)", () => {
+    const props = baseProps();
+    render(<StudioPreviewModal {...props} unitCount={2} />);
+    expect(screen.getByText(cop(UNIT_PRICE * 2))).toBeInTheDocument();
+    expect(screen.getByText(`${cop(UNIT_PRICE)} c/u`)).toBeInTheDocument();
+    // La línea dice unidades DISEÑADAS, no "copias idénticas" (concepto eliminado).
+    expect(screen.getByText(/2 unidades — cada una con su propio diseño/)).toBeInTheDocument();
+    expect(screen.queryByText(/copias idénticas/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
+    expect(props.onConfirm).toHaveBeenCalledWith(1);
+  });
+
+  it("con 1 unidad (unitCount=1): total = precio unitario, sin desglose", () => {
+    render(<StudioPreviewModal {...baseProps()} unitCount={1} />);
+    expect(screen.getByText(cop(UNIT_PRICE))).toBeInTheDocument();
+    expect(screen.queryByText(/c\/u/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/unidades — cada una/)).not.toBeInTheDocument();
+  });
+
+  it("tiras (productKind=strips): la descripción habla de tiras y fotos por tira, no de imanes", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productKind="strips"
+        slotCount={2}
+        slotsPerUnit={3}
+        unitCount={2}
+      />,
+    );
+    expect(
+      screen.getByText(/Esta es la vista previa de las 2 tiras que vas a recibir — cada una con 3 fotos\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText("2 tiras personalizadas · 3 fotos c/u")).toBeInTheDocument();
+    expect(screen.queryByText(/imanes que vas a recibir/)).not.toBeInTheDocument();
+  });
+
+  it("una tira (strips, 1 unidad): singular", () => {
+    render(
+      <StudioPreviewModal {...baseProps()} productKind="strips" slotCount={1} slotsPerUnit={4} />,
+    );
+    expect(
+      screen.getByText(/Esta es la vista previa de la tira que vas a recibir — con 4 fotos\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText("1 tira personalizada · 4 fotos")).toBeInTheDocument();
+  });
+
+  it("calendarios ×2: la descripción y el resumen hablan de 2 calendarios de 12 páginas", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productKind="calendar"
+        slotCount={2}
+        slotsPerUnit={12}
+        unitCount={2}
+        calendarYear={2027}
+      />,
+    );
+    expect(
+      screen.getByText(/vista previa de tus 2 calendarios 2027 — cada uno con 12 páginas\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText("2 calendarios personalizados · 12 páginas c/u")).toBeInTheDocument();
+  });
+
+  it("unitCount manda sobre initialCopies cuando llegan ambos (modelo nuevo > legacy)", () => {
+    const props = baseProps();
+    render(<StudioPreviewModal {...props} unitCount={2} initialCopies={5} />);
+    expect(screen.getByText(cop(UNIT_PRICE * 2))).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
+    expect(props.onConfirm).toHaveBeenCalledWith(1);
+  });
+});

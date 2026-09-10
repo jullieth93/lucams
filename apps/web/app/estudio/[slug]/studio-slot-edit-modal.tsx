@@ -19,7 +19,7 @@ import { useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ImageIcon, Type, ChevronLeft } from "lucide-react";
+import { ImageIcon, Type, ChevronLeft, Copy } from "lucide-react";
 import { StudioPhotoAdjustForm } from "./studio-photo-adjust-modal";
 import { StudioPhotoPreview } from "./studio-photo-preview";
 import { StudioTextEditorForm } from "./studio-text-editor-modal";
@@ -71,6 +71,18 @@ type StudioSlotEditModalProps = {
   calendarFont?: CalendarFontKey;
   onCalendarFontChange?: (font: CalendarFontKey) => void;
   /**
+   * Modelo multi-unidad (owner 2026-09-09) — atajo "Aplicar este diseño a todas"
+   * para productos de imán suelto (unitSlots = 1, polaroid/cuadrados: el slot ES
+   * la unidad). Con unidades multi-slot el mismo atajo vive en el header de la
+   * sección de la unidad. Ausente → no se muestra.
+   */
+  applyToAll?: {
+    label: string;
+    ariaLabel: string;
+    title: string;
+    onApply: () => void;
+  };
+  /**
    * Ola 9 — datos para el preview interactivo de la pestaña Foto (gestos de
    * zoom/pan directos sobre la foto; reemplaza al slider eliminado).
    */
@@ -117,6 +129,7 @@ export function StudioSlotEditModal({
   onClearProfilePhoto,
   calendarFont = "fredoka",
   onCalendarFontChange,
+  applyToAll,
 }: StudioSlotEditModalProps) {
   // Tab activa: Foto por default si hay foto; si no, Texto (si aplica).
   const defaultTab = hasPhoto ? "photo" : "text";
@@ -360,7 +373,24 @@ export function StudioSlotEditModal({
           </div>
         </Tabs>
 
-        <div className="border-brand-purple/10 bg-brand-cream/30 flex shrink-0 justify-end border-t px-4 py-3">
+        <div className="border-brand-purple/10 bg-brand-cream/30 flex shrink-0 items-center justify-between gap-2 border-t px-4 py-3">
+          {/* Multi-unidad (2026-09-09) — con imán suelto, el atajo "Aplicar este
+              diseño a todas" copia este slot (foto + encuadre + filtro + textos)
+              a todos los demás. */}
+          <div>
+            {applyToAll && (
+              <button
+                type="button"
+                onClick={applyToAll.onApply}
+                aria-label={applyToAll.ariaLabel}
+                title={applyToAll.title}
+                className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 focus-visible:ring-brand-turquoise inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-3.5 py-2 text-xs font-bold transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95"
+              >
+                <Copy className="h-3.5 w-3.5" aria-hidden />
+                {applyToAll.label}
+              </button>
+            )}
+          </div>
           <Button
             type="button"
             onClick={onClose}

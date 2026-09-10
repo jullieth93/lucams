@@ -51,10 +51,13 @@ type SearchParams = Promise<{
   /** ADR-057 — nº de letras pre-elegido en la ficha (Nombre por ficha). Hint inicial. */
   letters?: string;
   /**
-   * Copias (CartItem.qty) elegidas en la PDP con el stepper "Unidades" de los
-   * productos de composición fija (regla 2026-09-08b). La modal que abre
-   * "Vista previa" ya NO tiene stepper propio: confirma con este valor (sin
-   * parámetro arranca en 1).
+   * UNIDADES A DISEÑAR elegidas en la PDP con el stepper "Unidades" (modelo
+   * multi-unidad, owner 2026-09-09 — regla general: cada unidad se diseña por
+   * separado en el Estudio; desaparecen las "copias idénticas" de las
+   * superficies personalizables). Se conserva el nombre del parámetro por
+   * compat de deep-links, pero su significado cambió: ?copies=N abre el
+   * Estudio con N unidades (2 tiras = 2 × fotos-por-tira; 2 calendarios =
+   * 2 × 12 tarjetas). Sin parámetro arranca en 1.
    */
   copies?: string;
 }>;
@@ -126,10 +129,11 @@ export default async function EstudioPage({
   // fallback exacto pre-CMS por campo). Se inyectan al árbol client vía provider.
   const texts = await getStudioTexts();
 
-  // Copias (CartItem.qty) vía ?copies=N — las eligió la PDP con su stepper
-  // "Unidades" (productos de composición fija, regla 2026-09-08b); sin parámetro
-  // el Estudio arranca en 1. Entero acotado a 1..99 — mismo rango de
-  // AddToCartSchema; la URL la puede editar cualquiera.
+  // Unidades a DISEÑAR vía ?copies=N (modelo multi-unidad 2026-09-09 — el nombre
+  // del parámetro se conserva por compat; el significado es "N unidades, cada una
+  // diseñable por separado"). Sin parámetro arranca en 1. Entero acotado a 1..99
+  // acá (la URL la puede editar cualquiera); el tope REAL por producto lo aplica
+  // cada superficie (foto: slotCount ≤ 50 → floor(50/unitSlots); sets: 10).
   const rawCopies = Number.parseInt(typeof sp.copies === "string" ? sp.copies : "", 10);
   const initialCopies = Number.isFinite(rawCopies)
     ? Math.min(99, Math.max(1, rawCopies))
@@ -257,7 +261,9 @@ export default async function EstudioPage({
               themeOptions={{ es: themeEs, en: themeEn }}
               initialTheme={variantAttrs.theme ?? null}
               stylesByLanguage={{ es: stylesEs, en: stylesEn }}
-              initialCopies={initialCopies}
+              // ?copies=N (stepper "Unidades" de la PDP, modelo multi-unidad
+              // 2026-09-09) → N sets a diseñar, cada uno con sus colores.
+              initialUnits={initialCopies}
               subtitle={letterSetSubtitle(
                 surface.config.letterSet,
                 letters.length,
@@ -500,9 +506,12 @@ export default async function EstudioPage({
             variantId={selectedVariant?.id}
             // Precio de la variante elegida (o base) → fallback de la vista previa.
             unitPriceCents={selectedVariant?.price ?? product.basePrice}
-            // ?copies=N (stepper "Unidades" de la PDP en productos de composición
-            // fija) → copias que confirma la modal de "Vista previa"; sin parámetro = 1.
-            initialCopies={initialCopies}
+            // ?copies=N (stepper "Unidades" de la PDP, modelo multi-unidad
+            // 2026-09-09) → unidades A DISEÑAR: el Estudio abre con N unidades
+            // (cada una editable; la Vista previa las muestra todas; el carrito
+            // recibe 1 línea con el diseño completo). El editor las acota al
+            // máximo del producto (slotCount ≤ 50); sin parámetro = 1.
+            initialUnits={initialCopies}
             // Edición desde el carrito: reemplazar el item original al finalizar (no duplicar).
             replacesCartDesignId={replacesCartDesignId}
             templates={templates}

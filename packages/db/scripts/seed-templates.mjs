@@ -524,6 +524,43 @@ const templatesData = [
             ],
           },
         },
+        // Ola 18b (Lucy 2026-07-26) — celda de la TIRA DE 4 FOTOS (6.5×26.5 cm).
+        // Nació en el script one-off ola18b-cuadrados-tiras-fix.mjs y NO estaba en
+        // este seed → el barrido de legacy de abajo la soft-deleteaba en CADA corrida
+        // (bug 2026-09-09, reporte del dueño en STG: al elegir "4 fotos por tira" el
+        // Estudio no montaba el canvas de la tira: sin plantilla activa que matchee el
+        // aspectRatio "3:4" de la variante, el filtro de aspect dejaba la lista vacía
+        // y el boot caía al template cuadrado genérico 1080×1080). Al declararla acá
+        // el upsert la reactiva y el barrido la respeta (idempotente).
+        // Mismo dibujo que la de 3 escalado a 390×530 (misma altura por foto ≈133px):
+        // la celda es 1/4 de la tira y su aspect (0.736 ≈ 3:4) es la llave de ruteo
+        // con la variante FI-TIRA-4FOTOS (aspectRatio "3:4").
+        {
+          slug: "photo-strip-4-fotos",
+          productId: tirasProduct.id,
+          kind: "PHOTO_PACK",
+          name: "Plantilla Tiras",
+          order: 2,
+          previewUrl: "/templates/tira-clasica.svg",
+          canvasData: {
+            version: 1,
+            stage: stage(390, 530), // 1/4 de la tira 6.5×26.5 cm (celda 6.5×6.625)
+            gridCols: 1, // apilar las 4 fotos en vertical (la tira física es 1 columna)
+            gridGap: 0, // celdas pegadas → la tira se lee como UNA pieza continua
+            layers: [
+              background("#FFFFFF"),
+              { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 0 },
+              photoSlot({
+                id: "photo",
+                x: 12,
+                y: 0,
+                width: 366,
+                height: 530,
+                label: "Foto de la tira",
+              }),
+            ],
+          },
+        },
       ]
     : []),
   // ════════════════════ Plantillas de producto (antes "Personalización Libre") ════════

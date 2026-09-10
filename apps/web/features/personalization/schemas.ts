@@ -169,6 +169,14 @@ export const CanvasDataV2Schema = z.object({
   // esta ola). Sin catchall en este schema: declararla acá es lo que la hace sobrevivir
   // el auto-save (Zod stripea claves no declaradas).
   calendarFont: CalendarFontKeySchema.optional(),
+  // Modelo MULTI-UNIDAD (owner 2026-09-09 — regla general): N unidades físicas del mismo
+  // producto, CADA UNA diseñable por separado en el Estudio (2 tiras = 2 × unitSlots;
+  // 2 calendarios = 2 × 12). Aditivo: ausentes = 1 unidad (diseños legacy intactos).
+  // Invariante: slotCount = unitCount × unitSlots; el editor solo los escribe cuando
+  // unitSlots > 1 (los packs de imán suelto no los declaran — su variante YA es el pack).
+  // El precio NUNCA confía en estos campos: se deriva de slotCount (design-units.ts).
+  unitCount: z.number().int().min(1).max(50).optional(),
+  unitSlots: z.number().int().min(1).max(50).optional(),
 });
 
 export type CanvasDataV2 = z.infer<typeof CanvasDataV2Schema>;

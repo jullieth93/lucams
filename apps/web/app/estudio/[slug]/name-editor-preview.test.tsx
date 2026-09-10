@@ -253,6 +253,18 @@ describe("NameEditor — opción «Con borde / Sin borde» (regla del set de let
     expect(screen.getByRole("radio", { name: "Sin borde" })).toBeEnabled();
   });
 
+  it("Ola 26 (owner 2026-09-09) — «Borde de las fichas» va ARRIBA de «Elige los colores»", () => {
+    renderEditor();
+
+    const borde = screen.getByRole("radiogroup", { name: "Borde de las fichas" });
+    const colores = screen.getByText("Elige los colores");
+    // compareDocumentPosition: DOCUMENT_POSITION_FOLLOWING = colores va DESPUÉS de borde.
+    expect(borde.compareDocumentPosition(colores) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // La regla de desactivado sigue intacta en el nuevo orden.
+    fireEvent.click(screen.getByRole("radio", { name: "Sin borde" }));
+    expect(screen.getByRole("button", { name: /Arcoíris/ })).toBeDisabled();
+  });
+
   it("al volver a «Con borde» los colores se reactivan conservando la selección", () => {
     renderEditor();
 

@@ -56,6 +56,9 @@ export type StudioTexts = {
      *  renombrado por el owner: abre la vista previa de confirmación, no finaliza). */
     finalizeBtn: string;
     finalizeTooltip: string;
+    /** Ola 26 (owner 2026-09-09) — «Vista previa» bloqueado por textos requeridos
+     *  sin llenar (Polaroid Instagram). {campos} = lista de campos faltantes. */
+    finalizeTooltipTextos: string;
     finalizeGuardando: string;
     gesturesButtonTitle: string;
     slotEmptyInvite: string;
@@ -250,6 +253,13 @@ export type StudioTexts = {
     sinTexto: string;
     campoLabel: string;
     campoPlaceholder: string;
+    /** Ola 26 (owner 2026-09-09) — nombres legibles de los campos de texto
+     *  requeridos de la Polaroid Instagram (para el aviso de «Vista previa»
+     *  bloqueado: "Completa los textos…: usuario, ubicación…"). */
+    campoIgUsuario: string;
+    campoIgUbicacion: string;
+    campoIgTitulo: string;
+    campoIgHashtags: string;
     tamanoLabel: string;
     negrita: string;
     cursiva: string;
@@ -448,6 +458,42 @@ export type StudioTexts = {
     bordeSin: string;
     bordeSinColoresHint: string;
   };
+  /**
+   * Modelo MULTI-UNIDAD (owner 2026-09-09): N unidades físicas del mismo
+   * producto, cada una diseñable por separado en el Estudio. Pager de unidades,
+   * headers de sección, "Aplicar este diseño a todas" y la línea de la modal.
+   */
+  unidades: {
+    /** Aria del pager de unidades sobre el lienzo. */
+    pagerAria: string;
+    /** Título de la sección de una unidad: "{nombre} {n} de {total}". */
+    unidadDe: string;
+    /** Sustantivos de la unidad según el producto. */
+    nombreTira: string;
+    nombreCalendario: string;
+    nombreSeparador: string;
+    nombreSet: string;
+    nombrePieza: string;
+    /** Aria del chip de progreso de una unidad ("{n} de {total} fotos listas…"). */
+    progresoAria: string;
+    /** "Aplicar este diseño a todas" (copia la unidad actual a las demás). */
+    aplicarATodas: string;
+    aplicarATodasAria: string;
+    aplicarATodasTitle: string;
+    /** Feedback aria-live tras aplicar a todas. */
+    aplicadaFeedback: string;
+    /** Modal de confirmación: línea de unidades ("{n} unidades — cada una…"). */
+    modalUnidades: string;
+    /** Modal — descripción de TIRAS photobooth (plural y singular). {n} tiras, {m} fotos c/u. */
+    descTiras: string;
+    descTiraUna: string;
+    /** Modal — resumen de tiras (línea bajo el nombre del producto). */
+    resumenTiras: string;
+    resumenTiraUna: string;
+    /** Modal — descripción de N calendarios ({n} sets de {m} páginas, {año} opcional). */
+    descCalendarios: string;
+    resumenCalendarios: string;
+  };
   /** Asistente de ideas (IA). */
   ia: {
     titulo: string;
@@ -512,6 +558,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     progressBadge: "{n}/{total} fotos",
     finalizeBtn: "Vista previa",
     finalizeTooltip: "Faltan {n} fotos por cargar para ver la vista previa",
+    finalizeTooltipTextos: "Completa los textos de tu diseño para ver la vista previa: {campos}",
     finalizeGuardando: "Guardando diseño...",
     gesturesButtonTitle: "Cómo editar tu foto (drag, zoom, doble click)",
     slotEmptyInvite: "Pásame una foto",
@@ -715,6 +762,10 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     sinTexto: "Sin texto",
     campoLabel: "Texto",
     campoPlaceholder: "Escribe tu texto…",
+    campoIgUsuario: "usuario",
+    campoIgUbicacion: "ubicación",
+    campoIgTitulo: "título",
+    campoIgHashtags: "hashtags",
     tamanoLabel: "Tamaño",
     negrita: "Negrita",
     cursiva: "Cursiva",
@@ -917,6 +968,29 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     bordeSinColoresHint:
       "Sin borde, las fichas se imprimen sin el marco de color — por eso los colores se desactivan. Vuelve a «Con borde» para pintarlas.",
   },
+  unidades: {
+    pagerAria: "Unidades de tu diseño",
+    unidadDe: "{nombre} {n} de {total}",
+    nombreTira: "Tira",
+    nombreCalendario: "Calendario",
+    nombreSeparador: "Separador",
+    nombreSet: "Set",
+    nombrePieza: "Pieza",
+    progresoAria: "{n} de {total} fotos listas en esta unidad",
+    aplicarATodas: "Aplicar este diseño a todas",
+    aplicarATodasAria: "Aplicar el diseño de esta unidad a todas las unidades",
+    aplicarATodasTitle: "Copia fotos, encuadres y textos de esta unidad a las demás",
+    aplicadaFeedback: "Diseño aplicado a todas las unidades",
+    modalUnidades: "{n} unidades — cada una con su propio diseño",
+    descTiras:
+      "Esta es la vista previa de las {n} tiras que vas a recibir — cada una con {m} fotos.",
+    descTiraUna: "Esta es la vista previa de la tira que vas a recibir — con {m} fotos.",
+    resumenTiras: "{n} tiras personalizadas · {m} fotos c/u",
+    resumenTiraUna: "{n} tira personalizada · {m} fotos",
+    descCalendarios:
+      "Esta es la vista previa de tus {n} calendarios{año} — cada uno con {m} páginas.",
+    resumenCalendarios: "{n} calendarios personalizados · {m} páginas c/u",
+  },
   ia: {
     titulo: "¿Sin ideas? Te ayudo",
     label: "¿Para qué es? (ej. “cumpleaños de mi mamá”, “aniversario”)",
@@ -980,6 +1054,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.progressBadge": "estudio.lienzo.progress-badge",
   "lienzo.finalizeBtn": "estudio.lienzo.finalize-btn",
   "lienzo.finalizeTooltip": "estudio.lienzo.finalize-tooltip",
+  "lienzo.finalizeTooltipTextos": "estudio.lienzo.finalize-tooltip-textos",
   "lienzo.finalizeGuardando": "estudio.lienzo.finalize-guardando",
   "lienzo.gesturesButtonTitle": "estudio.lienzo.gestures-button-title",
   "lienzo.slotEmptyInvite": "estudio.lienzo.slot-empty-invite",
@@ -1160,6 +1235,10 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.sinTexto": "estudio.texto.sin-texto",
   "texto.campoLabel": "estudio.texto.campo-label",
   "texto.campoPlaceholder": "estudio.texto.campo-placeholder",
+  "texto.campoIgUsuario": "estudio.texto.campo-ig-usuario",
+  "texto.campoIgUbicacion": "estudio.texto.campo-ig-ubicacion",
+  "texto.campoIgTitulo": "estudio.texto.campo-ig-titulo",
+  "texto.campoIgHashtags": "estudio.texto.campo-ig-hashtags",
   "texto.tamanoLabel": "estudio.texto.tamano-label",
   "texto.negrita": "estudio.texto.negrita",
   "texto.cursiva": "estudio.texto.cursiva",
@@ -1337,6 +1416,25 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "letras.bordeCon": "estudio.letras.borde-con",
   "letras.bordeSin": "estudio.letras.borde-sin",
   "letras.bordeSinColoresHint": "estudio.letras.borde-sin-colores-hint",
+  "unidades.pagerAria": "estudio.unidades.pager-aria",
+  "unidades.unidadDe": "estudio.unidades.unidad-de",
+  "unidades.nombreTira": "estudio.unidades.nombre-tira",
+  "unidades.nombreCalendario": "estudio.unidades.nombre-calendario",
+  "unidades.nombreSeparador": "estudio.unidades.nombre-separador",
+  "unidades.nombreSet": "estudio.unidades.nombre-set",
+  "unidades.nombrePieza": "estudio.unidades.nombre-pieza",
+  "unidades.progresoAria": "estudio.unidades.progreso-aria",
+  "unidades.aplicarATodas": "estudio.unidades.aplicar-a-todas",
+  "unidades.aplicarATodasAria": "estudio.unidades.aplicar-a-todas-aria",
+  "unidades.aplicarATodasTitle": "estudio.unidades.aplicar-a-todas-title",
+  "unidades.aplicadaFeedback": "estudio.unidades.aplicada-feedback",
+  "unidades.modalUnidades": "estudio.unidades.modal-unidades",
+  "unidades.descTiras": "estudio.unidades.desc-tiras",
+  "unidades.descTiraUna": "estudio.unidades.desc-tira-una",
+  "unidades.resumenTiras": "estudio.unidades.resumen-tiras",
+  "unidades.resumenTiraUna": "estudio.unidades.resumen-tira-una",
+  "unidades.descCalendarios": "estudio.unidades.desc-calendarios",
+  "unidades.resumenCalendarios": "estudio.unidades.resumen-calendarios",
   "ia.titulo": "estudio.ia.titulo",
   "ia.label": "estudio.ia.label",
   "ia.placeholder": "estudio.ia.placeholder",

@@ -70,6 +70,7 @@ import {
   isInstagramNoBorder,
   photoBackingHexFor,
 } from "@/features/personalization/frame-palette";
+import { igTextFill } from "@/features/personalization/instagram-template-spec";
 import { RealismShadowLayer, RealismOverlayLayer } from "./studio-realism-overlay";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
@@ -102,8 +103,13 @@ export function nextWheelScale(current: number, deltaY: number, min = 0.5, max =
 // Ola 25 — exportados para reutilizar la MISMA bandeja en el preview del modal
 // de edición (studio-photo-preview): la tarjeta blanca también se perdía contra
 // el fondo blanco del modal.
-export const WHITE_CARD_CHECKER = "repeating-conic-gradient(#ECE9F1 0% 25%, #FFFFFF 0% 50%)";
-export const WHITE_CARD_TRAY_PAD = 6;
+// Ola 26 (Lucy 2026-09-09) — "muy leve": cuadrados más oscuros (#CDC7DB, antes
+// #ECE9F1 — casi indistinguible del blanco) y un poco más grandes (16px, antes
+// 12px), con la bandeja un poco más ancha (8px) → la tarjeta blanca se lee de
+// inmediato sobre el crema del Estudio y el blanco del modal.
+export const WHITE_CARD_CHECKER = "repeating-conic-gradient(#CDC7DB 0% 25%, #FFFFFF 0% 50%)";
+export const WHITE_CARD_CHECKER_SIZE = "16px 16px";
+export const WHITE_CARD_TRAY_PAD = 8;
 
 type StudioSlotProps = {
   slotState: SlotState;
@@ -741,7 +747,7 @@ function StudioSlotImpl({
             // "transparencia" de los editores de foto). Adorno DOM de pantalla: el
             // snapshot de producción captura solo el canvas Konva → no se hornea.
             ...(whiteCardTray
-              ? { backgroundImage: WHITE_CARD_CHECKER, backgroundSize: "12px 12px" }
+              ? { backgroundImage: WHITE_CARD_CHECKER, backgroundSize: WHITE_CARD_CHECKER_SIZE }
               : {}),
             // M.3.b.UX.v13 — borderRadius solo aplica si shape rectangle.
             // Para heart/circle, el clipPath define la silueta y borderRadius
@@ -1490,7 +1496,16 @@ export function renderLayer(
       // Ola 4 — contraste AUTOMÁTICO del texto por el fondo efectivo de la tarjeta
       // (generaliza el darkCard de Ola 3: Instagram fondo negro → textos blancos;
       // frame-card oscura → texto claro; el override de color del cliente manda).
-      return renderText(textLayer, stage, override, onTextEdit, false, darkCardBg);
+      // Ola 26 (Lucy 2026-09-09) — Instagram: el default se decide POR CAPA
+      // (igTextFill): usuario/ubicación/likes/título siguen el contraste de la
+      // tarjeta, pero los hashtags SIEMPRE salen azul link IG (legible sobre
+      // tarjeta clara u oscura) — nunca caen al blanco del contraste.
+      const defaultFill = isIg
+        ? igTextFill(textLayer.id, textLayer.fill, darkCardBg)
+        : darkCardBg
+          ? "#FFFFFF"
+          : (textLayer.fill ?? "#3D2E5C");
+      return renderText(textLayer, stage, override, onTextEdit, false, defaultFill);
     }
     case "shape":
       return renderShape(layer as never);
@@ -1754,9 +1769,11 @@ function renderText(
   // heart/circle). Aplica stroke blanco + shadow para legibilidad sobre
   // cualquier color de fondo.
   onPhoto: boolean = false,
-  // Ola 3 — tarjeta de borde oscura (Polaroid Clásica): el texto por defecto
-  // sale claro (#FFFFFF). Solo aplica si NO hay override de color del cliente.
-  darkCard: boolean = false,
+  // Color de letra por defecto cuando NO hay override de color del cliente.
+  // Lo decide el call-site (renderLayer): contraste con la tarjeta (Ola 3/4;
+  // Ola 26 — en Instagram, por capa vía igTextFill: hashtags siempre azules).
+  // Ausente → el fill de la plantilla (o el morado oscuro de marca).
+  defaultFill?: string,
 ) {
   // Combinar layer base + override del slot. Cada campo del override
   // sobrescribe el layer base si está definido.
@@ -1788,7 +1805,7 @@ function renderText(
   const finalText = customerText ?? layer.text;
   const fontSize = override?.fontSize ?? layer.fontSize ?? 48;
   const fontFamily = override?.fontFamily ?? layer.fontFamily ?? "Fredoka, Inter, sans-serif";
-  const fill = override?.fill ?? (darkCard ? "#FFFFFF" : (layer.fill ?? "#3D2E5C"));
+  const fill = override?.fill ?? defaultFill ?? layer.fill ?? "#3D2E5C";
   const fontStyle = override?.fontWeight ?? layer.fontWeight;
   const align = layer.align ?? "center";
 
