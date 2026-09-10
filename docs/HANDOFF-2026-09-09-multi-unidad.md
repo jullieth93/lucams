@@ -67,6 +67,25 @@ validación del owner → PRD.
 4. **Sweep final de comentarios** que aún hablen de "copias idénticas".
 5. **CI de la rama** (corre al hacer push): debe quedar verde antes del merge.
 
+## Trazabilidad del mensaje de validación del owner (2026-09-09, verbatim)
+
+Cada punto de su último mensaje y dónde quedó:
+
+| # | Punto del owner | Estado / dónde vive |
+|---|---|---|
+| 1.2.1.A | Clásica: preview blanca "ya se ve pero muy leve" | Implementado (checkerboard reforzado, Ola 26) — falta verificación visual del owner |
+| 1.2.2.A | IG: tarjeta blanca → textos oscuros; negra → claros; #mirecuerdo #lucamsshop SIEMPRE azul | Implementado (color por capa, Ola 26 + instagram-template-spec) — falta verificación visual |
+| 1.2.2.B | IG: "de cierta manera se obligue a tener esos textos" → respuesta del owner: **TODOS los textos obligatorios** (usuario, ubicación, título, hashtags; "362 me gusta" decorativo) | Implementado (bloqueo de «Vista previa» con campos faltantes, Ola 26) |
+| 1.3.A-1 | Tiras: 3 fotos con Unidades 2+ "no se reflejan los lienzos" → respuesta del owner: quiere **VER las N tiras, regla general: las N elementos a diseñar en el estudio** | Es el modelo multi-unidad (Ola 27): N unidades diseñables con atajo "aplicar a todas" |
+| 1.3.A-2 | Tiras: 4 fotos "ni siquiera aparece lienzo" | Bug corregido (plantilla 4 fotos añadida a `seed-templates.mjs`; nació en one-off `ola18b-cuadrados-tiras-fix.mjs`) — **requiere correr `seed-templates.mjs` en STG/PRD** |
+| 1.7 | Nombre: "Borde de las fichas" ENCIMA de "Elige los colores" | Implementado (reorden en name-editor, Ola 26) |
+| PDTA | Error `make` al reiniciar local (`EADDRINUSE :4000`) | Resuelto en sesión: era un `next dev` de pruebas ocupando el puerto; se liberó. Si recurre, `make web-stop` en el repo principal |
+| Transversal | "Todo alineado entre admin y cliente" | Los textos nuevos van por CMS (keys en cms-site-map.mjs); prediseñados admin→/admin/disenos ya alineado |
+
+Decisiones del owner tomadas vía preguntas en esta sesión (no volver a preguntar):
+- IG obligatorios: **"Todos los textos"**.
+- Tiras/unidades: **"Ver las N tiras… la regla debería ser en general, las N elementos a diseñar en el estudio"** → confirmado como **"N unidades diseñables"** (con atajo "aplicar este diseño a todas"), no copias idénticas ni solo-visual.
+
 ## Operativa pendiente tras el merge a develop
 
 1. `pnpm --filter @lucams/db exec node scripts/migrate-cms-v2.mjs` con
