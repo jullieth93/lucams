@@ -201,3 +201,40 @@ describe("StudioTextEditorForm — contraste texto/tarjeta en el preview (Ola 28
     expect(screen.queryByRole("note")).not.toBeInTheDocument();
   });
 });
+
+describe("StudioTextEditorForm — color inicial = default del lienzo sobre la tarjeta (Ola 29, ronda 5 · 1.2.1.A)", () => {
+  // El owner: "si es rosado el lienzo del fondo, blanco puede ser el preview del
+  // texto". cardDefaultFill (lo calcula el host con la regla del lienzo) fija la
+  // base: el form arranca en blanco sobre la tarjeta rosada y, si el cliente no
+  // toca la paleta, NO se guarda override de color (el lienzo sigue con su default).
+  it("tarjeta rosada + default blanco del lienzo → el preview arranca blanco sobre rosado y Aplicar no guarda fill", async () => {
+    const onApply = vi.fn();
+    render(
+      <StudioTextEditorForm
+        layer={LAYER}
+        currentOverride={undefined}
+        onApply={onApply}
+        cardColor="#E85B9F"
+        cardDefaultFill="#FFFFFF"
+      />,
+    );
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Hola!" } });
+
+    const preview = screen.getByText("Hola!");
+    expect(preview.style.color).toBe("rgb(255, 255, 255)");
+    expect(preview.style.backgroundColor).toBe("rgb(232, 91, 159)");
+    // Blanco sobre rosado SÍ se ve (ratio ≈ 3.3) → sin aviso de bajo contraste.
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    // Solo el texto viaja: el fill quedó igual a la base → no se guarda override.
+    await waitFor(() => expect(onApply).toHaveBeenCalledWith({ text: "Hola!" }));
+  });
+
+  it("sin cardDefaultFill (superficie vieja) → la base sigue siendo el fill de la plantilla", () => {
+    render(<StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Hola!" } });
+    // LAYER no declara fill → base #262626 (comportamiento histórico intacto).
+    expect(screen.getByText("Hola!").style.color).toBe("rgb(38, 38, 38)");
+  });
+});

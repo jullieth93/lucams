@@ -24,7 +24,7 @@ import {
 } from "./calendar-layout";
 import { drawCalendarPage } from "./calendar-draw";
 import {
-  isDarkColor,
+  defaultTextFillOnCard,
   frameBleedMargin,
   insetToMinMargin,
   isSimpleCardTemplate,
@@ -289,7 +289,8 @@ async function renderSlotCanvas(
       : hasFrameCard
         ? (borderColor ?? frameCardFillHex)
         : bgLayerHex;
-  const darkCard = isDarkColor(cardBgHex);
+  // (El color de letra por defecto sale de defaultTextFillOnCard(cardBgHex) en
+  // renderTextLayer — Ola 29: la tarjeta rosada también pide letra blanca.)
 
   for (const layer of unit.layers) {
     if (layer.type === "frame-card") {
@@ -474,7 +475,7 @@ async function renderSlotCanvas(
       // heart/circle omiten texto (igual que el editor). Ola 3 — también se omite
       // cuando el producto no admite texto (includeText=false, ej. Fotoimanes Cuadrados).
       if (useFullStage || !includeText) continue;
-      renderTextLayer(ctx, layer, unit.stage, slot.textOverrides?.[layer.id], darkCard);
+      renderTextLayer(ctx, layer, unit.stage, slot.textOverrides?.[layer.id], cardBgHex);
     }
     // 'shape' u otras → ignoradas (raras; si aparecen, el resultado es fiel salvo esa capa).
   }
@@ -515,20 +516,25 @@ async function renderSlotCanvas(
 }
 
 /** Replica renderText de studio-slot.tsx: fontSize/family/fill/weight/align + stroke/shadow.
- *  Ola 3 — `darkCard`: la tarjeta del borde es oscura → el texto POR DEFECTO sale claro
+ *  Ola 3 — la tarjeta del borde oscura → el texto POR DEFECTO sale claro
  *  (el override de color del cliente siempre manda).
+ *  Ola 29 (owner 2026-09-11, ronda 5) — el default sale de `defaultTextFillOnCard`
+ *  (frame-palette, la MISMA regla del lienzo y del editor de texto): tarjeta
+ *  rosada/oscura → blanco; blanca/pastel → el oscuro de la plantilla.
  *  REGLA GLOBAL DE PLACEHOLDERS (Ola 4 2026-07-23, reforzada Ola 23 2026-09-08): el texto
  *  por defecto de una capa EDITABLE es un placeholder de pantalla ("Escribe tu mensaje",
  *  "@tu_usuario", "362 me gusta"…) — se VE atenuado en el editor pero NUNCA se imprime:
  *  solo se imprime el override que el cliente escribió (override.text no vacío). Un
  *  override sin texto (solo estilo) tampoco imprime. Las capas NO editables (texto fijo
- *  decorativo de la plantilla) imprimen su texto base. */
+ *  decorativo de la plantilla) imprimen su texto base.
+ *  (Ola 28 — EXCEPCIÓN Instagram: este renderer NO la ve — IG siempre hornea el PNG del
+ *  cliente, NEEDS_KONVA en ambos tiers.) */
 function renderTextLayer(
   ctx: SKRSContext2D,
   layer: AnyLayer,
   stage: Stage,
   override: TextOverride | undefined,
-  darkCard: boolean = false,
+  cardBgHex: string,
 ) {
   const baseText = layer.editable === true ? "" : typeof layer.text === "string" ? layer.text : "";
   const finalText = override?.text ?? baseText;
@@ -539,7 +545,7 @@ function renderTextLayer(
     (typeof layer.fontFamily === "string" ? layer.fontFamily : "Fredoka, Inter, sans-serif");
   const fill =
     override?.fill ??
-    (darkCard ? "#FFFFFF" : typeof layer.fill === "string" ? layer.fill : "#3D2E5C");
+    defaultTextFillOnCard(cardBgHex, typeof layer.fill === "string" ? layer.fill : undefined);
   // Konva default fontStyle = "normal" (400) cuando el layer no lo especifica (NO 600).
   const weight =
     override?.fontWeight ?? (typeof layer.fontWeight === "string" ? layer.fontWeight : "normal");

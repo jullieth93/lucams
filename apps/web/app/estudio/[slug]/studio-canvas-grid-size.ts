@@ -195,6 +195,28 @@ export function stepStageZoom(current: number, direction: 1 | -1, cap: number): 
 }
 
 /**
+ * Ola 29 (owner 2026-09-11, 1.3.A mejora visual) — secciones de TIRA en filas:
+ * con N unidades multi-slot tipo tira photobooth (angostas y altas), las
+ * secciones ya no se apilan una por fila — van 2-3 por fila y el resto envuelve
+ * abajo (4 unidades → 3 + 1 en desktop). Solo tiras: las secciones de
+ * calendario son grillas anchas y siguen apiladas. Tope 3 (pedido del owner).
+ * Umbral 900px del CONTENEDOR (no del viewport): el Estudio desktop resta la
+ * barra lateral (~288px) → un viewport 1280 deja ~944px y allí caben las 3.
+ */
+export function unitSectionsPerRowFor(opts: {
+  isStripSections: boolean;
+  unitCount: number;
+  containerWidth: number;
+}): number {
+  if (!opts.isStripSections || opts.unitCount <= 1) return 1;
+  const cap = opts.containerWidth >= 900 ? 3 : 2;
+  return Math.max(1, Math.min(opts.unitCount, cap));
+}
+
+/** Gap (px) entre secciones de unidad en la grilla horizontal de tiras. */
+export const UNIT_SECTION_GAP = 40;
+
+/**
  * Ancho de slot (grid plano, no agrupado): el menor entre el ancho disponible
  * por columna y el alto útil del marco / aspecto, con el piso que corresponda.
  */

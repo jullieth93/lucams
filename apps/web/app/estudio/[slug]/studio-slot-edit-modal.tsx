@@ -56,6 +56,13 @@ type StudioSlotEditModalProps = {
    * pinta ese fondo y avisa cuando la letra elegida casi no contrasta.
    */
   cardColor?: string | null;
+  /**
+   * Ola 29 (owner 2026-09-11, ronda 5) — color de letra POR DEFECTO por capa
+   * sobre la tarjeta actual (el host lo calcula con la regla compartida del
+   * lienzo: igTextFill en IG / defaultTextFillOnCard en el resto). El editor de
+   * texto arranca con ese color → preview y lienzo nunca divergen.
+   */
+  textDefaultFills?: Record<string, string>;
   /** Ola 10 — solicitud de cambiar la foto: cierra el editor y abre el picker. */
   onChangePhoto?: () => void;
   /**
@@ -128,6 +135,7 @@ export function StudioSlotEditModal({
   onApplyTextOverride,
   focusTextLayerId,
   cardColor = null,
+  textDefaultFills,
   preview,
   onChangePhoto,
   hasProfilePhoto = false,
@@ -375,6 +383,7 @@ export function StudioSlotEditModal({
                   onApply={onApplyTextOverride}
                   focusTextLayerId={focusTextLayerId}
                   cardColor={cardColor}
+                  textDefaultFills={textDefaultFills}
                 />
               )}
             </TabsContent>
@@ -418,12 +427,14 @@ function TextLayersEditor({
   onApply,
   focusTextLayerId,
   cardColor = null,
+  textDefaultFills,
 }: {
   layers: TextLayer[];
   currentOverrides: Record<string, TextOverride> | undefined;
   onApply: (layerId: string, override: TextOverride | null) => void;
   focusTextLayerId?: string;
   cardColor?: string | null;
+  textDefaultFills?: Record<string, string>;
 }) {
   const texts = useStudioTexts();
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(() => {
@@ -449,6 +460,7 @@ function TextLayersEditor({
         currentOverride={currentOverrides?.[selectedLayer.id]}
         onApply={(override) => onApply(selectedLayer.id, override)}
         cardColor={cardColor}
+        cardDefaultFill={textDefaultFills?.[selectedLayer.id]}
       />
     );
   }
@@ -530,6 +542,7 @@ function TextLayersEditor({
               setSelectedLayerId(null);
             }}
             cardColor={cardColor}
+            cardDefaultFill={textDefaultFills?.[selectedLayer.id]}
           />
         </div>
       ) : null}

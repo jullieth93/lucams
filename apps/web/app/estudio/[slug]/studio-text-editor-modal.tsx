@@ -61,6 +61,15 @@ export type StudioTextEditorFormProps = {
    * formulario (DOM): nunca entra al PNG de producción.
    */
   cardColor?: string | null;
+  /**
+   * Ola 29 (owner 2026-09-11, ronda 5) — color de letra POR DEFECTO que el lienzo
+   * usa para ESTA capa sobre la tarjeta actual (lo calcula el host con la regla
+   * compartida: igTextFill en Instagram / defaultTextFillOnCard en el resto).
+   * El form arranca con ESE color y la detección de cambios lo usa como base:
+   * sin tocar la paleta no se guarda override y el lienzo sigue con su default
+   * — preview y lienzo nunca divergen.
+   */
+  cardDefaultFill?: string;
 };
 
 export function StudioTextEditorModal(props: StudioTextEditorModalProps) {
@@ -107,6 +116,7 @@ export function StudioTextEditorForm({
   currentOverride,
   onApply,
   cardColor = null,
+  cardDefaultFill,
 }: StudioTextEditorFormProps) {
   const texts = useStudioTexts();
   // Ola 25 (Lucy 2026-09-09) — el input arranca VACÍO cuando no hay texto del
@@ -119,7 +129,11 @@ export function StudioTextEditorForm({
   const [fontFamily, setFontFamily] = useState(
     currentOverride?.fontFamily ?? layer.fontFamily ?? FONT_PRESETS[0].fontFamily,
   );
-  const [fill, setFill] = useState(currentOverride?.fill ?? layer.fill ?? "#262626");
+  // Ola 29 — la base del color es la que el LIENZO usa por defecto sobre la
+  // tarjeta actual (cardDefaultFill del host): si el cliente no toca la paleta,
+  // preview y lienzo muestran lo mismo y no se guarda override.
+  const baseFill = cardDefaultFill ?? layer.fill ?? "#262626";
+  const [fill, setFill] = useState(currentOverride?.fill ?? baseFill);
   // M.3.b.UX.4 — Font size slider + bold/italic toggles
   const baseFontSize = layer.fontSize ?? 24;
   const [fontSize, setFontSize] = useState(currentOverride?.fontSize ?? baseFontSize);
@@ -167,7 +181,7 @@ export function StudioTextEditorForm({
     if (text.trim() !== "" && text !== currentText) override.text = text;
     if (fontFamily !== (layer.fontFamily ?? FONT_PRESETS[0].fontFamily))
       override.fontFamily = fontFamily;
-    if (fill !== (layer.fill ?? "#262626")) override.fill = fill;
+    if (fill !== baseFill) override.fill = fill;
     if (fontSize !== baseFontSize) override.fontSize = fontSize;
     if (computedFontWeight !== baseFontWeight) override.fontWeight = computedFontWeight;
     // Si nada cambió (o solo se borró el texto), limpiar el override existente (null)
@@ -186,7 +200,7 @@ export function StudioTextEditorForm({
     // blanco y el default de la plantilla se ve como placeholder gris.
     setText("");
     setFontFamily(layer.fontFamily ?? FONT_PRESETS[0].fontFamily);
-    setFill(layer.fill ?? "#262626");
+    setFill(baseFill);
     setFontSize(baseFontSize);
     setIsBold(baseFontWeight === "bold" || baseFontWeight.includes("bold"));
     setIsItalic(baseFontWeight === "italic" || baseFontWeight.includes("italic"));

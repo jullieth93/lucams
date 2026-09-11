@@ -805,6 +805,54 @@ test.describe("estudio Ola 25+28 — textos IG visibles con color por capa + mar
   });
 });
 
+test.describe("estudio Ola 29 — letra por defecto sobre el color de la tarjeta (Polaroid Clásica)", () => {
+  test("el mensaje sale OSCURO sobre tarjeta blanca y BLANCO sobre tarjeta rosada (sin que el cliente elija color)", async ({
+    page,
+  }, testInfo) => {
+    test.skip(!ctx.igSlug, "no hay producto con plantilla photo-pack-polaroid-instagram en la DB");
+    test.skip(
+      testInfo.project.name === "mobile-chrome",
+      "la toolbar de estilo vive en el Sheet móvil",
+    );
+    test.slow();
+
+    // La plantilla por defecto del producto Polaroid es la CLÁSICA (orden 1 del seed).
+    await page.goto(`/estudio/${ctx.igSlug}`, { waitUntil: "domcontentloaded" });
+    await expect(page.locator("canvas").first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(2_500);
+    await dismissOverlays(page);
+    const panel = await resolvePanel(page);
+    await uploadAndFillSlot1(page, panel, ctx.igProductId);
+    await dismissOverlays(page);
+
+    // Escribir el mensaje (pestaña Texto de «Editar») SIN tocar la paleta de color:
+    // el lienzo debe usar el default que contrasta con la tarjeta (regla del owner).
+    await page.locator('[aria-label^="Editar "]').first().click();
+    const dlg = page.locator('[role="dialog"]').first();
+    await dlg.getByRole("tab", { name: /Texto/i }).click();
+    await page.locator("#text-edit-input").fill("Te amo mamá");
+    await dlg.getByRole("button", { name: "Aplicar", exact: true }).click();
+    await page.waitForTimeout(800);
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.waitForTimeout(400);
+
+    // Franja del mensaje de la Clásica (stage 450×600, capa message y=512).
+    const MSG_ZONE = { x: 100, y: 490, w: 250, h: 44 };
+    // Tarjeta BLANCA (default) → tinta OSCURA visible.
+    const darkOnWhite = await countInkInZone(page, 0, 450, 600, MSG_ZONE, "dark");
+    expect(darkOnWhite).toBeGreaterThan(0);
+
+    // Tarjeta ROSADA → el mismo texto (sin override de color) sale BLANCO…
+    await page.getByRole("radio", { name: "Rosa" }).first().click();
+    await page.waitForTimeout(800);
+    const lightOnPink = await countInkInZone(page, 0, 450, 600, MSG_ZONE, "light");
+    expect(lightOnPink).toBeGreaterThan(0);
+    // …y no queda tinta oscura residual en la franja.
+    const darkOnPink = await countInkInZone(page, 0, 450, 600, MSG_ZONE, "dark");
+    expect(darkOnPink).toBe(0);
+  });
+});
+
 test.describe("estudio Ola 25 — tira SIN borde continua (tiras-magneticas-fotos)", () => {
   let stripProductId = "";
   let stripSlug = "";

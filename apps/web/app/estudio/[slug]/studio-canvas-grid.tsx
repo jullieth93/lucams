@@ -29,7 +29,13 @@ import type { CanvasDataV2, StudioAsset, TextLayer } from "./types";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
 import type { CalendarFontKey } from "@/features/personalization/schemas";
 import { unitSlotRange } from "@/features/personalization/design-units";
-import { cardBackgroundHex } from "@/features/personalization/frame-palette";
+import {
+  cardBackgroundHex,
+  defaultTextFillOnCard,
+  isDarkColor,
+  isInstagramTemplate,
+} from "@/features/personalization/frame-palette";
+import { igTextFill } from "@/features/personalization/instagram-template-spec";
 import {
   selectUnitFilledCount,
   selectUnitImagePlaceholder,
@@ -48,6 +54,7 @@ const MAX_VIEWPORT_WIDTH = 1280; // px lógicos máximo del grid en desktop (Luc
 import {
   ACTION_BAR_RESERVE,
   MIN_SLOT_SIZE,
+  UNIT_SECTION_GAP,
   computeFlatSlotDisplaySize,
   computeMaxFrameH,
   computeStageZoomCap,
@@ -55,6 +62,7 @@ import {
   resolveMaxCols,
   resolveMinSlotSize,
   slotHeightCapByCount,
+  unitSectionsPerRowFor,
   BP_MOBILE,
   STAGE_ZOOM_MIN,
 } from "./studio-canvas-grid-size";
@@ -391,7 +399,22 @@ export function StudioCanvasGrid({
   // Columnas VISUALES de slots para la navegación por teclado (flechas).
   const navCols = grouped ? unitCols * 2 : layout.cols;
 
-  const availableW = containerWidth - layout.gap * (layout.cols - 1);
+  // Ola 29 (owner 2026-09-11, 1.3.A mejora visual) — secciones de TIRA en filas
+  // de 2-3 (wrap): cada sección se dimensiona con SU parte del ancho del
+  // contenedor, no con el ancho completo (si no, cada tira se calcula como si
+  // fuera dueña de la fila y desbordaría). Solo modo secciones multi-unidad de
+  // tiras; calendarios (secciones anchas) y separadores (agrupados) intactos.
+  const sectionsPerRow = unitSectionsPerRowFor({
+    isStripSections: multiUnitSections && stripMode,
+    unitCount,
+    containerWidth,
+  });
+  const sectionAvailableW =
+    sectionsPerRow > 1
+      ? Math.floor((containerWidth - UNIT_SECTION_GAP * (sectionsPerRow - 1)) / sectionsPerRow)
+      : containerWidth;
+
+  const availableW = sectionAvailableW - layout.gap * (layout.cols - 1);
 
   // Ola 6 — límite de alto del slot según cantidad de slots, para evitar que
   // productos de pocos slots (ej. Polaroid de 1 slot) ocupen toda la pantalla.
@@ -460,7 +483,10 @@ export function StudioCanvasGrid({
   // (mismos 16+8 de la fórmula byWidth de arriba).
   const contentWidthBase = grouped
     ? unitCols * (slotDisplaySize * 2 + 16 + 8) + layout.gap * (unitCols - 1)
-    : slotDisplaySize * layout.cols + layout.gap * (layout.cols - 1);
+    : // Ola 29 — con secciones de tira en fila, el contenido es la FILA completa
+      // (N tiras + gaps de sección): el tope de zoom sigue sin desbordar.
+      sectionsPerRow * (slotDisplaySize * layout.cols + layout.gap * (layout.cols - 1)) +
+      UNIT_SECTION_GAP * (sectionsPerRow - 1);
   const stageZoomCap = computeStageZoomCap(containerWidth, contentWidthBase);
   const stageZoom = Math.max(STAGE_ZOOM_MIN, Math.min(stageZoomRaw, stageZoomCap));
   const zoomedSlotW = Math.round(slotDisplaySize * stageZoom);
@@ -632,7 +658,24 @@ export function StudioCanvasGrid({
       )}
 
       {multiUnitSections ? (
-        <div className="flex w-full flex-col items-center gap-10">
+        // Ola 29 (owner 2026-09-11) — las secciones de TIRA van en grilla
+        // horizontal de 2-3 por fila (wrap): 4 unidades → 3 + 1. El resto de
+        // productos multi-unidad (calendarios) sigue apilado una por fila.
+        <div
+          className={
+            sectionsPerRow > 1
+              ? "grid w-full justify-items-center"
+              : "flex w-full flex-col items-center gap-10"
+          }
+          style={
+            sectionsPerRow > 1
+              ? {
+                  gridTemplateColumns: `repeat(${sectionsPerRow}, minmax(0, 1fr))`,
+                  gap: UNIT_SECTION_GAP,
+                }
+              : undefined
+          }
+        >
           {Array.from({ length: unitCount }, (_, u) => {
             const { start, end } = unitSlotRange(u, unitSlots);
             return (
@@ -1273,6 +1316,25 @@ function StudioSlotEditModalWrapper({
         : null,
     [unitTemplate, borderColor, frameFullBleed],
   );
+  // Ola 29 (owner 2026-09-11, ronda 5) — color de letra POR DEFECTO por capa sobre
+  // la tarjeta actual, con la MISMA regla del lienzo (igTextFill en IG /
+  // defaultTextFillOnCard en el resto): el editor de texto arranca con ese color
+  // y el preview nunca diverge del lienzo.
+  const textDefaultFills = useMemo(() => {
+    if (!unitTemplate || !cardBgForTextPreview) return undefined;
+    const cardBg = cardBgForTextPreview;
+    const isIgTpl = isInstagramTemplate(unitTemplate.layers);
+    const dark = isDarkColor(cardBg);
+    const map: Record<string, string> = {};
+    for (const l of unitTemplate.layers) {
+      if (l.type === "text" && (l as TextLayer).editable === true) {
+        map[l.id] = isIgTpl
+          ? igTextFill(l.id, (l as TextLayer).fill, dark)
+          : defaultTextFillOnCard(cardBg, (l as TextLayer).fill);
+      }
+    }
+    return map;
+  }, [unitTemplate, cardBgForTextPreview]);
   // Multi-unidad (2026-09-09) — con imán suelto (unitSlots = 1, polaroid/cuadrados)
   // cada slot ES su unidad: el atajo "Aplicar este diseño a todas" vive en la
   // ventana de edición del slot (con unidades multi-slot va en el header de su
@@ -1340,6 +1402,9 @@ function StudioSlotEditModalWrapper({
       // de la tarjeta (resuelto con la regla compartida, no el borderColor crudo
       // que puede ser null) y avisa si la letra elegida casi no contrasta.
       cardColor={cardBgForTextPreview}
+      // Ola 29 (ronda 5) — el color inicial de cada capa en el editor es el MISMO
+      // default que el lienzo usa sobre la tarjeta (blanco sobre rosada, etc.).
+      textDefaultFills={textDefaultFills}
       allowFilters={allowFilters}
       onClose={onClose}
       onApplyFilter={(filter) => {

@@ -373,10 +373,12 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     // a la variante es la TIRA: 4 celdas en UNA columna, cada una más alta que
     // ancha (celda 390×530), no una grilla de cuadrados. Multi-unidad: CADA sección
     // (unidad) es su propia tira de 4 celdas en 1 columna.
-    // Lazy-mount (ADR-063 T5: >6 slots → IntersectionObserver): al abrir solo la
-    // unidad cercana al viewport tiene sus slots montados; la 2ª monta al llevar
-    // el scroll a su sección (el pipeline de snapshots fuerza el montaje total).
-    await expect(page.locator("[data-slot-index]")).toHaveCount(4);
+    // Lazy-mount (ADR-063 T5: >6 slots → IntersectionObserver): los slots montan
+    // al acercarse al viewport. Ola 29: con las secciones de tira EN FILA (2-3
+    // por fila) ambas unidades pueden quedar ya cerca del tope y montar juntas
+    // desde el arranque — el conteo inicial ya no es una señal fiable; el scroll
+    // a cada sección garantiza el montaje completo (el pipeline de snapshots
+    // fuerza el montaje total de todos modos).
     for (const unitId of ["studio-unit-0", "studio-unit-1"]) {
       await page.locator(`#${unitId}`).scrollIntoViewIfNeeded();
       const cells = page.locator(`#${unitId} [data-slot-index]`);
@@ -396,6 +398,46 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     }
     // Tras visitar ambas secciones quedan montadas las 8 celdas (2 tiras × 4 fotos).
     await expect(page.locator("[data-slot-index]")).toHaveCount(8);
+  });
+
+  test("Ola 29 (mejora visual owner): 4 unidades → secciones en grilla horizontal (3+1 desktop / 2+2 móvil)", async ({
+    page,
+  }) => {
+    test.skip(
+      !ctx.tirasSlug || !ctx.tirasVariantId,
+      "tiras-magneticas-fotos no está activo en la DB",
+    );
+    test.slow(); // cold-compile de la ruta Konva en `next dev`
+
+    // Directo al Estudio con 4 unidades de la tira de 3 fotos (4 × 3 = 12 slots ≤ cap 50).
+    await page.goto(`/estudio/${ctx.tirasSlug}?variant=${ctx.tirasVariantId}&copies=4`, {
+      waitUntil: "domcontentloaded",
+    });
+    await expect(page.locator("canvas").first()).toBeVisible({ timeout: 60_000 });
+    await page.waitForTimeout(2_500); // el onboarding monta tarde (race histórica)
+    await dismissOverlays(page);
+
+    // Las 4 secciones existen (los slots montan lazy al acercarse; la SECCIÓN
+    // — header + grid — siempre está en el DOM).
+    const boxes = await Promise.all(
+      [0, 1, 2, 3].map(async (u) => {
+        const section = page.locator(`#studio-unit-${u}`);
+        await expect(section).toBeVisible({ timeout: 20_000 });
+        return (await section.boundingBox())!;
+      }),
+    );
+    const desktop = (page.viewportSize()?.width ?? 1280) >= 1024;
+    if (desktop) {
+      // 3 por fila: unidades 1-3 comparten fila (mismo y) y la 4ª cae abajo.
+      expect(Math.abs(boxes[1]!.y - boxes[0]!.y)).toBeLessThan(4);
+      expect(Math.abs(boxes[2]!.y - boxes[0]!.y)).toBeLessThan(4);
+      expect(boxes[3]!.y).toBeGreaterThan(boxes[0]!.y + 50);
+    } else {
+      // 2 por fila: 1-2 arriba, 3-4 abajo.
+      expect(Math.abs(boxes[1]!.y - boxes[0]!.y)).toBeLessThan(4);
+      expect(boxes[2]!.y).toBeGreaterThan(boxes[0]!.y + 50);
+      expect(Math.abs(boxes[3]!.y - boxes[2]!.y)).toBeLessThan(4);
+    }
   });
 });
 

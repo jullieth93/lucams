@@ -522,6 +522,30 @@ de todas las superficies personalizables.**
   (disabled) y la fila de colores por ficha se oculta. La paleta de temas ya se
   desactivaba (Ola 24/26); esto cierra la superficie.
 
+### Ola 29 (owner 2026-09-11) — validación ronda 5
+
+- **Letra por defecto que "visualmente se vea" sobre la tarjeta** (1.2.1.A
+  Clásica): regla nueva `defaultTextFillOnCard(cardHex, layerFill)` en
+  frame-palette — tarjeta blanca/pastel claro (aguamarina, amarillo) → el
+  oscuro de la plantilla; tarjeta oscura **o rosada** → blanco. Umbral Rec.601
+  de 0.56 (gusto explícito del owner: el rosado de marca #E85B9F, lum ≈ 0.552,
+  cuenta como oscuro PARA EL TEXTO). NO confundir con `isDarkColor` (0.5): esa
+  también decide la tarjeta BINARIA de Instagram y no se toca (si el rosa
+  contara como oscuro allí, la tarjeta IG se volvería rosada). Misma regla en
+  lienzo (studio-slot), producción (production-render-canvas) y el editor de
+  texto (pestaña Texto): el host arma `textDefaultFills` por capa (en IG con
+  `igTextFill`, que sigue mandando por capa) y el form arranca con ese color —
+  sin tocar la paleta no se guarda override y preview/lienzo nunca divergen.
+  El override de color del cliente siempre manda.
+- **Tiras: secciones de unidad en grilla horizontal** (1.3.A mejora visual):
+  las secciones de tira ya no se apilan una por fila — van 2-3 por fila con
+  wrap (4 unidades → 3+1). Regla: `unitSectionsPerRowFor` (tope 3 desde
+  contenedor ≥900px — el Estudio desktop resta la barra lateral; 2 en
+  móvil/tableta). Cada sección se dimensiona con SU parte del ancho
+  (`sectionAvailableW`) y el tope de zoom considera la fila completa. Solo
+  tiras: calendarios (secciones anchas) y separadores (modo agrupado) intactos.
+  Pager, lazy-mount y snapshots (todas las secciones montadas) sin cambios.
+
 ## Piezas posteriores (2026-07 en adelante) — confirmación con copias, letras, IA, 3D, copy CMS
 
 - **Modal de confirmación** (`studio-preview-modal.tsx`): «Así se verá tu pedido» muestra el
