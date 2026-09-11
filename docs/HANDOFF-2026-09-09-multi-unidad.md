@@ -31,6 +31,36 @@
   env-guard solo exige `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1` para destructivos).
   Recordatorio owner: precios de variantes "Sin imán" en STG están espejo.
 
+## RONDA 4 (Ola 28, 2026-09-11) — también en STG ✅ (PR #43 → develop `469fe66`)
+
+La validación del owner sobre la Ola 26/27 trajo 4 ajustes (su mensaje verbatim:
+1.2.1.A persiste texto invisible · 1.2.2.A "no se ve texto preview, se ve vacío"
+· 1.3.A sobra el stepper de fotos en el lienzo, poner «Unidades» · 1.7 "Toca una
+letra" activo con Sin borde). Detalle de implementación: README del estudio,
+sección "Ola 28". Resumen:
+
+- **1.2.1.A**: el preview de la pestaña Texto pinta el fondo del color EFECTIVO
+  de la tarjeta (`cardBackgroundHex`, helper compartido en frame-palette — el
+  `borderColor` null de la Clásica era la trampa) + cuadrícula de transparencia
+  y aviso CMS cuando la letra casi no contrasta (`lib/contrast.ts`, WCAG < 1.2).
+- **1.2.2.A**: excepción IG a Ola 25 — los textos por defecto SE VEN (color por
+  capa intacto: oscuros/claros según tarjeta, hashtags siempre azules).
+  `renderText(showTemplateDefault)` — el bloqueo de textos requeridos (Ola 26)
+  sigue impidiendo finalizar con placeholders; "362 me gusta" imprime su default.
+- **1.3.A**: banner del Estudio de tiras pasa a stepper «Unidades»
+  (`StudioUnitCountControl` + `store.setUnitCount`); la composición se elige en
+  la PDP. Keys CMS `estudio.lienzo.unidades-*`.
+- **1.7**: con «Sin borde» se apaga el pintado ficha a ficha (hint oculto,
+  fichas disabled, fila de colores oculta) en name-editor y letter-set-editor.
+- Validación: vitest 3615 ✓ · E2E 4 specs desktop+mobile 39 ✓ · capturas
+  `tmp/visual-ola28/` · CI PR y develop verdes.
+- STG: deploy verificado en vivo (marcador sin-borde) + `migrate-cms-v2` (8 keys
+  nuevas, 1008 campos BLOCK) + caché CMS invalidada + smoke (IG blanca con
+  tinta oscura + hashtags azules medidos por píxel; banner «Unidades» con
+  "2 unidades" y sin stepper de fotos).
+- **Pendiente:** validación del owner en STG → PRD (`develop`→`production` +
+  `migrate-cms-v2` contra PRD; no hubo cambios de plantillas).
+
 ## Cómo retomar
 
 ```bash
