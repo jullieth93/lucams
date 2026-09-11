@@ -27,7 +27,7 @@ export async function recordCookieConsent(input: {
   ip?: string | null;
   userAgent?: string | null;
 }) {
-  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1");
+  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v5 · 2026-09-04");
 
   const rows = CONSENT_SCOPES.map((s) => ({
     scope: s.scope,
@@ -55,7 +55,7 @@ export async function recordHabeasDataConsent(input: {
   ip?: string | null;
   userAgent?: string | null;
 }) {
-  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1");
+  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v5 · 2026-09-04");
   await prisma.consent.create({
     data: {
       scope: "HABEAS_DATA",
@@ -90,7 +90,7 @@ export async function buildQuoteConsentRow(input: {
   ip?: string | null;
   userAgent?: string | null;
 }) {
-  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1");
+  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v5 · 2026-09-04");
   return {
     version,
     row: {
@@ -112,7 +112,7 @@ export async function recordCheckoutDataConsent(input: {
   ip?: string | null;
   userAgent?: string | null;
 }) {
-  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1");
+  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v5 · 2026-09-04");
   await prisma.consent.create({
     data: {
       scope: "HABEAS_DATA",

@@ -908,15 +908,17 @@ const DEFAULT_PHYSICAL_SPECS_BY_KIND = {
   },
 };
 
+// Despacho real MÁX. 2 días hábiles (Lucy, 2026-09-11) — si un kind tarda más,
+// se sube por producto en el admin, no acá. NONE = stock listo (decisión 4.8).
 const DEFAULT_PRODUCTION_DAYS_BY_KIND = {
-  PHOTO_PACK: 3,
-  EVENT_FAVOR: 5,
-  CALENDAR_PHOTO_MONTH: 4,
-  CALENDAR_PHOTO_HERO: 4,
-  BUSINESS_LOGO: 4,
-  CUSTOM_DECOR: 5,
-  PHOTO_GRID: 3,
-  TEXT_ONLY: 3,
+  PHOTO_PACK: 2,
+  EVENT_FAVOR: 2,
+  CALENDAR_PHOTO_MONTH: 2,
+  CALENDAR_PHOTO_HERO: 2,
+  BUSINESS_LOGO: 2,
+  CUSTOM_DECOR: 2,
+  PHOTO_GRID: 2,
+  TEXT_ONLY: 2,
   NONE: 1, // decisión 4.8 — Coleccionables/Juegos ya stock
 };
 
@@ -991,7 +993,7 @@ async function step3_PlaceholderProducts() {
         isPersonalizable: p.personalizationKind !== "NONE",
         premadeSurcharge: p.premadeSurcharge || 0,
         images: [UNSPLASH("1607082348824-0a96f2a4b9da")], // placeholder Unsplash
-        productionDays: DEFAULT_PRODUCTION_DAYS_BY_KIND[p.personalizationKind] || 3,
+        productionDays: DEFAULT_PRODUCTION_DAYS_BY_KIND[p.personalizationKind] || 2,
         physicalSpecs:
           DEFAULT_PHYSICAL_SPECS_BY_KIND[p.personalizationKind] ||
           DEFAULT_PHYSICAL_SPECS_BY_KIND.NONE,

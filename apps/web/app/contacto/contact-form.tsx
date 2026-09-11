@@ -17,12 +17,18 @@ import { TurnstileWidget } from "@/components/turnstile-widget";
 import { submitContactAction } from "@/features/support/actions";
 import { SUBJECT_LABELS, SUPPORT_SUBJECTS } from "@/features/support/schemas";
 
-export function ContactForm() {
+export function ContactForm({
+  successNote = "Te respondemos a tu email en menos de 24h hábiles. Tu ticket es",
+}: {
+  /** Texto del panel de éxito, resuelto en el server desde el CMS
+   *  (`support.contacto.success-note`) — el client no lee el CMS. */
+  successNote?: string;
+}) {
   const [state, formAction, pending] = useActionState(submitContactAction, null);
 
   useEffect(() => {
     if (state?.ok) {
-      toast.success("¡Mensaje enviado! Te respondemos en menos de 24h ✨");
+      toast.success("¡Mensaje enviado! Te respondemos en menos de 24h hábiles ✨");
     } else if (state && !state.ok && state.error) {
       toast.error(state.error);
     }
@@ -36,7 +42,7 @@ export function ContactForm() {
           ¡Listo! Recibimos tu mensaje
         </h3>
         <p className="text-brand-purple-dark/70 mt-2 text-sm">
-          Te respondemos a tu email en menos de 24h. Tu ticket es{" "}
+          {successNote}{" "}
           <span className="font-mono text-xs">{state.ticketId.slice(0, 8).toUpperCase()}</span>.
         </p>
         <p className="text-brand-muted mt-3 text-xs">Si es urgente, escríbenos por WhatsApp.</p>

@@ -567,6 +567,28 @@ export const SITE_MAP = {
 Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está respondida.`,
               sortOrder: 50,
             },
+            {
+              key: "support.contacto.legal-note",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Nota de contacto legal",
+              helpText:
+                "Etiqueta que introduce el buzón habeas-data@ en la tarjeta de Email de /contacto (el buzón mismo va en el código, como en las páginas legales).",
+              category: "SUPPORT",
+              body: "Datos personales y temas legales:",
+              sortOrder: 60,
+            },
+            {
+              key: "support.contacto.success-note",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Mensaje de éxito del formulario",
+              helpText:
+                "Texto del panel de confirmación tras enviar el formulario de /contacto (antes del número de ticket).",
+              category: "SUPPORT",
+              body: "Te respondemos a tu email en menos de 24h hábiles. Tu ticket es",
+              sortOrder: 70,
+            },
           ],
         },
       ],
@@ -4146,6 +4168,39 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               category: "SUPPORT",
               body: "Ingresa el número de tu pedido y el correo con el que lo hiciste. No necesitas cuenta.",
               sortOrder: 40,
+            },
+            {
+              key: "track.subtext-catalog",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Subtítulo (modo catálogo)",
+              helpText:
+                "Bajo el título de /rastrear cuando la tienda opera por cotización (STORE_MODE=catalog): el rastreo se hace por WhatsApp.",
+              category: "SUPPORT",
+              body: "Como tu pedido se cierra por WhatsApp, el estado también te lo contamos por ahí: escríbenos con tu nombre o tu número de cotización.",
+              sortOrder: 41,
+            },
+            {
+              key: "track.catalog-note",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Nota de seguimiento (modo catálogo)",
+              helpText:
+                "Texto de la tarjeta que reemplaza al formulario de rastreo en modo catálogo.",
+              category: "SUPPORT",
+              body: "Cuando despachamos tu pedido te pasamos el número de guía por WhatsApp. Si tienes dudas antes, escríbenos y te contamos cómo va.",
+              sortOrder: 42,
+            },
+            {
+              key: "track.catalog-cta",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Botón WhatsApp (modo catálogo)",
+              helpText:
+                "Botón de la tarjeta de rastreo en modo catálogo: abre el chat de WhatsApp.",
+              category: "SUPPORT",
+              body: "Preguntar por WhatsApp →",
+              sortOrder: 43,
             },
             {
               key: "track.account-note",

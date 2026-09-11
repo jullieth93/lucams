@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate db-local-start db-local-stop db-local-restart db-local-reset db-local-status db-local-setup db-local-on db-local-off db-local-seed web-start web-stop web-restart local-up local-down local-restart local-status test-local db-stg-setup db-stg-seed seed-products seed-templates seed-ocasiones seed-catalog-v2 migrate-cms-v2 seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores consolidate-product-families update-legal-ley-2439 seed-legal-2026-07 fix-voseo-cms rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs audit-content test test-unit test-e2e test-e2e-fullmode test-rls test-load test-coverage clean fix-fotoimanes
+.PHONY: help install build typecheck lint format migrate db-local-start db-local-stop db-local-restart db-local-reset db-local-status db-local-setup db-local-on db-local-off db-local-seed web-start web-stop web-restart local-up local-down local-restart local-status test-local db-stg-setup db-stg-seed seed-products seed-templates seed-ocasiones seed-catalog-v2 migrate-cms-v2 seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores consolidate-product-families rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs audit-content test test-unit test-e2e test-e2e-fullmode test-rls test-load test-coverage clean fix-fotoimanes
 
 # Makefile del repo — build/test para CI y devs, más el runtime del entorno
 # local completo: Supabase local en podman (grupo db-local-*) y app Next
@@ -208,7 +208,7 @@ seed-catalog-v2:
 # (Tras A2 las tablas legacy ya no existen: el paso de migración vieja→nueva
 # se salta solo — solo queda el upsert del mapa.)
 migrate-cms-v2:
-	pnpm --filter @lucams/db exec node scripts/migrate-cms-v2.mjs
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/migrate-cms-v2.mjs
 
 # ADR-057 — Abecedario a 3 productos (Completo / Pack Vocales / Nombre Personalizado)
 # con variantes idioma × tamaño × imantado. Reproducible; no pisa precios editados en

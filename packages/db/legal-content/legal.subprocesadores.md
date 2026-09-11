@@ -22,7 +22,7 @@ Es un tercero (una empresa proveedora) que trata algunos de tus datos **en nuest
 | **Wompi**               | Colombia                         | Procesamiento de pagos en línea (tarjetas y PSE)                                                           | Datos de la transacción y datos para prevención de fraude                                         | [Ver](https://wompi.com/legal)                             |
 | **Aveonline**           | Colombia                         | Agregador de logística: cotiza el envío en el checkout, genera la guía y gestiona el recaudo contraentrega | Nombre, dirección y teléfono de entrega                                                           | [Ver](https://www.aveonline.co/)                           |
 
-> **Sobre el asistente de IA [pendiente verificación]:** la Gemini API tiene condiciones distintas según el tier (gratuito o pago); en algunos casos Google puede usar los textos enviados para mejorar sus productos. Estamos verificando con asesoría cuál tier aplica y qué implica, y ajustaremos esta nota cuando se confirme. Por eso el asistente solo recibe el texto de la ocasión y reemplazamos por un texto neutro cualquier dato que parezca personal (documentos, correos o celulares) antes de enviarlo.
+> **Sobre el asistente de IA:** según el nivel (tier) de la Gemini API que tengamos activo, Google puede usar los textos enviados para mejorar sus productos. Por eso el asistente solo recibe el texto de la ocasión y, antes de enviarlo, reemplazamos por un texto neutro cualquier dato que parezca personal (documentos, correos o celulares).
 
 ### Transportadoras
 

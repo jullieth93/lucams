@@ -41,7 +41,7 @@ export async function subscribeBackInStock(
 
   // #9 — registrar la base de legitimación (Ley 1581). Es una notificación TRANSACCIONAL pedida por
   // el titular, así que basta consentimiento informado (aviso en UI). Idempotente por versión.
-  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1");
+  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v5 · 2026-09-04");
   const existing = await prisma.consent.findFirst({
     where: { email: normalizedEmail, scope: "BACK_IN_STOCK", accepted: true, version },
     orderBy: { acceptedAt: "desc" },
