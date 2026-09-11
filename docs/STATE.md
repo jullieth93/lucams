@@ -14,7 +14,8 @@
 ## Resumen actual
 
 **🔍 2026-09-11 (tarde) — AUDITORÍA INTEGRAL DE INFORMACIÓN PÚBLICA, LEGAL Y CENTRO DE AYUDA
-ejecutada, saneada, APLICADA EN LOS 3 AMBIENTES y PAQUETE LEGAL v5 PUBLICADO Y EN VIVO.**
+ejecutada, saneada, APLICADA EN LOS 3 AMBIENTES, PAQUETE LEGAL v5 PUBLICADO Y EN VIVO, y RELEASE
+A PRD (`8408440`).**
 Corrección de rumbo incluida: **PRD opera en modo `full` desde el 2026-09-03** (CLAUDE.md/ROADMAP
 E2; firma runbook: `/checkout/pago` → 307 `/carrito`) — el espejo local en `catalog` había
 despistado la primera lectura. Lo que quedó sanado: la DB arrastraba textos del modo viejo tras el
@@ -126,6 +127,10 @@ la operación real. **Lección de rumbo:** la primera lectura asumió PRD en `ca
   nombre + NIT + dirección de notificación (designable, no la casa); «a requerimiento» puro no la
   satisface al pie de la letra, pero hay cumplimiento sin exponer PII cuando exista RUT; ella le
   hace la pregunta al abogado. ④ Despacho real = máx. 2 días aplicado en los 3 ambientes.
+  ⑤ **Release a PRD (`8408440`):** PR #45 → develop (CI verde) → production ff; deploy verificado
+  en vivo (headers legales por versión, `/rastrear` con form en full, `/contacto` con habeas-data@
+  vía CMS, ratchet de contenido 35.63% con 0 literales nuevos). **Paquete 100% cerrado:** lo único
+  abierto es la respuesta del abogado.
 - El documento fuente de la auditoría se elimina consolidado en esta entrada + COMPLIANCE.md +
   OPERATIONS.md (convención docs/audits/README.md).
 
