@@ -61,6 +61,33 @@ sección "Ola 28". Resumen:
 - **Pendiente:** validación del owner en STG → PRD (`develop`→`production` +
   `migrate-cms-v2` contra PRD; no hubo cambios de plantillas).
 
+## RONDA 5 (Ola 29, 2026-09-11) — también en STG ✅ (PR #44 → develop `568d23a`)
+
+Dos ajustes del owner (verbatim: 1.2.1.A "el lienzo tenga los textos de un color
+que visualmente se vea — blanco→negro, rosado→blanco" · 1.3.A "grilla de 2 o 3
+máximo horizontal; 4 unidades → 3+1"). Detalle: README del estudio, "Ola 29".
+
+- **1.2.1.A**: `defaultTextFillOnCard` (frame-palette; umbral Rec.601 0.56 —
+  `isDarkColor` 0.5 INTACTA porque también decide la tarjeta binaria IG).
+  Misma regla en lienzo + producción + editor de texto (`textDefaultFills` por
+  capa: el form arranca con el default del lienzo; sin tocar la paleta no se
+  guarda override). El override de color del cliente siempre manda.
+- **1.3.A**: secciones de tira en grilla horizontal 2-3 por fila con wrap
+  (`unitSectionsPerRowFor`; umbral 900px del CONTENEDOR porque el Estudio
+  desktop resta la barra lateral — 1280 de viewport ≈ 944 de lienzo). Mobile/
+  tableta: 2 por fila. Calendarios/separadores intactos.
+- Specs preexistentes reparados al pasar: `estudio.spec` (la sidebar es
+  solo-desktop por diseño — la aserción nunca aplicó a mobile),
+  `studio-gestures` mobile (el setup subía sin consentimiento Ley 1581 con el
+  Sheet cerrado → upload rechazado; queda desktop-only documentado),
+  lazy-mount de tiras con secciones en fila (ambas montan al abrir).
+- Validación: vitest 3626 ✓ · E2E 6 specs desktop+mobile 48 ✓ · capturas
+  `tmp/visual-ola29/` · CI PR y develop verdes · smoke STG: y de secciones
+  [505,505,505,1275] = 3+1 ✓.
+- Sin keys CMS ni plantillas nuevas → STG solo necesitó el deploy.
+- **Pendiente:** validación del owner en STG → PRD (`develop`→`production`;
+  sin seeds esta ronda).
+
 ## Cómo retomar
 
 ```bash
