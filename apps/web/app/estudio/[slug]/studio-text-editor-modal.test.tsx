@@ -133,3 +133,71 @@ describe("StudioTextEditorForm — placeholder gris, nunca valor precargado (Ola
     expect(screen.getByRole("textbox")).toHaveValue("");
   });
 });
+
+describe("StudioTextEditorForm — contraste texto/tarjeta en el preview (Ola 28, 2026-09-11 · 1.2.1.A)", () => {
+  // Reporte del owner: en «Editar» con texto BLANCO sobre tarjeta BLANCA el
+  // preview (fondo crema fijo) no mostraba NADA. Ahora el preview pinta el
+  // fondo de la tarjeta y, con contraste casi nulo, cambia a la cuadrícula de
+  // "transparencia" + aviso para que lo escrito siempre se vea al editar.
+  it("texto blanco sobre tarjeta blanca → preview en cuadrícula + aviso visible", () => {
+    render(
+      <StudioTextEditorForm
+        layer={LAYER}
+        currentOverride={undefined}
+        onApply={vi.fn()}
+        cardColor="#FFFFFF"
+      />,
+    );
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Hola!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Blanco" }));
+
+    const preview = screen.getByText("Hola!");
+    expect(preview.style.backgroundImage).toContain("repeating-conic-gradient");
+    expect(screen.getByRole("note")).toHaveTextContent(/casi no se va a ver sobre la tarjeta/);
+  });
+
+  it("texto oscuro sobre tarjeta blanca → fondo tarjeta plano, SIN aviso", () => {
+    render(
+      <StudioTextEditorForm
+        layer={LAYER}
+        currentOverride={undefined}
+        onApply={vi.fn()}
+        cardColor="#FFFFFF"
+      />,
+    );
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Hola!" } });
+
+    const preview = screen.getByText("Hola!");
+    // El default de letra es oscuro (#262626) → contrasta con la tarjeta blanca.
+    // (jsdom normaliza el shorthand `background` a backgroundImage "none").
+    expect(preview.style.backgroundImage).toBe("none");
+    expect(preview.style.backgroundColor).toBe("rgb(255, 255, 255)");
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+
+  it("texto negro sobre tarjeta NEGRA → también avisa (el espejo del caso del owner)", () => {
+    render(
+      <StudioTextEditorForm
+        layer={LAYER}
+        currentOverride={{ text: "Hola!" }}
+        onApply={vi.fn()}
+        cardColor="#221E25"
+      />,
+    );
+    // fill default #262626 sobre #221E25: ratio ≈ 1.0 → bajo contraste.
+    const preview = screen.getByText("Hola!");
+    expect(preview.style.backgroundImage).toContain("repeating-conic-gradient");
+    expect(screen.getByRole("note")).toBeInTheDocument();
+  });
+
+  it("sin cardColor (superficie sin tarjeta de color) → crema de siempre, sin aviso", () => {
+    render(<StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Hola!" } });
+    fireEvent.click(screen.getByRole("button", { name: "Blanco" }));
+
+    const preview = screen.getByText("Hola!");
+    expect(preview.className).toContain("from-brand-cream");
+    expect(preview.style.backgroundImage).toBe("");
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+});

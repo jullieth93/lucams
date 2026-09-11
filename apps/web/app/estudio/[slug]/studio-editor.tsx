@@ -1362,6 +1362,10 @@ export function StudioEditor({
                 // "¿Con imán?" (2026-09-08): badge read-only junto al stepper —
                 // lo fija la PDP, el Estudio solo lo muestra y lo persiste.
                 magnet: liveMagnet,
+                // Ola 28 (owner 2026-09-11, 1.3.A) — composición fija (tiras:
+                // unitSlots > caras, misma regla del store): el stepper de fotos
+                // sobra (la composición se eligió en la PDP) → va el de UNIDADES.
+                composition: liveUnitSlots > facesPerUnit,
               }
             : undefined
         }

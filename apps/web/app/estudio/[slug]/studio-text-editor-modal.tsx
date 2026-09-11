@@ -29,6 +29,8 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import { Slider } from "@/components/ui/slider";
 import { Bold, Check, Italic, Loader2, Type } from "lucide-react";
 import { FONT_PRESETS, TEXT_COLOR_PRESETS } from "./lib/fonts";
+import { isLowContrastOnCard } from "./lib/contrast";
+import { WHITE_CARD_CHECKER, WHITE_CARD_CHECKER_SIZE } from "./studio-slot";
 import type { TextLayer, TextOverride } from "./types";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -50,6 +52,15 @@ export type StudioTextEditorFormProps = {
   layer: TextLayer;
   currentOverride: TextOverride | undefined;
   onApply: (override: TextOverride | null) => void;
+  /**
+   * Ola 28 (owner 2026-09-11, 1.2.1.A) — color de la TARJETA sobre la que se
+   * imprime el texto (borderColor del canvas). El preview pinta ese fondo
+   * (WYSIWYG con la tarjeta); si el color de letra elegido casi no contrasta
+   * (blanco sobre tarjeta blanca → invisible), el fondo cambia a la cuadrícula
+   * de "transparencia" y se muestra un aviso — ayuda 100% editorial de este
+   * formulario (DOM): nunca entra al PNG de producción.
+   */
+  cardColor?: string | null;
 };
 
 export function StudioTextEditorModal(props: StudioTextEditorModalProps) {
@@ -95,6 +106,7 @@ export function StudioTextEditorForm({
   layer,
   currentOverride,
   onApply,
+  cardColor = null,
 }: StudioTextEditorFormProps) {
   const texts = useStudioTexts();
   // Ola 25 (Lucy 2026-09-09) — el input arranca VACÍO cuando no hay texto del
@@ -183,12 +195,28 @@ export function StudioTextEditorForm({
   // Preview compute — escala 70% del fontSize actual (no del base original)
   const previewFontSize = Math.min(fontSize * 0.7, 36);
 
+  // Ola 28 (owner 2026-09-11) — el preview pinta el fondo de la TARJETA (no un
+  // crema neutro): es el WYSIWYG real del texto impreso. Si la letra queda casi
+  // invisible sobre ese fondo (blanco sobre blanco), cambiamos a la cuadrícula
+  // de "transparencia" (la misma de la tarjeta blanca en el lienzo) + aviso, así
+  // lo que se escribe SIEMPRE se ve mientras se edita. Adorno DOM del editor:
+  // el PNG de producción imprime el color elegido tal cual (decisión del cliente).
+  const lowContrast = cardColor ? isLowContrastOnCard(fill, cardColor) : false;
+  const previewBackground = !cardColor
+    ? {}
+    : lowContrast
+      ? { backgroundImage: WHITE_CARD_CHECKER, backgroundSize: WHITE_CARD_CHECKER_SIZE }
+      : { background: cardColor };
+
   return (
     <div className="space-y-4 p-4">
       {/* Preview live — más grande (min-h 100px) + escala 70% en vez de 60% */}
       <div
-        className="ring-brand-purple/10 from-brand-cream flex min-h-[100px] items-center justify-center rounded-md bg-gradient-to-br to-white px-3 py-4 text-center ring-1"
+        className={`ring-brand-purple/10 flex min-h-[100px] items-center justify-center rounded-md px-3 py-4 text-center ring-1 ${
+          cardColor ? "" : "from-brand-cream bg-gradient-to-br to-white"
+        }`}
         style={{
+          ...previewBackground,
           fontFamily,
           color: fill,
           fontSize: previewFontSize,
@@ -198,8 +226,21 @@ export function StudioTextEditorForm({
           wordBreak: "break-word",
         }}
       >
-        {text || <span className="text-brand-purple-dark/30 italic">{texts.texto.sinTexto}</span>}
+        {text || (
+          <span
+            className={
+              lowContrast ? "text-brand-purple-dark/60 italic" : "text-brand-purple-dark/30 italic"
+            }
+          >
+            {texts.texto.sinTexto}
+          </span>
+        )}
       </div>
+      {lowContrast && (
+        <p role="note" className="text-brand-purple-dark/80 text-xs font-medium">
+          {texts.texto.colorSinContrasteHint}
+        </p>
+      )}
 
       {/* Input texto */}
       <div>

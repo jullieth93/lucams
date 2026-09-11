@@ -158,6 +158,16 @@ export type StudioStoreState = {
     opts: { facesPerUnit: number; max: number; sizeCm?: string },
   ) => void;
   /**
+   * Ola 28 (owner 2026-09-11, 1.3.A) — stepper "Unidades" del Estudio para
+   * productos de COMPOSICIÓN fija (tiras): cambia CUÁNTAS unidades se diseñan
+   * (unitCount) conservando la composición de cada una (unitSlots/photoSlots).
+   * Los slots se preservan por índice (las unidades nuevas nacen vacías; al
+   * reducir se caen las últimas). El precio ×N lo deriva el servidor del canvas
+   * guardado (design-units.ts), como siempre. No aplica a packs de imán suelto
+   * (unitSlots = 1: allí el stepper de fotos YA es el de unidades).
+   */
+  setUnitCount: (n: number, opts: { facesPerUnit: number; max: number }) => void;
+  /**
    * Modelo multi-unidad (owner 2026-09-09) — "Aplicar este diseño a todas": copia
    * los slots COMPLETOS de la unidad `unitIndex` (foto, encuadre, filtro, textos,
    * foto de perfil IG) a todas las demás unidades, conservando el slotIndex de
@@ -533,6 +543,60 @@ export function createStudioStore() {
       };
       get().setCanvasData(next);
       // Si el slot seleccionado quedó fuera del nuevo conteo, soltar la selección.
+      if (selectedSlotIndex !== null && selectedSlotIndex >= newSlotCount) {
+        set({ selectedSlotIndex: null });
+      }
+    },
+
+    setUnitCount: (n, opts) => {
+      const { canvasData, selectedSlotIndex } = get();
+      if (!canvasData) return;
+      const unitSlots = canvasData.unitSlots ?? opts.facesPerUnit;
+      // Solo productos de composición (unitSlots > caras — tiras). Con imán
+      // suelto el N de unidades ya lo maneja setPhotoSlotsPerUnit.
+      if (unitSlots <= opts.facesPerUnit) return;
+      const current = canvasData.unitCount ?? 1;
+      const target = Math.min(opts.max, Math.max(1, Math.trunc(n)));
+      if (!Number.isFinite(target) || target === current) return;
+      const newSlotCount = unitSlots * target;
+      // Misma preservación por índice que setPhotoSlotsPerUnit: las unidades
+      // nuevas nacen vacías; al reducir, las últimas se caen (sus fotos siguen
+      // en la sidebar para reasignar).
+      const oldSlots = canvasData.slots;
+      const slots: SlotState[] = Array.from({ length: newSlotCount }, (_, idx) => {
+        const prev = oldSlots[idx];
+        return prev
+          ? { ...prev, slotIndex: idx }
+          : { slotIndex: idx, assetId: null, assetUrl: null };
+      });
+      const unitTemplate = canvasData.unitTemplate;
+      const forcedCols =
+        typeof (unitTemplate as { gridCols?: unknown }).gridCols === "number"
+          ? (unitTemplate as { gridCols?: number }).gridCols
+          : undefined;
+      const forcedGap =
+        typeof (unitTemplate as { gridGap?: unknown }).gridGap === "number"
+          ? (unitTemplate as { gridGap?: number }).gridGap
+          : undefined;
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        slotCount: newSlotCount,
+        slots,
+        unitCount: target,
+        unitSlots,
+        gridLayout: recalcGridLayout(
+          gridSlotCountForLayout({
+            unitCount: target,
+            unitSlots,
+            slotCount: newSlotCount,
+            facesPerUnit: opts.facesPerUnit,
+          }),
+          unitTemplate.stage,
+          forcedCols,
+          forcedGap,
+        ),
+      };
+      get().setCanvasData(next);
       if (selectedSlotIndex !== null && selectedSlotIndex >= newSlotCount) {
         set({ selectedSlotIndex: null });
       }

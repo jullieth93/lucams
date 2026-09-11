@@ -736,8 +736,11 @@ export function NameEditor({
             </div>
           ) : (
             <>
-              {/* Descubribilidad del color por letra: barra visible, no un texto perdido. */}
-              {selectedIndex === null && (
+              {/* Descubribilidad del color por letra: barra visible, no un texto perdido.
+                  Ola 28 (owner 2026-09-11, 1.7): con «Sin borde» las fichas no llevan
+                  color → sin hint y fichas no seleccionables (la paleta ya quedó
+                  desactivada arriba; aquí tampoco aplica pintar letra a letra). */}
+              {withBorder && selectedIndex === null && (
                 <p className="text-brand-purple-dark mb-3 flex items-center justify-center gap-1.5 text-center text-xs font-semibold">
                   <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
                     {texts.nombre.tocaHint}
@@ -751,8 +754,8 @@ export function NameEditor({
                     letter={ch}
                     color={effectiveColors[i]}
                     imageUrl={activeTiles[ch]?.imageUrl}
-                    selected={selectedIndex === i}
-                    onClick={() => toggleSelected(i)}
+                    selected={withBorder && selectedIndex === i}
+                    onClick={withBorder ? () => toggleSelected(i) : undefined}
                     withBorder={withBorder}
                   />
                 ))}
@@ -760,8 +763,9 @@ export function NameEditor({
             </>
           )}
 
-          {/* Fila de colores para la letra seleccionada — control compartido */}
-          {selectedIndex !== null && letters[selectedIndex] && (
+          {/* Fila de colores para la letra seleccionada — control compartido.
+              Con «Sin borde» no aplica (no hay marco de color que pintar). */}
+          {withBorder && selectedIndex !== null && letters[selectedIndex] && (
             <SwatchRow letter={letters[selectedIndex]} onPick={setColorForSelected} />
           )}
         </div>

@@ -558,12 +558,17 @@ test.describe("estudio — «¿Con imán?» del pack (PDP elige, Estudio muestra
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// Ola 25 (Lucy 2026-09-09) — reglas del dueño validadas en STG:
-//   A. TEXTOS POR DEFECTO INVISIBLES: la tarjeta nace VACÍA — "Escribe tu
-//      mensaje", "@tu_usuario", "362 me gusta"… NO se dibujan en el canvas
-//      hasta que el cliente escribe (el default solo es placeholder gris del
-//      input en la pestaña Texto). Probe: conteo de píxeles de tinta en las
-//      zonas de texto del slot real (Konva compone varios <canvas> por stage).
+// Ola 25/28 (owner 2026-09-09 y 2026-09-11) — reglas del dueño:
+//   A. TEXTOS POR DEFECTO VISIBLES EN INSTAGRAM (Ola 28 — revierte la
+//      invisibilidad de Ola 25 SOLO para la plantilla IG): la tarjeta muestra
+//      "@tu_usuario", "Bogotá, Colombia", "362 me gusta", "Tu título acá" y
+//      los hashtags con el COLOR POR CAPA (oscuros sobre tarjeta blanca,
+//      claros sobre negra; hashtags SIEMPRE azul link IG). Sin riesgo de
+//      imprimir placeholders: los 4 textos requeridos bloquean «Vista previa»
+//      hasta tener override (Ola 26) y "362 me gusta" es decorativo. Las demás
+//      plantillas siguen naciendo vacías (Ola 25 intacto fuera de IG).
+//      Probe: conteo de píxeles de tinta en las zonas de texto del slot real
+//      (Konva compone varios <canvas> por stage) — oscura, CLARA y azul.
 //   B. MARCO INSTAGRAM CONSTANTE: con «Negro» elegido, la ventana de foto NO
 //      se inunda del color del borde al alejar la foto (zoom rueda → 50%):
 //      el hueco queda blanco (respaldo neutro) en la grilla Y en el preview
@@ -604,20 +609,25 @@ async function probeSlotPixels(
   );
 }
 
+const nearWhite = (px: number[]) => px[0]! > 235 && px[1]! > 235 && px[2]! > 235;
+
 /**
- * Conteo de píxeles "tinta de texto" (grisáceos oscuros) en una zona del slot.
- * El matcher exige |r−g|,|g−b| pequeños (gris/negro de la tipografía) → NO cuenta
- * el turquesa de las zonas de edición punteadas (g−r ≈ 124) ni la foto a color.
+ * Conteo de píxeles de "tinta" en una zona del slot, con matcher parametrizable
+ * (Ola 28). "dark"/"light" exigen |r−g|,|g−b| pequeños (gris/negro/blanco de la
+ * tipografía) → NO cuentan el turquesa de las zonas de edición punteadas
+ * (g−r ≈ 124) ni la foto a color; "blue" captura el azul link de los hashtags
+ * IG, que el matcher de grises no cuenta.
  */
-async function countTextInkInZone(
+async function countInkInZone(
   page: Page,
   slotIndex: number,
   stageW: number,
   stageH: number,
   zone: { x: number; y: number; w: number; h: number },
+  match: "dark" | "light" | "blue",
 ): Promise<number> {
   return page.evaluate(
-    ({ slotIndex: idx, stageW: w0, stageH: h0, zone: z }) => {
+    ({ slotIndex: idx, stageW: w0, stageH: h0, zone: z, match: m }) => {
       const slotEl = document.querySelector(`[data-slot-index='${idx}']`);
       if (!slotEl) return -1;
       const canvases = [...slotEl.querySelectorAll("canvas")];
@@ -643,18 +653,21 @@ async function countTextInkInZone(
         const g = img[i + 1]!;
         const b = img[i + 2]!;
         const a = img[i + 3]!;
-        if (a > 200 && Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && r < 225) ink++;
+        if (a <= 200) continue;
+        if (m === "dark" && Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && r < 225) ink++;
+        if (m === "light" && Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && r > 225) ink++;
+        // Azul link IG (#00376B clara / #0095F6 oscura): b domina a r y g.
+        // El turquesa de las zonas de edición tiene g ≈ b → no entra.
+        if (m === "blue" && b > 90 && b - Math.max(r, g) > 25) ink++;
       }
       return ink;
     },
-    { slotIndex, stageW, stageH, zone },
+    { slotIndex, stageW, stageH, zone, match },
   );
 }
 
-const nearWhite = (px: number[]) => px[0]! > 235 && px[1]! > 235 && px[2]! > 235;
-
-test.describe("estudio Ola 25 — textos por defecto invisibles + marco IG constante (Polaroid Instagram)", () => {
-  test("la tarjeta nace SIN textos por defecto y el marco Negro no inunda la ventana al 50% (grilla + modal)", async ({
+test.describe("estudio Ola 25+28 — textos IG visibles con color por capa + marco IG constante (Polaroid Instagram)", () => {
+  test("la tarjeta muestra sus textos por defecto (oscuros en blanca / claros en negra, hashtags azules) y el marco Negro no inunda la ventana al 50% (grilla + modal)", async ({
     page,
   }, testInfo) => {
     test.skip(!ctx.igSlug, "no hay producto con plantilla photo-pack-polaroid-instagram en la DB");
@@ -671,24 +684,37 @@ test.describe("estudio Ola 25 — textos por defecto invisibles + marco IG const
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 30_000 });
     await uploadAndFillSlot1(page, panel, ctx.igProductId);
 
-    // A) NADA de texto por defecto en el canvas (Ola 25): las zonas del header
-    // (username/location) y del footer (likes/caption/hashtags) del stage 450×600
-    // no pueden tener tinta de texto. Antes de Ola 25 ahí iba la guía atenuada
-    // (gris ~158) → este conteo era > 0.
-    const headerInk = await countTextInkInZone(page, 0, 450, 600, {
-      x: 60,
-      y: 16,
-      w: 240,
-      h: 38,
-    });
-    const footerInk = await countTextInkInZone(page, 0, 450, 600, {
-      x: 15,
-      y: 498,
-      w: 425,
-      h: 60,
-    });
-    expect(headerInk).toBe(0);
-    expect(footerInk).toBe(0);
+    // A) Los textos por defecto SE VEN (Ola 28, owner 2026-09-11: "no se ve texto
+    // preview, se ve vacío"): header (usuario/ubicación) y footer (likes/título)
+    // con tinta OSCURA sobre la tarjeta BLANCA por defecto; los hashtags, AZULES.
+    // (Ola 25 los dejaba invisibles — el owner lo revirtió pidiendo el preview.)
+    const headerInk = await countInkInZone(
+      page,
+      0,
+      450,
+      600,
+      { x: 60, y: 16, w: 240, h: 38 },
+      "dark",
+    );
+    const footerInk = await countInkInZone(
+      page,
+      0,
+      450,
+      600,
+      { x: 15, y: 498, w: 425, h: 60 },
+      "dark",
+    );
+    const hashtagsBlue = await countInkInZone(
+      page,
+      0,
+      450,
+      600,
+      { x: 15, y: 536, w: 220, h: 16 },
+      "blue",
+    );
+    expect(headerInk).toBeGreaterThan(0);
+    expect(footerInk).toBeGreaterThan(0);
+    expect(hashtagsBlue).toBeGreaterThan(0);
 
     // B) Marco Negro + zoom rueda → 50%: el hueco de la ventana queda BLANCO
     // (respaldo neutro), NUNCA del color del borde (inundación reportada en STG).
@@ -713,6 +739,38 @@ test.describe("estudio Ola 25 — textos por defecto invisibles + marco IG const
     expect(nearWhite(gridProbe[0]!)).toBe(true);
     expect(nearWhite(gridProbe[1]!)).toBe(true);
     expect(gridProbe[2]![0]!).toBeLessThan(60); // tarjeta oscura intacta
+
+    // A2) MISMA regla por capa con la tarjeta NEGRA: los defaults del header y
+    // del footer salen CLAROS (blancos) y los hashtags SIGUEN azules (variante
+    // oscura #0095F6). Las zonas de texto viven fuera de la ventana de foto,
+    // así que el zoom al 50% no las afecta.
+    const headerLight = await countInkInZone(
+      page,
+      0,
+      450,
+      600,
+      { x: 60, y: 16, w: 240, h: 38 },
+      "light",
+    );
+    const footerLight = await countInkInZone(
+      page,
+      0,
+      450,
+      600,
+      { x: 15, y: 520, w: 300, h: 30 },
+      "light",
+    );
+    const hashtagsBlueDark = await countInkInZone(
+      page,
+      0,
+      450,
+      600,
+      { x: 15, y: 536, w: 220, h: 16 },
+      "blue",
+    );
+    expect(headerLight).toBeGreaterThan(0);
+    expect(footerLight).toBeGreaterThan(0);
+    expect(hashtagsBlueDark).toBeGreaterThan(0);
 
     // B2) MISMA regla en el preview del modal de edición (WYSIWYG entre superficies).
     await page

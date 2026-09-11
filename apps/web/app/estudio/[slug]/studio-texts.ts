@@ -111,6 +111,17 @@ export type StudioTexts = {
     photoCountGroupAria: string;
     photoCountMinusAria: string;
     photoCountPlusAria: string;
+    /** Ola 28 (owner 2026-09-11, 1.3.A) — stepper "Unidades" del Estudio para
+     *  productos de COMPOSICIÓN fija (tiras: las fotos por tira se eligen en la
+     *  PDP; acá se ajusta cuántas tiras se diseñan). Reemplaza al stepper de
+     *  fotos en ese caso. */
+    unitsCountLabel: string;
+    unitsCountHint: string;
+    unitsCountOne: string;
+    unitsCountMany: string;
+    unitsCountGroupAria: string;
+    unitsCountMinusAria: string;
+    unitsCountPlusAria: string;
     /** Lucy 2026-09-08 — badge read-only "¿Con imán?" junto al stepper (lo fija la PDP). */
     magnetCon: string;
     magnetSin: string;
@@ -264,6 +275,9 @@ export type StudioTexts = {
     negrita: string;
     cursiva: string;
     colorLabel: string;
+    /** Ola 28 (owner 2026-09-11, 1.2.1.A) — aviso cuando el color de texto elegido
+     *  casi no contrasta con la tarjeta (blanco sobre tarjeta blanca = invisible). */
+    colorSinContrasteHint: string;
     tipografiaLabel: string;
     reset: string;
     aplicar: string;
@@ -611,6 +625,13 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     photoCountGroupAria: "Cantidad de fotos por imán",
     photoCountMinusAria: "Quitar una foto",
     photoCountPlusAria: "Agregar una foto",
+    unitsCountLabel: "Unidades",
+    unitsCountHint: "Las fotos por tira se eligen en la página del producto",
+    unitsCountOne: "unidad",
+    unitsCountMany: "unidades",
+    unitsCountGroupAria: "Unidades a diseñar",
+    unitsCountMinusAria: "Disminuir unidades",
+    unitsCountPlusAria: "Aumentar unidades",
     magnetCon: "🧲 Con imán",
     magnetSin: "✨ Sin imán",
     magnetHint: "se elige en la página del producto",
@@ -770,6 +791,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     negrita: "Negrita",
     cursiva: "Cursiva",
     colorLabel: "Color",
+    colorSinContrasteHint:
+      "Este color casi no se va a ver sobre la tarjeta — para que se lea al imprimir, elige otro.",
     tipografiaLabel: "Tipografía",
     reset: "Volver al original",
     aplicar: "Aplicar",
@@ -1105,6 +1128,13 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.photoCountGroupAria": "estudio.lienzo.photo-count-group-aria",
   "lienzo.photoCountMinusAria": "estudio.lienzo.photo-count-minus-aria",
   "lienzo.photoCountPlusAria": "estudio.lienzo.photo-count-plus-aria",
+  "lienzo.unitsCountLabel": "estudio.lienzo.unidades-label",
+  "lienzo.unitsCountHint": "estudio.lienzo.unidades-hint",
+  "lienzo.unitsCountOne": "estudio.lienzo.unidades-one",
+  "lienzo.unitsCountMany": "estudio.lienzo.unidades-many",
+  "lienzo.unitsCountGroupAria": "estudio.lienzo.unidades-group-aria",
+  "lienzo.unitsCountMinusAria": "estudio.lienzo.unidades-minus-aria",
+  "lienzo.unitsCountPlusAria": "estudio.lienzo.unidades-plus-aria",
   "lienzo.magnetCon": "estudio.lienzo.magnet-con",
   "lienzo.magnetSin": "estudio.lienzo.magnet-sin",
   "lienzo.magnetHint": "estudio.lienzo.magnet-hint",
@@ -1243,6 +1273,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.negrita": "estudio.texto.negrita",
   "texto.cursiva": "estudio.texto.cursiva",
   "texto.colorLabel": "estudio.texto.color-label",
+  "texto.colorSinContrasteHint": "estudio.texto.color-sin-contraste-hint",
   "texto.tipografiaLabel": "estudio.texto.tipografia-label",
   "texto.reset": "estudio.texto.reset",
   "texto.aplicar": "estudio.texto.aplicar",

@@ -348,13 +348,18 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     await cta.click();
 
     // El Estudio abre con 2 UNIDADES de 4 fotos (2 × 4 = 8 slots): pager/headers
-    // "Tira 1 de 2" / "Tira 2 de 2" y el control de fotos-por-tira arranca en 4.
+    // "Tira 1 de 2" / "Tira 2 de 2". Ola 28 (owner 2026-09-11): el banner YA NO
+    // repite la composición ("¿Cuántas fotos lleva tu imán?" sobraba — las fotos
+    // por tira se eligieron en la PDP); en su lugar va el stepper "Unidades"
+    // con el N vivo (2 tiras a diseñar).
     await expect(page).toHaveURL(new RegExp(`/estudio/${ctx.tirasSlug}\\?variant=.*copies=2`));
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 60_000 });
     await page.waitForTimeout(2_500); // el onboarding monta tarde (race histórica)
     await dismissOverlays(page);
-    await expect(page.getByText("4 fotos", { exact: true })).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText("3 fotos", { exact: true })).toHaveCount(0);
+    const unidadesStudio = page.getByRole("group", { name: "Unidades a diseñar" });
+    await expect(unidadesStudio).toBeVisible({ timeout: 20_000 });
+    await expect(unidadesStudio.getByText("2 unidades")).toBeVisible();
+    await expect(page.getByRole("group", { name: "Cantidad de fotos por imán" })).toHaveCount(0);
     // El pager de unidades (pill con title="Tira 1 de 2") y el header de sección
     // (h2) llevan el MISMO texto → el assert se acota al heading (strict mode).
     await expect(page.getByRole("heading", { name: "Tira 1 de 2", exact: true })).toBeVisible();

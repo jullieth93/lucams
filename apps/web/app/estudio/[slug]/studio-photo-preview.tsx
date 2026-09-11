@@ -34,7 +34,7 @@ import {
   isStripTemplate,
   stripPositionOf,
   isInstagramTemplate,
-  instagramBackgroundHex,
+  cardBackgroundHex,
   isInstagramNoBorder,
   photoBackingHexFor,
 } from "@/features/personalization/frame-palette";
@@ -139,17 +139,12 @@ export function StudioPhotoPreview({
     [unitTemplate],
   );
   const stripPosition = isStrip ? stripPositionOf(slotState.slotIndex, totalSlots) : null;
-  const cardBgHex = useMemo(() => {
-    const bgLayer = unitTemplate.layers.find((l) => l.type === "background") as
-      { color?: string } | undefined;
-    const bgHex = bgLayer?.color ?? "#FFFFFF";
-    const fcLayer = unitTemplate.layers.find((l) => l.type === "frame-card") as
-      { fill?: string } | undefined;
-    if (isIg) return instagramBackgroundHex(borderColor ?? null, bgHex);
-    if (fullBleed && borderColor) return borderColor;
-    if (hasFrameCard) return borderColor ?? fcLayer?.fill ?? "#FFFFFF";
-    return bgHex;
-  }, [unitTemplate, isIg, fullBleed, borderColor, hasFrameCard]);
+  const cardBgHex = useMemo(
+    // La regla vive en frame-palette.cardBackgroundHex (compartida con la grilla
+    // y con el editor de texto, Ola 28) — misma clasificación de siempre.
+    () => cardBackgroundHex({ layers: unitTemplate.layers, borderColor, frameFullBleed }),
+    [unitTemplate, borderColor, frameFullBleed],
+  );
   const darkCardBg = isDarkColor(cardBgHex);
   // Color de la capa background de la plantilla (blanco en todas las activas) — es el
   // "respaldo neutro" de la ventana de foto (la tarjeta SIN el tinte del borde).

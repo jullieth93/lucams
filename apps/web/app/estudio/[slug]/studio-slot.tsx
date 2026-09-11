@@ -1500,12 +1500,15 @@ export function renderLayer(
       // (igTextFill): usuario/ubicación/likes/título siguen el contraste de la
       // tarjeta, pero los hashtags SIEMPRE salen azul link IG (legible sobre
       // tarjeta clara u oscura) — nunca caen al blanco del contraste.
+      // Ola 28 (owner 2026-09-11): en IG el texto por defecto de la plantilla
+      // SE VE (isIg → showTemplateDefault); el resto de plantillas siguen
+      // naciendo vacías (Ola 25).
       const defaultFill = isIg
         ? igTextFill(textLayer.id, textLayer.fill, darkCardBg)
         : darkCardBg
           ? "#FFFFFF"
           : (textLayer.fill ?? "#3D2E5C");
-      return renderText(textLayer, stage, override, onTextEdit, false, defaultFill);
+      return renderText(textLayer, stage, override, onTextEdit, false, defaultFill, isIg);
     }
     case "shape":
       return renderShape(layer as never);
@@ -1774,6 +1777,17 @@ function renderText(
   // Ola 26 — en Instagram, por capa vía igTextFill: hashtags siempre azules).
   // Ausente → el fill de la plantilla (o el morado oscuro de marca).
   defaultFill?: string,
+  /**
+   * Ola 28 (owner 2026-09-11, 1.2.2.A) — EXCEPCIÓN Instagram a la regla Ola 25
+   * de "la tarjeta nace VACÍA": con la plantilla IG el texto por defecto de la
+   * plantilla SÍ se dibuja (con el color por capa de siempre) mientras el
+   * cliente no escribe el suyo — "actualmente no se ve texto preview (se ve
+   * vacío)". Sin riesgo de imprimir placeholders: los 4 textos requeridos
+   * BLOQUEAN «Vista previa» hasta tener override (Ola 26) y "362 me gusta" es
+   * decorativo (su default se imprime, como siempre se vio en el lienzo).
+   * Las DEMÁS plantillas siguen con la regla Ola 25 (vacío hasta escribir).
+   */
+  showTemplateDefault: boolean = false,
 ) {
   // Combinar layer base + override del slot. Cada campo del override
   // sobrescribe el layer base si está definido.
@@ -1797,11 +1811,17 @@ function renderText(
   //     del cliente; sin override.text no se imprime nada.
   //   - Ojo WYSIWYG: un override SIN texto (ej. solo cambió el color) sigue siendo
   //     placeholder — la tarjeta queda vacía y no se imprime nada.
+  //   - EXCEPCIÓN (Ola 28, owner 2026-09-11): plantilla INSTAGRAM (showTemplateDefault)
+  //     — el default de la plantilla se dibuja como texto normal (editable, con su
+  //     indicador dashed) en TODAS las superficies Konva (grilla, preview, 3D) y en
+  //     el snapshot de producción. Los requeridos no pueden quedar default al
+  //     finalizar (bloqueo Ola 26); el decorativo ("362 me gusta") imprime su default.
   // Las capas NO editables (texto fijo decorativo de la plantilla) sí imprimen su
   // texto base: no son placeholder de nada (no hay forma de editarlas).
   const customerText =
     typeof override?.text === "string" && override.text.trim() !== "" ? override.text : undefined;
-  const isPlaceholderGuide = layer.editable === true && customerText === undefined;
+  const showDefault = showTemplateDefault && customerText === undefined;
+  const isPlaceholderGuide = layer.editable === true && customerText === undefined && !showDefault;
   const finalText = customerText ?? layer.text;
   const fontSize = override?.fontSize ?? layer.fontSize ?? 48;
   const fontFamily = override?.fontFamily ?? layer.fontFamily ?? "Fredoka, Inter, sans-serif";

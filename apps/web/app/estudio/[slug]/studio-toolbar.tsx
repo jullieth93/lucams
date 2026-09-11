@@ -28,6 +28,7 @@ import { useStore } from "zustand";
 import { compareSizeToObject } from "./lib/size-comparator";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { StudioPhotoCountControl } from "./studio-photo-count-control";
+import { StudioUnitCountControl } from "./studio-unit-count-control";
 import {
   selectFilledSlotCount,
   selectIsComplete,
@@ -76,6 +77,12 @@ type StudioToolbarProps = {
     /** "¿Con imán?" (Lucy 2026-09-08): badge read-only junto al stepper — lo fija
      *  la PDP, el Estudio solo lo muestra. undefined = catálogo sin la dimensión. */
     magnet?: boolean;
+    /**
+     * Ola 28 (owner 2026-09-11, 1.3.A) — producto de COMPOSICIÓN fija (tiras):
+     * la composición (fotos por tira) se elige en la PDP y no se repite acá;
+     * en su lugar va el stepper "Unidades" (cuántas tiras diseñar).
+     */
+    composition?: boolean;
   };
   onFinalize: () => void;
   /**
@@ -209,14 +216,23 @@ export function StudioToolbar({
       </div>
 
       {/* Lucy 2026-09-05 — packs de fotoimanes: el N de fotos por imán se elige ACÁ
-          (en el Estudio), no en la PDP. Fila propia visible en mobile y desktop. */}
-      {photoCount && (
+          (en el Estudio), no en la PDP. Fila propia visible en mobile y desktop.
+          Ola 28 (owner 2026-09-11) — composición fija (tiras): el stepper de fotos
+          sobra ("ya se eligió en la PDP"); en su lugar va el de UNIDADES a diseñar. */}
+      {photoCount && !photoCount.composition && (
         <StudioPhotoCountControl
           store={store}
           min={photoCount.min}
           max={photoCount.max}
           facesPerUnit={photoCount.facesPerUnit}
           sizeCm={photoCount.sizeCm}
+          magnet={photoCount.magnet}
+        />
+      )}
+      {photoCount?.composition && (
+        <StudioUnitCountControl
+          store={store}
+          facesPerUnit={photoCount.facesPerUnit}
           magnet={photoCount.magnet}
         />
       )}

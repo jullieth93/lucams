@@ -1097,6 +1097,188 @@ describe("renderLayer — text", () => {
     });
   });
 
+  // Ola 28 (owner 2026-09-11, 1.2.2.A) — excepción IG a Ola 25: el texto por
+  // defecto de la plantilla SE VE en el lienzo (con el color por capa) y en
+  // TODAS las superficies Konva (preview/3D/confirmación comparten renderLayer).
+  // Sin riesgo de imprimir placeholders: los requeridos bloquean «Vista previa»
+  // hasta tener override (Ola 26) y "362 me gusta" es decorativo.
+  describe("Ola 28 — IG: los textos por defecto se VEN (owner 2026-09-11)", () => {
+    const hashtagsLayer = {
+      id: "hashtags",
+      type: "text",
+      x: 22,
+      y: 542,
+      text: "#mirecuerdo #lucamsshop",
+      fontSize: 13,
+      fill: "#00376B",
+      editable: true,
+    } as unknown as CanvasLayer;
+
+    const textPropsOf = (el: React.ReactElement, key: string) => {
+      const text = (el.props as { children: Array<React.ReactElement | null> }).children
+        .filter(Boolean)
+        .find((c) => (c as React.ReactElement).key === key) as React.ReactElement<{
+        fill?: string;
+        text?: string;
+      }>;
+      return text.props;
+    };
+
+    it("tarjeta CLARA sin override: caption default visible y OSCURO, hashtags AZULES", () => {
+      const cap = renderLayer(
+        textLayer,
+        slot(),
+        STAGE,
+        vi.fn(),
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          allowText: true,
+          isIg: true,
+          darkCardBg: false,
+        },
+      ) as React.ReactElement;
+      const capProps = textPropsOf(cap, "caption-text");
+      expect(capProps.text).toBe("Escribe tu mensaje");
+      expect(capProps.fill).toBe("#262626");
+
+      const ht = renderLayer(
+        hashtagsLayer,
+        slot(),
+        STAGE,
+        vi.fn(),
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          allowText: true,
+          isIg: true,
+          darkCardBg: false,
+        },
+      ) as React.ReactElement;
+      const htProps = textPropsOf(ht, "hashtags-text");
+      expect(htProps.text).toBe("#mirecuerdo #lucamsshop");
+      expect(htProps.fill).toBe("#00376B");
+    });
+
+    it("tarjeta OSCURA sin override: caption default BLANCO, hashtags azul oscuro (#0095F6)", () => {
+      const cap = renderLayer(
+        textLayer,
+        slot(),
+        STAGE,
+        vi.fn(),
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          allowText: true,
+          isIg: true,
+          darkCardBg: true,
+        },
+      ) as React.ReactElement;
+      expect(textPropsOf(cap, "caption-text").fill).toBe("#FFFFFF");
+
+      const ht = renderLayer(
+        hashtagsLayer,
+        slot(),
+        STAGE,
+        vi.fn(),
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          allowText: true,
+          isIg: true,
+          darkCardBg: true,
+        },
+      ) as React.ReactElement;
+      expect(textPropsOf(ht, "hashtags-text").fill).toBe("#0095F6");
+    });
+
+    it("superficie NO editable (preview/3D/confirmación): el default TAMBIÉN se dibuja (WYSIWYG)", () => {
+      const el = renderLayer(
+        textLayer,
+        slot(),
+        STAGE,
+        undefined,
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          allowText: true,
+          isIg: true,
+          darkCardBg: false,
+        },
+      ) as React.ReactElement<{ text?: string; fill?: string }>;
+      // Sin onTextEdit el render es el <Text> plano (no el Group con indicadores).
+      expect(el).not.toBeNull();
+      expect(el.props.text).toBe("Escribe tu mensaje");
+      expect(el.props.fill).toBe("#262626");
+    });
+
+    it("la excepción es SOLO Instagram: otra plantilla sin isIg sigue naciendo vacía (Ola 25)", () => {
+      const el = renderLayer(
+        textLayer,
+        slot(),
+        STAGE,
+        vi.fn(),
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        {
+          allowText: true,
+        },
+      ) as React.ReactElement;
+      const children = (
+        (el.props as { children: Array<React.ReactElement | null> }).children ?? []
+      ).filter(Boolean);
+      expect(children.some((c) => (c as React.ReactElement).key === "caption-text")).toBe(false);
+    });
+
+    it("el default visible sigue siendo EDITABLE: tocarlo abre el editor de esa capa", () => {
+      const onTextEdit = vi.fn();
+      render(
+        renderLayer(
+          textLayer,
+          slot(),
+          STAGE,
+          onTextEdit,
+          "rectangle",
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          {
+            allowText: true,
+            isIg: true,
+            darkCardBg: false,
+          },
+        ) as React.ReactElement,
+      );
+      const text = lastKonva("Text");
+      const stopPropagation = vi.fn();
+      (text!.onClick as (e: unknown) => void)({
+        cancelBubble: false,
+        evt: { stopPropagation },
+      });
+      expect(stopPropagation).toHaveBeenCalled();
+      expect(onTextEdit).toHaveBeenCalledWith("caption");
+    });
+  });
+
   it("click en texto editable (con texto del cliente) abre el editor (stopPropagation + callback)", () => {
     const onTextEdit = vi.fn();
     render(
