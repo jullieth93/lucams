@@ -222,8 +222,7 @@ function describeLine(item: RawCart["items"][number]): string | null {
     surface?: unknown;
     letters?: unknown;
   } | null;
-  const units =
-    typeof meta?.unitCount === "number" && meta.unitCount > 1 ? meta.unitCount : null;
+  const units = typeof meta?.unitCount === "number" && meta.unitCount > 1 ? meta.unitCount : null;
   // Sustantivo de la unidad cuando el diseño trae varias. Sets de letras: "set";
   // las piezas son las fichas del alfabeto (metadata.letters).
   const isLetterSet = meta?.surface === "letterset";

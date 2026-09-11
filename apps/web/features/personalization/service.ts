@@ -918,8 +918,7 @@ export async function createClientSlotUploadTickets(opts: {
   // el cliente, pero el tope queda acotado por slotCount ≤ 50 (Zod) y por el cap
   // de abajo contra el producto — inflarlo no regala más de 50 tickets de la
   // propia área de paso del diseño (que además se limpia tras el finalize).
-  const declaredUnits =
-    canvasData.version === 2 ? unitCountOf(canvasData as CanvasDataV2) : 1;
+  const declaredUnits = canvasData.version === 2 ? unitCountOf(canvasData as CanvasDataV2) : 1;
 
   const product = await prisma.product.findUnique({
     where: { id: design.productId },

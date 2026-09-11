@@ -36,7 +36,10 @@ export function effectiveColorsFromSnapshot(
   const theme = getNameTileTheme(snapshot?.themeId ?? fallbackThemeId ?? NAME_TILE_THEMES[0].id);
   const active = snapshot?.activeColors ?? theme.colors;
   const overrides = snapshot?.letterColors ?? {};
-  return Array.from({ length: Math.max(0, count) }, (_, i) => overrides[i] ?? active[i % active.length]);
+  return Array.from(
+    { length: Math.max(0, count) },
+    (_, i) => overrides[i] ?? active[i % active.length],
+  );
 }
 
 export function useLetterColors(count: number, initial?: LetterColorsSnapshot) {

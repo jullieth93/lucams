@@ -104,7 +104,10 @@ export function unitIndexOfSlot(slotIndex: number, unitSlots: number): number {
 }
 
 /** Rango [start, end) de slotIndex de una unidad dentro del array plano. */
-export function unitSlotRange(unitIndex: number, unitSlots: number): { start: number; end: number } {
+export function unitSlotRange(
+  unitIndex: number,
+  unitSlots: number,
+): { start: number; end: number } {
   const start = unitIndex * Math.max(1, unitSlots);
   return { start, end: start + Math.max(1, unitSlots) };
 }
@@ -122,8 +125,7 @@ export function gridSlotCountForLayout(opts: {
   slotCount: number;
   facesPerUnit?: number;
 }): number {
-  const multiUnit =
-    opts.unitCount > 1 && opts.unitSlots > 1 && opts.facesPerUnit !== 2;
+  const multiUnit = opts.unitCount > 1 && opts.unitSlots > 1 && opts.facesPerUnit !== 2;
   return multiUnit ? opts.unitSlots : opts.slotCount;
 }
 

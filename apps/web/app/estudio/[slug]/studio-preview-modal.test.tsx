@@ -131,7 +131,9 @@ describe("StudioPreviewModal — modelo MULTI-UNIDAD (unitCount: las unidades va
       />,
     );
     expect(
-      screen.getByText(/Esta es la vista previa de las 2 tiras que vas a recibir — cada una con 3 fotos\./),
+      screen.getByText(
+        /Esta es la vista previa de las 2 tiras que vas a recibir — cada una con 3 fotos\./,
+      ),
     ).toBeInTheDocument();
     expect(screen.getByText("2 tiras personalizadas · 3 fotos c/u")).toBeInTheDocument();
     expect(screen.queryByText(/imanes que vas a recibir/)).not.toBeInTheDocument();
