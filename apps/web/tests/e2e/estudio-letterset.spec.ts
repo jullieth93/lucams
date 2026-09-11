@@ -12,6 +12,10 @@
  * sin cleanup. Requiere DATABASE_URL (mismo patrón que estudio.spec.ts: la
  * lista de productos se levanta en beforeAll y el test ramifica adentro, porque
  * los tests generados en un `for` durante la colección verían la lista vacía).
+ *
+ * Ola 26 (owner 2026-09-09): el orden quedó INVERTIDO — «Borde de las fichas»
+ * va ENCIMA de «Elige los colores» (antes debajo; mismo cambio que Nombre
+ * Personalizado). El spec fija el orden nuevo.
  */
 
 import { test, expect } from "@playwright/test";
@@ -71,8 +75,10 @@ test.describe("estudio — sets de letras: selector «Con borde / Sin borde»", 
         "false",
       );
 
-      // El reporte de Lucy era "debajo de «Elige los colores»": el selector debe
-      // quedar tras la sección de colores, no desaparecer del flujo de la ficha.
+      // Ola 26 (owner 2026-09-09, reconfirmado para sets de letras 2026-09-11):
+      // «Borde de las fichas» va ENCIMA de «Elige los colores» — primero se define
+      // el borde; debajo queda la paleta que se desactiva con «Sin borde» (mismo
+      // orden que Nombre Personalizado y la toolbar de estilo del Estudio de foto).
       // El título del ThemePicker es un <p> que incluye el hint en un span, así
       // que el match es por <p> + substring (exact fallaría por el hint; el h1
       // del editor es "Elige los colores 🎨" y es un <h1>, queda fuera).
@@ -84,8 +90,8 @@ test.describe("estudio — sets de letras: selector «Con borde / Sin borde»", 
       expect(groupBox, product.name).not.toBeNull();
       expect(
         groupBox!.y,
-        `${product.name}: el selector debe quedar debajo de «Elige los colores»`,
-      ).toBeGreaterThan(colorBox!.y);
+        `${product.name}: el selector debe quedar ENCIMA de «Elige los colores»`,
+      ).toBeLessThan(colorBox!.y);
 
       // El toggle responde: elegir "Sin borde" marca la opción (estado client,
       // sin mutación — el diseño solo se persiste al confirmar la vista previa).
@@ -119,15 +125,18 @@ test.describe("estudio — sets de letras: selector «Con borde / Sin borde»", 
 /*
  * Regla 2026-09-08b (Lucy, unificación "Unidades"): la modal de confirmación
  * que abre el botón "Vista previa" (antes "¡Listo!", renombrado 2026-09-09)
- * ya NO tiene stepper "Copias" — las copias se eligen en la PDP
+ * ya NO tiene stepper "Copias" — las unidades se eligen en la PDP
  * (stepper "Unidades" de los productos de composición fija) y llegan como
- * ?copies=N, o se ajustan en el carrito. El estudio de letter-set llega a la
+ * ?copies=N. Multi-unidad (2026-09-09): en los sets de letras ese N son N
+ * SETS diseñables por separado (pager "Set 1 de N" + "Aplicar este diseño a
+ * todas"); la modal los describe como dato ("N unidades — cada una con su
+ * propio diseño"). El estudio de letter-set llega a la
  * modal sin uploads (el preview se dibuja client-side), así que es la vía
  * barata de blindarlo end-to-end. Sin mutación: se cierra con "Volver a
  * editar" (nada llega al carrito).
  */
 test.describe("estudio — modal «Vista previa» sin stepper «Copias» (regla 2026-09-08b)", () => {
-  test("la modal confirma sin stepper y muestra las copias de la PDP como dato", async ({
+  test("la modal confirma sin stepper y muestra las unidades de la PDP como dato", async ({
     page,
   }) => {
     test.skip(products.length === 0, "no hay productos letter-set activos en la DB");
@@ -166,13 +175,20 @@ test.describe("estudio — modal «Vista previa» sin stepper «Copias» (regla 
     await expect(previewDialog).toBeHidden({ timeout: 10_000 });
 
     // Con ?copies=3 (lo que emite la PDP al elegir 3 Unidades) → la modal lo
-    // muestra como DATO (no editable) y el total lo refleja.
+    // muestra como DATO (no editable) y el total lo refleja. Multi-unidad
+    // (2026-09-09): en los sets de letras el N son 3 SETS diseñables (cada uno
+    // con sus propios colores de ficha) — la modal los describe con la línea
+    // "N unidades — cada una con su propio diseño" (el concepto "copias
+    // idénticas" desapareció de las superficies personalizables).
     await page.goto(`/estudio/${product.slug}?copies=3`, { waitUntil: "domcontentloaded" });
     await dismissCookies();
     await expect(listo).toBeVisible({ timeout: 30_000 });
     await listo.click();
     await expect(previewDialog).toBeVisible({ timeout: 30_000 });
-    await expect(previewDialog.getByText("3 copias idénticas de tu diseño")).toBeVisible();
+    await expect(
+      previewDialog.getByText("3 unidades — cada una con su propio diseño"),
+    ).toBeVisible();
+    await expect(previewDialog.getByText(/copias idénticas/)).toHaveCount(0);
     await expect(previewDialog.getByRole("group", { name: "Copias" })).toHaveCount(0);
     await previewDialog.getByRole("button", { name: /Volver a editar/i }).click();
     await expect(previewDialog).toBeHidden({ timeout: 10_000 });

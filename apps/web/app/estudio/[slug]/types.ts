@@ -326,6 +326,25 @@ export type MultiSlotCanvasData = {
    * blanca. La grilla/body del calendario SIEMPRE es Inter (no cambia con esta clave).
    */
   calendarFont?: import("@/features/personalization/schemas").CalendarFontKey;
+  /**
+   * Modelo MULTI-UNIDAD (owner 2026-09-09 — regla general, todos los productos): el
+   * diseño contiene `unitCount` unidades físicas del producto, CADA UNA diseñable por
+   * separado en el Estudio (la PDP manda `?copies=N` → N unidades a diseñar; desaparece
+   * el concepto "copias idénticas" de las superficies personalizables). Aditivo:
+   * ausente = 1 unidad (los diseños guardados antes de la ola cargan intactos).
+   * Invariante: slotCount = unitCount × unitSlots. Solo se escribe cuando unitSlots > 1
+   * (los packs de imán suelto — polaroid/cuadrados — no lo declaran: su variante YA es
+   * el pack). El precio nunca confía en estos campos: se deriva de slotCount vs lo que
+   * cubre la variante (features/personalization/design-units.ts).
+   */
+  unitCount?: number;
+  /**
+   * Slots de diseño por unidad física (tira de 3 fotos → 3; calendario → 12; separador
+   * 2 caras → 2). Cuando unitCount > 1 y unitSlots > 1 (y el producto no es de caras
+   * agrupadas), `gridLayout` describe la grilla de UNA unidad; en los demás casos sigue
+   * describiendo el diseño completo (retrocompatible).
+   */
+  unitSlots?: number;
 };
 
 /** Alias de conveniencia — algunos consumidores usan `CanvasDataV2` por simetría con V1. */

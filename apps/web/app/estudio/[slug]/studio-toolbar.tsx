@@ -78,6 +78,13 @@ type StudioToolbarProps = {
     magnet?: boolean;
   };
   onFinalize: () => void;
+  /**
+   * Ola 26 (owner 2026-09-09) — bloqueo EXTRA de «Vista previa» con las fotos ya
+   * completas (hoy: textos requeridos de la Polaroid Instagram sin llenar). Lo
+   * calcula el editor (guard de finalización); acá sigue el mismo patrón del
+   * bloqueo por fotos: botón deshabilitado + tooltip/aria con el motivo.
+   */
+  finalizeBlockReason?: string | null;
 };
 
 export function StudioToolbar({
@@ -93,6 +100,7 @@ export function StudioToolbar({
   onOpenGesturesHint,
   photoCount,
   isPreviewBuilding = false,
+  finalizeBlockReason = null,
   onFinalize,
 }: StudioToolbarProps) {
   const autoSaveStatus = useStore(store, (s) => s.autoSaveStatus);
@@ -104,11 +112,11 @@ export function StudioToolbar({
   const complete = useStore(store, selectIsComplete);
   const texts = useStudioTexts();
 
-  const canFinalize = complete && !isFinalizing && !isPreviewBuilding;
+  const canFinalize = complete && !finalizeBlockReason && !isFinalizing && !isPreviewBuilding;
 
   const disabledTooltip = !complete
     ? fillStudioText(texts.lienzo.finalizeTooltip, { n: total - filled })
-    : undefined;
+    : (finalizeBlockReason ?? undefined);
 
   return (
     <header
@@ -377,10 +385,13 @@ export function FinalizeButton({
 export function StudioFinalizeFab({
   store,
   isPreviewBuilding = false,
+  finalizeBlockReason = null,
   onFinalize,
 }: {
   store: StoreApi<StudioStoreState>;
   isPreviewBuilding?: boolean;
+  /** Ola 26 — mismo bloqueo extra que el toolbar inline (textos requeridos IG). */
+  finalizeBlockReason?: string | null;
   onFinalize: () => void;
 }) {
   const isFinalizing = useStore(store, (s) => s.isFinalizing);
@@ -388,10 +399,10 @@ export function StudioFinalizeFab({
   const total = useStore(store, selectTotalSlotCount);
   const complete = useStore(store, selectIsComplete);
   const texts = useStudioTexts();
-  const canFinalize = complete && !isFinalizing && !isPreviewBuilding;
+  const canFinalize = complete && !finalizeBlockReason && !isFinalizing && !isPreviewBuilding;
   const disabledTooltip = !complete
     ? fillStudioText(texts.lienzo.finalizeTooltip, { n: total - filled })
-    : undefined;
+    : (finalizeBlockReason ?? undefined);
   return (
     <FinalizeButton
       isFinalizing={isFinalizing}

@@ -8,34 +8,38 @@ import path from "node:path";
 
 /*
  * E2E — Regla 2026-09-08b (Lucy, unificación "Unidades") + excepción HÍBRIDA de
- * tiras (2026-09-09, owner). Los packs de la familia separadores muestran UN
- * concepto de cantidad — "Unidades" (pack size) — y el N elegido ABRE el Estudio
- * con ese N (una sola fuente de verdad: ?variant= → merge de attributes sobre el
- * schema → photoSlots inicial). Tiras muestra DOS selectores: "Fotos por tira"
- * (composición, photoSlots) + "Unidades" (copias, CartItem.qty → ?copies=N).
+ * tiras (2026-09-09, owner) + modelo MULTI-UNIDAD (owner 2026-09-09, regla
+ * general: N unidades, CADA UNA diseñable por separado en el Estudio — las
+ * "copias idénticas" desaparecen de las superficies personalizables). Los packs
+ * de la familia separadores muestran UN concepto de cantidad — "Unidades" (pack
+ * size) — y el N elegido ABRE el Estudio con ese N (una sola fuente de verdad:
+ * ?variant= → merge de attributes sobre el schema → photoSlots inicial). Tiras
+ * muestra DOS selectores: "Fotos por tira" (composición, photoSlots) +
+ * "Unidades" (N tiras A DISEÑAR → ?copies=N, nombre del parámetro conservado).
  *
  *   1. PDP separadores-alargados: grupo "Unidades" (stepper 1..6) + "Tamaño";
  *      NUNCA un grupo "Fotos"/"Cantidad" ni un segundo stepper de copias.
  *      Elegir tamaño 4×12 + Unidades=3 → CTA "Personalizar" lleva ?variant= de
  *      la variante qty=3 y el Estudio abre con 3 unidades (slots 3A/3B).
  *   2. PDP tiras-magneticas-fotos (híbrido): "Fotos por tira" (chips "3 fotos"/
- *      "4 fotos", photoSlots relabelado) + stepper "Unidades" (copias 1..99) +
- *      "Tamaño". Elegir 4 fotos + 2 unidades → CTA con ?variant= Y ?copies=2 →
- *      el Estudio abre con 4 fotos (control de N arranca en 4).
+ *      "4 fotos", photoSlots relabelado) + stepper "Unidades" (tiras a diseñar)
+ *      + "Tamaño". Elegir 4 fotos + 2 unidades → CTA con ?variant= Y ?copies=2 →
+ *      el Estudio abre con DOS TIRAS de 4 fotos (2 × 4 = 8 slots, secciones
+ *      "Tira 1 de 2" / "Tira 2 de 2").
  *   3. Estudio de tiras: CANALETA visible entre fotos (media canaleta del
  *      color del marco DENTRO de cada celda, stripPhotoRect — WYSIWYG con el
  *      render de producción, que consume la misma matemática). Oráculo de
  *      píxel: la franja inferior del canvas de contenido de la PRIMERA celda
  *      es el color de la tarjeta (blanco), no la foto (regresión: antes las
- *      fotos se tocaban, gap 0 real). La modal que abre "Vista previa" (antes
- *      "¡Listo!") sin stepper "Copias"
- *      la cubre estudio-letterset.spec.ts (llega a la modal sin uploads); este
- *      spec blinda además que las copias de la PDP (?copies=2) llegan a la
- *      modal de tiras como dato ("2 copias idénticas de tu diseño") Y QUE
- *      CONFIRMAR deja el carrito con qty=2 (UI "Subtotal (2 ítems)" + stepper
- *      de la línea + oracle DB por la cookie cart_session — regresión del
- *      reporte del owner 2026-09-09: "si agrego 2 unidades NO aparecen 2
- *      Tiras Magnéticas"). El carrito de la corrida se limpia en afterAll.
+ *      fotos se tocaban, gap 0 real). Y el flujo multi-unidad COMPLETO: 2
+ *      unidades → auto-fill llena la tira 1 → "Aplicar este diseño a todas"
+ *      completa la tira 2 → Vista previa muestra las 2 unidades ("2 unidades —
+ *      cada una con su propio diseño", sin stepper "Copias") → confirmar deja
+ *      UNA línea en el carrito con qty=1 y unitPrice = variante × 2 (oracle UI
+ *      "Subtotal (1 ítem)" + "2 tiras de 3 fotos" + oracle DB por la cookie
+ *      cart_session — respuesta del modelo multi-unidad al reporte del owner
+ *      2026-09-09: "si agrego 2 unidades NO aparecen 2 Tiras Magnéticas").
+ *      El carrito de la corrida se limpia en afterAll.
  *
  * Productos reales leídos de la DB del ambiente (nada hardcodeado). Crea un
  * asset de prueba (tiras) → LOCAL/STG solamente (prohibido en PRD, como la
@@ -69,9 +73,10 @@ type Ctx = {
   tirasSlug: string;
   tirasProductId: string;
   tirasVariantId: string;
+  tirasVariantPrice: number;
   tirasName: string;
   /** Sesión de carrito de la corrida (cookie cart_session) — para el oracle
-   *  DB del qty y la limpieza del carrito creado al confirmar la modal. */
+   *  DB del qty/precio y la limpieza del carrito creado al confirmar la modal. */
   cartSessionId: string;
 };
 
@@ -82,6 +87,7 @@ const ctx: Ctx = {
   tirasSlug: "",
   tirasProductId: "",
   tirasVariantId: "",
+  tirasVariantPrice: 0,
   tirasName: "",
   cartSessionId: "",
 };
@@ -134,7 +140,7 @@ test.beforeAll(async () => {
         name: true,
         variants: {
           where: { isActive: true, deletedAt: null },
-          select: { id: true, attributes: true },
+          select: { id: true, attributes: true, price: true },
         },
       },
     }),
@@ -146,7 +152,9 @@ test.beforeAll(async () => {
     const v3 = tiras.variants.find(
       (v) => (v.attributes as { photoSlots?: number } | null)?.photoSlots === 3,
     );
-    ctx.tirasVariantId = (v3 ?? tiras.variants[0])?.id ?? "";
+    const variant = v3 ?? tiras.variants[0];
+    ctx.tirasVariantId = variant?.id ?? "";
+    ctx.tirasVariantPrice = variant?.price ?? 0;
   }
 });
 
@@ -311,7 +319,7 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     await expect(page.getByRole("group", { name: "Cantidad" })).toHaveCount(0);
   });
 
-  test("PDP tiras: 4 fotos + 2 unidades → el Estudio abre con 4 fotos y ?copies=2", async ({
+  test("PDP tiras: 4 fotos + 2 unidades → el Estudio abre con 2 TIRAS de 4 fotos (multi-unidad)", async ({
     page,
   }) => {
     test.skip(!ctx.tirasSlug, "tiras-magneticas-fotos no está activo en la DB");
@@ -325,12 +333,13 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     await expect(fotosPorTira).toBeVisible({ timeout: 15_000 });
     await fotosPorTira.getByRole("button", { name: "4 fotos" }).click();
 
-    // Copias: stepper "Unidades" hasta 2.
+    // Unidades: stepper "Unidades" hasta 2 → DOS tiras A DISEÑAR (multi-unidad
+    // 2026-09-09: ya no son "copias idénticas").
     const unidades = page.getByRole("group", { name: "Unidades" });
     await unidades.getByLabel("Aumentar unidades").click();
     await expect(unidades.getByText("2", { exact: true })).toBeVisible();
 
-    // El CTA lleva AMBOS: ?variant= (composición) y ?copies=2 (copias).
+    // El CTA lleva AMBOS: ?variant= (composición) y ?copies=2 (unidades a diseñar).
     const cta = page.getByRole("link", { name: /Personalizar producto/i });
     await expect(cta).toBeVisible();
     const href = (await cta.getAttribute("href")) ?? "";
@@ -338,14 +347,50 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     expect(href).toContain("copies=2");
     await cta.click();
 
-    // El Estudio abre con N=4 fotos (merge de la variante sobre el schema) y
-    // conserva las copias en la URL — la modal de «Vista previa» las confirma tal cual.
+    // El Estudio abre con 2 UNIDADES de 4 fotos (2 × 4 = 8 slots): pager/headers
+    // "Tira 1 de 2" / "Tira 2 de 2" y el control de fotos-por-tira arranca en 4.
     await expect(page).toHaveURL(new RegExp(`/estudio/${ctx.tirasSlug}\\?variant=.*copies=2`));
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 60_000 });
     await page.waitForTimeout(2_500); // el onboarding monta tarde (race histórica)
     await dismissOverlays(page);
     await expect(page.getByText("4 fotos", { exact: true })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("3 fotos", { exact: true })).toHaveCount(0);
+    // El pager de unidades (pill con title="Tira 1 de 2") y el header de sección
+    // (h2) llevan el MISMO texto → el assert se acota al heading (strict mode).
+    await expect(page.getByRole("heading", { name: "Tira 1 de 2", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tira 2 de 2", exact: true })).toBeVisible();
+
+    // Regresión 2026-09-09 (reporte del owner en STG): la plantilla de la tira de
+    // 4 fotos (photo-strip-4-fotos) nació en un script one-off y NO estaba en el
+    // seed → el barrido de legacy del seed la archivaba en cada corrida, el filtro
+    // de aspect dejaba la lista de plantillas VACÍA para la variante 3:4 y el boot
+    // caía al template cuadrado genérico 1080×1080 (grilla 2×2). El canvas asociado
+    // a la variante es la TIRA: 4 celdas en UNA columna, cada una más alta que
+    // ancha (celda 390×530), no una grilla de cuadrados. Multi-unidad: CADA sección
+    // (unidad) es su propia tira de 4 celdas en 1 columna.
+    // Lazy-mount (ADR-063 T5: >6 slots → IntersectionObserver): al abrir solo la
+    // unidad cercana al viewport tiene sus slots montados; la 2ª monta al llevar
+    // el scroll a su sección (el pipeline de snapshots fuerza el montaje total).
+    await expect(page.locator("[data-slot-index]")).toHaveCount(4);
+    for (const unitId of ["studio-unit-0", "studio-unit-1"]) {
+      await page.locator(`#${unitId}`).scrollIntoViewIfNeeded();
+      const cells = page.locator(`#${unitId} [data-slot-index]`);
+      await expect(cells).toHaveCount(4);
+      const boxes = await cells.evaluateAll((els) =>
+        els.map((el) => {
+          const r = el.getBoundingClientRect();
+          return { x: r.x, w: r.width, h: r.height };
+        }),
+      );
+      for (const b of boxes) {
+        // Celda vertical de tira (390×530 → h > w); el fallback roto era cuadrado.
+        expect(b.h).toBeGreaterThan(b.w);
+        // UNA sola columna (tira continua); el fallback roto armaba 2 columnas.
+        expect(Math.abs(b.x - boxes[0].x)).toBeLessThan(2);
+      }
+    }
+    // Tras visitar ambas secciones quedan montadas las 8 celdas (2 tiras × 4 fotos).
+    await expect(page.locator("[data-slot-index]")).toHaveCount(8);
   });
 });
 
@@ -369,9 +414,9 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
     const panel = await resolvePanel(page);
     const consent = page.getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i });
     if (await consent.count()) await consent.first().check();
-    // 3 fotos (la misma imagen ×3): el auto-fill NO repite fotos y el botón
-    // "Vista previa" exige TODOS los slots llenos — con 1 sola quedaría
-    // bloqueado y la verificación de la modal (copias) sería inalcanzable.
+    // Multi-unidad (2026-09-09): el Estudio abrió con 2 TIRAS de 3 fotos (2 × 3 =
+    // 6 slots). El auto-fill reparte las 3 fotos en los primeros 3 slots (tira 1);
+    // la tira 2 queda vacía hasta aplicar "Aplicar este diseño a todas".
     await panel
       .locator('input[type="file"]')
       .first()
@@ -392,10 +437,24 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
       )
       .toBeGreaterThanOrEqual(3);
 
-    // Reparte las fotos en los slots de la tira (celda 0 y siguientes).
+    // Reparte las fotos en los slots de la PRIMERA tira (celda 0 y siguientes).
     const wand = page.getByRole("button").filter({ hasText: /Llenar slots con mis fotos/i });
     await expect(wand.first()).toBeVisible({ timeout: 60_000 });
     await wand.first().click();
+    await page.waitForTimeout(AUTOSAVE_WAIT);
+    // Mobile: el Sheet de herramientas queda abierto tras repartir y deja el lienzo
+    // (y el atajo del header de la tira) bajo aria-hidden → se cierra ANTES de aplicar.
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.waitForTimeout(400);
+
+    // "Aplicar este diseño a todas" (atajo multi-unidad del header de la tira 1):
+    // copia los 3 slots llenos a la tira 2 → las 2 unidades quedan completas.
+    const aplicarATodas = page
+      .getByRole("button")
+      .filter({ hasText: "Aplicar este diseño a todas" })
+      .first();
+    await expect(aplicarATodas).toBeVisible({ timeout: 30_000 });
+    await aplicarATodas.click();
     await expect
       .poll(
         async () => {
@@ -406,15 +465,24 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
               select: { canvasData: true },
             }),
           );
-          const slots = (
-            design?.canvasData as { slots?: Array<{ assetUrl?: string | null }> } | null
-          )?.slots;
-          return Boolean(slots?.length) && slots!.every((s) => Boolean(s.assetUrl));
+          const cd = design?.canvasData as {
+            slotCount?: number;
+            unitCount?: number;
+            unitSlots?: number;
+            slots?: Array<{ assetUrl?: string | null }>;
+          } | null;
+          // Modelo multi-unidad persistido: 2 tiras × 3 fotos, las 6 celdas llenas.
+          return (
+            cd?.slotCount === 6 &&
+            cd?.unitCount === 2 &&
+            cd?.unitSlots === 3 &&
+            Boolean(cd?.slots?.length) &&
+            cd!.slots!.every((s) => Boolean(s.assetUrl))
+          );
         },
         { timeout: 60_000, intervals: [2000, 3000, 4000, 5000] },
       )
       .toBe(true);
-    await page.waitForTimeout(AUTOSAVE_WAIT);
     // Mobile: el Sheet de herramientas queda abierto tras repartir y tapa el lienzo.
     await page.keyboard.press("Escape").catch(() => {});
     await page.waitForTimeout(400);
@@ -447,12 +515,13 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
     // la foto no desapareció, solo deja la canaleta visible.
     expect(nearWhite(probe!.center)).toBe(false);
 
-    // Híbrido 2026-09-09 — las copias de la PDP (?copies=2) llegan a la modal de
-    // confirmación como DATO (sin stepper propio — regla 2026-09-08b). El gatillo
-    // es el botón "Vista previa" (renombrado; antes «¡Listo!»). Su NOMBRE ACCESIBLE
-    // es un aria-label CMS (estudio.lienzo.finalize-aria — en LOCAL sobreescrito a
-    // "Listo, generar diseño final"), así que el locator acepta ambas variantes y
-    // filtra al visible (inline en desktop / FAB en mobile).
+    // Multi-unidad 2026-09-09 — la Vista previa muestra TODAS las unidades y la
+    // modal las describe como dato ("2 unidades — cada una con su propio diseño";
+    // el concepto "copias idénticas" desapareció). El gatillo es el botón "Vista
+    // previa" (renombrado; antes «¡Listo!»). Su NOMBRE ACCESIBLE es un aria-label
+    // CMS (estudio.lienzo.finalize-aria — en LOCAL sobreescrito a "Listo, generar
+    // diseño final"), así que el locator acepta ambas variantes y filtra al visible
+    // (inline en desktop / FAB en mobile).
     const vistaPrevia = page
       .getByRole("button", { name: /Vista previa|Listo/i })
       .and(page.locator(":visible"))
@@ -462,34 +531,41 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
     await vistaPrevia.click();
     const previewDialog = page.getByRole("dialog", { name: /Así se verá/i });
     await expect(previewDialog).toBeVisible({ timeout: 30_000 });
-    await expect(previewDialog.getByText("2 copias idénticas de tu diseño")).toBeVisible();
+    await expect(
+      previewDialog.getByText("2 unidades — cada una con su propio diseño"),
+    ).toBeVisible();
+    await expect(previewDialog.getByText(/copias idénticas/)).toHaveCount(0);
     await expect(previewDialog.getByRole("group", { name: "Copias" })).toHaveCount(0);
     await previewDialog.getByRole("button", { name: /Volver a editar/i }).click();
     await expect(previewDialog).toBeHidden({ timeout: 10_000 });
 
     // Reporte del owner (2026-09-09): "si agrego 2 unidades NO aparecen 2 Tiras
-    // Magnéticas". Se blinda el camino COMPLETO hasta el carrito: confirmar la
-    // modal con las 2 copias de la PDP debe dejar la línea de la tira con qty=2
-    // (CartItem.qty), visible en la UI y verificado contra la DB.
+    // Magnéticas". Se blinda el camino COMPLETO hasta el carrito en el modelo
+    // multi-unidad: confirmar la modal agrega UNA línea con el diseño de las 2
+    // tiras (qty=1) y el precio = variante × 2 derivado en el servidor —
+    // visible en la UI y verificado contra la DB.
     await expect(vistaPrevia).toBeEnabled({ timeout: 30_000 });
     await vistaPrevia.click();
     await expect(previewDialog).toBeVisible({ timeout: 30_000 });
-    await expect(previewDialog.getByText("2 copias idénticas de tu diseño")).toBeVisible();
+    await expect(
+      previewDialog.getByText("2 unidades — cada una con su propio diseño"),
+    ).toBeVisible();
     await previewDialog.getByRole("button", { name: /agregar al carrito/i }).click();
 
     // Redirect a /carrito?personalized=1 (el finalize + subida de imprenta tarda).
     await expect(page).toHaveURL(/\/carrito/, { timeout: 180_000 });
-    // La única línea del carrito es la tira con qty=2 → el subtotal cuenta 2 ítems
-    // y el stepper de la línea muestra 2 (su "−" habilitado delata qty>1).
-    await expect(page.getByText("Subtotal (2 ítems)")).toBeVisible({ timeout: 30_000 });
+    // La única línea del carrito es el diseño de 2 tiras con qty=1 → el subtotal
+    // cuenta 1 ítem (la línea contiene TODAS las unidades) y la línea describe
+    // las 2 tiras en el resumen de pieza.
+    await expect(page.getByText("Subtotal (1 ítem)")).toBeVisible({ timeout: 30_000 });
     const cartLine = page.locator("li", {
       has: page.getByRole("link", { name: ctx.tirasName }),
     });
-    await expect(cartLine.getByText("2", { exact: true })).toBeVisible();
-    await expect(cartLine.getByLabel("Disminuir cantidad")).toBeEnabled();
+    await expect(cartLine.getByText(/2 tiras de 3 fotos/)).toBeVisible();
 
-    // Oracle DB: el CartItem de ESTA sesión (cookie cart_session) tiene qty=2 y
-    // la variante de 3 fotos que abrió el Estudio.
+    // Oracle DB: el CartItem de ESTA sesión (cookie cart_session) tiene qty=1,
+    // la variante de 3 fotos que abrió el Estudio y unitPrice = 2 × precio de la
+    // variante (las 2 tiras, derivado server-side del canvasData).
     const cookies = await page.context().cookies();
     const sessionId = cookies.find((c) => c.name === "cart_session")?.value ?? "";
     expect(sessionId).not.toBe("");
@@ -497,10 +573,11 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
     const cart = await withDbRetry(() =>
       prisma.cart.findUnique({
         where: { sessionId },
-        select: { items: { select: { variantId: true, qty: true } } },
+        select: { items: { select: { variantId: true, qty: true, unitPrice: true } } },
       }),
     );
     const cartItem = cart?.items.find((i) => i.variantId === ctx.tirasVariantId);
-    expect(cartItem?.qty).toBe(2);
+    expect(cartItem?.qty).toBe(1);
+    expect(cartItem?.unitPrice).toBe(ctx.tirasVariantPrice * 2);
   });
 });

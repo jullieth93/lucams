@@ -22,16 +22,21 @@ type SelectedVariantCtx = {
   selectedId: string | null;
   setSelectedId: (id: string) => void;
   /**
-   * Copias (CartItem.qty 1..99) elegidas en el stepper "Unidades" de la PDP —
-   * productos de composición FIJA (regla 2026-09-08b: calendario, sets de
-   * letras, nombre y compra directa) y el HÍBRIDO tiras (2026-09-09, owner —
-   * PDP_PACK_PLUS_COPIES_SLUGS: allí "Unidades" del VariantSelector es la
-   * composición "Fotos por tira" y el stepper es las copias). En el resto de
-   * los packs de tamaño variable "Unidades" es el pack size y vive en el
-   * VariantSelector (sin stepper de copias). Única fuente de verdad de la
-   * cantidad en la ficha: la compra directa la manda como `qty` del form y la
-   * rama personalizable la lleva al Estudio como `?copies=N` (la modal de
-   * confirmación ya NO tiene stepper — confirma con ese valor).
+   * UNIDADES elegidas en el stepper "Unidades" de la PDP (1..99).
+   *
+   * Modelo MULTI-UNIDAD (owner 2026-09-09 — regla general): en los productos
+   * personalizables (calendario, tiras, sets de letras, nombre) son las N
+   * unidades A DISEÑAR — cada una se personaliza por separado en el Estudio;
+   * ya NO son "copias idénticas". En la compra directa (sin personalización)
+   * siguen siendo qty clásico del carrito (unidades idénticas del producto).
+   * En los packs de tamaño variable "Unidades" es el pack size y vive en el
+   * VariantSelector (este stepper no se renderiza), SALVO el híbrido tiras
+   * (PDP_PACK_PLUS_COPIES_SLUGS): allí "Unidades" del VariantSelector es la
+   * composición "Fotos por tira" y este stepper son las tiras a diseñar.
+   *
+   * Única fuente de verdad de la cantidad en la ficha: la compra directa la
+   * manda como `qty` del form y la rama personalizable la lleva al Estudio
+   * como `?copies=N` (nombre del parámetro conservado por compat).
    */
   copies: number;
   setCopies: (n: number) => void;
@@ -104,14 +109,15 @@ export function useSelectedVariant(): SelectedVariantCtx {
  *     (2026-09-05→2026-09-08). Ninguna PDP activa los usa hoy; se conservan
  *     por compatibilidad del contrato.
  *
- * Regla 2026-09-08b — copias: los productos de composición FIJA llevan el
- * stepper "Unidades" en la PDP (CopiesQtyInput) y este CTA las lleva al Estudio
- * como ?copies=N (solo cuando N>1; el default del Estudio es 1). La modal de
- * confirmación ya NO tiene stepper "Copias": confirma con ese qty. Los packs de
- * tamaño variable no emiten ?copies= (su stepper no se renderiza → copies=1),
- * SALVO el híbrido tiras (2026-09-09 — PDP_PACK_PLUS_COPIES_SLUGS): allí el
- * stepper sí se renderiza y las copias viajan junto al ?variant= (que fija las
- * fotos por tira).
+ * Modelo MULTI-UNIDAD (owner 2026-09-09): el stepper "Unidades" de la PDP son las
+ * unidades A DISEÑAR y este CTA las lleva al Estudio como ?copies=N (solo cuando
+ * N>1; el default del Estudio es 1, y el nombre del parámetro se conserva por
+ * compat). El Estudio abre con N unidades — cada una se diseña por separado, la
+ * Vista previa las muestra TODAS y el carrito recibe UNA línea con el diseño
+ * completo (qty 1; precio = variante × N server-side). Los packs de tamaño
+ * variable no emiten ?copies= (su stepper no se renderiza → copies=1), SALVO el
+ * híbrido tiras (PDP_PACK_PLUS_COPIES_SLUGS): allí las tiras a diseñar viajan
+ * junto al ?variant= (que fija las fotos por tira).
  */
 export function EstudioCtaLink({
   slug,

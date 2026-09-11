@@ -245,14 +245,19 @@ packages/db/scripts/
 
 - **Polaroid Instagram — fondo SOLO blanco/negro + contraste automático.** El picker del
   sidebar muestra solo blanco/negro (`StudioFramePicker allowCustom={false}`). Regla: fondo
-  blanco → textos negros (los de la plantilla); fondo negro → TODOS los textos blancos
-  (`#FFFFFF`, incluidos los hashtags) y el chrome SVG cambia a su variante oscura
+  blanco → textos negros (los de la plantilla); fondo negro → textos blancos
+  (`#FFFFFF`) y el chrome SVG cambia a su variante oscura
   (`/templates/ig_post_3x4_dark.svg`, swap en `AssetLayerRenderer` — el canvasData conserva
   el src original). El color de letra es MANUALMENTE sobreescribible tocando cada texto
   (modal con color picker — el `textOverrides[].fill` siempre manda sobre el automático).
   Un `borderColor` pastel residual (cambio de plantilla) cae a fondo blanco
   (`instagramBackgroundHex`: solo un hex OSCURO pinta el fondo). Producción: Instagram
   siempre hornea el PNG del cliente (asset SVG → NEEDS_KONVA) → WYSIWYG automático.
+  **Ola 26 (2026-09-09) — EXCEPCIÓN hashtags:** la capa `hashtags` YA NO cae al
+  blanco/negro del contraste — SIEMPRE se dibuja azul link de Instagram
+  (`igTextFill` en instagram-template-spec.ts: `#00376B` sobre tarjeta clara,
+  `#0095F6` sobre oscura — contraste AA ≥4.5 en ambas). El resto de textos
+  (usuario, ubicación, likes, título) sigue el contraste de la tarjeta.
 - **Polaroid Clásica — el mensaje es OPCIONAL.** El campo "Tu mensaje" arranca vacío
   (antes mostraba el placeholder como valor → parecía obligatorio y el "Escribe tu mensaje"
   terminaba IMPRESO). Sin override, el editor dibuja el placeholder atenuado (45%,
@@ -347,6 +352,140 @@ packages/db/scripts/
   ×1.15 — saltos toscos). La función `nextWheelScale` (studio-slot) la comparten el
   handler Konva, el listener nativo del slot y el preview del modal; el pinch sigue
   siendo continuo (ratio de distancia). El chip de % del slot refleja el valor exacto.
+
+### Ola 26 (Lucy 2026-09-09) — IG: textos por capa + textos requeridos; checkerboard fuerte; tira 4 fotos
+
+- **Polaroid Instagram — color de texto POR CAPA (hashtags siempre azules).** El default
+  de letra sigue al color de la tarjeta por capa (`igTextFill`, instagram-template-spec):
+  usuario/ubicación/likes/título = contraste (tarjeta clara → fill oscuro de plantilla;
+  oscura → `#FFFFFF`), pero `hashtags` SIEMPRE azul link IG (`#00376B` clara / `#0095F6`
+  oscura — AA ≥4.5 en ambas; nunca cae al blanco del contraste como antes). El
+  `textOverrides[].fill` del cliente sigue mandando sobre todo. WYSIWYG: la Instagram
+  siempre hornea el PNG del cliente (chrome SVG → NEEDS_KONVA en ambos tiers server), así
+  que producción hereda la misma regla del render Konva (studio-slot `renderText` ahora
+  recibe el `defaultFill` ya resuelto del call-site en vez del booleano `darkCard`).
+- **Polaroid Instagram — TODOS los textos requeridos para finalizar** (decisión owner):
+  usuario, ubicación, título y hashtags son obligatorios (`IG_REQUIRED_TEXT_LAYER_IDS`);
+  el contador "362 me gusta" queda decorativo. Con la tarjeta que nace VACÍA (Ola 25),
+  una polaroid IG podía finalizarse en blanco → «Vista previa» se BLOQUEA mientras alguna
+  capa requerida no tenga override con texto en TODOS los slots del pack
+  (`igMissingRequiredTextLayerIds`; un campo falta si ALGÚN slot no lo tiene — cada imán
+  es un post independiente). Mismo patrón del bloqueo por fotos: botón deshabilitado +
+  tooltip/aria con los campos faltantes (`estudio.lienzo.finalize-tooltip-textos` +
+  etiquetas `estudio.texto.campo-ig-*`; el editor pasa `finalizeBlockReason` al
+  `StudioToolbar`/`StudioFinalizeFab`, y `handleFinalize` tiene la defensa en profundidad
+  con el mismo mensaje).
+- **Checkerboard de la tarjeta blanca más fuerte** ("muy leve"): cuadrados `#CDC7DB`
+  (antes `#ECE9F1`, casi invisible) de 16px (antes 12px) y bandeja de 8px (antes 6px) —
+  `WHITE_CARD_CHECKER`/`WHITE_CARD_CHECKER_SIZE`/`WHITE_CARD_TRAY_PAD` en studio-slot,
+  consumidos también por el preview del modal (studio-photo-preview). Sigue siendo
+  adorno 100% DOM: nunca entra al PNG de producción.
+- **Nombre Personalizado — «Borde de las fichas» ARRIBA de «Elige los colores»**
+  (name-editor): primero se define el borde; debajo queda la paleta que se desactiva con
+  «Sin borde» (mismo orden que la toolbar de estilo, Ola 24). Regla de desactivado intacta.
+  El editor de sets de letras (abecedario/vocales) quedó con el MISMO orden tras el
+  refactor multi-unidad (Ola 27) y el owner lo confirmó para esa superficie el 2026-09-11
+  (el spec `estudio-letterset` se actualizó: antes fijaba el orden viejo).
+- **FIX tira de 4 fotos sin canvas** (owner en STG): la plantilla `photo-strip-4-fotos`
+  nació en el one-off `ola18b-cuadrados-tiras-fix.mjs` y NO estaba en
+  `seed-templates.mjs` → el barrido de legacy del seed la soft-deleteaba en CADA corrida;
+  sin plantilla activa que matcheara el `aspectRatio "3:4"` de la variante, el filtro de
+  aspect dejaba la lista vacía y el boot caía al template cuadrado genérico 1080×1080
+  (grilla 2×2 en vez de la tira). La plantilla (celda 390×530, gridCols 1, gridGap 0) se
+  declaró en el seed → upsert idempotente que la mantiene activa. Regresión E2E en
+  `pdp-cantidad-tira.spec.ts` (4 celdas verticales en UNA columna, no cuadrados 2×2).
+
+### Ola 27 (owner 2026-09-09) — modelo MULTI-UNIDAD: N unidades, CADA UNA diseñable
+
+**Regla general aprobada por el dueño: "Unidades" = N unidades del producto, CADA
+UNA diseñable por separado en el Estudio. El concepto "copias idénticas" desaparece
+de todas las superficies personalizables.**
+
+- **Flujo**: la PDP fija "Unidades" = N (stepper, misma etiqueta de siempre) → el
+  Estudio abre con N unidades a diseñar (2 tiras de 3 fotos = 2 × 3 slots; 2
+  calendarios = 2 × 12 tarjetas; 3 separadores = 3 × 2 caras — el caso que ya
+  existía vía `facesPerUnit`). La Vista previa muestra TODAS las unidades (el
+  cliente ve exactamente lo que recibe), el carrito recibe UNA línea con el diseño
+  completo (qty 1) y producción renderiza TODAS las unidades.
+- **Schema (aditivo, sin bump de versión)**: `canvasData` V2 gana `unitCount?` y
+  `unitSlots?` (ausentes = 1 unidad → los diseños guardados antes de la ola cargan
+  intactos). Invariante: `slotCount = unitCount × unitSlots`. Con N unidades
+  multi-slot (y fuera del modo agrupado de separadores) `gridLayout` describe la
+  grilla de UNA unidad; en el resto de casos sigue describiendo el diseño completo.
+  Helpers puros en `features/personalization/design-units.ts` (client y server).
+- **Invariante de escritura**: `unitCount`/`unitSlots` solo se persisten cuando
+  `unitSlots > 1` (tiras, calendarios, separadores). Los packs de imán suelto
+  (polaroid/cuadrados) NO los declaran: su "Unidades" de la PDP es el pack size de
+  la variante (cada imán se diseña por separado desde siempre, grilla plana) y su
+  multiplicador de precio queda ×1 para siempre.
+- **`?copies=N` conserva el nombre** del parámetro (compat con deep-links y e2e)
+  pero cambia de significado: ya no es CartItem.qty, son las unidades a diseñar.
+  La página lo acota a 1..99 y el editor al máximo del producto (`slotCount ≤ 50`
+  del schema Zod → calendario 4 sets, tira de 4 fotos 12 tiras, separadores 25).
+- **UI del Estudio**: con N unidades multi-slot el lienzo se divide en SECCIONES
+  apiladas (una por unidad, con header "Tira 1 de 2" + chip de progreso) y un
+  **pager** de pastillas arriba (salta a cada sección; las secciones quedan TODAS
+  montadas → los stages Konva viven en el DOM para los snapshots). Decisión de
+  diseño: secciones apiladas y NO un pager que esconda unidades, porque (1) el
+  pipeline de snapshots (preview/producción/3D) necesita todos los stages montados,
+  (2) dos tiras apiladas con gap 0 se leerían como una sola tira de 6 sin la
+  separación de sección, y (3) el calendario ×2 (24 tarjetas) ya maneja scroll con
+  lazy-mount. Separadores: su modo agrupado YA era la vista por unidad (tarjetas
+  "Separador N" cara A|B) — solo ganó progreso + el atajo por tarjeta.
+- **"Aplicar este diseño a todas"**: `store.applyUnitToAllUnits(unitIndex)` copia
+  los slots COMPLETOS de la unidad (foto, encuadre, filtro, textos, foto de perfil
+  IG) a las demás unidades, conservando el slotIndex de destino (undoable). Vive
+  en el header de cada sección (unidades multi-slot), en las tarjetas-unidad de
+  separadores y en la ventana de edición del slot para productos de imán suelto
+  (unitSlots = 1: el slot ES la unidad).
+- **Stepper de fotos del Estudio (packs)**: `setPhotoSlotsPerUnit` distingue dos
+  modos — COMPOSICIÓN (tiras: el N son fotos por tira, las unidades se conservan y
+  el slotCount se multiplica por ellas) y UNIDADES (polaroid/separadores: el N ES
+  el nº de unidades — comportamiento histórico). La unidad solo tiene más slots
+  que sus caras en el primer caso.
+- **Precio (la ruta del dinero NO confía en el cliente)**: la línea del carrito es
+  UNA (qty 1 = el diseño con sus N unidades) y `unitPrice = variante × multiplicador`,
+  donde el multiplicador se DERIVA del canvas guardado en el servidor
+  (`designUnitPriceMultiplier`: `ceil(slotCount / (photoSlots_raíz × facesPerUnit))`
+  para packs, `ceil(slotCount / unitSlots)` para composición fija) y de
+  `metadata.unitCount` validado al crear (sets de letras). La variante cubre UNA
+  unidad (tira, calendario, set) o el pack declarado (polaroid/separadores → ×1).
+  Ojo (fix 2026-09-11): `letterSetUnitCount` exige `surface === "letterset"` —
+  el finalize espeja `unitCount` en la metadata de TODO diseño V2 y sin el gate
+  el precio multiplicaba dos veces (una tira ×2 llegaba al carrito cobrando ×4;
+  lo cazó el E2E `pdp-cantidad-tira`, no los tests unitarios, porque el espejo
+  solo lo escribe el finalize). El `unidadesFisicas` del spec de producción usa
+  la misma combinación y quedó cubierto por el mismo gate.
+  Cualquier tampering del canvas queda económicamente consistente (se paga por
+  pieza equivalente; jamás se cobra de menos en un flujo legítimo). El `qty` del
+  carrito sigue existiendo como multiplicador de líneas (2 líneas del mismo diseño
+  de 2 tiras = 4 tiras).
+- **Vista previa modal**: muestra TODAS las unidades (montaje multi-unidad en
+  `buildCompositedPreview` — tiras lado a lado, una por pieza; calendarios: las 24
+  páginas; separadores: las N tiras desplegadas como siempre). Total = unitario ×
+  unidades; la línea "N unidades — cada una con su propio diseño" reemplaza al
+  viejo "N copias idénticas". Tiras: copy propio ("2 tiras de 3 fotos" — antes se
+  leía "3 imanes", incorrecto). Calendario ×2: "tus 2 calendarios — cada uno con
+  12 páginas".
+- **Producción (imprenta recibe TODAS las unidades)**: el finalize renderiza/sube
+  los `slotCount` PNG de siempre (ahora N × unitSlots) y el spec de producción
+  (`production-spec.ts`) describe las unidades: "6 archivos que son SEGMENTOS de 2
+  tiras (3 por tira)", "24 archivos que forman 2 calendarios de 12 piezas", "2
+  láminas (una por set)". `unidadesFisicas` usa el mismo multiplicador del precio.
+  Los tickets de subida de cliente (fallback NEEDS_CLIENT_SLOTS) se acotan a
+  `photoSlots × caras × unidades declaradas`.
+- **Sets de letras (abecedario/vocales)**: multiplicador de SETS — cada unidad es
+  un set con sus propios colores por ficha; tema/idioma/borde quedan a NIVEL DISEÑO
+  (compartidos). Pager "Set 1 de N" + "Aplicar este diseño a todas" (clona colores).
+  `metadata.units = [{colors}]` + `metadata.unitCount` (validados server-side al
+  crear; el precio ×N sale de ahí). Producción: 1 lámina PNG por set. Tope 10 sets.
+- **Nombre personalizado**: superficie del agente hermano (name-editor.tsx); su
+  modelo multi-unidad llega por ese canal. La modal soporta AMBOS mundos:
+  `unitCount` (nuevo, qty 1) y `initialCopies` (legacy, qty = copias).
+- **Carrito/checkout**: la línea describe las unidades ("2 tiras de 3 fotos",
+  "2 calendarios de 12 páginas", "2 sets de 27 fichas" — `line-preview.ts` con
+  `metadata.unitCount` escrito al finalizar). La Vista previa del pedido y la
+  confirmación muestran el mismo montaje de todas las unidades.
 
 ## Piezas posteriores (2026-07 en adelante) — confirmación con copias, letras, IA, 3D, copy CMS
 

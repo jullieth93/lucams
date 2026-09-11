@@ -17,9 +17,9 @@
  * fallback al primer slot vacío. El handler de drop por slot tiene prioridad.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Minus, Plus, RotateCcw } from "lucide-react";
+import { Check, Copy, Minus, Plus, RotateCcw } from "lucide-react";
 import type Konva from "konva";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
@@ -28,7 +28,12 @@ import { StudioSlotEditModal } from "./studio-slot-edit-modal";
 import type { CanvasDataV2, StudioAsset, TextLayer } from "./types";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
 import type { CalendarFontKey } from "@/features/personalization/schemas";
-import { selectUnitImagePlaceholder, type StudioStoreState } from "./lib/store";
+import { unitSlotRange } from "@/features/personalization/design-units";
+import {
+  selectUnitFilledCount,
+  selectUnitImagePlaceholder,
+  type StudioStoreState,
+} from "./lib/store";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { unitIndexOfSlot } from "./lib/faces";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -108,6 +113,12 @@ type StudioCanvasGridProps = {
    */
   facesPerUnit?: number;
   /**
+   * Modelo multi-unidad (owner 2026-09-09) — sustantivo de la unidad para los
+   * headers de sección y el pager ("Tira", "Calendario", "Separador", "Pieza").
+   * Lo deriva el editor del tipo de producto (textos CMS estudio.unidades.*).
+   */
+  unitNoun?: string;
+  /**
    * FB4 — si false (táctil), los slots de la grilla NO capturan gestos (drag/pinch/wheel) → el dedo
    * scrollea la página; el pan/zoom se hace en el editor a pantalla completa (tocar = abrir). En
    * desktop (true) se conserva el inline drag/rueda.
@@ -153,6 +164,7 @@ export function StudioCanvasGrid({
   allowText = false,
   frameFullBleed = false,
   facesPerUnit = 1,
+  unitNoun,
   interactiveSlots = true,
   onSlotClick,
   stageZoomRaw,
@@ -178,6 +190,10 @@ export function StudioCanvasGrid({
     tab: "photo" | "text";
     focusTextLayerId?: string;
   } | null>(null);
+  // Multi-unidad (2026-09-09) — tick para el feedback aria-live tras "Aplicar
+  // este diseño a todas" (cada aplicación lo incrementa → se anuncia de nuevo).
+  const [appliedTick, setAppliedTick] = useState(0);
+  const announceApplied = useCallback(() => setAppliedTick((t) => t + 1), []);
   // Ola 22 (Lucy 2026-09-08) — zoom de LIENZO: acerca TODA la plantilla (display-only,
   // no toca el diseño ni la exportación). El valor crudo lo pide el padre (prop
   // `stageZoomRaw`, control en la fila de pills); el tope depende del ancho disponible,
@@ -244,6 +260,20 @@ export function StudioCanvasGrid({
   // allowText: si el producto oculta el texto (Cuadrados), no aplica.
   const hasEditableText = allowText && hasEditableTextLayers(canvasData?.unitTemplate.layers ?? []);
 
+  // Modelo multi-unidad (owner 2026-09-09): N unidades físicas, cada una diseñable
+  // por separado. Con unitCount > 1 y unitSlots > 1 (y fuera del modo agrupado de
+  // separadores, que ya apila tarjetas-unidad) el lienzo se divide en SECCIONES
+  // apiladas — una por unidad ("Tira 1 de 2", pager arriba) — y `gridLayout`
+  // describe la grilla de UNA unidad. unitSlots = 1 (polaroid/cuadrados): grilla
+  // plana intacta — cada imán es su unidad y se ve completa de una vez.
+  const unitSlots = canvasData?.unitSlots ?? 1;
+  const unitCount = canvasData?.unitCount ?? 1;
+  const groupedForUnits = facesPerUnit === 2 && (canvasData?.slotCount ?? 0) % 2 === 0;
+  const multiUnitSections = !groupedForUnits && unitCount > 1 && unitSlots > 1;
+  // Slots que describe la grilla: una unidad en modo secciones; el diseño completo
+  // en cualquier otro caso (retrocompatible).
+  const layoutSlotCount = multiUnitSections ? unitSlots : (canvasData?.slotCount ?? 0);
+
   const layout = useMemo(() => {
     if (!canvasData) return null;
     // M.3.b.UX.7 — Responsive progresivo: cap de cols según viewport.
@@ -260,9 +290,11 @@ export function StudioCanvasGrid({
 
     const cols = Math.min(maxCols, canvasData.gridLayout.cols);
     if (cols === canvasData.gridLayout.cols) return canvasData.gridLayout;
-    const rows = Math.ceil(canvasData.slotCount / cols);
+    // Multi-unidad: las filas se calculan sobre la UNIDAD (layoutSlotCount), no
+    // sobre el diseño completo.
+    const rows = Math.ceil(layoutSlotCount / cols);
     return { ...canvasData.gridLayout, cols, rows };
-  }, [canvasData, containerWidth, isCalendar, hasEditableText]);
+  }, [canvasData, containerWidth, isCalendar, hasEditableText, layoutSlotCount]);
 
   // A2.6 — Crossfade visual al cambiar plantilla. Detectamos cambio en
   // unitTemplate (referencia distinta = template aplicado nuevo) y disparamos
@@ -336,14 +368,17 @@ export function StudioCanvasGrid({
   // tarjetas-unidad ("Separador N") con las 2 caras lado a lado (la tira
   // desplegada física). unitCols: 1 en móvil; en desktop 2 unidades por fila,
   // salvo caras muy anchas (rectangular 6:2 → tira 6:1, 1 por fila).
-  const grouped = facesPerUnit === 2 && canvasData.slotCount % 2 === 0;
+  const grouped = groupedForUnits;
   // Ola 3c — modo TIRA (gridGap=0, tira photobooth): las celdas se tocan → la tira
   // se lee como UNA pieza continua de color. Sin reserva de barra de acciones entre
   // celdas (flota sobre la foto, ver StudioSlot overlayActions). Regla 2026-09-08:
   // la separación visible ENTRE fotos la dibuja stripPhotoRect DENTRO de cada celda
   // (media canaleta del color del marco) — el gap CSS entre celdas sigue en 0.
   const stripMode = !grouped && canvasData.gridLayout.gap === 0;
-  const unitCount = grouped ? canvasData.slotCount / 2 : canvasData.slotCount;
+  // Unidades físicas que se RENDERIZAN como tarjeta/sección: en modo agrupado,
+  // slotCount/2 (caras); en modo secciones multi-unidad, unitCount del modelo;
+  // en plano, cada slot se muestra suelto.
+  const physicalUnits = grouped ? canvasData.slotCount / 2 : unitCount;
   const stripAspect = grouped
     ? (canvasData.unitTemplate.stage.width * 2) / canvasData.unitTemplate.stage.height
     : 0;
@@ -351,7 +386,7 @@ export function StudioCanvasGrid({
   // el ancho con una columna fantasma. La tarjeta debe usar el alto disponible para
   // verse proporcional al producto real (vertical estrecho).
   const desiredUnitCols = containerWidth < BP_MOBILE || stripAspect >= 3 ? 1 : 2;
-  const unitCols = grouped ? Math.min(unitCount, desiredUnitCols) : 0;
+  const unitCols = grouped ? Math.min(physicalUnits, desiredUnitCols) : 0;
   // Columnas VISUALES de slots para la navegación por teclado (flechas).
   const navCols = grouped ? unitCols * 2 : layout.cols;
 
@@ -366,7 +401,9 @@ export function StudioCanvasGrid({
   // Plantillas con texto editable: el cap SIGUE calculándose pero computeMaxFrameH
   // lo ignora (Lucy 2026-09-07: la Polaroid Instagram se veía pequeña y sus
   // textos eran imposibles de tappear).
-  const slotMaxHeight = slotHeightCapByCount(canvasData.slotCount, containerWidth, isCalendar);
+  // Multi-unidad: el cap se calcula sobre la UNIDAD (cada sección se dimensiona
+  // como un estudio de una sola unidad y las secciones se apilan).
+  const slotMaxHeight = slotHeightCapByCount(layoutSlotCount, containerWidth, isCalendar);
 
   // Ola 4 — marco máximo en ALTO (82% del viewport, acotado): las celdas se achican
   // si el grid completo no cabe en pantalla. Ola 6: se respeta también el cap por slot.
@@ -579,68 +616,145 @@ export function StudioCanvasGrid({
       style={{ maxWidth: MAX_VIEWPORT_WIDTH }}
       aria-label={texts.lienzo.lienzoAria}
     >
-      <motion.div
-        className={
-          stripMode
-            ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza entera (las
-              // celdas individuales no llevan sombra — separaban la tira visualmente).
-              // Sin overflow-hidden: el anillo de selección del slot no debe cortarse.
-              "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
-            : "grid"
-        }
-        style={{
-          gridTemplateColumns: `repeat(${grouped ? unitCols : layout.cols}, 1fr)`,
-          gap: layout.gap,
-          // Ola 4 — ancho explícito + margin auto: el grid siempre centrado en el marco,
-          // sin estirarse cuando el cap de alto achica las celdas.
-          ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
-        }}
-        initial={reducedMotion ? false : { opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
-      >
-        <AnimatePresence>
-          {grouped
-            ? // Ola 3 — tarjeta por UNIDAD física: "Separador N" con cara A | cara B
-              // lado a lado (la tira desplegada que se imprime). El filete central
-              // punteado sugiere el doblez de la tira.
-              Array.from({ length: unitCount }, (_, unitIndex) => (
+      {/* Modelo multi-unidad (2026-09-09) — pager de unidades: pastillas "Tira 1",
+          "Tira 2"… con el progreso de cada una; saltan a su sección (scroll).
+          Las secciones quedan TODAS montadas y visibles (apiladas): el cliente
+          ve todo lo que va a recibir y los stages Konva viven en el DOM para el
+          snapshot de producción/preview (WYSIWYG). */}
+      {multiUnitSections && (
+        <UnitPager
+          store={store}
+          unitCount={unitCount}
+          unitSlots={unitSlots}
+          noun={unitNoun ?? texts.unidades.nombrePieza}
+        />
+      )}
+
+      {multiUnitSections ? (
+        <div className="flex w-full flex-col items-center gap-10">
+          {Array.from({ length: unitCount }, (_, u) => {
+            const { start, end } = unitSlotRange(u, unitSlots);
+            return (
+              <section
+                key={u}
+                id={`studio-unit-${u}`}
+                aria-label={fillStudioText(texts.unidades.unidadDe, {
+                  nombre: unitNoun ?? texts.unidades.nombrePieza,
+                  n: u + 1,
+                  total: unitCount,
+                })}
+                className="w-full scroll-mt-32"
+              >
+                <UnitSectionHeader
+                  store={store}
+                  unitIndex={u}
+                  unitSlots={unitSlots}
+                  unitCount={unitCount}
+                  noun={unitNoun ?? texts.unidades.nombrePieza}
+                  onApplied={announceApplied}
+                />
                 <div
-                  key={unitIndex}
-                  role="group"
-                  aria-label={fillStudioText(texts.lienzo.unidadAria, {
-                    n: unitIndex + 1,
-                    total: unitCount,
-                  })}
-                  className="border-brand-purple/15 flex flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
+                  className={
+                    stripMode
+                      ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza
+                        // entera (las celdas no llevan sombra). Multi-unidad: una
+                        // sombra por TIRA (cada sección es una pieza física).
+                        "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
+                      : "grid"
+                  }
+                  style={{
+                    gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
+                    gap: layout.gap,
+                    ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
+                  }}
                 >
-                  <span className="text-brand-purple-dark text-xs font-bold">
-                    {fillStudioText(texts.lienzo.unitSeparador, { n: unitIndex + 1 })}
-                  </span>
-                  <div className="flex items-start justify-center gap-2">
-                    {canvasData.slots
-                      .filter((slot) => unitIndexOfSlot(slot.slotIndex, 2) === unitIndex)
-                      .map((slot, i) => (
-                        <div
-                          key={slot.slotIndex}
-                          className={
-                            i === 0
-                              ? "border-brand-purple/25 flex flex-col items-center gap-1 border-r border-dashed pr-2"
-                              : "flex flex-col items-center gap-1"
-                          }
-                        >
-                          <span className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
-                            {i === 0 ? texts.lienzo.unitCaraA : texts.lienzo.unitCaraB}
-                          </span>
-                          {renderSlotCell(slot)}
-                        </div>
-                      ))}
-                  </div>
+                  <AnimatePresence>
+                    {canvasData.slots.slice(start, end).map((slot) => renderSlotCell(slot))}
+                  </AnimatePresence>
                 </div>
-              ))
-            : canvasData.slots.map((slot) => renderSlotCell(slot))}
-        </AnimatePresence>
-      </motion.div>
+              </section>
+            );
+          })}
+        </div>
+      ) : (
+        <motion.div
+          className={
+            stripMode
+              ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza entera (las
+                // celdas individuales no llevan sombra — separaban la tira visualmente).
+                // Sin overflow-hidden: el anillo de selección del slot no debe cortarse.
+                "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
+              : "grid"
+          }
+          style={{
+            gridTemplateColumns: `repeat(${grouped ? unitCols : layout.cols}, 1fr)`,
+            gap: layout.gap,
+            // Ola 4 — ancho explícito + margin auto: el grid siempre centrado en el marco,
+            // sin estirarse cuando el cap de alto achica las celdas.
+            ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
+          }}
+          initial={reducedMotion ? false : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
+        >
+          <AnimatePresence>
+            {grouped
+              ? // Ola 3 — tarjeta por UNIDAD física: "Separador N" con cara A | cara B
+                // lado a lado (la tira desplegada que se imprime). El filete central
+                // punteado sugiere el doblez de la tira.
+                Array.from({ length: physicalUnits }, (_, unitIndex) => (
+                  <div
+                    key={unitIndex}
+                    role="group"
+                    aria-label={fillStudioText(texts.lienzo.unidadAria, {
+                      n: unitIndex + 1,
+                      total: physicalUnits,
+                    })}
+                    className="border-brand-purple/15 flex flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
+                  >
+                    <span className="text-brand-purple-dark text-xs font-bold">
+                      {fillStudioText(texts.lienzo.unitSeparador, { n: unitIndex + 1 })}
+                    </span>
+                    {/* Multi-unidad (2026-09-09) — progreso de la unidad + atajo
+                        "Aplicar este diseño a todas" (copia las 2 caras de este
+                        separador a los demás). */}
+                    <UnitMiniActions
+                      store={store}
+                      unitIndex={unitIndex}
+                      unitSlots={2}
+                      unitCount={physicalUnits}
+                      onApplied={announceApplied}
+                    />
+                    <div className="flex items-start justify-center gap-2">
+                      {canvasData.slots
+                        .filter((slot) => unitIndexOfSlot(slot.slotIndex, 2) === unitIndex)
+                        .map((slot, i) => (
+                          <div
+                            key={slot.slotIndex}
+                            className={
+                              i === 0
+                                ? "border-brand-purple/25 flex flex-col items-center gap-1 border-r border-dashed pr-2"
+                                : "flex flex-col items-center gap-1"
+                            }
+                          >
+                            <span className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
+                              {i === 0 ? texts.lienzo.unitCaraA : texts.lienzo.unitCaraB}
+                            </span>
+                            {renderSlotCell(slot)}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ))
+              : canvasData.slots.map((slot) => renderSlotCell(slot))}
+          </AnimatePresence>
+        </motion.div>
+      )}
+
+      {/* Feedback aria-live del atajo "Aplicar este diseño a todas". */}
+      <span aria-live="polite" role="status" className="sr-only">
+        {appliedTick > 0 ? texts.unidades.aplicadaFeedback : ""}
+      </span>
 
       {/* Ola 22 (Lucy 2026-09-09) — el control del zoom de LIENZO vive en la fila de
         pills superior del editor (junto a «Ideas» / «Ver en tu espacio»), NUNCA flotando
@@ -680,6 +794,231 @@ export function StudioCanvasGrid({
           />
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  Modelo MULTI-UNIDAD (owner 2026-09-09) — pager + headers de unidad
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Pager de unidades sobre el lienzo: una pastilla por unidad ("Tira 1",
+ * "Tira 2"…) con su progreso (fotos listas / total). Salta a la sección de la
+ * unidad con scroll suave (todas quedan montadas y visibles — el cliente ve
+ * exactamente lo que va a recibir y los stages Konva viven en el DOM para el
+ * snapshot). Sigue el lenguaje de los pills del Estudio (rounded-full, ring).
+ */
+function UnitPager({
+  store,
+  unitCount,
+  unitSlots,
+  noun,
+}: {
+  store: StoreApi<StudioStoreState>;
+  unitCount: number;
+  unitSlots: number;
+  noun: string;
+}) {
+  const texts = useStudioTexts();
+  return (
+    <nav
+      aria-label={texts.unidades.pagerAria}
+      className="mb-6 flex flex-wrap items-center justify-center gap-2"
+    >
+      {Array.from({ length: unitCount }, (_, u) => (
+        <UnitPagerPill
+          key={u}
+          store={store}
+          unitIndex={u}
+          unitSlots={unitSlots}
+          unitCount={unitCount}
+          noun={noun}
+        />
+      ))}
+    </nav>
+  );
+}
+
+function UnitPagerPill({
+  store,
+  unitIndex,
+  unitSlots,
+  unitCount,
+  noun,
+}: {
+  store: StoreApi<StudioStoreState>;
+  unitIndex: number;
+  unitSlots: number;
+  unitCount: number;
+  noun: string;
+}) {
+  const texts = useStudioTexts();
+  const filled = useStore(store, selectUnitFilledCount(unitIndex, unitSlots));
+  const complete = filled === unitSlots;
+  const label = fillStudioText(texts.unidades.unidadDe, {
+    nombre: noun,
+    n: unitIndex + 1,
+    total: unitCount,
+  });
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        document
+          .getElementById(`studio-unit-${unitIndex}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }}
+      aria-label={fillStudioText(texts.unidades.progresoAria, {
+        n: filled,
+        total: unitSlots,
+      })}
+      title={label}
+      className="ring-brand-purple/15 text-brand-purple-dark hover:ring-brand-purple/40 focus-visible:ring-brand-turquoise inline-flex h-10 items-center gap-2 rounded-full bg-white px-4 text-sm font-bold shadow-md ring-2 transition-all hover:shadow-lg focus-visible:ring-2 focus-visible:outline-none active:scale-95"
+    >
+      <span
+        aria-hidden
+        className={
+          complete
+            ? "flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white"
+            : filled === 0
+              ? "h-5 w-5 rounded-full bg-red-100 ring-1 ring-red-300"
+              : "bg-brand-purple/15 ring-brand-purple/30 h-5 w-5 rounded-full ring-1"
+        }
+      >
+        {complete && <Check className="h-3 w-3" aria-hidden />}
+      </span>
+      {label}
+    </button>
+  );
+}
+
+/**
+ * Header de la sección de una unidad (modo secciones): título "Tira 1 de 2",
+ * chip de progreso y el atajo "Aplicar este diseño a todas".
+ */
+function UnitSectionHeader({
+  store,
+  unitIndex,
+  unitSlots,
+  unitCount,
+  noun,
+  onApplied,
+}: {
+  store: StoreApi<StudioStoreState>;
+  unitIndex: number;
+  unitSlots: number;
+  unitCount: number;
+  noun: string;
+  onApplied: () => void;
+}) {
+  const texts = useStudioTexts();
+  const filled = useStore(store, selectUnitFilledCount(unitIndex, unitSlots));
+  const applyUnitToAllUnits = useStore(store, (s) => s.applyUnitToAllUnits);
+  const complete = filled === unitSlots;
+  return (
+    <div className="mb-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
+      <h2 className="text-brand-purple-dark font-display text-base font-bold">
+        {fillStudioText(texts.unidades.unidadDe, {
+          nombre: noun,
+          n: unitIndex + 1,
+          total: unitCount,
+        })}
+      </h2>
+      <span
+        role="status"
+        aria-label={fillStudioText(texts.unidades.progresoAria, {
+          n: filled,
+          total: unitSlots,
+        })}
+        className={[
+          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold tabular-nums",
+          complete
+            ? "bg-emerald-100 text-emerald-700"
+            : filled === 0
+              ? "bg-red-50 text-red-700"
+              : "bg-brand-purple/10 text-brand-purple-dark",
+        ].join(" ")}
+      >
+        {complete && <Check className="h-3 w-3" aria-hidden />}
+        {filled}/{unitSlots}
+      </span>
+      {unitCount > 1 && (
+        <button
+          type="button"
+          onClick={() => {
+            applyUnitToAllUnits(unitIndex);
+            onApplied();
+          }}
+          aria-label={texts.unidades.aplicarATodasAria}
+          title={texts.unidades.aplicarATodasTitle}
+          className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 focus-visible:ring-brand-turquoise inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-3.5 py-1.5 text-xs font-bold transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95"
+        >
+          <Copy className="h-3.5 w-3.5" aria-hidden />
+          {texts.unidades.aplicarATodas}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Acciones compactas de una tarjeta-unidad del modo agrupado (separadores 2
+ * caras): progreso + "Aplicar este diseño a todas". Mismo patrón que
+ * UnitSectionHeader pero en formato mini para la tarjeta.
+ */
+function UnitMiniActions({
+  store,
+  unitIndex,
+  unitSlots,
+  unitCount,
+  onApplied,
+}: {
+  store: StoreApi<StudioStoreState>;
+  unitIndex: number;
+  unitSlots: number;
+  unitCount: number;
+  onApplied: () => void;
+}) {
+  const texts = useStudioTexts();
+  const filled = useStore(store, selectUnitFilledCount(unitIndex, unitSlots));
+  const applyUnitToAllUnits = useStore(store, (s) => s.applyUnitToAllUnits);
+  const complete = filled === unitSlots;
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-2">
+      <span
+        role="status"
+        aria-label={fillStudioText(texts.unidades.progresoAria, {
+          n: filled,
+          total: unitSlots,
+        })}
+        className={[
+          "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tabular-nums",
+          complete
+            ? "bg-emerald-100 text-emerald-700"
+            : filled === 0
+              ? "bg-red-50 text-red-700"
+              : "bg-brand-purple/10 text-brand-purple-dark",
+        ].join(" ")}
+      >
+        {complete && <Check className="h-2.5 w-2.5" aria-hidden />}
+        {filled}/{unitSlots}
+      </span>
+      {unitCount > 1 && (
+        <button
+          type="button"
+          onClick={() => {
+            applyUnitToAllUnits(unitIndex);
+            onApplied();
+          }}
+          aria-label={texts.unidades.aplicarATodasAria}
+          title={texts.unidades.aplicarATodasTitle}
+          className="text-brand-purple-dark/80 hover:text-brand-purple-dark hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold underline decoration-dotted underline-offset-2 transition-colors focus-visible:ring-2 focus-visible:outline-none"
+        >
+          <Copy className="h-3 w-3" aria-hidden />
+          {texts.unidades.aplicarATodas}
+        </button>
+      )}
     </div>
   );
 }
@@ -923,6 +1262,12 @@ function StudioSlotEditModalWrapper({
   const unitTemplate = useStore(store, (s) => s.canvasData?.unitTemplate);
   const slotCount = useStore(store, (s) => s.canvasData?.slotCount ?? 0);
   const borderColor = useStore(store, (s) => s.canvasData?.borderColor ?? null);
+  // Multi-unidad (2026-09-09) — con imán suelto (unitSlots = 1, polaroid/cuadrados)
+  // cada slot ES su unidad: el atajo "Aplicar este diseño a todas" vive en la
+  // ventana de edición del slot (con unidades multi-slot va en el header de su
+  // sección). Copia foto + encuadre + filtro + textos a todos los demás.
+  const unitSlots = useStore(store, (s) => s.canvasData?.unitSlots ?? 1);
+  const applyUnitToAllUnits = useStore(store, (s) => s.applyUnitToAllUnits);
   // Lucy 2026-09-08 — letra del calendario VIVA del store (mismo mecanismo que el
   // banner): el selector de "Ajustar Foto" persiste en canvasData.calendarFont.
   const calendarFont = useStore(store, (s) => s.canvasData?.calendarFont ?? "fredoka");
@@ -1017,6 +1362,18 @@ function StudioSlotEditModalWrapper({
       onClearProfilePhoto={() => {
         if (slotIndex !== null) setSlotProfilePhoto(slotIndex, null);
       }}
+      // Multi-unidad (2026-09-09) — atajo "Aplicar este diseño a todas" para
+      // productos de imán suelto (unitSlots = 1: el slot ES la unidad).
+      applyToAll={
+        unitSlots === 1 && slotCount > 1 && slotIndex !== null
+          ? {
+              label: texts.unidades.aplicarATodas,
+              ariaLabel: texts.unidades.aplicarATodasAria,
+              title: texts.unidades.aplicarATodasTitle,
+              onApply: () => applyUnitToAllUnits(slotIndex),
+            }
+          : undefined
+      }
       // Lucy 2026-09-08 — selector de letra del calendario dentro de "Ajustar Foto"
       // (solo productos calendario). Persiste vía store; el preview de esta misma
       // ventana reacciona porque calendarCard.font viene del editor (live).

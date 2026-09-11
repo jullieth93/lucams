@@ -995,6 +995,108 @@ describe("renderLayer — text", () => {
     expect(text.props.fill).toBe("#FFFFFF");
   });
 
+  // Ola 26 (Lucy 2026-09-09) — Polaroid Instagram: el color de letra sigue al de
+  // la tarjeta POR CAPA, pero los hashtags SIEMPRE salen azul link IG (legible
+  // sobre tarjeta clara u oscura), nunca blanco/negro del contraste.
+  describe("Ola 26 — color de texto IG por capa (hashtags siempre azules)", () => {
+    const hashtagsLayer = {
+      id: "hashtags",
+      type: "text",
+      x: 22,
+      y: 542,
+      text: "#mirecuerdo #lucamsshop",
+      fontSize: 13,
+      fill: "#00376B",
+      editable: true,
+    } as unknown as CanvasLayer;
+
+    const textFillOf = (el: React.ReactElement, key: string) => {
+      const text = (el.props as { children: Array<React.ReactElement | null> }).children
+        .filter(Boolean)
+        .find((c) => (c as React.ReactElement).key === key) as React.ReactElement<{
+        fill?: string;
+      }>;
+      return text.props.fill;
+    };
+
+    it("tarjeta OSCURA: hashtags azul IG legible (#0095F6), NO blanco; caption sí blanco", () => {
+      const ht = renderLayer(
+        hashtagsLayer,
+        slot({ textOverrides: { hashtags: { text: "#amor #lucamsshop" } } }),
+        STAGE,
+        vi.fn(),
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { allowText: true, isIg: true, darkCardBg: true },
+      ) as React.ReactElement;
+      expect(textFillOf(ht, "hashtags-text")).toBe("#0095F6");
+
+      const cap = renderLayer(
+        textLayer,
+        slot({ textOverrides: { caption: { text: "Hola" } } }),
+        STAGE,
+        vi.fn(),
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { allowText: true, isIg: true, darkCardBg: true },
+      ) as React.ReactElement;
+      expect(textFillOf(cap, "caption-text")).toBe("#FFFFFF");
+    });
+
+    it("tarjeta CLARA: hashtags azul clásico (#00376B); caption con su fill oscuro", () => {
+      const ht = renderLayer(
+        hashtagsLayer,
+        slot({ textOverrides: { hashtags: { text: "#amor" } } }),
+        STAGE,
+        vi.fn(),
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { allowText: true, isIg: true, darkCardBg: false },
+      ) as React.ReactElement;
+      expect(textFillOf(ht, "hashtags-text")).toBe("#00376B");
+
+      const cap = renderLayer(
+        textLayer,
+        slot({ textOverrides: { caption: { text: "Hola" } } }),
+        STAGE,
+        vi.fn(),
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { allowText: true, isIg: true, darkCardBg: false },
+      ) as React.ReactElement;
+      // textLayer (caption) no declara fill → fallback oscuro IG (#262626).
+      expect(textFillOf(cap, "caption-text")).toBe("#262626");
+    });
+
+    it("el override de color del cliente SIEMPRE manda sobre el azul automático", () => {
+      const ht = renderLayer(
+        hashtagsLayer,
+        slot({ textOverrides: { hashtags: { text: "#amor", fill: "#E85B9F" } } }),
+        STAGE,
+        vi.fn(),
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { allowText: true, isIg: true, darkCardBg: true },
+      ) as React.ReactElement;
+      expect(textFillOf(ht, "hashtags-text")).toBe("#E85B9F");
+    });
+  });
+
   it("click en texto editable (con texto del cliente) abre el editor (stopPropagation + callback)", () => {
     const onTextEdit = vi.fn();
     render(

@@ -440,6 +440,21 @@ const LetterSetDesignInputSchema = z.object({
   // es lo que siempre se imprimió, así los clientes con JS cacheado previo quedan retrocompatibles.
   // z.boolean() rechaza valores que no sean booleanos de plano.
   withBorder: z.boolean().default(true),
+  // Modelo MULTI-UNIDAD (2026-09-09) — TODOS los sets con sus colores por ficha.
+  // El service exige units.length === unitCount y persiste metadata.units: de ahí
+  // sale el precio ×N (nunca de un multiplicador crudo del cliente).
+  units: z
+    .array(
+      z.object({
+        colors: z
+          .array(z.string().regex(/^#[0-9A-Fa-f]{6}$/))
+          .max(50)
+          .optional(),
+      }),
+    )
+    .max(10)
+    .optional(),
+  unitCount: z.number().int().min(1).max(10).optional(),
 });
 
 export async function createLetterSetDesignAction(

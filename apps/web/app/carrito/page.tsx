@@ -102,6 +102,14 @@ export default async function CarritoPage() {
                           {item.borderNote && (
                             <p className="text-brand-muted text-xs">{item.borderNote}</p>
                           )}
+                          {/* Resumen de pieza ("2 tiras de 3 fotos · 6.5×20 cm cada tira"):
+                              mismo dato que muestra el checkout (quote-form) — multi-unidad
+                              2026-09-09: la línea describe las unidades del diseño. */}
+                          {item.pieceSummary && (
+                            <p className="text-brand-purple-dark/80 mt-1 text-xs">
+                              📐 {item.pieceSummary}
+                            </p>
+                          )}
                           <p className="text-brand-purple-dark/70 mt-1 text-sm tabular-nums">
                             {formatCOP(item.unitPrice)} c/u
                           </p>

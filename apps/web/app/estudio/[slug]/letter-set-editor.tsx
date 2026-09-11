@@ -31,11 +31,11 @@
  * archivo de producción — que es la promesa WYSIWYG de la tienda, no un adorno.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import nextDynamic from "next/dynamic";
-import { Box, ChevronLeft, Loader2, Sparkles, X } from "lucide-react";
+import { Box, ChevronLeft, Copy, Loader2, Sparkles, X } from "lucide-react";
 import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
 import {
   createLetterSetDesignAction,
@@ -43,7 +43,12 @@ import {
 } from "@/features/personalization/actions";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { formatCOP } from "@/lib/format";
-import { useLetterColors } from "./use-letter-colors";
+import {
+  useLetterColors,
+  effectiveColorsFromSnapshot,
+  type LetterColorsSnapshot,
+} from "./use-letter-colors";
+import { MAX_LETTER_SET_UNITS } from "@/features/personalization/design-units";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { StudioPreviewModal } from "./studio-preview-modal";
 import { resolveLetterSetVariant, type LetterSetVariant } from "./lib/letter-set-resolve";
@@ -205,6 +210,61 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+/** Convierte un data URL base64 a Blob (mismo motivo que en studio-editor: Flight chunkea strings). */
+function dataUrlToBlob(dataUrl: string): Blob {
+  const commaIdx = dataUrl.indexOf(",");
+  if (commaIdx < 0) throw new Error("dataURL inválido (sin coma)");
+  const meta = dataUrl.slice(0, commaIdx);
+  const binary = atob(dataUrl.slice(commaIdx + 1));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: meta.match(/^data:([^;]+)/)?.[1] ?? "image/png" });
+}
+
+/**
+ * Multi-unidad (2026-09-09) — montaje de las láminas de TODOS los sets en UN PNG
+ * para la vista previa de confirmación (el cliente ve exactamente lo que va a
+ * recibir). Apiladas en vertical con el mismo fondo crema del compositor; la
+ * línea del carrito/checkout muestra esta misma imagen.
+ */
+async function montageLaminaBlobs(blobs: Blob[]): Promise<string> {
+  const imgs = await Promise.all(
+    blobs.map(
+      (b) =>
+        new Promise<HTMLImageElement>((resolve, reject) => {
+          const url = URL.createObjectURL(b);
+          const img = new Image();
+          img.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve(img);
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error("No se pudo montar la vista previa de los sets"));
+          };
+          img.src = url;
+        }),
+    ),
+  );
+  const gap = 36;
+  const w = Math.max(...imgs.map((i) => i.naturalWidth));
+  const h = imgs.reduce((sum, i) => sum + i.naturalHeight, 0) + gap * (imgs.length - 1);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas 2d no disponible");
+  ctx.fillStyle = "#FFF8F0";
+  ctx.fillRect(0, 0, w, h);
+  let y = 0;
+  for (const img of imgs) {
+    const x = Math.round((w - img.naturalWidth) / 2);
+    ctx.drawImage(img, x, y);
+    y += img.naturalHeight + gap;
+  }
+  return canvas.toDataURL("image/png");
+}
+
 /** Emoji del chip según la clave de tema (fallback 🎨 para temas nuevos). */
 function themeEmoji(theme: string | null, name: string): string {
   if (theme === "animales") return "🐾";
@@ -234,7 +294,7 @@ export function LetterSetEditor({
   themeOptions,
   initialTheme,
   stylesByLanguage,
-  initialCopies,
+  initialUnits,
   subtitle,
 }: {
   product: { id: string; slug: string; name: string };
@@ -250,23 +310,50 @@ export function LetterSetEditor({
   /** Tema que venía en la variante de la PDP (preselección). null = "Solo letra". */
   initialTheme: string | null;
   stylesByLanguage: { es: LetterStyle[]; en: LetterStyle[] };
-  /** Copias (CartItem.qty) elegidas en la PDP con el stepper "Unidades"
-   *  (`?copies=N`, regla 2026-09-08b): las confirma la modal de "Vista previa" — que ya
-   *  NO tiene stepper propio. undefined → 1. */
-  initialCopies?: number;
+  /**
+   * Modelo MULTI-UNIDAD (owner 2026-09-09): sets a DISEÑAR elegidos en la PDP con
+   * el stepper "Unidades" (`?copies=N` — nombre del parámetro conservado por
+   * compat). Cada set lleva sus propios colores por ficha (multiplicador de sets:
+   * las fichas ya son muchas — tema/idioma/borde quedan a nivel DISEÑO, compartidos
+   * por todos los sets). undefined → 1. Tope MAX_LETTER_SET_UNITS.
+   */
+  initialUnits?: number;
   subtitle?: string;
 }) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Vista previa pre-carrito: `preparing` cubre el dibujo del PNG (puede tardar si hay que bajar
-  // las fichas ilustradas), `previewDataUrl` abre la modal y `previewBlob` es el archivo que se
-  // sube al confirmar. `previewError` es el error del PASO de confirmación: va DENTRO de la modal
-  // (donde está mirando el cliente), mientras `error` sigue siendo el del editor.
+  // las fichas ilustradas), `previewDataUrl` abre la modal y `previewBlobs` son los archivos que se
+  // suben al confirmar (UNO POR SET). `previewError` es el error del PASO de confirmación: va
+  // DENTRO de la modal (donde está mirando el cliente), mientras `error` sigue siendo el del editor.
   const [preparing, setPreparing] = useState(false);
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
-  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewBlobs, setPreviewBlobs] = useState<Blob[] | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
+
+  // ── Multi-unidad (2026-09-09) — N sets, cada uno con sus colores ──
+  // Tope defensivo (cada set = 1 lámina de producción; validado también en el server).
+  const unitCount = Math.min(MAX_LETTER_SET_UNITS, Math.max(1, Math.trunc(initialUnits ?? 1) || 1));
+  // Set visible en pantalla (pager "Set 1 de N") + tick para forzar remonte tras
+  // "Aplicar este diseño a todas" (re-lee el snapshot clonado del Map).
+  const [activeUnit, setActiveUnit] = useState(0);
+  const [applyTick, setApplyTick] = useState(0);
+  // Snapshots de color POR SET (tema + orden + overrides por ficha). El panel del
+  // set activo reporta el suyo en cada cambio real (no en cada render); el Map es
+  // la fuente para dibujar las láminas de TODOS los sets en la vista previa y para
+  // la acción de crear. En estado (no ref): se lee durante el render.
+  const [snapshots, setSnapshots] = useState<ReadonlyMap<number, LetterColorsSnapshot>>(
+    () => new Map(),
+  );
+  const recordSnapshot = useCallback((unit: number, snap: LetterColorsSnapshot) => {
+    setSnapshots((prev) => {
+      if (prev.get(unit) === snap) return prev;
+      const next = new Map(prev);
+      next.set(unit, snap);
+      return next;
+    });
+  }, []);
 
   // Idioma del alfabeto (para vocales no se muestra el selector: mismas 5 letras).
   const [language, setLanguage] = useState<"es" | "en">(initialLanguage);
@@ -315,18 +402,28 @@ export function LetterSetEditor({
   // Centavos COP enteros: la etiqueta del editor y el precio de la modal salen del MISMO valor,
   // para que el cliente no vea un número distinto al confirmar.
   const unitPriceCents = currentVariant?.price ?? basePrice;
-  const priceLabel = formatCOP(unitPriceCents);
+  const priceLabel = formatCOP(unitPriceCents * unitCount);
 
-  // Mismos controles de color que el editor de Nombre.
-  const {
-    themeId,
-    effectiveColors,
-    selectedIndex,
-    toggleSelected,
-    applyTheme,
-    setColorForSelected,
-    customized,
-  } = useLetterColors(letters.length);
+  // ── Colores POR SET (multi-unidad 2026-09-09) ──
+  // El hook vive en el panel del set ACTIVO (abajo, LetterSetUnitPanel) y reporta su
+  // snapshot al Map; acá solo se LEEN colores por unidad para dibujar láminas, la
+  // vista 3D y la creación del diseño. Sin snapshot (set no visitado todavía) cae al
+  // tema default — mismo estado inicial de siempre.
+  const colorsForUnit = useCallback(
+    (unit: number) => effectiveColorsFromSnapshot(letters.length, snapshots.get(unit)),
+    [letters.length, snapshots],
+  );
+  /** "Aplicar este diseño a todas": clona los colores del set activo a todos. */
+  function handleApplyToAll() {
+    setSnapshots((prev) => {
+      const src = prev.get(activeUnit);
+      if (!src) return prev;
+      const next = new Map(prev);
+      for (let u = 0; u < unitCount; u++) next.set(u, src);
+      return next;
+    });
+    setApplyTick((t) => t + 1);
+  }
 
   // Ola 2B — Vista 3D de las fichas en el tablero memo (modal fullscreen, WebGL diferido).
   // Las texturas se dibujan UNA vez al abrir (mismo dibujo que el preview 2D → WYSIWYG).
@@ -342,7 +439,9 @@ export function LetterSetEditor({
     if (building3D) return;
     setBuilding3D(true);
     try {
-      setBoard3D(await buildLetterTileTextures(letters, activeTiles, effectiveColors, withBorder));
+      setBoard3D(
+        await buildLetterTileTextures(letters, activeTiles, colorsForUnit(activeUnit), withBorder),
+      );
     } catch (err) {
       // #14 — detalle técnico al log; al cliente un mensaje claro es-CO.
       console.error("[studio.letter-set.3d]", err);
@@ -384,8 +483,10 @@ export function LetterSetEditor({
   }
 
   /**
-   * Paso 1 — "Vista previa": dibuja el set y abre la vista previa. No toca la red ni la base: si el
-   * cliente decide seguir editando, no queda ningún diseño creado ni ningún archivo subido.
+   * Paso 1 — "Vista previa": dibuja las láminas de TODOS los sets y abre la vista
+   * previa (el cliente ve exactamente lo que va a recibir — modelo multi-unidad).
+   * No toca la red ni la base: si el cliente decide seguir editando, no queda
+   * ningún diseño creado ni ningún archivo subido.
    */
   async function handleShowPreview() {
     // Simétrico al guard de handleOpen3D: si el 3D se está construyendo, abrir la previa
@@ -396,16 +497,25 @@ export function LetterSetEditor({
     setError(null);
     setPreviewError(null);
     try {
-      let blob: Blob;
-      try {
-        blob = await renderLetterSetBlob(letters, activeTiles, effectiveColors, true, withBorder);
-      } catch {
-        // Si alguna ficha ilustrada no carga, el set se dibuja con la letra de color: el cliente
-        // ve —y aprueba— exactamente lo que se imprimiría en ese caso.
-        blob = await renderLetterSetBlob(letters, activeTiles, effectiveColors, false, withBorder);
+      const blobs: Blob[] = [];
+      for (let u = 0; u < unitCount; u++) {
+        const colors = colorsForUnit(u);
+        try {
+          blobs.push(await renderLetterSetBlob(letters, activeTiles, colors, true, withBorder));
+        } catch {
+          // Si alguna ficha ilustrada no carga, el set se dibuja con la letra de color: el cliente
+          // ve —y aprueba— exactamente lo que se imprimiría en ese caso.
+          blobs.push(await renderLetterSetBlob(letters, activeTiles, colors, false, withBorder));
+        }
       }
-      setPreviewBlob(blob);
-      setPreviewDataUrl(await blobToDataUrl(blob));
+      setPreviewBlobs(blobs);
+      // Con varios sets el preview es el MONTAJE de todas las láminas apiladas;
+      // con uno, la lámina misma (comportamiento histórico).
+      setPreviewDataUrl(
+        blobs.length === 1 && blobs[0]
+          ? await blobToDataUrl(blobs[0])
+          : await montageLaminaBlobs(blobs),
+      );
     } catch (err) {
       // #14 — detalle técnico al log; mensaje claro es-CO al cliente.
       console.error("[studio.letter-set.preview]", err);
@@ -416,22 +526,31 @@ export function LetterSetEditor({
   }
 
   /**
-   * Paso 2 — "Sí, agregar al carrito": recién acá se crea el diseño, se sube el PNG aprobado y se
-   * agrega al carrito. Se reusa el blob de la vista previa (no se re-dibuja) para que el archivo
-   * de producción sea el mismo que el cliente aprobó.
-   * `copies` son las unidades idénticas del set (CartItem.qty 1..99) que fijó la PDP (stepper
-   * "Unidades", ?copies=N) — la modal las confirma tal cual, ya sin stepper propio.
+   * Paso 2 — "Sí, agregar al carrito": recién acá se crea el diseño, se suben las
+   * láminas aprobadas y se agrega al carrito. Se reusan los blobs de la vista
+   * previa (no se re-dibujan) para que los archivos de producción sean los mismos
+   * que el cliente aprobó.
+   * Modelo multi-unidad (2026-09-09): el diseño contiene TODOS los sets (unitCount,
+   * con sus colores por ficha en metadata) → la línea del carrito es UNA con qty=1
+   * y el precio = variante × N lo deriva el servidor (letterSetUnitCount).
    */
-  async function handleConfirmAddToCart(copies: number) {
-    if (submitting || !previewBlob) return;
+  async function handleConfirmAddToCart() {
+    if (submitting || !previewBlobs || previewBlobs.length === 0) return;
     setSubmitting(true);
     setPreviewError(null);
     try {
+      const unitsColors = Array.from({ length: unitCount }, (_, u) => colorsForUnit(u));
       const created = await createLetterSetDesignAction({
         productId: product.id,
         variantId: currentVariantId,
-        frameTheme: themeId,
-        colors: effectiveColors,
+        // Tema/colores del primer set (representante del diseño; compat con
+        // clientes viejos que solo mandaban UN set).
+        frameTheme: snapshots.get(0)?.themeId ?? "arcoiris",
+        colors: unitsColors[0],
+        // Multi-unidad — TODOS los sets con sus colores (el server los valida y
+        // los persiste en metadata.units; el precio ×N sale de ahí).
+        units: unitsColors.map((colors) => ({ colors })),
+        unitCount,
         styleSetId: styleId,
         language,
         withBorder,
@@ -443,11 +562,14 @@ export function LetterSetEditor({
       }
       const fd = new FormData();
       fd.set("designId", created.designId);
-      // El set entero se imprime como UNA lámina (un solo archivo de producción), aunque la modal
-      // le cuente al cliente las fichas que va a recibir.
-      fd.set("slotCount", "1");
-      fd.set("preview", previewBlob, "preview.png");
-      fd.set("production_0", previewBlob, "produccion.png");
+      // Cada set se imprime como SU lámina (un archivo de producción POR SET),
+      // aunque la modal le cuente al cliente las fichas que va a recibir.
+      fd.set("slotCount", String(unitCount));
+      // Preview = montaje de todas las láminas (el MISMO PNG que aprobó el cliente).
+      fd.set("preview", dataUrlToBlob(previewDataUrl!), "preview.png");
+      previewBlobs.forEach((blob, i) => {
+        fd.set(`production_${i}`, blob, `produccion-set-${i + 1}.png`);
+      });
       const finalized = await finalizeDesignAction(fd);
       if (!finalized.ok) {
         setPreviewError(finalized.message);
@@ -456,7 +578,7 @@ export function LetterSetEditor({
       }
       const added = await addPersonalizedToCartAction({
         designId: created.designId,
-        qty: copies,
+        qty: 1,
         variantId: currentVariantId,
       });
       if (!added.ok) {
@@ -477,9 +599,9 @@ export function LetterSetEditor({
 
   /** "Volver a editar": suelta la vista previa para no reusar un PNG viejo tras cambiar colores. */
   function handleClosePreview() {
-    if (submitting) return; // nunca soltar el blob en medio de la subida
+    if (submitting) return; // nunca soltar los blobs en medio de la subida
     setPreviewDataUrl(null);
-    setPreviewBlob(null);
+    setPreviewBlobs(null);
     setPreviewError(null);
   }
 
@@ -594,24 +716,13 @@ export function LetterSetEditor({
           </div>
         )}
 
-        {/* Picker de tema de color — control compartido con Nombre (barajar al re-clic).
-            Lucy 2026-09-08 — con «Sin borde» las fichas no llevan el marco de color, así que
-            la sección «Elige los colores» se DESACTIVA (visible + inerte, con el porqué).
-            Al volver a «Con borde» se reactiva conservando la selección: el estado de
-            colores (useLetterColors) nunca se resetea al desactivar. */}
-        <ThemePicker
-          themeId={themeId}
-          customized={customized}
-          onApply={applyTheme}
-          disabled={!withBorder}
-          disabledHint={texts.letras.bordeSinColoresHint}
-        />
-
         {/* Lucy 2026-09-05 — opción de diseño "Con borde / Sin borde" (mismo precio). Es una
             decisión de LIENZO que viaja en Design.metadata y se refleja en el PNG de producción,
             no una variante del catálogo. Default "Con borde": lo que siempre se imprimió.
             Lucy 2026-09-08 — el selector SIEMPRE queda habilitado (es la vía para reactivar
-            los colores); "Sin borde" solo desactiva la sección de colores de arriba. */}
+            los colores); "Sin borde" solo desactiva la sección de colores de abajo.
+            Multi-unidad (2026-09-09): el borde es a NIVEL DISEÑO (todos los sets lo
+            comparten); lo que cambia por set son los COLORES de las fichas. */}
         <div className="mt-5">
           <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
             {texts.letras.bordeTitulo}
@@ -655,64 +766,59 @@ export function LetterSetEditor({
           </div>
         </div>
 
-        {/* Preview del set (WYSIWYG) — cada ficha es seleccionable para pintarla a gusto. */}
-        <div className="bg-brand-cream/50 mt-5 rounded-2xl p-5">
-          {selectedIndex === null && (
-            <p className="text-brand-purple-dark mb-3 flex items-center justify-center text-center text-xs font-semibold">
-              <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
-                {texts.letras.tocaHint}
-              </span>
-            </p>
-          )}
-          <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 md:grid-cols-9">
-            {letters.map((ch, i) => {
-              const tile = activeTiles[ch];
-              const color = effectiveColors[i];
-              const isSel = selectedIndex === i;
-              return (
+        {/* Multi-unidad (2026-09-09) — pager de sets + "Aplicar este diseño a todas".
+            Cada set lleva sus propios colores por ficha (el tema/idioma/borde son del
+            diseño completo). Las láminas de TODOS los sets se ven en la Vista previa. */}
+        {unitCount > 1 && (
+          <div className="mt-5 flex flex-col items-center gap-3">
+            <nav
+              aria-label={texts.unidades.pagerAria}
+              className="flex flex-wrap items-center justify-center gap-2"
+            >
+              {Array.from({ length: unitCount }, (_, u) => (
                 <button
-                  key={ch}
+                  key={u}
                   type="button"
-                  onClick={() => toggleSelected(i)}
-                  aria-pressed={isSel}
-                  aria-label={fillStudioText(texts.letras.pintarAria, { letra: ch })}
-                  className={`flex flex-col items-center rounded-xl transition ${
-                    isSel ? "ring-brand-purple scale-105 ring-2 ring-offset-2" : "hover:scale-105"
+                  onClick={() => setActiveUnit(u)}
+                  aria-pressed={u === activeUnit}
+                  className={`inline-flex items-center gap-1.5 rounded-full border-2 px-4 py-2 text-sm font-bold transition ${
+                    u === activeUnit
+                      ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                      : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
                   }`}
                 >
-                  {/* Ficha VERTICAL (aspect 5/6.5) — espeja el imán físico rectangular. Sin borde:
-                      la ficha queda blanca a ras (el PNG y la textura 3D hacen lo mismo). */}
-                  <div
-                    className="flex aspect-[5/6.5] w-full items-center justify-center overflow-hidden rounded-xl bg-white"
-                    style={{
-                      border: withBorder ? `2px solid ${color}` : "2px solid transparent",
-                      boxShadow: `0 3px 10px ${color}22`,
-                    }}
-                  >
-                    {tile ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- ficha del bucket público
-                      <img
-                        src={tile.imageUrl}
-                        alt={fillStudioText(texts.letras.letraAlt, { letra: ch })}
-                        className="h-full w-full object-contain p-1"
-                      />
-                    ) : (
-                      <span className="font-display text-base font-extrabold" style={{ color }}>
-                        {ch}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-brand-muted mt-1 text-[10px] font-semibold">{ch}</span>
+                  {fillStudioText(texts.unidades.unidadDe, {
+                    nombre: texts.unidades.nombreSet,
+                    n: u + 1,
+                    total: unitCount,
+                  })}
                 </button>
-              );
-            })}
+              ))}
+            </nav>
+            <button
+              type="button"
+              onClick={handleApplyToAll}
+              aria-label={texts.unidades.aplicarATodasAria}
+              title={texts.unidades.aplicarATodasTitle}
+              className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-4 py-2 text-xs font-bold transition active:scale-95"
+            >
+              <Copy className="h-3.5 w-3.5" aria-hidden />
+              {texts.unidades.aplicarATodas}
+            </button>
           </div>
+        )}
 
-          {/* Fila de colores para la ficha seleccionada — control compartido */}
-          {selectedIndex !== null && letters[selectedIndex] && (
-            <SwatchRow letter={letters[selectedIndex]} onPick={setColorForSelected} />
-          )}
-        </div>
+        {/* Panel del set activo (colores por ficha). key por (set, tick): al cambiar
+            de set o tras "Aplicar a todas" se remonta leyendo el snapshot del Map. */}
+        <LetterSetUnitPanel
+          key={`${activeUnit}-${applyTick}`}
+          unit={activeUnit}
+          letters={letters}
+          activeTiles={activeTiles}
+          withBorder={withBorder}
+          initial={snapshots.get(activeUnit)}
+          onSnapshot={recordSnapshot}
+        />
 
         {error && (
           <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-center text-sm text-rose-700">
@@ -772,13 +878,15 @@ export function LetterSetEditor({
         // producto físico, y justo en la pantalla de confirmación (revisión 2026-07-25).
         productKind={currentVariant?.magnet === false ? "tiles" : "magnets"}
         // El cliente cuenta FICHAS, no archivos: el set son N imanes ("los 27 imanes que vas a
-        // recibir"). El slotCount=1 del finalize es otra cosa: la lámina única de producción.
+        // recibir"). El slotCount=unitCount del finalize es otra cosa: las láminas de producción.
         slotCount={letters.length}
         // Tamaño real de la variante vigente (la que se re-resuelve al cambiar tema/idioma).
         // El atributo se guarda sin unidad ("5×7"); sin esto la modal decía "Cada imán mide 7×10.".
         sizeCm={currentVariant?.sizeCm ? `${currentVariant.sizeCm} cm` : undefined}
         unitPrice={unitPriceCents}
-        initialCopies={initialCopies}
+        // Multi-unidad (2026-09-09): el diseño contiene TODOS los sets → total =
+        // precio del set × N y la línea del carrito es UNA (qty 1).
+        unitCount={unitCount}
         isFinalizing={submitting}
         errorMessage={previewError}
         onEdit={handleClosePreview}
@@ -815,5 +923,133 @@ export function LetterSetEditor({
         </div>
       )}
     </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  Multi-unidad (2026-09-09) — panel de UN set (colores por ficha)
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Panel de edición de color de UN set del diseño multi-unidad: picker de tema
+ * (barajar al re-clic) + grilla de fichas seleccionables + fila de colores de la
+ * ficha elegida. El estado vive en `useLetterColors` con snapshot exportable:
+ * el padre lo persiste por set (al cambiar de pestaña se remonta con `initial`)
+ * y lo clona a todos con "Aplicar este diseño a todas".
+ *
+ * `onSnapshot` se llama en CADA cambio de color (tema, barajar, ficha pintada):
+ * el Map del padre siempre tiene el estado fresco de este set para dibujar las
+ * láminas de la vista previa y crear el diseño.
+ */
+function LetterSetUnitPanel({
+  unit,
+  letters,
+  activeTiles,
+  withBorder,
+  initial,
+  onSnapshot,
+}: {
+  unit: number;
+  letters: string[];
+  activeTiles: LetterTileMap;
+  withBorder: boolean;
+  initial?: LetterColorsSnapshot;
+  onSnapshot: (unit: number, snap: LetterColorsSnapshot) => void;
+}) {
+  const texts = useStudioTexts();
+  const {
+    themeId,
+    activeColors,
+    letterColors,
+    effectiveColors,
+    selectedIndex,
+    toggleSelected,
+    applyTheme,
+    setColorForSelected,
+    customized,
+  } = useLetterColors(letters.length, initial);
+
+  // Reportar el snapshot al padre SOLO en cambios reales (tema, orden barajado u
+  // overrides por ficha): depende de las piezas de estado del hook (estables entre
+  // renders ajenos), no de un objeto snapshot armado por render — crearía un bucle
+  // de setState padre → re-render → effect.
+  useEffect(() => {
+    onSnapshot(unit, { themeId, activeColors, letterColors });
+  }, [unit, themeId, activeColors, letterColors, onSnapshot]);
+
+  return (
+    <>
+      {/* Picker de tema de color — control compartido con Nombre (barajar al re-clic).
+          Lucy 2026-09-08 — con «Sin borde» las fichas no llevan el marco de color, así que
+          la sección «Elige los colores» se DESACTIVA (visible + inerte, con el porqué).
+          Al volver a «Con borde» se reactiva conservando la selección: el estado de
+          colores (useLetterColors) nunca se resetea al desactivar. */}
+      <ThemePicker
+        themeId={themeId}
+        customized={customized}
+        onApply={applyTheme}
+        disabled={!withBorder}
+        disabledHint={texts.letras.bordeSinColoresHint}
+      />
+
+      {/* Preview del set (WYSIWYG) — cada ficha es seleccionable para pintarla a gusto. */}
+      <div className="bg-brand-cream/50 mt-5 rounded-2xl p-5">
+        {selectedIndex === null && (
+          <p className="text-brand-purple-dark mb-3 flex items-center justify-center text-center text-xs font-semibold">
+            <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
+              {texts.letras.tocaHint}
+            </span>
+          </p>
+        )}
+        <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 md:grid-cols-9">
+          {letters.map((ch, i) => {
+            const tile = activeTiles[ch];
+            const color = effectiveColors[i];
+            const isSel = selectedIndex === i;
+            return (
+              <button
+                key={ch}
+                type="button"
+                onClick={() => toggleSelected(i)}
+                aria-pressed={isSel}
+                aria-label={fillStudioText(texts.letras.pintarAria, { letra: ch })}
+                className={`flex flex-col items-center rounded-xl transition ${
+                  isSel ? "ring-brand-purple scale-105 ring-2 ring-offset-2" : "hover:scale-105"
+                }`}
+              >
+                {/* Ficha VERTICAL (aspect 5/6.5) — espeja el imán físico rectangular. Sin borde:
+                    la ficha queda blanca a ras (el PNG y la textura 3D hacen lo mismo). */}
+                <div
+                  className="flex aspect-[5/6.5] w-full items-center justify-center overflow-hidden rounded-xl bg-white"
+                  style={{
+                    border: withBorder ? `2px solid ${color}` : "2px solid transparent",
+                    boxShadow: `0 3px 10px ${color}22`,
+                  }}
+                >
+                  {tile ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- ficha del bucket público
+                    <img
+                      src={tile.imageUrl}
+                      alt={fillStudioText(texts.letras.letraAlt, { letra: ch })}
+                      className="h-full w-full object-contain p-1"
+                    />
+                  ) : (
+                    <span className="font-display text-base font-extrabold" style={{ color }}>
+                      {ch}
+                    </span>
+                  )}
+                </div>
+                <span className="text-brand-muted mt-1 text-[10px] font-semibold">{ch}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Fila de colores para la ficha seleccionada — control compartido */}
+        {selectedIndex !== null && letters[selectedIndex] && (
+          <SwatchRow letter={letters[selectedIndex]} onPick={setColorForSelected} />
+        )}
+      </div>
+    </>
   );
 }

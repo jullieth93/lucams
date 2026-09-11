@@ -207,6 +207,50 @@ describe("CanvasDataV2Schema — magnet (Lucy 2026-09-08, «¿Con imán?» en lo
   });
 });
 
+describe("CanvasDataV2Schema — multi-unidad (owner 2026-09-09: unitCount/unitSlots)", () => {
+  const base = {
+    version: 2 as const,
+    unitTemplate: {
+      version: 1 as const,
+      stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
+      layers: [{ id: "bg", type: "background", color: "#FFFFFF" }],
+    },
+    slotCount: 6,
+    slots: Array.from({ length: 6 }, (_, i) => ({ slotIndex: i, assetId: null, assetUrl: null })),
+    gridLayout: { cols: 1, rows: 3, gap: 0 },
+  };
+
+  it("acepta el modelo multi-unidad y lo conserva en el parse (sobrevive el auto-save)", () => {
+    const parsed = CanvasDataV2Schema.parse({ ...base, unitCount: 2, unitSlots: 3 });
+    expect(parsed.unitCount).toBe(2);
+    expect(parsed.unitSlots).toBe(3);
+  });
+
+  it("retrocompatible: diseños sin las claves siguen siendo válidos (ausente = 1 unidad)", () => {
+    const parsed = CanvasDataV2Schema.parse(base);
+    expect(parsed.unitCount).toBeUndefined();
+    expect(parsed.unitSlots).toBeUndefined();
+  });
+
+  it("rechaza unidades fuera de rango (0, >50, no enteras)", () => {
+    expect(CanvasDataV2Schema.safeParse({ ...base, unitCount: 0 }).success).toBe(false);
+    expect(CanvasDataV2Schema.safeParse({ ...base, unitCount: 51 }).success).toBe(false);
+    expect(CanvasDataV2Schema.safeParse({ ...base, unitSlots: 0 }).success).toBe(false);
+    expect(CanvasDataV2Schema.safeParse({ ...base, unitSlots: 1.5 }).success).toBe(false);
+  });
+
+  it("sin catchall: claves desconocidas se stripean pero unitCount/unitSlots sobreviven", () => {
+    const parsed = CanvasDataV2Schema.parse({
+      ...base,
+      unitCount: 2,
+      unitSlots: 3,
+      claveAjena: "fuera",
+    } as Record<string, unknown>);
+    expect(parsed.unitCount).toBe(2);
+    expect((parsed as Record<string, unknown>).claveAjena).toBeUndefined();
+  });
+});
+
 describe("UploadAssetMetadataSchema — consentimiento de derechos de imagen (Ley 1581 · plan de producción)", () => {
   const base = { mimeType: "image/jpeg" as const, sizeBytes: 1000 };
 

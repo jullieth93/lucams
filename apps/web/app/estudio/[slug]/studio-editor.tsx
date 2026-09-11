@@ -69,6 +69,12 @@ import {
 } from "@/features/personalization/calendar-layout";
 import { SceneGallery, type SceneKind } from "./scene-gallery";
 import { initialFrameColorFromSchema } from "@/features/personalization/frame-palette";
+import { igMissingRequiredTextLayerIds } from "@/features/personalization/instagram-template-spec";
+import {
+  gridSlotCountForLayout,
+  maxUnitsForProduct,
+  photosPerUnitForEditor,
+} from "@/features/personalization/design-units";
 import { faceSlotLabels, facePairOfUnit } from "./lib/faces";
 
 // FOTO4 — la galería de escenas del fotoimán (nevera/mural/repisa/regalo). Las vistas 3D pesadas
@@ -87,9 +93,27 @@ import { createStudioStore } from "./lib/store";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
 import { ensureCanvasV2 } from "./lib/canvas-migrate";
 import { useStudioTexts } from "./studio-texts-provider";
-import { fillStudioText } from "./studio-texts";
+import { fillStudioText, type StudioTexts } from "./studio-texts";
 
 const AUTO_SAVE_DELAY_MS = 2000;
+
+/**
+ * Ola 26 (owner 2026-09-09) — mensaje del guard de finalización de la Polaroid
+ * Instagram: nombra los campos de texto requeridos que faltan (etiquetas CMS
+ * estudio.texto.campo-ig-*) con el patrón del tooltip de «Vista previa»
+ * bloqueado. null = nada falta (guard en verde).
+ */
+function igBlockMessage(missingIds: string[], texts: StudioTexts): string | null {
+  if (missingIds.length === 0) return null;
+  const labels: Record<string, string> = {
+    user_name: texts.texto.campoIgUsuario,
+    location: texts.texto.campoIgUbicacion,
+    caption: texts.texto.campoIgTitulo,
+    hashtags: texts.texto.campoIgHashtags,
+  };
+  const campos = missingIds.map((id) => labels[id] ?? id).join(", ");
+  return fillStudioText(texts.lienzo.finalizeTooltipTextos, { campos });
+}
 
 // Roadmap B1 — el "Cargando tu libro 3D…" del dynamic import es texto CMS
 // (estudio.lienzo.loading-libro); sin provider cae al default exacto pre-CMS.
@@ -160,10 +184,17 @@ export type StudioEditorProps = {
    * la dimensión (seed de imán no corrido) → no se escribe ni se muestra.
    */
   initialMagnet?: boolean;
-  /** Copias (CartItem.qty) elegidas en la PDP con el stepper "Unidades" de los
-   *  productos de composición fija (`?copies=N`, regla 2026-09-08b): la modal de
-   *  confirmación las confirma tal cual — ya sin stepper propio. undefined → 1. */
-  initialCopies?: number;
+  /**
+   * Modelo MULTI-UNIDAD (owner 2026-09-09 — regla general): unidades a DISEÑAR
+   * elegidas en la PDP con el stepper "Unidades" (`?copies=N` — se conserva el
+   * nombre del parámetro por compat de deep-links, pero su significado cambió:
+   * ya no son "copias idénticas", son N unidades del producto, CADA UNA
+   * diseñable por separado). El Estudio abre con N unidades (2 tiras = 2 ×
+   * unitSlots; 2 calendarios = 2 × 12), la Vista previa las muestra TODAS y el
+   * carrito recibe UNA línea con qty=1 (el diseño contiene las N unidades; el
+   * precio = variante × N lo deriva el servidor — design-units.ts). undefined → 1.
+   */
+  initialUnits?: number;
   /** Edición desde el carrito: id del diseño original a reemplazar al finalizar (no duplicar). */
   replacesCartDesignId?: string | null;
   /** ADR-057 B2 — diseños prediseñados aplicables por slot (galería). */
@@ -194,7 +225,7 @@ export function StudioEditor({
   variantId,
   unitPriceCents,
   initialMagnet,
-  initialCopies,
+  initialUnits,
   replacesCartDesignId,
   predesigned = [],
   slotLabels,
@@ -352,9 +383,34 @@ export function StudioEditor({
   // Estudio (prop packVariants). Los demás productos foto mantienen N fijo del
   // schema/variante (packVariants vacío → isPhotoPack false → cero cambios).
   const isPhotoPack = packVariants.length > 0;
+  // Tipo de producto calendario — lo usa el modelo multi-unidad de abajo
+  // (photosPerUnitForEditor) y las ramas de calendario del editor. Declarado
+  // antes del bloque multi-unidad (2026-09-09) para no usarlo antes de tiempo.
+  const isCalendarMonth = product.personalizationKind === "CALENDAR_PHOTO_MONTH";
+  // ── Modelo MULTI-UNIDAD (owner 2026-09-09) ──
+  // Fotos por unidad física: calendario → 12; tira photobooth → photoSlots de la
+  // composición; separador → 1 por cara (los slots son las caras); imán suelto
+  // (polaroid/cuadrados) → 1 (cada imán ES su unidad — la grilla plana intacta).
+  const photosPerUnit = photosPerUnitForEditor({
+    isCalendarMonth,
+    facesPerUnit,
+    photoSlots,
+    unitTemplate: templates[0]?.canvasData ?? null,
+  });
+  const bootUnitSlots = photosPerUnit * facesPerUnit;
+  // Unidades a diseñar: con composición multi-foto (tiras, calendario) vienen de la
+  // PDP (?copies=N → initialUnits); con unidad de 1 foto (separadores/polaroid) el
+  // N ya ES photoSlots (el pack size de la variante — comportamiento histórico).
+  const requestedUnits = photosPerUnit > 1 ? (initialUnits ?? 1) : Math.max(1, photoSlots);
+  const bootUnitCount = Math.min(
+    maxUnitsForProduct(bootUnitSlots),
+    Math.max(1, Math.trunc(requestedUnits) || 1),
+  );
   // slotCount INICIAL (boot del canvasData). Durante la sesión el vivo sale del
   // store (canvasData.slotCount) porque el stepper de fotos lo reconstruye.
-  const initialSlotCount = photoSlots * facesPerUnit;
+  // Multi-unidad: unitCount × unitSlots (2 tiras = 2 × 3; 2 calendarios = 2 × 12;
+  // separadores/polaroid = el pack de siempre, sin cambios).
+  const initialSlotCount = bootUnitSlots * bootUnitCount;
   // Tamaño físico efectivo (PDP o diseño recuperado — la página ya lo resolvió).
   const packSizeCm = productConfig.sizeCm;
   // Mín/máx de fotos del tamaño actual (catálogo ya filtrado por tamaño en la página).
@@ -373,6 +429,15 @@ export function StudioEditor({
   // atómicos (primitivos) → sin re-render en cascada.
   const livePhotoSlots = useStore(store, (s) => s.canvasData?.photoSlots ?? photoSlots);
   const liveSlotCount = useStore(store, (s) => s.canvasData?.slotCount ?? initialSlotCount);
+  // Multi-unidad (2026-09-09): unidades y slots por unidad VIVOS del diseño.
+  const liveUnitCount = useStore(store, (s) => s.canvasData?.unitCount ?? 1);
+  const liveUnitSlots = useStore(store, (s) => s.canvasData?.unitSlots ?? bootUnitSlots);
+  // ¿Tira photobooth multi-foto? (plantilla 1 col / gap 0 con unidad multi-slot).
+  // Define el sustantivo de la unidad ("Tira") y la rama "strips" de la modal.
+  const liveIsStrip = useStore(store, (s) => {
+    const gl = s.canvasData?.gridLayout;
+    return !!gl && gl.cols === 1 && gl.gap === 0 && (s.canvasData?.unitSlots ?? 1) > 1;
+  });
   // Lucy 2026-09-08 — "¿Con imán?" del pack: vivo del canvasData (persistido en el
   // auto-save → el carrito resuelve la variante con él). Read-only: lo fija la PDP.
   const liveMagnet = useStore(store, (s) => s.canvasData?.magnet ?? initialMagnet);
@@ -393,7 +458,7 @@ export function StudioEditor({
   // ADR-063 CAL2 — el año del calendario lo ELIGE el cliente (antes era un badge fijo del schema
   // del producto, y podía venir vacío). Default = año del producto → próximo año. Se ofrece un
   // rango seguro (nunca un año pasado) y se persiste por-diseño en el finalize.
-  const isCalendarMonth = product.personalizationKind === "CALENDAR_PHOTO_MONTH";
+  // (`isCalendarMonth` se declara junto al bloque multi-unidad, más arriba.)
   // SEP1 — separadores (galleryTag "separadores" o "separadores-magneticos" / "separadores-alargados"):
   // su vista inmersiva es un LIBRO, no la nevera.
   const galleryTag = (product.personalizationSchema as { galleryTag?: string } | null)?.galleryTag;
@@ -401,6 +466,15 @@ export function StudioEditor({
   // #14 — sustantivo del slot: en separadores el producto NO es un imán → "separador" en los labels,
   // aria y onboarding (pantalla=físico). Deriva de isBookmark; el calendario usa slotLabels propios.
   const slotNoun = isBookmark ? texts.lienzo.sustantivoSeparador : texts.lienzo.sustantivoIman;
+  // Multi-unidad (2026-09-09) — sustantivo de la UNIDAD para el pager y los
+  // headers de sección del lienzo ("Tira 1 de 2", "Calendario 1 de 2"…).
+  const unitNoun = isCalendarMonth
+    ? texts.unidades.nombreCalendario
+    : isBookmark
+      ? texts.unidades.nombreSeparador
+      : liveIsStrip
+        ? texts.unidades.nombreTira
+        : texts.unidades.nombrePieza;
   const isTouch = useIsTouch(); // #9 — copy del gesto de zoom del libro 3D según táctil vs mouse.
   // FOTO4 — la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo) es la vista por
   // defecto del fotoimán: se muestra cuando NO es calendario ni separador (el `else` del botón).
@@ -434,6 +508,22 @@ export function StudioEditor({
     caveat: texts.lienzo.calFontOptionCaveat,
   };
 
+  // ── Ola 26 (owner 2026-09-09) — GUARD DE FINALIZACIÓN: textos requeridos IG ──
+  // La Polaroid Instagram exige TODOS sus textos editables con contenido del
+  // cliente (usuario, ubicación, título y hashtags; el contador "362 me gusta"
+  // queda decorativo). Con la tarjeta que nace VACÍA (Ola 25), una polaroid IG
+  // podía finalizarse en blanco → «Vista previa» queda bloqueado (mismo patrón
+  // de tooltip del bloqueo por fotos) hasta que cada capa requerida tenga un
+  // override con texto en TODOS los slots del pack. Selector atómico (string
+  // primitivo) → sin re-render en cascada por edits de foto.
+  const igMissingTextKey = useStore(store, (s) =>
+    s.canvasData ? igMissingRequiredTextLayerIds(s.canvasData).join(",") : "",
+  );
+  const igFinalizeBlockReason = useMemo(
+    () => igBlockMessage(igMissingTextKey ? igMissingTextKey.split(",") : [], texts),
+    [igMissingTextKey, texts],
+  );
+
   // ──────────── Boot: crear draft (o recuperar existente) ────────────
   useEffect(() => {
     // Guard: evita re-boot cuando una prop cambia de referencia pero el store ya
@@ -450,6 +540,25 @@ export function StudioEditor({
         if (designId && initialDesignCanvas) {
           // Design existente: asegurar V2 (migrar V1 si hace falta)
           canvasData = ensureCanvasV2(initialDesignCanvas, initialSlotCount);
+          // Multi-unidad (2026-09-09): normalizar diseños legacy (sin unitSlots)
+          // al modelo del producto — la unidad se deriva de la plantilla del propio
+          // diseño (tira, calendario, separador). unitSlots = 1 (polaroid) no se
+          // declara: cada imán es su unidad desde siempre, grilla plana intacta.
+          const legacyUnitSlots =
+            photosPerUnitForEditor({
+              isCalendarMonth,
+              facesPerUnit,
+              photoSlots: canvasData.photoSlots ?? photoSlots,
+              unitTemplate: canvasData.unitTemplate,
+            }) * facesPerUnit;
+          if (legacyUnitSlots > 1) {
+            const legacyUnitCount = Math.max(1, Math.round(canvasData.slotCount / legacyUnitSlots));
+            canvasData = {
+              ...canvasData,
+              unitSlots: canvasData.unitSlots ?? legacyUnitSlots,
+              unitCount: canvasData.unitCount ?? legacyUnitCount,
+            };
+          }
         } else {
           // Crear draft nuevo
           const result = await createDraftDesignAction({ productId: product.id });
@@ -487,7 +596,12 @@ export function StudioEditor({
             // Ola 3 — con facesPerUnit=2 (separadores) hay 2 slots de diseño por
             // unidad física: slot 2k = cara A, slot 2k+1 = cara B (convención
             // compartida con producción y con el frente 3D).
+            // Multi-unidad (2026-09-09): slotCount = unitCount × unitSlots.
             slotCount: initialSlotCount,
+            // Multi-unidad: declarar el modelo solo cuando la unidad tiene >1 slot
+            // (tiras, calendario, separadores). unitSlots = 1 (polaroid/cuadrados)
+            // no se declara — la variante YA es el pack (design-units.ts).
+            ...(bootUnitSlots > 1 ? { unitCount: bootUnitCount, unitSlots: bootUnitSlots } : {}),
             // Lucy 2026-09-05 — packs: el canvasData nuevo ya declara el N de
             // fotos y el tamaño en raíz (fuente de la resolución server-side
             // de la variante en el carrito). Los demás productos no lo llevan.
@@ -506,8 +620,16 @@ export function StudioEditor({
               assetId: null,
               assetUrl: null,
             })),
+            // Multi-unidad: con N unidades multi-slot el gridLayout describe la
+            // grilla de UNA unidad (los separadores agrupados y las unidades
+            // sueltas siguen con el layout del diseño completo).
             gridLayout: defaultGridFor(
-              initialSlotCount,
+              gridSlotCountForLayout({
+                unitCount: bootUnitCount,
+                unitSlots: bootUnitSlots,
+                slotCount: initialSlotCount,
+                facesPerUnit,
+              }),
               unitTemplate.stage,
               // Ola 2A — la plantilla puede fijar las columnas (tira fotobooth: gridCols=1).
               typeof (unitTemplate as { gridCols?: unknown }).gridCols === "number"
@@ -589,6 +711,8 @@ export function StudioEditor({
     product.slug,
     photoSlots,
     initialSlotCount,
+    bootUnitSlots,
+    bootUnitCount,
     isPhotoPack,
     packSizeCm,
     initialMagnet,
@@ -596,6 +720,8 @@ export function StudioEditor({
     store,
     initialBorderColor,
     texts,
+    isCalendarMonth,
+    facesPerUnit,
   ]);
 
   // ──────────── Auto-save 2s debounce ────────────
@@ -699,6 +825,15 @@ export function StudioEditor({
   const handleFinalize = useCallback(async () => {
     const state = store.getState();
     if (!state.designId || !state.canvasData || state.isFinalizing || previewBuilding) return;
+    // Ola 26 (owner 2026-09-09) — GUARD: la Polaroid Instagram no se finaliza con
+    // textos requeridos vacíos (usuario, ubicación, título, hashtags). El botón ya
+    // se muestra bloqueado con el tooltip; esta es la defensa en profundidad (cualquier
+    // vía que llegue acá — teclado, estado de carrera) se detiene con el mismo mensaje.
+    const igBlock = igBlockMessage(igMissingRequiredTextLayerIds(state.canvasData), texts);
+    if (igBlock) {
+      state.setAutoSaveStatus({ kind: "error", message: igBlock });
+      return;
+    }
     setPreviewError(null);
     setPreviewBuilding(true);
     try {
@@ -829,12 +964,16 @@ export function StudioEditor({
       // Se hace ANTES de combinar tiras photobooth, para no mezclar la lógica de imanes.
       if (isBookmark) textures = await rotateTextures90(textures);
       // Ola 6 — Tira magnética photobooth: la pieza física es continua (1 col, gap 0).
-      // Combinamos los slots de 3 en 3 para que la nevera 3D muestre tiras enteras.
+      // Combinamos los slots de cada TIRA (unitSlots) para que la nevera 3D muestre
+      // tiras enteras. Multi-unidad (2026-09-09): una textura-tira POR UNIDAD — antes
+      // iba de 3 en 3 fijo (una tira de 4 fotos quedaba 3+1, y 2 tiras se mezclaban).
       const isStrip =
         state.canvasData.gridLayout.cols === 1 &&
         state.canvasData.gridLayout.gap === 0 &&
         state.canvasData.slots.length > 1;
-      if (isStrip) textures = await combineStripTextures(textures, 3);
+      if (isStrip) {
+        textures = await combineStripTextures(textures, state.canvasData.unitSlots ?? 3);
+      }
       // La escena Polaroid 3D solo corresponde a productos Polaroid: se detecta por el slug
       // del producto o por la plantilla activa (Polaroid Clásica / Instagram).
       const selectedTemplateSlug = state.templates.find(
@@ -936,11 +1075,13 @@ export function StudioEditor({
   // ──────────── Step 2: Confirmar → upload + add to cart + redirect ────────────
   //
   // Solo se invoca si el cliente confirma desde el modal. Si vuelve a editar,
-  // nada se sube y el editor queda intacto. `copies` son las unidades idénticas
-  // del diseño (CartItem.qty 1..99) que fijó la PDP (stepper "Unidades" de los
-  // productos de composición fija) — la modal las confirma, ya no las elige.
+  // nada se sube y el editor queda intacto. Modelo MULTI-UNIDAD (2026-09-09): el
+  // diseño YA contiene las N unidades (la PDP las eligió con "Unidades" y el
+  // cliente las diseñó una a una) → el carrito recibe UNA línea con qty=1 y el
+  // precio = variante × N lo deriva el SERVIDOR del canvasData guardado
+  // (design-units.ts — nunca se confía en un multiplicador del cliente).
   const handleConfirmFinalize = useCallback(
-    async (copies: number) => {
+    async (_copies: number) => {
       const state = store.getState();
       if (!state.designId || !state.canvasData || state.isFinalizing || !previewDataUrl) return;
       state.setIsFinalizing(true);
@@ -1046,8 +1187,10 @@ export function StudioEditor({
 
         // Add to cart — pasamos variantId del PDP (consolidación familias M.3.b.CAT).
         // replacesCartDesignId: si venimos de "Editar" desde el carrito, reemplaza el item original.
-        // qty = copias elegidas en la PDP (?copies=N vía la modal; el finalize NO
-        // depende de ellas — el short-circuit de finalizedRef sigue intacto).
+        // qty = 1: UNA línea = el diseño COMPLETO con sus N unidades (modelo
+        // multi-unidad 2026-09-09 — antes qty era las "copias idénticas" de la PDP;
+        // ahora las unidades van DENTRO del diseño y el precio ×N lo deriva el
+        // servidor). El short-circuit de finalizedRef sigue intacto.
         // Lucy 2026-09-05 — packs: SIN variantId. El N de fotos se eligió en el
         // Estudio y viaja en el canvasData guardado; el SERVIDOR resuelve la
         // variante exacta (photoSlots+sizeCm, +magnet desde 2026-09-08) con
@@ -1056,7 +1199,7 @@ export function StudioEditor({
         // cliente cambió N acá (la ruta del dinero no confía en el cliente).
         const addResult = await addPersonalizedToCartAction({
           designId: state.designId,
-          qty: copies,
+          qty: 1,
           variantId: isPhotoPack ? undefined : variantId,
           replaceDesignId: replacesCartDesignId ?? undefined,
         });
@@ -1227,6 +1370,7 @@ export function StudioEditor({
           setGesturesHintOpen(true);
         }}
         isPreviewBuilding={previewBuilding}
+        finalizeBlockReason={igFinalizeBlockReason}
         onFinalize={handleFinalize}
       />
 
@@ -1398,7 +1542,20 @@ export function StudioEditor({
             cornerRadiusPx={productConfig.cornerRadiusPx}
             showRealismGuides={showRealismGuides}
             // Ola 3 — calendario: meses; separadores 2 caras: "1A","1B",… por unidad.
-            slotLabels={isCalendarMonth ? slotLabels : faceSlotLabels(livePhotoSlots, facesPerUnit)}
+            // Multi-unidad (2026-09-09): con N calendarios los meses se repiten por
+            // unidad (cada una vuelve a empezar en Enero).
+            slotLabels={
+              isCalendarMonth
+                ? slotLabels && liveUnitCount > 1
+                  ? Array.from(
+                      { length: liveSlotCount },
+                      (_, i) => slotLabels[i % slotLabels.length],
+                    )
+                  : slotLabels
+                : faceSlotLabels(livePhotoSlots, facesPerUnit)
+            }
+            // Multi-unidad — sustantivo de la unidad para pager/headers de sección.
+            unitNoun={unitNoun}
             // Ola 4 (Lucy 2026-07-23) — calendario: cada slot previsualiza la TARJETA
             // compuesta del mes (foto + título + grilla), no la foto a sangre.
             calendarPreview={
@@ -1574,14 +1731,26 @@ export function StudioEditor({
         productName={product.name}
         // Ola 3 — en separadores la unidad física es la tira (2 caras): el conteo
         // del modal es de UNIDADES (N fotos vivo del stepper), no de slots de
-        // diseño (2N).
-        slotCount={livePhotoSlots}
+        // diseño (2N). Multi-unidad (2026-09-09): tiras/calendarios muestran las
+        // unidades vivas del diseño y sus piezas por unidad.
+        slotCount={liveIsStrip || isCalendarMonth ? liveUnitCount : livePhotoSlots}
+        slotsPerUnit={liveIsStrip || isCalendarMonth ? liveUnitSlots : undefined}
         sizeCm={productConfig.sizeCm}
         unitPrice={effectiveUnitPrice}
-        initialCopies={initialCopies}
+        // Multi-unidad: el diseño YA contiene las unidades → qty 1 al carrito;
+        // el total de la modal = precio unitario × unidades.
+        unitCount={liveUnitCount}
         isFinalizing={isFinalizingFlag}
         errorMessage={previewError}
-        productKind={isCalendarMonth ? "calendar" : facesPerUnit === 2 ? "bookmarks" : "magnets"}
+        productKind={
+          isCalendarMonth
+            ? "calendar"
+            : facesPerUnit === 2
+              ? "bookmarks"
+              : liveIsStrip
+                ? "strips"
+                : "magnets"
+        }
         calendarYear={selectedYear}
         onEdit={handleClosePreviewModal}
         onConfirm={handleConfirmFinalize}
@@ -1591,6 +1760,7 @@ export function StudioEditor({
       <StudioFinalizeFab
         store={store}
         isPreviewBuilding={previewBuilding}
+        finalizeBlockReason={igFinalizeBlockReason}
         onFinalize={handleFinalize}
       />
 
@@ -1824,6 +1994,13 @@ async function buildCompositedPreview(
   shape?: "rectangle" | "circle" | "heart" | "custom",
 ): Promise<string> {
   const { gridLayout, unitTemplate, slots } = canvasData;
+  // Modelo multi-unidad (2026-09-09): con N unidades multi-slot el gridLayout
+  // describe UNA unidad — la Vista previa muestra TODAS las unidades (lo que el
+  // cliente va a recibir): las TIRAS se disponen lado a lado (cada una es una
+  // pieza continua vertical) y el resto de unidades se apilan en vertical.
+  const unitSlots = canvasData.unitSlots ?? slots.length;
+  const unitCount = canvasData.unitCount ?? 1;
+  const multiUnit = unitCount > 1 && unitSlots > 1;
   // Cell size: 360×(360 * aspect) por slot en el preview
   const cellW = 360;
   const cellH = Math.floor(360 * (unitTemplate.stage.height / unitTemplate.stage.width));
@@ -1831,8 +2008,13 @@ async function buildCompositedPreview(
   // Ola 4 — TIRA photobooth (1 col, gap 0): la pieza es CONTINUA — sin stroke por celda
   // (separaba las fotos); se dibuja un solo borde exterior al final.
   const isStripPreview = gridLayout.cols === 1 && gridLayout.gap === 0 && slots.length > 1;
-  const canvasW = gridLayout.cols * cellW + (gridLayout.cols - 1) * gap;
-  const canvasH = gridLayout.rows * cellH + (gridLayout.rows - 1) * gap;
+  const unitGap = 32; // separación ENTRE unidades (dentro de la unidad manda gridLayout.gap)
+  const unitGridW = gridLayout.cols * cellW + (gridLayout.cols - 1) * gap;
+  const unitGridH = gridLayout.rows * cellH + (gridLayout.rows - 1) * gap;
+  const canvasW =
+    multiUnit && isStripPreview ? unitCount * unitGridW + (unitCount - 1) * unitGap : unitGridW;
+  const canvasH =
+    multiUnit && !isStripPreview ? unitCount * unitGridH + (unitCount - 1) * unitGap : unitGridH;
 
   const compositeCanvas = document.createElement("canvas");
   compositeCanvas.width = canvasW;
@@ -1865,10 +2047,15 @@ async function buildCompositedPreview(
     await new Promise<void>((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
-        const col = slot.slotIndex % gridLayout.cols;
-        const row = Math.floor(slot.slotIndex / gridLayout.cols);
-        const x = col * (cellW + gap);
-        const y = row * (cellH + gap);
+        // Posición DENTRO de la unidad (multi-unidad: gridLayout = 1 unidad).
+        const indexInUnit = multiUnit ? slot.slotIndex % unitSlots : slot.slotIndex;
+        const unitIndex = multiUnit ? Math.floor(slot.slotIndex / unitSlots) : 0;
+        const col = indexInUnit % gridLayout.cols;
+        const row = Math.floor(indexInUnit / gridLayout.cols);
+        const unitOffsetX = multiUnit && isStripPreview ? unitIndex * (unitGridW + unitGap) : 0;
+        const unitOffsetY = multiUnit && !isStripPreview ? unitIndex * (unitGridH + unitGap) : 0;
+        const x = unitOffsetX + col * (cellW + gap);
+        const y = unitOffsetY + row * (cellH + gap);
         const path = buildShapePath(shape, x, y, cellW, cellH);
         // 1) Foto clipeada al shape (sin fill blanco previo — la propia foto
         //    es el fondo). Sombra externa via stroke ancho + transparencia.
@@ -1894,13 +2081,17 @@ async function buildCompositedPreview(
     });
   }
 
-  // Ola 4 — TIRA: un solo borde exterior alrededor de la pieza continua.
+  // Ola 4 — TIRA: un solo borde exterior alrededor de cada pieza continua
+  // (multi-unidad: un borde por TIRA, no uno global que las agrupe).
   if (isStripPreview) {
-    ctx.save();
-    ctx.strokeStyle = "rgba(124, 106, 173, 0.7)";
-    ctx.lineWidth = 2.5;
-    ctx.strokeRect(1.25, 1.25, canvasW - 2.5, canvasH - 2.5);
-    ctx.restore();
+    for (let u = 0; u < unitCount; u++) {
+      const ox = multiUnit ? u * (unitGridW + unitGap) : 0;
+      ctx.save();
+      ctx.strokeStyle = "rgba(124, 106, 173, 0.7)";
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(ox + 1.25, 1.25, unitGridW - 2.5, unitGridH - 2.5);
+      ctx.restore();
+    }
   }
 
   return compositeCanvas.toDataURL("image/png");

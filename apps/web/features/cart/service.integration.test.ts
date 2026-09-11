@@ -947,6 +947,135 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
   });
 
   // ════════════════════════════════════════════════════════════════════════
+  // addPersonalizedToCart — MULTI-UNIDAD (owner 2026-09-09): el diseño contiene
+  // N unidades → la línea es UNA (qty=1) con unitPrice = variante × N derivado
+  // del canvas/metadata guardado (NUNCA de un multiplicador del cliente).
+  // ════════════════════════════════════════════════════════════════════════
+
+  describe("addPersonalizedToCart — multi-unidad (precio = variante × unidades del diseño)", () => {
+    async function makeMultiUnitDesign(canvasData: object, metadata?: object) {
+      const d = await prisma.design.create({
+        data: {
+          sessionId: sid("design-mu"),
+          productId: persoProductId,
+          status: "READY",
+          canvasData,
+          ...(metadata ? { metadata } : {}),
+          previewUrl: "https://cdn.lucams.test/preview-mu.png",
+        },
+        select: { id: true },
+      });
+      return d.id;
+    }
+
+    it("tiras ×2 (slotCount 6, unitSlots 3, variante cubre 1 tira) → unitPrice ×2", async () => {
+      const designId = await makeMultiUnitDesign({
+        version: 2,
+        slotCount: 6,
+        unitCount: 2,
+        unitSlots: 3,
+        photoSlots: 3,
+      });
+      const detail = await addPersonalizedToCart({
+        sessionId: sid("mu"),
+        customerId: null,
+        designId,
+        variantId: persoVariantBId,
+        qty: 1,
+      });
+      expect(detail.items[0].qty).toBe(1);
+      expect(detail.items[0].unitPrice).toBe(PERSO_VAR_B_PRICE * 2);
+      expect(detail.subtotal).toBe(PERSO_VAR_B_PRICE * 2);
+    });
+
+    it("tiras ×2 con el espejo metadata.unitCount del finalize → ×2, NO ×4 (bug 2026-09-11)", async () => {
+      // El finalize escribe metadata.unitCount en TODOS los diseños V2 (para que la
+      // línea del carrito describa las unidades sin deserializar el canvas). El precio
+      // ya multiplica por el canvas (designUnitPriceMultiplier): el espejo NO debe
+      // volver a multiplicar (letterSetUnitCount es solo para sets de letras).
+      const designId = await makeMultiUnitDesign(
+        { version: 2, slotCount: 6, unitCount: 2, unitSlots: 3, photoSlots: 3 },
+        { unitCount: 2 },
+      );
+      const detail = await addPersonalizedToCart({
+        sessionId: sid("mu"),
+        customerId: null,
+        designId,
+        variantId: persoVariantBId,
+        qty: 1,
+      });
+      expect(detail.items[0].unitPrice).toBe(PERSO_VAR_B_PRICE * 2);
+    });
+
+    it("calendario ×2 (sin photoSlots raíz → ×2 via unitSlots)", async () => {
+      const designId = await makeMultiUnitDesign({
+        version: 2,
+        slotCount: 24,
+        unitCount: 2,
+        unitSlots: 12,
+      });
+      const detail = await addPersonalizedToCart({
+        sessionId: sid("mu"),
+        customerId: null,
+        designId,
+        variantId: persoVariantAId,
+        qty: 1,
+      });
+      expect(detail.items[0].unitPrice).toBe(PERSO_VAR_A_PRICE * 2);
+    });
+
+    it("pack de imanes (sin declarar unidades) → ×1 intacto (la variante YA es el pack)", async () => {
+      const designId = await makeMultiUnitDesign({
+        version: 2,
+        slotCount: 10,
+        photoSlots: 10,
+      });
+      const detail = await addPersonalizedToCart({
+        sessionId: sid("mu"),
+        customerId: null,
+        designId,
+        variantId: persoVariantAId,
+        qty: 1,
+      });
+      expect(detail.items[0].unitPrice).toBe(PERSO_VAR_A_PRICE);
+    });
+
+    it("set de letras ×2 (metadata.unitCount validado al crear) → unitPrice ×2", async () => {
+      const designId = await makeMultiUnitDesign(
+        { version: 1 },
+        { surface: "letterset", unitCount: 2 },
+      );
+      const detail = await addPersonalizedToCart({
+        sessionId: sid("mu"),
+        customerId: null,
+        designId,
+        variantId: persoVariantAId,
+        qty: 1,
+      });
+      expect(detail.items[0].unitPrice).toBe(PERSO_VAR_A_PRICE * 2);
+    });
+
+    it("qty>1 multiplica sobre el diseño multi-unidad (2 líneas de 2 tiras = ×4 la tira)", async () => {
+      const designId = await makeMultiUnitDesign({
+        version: 2,
+        slotCount: 6,
+        unitCount: 2,
+        unitSlots: 3,
+        photoSlots: 3,
+      });
+      const detail = await addPersonalizedToCart({
+        sessionId: sid("mu"),
+        customerId: null,
+        designId,
+        variantId: persoVariantBId,
+        qty: 2,
+      });
+      expect(detail.items[0].unitPrice).toBe(PERSO_VAR_B_PRICE * 2);
+      expect(detail.items[0].lineTotal).toBe(2 * PERSO_VAR_B_PRICE * 2);
+    });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
   // updateCartItemQty / removeCartItem
   // ════════════════════════════════════════════════════════════════════════
 

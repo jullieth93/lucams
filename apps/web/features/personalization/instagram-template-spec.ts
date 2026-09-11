@@ -26,6 +26,8 @@
  * (edit-indicator).
  */
 
+import { isInstagramTemplate } from "./frame-palette";
+
 export const IG_CARD = { width: 450, height: 600 } as const;
 
 // Foto cuadrada centrada con ventana de borde blanco.
@@ -59,3 +61,107 @@ export const IG_FOOTER_TEXT_LAYERS = [
   { id: "caption", y: 526, fontSize: 16 },
   { id: "hashtags", y: 542, fontSize: 13 },
 ] as const;
+
+// ──────────────────────────────────────────────────────────────────────────
+// Ola 26 (Lucy 2026-09-09) — identidad y color de las capas de texto editables.
+//
+// HASHTAGS: la única capa cuyo color NO sigue el contraste blanco/negro de la
+// tarjeta — SIEMPRE se dibuja azul link de Instagram (legible sobre la tarjeta,
+// clara u oscura; ver igTextFill).
+export const IG_HASHTAGS_LAYER_ID = "hashtags";
+
+/**
+ * Azul link de Instagram para la capa de hashtags:
+ *  - IG_HASHTAG_BLUE (#00376B): el azul clásico de los captions/links de IG,
+ *    legible sobre la tarjeta CLARA (blanca).
+ *  - IG_HASHTAG_BLUE_ON_DARK (#0095F6): el azul de marca de IG en modo oscuro,
+ *    contraste ≈5.2:1 sobre el negro de marca #221E25 (AA para texto pequeño).
+ * El azul oscuro clásico sobre la tarjeta oscura sería ilegible (#00376B sobre
+ * #221E25) — por eso la variante. La regla "hashtags SIEMPRE azules" se mantiene:
+ * nunca caen al blanco/negro del contraste automático como el resto de textos.
+ */
+export const IG_HASHTAG_BLUE = "#00376B";
+export const IG_HASHTAG_BLUE_ON_DARK = "#0095F6";
+
+// TEXTOS REQUERIDOS para finalizar (decisión del dueño 2026-09-09): usuario,
+// ubicación, título y hashtags son OBLIGATORIOS — sin override del cliente en
+// TODAS estas capas, «Vista previa» queda bloqueado (con la tarjeta que nace
+// VACÍA, una polaroid IG podía finalizarse en blanco). El contador "362 me
+// gusta" queda DECORATIVO (opcional): no bloquea.
+export const IG_REQUIRED_TEXT_LAYER_IDS = [
+  "user_name",
+  "location",
+  "caption",
+  IG_HASHTAGS_LAYER_ID,
+] as const;
+
+/** Capas de texto editables que NO bloquean la finalización (decorativas). */
+export const IG_DECORATIVE_TEXT_LAYER_IDS = ["likes_count"] as const;
+
+/**
+ * Color de letra POR DEFECTO de una capa de texto de la plantilla Instagram
+ * (regla Ola 26: el color sigue al de la tarjeta, por capa — WYSIWYG entre la
+ * grilla, el preview del modal y el PNG de producción, que para Instagram es
+ * el snapshot del cliente: el chrome SVG → NEEDS_KONVA en los tiers server).
+ *  - Hashtags: SIEMPRE azul link IG (variante según la tarjeta, por legibilidad).
+ *  - Resto (usuario, ubicación, likes, título): contraste con la tarjeta —
+ *    tarjeta oscura → blanco; tarjeta clara → el fill oscuro de la plantilla.
+ * El override de color del cliente (textOverrides[].fill) SIEMPRE manda sobre
+ * este default (regla histórica, intacta).
+ */
+export function igTextFill(
+  layerId: string,
+  layerFill: string | undefined,
+  darkCard: boolean,
+): string {
+  if (layerId === IG_HASHTAGS_LAYER_ID) {
+    return darkCard ? IG_HASHTAG_BLUE_ON_DARK : IG_HASHTAG_BLUE;
+  }
+  return darkCard ? "#FFFFFF" : (layerFill ?? "#262626");
+}
+
+/**
+ * Ids de las capas de texto REQUERIDAS de la plantilla Instagram que aún no
+ * tienen un override con texto del cliente. La tarjeta nace VACÍA (Ola 25) →
+ * un campo sin override es un campo que faltaría impreso. La unión es a nivel
+ * PACK: un campo cuenta como faltante si ALGÚN slot no lo tiene (cada imán del
+ * pack es un post independiente con sus propios textos). Devuelve [] para
+ * plantillas que no son Instagram (la regla solo aplica a la Polaroid IG).
+ */
+export function igMissingRequiredTextLayerIds(canvasData: {
+  unitTemplate: {
+    layers: ReadonlyArray<{ type: string; id?: unknown; editable?: unknown; src?: unknown }>;
+  };
+  slots: ReadonlyArray<{
+    textOverrides?: Record<
+      string,
+      | {
+          text?: unknown;
+          fill?: unknown;
+          fontSize?: unknown;
+          fontFamily?: unknown;
+          fontWeight?: unknown;
+        }
+      | undefined
+    >;
+  }>;
+}): string[] {
+  if (!isInstagramTemplate(canvasData.unitTemplate.layers)) return [];
+  const required = new Set<string>(IG_REQUIRED_TEXT_LAYER_IDS);
+  const layerIds = canvasData.unitTemplate.layers
+    .filter(
+      (l) =>
+        l.type === "text" && l.editable === true && typeof l.id === "string" && required.has(l.id),
+    )
+    .map((l) => l.id as string);
+  if (layerIds.length === 0) return [];
+  const missing = new Set<string>();
+  for (const slot of canvasData.slots) {
+    for (const id of layerIds) {
+      const t = slot.textOverrides?.[id]?.text;
+      if (typeof t !== "string" || t.trim() === "") missing.add(id);
+    }
+  }
+  // Orden estable = el de la plantilla (usuario, ubicación, título, hashtags).
+  return layerIds.filter((id) => missing.has(id));
+}
