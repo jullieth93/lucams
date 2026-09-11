@@ -322,10 +322,7 @@ describe.skipIf(!hasDb)("consent/service — integración DB (audit trail Ley 15
 
       // Contrato real del SUT: clave + fallback exactos (el fallback sigue la
       // versión del texto canónico en packages/db/legal-content).
-      expect(getSettingValueMock).toHaveBeenCalledWith(
-        "PRIVACY_POLICY_VERSION",
-        "v5 · 2026-09-04",
-      );
+      expect(getSettingValueMock).toHaveBeenCalledWith("PRIVACY_POLICY_VERSION", "v5 · 2026-09-04");
     });
 
     it("la MISMA versión se estampa en las 4 filas (consistencia del snapshot legal)", async () => {
