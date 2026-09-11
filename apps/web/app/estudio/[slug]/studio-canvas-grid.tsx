@@ -1268,7 +1268,9 @@ function StudioSlotEditModalWrapper({
   // la regla compartida resuelve el color real (frame-palette.cardBackgroundHex).
   const cardBgForTextPreview = useMemo(
     () =>
-      unitTemplate ? cardBackgroundHex({ layers: unitTemplate.layers, borderColor, frameFullBleed }) : null,
+      unitTemplate
+        ? cardBackgroundHex({ layers: unitTemplate.layers, borderColor, frameFullBleed })
+        : null,
     [unitTemplate, borderColor, frameFullBleed],
   );
   // Multi-unidad (2026-09-09) — con imán suelto (unitSlots = 1, polaroid/cuadrados)
