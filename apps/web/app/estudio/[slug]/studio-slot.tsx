@@ -56,6 +56,7 @@ import type {
 } from "./types";
 import {
   isDarkColor,
+  defaultTextFillOnCard,
   frameBleedMargin,
   insetToMinMargin,
   isSimpleCardTemplate,
@@ -1503,11 +1504,13 @@ export function renderLayer(
       // Ola 28 (owner 2026-09-11): en IG el texto por defecto de la plantilla
       // SE VE (isIg → showTemplateDefault); el resto de plantillas siguen
       // naciendo vacías (Ola 25).
+      // Ola 29 (owner 2026-09-11, ronda 5 — 1.2.1.A): fuera de IG el default
+      // sale de defaultTextFillOnCard (frame-palette, compartida con producción):
+      // tarjeta rosada/oscura → letra BLANCA; blanca/pastel → el oscuro de la
+      // plantilla ("que visualmente se vea" sobre el color de la tarjeta).
       const defaultFill = isIg
         ? igTextFill(textLayer.id, textLayer.fill, darkCardBg)
-        : darkCardBg
-          ? "#FFFFFF"
-          : (textLayer.fill ?? "#3D2E5C");
+        : defaultTextFillOnCard(cardBgHex, textLayer.fill);
       return renderText(textLayer, stage, override, onTextEdit, false, defaultFill, isIg);
     }
     case "shape":

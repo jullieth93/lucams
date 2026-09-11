@@ -980,7 +980,9 @@ describe("renderLayer — text", () => {
       undefined,
       undefined,
       undefined,
-      { allowText: true, darkCardBg: true },
+      // El contrato real: darkCardBg viene DERIVADO de cardBgHex (StudioSlot lo
+      // calcula con isDarkColor). La regla Ola 29 lee el hex (no el booleano).
+      { allowText: true, cardBgHex: "#221E25", darkCardBg: true },
     ) as React.ReactElement;
     const text = (el.props as { children: Array<React.ReactElement | null> }).children
       .filter(Boolean)
@@ -993,6 +995,35 @@ describe("renderLayer — text", () => {
       fontSize?: number;
     }>;
     expect(text.props.fill).toBe("#FFFFFF");
+  });
+
+  // Ola 29 (owner 2026-09-11, ronda 5 — 1.2.1.A): "si es rosado el lienzo del
+  // fondo, blanco puede ser el preview del texto". El default de letra sale de
+  // defaultTextFillOnCard(cardBgHex): rosada → BLANCO; blanca → oscuro.
+  it("tarjeta ROSADA → texto BLANCO por defecto; tarjeta BLANCA → oscuro (regla del owner)", () => {
+    const fillFor = (cardBgHex: string) => {
+      const el = renderLayer(
+        textLayer,
+        slot({ textOverrides: { caption: { text: "Hola" } } }),
+        STAGE,
+        vi.fn(),
+        "rectangle",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { allowText: true, cardBgHex },
+      ) as React.ReactElement;
+      const text = (el.props as { children: Array<React.ReactElement | null> }).children
+        .filter(Boolean)
+        .find((c) => (c as React.ReactElement).key === "caption-text") as React.ReactElement<{
+        fill?: string;
+      }>;
+      return text.props.fill;
+    };
+    expect(fillFor("#E85B9F")).toBe("#FFFFFF"); // rosada → blanco
+    expect(fillFor("#FFFFFF")).toBe("#3D2E5C"); // blanca → oscuro de la plantilla
+    expect(fillFor("#5DD9D1")).toBe("#3D2E5C"); // aguamarina → oscuro
   });
 
   // Ola 26 (Lucy 2026-09-09) — Polaroid Instagram: el color de letra sigue al de

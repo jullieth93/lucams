@@ -30,6 +30,7 @@ import {
   resolveMinSlotSize,
   slotHeightCapByCount,
   stepStageZoom,
+  unitSectionsPerRowFor,
 } from "./studio-canvas-grid-size";
 
 // Stage 450×600 (aspect 4:3) de la Polaroid Instagram.
@@ -415,5 +416,40 @@ describe("zoom de lienzo (Ola 22 + zoom-out 2026-09-09) — tope por ancho y pas
   it("con anchos inválidos → tope 1 (defensivo, nunca NaN)", () => {
     expect(computeStageZoomCap(0, 500)).toBe(1);
     expect(computeStageZoomCap(500, 0)).toBe(1);
+  });
+});
+
+// Ola 29 (owner 2026-09-11, 1.3.A mejora visual) — secciones de TIRA en filas
+// de 2-3 (wrap): 4 unidades → 3+1 en desktop, 2+2 en móvil/tableta. Solo modo
+// secciones de tiras; calendarios apilados (sus secciones son grillas anchas).
+describe("unitSectionsPerRowFor — secciones de tira en grilla horizontal (Ola 29)", () => {
+  it("desktop (≥1024): máximo 3 por fila", () => {
+    expect(
+      unitSectionsPerRowFor({ isStripSections: true, unitCount: 4, containerWidth: 1280 }),
+    ).toBe(3);
+    expect(
+      unitSectionsPerRowFor({ isStripSections: true, unitCount: 2, containerWidth: 1280 }),
+    ).toBe(2);
+    expect(
+      unitSectionsPerRowFor({ isStripSections: true, unitCount: 12, containerWidth: 1280 }),
+    ).toBe(3);
+  });
+
+  it("móvil/tableta (<1024): máximo 2 por fila", () => {
+    expect(
+      unitSectionsPerRowFor({ isStripSections: true, unitCount: 4, containerWidth: 390 }),
+    ).toBe(2);
+    expect(
+      unitSectionsPerRowFor({ isStripSections: true, unitCount: 3, containerWidth: 800 }),
+    ).toBe(2);
+  });
+
+  it("1 unidad o no-tiras → 1 (apilado de siempre)", () => {
+    expect(
+      unitSectionsPerRowFor({ isStripSections: true, unitCount: 1, containerWidth: 1280 }),
+    ).toBe(1);
+    expect(
+      unitSectionsPerRowFor({ isStripSections: false, unitCount: 4, containerWidth: 1280 }),
+    ).toBe(1);
   });
 });
