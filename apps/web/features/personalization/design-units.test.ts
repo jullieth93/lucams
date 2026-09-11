@@ -175,7 +175,14 @@ describe("letterSetUnitCount — sets de letras (metadata, no canvas)", () => {
   });
 
   it("acota al tope defensivo (anti-inyección de metadata)", () => {
-    expect(letterSetUnitCount({ unitCount: 999 })).toBe(MAX_LETTER_SET_UNITS);
+    expect(letterSetUnitCount({ surface: "letterset", unitCount: 999 })).toBe(MAX_LETTER_SET_UNITS);
+  });
+
+  it("sin surface letterset → 1: el metadata.unitCount de un canvas V2 es ESPEJO (lo cubre designUnitPriceMultiplier)", () => {
+    // Bug 2026-09-11: tira ×2 (canvas V2 + espejo del finalize) cobraba ×4 al
+    // multiplicar dos veces. El gate por surface lo evita.
+    expect(letterSetUnitCount({ unitCount: 2 })).toBe(1);
+    expect(letterSetUnitCount({ surface: "name", unitCount: 3 })).toBe(1);
   });
 });
 

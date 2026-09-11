@@ -184,10 +184,18 @@ export function designUnitPriceMultiplier(canvasData: unknown, facesPerUnit = 1)
  * Unidades declaradas por un diseño de SET DE LETRAS (metadata, no canvasData:
  * el set se guarda como V1 stub + metadata). El servidor escribe
  * `metadata.unitCount` validado al crear; ausente/inválido → 1.
+ *
+ * El gate es `surface === "letterset"`: en diseños de canvas V2 (tiras,
+ * calendarios, separadores) el finalize escribe `metadata.unitCount` como
+ * ESPEJO del canvas (para que el carrito describa la línea sin deserializar)
+ * — contarlo aquí duplicaría el multiplicador que ya deriva
+ * `designUnitPriceMultiplier` del canvas (bug 2026-09-11: tira ×2 cobraba ×4).
  */
 export function letterSetUnitCount(metadata: unknown): number {
   if (!metadata || typeof metadata !== "object") return 1;
-  const n = (metadata as { unitCount?: unknown }).unitCount;
+  const m = metadata as { surface?: unknown; unitCount?: unknown };
+  if (m.surface !== "letterset") return 1;
+  const n = m.unitCount;
   return typeof n === "number" && Number.isInteger(n) && n >= 1
     ? Math.min(MAX_LETTER_SET_UNITS, n)
     : 1;

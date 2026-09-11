@@ -383,6 +383,9 @@ packages/db/scripts/
 - **Nombre Personalizado — «Borde de las fichas» ARRIBA de «Elige los colores»**
   (name-editor): primero se define el borde; debajo queda la paleta que se desactiva con
   «Sin borde» (mismo orden que la toolbar de estilo, Ola 24). Regla de desactivado intacta.
+  El editor de sets de letras (abecedario/vocales) quedó con el MISMO orden tras el
+  refactor multi-unidad (Ola 27) y el owner lo confirmó para esa superficie el 2026-09-11
+  (el spec `estudio-letterset` se actualizó: antes fijaba el orden viejo).
 - **FIX tira de 4 fotos sin canvas** (owner en STG): la plantilla `photo-strip-4-fotos`
   nació en el one-off `ola18b-cuadrados-tiras-fix.mjs` y NO estaba en
   `seed-templates.mjs` → el barrido de legacy del seed la soft-deleteaba en CADA corrida;
@@ -447,6 +450,12 @@ de todas las superficies personalizables.**
   para packs, `ceil(slotCount / unitSlots)` para composición fija) y de
   `metadata.unitCount` validado al crear (sets de letras). La variante cubre UNA
   unidad (tira, calendario, set) o el pack declarado (polaroid/separadores → ×1).
+  Ojo (fix 2026-09-11): `letterSetUnitCount` exige `surface === "letterset"` —
+  el finalize espeja `unitCount` en la metadata de TODO diseño V2 y sin el gate
+  el precio multiplicaba dos veces (una tira ×2 llegaba al carrito cobrando ×4;
+  lo cazó el E2E `pdp-cantidad-tira`, no los tests unitarios, porque el espejo
+  solo lo escribe el finalize). El `unidadesFisicas` del spec de producción usa
+  la misma combinación y quedó cubierto por el mismo gate.
   Cualquier tampering del canvas queda económicamente consistente (se paga por
   pieza equivalente; jamás se cobra de menos en un flujo legítimo). El `qty` del
   carrito sigue existiendo como multiplicador de líneas (2 líneas del mismo diseño

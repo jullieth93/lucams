@@ -988,6 +988,25 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       expect(detail.subtotal).toBe(PERSO_VAR_B_PRICE * 2);
     });
 
+    it("tiras ×2 con el espejo metadata.unitCount del finalize → ×2, NO ×4 (bug 2026-09-11)", async () => {
+      // El finalize escribe metadata.unitCount en TODOS los diseños V2 (para que la
+      // línea del carrito describa las unidades sin deserializar el canvas). El precio
+      // ya multiplica por el canvas (designUnitPriceMultiplier): el espejo NO debe
+      // volver a multiplicar (letterSetUnitCount es solo para sets de letras).
+      const designId = await makeMultiUnitDesign(
+        { version: 2, slotCount: 6, unitCount: 2, unitSlots: 3, photoSlots: 3 },
+        { unitCount: 2 },
+      );
+      const detail = await addPersonalizedToCart({
+        sessionId: sid("mu"),
+        customerId: null,
+        designId,
+        variantId: persoVariantBId,
+        qty: 1,
+      });
+      expect(detail.items[0].unitPrice).toBe(PERSO_VAR_B_PRICE * 2);
+    });
+
     it("calendario ×2 (sin photoSlots raíz → ×2 via unitSlots)", async () => {
       const designId = await makeMultiUnitDesign({
         version: 2,

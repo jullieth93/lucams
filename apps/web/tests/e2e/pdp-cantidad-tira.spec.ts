@@ -355,8 +355,10 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     await dismissOverlays(page);
     await expect(page.getByText("4 fotos", { exact: true })).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText("3 fotos", { exact: true })).toHaveCount(0);
-    await expect(page.getByText("Tira 1 de 2", { exact: true })).toBeVisible();
-    await expect(page.getByText("Tira 2 de 2", { exact: true })).toBeVisible();
+    // El pager de unidades (pill con title="Tira 1 de 2") y el header de sección
+    // (h2) llevan el MISMO texto → el assert se acota al heading (strict mode).
+    await expect(page.getByRole("heading", { name: "Tira 1 de 2", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tira 2 de 2", exact: true })).toBeVisible();
 
     // Regresión 2026-09-09 (reporte del owner en STG): la plantilla de la tira de
     // 4 fotos (photo-strip-4-fotos) nació en un script one-off y NO estaba en el
@@ -366,8 +368,12 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     // a la variante es la TIRA: 4 celdas en UNA columna, cada una más alta que
     // ancha (celda 390×530), no una grilla de cuadrados. Multi-unidad: CADA sección
     // (unidad) es su propia tira de 4 celdas en 1 columna.
-    await expect(page.locator("[data-slot-index]")).toHaveCount(8);
+    // Lazy-mount (ADR-063 T5: >6 slots → IntersectionObserver): al abrir solo la
+    // unidad cercana al viewport tiene sus slots montados; la 2ª monta al llevar
+    // el scroll a su sección (el pipeline de snapshots fuerza el montaje total).
+    await expect(page.locator("[data-slot-index]")).toHaveCount(4);
     for (const unitId of ["studio-unit-0", "studio-unit-1"]) {
+      await page.locator(`#${unitId}`).scrollIntoViewIfNeeded();
       const cells = page.locator(`#${unitId} [data-slot-index]`);
       await expect(cells).toHaveCount(4);
       const boxes = await cells.evaluateAll((els) =>
@@ -383,6 +389,8 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
         expect(Math.abs(b.x - boxes[0].x)).toBeLessThan(2);
       }
     }
+    // Tras visitar ambas secciones quedan montadas las 8 celdas (2 tiras × 4 fotos).
+    await expect(page.locator("[data-slot-index]")).toHaveCount(8);
   });
 });
 
@@ -434,6 +442,10 @@ test.describe("regla 2026-09-08 — tira: canaleta visible entre fotos (WYSIWYG 
     await expect(wand.first()).toBeVisible({ timeout: 60_000 });
     await wand.first().click();
     await page.waitForTimeout(AUTOSAVE_WAIT);
+    // Mobile: el Sheet de herramientas queda abierto tras repartir y deja el lienzo
+    // (y el atajo del header de la tira) bajo aria-hidden → se cierra ANTES de aplicar.
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.waitForTimeout(400);
 
     // "Aplicar este diseño a todas" (atajo multi-unidad del header de la tira 1):
     // copia los 3 slots llenos a la tira 2 → las 2 unidades quedan completas.
