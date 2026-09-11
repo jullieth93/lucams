@@ -88,15 +88,35 @@ máximo horizontal; 4 unidades → 3+1"). Detalle: README del estudio, "Ola 29".
 - **Pendiente:** validación del owner en STG → PRD (`develop`→`production`;
   sin seeds esta ronda).
 
+## RELEASE A PRD (2026-09-11, owner: "Haz merge") ✅
+
+- `production` fast-forward `f88aeef` → `f35ab29` (Ola 26/27/28/29 completas),
+  CI verde en `production` y `develop`. PRD en vivo en lucamsshop.com:
+  grilla de tiras 3+1 medida en DOM (y=[505,505,505,1275]) y el bug original
+  del owner (tira 4 fotos sin lienzo) verificado cerrado: 2 secciones × 4
+  celdas en una columna ✓.
+- Seeds PRD: `migrate-cms-v2` (54 keys creadas — PRD venía atrás de Ola
+  26/27/28; 1008 campos BLOCK, sin anomalías) + `seed-templates` (14 activas;
+  `photo-strip-4-fotos` activa ✓). Env usado: `.env.local.nube-backup` (el de
+  la nube PRD; ambos scripts son upserts, sin env-guard).
+- Ramas normalizadas: `wip/multi-unidad-ola26-27`, `wip/ola28-validacion-owner`
+  y `wip/ola29-validacion-owner` (ya mergeadas por PR #42/43/44) borradas en
+  local y remoto. Quedan `develop`, `production`, `catalogo-whatsapp` (rama
+  viva), `master` (legacy) y las de dependabot.
+- **Recordatorio (formalidad, no bloquea):** invalidar el caché CMS en PRD
+  desde /admin/contenido («Actualizar caché de contenido»). Las 54 keys nuevas
+  sirven YA con su texto por defecto (idéntico al sembrado) porque el migrate
+  solo CREA campos faltantes y nunca pisa los existentes — el clic deja la DB
+  como fuente visible. En STG sí se invalidó (admin efímero E2E); en PRD no se
+  pueden crear usuarios efímeros (env-guard), así que es clic manual del owner.
+- Recordatorio owner (sigue vigente): precios de variantes "Sin imán" en STG
+  están espejo — ajustarlas en el admin cuando aplique.
+
 ## Cómo retomar
 
-```bash
-git checkout wip/multi-unidad-ola26-27
-```
-
-Todo el trabajo en curso está commiteado en esa rama. Al terminarla: merge a
-`develop` → push (despliega STG) → correr seeds CMS en STG (ver abajo) →
-validación del owner → PRD.
+Todo está en `develop` y `production` (misma punta tras el release
+`f35ab29`). Para trabajo nuevo: rama `wip/...` desde `develop` → PR → CI →
+merge (despliega STG) → validación owner → release ff a `production`.
 
 ## Contexto del alcance (aprobado por el owner en esta sesión)
 
