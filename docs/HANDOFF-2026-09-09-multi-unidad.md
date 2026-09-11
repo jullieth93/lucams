@@ -3,6 +3,34 @@
 > Estado al cerrar la sesión. Este archivo vive en la rama `wip/multi-unidad-ola26-27`.
 > `develop` quedó limpio en `9523cf2` (CI verde, desplegado en STG).
 
+## CIERRE (2026-09-11) — la ola ya está en STG ✅
+
+- Merge a `develop` vía PR #42 (`3cbeba8`), CI verde en PR y en develop. STG
+  desplegado con el código nuevo.
+- El E2E pendiente cazó 4 fallas: 3 de specs desactualizados (locator "Tira N
+  de 2" ambiguo pager/heading + lazy-mount >6 slots, copy viejo de la modal,
+  orden borde/colores en letter sets — el owner confirmó 2026-09-11 mantener
+  el orden NUEVO también en abecedario/vocales) y 1 falla REAL de producto:
+  **el precio multi-unidad se duplicaba** (el finalize espeja
+  `metadata.unitCount` en todo V2 y `letterSetUnitCount` lo volvía a aplicar:
+  tira ×2 se cobraba ×4) → gate `surface === "letterset"` en
+  `design-units.ts` + regresiones. Además `/carrito` no mostraba el resumen
+  de pieza ("2 tiras de 3 fotos") que documentaba la Ola 27 → se renderiza
+  `pieceSummary` como ya hacía el checkout.
+- "Aplicar este diseño a todas" existe y funciona (store + headers de sección
+  + tarjetas de separadores + modal de slot para imán suelto + pager de sets).
+- Verificación visual local de los 4 puntos del owner: capturas en
+  `tmp/visual-ola26/` (checkerboard, IG blanca/negra con hashtags azules,
+  bloqueo de «Vista previa», tira 4×2, Nombre con borde encima de colores).
+- Operativa STG hecha: `migrate-cms-v2` (23 keys nuevas) + `seed-templates`
+  (photo-strip-4-fotos activa) + caché CMS invalidada desde /admin/contenido
+  (admin efímero E2E). Smoke en STG: tira 4 fotos × 2 unidades abre "Tira 1
+  de 2" / "Tira 2 de 2" con 4 celdas por sección ✓.
+- **Pendiente:** validación del owner en STG → con OK, merge
+  `develop`→`production` y los MISMOS dos scripts contra PRD (son upserts; el
+  env-guard solo exige `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1` para destructivos).
+  Recordatorio owner: precios de variantes "Sin imán" en STG están espejo.
+
 ## Cómo retomar
 
 ```bash
