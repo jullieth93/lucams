@@ -22,7 +22,7 @@ export function ContactForm() {
 
   useEffect(() => {
     if (state?.ok) {
-      toast.success("¡Mensaje enviado! Te respondemos en menos de 24h ✨");
+      toast.success("¡Mensaje enviado! Te respondemos en menos de 24h hábiles ✨");
     } else if (state && !state.ok && state.error) {
       toast.error(state.error);
     }
@@ -36,7 +36,7 @@ export function ContactForm() {
           ¡Listo! Recibimos tu mensaje
         </h3>
         <p className="text-brand-purple-dark/70 mt-2 text-sm">
-          Te respondemos a tu email en menos de 24h. Tu ticket es{" "}
+          Te respondemos a tu email en menos de 24h hábiles. Tu ticket es{" "}
           <span className="font-mono text-xs">{state.ticketId.slice(0, 8).toUpperCase()}</span>.
         </p>
         <p className="text-brand-muted mt-3 text-xs">Si es urgente, escríbenos por WhatsApp.</p>

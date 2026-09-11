@@ -89,8 +89,10 @@ export default async function ContactoPage() {
                   <CmsSetting settingKey="CONTACT_EMAIL" fallback="hola@lucamsshop.com" />
                 </a>
                 <p className="text-brand-muted mt-2 text-xs">
-                  Para temas legales:{" "}
-                  <CmsSetting settingKey="SECURITY_EMAIL" fallback="security@lucamsshop.com" />
+                  Datos personales y temas legales:{" "}
+                  <a href="mailto:habeas-data@lucamsshop.com" className="hover:text-brand-purple">
+                    habeas-data@lucamsshop.com
+                  </a>
                 </p>
               </div>
 

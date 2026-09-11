@@ -26,9 +26,11 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// Los 6 documentos cuyo fallback se puede mantener idéntico al .md. `cookies` y `security`
-// quedan fuera a propósito: sus markdown contienen backticks/`${` que romperían el template
-// literal del fallback, así que su copia se mantiene a mano (y no cambiaron en la Etapa 1).
+// Los 8 documentos legales, cuyo fallback debe ser idéntico al .md canónico.
+// `cookies` y `security` llevan backticks/`${` en su markdown: en el template
+// literal del fallback viajan escapados (\`) y pageFallback() los desescapa
+// antes de comparar (auditoría 2026-09-11: antes quedaban fuera del test y
+// divergieron en silencio — fallback v2/v1 vs canónico v3/v2).
 const LEGAL_DOCS = [
   "terminos",
   "devoluciones",
@@ -36,6 +38,8 @@ const LEGAL_DOCS = [
   "privacidad",
   "habeas-data",
   "subprocesadores",
+  "cookies",
+  "security",
 ] as const;
 
 const REPO_ROOT = join(__dirname, "..", "..", "..", "..");
@@ -47,12 +51,14 @@ function canonicalMarkdown(name: string): string {
   ).trim();
 }
 
-/** Extrae el contenido del template literal `const FALLBACK = \`…\`;` de la página. */
+/** Extrae el contenido del template literal `const FALLBACK = \`…\`;` de la página
+ *  y desescapa las secuencias del template literal (\` y \${) para comparar contra
+ *  el markdown crudo. */
 function pageFallback(name: string): string {
   const src = readFileSync(join(__dirname, name, "page.tsx"), "utf-8");
   const match = src.match(/const FALLBACK = `\n([\s\S]*?)\n`;/);
   if (!match) throw new Error(`No se encontró const FALLBACK en legal/${name}/page.tsx`);
-  return match[1].trim();
+  return match[1].trim().replaceAll("\\`", "`").replaceAll("\\${", "${");
 }
 
 describe("contenido legal — el fallback renderizado coincide con la fuente canónica", () => {

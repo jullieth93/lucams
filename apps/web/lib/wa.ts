@@ -22,7 +22,7 @@
 import "server-only";
 import { getSettingValue } from "@/lib/cms";
 
-const FALLBACK_NUMBER = "573208873826"; // Lucy WhatsApp temporal — ver .env.example
+const FALLBACK_NUMBER = "573208873826"; // WhatsApp del negocio (espejo del setting WA_NUMBER) — ver .env.example
 
 /**
  * Número wa.me de destino. Fuente de verdad: setting WA_NUMBER del CMS.

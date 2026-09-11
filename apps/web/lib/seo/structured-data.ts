@@ -5,8 +5,12 @@
  * (auditoría 2026-07-17). Builders PUROS (unit-testables); el render + nonce va en <JsonLd>.
  */
 
-/** URL canónica pública del sitio (sin trailing slash). Coincide con robots/sitemap/canonicals. */
-export const SITE_URL = "https://lucamsshop.com";
+import { getCanonicalSiteUrl } from "@/lib/public-url";
+
+/** URL canónica pública del sitio (sin trailing slash). Única fuente: la misma env
+ *  `NEXT_PUBLIC_SITE_URL` que alimenta robots/sitemap/canonicals (#28) — antes estaba
+ *  hardcodeada acá y en el JSON-LD de la home (auditoría de info pública 2026-09-11). */
+export const SITE_URL = getCanonicalSiteUrl();
 
 /**
  * Escapa `<`, `>`, `&` del JSON embebido en un `<script type="application/ld+json">`. Sin esto, un

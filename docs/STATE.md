@@ -13,6 +13,34 @@
 
 ## Resumen actual
 
+**🔍 2026-09-11 (tarde) — AUDITORÍA INTEGRAL DE INFORMACIÓN PÚBLICA, LEGAL Y CENTRO DE AYUDA
+ejecutada, saneada, APLICADA EN LOS 3 AMBIENTES y PAQUETE LEGAL v5 PUBLICADO Y EN VIVO.**
+Corrección de rumbo incluida: **PRD opera en modo `full` desde el 2026-09-03** (CLAUDE.md/ROADMAP
+E2; firma runbook: `/checkout/pago` → 307 `/carrito`) — el espejo local en `catalog` había
+despistado la primera lectura. Lo que quedó sanado: la DB arrastraba textos del modo viejo tras el
+flip (la home de PRD seguía diciendo «Cierras la compra por WhatsApp») → los textos sensibles al
+modo (`faq.01-04`, `home.howitworks.step3.description`) ahora **decide el código por modo** (la DB
+homologa la variante full y el modo catálogo fuerza la suya en render); tiempos coherentes en todo
+el sitio — **despacho real MÁX. 2 días hábiles** (Lucy, 2026-09-11: catálogo bajado de 3 a 2,
+NONE=1) + tránsito «2 a 5»; `/rastrear` explica el seguimiento por WhatsApp cuando no hay pagos
+online; cookies sin «[pendiente verificación]» (**v4 · 2026-09-11**); nota Gemini reescrita;
+fallbacks legales sincronizados y el test de sync cubre **los 8 documentos**; header legal por
+versión propia por página (sale con el próximo deploy); `faq.08` con el borrado self-serve;
+`/contacto` temas legales → `habeas-data@`. Scripts revertibles `update-public-content-20260911`,
+`update-production-days-20260911` y `publish-legal-v5-20260911` aplicados en LOCAL/STG/PRD;
+**homologación de contenido verificada por hash: los 3 ambientes idénticos** en el set auditado
+(22 claves CMS + productionDays + total de campos), con los drifts intencionales de siempre
+(precios «Sin imán» STG, crons STG, cuentas sandbox). **Los textos legales v5 están PUBLICADOS y
+en vivo** (decisión de Lucy del mismo día) con `PRIVACY_POLICY_VERSION` = «v5 · 2026-09-04»
+(re-consent activo); conservan la coletilla «en revisión por asesoría legal» hasta que opine el
+abogado. **Lo único que queda abierto:** la pregunta al abogado sobre identidad de la titular —
+la investigación legal ya está en `docs/COMPLIANCE.md` § «Identificación de la titular en el
+sitio» (art. 50 Ley 1480: publicación de nombre + NIT + dirección de notificación — esta última
+designable, NO la casa; la estrategia pura «a requerimiento» no satisface al pie de la letra el
+art. 50, pero hay camino de cumplimiento sin exponer PII). La auditoría quedó consolidada en esta
+entrada + COMPLIANCE.md + OPERATIONS.md (entradas 2026-09-11 y 2026-09-11 (2)) — doc fuente
+eliminado siguiendo la convención.
+
 **🚀 2026-09-11 — Ola multi-unidad (Ola 26→29) CERRADA y EN PRODUCCIÓN (release `f35ab29`).**
 La regla vigente: "Unidades" = N unidades del producto, CADA UNA diseñable por separado en el
 Estudio (el concepto "copias idénticas" ya no existe en las superficies personalizables), con el
@@ -41,6 +69,65 @@ sanciona testimonios inventados como publicidad engañosa); ④ crecimiento: **s
 la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia verificados; cuando haya
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
+
+## Sesión — 2026-09-11 (tarde) — Auditoría y saneamiento integral de info pública, legal y ayuda
+
+Auditoría completa de las superficies públicas (identidad/contacto, 8 páginas `/legal/*` con su
+canónico `.md` y fallbacks, centro de ayuda en DB, `/rastrear`, `/status`, JSON-LD, emails) contra
+la operación real. **Lección de rumbo:** la primera lectura asumió PRD en `catalog` (por el espejo
+`.env.local`) — la verificación en vivo con las 5 firmas del runbook (FASE 11.c) confirmó **PRD en
+`full` desde 2026-09-03**, como ya decían CLAUDE.md y ROADMAP E2. Los problemas REALES y su fix:
+
+- **Textos sensibles al modo servidos desde DB estática:** tras el flip a full, PRD seguía
+  mostrando «Cierras la compra por WhatsApp» en la home y el encuadre de catálogo en `faq.02`
+  (sembrados 2026-08-01); y durante la era catálogo se sirvió lo contrario en `faq.03/04` (Wompi).
+  Causa raíz: la DB no cambia al flipear `STORE_MODE`. Fix estructural: **el modo decide en
+  render** — `CodAwareCmsText` (how-it-works) y `/ayuda` fuerzan la variante catálogo del fallback
+  para los textos sensibles (`faq.01-04`) cuando `isCatalogMode()` (nuevo prop `forceFallback` en
+  `CmsMarkdown`); la DB homologa SIEMPRE la variante full en los 3 ambientes.
+- **Tiempos:** la promesa global decía 2 días/1 día y el catálogo 3/2–5. Lucy resolvió: **despacho
+  real MÁX. 2 días** → `productionDays` bajado a 2 (NONE=1) en los 3 ambientes +
+  `PRODUCTION_DAYS_DEFAULT="2"`, `DELIVERY_DAYS_ESTIMATE="2 a 5"`, seeds/admin ya en 2.
+- **Legales:** cookies `__cf_bm` «[pendiente verificación]» verificado (~30 min Cloudflare) →
+  **v4 · 2026-09-11**; nota Gemini (tier) reescrita sin la marca; fallbacks cookies/security
+  resincronizados al canónico y el test `legal-content-sync` ahora cubre **8/8 docs** (desescapa
+  el template literal); `LegalPageHeader` con `lastUpdated` por página (cookies v4, security v2 —
+  antes el header común decía «Versión 5» en todas); coletilla «antes del lanzamiento» retirada
+  (la tienda ya está en producción).
+- **Centro de ayuda/contacto:** `faq.08` con el flujo self-serve inmediato de `/mi-cuenta/eliminar`;
+  `/rastrear` en modo catálogo muestra tarjeta WhatsApp en vez de un formulario que nunca encuentra
+  nada (3 campos CMS `track.*-catalog` nuevos); «temas legales» en `/contacto` → `habeas-data@`
+  (era `security@`, el buzón de vulnerabilidades); SLA uniforme «24h hábiles».
+- **Menores:** fallback de consent `PRIVACY_POLICY_VERSION` «v1» → «v5 · 2026-09-04»; JSON-LD con
+  `getCanonicalSiteUrl()` (una sola fuente de dominio); `make migrate-cms-v2` reparado (ahora usa
+  dotenv — antes fallaba con `DATABASE_URL="undefined"`); `.PHONY` limpio; comentario «WhatsApp
+  temporal» retirado.
+- **Scripts (revertibles vía historial CMS):** `update-public-content-20260911.mjs` (12 campos) y
+  `update-production-days-20260911.mjs` (9 productos) — aplicados en LOCAL, STG y **PRD**; campos
+  `track.*` migrados en los 3. PRD: pendiente solo **invalidar caché CMS** (Lucy, botón en
+  /admin/contenido) — hasta entonces el sitio sirve los textos viejos (TTL 1 h).
+- **Gotcha operativo documentado en OPERATIONS.md:** un `next-server` huérfano en `:4000` sirvió
+  caché vieja durante la verificación (el caché CMS de dev vive en `.next/dev/cache`, no
+  `.next/cache`) — `make web-stop` no lo cazaba.
+- **Verificación:** vitest 3629 ✓ (1 fallo pre-existente ambiental `finalize-server-render`),
+  tsc/eslint limpios, render local en ambos modos verificado, PRD en vivo re-verificado con las
+  firmas del runbook.
+- **Paquete legal v5:** su premisa «tienda en línea activa» ES cierta en PRD — la publicación solo
+  espera al abogado (y ahí, `PRIVACY_POLICY_VERSION` → «v5 · 2026-09-04» + republicar los 6
+  cuerpos desde /admin/contenido). Sin doble bloqueo: era error de esta auditoría, corregido.
+- **Cierre del mismo día (decisiones de Lucy):** ① **v5 PUBLICADO en los 3 ambientes**
+  (`publish-legal-v5-20260911.mjs`: los 6 cuerpos + `PRIVACY_POLICY_VERSION` = «v5 · 2026-09-04»,
+  re-consent activo) — verificado en vivo tras su invalidación de caché: `/legal/terminos` sirviendo
+  v5, home con «Pagas en línea de forma segura» y «máx. 2 días hábiles»; ② **homologación
+  verificada por hash** (22 claves + productionDays + total campos): LOCAL ≡ STG ≡ PRD en el set
+  auditado — su flujo de validar en STG queda intacto, los 3 ambientes dicen lo mismo;
+  ③ **identidad de la titular:** investigación legal consolidada en COMPLIANCE.md §
+  «Identificación de la titular en el sitio» — art. 50 Ley 1480 pide publicación permanente de
+  nombre + NIT + dirección de notificación (designable, no la casa); «a requerimiento» puro no la
+  satisface al pie de la letra, pero hay cumplimiento sin exponer PII cuando exista RUT; ella le
+  hace la pregunta al abogado. ④ Despacho real = máx. 2 días aplicado en los 3 ambientes.
+- El documento fuente de la auditoría se elimina consolidado en esta entrada + COMPLIANCE.md +
+  OPERATIONS.md (convención docs/audits/README.md).
 
 ## Sesión — 2026-09-09 → 2026-09-11 (Ola multi-unidad: 5 rondas de validación del owner, release a PRD)
 
