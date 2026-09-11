@@ -308,6 +308,37 @@ export function instagramBackgroundHex(
 }
 
 /**
+ * Fondo EFECTIVO de la tarjeta (sobre el que se imprime el texto) — misma regla
+ * en grilla (studio-slot), preview del modal (studio-photo-preview) y producción:
+ *  - Instagram: binario blanco/negro (instagramBackgroundHex).
+ *  - Full-bleed (tarjeta entera teñida, sin frame-card): el borderColor elegido.
+ *  - Frame-card (Polaroid Clásica): borderColor ?? fill de la capa ?? blanco.
+ *  - Resto: la capa background de la plantilla (blanco en las activas).
+ * Ola 28 (2026-09-11): extraída para que el editor de texto (pestaña Texto del
+ * editor de slot) previsualice sobre el color REAL de la tarjeta y mida el
+ * contraste de la letra elegida (blanco sobre blanco quedaba invisible).
+ */
+export function cardBackgroundHex(opts: {
+  layers: ReadonlyArray<{ type: string; color?: unknown; fill?: unknown; src?: unknown }>;
+  borderColor: string | null | undefined;
+  frameFullBleed: boolean;
+}): string {
+  const { layers, frameFullBleed } = opts;
+  const borderColor = opts.borderColor ?? null;
+  const bgLayer = layers.find((l) => l.type === "background");
+  const bgHex = typeof bgLayer?.color === "string" ? bgLayer.color : "#FFFFFF";
+  if (isInstagramTemplate(layers)) return instagramBackgroundHex(borderColor, bgHex);
+  const fcLayer = layers.find((l) => l.type === "frame-card");
+  const hasFrameCard = !!fcLayer;
+  if (frameFullBleed && !hasFrameCard && borderColor) return borderColor;
+  if (hasFrameCard) {
+    const fcFill = typeof fcLayer?.fill === "string" ? fcLayer.fill : undefined;
+    return borderColor ?? fcFill ?? "#FFFFFF";
+  }
+  return bgHex;
+}
+
+/**
  * Variante del chrome SVG para fondo oscuro: `ig_post_3x4.svg` → `ig_post_3x4_dark.svg`.
  * Si no hay variante conocida, devuelve el src intacto.
  */

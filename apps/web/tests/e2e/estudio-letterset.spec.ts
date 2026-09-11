@@ -114,10 +114,25 @@ test.describe("estudio — sets de letras: selector «Con borde / Sin borde»", 
       await expect(page.getByRole("radio", { name: "Con borde" }), product.name).toBeEnabled();
       await expect(page.getByRole("radio", { name: "Sin borde" }), product.name).toBeEnabled();
 
+      // Ola 28 (owner 2026-09-11, 1.7): con «Sin borde» TAMPOCO aplica el pintado
+      // ficha a ficha — el hint "Toca una ficha…" desaparece y las fichas quedan
+      // no seleccionables (disabled), igual que la paleta de temas.
+      await expect(page.getByText(/Toca una ficha para darle el color/i), product.name).toHaveCount(
+        0,
+      );
+      const fichaA = page.getByRole("button", { name: "Pintar la ficha A" }).first();
+      await expect(fichaA, product.name).toBeDisabled();
+
       // Al volver a «Con borde» la sección se reactiva (la selección de colores se conserva).
       await page.getByRole("radio", { name: "Con borde" }).click();
       await expect(page.getByRole("button", { name: /Arcoíris/ }), product.name).toBeEnabled();
       await expect(page.getByRole("note"), product.name).toBeHidden();
+      // …y el pintado ficha a ficha vuelve (hint + fichas habilitadas).
+      await expect(
+        page.getByText(/Toca una ficha para darle el color/i),
+        product.name,
+      ).toBeVisible();
+      await expect(fichaA, product.name).toBeEnabled();
     }
   });
 });

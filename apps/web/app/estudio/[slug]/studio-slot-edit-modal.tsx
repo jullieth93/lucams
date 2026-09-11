@@ -50,6 +50,12 @@ type StudioSlotEditModalProps = {
   onApplyTextOverride: (layerId: string, override: TextOverride | null) => void;
   /** Text layer a preseleccionar al abrir la pestaña Texto (ej. al tocar un texto en el canvas). */
   focusTextLayerId?: string;
+  /**
+   * Ola 28 (owner 2026-09-11, 1.2.1.A) — color de la tarjeta sobre la que se
+   * imprime el texto (borderColor del canvas): el preview de la pestaña Texto
+   * pinta ese fondo y avisa cuando la letra elegida casi no contrasta.
+   */
+  cardColor?: string | null;
   /** Ola 10 — solicitud de cambiar la foto: cierra el editor y abre el picker. */
   onChangePhoto?: () => void;
   /**
@@ -121,6 +127,7 @@ export function StudioSlotEditModal({
   onRotate,
   onApplyTextOverride,
   focusTextLayerId,
+  cardColor = null,
   preview,
   onChangePhoto,
   hasProfilePhoto = false,
@@ -367,6 +374,7 @@ export function StudioSlotEditModal({
                   currentOverrides={currentTextOverrides}
                   onApply={onApplyTextOverride}
                   focusTextLayerId={focusTextLayerId}
+                  cardColor={cardColor}
                 />
               )}
             </TabsContent>
@@ -409,11 +417,13 @@ function TextLayersEditor({
   currentOverrides,
   onApply,
   focusTextLayerId,
+  cardColor = null,
 }: {
   layers: TextLayer[];
   currentOverrides: Record<string, TextOverride> | undefined;
   onApply: (layerId: string, override: TextOverride | null) => void;
   focusTextLayerId?: string;
+  cardColor?: string | null;
 }) {
   const texts = useStudioTexts();
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(() => {
@@ -438,6 +448,7 @@ function TextLayersEditor({
         layer={selectedLayer}
         currentOverride={currentOverrides?.[selectedLayer.id]}
         onApply={(override) => onApply(selectedLayer.id, override)}
+        cardColor={cardColor}
       />
     );
   }
@@ -518,6 +529,7 @@ function TextLayersEditor({
               onApply(selectedLayer.id, override);
               setSelectedLayerId(null);
             }}
+            cardColor={cardColor}
           />
         </div>
       ) : null}

@@ -29,6 +29,7 @@ import type { CanvasDataV2, StudioAsset, TextLayer } from "./types";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
 import type { CalendarFontKey } from "@/features/personalization/schemas";
 import { unitSlotRange } from "@/features/personalization/design-units";
+import { cardBackgroundHex } from "@/features/personalization/frame-palette";
 import {
   selectUnitFilledCount,
   selectUnitImagePlaceholder,
@@ -1262,6 +1263,14 @@ function StudioSlotEditModalWrapper({
   const unitTemplate = useStore(store, (s) => s.canvasData?.unitTemplate);
   const slotCount = useStore(store, (s) => s.canvasData?.slotCount ?? 0);
   const borderColor = useStore(store, (s) => s.canvasData?.borderColor ?? null);
+  // Ola 28 (1.2.1.A) — color EFECTIVO de la tarjeta para el preview de la pestaña
+  // Texto: borderColor puede ser null (la Clásica nace blanca sin setear nada) —
+  // la regla compartida resuelve el color real (frame-palette.cardBackgroundHex).
+  const cardBgForTextPreview = useMemo(
+    () =>
+      unitTemplate ? cardBackgroundHex({ layers: unitTemplate.layers, borderColor, frameFullBleed }) : null,
+    [unitTemplate, borderColor, frameFullBleed],
+  );
   // Multi-unidad (2026-09-09) — con imán suelto (unitSlots = 1, polaroid/cuadrados)
   // cada slot ES su unidad: el atajo "Aplicar este diseño a todas" vive en la
   // ventana de edición del slot (con unidades multi-slot va en el header de su
@@ -1325,6 +1334,10 @@ function StudioSlotEditModalWrapper({
       }}
       currentTextOverrides={slotTextOverrides}
       textLayers={textLayers}
+      // Ola 28 (1.2.1.A) — la pestaña Texto previsualiza sobre el color EFECTIVO
+      // de la tarjeta (resuelto con la regla compartida, no el borderColor crudo
+      // que puede ser null) y avisa si la letra elegida casi no contrasta.
+      cardColor={cardBgForTextPreview}
       allowFilters={allowFilters}
       onClose={onClose}
       onApplyFilter={(filter) => {

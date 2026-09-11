@@ -487,6 +487,41 @@ de todas las superficies personalizables.**
   `metadata.unitCount` escrito al finalizar). La Vista previa del pedido y la
   confirmación muestran el mismo montaje de todas las unidades.
 
+### Ola 28 (owner 2026-09-11) — validación ronda 4: texto visible donde hace falta
+
+- **IG: los textos por defecto SE VEN** (excepción a Ola 25, SOLO plantilla
+  Instagram — el owner revirtió la invisibilidad: "no se ve texto preview, se ve
+  vacío"). `renderText` gana `showTemplateDefault` (lo pasa `renderLayer` cuando
+  `isIg`): sin override del cliente se dibuja el texto de la plantilla con el
+  color por capa de Ola 26 (oscuros sobre tarjeta blanca / claros sobre negra;
+  hashtags siempre azules) en TODAS las superficies Konva (grilla, preview de la
+  modal, 3D) y queda en el snapshot de producción. Sin riesgo de imprimir
+  placeholders: los 4 textos requeridos siguen BLOQUEANDO «Vista previa» hasta
+  tener override (Ola 26, intacto) y "362 me gusta" es decorativo (su default se
+  imprime, como siempre se vio). Las demás plantillas siguen naciendo vacías.
+- **«Editar» con letra casi invisible sobre la tarjeta** (1.2.1.A: blanco sobre
+  tarjeta blanca no se veía): el preview de la pestaña Texto pinta el fondo del
+  color REAL de la tarjeta (`cardColor` = borderColor del canvas, cableado
+  slot-edit-modal → form) y, con contraste casi nulo (`isLowContrastOnCard`,
+  ratio WCAG < 1.2 — `lib/contrast.ts`), cambia a la cuadrícula de
+  "transparencia" (WHITE_CARD_CHECKER) + aviso CMS
+  (`estudio.texto.color-sin-contraste-hint`). Ayuda 100% DOM del editor: el PNG
+  imprime el color elegido tal cual.
+- **Tiras: el banner del Estudio pasa de "¿Cuántas fotos lleva tu imán?" a
+  «Unidades»** (1.3.A): la composición (3/4 fotos por tira) se elige en la PDP y
+  no se repite en el lienzo. `StudioUnitCountControl` (nuevo) ajusta
+  `unitCount` vía `store.setUnitCount` (redeclara el modelo: slotCount =
+  unitSlots × N, slots preservados por índice, grid por unidad recalculado;
+  tope = cap de 50 slots vía `maxUnitsForProduct`). La detección usa la MISMA
+  regla del store (`unitSlots > facesPerUnit`) → polaroid/separadores conservan
+  el stepper de fotos (allí el N de fotos ES el nº de unidades). Textos CMS:
+  `estudio.lienzo.unidades-*`.
+- **«Sin borde» apaga también el pintado ficha a ficha** (1.7 — nombre +
+  abecedario/vocales): sin marco de color no hay nada que pintar → el hint
+  "Toca una letra/ficha…" desaparece, las fichas quedan NO seleccionables
+  (disabled) y la fila de colores por ficha se oculta. La paleta de temas ya se
+  desactivaba (Ola 24/26); esto cierra la superficie.
+
 ## Piezas posteriores (2026-07 en adelante) — confirmación con copias, letras, IA, 3D, copy CMS
 
 - **Modal de confirmación** (`studio-preview-modal.tsx`): «Así se verá tu pedido» muestra el

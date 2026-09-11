@@ -18,7 +18,7 @@
   de pieza ("2 tiras de 3 fotos") que documentaba la Ola 27 → se renderiza
   `pieceSummary` como ya hacía el checkout.
 - "Aplicar este diseño a todas" existe y funciona (store + headers de sección
-  + tarjetas de separadores + modal de slot para imán suelto + pager de sets).
+  - tarjetas de separadores + modal de slot para imán suelto + pager de sets).
 - Verificación visual local de los 4 puntos del owner: capturas en
   `tmp/visual-ola26/` (checkerboard, IG blanca/negra con hashtags azules,
   bloqueo de «Vista previa», tira 4×2, Nombre con borde encima de colores).

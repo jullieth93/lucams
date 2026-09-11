@@ -992,9 +992,11 @@ function LetterSetUnitPanel({
         disabledHint={texts.letras.bordeSinColoresHint}
       />
 
-      {/* Preview del set (WYSIWYG) — cada ficha es seleccionable para pintarla a gusto. */}
+      {/* Preview del set (WYSIWYG) — cada ficha es seleccionable para pintarla a gusto.
+          Ola 28 (owner 2026-09-11, 1.7): con «Sin borde» no hay marco de color que
+          pintar → sin hint y fichas NO seleccionables (la paleta ya quedó inerte). */}
       <div className="bg-brand-cream/50 mt-5 rounded-2xl p-5">
-        {selectedIndex === null && (
+        {withBorder && selectedIndex === null && (
           <p className="text-brand-purple-dark mb-3 flex items-center justify-center text-center text-xs font-semibold">
             <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
               {texts.letras.tocaHint}
@@ -1005,16 +1007,21 @@ function LetterSetUnitPanel({
           {letters.map((ch, i) => {
             const tile = activeTiles[ch];
             const color = effectiveColors[i];
-            const isSel = selectedIndex === i;
+            const isSel = withBorder && selectedIndex === i;
             return (
               <button
                 key={ch}
                 type="button"
-                onClick={() => toggleSelected(i)}
-                aria-pressed={isSel}
+                onClick={() => withBorder && toggleSelected(i)}
+                disabled={!withBorder}
+                aria-pressed={withBorder ? isSel : undefined}
                 aria-label={fillStudioText(texts.letras.pintarAria, { letra: ch })}
                 className={`flex flex-col items-center rounded-xl transition ${
-                  isSel ? "ring-brand-purple scale-105 ring-2 ring-offset-2" : "hover:scale-105"
+                  isSel
+                    ? "ring-brand-purple scale-105 ring-2 ring-offset-2"
+                    : withBorder
+                      ? "hover:scale-105"
+                      : "cursor-default"
                 }`}
               >
                 {/* Ficha VERTICAL (aspect 5/6.5) — espeja el imán físico rectangular. Sin borde:
@@ -1045,8 +1052,9 @@ function LetterSetUnitPanel({
           })}
         </div>
 
-        {/* Fila de colores para la ficha seleccionada — control compartido */}
-        {selectedIndex !== null && letters[selectedIndex] && (
+        {/* Fila de colores para la ficha seleccionada — control compartido.
+            Con «Sin borde» no aplica (no hay marco de color que pintar). */}
+        {withBorder && selectedIndex !== null && letters[selectedIndex] && (
           <SwatchRow letter={letters[selectedIndex]} onPick={setColorForSelected} />
         )}
       </div>
