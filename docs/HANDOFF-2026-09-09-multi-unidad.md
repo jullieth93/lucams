@@ -101,8 +101,12 @@ máximo horizontal; 4 unidades → 3+1"). Detalle: README del estudio, "Ola 29".
   la nube PRD; ambos scripts son upserts, sin env-guard).
 - Ramas normalizadas: `wip/multi-unidad-ola26-27`, `wip/ola28-validacion-owner`
   y `wip/ola29-validacion-owner` (ya mergeadas por PR #42/43/44) borradas en
-  local y remoto. Quedan `develop`, `production`, `catalogo-whatsapp` (rama
-  viva), `master` (legacy) y las de dependabot.
+  local y remoto. Mismo día, segunda pasada (a pedido del owner): también
+  `catalogo-whatsapp` (0 commits sin mergear en develop), `master` (0 sin
+  mergear en production) y `backup/pre-e88a6ad-20260728` (snapshot contenida en
+  develop) borradas — quedan SOLO `develop` y `production` (más las de
+  dependabot, que maneja Dependabot con sus PRs). Trigger de `catalogo-whatsapp`
+  retirado de `ci.yml`.
 - **Recordatorio (formalidad, no bloquea):** invalidar el caché CMS en PRD
   desde /admin/contenido («Actualizar caché de contenido»). Las 54 keys nuevas
   sirven YA con su texto por defecto (idéntico al sembrado) porque el migrate

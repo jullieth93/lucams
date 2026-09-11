@@ -9,9 +9,9 @@ name: CI
 # `master` queda fuera a propósito: es legado local, no existe en `origin`.
 on:
   push:
-    branches: [develop, production, catalogo-whatsapp]
+    branches: [develop, production]
   pull_request:
-    branches: [develop, production, catalogo-whatsapp]
+    branches: [develop, production]
 
 # Cancela runs anteriores del mismo PR/branch si llega uno nuevo.
 concurrency:
