@@ -42,7 +42,17 @@ ALTER TABLE "LoyaltyTxn"        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Referral"          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "BlogPost"          ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "WebhookEvent"      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "StockReservation"  ENABLE ROW LEVEL SECURITY;
+-- StockReservation se retiró del schema (2026-09-12, migración Prisma
+-- 20260912120000_drop_*): en un setup fresco la tabla ya no existe cuando este
+-- archivo corre (las migraciones Prisma se aplican antes) — se habilita solo si existe.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'StockReservation'
+  ) THEN
+    ALTER TABLE "StockReservation" ENABLE ROW LEVEL SECURITY;
+  END IF;
+END $$;
 ALTER TABLE "AdminActionLog"    ENABLE ROW LEVEL SECURITY;
 
 -- ════════════════════════ CATÁLOGO PÚBLICO ════════════════════════

@@ -154,7 +154,12 @@ export default async function MiCuentaSoportePage() {
               <p className="text-brand-muted mt-1 text-sm whitespace-pre-line">{t.message}</p>
               {t.resolvedAt && (
                 <p className="text-brand-muted mt-2 text-xs">
-                  Resuelta el {dateFmt.format(t.resolvedAt)} — te avisamos por correo.
+                  <CmsText blockKey="account.support.resolvedLabel" fallback="Resuelta el" />{" "}
+                  {dateFmt.format(t.resolvedAt)}{" "}
+                  <CmsText
+                    blockKey="account.support.resolvedNotice"
+                    fallback="— te avisamos por correo."
+                  />
                 </p>
               )}
             </li>

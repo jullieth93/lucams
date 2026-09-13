@@ -22,6 +22,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { listTemplatesByProduct } from "@/lib/catalog";
+import { CmsText } from "@/components/cms/cms-text";
 
 export async function TemplatesStrip({
   productSlug,
@@ -41,10 +42,13 @@ export async function TemplatesStrip({
       <div className="mb-4">
         <h2 className="text-brand-purple-dark text-lg font-bold">
           <Sparkles className="text-brand-purple mr-1 inline h-4 w-4" />
-          Empieza desde una plantilla
+          <CmsText blockKey="pdp.templates.title" fallback="Empieza desde una plantilla" />
         </h2>
         <p className="text-brand-purple-dark/70 text-sm">
-          Elige un punto de partida y personaliza con tus fotos
+          <CmsText
+            blockKey="pdp.templates.subtitle"
+            fallback="Elige un punto de partida y personaliza con tus fotos"
+          />
         </p>
       </div>
 
