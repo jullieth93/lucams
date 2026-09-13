@@ -307,7 +307,7 @@ export default async function AdminObservabilityPage() {
           <p className="text-brand-muted mt-2 text-xs">
             No es un cron de la base de datos: lo corre <strong>GitHub Actions</strong> (workflow{" "}
             <code>backup.yml</code>) y reporta el éxito a la app. Si supera 36h sin latido llega una
-            alerta — revisá la pestaña Actions del repo.
+            alerta — revisa la pestaña Actions del repo.
           </p>
 
           {/* Top errores */}

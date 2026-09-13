@@ -351,7 +351,14 @@ export async function GET() {
 
 ### Monitoreo externo
 
-Post-lanzamiento: configurar **UptimeRobot** o **BetterStack** (Free) para pingear `/api/health` cada 5 min y alertar si cae > 3 min. Detalle de jobs en `/api/health/crons` y de versión/entorno en `/api/health/all` requieren el header `x-cron-secret` (auditoría 2026-08-24, C-3/C-4) — ambos monitores soportan headers custom; la respuesta pública queda mínima (`status` + `timestamp`, 503 si degradado).
+**Implementado (2026-09-13) sin SaaS:** el workflow `.github/workflows/uptime-monitor.yml`
+polea los 5 healthchecks de PRD cada 30 min desde GitHub Actions y falla (con email de
+notificación de Actions) si alguno no responde 2xx tras un retry a los 60 s — ver
+`docs/OPERATIONS.md` § Plan de monitoreo. Detalle de jobs en `/api/health/crons` y de
+versión/entorno en `/api/health/all` requiere el header `x-cron-secret` (auditoría 2026-08-24,
+C-3/C-4); la respuesta pública queda mínima (`status` + `timestamp`, 503 si degradado).
+~~Post-lanzamiento: configurar UptimeRobot o BetterStack (Free).~~ Descartado por Lucy
+(2026-09-13): sin dependencia de tiers gratuitos que luego piden suscripción.
 
 ---
 
@@ -442,5 +449,6 @@ Sin culpas. Sin "el dev se equivocó". Foco en sistema.
 
 - Decisión de monitoreo de errores (ADR-022): Sentry Free o alternativa.
 - Métricas custom expuestas (`/api/metrics`).
-- UptimeRobot/BetterStack para healthchecks externos.
+- ~~UptimeRobot/BetterStack para healthchecks externos.~~ Resuelto con workflow propio
+  (`uptime-monitor.yml`, 2026-09-13 — sin SaaS).
 - Eventualmente: distributed tracing si la arquitectura crece.

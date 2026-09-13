@@ -747,16 +747,25 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 ---
 
-## Plan de monitoreo (TBD — Fase 7)
+## Plan de monitoreo (RESUELTO 2026-09-13 — uptime-monitor propio, sin SaaS)
 
-> **Decisión pendiente:** se evaluará una alternativa gratuita antes del lanzamiento. Opciones:
+> **Decisión (Lucy, 2026-09-13):** ningún monitor SaaS gratuito (UptimeRobot/BetterStack/Sentry)
+> por dependencia de tiers que luego piden suscripción. En su lugar, **workflow propio
+> `.github/workflows/uptime-monitor.yml`**: cada 30 min (minutos 13 y 43) hace GET a
+> `/api/health/all`, `/api/health/crons`, `/api/health/resend`, `/api/health/wompi` y
+> `/api/health/aveonline` de PRD, con una ronda de retry a los 60 s; si alguno sigue sin
+> responder 2xx, el job falla y **GitHub envía el email de notificación** (el mismo canal que
+> ya usan `backup.yml` y `nightly-full.yml`). Cubre el ciego histórico: la caída del propio
+> sistema de alertas (dead-man de crons), caída de Vercel y probes reales de Wompi/Aveonline/
+> Resend caídos. Costo: ~1 450 min/mes de Actions. Nota: GitHub auto-deshabilita schedules tras
+> 60 días de inactividad del repo (el repo se mueve a diario).
 >
-> 1. **Sentry Free** — 5k eventos/mes, 1 usuario. Stack traces + alertas.
-> 2. **BetterStack** — logging + uptime monitor, free tier generoso.
-> 3. **Highlight.io** — session replay + errores.
-> 4. **Vercel Logs + alertas custom** — `error.tsx` global que postea a Resend cuando se capture un error 500.
+> Complemento in-app (ya implementado en la remediación 360°): heartbeat de backups vía
+> `POST /api/cron/backup-heartbeat` (lo invoca `backup.yml` al terminar; regla `backup_stale`
+> si pasan >36 h sin latido) y `/api/health/crons` con los 9 jobs.
 >
-> Decisión final se documenta como ADR-016 cuando se tome.
+> ~~Decisión pendiente: alternativa gratuita antes del lanzamiento.~~ (Las opciones 1-4 quedan
+> descartadas; ADR futura solo si se necesita algo más fino que el workflow.)
 
 ### Mientras tanto (Fase 0a–6)
 
