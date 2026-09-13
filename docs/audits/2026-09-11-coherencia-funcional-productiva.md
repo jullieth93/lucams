@@ -725,3 +725,47 @@ Estado verificado de PRD (read-only, 2026-09-11): cupones 43 (42 con señal test
 | **PENDIENTE DE PRD** | N-05-PRD, saneamiento de tablas/jobs PRD (Q.6), validación en vivo post-despliegue |
 
 Hallazgos asociados cerrados con estos IDs: CF-01, CF-02, CF-03, CF-05(código+LOCAL/STG), CF-06, CF-07, CF-08, CF-09, CF-10, CF-11, CF-13, CF-14, CF-15, CF-16, CF-17, CF-18, CF-19, CF-20, CF-22(código), CF-23(propuesta), CF-24, CF-25, CF-26, CF-27, CF-28, CF-29, CF-30, CF-31, CF-32, CF-33, CF-34, CF-35. Parciales/por decisión del operador: CF-04 (causa raíz), CF-12 (bandeja cliente, ADR-092), CF-21 (operación wishlist), CF-22 (monitor externo).
+
+---
+
+## R. Seguimiento 2026-09-13 — despliegue a STG y cierre de riesgos residuales
+
+> Con la aprobación de Lucy ("procede como consideres" sobre los 5 puntos abiertos), la remediación se desplegó a STG y cada riesgo residual de §Q.4 quedó acotado. PRD sigue intacto (solo lecturas).
+
+### R.1 Bounce rate PRD (CF-04) — causa raíz CONFIRMADA: 100 % suites, tasa real 0 %
+
+Consulta agregada por dominio sobre `EmailEvent` de PRD (sin PII individual, 2026-09-13):
+
+| Dominio | bounced | delivered |
+|---|---|---|
+| `lucams.test` | 131 | 0 |
+| `e2e.test` | 109 | 0 |
+| `lucamsshop.com` | 0 | 224 |
+| `gmail.com` | 0 | 7 |
+| `resend.dev` | 0 | 1 |
+
+El 100 % de los rebotes son a dominios `.test` (RFC 2606, indeliverables por diseño) generados por las corridas de integración/E2E que enviaron correos reales con la key de PRD (subjects tipo "Reembolso procesado — pedido LCM-TEST-VOID-…", "Pedido LCM-2026-000X confirmado"). **No hay bots, ni typos, ni problema de reputación real: la tasa de rebote de clientes reales es 0 %.** Acción tomada: `getEmailDeliverabilityStats` excluye el TLD `.test` de la tasa (lo medido antes fingía una crisis inexistente) y el tile de `/admin/observability` muestra los excluidos aparte. La regla `email_bounce_rate` ahora mide solo tráfico real. **CF-04 queda cerrada en causa y en visibilidad.**
+
+### R.2 Despliegue a STG y validación en vivo
+
+- Commits: `45f3e88` (remediación integral, 240 archivos), `8c6e604` (bypass self-fetches), `91fade4` (fix CI setup en frío + ratchet CMS), `f6eb629` (tuteo + docs monitor).
+- Migraciones STG en orden Q.5: `00000000000032` → `prisma migrate deploy` (2) → `00000000000033`. Jobs resultantes: 5 (cms-publish, purge-anon-designs, purge-event-logs, expire-pending-orders, rate_limit_cleanup); los 5 de email siguen desagendados por diseño.
+- Verificado en vivo: `/api/health/all` → **ok (5/5)**; `/api/health/crons` → ok; `/status` → 14/14 tiles verdes; `/admin/mensajes` → redirect a login/soporte; `/mi-cuenta/soporte` → guard correcto; E2E `smoke + admin-inventory + homolog-cookies` → **11/11 contra STG**; el cron `expire-pending-orders` corrió manualmente (primer latido) y auto-canceló la orden smoke LCM-2026-0003 (abandonada 2026-08-12) — comportamiento diseñado.
+- Incidencia resuelta: los self-fetches de `/api/health/all` y `/status` leían el 302 de Deployment Protection como caída en previews (falsa alarma en el ambiente de validación) → `vercelBypassHeaders()` + `VERCEL_BYPASS_TOKEN` creada en el runtime de preview (Vercel CLI) + redeploy. Producción no se afecta (la var no existe allí).
+- Incidencia CI: setup en frío roto por la referencia a `StockReservation` en `00000000000002` (la migración Prisma de drop corre antes) → guard de existencia, verificado con la secuencia exacta del CI contra una DB scratch; y el ratchet de contenido detectó 4 literales nuevos → pasaron por `CmsText` con sus 11 claves declaradas en el site map (sembradas en LOCAL+STG: BLOCK 1013→1024). Voseo "revisá" → "revisa" (el lint de voseo es paso solo-CI; queda en la checklist local).
+
+### R.3 Residuales resueltos
+
+| Ítem | Resolución |
+|---|---|
+| Monitor externo (CF-22) | **Workflow propio** `.github/workflows/uptime-monitor.yml` (cada 30 min desde GHA, retry 60 s, email de Actions si algún health de PRD no responde 2xx). Sin SaaS ni tiers — decisión de Lucy. OPERATIONS § Plan de monitoreo actualizado; UptimeRobot/BetterStack descartados |
+| `LUCAMS_10` | Archivado en LOCAL+STG (`one-shot/archive-lucams10-20260913.mjs`, soft-delete reversible). Lucy confirmó que todo cupón existente era de pruebas |
+| Wishlist (CF-21) | Aceptada como feature de cliente (ADR-098): finalidad propia visible en `/mi-cuenta/favoritos`, cubierta por la supresión de cuenta. Palanca de marketing diferida post-lanzamiento |
+| Bandeja de tickets (ADR-092) | Implementada: `/mi-cuenta/soporte` lista los tickets del cliente (estado, fechas, mensaje propio; respuesta humana por correo declarada) + tarjeta en el hub |
+| Conciliación Wompi (5.4) | El cron de expiración ahora **verifica la transacción en Wompi antes de cancelar**: APPROVED + monto exacto → corre la saga (auto-sanación del webhook perdido); monto desfasado → `needsReconciliation`; resto → cancela. Cobertura completa sin endpoint de listado de Wompi |
+
+### R.4 Lo que sigue pendiente (solo con Lucy)
+
+1. **Frase ceremonial para PRD**: cupones test (42), settings zombi (14), migraciones `00000000000032/33` + deploy a producción. Comandos exactos en Q.6.
+2. **Homologación de catálogo (N-20)**: decisión por producto sobre las pausas de PRD y la dirección de sincronización (propuesta: PRD como fuente tras cada release).
+3. **`CRON_JOBS_DISABLED` de STG (Vercel preview)**: añadir `expire-pending-orders` si se quiere el mismo enmascaramiento que los demás jobs no agendados (hoy el job corre y latía OK; sin la var, un fallo suyo degradaría el health de STG — coherente pero ruidoso en previews).

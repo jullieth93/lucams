@@ -13,6 +13,25 @@
 
 ## Resumen actual
 
+**🚀 2026-09-13 — REMEDIACIÓN 360° DESPLEGADA A STG Y VALIDADA EN VIVO; seguimiento de riesgos
+residuales CERRADO en 5 frentes.** Tres commits en `develop` (`45f3e88` remediación integral,
+`8c6e604` bypass en self-fetches, `91fade4` fix CI setup en frío + ratchet CMS, `f6eb629` tuteo +
+docs) pusheados y desplegados a STG, donde TODO quedó verificado en vivo: `/api/health/all` →
+**ok con los 5 servicios ok** (hubo que añadir `VERCEL_BYPASS_TOKEN` al runtime de preview vía
+CLI + redeploy — los self-fetches sin bypass leían el 302 de Deployment Protection como caída
+falsa); `/status` → 14/14 tiles verdes; cron `lucams-expire-pending-orders` corrió y
+auto-canceló la orden smoke abandonada de agosto; E2E (smoke + admin-inventory + cookies)
+**11/11 contra STG**; migraciones aplicadas en STG (032 → prisma ×2 → 033: 5 jobs, los de email
+siguen desagendados). **Seguimiento de residuales:** ① bounces PRD — causa raíz CONFIRMADA con
+datos: el 100 % de los 240 bounces son a dominios `*.test` de las suites (tasa real = 0 %); la
+métrica de entregabilidad ya los excluye + tile lo muestra. ② Monitor externo RESUELTO sin SaaS
+(decisión Lucy): workflow propio `uptime-monitor.yml` cada 30 min desde GitHub Actions. ③
+`LUCAMS_10` archivado en LOCAL+STG (todo cupón era de pruebas). ④ Wishlist aceptada como feature
+de cliente (ADR-098). ⑤ `/mi-cuenta/soporte` ya muestra sus tickets al cliente, y el cron de
+expiración VERIFICA Wompi antes de cancelar (sana las APPROVED con webhook perdido). CI del
+último push en verificación. **Pendientes con Lucy:** la frase ceremonial para PRD (Q.6 del
+informe: cupones test, settings zombi, migraciones) + homologación de catálogo (N-20).
+
 **🛠️ 2026-09-12 — REMEDIACIÓN 360° EJECUTADA COMPLETA (25/28 IDs CERRADOS, 3 PARCIALES) en
 LOCAL + STG; PRD intacto pendiente de despliegue + frase ceremonial.** Todo en working tree de
 `develop` (sin commits). Lo más importante: la creación de la orden ahora RECHAZA items
@@ -106,6 +125,30 @@ sanciona testimonios inventados como publicidad engañosa); ④ crecimiento: **s
 la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia verificados; cuando haya
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
+
+## Sesión — 2026-09-13 — Despliegue a STG + cierre de riesgos residuales
+
+- **Despliegue:** commit `45f3e88` (240 archivos) → push a `develop` → Vercel STG. Migraciones
+  aplicadas en STG en orden: `00000000000032` (agenda `lucams-expire-pending-orders`) →
+  `prisma migrate deploy` (2 migraciones) → `00000000000033` (des-agenda
+  `stock_reservation_cleanup`). STG queda con 5 jobs (los 5 de email siguen desagendados).
+- **Incidencias resueltas en la sesión:** ① CI rojo ×2 (setup en frío: `00000000000002`
+  referenciaba la tabla eliminada StockReservation → guard de existencia, verificado con DB
+  scratch y la secuencia exacta del CI; ratchet CMS: 4 literales → CmsText + 11 claves nuevas
+  en el site map, sembradas en LOCAL+STG) y voseo en un tile ("revisá"→"revisa"; el voseo lint
+  es paso solo-CI, añadido a la checklist local). ② `/api/health/all` y `/status` reportaban
+  todo caído en previews protegidos: los self-fetches no llevaban bypass → helper
+  `vercelBypassHeaders()` + `VERCEL_BYPASS_TOKEN` añadida al runtime de preview (Vercel CLI) +
+  redeploy → 5/5 ok y 14/14 tiles verdes.
+- **Riesgos residuales cerrados:** bounces PRD = 100 % suites (`*.test`, tasa real 0 % — la
+  métrica ya los excluye); monitor externo = workflow propio `uptime-monitor.yml` (sin SaaS,
+  decisión Lucy); `LUCAMS_10` archivado en LOCAL+STG; wishlist aceptada (ADR-098);
+  `/mi-cuenta/soporte` en vivo; expire-pending verifica Wompi antes de cancelar (sana APPROVED).
+- **Validación STG en vivo:** E2E 11/11; `/api/health/crons` ok tras primer latido manual del
+  cron nuevo (que además auto-canceló la orden smoke de agosto, como fue diseñado);
+  `/admin/mensajes` → redirect; `/mi-cuenta/soporte` → guard a login correcto.
+- **Pendiente:** frase ceremonial para PRD (cupones test, settings zombi, migraciones 032/033,
+  despliegue) y homologación de catálogo (N-20) — ambas esperan a Lucy.
 
 ## Sesión — 2026-09-12 — Remediación controlada completa de la auditoría 360° (N-01…N-28)
 
