@@ -27,16 +27,7 @@ export async function listGalleryImages(tag: string): Promise<GalleryImage[]> {
   return rows;
 }
 
-/** URL pública de un diseño de la galería (para la acción de llenar slot). */
-export async function getGalleryImageUrl(id: string): Promise<string | null> {
-  const row = await prisma.designGalleryImage.findFirst({
-    where: { id, isActive: true, deletedAt: null },
-    select: { imageUrl: true },
-  });
-  return row?.imageUrl ?? null;
-}
-
-/** Ola 21 — Lee el diseño prediseñado completo (cara A y cara B). */
+/** Ola 21 — Lee el diseño prediseñado completo (cara A y cara B). Es el reader de la acción de llenar slot. */
 export async function getGalleryImageById(
   id: string,
 ): Promise<{ id: string; imageUrl: string; imageUrlB: string | null } | null> {
@@ -158,19 +149,6 @@ export async function createGalleryImage(opts: {
     select: { id: true },
   });
   return row;
-}
-
-export async function updateGalleryImage(
-  id: string,
-  opts: { name?: string; imageUrl?: string; imageUrlB?: string | null; isActive?: boolean },
-): Promise<void> {
-  const data: Record<string, unknown> = {};
-  if (opts.name !== undefined) data.name = opts.name;
-  if (opts.imageUrl !== undefined) data.imageUrl = opts.imageUrl;
-  if (opts.imageUrlB !== undefined) data.imageUrlB = opts.imageUrlB ?? null;
-  if (opts.isActive !== undefined) data.isActive = opts.isActive;
-  if (Object.keys(data).length === 0) return;
-  await prisma.designGalleryImage.update({ where: { id }, data });
 }
 
 export async function deleteGalleryImage(id: string): Promise<void> {

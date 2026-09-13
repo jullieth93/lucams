@@ -124,6 +124,10 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
       "WOMPI_EVENTS_SECRET",
       "WOMPI_INTEGRITY_SECRET",
       "WOMPI_DISABLE_TIMESTAMP_CHECK",
+      // N-22a — el route ahora llama al sender REAL de "pago no aprobado" en la rama
+      // DECLINED/ERROR; sin suprimir la key pegaría a Resend de verdad. Lo que se
+      // ejerce acá es la persistencia del claim (paymentFailedNotifiedAt), no el envío.
+      "RESEND_API_KEY",
     ]) {
       saved[k] = process.env[k];
     }
@@ -133,6 +137,7 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
     process.env.WOMPI_EVENTS_SECRET = EVENTS_SECRET;
     process.env.WOMPI_INTEGRITY_SECRET = "integ_test_x";
     delete process.env.WOMPI_DISABLE_TIMESTAMP_CHECK; // queremos probar los checks reales
+    delete process.env.RESEND_API_KEY; // N-22a — sender real, envío suprimido (skipped)
   });
 
   afterAll(async () => {
@@ -337,9 +342,9 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
     expect(sagaCalls).toHaveLength(0);
   });
 
-  it("DECLINED → noop (orden sigue PENDING_PAYMENT para el reintento de Wompi, doc oficial)", async () => {
+  it("DECLINED → noop (orden sigue PENDING_PAYMENT para el reintento de Wompi, doc oficial) + N-22a aviso anti-spam", async () => {
     const ref = `${RUN}-LCM-DECL`;
-    await makeOrder(ref, 55000);
+    const orderId = await makeOrder(ref, 55000);
     const res = await POST(
       req(
         signedEvent({
@@ -353,6 +358,14 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
     );
     expect(res.status).toBe(200);
     expect(sagaCalls).toHaveLength(0); // NO se cancela: Wompi reintenta con la misma reference
+    // N-22a — el route SÍ notificó al cliente (sender real, no mockeado): la marca
+    // anti-spam paymentFailedNotifiedAt quedó persistida; la orden sigue viva.
+    const o = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true, paymentFailedNotifiedAt: true },
+    });
+    expect(o?.status).toBe("PENDING_PAYMENT");
+    expect(o?.paymentFailedNotifiedAt).not.toBeNull();
   });
 
   it("VOIDED → processFailedPaymentOrder (dinero capturado)", async () => {

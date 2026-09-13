@@ -13,6 +13,11 @@
   homologada en LOCAL/STG/PRD (2026-08-29/30)**. Su §11 es el cierre hallazgo por hallazgo y
   la lista de acciones de operador. Es el formato de referencia para futuras auditorías de
   seguridad.
+- **`2026-09-11-coherencia-funcional-productiva.md`** — Auditoría 360° de coherencia funcional
+  productiva (2026-09-11), **remediada el 2026-09-11/12**. Sus decisiones quedaron como ADR-090 a
+  ADR-097 en DECISIONS.md y su parte operativa en el changelog 2026-09-12 de OPERATIONS.md
+  (crons 9 HTTP + 1 SQL, migraciones 032/033 + 2 Prisma, saneamiento LOCAL/STG, split de seeds y
+  env-guard fail-closed).
 - Post-mortem de incidente activo: `docs/incidents/2026-05-09-secret-key-leak.md` (fuera de
   esta carpeta, enlazado desde SECURITY.md).
 

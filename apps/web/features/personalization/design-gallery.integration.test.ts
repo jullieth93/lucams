@@ -7,7 +7,6 @@ import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import {
   listGalleryImages,
-  getGalleryImageUrl,
   listGalleryAdmin,
   createGalleryImage,
   deleteGalleryImage,
@@ -40,18 +39,14 @@ describe.skipIf(!hasDb)("design-gallery — integración", { timeout: 30000 }, (
     const list = await listGalleryImages(TAG);
     expect(list.map((i) => i.name)).toEqual(["Flores", "Corazón"]);
 
-    // getUrl del activo
-    expect(await getGalleryImageUrl(a.id)).toBe("https://x/1.png");
-
     // admin list del tag
     const adminList = await listGalleryAdmin(TAG);
     expect(adminList).toHaveLength(2);
 
-    // borrar (soft) → desaparece del list público y del getUrl
+    // borrar (soft) → desaparece del list público
     await deleteGalleryImage(a.id);
     const after = await listGalleryImages(TAG);
     expect(after.map((i) => i.id)).toEqual([b.id]);
-    expect(await getGalleryImageUrl(a.id)).toBeNull();
   });
 
   it("no filtra diseños de otro tag", async () => {

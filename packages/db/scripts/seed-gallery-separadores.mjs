@@ -21,6 +21,12 @@ import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { createClient } from "@supabase/supabase-js";
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+
+// Guarda de ambiente (N-06, 2026-09-12): env-guard fail-closed ADEMÁS del
+// guard LOCAL-only de abajo (que es más estricto — este seed es ejemplo de
+// desarrollo; en STG/PRD los diseños los gestiona el admin desde /admin/disenos).
+assertDestructiveAllowed("seed-gallery-separadores.mjs");
 
 // sharp es dependencia de apps/web (Next la usa para optimizar imágenes): se resuelve
 // desde allá con createRequire para no arrastrarla a @lucams/db solo por este seed.

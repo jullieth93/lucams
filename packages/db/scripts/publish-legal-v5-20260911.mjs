@@ -39,6 +39,13 @@
  *   npx dotenv -e ../../.env.local.nube-backup -- node scripts/publish-legal-v5-20260911.mjs --apply
  *
  * Tras aplicar: invalidar el caché CMS desde /admin/contenido (o esperar 1 h).
+ *
+ * N-06 (2026-09-12): EXENCIÓN deliberada del env-guard. Su caso de uso ES la
+ * publicación legal en PRD (decisión de Lucy 2026-09-11; el re-consent que
+ * invalida consentimientos previos es irreversible en la práctica), así que
+ * bloquearlo lo volvería inútil; protege con dry-run por defecto + `--apply`
+ * explícito. Está allowlistado en lib/check-script-guards.mjs como
+ * PRD-deliberado.
  */
 
 import { readFileSync } from "node:fs";

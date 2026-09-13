@@ -386,6 +386,20 @@ export default async function EstudioPage({
     canvasData: t.canvasData as unknown as import("./types").CanvasDataV1,
   }));
 
+  // N-08 (2026-09-11) — consumidor real de `?template=<slug>` (lo genera el
+  // TemplatesStrip de la PDP; el parámetro se declaraba acá pero NADIE lo leía y
+  // el boot siempre arrancaba con la primera plantilla). Se resuelve contra la
+  // MISMA lista que verá el sidebar — listTemplatesForKind ya validó isActive,
+  // deletedAt:null, kind del producto, producto-o-global, mode EDITABLE y aspect
+  // — así que un match acá es una plantilla plenamente válida para el boot.
+  // Slug inválido/inexistente → null sin error visible: el editor arranca con la
+  // primera plantilla, como siempre. El recover flow (?designId=) manda: el
+  // canvas guardado del diseño es la SoT y este id solo aplica a drafts NUEVOS.
+  const initialTemplateId =
+    typeof sp.template === "string"
+      ? (templates.find((t) => t.slug === sp.template)?.id ?? null)
+      : null;
+
   // Recover flow: si pasaron ?designId=, levantar el Design existente
   let initialDesignId: string | null = null;
   let initialDesignCanvas: CanvasData | null = null;
@@ -515,6 +529,9 @@ export default async function EstudioPage({
             // Edición desde el carrito: reemplazar el item original al finalizar (no duplicar).
             replacesCartDesignId={replacesCartDesignId}
             templates={templates}
+            // N-08 — ?template=<slug> de la PDP: el draft nuevo arranca con ESA
+            // plantilla (el servidor la re-valida en createDraftDesign).
+            initialTemplateId={initialTemplateId}
             initialDesignId={initialDesignId}
             initialDesignCanvas={initialDesignCanvas}
             initialDesignAssets={initialDesignAssets}

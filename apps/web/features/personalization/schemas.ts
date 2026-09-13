@@ -212,6 +212,10 @@ export const SaveCanvasSchema = z
   .object({
     designId: z.string().min(1),
     canvasData: CanvasDataSchema,
+    // N-08 (2026-09-11) — plantilla aplicada en el sidebar: viaja con el auto-save
+    // para que Design.templateId la refleje. El service la re-valida contra el
+    // producto (kind/EDITABLE/activa) antes de persistirla.
+    templateId: z.string().min(1).max(40).optional(),
   })
   .superRefine((data, ctx) => {
     const size = JSON.stringify(data.canvasData).length;

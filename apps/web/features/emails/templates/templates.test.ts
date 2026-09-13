@@ -1,5 +1,5 @@
 /*
- * Test PURO de las 7 plantillas de email transaccional (features/emails/templates/*).
+ * Test PURO de las plantillas de email transaccional (features/emails/templates/*).
  *
  * FOCO (render de plantillas): dado un input, el HTML y el texto plano resultantes
  * contienen los datos correctos (número de orden, total formateado en COP, nombre,
@@ -27,8 +27,9 @@
  *  - order-confirmation / order-shipped / order-delivered / order-payment-failed
  *    definen su PROPIO `escapeHtml` local que escapa &, <, >, " pero NO la comilla
  *    simple (').
- *  - support-ticket-internal / support-ticket-received usan el `escapeHtml` de
- *    layout.ts, que SÍ escapa también la comilla simple (' → &#39;).
+ *  - support-ticket-internal / support-ticket-received / support-ticket-closed
+ *    usan el `escapeHtml` de layout.ts, que SÍ escapa también la comilla
+ *    simple (' → &#39;).
  *  Ambos comportamientos se asertan explícitamente (no se asume uniformidad).
  *
  * Todos los valores esperados (subjects, mapeo de razones de pago, pluralización
@@ -72,9 +73,12 @@ import { orderConfirmationEmail } from "./order-confirmation";
 import { orderShippedEmail } from "./order-shipped";
 import { orderDeliveredEmail } from "./order-delivered";
 import { orderPaymentFailedEmail } from "./order-payment-failed";
+import { orderPaymentDeclinedEmail } from "./order-payment-declined";
+import { orderReturnedEmail } from "./order-returned";
 import { newsletterWelcomeEmail } from "./newsletter-welcome";
 import { supportTicketInternalEmail } from "./support-ticket-internal";
 import { supportTicketReceivedEmail } from "./support-ticket-received";
+import { supportTicketClosedEmail } from "./support-ticket-closed";
 import { designRejectedEmail } from "./design-rejected";
 import { accountExistsNoticeEmail } from "./account-exists-notice";
 
@@ -141,6 +145,28 @@ function pfData(
   };
 }
 
+function pdData(
+  overrides: Partial<Parameters<typeof orderPaymentDeclinedEmail>[0]> = {},
+): Parameters<typeof orderPaymentDeclinedEmail>[0] {
+  return {
+    orderNumber: "LS-3002",
+    customerName: "Valentina",
+    total: 1_500_000,
+    reason: "Card declined",
+    ...overrides,
+  };
+}
+
+function orData(
+  overrides: Partial<Parameters<typeof orderReturnedEmail>[0]> = {},
+): Parameters<typeof orderReturnedEmail>[0] {
+  return {
+    orderNumber: "LS-5001",
+    customerName: "Camila",
+    ...overrides,
+  };
+}
+
 function nwData(
   overrides: Partial<Parameters<typeof newsletterWelcomeEmail>[0]> = {},
 ): Parameters<typeof newsletterWelcomeEmail>[0] {
@@ -177,6 +203,17 @@ function strData(
   };
 }
 
+function stcData(
+  overrides: Partial<Parameters<typeof supportTicketClosedEmail>[0]> = {},
+): Parameters<typeof supportTicketClosedEmail>[0] {
+  return {
+    customerName: "Elena",
+    ticketId: "abcdef1234567890",
+    subject: "MI_PEDIDO",
+    ...overrides,
+  };
+}
+
 /** Regex de dinero tolerante al espacio duro U+00A0 que emite Intl es-CO. */
 function money(pesosWithDots: string): RegExp {
   // pesosWithDots ej. "50.000" → matchea "$<NBSP-o-espacio>50.000"
@@ -186,16 +223,19 @@ function money(pesosWithDots: string): RegExp {
 // =============================================================================
 // Invariantes transversales del layout: TODAS las plantillas lo comparten.
 // =============================================================================
-describe("layout compartido — invariantes en las 7 plantillas", () => {
+describe("layout compartido — invariantes en todas las plantillas", () => {
   it("toda plantilla envuelve el body en el documento HTML del layout (doctype + head + footer)", async () => {
     const results = await Promise.all([
       orderConfirmationEmail(ocData()),
       orderShippedEmail(shData()),
       orderDeliveredEmail(dlData()),
       orderPaymentFailedEmail(pfData()),
+      orderPaymentDeclinedEmail(pdData()),
+      orderReturnedEmail(orData()),
       newsletterWelcomeEmail(nwData()),
       supportTicketInternalEmail(stiData()),
       supportTicketReceivedEmail(strData()),
+      supportTicketClosedEmail(stcData()),
     ]);
 
     for (const r of results) {
@@ -221,8 +261,11 @@ describe("layout compartido — invariantes en las 7 plantillas", () => {
       orderShippedEmail(shData()),
       orderDeliveredEmail(dlData()),
       orderPaymentFailedEmail(pfData()),
+      orderPaymentDeclinedEmail(pdData()),
+      orderReturnedEmail(orData()),
       supportTicketInternalEmail(stiData()),
       supportTicketReceivedEmail(strData()),
+      supportTicketClosedEmail(stcData()),
     ]);
     for (const r of transactional) {
       expect(r.html).not.toContain("Cancelar suscripción");
@@ -609,6 +652,76 @@ describe("orderPaymentFailedEmail", () => {
 });
 
 // =============================================================================
+// order-payment-declined (N-22a — pago no aprobado con el pedido AÚN VIVO)
+// =============================================================================
+describe("orderPaymentDeclinedEmail", () => {
+  it("subject invita a reintentar (el pedido sigue vivo), con el número de orden", async () => {
+    const r = await orderPaymentDeclinedEmail(pdData({ orderNumber: "LS-3010" }));
+    expect(r.subject).toBe("Tu pago para LS-3010 no fue aprobado — puedes reintentarlo");
+  });
+
+  it("HTML incluye nombre, orden, total formateado y el motivo amigable", async () => {
+    const r = await orderPaymentDeclinedEmail(pdData());
+    expect(r.html).toContain("Valentina");
+    expect(r.html).toContain("LS-3002");
+    expect(r.html).toMatch(money("15.000"));
+    expect(r.html).toContain("tu banco rechazó la transacción");
+  });
+
+  it("copy honesto: no cobramos nada, pedido reservado y ventana de 24h (constante compartida)", async () => {
+    const r = await orderPaymentDeclinedEmail(pdData());
+    expect(r.html).toContain("No te cobramos nada");
+    expect(r.html).toContain("24 horas");
+    expect(r.text).toContain("24 horas");
+    // CTA al carrito (la orden PENDING se reusa por cartId al reintentar).
+    expect(r.html).toContain(`${SITE_URL}/carrito`);
+    expect(r.html).toContain("Volver a mi carrito y reintentar");
+  });
+
+  it("mapea razones técnicas a mensaje amigable y la desconocida cae al genérico", async () => {
+    const fondos = await orderPaymentDeclinedEmail(pdData({ reason: "INSUFFICIENT FUNDS" }));
+    expect(fondos.html).toContain("tu tarjeta no tiene fondos suficientes");
+    const desconocida = await orderPaymentDeclinedEmail(
+      pdData({ reason: "quantum flux capacitor" }),
+    );
+    expect(desconocida.html).toContain("el pago no se pudo procesar");
+    expect(desconocida.html).not.toContain("quantum flux capacitor");
+  });
+
+  it("SEGURIDAD: escapa el nombre con markup en el HTML", async () => {
+    const r = await orderPaymentDeclinedEmail(pdData({ customerName: "Valen <b>tina" }));
+    expect(r.html).toContain("Valen &lt;b&gt;tina");
+  });
+});
+
+// =============================================================================
+// order-returned (N-22b — pedido devuelto por la transportadora)
+// =============================================================================
+describe("orderReturnedEmail", () => {
+  it("subject avisa que el pedido viene de vuelta y que se le contactará", async () => {
+    const r = await orderReturnedEmail(orData({ orderNumber: "LS-5009" }));
+    expect(r.subject).toBe("Tu pedido LS-5009 viene de vuelta — te contactamos");
+  });
+
+  it("copy honesto SIN promesas: no tienes que hacer nada, te contactamos; incluye orden y rastreo", async () => {
+    const r = await orderReturnedEmail(orData());
+    expect(r.html).toContain("Camila");
+    expect(r.html).toContain("LS-5001");
+    expect(r.html).toContain("No tienes que hacer nada");
+    expect(r.html).toContain("te contactamos");
+    expect(r.html).toContain(`${SITE_URL}/rastrear`);
+    // Sin promesas de fecha ni de resolución automática.
+    expect(r.html).not.toContain("en 24 horas");
+    expect(r.text).toContain("No tienes que hacer nada");
+  });
+
+  it("SEGURIDAD: escapa el nombre con markup en el HTML", async () => {
+    const r = await orderReturnedEmail(orData({ customerName: "Cami <b>la" }));
+    expect(r.html).toContain("Cami &lt;b&gt;la");
+  });
+});
+
+// =============================================================================
 // newsletter-welcome
 // =============================================================================
 describe("newsletterWelcomeEmail", () => {
@@ -844,6 +957,68 @@ describe("supportTicketReceivedEmail", () => {
     const [a, b] = await Promise.all([
       supportTicketReceivedEmail(data),
       supportTicketReceivedEmail(data),
+    ]);
+    expect(a).toEqual(b);
+  });
+});
+
+// =============================================================================
+// support-ticket-closed (aviso de cierre al cliente, N-14)
+// =============================================================================
+describe("supportTicketClosedEmail", () => {
+  it("subject anuncia la atención con el ticket short id en mayúscula", async () => {
+    const r = await supportTicketClosedEmail(stcData({ ticketId: "abcdef1234567890" }));
+    expect(r.subject).toBe("Atendimos tu solicitud — Ticket #ABCDEF12");
+  });
+
+  it("HTML saluda al cliente, muestra el short id y el label del asunto, y cierra el ciclo", async () => {
+    const r = await supportTicketClosedEmail(
+      stcData({ customerName: "Elena", subject: "PERSONALIZACION" }),
+    );
+    expect(r.html).toContain("Elena");
+    expect(r.html).toContain("#ABCDEF12");
+    expect(r.html).toContain("Personalización");
+    // Copy honesto del cierre: atendido + cerrado, y la puerta abierta es responder el correo.
+    expect(r.html).toContain("fue atendido y quedó cerrado");
+    expect(r.html).toContain("responde a este correo");
+  });
+
+  it("NO promete de más: no afirma que el cliente ya leyó una respuesta humana", async () => {
+    const r = await supportTicketClosedEmail(stcData());
+    expect(r.html).not.toContain("ya leíste");
+    expect(r.html).not.toContain("tu respuesta");
+  });
+
+  it("devuelve replyTo = CONTACT_EMAIL del CMS (buzón de soporte)", async () => {
+    const r = await supportTicketClosedEmail(stcData());
+    // El mock de @/lib/cms resuelve CONTACT_EMAIL → hola@lucamsshop.com.
+    expect(r.replyTo).toBe("hola@lucamsshop.com");
+  });
+
+  it("SEGURIDAD: escapa el nombre con markup y comilla simple (escapeHtml del layout)", async () => {
+    const r = await supportTicketClosedEmail(stcData({ customerName: "O'Neil <x>" }));
+    expect(r.html).toContain("O&#39;Neil &lt;x&gt;");
+    expect(r.html).not.toContain("<x>");
+  });
+
+  it("el texto plano refleja nombre, short id y label sin escapar", async () => {
+    const r = await supportTicketClosedEmail(stcData({ customerName: "Ana <b>", subject: "OTRO" }));
+    expect(r.text).toContain("Ana <b>");
+    expect(r.text).toContain("#ABCDEF12");
+    expect(r.text).toContain("Otro");
+    expect(r.text).toContain("responde a este correo");
+  });
+
+  it("preview del layout anuncia el cierre y la vía de contacto", async () => {
+    const r = await supportTicketClosedEmail(stcData({ ticketId: "abcdef1234567890" }));
+    expect(r.html).toContain("Ticket #ABCDEF12 atendido y cerrado");
+  });
+
+  it("IDEMPOTENCIA: mismo input → misma salida", async () => {
+    const data = stcData();
+    const [a, b] = await Promise.all([
+      supportTicketClosedEmail(data),
+      supportTicketClosedEmail(data),
     ]);
     expect(a).toEqual(b);
   });

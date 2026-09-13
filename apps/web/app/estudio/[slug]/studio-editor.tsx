@@ -149,6 +149,14 @@ function dataURLtoBlob(dataUrl: string): Blob {
 export type StudioEditorProps = {
   product: StudioProduct;
   templates: StudioTemplate[];
+  /**
+   * N-08 (2026-09-11) — plantilla pre-elegida por deep-link (`?template=<slug>`
+   * desde el TemplatesStrip de la PDP), ya resuelta contra la lista visible del
+   * producto en `page.tsx`. Solo aplica al boot de un draft NUEVO (el recover
+   * flow ?designId= manda: su canvas guardado es la SoT). El servidor la
+   * re-valida en createDraftDesign; null → arranca con la primera, como siempre.
+   */
+  initialTemplateId?: string | null;
   initialDesignId: string | null;
   initialDesignCanvas: CanvasData | null;
   initialDesignAssets: StudioAsset[];
@@ -217,6 +225,7 @@ export type PhotoPackVariantOption = {
 export function StudioEditor({
   product,
   templates,
+  initialTemplateId,
   initialDesignId,
   initialDesignCanvas,
   initialDesignAssets,
@@ -560,8 +569,20 @@ export function StudioEditor({
             };
           }
         } else {
-          // Crear draft nuevo
-          const result = await createDraftDesignAction({ productId: product.id });
+          // Crear draft nuevo. N-08 — plantilla del boot: la del deep-link
+          // `?template=` (ya resuelta en page.tsx contra la lista visible) si
+          // existe; si no, la primera visible, como siempre. Se pasa su id al
+          // servidor, que la RE-VALIDA (kind/EDITABLE/activa/producto) y crea el
+          // draft con ESA misma plantilla — antes el server elegía por su cuenta
+          // ("primera activa del kind", sin aspect) y podía discrepar del canvas
+          // con el que arrancaba el cliente.
+          const bootTemplate =
+            (initialTemplateId ? templates.find((t) => t.id === initialTemplateId) : undefined) ??
+            templates[0];
+          const result = await createDraftDesignAction({
+            productId: product.id,
+            ...(bootTemplate ? { templateId: bootTemplate.id } : {}),
+          });
           if (!result.ok) {
             throw new Error(result.message);
           }
@@ -569,11 +590,10 @@ export function StudioEditor({
           // Recargar canvasData del nuevo draft. Como acabamos de crearlo
           // server-side con V2, asumimos shape correcto.
           // Para evitar un round-trip extra, reconstruimos el shape esperado:
-          const firstTemplate = templates[0];
           // ADR-063 T4 — sin plantillas curadas, degradar a un template por defecto (mismo que el
           // server arma en createDraftDesign) en vez de crashear el editor. Boot funcional para
           // cualquier producto; la foto tiene un placeholder full-stage donde ubicarse.
-          const unitTemplate = firstTemplate?.canvasData ?? {
+          const unitTemplate = bootTemplate?.canvasData ?? {
             version: 1 as const,
             stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
             layers: [
@@ -589,7 +609,7 @@ export function StudioEditor({
               },
             ],
           };
-          templateId = firstTemplate?.id ?? null;
+          templateId = bootTemplate?.id ?? null;
           canvasData = {
             version: 2,
             unitTemplate,
@@ -707,6 +727,7 @@ export function StudioEditor({
     initialDesignId,
     initialDesignCanvas,
     initialDesignAssets,
+    initialTemplateId,
     product.id,
     product.slug,
     photoSlots,
@@ -741,6 +762,9 @@ export function StudioEditor({
         const result = await saveCanvasAction({
           designId: current.designId,
           canvasData: current.canvasData,
+          // N-08 — la plantilla aplicada en el sidebar viaja con el auto-save:
+          // Design.templateId la refleja (el service la valida server-side).
+          templateId: current.selectedTemplateId ?? undefined,
         });
         if (result.ok) {
           current.setAutoSaveStatus({ kind: "saved", at: Date.now() });
@@ -1102,7 +1126,11 @@ export function StudioEditor({
         // guardado acá es lo que sostiene el mandato de que la pantalla sea el producto físico.
         if (state.isDirty) {
           state.setAutoSaveStatus({ kind: "saving" });
-          const saved = await saveCanvasAction({ designId, canvasData });
+          const saved = await saveCanvasAction({
+            designId,
+            canvasData,
+            templateId: state.selectedTemplateId ?? undefined,
+          });
           if (!saved.ok) {
             state.setAutoSaveStatus({ kind: "error", message: saved.message });
             state.setIsFinalizing(false);

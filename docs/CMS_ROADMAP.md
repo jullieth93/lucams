@@ -31,6 +31,7 @@
 - ✅ **C1 paso 2** modo edición in-place en el storefront — commit `ce38b8c`
 - ✅ **Gestos del canvas del Estudio** verificados interactivamente — commit `406051a`
 - ✅ **D2** observabilidad del CMS en `/admin/metricas` — commit `b4e7b92` · **roadmap original 20/20**
+- ✅ **Mantenimiento 2026-09-12 (remediación 360°, N-10/CF-19 + N-23):** **14 settings zombi retiradas** de LOCAL/STG (51→37 settings por ambiente; backup y dry-run previos) con `packages/db/scripts/remove-zombie-settings.mjs` — eran `CmsField` kind=SETTING sin ningún lector en el código (texto muerto editable en /admin/contenido), llegadas por la migración legacy SiteSetting→CmsField de 2026-07-30. La lista de 15 keys candidatas vive en `packages/db/scripts/lib/zombie-settings.mjs` (una no existía en DB; un test de la misma carpeta bloquea su regreso al site map). En la misma remediación: **`getCmsImage` se CONSERVA** a propósito aunque hoy no tiene caller storefront — es el único reader de los campos IMAGE "sueltos", una capacidad viva del admin (crear/editar/publicar campos IMAGE desde /admin/contenido); retirarla dejaría esa capacidad sin consumidor posible (nota N-23 en `lib/cms.ts`).
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 

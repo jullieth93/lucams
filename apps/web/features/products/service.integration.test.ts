@@ -28,7 +28,7 @@
  *     soft-deleted, lista vacía noop.
  *   - listCategoriesForSelect: jerarquía padre→hijo, orden, exclusión de
  *     archivadas/inactivas, huérfanas al final.
- *   - listVariantsByProduct / getVariantById: filtrado de archivadas, orden createdAt.
+ *   - listVariantsByProduct: filtrado de archivadas, orden createdAt.
  *   - syncProductBasePrice: deriva basePrice = mín precio entre opciones ACTIVAS
  *     con price propio; idempotente; ignora inactivas; fallback si ninguna tiene price.
  *   - createVariant / updateVariant: unicidad sku, sync de basePrice tras cambio.
@@ -62,7 +62,6 @@ import {
   createProduct,
   createVariant,
   getProductById,
-  getVariantById,
   listCategoriesForSelect,
   listProducts,
   listVariantsByProduct,
@@ -1040,10 +1039,10 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
   });
 
   // ════════════════════════════════════════════════════════════════════════
-  // listVariantsByProduct / getVariantById
+  // listVariantsByProduct
   // ════════════════════════════════════════════════════════════════════════
 
-  describe("listVariantsByProduct / getVariantById", () => {
+  describe("listVariantsByProduct", () => {
     it("listVariantsByProduct devuelve NO archivadas ordenadas por createdAt asc", async () => {
       const cat = await makeCategory({ label: "lv" });
       const p = await makeProduct({
@@ -1060,30 +1059,6 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       expect(variants).toHaveLength(2);
       expect(variants.map((v) => v.name)).toEqual(["First", "Second"]); // orden createdAt
       expect(variants.every((v) => v.deletedAt === null)).toBe(true);
-    });
-
-    it("getVariantById devuelve la variante con su producto embebido; null si archivada o inexistente", async () => {
-      const cat = await makeCategory({ label: "gv" });
-      const p = await makeProduct({
-        categoryId: cat.id,
-        label: "gv-prod",
-        variants: [
-          { name: "Live", skuSuffix: "LIVE", price: 5_000 },
-          { name: "Archived", skuSuffix: "ARCH", price: 6_000, deletedAt: new Date() },
-        ],
-      });
-      const live = p.variants.find((v) => v.name === "Live")!;
-      const archived = p.variants.find((v) => v.name === "Archived")!;
-
-      const found = await getVariantById(live.id);
-      expect(found).not.toBeNull();
-      expect(found!.product.id).toBe(p.id);
-      expect(found!.product.slug).toBe(p.slug);
-
-      // Archivada → null (filtro deletedAt:null).
-      expect(await getVariantById(archived.id)).toBeNull();
-      // Inexistente → null.
-      expect(await getVariantById(`${RUN}-no-variant`)).toBeNull();
     });
   });
 

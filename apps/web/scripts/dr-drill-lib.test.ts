@@ -13,6 +13,8 @@ import {
   parsePsqlErrors,
   summarizeRestoreErrors,
   dumpCopyRowCounts,
+  backupFreshnessError,
+  DEFAULT_MAX_BACKUP_AGE_HOURS,
 } from "./dr-drill-lib.mjs";
 
 // Mensajes reales del restore del 2026-09-02 (extraídos del log del service
@@ -196,5 +198,55 @@ describe("dumpCopyRowCounts", () => {
   it("tolera fin de línea CRLF", () => {
     const crlf = 'COPY public."Product" (id) FROM stdin;\r\na\r\n\\.\r\n';
     expect(dumpCopyRowCounts(crlf).get("Product")).toBe(1);
+  });
+});
+
+describe("backupFreshnessError (N-19b) — el drill FALLA si el dump más nuevo no es fresco", () => {
+  const NOW = new Date("2026-09-12T12:00:00Z");
+  const KEY = "db/lucams-2026-09-12T071300Z.sql.gz.gpg";
+  const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3600 * 1000);
+
+  it("dump fresco (≤36h) → null (sin error)", () => {
+    expect(backupFreshnessError({ key: KEY, lastModified: hoursAgo(5), now: NOW })).toBeNull();
+  });
+
+  it("exactamente 36h → aún fresco (borde inclusivo)", () => {
+    expect(backupFreshnessError({ key: KEY, lastModified: hoursAgo(36), now: NOW })).toBeNull();
+  });
+
+  it("dump de 50h → error que nombra la llave, la edad y el workflow a revisar", () => {
+    const err = backupFreshnessError({ key: KEY, lastModified: hoursAgo(50), now: NOW });
+    expect(err).toContain(KEY);
+    expect(err).toContain("50.0h");
+    expect(err).toContain("36h");
+    expect(err).toContain("backup.yml");
+    expect(err).toContain("DRILL_MAX_BACKUP_AGE_HOURS");
+  });
+
+  it("un dump viejo que restaura bien NO certifica nada: el mensaje lo dice explícito", () => {
+    const err = backupFreshnessError({ key: KEY, lastModified: hoursAgo(24 * 20), now: NOW });
+    expect(err).toContain("backup DIARIO está roto");
+  });
+
+  it("sin LastModified (o fecha inválida) → error fail-closed (frescura no verificable)", () => {
+    expect(backupFreshnessError({ key: KEY, lastModified: undefined, now: NOW })).toContain(
+      "fail-closed",
+    );
+    expect(
+      backupFreshnessError({ key: KEY, lastModified: new Date("no-es-fecha"), now: NOW }),
+    ).toContain("fail-closed");
+  });
+
+  it("maxAgeHours configurable: con tope de 12h un dump de 20h falla", () => {
+    expect(
+      backupFreshnessError({ key: KEY, lastModified: hoursAgo(20), now: NOW, maxAgeHours: 12 }),
+    ).toContain("12h");
+    expect(
+      backupFreshnessError({ key: KEY, lastModified: hoursAgo(20), now: NOW, maxAgeHours: 48 }),
+    ).toBeNull();
+  });
+
+  it("el default exportado es 36h (mismo tope que la regla backup_stale de la app)", () => {
+    expect(DEFAULT_MAX_BACKUP_AGE_HOURS).toBe(36);
   });
 });

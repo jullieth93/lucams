@@ -112,7 +112,7 @@ lucams_shop/
 │       └── package.json
 ├── supabase/
 │   └── migrations/                       # SQL no-Prisma (RLS, grants, storage,
-│                                         #   funciones, pg_cron) 00000000000002…29
+│                                         #   funciones, pg_cron) 00000000000002…33
 ├── .github/workflows/
 │   ├── ci.yml                            # quality + unit-tests + lighthouse +
 │   │                                     #   secrets-scan + format-check + dep-audit
@@ -413,6 +413,8 @@ model AbandonedCart {
   createdAt           DateTime  @default(now())
 }
 
+// FUTURO_APROBADO (2026-09-12): el modelo persiste SIN implementación — el
+// programa de fidelidad es una capacidad aprobada del roadmap (Fase 5) aún no construida.
 model LoyaltyTxn {
   id          String   @id @default(cuid())
   customerId  String
@@ -432,6 +434,8 @@ model Referral {
   createdAt     DateTime  @default(now())
 }
 
+// FUTURO_APROBADO (2026-09-12): el modelo persiste SIN implementación — no hay
+// /blog público ni editor admin de posts; capacidad aprobada del roadmap (Fase 5/6).
 model BlogPost {
   id              String    @id @default(cuid())
   slug            String    @unique
@@ -448,7 +452,6 @@ model BlogPost {
 }
 
 // ──────────────── IDEMPOTENCIA ────────────────
-
 enum WebhookSource {
   WOMPI
   RESEND
@@ -474,31 +477,20 @@ model WebhookEvent {
 - `cuid()` para todos los IDs (compactos, ordenables, sin colisión).
 - Soft delete: `deletedAt`/`deletedBy` en lugar de borrar (`isActive` solo para publicado/no-publicado); nunca perder histórico.
 - **Bearer tokens públicos hasheados en reposo** (F-11, auditoría 2026-08-24): `Order.publicAccessTokenHash`, `Quote.publicAccessTokenHash`, `Design.shareTokenHash` y `AbandonedCart.recoverTokenHash` guardan solo el digest SHA-256 (`lib/token-hash.ts`); el token en claro se entrega una vez (link/email) y los lookups hashean el token presentado. Mismo patrón que `AdminRecoveryCode.codeHash` (HMAC-SHA256 con pepper).
-- **Stock: decremento atómico al transicionar a `PAID`** (no reserva en `PENDING_PAYMENT` — evita secuestrar stock de carritos abandonados): `updateMany` con `WHERE stock >= qty` (row-lock implícito, compatible con pgBouncer; sin `SELECT FOR UPDATE`), revert al `CANCELLED`/`REFUNDED` solo si hubo decremento previo, idempotencia física con índice parcial único en `InventoryLog(orderId, reason, variantId)`. `StockReservation` queda en el schema **sin consumidores** (ADR-014 diferida). Ver `features/orders/stock.ts`.
+- **Stock: decremento atómico al transicionar a `PAID`** (no reserva en `PENDING_PAYMENT` — evita secuestrar stock de carritos abandonados): `updateMany` con `WHERE stock >= qty` (row-lock implícito, compatible con pgBouncer; sin `SELECT FOR UPDATE`), revert al `CANCELLED`/`REFUNDED` solo si hubo decremento previo, idempotencia física con índice parcial único en `InventoryLog(orderId, reason, variantId)`. ~~`StockReservation` queda en el schema sin consumidores~~ → **RETIRADA del schema 2026-09-12** (ADR-091; ADR-014 SUPERSEDED — la protección real es este UPDATE atómico + `needsReconciliation`). Ver `features/orders/stock.ts`.
 - **Tope de cupón por cliente en la DB** (G-5, auditoría 2026-08-24): `CouponUsage` registra cada redención (por `customerId` o email normalizado) y el trigger `coupon_usage_per_customer_limit` (migración Prisma `20260829120000_coupon_usage_per_customer_trigger`) toma un `pg_advisory_xact_lock` por (couponId, identidad) y re-cuenta bajo el lock, cerrando la carrera de checkouts concurrentes.
 - **Audit log** (`AdminActionLog`): toda acción admin con `actorId`, `action`, `entityType`, `entityId`, `metadata`, `createdAt`.
 
 ### Modelos adicionales (ADR-014, ADR-016)
 
 ```prisma
-// ──────────────── RESERVA DE STOCK (ADR-014, diferida) ────────────────
-// Existe en el schema pero SIN consumidores: el decremento es directo al
-// PAID (ver § Reglas). Se mantiene por si el volumen justifica reservas
-// con TTL en el futuro.
-
-model StockReservation {
-  id          String         @id @default(cuid())
-  orderId     String
-  variantId   String
-  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  qty         Int
-  expiresAt   DateTime
-  createdAt   DateTime       @default(now())
-
-  @@index([expiresAt])
-  @@index([orderId])
-  @@index([variantId])
-}
+// ──────────────── RESERVA DE STOCK (ADR-014) — RETIRADA 2026-09-12 ────────────────
+// StockReservation ya NO existe en el schema (migración Prisma
+// 20260912120000_drop_site_event_recommendation_log_stock_reservation; ADR-091).
+// Nunca tuvo consumidores productivos: el decremento es directo al PAID (ver
+// § Reglas). Su cron stock_reservation_cleanup se des-agendó en
+// supabase/migrations/00000000000033. Si el volumen justifica reservas con TTL
+// en el futuro, se diseña como feature nuevo.
 
 // ──────────────── RATE LIMIT EN POSTGRES (ADR-016) ────────────────
 // Tabla + función creadas vía SQL migration (supabase/migrations/
@@ -577,30 +569,30 @@ CmsPage ─┬─ CmsSection ─┬─ CmsField ───── CmsFieldVersion 
 
 > Habilitadas en Supabase vía dashboard o migración SQL. Solo se listan las que el proyecto usa hoy.
 
-| Extensión  | Propósito                                                                               | Dónde se habilita                                                         |
-| ---------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `pg_trgm`  | Búsqueda fuzzy de productos (operador `%`, `similarity()`)                              | `supabase/migrations/00000000000005`                                      |
-| `unaccent` | Búsqueda insensible a tildes                                                            | `supabase/migrations/00000000000005`                                      |
-| `pg_cron`  | Schedule de jobs internos (cleanups DB-side y disparo de jobs HTTP hacia `/api/cron/*`) | dashboard + `supabase/migrations/00000000000012, 015, 016, 021, 023`      |
-| `pg_net`   | `net.http_get` desde pg_cron hacia los endpoints `/api/cron/*` (schema `extensions`)    | `supabase/migrations/00000000000029`                                      |
-| `pgcrypto` | Disponible para hashing en DB (los bearer tokens se hashean en app con SHA-256, F-11)   | `packages/db/prisma/migrations/20260829150200_bearer_tokens_hash_at_rest` |
+| Extensión  | Propósito                                                                               | Dónde se habilita                                                              |
+| ---------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `pg_trgm`  | Búsqueda fuzzy de productos (operador `%`, `similarity()`)                              | `supabase/migrations/00000000000005`                                           |
+| `unaccent` | Búsqueda insensible a tildes                                                            | `supabase/migrations/00000000000005`                                           |
+| `pg_cron`  | Schedule de jobs internos (cleanups DB-side y disparo de jobs HTTP hacia `/api/cron/*`) | dashboard + `supabase/migrations/00000000000012, 015, 016, 021, 023, 032, 033` |
+| `pg_net`   | `net.http_get` desde pg_cron hacia los endpoints `/api/cron/*` (schema `extensions`)    | `supabase/migrations/00000000000029`                                           |
+| `pgcrypto` | Disponible para hashing en DB (los bearer tokens se hashean en app con SHA-256, F-11)   | `packages/db/prisma/migrations/20260829150200_bearer_tokens_hash_at_rest`      |
 
 > **No se usan** `pgmq` (los background jobs son HTTP vía pg_cron + pg_net, ver § Background jobs), ni `uuid-ossp`, ni `pg_stat_statements`.
 
 ### Jobs pg_cron versionados
 
-Las migraciones `00000000000012/015/016/021/023` agendan los jobs (idempotentes: `unschedule` → `schedule`; leen `cron_base_url` y `cron_secret` del Vault de Supabase en runtime, sin secretos en el SQL; el header `x-cron-secret` viaja en headers, nunca en la URL). Son **guardados**: si `pg_cron`/`pg_net` no están instalados en el ambiente, el job se omite con `RAISE NOTICE` en vez de romper la migración.
+Las migraciones `00000000000012/015/016/021/023/032` agendan los jobs (idempotentes: `unschedule` → `schedule`; leen `cron_base_url` y `cron_secret` del Vault de Supabase en runtime, sin secretos en el SQL; el header `x-cron-secret` viaja en headers, nunca en la URL). Son **guardados**: si `pg_cron`/`pg_net` no están instalados en el ambiente, el job se omite con `RAISE NOTICE` en vez de romper la migración. La `00000000000033` des-agenda `stock_reservation_cleanup` (su tabla salió del schema en la remediación 2026-09-12).
 
 ---
 
 ## Background jobs
 
-> ADR-017 decidió `pgmq` como cola durable; en la práctica **pgmq no se adoptó**: los jobs son endpoints HTTP `/api/cron/*` disparados por `pg_cron` + `pg_net` (migraciones `00000000000015/016/021/023`), y el reintento de guía Aveonline quedó manual con alerta (ADR posterior a ADR-060). No se usa Vercel Cron.
+> ADR-017 decidió `pgmq` como cola durable; en la práctica **pgmq no se adoptó**: los jobs son endpoints HTTP `/api/cron/*` disparados por `pg_cron` + `pg_net` (migraciones `00000000000015/016/021/023/032`), y el reintento de guía Aveonline quedó manual con alerta (ADR posterior a ADR-060). No se usa Vercel Cron.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  pg_cron (Supabase) — jobs versionados en migraciones     │
-│  HTTP (015/016/021/023, header x-cron-secret desde Vault):│
+│  HTTP (015/016/021/023/032, header x-cron-secret desde Vault):│
 │    lucams-alerts (*/5min)        → /api/cron/alerts       │
 │    lucams-daily-summary (13:00)  → /api/cron/daily-summary│
 │    lucams-review-request (17:00) → /api/cron/review-request│
@@ -609,9 +601,12 @@ Las migraciones `00000000000012/015/016/021/023` agendan los jobs (idempotentes:
 │    lucams-purge-anon-designs (08:00) → /api/cron/purge-anon-designs│
 │    lucams-purge-event-logs (03:00)   → /api/cron/purge-event-logs  │
 │    lucams-cms-publish-scheduled (*/5min) → /api/cron/cms-publish-scheduled│
-│  SQL puros (012):                                           │
-│    rate_limit_cleanup (*/15min) — buckets > 1 día           │
-│    stock_reservation_cleanup (c/1min) — reservas expiradas  │
+│    lucams-expire-pending-orders (c/1h, min 23) → /api/cron/expire-pending-orders│
+│  SQL puro (012):                                          │
+│    rate_limit_cleanup (*/15min) — buckets > 1 día         │
+│  Fuera de pg_cron (GitHub Actions):                       │
+│    backup diario a R2 → POST /api/cron/backup-heartbeat   │
+│    tras cada éxito (latido que lee la regla backup_stale) │
 └──────────────────────┬───────────────────────────────────┘
                        │  net.http_get(url = Vault:cron_base_url + path,
                        │              headers = x-cron-secret [+

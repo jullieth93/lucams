@@ -9,8 +9,15 @@
  *   - Si el healthcheck responde OK (donde aplica)
  *   - Acción humana requerida (qué hacer si falla)
  *
- * Healthchecks reales se hacen vía /api/health/* — esta página los
- * ejecuta server-side al cargar (force-dynamic).
+ * Healthchecks reales (CF-03): DB/Storage/Resend vía /api/health/* (self-fetch);
+ * Wompi y Aveonline importando los probes REALES (lib/integration-health.ts —
+ * mismas funciones que usan /api/health/wompi y /api/health/aveonline, sin
+ * HTTP self-fetch), con try/catch + timeout: si la sonda falla el card muestra
+ * fail y la página nunca se rompe. WhatsApp y Turnstile no tienen probe seguro:
+ * se declaran "Sin verificación remota" en vez de un "ok" ficticio.
+ * Gemini (N-19c) sí tiene probe seguro: listado de modelos (valida que la key
+ * autentica) SIN generar contenido — cero cuota consumida.
+ * La página es force-dynamic: cada carga vuelve a sondear.
  */
 
 import type { Metadata } from "next";
@@ -22,6 +29,7 @@ import {
   AlertTriangle,
   XCircle,
   MinusCircle,
+  HelpCircle,
   ExternalLink,
 } from "lucide-react";
 import {
@@ -33,6 +41,15 @@ import {
   AdminPageHeader,
 } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
+import {
+  mapAveonlineHealth,
+  mapGeminiHealth,
+  mapWompiHealth,
+  probeAveonlineSafely,
+  probeGeminiSafely,
+  probeWompiSafely,
+  type PanelStatus,
+} from "@/lib/integration-health";
 import { isCatalogMode } from "@/lib/store-mode";
 
 export const metadata: Metadata = {
@@ -42,16 +59,18 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-type IntegrationStatus = "ok" | "warn" | "fail" | "not-configured";
+type IntegrationStatus = PanelStatus;
 
 type Integration = {
   name: string;
-  group: "infra" | "pago" | "envio" | "comunicacion" | "seguridad";
+  group: "infra" | "pago" | "envio" | "comunicacion" | "seguridad" | "ia";
   description: string;
   envVarsRequired: string[];
   isConfigured: boolean;
   healthStatus: IntegrationStatus;
   healthDetail?: string;
+  /** Ambiente declarado por la integración (sandbox/production/test), si aplica. */
+  envLabel?: string;
   latencyMs?: number;
   docs?: string;
   dashboardUrl?: string;
@@ -64,6 +83,7 @@ const GROUP_LABEL: Record<Integration["group"], string> = {
   envio: "Envío",
   comunicacion: "Comunicación",
   seguridad: "Seguridad",
+  ia: "IA (Estudio)",
 };
 
 function statusBadge(status: IntegrationStatus) {
@@ -86,6 +106,13 @@ function statusBadge(status: IntegrationStatus) {
       <AdminBadge tone="rose">
         <XCircle className="mr-1 -ml-0.5 inline h-3 w-3" />
         Caído
+      </AdminBadge>
+    );
+  if (status === "unverified")
+    return (
+      <AdminBadge tone="slate">
+        <HelpCircle className="mr-1 -ml-0.5 inline h-3 w-3" />
+        Sin verificación remota
       </AdminBadge>
     );
   return (
@@ -136,21 +163,18 @@ export default async function AdminIntegracionesPage() {
 
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4000";
 
-  const [dbHealth, storageHealth, resendHealth] = await Promise.all([
-    probeHealth(baseUrl, "/api/health/db"),
-    probeHealth(baseUrl, "/api/health/storage"),
-    probeHealth(baseUrl, "/api/health/resend"),
-  ]);
-
   const supabaseConfigured = envConfigured([
     "NEXT_PUBLIC_SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
     "SUPABASE_SECRET_KEY",
   ]);
+  // Las 4 llaves que exige lib/wompi.ts (getWompiConfig) — antes el panel
+  // chequeaba solo 3 y podía marcar "configurado" un Wompi inutilizable.
   const wompiConfigured = envConfigured([
     "WOMPI_PUBLIC_KEY",
     "WOMPI_PRIVATE_KEY",
     "WOMPI_EVENTS_SECRET",
+    "WOMPI_INTEGRITY_SECRET",
   ]);
   const aveonlineConfigured = envConfigured(["AVEONLINE_USUARIO", "AVEONLINE_CLAVE"]);
   const resendConfigured = envConfigured(["RESEND_API_KEY", "EMAIL_FROM"]);
@@ -159,6 +183,23 @@ export default async function AdminIntegracionesPage() {
     "TURNSTILE_SECRET_KEY",
   ]);
   const waConfigured = envConfigured(["NEXT_PUBLIC_WA_NUMBER"]);
+  const geminiConfigured = envConfigured(["GEMINI_API_KEY"]);
+
+  // Wompi/Aveonline/Gemini: solo se sondea lo configurado — sin credenciales la
+  // integración está NOT_CONFIGURED (no caída) y la sonda sería ruido.
+  const productionDeployment = process.env.VERCEL_ENV === "production";
+  const [dbHealth, storageHealth, resendHealth, wompiProbe, aveonlineProbe, geminiProbe] =
+    await Promise.all([
+      probeHealth(baseUrl, "/api/health/db"),
+      probeHealth(baseUrl, "/api/health/storage"),
+      probeHealth(baseUrl, "/api/health/resend"),
+      wompiConfigured ? probeWompiSafely() : Promise.resolve(null),
+      aveonlineConfigured ? probeAveonlineSafely() : Promise.resolve(null),
+      geminiConfigured ? probeGeminiSafely() : Promise.resolve(null),
+    ]);
+  const wompiHealth = mapWompiHealth(wompiProbe, { productionDeployment });
+  const aveonlineHealth = mapAveonlineHealth(aveonlineProbe, { productionDeployment });
+  const geminiHealth = mapGeminiHealth(geminiProbe);
 
   const integrations: Integration[] = [
     {
@@ -197,13 +238,17 @@ export default async function AdminIntegracionesPage() {
         "WOMPI_ENV",
       ],
       isConfigured: wompiConfigured,
-      healthStatus: wompiConfigured ? "warn" : "not-configured",
+      healthStatus: wompiHealth.status,
       healthDetail: wompiConfigured
-        ? "Healthcheck activo se cablea en Fase 2 (Checkout)."
-        : "Pendiente: completar KYC en comercios.wompi.co y cargar keys.",
+        ? wompiHealth.detail
+        : "Pendiente: completar KYC en comercios.wompi.co y cargar las 4 llaves.",
+      envLabel: wompiHealth.envLabel,
+      latencyMs: wompiHealth.latencyMs,
       docs: "/admin/auditoria",
       dashboardUrl: "https://comercios.wompi.co",
-      acciones: "ACCIÓN HUMANA: completar KYC + cargar 4 keys + setear WOMPI_ENV=production",
+      acciones: wompiConfigured
+        ? "Si falla: revisar el dashboard de Wompi y que las 4 llaves correspondan al ambiente declarado en WOMPI_ENV (test ↔ sandbox, prod ↔ production)."
+        : "ACCIÓN HUMANA: completar KYC + cargar las 4 llaves (pública, privada, events, integrity) + setear WOMPI_ENV=production",
     },
     {
       name: "Aveonline — Envíos Colombia",
@@ -219,10 +264,11 @@ export default async function AdminIntegracionesPage() {
         "AVEONLINE_GENERATE_REAL",
       ],
       isConfigured: aveonlineConfigured,
-      healthStatus: aveonlineConfigured ? "warn" : "not-configured",
+      healthStatus: aveonlineHealth.status,
       healthDetail: aveonlineConfigured
-        ? "Cableado en checkout (cotización + guía contraentrega + tracking)."
+        ? aveonlineHealth.detail
         : "Pendiente: activar cuenta comercial + cargar usuario/clave.",
+      envLabel: aveonlineHealth.envLabel,
       docs: "/admin/integraciones/aveonline",
       dashboardUrl: "https://app.aveonline.co",
       acciones:
@@ -249,11 +295,13 @@ export default async function AdminIntegracionesPage() {
         "Botones 'Hablar por WhatsApp' en PDP, soporte, post-pedido (sin API, solo links).",
       envVarsRequired: ["NEXT_PUBLIC_WA_NUMBER"],
       isConfigured: waConfigured,
-      healthStatus: waConfigured ? "ok" : "not-configured",
+      // UNKNOWN_NOT_PROBED: wa.me no tiene probe seguro sin efectos laterales
+      // (no se puede "pingear" un número sin iniciar un chat).
+      healthStatus: waConfigured ? "unverified" : "not-configured",
       // El número ACTIVO es el setting WA_NUMBER del CMS (Contenido → Ajustes
       // del sitio → WhatsApp); la env queda como fallback si el setting falta.
       healthDetail: waConfigured
-        ? `Número activo: setting WA_NUMBER (Contenido → Ajustes del sitio → WhatsApp). Fallback env: ${process.env.NEXT_PUBLIC_WA_NUMBER}.`
+        ? `Sin verificación remota (wa.me no ofrece sonda sin iniciar un chat). Número activo: setting WA_NUMBER (Contenido → Ajustes del sitio → WhatsApp). Fallback env: ${process.env.NEXT_PUBLIC_WA_NUMBER}.`
         : "El número activo se edita en Contenido → Ajustes del sitio → WhatsApp. NEXT_PUBLIC_WA_NUMBER queda como fallback (formato wa.me).",
       acciones: waConfigured
         ? undefined
@@ -265,14 +313,36 @@ export default async function AdminIntegracionesPage() {
       description: "CAPTCHA invisible en formularios públicos (signup, newsletter, contacto).",
       envVarsRequired: ["NEXT_PUBLIC_TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY"],
       isConfigured: turnstileConfigured,
-      healthStatus: turnstileConfigured ? "ok" : "not-configured",
+      // UNKNOWN_NOT_PROBED: la verificación real ocurre por-request (cada form
+      // valida su token contra Cloudflare); sondear el siteverify sin un token
+      // legítimo no prueba nada útil.
+      healthStatus: turnstileConfigured ? "unverified" : "not-configured",
       healthDetail: turnstileConfigured
-        ? "Configurado y activo en signup/newsletter."
+        ? "Sin verificación remota: Turnstile se valida por request en producción (cada formulario verifica su token contra Cloudflare). Activo en signup/newsletter."
         : "Pendiente: crear keys en Cloudflare dashboard.",
       dashboardUrl: "https://dash.cloudflare.com",
       acciones: turnstileConfigured
         ? undefined
         : "ACCIÓN HUMANA: crear Turnstile site + cargar siteKey + secretKey",
+    },
+    {
+      name: "Gemini — IA del Estudio",
+      group: "ia",
+      description:
+        "Sugerencias de diseño con IA en el Estudio (frase, color, composición según la ocasión). Si cae, el Estudio sigue funcionando pero el botón de ideas responde 'sin ideas' — en silencio.",
+      envVarsRequired: ["GEMINI_API_KEY", "GEMINI_MODEL_PRIMARY", "GEMINI_MODEL_FALLBACK"],
+      isConfigured: geminiConfigured,
+      // Probe REAL acotado (N-19c): listado de modelos — valida que la key
+      // autentica SIN generar contenido (generateContent consumiría cuota).
+      healthStatus: geminiHealth.status,
+      healthDetail: geminiConfigured
+        ? geminiHealth.detail
+        : "Pendiente: crear API key en Google AI Studio y cargar GEMINI_API_KEY.",
+      latencyMs: geminiHealth.latencyMs,
+      dashboardUrl: "https://aistudio.google.com/apikey",
+      acciones: geminiConfigured
+        ? "Si falla: revisar la key en Google AI Studio (¿revocada o sin cuota?) — el provider reintenta con el modelo de respaldo (features/ai/gemini-provider.ts) antes de rendirse."
+        : "ACCIÓN HUMANA: crear API key en aistudio.google.com + cargar GEMINI_API_KEY (opcional: GEMINI_MODEL_PRIMARY/FALLBACK)",
     },
   ];
 
@@ -287,6 +357,7 @@ export default async function AdminIntegracionesPage() {
   const okCount = integrations.filter((i) => i.healthStatus === "ok").length;
   const failCount = integrations.filter((i) => i.healthStatus === "fail").length;
   const notConfigured = integrations.filter((i) => i.healthStatus === "not-configured").length;
+  const unverified = integrations.filter((i) => i.healthStatus === "unverified").length;
 
   return (
     <AdminPage>
@@ -296,6 +367,7 @@ export default async function AdminIntegracionesPage() {
         subtitle={
           <>
             {okCount} operativas · {notConfigured} sin configurar
+            {unverified > 0 && <> · {unverified} sin verificación remota</>}
             {failCount > 0 && (
               <>
                 {" · "}
@@ -326,7 +398,7 @@ export default async function AdminIntegracionesPage() {
           </AdminNotice>
         )}
 
-        {(["infra", "pago", "envio", "comunicacion", "seguridad"] as const).map((group) => {
+        {(["infra", "pago", "envio", "comunicacion", "seguridad", "ia"] as const).map((group) => {
           const items = grouped[group];
           if (!items || items.length === 0) return null;
           return (
@@ -344,6 +416,7 @@ export default async function AdminIntegracionesPage() {
                             {i.name}
                           </h3>
                           {statusBadge(i.healthStatus)}
+                          {i.envLabel && <AdminBadge tone="blue">{i.envLabel}</AdminBadge>}
                           {!i.isConfigured && (
                             <AdminBadge tone="slate">env vars faltantes</AdminBadge>
                           )}

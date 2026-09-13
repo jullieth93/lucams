@@ -1,6 +1,6 @@
 # QA Checklist pre-launch — Lucams_shop
 
-> Última actualización: 2026-05-12 · Sub-bloque L · verificado contra el código 2026-09-03 (MFA admin obligatorio, checkout en modo full, /rastrear)
+> Última actualización: 2026-09-12 · Sub-bloque L · verificado contra el código 2026-09-12 (remediación 360°: CTA Personalizar → Estudio, cupón en /checkout/pago, /admin/mensajes → /admin/soporte, re-consent de cookies, editor CMS por barra superior + `CmsFieldVersion`; antes: 2026-09-03 MFA admin obligatorio, checkout en modo full, /rastrear)
 >
 > Esta checklist se recorre **manualmente con Lucy + Claude** antes del go-live productivo. Es el último filtro: nada se lanza si quedan rojos. Marcar cada item con ✅ / ⚠️ / ❌ y fecha de verificación.
 
@@ -39,6 +39,8 @@
 - [ ] Acceso directo a /admin/\* sin sesión → redirect /admin/login
 - [ ] /admin/dashboard muestra las métricas de operación (clientes, pedidos en producción/pendientes, productos, reseñas pendientes, inventario, tickets, garantías)
 - [ ] AdminActionLog registra cada acción admin con IP (visible en /admin/auditoria); los logins quedan en logs estructurados (`security.admin_login.*`)
+- [ ] /admin/soporte lista los tickets con filtros OPEN/IN_PROGRESS/CLOSED; al cerrar un ticket el cliente recibe el email `support-ticket-closed`
+- [ ] /admin/mensajes redirige (308) a /admin/soporte conservando el filtro `?status=`
 
 ## C. Catálogo público
 
@@ -65,7 +67,8 @@
 - [ ] Lightbox: ← → arrows + Esc cierra + dots paginator
 - [ ] Lightbox: navegación con keyboard funciona
 - [ ] "Personalizar" CTA solo visible si isPersonalizable=true
-- [ ] "Personalizar" → abre wa.me con mensaje pre-armado contextual
+- [ ] "Personalizar" → navega (Link) a `/estudio/[slug]?variant=<variantId>` (con `&copies=N` si la PDP tiene stepper de unidades) — NO abre wa.me
+- [ ] La variante elegida en la PDP llega preseleccionada al Estudio y `?copies=N` fija las unidades a diseñar
 - [ ] "Añadir al carrito" → cart counter sube + toast top-right
 - [ ] "Consultar por WhatsApp" → wa.me support
 - [ ] Breadcrumb funcional (Tienda > Categoría > Nombre)
@@ -90,6 +93,8 @@
 ## E2. Checkout + pedido (modo full)
 
 - [ ] /checkout/datos → /checkout/envio → /checkout/pago completan con datos válidos
+- [ ] Cupón válido escrito en el campo de **`/checkout/pago`** → descuento aplicado al total (el campo NO está en el carrito)
+- [ ] Cupón inválido/vencido en /checkout/pago → mensaje claro sin romper el checkout
 - [ ] Pago Wompi sandbox aprobado → webhook confirma → orden PAID + email de confirmación
 - [ ] Pago COD (contraentrega) → orden queda PENDING_PAYMENT con ledger COD para conciliar al entregar
 - [ ] /checkout/gracias?id=TX_ID muestra confirmación con número de pedido (el estado se verifica contra Wompi, no contra el query param)
@@ -129,6 +134,8 @@
 - [ ] "Personalizar" → modal con 4 switches
 - [ ] Switch "Necesarias" locked-on (no se puede desactivar)
 - [ ] Refresh → banner NO vuelve a aparecer
+- [ ] Cambiar `PRIVACY_POLICY_VERSION` en /admin/contenido (configuración) → el banner SE re-muestra al visitante que ya había decidido (re-consent: la cookie guarda la `policyVersion` aceptada; distinta versión vigente = consentimiento nuevo)
+- [ ] Cookie legacy sin `policyVersion` → NO se re-muestra; se reescribe en silencio con la versión vigente (un cambio FUTURO sí disparará re-consent para ese visitante)
 - [ ] /legal/cookies muestra tabla cookies + link "Abrir preferencias"
 - [ ] "Abrir preferencias" reabre el modal
 
@@ -147,17 +154,15 @@
 
 ## J. CMS + Visual In-Place Editor
 
-- [ ] Admin logueada ve botón "✏️ Editar este sitio" bottom-right
-- [ ] Toggle activa modo edición → lapicito + outline en cada texto editable
-- [ ] Hover sobre texto → outline más fuerte + badge con key
-- [ ] Click → modal con textarea + preview live
+- [ ] Entrada: en `/admin/contenido` el botón **"Editar en el sitio"** siembra la cookie `lucams_cms_edit` y lleva al storefront en modo edición
+- [ ] **Barra superior fija** («Modo edición: haz clic en un texto…» + botón Salir) visible mientras dura el modo; NO hay botón flotante bottom-right
+- [ ] Hover sobre texto editable → outline punteado; click sobre cualquier `[data-cms-key]` abre su editor en `/admin/contenido/campos/por-key/[key]` (los CTAs se EDITAN, no se navegan)
 - [ ] "Publicar" → cambio visible inmediatamente (updateTag invalidación)
-- [ ] Click sobre key que NO existe → modal abre con texto actual prepopulated + badge "🆕 Nuevo"
-- [ ] Welcome onboarding aparece primera vez que se activa
+- [ ] Salir (form POST a /api/admin/cms/edit-mode) → vuelve a la misma página sin el modo edición
 - [ ] Visitante anónimo: NO carga JS extra del visual editor
 - [ ] /admin/contenido sigue funcionando como back office
-- [ ] Versionado: cada save crea CmsBlockVersion
-- [ ] Revertir a versión X funciona desde /admin/contenido/bloques/[id]
+- [ ] Versionado: cada save crea `CmsFieldVersion` (historial append-only)
+- [ ] Revertir a versión X funciona desde el editor del campo (`/admin/contenido/campos/[id]`)
 - [ ] Settings inline edit en /admin/contenido/configuracion
 
 ## K. Admin CRUD

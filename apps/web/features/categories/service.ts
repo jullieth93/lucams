@@ -286,17 +286,3 @@ export async function restoreCategory(id: string, restoredBy: string | null) {
   updateTag("catalog");
   return restored;
 }
-
-/** Toggle isActive de una categoría (activar/desactivar sin archivar). */
-export async function toggleCategoryActive(
-  id: string,
-  isActive: boolean,
-  actorAdminId: string | null,
-) {
-  const updated = await prisma.category.update({
-    where: { id },
-    data: { isActive, ...(actorAdminId ? { updatedBy: actorAdminId } : {}) },
-  });
-  updateTag("catalog");
-  return updated;
-}

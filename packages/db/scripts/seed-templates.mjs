@@ -13,22 +13,43 @@
  *   4. text             — caption/nombres/datos editables
  *
  * Los 10 slugs activos coinciden con M.3.b.A (mismas slugs, mejor look visual).
- * Las plantillas M.1.d (no presentes) se soft-deletean en cada corrida.
+ *
+ * N-06 (2026-09-12) — endurecimiento (CF-09):
+ *   - DRY-RUN por defecto; `--apply` ejecuta. Env-guard fail-closed.
+ *   - El barrido que soft-deleta plantillas NO declaradas (antes corría en
+ *     cada ejecución) ahora es opt-in con `--prune` (dry-run solo las lista).
+ *   - El upsert de una plantilla EXISTENTE ya NO resetea isActive/deletedAt/
+ *     deletedBy (estados que el admin maneja) salvo que se pase
+ *     `--force-state` (comportamiento histórico, p.ej. para reactivar las
+ *     canónicas tras una depuración deliberada). El contenido (kind, nombre,
+ *     previewUrl, canvasData, orden, producto) sí se alinea siempre.
  *
  * Idempotente: upsert por slug. Re-correr no duplica.
  *
- * Uso: make seed-templates
+ * Uso: make seed-templates   (el target pasa --apply)
+ * Directo:
+ *   node scripts/seed-templates.mjs                          # DRY-RUN
+ *   node scripts/seed-templates.mjs --apply                  # upsert canónico
+ *   node scripts/seed-templates.mjs --apply --prune          # + archiva no declaradas
+ *   node scripts/seed-templates.mjs --apply --force-state    # + resetea isActive/deletedAt
  */
 
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
 process.env.DIRECT_URL = stripQuotes(process.env.DIRECT_URL);
 
-const prisma = new PrismaClient();
+// Guarda de ambiente: upsert de plantillas (+ barrido con --prune) — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("seed-templates.mjs");
 
-console.log("=== seed-templates (M.3.b.A2 asset paradigm) ===");
+const prisma = new PrismaClient();
+const APPLY = process.argv.includes("--apply");
+const PRUNE = process.argv.includes("--prune");
+const FORCE_STATE = process.argv.includes("--force-state");
+
+console.log(`=== seed-templates (M.3.b.A2 asset paradigm) — ${APPLY ? "APPLY" : "DRY-RUN"} ===`);
 console.log("");
 
 const UNSPLASH = (id) => `https://images.unsplash.com/photo-${id}?w=600&q=80&fit=crop`;
@@ -570,7 +591,7 @@ const templatesData = [
   // (nombre real, preview real): el calendario y los cuadrados dejan de ofrecer una
   // plantilla genérica duplicada en otros productos (bug "aparecen 2 plantillas" en
   // separadores/tiras). El resto queda con archive:true (isActive=false) — ver la
-  // lista y razones en scripts/ola4-depura-plantillas-2026-07-23.mjs.
+  // lista y razones en scripts/one-shot/ola4-depura-plantillas-2026-07-23.mjs.
   ...(cuadradosProduct
     ? [
         {
@@ -749,7 +770,8 @@ const templatesData = [
 ];
 
 // ──────────────────────────────────────────────────────────────────
-//  Soft-delete plantillas legacy (no presentes en M.3.b.A2)
+//  Plantillas NO declaradas — el soft-delete masivo es opt-in (--prune).
+//  Sin --prune solo se listan (el admin pudo haberlas creado a mano).
 // ──────────────────────────────────────────────────────────────────
 
 const PREMIUM_SLUGS = new Set(templatesData.map((t) => t.slug));
@@ -760,17 +782,21 @@ const legacy = await prisma.personalizationTemplate.findMany({
 });
 
 if (legacy.length > 0) {
-  console.log(`Soft-deleting ${legacy.length} plantillas legacy:`);
+  console.log(
+    `${legacy.length} plantillas NO declaradas ${PRUNE ? "(a soft-deletear)" : "(intactas — --prune para archivar)"}:`,
+  );
   for (const t of legacy) {
-    await prisma.personalizationTemplate.update({
-      where: { id: t.id },
-      data: {
-        deletedAt: new Date(),
-        isActive: false,
-        deletedBy: "system:M.3.b.CAT.11-2026-05-14",
-      },
-    });
-    console.log(`  - ${t.slug}`);
+    console.log(`  - ${t.slug}${PRUNE && APPLY ? "  → archivada" : ""}`);
+    if (PRUNE && APPLY) {
+      await prisma.personalizationTemplate.update({
+        where: { id: t.id },
+        data: {
+          deletedAt: new Date(),
+          isActive: false,
+          deletedBy: "system:seed-templates-prune",
+        },
+      });
+    }
   }
   console.log("");
 }
@@ -779,38 +805,50 @@ if (legacy.length > 0) {
 //  Upsert plantillas premium con asset paradigm
 // ──────────────────────────────────────────────────────────────────
 
-console.log(`Creando/actualizando ${templatesData.length} plantillas asset paradigm...`);
+console.log(
+  `${APPLY ? "Creando/actualizando" : "Se crearían/actualizarían"} ${templatesData.length} plantillas asset paradigm...`,
+);
 const byKind = {};
+let tplCreated = 0;
 for (const t of templatesData) {
   // Ola 4 — `archive: true` → la plantilla queda registrada pero INACTIVA (isActive=false),
   // sin borrarla (los diseños viejos conservan su snapshot y su templateId).
   const active = t.archive !== true;
   // `product` es relación Prisma — usar connect/disconnect en lugar de productId directo.
   const productRelation = t.productId ? { connect: { id: t.productId } } : { disconnect: true };
-  await prisma.personalizationTemplate.upsert({
-    where: { slug: t.slug },
-    update: {
-      kind: t.kind,
-      name: t.name,
-      product: productRelation,
-      previewUrl: t.previewUrl,
-      canvasData: t.canvasData,
-      order: t.order,
-      isActive: active,
-      deletedAt: null,
-      deletedBy: null,
-    },
-    create: {
-      kind: t.kind,
-      name: t.name,
-      slug: t.slug,
-      ...(t.productId ? { product: { connect: { id: t.productId } } } : {}),
-      previewUrl: t.previewUrl,
-      canvasData: t.canvasData,
-      order: t.order,
-      isActive: active,
-    },
-  });
+  // N-06: el update alinea CONTENIDO; los estados (isActive/deletedAt/deletedBy)
+  // son del admin y solo se resetean con --force-state.
+  const stateFields = FORCE_STATE ? { isActive: active, deletedAt: null, deletedBy: null } : {};
+  if (APPLY) {
+    await prisma.personalizationTemplate.upsert({
+      where: { slug: t.slug },
+      update: {
+        kind: t.kind,
+        name: t.name,
+        product: productRelation,
+        previewUrl: t.previewUrl,
+        canvasData: t.canvasData,
+        order: t.order,
+        ...stateFields,
+      },
+      create: {
+        kind: t.kind,
+        name: t.name,
+        slug: t.slug,
+        ...(t.productId ? { product: { connect: { id: t.productId } } } : {}),
+        previewUrl: t.previewUrl,
+        canvasData: t.canvasData,
+        order: t.order,
+        isActive: active,
+      },
+    });
+  } else {
+    const existing = await prisma.personalizationTemplate.findUnique({
+      where: { slug: t.slug },
+      select: { id: true },
+    });
+    if (!existing) tplCreated++;
+  }
   byKind[t.kind] = (byKind[t.kind] ?? 0) + 1;
   const scope = t.productId ? "(producto-específico)" : "(global)";
   console.log(`  ✓ ${t.name}  [${t.kind}]  ${scope}${active ? "" : "  ⛔ ARCHIVADA"}`);
@@ -823,13 +861,18 @@ const totalArchived = await prisma.personalizationTemplate.count({
 });
 console.log(`Total activas: ${total} plantillas asset paradigm`);
 console.log(`Total archivadas: ${totalArchived} legacy`);
+if (!APPLY) console.log(`Nuevas que se crearían: ${tplCreated}`);
 console.log("");
 console.log("Distribución por kind:");
 for (const [kind, count] of Object.entries(byKind).sort((a, b) => b[1] - a[1])) {
   console.log(`  ${kind.padEnd(22)} ${count}`);
 }
 console.log("");
-console.log("Listo. Próximo: M.3.b.B mockup contextual con sharp + 4 escenas.");
+if (!APPLY) {
+  console.log("DRY-RUN (sin cambios). Para ejecutar: node scripts/seed-templates.mjs --apply");
+} else {
+  console.log("Listo. Próximo: M.3.b.B mockup contextual con sharp + 4 escenas.");
+}
 
 await prisma.$disconnect();
 process.exit(0);

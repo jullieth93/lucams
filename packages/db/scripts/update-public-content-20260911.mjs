@@ -52,6 +52,12 @@
  *
  * OJO: tras aplicar, invalidar el caché CMS desde /admin/contenido
  * ("Actualizar caché de contenido") o esperar la revalidación (1 h).
+ *
+ * N-06 (2026-09-12): EXENCIÓN deliberada del env-guard. Su caso de uso ES la
+ * corrección de contenido en PRD (ya se aplicó en los 3 ambientes el
+ * 2026-09-11), así que bloquearlo lo volvería inútil; protege con dry-run por
+ * defecto + `--apply` explícito. Está allowlistado en
+ * lib/check-script-guards.mjs como PRD-deliberado.
  */
 
 import { readFileSync } from "node:fs";

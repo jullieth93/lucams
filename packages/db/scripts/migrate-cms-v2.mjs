@@ -12,11 +12,16 @@
  *     valor por defecto + v1 publicada solo si NO existen — NUNCA pisa
  *     body/isPublished/versiones de campos ya editados desde el admin.
  *
+ * N-06 (2026-09-12): DRY-RUN por defecto (`--apply` ejecuta) + env-guard
+ * fail-closed (bloquea PRD/remotos no reconocidos).
+ *
  * Cierra con un reporte de estado: conteos en destino, campos publicados sin
  * versión publicada, y keys caídas en la página "otros".
  *
  * Uso:
- *   make migrate-cms-v2
+ *   make migrate-cms-v2          (el target pasa --apply)
+ *   node scripts/migrate-cms-v2.mjs            # DRY-RUN
+ *   node scripts/migrate-cms-v2.mjs --apply    # aplica
  *
  * ⚠️ CACHÉ CMS: edita contenido DIRECTO en DB → después de correrlo invalidar
  * el tag "cms" desde /admin/contenido ("Actualizar caché de contenido").
@@ -24,14 +29,19 @@
 
 import { PrismaClient } from "@prisma/client";
 import { SITE_MAP } from "./cms-site-map.mjs";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
 process.env.DIRECT_URL = stripQuotes(process.env.DIRECT_URL);
 
-const prisma = new PrismaClient();
+// Guarda de ambiente: upsert del site map CMS — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("migrate-cms-v2.mjs");
 
-console.log("=== migrate-cms-v2 ===\n");
+const prisma = new PrismaClient();
+const APPLY = process.argv.includes("--apply");
+
+console.log(`=== migrate-cms-v2 (${APPLY ? "APPLY" : "DRY-RUN"}) ===\n`);
 
 const report = {
   pages: 0,
@@ -48,44 +58,59 @@ const sectionIdByPath = new Map(); // "pageSlug/sectionKey" → sectionId
 
 async function ensureStructure() {
   for (const page of SITE_MAP.pages) {
-    const pageRow = await prisma.cmsPage.upsert({
-      where: { slug: page.slug },
-      update: {
-        title: page.title,
-        description: page.description ?? null,
-        path: page.path ?? null,
-        icon: page.icon ?? null,
-        sortOrder: page.sortOrder ?? 0,
-      },
-      create: {
-        slug: page.slug,
-        title: page.title,
-        description: page.description ?? null,
-        path: page.path ?? null,
-        icon: page.icon ?? null,
-        sortOrder: page.sortOrder ?? 0,
-      },
-    });
     report.pages++;
-
-    for (const section of page.sections) {
-      const sectionRow = await prisma.cmsSection.upsert({
-        where: { pageId_key: { pageId: pageRow.id, key: section.key } },
+    let pageRowId = null;
+    if (APPLY) {
+      const pageRow = await prisma.cmsPage.upsert({
+        where: { slug: page.slug },
         update: {
-          title: section.title,
-          description: section.description ?? null,
-          sortOrder: section.sortOrder ?? 0,
+          title: page.title,
+          description: page.description ?? null,
+          path: page.path ?? null,
+          icon: page.icon ?? null,
+          sortOrder: page.sortOrder ?? 0,
         },
         create: {
-          pageId: pageRow.id,
-          key: section.key,
-          title: section.title,
-          description: section.description ?? null,
-          sortOrder: section.sortOrder ?? 0,
+          slug: page.slug,
+          title: page.title,
+          description: page.description ?? null,
+          path: page.path ?? null,
+          icon: page.icon ?? null,
+          sortOrder: page.sortOrder ?? 0,
         },
       });
-      sectionIdByPath.set(`${page.slug}/${section.key}`, sectionRow.id);
+      pageRowId = pageRow.id;
+    } else {
+      pageRowId = (await prisma.cmsPage.findUnique({ where: { slug: page.slug } }))?.id ?? null;
+    }
+
+    for (const section of page.sections) {
       report.sections++;
+      if (APPLY) {
+        const sectionRow = await prisma.cmsSection.upsert({
+          where: { pageId_key: { pageId: pageRowId, key: section.key } },
+          update: {
+            title: section.title,
+            description: section.description ?? null,
+            sortOrder: section.sortOrder ?? 0,
+          },
+          create: {
+            pageId: pageRowId,
+            key: section.key,
+            title: section.title,
+            description: section.description ?? null,
+            sortOrder: section.sortOrder ?? 0,
+          },
+        });
+        sectionIdByPath.set(`${page.slug}/${section.key}`, sectionRow.id);
+      } else {
+        const sectionRow = pageRowId
+          ? await prisma.cmsSection.findUnique({
+              where: { pageId_key: { pageId: pageRowId, key: section.key } },
+            })
+          : null;
+        if (sectionRow) sectionIdByPath.set(`${page.slug}/${section.key}`, sectionRow.id);
+      }
     }
   }
   console.log(`Estructura: ${report.pages} páginas, ${report.sections} secciones OK.`);
@@ -100,8 +125,15 @@ async function upsertMapFields() {
       if (!section.fields?.length) continue;
       const sectionId = sectionIdByPath.get(`${page.slug}/${section.key}`);
       for (const def of section.fields) {
+        // En dry-run la sección puede no existir aún (se crea en --apply): la
+        // key de CmsField es única global, así que el chequeo por key basta
+        // para el plan (crear vs actualizar).
+        if (!sectionId && APPLY) {
+          console.warn(`  ⚠ Sección ${page.slug}/${section.key} sin id — campo ${def.key} omitido.`);
+          continue;
+        }
         const structural = {
-          sectionId,
+          ...(sectionId ? { sectionId } : {}),
           kind: def.kind,
           label: def.label,
           helpText: def.helpText ?? null,
@@ -114,31 +146,37 @@ async function upsertMapFields() {
         };
         const existing = await prisma.cmsField.findUnique({ where: { key: def.key } });
         if (existing) {
-          await prisma.cmsField.update({ where: { id: existing.id }, data: structural });
+          if (APPLY) {
+            await prisma.cmsField.update({ where: { id: existing.id }, data: structural });
+          }
           continue;
         }
-        const field = await prisma.cmsField.create({
-          data: { ...structural, key: def.key, body: def.body, isPublished: true },
-        });
-        const v1 = await prisma.cmsFieldVersion.create({
-          data: {
-            fieldId: field.id,
-            version: 1,
-            title: def.label,
-            body: def.body,
-            publishedAt: new Date(),
-          },
-        });
-        await prisma.cmsField.update({
-          where: { id: field.id },
-          data: { publishedVersionId: v1.id },
-        });
         report.mapFieldsCreated++;
+        if (APPLY) {
+          const field = await prisma.cmsField.create({
+            data: { ...structural, key: def.key, body: def.body, isPublished: true },
+          });
+          const v1 = await prisma.cmsFieldVersion.create({
+            data: {
+              fieldId: field.id,
+              version: 1,
+              title: def.label,
+              body: def.body,
+              publishedAt: new Date(),
+            },
+          });
+          await prisma.cmsField.update({
+            where: { id: field.id },
+            data: { publishedVersionId: v1.id },
+          });
+        }
       }
     }
   }
   if (report.mapFieldsCreated > 0) {
-    console.log(`Campos nuevos del site map: ${report.mapFieldsCreated} creados.`);
+    console.log(
+      `Campos nuevos del site map: ${report.mapFieldsCreated} ${APPLY ? "creados" : "a crear (dry-run)"}.`,
+    );
   }
 }
 
@@ -166,7 +204,11 @@ async function parity() {
     console.log("⚠️  Anomalías:");
     for (const a of report.anomalies) console.log(`   - ${a}`);
   }
-  console.log("\nListo. Recuerda invalidar el caché CMS desde /admin/contenido.");
+  if (!APPLY) {
+    console.log("\nDRY-RUN (sin cambios). Para ejecutar: node scripts/migrate-cms-v2.mjs --apply");
+  } else {
+    console.log("\nListo. Recuerda invalidar el caché CMS desde /admin/contenido.");
+  }
 }
 
 try {

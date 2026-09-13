@@ -13,6 +13,42 @@
 
 ## Resumen actual
 
+**🛠️ 2026-09-12 — REMEDIACIÓN 360° EJECUTADA COMPLETA (25/28 IDs CERRADOS, 3 PARCIALES) en
+LOCAL + STG; PRD intacto pendiente de despliegue + frase ceremonial.** Todo en working tree de
+`develop` (sin commits). Lo más importante: la creación de la orden ahora RECHAZA items
+archivados/pausados (CF-01 crítico cerrado); el panel de integraciones consume los probes REALES
+de Wompi/Aveonline/Gemini (adiós warnings fijos); cupones con UI de edición/archivo y copy/rutas
+corregidas; strip PREMADE muerto retirado y `?template=` con consumidor real; `/admin/mensajes`
+consolidado en `/admin/soporte`; re-consent REAL ligado a `PRIVACY_POLICY_VERSION`; cron nuevo
+`lucams-expire-pending-orders` (auto-cancela WOMPI PENDING >24 h) y la alerta solo dispara si ese
+cron falla; refund exige confirmación del dinero; emails nuevos de pago-no-aprobado, devolución
+de courier y cierre de ticket; bounce rate con regla+tile+resumen; heartbeat de backups desde GHA
+
+- drill con frescura ≤36 h; 3 modelos muertos retirados (SiteEvent/RecommendationLog/
+  StockReservation, ADR-091); env-guard FAIL-CLOSED y 63/63 scripts con guard (lint en CI); seeds
+  divididos canónico/demo que ya no pisan datos administrados. Datos: 42 cupones test purgados en
+  LOCAL y 41+1 en STG (backup, drift 0), 14 settings zombi fuera de ambos. Gates TODOS verdes:
+  lint/typecheck/format/build/test (**3 808 tests, 0 fallos** — el rojo preexistente quedó
+  corregido) + E2E smoke/admin/cookies verde. Docs al día (15 archivos, ADR-090…097). Detalle
+  completo en la sección Q del informe:
+  [`docs/audits/2026-09-11-coherencia-funcional-productiva.md`](audits/2026-09-11-coherencia-funcional-productiva.md).
+  **Pendientes con Lucy:** revisar y commitear el working tree; decisión sobre bounces PRD (causa
+  raíz), homologación de catálogo (N-20), monitor externo, `LUCAMS_10`, y la frase ceremonial para
+  el saneamiento de PRD (Q.6).
+
+**🧭 2026-09-11 (noche) — AUDITORÍA 360° DE COHERENCIA FUNCIONAL ejecutada en modo diagnóstico
+(sin cambios funcionales ni borrados) y PENDIENTE DE APROBACIÓN.** Informe completo:
+[`docs/audits/2026-09-11-coherencia-funcional-productiva.md`](audits/2026-09-11-coherencia-funcional-productiva.md).
+Veredicto: **PRODUCCIÓN OPERATIVA CON GAPS**. Cobertura 100 % (47 páginas públicas/cliente, 62 admin,
+37+3 API, 64 archivos de Server Actions, 57 modelos, 79 scripts DB, 296 suites, 10 integraciones,
+3 ambientes de datos consultados read-only). Hallazgos CF-01…CF-36 (1 crítico: la creación de la
+orden no filtra items archivados del carrito; altos: suite vitest roja 1/3638 en develop, panel de
+integraciones con warnings fijos, bounce rate PRD ~50 % sin alerta, 42/43 cupones de PRD son restos
+de tests, strip PREMADE del Estudio sin consumidor, `/admin/mensajes`≡`/admin/soporte`, seeds que
+pisan datos administrados) + manifiesto de saneamiento N-01…N-28 en 10 lotes.
+**Ningún hallazgo está remediado**: se espera que Lucy apruebe expresamente los IDs a implementar
+(prompt 2 de `docs/AUDITORIA_360.md`).
+
 **🔍 2026-09-11 (tarde) — AUDITORÍA INTEGRAL DE INFORMACIÓN PÚBLICA, LEGAL Y CENTRO DE AYUDA
 ejecutada, saneada, APLICADA EN LOS 3 AMBIENTES, PAQUETE LEGAL v5 PUBLICADO Y EN VIVO, y RELEASE
 A PRD (`8408440`).**
@@ -70,6 +106,42 @@ sanciona testimonios inventados como publicidad engañosa); ④ crecimiento: **s
 la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia verificados; cuando haya
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
+
+## Sesión — 2026-09-12 — Remediación controlada completa de la auditoría 360° (N-01…N-28)
+
+- **Qué se hizo:** implementación de los 28 IDs del manifiesto aprobado (todos), en 10 lotes con
+  gates por lote. Revalidación inicial: `develop` `ddc8ce6`, hallazgos vigentes. Cierre:
+  25 CERRADOS + 3 PARCIALES (N-04 causa raíz bounces, N-05/N-12 PRD pendiente), 1 BLOQUEADO POR
+  DECISIÓN (N-20 homologación catálogo). Detalle por ID con archivo:línea en la sección Q del
+  informe de auditoría.
+- **Migraciones:** prisma `20260911120000` (3 columnas Order) + `20260912120000` (drop 3 tablas
+  vacías); supabase `00000000000032` (agenda expire-pending-orders) + `00000000000033`
+  (des-agenda stock_reservation_cleanup) — aplicadas solo en LOCAL. Orden de despliegue propuesto
+  en Q.5 (STG primero; PRD con frase ceremonial).
+- **Datos:** LOCAL: 42 cupones test purgados (backup `tmp/backups/coupons-local-*.json`), 14
+  settings zombi eliminadas (51→37), cron.job = 10. STG: 41 purgados + 1 preservado por pedido
+  smoke (drift corregido), settings 51→37. PRD: intacto (solo lecturas).
+- **Gates:** lint 0 · typecheck 0 · format:check 0 · build 0 · **vitest 3 808 passed / 8 skipped
+  (0 fallos; el rojo preexistente CF-02 corregido)** · E2E subset (smoke + admin-inventory +
+  homolog-cookies) verde · `check-script-guards` 63/63 · `node --test` scripts 24/24.
+- **Docs:** 15 actualizados + ADR-090…097 en DECISIONS.md (PREMADE retirado, 3 modelos retirados,
+  ciclo soporte, API pública, gracias PII, split seeds, heartbeat backups, mensajes→soporte).
+- **Sin commits, sin push, sin despliegue, sin escrituras en PRD.** Working tree = toda la
+  remediación + los deliverables de la auditoría.
+
+## Sesión — 2026-09-11 (noche) — Auditoría 360° de coherencia funcional (DIAGNÓSTICO, pendiente de aprobación)
+
+- **Qué se hizo:** auditoría 360° completa según `docs/AUDITORIA_360.md`, en modo diagnóstico
+  exhaustivo + plan de remediación, **sin aplicar cambios funcionales ni borrados de datos**.
+  Baseline: `develop` `ddc8ce6`, working tree limpio (solo el encargo untracked), 1 commit de docs
+  sobre `production`. Gates: lint/typecheck/format/build ✅; `pnpm test` ❌ preexistente
+  (1/3638 — CF-02). Datos de los 3 ambientes consultados con agregados read-only (sin PII).
+- **Entregable:** `docs/audits/2026-09-11-coherencia-funcional-productiva.md` (secciones A–P:
+  baseline, veredicto, cobertura 100 %, matriz maestra, matriz cliente–admin, 36 hallazgos
+  CF-01…CF-36, datos por ambiente, plantillas, cupones, integraciones, módulos, scripts,
+  deriva documental, manifiesto N-01…N-28, plan en 10 lotes, 10 decisiones requeridas).
+- **Estado:** ⏸️ **PENDIENTE DE APROBACIÓN — ningún hallazgo remediado, ningún lote ejecutado.**
+  Siguiente paso: Lucy selecciona los IDs aprobados y se ejecuta el prompt 2 del documento de encargo.
 
 ## Sesión — 2026-09-11 (tarde) — Auditoría y saneamiento integral de info pública, legal y ayuda
 

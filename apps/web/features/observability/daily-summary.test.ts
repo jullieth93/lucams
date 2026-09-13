@@ -27,6 +27,10 @@ const base: DailySummary = {
   topErrorRoute: null,
   needsReconciliation: 0,
   breachedSlos: [],
+  emailBounceRateAlert: false,
+  emailBounceRatePct: null,
+  emailBounced7d: 0,
+  emailDelivered7d: 0,
 };
 
 // Fecha fija para asertar el label sin depender del reloj.
@@ -130,5 +134,32 @@ describe("buildDailySummaryEmail", () => {
     const { html } = buildDailySummaryEmail({ ...base, ordersLast24h: 1 }, NOW);
     expect(html).not.toContain("por remitir");
     expect(html).not.toContain("discrepancia(s) de efectivo");
+  });
+
+  it("N-04 — con la tasa de rebote sobre el umbral, avisa en html Y en el texto del feed", () => {
+    const { html, text } = buildDailySummaryEmail(
+      {
+        ...base,
+        emailBounceRateAlert: true,
+        emailBounceRatePct: 25,
+        emailBounced7d: 10,
+        emailDelivered7d: 30,
+      },
+      NOW,
+    );
+    expect(html).toContain("Rebote de emails en <strong>25.0%</strong>");
+    expect(html).toContain("10 rebotados de 40");
+    expect(html).toContain("/admin/observability");
+    // El TEXTO es el detalle de la notificación in-app (el resumen ya no va por email).
+    expect(text).toContain("Rebote de emails: 25.0% en 7 días (10/40)");
+  });
+
+  it("N-04 — bajo el umbral (o sin volumen), no muestra la línea de rebote", () => {
+    const { html, text } = buildDailySummaryEmail(
+      { ...base, emailBounceRatePct: 2.5, emailBounced7d: 1, emailDelivered7d: 39 },
+      NOW,
+    );
+    expect(html).not.toContain("Rebote de emails");
+    expect(text).not.toContain("Rebote de emails");
   });
 });

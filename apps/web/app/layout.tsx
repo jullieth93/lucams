@@ -8,6 +8,7 @@ import { RouteToasts } from "@/components/route-toasts";
 import { getCanonicalSiteUrl } from "@/lib/origin";
 import { isCatalogMode } from "@/lib/store-mode";
 import { isCmsEditMode } from "@/lib/cms-edit-mode";
+import { getSiteSetting } from "@/lib/cms";
 import { CmsEditOverlay } from "@/components/cms/cms-edit-overlay";
 import "./globals.css";
 
@@ -103,7 +104,12 @@ export default async function RootLayout({
 }>) {
   // Roadmap C1 paso 2 — modo edición in-place: cookie sembrada solo por un
   // admin de contenido; monta el overlay (banner + click → editor del campo).
-  const editMode = await isCmsEditMode();
+  // PRIVACY_POLICY_VERSION (cacheada, tag `cms`) alimenta el re-consent del
+  // banner de cookies (N-15): si falta el setting, `null` = no re-mostrar.
+  const [editMode, privacyPolicy] = await Promise.all([
+    isCmsEditMode(),
+    getSiteSetting("PRIVACY_POLICY_VERSION"),
+  ]);
   return (
     <html
       lang="es-CO"
@@ -125,7 +131,7 @@ export default async function RootLayout({
         <Suspense fallback={null}>
           <RouteToasts />
         </Suspense>
-        <CookiesBanner />
+        <CookiesBanner policyVersion={privacyPolicy?.value ?? null} />
         {editMode ? <CmsEditOverlay /> : null}
       </body>
     </html>

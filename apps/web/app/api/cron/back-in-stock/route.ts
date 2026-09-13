@@ -1,7 +1,8 @@
 /*
  * Cron "avísame cuando vuelva" (palanca de ingreso, auditoría 2026-07-13). Notifica a las
- * suscripciones cuyos productos volvieron a tener stock. Protegido por CRON_SECRET (query
- * `?secret=` o header `x-cron-secret`). Se agenda con pg_cron — SQL en docs/OPERATIONS.md.
+ * suscripciones cuyos productos volvieron a tener stock. Protegido por CRON_SECRET, SOLO vía
+ * header `x-cron-secret` (`?secret=` NO se acepta: quedaría en logs de acceso — #14). Se agenda
+ * con pg_cron — SQL en docs/OPERATIONS.md.
  */
 
 import type { NextRequest } from "next/server";

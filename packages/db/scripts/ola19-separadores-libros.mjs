@@ -13,10 +13,16 @@
  * Idempotente: upsert por slug/sku. Respeta precios existentes salvo que estén
  * a 0 (los resetea al precio canónico).
  *
+ * N-06 (2026-09-12): env-guard fail-closed (bloquea PRD/remotos no reconocidos).
+ *
  * Uso: pnpm --filter @lucams/db exec dotenv -e ../../.env.local -- node scripts/ola19-separadores-libros.mjs
  */
 
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+
+// Guarda de ambiente: reestructura productos (upsert + reset de precios a 0) — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("ola19-separadores-libros.mjs");
 
 const prisma = new PrismaClient();
 

@@ -14,11 +14,33 @@
  * try/catch silencioso devuelve [] o null si DB unreachable (build con placeholder).
  */
 
-import { unstable_cache } from "next/cache";
+import { revalidateTag, unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db";
+import { parsePhotoProductConfig } from "@/features/personalization/schemas";
+import { filterTemplatesByAspectRatio } from "@/features/personalization/template-visibility";
 
 const CATALOG_TAG = "catalog";
 const CATALOG_TTL = 3600; // 1h
+
+/**
+ * Invalida los listados cacheados con tag CATALOG_TAG tras un cambio de stock
+ * (N-11 / CF-17: el badge "Agotado" del PLP podía mentir hasta 1 h por el TTL —
+ * la compra siempre estuvo protegida server-side, pero la UX era engañosa).
+ *
+ * Contextos: `revalidateTag` está permitido en Server Actions y Route Handlers
+ * (webhooks, crons) — los dos caminos reales de cambio de stock. Desde el render
+ * RSC (fallback de `/checkout/gracias`, que corre la saga fuera de Route Handler)
+ * lanzaría: se atrapa a propósito; en ese caso el listado lo refresca el webhook
+ * cuando llegue, o el TTL. Perfil "max" = stale-while-revalidate (el listado
+ * nunca deja de responder mientras se regenera).
+ */
+export function invalidateCatalogListings(): void {
+  try {
+    revalidateTag(CATALOG_TAG, "max");
+  } catch {
+    // Contexto sin permiso de invalidación (render RSC). No-op deliberado.
+  }
+}
 
 // ─────────────────── Types públicos (lo que recibe el bot/UI) ───────────────────
 
@@ -925,23 +947,41 @@ export type CatalogTemplate = {
 };
 
 export const listTemplatesByProduct = unstable_cache(
-  async (productSlug: string, mode?: "EDITABLE" | "PREMADE"): Promise<CatalogTemplate[]> => {
+  async (
+    productSlug: string,
+    mode: "EDITABLE" | "PREMADE" = "EDITABLE",
+  ): Promise<CatalogTemplate[]> => {
     try {
       const product = await prisma.product.findUnique({ where: { slug: productSlug } });
       if (!product) return [];
+
+      // N-08 (2026-09-11) — mismas reglas de visibilidad que el Estudio
+      // (service.listTemplatesForKind): kind del producto, mode (EDITABLE por
+      // defecto), activas y no borradas, y filtro de ASPECT RATIO del producto
+      // (el strip enlaza `/estudio/<slug>?template=<slug>`; una plantilla que el
+      // Estudio descartaría por aspect ya no se ofrece acá para caer en el
+      // fallback silencioso). Antes no se filtraba por kind ni aspect y PDP y
+      // Estudio podían discrepar.
       const where: Record<string, unknown> = {
         isActive: true,
         deletedAt: null,
         productId: product.id,
+        kind: product.personalizationKind,
+        mode,
       };
-      if (mode) where.mode = mode;
 
       const templates = await prisma.personalizationTemplate.findMany({
         where,
         orderBy: { order: "asc" },
       });
 
-      return templates.map((t) => ({
+      // DECISIÓN (N-08): el strip es SOLO plantillas específicas del producto —
+      // es una sección curada de merchandising ("Empieza desde una plantilla"),
+      // no el catálogo funcional del sidebar. Las GLOBALES quedan como fallback
+      // del Estudio (sin específicas el editor sigue booteando con ellas) pero
+      // no se anuncian en la PDP: aparecerían en TODAS las fichas del kind.
+      const aspectRatio = parsePhotoProductConfig(product.personalizationSchema).aspectRatio;
+      return filterTemplatesByAspectRatio(templates, aspectRatio).map((t) => ({
         id: t.id,
         slug: t.slug,
         name: t.name,

@@ -143,12 +143,3 @@ export async function unlinkProductFromOcasion(productId: string, ocasionTagId: 
   });
   updateTag("catalog");
 }
-
-export async function getProductsForOcasion(ocasionTagId: string) {
-  return prisma.productOcasionTag.findMany({
-    where: { ocasionTagId },
-    include: {
-      product: { select: { id: true, slug: true, name: true, isActive: true } },
-    },
-  });
-}

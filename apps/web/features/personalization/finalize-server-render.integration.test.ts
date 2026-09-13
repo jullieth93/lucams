@@ -11,18 +11,64 @@
  *
  * Se cubren los DOS caminos:
  *   1. El normal — el servidor renderiza los PNG y el cliente no manda ninguno.
- *   2. El fallback — ningún tier reproduce el diseño (hoy solo la Polaroid, por su marco SVG con
- *      fuentes horneadas): el servidor emite URLs firmadas, el cliente sube DIRECTO a Storage (camino
- *      que no pasa por la Function y por tanto no tiene techo) y el finalize las recoge de ahí.
+ *   2. El fallback — NINGÚN tier server-side logra renderizar el diseño: el servidor emite URLs
+ *      firmadas, el cliente sube DIRECTO a Storage (camino que no pasa por la Function y por tanto
+ *      no tiene techo) y el finalize las recoge de ahí. El test lo fuerza con `vi.mock` sobre los
+ *      DOS motores de render (sharp y canvas): la premisa vieja —"la Polaroid no es renderizable
+ *      en servidor por su marco SVG con fuentes horneadas"— quedó obsoleta cuando el tier canvas
+ *      aprendió a hornear el marco (service.ts, rama "con marco"), y sin forzar el fallo este
+ *      test quedó rojo fijo (detectado 2026-09-11).
  *
  * ATENCIÓN: dev y producción comparten la MISMA Supabase. Cada diseño que se crea acá se borra en el
  * afterAll, junto con sus filas de assets y sus objetos de Storage.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
 import { createClientSlotUploadTickets, finalizeDesign } from "./service";
+
+/*
+ * Interruptor del test de fallback: con `failAll` activo, AMBOS motores de render
+ * server-side fallan (el sharp se declara incapaz como con una plantilla con texto
+ * —RenderNeedsKonvaError real, para que el servicio caiga al tier canvas— y el
+ * canvas lanza). Así se ejerce el camino REAL del fallback de forma determinista;
+ * con el flag apagado los módulos delegan al motor verdadero y el resto de tests
+ * del archivo corren el render completo contra Storage.
+ * `attempts` cuenta las llamadas interceptadas: prueba de que el NEEDS_CLIENT_SLOTS
+ * vino de motores que se INTENTARON y fallaron, no de otro camino.
+ */
+const renderControl = vi.hoisted(() => ({ failAll: false, attempts: 0 }));
+
+vi.mock("./production-render", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./production-render")>();
+  return {
+    ...actual,
+    renderProductionSlots: async (...args: Parameters<typeof actual.renderProductionSlots>) => {
+      if (renderControl.failAll) {
+        renderControl.attempts += 1;
+        throw new actual.RenderNeedsKonvaError("forzado por el test: tier sharp fuera de juego");
+      }
+      return actual.renderProductionSlots(...args);
+    },
+  };
+});
+
+vi.mock("./production-render-canvas", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./production-render-canvas")>();
+  return {
+    ...actual,
+    renderProductionSlotsCanvas: async (
+      ...args: Parameters<typeof actual.renderProductionSlotsCanvas>
+    ) => {
+      if (renderControl.failAll) {
+        renderControl.attempts += 1;
+        throw new Error("forzado por el test: tier canvas fuera de juego");
+      }
+      return actual.renderProductionSlotsCanvas(...args);
+    },
+  };
+});
 
 /*
  * En CI las vars de Supabase van vacías A PROPÓSITO (ci.yml: los tests que exigen Supabase
@@ -184,53 +230,68 @@ describe.skipIf(SKIP)("finalizeDesign — el cliente ya no manda los PNG de impr
       "no hay ningún diseño real de set-fotoimanes-polaroid que clonar",
     ).toBeTruthy();
 
-    // 1) Sin blobs y sin render posible → el servicio lo dice con un error reconocible.
-    await expect(
-      finalizeDesign({ designId: designId!, previewBuffer: PNG_1X1, ...OWNER }),
-    ).rejects.toThrow(/NEEDS_CLIENT_SLOTS/);
+    // Forzar el fallo de TODOS los tiers de render server (ver el comentario de
+    // renderControl arriba): la Polaroid ya SÍ se renderiza en servidor, así que
+    // el "no se puede" del escenario lo ponen los mocks, no el diseño elegido.
+    renderControl.failAll = true;
+    renderControl.attempts = 0;
+    try {
+      // 1) Sin blobs y sin render posible → el servicio lo dice con un error reconocible.
+      await expect(
+        finalizeDesign({ designId: designId!, previewBuffer: PNG_1X1, ...OWNER }),
+      ).rejects.toThrow(/NEEDS_CLIENT_SLOTS/);
 
-    // El diseño NO puede haberse quedado a medias.
-    const trasFallo = await prisma.design.findUnique({
-      where: { id: designId! },
-      select: { status: true },
-    });
-    expect(trasFallo?.status).toBe("DRAFT");
+      // Los motores se INTENTARON y fallaron — si attempts fuera 0, el error
+      // vendría de otro lado y el test no estaría probando el fallback.
+      expect(renderControl.attempts).toBeGreaterThan(0);
 
-    // 2) URLs firmadas de subida, una por slot.
-    const tickets = await createClientSlotUploadTickets({ designId: designId!, ...OWNER });
-    const cd = (await prisma.design.findUnique({
-      where: { id: designId! },
-      select: { canvasData: true },
-    }))!.canvasData as { slotCount: number };
-    expect(tickets.length).toBe(cd.slotCount);
-
-    // 3) El navegador sube DIRECTO a Storage — este es el camino sin techo de 4.5 MB.
-    for (const t of tickets) {
-      const res = await fetch(t.url, {
-        method: "PUT",
-        headers: { "content-type": "image/png", "cache-control": "max-age=3600" },
-        body: new Uint8Array(PNG_1X1),
+      // El diseño NO puede haberse quedado a medias.
+      const trasFallo = await prisma.design.findUnique({
+        where: { id: designId! },
+        select: { status: true },
       });
-      expect(res.ok, `subida del slot ${t.slotIndex + 1}: ${res.status} ${await res.text()}`).toBe(
-        true,
-      );
+      expect(trasFallo?.status).toBe("DRAFT");
+
+      // 2) URLs firmadas de subida, una por slot.
+      const tickets = await createClientSlotUploadTickets({ designId: designId!, ...OWNER });
+      const cd = (await prisma.design.findUnique({
+        where: { id: designId! },
+        select: { canvasData: true },
+      }))!.canvasData as { slotCount: number };
+      expect(tickets.length).toBe(cd.slotCount);
+
+      // 3) El navegador sube DIRECTO a Storage — este es el camino sin techo de 4.5 MB.
+      for (const t of tickets) {
+        const res = await fetch(t.url, {
+          method: "PUT",
+          headers: { "content-type": "image/png", "cache-control": "max-age=3600" },
+          body: new Uint8Array(PNG_1X1),
+        });
+        expect(
+          res.ok,
+          `subida del slot ${t.slotIndex + 1}: ${res.status} ${await res.text()}`,
+        ).toBe(true);
+      }
+
+      // 4) Segunda pasada: el servidor vuelve a intentar el render (sigue
+      // fallando, por eso importa) y recoge los blobs del área de paso.
+      const design = await finalizeDesign({
+        designId: designId!,
+        previewBuffer: PNG_1X1,
+        useStagedClientSlots: true,
+        ...OWNER,
+      });
+      expect(design.status).toBe("READY");
+      expect(design.productionUrls.length).toBe(cd.slotCount);
+
+      // 5) El área de paso queda limpia: los definitivos son los que sube finalizeDesign.
+      const { data: staged } = await supabase.storage
+        .from("production-assets")
+        .list(`${designId!}/_client`);
+      expect(staged ?? []).toHaveLength(0);
+    } finally {
+      renderControl.failAll = false;
     }
-
-    // 4) Segunda pasada: el servidor los recoge del área de paso.
-    const design = await finalizeDesign({
-      designId: designId!,
-      previewBuffer: PNG_1X1,
-      useStagedClientSlots: true,
-      ...OWNER,
-    });
-    expect(design.status).toBe("READY");
-    expect(design.productionUrls.length).toBe(cd.slotCount);
-
-    // 5) El área de paso queda limpia: los definitivos son los que sube finalizeDesign.
-    const { data: staged } = await supabase.storage
-      .from("production-assets")
-      .list(`${designId!}/_client`);
-    expect(staged ?? []).toHaveLength(0);
   }, 600_000);
 
   /*

@@ -20,13 +20,18 @@ const CATALOG_PATHS = [
   "/admin/resenas",
   "/admin/clientes",
 ];
-// "Reclamos" son las rutas reales garantias + retractos (todos los roles operativos).
-const SHARED_PATHS = ["/admin/dashboard", "/admin/pedidos", "/admin/garantias", "/admin/retractos"];
+// Compartidas por los tres roles operativos (N-21, 2026-09-11: garantías y
+// retractos ya NO están acá — la ruta replica lo que su página exige).
+const SHARED_PATHS = ["/admin/dashboard", "/admin/pedidos"];
+// Garantías: SUPER+MANAGER — la página y sus actions piden MANAGER_UP; antes la
+// ruta era ALL y FULFILLMENT rebotaba con ?denied=1 (N-21).
+const MANAGER_UP_PATHS = ["/admin/garantias"];
 // Contenido del sitio: SUPERADMIN + CMS_EDITOR (set CONTENT).
 const CONTENT_PATHS = ["/admin/contenido", "/admin/email-templates"];
 // Autoservicio de cuenta (MFA obligatorio, B-1): los cuatro roles.
 const ACCOUNT_PATHS = ["/admin/seguridad"];
-// Rutas NO listadas → deny-by-default (solo SUPERADMIN).
+// Rutas solo-SUPERADMIN: las NO listadas (deny-by-default) + /admin/retractos,
+// declarada explícita SUPER en la matriz (página y actions piden SUPER — N-21).
 const SUPERADMIN_ONLY_PATHS = [
   "/admin/finanzas",
   "/admin/cupones",
@@ -41,12 +46,14 @@ const SUPERADMIN_ONLY_PATHS = [
   "/admin/metricas",
   "/admin/performance",
   "/admin/redirects",
+  "/admin/retractos",
 ];
 
 describe("canAccessAdminPath — SUPERADMIN", () => {
   it("permite acceso a TODAS las rutas listadas", () => {
     for (const p of [
       ...SHARED_PATHS,
+      ...MANAGER_UP_PATHS,
       ...CATALOG_PATHS,
       ...CONTENT_PATHS,
       ...ACCOUNT_PATHS,
@@ -71,8 +78,14 @@ describe("canAccessAdminPath — MANAGER", () => {
     }
   });
 
-  it("permite pedidos, garantías y dashboard (compartidas con todos)", () => {
+  it("permite pedidos y dashboard (compartidas con todos los operativos)", () => {
     for (const p of SHARED_PATHS) {
+      expect(canAccessAdminPath("MANAGER", p)).toBe(true);
+    }
+  });
+
+  it("permite garantías (MANAGER_UP — N-21: la ruta replica el permiso de la página)", () => {
+    for (const p of MANAGER_UP_PATHS) {
       expect(canAccessAdminPath("MANAGER", p)).toBe(true);
     }
   });
@@ -102,7 +115,7 @@ describe("canAccessAdminPath — MANAGER", () => {
 });
 
 describe("canAccessAdminPath — FULFILLMENT", () => {
-  it("permite SOLO pedidos, garantías y dashboard", () => {
+  it("permite SOLO pedidos y dashboard", () => {
     for (const p of SHARED_PATHS) {
       expect(canAccessAdminPath("FULFILLMENT", p)).toBe(true);
     }
@@ -116,6 +129,12 @@ describe("canAccessAdminPath — FULFILLMENT", () => {
 
   it("NIEGA todo el catálogo (incluye reseñas y clientes)", () => {
     for (const p of CATALOG_PATHS) {
+      expect(canAccessAdminPath("FULFILLMENT", p)).toBe(false);
+    }
+  });
+
+  it("NIEGA garantías (N-21: la página exige SUPER+MANAGER — la ruta ya no la ofrece)", () => {
+    for (const p of MANAGER_UP_PATHS) {
       expect(canAccessAdminPath("FULFILLMENT", p)).toBe(false);
     }
   });
@@ -190,8 +209,10 @@ describe("canAccessAdminPath — matriz completa rol × ruta representativa", ()
   const matrix: Array<[string, boolean, boolean, boolean, boolean]> = [
     ["/admin/dashboard", true, true, true, false],
     ["/admin/pedidos", true, true, true, false],
-    ["/admin/garantias", true, true, true, false],
-    ["/admin/retractos", true, true, true, false],
+    // N-21: garantías = SUPER+MANAGER (la página exige MANAGER_UP); retractos = SUPER
+    // (página y actions SUPER). Antes ambas eran ALL y el rol rebotaba con ?denied=1.
+    ["/admin/garantias", true, true, false, false],
+    ["/admin/retractos", true, false, false, false],
     ["/admin/soporte", true, true, false, false],
     ["/admin/productos", true, true, false, false],
     ["/admin/inventario", true, true, false, false],
@@ -279,7 +300,8 @@ function buildNav(): NavGroup[] {
   return [
     // Link directo (sin items).
     { label: "Dashboard", href: "/admin/dashboard" },
-    // Grupo mixto: pedidos+garantías (todos) y catálogo (solo manager).
+    // Grupo mixto: pedidos (todos los operativos), garantías (SUPER+MANAGER — N-21)
+    // y catálogo (solo manager).
     {
       label: "Operación",
       items: [
@@ -360,15 +382,15 @@ describe("filterNavByRole — MANAGER", () => {
 });
 
 describe("filterNavByRole — FULFILLMENT", () => {
-  it("conserva dashboard, operación (pedidos+garantías) y Sistema (solo Seguridad)", () => {
+  it("conserva dashboard, operación (solo pedidos) y Sistema (solo Seguridad)", () => {
     const out = filterNavByRole(buildNav(), "FULFILLMENT");
     expect(out.map((g) => g.label)).toEqual(["Dashboard", "Operación", "Sistema"]);
   });
 
-  it("filtra Operación a SOLO pedidos y garantías (sin catálogo)", () => {
+  it("filtra Operación a SOLO pedidos (N-21: garantías es SUPER+MANAGER, ya no se ofrece)", () => {
     const out = filterNavByRole(buildNav(), "FULFILLMENT");
     const operacion = out.find((g) => g.label === "Operación");
-    expect(operacion?.items?.map((i) => i.href)).toEqual(["/admin/pedidos", "/admin/garantias"]);
+    expect(operacion?.items?.map((i) => i.href)).toEqual(["/admin/pedidos"]);
   });
 
   it("descarta el grupo Catálogo completo (queda vacío)", () => {
@@ -405,11 +427,11 @@ describe("filterNavByRole — CMS_EDITOR", () => {
           { label: "Plantillas de correo", href: "/admin/email-templates" },
         ],
       },
-      { label: "Mensajes", href: "/admin/mensajes" },
+      { label: "Soporte", href: "/admin/soporte" },
     ];
   }
 
-  it("ve SOLO Contenido y Configuración; descarta dashboard, mensajes y demás grupos", () => {
+  it("ve SOLO Contenido y Configuración; descarta dashboard, soporte y demás grupos", () => {
     const out = filterNavByRole(buildNavConContenido(), "CMS_EDITOR");
     expect(out.map((g) => g.label)).toEqual(["Contenido", "Configuración"]);
   });

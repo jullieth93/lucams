@@ -1,14 +1,16 @@
 /*
- * Interface PaymentProvider — ADR-004 + extensión pre-Fase 2.
+ * Interface PaymentProvider — ADR-004.
  *
  * Pattern equivalente a ShippingProvider. Permite swap entre Wompi y
- * Mercado Pago (futuro) sin tocar el código del checkout, webhooks ni
- * /admin/pedidos. El provider activo se controla por env PAYMENT_PROVIDER
- * (default "wompi").
+ * Mercado Pago (post-lanzamiento, roadmap) sin tocar el código del checkout,
+ * webhooks ni /admin/pedidos. El provider activo se controla por env
+ * PAYMENT_PROVIDER (default "wompi").
  *
  * Implementaciones:
- *   - features/payments/wompi.ts (activa, sandbox + producción)
- *   - features/payments/mercadopago.ts (futuro, ADR-004)
+ *   - features/payments/wompi.ts (activa, producción)
+ *   - Mercado Pago: aún sin adapter — post-lanzamiento (ADR-004). Mientras
+ *     tanto, la rama `name: "mercadopago"` del contrato es inalcanzable y el
+ *     factory rechaza cualquier PAYMENT_PROVIDER ≠ "wompi" con error claro.
  */
 
 import "server-only";
@@ -101,7 +103,9 @@ export function getPaymentProvider(): PaymentProvider {
   // El check va ANTES del require: así un provider no soportado falla con el
   // error claro sin cargar el SDK de Wompi (honra el "import dinámico" del intent).
   if (choice !== "wompi") {
-    throw new Error(`PAYMENT_PROVIDER="${choice}" no soportado todavía. Solo "wompi" en Fase 2.`);
+    throw new Error(
+      `PAYMENT_PROVIDER="${choice}" no soportado. Solo "wompi" tiene adapter (Mercado Pago es post-lanzamiento, ADR-004).`,
+    );
   }
   // Import dinámico para evitar cargar SDK del provider no activo.
   // eslint-disable-next-line @typescript-eslint/no-require-imports

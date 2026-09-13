@@ -2,14 +2,13 @@
  * Tests del SERVICE de CHECKOUT — ruta de ingresos.
  *
  * El módulo @/features/checkout/service.ts orquesta el flow de checkout:
- *   - calculateTotals(): cálculo de subtotal/envío/descuento/IVA/total (PURO).
  *   - los step savers (saveContactStep, savePaymentMethodStep, etc.): escriben
  *     la cookie sellada checkout_state (AES-256-GCM, F-9).
  *   - loadCheckoutContext(): cart + customer + state desde cookie/DB.
  *   - finalizeCheckout(): crea Order en DB + idempotencia + URL de Wompi (DB).
  *
  * Estrategia mixta (la pieza de mayor valor — finalizeCheckout — es DB):
- *   - calculateTotals + CheckoutError: unit puro, corre SIEMPRE.
+ *   - CheckoutError: unit puro, corre SIEMPRE.
  *   - Step savers / loadCheckoutContext / finalizeCheckout: integración DB.
  *     Requiere DATABASE_URL (corre vía `dotenv -e .env.local -- vitest`); sin
  *     ella se saltan (skipIf) para no romper CI sin DB.
@@ -44,15 +43,18 @@ vi.mock("next/cache", () => ({
   updateTag: vi.fn(),
 }));
 
-// @/lib/cms → real, EXCEPTO getSettingValue("COD_ENABLED"): lo forzamos a "true" para
-// que el test de COD no dependa del toggle de negocio en la DB compartida (si Lucy lo
-// apaga desde el admin, el test seguiría verde). Los demás settings (PICKUP_*) reales.
+// @/lib/cms → real, EXCEPTO getSettingValue("COD_ENABLED"): controlable por test vía
+// `mockCodSetting` para que el flujo COD no dependa del toggle de negocio en la DB
+// compartida (si Lucy lo apaga desde el admin, los tests siguen verdes). Default "true"
+// (comportamiento histórico); `null` simula la setting AUSENTE/despublicada → el caller
+// cae a su fallback (así se ejerce el fail-closed CF-35). Los demás settings reales.
+let mockCodSetting: string | null = "true";
 vi.mock("@/lib/cms", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/cms")>();
   return {
     ...actual,
     getSettingValue: async (key: string, fallback: string) =>
-      key === "COD_ENABLED" ? "true" : actual.getSettingValue(key, fallback),
+      key === "COD_ENABLED" ? (mockCodSetting ?? fallback) : actual.getSettingValue(key, fallback),
   };
 });
 
@@ -154,7 +156,6 @@ const createShipmentCalls: Array<{
 import { prisma } from "@/lib/db";
 import {
   CheckoutError,
-  calculateTotals,
   destinationKeyOf,
   finalizeCheckout,
   loadCheckoutContext,
@@ -267,71 +268,12 @@ async function createCartWithItem(opts: {
 beforeEach(() => {
   cookieStore.clear();
   mockUser = null;
+  mockCodSetting = "true";
   paymentCalls.length = 0;
   paymentShouldThrow = null;
   shippingCalls.length = 0;
   shippingShouldThrow = null;
   shippingQuoteResult = [];
-});
-
-// ════════════════════════════════════════════════════════════════════════
-// calculateTotals — PURO (corre siempre, con o sin DB)
-// ════════════════════════════════════════════════════════════════════════
-
-describe("calculateTotals — cálculo de totales (puro)", () => {
-  it("suma subtotal + envío con descuento 0 por defecto", () => {
-    const t = calculateTotals({ subtotal: 100_000, shippingCost: 15_000 });
-    expect(t).toEqual({
-      subtotal: 100_000,
-      shipping: 15_000,
-      discount: 0,
-      tax: 0,
-      total: 115_000,
-    });
-  });
-
-  it("resta el descuento del total cuando se provee", () => {
-    const t = calculateTotals({ subtotal: 100_000, shippingCost: 15_000, discount: 20_000 });
-    expect(t.discount).toBe(20_000);
-    expect(t.total).toBe(95_000); // 100k + 15k - 20k
-  });
-
-  it("IVA siempre es 0 (IVA incluido en precios COP, no se suma aparte)", () => {
-    const t = calculateTotals({ subtotal: 999_999, shippingCost: 0 });
-    expect(t.tax).toBe(0);
-    expect(t.total).toBe(999_999);
-  });
-
-  it("envío gratis (shippingCost=0) no altera el subtotal", () => {
-    const t = calculateTotals({ subtotal: 80_000, shippingCost: 0 });
-    expect(t.total).toBe(80_000);
-    expect(t.shipping).toBe(0);
-  });
-
-  it("todo en cero da total 0", () => {
-    expect(calculateTotals({ subtotal: 0, shippingCost: 0 })).toEqual({
-      subtotal: 0,
-      shipping: 0,
-      discount: 0,
-      tax: 0,
-      total: 0,
-    });
-  });
-
-  it("BUG/comportamiento documentado: descuento > (subtotal+envío) da total NEGATIVO (sin clamp a 0)", () => {
-    // calculateTotals no clampa. Un descuento mayor al cobrable produce un total
-    // negativo. Documenta el comportamiento actual — el clamp/validación de
-    // cupón es responsabilidad del caller (ver bugsFound).
-    const t = calculateTotals({ subtotal: 50_000, shippingCost: 0, discount: 80_000 });
-    expect(t.total).toBe(-30_000);
-  });
-
-  it("propaga los valores de entrada sin redondear ni mutar", () => {
-    const t = calculateTotals({ subtotal: 123_456, shippingCost: 7_890, discount: 1_000 });
-    expect(t.subtotal).toBe(123_456);
-    expect(t.shipping).toBe(7_890);
-    expect(t.total).toBe(123_456 + 7_890 - 1_000);
-  });
 });
 
 // ════════════════════════════════════════════════════════════════════════
@@ -987,6 +929,40 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       expect(createShipmentCalls).toHaveLength(1);
       expect(createShipmentCalls[0].contraentrega).toBe(true);
       expect(createShipmentCalls[0].valorRecaudoCop).toBe(order?.total);
+    }, 40000);
+
+    it("COD fail-closed (CF-35): setting COD_ENABLED AUSENTE → rechaza y NO genera guía", async () => {
+      // null = la setting falta o se despublicó → getSettingValue cae al fallback
+      // del caller ("false") → la contraentrega queda deshabilitada por defecto.
+      mockCodSetting = null;
+      const sid = uuid();
+      await createCartWithItem({ sessionId: sid });
+      setCartCookie(sid);
+      await seedFullState({ paymentMethod: "COD" });
+      createShipmentCalls.length = 0;
+
+      await expect(finalizeCheckout({ redirectUrl: "https://x.test" })).rejects.toMatchObject({
+        code: "PAYMENT_INIT_FAILED",
+      });
+      // Nunca llamó a Wompi NI pidió guía contraentrega a Aveonline.
+      expect(paymentCalls).toHaveLength(0);
+      expect(createShipmentCalls).toHaveLength(0);
+    }, 40000);
+
+    it("COD apagado explícitamente (COD_ENABLED='false') → rechaza y NO genera guía", async () => {
+      mockCodSetting = "false";
+      const sid = uuid();
+      await createCartWithItem({ sessionId: sid });
+      setCartCookie(sid);
+      await seedFullState({ paymentMethod: "COD" });
+      createShipmentCalls.length = 0;
+
+      await expect(finalizeCheckout({ redirectUrl: "https://x.test" })).rejects.toMatchObject({
+        code: "PAYMENT_INIT_FAILED",
+        message: "El pago contra entrega no está disponible en este momento.",
+      });
+      expect(paymentCalls).toHaveLength(0);
+      expect(createShipmentCalls).toHaveLength(0);
     }, 40000);
 
     it("PAYMENT_INIT_FAILED (envuelto) cuando Wompi lanza al crear checkout", async () => {

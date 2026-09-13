@@ -731,10 +731,13 @@ número de rastreo en el detalle del pedido.
 > `review-request`, `cart-recovery`, `back-in-stock`, `purge-anon-designs`, `purge-event-logs`).
 > `pg_cron` ya estaba agendado y corriendo; no hubo que crear nada.
 >
-> **Hoy son 8 jobs HTTP** (se sumó `cms-publish-scheduled`, migración 021) + 2 jobs SQL puros
-> (`rate_limit_cleanup`, `stock_reservation_cleanup`). Y desde la auditoría 2026-08-24 el detalle de
-> `/api/health/crons` (nombres de jobs, `lastRunAt`) **exige el header `x-cron-secret`** — sin él la
-> respuesta pública es solo `{ status, timestamp }` (alcanza para el monitor: 200/503):
+> **Hoy son 9 jobs HTTP** (se sumaron `cms-publish-scheduled` — migración 021 — y
+> `expire-pending-orders` — migración 032, auto-cancela pedidos Wompi en PENDING_PAYMENT > 24h)
+>
+> - 1 job SQL puro (`rate_limit_cleanup`; `stock_reservation_cleanup` se des-agendó en la
+>   migración 033 cuando su tabla salió del schema, 2026-09-12). Y desde la auditoría 2026-08-24 el detalle de
+>   `/api/health/crons` (nombres de jobs, `lastRunAt`) **exige el header `x-cron-secret`** — sin él la
+>   respuesta pública es solo `{ status, timestamp }` (alcanza para el monitor: 200/503):
 >
 > ```bash
 > curl -s -H "x-cron-secret: $CRON_SECRET" https://lucamsshop.com/api/health/crons

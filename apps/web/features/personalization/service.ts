@@ -35,6 +35,7 @@ import { parsePhotoProductConfig } from "./schemas";
 import { listStagedSlotPaths, stagedSlotPath } from "./staged-slots";
 import { resolvePersonalizationSurface } from "./surface";
 import { unitCountOf, MAX_LETTER_SET_UNITS } from "./design-units";
+import { filterTemplatesByAspectRatio, preferProductSpecific } from "./template-visibility";
 import { normalizeName } from "./name-input";
 import { remapCanvasAssetIds } from "./canvas-remap";
 import { calendarLayoutFromUnitTemplate } from "./calendar-layout";
@@ -457,6 +458,33 @@ function generateGridLayout(
 //  Create draft (V2 directamente)
 // ──────────────────────────────────────────────────────────────────
 
+/**
+ * N-08 (2026-09-11) — validación COMPLETA de una plantilla elegida explícitamente
+ * (deep-link `?template=` resuelto en la página, o templateId del boot del editor):
+ * activa, no borrada, `mode = EDITABLE`, del KIND del producto y del propio producto
+ * o global. Antes solo se revisaba isActive/deletedAt y una plantilla de otro kind /
+ * otro producto / PREMADE podía terminar de unitTemplate de un diseño.
+ * Misma regla para diseños anónimos y autenticados (el ownership no cambia qué
+ * plantillas están a la vista).
+ */
+async function findUsableEditableTemplate(opts: {
+  templateId: string;
+  productId: string;
+  kind: string;
+}) {
+  return prisma.personalizationTemplate.findFirst({
+    where: {
+      id: opts.templateId,
+      kind: opts.kind as never,
+      mode: "EDITABLE",
+      isActive: true,
+      deletedAt: null,
+      OR: [{ productId: opts.productId }, { productId: null }],
+    },
+    select: { id: true, canvasData: true },
+  });
+}
+
 export async function createDraftDesign(opts: {
   productId: string;
   templateId?: string;
@@ -484,31 +512,33 @@ export async function createDraftDesign(opts: {
   const slotCount = photoConfig.photoSlots;
 
   // Cargar unitTemplate desde PersonalizationTemplate (si se pasó templateId
-  // explícito) o el primer template activo del kind del producto.
+  // explícito) o el primer template VISIBLE del kind del producto.
   let unitTemplate: CanvasDataV1;
   let templateIdToUse: string | null = opts.templateId ?? null;
 
   if (opts.templateId) {
-    const tpl = await prisma.personalizationTemplate.findUnique({
-      where: { id: opts.templateId },
-      select: { canvasData: true, isActive: true, deletedAt: true },
+    const tpl = await findUsableEditableTemplate({
+      templateId: opts.templateId,
+      productId: product.id,
+      kind: product.personalizationKind,
     });
-    if (!tpl || !tpl.isActive || tpl.deletedAt) {
+    if (!tpl) {
       throw new Error(`createDraftDesign: template ${opts.templateId} not available`);
     }
     unitTemplate = tpl.canvasData as unknown as CanvasDataV1;
   } else {
-    // Default: primer template activo del kind
-    const tpl = await prisma.personalizationTemplate.findFirst({
-      where: {
-        kind: product.personalizationKind,
-        isActive: true,
-        deletedAt: null,
-        OR: [{ productId: product.id }, { productId: null }],
-      },
-      orderBy: { order: "asc" },
-      select: { id: true, canvasData: true },
-    });
+    // Default: primera plantilla VISIBLE para el producto — MISMAS reglas que la
+    // página del Estudio (listTemplatesForKind: EDITABLE, específicas > globales,
+    // filtro de aspect). Antes era "primera activa del kind" sin aspect ni mode y
+    // el draft del servidor podía arrancar con una plantilla distinta de la que
+    // veía el cliente (inconsistencia server/cliente — N-08).
+    const tpl = (
+      await listTemplatesForKind(product.personalizationKind, {
+        productId: product.id,
+        productAspectRatio: photoConfig.aspectRatio,
+        take: 1,
+      })
+    )[0];
     if (tpl) {
       unitTemplate = tpl.canvasData as unknown as CanvasDataV1;
       templateIdToUse = tpl.id;
@@ -836,12 +866,25 @@ export async function createLetterSetDesign(opts: {
 }
 
 // ──────────────────────────────────────────────────────────────────
-//  Save canvas (DRAFT only). Acepta V1 o V2.
+//  Save canvas (DRAFT only). Acepta V1 o V2. N-08: también puede
+//  actualizar Design.templateId (cambio de plantilla del sidebar),
+//  validado contra el producto antes de persistirse.
 // ──────────────────────────────────────────────────────────────────
 
 export async function saveCanvas(opts: {
   designId: string;
   canvasData: CanvasData;
+  /**
+   * N-08 (2026-09-11) — plantilla aplicada en el sidebar (`store.applyTemplate`):
+   * el auto-save la envía para que `Design.templateId` refleje el cambio (antes
+   * nunca se persistía). Se valida server-side con la MISMA regla que
+   * createDraftDesign (activa, EDITABLE, kind del producto, producto/global) —
+   * anónimos y autenticados por igual. Si NO pasa la validación (p.ej. la
+   * desactivaron entre la carga de la página y el guardado), el canvasData se
+   * guarda igual y el templateId queda como estaba: el canvas es la SoT y un
+   * auto-save de 2 s no debe romperse por una FK informativa.
+   */
+  templateId?: string;
   customerId: string | null;
   sessionId: string | null;
 }) {
@@ -853,9 +896,39 @@ export async function saveCanvas(opts: {
     throw new Error(`Design is ${design.status} — only DRAFT can be edited`);
   }
 
+  let templateId: string | undefined;
+  if (opts.templateId) {
+    const product = await prisma.product.findUnique({
+      where: { id: design.productId },
+      select: { personalizationKind: true },
+    });
+    const tpl = product
+      ? await findUsableEditableTemplate({
+          templateId: opts.templateId,
+          productId: design.productId,
+          kind: product.personalizationKind,
+        })
+      : null;
+    if (tpl) {
+      templateId = tpl.id;
+    } else {
+      logger.warn(
+        {
+          event: "design.save_canvas.template_rejected",
+          designId: design.id,
+          templateId: opts.templateId,
+        },
+        "templateId inválido en saveCanvas — se conserva el anterior",
+      );
+    }
+  }
+
   await prisma.design.update({
     where: { id: design.id },
-    data: { canvasData: opts.canvasData as unknown as Prisma.InputJsonValue },
+    data: {
+      canvasData: opts.canvasData as unknown as Prisma.InputJsonValue,
+      ...(templateId ? { templateId } : {}),
+    },
   });
 }
 
@@ -1248,11 +1321,25 @@ export async function finalizeDesign(opts: {
 
 export async function listTemplatesForKind(
   kind: string,
-  opts?: { productId?: string; take?: number; productAspectRatio?: string },
+  opts?: {
+    productId?: string;
+    take?: number;
+    productAspectRatio?: string;
+    /**
+     * N-08 (2026-09-11) — modo de las plantillas. Default "EDITABLE": el Estudio
+     * solo lista puntos de partida editables; antes no se filtraba y una PREMADE
+     * del mismo kind se colaba al sidebar/boot como si fuera editable. El
+     * concepto PREMADE está RETIRADO del storefront (0 datos, 0 consumidores —
+     * decisión de producto 2026-09-11); el parámetro queda por si otro caller
+     * (admin) necesita otro modo explícitamente.
+     */
+    mode?: "EDITABLE" | "PREMADE";
+  },
 ) {
   const templates = await prisma.personalizationTemplate.findMany({
     where: {
       kind: kind as never,
+      mode: opts?.mode ?? "EDITABLE",
       isActive: true,
       deletedAt: null,
       OR: opts?.productId
@@ -1260,7 +1347,12 @@ export async function listTemplatesForKind(
         : [{ productId: null }],
     },
     orderBy: { order: "asc" },
-    take: opts?.take ?? 30,
+    // SIN `take` en la query: el tope se aplica DESPUÉS de los filtros de
+    // visibilidad (específicas > globales y aspect ratio). Un take en DB cortaba
+    // antes de filtrar — con take:1 traía la primera por `order` y, si el aspect
+    // la descartaba, la lista quedaba vacía aunque hubiera visibles después
+    // (bug cazado por templates.integration.test.ts, 2026-09-11). El universo
+    // crudo (activas del kind, producto-o-globales) es chico y curado.
     select: {
       id: true,
       slug: true,
@@ -1275,56 +1367,11 @@ export async function listTemplatesForKind(
   // Ola 19 (Lucy 2026-07-26) — si el producto tiene plantillas ESPECÍFICAS curadas,
   // se usan SOLO esas (no mezclamos con globales del mismo kind). Si no tiene específicas,
   // caemos a las globales filtradas por aspect ratio.
-  if (opts?.productId) {
-    const specific = templates.filter((t) => t.productId === opts.productId);
-    if (specific.length > 0) {
-      return filterTemplatesByAspectRatio(specific, opts.productAspectRatio);
-    }
-  }
+  const visible = preferProductSpecific(templates, opts?.productId);
 
   // Aspect filter aterrizado 2026-05-13: solo mostrar plantillas cuyo
   // canvasData.stage.width/height matchee con el aspect ratio del producto.
-  return filterTemplatesByAspectRatio(templates, opts?.productAspectRatio);
-}
-
-function filterTemplatesByAspectRatio(
-  templates: {
-    id: string;
-    slug: string;
-    name: string;
-    previewUrl: string;
-    canvasData: unknown;
-    productId: string | null;
-  }[],
-  productAspectRatio?: string,
-) {
-  if (!productAspectRatio) return templates;
-  const target = parseAspectRatio(productAspectRatio);
-  if (target === null) return templates;
-  return templates.filter((t) => {
-    const a = templateAspectRatio(t.canvasData);
-    if (a === null) return true; // template sin stage parseable → permitir
-    return Math.abs(a - target) <= 0.05;
-  });
-}
-
-/** Parsea "1:1", "4:5", "7:9" → ratio numérico width/height. */
-function parseAspectRatio(s: string): number | null {
-  const m = s.match(/^(\d+(?:\.\d+)?)\s*[:×x]\s*(\d+(?:\.\d+)?)$/i);
-  if (!m) return null;
-  const h = parseFloat(m[2]);
-  if (h === 0) return null;
-  return parseFloat(m[1]) / h;
-}
-
-/** Aspect width/height del stage de la plantilla, o null si no parseable. */
-function templateAspectRatio(canvasData: unknown): number | null {
-  if (!canvasData || typeof canvasData !== "object") return null;
-  const cd = canvasData as { stage?: { width?: unknown; height?: unknown } };
-  const w = typeof cd.stage?.width === "number" ? cd.stage.width : null;
-  const h = typeof cd.stage?.height === "number" ? cd.stage.height : null;
-  if (w === null || h === null || h === 0) return null;
-  return w / h;
+  return filterTemplatesByAspectRatio(visible, opts?.productAspectRatio).slice(0, opts?.take ?? 30);
 }
 
 // ──────────────────────────────────────────────────────────────────

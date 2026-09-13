@@ -128,6 +128,17 @@ El setup real de la suite (no hay MSW):
 - `lib/retry.ts`, `lib/circuit-breaker.ts`
 - `features/<feature>/schemas.ts` — schemas Zod (casos válidos e inválidos)
 - `features/<feature>/service.ts` — toda la lógica de dominio con repo mockeado
+- **Remediación 360° (2026-09-11/12):** `lib/integration-health.test.ts` + `lib/wompi-health.test.ts` + `lib/public-status.test.ts` (probes reales del panel `/admin/integraciones` y `/status`), `lib/cookie-consent.test.ts` (re-consent por `policyVersion`), `features/observability/alerts.test.ts` (`email_bounce_rate`, `backup_stale`, semántica `pending_payment_wompi_stale`), `features/orders/expire-pending.integration.test.ts` + `emails.integration.test.ts` + `webhook-seal.integration.test.ts` (expiración 24h, order-payment-declined con cooldown, order-returned, sello de WebhookEvent), `features/support/admin-service.test.ts` (support-ticket-closed), `features/personalization/template-visibility.test.ts` + `templates.integration.test.ts` (`?template=` y filtro EDITABLE)
+
+### Tests de los scripts de DB (`node --test`)
+
+Los helpers de `packages/db/scripts/lib/` se testean con el runner nativo de Node (no vitest):
+`pnpm --filter @lucams/db test` → `node --test "scripts/lib/*.test.mjs"` — cubre
+`env-guard.test.mjs` (clasificación fail-closed de hosts), `zombie-settings.test.mjs` (la lista de
+settings zombi es exacta y ninguna vuelve al site map) y `test-coupon-signal.test.mjs` (el regex de
+cupones de test atrapa todas las señales de suite). El **lint de guards** se corre a mano con
+`make audit-script-guards` y es gate del job `quality` de CI (`scripts/lib/check-script-guards.mjs`:
+todo script que escribe en DB debe importar `env-guard.mjs`).
 
 ### Ejemplo
 
@@ -643,11 +654,13 @@ test.describe.parallel("Smoke", () => {
 > **Estado real (verificado 2026-09-03):** el CI real es `.github/workflows/ci.yml` (ramas
 > `develop`/`production`/`catalogo-whatsapp` — `main` NO existe) con estos jobs:
 >
-> - **`quality`** — typecheck + lint + build, más dos gates propios: la **auditoría de cobertura
+> - **`quality`** — typecheck + lint + build, más tres gates propios: la **auditoría de cobertura
 >   de contenido** (`packages/db/scripts/audit-content-coverage.mjs --check` — falla si aparece
 >   copy nuevo en español fuera del CMS o si el % global baja del baseline
->   `content-coverage-baseline.json`; reporte local con `make audit-content`) y el **lint de
->   voseo** (el copy es-CO es tuteo).
+>   `content-coverage-baseline.json`; reporte local con `make audit-content`), el **lint de
+>   guards de scripts de DB** (`check-script-guards.mjs`, N-06 2026-09-12 — todo script que
+>   escribe en DB debe importar `env-guard.mjs`; local con `make audit-script-guards`) y el
+>   **lint de voseo** (el copy es-CO es tuteo).
 > - **`unit-tests`** — `pnpm --filter web test:coverage` contra un Postgres service container
 >   (+ `supabase-compat.sql` y las SQL de `supabase/migrations`); incluye el gate de coverage y
 >   `rls-coverage`. Los tests que exigen Supabase real saltan limpio.

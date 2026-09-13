@@ -6,9 +6,10 @@
  * `metadata.order` cuando esté presente o por key alfabético.
  *
  * Si el catálogo de FAQs está vacío, mostramos un set hardcoded de
- * 10 preguntas básicas como fallback editorial inicial (Lucy puede
- * empezar a editar desde el primer click en modo edición — se auto-
- * crean).
+ * 10 preguntas básicas como fallback editorial inicial. OJO: el modo
+ * edición NO auto-crea campos — la puerta por-key redirige al índice
+ * de contenido si la key no existe; el CmsBlock hay que crearlo desde
+ * /admin/contenido.
  */
 
 import type { Metadata } from "next";
@@ -33,16 +34,19 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export const dynamic = "force-dynamic";
 
-// Fallback editorial: 10 preguntas iniciales. Cada vez que Lucy edita
-// una desde modo edición, el wrapper auto-crea el CmsBlock con
-// category=FAQ. Cuando getCmsBlocksByCategory devuelva blocks, esos
-// reemplazan al fallback (orden por key).
+// Fallback editorial: 10 preguntas iniciales. El modo edición NO
+// auto-crea el CmsBlock de una key inexistente (la puerta por-key
+// /admin/contenido/campos/por-key redirige al índice de contenido);
+// el bloque hay que crearlo desde el admin. Cuando
+// getCmsBlocksByCategory devuelva blocks, esos reemplazan al fallback
+// (orden por key).
 //
 // `catalog` = Etapa 1 (modo catálogo): sin pago en línea ni envío
 // integrado — la compra se cierra por WhatsApp. Los textos de pago/envío
 // se condicionan al modo para no prometer lo que no está activo.
 // `codEnabled`: el toggle COD del admin (SiteSetting COD_ENABLED) también
 // gobierna la mención de contraentrega — apagarlo quita la promesa (2026-07-22).
+// FAIL-CLOSED (CF-35): setting ausente/despublicada = no se promete contraentrega.
 function buildFallbackFaqs(
   catalog: boolean,
   codEnabled: boolean,
@@ -125,7 +129,7 @@ export default async function AyudaPage() {
     getCmsBlocksByCategory("FAQ"),
     buildWhatsAppUrl({ kind: "support" }),
     getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
-    getSettingValue("COD_ENABLED", "true"),
+    getSettingValue("COD_ENABLED", "false"),
   ]);
   const catalog = isCatalogMode();
   const codEnabled = codSetting === "true";

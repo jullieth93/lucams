@@ -11,6 +11,9 @@
  *  - Modal de preferencias granulares: toggles por categoría, "necesarias"
  *    locked, guardado de preferencias custom.
  *  - Desaparece tras elegir; reabrible vía evento global (CookiesReopenLink).
+ *  - Re-consent (N-15): la prop `policyVersion` (versión CMS del Aviso de
+ *    Privacidad) re-muestra el banner si cambió tras la decisión; las
+ *    cookies legacy sin versión se sanan en silencio (sin audit nuevo).
  *
  * Notas de setup (heredadas de product-card.test.tsx):
  *  - vitest.config globals:false → cleanup() manual en afterEach.
@@ -54,6 +57,28 @@ import { COOKIE_CONSENT_NAME, readClientCookiePreferences } from "@/lib/cookie-c
 function clearConsentCookie() {
   // Expira la cookie para resetear "primera visita" entre tests.
   document.cookie = `${COOKIE_CONSENT_NAME}=; Max-Age=0; Path=/`;
+}
+
+/** Siembra una cookie de consentimiento (shape crudo, como quedó escrita). */
+function seedConsentCookie(raw: Record<string, unknown>) {
+  document.cookie = `${COOKIE_CONSENT_NAME}=${encodeURIComponent(JSON.stringify(raw))}; Path=/`;
+}
+
+const BASE_PREFS = {
+  v: 1,
+  necessary: true,
+  functional: true,
+  analytics: false,
+  marketing: false,
+  savedAt: new Date().toISOString(),
+};
+
+/** Espera un tick para que corra el efecto de detección (queueMicrotask). */
+async function flushDetectionEffect() {
+  await waitFor(() => {
+    expect(readClientCookiePreferences()).not.toBeNull();
+  });
+  await Promise.resolve();
 }
 
 /** Espera a que el banner (role=dialog con el título) esté montado. */
@@ -270,6 +295,77 @@ describe("CookiesBanner", () => {
     // Sin cookie de primera visita el árbol arranca vacío (el efecto solo puede
     // AÑADIR el modal, nunca el banner).
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe("CookiesBanner — re-consent por versión del Aviso (N-15)", () => {
+  it("re-muestra el banner cuando el CMS publica una versión NUEVA del aviso", async () => {
+    // Visitante recurrente: decidió cuando el aviso era "v5"; el CMS ahora dice "v6".
+    seedConsentCookie({ ...BASE_PREFS, policyVersion: "v5" });
+
+    render(<CookiesBanner policyVersion="v6" />);
+    const banner = await findBanner();
+    expect(banner).toBeInTheDocument();
+  });
+
+  it("al re-consentir, la cookie queda firmada con la versión NUEVA y audita la decisión", async () => {
+    seedConsentCookie({ ...BASE_PREFS, policyVersion: "v5" });
+
+    render(<CookiesBanner policyVersion="v6" />);
+    const banner = await findBanner();
+    fireEvent.click(within(banner).getByRole("button", { name: /Aceptar todas/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i }),
+      ).not.toBeInTheDocument();
+    });
+    const saved = readClientCookiePreferences();
+    expect(saved?.policyVersion).toBe("v6");
+    expect(saved).toMatchObject({ functional: true, analytics: true, marketing: true });
+    expect(persistCookieConsentAction).toHaveBeenCalledWith(
+      expect.objectContaining({ policyVersion: "v6" }),
+    );
+  });
+
+  it("NO re-muestra si la versión aceptada es la vigente", async () => {
+    seedConsentCookie({ ...BASE_PREFS, policyVersion: "v6" });
+
+    render(<CookiesBanner policyVersion="v6" />);
+    await flushDetectionEffect();
+    expect(
+      screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("cookie legacy (sin policyVersion) NO re-muestra y se sana en silencio con la vigente", async () => {
+    // Visitante que decidió antes del N-15: su cookie no tiene policyVersion.
+    seedConsentCookie(BASE_PREFS);
+
+    render(<CookiesBanner policyVersion="v6" />);
+    await flushDetectionEffect();
+    expect(
+      screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i }),
+    ).not.toBeInTheDocument();
+
+    // Sana: la cookie conserva la decisión original y queda firmada con "v6"
+    // (así un cambio FUTURO del aviso sí le disparará re-consent).
+    const healed = readClientCookiePreferences();
+    expect(healed?.policyVersion).toBe("v6");
+    expect(healed).toMatchObject({ functional: true, analytics: false, marketing: false });
+    // Sin evento de consentimiento nuevo: el consent original sigue siendo el válido.
+    expect(persistCookieConsentAction).not.toHaveBeenCalled();
+  });
+
+  it("sin policyVersion (setting CMS ausente) se comporta como hoy: no re-muestra ni toca la cookie", async () => {
+    seedConsentCookie(BASE_PREFS);
+
+    render(<CookiesBanner />);
+    await flushDetectionEffect();
+    expect(
+      screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i }),
+    ).not.toBeInTheDocument();
+    expect(readClientCookiePreferences()?.policyVersion).toBeUndefined();
   });
 });
 

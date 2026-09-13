@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate db-local-start db-local-stop db-local-restart db-local-reset db-local-status db-local-setup db-local-on db-local-off db-local-seed web-start web-stop web-restart local-up local-down local-restart local-status test-local db-stg-setup db-stg-seed seed-products seed-templates seed-ocasiones seed-catalog-v2 migrate-cms-v2 seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores consolidate-product-families rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs audit-content test test-unit test-e2e test-e2e-fullmode test-rls test-load test-coverage clean fix-fotoimanes
+.PHONY: help install build typecheck lint format migrate db-local-start db-local-stop db-local-restart db-local-reset db-local-status db-local-setup db-local-on db-local-off db-local-seed web-start web-stop web-restart local-up local-down local-restart local-status test-local db-stg-setup db-stg-seed seed-products seed-templates seed-ocasiones seed-catalog-v2 migrate-cms-v2 seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores seed-admin admin-mfa-reset seed-clean audit-script-guards audit-slugs audit-content test test-unit test-e2e test-e2e-fullmode test-rls test-load test-coverage clean fix-fotoimanes
 
 # Makefile del repo — build/test para CI y devs, más el runtime del entorno
 # local completo: Supabase local en podman (grupo db-local-*) y app Next
@@ -13,12 +13,14 @@ help:
 	@echo "  make lint         ESLint"
 	@echo "  make format       Prettier --write"
 	@echo "  make migrate      pnpm prisma migrate deploy"
-	@echo "  make seed-products    Pobla catálogo demo base (idempotente)"
+	@echo "  make seed-products    Catálogo canónico (seed-catalog-canonical, --apply)"
 	@echo "  make seed-templates   Pobla plantillas Estudio Personalización"
 	@echo "  make seed-ocasiones   Pobla 15 OcasionTag (PLAN_CATALOG_V2 1.5)"
 	@echo "  make seed-catalog-v2  Delta PLAN_CATALOG_V2 (sub-cats + placeholders + links)"
 	@echo "  make migrate-cms-v2   Upsert del site map CMS v2 (idempotente)"
 	@echo "  make seed-abecedario  Abecedario a 3 productos (ADR-057, idempotente)"
+	@echo "  make seed-admin       Crea/reactiva AdminUser (dry-run sin --apply; pide confirmación)"
+	@echo "  make admin-mfa-reset  Reset MFA de un admin (EMAIL=...; pide confirmación)"
 	@echo ""
 	@echo "  Entorno local (Supabase local en podman, espejo de la nube):"
 	@echo "    make db-local-start   Levanta el stack (reanuda si ya existe)"
@@ -167,48 +169,57 @@ db-local-on: ## .env.local → stack local (respaldo en .env.local.nube-backup)
 db-local-off: ## .env.local → nube compartida (restaura el respaldo)
 	bash scripts/db-local-env.sh off
 
+# N-06 (2026-09-12): los 5 canónicos son DRY-RUN por defecto a partir de hoy;
+# estos targets pasan --apply a propósito — correr `make db-local-seed` ES la
+# acción explícita del operador (el dry-run protege la invocación directa
+# `node scripts/<seed>.mjs` con un env equivocado, no el target deliberado).
 db-local-seed: ## Catálogo + plantillas + ocasiones + CMS en el stack local
-	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-products.mjs
-	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-templates.mjs
-	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-ocasiones.mjs
-	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-catalog-v2.mjs
-	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/migrate-cms-v2.mjs
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-catalog-canonical.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-templates.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-ocasiones.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-catalog-v2.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/migrate-cms-v2.mjs --apply
 
 db-stg-setup: ## Esquema completo en lucams-stg (nube Free) — requiere .env.stg
 	bash scripts/db-stg-setup.sh
 
 db-stg-seed: ## Catálogo + plantillas + ocasiones + CMS en lucams-stg
-	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-products.mjs
-	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-templates.mjs
-	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-ocasiones.mjs
-	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-catalog-v2.mjs
-	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/migrate-cms-v2.mjs
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-catalog-canonical.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-templates.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-ocasiones.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-catalog-v2.mjs --apply
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/migrate-cms-v2.mjs --apply
 
 test-local: ## Suite vitest contra el stack local (excluye las 2 suites de la DB compartida)
 	NIGHTLY_LOCALSTACK=1 pnpm --filter web test
 
+# N-06 (2026-09-12): seed-products.mjs se dividió — el catálogo canónico es
+# seed-catalog-canonical.mjs (sin pisar precios/imágenes/estados; --prune opt-in
+# para archivar no-declarados) y las reseñas demo viven en seed-demo-reviews.mjs.
+# El target pasa --apply (acción explícita del operador; el dry-run es para la
+# invocación directa). seed-products.mjs queda como wrapper de compatibilidad.
 seed-products:
-	pnpm --filter @lucams/db exec node scripts/seed-products.mjs
+	pnpm --filter @lucams/db exec node scripts/seed-catalog-canonical.mjs --apply
 
 seed-templates:
-	pnpm --filter @lucams/db exec node scripts/seed-templates.mjs
+	pnpm --filter @lucams/db exec node scripts/seed-templates.mjs --apply
 
 # PLAN_CATALOG_V2 decisión 1.5 + 2.10 + 3.4 — 15 OcasionTag.
 seed-ocasiones:
-	pnpm --filter @lucams/db exec node scripts/seed-ocasiones.mjs
+	pnpm --filter @lucams/db exec node scripts/seed-ocasiones.mjs --apply
 
 # PLAN_CATALOG_V2 delta — sub-categorías jerárquicas + categoría Separadores +
 # productos placeholder + ProductOcasionTag default links + enriquecimiento
 # productos existentes (physicalSpecs / idealFor / productionDays). Idempotente.
 seed-catalog-v2:
-	pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs
+	pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs --apply
 
 # CMS v2 — upsert del site map (páginas/secciones/campos nuevos) al modelo
 # Página→Sección→Campo. Idempotente; no pisa ediciones hechas en v2.
 # (Tras A2 las tablas legacy ya no existen: el paso de migración vieja→nueva
 # se salta solo — solo queda el upsert del mapa.)
 migrate-cms-v2:
-	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/migrate-cms-v2.mjs
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/migrate-cms-v2.mjs --apply
 
 # ADR-057 — Abecedario a 3 productos (Completo / Pack Vocales / Nombre Personalizado)
 # con variantes idioma × tamaño × imantado. Reproducible; no pisa precios editados en
@@ -226,30 +237,27 @@ cleanup-test-junk:
 seed-letter-sets:
 	pnpm --filter @lucams/db exec node scripts/seed-letter-sets.mjs
 
-# M.3.b.CAT.2 (2026-05-14): consolida familias de productos fragmentados
-# en variants del producto base. Soft-deletea hermanos + migra reviews +
-# genera apps/web/lib/product-redirects.ts. Idempotente.
-consolidate-product-families:
-	pnpm --filter @lucams/db exec node scripts/consolidate-product-families.mjs
+# Break-glass / bootstrap de administración (N-06, 2026-09-12 — los scripts ya
+# existían pero el target no; los headers los invocaban). El target pasa
+# --apply: correr `make seed-admin`/`make admin-mfa-reset` ES la acción
+# deliberada; el script igual pide confirmación interactiva del destino
+# (teclear el host) antes de escribir. Sin --apply quedan en dry-run:
+#   pnpm --filter @lucams/db exec node scripts/seed-admin.mjs
+seed-admin:
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-admin.mjs --apply
 
-# ONE-SHOT (2026-05-18): renombra los slugs base de familias consolidadas
-# para que queden limpios (sin sufijos numéricos del producto inicial).
-# Agrega redirect 301 del slug viejo al nuevo. Idempotente.
-rename-family-base-slugs:
-	pnpm --filter @lucams/db exec node scripts/rename-family-base-slugs.mjs
+admin-mfa-reset:
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/admin-mfa-reset.mjs --apply
 
-# ONE-SHOT (2026-05-18): rescata el price de los siblings soft-deleted
-# y lo aplica a las variants creadas por consolidate-product-families.
-# Sin esto las variants heredan basePrice → selector no muestra cambio
-# de precio. Idempotente: no toca variants con price ya seteado.
-backfill-variant-prices:
-	pnpm --filter @lucams/db exec node scripts/backfill-variant-prices.mjs
+# Reset de testing: borra Customer + AdminUser + auth.users del destino.
+# Dry-run por defecto dentro del script; FORCE=1 ejecuta el borrado real.
+seed-clean:
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-clean.mjs
 
-# ONE-SHOT (2026-05-18): limpia slugs sucios del catálogo (sufijos
-# numéricos -x12 / -100 / -20x20 / -6cm, anglicismos glass→vidrio).
-# Auto-genera redirects 301. Idempotente.
-cleanup-slugs:
-	pnpm --filter @lucams/db exec node scripts/cleanup-slugs.mjs
+# Lint de guards (N-06): falla si algún script que escribe en DB no importa
+# env-guard. Es gate del job quality en CI (.github/workflows/ci.yml).
+audit-script-guards:
+	pnpm --filter @lucams/db exec node scripts/lib/check-script-guards.mjs
 
 # Dump de slugs activos (productos + categorías) para auditoría.
 audit-slugs:
@@ -289,5 +297,7 @@ clean:
 seed-separadores:
 	pnpm --filter @lucams/db exec node scripts/restructure-separadores.mjs
 
+# ONE-SHOT aplicado 2026-07 (ola fotoimanes) — archivado en scripts/one-shot/
+# (N-06, 2026-09-12); el target queda solo para rerun deliberado.
 fix-fotoimanes:
-	pnpm --filter @lucams/db exec node scripts/fix-fotoimanes-aspects.mjs
+	pnpm --filter @lucams/db exec node scripts/one-shot/fix-fotoimanes-aspects.mjs

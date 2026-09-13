@@ -11,7 +11,8 @@
  *   - Topbar minimal con breadcrumb + link "Ver el sitio"
  *   - Footer sidebar con avatar + dropdown (Cambiar contraseña + Cerrar sesión)
  *   - 11 áreas top-level: Dashboard, Ventas, Catálogo, Comercial, Producción,
- *     Canales, Finanzas, IA y Conocimiento, Analítica, Configuración, Mensajes
+ *     Canales, Finanzas, IA y Conocimiento, Analítica, Configuración
+ *     (N-09: el área "Mensajes" se eliminó — consolidada en Servicio al cliente > Soporte)
  *   - Badges visuales [Próximo / Fase 4 / Fase 5] para items no disponibles
  *   - Badge numérico de no leídas en el item "Notificaciones" (prop
  *     `unreadNotifications`, la calcula el layout del panel con getUnreadCount)

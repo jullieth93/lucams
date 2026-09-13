@@ -94,7 +94,9 @@ export async function createCouponAction(
       metadata: { code: coupon.code, type: coupon.type, value: coupon.value },
     });
     revalidatePath("/admin/cupones");
-    revalidatePath("/carrito"); // cupones afectan totales en cart
+    // Los cupones se aplican y afectan el total en el paso de pago (NO en /carrito,
+    // que no tiene campo de cupón) — CF-06.
+    revalidatePath("/checkout/pago");
     redirect("/admin/cupones?created=1");
   } catch (err) {
     if (err instanceof CouponValidationError) {
@@ -142,7 +144,7 @@ export async function updateCouponAction(
       entityId: id,
     });
     revalidatePath("/admin/cupones");
-    revalidatePath("/carrito");
+    revalidatePath("/checkout/pago");
     redirect("/admin/cupones?updated=1");
   } catch (err) {
     if (err instanceof CouponValidationError) {
@@ -175,7 +177,7 @@ export async function pauseCouponAction(formData: FormData): Promise<void> {
     entityId: id,
   });
   revalidatePath("/admin/cupones");
-  revalidatePath("/carrito");
+  revalidatePath("/checkout/pago");
   redirect("/admin/cupones?paused=1");
 }
 
@@ -190,7 +192,7 @@ export async function resumeCouponAction(formData: FormData): Promise<void> {
     entityId: id,
   });
   revalidatePath("/admin/cupones");
-  revalidatePath("/carrito");
+  revalidatePath("/checkout/pago");
   redirect("/admin/cupones?resumed=1");
 }
 
@@ -205,6 +207,6 @@ export async function archiveCouponAction(formData: FormData): Promise<void> {
     entityId: id,
   });
   revalidatePath("/admin/cupones");
-  revalidatePath("/carrito");
+  revalidatePath("/checkout/pago");
   redirect("/admin/cupones?archived=1");
 }

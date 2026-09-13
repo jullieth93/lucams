@@ -1,6 +1,7 @@
 /*
- * Cron de retención: purga EmailEvent y WebhookEvent con más de 180 días (auditoría v3 · #10) y
- * ErrorLog/ErrorReport con más de 90 días (auditoría 2026-08-24, F-6) — Ley 1581
+ * Cron de retención: purga EmailEvent y WebhookEvent con más de 180 días (auditoría v3 · #10),
+ * ErrorLog/ErrorReport con más de 90 días (auditoría 2026-08-24, F-6), Notification LEÍDAS con
+ * más de 90 días y WebVital con más de 35 días (auditoría 2026-09-11, N-13) — Ley 1581
  * minimización/retención; ver event-log-retention.ts y COMPLIANCE.md.
  * Protegido por CRON_SECRET (header `x-cron-secret` — nunca en la URL, para no filtrarlo en logs).
  *

@@ -25,6 +25,12 @@
  *   npx dotenv -e ../../.env.local -- node scripts/update-production-days-20260911.mjs --apply
  *   npx dotenv -e ../../.env.stg   -- node scripts/update-production-days-20260911.mjs --apply
  *   npx dotenv -e ../../.env.local.nube-backup -- node scripts/update-production-days-20260911.mjs --apply
+ *
+ * N-06 (2026-09-12): EXENCIÓN deliberada del env-guard. Su caso de uso ES la
+ * corrección de datos en PRD (ya se aplicó en los 3 ambientes el 2026-09-11),
+ * así que bloquearlo lo volvería inútil; protege con dry-run por defecto +
+ * `--apply` explícito. Está allowlistado en lib/check-script-guards.mjs como
+ * PRD-deliberado.
  */
 
 import { PrismaClient } from "@prisma/client";

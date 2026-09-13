@@ -116,7 +116,11 @@ export async function createDraftDesignAction(input: { productId: string; templa
 
 // ──────────── Save canvas (debounced 2s desde cliente) ────────────
 
-export async function saveCanvasAction(input: { designId: string; canvasData: unknown }) {
+export async function saveCanvasAction(input: {
+  designId: string;
+  canvasData: unknown;
+  templateId?: string;
+}) {
   const parsed = SaveCanvasSchema.safeParse(input);
   if (!parsed.success) {
     // Log structured con detalle del fallo (incluye M.3.b.fix size cap)
@@ -159,6 +163,9 @@ export async function saveCanvasAction(input: { designId: string; canvasData: un
     await saveCanvas({
       designId: parsed.data.designId,
       canvasData: parsed.data.canvasData,
+      // N-08 — plantilla elegida en el sidebar (si el cliente la envía): el service
+      // la valida contra el producto antes de persistirla en Design.templateId.
+      templateId: parsed.data.templateId,
       customerId,
       sessionId,
     });

@@ -59,7 +59,6 @@ const SENSITIVE = [
   "WarrantyClaim",
   "WishlistItem",
   "BackInStockSubscription",
-  "StockReservation",
 ] as const;
 
 describe.skipIf(!canRun)("RLS matrix R3 — la API pública no filtra datos sensibles", () => {

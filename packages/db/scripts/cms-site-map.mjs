@@ -3566,7 +3566,8 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
     {
       slug: "emails",
       title: "Correos automáticos",
-      description: "Textos de las plantillas de correo transaccional.",
+      description:
+        "Textos de correo editables desde el CMS (hoy solo la bienvenida del newsletter: asunto y preheader). Las demás plantillas transaccionales viven en código.",
       icon: "MailOpen",
       sortOrder: 110,
       sections: [

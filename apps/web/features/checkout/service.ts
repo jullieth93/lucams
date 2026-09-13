@@ -21,7 +21,11 @@ import { getSettingValue } from "@/lib/cms";
 import { createOrderFromCart } from "@/features/orders/service";
 import { processPaidOrder } from "@/features/orders/saga";
 import { assertStockAvailable } from "@/features/orders/stock";
-import { InsufficientStockError, OrderAmountTooLargeError } from "@/features/orders/errors";
+import {
+  InsufficientStockError,
+  OrderAmountTooLargeError,
+  OrderUnavailableItemsError,
+} from "@/features/orders/errors";
 import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/redemption";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { getShippingProvider } from "@/features/shipping/provider";
@@ -58,6 +62,7 @@ export class CheckoutError extends Error {
       | "PAYMENT_INIT_FAILED"
       | "STOCK_UNAVAILABLE"
       | "COUPON_INVALIDATED"
+      | "CART_ITEMS_UNAVAILABLE"
       | "COD_NOT_ALLOWED",
     message?: string,
   ) {
@@ -338,23 +343,6 @@ export async function quoteShipping(input: {
 }
 
 /**
- * Totales calculados sobre el cart + shippingSelection actuales.
- * Llamado por step 3 (review) y al crear Order.
- */
-export function calculateTotals(input: {
-  subtotal: number;
-  shippingCost: number;
-  discount?: number;
-}): { subtotal: number; shipping: number; discount: number; tax: number; total: number } {
-  const subtotal = input.subtotal;
-  const shipping = input.shippingCost;
-  const discount = input.discount ?? 0;
-  const tax = 0; // IVA incluido en precios COP
-  const total = subtotal + shipping - discount + tax;
-  return { subtotal, shipping, discount, tax, total };
-}
-
-/**
  * Finaliza el checkout — crea Order en PENDING_PAYMENT desde el state
  * acumulado + devuelve URL del gateway (Wompi) para redirigir.
  *
@@ -448,6 +436,18 @@ export async function finalizeCheckout(input: {
       logger.warn({ event: "checkout.finalize.amount_too_large" });
       throw new CheckoutError("ORDER_AMOUNT_TOO_LARGE", err.message);
     }
+    // N-01 — un producto/variante del carrito fue archivado entre "ver el carrito" y este click
+    // en "pagar" (carrera real: admin retira el producto mientras el cliente está en checkout).
+    // Nunca se creó la orden → no hay nada que cobrar distinto de lo exhibido. El copy de
+    // OrderUnavailableItemsError es customer-safe; la action manda a /carrito (donde el item
+    // retirado ya no aparece) y el cliente re-confirma con el contenido real.
+    if (err instanceof OrderUnavailableItemsError) {
+      logger.warn({
+        event: "checkout.finalize.unavailable_items",
+        dropped: err.items,
+      });
+      throw new CheckoutError("CART_ITEMS_UNAVAILABLE", err.message);
+    }
     logger.error({
       event: "checkout.finalize.order_create_fail",
       err: err instanceof Error ? err.message : String(err),
@@ -468,7 +468,10 @@ export async function finalizeCheckout(input: {
   if (state.paymentMethod === "COD") {
     // Guard server-side: si el negocio desactivó COD (setting COD_ENABLED), rechazamos
     // aunque llegue un request forjado que saltó el UI (defensa en profundidad).
-    const codEnabled = (await getSettingValue("COD_ENABLED", "true")) === "true";
+    // FAIL-CLOSED (CF-35): el fallback es "false" — si la setting falta o se
+    // despublica, la contraentrega queda DESHABILITADA (nunca se habilita en
+    // silencio una capacidad de pago que el negocio no confirmó).
+    const codEnabled = (await getSettingValue("COD_ENABLED", "false")) === "true";
     if (!codEnabled) {
       throw new CheckoutError(
         "PAYMENT_INIT_FAILED",

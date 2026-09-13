@@ -15,6 +15,11 @@ import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { PrismaClient } from "@prisma/client";
 import sharp from "sharp";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+
+// Guarda de ambiente (N-06, 2026-09-12): sube assets reales al bucket y crea
+// un Design fixture — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("seed-fixture-polaroid-design.mjs");
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SECRET_KEY;

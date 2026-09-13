@@ -169,9 +169,10 @@ jobs:
             psql "$SUPABASE_ADMIN_URL" -v ON_ERROR_STOP=1 -f "$f"
           done
       - name: Seed del catálogo (productos para PDP/carrito/estudio)
-        run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs
+        # N-06: los canónicos son dry-run por defecto — CI pasa --apply explícito.
+        run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs --apply
       - name: Seed del CMS v2 (estructura páginas/secciones/campos para el admin)
-        run: pnpm --filter @lucams/db exec node scripts/migrate-cms-v2.mjs
+        run: pnpm --filter @lucams/db exec node scripts/migrate-cms-v2.mjs --apply
       - name: Instalar navegador Playwright
         run: pnpm --filter web exec playwright install --with-deps chromium
       # Cross-browser §8 (matriz ampliada): el smoke read-only corre también en

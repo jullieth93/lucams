@@ -22,12 +22,19 @@ import {
   MessageSquare,
   PackageX,
   ShoppingCart,
+  Mail,
+  DatabaseBackup,
 } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { getTechHealth } from "@/features/observability/service";
 import { getDailySummary } from "@/features/observability/daily-summary";
 import { getSloStatus, type SloResult } from "@/features/observability/slos";
-import { getCronHealth } from "@/features/observability/cron-heartbeat";
+import { getCronHealth, getBackupHealth } from "@/features/observability/cron-heartbeat";
+import {
+  getEmailDeliverabilityStats,
+  EMAIL_BOUNCE_RATE_ALERT_PCT,
+  EMAIL_BOUNCE_MIN_EVENTS,
+} from "@/features/observability/email-deliverability";
 import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { ClientErrorActions } from "./client-error-actions";
 
@@ -42,11 +49,13 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
 
 export default async function AdminObservabilityPage() {
   await requireRole(["SUPERADMIN"]);
-  const [h, ops, slos, crons] = await Promise.all([
+  const [h, ops, slos, crons, email, backup] = await Promise.all([
     getTechHealth(),
     getDailySummary(),
     getSloStatus(),
     getCronHealth(),
+    getEmailDeliverabilityStats(),
+    getBackupHealth(),
   ]);
   const revenue = `$${Math.round(ops.revenueLast24hCop / 100).toLocaleString("es-CO")}`;
   const recoveryPct =
@@ -144,6 +153,58 @@ export default async function AdminObservabilityPage() {
         </p>
 
         {/*
+         * N-04 — entregabilidad de email (7 días). Va FUERA del <details>
+         * técnico a propósito: un bounce rate alto significa clientas sin
+         * confirmación de pedido ni recuperación de clave — es negocio, no
+         * solo técnica (antes era invisible: ~50% de rebote sin ninguna señal).
+         */}
+        <Section
+          title={`Entregabilidad de email (${email.windowDays} días)`}
+          icon={<Mail className="h-4 w-4" />}
+        >
+          <div className="flex flex-wrap gap-3 text-sm">
+            <VitalPill label="Entregados" value={email.delivered} tone="emerald" />
+            <VitalPill
+              label="Rebotados"
+              value={email.bounced}
+              tone={email.bounceRateAlert ? "rose" : "amber"}
+            />
+            <VitalPill label="Diferidos" value={email.delayed} tone="amber" />
+            <VitalPill
+              label="Tasa de rebote"
+              value={email.bounceRatePct === null ? "—" : `${email.bounceRatePct.toFixed(1)}%`}
+              tone={email.bounceRateAlert ? "rose" : "emerald"}
+            />
+            {email.excludedTestEvents > 0 ? (
+              <VitalPill
+                label="Excluidos (tests *.test)"
+                value={email.excludedTestEvents}
+                tone="slate"
+              />
+            ) : null}
+          </div>
+          <p className="text-brand-muted mt-2 text-xs">
+            {email.bounceRateAlert ? (
+              <>
+                <strong className="text-rose-700">
+                  La tasa de rebote supera el {EMAIL_BOUNCE_RATE_ALERT_PCT}%:
+                </strong>{" "}
+                revisa DKIM/SPF/DMARC del dominio y las direcciones rebotadas en el dashboard de
+                Resend antes de seguir enviando.{" "}
+              </>
+            ) : (
+              <>
+                Alerta automática si la tasa supera el {EMAIL_BOUNCE_RATE_ALERT_PCT}% con ≥
+                {EMAIL_BOUNCE_MIN_EVENTS} eventos terminales (entregados + rebotados).{" "}
+              </>
+            )}
+            Los eventos a dominios <code>.test</code> (corridas de suites) se excluyen de la tasa
+            porque su rebote es esperado por diseño. Fuente: webhook de Resend (
+            <code>/api/webhooks/resend</code>).
+          </p>
+        </Section>
+
+        {/*
          * H4 — todo lo puramente técnico (SLOs, webhooks, crons, errores,
          * Web Vitals) queda colapsado: Lucy ve los tiles operativos de arriba
          * y soporte abre esto cuando lo necesita. <details> nativo, sin JS.
@@ -220,6 +281,34 @@ export default async function AdminObservabilityPage() {
               />
             ))}
           </div>
+
+          {/*
+           * N-19a — backup diario a R2. DISTINTO de los jobs de arriba: no es un
+           * cron pg_cron — corre en GitHub Actions (backup.yml) y avisa acá vía
+           * POST /api/cron/backup-heartbeat tras cada backup exitoso. Sin latido
+           * en >36h la alerta backup_stale llega al centro de notificaciones.
+           */}
+          <h2 className="text-brand-purple-dark mt-6 mb-2 flex items-center gap-2 text-sm font-bold">
+            <DatabaseBackup className="h-4 w-4" /> Backup diario a R2
+          </h2>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+            <Tile
+              icon={<DatabaseBackup className="h-4 w-4" />}
+              label="Backup de la base de datos"
+              value={backup.stale ? "Sin latido" : "Al día"}
+              danger={backup.stale}
+              hint={
+                backup.lastSuccessAt
+                  ? `últ. éxito ${dateFmt.format(backup.lastSuccessAt)}`
+                  : "ningún backup ha reportado éxito"
+              }
+            />
+          </div>
+          <p className="text-brand-muted mt-2 text-xs">
+            No es un cron de la base de datos: lo corre <strong>GitHub Actions</strong> (workflow{" "}
+            <code>backup.yml</code>) y reporta el éxito a la app. Si supera 36h sin latido llega una
+            alerta — revisá la pestaña Actions del repo.
+          </p>
 
           {/* Top errores */}
           <Section title="Errores recientes (7 días)" icon={<AlertTriangle className="h-4 w-4" />}>
@@ -442,13 +531,14 @@ function VitalPill({
   tone,
 }: {
   label: string;
-  value: number;
-  tone: "emerald" | "amber" | "rose";
+  value: number | string;
+  tone: "emerald" | "amber" | "rose" | "slate";
 }) {
   const cls = {
     emerald: "bg-emerald-100 text-emerald-800",
     amber: "bg-amber-100 text-amber-800",
     rose: "bg-rose-100 text-rose-800",
+    slate: "bg-slate-200 text-slate-700",
   }[tone];
   return (
     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${cls}`}>

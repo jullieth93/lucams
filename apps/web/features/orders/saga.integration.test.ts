@@ -126,12 +126,22 @@ vi.mock("./emails", async () => {
       emailCalls.push({ fn: "sendOrderConfirmation", orderId });
       return true;
     },
+    // N-22b — el saga lo invoca en la rama RETURNED/EXCEPTION del tracking.
+    notifyOrderReturned: async (opts: { orderId: string; carrierStatusRaw: string }) => {
+      emailCalls.push({
+        fn: "notifyOrderReturned",
+        orderId: opts.orderId,
+        extra: opts.carrierStatusRaw,
+      });
+    },
   };
 });
 
 import { prisma } from "@/lib/db";
+import { revalidateTag } from "next/cache";
 import { processPaidOrder, processFailedPaymentOrder, processTrackingUpdate } from "./saga";
 import { refundOrder } from "./service";
+import { RefundMoneyNotConfirmedError } from "./errors";
 import { INVENTORY_REASON } from "./stock";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
@@ -364,6 +374,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       // Stock decrementado exactamente qty (10 - 3 = 7).
       expect(await stockOf(variantId)).toBe(7);
 
+      // N-11 (CF-17): tras el decremento se invalidaron los listados cacheados.
+      expect(revalidateTag).toHaveBeenCalledWith("catalog", "max");
+
       // InventoryLog ORDER_PAID con delta correcto.
       const paidLogs = await logsFor(orderId, INVENTORY_REASON.ORDER_PAID);
       expect(paidLogs).toHaveLength(1);
@@ -476,6 +489,7 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       const res = await refundOrder(orderId, {
         adminId: "admin-rf",
         reason: "producto defectuoso",
+        moneyReturnedConfirmed: true, // N-17 — checkbox del form admin
       });
       expect(res.status).toBe("refunded");
       expect(res.amount).toBe(15_000); // total (subtotal, envío 0)
@@ -488,6 +502,8 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
           refundedBy: true,
           refundReason: true,
           refundAmount: true,
+          refundMoneyConfirmedAt: true,
+          refundMoneyConfirmedBy: true,
         },
       });
       expect(o?.status).toBe("REFUNDED");
@@ -495,6 +511,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       expect(o?.refundReason).toBe("producto defectuoso");
       expect(o?.refundAmount).toBe(15_000);
       expect(o?.refundedAt).not.toBeNull();
+      // N-17 — la confirmación del dinero quedó persistida (quién + cuándo).
+      expect(o?.refundMoneyConfirmedBy).toBe("admin-rf");
+      expect(o?.refundMoneyConfirmedAt).not.toBeNull();
 
       // Stock revertido (7 + 3 = 10) + log ORDER_REFUNDED + email disparado.
       expect(await stockOf(variantId)).toBe(10);
@@ -502,7 +521,11 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       expect(emailCalls.filter((c) => c.fn === "sendOrderRefunded")).toHaveLength(1);
 
       // Idempotencia: re-refund → already_refunded, sin sobrescribir ni doble-revertir.
-      const again = await refundOrder(orderId, { adminId: "otro-admin", reason: "otra" });
+      const again = await refundOrder(orderId, {
+        adminId: "otro-admin",
+        reason: "otra",
+        moneyReturnedConfirmed: true,
+      });
       expect(again.status).toBe("already_refunded");
       const o2 = await prisma.order.findUnique({
         where: { id: orderId },
@@ -518,9 +541,44 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
         numberTag: "RF2",
       });
       // Nunca se pagó → PENDING_PAYMENT; PENDING_PAYMENT → REFUNDED no es legal.
-      await expect(refundOrder(orderId, { adminId: "admin-rf" })).rejects.toThrow();
+      await expect(
+        refundOrder(orderId, { adminId: "admin-rf", moneyReturnedConfirmed: true }),
+      ).rejects.toThrow();
       const o = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true } });
       expect(o?.status).toBe("PENDING_PAYMENT");
+    });
+
+    it("N-17 — refundOrder SIN confirmación del dinero → RefundMoneyNotConfirmedError, orden intacta y sin email", async () => {
+      const variantId = await makeVariant(10, "rf3");
+      const orderId = await makePendingOrder([{ variantId, qty: 2, unitPrice: 5000 }], {
+        numberTag: "RF3",
+      });
+      // Dejarla en PAID (reembolsable): guía falla a propósito.
+      shipmentShouldThrow = new Error("Aveonline caído (test)");
+      await processPaidOrder({ orderId, wompiTransactionId: "wompi-tx-rf3" });
+      expect(await stockOf(variantId)).toBe(8);
+      emailCalls.length = 0;
+
+      await expect(refundOrder(orderId, { adminId: "admin-rf" })).rejects.toThrow(
+        RefundMoneyNotConfirmedError,
+      );
+
+      // La orden sigue PAID, sin campos de reembolso ni confirmación, sin revertir stock ni email.
+      const o = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: {
+          status: true,
+          refundedAt: true,
+          refundMoneyConfirmedAt: true,
+          refundMoneyConfirmedBy: true,
+        },
+      });
+      expect(o?.status).toBe("PAID");
+      expect(o?.refundedAt).toBeNull();
+      expect(o?.refundMoneyConfirmedAt).toBeNull();
+      expect(o?.refundMoneyConfirmedBy).toBeNull();
+      expect(await stockOf(variantId)).toBe(8);
+      expect(emailCalls.filter((c) => c.fn === "sendOrderRefunded")).toHaveLength(0);
     });
 
     it("decrementa TODAS las variantes de una orden multi-ítem antes de crear una sola guía", async () => {
@@ -1049,7 +1107,7 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       expect(res.orderNumber).toBeUndefined();
     }, 30000);
 
-    it("RETURNED → noop (no transición automática; admin decide)", async () => {
+    it("RETURNED → noop (no transición automática; admin decide) + N-22b aviso admin/cliente", async () => {
       const tracking = `${RUN}-TRK-D`;
       const orderId = await makeFulfillingOrder("D", tracking);
 
@@ -1063,10 +1121,23 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       expect(res.orderNumber).toBeTruthy();
       // El estado NO cambió automáticamente.
       expect((await getOrder(orderId))?.status).toBe("FULFILLING");
-      expect(emailCalls).toHaveLength(0);
+      // Flag admin (needsReconciliation) marcado, como antes.
+      const o = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { needsReconciliation: true, reconciliationReason: true },
+      });
+      expect(o?.needsReconciliation).toBe(true);
+      expect(o?.reconciliationReason).toContain("DEVUELTO");
+      // N-22b — el saga ahora dispara el aviso (centro admin + email cliente);
+      // acá ./emails está mockeado: se registra la llamada con el carrierRaw.
+      const returnedCalls = emailCalls.filter((c) => c.fn === "notifyOrderReturned");
+      expect(returnedCalls).toHaveLength(1);
+      expect(returnedCalls[0].extra).toBe("DEVUELTA");
+      // Y NO se dispararon transiciones/emails de otro tipo (stock/reembolso quedan manuales).
+      expect(emailCalls.filter((c) => c.fn !== "notifyOrderReturned")).toHaveLength(0);
     }, 30000);
 
-    it("EXCEPTION → noop, sin transición", async () => {
+    it("EXCEPTION → noop, sin transición + N-22b aviso", async () => {
       const tracking = `${RUN}-TRK-E`;
       const orderId = await makeFulfillingOrder("E", tracking);
 
@@ -1078,6 +1149,7 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
 
       expect(res.status).toBe("noop");
       expect((await getOrder(orderId))?.status).toBe("FULFILLING");
+      expect(emailCalls.filter((c) => c.fn === "notifyOrderReturned")).toHaveLength(1);
     }, 30000);
 
     it("IN_TRANSIT desde un estado no-FULFILLING (ej. DELIVERED) → noop, no retrocede", async () => {

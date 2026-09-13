@@ -19,7 +19,9 @@ Por eso M.3.b se construye con estas reglas no negociables:
    focus management, `prefers-reduced-motion`.
 4. **Performance budget**: Lighthouse desktop ≥ 95, mobile ≥ 90. Konva lazy load
    por kind (productos NONE no descargan canvas engine).
-5. **Tests rigurosos** — unit cobertura ≥ 80%, integration, E2E playwright,
+5. **Tests rigurosos** — unit/integration con cobertura gateada en CI (umbrales
+   reales de `apps/web/vitest.config.ts`: lines 71 / statements 69.5 /
+   functions 68.5 / branches 62, calibrados por ratchet), E2E playwright,
    visual regression, axe a11y, Lighthouse CI.
 6. **Plantillas son producto** — mockups SVG profesionales en `apps/web/public/templates/`
    (claro/oscuro y variantes `*_noborder.svg`), no placeholders genéricos.
@@ -87,7 +89,7 @@ type CanvasData = {
 ### Migración V1 → V2
 
 Designs existentes con `canvasData.version: 1` se migran al cargar via
-`lib/canvas-migrate.ts → migrateCanvasV1ToV2(data, photoSlots)`:
+`app/estudio/[slug]/lib/canvas-migrate.ts → migrateCanvasV1ToV2(data, photoSlots)`:
 
 1. El `canvasData V1` completo pasa a ser `unitTemplate` del V2
 2. Buscar el `image-placeholder` layer V1 (típicamente id `p1`) y extraer su
@@ -182,7 +184,7 @@ apps/web/features/personalization/
 apps/web/features/ai/
 ├── schemas.ts                         # DesignSuggestInputSchema + sanitizeOccasion
 │                                      #   (quita PII de la ocasión antes de llamar al LLM)
-└── actions.ts                         # suggestDesignAction (Claude API, ADR-058)
+└── actions.ts                         # suggestDesignAction (Google Gemini, ADR-058)
 
 apps/web/lib/
 ├── storage.ts                         # uploadCustomerPhoto extendido con validation
@@ -422,6 +424,18 @@ de todas las superficies personalizables.**
   pero cambia de significado: ya no es CartItem.qty, son las unidades a diseñar.
   La página lo acota a 1..99 y el editor al máximo del producto (`slotCount ≤ 50`
   del schema Zod → calendario 4 sets, tira de 4 fotos 12 tiras, separadores 25).
+- **`?template=<slug>`** (lo genera el TemplatesStrip de la PDP; N-08 2026-09-11):
+  la página lo resuelve contra la MISMA lista visible del sidebar
+  (`listTemplatesForKind`: activas, `mode=EDITABLE`, kind del producto,
+  específicas-o-globales, filtro de aspect) y el draft NUEVO arranca con ESA
+  plantilla — `createDraftDesignAction` la recibe y el servidor la re-valida
+  (misma regla). Slug inválido → primera plantilla, sin error visible; con
+  `?designId=` manda el canvas guardado (SoT). Cambiar de plantilla en el
+  sidebar persiste `Design.templateId` vía el auto-save (`saveCanvasAction`
+  acepta `templateId` y `saveCanvas` lo valida; si no pasa —p.ej. desactivada
+  entre carga y guardado— el canvas se guarda igual y el id queda como estaba).
+  El concepto PREMADE está RETIRADO del storefront (0 datos, 0 consumidores;
+  decisión de producto 2026-09-11).
 - **UI del Estudio**: con N unidades multi-slot el lienzo se divide en SECCIONES
   apiladas (una por unidad, con header "Tira 1 de 2" + chip de progreso) y un
   **pager** de pastillas arriba (salta a cada sección; las secciones quedan TODAS
@@ -565,7 +579,7 @@ de todas las superficies personalizables.**
   Sets por defecto es/en con `make seed-letter-sets`.
 - **Asistente IA de ideas (ADR-058)**: `studio-ai-panel.tsx` — el cliente cuenta la ocasión y
   recibe color de marca, frase (si el producto lleva texto), composición y un tip. Server:
-  `features/ai/actions.ts → suggestDesignAction` (Claude API); `sanitizeOccasion`
+  `features/ai/actions.ts → suggestDesignAction` (Google Gemini — `gemini-provider.ts`); `sanitizeOccasion`
   (`features/ai/schemas.ts`) remueve PII de la ocasión antes de llamar al LLM. Falla-seguro:
   si el asistente no está disponible, mensaje amable y nada se rompe.
 - **Copy 100% administrable (CMS v2, roadmap B1)**: `studio-texts.server.ts` resuelve UNA
