@@ -18,6 +18,7 @@ import { CmsText } from "@/components/cms/cms-text";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getCmsBlock } from "@/lib/cms";
+import { getTrustedSelfBaseUrl, vercelBypassHeaders } from "@/lib/origin";
 import {
   aveonlinePublicVerdict,
   wompiPublicVerdict,
@@ -48,10 +49,15 @@ async function checkService(
   path: string,
 ): Promise<ServiceStatus> {
   try {
-    // El dev server del proyecto corre en :4000 (ver Makefile / playwright.config.ts).
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4000";
+    // Base URL confiable (anti-SSRF, ver lib/origin.ts); el dev server local corre
+    // en :4000 (Makefile / playwright.config.ts). vercelBypassHeaders: en previews
+    // protegidos (STG) sin bypass el self-fetch recibe un 302 al login de Vercel
+    // y el tile saldría "Caído" estando sano.
+    const baseUrl = getTrustedSelfBaseUrl();
     const r = await fetch(`${baseUrl}${path}`, {
       cache: "no-store",
+      redirect: "manual",
+      headers: vercelBypassHeaders(),
       signal: AbortSignal.timeout(5000),
     });
     if (!r.ok) {
@@ -86,9 +92,12 @@ async function checkThirdParty(
   verdict: (httpStatus: number, body: HealthBody) => PublicHealthVerdict,
 ): Promise<ServiceStatus> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4000";
+    // Misma base confiable y bypass que checkService.
+    const baseUrl = getTrustedSelfBaseUrl();
     const r = await fetch(`${baseUrl}${path}`, {
       cache: "no-store",
+      redirect: "manual",
+      headers: vercelBypassHeaders(),
       signal: AbortSignal.timeout(8000),
     });
     const body = (await r.json().catch(() => null)) as HealthBody;
