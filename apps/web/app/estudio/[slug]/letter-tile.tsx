@@ -127,6 +127,7 @@ export function LetterTile({
   size = 72,
   selected = false,
   onClick,
+  withBorder = true,
 }: {
   letter: string;
   color: string;
@@ -134,6 +135,10 @@ export function LetterTile({
   size?: number;
   selected?: boolean;
   onClick?: () => void;
+  /** Lucy 2026-09-09 — opción de diseño «Sin borde» del editor de nombre (misma regla
+   *  que el set de letras): la ficha queda blanca a ras; el color sigue pintando la
+   *  letra y la sombra suave. Default true (lo histórico). */
+  withBorder?: boolean;
 }) {
   const interactive = Boolean(onClick);
   return (
@@ -148,7 +153,7 @@ export function LetterTile({
       style={{
         width: size,
         height: size * 1.18,
-        border: `3px solid ${color}`,
+        border: `3px solid ${withBorder ? color : "transparent"}`,
         boxShadow: selected
           ? `0 0 0 3px ${color}55, 0 4px 14px ${color}33`
           : `0 4px 14px ${color}22`,

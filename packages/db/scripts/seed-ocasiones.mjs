@@ -9,19 +9,33 @@
  * Idempotente: upsert por slug. Re-ejecutar actualiza name/description/etc.
  * NO pisa la relación ProductOcasionTag (esa la maneja seed-catalog-v2.mjs).
  *
- * Uso (vía Makefile):
+ * N-06 (2026-09-12): DRY-RUN por defecto (`--apply` ejecuta) + env-guard
+ * fail-closed (bloquea PRD/remotos no reconocidos). El update sí alinea
+ * name/description/monthHint/order y reactiva (isActive:true) — es el
+ * comportamiento canónico declarado; si Lucy desactiva una ocasión en el
+ * admin y no quiere que el seed la reactive, debe sacarla de este archivo.
+ *
+ * Uso (vía Makefile — el target pasa --apply):
  *   make seed-ocasiones
+ * Directo:
+ *   node scripts/seed-ocasiones.mjs            # DRY-RUN
+ *   node scripts/seed-ocasiones.mjs --apply    # aplica
  */
 
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
 process.env.DIRECT_URL = stripQuotes(process.env.DIRECT_URL);
 
-const prisma = new PrismaClient();
+// Guarda de ambiente: upsert de ocasiones — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("seed-ocasiones.mjs");
 
-console.log("=== seed-ocasiones ===\n");
+const prisma = new PrismaClient();
+const APPLY = process.argv.includes("--apply");
+
+console.log(`=== seed-ocasiones (${APPLY ? "APPLY" : "DRY-RUN"}) ===\n`);
 
 // 15 ocasiones — orden de aparición en menú "Por ocasión ▾".
 // monthHint: mes en que se celebra fuertemente en Colombia (auto-rotación).
@@ -221,36 +235,46 @@ async function main() {
   for (const oc of ocasiones) {
     const existing = await prisma.ocasionTag.findUnique({ where: { slug: oc.slug } });
     if (existing) {
-      await prisma.ocasionTag.update({
-        where: { slug: oc.slug },
-        data: {
-          name: oc.name,
-          description: oc.description,
-          monthHint: oc.monthHint,
-          suggestedQuantityRange: oc.suggestedQuantityRange,
-          order: oc.order,
-          isActive: true,
-        },
-      });
       updated++;
+      if (APPLY) {
+        await prisma.ocasionTag.update({
+          where: { slug: oc.slug },
+          data: {
+            name: oc.name,
+            description: oc.description,
+            monthHint: oc.monthHint,
+            suggestedQuantityRange: oc.suggestedQuantityRange,
+            order: oc.order,
+            isActive: true,
+          },
+        });
+      }
     } else {
-      await prisma.ocasionTag.create({
-        data: {
-          slug: oc.slug,
-          name: oc.name,
-          description: oc.description,
-          monthHint: oc.monthHint,
-          suggestedQuantityRange: oc.suggestedQuantityRange,
-          order: oc.order,
-          isActive: true,
-        },
-      });
       created++;
+      if (APPLY) {
+        await prisma.ocasionTag.create({
+          data: {
+            slug: oc.slug,
+            name: oc.name,
+            description: oc.description,
+            monthHint: oc.monthHint,
+            suggestedQuantityRange: oc.suggestedQuantityRange,
+            order: oc.order,
+            isActive: true,
+          },
+        });
+      }
     }
   }
 
-  console.log(`✓ ${created} ocasiones creadas, ${updated} actualizadas.`);
-  console.log(`Total OcasionTag activos: ${ocasiones.length}.\n`);
+  console.log(
+    APPLY
+      ? `✓ ${created} ocasiones creadas, ${updated} actualizadas.`
+      : `DRY-RUN · ${created} ocasiones se crearían, ${updated} se actualizarían.`,
+  );
+  console.log(`Total OcasionTag declarados: ${ocasiones.length}.`);
+  if (!APPLY) console.log("Para ejecutar: node scripts/seed-ocasiones.mjs --apply");
+  console.log("");
 }
 
 main()

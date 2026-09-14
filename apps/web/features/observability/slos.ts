@@ -120,9 +120,3 @@ export async function getSloStatus(): Promise<SloResult[]> {
   ];
   return results;
 }
-
-/** Los SLOs incumplidos con datos suficientes (para alertar en el resumen diario). */
-export async function getBreachedSlos(): Promise<SloResult[]> {
-  const all = await getSloStatus();
-  return all.filter((s) => s.status === "breached");
-}

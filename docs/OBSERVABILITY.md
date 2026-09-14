@@ -110,10 +110,12 @@ Las señales que medimos. Cada SLO se calcula a partir de SLIs.
 
 > Pre-lanzamiento: tabla simple en `/admin/observability`. Post-lanzamiento: evaluar Grafana Cloud Free, BetterStack, o Vercel Web Analytics (Pro).
 
-> **Estado real (verificado 2026-09-03):** `/admin/observability` YA existe (solo rol SUPERADMIN)
+> **Estado real (verificado 2026-09-12):** `/admin/observability` YA existe (solo rol SUPERADMIN)
 > y muestra la salud técnica (ErrorLog de servidor + ErrorReport de cliente deduplicados,
 > webhooks, órdenes a reconciliar, reversas de stock, Web Vitals), el resumen de operación diaria,
-> los 3 SLOs medibles y la salud de los 8 crons. Las alertas y el resumen diario aterrizan en el
+> los 3 SLOs medibles, la **entregabilidad de email (7 días)** (N-04), el **tile del backup diario
+> a R2** (latido vía `/api/cron/backup-heartbeat` desde GitHub Actions, N-19a) y la salud de los
+> **9 crons pg_cron**. Las alertas y el resumen diario aterrizan en el
 > centro de notificaciones `/admin/notificaciones`.
 
 ### Dashboard "Operación diaria"
@@ -163,44 +165,55 @@ Panel para el dev/Claude:
 ### Reglas de alerta
 
 > **Implementadas hoy** (`evaluateAlerts` en `features/observability/alerts.ts`, corre cada 5 min
-> vía pg_cron → `/api/cron/alerts`): `errors_spike` (5+ `ErrorLog` en 5 min), `reconciliation`
+> vía pg_cron → `/api/cron/alerts`; verificado 2026-09-12): `errors_spike` (5+ `ErrorLog` en 5 min
+> **en una misma ruta** — `routePath`; N-33), `reconciliation`
 > (órdenes con `needsReconciliation`), `webhooks_stuck` (WebhookEvent sin procesar > 1h),
-> `pending_payment_wompi_stale` (orden Wompi > 2h en PENDING_PAYMENT) y `cron_stale_<job>`
-> (dead-man switch — ver la fila pg_cron de la tabla). **El resto de la tabla es objetivo** — se
-> activa con el monitor externo y la instrumentación post-lanzamiento. Nota: hoy no hay pgmq ni
-> Edge Functions consumer; los jobs son crons HTTP + tablas.
+> `pending_payment_wompi_stale` (**semántica nueva N-12b**: orden Wompi que supera la ventana de
+> expiración `PENDING_PAYMENT_EXPIRY_HOURS`=24h SIN auto-cancelarse — lo roto es el cron
+> `expire-pending-orders`, no el checkout abandonado; acción → `/admin/observability`),
+> `cron_stale_<job>` (dead-man switch — ver la fila pg_cron de la tabla), **`email_bounce_rate`**
+> (rebote > 5% en 7 días con ≥ 20 eventos terminales, severidad alta; N-04) y **`backup_stale`**
+> (sin latido del backup diario en > 36h, severidad alta; N-19a). **El resto de la tabla es
+> objetivo** — se activa con el monitor externo y la instrumentación post-lanzamiento. Nota: hoy
+> no hay pgmq ni Edge Functions consumer; los jobs son crons HTTP + tablas.
 
-| Disparador (objetivo salvo las 5 implementadas)                                          | Canal | Severidad | Acción inmediata                                                                                                                                                                                                                                                                                                                           |
-| ---------------------------------------------------------------------------------------- | ----- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 5+ errores 500 en 5 min en una misma ruta                                                | Email | Alta      | Ver Vercel Logs ruta afectada; rollback si reciente                                                                                                                                                                                                                                                                                        |
-| Webhook handler fallando > 3 veces consecutivas                                          | Email | Alta      | Verificar payload + firma + Wompi/Aveonline status                                                                                                                                                                                                                                                                                         |
-| Saga compensation fallida (estado inconsistente)                                         | Email | Crítica   | Intervención manual; revisar órdenes `needsReconciliation` y reconciliar (no existe tabla `SagaLog` — la señal real vive en `Order`)                                                                                                                                                                                                       |
-| `/api/health` devuelve 503 por > 3 min                                                   | Email | Crítica   | Verificar Supabase status, Vercel status                                                                                                                                                                                                                                                                                                   |
-| Stock oversold detectado                                                                 | Email | Crítica   | Contactar cliente afectado, ofrecer reembolso/sustituto                                                                                                                                                                                                                                                                                    |
-| Wompi webhook signature inválida (3+ en 5 min)                                           | Email | Media     | Posible ataque de replay, revisar `WebhookEvent`                                                                                                                                                                                                                                                                                           |
-| Resend bounce rate > 5%                                                                  | Email | Media     | Revisar SPF/DKIM/DMARC, posible problema reputacional                                                                                                                                                                                                                                                                                      |
-| Supabase Free DB > 80% capacity                                                          | Email | Media     | Migrar a Pro                                                                                                                                                                                                                                                                                                                               |
-| (Objetivo) Lag de cola de jobs > 30 min (hoy los jobs son crons HTTP + tablas, sin pgmq) | Email | Media     | Verificar `/api/health/crons` y `cron.job_run_details`                                                                                                                                                                                                                                                                                     |
-| `pg_cron` job no ejecutado en su ventana (2× intervalo)                                  | Email | Media     | **Implementado (v3 #15):** dead-man switch. Capa interna: `evaluateAlerts` marca `cron_stale_<job>` vía `getCronHealth` (latido `recordCronHeartbeat` en cada cron). Capa externa: `GET /api/health/crons` → 503 → monitor de uptime externo (cubre la caída del propio cron de alertas). Revisar `cron.job_run_details` + secretos Vault. |
-| Lighthouse Performance < 90 en deploy a producción                                       | Email | Baja      | Revisar bundle size diff                                                                                                                                                                                                                                                                                                                   |
-| Error budget > 50% consumido en SLO crítico                                              | Email | Alta      | Activar feature freeze                                                                                                                                                                                                                                                                                                                     |
+| Disparador (objetivo salvo las 8 implementadas)                                                           | Canal | Severidad | Acción inmediata                                                                                                                                                                                                                                                                                                                           |
+| --------------------------------------------------------------------------------------------------------- | ----- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **(Implementada)** 5+ errores 500 en 5 min en una misma ruta (`errors_spike`)                             | Email | Alta      | Ver Vercel Logs ruta afectada; rollback si reciente                                                                                                                                                                                                                                                                                        |
+| **(Implementada)** Webhooks sin procesar > 1h (`webhooks_stuck`)                                          | Email | Media     | Verificar consumer de webhooks y estado de Wompi/Aveonline                                                                                                                                                                                                                                                                                 |
+| **(Implementada)** Órdenes con `needsReconciliation` (`reconciliation`)                                   | Email | Crítica   | Abrir /admin/pedidos (filtro "Necesitan atención"): reembolsar o reponer stock                                                                                                                                                                                                                                                             |
+| **(Implementada)** Orden Wompi > 24h en PENDING_PAYMENT sin auto-cancelar (`pending_payment_wompi_stale`) | Email | Crítica   | Revisar el cron `expire-pending-orders` en /admin/observability (trabajos automáticos) y su último error; verificar cada orden contra el panel Wompi por la referencia (número de orden)                                                                                                                                                   |
+| **(Implementada)** Rebote de email > 5% en 7 días con ≥ 20 eventos terminales (`email_bounce_rate`)       | Email | Alta      | Abrir /admin/observability (entregabilidad de email) + dashboard de Resend: DKIM/SPF/DMARC del dominio y direcciones rebotadas antes de seguir enviando                                                                                                                                                                                    |
+| **(Implementada)** Backup diario sin latido > 36h (`backup_stale`)                                        | Email | Alta      | Revisar el workflow backup.yml en GitHub (Actions → Backup DB → R2): si el job falla o le faltan secrets (R2\_\*/BACKUP\_\*/CRON_SECRET) el backup diario no se está haciendo; el DR drill mensual también exige dump fresco                                                                                                               |
+| (Objetivo) Webhook handler fallando > 3 veces consecutivas                                                | Email | Alta      | Verificar payload + firma + Wompi/Aveonline status                                                                                                                                                                                                                                                                                         |
+| (Objetivo) Saga compensation fallida (estado inconsistente)                                               | Email | Crítica   | Intervención manual; revisar órdenes `needsReconciliation` y reconciliar (no existe tabla `SagaLog` — la señal real vive en `Order`)                                                                                                                                                                                                       |
+| (Objetivo) `/api/health` devuelve 503 por > 3 min                                                         | Email | Crítica   | Verificar Supabase status, Vercel status                                                                                                                                                                                                                                                                                                   |
+| (Objetivo) Stock oversold detectado                                                                       | Email | Crítica   | Contactar cliente afectado, ofrecer reembolso/sustituto                                                                                                                                                                                                                                                                                    |
+| (Objetivo) Wompi webhook signature inválida (3+ en 5 min)                                                 | Email | Media     | Posible ataque de replay, revisar `WebhookEvent`                                                                                                                                                                                                                                                                                           |
+| (Objetivo) Supabase Free DB > 80% capacity                                                                | Email | Media     | Migrar a Pro                                                                                                                                                                                                                                                                                                                               |
+| (Objetivo) Lag de cola de jobs > 30 min (hoy los jobs son crons HTTP + tablas, sin pgmq)                  | Email | Media     | Verificar `/api/health/crons` y `cron.job_run_details`                                                                                                                                                                                                                                                                                     |
+| **(Implementada)** `pg_cron` job no ejecutado en su ventana (2× intervalo) (`cron_stale_<job>`)           | Email | Media     | **Implementado (v3 #15):** dead-man switch. Capa interna: `evaluateAlerts` marca `cron_stale_<job>` vía `getCronHealth` (latido `recordCronHeartbeat` en cada cron). Capa externa: `GET /api/health/crons` → 503 → monitor de uptime externo (cubre la caída del propio cron de alertas). Revisar `cron.job_run_details` + secretos Vault. |
+| (Objetivo) Lighthouse Performance < 90 en deploy a producción                                             | Email | Baja      | Revisar bundle size diff                                                                                                                                                                                                                                                                                                                   |
+| (Objetivo) Error budget > 50% consumido en SLO crítico                                                    | Email | Alta      | Activar feature freeze                                                                                                                                                                                                                                                                                                                     |
 
 ### Anti-spam
 
 - **Deduplicación:** in-app por `dedupKey` (la alerta que persiste actualiza la misma notificación no leída); el email no se reenvía si salió hace < 30 min (`AlertState`).
-- **Resumen diario:** desde 2026-08-05 ya NO va por email — se publica SIEMPRE una vez al día como notificación in-app en `/admin/notificaciones` (cron `daily-summary` vía pg_cron → `/api/cron/daily-summary`, 8am America/Bogota; guarda anti-duplicado de 12h). Contenido de las últimas 24h: pedidos e ingresos cobrados (Wompi + COD entregado), COD por cobrar/remitir, por despachar, stock crítico, reseñas pendientes, retractos con reloj legal, carritos abandonados/recuperados, errores con ruta principal, órdenes a reconciliar y SLOs incumplidos (`features/observability/daily-summary.ts`).
+- **Resumen diario:** desde 2026-08-05 ya NO va por email — se publica SIEMPRE una vez al día como notificación in-app en `/admin/notificaciones` (cron `daily-summary` vía pg_cron → `/api/cron/daily-summary`, 8am America/Bogota; guarda anti-duplicado de 12h). Contenido de las últimas 24h: pedidos e ingresos cobrados (Wompi + COD entregado), COD por cobrar/remitir, por despachar, stock crítico, reseñas pendientes, retractos con reloj legal, carritos abandonados/recuperados, errores con ruta principal, órdenes a reconciliar, **línea de entregabilidad de email** (N-04, 2026-09-11: sale cuando el rebote a 7 días supera el umbral — `email-deliverability.ts` es la fuente única compartida con la alerta `email_bounce_rate`) y SLOs incumplidos (`features/observability/daily-summary.ts`).
 
 ### Retención y purga (Ley 1581 — minimización)
 
 El cron diario `purge-event-logs` (pg_cron → `/api/cron/purge-event-logs`, código en
 `features/observability/event-log-retention.ts`) borra:
 
-| Tabla          | Retención | Criterio de borrado                                                                |
-| -------------- | --------- | ---------------------------------------------------------------------------------- |
-| `EmailEvent`   | 180 días  | `createdAt` (deliverability)                                                       |
-| `WebhookEvent` | 180 días  | `createdAt` y ya procesado (`processedAt` no nulo — no borra eventos en reintento) |
-| `ErrorLog`     | 90 días   | `createdAt` (auditoría 2026-08-24 · F-6)                                           |
-| `ErrorReport`  | 90 días   | `lastSeenAt` — un error que sigue ocurriendo NO se borra aunque sea viejo          |
+| Tabla          | Retención | Criterio de borrado                                                                                        |
+| -------------- | --------- | ---------------------------------------------------------------------------------------------------------- |
+| `EmailEvent`   | 180 días  | `createdAt` (deliverability)                                                                               |
+| `WebhookEvent` | 180 días  | `createdAt` y ya procesado (`processedAt` no nulo — no borra eventos en reintento)                         |
+| `ErrorLog`     | 90 días   | `createdAt` (auditoría 2026-08-24 · F-6)                                                                   |
+| `ErrorReport`  | 90 días   | `lastSeenAt` — un error que sigue ocurriendo NO se borra aunque sea viejo                                  |
+| `Notification` | 90 días   | solo las **leídas** con `createdAt` > 90 días (N-13, 2026-09-11 — el histórico durable ya vive en logs)    |
+| `WebVital`     | 35 días   | `createdAt` (N-13 — serie RUM de alta frecuencia; su uso es el diagnóstico reciente en /admin/performance) |
 
 Todo message/stack pasa por `scrubPii` (emails → `[EMAIL]`, teléfonos → `[PHONE]`) ANTES del
 insert (F-6): la PII no queda en claro ni en DB. Además el cron `purge-anon-designs` borra los
@@ -304,7 +317,7 @@ Evaluar OpenTelemetry SDK con exporter a un backend gratuito (Honeycomb Free, Gr
 | `GET /api/health/db`                                            | Postgres responde un `SELECT 1` (Prisma)                                                                                                               | 2 s     |
 | `GET /api/health/wompi` · `/aveonline` · `/resend` · `/storage` | Cada integración por separado (bajo `/api/health/`)                                                                                                    | 5 s     |
 | `GET /api/health/all`                                           | Agrega todos los checks: 503 si falla uno crítico (db + storage); el resto warn/fail no tumba. `version`/`environment` solo con header `x-cron-secret` | 6 s     |
-| `GET /api/health/crons`                                         | Dead-man switch de los 8 crons pg_cron: 503 si alguno no corrió en 2× su intervalo. Detalle (jobs/lastRunAt/disabled) solo con `x-cron-secret`         | 2 s     |
+| `GET /api/health/crons`                                         | Dead-man switch de los 9 crons pg_cron: 503 si alguno no corrió en 2× su intervalo. Detalle (jobs/lastRunAt/disabled) solo con `x-cron-secret`         | 2 s     |
 
 ### Implementación
 
@@ -338,7 +351,17 @@ export async function GET() {
 
 ### Monitoreo externo
 
-Post-lanzamiento: configurar **UptimeRobot** o **BetterStack** (Free) para pingear `/api/health` cada 5 min y alertar si cae > 3 min. Detalle de jobs en `/api/health/crons` y de versión/entorno en `/api/health/all` requieren el header `x-cron-secret` (auditoría 2026-08-24, C-3/C-4) — ambos monitores soportan headers custom; la respuesta pública queda mínima (`status` + `timestamp`, 503 si degradado).
+**Implementado (2026-09-14) sin SaaS, sin Actions y sin depender de la VM:** el job
+pg_cron `uptime-monitor-prd` en el proyecto **Supabase de STG** sondea los 5 healthchecks de
+PRD cada 10 min (lote asíncrono de 2 fases), alerta por email vía Resend solo en fallas
+persistentes (2+ corridas) y reporta cada corrida a `/api/cron/monitor-heartbeat` (tile en
+`/admin/observability` + reglas `uptime_monitor_stale/failing`) — ver `docs/OPERATIONS.md` §
+Plan de monitoreo y `scripts/monitor-uptime-stg.sql`. Respaldo manual:
+`apps/web/scripts/uptime-monitor.mjs`. Detalle de jobs en `/api/health/crons` y de
+versión/entorno en `/api/health/all` requiere el header `x-cron-secret` (auditoría 2026-08-24,
+C-3/C-4); la respuesta pública queda mínima (`status` + `timestamp`, 503 si degradado).
+~~Post-lanzamiento: configurar UptimeRobot o BetterStack (Free).~~ Descartado por Lucy
+(2026-09-13): sin dependencia de tiers gratuitos, de Actions y de la VM de desarrollo.
 
 ---
 
@@ -429,5 +452,6 @@ Sin culpas. Sin "el dev se equivocó". Foco en sistema.
 
 - Decisión de monitoreo de errores (ADR-022): Sentry Free o alternativa.
 - Métricas custom expuestas (`/api/metrics`).
-- UptimeRobot/BetterStack para healthchecks externos.
+- ~~UptimeRobot/BetterStack para healthchecks externos.~~ Resuelto con job pg_cron en Supabase
+  STG (`uptime-monitor-prd`, 2026-09-14 — sin SaaS, sin Actions y sin depender de la VM).
 - Eventualmente: distributed tracing si la arquitectura crece.

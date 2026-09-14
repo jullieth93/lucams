@@ -1,8 +1,12 @@
 /*
- * Unit — getCronHealth / getDisabledCronJobs (dead-man switch, auditoría v3 · #15).
+ * Unit — getCronHealth / getDisabledCronJobs (dead-man switch, auditoría v3 · #15)
+ * y el latido de backups (N-19a, 2026-09-11: recordBackupHeartbeat / getBackupHealth
+ * sobre AlertState["backup:last-success"] — el backup corre en GitHub Actions, fuera
+ * de pg_cron, y su salud era invisible desde la app).
  *
- * Prisma mockeado: la lógica de overdue/disabled es determinista y no necesita DB.
- * Cubre: cms-publish-scheduled rastreado (8º job HTTP), la ventana 2× del overdue, y
+ * Prisma mockeado: la lógica de overdue/disabled/stale es determinista y no necesita DB.
+ * Cubre: los jobs rastreados (cms-publish-scheduled; expire-pending-orders de N-12),
+ * la ventana 2× del overdue, y
  * CRON_JOBS_DISABLED — un job desagendado A PROPÓSITO (ej. los crons de email en STG)
  * reporta disabled:true y nunca cuenta como overdue (anti falso-degraded eterno).
  */
@@ -12,11 +16,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // vi.hoisted: el factory de vi.mock se eleva sobre los imports (mismo patrón que
 // features/admin-users/service.test.ts).
 const { mockPrisma } = vi.hoisted(() => ({
-  mockPrisma: { alertState: { findMany: vi.fn() } },
+  mockPrisma: {
+    alertState: { findMany: vi.fn(), findUnique: vi.fn(), upsert: vi.fn() },
+  },
 }));
 vi.mock("@/lib/db", () => ({ prisma: mockPrisma }));
 
-import { CRON_JOBS, getCronHealth, getDisabledCronJobs } from "./cron-heartbeat";
+import {
+  BACKUP_HEARTBEAT_KEY,
+  BACKUP_STALE_MS,
+  CRON_JOBS,
+  getBackupHealth,
+  getCronHealth,
+  getDisabledCronJobs,
+  recordBackupHeartbeat,
+} from "./cron-heartbeat";
 
 const NOW = new Date("2026-08-05T12:00:00Z");
 
@@ -42,11 +56,17 @@ describe("cron-heartbeat", () => {
     else process.env.CRON_JOBS_DISABLED = originalDisabled;
   });
 
-  it("rastrea los 8 jobs HTTP, incluido cms-publish-scheduled (cada 5 min)", () => {
-    expect(Object.keys(CRON_JOBS)).toHaveLength(8);
+  it("rastrea los 9 jobs HTTP, incluidos cms-publish-scheduled (5 min) y expire-pending-orders (N-12)", () => {
+    expect(Object.keys(CRON_JOBS)).toHaveLength(9);
     expect(CRON_JOBS["cms-publish-scheduled"]).toEqual({
       intervalMs: 5 * 60 * 1000,
       label: "Publicación programada CMS",
+    });
+    // N-12: el cron que auto-cancela pendientes — la alerta pending_payment_wompi_stale
+    // (N-12b) existe para detectar precisamente que ESTE job no corrió.
+    expect(CRON_JOBS["expire-pending-orders"]).toEqual({
+      intervalMs: 60 * 60 * 1000,
+      label: "Expiración de pedidos sin pagar",
     });
   });
 
@@ -83,5 +103,56 @@ describe("cron-heartbeat", () => {
     expect(getDisabledCronJobs()).toEqual(["alerts", "purge-event-logs"]);
     delete process.env.CRON_JOBS_DISABLED;
     expect(getDisabledCronJobs()).toEqual([]);
+  });
+});
+
+describe("backup heartbeat (N-19a) — AlertState['backup:last-success']", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPrisma.alertState.upsert.mockResolvedValue({});
+  });
+
+  it("recordBackupHeartbeat hace upsert con la clave y el detalle (trazabilidad del dump)", async () => {
+    await recordBackupHeartbeat("db/lucams-2026-09-12T071300Z.sql.gz.gpg");
+
+    expect(mockPrisma.alertState.upsert).toHaveBeenCalledTimes(1);
+    const args = mockPrisma.alertState.upsert.mock.calls[0][0];
+    expect(args.where).toEqual({ key: BACKUP_HEARTBEAT_KEY });
+    expect(args.create.key).toBe(BACKUP_HEARTBEAT_KEY);
+    expect(args.create.lastDetail).toBe("db/lucams-2026-09-12T071300Z.sql.gz.gpg");
+    expect(args.update.lastDetail).toBe("db/lucams-2026-09-12T071300Z.sql.gz.gpg");
+    expect(args.create.lastSentAt).toBeInstanceOf(Date);
+    expect(args.update.lastSentAt).toBeInstanceOf(Date);
+  });
+
+  it("recordBackupHeartbeat NO traga el error del upsert (el endpoint responde 500 y el workflow sale rojo)", async () => {
+    mockPrisma.alertState.upsert.mockRejectedValueOnce(new Error("db caída"));
+    await expect(recordBackupHeartbeat()).rejects.toThrow("db caída");
+  });
+
+  it("getBackupHealth: sin fila → stale (nunca reportó éxito)", async () => {
+    mockPrisma.alertState.findUnique.mockResolvedValue(null);
+    const health = await getBackupHealth(new Date("2026-09-12T12:00:00Z"));
+    expect(health).toEqual({ lastSuccessAt: null, stale: true });
+  });
+
+  it("getBackupHealth: latido dentro de 36h → al día; más viejo → stale", async () => {
+    const NOW = new Date("2026-09-12T12:00:00Z");
+    mockPrisma.alertState.findUnique.mockResolvedValue({
+      lastSentAt: new Date(NOW.getTime() - 20 * 60 * 60 * 1000), // 20h → fresco
+    });
+    expect(await getBackupHealth(NOW)).toEqual({
+      lastSuccessAt: new Date(NOW.getTime() - 20 * 60 * 60 * 1000),
+      stale: false,
+    });
+
+    mockPrisma.alertState.findUnique.mockResolvedValue({
+      lastSentAt: new Date(NOW.getTime() - BACKUP_STALE_MS - 1000), // >36h → viejo
+    });
+    expect((await getBackupHealth(NOW)).stale).toBe(true);
+  });
+
+  it("el tope de frescura es 36h (mismo criterio que el DR drill)", () => {
+    expect(BACKUP_STALE_MS).toBe(36 * 60 * 60 * 1000);
   });
 });

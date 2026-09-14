@@ -122,6 +122,59 @@ describe("IA — Gemini con fallback entre modelos", () => {
   });
 });
 
+describe("IA — probeGeminiHealth (N-19c: sonda segura, SIN generación de contenido)", () => {
+  beforeEach(() => vi.stubEnv("GEMINI_API_KEY", "test-key"));
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  it("sin GEMINI_API_KEY → skipped sin llamar a la red (no configurada, nunca falsa alarma)", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { probeGeminiHealth } = await import("./gemini-provider");
+    const health = await probeGeminiHealth();
+    expect(health.status).toBe("skipped");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("key válida → ok con conteo de modelos; la llamada es GET de modelos con x-goog-api-key", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okResponse({ models: [{ name: "models/gemini-2.5-flash" }] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { probeGeminiHealth } = await import("./gemini-provider");
+    const health = await probeGeminiHealth();
+
+    expect(health.status).toBe("ok");
+    expect(health.detail).toContain("1 modelos");
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit & { timeoutMs?: number }];
+    // La sonda lista modelos — NUNCA generateContent (cero cuota consumida).
+    expect(url).toContain("/v1beta/models");
+    expect(url).not.toContain("generateContent");
+    expect((init?.headers as Record<string, string>)["x-goog-api-key"]).toBe("test-key");
+    expect(init?.method ?? "GET").toBe("GET");
+  });
+
+  it("HTTP 403 (key inválida/revocada) → fail con el detalle accionable", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(errResponse(403)));
+    const { probeGeminiHealth } = await import("./gemini-provider");
+    const health = await probeGeminiHealth();
+    expect(health.status).toBe("fail");
+    expect(health.detail).toContain("403");
+    expect(health.detail).toContain("GEMINI_API_KEY");
+  });
+
+  it("error de red/timeout → fail (la sonda reporta, no revienta el panel)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("socket hang up")));
+    const { probeGeminiHealth } = await import("./gemini-provider");
+    const health = await probeGeminiHealth();
+    expect(health.status).toBe("fail");
+    expect(health.detail).toContain("timeout o error de red");
+  });
+});
+
 describe("IA — guard de modo catálogo (suggestDesignAction)", () => {
   it("en modo catálogo la Server Action rechaza con el shape de error habitual", async () => {
     const { suggestDesignAction } = await import("./actions");

@@ -38,6 +38,8 @@ const { state, MockStorageError } = vi.hoisted(() => {
       assetCreateCalls: 0,
       saveCanvasCalls: 0,
       finalizeCalls: 0,
+      saveCanvasArgs: [] as Array<Record<string, unknown>>,
+      createDraftArgs: [] as Array<Record<string, unknown>>,
     },
   };
 });
@@ -98,9 +100,12 @@ vi.mock("./service", () => ({
     if (state.ticketsError) throw state.ticketsError;
     return [{ slotIndex: 0, url: "https://signed.example/slot0" }];
   },
-  createDraftDesign: vi.fn(),
+  createDraftDesign: async (args: Record<string, unknown>) => {
+    state.createDraftArgs.push(args);
+    return { id: "design_d1" };
+  },
   createNameDesign: vi.fn(),
-  createLetterSetDesign: vi.fn(),
+  createLetterSetDesign: vi.fn(async () => ({ id: "design_ls1", letters: ["A"], language: "es" })),
   finalizeDesign: async () => {
     state.finalizeCalls += 1;
     if (state.finalizeError) throw state.finalizeError;
@@ -111,13 +116,157 @@ vi.mock("./service", () => ({
     };
   },
   getOwnedDesign: async () => null,
-  saveCanvas: async () => {
+  saveCanvas: async (args: Record<string, unknown>) => {
     state.saveCanvasCalls += 1;
+    state.saveCanvasArgs.push(args);
     if (state.saveCanvasError) throw state.saveCanvasError;
   },
 }));
 
-import { finalizeDesignAction, saveCanvasAction, uploadDesignAssetAction } from "./actions";
+import {
+  createDraftDesignAction,
+  createLetterSetDesignAction,
+  createNameDesignAction,
+  finalizeDesignAction,
+  saveCanvasAction,
+  uploadDesignAssetAction,
+} from "./actions";
+import { createLetterSetDesign, createNameDesign } from "./service";
+
+const VALID_LETTERSET_INPUT = {
+  productId: "prod_1",
+  variantId: "var_1",
+  frameTheme: "arcoiris",
+};
+
+const VALID_NAME_INPUT = {
+  productId: "prod_1",
+  variantId: "var_1",
+  name: "LUCIA",
+};
+
+describe("createNameDesignAction · opción de borde (Lucy 2026-09-09)", () => {
+  beforeEach(() => {
+    vi.mocked(createNameDesign).mockReset();
+    vi.mocked(createNameDesign).mockResolvedValue({
+      id: "design_n1",
+      display: "LUCIA",
+      letters: ["L", "U", "C", "I", "A"],
+    });
+  });
+
+  it("acepta withBorder: false y lo pasa al service (se persiste en metadata)", async () => {
+    const result = await createNameDesignAction({ ...VALID_NAME_INPUT, withBorder: false });
+    expect(result).toMatchObject({ ok: true, designId: "design_n1" });
+    expect(createNameDesign).toHaveBeenCalledWith(expect.objectContaining({ withBorder: false }));
+  });
+
+  it("sin withBorder defaultea a true (retrocompatible con clientes cacheados previos)", async () => {
+    const result = await createNameDesignAction(VALID_NAME_INPUT);
+    expect(result.ok).toBe(true);
+    expect(createNameDesign).toHaveBeenCalledWith(expect.objectContaining({ withBorder: true }));
+  });
+
+  it("rechaza valores inválidos (string/number/null) sin tocar el service", async () => {
+    for (const bad of ["sin", 0, 1, null]) {
+      const result = await createNameDesignAction({ ...VALID_NAME_INPUT, withBorder: bad });
+      expect(result).toMatchObject({ ok: false, message: "Datos inválidos." });
+    }
+    expect(createNameDesign).not.toHaveBeenCalled();
+  });
+});
+
+describe("createLetterSetDesignAction · opción de borde (Lucy 2026-09-05)", () => {
+  beforeEach(() => {
+    vi.mocked(createLetterSetDesign).mockClear();
+  });
+
+  it("acepta withBorder: false y lo pasa al service", async () => {
+    const result = await createLetterSetDesignAction({
+      ...VALID_LETTERSET_INPUT,
+      withBorder: false,
+    });
+    expect(result).toMatchObject({ ok: true, designId: "design_ls1" });
+    expect(createLetterSetDesign).toHaveBeenCalledWith(
+      expect.objectContaining({ withBorder: false }),
+    );
+  });
+
+  it("sin withBorder defaultea a true (retrocompatible con clientes cacheados previos)", async () => {
+    const result = await createLetterSetDesignAction(VALID_LETTERSET_INPUT);
+    expect(result.ok).toBe(true);
+    expect(createLetterSetDesign).toHaveBeenCalledWith(
+      expect.objectContaining({ withBorder: true }),
+    );
+  });
+
+  it("rechaza valores inválidos (string/number/null) sin tocar el service", async () => {
+    for (const bad of ["sin", 0, 1, null]) {
+      const result = await createLetterSetDesignAction({
+        ...VALID_LETTERSET_INPUT,
+        withBorder: bad,
+      });
+      expect(result).toMatchObject({ ok: false, message: "Datos inválidos." });
+    }
+    expect(createLetterSetDesign).not.toHaveBeenCalled();
+  });
+});
+
+describe("createDraftDesignAction · templateId del boot (N-08)", () => {
+  it("pasa el templateId elegido al service (deep-link ?template= resuelto en la página)", async () => {
+    const result = await createDraftDesignAction({ productId: "prod_1", templateId: "tpl_1" });
+    expect(result).toMatchObject({ ok: true, designId: "design_d1" });
+    expect(state.createDraftArgs).toHaveLength(1);
+    expect(state.createDraftArgs[0]).toMatchObject({
+      productId: "prod_1",
+      templateId: "tpl_1",
+      sessionId: "sess_test",
+    });
+  });
+
+  it("sin templateId crea el draft con la plantilla por defecto (undefined al service)", async () => {
+    const result = await createDraftDesignAction({ productId: "prod_1" });
+    expect(result).toMatchObject({ ok: true, designId: "design_d1" });
+    expect(state.createDraftArgs[0]).toMatchObject({ productId: "prod_1", templateId: undefined });
+  });
+
+  it("rechaza un templateId con tipo inválido sin tocar el service", async () => {
+    const result = await createDraftDesignAction({
+      productId: "prod_1",
+      templateId: 123 as unknown as string,
+    });
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION" });
+    expect(state.createDraftArgs).toHaveLength(0);
+  });
+});
+
+describe("saveCanvasAction · templateId del sidebar (N-08)", () => {
+  it("reenvía el templateId al service (que lo valida contra el producto)", async () => {
+    const result = await saveCanvasAction({
+      designId: "design_1",
+      canvasData: VALID_CANVAS_V1,
+      templateId: "tpl_1",
+    });
+    expect(result).toMatchObject({ ok: true });
+    expect(state.saveCanvasArgs[0]).toMatchObject({ designId: "design_1", templateId: "tpl_1" });
+  });
+
+  it("sin templateId guarda solo el canvas (templateId undefined al service)", async () => {
+    const result = await saveCanvasAction({ designId: "design_1", canvasData: VALID_CANVAS_V1 });
+    expect(result).toMatchObject({ ok: true });
+    expect(state.saveCanvasArgs[0]).toMatchObject({ designId: "design_1", templateId: undefined });
+  });
+
+  it("rechaza un templateId con tipo inválido (VALIDATION, copy customer-safe)", async () => {
+    const result = await saveCanvasAction({
+      designId: "design_1",
+      canvasData: VALID_CANVAS_V1,
+      templateId: 42 as unknown as string,
+    });
+    expect(result).toMatchObject({ ok: false, code: "VALIDATION" });
+    expect(state.saveCanvasCalls).toBe(0);
+  });
+});
 
 function makeUploadForm(): FormData {
   const fd = new FormData();
@@ -151,6 +300,8 @@ beforeEach(() => {
   state.assetCreateCalls = 0;
   state.saveCanvasCalls = 0;
   state.finalizeCalls = 0;
+  state.saveCanvasArgs = [];
+  state.createDraftArgs = [];
   vi.unstubAllEnvs();
   // Deterministic non-prod limits (the actions branch on VERCEL_ENV === "production").
   vi.stubEnv("VERCEL_ENV", "development");

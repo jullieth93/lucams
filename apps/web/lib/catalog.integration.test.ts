@@ -24,7 +24,9 @@
  *   - getCatalogFilters: facets (sub-cats, ocasiones, priceRange, personalización),
  *     contexto vacío, totalProducts.
  *   - searchCatalog: pg_trgm fuzzy, query < 2 chars → [], unaccent, ranking.
- *   - listTemplatesByProduct: filtro por mode, producto inexistente → [], orden.
+ *   - listTemplatesByProduct: default EDITABLE, kind del producto, filtro de
+ *     aspect, solo específicas (sin globales — decisión N-08), mode explícito,
+ *     producto inexistente → [], orden.
  *   - listPublicCoupons: solo públicos+activos+vigentes (ventana validFrom/validTo).
  *   - getRelatedProducts: scoring 3 capas (ocasión > sub-cat > cat), excluye actual.
  *
@@ -122,6 +124,16 @@ let pDeletedSlug = "";
 
 // Template activo y premade sobre p1.
 let p1Id = "";
+
+// p5 + su categoría propia: fixtures de listTemplatesByProduct (N-08). Cuelga de
+// una raíz SEPARADA para no mover los conteos (productCount/totalProducts) que
+// otros describes ya afirman sobre el árbol principal.
+let tplCatId = "";
+let p5Slug = "";
+let p5EditOkSlug = "";
+let p5EditAspectSlug = "";
+let p5WrongKindSlug = "";
+let p5GlobalSlug = "";
 
 // ───────────────────────── helpers ─────────────────────────
 
@@ -399,6 +411,86 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
       },
     });
 
+    // ── p5 (raíz propia): reglas de visibilidad del strip PDP (N-08) ──
+    const tplCat = await prisma.category.create({
+      data: { slug: `${RUN}-tpl-cat`, name: `TplCat ${RUN}`, order: 90 },
+    });
+    tplCatId = tplCat.id;
+    const p5 = await prisma.product.create({
+      data: {
+        slug: `${RUN}-p5-fotoiman`,
+        name: `Fotoimán Tpl ${RUN}`,
+        description: "fixture strip PDP",
+        basePrice: 12_000,
+        sku: `${RUN}-P5`.toUpperCase(),
+        categoryId: tplCatId,
+        isPersonalizable: true,
+        personalizationKind: "PHOTO_PACK",
+        personalizationSchema: { photoSlots: 6, aspectRatio: "1:1" },
+      },
+      select: { id: true, slug: true },
+    });
+    p5Slug = p5.slug;
+    const stage = (width: number, height: number) => ({
+      version: 1,
+      stage: { width, height, dpiPreview: 90, dpiProduction: 300 },
+      layers: [],
+    });
+    p5EditOkSlug = `${RUN}-p5-edit-ok`;
+    await prisma.personalizationTemplate.create({
+      data: {
+        productId: p5.id,
+        kind: "PHOTO_PACK",
+        mode: "EDITABLE",
+        name: `OK ${RUN}`,
+        slug: p5EditOkSlug,
+        previewUrl: "https://cdn.lucams.test/p5-ok.png",
+        canvasData: stage(1080, 1080), // 1:1 — matchea el aspect del producto
+        order: 0,
+      },
+    });
+    p5EditAspectSlug = `${RUN}-p5-edit-aspect`;
+    await prisma.personalizationTemplate.create({
+      data: {
+        productId: p5.id,
+        kind: "PHOTO_PACK",
+        mode: "EDITABLE",
+        name: `Aspect ${RUN}`,
+        slug: p5EditAspectSlug,
+        previewUrl: "https://cdn.lucams.test/p5-aspect.png",
+        canvasData: stage(1080, 1350), // 4:5 — el Estudio la descartaría por aspect
+        order: 1,
+      },
+    });
+    p5WrongKindSlug = `${RUN}-p5-wrong-kind`;
+    await prisma.personalizationTemplate.create({
+      data: {
+        productId: p5.id,
+        kind: "CALENDAR_PHOTO_MONTH", // kind distinto al del producto
+        mode: "EDITABLE",
+        name: `WrongKind ${RUN}`,
+        slug: p5WrongKindSlug,
+        previewUrl: "https://cdn.lucams.test/p5-wk.png",
+        canvasData: stage(1080, 1080),
+        order: 2,
+      },
+    });
+    // Global EDITABLE del mismo kind: el Estudio la usaría de fallback, pero el
+    // strip de la PDP es SOLO específicas (decisión documentada en catalog.ts).
+    p5GlobalSlug = `${RUN}-p5-global`;
+    await prisma.personalizationTemplate.create({
+      data: {
+        productId: null,
+        kind: "PHOTO_PACK",
+        mode: "EDITABLE",
+        name: `Global ${RUN}`,
+        slug: p5GlobalSlug,
+        previewUrl: "https://cdn.lucams.test/p5-global.png",
+        canvasData: stage(1080, 1080),
+        order: 0,
+      },
+    });
+
     // ── Cupones ──
     const now = new Date();
     const yesterday = new Date(now.getTime() - 24 * 3600 * 1000);
@@ -473,13 +565,15 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
   afterAll(async () => {
     // Orden FK: pivots → templates → variants → products → coupons → ocasiones → categorías.
     // Todo scoped al RUN (categorías de la corrida + slugs prefijados).
-    const catIds = [rootCatId, subA_Id, subB_Id, siblingCatId].filter(Boolean);
+    const catIds = [rootCatId, subA_Id, subB_Id, siblingCatId, tplCatId].filter(Boolean);
     await prisma.productOcasionTag.deleteMany({
       where: { product: { categoryId: { in: catIds } } },
     });
     await prisma.personalizationTemplate.deleteMany({
       where: { product: { categoryId: { in: catIds } } },
     });
+    // Las GLOBALES (productId null) no las alcanza el borrado por categoría — por slug.
+    await prisma.personalizationTemplate.deleteMany({ where: { slug: { startsWith: RUN } } });
     await prisma.productVariant.deleteMany({ where: { product: { categoryId: { in: catIds } } } });
     await prisma.product.deleteMany({ where: { categoryId: { in: catIds } } });
     await prisma.coupon.deleteMany({ where: { code: { startsWith: RUN.toUpperCase() } } });
@@ -1090,29 +1184,40 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
   // ════════════════════════════════════════════════════════════════════════
 
   describe("listTemplatesByProduct", () => {
-    it("lista los templates activos del producto, orden por order asc", async () => {
+    it("por defecto devuelve solo las EDITABLES activas del producto (N-08: PREMADE ya no se mezcla)", async () => {
       const templates = await listTemplatesByProduct(p1Slug);
-      // 2 activos (premade order 0, editable order 1); el inactivo se excluye.
-      expect(templates).toHaveLength(2);
-      expect(templates[0].order).toBeLessThanOrEqual(templates[1].order);
-      expect(templates[0].mode).toBe("PREMADE");
+      // p1 tiene 1 EDITABLE activa; la PREMADE (order 0) ya no entra por defecto
+      // y la EDITABLE inactiva tampoco (el tipo CatalogTemplate no expone
+      // isActive porque la query solo trae activos).
+      expect(templates).toHaveLength(1);
+      expect(templates[0].mode).toBe("EDITABLE");
       // productSlug se propaga al resultado.
       expect(templates[0].productSlug).toBe(p1Slug);
     });
 
-    it("filtra por mode=PREMADE", async () => {
+    it("filtra por mode=PREMADE explícito (compat, aunque el concepto está retirado del storefront)", async () => {
       const templates = await listTemplatesByProduct(p1Slug, "PREMADE");
       expect(templates).toHaveLength(1);
       expect(templates[0].mode).toBe("PREMADE");
     });
 
-    it("filtra por mode=EDITABLE (excluye el inactivo aunque sea EDITABLE)", async () => {
+    it("filtra por mode=EDITABLE explícito", async () => {
       const templates = await listTemplatesByProduct(p1Slug, "EDITABLE");
-      // Solo el editable activo; el editable inactivo no cuenta.
-      // toHaveLength(1) ya prueba que el EDITABLE inactivo se excluyó (el tipo
-      // CatalogTemplate no expone isActive porque la query solo trae activos).
       expect(templates).toHaveLength(1);
       expect(templates[0].mode).toBe("EDITABLE");
+    });
+
+    it("reglas del Estudio (N-08): excluye kind distinto, aspect que no matchea y globales", async () => {
+      const templates = await listTemplatesByProduct(p5Slug);
+      const slugs = templates.map((t) => t.slug);
+      // Solo la específica EDITABLE con aspect 1:1 (matchea el del producto).
+      expect(slugs).toEqual([p5EditOkSlug]);
+      // 4:5 contra 1:1 → el Estudio también la descartaría: fuera del strip.
+      expect(slugs).not.toContain(p5EditAspectSlug);
+      // Kind distinto al del producto → fuera.
+      expect(slugs).not.toContain(p5WrongKindSlug);
+      // Las globales son fallback del Estudio, no se anuncian en la PDP.
+      expect(slugs).not.toContain(p5GlobalSlug);
     });
 
     it("producto inexistente devuelve []", async () => {

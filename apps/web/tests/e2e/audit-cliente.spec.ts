@@ -185,8 +185,8 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     await page.waitForTimeout(3000);
     await page.screenshot({ path: "/tmp/audit-cliente-cotizacion-estudio.png" });
 
-    // Finalizar diseño (botón "¡Listo!")
-    const listo = page.getByRole("button", { name: /Listo/i }).first();
+    // Finalizar diseño (botón "Vista previa", antes "¡Listo!")
+    const listo = page.getByRole("button", { name: /Vista previa|Listo/i }).first();
     if (await listo.count()) {
       await listo.click({ force: true });
       await page.waitForTimeout(5000);
@@ -213,7 +213,7 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
       findings.push({
         area: "cotizacion",
         ok: false,
-        detail: "botón ¡Listo! no disponible (foto no asignó)",
+        detail: "botón «Vista previa» no disponible (foto no asignó)",
       });
     }
   });

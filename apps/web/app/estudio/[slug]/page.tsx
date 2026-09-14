@@ -24,6 +24,7 @@ import {
 } from "@/features/personalization/service";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { resolvePersonalizationSurface } from "@/features/personalization/surface";
+import { readPhotoPackDesignInfo } from "@/features/products/photo-pack-resolve";
 import {
   listLetterStyles,
   listLetterThemeOptions,
@@ -49,7 +50,15 @@ type SearchParams = Promise<{
   variant?: string;
   /** ADR-057 — nº de letras pre-elegido en la ficha (Nombre por ficha). Hint inicial. */
   letters?: string;
-  /** Copias pre-elegidas en el stepper "Unidades" de la PDP (Lucy 2026-09-03). */
+  /**
+   * UNIDADES A DISEÑAR elegidas en la PDP con el stepper "Unidades" (modelo
+   * multi-unidad, owner 2026-09-09 — regla general: cada unidad se diseña por
+   * separado en el Estudio; desaparecen las "copias idénticas" de las
+   * superficies personalizables). Se conserva el nombre del parámetro por
+   * compat de deep-links, pero su significado cambió: ?copies=N abre el
+   * Estudio con N unidades (2 tiras = 2 × fotos-por-tira; 2 calendarios =
+   * 2 × 12 tarjetas). Sin parámetro arranca en 1.
+   */
   copies?: string;
 }>;
 
@@ -120,9 +129,11 @@ export default async function EstudioPage({
   // fallback exacto pre-CMS por campo). Se inyectan al árbol client vía provider.
   const texts = await getStudioTexts();
 
-  // Copias pre-elegidas en la PDP (?copies=N, Lucy 2026-09-03): pre-cargan el stepper
-  // "Copias" de la modal de confirmación (ajustable ahí). Entero acotado a 1..99 —
-  // mismo rango de AddToCartSchema; la URL la puede editar cualquiera.
+  // Unidades a DISEÑAR vía ?copies=N (modelo multi-unidad 2026-09-09 — el nombre
+  // del parámetro se conserva por compat; el significado es "N unidades, cada una
+  // diseñable por separado"). Sin parámetro arranca en 1. Entero acotado a 1..99
+  // acá (la URL la puede editar cualquiera); el tope REAL por producto lo aplica
+  // cada superficie (foto: slotCount ≤ 50 → floor(50/unitSlots); sets: 10).
   const rawCopies = Number.parseInt(typeof sp.copies === "string" ? sp.copies : "", 10);
   const initialCopies = Number.isFinite(rawCopies)
     ? Math.min(99, Math.max(1, rawCopies))
@@ -152,6 +163,23 @@ export default async function EstudioPage({
       listLetterStyles(surface.config.language),
       listLetterThemeOptions(surface.config.language),
     ]);
+    // Re-abrir un diseño guardado (?designId= — "Editar" desde el carrito): la opción
+    // «Con borde / Sin borde» vive en Design.metadata.withBorder (Lucy 2026-09-09) y hay
+    // que devolvérsela al editor, si no el toggle reaparece en el default y sobrescribiría
+    // la elección al guardar de nuevo. Sin la clave (diseños previos a la opción) queda en
+    // undefined → el editor arranca en CON borde, lo histórico. El editor nunca reusa el id:
+    // al confirmar crea un diseño NUEVO, así que acá solo se LEE el metadata (sin clonar).
+    let initialWithBorder: boolean | undefined;
+    if (sp.designId) {
+      const customer = await getCurrentCustomer();
+      const sessionId = customer ? null : await peekCartSession();
+      const design = await getOwnedDesign(sp.designId, {
+        customerId: customer?.customer.id ?? null,
+        sessionId,
+      });
+      const meta = design?.metadata as Record<string, unknown> | null;
+      if (meta && typeof meta.withBorder === "boolean") initialWithBorder = meta.withBorder;
+    }
     return (
       <div className="bg-brand-cream flex min-h-screen flex-col">
         <SiteHeader />
@@ -165,6 +193,12 @@ export default async function EstudioPage({
               initialCount={initialCount}
               styles={styles}
               themeOptions={themeOptions}
+              // ?copies=N (stepper "Unidades" de la PDP) → la modal de
+              // "Vista previa" lo confirma tal cual (igual que letterset y el
+              // editor de foto).
+              initialCopies={initialCopies}
+              // ?designId= (re-apertura) → opción de borde guardada en el diseño.
+              initialWithBorder={initialWithBorder}
             />
           </StudioTextsProvider>
         </main>
@@ -227,7 +261,9 @@ export default async function EstudioPage({
               themeOptions={{ es: themeEs, en: themeEn }}
               initialTheme={variantAttrs.theme ?? null}
               stylesByLanguage={{ es: stylesEs, en: stylesEn }}
-              initialCopies={initialCopies}
+              // ?copies=N (stepper "Unidades" de la PDP, modelo multi-unidad
+              // 2026-09-09) → N sets a diseñar, cada uno con sus colores.
+              initialUnits={initialCopies}
               subtitle={letterSetSubtitle(
                 surface.config.letterSet,
                 letters.length,
@@ -299,12 +335,18 @@ export default async function EstudioPage({
 
   const photoConfig = parsePhotoProductConfig(mergedSchema);
 
-  // ADR-057 B2 — diseños prediseñados de la galería (si el producto define un galleryTag).
-  const galleryTag =
+  // ADR-057 B2 — diseños prediseñados de la galería. Default-on (2026-09-09,
+  // owner): si el producto NO declara `galleryTag` explícito, el tag cae por
+  // convención a su slug — TODA superficie de foto ofrece la galería (el
+  // picker/sidebar muestran la sección cuando hay diseños del tag; sin uploads
+  // del admin la lista llega vacía = empty state). El admin ve el mismo tag
+  // efectivo en /admin/disenos (listGalleryTagOptions aplica el mismo fallback).
+  const explicitGalleryTag =
     typeof (mergedSchema as { galleryTag?: unknown }).galleryTag === "string"
       ? (mergedSchema as { galleryTag: string }).galleryTag
       : null;
-  const predesigned = galleryTag ? await listGalleryImages(galleryTag) : [];
+  const galleryTag = explicitGalleryTag ?? product.slug;
+  const predesigned = await listGalleryImages(galleryTag);
 
   // ADR-057 Fase D — Calendario: slots etiquetados por mes (Ene…Dic) + año, para que el cliente
   // sepa qué foto va en qué mes (hoy son 12 fotos sueltas sin etiqueta).
@@ -343,6 +385,20 @@ export default async function EstudioPage({
     ...t,
     canvasData: t.canvasData as unknown as import("./types").CanvasDataV1,
   }));
+
+  // N-08 (2026-09-11) — consumidor real de `?template=<slug>` (lo genera el
+  // TemplatesStrip de la PDP; el parámetro se declaraba acá pero NADIE lo leía y
+  // el boot siempre arrancaba con la primera plantilla). Se resuelve contra la
+  // MISMA lista que verá el sidebar — listTemplatesForKind ya validó isActive,
+  // deletedAt:null, kind del producto, producto-o-global, mode EDITABLE y aspect
+  // — así que un match acá es una plantilla plenamente válida para el boot.
+  // Slug inválido/inexistente → null sin error visible: el editor arranca con la
+  // primera plantilla, como siempre. El recover flow (?designId=) manda: el
+  // canvas guardado del diseño es la SoT y este id solo aplica a drafts NUEVOS.
+  const initialTemplateId =
+    typeof sp.template === "string"
+      ? (templates.find((t) => t.slug === sp.template)?.id ?? null)
+      : null;
 
   // Recover flow: si pasaron ?designId=, levantar el Design existente
   let initialDesignId: string | null = null;
@@ -386,6 +442,51 @@ export default async function EstudioPage({
     }
   }
 
+  // ── Lucy 2026-09-05 — packs de fotoimanes: N de fotos en el Estudio ──
+  // Catálogo elegible para el stepper "¿Cuántas fotos lleva tu imán?": las
+  // variantes que declaran photoSlots, con precio resuelto (override o base).
+  // El N y el tamaño EFECTIVOS los manda el diseño recuperado (canvasData
+  // guardado) sobre el variant del deep-link: al re-abrir un pack en el Estudio
+  // (flujo "Editar") el control arranca con el N del diseño y las medidas
+  // mostradas son las de su tamaño.
+  const designPackInfo = readPhotoPackDesignInfo(initialDesignCanvas);
+  const effectivePhotoSlots = designPackInfo?.photoSlots ?? photoConfig.photoSlots;
+  const effectiveSizeCm = designPackInfo?.sizeCm ?? photoConfig.sizeCm;
+  // "¿Con imán?" (Lucy 2026-09-08 — también en los packs de foto): la elección
+  // la hace la PDP (dimensión `magnet` de la variante del deep-link) y viaja en
+  // el mergedSchema; al re-abrir un diseño ("Editar" desde el carrito) manda el
+  // magnet GUARDADO en su canvasData — misma precedencia que photoSlots/sizeCm.
+  const schemaMagnet = (mergedSchema as { magnet?: unknown }).magnet;
+  const effectiveMagnet =
+    designPackInfo?.magnet ?? (typeof schemaMagnet === "boolean" ? schemaMagnet : undefined);
+  const selectable = selectableVariants(product.variants);
+  const packCatalog = selectable
+    .map((v) => {
+      const a = parseVariantAttributes(v.attributes);
+      return {
+        photoSlots: a.photoSlots,
+        sizeCm: a.sizeCm,
+        magnet: a.magnet,
+        price: v.price ?? product.basePrice,
+      };
+    })
+    .filter(
+      (
+        v,
+      ): v is {
+        photoSlots: number;
+        sizeCm: string | undefined;
+        magnet: boolean | undefined;
+        price: number;
+      } => v.photoSlots != null,
+    );
+  // Solo PHOTO_PACK con catálogo de fotos: calendarios/grid/custom quedan intactos.
+  const isPhotoPackStudio = product.personalizationKind === "PHOTO_PACK" && packCatalog.length > 0;
+  // Filtrado al tamaño efectivo: el stepper ofrece 1..max fotos DE ESE tamaño.
+  const packVariants = isPhotoPackStudio
+    ? packCatalog.filter((v) => v.sizeCm === undefined || v.sizeCm === effectiveSizeCm)
+    : [];
+
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
@@ -399,23 +500,47 @@ export default async function EstudioPage({
               name: product.name,
               sku: product.sku,
               personalizationKind: product.personalizationKind,
-              // M.3.b.CAT.4 — pasar mergedSchema (variant attributes sobre base)
-              personalizationSchema: mergedSchema,
+              // M.3.b.CAT.4 — pasar mergedSchema (variant attributes sobre base);
+              // Lucy 2026-09-05 — packs: photoSlots/sizeCm EFECTIVOS (del diseño
+              // recuperado si existe) para que el editor muestre el N y la medida
+              // correctos desde el primer paint.
+              personalizationSchema: {
+                ...mergedSchema,
+                ...(isPhotoPackStudio
+                  ? {
+                      photoSlots: effectivePhotoSlots,
+                      ...(effectiveSizeCm ? { sizeCm: effectiveSizeCm } : {}),
+                    }
+                  : {}),
+              },
               images: product.images,
             }}
             // M.3.b.CAT — variant elegido en PDP, propagado al cart al finalizar
+            // (NO para packs: el carrito resuelve la variante desde el diseño).
             variantId={selectedVariant?.id}
-            // Precio de la variante elegida (o base) → vista previa pre-carrito.
+            // Precio de la variante elegida (o base) → fallback de la vista previa.
             unitPriceCents={selectedVariant?.price ?? product.basePrice}
-            // Copias pre-elegidas en la PDP (?copies=N) → pre-carga del stepper de la modal.
-            initialCopies={initialCopies}
+            // ?copies=N (stepper "Unidades" de la PDP, modelo multi-unidad
+            // 2026-09-09) → unidades A DISEÑAR: el Estudio abre con N unidades
+            // (cada una editable; la Vista previa las muestra todas; el carrito
+            // recibe 1 línea con el diseño completo). El editor las acota al
+            // máximo del producto (slotCount ≤ 50); sin parámetro = 1.
+            initialUnits={initialCopies}
             // Edición desde el carrito: reemplazar el item original al finalizar (no duplicar).
             replacesCartDesignId={replacesCartDesignId}
             templates={templates}
+            // N-08 — ?template=<slug> de la PDP: el draft nuevo arranca con ESA
+            // plantilla (el servidor la re-valida en createDraftDesign).
+            initialTemplateId={initialTemplateId}
             initialDesignId={initialDesignId}
             initialDesignCanvas={initialDesignCanvas}
             initialDesignAssets={initialDesignAssets}
-            photoSlots={photoConfig.photoSlots}
+            photoSlots={effectivePhotoSlots}
+            // Lucy 2026-09-05 — catálogo del stepper de N fotos (packs; vacío = no pack).
+            packVariants={packVariants}
+            // Lucy 2026-09-08 — "¿Con imán?" de la PDP (o del diseño recuperado):
+            // el Estudio lo persiste en el canvasData y lo muestra read-only.
+            initialMagnet={effectiveMagnet}
             predesigned={predesigned}
             slotLabels={slotLabels}
             calendarYear={calendarYear}

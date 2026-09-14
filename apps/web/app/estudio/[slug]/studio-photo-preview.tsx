@@ -20,7 +20,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Stage, Layer } from "react-konva";
 import type Konva from "konva";
-import { renderLayer } from "./studio-slot";
+import {
+  renderLayer,
+  nextWheelScale,
+  WHITE_CARD_CHECKER,
+  WHITE_CARD_CHECKER_SIZE,
+  WHITE_CARD_TRAY_PAD,
+} from "./studio-slot";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
 import {
   isDarkColor,
@@ -28,11 +34,13 @@ import {
   isStripTemplate,
   stripPositionOf,
   isInstagramTemplate,
-  instagramBackgroundHex,
+  cardBackgroundHex,
   isInstagramNoBorder,
+  photoBackingHexFor,
 } from "@/features/personalization/frame-palette";
 import type { CanvasDataV1, SlotState } from "./types";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
+import type { CalendarFontKey } from "@/features/personalization/schemas";
 import { useStudioTexts } from "./studio-texts-provider";
 
 type PhotoTransformPartial = Partial<{ offsetX: number; offsetY: number; scale: number }>;
@@ -47,7 +55,13 @@ export type StudioPhotoPreviewProps = {
   allowText?: boolean;
   frameFullBleed?: boolean;
   /** Calendarios: compone la tarjeta del mes (mismo dibujo que producción). */
-  calendarCard?: { year: number; monthIndex0: number; layout?: CalendarLayoutKey } | null;
+  calendarCard?: {
+    year: number;
+    monthIndex0: number;
+    layout?: CalendarLayoutKey;
+    /** Lucy 2026-09-07 — tipo de letra del título/mes (default "fredoka"). */
+    font?: CalendarFontKey;
+  } | null;
   onTransformChange: (transform: PhotoTransformPartial) => void;
   /** Doble click/tap: vuelve la foto al centro con zoom 100%. */
   onResetTransform: () => void;
@@ -104,7 +118,6 @@ export function StudioPhotoPreview({
     displayHeight = MAX_H;
     displayWidth = Math.max(220, Math.round(displayHeight / aspect));
   }
-  const scale = displayWidth / unitTemplate.stage.width;
 
   // ── Estilo de tarjeta — misma clasificación que StudioSlot (WYSIWYG) ──
   const hasFrameCard = useMemo(
@@ -126,18 +139,20 @@ export function StudioPhotoPreview({
     [unitTemplate],
   );
   const stripPosition = isStrip ? stripPositionOf(slotState.slotIndex, totalSlots) : null;
-  const cardBgHex = useMemo(() => {
+  const cardBgHex = useMemo(
+    // La regla vive en frame-palette.cardBackgroundHex (compartida con la grilla
+    // y con el editor de texto, Ola 28) — misma clasificación de siempre.
+    () => cardBackgroundHex({ layers: unitTemplate.layers, borderColor, frameFullBleed }),
+    [unitTemplate, borderColor, frameFullBleed],
+  );
+  const darkCardBg = isDarkColor(cardBgHex);
+  // Color de la capa background de la plantilla (blanco en todas las activas) — es el
+  // "respaldo neutro" de la ventana de foto (la tarjeta SIN el tinte del borde).
+  const bgLayerHex = useMemo(() => {
     const bgLayer = unitTemplate.layers.find((l) => l.type === "background") as
       { color?: string } | undefined;
-    const bgHex = bgLayer?.color ?? "#FFFFFF";
-    const fcLayer = unitTemplate.layers.find((l) => l.type === "frame-card") as
-      { fill?: string } | undefined;
-    if (isIg) return instagramBackgroundHex(borderColor ?? null, bgHex);
-    if (fullBleed && borderColor) return borderColor;
-    if (hasFrameCard) return borderColor ?? fcLayer?.fill ?? "#FFFFFF";
-    return bgHex;
-  }, [unitTemplate, isIg, fullBleed, borderColor, hasFrameCard]);
-  const darkCardBg = isDarkColor(cardBgHex);
+    return bgLayer?.color ?? "#FFFFFF";
+  }, [unitTemplate]);
   // Ola 16 — Instagram: detectar modo SIN BORDE por el rect del placeholder.
   const noBorder = useMemo(() => {
     if (!isIg) return false;
@@ -145,6 +160,27 @@ export function StudioPhotoPreview({
       { x?: number; y?: number; width?: number; height?: number } | undefined;
     return isInstagramNoBorder(ph, unitTemplate.stage);
   }, [unitTemplate, isIg]);
+  // Ola 23/24 — respaldo neutro de la ventana de foto bajo zoom-out/pan (marco
+  // constante): la DECISIÓN vive en photoBackingHexFor (frame-palette), compartida
+  // con la grilla y con producción (WYSIWYG entre grilla, modal e imprenta).
+  const photoBackingHex = photoBackingHexFor({
+    borderColor,
+    backgroundHex: bgLayerHex,
+    hasFrameCard,
+    fullBleed,
+    isIg,
+    igNoBorder: noBorder,
+  });
+
+  // Ola 25 (Lucy 2026-09-09) — tarjeta BLANCA dentro del modal (fondo blanco):
+  // la MISMA bandeja cuadriculada gris/blanco del slot de la grilla (patrón
+  // "transparencia") para que la Polaroid Clásica blanca se lea acá también.
+  // Adorno 100% DOM/pantalla alrededor del Stage — nunca entra al snapshot.
+  // Misma exclusión que en la grilla: modo tira (dibujaría costuras entre celdas).
+  const whiteCardTray = cardBgHex.toUpperCase() === "#FFFFFF" && !isStrip;
+  const stageWidth = whiteCardTray ? displayWidth - WHITE_CARD_TRAY_PAD * 2 : displayWidth;
+  const stageHeight = whiteCardTray ? displayHeight - WHITE_CARD_TRAY_PAD * 2 : displayHeight;
+  const stageScale = stageWidth / unitTemplate.stage.width;
 
   // ── Gestos de zoom (rueda en desktop, pellizco en táctil) ──
   const clampScale = useCallback((s: number) => Math.max(SCALE_MIN, Math.min(SCALE_MAX, s)), []);
@@ -152,22 +188,22 @@ export function StudioPhotoPreview({
   // Listener NATIVO con passive:false — el único camino de zoom por rueda.
   // Es el mismo patrón del slot: garantiza preventDefault incluso dentro del
   // Radix Dialog (sin esto la página/el modal scrollearía en vez de hacer zoom).
+  // Ola 24 — paso fino compartido (nextWheelScale, ×1.04 por notch): zoom milimétrico.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     function onWheelNative(e: WheelEvent) {
       e.preventDefault();
       e.stopPropagation();
-      const factor = e.deltaY > 0 ? 1 / 1.15 : 1.15;
       const current = slotState.photoTransform?.scale ?? 1;
-      const next = clampScale(current * factor);
+      const next = nextWheelScale(current, e.deltaY, SCALE_MIN, SCALE_MAX);
       if (Math.abs(next - current) > 0.001) {
         onTransformChange({ scale: next });
       }
     }
     el.addEventListener("wheel", onWheelNative, { passive: false });
     return () => el.removeEventListener("wheel", onWheelNative);
-  }, [slotState.photoTransform?.scale, onTransformChange, clampScale]);
+  }, [slotState.photoTransform?.scale, onTransformChange]);
 
   // Pinch — distancia entre 2 dedos al inicio + scale al inicio (misma curva
   // suavizada del slot, Ola 6). Al caer el 2º dedo se corta cualquier drag
@@ -223,14 +259,26 @@ export function StudioPhotoPreview({
   return (
     <div ref={containerRef} className="mx-auto w-full max-w-[520px]">
       <div
-        className="ring-brand-purple/15 relative mx-auto overflow-hidden rounded-lg shadow-md ring-1"
-        style={{ width: displayWidth, height: displayHeight, touchAction: "none" }}
+        className={[
+          "ring-brand-purple/15 relative mx-auto overflow-hidden rounded-lg shadow-md ring-1",
+          whiteCardTray ? "flex items-center justify-center" : "",
+        ].join(" ")}
+        style={{
+          width: displayWidth,
+          height: displayHeight,
+          touchAction: "none",
+          // Ola 25 — bandeja cuadriculada bajo la tarjeta BLANCA (adorno DOM de
+          // pantalla; el Stage queda inset y centrado, como en la grilla).
+          ...(whiteCardTray
+            ? { backgroundImage: WHITE_CARD_CHECKER, backgroundSize: WHITE_CARD_CHECKER_SIZE }
+            : {}),
+        }}
       >
         <Stage
-          width={displayWidth}
-          height={displayHeight}
-          scaleX={scale}
-          scaleY={scale}
+          width={stageWidth}
+          height={stageHeight}
+          scaleX={stageScale}
+          scaleY={stageScale}
           listening
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
@@ -246,6 +294,7 @@ export function StudioPhotoPreview({
                 year={calendarCard.year}
                 monthIndex0={calendarCard.monthIndex0}
                 layout={calendarCard.layout}
+                calendarFont={calendarCard.font ?? "fredoka"}
                 templateStageWidth={unitTemplate.stage.width}
                 stageWidth={unitTemplate.stage.width}
                 stageHeight={unitTemplate.stage.height}
@@ -275,6 +324,7 @@ export function StudioPhotoPreview({
                     frameFullBleed,
                     noBorder,
                     stripPosition,
+                    photoBackingHex,
                   },
                 ),
               )

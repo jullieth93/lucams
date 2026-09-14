@@ -1,7 +1,8 @@
 /*
  * Cron de solicitud de reseña (palanca de ingreso, auditoría 2026-07-13). Envía el follow-up a
- * pedidos entregados hace 7-30 días sin reseña pedida aún. Protegido por CRON_SECRET (query
- * `?secret=` o header `x-cron-secret`), como los demás crons.
+ * pedidos entregados hace 7-30 días sin reseña pedida aún. Protegido por CRON_SECRET, SOLO vía
+ * header `x-cron-secret` (`?secret=` NO se acepta: quedaría en logs de acceso — #14), como los
+ * demás crons.
  *
  * Se agenda con pg_cron en Supabase (mandato #11, no Vercel Cron) — SQL en docs/OPERATIONS.md.
  */

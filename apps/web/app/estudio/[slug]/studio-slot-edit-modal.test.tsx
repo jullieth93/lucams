@@ -8,14 +8,17 @@
  *   1. No existe ningún input[type=range] (slider) en la pestaña Foto.
  *   2. El preview interactivo recibe el slotState actual (foto + transform)
  *      y propaga onTransformChange.
- *   3. Se conservan los controles accesibles (cruceta, centrar, filtros).
+ *   3. Se conserva el control accesible de centrar/reset (la cruceta "Mover" se
+ *      retiró el 2026-09-08 a pedido del owner: el pan se hace arrastrando la
+ *      foto directamente en el preview).
  *
  * Konva no corre en jsdom → se mockea StudioPhotoPreview (su interacción real
  * la cubre la lógica compartida de gestos del slot).
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { StudioPhotoPreviewProps } from "./studio-photo-preview";
 
 const previewSpy = vi.fn<(props: StudioPhotoPreviewProps) => void>();
@@ -68,7 +71,6 @@ function baseProps() {
     onClose: vi.fn(),
     onApplyFilter: vi.fn(),
     onResetTransform: vi.fn(),
-    onNudge: vi.fn(),
     onRotate: vi.fn(),
     onApplyTextOverride: vi.fn(),
     preview: {
@@ -117,12 +119,65 @@ describe("StudioSlotEditModal — Ola 9 sin slider de zoom", () => {
     expect(props.preview.onTransformChange).toHaveBeenCalledWith({ scale: 2 });
   });
 
-  it("conserva los controles accesibles: cruceta de movimiento y centrar", () => {
+  it("conserva los controles de encuadre: centrar/reset y rotar (sin cruceta «Mover»)", () => {
     const props = baseProps();
     render(<StudioSlotEditModal {...props} />);
-    fireEvent.click(screen.getByRole("button", { name: "Mover la foto hacia arriba" }));
-    expect(props.onNudge).toHaveBeenCalledWith(0, -12);
+    // Lucy 2026-09-08 — la cruceta "Mover" se retiró del modal (pedido del owner).
+    expect(screen.queryByRole("button", { name: /Mover la foto/i })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Centrar y resetear zoom/i }));
     expect(props.onResetTransform).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /Rotar la foto 90 grados/i }));
+    expect(props.onRotate).toHaveBeenCalled();
+  });
+
+  // Lucy 2026-09-08 — al aplicar un filtro debe verse un estado de PROCESAMIENTO
+  // (spinner + cards deshabilitadas) hasta que el apply completa.
+  it("aplicar un filtro muestra estado de procesamiento hasta completar", async () => {
+    const props = baseProps();
+    render(<StudioSlotEditModal {...props} />);
+    const card = screen.getByRole("radio", { name: /^Vivid/i });
+    fireEvent.click(card);
+    // Feedback inmediato: la card elegida queda ocupada y el grupo deshabilitado.
+    expect(card).toHaveAttribute("aria-busy", "true");
+    expect(card).toBeDisabled();
+    // El commit al store va un frame después (el spinner pinta primero).
+    await waitFor(() => expect(props.onApplyFilter).toHaveBeenCalledWith("vivid"));
+    // Al completar, el grupo se rehabilita.
+    await waitFor(() => expect(card).not.toBeDisabled(), { timeout: 1500 });
+    expect(card).not.toHaveAttribute("aria-busy", "true");
+  });
+});
+
+describe("StudioSlotEditModal — letra del calendario dentro de «Ajustar Foto» (Lucy 2026-09-08)", () => {
+  it("con onCalendarFontChange: el selector aparece en la pestaña Foto con las 3 fuentes", () => {
+    const onCalendarFontChange = vi.fn();
+    render(
+      <StudioSlotEditModal
+        {...baseProps()}
+        calendarFont="fredoka"
+        onCalendarFontChange={onCalendarFontChange}
+      />,
+    );
+    const select = document.querySelector<HTMLSelectElement>("#cal-font-select");
+    expect(select).not.toBeNull();
+    // Las 3 opciones curadas (CALENDAR_FONT_OPTIONS), fredoka seleccionada.
+    expect(select!.options.length).toBe(3);
+    expect(select!.value).toBe("fredoka");
+    expect(screen.getByText("Esta letra aplica a los 12 meses de tu calendario.")).toBeTruthy();
+
+    fireEvent.change(select!, { target: { value: "caveat" } });
+    expect(onCalendarFontChange).toHaveBeenCalledWith("caveat");
+  });
+
+  it("sin onCalendarFontChange (no calendario): NO hay selector de letra", () => {
+    render(<StudioSlotEditModal {...baseProps()} />);
+    expect(document.querySelector("#cal-font-select")).toBeNull();
+  });
+
+  it("el selector refleja la fuente actual que viene del store (p.ej. inter)", () => {
+    render(
+      <StudioSlotEditModal {...baseProps()} calendarFont="inter" onCalendarFontChange={vi.fn()} />,
+    );
+    expect(document.querySelector<HTMLSelectElement>("#cal-font-select")!.value).toBe("inter");
   });
 });

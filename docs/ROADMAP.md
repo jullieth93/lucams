@@ -20,19 +20,19 @@ El trabajo reciente se nombró por **bloques**; equivalen a:
 
 ## Vista general
 
-| Fase   | Nombre                                                     | Estado                                                                                                                                                           | Aprobado |
-| ------ | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| 0a     | Estructura de documentación                                | 🟢 Completada (2026-05-09)                                                                                                                                       | ✅ Sí    |
-| 0b     | Cuentas externas críticas para Fase 1 (re-scope)           | 🟢 Completada (2026-05-09)                                                                                                                                       | ✅ Sí    |
-| 1      | Base sólida (core técnico)                                 | 🟢 Completada (auth + seguridad base; CI/CD y tests RLS → Bloques C/E)                                                                                           | ✅ Sí    |
-| 2      | Catálogo y carrito (storefront)                            | 🟢 Completada (admin CRUD + storefront + carrito + admin pulido 2026-06-27)                                                                                      | ✅ Sí    |
-| 3      | Estudio de Personalización                                 | 🔄 Núcleo hecho; faltan plantillas (≈2/30); vista 3D y compartir ya existen (verificado 2026-09-04)                                                              | ✅ Sí    |
-| 4      | Checkout, pagos y logística                                | 🟢 **Completada y CERTIFICADA** (Bloque A · Wompi + Aveonline + saga · 48 tests)                                                                                 | ✅ Sí    |
-| 5      | Marketing engine                                           | ⏸️ Pendiente (cupones y referidos ya implementados — verificado 2026-09-04; resto → Bloque F)                                                                    | ❌ No    |
-| 6      | Backoffice y B2B                                           | ⏸️ Pendiente                                                                                                                                                     | ❌ No    |
-| 7      | Pulido productivo + lanzamiento                            | ⏸️ Pendiente (incl. Bloques C Seguridad · D Observabilidad · E Testing)                                                                                          | ❌ No    |
-| **E1** | **Etapa 1 salida: catálogo + cotización WhatsApp**         | 🟢 **Superada (2026-09-03): PRD opera en modo `full` por decisión de Lucy** — ver `docs/RUNBOOK_GO_LIVE.md`                                                      | ✅ Sí    |
-| **E2** | **Etapa 2 salida: tienda full (Wompi + Aveonline reales)** | 🟢 **PRD opera en modo `full` desde 2026-09-03 (decisión de Lucy)**; facturación DIAN sigue pendiente de trámites (NIT, abogado) — ver `docs/RUNBOOK_GO_LIVE.md` | ✅ Sí    |
+| Fase   | Nombre                                                     | Estado                                                                                                                                                                                                                                                        | Aprobado    |
+| ------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 0a     | Estructura de documentación                                | 🟢 Completada (2026-05-09)                                                                                                                                                                                                                                    | ✅ Sí       |
+| 0b     | Cuentas externas críticas para Fase 1 (re-scope)           | 🟢 Completada (2026-05-09)                                                                                                                                                                                                                                    | ✅ Sí       |
+| 1      | Base sólida (core técnico)                                 | 🟢 Completada (auth + seguridad base; CI/CD y tests RLS → Bloques C/E)                                                                                                                                                                                        | ✅ Sí       |
+| 2      | Catálogo y carrito (storefront)                            | 🟢 Completada (admin CRUD + storefront + carrito + admin pulido 2026-06-27)                                                                                                                                                                                   | ✅ Sí       |
+| 3      | Estudio de Personalización                                 | 🔄 Núcleo hecho; faltan plantillas (≈2/30); vista 3D y compartir ya existen (verificado 2026-09-04)                                                                                                                                                           | ✅ Sí       |
+| 4      | Checkout, pagos y logística                                | 🟢 **Completada y CERTIFICADA** (Bloque A · Wompi + Aveonline + saga · 48 tests)                                                                                                                                                                              | ✅ Sí       |
+| 5      | Marketing engine                                           | ⏸️ Pendiente (cupones y referidos ya implementados — verificado 2026-09-04; resto → Bloque F)                                                                                                                                                                 | ❌ No       |
+| 6      | Backoffice y B2B                                           | 🟡 **Backoffice construido** (pedidos/transiciones/guía, inventario, clientes 360, moderación, auditoría, MFA, garantías, retractos, cupones con edición/archivo, dashboards — verificado 2026-09-12). Pendiente: portal `/mayorista` público, blog, DIAN/B2B | ❌ No (B2B) |
+| 7      | Pulido productivo + lanzamiento                            | 🟡 En curso — hechos: E2E (67 specs), k6, cookie banner (con re-consent), DR drill (con frescura ≤36h), auditoría OWASP + 360° remediadas (2026-09-12). Restan: legales abogado, DIAN, monitoreo externo, migración Free→Pro                                  | ❌ No       |
+| **E1** | **Etapa 1 salida: catálogo + cotización WhatsApp**         | 🟢 **Superada (2026-09-03): PRD opera en modo `full` por decisión de Lucy** — ver `docs/RUNBOOK_GO_LIVE.md`                                                                                                                                                   | ✅ Sí       |
+| **E2** | **Etapa 2 salida: tienda full (Wompi + Aveonline reales)** | 🟢 **PRD opera en modo `full` desde 2026-09-03 (decisión de Lucy)**; facturación DIAN sigue pendiente de trámites (NIT, abogado) — ver `docs/RUNBOOK_GO_LIVE.md`                                                                                              | ✅ Sí       |
 
 > **Salida en 2 etapas (ADR-077, 2026-07-21):** el lanzamiento se desacopló de los trámites legales. Etapa 1 (modo `STORE_MODE=catalog`) publica catálogo + Estudio + cotización por WhatsApp sin pagos ni envíos; Etapa 2 activa la tienda full cambiando una env var cuando el NIT esté. Detalle y checklists en `docs/RUNBOOK_GO_LIVE.md`. **Actualización 2026-09-03 (decisión de Lucy): producción opera en modo `full` a propósito** — la tienda vende con pagos reales; los trámites (NIT/DIAN) quedan pendientes solo para facturación electrónica.
 
@@ -418,50 +418,56 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 
 ---
 
-## Fase 6 — Backoffice y B2B ⏸️
+## Fase 6 — Backoffice y B2B 🟡 Backoffice construido (2026-09-12)
 
 > **Alcance:** que el negocio se pueda operar sin tocar código.
+>
+> **Estado real (verificado 2026-09-12 contra `apps/web/app/admin/(panel)/`):** el backoffice
+> está construido y en operación — pedidos con transiciones y guía, inventario, clientes 360,
+> moderación de reseñas, auditoría, MFA, garantías, retractos, cupones (con edición y archivo,
+> remediación 360°), dashboards y observabilidad. Lo que queda de esta fase es B2B: el portal
+> público `/mayorista`, el blog y la integración DIAN.
 
 ### Tareas
 
-- [ ] Layout de admin con guard de auth + rol
-- [ ] CRUD productos con subida de imágenes
-- [ ] CRUD categorías con orden drag-and-drop
-- [ ] Gestión de inventario (ajustes manuales con razón obligatoria)
-- [ ] Listado de órdenes con filtros y búsqueda
-- [ ] Detalle de orden con descarga de PNG de producción
-- [ ] Reimprimir guía Aveonline
-- [ ] Cambiar estado manual de orden (con razón)
-- [ ] Listado de clientes
-- [ ] Aprobación de reseñas (queue)
-- [ ] Editor de blog
-- [ ] Dashboard analytics
-  - [ ] Ingresos del mes
-  - [ ] Órdenes pendientes
-  - [ ] Productos más vendidos
-  - [ ] Productos sin stock
-  - [ ] Conversión de carritos
-- [ ] Portal mayorista `/mayorista`
+- [x] Layout de admin con guard de auth + rol (`/admin/(panel)` con RBAC + MFA)
+- [x] CRUD productos con subida de imágenes (`/admin/productos`)
+- [x] CRUD categorías con reordenamiento (`/admin/categorias` — flechas ↑/↓ por grupo, acción `category.reorder`)
+- [x] Gestión de inventario (ajustes manuales con razón obligatoria — `/admin/inventario` + `InventoryLog`)
+- [x] Listado de órdenes con filtros y búsqueda (`/admin/pedidos`)
+- [x] Detalle de orden con descarga de PNG de producción (`/admin/pedidos/[number]/produccion`)
+- [x] Reimprimir guía Aveonline (`retryShipmentAction` — sella `WebhookEvent` para no reprocesar, remediación 360°)
+- [x] Cambiar estado manual de orden (con razón + `AdminActionLog`)
+- [x] Listado de clientes (`/admin/clientes` → Customer 360 por fila)
+- [x] Aprobación de reseñas (queue — `/admin/moderacion`)
+- [ ] Editor de blog — el modelo `BlogPost` se conserva en el schema como FUTURO_APROBADO, sin implementación (no existe `/blog` público ni admin de posts)
+- [x] Dashboard analytics (`/admin/dashboard` + `/admin/metricas` + `/admin/finanzas`)
+  - [x] Ingresos del mes
+  - [x] Órdenes pendientes
+  - [x] Productos más vendidos
+  - [x] Productos sin stock
+  - [x] Conversión de carritos
+- [ ] Portal mayorista `/mayorista` (público) — hoy solo existe la gestión admin de tiers en `/admin/mayorista`
   - [ ] Login separado o flag `isWholesale` en `Customer`
   - [ ] Listas de precios escalonados
   - [ ] Cotización con generación de PDF
 
 #### Tareas adicionales (productive readiness audit)
 
-- [ ] **`AdminActionLog` populated** en TODA acción mutante de admin (cambio estado, ajuste inventario, aprobación reseña, edición precio, etc.)
-- [ ] **Página `/admin/audit`** para consultar `AdminActionLog` con filtros por actor/entidad/fecha
-- [ ] **MFA obligatorio** para `SUPERADMIN` y `MANAGER`
-- [ ] **Schema `WarrantyClaim`** + flujo de garantía (Ley 1480 art. 7-15)
+- [x] **`AdminActionLog` populated** en TODA acción mutante de admin (cambio estado, ajuste inventario, aprobación reseña, edición precio, etc.)
+- [x] **Página `/admin/auditoria`** para consultar `AdminActionLog` con filtros por actor/entidad/fecha
+- [x] **MFA obligatorio** para `SUPERADMIN` y `MANAGER` (enroll forzado tras login — auditoría 2026-08-24 · B-1)
+- [x] **Schema `WarrantyClaim`** + flujo de garantía (Ley 1480 art. 7-15 — `/admin/garantias` + `/mi-cuenta`)
 - [ ] **B2B IVA + retenciones:** lógica de cálculo en checkout B2B (cliente como agente retenedor)
 - [ ] **Resolución de numeración DIAN** para B2B (puede ser distinta del B2C)
 
 ### Criterio de aceptación
 
-- Admin puede agregar un producto, subir foto, publicarlo, y aparece en storefront tras revalidate.
-- Admin puede marcar una orden como enviada y el cliente recibe email.
-- Cliente B2B ve precios distintos a los del retail.
-- Toda acción admin queda registrada en `AdminActionLog` con actor, entidad, metadata.
-- Admin sin MFA no puede ejecutar acciones destructivas.
+- ✅ Admin puede agregar un producto, subir foto, publicarlo, y aparece en storefront tras revalidate.
+- ✅ Admin puede marcar una orden como enviada y el cliente recibe email.
+- ❌ Cliente B2B ve precios distintos a los del retail.
+- ✅ Toda acción admin queda registrada en `AdminActionLog` con actor, entidad, metadata.
+- ✅ Admin sin MFA no puede ejecutar acciones destructivas (step-up aal2 en destructivas, ADR-087).
 
 ---
 
@@ -483,15 +489,15 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
   - [x] Stepper de cantidad/copias en la PDP de todos los productos (fuente de verdad única en el Context del buy-box; viaja al Estudio como `?copies=N` y pre-carga el stepper de la modal de confirmación; Nombre Personalizado excluido por su NamePricePicker)
   - [x] Modal "Así se verá…" del Estudio responsivo/scrollable (`max-h` en dvh + `overflow-y-auto`; sheet anclado abajo en móvil; imagen capada por vh; fix de ancho real en desktop vía `sm:max-w-2xl`) — QA con capturas en 375×667, 768×1024 y 1366×600
   - [x] Abecedario Completo: `quantity` normalizado por idioma en LOCAL/STG/PRD (es=27, en=26, vocales=5; script `normalize-letterset-quantity.mjs` + verificación SQL) y oculto como selector — correlación 1:1 con `language` → texto descriptivo bajo "Idioma"
-- [ ] Tests E2E con Playwright
-  - [ ] Flujo de compra Wompi sandbox
-  - [ ] Flujo de compra COD
-  - [ ] Flujo de personalización
-  - [ ] Flujo de admin
+- [x] Tests E2E con Playwright — **67 specs** en `apps/web/tests/e2e/` (verificado 2026-09-12)
+  - [x] Flujo de compra Wompi sandbox (`wompi-sandbox.spec.ts`, `fullmode-checkout-wompi.spec.ts`)
+  - [x] Flujo de compra COD (`fullmode-cod.spec.ts`)
+  - [x] Flujo de personalización (`estudio*.spec.ts`, `pdp-*.spec.ts`)
+  - [x] Flujo de admin (`admin-*.spec.ts` — login, MFA, inventario, transaccional)
   - [ ] Flujo de retracto
-  - [ ] Smoke tests post-deploy
+  - [x] Smoke tests post-deploy (`smoke.spec.ts`, `release-check-a1.spec.ts`)
 - [ ] **Visual regression** baseline aprobada
-- [ ] **Load testing con k6** sobre `/api/checkout/create` y `/api/ai/design-suggest`
+- [x] **Load testing con k6** — script `tests/load/storefront-browsing.js` + `make test-load` (verificado 2026-09-12)
 - [ ] Lighthouse ≥ 95 en todas las páginas críticas
 - [ ] Carga real de productos con fotos profesionales (entregable del usuario)
 - [ ] **Documentos legales con revisión de abogado (ADR-020)**
@@ -503,7 +509,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
   - [ ] Política de cookies
   - [ ] Lista de subprocesadores (`/legal/subprocesadores`)
   - [ ] Política de seguridad (`/legal/security`)
-- [ ] **Cookie consent banner v1** con tabla `Consent` + carga condicional de scripts
+- [x] **Cookie consent banner v1** con tabla `Consent` + carga condicional de scripts — **con re-consent**: el banner se re-muestra cuando cambia `PRIVACY_POLICY_VERSION` en el CMS (la cookie guarda la `policyVersion` aceptada; N-15, remediación 360° 2026-09-12)
 - [ ] **DIAN: integración con proveedor tecnológico** (ADR-025)
   - [ ] Adaptador `InvoiceProvider` implementado con `WompiProvider`-style abstraction
   - [ ] Resolución de numeración aprobada por DIAN
@@ -512,7 +518,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
   - [ ] Notas crédito vía mismo provider para reembolsos
 - [ ] **Monitoreo de errores elegido** (ADR-022) e implementado
 - [ ] **Constituir el negocio:** RUES + Cámara de Comercio + RUT con responsabilidad 42 (trámites del usuario)
-- [ ] **DR drill #1 ejecutado** (PITR restore) y documentado
+- [x] **DR drill ejecutado y agendado** — workflow mensual `dr-drill.yml` (restore del dump de R2 en Postgres del runner + prueba de legibilidad del mirror de Storage) que **exige dump fresco ≤36h** (`DRILL_MAX_BACKUP_AGE_HOURS`, N-19b 2026-09-12); corridas verificadas (ver OPERATIONS.md § Changelog)
 - [ ] **IRP runbook** revisado y leído por el operador
 - [ ] **Process de postmortem** validado con un ejercicio en seco
 

@@ -266,6 +266,45 @@ describe("renderProductionSlots — guards CONSERVADORES → NEEDS_KONVA (fallba
     expect((await pngMeta(bufs[0])).width).toBe(3240);
   });
 
+  it("Ola 23 — texto EDITABLE sin override (placeholder) NO dispara THROW: nunca se imprime", async () => {
+    // Regla global de placeholders: el default de una capa editable ("Escribe tu
+    // mensaje") es guía del Estudio y nunca entra al PNG → no obliga al tier canvas.
+    const unit = {
+      ...photoOnlyUnit,
+      layers: [
+        ...photoOnlyUnit.layers,
+        { id: "t", type: "text", text: "Escribe tu mensaje", editable: true },
+      ],
+    };
+    const bufs = await renderProductionSlots({
+      unitTemplate: unit,
+      slots: [
+        { slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } },
+      ],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(800, 800),
+    });
+    expect((await pngMeta(bufs[0])).width).toBe(3240);
+  });
+
+  it("Ola 23 — texto EDITABLE con override del cliente → THROW (lo dibuja el tier canvas)", async () => {
+    const unit = {
+      ...photoOnlyUnit,
+      layers: [
+        ...photoOnlyUnit.layers,
+        { id: "t", type: "text", text: "Escribe tu mensaje", editable: true },
+      ],
+    };
+    await expectNeedsKonva(
+      renderProductionSlots({
+        unitTemplate: unit,
+        slots: [{ slotIndex: 0, assetId: "a0", textOverrides: { t: { text: "Te amo" } } }],
+        shape: "rectangle",
+        loadAsset: async () => fakePhoto(800, 800),
+      }),
+    );
+  });
+
   it("Ola 3 — includeText=false: la capa de texto se IGNORA y sharp renderiza (producto sin texto)", async () => {
     // Fotoimanes Cuadrados con la plantilla "libre" (trae texto editable): el editor la oculta
     // (allowText=false) → producción también; además el slot puede quedarse en el tier sharp

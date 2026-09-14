@@ -1,9 +1,12 @@
 /*
  * GET /api/catalog/templates?productSlug=<slug>&mode=EDITABLE|PREMADE
  *
- * Templates asociadas a un producto. Filtrable por mode.
+ * Templates asociadas a un producto (kind del producto, activas, no borradas,
+ * filtradas por su aspect ratio — mismas reglas de visibilidad que el Estudio,
+ * N-08 2026-09-11). Filtrable por mode; default EDITABLE.
  *   - EDITABLE: cliente selecciona en estudio + completa con datos.
- *   - PREMADE: diseño ya impreso, cliente compra tal cual.
+ *   - PREMADE: RETIRADO del storefront (decisión de producto 2026-09-11: 0 datos,
+ *     0 consumidores). El parámetro se acepta por compat pero hoy devuelve [].
  *
  * PLAN_CATALOG_V2 ADR-038 + 5.10.
  */

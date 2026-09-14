@@ -43,7 +43,7 @@ test.afterAll(async () => {
 test.describe("estudio de personalización — el diferenciador", () => {
   test("el editor carga y monta el lienzo (canvas) para un producto personalizable", async ({
     page,
-  }) => {
+  }, testInfo) => {
     test.skip(!slug, "no hay producto personalizable activo en la DB");
     // El Estudio arrastra Konva (dep pesada); en `next dev` la ruta se compila
     // on-demand al primer hit y puede tardar >60s. En CI (build prod) es instantáneo.
@@ -61,7 +61,13 @@ test.describe("estudio de personalización — el diferenciador", () => {
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 30_000 });
 
     // Chrome del editor: la barra de herramientas (sidebar) visible en desktop.
-    await expect(page.locator('aside[aria-label="Herramientas del Estudio"]')).toBeVisible();
+    // En mobile el aside es `hidden lg:block` por diseño (las herramientas viven
+    // en el Sheet del FAB) — esta aserción solo aplica a desktop. (Fallaba en
+    // mobile desde siempre: el gate de CI corre solo desktop-chrome y nunca
+    // se ejercitaba ahí.)
+    if (testInfo.project.name === "desktop-chrome") {
+      await expect(page.locator('aside[aria-label="Herramientas del Estudio"]')).toBeVisible();
+    }
 
     // Y dentro, la acción de subir foto — el corazón del flujo de personalización.
     await expect(page.getByLabel("Subir foto desde el dispositivo")).toBeAttached();

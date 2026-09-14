@@ -172,6 +172,25 @@ export type FrameCardLayer = {
   cornerRadius?: number;
 };
 
+/**
+ * ProfilePhotoLayer (Ola 17, Lucy 2026-09-07) — FOTO DE PERFIL del header del post
+ * de Instagram (plantilla Polaroid Instagram). El chrome SVG trae un avatar
+ * placeholder horneado; esta capa lo cubre con la foto real del cliente recortada
+ * a círculo, dejando el anillo de historia visible alrededor.
+ * `x`/`y` son el CENTRO del círculo y `radius` su radio (coords del stage).
+ * La imagen NO vive en la capa: el slot la aporta vía
+ * `slots[i].profileAssetUrl` (igual que image-placeholder usa assetUrl) — cada
+ * imán del pack es un post independiente con su propio usuario → POR SLOT.
+ * Va INMEDIATAMENTE DESPUÉS del asset "frame" en el orden de capas (encima del SVG).
+ */
+export type ProfilePhotoLayer = {
+  id: string;
+  type: "profile-photo";
+  x: number;
+  y: number;
+  radius: number;
+};
+
 type UnknownLayer = {
   id: string;
   type: string;
@@ -185,6 +204,7 @@ export type CanvasLayer =
   | ShapeLayer
   | AssetLayer
   | FrameCardLayer
+  | ProfilePhotoLayer
   | UnknownLayer;
 
 export type CanvasDataV1 = {
@@ -209,6 +229,14 @@ export type SlotState = {
   slotIndex: number;
   assetId: string | null;
   assetUrl: string | null;
+  /**
+   * Ola 17 (Lucy 2026-09-07) — FOTO DE PERFIL del header del post de Instagram
+   * (plantilla Polaroid Instagram), POR SLOT: cada imán del pack es un post
+   * independiente con su propio usuario. La capa `profile-photo` del unitTemplate
+   * las consume. null/ausente = se ve el avatar placeholder horneado del SVG.
+   */
+  profileAssetId?: string | null;
+  profileAssetUrl?: string;
   // Per-slot overrides (Capa 4 — filtros y ajustes foto in-canvas):
   cropX?: number;
   cropY?: number;
@@ -272,6 +300,51 @@ export type MultiSlotCanvasData = {
    * null/undefined = sin marco. Viaja con el diseño a la cotización y al render de producción.
    */
   borderColor?: string | null;
+  /**
+   * Lucy 2026-09-05 — packs de fotoimanes: N de fotos por imán elegido con el
+   * control del Estudio (antes dimensión `photoSlots` de variante en la PDP).
+   * slotCount sigue siendo N × facesPerUnit. Persiste en el canvasData (auto-save)
+   * para que el carrito resuelva la variante server-side sin variantId del cliente.
+   */
+  photoSlots?: number;
+  /** Mismo feature — tamaño físico elegido en la PDP (deep-link ?variant=). */
+  sizeCm?: string;
+  /**
+   * Lucy 2026-09-08 — "¿Con imán?" también en los packs de foto: la PDP elige
+   * Con/Sin imán (dimensión `magnet` de la variante) y el Estudio lo MUESTRA
+   * (badge read-only junto al stepper de fotos), no lo cambia — una sola fuente
+   * de verdad. Persiste en el canvasData (auto-save) para que el carrito resuelva
+   * la variante server-side incluyendo el imán (features/products/photo-pack-resolve.ts).
+   * Ausente = diseño legacy de antes de esta ola → la resolución cae a Con imán
+   * (magnet: true), que es lo que el producto siempre fue.
+   */
+  magnet?: boolean;
+  /**
+   * Lucy 2026-09-07 — tipo de letra del TÍTULO/mes del calendario (selector del banner del
+   * Estudio): "fredoka" (default, ausente = look histórico) | "inter" | "caveat". Persiste
+   * en el canvasData (auto-save) → producción lo re-mapea a la familia registrada vía lista
+   * blanca. La grilla/body del calendario SIEMPRE es Inter (no cambia con esta clave).
+   */
+  calendarFont?: import("@/features/personalization/schemas").CalendarFontKey;
+  /**
+   * Modelo MULTI-UNIDAD (owner 2026-09-09 — regla general, todos los productos): el
+   * diseño contiene `unitCount` unidades físicas del producto, CADA UNA diseñable por
+   * separado en el Estudio (la PDP manda `?copies=N` → N unidades a diseñar; desaparece
+   * el concepto "copias idénticas" de las superficies personalizables). Aditivo:
+   * ausente = 1 unidad (los diseños guardados antes de la ola cargan intactos).
+   * Invariante: slotCount = unitCount × unitSlots. Solo se escribe cuando unitSlots > 1
+   * (los packs de imán suelto — polaroid/cuadrados — no lo declaran: su variante YA es
+   * el pack). El precio nunca confía en estos campos: se deriva de slotCount vs lo que
+   * cubre la variante (features/personalization/design-units.ts).
+   */
+  unitCount?: number;
+  /**
+   * Slots de diseño por unidad física (tira de 3 fotos → 3; calendario → 12; separador
+   * 2 caras → 2). Cuando unitCount > 1 y unitSlots > 1 (y el producto no es de caras
+   * agrupadas), `gridLayout` describe la grilla de UNA unidad; en los demás casos sigue
+   * describiendo el diseño completo (retrocompatible).
+   */
+  unitSlots?: number;
 };
 
 /** Alias de conveniencia — algunos consumidores usan `CanvasDataV2` por simetría con V1. */

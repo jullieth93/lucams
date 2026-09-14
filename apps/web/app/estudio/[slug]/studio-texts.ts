@@ -18,6 +18,9 @@
 export type StudioTexts = {
   /** Textos compartidos. */
   comun: {
+    /** Lucy 2026-09-09 — rótulo del CTA de cierre en los editores de nombre y
+     *  letras (antes «¡Listo!», renombrado por el owner): abre la vista previa
+     *  de confirmación, no agrega nada al carrito todavía. */
     listo: string;
     armando: string;
     preparando: string;
@@ -49,7 +52,13 @@ export type StudioTexts = {
     autosaveGuardadoM: string;
     autosaveError: string;
     progressBadge: string;
+    /** Lucy 2026-09-09 — rótulo del botón de cierre del editor (antes «¡Listo!»,
+     *  renombrado por el owner: abre la vista previa de confirmación, no finaliza). */
+    finalizeBtn: string;
     finalizeTooltip: string;
+    /** Ola 26 (owner 2026-09-09) — «Vista previa» bloqueado por textos requeridos
+     *  sin llenar (Polaroid Instagram). {campos} = lista de campos faltantes. */
+    finalizeTooltipTextos: string;
     finalizeGuardando: string;
     gesturesButtonTitle: string;
     slotEmptyInvite: string;
@@ -87,6 +96,36 @@ export type StudioTexts = {
     calBannerTitulo: string;
     calBannerAno: string;
     calBannerHint: string;
+    /** Lucy 2026-09-07 — selector de tipo de letra del título/mes del calendario (banner). */
+    calFontLabel: string;
+    calFontOptionFredoka: string;
+    calFontOptionInter: string;
+    calFontOptionCaveat: string;
+    calFontAria: string;
+    /** Lucy 2026-09-05 — packs: stepper "¿Cuántas fotos lleva tu imán?" (junto a la toolbar). */
+    photoCountLabel: string;
+    photoCountHint: string;
+    photoCountFixedHint: string;
+    photoCountOne: string;
+    photoCountMany: string;
+    photoCountGroupAria: string;
+    photoCountMinusAria: string;
+    photoCountPlusAria: string;
+    /** Ola 28 (owner 2026-09-11, 1.3.A) — stepper "Unidades" del Estudio para
+     *  productos de COMPOSICIÓN fija (tiras: las fotos por tira se eligen en la
+     *  PDP; acá se ajusta cuántas tiras se diseñan). Reemplaza al stepper de
+     *  fotos en ese caso. */
+    unitsCountLabel: string;
+    unitsCountHint: string;
+    unitsCountOne: string;
+    unitsCountMany: string;
+    unitsCountGroupAria: string;
+    unitsCountMinusAria: string;
+    unitsCountPlusAria: string;
+    /** Lucy 2026-09-08 — badge read-only "¿Con imán?" junto al stepper (lo fija la PDP). */
+    magnetCon: string;
+    magnetSin: string;
+    magnetHint: string;
     gesturesTitulo: string;
     gesturesTouchMoverLead: string;
     gesturesTouchZoomLead: string;
@@ -136,6 +175,11 @@ export type StudioTexts = {
     espacioBtnSr: string;
     tamanoChipAria: string;
     zoomAria: string;
+    /** Ola 22 — zoom de LIENZO (botones +/−): acerca toda la plantilla, no la foto. */
+    stageZoomTitle: string;
+    stageZoomInAria: string;
+    stageZoomOutAria: string;
+    stageZoomResetAria: string;
     slotTamanoAria: string;
     slotCentrarAria: string;
     slotEditarAria: string;
@@ -212,30 +256,57 @@ export type StudioTexts = {
     mensajeOpcional: string;
     mensajePlaceholder: string;
     mensajeAyuda: string;
+    /** Lucy 2026-09-08 — aviso de que el mensaje aplica a TODO el set (pack-level). */
+    mensajeGlobalAviso: string;
     editorTitulo: string;
     editorDesc: string;
     editorCerrar: string;
     sinTexto: string;
     campoLabel: string;
     campoPlaceholder: string;
+    /** Ola 26 (owner 2026-09-09) — nombres legibles de los campos de texto
+     *  requeridos de la Polaroid Instagram (para el aviso de «Vista previa»
+     *  bloqueado: "Completa los textos…: usuario, ubicación…"). */
+    campoIgUsuario: string;
+    campoIgUbicacion: string;
+    campoIgTitulo: string;
+    campoIgHashtags: string;
     tamanoLabel: string;
     negrita: string;
     cursiva: string;
     colorLabel: string;
+    /** Ola 28 (owner 2026-09-11, 1.2.1.A) — aviso cuando el color de texto elegido
+     *  casi no contrasta con la tarjeta (blanco sobre tarjeta blanca = invisible). */
+    colorSinContrasteHint: string;
     tipografiaLabel: string;
     reset: string;
     aplicar: string;
+    /** Lucy 2026-09-08 — estado de PROCESANDO del botón «Aplicar» (spinner + disabled). */
+    aplicando: string;
     estiloColorTitulo: string;
     estiloSinColor: string;
     estiloBordeTitulo: string;
     estiloConBorde: string;
     estiloSinBorde: string;
+    /** Ola 24 — aviso cuando la paleta de color queda desactivada por «Sin borde». */
+    estiloColorDeshabilitadoHint: string;
+    /** Ola 24 (tiras) — variante del aviso para la tira photobooth (foto a foto, sin canaletas). */
+    estiloColorDeshabilitadoHintTira: string;
     slotEditTitulo: string;
     slotEditTituloIndice: string;
     slotEditDesc: string;
     tabFoto: string;
     tabTexto: string;
     cambiarFoto: string;
+    // Ola 17 — foto de perfil del header del post (plantilla Polaroid Instagram).
+    perfilTitulo: string;
+    perfilHint: string;
+    perfilCambiar: string;
+    perfilQuitar: string;
+    perfilPickerTitulo: string;
+    perfilPickerDesc: string;
+    /** Ola 22 — tooltip del avatar tappeable del chrome IG (abre el picker de perfil). */
+    perfilAvatarHint: string;
     slotEditListo: string;
     capasVolver: string;
     capasElegir: string;
@@ -243,7 +314,8 @@ export type StudioTexts = {
     capaEditando: string;
     ajustarReset: string;
     ajustarRotar: string;
-    ajustarMover: string;
+    /** Lucy 2026-09-08 — selector de letra del calendario DENTRO de "Ajustar Foto". */
+    calFontModalHint: string;
     previewHint: string;
     filtrosTitulo: string;
     filtroSinLabel: string;
@@ -299,6 +371,9 @@ export type StudioTexts = {
     piezaFicha: string;
     piezaImanes: string;
     piezaFichas: string;
+    /** Dato de copias cuando la PDP fijó N>1 (regla 2026-09-08b: sin stepper acá). */
+    copiasIdenticas: string;
+    copiasAjusteCarrito: string;
   };
   /** Vistas 3D y escenas. */
   escenas: {
@@ -359,6 +434,12 @@ export type StudioTexts = {
     estiloHint: string;
     coloresTitulo: string;
     coloresHint: string;
+    /** Lucy 2026-09-09 — opción «Con borde / Sin borde» de las fichas (espejo del set de letras). */
+    bordeTitulo: string;
+    bordeHint: string;
+    bordeCon: string;
+    bordeSin: string;
+    bordeSinColoresHint: string;
     swatchTitulo: string;
     menosAria: string;
     masAria: string;
@@ -385,6 +466,47 @@ export type StudioTexts = {
     pintarAria: string;
     letraAlt: string;
     listoSr: string;
+    bordeTitulo: string;
+    bordeHint: string;
+    bordeCon: string;
+    bordeSin: string;
+    bordeSinColoresHint: string;
+  };
+  /**
+   * Modelo MULTI-UNIDAD (owner 2026-09-09): N unidades físicas del mismo
+   * producto, cada una diseñable por separado en el Estudio. Pager de unidades,
+   * headers de sección, "Aplicar este diseño a todas" y la línea de la modal.
+   */
+  unidades: {
+    /** Aria del pager de unidades sobre el lienzo. */
+    pagerAria: string;
+    /** Título de la sección de una unidad: "{nombre} {n} de {total}". */
+    unidadDe: string;
+    /** Sustantivos de la unidad según el producto. */
+    nombreTira: string;
+    nombreCalendario: string;
+    nombreSeparador: string;
+    nombreSet: string;
+    nombrePieza: string;
+    /** Aria del chip de progreso de una unidad ("{n} de {total} fotos listas…"). */
+    progresoAria: string;
+    /** "Aplicar este diseño a todas" (copia la unidad actual a las demás). */
+    aplicarATodas: string;
+    aplicarATodasAria: string;
+    aplicarATodasTitle: string;
+    /** Feedback aria-live tras aplicar a todas. */
+    aplicadaFeedback: string;
+    /** Modal de confirmación: línea de unidades ("{n} unidades — cada una…"). */
+    modalUnidades: string;
+    /** Modal — descripción de TIRAS photobooth (plural y singular). {n} tiras, {m} fotos c/u. */
+    descTiras: string;
+    descTiraUna: string;
+    /** Modal — resumen de tiras (línea bajo el nombre del producto). */
+    resumenTiras: string;
+    resumenTiraUna: string;
+    /** Modal — descripción de N calendarios ({n} sets de {m} páginas, {año} opcional). */
+    descCalendarios: string;
+    resumenCalendarios: string;
   };
   /** Asistente de ideas (IA). */
   ia: {
@@ -417,7 +539,7 @@ export type StudioTexts = {
 
 export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
   comun: {
-    listo: "¡Listo!",
+    listo: "Vista previa",
     armando: "Armando…",
     preparando: "Preparando…",
     agregando: "Agregando…",
@@ -448,7 +570,9 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     autosaveGuardadoM: "Guardado hace {n}m",
     autosaveError: "Error al guardar",
     progressBadge: "{n}/{total} fotos",
-    finalizeTooltip: "Faltan {n} fotos por cargar antes de poder finalizar",
+    finalizeBtn: "Vista previa",
+    finalizeTooltip: "Faltan {n} fotos por cargar para ver la vista previa",
+    finalizeTooltipTextos: "Completa los textos de tu diseño para ver la vista previa: {campos}",
     finalizeGuardando: "Guardando diseño...",
     gesturesButtonTitle: "Cómo editar tu foto (drag, zoom, doble click)",
     slotEmptyInvite: "Pásame una foto",
@@ -488,6 +612,29 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     calBannerTitulo: "📅 Tu calendario",
     calBannerAno: "Año del calendario:",
     calBannerHint: "· una foto por mes (toca cada mes para elegir tu foto)",
+    calFontLabel: "Tipo de letra:",
+    calFontOptionFredoka: "Redondeada (Fredoka)",
+    calFontOptionInter: "Moderna (Inter)",
+    calFontOptionCaveat: "Manuscrita (Caveat)",
+    calFontAria: "Tipo de letra del título del calendario",
+    photoCountLabel: "¿Cuántas fotos lleva tu imán?",
+    photoCountHint: "Tus fotos se conservan al cambiar el número",
+    photoCountFixedHint: "Este tamaño lleva {n} fotos",
+    photoCountOne: "foto",
+    photoCountMany: "fotos",
+    photoCountGroupAria: "Cantidad de fotos por imán",
+    photoCountMinusAria: "Quitar una foto",
+    photoCountPlusAria: "Agregar una foto",
+    unitsCountLabel: "Unidades",
+    unitsCountHint: "Las fotos por tira se eligen en la página del producto",
+    unitsCountOne: "unidad",
+    unitsCountMany: "unidades",
+    unitsCountGroupAria: "Unidades a diseñar",
+    unitsCountMinusAria: "Disminuir unidades",
+    unitsCountPlusAria: "Aumentar unidades",
+    magnetCon: "🧲 Con imán",
+    magnetSin: "✨ Sin imán",
+    magnetHint: "se elige en la página del producto",
     gesturesTitulo: "¡Tip! Cómo editar tu foto:",
     gesturesTouchMoverLead: "1 dedo arrastra",
     gesturesTouchZoomLead: "Pellizca con 2 dedos",
@@ -515,8 +662,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "Si la plantilla tiene textos editables (los marcados con punto turquesa), tócalos para cambiar el contenido, color y tipografía.",
     onboardingCtaEmpezar: "¡Empezar!",
     onboardingSaltar: "Saltar",
-    finalizeAria: "Listo, generar diseño final",
-    finalizeAriaBloqueado: "No se puede finalizar todavía",
+    finalizeAria: "Vista previa de tu pedido",
+    finalizeAriaBloqueado: "Vista previa no disponible todavía",
     guiaLinea: "Línea morada",
     guiaDescripcion: "= mantén texto y caras adentro para que no se corten al imprimir",
     guiaTamano: "· Tu imán físico mide {size} cm",
@@ -542,6 +689,11 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     espacioBtnSr: ": nevera, mural, repisa o regalo",
     tamanoChipAria: "Tamaño físico {size} cm. Click para ver comparación con objeto cotidiano.",
     zoomAria: "Zoom actual {pct}%",
+    // Ola 22 — zoom de LIENZO (acerca toda la plantilla; distinto del zoom de foto).
+    stageZoomTitle: "Zoom del lienzo {pct}%",
+    stageZoomInAria: "Acercar el lienzo",
+    stageZoomOutAria: "Alejar el lienzo",
+    stageZoomResetAria: "Volver al tamaño original del lienzo",
     slotTamanoAria: "Tamaño físico {size}",
     slotCentrarAria: "Centrar la foto del imán {n}",
     slotEditarAria: "Editar {nombre}",
@@ -620,30 +772,55 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     mensajePlaceholder: "Escribe tu mensaje",
     mensajeAyuda:
       "Si lo dejas vacío, la franja queda limpia (no se imprime nada). Para cambiar fuente o color, toca el texto en la imagen.",
+    // Lucy 2026-09-08 — aviso visible de que el mensaje es PACK-LEVEL ("Mantener
+    // con aviso", aprobado por el owner): se imprime igual en TODAS las fotos del
+    // set, no es un mensaje por foto.
+    mensajeGlobalAviso:
+      "Ojo: este mensaje se imprime igual en TODAS las fotos del set, no una por una.",
     editorTitulo: "Editar texto",
     editorDesc: 'Click "Aplicar" para guardar',
     editorCerrar: "Cerrar",
     sinTexto: "Sin texto",
     campoLabel: "Texto",
     campoPlaceholder: "Escribe tu texto…",
+    campoIgUsuario: "usuario",
+    campoIgUbicacion: "ubicación",
+    campoIgTitulo: "título",
+    campoIgHashtags: "hashtags",
     tamanoLabel: "Tamaño",
     negrita: "Negrita",
     cursiva: "Cursiva",
     colorLabel: "Color",
+    colorSinContrasteHint:
+      "Este color casi no se va a ver sobre la tarjeta — para que se lea al imprimir, elige otro.",
     tipografiaLabel: "Tipografía",
     reset: "Volver al original",
     aplicar: "Aplicar",
+    aplicando: "Aplicando…",
     estiloColorTitulo: "Color de tarjeta",
     estiloSinColor: "Sin color",
     estiloBordeTitulo: "Borde de foto",
     estiloConBorde: "Con borde",
     estiloSinBorde: "Sin borde",
+    estiloColorDeshabilitadoHint:
+      "Con «Sin borde» la foto cubre toda la tarjeta — el color no aplica.",
+    estiloColorDeshabilitadoHintTira:
+      "Con «Sin borde» las fotos cubren toda la tira — el color no aplica.",
     slotEditTitulo: "Editar {etiqueta}",
     slotEditTituloIndice: "Editar espacio {n}",
     slotEditDesc: "Ajusta la foto y el texto de este espacio",
     tabFoto: "Foto",
     tabTexto: "Texto",
     cambiarFoto: "Cambiar foto",
+    // Ola 17 — foto de perfil del header del post (plantilla Polaroid Instagram).
+    perfilTitulo: "Foto de perfil",
+    perfilHint: "Aparece en el círculo del encabezado, junto al nombre de usuario.",
+    perfilCambiar: "Cambiar foto de perfil",
+    perfilQuitar: "Quitar",
+    perfilPickerTitulo: "Elige tu foto de perfil",
+    perfilPickerDesc: "Se recorta en círculo dentro del anillo del encabezado.",
+    // Ola 22 — tooltip del avatar tappeable del chrome IG (abre el picker de perfil).
+    perfilAvatarHint: "Foto de perfil — toca para cambiarla",
     slotEditListo: "Listo",
     capasVolver: "Volver a capas",
     capasElegir: "Elige un texto para editar",
@@ -651,7 +828,9 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     capaEditando: "Editando: {texto}",
     ajustarReset: "Centrar y resetear zoom",
     ajustarRotar: "Rotar 90°",
-    ajustarMover: "Mover",
+    // Lucy 2026-09-08 — la letra del calendario también se elige desde "Ajustar Foto"
+    // (no solo en el banner): aplica a los 12 meses, igual que el selector del banner.
+    calFontModalHint: "Esta letra aplica a los 12 meses de tu calendario.",
     previewHint:
       "Arrastra la foto para encuadrar · Rueda del mouse o pellizco para zoom · Doble toque para centrar",
     filtrosTitulo: "Filtros",
@@ -708,6 +887,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     piezaFicha: "ficha",
     piezaImanes: "imanes",
     piezaFichas: "fichas",
+    copiasIdenticas: "{n} copias idénticas de tu diseño",
+    copiasAjusteCarrito: "Puedes ajustar la cantidad en el carrito.",
   },
   escenas: {
     titulo: "✨ Míralo en tu espacio",
@@ -770,6 +951,12 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     estiloHint: "· el dibujo de cada ficha 🎨",
     coloresTitulo: "Elige los colores",
     coloresHint: "· toca un tema otra vez para barajar 🎲",
+    bordeTitulo: "Borde de las fichas",
+    bordeHint: "· mismo precio con o sin borde",
+    bordeCon: "Con borde",
+    bordeSin: "Sin borde",
+    bordeSinColoresHint:
+      "Sin borde, las fichas se imprimen sin el marco de color — por eso los colores se desactivan. Vuelve a «Con borde» para pintarlas.",
     swatchTitulo: "Color de la letra {letra}",
     menosAria: "Menos letras",
     masAria: "Más letras",
@@ -797,6 +984,35 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     pintarAria: "Pintar la ficha {letra}",
     letraAlt: "Letra {letra}",
     listoSr: ": mira cómo se verá tu pedido antes de agregarlo",
+    bordeTitulo: "Borde de las fichas",
+    bordeHint: "· mismo precio con o sin borde",
+    bordeCon: "Con borde",
+    bordeSin: "Sin borde",
+    bordeSinColoresHint:
+      "Sin borde, las fichas se imprimen sin el marco de color — por eso los colores se desactivan. Vuelve a «Con borde» para pintarlas.",
+  },
+  unidades: {
+    pagerAria: "Unidades de tu diseño",
+    unidadDe: "{nombre} {n} de {total}",
+    nombreTira: "Tira",
+    nombreCalendario: "Calendario",
+    nombreSeparador: "Separador",
+    nombreSet: "Set",
+    nombrePieza: "Pieza",
+    progresoAria: "{n} de {total} fotos listas en esta unidad",
+    aplicarATodas: "Aplicar este diseño a todas",
+    aplicarATodasAria: "Aplicar el diseño de esta unidad a todas las unidades",
+    aplicarATodasTitle: "Copia fotos, encuadres y textos de esta unidad a las demás",
+    aplicadaFeedback: "Diseño aplicado a todas las unidades",
+    modalUnidades: "{n} unidades — cada una con su propio diseño",
+    descTiras:
+      "Esta es la vista previa de las {n} tiras que vas a recibir — cada una con {m} fotos.",
+    descTiraUna: "Esta es la vista previa de la tira que vas a recibir — con {m} fotos.",
+    resumenTiras: "{n} tiras personalizadas · {m} fotos c/u",
+    resumenTiraUna: "{n} tira personalizada · {m} fotos",
+    descCalendarios:
+      "Esta es la vista previa de tus {n} calendarios{año} — cada uno con {m} páginas.",
+    resumenCalendarios: "{n} calendarios personalizados · {m} páginas c/u",
   },
   ia: {
     titulo: "¿Sin ideas? Te ayudo",
@@ -859,7 +1075,9 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.autosaveGuardadoM": "estudio.lienzo.autosave-guardado-m",
   "lienzo.autosaveError": "estudio.lienzo.autosave-error",
   "lienzo.progressBadge": "estudio.lienzo.progress-badge",
+  "lienzo.finalizeBtn": "estudio.lienzo.finalize-btn",
   "lienzo.finalizeTooltip": "estudio.lienzo.finalize-tooltip",
+  "lienzo.finalizeTooltipTextos": "estudio.lienzo.finalize-tooltip-textos",
   "lienzo.finalizeGuardando": "estudio.lienzo.finalize-guardando",
   "lienzo.gesturesButtonTitle": "estudio.lienzo.gestures-button-title",
   "lienzo.slotEmptyInvite": "estudio.lienzo.slot-empty-invite",
@@ -897,6 +1115,29 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.calBannerTitulo": "estudio.lienzo.cal-banner-titulo",
   "lienzo.calBannerAno": "estudio.lienzo.cal-banner-ano",
   "lienzo.calBannerHint": "estudio.lienzo.cal-banner-hint",
+  "lienzo.calFontLabel": "estudio.lienzo.cal-font-label",
+  "lienzo.calFontOptionFredoka": "estudio.lienzo.cal-font-option-fredoka",
+  "lienzo.calFontOptionInter": "estudio.lienzo.cal-font-option-inter",
+  "lienzo.calFontOptionCaveat": "estudio.lienzo.cal-font-option-caveat",
+  "lienzo.calFontAria": "estudio.lienzo.cal-font-aria",
+  "lienzo.photoCountLabel": "estudio.lienzo.photo-count-label",
+  "lienzo.photoCountHint": "estudio.lienzo.photo-count-hint",
+  "lienzo.photoCountFixedHint": "estudio.lienzo.photo-count-fixed-hint",
+  "lienzo.photoCountOne": "estudio.lienzo.photo-count-one",
+  "lienzo.photoCountMany": "estudio.lienzo.photo-count-many",
+  "lienzo.photoCountGroupAria": "estudio.lienzo.photo-count-group-aria",
+  "lienzo.photoCountMinusAria": "estudio.lienzo.photo-count-minus-aria",
+  "lienzo.photoCountPlusAria": "estudio.lienzo.photo-count-plus-aria",
+  "lienzo.unitsCountLabel": "estudio.lienzo.unidades-label",
+  "lienzo.unitsCountHint": "estudio.lienzo.unidades-hint",
+  "lienzo.unitsCountOne": "estudio.lienzo.unidades-one",
+  "lienzo.unitsCountMany": "estudio.lienzo.unidades-many",
+  "lienzo.unitsCountGroupAria": "estudio.lienzo.unidades-group-aria",
+  "lienzo.unitsCountMinusAria": "estudio.lienzo.unidades-minus-aria",
+  "lienzo.unitsCountPlusAria": "estudio.lienzo.unidades-plus-aria",
+  "lienzo.magnetCon": "estudio.lienzo.magnet-con",
+  "lienzo.magnetSin": "estudio.lienzo.magnet-sin",
+  "lienzo.magnetHint": "estudio.lienzo.magnet-hint",
   "lienzo.gesturesTitulo": "estudio.lienzo.gestures-titulo",
   "lienzo.gesturesTouchMoverLead": "estudio.lienzo.gestures-touch-mover-lead",
   "lienzo.gesturesTouchZoomLead": "estudio.lienzo.gestures-touch-zoom-lead",
@@ -946,6 +1187,10 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.espacioBtnSr": "estudio.lienzo.espacio-btn-sr",
   "lienzo.tamanoChipAria": "estudio.lienzo.tamano-chip-aria",
   "lienzo.zoomAria": "estudio.lienzo.zoom-aria",
+  "lienzo.stageZoomTitle": "estudio.lienzo.stage-zoom-title",
+  "lienzo.stageZoomInAria": "estudio.lienzo.stage-zoom-in-aria",
+  "lienzo.stageZoomOutAria": "estudio.lienzo.stage-zoom-out-aria",
+  "lienzo.stageZoomResetAria": "estudio.lienzo.stage-zoom-reset-aria",
   "lienzo.slotTamanoAria": "estudio.lienzo.slot-tamano-aria",
   "lienzo.slotCentrarAria": "estudio.lienzo.slot-centrar-aria",
   "lienzo.slotEditarAria": "estudio.lienzo.slot-editar-aria",
@@ -1013,30 +1258,46 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.mensajeOpcional": "estudio.texto.mensaje-opcional",
   "texto.mensajePlaceholder": "estudio.texto.mensaje-placeholder",
   "texto.mensajeAyuda": "estudio.texto.mensaje-ayuda",
+  "texto.mensajeGlobalAviso": "estudio.texto.mensaje-global-aviso",
   "texto.editorTitulo": "estudio.texto.editor-titulo",
   "texto.editorDesc": "estudio.texto.editor-desc",
   "texto.editorCerrar": "estudio.texto.editor-cerrar",
   "texto.sinTexto": "estudio.texto.sin-texto",
   "texto.campoLabel": "estudio.texto.campo-label",
   "texto.campoPlaceholder": "estudio.texto.campo-placeholder",
+  "texto.campoIgUsuario": "estudio.texto.campo-ig-usuario",
+  "texto.campoIgUbicacion": "estudio.texto.campo-ig-ubicacion",
+  "texto.campoIgTitulo": "estudio.texto.campo-ig-titulo",
+  "texto.campoIgHashtags": "estudio.texto.campo-ig-hashtags",
   "texto.tamanoLabel": "estudio.texto.tamano-label",
   "texto.negrita": "estudio.texto.negrita",
   "texto.cursiva": "estudio.texto.cursiva",
   "texto.colorLabel": "estudio.texto.color-label",
+  "texto.colorSinContrasteHint": "estudio.texto.color-sin-contraste-hint",
   "texto.tipografiaLabel": "estudio.texto.tipografia-label",
   "texto.reset": "estudio.texto.reset",
   "texto.aplicar": "estudio.texto.aplicar",
+  "texto.aplicando": "estudio.texto.aplicando",
   "texto.estiloColorTitulo": "estudio.texto.estilo-color-titulo",
   "texto.estiloSinColor": "estudio.texto.estilo-sin-color",
   "texto.estiloBordeTitulo": "estudio.texto.estilo-borde-titulo",
   "texto.estiloConBorde": "estudio.texto.estilo-con-borde",
   "texto.estiloSinBorde": "estudio.texto.estilo-sin-borde",
+  "texto.estiloColorDeshabilitadoHint": "estudio.texto.estilo-color-deshabilitado-hint",
+  "texto.estiloColorDeshabilitadoHintTira": "estudio.texto.estilo-color-deshabilitado-hint-tira",
   "texto.slotEditTitulo": "estudio.texto.slot-edit-titulo",
   "texto.slotEditTituloIndice": "estudio.texto.slot-edit-titulo-indice",
   "texto.slotEditDesc": "estudio.texto.slot-edit-desc",
   "texto.tabFoto": "estudio.texto.tab-foto",
   "texto.tabTexto": "estudio.texto.tab-texto",
   "texto.cambiarFoto": "estudio.texto.cambiar-foto",
+  "texto.perfilTitulo": "estudio.texto.perfil-titulo",
+  "texto.perfilHint": "estudio.texto.perfil-hint",
+  "texto.perfilCambiar": "estudio.texto.perfil-cambiar",
+  "texto.perfilQuitar": "estudio.texto.perfil-quitar",
+  "texto.perfilPickerTitulo": "estudio.texto.perfil-picker-titulo",
+  "texto.perfilPickerDesc": "estudio.texto.perfil-picker-desc",
+  "texto.perfilAvatarHint": "estudio.texto.perfil-avatar-hint",
   "texto.slotEditListo": "estudio.texto.slot-edit-listo",
   "texto.capasVolver": "estudio.texto.capas-volver",
   "texto.capasElegir": "estudio.texto.capas-elegir",
@@ -1044,7 +1305,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.capaEditando": "estudio.texto.capa-editando",
   "texto.ajustarReset": "estudio.texto.ajustar-reset",
   "texto.ajustarRotar": "estudio.texto.ajustar-rotar",
-  "texto.ajustarMover": "estudio.texto.ajustar-mover",
+  "texto.calFontModalHint": "estudio.texto.cal-font-modal-hint",
   "texto.previewHint": "estudio.texto.preview-hint",
   "texto.filtrosTitulo": "estudio.texto.filtros-titulo",
   "texto.filtroSinLabel": "estudio.texto.filtro-sin-label",
@@ -1097,6 +1358,8 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "exportar.piezaFicha": "estudio.exportar.pieza-ficha",
   "exportar.piezaImanes": "estudio.exportar.pieza-imanes",
   "exportar.piezaFichas": "estudio.exportar.pieza-fichas",
+  "exportar.copiasIdenticas": "estudio.exportar.copias-identicas",
+  "exportar.copiasAjusteCarrito": "estudio.exportar.copias-ajuste-carrito",
   "escenas.titulo": "estudio.escenas.titulo",
   "escenas.volverDetalle": "estudio.escenas.volver-detalle",
   "escenas.chipNevera": "estudio.escenas.chip-nevera",
@@ -1151,6 +1414,11 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "nombre.estiloHint": "estudio.nombre.estilo-hint",
   "nombre.coloresTitulo": "estudio.nombre.colores-titulo",
   "nombre.coloresHint": "estudio.nombre.colores-hint",
+  "nombre.bordeTitulo": "estudio.nombre.borde-titulo",
+  "nombre.bordeHint": "estudio.nombre.borde-hint",
+  "nombre.bordeCon": "estudio.nombre.borde-con",
+  "nombre.bordeSin": "estudio.nombre.borde-sin",
+  "nombre.bordeSinColoresHint": "estudio.nombre.borde-sin-colores-hint",
   "nombre.swatchTitulo": "estudio.nombre.swatch-titulo",
   "nombre.menosAria": "estudio.nombre.menos-aria",
   "nombre.masAria": "estudio.nombre.mas-aria",
@@ -1174,6 +1442,30 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "letras.pintarAria": "estudio.letras.pintar-aria",
   "letras.letraAlt": "estudio.letras.letra-alt",
   "letras.listoSr": "estudio.letras.listo-sr",
+  "letras.bordeTitulo": "estudio.letras.borde-titulo",
+  "letras.bordeHint": "estudio.letras.borde-hint",
+  "letras.bordeCon": "estudio.letras.borde-con",
+  "letras.bordeSin": "estudio.letras.borde-sin",
+  "letras.bordeSinColoresHint": "estudio.letras.borde-sin-colores-hint",
+  "unidades.pagerAria": "estudio.unidades.pager-aria",
+  "unidades.unidadDe": "estudio.unidades.unidad-de",
+  "unidades.nombreTira": "estudio.unidades.nombre-tira",
+  "unidades.nombreCalendario": "estudio.unidades.nombre-calendario",
+  "unidades.nombreSeparador": "estudio.unidades.nombre-separador",
+  "unidades.nombreSet": "estudio.unidades.nombre-set",
+  "unidades.nombrePieza": "estudio.unidades.nombre-pieza",
+  "unidades.progresoAria": "estudio.unidades.progreso-aria",
+  "unidades.aplicarATodas": "estudio.unidades.aplicar-a-todas",
+  "unidades.aplicarATodasAria": "estudio.unidades.aplicar-a-todas-aria",
+  "unidades.aplicarATodasTitle": "estudio.unidades.aplicar-a-todas-title",
+  "unidades.aplicadaFeedback": "estudio.unidades.aplicada-feedback",
+  "unidades.modalUnidades": "estudio.unidades.modal-unidades",
+  "unidades.descTiras": "estudio.unidades.desc-tiras",
+  "unidades.descTiraUna": "estudio.unidades.desc-tira-una",
+  "unidades.resumenTiras": "estudio.unidades.resumen-tiras",
+  "unidades.resumenTiraUna": "estudio.unidades.resumen-tira-una",
+  "unidades.descCalendarios": "estudio.unidades.desc-calendarios",
+  "unidades.resumenCalendarios": "estudio.unidades.resumen-calendarios",
   "ia.titulo": "estudio.ia.titulo",
   "ia.label": "estudio.ia.label",
   "ia.placeholder": "estudio.ia.placeholder",

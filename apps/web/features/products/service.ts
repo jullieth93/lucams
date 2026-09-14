@@ -519,13 +519,6 @@ export async function listVariantsByProduct(productId: string) {
   });
 }
 
-export async function getVariantById(id: string) {
-  return prisma.productVariant.findFirst({
-    where: { id, deletedAt: null },
-    include: { product: { select: { id: true, slug: true, name: true, basePrice: true } } },
-  });
-}
-
 /**
  * Crea variant nueva. SKU debe ser único globalmente; se valida antes
  * de insertar para dar mejor mensaje de error que el P2002 genérico.

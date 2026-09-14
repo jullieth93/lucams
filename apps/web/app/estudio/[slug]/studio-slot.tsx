@@ -49,12 +49,14 @@ import type {
   CanvasLayer,
   FrameCardLayer,
   ImagePlaceholderLayer,
+  ProfilePhotoLayer,
   SlotState,
   StudioAsset,
   TextLayer,
 } from "./types";
 import {
   isDarkColor,
+  defaultTextFillOnCard,
   frameBleedMargin,
   insetToMinMargin,
   isSimpleCardTemplate,
@@ -62,14 +64,18 @@ import {
   isStripTemplate,
   stripPhotoRect,
   stripPositionOf,
+  isStripBorderless,
   isInstagramTemplate,
   instagramBackgroundHex,
   noBorderChromeSrc,
   isInstagramNoBorder,
+  photoBackingHexFor,
 } from "@/features/personalization/frame-palette";
+import { igTextFill } from "@/features/personalization/instagram-template-spec";
 import { RealismShadowLayer, RealismOverlayLayer } from "./studio-realism-overlay";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
+import type { CalendarFontKey } from "@/features/personalization/schemas";
 
 import { getFilterParams } from "./lib/photo-filters";
 import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
@@ -77,6 +83,34 @@ import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 
 const FOCUS_RING = "0 0 0 3px rgb(93 217 209)"; // brand-turquoise
+
+// Ola 24 (Lucy 2026-09-09) — zoom "milimétrico" de la foto: paso multiplicativo FINO
+// por notch de rueda (×1.04 ≈ 4% por tick; antes ×1.15 — saltos toscos que no dejaban
+// afinar el encuadre). Compartido por el slot (handler Konva + listener nativo) y el
+// preview del modal de edición (studio-photo-preview) → misma sensación en ambas
+// superficies. El pinch sigue continuo (ratio de distancia entre dedos) — no tiene paso.
+export const WHEEL_ZOOM_STEP = 1.04;
+
+/** Próximo scale de la foto tras un evento de rueda (deltaY > 0 = alejar), clampado. */
+export function nextWheelScale(current: number, deltaY: number, min = 0.5, max = 3): number {
+  const factor = deltaY > 0 ? 1 / WHEEL_ZOOM_STEP : WHEEL_ZOOM_STEP;
+  return Math.max(min, Math.min(max, current * factor));
+}
+
+// Ola 24 (Lucy 2026-09-09) — bandeja cuadriculada gris/blanco (el patrón de
+// "transparencia" de los editores de foto) para que la tarjeta BLANCA se lea
+// sobre el lienzo claro del Estudio (white-on-white). Adorno 100% de pantalla:
+// vive en el DOM alrededor del Stage, nunca entra al snapshot de producción.
+// Ola 25 — exportados para reutilizar la MISMA bandeja en el preview del modal
+// de edición (studio-photo-preview): la tarjeta blanca también se perdía contra
+// el fondo blanco del modal.
+// Ola 26 (Lucy 2026-09-09) — "muy leve": cuadrados más oscuros (#CDC7DB, antes
+// #ECE9F1 — casi indistinguible del blanco) y un poco más grandes (16px, antes
+// 12px), con la bandeja un poco más ancha (8px) → la tarjeta blanca se lee de
+// inmediato sobre el crema del Estudio y el blanco del modal.
+export const WHITE_CARD_CHECKER = "repeating-conic-gradient(#CDC7DB 0% 25%, #FFFFFF 0% 50%)";
+export const WHITE_CARD_CHECKER_SIZE = "16px 16px";
+export const WHITE_CARD_TRAY_PAD = 8;
 
 type StudioSlotProps = {
   slotState: SlotState;
@@ -119,7 +153,9 @@ type StudioSlotProps = {
   /**
    * Ola 3c — modo TIRA (gridGap=0): las celdas se tocan para leerse como UNA pieza
    * continua; la barra de acciones flota SOBRE la foto en vez de reservar una franja
-   * blanca entre celdas (rompería la continuidad de la tira).
+   * blanca entre celdas (rompería la continuidad de la tira). Regla 2026-09-08: la
+   * separación visible ENTRE fotos (canaleta del color del marco) vive DENTRO de
+   * cada celda vía stripPhotoRect — las celdas siguen pegadas entre sí.
    */
   overlayActions?: boolean;
   /**
@@ -135,7 +171,13 @@ type StudioSlotProps = {
    * la foto a sangre sobre fondo blanco. Cuando está set, reemplaza las capas del
    * unitTemplate (background + image-placeholder) por el canvas compuesto.
    */
-  calendarCard?: { year: number; monthIndex0: number; layout?: CalendarLayoutKey } | null;
+  calendarCard?: {
+    year: number;
+    monthIndex0: number;
+    layout?: CalendarLayoutKey;
+    /** Lucy 2026-09-07 — tipo de letra del título/mes (default "fredoka"). */
+    font?: CalendarFontKey;
+  } | null;
   onClick: () => void;
   onClear: () => void;
   /**
@@ -145,6 +187,12 @@ type StudioSlotProps = {
   onEdit?: (tab: "photo" | "text") => void;
   /** M.3.b.D — Click sobre text layer editable abre el editor inline. */
   onTextEdit?: (textLayerId: string) => void;
+  /**
+   * Ola 22 (Lucy 2026-09-08) — Tap/click sobre el AVATAR del header del post
+   * (capa `profile-photo`, ej. Polaroid Instagram) abre directo el picker de
+   * foto de perfil, sin pasar por el modal genérico.
+   */
+  onProfilePhotoEdit?: () => void;
   /**
    * FB4 — si es false, la grilla no captura gestos inline (drag/pinch/wheel);
    * el dedo scrollea la página. El callback de transform sigue disponible
@@ -190,6 +238,7 @@ function StudioSlotImpl({
   onClear,
   onEdit,
   onTextEdit,
+  onProfilePhotoEdit,
   onPhotoTransformChange,
   onCenterPhoto,
   onAssetDrop,
@@ -211,20 +260,27 @@ function StudioSlotImpl({
   // capturaban el ref. State es seguro y el extra rerender por drag start/end
   // es aceptable (1 vez por drag).
   const [wasDraggingPhoto, setWasDraggingPhoto] = useState(false);
-  // Ola 3c (Lucy 2026-07-22) — guard del doble disparo táctil del TEXTO editable:
-  // el tap sobre el texto abre "Editar texto" vía Konva onTap, pero el browser
-  // sintetiza ADEMÁS un click que burbujea al wrapper → abría el picker/foco y
-  // cerraba el modal de texto al instante ("no deja modificar texto"). Marcamos
-  // el tap y el click sintético subsiguiente (<400ms) se ignora. useState (no ref)
-  // por la regla `react-hooks/refs` (mismo patrón que wasDraggingPhoto arriba).
-  const [textEditTapAt, setTextEditTapAt] = useState(0);
+  // Ola 3c (Lucy 2026-07-22) — guard del doble disparo táctil de acciones del CANVAS:
+  // el tap sobre un elemento interactivo de Konva (texto editable, avatar de perfil)
+  // dispara su acción vía onTap/onClick, pero el browser sintetiza ADEMÁS un click que
+  // burbujea al wrapper → abriría el picker/foco de foto encima y cerraría el panel al
+  // instante ("no deja modificar texto"). Marcamos el tap y el click sintético
+  // subsiguiente (<400ms) se ignora. useState (no ref) por la regla `react-hooks/refs`
+  // (mismo patrón que wasDraggingPhoto arriba).
+  const [canvasActionTapAt, setCanvasActionTapAt] = useState(0);
   const handleTextEdit = useCallback(
     (textLayerId: string) => {
-      setTextEditTapAt(Date.now());
+      setCanvasActionTapAt(Date.now());
       onTextEdit?.(textLayerId);
     },
     [onTextEdit],
   );
+  // Ola 22 — mismo guard que el texto editable: el tap/click sobre el avatar del
+  // header abre el picker de foto de perfil directo (patrón anti-doble-panel).
+  const handleProfilePhotoEdit = useCallback(() => {
+    setCanvasActionTapAt(Date.now());
+    onProfilePhotoEdit?.();
+  }, [onProfilePhotoEdit]);
 
   // M.3.b.UX.v13 (Lucy 2026-05-15) — CSS clip-path para que el slot wrapper
   // SE VEA con el shape físico del imán (heart/circle/rect). useId genera
@@ -296,7 +352,10 @@ function StudioSlotImpl({
   //  - "tarjeta simple" (Cuadrados): sin chrome ni texto visible → sin borde = foto a
   //    sangre TOTAL; con borde = franja UNIFORME de color.
   //  - Instagram (chrome SVG): fondo BINARIO blanco/negro + textos en contraste auto.
-  //  - Tira photobooth (gridCols=1 + gridGap=0): pieza continua, borde exterior por posición.
+  //  - Tira photobooth (gridCols=1 + gridGap=0): pieza continua; CON borde = borde
+  //    exterior por posición + canaleta del color del marco ENTRE fotos; SIN borde
+  //    (Ola 25) = fotos pegadas sin líneas (stripPhotoRect, misma matemática en
+  //    producción).
   const isIg = useMemo(() => isInstagramTemplate(unitTemplate.layers), [unitTemplate]);
   const simpleCard = useMemo(
     () =>
@@ -311,18 +370,22 @@ function StudioSlotImpl({
     [unitTemplate],
   );
   const stripPosition = isStrip ? stripPositionOf(slotState.slotIndex, totalSlots) : null;
-  // Fondo efectivo de la tarjeta → contraste automático del texto (blanco si es oscuro).
-  const cardBgHex = useMemo(() => {
+  // Color de la capa background de la plantilla (blanco en todas las activas).
+  const bgLayerHex = useMemo(() => {
     const bgLayer = unitTemplate.layers.find((l) => l.type === "background") as
       { color?: string } | undefined;
-    const bgHex = bgLayer?.color ?? "#FFFFFF";
+    return bgLayer?.color ?? "#FFFFFF";
+  }, [unitTemplate]);
+  // Fondo efectivo de la tarjeta → contraste automático del texto (blanco si es oscuro).
+  const cardBgHex = useMemo(() => {
+    const bgHex = bgLayerHex;
     const fcLayer = unitTemplate.layers.find((l) => l.type === "frame-card") as
       { fill?: string } | undefined;
     if (isIg) return instagramBackgroundHex(borderColor ?? null, bgHex);
     if (fullBleed && borderColor) return borderColor;
     if (hasFrameCard) return borderColor ?? fcLayer?.fill ?? "#FFFFFF";
     return bgHex;
-  }, [unitTemplate, isIg, fullBleed, borderColor, hasFrameCard]);
+  }, [unitTemplate, isIg, fullBleed, borderColor, hasFrameCard, bgLayerHex]);
   const darkCardBg = isDarkColor(cardBgHex);
   // Ola 21 — Instagram: detectar modo SIN BORDE por el rect del placeholder
   // (foto a sangre total x=0 y=0 w=450 h=600 en el stage 450×600).
@@ -332,6 +395,43 @@ function StudioSlotImpl({
       ImagePlaceholderLayer | undefined;
     return isInstagramNoBorder(ph, unitTemplate.stage);
   }, [unitTemplate, isIg]);
+  // Ola 23/24 — respaldo neutro de la ventana de foto bajo zoom-out/pan ("el marco
+  // es MARCO, no fondo"): la DECISIÓN vive en photoBackingHexFor (frame-palette),
+  // compartida con el preview del modal y con producción → WYSIWYG por construcción.
+  // Ola 24: la Instagram CON borde también lleva respaldo (su ventana se inundaba del
+  // color del borde al alejar la foto con tarjeta oscura); en SIN BORDE no aplica.
+  const photoBackingHex = photoBackingHexFor({
+    borderColor,
+    backgroundHex: bgLayerHex,
+    hasFrameCard,
+    fullBleed,
+    isIg,
+    igNoBorder: noBorder,
+    useFullStage: shape === "heart" || shape === "circle",
+  });
+  // Ola 23 (Lucy 2026-09-08) — tarjeta CLARA no-blanca (pasteles) sobre el lienzo claro
+  // del Estudio: filete de contraste sutil alrededor del slot para que el borde de la
+  // tarjeta se lea en pantalla. Es adorno de PANTALLA a nivel DOM — el snapshot de
+  // producción (stage.toDataURL) captura solo el canvas Konva → NUNCA se hornea en el
+  // PNG de imprenta (lo impreso no cambia). En modo tira se omite por celda (dibujaría
+  // costuras entre fotos; la sombra de la pieza continua la pone el contenedor del
+  // grid) y en heart/circle la silueta ya va recortada.
+  // Ola 24 (Lucy 2026-09-09) — para la tarjeta BLANCA el filete solo no bastaba
+  // (white-on-white): el dueño eligió la BANDEJA CUADRICULADA (abajo) en su lugar.
+  const cardContrastEdge = !darkCardBg && !isStrip && !slotClipPath;
+  // Ola 24 (Lucy 2026-09-09) — tarjeta BLANCA: el Stage se monta unos px más chico
+  // DENTRO del mismo footprint del slot y alrededor queda la bandeja cuadriculada
+  // gris/blanco (WHITE_CARD_CHECKER) → la tarjeta blanca se ve sobre el lienzo claro.
+  // Adorno de PANTALLA a nivel DOM: el snapshot de producción captura solo el canvas
+  // Konva → la bandeja NUNCA se hornea (lo impreso no cambia). Mismas exclusiones
+  // que el filete: tira (costuras entre celdas) y heart/circle (silueta recortada).
+  const whiteCardTray = cardBgHex.toUpperCase() === "#FFFFFF" && !isStrip && !slotClipPath;
+  // Tamaño/escala EFECTIVOS del Stage: con bandeja, la tarjeta se dibuja inset; sin
+  // ella, llena el slot como siempre. El aspect y el contenido no cambian (todo el
+  // dibujo interno es proporcional vía scale → WYSIWYG intacto).
+  const stageSlotWidth = whiteCardTray ? slotWidth - WHITE_CARD_TRAY_PAD * 2 : slotWidth;
+  const stageSlotHeight = whiteCardTray ? slotHeight - WHITE_CARD_TRAY_PAD * 2 : slotHeight;
+  const stageScale = stageSlotWidth / unitTemplate.stage.width;
   const frameStyle = useMemo(() => {
     if (!borderColor || shape === "heart" || shape === "circle" || hasFrameCard || fullBleed)
       return null;
@@ -468,20 +568,13 @@ function StudioSlotImpl({
     (e: Konva.KonvaEventObject<WheelEvent>) => {
       if (!interactiveSlots || !slotState.assetUrl || !onPhotoTransformChange) return;
       e.evt.preventDefault();
-      const factor = e.evt.deltaY > 0 ? 1 / 1.15 : 1.15;
       const current = slotState.photoTransform?.scale ?? 1;
-      const next = clampScale(current * factor);
+      const next = nextWheelScale(current, e.evt.deltaY, SCALE_MIN, SCALE_MAX);
       if (Math.abs(next - current) > 0.001) {
         onPhotoTransformChange({ scale: next });
       }
     },
-    [
-      interactiveSlots,
-      slotState.assetUrl,
-      slotState.photoTransform?.scale,
-      onPhotoTransformChange,
-      clampScale,
-    ],
+    [interactiveSlots, slotState.assetUrl, slotState.photoTransform?.scale, onPhotoTransformChange],
   );
 
   // Native wheel listener — backup que SIEMPRE puede preventDefault
@@ -493,9 +586,8 @@ function StudioSlotImpl({
     function onWheelNative(e: WheelEvent) {
       e.preventDefault();
       e.stopPropagation();
-      const factor = e.deltaY > 0 ? 1 / 1.15 : 1.15;
       const current = slotState.photoTransform?.scale ?? 1;
-      const next = clampScale(current * factor);
+      const next = nextWheelScale(current, e.deltaY, SCALE_MIN, SCALE_MAX);
       if (Math.abs(next - current) > 0.001) {
         onPhotoTransformChange?.({ scale: next });
       }
@@ -509,7 +601,6 @@ function StudioSlotImpl({
     slotState.assetUrl,
     slotState.photoTransform?.scale,
     onPhotoTransformChange,
-    clampScale,
   ]);
 
   // Pinch handlers — usan touchstart/move/end del Stage Konva.
@@ -613,10 +704,11 @@ function StudioSlotImpl({
               e.preventDefault();
               return;
             }
-            // Ola 3c — click sintético tras un tap de TEXTO editable (móvil):
-            // "Editar texto" ya se abrió vía Konva onTap; este click abriría el
-            // picker/foco encima y lo cerraría al instante. Ignorarlo.
-            if (Date.now() - textEditTapAt < 400) {
+            // Ola 3c / Ola 22 — click sintético tras un tap de elemento interactivo
+            // del canvas (texto editable, avatar de perfil): la acción ya se abrió
+            // vía Konva onTap; este click abriría el picker/foco encima y lo cerraría
+            // al instante. Ignorarlo.
+            if (Date.now() - canvasActionTapAt < 400) {
               e.preventDefault();
               return;
             }
@@ -643,12 +735,21 @@ function StudioSlotImpl({
             "group relative cursor-pointer overflow-hidden bg-white outline-none",
             "focus-visible:ring-brand-purple focus-visible:ring-2 focus-visible:ring-offset-2",
             "transition-shadow duration-200",
+            // Ola 24 — con bandeja cuadriculada (tarjeta blanca), el Stage va centrado
+            // e inset dentro del footprint del slot.
+            whiteCardTray ? "flex items-center justify-center" : "",
             isSelected ? "ring-brand-turquoise ring-2 ring-offset-2" : "",
             isDropping ? "ring-brand-turquoise ring-2 ring-offset-2" : "",
           ].join(" ")}
           style={{
             width: slotWidth,
             height: slotHeight,
+            // Ola 24 — bandeja cuadriculada gris/blanco bajo la tarjeta BLANCA (patrón
+            // "transparencia" de los editores de foto). Adorno DOM de pantalla: el
+            // snapshot de producción captura solo el canvas Konva → no se hornea.
+            ...(whiteCardTray
+              ? { backgroundImage: WHITE_CARD_CHECKER, backgroundSize: WHITE_CARD_CHECKER_SIZE }
+              : {}),
             // M.3.b.UX.v13 — borderRadius solo aplica si shape rectangle.
             // Para heart/circle, el clipPath define la silueta y borderRadius
             // sería ignorado igualmente.
@@ -672,6 +773,13 @@ function StudioSlotImpl({
                   ? Math.max(2, cornerRadiusPx * scale)
                   : 8,
             clipPath: slotClipPath,
+            // Ola 23 — filete de contraste para tarjetas claras no-blancas (pasteles);
+            // adorno DOM de pantalla: no entra al snapshot de producción.
+            // Ola 24 — para la tarjeta BLANCA la reemplaza la bandeja cuadriculada.
+            outline:
+              cardContrastEdge && !whiteCardTray
+                ? "1px solid rgba(124, 106, 173, 0.35)"
+                : undefined,
             // Pinch-zoom (WCAG 1.4.4): la página NUNCA bloquea el zoom a nivel viewport;
             // solo el canvas INTERACTIVO captura el gesto (touch-action:none) para que el
             // pellizco/arrastre actúe sobre la foto y no dispare zoom/scroll de la página
@@ -704,10 +812,10 @@ function StudioSlotImpl({
           Ola 4 — modo TIRA: sin sombra POR CELDA (separaba las fotos); la sombra
           única de la pieza continua la pone el contenedor del grid (CSS). */}
           <Stage
-            width={slotWidth}
-            height={slotHeight}
-            scaleX={scale}
-            scaleY={scale}
+            width={stageSlotWidth}
+            height={stageSlotHeight}
+            scaleX={stageScale}
+            scaleY={stageScale}
             ref={(s: Konva.Stage | null) => {
               stageRef.current = s;
             }}
@@ -751,6 +859,7 @@ function StudioSlotImpl({
                   year={calendarCard.year}
                   monthIndex0={calendarCard.monthIndex0}
                   layout={calendarCard.layout}
+                  calendarFont={calendarCard.font ?? "fredoka"}
                   templateStageWidth={unitTemplate.stage.width}
                   stageWidth={unitTemplate.stage.width}
                   stageHeight={unitTemplate.stage.height}
@@ -787,6 +896,15 @@ function StudioSlotImpl({
                       frameFullBleed,
                       noBorder,
                       stripPosition,
+                      // Ola 23 — color del hueco de la ventana cuando la foto no la
+                      // cubre (zoom-out/pan): la tarjeta SIN marco, para que el marco
+                      // no "crezca" al alejar la foto (marco constante).
+                      photoBackingHex,
+                      // Ola 22 — el avatar del header (capa profile-photo) abre el
+                      // picker de foto de perfil al tocarlo, directo. Solo cuando el
+                      // padre cablea el flujo (la vista previa del modal no lo hace).
+                      onProfilePhotoEdit: onProfilePhotoEdit ? handleProfilePhotoEdit : undefined,
+                      profilePhotoHint: texts.texto.perfilAvatarHint,
                     },
                   ),
                 )
@@ -928,19 +1046,17 @@ function StudioSlotImpl({
             />
           )}
 
-          {/* Badge top-left: mes (calendario, abreviado) o número de slot. NO tapa la foto. */}
-          {slotState.assetUrl && (
-            <div
-              className="bg-brand-purple/80 absolute top-1.5 left-1.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white shadow-sm"
-              aria-hidden
-            >
-              {slotLabel ? slotLabel.slice(0, 3) : slotState.slotIndex + 1}
-            </div>
-          )}
+          {/* Ola 22 (Lucy 2026-09-08) — YA NO hay badge flotante dentro del slot.
+              Antes el número (y en modo tira / calendario también) flotaba
+              top-left SOBRE la plantilla y tapaba el avatar del chrome de la
+              Polaroid Instagram (que vive en (34,34) r=16). Ahora el número/mes
+              va SIEMPRE en la barra de acciones de ABAJO (chip, fuera del
+              template) — ver el chip al inicio de la action bar. */}
 
           {/* M.3.b.UX.v10 — chip de zoom visible cuando scale != 100% (foto fue
           modificada). Feedback al cliente de cuánto zoom tiene actualmente.
-          Top-right del slot para no chocar con el badge slot # ni con action bar.
+          Top-right del slot para no chocar con la action bar (Ola 22: ya no
+          existe badge flotante # dentro del slot).
           Solo se muestra si fluctúa del default — si está en 100%, no estorba. */}
           {slotState.assetUrl &&
             slotState.photoTransform?.scale &&
@@ -986,6 +1102,36 @@ function StudioSlotImpl({
           }
           style={overlayActions ? undefined : { width: slotWidth }}
         >
+          {/* Identificador del slot — chip al inicio de la barra (Lucy 2026-09-07,
+              extendido Ola 22 2026-09-08 a TODOS los modos). Muestra el número de
+              slot, o el mes abreviado para calendario (slotLabel). Antes el número
+              era un badge absoluto top-left DENTRO del slot (tapaba el avatar del
+              chrome de la Polaroid Instagram) y en modo tira / calendario seguía
+              flotando sobre la plantilla. Acuerdo con Lucy: el identificador vive
+              SIEMPRE en esta barra, FUERA del template — incluido el modo tira
+              (overlayActions), donde la barra flota sobre la foto como unidad. */}
+          {slotState.assetUrl && (
+            <span
+              className="text-brand-purple-dark/70 bg-brand-cream/90 ring-brand-purple/10 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[9px] font-bold ring-1"
+              aria-label={
+                slotLabel ??
+                fillStudioText(texts.lienzo.slotIndicator, {
+                  sustantivo: nounCap,
+                  n: slotState.slotIndex + 1,
+                })
+              }
+              title={
+                slotLabel ??
+                fillStudioText(texts.lienzo.slotIndicator, {
+                  sustantivo: nounCap,
+                  n: slotState.slotIndex + 1,
+                })
+              }
+            >
+              {slotLabel ? slotLabel.slice(0, 3) : slotState.slotIndex + 1}
+            </span>
+          )}
+
           {/* Tamaño físico — chip a la izquierda con orientación explícita.
               En slots angostos se omite: el tamaño ya lo muestra el toolbar.
               En modo tira (overlay) también: estorbaría sobre la foto. */}
@@ -1126,6 +1272,7 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.slotState.slotIndex === next.slotState.slotIndex &&
     prev.slotState.assetUrl === next.slotState.assetUrl &&
     prev.slotState.assetId === next.slotState.assetId &&
+    prev.slotState.profileAssetUrl === next.slotState.profileAssetUrl &&
     prev.slotState.filter === next.slotState.filter &&
     prev.slotState.textOverrides === next.slotState.textOverrides &&
     prev.slotState.photoTransform === next.slotState.photoTransform &&
@@ -1145,7 +1292,8 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.interactiveSlots === next.interactiveSlots &&
     prev.calendarCard?.year === next.calendarCard?.year &&
     prev.calendarCard?.monthIndex0 === next.calendarCard?.monthIndex0 &&
-    prev.calendarCard?.layout === next.calendarCard?.layout
+    prev.calendarCard?.layout === next.calendarCard?.layout &&
+    prev.calendarCard?.font === next.calendarCard?.font
   );
 });
 StudioSlot.displayName = "StudioSlot";
@@ -1196,6 +1344,24 @@ export function renderLayer(
     frameFullBleed?: boolean;
     noBorder?: boolean;
     stripPosition?: import("@/features/personalization/frame-palette").StripPosition | null;
+    /**
+     * Ola 23 (Lucy 2026-09-08) — color de respaldo de la ventana de foto cuando hay
+     * tarjeta de color (frame-card / full-bleed; Ola 24: también Instagram CON
+     * borde): el hueco que deja la foto al alejarla (zoom-out) o moverla se pinta
+     * de este color (la tarjeta SIN marco) en vez del color del marco → el ancho
+     * del marco/canaleta queda CONSTANTE bajo cualquier zoom/pan. La decisión la
+     * toma photoBackingHexFor (frame-palette) en las 3 superficies. null = sin
+     * respaldo (el hueco muestra lo que haya debajo).
+     */
+    photoBackingHex?: string | null;
+    /**
+     * Ola 22 (Lucy 2026-09-08) — tap/click sobre el AVATAR del header del post
+     * (capa `profile-photo`) abre directo el picker de foto de perfil. Sin
+     * callback la capa queda no interactiva (vista previa del modal).
+     */
+    onProfilePhotoEdit?: () => void;
+    /** Tooltip del avatar (copy CMS) — solo se usa cuando onProfilePhotoEdit está set. */
+    profilePhotoHint?: string;
   },
 ) {
   const borderColor = opts?.borderColor ?? null;
@@ -1208,6 +1374,7 @@ export function renderLayer(
   const frameFullBleed = opts?.frameFullBleed ?? false;
   const noBorder = opts?.noBorder ?? false;
   const stripPosition = opts?.stripPosition ?? null;
+  const photoBackingHex = opts?.photoBackingHex ?? null;
   switch (layer.type) {
     case "background":
       return (
@@ -1274,8 +1441,10 @@ export function renderLayer(
       //     con borde → franja UNIFORME de color (simpleCardPhotoRect).
       //  2. Ola 3b resto de plantillas full-bleed: inserta respetando márgenes mayores
       //     (Instagram conserva la geometría de su chrome: sin inset).
-      //  3. Tira photobooth: la ventana viene a sangre vertical (fotos que se tocan);
-      //     el borde exterior lo pone la posición (first/last).
+      //  3. Tira photobooth: la ventana se inserta por posición (stripPhotoRect):
+      //     borde exterior first/last + media canaleta entre fotos (2026-09-08).
+      //     Ola 25 — si el placeholder quedó a sangre total (toggle "Sin borde" de
+      //     la toolbar), la celda va CONTINUA: sin marco exterior ni canaletas.
       let photoRect = {
         x: baseLayer.x,
         y: baseLayer.y,
@@ -1291,7 +1460,9 @@ export function renderLayer(
         photoRect = insetToMinMargin(photoRect, stage, frameBleedMargin(stage));
       }
       if (stripPosition) {
-        photoRect = stripPhotoRect(photoRect, stage, stripPosition);
+        photoRect = stripPhotoRect(photoRect, stage, stripPosition, {
+          borderless: isStripBorderless(photoRect, stage),
+        });
       }
       const effectiveLayer = {
         ...baseLayer,
@@ -1303,6 +1474,7 @@ export function renderLayer(
           key={layer.id}
           layer={effectiveLayer}
           slotState={slotState}
+          backingColor={photoBackingHex}
           onPhotoTransformChange={onPhotoTransformChange}
           onPhotoDragStart={onPhotoDragStart}
           onPhotoDragEnd={onPhotoDragEnd}
@@ -1325,7 +1497,21 @@ export function renderLayer(
       // Ola 4 — contraste AUTOMÁTICO del texto por el fondo efectivo de la tarjeta
       // (generaliza el darkCard de Ola 3: Instagram fondo negro → textos blancos;
       // frame-card oscura → texto claro; el override de color del cliente manda).
-      return renderText(textLayer, stage, override, onTextEdit, false, darkCardBg);
+      // Ola 26 (Lucy 2026-09-09) — Instagram: el default se decide POR CAPA
+      // (igTextFill): usuario/ubicación/likes/título siguen el contraste de la
+      // tarjeta, pero los hashtags SIEMPRE salen azul link IG (legible sobre
+      // tarjeta clara u oscura) — nunca caen al blanco del contraste.
+      // Ola 28 (owner 2026-09-11): en IG el texto por defecto de la plantilla
+      // SE VE (isIg → showTemplateDefault); el resto de plantillas siguen
+      // naciendo vacías (Ola 25).
+      // Ola 29 (owner 2026-09-11, ronda 5 — 1.2.1.A): fuera de IG el default
+      // sale de defaultTextFillOnCard (frame-palette, compartida con producción):
+      // tarjeta rosada/oscura → letra BLANCA; blanca/pastel → el oscuro de la
+      // plantilla ("que visualmente se vea" sobre el color de la tarjeta).
+      const defaultFill = isIg
+        ? igTextFill(textLayer.id, textLayer.fill, darkCardBg)
+        : defaultTextFillOnCard(cardBgHex, textLayer.fill);
+      return renderText(textLayer, stage, override, onTextEdit, false, defaultFill, isIg);
     }
     case "shape":
       return renderShape(layer as never);
@@ -1341,9 +1527,176 @@ export function renderLayer(
           noBorder={isIg && noBorder}
         />
       );
+    case "profile-photo":
+      // Ola 17 (Lucy 2026-09-07) — foto de perfil del header del post de Instagram.
+      // Cubre el avatar placeholder horneado del chrome SVG (mismo centro/radio) con
+      // la foto del cliente recortada a círculo; el anillo de historia queda visible
+      // alrededor. Sin foto elegida no dibuja la imagen → se ve el placeholder del SVG.
+      // Ola 22 (Lucy 2026-09-08) — el círculo ES tappeable: abre directo el picker de
+      // foto de perfil (hit region + anillo turquesa + tooltip, todo `edit-indicator`
+      // → nunca se hornea en el PNG de producción).
+      return (
+        <ProfilePhotoLayerRenderer
+          key={layer.id}
+          layer={layer as ProfilePhotoLayer}
+          profileAssetUrl={slotState.profileAssetUrl ?? null}
+          stageWidth={stage.width}
+          onEdit={opts?.onProfilePhotoEdit}
+          hint={opts?.profilePhotoHint}
+        />
+      );
     default:
       return null;
   }
+}
+
+/**
+ * Ola 17 — Renderer de la capa `profile-photo`. La imagen la aporta el slot
+ * (slotState.profileAssetUrl, subida/elegida con el control "Foto de perfil" del
+ * modal de edición). Recorte circular con clipFunc (ctx.arc) en coords del Group,
+ * igual que el rounded-rect de ImagePlaceholder.
+ *
+ * Ola 22 (Lucy 2026-09-08) — el círculo del avatar ES tappeable: tocarlo abre
+ * directo el picker de foto de perfil (sin pasar por el modal genérico). Hit
+ * region = círculo transparente un poco mayor que el avatar (target cómodo),
+ * con anillo turquesa punteado PERMANENTE (mismo lenguaje que los textos
+ * editables: "esto se puede tocar") que se refuerza en hover + tooltip. Todo el
+ * adorno va marcado `name="edit-indicator"` → NUNCA se hornea en el snapshot de
+ * producción/preview. Funciona también SIN foto elegida (ahí es el uso principal:
+ * elegirla por primera vez) — el placeholder horneado del SVG queda visible.
+ */
+function ProfilePhotoLayerRenderer({
+  layer,
+  profileAssetUrl,
+  stageWidth,
+  onEdit,
+  hint,
+}: {
+  layer: ProfilePhotoLayer;
+  profileAssetUrl: string | null;
+  stageWidth: number;
+  /** Ola 22 — si viene, el avatar abre el picker de foto de perfil al tocarlo. */
+  onEdit?: () => void;
+  /** Tooltip de hover (copy CMS estudio.texto.perfil-avatar-hint). */
+  hint?: string;
+}) {
+  const [image] = useImage(profileAssetUrl ?? "", "anonymous");
+  const [hover, setHover] = useState(false);
+  const interactive = !!onEdit;
+  // Sin foto y sin interactividad no hay NADA que pintar (contrato Ola 17: el
+  // placeholder horneado del SVG se ve intacto y el árbol Konva queda vacío).
+  if ((!profileAssetUrl || !image) && !interactive) return null;
+
+  const d = layer.radius * 2;
+  // Cover dentro del círculo: la foto más chica se agrupa hasta cubrirlo y se
+  // centra (misma matemática cover que el image-placeholder, sin overscan).
+  const scale = image ? Math.max(d / image.width, d / image.height) : 1;
+  const w = image ? image.width * scale : 0;
+  const h = image ? image.height * scale : 0;
+
+  // Tooltip bajo el avatar (el header no tiene aire arriba: el anillo de historia
+  // llega a y≈14). Se clampa al ancho del stage para no cortarse en el borde.
+  const hintText = interactive ? (hint ?? "") : "";
+  const hintFont = 11;
+  const hintW = Math.max(90, Math.min(stageWidth - 8, hintText.length * hintFont * 0.55 + 16));
+  const hintH = hintFont * 1.3 + 8;
+  const hintX = Math.max(4, Math.min(stageWidth - hintW - 4, layer.x - hintW / 2));
+
+  return (
+    <Group x={layer.x - layer.radius} y={layer.y - layer.radius}>
+      {/* Foto del cliente recortada a círculo (Ola 17). Sin foto → solo el hit. */}
+      {profileAssetUrl && image && (
+        <Group
+          clipFunc={(ctx: Konva.Context) => {
+            ctx.beginPath();
+            ctx.arc(layer.radius, layer.radius, layer.radius, 0, Math.PI * 2);
+            ctx.closePath();
+          }}
+          listening={false}
+        >
+          <KonvaImage image={image} x={(d - w) / 2} y={(d - h) / 2} width={w} height={h} />
+        </Group>
+      )}
+      {/* Anillo de affordance PERMANENTE (punteado turquesa, como los textos
+        editables) — refuerzo sólido en hover. `edit-indicator` → no se hornea. */}
+      {interactive && (
+        <Circle
+          name="edit-indicator"
+          x={layer.radius}
+          y={layer.radius}
+          radius={layer.radius + 3.5}
+          stroke="#5DD9D1"
+          strokeWidth={hover ? 2.5 : 1.5}
+          dash={hover ? undefined : [4, 3]}
+          opacity={hover ? 1 : 0.75}
+          listening={false}
+        />
+      )}
+      {/* Hit region: círculo transparente un poco mayor que el avatar. Escucha
+        click/tap SOLO cuando hay callback; preventDefault={false} para no matar
+        el scroll táctil de la página sobre el avatar (mismo criterio que los
+        textos editables). */}
+      {interactive && (
+        <Circle
+          x={layer.radius}
+          y={layer.radius}
+          radius={layer.radius + 8}
+          fill="rgba(0,0,0,0)"
+          preventDefault={false}
+          onMouseEnter={(e) => {
+            setHover(true);
+            const stageNode = e.target.getStage();
+            if (stageNode) stageNode.container().style.cursor = "pointer";
+          }}
+          onMouseLeave={(e) => {
+            setHover(false);
+            const stageNode = e.target.getStage();
+            if (stageNode) stageNode.container().style.cursor = "";
+          }}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            // Mismo anti-doble-panel que los textos: cortar la propagación al
+            // wrapper DOM (que abriría el picker de foto genérico encima).
+            e.evt.stopPropagation();
+            onEdit?.();
+          }}
+          onTap={(e) => {
+            e.cancelBubble = true;
+            e.evt.stopPropagation();
+            onEdit?.();
+          }}
+        />
+      )}
+      {/* Tooltip de hover — hint para descubrir el atajo (solo desktop; en
+        táctil el primer tap ya abre el picker). `edit-indicator` → no se hornea. */}
+      {interactive && hover && hintText && (
+        <Group
+          name="edit-indicator"
+          x={hintX}
+          y={Math.max(4, layer.y + layer.radius + 10)}
+          listening={false}
+        >
+          <Rect
+            width={hintW}
+            height={hintH}
+            fill="rgba(61, 46, 92, 0.92)"
+            cornerRadius={hintH / 2}
+          />
+          <Text
+            text={hintText}
+            x={0}
+            y={4}
+            width={hintW}
+            align="center"
+            fontSize={hintFont}
+            fontStyle="bold"
+            fill="#FFFFFF"
+            listening={false}
+          />
+        </Group>
+      )}
+    </Group>
+  );
 }
 
 type AssetLayerData = {
@@ -1422,22 +1775,60 @@ function renderText(
   // heart/circle). Aplica stroke blanco + shadow para legibilidad sobre
   // cualquier color de fondo.
   onPhoto: boolean = false,
-  // Ola 3 — tarjeta de borde oscura (Polaroid Clásica): el texto por defecto
-  // sale claro (#FFFFFF). Solo aplica si NO hay override de color del cliente.
-  darkCard: boolean = false,
+  // Color de letra por defecto cuando NO hay override de color del cliente.
+  // Lo decide el call-site (renderLayer): contraste con la tarjeta (Ola 3/4;
+  // Ola 26 — en Instagram, por capa vía igTextFill: hashtags siempre azules).
+  // Ausente → el fill de la plantilla (o el morado oscuro de marca).
+  defaultFill?: string,
+  /**
+   * Ola 28 (owner 2026-09-11, 1.2.2.A) — EXCEPCIÓN Instagram a la regla Ola 25
+   * de "la tarjeta nace VACÍA": con la plantilla IG el texto por defecto de la
+   * plantilla SÍ se dibuja (con el color por capa de siempre) mientras el
+   * cliente no escribe el suyo — "actualmente no se ve texto preview (se ve
+   * vacío)". Sin riesgo de imprimir placeholders: los 4 textos requeridos
+   * BLOQUEAN «Vista previa» hasta tener override (Ola 26) y "362 me gusta" es
+   * decorativo (su default se imprime, como siempre se vio en el lienzo).
+   * Las DEMÁS plantillas siguen con la regla Ola 25 (vacío hasta escribir).
+   */
+  showTemplateDefault: boolean = false,
 ) {
   // Combinar layer base + override del slot. Cada campo del override
   // sobrescribe el layer base si está definido.
-  // Ola 4 (Lucy 2026-07-23) — texto OPCIONAL: si la capa es EDITABLE y el cliente no
-  // escribió nada (sin override), el texto base ("Escribe tu mensaje") se dibuja como
-  // GUÍA atenuada con name="edit-indicator" → NUNCA se hornea en el snapshot de
-  // producción/preview (producción tampoco imprime nada sin override: mismo criterio
-  // en renderTextLayer). Con override (incluso ""), manda el override del cliente.
-  const isPlaceholderGuide = layer.editable === true && override?.text === undefined;
-  const finalText = override?.text ?? layer.text;
+  //
+  // REGLA GLOBAL DE PLACEHOLDERS (Ola 4 2026-07-23, reforzada Ola 23 2026-09-08,
+  // endurecida Ola 25 2026-09-09): el texto por defecto de TODA capa editable de
+  // CUALQUIER plantilla ("Escribe tu mensaje", "@tu_usuario", "362 me gusta",
+  // "Bogotá, Colombia"…) es un PLACEHOLDER, nunca contenido de la tarjeta:
+  //   - NADA se dibuja en la tarjeta hasta que el cliente escribe su texto: ni en
+  //     la grilla, ni en el preview del modal, ni en texturas 3D ni en el
+  //     compositado de confirmación. (Ola 23/24 lo atenuaban con itálica +
+  //     subrayado punteado; el dueño validó en STG que aun así se leía como
+  //     texto físico → regla estricta: la tarjeta nace VACÍA.)
+  //   - En la GRILLA (superficie editable) el campo se descubre como ZONA DE
+  //     EDICIÓN vacía: recuadro punteado turquesa + dot, todo name="edit-indicator"
+  //     (adorno de pantalla: el snapshot de producción/preview lo esconde antes de
+  //     toDataURL). La vía principal de edición es la pestaña Texto del modal de
+  //     edición del slot; el input ahí muestra el default como placeholder gris
+  //     (atributo HTML), no como valor precargado.
+  //   - En PRODUCCIÓN (renderTextLayer) una capa editable imprime SOLO el override
+  //     del cliente; sin override.text no se imprime nada.
+  //   - Ojo WYSIWYG: un override SIN texto (ej. solo cambió el color) sigue siendo
+  //     placeholder — la tarjeta queda vacía y no se imprime nada.
+  //   - EXCEPCIÓN (Ola 28, owner 2026-09-11): plantilla INSTAGRAM (showTemplateDefault)
+  //     — el default de la plantilla se dibuja como texto normal (editable, con su
+  //     indicador dashed) en TODAS las superficies Konva (grilla, preview, 3D) y en
+  //     el snapshot de producción. Los requeridos no pueden quedar default al
+  //     finalizar (bloqueo Ola 26); el decorativo ("362 me gusta") imprime su default.
+  // Las capas NO editables (texto fijo decorativo de la plantilla) sí imprimen su
+  // texto base: no son placeholder de nada (no hay forma de editarlas).
+  const customerText =
+    typeof override?.text === "string" && override.text.trim() !== "" ? override.text : undefined;
+  const showDefault = showTemplateDefault && customerText === undefined;
+  const isPlaceholderGuide = layer.editable === true && customerText === undefined && !showDefault;
+  const finalText = customerText ?? layer.text;
   const fontSize = override?.fontSize ?? layer.fontSize ?? 48;
   const fontFamily = override?.fontFamily ?? layer.fontFamily ?? "Fredoka, Inter, sans-serif";
-  const fill = override?.fill ?? (darkCard ? "#FFFFFF" : (layer.fill ?? "#3D2E5C"));
+  const fill = override?.fill ?? defaultFill ?? layer.fill ?? "#3D2E5C";
   const fontStyle = override?.fontWeight ?? layer.fontWeight;
   const align = layer.align ?? "center";
 
@@ -1461,20 +1852,84 @@ function renderText(
   // alrededor del texto que indica "esto se puede editar".
   // El cálculo es aproximado (text.length × fontSize × 0.55) — Konva no
   // expone bounding box exacto sin medirlo. Funciona OK para textos cortos.
+  // Ola 25 — para la ZONA VACÍA (placeholder) el ancho se estima con el texto
+  // base de la plantilla: la zona queda donde aparecerá el texto al escribirlo.
   const textY = layer.y - fontSize / 2;
   const textX = align === "center" ? 0 : layer.x;
-  const estWidth =
-    align === "center" ? stage.width : Math.max(60, finalText.length * fontSize * 0.55);
+  const guideLength = (isPlaceholderGuide ? layer.text : finalText).length;
+  const estWidth = align === "center" ? stage.width : Math.max(60, guideLength * fontSize * 0.55);
   const estHeight = fontSize * 1.2;
   const padding = Math.max(2, fontSize * 0.1);
+
+  // Ola 25 (Lucy 2026-09-09) — PLACEHOLDER (capa editable sin texto del cliente):
+  // la tarjeta NO muestra contenido de texto. En superficies no editables (preview
+  // del modal, texturas 3D, confirmación) no se dibuja NADA. En la grilla solo va
+  // la ZONA DE EDICIÓN vacía (recuadro punteado turquesa + dot + hit invisible que
+  // abre el editor), todo `edit-indicator` → jamás se hornea en el snapshot.
+  if (isPlaceholderGuide) {
+    if (!isEditable) return null;
+    const zone = {
+      x: textX - padding,
+      y: textY - padding,
+      width: estWidth + padding * 2,
+      height: estHeight + padding * 2,
+    };
+    return (
+      <Group key={layer.id} listening={true}>
+        <Rect
+          name="edit-indicator"
+          {...zone}
+          fill="rgba(93, 217, 209, 0.10)"
+          stroke="#5DD9D1"
+          strokeWidth={1.5}
+          dash={[5, 3]}
+          cornerRadius={4}
+          opacity={0.85}
+          listening={false}
+        />
+        <Circle
+          name="edit-indicator"
+          x={zone.x + zone.width - 2}
+          y={zone.y + 2}
+          radius={3.5}
+          fill="#5DD9D1"
+          stroke="#FFFFFF"
+          strokeWidth={1.5}
+          listening={false}
+        />
+        {/* Hit invisible sobre la zona vacía: tocarla abre el editor de texto.
+            Mismo patrón anti-doble-panel que el texto real (stopPropagation al DOM;
+            el wrapper filtra el click sintético con canvasActionTapAt). */}
+        <Rect
+          {...zone}
+          fill="rgba(0, 0, 0, 0)"
+          preventDefault={false}
+          onMouseEnter={(e) => {
+            const stageNode = e.target.getStage();
+            if (stageNode) stageNode.container().style.cursor = "text";
+          }}
+          onMouseLeave={(e) => {
+            const stageNode = e.target.getStage();
+            if (stageNode) stageNode.container().style.cursor = "";
+          }}
+          onClick={(e) => {
+            e.cancelBubble = true;
+            e.evt.stopPropagation();
+            onTextEdit?.(layer.id);
+          }}
+          onTap={(e) => {
+            e.cancelBubble = true;
+            e.evt.stopPropagation();
+            onTextEdit?.(layer.id);
+          }}
+        />
+      </Group>
+    );
+  }
 
   const textNode = (
     <Text
       key={`${layer.id}-text`}
-      // Ola 4 — la GUÍA del placeholder (sin override) se marca "edit-indicator":
-      // no se hornea en el snapshot de producción/preview (vacío = no se imprime nada).
-      name={isPlaceholderGuide ? "edit-indicator" : undefined}
-      opacity={isPlaceholderGuide ? 0.45 : 1}
       x={textX}
       y={textY}
       width={align === "center" ? stage.width : undefined}
@@ -1523,8 +1978,11 @@ function renderText(
     />
   );
 
-  // Si NO es editable, solo render del text.
-  if (!isEditable) return textNode;
+  // Si NO es editable: render del text plano (texto fijo de la plantilla o texto
+  // del cliente en superficies sin edición, como el preview del modal).
+  if (!isEditable) {
+    return textNode;
+  }
 
   // Si editable, envolver con un Group y agregar Rect dashed visible ALREDEDOR
   // que indica al cliente "este texto se puede editar" + dot turquoise en corner
@@ -1747,6 +2205,7 @@ export function getShapeBoundingBox(
 function ImagePlaceholder({
   layer,
   slotState,
+  backingColor,
   onPhotoTransformChange,
   onPhotoDragStart,
   onPhotoDragEnd,
@@ -1754,6 +2213,17 @@ function ImagePlaceholder({
 }: {
   layer: ImagePlaceholderLayer;
   slotState: SlotState;
+  /**
+   * Ola 23 (Lucy 2026-09-08) — color del RESPALDO de la ventana de foto. Con tarjeta
+   * de color (frame-card/full-bleed; Ola 24: también Instagram CON borde) el hueco
+   * que deja la foto al alejarla (zoom-out < 100% del cover) o al hacer pan se pinta
+   * de este color (la tarjeta SIN marco) en vez de dejar ver el borderColor de
+   * debajo — el marco/canal queda de ancho CONSTANTE bajo cualquier zoom/pan ("el
+   * marco es marco, no fondo"). Es CONTENIDO del diseño (no edit-indicator): SÍ se
+   * hornea en el snapshot de producción, igual que el fillRect equivalente de
+   * production-render-canvas (ambos deciden con photoBackingHexFor).
+   */
+  backingColor?: string | null;
   /** M.3.b.UX.v9+ — callback parcial: drag manda offsetX/Y, zoom manda scale.
    * `undefined` = drag deshabilitado (modo vista previa). */
   onPhotoTransformChange?: (
@@ -1924,6 +2394,20 @@ function ImagePlaceholder({
           ? { clipFunc: groupClipFunc }
           : { clip: { x: 0, y: 0, width: layer.width, height: layer.height } })}
       >
+        {/* Ola 23 — respaldo de la ventana: si la foto no la cubre (zoom-out/pan),
+          el hueco sale del color de la tarjeta SIN marco, no del color del marco
+          → el marco no "crece" al alejar la foto. Misma regla en producción. */}
+        {backingColor && (
+          <Rect
+            x={0}
+            y={0}
+            width={layer.width}
+            height={layer.height}
+            fill={backingColor}
+            listening={false}
+            preventDefault={false}
+          />
+        )}
         <KonvaImage
           ref={(n) => {
             imageNodeRef.current = n;

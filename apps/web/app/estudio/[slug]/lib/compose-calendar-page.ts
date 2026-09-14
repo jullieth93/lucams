@@ -8,12 +8,16 @@
  */
 
 import { drawCalendarPage } from "@/features/personalization/calendar-draw";
+import type { CalendarFontKey } from "@/features/personalization/schemas";
 import {
   CALENDAR_PAGE,
   scalePhotoTransformToPage,
   type CalendarLayoutKey,
 } from "@/features/personalization/calendar-layout";
-import { ensureBrandCanvasFontsLoaded } from "./calendar-card-preview";
+import {
+  ensureBrandCanvasFontsLoaded,
+  ensureCalendarTitleFontLoaded,
+} from "./calendar-card-preview";
 
 // Escala del preview: 1080×1520 → ~810×1140. Nítido como textura 3D sin ser pesado.
 const PREVIEW_SCALE = 0.75;
@@ -96,19 +100,26 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 
 /**
  * Compone las páginas (en el orden dado) → dataURLs PNG. Espera a que las fuentes de marca estén
- * listas para que el título/días salgan con Fredoka/Inter (no un fallback).
+ * listas para que el título/días salgan con la tipografía elegida (no un fallback).
  * `layout` = composición de la tarjeta declarada por la plantilla ("classic" default | "split").
+ * `calendarFont` = key del selector de tipo de letra del título/mes (default "fredoka",
+ * retrocompatible con diseños guardados antes del selector — Lucy 2026-09-07).
  */
 export async function composeCalendarPages(
   pages: CalendarPageInput[],
   year: number,
   layout?: CalendarLayoutKey,
+  calendarFont?: CalendarFontKey,
 ): Promise<string[]> {
   // Asegurar fuentes de marca cargadas antes de dibujar texto en el canvas. Ola 4
   // (Lucy 2026-07-23): next/font hashea los nombres de familia → se resuelven via las
   // CSS vars --font-fredoka/--font-inter y se pasan explícitas al dibujo (antes el
   // literal "Fredoka" no existía en el document y la grilla salía con fuente genérica).
   const brandFonts = await ensureBrandCanvasFontsLoaded();
+  // Título del mes según el selector: la familia real vive en la CSS var de la key
+  // (--font-fredoka/--font-inter/--font-caveat). Si no resuelve, drawCalendarPage cae
+  // al literal "Fredoka" (default) — nunca a un string libre del cliente.
+  const titleFamily = await ensureCalendarTitleFontLoaded(calendarFont ?? "fredoka");
 
   const S = PREVIEW_SCALE;
   const out: string[] = [];
@@ -135,7 +146,7 @@ export async function composeCalendarPages(
       year,
       monthIndex0: p.monthIndex0,
       fontsOk: true,
-      fonts: brandFonts ?? undefined,
+      fonts: { title: titleFamily ?? brandFonts?.title, body: brandFonts?.body },
       layout,
     });
     out.push(canvas.toDataURL("image/png"));

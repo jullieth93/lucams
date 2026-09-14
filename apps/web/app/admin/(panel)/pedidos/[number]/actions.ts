@@ -10,6 +10,7 @@ import { recordAdminAction } from "@/lib/admin-audit";
 import { addBlockedIdentity, BlocklistError } from "@/features/anti-abuse/blocklist-service";
 import { processPaidOrder } from "@/features/orders/saga";
 import { refundOrder, transitionOrder } from "@/features/orders/service";
+import { sealManuallyResolvedWebhookEvents } from "@/features/orders/webhook-seal";
 import { orderStatusLabel } from "@/features/orders/order-status-display";
 import { sendOrderShipped, sendOrderDelivered, sendOrderCancelled } from "@/features/orders/emails";
 import { orderHasUnmoderatedDesigns } from "@/features/moderation/service";
@@ -34,12 +35,37 @@ export async function retryShipmentAction(
 
   try {
     const result = await processPaidOrder({ orderId });
+    // N-13 — resolución manual exitosa (guía generada o ya existente con tracking):
+    // sella los WebhookEvent SIN procesar relacionados con esta orden (WOMPI por
+    // wompiTransactionId, AVEONLINE por trackingNumber) para que la alerta
+    // webhooks_stuck se auto-limpie. Si el claim lo tiene otro proceso
+    // (already_processed SIN tracking) aún no hay resolución → no se sella nada.
+    // Best-effort: un fallo acá NO revierte la guía ya creada ni ensucia el éxito.
+    let sealedWebhooks = 0;
+    if (
+      result.status === "ok" ||
+      (result.status === "already_processed" && result.trackingNumber)
+    ) {
+      try {
+        sealedWebhooks = (await sealManuallyResolvedWebhookEvents(orderId)).sealed;
+      } catch (sealErr) {
+        logger.error({
+          event: "admin.order.retry_shipment.seal_webhooks_fail",
+          orderId,
+          err: sealErr instanceof Error ? sealErr.message : String(sealErr),
+        });
+      }
+    }
     await recordAdminAction({
       actorId: session.admin.id,
       action: "order.retry_shipment",
       entityType: "Order",
       entityId: orderId,
-      metadata: { sagaStatus: result.status, trackingNumber: result.trackingNumber ?? null },
+      metadata: {
+        sagaStatus: result.status,
+        trackingNumber: result.trackingNumber ?? null,
+        sealedWebhooks,
+      },
     });
     revalidatePath("/admin/pedidos");
     revalidatePath(`/admin/pedidos/[number]`, "page");
@@ -133,9 +159,15 @@ export async function transitionOrderAction(
 
 /**
  * F2 — Reembolso desde admin. Marca la orden REFUNDED (revierte stock + audita
- * quién/cuándo/motivo/monto) y dispara el email al cliente. El DINERO en Wompi se
- * mueve MANUALMENTE: el mensaje de éxito se lo recuerda al admin. Solo aplica a
- * órdenes PAID o DELIVERED (la máquina de estados lo valida).
+ * quién/cuándo/motivo/monto) y dispara el email al cliente.
+ *
+ * N-17 — El DINERO en Wompi se mueve MANUALMENTE y la confirmación es
+ * OBLIGATORIA Y PREVIA: el formulario exige marcar "Confirmo que el dinero ya
+ * fue devuelto al cliente en Wompi" (checkbox bloqueante, `moneyReturned`).
+ * Sin el checkbox, la action RECHAZA sin tocar la orden. La confirmación se
+ * persiste (Order.refundMoneyConfirmedAt/By) y va en la auditoría; el email
+ * refund-issued solo sale tras ella (ver refundOrder en service.ts). Solo
+ * aplica a órdenes PAID o DELIVERED (la máquina de estados lo valida).
  */
 export async function refundOrderAction(
   _prev: { error?: string; success?: string; reauthRequired?: boolean } | null,
@@ -158,17 +190,34 @@ export async function refundOrderAction(
   const reason = String(formData.get("reason") ?? "").trim();
   if (!orderId) return { error: "Falta orderId" };
 
+  // N-17 — sin la confirmación explícita del dinero, NO se reembolsa. El checkbox
+  // del form manda "on" (aceptamos "true" por robustez ante callers programáticos).
+  const moneyReturned = String(formData.get("moneyReturned") ?? "");
+  if (moneyReturned !== "on" && moneyReturned !== "true") {
+    return {
+      error:
+        "Debes confirmar que el dinero ya fue devuelto al cliente antes de registrar el reembolso (checkbox del formulario).",
+    };
+  }
+
   try {
     const res = await refundOrder(orderId, {
       adminId: session.admin.id,
       reason: reason || undefined,
+      moneyReturnedConfirmed: true,
     });
     await recordAdminAction({
       actorId: session.admin.id,
       action: "order.refund",
       entityType: "Order",
       entityId: orderId,
-      metadata: { status: res.status, amount: res.amount, reason: reason || null },
+      metadata: {
+        status: res.status,
+        amount: res.amount,
+        reason: reason || null,
+        // N-17 — quién confirmó la devolución del dinero (evidencia en auditoría).
+        moneyReturnedConfirmedBy: session.admin.id,
+      },
     });
     revalidatePath("/admin/pedidos");
     revalidatePath(`/admin/pedidos/[number]`, "page");
@@ -176,7 +225,7 @@ export async function refundOrderAction(
       return { success: "La orden ya estaba reembolsada." };
     }
     return {
-      success: `Reembolso de ${formatCOP(res.amount)} registrado. Recuerda emitir el dinero en Wompi manualmente.`,
+      success: `Reembolso de ${formatCOP(res.amount)} registrado con tu confirmación de dinero devuelto.`,
     };
   } catch (err) {
     logger.warn({

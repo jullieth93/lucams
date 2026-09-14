@@ -17,8 +17,10 @@ export default async function DisenosAdminPage() {
   // re-ejecuta en navegaciones soft, así que un admin degradado a mitad de
   // sesión conservaría acceso de lectura sin este check. Mismo set que ./actions.ts.
   await requireRole(ADMIN_ROLE_SETS.MANAGER_UP);
-  // tagOptions = productos activos que declaran galleryTag (fuente única: la BD).
-  // El selector del client y la validación del upload leen de la misma lista.
+  // tagOptions = TODO producto activo con superficie de foto en el Estudio (fuente
+  // única: la BD). Tag = galleryTag explícito o, sin él, el slug (default-on
+  // 2026-09-09 — mismo fallback que aplica el Estudio). El selector del client y
+  // la validación del upload leen de la misma lista.
   const [items, tagOptions] = await Promise.all([listGalleryAdmin(), listGalleryTagOptions()]);
   return (
     <div className="mx-auto max-w-4xl">
@@ -26,8 +28,8 @@ export default async function DisenosAdminPage() {
         <h1 className="text-brand-purple-dark font-display text-2xl">Diseños prediseñados</h1>
         <p className="text-brand-muted mt-1 text-sm">
           Imágenes de diseño listas que el cliente puede aplicar con un toque en el editor (en vez
-          de subir su propia foto). Agrúpalas por producto. Ideal para “Separadores para Libros”:
-          sube tus diseños y aparecen en el editor para elegir o combinar con foto propia.
+          de subir su propia foto). Agrúpalas por producto: cada producto personalizable tiene su
+          grupo y lo que subas aparece en su editor para elegir o combinar con foto propia.
         </p>
       </header>
       <GalleryManager items={items} tagOptions={tagOptions} />

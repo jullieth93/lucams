@@ -26,10 +26,19 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { parseVariantAttributes } from "@/features/products/variant-schemas";
+import {
+  readPhotoPackDesignInfo,
+  resolvePhotoPackVariant,
+} from "@/features/products/photo-pack-resolve";
 import { logger } from "@/lib/logger";
 import { designIdentity } from "./design-identity";
 import { describePieces, pieceKindFor } from "./line-preview";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
+import {
+  designUnitPriceMultiplier,
+  letterSetUnitCount,
+} from "@/features/personalization/design-units";
+import { letterSetBorderNote } from "@/features/personalization/letter-set-border";
 
 export type CartLineItem = {
   itemId: string;
@@ -52,6 +61,11 @@ export type CartLineItem = {
    * `null` cuando no hay nada verdadero que decir.
    */
   pieceSummary: string | null;
+  /**
+   * "Con borde" / "Sin borde" para sets de letras (opción de diseño persistida en el Design,
+   * Lucy 2026-09-05). `null` para cualquier otro producto.
+   */
+  borderNote: string | null;
 };
 
 export type CartDetail = {
@@ -126,6 +140,10 @@ const cartItemsInclude = {
           id: true,
           previewUrl: true,
           status: true,
+          // Metadata del diseño: opciones de diseño que se muestran en el resumen (p. ej.
+          // "Sin borde" de los sets de letras, Lucy 2026-09-05). El PNG las refleja; el texto
+          // evita que el cliente tenga que deducirlas de la imagen.
+          metadata: true,
         },
       },
     },
@@ -189,15 +207,48 @@ type RawCart = Awaited<ReturnType<typeof ensureCart>>;
  *
  * La VARIANTE manda sobre el producto: "Set 12 unidades" y "Set 6 unidades" son el mismo producto
  * con distinto número de piezas y distinto tamaño, y lo que el cliente compró es la variante.
+ *
+ * Multi-unidad (2026-09-09): cuando el diseño declara sus unidades (metadata.unitCount,
+ * escrito al finalizar), la frase las describe ("2 tiras de 3 fotos", "2 calendarios
+ * de 12 páginas", "2 sets de 27 fichas") — la línea ES el diseño completo.
  */
 function describeLine(item: RawCart["items"][number]): string | null {
   const attrs = parseVariantAttributes(item.variant.attributes);
   const schema = item.variant.product.personalizationSchema;
   const delProducto = schema ? parsePhotoProductConfig(schema) : null;
+  const kind = pieceKindFor(item.variant.product.personalizationKind, item.variant.name);
+  const meta = (item.design?.metadata ?? null) as {
+    unitCount?: unknown;
+    surface?: unknown;
+    letters?: unknown;
+  } | null;
+  const units = typeof meta?.unitCount === "number" && meta.unitCount > 1 ? meta.unitCount : null;
+  // Sustantivo de la unidad cuando el diseño trae varias. Sets de letras: "set";
+  // las piezas son las fichas del alfabeto (metadata.letters).
+  const isLetterSet = meta?.surface === "letterset";
+  const unitNoun =
+    units !== null
+      ? kind === "calendar"
+        ? { singular: "calendario", plural: "calendarios" }
+        : kind === "strips"
+          ? { singular: "tira", plural: "tiras" }
+          : isLetterSet
+            ? { singular: "set", plural: "sets" }
+            : undefined
+      : undefined;
+  const letterCount = Array.isArray(meta?.letters) ? meta.letters.length : 0;
+  const pieces =
+    kind === "strips" || kind === "calendar"
+      ? (attrs.photoSlots ?? delProducto?.photoSlots ?? null)
+      : isLetterSet && letterCount > 0
+        ? letterCount
+        : (attrs.photoSlots ?? delProducto?.photoSlots ?? null);
   return describePieces({
-    kind: pieceKindFor(item.variant.product.personalizationKind, item.variant.name),
-    pieces: attrs.photoSlots ?? delProducto?.photoSlots ?? null,
+    kind,
+    pieces,
     sizeCm: attrs.sizeCm ?? (schema as { sizeCm?: string } | null)?.sizeCm ?? null,
+    units: unitNoun ? units : null,
+    unitNoun,
   });
 }
 
@@ -224,6 +275,7 @@ function toDetail(cart: RawCart): CartDetail {
       designId: i.designId,
       designPreviewUrl: i.design?.previewUrl ?? null,
       pieceSummary: describeLine(i),
+      borderNote: letterSetBorderNote(i.design?.metadata),
     }));
   return {
     cartId: cart.id,
@@ -352,6 +404,12 @@ export async function addPersonalizedToCart(opts: {
    * (`/estudio/[slug]?variant=X`). Si se omite, fallback a la primera
    * variant activa del producto (mantiene compat con productos sin variants).
    *
+   * EXCEPCIÓN (Lucy 2026-09-05): los packs de fotoimanes eligen el N de fotos
+   * DENTRO del Estudio y el flujo NO lo manda — el servidor lo resuelve desde
+   * el canvasData del diseño (photoSlots + sizeCm). Así el precio cobrado
+   * siempre corresponde a las fotos que el cliente diseñó, aunque el variantId
+   * que fijó la PDP quedara desactualizado.
+   *
    * Si se pasa, se valida que pertenece a design.product.id (anti-tamper).
    */
   variantId?: string;
@@ -374,13 +432,24 @@ export async function addPersonalizedToCart(opts: {
       status: true,
       // ADR-057 — metadata.surface + metadata.letters: para Nombre (precio por ficha) el
       // unitPrice = nº de letras × precio-por-ficha. Para el resto, es el precio de variante.
+      // Multi-unidad (2026-09-09) — también metadata.unitCount (sets de letras ×N).
       metadata: true,
+      // Lucy 2026-09-05 — packs de fotoimanes: el canvasData trae photoSlots/sizeCm
+      // (y magnet desde 2026-09-08, "¿Con imán?") elegidos por el cliente → resolución
+      // server-side de la variante cuando el caller no manda variantId
+      // (features/products/photo-pack-resolve.ts).
+      // Multi-unidad — también unitCount/unitSlots/slotCount: el multiplicador de
+      // precio se DERIVA del canvas (design-units.ts), nunca se confía en el cliente.
+      canvasData: true,
       product: {
         select: {
           id: true,
           basePrice: true,
           isActive: true,
           deletedAt: true,
+          // Multi-unidad — facesPerUnit para el multiplicador (separadores: 2 caras;
+          // verdad del producto, no del canvas).
+          personalizationSchema: true,
           variants: {
             where: { deletedAt: null },
             select: { id: true, price: true, sku: true, attributes: true, stock: true },
@@ -413,9 +482,26 @@ export async function addPersonalizedToCart(opts: {
       throw new CartError("NO_DEFAULT_VARIANT");
     }
   } else {
-    // Compat: primera variant activa (orden por createdAt). Para productos
-    // mono-variant queda igual; para multi-variant es elección arbitraria.
-    variant = design.product.variants[0];
+    // Lucy 2026-09-05 — packs de fotoimanes: el N de fotos, el tamaño y (desde
+    // 2026-09-08) el "¿Con imán?" viajan en el canvasData guardado del diseño.
+    // El cliente NO manda variantId para estos packs: el servidor resuelve la
+    // variante exacta (precio + stock SIEMPRE server-side). Si el diseño no
+    // declara photoSlots (legacy / otros kinds), se mantiene el fallback
+    // histórico: primera variante activa.
+    const packInfo = readPhotoPackDesignInfo(design.canvasData);
+    if (packInfo) {
+      variant = resolvePhotoPackVariant(design.product.variants, packInfo) ?? undefined;
+      if (!variant) {
+        // El catálogo ya no reproduce este diseño (Lucy pausó esa combinación
+        // de fotos/tamaño). Error claro: sin variante exacta no hay precio
+        // que cobrar — nunca se inventa uno de otra variante.
+        throw new CartError("NO_DEFAULT_VARIANT");
+      }
+    } else {
+      // Compat: primera variant activa (orden por createdAt). Para productos
+      // mono-variant queda igual; para multi-variant es elección arbitraria.
+      variant = design.product.variants[0];
+    }
   }
   if (!variant) throw new CartError("NO_DEFAULT_VARIANT");
   // Fase 1 (stock por variante): misma regla que addProductToCart — la variante
@@ -444,6 +530,16 @@ export async function addPersonalizedToCart(opts: {
     const letterCount = Math.min(40, Math.max(1, letters.length));
     unitPrice = perUnitPrice * letterCount;
   }
+  // Modelo MULTI-UNIDAD (owner 2026-09-09): el diseño CONTIENE N unidades y la
+  // línea es UNA (qty=1) → el unitPrice es variante × multiplicador. El
+  // multiplicador se DERIVA del canvas guardado (slotCount vs lo que cubre la
+  // variante — design-units.ts) y de metadata.unitCount validado al crear
+  // (sets de letras): nunca de un multiplicador que mande el cliente.
+  // Diseños legacy/packs (la variante ya cubre el pack) → 1, precio intacto.
+  const facesPerUnit =
+    parsePhotoProductConfig(design.product.personalizationSchema).facesPerUnit ?? 1;
+  unitPrice *= designUnitPriceMultiplier(design.canvasData, facesPerUnit);
+  unitPrice *= letterSetUnitCount(design.metadata);
   const cart = await ensureCart(opts.sessionId, opts.customerId);
 
   // Edición desde el carrito: el diseño original se clonó a este (opts.designId). Reemplazamos EN

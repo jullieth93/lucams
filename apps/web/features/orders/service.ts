@@ -22,8 +22,13 @@ import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { canTransition, type ShippingAddressInput } from "./schemas";
 import { assertStockAvailable, revertStockForOrder } from "./stock";
-import { OrderAmountTooLargeError } from "./errors";
+import {
+  OrderAmountTooLargeError,
+  OrderUnavailableItemsError,
+  RefundMoneyNotConfirmedError,
+} from "./errors";
 import { fitsMoneyInt4 } from "@/lib/money";
+import { invalidateCatalogListings } from "@/lib/catalog";
 import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/redemption";
 import { computeShippingAddressKey } from "@/features/checkout/address-key";
 import { hashBearerToken } from "@/lib/token-hash";
@@ -231,7 +236,15 @@ async function createOrderFromCartTx(
               // sku lo usa el snapshot de items (líneas de la Order). El
               // PRECIO NO se re-lee acá a propósito: se cobra el unitPrice
               // que el cliente vio en el carrito (ver features/cart/service.ts).
-              select: { id: true, sku: true },
+              // isActive/deletedAt (variante + producto): filtro de
+              // disponibilidad N-01 — ver el guard justo abajo.
+              select: {
+                id: true,
+                sku: true,
+                isActive: true,
+                deletedAt: true,
+                product: { select: { isActive: true, deletedAt: true } },
+              },
             },
             // ADR-070 (pieza #1) — snapshot autocontenido del diseño en el pedido.
             design: {
@@ -244,6 +257,39 @@ async function createOrderFromCartTx(
     if (!cart) throw new Error(`Cart no encontrado: ${input.cartId}`);
     if (cart.items.length === 0) {
       throw new Error("Cart vacío — no se puede crear order");
+    }
+
+    // N-01 — Filtro de disponibilidad EN LA TRANSACCIÓN (antes vivía solo en el
+    // DTO del carrito, features/cart/service.ts, y ni siquiera cubría la
+    // variante): un producto/variante archivado entre "ver el carrito" y
+    // "confirmar el pago" NO debe llegar jamás a la Order — sin este guard se
+    // cobraba un total con un item que el negocio ya retiró de la venta.
+    //
+    // Decisión (documentada en errors.ts): RECHAZAR con OrderUnavailableItemsError,
+    // NO excluir-y-recalcular. Excluir en silencio cobraría un total DISTINTO al
+    // exhibido sin re-confirmación — prohibido (mismo criterio que el cupón
+    // invalidado en carrera, F1/#8). El checkout traduce el error y manda al
+    // cliente a /carrito (donde el item retirado ya no aparece) a re-confirmar.
+    // Aplica también al camino idempotente/reconciliación: una orden PENDING
+    // existente tampoco puede reutilizarse si su cart hoy tiene un item retirado.
+    const unavailableItems = cart.items.filter(
+      (it) =>
+        !(
+          it.variant.isActive &&
+          it.variant.deletedAt === null &&
+          it.variant.product.isActive &&
+          it.variant.product.deletedAt === null
+        ),
+    );
+    if (unavailableItems.length > 0) {
+      logger.warn({
+        event: "order.create.unavailable_items",
+        cartId: input.cartId,
+        dropped: unavailableItems.map((it) => ({ variantId: it.variantId, sku: it.variant.sku })),
+      });
+      throw new OrderUnavailableItemsError(
+        unavailableItems.map((it) => ({ variantId: it.variantId, sku: it.variant.sku })),
+      );
     }
 
     // P0-020 (Lucy 2026-06-26) — Idempotency real por cartId.
@@ -568,7 +614,7 @@ export async function transitionOrder(
     to === "DELIVERED" ? { deliveredAt: new Date() } : {};
 
   if (needsRevert) {
-    return prisma.$transaction(async (tx) => {
+    const updated = await prisma.$transaction(async (tx) => {
       // #11 (TOCTOU) — gatear el UPDATE por el estado LEÍDO: si otro proceso cambió el estado entre
       // la lectura (arriba, fuera de la tx) y este punto (p.ej. el webhook Wompi commiteó PAID justo
       // cuando Lucy cancelaba), NO pisamos el estado nuevo ni revertimos stock/cupón sobre él.
@@ -623,6 +669,11 @@ export async function transitionOrder(
       }
       return updated;
     });
+    // N-11 (CF-17) — post-commit: la reversa de stock (o el cambio de estado con
+    // stock comprometido) actualiza los listados cacheados con tag "catalog".
+    // Best-effort (no permitido en render RSC del fallback /checkout/gracias).
+    invalidateCatalogListings();
+    return updated;
   }
 
   // #11 (TOCTOU) — mismo guard atómico para la rama sin revert.
@@ -650,14 +701,24 @@ export async function transitionOrder(
  * F2 — Reembolso desde admin. Valida que la orden sea reembolsable (PAID o
  * DELIVERED → REFUNDED según la máquina de estados), transiciona a REFUNDED
  * (revierte stock atómicamente vía transitionOrder), registra la auditoría
- * (quién/cuándo/motivo/monto = total) y envía el email de confirmación. El
- * movimiento de dinero en Wompi es MANUAL (contraentrega + operación manual de
- * la pasarela). Idempotente: si ya está REFUNDED, no-op.
+ * (quién/cuándo/motivo/monto = total) y envía el email de confirmación.
+ *
+ * N-17 — El movimiento de dinero en Wompi es MANUAL. Antes el sistema solo
+ * *recordaba* moverlo en el mensaje de éxito; ahora la confirmación es
+ * OBLIGATORIA y previa: `moneyReturnedConfirmed: true` (el checkbox bloqueante
+ * del formulario admin). Sin ella lanza RefundMoneyNotConfirmedError y la orden
+ * NO se toca. La confirmación queda persistida (refundMoneyConfirmedAt/By) en
+ * el mismo UPDATE de la transición, y el email `refund-issued` solo se envía
+ * DESPUÉS — nunca se le avisa al cliente un reembolso cuyo dinero nadie
+ * confirmó haber devuelto. Idempotente: si ya está REFUNDED, no-op.
  */
 export async function refundOrder(
   orderId: string,
-  opts: { adminId: string; reason?: string },
+  opts: { adminId: string; reason?: string; moneyReturnedConfirmed?: boolean },
 ): Promise<{ status: "refunded" | "already_refunded"; orderNumber: string; amount: number }> {
+  // N-17 — defensa en profundidad a nivel servicio (la action ya validó el
+  // checkbox; las Server Actions son endpoints POST invocables directo).
+  if (opts.moneyReturnedConfirmed !== true) throw new RefundMoneyNotConfirmedError();
   const order = await prisma.order.findFirst({
     where: { id: orderId, deletedAt: null },
     select: { id: true, number: true, status: true, total: true },
@@ -677,10 +738,14 @@ export async function refundOrder(
       refundedBy: opts.adminId,
       refundReason: opts.reason?.trim() || null,
       refundAmount: order.total,
+      // N-17 — evidencia persistida de la confirmación del dinero (checkbox).
+      refundMoneyConfirmedAt: new Date(),
+      refundMoneyConfirmedBy: opts.adminId,
     },
   });
 
   // Email best-effort (sendOrderRefunded ya captura sus errores internamente).
+  // N-17: solo se envía tras la confirmación del dinero (nunca llegó acá sin ella).
   await sendOrderRefunded(orderId);
 
   logger.info({

@@ -499,23 +499,29 @@ export async function externalFetch(url: string, init: RequestInit & { timeoutMs
 
 ADR-017 (2026-05-09) decidió `pgmq` + `pg_cron` con consumidores Edge Function. En la implementación se pivotó a un modelo más simple, 100% Supabase + la misma app Next.js: **pg_cron dispara `net.http_get` (pg_net) contra endpoints `/api/cron/*`**, con el secreto en el header `x-cron-secret` leído en runtime desde Supabase Vault (nunca en el SQL ni en la URL). **No hay colas pgmq ni Edge Functions en uso** (pgmq queda habilitada como extensión pero sin colas activas — verificado 2026-09-03). No se usa Vercel Cron (mandato #11).
 
-- **Agendamiento versionado en migraciones** (idempotentes, con guard limpio si faltan las extensiones): `supabase/migrations/00000000000015_pgcron_http_jobs.sql` (6 jobs), `00000000000016_pgcron_purge_event_logs.sql`, `00000000000021_pgcron_cms_publish.sql`, `00000000000023_pgcron_cron_vercel_bypass.sql` (re-agenda los 8 con bypass opcional del SSO de Vercel vía secreto `cron_vercel_bypass` en Vault, solo ambientes con protección).
+- **Agendamiento versionado en migraciones** (idempotentes, con guard limpio si faltan las extensiones): `supabase/migrations/00000000000015_pgcron_http_jobs.sql` (6 jobs), `00000000000016_pgcron_purge_event_logs.sql`, `00000000000021_pgcron_cms_publish.sql`, `00000000000023_pgcron_cron_vercel_bypass.sql` (re-agenda los 8 originales con bypass opcional del SSO de Vercel vía secreto `cron_vercel_bypass` en Vault, solo ambientes con protección) y `00000000000032_pgcron_expire_pending_orders.sql` (agenda `lucams-expire-pending-orders`, ya con el bypass opcional; NO toca los demás jobs). La `00000000000033_drop_stock_reservation_cleanup_job.sql` des-agenda el cleanup SQL de `StockReservation` (tabla dropeada en la misma remediación).
 - **Secretos en Vault (acción humana por ambiente):** `cron_base_url` y `cron_secret` (`select vault.create_secret(...)` — ver docs/OPERATIONS.md). Sin ellos los jobs quedan agendados pero fallan en runtime.
 - **Auth del endpoint:** cada route compara el header `x-cron-secret` contra `CRON_SECRET` (env) con `timingSafeEqual`; 401 si falta o no coincide. No se acepta `?secret=` (queda en logs).
 - **Observabilidad:** cada cron registra heartbeat (`recordCronHeartbeat` — dead-man switch supervisado por `/api/health/crons`), captura errores en `ErrorLog` y notifica el FALLO al centro de notificaciones admin (`notifyCronFailure`). Los éxitos no se registran (anti-ruido).
 
-### Jobs activos (8)
+### Jobs activos (9 HTTP + 1 SQL puro)
 
-| Job pg_cron                    | Endpoint                          | Schedule (UTC) | Qué hace                                                 |
-| ------------------------------ | --------------------------------- | -------------- | -------------------------------------------------------- |
-| `lucams-alerts`                | `/api/cron/alerts`                | `*/5 * * * *`  | Evalúa alertas operativas (webhooks stuck, SLO, errores) |
-| `lucams-daily-summary`         | `/api/cron/daily-summary`         | `0 13 * * *`   | Resumen diario del negocio (8am Colombia)                |
-| `lucams-review-request`        | `/api/cron/review-request`        | `0 17 * * *`   | Emails de solicitud de reseña (~7 días post-entrega)     |
-| `lucams-cart-recovery`         | `/api/cron/cart-recovery`         | `0 * * * *`    | Recordatorio de carritos abandonados ≥4h (un solo envío) |
-| `lucams-back-in-stock`         | `/api/cron/back-in-stock`         | `*/30 * * * *` | Avisos "avísame cuando vuelva"                           |
-| `lucams-purge-anon-designs`    | `/api/cron/purge-anon-designs`    | `0 8 * * *`    | Purga de diseños anónimos vencidos (retención)           |
-| `lucams-purge-event-logs`      | `/api/cron/purge-event-logs`      | `0 3 * * *`    | Purga diaria de EventLog (retención)                     |
-| `lucams-cms-publish-scheduled` | `/api/cron/cms-publish-scheduled` | `*/5 * * * *`  | Publicación programada de contenido CMS                  |
+| Job pg_cron                    | Endpoint                          | Schedule (UTC) | Qué hace                                                                           |
+| ------------------------------ | --------------------------------- | -------------- | ---------------------------------------------------------------------------------- |
+| `lucams-alerts`                | `/api/cron/alerts`                | `*/5 * * * *`  | Evalúa alertas operativas (webhooks stuck, SLO, errores, bounce rate, backup)      |
+| `lucams-daily-summary`         | `/api/cron/daily-summary`         | `0 13 * * *`   | Resumen diario del negocio (8am Colombia)                                          |
+| `lucams-review-request`        | `/api/cron/review-request`        | `0 17 * * *`   | Emails de solicitud de reseña (~7 días post-entrega)                               |
+| `lucams-cart-recovery`         | `/api/cron/cart-recovery`         | `0 * * * *`    | Recordatorio de carritos abandonados ≥4h (un solo envío)                           |
+| `lucams-back-in-stock`         | `/api/cron/back-in-stock`         | `*/30 * * * *` | Avisos "avísame cuando vuelva"                                                     |
+| `lucams-purge-anon-designs`    | `/api/cron/purge-anon-designs`    | `0 8 * * *`    | Purga de diseños anónimos vencidos (retención)                                     |
+| `lucams-purge-event-logs`      | `/api/cron/purge-event-logs`      | `0 3 * * *`    | Purga diaria de EventLog (retención)                                               |
+| `lucams-cms-publish-scheduled` | `/api/cron/cms-publish-scheduled` | `*/5 * * * *`  | Publicación programada de contenido CMS                                            |
+| `lucams-expire-pending-orders` | `/api/cron/expire-pending-orders` | `23 * * * *`   | Auto-cancela pedidos Wompi en PENDING_PAYMENT > 24h (N-12, migración 032)          |
+| `rate_limit_cleanup` (SQL)     | — (SQL puro en DB)                | `*/15 * * * *` | Borra buckets de rate limit > 1 día (migración 012; es el único job SQL que queda) |
+
+> Fuera de pg_cron: el **backup diario a R2** corre en GitHub Actions (`backup.yml`) y reporta su
+> éxito con `POST /api/cron/backup-heartbeat` tras cada corrida (upsert del latido que leen la
+> regla `backup_stale` y el tile de /admin/observability — ver OBSERVABILITY.md).
 
 ### Variables de entorno
 
@@ -702,7 +708,8 @@ TURNSTILE_SECRET_KEY=xxxxxxxxxxxxxx                   # Server-only, NUNCA al cl
 
 - **Workflow `.github/workflows/backup.yml`:** `pg_dump` DIARIO → bucket R2 (S3 API) vía `apps/web/scripts/backup-db-to-r2.mjs` (`pnpm db:backup`). **Cifrado gpg AES256 con passphrase desde 2026-08-29** (hallazgo A-3 de la auditoría 2026-08-24) — fail-closed: sin `BACKUP_GPG_PASSPHRASE` el backup no corre.
 - **Mirror de Storage (desde 2026-09-04, ADR-086):** el mismo workflow corre el job `backup-storage` (`apps/web/scripts/backup-storage-to-r2.mjs`, `pnpm storage:backup`): tar streaming → gzip → gpg AES256 por bucket (`db-storage/<bucket>/lucams-<UTC>.tar.gz.gpg`), manifiesto con conteos solamente, misma retención (30). Cubre `customer-uploads` (fotos de clientes), `production-assets`, `design-previews`, `cms-media`, `product-images`.
-- **DR drill mensual** (`.github/workflows/dr-drill.yml` + `apps/web/scripts/dr-drill.mjs`): baja el backup más nuevo de R2, lo descifra con gpg y verifica restaurabilidad real (conteos exactos vs filas COPY del dump; colisiones internas Supabase clasificadas por allowlist fail-closed — reparado 2026-09-04 tras la falla del 09-02). El job `drill-storage` prueba la legibilidad del mirror de Storage.
+- **DR drill mensual** (`.github/workflows/dr-drill.yml` + `apps/web/scripts/dr-drill.mjs`): baja el backup más nuevo de R2, lo descifra con gpg y verifica restaurabilidad real (conteos exactos vs filas COPY del dump; colisiones internas Supabase clasificadas por allowlist fail-closed — reparado 2026-09-04 tras la falla del 09-02). **Exige dump fresco ≤36h** (`DRILL_MAX_BACKUP_AGE_HOURS`, N-19b 2026-09-12): restaurar un dump viejo no prueba el backup de hoy. El job `drill-storage` prueba la legibilidad del mirror de Storage.
+- **Latido hacia la app (2026-09-12, N-19a):** tras cada backup exitoso el workflow hace `POST /api/cron/backup-heartbeat` (con `CRON_SECRET`; upsert de `AlertState["backup:last-success"]`). Sin latido en >36h dispara la alerta `backup_stale` y el tile de /admin/observability marca "Sin latido" — ver OBSERVABILITY.md.
 - **Corre en GitHub Actions, NO en Vercel Cron** (mandato #11). Si faltan secrets, el job se salta con warning (gates `HAS_DB`/`HAS_R2`/`storage_configured`).
 - **Secrets (GitHub → Actions):** `BACKUP_DATABASE_URL`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` (`lucams-backups`), `BACKUP_GPG_PASSPHRASE`, y para el mirror de Storage `BACKUP_SUPABASE_URL` + `BACKUP_SUPABASE_SECRET_KEY` (creados 2026-09-04).
 
@@ -712,6 +719,33 @@ TURNSTILE_SECRET_KEY=xxxxxxxxxxxxxx                   # Server-only, NUNCA al cl
 - **`VERCEL_ENV`** es la fuente de "prod real" en los guards (rate-limits, etc.); `NODE_ENV=production` también aplica a previews — no confundir ambas (bug real certificación Bloque A con webhooks Wompi).
 - El webhook de Wompi declara `maxDuration = 60` para contener el presupuesto de la saga (auth Aveonline + `createShipment` 20 s + escrituras).
 - **No se usa Vercel Cron** (ADR-017, §9) ni Vercel KV/Upstash (ADR-016); backups en GitHub Actions (§13).
+
+## 15. Panel `/admin/integraciones` y página pública `/status`
+
+> **Remediación 360° (N-03/CF-03, 2026-09-12):** el panel admin antes mostraba Wompi y Aveonline
+> con un "warn" HARDCODEADO — una caída real era indistinguible de un servicio sano. Hoy consume
+> **probes REALES** vía `apps/web/lib/integration-health.ts`:
+
+- **Wompi** — `probeWompiHealth` (`lib/wompi.ts`): `GET /merchants/{publicKey}` contra la API real.
+- **Aveonline** — `probeAveonlineHealth` (`features/shipping/aveonline.ts`): autentica contra la API real (sin generar guías).
+- **Gemini** — `probeGeminiHealth` (`features/ai/gemini-provider.ts`): listado de modelos (valida que la key funciona).
+- **DB/Storage/Resend** — self-fetch a `/api/health/*` (los healthchecks de siempre).
+- **WhatsApp (wa.me) y Turnstile** — NO tienen probe seguro: se muestran como `unverified` ("Sin verificación remota"), nunca como "Caído" (falsa alarma) ni "Sin configurar" (falso).
+
+Cada sonda corre con try/catch + timeout defensivo (8s): si la sonda misma explota, el card muestra
+fail y la página NUNCA se rompe. Solo se sondea lo configurado (sin credenciales → `not-configured`).
+
+**Semántica de estados** (`AuditHealthState` → `PanelStatus`, misma lectura que el agregador
+`/api/health/all`): `HEALTHY`/`PRODUCTION`/`SANDBOX` → **ok** (SANDBOX es operativo: el ambiente se
+declara aparte con `envLabel`) · `DEGRADED` → **warn** · `DOWN` → **fail** ·
+`NOT_CONFIGURED`/`DISABLED_BY_MODE`/`DISABLED_BY_ENVIRONMENT` → **not-configured** ·
+`UNKNOWN_NOT_PROBED` → **unverified**. Equivalencia con `/api/health/all`: `skipped` ≈ no
+configurado, `warn` ≈ responde pero mal configurado, `fail` ≈ no responde o la sonda explotó.
+
+**`/status` (pública)** refleja los mismos probes reales con el veredicto mínimo de
+`lib/public-status.ts` (estado por servicio, sin detalles internos): chequea `/api/health` (web),
+`/api/health/db`, `/api/health/storage`, `/api/health/resend` y — en modo full — `/api/health/wompi`
+y `/api/health/aveonline`; en modo catálogo los pagos se declaran "Pendiente" y los envíos no se listan.
 
 ---
 

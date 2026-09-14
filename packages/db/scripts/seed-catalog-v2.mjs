@@ -1,6 +1,6 @@
 /*
  * seed-catalog-v2 — Aplica el delta del PLAN_CATALOG_V2 sobre el catálogo
- * existente generado por seed-products.mjs.
+ * existente generado por seed-catalog-canonical.mjs (antes seed-products.mjs).
  *
  * Cambios aplicados (idempotentes, safe re-run):
  *
@@ -18,21 +18,33 @@
  * NO toca: orders existentes, customers, carts, designs.
  * NO pisa: descripciones manuales editadas por Lucy (solo si campo está vacío).
  *
- * Uso (vía Makefile):
+ * N-06 (2026-09-12): DRY-RUN por defecto (`--apply` ejecuta) + env-guard
+ * fail-closed (bloquea PRD/remotos no reconocidos). En dry-run reporta
+ * conteos de lo que crearía/actualizaría sin escribir.
+ *
+ * Uso (vía Makefile y CI — ambos pasan --apply):
  *   make seed-catalog-v2
+ * Directo:
+ *   node scripts/seed-catalog-v2.mjs            # DRY-RUN
+ *   node scripts/seed-catalog-v2.mjs --apply    # aplica
  *
  * Pre-requisito: ejecutar antes `make seed-products` + `make seed-ocasiones`.
  */
 
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
 process.env.DIRECT_URL = stripQuotes(process.env.DIRECT_URL);
 
-const prisma = new PrismaClient();
+// Guarda de ambiente: delta del catálogo v2 — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("seed-catalog-v2.mjs");
 
-console.log("=== seed-catalog-v2 (PLAN_CATALOG_V2 delta) ===\n");
+const prisma = new PrismaClient();
+const APPLY = process.argv.includes("--apply");
+
+console.log(`=== seed-catalog-v2 (PLAN_CATALOG_V2 delta) — ${APPLY ? "APPLY" : "DRY-RUN"} ===\n`);
 
 // ─────────────────────── helpers ───────────────────────
 
@@ -51,16 +63,21 @@ async function upsertCategoryWithParent(slug, name, parentSlug, fields = {}) {
   }
   const existing = await prisma.category.findUnique({ where: { slug } });
   if (existing) {
-    await prisma.category.update({
-      where: { slug },
-      data: { name, parentId, ...fields },
-    });
+    if (APPLY) {
+      await prisma.category.update({
+        where: { slug },
+        data: { name, parentId, ...fields },
+      });
+    }
     return { action: "updated", id: existing.id };
   }
-  const created = await prisma.category.create({
-    data: { slug, name, parentId, ...fields },
-  });
-  return { action: "created", id: created.id };
+  if (APPLY) {
+    const created = await prisma.category.create({
+      data: { slug, name, parentId, ...fields },
+    });
+    return { action: "created", id: created.id };
+  }
+  return { action: "created", id: null };
 }
 
 async function upsertOcasionLink(productSlug, ocasionSlug, rationale) {
@@ -68,20 +85,22 @@ async function upsertOcasionLink(productSlug, ocasionSlug, rationale) {
   if (!product) return false;
   const ocasion = await prisma.ocasionTag.findUnique({ where: { slug: ocasionSlug } });
   if (!ocasion) return false;
-  await prisma.productOcasionTag.upsert({
-    where: {
-      productId_ocasionTagId: {
+  if (APPLY) {
+    await prisma.productOcasionTag.upsert({
+      where: {
+        productId_ocasionTagId: {
+          productId: product.id,
+          ocasionTagId: ocasion.id,
+        },
+      },
+      update: { rationale },
+      create: {
         productId: product.id,
         ocasionTagId: ocasion.id,
+        rationale,
       },
-    },
-    update: { rationale },
-    create: {
-      productId: product.id,
-      ocasionTagId: ocasion.id,
-      rationale,
-    },
-  });
+    });
+  }
   return true;
 }
 
@@ -334,7 +353,7 @@ const SUBCATEGORIES = [
 
 // ─────────────────────── 3. DEFAULT OCASIÓN LINKS POR CATEGORÍA ───────────────────────
 // Lucy puede afinar después desde /admin/ocasiones.
-// El slug de producto debe matchear los del seed-products.mjs existente.
+// El slug de producto debe matchear los de seed-catalog-canonical.mjs.
 
 const PRODUCT_OCASION_LINKS = [
   // ─── Fotoimanes (cumpleaños + para-mi-mismo + matrimonio para Corazón) ───
@@ -908,15 +927,17 @@ const DEFAULT_PHYSICAL_SPECS_BY_KIND = {
   },
 };
 
+// Despacho real MÁX. 2 días hábiles (Lucy, 2026-09-11) — si un kind tarda más,
+// se sube por producto en el admin, no acá. NONE = stock listo (decisión 4.8).
 const DEFAULT_PRODUCTION_DAYS_BY_KIND = {
-  PHOTO_PACK: 3,
-  EVENT_FAVOR: 5,
-  CALENDAR_PHOTO_MONTH: 4,
-  CALENDAR_PHOTO_HERO: 4,
-  BUSINESS_LOGO: 4,
-  CUSTOM_DECOR: 5,
-  PHOTO_GRID: 3,
-  TEXT_ONLY: 3,
+  PHOTO_PACK: 2,
+  EVENT_FAVOR: 2,
+  CALENDAR_PHOTO_MONTH: 2,
+  CALENDAR_PHOTO_HERO: 2,
+  BUSINESS_LOGO: 2,
+  CUSTOM_DECOR: 2,
+  PHOTO_GRID: 2,
+  TEXT_ONLY: 2,
   NONE: 1, // decisión 4.8 — Coleccionables/Juegos ya stock
 };
 
@@ -978,7 +999,9 @@ async function step3_PlaceholderProducts() {
       updated++;
       continue;
     }
-    await prisma.product.create({
+    created++;
+    if (APPLY) {
+      await prisma.product.create({
       data: {
         slug: p.slug,
         sku: p.sku,
@@ -991,7 +1014,7 @@ async function step3_PlaceholderProducts() {
         isPersonalizable: p.personalizationKind !== "NONE",
         premadeSurcharge: p.premadeSurcharge || 0,
         images: [UNSPLASH("1607082348824-0a96f2a4b9da")], // placeholder Unsplash
-        productionDays: DEFAULT_PRODUCTION_DAYS_BY_KIND[p.personalizationKind] || 3,
+        productionDays: DEFAULT_PRODUCTION_DAYS_BY_KIND[p.personalizationKind] || 2,
         physicalSpecs:
           DEFAULT_PHYSICAL_SPECS_BY_KIND[p.personalizationKind] ||
           DEFAULT_PHYSICAL_SPECS_BY_KIND.NONE,
@@ -1010,9 +1033,11 @@ async function step3_PlaceholderProducts() {
         },
       },
     });
-    created++;
+    }
   }
-  console.log(`  ✓ ${created} placeholders creados, ${updated} ya existentes.\n`);
+  console.log(
+    `  ✓ ${created} placeholders ${APPLY ? "creados" : "a crear"}, ${updated} ya existentes.\n`,
+  );
 }
 
 async function step4_EnrichExistingProducts() {
@@ -1046,12 +1071,14 @@ async function step4_EnrichExistingProducts() {
       updates.idealFor = defaults[product.personalizationKind] || ["regalo"];
     }
     if (Object.keys(updates).length > 0) {
-      await prisma.product.update({ where: { id: product.id }, data: updates });
       enriched++;
+      if (APPLY) {
+        await prisma.product.update({ where: { id: product.id }, data: updates });
+      }
     }
   }
   console.log(
-    `  ✓ ${enriched} productos enriquecidos con defaults (skip si ya tenían contenido manual).\n`,
+    `  ✓ ${enriched} productos ${APPLY ? "enriquecidos" : "a enriquecer"} con defaults (skip si ya tenían contenido manual).\n`,
   );
 }
 
@@ -1083,11 +1110,15 @@ async function step6_MoveSeparadoresProduct() {
     return;
   }
   if (product.categoryId !== frases.id) {
-    await prisma.product.update({
-      where: { id: product.id },
-      data: { categoryId: frases.id },
-    });
-    console.log("  ✓ pack-separadores-libros movido a Separadores › Frases.\n");
+    if (APPLY) {
+      await prisma.product.update({
+        where: { id: product.id },
+        data: { categoryId: frases.id },
+      });
+    }
+    console.log(
+      `  ✓ pack-separadores-libros ${APPLY ? "movido a" : "se movería a"} Separadores › Frases.\n`,
+    );
   } else {
     console.log("  - pack-separadores-libros ya está en Separadores › Frases.\n");
   }
@@ -1117,7 +1148,11 @@ async function main() {
   console.log(`  Ocasiones:               ${ocasiones}`);
   console.log(`  Links Producto↔Ocasión:  ${links}`);
   console.log("");
-  console.log("✅ seed-catalog-v2 completado.");
+  if (!APPLY) {
+    console.log("DRY-RUN (sin cambios). Para ejecutar: node scripts/seed-catalog-v2.mjs --apply");
+  } else {
+    console.log("✅ seed-catalog-v2 completado.");
+  }
 }
 
 main()

@@ -6,7 +6,7 @@
  *     (1-100), tipos PERCENT/FIXED/FREE_SHIPPING, código único.
  *   - Ventanas de vigencia en listCoupons (active vs inactive: validFrom/validTo
  *     + isActive).
- *   - Métricas usedCount/maxUses/totalDiscounted/uniqueCustomers.
+ *   - Detalle con usos (getCoupon — reader de la página de edición).
  *   - Transiciones de estado (pause/resume/archive) y soft-delete.
  *
  * Requiere DATABASE_URL (corre vía `dotenv -e .env.local -- vitest`). Sin ella
@@ -34,7 +34,6 @@ import {
   archiveCoupon,
   createCoupon,
   getCoupon,
-  getCouponMetrics,
   listCoupons,
   pauseCoupon,
   resumeCoupon,
@@ -379,6 +378,28 @@ describe.skipIf(!hasDb)("coupons/service — integración DB (PLAN_CATALOG_V2 3.
       expect(rows.map((r) => r.id)).not.toContain(c.id);
     });
 
+    it("status=archived lista SOLO archivados (vista separada, nunca mezclados)", async () => {
+      const kept = await createCoupon(baseInput({ code: `${RUN}-ARCHVIEW-KEEP` }), ACTOR);
+      const gone = await createCoupon(baseInput({ code: `${RUN}-ARCHVIEW-GONE` }), ACTOR);
+      await archiveCoupon(gone.id, ACTOR);
+
+      const rows = await listCoupons({ status: "archived", q: `${RUN}-ARCHVIEW` });
+      const ids = rows.map((r) => r.id);
+      expect(ids).toContain(gone.id);
+      expect(ids).not.toContain(kept.id);
+      // Toda fila devuelta es archivada de verdad (deletedAt set).
+      expect(rows.every((r) => r.deletedAt instanceof Date)).toBe(true);
+    });
+
+    it("los archivados NO se mezclan en all/active/inactive", async () => {
+      const c = await createCoupon(baseInput({ code: `${RUN}-ARCH-NOMIX` }), ACTOR);
+      await archiveCoupon(c.id, ACTOR);
+      for (const status of ["all", "active", "inactive"] as const) {
+        const rows = await listCoupons({ status, q: `${RUN}-ARCH-NOMIX` });
+        expect(rows.map((r) => r.id)).not.toContain(c.id);
+      }
+    });
+
     it("updateCoupon modifica campos y setea updatedBy", async () => {
       const c = await createCoupon(baseInput({ code: `${RUN}-UPD`, value: 10 }), ACTOR);
       const updated = await updateCoupon(
@@ -405,100 +426,6 @@ describe.skipIf(!hasDb)("coupons/service — integración DB (PLAN_CATALOG_V2 3.
     it("devuelve null para un id inexistente", async () => {
       const found = await getCoupon("ckxxxxxxxxxxxxxxxxxxxxxxx");
       expect(found).toBeNull();
-    });
-  });
-
-  // ───────────────────────── getCouponMetrics ─────────────────────────
-
-  describe("getCouponMetrics — usedCount / maxUses / totalDiscounted / uniqueCustomers", () => {
-    it("cupón sin usos: usedCount=0, totalDiscounted=0, uniqueCustomers=0", async () => {
-      const c = await createCoupon(baseInput({ code: `${RUN}-MTR-EMPTY`, maxUses: 50 }), ACTOR);
-      const m = await getCouponMetrics(c.id);
-      expect(m.usedCount).toBe(0);
-      expect(m.maxUses).toBe(50);
-      expect(m.totalDiscounted).toBe(0);
-      expect(m.uniqueCustomers).toBe(0);
-    });
-
-    it("agrega totalDiscounted (suma de amount) y cuenta clientes distintos", async () => {
-      const c = await createCoupon(baseInput({ code: `${RUN}-MTR-USAGE`, maxUses: 10 }), ACTOR);
-
-      // Dos clientes distintos (supabaseUserId y referralCode son @unique).
-      const cust1 = await prisma.customer.create({
-        data: {
-          email: `${RUN}-c1@lucams.test`.toLowerCase(),
-          firstName: "Cli",
-          lastName: "Uno",
-          supabaseUserId: `${RUN}-sub1`,
-          referralCode: `${RUN}-ref1`,
-        },
-      });
-      const cust2 = await prisma.customer.create({
-        data: {
-          email: `${RUN}-c2@lucams.test`.toLowerCase(),
-          firstName: "Cli",
-          lastName: "Dos",
-          supabaseUserId: `${RUN}-sub2`,
-          referralCode: `${RUN}-ref2`,
-        },
-      });
-
-      // Tres orders sintéticas (orderId es @unique en CouponUsage).
-      const mkOrder = (n: number, customerId: string) =>
-        prisma.order.create({
-          data: {
-            number: `LCM-${RUN}-${n}`,
-            email: `${RUN}-o${n}@lucams.test`.toLowerCase(),
-            phone: "3000000000",
-            shippingAddress: {},
-            subtotal: 100_000,
-            shipping: 0,
-            total: 100_000,
-            paymentMethod: "WOMPI",
-            status: "PAID",
-            customerId,
-            couponId: c.id,
-          },
-          select: { id: true },
-        });
-
-      const o1 = await mkOrder(1, cust1.id);
-      const o2 = await mkOrder(2, cust1.id); // mismo cliente → no suma único
-      const o3 = await mkOrder(3, cust2.id);
-
-      await prisma.couponUsage.createMany({
-        data: [
-          { couponId: c.id, customerId: cust1.id, orderId: o1.id, amount: 10_000 },
-          { couponId: c.id, customerId: cust1.id, orderId: o2.id, amount: 25_000 },
-          { couponId: c.id, customerId: cust2.id, orderId: o3.id, amount: 5_000 },
-        ],
-      });
-
-      // Mantener usedCount coherente con los 3 usos.
-      await prisma.coupon.update({
-        where: { id: c.id },
-        data: { usedCount: 3 },
-      });
-
-      const m = await getCouponMetrics(c.id);
-      expect(m.usedCount).toBe(3);
-      expect(m.maxUses).toBe(10);
-      expect(m.totalDiscounted).toBe(40_000); // 10k + 25k + 5k
-      expect(m.uniqueCustomers).toBe(2); // cust1 (x2) + cust2
-    }, 30000);
-
-    it("maxUses=null se refleja como null en métricas (uso ilimitado)", async () => {
-      const c = await createCoupon(baseInput({ code: `${RUN}-MTR-UNLIM`, maxUses: null }), ACTOR);
-      const m = await getCouponMetrics(c.id);
-      expect(m.maxUses).toBeNull();
-    });
-
-    it("id inexistente: devuelve defaults (usedCount=0, maxUses=null)", async () => {
-      const m = await getCouponMetrics("ckxxxxxxxxxxxxxxxxxxxxxxx");
-      expect(m.usedCount).toBe(0);
-      expect(m.maxUses).toBeNull();
-      expect(m.totalDiscounted).toBe(0);
-      expect(m.uniqueCustomers).toBe(0);
     });
   });
 

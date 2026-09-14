@@ -43,10 +43,18 @@ import {
   selectableVariants,
   parseVariantAttributes,
   PDP_HIDDEN_DIMENSION_KEYS,
+  isPhotoPackCatalog,
+  photoPackDistinctSizes,
+  photoPackMinPrice,
+  PDP_DIMENSION_LABEL_OVERRIDES,
+  PDP_PACK_PLUS_COPIES_SLUGS,
+  PDP_QUANTITY_CHIP_DIMS,
+  conImanDefaultVariant,
 } from "@/features/products/variant-schemas";
 import { NamePricePicker } from "./name-price-picker";
 import { CopiesQtyInput } from "./copies-qty-input";
 import { buildProductJsonLd } from "./product-jsonld";
+import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import {
   getStorefrontProductBySlug,
   listRelatedProducts,
@@ -102,16 +110,41 @@ export default async function ProductoDetallePage({
   // "Default" vacía) para que galería/precio coincidan con el chip resaltado por defecto.
   const requestedVariantId = typeof sp.variant === "string" ? sp.variant : undefined;
   const selectable = selectableVariants(product.variants);
+  // Regla 2026-09-08b — packs de fotoimanes: la PDP elige "Unidades" (pack size)
+  // → la variante fija el precio EXACTO ("Desde" solo antes de elegir).
+  const isPhotoPack = isPhotoPackCatalog(product.personalizationKind, selectable);
+  const packSizes = isPhotoPack ? photoPackDistinctSizes(selectable) : [];
+  const packMinPrice = isPhotoPack ? photoPackMinPrice(selectable, product.basePrice) : null;
   // UX selección guiada (Lucy 2026-08-12): SIN preselección cuando hay varias
-  // opciones — el cliente elige cada dimensión a propósito (antes la primera
-  // variante quedaba morada por defecto y el resto del selector se evaluaba
-  // contra una elección que el cliente no hizo). Con UNA sola variante se
-  // auto-selecciona (no hay nada que elegir). El deep-link ?variant= manda.
+  // opciones — el cliente elige cada dimensión a propósito. EXCEPCIONES con
+  // default claro (regla 2026-09-08b):
+  //   - ¿Con imán?: si TODAS las variantes difieren solo en `magnet`, se
+  //     preselecciona la de Con imán (default del catálogo).
+  //   - Pack de UN solo tamaño (polaroid): la única elección es "Unidades"
+  //     (stepper 1..N) — sin preselección el valor 1 sería inalcanzable (el
+  //     stepper arranca mostrando 1 pero el − nunca selecciona variante) y el
+  //     CTA quedaría bloqueado. Se preselecciona la variante de N mínimo.
+  // Con UNA sola variante se auto-selecciona (no hay nada que elegir). El
+  // deep-link ?variant= manda sobre todo.
   const selectedVariant =
     selectable.find((v) => v.id === requestedVariantId) ??
-    (selectable.length === 1 ? (selectable[0] ?? null) : null);
+    (selectable.length === 1
+      ? (selectable[0] ?? null)
+      : (conImanDefaultVariant(selectable) ??
+        (isPhotoPack && packSizes.length <= 1
+          ? selectable.reduce<(typeof selectable)[number] | null>((min, v) => {
+              const n = parseVariantAttributes(v.attributes).photoSlots ?? Number.MAX_SAFE_INTEGER;
+              const minN = min
+                ? (parseVariantAttributes(min.attributes).photoSlots ?? Number.MAX_SAFE_INTEGER)
+                : Number.MAX_SAFE_INTEGER;
+              return n < minN ? v : min;
+            }, null)
+          : null)));
+  const showFromPrice = isPhotoPack && !selectedVariant;
   // Precio final: variant.price override o basePrice
-  const displayPrice = selectedVariant?.price ?? product.basePrice;
+  const displayPrice =
+    selectedVariant?.price ??
+    (isPhotoPack && packMinPrice != null ? packMinPrice : product.basePrice);
   // H12 (auditoría v3) — ids para las acciones reactivas a la URL (CTA Estudio + variantId del
   // carrito), que reaccionan al selector SIN esperar el re-render del RSC.
   const variantIds = selectable.map((v) => v.id);
@@ -135,7 +168,7 @@ export default async function ProductoDetallePage({
   // vive DENTRO del Estudio (no duplicamos "Esto recibes" en la ficha — Lucy 2026-07-12).
   const letterSet = (product.personalizationSchema as { letterSet?: string } | null)?.letterSet;
   const isLetterSetProduct = letterSet === "full" || letterSet === "vowels";
-  // Nombre Personalizado: precio POR FICHA → selector de cantidad en la ficha.
+  // Nombre Personalizado: precio POR FICHA → selector de letras en la ficha.
   // Se deriva del CATÁLOGO de variantes (no de la selección): con selección
   // guiada la página abre sin variante elegida (selectedAttrs vacío) y el
   // producto por-ficha debe seguir mostrando su NamePricePicker.
@@ -147,6 +180,23 @@ export default async function ProductoDetallePage({
   // CTA genérico: no todos los productos son imanes (separadores, fichas, sets)
   // → "Personalizar producto" sirve para todo el catálogo.
   const ctaNoun = "producto";
+  // Modelo multi-unidad (owner 2026-09-09): tope de UNIDADES A DISEÑAR del stepper
+  // "Unidades" de la PDP. El Estudio capa el diseño en 50 slots (Zod) → calendario
+  // 4 sets de 12 tarjetas; tiras floor(50/fotos-por-tira máx del catálogo); sets de
+  // letras 10 láminas. Los packs variables no usan este stepper (su "Unidades" es
+  // pack size del VariantSelector) y la compra directa queda en 99 (qty clásico).
+  const photoSlotsForCap = Math.max(
+    selectedAttrs.photoSlots ?? 0,
+    ...selectable.map((v) => parseVariantAttributes(v.attributes).photoSlots ?? 0),
+    parsePhotoProductConfig(product.personalizationSchema).photoSlots,
+    1,
+  );
+  const maxDesignUnits = isLetterSetProduct
+    ? 10
+    : product.personalizationKind === "CALENDAR_PHOTO_MONTH" ||
+        PDP_PACK_PLUS_COPIES_SLUGS.has(product.slug)
+      ? Math.max(1, Math.floor(50 / photoSlotsForCap))
+      : 99;
   // Etapa 1 (modo catálogo): el strip de confianza NO promete pago en línea ni
   // envío calculado — la compra se cierra por WhatsApp tras la cotización.
   const catalog = isCatalogMode();
@@ -304,6 +354,12 @@ export default async function ProductoDetallePage({
                   </>
                 ) : (
                   <>
+                    {/* Regla 2026-09-08b — packs: la PDP elige "Unidades" (pack
+                        size) → la variante elegida fija el precio EXACTO; "Desde"
+                        solo aparece antes de elegir (sin variante seleccionada). */}
+                    {showFromPrice && (
+                      <span className="text-brand-muted text-lg font-semibold">Desde</span>
+                    )}
                     <span className="text-brand-purple-dark text-3xl font-bold tabular-nums">
                       {formatCOP(displayPrice)}
                     </span>
@@ -336,10 +392,28 @@ export default async function ProductoDetallePage({
                       ficha: se eligen como plantilla dentro del Estudio. */}
                   {selectable.length > 0 && (
                     <VariantSelector
-                      productBasePrice={product.basePrice}
+                      // Lucy 2026-09-05 — packs: el fallback del card "Precio" es el
+                      // mínimo del pack (consistente con el "Desde $X" del header),
+                      // no el basePrice (desactualizado en varios packs).
+                      productBasePrice={
+                        isPhotoPack && packMinPrice != null ? packMinPrice : product.basePrice
+                      }
                       variants={selectable}
                       perTile={isNamePerTile}
                       hiddenDimensions={PDP_HIDDEN_DIMENSION_KEYS[product.slug]}
+                      // Regla 2026-09-08b — label "Unidades" del pack size en toda
+                      // PDP; la clave que lo transporta varía por familia
+                      // (separadores: quantity; polaroid/cuadrados: photoSlots).
+                      // Excepción tiras (2026-09-09): photoSlots → "Fotos por tira"
+                      // y "Unidades" es el stepper de copias de abajo.
+                      dimensionLabels={PDP_DIMENSION_LABEL_OVERRIDES[product.slug]}
+                      // (2026-09-09, owner) — excepción al stepper universal de
+                      // pack size: la COMPOSICIÓN de los híbridos se queda en
+                      // chips (tiras: "Fotos por tira" 3/4); su stepper
+                      // "Unidades" es el de copias (CopiesQtyInput, abajo).
+                      quantityStepperExclusions={PDP_QUANTITY_CHIP_DIMS[product.slug]}
+                      // Packs: dimensión única de Tamaño como chips, no lista por variante.
+                      singleDimAsChips={isPhotoPack}
                     />
                   )}
 
@@ -352,33 +426,57 @@ export default async function ProductoDetallePage({
                         <BackInStockButton productId={product.id} defaultEmail={customerEmail} />
                       </div>
                     ) : isNamePerTile ? (
-                      // Nombre Personalizado: precio POR FICHA → selector de cantidad + CTA al Estudio.
-                      <NamePricePicker
-                        slug={product.slug}
-                        perTilePrice={displayPrice}
-                        min={nameMin}
-                        max={nameMax}
-                        ctaNoun={ctaNoun}
-                      />
+                      // Nombre Personalizado: precio POR FICHA → selector de letras + CTA al
+                      // Estudio. Modelo multi-unidad (2026-09-09): también el stepper
+                      // "Unidades" (N nombres a diseñar, cada uno con su texto y colores);
+                      // viaja al Estudio como ?copies=N en el link del NamePricePicker.
+                      // Las letras NO son cantidad de compra (son el largo del nombre a
+                      // precio por ficha) → no colisionan.
+                      <>
+                        <CopiesQtyInput max={maxDesignUnits} />
+                        <NamePricePicker
+                          slug={product.slug}
+                          perTilePrice={displayPrice}
+                          min={nameMin}
+                          max={nameMax}
+                          ctaNoun={ctaNoun}
+                        />
+                      </>
                     ) : requiresPersonalization || isLetterSetProduct ? (
                       // CTA primaria al Estudio, reactiva a la variante del selector (H12).
-                      // Lucy 2026-09-03 — el stepper de COPIAS también acá (antes solo en
-                      // compra directa): la PDP fija la cantidad y el Estudio la recibe
-                      // como ?copies=N (pre-carga del stepper "Copias" de la modal de
-                      // confirmación — misma fuente de verdad, el Context del buy-box).
-                      // isNamePerTile NO lo lleva: su "cantidad" son las letras del
-                      // NamePricePicker (precio por ficha), otro concepto.
+                      // Modelo multi-unidad (2026-09-09 — owner, regla general):
+                      //   - Composición FIJA (calendario, sets de letras): el stepper
+                      //     "Unidades" acá son las N unidades A DISEÑAR → viaja como
+                      //     ?copies=N y el Estudio abre con N unidades (cada una
+                      //     editable; la Vista previa las muestra todas; el carrito
+                      //     recibe 1 línea con el diseño completo, qty 1).
+                      //   - Tamaño VARIABLE (packs de fotoimanes/separadores): el
+                      //     pack size ya se eligió arriba como dimensión "Unidades" del
+                      //     VariantSelector → SIN stepper acá. El CTA exige la variante
+                      //     completa ("variant") y el Estudio abre con ese N vía el
+                      //     merge de la variante sobre el schema (?variant=).
+                      //   - HÍBRIDO (tiras — PDP_PACK_PLUS_COPIES_SLUGS): AMBOS:
+                      //     "Fotos por tira" (composición, en el VariantSelector) +
+                      //     "Unidades" (tiras a diseñar, stepper acá) → el Estudio
+                      //     abre con N tiras de M fotos (?variant= + ?copies=N).
                       <>
-                        <CopiesQtyInput />
-                        <EstudioCtaLink slug={product.slug} ctaNoun={ctaNoun} />
+                        {(!isPhotoPack || PDP_PACK_PLUS_COPIES_SLUGS.has(product.slug)) && (
+                          <CopiesQtyInput max={maxDesignUnits} />
+                        )}
+                        <EstudioCtaLink
+                          slug={product.slug}
+                          ctaNoun={ctaNoun}
+                          requiredSelection="variant"
+                        />
                       </>
                     ) : (
                       <form action={addToCartAction}>
                         <input type="hidden" name="slug" value={product.slug} />
-                        {/* Copias (CartItem.qty 1..99): stepper − / + con hidden input.
-                          Esta rama (compra directa) nunca coincide con el stepper de pack
-                          del VariantSelector, que es de productos personalizados. */}
-                        <CopiesQtyInput />
+                        {/* Compra directa (sin personalización): el stepper "Unidades"
+                          fija CartItem.qty (unidades idénticas, qty clásico 1..99)
+                          vía su input oculto. El cliente puede ajustar después en
+                          el carrito (QtyControls). */}
+                        <CopiesQtyInput hint="Copias idénticas del mismo producto" />
                         <input type="hidden" name="returnTo" value={`/producto/${product.slug}`} />
                         {/* ADR-057 — variante elegida en el selector (H12: sync vía Context). */}
                         <CartVariantIdInput />

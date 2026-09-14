@@ -13,10 +13,16 @@
  * Archiva los productos viejos (abecedario-magnetico-espanol/-ingles/-magnetico).
  * Idempotente: upsert por slug/sku. En updates NO pisa el precio (respeta el admin).
  *
+ * N-06 (2026-09-12): env-guard fail-closed (bloquea PRD/remotos no reconocidos).
+ *
  * Uso: DATABASE_URL=$DIRECT_URL node packages/db/scripts/restructure-abecedario.mjs
  */
 
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+
+// Guarda de ambiente: reestructura productos (upsert + archivado) — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("restructure-abecedario.mjs");
 
 const prisma = new PrismaClient();
 

@@ -3,7 +3,7 @@
  *
  * Usa useActionState para mostrar errores. Maneja attributes con
  * helpers granulares (size, photoSlots, quantity, shape, finish,
- * color, aspectRatio).
+ * color, aspectRatio, magnet — ¿Con imán? desde 2026-09-08b).
  */
 
 "use client";
@@ -50,8 +50,13 @@ export function VariantForm({
   const [quantity, setQuantity] = useState(attrs.quantity?.toString() ?? "");
   const [sizeCm, setSizeCm] = useState(attrs.sizeCm ?? "");
   const [color, setColor] = useState(attrs.color ?? "");
+  // ¿Con imán? (2026-09-08b): select controlado — default del valor actual para
+  // que guardar sin tocarlo NO pise la dimensión (es clave gestionada del form).
+  const [magnet, setMagnet] = useState(
+    attrs.magnet === true ? "true" : attrs.magnet === false ? "false" : "",
+  );
 
-  const suggestedName = buildSuggestedName({ photoSlots, quantity, sizeCm, color });
+  const suggestedName = buildSuggestedName({ photoSlots, quantity, sizeCm, color, magnet });
 
   return (
     <form action={formAction} className="space-y-4">
@@ -180,6 +185,33 @@ export function VariantForm({
             onChange={setColor}
             placeholder="Ej: rosa, azul…"
           />
+          {/* ¿Con imán? (2026-09-08b — TODOS los productos ofrecen las dos
+              opciones): select Sí/No. El precio de la opción se define con el
+              campo "Precio de esta opción" de arriba (cada variante tiene el
+              suyo). Vacío = la opción no declara imantado (catálogo viejo). */}
+          <div>
+            <label
+              htmlFor="attr_magnet"
+              className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+            >
+              ¿Lleva imán?
+            </label>
+            <select
+              id="attr_magnet"
+              name="attr_magnet"
+              value={magnet}
+              onChange={(e) => setMagnet(e.target.value)}
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 w-full rounded-md border bg-white px-3 py-2 text-sm"
+            >
+              <option value="">No aplica / sin definir</option>
+              <option value="true">Sí — Con imán</option>
+              <option value="false">No — Sin imán</option>
+            </select>
+            <p className="text-brand-muted mt-1 text-[11px]">
+              El cliente lo ve como “¿Con imán?” en la ficha; la imprenta lo recibe en la nota de
+              producción.
+            </p>
+          </div>
         </div>
       </div>
 
@@ -223,12 +255,15 @@ function buildSuggestedName(a: {
   quantity: string;
   sizeCm: string;
   color: string;
+  magnet: string;
 }): string {
   const parts: string[] = [];
   if (a.photoSlots.trim()) parts.push(`${a.photoSlots.trim()} fotos`);
   if (a.quantity.trim()) parts.push(`${a.quantity.trim()} unidades`);
   if (a.sizeCm.trim()) parts.push(a.sizeCm.trim());
   if (a.color.trim()) parts.push(a.color.trim());
+  if (a.magnet === "true") parts.push("Con imán");
+  if (a.magnet === "false") parts.push("Sin imán");
   return parts.join(" · ");
 }
 

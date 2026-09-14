@@ -1,7 +1,8 @@
 /*
  * Cron de recuperación de carrito abandonado (palanca de ingreso, auditoría 2026-07-13). Envía UN
- * recordatorio a carritos con email inactivos ≥4h y detecta conversión. Protegido por CRON_SECRET
- * (query `?secret=` o header `x-cron-secret`), como los demás crons.
+ * recordatorio a carritos con email inactivos ≥4h y detecta conversión. Protegido por CRON_SECRET,
+ * SOLO vía header `x-cron-secret` (`?secret=` NO se acepta: quedaría en logs de acceso — #14),
+ * como los demás crons.
  *
  * Se agenda con pg_cron en Supabase (mandato #11) — SQL en docs/OPERATIONS.md.
  */

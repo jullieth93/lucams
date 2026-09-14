@@ -33,6 +33,7 @@ import { retractRejectedEmail } from "@/features/emails/templates/retract-reject
 import { reviewRequestEmail } from "@/features/emails/templates/review-request";
 import { supportTicketInternalEmail } from "@/features/emails/templates/support-ticket-internal";
 import { supportTicketReceivedEmail } from "@/features/emails/templates/support-ticket-received";
+import { supportTicketClosedEmail } from "@/features/emails/templates/support-ticket-closed";
 import { warrantyReceivedEmail } from "@/features/emails/templates/warranty-received";
 import { warrantyResolvedEmail } from "@/features/emails/templates/warranty-resolved";
 
@@ -72,6 +73,7 @@ async function buildGroups(): Promise<Group[]> {
     designRejectedAccount,
     supportReceived,
     supportInternal,
+    supportClosed,
     warrantyReceived,
     warrantyResolved,
   ] = await Promise.all([
@@ -220,6 +222,11 @@ async function buildGroups(): Promise<Group[]> {
       message: "Hola, ¿cuándo llega mi pedido LM-1042? Gracias.",
       ip: "181.49.x.x",
     }),
+    supportTicketClosedEmail({
+      customerName: CUSTOMER,
+      ticketId: "tkt_9f8e7d6c5b4a",
+      subject: "MI_PEDIDO",
+    }),
     warrantyReceivedEmail({
       customerName: CUSTOMER,
       claimId: "wr_123456",
@@ -354,6 +361,11 @@ async function buildGroups(): Promise<Group[]> {
           name: "Soporte — aviso interno",
           when: "Copia interna a Lucy con Reply-To al cliente.",
           variants: [{ label: "Interno", result: supportInternal }],
+        },
+        {
+          name: "Soporte — cierre al cliente ✦ nuevo",
+          when: "Al marcar el ticket como Cerrado en /admin/soporte (N-14).",
+          variants: [{ label: "Cierre", result: supportClosed }],
         },
         {
           name: "Garantía recibida",

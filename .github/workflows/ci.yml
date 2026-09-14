@@ -9,9 +9,9 @@ name: CI
 # `master` queda fuera a propósito: es legado local, no existe en `origin`.
 on:
   push:
-    branches: [develop, production, catalogo-whatsapp]
+    branches: [develop, production]
   pull_request:
-    branches: [develop, production, catalogo-whatsapp]
+    branches: [develop, production]
 
 # Cancela runs anteriores del mismo PR/branch si llega uno nuevo.
 concurrency:
@@ -74,6 +74,12 @@ jobs:
       # fijado en packages/db/scripts/content-coverage-baseline.json.
       - name: Auditoría de cobertura de contenido (CMS)
         run: pnpm --filter @lucams/db exec node scripts/audit-content-coverage.mjs --check
+
+      # Lint de guards (N-06, 2026-09-12): todo script de packages/db/scripts que
+      # escribe en DB debe importar lib/env-guard.mjs (fail-closed → PRD/remotos
+      # no reconocidos bloqueados). Allowlist PRD-deliberado dentro del script.
+      - name: Lint de guards en scripts de DB (N-06)
+        run: pnpm --filter @lucams/db exec node scripts/lib/check-script-guards.mjs
 
       # Guard es-CO: el copy debe ser TUTEO, nunca voseo (mandato de idioma). Falla si
       # aparece cualquier token de voseo en el código fuente (excluye tests y los scripts
@@ -241,10 +247,25 @@ jobs:
           done
 
       - name: Seed del catálogo (productos para PDP/carrito/estudio)
-        run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs
+        # N-06: los canónicos son dry-run por defecto — CI pasa --apply explícito.
+        run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs --apply
 
       - name: Instalar navegador Playwright (chromium + deps)
-        run: pnpm --filter web exec playwright install --with-deps chromium
+        # Reintentos con apt-get update entre cada uno: el repo apt de Chrome
+        # (dl.google.com) a veces sirve índices a medio actualizar ("Hash Sum
+        # mismatch") y tumbaba el job entero pese a ser un flake de infra
+        # (2026-09-09: 3 corridas seguidas rojas por eso).
+        run: |
+          for i in 1 2 3 4; do
+            if pnpm --filter web exec playwright install --with-deps chromium; then
+              exit 0
+            fi
+            echo "::warning::playwright install falló (intento $i/4) — reintentando tras apt-get update"
+            sudo apt-get update || true
+            sleep 15
+          done
+          echo "::error::playwright install falló tras 4 intentos"
+          exit 1
 
       - name: Build de producción (necesario para el next start del webServer)
         run: pnpm --filter web build
@@ -255,7 +276,7 @@ jobs:
 
       - name: Subir reporte Playwright (si falla)
         if: ${{ failure() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report
           path: apps/web/playwright-report/
@@ -323,7 +344,8 @@ jobs:
           done
 
       - name: Seed del catálogo (para /productos)
-        run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs
+        # N-06: los canónicos son dry-run por defecto — CI pasa --apply explícito.
+        run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs --apply
 
       - name: Build de producción
         run: pnpm --filter web build
@@ -333,7 +355,7 @@ jobs:
 
       - name: Subir reportes Lighthouse (si falla)
         if: ${{ failure() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: lighthouse-report
           path: .lighthouseci/

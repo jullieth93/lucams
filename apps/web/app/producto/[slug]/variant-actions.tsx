@@ -22,10 +22,21 @@ type SelectedVariantCtx = {
   selectedId: string | null;
   setSelectedId: (id: string) => void;
   /**
-   * Copias (CartItem.qty 1..99) elegidas en el stepper "Unidades" de la PDP. Única fuente de
-   * verdad de la cantidad en la ficha (Lucy 2026-09-03): la rama de compra directa la manda
-   * como `qty` del form y la rama personalizable la lleva al Estudio como `?copies=N` (el
-   * stepper "Copias" de la modal de confirmación arranca pre-cargado con ella).
+   * UNIDADES elegidas en el stepper "Unidades" de la PDP (1..99).
+   *
+   * Modelo MULTI-UNIDAD (owner 2026-09-09 — regla general): en los productos
+   * personalizables (calendario, tiras, sets de letras, nombre) son las N
+   * unidades A DISEÑAR — cada una se personaliza por separado en el Estudio;
+   * ya NO son "copias idénticas". En la compra directa (sin personalización)
+   * siguen siendo qty clásico del carrito (unidades idénticas del producto).
+   * En los packs de tamaño variable "Unidades" es el pack size y vive en el
+   * VariantSelector (este stepper no se renderiza), SALVO el híbrido tiras
+   * (PDP_PACK_PLUS_COPIES_SLUGS): allí "Unidades" del VariantSelector es la
+   * composición "Fotos por tira" y este stepper son las tiras a diseñar.
+   *
+   * Única fuente de verdad de la cantidad en la ficha: la compra directa la
+   * manda como `qty` del form y la rama personalizable la lleva al Estudio
+   * como `?copies=N` (nombre del parámetro conservado por compat).
    */
   copies: number;
   setCopies: (n: number) => void;
@@ -85,13 +96,45 @@ export function useSelectedVariant(): SelectedVariantCtx {
   );
 }
 
-/** CTA "Personalizar" al Estudio, con el ?variant= SIEMPRE en sync con el selector. */
-export function EstudioCtaLink({ slug, ctaNoun }: { slug: string; ctaNoun: string }) {
+/**
+ * CTA "Personalizar" al Estudio, con el ?variant= SIEMPRE en sync con el selector.
+ *
+ * Lucy 2026-09-05 — `requiredSelection` define qué exige el CTA antes de habilitarse:
+ *   - "variant" (default): variante completa elegida (productos personalizables
+ *     clásicos: forma/tamaño/etc. definen la pieza). Regla 2026-09-08b: TODOS los
+ *     packs (su "Unidades" = pack size se elige en la PDP) — la variante elegida
+ *     fija tamaño + N y el Estudio abre con ese N (merge de attributes sobre el
+ *     schema vía ?variant=; su control de N arranca de ahí).
+ *   - "size"/"none": modos legacy de cuando el N se elegía en el Estudio
+ *     (2026-09-05→2026-09-08). Ninguna PDP activa los usa hoy; se conservan
+ *     por compatibilidad del contrato.
+ *
+ * Modelo MULTI-UNIDAD (owner 2026-09-09): el stepper "Unidades" de la PDP son las
+ * unidades A DISEÑAR y este CTA las lleva al Estudio como ?copies=N (solo cuando
+ * N>1; el default del Estudio es 1, y el nombre del parámetro se conserva por
+ * compat). El Estudio abre con N unidades — cada una se diseña por separado, la
+ * Vista previa las muestra TODAS y el carrito recibe UNA línea con el diseño
+ * completo (qty 1; precio = variante × N server-side). Los packs de tamaño
+ * variable no emiten ?copies= (su stepper no se renderiza → copies=1), SALVO el
+ * híbrido tiras (PDP_PACK_PLUS_COPIES_SLUGS): allí las tiras a diseñar viajan
+ * junto al ?variant= (que fija las fotos por tira).
+ */
+export function EstudioCtaLink({
+  slug,
+  ctaNoun,
+  requiredSelection = "variant",
+}: {
+  slug: string;
+  ctaNoun: string;
+  requiredSelection?: "variant" | "size" | "none";
+}) {
   const { selectedId, copies } = useSelectedVariant();
-  // UX selección guiada (Lucy 2026-08-12): sin variante elegida el Estudio no
-  // puede abrir (photoSlots/precio dependen de la variante) → CTA deshabilitado
-  // con la instrucción clara en vez de un default invisible.
-  if (!selectedId) {
+  // UX selección guiada (Lucy 2026-08-12): sin la elección requerida el Estudio
+  // no puede abrir con el contexto correcto → CTA deshabilitado con la
+  // instrucción clara en vez de un default invisible. "none" nunca deshabilita.
+  if (requiredSelection !== "none" && !selectedId) {
+    const hint =
+      requiredSelection === "size" ? "Elige el tamaño primero ↑" : "Elige las opciones primero ↑";
     return (
       <>
         <span
@@ -101,19 +144,20 @@ export function EstudioCtaLink({ slug, ctaNoun }: { slug: string; ctaNoun: strin
           <Sparkles className="h-5 w-5" />
           Personalizar {ctaNoun} →
         </span>
-        <p className="text-brand-purple-dark text-center text-xs font-semibold">
-          Elige las opciones primero ↑
-        </p>
+        <p className="text-brand-purple-dark text-center text-xs font-semibold">{hint}</p>
       </>
     );
   }
-  // Las copias elegidas en la PDP viajan como ?copies=N: la modal de confirmación
-  // del Estudio arranca con ese valor pre-cargado (se puede ajustar ahí mismo).
-  const copiesQS = copies > 1 ? `&copies=${copies}` : "";
+  // "none" abre sin ?variant= (el Estudio cae al schema del producto); "size" y
+  // "variant" pasan la variante seleccionada (deep-link existente, sin cambios).
+  const params = new URLSearchParams();
+  if (selectedId) params.set("variant", selectedId);
+  if (copies > 1) params.set("copies", String(copies));
+  const qs = params.toString();
   return (
     <>
       <Link
-        href={`/estudio/${slug}?variant=${selectedId}${copiesQS}`}
+        href={`/estudio/${slug}${qs ? `?${qs}` : ""}`}
         className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 hover:shadow-brand-purple/40 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md px-6 text-base font-semibold text-white shadow-lg transition-all hover:shadow-xl"
       >
         <Sparkles className="h-5 w-5" />

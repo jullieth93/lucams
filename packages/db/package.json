@@ -15,7 +15,8 @@
     "db:migrate": "dotenv -e ../../.env.local -- prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:studio": "dotenv -e ../../.env.local -- prisma studio",
-    "db:format": "prisma format"
+    "db:format": "prisma format",
+    "test": "node --test \"scripts/lib/*.test.mjs\""
   },
   "dependencies": {
     "@prisma/client": "^6.18.0"

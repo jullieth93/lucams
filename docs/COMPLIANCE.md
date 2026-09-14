@@ -141,18 +141,19 @@ ejercer el **derecho de supresión (art. 8 lit. e)** por sí mismo en `/mi-cuent
 cuenta` (`features/account/delete-service.ts`). El enfoque es **anonimizar + soft-delete**, NO borrado
 físico, para conciliar la supresión con la **retención fiscal de la DIAN**:
 
-| Dato                                              | Acción al eliminar                                                                                             | Motivo                                                                            |
-| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| Customer (nombre, teléfono, documento, email)     | Scrub: nombre/tel/documento→null, email→placeholder único, `supabaseUserId`→placeholder, `deletedAt`           | Supresión de PII                                                                  |
-| Auth user (Supabase)                              | `admin.deleteUser`; si falla → **baneo** (`ban_duration`) como fallback                                        | Cortar acceso garantizado (no basta el best-effort)                               |
-| Direcciones                                       | Scrub de columnas PII (nombre/dirección/teléfono) + soft-delete                                                | Contienen PII                                                                     |
-| Reseñas                                           | `customerId`→null + `authorName`→"Cliente Lucams"                                                              | Conservar contenido público sin PII                                               |
-| **Fotos del Estudio** (DesignAsset, Design)       | **Borran archivos** de Storage (customer-uploads / design-previews / production-assets) + filas/URLs limpiadas | La PII más sensible (rostros); ninguna retención lo justifica                     |
-| Tickets de soporte (SupportTicket)                | Desvincular + scrub (email/name/ip/userAgent/message)                                                          | Texto libre con PII                                                               |
-| Snapshot de envío en órdenes                      | Scrub PII (nombre/tel/dirección) en órdenes YA finalizadas                                                     | Las en curso conservan la dirección por finalidad legítima (completar la entrega) |
-| Logs (RecommendationLog, LoyaltyTxn, CouponUsage) | `customerId`→null                                                                                              | Cortar el vínculo de perfilado con el titular                                     |
-| **Pedidos / facturas**                            | **SE CONSERVAN** (anonimizados)                                                                                | **Retención fiscal DIAN** (facturación electrónica) prima sobre supresión         |
-| **Consentimientos**                               | **SE CONSERVAN**                                                                                               | Prueba de cumplimiento Ley 1581                                                   |
+| Dato                                          | Acción al eliminar                                                                                             | Motivo                                                                                                 |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Customer (nombre, teléfono, documento, email) | Scrub: nombre/tel/documento→null, email→placeholder único, `supabaseUserId`→placeholder, `deletedAt`           | Supresión de PII                                                                                       |
+| Auth user (Supabase)                          | `admin.deleteUser`; si falla → **baneo** (`ban_duration`) como fallback                                        | Cortar acceso garantizado (no basta el best-effort)                                                    |
+| Direcciones                                   | Scrub de columnas PII (nombre/dirección/teléfono) + soft-delete                                                | Contienen PII                                                                                          |
+| Reseñas                                       | `customerId`→null + `authorName`→"Cliente Lucams"                                                              | Conservar contenido público sin PII                                                                    |
+| **Fotos del Estudio** (DesignAsset, Design)   | **Borran archivos** de Storage (customer-uploads / design-previews / production-assets) + filas/URLs limpiadas | La PII más sensible (rostros); ninguna retención lo justifica                                          |
+| Tickets de soporte (SupportTicket)            | Desvincular + scrub (email/name/ip/userAgent/message)                                                          | Texto libre con PII                                                                                    |
+| Wishlist (WishlistItem)                       | **Borrar filas** (N-18, 2026-09-12)                                                                            | Historial de interés del titular; sin retención legal que la justifique                                |
+| Snapshot de envío en órdenes                  | Scrub PII (nombre/tel/dirección) en órdenes YA finalizadas                                                     | Las en curso conservan la dirección por finalidad legítima (completar la entrega)                      |
+| Logs (LoyaltyTxn, CouponUsage)                | `customerId`→null                                                                                              | Cortar el vínculo de perfilado con el titular (RecommendationLog salió del schema 2026-09-12, ADR-091) |
+| **Pedidos / facturas**                        | **SE CONSERVAN** (anonimizados)                                                                                | **Retención fiscal DIAN** (facturación electrónica) prima sobre supresión                              |
+| **Consentimientos**                           | **SE CONSERVAN**                                                                                               | Prueba de cumplimiento Ley 1581                                                                        |
 
 **Confirmación fuerte:** escribir "ELIMINAR" + re-autenticación con contraseña + rate-limit
 (`ownerKey('delete-account')`, 5/15min). El alcance de supresión es **exhaustivo** (verificado por revisión
@@ -495,6 +496,21 @@ export function calculateTax(subtotalCents: number): { iva: number; total: numbe
 | **Política de seguridad / divulgación de vulnerabilidades** | `/legal/security`                                           | Texto interno                                    | —                              |
 
 > Cada documento tiene **versionado**: header `Versión X.Y — vigente desde YYYY-MM-DD`. Cambios mayores requieren re-aceptación del usuario activo.
+>
+> **Estado al 2026-09-11 (auditoría integral de info pública/legal/ayuda + decisión de Lucy «lanzar textos legales»):** los 6 documentos del paquete **v5 (2026-09-04)** — términos, privacidad, devoluciones, garantías, hábeas data, subprocesadores — están **PUBLICADOS en los 3 ambientes** (`publish-legal-v5-20260911.mjs`) y en vivo en PRD; su premisa «tienda en línea activa» es cierta en PRD-full (Wompi, Aveonline y asistente IA verificados activos). `PRIVACY_POLICY_VERSION` = «v5 · 2026-09-04» publicado (re-consent deliberado: invalida los consents previos — STATE.md 2026-09-05). Los textos conservan la coletilla «en revisión por asesoría legal» hasta que el abogado opine (retirarla republicando los 6 cuerpos desde /admin/contenido). Con versionado propio aparte: **cookies v4 · 2026-09-11** y **security v2 · 2026-07-25**, ambas publicadas; el header de cada página muestra su propia versión (`LegalPageHeader.lastUpdated`). La guarda de sincronía `apps/web/app/legal/legal-content-sync.test.ts` cubre **los 8 documentos** (fallback === canónico). Buzones: `habeas-data@lucamsshop.com` es el canal publicado para datos personales y temas legales (también en `/contacto`); `security@` es solo para divulgación de vulnerabilidades.
+
+### Identificación de la titular en el sitio — análisis «a requerimiento» vs publicación (investigación 2026-09-11)
+
+**La norma que aplica:** el [art. 50 de la Ley 1480 de 2011](https://consumoteca.com.co/articulo-50-de-la-ley-1480-estatuto-del-consumidor/) (ventas por medios electrónicos) ordena a los proveedores «informar **en todo momento** de forma cierta, fidedigna, suficiente, clara, accesible y actualizada **su identidad especificando su nombre o razón social, Número de Identificación Tributaria (NIT), dirección de notificación judicial, teléfono, correo electrónico** y demás datos de contacto». Es un deber de PUBLICACIÓN permanente, no de entrega a requerimiento. Refuerzos: [art. 23](http://www.secretariasenado.gov.co/senado/basedoc/ley_1480_2011.html) (información suficiente al consumidor), Ley 2439 de 2024 (obligaciones de portales de contacto) y la guía SIC de comercio electrónico ([Observatorio eCommerce MinTIC](https://observatorioecommerce.mintic.gov.co/797/articles-198739_recurso_1.pdf): «Identificación del proveedor» como primer ítem).
+
+**Conclusión de la investigación:** la estrategia pura «disponible a requerimiento» **no satisface al pie de la letra el art. 50** para una tienda que ya cobra en línea. PERO se puede cumplir la ley **sin exponer la casa ni la cédula** de la titular:
+
+1. **Nombre/identidad:** basta el nombre de la titular como comerciante (o la razón social cuando exista). El nombre comercial registrado («Lucams_shop») opera como identidad pública; el nombre de la titular es el dato que la ley pide y es el que ya firma las comunicaciones del negocio — es la identidad del negocio, no un dato «extra».
+2. **NIT:** una persona natural comerciante obtiene NIT propio al inscribirse en el RUT (cédula + dígito de verificación). Publicar el NIT **no** expone nada adicional sensible — es el identificador fiscal estándar que toda tienda pequeña publica (práctica habitual en tiendas persona-natural en Colombia).
+3. **Dirección de notificación judicial ≠ dirección de la casa:** la ley pide una _dirección de notificación_, que la titular puede **designar** (apartado postal, dirección registrada en el RUT, oficina/este punto lo define con el abogado). La dirección exacta de la casa (hoy en los settings privados `PICKUP_*` de Aveonline) **no tiene que aparecer en ninguna superficie pública**.
+4. **Teléfono/correo:** ya públicos (WhatsApp del negocio + `hola@`).
+
+**Estado y siguiente paso:** hoy el sitio dice «identificación de la titular disponible a requerimiento» (decisión 2026-09-05 por preocupación legítima de exposición de PII/suplantación). Riesgo de la fórmula actual: una queja ante la SIC podría calificarla de información insuficiente (art. 50); el riesgo de ejecución contra tiendas pequeñas es bajo y nace de quejas. **Pregunta ya formulada al abogado (pendiente de respuesta):** si basta «a requerimiento» o se publica. Recomendación técnica de esta investigación: cuando exista RUT/NIT, publicar **nombre de la titular (o razón social) + NIT + dirección de notificación designada (no la casa) + teléfono/correo ya públicos** — cumplimiento pleno del art. 50 con exposición mínima. Implementación: 100% CMS (settings/legales), sin código.
 
 ---
 
@@ -516,7 +532,7 @@ Aunque la Ley 1581 colombiana no exige banner de cookies tan estricto como GDPR,
 - Banner en primer visit (con detección por cookie `cookie_consent_v1`) — componente `apps/web/components/cookies-banner.tsx`, helpers en `apps/web/lib/cookie-consent.ts`.
 - Tres opciones: "Solo necesarias", "Personalizar", "Aceptar todas".
 - Persistir consentimiento en `Consent` (una fila por scope: `COOKIES_NECESSARY` / `COOKIES_FUNCTIONAL` / `COOKIES_ANALYTICS` / `COOKIES_MARKETING`, con `accepted: true|false`).
-- Versión del banner en la cookie (`v: 1`) → cambio de versión = re-consent.
+- **Re-consent REAL (N-15, 2026-09-12):** la cookie guarda la `policyVersion` aceptada (versión vigente del setting CMS `PRIVACY_POLICY_VERSION`, que el root layout pasa al banner como prop). Si la versión vigente **cambia** (nuevo aviso de privacidad), el banner **se re-muestra** a quien ya había decidido — el consentimiento previo no prueba el texto nuevo. Matices: setting ausente/vacío → nunca re-muestra (degrada al comportamiento anterior); cookie legacy sin `policyVersion` → no se re-muestra, se reescribe en silencio con la vigente (un cambio FUTURO sí disparará re-consent para ese visitante). La cookie también mantiene la versión interna del banner (`v: 1`) → cambio de estructura = re-consent.
 - Página `/legal/cookies` con detalle y revocación granular (reabre el modal de preferencias).
 
 ### Cookies que usamos (catálogo a mantener actualizado)
@@ -571,23 +587,23 @@ No usamos cookies de idioma/tema ni un request-id en cookie (el `X-Request-Id` v
 
 ## Calendario de cumplimiento
 
-| Hito                                                             | Cuándo                                                               | Bloqueante      |
-| ---------------------------------------------------------------- | -------------------------------------------------------------------- | --------------- |
-| Constituir el negocio (RUES + Cámara de Comercio)                | Antes de Fase 7                                                      | ✅ Sí           |
-| Obtener RUT con responsabilidad 42 (facturador electrónico)      | Antes de Fase 7                                                      | ✅ Sí           |
-| Solicitar resolución de numeración a DIAN                        | Antes de Fase 7                                                      | ✅ Sí           |
-| Firmar contrato con proveedor de facturación electrónica         | Antes de Fase 7                                                      | ✅ Sí           |
-| Revisión legal de los 9 documentos del sitio                     | Antes de Fase 7                                                      | ✅ Sí (ADR-020) |
-| Política de privacidad y T&C publicados                          | Antes de Fase 7                                                      | ✅ Sí           |
-| Banner de consentimiento de cookies funcional                    | Antes de Fase 7                                                      | ✅ Sí           |
-| Habilitación de proveedor DIAN (si software propio)              | N/A (usamos PT autorizado)                                           | —               |
-| Registro Nacional de Bases de Datos (RNBD) si aplica             | Confirmar con abogado                                                | Posible         |
-| Email `habeas-data@lucamsshop.com` operativo + SLA de PQR        | Lanzamiento                                                          | ✅ Sí           |
-| Email `retracto@lucamsshop.com` operativo                        | Lanzamiento                                                          | ✅ Sí           |
-| Tabla `Consent` registrando cada autorización                    | ✅ Implementado                                                      | ✅ Sí           |
-| Exportación de datos self-service                                | Pendiente (hoy: canal manual `habeas-data@`)                         | ✅ Sí           |
-| Eliminación de cuenta self-service (anonimización + soft-delete) | ✅ Implementado en `/mi-cuenta/seguridad → Eliminar mi cuenta`       | ✅ Sí           |
-| Purga por retención de logs con PII (`purge-event-logs`)         | ✅ Implementado (90/180 días)                                        | ✅ Sí           |
-| Flujo de retracto end-to-end                                     | ✅ Implementado (`/mi-cuenta/pedidos/[number]` + `/admin/retractos`) | ✅ Sí           |
-| Flujo de garantía                                                | ✅ Implementado (`/mi-cuenta/pedidos/[number]` + `/admin/garantias`) | ✅ Sí           |
-| Reporte de incidente a SIC ante brecha (procedimiento)           | Documentar en Fase 7                                                 | ✅ Sí           |
+| Hito                                                             | Cuándo                                                                                           | Bloqueante      |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | --------------- |
+| Constituir el negocio (RUES + Cámara de Comercio)                | Antes de Fase 7                                                                                  | ✅ Sí           |
+| Obtener RUT con responsabilidad 42 (facturador electrónico)      | Antes de Fase 7                                                                                  | ✅ Sí           |
+| Solicitar resolución de numeración a DIAN                        | Antes de Fase 7                                                                                  | ✅ Sí           |
+| Firmar contrato con proveedor de facturación electrónica         | Antes de Fase 7                                                                                  | ✅ Sí           |
+| Revisión legal de los 9 documentos del sitio                     | Antes de Fase 7                                                                                  | ✅ Sí (ADR-020) |
+| Política de privacidad y T&C publicados                          | Antes de Fase 7                                                                                  | ✅ Sí           |
+| Banner de consentimiento de cookies funcional                    | Antes de Fase 7                                                                                  | ✅ Sí           |
+| Habilitación de proveedor DIAN (si software propio)              | N/A (usamos PT autorizado)                                                                       | —               |
+| Registro Nacional de Bases de Datos (RNBD) si aplica             | Confirmar con abogado                                                                            | Posible         |
+| Email `habeas-data@lucamsshop.com` operativo + SLA de PQR        | Lanzamiento                                                                                      | ✅ Sí           |
+| Email `retracto@lucamsshop.com` operativo                        | Lanzamiento                                                                                      | ✅ Sí           |
+| Tabla `Consent` registrando cada autorización                    | ✅ Implementado                                                                                  | ✅ Sí           |
+| Exportación de datos self-service                                | Pendiente (hoy: canal manual `habeas-data@`)                                                     | ✅ Sí           |
+| Eliminación de cuenta self-service (anonimización + soft-delete) | ✅ Implementado en `/mi-cuenta/seguridad → Eliminar mi cuenta`                                   | ✅ Sí           |
+| Purga por retención de logs con PII (`purge-event-logs`)         | ✅ Implementado (90/180 días; desde 2026-09-12 también Notification leídas >90d y WebVital >35d) | ✅ Sí           |
+| Flujo de retracto end-to-end                                     | ✅ Implementado (`/mi-cuenta/pedidos/[number]` + `/admin/retractos`)                             | ✅ Sí           |
+| Flujo de garantía                                                | ✅ Implementado (`/mi-cuenta/pedidos/[number]` + `/admin/garantias`)                             | ✅ Sí           |
+| Reporte de incidente a SIC ante brecha (procedimiento)           | Documentar en Fase 7                                                                             | ✅ Sí           |

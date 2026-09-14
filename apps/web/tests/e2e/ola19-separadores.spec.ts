@@ -11,7 +11,12 @@ test.describe("Ola 19 — Separadores de Libros", () => {
     await page.goto("/producto/separadores-magneticos", { waitUntil: "domcontentloaded" });
     await page.getByText("2×6 cm", { exact: false }).first().waitFor({ timeout: 15_000 });
     await page.getByText("4×4.2 cm", { exact: false }).first().waitFor({ timeout: 5_000 });
-    await page.getByText("4.000", { exact: false }).first().waitFor({ timeout: 5_000 });
+    // Regla 2026-09-08b: el pack size se elige con el stepper "Unidades" (1..N),
+    // con el precio por unidad junto al stepper ("$X c/u"). No se hardcodea el
+    // precio: el catálogo del ambiente puede diferir del de 2026-07 ($4.000 c/u).
+    const unidades = page.getByRole("group", { name: "Unidades" });
+    await unidades.getByLabel("Aumentar unidades").waitFor({ timeout: 5_000 });
+    await unidades.getByText(/c\/u/).first().waitFor({ timeout: 5_000 });
     // No debe aparecer el grupo "Fotos" (photoSlots oculto).
     await expect(page.locator("text=/\\d+ fotos/i").first()).not.toBeVisible();
     await page.screenshot({ path: "/tmp/ola19-pdp-magneticos.png", fullPage: true });
@@ -21,7 +26,9 @@ test.describe("Ola 19 — Separadores de Libros", () => {
     await page.goto("/producto/separadores-alargados", { waitUntil: "domcontentloaded" });
     await page.getByText("4×12 cm", { exact: false }).first().waitFor({ timeout: 15_000 });
     await page.getByText("4×15 cm", { exact: false }).first().waitFor({ timeout: 5_000 });
-    await page.getByText("4.000", { exact: false }).first().waitFor({ timeout: 5_000 });
+    // Regla 2026-09-08b: mismo stepper "Unidades" (pack size), sin precio hardcodeado.
+    const unidades = page.getByRole("group", { name: "Unidades" });
+    await unidades.getByLabel("Aumentar unidades").waitFor({ timeout: 5_000 });
     await page.screenshot({ path: "/tmp/ola19-pdp-alargados.png", fullPage: true });
   });
 

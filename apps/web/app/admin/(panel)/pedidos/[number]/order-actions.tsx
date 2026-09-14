@@ -249,6 +249,22 @@ export function OrderActions({
                 <strong>El dinero se emite manualmente en Wompi.</strong>
               )}
             </p>
+            {/* N-17 — confirmación OBLIGATORIA del dinero ANTES de reembolsar: sin
+              marcarla, el server rechaza la acción y no se envía el email al cliente.
+              `required` la hace bloqueante también en cliente. */}
+            <label className="flex cursor-pointer items-start gap-2 rounded-md bg-rose-50 px-2 py-1.5 text-[11px] font-semibold text-rose-800">
+              <input
+                type="checkbox"
+                name="moneyReturned"
+                required
+                className="mt-0.5 h-3.5 w-3.5 accent-rose-600"
+              />
+              <span>
+                {isCod
+                  ? "Confirmo que el dinero ya fue devuelto al cliente por transferencia bancaria."
+                  : "Confirmo que el dinero ya fue devuelto al cliente en Wompi."}
+              </span>
+            </label>
             <Button
               type="submit"
               size="sm"

@@ -9,7 +9,11 @@
  * (`__Fredoka_<hash>`). El literal "Fredoka"/"Inter" no existe en el document → un canvas
  * 2D que lo usa cae a una fuente genérica. Las CSS vars `--font-fredoka`/`--font-inter`
  * (definidas en app/layout.tsx) traen el nombre real; lo resolvemos una vez y lo reusamos.
+ * Lucy 2026-09-07 — selector de tipo de letra: la del TÍTULO/mes se elige por key
+ * ("fredoka" | "inter" | "caveat") y se resuelve igual vía su CSS var.
  */
+
+import type { CalendarFontKey } from "@/features/personalization/schemas";
 
 /** Extrae la PRIMERA familia de un font-family CSS ("__Fredoka_x", "__Fredoka_Fallback_x" → __Fredoka_x). */
 export function firstFontFamily(cssFontFamily: string): string | null {
@@ -19,6 +23,46 @@ export function firstFontFamily(cssFontFamily: string): string | null {
 }
 
 export type BrandCanvasFonts = { title: string; body: string };
+
+/** Mapa key del selector → CSS var de la fuente del TÍTULO/mes (definidas en app/layout.tsx).
+ *  El body/grilla del calendario SIEMPRE usa Inter, sin importar la elección. */
+const CALENDAR_TITLE_FONT_VARS: Record<CalendarFontKey, string> = {
+  fredoka: "--font-fredoka",
+  inter: "--font-inter",
+  caveat: "--font-caveat",
+};
+
+/**
+ * Resuelve la familia real (nombre hasheado de next/font) del TÍTULO del calendario
+ * según la key elegida. Devuelve null fuera del navegador o si la var no está
+ * (fallback del caller: el literal "Fredoka"/"Inter"/"Caveat", que el server SÍ registra,
+ * o la familia del default fredoka ya resuelta).
+ */
+export function resolveCalendarTitleFont(key: CalendarFontKey): string | null {
+  if (typeof window === "undefined" || typeof document === "undefined") return null;
+  const cs = getComputedStyle(document.documentElement);
+  return firstFontFamily(cs.getPropertyValue(CALENDAR_TITLE_FONT_VARS[key] ?? "--font-fredoka"));
+}
+
+/**
+ * Carga las caras del título usadas por drawCalendarPage para la key dada (700 clásico;
+ * 700 + 500 split) y espera a que estén listas (anti-FOUT). Tolerante a fallos: devuelve
+ * la familia resuelta (o null) igual — el dibujo degrada al fallback.
+ */
+export async function ensureCalendarTitleFontLoaded(key: CalendarFontKey): Promise<string | null> {
+  const family = resolveCalendarTitleFont(key);
+  if (!family || typeof document === "undefined" || !document.fonts) return family;
+  try {
+    await Promise.all([
+      document.fonts.load(`700 62px ${family}`),
+      document.fonts.load(`500 62px ${family}`),
+    ]);
+    await document.fonts.ready;
+  } catch {
+    // si falla la carga, el caller dibuja igual (canvas usa el fallback).
+  }
+  return family;
+}
 
 /**
  * Resuelve las familias reales de Fredoka/Inter desde las CSS vars del root.

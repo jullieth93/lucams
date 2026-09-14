@@ -15,7 +15,9 @@
  * R2_SECRET_ACCESS_KEY, BACKUP_GPG_PASSPHRASE (la misma del backup — sin ella
  * no se puede descifrar y el drill falla de inmediato). Opcional:
  * BACKUP_PREFIX (default "db"), DRILL_DATABASE_URL (default postgres local del
- * runner), DRILL_MIN_PRODUCTS (default 5 — detector de dumps vacíos; ver abajo).
+ * runner), DRILL_MIN_PRODUCTS (default 5 — detector de dumps vacíos; ver abajo),
+ * DRILL_MAX_BACKUP_AGE_HOURS (default 36 — N-19b: el dump más nuevo debe ser
+ * FRESCO; un drill verde sobre un dump viejo certifica un backup que ya no corre).
  *
  * 2026-09-04 — hallazgo del drill rojo del 2026-09-02 (run 33632291276): NO
  * fue un restore roto. Su set de errores es IDÉNTICO al del run verde
@@ -42,7 +44,12 @@ import { createGunzip } from "node:zlib";
 import { pathToFileURL } from "node:url";
 import { S3Client, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { BACKUP_KEY_RE, normalizeR2AccountId, explainR2ConnectError } from "./backup-lib.mjs";
-import { summarizeRestoreErrors, dumpCopyRowCounts } from "./dr-drill-lib.mjs";
+import {
+  summarizeRestoreErrors,
+  dumpCopyRowCounts,
+  backupFreshnessError,
+  DEFAULT_MAX_BACKUP_AGE_HOURS,
+} from "./dr-drill-lib.mjs";
 
 function requireEnv(name) {
   const v = process.env[name];
@@ -74,6 +81,11 @@ async function main() {
     process.env.DRILL_DATABASE_URL ||
     "postgresql://supabase_admin:postgres@localhost:5432/postgres";
   const minProducts = Number.parseInt(process.env.DRILL_MIN_PRODUCTS || "5", 10);
+  // N-19b — tope de frescura del dump (default 36h; ver backupFreshnessError).
+  const parsedMaxAge = Number.parseInt(process.env.DRILL_MAX_BACKUP_AGE_HOURS || "", 10);
+  const maxBackupAgeHours = Number.isFinite(parsedMaxAge)
+    ? parsedMaxAge
+    : DEFAULT_MAX_BACKUP_AGE_HOURS;
 
   const client = new S3Client({
     region: "auto",
@@ -84,17 +96,34 @@ async function main() {
   // 1. Localizar el dump cifrado MÁS NUEVO del bucket. Solo entran llaves .gpg:
   //    los backups legacy sin cifrar (anteriores a 2026-08-29) ya no son
   //    candidatos del drill — la retención de backup-db-to-r2.mjs los poda.
+  //    Se conservan los OBJETOS (no solo la llave): el LastModified alimenta la
+  //    verificación de frescura de abajo (N-19b).
   const listed = await client.send(
     new ListObjectsV2Command({ Bucket: bucket, Prefix: `${prefix}/` }),
   );
-  const keys = (listed.Contents || [])
-    .map((o) => o.Key)
-    .filter((k) => k && k.endsWith(".gpg") && BACKUP_KEY_RE.test(k))
-    .sort();
-  if (keys.length === 0)
+  const candidates = (listed.Contents || [])
+    .filter((o) => o.Key && o.Key.endsWith(".gpg") && BACKUP_KEY_RE.test(o.Key))
+    .sort((a, b) => (a.Key < b.Key ? -1 : 1)); // orden alfabético = cronológico
+  if (candidates.length === 0)
     throw new Error(`No hay backups cifrados (.sql.gz.gpg) en r2://${bucket}/${prefix}/`);
-  const latest = keys[keys.length - 1];
-  console.log(`→ dump a restaurar: ${latest} (de ${keys.length} disponibles)`);
+  const latestObj = candidates[candidates.length - 1];
+  const latest = latestObj.Key;
+
+  // N-19b — frescura: el dump más nuevo debe tener ≤ DRILL_MAX_BACKUP_AGE_HOURS
+  // (default 36h, medido por el LastModified de R2). Antes se restauraba el más
+  // nuevo POR NOMBRE aunque tuviera meses: un drill verde sobre un dump viejo
+  // certifica un pipeline de backup que ya murió. Fail-closed si falta la fecha.
+  const freshnessError = backupFreshnessError({
+    key: latest,
+    lastModified: latestObj.LastModified,
+    now: new Date(),
+    maxAgeHours: maxBackupAgeHours,
+  });
+  if (freshnessError) throw new Error(freshnessError);
+  const ageHours = ((Date.now() - latestObj.LastModified.getTime()) / 3600000).toFixed(1);
+  console.log(
+    `→ dump a restaurar: ${latest} (de ${candidates.length} disponibles · edad ${ageHours}h ≤ ${maxBackupAgeHours}h)`,
+  );
 
   // 2. Descargar + descifrar (gpg) + descomprimir. La passphrase entra por el
   //    fd 3 (nunca por argv/env) y el stream cifrado por stdin; gpg -d escribe

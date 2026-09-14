@@ -5,10 +5,12 @@
  * verde/amarillo/rojo por servicio. Útil para que clientes puedan
  * verificar si "el sitio está caído" sin esperar respuesta del soporte.
  *
- * Chequea 4 endpoints en vivo: /api/health (web), /api/health/db,
- * /api/health/storage y /api/health/resend. Pagos (Wompi) queda como
- * "Pendiente": en modo catálogo llega con la Etapa 2 (pagos en línea);
- * en modo full, con la Fase 3 de la integración.
+ * Chequea en vivo: /api/health (web), /api/health/db, /api/health/storage,
+ * /api/health/resend y — en modo full — /api/health/wompi (pagos) y
+ * /api/health/aveonline (envíos). En modo catálogo los pagos en línea aún
+ * no aplican (se declaran "Pendiente") y los envíos integrados no se listan.
+ * Página PÚBLICA: solo se muestra el estado, nunca los detalles internos
+ * de los endpoints (lib/public-status.ts decide el veredicto).
  */
 
 import type { Metadata } from "next";
@@ -16,6 +18,14 @@ import { CmsText } from "@/components/cms/cms-text";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getCmsBlock } from "@/lib/cms";
+import { getTrustedSelfBaseUrl, vercelBypassHeaders } from "@/lib/origin";
+import {
+  aveonlinePublicVerdict,
+  wompiPublicVerdict,
+  type HealthBody,
+  type PublicHealthVerdict,
+  type PublicServiceState,
+} from "@/lib/public-status";
 import { isCatalogMode } from "@/lib/store-mode";
 
 export const metadata: Metadata = {
@@ -28,7 +38,7 @@ export const dynamic = "force-dynamic";
 type ServiceStatus = {
   name: string;
   description: string;
-  status: "ok" | "down" | "pending";
+  status: PublicServiceState;
   latencyMs?: number;
   detail?: string;
 };
@@ -39,10 +49,15 @@ async function checkService(
   path: string,
 ): Promise<ServiceStatus> {
   try {
-    // El dev server del proyecto corre en :4000 (ver Makefile / playwright.config.ts).
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4000";
+    // Base URL confiable (anti-SSRF, ver lib/origin.ts); el dev server local corre
+    // en :4000 (Makefile / playwright.config.ts). vercelBypassHeaders: en previews
+    // protegidos (STG) sin bypass el self-fetch recibe un 302 al login de Vercel
+    // y el tile saldría "Caído" estando sano.
+    const baseUrl = getTrustedSelfBaseUrl();
     const r = await fetch(`${baseUrl}${path}`, {
       cache: "no-store",
+      redirect: "manual",
+      headers: vercelBypassHeaders(),
       signal: AbortSignal.timeout(5000),
     });
     if (!r.ok) {
@@ -64,8 +79,38 @@ async function checkService(
   }
 }
 
+/**
+ * Chequeo de un health endpoint que consulta un tercero (Wompi, Aveonline).
+ * El veredicto (incl. rate_limited/skipped ≠ caída) lo decide lib/public-status.
+ * Timeout más holgado que checkService: el endpoint ya tiene su propio timeout
+ * interno (~6s) y conviene esperar SU veredicto en vez de abortar antes.
+ */
+async function checkThirdParty(
+  label: string,
+  description: string,
+  path: string,
+  verdict: (httpStatus: number, body: HealthBody) => PublicHealthVerdict,
+): Promise<ServiceStatus> {
+  try {
+    // Misma base confiable y bypass que checkService.
+    const baseUrl = getTrustedSelfBaseUrl();
+    const r = await fetch(`${baseUrl}${path}`, {
+      cache: "no-store",
+      redirect: "manual",
+      headers: vercelBypassHeaders(),
+      signal: AbortSignal.timeout(8000),
+    });
+    const body = (await r.json().catch(() => null)) as HealthBody;
+    return { name: label, description, ...verdict(r.status, body) };
+  } catch {
+    // Mismo criterio que checkService (A-6): detalle genérico en página pública.
+    return { name: label, description, status: "down", detail: "sin respuesta" };
+  }
+}
+
 export default async function StatusPage() {
-  const [web, db, storage, resend] = await Promise.all([
+  const catalog = isCatalogMode();
+  const [web, db, storage, resend, wompi, aveonline] = await Promise.all([
     checkService("Sitio web (Vercel)", "Storefront público y admin", "/api/health"),
     checkService("Base de datos (Postgres)", "Catálogo, pedidos, contenido CMS", "/api/health/db"),
     checkService(
@@ -78,22 +123,34 @@ export default async function StatusPage() {
       "Confirmaciones, OTP, recuperación de password",
       "/api/health/resend",
     ),
+    // En modo catálogo los pagos en línea llegan con la Etapa 2: se declaran
+    // "Pendiente" en vez de sondear un Wompi intencionalmente apagado.
+    catalog
+      ? Promise.resolve<ServiceStatus>({
+          name: "Pagos (Wompi)",
+          description: "Procesamiento de tarjetas y PSE",
+          status: "pending",
+          detail: "Llega con la Etapa 2 (pagos en línea)",
+        })
+      : checkThirdParty(
+          "Pagos (Wompi)",
+          "Procesamiento de tarjetas y PSE",
+          "/api/health/wompi",
+          wompiPublicVerdict,
+        ),
+    // Los envíos integrados no aplican en modo catálogo: no se listan.
+    catalog
+      ? Promise.resolve(null)
+      : checkThirdParty(
+          "Envíos (Aveonline)",
+          "Cotización y despacho con transportadoras",
+          "/api/health/aveonline",
+          aveonlinePublicVerdict,
+        ),
   ]);
 
-  // Wompi se mide cuando la integración esté productiva: en modo catálogo
-  // (Etapa 1) los pagos en línea llegan con la Etapa 2; en modo full, Fase 3.
-  const pending: ServiceStatus[] = [
-    {
-      name: "Pagos (Wompi)",
-      description: "Procesamiento de tarjetas y PSE",
-      status: "pending",
-      detail: isCatalogMode()
-        ? "Llega con la Etapa 2 (pagos en línea)"
-        : "Integración completa en Fase 3",
-    },
-  ];
-
-  const services: ServiceStatus[] = [web, db, storage, resend, ...pending];
+  const services: ServiceStatus[] = [web, db, storage, resend, wompi];
+  if (aveonline) services.push(aveonline);
   const allOk = services.every((s) => s.status === "ok" || s.status === "pending");
   const anyDown = services.some((s) => s.status === "down");
 
@@ -150,7 +207,9 @@ export default async function StatusPage() {
                       ? "bg-emerald-500"
                       : s.status === "down"
                         ? "bg-red-500"
-                        : "bg-slate-300")
+                        : s.status === "warn"
+                          ? "bg-amber-500"
+                          : "bg-slate-300")
                   }
                   aria-hidden="true"
                 />
@@ -160,7 +219,12 @@ export default async function StatusPage() {
                   {s.detail && (
                     <p
                       className={
-                        "mt-1 text-xs " + (s.status === "down" ? "text-red-700" : "text-slate-500")
+                        "mt-1 text-xs " +
+                        (s.status === "down"
+                          ? "text-red-700"
+                          : s.status === "warn"
+                            ? "text-amber-700"
+                            : "text-slate-500")
                       }
                     >
                       {s.detail}
@@ -170,6 +234,7 @@ export default async function StatusPage() {
                 <span className="text-brand-muted text-xs tabular-nums">
                   {s.status === "ok" && s.latencyMs != null && `${s.latencyMs}ms`}
                   {s.status === "down" && "Caído"}
+                  {s.status === "warn" && "Intermitente"}
                   {s.status === "pending" && "Pendiente"}
                 </span>
               </div>

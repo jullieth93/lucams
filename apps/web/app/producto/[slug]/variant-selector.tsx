@@ -21,15 +21,20 @@
  *
  * Modo single-dim: lista vertical con price por variant. EXCEPCIÓN (Lucy
  * 2026-07-22, polaroid 7.5×10 qty 1–10): si la ÚNICA dimensión visible es la
- * cantidad 1..N contigua, se usa el stepper +/− del modo multi-dim en vez de
- * la lista vertical de N filas.
+ * cantidad (numérica — ver la regla del stepper abajo), se usa el stepper +/−
+ * del modo multi-dim en vez de la lista vertical de N filas.
  * Modo multi-dim: chips por dimensión + card de Precio prominente.
- *   - La dimensión Cantidad (quantity/photoSlots) se muestra como stepper +/−
- *     con "$X c/u" + total de la línea cuando sus valores son 1..N contiguos
- *     (fotoimanes/separadores 1–6); sets no contiguos (polaroid 6/9/12/20)
- *     conservan chips. La selección siempre mapea a la variant con esa
- *     cantidad (mismo handleSelectValue que los chips) → deep-link ?variant=
- *     y dedupe quantity/photoSlots intactos.
+ *   - La dimensión de pack size (quantity/photoSlots — label visible "Unidades"
+ *     por override de familia, regla 2026-09-08b) se muestra como stepper +/−
+ *     con "$X c/u" en TODA familia de tamaño variable (2026-09-09, owner):
+ *     polaroid 1–10, cuadrados y separadores 1–6. El rango es min..max de las
+ *     variantes REALES y el ± salta entre los tamaños que EXISTEN (un set no
+ *     contiguo como el polaroid {1,10} de STG salta de 1 a 10 — nunca ofrece
+ *     un tamaño sin variante que lo respalde). EXCEPCIÓN: las dims de
+ *     COMPOSICIÓN de los híbridos (quantityStepperExclusions — tiras "Fotos
+ *     por tira" 3/4) conservan chips. La selección siempre mapea a la variant
+ *     con esa cantidad (mismo handleSelectValue que los chips) → deep-link
+ *     ?variant= y dedupe quantity/photoSlots intactos.
  *   - Dimensión de 1 SOLO valor (Lucy 2026-07-22): normalmente se oculta por
  *     redundante (Forma igual en todas las variants). EXCEPCIÓN: las claves en
  *     SINGLE_VALUE_VISIBLE_DIMS (hoy `sizeCm`) se muestran igual como chip
@@ -74,6 +79,31 @@ type VariantSelectorProps = {
    * variantStyle/frameStyle/theme/language según el producto). Las variantes siguen intactas;
    * solo se filtra el grupo del UI. */
   hiddenDimensions?: readonly string[];
+  /**
+   * Regla 2026-09-08b (Lucy) — override de label por dimensión (PDP_DIMENSION_LABEL_OVERRIDES):
+   * el pack size visible se llama "Unidades" en TODA PDP, pero la clave que lo
+   * transporta varía (separadores: quantity; polaroid/cuadrados: photoSlots).
+   * Excepción (2026-09-09, owner): en tiras photoSlots se relabela "Fotos por
+   * tira" (composición) porque "Unidades" pasa a ser el stepper de copias.
+   */
+  dimensionLabels?: Readonly<Record<string, string>>;
+  /**
+   * Lucy 2026-09-05 — packs de fotoimanes: con las dimensiones de estudio
+   * ocultas puede quedar UNA sola dimensión visible con >1 valor. El modo lista
+   * vertical pintaría una fila por CADA variante (18 filas en cuadrados) —
+   * combinaciones redundantes. Con esta prop esa dimensión única se pinta como
+   * CHIPS (un click = valor, ancla a la primera variante con ese valor),
+   * reusando el render multi-dim. Los demás productos no se tocan.
+   */
+  singleDimAsChips?: boolean;
+  /**
+   * (2026-09-09, owner) — dims de cantidad que se quedan en CHIPS aunque sus
+   * valores sean numéricos: la COMPOSICIÓN de los híbridos
+   * (PDP_QUANTITY_CHIP_DIMS — tiras: photoSlots relabelado "Fotos por tira"
+   * 3/4), porque en esa ficha el stepper "Unidades" es el de COPIAS
+   * (CopiesQtyInput), no el pack size.
+   */
+  quantityStepperExclusions?: readonly string[];
 };
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -151,8 +181,18 @@ function formatDimensionValue(key: string, value: unknown): string {
 
 const VISIBLE_DIMENSIONS: (keyof ProductVariantAttributes)[] = [
   "language",
-  "quantity",
+  // photoSlots ANTES que quantity (Lucy 2026-09-05): cuando ambas coinciden en
+  // todas las variants (packs de fotoimanes/separadores: cada unidad lleva 1 foto
+  // por slot) y AMBAS son visibles, el dedupe conserva la PRIMERA — "Fotos"
+  // describe lo que compone el pack. Regla 2026-09-08b — el grupo visible se
+  // RENOMBRA a "Unidades" por familia (PDP_DIMENSION_LABEL_OVERRIDES): un
+  // concepto, un label. Excepción por familia: en separadores photoSlots va
+  // OCULTA (PDP_HIDDEN_DIMENSION_KEYS) y el dedupe corre DESPUÉS del filtro de
+  // ocultas, así que sobrevive quantity → el pack size se muestra con su label
+  // override "Unidades"; en tiras el visible es photoSlots, relabelado "Fotos
+  // por tira" (2026-09-09 — "Unidades" es allí el stepper de copias).
   "photoSlots",
+  "quantity",
   "sizeCm",
   "shape",
   "color",
@@ -177,16 +217,32 @@ const SINGLE_VALUE_VISIBLE_DIMS: ReadonlySet<string> = new Set(["sizeCm"]);
 const QUANTITY_DIM_KEYS: ReadonlySet<string> = new Set(["quantity", "photoSlots"]);
 
 /**
- * ¿Los valores de la dimensión son exactamente 1..N contiguos? Solo así la cantidad
- * se elige con stepper +/− (fotoimanes cuadrados y separadores: 1–6, Lucy 2026-07-22).
- * Sets NO contiguos (polaroid 6/9/12/20) conservan chips: un stepper insinuaría que
- * existen todos los tamaños intermedios. La regla es por-producto, derivada de los
- * valores reales de sus variants — no de una lista fija.
+ * ¿Los valores de la dimensión son todos enteros positivos ("1", "2", …)? Es el
+ * gate del stepper +/− de pack size (2026-09-09, owner — UNIVERSAL en las
+ * familias de tamaño variable: polaroid 1–10, cuadrados/separadores 1–6).
+ * NO exige continuidad: el ± salta entre los valores que EXISTEN como variante
+ * (un set no contiguo como el polaroid {1,10} de STG salta de 1 a 10), así el
+ * stepper nunca ofrece un tamaño sin variante que lo respalde. La excepción de
+ * composición de los híbridos (tiras 3/4 → chips) la aplica el caller vía
+ * quantityStepperExclusions, no esta función.
  */
-function isContiguousFromOne(values: string[]): boolean {
-  const nums = values.map((v) => Number.parseInt(v, 10));
-  if (nums.length === 0 || nums.some((n) => !Number.isFinite(n))) return false;
-  return [...nums].sort((a, b) => a - b).every((n, i) => n === i + 1);
+function allPositiveIntegers(values: string[]): boolean {
+  return (
+    values.length > 0 &&
+    values.every((v) => {
+      const n = Number.parseInt(v, 10);
+      return Number.isFinite(n) && n >= 1 && String(n) === v;
+    })
+  );
+}
+
+/** ¿La dimensión es de cantidad (pack size) y se pinta como stepper +/−? */
+function isStepperQuantityDim(
+  key: string,
+  values: string[],
+  excluded: ReadonlySet<string>,
+): boolean {
+  return QUANTITY_DIM_KEYS.has(key) && !excluded.has(key) && allPositiveIntegers(values);
 }
 
 /**
@@ -228,6 +284,9 @@ export function VariantSelector({
   variants: rawVariants,
   perTile = false,
   hiddenDimensions,
+  dimensionLabels,
+  singleDimAsChips = false,
+  quantityStepperExclusions,
 }: VariantSelectorProps) {
   // ──── SINGLE SOURCE OF TRUTH: el Context del buy-box (H12) ────
   // Antes el estado vivía LOCAL acá + router.replace; las acciones (CTA/carrito/precio) no se
@@ -241,7 +300,18 @@ export function VariantSelector({
       const attrs = parseVariantAttributes(v.attributes);
       return Object.keys(attrs).length > 0;
     });
-    return withAttrs.length > 0 ? withAttrs : rawVariants;
+    const base = withAttrs.length > 0 ? withAttrs : rawVariants;
+    // Default "Con imán" (regla 2026-09-08b): sort ESTABLE que pone las
+    // variantes con imán primero. Toda la lógica de "primera compatible con
+    // stock" (selección guiada, re-anchor, anclas N=1 de los packs) itera este
+    // array → cuando el cliente elige otra dimensión, la combinación resuelve a
+    // Con imán salvo que haya elegido Sin imán a propósito. Sin magnet en el
+    // catálogo el orden queda intacto.
+    return [...base].sort((a, b) => {
+      const am = parseVariantAttributes(a.attributes).magnet === false ? 1 : 0;
+      const bm = parseVariantAttributes(b.attributes).magnet === false ? 1 : 0;
+      return am - bm;
+    });
   }, [rawVariants]);
 
   const selectedVariant = variants.find((v) => v.id === selectedId);
@@ -257,6 +327,7 @@ export function VariantSelector({
   // catálogo, el chip correspondiente se muestra deshabilitado ("no
   // disponible") en lugar de cambiar la dimensión no-clickeada automáticamente.
   const dimensions = useMemo(() => {
+    const stepperExclusions: ReadonlySet<string> = new Set(quantityStepperExclusions ?? []);
     const dimMap: Record<string, Set<string>> = {};
     for (const v of variants) {
       const attrs = parseVariantAttributes(v.attributes);
@@ -271,26 +342,29 @@ export function VariantSelector({
     const keys = VISIBLE_DIMENSIONS.filter(
       (key) => dimMap[key] && (dimMap[key].size > 1 || SINGLE_VALUE_VISIBLE_DIMS.has(key)),
     );
-    // Dedupe de grupos redundantes: si dos dimensions tienen EXACTAMENTE el mismo
-    // valor en TODAS las variants (ej. `quantity` y `photoSlots` en packs donde cada
-    // unidad lleva 1 foto), elegir por una equivale a elegir por la otra → mostrar
+    // Ola 2A — ocultar las dimensiones que se eligen en el Estudio (Estilo/Marco/Tema/Idioma).
+    // El dato sigue en la variante seleccionada (preselección del Estudio + cotización);
+    // solo NO se pinta el grupo de chips. El filtro corre ANTES del dedupe para que una
+    // dim oculta NO "tape" una visible idéntica (regla 2026-09-08: en separadores
+    // quantity == photoSlots 1:1 y photoSlots va oculta — si el dedupe corriera antes,
+    // conservaría photoSlots (primera en VISIBLE_DIMENSIONS), descartaría quantity como
+    // duplicada y luego el filtro ocultaría photoSlots → la PDP se quedaba SIN Cantidad).
+    const hidden = new Set(hiddenDimensions ?? []);
+    const unhiddenKeys = keys.filter((key) => !hidden.has(key));
+    // Dedupe de grupos redundantes: si dos dimensions VISIBLES tienen EXACTAMENTE el
+    // mismo valor en TODAS las variants (ej. `quantity` y `photoSlots` en packs donde
+    // cada unidad lleva 1 foto), elegir por una equivale a elegir por la otra → mostrar
     // ambas pintaría el mismo grupo dos veces (bug: doble grupo "CANTIDAD" en la PDP
     // de separadores-libros). Se conserva la primera según VISIBLE_DIMENSIONS.
-    const uniqueKeys = keys.filter(
+    const visibleKeys = unhiddenKeys.filter(
       (key, i) =>
-        !keys.slice(0, i).some((other) =>
+        !unhiddenKeys.slice(0, i).some((other) =>
           variants.every((v) => {
             const attrs = parseVariantAttributes(v.attributes);
             return String(attrs[key]) === String(attrs[other]);
           }),
         ),
     );
-    // Ola 2A — ocultar las dimensiones que se eligen en el Estudio (Estilo/Marco/Tema/Idioma).
-    // El dato sigue en la variante seleccionada (preselección del Estudio + cotización);
-    // solo NO se pinta el grupo de chips. El dedupe corre ANTES para que una dim oculta no
-    // "tape" una visible idéntica (ej. theme espejo de otra clave).
-    const hidden = new Set(hiddenDimensions ?? []);
-    const visibleKeys = uniqueKeys.filter((key) => !hidden.has(key));
     // Dedupe por CORRELACIÓN 1:1 con el idioma (Lucy 2026-09-03 — abecedario-completo):
     // si una dimensión de cantidad (quantity/photoSlots) está determinada 1:1 por la
     // dimensión `language` visible (es↔27, en↔26), elegir idioma YA elige la cantidad —
@@ -348,9 +422,19 @@ export function VariantSelector({
             return { keeperValue, value: String(hiddenValue) };
           }),
         }));
-      return { key, label: DIMENSION_LABELS[key] ?? key, values, defined };
+      return {
+        key,
+        label: dimensionLabels?.[key] ?? DIMENSION_LABELS[key] ?? key,
+        values,
+        defined,
+        // Stepper de pack size (2026-09-09, owner — UNIVERSAL en las familias
+        // de tamaño variable): toda dim de cantidad con valores enteros
+        // positivos, salvo la composición de los híbridos (exclusiones —
+        // tiras "Fotos por tira" 3/4 se queda en chips).
+        useStepper: isStepperQuantityDim(key, values, stepperExclusions),
+      };
     });
-  }, [variants, hiddenDimensions]);
+  }, [variants, hiddenDimensions, dimensionLabels, quantityStepperExclusions]);
 
   // Valor actual por dimensión (del variant seleccionado) — refleja
   // INMEDIATO porque selectedVariant depende de selectedId (local).
@@ -442,16 +526,12 @@ export function VariantSelector({
 
   if (variants.length < 2 && dimensions.length === 0) return null;
 
-  // Polaroid qty 1–10 (Lucy 2026-07-22): con UNA sola dimensión visible que es la
-  // cantidad 1..N contigua, ir directo al modo multi-dim (que pinta el stepper +/−)
-  // en vez de la lista vertical. Sin esto, pausar los sets viejos dejaba la PDP con
-  // una lista de 10 filas y sin stepper.
+  // Polaroid qty 1–10 (Lucy 2026-07-22): con UNA sola dimensión visible que es
+  // la cantidad, ir directo al modo multi-dim (que pinta el stepper +/−) en vez
+  // de la lista vertical. Sin esto, pausar los sets viejos dejaba la PDP con
+  // una lista de N filas y sin stepper.
   const firstDim = dimensions[0];
-  const singleQuantityStepper =
-    dimensions.length === 1 &&
-    firstDim !== undefined &&
-    QUANTITY_DIM_KEYS.has(firstDim.key) &&
-    isContiguousFromOne(firstDim.values);
+  const singleQuantityStepper = dimensions.length === 1 && firstDim?.useStepper === true;
 
   // Dimensión de 1 SOLO valor visible (Tamaño fijo, Lucy 2026-07-22): se pinta
   // como chip estático en el modo multi-dim; la lista vertical "Elige tu opción"
@@ -464,7 +544,9 @@ export function VariantSelector({
   // mismo acento púrpura de selección (antes turquesa, desentonaba), mismo ring-2 +
   // shadow-md al seleccionar y mismo hover que el resto de la PDP. La lógica de
   // selección (single source en Context) no cambia.
-  if (dimensions.length <= 1 && !singleQuantityStepper && !singleStaticDim) {
+  // singleDimAsChips (Lucy 2026-09-05): packs con la dimensión única de Tamaño
+  // saltan este modo → caen al render multi-dim de abajo (chips por tamaño).
+  if (dimensions.length <= 1 && !singleQuantityStepper && !singleStaticDim && !singleDimAsChips) {
     return (
       <div className="mb-4">
         <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">
@@ -547,16 +629,24 @@ export function VariantSelector({
   return (
     <div className="mb-4 space-y-4">
       {dimensions.map((dim) => {
-        // Stepper de cantidad (Lucy 2026-07-22): solo si la dimensión es de cantidad
-        // y sus valores son 1..N contiguos (fotoimanes/separadores 1–6). Sets no
-        // contiguos (polaroid 6/9/12/20) siguen con chips, más abajo.
-        const useStepper = QUANTITY_DIM_KEYS.has(dim.key) && isContiguousFromOne(dim.values);
-        if (useStepper) {
-          const maxQty = dim.values.length; // values = ["1",…,"N"] contiguos
+        // Stepper de pack size (2026-09-09, owner — universal en las familias
+        // de tamaño variable): la flag la calcula el memo de dimensions
+        // (dim de cantidad numérica, no excluida). La composición de los
+        // híbridos (tiras "Fotos por tira" 3/4) sigue con chips, más abajo.
+        if (dim.useStepper) {
+          // El rango es min..max de los tamaños que EXISTEN como variante; el
+          // ± salta entre ellos (un set no contiguo como el polaroid {1,10} de
+          // STG salta de 1 a 10 — nunca ofrece un tamaño sin variante).
+          const steps = [...new Set(dim.values.map((v) => Number.parseInt(v, 10)))].sort(
+            (a, b) => a - b,
+          );
+          const minQty = steps[0] ?? 1;
+          const maxQty = steps[steps.length - 1] ?? 1;
           const parsed = Number.parseInt(currentValues[dim.key] ?? "", 10);
-          const qty = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), maxQty) : 1;
+          const qty = Number.isFinite(parsed) ? Math.min(Math.max(parsed, minQty), maxQty) : minQty;
           // La variante de la cantidad actual (misma combinación de las otras
-          // dimensiones) da el total de la línea; el c/u deriva de él.
+          // dimensiones) da el precio del pack; el c/u deriva de él (precio por
+          // foto cuando la dimensión es photoSlots).
           const qtyVariant =
             findExactVariant(dim.key, String(qty)) ??
             variants.find(
@@ -567,13 +657,16 @@ export function VariantSelector({
             );
           const totalPrice = qtyVariant?.price ?? productBasePrice;
           const unitPrice = Math.round(totalPrice / qty);
-          // Fase 1 — el stepper salta cantidades agotadas: "+"/"−" apuntan a la
-          // siguiente/anterior cantidad que EXISTA y TENGA stock (no al entero
-          // adyacente); si el adyacente está agotado se avisa "· Agotado" (mismo
-          // término de las cards). Sin el salto, una cantidad agotada intermedia
-          // (ej. "2 unidades" en 0) bloqueaba el acceso a todas las superiores.
+          // Fase 1 — el stepper salta cantidades agotadas: "+"/"−" apuntan al
+          // tamaño siguiente/anterior que EXISTA y TENGA stock (no al valor
+          // adyacente del set); si el siguiente existe pero está agotado se
+          // avisa "· Agotado" (mismo término de las cards). Sin el salto, una
+          // cantidad agotada intermedia (ej. "2 unidades" en 0) bloqueaba el
+          // acceso a todas las superiores.
           const stepTarget = (dir: 1 | -1): number | null => {
-            for (let q = qty + dir; q >= 1 && q <= maxQty; q += dir) {
+            const candidates =
+              dir === 1 ? steps.filter((s) => s > qty) : steps.filter((s) => s < qty).reverse();
+            for (const q of candidates) {
               if (
                 isCombinationAvailable(dim.key, String(q)) &&
                 hasStockForCombination(dim.key, String(q))
@@ -587,10 +680,11 @@ export function VariantSelector({
           const increaseTo = stepTarget(1);
           const canDecrease = decreaseTo !== null;
           const canIncrease = increaseTo !== null;
+          const nextStep = steps.find((s) => s > qty);
           const nextSoldOut =
-            qty < maxQty &&
-            isCombinationAvailable(dim.key, String(qty + 1)) &&
-            !hasStockForCombination(dim.key, String(qty + 1));
+            nextStep !== undefined &&
+            isCombinationAvailable(dim.key, String(nextStep)) &&
+            !hasStockForCombination(dim.key, String(nextStep));
           return (
             <div key={dim.key}>
               <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">
@@ -604,7 +698,7 @@ export function VariantSelector({
                 <div className="ring-brand-purple/15 inline-flex items-center rounded-lg bg-white ring-1">
                   <button
                     type="button"
-                    aria-label="Disminuir cantidad"
+                    aria-label="Disminuir unidades"
                     disabled={!canDecrease}
                     onClick={() =>
                       decreaseTo !== null && handleSelectValue(dim.key, String(decreaseTo))
@@ -617,11 +711,22 @@ export function VariantSelector({
                     aria-live="polite"
                     className="text-brand-purple-dark min-w-20 text-center text-sm font-bold tabular-nums"
                   >
-                    {qty} {qty === 1 ? "unidad" : "unidades"}
+                    {/* Sustantivo según la dimensión: photoSlots = fotos por unidad
+                      (composición del pack); quantity = unidades. Regla 2026-09-08b:
+                      el GRUPO se llama "Unidades" en toda PDP (label override por
+                      familia); el sustantivo del conteo describe las piezas. */}
+                    {qty}{" "}
+                    {dim.key === "photoSlots"
+                      ? qty === 1
+                        ? "foto"
+                        : "fotos"
+                      : qty === 1
+                        ? "unidad"
+                        : "unidades"}
                   </span>
                   <button
                     type="button"
-                    aria-label="Aumentar cantidad"
+                    aria-label="Aumentar unidades"
                     disabled={!canIncrease}
                     onClick={() =>
                       increaseTo !== null && handleSelectValue(dim.key, String(increaseTo))
@@ -635,9 +740,11 @@ export function VariantSelector({
                   {formatCOP(unitPrice)} c/u
                 </span>
                 {nextSoldOut && <span className="text-brand-muted text-xs">· Agotado</span>}
-                <span className="text-brand-purple-dark text-sm font-bold tabular-nums">
-                  Total: {formatCOP(totalPrice)}
-                </span>
+                {/* SIN "Total: $X" acá (Lucy 2026-09-05): este stepper elige la
+                  COMPOSICIÓN del pack (cuántas piezas trae el set) — el total de
+                  la compra lo fija el carrito (QtyControls) y el precio del pack
+                  ya está en el bloque PRECIO. Mostrar un "Total" acá duplicaba la
+                  cantidad y confundía (bug reportado en vivo). */}
               </div>
             </div>
           );

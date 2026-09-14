@@ -39,7 +39,7 @@ const SANDBOX_CHECKOUT = "https://checkout.wompi.co/p/";
 
 export type WompiEnv = "sandbox" | "production";
 
-function getEnv(): WompiEnv {
+export function getWompiEnv(): WompiEnv {
   // Defensa: si el valor viene con comentario tipo "sandbox  # ..." lo limpiamos.
   const raw = process.env.WOMPI_ENV?.trim().split(/\s+/)[0]?.toLowerCase();
   return raw === "production" ? "production" : "sandbox";
@@ -55,11 +55,11 @@ function getEnv(): WompiEnv {
  * fuente elimina esa inconsistencia.
  */
 export function getWompiExpectedWebhookEnv(): "prod" | "test" {
-  return getEnv() === "production" ? "prod" : "test";
+  return getWompiEnv() === "production" ? "prod" : "test";
 }
 
 export function getWompiConfig() {
-  const env = getEnv();
+  const env = getWompiEnv();
   const publicKey = process.env.WOMPI_PUBLIC_KEY?.trim();
   const privateKey = process.env.WOMPI_PRIVATE_KEY?.trim();
   const eventsSecret = process.env.WOMPI_EVENTS_SECRET?.trim();
@@ -77,6 +77,72 @@ export function getWompiConfig() {
     eventsSecret,
     integritySecret,
   };
+}
+
+/**
+ * Sonda de salud de Wompi SIN crear transacciones (CF-03: la misma lógica usa
+ * GET /api/health/wompi y el panel admin — importada, sin HTTP self-fetch).
+ *
+ * Hit liviano a GET /merchants/{publicKey} (endpoint de descubrimiento del
+ * comercio: responde 200 si las llaves y el ambiente WOMPI_ENV son coherentes).
+ * NUNCA incluye llaves en el resultado: solo el ambiente declarado y la latencia.
+ *
+ * `skipped` (sin WOMPI_*) NO es un fallo: la tienda vende por cotización en
+ * modo catálogo. Los detalles de error son estáticos a propósito: el mensaje
+ * crudo de red podría arrastrar la URL (que lleva la llave pública embebida).
+ */
+export type WompiHealth = {
+  status: "ok" | "skipped" | "fail";
+  /** Ambiente declarado por WOMPI_ENV (presente aunque falten llaves). */
+  env: WompiEnv;
+  detail?: string;
+  latencyMs: number;
+};
+
+export async function probeWompiHealth(): Promise<WompiHealth> {
+  let cfg: ReturnType<typeof getWompiConfig>;
+  try {
+    cfg = getWompiConfig();
+  } catch {
+    return {
+      status: "skipped",
+      env: getWompiEnv(),
+      detail: "WOMPI_* no configuradas (modo catálogo).",
+      latencyMs: 0,
+    };
+  }
+
+  const start = Date.now();
+  try {
+    const r = await fetch(`${cfg.apiUrl}/merchants/${cfg.publicKey}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(6000),
+    });
+    const latencyMs = Date.now() - start;
+    if (!r.ok) {
+      logger.warn({ event: "health.wompi.http_fail", status: r.status, latencyMs });
+      return {
+        status: "fail",
+        env: cfg.env,
+        detail: `Wompi devolvió HTTP ${r.status}.`,
+        latencyMs,
+      };
+    }
+    return { status: "ok", env: cfg.env, latencyMs };
+  } catch (err) {
+    const latencyMs = Date.now() - start;
+    logger.error({
+      event: "health.wompi.fail",
+      latencyMs,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      status: "fail",
+      env: cfg.env,
+      detail: "Wompi healthcheck falló (timeout o error de red).",
+      latencyMs,
+    };
+  }
 }
 
 /**

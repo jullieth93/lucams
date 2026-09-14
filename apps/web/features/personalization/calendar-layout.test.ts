@@ -32,6 +32,21 @@ describe("calendar-layout — tarjeta 7.5×10 (Ola 2A)", () => {
     expect(out).toEqual({ offsetX: 90, offsetY: -36, scale: 1.5 });
   });
 
+  // Lucy 2026-09-08 — gate de regresión del bug "Rotar 90° no hace nada en el
+  // calendario": la rotación (grados, adimensional) debe SOBREVIVIR el reescalado.
+  it("conserva la rotación al reescalar (antes se perdía camino al compositor)", () => {
+    const out = scalePhotoTransformToPage(
+      { offsetX: 50, offsetY: -20, scale: 1.5, rotation: 90 },
+      600,
+    );
+    expect(out).toEqual({ offsetX: 90, offsetY: -36, scale: 1.5, rotation: 90 });
+  });
+
+  it("conserva la rotación cuando no hay reescalado (factor 1)", () => {
+    const t = { offsetX: 10, offsetY: 5, scale: 1, rotation: 270 };
+    expect(scalePhotoTransformToPage(t, undefined)).toEqual(t);
+  });
+
   it("sin ancho de plantilla (o igual a la página) no toca los offsets", () => {
     const t = { offsetX: 10, offsetY: 5, scale: 1 };
     expect(scalePhotoTransformToPage(t, undefined)).toEqual(t);

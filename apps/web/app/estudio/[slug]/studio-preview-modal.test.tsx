@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
 
 /*
- * Test del stepper de COPIAS de la modal de vista previa pre-carrito.
- *
- * Las copias (CartItem.qty 1..99) son cuántas unidades IDÉNTICAS del diseño
- * aprobado se imprimen — distinto del tamaño del pack, que ya va horneado en
- * el diseño. Blinda:
- *   1. Arranca en 1 y el total mostrado es el precio unitario.
- *   2. El stepper actualiza el total (unitario × copias) y el "c/u".
- *   3. onConfirm recibe las copias elegidas (van como qty al carrito).
- *   4. Las copias se reinician a 1 en cada apertura de la modal.
- *   5. Respeta min 1 / max 99 (mismo tope del carrito).
+ * Test de la modal de vista previa pre-carrito — SIN stepper "Copias"
+ * (regla 2026-09-08b, Lucy: UN concepto de cantidad, "Unidades", elegido en
+ * la PDP). Las copias llegan ya decididas vía `initialCopies` (?copies=N de
+ * la PDP — solo productos de composición fija) y la modal solo CONFIRMA.
+ * Blinda:
+ *   1. No hay stepper ni grupo "Copias" (la cantidad se ajusta en el carrito).
+ *   2. El total mostrado es unitario × copias de la PDP (mismo cálculo del carrito).
+ *   3. onConfirm recibe las copias de la PDP (van como qty al carrito) — 1 por defecto.
+ *   4. Con >1 copia se muestra el dato ("N copias idénticas") para que el total no sorprenda.
+ *   5. initialCopies fuera de rango se acota a 1..99 (la URL la puede editar cualquiera).
  *
  * La modal usa el mismo Radix Dialog de StudioSlotEditModal (ya testeado en
  * jsdom) y los textos CMS caen al DEFAULT_STUDIO_TEXTS sin provider.
@@ -18,7 +18,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { formatCOP } from "@/lib/format";
 
 vi.mock("next/image", () => ({
@@ -50,115 +50,127 @@ function baseProps() {
   };
 }
 
-describe("StudioPreviewModal — stepper de copias", () => {
-  it("arranca en 1 copia: total = precio unitario y − deshabilitado", () => {
-    render(<StudioPreviewModal {...baseProps()} />);
-    const copias = screen.getByRole("group", { name: "Copias" });
-    expect(within(copias).getByText("1")).toBeInTheDocument();
-    expect(screen.getByText(/Imprimimos 1 copia idéntica de tu diseño/)).toBeInTheDocument();
-    expect(screen.getByText(cop(UNIT_PRICE))).toBeInTheDocument();
-    // Sin "c/u" auxiliar con 1 sola copia.
-    expect(screen.queryByText(/c\/u/)).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Disminuir copias")).toBeDisabled();
-  });
-
-  it("el stepper actualiza el total (unitario × copias) y muestra el c/u", () => {
-    render(<StudioPreviewModal {...baseProps()} />);
-    const copias = screen.getByRole("group", { name: "Copias" });
-
-    fireEvent.click(screen.getByLabelText("Aumentar copias"));
-    expect(within(copias).getByText("2")).toBeInTheDocument();
-    expect(screen.getByText(cop(UNIT_PRICE * 2))).toBeInTheDocument();
-    expect(screen.getByText(`${cop(UNIT_PRICE)} c/u`)).toBeInTheDocument();
-    expect(screen.getByText(/Imprimimos 2 copias idénticas de tu diseño/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByLabelText("Disminuir copias"));
-    expect(within(copias).getByText("1")).toBeInTheDocument();
-    expect(screen.getByText(cop(UNIT_PRICE))).toBeInTheDocument();
-  });
-
-  it("onConfirm recibe las copias elegidas (van como qty al carrito)", () => {
-    const props = baseProps();
-    render(<StudioPreviewModal {...props} />);
-
-    fireEvent.click(screen.getByLabelText("Aumentar copias"));
-    fireEvent.click(screen.getByLabelText("Aumentar copias"));
-    fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
-    expect(props.onConfirm).toHaveBeenCalledWith(3);
-  });
-
-  it("reinicia las copias a 1 cada vez que la modal se abre", () => {
-    const props = baseProps();
-    const { rerender } = render(<StudioPreviewModal {...props} />);
-    fireEvent.click(screen.getByLabelText("Aumentar copias"));
-    fireEvent.click(screen.getByLabelText("Aumentar copias"));
-    expect(screen.getByText(cop(UNIT_PRICE * 3))).toBeInTheDocument();
-
-    // Cerrar y reabrir: la decisión anterior no se arrastra.
-    rerender(<StudioPreviewModal {...props} isOpen={false} />);
-    rerender(<StudioPreviewModal {...props} isOpen={true} />);
-    const copias = screen.getByRole("group", { name: "Copias" });
-    expect(within(copias).getByText("1")).toBeInTheDocument();
-    expect(screen.getByText(cop(UNIT_PRICE))).toBeInTheDocument();
-  });
-
-  it("respeta el máximo 99 (tope del carrito): + se deshabilita al llegar", () => {
-    render(<StudioPreviewModal {...baseProps()} />);
-    const increase = screen.getByLabelText("Aumentar copias");
-    for (let i = 0; i < 98; i++) {
-      fireEvent.click(increase);
-    }
-    const copias = screen.getByRole("group", { name: "Copias" });
-    expect(within(copias).getByText("99")).toBeInTheDocument();
-    expect(screen.getByText(cop(UNIT_PRICE * 99))).toBeInTheDocument();
-    expect(increase).toBeDisabled();
-    expect(screen.getByLabelText("Disminuir copias")).toBeEnabled();
-  });
-});
-
-describe("StudioPreviewModal — copias pre-elegidas en la PDP (initialCopies, Lucy 2026-09-03)", () => {
-  it("arranca con las copias de la PDP: stepper y total pre-cargados", () => {
+describe("StudioPreviewModal — sin stepper de copias (regla 2026-09-08b)", () => {
+  it("NO muestra stepper ni grupo 'Copias' (la cantidad viene de la PDP / se ajusta en el carrito)", () => {
     render(<StudioPreviewModal {...baseProps()} initialCopies={4} />);
-    const copias = screen.getByRole("group", { name: "Copias" });
-    expect(within(copias).getByText("4")).toBeInTheDocument();
-    expect(screen.getByText(/Imprimimos 4 copias idénticas de tu diseño/)).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Copias" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Aumentar copias")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Disminuir copias")).not.toBeInTheDocument();
+  });
+
+  it("con 1 copia (default): total = precio unitario, sin desglose de copias ni c/u", () => {
+    render(<StudioPreviewModal {...baseProps()} />);
+    expect(screen.getByText(cop(UNIT_PRICE))).toBeInTheDocument();
+    expect(screen.queryByText(/c\/u/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/copias idénticas/)).not.toBeInTheDocument();
+  });
+
+  it("con N copias de la PDP: total = unitario × N, con c/u y el dato de copias", () => {
+    render(<StudioPreviewModal {...baseProps()} initialCopies={4} />);
     expect(screen.getByText(cop(UNIT_PRICE * 4))).toBeInTheDocument();
     expect(screen.getByText(`${cop(UNIT_PRICE)} c/u`)).toBeInTheDocument();
+    expect(screen.getByText(/4 copias idénticas de tu diseño/)).toBeInTheDocument();
   });
 
-  it("onConfirm recibe las copias pre-cargadas si el cliente no ajusta", () => {
+  it("onConfirm recibe las copias de la PDP (van como qty al carrito)", () => {
     const props = baseProps();
     render(<StudioPreviewModal {...props} initialCopies={3} />);
     fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
     expect(props.onConfirm).toHaveBeenCalledWith(3);
   });
 
-  it("cada apertura vuelve a las copias de la PDP (no a 1 ni a la decisión anterior)", () => {
+  it("sin initialCopies, onConfirm recibe 1 (default del carrito)", () => {
     const props = baseProps();
-    const { rerender } = render(<StudioPreviewModal {...props} initialCopies={5} />);
-    fireEvent.click(screen.getByLabelText("Disminuir copias"));
-    fireEvent.click(screen.getByLabelText("Disminuir copias"));
-    const copias = screen.getByRole("group", { name: "Copias" });
-    expect(within(copias).getByText("3")).toBeInTheDocument();
-
-    rerender(<StudioPreviewModal {...props} initialCopies={5} isOpen={false} />);
-    rerender(<StudioPreviewModal {...props} initialCopies={5} isOpen={true} />);
-    expect(
-      within(screen.getByRole("group", { name: "Copias" })).getByText("5"),
-    ).toBeInTheDocument();
+    render(<StudioPreviewModal {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
+    expect(props.onConfirm).toHaveBeenCalledWith(1);
   });
 
-  it("acota initialCopies fuera de rango (la URL la puede editar cualquiera)", () => {
-    // Instancias frescas: el valor inicial aplica al montar/abrir la modal (en la
-    // app llega fijo desde la URL; no cambia con la modal ya abierta).
-    const { unmount } = render(<StudioPreviewModal {...baseProps()} initialCopies={150} />);
-    expect(
-      within(screen.getByRole("group", { name: "Copias" })).getByText("99"),
-    ).toBeInTheDocument();
+  it("acota initialCopies fuera de rango a 1..99 (la URL la puede editar cualquiera)", () => {
+    const propsAlto = baseProps();
+    const { unmount } = render(<StudioPreviewModal {...propsAlto} initialCopies={150} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
+    expect(propsAlto.onConfirm).toHaveBeenCalledWith(99);
     unmount();
-    render(<StudioPreviewModal {...baseProps()} initialCopies={0} />);
+
+    const propsBajo = baseProps();
+    render(<StudioPreviewModal {...propsBajo} initialCopies={0} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
+    expect(propsBajo.onConfirm).toHaveBeenCalledWith(1);
+  });
+});
+
+describe("StudioPreviewModal — modelo MULTI-UNIDAD (unitCount: las unidades van EN el diseño)", () => {
+  it("con N unidades: total = unitario × N, dato de unidades y onConfirm recibe 1 (qty del carrito)", () => {
+    const props = baseProps();
+    render(<StudioPreviewModal {...props} unitCount={2} />);
+    expect(screen.getByText(cop(UNIT_PRICE * 2))).toBeInTheDocument();
+    expect(screen.getByText(`${cop(UNIT_PRICE)} c/u`)).toBeInTheDocument();
+    // La línea dice unidades DISEÑADAS, no "copias idénticas" (concepto eliminado).
+    expect(screen.getByText(/2 unidades — cada una con su propio diseño/)).toBeInTheDocument();
+    expect(screen.queryByText(/copias idénticas/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
+    expect(props.onConfirm).toHaveBeenCalledWith(1);
+  });
+
+  it("con 1 unidad (unitCount=1): total = precio unitario, sin desglose", () => {
+    render(<StudioPreviewModal {...baseProps()} unitCount={1} />);
+    expect(screen.getByText(cop(UNIT_PRICE))).toBeInTheDocument();
+    expect(screen.queryByText(/c\/u/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/unidades — cada una/)).not.toBeInTheDocument();
+  });
+
+  it("tiras (productKind=strips): la descripción habla de tiras y fotos por tira, no de imanes", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productKind="strips"
+        slotCount={2}
+        slotsPerUnit={3}
+        unitCount={2}
+      />,
+    );
     expect(
-      within(screen.getByRole("group", { name: "Copias" })).getByText("1"),
+      screen.getByText(
+        /Esta es la vista previa de las 2 tiras que vas a recibir — cada una con 3 fotos\./,
+      ),
     ).toBeInTheDocument();
+    expect(screen.getByText("2 tiras personalizadas · 3 fotos c/u")).toBeInTheDocument();
+    expect(screen.queryByText(/imanes que vas a recibir/)).not.toBeInTheDocument();
+  });
+
+  it("una tira (strips, 1 unidad): singular", () => {
+    render(
+      <StudioPreviewModal {...baseProps()} productKind="strips" slotCount={1} slotsPerUnit={4} />,
+    );
+    expect(
+      screen.getByText(/Esta es la vista previa de la tira que vas a recibir — con 4 fotos\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText("1 tira personalizada · 4 fotos")).toBeInTheDocument();
+  });
+
+  it("calendarios ×2: la descripción y el resumen hablan de 2 calendarios de 12 páginas", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productKind="calendar"
+        slotCount={2}
+        slotsPerUnit={12}
+        unitCount={2}
+        calendarYear={2027}
+      />,
+    );
+    expect(
+      screen.getByText(/vista previa de tus 2 calendarios 2027 — cada uno con 12 páginas\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText("2 calendarios personalizados · 12 páginas c/u")).toBeInTheDocument();
+  });
+
+  it("unitCount manda sobre initialCopies cuando llegan ambos (modelo nuevo > legacy)", () => {
+    const props = baseProps();
+    render(<StudioPreviewModal {...props} unitCount={2} initialCopies={5} />);
+    expect(screen.getByText(cop(UNIT_PRICE * 2))).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
+    expect(props.onConfirm).toHaveBeenCalledWith(1);
   });
 });

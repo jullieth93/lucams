@@ -29,6 +29,14 @@
  *    (colisiones esperadas contra objetos internos de Supabase) lo pone en
  *    rojo. Si Supabase cambia sus internos, el drill avisa y la lista se
  *    actualiza A PROPÓSITO, nunca se silencia por omisión.
+ *
+ * 3) N-19b (auditoría 2026-09-11) — frescura del dump: el drill elegía el .gpg
+ *    más nuevo POR NOMBRE y lo restauraba aunque tuviera meses. Un drill verde
+ *    sobre un backup viejo certifica un pipeline que ya murió: el backup diario
+ *    pudo estar roto 20 días y el drill mensual seguía diciendo "restaurable".
+ *    Ahora el dump más nuevo debe tener ≤ DRILL_MAX_BACKUP_AGE_HOURS (default
+ *    36h — el backup corre diario; mismo tope que la regla backup_stale de la
+ *    app) medido por el LastModified de R2, y si no, el drill FALLA.
  */
 
 // Schemas internos que la imagen supabase/postgres pre-crea (y que un proyecto
@@ -279,4 +287,50 @@ export function dumpCopyRowCounts(sqlText) {
     }
   }
   return counts;
+}
+
+
+/**
+ * Tope de frescura del dump que restaura el drill (N-19b): el backup corre
+ * DIARIO, así que 36h da margen para retrasos/reintentos sin falsos positivos
+ * y aun así detecta un pipeline muerto en menos de 2 corridas perdidas. Mismo
+ * tope que la regla backup_stale de la app (cron-heartbeat.ts, BACKUP_STALE_MS).
+ * Configurable vía DRILL_MAX_BACKUP_AGE_HOURS.
+ */
+export const DEFAULT_MAX_BACKUP_AGE_HOURS = 36;
+
+/**
+ * Verifica la frescura del dump elegido para el drill. Devuelve null si es
+ * fresco, o el mensaje de error (para lanzar) si no se puede certificar.
+ *
+ * `lastModified` es el LastModified del objeto en el listado de R2 (la fuente
+ * autoritativa — el timestamp del NOMBRE de la llave solo ordena; no prueba
+ * cuándo se subió). Fail-closed: sin fecha no hay frescura verificable → error.
+ * Un drill verde sobre un dump viejo certifica un backup que ya no existe.
+ */
+export function backupFreshnessError({
+  key,
+  lastModified,
+  now,
+  maxAgeHours = DEFAULT_MAX_BACKUP_AGE_HOURS,
+}) {
+  if (!(lastModified instanceof Date) || Number.isNaN(lastModified.getTime())) {
+    return (
+      `El objeto ${key} no trae un LastModified válido en el listado de R2: no se puede ` +
+      `verificar su frescura (fail-closed — un drill sin frescura verificada no certifica nada).`
+    );
+  }
+  if (!(now instanceof Date) || Number.isNaN(now.getTime()) || !Number.isFinite(maxAgeHours)) {
+    return `Parámetros de frescura inválidos (now o maxAgeHours) — fail-closed.`;
+  }
+  const ageMs = now.getTime() - lastModified.getTime();
+  const limitMs = maxAgeHours * 3600 * 1000;
+  if (ageMs <= limitMs) return null;
+  const ageHours = (ageMs / 3600000).toFixed(1);
+  return (
+    `El dump más nuevo (${key}) tiene ${ageHours}h y el máximo permitido es ${maxAgeHours}h ` +
+    `(DRILL_MAX_BACKUP_AGE_HOURS): el backup DIARIO está roto aunque este dump viejo restaure ` +
+    `bien. Un drill verde acá certificaría un pipeline de backup que ya no corre — revisar el ` +
+    `workflow backup.yml (y la regla backup_stale del panel) antes de confiar en este drill.`
+  );
 }

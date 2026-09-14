@@ -28,6 +28,7 @@ const CUSTOMER_SAFE_CHECKOUT_CODES = new Set([
   "STOCK_UNAVAILABLE",
   "COD_NOT_ALLOWED",
   "ORDER_AMOUNT_TOO_LARGE", // #9 — copy customer-safe ("escríbenos y te lo cotizamos")
+  "CART_ITEMS_UNAVAILABLE", // N-01 — copy customer-safe ("revisa tu carrito y confirma de nuevo")
   "CART_EMPTY",
   "CART_NOT_FOUND",
   "MISSING_CONTACT",
@@ -121,6 +122,13 @@ export async function payWompiAction(formData: FormData): Promise<void> {
     if (err instanceof CheckoutError && err.code === "COUPON_INVALIDATED") {
       logger.info({ event: "checkout.pago.coupon_invalidated_bounce", method: "WOMPI" });
       redirect(`/checkout/pago?couponNotice=${encodeURIComponent(err.message)}`);
+    }
+    // N-01 — un item del carrito quedó archivado en carrera (admin lo retiró entre el carrito y
+    // el click en pagar). La orden NO se creó (nada que cobrar distinto de lo exhibido): al
+    // carrito con aviso claro; ahí el item retirado ya no aparece y re-confirma.
+    if (err instanceof CheckoutError && err.code === "CART_ITEMS_UNAVAILABLE") {
+      logger.warn({ event: "checkout.pago.unavailable_items_bounce", method: "WOMPI" });
+      redirect(`/carrito?error=${encodeURIComponent(err.message)}`);
     }
     // Flete manipulado u obsoleto (carrito/dirección cambiaron tras cotizar —
     // certificación 2026-07-29): volver al step de envío a re-cotizar. El mensaje
@@ -223,6 +231,12 @@ export async function payCodAction(formData: FormData): Promise<void> {
       logger.info({ event: "checkout.pago.coupon_invalidated_bounce", method: "COD" });
       redirect(`/checkout/pago?couponNotice=${encodeURIComponent(err.message)}`);
     }
+    // N-01 — item del carrito archivado en carrera (ver payWompiAction): la orden NO se creó;
+    // al carrito con aviso claro para re-confirmar con el contenido real.
+    if (err instanceof CheckoutError && err.code === "CART_ITEMS_UNAVAILABLE") {
+      logger.warn({ event: "checkout.pago.unavailable_items_bounce", method: "COD" });
+      redirect(`/carrito?error=${encodeURIComponent(err.message)}`);
+    }
     // Flete manipulado u obsoleto — ver payWompiAction. El mensaje es customer-safe.
     if (err instanceof CheckoutError && err.code === "SHIPPING_SELECTION_INVALID") {
       logger.warn({ event: "checkout.pago.shipping_selection_invalid", method: "COD" });
@@ -285,7 +299,7 @@ export async function applyCouponAction(
       event: "checkout.coupon.apply_fail",
       err: err instanceof Error ? err.message : String(err),
     });
-    return { ok: false, message: "No pudimos aplicar el cupón. Revisa tu carrito." };
+    return { ok: false, message: "No pudimos aplicar el cupón. Inténtalo de nuevo." };
   }
 }
 

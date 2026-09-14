@@ -795,8 +795,11 @@ describe("renderProductionSlotsCanvas — Ola 4 (Lucy 2026-07-23)", () => {
     expect(await hasPixel(bufs[0], msgBand, darkInk)).toBe(true);
   });
 
-  // T5 — Tira photobooth: UNA pieza continua. Las fotos de celdas vecinas se TOCAN
-  // (gap 0 real); el borde exterior (color frame-card) solo en first/last + lados.
+  // T5 — Tira photobooth: UNA pieza continua con canaletas visibles ENTRE fotos
+  // (regla 2026-09-08, Lucy: la tira física separa las fotos con canales del color
+  // del marco). La separación se dibuja DENTRO de cada celda (stripPhotoRect:
+  // media canaleta de 8px por cara → 16px entre fotos); el borde exterior (color
+  // frame-card) sigue en first/last (12px) + lados. Misma matemática que el editor.
   const stripUnit = {
     version: 1 as const,
     stage: { width: 390, height: 400 },
@@ -812,7 +815,7 @@ describe("renderProductionSlotsCanvas — Ola 4 (Lucy 2026-07-23)", () => {
   const stripSlots = [0, 1, 2].map((i) => ({ ...slotOk3, slotIndex: i, assetId: `a${i}` }));
   const nearWhiteRgb = [255, 255, 255];
 
-  it("T5 celda del MEDIO: la foto toca los bordes superior e inferior (gap 0 real)", async () => {
+  it("T5 celda del MEDIO: media canaleta arriba y abajo (la foto ya NO toca los bordes)", async () => {
     const bufs = await renderProductionSlotsCanvas({
       unitTemplate: stripUnit,
       slots: stripSlots,
@@ -823,15 +826,20 @@ describe("renderProductionSlotsCanvas — Ola 4 (Lucy 2026-07-23)", () => {
     });
     expect(bufs).toHaveLength(3);
     const middle = bufs[1];
-    // Borde superior de la celda del medio → foto (toca la foto de la celda anterior).
-    expect((await rgbaAt(middle, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(BLUE);
-    // Borde inferior → foto (toca la siguiente).
-    expect((await rgbaAt(middle, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(BLUE);
+    // Borde superior de la celda del medio → canaleta del color de la tarjeta
+    // (8px de stage = 24px de producción; y=1 cae dentro).
+    expect((await rgbaAt(middle, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    // Borde inferior → media canaleta también (y=398 ≥ 392 donde termina la foto).
+    expect((await rgbaAt(middle, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    // …y las dos medias canaletas vecinas (8+8) dejan la separación visible: la
+    // foto empieza recién a los 8px de la celda (y=10 ya es foto).
+    expect((await rgbaAt(middle, 195 * 3, 10 * 3)).slice(0, 3)).toEqual(BLUE);
+    expect((await rgbaAt(middle, 195 * 3, 390 * 3)).slice(0, 3)).toEqual(BLUE);
     // Lado izquierdo (dentro del margen lateral 12px) → color de la tarjeta.
     expect((await rgbaAt(middle, 4 * 3, 200 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
   });
 
-  it("T5 primera y última celda: borde EXTERIOR de 12px del color de la tarjeta", async () => {
+  it("T5 primera y última celda: borde EXTERIOR de 12px + media canaleta hacia la vecina", async () => {
     const bufs = await renderProductionSlotsCanvas({
       unitTemplate: stripUnit,
       slots: stripSlots,
@@ -844,15 +852,16 @@ describe("renderProductionSlotsCanvas — Ola 4 (Lucy 2026-07-23)", () => {
     // Primera: franja superior blanca (borde exterior); la foto empieza a los 12px.
     expect((await rgbaAt(first, 195 * 3, 4 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
     expect((await rgbaAt(first, 195 * 3, 20 * 3)).slice(0, 3)).toEqual(BLUE);
-    // …pero su borde inferior toca la siguiente celda → foto.
-    expect((await rgbaAt(first, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(BLUE);
-    // Última: franja inferior blanca; su borde superior toca la anterior → foto.
-    expect((await rgbaAt(last, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(BLUE);
+    // …y su borde inferior lleva la media canaleta hacia la siguiente celda.
+    expect((await rgbaAt(first, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    // Última: media canaleta arriba + franja inferior blanca (borde exterior).
+    expect((await rgbaAt(last, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    expect((await rgbaAt(last, 195 * 3, 10 * 3)).slice(0, 3)).toEqual(BLUE);
     expect((await rgbaAt(last, 195 * 3, 396 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
     expect((await rgbaAt(last, 195 * 3, 380 * 3)).slice(0, 3)).toEqual(BLUE);
   });
 
-  it("T5 con color de borde: el borde exterior y los lados toman el color elegido", async () => {
+  it("T5 con color de borde: borde exterior, lados y canaletas toman el color elegido", async () => {
     const bufs = await renderProductionSlotsCanvas({
       unitTemplate: stripUnit,
       slots: stripSlots,
@@ -864,5 +873,357 @@ describe("renderProductionSlotsCanvas — Ola 4 (Lucy 2026-07-23)", () => {
     const [first] = bufs;
     expect((await rgbaAt(first, 195 * 3, 4 * 3)).slice(0, 3)).toEqual(PINK);
     expect((await rgbaAt(first, 4 * 3, 200 * 3)).slice(0, 3)).toEqual(PINK);
+    // La canaleta inferior de la primera celda también es del color elegido.
+    expect((await rgbaAt(first, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(PINK);
+  });
+
+  // T5b — Ola 25 (Lucy 2026-09-09): tira SIN BORDE (toggle "Sin borde" de la toolbar →
+  // placeholder reescrito a sangre total de la celda). La pieza queda CONTINUA de
+  // verdad: sin marco exterior Y SIN CANALETAS — las fotos se tocan borde con borde
+  // (Ola 23 conservaba las canaletas; el dueño las marcó con X en STG: sin líneas).
+  const stripUnitSinBorde = {
+    ...stripUnit,
+    layers: [
+      { id: "bg", type: "background", color: "#FFFFFF" },
+      { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 0 },
+      // Ventana reescrita por el toggle: sangre total de la celda (x=0, ancho=stage).
+      { id: "ph", type: "image-placeholder", x: 0, y: 0, width: 390, height: 400 },
+    ],
+  };
+
+  it("T5b tira SIN borde: foto a sangre en TODOS los bordes de la celda, sin líneas entre fotos", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: stripUnitSinBorde,
+      slots: stripSlots,
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+      frameFullBleed: true,
+    });
+    const [first, middle, last] = bufs;
+    // Primera celda: la foto toca el borde SUPERIOR de la tira y el INFERIOR de la
+    // celda (sin canaleta hacia la segunda foto — antes quedaban 8px blancos).
+    expect((await rgbaAt(first, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(BLUE);
+    expect((await rgbaAt(first, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(BLUE);
+    // Celda del medio: foto de borde a borde, arriba y abajo (cero canaletas)…
+    expect((await rgbaAt(middle, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(BLUE);
+    expect((await rgbaAt(middle, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(BLUE);
+    // …y los LADOS van a sangre (x=1 ya es foto; con borde había margen de 12px).
+    expect((await rgbaAt(middle, 1 * 3, 200 * 3)).slice(0, 3)).toEqual(BLUE);
+    // Última celda: la foto toca el borde INFERIOR de la tira y el superior.
+    expect((await rgbaAt(last, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(BLUE);
+    expect((await rgbaAt(last, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(BLUE);
+  });
+
+  it("T5b tira SIN borde CON color residual: tampoco hay líneas — la foto lo cubre todo", async () => {
+    // Otro agente desactiva la paleta en sin-borde (el color no aplica), pero si un
+    // canvasData viejo trae borderColor, la regla manda igual: SIN canaletas ni marco.
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: stripUnitSinBorde,
+      slots: stripSlots,
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: "#E85B9F",
+      frameFullBleed: true,
+    });
+    const [first] = bufs;
+    // Borde superior externo: foto a sangre (NADA de marco rosa)…
+    expect((await rgbaAt(first, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(BLUE);
+    // …y el borde inferior de la celda también es foto (sin canaleta del color).
+    expect((await rgbaAt(first, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(BLUE);
+  });
+
+  // T6 — Ola 23 (Lucy 2026-09-08): el MARCO es de ancho CONSTANTE bajo zoom-out/pan.
+  // Al alejar la foto (scale < 1) el hueco dentro de la ventana se rellena con el color
+  // de la tarjeta SIN marco (background), no con el color del marco — antes el marco
+  // "crecía" porque el fondo del stage era borderColor y asomaba dentro de la ventana.
+  it("T6 tira CON borde + zoom-out: el marco no crece (hueco = blanco, marco/canal = color)", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: stripUnit,
+      slots: stripSlots.map((s) => ({
+        ...s,
+        photoTransform: { offsetX: 0, offsetY: 0, scale: 0.5 },
+      })),
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: "#E85B9F",
+      frameFullBleed: true,
+    });
+    const middle = bufs[1];
+    // Ventana de la celda del medio: x 12..378, y 8..392. Con scale 0.5 la foto cubre
+    // 192×192 centrada (x 99..291, y 104..296 en px de stage).
+    // Hueco DENTRO de la ventana (x=30) → blanco de la tarjeta, NO rosa (antes: rosa).
+    expect((await rgbaAt(middle, 30 * 3, 200 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    // Marco lateral (x=4) y canaleta inferior (y=398) → el color elegido, ancho intacto.
+    expect((await rgbaAt(middle, 4 * 3, 200 * 3)).slice(0, 3)).toEqual(PINK);
+    expect((await rgbaAt(middle, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(PINK);
+    // Centro: la foto (achicada) sigue ahí.
+    expect((await rgbaAt(middle, 195 * 3, 200 * 3)).slice(0, 3)).toEqual(BLUE);
+  });
+
+  it("T6 tarjeta simple CON borde + zoom-out: franja uniforme constante (hueco = blanco)", async () => {
+    const unit = {
+      version: 1 as const,
+      stage: { width: 300, height: 300 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        { id: "ph", type: "image-placeholder", x: 40, y: 40, width: 220, height: 180 },
+      ],
+    };
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [{ ...slotOk3, photoTransform: { offsetX: 0, offsetY: 0, scale: 0.5 } }],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: "#E85B9F",
+      frameFullBleed: true,
+    });
+    // Ventana (12..288): con scale 0.5 la foto cubre 138×138 centrada (81..219).
+    // Hueco dentro de la ventana (x=20) → blanco; la franja (x=6) → rosa constante.
+    expect((await rgbaAt(bufs[0], 20 * 3, 20 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    expect((await rgbaAt(bufs[0], 6 * 3, 6 * 3)).slice(0, 3)).toEqual(PINK);
+    expect((await rgbaAt(bufs[0], 150 * 3, 150 * 3)).slice(0, 3)).toEqual(BLUE);
+  });
+
+  it("T3 override SOLO de estilo (sin text) → el placeholder sigue sin imprimirse", async () => {
+    // Ola 23 — si el cliente solo cambió el color/tamaño pero no escribió texto, el
+    // default de la plantilla NO se imprime (en el editor se ve atenuado como guía).
+    const pinkInk = (r: number, g: number, b: number, a: number) =>
+      a > 200 && r > 200 && g < 140 && b > 120;
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: clasicaEditable,
+      slots: [{ ...slotOk3, textOverrides: { msg: { fill: "#E85B9F" } } }],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+    });
+    expect(await hasPixel(bufs[0], msgBand, pinkInk)).toBe(false);
+    expect(await hasPixel(bufs[0], msgBand, darkInk)).toBe(false);
+  });
+});
+
+describe("renderProductionSlotsCanvas — Ola 24 (Lucy 2026-09-09)", () => {
+  const slotOk4 = {
+    slotIndex: 0,
+    assetId: "a0",
+    photoTransform: { offsetX: 0, offsetY: 0, scale: 1 },
+  };
+  const BLUE: [number, number, number] = [0x3a, 0xa0, 0xff]; // fakePhoto
+  const nearWhiteRgb = [255, 255, 255];
+
+  // T7 — Tira SIN BORDE + zoom-out: CERO líneas entre fotos (Ola 25: las canaletas
+  // se retiraron del modo sin borde) y el hueco que deja la foto alejada es NEUTRO
+  // (blanco de la tarjeta sin teñir), NUNCA el color del marco (no hay inundación).
+  // Con la foto cubriendo la celda (scale 1) los bordes quedan a sangre (T5b).
+  const stripUnitSinBorde = {
+    version: 1 as const,
+    stage: { width: 390, height: 400 },
+    gridCols: 1,
+    gridGap: 0,
+    layers: [
+      { id: "bg", type: "background", color: "#FFFFFF" },
+      { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 0 },
+      // Ventana reescrita por el toggle "Sin borde": sangre total de la celda.
+      { id: "ph", type: "image-placeholder", x: 0, y: 0, width: 390, height: 400 },
+    ],
+  };
+  const stripSlotsOut = [0, 1, 2].map((i) => ({
+    ...slotOk4,
+    slotIndex: i,
+    assetId: `a${i}`,
+    photoTransform: { offsetX: 0, offsetY: 0, scale: 0.5 },
+  }));
+
+  it("T7 tira SIN borde + zoom-out: sin canaletas NI inundación — hueco neutro en toda la celda", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: stripUnitSinBorde,
+      slots: stripSlotsOut,
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: "#E85B9F",
+      frameFullBleed: true,
+    });
+    const [first, middle] = bufs;
+    // Celda del medio: ventana = celda completa (0,0)-(390,400). Con scale 0.5 la
+    // foto cubre 195×195 centrada (x 97.5..292.5, y 102.5..297.5 en px de stage).
+    // Hueco DENTRO de la celda (x=30 y x=360) → blanco neutro, NO rosa.
+    expect((await rgbaAt(middle, 30 * 3, 200 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    expect((await rgbaAt(middle, 360 * 3, 200 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    // Arriba/abajo de la celda → blanco neutro también: las canaletas rosas de Ola 23
+    // ya NO existen en sin borde (el dueño las tachó en STG 2026-09-09).
+    expect((await rgbaAt(middle, 195 * 3, 2 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    expect((await rgbaAt(middle, 195 * 3, 396 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    // Centro: la foto achicada sigue ahí.
+    expect((await rgbaAt(middle, 195 * 3, 200 * 3)).slice(0, 3)).toEqual(BLUE);
+    // Primera celda: misma regla — ni borde exterior ni canaleta, todo hueco neutro.
+    expect((await rgbaAt(first, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    expect((await rgbaAt(first, 195 * 3, 396 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    // Y NADA del color del marco en toda la franja vertical de la celda.
+    const pinkInk = (r: number, g: number, b: number, a: number) =>
+      a > 200 && r > 200 && g < 140 && b > 120;
+    expect(await hasPixel(middle, { x: 0, y: 0, w: 390 * 3, h: 400 * 3 }, pinkInk)).toBe(false);
+  });
+
+  // T8 — Textos de la plantilla INSTAGRAM ("@tu_usuario", "Bogotá, Colombia",
+  // "362 me gusta", "Tu título acá", "#mirecuerdo #lucamsshop"): todos son capas
+  // EDITABLES → placeholder que NUNCA se imprime sin override del cliente (misma
+  // regla que la Clásica, T3) y que desde Ola 25 TAMPOCO se dibuja en pantalla.
+  // Sin capa asset acá: el chrome SVG real siempre cae al cliente (fuentes
+  // horneadas) — lo que se congela es la regla de TEXTO, que es la que imprime
+  // o no imprime.
+  const igTextsUnit = {
+    version: 1 as const,
+    stage: { width: 450, height: 600 },
+    layers: [
+      { id: "bg", type: "background", color: "#FFFFFF" },
+      { id: "ph", type: "image-placeholder", x: 29, y: 58, width: 392, height: 392 },
+      {
+        id: "user_name",
+        type: "text",
+        x: 68,
+        y: 28,
+        text: "@tu_usuario",
+        fontFamily: "Inter",
+        fontSize: 16,
+        fill: "#262626",
+        fontWeight: "bold",
+        align: "left",
+        editable: true,
+      },
+      {
+        id: "location",
+        type: "text",
+        x: 68,
+        y: 46,
+        text: "Bogotá, Colombia",
+        fontFamily: "Inter",
+        fontSize: 12,
+        fill: "#8E8E8E",
+        align: "left",
+        editable: true,
+      },
+      {
+        id: "likes_count",
+        type: "text",
+        x: 22,
+        y: 510,
+        text: "362 me gusta",
+        fontFamily: "Inter",
+        fontSize: 15,
+        fill: "#262626",
+        fontWeight: "bold",
+        align: "left",
+        editable: true,
+      },
+      {
+        id: "caption",
+        type: "text",
+        x: 22,
+        y: 526,
+        text: "Tu título acá",
+        fontFamily: "Inter",
+        fontSize: 16,
+        fill: "#262626",
+        fontWeight: "bold",
+        align: "left",
+        editable: true,
+      },
+      {
+        id: "hashtags",
+        type: "text",
+        x: 22,
+        y: 542,
+        text: "#mirecuerdo #lucamsshop",
+        fontFamily: "Inter",
+        fontSize: 13,
+        fill: "#00376B",
+        align: "left",
+        editable: true,
+      },
+    ],
+  };
+  // Zonas en px de salida (stage × 3): header (username y=28 + location y=46) y
+  // footer (likes/caption/hashtags).
+  const igHeaderZone = { x: 60 * 3, y: 14 * 3, w: 240 * 3, h: 44 * 3 };
+  const igFooterZone = { x: 15 * 3, y: 498 * 3, w: 420 * 3, h: 60 * 3 };
+  const darkInk = (r: number, g: number, b: number, a: number) =>
+    a > 200 && r < 120 && g < 120 && b < 160;
+  // Tinta gris de la ubicación (#8E8E8E) — el header zone también la barre.
+  const grayInk = (r: number, g: number, b: number, a: number) =>
+    a > 200 && Math.abs(r - g) < 12 && Math.abs(g - b) < 12 && r > 100 && r < 190;
+  const hashtagBlue = (r: number, g: number, b: number, a: number) =>
+    a > 200 && b > 90 && r < 60 && g < 90;
+
+  it("T8 Instagram SIN overrides → NINGÚN texto placeholder se imprime (header ni footer)", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: igTextsUnit,
+      slots: [slotOk4],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+    });
+    expect(await hasPixel(bufs[0], igHeaderZone, darkInk)).toBe(false);
+    expect(await hasPixel(bufs[0], igHeaderZone, grayInk)).toBe(false); // "Bogotá, Colombia"
+    expect(await hasPixel(bufs[0], igFooterZone, darkInk)).toBe(false);
+    expect(await hasPixel(bufs[0], igFooterZone, hashtagBlue)).toBe(false);
+  });
+
+  it("T8 Instagram con override SOLO de estilo (sin text) → tampoco se imprime", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: igTextsUnit,
+      slots: [{ ...slotOk4, textOverrides: { caption: { fill: "#E85B9F" } } }],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+    });
+    expect(await hasPixel(bufs[0], igFooterZone, darkInk)).toBe(false);
+  });
+
+  it("T8 Instagram CON texto del cliente → SÍ se imprime (control: la regla no borra texto real)", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: igTextsUnit,
+      slots: [
+        {
+          ...slotOk4,
+          textOverrides: { user_name: { text: "@lucy" }, hashtags: { text: "#viaje" } },
+        },
+      ],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+    });
+    expect(await hasPixel(bufs[0], igHeaderZone, darkInk)).toBe(true);
+    expect(await hasPixel(bufs[0], igFooterZone, hashtagBlue)).toBe(true);
+  });
+
+  // T9 — Instagram con chrome SVG: la plantilla real SIEMPRE cae al cliente
+  // (fuentes horneadas en el SVG) → lo que se imprime es el snapshot de Konva, que
+  // incluye el Rect de respaldo neutro de la ventana (Ola 24, studio-slot). El
+  // fillRect equivalente de este tier queda cubierto por photoBackingHexFor.
+  it("T9 Instagram (chrome SVG) → NEEDS_KONVA: imprime el snapshot del cliente (que ya lleva el respaldo)", async () => {
+    const igUnit = {
+      ...igTextsUnit,
+      layers: [
+        ...igTextsUnit.layers,
+        {
+          id: "frame",
+          type: "asset",
+          src: "/templates/ig_post_3x4.svg",
+          x: 0,
+          y: 0,
+          width: 450,
+          height: 600,
+        },
+      ],
+    };
+    await expect(
+      renderProductionSlotsCanvas({
+        unitTemplate: igUnit,
+        slots: [slotOk4],
+        shape: "rectangle",
+        loadAsset: async () => fakePhoto(600, 600),
+        borderColor: "#221E25",
+      }),
+    ).rejects.toBeInstanceOf(RenderNeedsKonvaError);
   });
 });

@@ -116,7 +116,11 @@ export async function createDraftDesignAction(input: { productId: string; templa
 
 // ──────────── Save canvas (debounced 2s desde cliente) ────────────
 
-export async function saveCanvasAction(input: { designId: string; canvasData: unknown }) {
+export async function saveCanvasAction(input: {
+  designId: string;
+  canvasData: unknown;
+  templateId?: string;
+}) {
   const parsed = SaveCanvasSchema.safeParse(input);
   if (!parsed.success) {
     // Log structured con detalle del fallo (incluye M.3.b.fix size cap)
@@ -159,6 +163,9 @@ export async function saveCanvasAction(input: { designId: string; canvasData: un
     await saveCanvas({
       designId: parsed.data.designId,
       canvasData: parsed.data.canvasData,
+      // N-08 — plantilla elegida en el sidebar (si el cliente la envía): el service
+      // la valida contra el producto antes de persistirla en Design.templateId.
+      templateId: parsed.data.templateId,
       customerId,
       sessionId,
     });
@@ -376,6 +383,11 @@ const NameDesignInputSchema = z.object({
     .optional(),
   // ADR-057 — estilo ilustrado elegido (LetterTileSet.id) o null = "Solo letra".
   styleSetId: z.string().max(40).nullable().optional(),
+  // Lucy 2026-09-09 — opción de diseño "Con borde / Sin borde" (mismo precio), espejo del
+  // set de letras (Lucy 2026-09-05). Default true: es lo que siempre se imprimió, así los
+  // clientes con JS cacheado previo quedan retrocompatibles. z.boolean() rechaza de plano
+  // valores que no sean booleanos.
+  withBorder: z.boolean().default(true),
 });
 
 export async function createNameDesignAction(
@@ -431,6 +443,25 @@ const LetterSetDesignInputSchema = z.object({
   styleSetId: z.string().max(40).nullable().optional(),
   // Ola 2A — idioma elegido en el Estudio (opcional; default = el de la variante).
   language: z.enum(["es", "en"]).optional(),
+  // Lucy 2026-09-05 — opción de diseño "Con borde / Sin borde" (mismo precio). Default true:
+  // es lo que siempre se imprimió, así los clientes con JS cacheado previo quedan retrocompatibles.
+  // z.boolean() rechaza valores que no sean booleanos de plano.
+  withBorder: z.boolean().default(true),
+  // Modelo MULTI-UNIDAD (2026-09-09) — TODOS los sets con sus colores por ficha.
+  // El service exige units.length === unitCount y persiste metadata.units: de ahí
+  // sale el precio ×N (nunca de un multiplicador crudo del cliente).
+  units: z
+    .array(
+      z.object({
+        colors: z
+          .array(z.string().regex(/^#[0-9A-Fa-f]{6}$/))
+          .max(50)
+          .optional(),
+      }),
+    )
+    .max(10)
+    .optional(),
+  unitCount: z.number().int().min(1).max(10).optional(),
 });
 
 export async function createLetterSetDesignAction(

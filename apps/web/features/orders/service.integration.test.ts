@@ -34,7 +34,20 @@
  * (cuenta de Lucy, productos seed, órdenes reales del año).
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+// next/cache → passthrough (transitionOrder invalida listados vía revalidateTag — N-11;
+// unstable_cache pasa tal cual porque lib/catalog lo usa a nivel módulo).
+vi.mock("next/cache", () => ({
+  unstable_cache:
+    (fn: (...args: unknown[]) => unknown) =>
+    (...args: unknown[]) =>
+      fn(...args),
+  revalidateTag: vi.fn(),
+  revalidatePath: vi.fn(),
+  updateTag: vi.fn(),
+}));
+
 import { prisma } from "@/lib/db";
 import { hashBearerToken } from "@/lib/token-hash";
 import {
@@ -682,6 +695,164 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
         select: { stock: true },
       });
       expect(v!.stock).toBe(LOW_STOCK);
+    });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // N-01 — filtro de items retirados EN LA TRANSACCIÓN (carrera: el admin
+  // archiva el producto/variante entre "ver el carrito" y "confirmar el pago").
+  // Decisión: RECHAZAR con OrderUnavailableItemsError — jamás cobrar un total
+  // distinto al exhibido (ni con items de más ni de menos) sin re-confirmación.
+  // ════════════════════════════════════════════════════════════════════════
+
+  describe("N-01 — items archivados en carrera (checkout → pago)", () => {
+    // Fixtures propios por test: archivar/despublicar un fixture COMPARTIDO
+    // contaminaría el resto de la suite. Se limpian en el afterAll local.
+    const createdProductIds: string[] = [];
+
+    /** Crea un producto activo + variante activa dedicados (RUN-scoped). */
+    async function makeArchivableFixture(tag: string): Promise<{
+      productId: string;
+      variantId: string;
+      price: number;
+    }> {
+      const price = 11_000;
+      const p = await prisma.product.create({
+        data: {
+          slug: `${RUN}-n01-${tag}-${uniq()}`,
+          name: `N01 ${tag} ${RUN}`,
+          description: "fixture n-01",
+          basePrice: price,
+          sku: `${RUN}-N01-${tag}`.toUpperCase(),
+          categoryId,
+          variants: {
+            create: [
+              {
+                name: "Única",
+                sku: `${RUN}-N01-${tag}-V`.toUpperCase(),
+                price,
+                stock: 50,
+                attributes: {},
+              },
+            ],
+          },
+        },
+        select: { id: true, variants: { select: { id: true } } },
+      });
+      createdProductIds.push(p.id);
+      return { productId: p.id, variantId: p.variants[0].id, price };
+    }
+
+    afterAll(async () => {
+      for (const id of createdProductIds) {
+        try {
+          await prisma.productVariant.deleteMany({ where: { productId: id } });
+          await prisma.product.deleteMany({ where: { id } });
+        } catch {
+          /* blip del pooler — fixture RUN-scoped */
+        }
+      }
+    }, T);
+
+    it("producto archivado (isActive=false) entre carrito y pago → OrderUnavailableItemsError, SIN crear Order", async () => {
+      const fx = await makeArchivableFixture("pa");
+      const { cartId } = await makeCartWithItems([
+        { variantId: fx.variantId, qty: 1, unitPrice: fx.price },
+      ]);
+      // CARRERA: el admin retira el producto después de que el cliente vio el carrito.
+      await prisma.product.update({ where: { id: fx.productId }, data: { isActive: false } });
+
+      await expect(createOrderFromCart(baseInput(cartId))).rejects.toMatchObject({
+        name: "OrderUnavailableItemsError",
+        items: [{ variantId: fx.variantId, sku: `${RUN}-N01-pa-V`.toUpperCase() }],
+      });
+      expect(await prisma.order.count({ where: { cartId } })).toBe(0);
+    });
+
+    it("producto soft-deleted (deletedAt) en carrera → OrderUnavailableItemsError", async () => {
+      const fx = await makeArchivableFixture("pd");
+      const { cartId } = await makeCartWithItems([
+        { variantId: fx.variantId, qty: 2, unitPrice: fx.price },
+      ]);
+      await prisma.product.update({
+        where: { id: fx.productId },
+        data: { deletedAt: new Date(), deletedBy: "test-n01" },
+      });
+
+      await expect(createOrderFromCart(baseInput(cartId))).rejects.toMatchObject({
+        name: "OrderUnavailableItemsError",
+      });
+      expect(await prisma.order.count({ where: { cartId } })).toBe(0);
+    });
+
+    it("VARIANTE archivada en carrera (el DTO del carrito NO filtra variantes — el hueco original) → OrderUnavailableItemsError", async () => {
+      const fx = await makeArchivableFixture("va");
+      const { cartId } = await makeCartWithItems([
+        { variantId: fx.variantId, qty: 1, unitPrice: fx.price },
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A }, // item sano de otro producto
+      ]);
+      await prisma.productVariant.update({
+        where: { id: fx.variantId },
+        data: { isActive: false },
+      });
+
+      const err = await createOrderFromCart(baseInput(cartId)).catch((e: unknown) => e);
+      expect(err).toMatchObject({ name: "OrderUnavailableItemsError" });
+      // El error nombra SOLO el item retirado (el sano no se reporta).
+      expect((err as { items: Array<{ variantId: string }> }).items).toEqual([
+        { variantId: fx.variantId, sku: `${RUN}-N01-va-V`.toUpperCase() },
+      ]);
+      // Ni siquiera se crea una order parcial con el item sano (nada de totales recalculados en silencio).
+      expect(await prisma.order.count({ where: { cartId } })).toBe(0);
+    });
+
+    it("variante soft-deleted en carrera → OrderUnavailableItemsError", async () => {
+      const fx = await makeArchivableFixture("vd");
+      const { cartId } = await makeCartWithItems([
+        { variantId: fx.variantId, qty: 1, unitPrice: fx.price },
+      ]);
+      await prisma.productVariant.update({
+        where: { id: fx.variantId },
+        data: { deletedAt: new Date(), deletedBy: "test-n01" },
+      });
+
+      await expect(createOrderFromCart(baseInput(cartId))).rejects.toMatchObject({
+        name: "OrderUnavailableItemsError",
+      });
+    });
+
+    it("también blinda el camino idempotente: order PENDING existente + item archivado después → RECHAZA (no reusa ni reconcilia)", async () => {
+      const fx = await makeArchivableFixture("idm");
+      const { cartId } = await makeCartWithItems([
+        { variantId: fx.variantId, qty: 1, unitPrice: fx.price },
+      ]);
+      // 1) Se crea la orden PENDING_PAYMENT (el cliente ya la vio con su total).
+      const created = await createOrderFromCart(baseInput(cartId));
+      expect(created.id).toBeTruthy();
+      // 2) El admin retira el producto ANTES de que el cliente pague.
+      await prisma.product.update({ where: { id: fx.productId }, data: { isActive: false } });
+      // 3) El cliente vuelve a intentar el pago (reload de /checkout/pago).
+      await expect(createOrderFromCart(baseInput(cartId))).rejects.toMatchObject({
+        name: "OrderUnavailableItemsError",
+      });
+      // La orden queda PENDING_PAYMENT (ni cancelada ni reconciliada en silencio):
+      // la expirará el cron N-12 o la reutilizará si el producto vuelve.
+      const row = await prisma.order.findUnique({
+        where: { id: created.id },
+        select: { status: true },
+      });
+      expect(row!.status).toBe("PENDING_PAYMENT");
+    });
+
+    it("carrito 100% sano sigue creando la orden (regresión del guard)", async () => {
+      const fx = await makeArchivableFixture("ok");
+      const { cartId } = await makeCartWithItems([
+        { variantId: fx.variantId, qty: 3, unitPrice: fx.price },
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
+      const result = await createOrderFromCart(baseInput(cartId));
+      expect(result.subtotal).toBe(3 * fx.price + PRICE_A);
+      expect(result.id).toBeTruthy();
     });
   });
 

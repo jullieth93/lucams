@@ -33,7 +33,10 @@ function errorMessage(err: unknown): string {
       case "PRODUCT_NOT_FOUND":
         return "Este producto ya no está disponible.";
       case "NO_DEFAULT_VARIANT":
-        return "Producto no comprable (sin variante).";
+        // Cubre dos casos: variantId que no pertenece al producto (tamper) y
+        // pack cuya combinación fotos/tamaño ya no existe en el catálogo
+        // (Lucy 2026-09-05 — el servidor resuelve la variante desde el diseño).
+        return "No encontramos esa opción para el producto. Revisa tu diseño e inténtalo de nuevo.";
       case "QTY_INVALID":
         return "Cantidad inválida.";
       case "ITEM_NOT_FOUND":

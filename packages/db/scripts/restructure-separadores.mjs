@@ -12,10 +12,16 @@
  * Los prediseñados (elegir un diseño del catálogo por slot) llegan en B2 (gallery en el editor).
  * Idempotente: upsert por slug/sku; en updates NO pisa el precio (respeta el admin).
  *
+ * N-06 (2026-09-12): env-guard fail-closed (bloquea PRD/remotos no reconocidos).
+ *
  * Uso: DATABASE_URL=$DIRECT_URL node packages/db/scripts/restructure-separadores.mjs
  */
 
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+
+// Guarda de ambiente: reestructura productos (upsert + archivado) — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("restructure-separadores.mjs");
 
 const prisma = new PrismaClient();
 

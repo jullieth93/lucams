@@ -17,7 +17,8 @@
  *    producción (production-assets), desvincula y limpia URLs.
  *  - Order.shippingAddress: scrub de PII en órdenes YA finalizadas (las en curso
  *    conservan la dirección por finalidad legítima: completar la entrega).
- *  - RecommendationLog / LoyaltyTxn / CouponUsage: desvinculan (customerId→null).
+ *  - LoyaltyTxn / CouponUsage: desvinculan (customerId→null).
+ *  - WishlistItem: se borran las filas (historial de interés del titular).
  *  - Auth user de Supabase: se borra (fallback: baneo) → no puede volver a entrar.
  * Qué se conserva (retención legal): órdenes/facturas (DIAN) y consentimientos.
  */
@@ -220,6 +221,12 @@ export async function deleteCustomerAccount(
       await tx.backInStockSubscription.deleteMany({ where: { customerId } });
     }
 
+    // N-18 — wishlist: borrar las filas. No llevan PII propia, pero son el historial
+    // de interés del titular y su customerId quedaría apuntando a una cuenta anonimizada
+    // (huérfana semántica: nadie puede volver a entrar a leerlas). Sin retención legal
+    // que las justifique (no son ledger ni dato fiscal).
+    await tx.wishlistItem.deleteMany({ where: { customerId } });
+
     // #6 — marcar las órdenes del titular como "reseña ya solicitada" para que el cron de
     // review-request (que filtra reviewRequestedAt:null) NUNCA las considere. El order.email ya se
     // anonimizó arriba, pero esto evita incluso el intento de envío a la dirección deleted-* (Ley 1581).
@@ -228,8 +235,8 @@ export async function deleteCustomerAccount(
       data: { reviewRequestedAt: now },
     });
 
-    // Logs de comportamiento/lealtad: desvincular del titular.
-    await tx.recommendationLog.updateMany({ where: { customerId }, data: { customerId: null } });
+    // Logs de lealtad/cupones: desvincular del titular (append-only con valor
+    // estadístico; sin PII una vez cortado el customerId).
     await tx.loyaltyTxn.updateMany({ where: { customerId }, data: { customerId: null } });
     await tx.couponUsage.updateMany({ where: { customerId }, data: { customerId: null } });
   });

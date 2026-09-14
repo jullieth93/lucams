@@ -3,10 +3,10 @@
 /*
  * Test de la VISTA PREVIA pre-carrito del editor de sets de letras (Lucy 2026-07-25).
  *
- * El contrato que blinda: pulsar "¡Listo!" NO puede crear nada — ni diseño, ni archivo subido, ni
- * línea de carrito. Primero se muestra "Así se verá tu pedido" y solo la confirmación dispara la
- * cadena crear → finalizar → agregar. Es la promesa WYSIWYG de la tienda: el cliente aprueba la
- * imagen ANTES de que exista un pedido.
+ * El contrato que blinda: pulsar "Vista previa" (antes "¡Listo!", renombrado 2026-09-09) NO puede
+ * crear nada — ni diseño, ni archivo subido, ni línea de carrito. Primero se muestra "Así se verá
+ * tu pedido" y solo la confirmación dispara la cadena crear → finalizar → agregar. Es la promesa
+ * WYSIWYG de la tienda: el cliente aprueba la imagen ANTES de que exista un pedido.
  *
  * jsdom no trae canvas 2D ni toBlob → se stubbean (el dibujo real de la lámina lo cubren los tests
  * puros de letter-tile-textures). Las server actions se mockean: acá se verifica el ORDEN, no el
@@ -95,14 +95,14 @@ function renderEditor() {
   );
 }
 
-/** Pulsa "¡Listo!" y espera a que la vista previa esté en pantalla. */
+/** Pulsa "Vista previa" (antes "¡Listo!") y espera a que la vista previa esté en pantalla. */
 async function openPreview() {
-  fireEvent.click(screen.getByRole("button", { name: /¡Listo!/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Vista previa/ }));
   await screen.findByText("Así se verá tu pedido");
 }
 
 describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)", () => {
-  it("'¡Listo!' abre la vista previa sin crear diseño ni tocar el carrito", async () => {
+  it("'Vista previa' abre la vista previa sin crear diseño ni tocar el carrito", async () => {
     renderEditor();
     await openPreview();
 
@@ -151,6 +151,10 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
       qty: 1,
       variantId: "var-1",
     });
+    // Default retrocompatible: sin tocar el selector, el diseño se crea CON borde (Lucy 2026-09-05).
+    expect(createLetterSetDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({ withBorder: true }),
+    );
 
     // El set se imprime como UNA lámina: preview y producción son el mismo PNG aprobado.
     const fd = finalizeDesignAction.mock.calls[0]![0];
@@ -173,5 +177,70 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
     expect(push).not.toHaveBeenCalled();
     // La vista previa sigue abierta para reintentar sin perder el diseño de la pantalla.
     expect(screen.getByText("Así se verá tu pedido")).toBeInTheDocument();
+  });
+
+  describe("opción Con borde / Sin borde (Lucy 2026-09-05)", () => {
+    it("el selector aparece junto al picker de tema y arranca en «Con borde»", () => {
+      renderEditor();
+      const con = screen.getByRole("radio", { name: /Con borde/ });
+      expect(con).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByRole("radio", { name: /Sin borde/ })).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
+    });
+
+    it("al elegir «Sin borde», el diseño se crea con withBorder: false", async () => {
+      renderEditor();
+      fireEvent.click(screen.getByRole("radio", { name: /Sin borde/ }));
+      await openPreview();
+
+      fireEvent.click(screen.getByRole("button", { name: /Sí, agregar al carrito/ }));
+
+      await waitFor(() => expect(push).toHaveBeenCalledWith("/carrito?personalized=1"));
+      expect(createLetterSetDesignAction).toHaveBeenCalledWith(
+        expect.objectContaining({ withBorder: false }),
+      );
+    });
+
+    // Lucy 2026-09-08 — con «Sin borde» las fichas no llevan el marco de color: la sección
+    // «Elige los colores» se desactiva (visible + inerte, con el porqué) y el selector de
+    // borde SIEMPRE queda habilitado para poder volver.
+    it("«Sin borde» desactiva «Elige los colores» con aviso, y el selector de borde sigue habilitado", () => {
+      renderEditor();
+
+      fireEvent.click(screen.getByRole("radio", { name: /Sin borde/ }));
+
+      for (const tema of ["Arcoíris", "Vibrante", "Neutro"]) {
+        expect(screen.getByRole("button", { name: new RegExp(tema) })).toBeDisabled();
+      }
+      expect(screen.getByRole("note")).toHaveTextContent(/los colores se desactivan/);
+      // El selector de borde NUNCA se desactiva: es la vía para recuperar los colores.
+      expect(screen.getByRole("radio", { name: /Con borde/ })).toBeEnabled();
+      expect(screen.getByRole("radio", { name: /Sin borde/ })).toBeEnabled();
+    });
+
+    it("al volver a «Con borde» los colores se reactivan conservando la selección", () => {
+      renderEditor();
+
+      // El cliente elige un tema distinto al default…
+      fireEvent.click(screen.getByRole("button", { name: /Vibrante/ }));
+      expect(screen.getByRole("button", { name: /Vibrante/ })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+
+      // …apaga el borde (colores desactivados) y lo vuelve a encender.
+      fireEvent.click(screen.getByRole("radio", { name: /Sin borde/ }));
+      fireEvent.click(screen.getByRole("radio", { name: /Con borde/ }));
+
+      expect(screen.getByRole("button", { name: /Vibrante/ })).toBeEnabled();
+      // La selección previa se conserva: el estado de colores nunca se resetea.
+      expect(screen.getByRole("button", { name: /Vibrante/ })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    });
   });
 });

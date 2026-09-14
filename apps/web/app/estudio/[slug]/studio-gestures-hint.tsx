@@ -19,10 +19,11 @@
  *   - Animación slide-up sutil para no asustar.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Move, ZoomIn, MousePointer2, Hand } from "lucide-react";
 import { useStudioTexts } from "./studio-texts-provider";
+import { useIsTouch } from "./use-is-touch";
 
 export const GESTURES_HINT_STORAGE_KEY = "lucams_studio_gestures_hint_v1";
 
@@ -36,14 +37,11 @@ type Props = {
 
 export function StudioGesturesHint({ open, onClose, persistent = false }: Props) {
   const texts = useStudioTexts();
-  // Lazy state initializer — calculado UNA VEZ en el primer render.
-  // Evita el setState-in-effect antipattern de React 19.
-  const [isTouch] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return (
-      "ontouchstart" in window || (typeof navigator !== "undefined" && navigator.maxTouchPoints > 0)
-    );
-  });
+  // Lucy 2026-09-08 — detección táctil UNIFICADA con useIsTouch (media query
+  // `(pointer: coarse)`): el chequeo inline anterior (`ontouchstart`/`maxTouchPoints`)
+  // era true en desktop con pantalla táctil y mostraba el copy de pellizco, donde
+  // pellizcar es imposible. Sigue siendo lazy initializer (una vez, primer render).
+  const isTouch = useIsTouch();
 
   // Auto-dismiss tras 6.5 segundos (solo cuando NO es persistent).
   useEffect(() => {

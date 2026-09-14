@@ -76,8 +76,10 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
   // F1 — cupón aplicado (si hay): descuento vigente + posible aviso si dejó de valer.
   const applied = await getAppliedCoupon();
 
-  // Toggle de negocio: ¿se ofrece contra entrega? (editable en /admin/contenido/paginas/global)
-  const codEnabled = (await getSettingValue("COD_ENABLED", "true")) === "true";
+  // Toggle de negocio: ¿se ofrece contra entrega? (editable en /admin/contenido/paginas/global).
+  // FAIL-CLOSED (CF-35): setting ausente/despublicada = COD deshabilitado — nunca se
+  // ofrece en silencio un método de pago que el negocio no confirmó explícitamente.
+  const codEnabled = (await getSettingValue("COD_ENABLED", "false")) === "true";
 
   // Roadmap B8 — textos CMS del paso de pago (revisión, cupón, métodos, legales).
   const texts = await getCheckoutTexts();

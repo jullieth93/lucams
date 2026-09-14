@@ -78,6 +78,68 @@ describe("formato físico — qué es realmente lo que sale de la impresora", ()
     const spec = resolveProductionSpec({ ...vacio, productionUrls: ["a.png", "b.png", "c.png"] });
     expect(spec.formatoFisico).toEqual({ tipo: "piezas-sueltas", piezas: 3 });
   });
+
+  /*
+   * Multi-unidad (owner 2026-09-09): 2 tiras de 3 fotos = 6 segmentos que forman DOS
+   * piezas continuas independientes. Contar archivos diría "6 piezas" o "1 tira de 6".
+   */
+  it("2 tiras de 3 fotos: 6 segmentos que forman DOS tiras independientes", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      productionUrls: ["a.png", "b.png", "c.png", "d.png", "e.png", "f.png"],
+      canvasData: {
+        unitTemplate: { gridCols: 1, gridGap: 0 },
+        gridLayout: { cols: 1, gap: 0 },
+        unitCount: 2,
+        unitSlots: 3,
+        photoSlots: 3,
+        slotCount: 6,
+      },
+    });
+    expect(spec.formatoFisico).toEqual({ tipo: "tira-continua", segmentos: 6, tiras: 2 });
+    expect(spec.queEsCadaArchivo).toMatch(/2 tiras/i);
+    expect(spec.queEsCadaArchivo).toMatch(/3 por tira/i);
+    expect(spec.pasosArmado.join(" ")).toMatch(/3 por tira/i);
+  });
+
+  /*
+   * Multi-unidad: 2 calendarios de 12 páginas = 24 archivos que forman DOS sets.
+   * Agruparlos como 24 sueltas mezcla los meses de los dos calendarios.
+   */
+  it("2 calendarios: 24 archivos que se agrupan en 2 sets de 12 páginas", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      personalizationKind: "CALENDAR_PHOTO_MONTH",
+      productionUrls: Array.from({ length: 24 }, (_, i) => `p${i}.png`),
+      canvasData: { unitCount: 2, unitSlots: 12, slotCount: 24 },
+    });
+    expect(spec.formatoFisico).toEqual({
+      tipo: "piezas-sueltas",
+      piezas: 24,
+      unidades: { count: 2, singular: "calendario", plural: "calendarios", piezasPorUnidad: 12 },
+    });
+    expect(spec.queEsCadaArchivo).toMatch(/2 calendarios de 12/i);
+    expect(spec.pasosArmado.join(" ")).toMatch(/agrúpalos en 2 calendarios/i);
+  });
+
+  /*
+   * Multi-unidad en sets de letras: 2 abecedarios = 2 láminas, cada una con sus
+   * 27 fichas para recortar (no una lámina de 54 ni una sola lámina).
+   */
+  it("2 sets de letras: 2 láminas independientes de 27 fichas", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      productionUrls: ["l1.png", "l2.png"],
+      designMetadata: {
+        letters: Array.from({ length: 27 }, (_, i) => String(i)),
+        unitCount: 2,
+        surface: "letterset",
+      },
+    });
+    expect(spec.formatoFisico).toEqual({ tipo: "lamina-fichas", fichas: 27, laminas: 2 });
+    expect(spec.queEsCadaArchivo).toMatch(/2 láminas/i);
+    expect(spec.pasosArmado.join(" ")).toMatch(/2 × 27/i);
+  });
 });
 
 describe("cuántas unidades hay que entregar", () => {
@@ -90,6 +152,56 @@ describe("cuántas unidades hay que entregar", () => {
 
   it("sin pack, una unidad por cantidad", () => {
     expect(resolveProductionSpec({ ...vacio, lineQty: 3 }).unidadesFisicas).toBe(3);
+  });
+
+  // Multi-unidad (2026-09-09): la línea es UNA (qty=1) pero el diseño contiene N
+  // unidades → imprenta fabrica TODAS. Mismo multiplicador que el precio del carrito.
+  it("tiras ×2 del mismo diseño: 2 unidades físicas con qty=1", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      lineQty: 1,
+      variantAttrs: { quantity: 1 },
+      canvasData: { version: 2, slotCount: 6, unitCount: 2, unitSlots: 3, photoSlots: 3 },
+    });
+    expect(spec.unidadesFisicas).toBe(2);
+  });
+
+  it("calendarios ×2 del mismo diseño: 2 sets con qty=1", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      lineQty: 1,
+      canvasData: { version: 2, slotCount: 24, unitCount: 2, unitSlots: 12 },
+    });
+    expect(spec.unidadesFisicas).toBe(2);
+  });
+
+  it("packs (separadores ×3): la variante ya es el pack → 3, no 6", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      lineQty: 1,
+      productSchema: { facesPerUnit: 2 },
+      variantAttrs: { quantity: 3 },
+      canvasData: { version: 2, slotCount: 6, unitCount: 3, unitSlots: 2, photoSlots: 3 },
+    });
+    expect(spec.unidadesFisicas).toBe(3);
+  });
+
+  it("sets de letras ×2 (metadata): 2 sets con qty=1", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      lineQty: 1,
+      designMetadata: { unitCount: 2, surface: "letterset" },
+    });
+    expect(spec.unidadesFisicas).toBe(2);
+  });
+
+  it("la personalización anuncia las unidades del diseño cuando son varias", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      canvasData: { version: 2, slotCount: 6, unitCount: 2, unitSlots: 3, photoSlots: 3 },
+    });
+    const dato = spec.personalizacion.find((x) => x.etiqueta === "Unidades del diseño");
+    expect(dato?.valor).toMatch(/2 unidades distintas/i);
   });
 });
 
@@ -148,6 +260,52 @@ describe("lo que NO está horneado en el PNG y hay que escribir", () => {
     const porFicha = spec.personalizacion.find((x) => x.etiqueta === "Color por ficha")?.valor;
     expect(porFicha).toContain("A=rosa");
     expect(porFicha).toContain("C=amarillo");
+  });
+
+  // Lucy 2026-09-05 — opción "Sin borde" del Estudio: el PNG la refleja, pero la ficha de taller
+  // debe decirla explícita. Solo se anota el caso distinto: default (sin clave) = con borde.
+  it("anota «Sin borde» en la ficha de taller cuando el diseño de set de letras lo eligió", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      designMetadata: {
+        surface: "letterset",
+        letters: ["A", "B", "C"],
+        withBorder: false,
+      },
+    });
+    expect(spec.personalizacion.find((x) => x.etiqueta === "Borde")?.valor).toMatch(/Sin borde/);
+  });
+
+  it("diseño de set de letras sin la clave (previo a la opción) NO genera línea de borde", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      designMetadata: { surface: "letterset", letters: ["A", "B", "C"] },
+    });
+    expect(spec.personalizacion.find((x) => x.etiqueta === "Borde")).toBeUndefined();
+  });
+
+  // Lucy 2026-09-09 — la MISMA opción en las tiras de nombre: la ficha de taller anota
+  // «Sin borde» igual que en el set de letras (sin borde se recorta a ras del contorno).
+  it("anota «Sin borde» cuando el diseño de NOMBRE lo eligió (misma nota que el set)", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      designMetadata: {
+        surface: "name",
+        letters: ["L", "U", "C", "I", "A"],
+        withBorder: false,
+      },
+    });
+    expect(spec.personalizacion.find((x) => x.etiqueta === "Borde")?.valor).toBe(
+      "Sin borde — recortar a ras del contorno",
+    );
+  });
+
+  it("diseño de nombre sin la clave (previo a la opción) NO genera línea de borde", () => {
+    const spec = resolveProductionSpec({
+      ...vacio,
+      designMetadata: { surface: "name", letters: ["L", "U", "C", "I", "A"] },
+    });
+    expect(spec.personalizacion.find((x) => x.etiqueta === "Borde")).toBeUndefined();
   });
 
   it("recoge los textos que escribió el cliente, para cotejar tildes", () => {

@@ -17,6 +17,8 @@ import { orderConfirmationEmail } from "@/features/emails/templates/order-confir
 import { orderShippedEmail } from "@/features/emails/templates/order-shipped";
 import { orderDeliveredEmail } from "@/features/emails/templates/order-delivered";
 import { orderPaymentFailedEmail } from "@/features/emails/templates/order-payment-failed";
+import { orderPaymentDeclinedEmail } from "@/features/emails/templates/order-payment-declined";
+import { orderReturnedEmail } from "@/features/emails/templates/order-returned";
 import { orderCancelledEmail } from "@/features/emails/templates/order-cancelled";
 import { refundIssuedEmail } from "@/features/emails/templates/refund-issued";
 
@@ -248,6 +250,125 @@ export async function sendOrderPaymentFailed(orderId: string, reason: string): P
     logger.error({
       event: "order.email.payment_failed.fail",
       orderId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * N-22a — Anti-spam del aviso "pago no aprobado": máx. 1 email por orden cada
+ * PAYMENT_DECLINED_NOTIFY_COOLDOWN_HOURS horas, aunque el cliente reintente el
+ * pago muchas veces (cada intento DECLINED/ERROR dispara este sender).
+ */
+const PAYMENT_DECLINED_NOTIFY_COOLDOWN_HOURS = 6;
+
+/**
+ * N-22a — Avisa al cliente que su pago NO fue aprobado (webhook Wompi
+ * DECLINED/ERROR) y que su pedido sigue vivo y reintentable. Antes era un noop
+ * deliberado sin aviso: el cliente se enteraba solo si volvía a la tienda.
+ *
+ * Garantías:
+ *  - Idempotente POR TRANSACCIÓN: idempotencyKey `${number}-payment-declined-${txId}`
+ *    (un reintento de entrega del MISMO evento Wompi no reenvía).
+ *  - Anti-spam POR ORDEN: claim atómico sobre Order.paymentFailedNotifiedAt
+ *    (updateMany gateado por el cooldown) ANTES de enviar. Si el claim cuenta 0,
+ *    ya se avisó hace < N horas (u otro proceso lo hizo justo ahora) → skip.
+ *    Si el envío falla tras el claim, NO se libera: la prioridad es no spamear
+ *    (el próximo DECLINED tras el cooldown reintenta el aviso).
+ *  - Por qué COLUMNA y no metadata: es la única forma de hacer el claim
+ *    atómico con un updateMany gateado (dos webhooks concurrentes no pasan los
+ *    dos), es consultable/indexable y espeja confirmationSentAt/
+ *    reviewRequestedAt. Un flag dentro de un JSON no se puede gatear atómicamente.
+ *  - Solo si la orden SIGUE PENDING_PAYMENT + WOMPI: si ya avanzó (pagó con
+ *    otro intento, la cancelaron, la expiró el cron) no se avisa nada.
+ *
+ * Best-effort total: captura TODOS sus errores (el caller es el webhook: un
+ * fallo de email JAMÁS debe caer en el catch que marca needsReconciliation).
+ */
+export async function sendOrderPaymentDeclined(input: {
+  orderId: string;
+  txId: string;
+  reason: string;
+}): Promise<void> {
+  try {
+    const order = await prisma.order.findFirst({
+      where: { id: input.orderId, deletedAt: null },
+      select: {
+        id: true,
+        number: true,
+        email: true,
+        total: true,
+        status: true,
+        paymentMethod: true,
+        shippingAddress: true,
+      },
+    });
+    if (!order) return;
+    if (order.status !== "PENDING_PAYMENT" || order.paymentMethod !== "WOMPI") {
+      logger.info({
+        event: "order.email.payment_declined.skip_not_pending",
+        orderId: input.orderId,
+        status: order.status,
+        paymentMethod: order.paymentMethod,
+      });
+      return;
+    }
+
+    // Claim atómico anti-spam (ver header). El gate incluye status por si la
+    // orden avanzó entre el findFirst y este update (carrera con APPROVED).
+    const cooldownBoundary = new Date(
+      Date.now() - PAYMENT_DECLINED_NOTIFY_COOLDOWN_HOURS * 60 * 60 * 1000,
+    );
+    const claim = await prisma.order.updateMany({
+      where: {
+        id: order.id,
+        status: "PENDING_PAYMENT",
+        OR: [
+          { paymentFailedNotifiedAt: null },
+          { paymentFailedNotifiedAt: { lt: cooldownBoundary } },
+        ],
+      },
+      data: { paymentFailedNotifiedAt: new Date() },
+    });
+    if (claim.count === 0) {
+      logger.info({
+        event: "order.email.payment_declined.skip_cooldown",
+        orderId: input.orderId,
+        txId: input.txId,
+        cooldownHours: PAYMENT_DECLINED_NOTIFY_COOLDOWN_HOURS,
+      });
+      return;
+    }
+
+    const ship = order.shippingAddress as ShippingAddrSnapshot;
+    const tpl = await orderPaymentDeclinedEmail({
+      orderNumber: order.number,
+      customerName: ship.fullName ?? "Cliente",
+      total: order.total,
+      reason: input.reason,
+    });
+    const result = await sendEmail({
+      to: order.email,
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+      idempotencyKey: `${order.number}-payment-declined-${input.txId}`,
+      tags: [
+        { name: "type", value: "order_payment_declined" },
+        { name: "order_number", value: order.number },
+      ],
+    });
+    logger.info({
+      event: "order.email.payment_declined.sent",
+      orderNumber: order.number,
+      to: order.email,
+      txId: input.txId,
+      result: result.sent ? "ok" : `skip:${result.reason}`,
+    });
+  } catch (err) {
+    logger.error({
+      event: "order.email.payment_declined.fail",
+      orderId: input.orderId,
       err: err instanceof Error ? err.message : String(err),
     });
   }
@@ -494,6 +615,98 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
     logger.error({
       event: "order.admin_notification.fail",
       orderId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * N-22b — Pedido DEVUELTO / CON NOVEDAD por la transportadora (webhook
+ * Aveonline RETURNED/EXCEPTION). Antes solo se marcaba el flag admin
+ * (needsReconciliation): el cliente no se enteraba de que su paquete venía de
+ * vuelta hasta que preguntaba.
+ *
+ * Dos avisos, ambos best-effort e idempotentes por evento (el dedup de
+ * WebhookEvent ya garantiza una sola corrida por evento del carrier):
+ *  1) Centro de notificaciones admin con la ACCIÓN ESPERADA explícita
+ *     (revisar y decidir reenvío / reembolso / reposición de stock). NO se
+ *     automatiza ninguna de las tres: es decisión operativa. dedupKey por
+ *     orden: eventos repetidos actualizan la misma notificación (anti-ruido).
+ *  2) Email al cliente con copy honesto, sin promesas ("tu pedido viene de
+ *     vuelta, te contactamos"). idempotencyKey `${number}-returned`.
+ */
+export async function notifyOrderReturned(input: {
+  orderId: string;
+  carrierStatusRaw: string;
+}): Promise<void> {
+  try {
+    const order = await prisma.order.findFirst({
+      where: { id: input.orderId, deletedAt: null },
+      select: {
+        id: true,
+        number: true,
+        email: true,
+        status: true,
+        paymentMethod: true,
+        trackingNumber: true,
+        shippingAddress: true,
+      },
+    });
+    if (!order) return;
+
+    // 1) Notificación in-app al centro admin — la acción esperada va explícita.
+    const moneyHint =
+      order.paymentMethod === "WOMPI"
+        ? "si el pago fue en línea, evalúa reembolso en Wompi (botón Reembolsar del pedido)"
+        : "es contra entrega: no hay dinero que devolver si no se cobró";
+    await notify({
+      type: "ORDER",
+      severity: "warning",
+      title: `Pedido ${order.number} devuelto por la transportadora`,
+      detail:
+        `El carrier reportó "${input.carrierStatusRaw}" (guía ${order.trackingNumber ?? "—"}). ` +
+        `Acción esperada: revisa el pedido y decide — reenvío al cliente, reembolso (${moneyHint}) ` +
+        `o reposición del stock cuando el paquete llegue de vuelta. Nada de esto es automático.`,
+      actionUrl: `/admin/pedidos/${order.number}`,
+      actionLabel: "Revisar pedido",
+      dedupKey: `order-returned-${order.id}`,
+      metadata: {
+        orderId: order.id,
+        orderNumber: order.number,
+        trackingNumber: order.trackingNumber,
+        carrierStatusRaw: input.carrierStatusRaw,
+        orderStatus: order.status,
+        paymentMethod: order.paymentMethod,
+      },
+    });
+
+    // 2) Email al cliente (sin promesas: "te contactamos").
+    const ship = order.shippingAddress as ShippingAddrSnapshot;
+    const tpl = await orderReturnedEmail({
+      orderNumber: order.number,
+      customerName: ship.fullName ?? "Cliente",
+    });
+    const result = await sendEmail({
+      to: order.email,
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+      idempotencyKey: `${order.number}-returned`,
+      tags: [
+        { name: "type", value: "order_returned" },
+        { name: "order_number", value: order.number },
+      ],
+    });
+    logger.info({
+      event: "order.returned_notification.sent",
+      orderNumber: order.number,
+      to: order.email,
+      result: result.sent ? "ok" : `skip:${result.reason}`,
+    });
+  } catch (err) {
+    logger.error({
+      event: "order.returned_notification.fail",
+      orderId: input.orderId,
       err: err instanceof Error ? err.message : String(err),
     });
   }

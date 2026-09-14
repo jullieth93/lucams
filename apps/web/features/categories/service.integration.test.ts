@@ -20,7 +20,8 @@
  *   - softDeleteCategory(id, deletedBy): bloquea si hay productos activos;
  *     setea deletedAt + isActive=false + deletedBy.
  *   - restoreCategory(id, restoredBy): limpia deletedAt/deletedBy, isActive=false.
- *   - toggleCategoryActive(id, isActive, actorAdminId): toggle isActive.
+ *     (El toggle rápido de isActive del listado pasa por updateCategory vía
+ *     toggleCategoryActiveAction — no hay función de servicio dedicada.)
  *
  * Estrategia: integración DB pura. Requiere DATABASE_URL (corre vía
  * `dotenv -e .env.local -- vitest`); sin ella se salta (skipIf) para no romper
@@ -67,7 +68,6 @@ import {
   moveCategory,
   restoreCategory,
   softDeleteCategory,
-  toggleCategoryActive,
   updateCategory,
 } from "./service";
 
@@ -732,24 +732,6 @@ describe.skipIf(!hasDb)(
         const restored = await restoreCategory(cat.id, null);
         expect(restored.deletedAt).toBeNull();
         expect(restored.updatedBy).toBeNull();
-      });
-    });
-
-    // ───────────────────────── toggleCategoryActive ─────────────────────────
-
-    describe("toggleCategoryActive", () => {
-      it("activa una categoría inactiva (isActive=true) y setea updatedBy", async () => {
-        const cat = await seedCat({ isActive: false });
-        const toggled = await toggleCategoryActive(cat.id, true, "admin-toggle");
-        expect(toggled.isActive).toBe(true);
-        expect(toggled.updatedBy).toBe("admin-toggle");
-      });
-
-      it("desactiva una categoría activa (isActive=false) sin tocar deletedAt", async () => {
-        const cat = await seedCat({ isActive: true });
-        const toggled = await toggleCategoryActive(cat.id, false, null);
-        expect(toggled.isActive).toBe(false);
-        expect(toggled.deletedAt).toBeNull(); // no archiva
       });
     });
 

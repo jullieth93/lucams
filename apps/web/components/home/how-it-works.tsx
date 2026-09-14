@@ -71,14 +71,23 @@ function stripCodMention(text: string): string {
 /**
  * <CmsText> variante COD-aware: si COD_ENABLED está apagado, recorta la coletilla
  * "contraentrega disponible" del paso 3 (aplica igual al texto CMS que al fallback).
+ * FAIL-CLOSED (CF-35): setting ausente/despublicada = NO se promete contraentrega
+ * (fallback "false"), igual que la decisión de capacidad en el checkout.
+ *
+ * El texto del paso 3 es SENSIBLE al modo de tienda (catálogo = cierras por
+ * WhatsApp; full = pagas en línea). La DB arrastra la variante del modo en que
+ * se sembró y NO cambia al flipear STORE_MODE (auditoría 2026-09-11: el flip a
+ * full del 2026-09-03 dejó el texto de catálogo sirviéndose en PRD). Regla: en
+ * modo catálogo gana SIEMPRE el fallback (ya es la variante catálogo); el cuerpo
+ * CMS aplica solo en modo full.
  */
 async function CodAwareCmsText({ blockKey, fallback }: { blockKey: string; fallback: string }) {
   const [block, codValue] = await Promise.all([
     getCmsBlock(blockKey),
-    getSettingValue("COD_ENABLED", "true"),
+    getSettingValue("COD_ENABLED", "false"),
   ]);
   // Tokens canónicos ({{total}}/{{fab}}/{{entrega}}…) se resuelven ANTES del recorte COD.
-  const text = await resolveCmsTokens(block?.body ?? fallback);
+  const text = await resolveCmsTokens(isCatalogMode() ? fallback : (block?.body ?? fallback));
   return <>{codValue === "true" ? text : stripCodMention(text)}</>;
 }
 

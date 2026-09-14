@@ -2,19 +2,21 @@
  * resolveCmsTokens — tokens canónicos en contenido CMS (Ruta A+, 2026-07-29).
  *
  * Problema que resuelve (reportado por Lucy): la misma promesa ("despacho en
- * máx. 2 días hábiles + tránsito estimado de la transportadora", "1.100+
+ * máx. N días hábiles + tránsito estimado de la transportadora", "1.100+
  * destinos") estaba DUPLICADA literal en bloques, fallbacks y settings —
  * editar un lugar no movía los demás, y la setting "Tiempo de fabricación"
  * ni siquiera tenía lectores. (2026-08-01: la promesa pasó de "entregamos en
  * máx. 3 días" a despacho + tránsito del courier — NUNCA se promete fecha de
- * entrega total, el tránsito no lo controlamos nosotros.)
+ * entrega total, el tránsito no lo controlamos nosotros. 2026-09-11: Lucy
+ * confirma que el despacho real es MÁX. 2 DÍAS — el catálogo traía 3 de default
+ * y se bajó a 2; el tránsito declarado es el rango del operador, "2 a 5".)
  *
  * Diseño: los valores viven UNA vez en SiteSettings (COMMERCE) y el
  * contenido referencia tokens en vez de números literales:
  *
  *   {{fab}}      → PRODUCTION_DAYS_DEFAULT  (días hábiles de fabricación)
- *   {{entrega}}  → DELIVERY_DAYS_ESTIMATE   (días hábiles de entrega estimado)
- *   {{total}}    → fab + entrega (calculado)
+ *   {{entrega}}  → DELIVERY_DAYS_ESTIMATE   (rango de días de tránsito, ej. "2 a 5")
+ *   {{total}}    → fab + entrega (calculado; con rango usa el mínimo)
  *   {{cobertura}}→ DELIVERY_COVERAGE_COUNT  ("1.100+")
  *   {{ciudad}}   → ctx.city (solo si el caller la pasa; si no, queda literal)
  *
@@ -29,12 +31,12 @@ export async function resolveCmsTokens(text: string, ctx?: { city?: string }): P
   if (!text.includes("{{")) return text;
   const [fabRaw, entregaRaw, cobertura] = await Promise.all([
     getSettingValue("PRODUCTION_DAYS_DEFAULT", "2"),
-    getSettingValue("DELIVERY_DAYS_ESTIMATE", "1"),
+    getSettingValue("DELIVERY_DAYS_ESTIMATE", "2 a 5"),
     getSettingValue("DELIVERY_COVERAGE_COUNT", "1.100+"),
   ]);
   const fab = Number.parseInt(fabRaw, 10);
   const entrega = Number.parseInt(entregaRaw, 10);
-  const total = String((Number.isNaN(fab) ? 2 : fab) + (Number.isNaN(entrega) ? 1 : entrega));
+  const total = String((Number.isNaN(fab) ? 2 : fab) + (Number.isNaN(entrega) ? 2 : entrega));
   const out = text
     .replaceAll("{{total}}", total)
     .replaceAll("{{fab}}", fabRaw)

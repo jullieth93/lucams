@@ -24,6 +24,14 @@
  */
 
 import { create } from "zustand";
+import type { CalendarFontKey } from "@/features/personalization/schemas";
+import {
+  gridSlotCountForLayout,
+  unitCountOf,
+  unitIndexOfSlot,
+  unitSlotRange,
+  unitSlotsOf,
+} from "@/features/personalization/design-units";
 import type {
   CanvasDataV2,
   ImagePlaceholderLayer,
@@ -85,6 +93,13 @@ export type StudioStoreState = {
   autoFillSlots: () => void;
   /** M.3.b.B.3 — Aplicar/quitar filter preset a un slot específico. */
   setSlotFilter: (slotIndex: number, filter: import("../types").PhotoFilterPreset | null) => void;
+  /**
+   * Ola 17 (Lucy 2026-09-07) — Foto de perfil del header del post de Instagram
+   * (capa `profile-photo` de la plantilla Polaroid Instagram), POR SLOT.
+   * `asset = null` quita la foto (vuelve el avatar placeholder horneado del SVG).
+   * Va por setCanvasData → undo + auto-save.
+   */
+  setSlotProfilePhoto: (slotIndex: number, asset: StudioAsset | null) => void;
   /** M.3.b.D — Aplicar/quitar override de un text layer editable en un slot.
    *  Si `override === null`, limpia el override del textLayerId (vuelve al
    *  texto/color/fuente base del template). */
@@ -118,6 +133,49 @@ export type StudioStoreState = {
   applyTemplate: (template: StudioTemplate) => void;
   /** Ola 2A — color del marco alrededor de la foto (hex #RRGGBB) o null = sin marco. */
   setBorderColor: (color: string | null) => void;
+  /**
+   * Lucy 2026-09-07 — tipo de letra del título/mes del calendario ("fredoka" | "inter" |
+   * "caveat"). Persiste en canvasData.calendarFont → el render de producción la re-mapea
+   * a la familia registrada vía lista blanca. Va por setCanvasData → undo + auto-save.
+   */
+  setCalendarFont: (font: CalendarFontKey) => void;
+  /**
+   * Lucy 2026-09-05 — packs de fotoimanes: cambiar el N de fotos por imán desde
+   * el Estudio. Reconstruye slots (slotCount = n × facesPerUnit) PRESERVANDO las
+   * fotos ya subidas por índice hasta donde quepan (el resto queda vacío;
+   * convención 2k/2k+1 de caras en separadores intacta), recalcula el grid y
+   * persiste photoSlots/sizeCm en el canvasData para la resolución server-side
+   * de la variante en el carrito. Va por setCanvasData → undo + auto-save.
+   *
+   * Modelo multi-unidad (2026-09-09): con unitSlots > 1 declarados (tiras: N fotos
+   * POR TIRA) el N cambia la composición de CADA unidad y el conteo se multiplica
+   * por las unidades del diseño (slotCount = n × facesPerUnit × unitCount), con el
+   * grid por unidad; con unitSlots = 1/sin declarar (polaroid/cuadrados) el N es
+   * el nº de imanes del pack — comportamiento intacto de siempre.
+   */
+  setPhotoSlotsPerUnit: (
+    n: number,
+    opts: { facesPerUnit: number; max: number; sizeCm?: string },
+  ) => void;
+  /**
+   * Ola 28 (owner 2026-09-11, 1.3.A) — stepper "Unidades" del Estudio para
+   * productos de COMPOSICIÓN fija (tiras): cambia CUÁNTAS unidades se diseñan
+   * (unitCount) conservando la composición de cada una (unitSlots/photoSlots).
+   * Los slots se preservan por índice (las unidades nuevas nacen vacías; al
+   * reducir se caen las últimas). El precio ×N lo deriva el servidor del canvas
+   * guardado (design-units.ts), como siempre. No aplica a packs de imán suelto
+   * (unitSlots = 1: allí el stepper de fotos YA es el de unidades).
+   */
+  setUnitCount: (n: number, opts: { facesPerUnit: number; max: number }) => void;
+  /**
+   * Modelo multi-unidad (owner 2026-09-09) — "Aplicar este diseño a todas": copia
+   * los slots COMPLETOS de la unidad `unitIndex` (foto, encuadre, filtro, textos,
+   * foto de perfil IG) a todas las demás unidades, conservando el slotIndex de
+   * destino. Con unitSlots = 1 (polaroid/cuadrados) la "unidad" es el imán: copia
+   * ese slot a todos. No-op con 1 sola unidad. Va por setCanvasData → undo +
+   * auto-save.
+   */
+  applyUnitToAllUnits: (unitIndex: number) => void;
   addAsset: (asset: StudioAsset) => void;
   removeAsset: (assetId: string) => void;
   setAutoSaveStatus: (status: AutoSaveStatus) => void;
@@ -220,6 +278,9 @@ export function createStudioStore() {
                 filter: null,
                 textOverrides: undefined,
                 photoTransform: undefined,
+                // Ola 17 — el reset del slot también suelta la foto de perfil.
+                profileAssetId: null,
+                profileAssetUrl: undefined,
               }
             : s,
         ),
@@ -233,6 +294,24 @@ export function createStudioStore() {
       const next: CanvasDataV2 = {
         ...canvasData,
         slots: canvasData.slots.map((s) => (s.slotIndex === slotIndex ? { ...s, filter } : s)),
+      };
+      get().setCanvasData(next);
+    },
+
+    setSlotProfilePhoto: (slotIndex, asset) => {
+      const { canvasData } = get();
+      if (!canvasData) return;
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        slots: canvasData.slots.map((s) =>
+          s.slotIndex === slotIndex
+            ? {
+                ...s,
+                profileAssetId: asset ? asset.id : null,
+                profileAssetUrl: asset ? asset.signedUrl : undefined,
+              }
+            : s,
+        ),
       };
       get().setCanvasData(next);
     },
@@ -400,6 +479,157 @@ export function createStudioStore() {
       get().setCanvasData({ ...canvasData, borderColor: color });
     },
 
+    setCalendarFont: (font) => {
+      const { canvasData } = get();
+      if (!canvasData) return;
+      if ((canvasData.calendarFont ?? "fredoka") === font) return;
+      get().setCanvasData({ ...canvasData, calendarFont: font });
+    },
+
+    setPhotoSlotsPerUnit: (n, opts) => {
+      const { canvasData, selectedSlotIndex } = get();
+      if (!canvasData) return;
+      const current = canvasData.photoSlots ?? Math.ceil(canvasData.slotCount / opts.facesPerUnit);
+      const target = Math.min(opts.max, Math.max(1, Math.trunc(n)));
+      if (!Number.isFinite(target) || target === current) return;
+      // Modelo multi-unidad (2026-09-09): ¿el stepper cambia la COMPOSICIÓN de
+      // cada unidad (tiras: fotos por tira — las unidades se conservan) o el N
+      // DE UNIDADES (polaroid: imanes; separadores: separadores)? La unidad solo
+      // tiene más slots que sus caras en el primer caso.
+      const currentUnitSlots = canvasData.unitSlots ?? opts.facesPerUnit;
+      const isComposition = currentUnitSlots > opts.facesPerUnit;
+      const unitCount = isComposition ? (canvasData.unitCount ?? 1) : target;
+      const newUnitSlots = isComposition ? target * opts.facesPerUnit : opts.facesPerUnit;
+      const newSlotCount = newUnitSlots * unitCount;
+      // Preservar fotos por ÍNDICE hasta donde quepan; los slots nuevos quedan
+      // vacíos (los assets siguen en la sidebar para reasignar). Los slots que
+      // se caen sueltan su foto pero no la borran del listado de subidas.
+      const oldSlots = canvasData.slots;
+      const slots: SlotState[] = Array.from({ length: newSlotCount }, (_, idx) => {
+        const prev = oldSlots[idx];
+        return prev
+          ? { ...prev, slotIndex: idx }
+          : { slotIndex: idx, assetId: null, assetUrl: null };
+      });
+      const unitTemplate = canvasData.unitTemplate;
+      const forcedCols =
+        typeof (unitTemplate as { gridCols?: unknown }).gridCols === "number"
+          ? (unitTemplate as { gridCols?: number }).gridCols
+          : undefined;
+      const forcedGap =
+        typeof (unitTemplate as { gridGap?: unknown }).gridGap === "number"
+          ? (unitTemplate as { gridGap?: number }).gridGap
+          : undefined;
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        photoSlots: target,
+        sizeCm: opts.sizeCm ?? canvasData.sizeCm,
+        slotCount: newSlotCount,
+        slots,
+        // Multi-unidad: el modelo se re-declara con la composición nueva (solo
+        // cuando unitSlots > 1 — invariante de escritura, design-units.ts).
+        ...(newUnitSlots > 1 ? { unitSlots: newUnitSlots, unitCount } : {}),
+        gridLayout: recalcGridLayout(
+          gridSlotCountForLayout({
+            unitCount,
+            unitSlots: newUnitSlots,
+            slotCount: newSlotCount,
+            facesPerUnit: opts.facesPerUnit,
+          }),
+          unitTemplate.stage,
+          forcedCols,
+          forcedGap,
+        ),
+      };
+      get().setCanvasData(next);
+      // Si el slot seleccionado quedó fuera del nuevo conteo, soltar la selección.
+      if (selectedSlotIndex !== null && selectedSlotIndex >= newSlotCount) {
+        set({ selectedSlotIndex: null });
+      }
+    },
+
+    setUnitCount: (n, opts) => {
+      const { canvasData, selectedSlotIndex } = get();
+      if (!canvasData) return;
+      const unitSlots = canvasData.unitSlots ?? opts.facesPerUnit;
+      // Solo productos de composición (unitSlots > caras — tiras). Con imán
+      // suelto el N de unidades ya lo maneja setPhotoSlotsPerUnit.
+      if (unitSlots <= opts.facesPerUnit) return;
+      const current = canvasData.unitCount ?? 1;
+      const target = Math.min(opts.max, Math.max(1, Math.trunc(n)));
+      if (!Number.isFinite(target) || target === current) return;
+      const newSlotCount = unitSlots * target;
+      // Misma preservación por índice que setPhotoSlotsPerUnit: las unidades
+      // nuevas nacen vacías; al reducir, las últimas se caen (sus fotos siguen
+      // en la sidebar para reasignar).
+      const oldSlots = canvasData.slots;
+      const slots: SlotState[] = Array.from({ length: newSlotCount }, (_, idx) => {
+        const prev = oldSlots[idx];
+        return prev
+          ? { ...prev, slotIndex: idx }
+          : { slotIndex: idx, assetId: null, assetUrl: null };
+      });
+      const unitTemplate = canvasData.unitTemplate;
+      const forcedCols =
+        typeof (unitTemplate as { gridCols?: unknown }).gridCols === "number"
+          ? (unitTemplate as { gridCols?: number }).gridCols
+          : undefined;
+      const forcedGap =
+        typeof (unitTemplate as { gridGap?: unknown }).gridGap === "number"
+          ? (unitTemplate as { gridGap?: number }).gridGap
+          : undefined;
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        slotCount: newSlotCount,
+        slots,
+        unitCount: target,
+        unitSlots,
+        gridLayout: recalcGridLayout(
+          gridSlotCountForLayout({
+            unitCount: target,
+            unitSlots,
+            slotCount: newSlotCount,
+            facesPerUnit: opts.facesPerUnit,
+          }),
+          unitTemplate.stage,
+          forcedCols,
+          forcedGap,
+        ),
+      };
+      get().setCanvasData(next);
+      if (selectedSlotIndex !== null && selectedSlotIndex >= newSlotCount) {
+        set({ selectedSlotIndex: null });
+      }
+    },
+
+    applyUnitToAllUnits: (unitIndex) => {
+      const { canvasData } = get();
+      if (!canvasData) return;
+      // unitSlots declarado (multi-unidad) o, con imán suelto (unitSlots = 1),
+      // cada slot ES su unidad: copiarlo a todos los demás.
+      const unitSlots = canvasData.unitSlots ?? 1;
+      const unitCount =
+        canvasData.unitCount ??
+        (unitSlots > 1 ? Math.ceil(canvasData.slotCount / unitSlots) : canvasData.slotCount);
+      if (unitCount <= 1 || unitIndex < 0 || unitIndex >= unitCount) return;
+      const { start, end } = unitSlotRange(unitIndex, unitSlots);
+      const source = canvasData.slots.slice(start, end);
+      if (source.length === 0) return;
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        slots: canvasData.slots.map((s) => {
+          const targetUnit = unitIndexOfSlot(s.slotIndex, unitSlots);
+          if (targetUnit === unitIndex) return s;
+          const src = source[s.slotIndex % unitSlots];
+          if (!src) return s;
+          // Copia COMPLETA del slot origen (foto, encuadre, filtro, textos, foto
+          // de perfil IG) conservando el slotIndex del destino.
+          return { ...src, slotIndex: s.slotIndex };
+        }),
+      };
+      get().setCanvasData(next);
+    },
+
     addAsset: (asset) => {
       set((state) => ({ assets: [...state.assets, asset] }));
     },
@@ -408,13 +638,24 @@ export function createStudioStore() {
       const { canvasData, assets } = get();
       set({ assets: assets.filter((a) => a.id !== assetId) });
       if (!canvasData) return;
-      // Limpiar también el asset de cualquier slot que lo tenga asignado
-      const affected = canvasData.slots.some((s) => s.assetId === assetId);
+      // Limpiar también el asset de cualquier slot que lo tenga asignado (foto o
+      // foto de perfil, Ola 17).
+      const affected = canvasData.slots.some(
+        (s) => s.assetId === assetId || s.profileAssetId === assetId,
+      );
       if (affected) {
         const next: CanvasDataV2 = {
           ...canvasData,
           slots: canvasData.slots.map((s) =>
-            s.assetId === assetId ? { ...s, assetId: null, assetUrl: null } : s,
+            s.assetId === assetId || s.profileAssetId === assetId
+              ? {
+                  ...s,
+                  ...(s.assetId === assetId ? { assetId: null, assetUrl: null } : {}),
+                  ...(s.profileAssetId === assetId
+                    ? { profileAssetId: null, profileAssetUrl: undefined }
+                    : {}),
+                }
+              : s,
           ),
         };
         get().setCanvasData(next);
@@ -567,6 +808,36 @@ export function selectIsComplete(state: StudioStoreState): boolean {
   const total = state.canvasData.slotCount;
   if (total === 0) return false;
   return state.canvasData.slots.filter((s) => !!s.assetUrl).length === total;
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  Selectores del modelo MULTI-UNIDAD (2026-09-09)
+// ──────────────────────────────────────────────────────────────────
+
+/** Unidades físicas del diseño (≥ 1; ausente en diseños legacy = 1). */
+export function selectUnitCount(state: StudioStoreState): number {
+  return unitCountOf(state.canvasData);
+}
+
+/** Slots de diseño por unidad (tira 3 → 3; calendario → 12; imán suelto → 1). */
+export function selectUnitSlots(state: StudioStoreState): number {
+  return unitSlotsOf(state.canvasData);
+}
+
+/**
+ * Slots con foto dentro de UNA unidad (para el chip de progreso del header de
+ * unidad). Curried por (unitIndex, unitSlots) → primitive number.
+ */
+export function selectUnitFilledCount(unitIndex: number, unitSlots: number) {
+  return (state: StudioStoreState): number => {
+    if (!state.canvasData) return 0;
+    const { start, end } = unitSlotRange(unitIndex, unitSlots);
+    let n = 0;
+    for (let i = start; i < end; i++) {
+      if (state.canvasData.slots[i]?.assetUrl) n++;
+    }
+    return n;
+  };
 }
 
 /**

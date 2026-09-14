@@ -13,8 +13,8 @@ import { SiteHeader } from "@/components/site-header";
 import { CmsText } from "@/components/cms/cms-text";
 import { CmsMarkdown } from "@/components/cms/cms-markdown";
 import { CmsSetting } from "@/components/cms/cms-setting";
-import { getSettingValue } from "@/lib/cms";
-import { getPageSeo } from "@/lib/cms-tokens";
+import { getSettingValue, getCmsBlock } from "@/lib/cms";
+import { getPageSeo, resolveCmsTokens } from "@/lib/cms-tokens";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { ContactForm } from "./contact-form";
 
@@ -29,10 +29,16 @@ export async function generateMetadata(): Promise<Metadata> {
 export const dynamic = "force-dynamic";
 
 export default async function ContactoPage() {
-  const [waSupportUrl, contactEmail] = await Promise.all([
+  const [waSupportUrl, contactEmail, successNoteBlock] = await Promise.all([
     buildWhatsAppUrl({ kind: "support" }),
     getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
+    getCmsBlock("support.contacto.success-note"),
   ]);
+  // <ContactForm> es client component y no lee el CMS: el texto de éxito se
+  // resuelve acá en el server y se pasa por prop (patrón de /rastrear).
+  const successNote = await resolveCmsTokens(
+    successNoteBlock?.body ?? "Te respondemos a tu email en menos de 24h hábiles. Tu ticket es",
+  );
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -89,8 +95,13 @@ export default async function ContactoPage() {
                   <CmsSetting settingKey="CONTACT_EMAIL" fallback="hola@lucamsshop.com" />
                 </a>
                 <p className="text-brand-muted mt-2 text-xs">
-                  Para temas legales:{" "}
-                  <CmsSetting settingKey="SECURITY_EMAIL" fallback="security@lucamsshop.com" />
+                  <CmsText
+                    blockKey="support.contacto.legal-note"
+                    fallback="Datos personales y temas legales:"
+                  />{" "}
+                  <a href="mailto:habeas-data@lucamsshop.com" className="hover:text-brand-purple">
+                    habeas-data@lucamsshop.com
+                  </a>
                 </p>
               </div>
 
@@ -125,7 +136,7 @@ export default async function ContactoPage() {
                   fallback="Te respondemos al email que nos dejes."
                 />
               </p>
-              <ContactForm />
+              <ContactForm successNote={successNote} />
             </section>
           </div>
         </div>

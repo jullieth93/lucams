@@ -57,6 +57,7 @@ async function getMegaMenuTexts(): Promise<MegaMenuTexts> {
     viewAllMobile,
     accountTitle,
     accountMobile,
+    admin,
     login,
     signup,
     occasionLabels,
@@ -69,6 +70,7 @@ async function getMegaMenuTexts(): Promise<MegaMenuTexts> {
     cmsMenuText("header.menu.view-all-mobile", "Ver todo el catálogo"),
     cmsMenuText("header.menu.account", "Tu cuenta"),
     cmsMenuText("header.menu.account-mobile", "Mi cuenta"),
+    cmsMenuText("header.menu.admin", "Panel admin"),
     cmsMenuText("header.menu.login", "Ingresar"),
     cmsMenuText("header.menu.signup", "Crear cuenta"),
     Promise.all(
@@ -86,6 +88,7 @@ async function getMegaMenuTexts(): Promise<MegaMenuTexts> {
     viewAllMobile,
     accountTitle,
     accountMobile,
+    admin,
     login,
     signup,
     occasions: Object.fromEntries(slugs.map((slug, i) => [slug, occasionLabels[i]])),
@@ -110,7 +113,12 @@ export async function SiteHeader() {
         <nav className="flex items-center gap-1 sm:gap-3">
           {/* Entrada única al catálogo: el mega-menú (trigger "Catálogo").
               Antes había además un link plano "Catálogo" → redundante. */}
-          <ShopMegaMenu tree={categoryTree} isLoggedIn={!!session} texts={megaMenuTexts} />
+          <ShopMegaMenu
+            tree={categoryTree}
+            isLoggedIn={!!session}
+            isAdmin={!!admin}
+            texts={megaMenuTexts}
+          />
 
           <Link
             href="/recomendador"
@@ -168,7 +176,7 @@ export async function SiteHeader() {
               href="/admin/dashboard"
               className="text-brand-purple-dark bg-brand-yellow/30 hover:bg-brand-yellow/50 hidden rounded-md px-2.5 py-1 text-[11px] font-semibold tracking-wider uppercase transition-colors sm:inline-flex"
             >
-              Panel admin
+              <CmsText blockKey="header.menu.admin" fallback="Panel admin" />
             </Link>
           )}
 

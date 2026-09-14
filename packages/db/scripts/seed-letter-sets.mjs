@@ -2,9 +2,15 @@
  * ADR-057 — Sets de fichas por defecto (Español + Inglés), vacíos y listos para que
  * Lucy suba las 53 ilustraciones en el admin. Idempotente (upsert por nombre+idioma).
  *
+ * N-06 (2026-09-12): env-guard fail-closed (bloquea PRD/remotos no reconocidos).
+ *
  * Uso: DATABASE_URL=$DIRECT_URL node packages/db/scripts/seed-letter-sets.mjs
  */
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+
+// Guarda de ambiente: upsert de letter sets — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("seed-letter-sets.mjs");
 
 const prisma = new PrismaClient();
 

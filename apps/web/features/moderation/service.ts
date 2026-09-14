@@ -96,27 +96,6 @@ export async function listPendingModeration(): Promise<PendingModerationDesign[]
   }));
 }
 
-/** Cantidad de diseños pendientes (badge del sidebar / card del dashboard). */
-export async function countPendingModeration(): Promise<number> {
-  return prisma.design.count({
-    where: {
-      moderationStatus: "PENDING",
-      OR: [
-        {
-          orderItems: {
-            some: { order: { status: { in: [...ACTIVE_ORDER_STATUSES] }, deletedAt: null } },
-          },
-        },
-        {
-          quoteItems: {
-            some: { quote: { status: { in: [...ACTIVE_QUOTE_STATUSES] }, deletedAt: null } },
-          },
-        },
-      ],
-    },
-  });
-}
-
 /** Aprueba un diseño para producción. Idempotente en la práctica (re-aprobar es no-op semántico). */
 export async function approveDesign(designId: string, adminId: string): Promise<void> {
   await prisma.design.update({

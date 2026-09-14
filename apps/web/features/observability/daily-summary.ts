@@ -19,6 +19,7 @@ import { logger } from "@/lib/logger";
 import { notify } from "@/features/notifications/service";
 import { getCodReconciliationTotals } from "@/features/orders/cod-reconciliation";
 import { getSloStatus } from "./slos";
+import { getEmailDeliverabilityStats } from "./email-deliverability";
 
 // Estados en los que el dinero YA entró (para contar ingresos).
 const PAID_STATES = ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] as const;
@@ -50,6 +51,13 @@ export type DailySummary = {
   needsReconciliation: number;
   // ADR-066 — SLOs incumplidos (con datos suficientes) para alertar en el resumen.
   breachedSlos: string[];
+  // N-04 — entregabilidad de email (7 días): la línea de atención sale solo cuando
+  // la tasa de rebote supera el umbral CON volumen mínimo (misma regla que la
+  // alerta email_bounce_rate — email-deliverability.ts es la fuente única).
+  emailBounceRateAlert: boolean;
+  emailBounceRatePct: number | null;
+  emailBounced7d: number;
+  emailDelivered7d: number;
 };
 
 const _since = (hours: number) => new Date(Date.now() - hours * 3600 * 1000);
@@ -75,6 +83,7 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     needsReconciliation,
     codRecon,
     slos,
+    emailStats,
   ] = await Promise.all([
     prisma.order.count({
       where: { createdAt: { gte: from }, deletedAt: null, status: { not: "DRAFT" } },
@@ -140,6 +149,8 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     getCodReconciliationTotals(),
     // ADR-066 — SLOs incumplidos con datos suficientes.
     getSloStatus(),
+    // N-04 — entregabilidad 7d (la línea de rebote sale si supera el umbral).
+    getEmailDeliverabilityStats(now),
   ]);
 
   return {
@@ -162,6 +173,10 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     topErrorRoute: topErrorRaw[0]?.routePath ?? null,
     needsReconciliation,
     breachedSlos: slos.filter((s) => s.status === "breached").map((s) => s.label),
+    emailBounceRateAlert: emailStats.bounceRateAlert,
+    emailBounceRatePct: emailStats.bounceRatePct,
+    emailBounced7d: emailStats.bounced,
+    emailDelivered7d: emailStats.delivered,
   };
 }
 
@@ -214,6 +229,12 @@ export function buildDailySummaryEmail(
   if (s.errors24h > 0)
     attention.push(
       `⚠️ <strong>${s.errors24h}</strong> error(es) del servidor en 24h${s.topErrorRoute ? ` (top: ${escapeHtml(s.topErrorRoute)})` : ""} — /admin/observability`,
+    );
+  // N-04 — la tasa de rebote ya viene evaluada (umbral + volumen mínimo) desde
+  // email-deliverability.ts: si supera, es señal de entregabilidad rota.
+  if (s.emailBounceRateAlert && s.emailBounceRatePct !== null)
+    attention.push(
+      `📮 Rebote de emails en <strong>${s.emailBounceRatePct.toFixed(1)}%</strong> (${s.emailBounced7d} rebotados de ${s.emailBounced7d + s.emailDelivered7d}) en 7 días — /admin/observability`,
     );
 
   const recoveryPct =
@@ -272,6 +293,9 @@ export function buildDailySummaryEmail(
     s.lowStock > 0 ? `- ${s.lowStock} variante(s) con stock bajo (<=5)` : null,
     s.errors24h > 0
       ? `- ${s.errors24h} error(es) del servidor${s.topErrorRoute ? ` (top: ${s.topErrorRoute})` : ""}`
+      : null,
+    s.emailBounceRateAlert && s.emailBounceRatePct !== null
+      ? `- Rebote de emails: ${s.emailBounceRatePct.toFixed(1)}% en 7 días (${s.emailBounced7d}/${s.emailBounced7d + s.emailDelivered7d}) — /admin/observability`
       : null,
     attention.length === 0 ? `- Nada pendiente ✅` : null,
   ].filter((l): l is string => l !== null);

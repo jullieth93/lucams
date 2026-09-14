@@ -58,6 +58,20 @@ export function getTrustedSelfBaseUrl(): string {
   return `http://localhost:${process.env.PORT ?? "3000"}`;
 }
 
+/**
+ * Headers para self-fetches que atraviesan Vercel Deployment Protection.
+ *
+ * En previews protegidos (STG), TODO self-fetch a la propia app recibe un 302 al
+ * login de Vercel: /api/health/all reportaba los 5 servicios `fail` estando sanos
+ * y /status mostraba "Caído" en todo (falsas alarmas en el ambiente de validación).
+ * La var VERCEL_BYPASS_TOKEN existe solo en previews/CI (la usan los smokes); en
+ * producción no está y los headers salen vacíos (comportamiento de siempre).
+ */
+export function vercelBypassHeaders(): Record<string, string> {
+  const token = process.env.VERCEL_BYPASS_TOKEN;
+  return token ? { "x-vercel-protection-bypass": token } : {};
+}
+
 // getCanonicalSiteUrl/buildPublicShareUrl viven en lib/public-url.ts (módulo PURO, client-safe);
 // se re-exportan acá para no romper los imports server existentes (layout, robots, sitemap).
 export { getCanonicalSiteUrl, buildPublicShareUrl } from "./public-url";
