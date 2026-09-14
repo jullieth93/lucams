@@ -1,18 +1,17 @@
 /*
- * Latido del monitor EXTERNO de uptime (la VM) — NO es un job pg_cron.
+ * Latido del monitor EXTERNO de uptime — NO es un job pg_cron de ESTA base.
  *
- * Su consumidor es el script apps/web/scripts/uptime-monitor.mjs, que corre desde
- * el crontab de la VM cada 12 min: tras sondear los healthchecks de PRD hace POST
- * acá con el resumen de la corrida. Esta ruta hace upsert de
- * AlertState["uptime-monitor:last-run"] (mismo mecanismo que los heartbeats de
- * crons y del backup — cron-heartbeat.ts). Antes el monitor era invisible desde
- * la app; ahora:
- *   - /admin/observability muestra el tile "Monitor externo (VM)" con la última
- *     corrida y su resultado,
+ * Su productor es el job `uptime-monitor-prd` que corre en el proyecto SUPABASE
+ * DE STG (scripts/monitor-uptime-stg.sql; decisión Lucy 2026-09-14: sin SaaS,
+ * sin Actions y sin depender de la VM de desarrollo): sondea los 5 healthchecks
+ * de PRD cada 10 min (lote asíncrono de 2 fases) y hace POST acá con el resumen.
+ * Esta ruta hace upsert de AlertState["uptime-monitor:last-run"] (mismo
+ * mecanismo que los heartbeats de crons y del backup — cron-heartbeat.ts):
+ *   - /admin/observability muestra el tile «Monitor externo (Supabase STG)»,
  *   - la regla uptime_monitor_stale (features/observability/alerts.ts) alerta si
- *     pasan >30 min sin corrida (VM apagada = sin monitor externo), y
+ *     pasan >30 min sin corrida (job o proyecto STG caídos = sin monitor externo), y
  *   - la regla uptime_monitor_failing alerta si la última corrida reportó fallas
- *     (los probes de PRD caídos — complementa el email que el script ya envía).
+ *     persistentes (probes de PRD caídos — complementa el email Resend del job).
  *
  * Protegido por CRON_SECRET (header `x-cron-secret`, timing-safe — nunca en la
  * URL), igual que los demás endpoints /api/cron/*.

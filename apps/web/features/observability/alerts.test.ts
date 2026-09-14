@@ -365,7 +365,7 @@ describe("evaluateAlerts — monitor externo de uptime (VM, 2026-09-13)", () => 
     expect(alert).toBeDefined();
     expect(alert!.severity).toBe("alta");
     expect(alert!.title).toContain("45 min");
-    expect(alert!.action).toContain("crond");
+    expect(alert!.action).toContain("uptime-monitor-prd");
   });
 
   it("nunca ha reportado → uptime_monitor_stale", async () => {

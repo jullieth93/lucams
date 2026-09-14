@@ -1,25 +1,27 @@
 #!/usr/bin/env node
 /*
- * Monitor de uptime por VM (decisión Lucy 2026-09-13: sin SaaS, sin minutos de
- * GitHub Actions). Reemplaza al workflow .github/workflows/uptime-monitor.yml.
+ * Sondeo MANUAL de uptime (respaldo del monitor principal).
  *
- * Qué hace: polea los 5 healthchecks de PRD (1 retry a los 60 s), y si alguno
- * sigue sin responder 2xx, envía UN email vía Resend (anti-spam 30 min, estado en
- * ~/.local/state/lucams-uptime/). Pensado para correr cada 10-15 min desde el
- * crontab de la VM (que ya está encendida 24/7 con el stack Supabase local).
+ * El monitor principal de PRD es el job `uptime-monitor-prd` que corre en el
+ * proyecto Supabase de STG (scripts/monitor-uptime-stg.sql; decisión Lucy
+ * 2026-09-14: sin SaaS, sin Actions y SIN depender de la VM de desarrollo — que
+ * no siempre está encendida). Este script queda como herramienta manual para
+ * sondear desde la VM o cualquier máquina (`make uptime-monitor`), y fue el
+ * monitor por VM durante 1 día hasta que se movió a Supabase STG.
+ *
+ * Qué hace: polea los 5 healthchecks de PRD (1 retry a los 60 s), reporta el
+ * resumen a la app (/api/cron/monitor-heartbeat) y si alguno sigue sin responder
+ * 2xx, envía UN email vía Resend (anti-spam 30 min, estado en
+ * ~/.local/state/lucams-uptime/).
  *
  * Config: ~/.config/lucams/uptime.env (NO va al repo; chmod 600):
- *   RESEND_API_KEY=…   EMAIL_FROM=…   ALERT_EMAIL=…
+ *   RESEND_API_KEY=…   EMAIL_FROM=…   ALERT_EMAIL=…   CRON_SECRET=…
  * Las env vars del proceso tienen precedencia sobre el archivo.
  *
  * Uso:
  *   node apps/web/scripts/uptime-monitor.mjs            # corre y alerta si hay fallas
  *   node apps/web/scripts/uptime-monitor.mjs --dry-run  # imprime, no envía ni persiste
  *   node apps/web/scripts/uptime-monitor.mjs --test-email  # envía un correo de PRUEBA del canal
- *
- * Limitación declarada: si la VM está apagada no hay monitor externo (los
- * alertas in-app siguen cubriendo lo derivado de DB). Es el tradeoff aceptado
- * para no depender de ningún servicio externo.
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";

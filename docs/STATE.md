@@ -23,12 +23,14 @@ además quedó archivado), 14 settings zombi fuera (51→37). Validación en viv
 `/api/health/crons` ok con los 9 jobs al día · `/status` 14/14 verde · el monitor de la VM ya
 reporta a la app (HTTP 200) · **smoke `release-check-a1` en PRD: 1/1** (invalidación CMS desde
 admin, publicar→visible→revertir, dashboard móvil 375px). **Monitor de uptime final (decisión
-Lucy, sin SaaS ni Actions):** script propio en el crontab de la VM cada 12 min → email vía
-Resend si algo cae + reporte a la app: tile «Monitor externo (VM)» en `/admin/observability` y
-2 reglas nuevas (`uptime_monitor_failing` y `uptime_monitor_stale` — el dead-man de la propia
-VM). **Único pendiente abierto:** homologación de catálogo (N-20 — decisión de Lucy por
-producto; el reporte variante-por-variante se genera cuando lo pida) y los PRs de dependabot
-(#33, #40, #41) a revisar cuando se quiera.
+Lucy, sin SaaS, sin Actions y SIN depender de la VM de desarrollo):** job pg_cron
+`uptime-monitor-prd` en el proyecto Supabase de STG (cada 10 min, 2 fases asíncronas) → email
+vía Resend solo en fallas persistentes + reporte a la app: tile «Monitor externo (Supabase
+STG)» en `/admin/observability` y las reglas `uptime_monitor_failing` /
+`uptime_monitor_stale` (dead-man del propio job). El monitor por VM duró 1 día y se retiró su
+crontab (el script queda como respaldo manual). **Único pendiente abierto:** homologación de
+catálogo (N-20 — decisión de Lucy por producto; el reporte variante-por-variante se genera
+cuando lo pida) y los PRs de dependabot (#33, #40, #41) a revisar cuando se quiera.
 
 **🚀 2026-09-13 — REMEDIACIÓN 360° DESPLEGADA A STG Y VALIDADA EN VIVO; seguimiento de riesgos
 residuales CERRADO en 5 frentes.** Commits en `develop` (`45f3e88` remediación integral,
@@ -41,10 +43,10 @@ auto-canceló la orden smoke abandonada de agosto; E2E (smoke + admin-inventory 
 **11/11 contra STG**; migraciones aplicadas en STG (032 → prisma ×2 → 033: 5 jobs, los de email
 siguen desagendados). **Seguimiento de residuales:** ① bounces PRD — causa raíz CONFIRMADA con
 datos: el 100 % de los 240 bounces son a dominios `*.test` de las suites (tasa real = 0 %); la
-métrica de entregabilidad ya los excluye + tile lo muestra. ② Monitor externo RESUELTO sin SaaS
-ni Actions (decisión Lucy): `apps/web/scripts/uptime-monitor.mjs` desde el crontab de la VM cada
-12 min, con email vía Resend (el repo es público —Actions sería gratis— pero se prefirió cero
-dependencia; el workflow GHA se retiró). ③
+métrica de entregabilidad ya los excluye + tile lo muestra. ② Monitor externo RESUELTO sin SaaS,
+sin Actions y sin depender de la VM (decisión Lucy): job pg_cron `uptime-monitor-prd` en
+Supabase STG (el monitor por VM duró 1 día y se retiró su crontab; el script queda de respaldo
+manual). ③
 `LUCAMS_10` archivado en LOCAL+STG (todo cupón era de pruebas). ④ Wishlist aceptada como feature
 de cliente (ADR-098). ⑤ `/mi-cuenta/soporte` ya muestra sus tickets al cliente, y el cron de
 expiración VERIFICA Wompi antes de cancelar (sana las APPROVED con webhook perdido). CI del

@@ -351,15 +351,17 @@ export async function GET() {
 
 ### Monitoreo externo
 
-**Implementado (2026-09-13) sin SaaS ni Actions:** el script `apps/web/scripts/uptime-monitor.mjs`
-corre desde el **crontab de la VM** (cada 12 min) poleando los 5 healthchecks de PRD y alerta
-por email vía Resend si alguno no responde 2xx tras un retry a los 60 s (anti-spam 30 min) —
-ver `docs/OPERATIONS.md` § Plan de monitoreo. Limitación declarada: si la VM está apagada no
-hay monitor externo (los alertas in-app siguen). Detalle de jobs en `/api/health/crons` y de
+**Implementado (2026-09-14) sin SaaS, sin Actions y sin depender de la VM:** el job
+pg_cron `uptime-monitor-prd` en el proyecto **Supabase de STG** sondea los 5 healthchecks de
+PRD cada 10 min (lote asíncrono de 2 fases), alerta por email vía Resend solo en fallas
+persistentes (2+ corridas) y reporta cada corrida a `/api/cron/monitor-heartbeat` (tile en
+`/admin/observability` + reglas `uptime_monitor_stale/failing`) — ver `docs/OPERATIONS.md` §
+Plan de monitoreo y `scripts/monitor-uptime-stg.sql`. Respaldo manual:
+`apps/web/scripts/uptime-monitor.mjs`. Detalle de jobs en `/api/health/crons` y de
 versión/entorno en `/api/health/all` requiere el header `x-cron-secret` (auditoría 2026-08-24,
 C-3/C-4); la respuesta pública queda mínima (`status` + `timestamp`, 503 si degradado).
 ~~Post-lanzamiento: configurar UptimeRobot o BetterStack (Free).~~ Descartado por Lucy
-(2026-09-13): sin dependencia de tiers gratuitos ni de minutos de Actions.
+(2026-09-13): sin dependencia de tiers gratuitos, de Actions y de la VM de desarrollo.
 
 ---
 
@@ -450,6 +452,6 @@ Sin culpas. Sin "el dev se equivocó". Foco en sistema.
 
 - Decisión de monitoreo de errores (ADR-022): Sentry Free o alternativa.
 - Métricas custom expuestas (`/api/metrics`).
-- ~~UptimeRobot/BetterStack para healthchecks externos.~~ Resuelto con monitor propio en la VM
-  (`apps/web/scripts/uptime-monitor.mjs` + crontab, 2026-09-13 — sin SaaS ni Actions).
+- ~~UptimeRobot/BetterStack para healthchecks externos.~~ Resuelto con job pg_cron en Supabase
+  STG (`uptime-monitor-prd`, 2026-09-14 — sin SaaS, sin Actions y sin depender de la VM).
 - Eventualmente: distributed tracing si la arquitectura crece.

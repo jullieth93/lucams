@@ -317,19 +317,21 @@ export default async function AdminObservabilityPage() {
           </p>
 
           {/*
-           * Monitor externo de uptime (2026-09-13, decisión Lucy: solución por VM,
-           * sin SaaS ni Actions). El crontab de la VM sondea los 5 healthchecks de
-           * PRD cada 12 min y reporta cada corrida vía POST /api/cron/monitor-heartbeat.
-           * Sin corrida en >30 min (VM apagada) la alerta uptime_monitor_stale; con
-           * probes caídos, uptime_monitor_failing — ambas al centro de notificaciones.
+           * Monitor externo de uptime (2026-09-14, decisión Lucy: sin SaaS, sin
+           * Actions y sin depender de la VM de desarrollo). Un job pg_cron en el
+           * proyecto Supabase de STG sondea los 5 healthchecks de PRD cada 10 min
+           * (lote asíncrono de 2 fases) y reporta cada corrida vía POST
+           * /api/cron/monitor-heartbeat. Con falla PERSISTENTE (2+ corridas) envía
+           * email vía Resend; sin corrida en >30 min alerta uptime_monitor_stale;
+           * con probes caídos, uptime_monitor_failing.
            */}
           <h2 className="text-brand-purple-dark mt-6 mb-2 flex items-center gap-2 text-sm font-bold">
-            <Radar className="h-4 w-4" /> Monitor externo (VM)
+            <Radar className="h-4 w-4" /> Monitor externo (Supabase STG)
           </h2>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
             <Tile
               icon={<Radar className="h-4 w-4" />}
-              label="Sondeo de PRD cada 12 min"
+              label="Sondeo de PRD cada 10 min"
               value={monitor.stale ? "Sin latido" : monitor.failing ? "Con fallas" : "Al día"}
               danger={monitor.stale || monitor.failing}
               hint={
@@ -340,9 +342,11 @@ export default async function AdminObservabilityPage() {
             />
           </div>
           <p className="text-brand-muted mt-2 text-xs">
-            Independiente de la app: corre desde el <strong>crontab de la VM</strong> y alerta por
-            correo vía Resend. Si este tile queda «Sin latido», la tienda se queda sin monitoreo
-            externo — revisa la VM (<code>crond</code> y <code>tmp/uptime-monitor.log</code>).
+            Independiente de la app y de la VM: corre como{" "}
+            <strong>job pg_cron en Supabase STG</strong> y alerta por correo vía Resend solo en
+            fallas persistentes (2+ corridas). Si este tile queda «Sin latido», la tienda se queda
+            sin monitoreo externo — revisa el job <code>uptime-monitor-prd</code> en el proyecto de
+            STG.
           </p>
 
           {/* Top errores */}

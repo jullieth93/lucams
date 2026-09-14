@@ -747,36 +747,45 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 ---
 
-## Plan de monitoreo (RESUELTO 2026-09-13 — monitor propio en la VM, sin SaaS ni Actions)
+## Plan de monitoreo (RESUELTO 2026-09-14 — job pg_cron en Supabase STG, sin SaaS/Actions/VM)
 
-> **Decisión (Lucy, 2026-09-13):** ningún monitor SaaS gratuito (UptimeRobot/BetterStack/Sentry)
-> por dependencia de tiers que luego piden suscripción; y ningún consumo de minutos de GitHub
-> Actions para esto (aunque el repo sea público —hoy Actions es gratis—, no se quiere la
-> dependencia). En su lugar, **monitor propio desde la VM** (encendida 24/7 con el stack local):
+> **Decisión (Lucy, 2026-09-13/14):** ningún monitor SaaS gratuito (UptimeRobot/BetterStack/
+> Sentry) por dependencia de tiers que luego piden suscripción; ningún consumo de minutos de
+> GitHub Actions; y **tampoco la VM de desarrollo** (no siempre está encendida). En su lugar,
+> **job pg_cron `uptime-monitor-prd` dentro del proyecto Supabase de STG** — infraestructura
+> administrada 24/7 (la misma que ya corre los crons de la app), dominio de fallo independiente
+> de Vercel/PRD, $0:
 >
-> - `apps/web/scripts/uptime-monitor.mjs` (+ `uptime-monitor-lib.mjs`, con tests vitest):
->   polea los 5 healthchecks de PRD (`/api/health/all|crons|resend|wompi|aveonline`), 1 retry
->   a los 60 s, y si alguno sigue sin responder 2xx envía UN email vía Resend a `ALERT_EMAIL`
->   (anti-spam 30 min, estado en `~/.local/state/lucams-uptime/`).
-> - **Crontab de la VM** (`crontab -l`): cada 12 min → `node apps/web/scripts/uptime-monitor.mjs`
->   con log en `tmp/uptime-monitor.log`. Config en `~/.config/lucams/uptime.env` (chmod 600,
->   fuera del repo: `RESEND_API_KEY`, `EMAIL_FROM`, `ALERT_EMAIL`).
-> - Manual: `node apps/web/scripts/uptime-monitor.mjs --dry-run` (sondea sin enviar) o
->   `make uptime-monitor` (ídem). `--test-email` verifica el canal.
+> - **Definición versionada:** `scripts/monitor-uptime-stg.sql` (se aplica SOLO en STG, nunca
+>   en PRD; no forma parte de `supabase/migrations/*` justamente para no replicarse). Como
+>   pg_net es asíncrono, el job trabaja en **2 fases por corrida** (cada 10 min): colecta el
+>   lote anterior y dispara el nuevo. Una falla solo cuenta si se sostiene **2+ corridas
+>   seguidas** (~20 min) — las transitorias no alertan.
+> - **Alerta:** con falla persistente, POST a Resend desde SQL (email a `ALERT_EMAIL`,
+>   anti-spam 30 min, estado en la tabla `uptime_monitor_state` de STG). **Reporte:** cada
+>   corrida hace POST a `/api/cron/monitor-heartbeat` de PRD → tile «Monitor externo
+>   (Supabase STG)» en `/admin/observability` y reglas `uptime_monitor_failing` /
+>   `uptime_monitor_stale` (esta última = el dead-man del propio job).
+> - **Secretos en el Vault de STG** (nunca en el SQL): `monitor_prd_base_url`,
+>   `monitor_resend_api_key`, `monitor_email_from`, `monitor_alert_email`,
+>   `monitor_cron_secret`.
+> - **Respaldo manual:** `node apps/web/scripts/uptime-monitor.mjs` (o `make uptime-monitor`)
+>   sondea desde cualquier máquina con `~/.config/lucams/uptime.env` — útil si STG está
+>   en mantenimiento.
 >
 > Cubre el ciego histórico: caída del propio sistema de alertas (dead-man de crons), caída de
-> Vercel y probes reales de Wompi/Aveonline/Resend caídos. **Limitación declarada:** si la VM
-> está apagada no hay monitor externo (los alertas in-app siguen cubriendo lo derivado de DB) —
-> tradeoff aceptado por Lucy. ~~Workflow `uptime-monitor.yml` en GHA~~: existió 1 día y se
-> retiró (2026-09-13) para no depender de Actions; si algún día se quiere redundancia, el repo
-> es público y Actions no cobra.
+> Vercel y probes reales de Wompi/Aveonline/Resend caídos. **Limitación declarada:** si el
+> proyecto Supabase de STG está caído/en pausa, no hay monitor externo (los alertas in-app
+> siguen) — `uptime_monitor_stale` lo delata a los 30 min. ~~Workflow GHA y monitor por VM~~:
+> existieron 1 día cada uno y se retiraron (2026-09-13/14); si algún día se quiere redundancia,
+> el repo es público y Actions no cobra.
 >
 > Complemento in-app (ya implementado en la remediación 360°): heartbeat de backups vía
 > `POST /api/cron/backup-heartbeat` (lo invoca `backup.yml` al terminar; regla `backup_stale`
 > si pasan >36 h sin latido) y `/api/health/crons` con los 9 jobs.
 >
 > ~~Decisión pendiente: alternativa gratuita antes del lanzamiento.~~ (Las opciones SaaS quedan
-> descartadas; ADR futura solo si se necesita algo más fino que el monitor de la VM.)
+> descartadas; ADR futura solo si se necesita algo más fino que el monitor de STG.)
 
 ### Mientras tanto (Fase 0a–6)
 

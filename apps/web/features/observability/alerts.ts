@@ -202,21 +202,24 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
     });
   }
 
-  // Monitor externo de uptime (2026-09-13, decisión Lucy: solución por VM, sin SaaS
-  // ni Actions). El script de la VM sondea los 5 healthchecks de PRD cada 12 min y
-  // reporta cada corrida a /api/cron/monitor-heartbeat. Dos reglas complementarias:
-  //  - uptime_monitor_stale: sin corrida en >30 min → la VM está apagada o el cron
-  //    murió y NO hay monitor externo (el dead-man de la propia solución).
-  //  - uptime_monitor_failing: la última corrida reportó fallas → los probes de PRD
-  //    están cayendo (el script ya envió email; esto lo deja visible en el centro).
-  // Ambas ALTA (in-app): el email del script es el canal primario para fallas reales.
+  // Monitor externo de uptime (2026-09-14, decisión Lucy: job pg_cron en Supabase
+  // STG — sin SaaS, sin Actions, sin depender de la VM de desarrollo). El job
+  // uptime-monitor-prd sondea los 5 healthchecks de PRD cada 10 min (lote
+  // asíncrono de 2 fases) y reporta cada corrida a /api/cron/monitor-heartbeat.
+  // Dos reglas complementarias:
+  //  - uptime_monitor_stale: sin corrida en >30 min → el job o el proyecto STG
+  //    están caídos y NO hay monitor externo (el dead-man de la solución).
+  //  - uptime_monitor_failing: la última corrida reportó fallas persistentes →
+  //    los probes de PRD están cayendo (el job ya envió email vía Resend; esto
+  //    lo deja visible en el centro).
+  // Ambas ALTA (in-app): el email de Resend es el canal primario para fallas reales.
   const monitor = await getMonitorHealth(now);
   if (monitor.failing) {
     firing.push({
       key: "uptime_monitor_failing",
       severity: "alta",
       title: `El monitor externo reporta healthchecks caídos: ${monitor.lastDetail}`,
-      detail: `Última corrida del monitor de la VM: ${monitor.lastRunAt?.toISOString() ?? "—"}. El monitor sondea /api/health/{all,crons,resend,wompi,aveonline} de PRD cada 12 min desde la VM. Detalle: ${monitor.lastDetail ?? "—"}.`,
+      detail: `Última corrida del monitor (Supabase STG): ${monitor.lastRunAt?.toISOString() ?? "—"}. Sondea /api/health/{all,crons,resend,wompi,aveonline} de PRD cada 10 min. Detalle: ${monitor.lastDetail ?? "—"}.`,
       action:
         "Abre /api/health/all de PRD y el panel /admin/integraciones para identificar el servicio caído (Vercel/DB/Storage/Wompi/Aveonline/Resend). El email del monitor tiene el detalle de cada probe.",
     });
@@ -230,9 +233,9 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
       title: minutesSince
         ? `El monitor externo no reporta hace ${minutesSince} min`
         : "El monitor externo nunca ha reportado",
-      detail: `El crontab de la VM corre el sondeo cada 12 min (tope 30). Sin latido, la tienda NO tiene monitoreo externo de uptime (la limitación declarada de la solución por VM).`,
+      detail: `El job uptime-monitor-prd en el proyecto Supabase de STG corre cada 10 min (tope 30). Sin latido, la tienda NO tiene monitoreo externo de uptime.`,
       action:
-        "Revisa la VM: que esté encendida, que crond esté activo (`systemctl is-active crond`) y el log del monitor (`tmp/uptime-monitor.log`). El crontab se instala con la entrada `*/12 * * * * … uptime-monitor.mjs`.",
+        "Revisa el job uptime-monitor-prd en la DB de STG (cron.job): que esté agendado y sin errores recientes en cron.job_run_details, y que los secretos monitor_* del Vault de STG existan (scripts/monitor-uptime-stg.sql).",
     });
   }
 
