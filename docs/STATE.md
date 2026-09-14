@@ -32,7 +32,12 @@ crontab (el script queda como respaldo manual). **Homologación de catálogo CER
 ADR-099):** los 3 ambientes quedaron con el MISMO estado de productos (8 activos,
 `nombre-personalizado` pausado, 2 archivados) y variantes base alineadas — la única divergencia
 restante son las gemelas `-NOMAG`, ya formalizadas como banco de validación intencional con
-criterio de cierre. **Dependabot al día:** PRs #33 (upload-artifact v7) y #40 (dev-deps)
+criterio de cierre. **NOMAG IGUALADAS (decisión Lucy 2026-09-14, "las pruebas las hemos hecho
+en STG, entonces sí iguala"):** las 30 gemelas validadas faltantes se crearon en PRD con el
+estado EXACTO de STG (precio ya curado allí, stock, imágenes de la base -MAG de PRD) vía
+`sync-nomag-variants-to-prd.mjs` → PRD ≡ STG con 39 NOMAG y **82 variantes activas en los 3
+ambientes**; la PDP de PRD ya muestra «Sin imán» en vivo. LOCAL también quedó normalizado
+(25 placeholders nunca validados archivados + estados GRAN alineados). **Dependabot al día:** PRs #33 (upload-artifact v7) y #40 (dev-deps)
 mergeados, #41 (prod-minor-patch: next 16.3.4, zod 4.5.4, supabase-js 2.115) integrado con
 lockfile regenerado — gates verdes (lint/test 3 848/build). **Sin pendientes abiertos.**
 
