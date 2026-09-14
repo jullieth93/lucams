@@ -28,9 +28,13 @@ Lucy, sin SaaS, sin Actions y SIN depender de la VM de desarrollo):** job pg_cro
 vía Resend solo en fallas persistentes + reporte a la app: tile «Monitor externo (Supabase
 STG)» en `/admin/observability` y las reglas `uptime_monitor_failing` /
 `uptime_monitor_stale` (dead-man del propio job). El monitor por VM duró 1 día y se retiró su
-crontab (el script queda como respaldo manual). **Único pendiente abierto:** homologación de
-catálogo (N-20 — decisión de Lucy por producto; el reporte variante-por-variante se genera
-cuando lo pida) y los PRs de dependabot (#33, #40, #41) a revisar cuando se quiera.
+crontab (el script queda como respaldo manual). **Homologación de catálogo CERRADA (N-20,
+ADR-099):** los 3 ambientes quedaron con el MISMO estado de productos (8 activos,
+`nombre-personalizado` pausado, 2 archivados) y variantes base alineadas — la única divergencia
+restante son las gemelas `-NOMAG`, ya formalizadas como banco de validación intencional con
+criterio de cierre. **Dependabot al día:** PRs #33 (upload-artifact v7) y #40 (dev-deps)
+mergeados, #41 (prod-minor-patch: next 16.3.4, zod 4.5.4, supabase-js 2.115) integrado con
+lockfile regenerado — gates verdes (lint/test 3 848/build). **Sin pendientes abiertos.**
 
 **🚀 2026-09-13 — REMEDIACIÓN 360° DESPLEGADA A STG Y VALIDADA EN VIVO; seguimiento de riesgos
 residuales CERRADO en 5 frentes.** Commits en `develop` (`45f3e88` remediación integral,
@@ -146,6 +150,34 @@ sanciona testimonios inventados como publicidad engañosa); ④ crecimiento: **s
 la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia verificados; cuando haya
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
+
+## Sesión — 2026-09-14 (2) — Monitor definitivo en Supabase STG + homologación + dependabot (cero pendientes)
+
+- **Monitor re-arquitectado (observación de Lucy: la VM no siempre está encendida):** el
+  monitor por VM duró 1 día; se retiró su crontab y quedó como respaldo manual. Solución
+  definitiva: **job pg_cron `uptime-monitor-prd` en el proyecto Supabase de STG** (infra
+  administrada 24/7, $0, sin SaaS/Actions/VM). Aprendizaje clave: el pg_net de STG es ASÍNCRONO
+  (http_get encola; la respuesta llega a `net._http_response` en otra transacción, jamás dentro
+  de la misma) → el job trabaja en **2 fases por corrida** (colecta el lote anterior, dispara
+  el nuevo) y una falla solo cuenta si se sostiene **2+ corridas seguidas** (~20 min) — las
+  transitorias no alertan. Definición versionada: `scripts/monitor-uptime-stg.sql` (solo STG,
+  nunca en PRD). Secretos `monitor_*` en el Vault de STG. Certificado: falla forzada envía el
+  correo real; camino real **OK 5/5** con AlertState de PRD al día; limpieza de lotes viejos
+  (los endpoints retirados no quedan como falla fantasma). Incidencia corregida: los 5
+  secretos se crearon primero en el Vault de PRD por error de env → movidos a STG y PRD limpio.
+- **Homologación de catálogo (N-20 → ADR-099):** PRD = fuente comercial; gemelas `-NOMAG` =
+  banco de validación intencional (criterio de cierre registrado). Nuevo script
+  `homologate-catalog-from-prd.mjs` (dry-run default, PRD solo lectura, NOMAG intactas).
+  Aplicado: LOCAL 1 producto (`nombre-personalizado` → pausado como en PRD) + 29 variantes,
+  STG 1 producto. Los 3 ambientes quedaron idénticos en productos (8/1/2) y base de variantes.
+  `cleanup-test-junk.mjs` extendido para barrer también productos fixture vivos (soft-delete) —
+  con `purge-archived-test-junk` eliminó 2 productos + 1 categoría `chk*` en LOCAL.
+- **Dependabot:** #33 (upload-artifact v7.0.1 — conflicto de workflows resuelto a mano) y #40
+  (dev-deps) mergeados; #41 (prod-minor-patch: next 16.3.4, zod 4.5.4, supabase-js 2.115.0,
+  konva/lucide/react-konva patch) — conflicto de lockfile resuelto REGENERANDO
+  `pnpm-lock.yaml` con `pnpm install` (package.json conservó ambos bumps). Gates tras los
+  merges: lint 0 · test 3 848 · build 0.
+- **Estado final:** `develop`=`production` sincronizadas, CI verde, **cero pendientes abiertos**.
 
 ## Sesión — 2026-09-14 — Release a PRD + monitor visible en el panel
 

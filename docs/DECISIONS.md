@@ -3356,3 +3356,18 @@ intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar
 **Decisión:** la wishlist queda **ACEPTADA como feature de cliente**: el titular guarda sus favoritos y los consulta en `/mi-cuenta/favoritos` — la finalidad es propia y visible para él (encontrar rápido lo que le encantó), no oculta. Además está **cubierta por la supresión de cuenta desde N-18**: al eliminar la cuenta, `features/account/delete-service.ts` borra las filas de `WishlistItem` del titular (verificado por integration test), así que el dato no sobrevive al ejercicio del derecho de supresión. La **palanca de marketing queda DIFERIDA** como decisión de negocio post-lanzamiento: NO se construyen ahora emails de reposición/oferta basados en favoritos ni vista admin del interés por cliente. No es brecha de cumplimiento diferirla — los datos ya tienen finalidad propia para el titular; usarlas para marketing sería una finalidad NUEVA que exigiría su propia evaluación (aviso de privacidad y, si aplica, autorización) cuando se decida.
 
 **Consecuencia:** la wishlist se mantiene tal cual (sin brecha que remediar); cualquier uso de `WishlistItem` con fines de marketing queda bloqueado hasta una decisión de negocio explícita post-lanzamiento, con su análisis de cumplimiento aparte.
+
+---
+
+## ADR-099 — Homologación de catálogo: PRD como fuente comercial; gemelas "-NOMAG" como banco de validación intencional
+
+**Fecha:** 2026-09-14
+**Estado:** ✅ Aceptada (ratificable por Lucy — si alguna pausa de PRD no fue su curaduría, se corrige la fuente y se re-homologa)
+
+**Contexto:** la auditoría 360° (CF-23) encontró los 3 ambientes con catálogos distintos: LOCAL con todas las variantes activas, STG con el rollout multi-unidad/NOMAG completo, PRD curado a mano (pausas en `nombre-personalizado` y en variantes de fotoimanes). Parte era deriva intencional documentada (las gemelas `-NOMAG` del seed-magnet-variants viviendo solo en espejos mientras se decide la oferta "Sin imán" en PRD) y parte no tenía criterio registrado (estados activos/pausados divergentes entre espejos y PRD).
+
+**Decisión:** ① **PRD es la fuente de verdad comercial** para estados (isActive/deletedAt) de productos y variantes — lo que vende la tienda lo manda la curaduría de la operadora vía admin, no los seeds. ② Las **gemelas `-NOMAG`** (y su estado) son un **banco de validación intencional** que vive solo en LOCAL/STG: el código multi-unidad ya está en producción, pero la oferta "Sin imán" no se vende en PRD hasta que Lucy decida; es la divergencia intencional ya documentada en OPERATIONS ("precios «Sin imán» STG"). ③ **Dirección de sincronización: PRD → STG/LOCAL** tras cada release o cambio de curaduría, ejecutable con `packages/db/scripts/homologate-catalog-from-prd.mjs` (dry-run por defecto, PRD solo lectura, NOMAG preservadas, filas ausentes en PRD solo reportadas). ④ **Criterio de cierre de la divergencia NOMAG:** cuando Lucy decida si la oferta "Sin imán" llega a PRD — si sí, se crean las gemelas en PRD (seed-magnet-variants o vía admin) y desaparece la divergencia; si no, se archivan las gemelas en espejos con cleanup-test-junk.
+
+**Consecuencia:** los 3 ambientes quedaron con el MISMO estado de productos (8 activos, `nombre-personalizado` pausado, 2 archivados) y las variantes base alineadas (LOCAL 1 producto + 29 variantes alineadas, STG 1 producto — su estado base ya coincidía); la única divergencia restante es la NOMAG, que pasa de "drift sin criterio" a "divergencia documentada con dueño y criterio de cierre". Lo que se valida en STG vuelve a ser exactamente lo que vende PRD en la dimensión curada.
+
+---
