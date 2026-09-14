@@ -149,7 +149,7 @@ plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
 
 - **Release:** `develop` (`1886b70`) → `git merge --ff-only` a `production` → push → deploy
   Vercel PRD. Migraciones en PRD: `00000000000032` (agenda expire-pending) → `prisma migrate
-  deploy` (2) → `00000000000033` (des-agenda stock_reservation_cleanup) → 10 jobs. Primer
+deploy` (2) → `00000000000033` (des-agenda stock_reservation_cleanup) → 10 jobs. Primer
   latido manual del cron nuevo (`scanned:0`, sin PENDING reales).
 - **Saneamiento PRD (autorizado por Lucy, bypass deliberado):** `purge-test-coupons --apply`
   → 42 cupones de tests borrados (backup `tmp/backups/coupons-prd-2026-09-14T0027Z.json`,
