@@ -90,9 +90,43 @@ async function main() {
     ...junkAll.filter((c) => !(c.parentId && junkIds.has(c.parentId))), // el resto (madres y sueltas)
   ];
 
+  // Productos fixture VIVOS con la misma señal (corridas interrumpidas de
+  // integración, p.ej. `chk<ts>-prod`): las categorías de arriba no los cubren.
+  // Se SOFT-DELETEAN (incl. sus variantes) y purge-archived-test-junk.mjs hace
+  // el borrado físico con su pipeline transaccional (que respeta FK Restrict
+  // si alguna variante está en una orden — eso sigue protegido).
+  const prodCandidates = await prisma.product.findMany({
+    where: { deletedAt: null },
+    select: { id: true, slug: true, name: true },
+  });
+  const junkProds = prodCandidates.filter((p) => slugLooksLikeTest(p.slug));
+
   console.log(`Categorías vivas: ${candidates.length} · confirmadas como test: ${junk.length}`);
-  if (junk.length === 0) {
+  if (junk.length === 0 && junkProds.length === 0) {
     console.log("Nada que limpiar. ✓");
+    return;
+  }
+
+  if (junkProds.length > 0) {
+    console.log(`Productos vivos confirmados como test: ${junkProds.length}`);
+    for (const p of junkProds) {
+      console.log(`  ~ ${p.name} (/${p.slug}) → SOFT-DELETE (lo purga purge-archived-test-junk)`);
+    }
+    if (APPLY) {
+      const jpids = junkProds.map((p) => p.id);
+      await prisma.productVariant.updateMany({
+        where: { productId: { in: jpids } },
+        data: { deletedAt: new Date(), isActive: false },
+      });
+      await prisma.product.updateMany({
+        where: { id: { in: jpids } },
+        data: { deletedAt: new Date(), isActive: false },
+      });
+    }
+  }
+
+  if (junk.length === 0) {
+    console.log("Categorías: nada que limpiar. ✓");
     return;
   }
 
