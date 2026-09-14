@@ -14,7 +14,7 @@
 ## Resumen actual
 
 **🚀 2026-09-13 — REMEDIACIÓN 360° DESPLEGADA A STG Y VALIDADA EN VIVO; seguimiento de riesgos
-residuales CERRADO en 5 frentes.** Tres commits en `develop` (`45f3e88` remediación integral,
+residuales CERRADO en 5 frentes.** Commits en `develop` (`45f3e88` remediación integral,
 `8c6e604` bypass en self-fetches, `91fade4` fix CI setup en frío + ratchet CMS, `f6eb629` tuteo +
 docs) pusheados y desplegados a STG, donde TODO quedó verificado en vivo: `/api/health/all` →
 **ok con los 5 servicios ok** (hubo que añadir `VERCEL_BYPASS_TOKEN` al runtime de preview vía
@@ -25,7 +25,9 @@ auto-canceló la orden smoke abandonada de agosto; E2E (smoke + admin-inventory 
 siguen desagendados). **Seguimiento de residuales:** ① bounces PRD — causa raíz CONFIRMADA con
 datos: el 100 % de los 240 bounces son a dominios `*.test` de las suites (tasa real = 0 %); la
 métrica de entregabilidad ya los excluye + tile lo muestra. ② Monitor externo RESUELTO sin SaaS
-(decisión Lucy): workflow propio `uptime-monitor.yml` cada 30 min desde GitHub Actions. ③
+ni Actions (decisión Lucy): `apps/web/scripts/uptime-monitor.mjs` desde el crontab de la VM cada
+12 min, con email vía Resend (el repo es público —Actions sería gratis— pero se prefirió cero
+dependencia; el workflow GHA se retiró). ③
 `LUCAMS_10` archivado en LOCAL+STG (todo cupón era de pruebas). ④ Wishlist aceptada como feature
 de cliente (ADR-098). ⑤ `/mi-cuenta/soporte` ya muestra sus tickets al cliente, y el cron de
 expiración VERIFICA Wompi antes de cancelar (sana las APPROVED con webhook perdido). CI del
@@ -141,8 +143,10 @@ plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
   `vercelBypassHeaders()` + `VERCEL_BYPASS_TOKEN` añadida al runtime de preview (Vercel CLI) +
   redeploy → 5/5 ok y 14/14 tiles verdes.
 - **Riesgos residuales cerrados:** bounces PRD = 100 % suites (`*.test`, tasa real 0 % — la
-  métrica ya los excluye); monitor externo = workflow propio `uptime-monitor.yml` (sin SaaS,
-  decisión Lucy); `LUCAMS_10` archivado en LOCAL+STG; wishlist aceptada (ADR-098);
+  métrica ya los excluye); monitor externo = script propio en la VM
+  (`apps/web/scripts/uptime-monitor.mjs` + crontab cada 12 min, email vía Resend — sin SaaS ni
+  Actions, decisión Lucy; el workflow GHA se retiró al día de creado); `LUCAMS_10` archivado en
+  LOCAL+STG; wishlist aceptada (ADR-098);
   `/mi-cuenta/soporte` en vivo; expire-pending verifica Wompi antes de cancelar (sana APPROVED).
 - **Validación STG en vivo:** E2E 11/11; `/api/health/crons` ok tras primer latido manual del
   cron nuevo (que además auto-canceló la orden smoke de agosto, como fue diseñado);

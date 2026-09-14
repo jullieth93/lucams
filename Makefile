@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate db-local-start db-local-stop db-local-restart db-local-reset db-local-status db-local-setup db-local-on db-local-off db-local-seed web-start web-stop web-restart local-up local-down local-restart local-status test-local db-stg-setup db-stg-seed seed-products seed-templates seed-ocasiones seed-catalog-v2 migrate-cms-v2 seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores seed-admin admin-mfa-reset seed-clean audit-script-guards audit-slugs audit-content test test-unit test-e2e test-e2e-fullmode test-rls test-load test-coverage clean fix-fotoimanes
+.PHONY: help install build typecheck lint format migrate db-local-start db-local-stop db-local-restart db-local-reset db-local-status db-local-setup db-local-on db-local-off db-local-seed web-start web-stop web-restart local-up local-down local-restart local-status test-local db-stg-setup db-stg-seed seed-products seed-templates seed-ocasiones seed-catalog-v2 migrate-cms-v2 seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores seed-admin admin-mfa-reset seed-clean audit-script-guards audit-slugs audit-content uptime-monitor test test-unit test-e2e test-e2e-fullmode test-rls test-load test-coverage clean fix-fotoimanes
 
 # Makefile del repo — build/test para CI y devs, más el runtime del entorno
 # local completo: Supabase local en podman (grupo db-local-*) y app Next
@@ -267,6 +267,11 @@ audit-slugs:
 # El gate vive en CI (job quality) corriendo el script con --check.
 audit-content:
 	pnpm --filter @lucams/db exec node scripts/audit-content-coverage.mjs
+
+# Monitor de uptime (OPERATIONS § Plan de monitoreo): sondeo manual sin enviar.
+# El programado corre desde el crontab de la VM cada 12 min.
+uptime-monitor:
+	node apps/web/scripts/uptime-monitor.mjs --dry-run
 
 test: test-unit test-e2e
 

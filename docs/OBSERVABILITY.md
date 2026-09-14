@@ -351,14 +351,15 @@ export async function GET() {
 
 ### Monitoreo externo
 
-**Implementado (2026-09-13) sin SaaS:** el workflow `.github/workflows/uptime-monitor.yml`
-polea los 5 healthchecks de PRD cada 30 min desde GitHub Actions y falla (con email de
-notificación de Actions) si alguno no responde 2xx tras un retry a los 60 s — ver
-`docs/OPERATIONS.md` § Plan de monitoreo. Detalle de jobs en `/api/health/crons` y de
+**Implementado (2026-09-13) sin SaaS ni Actions:** el script `apps/web/scripts/uptime-monitor.mjs`
+corre desde el **crontab de la VM** (cada 12 min) poleando los 5 healthchecks de PRD y alerta
+por email vía Resend si alguno no responde 2xx tras un retry a los 60 s (anti-spam 30 min) —
+ver `docs/OPERATIONS.md` § Plan de monitoreo. Limitación declarada: si la VM está apagada no
+hay monitor externo (los alertas in-app siguen). Detalle de jobs en `/api/health/crons` y de
 versión/entorno en `/api/health/all` requiere el header `x-cron-secret` (auditoría 2026-08-24,
 C-3/C-4); la respuesta pública queda mínima (`status` + `timestamp`, 503 si degradado).
 ~~Post-lanzamiento: configurar UptimeRobot o BetterStack (Free).~~ Descartado por Lucy
-(2026-09-13): sin dependencia de tiers gratuitos que luego piden suscripción.
+(2026-09-13): sin dependencia de tiers gratuitos ni de minutos de Actions.
 
 ---
 
@@ -449,6 +450,6 @@ Sin culpas. Sin "el dev se equivocó". Foco en sistema.
 
 - Decisión de monitoreo de errores (ADR-022): Sentry Free o alternativa.
 - Métricas custom expuestas (`/api/metrics`).
-- ~~UptimeRobot/BetterStack para healthchecks externos.~~ Resuelto con workflow propio
-  (`uptime-monitor.yml`, 2026-09-13 — sin SaaS).
+- ~~UptimeRobot/BetterStack para healthchecks externos.~~ Resuelto con monitor propio en la VM
+  (`apps/web/scripts/uptime-monitor.mjs` + crontab, 2026-09-13 — sin SaaS ni Actions).
 - Eventualmente: distributed tracing si la arquitectura crece.

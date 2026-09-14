@@ -758,7 +758,7 @@ El 100 % de los rebotes son a dominios `.test` (RFC 2606, indeliverables por dis
 
 | Ítem | Resolución |
 |---|---|
-| Monitor externo (CF-22) | **Workflow propio** `.github/workflows/uptime-monitor.yml` (cada 30 min desde GHA, retry 60 s, email de Actions si algún health de PRD no responde 2xx). Sin SaaS ni tiers — decisión de Lucy. OPERATIONS § Plan de monitoreo actualizado; UptimeRobot/BetterStack descartados |
+| Monitor externo (CF-22) | **Monitor propio en la VM** `apps/web/scripts/uptime-monitor.mjs` + crontab cada 12 min: polea los 5 healthchecks de PRD, retry 60 s, email vía Resend con anti-spam 30 min. Sin SaaS ni minutos de Actions — decisión de Lucy (el repo es público y Actions sería gratis, pero se prefirió cero dependencia). El workflow GHA existió 1 día y se retiró. OPERATIONS § Plan de monitoreo actualizado |
 | `LUCAMS_10` | Archivado en LOCAL+STG (`one-shot/archive-lucams10-20260913.mjs`, soft-delete reversible). Lucy confirmó que todo cupón existente era de pruebas |
 | Wishlist (CF-21) | Aceptada como feature de cliente (ADR-098): finalidad propia visible en `/mi-cuenta/favoritos`, cubierta por la supresión de cuenta. Palanca de marketing diferida post-lanzamiento |
 | Bandeja de tickets (ADR-092) | Implementada: `/mi-cuenta/soporte` lista los tickets del cliente (estado, fechas, mensaje propio; respuesta humana por correo declarada) + tarjeta en el hub |

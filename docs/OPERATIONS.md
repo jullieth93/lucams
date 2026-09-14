@@ -747,25 +747,36 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 ---
 
-## Plan de monitoreo (RESUELTO 2026-09-13 — uptime-monitor propio, sin SaaS)
+## Plan de monitoreo (RESUELTO 2026-09-13 — monitor propio en la VM, sin SaaS ni Actions)
 
 > **Decisión (Lucy, 2026-09-13):** ningún monitor SaaS gratuito (UptimeRobot/BetterStack/Sentry)
-> por dependencia de tiers que luego piden suscripción. En su lugar, **workflow propio
-> `.github/workflows/uptime-monitor.yml`**: cada 30 min (minutos 13 y 43) hace GET a
-> `/api/health/all`, `/api/health/crons`, `/api/health/resend`, `/api/health/wompi` y
-> `/api/health/aveonline` de PRD, con una ronda de retry a los 60 s; si alguno sigue sin
-> responder 2xx, el job falla y **GitHub envía el email de notificación** (el mismo canal que
-> ya usan `backup.yml` y `nightly-full.yml`). Cubre el ciego histórico: la caída del propio
-> sistema de alertas (dead-man de crons), caída de Vercel y probes reales de Wompi/Aveonline/
-> Resend caídos. Costo: ~1 450 min/mes de Actions. Nota: GitHub auto-deshabilita schedules tras
-> 60 días de inactividad del repo (el repo se mueve a diario).
+> por dependencia de tiers que luego piden suscripción; y ningún consumo de minutos de GitHub
+> Actions para esto (aunque el repo sea público —hoy Actions es gratis—, no se quiere la
+> dependencia). En su lugar, **monitor propio desde la VM** (encendida 24/7 con el stack local):
+>
+> - `apps/web/scripts/uptime-monitor.mjs` (+ `uptime-monitor-lib.mjs`, con tests vitest):
+>   polea los 5 healthchecks de PRD (`/api/health/all|crons|resend|wompi|aveonline`), 1 retry
+>   a los 60 s, y si alguno sigue sin responder 2xx envía UN email vía Resend a `ALERT_EMAIL`
+>   (anti-spam 30 min, estado en `~/.local/state/lucams-uptime/`).
+> - **Crontab de la VM** (`crontab -l`): cada 12 min → `node apps/web/scripts/uptime-monitor.mjs`
+>   con log en `tmp/uptime-monitor.log`. Config en `~/.config/lucams/uptime.env` (chmod 600,
+>   fuera del repo: `RESEND_API_KEY`, `EMAIL_FROM`, `ALERT_EMAIL`).
+> - Manual: `node apps/web/scripts/uptime-monitor.mjs --dry-run` (sondea sin enviar) o
+>   `make uptime-monitor` (ídem). `--test-email` verifica el canal.
+>
+> Cubre el ciego histórico: caída del propio sistema de alertas (dead-man de crons), caída de
+> Vercel y probes reales de Wompi/Aveonline/Resend caídos. **Limitación declarada:** si la VM
+> está apagada no hay monitor externo (los alertas in-app siguen cubriendo lo derivado de DB) —
+> tradeoff aceptado por Lucy. ~~Workflow `uptime-monitor.yml` en GHA~~: existió 1 día y se
+> retiró (2026-09-13) para no depender de Actions; si algún día se quiere redundancia, el repo
+> es público y Actions no cobra.
 >
 > Complemento in-app (ya implementado en la remediación 360°): heartbeat de backups vía
 > `POST /api/cron/backup-heartbeat` (lo invoca `backup.yml` al terminar; regla `backup_stale`
 > si pasan >36 h sin latido) y `/api/health/crons` con los 9 jobs.
 >
-> ~~Decisión pendiente: alternativa gratuita antes del lanzamiento.~~ (Las opciones 1-4 quedan
-> descartadas; ADR futura solo si se necesita algo más fino que el workflow.)
+> ~~Decisión pendiente: alternativa gratuita antes del lanzamiento.~~ (Las opciones SaaS quedan
+> descartadas; ADR futura solo si se necesita algo más fino que el monitor de la VM.)
 
 ### Mientras tanto (Fase 0a–6)
 
