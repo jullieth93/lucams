@@ -15,7 +15,12 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { sendEmail } from "@/lib/resend";
-import { getCronHealth, getBackupHealth, BACKUP_STALE_MS } from "./cron-heartbeat";
+import {
+  getCronHealth,
+  getBackupHealth,
+  getMonitorHealth,
+  BACKUP_STALE_MS,
+} from "./cron-heartbeat";
 import { getEmailDeliverabilityStats } from "./email-deliverability";
 import { getSettingValue } from "@/lib/cms";
 import { logger } from "@/lib/logger";
@@ -194,6 +199,40 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
         : "El workflow de backups nunca ha reportado un éxito a la app (o el latido no está configurado). Sin backup diario, un desastre en Supabase deja a la tienda solo con el PITR.",
       action:
         "Revisa el workflow backup.yml en GitHub (Actions → Backup DB → R2): si el job falla o le faltan secrets (R2_*/BACKUP_*/CRON_SECRET), el backup diario no se está haciendo. El DR drill mensual (dr-drill.yml) también exige un dump fresco.",
+    });
+  }
+
+  // Monitor externo de uptime (2026-09-13, decisión Lucy: solución por VM, sin SaaS
+  // ni Actions). El script de la VM sondea los 5 healthchecks de PRD cada 12 min y
+  // reporta cada corrida a /api/cron/monitor-heartbeat. Dos reglas complementarias:
+  //  - uptime_monitor_stale: sin corrida en >30 min → la VM está apagada o el cron
+  //    murió y NO hay monitor externo (el dead-man de la propia solución).
+  //  - uptime_monitor_failing: la última corrida reportó fallas → los probes de PRD
+  //    están cayendo (el script ya envió email; esto lo deja visible en el centro).
+  // Ambas ALTA (in-app): el email del script es el canal primario para fallas reales.
+  const monitor = await getMonitorHealth(now);
+  if (monitor.failing) {
+    firing.push({
+      key: "uptime_monitor_failing",
+      severity: "alta",
+      title: `El monitor externo reporta healthchecks caídos: ${monitor.lastDetail}`,
+      detail: `Última corrida del monitor de la VM: ${monitor.lastRunAt?.toISOString() ?? "—"}. El monitor sondea /api/health/{all,crons,resend,wompi,aveonline} de PRD cada 12 min desde la VM. Detalle: ${monitor.lastDetail ?? "—"}.`,
+      action:
+        "Abre /api/health/all de PRD y el panel /admin/integraciones para identificar el servicio caído (Vercel/DB/Storage/Wompi/Aveonline/Resend). El email del monitor tiene el detalle de cada probe.",
+    });
+  } else if (monitor.stale) {
+    const minutesSince = monitor.lastRunAt
+      ? Math.floor((now.getTime() - monitor.lastRunAt.getTime()) / (60 * 1000))
+      : null;
+    firing.push({
+      key: "uptime_monitor_stale",
+      severity: "alta",
+      title: minutesSince
+        ? `El monitor externo no reporta hace ${minutesSince} min`
+        : "El monitor externo nunca ha reportado",
+      detail: `El crontab de la VM corre el sondeo cada 12 min (tope 30). Sin latido, la tienda NO tiene monitoreo externo de uptime (la limitación declarada de la solución por VM).`,
+      action:
+        "Revisa la VM: que esté encendida, que crond esté activo (`systemctl is-active crond`) y el log del monitor (`tmp/uptime-monitor.log`). El crontab se instala con la entrada `*/12 * * * * … uptime-monitor.mjs`.",
     });
   }
 

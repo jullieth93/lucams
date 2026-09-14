@@ -24,12 +24,17 @@ import {
   ShoppingCart,
   Mail,
   DatabaseBackup,
+  Radar,
 } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { getTechHealth } from "@/features/observability/service";
 import { getDailySummary } from "@/features/observability/daily-summary";
 import { getSloStatus, type SloResult } from "@/features/observability/slos";
-import { getCronHealth, getBackupHealth } from "@/features/observability/cron-heartbeat";
+import {
+  getCronHealth,
+  getBackupHealth,
+  getMonitorHealth,
+} from "@/features/observability/cron-heartbeat";
 import {
   getEmailDeliverabilityStats,
   EMAIL_BOUNCE_RATE_ALERT_PCT,
@@ -49,13 +54,14 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
 
 export default async function AdminObservabilityPage() {
   await requireRole(["SUPERADMIN"]);
-  const [h, ops, slos, crons, email, backup] = await Promise.all([
+  const [h, ops, slos, crons, email, backup, monitor] = await Promise.all([
     getTechHealth(),
     getDailySummary(),
     getSloStatus(),
     getCronHealth(),
     getEmailDeliverabilityStats(),
     getBackupHealth(),
+    getMonitorHealth(),
   ]);
   const revenue = `$${Math.round(ops.revenueLast24hCop / 100).toLocaleString("es-CO")}`;
   const recoveryPct =
@@ -308,6 +314,35 @@ export default async function AdminObservabilityPage() {
             No es un cron de la base de datos: lo corre <strong>GitHub Actions</strong> (workflow{" "}
             <code>backup.yml</code>) y reporta el éxito a la app. Si supera 36h sin latido llega una
             alerta — revisa la pestaña Actions del repo.
+          </p>
+
+          {/*
+           * Monitor externo de uptime (2026-09-13, decisión Lucy: solución por VM,
+           * sin SaaS ni Actions). El crontab de la VM sondea los 5 healthchecks de
+           * PRD cada 12 min y reporta cada corrida vía POST /api/cron/monitor-heartbeat.
+           * Sin corrida en >30 min (VM apagada) la alerta uptime_monitor_stale; con
+           * probes caídos, uptime_monitor_failing — ambas al centro de notificaciones.
+           */}
+          <h2 className="text-brand-purple-dark mt-6 mb-2 flex items-center gap-2 text-sm font-bold">
+            <Radar className="h-4 w-4" /> Monitor externo (VM)
+          </h2>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+            <Tile
+              icon={<Radar className="h-4 w-4" />}
+              label="Sondeo de PRD cada 12 min"
+              value={monitor.stale ? "Sin latido" : monitor.failing ? "Con fallas" : "Al día"}
+              danger={monitor.stale || monitor.failing}
+              hint={
+                monitor.lastRunAt
+                  ? `últ. corrida ${dateFmt.format(monitor.lastRunAt)} · ${monitor.lastDetail ?? "—"}`
+                  : "el monitor nunca ha reportado"
+              }
+            />
+          </div>
+          <p className="text-brand-muted mt-2 text-xs">
+            Independiente de la app: corre desde el <strong>crontab de la VM</strong> y alerta por
+            correo vía Resend. Si este tile queda «Sin latido», la tienda se queda sin monitoreo
+            externo — revisa la VM (<code>crond</code> y <code>tmp/uptime-monitor.log</code>).
           </p>
 
           {/* Top errores */}

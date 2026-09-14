@@ -33,6 +33,16 @@ const getBackupHealth = vi.hoisted(() =>
     stale: false,
   })),
 );
+const getMonitorHealth = vi.hoisted(() =>
+  vi.fn(
+    async (): Promise<{
+      lastRunAt: Date | null;
+      lastDetail: string | null;
+      stale: boolean;
+      failing: boolean;
+    }> => ({ lastRunAt: new Date(), lastDetail: "OK 5/5", stale: false, failing: false }),
+  ),
+);
 const getEmailDeliverabilityStats = vi.hoisted(() =>
   vi.fn(
     async (): Promise<{
@@ -70,6 +80,7 @@ vi.mock("@/features/notifications/service", () => ({ notify: vi.fn(async () => {
 vi.mock("./cron-heartbeat", () => ({
   getCronHealth,
   getBackupHealth,
+  getMonitorHealth,
   BACKUP_STALE_MS: 36 * 60 * 60 * 1000,
 }));
 vi.mock("./email-deliverability", () => ({ getEmailDeliverabilityStats }));
@@ -87,6 +98,12 @@ beforeEach(() => {
   orderCount.mockResolvedValue(0);
   getCronHealth.mockResolvedValue([]);
   getBackupHealth.mockResolvedValue({ lastSuccessAt: new Date(), stale: false });
+  getMonitorHealth.mockResolvedValue({
+    lastRunAt: new Date(),
+    lastDetail: "OK 5/5",
+    stale: false,
+    failing: false,
+  });
   getEmailDeliverabilityStats.mockResolvedValue({
     windowDays: 7,
     delivered: 0,
@@ -299,5 +316,82 @@ describe("evaluateAlerts — backup_stale (N-19a)", () => {
     const firing = await evaluateAlerts();
 
     expect(firing.some((a) => a.key === "backup_stale")).toBe(false);
+  });
+});
+
+describe("evaluateAlerts — monitor externo de uptime (VM, 2026-09-13)", () => {
+  it("última corrida con FALLA → dispara ALTA uptime_monitor_failing con el detalle", async () => {
+    getMonitorHealth.mockResolvedValue({
+      lastRunAt: new Date(),
+      lastDetail: "FALLA 1/5: /api/health/wompi",
+      stale: false,
+      failing: true,
+    });
+
+    const firing = await evaluateAlerts();
+
+    const alert = firing.find((a) => a.key === "uptime_monitor_failing");
+    expect(alert).toBeDefined();
+    expect(alert!.severity).toBe("alta");
+    expect(alert!.title).toContain("FALLA 1/5: /api/health/wompi");
+    expect(alert!.action).toContain("/admin/integraciones");
+  });
+
+  it("failing tiene prioridad sobre stale (una corrida fallida reciente no es VM apagada)", async () => {
+    getMonitorHealth.mockResolvedValue({
+      lastRunAt: new Date(),
+      lastDetail: "FALLA 2/5: /api/health/all, /api/health/crons",
+      stale: true, // aunque el flag también venga viejo, failing manda
+      failing: true,
+    });
+
+    const firing = await evaluateAlerts();
+
+    expect(firing.some((a) => a.key === "uptime_monitor_failing")).toBe(true);
+    expect(firing.some((a) => a.key === "uptime_monitor_stale")).toBe(false);
+  });
+
+  it("sin corrida en >30 min → dispara ALTA uptime_monitor_stale (VM apagada)", async () => {
+    getMonitorHealth.mockResolvedValue({
+      lastRunAt: new Date(Date.now() - 45 * 60 * 1000),
+      lastDetail: "OK 5/5",
+      stale: true,
+      failing: false,
+    });
+
+    const firing = await evaluateAlerts();
+
+    const alert = firing.find((a) => a.key === "uptime_monitor_stale");
+    expect(alert).toBeDefined();
+    expect(alert!.severity).toBe("alta");
+    expect(alert!.title).toContain("45 min");
+    expect(alert!.action).toContain("crond");
+  });
+
+  it("nunca ha reportado → uptime_monitor_stale", async () => {
+    getMonitorHealth.mockResolvedValue({
+      lastRunAt: null,
+      lastDetail: null,
+      stale: true,
+      failing: false,
+    });
+
+    const firing = await evaluateAlerts();
+
+    expect(firing.some((a) => a.key === "uptime_monitor_stale")).toBe(true);
+  });
+
+  it("corrida fresca OK → NO dispara ninguna de las dos", async () => {
+    getMonitorHealth.mockResolvedValue({
+      lastRunAt: new Date(),
+      lastDetail: "OK 5/5",
+      stale: false,
+      failing: false,
+    });
+
+    const firing = await evaluateAlerts();
+
+    expect(firing.some((a) => a.key === "uptime_monitor_stale")).toBe(false);
+    expect(firing.some((a) => a.key === "uptime_monitor_failing")).toBe(false);
   });
 });

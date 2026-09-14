@@ -116,6 +116,41 @@ function writeState(state) {
   writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
 }
 
+/**
+ * Reporta la corrida a la app (POST /api/cron/monitor-heartbeat) para que el
+ * panel /admin/observability muestre el último sondeo y las reglas
+ * uptime_monitor_stale/failing vigilen al propio monitor. BEST-EFFORT a
+ * propósito: si la app no responde (deploy en curso, endpoint aún no
+ * desplegado), el sondeo y el email ya hicieron su trabajo — solo se loguea.
+ */
+async function reportToApp(results, { dryRun = false } = {}) {
+  const secret = env("CRON_SECRET");
+  if (!secret) {
+    log("sin CRON_SECRET en config — no se reporta a la app (el email sigue activo).");
+    return;
+  }
+  const failures = results.filter((r) => !r.ok).map((r) => r.path);
+  const detail =
+    failures.length === 0
+      ? `OK ${results.length}/${results.length}`
+      : `FALLA ${failures.length}/${results.length}: ${failures.join(", ")}`;
+  if (dryRun) {
+    log(`DRY-RUN: se habría reportado "${detail}" a /api/cron/monitor-heartbeat`);
+    return;
+  }
+  try {
+    const res = await fetch(`${BASE_URL}/api/cron/monitor-heartbeat`, {
+      method: "POST",
+      headers: { "x-cron-secret": secret, "Content-Type": "application/json" },
+      body: JSON.stringify({ detail }),
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    });
+    log(`reporte a la app: HTTP ${res.status} (${detail})`);
+  } catch (err) {
+    log(`reporte a la app falló (best-effort): ${err instanceof Error ? err.message : err}`);
+  }
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const testEmail = process.argv.includes("--test-email");
@@ -143,6 +178,8 @@ async function main() {
   const results = [];
   for (const ep of MONITORED_ENDPOINTS) results.push(await probeWithRetry(ep.path));
   log("\n" + summarizeResults(results));
+
+  await reportToApp(results, { dryRun });
 
   const failures = results.filter((r) => !r.ok);
   if (failures.length === 0) {

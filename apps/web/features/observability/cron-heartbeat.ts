@@ -152,3 +152,58 @@ export async function getBackupHealth(now: Date = new Date()): Promise<BackupHea
     stale: !lastSuccessAt || now.getTime() - lastSuccessAt.getTime() > BACKUP_STALE_MS,
   };
 }
+
+// ─────────────────── Monitor externo de uptime (VM → POST /api/cron/monitor-heartbeat) ───────────────────
+
+/** Clave AlertState del latido del monitor de uptime de la VM. */
+export const MONITOR_HEARTBEAT_KEY = "uptime-monitor:last-run";
+
+/**
+ * Tope de frescura del monitor: corre cada 12 min desde el crontab de la VM, así
+ * que 30 min ≈ 2.5 corridas perdidas — si no hay latido más allá de eso, la VM
+ * está apagada o el cron murió y NO hay monitor externo (la limitación declarada
+ * de la solución por VM; esta regla es su dead-man).
+ */
+export const MONITOR_STALE_MS = 30 * 60 * 1000;
+
+/**
+ * Latido del monitor de uptime. A diferencia de recordCronHeartbeat NO es
+ * best-effort: el endpoint existe solo para esto — si el upsert falla, la route
+ * responde 500 para que el script de la VM lo loguee como error (y la regla
+ * uptime_monitor_stale lo delate a los 30 min).
+ * `detail`: resumen de la corrida (p.ej. "OK 5/5" o "FALLA 2/5: /api/health/wompi, …").
+ */
+export async function recordMonitorHeartbeat(detail?: string): Promise<void> {
+  const now = new Date();
+  await prisma.alertState.upsert({
+    where: { key: MONITOR_HEARTBEAT_KEY },
+    create: { key: MONITOR_HEARTBEAT_KEY, lastSentAt: now, lastDetail: detail ?? null },
+    update: { lastSentAt: now, lastDetail: detail ?? null },
+  });
+}
+
+export type MonitorHealth = {
+  lastRunAt: Date | null;
+  /** Resumen de la última corrida ("OK 5/5" | "FALLA n/5: …"). */
+  lastDetail: string | null;
+  /** true si nunca llegó un latido o el último supera MONITOR_STALE_MS (VM apagada). */
+  stale: boolean;
+  /** true si la última corrida reportó fallas (su detail empieza con "FALLA"). */
+  failing: boolean;
+};
+
+/** Salud del monitor externo de uptime (crontab de la VM — independiente de la app). */
+export async function getMonitorHealth(now: Date = new Date()): Promise<MonitorHealth> {
+  const row = await prisma.alertState.findUnique({
+    where: { key: MONITOR_HEARTBEAT_KEY },
+    select: { lastSentAt: true, lastDetail: true },
+  });
+  const lastRunAt = row?.lastSentAt ?? null;
+  const lastDetail = row?.lastDetail ?? null;
+  return {
+    lastRunAt,
+    lastDetail,
+    stale: !lastRunAt || now.getTime() - lastRunAt.getTime() > MONITOR_STALE_MS,
+    failing: lastDetail?.startsWith("FALLA") ?? false,
+  };
+}
