@@ -13,6 +13,23 @@
 
 ## Resumen actual
 
+**🟢 2026-09-14 — RELEASE COMPLETO A PRD Y VALIDADO EN VIVO. La remediación 360° ya opera en
+producción.** Flujo: `develop` (`1886b70`) → merge ff a `production` → deploy Vercel PRD →
+migraciones en PRD (032 agenda `lucams-expire-pending-orders` → prisma ×2 → 033 des-agenda
+`stock_reservation_cleanup`; PRD queda con 10 jobs) → primer latido manual del cron nuevo
+(`scanned:0`) → **saneamiento de datos PRD ejecutado con bypass deliberado**: 42 cupones de
+tests purgados (backup `tmp/backups/coupons-prd-*.json`, drift 0, queda solo `LUCAMS_10` que
+además quedó archivado), 14 settings zombi fuera (51→37). Validación en vivo PRD:
+`/api/health/crons` ok con los 9 jobs al día · `/status` 14/14 verde · el monitor de la VM ya
+reporta a la app (HTTP 200) · **smoke `release-check-a1` en PRD: 1/1** (invalidación CMS desde
+admin, publicar→visible→revertir, dashboard móvil 375px). **Monitor de uptime final (decisión
+Lucy, sin SaaS ni Actions):** script propio en el crontab de la VM cada 12 min → email vía
+Resend si algo cae + reporte a la app: tile «Monitor externo (VM)» en `/admin/observability` y
+2 reglas nuevas (`uptime_monitor_failing` y `uptime_monitor_stale` — el dead-man de la propia
+VM). **Único pendiente abierto:** homologación de catálogo (N-20 — decisión de Lucy por
+producto; el reporte variante-por-variante se genera cuando lo pida) y los PRs de dependabot
+(#33, #40, #41) a revisar cuando se quiera.
+
 **🚀 2026-09-13 — REMEDIACIÓN 360° DESPLEGADA A STG Y VALIDADA EN VIVO; seguimiento de riesgos
 residuales CERRADO en 5 frentes.** Commits en `develop` (`45f3e88` remediación integral,
 `8c6e604` bypass en self-fetches, `91fade4` fix CI setup en frío + ratchet CMS, `f6eb629` tuteo +
@@ -127,6 +144,25 @@ sanciona testimonios inventados como publicidad engañosa); ④ crecimiento: **s
 la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia verificados; cuando haya
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
+
+## Sesión — 2026-09-14 — Release a PRD + monitor visible en el panel
+
+- **Release:** `develop` (`1886b70`) → `git merge --ff-only` a `production` → push → deploy
+  Vercel PRD. Migraciones en PRD: `00000000000032` (agenda expire-pending) → `prisma migrate
+  deploy` (2) → `00000000000033` (des-agenda stock_reservation_cleanup) → 10 jobs. Primer
+  latido manual del cron nuevo (`scanned:0`, sin PENDING reales).
+- **Saneamiento PRD (autorizado por Lucy, bypass deliberado):** `purge-test-coupons --apply`
+  → 42 cupones de tests borrados (backup `tmp/backups/coupons-prd-2026-09-14T0027Z.json`,
+  transacción, drift 0); `remove-zombie-settings --apply` → 14 campos (51→37);
+  `archive-lucams10` → archivado (era de pruebas).
+- **Monitor en el panel:** nuevo `POST /api/cron/monitor-heartbeat` (el script de la VM
+  reporta cada corrida) → tile «Monitor externo (VM)» en `/admin/observability` + reglas
+  `uptime_monitor_failing` y `uptime_monitor_stale` (dead-man de la VM). Primer reporte real:
+  HTTP 200 "OK 5/5".
+- **Validación PRD en vivo:** `/api/health/crons` ok (9 jobs al día) · `/status` 14/14 verde ·
+  `/admin/mensajes` redirect · **E2E `release-check-a1` 1/1** (CMS publish→visible→reversa,
+  dashboard móvil). CI verde en los últimos pushes.
+- **Pendiente:** homologación de catálogo (N-20, decisión Lucy) + PRs dependabot (#33/#40/#41).
 
 ## Sesión — 2026-09-13 — Despliegue a STG + cierre de riesgos residuales
 
