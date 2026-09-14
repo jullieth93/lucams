@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Fredoka, Inter } from "next/font/google";
+import { Caveat, Fredoka, Inter } from "next/font/google";
 import { Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { WebVitalsReporter } from "@/components/web-vitals";
@@ -8,12 +8,15 @@ import { RouteToasts } from "@/components/route-toasts";
 import { getCanonicalSiteUrl } from "@/lib/origin";
 import { isCatalogMode } from "@/lib/store-mode";
 import { isCmsEditMode } from "@/lib/cms-edit-mode";
+import { getSiteSetting } from "@/lib/cms";
 import { CmsEditOverlay } from "@/components/cms/cms-edit-overlay";
 import "./globals.css";
 
 /*
  * Fredoka (display) — bubble redondeada, encaja con el logo "LUCAMS" multicolor.
  * Inter (body)     — sans serif estándar e-commerce, con tabular-nums para precios.
+ * Caveat (script)  — handwriting kawaii, opción del selector de tipo de letra del
+ *                    calendario (Lucy 2026-09-07) — solo título/mes de la tarjeta.
  * ADR-021: docs/DECISIONS.md
  */
 
@@ -28,6 +31,13 @@ const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const caveat = Caveat({
+  variable: "--font-caveat",
+  subsets: ["latin"],
+  weight: ["400", "700"],
   display: "swap",
 });
 
@@ -94,9 +104,17 @@ export default async function RootLayout({
 }>) {
   // Roadmap C1 paso 2 — modo edición in-place: cookie sembrada solo por un
   // admin de contenido; monta el overlay (banner + click → editor del campo).
-  const editMode = await isCmsEditMode();
+  // PRIVACY_POLICY_VERSION (cacheada, tag `cms`) alimenta el re-consent del
+  // banner de cookies (N-15): si falta el setting, `null` = no re-mostrar.
+  const [editMode, privacyPolicy] = await Promise.all([
+    isCmsEditMode(),
+    getSiteSetting("PRIVACY_POLICY_VERSION"),
+  ]);
   return (
-    <html lang="es-CO" className={`${fredoka.variable} ${inter.variable} h-full antialiased`}>
+    <html
+      lang="es-CO"
+      className={`${fredoka.variable} ${inter.variable} ${caveat.variable} h-full antialiased`}
+    >
       <body className="flex min-h-full flex-col">
         {/* Skip-link (WCAG 2.4.1 Bypass Blocks): primer elemento enfocable —
             oculto hasta recibir foco por teclado (Tab), salta al <main id="contenido">
@@ -113,7 +131,7 @@ export default async function RootLayout({
         <Suspense fallback={null}>
           <RouteToasts />
         </Suspense>
-        <CookiesBanner />
+        <CookiesBanner policyVersion={privacyPolicy?.value ?? null} />
         {editMode ? <CmsEditOverlay /> : null}
       </body>
     </html>

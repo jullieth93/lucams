@@ -24,6 +24,7 @@ import { logger } from "@/lib/logger";
 import { getShippingProvider } from "@/features/shipping/provider";
 import { getEffectiveShippingDims } from "@/features/products/shipping-schemas";
 import { getSettingValue } from "@/lib/cms";
+import { invalidateCatalogListings } from "@/lib/catalog";
 import { assertTransactionalAllowed } from "@/lib/stage-guard";
 import { transitionOrder, clearCartAfterPaid, OrderTransitionError } from "./service";
 import { FetchTimeoutError } from "@/lib/fetch-with-timeout";
@@ -38,6 +39,7 @@ import {
   sendOrderPaymentFailed,
   sendOrderCancelled,
   sendOrderRefunded,
+  notifyOrderReturned,
 } from "./emails";
 import { issueReferralRewardsIfFirstPaidOrder } from "@/features/referrals/service";
 import { isCouponPerCustomerLimitError } from "@/features/coupons/redemption";
@@ -287,6 +289,10 @@ export async function processPaidOrder(
           await clearCartAfterPaid(order.cartId, tx);
         }
       });
+      // N-11 (CF-17) — post-commit: el stock cambió → el badge "Agotado" de los
+      // listados (tag catalog, TTL 1h) no puede seguir mintiendo. Best-effort
+      // (en render RSC del fallback /checkout/gracias no está permitido).
+      invalidateCatalogListings();
       logger.info({
         event: "order.saga.paid.transitioned",
         orderId: order.id,
@@ -783,6 +789,13 @@ export async function processTrackingUpdate(input: {
         },
       })
       .catch(() => null);
+    // N-22b — además del flag: notificación in-app al centro admin con la acción
+    // esperada explícita (revisar y decidir reenvío/reembolso/reposición de stock —
+    // NADA de eso se automatiza, es decisión operativa) + email honesto al cliente
+    // ("tu pedido viene de vuelta, te contactamos"). Idempotente por evento (el
+    // dedup de WebhookEvent ya garantizó una sola corrida) y best-effort total
+    // (notifyOrderReturned captura sus errores internamente).
+    await notifyOrderReturned({ orderId: order.id, carrierStatusRaw: input.carrierStatusRaw });
     logger.warn({
       event: "order.saga.tracking.needs_attention",
       orderNumber: order.number,

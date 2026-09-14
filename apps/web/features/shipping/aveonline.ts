@@ -1249,7 +1249,7 @@ function parseAveonlineDate(raw: string | undefined): Date {
 function mapAveonlineStatus(raw: string): TrackingStatus["status"] {
   const s = raw.toUpperCase();
   if (s.includes("ENTREGAD")) return "DELIVERED";
-  if (s.includes("DEVUELT") || s.includes("RETORN")) return "RETURNED";
+  if (s.includes("DEVUELT") || s.includes("DEVOLUC") || s.includes("RETORN")) return "RETURNED";
   if (s.includes("NOVEDAD") || s.includes("EXCEPCI")) return "EXCEPTION";
   // Estados canónicos documentados (doc "Tipos de estados de envíos" + flujo
   // sandbox avanzarEstado): GENERADA → PRODUCIDA → EN DESPACHO → EN REPARTO →

@@ -1,19 +1,36 @@
 #!/usr/bin/env node
 /*
- * Seed de diseños prediseñados para Separadores de Libros.
- * Genera SVGs vectoriales, los sube al bucket público product-images y
- * crea registros en DesignGalleryImage (tag='separadores').
+ * Seed LOCAL de diseños prediseñados para Separadores de Libros (ADR-057 B2).
+ * Genera SVGs vectoriales, los sube al bucket público product-images y crea
+ * registros en DesignGalleryImage con el galleryTag POR PRODUCTO (convención:
+ * el slug — ver listGalleryTagOptions en features/personalization/design-gallery.ts):
+ *   - separadores-magneticos → los 12 diseños (marcapáginas 1:3 + cuadrados 1:1)
+ *   - separadores-alargados  → los 8 diseños marcapáginas 1:3 (sus tamaños 4×12/4×15)
  * Los SVGs se convierten a PNG en el pipeline de impresión vía sharp.
  *
- * Uso:
+ * SOLO LOCAL: el guard rechaza cualquier DATABASE_URL/DIRECT_URL que no apunte a
+ * un host local (127.0.0.1/localhost/::1/host.docker.internal) — STG/PRD quedan
+ * fuera: allá los diseños los sube el admin desde /admin/disenos.
+ *
+ * Uso (con el stack local arriba: make db-local-start && make db-local-on):
  *   cd packages/db && pnpm dotenv -e ../../.env.local -- node scripts/seed-gallery-separadores.mjs
  *
- * Si ya existen diseños con el mismo nombre dentro del tag, se omiten.
+ * Idempotente: si ya existe un diseño con el mismo nombre dentro del tag, se omite.
  */
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { createClient } from "@supabase/supabase-js";
 import { PrismaClient } from "@prisma/client";
-import sharp from "sharp";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+
+// Guarda de ambiente (N-06, 2026-09-12): env-guard fail-closed ADEMÁS del
+// guard LOCAL-only de abajo (que es más estricto — este seed es ejemplo de
+// desarrollo; en STG/PRD los diseños los gestiona el admin desde /admin/disenos).
+assertDestructiveAllowed("seed-gallery-separadores.mjs");
+
+// sharp es dependencia de apps/web (Next la usa para optimizar imágenes): se resuelve
+// desde allá con createRequire para no arrastrarla a @lucams/db solo por este seed.
+const sharp = createRequire(new URL("../../../apps/web/package.json", import.meta.url))("sharp");
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SECRET_KEY;
@@ -23,7 +40,26 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
 }
 
 const BUCKET = "product-images";
-const TAG = "separadores";
+
+// Guard LOCAL-only: este seed es un ejemplo de desarrollo; en STG/PRD los diseños
+// los gestiona el admin (/admin/disenos). Misma lista de hosts que lib/env-guard.mjs.
+const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "host.docker.internal"]);
+for (const url of [process.env.DIRECT_URL, process.env.DATABASE_URL]) {
+  if (!url) continue;
+  const host = new URL(url).hostname;
+  if (!LOCAL_HOSTS.has(host)) {
+    console.error(`Seed SOLO local — destino no permitido: ${url.replace(/\/\/[^@]*@/, "//***@")}`);
+    process.exit(1);
+  }
+}
+
+// Tag por producto (convención: el slug). Cada tag recibe los diseños que calzan con
+// sus tamaños físicos: los magnéticos tienen variante cuadrada 4×4.2 (los "Cuadrado *")
+// y alargada 2×6; los alargados son todos 1:3+ (solo marcapáginas).
+const TAG_PLANS = [
+  { tag: "separadores-magneticos", kinds: ["bookmark", "square"] },
+  { tag: "separadores-alargados", kinds: ["bookmark"] },
+];
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -273,11 +309,11 @@ const DESIGNS = [
   },
 ];
 
-async function uploadPngFromSVG(name, svgString) {
+async function uploadPngFromSVG(tag, name, svgString) {
   const png = await sharp(Buffer.from(svgString, "utf-8"))
     .png({ quality: 95, compressionLevel: 8 })
     .toBuffer();
-  const filename = `gallery-${TAG}/${randomUUID()}.png`;
+  const filename = `gallery-${tag}/${randomUUID()}.png`;
   const { error: uploadErr } = await supabase.storage.from(BUCKET).upload(filename, png, {
     contentType: "image/png",
     cacheControl: "31536000",
@@ -289,52 +325,55 @@ async function uploadPngFromSVG(name, svgString) {
 }
 
 async function main() {
-  const existing = await prisma.designGalleryImage.findMany({
-    where: { tag: TAG },
-    select: { id: true, name: true },
-  });
-  console.log(`Diseños existentes para tag '${TAG}': ${existing.length}`);
-
-  for (const d of DESIGNS) {
-    const already = existing.find((e) => e.name === d.name);
-    if (already) {
-      console.log(`  Omitido (ya existe): ${d.name}`);
-      continue;
-    }
-
-    const svg = d.kind === "bookmark" ? makeBookmarkSVG(d) : makeSquareSVG(d);
-    const svgB =
-      d.kind === "bookmark"
-        ? makeBookmarkSVG({
-            ...d,
-            colors: [PALETTE.cream, PALETTE.cream, PALETTE.purple],
-            pattern: "stripes",
-            subtitle: "lucamsshop.com",
-            title: "\\n",
-          })
-        : makeSquareSVG({
-            ...d,
-            title: "",
-            colors: [PALETTE.cream, PALETTE.cream, PALETTE.purple],
-            pattern: "stripes",
-          });
-
-    const [urlA, urlB] = await Promise.all([
-      uploadPngFromSVG(`${d.name} A`, svg),
-      uploadPngFromSVG(`${d.name} B`, svgB),
-    ]);
-
-    await prisma.designGalleryImage.create({
-      data: {
-        tag: TAG,
-        name: d.name,
-        imageUrl: urlA,
-        imageUrlB: urlB,
-        order: DESIGNS.indexOf(d),
-        isActive: true,
-      },
+  for (const { tag, kinds } of TAG_PLANS) {
+    const designs = DESIGNS.filter((d) => kinds.includes(d.kind));
+    const existing = await prisma.designGalleryImage.findMany({
+      where: { tag },
+      select: { id: true, name: true },
     });
-    console.log(`  Creado: ${d.name}`);
+    console.log(`Diseños existentes para tag '${tag}': ${existing.length}`);
+
+    for (const d of designs) {
+      const already = existing.find((e) => e.name === d.name);
+      if (already) {
+        console.log(`  Omitido (ya existe): ${d.name}`);
+        continue;
+      }
+
+      const svg = d.kind === "bookmark" ? makeBookmarkSVG(d) : makeSquareSVG(d);
+      const svgB =
+        d.kind === "bookmark"
+          ? makeBookmarkSVG({
+              ...d,
+              colors: [PALETTE.cream, PALETTE.cream, PALETTE.purple],
+              pattern: "stripes",
+              subtitle: "lucamsshop.com",
+              title: "\\n",
+            })
+          : makeSquareSVG({
+              ...d,
+              title: "",
+              colors: [PALETTE.cream, PALETTE.cream, PALETTE.purple],
+              pattern: "stripes",
+            });
+
+      const [urlA, urlB] = await Promise.all([
+        uploadPngFromSVG(tag, `${d.name} A`, svg),
+        uploadPngFromSVG(tag, `${d.name} B`, svgB),
+      ]);
+
+      await prisma.designGalleryImage.create({
+        data: {
+          tag,
+          name: d.name,
+          imageUrl: urlA,
+          imageUrlB: urlB,
+          order: DESIGNS.indexOf(d),
+          isActive: true,
+        },
+      });
+      console.log(`  Creado: ${d.name}`);
+    }
   }
 
   await prisma.$disconnect();

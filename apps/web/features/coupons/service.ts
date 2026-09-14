@@ -1,7 +1,8 @@
 /*
  * Service Cupones — PLAN_CATALOG_V2 3.9.
  *
- * CRUD + métricas básicas (usage count, total descontado, top clientes).
+ * CRUD + detalle con usos (getCoupon — lo consume la página de edición
+ * /admin/cupones/[id]).
  */
 
 import { prisma } from "@/lib/db";
@@ -20,14 +21,19 @@ export class CouponValidationError extends Error {
 
 export type CouponListOpts = {
   q?: string;
-  /** "active" = isActive + vigente hoy. "inactive" = pausado/expirado/programado. */
-  status?: "all" | "active" | "inactive";
+  /**
+   * "active" = isActive + vigente hoy. "inactive" = pausado/expirado/programado.
+   * "archived" = SOLO archivados (soft-delete, deletedAt set): vista separada,
+   * nunca mezclados con los vigentes (los demás estados siempre excluyen archivados).
+   */
+  status?: "all" | "active" | "inactive" | "archived";
   sort?: "recent" | "expiry-asc" | "code" | "uses";
 };
 
 export async function listCoupons(opts: CouponListOpts = {}) {
   const q = opts.q?.trim();
   const now = new Date();
+  const archivedOnly = opts.status === "archived";
   const orderBy = (() => {
     switch (opts.sort) {
       case "expiry-asc":
@@ -43,7 +49,7 @@ export async function listCoupons(opts: CouponListOpts = {}) {
   })();
   return prisma.coupon.findMany({
     where: {
-      deletedAt: null,
+      deletedAt: archivedOnly ? { not: null } : null,
       ...(opts.status === "active"
         ? { isActive: true, validFrom: { lte: now }, validTo: { gte: now } }
         : {}),
@@ -135,6 +141,14 @@ export async function updateCoupon(input: CouponUpdateInput, actorId: string) {
   return updated;
 }
 
+/*
+ * Invalidación de caché en pause/resume/archive: SOLO updateTag("coupons"), a
+ * diferencia de create/update que también tocan "catalog". Es deliberado y
+ * suficiente (CF-06): el único consumidor cacheado de cupones (listPublicCoupons
+ * en lib/catalog.ts) lleva AMBOS tags, así que "coupons" ya lo invalida; marcar
+ * además "catalog" barrería toda la caché de productos/categorías (1h TTL) en
+ * cada pausa o archivo de cupón — innecesariamente amplio.
+ */
 export async function pauseCoupon(id: string, actorId: string) {
   await prisma.coupon.update({
     where: { id },
@@ -157,34 +171,4 @@ export async function archiveCoupon(id: string, actorId: string) {
     data: { deletedAt: new Date(), deletedBy: actorId, isActive: false },
   });
   updateTag("coupons");
-}
-
-/**
- * Métricas básicas por cupón:
- *   - usedCount: contador denormalizado en Coupon.
- *   - totalDiscounted: suma de CouponUsage.amount.
- *   - uniqueCustomers: count distinct customerId.
- */
-export async function getCouponMetrics(id: string) {
-  const [coupon, totalSum, uniqueCust] = await Promise.all([
-    prisma.coupon.findUnique({
-      where: { id },
-      select: { usedCount: true, maxUses: true },
-    }),
-    prisma.couponUsage.aggregate({
-      where: { couponId: id },
-      _sum: { amount: true },
-    }),
-    prisma.couponUsage.findMany({
-      where: { couponId: id, customerId: { not: null } },
-      distinct: ["customerId"],
-      select: { customerId: true },
-    }),
-  ]);
-  return {
-    usedCount: coupon?.usedCount ?? 0,
-    maxUses: coupon?.maxUses ?? null,
-    totalDiscounted: totalSum._sum.amount ?? 0,
-    uniqueCustomers: uniqueCust.length,
-  };
 }

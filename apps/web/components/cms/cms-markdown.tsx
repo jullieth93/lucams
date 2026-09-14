@@ -20,13 +20,17 @@ export async function CmsMarkdown({
   blockKey,
   fallback,
   className = "",
+  forceFallback = false,
 }: {
   blockKey: string;
   fallback: string;
   className?: string;
+  /** Gana sobre el cuerpo CMS — para textos SENSIBLES al modo de tienda cuya
+   *  variante correcta decide el código, no la DB (auditoría 2026-09-11). */
+  forceFallback?: boolean;
 }) {
   const block = await getCmsBlock(blockKey);
-  const body = await resolveCmsTokens(block?.body ?? fallback);
+  const body = await resolveCmsTokens(forceFallback ? fallback : (block?.body ?? fallback));
   // Roadmap C1 paso 2 — en modo edición el wrapper anota la key (overlay).
   const editMode = await isCmsEditMode();
 

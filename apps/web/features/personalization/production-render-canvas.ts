@@ -24,7 +24,7 @@ import {
 } from "./calendar-layout";
 import { drawCalendarPage } from "./calendar-draw";
 import {
-  isDarkColor,
+  defaultTextFillOnCard,
   frameBleedMargin,
   insetToMinMargin,
   isSimpleCardTemplate,
@@ -32,8 +32,11 @@ import {
   isStripTemplate,
   stripPhotoRect,
   stripPositionOf,
+  isStripBorderless,
   isInstagramTemplate,
+  isInstagramNoBorder,
   instagramBackgroundHex,
+  photoBackingHexFor,
   type StripPosition,
 } from "./frame-palette";
 
@@ -64,12 +67,25 @@ function ensureFonts(mod: CanvasMod): boolean {
     const dir = path.join(process.cwd(), "assets", "fonts");
     const ok =
       mod.GlobalFonts.registerFromPath(path.join(dir, "Fredoka.ttf"), "Fredoka") &&
-      mod.GlobalFonts.registerFromPath(path.join(dir, "Inter.ttf"), "Inter");
+      mod.GlobalFonts.registerFromPath(path.join(dir, "Inter.ttf"), "Inter") &&
+      // Lucy 2026-09-07 — selector de tipo de letra del calendario: Caveat (handwriting
+      // OFL, TTF variable — @napi-rs/canvas la registra como familia "Caveat" y
+      // setBrandFont fuerza el eje wght via fontVariationSettings, igual que Fredoka).
+      mod.GlobalFonts.registerFromPath(path.join(dir, "Caveat.ttf"), "Caveat");
     fontsReady = Boolean(ok);
   } catch {
     fontsReady = false;
   }
   return fontsReady;
+}
+
+/**
+ * Lista blanca key→familia registrada para el TÍTULO/mes del calendario. NUNCA se acepta
+ * un string libre del cliente: cualquier valor fuera de la enum (o ausente) cae a Fredoka
+ * (look histórico, retrocompatible). El body/grilla SIEMPRE es Inter (drawCalendarPage).
+ */
+export function calendarFontFamilyForKey(key: unknown): "Fredoka" | "Inter" | "Caveat" {
+  return key === "inter" ? "Inter" : key === "caveat" ? "Caveat" : "Fredoka";
 }
 
 // ── Tipos (mismos que production-render.ts, minimal) ────────────────────────
@@ -247,7 +263,9 @@ async function renderSlotCanvas(
   //  - "tarjeta simple" (Cuadrados: fondo + foto, sin chrome ni texto visible):
   //    borderColor null → foto a sangre TOTAL; borderColor set → franja UNIFORME.
   //  - Instagram (chrome SVG): fondo BINARIO blanco/negro (un pastel residual cae a blanco).
-  //  - Tira photobooth (gridCols=1+gridGap=0): borde exterior solo en first/last.
+  //  - Tira photobooth (gridCols=1+gridGap=0): borde exterior solo en first/last;
+  //    canaleta del color del marco ENTRE fotos (stripPhotoRect, regla 2026-09-08 —
+  //    misma matemática que el editor Konva → WYSIWYG).
   const textVisible = includeText && unit.layers.some((l) => l.type === "text");
   const simpleCard = isSimpleCardTemplate(unit.layers, {
     hasFrameCard,
@@ -271,7 +289,8 @@ async function renderSlotCanvas(
       : hasFrameCard
         ? (borderColor ?? frameCardFillHex)
         : bgLayerHex;
-  const darkCard = isDarkColor(cardBgHex);
+  // (El color de letra por defecto sale de defaultTextFillOnCard(cardBgHex) en
+  // renderTextLayer — Ola 29: la tarjeta rosada también pide letra blanca.)
 
   for (const layer of unit.layers) {
     if (layer.type === "frame-card") {
@@ -336,8 +355,11 @@ async function renderSlotCanvas(
       //     borderColor set → franja UNIFORME de color en los 4 lados.
       //  2. Ola 3b (resto de plantillas full-bleed): inserta respetando márgenes mayores.
       //     Instagram conserva la geometría de su chrome (sin inset).
-      //  3. Tira photobooth: la ventana viene a sangre vertical (fotos que se tocan);
-      //     el borde exterior lo pone la posición (first/last).
+      //  3. Tira photobooth: la ventana se inserta por posición (stripPhotoRect):
+      //     borde exterior first/last + media canaleta entre fotos (2026-09-08).
+      //     Ola 25 — placeholder a sangre total (toggle "Sin borde") → celda
+      //     CONTINUA: sin marco exterior NI canaletas (isStripBorderless, misma
+      //     detección del editor).
       let ph = phRaw;
       if (frameFullBleed && simpleCard && !useFullStage) {
         ph = {
@@ -351,7 +373,12 @@ async function renderSlotCanvas(
         };
       }
       if (strip && stripPosition) {
-        ph = { ...stripPhotoRect(ph, unit.stage, stripPosition), cornerRadius: ph.cornerRadius };
+        ph = {
+          ...stripPhotoRect(ph, unit.stage, stripPosition, {
+            borderless: isStripBorderless(ph, unit.stage),
+          }),
+          cornerRadius: ph.cornerRadius,
+        };
       }
 
       // Ola 3c — rotación de la foto (pasos de 90° desde "Ajustar foto"): con 90/270
@@ -383,6 +410,27 @@ async function renderSlotCanvas(
         ctx.rect(ph.x, ph.y, ph.width, ph.height);
       }
       ctx.clip();
+      // Ola 23/24 — respaldo neutro de la ventana de foto ("el marco es MARCO, no
+      // fondo"): el hueco que deja la foto al alejarla (zoom-out) o moverla se
+      // rellena con el color de la tarjeta SIN teñir (la capa background), NO con
+      // borderColor → el ancho del marco/canaleta queda CONSTANTE bajo cualquier
+      // zoom/pan. La DECISIÓN vive en photoBackingHexFor (frame-palette), compartida
+      // con el editor (studio-slot) y el preview del modal → WYSIWYG por
+      // construcción. Ola 24: incluye la Instagram CON borde (su ventana se inundaba
+      // del color del borde con tarjeta oscura); en SIN BORDE no aplica.
+      const backingHex = photoBackingHexFor({
+        borderColor,
+        backgroundHex: bgLayerHex,
+        hasFrameCard,
+        fullBleed,
+        isIg,
+        igNoBorder: isInstagramNoBorder(phRaw, unit.stage),
+        useFullStage,
+      });
+      if (backingHex) {
+        ctx.fillStyle = backingHex;
+        ctx.fillRect(ph.x, ph.y, ph.width, ph.height);
+      }
       // Centro de la imagen en coords del stage (idéntico a Konva ImagePlaceholder).
       const cx = ph.x + ph.width / 2 + offX;
       const cy = ph.y + ph.height / 2 + offY;
@@ -427,7 +475,7 @@ async function renderSlotCanvas(
       // heart/circle omiten texto (igual que el editor). Ola 3 — también se omite
       // cuando el producto no admite texto (includeText=false, ej. Fotoimanes Cuadrados).
       if (useFullStage || !includeText) continue;
-      renderTextLayer(ctx, layer, unit.stage, slot.textOverrides?.[layer.id], darkCard);
+      renderTextLayer(ctx, layer, unit.stage, slot.textOverrides?.[layer.id], cardBgHex);
     }
     // 'shape' u otras → ignoradas (raras; si aparecen, el resultado es fiel salvo esa capa).
   }
@@ -468,17 +516,25 @@ async function renderSlotCanvas(
 }
 
 /** Replica renderText de studio-slot.tsx: fontSize/family/fill/weight/align + stroke/shadow.
- *  Ola 3 — `darkCard`: la tarjeta del borde es oscura → el texto POR DEFECTO sale claro
+ *  Ola 3 — la tarjeta del borde oscura → el texto POR DEFECTO sale claro
  *  (el override de color del cliente siempre manda).
- *  Ola 4 — texto OPCIONAL (Lucy 2026-07-23): una capa EDITABLE imprime solo su override;
- *  el texto base de la plantilla es una guía del editor ("Escribe tu mensaje") y NO se
- *  imprime. Las capas NO editables (decorativas de la plantilla) imprimen su texto base. */
+ *  Ola 29 (owner 2026-09-11, ronda 5) — el default sale de `defaultTextFillOnCard`
+ *  (frame-palette, la MISMA regla del lienzo y del editor de texto): tarjeta
+ *  rosada/oscura → blanco; blanca/pastel → el oscuro de la plantilla.
+ *  REGLA GLOBAL DE PLACEHOLDERS (Ola 4 2026-07-23, reforzada Ola 23 2026-09-08): el texto
+ *  por defecto de una capa EDITABLE es un placeholder de pantalla ("Escribe tu mensaje",
+ *  "@tu_usuario", "362 me gusta"…) — se VE atenuado en el editor pero NUNCA se imprime:
+ *  solo se imprime el override que el cliente escribió (override.text no vacío). Un
+ *  override sin texto (solo estilo) tampoco imprime. Las capas NO editables (texto fijo
+ *  decorativo de la plantilla) imprimen su texto base.
+ *  (Ola 28 — EXCEPCIÓN Instagram: este renderer NO la ve — IG siempre hornea el PNG del
+ *  cliente, NEEDS_KONVA en ambos tiers.) */
 function renderTextLayer(
   ctx: SKRSContext2D,
   layer: AnyLayer,
   stage: Stage,
   override: TextOverride | undefined,
-  darkCard: boolean = false,
+  cardBgHex: string,
 ) {
   const baseText = layer.editable === true ? "" : typeof layer.text === "string" ? layer.text : "";
   const finalText = override?.text ?? baseText;
@@ -489,7 +545,7 @@ function renderTextLayer(
     (typeof layer.fontFamily === "string" ? layer.fontFamily : "Fredoka, Inter, sans-serif");
   const fill =
     override?.fill ??
-    (darkCard ? "#FFFFFF" : typeof layer.fill === "string" ? layer.fill : "#3D2E5C");
+    defaultTextFillOnCard(cardBgHex, typeof layer.fill === "string" ? layer.fill : undefined);
   // Konva default fontStyle = "normal" (400) cuando el layer no lo especifica (NO 600).
   const weight =
     override?.fontWeight ?? (typeof layer.fontWeight === "string" ? layer.fontWeight : "normal");
@@ -560,8 +616,10 @@ export async function renderProductionSlotsCanvas(opts: {
   const mod = await loadCanvas(); // lazy: un binario faltante → NEEDS_KONVA (fallback), no crash.
   const out: Buffer[] = [];
   const slots = [...opts.slots].sort((a, b) => a.slotIndex - b.slotIndex);
-  // Ola 4 — tira photobooth (gridCols=1 + gridGap=0): el borde exterior de la pieza
-  // continua va solo en la primera/última celda; las fotos del medio se tocan.
+  // Ola 4 — tira photobooth (gridCols=1 + gridGap=0): CON borde la pieza continua
+  // lleva borde exterior solo en la primera/última celda y media canaleta del color
+  // del marco entre fotos; SIN borde (Ola 25) las fotos se tocan sin líneas
+  // (stripPhotoRect, regla 2026-09-08/09 — misma matemática que el editor).
   const strip = isStripTemplate(opts.unitTemplate);
   for (const [index, slot] of slots.entries()) {
     out.push(
@@ -606,6 +664,8 @@ async function renderCalendarPage(
   loadAsset: LoadAssetBytes,
   templateStageWidth?: number,
   layout?: CalendarLayoutKey,
+  /** Familia del título/mes ya resuelta por la lista blanca (default Fredoka). */
+  titleFamily?: string,
 ): Promise<Buffer> {
   const S = PRODUCTION_SCALE;
   const W = clampInt(CALENDAR_PAGE.width * S, 1, MAX_STAGE_DIM * S);
@@ -635,6 +695,7 @@ async function renderCalendarPage(
     year,
     monthIndex0,
     fontsOk,
+    fonts: titleFamily ? { title: titleFamily } : undefined,
     layout,
   });
 
@@ -655,9 +716,16 @@ export async function renderCalendarMonthPagesCanvas(opts: {
   templateStageWidth?: number;
   /** Layout de la tarjeta declarado por la plantilla ("classic" default | "split" lateral). */
   layout?: CalendarLayoutKey;
+  /**
+   * Tipo de letra del título/mes elegido en el Estudio (canvasData.calendarFont). Se
+   * valida contra la lista blanca (`calendarFontFamilyForKey`): un valor ausente o
+   * desconocido cae a Fredoka — NUNCA se usa un string libre del cliente (anti-tamper).
+   */
+  calendarFont?: unknown;
 }): Promise<Buffer[]> {
   const mod = await loadCanvas();
   const fontsOk = ensureFonts(mod);
+  const titleFamily = fontsOk ? calendarFontFamilyForKey(opts.calendarFont) : undefined;
   const start = opts.startMonth ?? 0;
   const out: Buffer[] = [];
   const slots = [...opts.slots].sort((a, b) => a.slotIndex - b.slotIndex);
@@ -673,6 +741,7 @@ export async function renderCalendarMonthPagesCanvas(opts: {
         opts.loadAsset,
         opts.templateStageWidth,
         opts.layout,
+        titleFamily,
       ),
     );
   }

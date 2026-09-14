@@ -13,6 +13,508 @@
 
 ## Resumen actual
 
+**🟢 2026-09-14 — RELEASE COMPLETO A PRD Y VALIDADO EN VIVO. La remediación 360° ya opera en
+producción.** Flujo: `develop` (`1886b70`) → merge ff a `production` → deploy Vercel PRD →
+migraciones en PRD (032 agenda `lucams-expire-pending-orders` → prisma ×2 → 033 des-agenda
+`stock_reservation_cleanup`; PRD queda con 10 jobs) → primer latido manual del cron nuevo
+(`scanned:0`) → **saneamiento de datos PRD ejecutado con bypass deliberado**: 42 cupones de
+tests purgados (backup `tmp/backups/coupons-prd-*.json`, drift 0, queda solo `LUCAMS_10` que
+además quedó archivado), 14 settings zombi fuera (51→37). Validación en vivo PRD:
+`/api/health/crons` ok con los 9 jobs al día · `/status` 14/14 verde · el monitor de la VM ya
+reporta a la app (HTTP 200) · **smoke `release-check-a1` en PRD: 1/1** (invalidación CMS desde
+admin, publicar→visible→revertir, dashboard móvil 375px). **Monitor de uptime final (decisión
+Lucy, sin SaaS, sin Actions y SIN depender de la VM de desarrollo):** job pg_cron
+`uptime-monitor-prd` en el proyecto Supabase de STG (cada 10 min, 2 fases asíncronas) → email
+vía Resend solo en fallas persistentes + reporte a la app: tile «Monitor externo (Supabase
+STG)» en `/admin/observability` y las reglas `uptime_monitor_failing` /
+`uptime_monitor_stale` (dead-man del propio job). El monitor por VM duró 1 día y se retiró su
+crontab (el script queda como respaldo manual). **Único pendiente abierto:** homologación de
+catálogo (N-20 — decisión de Lucy por producto; el reporte variante-por-variante se genera
+cuando lo pida) y los PRs de dependabot (#33, #40, #41) a revisar cuando se quiera.
+
+**🚀 2026-09-13 — REMEDIACIÓN 360° DESPLEGADA A STG Y VALIDADA EN VIVO; seguimiento de riesgos
+residuales CERRADO en 5 frentes.** Commits en `develop` (`45f3e88` remediación integral,
+`8c6e604` bypass en self-fetches, `91fade4` fix CI setup en frío + ratchet CMS, `f6eb629` tuteo +
+docs) pusheados y desplegados a STG, donde TODO quedó verificado en vivo: `/api/health/all` →
+**ok con los 5 servicios ok** (hubo que añadir `VERCEL_BYPASS_TOKEN` al runtime de preview vía
+CLI + redeploy — los self-fetches sin bypass leían el 302 de Deployment Protection como caída
+falsa); `/status` → 14/14 tiles verdes; cron `lucams-expire-pending-orders` corrió y
+auto-canceló la orden smoke abandonada de agosto; E2E (smoke + admin-inventory + cookies)
+**11/11 contra STG**; migraciones aplicadas en STG (032 → prisma ×2 → 033: 5 jobs, los de email
+siguen desagendados). **Seguimiento de residuales:** ① bounces PRD — causa raíz CONFIRMADA con
+datos: el 100 % de los 240 bounces son a dominios `*.test` de las suites (tasa real = 0 %); la
+métrica de entregabilidad ya los excluye + tile lo muestra. ② Monitor externo RESUELTO sin SaaS,
+sin Actions y sin depender de la VM (decisión Lucy): job pg_cron `uptime-monitor-prd` en
+Supabase STG (el monitor por VM duró 1 día y se retiró su crontab; el script queda de respaldo
+manual). ③
+`LUCAMS_10` archivado en LOCAL+STG (todo cupón era de pruebas). ④ Wishlist aceptada como feature
+de cliente (ADR-098). ⑤ `/mi-cuenta/soporte` ya muestra sus tickets al cliente, y el cron de
+expiración VERIFICA Wompi antes de cancelar (sana las APPROVED con webhook perdido). CI del
+último push en verificación. **Pendientes con Lucy:** la frase ceremonial para PRD (Q.6 del
+informe: cupones test, settings zombi, migraciones) + homologación de catálogo (N-20).
+
+**🛠️ 2026-09-12 — REMEDIACIÓN 360° EJECUTADA COMPLETA (25/28 IDs CERRADOS, 3 PARCIALES) en
+LOCAL + STG; PRD intacto pendiente de despliegue + frase ceremonial.** Todo en working tree de
+`develop` (sin commits). Lo más importante: la creación de la orden ahora RECHAZA items
+archivados/pausados (CF-01 crítico cerrado); el panel de integraciones consume los probes REALES
+de Wompi/Aveonline/Gemini (adiós warnings fijos); cupones con UI de edición/archivo y copy/rutas
+corregidas; strip PREMADE muerto retirado y `?template=` con consumidor real; `/admin/mensajes`
+consolidado en `/admin/soporte`; re-consent REAL ligado a `PRIVACY_POLICY_VERSION`; cron nuevo
+`lucams-expire-pending-orders` (auto-cancela WOMPI PENDING >24 h) y la alerta solo dispara si ese
+cron falla; refund exige confirmación del dinero; emails nuevos de pago-no-aprobado, devolución
+de courier y cierre de ticket; bounce rate con regla+tile+resumen; heartbeat de backups desde GHA
+
+- drill con frescura ≤36 h; 3 modelos muertos retirados (SiteEvent/RecommendationLog/
+  StockReservation, ADR-091); env-guard FAIL-CLOSED y 63/63 scripts con guard (lint en CI); seeds
+  divididos canónico/demo que ya no pisan datos administrados. Datos: 42 cupones test purgados en
+  LOCAL y 41+1 en STG (backup, drift 0), 14 settings zombi fuera de ambos. Gates TODOS verdes:
+  lint/typecheck/format/build/test (**3 808 tests, 0 fallos** — el rojo preexistente quedó
+  corregido) + E2E smoke/admin/cookies verde. Docs al día (15 archivos, ADR-090…097). Detalle
+  completo en la sección Q del informe:
+  [`docs/audits/2026-09-11-coherencia-funcional-productiva.md`](audits/2026-09-11-coherencia-funcional-productiva.md).
+  **Pendientes con Lucy:** revisar y commitear el working tree; decisión sobre bounces PRD (causa
+  raíz), homologación de catálogo (N-20), monitor externo, `LUCAMS_10`, y la frase ceremonial para
+  el saneamiento de PRD (Q.6).
+
+**🧭 2026-09-11 (noche) — AUDITORÍA 360° DE COHERENCIA FUNCIONAL ejecutada en modo diagnóstico
+(sin cambios funcionales ni borrados) y PENDIENTE DE APROBACIÓN.** Informe completo:
+[`docs/audits/2026-09-11-coherencia-funcional-productiva.md`](audits/2026-09-11-coherencia-funcional-productiva.md).
+Veredicto: **PRODUCCIÓN OPERATIVA CON GAPS**. Cobertura 100 % (47 páginas públicas/cliente, 62 admin,
+37+3 API, 64 archivos de Server Actions, 57 modelos, 79 scripts DB, 296 suites, 10 integraciones,
+3 ambientes de datos consultados read-only). Hallazgos CF-01…CF-36 (1 crítico: la creación de la
+orden no filtra items archivados del carrito; altos: suite vitest roja 1/3638 en develop, panel de
+integraciones con warnings fijos, bounce rate PRD ~50 % sin alerta, 42/43 cupones de PRD son restos
+de tests, strip PREMADE del Estudio sin consumidor, `/admin/mensajes`≡`/admin/soporte`, seeds que
+pisan datos administrados) + manifiesto de saneamiento N-01…N-28 en 10 lotes.
+**Ningún hallazgo está remediado**: se espera que Lucy apruebe expresamente los IDs a implementar
+(prompt 2 de `docs/AUDITORIA_360.md`).
+
+**🔍 2026-09-11 (tarde) — AUDITORÍA INTEGRAL DE INFORMACIÓN PÚBLICA, LEGAL Y CENTRO DE AYUDA
+ejecutada, saneada, APLICADA EN LOS 3 AMBIENTES, PAQUETE LEGAL v5 PUBLICADO Y EN VIVO, y RELEASE
+A PRD (`8408440`).**
+Corrección de rumbo incluida: **PRD opera en modo `full` desde el 2026-09-03** (CLAUDE.md/ROADMAP
+E2; firma runbook: `/checkout/pago` → 307 `/carrito`) — el espejo local en `catalog` había
+despistado la primera lectura. Lo que quedó sanado: la DB arrastraba textos del modo viejo tras el
+flip (la home de PRD seguía diciendo «Cierras la compra por WhatsApp») → los textos sensibles al
+modo (`faq.01-04`, `home.howitworks.step3.description`) ahora **decide el código por modo** (la DB
+homologa la variante full y el modo catálogo fuerza la suya en render); tiempos coherentes en todo
+el sitio — **despacho real MÁX. 2 días hábiles** (Lucy, 2026-09-11: catálogo bajado de 3 a 2,
+NONE=1) + tránsito «2 a 5»; `/rastrear` explica el seguimiento por WhatsApp cuando no hay pagos
+online; cookies sin «[pendiente verificación]» (**v4 · 2026-09-11**); nota Gemini reescrita;
+fallbacks legales sincronizados y el test de sync cubre **los 8 documentos**; header legal por
+versión propia por página (sale con el próximo deploy); `faq.08` con el borrado self-serve;
+`/contacto` temas legales → `habeas-data@`. Scripts revertibles `update-public-content-20260911`,
+`update-production-days-20260911` y `publish-legal-v5-20260911` aplicados en LOCAL/STG/PRD;
+**homologación de contenido verificada por hash: los 3 ambientes idénticos** en el set auditado
+(22 claves CMS + productionDays + total de campos), con los drifts intencionales de siempre
+(precios «Sin imán» STG, crons STG, cuentas sandbox). **Los textos legales v5 están PUBLICADOS y
+en vivo** (decisión de Lucy del mismo día) con `PRIVACY_POLICY_VERSION` = «v5 · 2026-09-04»
+(re-consent activo); conservan la coletilla «en revisión por asesoría legal» hasta que opine el
+abogado. **Lo único que queda abierto:** la pregunta al abogado sobre identidad de la titular —
+la investigación legal ya está en `docs/COMPLIANCE.md` § «Identificación de la titular en el
+sitio» (art. 50 Ley 1480: publicación de nombre + NIT + dirección de notificación — esta última
+designable, NO la casa; la estrategia pura «a requerimiento» no satisface al pie de la letra el
+art. 50, pero hay camino de cumplimiento sin exponer PII). La auditoría quedó consolidada en esta
+entrada + COMPLIANCE.md + OPERATIONS.md (entradas 2026-09-11 y 2026-09-11 (2)) — doc fuente
+eliminado siguiendo la convención.
+
+**🚀 2026-09-11 — Ola multi-unidad (Ola 26→29) CERRADA y EN PRODUCCIÓN (release `f35ab29`).**
+La regla vigente: "Unidades" = N unidades del producto, CADA UNA diseñable por separado en el
+Estudio (el concepto "copias idénticas" ya no existe en las superficies personalizables), con el
+atajo "Aplicar este diseño a todas" y el precio ×N derivado SIEMPRE en el servidor
+(`design-units.ts`). Tras 5 rondas de validación del owner quedó así: Polaroid IG con los textos
+por defecto VISIBLES con color por capa (oscuros/claros según la tarjeta; hashtags siempre
+azules) y los 4 requeridos bloqueando «Vista previa» hasta tener override; Clásica con la letra
+por defecto siguiendo el color de la tarjeta (`defaultTextFillOnCard`: rosada → blanca) y ayuda
+de contraste en el editor de texto; tiras con stepper «Unidades» en el lienzo y secciones en
+grilla horizontal 2-3 por fila; letter sets y Nombre con "Borde de las fichas" encima de colores
+y sin pintado ficha-a-ficha cuando es «Sin borde». CI verde en `develop` y `production`; PRD
+verificado en vivo (grilla 3+1; tira de 4 fotos × 2 unidades — el bug original del owner). Datos
+al día en los 3 ambientes: `migrate-cms-v2` (1008 campos CMS en local/STG/PRD) y `seed-templates`
+(`photo-strip-4-fotos` activa). Repo normalizado: solo existen `develop` y `production` (+ las de
+dependabot); el handoff de la tanda quedó consolidado en la sesión de abajo y en el README del
+estudio. **Pendiente no técnico (Lucy):** precios de variantes "Sin imán" en STG están espejo —
+ajustarlos en el admin cuando aplique; y lo de siempre (abogado → publicar textos legales v5).
+
+**Decisiones de Lucy (2026-09-05, tras revisar los puntos abiertos de la auditoría):** ① identidad
+de la vendedora — **mantener "a requerimiento"** hasta que opine el abogado (preocupación legítima
+de exposición de PII/suplantación; cuando exista NIT la identificación se vuelve empresarial y el
+problema casi desaparece); ② al publicar los textos legales, **sí subir `PRIVACY_POLICY_VERSION` a
+v5** (re-consent deliberado: el aviso cambió de fondo); ③ **solo reseñas de compras verificadas** —
+la capacidad de testimonios curados (`Review.customerId = null`) queda APAGADA por política (la SIC
+sanciona testimonios inventados como publicidad engañosa); ④ crecimiento: **sin cambios de código** —
+la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia verificados; cuando haya
+campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
+plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
+
+## Sesión — 2026-09-14 — Release a PRD + monitor visible en el panel
+
+- **Release:** `develop` (`1886b70`) → `git merge --ff-only` a `production` → push → deploy
+  Vercel PRD. Migraciones en PRD: `00000000000032` (agenda expire-pending) → `prisma migrate
+deploy` (2) → `00000000000033` (des-agenda stock_reservation_cleanup) → 10 jobs. Primer
+  latido manual del cron nuevo (`scanned:0`, sin PENDING reales).
+- **Saneamiento PRD (autorizado por Lucy, bypass deliberado):** `purge-test-coupons --apply`
+  → 42 cupones de tests borrados (backup `tmp/backups/coupons-prd-2026-09-14T0027Z.json`,
+  transacción, drift 0); `remove-zombie-settings --apply` → 14 campos (51→37);
+  `archive-lucams10` → archivado (era de pruebas).
+- **Monitor en el panel:** nuevo `POST /api/cron/monitor-heartbeat` (el script de la VM
+  reporta cada corrida) → tile «Monitor externo (VM)» en `/admin/observability` + reglas
+  `uptime_monitor_failing` y `uptime_monitor_stale` (dead-man de la VM). Primer reporte real:
+  HTTP 200 "OK 5/5".
+- **Validación PRD en vivo:** `/api/health/crons` ok (9 jobs al día) · `/status` 14/14 verde ·
+  `/admin/mensajes` redirect · **E2E `release-check-a1` 1/1** (CMS publish→visible→reversa,
+  dashboard móvil). CI verde en los últimos pushes.
+- **Pendiente:** homologación de catálogo (N-20, decisión Lucy) + PRs dependabot (#33/#40/#41).
+
+## Sesión — 2026-09-13 — Despliegue a STG + cierre de riesgos residuales
+
+- **Despliegue:** commit `45f3e88` (240 archivos) → push a `develop` → Vercel STG. Migraciones
+  aplicadas en STG en orden: `00000000000032` (agenda `lucams-expire-pending-orders`) →
+  `prisma migrate deploy` (2 migraciones) → `00000000000033` (des-agenda
+  `stock_reservation_cleanup`). STG queda con 5 jobs (los 5 de email siguen desagendados).
+- **Incidencias resueltas en la sesión:** ① CI rojo ×2 (setup en frío: `00000000000002`
+  referenciaba la tabla eliminada StockReservation → guard de existencia, verificado con DB
+  scratch y la secuencia exacta del CI; ratchet CMS: 4 literales → CmsText + 11 claves nuevas
+  en el site map, sembradas en LOCAL+STG) y voseo en un tile ("revisá"→"revisa"; el voseo lint
+  es paso solo-CI, añadido a la checklist local). ② `/api/health/all` y `/status` reportaban
+  todo caído en previews protegidos: los self-fetches no llevaban bypass → helper
+  `vercelBypassHeaders()` + `VERCEL_BYPASS_TOKEN` añadida al runtime de preview (Vercel CLI) +
+  redeploy → 5/5 ok y 14/14 tiles verdes.
+- **Riesgos residuales cerrados:** bounces PRD = 100 % suites (`*.test`, tasa real 0 % — la
+  métrica ya los excluye); monitor externo = script propio en la VM
+  (`apps/web/scripts/uptime-monitor.mjs` + crontab cada 12 min, email vía Resend — sin SaaS ni
+  Actions, decisión Lucy; el workflow GHA se retiró al día de creado); `LUCAMS_10` archivado en
+  LOCAL+STG; wishlist aceptada (ADR-098);
+  `/mi-cuenta/soporte` en vivo; expire-pending verifica Wompi antes de cancelar (sana APPROVED).
+- **Validación STG en vivo:** E2E 11/11; `/api/health/crons` ok tras primer latido manual del
+  cron nuevo (que además auto-canceló la orden smoke de agosto, como fue diseñado);
+  `/admin/mensajes` → redirect; `/mi-cuenta/soporte` → guard a login correcto.
+- **Pendiente:** frase ceremonial para PRD (cupones test, settings zombi, migraciones 032/033,
+  despliegue) y homologación de catálogo (N-20) — ambas esperan a Lucy.
+
+## Sesión — 2026-09-12 — Remediación controlada completa de la auditoría 360° (N-01…N-28)
+
+- **Qué se hizo:** implementación de los 28 IDs del manifiesto aprobado (todos), en 10 lotes con
+  gates por lote. Revalidación inicial: `develop` `ddc8ce6`, hallazgos vigentes. Cierre:
+  25 CERRADOS + 3 PARCIALES (N-04 causa raíz bounces, N-05/N-12 PRD pendiente), 1 BLOQUEADO POR
+  DECISIÓN (N-20 homologación catálogo). Detalle por ID con archivo:línea en la sección Q del
+  informe de auditoría.
+- **Migraciones:** prisma `20260911120000` (3 columnas Order) + `20260912120000` (drop 3 tablas
+  vacías); supabase `00000000000032` (agenda expire-pending-orders) + `00000000000033`
+  (des-agenda stock_reservation_cleanup) — aplicadas solo en LOCAL. Orden de despliegue propuesto
+  en Q.5 (STG primero; PRD con frase ceremonial).
+- **Datos:** LOCAL: 42 cupones test purgados (backup `tmp/backups/coupons-local-*.json`), 14
+  settings zombi eliminadas (51→37), cron.job = 10. STG: 41 purgados + 1 preservado por pedido
+  smoke (drift corregido), settings 51→37. PRD: intacto (solo lecturas).
+- **Gates:** lint 0 · typecheck 0 · format:check 0 · build 0 · **vitest 3 808 passed / 8 skipped
+  (0 fallos; el rojo preexistente CF-02 corregido)** · E2E subset (smoke + admin-inventory +
+  homolog-cookies) verde · `check-script-guards` 63/63 · `node --test` scripts 24/24.
+- **Docs:** 15 actualizados + ADR-090…097 en DECISIONS.md (PREMADE retirado, 3 modelos retirados,
+  ciclo soporte, API pública, gracias PII, split seeds, heartbeat backups, mensajes→soporte).
+- **Sin commits, sin push, sin despliegue, sin escrituras en PRD.** Working tree = toda la
+  remediación + los deliverables de la auditoría.
+
+## Sesión — 2026-09-11 (noche) — Auditoría 360° de coherencia funcional (DIAGNÓSTICO, pendiente de aprobación)
+
+- **Qué se hizo:** auditoría 360° completa según `docs/AUDITORIA_360.md`, en modo diagnóstico
+  exhaustivo + plan de remediación, **sin aplicar cambios funcionales ni borrados de datos**.
+  Baseline: `develop` `ddc8ce6`, working tree limpio (solo el encargo untracked), 1 commit de docs
+  sobre `production`. Gates: lint/typecheck/format/build ✅; `pnpm test` ❌ preexistente
+  (1/3638 — CF-02). Datos de los 3 ambientes consultados con agregados read-only (sin PII).
+- **Entregable:** `docs/audits/2026-09-11-coherencia-funcional-productiva.md` (secciones A–P:
+  baseline, veredicto, cobertura 100 %, matriz maestra, matriz cliente–admin, 36 hallazgos
+  CF-01…CF-36, datos por ambiente, plantillas, cupones, integraciones, módulos, scripts,
+  deriva documental, manifiesto N-01…N-28, plan en 10 lotes, 10 decisiones requeridas).
+- **Estado:** ⏸️ **PENDIENTE DE APROBACIÓN — ningún hallazgo remediado, ningún lote ejecutado.**
+  Siguiente paso: Lucy selecciona los IDs aprobados y se ejecuta el prompt 2 del documento de encargo.
+
+## Sesión — 2026-09-11 (tarde) — Auditoría y saneamiento integral de info pública, legal y ayuda
+
+Auditoría completa de las superficies públicas (identidad/contacto, 8 páginas `/legal/*` con su
+canónico `.md` y fallbacks, centro de ayuda en DB, `/rastrear`, `/status`, JSON-LD, emails) contra
+la operación real. **Lección de rumbo:** la primera lectura asumió PRD en `catalog` (por el espejo
+`.env.local`) — la verificación en vivo con las 5 firmas del runbook (FASE 11.c) confirmó **PRD en
+`full` desde 2026-09-03**, como ya decían CLAUDE.md y ROADMAP E2. Los problemas REALES y su fix:
+
+- **Textos sensibles al modo servidos desde DB estática:** tras el flip a full, PRD seguía
+  mostrando «Cierras la compra por WhatsApp» en la home y el encuadre de catálogo en `faq.02`
+  (sembrados 2026-08-01); y durante la era catálogo se sirvió lo contrario en `faq.03/04` (Wompi).
+  Causa raíz: la DB no cambia al flipear `STORE_MODE`. Fix estructural: **el modo decide en
+  render** — `CodAwareCmsText` (how-it-works) y `/ayuda` fuerzan la variante catálogo del fallback
+  para los textos sensibles (`faq.01-04`) cuando `isCatalogMode()` (nuevo prop `forceFallback` en
+  `CmsMarkdown`); la DB homologa SIEMPRE la variante full en los 3 ambientes.
+- **Tiempos:** la promesa global decía 2 días/1 día y el catálogo 3/2–5. Lucy resolvió: **despacho
+  real MÁX. 2 días** → `productionDays` bajado a 2 (NONE=1) en los 3 ambientes +
+  `PRODUCTION_DAYS_DEFAULT="2"`, `DELIVERY_DAYS_ESTIMATE="2 a 5"`, seeds/admin ya en 2.
+- **Legales:** cookies `__cf_bm` «[pendiente verificación]» verificado (~30 min Cloudflare) →
+  **v4 · 2026-09-11**; nota Gemini (tier) reescrita sin la marca; fallbacks cookies/security
+  resincronizados al canónico y el test `legal-content-sync` ahora cubre **8/8 docs** (desescapa
+  el template literal); `LegalPageHeader` con `lastUpdated` por página (cookies v4, security v2 —
+  antes el header común decía «Versión 5» en todas); coletilla «antes del lanzamiento» retirada
+  (la tienda ya está en producción).
+- **Centro de ayuda/contacto:** `faq.08` con el flujo self-serve inmediato de `/mi-cuenta/eliminar`;
+  `/rastrear` en modo catálogo muestra tarjeta WhatsApp en vez de un formulario que nunca encuentra
+  nada (3 campos CMS `track.*-catalog` nuevos); «temas legales» en `/contacto` → `habeas-data@`
+  (era `security@`, el buzón de vulnerabilidades); SLA uniforme «24h hábiles».
+- **Menores:** fallback de consent `PRIVACY_POLICY_VERSION` «v1» → «v5 · 2026-09-04»; JSON-LD con
+  `getCanonicalSiteUrl()` (una sola fuente de dominio); `make migrate-cms-v2` reparado (ahora usa
+  dotenv — antes fallaba con `DATABASE_URL="undefined"`); `.PHONY` limpio; comentario «WhatsApp
+  temporal» retirado.
+- **Scripts (revertibles vía historial CMS):** `update-public-content-20260911.mjs` (12 campos) y
+  `update-production-days-20260911.mjs` (9 productos) — aplicados en LOCAL, STG y **PRD**; campos
+  `track.*` migrados en los 3. PRD: pendiente solo **invalidar caché CMS** (Lucy, botón en
+  /admin/contenido) — hasta entonces el sitio sirve los textos viejos (TTL 1 h).
+- **Gotcha operativo documentado en OPERATIONS.md:** un `next-server` huérfano en `:4000` sirvió
+  caché vieja durante la verificación (el caché CMS de dev vive en `.next/dev/cache`, no
+  `.next/cache`) — `make web-stop` no lo cazaba.
+- **Verificación:** vitest 3629 ✓ (1 fallo pre-existente ambiental `finalize-server-render`),
+  tsc/eslint limpios, render local en ambos modos verificado, PRD en vivo re-verificado con las
+  firmas del runbook.
+- **Paquete legal v5:** su premisa «tienda en línea activa» ES cierta en PRD — la publicación solo
+  espera al abogado (y ahí, `PRIVACY_POLICY_VERSION` → «v5 · 2026-09-04» + republicar los 6
+  cuerpos desde /admin/contenido). Sin doble bloqueo: era error de esta auditoría, corregido.
+- **Cierre del mismo día (decisiones de Lucy):** ① **v5 PUBLICADO en los 3 ambientes**
+  (`publish-legal-v5-20260911.mjs`: los 6 cuerpos + `PRIVACY_POLICY_VERSION` = «v5 · 2026-09-04»,
+  re-consent activo) — verificado en vivo tras su invalidación de caché: `/legal/terminos` sirviendo
+  v5, home con «Pagas en línea de forma segura» y «máx. 2 días hábiles»; ② **homologación
+  verificada por hash** (22 claves + productionDays + total campos): LOCAL ≡ STG ≡ PRD en el set
+  auditado — su flujo de validar en STG queda intacto, los 3 ambientes dicen lo mismo;
+  ③ **identidad de la titular:** investigación legal consolidada en COMPLIANCE.md §
+  «Identificación de la titular en el sitio» — art. 50 Ley 1480 pide publicación permanente de
+  nombre + NIT + dirección de notificación (designable, no la casa); «a requerimiento» puro no la
+  satisface al pie de la letra, pero hay cumplimiento sin exponer PII cuando exista RUT; ella le
+  hace la pregunta al abogado. ④ Despacho real = máx. 2 días aplicado en los 3 ambientes.
+  ⑤ **Release a PRD (`8408440`):** PR #45 → develop (CI verde) → production ff; deploy verificado
+  en vivo (headers legales por versión, `/rastrear` con form en full, `/contacto` con habeas-data@
+  vía CMS, ratchet de contenido 35.63% con 0 literales nuevos). **Paquete 100% cerrado:** lo único
+  abierto es la respuesta del abogado.
+- El documento fuente de la auditoría se elimina consolidado en esta entrada + COMPLIANCE.md +
+  OPERATIONS.md (convención docs/audits/README.md).
+
+## Sesión — 2026-09-09 → 2026-09-11 (Ola multi-unidad: 5 rondas de validación del owner, release a PRD)
+
+El plan trazado en la sesión 2026-09-07 (los 6 comentarios) quedó EJECUTADO en esta tanda — se
+consolida acá siguiendo la convención de `docs/README.md` (los planes ejecutados se consolidan
+fuera del árbol; la historia completa queda en git). Detalle de implementación: README del
+estudio, secciones "Ola 26/27/28/29". Resumen por ronda:
+
+- **Ronda 3 (Ola 26/27, PR #42 → `3cbeba8`):** modelo multi-unidad diseñable (`unitCount`/
+  `unitSlots` aditivos en canvasData V2; invariante `slotCount = unitCount × unitSlots`; precio
+  ×N derivado en el servidor — `design-units.ts`). Polaroid IG: color de texto por capa
+  (hashtags siempre azules) + 4 textos requeridos que bloquean «Vista previa». Checkerboard de
+  tarjeta blanca reforzado. Nombre: borde encima de colores. Fix tira 4 fotos sin lienzo (la
+  plantilla pasó al seed canónico). Bug cazado por el E2E: el precio multi-unidad se DUPLICABA
+  (el finalize espeja `metadata.unitCount` en todo V2 y `letterSetUnitCount` lo reaplicaba sin
+  gate) → gate `surface === "letterset"` + regresiones. El carrito muestra el resumen de pieza
+  ("2 tiras de 3 fotos"), igual que el checkout.
+- **Ronda 4 (Ola 28, PR #43 → `469fe66`):** editor de texto con fondo = color real de la tarjeta
+  (`cardBackgroundHex`, helper compartido en frame-palette) + cuadrícula de transparencia y aviso
+  CMS en bajo contraste. IG: los textos por defecto SE VEN (excepción a Ola 25, solo IG — el
+  owner revirtió la invisibilidad). Tiras: stepper «Unidades» en el lienzo (fuera el de fotos;
+  la composición se elige en la PDP). Letter sets + Nombre: sin pintado ficha-a-ficha con «Sin
+  borde».
+- **Ronda 5 (Ola 29, PR #44 → `568d23a`):** `defaultTextFillOnCard` — rosada/oscura → letra
+  blanca, blanca/pastel → oscura (umbral Rec.601 0.56; `isDarkColor` 0.5 intacta porque también
+  decide la tarjeta binaria IG). Misma regla en lienzo, producción y editor de texto
+  (`textDefaultFills` por capa). Secciones de tira en grilla horizontal 2-3 por fila
+  (`unitSectionsPerRowFor`; umbral 900px del contenedor — el Estudio resta la barra lateral).
+  Specs preexistentes reparados: `estudio.spec` (sidebar es solo-desktop por diseño),
+  `studio-gestures` mobile (setup sin consentimiento en el Sheet → upload rechazado; queda
+  desktop-only documentado), lazy-mount de tiras con secciones en fila.
+- **Release 2026-09-11 (owner: "Haz merge"):** `production` ff `f88aeef` → `f35ab29`, CI verde
+  en ambas ramas. Seeds PRD: `migrate-cms-v2` (54 keys nuevas → 1008 campos BLOCK, mismo total
+  que local/STG) + `seed-templates` (`photo-strip-4-fotos` activa). Caché CMS invalidada en STG
+  (admin efímero E2E) y en PRD (owner a mano). Ramas normalizadas: borradas `wip/*` (mergeadas),
+  `catalogo-whatsapp`, `master` y `backup/pre-e88a6ad-20260728` (todas con 0 commits sin
+  mergear); trigger muerto de `ci.yml` retirado. PRD verificado en vivo: grilla de tiras 3+1 y
+  tira 4 fotos × 2 unidades.
+- **Validación:** vitest 3626 ✓ · E2E del lienzo (desktop+mobile) 48 ✓ · capturas
+  `tmp/visual-ola26/`, `tmp/visual-ola28/`, `tmp/visual-ola29/`. Handoff de la tanda:
+  `docs/HANDOFF-2026-09-09-multi-unidad.md` quedó consolidado en esta entrada (el archivo se
+  retira del árbol; queda recuperable en git history).
+
+## Sesión — 2026-09-05 (smoke en vivo + Estudio: borde LETTER_SET + fix plantilla Instagram)
+
+**✅ SMOKE EN VIVO PARCIAL.** ① Búsqueda en PRD medida con Chromium headless real: home 200 (TTFB
+~4.7s frío); consultas "abecedario"/"polaroid"/"vocales"/"iman" → resultados correctos en ~0.8s
+caliente (2.3s la primera, fría) — los índices nuevos se sienten bien. ③ Backup de la mañana VERDE:
+run `33962842872` (11:15 UTC), jobs "secrets", "pg_dump → R2" (48s) y **"Mirror de Supabase Storage
+→ R2" (5m17s — primera corrida real del mirror cifrado)**. ② Modal TOTP del reembolso admin: pendiente
+de ejecutar por Lucy (quedó en el plan de la próxima sesión).
+
+**✅ TAREA 1 — Opción "Con borde / Sin borde" para LETTER_SET (Abecedario/Pack Vocales).**
+Decisión con evidencia (investigación previa): **opción de lienzo en `Design.metadata`** — el
+precedente Ola 2A (`PDP_HIDDEN_DIMENSION_KEYS`) ya movió estas decisiones al Estudio; el precio solo
+discrimina tamaño/imán; y para LETTER_SET el PNG de producción lo dibuja el cliente y se sube byte a
+byte (server render @napi-rs/canvas no aplica hoy; `drawLetterTile` sigue siendo puro/node-compatible
+para cuando aplique). Lucy confirmó: **mismo precio + texto en resumen/taller**.
+
+- `metadata.withBorder` (boolean, default `true`; retrocompatible: diseños sin la clave = con borde).
+  Zod `z.boolean().default(true)` en `actions.ts`; persistido en `service.ts`.
+- Toggle radiogroup junto al ThemePicker (`letter-set-editor.tsx`); la opción fluye a los 3 dibujos:
+  DOM en vivo, `renderLetterSetBlob` (preview "Así se verá…" Y PNG de producción) y
+  `buildLetterTileTextures` (3D). **Deuda cerrada:** radio único `LETTER_TILE_CORNER_RATIO` (10%) —
+  el compositor usaba 18/120 (15%) divergente de la textura 3D.
+- Texto "Con borde"/"Sin borde" en carrito, checkout order-summary y `/pedido/[token]` (helper nuevo
+  `letter-set-border.ts`; `CartLineItem.borderNote`); ficha de taller lo anota cuando es "sin borde"
+  (mismo patrón que "Sin marco" de fotoimanes). ZIP de producción sin cambios (el PNG ya lo trae).
+- Textos CMS nuevos `estudio.letras.borde-*` (defaults + `cms-site-map.mjs` para el admin).
+- Tests: dibujo con/sin borde con @napi-rs/canvas, payload del editor, schemas, production-spec,
+  helper. Gates finales combinados: **lint + typecheck + 3166 tests verdes**.
+
+**✅ TAREA 2 — Bug overlay Instagram (polaroid): era dato de plantilla, no CSS.** Causa raíz: el seed
+(`seed-templates.mjs`) y el upsert de `ola3-templates-2caras-polaroid.mjs` tenían las capas de texto
+con y stale (likes 486 / caption 502 / hashtags 518 — los iconos del SVG ocupan y≈468–496, o sea
+que el texto quedaba montado encima); el fix correcto (510/526/542, ~7px de aire) existía solo en el
+script ola9 del 2026-07-24. Verificación por ambiente: **STG afectado → corregido** (re-corridó el
+script ola9, idempotente; re-verificado con SELECT); LOCAL y PRD ya tenían los valores correctos. Los
+3 scripts fuente quedaron consistentes + spec de "réplica fiel de post real de Instagram" documentada
+en el seed (tarjeta 450×600, foto 392×392 en y=58, iconos ×1.17, me-gusta y=510, caption 526,
+hashtags #00376B 542, Inter). Preview e impresión coinciden por construcción (mismo rasterizador
+Konva; el PNG del cliente es el de imprenta para plantillas SVG). Regresión: módulo
+`instagram-template-spec.ts` + 5 tests que congelan footer vs zona de iconos.
+
+**✅ BUG EXTRA EN LA MISMA SESIÓN — PDP: "hay cantidad y a la vez unidades" (Lucy, captura del
+Fotoimanes Polaroid).** Los packs de fotoimanes personalizables mostraban DOS steppers que parecían
+ambos cantidad de compra: el de la dimensión de composición (`photoSlots`/`quantity`, etiquetado
+"CANTIDAD", con "{qty} unidad/es" y un "Total: $X" engañoso) y el stepper "UNIDADES"
+(`CopiesQtyInput`, las copias idénticas — la verdadera cantidad de compra desde el cambio del
+2026-09-03). Auditado contra el catálogo real (LOCAL): afecta a set-fotoimanes-polaroid (1–10),
+set-fotoimanes-cuadrados (1–6), separadores-magneticos/alargados (1–6) y tiras (chips 3/4);
+abecedario/vocales (oculta por correlación con idioma) y calendario (1 valor) no se tocan. Fix en
+`variant-selector.tsx`: ① `photoSlots` antes que `quantity` en `VISIBLE_DIMENSIONS` → cuando ambas
+coinciden (todos los packs: cada unidad lleva 1 foto por slot) el grupo se etiqueta **"Fotos"**;
+② el stepper dice "N fotos" para photoSlots ("unidad/es" solo si algún catálogo usa `quantity`
+suelta); ③ se elimina el "Total: $X" del stepper — el precio del pack ya está en el bloque PRECIO y
+el total de compra lo fija "Unidades". Los dos conceptos quedan distinguibles: FOTOS = composición
+del pack (elige la variante y su precio; requisito del Estudio, que no abre sin variante) ·
+UNIDADES = copias idénticas de la compra. Tests del selector migrados (36/36 verdes) con regresión
+de que el "Total" no vuelva al stepper. Copy pendiente de Lucy: la descripción del Polaroid dice
+"Elige la cantidad en el selector" — ajustarla en el admin de contenido a "elige las fotos".
+
+**✅ ⑤ OPCIÓN 2 — "LAS FOTOS SE ELIGEN EN EL ESTUDIO, NO EN LA PDP" (Lucy, misma sesión).** La
+interina (④) quedó desplazada: la dueña confirmó que la PDP debe tener UNA SOLA cantidad ("Unidades")
+y la elección de fotos por imán pasa al Estudio como decisión de diseño. Implementado completo:
+
+- **PDP (5 packs: polaroid, cuadrados, separadores ×2, tiras):** `PDP_HIDDEN_DIMENSION_KEYS` oculta
+  `photoSlots`+`quantity`; el selector deja solo "Tamaño" (chips; prop nueva `singleDimAsChips` para
+  no caer en la lista vertical al quedar 1 dimensión); precio **"Desde $X"** = mínimo real entre
+  variantes del tamaño (hallazgo: `basePrice` está desactualizado en cuadrados — el "desde" se
+  calcula sobre variantes, nunca sobre basePrice); `EstudioCtaLink` con `requiredSelection` tamaño
+  (solo si >1 tamaño) o none; deep-link `?variant=` antiguo sigue válido (fija tamaño + N inicial).
+- **Estudio:** control nuevo "¿Cuántas fotos lleva tu imán?" (`studio-photo-count-control.tsx`,
+  textos CMS `estudio.lienzo.photo-count-*`), stepper 1..max del tamaño (fijo en tiras); cambiar N
+  reconstruye el lienzo (`slotCount = N × caras`) **conservando las fotos por índice**, con undo y
+  auto-save; `photoSlots`/`sizeCm` se persisten en canvasData (ojo técnico: `CanvasDataV2Schema` no
+  tiene catchall — Zod stripea claves no declaradas; se declararon explícitamente). Editar-desde-
+  carrito arranca con el N guardado.
+- **Ruta del dinero:** `addPersonalizedToCartAction` acepta `variantId` ausente; para packs el
+  **servidor** resuelve la variante desde el canvasData guardado (`features/products/photo-pack-resolve.ts`,
+  patrón letter-set-resolve) — precio y stock siempre server-side; sin variante exacta → error claro
+  (`NO_DEFAULT_VARIANT`), diseños legacy sin el campo → fallback histórico 1ª variante.
+- **Tests nuevos:** photo-pack-resolve (11), integración cart contra DB local (5: exacta+precio,
+  legacy, sin-match, agotada, tamper), control de N (5), variant-actions (7) + casos packs en
+  selector/schemas. Gates: lint + typecheck + **207 archivos / 3201 tests verdes**.
+- **Deuda/riesgos:** sin E2E de navegador (smoke manual PDP→Estudio→carrito recomendado en STG);
+  `basePrice` desactualizado de cuadrados queda como deuda de catálogo; si Lucy pausa una
+  combinación fotoSlots+tamaño, el carrito responde error claro (no cobra otra variante).
+
+**Entrega:** todo en `develop` local, sin commit (a la espera del visto bueno de Lucy tras QA GUI).
+Sin push. `.env*` intocados (las verificaciones de DB fueron SELECT read-only + el script ola9 en STG).
+
+---
+
+**Contexto que sigue vigente (2026-09-03 y días previos):** el 2026-08-29/30 se cerró y homologó toda la auditoría OWASP (`docs/audits/auditoria_seguridad_lucams.md` §11):
+commits `229b30b`→`da7e97a` en `develop`≡`production`, CI verde en ambas, PRD en vivo con Next **16.3.3**
+(vía Dependabot #32), DB homologada en LOCAL/STG/PRD (migraciones Supabase 025-029 + Prisma 52/52 + campo
+CMS `estudio.ia.nota-privacidad`), primer backup cifrado gpg verificado en R2 (objeto `.sql.gz.gpg`),
+secret `BACKUP_GPG_PASSPHRASE` en GitHub (valor en el gestor de Lucy), hook pre-commit gitleaks activo en la VM,
+Dependabot al día (PRs #22/#30/#32 mergeados). Flake de tests `error-capture` corregido (`9d2d630`).
+**El 2026-09-03, dos mandatos de Lucy ejecutados:** ① **consolidación documental** (`f927c34`): 134 → 41
+archivos MD — eliminadas las auditorías fechadas de `docs/audits/` (git history las conserva), `HANDOFF.md`,
+`docs/claude-project/` y 6 planes/prompts de trabajo terminado; referencias corregidas en docs vivos y código.
+② **reorganización/verificación total de la documentación** (`892853f`): cada doc canónico verificado línea
+por línea contra el código y corregido; nuevo mapa **`docs/README.md`**; ADR-016/017 SUPERSEDED; bug real
+encontrado y corregido (`mapAveonlineStatus` no mapeaba `DEVOLUCION` → RETURNED, fix + test). **Decisión de
+producto registrada (2026-09-03): producción opera en modo `full` A PROPÓSITO** (la verificación en vivo la
+encontró así; Lucy lo confirmó — la tienda vende con pagos reales; NIT/DIAN quedan pendientes solo para
+facturación electrónica). Documentado en ROADMAP (E2), RUNBOOK (FASE 11.c), OPERATIONS, COMPLIANCE,
+`.env.example` (commit `140ed40`). Pendientes de operador: activar leaked-password-protection **solo al pasar
+a plan pago de Supabase**, branch protection con checks requeridos en `production` (GitHub → Settings →
+Branches), admins regenerando recovery codes (1 ya lo hizo), panel AveOnline ya verificado OK por Lucy.
+**Los 3 fixes UX del feedback de Lucy se ejecutaron el mismo día en la sesión 2 (ver la entrada nueva
+de bitácora abajo y el resumen de arriba):** cambios commiteados en `407ac7e` + `f48238d`, gates verdes,
+datos normalizados en los 3 ambientes.
+
+---
+
+**✅ 3 FIXES FUNCIONALES DEL FEEDBACK DE LUCY EJECUTADOS (2026-09-03, sesión 2).**
+La sesión 1 de hoy dejó registrado el análisis (validado contra código y datos de STG); en esta
+sesión se ejecutó todo, con verificación en los 3 ambientes:
+
+- **① Stepper "Unidades" en la PDP de TODOS los productos.** La cantidad quedó con UNA sola fuente
+  de verdad: el `SelectedVariantProvider` del buy-box ganó `copies`/`setCopies`
+  (`app/producto/[slug]/variant-actions.tsx`) y `CopiesQtyInput` dejó su estado local. Compra
+  directa: mismo hidden `qty` hacia `addToCartAction` (intacto). Personalizables
+  (`requiresPersonalization || isLetterSetProduct`): stepper nuevo en la ficha y el `EstudioCtaLink`
+  lleva `?copies=N` (solo si >1); `app/estudio/[slug]/page.tsx` lo parsea acotado a 1..99 y lo pasa
+  como `initialCopies` a StudioEditor y LetterSetEditor → el stepper "Copias" de la modal de
+  confirmación arranca pre-cargado (ajustable ahí; cada apertura vuelve al valor de la PDP, no a 1).
+  `isNamePerTile` NO recibe stepper: su cantidad son las letras del NamePricePicker (precio por
+  ficha) — sin controles duplicados. El flujo carrito→checkout→ZIP ya soportaba qty 1..99
+  ("⚠️ IMPRIMIR N COPIAS" usa `item.qty`), así que no se tocó nada más de la cadena.
+- **② Modal "Así se verá…" responsiva.** `studio-preview-modal.tsx`: `DialogContent` con
+  `max-h-[calc(100dvh-2rem)]` + `overflow-y-auto` (todo deslizable); en <sm sheet anclado abajo a
+  ancho completo (`max-sm:max-h-[92dvh]`, sin redondeado inferior); imagen capada por ALTO de
+  viewport (`max-w-[min(28rem,42dvh)]` — con aspect-square, capar el ancho en dvh capa el alto).
+  Fix colateral de ancho: la clase correcta es la variante prefijada `sm:max-w-2xl` — la base
+  `sm:max-w-sm` del Dialog le ganaba por orden de cascada a un `max-w-2xl` sin prefijo, así que la
+  modal nunca llegaba a 2xl en ≥sm. Otro colateral detectado en las capturas: el texto CMS
+  `estudio.exportar.desc-iman-tamano` traía `{pieza}` sin interpolar ("Cada {pieza} mide…") — ahora
+  se rellena antes del `<strong>` del tamaño. QA con capturas (`tmp/qa-20260903/`): 375×667 (sheet
+  con scroll), 768×1024 (cabe entera sin scroll), 1366×600 (capada con scroll) — el CTA de
+  confirmación queda alcanzable en las 3.
+- **③ Abecedario: "Cantidad" ya no es dimensión elegible.** Datos: script one-off
+  `packages/db/scripts/normalize-letterset-quantity.mjs` (dry-run por defecto, `--apply`, env-guard
+  del repo; PRD con `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`) — `attributes.quantity` normalizado en
+  TODAS las variantes de `abecedario-completo` (es=27 con Ñ / en=26) y `pack-vocales` (5 en todas —
+  a las GRANDES inactivas les faltaba y el invariante debe valer aunque se re-activen). Escritas:
+  LOCAL 24, STG 9 (el resto ya estaba), PRD 24; verificado por SQL: 24/24 correctas por ambiente.
+  UI (`variant-selector.tsx`): nueva regla de dedupe por correlación 1:1 — una dimensión de
+  cantidad (`quantity`/`photoSlots`) determinada 1:1 por `language` (biyección en TODAS las
+  variants) deja de ser selector y se describe como texto bajo el grupo Idioma ("Cantidad: 27 en
+  Español · 26 en Inglés"). Gate estricto a `language`: otras correlaciones 1:1 del catálogo
+  (photoSlots↔sizeCm en polaroid/tiras) son elección real del cliente y siguen visibles; si una
+  variante no trae `quantity` la correlación se rompe y el grupo vuelve a mostrarse (degradación
+  segura — por eso el fix de datos era requisito). No hizo falta tocar copy CMS (la descripción del
+  producto ya decía "Elige idioma, tamaño…"). Verificado también que `production-spec.ts` lee
+  `quantity` como "piezas por pack" del taller: el valor normalizado coincide con el que ya traían
+  las variantes activas, así que la ficha de taller queda consistente.
+
+**Tests nuevos:** integración stepper→`?copies=` del CTA (`copies-qty-input.test.tsx`, reescrito
+sobre el provider), `initialCopies` de la modal (`studio-preview-modal.test.tsx`, +4) y correlación
+1:1 del selector (`variant-selector.test.tsx`, +4: oculta Cantidad, selección llega a la variante
+correcta, correlación rota = grupo visible, polaroid intacto). **Gates:** tsc ✓ · eslint ✓ ·
+prettier ✓ · suite **2967/2967** ✓ (8 skipped = probes live por diseño) · QA visual Playwright
+17/17. **Repo SIN commitear a la espera de confirmación de Lucy.**
+
+**Post-cierre — logs del stack de operación (`lucams-shop-local`, dir. NO versionado):** su
+`make restart` mostraba 2 cosas. (a) ERROR ngrok `unknown shorthand flag: 'C' in -C`: bug del
+parser de ese Makefile (no del repo) — las líneas `NGROK_DOMAIN=`/`NGROK_AUTHTOKEN=` de
+`.env.local` traen comentario inline (válido en dotenv) y el `grep|cut` lo capturaba crudo, así
+que ngrok recibía el texto del comentario ("…make -C…") como flags. Corregido ahí mismo (sed que
+elimina el comentario + xargs que recorta, en TOKEN y DOMAIN) y verificado end-to-end: túnel
+`https://kebab-late-batting.ngrok-free.dev` sirviendo la app (PDP + /api/health 200, ngrok.log
+solo info). (b) Storm de `⨯ uncaughtException: Error: aborted (ECONNRESET)` justo tras el
+restart: bug conocido de **next dev** (no aplica a prod) — con middleware presente (este repo
+tiene `proxy.ts`), una conexión abortada por el cliente a mitad de stream/compilación se loguea
+como uncaughtException (issue oficial vercel/next.js#84649, 2025-10-08, abierto). No es error de
+la aplicación: barrida final de 10 requests (5 directos + 5 por túnel) → todos 200 y 0 líneas de
+error nuevas. Además quedó un proceso zombie `next-server v16.2.6` (pid 5038, previo al bump
+16.3.3, sin puerto escuchando): inofensivo, candidato a matar en la próxima limpieza.
+
+---
+
 **🔐 AUDITORÍA OWASP REMEDIADA Y CERRADA (2026-08-29).** Se validó y cerró
 `docs/audits/auditoria_seguridad_lucams.md` (1 RED + 49 YELLOW, del 2026-08-24): cada hallazgo se
 re-verificó contra el código vigente antes de tocarlo. El RED (B-1: MFA admin opt-in que
@@ -41,6 +543,144 @@ con key vigente), G-7. Quedan solo acciones de terceros: panel AveOnline (que la
 `?secret=`), dashboard Supabase (leaked password protection), header `x-cron-secret` en monitores
 de uptime, y guardar la passphrase GPG de backups (entregada aparte). Detalle: §11 del informe +
 ADR-085.
+
+---
+
+## Sesión — 2026-09-04 (auditoría integral prelanzamiento + remediación P0/P1)
+
+**Auditoría diferencial basada en evidencia** (rama `develop` @ `f48238d`, tree limpio al iniciar):
+8 frentes de revisión en paralelo (DB/RLS, auth/admin, APIs/webhooks/uploads, frontend/SEO/a11y,
+privacidad/legal Colombia, rendimiento/confiabilidad, coherencia documental, CI/CD+secretos) +
+gates ejecutados. Informe completo con 30 hallazgos + matriz de cobertura + plan P0/P1/P2 presentado
+en la sesión (formato A–L). **0 regresiones** vs la auditoría OWASP 2026-08-24 (25/25 remediaciones
+verificadas presentes en código). Lo más importante: los bloqueantes eran **legales/operativos** —
+los textos legales v4 describían "todavía no cobramos en línea" con la tienda ya cobrando en modo
+`full` (F-01 CRÍTICA).
+
+**Remediación ejecutada en la misma sesión** (decisiones de Lucy vía preguntas guiadas: destruir
+dumps tras verificar R2, redactar textos v5 ya, reversión del pago manual, mirror de Storage a R2):
+
+- **F-01/F-02/F-04/F-07 (legal):** 6 textos legales v5 en `packages/db/legal-content/` + fallbacks de
+  `/legal/*` regenerados + guard de veracidad del sync test INVERTIDO (el encuadre de catálogo ahora
+  está prohibido donde se menciona pago en línea). Wompi/Aveonline/Gemini activos, Meta/WhatsApp y
+  Cloudflare R2 añadidos como encargados, plazos de retención concretos publicados, reversión del
+  pago como derecho vigente con procedimiento manual (retracto@/WhatsApp, 15 días hábiles, tramitación
+  con Wompi). **Publicación en PRD es MANUAL vía `/admin/contenido`** (los textos se sirven desde
+  CmsField `legal.*`; el .md es fallback) — pasos exactos en el reporte de la sesión.
+- **F-08 (rate-limit):** `uploadDesignAssetAction` añade capa `ipKey` (40/10min prod) — un bot sin
+  cookies ya no rota el bucket por sesión (`features/personalization/actions.ts`).
+- **F-30 (errores):** las acciones públicas del Estudio devuelven solo copies de dominio es-CO;
+  errores internos → genérico + detalle en log server-side (patrón de checkout).
+- **F-10 (step-up MFA):** reembolsos de pedido/retracto y promover/cambiar-rol/desactivar admin
+  exigen TOTP reciente (≤10 min, claim `amr` del JWT) — modal `MfaReauthModal` + verify server-side +
+  rate-limit doble + audit `mfa.reauth.*` (`lib/admin-reauth.ts`, 34 tests nuevos).
+- **F-12 (PII local):** 9 archivos destruidos con shred tras verificar backup R2 verde 8/8 vía `gh`
+  (5 dumps de PRD sin cifrar, 2 `.err`, respaldo `.env` de prod, `.vercel/.env.development.local`).
+  Queda `tmp/backups/cms-legacy-20260731.json` (export CMS, sin PII evidente) — decisión de Lucy.
+- **F-13 (búsqueda):** `catalog.ts` migra a `immutable_unaccent` (indexable) + migración 031 con 3
+  índices de expresión que matchean los predicados reales (incl. `richDescription`) y drop de 5-6
+  índices muertos. Validación EXPLAIN pendiente en STG (plan en la cabecera de la migración).
+- **F-14 (pool Prisma):** `PRISMA_CONNECTION_LIMIT` (default 3) solo en runtime/pooler vía override
+  de datasource; DIRECT_URL y scripts intactos (`packages/db/src/index.ts` + `.env.example`).
+- **F-16 (backup Storage):** nuevo `scripts/backup-storage-to-r2.mjs` — tar streaming → gzip → gpg
+  AES256 (passphrase por fd) → R2 por bucket, manifiesto sin PII, poda BACKUP_KEEP=30; job propio en
+  `backup.yml` con gate separado + prueba de legibilidad en `dr-drill.yml` (`dr-drill-storage.mjs`).
+  **Requiere secrets nuevos `BACKUP_SUPABASE_URL`/`BACKUP_SUPABASE_SECRET_KEY` en GitHub.**
+- **F-19 (consentimiento):** el beacon de Web Vitals solo se envía con "Analíticas" aceptada
+  (opt-in real; revocación mid-session efectiva) — 11 tests.
+- **F-20/F-21:** `Cache-Control: private, no-store` en GETs de `/mi-cuenta|/checkout|/admin`
+  (proxy.ts); noindex en carrito/login/registro/recuperar/confirmar/restablecer.
+- **F-23/F-24 (DB):** migración 030 revoca EXECUTE residual de 3 funciones (guarda anti-regresión de
+  `is_active_admin`); migración Prisma `20260904144657` con 39 CHECK no-negativos/positivos en 14
+  tablas (NOT VALID + VALIDATE; pre-flight para STG en cabecera).
+- **F-25/F-26 (docs):** CLAUDE.md (mandatos #3/#11, estado actual), README.md, STATE.md, ROADMAP.md
+  (E1 superada, Fases 3/5 re-marcadas), OPERATIONS.md (HANDOFF→STATE, notas pgmq SUPERSEDED),
+  Makefile (3 targets rotos eliminados — scripts borrados en c436195).
+- **NUEVO — DR drill reparado:** falla del 2026-09-02 = umbral `DRILL_MIN_PRODUCTS=100` calibrado al
+  catálogo semilla (la depuración 2026-08-10 dejó 11 productos reales) + contador de errores SQL que
+  era código muerto (prefijo `psql:<file>:<line>:` nunca matcheaba `startsWith("ERROR")`). Fix:
+  conteos EXACTOS vs filas COPY del dump + clasificación fail-closed con allowlist de colisiones
+  internas Supabase + piso anti-husks recalibrado a 5 (`dr-drill-lib.mjs`, 81 tests). **Pendiente:
+  re-run del drill tras el push** (corre desde la rama, necesita el fix commiteado).
+
+**Gates finales (2026-09-04 16:15):** `pnpm lint` 0 · `pnpm typecheck` 0 · `pnpm format:check` 0 ·
+`pnpm build` 0 · vitest unit **2187/2187 + 10 skip** (excluidos integration; el único archivo rojo,
+`retention-service.storage-failure.test.ts`, exige DB local y ya fallaba igual antes — ambiental).
+Suite total hoy: **3148 tests en 203 archivos** (`vitest list`); los integration/RLS corren en CI
+nightly con Supabase local.
+
+**Revisión y despliegue (tarde del 2026-09-04):** Lucy aprobó los cambios punto por punto (6 bloques:
+legal, docs, migraciones, código, re-auth admin, backup/drill). 7 commits en `develop`, push con CI
+7/7 verde ×2, **PR #36 y #37 fusionados a `production`** (rebase; develop re-sincronizada después —
+`develop` ≡ `production` en `efc1553`). Deploy verificado en vivo (Cache-Control privado en
+/mi-cuenta, noindex en /carrito, HSTS). **Migraciones aplicadas a STG y PRD** con pre-flight 39/39 en
+cero en ambas (PRD con `.env.local.nube-backup`, que sigue en disco como copia de trabajo de Lucy).
+**DR drill re-corrido: VERDE** (run 33926922592). **Verificación legal contra fuentes oficiales el
+mismo día** (Decreto 1074 arts. 2.2.2.51.4/.6/.8, Ley 2439/2024 + C-192/26, ET 437 par. 3, Decreto
+090/2018 RNBD, UVT 2026 $52.374): encontró 1 error sustantivo (plazo de reversión del consumidor = 5
+días hábiles, no 15) → corregido y desplegado en `efc1553`; añadidos derechos Ley 2439 (entrega ≤30
+días calendario con terminación + devolución 15 días, PQR con radicado). Secrets `BACKUP_SUPABASE_*`
+creados en GitHub por Lucy. **Queda NO técnico:** visto bueno del abogado (2 puntos: identidad del
+vendedor art. 50 lit. a; constancia ET art. 615) → publicar textos en `/admin/contenido`; smoke en
+vivo; checklist de dashboards.
+
+## Sesión — 2026-09-03 (feedback funcional de Lucy: 3 fixes UX — EJECUTADOS en la sesión 2 del mismo día)
+
+Lucy se puso del lado usuaria y levantó 3 observaciones funcionales. Quedaron registradas acá con el
+análisis técnico (validado contra código y datos de STG) y **se ejecutaron en la sesión siguiente del
+mismo día** — el resultado completo está en la entrada nueva de bitácora de arriba:
+
+**① Cantidad/copias seleccionable en la PDP de TODOS los productos (antes de personalizar).**
+Hoy el stepper de copias (`CopiesQtyInput`, CartItem.qty 1-99) solo existe en la rama de **compra
+directa** de la PDP (`app/producto/[slug]/page.tsx:367-372`, condición `else` = no personalizable).
+Los productos personalizables (`requiresPersonalization || isLetterSetProduct`, :363-365) solo tienen
+el CTA al Estudio — la cantidad se elige recién en el modal de confirmación del Estudio (stepper
+"Copias" de `studio-preview-modal.tsx`, ola 2026-08-28). Pedido: el stepper visible en la PDP de
+cualquier producto de cualquier categoría (ej. "Calendario Set 12 Tarjetas" solo muestra Tamaño).
+**Diseño a decidir al implementar:** una sola fuente de verdad para la cantidad (la PDP la fija y el
+Estudio la respeta/pre-carga, o se mantiene solo en el modal pero visible también en PDP); cuidar el
+caso `isNamePerTile` (Nombre Personalizado tiene su propio `NamePricePicker` con cantidad por fichas,
+:354-362 — no duplicar controles ahí).
+
+**② Modal "Así se verá…" del Estudio desborda la pantalla (desktop baja resolución y móvil).**
+`app/estudio/[slug]/studio-preview-modal.tsx`: `DialogContent` con `max-w-2xl` (:155) sin tope de
+alto ni scroll — la imagen (`aspect-square max-w-md`, :223-235) + textos + stepper + CTAs superan el
+viewport alto y el contenido queda cortado arriba/abajo sin poder desplazarse. Fix esperado: capar la
+altura del diálogo (`max-h-[100dvh]` con márgenes) con scroll interno (`overflow-y-auto`), limitar la
+imagen por `vh` además de `w`, y en móvil comportamiento tipo sheet a pantalla casi completa con
+desplazamiento. Revisar el wrapper `components/ui/dialog.tsx`. QA: capturas en 375px, 768px y
+viewport de poca altura (ej. 1366×600).
+
+**③ "Abecedario Completo": la cantidad NO debe ser dimensión elegible — la define el idioma.**
+Datos STG/PRD (verificados por SQL): las variantes de `abecedario-completo` traen `quantity` 27
+(español, con Ñ) / 26 (inglés) **solo en algunas** (las 10×14 no lo tienen; "5×7 Sin imán Inglés"
+tampoco) → al variar entre variantes, el selector la expone como dimensión "Cantidad"
+(`variant-selector.tsx:220-269`, `QUANTITY_DIM_KEYS` :177). Referencia de comportamiento correcto:
+`pack-vocales` tiene `quantity: 5` en TODAS sus variantes → un solo valor → no se muestra.
+**Fix de datos:** normalizar `quantity` en TODAS las variantes del abecedario según idioma (es=27,
+en=26) en STG y PRD (script one-off en `packages/db/scripts/` con env-guard, convención del repo).
+**Fix de UI (decidir):** como es≠en, quantity sigue teniendo 2 valores → extender el dedupe de
+dimensiones de `variant-selector.tsx:240-254` para ocultar una dimensión cuando correlaciona 1:1 con
+otra (quantity ↔ language), y/o mostrarla como texto descriptivo ("27 imanes en español · 26 en
+inglés") en vez de selector. Actualizar copy si hace falta vía CMS.
+
+**Estado al cierre de la sesión 2 (mismo día):** los 3 fixes EJECUTADOS y verificados (LOCAL/STG/PRD,
+gates verdes: tsc + eslint + prettier + suite 2967/2967 + QA Playwright 17/17 con capturas). Cambios
+en el working tree SIN commitear — pendiente la confirmación de Lucy para el commit. Si el stack local
+está abajo: `make db-local-start`.
+**Consolidación documental (mandato Lucy, mismo día, commit `f927c34`):** el árbol de markdown pasó de
+134 → 41 archivos — eliminadas las auditorías históricas fechadas de `docs/audits/` (trabajo ya ejecutado,
+recuperable vía git history), `HANDOFF.md`, `docs/claude-project/` y 6 planes/prompts de trabajo terminado;
+corregidas TODAS las referencias en docs vivos y comentarios de código (quedan apuntando a TESTING.md /
+RUNBOOK_GO_LIVE.md o autocontenidas). Convención nueva en `docs/audits/README.md`: una auditoría cerrada y
+absorbida por los docs canónicos se consolida (se borra; git conserva la historia).
+**Reorganización total de la documentación (commit `892853f`):** cada doc canónico verificado línea por
+línea contra el código y corregido (drift con evidencia archivo:línea); nuevo mapa `docs/README.md`;
+ADR-016/017 marcados SUPERSEDED (cache en Postgres nunca existió; pgmq nunca se adoptó — el modelo real es
+pg_cron + pg_net → `/api/cron/*`). Bug real encontrado verificando docs: `mapAveonlineStatus` no mapeaba
+`DEVOLUCION` → RETURNED (fix + test). **Decisión de Lucy (2026-09-03): producción opera en modo `full` a
+propósito** (la verificación en vivo la encontró sirviendo full; se documenta en ROADMAP/RUNBOOK/OPERATIONS/
+COMPLIANCE — los trámites NIT/DIAN quedan pendientes solo para facturación electrónica).
 
 ---
 
@@ -2334,6 +2974,105 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-09-08 — PDP sin stepper de copias (regla global) + separación visible en galería
+
+- **Regla (acordada con la dueña del producto):** la PDP nunca muestra el stepper "Unidades" de
+  copias, en ninguna categoría — ni en compra directa ni en personalizables. Las copias se eligen
+  ① al final del Estudio (stepper "Copias" de `studio-preview-modal.tsx`, ya existente) y ② en el
+  carrito (`QtyControls` de `app/carrito/page.tsx`, ya existente — no se duplicó nada).
+- **Cambios:** `page.tsx` ya no renderiza `<CopiesQtyInput>` en ninguna rama; la compra directa
+  manda `<input type="hidden" name="qty" value={1}>` (contrato explícito; `addToCartAction` ya
+  defaulteaba a 1). `variant-actions.tsx`: fuera el estado `copies`/`setCopies` del Context y el
+  `?copies=N` del `EstudioCtaLink` — el Estudio conserva el parseo acotado 1..99 del parámetro
+  (deep-link manual; sin él arranca en 1). Eliminados `copies-qty-input.tsx` y su test; comentarios
+  actualizados en `variant-selector(.test).tsx`, `variant-schemas.ts`, estudio `page.tsx` y
+  `studio-preview-modal(.test).tsx`. Las dimensiones de variante (Cantidad pack / Fotos / Tamaño)
+  NO se tocan: con el stepper de copias fuera de la ficha ya no hay redundancia visual en ningún
+  producto (`PDP_HIDDEN_DIMENSION_KEYS` sigue igual).
+- **Galería (`product-gallery.tsx`):** tira de miniaturas de `grid-cols-5 gap-2` → `gap-3` con
+  `bg-brand-purple/5 rounded-xl p-3`: los gutters leen como espacio dedicado en paleta crema/morada.
+  El hero (gradiente turquoise/cream/pink) quedó intacto.
+- **Verificación:** vitest focal 55/55 (`app/producto/[slug]` + `studio-preview-modal`), `tsc
+--noEmit` limpio, `eslint --max-warnings 0` limpio, prettier OK. Sin commit (instrucción).
+
+### 2026-09-08 — RELEASE f88aeef (ítems 1-6 + cobertura) + sync catálogo STG→PRD (Lucy: "STG es fuente de verdad")
+
+- **Release:** CI del push de cobertura verde (run 34188705407) → fast-forward `develop`→`production`
+  (`2097a52..f88aeef`, 10 commits: ítems 1-6 QA de Lucy + fix tiras STG + cobertura branches
+  62.4→66.8% + gate CI). Deploy Vercel production `dpl_4RLvr1Y6DBbZZs9CMeKV5UhdvEQH` Ready con
+  alias lucamsshop.com (build ~2 min).
+- **Sync STG→PRD (autorizado por Lucy 2026-09-07):** procedimiento OPERATIONS.md:954 adaptado
+  (script efímero `tmp/sync-stg-prd-env.sh` + dumps en `tmp/backups/`):
+  safety dump PRD pre-sync (`catalogo-prd-pre-sync-*.dump`), dump fuente STG fresco,
+  TRUNCATE … RESTART IDENTITY CASCADE de las 19 tablas de catálogo en PRD, `pg_restore` desde
+  archivo (nunca stdin), FKs recreadas (10 canónicas extraídas de PRD + 3 circulares —
+  publicadales, CmsFieldVersion_fieldId, CmsListItem_fieldId; DDL en
+  `tmp/backups/fks-circulares-prd.sql`). Conteos post == STG (Product 11, Variant 85,
+  Template 19, LetterTile 53, CmsFieldVersion 1053).
+  - Diff real STG vs PRD: 73 variantes con cambios de verdad (precios/stock/atributos), 11
+    productos (nombre-personalizado DESACTIVADO en STG → replicado; imágenes/basePrice varios),
+    52 LetterTile nuevas (ilustraciones subidas por Lucy en STG), plantilla
+    `calendario-mes-lateral` nueva, IG polaroid solo difería en ORDEN de capas (frame sobre p1),
+    `set-fotoimanes-circulares/corazón` soft-deleted en ambos (falso positivo de timestamps).
+  - ⚠ **Efecto colateral del CASCADE:** la chequeo de "FK externas hacia catálogo" devolvió 0
+    por el trap de `regclass::text` (folding de mayúsculas) → TRUNCATE CASCADE barrió también las
+    tablas operativas de PRD (Order, OrderItem, Design, Review, CouponUsage, etc. — 15 tablas).
+    PRD no es productivo; **ruta de recuperación: backup R2 de hoy 12:07Z (run 34224335960) es
+    PRE-truncate** y cubre esas tablas si Lucy quiere rescatar algo.
+  - ⚠ Datos de STG referencian imágenes del storage de STG (`mjbdiqdkykhsixvqlrrp.supabase.co`)
+    — si STG se desmantela, esas URLs dejan de servir en PRD.
+  - ⚠ El preview de develop en Vercel (URL de STG) quedó bajo **SSO de Vercel** (302 a login) —
+    Lucy puede entrar con su cuenta Vercel; verificación automatizada por HTTP ya no es posible.
+- **Post-sync:** ola17 (foto de perfil IG) aplicada en STG (`--apply`, guard env-guard la permite;
+  capa `profile_photo` después de `frame`). PRD la recibirá en el próximo sync de datos (el guard
+  bloquea PRD por diseño). migrate-cms-v2 en PRD y STG: OK en ambos (23 campos nuevos del site
+  map creados en PRD, 954 BLOCK + 51 SETTING, 0 anomalías). **Lección operativa:** el pooler
+  Supavisor (:6543) estuvo intermitente desde este host (P1017 + 57014 a los 20s); corriendo con
+  `DATABASE_URL=$DIRECT_URL` (export en el shell, sin tocar .env) ambas corridas salieron limpias
+  en ~3.5 min. El app en Vercel nunca se afectó (health/db 200).
+- **Verificación en vivo (lucamsshop.com post-deploy):** búsqueda `/api/catalog/search` 200 ~0.9s;
+  estudio abecedario muestra "Borde de foto: Con/Sin borde" (ítem 6 ✅); API tiras
+  FI-TIRA-01-DEFAULT photoSlots=3 / FI-TIRA-4FOTOS=4 (ítem 2 ✅); PDP separadores-alargados con
+  único control "Copias idénticas" (ítem 1 ✅); estudio calendario con "Tipo de letra" + Caveat
+  (ítem 5 ✅). Ítems 3.2/4 visuales quedan para QA GUI de Lucy. Smoke TOTP (F-10) pendiente de Lucy.
+
+### 2026-09-07 — QA de Lucy: 6 comentarios investigados + plan detallado trazado (sin codificar)
+
+- Investigación con evidencia (navegador real contra LOCAL/PRD + SELECT read-only STG, artefactos en
+  /tmp/qa-20260907/): ① "Separadores de Libros" = categoría, productos ya cubiertos por la opción 2
+  (falta deploy); ② bug "20 fotos" de Tiras = dato viejo de STG (variante FI-TIRA-01-DEFAULT con
+  photoSlots:20) → script de datos; ③ marco IG: perfil editable factible (capa `profile-photo` +
+  ojo con SlotStateSchema que stripea + canvas-remap), badge ① moverse a la barra inferior, stage
+  pequeño = cap de alto por conteo de slots (`SLOT_HEIGHT_CAP_BY_COUNT`); ④ admin móvil: chip del
+  header oculto en <sm → entrada en el drawer hamburguesa; ⑤ calendario: selector de fuentes
+  factible (opts.fonts ya inyectable; exige TTF + registro en ensureFonts + validación server);
+  ⑥ borde letter-set ya existe (sin desplegar). Plan completo con archivos/pasos/tests en
+  "Próxima sesión — plan detallado".
+
+### 2026-09-05 — Smoke en vivo parcial + Estudio: borde LETTER_SET (lienzo) + fix dato plantilla Instagram
+
+- **Smoke post-auditoría:** búsqueda PRD medida en vivo (Chromium headless): ~0.8s caliente,
+  resultados correctos; backup matutino VERDE (run 33962842872, mirror Storage→R2 5m17s — primera
+  corrida real). Smoke TOTP admin pendiente de Lucy.
+- **Borde LETTER_SET:** `metadata.withBorder` (default true, retrocompatible), toggle en editor,
+  3 dibujos sincronizados, radio único `LETTER_TILE_CORNER_RATIO` (deuda cerrada), texto "Con/Sin
+  borde" en carrito/checkout/pedido + ficha de taller, CMS `estudio.letras.borde-*`. Sin migración
+  ni cambio de catálogo (decisión: opción de lienzo, mismo precio).
+- **Instagram polaroid:** bug de DATO (seed + script ola3 con y stale 486/502/518 vs iconos
+  468–496). STG corregido (script ola9 idempotente; LOCAL/PRD ya estaban bien). Spec de réplica
+  fiel documentada en seed; test de regresión de geometría del footer (5 tests).
+- **PDP doble stepper (Lucy, captura Polaroid):** "Cantidad" (photoSlots, con Total engañoso) +
+  "Unidades" (copias) en packs personalizables. Fix interino: photoSlots gana el dedupe → grupo "Fotos"
+  ("N fotos", $/foto), "Total:" fuera del stepper, "Unidades" = única cantidad de compra.
+  Polaroid/cuadrados/separadores/tiras cubiertos; tests migrados 36/36 + regresión.
+- **OPCIÓN 2 (Lucy): fotos dentro del Estudio.** PDP de los 5 packs con UNA sola cantidad
+  ("Unidades"), "Tamaño" como único selector, precio "Desde $X" (mínimo de variantes); control
+  "¿Cuántas fotos lleva tu imán?" en el Estudio (reconstruye slots conservando fotos); variante y
+  precio resueltos en el servidor desde el diseño (`photo-pack-resolve.ts`). 207 archivos / 3201
+  tests verdes. Deuda: basePrice de cuadrados desactualizado; smoke manual de navegador pendiente.
+- Gates finales combinados verdes: lint + typecheck + 3201 tests. Todo sin commit, a la espera del
+  QA GUI de Lucy.
 
 ### 2026-08-07 (cierre 7) — RELEASE: H19 + H20 + deps a producción (`c86d206` → `8430163`)
 

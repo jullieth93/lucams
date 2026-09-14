@@ -24,6 +24,8 @@ function makeRecordingCtx(supportsVarSettings: boolean): {
     textBaseline: "alphabetic",
     save() {},
     restore() {},
+    translate() {},
+    rotate() {},
     beginPath() {},
     rect() {},
     moveTo() {},
@@ -187,5 +189,88 @@ describe("drawCalendarPage — layout split (lateral)", () => {
     expect(calls.texts.some((t) => t.text === "2027" && t.fill === "#2A2140")).toBe(true);
     // La composición split NO usa el título centrado "ENE 2027" del clásico.
     expect(calls.texts.some((t) => t.text === "ENE 2027")).toBe(false);
+  });
+});
+
+// Lucy 2026-09-08 — "Rotar 90°" no hacía nada en el calendario: la rotación del
+// photoTransform (Ola 3c) no llegaba al compositor. Gate de regresión: con rotación
+// la foto se dibuja con translate+rotate alrededor del centro y el cover usa las
+// dimensiones INTERCAMBIADAS (misma matemática que renderSlotCanvas / Konva).
+describe("drawCalendarPage — rotación de la foto del mes (Ola 3c en calendario)", () => {
+  const PHOTO = { width: 800, height: 600 };
+
+  function makePhotoCtx() {
+    const { ctx } = makeRecordingCtx(false);
+    const calls = {
+      translate: [] as Array<[number, number]>,
+      rotate: [] as number[],
+      drawImage: [] as Array<[number, number, number, number]>,
+    };
+    const origTranslate = ctx.translate;
+    ctx.translate = (x, y) => {
+      calls.translate.push([x, y]);
+      origTranslate(x, y);
+    };
+    const origRotate = ctx.rotate;
+    ctx.rotate = (a) => {
+      calls.rotate.push(a);
+      origRotate(a);
+    };
+    const origDraw = ctx.drawImage;
+    ctx.drawImage = (img, dx, dy, dw, dh) => {
+      calls.drawImage.push([dx, dy, dw, dh]);
+      origDraw(img, dx, dy, dw, dh);
+    };
+    return { ctx, calls };
+  }
+
+  it("sin rotación NO usa translate/rotate (salida idéntica a antes)", () => {
+    const { ctx, calls } = makePhotoCtx();
+    drawCalendarPage(ctx, {
+      photo: PHOTO,
+      photoTransform: { offsetX: 0, offsetY: 0, scale: 1 },
+      year: 2027,
+      monthIndex0: 0,
+      fontsOk: false,
+    });
+    expect(calls.translate).toHaveLength(0);
+    expect(calls.rotate).toHaveLength(0);
+    // Cover sin swap: max(1080/800, 810/600) = 1.35 → 1080×810 exacto.
+    expect(calls.drawImage[0]).toEqual([
+      (-800 * 1.35) / 2 + 1080 / 2,
+      (-600 * 1.35) / 2 + 810 / 2,
+      800 * 1.35,
+      600 * 1.35,
+    ]);
+  });
+
+  it("rotación 90°: rota alrededor del centro y el cover usa dims intercambiadas (classic)", () => {
+    const { ctx, calls } = makePhotoCtx();
+    drawCalendarPage(ctx, {
+      photo: PHOTO,
+      photoTransform: { offsetX: 0, offsetY: 0, scale: 1, rotation: 90 },
+      year: 2027,
+      monthIndex0: 0,
+      fontsOk: false,
+    });
+    expect(calls.rotate).toEqual([Math.PI / 2]);
+    // Centro de la ventana de foto (CALENDAR_PHOTO es x=0, y=0, 1080×810).
+    expect(calls.translate[0]).toEqual([1080 / 2, 810 / 2]);
+    // Cover con dims intercambiadas: max(1080/600, 810/800) = 1.8.
+    expect(calls.drawImage[0]).toEqual([(-800 * 1.8) / 2, (-600 * 1.8) / 2, 800 * 1.8, 600 * 1.8]);
+  });
+
+  it("rotación 90° también aplica en layout split (clip redondeado)", () => {
+    const { ctx, calls } = makePhotoCtx();
+    drawCalendarPage(ctx, {
+      photo: PHOTO,
+      photoTransform: { offsetX: 0, offsetY: 0, scale: 1, rotation: 90 },
+      year: 2027,
+      monthIndex0: 0,
+      fontsOk: false,
+      layout: "split",
+    });
+    expect(calls.rotate).toEqual([Math.PI / 2]);
+    expect(calls.translate).toHaveLength(1);
   });
 });

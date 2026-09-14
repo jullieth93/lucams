@@ -8,7 +8,7 @@
  *      total > $10.000 COP (1.000.000 centavos) el script ABORTA sin tocar nada.
  *   2. Todo lo anclado EXCLUSIVAMENTE a esas órdenes: OrderItem, CouponUsage,
  *      RetractRequest (vía item), WarrantyClaim (vía item), CodReconciliation,
- *      InventoryLog (orderId), StockReservation (orderId), LoyaltyTxn (orderId),
+ *      InventoryLog (orderId), LoyaltyTxn (orderId),
  *      WebhookEvent (externalId = wompiTransactionId de la orden), y los Cart de
  *      origen (Order.cartId). NO existe modelo Payment en el schema (Wompi se
  *      concilia manual) ni vínculo Order→EmailEvent: se reportan como "no aplica".
@@ -25,6 +25,10 @@
  *
  * Transaccional: TODO corre en UNA $transaction (all-or-nothing). Idempotente: un
  * re-run encuentra 0 órdenes @lucams.test y sale sin tocar nada.
+ *
+ * 2026-09-12 (N-10): se retiraron las referencias a StockReservation y
+ * RecommendationLog — esos modelos se eliminan del schema (0 filas en los 3
+ * ambientes, verificado en la auditoría 360°).
  *
  * Uso:
  *   node scripts/purge-test-orders.mjs            # DRY-RUN: plan + conteos, sin escribir
@@ -141,9 +145,6 @@ async function main() {
           where: { orderId: { in: orderIds } },
         });
         c.inventoryLogs = await tx.inventoryLog.count({ where: { orderId: { in: orderIds } } });
-        c.stockReservations = await tx.stockReservation.count({
-          where: { orderId: { in: orderIds } },
-        });
         c.loyaltyTxns = await tx.loyaltyTxn.count({ where: { orderId: { in: orderIds } } });
         c.webhookEvents = wompiTxIds.length
           ? await tx.webhookEvent.count({ where: { externalId: { in: wompiTxIds } } })
@@ -177,7 +178,6 @@ async function main() {
                 consents: true,
                 addresses: true,
                 couponUsages: true,
-                recommendationLogs: true,
                 warrantyClaims: true,
                 referrals: true,
               },
@@ -193,7 +193,7 @@ async function main() {
       }
 
       // ── APPLY: borrado en orden de dependencias ─────────────────────────────
-      // Ligados a la orden (WebhookEvent/InventoryLog/StockReservation/LoyaltyTxn
+      // Ligados a la orden (WebhookEvent/InventoryLog/LoyaltyTxn
       // no tienen FK — deleteMany explícito; el resto cae por Cascade pero se borra
       // explícito para tener el conteo exacto).
       c.webhookEvents = wompiTxIds.length
@@ -201,9 +201,6 @@ async function main() {
         : 0;
       c.inventoryLogs = (
         await tx.inventoryLog.deleteMany({ where: { orderId: { in: orderIds } } })
-      ).count;
-      c.stockReservations = (
-        await tx.stockReservation.deleteMany({ where: { orderId: { in: orderIds } } })
       ).count;
       c.loyaltyTxns = (
         await tx.loyaltyTxn.deleteMany({ where: { orderId: { in: orderIds } } })
@@ -310,7 +307,6 @@ async function main() {
               consents: true,
               addresses: true,
               couponUsages: true,
-              recommendationLogs: true,
               warrantyClaims: true,
               referrals: true,
             },
@@ -352,7 +348,6 @@ async function main() {
     ["CouponUsage", c.couponUsages],
     ["CodReconciliation", c.codReconciliations],
     ["InventoryLog", c.inventoryLogs + (c.inventoryLogsResidual ?? 0)],
-    ["StockReservation", c.stockReservations],
     ["LoyaltyTxn", c.loyaltyTxns],
     ["WebhookEvent", c.webhookEvents],
     ["Cart (órdenes)", c.carts],

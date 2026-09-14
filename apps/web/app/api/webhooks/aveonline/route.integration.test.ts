@@ -52,6 +52,10 @@ vi.mock("@/features/orders/emails", () => ({
   // orden (CANCELLED) → sendOrderCancelled. Sin el stub, el módulo mockeado lanza
   // "No export is defined on the mock" al invocarlo.
   sendOrderCancelled: async () => {},
+  // N-22b — el saga lo invoca en la rama RETURNED/EXCEPTION del tracking.
+  notifyOrderReturned: async (opts: { orderId: string; carrierStatusRaw: string }) => {
+    emailCalls.push({ fn: "notifyOrderReturned", orderId: opts.orderId });
+  },
 }));
 
 import { prisma } from "@/lib/db";
@@ -106,12 +110,10 @@ function webhookRequest(payload: unknown, secret: string = SECRET): Request {
 
 describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numérica", () => {
   const prevSecret = process.env.AVEONLINE_WEBHOOK_SECRET;
-  const prevProvider = process.env.SHIPPING_PROVIDER;
   const prevAllowQuery = process.env.AVEONLINE_ALLOW_QUERY_SECRET;
 
   beforeAll(() => {
     process.env.AVEONLINE_WEBHOOK_SECRET = SECRET;
-    process.env.SHIPPING_PROVIDER = "aveonline";
     // webhookRequest autentica por ?secret= → encender la vía query (D-1, default OFF)
     // salvo en el test que valida explícitamente el flag apagado.
     process.env.AVEONLINE_ALLOW_QUERY_SECRET = "true";
@@ -120,8 +122,6 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
   afterAll(async () => {
     if (prevSecret === undefined) delete process.env.AVEONLINE_WEBHOOK_SECRET;
     else process.env.AVEONLINE_WEBHOOK_SECRET = prevSecret;
-    if (prevProvider === undefined) delete process.env.SHIPPING_PROVIDER;
-    else process.env.SHIPPING_PROVIDER = prevProvider;
     if (prevAllowQuery === undefined) delete process.env.AVEONLINE_ALLOW_QUERY_SECRET;
     else process.env.AVEONLINE_ALLOW_QUERY_SECRET = prevAllowQuery;
 

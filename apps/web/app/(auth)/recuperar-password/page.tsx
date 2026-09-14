@@ -5,6 +5,7 @@ import { getAuthTexts } from "../auth-texts.server";
 export const metadata: Metadata = {
   title: "Recuperar contraseña",
   description: "Recupera el acceso a tu cuenta Lucams_shop.",
+  robots: { index: false, follow: false },
 };
 
 // CSP por nonce (C3) requiere render dinámico: una página estática se prerenderea

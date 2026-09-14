@@ -1,6 +1,6 @@
 # ROADMAP — Ecosistema CMS completo (CMS v2 → CMS total)
 
-**Estado:** en ejecución · Base construida: CMS v2 (HANDOFF.md 2026-07-30)
+**Estado:** ✅ **completado y certificado** — roadmap original 20/20 (2026-08-01) + backlog posterior (B7/B8/B9, E4, C1 paso 2, gestos del canvas). Base construida: CMS v2 (2026-07-30 — ver ADR-082/083/084 en DECISIONS.md). El CMS sigue creciendo por el mismo mecanismo (site map → `make migrate-cms-v2`): ej. el campo `estudio.ia.nota-privacidad` se agregó 2026-08-29 tras la auditoría de seguridad, fuera de este roadmap.
 **Propósito:** que el 100% del contenido visible del sitio sea administrable por una persona NO técnica desde `/admin/contenido`, con modularidad a futuro (listas, imágenes, banners, roles, preview) sin rehacer el modelo.
 
 **Progreso (se actualiza con cada fase):**
@@ -31,6 +31,7 @@
 - ✅ **C1 paso 2** modo edición in-place en el storefront — commit `ce38b8c`
 - ✅ **Gestos del canvas del Estudio** verificados interactivamente — commit `406051a`
 - ✅ **D2** observabilidad del CMS en `/admin/metricas` — commit `b4e7b92` · **roadmap original 20/20**
+- ✅ **Mantenimiento 2026-09-12 (remediación 360°, N-10/CF-19 + N-23):** **14 settings zombi retiradas** de LOCAL/STG (51→37 settings por ambiente; backup y dry-run previos) con `packages/db/scripts/remove-zombie-settings.mjs` — eran `CmsField` kind=SETTING sin ningún lector en el código (texto muerto editable en /admin/contenido), llegadas por la migración legacy SiteSetting→CmsField de 2026-07-30. La lista de 15 keys candidatas vive en `packages/db/scripts/lib/zombie-settings.mjs` (una no existía en DB; un test de la misma carpeta bloquea su regreso al site map). En la misma remediación: **`getCmsImage` se CONSERVA** a propósito aunque hoy no tiene caller storefront — es el único reader de los campos IMAGE "sueltos", una capacidad viva del admin (crear/editar/publicar campos IMAGE desde /admin/contenido); retirarla dejaría esa capacidad sin consumidor posible (nota N-23 en `lib/cms.ts`).
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 
@@ -38,7 +39,7 @@
 - Admin por páginas con edición inline, editor Markdown/JSON, historial de versiones con revert.
 - Capa de lectura compatible (`lib/cms.ts`) con cache tag `cms` e invalidación desde el admin.
 - Site map declarativo (`packages/db/scripts/cms-site-map.mjs`) + migrador idempotente (`make migrate-cms-v2`) + verificador de paridad.
-- Tablas legacy `CmsBlock`/`CmsBlockVersion`/`SiteSetting` vivas como respaldo (DEPRECATED).
+- ~~Tablas legacy `CmsBlock`/`CmsBlockVersion`/`SiteSetting` vivas como respaldo (DEPRECATED).~~ → **Dropeadas en A2** (2026-07-31, commit `c436195`, con respaldo JSON fuera del repo). Ya no existe compat legacy: solo el modelo v2.
 
 **Convenciones de este documento:** cada tarea indica los cambios de DB/migración que implica (o "sin migración"), archivos clave, dependencias y verificación. Estimaciones: **S** < medio día · **M** 1-2 días · **L** 3-5 días (trabajo asistido por agente como el de CMS v2).
 
@@ -125,6 +126,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Site map: páginas `pedido`, `rastrear`, `transaccionales` según corresponda. Sin migración DB.
 - Esfuerzo **M**. Dependencia: ninguna.
 
+> **✅ RESULTADO — commit `0e9b52b`.** Páginas transaccionales al CMS: pedido, rastrear, unsubscribe y gracias (94 campos). Ver lista de progreso al inicio.
+
 ### B3 — Iconos/gradientes de categorías administrables
 
 - Hoy: `CATEGORY_STYLES` e `ICONS` quemados por slug (`category-grid.tsx`, `shop-mega-menu.tsx`); una categoría nueva exige tocar código.
@@ -132,6 +135,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Migración: `add_category_visuals` (2 columnas; datos por defecto = estilos actuales por slug).
 - Lectura: `listStorefrontCategories` devuelve los campos; fallback al mapa hardcodeado por slug.
 - Esfuerzo **M**.
+
+> **✅ RESULTADO — commit `73bbbfc`.** Columnas `icon`/`gradient` en `Category` + edición desde `/admin/categorias` (ADR-083). Ver lista de progreso al inicio.
 
 ### B4 — Campos de lista (adiós al JSON crudo) — pieza estructural
 
@@ -142,6 +147,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - **Migración de datos:** convertir `footer.legal.links` (JSON actual) a items; FAQs: evaluar migrar `faq.*` a una lista con `{pregunta, respuesta}` (decidir en ejecución; no obligatorio).
 - **Lectura:** el helper actual de parse seguro se mueve a `lib/cms.ts` como `getCmsList(key, fallback)` tipado.
 - Esfuerzo **L**. Dependencia: ninguna (pero B6 la usa).
+
+> **✅ RESULTADO — commit `05fac56`.** Tabla `CmsListItem` + editor de filas con subcampos tipados en el admin (ADR-084); el `body` público sigue siendo el JSON serializado (lectura sin cambios). Extendido en B6 con subcampos IMAGE y BOOLEAN. Ver lista de progreso al inicio.
 
 ### B5 — Campos de imagen (`type: IMAGE`) + mediateca mínima
 
@@ -204,6 +211,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - RBAC (`lib/admin-rbac.ts`): `ROUTE_ROLES["/admin/contenido"] = SUPER | CMS_EDITOR`; el guard de actions acepta ambos; el menú filtra todo lo demás para ese rol (solo ve Contenido).
 - `/admin/usuarios`: permitir asignar el rol.
 - Esfuerzo **M**. Dependencia: ninguna. (Nombre tentativo; alinear con convención de roles existente SUPERADMIN/MANAGER/FULFILLMENT.)
+
+> **✅ RESULTADO — commit `06a8384`.** Rol `CMS_EDITOR` en el enum `AdminRole` + RBAC: edita contenido y nada más. Ver lista de progreso al inicio.
 
 ### C3 — Publicación programada
 
@@ -269,7 +278,7 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Inventario de problemas: tablas con scroll horizontal, formularios que no apilan, botones/toolbars que desbordan, modales que no caben, sidebar que tapa contenido.
 - Esfuerzo **S** (auditoría con screenshots por pantalla).
 
-> **✅ RESULTADO — certificado 2026-07-31, commit `39f7e77`.** Tour automatizado con Playwright (`tests/e2e/mobile-admin-audit.spec.ts`, queda como herramienta de regresión visual para E2): viewport 375×812, admin temporal creado/borrado por la propia spec, screenshot full-page + medición objetiva por pantalla (9 pantallas: dashboard, índice contenido, editor de página, editor de lista, mediateca, borradores, pedidos, cotizaciones, productos). **Hallazgo dominante (P0):** el shell móvil está roto — la topbar móvil es hija de un contenedor `flex` en fila (`admin-shell.tsx`) y renderiza como **columna vertical que se come ~60% del ancho**, dejando ~147px útiles de 375px en TODAS las pantallas (el drawer hamburguesa ya existe; solo está roto el layout que lo contiene — la topbar debería ser barra superior fija). **P1:** las tablas (pedidos, productos, cotizaciones) muestran solo la primera columna cortada sin indicación; en borradores el botón Publicar individual queda cortado (solo se puede «Publicar todo»). **P2:** sin breadcrumb/contexto en móvil (el topbar desktop se oculta sin reemplazo). **P3/P4/P5 (buenas noticias):** los editores de contenido (índice, página, lista, mediateca), el dashboard y los filtros **ya apilan correctamente** — con el shell arreglado quedan usables; la vista previa C1 apila debajo como se diseñó. Inventario completo con evidencia por screenshot en `docs/audits/2026-07-31-e1-mobile-admin-audit.md` (+ `tmp/screenshots/e1/`). Orden propuesto para E2: shell (P0+P2) → tablas→tarjetas (P1) → barrido fino re-corriendo la spec.
+> **✅ RESULTADO — certificado 2026-07-31, commit `39f7e77`.** Tour automatizado con Playwright (`tests/e2e/mobile-admin-audit.spec.ts`, queda como herramienta de regresión visual para E2): viewport 375×812, admin temporal creado/borrado por la propia spec, screenshot full-page + medición objetiva por pantalla (9 pantallas: dashboard, índice contenido, editor de página, editor de lista, mediateca, borradores, pedidos, cotizaciones, productos). **Hallazgo dominante (P0):** el shell móvil está roto — la topbar móvil es hija de un contenedor `flex` en fila (`admin-shell.tsx`) y renderiza como **columna vertical que se come ~60% del ancho**, dejando ~147px útiles de 375px en TODAS las pantallas (el drawer hamburguesa ya existe; solo está roto el layout que lo contiene — la topbar debería ser barra superior fija). **P1:** las tablas (pedidos, productos, cotizaciones) muestran solo la primera columna cortada sin indicación; en borradores el botón Publicar individual queda cortado (solo se puede «Publicar todo»). **P2:** sin breadcrumb/contexto en móvil (el topbar desktop se oculta sin reemplazo). **P3/P4/P5 (buenas noticias):** los editores de contenido (índice, página, lista, mediateca), el dashboard y los filtros **ya apilan correctamente** — con el shell arreglado quedan usables; la vista previa C1 apila debajo como se diseñó. Inventario completo con evidencia por screenshot en la auditoría E1 (2026-07-31 — auditorías históricas consolidadas fuera del repo; spec `tests/e2e/mobile-admin-audit.spec.ts` queda como herramienta de regresión). Orden propuesto para E2: shell (P0+P2) → tablas→tarjetas (P1) → barrido fino re-corriendo la spec.
 
 ### E2 — Fixes móviles admin
 
@@ -287,7 +296,7 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Fixes de los hallazgos principales.
 - Esfuerzo **M-L** según hallazgos de la auditoría.
 
-> **✅ RESULTADO — certificado 2026-07-31, commit `0bf3868`.** Tour Playwright a 375×812 por 6 pantallas del cliente (home, catálogo, PDP, carrito, checkout, estudio) con medición objetiva de overflow + revisión visual (`docs/audits/2026-07-31-e3-mobile-storefront-audit.md`; spec `tests/e2e/mobile-storefront-audit.spec.ts` queda como regresión móvil del storefront, compañera de la de admin de E1). **El storefront está en buena forma móvil**: un solo defecto objetivo — la PDP desbordaba 22px (397 vs 375) por el formulario «Avísame cuando vuelva» (input `flex-1` sin `min-w-0` empujaba el botón fuera del viewport); fix canónico `min-w-0`, verificado con sonda de elementos desbordados y **re-auditoría: 0/6 pantallas con overflow**. Revisión visual: home (hero, grilla, carruseles, footer), catálogo, carrito y Estudio (modal de bienvenida + banner cookies, experiencia app-like) apilan y se leen correctamente; `/checkout` con carrito vacío responde 404 (esperado — exige items). **Fuera de alcance, documentado:** gestos del canvas del Estudio (pinch/zoom/drag) — no los cubre una auditoría de screenshots; van a prueba interactiva (territorio D4). Esfuerzo real **S** (un hallazgo, una clase). **Evidencia:** re-auditoría 0/6 ✓ · `tsc` ✓ · `eslint` ✓ · `prettier` ✓ · `next build` ✓.
+> **✅ RESULTADO — certificado 2026-07-31, commit `0bf3868`.** Tour Playwright a 375×812 por 6 pantallas del cliente (home, catálogo, PDP, carrito, checkout, estudio) con medición objetiva de overflow + revisión visual (auditoría E3, 2026-07-31 — auditorías históricas consolidadas fuera del repo; spec `tests/e2e/mobile-storefront-audit.spec.ts` queda como regresión móvil del storefront, compañera de la de admin de E1). **El storefront está en buena forma móvil**: un solo defecto objetivo — la PDP desbordaba 22px (397 vs 375) por el formulario «Avísame cuando vuelva» (input `flex-1` sin `min-w-0` empujaba el botón fuera del viewport); fix canónico `min-w-0`, verificado con sonda de elementos desbordados y **re-auditoría: 0/6 pantallas con overflow**. Revisión visual: home (hero, grilla, carruseles, footer), catálogo, carrito y Estudio (modal de bienvenida + banner cookies, experiencia app-like) apilan y se leen correctamente; `/checkout` con carrito vacío responde 404 (esperado — exige items). **Fuera de alcance, documentado:** gestos del canvas del Estudio (pinch/zoom/drag) — no los cubre una auditoría de screenshots; van a prueba interactiva (territorio D4). Esfuerzo real **S** (un hallazgo, una clase). **Evidencia:** re-auditoría 0/6 ✓ · `tsc` ✓ · `eslint` ✓ · `prettier` ✓ · `next build` ✓.
 
 ### E4 — Tablas del admin como tarjetas en móvil (agregada 2026-08-01, backlog punto 5)
 
@@ -304,7 +313,7 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 
 **Si abres una sesión NUEVA**: el goal no se transfiere (vive en la sesión), pero el estado completo del trabajo está en el repo. Pega este prompt de arranque:
 
-> Retoma la ejecución del ecosistema CMS de este repo (si es lo que te toca). El plan y el progreso por fases con evidencias están en ESTE documento; el estado operativo del PROYECTO completo y el prompt de arranque para sesiones nuevas están en `HANDOFF.md` § «Cómo retomar el trabajo». El roadmap CMS y el backlog del punto 5 están **completos y certificados**; `git status` debe estar limpio — si hay trabajo sin commitear, verifícalo (tsc/lint/tests) y commiétalo antes de seguir. Disciplina por fase: implementación → tsc + lint + prettier + tests focal → commit atómico en español → push a develop → vigilar CI verde → certificar acá.
+> Retoma la ejecución del ecosistema CMS de este repo (si es lo que te toca). El plan y el progreso por fases con evidencias están en ESTE documento; el estado operativo del PROYECTO completo y el arranque para sesiones nuevas están en `docs/STATE.md` (resumen actual + bitácora). El roadmap CMS y el backlog del punto 5 están **completos y certificados**; `git status` debe estar limpio — si hay trabajo sin commitear, verifícalo (tsc/lint/tests) y commiétalo antes de seguir. Disciplina por fase: implementación → tsc + lint + prettier + tests focal → commit atómico en español → push a develop → vigilar CI verde → certificar acá.
 
 **Estado del working tree al 2026-08-01:** limpio — **ROADMAP ORIGINAL COMPLETO: 20/20 fases certificadas** — A1 (release + smoke en prod) · A2 (drop legacy con respaldo JSON) · A3 (Nightly contra Supabase local en CI) · B1–B6 (cobertura de contenido: estudio, transaccionales, iconos, listas, imágenes, banners) · C1–C4 (preview **con edición in-place**, rol editor, publicación programada, utilidades) · D1 (ratchet de cobertura en CI) · D2 (observabilidad del CMS en `/admin/metricas` — `b4e7b92`) · D3 (documentación) · D4 (E2E del flujo de edición) · E1–E4 (móvil). **Backlog del punto 5 COMPLETO**: huecos de copy D1 como fases B7/B8/B9 (auth, checkout, mi-cuenta — commits `b83c2e7`, `c153352`, `e5a4441`), tablas admin→tarjetas móvil como E4 (`70cfed0`), C1 paso 2 — modo edición in-place (`ce38b8c`) y gestos del canvas del Estudio verificados interactivamente (`406051a`). **Separación dev/prod ejecutada en local**: stack Supabase podman espejo nube (`make db-local-*`, commit `c18fd71` + `ee6a655`; Studio :54323, Mailpit :54324; flip de `.env.local` activo con respaldo en `.env.local.nube-backup`). Recordar: el smoke post-release queda como `release-check-a1.spec.ts` reutilizable (PLAYWRIGHT_BASE_URL apuntando a prod).
 

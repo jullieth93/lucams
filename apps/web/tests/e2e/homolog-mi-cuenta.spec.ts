@@ -1,5 +1,5 @@
 /*
- * HOMOLOGACIÓN E2E — área /mi-cuenta (PROMPT_E2E_HOMOLOGACION §6.7):
+ * HOMOLOGACIÓN E2E — área /mi-cuenta (docs/TESTING.md):
  *
  *   perfil (editar nombre/teléfono → DB) · direcciones (crear estructurada
  *   urbana → lista + DB → default única → editar → borrar con confirmación) ·

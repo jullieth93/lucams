@@ -1,7 +1,8 @@
 /*
  * Integración DB — alertas del sistema (Bloque D → centro de notificaciones,
  * 2026-08-05). sendEmail mockeado para no pegar a Resend. Verifica:
- *   - la regla de pico de errores dispara (evaluateAlerts, intacta),
+ *   - la regla de pico de errores dispara (evaluateAlerts — N-33: 5+ en UNA
+ *     misma ruta; la semántica fina del umbral se cubre en alerts.test.ts),
  *   - CADA alerta que dispara crea/actualiza su notificación in-app (dedupKey),
  *   - el EMAIL del lote solo sale cuando hay una CRÍTICA (dedup AlertState intacto).
  */
@@ -54,7 +55,7 @@ describe.skipIf(!hasDb)("observability/alerts — integración DB", { timeout: 3
     await prisma.$disconnect();
   });
 
-  it("evaluateAlerts dispara errors_spike con 5+ errores en 5 min (con qué hacer)", async () => {
+  it("evaluateAlerts dispara errors_spike con 5+ errores en una misma ruta en 5 min (con qué hacer)", async () => {
     const firing = await evaluateAlerts();
     const spike = firing.find((a) => a.key === "errors_spike");
     expect(spike).toBeDefined();
@@ -94,7 +95,9 @@ describe.skipIf(!hasDb)("observability/alerts — integración DB", { timeout: 3
     await prisma.alertState.deleteMany({ where: { key: { in: ALERT_KEYS } } });
     await prisma.notification.deleteMany({ where: { dedupKey: { in: ALERT_KEYS } } });
 
-    // Siembra la crítica: orden Wompi >2h en PENDING_PAYMENT (backstop #9).
+    // Siembra la crítica: orden Wompi que supera PENDING_PAYMENT_EXPIRY_HOURS (24h) en
+    // PENDING_PAYMENT (N-12b: la auto-cancelación debió correr y no lo hizo — antes
+    // bastaban >2h, pero un checkout abandonado dentro de la ventana es esperado).
     const stale = await prisma.order.create({
       data: {
         number: `${RUN}-stale`,
@@ -106,7 +109,7 @@ describe.skipIf(!hasDb)("observability/alerts — integración DB", { timeout: 3
         total: 50000,
         paymentMethod: "WOMPI",
         status: "PENDING_PAYMENT",
-        createdAt: new Date(Date.now() - 3 * 3600 * 1000),
+        createdAt: new Date(Date.now() - 25 * 3600 * 1000),
       },
       select: { id: true },
     });
@@ -121,13 +124,14 @@ describe.skipIf(!hasDb)("observability/alerts — integración DB", { timeout: 3
     expect(emailCalls).toHaveLength(1);
     expect(emailCalls[0].subject).toMatch(/alertas? Lucams/i);
 
-    // Notificación de la crítica: severidad mapeada crítica→critical + deep link a pedidos.
+    // Notificación de la crítica: severidad mapeada crítica→critical + deep link a
+    // observability (N-12b: lo roto es la auto-cancelación — un cron — no la orden).
     const crit = await prisma.notification.findFirst({
       where: { dedupKey: "pending_payment_wompi_stale" },
     });
     expect(crit).toBeTruthy();
     expect(crit!.severity).toBe("critical");
-    expect(crit!.actionUrl).toBe("/admin/pedidos");
+    expect(crit!.actionUrl).toBe("/admin/observability");
 
     // Segundo ciclo inmediato: AlertState frena el email; el feed ACTUALIZA la
     // no leída en vez de duplicar (dedupKey).

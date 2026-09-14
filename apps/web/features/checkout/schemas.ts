@@ -176,5 +176,3 @@ export const ShippingSelectionSchema = z.object({
   quoteId: z.string().min(1).max(120),
 });
 export type ShippingSelectionInput = z.infer<typeof ShippingSelectionSchema>;
-
-export const PaymentMethodSchema = z.enum(["WOMPI", "COD"]);

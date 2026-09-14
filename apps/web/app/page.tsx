@@ -37,6 +37,7 @@ import { getCmsBanners, getSettingValue } from "@/lib/cms";
 import { getPageSeo } from "@/lib/cms-tokens";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { isCatalogMode } from "@/lib/store-mode";
+import { getCanonicalSiteUrl } from "@/lib/public-url";
 
 /* La home define su PROPIA description y por eso pisa la del layout — que sí se derivaba del modo
    (auditoría 2026-07-21). "Entrega a 1.100+ destinos" es la cobertura del operador logístico, que
@@ -99,20 +100,21 @@ export default async function Home() {
   // El sameAs sale de los settings SOCIAL_*_URL (los mismos del footer); si una
   // URL queda vacía se excluye del array.
   const sameAs = [instagramUrl, tiktokUrl, facebookUrl].filter((url) => url.trim() !== "");
+  const siteUrl = getCanonicalSiteUrl();
   const siteJsonLd = [
     {
       "@context": "https://schema.org",
       "@type": "Organization",
       name: "Lucams_shop",
-      url: "https://lucamsshop.com",
-      logo: "https://lucamsshop.com/brand/lucams-logo.png",
+      url: siteUrl,
+      logo: `${siteUrl}/brand/lucams-logo.png`,
       sameAs,
     },
     {
       "@context": "https://schema.org",
       "@type": "WebSite",
       name: "Lucams_shop",
-      url: "https://lucamsshop.com",
+      url: siteUrl,
     },
   ];
   const siteJsonLdSafe = JSON.stringify(siteJsonLd)

@@ -32,7 +32,7 @@ export async function setTicketStatusAction(_p: St, fd: FormData): Promise<St> {
     revalidatePath("/admin/soporte");
     const label =
       status === "CLOSED"
-        ? "cerrado"
+        ? "cerrado — cliente avisado por correo"
         : status === "IN_PROGRESS"
           ? "marcado en progreso"
           : "reabierto";

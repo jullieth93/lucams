@@ -1,5 +1,5 @@
 /*
- * HOMOLOGACIÓN E2E — landings de ocasión (PROMPT_E2E_HOMOLOGACION §6.15):
+ * HOMOLOGACIÓN E2E — landings de ocasión (docs/TESTING.md):
  *
  *   las landings top por ocasión sembrada renderizan con productos reales
  *   filtrados de la DB (links a PDPs existentes), breadcrumb sin link roto

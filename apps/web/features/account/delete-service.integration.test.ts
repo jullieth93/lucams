@@ -48,6 +48,7 @@ describe.skipIf(!hasDb)("deleteCustomerAccount — supresión Ley 1581", { timeo
       await safe(
         prisma.backInStockSubscription.deleteMany({ where: { email: { contains: RUN } } }),
       );
+      await safe(prisma.wishlistItem.deleteMany({ where: { customerId: ids.customerId } }));
       await safe(prisma.address.deleteMany({ where: { customerId: ids.customerId } }));
     }
     if (ids.productId) {
@@ -145,6 +146,10 @@ describe.skipIf(!hasDb)("deleteCustomerAccount — supresión Ley 1581", { timeo
     await prisma.backInStockSubscription.create({
       data: { productId: product.id, email: `${RUN}@test.local`, customerId: customer.id },
     });
+    // N-18 — wishlist del titular: debe quedar vacía tras la supresión.
+    await prisma.wishlistItem.create({
+      data: { customerId: customer.id, productId: product.id },
+    });
     const cart = await prisma.cart.create({
       data: { sessionId: `${RUN}-cart`, currency: "COP" },
       select: { id: true },
@@ -192,5 +197,8 @@ describe.skipIf(!hasDb)("deleteCustomerAccount — supresión Ley 1581", { timeo
       await prisma.backInStockSubscription.count({ where: { email: `${RUN}@test.local` } }),
     ).toBe(0);
     expect(await prisma.abandonedCart.count({ where: { email: `${RUN}@test.local` } })).toBe(0);
+
+    // N-18 — wishlist borrada: la FK no queda huérfana sobre la cuenta anonimizada.
+    expect(await prisma.wishlistItem.count({ where: { customerId: customer.id } })).toBe(0);
   });
 });

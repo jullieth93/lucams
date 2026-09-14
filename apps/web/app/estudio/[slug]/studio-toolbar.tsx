@@ -7,12 +7,15 @@
  *   - Back link al PDP (ARIA labeled)
  *   - Producto + indicador "X/N fotos" mini
  *   - Auto-save indicator (Editando · Guardando · Auto-guardado hace Xs · Error)
- *   - Botón "¡Listo!" con canFinalize fix (solo habilitado si TODOS los
- *     slots tienen assetUrl — el bug crítico de M.3 corregido)
+ *   - Botón «Vista previa» (renombrado desde «¡Listo!» — Lucy 2026-09-09: abre
+ *     la modal de confirmación pre-carrito, no agrega directo) con canFinalize
+ *     fix (solo habilitado si TODOS los slots tienen assetUrl — el bug crítico
+ *     de M.3 corregido)
  *
- * El botón "¡Listo!" tiene 3 estados visuales:
- *   - Deshabilitado (rojo claro + tooltip explicando qué falta)
- *   - Habilitado (morado solid + shine on hover)
+ * El botón «Vista previa» tiene 4 estados visuales:
+ *   - Deshabilitado (morado atenuado + tooltip explicando qué falta)
+ *   - Habilitado (morado solid + sombra on hover)
+ *   - Preparando la vista previa (loader + "Preparando…", aria-busy)
  *   - Saving (loader + texto "Guardando diseño...")
  */
 
@@ -24,6 +27,8 @@ import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { compareSizeToObject } from "./lib/size-comparator";
 import { LucamsLogo } from "@/components/lucams-logo";
+import { StudioPhotoCountControl } from "./studio-photo-count-control";
+import { StudioUnitCountControl } from "./studio-unit-count-control";
 import {
   selectFilledSlotCount,
   selectIsComplete,
@@ -55,7 +60,38 @@ type StudioToolbarProps = {
    *  (drag/zoom/dblclick). El cliente puede re-leer las instrucciones cuando
    *  quiera. */
   onOpenGesturesHint?: () => void;
+  /** Lucy 2026-09-09 — true mientras se compone la vista previa (handleFinalize):
+   *  el botón muestra spinner + disabled (feedback de procesamiento, patrón
+   *  Loader2 del Estudio). */
+  isPreviewBuilding?: boolean;
+  /**
+   * Lucy 2026-09-05 — packs de fotoimanes: config del stepper "¿Cuántas fotos
+   * lleva tu imán?" (fila propia bajo el header). undefined = producto no pack:
+   * el control no se renderiza.
+   */
+  photoCount?: {
+    min: number;
+    max: number;
+    facesPerUnit: number;
+    sizeCm?: string;
+    /** "¿Con imán?" (Lucy 2026-09-08): badge read-only junto al stepper — lo fija
+     *  la PDP, el Estudio solo lo muestra. undefined = catálogo sin la dimensión. */
+    magnet?: boolean;
+    /**
+     * Ola 28 (owner 2026-09-11, 1.3.A) — producto de COMPOSICIÓN fija (tiras):
+     * la composición (fotos por tira) se elige en la PDP y no se repite acá;
+     * en su lugar va el stepper "Unidades" (cuántas tiras diseñar).
+     */
+    composition?: boolean;
+  };
   onFinalize: () => void;
+  /**
+   * Ola 26 (owner 2026-09-09) — bloqueo EXTRA de «Vista previa» con las fotos ya
+   * completas (hoy: textos requeridos de la Polaroid Instagram sin llenar). Lo
+   * calcula el editor (guard de finalización); acá sigue el mismo patrón del
+   * bloqueo por fotos: botón deshabilitado + tooltip/aria con el motivo.
+   */
+  finalizeBlockReason?: string | null;
 };
 
 export function StudioToolbar({
@@ -69,6 +105,9 @@ export function StudioToolbar({
   showRealismGuides,
   onToggleRealismGuides: _onToggleRealismGuides,
   onOpenGesturesHint,
+  photoCount,
+  isPreviewBuilding = false,
+  finalizeBlockReason = null,
   onFinalize,
 }: StudioToolbarProps) {
   const autoSaveStatus = useStore(store, (s) => s.autoSaveStatus);
@@ -80,11 +119,11 @@ export function StudioToolbar({
   const complete = useStore(store, selectIsComplete);
   const texts = useStudioTexts();
 
-  const canFinalize = complete && !isFinalizing;
+  const canFinalize = complete && !finalizeBlockReason && !isFinalizing && !isPreviewBuilding;
 
   const disabledTooltip = !complete
     ? fillStudioText(texts.lienzo.finalizeTooltip, { n: total - filled })
-    : undefined;
+    : (finalizeBlockReason ?? undefined);
 
   return (
     <header
@@ -95,11 +134,13 @@ export function StudioToolbar({
         {/* FB2 (feedback Lucy) — la salida del estudio no se veía en móvil (solo el ícono, sepultado
           bajo el header del sitio). Ahora es un botón con etiqueta "Salir" siempre visible, con
           fondo suave para que se lea como control tocable. Vuelve a la ficha del producto (el
-          borrador se autoguarda, no se pierde nada). */}
+          borrador se autoguarda, no se pierde nada).
+          Lucy 2026-09-08 — se vuelve BOTÓN SÓLIDO morado de marca (mismo lenguaje visual del
+          botón «Vista previa»): el pill con fondo suave seguía leyéndose como texto, no como acción. */}
         <Link
           href={`/producto/${productSlug}`}
           aria-label={fillStudioText(texts.lienzo.salirAria, { producto: productName })}
-          className="text-brand-purple-dark/80 hover:text-brand-purple-dark bg-brand-purple/8 hover:bg-brand-purple/15 focus:ring-brand-purple inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors focus:ring-2 focus:outline-none"
+          className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 focus:ring-brand-purple inline-flex h-10 shrink-0 items-center gap-1.5 rounded-md px-4 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg focus:ring-2 focus:ring-offset-2 focus:outline-none"
         >
           <ArrowLeft className="h-4 w-4" />
           <span>{texts.lienzo.headerExit}</span>
@@ -164,6 +205,7 @@ export function StudioToolbar({
           <div className="hidden sm:block">
             <FinalizeButton
               isFinalizing={isFinalizing}
+              isPreparing={isPreviewBuilding}
               canFinalize={canFinalize}
               disabledTooltip={disabledTooltip}
               onFinalize={onFinalize}
@@ -172,6 +214,28 @@ export function StudioToolbar({
           </div>
         </div>
       </div>
+
+      {/* Lucy 2026-09-05 — packs de fotoimanes: el N de fotos por imán se elige ACÁ
+          (en el Estudio), no en la PDP. Fila propia visible en mobile y desktop.
+          Ola 28 (owner 2026-09-11) — composición fija (tiras): el stepper de fotos
+          sobra ("ya se eligió en la PDP"); en su lugar va el de UNIDADES a diseñar. */}
+      {photoCount && !photoCount.composition && (
+        <StudioPhotoCountControl
+          store={store}
+          min={photoCount.min}
+          max={photoCount.max}
+          facesPerUnit={photoCount.facesPerUnit}
+          sizeCm={photoCount.sizeCm}
+          magnet={photoCount.magnet}
+        />
+      )}
+      {photoCount?.composition && (
+        <StudioUnitCountControl
+          store={store}
+          facesPerUnit={photoCount.facesPerUnit}
+          magnet={photoCount.magnet}
+        />
+      )}
 
       {/* Progress badge mobile (visible solo < md) */}
       <div className="border-brand-purple/10 bg-brand-cream/50 flex items-center justify-center gap-2 border-t py-2 md:hidden">
@@ -224,25 +288,45 @@ export function StudioToolbar({
 //  M.3.b.UX.1 — FinalizeButton (extraído para reusar como FAB mobile)
 // ──────────────────────────────────────────────────────────────────
 //
-// Botón ¡Listo! con 2 variantes:
+// Botón «Vista previa» (antes «¡Listo!») con 2 variantes:
 //  - "inline": versión del toolbar desktop (h-10 px-4)
 //  - "fab":    versión floating mobile bottom-right (h-14, sombra deep,
 //              pulse animation cuando canFinalize)
+//
+// Procesamiento (Lucy 2026-09-09): `isPreparing` cubre la composición de la
+// vista previa (loader + disabled + aria-busy, patrón del resto del Estudio);
+// `isFinalizing` cubre el guardado/subida tras confirmar en la modal.
 
 export function FinalizeButton({
   isFinalizing,
+  isPreparing = false,
   canFinalize,
   disabledTooltip,
   onFinalize,
   variant,
 }: {
   isFinalizing: boolean;
+  isPreparing?: boolean;
   canFinalize: boolean;
   disabledTooltip?: string;
   onFinalize: () => void;
   variant: "inline" | "fab";
 }) {
   const texts = useStudioTexts();
+  const busy = isFinalizing || isPreparing;
+  // Mientras procesa, el nombre audible se mantiene en la acción real (no en
+  // el de "bloqueado"): el botón está OCUPADO, no inhabilitado por faltantes.
+  const ariaLabel =
+    canFinalize || busy
+      ? texts.lienzo.finalizeAria
+      : (disabledTooltip ?? texts.lienzo.finalizeAriaBloqueado);
+  // Texto del estado ocupado: preparando la vista previa o guardando tras
+  // confirmar (inline lleva el texto largo; el FAB, el corto compartido).
+  const busyText = isPreparing
+    ? texts.comun.preparando
+    : variant === "fab"
+      ? texts.comun.guardando
+      : texts.lienzo.finalizeGuardando;
   if (variant === "fab") {
     return (
       <button
@@ -250,12 +334,9 @@ export function FinalizeButton({
         disabled={!canFinalize}
         onClick={onFinalize}
         title={disabledTooltip}
-        aria-label={
-          canFinalize
-            ? texts.lienzo.finalizeAria
-            : (disabledTooltip ?? texts.lienzo.finalizeAriaBloqueado)
-        }
+        aria-label={ariaLabel}
         aria-disabled={!canFinalize}
+        aria-busy={busy}
         className={[
           "focus:ring-brand-purple fixed right-4 bottom-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold transition-all focus:ring-2 focus:ring-offset-2 focus:outline-none sm:hidden",
           canFinalize
@@ -263,15 +344,15 @@ export function FinalizeButton({
             : "bg-brand-purple/40 cursor-not-allowed text-white shadow-md",
         ].join(" ")}
       >
-        {isFinalizing ? (
+        {busy ? (
           <>
             <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-            <span>{texts.comun.guardando}</span>
+            <span>{busyText}</span>
           </>
         ) : (
           <>
             <Sparkles className="h-5 w-5" aria-hidden />
-            <span>{texts.comun.listo}</span>
+            <span>{texts.lienzo.finalizeBtn}</span>
           </>
         )}
       </button>
@@ -285,12 +366,9 @@ export function FinalizeButton({
       disabled={!canFinalize}
       onClick={onFinalize}
       title={disabledTooltip}
-      aria-label={
-        canFinalize
-          ? texts.lienzo.finalizeAria
-          : (disabledTooltip ?? texts.lienzo.finalizeAriaBloqueado)
-      }
+      aria-label={ariaLabel}
       aria-disabled={!canFinalize}
+      aria-busy={busy}
       className={[
         "focus:ring-brand-purple inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-all focus:ring-2 focus:ring-offset-2 focus:outline-none",
         canFinalize
@@ -298,15 +376,15 @@ export function FinalizeButton({
           : "bg-brand-purple/30 cursor-not-allowed text-white",
       ].join(" ")}
     >
-      {isFinalizing ? (
+      {busy ? (
         <>
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          <span>{texts.lienzo.finalizeGuardando}</span>
+          <span>{busyText}</span>
         </>
       ) : (
         <>
           <Sparkles className="h-4 w-4" aria-hidden />
-          <span>{texts.comun.listo}</span>
+          <span>{texts.lienzo.finalizeBtn}</span>
         </>
       )}
     </button>
@@ -314,7 +392,7 @@ export function FinalizeButton({
 }
 
 // ──────────────────────────────────────────────────────────────────
-//  StudioFinalizeFab — FAB ¡Listo! mobile (montado desde editor)
+//  StudioFinalizeFab — FAB «Vista previa» mobile (montado desde editor)
 // ──────────────────────────────────────────────────────────────────
 //
 // Hijo del editor (no del toolbar) porque debe flotar fuera del header
@@ -322,9 +400,14 @@ export function FinalizeButton({
 
 export function StudioFinalizeFab({
   store,
+  isPreviewBuilding = false,
+  finalizeBlockReason = null,
   onFinalize,
 }: {
   store: StoreApi<StudioStoreState>;
+  isPreviewBuilding?: boolean;
+  /** Ola 26 — mismo bloqueo extra que el toolbar inline (textos requeridos IG). */
+  finalizeBlockReason?: string | null;
   onFinalize: () => void;
 }) {
   const isFinalizing = useStore(store, (s) => s.isFinalizing);
@@ -332,13 +415,14 @@ export function StudioFinalizeFab({
   const total = useStore(store, selectTotalSlotCount);
   const complete = useStore(store, selectIsComplete);
   const texts = useStudioTexts();
-  const canFinalize = complete && !isFinalizing;
+  const canFinalize = complete && !finalizeBlockReason && !isFinalizing && !isPreviewBuilding;
   const disabledTooltip = !complete
     ? fillStudioText(texts.lienzo.finalizeTooltip, { n: total - filled })
-    : undefined;
+    : (finalizeBlockReason ?? undefined);
   return (
     <FinalizeButton
       isFinalizing={isFinalizing}
+      isPreparing={isPreviewBuilding}
       canFinalize={canFinalize}
       disabledTooltip={disabledTooltip}
       onFinalize={onFinalize}

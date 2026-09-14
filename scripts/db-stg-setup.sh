@@ -17,7 +17,7 @@
 #
 # NO corre seeds (después: `make db-stg-seed`).
 #
-# PASO MANUAL POSTERIOR (pg_cron HTTP jobs, migraciones 015/016/021): los jobs
+# PASO MANUAL POSTERIOR (pg_cron HTTP jobs, migraciones 015/016/021/023): los jobs
 # leen `cron_base_url` y `cron_secret` del Vault EN RUNTIME; en un proyecto
 # nuevo no existen y los jobs fallarían en cada corrida. Crearlos apuntando a
 # la URL estable del preview de develop con el MISMO valor de CRON_SECRET que

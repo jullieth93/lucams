@@ -3,9 +3,15 @@ name: Backup DB → R2
 # Backup off-site DIARIO de la base de datos a Cloudflare R2 (ADR-059, OPERATIONS.md).
 # (2026-08-04: semanal → diario — una tienda viva no puede perder hasta 7 días de datos;
 #  el dump pesa ~1.2 MB y el costo es el mismo. Retención 30 ≈ 1 mes de diarios.)
+# (2026-09-04: nuevo job `backup-storage` — mirror cifrado de los buckets de Supabase
+#  Storage a R2, hallazgo F-16 de la auditoría 2026-09-04: customer-uploads lleva las
+#  fotos de las clientas (PII) y no tenía backup off-site.)
 # Complementa el PITR de Supabase Pro con una copia independiente fuera de Supabase
 # (DR drill #2: restore desde R2). NO usa Vercel Cron (mandato #11): es una tarea de
 # OPS en GitHub Actions, no un background job de la app.
+# (2026-09-11, N-19a: nuevo job `heartbeat` — tras el éxito hace POST a
+#  /api/cron/backup-heartbeat con CRON_SECRET para que la app sepa que el backup
+#  corre; la regla backup_stale del panel alerta si pasan >36h sin latido.)
 on:
   schedule:
     # Diario 07:13 UTC (~02:13 America/Bogotá). Los cron de GitHub corren en UTC.
@@ -33,6 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       configured: ${{ steps.check.outputs.configured }}
+      storage_configured: ${{ steps.check.outputs.storage_configured }}
     steps:
       - id: check
         env:
@@ -41,12 +48,21 @@ jobs:
           # job pasaba el gate y reventaba en runtime cada día — justo el correo de error diario
           # que este gate existe para evitar.
           HAS_R2: ${{ secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && secrets.R2_BUCKET != '' }}
+          # F-16 (2026-09-04): el mirror de Storage tiene gate PROPIO — el backup de la DB no
+          # debe apagarse ni ensuciarse si aún faltan los secrets de Supabase para storage.
+          HAS_STORAGE: ${{ secrets.BACKUP_SUPABASE_URL != '' && secrets.BACKUP_SUPABASE_SECRET_KEY != '' }}
         run: |
           if [ "$HAS_DB" = "true" ] && [ "$HAS_R2" = "true" ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"
             echo "::warning::Backup R2 inactivo: faltan secrets. Configura BACKUP_DATABASE_URL y R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET en Settings → Secrets and variables → Actions para activar el backup diario."
+          fi
+          if [ "$HAS_R2" = "true" ] && [ "$HAS_STORAGE" = "true" ]; then
+            echo "storage_configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "storage_configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Backup de Storage inactivo: faltan secrets. Configura BACKUP_SUPABASE_URL y BACKUP_SUPABASE_SECRET_KEY (además de los R2_*) en Settings → Secrets and variables → Actions para activar el mirror diario de Supabase Storage."
           fi
 
   backup:
@@ -110,3 +126,100 @@ jobs:
           # 2026-08-29; si ubuntu-latest cambia de imagen base, re-verificar).
           BACKUP_GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
           BACKUP_KEEP: "30" # ~1 mes de backups diarios
+
+  # F-16 (auditoría 2026-09-04): mirror cifrado de los buckets de Supabase Storage a R2.
+  # Job SEPARADO del de la DB: comparte gate de secrets propio (storage_configured) para
+  # que un faltante de BACKUP_SUPABASE_* no apague el backup de la DB ni lo ensucie en
+  # rojo. Llaves `db-storage/<bucket>/lucams-<UTC>.tar.gz.gpg` + manifiesto JSON por
+  # corrida; misma passphrase gpg y misma retención que el backup de la DB.
+  backup-storage:
+    name: Mirror de Supabase Storage → R2
+    needs: gate
+    if: needs.gate.outputs.storage_configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      # El script necesita @aws-sdk/client-s3 (devDep de apps/web) y @supabase/supabase-js
+      # (dependency de apps/web). No hace falta build ni pg_dump — gpg viene preinstalado
+      # en el runner (ver la nota del job `backup`).
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Backup Storage + subida a R2
+        run: node apps/web/scripts/backup-storage-to-r2.mjs
+        env:
+          # Credenciales Supabase DEDICADAS al backup (service/secret key server-side —
+          # bypassea RLS para leer los buckets privados). Secrets a configurar por Lucy.
+          BACKUP_SUPABASE_URL: ${{ secrets.BACKUP_SUPABASE_URL }}
+          BACKUP_SUPABASE_SECRET_KEY: ${{ secrets.BACKUP_SUPABASE_SECRET_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          # La MISMA passphrase del backup de la DB (A-3). Fail-closed: sin este secret el
+          # job FALLA — un mirror sin cifrar de customer-uploads en R2 es inaceptable (PII).
+          BACKUP_GPG_PASSPHRASE: ${{ secrets.BACKUP_GPG_PASSPHRASE }}
+          BACKUP_KEEP: "30" # ~1 mes de mirrors diarios POR bucket (misma retención que la DB)
+
+  # N-19a (auditoría 2026-09-11): latido al panel admin tras un backup exitoso. El backup
+  # corre FUERA de la app y su salud era invisible desde ella (solo se veía en esta pestaña
+  # Actions). Este job hace POST a /api/cron/backup-heartbeat (upsert de
+  # AlertState["backup:last-success"]); la regla backup_stale alerta en el centro de
+  # notificaciones si pasan >36h sin éxito, y /admin/observability muestra el tile.
+  #
+  # Condición: corre SOLO si el backup de la DB terminó en success y, cuando el mirror de
+  # Storage está configurado, también él (un éxito a medias NO debe levantar el latido).
+  # Si los secrets de backup no están (gate=false), ambos jobs se saltan y este también.
+  # OJO con la sintaxis: el id con guion exige needs['backup-storage'] (needs.backup-storage
+  # se parsearía como resta).
+  heartbeat:
+    name: Latido al panel (backup OK)
+    needs: [gate, backup, backup-storage]
+    if: >-
+      always() &&
+      needs.backup.result == 'success' &&
+      (needs.gate.outputs.storage_configured != 'true' || needs['backup-storage'].result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Header x-cron-secret (el MISMO CRON_SECRET de los crons pg_cron, ya existe en los
+      # secrets del repo). El bypass de Deployment Protection va SOLO si existe
+      # VERCEL_BYPASS_TOKEN — mismo patrón que los smokes CI (x-vercel-protection-bypass);
+      # PRD (dominio público) no lo necesita y el header simplemente no se manda.
+      - name: POST /api/cron/backup-heartbeat
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_BYPASS_TOKEN: ${{ secrets.VERCEL_BYPASS_TOKEN }}
+          HEARTBEAT_URL: https://lucamsshop.com/api/cron/backup-heartbeat
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error::Falta el secret CRON_SECRET: sin él la app no recibe el latido del backup (la alerta backup_stale sonará en el panel)."
+            exit 1
+          fi
+          args=(-fsS -X POST "$HEARTBEAT_URL" -H "x-cron-secret: $CRON_SECRET" -H "content-type: application/json" -o /tmp/heartbeat-resp.json -w "%{http_code}")
+          if [ -n "${VERCEL_BYPASS_TOKEN:-}" ]; then
+            args+=(-H "x-vercel-protection-bypass: $VERCEL_BYPASS_TOKEN")
+          fi
+          code=$(curl "${args[@]}" -d '{}')
+          cat /tmp/heartbeat-resp.json
+          # Si el latido falla, el job sale ROJO a propósito: un backup exitoso que no
+          # logra reportarse deja a backup_stale como única señal (36h después) — el
+          # fallo debe verse acá el mismo día.
+          if [ "$code" != "200" ]; then
+            echo "::error::El POST del latido falló (HTTP $code). Revisar /api/cron/backup-heartbeat y el secret CRON_SECRET."
+            exit 1
+          fi

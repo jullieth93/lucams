@@ -1,5 +1,5 @@
 /*
- * HOMOLOGACIÓN E2E — recomendador wizard (PROMPT_E2E_HOMOLOGACION §6.13):
+ * HOMOLOGACIÓN E2E — recomendador wizard (docs/TESTING.md):
  *
  *   los 4 pasos navegan con gestión de foco (h2 enfocado por paso, WCAG 2.4.3)
  *   → resultado con productos REALES de la DB (ocasión Cumpleaños, 12 activos)

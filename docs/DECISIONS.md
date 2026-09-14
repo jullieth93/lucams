@@ -337,7 +337,7 @@ Tras 12 preguntas a soporte Venndelo + pruebas reales con `POST /orders/quotatio
 ## ADR-014 — Política de stock: reserva al `PENDING_PAYMENT` + descuento al `PAID`
 
 **Fecha:** 2026-05-09
-**Estado:** ✅ Aceptada
+**Estado:** 🔄 **SUPERSEDED por ADR-091 (2026-09-12)** — la reserva con TTL (`StockReservation` + cleanup por pg_cron) nunca tuvo consumidores productivos y se retiró del schema; la protección real contra sobreventa es el UPDATE atómico (`UPDATE … WHERE stock >= qty`) al `PAID` + `needsReconciliation`. Este ADR queda como registro de la decisión original.
 
 **Contexto:** Detectado en auditoría de coherencia (H6): contradicción entre ROADMAP ("stock se descuenta al PAID") y OPERATIONS ("reservar stock al PENDING_PAYMENT con TTL 15 min"). Necesitamos un único modelo de inventario que prevenga sobreventa sin sacrificar conversion al checkout.
 
@@ -386,7 +386,7 @@ Tras 12 preguntas a soporte Venndelo + pruebas reales con `POST /orders/quotatio
 ## ADR-016 — Rate limit y cache en Postgres + `pg_cron`, sin proveedor externo
 
 **Fecha:** 2026-05-09
-**Estado:** ✅ Aceptada
+**Estado:** ✅ Aceptada · ⚠️ **Parcialmente SUPERSEDED (2026-09-03):** el rate limit en Postgres sí se implementó (`rate_limit_check`, migración `00000000000003`); el **cache en Postgres nunca se implementó** (no existe `lib/cache.ts` ni tabla `cache_entries` — el caching real es `unstable_cache` de Next con tag `cms`). Leer solo la mitad de rate limit como vigente.
 
 **Contexto:** Auditoría detectó (H14) que PLAN/INTEGRATIONS mencionaban "Vercel KV o Upstash Free" para rate limit y cache. Verificación contra [vercel.com/docs/redis](https://vercel.com/docs/redis) (consultada 2026-05-09) confirmó que **Vercel KV está deprecado desde diciembre 2024**: _"Vercel KV is no longer available... we automatically moved it to Upstash Redis in December 2024."_ Verificación contra [upstash.com/pricing](https://upstash.com/pricing): Upstash Free es 500.000 cmd/mes + 256 MB.
 
@@ -418,7 +418,7 @@ Tras 12 preguntas a soporte Venndelo + pruebas reales con `POST /orders/quotatio
 ## ADR-017 — Background jobs en Supabase Queues (`pgmq`) + `pg_cron`, no Vercel Cron
 
 **Fecha:** 2026-05-09
-**Estado:** ✅ Aceptada
+**Estado:** 🔄 **SUPERSEDED (2026-09-03)** — pgmq nunca se adoptó: la implementación real es **pg_cron + pg_net → HTTP `GET /api/cron/*`** con `x-cron-secret` desde Supabase Vault (migraciones 015/016/021/023, 8 jobs HTTP + 2 cleanups SQL). Los emails tienen idempotencia por `idempotencyKey` en vez de cola durable. Este ADR queda como registro de la decisión original.
 
 **Contexto:** Auditoría detectó (H21) que ROADMAP mencionaba "Cron Vercel" y OPERATIONS hablaba de "cron de reconciliación" sin un sistema concreto. Pregunta del usuario sobre si Supabase Queues podría servir. Verificación contra [supabase.com/docs/guides/queues](https://supabase.com/docs/guides/queues) (consultada 2026-05-09) confirmó que **Supabase Queues** (basado en `pgmq`) es _"Postgres-native durable Message Queue system with guaranteed delivery"_ con exactly-once delivery y archivado.
 
@@ -2003,7 +2003,7 @@ fichas"), y evaluar **desde cero la tecnología**, dispuesta a refactorizar el c
 **Investigación.** 3 workflows en paralelo con verificación adversarial (139 agentes), cruzados contra el
 código real: (1) estándares de calidad de impresión + UX (105 agentes, fuentes citadas), (2) taxonomía de
 personalización por tipo de producto, (3) evaluación de tecnología mantener/aumentar/refactorizar. Detalle
-completo en [ESTUDIO_STRATEGY.md](ESTUDIO_STRATEGY.md). Versión visual para Lucy: artifact en claude.ai.
+completo en el README del módulo ([`apps/web/app/estudio/[slug]/README.md`](../apps/web/app/estudio/%5Bslug%5D/README.md); la estrategia original quedó en git history). Versión visual para Lucy: artifact en claude.ai.
 
 **Decisión.**
 
@@ -2013,7 +2013,8 @@ completo en [ESTUDIO_STRATEGY.md](ESTUDIO_STRATEGY.md). Versión visual para Luc
    motor. **Directiva explícita de Lucy (2026-07-12): NO atarnos a pagar una licencia (inviable por costo) —
    construir nuestra propia tecnología sobre Konva hasta tener algo igual o mejor que Polotno.** Polotno queda
    solo como _referencia_ de lo que "listo" significa (es replicable a $0 por ser el mismo motor); nunca como
-   dependencia ni opción de compra futura. Ver "Meta paridad-o-mejor que Polotno" en ESTUDIO_STRATEGY.md.
+   dependencia ni opción de compra futura. ("Meta paridad-o-mejor que Polotno" — documento de
+   estrategia del Estudio consolidado en git history; el módulo vivo está en `apps/web/app/estudio/`).
 2. **Gap #1 (arquitectura):** el archivo de impresión hoy se genera en el celular del cliente
    (`finalizeDesign` solo valida cantidad + sube los PNG del navegador). Riesgo real de degradación/fallo
    silencioso → devolución. Fix de máximo impacto/menor costo ($0, no toca el motor): **render de producción
@@ -3162,3 +3163,196 @@ informe; acá quedan solo las decisiones que cambian comportamiento o postura de
 corregidos, A-4). Quedan acciones humanas listadas en la §11 del informe (secretos GitHub, panel
 AveOnline, dashboard Supabase, aplicar migraciones, monitores con `x-cron-secret`). El riesgo G-9
 (cifrado de columna para `documentNumber`) queda explícitamente aceptado hasta la Fase 7 (DIAN).
+
+---
+
+## ADR-086 — Mirror cifrado de Supabase Storage a R2 (2026-09-04)
+
+**Fecha:** 2026-09-04
+**Estado:** ✅ Aceptada
+
+**Contexto.** La auditoría prelanzamiento 2026-09-04 (F-16) encontró que el backup diario a R2
+cubría solo la base de datos: los objetos de Supabase Storage —incluido `customer-uploads`, las
+fotos que las clientas suben para producir (PII y materia prima del negocio)— no tenían copia
+off-site. Una pérdida del proyecto Supabase restauraba la DB pero perdía las fotos de los pedidos
+en curso.
+
+**Decisión.** Nuevo script `apps/web/scripts/backup-storage-to-r2.mjs` (job propio `backup-storage`
+en `backup.yml`, gate de secrets separado para no apagar el backup de DB si faltan): por bucket,
+snapshot completo en tar streaming → gzip → **gpg AES256** (misma `BACKUP_GPG_PASSPHRASE` por fd,
+fail-closed) → R2 (`db-storage/<bucket>/lucams-<UTC>.tar.gz.gpg`), manifiesto JSON solo con conteos
+(nunca rutas ni PII), retención `BACKUP_KEEP=30`. Snapshot completo y no incremental: a esta escala
+(cientos de objetos pequeños) un archivo auto-contenido por bucket/día es lo que el drill puede
+verificar y lo que un restore quiere desempacar. El DR drill gana el job `drill-storage`
+(`dr-drill-storage.mjs`): prueba de legibilidad (descifra un archivo y cuadra conteo/bytes contra el
+manifiesto) sin restauración completa. Secrets nuevos en GitHub: `BACKUP_SUPABASE_URL` y
+`BACKUP_SUPABASE_SECRET_KEY` (creados por Lucy el 2026-09-04). `auth.users` sigue sin restore
+validado end-to-end — queda como brecha conocida del DR.
+
+## ADR-087 — Step-up MFA (aal2 reciente) en acciones admin destructivas (2026-09-04)
+
+**Fecha:** 2026-09-04
+**Estado:** ✅ Aceptada
+
+**Contexto.** La auditoría (F-10) encontró que bastaba una sesión admin con aal2 fresco para emitir
+reembolsos o elevar privilegios: el panel verificaba rol + aal2 pero nunca re-probaba identidad
+(a diferencia del área de cliente, que re-autentica con password para cambios sensibles).
+
+**Decisión.** Las acciones destructivas (`refundOrderAction`, `refundRetractAction`,
+`promoteAdminAction`, `changeAdminRoleAction`, `toggleAdminActiveAction`) exigen un **aal2 con
+antigüedad ≤10 minutos**, medido por el timestamp del claim `amr` del JWT (no `auth_time`, que marca
+el login con password). Si está vencido, la acción responde `MFA_REAUTH_REQUIRED` y la UI abre un
+modal TOTP que verifica server-side (la Server Action muta las cookies y deja el JWT fresco) y
+reintenta una vez. Fail-closed ante cualquier ambigüedad del claim; rate-limit doble IP+admin
+(`admin-mfa-reauth`, 5/15 min) y audit `mfa.reauth.*`. Se protege **dinero y privilegios**, no la
+operación diaria (cupones, precios, conciliación COD) — meter TOTP ahí rompería el flujo de trabajo
+sin riesgo equivalente. Limitación conocida: un Custom Access Token Hook que emita `amr` plano
+(RFC-8176) haría fallar-cerrado el chequeo (no hay hook configurado).
+
+## ADR-088 — Telemetría Web Vitals estrictamente opt-in (2026-09-04)
+
+**Fecha:** 2026-09-04
+**Estado:** ✅ Aceptada
+
+**Contexto.** El banner de cookies capturaba la preferencia "Analíticas" pero nada la consumía: el
+beacon de Web Vitals (`/api/vitals`) se enviaba igual (F-19). La política publicada prometía
+"desactivadas por defecto y solo si las aceptas" — era falsa en la práctica.
+
+**Decisión.** `WebVitalsReporter` lee la cookie de consentimiento en cada disparo y solo envía si
+`analytics === true`; **sin respuesta no se envía nada** (opt-in estricto, el único comportamiento
+coherente con el texto legal y la Ley 1581). Lectura perezosa en vez de estado React porque Next 16
+re-reporta métricas bufferadas a callbacks nuevos — así aceptar/revocar a mitad de sesión toma
+efecto sin duplicar beacons. Consecuencia aceptada: los dashboards de rendimiento solo reflejan
+usuarias con opt-in (volumen menor y más honesto).
+
+## ADR-089 — `connection_limit` fijado en el cliente Prisma serverless (2026-09-04)
+
+**Fecha:** 2026-09-04
+**Estado:** ✅ Aceptada
+
+**Contexto.** Prisma arma por proceso un pool de `num_cpus×2+1` conexiones; en Vercel cada lambda
+caliente abre su propio pool contra el pooler de Supabase (PgBouncer transaction, 6543) y los slots
+upstream del plan son finitos — un pico de tráfico los agota antes de saturar CPU (F-14).
+
+**Decisión.** El runtime fija `connection_limit` (env `PRISMA_CONNECTION_LIMIT`, default **3**)
+inyectado como query param vía override de `datasources`, sin re-serializar la URL (un param
+explícito en `DATABASE_URL` gana). Aplica **solo** al runtime por pooler: `DIRECT_URL` (5432,
+migraciones) y los scripts one-off de `packages/db/scripts` (que construyen su propio cliente) quedan
+intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar código.
+
+---
+
+## ADR-090 — Retiro del modo PREMADE (`?templateId=`) del Estudio
+
+**Fecha:** 2026-09-12
+**Estado:** ✅ Aceptada
+
+**Contexto:** la auditoría 360° (2026-09-11) encontró la rama PREMADE del Estudio (plantillas pre-diseñadas que el cliente compra tal cual, deep-link `?templateId=<id>`) con **0 datos** (ninguna `PersonalizationTemplate` con `mode=PREMADE` en los 3 ambientes) y **0 consumidores** reales: código muerto mantenido en `page.tsx`/`studio-editor.tsx`. El deep-link que sí tiene consumidor es `?template=<slug>` (lo genera el TemplatesStrip de la PDP): precarga la plantilla elegida en el draft nuevo, validada server-side contra la misma lista visible del sidebar (`listTemplatesForKind`, que por defecto filtra `mode=EDITABLE`).
+
+**Decisión:** retirar la rama PREMADE/`?templateId=` del storefront. `Design.templateId` se conserva y se persiste al cambiar de plantilla (auto-save; el server la re-valida). Si el negocio quiere vender diseños pre-hechos, se construye como **feature nuevo con diseño propio** (catálogo curado, copy, previews y precio decididos como producto), no resucitando la rama muerta.
+
+**Consecuencia:** el enum `mode` sigue existiendo en el schema (los templates son todos EDITABLE hoy), pero el storefront solo consume EDITABLE. Menos ramas que mantener en el componente más sensible del producto.
+
+---
+
+## ADR-091 — Retiro de `SiteEvent`, `RecommendationLog` y `StockReservation` del schema
+
+**Fecha:** 2026-09-12
+**Estado:** ✅ Aceptada
+
+**Contexto:** tres modelos con 0 filas en los 3 ambientes y sin lecturas/escrituras en código productivo (auditoría 2026-09-11): `SiteEvent` (funnel custom — nunca se escribió un evento; la observabilidad quedó cubierta por `WebVital` + `ErrorReport` + `AlertState`), `RecommendationLog` (tracking de recomendaciones PLAN_CATALOG_V2 6.10 — ningún flujo llegó a crear logs) y `StockReservation` (reserva con TTL de ADR-014, decisión diferida que quedó descartada: la protección real contra sobreventa es el UPDATE atómico `UPDATE … WHERE stock >= qty` al `PAID` + `needsReconciliation`, `features/orders/stock.ts`). Su cron `stock_reservation_cleanup` (cada minuto) seguía agendado sobre una tabla sin uso.
+
+**Decisión:** DROP de los 3 modelos (migración Prisma `20260912120000_drop_site_event_recommendation_log_stock_reservation`, `IF EXISTS … CASCADE`, aplicada con `migrate deploy`) + des-agendamiento del job `stock_reservation_cleanup` (migración Supabase `00000000000033`). ADR-014 queda **SUPERSEDED**. `BlogPost` y `LoyaltyTxn` se **conservan** clasificados FUTURO_APROBADO (capacidades aprobadas del PLAN/ROADMAP sin implementación todavía).
+
+**Consecuencia:** `purge-test-orders.mjs` ya no los referencia; el unlink GDPR de `RecommendationLog` salió de `features/account/delete-service.ts` con el modelo. Schema alineado con la realidad: menos tablas que migrar, respaldar y explicar.
+
+---
+
+## ADR-092 — Ciclo de soporte: respuesta humana por email + email de cierre; bandeja en `/mi-cuenta` diferida
+
+**Fecha:** 2026-09-12
+**Estado:** ✅ Aceptada
+
+**Contexto:** el canal de soporte es el formulario `/contacto` → `SupportTicket` → dos emails (acuse al cliente + interno a `hola@lucamsshop.com` con Reply-To al cliente). Dos huecos: (1) al cerrar el ticket desde el admin el cliente no recibía ningún aviso — el ciclo quedaba abierto de su lado; (2) se barajó una bandeja de tickets self-service en `/mi-cuenta`.
+
+**Decisión:** la respuesta es **humana por email** (el acuse lo declara: el cliente responde al mismo hilo); al cerrar el ticket en `/admin/soporte` se envía la plantilla `support-ticket-closed` (best-effort, `idempotencyKey: support:closed:<ticketId>`, solo si el estado previo no era ya CLOSED). La bandeja de tickets en `/mi-cuenta` se **difiere**: gran parte de los tickets los crean invitados sin cuenta, el canal de verdad es el email, y una bandeja a medias generaría expectativa de chat en vivo que no existe.
+
+**Consecuencia:** ciclo cerrado con lo ya construido (panel + emails). Si el volumen de soporte lo justifica, la bandeja self-service se evalúa como feature nuevo con su propio diseño.
+
+---
+
+## ADR-093 — Las APIs públicas `/api/catalog/*`, `/api/cms/*` y `/api/coupons/public` se mantienen como API versionada
+
+**Fecha:** 2026-09-12
+**Estado:** ✅ Aceptada
+
+**Contexto:** la auditoría 360° marcó las APIs públicas de catálogo/CMS/cupones como candidatas a retiro por "sin consumidor visible hoy". Son exactamente las que ADR-038 decidió como contrato RAG-ready para el futuro bot de WhatsApp (y cualquier integración externa), con cache HTTP, rate-limit y shape estable.
+
+**Decisión:** **mantenerlas** como API pública versionada (ADR-038 vigente). Criterio para un retiro futuro: **revisar el tráfico real en Vercel** (logs/analytics de los paths `/api/catalog/*`, `/api/cms/*`, `/api/coupons/public`) antes de cualquier retiro — no retirar por apariencia de desuso. Inventario verificado 2026-09-12: 9 rutas bajo `/api/catalog/*` (`categories`, `products`, `products/[slug]`, `ocasiones`, `ocasiones/[slug]`, `search`, `recommend`, `filters`, `templates`), 4 bajo `/api/cms/*` (`blocks`, `blocks/[key]`, `settings`, `search`) y `/api/coupons/public`.
+
+**Consecuencia:** el contrato se mantiene aditivo (campos opcionales nunca se eliminan); si el bot no se construye y el tráfico es cero sostenido, el retiro se decide con datos, no con grep.
+
+---
+
+## ADR-094 — `/checkout/gracias?id=<txId>` muestra datos del pedido sin auth: riesgo aceptado con mitigaciones
+
+**Fecha:** 2026-09-12
+**Estado:** ✅ Aceptada
+
+**Contexto:** tras el pago, Wompi redirige a `/checkout/gracias?id=<txId>` y la página muestra la confirmación del pedido — incluida PII (nombre, dirección de envío) — **sin sesión**: es el flujo natural de Web Checkout (el cliente vuelve del pago sin autenticarse). Cualquiera con un `txId` válido vería esos datos.
+
+**Decisión:** **aceptar el riesgo** con las mitigaciones ya implementadas: (1) entropía del identificador — el `txId` es el id de transacción de Wompi, no enumerable (a diferencia del número de orden secuencial); (2) rate-limit `gracias:ip:` 20 req/5 min por IP — un flood con ids basura muere ahí (y contra el circuit breaker de Wompi); (3) `noindex` (la URL no se propaga por buscadores); (4) el estado se verifica SIEMPRE contra la API de Wompi, nunca contra el query param. **Re-evaluar si aparece evidencia de filtración** (patrones de enumeración en logs, `rate_limit.exceeded` en esa key); la alternativa lista es un token propio firmado emitido al crear la orden.
+
+**Consecuencia:** trade-off UX/seguridad documentado y aceptado a conciencia; la página sigue sin auth por diseño, con monitoreo como red.
+
+---
+
+## ADR-095 — Split de seeds canónico/demo + `env-guard` fail-closed en scripts de DB
+
+**Fecha:** 2026-09-12
+**Estado:** ✅ Aceptada
+
+**Contexto:** `seed-products.mjs` mezclaba seed canónico (catálogo real) con fixtures demo (26 reseñas ficticias) y era destructivo al re-correr: pisaba `price`/`basePrice`/`images` editados en el admin, archivaba lo no declarado y resucitaba las reseñas demo aprobadas. En paralelo, la guarda de ambiente (`lib/env-guard.mjs`) era fail-open: 63/79 scripts con escritura corrían sin ella — un host no reconocido (typo de URL, proxy) pasaba y escribía.
+
+**Decisión:** (1) **Split**: `seed-catalog-canonical.mjs` (su UPDATE NUNCA toca precio/imágenes/`isActive`/`deletedAt`/`isFeatured`; sin resurrección de inactivos; barrido `--prune` opt-in con confirmación) + `seed-demo-reviews.mjs` (reseñas demo solo dev/STG, marcadas `createdBy: system:seed-demo-reviews`, sin resurrección); seeds canónicos con **dry-run por defecto** y `--apply` explícito (mismo patrón en `seed-templates.mjs`, con `--prune` opt-in y sin reset de estados salvo `--force-state`). (2) **env-guard FAIL-CLOSED**: hosts no reconocidos o URLs no parseables bloquean la ejecución; 63/63 scripts con escritura guardados; lint en CI (`scripts/lib/check-script-guards.mjs`, job `quality`) + `make audit-script-guards`. (3) ~40 one-shots ya ejecutados archivados en `packages/db/scripts/one-shot/`; 5 scripts borrados.
+
+**Consecuencia:** targets Makefile nuevos (`seed-admin`, `admin-mfa-reset`, `seed-clean`, `audit-script-guards`) y 4 targets históricos de 2026-05 retirados. Correr el seed del catálogo deja de ser una operación de riesgo contra el merchandising del admin.
+
+---
+
+## ADR-096 — Heartbeat de backups vía GitHub Actions + regla `backup_stale`
+
+**Fecha:** 2026-09-12
+**Estado:** ✅ Aceptada
+
+**Contexto:** el backup diario a R2 corre en GitHub Actions (`backup.yml`), fuera de pg_cron → su salud era invisible desde la app: un backup roto se descubría en el DR drill mensual (o en el desastre). El dead-man switch `recordCronHeartbeat` solo cubría los crons HTTP de pg_cron.
+
+**Decisión:** tras cada backup exitoso, `backup.yml` hace `POST /api/cron/backup-heartbeat` (con `CRON_SECRET`; upsert de `AlertState["backup:last-success"]`, `features/observability/cron-heartbeat.ts`). Nueva regla **`backup_stale`** en `evaluateAlerts`: sin latido en **>36h** (margen amplio sobre la periodicidad diaria, sin falsos positivos por retrasos) → alerta de severidad alta in-app + tile de backup en `/admin/observability`. El DR drill mensual exige además un dump fresco ≤36h (`DRILL_MAX_BACKUP_AGE_HOURS`) — restaurar un dump viejo no prueba el backup de hoy.
+
+**Consecuencia:** la salud del backup se observa con el mismo mecanismo que los crons sin mover el backup a pg_cron (GHA ya tenía las credenciales y el cifrado). Un latido falso positivo se evita sellando el éxito solo tras la subida verificada.
+
+---
+
+## ADR-097 — Consolidación de `/admin/mensajes` en `/admin/soporte`
+
+**Fecha:** 2026-09-12
+**Estado:** ✅ Aceptada
+
+**Contexto:** `/admin/mensajes` era una segunda bandeja sobre el MISMO servicio de tickets de soporte (`features/support/admin-service`) con las mismas acciones, permisos y auditoría que `/admin/soporte` — duplicación sin justificación que obligaba a mantener dos UIs y confundía sobre "cuál es la buena".
+
+**Decisión:** consolidar todo en **`/admin/soporte`**; `/admin/mensajes` queda como redirect permanente (308) que preserva el filtro `?status=` (misma matriz OPEN/IN_PROGRESS/CLOSED/all), igual que el redirect legacy de variants.
+
+**Consecuencia:** una sola bandeja que mantener y una sola fuente de verdad operativa; bookmarks y links viejos siguen llegando. La superficie admin se reduce sin perder capacidad.
+
+---
+
+## ADR-098 — Wishlist: aceptada como feature de cliente; la palanca de marketing queda diferida
+
+**Fecha:** 2026-09-13
+**Estado:** ✅ Aceptada
+
+**Contexto:** la auditoría 360° cuestionó la wishlist (`WishlistItem` + `/mi-cuenta/favoritos`) por dos flancos: (1) si es una feature legítima del cliente o una palanca de marketing encubierta (emails de reposición/oferta sobre favoritos, vista admin del interés por cliente), y (2) si retener ese historial de interés es una brecha de cumplimiento (Ley 1581: finalidad y supresión).
+
+**Decisión:** la wishlist queda **ACEPTADA como feature de cliente**: el titular guarda sus favoritos y los consulta en `/mi-cuenta/favoritos` — la finalidad es propia y visible para él (encontrar rápido lo que le encantó), no oculta. Además está **cubierta por la supresión de cuenta desde N-18**: al eliminar la cuenta, `features/account/delete-service.ts` borra las filas de `WishlistItem` del titular (verificado por integration test), así que el dato no sobrevive al ejercicio del derecho de supresión. La **palanca de marketing queda DIFERIDA** como decisión de negocio post-lanzamiento: NO se construyen ahora emails de reposición/oferta basados en favoritos ni vista admin del interés por cliente. No es brecha de cumplimiento diferirla — los datos ya tienen finalidad propia para el titular; usarlas para marketing sería una finalidad NUEVA que exigiría su propia evaluación (aviso de privacidad y, si aplica, autorización) cuando se decida.
+
+**Consecuencia:** la wishlist se mantiene tal cual (sin brecha que remediar); cualquier uso de `WishlistItem` con fines de marketing queda bloqueado hasta una decisión de negocio explícita post-lanzamiento, con su análisis de cumplimiento aparte.

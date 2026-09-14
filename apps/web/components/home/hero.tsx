@@ -18,7 +18,8 @@ export async function HomeHero() {
   // COD_ENABLED, invalida tag "cms"). Si Lucy apaga COD, el chip NO se renderiza en ningún
   // modo: prometer contraentrega apagada es peor que no decir nada (bug 2026-07: en modo
   // catálogo el fallback ignoraba el toggle y el chip quedaba visible).
-  const codEnabled = (await getSettingValue("COD_ENABLED", "true")) === "true";
+  // FAIL-CLOSED (CF-35): setting ausente/despublicada = chip oculto (no se promete COD).
+  const codEnabled = (await getSettingValue("COD_ENABLED", "false")) === "true";
 
   // Destinos de los CTAs, editables desde /admin/contenido (settings). Los
   // fallbacks conservan el comportamiento actual si la DB no responde.

@@ -62,6 +62,32 @@ export function isDarkColor(hex: string): boolean {
   return 0.299 * r + 0.587 * g + 0.114 * b < 0.5;
 }
 
+/**
+ * Color de letra POR DEFECTO sobre una tarjeta de color (owner 2026-09-11,
+ * validación ronda 5 — 1.2.1.A): "que visualmente se vea" — tarjeta blanca o
+ * pastel claro → el oscuro de la plantilla; tarjeta oscura O ROSADA → blanco.
+ * Umbral Rec. 601 de 0.56 (gusto explícito del owner: el rosado de marca
+ * #E85B9F, luminancia ≈ 0.552, cuenta como "oscuro" PARA EL TEXTO).
+ * DISTINTO de isDarkColor (0.5) a propósito: esa también decide la tarjeta
+ * BINARIA de Instagram (instagramBackgroundHex) — si el rosado contara como
+ * oscuro allí, la tarjeta IG se volvería rosada. Acá solo se decide la letra.
+ * Misma regla en lienzo (studio-slot), editor de texto (pestaña Texto) y
+ * producción (production-render-canvas) — WYSIWYG. El override de color del
+ * cliente siempre manda sobre este default.
+ */
+export function defaultTextFillOnCard(
+  cardHex: string | null | undefined,
+  layerFill?: string,
+): string {
+  if (cardHex && isValidFrameHex(cardHex)) {
+    const r = parseInt(cardHex.slice(1, 3), 16) / 255;
+    const g = parseInt(cardHex.slice(3, 5), 16) / 255;
+    const b = parseInt(cardHex.slice(5, 7), 16) / 255;
+    if (0.299 * r + 0.587 * g + 0.114 * b < 0.56) return "#FFFFFF";
+  }
+  return layerFill ?? "#3D2E5C";
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Ola 3b (Lucy 2026-07-22) — MARCO FULL-BLEED ("el fin del papel")
 //
@@ -141,10 +167,31 @@ export function simpleCardPhotoRect(
 // ──────────────────────────────────────────────────────────────────────────
 // Ola 4 (Lucy 2026-07-23) — TIRA photobooth: UNA pieza continua.
 //
-// La plantilla de celda (gridCols:1 + gridGap:0) trae la foto a sangre vertical
-// (y=0) para que las fotos de celdas vecinas SE TOQUEN (gap 0 real). El borde
-// EXTERIOR de la tira (arriba de la 1ª foto, abajo de la última) no puede vivir
-// en la plantilla (es uniforme por celda) → lo aplica el código por posición.
+// La plantilla de celda (gridCols:1 + gridGap:0) apila las celdas sin aire CSS
+// entre ellas (el grid del Estudio usa gap=0 → la tira se lee como una sola
+// pieza). El borde EXTERIOR de la tira (arriba de la 1ª foto, abajo de la
+// última) no puede vivir en la plantilla (es uniforme por celda) → lo aplica
+// el código por posición.
+//
+// Regla 2026-09-08 (Lucy, validado en local) — la tira FÍSICA tiene canales
+// visibles del color del marco ENTRE foto y foto; el render las tenía pegadas
+// (a sangre vertical). La separación se dibuja DENTRO de cada celda
+// (stripPhotoRect: media canaleta arriba y abajo de cada foto, salvo el borde
+// exterior que conserva su inset mayor) → preview (Konva, studio-slot) y
+// producción (production-render-canvas) consumen la MISMA matemática (WYSIWYG:
+// lo que se ve es lo que se imprime). No se usa gridGap del template: ese gap
+// es solo CSS entre celdas del Estudio y NO entraría al PNG de producción (que
+// renderiza celda por celda) — rompería el WYSIWYG.
+//
+// Ola 25 (Lucy 2026-09-09) — modo SIN BORDE de la tira: el toggle "Borde de
+// foto → Sin borde" de la toolbar del Estudio reescribe el image-placeholder a
+// SANGRE TOTAL de la celda (x=0, ancho = stage — igual que el modo sin-borde de
+// la Instagram y la sangre total de los Cuadrados). En ese modo la tira es
+// CONTINUA DE VERDAD: sin marco exterior Y SIN CANALETAS — las fotos se tocan
+// borde con borde, como la tira photobooth impresa sin marco. (Ola 23 conservaba
+// las canaletas en sin-borde; el dueño validó en STG que ahí no van líneas.)
+// El rect viaja en canvasData → producción detecta el mismo modo por geometría
+// (isStripBorderless) y aplica la misma matemática (WYSIWYG).
 // ──────────────────────────────────────────────────────────────────────────
 
 /** ¿La plantilla es una celda de tira photobooth? (marcadores gridCols=1 + gridGap=0). */
@@ -171,19 +218,91 @@ export function stripOuterInset(stage: { width: number; height: number }): numbe
 }
 
 /**
- * Aplica el borde EXTERIOR de la tira a la ventana de foto de una celda:
- * first/single → inset arriba; last/single → inset abajo; middle → fotos se tocan.
+ * Regla 2026-09-08 — media canaleta entre fotos consecutivas de la tira (px del
+ * stage), del color del marco (la capa frame-card asoma donde la foto se inserta).
+ * ≈0.7 mm por cara a 300 DPI sobre 6.5 cm de ancho (390 px → 8 px) → la canaleta
+ * visible entre dos fotos es 2× (16 px ≈ 1.3 mm), como en la tira física.
+ */
+export function stripGutterPx(stage: { width: number; height: number }): number {
+  return Math.max(4, Math.round(stage.width * 0.02));
+}
+
+/**
+ * ¿La celda de la tira está en modo SIN BORDE? Se detecta por el rect del
+ * image-placeholder: si cubre TODO el ancho del stage (el toggle "Sin borde" lo
+ * reescribió a sangre), la celda va continua: sin marco exterior ni canaletas.
+ */
+export function isStripBorderless(
+  ph: { x?: number; y?: number; width?: number; height?: number } | undefined,
+  stage: { width: number; height: number },
+): boolean {
+  if (!ph) return false;
+  const x = ph.x ?? 0;
+  return x <= 0 && x + (ph.width ?? 0) >= stage.width;
+}
+
+/**
+ * Ventana de foto de una celda de la tira:
+ *  - first/single → inset del borde EXTERIOR arriba; last/single → abajo.
+ *  - Entre fotos consecutivas → media canaleta (stripGutterPx) arriba y abajo
+ *    de CADA foto: dos medias canaletas vecinas arman la separación visible del
+ *    producto físico (regla 2026-09-08 — antes las fotos se tocaban, gap 0 real).
+ *  - Ola 25 — `borderless` (sin borde): CERO inset y CERO canaleta — la celda
+ *    queda a sangre total y las fotos se tocan (tira continua sin líneas).
  * Los lados los maneja la plantilla (ventana con margen lateral uniforme).
  */
 export function stripPhotoRect(
   ph: PhotoRect,
   stage: { width: number; height: number },
   position: StripPosition,
+  opts?: { borderless?: boolean },
 ): PhotoRect {
-  const inset = stripOuterInset(stage);
-  const top = position === "first" || position === "single" ? inset : 0;
-  const bottom = position === "last" || position === "single" ? inset : 0;
+  const borderless = opts?.borderless === true;
+  const inset = borderless ? 0 : stripOuterInset(stage);
+  const gutter = borderless ? 0 : stripGutterPx(stage);
+  const top = position === "first" || position === "single" ? inset : gutter;
+  const bottom = position === "last" || position === "single" ? inset : gutter;
   return { ...ph, y: ph.y + top, height: Math.max(10, ph.height - top - bottom) };
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Ola 24 (Lucy 2026-09-09) — RESPALDO NEUTRO de la ventana de foto ("el marco es
+// MARCO, no fondo"), UNA sola función de decisión compartida por las TRES
+// superficies: grilla del Estudio (studio-slot), preview del modal de edición
+// (studio-photo-preview) y producción (production-render-canvas) → la regla no
+// puede divergir (WYSIWYG por construcción).
+//
+// Regla: con tarjeta teñida por borderColor, el hueco que deja la foto al alejarla
+// (zoom-out) o moverla se rellena con el color de la tarjeta SIN teñir (la capa
+// background), NO con borderColor → el ancho del marco/canaleta queda CONSTANTE
+// bajo cualquier zoom/pan. Aplica a:
+//   - frame-card (Polaroid Clásica) y full-bleed (Cuadrados/tarjeta simple).
+//   - Polaroid Instagram CON borde (Ola 24 — antes excluida por "constante por
+//     construcción", pero con tarjeta oscura la ventana se inundaba del color del
+//     borde al alejar la foto: parecía fondo, no marco).
+// NO aplica a:
+//   - Instagram SIN BORDE (foto a sangre total): ahí el hueco muestra el color de
+//     tarjeta, que en ese modo ES el fondo del diseño.
+//   - heart/circle (la silueta troquelada manda) y diseños sin borderColor.
+// ──────────────────────────────────────────────────────────────────────────
+
+/** Color de respaldo de la ventana de foto, o null si la ventana no lleva respaldo. */
+export function photoBackingHexFor(opts: {
+  borderColor: string | null | undefined;
+  /** Hex de la capa background de la plantilla (la tarjeta SIN teñir). */
+  backgroundHex: string;
+  hasFrameCard: boolean;
+  fullBleed: boolean;
+  isIg: boolean;
+  /** Instagram en modo SIN BORDE (placeholder a sangre total — isInstagramNoBorder). */
+  igNoBorder: boolean;
+  /** heart/circle: la foto cubre el stage completo recortado a la silueta. */
+  useFullStage?: boolean;
+}): string | null {
+  const { borderColor, backgroundHex, hasFrameCard, fullBleed, isIg, igNoBorder } = opts;
+  if (!borderColor || opts.useFullStage) return null;
+  if (isIg) return igNoBorder ? null : backgroundHex;
+  return hasFrameCard || fullBleed ? backgroundHex : null;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -212,6 +331,37 @@ export function instagramBackgroundHex(
 ): string {
   if (borderColor && isDarkColor(borderColor)) return borderColor;
   return fallbackHex;
+}
+
+/**
+ * Fondo EFECTIVO de la tarjeta (sobre el que se imprime el texto) — misma regla
+ * en grilla (studio-slot), preview del modal (studio-photo-preview) y producción:
+ *  - Instagram: binario blanco/negro (instagramBackgroundHex).
+ *  - Full-bleed (tarjeta entera teñida, sin frame-card): el borderColor elegido.
+ *  - Frame-card (Polaroid Clásica): borderColor ?? fill de la capa ?? blanco.
+ *  - Resto: la capa background de la plantilla (blanco en las activas).
+ * Ola 28 (2026-09-11): extraída para que el editor de texto (pestaña Texto del
+ * editor de slot) previsualice sobre el color REAL de la tarjeta y mida el
+ * contraste de la letra elegida (blanco sobre blanco quedaba invisible).
+ */
+export function cardBackgroundHex(opts: {
+  layers: ReadonlyArray<{ type: string; color?: unknown; fill?: unknown; src?: unknown }>;
+  borderColor: string | null | undefined;
+  frameFullBleed: boolean;
+}): string {
+  const { layers, frameFullBleed } = opts;
+  const borderColor = opts.borderColor ?? null;
+  const bgLayer = layers.find((l) => l.type === "background");
+  const bgHex = typeof bgLayer?.color === "string" ? bgLayer.color : "#FFFFFF";
+  if (isInstagramTemplate(layers)) return instagramBackgroundHex(borderColor, bgHex);
+  const fcLayer = layers.find((l) => l.type === "frame-card");
+  const hasFrameCard = !!fcLayer;
+  if (frameFullBleed && !hasFrameCard && borderColor) return borderColor;
+  if (hasFrameCard) {
+    const fcFill = typeof fcLayer?.fill === "string" ? fcLayer.fill : undefined;
+    return borderColor ?? fcFill ?? "#FFFFFF";
+  }
+  return bgHex;
 }
 
 /**

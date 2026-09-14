@@ -7,10 +7,10 @@ import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import {
   listGalleryImages,
-  getGalleryImageUrl,
   listGalleryAdmin,
   createGalleryImage,
   deleteGalleryImage,
+  listGalleryTagOptions,
 } from "./design-gallery";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
@@ -39,18 +39,14 @@ describe.skipIf(!hasDb)("design-gallery — integración", { timeout: 30000 }, (
     const list = await listGalleryImages(TAG);
     expect(list.map((i) => i.name)).toEqual(["Flores", "Corazón"]);
 
-    // getUrl del activo
-    expect(await getGalleryImageUrl(a.id)).toBe("https://x/1.png");
-
     // admin list del tag
     const adminList = await listGalleryAdmin(TAG);
     expect(adminList).toHaveLength(2);
 
-    // borrar (soft) → desaparece del list público y del getUrl
+    // borrar (soft) → desaparece del list público
     await deleteGalleryImage(a.id);
     const after = await listGalleryImages(TAG);
     expect(after.map((i) => i.id)).toEqual([b.id]);
-    expect(await getGalleryImageUrl(a.id)).toBeNull();
   });
 
   it("no filtra diseños de otro tag", async () => {
@@ -63,5 +59,60 @@ describe.skipIf(!hasDb)("design-gallery — integración", { timeout: 30000 }, (
     const list = await listGalleryImages(TAG);
     expect(list.every((i) => i.name !== "Ajeno")).toBe(true);
     await prisma.designGalleryImage.deleteMany({ where: { tag: `${TAG}-x` } });
+  });
+
+  // Lucy 2026-09-08 — la galería usa `personalizationSchema.galleryTag` cuando existe
+  // (convención: el slug del producto). Este test blinda que los separadores lo declaran
+  // y que el admin (/admin/disenos) los ofrece con cara B (facesPerUnit=2): es el cable
+  // que una corrida vieja de un seed histórico podría romper en silencio (tag compartido
+  // "separadores" → uploads del admin con "Producto inválido" y estudio sin diseños).
+  it("los separadores declaran galleryTag = su slug y el admin los lista con cara B", async (ctx) => {
+    const products = await prisma.product.findMany({
+      where: {
+        slug: { in: ["separadores-magneticos", "separadores-alargados"] },
+        isActive: true,
+        deletedAt: null,
+      },
+      select: { slug: true, personalizationSchema: true },
+    });
+    if (products.length === 0) return ctx.skip();
+
+    const options = await listGalleryTagOptions();
+    for (const p of products) {
+      const schema = p.personalizationSchema as { galleryTag?: unknown } | null;
+      expect(schema?.galleryTag, p.slug).toBe(p.slug);
+      const option = options.find((o) => o.tag === p.slug);
+      expect(option, p.slug).toBeDefined();
+      expect(option?.needsFaceB, p.slug).toBe(true);
+    }
+  });
+
+  // Default-on (2026-09-09, owner): la galería ya NO es opt-in por producto. Todo
+  // producto activo con superficie de FOTO aparece en /admin/disenos con tag =
+  // galleryTag explícito ?? slug — el mismo fallback que aplica el Estudio
+  // (app/estudio/[slug]/page.tsx). Sin este cable, subir diseños para un producto
+  // sin galleryTag fallaría con "Producto inválido" aunque el Estudio sí los lee.
+  it("todo producto con superficie de foto tiene tag de galería (explícito ?? slug)", async () => {
+    const { resolvePersonalizationSurface } = await import("./surface");
+    const products = await prisma.product.findMany({
+      where: { isActive: true, deletedAt: null },
+      select: { slug: true, personalizationKind: true, personalizationSchema: true },
+    });
+    const photoProducts = products.filter(
+      (p) =>
+        resolvePersonalizationSurface(
+          p.personalizationKind,
+          p.personalizationSchema as Record<string, unknown> | null,
+        ).surface === "photo",
+    );
+    if (photoProducts.length === 0) return;
+
+    const options = await listGalleryTagOptions();
+    const tags = new Set(options.map((o) => o.tag));
+    for (const p of photoProducts) {
+      const schema = p.personalizationSchema as { galleryTag?: unknown } | null;
+      const expected = typeof schema?.galleryTag === "string" ? schema.galleryTag : p.slug;
+      expect(tags.has(expected), `${p.slug} → tag ${expected}`).toBe(true);
+    }
   });
 });

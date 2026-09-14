@@ -13,10 +13,18 @@
  *     analytics: boolean,
  *     marketing: boolean,
  *     savedAt: string ISO 8601,
+ *     policyVersion?: string,         // PRIVACY_POLICY_VERSION aceptada (N-15)
  *   }
  *
  * Si la cookie no existe → banner aparece. Tras click se setea
  * Y se registra una fila por scope en la tabla Consent (audit trail).
+ *
+ * Re-consent (CF-15/N-15): el root layout lee la versión vigente del
+ * Aviso de Privacidad (setting CMS PRIVACY_POLICY_VERSION, cacheada con
+ * tag `cms`) y se la pasa al banner como prop `policyVersion`. La cookie
+ * guarda la versión aceptada; si el admin publica una NUEVA versión, el
+ * mismatch re-muestra el banner a visitantes recurrentes. Si el setting
+ * no existe (prop null) NO hay re-consent extra: comportamiento = hoy.
  */
 
 export const COOKIE_CONSENT_NAME = "cookie_consent_v1";
@@ -30,6 +38,10 @@ export type CookiePreferences = {
   analytics: boolean;
   marketing: boolean;
   savedAt: string;
+  /** Versión del Aviso de Privacidad vigente cuando el visitante decidió
+   *  (setting CMS PRIVACY_POLICY_VERSION). Ausente en cookies sembradas
+   *  antes del re-consent (N-15) — el banner las "sana" al detectarlas. */
+  policyVersion?: string;
 };
 
 /** Estado por defecto cuando el usuario aún no decidió. */
@@ -84,10 +96,59 @@ export function readClientCookiePreferences(): CookiePreferences | null {
       analytics: !!parsed.analytics,
       marketing: !!parsed.marketing,
       savedAt: parsed.savedAt ?? new Date().toISOString(),
+      policyVersion:
+        typeof parsed.policyVersion === "string" && parsed.policyVersion !== ""
+          ? parsed.policyVersion
+          : undefined,
     };
   } catch {
     return null;
   }
+}
+
+/**
+ * Re-consent (CF-15/N-15) — ¿hay que (re)mostrar el banner a un visitante
+ * que YA tiene cookie válida?
+ *  - `policyVersion` null/"" (setting CMS ausente) → NUNCA: degrada con
+ *    gracia al comportamiento de hoy (no re-mostrar).
+ *  - Cookie legacy sin `policyVersion` (pre N-15) → NO re-muestra: el
+ *    caller la "sana" reescribiéndola con la versión vigente (misma
+ *    decisión, sin evento de consentimiento nuevo), así un cambio FUTURO
+ *    del aviso sí dispara re-consent para ese visitante.
+ *  - `policyVersion` guardada ≠ vigente → SÍ: el aviso cambió tras su
+ *    decisión y el consentimiento previo ya no prueba el texto nuevo.
+ */
+export function needsConsentBanner(
+  prefs: CookiePreferences | null,
+  policyVersion: string | null,
+): boolean {
+  if (!prefs) return true; // sin cookie válida → primera visita
+  if (!policyVersion) return false;
+  if (prefs.policyVersion === undefined) return false; // legacy → se sana, no se re-muestra
+  return prefs.policyVersion !== policyVersion;
+}
+
+/**
+ * Estampa la versión del aviso vigente en las prefs antes de persistirlas
+ * (cookie + audit). Con `policyVersion` null devuelve las prefs intactas:
+ * no se firma una versión que el sitio no conoce.
+ */
+export function withPolicyVersion(
+  prefs: CookiePreferences,
+  policyVersion: string | null,
+): CookiePreferences {
+  return policyVersion ? { ...prefs, policyVersion } : prefs;
+}
+
+/**
+ * True only when the visitor explicitly accepted the "Analíticas" category.
+ * No cookie stored yet (visitor has not answered the banner) → false:
+ * optional categories are opt-in, so nothing analytics-related runs until
+ * there is an affirmative answer. Re-read on every call so a mid-session
+ * choice takes effect without reloading.
+ */
+export function hasAnalyticsConsent(): boolean {
+  return readClientCookiePreferences()?.analytics === true;
 }
 
 /** Persiste la cookie + dispara evento custom para que listeners reaccionen. */

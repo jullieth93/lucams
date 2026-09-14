@@ -1,10 +1,12 @@
 /*
  * firstFontFamily — extrae la primera familia de un font-family CSS (para pedirle a
  * document.fonts/canvas la cara real de next/font, cuyo nombre viene hasheado).
+ * resolveCalendarTitleFont / ensureCalendarTitleFontLoaded — resolución del selector de
+ * tipo de letra del calendario (key → CSS var → familia hasheada).
  */
 
 import { describe, it, expect } from "vitest";
-import { firstFontFamily } from "./calendar-card-preview";
+import { firstFontFamily, resolveCalendarTitleFont } from "./calendar-card-preview";
 
 describe("firstFontFamily", () => {
   it("extrae la primera familia sin comillas", () => {
@@ -24,5 +26,13 @@ describe("firstFontFamily", () => {
   it("string vacío → null", () => {
     expect(firstFontFamily("")).toBeNull();
     expect(firstFontFamily("   ")).toBeNull();
+  });
+});
+
+describe("resolveCalendarTitleFont — key del selector → familia real (next/font)", () => {
+  it("fuera del navegador devuelve null (el caller cae al literal registrado por el server)", () => {
+    expect(resolveCalendarTitleFont("fredoka")).toBeNull();
+    expect(resolveCalendarTitleFont("inter")).toBeNull();
+    expect(resolveCalendarTitleFont("caveat")).toBeNull();
   });
 });

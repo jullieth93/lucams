@@ -1,5 +1,7 @@
 # Análisis competitivo — magneticas.cl vs Lucams_shop
 
+> **Estado: documento histórico (análisis de 2026-05-09).** Fotografía del competidor y del plan de diferenciación **al inicio del proyecto**. Las "ventajas Lucams" aquí descritas eran el plan; la mayoría ya están construidas (Estudio en vivo, compliance, observabilidad) y el sitio está en producción desde 2026-07-22 — el estado actual de cada capacidad está en `docs/STATE.md` y `docs/ROADMAP.md`. Los datos de magneticas.cl (catálogo, precios CLP, políticas) corresponden a esa fecha y no se han re-verificado.
+
 > Reconocimiento real de magneticas.cl realizado el 2026-05-09: home, sitemap.xml, 6 categorías de catálogo, FAQ, política de devolución. Objetivo: identificar qué replicamos, qué mejoramos, qué descartamos y qué gaps explotamos.
 
 ## Tabla de contenido
@@ -160,7 +162,7 @@ magneticas.cl tiene productos con Disney, Warner, Peanuts, Coca-Cola, Spotify, e
 
 |                  | magneticas.cl          | Lucams_shop                                                                    |
 | ---------------- | ---------------------- | ------------------------------------------------------------------------------ |
-| Stack            | Shopify-like cerrado   | Next.js 15 + RSC + Tailwind v4 + shadcn/ui                                     |
+| Stack            | Shopify-like cerrado   | Next.js 16 + RSC + Tailwind v4 + shadcn/ui                                     |
 | SEO              | Decente (meta básicos) | ISR + JSON-LD por producto + sitemap dinámico + OG dinámico                    |
 | Performance      | No medido públicamente | Lighthouse ≥ 95 como criterio de aceptación                                    |
 | PWA              | No                     | Sí (instalable, offline básico)                                                |

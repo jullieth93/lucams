@@ -23,7 +23,8 @@ let totpSecret = "";
 
 const MODULES = [
   "reclamos",
-  "mensajes",
+  // N-09: antes "mensajes"; esa bandeja se consolidó en soporte (redirect 308).
+  "soporte",
   "mayorista",
   "materiales",
   "costos",

@@ -1,7 +1,7 @@
 /*
- * HOMOLOGACIÓN E2E — matriz de uploads del Estudio (PROMPT_E2E_HOMOLOGACION
- * §6.4 + regresiones permanentes §4b/c/d: HEIC iPhone, compresión cliente
- * >4.5 MB, UI muda ante fallos):
+ * HOMOLOGACIÓN E2E — matriz de uploads del Estudio (docs/TESTING.md +
+ * regresiones permanentes: HEIC iPhone, compresión cliente >4.5 MB, UI muda
+ * ante fallos):
  *
  *   consentimiento Ley 1581 OBLIGATORIO para subir → JPG / PNG / WebP / HEIC
  *   (transcodifica a JPEG server-side) / >4.5 MB (compresión cliente → JPEG

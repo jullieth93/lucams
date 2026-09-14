@@ -17,8 +17,8 @@
  *   - linkProductToOcasion (upsert): create + update de rationale sin duplicar el
  *     par; rationale null permitido.
  *   - unlinkProductFromOcasion: borra el par; P2025 si el par no existe.
- *   - getProductsForOcasion: lista los pares con product embebido (id/slug/name/
- *     isActive); NO filtra soft-deleted.
+ *     (El read-back de los pares se hace directo contra el pivot — el reader
+ *     getProductsForOcasion se retiró en N-23 por no tener consumidores.)
  *
  * Requiere DATABASE_URL (corre vía `dotenv -e .env.local -- vitest`). Sin ella se
  * salta (skipIf) para no romper CI sin DB.
@@ -37,8 +37,8 @@
  * Todo valor esperado se verificó contra la DB real (probe descartado) antes de
  * fijar las aserciones: slug duplicado → OcasionValidationError(field:slug);
  * update/delete de id inexistente → PrismaClientKnownRequestError P2025; el upsert
- * del link no duplica el par (mismo PK compuesto); getProductsForOcasion y
- * getOcasionTag incluyen productos soft-deleted (el include no lleva where).
+ * del link no duplica el par (mismo PK compuesto); getOcasionTag incluye
+ * productos soft-deleted (el include no lleva where).
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -54,7 +54,6 @@ import {
   OcasionValidationError,
   createOcasionTag,
   getOcasionTag,
-  getProductsForOcasion,
   linkProductToOcasion,
   listOcasionTags,
   softDeleteOcasionTag,
@@ -104,6 +103,18 @@ let sharedProductSlug = "";
 // Crea un OcasionTag vía service y devuelve la fila. Garantiza createdBy=ACTOR.
 async function makeTag(over: Partial<OcasionCreateInput> = {}) {
   return createOcasionTag(baseInput(over), ACTOR);
+}
+
+// Read-back directo del pivot Product ↔ Ocasión (lo que antes leía
+// getProductsForOcasion, retirado en N-23 por no tener consumidores productivos).
+// link/unlink se certifican contra el estado real de la DB.
+function readLinks(ocasionTagId: string) {
+  return prisma.productOcasionTag.findMany({
+    where: { ocasionTagId },
+    include: {
+      product: { select: { id: true, slug: true, name: true, isActive: true } },
+    },
+  });
 }
 
 // Timeout generoso: el pooler de Supabase (pgbouncer :6543) es lento bajo
@@ -570,7 +581,7 @@ describe.skipIf(!hasDb)(
         const tag = await makeTag();
         await linkProductToOcasion(sharedProductId, tag.id, "regalo perfecto");
 
-        const links = await getProductsForOcasion(tag.id);
+        const links = await readLinks(tag.id);
         expect(links).toHaveLength(1);
         expect(links[0].productId).toBe(sharedProductId);
         expect(links[0].rationale).toBe("regalo perfecto");
@@ -581,7 +592,7 @@ describe.skipIf(!hasDb)(
       it("link con rationale=null se permite", async () => {
         const tag = await makeTag();
         await linkProductToOcasion(sharedProductId, tag.id, null);
-        const links = await getProductsForOcasion(tag.id);
+        const links = await readLinks(tag.id);
         expect(links[0].rationale).toBeNull();
         await unlinkProductFromOcasion(sharedProductId, tag.id);
       });
@@ -591,7 +602,7 @@ describe.skipIf(!hasDb)(
         await linkProductToOcasion(sharedProductId, tag.id, "v1");
         await linkProductToOcasion(sharedProductId, tag.id, "v2");
 
-        const links = await getProductsForOcasion(tag.id);
+        const links = await readLinks(tag.id);
         // PK compuesto (productId, ocasionTagId) → un solo par, rationale actualizado.
         expect(links).toHaveLength(1);
         expect(links[0].rationale).toBe("v2");
@@ -607,19 +618,19 @@ describe.skipIf(!hasDb)(
         const tag = await makeTag();
         await linkProductToOcasion(sharedProductId, tag.id, "tiene razón");
         await linkProductToOcasion(sharedProductId, tag.id, null);
-        const links = await getProductsForOcasion(tag.id);
+        const links = await readLinks(tag.id);
         expect(links).toHaveLength(1);
         expect(links[0].rationale).toBeNull();
         await unlinkProductFromOcasion(sharedProductId, tag.id);
       });
 
-      it("unlink borra el par; getProductsForOcasion queda vacío", async () => {
+      it("unlink borra el par; el pivot queda vacío", async () => {
         const tag = await makeTag();
         await linkProductToOcasion(sharedProductId, tag.id, "x");
-        expect(await getProductsForOcasion(tag.id)).toHaveLength(1);
+        expect(await readLinks(tag.id)).toHaveLength(1);
 
         await unlinkProductFromOcasion(sharedProductId, tag.id);
-        expect(await getProductsForOcasion(tag.id)).toHaveLength(0);
+        expect(await readLinks(tag.id)).toHaveLength(0);
 
         // La fila pivot ya no existe en DB.
         const row = await prisma.productOcasionTag.findUnique({
@@ -641,45 +652,15 @@ describe.skipIf(!hasDb)(
         // delete, pero la FK Cascade es parte del contrato de datos.)
         const tag = await makeTag();
         await linkProductToOcasion(sharedProductId, tag.id, "se irá con el tag");
-        expect(await getProductsForOcasion(tag.id)).toHaveLength(1);
+        expect(await readLinks(tag.id)).toHaveLength(1);
 
         await prisma.ocasionTag.delete({ where: { id: tag.id } });
 
         const orphans = await prisma.productOcasionTag.count({ where: { ocasionTagId: tag.id } });
         expect(orphans).toBe(0);
       });
-    });
 
-    // ════════════════════════════════════════════════════════════════════════
-    // getProductsForOcasion — shape y soft-delete
-    // ════════════════════════════════════════════════════════════════════════
-
-    describe("getProductsForOcasion", () => {
-      it("tag sin asociaciones devuelve []", async () => {
-        const tag = await makeTag();
-        expect(await getProductsForOcasion(tag.id)).toEqual([]);
-      });
-
-      it("ocasionTagId inexistente devuelve [] (no lanza)", async () => {
-        expect(await getProductsForOcasion(`${RUN}-ghost-tag`)).toEqual([]);
-      });
-
-      it("el product embebido trae EXACTAMENTE id/slug/name/isActive (sin deletedAt en este select)", async () => {
-        const tag = await makeTag();
-        await linkProductToOcasion(sharedProductId, tag.id, "ok");
-        const links = await getProductsForOcasion(tag.id);
-        expect(links).toHaveLength(1);
-        const p = links[0].product;
-        expect(p.id).toBe(sharedProductId);
-        expect(p.slug).toBe(sharedProductSlug);
-        expect(p.name).toBe(`Prod ${RUN}`);
-        expect(p.isActive).toBe(true);
-        // El select de getProductsForOcasion NO pide deletedAt → no debe venir.
-        expect("deletedAt" in p).toBe(false);
-        await unlinkProductFromOcasion(sharedProductId, tag.id);
-      });
-
-      it("INCLUYE asociaciones cuyo producto fue soft-deleted (el include NO filtra deletedAt)", async () => {
+      it("el pivot SOBREVIVE al soft-delete del producto y getOcasionTag lo embebido expone deletedAt", async () => {
         // Producto temporal RUN-scoped que soft-deleteamos mid-test.
         const tmp = await prisma.product.create({
           data: {
@@ -702,8 +683,9 @@ describe.skipIf(!hasDb)(
           data: { deletedAt: new Date(), isActive: false },
         });
 
-        // El pivot sigue ahí y getProductsForOcasion lo trae (no filtra soft-deleted).
-        const links = await getProductsForOcasion(tag.id);
+        // El pivot sigue ahí (la FK no reacciona al soft-delete — es una columna,
+        // no un DELETE físico) y el include del product lo resuelve igual.
+        const links = await readLinks(tag.id);
         expect(links).toHaveLength(1);
         expect(links[0].product.id).toBe(tmp.id);
         expect(links[0].product.isActive).toBe(false);

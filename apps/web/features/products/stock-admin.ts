@@ -18,6 +18,7 @@
 import "server-only";
 import { Prisma, prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { updateTag } from "next/cache";
 import { INVENTORY_REASON } from "@/features/orders/stock";
 import { MAX_STOCK_VALUE } from "./stock-constants";
 
@@ -78,7 +79,7 @@ export async function setVariantStockAdmin(input: {
     );
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const current = await tx.productVariant.findUnique({
       where: { id: input.variantId },
       select: { id: true, productId: true, stock: true, deletedAt: true },
@@ -157,41 +158,12 @@ export async function setVariantStockAdmin(input: {
       logged: true,
     };
   });
-}
 
-/**
- * Helper para listar el historial de cambios de stock de una variant.
- * Usado en la UI admin "Ver historial" (futuro — no en P0-004).
- *
- * Mantenemos la firma exportada para que cuando se implemente el panel
- * de historial no haga falta cambiar callers.
- */
-export async function listVariantStockHistory(
-  variantId: string,
-  opts: { take?: number } = {},
-): Promise<
-  Array<{
-    id: string;
-    delta: number;
-    reason: string;
-    orderId: string | null;
-    createdBy: string | null;
-    createdAt: Date;
-  }>
-> {
-  return prisma.inventoryLog.findMany({
-    where: { variantId },
-    orderBy: { createdAt: "desc" },
-    take: opts.take ?? 50,
-    select: {
-      id: true,
-      delta: true,
-      reason: true,
-      orderId: true,
-      createdBy: true,
-      createdAt: true,
-    },
-  });
+  // N-11 (CF-17) — post-commit y solo si hubo cambio real (no-op = logged:false):
+  // el badge "Agotado" de los listados (tag catalog) refleja el ajuste de inmediato
+  // (read-your-own-writes del admin). Contexto garantizado: Server Action.
+  if (result.logged) updateTag("catalog");
+  return result;
 }
 
 // Re-export para que callers solo importen de este file.

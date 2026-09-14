@@ -90,6 +90,12 @@ export const SlotStateSchema = z.object({
   rotation: z.number().min(-180).max(180).optional(),
   filter: PhotoFilterPresetSchema.nullable().optional(),
   textOverride: z.string().max(500).optional(),
+  // Ola 17 (Lucy 2026-09-07) — foto de perfil del header del post de Instagram (capa
+  // `profile-photo` de la plantilla Polaroid Instagram), POR SLOT. Sin catchall en este
+  // schema: declararlas acá es lo que las hace sobrevivir el auto-save (Zod stripea
+  // claves no declaradas) — igual que photoTransform/textOverrides (ADR-057 Fase A).
+  profileAssetId: z.string().nullable().optional(),
+  profileAssetUrl: z.string().max(2048).optional(),
   // ADR-057 Fase A — ENCUADRE del usuario (pan/zoom de la foto dentro del slot). ANTES no se
   // persistía (Zod strip) → el encuadre manual se perdía al guardar/recargar (bug) y el servidor
   // no podía reconstruir el render fiel. Ahora sobrevive; es la fuente de verdad del encuadre.
@@ -113,6 +119,25 @@ export const GridLayoutSchema = z.object({
   gap: z.number().int().min(0).max(64),
 });
 
+// ──────────────────────────────────────────────────────────────────
+//  Tipo de letra del calendario (Lucy 2026-09-07)
+// ──────────────────────────────────────────────────────────────────
+
+// Selector de fuente del TÍTULO/mes de la tarjeta del calendario (set 12 tarjetas).
+// "fredoka" (default) mantiene el look actual; el body/grilla SIEMPRE es Inter.
+// La clave viaja en canvasData (persistida) → producción la re-mapea a la familia
+// registrada vía lista blanca (NUNCA un string libre del cliente).
+export const CalendarFontKeySchema = z.enum(["fredoka", "inter", "caveat"]);
+export type CalendarFontKey = z.infer<typeof CalendarFontKeySchema>;
+
+/** Opciones curadas del selector (en ese orden). Los labels en español viven en studio-texts. */
+export const CALENDAR_FONT_OPTIONS: readonly CalendarFontKey[] = ["fredoka", "inter", "caveat"];
+
+/** Retrocompatibilidad: ausente/inválido → fredoka (look histórico del calendario). */
+export function calendarFontOrDefault(key: unknown): CalendarFontKey {
+  return key === "inter" || key === "caveat" ? key : "fredoka";
+}
+
 export const CanvasDataV2Schema = z.object({
   version: z.literal(2),
   unitTemplate: CanvasDataV1Schema,
@@ -126,6 +151,32 @@ export const CanvasDataV2Schema = z.object({
     .regex(/^#[0-9A-Fa-f]{6}$/)
     .nullable()
     .optional(),
+  // Lucy 2026-09-05 — packs de fotoimanes: N de fotos por imán elegido DENTRO del
+  // Estudio (antes era dimensión de variante elegida en la PDP) + tamaño físico
+  // elegido en la PDP. Persisten en el canvasData para que el carrito resuelva
+  // la variante server-side sin confiar en un variantId del cliente
+  // (features/products/photo-pack-resolve.ts). SIN catchall en este schema: Zod
+  // stripea claves desconocidas, así que declararlas acá es lo que las hace
+  // sobrevivir el auto-save.
+  photoSlots: z.number().int().min(1).max(50).optional(),
+  sizeCm: z.string().max(40).optional(),
+  // Lucy 2026-09-08 — "¿Con imán?" en los packs de foto: la elección de la PDP
+  // (dimensión `magnet` de la variante) persiste acá para que el carrito la incluya
+  // al resolver la variante server-side. Ausente = legacy → resuelve a Con imán.
+  magnet: z.boolean().optional(),
+  // Lucy 2026-09-07 — tipo de letra del título/mes del calendario (selector en el banner
+  // del Estudio). Ausente = "fredoka" (retrocompatible con diseños guardados antes de
+  // esta ola). Sin catchall en este schema: declararla acá es lo que la hace sobrevivir
+  // el auto-save (Zod stripea claves no declaradas).
+  calendarFont: CalendarFontKeySchema.optional(),
+  // Modelo MULTI-UNIDAD (owner 2026-09-09 — regla general): N unidades físicas del mismo
+  // producto, CADA UNA diseñable por separado en el Estudio (2 tiras = 2 × unitSlots;
+  // 2 calendarios = 2 × 12). Aditivo: ausentes = 1 unidad (diseños legacy intactos).
+  // Invariante: slotCount = unitCount × unitSlots; el editor solo los escribe cuando
+  // unitSlots > 1 (los packs de imán suelto no los declaran — su variante YA es el pack).
+  // El precio NUNCA confía en estos campos: se deriva de slotCount (design-units.ts).
+  unitCount: z.number().int().min(1).max(50).optional(),
+  unitSlots: z.number().int().min(1).max(50).optional(),
 });
 
 export type CanvasDataV2 = z.infer<typeof CanvasDataV2Schema>;
@@ -161,6 +212,10 @@ export const SaveCanvasSchema = z
   .object({
     designId: z.string().min(1),
     canvasData: CanvasDataSchema,
+    // N-08 (2026-09-11) — plantilla aplicada en el sidebar: viaja con el auto-save
+    // para que Design.templateId la refleje. El service la re-valida contra el
+    // producto (kind/EDITABLE/activa) antes de persistirla.
+    templateId: z.string().min(1).max(40).optional(),
   })
   .superRefine((data, ctx) => {
     const size = JSON.stringify(data.canvasData).length;

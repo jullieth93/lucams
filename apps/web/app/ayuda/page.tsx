@@ -6,9 +6,10 @@
  * `metadata.order` cuando esté presente o por key alfabético.
  *
  * Si el catálogo de FAQs está vacío, mostramos un set hardcoded de
- * 6 preguntas básicas como fallback editorial inicial (Lucy puede
- * empezar a editar desde el primer click en modo edición — se auto-
- * crean).
+ * 10 preguntas básicas como fallback editorial inicial. OJO: el modo
+ * edición NO auto-crea campos — la puerta por-key redirige al índice
+ * de contenido si la key no existe; el CmsBlock hay que crearlo desde
+ * /admin/contenido.
  */
 
 import type { Metadata } from "next";
@@ -33,16 +34,19 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export const dynamic = "force-dynamic";
 
-// Fallback editorial: ~15 preguntas iniciales. Cada vez que Lucy edita
-// una desde modo edición, el wrapper auto-crea el CmsBlock con
-// category=FAQ. Cuando getCmsBlocksByCategory devuelva blocks, esos
-// reemplazan al fallback (orden por key).
+// Fallback editorial: 10 preguntas iniciales. El modo edición NO
+// auto-crea el CmsBlock de una key inexistente (la puerta por-key
+// /admin/contenido/campos/por-key redirige al índice de contenido);
+// el bloque hay que crearlo desde el admin. Cuando
+// getCmsBlocksByCategory devuelva blocks, esos reemplazan al fallback
+// (orden por key).
 //
 // `catalog` = Etapa 1 (modo catálogo): sin pago en línea ni envío
 // integrado — la compra se cierra por WhatsApp. Los textos de pago/envío
 // se condicionan al modo para no prometer lo que no está activo.
 // `codEnabled`: el toggle COD del admin (SiteSetting COD_ENABLED) también
 // gobierna la mención de contraentrega — apagarlo quita la promesa (2026-07-22).
+// FAIL-CLOSED (CF-35): setting ausente/despublicada = no se promete contraentrega.
 function buildFallbackFaqs(
   catalog: boolean,
   codEnabled: boolean,
@@ -104,7 +108,7 @@ function buildFallbackFaqs(
     {
       slug: "borrar-mis-datos",
       question: "¿Cómo borro mi cuenta y mis datos?",
-      answer: `Escríbenos a **${contactEmail}** desde el email registrado. Procesamos la supresión dentro de **10 días hábiles**. Más info en [Hábeas Data](/legal/habeas-data).`,
+      answer: `Puedes hacerlo tú misma de inmediato desde **[Mi cuenta → Eliminar cuenta](/mi-cuenta/eliminar)**: tus datos se anonimizan al momento. Si prefieres que lo tramitemos por ti, escríbenos a **${contactEmail}** desde el email registrado y procesamos la supresión dentro de **10 días hábiles**. Más info en [Hábeas Data](/legal/habeas-data).`,
     },
     {
       slug: "newsletter-unsuscripcion",
@@ -125,22 +129,44 @@ export default async function AyudaPage() {
     getCmsBlocksByCategory("FAQ"),
     buildWhatsAppUrl({ kind: "support" }),
     getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
-    getSettingValue("COD_ENABLED", "true"),
+    getSettingValue("COD_ENABLED", "false"),
   ]);
   const catalog = isCatalogMode();
   const codEnabled = codSetting === "true";
 
+  // FAQs SENSIBLES al modo de tienda (pago/envío/cierre): la DB arrastra la
+  // variante del modo en que se sembró y NO cambia al flipear STORE_MODE
+  // (auditoría 2026-09-11: en PRD, ya en modo full, se seguía sirviendo texto
+  // de catálogo en la home). En modo catálogo ganan SIEMPRE las variantes
+  // catálogo del fallback; el cuerpo CMS aplica solo en modo full.
+  const MODE_SENSITIVE = new Set([
+    "como-personalizo",
+    "cuanto-demora",
+    "metodos-pago",
+    "envios-cobertura",
+  ]);
+  const fallbackSet = buildFallbackFaqs(catalog, codEnabled, contactEmail);
+  const catalogBodyBySlug = new Map(fallbackSet.map((f) => [f.slug, f.answer]));
+
   // Si hay FAQs en CMS, las usamos. Si no, fallback editorial.
   const items =
     faqs.length > 0
-      ? faqs.map((b) => ({
-          slug: b.key.replace(/^faq\./, ""),
-          question: b.title ?? b.key,
-          answer: b.body,
-          fromCms: true as const,
-        }))
-      : buildFallbackFaqs(catalog, codEnabled, contactEmail).map((f) => ({
+      ? faqs.map((b) => {
+          const slug = b.key.replace(/^faq\./, "");
+          const baseSlug = slug.replace(/^\d+-/, "");
+          const override = catalog ? catalogBodyBySlug.get(baseSlug) : undefined;
+          const forced = MODE_SENSITIVE.has(baseSlug) && !!override;
+          return {
+            slug,
+            question: b.title ?? b.key,
+            answer: forced ? override : b.body,
+            forced,
+            fromCms: true as const,
+          };
+        })
+      : fallbackSet.map((f) => ({
           ...f,
+          forced: false,
           fromCms: false as const,
         }));
 
@@ -179,11 +205,11 @@ export default async function AyudaPage() {
                   <ChevronDown className="text-brand-purple h-4 w-4 transition-transform group-open:rotate-180" />
                 </summary>
                 <div className="text-brand-purple-dark/80 px-5 pb-4 text-sm leading-relaxed">
-                  {it.fromCms ? (
-                    <CmsMarkdown blockKey={`faq.${it.slug}`} fallback={it.answer} />
-                  ) : (
-                    <CmsMarkdown blockKey={`faq.${it.slug}`} fallback={it.answer} />
-                  )}
+                  <CmsMarkdown
+                    blockKey={`faq.${it.slug}`}
+                    fallback={it.answer}
+                    forceFallback={it.forced}
+                  />
                 </div>
               </details>
             ))}
@@ -196,7 +222,7 @@ export default async function AyudaPage() {
             <p className="text-brand-purple-dark/70 mt-1 text-sm">
               <CmsText
                 blockKey="support.help.cta.subtext"
-                fallback="Escríbenos por WhatsApp o email y te respondemos en menos de 24h."
+                fallback="Escríbenos por WhatsApp o email y te respondemos en menos de 24h hábiles."
               />
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">

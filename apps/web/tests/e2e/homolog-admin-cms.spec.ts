@@ -1,6 +1,6 @@
 /*
- * HOMOLOGACIÓN E2E — integración admin→cliente (CMS), el spec de certificación
- * del PROMPT_E2E_HOMOLOGACION §9.4:
+ * HOMOLOGACIÓN E2E — integración admin→cliente (CMS), spec de certificación
+ * de la suite de homologación (docs/TESTING.md):
  *
  *   el admin edita `home.categories.cta-all` por la UI de /admin/contenido →
  *   el cliente lo ve en la home → revertir → el original vuelve a ser visible.

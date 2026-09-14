@@ -11,6 +11,7 @@
  *  - PENDING (raro, ej. PSE async): mostrar mensaje "estamos verificando"
  *  - DECLINED/VOIDED/ERROR: mostrar error + CTA "Reintentar pago" → /carrito
  *  - Sin query id (acceso directo): redirect a home.
+ *  - Modo catálogo (Etapa 1): no existen TX Wompi → redirect a home (N-16).
  *
  * P0-012 (Lucy 2026-06-26) — Fallback idempotente processPaidOrder.
  * Si Wompi devuelve APPROVED Y la Order sigue en PENDING_PAYMENT (caso
@@ -33,6 +34,7 @@ import { logger } from "@/lib/logger";
 import { headers } from "next/headers";
 import { getClientIp } from "@/lib/client-ip";
 import { rateLimit } from "@/lib/rate-limit";
+import { isCatalogMode } from "@/lib/store-mode";
 import { ClearCheckoutSession } from "./clear-checkout-session";
 import { processPaidOrder } from "@/features/orders/saga";
 import { prisma } from "@/lib/db";
@@ -63,6 +65,14 @@ export default async function CheckoutGraciasPage({
 }: {
   searchParams: SearchParams;
 }) {
+  // Etapa 1 (modo catálogo): NUNCA existe una TX Wompi que confirmar, así que
+  // cualquier visita acá es un enlace viejo/externo. Sus hermanas (envio/pago)
+  // redirigen a /checkout/datos porque su equivalente en catálogo es el form de
+  // cotización; esta página es el ESTADO TERMINAL post-pago — sin pago no hay
+  // equivalente, así que el destino honesto es el home (igual que el caso
+  // "sin query id" de más abajo). Además evita pegarle a la API de Wompi.
+  if (isCatalogMode()) redirect("/");
+
   const sp = await searchParams;
   const txId = sp.id;
 

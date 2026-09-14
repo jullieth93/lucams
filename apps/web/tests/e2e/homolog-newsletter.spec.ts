@@ -1,5 +1,5 @@
 /*
- * HOMOLOGACIÓN E2E — newsletter + unsubscribe (PROMPT_E2E_HOMOLOGACION §6.9):
+ * HOMOLOGACIÓN E2E — newsletter + unsubscribe (docs/TESTING.md):
  *
  *   suscripción con consent obligatorio → Consent NEWSLETTER en DB + welcome
  *   email (en LOCAL se inspecciona en Mailpit: asunto, link de baja, headers

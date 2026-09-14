@@ -8,6 +8,8 @@
 
 ## Lectura condicional (según la tarea)
 
+> El mapa completo de la documentación (qué doc cubre qué dominio) está en `docs/README.md`.
+
 | Tarea                                                                          | Lee                                             |
 | ------------------------------------------------------------------------------ | ----------------------------------------------- |
 | UI, componentes, colores, tipografías, copy                                    | `docs/BRANDING.md`                              |
@@ -32,13 +34,13 @@
 
 ## Qué es este proyecto
 
-**Lucams_shop** — e-commerce colombiano de productos magnéticos personalizados (imanes, separadores, calendarios, tiras, letras). Venta actual: catálogo + cotización por WhatsApp (Etapa 1). Referencia funcional: magneticas.cl, con mandato de superarla.
+**Lucams_shop** — e-commerce colombiano de productos magnéticos personalizados (imanes, separadores, calendarios, tiras, letras). Venta actual: tienda full con pagos Wompi + envíos Aveonline (PRD en modo `full` desde 2026-09-03). Referencia funcional: magneticas.cl, con mandato de superarla.
 
 ## Mandatos no negociables
 
 1. **No es MVP.** El sitio nace 100% productivo.
 2. **Stack fijo:** Next.js **16** (App Router, RSC, Server Actions, Turbopack) + TypeScript + **Tailwind v4** + shadcn/ui, monorepo pnpm (`apps/web` + `packages/db`), Supabase (DB+Auth+Storage), Vercel. Next 16 tiene breaking changes vs 15 — ver `apps/web/AGENTS.md`.
-3. **Modo de tienda por flag:** `NEXT_PUBLIC_STORE_MODE` = `catalog` (Etapa 1, sin pagos/envíos/IA en UI) | `full` (Etapa 2, Wompi + Aveonline). Una sola base de código — ADR-077.
+3. **Modo de tienda por flag:** `NEXT_PUBLIC_STORE_MODE` = `catalog` (Etapa 1, sin pagos/envíos/IA en UI) | `full` (Etapa 2, Wompi + Aveonline). Una sola base de código — ADR-077. **PRD opera en `full`** por decisión de Lucy del 2026-09-03 (ver `docs/ROADMAP.md` E2 y RUNBOOK FASE 11.c).
 4. **Pasarela:** Wompi (adaptador `PaymentProvider`; Mercado Pago después).
 5. **Logística:** Aveonline (ADR-039).
 6. **WhatsApp:** solo `wa.me` con mensaje pre-armado contextual; sin Twilio.
@@ -46,7 +48,7 @@
 8. **Documentación dentro del repo** (auditorías en `docs/audits/`, decisiones en `docs/DECISIONS.md`).
 9. **Argumentación obligatoria:** toda afirmación técnica (cifras, límites, defaults, costos) cita fuente oficial con fecha; si no se puede verificar, marcar `[pendiente verificación]`.
 10. **VM dedicada como dev.** Sin venvs Python ni Docker en dev salvo necesidad justificada.
-11. **Background jobs en Supabase** (`pgmq` + `pg_cron`; no Vercel Cron). Rate limit y cache en Postgres.
+11. **Background jobs:** pg_cron + pg_net → `/api/cron/*` con secreto en Vault (no Vercel Cron; pgmq descartado — ADR-017 SUPERSEDED). Rate limit y cache en Postgres.
 12. **Seguridad por defecto:** RLS en toda tabla vía `anon_key`; `/admin/*` valida rol; secretos solo en `.env*` (gitignored) — `docs/SECURITY.md`.
 
 ## Branding (resumen — detalle en docs/BRANDING.md)
@@ -62,7 +64,7 @@
 
 ## Estado actual
 
-Ver `docs/STATE.md` (fuente narrativa). En corto: **Etapa 1 en vivo** (catálogo + cotización WhatsApp, olas de pulido 1-4 desplegadas). Etapa 2 (pagos/envíos reales) espera trámites humanos (NIT, abogado, DIAN).
+Ver `docs/STATE.md` (fuente narrativa). En corto: **Etapa 2 / modo `full` activo en PRD** (venta con pagos reales Wompi + envíos Aveonline, olas de pulido 1-4 desplegadas). Lo pendiente son los trámites de facturación electrónica (NIT, abogado, DIAN) — no los pagos.
 
 ## Convenciones
 
@@ -77,3 +79,4 @@ Ver `docs/STATE.md` (fuente narrativa). En corto: **Etapa 1 en vivo** (catálogo
 - Decisión arquitectónica nueva → `docs/DECISIONS.md`. Contradicción con un mandato → **actualizar este CLAUDE.md primero**.
 - **Al cerrar la sesión con cambios:** actualizar `docs/STATE.md` (resumen + última sesión + bitácora).
 - **Antes de citar una cifra técnica nueva**, verificar contra doc oficial (mandato #9).
+- **Información pública, contenido legal y centro de ayuda — documentación SIEMPRE al día (mandato Lucy 2026-09-11):** cualquier cambio que toque lo que el público lee (textos CMS y sus fallbacks, FAQs, `/contacto`, `/rastrear`, `/legal/*` y su canónico `packages/db/legal-content/*.md`, datos de contacto/identidad, tiempos de entrega, medios de pago, versiones de políticas, emails transaccionales) debe dejar actualizado **en la misma sesión**: ① `docs/STATE.md` (resumen + sesión), ② `docs/COMPLIANCE.md` si cambia algo legal (versiones, buzones, documentos), ③ `docs/OPERATIONS.md` (changelog) si hubo scripts/seed/cambios en DB o infra, y ④ `docs/audits/` solo para auditorías nuevas con su convención — las auditorías ya ejecutadas se consolidan y eliminan (git conserva la historia). Regla de oro asociada: **ningún texto público promete lo que la tienda no opera hoy** (Ley 1480 arts. 23/29) y los textos sensibles al modo (`STORE_MODE`) se gatean en código, no solo en DB.

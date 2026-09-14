@@ -17,8 +17,10 @@
  * el radio queda en ~10% del ancho Y —lo importante— el EXTRUIDO 3D usa el mismo ratio
  * (antes el mesh heredaba el radio por defecto 8/512 ≈ 1.6%: casi en punta, y la esquina
  * afilada del cuerpo asomaba por la esquina transparente de la textura → "terminadas en punta").
- * OJO: el compositor de producción (letter-set-editor) sigue en r=18/120 (15%); si se ajusta
- * allá, alinear LETTER_TILE_CORNER_RATIO al mismo valor (WYSIWYG).
+ * 2026-09-05 (Lucy — opción "Sin borde"): LETTER_TILE_CORNER_RATIO quedó como FUENTE ÚNICA de
+ * la geometría de la ficha; el compositor de producción (renderLetterSetBlob en letter-set-editor)
+ * ya no usa su propio r=18/120 sino este ratio (antes divergía: 15% vs 10%). El borde de color
+ * es opcional (withBorder): sin borde, la ficha es blanca a ras y se recorta por el contorno.
  *
  * Estructura testeable:
  *  - `letterTileMetrics` y `drawLetterTile` son puras (dibujan sobre cualquier ctx 2D, incluido
@@ -86,6 +88,8 @@ function roundRect(
 /**
  * Dibuja UNA ficha en el ctx (lienzo w×h ya creado, fondo transparente). Si `img` viene (dibujo
  * del tema), va contenida dentro del marco; si no, la letra en el color de la ficha.
+ * `withBorder` = borde de color alrededor de la ficha (default true, el histórico); sin borde la
+ * ficha queda blanca a ras y la lámina se recorta por el contorno redondeado.
  */
 export function drawLetterTile(
   ctx: CanvasRenderingContext2D,
@@ -94,14 +98,17 @@ export function drawLetterTile(
   img: HTMLImageElement | null,
   w = LETTER_TILE_TEX_W,
   h = LETTER_TILE_TEX_H,
+  withBorder = true,
 ): void {
   const m = letterTileMetrics(w, h);
   roundRect(ctx, 0, 0, w, h, m.radius);
   ctx.fillStyle = "#ffffff";
   ctx.fill();
-  ctx.lineWidth = m.borderWidth;
-  ctx.strokeStyle = color;
-  ctx.stroke();
+  if (withBorder) {
+    ctx.lineWidth = m.borderWidth;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+  }
   if (img) {
     ctx.save();
     roundRect(ctx, m.inset, m.inset, w - 2 * m.inset, h - 2 * m.inset, m.radius - m.inset);
@@ -137,12 +144,13 @@ function loadTileImage(url: string): Promise<HTMLImageElement | null> {
 /**
  * Una textura Magnet3D por ficha del set (letra o dibujo del tema), listas para RoomBoardView3D.
  * El canvas por ficha nace y muere acá (solo viaja el dataURL) — MagnetMesh clona y dispone su
- * textura GPU al desmontar la escena.
+ * textura GPU al desmontar la escena. `withBorder` fluye al dibujo de cada ficha (default true).
  */
 export async function buildLetterTileTextures(
   letters: readonly string[],
   tiles: LetterTileMap,
   colors: readonly string[],
+  withBorder = true,
 ): Promise<Magnet3D[]> {
   const imgs = await Promise.all(
     letters.map((ch) =>
@@ -155,7 +163,15 @@ export async function buildLetterTileTextures(
     canvas.height = LETTER_TILE_TEX_H;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("No se pudo crear el contexto 2D para la ficha 3D");
-    drawLetterTile(ctx, ch, colors[i % colors.length] ?? FALLBACK_COLOR, imgs[i] ?? null);
+    drawLetterTile(
+      ctx,
+      ch,
+      colors[i % colors.length] ?? FALLBACK_COLOR,
+      imgs[i] ?? null,
+      LETTER_TILE_TEX_W,
+      LETTER_TILE_TEX_H,
+      withBorder,
+    );
     return {
       dataUrl: canvas.toDataURL("image/png"),
       wRatio: LETTER_TILE_RATIO.w,

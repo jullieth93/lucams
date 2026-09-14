@@ -1,5 +1,5 @@
 /*
- * HOMOLOGACIÓN E2E — reseñas del cliente (PROMPT_E2E_HOMOLOGACION §6.11):
+ * HOMOLOGACIÓN E2E — reseñas del cliente (docs/TESTING.md):
  *
  *   compra verificada (orden PAID sembrada para el cliente efímero) → form en
  *   la PDP (estrellas + comentario + Turnstile) → submit → "gracias, la

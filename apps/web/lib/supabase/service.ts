@@ -4,7 +4,7 @@
  * Mapea al rol Postgres `service_role`. Acceso TOTAL a todas las tablas.
  * Usar SOLO cuando se necesite operar fuera del scope del usuario:
  *   - Webhooks (Wompi, Aveonline) — el "user" es el sistema externo.
- *   - Background jobs (pgmq consumers en Edge Functions / cron).
+ *   - Background jobs (los endpoints `/api/cron/*` disparados por pg_cron vía HTTP).
  *   - Admin tasks puntuales (seed, mantenimiento).
  *   - Tests E2E con setup/teardown.
  *

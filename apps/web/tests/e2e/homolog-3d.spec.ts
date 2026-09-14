@@ -1,6 +1,5 @@
 /*
- * HOMOLOGACIÓN E2E — vistas 3D "Ver en tu espacio" (PROMPT_E2E_HOMOLOGACION
- * §6.16): el modal 3D abre por producto elegible, escenas correctas por tipo
+ * HOMOLOGACIÓN E2E — vistas 3D "Ver en tu espacio" (docs/TESTING.md): el modal 3D abre por producto elegible, escenas correctas por tipo
  * (fotoimanes: nevera/mural/repisa/regalo — separadores: libro), foco atrapado
  * dentro del dialog (WCAG APG) y cierre con Escape, sin desborde móvil.
  * Solo lectura — corre en LOCAL y STG × desktop/mobile.

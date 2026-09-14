@@ -5,6 +5,7 @@ import { getAuthTexts } from "../auth-texts.server";
 export const metadata: Metadata = {
   title: "Iniciar sesión",
   description: "Accede a tu cuenta de Lucams_shop.",
+  robots: { index: false, follow: false },
 };
 
 const ERROR_MESSAGES: Record<string, string> = {

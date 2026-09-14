@@ -4,14 +4,30 @@
  *
  * Regression: las variants de separadores-libros declaran `quantity` y
  * `photoSlots` con valores IDÉNTICOS (1/3/5) y ambas dimensions tenían el
- * label "Cantidad" → la PDP pintaba DOS grupos "CANTIDAD". El selector ahora
- * deduplica dimensions cuyo valor es el mismo en TODAS las variants.
+ * label "Cantidad" → la PDP pintaba DOS grupos "CANTIDAD". El selector deduplica
+ * dimensions cuyo valor es el mismo en TODAS las variants.
  *
- * Stepper de cantidad (Lucy 2026-07-22): cuando la dimensión de cantidad es
- * 1..N contigua (fotoimanes/separadores 1–6), se muestra stepper +/− con
- * "$X c/u" y total de la línea en vez de chips. Los tests del stepper envuelven
- * el selector en SelectedVariantProvider (la fuente de verdad del buy-box, H12)
- * para ejercitar la interacción real: click +/− → setSelectedId → re-render.
+ * Lucy 2026-09-05 (bug en vivo: "hay cantidad y a la vez unidades"): cuando el
+ * dedupe aplica (quantity == photoSlots en todas las variants, como en todos
+ * los fotoimanes/separadores del catálogo), el grupo visible conserva photoSlots
+ * (va antes en VISIBLE_DIMENSIONS) — es la COMPOSICIÓN del pack. Regla
+ * 2026-09-08b: la PDP RENOMBRA ese grupo a "Unidades" por familia
+ * (PDP_DIMENSION_LABEL_OVERRIDES — un concepto, un label); los tests del pack
+ * size ejercitan el override tal como lo pasa la página. El stepper dice
+ * "{qty} foto(s)"/"{qty} unidad(es)" y NO muestra "Total: $X" (ese total lo
+ * fija el carrito; el precio del pack está en el bloque PRECIO). Se mantiene
+ * el "$X c/u".
+ *
+ * Stepper de cantidad (Lucy 2026-07-22; universal 2026-09-09, owner): TODA
+ * dimensión de cantidad (quantity/photoSlots) con valores enteros positivos se
+ * muestra como stepper +/− con "$X c/u" en vez de chips — el ± salta entre los
+ * tamaños que EXISTEN como variante (sets no contiguos incluidos: polaroid
+ * {1,10} de STG salta de 1 a 10). EXCEPCIÓN: la composición de los híbridos
+ * (quantityStepperExclusions — tiras "Fotos por tira" 3/4) conserva chips; el
+ * test de tiras pasa la exclusión tal como lo hace la página
+ * (PDP_QUANTITY_CHIP_DIMS). Los tests del stepper envuelven el selector en
+ * SelectedVariantProvider (la fuente de verdad del buy-box, H12) para ejercitar
+ * la interacción real: click +/− → setSelectedId → re-render.
  */
 
 import "@testing-library/jest-dom/vitest";
@@ -69,14 +85,19 @@ const separadoresVariants: TestVariant[] = [
 ];
 
 describe("VariantSelector", () => {
-  it("no duplica el grupo 'Cantidad' cuando quantity y photoSlots coinciden en todas las variants", () => {
+  it("no duplica el grupo de composición cuando quantity y photoSlots coinciden en todas las variants", () => {
     render(<VariantSelector productBasePrice={100_000} variants={separadoresVariants} />);
-    // Un solo grupo "Cantidad" (antes salían dos) + un grupo "Tamaño".
-    expect(screen.getAllByRole("group", { name: "Cantidad" })).toHaveLength(1);
+    // Un solo grupo (antes salían dos "Cantidad"); al coincidir quantity y
+    // photoSlots, el dedupe conserva photoSlots → el grupo se etiqueta "Fotos".
+    expect(screen.getAllByRole("group", { name: "Fotos" })).toHaveLength(1);
+    expect(screen.queryByRole("group", { name: "Cantidad" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
-    // Los chips de cantidad y tamaño siguen completos.
-    const cantidad = screen.getByRole("group", { name: "Cantidad" });
-    expect(within(cantidad).getAllByRole("button")).toHaveLength(3);
+    // Fotos es el stepper de pack size (2026-09-09 — universal en dims de
+    // cantidad numéricas, aunque el set 1/3/5 no sea contiguo): solo −/+.
+    const fotos = screen.getByRole("group", { name: "Fotos" });
+    expect(within(fotos).getAllByRole("button")).toHaveLength(2);
+    expect(within(fotos).getByLabelText("Aumentar unidades")).toBeInTheDocument();
+    // Los chips de tamaño siguen completos.
     const tamano = screen.getByRole("group", { name: "Tamaño" });
     expect(within(tamano).getAllByRole("button")).toHaveLength(2);
   });
@@ -93,8 +114,14 @@ describe("VariantSelector", () => {
     render(<VariantSelector productBasePrice={100_000} variants={variants} />);
     expect(screen.getAllByRole("group", { name: "Fotos" })).toHaveLength(1);
     expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
-    expect(screen.getByText("6 fotos")).toBeInTheDocument();
-    expect(screen.getByText("12 fotos")).toBeInTheDocument();
+    // Fotos es stepper de pack size (2026-09-09 — universal en packs numéricos);
+    // sin selección muestra el mínimo del rango (6) y solo los botones −/+.
+    const fotos = screen.getByRole("group", { name: "Fotos" });
+    expect(within(fotos).getByLabelText("Aumentar unidades")).toBeInTheDocument();
+    expect(within(fotos).getByText("6 fotos")).toBeInTheDocument();
+    // Tamaño sigue en chips (no es dimensión de cantidad).
+    expect(screen.getByText("7×9 cm")).toBeInTheDocument();
+    expect(screen.getByText("6×8 cm")).toBeInTheDocument();
   });
 
   it("muestra la dimensión Forma cuando shape tiene más de un valor", () => {
@@ -111,9 +138,10 @@ describe("VariantSelector", () => {
     expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
   });
 
-  it("pinta Cantidad/Tamaño/Marco una sola vez en la matriz fotoimanes (size × marco × qty)", () => {
+  it("pinta Fotos/Tamaño/Marco una sola vez en la matriz fotoimanes (size × marco × qty)", () => {
     // Datos reales (2026-07-22) de set-fotoimanes-cuadrados: quantity == photoSlots
-    // en todas las variants + frameStyle blanco/negro.
+    // en todas las variants + frameStyle blanco/negro → el grupo de composición
+    // se etiqueta "Fotos" (dedupe, Lucy 2026-09-05).
     const variants: TestVariant[] = [];
     for (const sizeCm of ["6.5×6.5", "7.5×10"]) {
       for (const frameStyle of ["blanco", "negro"]) {
@@ -132,7 +160,7 @@ describe("VariantSelector", () => {
       }
     }
     render(<VariantSelector productBasePrice={100_000} variants={variants} />);
-    expect(screen.getAllByRole("group", { name: "Cantidad" })).toHaveLength(1);
+    expect(screen.getAllByRole("group", { name: "Fotos" })).toHaveLength(1);
     expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
     expect(screen.getAllByRole("group", { name: "Marco" })).toHaveLength(1);
     const marco = screen.getByRole("group", { name: "Marco" });
@@ -151,7 +179,7 @@ describe("VariantSelector", () => {
     ];
     render(<VariantSelector productBasePrice={100_000} variants={variants} />);
     expect(screen.queryByRole("group", { name: "Marco" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("group", { name: "Cantidad" })).toHaveLength(1);
+    expect(screen.getAllByRole("group", { name: "Fotos" })).toHaveLength(1);
     expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
   });
 
@@ -208,7 +236,7 @@ describe("VariantSelector", () => {
  * siguen intactas; solo se filtra el grupo del UI y la selección sigue funcionando.
  */
 describe("VariantSelector — dimensiones ocultas (Ola 2A)", () => {
-  it("oculta el grupo Estilo en la Polaroid pero deja Cantidad y Tamaño seleccionables", () => {
+  it("oculta el grupo Estilo en la Polaroid pero deja Fotos y Tamaño seleccionables", () => {
     const variants = [
       makeVariant("v-p6-bc", { photoSlots: 6, sizeCm: "7×9", variantStyle: "blanco-clasico" }),
       makeVariant("v-p6-pas", { photoSlots: 6, sizeCm: "7×9", variantStyle: "pasteles" }),
@@ -278,6 +306,285 @@ describe("VariantSelector — dimensiones ocultas (Ola 2A)", () => {
 });
 
 /*
+ * Regla 2026-09-08b (Lucy) — los packs de fotoimanes muestran el pack size en la
+ * PDP como "Unidades" (stepper si 1..N contiguo): ya NO se ocultan
+ * photoSlots/quantity. Lo único oculto es la dimensión de ESTILO que se elige
+ * dentro del Estudio (variantStyle/frameStyle). Elegir tamaño ancla a la
+ * variante N=1 de ese tamaño (deep-link ?variant= → el Estudio abre con ese N).
+ */
+describe("VariantSelector — packs: 'Unidades' visible, estilo oculto (regla 2026-09-08b)", () => {
+  it("pack multi-tamaño (cuadrados): stepper Unidades + Tamaño, Marco oculto", () => {
+    // Réplica set-fotoimanes-cuadrados: 2 tamaños × photoSlots 1..2 contiguos.
+    const variants = [
+      makeVariant("v-65-1", {
+        sizeCm: "6.5×6.5",
+        quantity: 1,
+        photoSlots: 1,
+        frameStyle: "blanco",
+      }),
+      makeVariant("v-65-2", {
+        sizeCm: "6.5×6.5",
+        quantity: 2,
+        photoSlots: 2,
+        frameStyle: "blanco",
+      }),
+      makeVariant("v-10-1", { sizeCm: "10×10", quantity: 1, photoSlots: 1, frameStyle: "blanco" }),
+      makeVariant("v-10-2", { sizeCm: "10×10", quantity: 2, photoSlots: 2, frameStyle: "blanco" }),
+    ];
+    render(
+      <VariantSelector
+        productBasePrice={100_000}
+        variants={variants}
+        hiddenDimensions={["frameStyle"]}
+        dimensionLabels={{ photoSlots: "Unidades" }}
+        singleDimAsChips
+      />,
+    );
+    expect(screen.queryByRole("group", { name: "Marco" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Cantidad" })).not.toBeInTheDocument();
+    const unidades = screen.getByRole("group", { name: "Unidades" });
+    // 1..2 contiguo → stepper +/− (no chips).
+    expect(within(unidades).getByLabelText("Aumentar unidades")).toBeInTheDocument();
+    expect(within(unidades).getByLabelText("Disminuir unidades")).toBeInTheDocument();
+    expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
+  });
+
+  it("pack de tamaño único (polaroid): stepper Unidades 1..N + chip estático de Tamaño", () => {
+    const variants = [1, 2, 3].map((n) =>
+      makeVariant(`v-pol-${n}`, { sizeCm: "7.5×10", quantity: n, photoSlots: n }),
+    );
+    render(
+      <VariantSelector
+        productBasePrice={100_000}
+        variants={variants}
+        hiddenDimensions={["variantStyle"]}
+        dimensionLabels={{ photoSlots: "Unidades" }}
+      />,
+    );
+    const unidades = screen.getByRole("group", { name: "Unidades" });
+    expect(within(unidades).getByLabelText("Aumentar unidades")).toBeInTheDocument();
+    // Dimensión de tamaño único → chip estático no clicable con la medida.
+    const tamano = screen.getByRole("group", { name: "Tamaño" });
+    expect(within(tamano).getByText("7.5×10 cm")).toBeInTheDocument();
+  });
+
+  it("elegir tamaño ancla a la variante N=1 de ese tamaño (menor precio del tamaño)", () => {
+    const variants = [
+      makeVariant("v-65-1", { sizeCm: "6.5×6.5", quantity: 1, photoSlots: 1 }, 160_000),
+      makeVariant("v-65-2", { sizeCm: "6.5×6.5", quantity: 2, photoSlots: 2 }, 176_000),
+      makeVariant("v-10-1", { sizeCm: "10×10", quantity: 1, photoSlots: 1 }, 219_000),
+      makeVariant("v-10-2", { sizeCm: "10×10", quantity: 2, photoSlots: 2 }, 241_000),
+    ];
+    render(
+      <SelectedVariantProvider variantIds={variants.map((v) => v.id)} initialId={null}>
+        <VariantSelector
+          productBasePrice={160_000}
+          variants={variants}
+          hiddenDimensions={["frameStyle"]}
+          dimensionLabels={{ photoSlots: "Unidades" }}
+          singleDimAsChips
+        />
+      </SelectedVariantProvider>,
+    );
+    fireEvent.click(within(screen.getByRole("group", { name: "Tamaño" })).getByText("10×10 cm"));
+    // La primera variante con stock de ese tamaño es v-10-1 (N=1) → el deep-link
+    // fija tamaño + N para el Estudio.
+    expect(decodeURIComponent(String(replace.mock.calls[0]?.[0]))).toContain("variant=v-10-1");
+  });
+});
+
+/*
+ * Regla 2026-09-08b (Lucy) — la PDP de separadores/tiras muestra UN concepto de
+ * cantidad: "Unidades" (pack size: cuántos separadores / cuántas fotos trae la
+ * tira). El N elegido viaja en ?variant= → el Estudio abre con ese N (merge de
+ * la variante sobre el schema).
+ */
+describe("VariantSelector — pack size 'Unidades' en la PDP (regla 2026-09-08b)", () => {
+  it("separadores: photoSlots oculta NO tapa a quantity idéntica — queda el stepper 'Unidades'", () => {
+    // Regresión del orden dedupe/filtro: quantity == photoSlots 1:1 en TODAS las
+    // variants. Si el dedupe corriera ANTES del filtro de ocultas, conservaría
+    // photoSlots (primera en VISIBLE_DIMENSIONS), descartaría quantity como
+    // duplicada y luego ocultaría photoSlots → la PDP se quedaba sin Unidades
+    // (bug reportado por Lucy: solo se veían tamaño y precio).
+    const variants: TestVariant[] = [];
+    for (const sizeCm of ["2×6", "4×4.2"]) {
+      for (const qty of [1, 2, 3, 4, 5, 6]) {
+        variants.push(
+          makeVariant(`v-${sizeCm}-${qty}`, {
+            shape: "rectangle",
+            sizeCm,
+            quantity: qty,
+            photoSlots: qty,
+          }),
+        );
+      }
+    }
+    render(
+      <VariantSelector
+        productBasePrice={400_000}
+        variants={variants}
+        hiddenDimensions={["photoSlots"]}
+        dimensionLabels={{ quantity: "Unidades" }}
+      />,
+    );
+    expect(screen.queryByRole("group", { name: "Fotos" })).not.toBeInTheDocument();
+    const unidades = screen.getByRole("group", { name: "Unidades" });
+    // 1..6 contiguo → stepper +/− (no chips), sustantivo "unidades".
+    expect(within(unidades).getByLabelText("Aumentar unidades")).toBeInTheDocument();
+    expect(within(unidades).getByLabelText("Disminuir unidades")).toBeInTheDocument();
+    expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
+  });
+
+  it("separadores: elegir Unidades=3 fija la variante de 3 unidades (deep-link ?variant= para el Estudio)", () => {
+    const variants: TestVariant[] = [];
+    for (const qty of [1, 2, 3]) {
+      variants.push(
+        makeVariant(
+          `v-sep-${qty}`,
+          { shape: "rectangle", sizeCm: "2×6", quantity: qty, photoSlots: qty },
+          400_000 * qty,
+        ),
+      );
+    }
+    render(
+      <SelectedVariantProvider variantIds={variants.map((v) => v.id)} initialId="v-sep-1">
+        <VariantSelector
+          productBasePrice={400_000}
+          variants={variants}
+          hiddenDimensions={["photoSlots"]}
+          dimensionLabels={{ quantity: "Unidades" }}
+        />
+      </SelectedVariantProvider>,
+    );
+    const unidades = screen.getByRole("group", { name: "Unidades" });
+    fireEvent.click(within(unidades).getByLabelText("Aumentar unidades"));
+    fireEvent.click(within(unidades).getByLabelText("Aumentar unidades"));
+    expect(within(unidades).getByText("3 unidades")).toBeInTheDocument();
+    // El deep-link lleva la variante qty=3 → el Estudio abre con N=3.
+    expect(replace).toHaveBeenLastCalledWith(
+      expect.stringContaining("variant=v-sep-3"),
+      expect.anything(),
+    );
+  });
+
+  it("tiras (híbrido 2026-09-09): photoSlots visible con label 'Fotos por tira' (chips 3/4) y quantity oculta", () => {
+    // Catálogo real (fix-tiras 2026-09-07): 2 variantes de 1 unidad, 3 y 4 fotos
+    // (1:1 con el tamaño 6.5×20 / 6.5×26.5). quantity=1 en ambas → no es elección.
+    // 2026-09-09 (owner): photoSlots es COMPOSICIÓN → "Fotos por tira"; "Unidades"
+    // pasa a ser el stepper de copias del buy-box (CopiesQtyInput, fuera de este
+    // componente) → acá NO debe quedar ningún grupo "Unidades".
+    const variants = [
+      makeVariant(
+        "v-tira-3",
+        { sizeCm: "6.5×20", quantity: 1, photoSlots: 3, aspectRatio: "1:1" },
+        1_900_000,
+      ),
+      makeVariant(
+        "v-tira-4",
+        { sizeCm: "6.5×26.5", quantity: 1, photoSlots: 4, aspectRatio: "3:4" },
+        2_400_000,
+      ),
+    ];
+    render(
+      <VariantSelector
+        productBasePrice={1_900_000}
+        variants={variants}
+        hiddenDimensions={["quantity"]}
+        dimensionLabels={{ photoSlots: "Fotos por tira" }}
+        // Composición del híbrido → chips, NO stepper (la página la pasa vía
+        // PDP_QUANTITY_CHIP_DIMS; sin ella el stepper universal de pack size
+        // — 2026-09-09, owner — se tomaría el 3/4 por ser numérico).
+        quantityStepperExclusions={["photoSlots"]}
+      />,
+    );
+    const fotosPorTira = screen.getByRole("group", { name: "Fotos por tira" });
+    // Composición del híbrido → chips 3/4, no stepper.
+    expect(within(fotosPorTira).getByText("3 fotos")).toBeInTheDocument();
+    expect(within(fotosPorTira).getByText("4 fotos")).toBeInTheDocument();
+    expect(within(fotosPorTira).queryByLabelText("Aumentar unidades")).not.toBeInTheDocument();
+    // El tamaño sigue visible aunque correlacione 1:1 con la cantidad (elección real).
+    expect(screen.getByRole("group", { name: "Tamaño" })).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Fotos" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Unidades" })).not.toBeInTheDocument();
+  });
+});
+
+/*
+ * Dedupe por correlación 1:1 con el idioma (Lucy 2026-09-03 — abecedario-completo):
+ * la cantidad del set la DEFINE el idioma (es=27 con Ñ, en=26) — no es elección del
+ * cliente. El grupo "Cantidad" se oculta como selector y su valor se describe como
+ * texto bajo el grupo "Idioma". Requiere el dato normalizado en TODAS las variants
+ * (packages/db/scripts/normalize-letterset-quantity.mjs); si falta en alguna, la
+ * correlación se rompe y el grupo vuelve a mostrarse (degradación segura).
+ * Otras correlaciones 1:1 del catálogo (photoSlots↔sizeCm en polaroid/tiras) son
+ * elección real del cliente y SIGUEN visibles — el gate es solo language.
+ */
+describe("VariantSelector — cantidad determinada por el idioma (correlación 1:1)", () => {
+  // Espejo de abecedario-completo tras normalizar: 2 tamaños × imán sí/no × idioma,
+  // quantity 27 (es) / 26 (en) en TODAS las variants.
+  const abecedarioVariants: TestVariant[] = [];
+  for (const language of ["es", "en"]) {
+    for (const sizeCm of ["5×7", "7×10"]) {
+      for (const magnet of [true, false]) {
+        abecedarioVariants.push(
+          makeVariant(`abc-${language}-${sizeCm}-${magnet}`, {
+            sizeCm,
+            magnet,
+            language,
+            quantity: language === "es" ? 27 : 26,
+          }),
+        );
+      }
+    }
+  }
+
+  it("oculta 'Cantidad' como selector y la describe bajo Idioma cuando correlaciona 1:1", () => {
+    render(<VariantSelector productBasePrice={100_000} variants={abecedarioVariants} />);
+    expect(screen.queryByRole("group", { name: "Cantidad" })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Idioma" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Tamaño" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "¿Con imán?" })).toBeInTheDocument();
+    expect(screen.getByText("Cantidad: 27 en Español · 26 en Inglés")).toBeInTheDocument();
+  });
+
+  it("elegir idioma sigue seleccionando la variante con la cantidad correcta", () => {
+    render(
+      <SelectedVariantProvider variantIds={abecedarioVariants.map((v) => v.id)} initialId={null}>
+        <VariantSelector productBasePrice={100_000} variants={abecedarioVariants} />
+      </SelectedVariantProvider>,
+    );
+    fireEvent.click(within(screen.getByRole("group", { name: "Idioma" })).getByText("Inglés"));
+    // Sin otras dimensiones elegidas, el click ancla a la primera variante con
+    // stock en inglés (abc-en-5×7-true, quantity 26) — la cantidad viaja con ella.
+    expect(replace).toHaveBeenCalled();
+    expect(decodeURIComponent(String(replace.mock.calls[0]?.[0]))).toContain(
+      "variant=abc-en-5×7-true",
+    );
+  });
+
+  it("si una variant no trae quantity la correlación se rompe y 'Cantidad' vuelve a mostrarse", () => {
+    const variants = abecedarioVariants.map((v) =>
+      v.id === "abc-en-5×7-true"
+        ? makeVariant(v.id, { sizeCm: "5×7", magnet: true, language: "en" })
+        : v,
+    );
+    render(<VariantSelector productBasePrice={100_000} variants={variants} />);
+    expect(screen.getByRole("group", { name: "Cantidad" })).toBeInTheDocument();
+    expect(screen.queryByText(/en Español · /)).not.toBeInTheDocument();
+  });
+
+  it("NO oculta correlaciones 1:1 ajenas al idioma (photoSlots↔sizeCm, polaroid)", () => {
+    const variants = [
+      makeVariant("v-p6", { photoSlots: 6, sizeCm: "7×9" }),
+      makeVariant("v-p12", { photoSlots: 12, sizeCm: "6×8" }),
+    ];
+    render(<VariantSelector productBasePrice={100_000} variants={variants} />);
+    expect(screen.getByRole("group", { name: "Fotos" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Tamaño" })).toBeInTheDocument();
+  });
+});
+
+/*
  * Stepper de cantidad (Lucy 2026-07-22). Aplica solo cuando la dimensión de
  * cantidad es 1..N contigua; los sets no contiguos conservan chips.
  * Se envuelve en SelectedVariantProvider para ejercitar la interacción real
@@ -285,7 +592,8 @@ describe("VariantSelector — dimensiones ocultas (Ola 2A)", () => {
  */
 describe("VariantSelector — stepper de cantidad", () => {
   // Matriz estilo set-fotoimanes-cuadrados (real 2026-07): 2 tamaños × cantidad 1..3.
-  // quantity == photoSlots en todas → también cubre el dedupe (un solo grupo Cantidad).
+  // quantity == photoSlots en todas → también cubre el dedupe: el grupo de
+  // composición se etiqueta "Fotos" (Lucy 2026-09-05), no "Cantidad".
   const stepperVariants: TestVariant[] = [
     makeVariant(
       "v-a1",
@@ -327,57 +635,59 @@ describe("VariantSelector — stepper de cantidad", () => {
     );
   }
 
-  it("reemplaza los chips por un stepper +/− con $ c/u y total cuando la cantidad es 1..N contigua", () => {
+  it("reemplaza los chips por un stepper +/− con $ c/u (y SIN 'Total:') cuando la cantidad es 1..N contigua", () => {
     renderWithProvider(stepperVariants, "v-a1");
-    const cantidad = screen.getByRole("group", { name: "Cantidad" });
-    // Un solo grupo Cantidad (dedupe quantity/photoSlots intacto) y NO hay chips:
+    const fotos = screen.getByRole("group", { name: "Fotos" });
+    // Un solo grupo Fotos (dedupe quantity/photoSlots intacto) y NO hay chips:
     // solo los 2 botones del stepper (−/+).
-    expect(screen.getAllByRole("group", { name: "Cantidad" })).toHaveLength(1);
-    expect(within(cantidad).getAllByRole("button")).toHaveLength(2);
-    expect(within(cantidad).getByLabelText("Disminuir cantidad")).toBeInTheDocument();
-    expect(within(cantidad).getByLabelText("Aumentar cantidad")).toBeInTheDocument();
-    // Precio unitario y total de la línea visibles para la cantidad seleccionada.
-    expect(within(cantidad).getByText("1 unidad")).toBeInTheDocument();
-    expect(within(cantidad).getByText(`${cop(1_600_000)} c/u`)).toBeInTheDocument();
-    expect(within(cantidad).getByText(`Total: ${cop(1_600_000)}`)).toBeInTheDocument();
+    expect(screen.getAllByRole("group", { name: "Fotos" })).toHaveLength(1);
+    expect(within(fotos).getAllByRole("button")).toHaveLength(2);
+    expect(within(fotos).getByLabelText("Disminuir unidades")).toBeInTheDocument();
+    expect(within(fotos).getByLabelText("Aumentar unidades")).toBeInTheDocument();
+    // Composición del pack ("1 foto") y precio por foto visibles. Regresión
+    // (Lucy 2026-09-05): el stepper ya NO muestra "Total: $X" — ese total lo
+    // fija el carrito (o la modal del Estudio), no la composición del pack.
+    expect(within(fotos).getByText("1 foto")).toBeInTheDocument();
+    expect(within(fotos).getByText(`${cop(1_600_000)} c/u`)).toBeInTheDocument();
+    expect(within(fotos).queryByText(/Total:/)).not.toBeInTheDocument();
   });
 
-  it("el stepper mapea +/− a la variante con esa cantidad (total, c/u y deep-link en sync)", () => {
+  it("el stepper mapea +/− a la variante con esa cantidad (c/u y deep-link en sync)", () => {
     renderWithProvider(stepperVariants, "v-a1");
-    const cantidad = screen.getByRole("group", { name: "Cantidad" });
+    const fotos = screen.getByRole("group", { name: "Fotos" });
 
-    fireEvent.click(within(cantidad).getByLabelText("Aumentar cantidad"));
-    // Seleccionó la variante qty=2 del MISMO tamaño: total y c/u recalculados.
-    expect(within(cantidad).getByText("2 unidades")).toBeInTheDocument();
-    expect(within(cantidad).getByText(`Total: ${cop(1_760_000)}`)).toBeInTheDocument();
-    expect(within(cantidad).getByText(`${cop(880_000)} c/u`)).toBeInTheDocument();
+    fireEvent.click(within(fotos).getByLabelText("Aumentar unidades"));
+    // Seleccionó la variante qty=2 del MISMO tamaño: c/u recalculado (sin "Total:").
+    expect(within(fotos).getByText("2 fotos")).toBeInTheDocument();
+    expect(within(fotos).queryByText(/Total:/)).not.toBeInTheDocument();
+    expect(within(fotos).getByText(`${cop(880_000)} c/u`)).toBeInTheDocument();
     // Deep-link compartible: la URL recibe ?variant=v-a2 como side-effect.
     expect(replace).toHaveBeenCalledWith(
       expect.stringContaining("variant=v-a2"),
       expect.anything(),
     );
 
-    fireEvent.click(within(cantidad).getByLabelText("Disminuir cantidad"));
-    expect(within(cantidad).getByText("1 unidad")).toBeInTheDocument();
-    expect(within(cantidad).getByText(`Total: ${cop(1_600_000)}`)).toBeInTheDocument();
+    fireEvent.click(within(fotos).getByLabelText("Disminuir unidades"));
+    expect(within(fotos).getByText("1 foto")).toBeInTheDocument();
+    expect(within(fotos).getByText(`${cop(1_600_000)} c/u`)).toBeInTheDocument();
   });
 
   it("deshabilita − en el mínimo y + en el máximo del rango", () => {
     renderWithProvider(stepperVariants, "v-a1");
-    const cantidad = screen.getByRole("group", { name: "Cantidad" });
-    expect(within(cantidad).getByLabelText("Disminuir cantidad")).toBeDisabled();
+    const fotos = screen.getByRole("group", { name: "Fotos" });
+    expect(within(fotos).getByLabelText("Disminuir unidades")).toBeDisabled();
 
-    fireEvent.click(within(cantidad).getByLabelText("Aumentar cantidad"));
-    fireEvent.click(within(cantidad).getByLabelText("Aumentar cantidad"));
-    expect(within(cantidad).getByText("3 unidades")).toBeInTheDocument();
-    expect(within(cantidad).getByLabelText("Aumentar cantidad")).toBeDisabled();
-    expect(within(cantidad).getByLabelText("Disminuir cantidad")).toBeEnabled();
+    fireEvent.click(within(fotos).getByLabelText("Aumentar unidades"));
+    fireEvent.click(within(fotos).getByLabelText("Aumentar unidades"));
+    expect(within(fotos).getByText("3 fotos")).toBeInTheDocument();
+    expect(within(fotos).getByLabelText("Aumentar unidades")).toBeDisabled();
+    expect(within(fotos).getByLabelText("Disminuir unidades")).toBeEnabled();
   });
 
   it("acota el stepper a las cantidades disponibles en la combinación actual (matriz incompleta)", () => {
     // Tamaño A tiene 1..3; tamaño B solo 1..2 → valores globales 1..3 (contiguos →
     // stepper) pero en B no existe qty=3: "+" debe deshabilitarse al llegar a 2 y
-    // el total debe ser el de la variante B (no caer a A).
+    // el c/u debe ser el de la variante B (no caer a A). SIN "Total:" (Lucy 2026-09-05).
     const variants = [
       makeVariant("v-a1", { sizeCm: "A", quantity: 1, photoSlots: 1 }, 1_000_000),
       makeVariant("v-a2", { sizeCm: "A", quantity: 2, photoSlots: 2 }, 1_900_000),
@@ -386,32 +696,139 @@ describe("VariantSelector — stepper de cantidad", () => {
       makeVariant("v-b2", { sizeCm: "B", quantity: 2, photoSlots: 2 }, 3_800_000),
     ];
     renderWithProvider(variants, "v-b2");
-    const cantidad = screen.getByRole("group", { name: "Cantidad" });
-    expect(within(cantidad).getByText("2 unidades")).toBeInTheDocument();
-    expect(within(cantidad).getByText(`Total: ${cop(3_800_000)}`)).toBeInTheDocument();
-    expect(within(cantidad).getByLabelText("Aumentar cantidad")).toBeDisabled();
-    expect(within(cantidad).getByLabelText("Disminuir cantidad")).toBeEnabled();
+    const fotos = screen.getByRole("group", { name: "Fotos" });
+    expect(within(fotos).getByText("2 fotos")).toBeInTheDocument();
+    expect(within(fotos).getByText(`${cop(1_900_000)} c/u`)).toBeInTheDocument();
+    expect(within(fotos).queryByText(/Total:/)).not.toBeInTheDocument();
+    expect(within(fotos).getByLabelText("Aumentar unidades")).toBeDisabled();
+    expect(within(fotos).getByLabelText("Disminuir unidades")).toBeEnabled();
   });
 
-  it("conserva chips (sin stepper) cuando la cantidad NO es 1..N contigua (polaroid 6/9/12/20)", () => {
-    // Ola 18 — photoSlots se etiqueta "Fotos" (fotos por unidad).
+  it("set NO contiguo (6/9/12/20): el stepper salta entre los tamaños que existen, con variante y c/u exactos", () => {
+    // Regla 2026-09-09 (owner): el stepper es el UI UNIVERSAL del pack size en
+    // las familias de tamaño variable — el ± salta entre los valores que tienen
+    // variante real (nunca ofrece tamaños intermedios sin variante). Antes este
+    // set mostraba chips de elección única ("6 fotos o 20 fotos"). Fixture con
+    // la forma real de un pack: UN tamaño, conteos no contiguos.
     const variants = [
-      makeVariant("v-p6", { photoSlots: 6, sizeCm: "7×9", variantStyle: "instagram" }),
-      makeVariant("v-p9", { photoSlots: 9, sizeCm: "6×8", variantStyle: "instagram" }),
-      makeVariant("v-p12", { photoSlots: 12, sizeCm: "6×8", variantStyle: "instagram" }),
-      makeVariant("v-p20", { photoSlots: 20, sizeCm: "4×5", variantStyle: "instagram" }),
+      makeVariant("v-p6", { photoSlots: 6, sizeCm: "7.5×10", variantStyle: "instagram" }, 600_000),
+      makeVariant(
+        "v-p9",
+        { photoSlots: 9, sizeCm: "7.5×10", variantStyle: "instagram" },
+        1_170_000,
+      ),
+      makeVariant(
+        "v-p12",
+        { photoSlots: 12, sizeCm: "7.5×10", variantStyle: "instagram" },
+        1_440_000,
+      ),
+      makeVariant(
+        "v-p20",
+        { photoSlots: 20, sizeCm: "7.5×10", variantStyle: "instagram" },
+        2_200_000,
+      ),
     ];
-    render(<VariantSelector productBasePrice={100_000} variants={variants} />);
+    renderWithProvider(variants, "v-p6");
     const fotos = screen.getByRole("group", { name: "Fotos" });
+    // Sin chips: solo los 2 botones del stepper, arrancando en el mínimo (6).
+    expect(within(fotos).getAllByRole("button")).toHaveLength(2);
     expect(within(fotos).getByText("6 fotos")).toBeInTheDocument();
+    expect(within(fotos).getByLabelText("Disminuir unidades")).toBeDisabled();
+
+    // + salta al siguiente tamaño EXISTENTE (9): variante y c/u exactos.
+    fireEvent.click(within(fotos).getByLabelText("Aumentar unidades"));
+    expect(within(fotos).getByText("9 fotos")).toBeInTheDocument();
+    expect(within(fotos).getByText(`${cop(130_000)} c/u`)).toBeInTheDocument();
+    expect(replace).toHaveBeenLastCalledWith(
+      expect.stringContaining("variant=v-p9"),
+      expect.anything(),
+    );
+
+    // 9 → 12 → 20: al tope del rango, "+" se deshabilita.
+    fireEvent.click(within(fotos).getByLabelText("Aumentar unidades"));
+    fireEvent.click(within(fotos).getByLabelText("Aumentar unidades"));
     expect(within(fotos).getByText("20 fotos")).toBeInTheDocument();
-    expect(within(fotos).queryByLabelText("Aumentar cantidad")).not.toBeInTheDocument();
+    expect(within(fotos).getByLabelText("Aumentar unidades")).toBeDisabled();
+
+    // − devuelve al tamaño anterior existente (12), no al entero adyacente (19).
+    fireEvent.click(within(fotos).getByLabelText("Disminuir unidades"));
+    expect(within(fotos).getByText("12 fotos")).toBeInTheDocument();
+    expect(within(fotos).getByText(`${cop(120_000)} c/u`)).toBeInTheDocument();
+    expect(replace).toHaveBeenLastCalledWith(
+      expect.stringContaining("variant=v-p12"),
+      expect.anything(),
+    );
+  });
+
+  it("polaroid {1,10} (set no contiguo del catálogo STG 2026-09): stepper 'Unidades' salta 1 → 10 y vuelve", () => {
+    // Réplica del catálogo real de STG (set-fotoimanes-polaroid): solo existen
+    // las variantes de 1 y 10 fotos (par Con/Sin imán). Reporte del owner: la
+    // PDP mostraba chips de elección única ("1 fotos o 10 fotos"). Con la regla
+    // 2026-09-09 el pack size es stepper −/+ y el ± salta entre 1 y 10 (los
+    // tamaños que EXISTEN) — nunca ofrece los intermedios sin variante.
+    const variants = [
+      makeVariant(
+        "v-pol-1",
+        { sizeCm: "7.5×10", quantity: 1, photoSlots: 1, magnet: true },
+        1_830_000,
+      ),
+      makeVariant(
+        "v-pol-1-sin",
+        { sizeCm: "7.5×10", quantity: 1, photoSlots: 1, magnet: false },
+        1_830_000,
+      ),
+      makeVariant(
+        "v-pol-10",
+        { sizeCm: "7.5×10", quantity: 10, photoSlots: 10, magnet: true },
+        3_480_000,
+      ),
+      makeVariant(
+        "v-pol-10-sin",
+        { sizeCm: "7.5×10", quantity: 10, photoSlots: 10, magnet: false },
+        3_480_000,
+      ),
+    ];
+    render(
+      <SelectedVariantProvider variantIds={variants.map((v) => v.id)} initialId="v-pol-1">
+        <VariantSelector
+          productBasePrice={1_830_000}
+          variants={variants}
+          hiddenDimensions={["variantStyle"]}
+          dimensionLabels={{ photoSlots: "Unidades" }}
+        />
+      </SelectedVariantProvider>,
+    );
+    const unidades = screen.getByRole("group", { name: "Unidades" });
+    // Stepper (no chips): solo −/+ y el conteo; arranca en 1 (mínimo del rango).
+    expect(within(unidades).getAllByRole("button")).toHaveLength(2);
+    expect(within(unidades).getByText("1 foto")).toBeInTheDocument();
+    expect(within(unidades).getByLabelText("Disminuir unidades")).toBeDisabled();
+
+    // + salta al ÚNICO tamaño restante (10): queda elegida la variante de 10
+    // fotos (deep-link, Con imán por el orden magnet-first) y el c/u es exacto.
+    fireEvent.click(within(unidades).getByLabelText("Aumentar unidades"));
+    expect(within(unidades).getByText("10 fotos")).toBeInTheDocument();
+    expect(within(unidades).getByText(`${cop(348_000)} c/u`)).toBeInTheDocument();
+    expect(replace).toHaveBeenLastCalledWith(
+      expect.stringContaining("variant=v-pol-10"),
+      expect.anything(),
+    );
+    expect(within(unidades).getByLabelText("Aumentar unidades")).toBeDisabled();
+
+    // − vuelve a 1.
+    fireEvent.click(within(unidades).getByLabelText("Disminuir unidades"));
+    expect(within(unidades).getByText("1 foto")).toBeInTheDocument();
+    expect(replace).toHaveBeenLastCalledWith(
+      expect.stringContaining("variant=v-pol-1"),
+      expect.anything(),
+    );
   });
 
   it("usa stepper también con UNA sola dimensión de elección (polaroid 7.5×10 qty 1..10, Lucy 2026-07-22)", () => {
     // Datos reales (2026-07-22): pausados los sets, la polaroid queda con tamaño
-    // único 7.5×10 y cantidad libre 1..10. La cantidad sale como stepper (no lista
-    // vertical de 10 filas) y el tamaño único se muestra como chip estático
+    // único 7.5×10 y cantidad libre 1..10 (quantity == photoSlots → el grupo se
+    // etiqueta "Fotos", Lucy 2026-09-05). La composición sale como stepper (no
+    // lista vertical de 10 filas) y el tamaño único se muestra como chip estático
     // preseleccionado (regla SINGLE_VALUE_VISIBLE_DIMS, mismo feedback de Lucy).
     const variants: TestVariant[] = [];
     for (let qty = 1; qty <= 10; qty++) {
@@ -430,19 +847,19 @@ describe("VariantSelector — stepper de cantidad", () => {
       );
     }
     renderWithProvider(variants, "v-pol-1");
-    // Sin lista vertical ni chips de cantidad: solo el stepper +/−.
+    // Sin lista vertical ni chips de fotos: solo el stepper +/−.
     expect(screen.queryByText("Elige tu opción")).not.toBeInTheDocument();
-    const cantidad = screen.getByRole("group", { name: "Cantidad" });
-    expect(within(cantidad).getAllByRole("button")).toHaveLength(2);
-    expect(within(cantidad).getByText("1 unidad")).toBeInTheDocument();
-    expect(within(cantidad).getByLabelText("Disminuir cantidad")).toBeDisabled();
+    const fotos = screen.getByRole("group", { name: "Fotos" });
+    expect(within(fotos).getAllByRole("button")).toHaveLength(2);
+    expect(within(fotos).getByText("1 foto")).toBeInTheDocument();
+    expect(within(fotos).getByLabelText("Disminuir unidades")).toBeDisabled();
 
-    // Recorrer hasta el tope: 9 clicks de "+" → 10 unidades y "+" deshabilitado.
+    // Recorrer hasta el tope: 9 clicks de "+" → 10 fotos y "+" deshabilitado.
     for (let i = 0; i < 9; i++) {
-      fireEvent.click(within(cantidad).getByLabelText("Aumentar cantidad"));
+      fireEvent.click(within(fotos).getByLabelText("Aumentar unidades"));
     }
-    expect(within(cantidad).getByText("10 unidades")).toBeInTheDocument();
-    expect(within(cantidad).getByLabelText("Aumentar cantidad")).toBeDisabled();
+    expect(within(fotos).getByText("10 fotos")).toBeInTheDocument();
+    expect(within(fotos).getByLabelText("Aumentar unidades")).toBeDisabled();
     // Deep-link a la variante qty=10.
     expect(replace).toHaveBeenLastCalledWith(
       expect.stringContaining("variant=v-pol-10"),
@@ -459,7 +876,7 @@ describe("VariantSelector — stepper de cantidad", () => {
     ];
     render(<VariantSelector productBasePrice={100_000} variants={variants} />);
     expect(screen.getByText("Elige tu opción")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Aumentar cantidad")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Aumentar unidades")).not.toBeInTheDocument();
   });
 });
 
@@ -485,7 +902,7 @@ describe("VariantSelector — dimensión de 1 valor visible (Tamaño fijo)", () 
     // No es la lista vertical ni hay stepper (photoSlots tiene 1 solo valor → oculto).
     expect(screen.queryByText("Elige tu opción")).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: "Cantidad" })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Aumentar cantidad")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Aumentar unidades")).not.toBeInTheDocument();
   });
 
   it("muestra 'Tamaño: 7.5×10 cm' como chip estático junto al stepper (polaroid qty 1..N)", () => {
@@ -502,9 +919,10 @@ describe("VariantSelector — dimensión de 1 valor visible (Tamaño fijo)", () 
     const chip = within(tamano).getByRole("button", { name: "7.5×10 cm" });
     expect(chip).toHaveAttribute("aria-pressed", "true");
     expect(chip).toBeDisabled();
-    // La cantidad sigue interactiva (stepper 1..2 contiguo).
-    const cantidad = screen.getByRole("group", { name: "Cantidad" });
-    fireEvent.click(within(cantidad).getByLabelText("Aumentar cantidad"));
+    // La composición (fotos por unidad) sigue interactiva: stepper 1..2 contiguo
+    // en el grupo "Fotos" (dedupe quantity/photoSlots, Lucy 2026-09-05).
+    const fotos = screen.getByRole("group", { name: "Fotos" });
+    fireEvent.click(within(fotos).getByLabelText("Aumentar unidades"));
     expect(replace).toHaveBeenCalledWith(
       expect.stringContaining("variant=v-p2"),
       expect.anything(),
@@ -514,14 +932,15 @@ describe("VariantSelector — dimensión de 1 valor visible (Tamaño fijo)", () 
   it("mantiene oculta la Forma cuando es igual en todas las variants (redundante)", () => {
     // Misma regla de siempre para claves fuera de SINGLE_VALUE_VISIBLE_DIMS:
     // shape "rectangle" en todas → el grupo Forma NO se pinta, aunque sizeCm
-    // de 1 valor sí salga. Solo Cantidad queda como elección real.
+    // de 1 valor sí salga. Solo Fotos (composición del pack) queda como
+    // elección real — quantity/photoSlots coinciden → dedupe a "Fotos".
     const variants = [
       makeVariant("v-r1", { shape: "rectangle", sizeCm: "6×6", quantity: 1, photoSlots: 1 }),
       makeVariant("v-r2", { shape: "rectangle", sizeCm: "6×6", quantity: 3, photoSlots: 3 }),
     ];
     render(<VariantSelector productBasePrice={100_000} variants={variants} />);
     expect(screen.queryByRole("group", { name: "Forma" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("group", { name: "Cantidad" })).toHaveLength(1);
+    expect(screen.getAllByRole("group", { name: "Fotos" })).toHaveLength(1);
     expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
   });
 });
@@ -541,7 +960,8 @@ describe("VariantSelector — stock por variante (Fase 1)", () => {
     );
   }
 
-  // Matriz size A/B × qty 1/3 (chips: qty NO contigua). v-b1 agotada.
+  // Matriz size A/B × qty 1/3 (chips: qty NO contigua). v-b1 agotada. Al
+  // coincidir quantity y photoSlots, el grupo de cantidad se etiqueta "Fotos".
   const matrix = () => [
     makeVariant("v-a1", { sizeCm: "A", quantity: 1, photoSlots: 1 }),
     makeVariant("v-a3", { sizeCm: "A", quantity: 3, photoSlots: 3 }),
@@ -614,7 +1034,8 @@ describe("VariantSelector — stock por variante (Fase 1)", () => {
 
   it("el stepper salta la cantidad agotada y avisa '· Agotado'", () => {
     // qty 1..3 contigua con v-s2 agotada: desde 1, "+" apunta a 3 (salta la 2)
-    // y se muestra el aviso junto al stepper.
+    // y se muestra el aviso junto al stepper. Grupo "Fotos" (dedupe
+    // quantity/photoSlots, Lucy 2026-09-05).
     const variants = [
       makeVariant("v-s1", { shape: "rectangle", sizeCm: "6×6", quantity: 1, photoSlots: 1 }),
       makeVariant(
@@ -626,10 +1047,10 @@ describe("VariantSelector — stock por variante (Fase 1)", () => {
       makeVariant("v-s3", { shape: "rectangle", sizeCm: "6×6", quantity: 3, photoSlots: 3 }),
     ];
     renderWithProvider(variants, "v-s1");
-    const cantidad = screen.getByRole("group", { name: "Cantidad" });
-    expect(within(cantidad).getByText("· Agotado")).toBeInTheDocument();
-    fireEvent.click(within(cantidad).getByLabelText("Aumentar cantidad"));
-    expect(within(cantidad).getByText("3 unidades")).toBeInTheDocument();
+    const fotos = screen.getByRole("group", { name: "Fotos" });
+    expect(within(fotos).getByText("· Agotado")).toBeInTheDocument();
+    fireEvent.click(within(fotos).getByLabelText("Aumentar unidades"));
+    expect(within(fotos).getByText("3 fotos")).toBeInTheDocument();
     expect(replace).toHaveBeenLastCalledWith(
       expect.stringContaining("variant=v-s3"),
       expect.anything(),
@@ -653,9 +1074,9 @@ describe("VariantSelector — stock por variante (Fase 1)", () => {
       ),
     ];
     renderWithProvider(variants, "v-t1");
-    const cantidad = screen.getByRole("group", { name: "Cantidad" });
-    expect(within(cantidad).getByLabelText("Aumentar cantidad")).toBeDisabled();
-    expect(within(cantidad).getByText("· Agotado")).toBeInTheDocument();
+    const fotos = screen.getByRole("group", { name: "Fotos" });
+    expect(within(fotos).getByLabelText("Aumentar unidades")).toBeDisabled();
+    expect(within(fotos).getByText("· Agotado")).toBeInTheDocument();
   });
 
   it("marca '· Agotado' y deshabilita la fila en la lista vertical de una sola dimensión", () => {
@@ -668,5 +1089,64 @@ describe("VariantSelector — stock por variante (Fase 1)", () => {
     expect(row).toBeDisabled();
     // La fila con stock sigue clicable.
     expect(screen.getByRole("button", { name: /v-l1/ })).toBeEnabled();
+  });
+});
+
+/*
+ * Default "Con imán" (regla 2026-09-08b — ¿Con imán? en TODOS los productos):
+ * el selector ordena las variantes con imán primero (sort estable), así que
+ * TODO anclaje guiado ("primera compatible con stock") resuelve a Con imán
+ * salvo que el cliente elija Sin imán a propósito. El grupo muestra las dos
+ * opciones con Con imán primero.
+ */
+describe("VariantSelector — ¿Con imán? default Con imán (regla 2026-09-08b)", () => {
+  it("el grupo lista Con imán primero y elegir otra dimensión ancla a la variante Con imán", () => {
+    // Espejo del catálogo con la opción Sin imán PRIMERO en el array (orden de
+    // llegada de la DB): sin el sort, el re-anchor caería en Sin imán.
+    const variants = [
+      makeVariant("v-min-nomag", { sizeCm: "5×7", magnet: false }),
+      makeVariant("v-min-mag", { sizeCm: "5×7", magnet: true }),
+      makeVariant("v-clas-nomag", { sizeCm: "7×10", magnet: false }),
+      makeVariant("v-clas-mag", { sizeCm: "7×10", magnet: true }),
+    ];
+    render(
+      <SelectedVariantProvider variantIds={variants.map((v) => v.id)} initialId={null}>
+        <VariantSelector productBasePrice={100_000} variants={variants} />
+      </SelectedVariantProvider>,
+    );
+    const iman = screen.getByRole("group", { name: "¿Con imán?" });
+    const chips = within(iman)
+      .getAllByRole("button")
+      .map((b) => b.textContent);
+    expect(chips).toEqual(["🧲 Con imán", "✨ Sin imán"]);
+
+    // Elegir tamaño 7×10 ancla a la variante CON imán de ese tamaño (default),
+    // aunque la Sin imán llegó primero en el array.
+    fireEvent.click(within(screen.getByRole("group", { name: "Tamaño" })).getByText("7×10 cm"));
+    expect(decodeURIComponent(String(replace.mock.calls[0]?.[0]))).toContain("variant=v-clas-mag");
+  });
+
+  it("la elección explícita de Sin imán se respeta al cambiar otra dimensión", () => {
+    const variants = [
+      makeVariant("v-min-nomag", { sizeCm: "5×7", magnet: false }),
+      makeVariant("v-min-mag", { sizeCm: "5×7", magnet: true }),
+      makeVariant("v-clas-nomag", { sizeCm: "7×10", magnet: false }),
+      makeVariant("v-clas-mag", { sizeCm: "7×10", magnet: true }),
+    ];
+    render(
+      <SelectedVariantProvider variantIds={variants.map((v) => v.id)} initialId={null}>
+        <VariantSelector productBasePrice={100_000} variants={variants} />
+      </SelectedVariantProvider>,
+    );
+    // Cliente elige Sin imán y luego cambia el tamaño: la combinación compatible
+    // conserva magnet=false (currentValues manda sobre el default).
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "¿Con imán?" })).getByText("✨ Sin imán"),
+    );
+    expect(decodeURIComponent(String(replace.mock.calls[0]?.[0]))).toContain("variant=v-min-nomag");
+    fireEvent.click(within(screen.getByRole("group", { name: "Tamaño" })).getByText("7×10 cm"));
+    expect(decodeURIComponent(String(replace.mock.calls[1]?.[0]))).toContain(
+      "variant=v-clas-nomag",
+    );
   });
 });

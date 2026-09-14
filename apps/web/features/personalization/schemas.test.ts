@@ -8,10 +8,14 @@
 import { describe, expect, it } from "vitest";
 import {
   SlotStateSchema,
+  CanvasDataV1Schema,
   CanvasDataV2Schema,
+  SaveCanvasSchema,
+  FinalizeDesignSchema,
   UploadAssetMetadataSchema,
   PhotoProductConfigSchema,
   parsePhotoProductConfig,
+  calendarFontOrDefault,
 } from "./schemas";
 
 describe("SlotStateSchema — encuadre + texto del usuario sobreviven (ADR-057 Fase A)", () => {
@@ -70,6 +74,40 @@ describe("SlotStateSchema — encuadre + texto del usuario sobreviven (ADR-057 F
     expect(parsed.photoTransform).toBeUndefined();
   });
 
+  it("Ola 17 — conserva la foto de perfil (profileAssetId/profileAssetUrl) por slot", () => {
+    const parsed = SlotStateSchema.parse({
+      slotIndex: 0,
+      assetId: "a",
+      assetUrl: "u",
+      profileAssetId: "pa-1",
+      profileAssetUrl: "https://x/avatar.png",
+    });
+    expect(parsed.profileAssetId).toBe("pa-1");
+    expect(parsed.profileAssetUrl).toBe("https://x/avatar.png");
+  });
+
+  it("Ola 17 — profileAssetId admite null y ambos campos son opcionales (retrocompatible)", () => {
+    expect(
+      SlotStateSchema.parse({ slotIndex: 0, assetId: "a", assetUrl: "u", profileAssetId: null })
+        .profileAssetId,
+    ).toBeNull();
+    const parsed = SlotStateSchema.parse({ slotIndex: 0, assetId: "a", assetUrl: "u" });
+    expect(parsed.profileAssetId).toBeUndefined();
+    expect(parsed.profileAssetUrl).toBeUndefined();
+  });
+
+  it("Ola 17 — rechaza profileAssetUrl absurdamente larga (anti-tamper)", () => {
+    expect(
+      SlotStateSchema.safeParse({
+        slotIndex: 0,
+        assetId: "a",
+        assetUrl: "u",
+        profileAssetId: "pa-1",
+        profileAssetUrl: `https://x/${"a".repeat(2100)}`,
+      }).success,
+    ).toBe(false);
+  });
+
   it("un canvasData V2 completo round-trips el encuadre de cada slot", () => {
     const canvas = {
       version: 2 as const,
@@ -93,6 +131,123 @@ describe("SlotStateSchema — encuadre + texto del usuario sobreviven (ADR-057 F
     const parsed = CanvasDataV2Schema.parse(canvas);
     expect(parsed.slots[0].photoTransform).toEqual({ offsetX: 10, offsetY: -5, scale: 1.2 });
     expect(parsed.slots[1].filter).toBe("vivid");
+  });
+});
+
+describe("CanvasDataV2Schema — calendarFont (Lucy 2026-09-07, selector de tipo de letra)", () => {
+  const base = {
+    version: 2 as const,
+    unitTemplate: {
+      version: 1 as const,
+      stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
+      layers: [{ id: "bg", type: "background", color: "#FFFFFF" }],
+    },
+    slotCount: 1,
+    slots: [{ slotIndex: 0, assetId: null, assetUrl: null }],
+    gridLayout: { cols: 1, rows: 1, gap: 8 },
+  };
+
+  it("acepta las 3 claves curadas del selector", () => {
+    for (const font of ["fredoka", "inter", "caveat"] as const) {
+      const parsed = CanvasDataV2Schema.parse({ ...base, calendarFont: font });
+      expect(parsed.calendarFont).toBe(font);
+    }
+  });
+
+  it("rechaza una fuente fuera de la lista blanca (Zod nunca la persiste)", () => {
+    expect(CanvasDataV2Schema.safeParse({ ...base, calendarFont: "Comic Sans MS" }).success).toBe(
+      false,
+    );
+    expect(CanvasDataV2Schema.safeParse({ ...base, calendarFont: "system-ui" }).success).toBe(
+      false,
+    );
+  });
+
+  it("retrocompatible: canvasData sin la clave sigue siendo válido (= fredoka implícito)", () => {
+    const parsed = CanvasDataV2Schema.parse(base);
+    expect(parsed.calendarFont).toBeUndefined();
+    expect(calendarFontOrDefault(parsed.calendarFont)).toBe("fredoka");
+  });
+
+  it("calendarFontOrDefault: ausente/inválido → fredoka, nunca un string libre", () => {
+    expect(calendarFontOrDefault(undefined)).toBe("fredoka");
+    expect(calendarFontOrDefault(null)).toBe("fredoka");
+    expect(calendarFontOrDefault("caveat")).toBe("caveat");
+    expect(calendarFontOrDefault("inter")).toBe("inter");
+    expect(calendarFontOrDefault("Papyrus")).toBe("fredoka");
+    expect(calendarFontOrDefault({ family: "Fredoka" })).toBe("fredoka");
+  });
+});
+
+describe("CanvasDataV2Schema — magnet (Lucy 2026-09-08, «¿Con imán?» en los packs de foto)", () => {
+  const base = {
+    version: 2 as const,
+    unitTemplate: {
+      version: 1 as const,
+      stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
+      layers: [{ id: "bg", type: "background", color: "#FFFFFF" }],
+    },
+    slotCount: 1,
+    slots: [{ slotIndex: 0, assetId: null, assetUrl: null }],
+    gridLayout: { cols: 1, rows: 1, gap: 8 },
+  };
+
+  it("acepta true y false y los conserva en el parse (sobrevive el auto-save)", () => {
+    expect(CanvasDataV2Schema.parse({ ...base, magnet: true }).magnet).toBe(true);
+    expect(CanvasDataV2Schema.parse({ ...base, magnet: false }).magnet).toBe(false);
+  });
+
+  it("retrocompatible: canvasData sin la clave sigue siendo válido (ausente = legacy)", () => {
+    expect(CanvasDataV2Schema.parse(base).magnet).toBeUndefined();
+  });
+
+  it("rechaza valores no booleanos (Zod nunca los persiste)", () => {
+    expect(CanvasDataV2Schema.safeParse({ ...base, magnet: "si" }).success).toBe(false);
+    expect(CanvasDataV2Schema.safeParse({ ...base, magnet: 1 }).success).toBe(false);
+  });
+});
+
+describe("CanvasDataV2Schema — multi-unidad (owner 2026-09-09: unitCount/unitSlots)", () => {
+  const base = {
+    version: 2 as const,
+    unitTemplate: {
+      version: 1 as const,
+      stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
+      layers: [{ id: "bg", type: "background", color: "#FFFFFF" }],
+    },
+    slotCount: 6,
+    slots: Array.from({ length: 6 }, (_, i) => ({ slotIndex: i, assetId: null, assetUrl: null })),
+    gridLayout: { cols: 1, rows: 3, gap: 0 },
+  };
+
+  it("acepta el modelo multi-unidad y lo conserva en el parse (sobrevive el auto-save)", () => {
+    const parsed = CanvasDataV2Schema.parse({ ...base, unitCount: 2, unitSlots: 3 });
+    expect(parsed.unitCount).toBe(2);
+    expect(parsed.unitSlots).toBe(3);
+  });
+
+  it("retrocompatible: diseños sin las claves siguen siendo válidos (ausente = 1 unidad)", () => {
+    const parsed = CanvasDataV2Schema.parse(base);
+    expect(parsed.unitCount).toBeUndefined();
+    expect(parsed.unitSlots).toBeUndefined();
+  });
+
+  it("rechaza unidades fuera de rango (0, >50, no enteras)", () => {
+    expect(CanvasDataV2Schema.safeParse({ ...base, unitCount: 0 }).success).toBe(false);
+    expect(CanvasDataV2Schema.safeParse({ ...base, unitCount: 51 }).success).toBe(false);
+    expect(CanvasDataV2Schema.safeParse({ ...base, unitSlots: 0 }).success).toBe(false);
+    expect(CanvasDataV2Schema.safeParse({ ...base, unitSlots: 1.5 }).success).toBe(false);
+  });
+
+  it("sin catchall: claves desconocidas se stripean pero unitCount/unitSlots sobreviven", () => {
+    const parsed = CanvasDataV2Schema.parse({
+      ...base,
+      unitCount: 2,
+      unitSlots: 3,
+      claveAjena: "fuera",
+    } as Record<string, unknown>);
+    expect(parsed.unitCount).toBe(2);
+    expect((parsed as Record<string, unknown>).claveAjena).toBeUndefined();
   });
 });
 
@@ -153,5 +308,112 @@ describe("PhotoProductConfigSchema — flags Ola 3 (allowText / facesPerUnit)", 
     expect(parsed.noFold).toBe(true);
     expect(PhotoProductConfigSchema.parse({ photoSlots: 1 }).noFold).toBeUndefined();
     expect(PhotoProductConfigSchema.safeParse({ photoSlots: 1, noFold: "si" }).success).toBe(false);
+  });
+});
+
+describe("CanvasLayerSchema — validación defensiva del src de AssetLayer (M.3.b.A2)", () => {
+  it("rechaza src que no sea path local /templates/<slug> (URL externa = XSS via SVG)", () => {
+    const layer = { id: "a", type: "asset", src: "https://evil.example/x.svg" };
+    const parsed = CanvasDataV1Schema.safeParse({
+      version: 1,
+      stage: { width: 450, height: 600 },
+      layers: [layer],
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rechaza asset layer sin src", () => {
+    const parsed = CanvasDataV1Schema.safeParse({
+      version: 1,
+      stage: { width: 450, height: 600 },
+      layers: [{ id: "a", type: "asset" }],
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("acepta paths locales con guion bajo (ig_post_3x4.svg) y otras extensiones válidas", () => {
+    for (const src of [
+      "/templates/ig_post_3x4.svg",
+      "/templates/polaroid-clasico.png",
+      "/templates/foto.jpg",
+      "/templates/mia.webp",
+    ]) {
+      const parsed = CanvasDataV1Schema.safeParse({
+        version: 1,
+        stage: { width: 450, height: 600 },
+        layers: [{ id: "a", type: "asset", src }],
+      });
+      expect(parsed.success, src).toBe(true);
+    }
+  });
+
+  it("rechaza path con .. (directory traversal) y subcarpetas", () => {
+    for (const src of ["/templates/../secret.svg", "/templates/sub/x.svg", "templates/x.svg"]) {
+      const parsed = CanvasDataV1Schema.safeParse({
+        version: 1,
+        stage: { width: 450, height: 600 },
+        layers: [{ id: "a", type: "asset", src }],
+      });
+      expect(parsed.success, src).toBe(false);
+    }
+  });
+
+  it("capas no-asset no exigen src (superRefine solo mira type === 'asset')", () => {
+    const parsed = CanvasDataV1Schema.safeParse({
+      version: 1,
+      stage: { width: 450, height: 600 },
+      layers: [{ id: "bg", type: "background", color: "#FFF" }],
+    });
+    expect(parsed.success).toBe(true);
+  });
+});
+
+describe("SaveCanvasSchema — cap defensivo de tamaño del canvasData", () => {
+  it("rechaza un canvasData > 1 MB (posible payload corrupto con dataURL base64)", () => {
+    const bigLayer = { id: "x", type: "text", text: "a".repeat(1_100_000) };
+    const result = SaveCanvasSchema.safeParse({
+      designId: "d1",
+      canvasData: {
+        version: 1,
+        stage: { width: 450, height: 600 },
+        layers: [bigLayer],
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("canvasData típico (< 1 MB) pasa", () => {
+    const result = SaveCanvasSchema.safeParse({
+      designId: "d1",
+      canvasData: {
+        version: 1,
+        stage: { width: 450, height: 600 },
+        layers: [{ id: "bg", type: "background", color: "#FFF" }],
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("FinalizeDesignSchema — cap del tamaño TOTAL de producción", () => {
+  const png = (kb: number) => `data:image/png;base64,${"A".repeat(kb * 1024)}`;
+
+  it("rechaza cuando la suma de slots supera 120 MB", () => {
+    // 7 × 18 MB = 126 MB > 120 MB (cada url < 20 MB individual → pasa el cap por elemento).
+    const result = FinalizeDesignSchema.safeParse({
+      designId: "d1",
+      previewDataUrl: png(100),
+      productionDataUrls: Array.from({ length: 7 }, () => png(18 * 1024)),
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("suma bajo el cap pasa", () => {
+    const result = FinalizeDesignSchema.safeParse({
+      designId: "d1",
+      previewDataUrl: png(100),
+      productionDataUrls: [png(1024), png(1024)],
+    });
+    expect(result.success).toBe(true);
   });
 });

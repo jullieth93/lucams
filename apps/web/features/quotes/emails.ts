@@ -1,8 +1,7 @@
 /*
  * Aviso al admin cuando nace una cotización: EMAIL (se mantiene — es el canal
  * de venta que Lucy pidió) + NOTIFICACIÓN in-app (centro de notificaciones,
- * 2026-08-05 — docs/PLAN_CENTRO_NOTIFICACIONES.md: registro duradero aunque el
- * email falle).
+ * 2026-08-05: registro duradero aunque el email falle).
  *
  * Por qué existe (Etapa 1, modo catálogo): la venta se cierra por WhatsApp,
  * pero si el cliente crea la cotización y NO pulsa "Enviar por WhatsApp",

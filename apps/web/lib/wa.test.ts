@@ -5,8 +5,8 @@
  *   - número desde el CMS (setting WA_NUMBER) con fallback a env
  *     (NEXT_PUBLIC_WA_NUMBER) y, en última instancia, hardcoded
  *   - encoding correcto del mensaje (encodeURIComponent)
- *   - plantillas contextuales por kind (product, personalize, support,
- *     order, wholesale, custom) + interpolación de {placeholders}
+ *   - plantillas contextuales por kind (product, support, order, wholesale,
+ *     custom) + interpolación de {placeholders}
  *   - override de plantilla desde el CMS
  *   - casos de seguridad: inyección de querystring, control chars, etc.
  *
@@ -103,17 +103,6 @@ describe("buildWhatsAppMessage — plantillas fallback (setting ausente)", () =>
     expect(getSettingValue).toHaveBeenCalledWith(
       "WA_MSG_PRODUCT",
       'Hola Lucams 👋 Quiero saber más sobre "{productName}" (SKU {sku}).',
-    );
-  });
-
-  it("personalize: interpola productName y sku con copia de personalización", async () => {
-    const msg = await buildWhatsAppMessage({
-      kind: "personalize",
-      productName: "Set Nevera",
-      sku: "SET-09",
-    });
-    expect(msg).toBe(
-      'Hola Lucams 👋 Quiero personalizar "Set Nevera" (SKU SET-09). Te paso fotos y referencias por aquí ✨',
     );
   });
 
@@ -319,11 +308,6 @@ describe("buildWhatsAppUrl — cobertura de todos los kinds (round-trip decode)"
     {
       ctx: { kind: "product", productName: "P1", sku: "S1" },
       expectedDecoded: 'Hola Lucams 👋 Quiero saber más sobre "P1" (SKU S1).',
-    },
-    {
-      ctx: { kind: "personalize", productName: "P2", sku: "S2" },
-      expectedDecoded:
-        'Hola Lucams 👋 Quiero personalizar "P2" (SKU S2). Te paso fotos y referencias por aquí ✨',
     },
     {
       ctx: { kind: "support" },

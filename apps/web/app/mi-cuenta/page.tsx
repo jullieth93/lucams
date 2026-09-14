@@ -10,7 +10,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Package, MapPin, Star, ShieldCheck, Pencil, ChevronRight, Gift } from "lucide-react";
+import {
+  Package,
+  MapPin,
+  Star,
+  ShieldCheck,
+  Pencil,
+  ChevronRight,
+  Gift,
+  LifeBuoy,
+} from "lucide-react";
 import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
 import { getCmsBlock } from "@/lib/cms";
@@ -65,6 +74,16 @@ const SECTIONS = [
     titleFallback: "Mis reseñas",
     descKey: "account.hub.section.resenas.desc",
     descFallback: "Los productos que has calificado.",
+  },
+  {
+    // 5.3 (2026-09-13) — bandeja de tickets del cliente (ADR-092 la difería;
+    // aprobada en la remediación 360°). La respuesta sigue siendo por correo.
+    href: "/mi-cuenta/soporte",
+    icon: LifeBuoy,
+    titleKey: "account.hub.section.soporte.title",
+    titleFallback: "Soporte",
+    descKey: "account.hub.section.soporte.desc",
+    descFallback: "El estado de tus solicitudes de ayuda.",
   },
   {
     href: "/mi-cuenta/seguridad",

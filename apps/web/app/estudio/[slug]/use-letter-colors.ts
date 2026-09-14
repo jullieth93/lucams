@@ -8,18 +8,51 @@
  * `count` = nº de fichas visibles (letras.length). El override por índice se conserva aunque
  * el nombre cambie de longitud (idéntico al comportamiento previo del editor de Nombre).
  * Barajar usa Math.random SOLO dentro de handlers (post-hidratación) → sin mismatch SSR.
+ *
+ * Multi-unidad (2026-09-09): el estado es EXPORTABLE como `LetterColorsSnapshot`
+ * (tema + orden de colores + overrides por ficha) → el editor de sets guarda un
+ * snapshot POR SET y puede remontar una unidad con `initial` al cambiar de pestaña
+ * y clonarlo a todas con "Aplicar este diseño a todas".
  */
 
 import { useMemo, useState } from "react";
 import { NAME_TILE_THEMES, getNameTileTheme } from "./letter-tile";
 
-export function useLetterColors(count: number) {
-  const [themeId, setThemeId] = useState(NAME_TILE_THEMES[0].id);
+/** Estado serializable de colores de UNA unidad (para persistir/clonar por set). */
+export type LetterColorsSnapshot = {
+  themeId: string;
+  /** Orden de colores del tema activo (barajado o no). */
+  activeColors: readonly string[];
+  /** Override de color por índice de ficha. */
+  letterColors: Record<number, string>;
+};
+
+/** Colores efectivos por ficha a partir de un snapshot (puro — misma regla del hook). */
+export function effectiveColorsFromSnapshot(
+  count: number,
+  snapshot: LetterColorsSnapshot | undefined,
+  fallbackThemeId?: string,
+): string[] {
+  const theme = getNameTileTheme(snapshot?.themeId ?? fallbackThemeId ?? NAME_TILE_THEMES[0].id);
+  const active = snapshot?.activeColors ?? theme.colors;
+  const overrides = snapshot?.letterColors ?? {};
+  return Array.from(
+    { length: Math.max(0, count) },
+    (_, i) => overrides[i] ?? active[i % active.length],
+  );
+}
+
+export function useLetterColors(count: number, initial?: LetterColorsSnapshot) {
+  const [themeId, setThemeId] = useState(initial?.themeId ?? NAME_TILE_THEMES[0].id);
   // Orden de colores del tema activo. Inicial = orden del tema (determinista para SSR);
   // cada re-clic al tema lo BARAJA.
-  const [activeColors, setActiveColors] = useState<readonly string[]>(NAME_TILE_THEMES[0].colors);
+  const [activeColors, setActiveColors] = useState<readonly string[]>(
+    initial?.activeColors ?? NAME_TILE_THEMES[0].colors,
+  );
   // Override de color por ficha (índice → color). Vacío = usa el color del tema.
-  const [letterColors, setLetterColors] = useState<Record<number, string>>({});
+  const [letterColors, setLetterColors] = useState<Record<number, string>>(
+    initial?.letterColors ?? {},
+  );
   const [selectedIndexRaw, setSelectedIndexRaw] = useState<number | null>(null);
   // Índice SEGURO: si el nº de fichas baja (nombre más corto), un índice viejo queda fuera
   // de rango. Lo derivamos a null en vez de dejar estado muerto (hint oculto + SwatchRow
@@ -68,6 +101,9 @@ export function useLetterColors(count: number) {
 
   return {
     themeId,
+    /** Piezas de estado crudas (estables entre renders ajenos): para snapshots por unidad. */
+    activeColors,
+    letterColors,
     effectiveColors,
     selectedIndex,
     toggleSelected,

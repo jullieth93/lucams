@@ -29,6 +29,7 @@ import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { verifyWebhookSignature, getWompiExpectedWebhookEnv } from "@/lib/wompi";
 import { processPaidOrder, processFailedPaymentOrder } from "@/features/orders/saga";
+import { sendOrderPaymentDeclined } from "@/features/orders/emails";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -272,6 +273,17 @@ export async function POST(req: Request) {
         orderNumber: order.number,
         txStatus: transaction.status,
         statusMessage: transaction.status_message ?? null,
+      });
+      // N-22a — avisar al cliente que el pago no fue aprobado y que su pedido
+      // sigue vivo y reintentable. Idempotente por transacción (idempotencyKey
+      // con txId) y anti-spam por orden (claim atómico con cooldown — ver
+      // emails.ts). Best-effort total: captura sus errores internamente, así
+      // que jamás cae en el catch de abajo (que marcaría needsReconciliation
+      // por un simple fallo de email).
+      await sendOrderPaymentDeclined({
+        orderId: order.id,
+        txId: transaction.id,
+        reason: transaction.status_message ?? transaction.status,
       });
     } else {
       // PENDING — Wompi enviará otro evento cuando finalice. Sólo log.

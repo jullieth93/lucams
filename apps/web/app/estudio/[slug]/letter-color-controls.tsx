@@ -15,15 +15,24 @@ export function ThemePicker({
   themeId,
   customized,
   onApply,
+  disabled = false,
+  disabledHint,
 }: {
   themeId: string;
   /** true = hay overrides por ficha → ningún tema se marca "activo". */
   customized: boolean;
   onApply: (id: string) => void;
+  /** Lucy 2026-09-08 — con «Sin borde» (sets de letras) las fichas no llevan el marco de
+   *  color: la sección queda VISIBLE pero inerte (botones disabled + atenuada), con el
+   *  porqué en `disabledHint`. Al volver a «Con borde» se reactiva sola: el estado de
+   *  colores vive en useLetterColors y nunca se resetea al desactivar. */
+  disabled?: boolean;
+  /** Aviso que explica por qué la sección está desactivada (texto CMS). */
+  disabledHint?: string;
 }) {
   const texts = useStudioTexts();
   return (
-    <div>
+    <div aria-disabled={disabled || undefined} className={disabled ? "opacity-60" : undefined}>
       <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
         {texts.nombre.coloresTitulo}
         <span className="text-brand-muted ml-2 text-xs font-normal">
@@ -39,7 +48,8 @@ export function ThemePicker({
               type="button"
               onClick={() => onApply(t.id)}
               aria-pressed={active}
-              className={`inline-flex items-center gap-2 rounded-full border-2 py-1.5 pr-3 pl-2 text-sm font-semibold transition ${
+              disabled={disabled}
+              className={`inline-flex items-center gap-2 rounded-full border-2 py-1.5 pr-3 pl-2 text-sm font-semibold transition disabled:cursor-not-allowed ${
                 active
                   ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
                   : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
@@ -59,6 +69,11 @@ export function ThemePicker({
           );
         })}
       </div>
+      {disabled && disabledHint && (
+        <p role="note" className="text-brand-muted mt-2 text-xs">
+          {disabledHint}
+        </p>
+      )}
     </div>
   );
 }

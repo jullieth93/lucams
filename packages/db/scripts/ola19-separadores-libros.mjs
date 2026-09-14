@@ -13,10 +13,16 @@
  * Idempotente: upsert por slug/sku. Respeta precios existentes salvo que estén
  * a 0 (los resetea al precio canónico).
  *
+ * N-06 (2026-09-12): env-guard fail-closed (bloquea PRD/remotos no reconocidos).
+ *
  * Uso: pnpm --filter @lucams/db exec dotenv -e ../../.env.local -- node scripts/ola19-separadores-libros.mjs
  */
 
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+
+// Guarda de ambiente: reestructura productos (upsert + reset de precios a 0) — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("ola19-separadores-libros.mjs");
 
 const prisma = new PrismaClient();
 
@@ -34,9 +40,12 @@ const PRODUCTS = [
     name: "Separadores Magnéticos",
     description:
       "Separadores magnéticos para libros. Elige el tamaño y la cantidad; personalízalos con tus fotos en el estudio. Doble cara, doble imagen.",
-    // SEP1 — todos los separadores de libros comparten el galleryTag base para que el estudio
-    // reconozca el producto como "bookmark" (vista inmersiva = libro, no nevera).
-    galleryTag: "separadores",
+    // SEP1 — galleryTag = el slug del producto (convención ADR-057 B2, ver design-gallery.ts):
+    // es el opt-in de la galería de diseños PREDISEÑADOS en el Estudio y la fuente única del
+    // selector de /admin/disenos (antes un tag compartido "separadores" desalineaba admin↔estudio
+    // → los uploads fallaban con "Producto inválido"). El Estudio sigue reconociendo el producto
+    // como "bookmark" por el PREFIJO "separadores" (vista inmersiva = libro, no nevera).
+    galleryTag: "separadores-magneticos",
     noFold: false,
     sizes: [
       { key: "2x6", label: "2×6 cm", widthCm: 2, heightCm: 6, cornerRadiusPx: 18 },
@@ -49,7 +58,7 @@ const PRODUCTS = [
     name: "Separadores Alargados",
     description:
       "Marcapáginas alargados, ideales para regalar. Elige el tamaño y la cantidad; personalízalos con tus fotos en el estudio. Doble cara, doble imagen.",
-    galleryTag: "separadores",
+    galleryTag: "separadores-alargados",
     noFold: true,
     sizes: [
       { key: "4x12", label: "4×12 cm", widthCm: 4, heightCm: 12, cornerRadiusPx: 24 },

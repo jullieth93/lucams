@@ -2,6 +2,12 @@
  * Admin — gestión de tickets de soporte (P2 backoffice).
  * Lista por estado + cambio de estado + responder por email. Antes los tickets solo llegaban al
  * correo de Lucy sin panel; ahora se gestionan acá (con audit trail).
+ *
+ * N-09 (2026-09-11): bandeja operativa ÚNICA — la antigua /admin/mensajes (misma tabla,
+ * mismo servicio, mismos permisos) se consolidó acá y hoy es redirect permanente.
+ * N-14 (2026-09-11): al marcar CLOSED el cliente recibe email de cierre
+ * (features/support/admin-service → template support-ticket-closed); la respuesta
+ * humana sigue siendo mailto (decisión declarada: no hay bandeja in-app).
  */
 
 import type { Metadata } from "next";
@@ -66,7 +72,7 @@ export default async function AdminSoportePage({ searchParams }: { searchParams:
       <AdminPageHeader
         icon={<LifeBuoy className="h-5 w-5" />}
         title="Soporte"
-        subtitle="Mensajes de contacto y reclamos de clientes. Responde por email y marca su estado."
+        subtitle="Mensajes de contacto y reclamos de clientes. Responde por email y marca su estado — al cerrar, el cliente recibe aviso por correo."
       />
       <AdminPageBody>
         <div className="mb-4 flex flex-wrap gap-2">

@@ -212,6 +212,12 @@ AbandonedCart, LoyaltyTxn, Referral, BlogPost
 WebhookEvent (source: WOMPI|RESEND|AVEONLINE, externalId UNIQUE)
 ```
 
+> **Nota 2026-09-12 (remediación 360°):** `BlogPost` (y `LoyaltyTxn`) persisten en el schema como
+> **FUTURO_APROBADO** — capacidades aprobadas del roadmap sin implementación: no existe `/blog`
+> público ni editor admin de posts (el árbol de arriba es el boceto original del plan). En la
+> misma remediación se retiraron del schema `SiteEvent`, `RecommendationLog` y `StockReservation`
+> (ADR-091) por no tener datos ni consumidores.
+
 **Reglas:**
 
 - Precios en **enteros (centavos COP)**.

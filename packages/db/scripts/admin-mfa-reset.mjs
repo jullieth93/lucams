@@ -6,20 +6,36 @@
  * del usuario. Luego el admin puede volver a entrar solo con contraseña y
  * re-enrolar desde /admin/seguridad.
  *
- * Uso (vía Makefile, desde la VM con .env.local):
+ * N-06 (2026-09-12) — endurecimiento:
+ *   - DRY-RUN por defecto; `--apply` ejecuta.
+ *   - Env-guard fail-closed sobre la DB (bloquea PRD/remotos no reconocidos).
+ *   - En --apply exige CONFIRMACIÓN INTERACTIVA del destino (teclear el host
+ *     exacto): borrar el MFA de un admin donde no corresponde lo deja con
+ *     la cuenta protegida solo por contraseña (lib/confirm-target.mjs).
+ *
+ * Uso (vía Makefile — el target pasa --apply, desde la VM con .env.local):
  *   EMAIL=lucy@ejemplo.com make admin-mfa-reset
+ * Directo:
+ *   EMAIL=lucy@ejemplo.com node scripts/admin-mfa-reset.mjs            # DRY-RUN
+ *   EMAIL=lucy@ejemplo.com node scripts/admin-mfa-reset.mjs --apply    # aplica (pide confirmación)
  *
  * Requiere: NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SECRET_KEY en el entorno.
  */
 
 import { PrismaClient } from "@prisma/client";
 import { createClient } from "@supabase/supabase-js";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+import { confirmTargetInteractive } from "./lib/confirm-target.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
 process.env.DIRECT_URL = stripQuotes(process.env.DIRECT_URL);
 
+// Guarda de ambiente: borra factores MFA — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("admin-mfa-reset.mjs");
+
 const email = process.env.EMAIL?.toLowerCase().trim();
+const APPLY = process.argv.includes("--apply");
 const supabaseUrl = stripQuotes(process.env.NEXT_PUBLIC_SUPABASE_URL);
 const serviceKey = stripQuotes(process.env.SUPABASE_SECRET_KEY);
 
@@ -60,6 +76,23 @@ async function main() {
     console.log(`ℹ️  ${email} no tiene factores MFA. Nada que hacer.`);
     return;
   }
+
+  console.log(`Supabase: ${supabaseUrl}`);
+  console.log(`${email} tiene ${factors.length} factor(es) MFA:`);
+  for (const f of factors) {
+    console.log(`  - ${f.factor_type} (${f.id})`);
+  }
+
+  if (!APPLY) {
+    console.log("\nDRY-RUN (sin cambios). Para ejecutar: node scripts/admin-mfa-reset.mjs --apply");
+    return;
+  }
+
+  // Confirmación humana del destino (break-glass).
+  await confirmTargetInteractive(
+    "admin-mfa-reset.mjs",
+    `borrar ${factors.length} factor(es) MFA de ${email} en ${supabaseUrl}`,
+  );
 
   for (const f of factors) {
     const { error: delErr } = await supabase.auth.admin.mfa.deleteFactor({

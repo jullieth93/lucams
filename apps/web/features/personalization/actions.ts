@@ -22,7 +22,7 @@ import { getOrCreateCartSession, peekCartSession } from "@/lib/cart-session";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { ownerKey, ipKey } from "@/lib/rate-limit-keys";
-import { uploadCustomerPhoto } from "@/lib/storage";
+import { StorageError, uploadCustomerPhoto } from "@/lib/storage";
 import { getGalleryImageById } from "./design-gallery";
 import { prisma } from "@/lib/db";
 import {
@@ -48,6 +48,23 @@ async function resolveOwner() {
   const customerId = session?.customer.id ?? null;
   const sessionId = customerId ? null : await peekCartSession();
   return { customerId, sessionId };
+}
+
+// F-30 (pre-launch audit 2026-09-04) — same pattern as app/checkout/pago/actions.ts: only
+// domain errors with deliberately customer-safe es-CO copies reach the anonymous caller;
+// anything unexpected (Prisma/Supabase/sharp internals) maps to a generic message and the
+// raw detail stays server-side in the caller's log line.
+const CUSTOMER_SAFE_STORAGE_CODES: ReadonlySet<StorageError["code"]> = new Set([
+  "EMPTY_FILE",
+  "FILE_TOO_LARGE",
+  "INVALID_TYPE",
+]);
+
+function safeUploadMessage(err: unknown, fallback: string): string {
+  if (err instanceof StorageError && CUSTOMER_SAFE_STORAGE_CODES.has(err.code)) {
+    return err.message;
+  }
+  return fallback;
 }
 
 // ──────────── Create draft ────────────
@@ -99,7 +116,11 @@ export async function createDraftDesignAction(input: { productId: string; templa
 
 // ──────────── Save canvas (debounced 2s desde cliente) ────────────
 
-export async function saveCanvasAction(input: { designId: string; canvasData: unknown }) {
+export async function saveCanvasAction(input: {
+  designId: string;
+  canvasData: unknown;
+  templateId?: string;
+}) {
   const parsed = SaveCanvasSchema.safeParse(input);
   if (!parsed.success) {
     // Log structured con detalle del fallo (incluye M.3.b.fix size cap)
@@ -142,6 +163,9 @@ export async function saveCanvasAction(input: { designId: string; canvasData: un
     await saveCanvas({
       designId: parsed.data.designId,
       canvasData: parsed.data.canvasData,
+      // N-08 — plantilla elegida en el sidebar (si el cliente la envía): el service
+      // la valida contra el producto antes de persistirla en Design.templateId.
+      templateId: parsed.data.templateId,
       customerId,
       sessionId,
     });
@@ -160,7 +184,14 @@ export async function saveCanvasAction(input: { designId: string; canvasData: un
       { event: "design.save_canvas.fail", err: msg, payloadBytes: payloadSize },
       "saveCanvas failed",
     );
-    return { ok: false as const, code: "INTERNAL" as const, message: msg };
+    // F-30 — saveCanvas only throws internal English errors (ownership/status guards, Prisma);
+    // none is customer-safe, so the client always gets the generic copy. Detail is in the log.
+    return {
+      ok: false as const,
+      code: "INTERNAL" as const,
+      message:
+        "No pudimos guardar tu diseño. Refresca la página; si sigue, escríbenos por WhatsApp.",
+    };
   }
 }
 
@@ -307,15 +338,30 @@ export async function finalizeDesignAction(formData: FormData): Promise<
           { event: "design.finalize.tickets_fail", designId, err: tmsg },
           "No se pudieron emitir las URLs de subida",
         );
-        return { ok: false, code: "INTERNAL", message: tmsg };
+        return {
+          ok: false,
+          code: "INTERNAL",
+          message:
+            "No pudimos preparar la subida de tus imágenes. Intenta de nuevo en unos minutos.",
+        };
       }
     }
 
+    // F-30 — INCOMPLETE_SLOTS is an expected domain guard whose copy is customer-safe (it only
+    // describes the caller's own slots) and keeps its code; any other error is internal
+    // (Prisma/Supabase) and the client gets a generic message — the detail stays in the log.
     const code: "INCOMPLETE_SLOTS" | "INTERNAL" = msg.startsWith("INCOMPLETE_SLOTS")
       ? "INCOMPLETE_SLOTS"
       : "INTERNAL";
     logger.warn({ event: "design.finalize.fail", code, err: msg }, "finalizeDesign failed");
-    return { ok: false, code, message: msg };
+    return {
+      ok: false,
+      code,
+      message:
+        code === "INCOMPLETE_SLOTS"
+          ? msg
+          : "No pudimos preparar tu diseño para impresión. Intenta de nuevo en unos minutos.",
+    };
   }
 }
 
@@ -337,6 +383,11 @@ const NameDesignInputSchema = z.object({
     .optional(),
   // ADR-057 — estilo ilustrado elegido (LetterTileSet.id) o null = "Solo letra".
   styleSetId: z.string().max(40).nullable().optional(),
+  // Lucy 2026-09-09 — opción de diseño "Con borde / Sin borde" (mismo precio), espejo del
+  // set de letras (Lucy 2026-09-05). Default true: es lo que siempre se imprimió, así los
+  // clientes con JS cacheado previo quedan retrocompatibles. z.boolean() rechaza de plano
+  // valores que no sean booleanos.
+  withBorder: z.boolean().default(true),
 });
 
 export async function createNameDesignAction(
@@ -392,6 +443,25 @@ const LetterSetDesignInputSchema = z.object({
   styleSetId: z.string().max(40).nullable().optional(),
   // Ola 2A — idioma elegido en el Estudio (opcional; default = el de la variante).
   language: z.enum(["es", "en"]).optional(),
+  // Lucy 2026-09-05 — opción de diseño "Con borde / Sin borde" (mismo precio). Default true:
+  // es lo que siempre se imprimió, así los clientes con JS cacheado previo quedan retrocompatibles.
+  // z.boolean() rechaza valores que no sean booleanos de plano.
+  withBorder: z.boolean().default(true),
+  // Modelo MULTI-UNIDAD (2026-09-09) — TODOS los sets con sus colores por ficha.
+  // El service exige units.length === unitCount y persiste metadata.units: de ahí
+  // sale el precio ×N (nunca de un multiplicador crudo del cliente).
+  units: z
+    .array(
+      z.object({
+        colors: z
+          .array(z.string().regex(/^#[0-9A-Fa-f]{6}$/))
+          .max(50)
+          .optional(),
+      }),
+    )
+    .max(10)
+    .optional(),
+  unitCount: z.number().int().min(1).max(10).optional(),
 });
 
 export async function createLetterSetDesignAction(
@@ -453,6 +523,24 @@ export async function uploadDesignAssetAction(formData: FormData) {
     };
   }
 
+  // F-08 — same ipKey layer as createDraftDesignAction: a cookieless bot gets a fresh sessionId
+  // per request and would rotate the owner bucket; the IP bucket it cannot.
+  const isProd = process.env.VERCEL_ENV === "production";
+  const ipRl = await rateLimit(
+    ipKey("upload_design_asset", getClientIp(await headers())),
+    isProd ? 40 : 200,
+    600,
+  );
+  if (!ipRl.allowed) {
+    logger.warn({ event: "design.asset.upload.rate_limited", layer: "ip", count: ipRl.count });
+    return {
+      ok: false as const,
+      code: "RATE_LIMIT" as const,
+      message:
+        "Has subido muchas imágenes en poco tiempo. Espera unos minutos e inténtalo de nuevo.",
+    };
+  }
+
   const { customerId, sessionId: anonSession } = await resolveOwner();
   // sessionId garantizado: si no hay aún, lo creamos (anon sube → necesita cookie).
   const sessionId = anonSession ?? (await getOrCreateCartSession());
@@ -460,7 +548,6 @@ export async function uploadDesignAssetAction(formData: FormData) {
 
   // F2 — rate-limit de subida por dueño (sesión/cliente): el estudio es público,
   // así que limitamos el flood de storage por bots. Generoso para un diseño real.
-  const isProd = process.env.VERCEL_ENV === "production";
   const rl = await rateLimit(ownerKey("upload_design_asset", ownerId), isProd ? 30 : 200, 600);
   if (!rl.allowed) {
     logger.warn({ event: "design.asset.upload.rate_limited", ownerId, count: rl.count });
@@ -556,7 +643,14 @@ export async function uploadDesignAssetAction(formData: FormData) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.warn({ event: "design.asset.upload.fail", err: msg }, "uploadCustomerPhoto failed");
-    return { ok: false as const, code: "INTERNAL" as const, message: msg };
+    return {
+      ok: false as const,
+      code: "INTERNAL" as const,
+      message: safeUploadMessage(
+        err,
+        "No pudimos subir la imagen. Intenta con otra foto; si el problema sigue, escríbenos por WhatsApp.",
+      ),
+    };
   }
 }
 

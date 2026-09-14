@@ -3,8 +3,9 @@
 /*
  * Test de la VISTA PREVIA pre-carrito del editor de nombre (Lucy 2026-07-25).
  *
- * Blinda el mismo contrato que su hermano del set de letras —pulsar "¡Listo!" no puede crear nada;
- * la cadena crear → finalizar → agregar solo corre al confirmar— más lo propio de este editor:
+ * Blinda el mismo contrato que su hermano del set de letras —pulsar "Vista previa" (antes
+ * "¡Listo!", renombrado 2026-09-09) no puede crear nada; la cadena crear → finalizar → agregar
+ * solo corre al confirmar— más lo propio de este editor:
  *
  *   1. El precio de la modal es el TOTAL (nº de letras × precio por ficha), no el de una ficha
  *      suelta. Mostrar $3.500 cuando el cliente escribió 7 letras y le van a cobrar $24.500 sería
@@ -82,7 +83,7 @@ beforeEach(() => {
   addPersonalizedToCartAction.mockResolvedValue({ ok: true });
 });
 
-function renderEditor() {
+function renderEditor(extraProps?: { initialCopies?: number; initialWithBorder?: boolean }) {
   return render(
     <NameEditor
       product={{ id: "prod-1", slug: "nombre-personalizado", name: "Nombre Personalizado" }}
@@ -90,6 +91,7 @@ function renderEditor() {
       config={{ min: 3, max: 10, language: "es" }}
       pricePerTile={PRICE_PER_TILE}
       styles={[]}
+      {...extraProps}
     />,
   );
 }
@@ -98,13 +100,13 @@ function renderEditor() {
 async function openPreviewWith(name: string): Promise<number> {
   const input = screen.getByRole("textbox");
   fireEvent.change(input, { target: { value: name } });
-  fireEvent.click(screen.getByRole("button", { name: /¡Listo!/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Vista previa/ }));
   await waitFor(() => expect(screen.getByText(/Así se verá tu pedido/i)).toBeInTheDocument());
   return name.length;
 }
 
 describe("NameEditor — vista previa antes del carrito", () => {
-  it('"¡Listo!" abre la previa SIN crear nada en el servidor', async () => {
+  it('"Vista previa" abre la previa SIN crear nada en el servidor', async () => {
     renderEditor();
 
     await openPreviewWith("LUCIA");
@@ -159,6 +161,33 @@ describe("NameEditor — vista previa antes del carrito", () => {
     expect(enPantalla).toContain(soloDigitos);
   });
 
+  // Regla 2026-09-08b — el stepper "Unidades" de la PDP viaja como ?copies=N y la
+  // modal lo confirma tal cual (ya sin stepper propio): la qty del carrito es la
+  // que el cliente eligió en la ficha, no 1 por omisión.
+  it("las copias de la PDP (?copies=N) se muestran en la modal y llegan al carrito como qty", async () => {
+    renderEditor({ initialCopies: 3 });
+    await openPreviewWith("LUCIA");
+
+    expect(screen.getByText(/3 copias idénticas/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
+    expect(addPersonalizedToCartAction).toHaveBeenCalledWith(
+      expect.objectContaining({ designId: "design-name-1", variantId: "var-1", qty: 3 }),
+    );
+  });
+
+  it("sin ?copies= la confirmación agrega 1 sola unidad", async () => {
+    renderEditor();
+    await openPreviewWith("LUCIA");
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
+    expect(addPersonalizedToCartAction).toHaveBeenCalledWith(expect.objectContaining({ qty: 1 }));
+  });
+
   /*
    * El callejón sin salida: si el CARRITO falla, el diseño ya quedó en READY. Reintentar volvía a
    * llamar al finalize, que rechaza todo lo que no sea DRAFT → el cliente veía un error interno en
@@ -182,5 +211,136 @@ describe("NameEditor — vista previa antes del carrito", () => {
     // Y tampoco se crea un diseño huérfano nuevo.
     expect(createNameDesignAction).toHaveBeenCalledTimes(1);
     expect(push).toHaveBeenCalledWith("/carrito?personalized=1");
+  });
+});
+
+/*
+ * Opción «Con borde / Sin borde» (Lucy 2026-09-09) — espejo de la regla ya shipped en
+ * el set de letras (2026-09-05/08): el selector «Borde de las fichas» SIEMPRE queda
+ * habilitado; con «Sin borde» la sección «Elige los colores» se desactiva (las fichas
+ * no llevan el marco de color) con aviso del porqué, y al volver a «Con borde» se
+ * reactiva conservando la selección (useLetterColors nunca se resetea).
+ */
+describe("NameEditor — opción «Con borde / Sin borde» (regla del set de letras)", () => {
+  it("el selector «Borde de las fichas» aparece y arranca en «Con borde» (default histórico)", () => {
+    renderEditor();
+
+    expect(screen.getByRole("radiogroup", { name: "Borde de las fichas" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Con borde" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("radio", { name: "Sin borde" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    // Con borde: los colores arrancan habilitados y sin aviso.
+    expect(screen.getByRole("button", { name: /Arcoíris/ })).toBeEnabled();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+
+  it("«Sin borde» desactiva «Elige los colores» con aviso, y el selector de borde sigue habilitado", () => {
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Sin borde" }));
+
+    for (const tema of ["Arcoíris", "Vibrante", "Neutro"]) {
+      expect(screen.getByRole("button", { name: new RegExp(tema) })).toBeDisabled();
+    }
+    expect(screen.getByRole("note")).toHaveTextContent(/los colores se desactivan/);
+    // El selector de borde NUNCA se desactiva: es la vía para recuperar los colores.
+    expect(screen.getByRole("radio", { name: "Con borde" })).toBeEnabled();
+    expect(screen.getByRole("radio", { name: "Sin borde" })).toBeEnabled();
+  });
+
+  it("Ola 26 (owner 2026-09-09) — «Borde de las fichas» va ARRIBA de «Elige los colores»", () => {
+    renderEditor();
+
+    const borde = screen.getByRole("radiogroup", { name: "Borde de las fichas" });
+    const colores = screen.getByText("Elige los colores");
+    // compareDocumentPosition: DOCUMENT_POSITION_FOLLOWING = colores va DESPUÉS de borde.
+    expect(borde.compareDocumentPosition(colores) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // La regla de desactivado sigue intacta en el nuevo orden.
+    fireEvent.click(screen.getByRole("radio", { name: "Sin borde" }));
+    expect(screen.getByRole("button", { name: /Arcoíris/ })).toBeDisabled();
+  });
+
+  it("al volver a «Con borde» los colores se reactivan conservando la selección", () => {
+    renderEditor();
+
+    // El cliente elige un tema distinto al default…
+    fireEvent.click(screen.getByRole("button", { name: /Vibrante/ }));
+    expect(screen.getByRole("button", { name: /Vibrante/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // …apaga el borde (colores desactivados) y lo vuelve a encender.
+    fireEvent.click(screen.getByRole("radio", { name: "Sin borde" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Con borde" }));
+
+    expect(screen.getByRole("button", { name: /Vibrante/ })).toBeEnabled();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    // La selección previa se conserva: el estado de colores nunca se resetea.
+    expect(screen.getByRole("button", { name: /Vibrante/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  /*
+   * Persistencia (Lucy 2026-09-09) — la elección viaja en Design.metadata.withBorder
+   * (espejo del set de letras): se envía al crear el diseño y, al re-abrir uno guardado
+   * (?designId=), el toggle arranca con el valor persistido. Sin la clave (diseños
+   * previos a la opción) el default es CON borde, lo histórico.
+   */
+  it("sin tocar el selector, el diseño se crea con withBorder: true (default histórico)", async () => {
+    renderEditor();
+    await openPreviewWith("LUCIA");
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
+    expect(createNameDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({ withBorder: true }),
+    );
+  });
+
+  it("al elegir «Sin borde», el diseño se crea con withBorder: false", async () => {
+    renderEditor();
+    fireEvent.click(screen.getByRole("radio", { name: "Sin borde" }));
+    await openPreviewWith("LUCIA");
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
+    expect(createNameDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({ withBorder: false }),
+    );
+  });
+
+  it("re-abrir un diseño guardado sin borde arranca el toggle en «Sin borde» (round-trip)", () => {
+    renderEditor({ initialWithBorder: false });
+
+    expect(screen.getByRole("radio", { name: "Sin borde" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("radio", { name: "Con borde" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    // …y la sección de colores arranca desactivada, coherente con la elección guardada.
+    expect(screen.getByRole("button", { name: /Arcoíris/ })).toBeDisabled();
+  });
+
+  it("un diseño viejo SIN la clave withBorder arranca en «Con borde» (retrocompatible)", () => {
+    renderEditor({ initialWithBorder: undefined });
+
+    expect(screen.getByRole("radio", { name: "Con borde" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /Arcoíris/ })).toBeEnabled();
   });
 });

@@ -1,5 +1,7 @@
 # Catálogo seed — Lucams_shop
 
+> **Estado: documento histórico (2026-05-09).** Describe el seed **inicial** del catálogo. El catálogo real vive en la base de datos y evolucionó desde entonces (renombres y consolidación de familias con redirects 301, reestructuras ADR-057, y el modelo PLAN_CATALOG_V2 — ver los scripts `packages/db/scripts/seed-*.mjs` y los targets `make seed-*` del Makefile). Los slugs, precios y conteos de este documento **no reflejan necesariamente el estado actual**; la fuente de verdad del modelo es `packages/db/prisma/schema.prisma` y la de los datos, la DB.
+
 > Catálogo inicial de 37 productos paritarios con [magneticas.cl](https://www.magneticas.cl), adaptados a la marca Lucams (kawaii colombiano), tono cercano, y con compliance colombiano. Las **fotos y los precios son placeholders** que el usuario operador reemplaza antes del lanzamiento (mandato CLAUDE.md y ADR-010). Verificación contra magneticas.cl realizada 2026-05-09 (sitemap + 6 categorías + 1 página catálogo + FAQ + política de devolución).
 
 ## Tabla de contenido
@@ -243,7 +245,7 @@ Todos los productos pre-diseñados sin personalización del cliente:
 
 ## Implementación en Prisma seed
 
-> Ubicación: `packages/db/prisma/seed.ts`. Ejecutar con `pnpm --filter @lucams/db prisma db seed` (Fase 1).
+> **Nota de estado:** esta sección describe el plan original (Fase 1). La implementación real difiere: el seed de catálogo vive en `packages/db/scripts/seed-products.mjs` (upsert idempotente por SKU, variants inline, imágenes hot-linked de Unsplash hasta que la operadora suba las reales desde el admin) y se ejecuta con `make seed-products` / `make db-local-seed`. El `packages/db/prisma/seed.ts` y la carpeta `apps/web/public/seed-images/` aquí descritos nunca se materializaron. El código de abajo queda como referencia del modelo de datos esperado.
 
 ### Estructura del archivo
 
@@ -323,7 +325,9 @@ main()
 
 ### Imágenes placeholder
 
-- Carpeta: `apps/web/public/seed-images/` (no commiteada en git si son grandes).
+> Implementación real: el seed usa URLs Unsplash hot-linked en `Product.images`; la operadora las reemplaza subiendo la foto real desde el admin (eso pisa el array en DB). Lo siguiente era el plan original (no se materializó la carpeta):
+
+- ~~Carpeta: `apps/web/public/seed-images/`~~ (no existe — ver nota arriba).
 - Generadas con la mascota mapache + texto del producto, o usando un servicio tipo placeholder.com con paleta Lucams.
 - **Mandato:** antes del lanzamiento, el operador reemplaza con fotos reales de productos físicos (ADR-010).
 

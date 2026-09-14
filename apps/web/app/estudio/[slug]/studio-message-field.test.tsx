@@ -114,6 +114,14 @@ describe("StudioMessageField — flujo 'Tu mensaje' (Lucy 2026-07-22)", () => {
     expect(input.value).toBe("Desde el modal");
   });
 
+  it("muestra el aviso de que el mensaje aplica a TODAS las fotos del set (Lucy 2026-09-08)", () => {
+    // "Mantener con aviso" (aprobado por el owner): el campo sigue, pero el aviso
+    // pack-level debe estar visible junto al campo.
+    const store = makeStore();
+    render(<StudioMessageField store={store} />);
+    expect(screen.getByRole("note").textContent).toMatch(/todas las fotos del set/i);
+  });
+
   it("NO se muestra cuando la plantilla tiene VARIAS capas editables (Instagram: 4 zonas)", () => {
     const store = makeStore();
     const canvas = polaroidCanvas();

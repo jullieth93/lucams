@@ -1,5 +1,5 @@
 /*
- * HOMOLOGACIÓN E2E — rastrear pedido (PROMPT_E2E_HOMOLOGACION §6.14):
+ * HOMOLOGACIÓN E2E — rastrear pedido (docs/TESTING.md):
  *
  *   número+email correctos → redirect a /pedido/[token] con número y estado →
  *   ANTI-ENUMERACIÓN: número inexistente y email equivocado devuelven el MISMO

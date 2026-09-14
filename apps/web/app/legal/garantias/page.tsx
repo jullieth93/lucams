@@ -72,7 +72,7 @@ Queremos resolverlo directamente contigo, de la mejor manera. Pero si no quedas 
 
 ---
 
-_Versión 4 · vigente desde 2026-07-25 · en revisión por asesoría legal antes del lanzamiento_
+_Versión 5 · vigente desde 2026-09-04 · sin cambios de fondo; se alinea la versión con el paquete legal v5 (tienda en línea activa) · en revisión por asesoría legal_
 `;
 
 export default function Page() {

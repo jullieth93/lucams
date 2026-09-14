@@ -11,7 +11,8 @@
  *   - Topbar minimal con breadcrumb + link "Ver el sitio"
  *   - Footer sidebar con avatar + dropdown (Cambiar contraseña + Cerrar sesión)
  *   - 11 áreas top-level: Dashboard, Ventas, Catálogo, Comercial, Producción,
- *     Canales, Finanzas, IA y Conocimiento, Analítica, Configuración, Mensajes
+ *     Canales, Finanzas, IA y Conocimiento, Analítica, Configuración
+ *     (N-09: el área "Mensajes" se eliminó — consolidada en Servicio al cliente > Soporte)
  *   - Badges visuales [Próximo / Fase 4 / Fase 5] para items no disponibles
  *   - Badge numérico de no leídas en el item "Notificaciones" (prop
  *     `unreadNotifications`, la calcula el layout del panel con getUnreadCount)
@@ -87,7 +88,7 @@ export function AdminShell({
     // Layout: COLUMNA en móvil (topbar arriba, contenido abajo), FILA en lg
     // (sidebar + contenido). Antes era fila siempre y la topbar móvil quedaba
     // como columna vertical comiéndose ~60% del ancho (auditoría E1 P0,
-    // docs/audits/2026-07-31-e1-mobile-admin-audit.md).
+    // 2026-07-31 — auditorías históricas consolidadas fuera del repo, git history).
     <div className="bg-brand-cream/40 flex min-h-screen flex-col lg:flex-row">
       {/* Sidebar desktop — gradient morado oscuro premium.
           Lucy 2026-06-27: sticky + h-screen para que NO se escape al hacer scroll.

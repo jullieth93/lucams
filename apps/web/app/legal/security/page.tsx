@@ -11,7 +11,7 @@ const FALLBACK = `
 
 En Lucams_shop cuidamos tus datos con el mismo cariño con el que armamos cada imán. Si encontraste una vulnerabilidad de seguridad en nuestro sitio, te agradecemos de corazón que nos la cuentes **antes** de divulgarla públicamente, para poder arreglarla y proteger a quienes compran con nosotros.
 
-Lucams_shop es operado por **Lucams_shop (persona natural), Bogotá D.C., Colombia**. Los datos de identificación de la titular están disponibles a requerimiento del consumidor a través de nuestros canales de contacto.
+Lucams_shop es operado por **Lucams_shop (persona natural), Bogotá D.C., Colombia**. Si necesitas nuestros datos para un trámite formal, escríbenos y te los damos.
 
 ## Cómo reportar
 
@@ -67,13 +67,17 @@ El archivo legible por máquina con nuestra información de contacto de segurida
 
 ---
 
-_Versión 1 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
+_Versión 2 · vigente desde 2026-07-25 · en revisión por asesoría legal_
 `;
 
 export default function Page() {
   return (
     <>
-      <LegalPageHeader blockKey="legal.security.heading" defaultTitle="Seguridad" />
+      <LegalPageHeader
+        blockKey="legal.security.heading"
+        defaultTitle="Seguridad"
+        lastUpdated="Última actualización: 2026-07-25 · Versión 2"
+      />
       <CmsMarkdown blockKey="legal.security" fallback={FALLBACK} className="mt-6" />
     </>
   );

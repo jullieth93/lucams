@@ -22,9 +22,12 @@
  *     si existe, no-op silencioso. Index parcial unique en DB garantiza
  *     consistencia incluso bajo race condition extrema.
  *
- *  5. StockReservation queda en schema sin consumidores (decisión diferida).
- *     ADR-014 anotada como pendiente. Si el volumen lo justifica, migrar
- *     a reserva con TTL + pg_cron cleanup en bloque futuro.
+ *  5. Sin reservas de stock (StockReservation se retiró del schema en N-10a,
+ *     2026-09-12 — nunca tuvo consumidores). La protección real contra oversold
+ *     es el UPDATE atómico del punto 3: quien llega segundo NO confirma el pago
+ *     y su orden queda PENDING_PAYMENT marcada needsReconciliation (visible en
+ *     /admin/pedidos), con el stock JAMÁS en negativo. ADR-014 (reserva con TTL)
+ *     quedó descartada para el volumen actual.
  */
 
 import "server-only";

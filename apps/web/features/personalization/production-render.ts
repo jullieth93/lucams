@@ -105,10 +105,17 @@ function assertServerRenderable(unit: UnitTemplate, slots: Slot[], includeText: 
       // capas de texto de la plantilla: el editor no las dibuja → sharp tampoco (WYSIWYG)
       // y el slot se puede renderizar acá sin caer al tier canvas.
       if (!includeText) continue;
-      const base = typeof l.text === "string" ? l.text.trim() : "";
       // Un texto-base vacío PERO con override del cliente (caption editado) SÍ tiene contenido →
       // no es "solo-foto" (evita que sharp lo dibuje sin el caption; hallazgo revisión A1b).
       const overridden = slots.some((s) => (s.textOverrides?.[l.id]?.text ?? "").trim().length > 0);
+      // Ola 23 (Lucy 2026-09-08) — regla global de placeholders (estricta desde Ola 25):
+      // el texto por defecto de una capa EDITABLE ("Escribe tu mensaje", "@tu_usuario"…)
+      // NUNCA es contenido de la tarjeta — ni se imprime ni se dibuja en pantalla. Sin
+      // override del cliente no hay contenido que dibujar → el slot se queda en el tier
+      // sharp en vez de caer al canvas solo por el placeholder (el tier canvas tampoco
+      // imprimiría nada: renderTextLayer).
+      if (l.editable === true && !overridden) continue;
+      const base = typeof l.text === "string" ? l.text.trim() : "";
       if (base.length > 0 || overridden)
         throw new RenderNeedsKonvaError("text layer con contenido");
       continue; // texto vacío y sin override → ignorable

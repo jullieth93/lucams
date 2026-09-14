@@ -27,6 +27,7 @@ import { prisma } from "@/lib/db";
 import { formatCOP, maskEmail } from "@/lib/format";
 import { hashBearerToken } from "@/lib/token-hash";
 import { carrierTrackingPageUrl } from "@/features/shipping/tracking-urls";
+import { letterSetBorderNote } from "@/features/personalization/letter-set-border";
 import { buildWhatsAppUrl } from "@/lib/wa";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -96,7 +97,7 @@ export default async function PublicOrderPage({
               product: { select: { slug: true, name: true } },
             },
           },
-          design: { select: { previewUrl: true } },
+          design: { select: { previewUrl: true, metadata: true } },
         },
       },
     },
@@ -300,6 +301,9 @@ export default async function PublicOrderPage({
             <ul className="divide-brand-purple/10 divide-y">
               {order.items.map((it) => {
                 const previewUrl = it.designAssetUrl ?? it.design?.previewUrl ?? null; // ADR-070 — snapshot primero
+                // Opciones de diseño del set de letras ("Sin borde") — el PNG las refleja, pero el
+                // texto evita que el cliente tenga que deducirlas de la miniatura (2026-09-05).
+                const borderNote = letterSetBorderNote(it.design?.metadata);
                 return (
                   <li key={it.id} className="flex items-start gap-3 py-3">
                     <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">
@@ -325,6 +329,7 @@ export default async function PublicOrderPage({
                       <div className="text-brand-muted text-xs">
                         {it.variant.name} · {it.qty} × {formatCOP(it.unitPrice)}
                       </div>
+                      {borderNote && <div className="text-brand-muted text-xs">{borderNote}</div>}
                     </div>
                     <div className="text-brand-purple-dark flex-shrink-0 text-right text-sm font-semibold tabular-nums">
                       {formatCOP(it.unitPrice * it.qty)}

@@ -5,7 +5,8 @@
  * la variante "nombre": escribe un nombre → ve en vivo la tira de fichas kawaii que vas
  * a recibir. Sin foto, sin cajita. Reemplaza el editor de foto genérico para este caso.
  *
- * "¡Listo!" NO agrega nada todavía: renderiza la tira a PNG en el navegador y abre la vista
+ * "Vista previa" (antes "¡Listo!", renombrado 2026-09-09) NO agrega nada todavía: renderiza la
+ * tira a PNG en el navegador y abre la vista
  * previa "Así se verá tu pedido" (Lucy 2026-07-25). Solo si el cliente confirma ahí se crea
  * el diseño (createNameDesignAction, valida en servidor) y se reutilizan finalizeDesignAction +
  * addPersonalizedToCartAction (la ruta del dinero probada) → /carrito. El nombre real se guarda
@@ -65,6 +66,14 @@ type NameEditorProps = {
   pricePerTile: number;
   /** Nº de letras pre-elegido en la ficha (solo hint visual antes de escribir). */
   initialCount?: number;
+  /** Copias (CartItem.qty) elegidas en la PDP con el stepper "Unidades"
+   *  (`?copies=N`, regla 2026-09-08b): las confirma la modal de "Vista previa" — que ya
+   *  NO tiene stepper propio. undefined → 1. */
+  initialCopies?: number;
+  /** Al re-abrir un diseño guardado (?designId=), el valor persistido de la opción
+   *  «Con borde / Sin borde» (Design.metadata.withBorder). Ausente → true (default
+   *  histórico: los diseños previos a la opción no traen la clave). */
+  initialWithBorder?: boolean;
   /** Estilos ilustrados disponibles (Animales, Navidad…). Vacío = solo "Solo letra". */
   styles: LetterStyle[];
   /**
@@ -105,7 +114,9 @@ function loadImage(url: string): Promise<HTMLImageElement | null> {
 const TILE_W = 120;
 const TILE_H = 142;
 
-/** Dibuja UNA ficha kawaii (recuadro blanco + borde de color + ilustración o letra) en (x,y). */
+/** Dibuja UNA ficha kawaii (recuadro blanco + borde de color + ilustración o letra) en (x,y).
+ *  `withBorder` (default true, lo histórico): sin borde la ficha queda blanca a ras —
+ *  misma regla que el set de letras (Lucy 2026-09-05) y que la textura 3D. */
 function drawLetterTile(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -113,13 +124,16 @@ function drawLetterTile(
   ch: string,
   color: string,
   img: HTMLImageElement | null,
+  withBorder = true,
 ) {
   roundRectPath(ctx, x, y, TILE_W, TILE_H, 20);
   ctx.fillStyle = "#ffffff";
   ctx.fill();
-  ctx.lineWidth = 6;
-  ctx.strokeStyle = color;
-  ctx.stroke();
+  if (withBorder) {
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+  }
   if (img) {
     ctx.save();
     roundRectPath(ctx, x + 4, y + 4, TILE_W - 8, TILE_H - 8, 16);
@@ -167,6 +181,7 @@ async function renderNameStripDataUrl(
   colors: readonly string[],
   tiles: LetterTileMap,
   useTiles = true,
+  withBorder = true,
 ): Promise<string> {
   const scale = 4;
   const gap = 16;
@@ -192,7 +207,15 @@ async function renderNameStripDataUrl(
   ctx.fillRect(0, 0, w, h);
 
   letters.forEach((ch, i) => {
-    drawLetterTile(ctx, pad + i * (TILE_W + gap), pad, ch, colors[i % colors.length], imgs[i]);
+    drawLetterTile(
+      ctx,
+      pad + i * (TILE_W + gap),
+      pad,
+      ch,
+      colors[i % colors.length],
+      imgs[i],
+      withBorder,
+    );
   });
 
   // toDataURL lanza SecurityError si el canvas quedó contaminado por una ilustración sin CORS
@@ -208,6 +231,8 @@ export function NameEditor({
   initialCount,
   styles,
   themeOptions,
+  initialCopies,
+  initialWithBorder,
 }: NameEditorProps) {
   const router = useRouter();
   const [raw, setRaw] = useState("");
@@ -249,6 +274,14 @@ export function NameEditor({
   // Estilo elegido (null = "Solo letra"/Default). Arranca en el primer estilo ilustrado
   // disponible (muestra el diferenciador); si no hay ninguno, queda en Default.
   const [styleId, setStyleId] = useState<string | null>(styles[0]?.id ?? null);
+  // Lucy 2026-09-09 — opción de diseño "Con borde / Sin borde" (misma regla que el set
+  // de letras, Lucy 2026-09-05/08): default CON borde (lo que siempre se imprimió); con
+  // "Sin borde" las fichas van blancas a ras (preview, PNG de producción y 3D) y la
+  // sección "Elige los colores" se desactiva (el marco de color no aplica) hasta volver
+  // a "Con borde" — la selección de colores se conserva (nunca se resetea). La elección
+  // se persiste en Design.metadata.withBorder al crear el diseño, y al re-abrir uno
+  // guardado llega en `initialWithBorder` (sin la clave = con borde, lo histórico).
+  const [withBorder, setWithBorder] = useState(initialWithBorder !== false);
   const activeTiles = useMemo(
     () => (styleId ? (styles.find((s) => s.id === styleId)?.tiles ?? {}) : {}),
     [styleId, styles],
@@ -291,7 +324,7 @@ export function NameEditor({
     .map((e) => e.trim())
     .filter(Boolean);
 
-  // ──────────── Paso 1: ¡Listo! → dibuja la tira y abre "Así se verá tu pedido" ────────────
+  // ──────────── Paso 1: Vista previa → dibuja la tira y abre "Así se verá tu pedido" ────────────
   //
   // Todo pasa en el navegador (canvas), sin server actions: si el cliente vuelve a editar no
   // quedó ningún diseño creado ni ningún archivo subido.
@@ -305,9 +338,21 @@ export function NameEditor({
       // El fallback ocurre ACÁ, antes de mostrar: la previa es exactamente el PNG que se produce.
       let dataUrl: string;
       try {
-        dataUrl = await renderNameStripDataUrl(letters, effectiveColors, activeTiles);
+        dataUrl = await renderNameStripDataUrl(
+          letters,
+          effectiveColors,
+          activeTiles,
+          true,
+          withBorder,
+        );
       } catch {
-        dataUrl = await renderNameStripDataUrl(letters, effectiveColors, activeTiles, false);
+        dataUrl = await renderNameStripDataUrl(
+          letters,
+          effectiveColors,
+          activeTiles,
+          false,
+          withBorder,
+        );
       }
       setPreviewDataUrl(dataUrl);
       setPreviewOpen(true);
@@ -321,8 +366,9 @@ export function NameEditor({
   }
 
   // ──────────── Paso 2: confirmar en la modal → crear + subir + carrito ────────────
-  // `copies` viene del stepper "Copias" de la modal (unidades idénticas del
-  // nombre ya renderizado; CartItem.qty 1..99).
+  // `copies` son las unidades idénticas del nombre ya renderizado (CartItem.qty
+  // 1..99): las eligió la PDP (stepper "Unidades", ?copies=N) y la modal de
+  // "Vista previa" las confirma tal cual — ya sin stepper propio (regla 2026-09-08b).
   async function handleConfirmAddToCart(copies: number) {
     if (!valid || submitting || !previewDataUrl) return;
     setSubmitting(true);
@@ -337,6 +383,7 @@ export function NameEditor({
           themeId,
           colors: effectiveColors,
           styleSetId: styleId,
+          withBorder,
         });
         if (!created.ok) {
           setPreviewError(created.message);
@@ -390,7 +437,7 @@ export function NameEditor({
   }
 
   // "Volver a editar": el editor queda intacto y nada se creó. Se descarta la previa (y el diseño
-  // a medio camino de un intento fallido) para que el próximo "¡Listo!" dibuje el nombre actual.
+  // a medio camino de un intento fallido) para que la próxima "Vista previa" dibuje el nombre actual.
   const handleEditFromPreview = useCallback(() => {
     setPreviewOpen(false);
     setPreviewDataUrl(null);
@@ -412,10 +459,10 @@ export function NameEditor({
     try {
       let magnets: Magnet3D[];
       try {
-        magnets = await buildLetterTileTextures(letters, activeTiles, effectiveColors);
+        magnets = await buildLetterTileTextures(letters, activeTiles, effectiveColors, withBorder);
       } catch {
         // Si el canvas se contamina por CORS (ilustración del tema), cae a solo-letras.
-        magnets = await buildLetterTileTextures(letters, {}, effectiveColors);
+        magnets = await buildLetterTileTextures(letters, {}, effectiveColors, withBorder);
       }
       setBoard3D(magnets);
     } catch {
@@ -423,7 +470,7 @@ export function NameEditor({
     } finally {
       setBuilding3D(false);
     }
-  }, [letters, effectiveColors, activeTiles, building3D, texts]);
+  }, [letters, effectiveColors, activeTiles, building3D, withBorder, texts]);
 
   // El Escape del overlay 3D lo maneja useDialogA11y (#15, arriba).
 
@@ -437,7 +484,7 @@ export function NameEditor({
     <div className="mx-auto w-full max-w-3xl px-5 py-8">
       <Link
         href={`/producto/${product.slug}`}
-        className="text-brand-muted hover:text-brand-purple mb-4 inline-flex items-center gap-1 text-sm"
+        className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 mb-4 inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg active:scale-[0.98]"
       >
         <ChevronLeft className="h-4 w-4" />
         {texts.comun.volver}
@@ -605,9 +652,69 @@ export function NameEditor({
           </div>
         )}
 
-        {/* Paleta de colores (tema de las fichas) — control compartido con Set de letras */}
+        {/* Opción de diseño "Con borde / Sin borde" (mismo precio), espejo del selector del
+            set de letras: se refleja en las fichas del preview, en el PNG de producción y en
+            la vista 3D (WYSIWYG). El selector SIEMPRE queda habilitado: es la vía para
+            reactivar los colores.
+            Ola 26 (owner 2026-09-09) — va ARRIBA de «Elige los colores»: primero se define
+            el borde y debajo queda la paleta que se desactiva con «Sin borde» (mismo orden
+            que la barra de estilo del Estudio de foto, Ola 24). */}
         <div className="mt-5">
-          <ThemePicker themeId={themeId} customized={customized} onApply={applyTheme} />
+          <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
+            {texts.nombre.bordeTitulo}
+            <span className="text-brand-muted ml-2 text-xs font-normal">
+              {texts.nombre.bordeHint}
+            </span>
+          </p>
+          <div
+            role="radiogroup"
+            aria-label={texts.nombre.bordeTitulo}
+            className="flex flex-wrap gap-2"
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={withBorder}
+              onClick={() => setWithBorder(true)}
+              className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
+                withBorder
+                  ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                  : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
+              }`}
+            >
+              <span aria-hidden="true">◻️</span>
+              {texts.nombre.bordeCon}
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!withBorder}
+              onClick={() => setWithBorder(false)}
+              className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
+                !withBorder
+                  ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                  : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
+              }`}
+            >
+              <span aria-hidden="true">⬜</span>
+              {texts.nombre.bordeSin}
+            </button>
+          </div>
+        </div>
+
+        {/* Paleta de colores (tema de las fichas) — control compartido con Set de letras.
+            Lucy 2026-09-09 — misma regla que el set de letras: con «Sin borde» las fichas
+            no llevan el marco de color, así que la sección se DESACTIVA (visible + inerte,
+            con el porqué) hasta volver a «Con borde». El estado de colores (useLetterColors)
+            nunca se resetea al desactivar. */}
+        <div className="mt-5">
+          <ThemePicker
+            themeId={themeId}
+            customized={customized}
+            onApply={applyTheme}
+            disabled={!withBorder}
+            disabledHint={texts.nombre.bordeSinColoresHint}
+          />
         </div>
 
         {/* Preview de la tira de fichas (cada una seleccionable para pintarla) */}
@@ -629,8 +736,11 @@ export function NameEditor({
             </div>
           ) : (
             <>
-              {/* Descubribilidad del color por letra: barra visible, no un texto perdido. */}
-              {selectedIndex === null && (
+              {/* Descubribilidad del color por letra: barra visible, no un texto perdido.
+                  Ola 28 (owner 2026-09-11, 1.7): con «Sin borde» las fichas no llevan
+                  color → sin hint y fichas no seleccionables (la paleta ya quedó
+                  desactivada arriba; aquí tampoco aplica pintar letra a letra). */}
+              {withBorder && selectedIndex === null && (
                 <p className="text-brand-purple-dark mb-3 flex items-center justify-center gap-1.5 text-center text-xs font-semibold">
                   <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
                     {texts.nombre.tocaHint}
@@ -644,16 +754,18 @@ export function NameEditor({
                     letter={ch}
                     color={effectiveColors[i]}
                     imageUrl={activeTiles[ch]?.imageUrl}
-                    selected={selectedIndex === i}
-                    onClick={() => toggleSelected(i)}
+                    selected={withBorder && selectedIndex === i}
+                    onClick={withBorder ? () => toggleSelected(i) : undefined}
+                    withBorder={withBorder}
                   />
                 ))}
               </div>
             </>
           )}
 
-          {/* Fila de colores para la letra seleccionada — control compartido */}
-          {selectedIndex !== null && letters[selectedIndex] && (
+          {/* Fila de colores para la letra seleccionada — control compartido.
+              Con «Sin borde» no aplica (no hay marco de color que pintar). */}
+          {withBorder && selectedIndex !== null && letters[selectedIndex] && (
             <SwatchRow letter={letters[selectedIndex]} onPick={setColorForSelected} />
           )}
         </div>
@@ -757,6 +869,8 @@ export function NameEditor({
         // ADR-057 — el precio es POR FICHA, así que el total que se confirma es
         // letras × pricePerTile (enteros en centavos COP): el MISMO cálculo del carrito.
         unitPrice={liveTotal}
+        // Copias de la PDP (?copies=N) — la modal las confirma, no las elige.
+        initialCopies={initialCopies}
         isFinalizing={submitting}
         errorMessage={previewError}
         productKind="magnets"

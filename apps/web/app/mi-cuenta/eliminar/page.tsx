@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 
 export default async function EliminarCuentaPage() {
   const session = await getCurrentCustomer();
-  if (!session) redirect("/login?next=/mi-cuenta/seguridad");
+  if (!session) redirect("/login?next=/mi-cuenta/eliminar");
 
   const texts = await getAccountTexts();
 

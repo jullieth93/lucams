@@ -10,27 +10,29 @@ Insignia circular con:
 - **Corazones amarillos** flotando como acento decorativo.
 - Trazo circular tipo brushstroke alrededor.
 
-> Pendiente: el usuario debe entregar la versión final en SVG (preferido) o PNG transparente alta resolución. Mientras tanto, se trabaja con la imagen referencial compartida en chat.
+> **Recibido (2026-05-11):** la versión oficial en PNG con transparencia vive en `apps/web/public/brand/` (`lucams-logo.png` 468×468 y `lucams-mascot.png` 370×355) y está en uso en producción vía `components/lucams-logo.tsx`. Sigue pendiente la versión **SVG** vectorial de alta resolución (hoy el componente usa el PNG; el SVG kawaii de `components/brand-mark.tsx` queda como fallback).
 
 ## Paleta de colores
 
 ### Tabla de tokens
 
-| Token                     | HEX       | RGB           | HSL           | Uso principal                                |
-| ------------------------- | --------- | ------------- | ------------- | -------------------------------------------- |
-| `brand-purple` (primario) | `#7C6AAD` | 124, 106, 173 | `253 26% 55%` | Fondos destacados, header, botones primarios |
-| `brand-purple-dark`       | `#3D2E5C` | 61, 46, 92    | `261 33% 27%` | Texto principal sobre claro, headings        |
-| `brand-turquoise`         | `#5DD9D1` | 93, 217, 209  | `176 60% 61%` | Acento, badges "nuevo", links                |
-| `brand-pink`              | `#E85B9F` | 232, 91, 159  | `331 75% 63%` | CTAs secundarias, precios en oferta          |
-| `brand-coral`             | `#F58A6F` | 245, 138, 111 | `12 86% 70%`  | Acentos cálidos, banners                     |
-| `brand-yellow`            | `#FFD93D` | 255, 217, 61  | `49 100% 62%` | Highlights, corazones, badges "envío gratis" |
-| `brand-cream`             | `#FFF8F0` | 255, 248, 240 | `32 100% 97%` | Fondos suaves alternativos al blanco puro    |
-| `neutral-white`           | `#FFFFFF` | 255, 255, 255 | `0 0% 100%`   | Fondos principales                           |
-| `neutral-text`            | `#1F1733` | 31, 23, 51    | `258 38% 15%` | Texto cuerpo                                 |
-| `neutral-muted`           | `#6B6383` | 107, 99, 131  | `253 14% 45%` | Texto secundario, placeholders               |
-| `feedback-success`        | `#3FBE6E` | —             | —             | Confirmaciones, "pagado"                     |
-| `feedback-error`          | `#E84B5B` | —             | —             | Errores, validaciones                        |
-| `feedback-warning`        | `#F5A623` | —             | —             | Avisos, stock bajo                           |
+| Token                        | HEX       | RGB           | HSL           | Uso principal                                |
+| ---------------------------- | --------- | ------------- | ------------- | -------------------------------------------- |
+| `brand-purple` (primario)    | `#7C6AAD` | 124, 106, 173 | `253 26% 55%` | Fondos destacados, header, botones primarios |
+| `brand-purple-dark`          | `#3D2E5C` | 61, 46, 92    | `261 33% 27%` | Texto principal sobre claro, headings        |
+| `brand-turquoise`            | `#5DD9D1` | 93, 217, 209  | `176 60% 61%` | Acento, badges "nuevo", links                |
+| `brand-pink`                 | `#E85B9F` | 232, 91, 159  | `331 75% 63%` | CTAs secundarias, precios en oferta          |
+| `brand-coral`                | `#F58A6F` | 245, 138, 111 | `12 86% 70%`  | Acentos cálidos, banners                     |
+| `brand-yellow`               | `#FFD93D` | 255, 217, 61  | `49 100% 62%` | Highlights, corazones, badges "envío gratis" |
+| `brand-cream`                | `#FFF8F0` | 255, 248, 240 | `32 100% 97%` | Fondos suaves alternativos al blanco puro    |
+| `background` (neutral-white) | `#FFFFFF` | 255, 255, 255 | `0 0% 100%`   | Fondos principales                           |
+| `foreground` (neutral-text)  | `#1F1733` | 31, 23, 51    | `258 38% 15%` | Texto cuerpo                                 |
+| `muted-foreground`           | `#6B6383` | 107, 99, 131  | `253 14% 45%` | Texto secundario, placeholders               |
+| `success`                    | `#3FBE6E` | —             | —             | Confirmaciones, "pagado"                     |
+| `error`                      | `#E84B5B` | —             | —             | Errores, validaciones                        |
+| `warning`                    | `#F5A623` | —             | —             | Avisos, stock bajo                           |
+
+> Además existen los tonos de **texto accesible** `brand-muted` `#6B6280`, `brand-pink-ink` `#C42B76` y `brand-coral-ink` `#B0492E` (ADR-044): derivados oscurecidos de la marca para texto pequeño/interactivo donde el pastel no llega a AA. No reemplazan la paleta — los 7 colores kawaii siguen para fondos, decoración y títulos grandes.
 
 ### Implementación en Tailwind v4 (CSS-first)
 
@@ -39,27 +41,49 @@ Insignia circular con:
 ```css
 /* apps/web/app/globals.css */
 @import "tailwindcss";
+@import "tw-animate-css";
 
-@theme {
-  /* Paleta de marca — generan utilidades bg-brand-purple, text-brand-pink, etc. */
-  --color-brand-purple: #7c6aad;
-  --color-brand-purple-dark: #3d2e5c;
-  --color-brand-turquoise: #5dd9d1;
-  --color-brand-pink: #e85b9f;
-  --color-brand-coral: #f58a6f;
-  --color-brand-yellow: #ffd93d;
-  --color-brand-cream: #fff8f0;
+/* Los valores reales viven en :root como variables --brand-*; el @theme inline
+   los mapea al namespace --color-* que genera las utilidades
+   (bg-brand-purple, text-brand-pink, etc.). Así el modo oscuro futuro
+   solo redefine las variables, sin tocar tokens. */
+@theme inline {
+  /* Paleta de marca */
+  --color-brand-purple: var(--brand-purple);
+  --color-brand-purple-dark: var(--brand-purple-dark);
+  --color-brand-turquoise: var(--brand-turquoise);
+  --color-brand-pink: var(--brand-pink);
+  --color-brand-coral: var(--brand-coral);
+  --color-brand-yellow: var(--brand-yellow);
+  --color-brand-cream: var(--brand-cream);
+
+  /* Tonos de TEXTO accesibles (WCAG AA ≥4.5:1) — ADR-044 */
+  --color-brand-muted: var(--brand-muted); /* #6b6280 */
+  --color-brand-pink-ink: var(--brand-pink-ink); /* #c42b76 */
+  --color-brand-coral-ink: var(--brand-coral-ink); /* #b0492e */
 
   /* Neutrales y feedback */
-  --color-neutral-text: #1f1733;
-  --color-neutral-muted: #6b6383;
-  --color-feedback-success: #3fbe6e;
-  --color-feedback-error: #e84b5b;
-  --color-feedback-warning: #f5a623;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-success: var(--success);
+  --color-error: var(--error);
+  --color-warning: var(--warning);
 
-  /* Tipografías — generan utilidades font-display, font-body */
-  --font-display: "Fredoka", "Baloo 2", system-ui, sans-serif;
-  --font-body: "Inter", "Nunito", system-ui, sans-serif;
+  /* Tipografías — cargadas vía next/font/google en app/layout.tsx */
+  --font-display: var(--font-fredoka), "Baloo 2", system-ui, sans-serif;
+  --font-body: var(--font-inter), "Nunito", system-ui, sans-serif;
+}
+
+:root {
+  --brand-purple: #7c6aad;
+  --brand-purple-dark: #3d2e5c;
+  --brand-turquoise: #5dd9d1;
+  --brand-pink: #e85b9f;
+  --brand-coral: #f58a6f;
+  --brand-yellow: #ffd93d;
+  --brand-cream: #fff8f0;
+  /* … valores completos (incl. tokens semánticos shadcn/ui y .dark) en
+     apps/web/app/globals.css … */
 }
 ```
 
@@ -126,7 +150,7 @@ El mapache es **personaje recurrente**, no solo un logo. Usos:
 | `text-small`   | 14px / 0.875rem | 1.5         | Labels, captions         |
 | `text-tiny`    | 12px / 0.75rem  | 1.4         | Badges, footnotes        |
 
-> Pendiente del usuario: confirmar si la guía Canva especifica otras tipografías. Si no responde, se usan `Fredoka` + `Inter`.
+> **Confirmado (ADR-021, 2026-05-09):** `Fredoka` (display) + `Inter` (body), cargadas vía `next/font/google` en `app/layout.tsx`. Si la guía Canva trae otras, se reemplaza con un cambio en `layout.tsx` + `globals.css` `@theme`.
 
 ## Tono de voz
 
@@ -148,15 +172,9 @@ El mapache es **personaje recurrente**, no solo un logo. Usos:
 
 ## Activos a producir
 
-> Lista de archivos a crear cuando llegue el momento.
+> **Estado al 2026-09-03:** ya existen `public/brand/lucams-logo.png` (468×468, RGBA) y `public/brand/lucams-mascot.png` (370×355, RGBA) — en uso en producción. Los íconos viven con la convención de Next.js en `apps/web/app/`: `favicon.ico`, `icon.png` y `apple-icon.png` (brand-aware desde 2026-07-22). La og-image se genera dinámicamente con `app/opengraph-image.tsx` / `app/twitter-image.tsx`. Pendientes de la lista original:
 
-- `public/brand/logo.svg` — logo completo
-- `public/brand/logo-mark.svg` — solo la mascota (para favicons, badges)
-- `public/brand/logo-text.svg` — solo "LUCAMS SHOP" tipográfico
-- `public/brand/favicon.ico` — multi-tamaño (16, 32, 48)
-- `public/brand/apple-touch-icon.png` — 180×180
-- `public/brand/og-image.png` — 1200×630 con mascota + tagline
-- `public/brand/og-image-square.png` — 1080×1080 para Instagram
+- `public/brand/logo.svg` / `logo-mark.svg` / `logo-text.svg` — versiones vectoriales (hoy solo hay PNG)
 - `public/brand/mascota-saludando.svg`
 - `public/brand/mascota-empacando.svg`
 - `public/brand/mascota-confundida.svg` (para 404)
@@ -166,8 +184,8 @@ El mapache es **personaje recurrente**, no solo un logo. Usos:
 
 > Lista canónica de pendientes de branding del usuario. `PLAN.md` apunta aquí (no duplica).
 
-- [ ] Logo en SVG/PNG transparente alta resolución (entregable del usuario).
-- [ ] Variantes de la mascota para distintos estados (entregable del usuario o generadas con IA): saludando, empacando, confundida, en bicicleta, sosteniendo monedas (puntos), durmiendo (loader).
+- [~] ~~Logo en SVG/PNG transparente alta resolución (entregable del usuario)~~ → **PNG recibido 2026-05-11 y en uso** (`public/brand/lucams-logo.png`). Sigue pendiente solo la versión **SVG** vectorial.
+- [ ] Variantes de la mascota para distintos estados (entregable del usuario o generadas con IA): saludando, empacando, confundida, en bicicleta, sosteniendo monedas (puntos), durmiendo (loader). (El recorte base `lucams-mascot.png` ya existe.)
 - [x] ~~Confirmación de tipografías de la guía Canva~~ → **cerrado en ADR-021 (2026-05-09):** Fredoka (display) + Inter (body). Si la guía Canva trae otras, se reemplaza con un cambio en `globals.css` `@theme`.
 - [ ] Tagline / propuesta de valor en una frase.
 - [ ] Foto del usuario / equipo (opcional, para sección "Sobre nosotros").

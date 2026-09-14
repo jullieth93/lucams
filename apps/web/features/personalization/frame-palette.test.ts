@@ -10,6 +10,7 @@ import {
   frameColorHex,
   isValidFrameHex,
   isDarkColor,
+  defaultTextFillOnCard,
   initialFrameColorFromSchema,
   frameBleedMargin,
   insetToMinMargin,
@@ -152,16 +153,45 @@ describe("frame-palette — Ola 4 (cuadrados / tira / instagram)", () => {
     expect(isStripTemplate({})).toBe(false);
   });
 
-  it("stripPhotoRect: el borde exterior solo en first/last; middle se toca", async () => {
-    const { stripPhotoRect, stripOuterInset } = await import("./frame-palette");
+  it("stripPhotoRect: borde exterior en first/last + media canaleta entre fotos (regla 2026-09-08)", async () => {
+    const { stripPhotoRect, stripOuterInset, stripGutterPx } = await import("./frame-palette");
     const stage = { width: 390, height: 400 };
     const inset = stripOuterInset(stage); // 12
     expect(inset).toBe(12);
+    const gutter = stripGutterPx(stage); // 8 (≈0.7mm por cara a 300 DPI sobre 6.5cm)
+    expect(gutter).toBe(8);
     const ph = { x: 12, y: 0, width: 366, height: 400 };
-    expect(stripPhotoRect(ph, stage, "middle")).toEqual(ph);
-    expect(stripPhotoRect(ph, stage, "first")).toEqual({ ...ph, y: 12, height: 388 });
-    expect(stripPhotoRect(ph, stage, "last")).toEqual({ ...ph, y: 0, height: 388 });
+    // Middle: media canaleta arriba y abajo — dos medias vecinas arman la
+    // separación visible (16px) del producto físico entre foto y foto.
+    expect(stripPhotoRect(ph, stage, "middle")).toEqual({ ...ph, y: 8, height: 384 });
+    // First/last: borde exterior de un lado, media canaleta del otro.
+    expect(stripPhotoRect(ph, stage, "first")).toEqual({ ...ph, y: 12, height: 380 });
+    expect(stripPhotoRect(ph, stage, "last")).toEqual({ ...ph, y: 8, height: 380 });
     expect(stripPhotoRect(ph, stage, "single")).toEqual({ ...ph, y: 12, height: 376 });
+  });
+
+  it("stripPhotoRect SIN BORDE (Ola 25): celda CONTINUA — sin marco exterior NI canaletas", async () => {
+    const { stripPhotoRect } = await import("./frame-palette");
+    const stage = { width: 390, height: 400 };
+    // Toggle "Sin borde" de la toolbar: placeholder reescrito a sangre total de la celda.
+    const ph = { x: 0, y: 0, width: 390, height: 400 };
+    const borderless = { borderless: true };
+    // Todas las posiciones quedan INTACTAS: la foto toca los bordes de la celda y
+    // las fotos consecutivas se tocan entre sí (regla del dueño 2026-09-09: sin
+    // líneas en la tira sin borde; Ola 23 conservaba canaletas — retiradas).
+    expect(stripPhotoRect(ph, stage, "first", borderless)).toEqual(ph);
+    expect(stripPhotoRect(ph, stage, "middle", borderless)).toEqual(ph);
+    expect(stripPhotoRect(ph, stage, "last", borderless)).toEqual(ph);
+    expect(stripPhotoRect(ph, stage, "single", borderless)).toEqual(ph);
+  });
+
+  it("isStripBorderless: placeholder a sangre total de la celda (toggle Sin borde) → true", async () => {
+    const { isStripBorderless } = await import("./frame-palette");
+    const stage = { width: 390, height: 400 };
+    expect(isStripBorderless({ x: 0, y: 0, width: 390, height: 400 }, stage)).toBe(true);
+    // Con borde: la plantilla trae margen lateral de 12px.
+    expect(isStripBorderless({ x: 12, y: 0, width: 366, height: 400 }, stage)).toBe(false);
+    expect(isStripBorderless(undefined, stage)).toBe(false);
   });
 
   it("isInstagramTemplate: detecta el chrome ig_post", async () => {
@@ -217,5 +247,79 @@ describe("frame-palette — Ola 4 (cuadrados / tira / instagram)", () => {
     expect(isInstagramNoBorder({ x: 0, y: 0, width: 450, height: 600 }, stage)).toBe(true);
     expect(isInstagramNoBorder({ x: 29, y: 58, width: 392, height: 392 }, stage)).toBe(false);
     expect(isInstagramNoBorder(undefined, stage)).toBe(false);
+  });
+});
+
+describe("frame-palette — Ola 24 (photoBackingHexFor: respaldo neutro compartido)", () => {
+  // UNA función de decisión para las 3 superficies (grilla, modal, producción):
+  // "el marco es MARCO, no fondo" — el hueco de la ventana bajo zoom-out/pan se
+  // rellena con la tarjeta SIN teñir, nunca con borderColor.
+  const base = {
+    borderColor: "#E85B9F",
+    backgroundHex: "#FFFFFF",
+    hasFrameCard: false,
+    fullBleed: false,
+    isIg: false,
+    igNoBorder: false,
+  };
+
+  it("Instagram CON borde + color → respaldo neutro (bug 2026-09-09: la ventana se inundaba)", async () => {
+    const { photoBackingHexFor } = await import("./frame-palette");
+    // Antes IG estaba excluida ("marco constante por construcción") — falso: con
+    // tarjeta oscura el hueco mostraba el fondo teñido por borderColor.
+    expect(photoBackingHexFor({ ...base, isIg: true, borderColor: "#221E25" })).toBe("#FFFFFF");
+    // Con borde blanco también aplica (no-op visual: blanco sobre blanco).
+    expect(photoBackingHexFor({ ...base, isIg: true, borderColor: "#FFFFFF" })).toBe("#FFFFFF");
+  });
+
+  it("Instagram SIN BORDE → sin respaldo (el hueco es el color de tarjeta del diseño)", async () => {
+    const { photoBackingHexFor } = await import("./frame-palette");
+    expect(photoBackingHexFor({ ...base, isIg: true, igNoBorder: true })).toBeNull();
+  });
+
+  it("frame-card / full-bleed con color → respaldo; tarjeta simple sin color → null", async () => {
+    const { photoBackingHexFor } = await import("./frame-palette");
+    expect(photoBackingHexFor({ ...base, hasFrameCard: true })).toBe("#FFFFFF");
+    expect(photoBackingHexFor({ ...base, fullBleed: true })).toBe("#FFFFFF");
+    expect(photoBackingHexFor(base)).toBeNull(); // sin frame-card ni full-bleed
+    expect(photoBackingHexFor({ ...base, hasFrameCard: true, borderColor: null })).toBeNull();
+  });
+
+  it("heart/circle (useFullStage) → sin respaldo (la silueta troquelada manda)", async () => {
+    const { photoBackingHexFor } = await import("./frame-palette");
+    expect(photoBackingHexFor({ ...base, hasFrameCard: true, useFullStage: true })).toBeNull();
+    expect(photoBackingHexFor({ ...base, isIg: true, useFullStage: true })).toBeNull();
+  });
+});
+
+// Ola 29 (owner 2026-09-11, ronda 5 — 1.2.1.A) — color de letra POR DEFECTO
+// sobre la tarjeta: "que visualmente se vea". Regla del owner: tarjeta blanca →
+// texto oscuro; tarjeta rosada → texto BLANCO. Umbral Rec.601 0.56 (el rosado de
+// marca, lum ≈ 0.552, cuenta como oscuro PARA EL TEXTO). Distinto de
+// isDarkColor (0.5), que sigue decidiendo la tarjeta binaria de Instagram.
+describe("defaultTextFillOnCard — la letra por defecto siempre se ve (owner 2026-09-11)", () => {
+  it("tarjeta BLANCA → letra oscura (el oscuro de la plantilla o #3D2E5C)", () => {
+    expect(defaultTextFillOnCard("#FFFFFF", "#3D2E5C")).toBe("#3D2E5C");
+    expect(defaultTextFillOnCard("#FFFFFF")).toBe("#3D2E5C");
+  });
+
+  it("tarjeta ROSADA → letra BLANCA (el ejemplo explícito del owner)", () => {
+    expect(defaultTextFillOnCard("#E85B9F", "#3D2E5C")).toBe("#FFFFFF");
+  });
+
+  it("tarjeta NEGRA y LAVANDA → letra blanca", () => {
+    expect(defaultTextFillOnCard("#221E25")).toBe("#FFFFFF");
+    expect(defaultTextFillOnCard("#7C6AAD", "#3D2E5C")).toBe("#FFFFFF");
+  });
+
+  it("pasteles claros (aguamarina/amarillo) → letra oscura", () => {
+    expect(defaultTextFillOnCard("#5DD9D1")).toBe("#3D2E5C");
+    expect(defaultTextFillOnCard("#FFD93D")).toBe("#3D2E5C");
+  });
+
+  it("sin color de tarjeta o hex inválido → fallback de la plantilla", () => {
+    expect(defaultTextFillOnCard(null, "#3D2E5C")).toBe("#3D2E5C");
+    expect(defaultTextFillOnCard(undefined)).toBe("#3D2E5C");
+    expect(defaultTextFillOnCard("rosa")).toBe("#3D2E5C");
   });
 });

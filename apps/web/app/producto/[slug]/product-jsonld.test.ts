@@ -10,6 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { SITE_URL } from "@/lib/seo/structured-data";
 import { buildProductJsonLd, type ProductJsonLdInput } from "./product-jsonld";
 
 const BASE: ProductJsonLdInput = {
@@ -67,7 +68,7 @@ describe("buildProductJsonLd — modo full (Etapa 2)", () => {
     const jsonLd = buildProductJsonLd(BASE);
     expect(jsonLd.offers).toEqual({
       "@type": "Offer",
-      url: "https://lucamsshop.com/producto/iman-polaroid",
+      url: `${SITE_URL}/producto/iman-polaroid`,
       priceCurrency: "COP",
       price: "15000",
       priceValidUntil: "2027-07-24",

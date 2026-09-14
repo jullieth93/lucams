@@ -2,7 +2,7 @@
  * Alertas del sistema (Bloque D, sin Sentry). Evalúa reglas contra la DB y avisa al
  * operador cuando algo se rompe. Mandato: cada alerta dice QUÉ SE ROMPIÓ + QUÉ HACER.
  *
- * Política 2026-08-05 (centro de notificaciones — docs/PLAN_CENTRO_NOTIFICACIONES.md):
+ * Política 2026-08-05 (centro de notificaciones):
  * CADA alerta que dispara deja notificación in-app en /admin/notificaciones (fuente
  * de verdad; dedupKey = key de la alerta → la que persiste actualiza, no duplica).
  * El EMAIL del lote solo sale si alguna es "crítica" — anti-spam: no re-enviar la
@@ -15,9 +15,16 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { sendEmail } from "@/lib/resend";
-import { getCronHealth } from "./cron-heartbeat";
+import {
+  getCronHealth,
+  getBackupHealth,
+  getMonitorHealth,
+  BACKUP_STALE_MS,
+} from "./cron-heartbeat";
+import { getEmailDeliverabilityStats } from "./email-deliverability";
 import { getSettingValue } from "@/lib/cms";
 import { logger } from "@/lib/logger";
+import { PENDING_PAYMENT_EXPIRY_HOURS } from "@/features/orders/constants";
 import { notify, type NotificationSeverity } from "@/features/notifications/service";
 
 const DEDUP_WINDOW_MS = 30 * 60 * 1000; // 30 min
@@ -31,7 +38,9 @@ const SEVERITY_TO_NOTIFICATION: Record<FiringAlert["severity"], NotificationSeve
 
 /** Módulo del admin donde se atiende cada alerta (deep link desde el centro). */
 function actionUrlFor(key: string): string {
-  if (key === "reconciliation" || key === "pending_payment_wompi_stale") return "/admin/pedidos";
+  if (key === "reconciliation") return "/admin/pedidos";
+  // pending_payment_wompi_stale (N-12b): lo roto es la auto-cancelación (un cron),
+  // no la orden — el panel de crons es donde se diagnostica primero.
   return "/admin/observability";
 }
 
@@ -47,33 +56,54 @@ export type FiringAlert = {
 export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAlert[]> {
   const firing: FiringAlert[] = [];
 
-  const [errs5m, recon, stuck, stalePendingWompi] = await Promise.all([
-    prisma.errorLog.count({
+  const [errGroups, recon, stuck, stalePendingWompi] = await Promise.all([
+    // N-33 — errors_spike agrupa por RUTA (routePath): el doc (OBSERVABILITY.md)
+    // define el pico como "5+ errores 500 en 5 min en una misma ruta", no un
+    // conteo global (ruido repartido en N rutas sanas no es un incidente).
+    // ErrorLog solo registra errores de servidor (captureServerError), así que
+    // "500" es preciso. Filas sin routePath no son atribuibles a una ruta →
+    // no disparan esta regla. groupBy sin `having` (mismo patrón que
+    // daily-summary.ts) y el umbral se aplica acá: ventana chica y acotada.
+    prisma.errorLog.groupBy({
+      by: ["routePath"],
       where: { createdAt: { gte: new Date(now.getTime() - 5 * 60 * 1000) } },
+      _count: { _all: true },
     }),
     prisma.order.count({ where: { needsReconciliation: true, deletedAt: null } }),
     prisma.webhookEvent.count({
       where: { processedAt: null, createdAt: { lt: new Date(now.getTime() - 60 * 60 * 1000) } },
     }),
-    // #9 — backstop: orden Wompi que lleva >2h en PENDING_PAYMENT. El pago PUDO capturarse en Wompi
-    // pero ni el webhook ni el redirect confirmaron la orden. Gateado en WOMPI (no COD, que queda
-    // legítimamente PENDING_PAYMENT). Cubre el caso en que ni siquiera existe fila WebhookEvent.
+    // #9 + N-12b (2026-09-11) — orden Wompi que supera PENDING_PAYMENT_EXPIRY_HOURS
+    // en PENDING_PAYMENT. Antes alertaba a las 2h: un checkout abandonado es ESPERADO
+    // (la mayoría no paga) y la alerta ardía en falso. Hoy el cron expire-pending-orders
+    // auto-cancela al vencer la ventana → una orden que la SUPERA sin cancelarse significa
+    // que la auto-cancelación NO corrió (fallo real del sistema) o que el pago se capturó
+    // sin confirmación. Mismo umbral que el cron (features/orders/constants).
     prisma.order.count({
       where: {
         status: "PENDING_PAYMENT",
         paymentMethod: "WOMPI",
         deletedAt: null,
-        createdAt: { lt: new Date(now.getTime() - 2 * 60 * 60 * 1000) },
+        createdAt: {
+          lt: new Date(now.getTime() - PENDING_PAYMENT_EXPIRY_HOURS * 60 * 60 * 1000),
+        },
       },
     }),
   ]);
 
-  if (errs5m >= 5) {
+  const spikes = errGroups
+    .filter((g) => g.routePath !== null && g._count._all >= 5)
+    .map((g) => ({ route: g.routePath as string, count: g._count._all }))
+    .sort((a, b) => b.count - a.count);
+  if (spikes.length > 0) {
+    const top = spikes[0];
     firing.push({
       key: "errors_spike",
       severity: "alta",
-      title: `${errs5m} errores del servidor en 5 minutos`,
-      detail: "Un pico de errores 5xx del servidor.",
+      title: `${top.count} errores 500 en ${top.route} en 5 minutos`,
+      detail: `Pico de errores 500 del servidor en una misma ruta (umbral 5 en 5 min): ${spikes
+        .map((s) => `${s.route} (${s.count})`)
+        .join(" · ")}.`,
       action:
         "Abre /admin/observability (top errores) y revisa la ruta afectada. Si hubo un deploy reciente, considera rollback.",
     });
@@ -102,11 +132,11 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
     firing.push({
       key: "pending_payment_wompi_stale",
       severity: "crítica",
-      title: `${stalePendingWompi} orden(es) Wompi llevan >2h sin confirmarse`,
+      title: `${stalePendingWompi} orden(es) Wompi superaron ${PENDING_PAYMENT_EXPIRY_HOURS}h sin auto-cancelarse`,
       detail:
-        "El pago pudo cobrarse en Wompi pero el webhook y el redirect no confirmaron la orden.",
+        "La auto-cancelación de pendientes debió cancelarlas al vencer la ventana y no lo hizo — el cron expire-pending-orders no está corriendo (o falla). Hasta que corra, esas órdenes pueden esconder pagos capturados sin confirmar.",
       action:
-        "Abre /admin/pedidos (PENDING_PAYMENT) y verifica en el panel Wompi por la referencia (número de orden): si el cobro aparece APPROVED, confirma/produce; si no, cancela.",
+        "Revisa el cron expire-pending-orders en /admin/observability (trabajos automáticos) y su último error. Después verifica cada orden en /admin/pedidos contra el panel Wompi por la referencia (número de orden): si el cobro está APPROVED, confírmala; si no, cancélala manual.",
     });
   }
 
@@ -129,6 +159,84 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
           "Revisa que pg_cron esté agendado y que CRON_SECRET + la URL base estén en el Vault de Supabase (docs/OPERATIONS.md). Consulta cron.job_run_details / net._http_response.",
       });
     }
+  }
+
+  // N-04 (2026-09-11) — email_bounce_rate: los bounces de Resend se guardaban en
+  // EmailEvent sin que nadie los viera (un ~50 % sostenido era invisible). Severidad
+  // ALTA a propósito (in-app; NO crítica): la entregabilidad tarda en limpiarse
+  // (DKIM, reputación, listas) y una crítica re-emailaría cada 30 min sobre un
+  // problema que no se resuelve hoy.
+  const emailStats = await getEmailDeliverabilityStats(now);
+  if (emailStats.bounceRateAlert && emailStats.bounceRatePct !== null) {
+    const terminal = emailStats.delivered + emailStats.bounced;
+    firing.push({
+      key: "email_bounce_rate",
+      severity: "alta",
+      title: `Tasa de rebote de email en ${emailStats.bounceRatePct.toFixed(1)}% (7 días)`,
+      detail: `${emailStats.bounced} rebotados de ${terminal} eventos terminales en ${emailStats.windowDays} días (umbral 5% con ≥20 eventos). Los clientes pueden no estar recibiendo confirmaciones de pedido ni recuperaciones de clave.`,
+      action:
+        "Abre /admin/observability (entregabilidad de email) y el dashboard de Resend: revisa DKIM/SPF/DMARC del dominio y las direcciones rebotadas antes de seguir enviando.",
+    });
+  }
+
+  // N-19a (2026-09-11) — backup_stale: el backup diario a R2 corre en GitHub Actions
+  // (fuera de pg_cron) y su salud era invisible desde la app. Tras cada backup exitoso
+  // el workflow hace POST a /api/cron/backup-heartbeat; sin latido en >36h hay que mirar.
+  // ALTA (in-app): un backup roto es grave pero no amerita email cada 30 min.
+  const backup = await getBackupHealth(now);
+  if (backup.stale) {
+    const hoursSince = backup.lastSuccessAt
+      ? Math.floor((now.getTime() - backup.lastSuccessAt.getTime()) / (60 * 60 * 1000))
+      : null;
+    firing.push({
+      key: "backup_stale",
+      severity: "alta",
+      title: hoursSince
+        ? `El backup diario no reporta éxito hace ${hoursSince}h`
+        : "Ningún backup ha reportado éxito",
+      detail: backup.lastSuccessAt
+        ? `Último backup exitoso: ${backup.lastSuccessAt.toISOString()} (tope ${Math.round(BACKUP_STALE_MS / (60 * 60 * 1000))}h). Sin backup diario, un desastre en Supabase deja a la tienda solo con el PITR.`
+        : "El workflow de backups nunca ha reportado un éxito a la app (o el latido no está configurado). Sin backup diario, un desastre en Supabase deja a la tienda solo con el PITR.",
+      action:
+        "Revisa el workflow backup.yml en GitHub (Actions → Backup DB → R2): si el job falla o le faltan secrets (R2_*/BACKUP_*/CRON_SECRET), el backup diario no se está haciendo. El DR drill mensual (dr-drill.yml) también exige un dump fresco.",
+    });
+  }
+
+  // Monitor externo de uptime (2026-09-14, decisión Lucy: job pg_cron en Supabase
+  // STG — sin SaaS, sin Actions, sin depender de la VM de desarrollo). El job
+  // uptime-monitor-prd sondea los 5 healthchecks de PRD cada 10 min (lote
+  // asíncrono de 2 fases) y reporta cada corrida a /api/cron/monitor-heartbeat.
+  // Dos reglas complementarias:
+  //  - uptime_monitor_stale: sin corrida en >30 min → el job o el proyecto STG
+  //    están caídos y NO hay monitor externo (el dead-man de la solución).
+  //  - uptime_monitor_failing: la última corrida reportó fallas persistentes →
+  //    los probes de PRD están cayendo (el job ya envió email vía Resend; esto
+  //    lo deja visible en el centro).
+  // Ambas ALTA (in-app): el email de Resend es el canal primario para fallas reales.
+  const monitor = await getMonitorHealth(now);
+  if (monitor.failing) {
+    firing.push({
+      key: "uptime_monitor_failing",
+      severity: "alta",
+      title: `El monitor externo reporta healthchecks caídos: ${monitor.lastDetail}`,
+      detail: `Última corrida del monitor (Supabase STG): ${monitor.lastRunAt?.toISOString() ?? "—"}. Sondea /api/health/{all,crons,resend,wompi,aveonline} de PRD cada 10 min. Detalle: ${monitor.lastDetail ?? "—"}.`,
+      action:
+        "Abre /api/health/all de PRD y el panel /admin/integraciones para identificar el servicio caído (Vercel/DB/Storage/Wompi/Aveonline/Resend). El email del monitor tiene el detalle de cada probe.",
+    });
+  } else if (monitor.stale) {
+    const minutesSince = monitor.lastRunAt
+      ? Math.floor((now.getTime() - monitor.lastRunAt.getTime()) / (60 * 1000))
+      : null;
+    firing.push({
+      key: "uptime_monitor_stale",
+      severity: "alta",
+      title: minutesSince
+        ? `El monitor externo no reporta hace ${minutesSince} min`
+        : "El monitor externo nunca ha reportado",
+      detail: `El job uptime-monitor-prd en el proyecto Supabase de STG corre cada 10 min (tope 30). Sin latido, la tienda NO tiene monitoreo externo de uptime.`,
+      action:
+        "Revisa el job uptime-monitor-prd en la DB de STG (cron.job): que esté agendado y sin errores recientes en cron.job_run_details, y que los secretos monitor_* del Vault de STG existan (scripts/monitor-uptime-stg.sql).",
+    });
   }
 
   return firing;

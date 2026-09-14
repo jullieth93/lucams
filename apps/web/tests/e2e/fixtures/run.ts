@@ -1,5 +1,5 @@
 /*
- * RUN id obligatorio por corrida (PROMPT_E2E_HOMOLOGACION §5.1):
+ * RUN id obligatorio por corrida (docs/TESTING.md):
  *   RUN = e2e-<tag>-<Date.now()>
  *
  * TODA entidad creada por un spec debe llevar el RUN en slug/email/nombre.

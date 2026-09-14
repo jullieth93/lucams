@@ -1,6 +1,6 @@
 /*
  * Storage E2E — imágenes generadas por corrida + limpieza de objetos
- * (PROMPT_E2E_HOMOLOGACION §5.1). Bucket real: customer-uploads.
+ * (docs/TESTING.md). Bucket real: customer-uploads.
  *
  * Las imágenes se generan con sharp (ya es dep de apps/web) — nada de archivos
  * binarios commiteados salvo el fixture HEIC existente (tests/fixtures/).

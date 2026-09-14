@@ -1,5 +1,5 @@
 /*
- * HOMOLOGACIÓN E2E — wishlist / favoritos (PROMPT_E2E_HOMOLOGACION §6.10):
+ * HOMOLOGACIÓN E2E — wishlist / favoritos (docs/TESTING.md):
  *
  *   PDP → "Guardar en favoritos" (cliente logueado) → WishlistItem en DB →
  *   /mi-cuenta/favoritos lo lista → quitar → fila borrada. Anónimo: el click

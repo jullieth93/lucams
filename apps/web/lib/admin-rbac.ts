@@ -4,11 +4,16 @@
  * Matriz ruta→roles derivada de SECURITY.md §113-118:
  *   - SUPERADMIN: todo.
  *   - MANAGER:    catálogo (productos/inventario/categorías/ocasiones), pedidos,
- *                 reclamos, reseñas, clientes.
- *   - FULFILLMENT: solo pedidos + reclamos (cambio de estado, descarga PNG).
+ *                 garantías, reclamos, reseñas, clientes.
+ *   - FULFILLMENT: solo pedidos (cambio de estado, descarga PNG).
  *   - CMS_EDITOR: solo contenido del sitio (CMS v2 en /admin/contenido y
  *                 /admin/email-templates). NO entra a nada más.
  *   - Cualquier ruta NO listada → solo SUPERADMIN (deny-by-default).
+ *
+ * N-21 (2026-09-11) — criterio de alineación: la RUTA nunca es más permisiva que
+ * su página (antes /admin/garantias y /admin/retractos se ofrecían a roles cuya
+ * página los rebotaba con ?denied=1) y las actions nunca son más permisivas que
+ * su pantalla. Nav ⊆ páginas accesibles por rol.
  *
  * Hoy solo existe SUPERADMIN (Lucy), así que no la afecta — prepara el terreno
  * para empleados. El guard de servidor (requireRole) vive en lib/admin-rbac-guard.
@@ -27,7 +32,7 @@ const ALL_PLUS_CMS: AdminRole[] = ["SUPERADMIN", "MANAGER", "FULFILLMENT", "CMS_
 /**
  * Conjuntos de rol nombrados para declarar la autorización de cada Server Action
  * de forma uniforme (ADR-062 P0-1). Los consume `requireAdminAction` en el guard:
- *   - ALL         → pedidos, garantías, retractos (transiciones de estado).
+ *   - ALL         → pedidos (transiciones de estado).
  *                   (Son los roles OPERATIVOS; CMS_EDITOR no está: no es "todos
  *                   los roles del enum", es "todos los de operación".)
  *   - MANAGER_UP  → catálogo (productos/variantes/categorías/ocasiones/reseñas/
@@ -35,7 +40,7 @@ const ALL_PLUS_CMS: AdminRole[] = ["SUPERADMIN", "MANAGER", "FULFILLMENT", "CMS_
  *   - CONTENT     → contenido del sitio (CMS v2: páginas, ajustes globales y
  *                   plantillas de correo).
  *   - SUPER       → finanzas, cupones, usuarios, redirects, seguridad,
- *                   integraciones, observability, reembolsos.
+ *                   integraciones, observability, reembolsos, retractos, costos.
  *   - ALL_PLUS_CMS → todos los roles del enum (incl. CMS_EDITOR). Reservado al
  *                   autoservicio de cuenta: /admin/seguridad (MFA obligatorio).
  */
@@ -50,17 +55,23 @@ export const ADMIN_ROLE_SETS = {
 const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   { prefix: "/admin/dashboard", roles: ALL },
   { prefix: "/admin/pedidos", roles: ALL },
-  // "Reclamos" legales = garantias + retractos: FULFILLMENT/MANAGER gestionan
-  // estados; el resto es SUPERADMIN. /admin/reclamos (bandeja aparte, sí existe)
-  // queda MANAGER_UP más abajo, igual que sus actions.
-  { prefix: "/admin/garantias", roles: ALL },
-  { prefix: "/admin/retractos", roles: ALL },
+  // "Reclamos" legales = garantias + retractos (N-21, 2026-09-11): la RUTA replica
+  // lo que su página exige — antes ambas eran ALL y el rol rebotaba con ?denied=1.
+  // Garantías: página y actions piden SUPER+MANAGER → CATALOG. Retractos: página y
+  // actions piden SUPER → declarado explícito (equivale al deny-by-default, pero
+  // queda visible en la matriz). /admin/reclamos (bandeja aparte, sí existe) queda
+  // MANAGER_UP más abajo, igual que sus actions.
+  { prefix: "/admin/garantias", roles: CATALOG },
+  { prefix: "/admin/retractos", roles: ["SUPERADMIN"] },
   { prefix: "/admin/soporte", roles: CATALOG },
   // Cotizaciones (Etapa 1): las mutaciones del service exigen MANAGER_UP.
   { prefix: "/admin/cotizaciones", roles: CATALOG },
   // MANAGER_UP (= CATALOG): rutas cuyas actions ya exigen ADMIN_ROLE_SETS.MANAGER_UP
-  // (reclamos, mensajes, diseños/galería, fichas y plantillas del Estudio).
+  // (reclamos, diseños/galería, fichas y plantillas del Estudio).
   { prefix: "/admin/reclamos", roles: CATALOG },
+  // N-09: /admin/mensajes ya no es módulo — es redirect permanente a /admin/soporte.
+  // Se CONSERVA el prefix con el mismo set de /admin/soporte para que un MANAGER con
+  // el link viejo siga el redirect en vez de caer en el deny-by-default (?denied=1).
   { prefix: "/admin/mensajes", roles: CATALOG },
   { prefix: "/admin/disenos", roles: CATALOG },
   { prefix: "/admin/fichas", roles: CATALOG },

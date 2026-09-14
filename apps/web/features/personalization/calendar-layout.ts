@@ -108,19 +108,26 @@ export function calendarLayoutFromUnitTemplate(u: unknown): CalendarLayoutKey {
  * Los offsets (pan) se guardan en unidades del stage de la plantilla (600px de ancho);
  * la página de producción es de 1080 → hay que escalarlos al componer. `scale` NO se toca
  * (es un multiplicador adimensional sobre el cover, y las ventanas tienen el mismo ratio).
+ * Lucy 2026-09-08 — `rotation` TAMPOCO se toca (grados, adimensional): antes el objeto
+ * retornado no la copiaba y la rotación se PERDÍA camino al compositor del calendario
+ * ("Rotar 90°" no hacía nada en el Set 12 Tarjetas).
  */
 export function scalePhotoTransformToPage(
-  transform: { offsetX: number; offsetY: number; scale: number } | null | undefined,
+  transform:
+    { offsetX: number; offsetY: number; scale: number; rotation?: number } | null | undefined,
   templateStageWidth: number | undefined,
-): { offsetX: number; offsetY: number; scale: number } | null {
+): { offsetX: number; offsetY: number; scale: number; rotation?: number } | null {
   if (!transform) return null;
   const from =
     templateStageWidth && templateStageWidth > 0 ? templateStageWidth : CALENDAR_PAGE.width;
   const factor = CALENDAR_PAGE.width / from;
   if (factor === 1) return { ...transform };
-  return {
+  const scaled: { offsetX: number; offsetY: number; scale: number; rotation?: number } = {
     offsetX: transform.offsetX * factor,
     offsetY: transform.offsetY * factor,
     scale: transform.scale,
   };
+  // Solo copiarla cuando existe (no ensuciar el objeto con `rotation: undefined`).
+  if (transform.rotation !== undefined) scaled.rotation = transform.rotation;
+  return scaled;
 }

@@ -13,22 +13,43 @@
  *   4. text             — caption/nombres/datos editables
  *
  * Los 10 slugs activos coinciden con M.3.b.A (mismas slugs, mejor look visual).
- * Las plantillas M.1.d (no presentes) se soft-deletean en cada corrida.
+ *
+ * N-06 (2026-09-12) — endurecimiento (CF-09):
+ *   - DRY-RUN por defecto; `--apply` ejecuta. Env-guard fail-closed.
+ *   - El barrido que soft-deleta plantillas NO declaradas (antes corría en
+ *     cada ejecución) ahora es opt-in con `--prune` (dry-run solo las lista).
+ *   - El upsert de una plantilla EXISTENTE ya NO resetea isActive/deletedAt/
+ *     deletedBy (estados que el admin maneja) salvo que se pase
+ *     `--force-state` (comportamiento histórico, p.ej. para reactivar las
+ *     canónicas tras una depuración deliberada). El contenido (kind, nombre,
+ *     previewUrl, canvasData, orden, producto) sí se alinea siempre.
  *
  * Idempotente: upsert por slug. Re-correr no duplica.
  *
- * Uso: make seed-templates
+ * Uso: make seed-templates   (el target pasa --apply)
+ * Directo:
+ *   node scripts/seed-templates.mjs                          # DRY-RUN
+ *   node scripts/seed-templates.mjs --apply                  # upsert canónico
+ *   node scripts/seed-templates.mjs --apply --prune          # + archiva no declaradas
+ *   node scripts/seed-templates.mjs --apply --force-state    # + resetea isActive/deletedAt
  */
 
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
 process.env.DIRECT_URL = stripQuotes(process.env.DIRECT_URL);
 
-const prisma = new PrismaClient();
+// Guarda de ambiente: upsert de plantillas (+ barrido con --prune) — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("seed-templates.mjs");
 
-console.log("=== seed-templates (M.3.b.A2 asset paradigm) ===");
+const prisma = new PrismaClient();
+const APPLY = process.argv.includes("--apply");
+const PRUNE = process.argv.includes("--prune");
+const FORCE_STATE = process.argv.includes("--force-state");
+
+console.log(`=== seed-templates (M.3.b.A2 asset paradigm) — ${APPLY ? "APPLY" : "DRY-RUN"} ===`);
 console.log("");
 
 const UNSPLASH = (id) => `https://images.unsplash.com/photo-${id}?w=600&q=80&fit=crop`;
@@ -292,7 +313,32 @@ const templatesData = [
           width: 450,
           height: 600,
         }),
-        // Ola 16 — chrome re-espaciado: header más limpio, footer con aire.
+        // Ola 17 (Lucy 2026-09-07) — FOTO DE PERFIL del header, editable por slot.
+        // El chrome SVG trae un avatar placeholder horneado (circle cx=34 cy=34 r=16
+        // en public/templates/ig_post_3x4.svg); esta capa lo cubre con la foto real
+        // del cliente recortada a círculo, dejando el anillo de historia (r=20,
+        // stroke 2.5) visible alrededor. Centro/radio = los del placeholder horneado.
+        // La imagen la aporta slots[i].profileAssetUrl (POR SLOT: cada imán del pack
+        // es un post independiente con su propio usuario). Sin foto elegida no dibuja
+        // nada → se ve el placeholder. DEBE ir después del asset "frame" (encima del
+        // SVG). Geometría congelada en features/personalization/instagram-template-spec.ts.
+        {
+          id: "profile_photo",
+          type: "profile-photo",
+          x: 34,
+          y: 34,
+          radius: 16,
+        },
+        // Ola 16 + fix 2026-07-24 — Spec "réplica fiel" de un post real de Instagram
+        // (stage 450×600, fuente Inter, orden igual al post real de IG):
+        //   - header: avatar con anillo de historia + username/location.
+        //   - foto cuadrada 392×392 centrada (y=58), ventana con borde blanco.
+        //   - fila de acción INMEDIATAMENTE bajo la foto: iconos like/comment/share
+        //     del chrome SVG en y≈468–496 (24px escalados ×1.17).
+        //   - "me gusta" en negrita BAJO la fila de acción con ~7px de aire
+        //     (y=510, fs 15). NUNCA y≤496: el texto (top = y − fontSize/2) se
+        //     montaría encima de los iconos (bug corregido 2026-07-24).
+        //   - caption (y=526, fs 16) y hashtags azul #00376B (y=542, fs 13).
         text({
           id: "user_name",
           x: 68,
@@ -319,7 +365,7 @@ const templatesData = [
         text({
           id: "likes_count",
           x: 22,
-          y: 486,
+          y: 510,
           text: "362 me gusta",
           fontFamily: "Inter",
           fontSize: 15,
@@ -331,7 +377,7 @@ const templatesData = [
         text({
           id: "caption",
           x: 22,
-          y: 502,
+          y: 526,
           text: "Tu título acá",
           fontFamily: "Inter",
           fontSize: 16,
@@ -343,7 +389,7 @@ const templatesData = [
         text({
           id: "hashtags",
           x: 22,
-          y: 518,
+          y: 542,
           text: "#mirecuerdo #lucamsshop",
           fontFamily: "Inter",
           fontSize: 13,
@@ -456,8 +502,13 @@ const templatesData = [
   // tira → stage 390×400 (6.5 × 6.667 cm); las 3 celdas apiladas con gridGap=0 arman
   // la tira 6.5×20 continua. La celda trae capa "frame-card" (fondo = borderColor,
   // mismo mecanismo de la Polaroid Clásica). Ola 4 (Lucy 2026-07-23): la foto va a
-  // sangre VERTICAL → las fotos se TOCAN (pieza continua); el color queda en los
-  // lados (12px) y en el borde exterior first/last (12px, lo pone el código).
+  // sangre VERTICAL en la plantilla y la geometría final la pone el CÓDIGO por
+  // posición (stripPhotoRect): borde exterior first/last (12px) y —regla 2026-09-08,
+  // Lucy validó en local— media canaleta del color del marco ENTRE fotos (8px por
+  // cara → separación visible de 16px ≈ 1.3 mm, como la tira física). El gridGap
+  // sigue en 0: la canaleta se dibuja dentro de cada celda para que el PNG de
+  // producción (render celda a celda) la incluya — un gap CSS del Estudio NO se
+  // imprimiría (rompería el WYSIWYG).
   ...(tirasProduct
     ? [
         {
@@ -478,16 +529,54 @@ const templatesData = [
               // Sin esquinas redondeadas: la tira es una pieza continua (el troquel
               // exterior lo da el cornerRadiusPx del producto, no la plantilla).
               { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 0 },
-              // Ola 4 (Lucy 2026-07-23) — foto a sangre VERTICAL (y0, alto completo):
-              // las fotos de celdas vecinas SE TOCAN (gap 0 real, tira de una pieza).
-              // Los lados llevan 12px (~2mm) de color; el borde EXTERIOR (arriba/abajo)
-              // lo aplica el código por posición (stripPhotoRect, first/last 12px).
+              // Ola 4 (Lucy 2026-07-23) — foto a sangre VERTICAL en la plantilla
+              // (y0, alto completo): el inserto final lo aplica el código por
+              // posición (stripPhotoRect: borde exterior first/last 12px + media
+              // canaleta de 8px entre fotos, regla 2026-09-08). Los lados llevan
+              // 12px (~2mm) de color.
               photoSlot({
                 id: "photo",
                 x: 12,
                 y: 0,
                 width: 366,
                 height: 400,
+                label: "Foto de la tira",
+              }),
+            ],
+          },
+        },
+        // Ola 18b (Lucy 2026-07-26) — celda de la TIRA DE 4 FOTOS (6.5×26.5 cm).
+        // Nació en el script one-off ola18b-cuadrados-tiras-fix.mjs y NO estaba en
+        // este seed → el barrido de legacy de abajo la soft-deleteaba en CADA corrida
+        // (bug 2026-09-09, reporte del dueño en STG: al elegir "4 fotos por tira" el
+        // Estudio no montaba el canvas de la tira: sin plantilla activa que matchee el
+        // aspectRatio "3:4" de la variante, el filtro de aspect dejaba la lista vacía
+        // y el boot caía al template cuadrado genérico 1080×1080). Al declararla acá
+        // el upsert la reactiva y el barrido la respeta (idempotente).
+        // Mismo dibujo que la de 3 escalado a 390×530 (misma altura por foto ≈133px):
+        // la celda es 1/4 de la tira y su aspect (0.736 ≈ 3:4) es la llave de ruteo
+        // con la variante FI-TIRA-4FOTOS (aspectRatio "3:4").
+        {
+          slug: "photo-strip-4-fotos",
+          productId: tirasProduct.id,
+          kind: "PHOTO_PACK",
+          name: "Plantilla Tiras",
+          order: 2,
+          previewUrl: "/templates/tira-clasica.svg",
+          canvasData: {
+            version: 1,
+            stage: stage(390, 530), // 1/4 de la tira 6.5×26.5 cm (celda 6.5×6.625)
+            gridCols: 1, // apilar las 4 fotos en vertical (la tira física es 1 columna)
+            gridGap: 0, // celdas pegadas → la tira se lee como UNA pieza continua
+            layers: [
+              background("#FFFFFF"),
+              { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 0 },
+              photoSlot({
+                id: "photo",
+                x: 12,
+                y: 0,
+                width: 366,
+                height: 530,
                 label: "Foto de la tira",
               }),
             ],
@@ -502,7 +591,7 @@ const templatesData = [
   // (nombre real, preview real): el calendario y los cuadrados dejan de ofrecer una
   // plantilla genérica duplicada en otros productos (bug "aparecen 2 plantillas" en
   // separadores/tiras). El resto queda con archive:true (isActive=false) — ver la
-  // lista y razones en scripts/ola4-depura-plantillas-2026-07-23.mjs.
+  // lista y razones en scripts/one-shot/ola4-depura-plantillas-2026-07-23.mjs.
   ...(cuadradosProduct
     ? [
         {
@@ -681,7 +770,8 @@ const templatesData = [
 ];
 
 // ──────────────────────────────────────────────────────────────────
-//  Soft-delete plantillas legacy (no presentes en M.3.b.A2)
+//  Plantillas NO declaradas — el soft-delete masivo es opt-in (--prune).
+//  Sin --prune solo se listan (el admin pudo haberlas creado a mano).
 // ──────────────────────────────────────────────────────────────────
 
 const PREMIUM_SLUGS = new Set(templatesData.map((t) => t.slug));
@@ -692,17 +782,21 @@ const legacy = await prisma.personalizationTemplate.findMany({
 });
 
 if (legacy.length > 0) {
-  console.log(`Soft-deleting ${legacy.length} plantillas legacy:`);
+  console.log(
+    `${legacy.length} plantillas NO declaradas ${PRUNE ? "(a soft-deletear)" : "(intactas — --prune para archivar)"}:`,
+  );
   for (const t of legacy) {
-    await prisma.personalizationTemplate.update({
-      where: { id: t.id },
-      data: {
-        deletedAt: new Date(),
-        isActive: false,
-        deletedBy: "system:M.3.b.CAT.11-2026-05-14",
-      },
-    });
-    console.log(`  - ${t.slug}`);
+    console.log(`  - ${t.slug}${PRUNE && APPLY ? "  → archivada" : ""}`);
+    if (PRUNE && APPLY) {
+      await prisma.personalizationTemplate.update({
+        where: { id: t.id },
+        data: {
+          deletedAt: new Date(),
+          isActive: false,
+          deletedBy: "system:seed-templates-prune",
+        },
+      });
+    }
   }
   console.log("");
 }
@@ -711,38 +805,50 @@ if (legacy.length > 0) {
 //  Upsert plantillas premium con asset paradigm
 // ──────────────────────────────────────────────────────────────────
 
-console.log(`Creando/actualizando ${templatesData.length} plantillas asset paradigm...`);
+console.log(
+  `${APPLY ? "Creando/actualizando" : "Se crearían/actualizarían"} ${templatesData.length} plantillas asset paradigm...`,
+);
 const byKind = {};
+let tplCreated = 0;
 for (const t of templatesData) {
   // Ola 4 — `archive: true` → la plantilla queda registrada pero INACTIVA (isActive=false),
   // sin borrarla (los diseños viejos conservan su snapshot y su templateId).
   const active = t.archive !== true;
   // `product` es relación Prisma — usar connect/disconnect en lugar de productId directo.
   const productRelation = t.productId ? { connect: { id: t.productId } } : { disconnect: true };
-  await prisma.personalizationTemplate.upsert({
-    where: { slug: t.slug },
-    update: {
-      kind: t.kind,
-      name: t.name,
-      product: productRelation,
-      previewUrl: t.previewUrl,
-      canvasData: t.canvasData,
-      order: t.order,
-      isActive: active,
-      deletedAt: null,
-      deletedBy: null,
-    },
-    create: {
-      kind: t.kind,
-      name: t.name,
-      slug: t.slug,
-      ...(t.productId ? { product: { connect: { id: t.productId } } } : {}),
-      previewUrl: t.previewUrl,
-      canvasData: t.canvasData,
-      order: t.order,
-      isActive: active,
-    },
-  });
+  // N-06: el update alinea CONTENIDO; los estados (isActive/deletedAt/deletedBy)
+  // son del admin y solo se resetean con --force-state.
+  const stateFields = FORCE_STATE ? { isActive: active, deletedAt: null, deletedBy: null } : {};
+  if (APPLY) {
+    await prisma.personalizationTemplate.upsert({
+      where: { slug: t.slug },
+      update: {
+        kind: t.kind,
+        name: t.name,
+        product: productRelation,
+        previewUrl: t.previewUrl,
+        canvasData: t.canvasData,
+        order: t.order,
+        ...stateFields,
+      },
+      create: {
+        kind: t.kind,
+        name: t.name,
+        slug: t.slug,
+        ...(t.productId ? { product: { connect: { id: t.productId } } } : {}),
+        previewUrl: t.previewUrl,
+        canvasData: t.canvasData,
+        order: t.order,
+        isActive: active,
+      },
+    });
+  } else {
+    const existing = await prisma.personalizationTemplate.findUnique({
+      where: { slug: t.slug },
+      select: { id: true },
+    });
+    if (!existing) tplCreated++;
+  }
   byKind[t.kind] = (byKind[t.kind] ?? 0) + 1;
   const scope = t.productId ? "(producto-específico)" : "(global)";
   console.log(`  ✓ ${t.name}  [${t.kind}]  ${scope}${active ? "" : "  ⛔ ARCHIVADA"}`);
@@ -755,13 +861,18 @@ const totalArchived = await prisma.personalizationTemplate.count({
 });
 console.log(`Total activas: ${total} plantillas asset paradigm`);
 console.log(`Total archivadas: ${totalArchived} legacy`);
+if (!APPLY) console.log(`Nuevas que se crearían: ${tplCreated}`);
 console.log("");
 console.log("Distribución por kind:");
 for (const [kind, count] of Object.entries(byKind).sort((a, b) => b[1] - a[1])) {
   console.log(`  ${kind.padEnd(22)} ${count}`);
 }
 console.log("");
-console.log("Listo. Próximo: M.3.b.B mockup contextual con sharp + 4 escenas.");
+if (!APPLY) {
+  console.log("DRY-RUN (sin cambios). Para ejecutar: node scripts/seed-templates.mjs --apply");
+} else {
+  console.log("Listo. Próximo: M.3.b.B mockup contextual con sharp + 4 escenas.");
+}
 
 await prisma.$disconnect();
 process.exit(0);

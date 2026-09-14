@@ -12,10 +12,17 @@
  *
  * Después de elegir:
  *  1. Set cookie client-side (efecto inmediato — analytics scripts
- *     pueden leerla en el mismo paint)
+ *     pueden leerla en el mismo paint), estampando `policyVersion`
  *  2. Dispara evento custom "cookie-consent-changed"
  *  3. Fire-and-forget server action que registra Consent[] en DB
  *     (4 filas: necessary / functional / analytics / marketing)
+ *
+ * Re-consent (CF-15/N-15): la prop `policyVersion` (versión vigente del
+ * Aviso de Privacidad, leída del CMS por el root layout) se compara con
+ * la guardada en la cookie; mismatch → el banner vuelve a aparecer aunque
+ * la cookie exista. Cookie legacy sin versión → se "sana" en silencio con
+ * la vigente (sin re-mostrar ni registrar consent nuevo). Prop null →
+ * mismo comportamiento de siempre.
  *
  * `<CookiesReopener>` es un trigger reusable (ej. footer + página
  * legal/cookies) que reabre el modal después de la primera vez.
@@ -36,8 +43,10 @@ import { persistCookieConsentAction } from "@/features/consent/actions";
 import {
   acceptAllPreferences,
   emptyPreferences,
+  needsConsentBanner,
   readClientCookiePreferences,
   rejectAllPreferences,
+  withPolicyVersion,
   writeClientCookiePreferences,
   type CookiePreferences,
 } from "@/lib/cookie-consent";
@@ -50,7 +59,7 @@ export function openCookiesPreferences() {
   window.dispatchEvent(new CustomEvent(REOPEN_EVENT));
 }
 
-export function CookiesBanner() {
+export function CookiesBanner({ policyVersion = null }: { policyVersion?: string | null }) {
   const [show, setShow] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [prefs, setPrefs] = useState<CookiePreferences>(emptyPreferences());
@@ -60,17 +69,26 @@ export function CookiesBanner() {
   const pathname = usePathname();
   const isAdmin = pathname?.startsWith("/admin") ?? false;
 
-  // Detectar primera visita (sin cookie persistida)
+  // Detectar primera visita (sin cookie persistida) y re-consent por cambio
+  // de versión del Aviso de Privacidad (N-15).
   useEffect(() => {
     queueMicrotask(() => {
       const existing = readClientCookiePreferences();
       if (existing) {
         setPrefs(existing);
+        if (needsConsentBanner(existing, policyVersion)) {
+          setShow(true);
+        } else if (policyVersion && existing.policyVersion === undefined) {
+          // Cookie legacy (pre N-15): se sana en silencio con la versión
+          // vigente — misma decisión, sin audit nuevo (el consent original
+          // sigue siendo el válido para ESTA versión del aviso).
+          writeClientCookiePreferences(withPolicyVersion(existing, policyVersion));
+        }
       } else {
         setShow(true);
       }
     });
-  }, []);
+  }, [policyVersion]);
 
   // Escuchar trigger global para reabrir desde otros componentes
   useEffect(() => {
@@ -80,8 +98,11 @@ export function CookiesBanner() {
   }, []);
 
   function commit(next: CookiePreferences) {
-    writeClientCookiePreferences(next);
-    setPrefs(next);
+    // N-15: la decisión queda firmada con la versión del aviso que vio el
+    // visitante; la audit action estampa la misma versión server-side.
+    const stamped = withPolicyVersion(next, policyVersion);
+    writeClientCookiePreferences(stamped);
+    setPrefs(stamped);
     setShow(false);
     setModalOpen(false);
     // Aviso global (contrato documentado en el header): componentes que se
@@ -89,7 +110,7 @@ export function CookiesBanner() {
     // mobile, H8 2026-08-06) vuelven a su sitio.
     window.dispatchEvent(new CustomEvent("cookie-consent-changed"));
     // Audit DB fire-and-forget (no bloquea UX)
-    void persistCookieConsentAction(next);
+    void persistCookieConsentAction(stamped);
   }
 
   if (!show && !modalOpen) return null;

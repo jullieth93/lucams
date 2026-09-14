@@ -30,8 +30,9 @@ import {
 } from "@/components/admin-page";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { CreateCouponForm } from "./create-coupon-form";
-import { pauseCouponAction, resumeCouponAction } from "./actions";
+import { archiveCouponAction, pauseCouponAction, resumeCouponAction } from "./actions";
 
 export const metadata: Metadata = {
   title: "Cupones",
@@ -50,8 +51,9 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
   const sp = await searchParams;
   const q = pickString(sp, "q");
   const statusRaw = pickString(sp, "status");
-  const status = (["active", "inactive"].includes(statusRaw ?? "") ? statusRaw : "all") as
-    "all" | "active" | "inactive";
+  const status = (
+    ["active", "inactive", "archived"].includes(statusRaw ?? "") ? statusRaw : "all"
+  ) as "all" | "active" | "inactive" | "archived";
   const sortRaw = pickString(sp, "sort");
   const sort = (["expiry-asc", "code", "uses"].includes(sortRaw ?? "") ? sortRaw : "recent") as
     "recent" | "expiry-asc" | "code" | "uses";
@@ -107,11 +109,6 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
       />
 
       <AdminPageBody>
-        {/*
-         * Modo catálogo (Etapa 1): el cupón se escribe en el checkout de pago
-         * (applyCouponAction), que aún no existe — decir "el cliente lo escribe
-         * en el carrito" sería engañoso. Se pueden crear y dejar listos.
-         */}
         {isCatalogMode() ? (
           <AdminNotice tone="info">
             <strong>Modo catálogo:</strong> los cupones se activarán cuando se habiliten los pagos
@@ -120,7 +117,7 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
         ) : (
           <AdminNotice tone="info">
             <strong>¿Cómo funcionan?</strong> Crea códigos de descuento que el cliente escribe en el
-            carrito (o se aplican con un enlace especial). Los marcados como{" "}
+            paso de pago del checkout (o se aplican con un enlace especial). Los marcados como{" "}
             <strong>Públicos</strong> se pueden mostrar abiertamente (ej. en una promoción o, más
             adelante, en el bot de WhatsApp); los no públicos solo funcionan si el cliente sabe el
             código.
@@ -172,6 +169,7 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
               <option value="all">Todos</option>
               <option value="active">Solo activos vigentes</option>
               <option value="inactive">Pausados/expirados/programados</option>
+              <option value="archived">Archivados</option>
             </select>
           </div>
           {/* Desktop: clic en encabezados. Dropdown solo mobile. Lucy #1. */}
@@ -255,6 +253,7 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
                   preserve={{ q, status: status !== "all" ? status : undefined }}
                   align="center"
                 />
+                <th className="px-4 py-3 text-right font-semibold">Acciones</th>
               </tr>
             </AdminTableHead>
             <AdminTableBody>
@@ -315,6 +314,32 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
                     <td className="text-brand-purple-dark/85 px-4 py-3 text-center text-sm tabular-nums">
                       {c.usedCount}
                       {c.maxUses ? ` / ${c.maxUses}` : ""}
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm">
+                      {/* Archivado = soft-delete terminal (sin restaurar): solo lectura,
+                          visible en el filtro "Archivados". */}
+                      {!c.deletedAt && (
+                        <div className="flex flex-wrap items-center justify-end gap-3">
+                          <Link
+                            href={`/admin/cupones/${c.id}`}
+                            className="text-brand-purple-dark hover:text-brand-purple text-[11px] font-medium"
+                          >
+                            Editar
+                          </Link>
+                          <ConfirmAction
+                            action={archiveCouponAction}
+                            message={`¿Archivar el cupón ${c.code}? Dejará de funcionar de inmediato y pasará a la vista de archivados.`}
+                          >
+                            <input type="hidden" name="id" value={c.id} />
+                            <button
+                              type="submit"
+                              className="text-brand-muted text-[11px] font-medium hover:text-rose-600"
+                            >
+                              Archivar
+                            </button>
+                          </ConfirmAction>
+                        </div>
+                      )}
                     </td>
                   </AdminTableRow>
                 );

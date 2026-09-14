@@ -52,6 +52,7 @@ export type MegaMenuTexts = {
   viewAllMobile: string;
   accountTitle: string;
   accountMobile: string;
+  admin: string;
   login: string;
   signup: string;
   occasions: Record<string, string>;
@@ -60,10 +61,12 @@ export type MegaMenuTexts = {
 export function ShopMegaMenu({
   tree,
   isLoggedIn,
+  isAdmin,
   texts,
 }: {
   tree: CategoryNode[];
   isLoggedIn: boolean;
+  isAdmin: boolean;
   texts: MegaMenuTexts;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -238,6 +241,20 @@ export function ShopMegaMenu({
                 {texts.accountTitle}
               </p>
               <div className="flex flex-col">
+                {/* Entrada admin del drawer: el chip "Panel admin" del header
+                    solo existe en desktop (sm+), así que en móvil la entrada
+                    vive acá, como primer ítem de "Tu cuenta" y con el mismo
+                    estilo chip brand-yellow. Label vía CMS (texts.admin =
+                    header.menu.admin). Solo admins. */}
+                {isAdmin && (
+                  <Link
+                    href="/admin/dashboard"
+                    onClick={() => setMobileOpen(false)}
+                    className="bg-brand-yellow/30 text-brand-purple-dark hover:bg-brand-yellow/50 mb-1 inline-flex items-center rounded-md px-2.5 py-1.5 text-[11px] font-semibold tracking-wider uppercase transition-colors"
+                  >
+                    {texts.admin}
+                  </Link>
+                )}
                 <Link
                   href={isLoggedIn ? "/mi-cuenta" : "/login"}
                   onClick={() => setMobileOpen(false)}

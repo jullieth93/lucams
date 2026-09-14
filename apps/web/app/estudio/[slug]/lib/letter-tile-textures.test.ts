@@ -20,10 +20,10 @@ GlobalFonts.registerFromPath(path.join(process.cwd(), "assets", "fonts", "Fredok
 
 type Ctx = CanvasRenderingContext2D;
 
-function makeTile(ch: string, color: string) {
+function makeTile(ch: string, color: string, withBorder = true) {
   const canvas = createCanvas(LETTER_TILE_TEX_W, LETTER_TILE_TEX_H);
   const ctx = canvas.getContext("2d") as unknown as Ctx;
-  drawLetterTile(ctx, ch, color, null);
+  drawLetterTile(ctx, ch, color, null, LETTER_TILE_TEX_W, LETTER_TILE_TEX_H, withBorder);
   return ctx;
 }
 
@@ -85,5 +85,32 @@ describe("drawLetterTile (con @napi-rs/canvas)", () => {
       }
     }
     expect(colored).toBeGreaterThan(200);
+  });
+
+  // Lucy 2026-09-05 — opción "Sin borde": la ficha queda blanca a ras (sin stroke de color).
+  describe("sin borde (withBorder: false)", () => {
+    it("NO pinta el borde: la franja del borde queda del blanco del cuerpo", () => {
+      const ctx = makeTile("A", COLOR, false);
+      // Mismo punto que valida el borde con color: acá debe ser blanco opaco.
+      expect(px(ctx, LETTER_TILE_TEX_W / 2, 4)).toEqual([255, 255, 255, 255]);
+    });
+
+    it("sigue dejando transparente fuera de la silueta redondeada (el troquel no cambia)", () => {
+      const ctx = makeTile("A", COLOR, false);
+      expect(px(ctx, 1, 1)[3]).toBe(0);
+    });
+
+    it("sigue dibujando el glifo de la letra en el color de la ficha", () => {
+      const ctx = makeTile("A", COLOR, false);
+      const c = ctx as unknown as ReturnType<ReturnType<typeof createCanvas>["getContext"]>;
+      let colored = 0;
+      const data = c.getImageData(100, 140, 100, 120).data;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i]! > 200 && data[i + 1]! < 140 && data[i + 2]! > 120 && data[i + 3]! > 200) {
+          colored++;
+        }
+      }
+      expect(colored).toBeGreaterThan(200);
+    });
   });
 });

@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { RefreshCw, ArrowRight, X, Undo2, Ban, PackageX } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import {
   blockOrderAddressAction,
   markOrderNoShowAction,
@@ -34,7 +35,10 @@ export function OrderActions({
 }) {
   const [retryState, retryAction, retryPending] = useActionState(retryShipmentAction, null);
   const [transState, transAction, transPending] = useActionState(transitionOrderAction, null);
-  const [refundState, refundAction, refundPending] = useActionState(refundOrderAction, null);
+  // F-10: el reembolso exige aal2 RECIENTE; si el server pide re-auth, el hook
+  // abre el modal TOTP y reintenta esta misma acción tras verificar.
+  const [refundState, refundAction, refundPending, reauthModal] =
+    useMfaReauthAction(refundOrderAction);
   const [noShowState, noShowAction, noShowPending] = useActionState(markOrderNoShowAction, null);
   const [blockState, blockAction, blockPending] = useActionState(blockOrderAddressAction, null);
   const isCod = paymentMethod === "COD";
@@ -79,6 +83,7 @@ export function OrderActions({
   return (
     <section className="border-brand-purple/10 space-y-2 rounded-xl border bg-white p-5 shadow-sm">
       <h2 className="text-brand-purple-dark mb-2 text-sm font-bold">Acciones</h2>
+      {reauthModal}
 
       {(retryState?.success || retryState?.error) && (
         <div
@@ -244,6 +249,22 @@ export function OrderActions({
                 <strong>El dinero se emite manualmente en Wompi.</strong>
               )}
             </p>
+            {/* N-17 — confirmación OBLIGATORIA del dinero ANTES de reembolsar: sin
+              marcarla, el server rechaza la acción y no se envía el email al cliente.
+              `required` la hace bloqueante también en cliente. */}
+            <label className="flex cursor-pointer items-start gap-2 rounded-md bg-rose-50 px-2 py-1.5 text-[11px] font-semibold text-rose-800">
+              <input
+                type="checkbox"
+                name="moneyReturned"
+                required
+                className="mt-0.5 h-3.5 w-3.5 accent-rose-600"
+              />
+              <span>
+                {isCod
+                  ? "Confirmo que el dinero ya fue devuelto al cliente por transferencia bancaria."
+                  : "Confirmo que el dinero ya fue devuelto al cliente en Wompi."}
+              </span>
+            </label>
             <Button
               type="submit"
               size="sm"

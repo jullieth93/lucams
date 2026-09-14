@@ -22,7 +22,7 @@
 import "server-only";
 import { getSettingValue } from "@/lib/cms";
 
-const FALLBACK_NUMBER = "573208873826"; // Lucy WhatsApp temporal — ver .env.example
+const FALLBACK_NUMBER = "573208873826"; // WhatsApp del negocio (espejo del setting WA_NUMBER) — ver .env.example
 
 /**
  * Número wa.me de destino. Fuente de verdad: setting WA_NUMBER del CMS.
@@ -42,7 +42,6 @@ export async function getWhatsAppNumber(): Promise<string> {
 
 export type WhatsAppContext =
   | { kind: "product"; productName: string; sku: string }
-  | { kind: "personalize"; productName: string; sku: string }
   | { kind: "support"; subject?: string }
   | { kind: "order"; orderNumber: string }
   | {
@@ -60,8 +59,6 @@ export type WhatsAppContext =
 // Variables interpoladas con sintaxis `{varName}`.
 const FALLBACK_TEMPLATES = {
   product: 'Hola Lucams 👋 Quiero saber más sobre "{productName}" (SKU {sku}).',
-  personalize:
-    'Hola Lucams 👋 Quiero personalizar "{productName}" (SKU {sku}). Te paso fotos y referencias por aquí ✨',
   support: "Hola Lucams 👋 Tengo una consulta y quería hablar por aquí.",
   support_subject: "Hola Lucams 👋 Tengo una consulta sobre: {subject}",
   order: "Hola Lucams 👋 Quiero consultar el estado de mi pedido {orderNumber}.",
@@ -90,10 +87,6 @@ export async function buildWhatsAppMessage(ctx: WhatsAppContext): Promise<string
   switch (ctx.kind) {
     case "product": {
       const tpl = await getSettingValue("WA_MSG_PRODUCT", FALLBACK_TEMPLATES.product);
-      return interpolate(tpl, { productName: ctx.productName, sku: ctx.sku });
-    }
-    case "personalize": {
-      const tpl = await getSettingValue("WA_MSG_PERSONALIZE", FALLBACK_TEMPLATES.personalize);
       return interpolate(tpl, { productName: ctx.productName, sku: ctx.sku });
     }
     case "support": {

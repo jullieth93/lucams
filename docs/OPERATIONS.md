@@ -38,7 +38,7 @@ gh auth login
 
 ```
 lucams_shop/
-├── .env.example              # Versionado en git, valores placeholder
+├── apps/web/.env.example     # Versionado en git, valores placeholder (el ÚNICO example — no hay uno en la raíz)
 ├── .env.local                # Gitignored (600) — FUENTE ÚNICA: el flip la alterna local↔nube
 ├── .env.local.nube-backup    # Gitignored (600) — respaldo con credenciales de prod (lo escribe el flip)
 ├── .env.stg                  # Gitignored (600) — credenciales de lucams-stg (make db-stg-*)
@@ -117,15 +117,16 @@ make db-local-stop    # apaga el stack (los datos quedan en los volúmenes)
 - **Emails:** Mailpit en http://localhost:54324 (bandeja de los correos que
   emita la app en dev — registro, recuperación, cotizaciones).
 - **Logs:** Logflare en :54323 (pestaña Logs del Studio).
-- **pg_cron:** instalado + job `lucams-cms-publish-scheduled` (cada 5 min,
-  igual que nube — habilitado con `CREATE EXTENSION pg_cron` en el setup).
+- **pg_cron:** instalado + los 10 jobs de la nube (9 HTTP + 1 SQL puro —
+  habilitado con `CREATE EXTENSION pg_cron` en el setup; homologación verificada
+  2026-08-05; conteo actualizado 2026-09-12: entró `lucams-expire-pending-orders` (032)
+  y salió `stock_reservation_cleanup` (033)).
 
 **Notas operativas:**
 
 - `db-local-start` tras `db-local-stop`: si el CLI falla con `volume already
-exists` (manejo de volúmenes distinto a docker), basta `podman volume rm
-supabase_db_lucams-local supabase_storage_lucams-local` y repetir (reset
-  total; re-correr `db-local-setup` + `db-local-seed`).
+exists` (manejo de volúmenes distinto a docker), basta `make db-local-reset`
+  (borra los volúmenes y rehace todo: start + setup + seed; los datos se resiembran).
 - El Nightly CI usa el MISMO enfoque con docker real en el runner
   (`.github/ci/localstack`) — los resultados son comparables.
 - **Guarda de ambiente anti-PRD:** los scripts destructivos (purgas/limpiezas
@@ -157,12 +158,13 @@ LOG_LEVEL=debug pnpm --filter web dev
 ### Healthchecks locales (mismos que producción)
 
 ```bash
-# Una vez levantado el dev server
-curl -f http://localhost:3000/api/health           # 200 si DB y app OK
-curl -f http://localhost:3000/api/health/db        # 200 si Postgres responde
-curl -f http://localhost:3000/api/health/all       # 200 si db + storage OK (agregado)
+# Una vez levantado el dev server (:4000 con `make web-start` — la PORT sale de
+# .env.local exportada al shell; un `pnpm --filter web dev` pelado arranca en :3000)
+curl -f http://localhost:4000/api/health           # 200 si el servidor corre (liveness; no chequea DB)
+curl -f http://localhost:4000/api/health/db        # 200 si Postgres responde
+curl -f http://localhost:4000/api/health/all       # 200 si db + storage OK (agregado)
 # Encadenado:
-curl -f http://localhost:3000/api/health && echo OK
+curl -f http://localhost:4000/api/health && echo OK
 ```
 
 ### Jobs de limpieza pg_cron — VERSIONADOS (auditoría 2026-07-13)
@@ -178,7 +180,8 @@ re-aplicar la migración agenda los jobs.
 
 Los jobs que llaman a `GET /api/cron/*` (protegidos por `CRON_SECRET`, mandato #11 — no Vercel
 Cron) **también están versionados** en `supabase/migrations/00000000000015_pgcron_http_jobs.sql`
-(+ la `016` de purge-event-logs y la `021` de cms-publish-scheduled, roadmap C3).
+(+ la `016` de purge-event-logs, la `021` de cms-publish-scheduled —roadmap C3— y la `032` de
+expire-pending-orders —N-12—).
 Antes vivían solo como comandos manuales aquí → en un `db reset`, proyecto nuevo o DR se perdían
 silenciosamente (alertas, resumen diario, palancas de ingreso, purga de retención). La migración es
 GUARDADA (pg_cron + pg_net) e IDEMPOTENTE.
@@ -187,15 +190,17 @@ GUARDADA (pg_cron + pg_net) e IDEMPOTENTE.
 `CRON_SECRET` desde **Supabase Vault** (`vault.decrypted_secrets`) y manda el secreto por el header
 `x-cron-secret` (no en la URL). El texto versionado solo contiene la BÚSQUEDA en el vault.
 
-| Job                            | Schedule (UTC) | Endpoint                          | Qué hace                                                       |
-| ------------------------------ | -------------- | --------------------------------- | -------------------------------------------------------------- |
-| `lucams-alerts`                | `*/5 * * * *`  | `/api/cron/alerts`                | Alertas (5xx en pico, reconciliación, webhooks)                |
-| `lucams-daily-summary`         | `0 13 * * *`   | `/api/cron/daily-summary`         | Resumen diario 8am Colombia                                    |
-| `lucams-review-request`        | `0 17 * * *`   | `/api/cron/review-request`        | Solicitud de reseña 7–30 días post-entrega                     |
-| `lucams-cart-recovery`         | `0 * * * *`    | `/api/cron/cart-recovery`         | Recordatorio de carrito abandonado (≥4h)                       |
-| `lucams-back-in-stock`         | `*/30 * * * *` | `/api/cron/back-in-stock`         | "Avísame cuando vuelva"                                        |
-| `lucams-purge-anon-designs`    | `0 8 * * *`    | `/api/cron/purge-anon-designs`    | Retención: purga diseños DRAFT anónimos (Ley 1581)             |
-| `lucams-cms-publish-scheduled` | `*/5 * * * *`  | `/api/cron/cms-publish-scheduled` | CMS: publica versiones programadas (roadmap C3, e.g. campañas) |
+| Job                            | Schedule (UTC) | Endpoint                          | Qué hace                                                                         |
+| ------------------------------ | -------------- | --------------------------------- | -------------------------------------------------------------------------------- |
+| `lucams-alerts`                | `*/5 * * * *`  | `/api/cron/alerts`                | Alertas (5xx en pico, reconciliación, webhooks)                                  |
+| `lucams-daily-summary`         | `0 13 * * *`   | `/api/cron/daily-summary`         | Resumen diario 8am Colombia                                                      |
+| `lucams-review-request`        | `0 17 * * *`   | `/api/cron/review-request`        | Solicitud de reseña 7–30 días post-entrega                                       |
+| `lucams-cart-recovery`         | `0 * * * *`    | `/api/cron/cart-recovery`         | Recordatorio de carrito abandonado (≥4h)                                         |
+| `lucams-back-in-stock`         | `*/30 * * * *` | `/api/cron/back-in-stock`         | "Avísame cuando vuelva"                                                          |
+| `lucams-purge-anon-designs`    | `0 8 * * *`    | `/api/cron/purge-anon-designs`    | Retención: purga diseños DRAFT anónimos (Ley 1581)                               |
+| `lucams-purge-event-logs`      | `0 3 * * *`    | `/api/cron/purge-event-logs`      | Retención: purga logs con PII — EmailEvent + WebhookEvent > 180d (migración 016) |
+| `lucams-cms-publish-scheduled` | `*/5 * * * *`  | `/api/cron/cms-publish-scheduled` | CMS: publica versiones programadas (roadmap C3, e.g. campañas)                   |
+| `lucams-expire-pending-orders` | `23 * * * *`   | `/api/cron/expire-pending-orders` | Expira órdenes WOMPI en PENDING_PAYMENT > 24h (N-12, migración 032)              |
 
 > **STG difiere (2026-08-05): los 5 jobs que envían email quedaron DESAGENDADOS en stg**
 > (`lucams-alerts`, `lucams-daily-summary`, `lucams-review-request`, `lucams-cart-recovery`,
@@ -203,9 +208,12 @@ GUARDADA (pg_cron + pg_net) e IDEMPOTENTE.
 > 2026-08-04 y los crons de stg empezaron a enviar correos reales (alertas cada 30 min,
 > resumen diario duplicado). En stg quedan agendados solo `lucams-cms-publish-scheduled`,
 > `lucams-purge-anon-designs`, `lucams-purge-event-logs` y los 2 SQL puros
-> (`rate_limit_cleanup`, `stock_reservation_cleanup`); PRD conserva los 10. **OJO:** las
+> (`rate_limit_cleanup`, `stock_reservation_cleanup`); PRD conserva los 10 (+ el
+> `lucams-expire-pending-orders` de la migración 032 — N-12). **OJO:** las
 > migraciones 015/023 re-agendan por patrón unschedule→schedule — re-aplicarlas en stg
-> devuelve los crons de email, y el estado deseado en stg es desagendados.
+> devuelve los crons de email, y el estado deseado en stg es desagendados. La 032, en
+> cambio, es SEGURA de aplicar en stg: agenda únicamente su job nuevo (sin email) y no
+> toca los desagendados.
 
 **Env var:** `CRON_SECRET` (generar con `openssl rand -hex 32`) — en `.env.local` y en Vercel. Sin
 ella los endpoints responden 401 (fail-closed). El destinatario de alertas/resumen sale de la setting
@@ -221,15 +229,16 @@ select vault.create_secret('<CRON_SECRET real>',    'cron_secret');
 select vault.create_secret('<VERCEL_BYPASS_TOKEN>', 'cron_vercel_bypass');
 ```
 
-Luego re-aplicar la migración 15 (agenda los 6 jobs). Para rotar el secreto: `vault.update_secret`.
+Luego re-aplicar las migraciones con jobs (la 015 agenda 6; la 016 y la 021 agregan 1 cada una; la 032 agenda `lucams-expire-pending-orders` → los 9 HTTP + 1 SQL puro). Para rotar el secreto: `vault.update_secret`.
 Sin los secretos, los jobs quedan agendados pero fallan en runtime hasta setearlos.
 
 > **Tercer secreto `cron_vercel_bypass` (migración 023, 2026-08-01):** los previews de Vercel tienen
 > Deployment Protection (SSO) — sin bypass, los jobs HTTP reciben la página de login de Vercel (200
 > HTML) en vez de ejecutar el endpoint, y `/api/health/crons` reporta `lastRunAt: null` en todos
 > (el detalle de jobs requiere `x-cron-secret` desde la auditoría 2026-08-24, C-4).
-> La migración 023 re-agenda los 8 jobs añadiendo el header `x-vercel-protection-bypass` SOLO si el
-> secreto existe en el Vault. En PRD (dominio público) no se crea → headers sin cambios. En STG ya
+> La migración 023 re-agenda los jobs HTTP añadiendo el header `x-vercel-protection-bypass` SOLO si el
+> secreto existe en el Vault (la 032 replica el patrón para `lucams-expire-pending-orders`). En PRD
+> (dominio público) no se crea → headers sin cambios. En STG ya
 > está creado (verificado 2026-08-01: `net._http_response` devuelve JSON real de los endpoints).
 > El valor es el "protection bypass for automation" del proyecto Vercel (también en `.env.stg` como
 > `VERCEL_BYPASS_TOKEN`).
@@ -250,6 +259,11 @@ supabase db dump --local > backups/local-$(date +%F-%H%M).sql
 - **Logs locales en:** `/home/ansible/workspaces/lucams_shop/logs/` (gitignored)
 - **Backups locales en:** `/home/ansible/workspaces/lucams_shop/backups/` (gitignored)
 - **Git remote:** GitHub del usuario (configurado en Fase 0b).
+- **Hook pre-commit versionado:** `scripts/git-hooks/pre-commit` corre gitleaks sobre lo
+  staged (auditoría 2026-08-24, A-2/A-4). Activación una vez por clon:
+  `git config core.hooksPath scripts/git-hooks` — ya hecho en esta VM. Si gitleaks no está
+  instalado el hook avisa y deja pasar el commit: las capas que mandan son GitHub Push
+  Protection + el job `secrets-scan` de CI.
 - **Nada de credenciales** en historial de shell ni en archivos versionados.
 
 ---
@@ -260,21 +274,21 @@ supabase db dump --local > backups/local-$(date +%F-%H%M).sql
 
 ### Matriz de paridad
 
-| Aspecto                 | Local (VM)                                                      | Vercel                                                                                           | Estado |
-| ----------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------ |
-| Versión Node            | 22.22.2 (NodeSource RPM)                                        | 22 (default Next 16)                                                                             | ✅     |
-| Package manager         | pnpm 11.0.9 (vía corepack)                                      | pnpm (detectado por `pnpm-lock.yaml`)                                                            | ✅     |
-| **Build command**       | `pnpm --filter web build`                                       | igual (declarado en `vercel.json`)                                                               | ✅     |
-| **Install command**     | `pnpm install --frozen-lockfile`                                | igual (declarado en `vercel.json`)                                                               | ✅     |
-| **Output directory**    | `apps/web/.next/`                                               | igual (declarado en `vercel.json`)                                                               | ✅     |
-| **Framework detection** | Next.js auto                                                    | Forced `"nextjs"` en `vercel.json` (evita falsa detección por `package.json` root del workspace) | ✅     |
-| Image optimization      | `sharp` 0.34.5 (build script aprobado en `pnpm-workspace.yaml`) | Vercel managed (mismo binary)                                                                    | ✅     |
-| Edge runtime            | no usado                                                        | no usado (mantenemos `proxy.ts` con runtime nodejs)                                              | ✅     |
-| Telemetry               | `NEXT_TELEMETRY_DISABLED=1` en `.env.local`                     | Idem en Vercel env vars                                                                          | ✅     |
+| Aspecto                 | Local (VM)                                                                                                                                                | Vercel                                                                                           | Estado |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------ |
+| Versión Node            | 22.22.2 (NodeSource RPM)                                                                                                                                  | 22 (default Next 16)                                                                             | ✅     |
+| Package manager         | pnpm 11.0.9 (vía corepack)                                                                                                                                | pnpm (detectado por `pnpm-lock.yaml`)                                                            | ✅     |
+| **Build command**       | `pnpm --filter web build`                                                                                                                                 | igual (declarado en `vercel.json`)                                                               | ✅     |
+| **Install command**     | `pnpm install --frozen-lockfile`                                                                                                                          | igual (declarado en `vercel.json`)                                                               | ✅     |
+| **Output directory**    | `apps/web/.next/`                                                                                                                                         | igual (declarado en `vercel.json`)                                                               | ✅     |
+| **Framework detection** | Next.js auto                                                                                                                                              | Forced `"nextjs"` en `vercel.json` (evita falsa detección por `package.json` root del workspace) | ✅     |
+| Image optimization      | `sharp` 0.34.4 (clavado a propósito: la línea 0.35.x rompía las lambdas de Vercel — comentario en `pnpm-workspace.yaml`; build script aprobado ahí mismo) | Vercel managed (mismo binary)                                                                    | ✅     |
+| Edge runtime            | no usado                                                                                                                                                  | no usado (mantenemos `proxy.ts` con runtime nodejs)                                              | ✅     |
+| Telemetry               | `NEXT_TELEMETRY_DISABLED=1` en `.env.local`                                                                                                               | Idem en Vercel env vars                                                                          | ✅     |
 
-### Gap crítico — sincronización de env vars
+### Gap crítico — sincronización de env vars (RESUELTO 2026-08-01)
 
-**Vercel NO tiene las env vars del proyecto configuradas todavía.** En local viven en `.env.local`; en Vercel hay que copiarlas a Project Settings → Environment Variables. Antes de Fase 1 con código que toque Supabase (`lib/supabase/*`, Prisma, Auth), **es bloqueante**.
+**Resuelto:** la matriz completa de env vars quedó distribuida por ambiente en Vercel (Production/Preview) el 2026-08-01 — ver «Variables de entorno por ambiente» más abajo. Esta subsección queda como referencia del set mínimo inicial (Fase 0): en local viven en `.env.local`; en Vercel se configuran en Project Settings → Environment Variables.
 
 #### Vars a sincronizar (de `.env.local` a Vercel UI)
 
@@ -311,14 +325,10 @@ Dos ramas en `github.com/jullieth93/lucams`:
 - **Flujo diario:** commitear en `develop` + `git push origin develop` al cerrar cada tanda (no acumular commits locales sin subir — pasó un atraso de 116).
 - **Release:** con OK explícito de Lucy, `git checkout production && git merge --ff-only develop && git push` → Vercel despliega producción. `production` solo avanza en releases.
 - **Hecho (verificado 2026-08-05):** la Production Branch de Vercel ya es `production` (Settings → Git) — los push a `develop` generan previews; solo el release (ff a `production`) actualiza el sitio en vivo.
-- **CI (2026-07-24):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) pasa a disparar en `develop`, `production` y `catalogo-whatsapp`. Antes apuntaba a `[develop, main]` y **`main` no existe** → `production` se desplegaba sin ningún gate (auditoría 2026-07-21, A4).
+- **Seeds de la ola (cuando el merge trae cambios de DATOS):** tras el push a `develop` (STG) y tras el release (PRD), correr por ambiente los scripts de `packages/db/scripts` que apliquen — `migrate-cms-v2.mjs` (keys CMS nuevas del site map) y/o `seed-templates.mjs` (plantillas del Estudio). Son upserts idempotentes (nunca pisan campos CMS ya editados; el barrido de legacy del seed archiva plantillas fuera del listado canónico). Se corren con el env del ambiente (`set -a && source .env.stg && set +a` para STG; el `.env.local.nube-backup` para PRD) y después se invalida el caché CMS (ver la nota de «migrate-cms-v2» abajo). Precedente completo: release 2026-09-11 (Ola 26-29) en `docs/STATE.md`.
+- **CI (2026-07-24):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) dispara en `develop` y `production`. Antes apuntaba a `[develop, main]` y **`main` no existe** → `production` se desplegaba sin ningún gate (auditoría 2026-07-21, A4). El fix ya viajó a `production` (merge del 2026-08-06; `git show production:.github/workflows/ci.yml` muestra los triggers nuevos) y CI corre verde en ambas ramas (homologación 2026-08-29). (También vigiló `catalogo-whatsapp` mientras esa rama vivió; se retiró con su borrado el 2026-09-11.) Los 7 jobs: `quality` (typecheck+lint+build), `unit-tests`, `e2e`, `lighthouse`, `secrets-scan` (gitleaks), `format-check` y `dep-audit` (`pnpm audit --prod --audit-level=high` — verde gracias a los `overrides` y al `auditConfig.ignoreGhsas` de [`pnpm-workspace.yaml`](../pnpm-workspace.yaml), cada uno con su justificación en comentario ahí). Todas las actions de los workflows están pineadas por SHA (auditoría 2026-08-24).
 
-  ⚠️ **Todavía no aplica en `production`.** En un evento `push`, GitHub usa el workflow **de la rama pusheada**, y `production` conserva la config vieja hasta que este cambio se mergee hasta allá (`git show production:.github/workflows/ci.yml` sigue mostrando `[develop, main]`). Es decir: la rama productiva sigue sin gate hasta el merge.
-
-  **ACCIÓN HUMANA (Lucy), en este orden:**
-  1. Mergear `catalogo-whatsapp` → `develop` → `production` para que el workflow nuevo viaje.
-  2. Conseguir **un primer run verde** en `production`. Sin esto, marcar los checks como obligatorios deja la rama sin poder mergear.
-  3. Recién entonces: GitHub → Settings → Branches → branch protection de `production` → marcar los 7 jobs como _required status checks_.
+  **ACCIÓN HUMANA (Lucy) — PENDIENTE:** GitHub → Settings → Branches → branch protection de `production` → marcar los 7 jobs como _required status checks_. Ya hay runs verdes en `production`, así que marcarlos no deja la rama bloqueada. (Verificado 2026-09-03 vía la API de GitHub: `production` sigue sin protección — "Branch not protected".)
 
 ### `vercel.json` del repo
 
@@ -417,9 +427,10 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000        # dev
 
 NEXT_PUBLIC_WA_NUMBER=573208873826                # WhatsApp temporal del usuario
 
-# STORE_MODE (ADR pendiente, plan de salida 2026-07-21): "catalog" = tienda
+# STORE_MODE (ADR-077, plan de salida 2026-07-21): "catalog" = tienda
 # catálogo + cotización por WhatsApp (Etapa 1, sin pagos/envíos/IA);
-# "full" (default si falta) = tienda completa. En "catalog" las vars de
+# "full" = tienda completa. **Producción corre en "full" por decisión de Lucy
+# (2026-09-03)** — la tienda vende con pagos reales. En "catalog" las vars de
 # Wompi/Aveonline/Gemini NO se exigen en producción.
 # NEXT_PUBLIC_STORE_MODE=catalog
 
@@ -450,11 +461,15 @@ RESEND_API_KEY=re_xxxxxxxxxxxxxx
 EMAIL_FROM=Lucams_shop <onboarding@resend.dev>     # dev
 # EMAIL_FROM=Lucams_shop <hola@mail.lucamsshop.com>  # prod
 EMAIL_REPLY_TO=hola@lucamsshop.com                     # prod (respuestas de clientes)
+RESEND_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxx         # firma Svix del webhook de Resend (rebotes/quejas).
+                                                   # PROD_REQUIRED: sin ella el endpoint rechaza fail-closed
+                                                   # y la lista de supresión deja de alimentarse. En el
+                                                   # dashboard de Resend suscribir SOLO el grupo "emails".
 
 # ─── Gemini (IA del Estudio — proveedor elegido ADR-058; modo "full" o dev) ───
 GEMINI_API_KEY=xxxxxxxxxxxxxx
-GEMINI_MODEL_PRIMARY=gemini-2.5-flash              # verificar nombre vigente en doc oficial
-GEMINI_MODEL_FALLBACK=gemini-2.5-flash             # idem
+GEMINI_MODEL_PRIMARY=gemini-2.5-flash-lite         # primario (free tier; verificar nombre vigente en doc oficial)
+GEMINI_MODEL_FALLBACK=gemini-2.5-flash             # respaldo si el primario falla
 
 # ─── Cloudflare Turnstile (CAPTCHA invisible en checkout y registro) ───
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x4AAAAAAAxxxxxxxxx  # Para widget en cliente
@@ -465,6 +480,10 @@ R2_ACCOUNT_ID=xxxxxxxxxxxxxx
 R2_ACCESS_KEY_ID=xxxxxxxxxxxxxx
 R2_SECRET_ACCESS_KEY=xxxxxxxxxxxxxx
 R2_BUCKET=lucams-backups
+# BACKUP_GPG_PASSPHRASE: passphrase del cifrado gpg de los dumps (desde 2026-08-29).
+# Vive como GitHub Secret (fail-closed en backup.yml y dr-drill.yml; valor en el
+# gestor de Lucy); en .env* solo hace falta para correr `pnpm --filter web db:backup`
+# o `apps/web/scripts/dr-drill.mjs` a mano.
 
 # ─── Crons (pg_cron → /api/cron/* — OBLIGATORIO en prod) ───
 CRON_SECRET=GENERATE_WITH_OPENSSL_RAND_HEX_32
@@ -476,6 +495,8 @@ CRON_SECRET=GENERATE_WITH_OPENSSL_RAND_HEX_32
 # NEXT_PUBLIC_MAINTENANCE_MODE=1
 CSRF_SECRET=GENERATE_WITH_OPENSSL_RAND_HEX_32      # firma HMAC de cookies de sesión (carrito/checkout)
 NODE_ENV=development                               # development | production
+PORT=4000                                          # puerto del dev server local (lo exporta `make web-start`;
+                                                   # Next NO lo lee del .env — un `pnpm dev` pelado usa :3000)
 LOG_LEVEL=info                                     # debug | info | warn | error
 NEXT_TELEMETRY_DISABLED=1                          # Anonymous telemetry de Next.js apagada
 ```
@@ -532,10 +553,10 @@ pnpm typecheck
 pnpm test
 
 # Tests E2E (Playwright)
-pnpm test:e2e
+pnpm --filter web test:e2e
 
-# Lighthouse local
-pnpm lighthouse
+# Lighthouse local (Lighthouse CI autorun — el mismo gate del job `lighthouse` de CI)
+pnpm lhci
 ```
 
 ### Despliegue
@@ -544,7 +565,10 @@ pnpm lighthouse
 # Vercel despliega producción desde la rama `production` (release = fast-forward
 # de `develop`; no existe `main`) y previews en cada push a `develop` / PR.
 # Ver «Estrategia de ramas y releases» y «Environments» más abajo.
-# Despliegue manual:
+# OJO: `vercel deploy` CLI desde la raíz NO sirve en este monorepo (sube ~250 MB
+# y revienta el límite de 100 MB de Vercel — el deploy real es vía git push;
+# ver «Checklist STG» punto 7).
+# Despliegue manual (excepcional):
 vercel deploy --prod
 
 # Promover preview a producción:
@@ -576,14 +600,18 @@ invalidan solas (`updateTag("cms")`), pero **un script de `packages/db/scripts` 
 CMS directo en DB NO puede invalidarlo** (`updateTag` solo corre dentro de una Server
 Action de Next — confirmado: la opción "script que dispara el tag" no es viable fuera de
 un request). Después de correr cualquiera de esos scripts (`migrate-cms-v2.mjs`,
-`seed-cms.mjs`, `seed-legal-content-2026-07.mjs`, `update-legal-ley-2439.mjs`,
-`remove-owner-name-legal-2026-07-22.mjs`, `update-domain-to-com.mjs`, `fix-voseo-cms.mjs`):
+`update-delivery-copy-20260801.mjs`):
 
 1. Entra a **`/admin/contenido`** (índice de páginas).
 2. Click en **"Actualizar caché de contenido"**.
 
 Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminActionLog`
 (`cms.cache.refresh`). Si no se hace, el sitio sirve la versión vieja hasta 1 hora.
+
+> **Nota (2026-09-04):** los scripts one-shot `seed-legal-content-2026-07.mjs`,
+> `update-legal-ley-2439.mjs` y `fix-voseo-cms.mjs` ya se ejecutaron y se eliminaron
+> (commit `c436195`); la publicación de textos legales hoy es manual vía
+> `/admin/contenido` (CMS v2, campos `legal.*`).
 
 ---
 
@@ -610,7 +638,7 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 **Prevención:**
 
-- Implementar reintentos con backoff cuando el webhook handler falle (vía `pgmq` con visibility timeout, ADR-017).
+- Implementar reintentos con backoff cuando el webhook handler falle (vía `pgmq` con visibility timeout, ADR-017). (2026-09-04: pgmq nunca se adoptó — ADR-017 SUPERSEDED; si esta prevención sigue pendiente, rediseñar sobre pg_cron + pg_net).
 - Job `pg_cron` cada 15 min que enqueue en `order_reconciliation` las órdenes en `PENDING_PAYMENT` con > 1h y consume los mensajes consultando Wompi por su estado real.
 
 ---
@@ -713,22 +741,51 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 **Prevención:**
 
-- Cola `shipment_creation_retry` en `pgmq` con visibility timeout 60s y backoff implícito por reintentos del consumer.
+- Cola `shipment_creation_retry` en `pgmq` con visibility timeout 60s y backoff implícito por reintentos del consumer. (2026-09-04: pgmq nunca se adoptó — ADR-017 SUPERSEDED; si esta prevención sigue pendiente, rediseñar sobre pg_cron + pg_net).
 - Job `pg_cron` cada 15 min: detecta órdenes `PAID` sin `trackingNumber` con > 1h y las enqueue.
 - Consumer idempotente: chequea `trackingNumber` antes de crear (no duplicar guías en Aveonline).
 
 ---
 
-## Plan de monitoreo (TBD — Fase 7)
+## Plan de monitoreo (RESUELTO 2026-09-14 — job pg_cron en Supabase STG, sin SaaS/Actions/VM)
 
-> **Decisión pendiente:** se evaluará una alternativa gratuita antes del lanzamiento. Opciones:
+> **Decisión (Lucy, 2026-09-13/14):** ningún monitor SaaS gratuito (UptimeRobot/BetterStack/
+> Sentry) por dependencia de tiers que luego piden suscripción; ningún consumo de minutos de
+> GitHub Actions; y **tampoco la VM de desarrollo** (no siempre está encendida). En su lugar,
+> **job pg_cron `uptime-monitor-prd` dentro del proyecto Supabase de STG** — infraestructura
+> administrada 24/7 (la misma que ya corre los crons de la app), dominio de fallo independiente
+> de Vercel/PRD, $0:
 >
-> 1. **Sentry Free** — 5k eventos/mes, 1 usuario. Stack traces + alertas.
-> 2. **BetterStack** — logging + uptime monitor, free tier generoso.
-> 3. **Highlight.io** — session replay + errores.
-> 4. **Vercel Logs + alertas custom** — `error.tsx` global que postea a Resend cuando se capture un error 500.
+> - **Definición versionada:** `scripts/monitor-uptime-stg.sql` (se aplica SOLO en STG, nunca
+>   en PRD; no forma parte de `supabase/migrations/*` justamente para no replicarse). Como
+>   pg_net es asíncrono, el job trabaja en **2 fases por corrida** (cada 10 min): colecta el
+>   lote anterior y dispara el nuevo. Una falla solo cuenta si se sostiene **2+ corridas
+>   seguidas** (~20 min) — las transitorias no alertan.
+> - **Alerta:** con falla persistente, POST a Resend desde SQL (email a `ALERT_EMAIL`,
+>   anti-spam 30 min, estado en la tabla `uptime_monitor_state` de STG). **Reporte:** cada
+>   corrida hace POST a `/api/cron/monitor-heartbeat` de PRD → tile «Monitor externo
+>   (Supabase STG)» en `/admin/observability` y reglas `uptime_monitor_failing` /
+>   `uptime_monitor_stale` (esta última = el dead-man del propio job).
+> - **Secretos en el Vault de STG** (nunca en el SQL): `monitor_prd_base_url`,
+>   `monitor_resend_api_key`, `monitor_email_from`, `monitor_alert_email`,
+>   `monitor_cron_secret`.
+> - **Respaldo manual:** `node apps/web/scripts/uptime-monitor.mjs` (o `make uptime-monitor`)
+>   sondea desde cualquier máquina con `~/.config/lucams/uptime.env` — útil si STG está
+>   en mantenimiento.
 >
-> Decisión final se documenta como ADR-016 cuando se tome.
+> Cubre el ciego histórico: caída del propio sistema de alertas (dead-man de crons), caída de
+> Vercel y probes reales de Wompi/Aveonline/Resend caídos. **Limitación declarada:** si el
+> proyecto Supabase de STG está caído/en pausa, no hay monitor externo (los alertas in-app
+> siguen) — `uptime_monitor_stale` lo delata a los 30 min. ~~Workflow GHA y monitor por VM~~:
+> existieron 1 día cada uno y se retiraron (2026-09-13/14); si algún día se quiere redundancia,
+> el repo es público y Actions no cobra.
+>
+> Complemento in-app (ya implementado en la remediación 360°): heartbeat de backups vía
+> `POST /api/cron/backup-heartbeat` (lo invoca `backup.yml` al terminar; regla `backup_stale`
+> si pasan >36 h sin latido) y `/api/health/crons` con los 9 jobs.
+>
+> ~~Decisión pendiente: alternativa gratuita antes del lanzamiento.~~ (Las opciones SaaS quedan
+> descartadas; ADR futura solo si se necesita algo más fino que el monitor de STG.)
 
 ### Mientras tanto (Fase 0a–6)
 
@@ -752,10 +809,17 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 - **PITR 7 días** automático.
 - **Export adicional diario a Cloudflare R2** (ADR-059) — implementado:
-  - Script: [`apps/web/scripts/backup-db-to-r2.mjs`](../apps/web/scripts/backup-db-to-r2.mjs) — `pg_dump` (plano, `--no-owner --no-privileges`) → gzip → sube a R2 (S3-compatible, `@aws-sdk/client-s3`) → poda backups viejos (conserva los últimos `BACKUP_KEEP` — default 8 en el script; el workflow fija 30 ≈ 1 mes de diarios). Llaves `db/lucams-<UTC>.sql.gz` ordenables.
+  - Script: [`apps/web/scripts/backup-db-to-r2.mjs`](../apps/web/scripts/backup-db-to-r2.mjs) — `pg_dump` (plano, `--no-owner --no-privileges`) → gzip → **cifrado gpg simétrico AES256** (desde 2026-08-29, hallazgo A-3 de la auditoría 2026-08-24: el dump lleva PII — Ley 1581 — y su confidencialidad no puede depender solo del ACL del bucket) → sube a R2 (S3-compatible, `@aws-sdk/client-s3`) → poda backups viejos (conserva los últimos `BACKUP_KEEP` — default 8 en el script; el workflow fija 30 ≈ 1 mes de diarios). Llaves `db/lucams-<UTC>.sql.gz.gpg` ordenables (los `.sql.gz` legacy sin cifrar los va podando la retención y ya no entran al DR drill).
   - Workflow: [`.github/workflows/backup.yml`](../.github/workflows/backup.yml) — cron diario (07:13 UTC; era semanal — lunes 07:00 — hasta 2026-08-04) + `workflow_dispatch`. Instala `postgresql-client-17` (el server Supabase es PG17; `pg_dump` < 17 rechaza el volcado). Un job `gate` **salta limpio** si faltan los secrets (sin correos de error hasta configurar).
-  - **R2 ya provisionado (opera desde 2026-07-27):** bucket `lucams-backups` + token de API R2 creados en Cloudflare y los GitHub secrets `BACKUP_DATABASE_URL` (conexión DIRECTA, no pooler), `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` configurados; workflow validado en corrida manual. Los `R2_*` de los `.env*` quedan como placeholder — los reales viven solo en GitHub Secrets (llenarlos solo para correr `pnpm db:backup` a mano).
-  - Local: `pnpm --filter web db:backup` con el entorno cargado (requiere `pg_dump` 17 local).
+  - **R2 ya provisionado (opera desde 2026-07-27):** bucket `lucams-backups` + token de API R2 creados en Cloudflare y los GitHub secrets `BACKUP_DATABASE_URL` (conexión DIRECTA, no pooler), `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` configurados; workflow validado en corrida manual. Los `R2_*` de los `.env*` quedan como placeholder — los reales viven solo en GitHub Secrets (llenarlos solo para correr `pnpm db:backup` a mano). **`BACKUP_GPG_PASSPHRASE`** (GitHub Secret desde 2026-08-29; el valor está en el gestor de Lucy): sin ella el backup **falla a propósito** (fail-closed — un dump sin cifrar en R2 es peor que un correo de error) y el DR drill la usa para descifrar.
+  - Local: `pnpm --filter web db:backup` con el entorno cargado (requiere `pg_dump` 17 y `gpg` locales + `BACKUP_GPG_PASSPHRASE`).
+- **Mirror diario de Supabase Storage a R2** (hallazgo F-16, auditoría 2026-09-04) — implementado:
+  - Script: [`apps/web/scripts/backup-storage-to-r2.mjs`](../apps/web/scripts/backup-storage-to-r2.mjs) — lista TODOS los objetos de cada bucket con la API de Storage (service key server-side; recorrido recursivo + paginación de a 1000), los empaqueta en `tar.gz` por bucket con un ustar mínimo propio (sin dependencias nuevas), los cifra con **gpg simétrico AES256** (misma `BACKUP_GPG_PASSPHRASE` del backup de la DB — las fotos de `customer-uploads` son PII, Ley 1581) y sube a R2 en streaming (solo el CIFRADO toca disco, en un temp 0600; la memoria no crece con el tamaño de los objetos). Snapshot COMPLETO por bucket (no incremental): a esta escala (cientos de objetos) un archivo autocontenido por bucket y día es lo más simple de verificar y restaurar. Llaves `db-storage/<bucket>/lucams-<UTC>.tar.gz.gpg`; manifiesto JSON por corrida en `db-storage/lucams-<UTC>.manifest.json` (solo conteos por bucket: objetos y bytes — NUNCA paths ni datos personales, el manifiesto va sin cifrar para que el drill elija qué verificar). Retención `BACKUP_KEEP` por bucket y para manifiestos (el workflow fija 30).
+  - Buckets cubiertos (configurable vía `BACKUP_STORAGE_BUCKETS`): `customer-uploads`, `production-assets`, `design-previews`, `cms-media`, `product-images`.
+  - Workflow: job `backup-storage` de [`.github/workflows/backup.yml`](../.github/workflows/backup.yml), tras el backup de la DB, con gate propio (`storage_configured`): si faltan los secrets nuevos el job se SALTA limpio sin apagar el backup de la DB.
+  - **Acción de operador requerida (Lucy):** crear los GitHub Secrets `BACKUP_SUPABASE_URL` y `BACKUP_SUPABASE_SECRET_KEY` (Settings → Secrets and variables → Actions) con la URL y la secret key (service) de `lucams-prod`. Hasta crearlos, el mirror queda inactivo con aviso amarillo.
+  - Local: `pnpm --filter web storage:backup` (cae a `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_SECRET_KEY` si no hay `BACKUP_SUPABASE_*`; requiere `gpg` y `BACKUP_GPG_PASSPHRASE`).
+  - **Lo que el backup NO cubre:** `auth.users` sigue sin restore validado (el dump `pg_dump` la incluye como schema `auth`, pero nunca se ha ensayado re-enlazarla con GoTrue en un restore real — el drill #2 verifica solo tablas públicas). Tampoco cubre la configuración del proyecto Supabase (auth providers, políticas de Storage, Vault, edge functions): se recrean a mano desde el repo/dashboard.
 - Verificar restauración cada trimestre con un environment de testing.
 
 ---
@@ -764,22 +828,26 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 > Implementados en `apps/web/app/api/health/`.
 
-- `GET /api/health` — liveness de la app (200 si el servidor corre; no chequea dependencias externas). Incluye `version` y `environment`.
+- `GET /api/health` — liveness de la app (200 si el servidor corre; no chequea dependencias externas). Respuesta mínima `{ status, service, timestamp }` — **sin `version` ni `environment`** (auditoría 2026-08-24, C-3: el SHA exacto identifica el commit en el repo público — fingerprinting del deploy).
 - `GET /api/health/db` — 200 si Postgres responde (`SELECT 1` vía Prisma).
 - `GET /api/health/storage` — 200 si el bucket de Supabase Storage responde.
 - `GET /api/health/resend` — 200 si la API key de Resend es válida y el dominio de `EMAIL_FROM` está verificado (no envía emails).
 - `GET /api/health/aveonline` — autentica contra Aveonline y reporta qué cuenta responde (detecta la cuenta demo en `production`).
 - `GET /api/health/wompi` — 200 si `GET /merchants/{publicKey}` responde OK contra el ambiente `WOMPI_ENV` (no crea transacciones). Sin `WOMPI_*` (modo catálogo) devuelve `skipped`.
-- `GET /api/health/crons` — dead-man switch de los jobs pg_cron: 503 si alguno no corrió en 2× su intervalo. Los jobs de `CRON_JOBS_DISABLED` se listan aparte y no degradan.
-- `GET /api/health/all` — agrega los checks en un solo JSON: 200 si db + storage están OK (Resend/Aveonline/Wompi son no bloqueantes). Incluye `version` y `environment`. El endpoint pensado para monitors externos.
+- `GET /api/health/crons` — dead-man switch de los jobs pg_cron: 503 si alguno no corrió en 2× su intervalo. En público solo devuelve `{ status, timestamp }`; el detalle (jobs/overdue/disabled) exige el header `x-cron-secret` (auditoría 2026-08-24, C-4). Los jobs de `CRON_JOBS_DISABLED` se listan aparte (con secreto) y no degradan.
+- `GET /api/health/all` — agrega los checks en un solo JSON: 200 si db + storage están OK (Resend/Aveonline/Wompi son no bloqueantes). `version` y `environment` **solo se incluyen con el header `x-cron-secret`** (C-3). El endpoint pensado para monitors externos.
 
 Configurar en BetterStack (free) o UptimeRobot (free) para alertas si alguno cae > 3 min.
 
 ### Health API (para monitores externos)
 
 Contrato de los endpoints `/api/health*` para integrar un monitor (BetterStack, UptimeRobot, etc.).
-Todos son **públicos** (sin auth), `force-dynamic`, con **rate-limit de 30 req/min por IP**
+Todos devuelven el **status agregado en público** (sin auth), `force-dynamic`, con **rate-limit de 30 req/min por IP**
 (429 + `Retry-After: 60` al exceder) y responden JSON con al menos `status` y `timestamp`.
+**El detalle topológico queda tras el header `x-cron-secret: <CRON_SECRET>`** (auditoría 2026-08-24, C-3/C-4):
+en `/api/health/crons` los jobs/overdue/disabled, y en `/api/health/all` el `version`/`environment`, solo se
+devuelven con ese header (los monitores de uptime aceptan headers custom — configurarlo quedó como acción
+pendiente en los monitores externos, ver STATE 2026-08-29).
 
 | Endpoint                | Qué verifica                                                            | HTTP sano → degradado             |
 | ----------------------- | ----------------------------------------------------------------------- | --------------------------------- |
@@ -789,17 +857,19 @@ Todos son **públicos** (sin auth), `force-dynamic`, con **rate-limit de 30 req/
 | `/api/health/resend`    | API key válida + dominio de `EMAIL_FROM` verificado                     | 200 (`ok`/`warn`/`skipped`) → 500 |
 | `/api/health/aveonline` | Autentica contra Aveonline; reporta modo (`test`/`production`) y cuenta | 200 (`ok`/`warn`) → 500           |
 | `/api/health/wompi`     | `GET /merchants/{publicKey}` (6s timeout); `skipped` sin `WOMPI_*`      | 200 (`ok`/`skipped`) → 503        |
-| `/api/health/crons`     | Latido de los 8 jobs pg_cron (2× intervalo sin correr = overdue)        | 200 → 503                         |
+| `/api/health/crons`     | Latido de los 9 jobs pg_cron (2× intervalo sin correr = overdue)        | 200 → 503                         |
 | `/api/health/all`       | Agrega db + storage + resend + aveonline + wompi en un solo JSON        | 200 → 503                         |
 
 - **Shape de `/api/health/all`:**
-  `{ status, totalLatencyMs, timestamp, version, environment, checks: [{ service, status, latencyMs, detail? }] }`
+  `{ status, totalLatencyMs, timestamp, checks: [{ service, status, latencyMs, detail? }] }`
+  (`version` y `environment` solo se agregan con `x-cron-secret`)
   con `status` global `"ok" | "degraded"` y cada check `"ok" | "warn" | "fail" | "skipped"`.
 - **Pesos:** solo **postgres y storage son críticos** — si alguno reporta `fail`, `/all` responde
   **503** (`status: "degraded"`). **resend, aveonline y wompi son no bloqueantes** (`warn`/`fail`
   quedan visibles en `checks` pero el global sigue 200). `skipped` = integración no configurada
   a propósito en ese ambiente (p.ej. Wompi en modo catálogo); tampoco degrada.
-- **Shape de `/api/health/crons`:**
+- **Shape de `/api/health/crons`:** en público `{ status, timestamp }` (503 si hay jobs vencidos — alcanza
+  para que el monitor alerte). Con `x-cron-secret`:
   `{ status, overdue: [{ job, lastRunAt }], disabled: [job], jobs: [{ job, overdue, disabled, lastRunAt }], timestamp }` —
   503 si `overdue` es no vacío. Los jobs de **`CRON_JOBS_DISABLED`** (comma-separado, ver
   `.env.example`) llegan con `disabled: true, overdue: false` y se listan en `disabled`: en
@@ -835,7 +905,7 @@ Cuando se rompan estos límites, abrir issue automático:
 | Vercel Pro     | $20/mes         | —                     | —                                                                                                                                                          |
 | Supabase Pro   | $25/mes         | —                     | —                                                                                                                                                          |
 | Resend Pro     | $20/mes         | —                     | —                                                                                                                                                          |
-| Anthropic      | Variable        | —                     | Alerta si > $30/mes                                                                                                                                        |
+| Gemini (IA)    | Free tier       | —                     | Proveedor elegido (ADR-058; reemplazó a Anthropic). Alerta si se sale del nivel gratuito                                                                   |
 | Wompi          | Por trx         | —                     | 2.65% + $700 + IVA (plan Avanzado, frecuencia mensual). [Verificado: wompi.com/es/co/planes-tarifas a 2026-05-09](https://wompi.com/es/co/planes-tarifas/) |
 | Aveonline      | Por envío       | —                     | Plan mensual + comisión COD desde 2.40% (ver `INTEGRATIONS_AVEONLINE.md` §11)                                                                              |
 | Dominio        | $50.000 COP/año | —                     | mi.com.co                                                                                                                                                  |
@@ -862,16 +932,16 @@ Cuando se rompan estos límites, abrir issue automático:
 - **`develop`** es la rama de trabajo diario: commits atómicos, push al cerrar cada tanda, CI en cada push. **No existe `main`** (decisión de Lucy).
 - **`production`** es la rama en vivo: solo avanza por release (`git merge --ff-only develop`, con OK explícito de Lucy). Es la **Production Branch** de Vercel (Settings → Git).
 - **Ramas de feature de largo aliento** (ej. `catalogo-whatsapp`): nacen de `develop` y vuelven con merge; `ci.yml` las vigila igual (dispara en `develop`, `production`, `catalogo-whatsapp`).
-- **Rollback:** tag de restauración antes de cada cambio grande (ej. `pre-cms-v2`); el procedimiento se documenta en HANDOFF al usarlo.
+- **Rollback:** tag de restauración antes de cada cambio grande (ej. `pre-cms-v2`); el procedimiento se documenta en `docs/STATE.md` al usarlo.
 
 ### Release strategy
 
-| Tipo           | Trigger                                        | Audiencia / DB                                                                  |
-| -------------- | ---------------------------------------------- | ------------------------------------------------------------------------------- |
-| **Preview**    | Push a `develop` o rama feature                | Dev / reviewer — ⚠️ hoy apuntan a la DB de **PRD** (hasta crear STG: ver abajo) |
-| **Production** | Release: `production` fast-forward a `develop` | 100% del tráfico (`lucamsshop.com`)                                             |
+| Tipo           | Trigger                                        | Audiencia / DB                                                                                         |
+| -------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **Preview**    | Push a `develop` o rama feature                | Dev / reviewer — DB de **STG** (`lucams-stg`) desde 2026-08-01 (previews aislados: ver «Environments») |
+| **Production** | Release: `production` fast-forward a `develop` | 100% del tráfico (`lucamsshop.com`)                                                                    |
 
-- **Smoke post-release:** `tests/e2e/release-check-a1.spec.ts` con `PLAYWRIGHT_BASE_URL` apuntando a prod (herramienta A1 del roadmap CMS, reutilizable en cada release).
+- **Smoke post-release:** `apps/web/tests/e2e/release-check-a1.spec.ts` con `PLAYWRIGHT_BASE_URL` apuntando a prod (herramienta A1 del roadmap CMS, reutilizable en cada release).
 - **Versionado:** tags `vX.Y.Z` (semver) en cada release de producción significativa.
   - `X` mayor: cambios que rompen compatibilidad de schema o API público.
   - `Y` menor: features nuevas no rompedoras.
@@ -892,7 +962,7 @@ Mapa real al 2026-08-01 (tras la separación dev/prod con Supabase local podman)
 
 #### Variables de entorno por ambiente (matriz ejecutada 2026-08-01)
 
-- **Scope separado (valor distinto Production/Preview):** las 5 de Supabase/DB (`DATABASE_URL`, `DIRECT_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` — preview → `lucams-stg`) · `CRON_SECRET` y `CSRF_SECRET` (valores nuevos en preview) · `WOMPI_ENV` + `WOMPI_PUBLIC_KEY`/`PRIVATE_KEY`/`EVENTS_SECRET`/`INTEGRITY_SECRET` (hoy sandbox en ambos scopes — al lanzar, las claves reales van SOLO en Production y preview conserva test) · `NEXT_PUBLIC_TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY` (preview = claves de prueba públicas de Cloudflare — las reales están restringidas por dominio y fallarían en `*.vercel.app`) · `NEXT_PUBLIC_STORE_MODE` (`catalog` explícito en ambos — sin ella, preview caería al default `full` y activaría pagos/envíos) · `AVEONLINE_USUARIO`/`AVEONLINE_CLAVE` (set único desde 2026-08-01: Production = cuenta real · Preview = cuenta demo pública).
+- **Scope separado (valor distinto Production/Preview):** las 5 de Supabase/DB (`DATABASE_URL`, `DIRECT_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` — preview → `lucams-stg`) · `CRON_SECRET` y `CSRF_SECRET` (valores nuevos en preview) · `WOMPI_ENV` + `WOMPI_PUBLIC_KEY`/`PRIVATE_KEY`/`EVENTS_SECRET`/`INTEGRITY_SECRET` (hoy sandbox en ambos scopes — al lanzar, las claves reales van SOLO en Production y preview conserva test) · `NEXT_PUBLIC_TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY` (preview = claves de prueba públicas de Cloudflare — las reales están restringidas por dominio y fallarían en `*.vercel.app`) · `NEXT_PUBLIC_STORE_MODE` (`catalog` explícito en ambos al ejecutar la matriz — sin ella, preview caería al default `full` y activaría pagos/envíos; **Preview pasó a `full` el 2026-08-07** para la suite E2E modo full §7.5 — ver STATE.md — y Production debe conservar `catalog` hasta Etapa 2) · `AVEONLINE_USUARIO`/`AVEONLINE_CLAVE` (set único desde 2026-08-01: Production = cuenta real · Preview = cuenta demo pública).
 - **Solo Production (el preview no las recibe):** `AVEONLINE_ENV` (modo declarado para el guard del health check — en preview default `test`, que acepta la cuenta demo) · `NEXT_PUBLIC_SITE_URL` (preview usa el `VERCEL_URL` automático del deployment — `lib/origin.ts`) · `NEXT_PUBLIC_WA_NUMBER` (preview lee `WA_NUMBER` del CMS de stg). **`RESEND_API_KEY` estaba en esta lista — el 2026-08-04 se agregó TAMBIÉN a scope Preview y los crons de stg empezaron a enviar correos reales; por eso los 5 jobs de email de stg quedaron desagendados el 2026-08-05 (ver «Jobs HTTP pg_cron»).**
 - **Compartidas a propósito:** `GEMINI_API_KEY` (cuota de IA compartida), `EMAIL_FROM`/`EMAIL_REPLY_TO` (identidad de remitente — ojo: desde 2026-08-04 preview también tiene `RESEND_API_KEY`, así que stg SÍ puede enviar), `LOG_LEVEL`, `NEXT_TELEMETRY_DISABLED`, `AVEONLINE_WEBHOOK_SECRET`.
 - **Alineada con `lib/env.ts`:** las CORE exigidas en todo entorno están en preview (Supabase/DB + `CSRF_SECRET`); las `PROD_REQUIRED` solo aplican a `VERCEL_ENV=production` (en preview advierten, no bloquean); las `FULL_MODE_REQUIRED` no aplican en `catalog`.
@@ -901,17 +971,19 @@ Mapa real al 2026-08-01 (tras la separación dev/prod con Supabase local podman)
 
 Los 3 ambientes están homologados en **catálogo y configuración**; difieren solo en datos transaccionales (cada uno genera los suyos en pruebas) y en los valores que por diseño apuntan a cada ambiente:
 
-| Check                                                                                                                                                                                                                                                                                                                                                                      | PRD | STG      | LOCAL    |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | -------- | -------- |
-| Extensiones app (`pg_trgm`, `unaccent`, `pg_cron`, `pg_net`, `pgmq`)                                                                                                                                                                                                                                                                                                       | 5   | 5        | 5        |
-| Jobs pg_cron                                                                                                                                                                                                                                                                                                                                                               | 10  | 5 (†)    | 10       |
-| Tablas con RLS (incluye `_prisma_migrations` y `Notification`)                                                                                                                                                                                                                                                                                                             | 59  | 59       | 59       |
-| Buckets storage                                                                                                                                                                                                                                                                                                                                                            | 5   | 5        | 5        |
-| Migraciones Prisma aplicadas                                                                                                                                                                                                                                                                                                                                               | 50  | 50       | 50       |
-| Secretos Vault (`cron_base_url`, `cron_secret`)                                                                                                                                                                                                                                                                                                                            | ✓   | ✓        | ✓        |
-| Catálogo (566 productos, 526 categorías, 726 variantes, 115 ocasiones, 981 campos CMS, 130 redirects, 24 plantillas, 43 cupones reales — corregido 2026-08-07: las cifras históricas 612/572/772 incluían 46 fixtures de tests, barridos en LOCAL/STG; en PRD siguen soft-deleted e invisibles hasta limpieza autorizada — ver `audits/2026-08-07-e2e-homologacion.md` §9) | ✓   | ✓ (sync) | ✓ (sync) |
+| Check                                                                                                                                                                                                                                                                                                                                                                                                                 | PRD | STG      | LOCAL    |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --- | -------- | -------- |
+| Extensiones app (`pg_trgm`, `unaccent`, `pg_cron`, `pg_net`, `pgmq`)                                                                                                                                                                                                                                                                                                                                                  | 5   | 5        | 5        |
+| Jobs pg_cron                                                                                                                                                                                                                                                                                                                                                                                                          | 10  | 5 (†)    | 10       |
+| Tablas con RLS (incluye `_prisma_migrations` y `Notification`)                                                                                                                                                                                                                                                                                                                                                        | 59  | 59       | 59       |
+| Buckets storage                                                                                                                                                                                                                                                                                                                                                                                                       | 5   | 5        | 5        |
+| Migraciones Prisma aplicadas                                                                                                                                                                                                                                                                                                                                                                                          | 52  | 52       | 52       |
+| Secretos Vault (`cron_base_url`, `cron_secret`)                                                                                                                                                                                                                                                                                                                                                                       | ✓   | ✓        | ✓        |
+| Catálogo (566 productos, 526 categorías, 726 variantes, 115 ocasiones, 981 campos CMS, 130 redirects, 24 plantillas, 43 cupones reales — corregido 2026-08-07: las cifras históricas 612/572/772 incluían 46 fixtures de tests, barridos en LOCAL/STG; en PRD siguen soft-deleted e invisibles hasta limpieza autorizada — medición de la homologación 2026-08-07, auditorías históricas consolidadas fuera del repo) | ✓   | ✓ (sync) | ✓ (sync) |
 
 **Verificado por re-medición el 2026-08-05 (homologación completa):** las 19 tablas de catálogo con conteos IDÉNTICOS en los 3 ambientes (query lado a lado); LOCAL re-sincronizado desde PRD tras los resets del 2026-08-01/02 (procedimiento del punto «Re-sincronizar» aplicado con dump fresco); RLS de `_prisma_migrations` habilitado en local; duplicado de `20260731130000_drop_cms_legacy` en `_prisma_migrations` de PRD eliminado (registro fallido con 0 pasos); fixtures de diseño para tests de personalización recreados con assets REALES en `customer-uploads` (finalize-server-render y letter-tiles pasan en local: 10/10 junto a la suite completa 2763 verde). Las diferencias restantes son INTENCIONALES (crons de email desagendados en stg, transaccional por ambiente, notificaciones por ambiente).
+
+**Actualización 2026-08-29 (auditoría OWASP cerrada y homologada):** migraciones Supabase **025–029** aplicadas y verificadas en LOCAL/STG/PRD (drop de la función huérfana `rls_auto_enable` + su event trigger, hardening de grants de tablas y de funciones públicas — `search_path` fijo y EXECUTE acotado, policies backstop RLS endurecidas, `pg_net` convergido al schema `extensions` — la 029 lo mueve con DROP+CREATE en una transacción porque pg_net no es relocatable) y migraciones Prisma **51–52** (`20260829150200_bearer_tokens_hash_at_rest`, `20260829150300_coupon_usage_per_customer_trigger`) aplicadas en los 3 ambientes en el mismo deploy → Prisma queda en **52/52** (la fila de arriba ya lo refleja).
 
 - **(†) Jobs pg_cron en STG = 5 a propósito (2026-08-05):** desagendados los 5 que envían email (`lucams-alerts`, `lucams-daily-summary`, `lucams-review-request`, `lucams-cart-recovery`, `lucams-back-in-stock`) — los previews recibieron `RESEND_API_KEY` el 2026-08-04 y los crons de stg empezaron a mandar correos reales. Quedan `lucams-cms-publish-scheduled`, `lucams-purge-anon-designs`, `lucams-purge-event-logs` y los 2 SQL puros. **No re-aplicar las migraciones 015/023 en stg:** re-agendan por patrón unschedule→schedule y el estado deseado es desagendados (detalle en «Jobs HTTP pg_cron» y changelog 2026-08-05).
 - **Difieren a propósito (cada valor apunta a SU ambiente):** `cron_base_url` del Vault (PRD → `https://lucamsshop.com` · STG → alias estable del preview de `develop` · LOCAL → `http://host.containers.internal:4000` — los jobs solo funcionan con el dev server arriba; sin él fallan en silencio en `cron.job_run_details`), `cron_secret` (propio por ambiente) y las URLs de DB.
@@ -932,12 +1004,12 @@ Los 3 ambientes están homologados en **catálogo y configuración**; difieren s
 
 1. **Proyecto:** creado vía Management API (`POST /v1/projects`, org `qaomfftpzubbkhimucsi`, Free, us-east-2) con token temporal de Lucy (revocable en supabase.com/dashboard/account/tokens). Por dashboard: org `Lucams` → **New project** (misma región que prod).
 2. **VM/repo:** `.env.stg` (fuera de git por `.env.*`) copiando `.env.local.nube-backup` con las 5 vars del proyecto nuevo **y ajustando los servicios a prueba**: SIN `RESEND_API_KEY` (stg no envía emails reales), SIN `AVEONLINE_USUARIO`/`AVEONLINE_CLAVE` (cae a modo test con la cuenta demo), `CRON_SECRET`/`CSRF_SECRET` **propios de stg** (los mismos valores que Vercel scope Preview y el Vault de stg — no los de prod), `NEXT_PUBLIC_STORE_MODE="catalog"`, `NEXT_PUBLIC_SITE_URL`=alias estable del preview de `develop`. **No tocar el flip** (`db-local-on/off` solo alterna local↔prod). ⚠️ **Pooler:** el host puede ser `aws-0` o `aws-1` según el clúster asignado — descubrirlo con `GET /v1/projects/{ref}/config/database/pooler` (stg quedó en `aws-0`; prod está en `aws-1`). Y la conexión directa `db.<ref>.supabase.co` es **IPv6-only** (la VM no tiene ruta IPv6) — siempre pooler.
-3. **Esquema:** `make db-stg-setup` (script `scripts/db-stg-setup.sh`: extensiones → `prisma migrate deploy` → SQL de `supabase/migrations` → grants, mismo orden del Nightly; el rol `postgres` del proyecto es superuser en Supabase cloud, cubre el event trigger de la 014). Luego **habilitar pg_cron + pg_net** (`create extension if not exists pg_cron; create extension if not exists pg_net;` — en cloud vienen deshabilitadas y las migraciones con jobs se auto-omiten) y **re-aplicar las 4 migraciones con jobs (012, 015, 016, 021)**: quedan los 10 jobs agendados, en paridad con prod. **(2026-08-05: tras esto hay que desagendar en stg los 5 jobs de email — el estado deseado ya no es paridad completa; ver «Jobs HTTP pg_cron» y el (†) de «Homologación».)**
+3. **Esquema:** `make db-stg-setup` (script `scripts/db-stg-setup.sh`: extensiones → `prisma migrate deploy` → SQL de `supabase/migrations` → grants, mismo orden del Nightly; el rol `postgres` del proyecto es superuser en Supabase cloud, cubre el event trigger de la 014). Luego **habilitar pg_cron + pg_net** (`create extension if not exists pg_cron; create extension if not exists pg_net;` — en cloud vienen deshabilitadas y las migraciones con jobs se auto-omiten) y **re-aplicar las 5 migraciones con jobs (012, 015, 016, 021, 023)**: quedan los 10 jobs agendados, en paridad con prod. **(2026-08-05: tras esto hay que desagendar en stg los 5 jobs de email — el estado deseado ya no es paridad completa; ver «Jobs HTTP pg_cron» y el (†) de «Homologación».)**
 4. **Seeds:** `make db-stg-seed` (catálogo + plantillas + ocasiones + CMS — 59 productos, 75 categorías, 16 ocasiones, 854 campos CMS).
 5. **Secretos Vault para pg_cron** (los jobs leen `cron_base_url`/`cron_secret` del Vault en runtime): creados con los comandos del header de `scripts/db-stg-setup.sh` — `cron_base_url` = `https://lucams-shop-git-develop-jullieth93s-projects.vercel.app` (alias estable del preview de `develop`) y `cron_secret` = el MISMO valor de `CRON_SECRET` scope Preview.
 6. **Vercel env vars (vía CLI/API):** la matriz completa quedó con scope por ambiente (ver «Variables de entorno por ambiente» arriba) — mecánica: la existente se acota a `["production"]` (`PATCH /v9/projects/{id}/env/{envId}`) y se crea el valor stg con `["preview"]` (`POST /v10/projects/{id}/env`, type `sensitive`). Ojo: las vars `sensitive` NO se pueden leer por API (`decrypted: false`) — los valores de preview salieron de la copia local `.env.local.nube-backup` (mismas claves test) o se generaron nuevos (`CRON_SECRET`, `CSRF_SECRET`).
 7. **Verificar:** los previews tienen **Vercel Authentication** (SSO) — para el smoke automatizado generar un bypass: `PATCH /v1/projects/{id}/protection-bypass` con `{}` y usar el header `x-vercel-protection-bypass: <secret>`. Smoke ejecutado: home/`/productos`/`/admin/login` 200 + categoría «Separadores Magnéticos» servida desde stg. (`vercel deploy` CLI desde la raíz NO sirve: sube 250 MB y revienta el límite de 100 MB — el deploy debe ser vía git o `POST /v13/deployments` con `gitSource`.)
-8. **Documentar:** STG ✅ en la tabla de arriba + HANDOFF al día.
+8. **Documentar:** STG ✅ en la tabla de arriba + `docs/STATE.md` al día.
 
 ### Feature flags
 
@@ -988,21 +1060,24 @@ if (await isFeatureEnabled("ai-design-suggest", user?.id)) {
 
 ### Capas de defensa
 
-| Capa                 | Mecanismo                                             | Recuperación                                                     |
-| -------------------- | ----------------------------------------------------- | ---------------------------------------------------------------- |
-| App (Vercel)         | Inmutable deploys + Git                               | Rollback a deployment previo: `vercel rollback <url>` (segundos) |
-| DB (Supabase Pro)    | PITR 7 días + backup diario                           | Restore desde dashboard (~30 min)                                |
-| Storage (Supabase)   | Replicación interna AWS                               | — (transparente)                                                 |
-| Backup off-site (R2) | Export diario a R2                                    | Restore manual desde dump SQL (~2h)                              |
-| DNS (Cloudflare)     | Configuración versionada en repo (Terraform o manual) | Recreación manual (~30 min)                                      |
+| Capa                 | Mecanismo                                                                                                                                                                                          | Recuperación                                                                                             |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| App (Vercel)         | Inmutable deploys + Git                                                                                                                                                                            | Rollback a deployment previo: `vercel rollback <url>` (segundos)                                         |
+| DB (Supabase)        | La capa real hoy es el backup diario a R2 (fila de abajo). **`lucams-prod` sigue en tier Free: sin PITR ni backups del dashboard** — PITR 7 días aplica al subir a Pro (RUNBOOK_GO_LIVE FASE 11.b) | Con Pro: restore PITR desde dashboard (~30 min). Hoy (Free): restore desde el dump R2 (~2h)              |
+| Storage (Supabase)   | Replicación interna AWS + **mirror diario cifrado a R2** (`backup-storage-to-r2.mjs`, F-16 2026-09-04); legibilidad verificada por el drill mensual `drill-storage` (`dr-drill.yml`)               | Restore manual: `gpg -d` con `BACKUP_GPG_PASSPHRASE` + `tar xzf` + re-subida por la API de Storage (~2h) |
+| Backup off-site (R2) | Export diario a R2, **cifrado gpg AES256 desde 2026-08-29**; restore verificado por drill automatizado mensual (`dr-drill.yml`)                                                                    | Restore manual: `gpg -d` con `BACKUP_GPG_PASSPHRASE` + `psql` (~2h)                                      |
+| DNS (Cloudflare)     | Configuración versionada en repo (Terraform o manual)                                                                                                                                              | Recreación manual (~30 min)                                                                              |
 
 ### Procedimiento de recuperación end-to-end
 
 ```
 1. ¿Qué se cayó?
    - Solo Vercel: rollback al deployment previo. ETA 5 min.
-   - Solo DB: restore PITR al punto sano. ETA 30 min.
-   - Storage: depender de replicación interna o R2 backup. ETA 2 h.
+   - Solo DB: restore PITR al punto sano (requiere Supabase Pro — hoy Free). ETA 30 min.
+     Sin Pro: restaurar el último dump de R2 (descifrando con gpg). ETA ~2 h.
+   - Storage: restaurar desde el mirror de R2 (`gpg -d` + `tar xzf` del archivo del bucket
+     + re-subir los objetos con la API de Storage y la service key). ETA 2 h.
+     (Antes de 2026-09-04 no había copia off-site: solo la replicación interna de AWS.)
    - Todo: combinación de los anteriores.
 
 2. Comunicar a clientes (status page o email masivo si los emails funcionan).
@@ -1074,17 +1149,22 @@ cerrado mientras seguía atendiendo tráfico.
 
 #### Drill #2: Restore desde backup R2 — automatizado (2026-08-05)
 
-El workflow [`.github/workflows/dr-drill.yml`](../.github/workflows/dr-drill.yml) corre **mensual** (día 2 a las 08:27 UTC — el backup, **diario desde 2026-08-05**, ya habrá corrido) y a demanda (`workflow_dispatch`): baja el dump más nuevo de R2, lo restaura en un Postgres vacío del runner (imagen `supabase/postgres`, el mismo engine de prod) y verifica conteos de tablas clave. **Ya verificado:** run 30972179553 — `Product=612 · Category=572 · OcasionTag=115 · CmsField=979`, 0 errores SQL. Un backup que no se restaura no es un backup.
+El workflow [`.github/workflows/dr-drill.yml`](../.github/workflows/dr-drill.yml) corre **mensual** (día 2 a las 08:27 UTC — el backup, **diario desde 2026-08-05**, ya habrá corrido) y a demanda (`workflow_dispatch`): baja el dump más nuevo de R2 (solo llaves `.sql.gz.gpg` — los legacy sin cifrar ya no son candidatos), lo **descifra con gpg** (`BACKUP_GPG_PASSPHRASE`, el mismo secret del backup — desde 2026-08-29 los dumps viajan cifrados), lo restaura en un Postgres vacío del runner (imagen `supabase/postgres`, el mismo engine de prod) y verifica conteos de tablas clave. **Verificaciones:** run 30972179553 (2026-08-05, dump legacy sin cifrar); run **33926922592 (2026-09-04, VERDE)** — conteos restaurados **exactos** contra las filas COPY del propio dump (`Product=11/11 · Category=84/84 · OcasionTag=115/115 · CmsField=982/982 · Order=0/0 · Customer=1/1`), 60 errores SQL esperados (colisiones de schemas internos Supabase, allowlist en `dr-drill-lib.mjs`) y 0 inesperados. El run del 2026-09-02 falló por el umbral `DRILL_MIN_PRODUCTS=100` (obsoleto tras la depuración del catálogo: quedan 11 productos reales) y por un contador de errores SQL que era código muerto; la reparación del 2026-09-04 reemplazó el umbral por conteo exacto vs COPY (el umbral queda como detector de dumps vacíos, default 5) e hizo la clasificación de errores fail-closed. Un backup que no se restaura no es un backup.
+
+Desde 2026-09-04 (F-16) el mismo workflow corre el job **`drill-storage`**: prueba de legibilidad del mirror de Supabase Storage ([`apps/web/scripts/dr-drill-storage.mjs`](../apps/web/scripts/dr-drill-storage.mjs)) — baja el manifiesto más nuevo de `db-storage/`, elige un bucket con N>0 objetos (o el forzado por `DRILL_STORAGE_BUCKET`), descarga su `lucams-<UTC>.tar.gz.gpg`, lo descifra y cuenta las entradas del tar en streaming (el plaintext jamás toca disco), y exige que conteo y bytes cuadren EXACTO con el manifiesto. No restaura nada: verifica que el archivo se puede leer, que es un tar válido y que el cifrado cuadra. Corre bajo el gate `storage_configured` (mismos secrets `BACKUP_SUPABASE_*` que activan el mirror — sin ellos se salta limpio).
 
 > **Privacidad (PII):** el drill restaura datos reales de prod en el runner de CI. La máquina es **efímera** (GitHub la destruye al terminar el job) y los logs solo publican **conteos** y líneas `^ERROR` del restore — nunca filas. Ojo: el repo es **público**, así que los logs de Actions también lo son; que el script nunca imprima datos de filas es lo que mantiene la PII fuera.
 
 El drill manual sigue vigente para el calendario cuatrimestral de abajo:
 
 ```bash
-# 1. Bajar el último backup diario de R2.
-# 2. Aplicar a Supabase de testing.
-# 3. Validar integridad (counts de tablas críticas, queries de cross-check).
-# 4. Documentar.
+# 1. Bajar el último backup diario de R2 (objeto .sql.gz.gpg).
+# 2. Descifrar + descomprimir (la passphrase es el secret BACKUP_GPG_PASSPHRASE):
+#    gpg -d --batch --passphrase-fd 3 -o dump.sql.gz backup.sql.gz.gpg 3<<<"$BACKUP_GPG_PASSPHRASE" && gunzip dump.sql.gz
+#    (o correr apps/web/scripts/dr-drill.mjs a mano con el entorno cargado — hace todo esto).
+# 3. Aplicar a Supabase de testing.
+# 4. Validar integridad (counts de tablas críticas, queries de cross-check).
+# 5. Documentar.
 ```
 
 #### Drill #3: Rollback de Vercel
@@ -1172,6 +1252,8 @@ El drill manual sigue vigente para el calendario cuatrimestral de abajo:
 
 ### Anthropic Claude API — [platform.claude.com/docs/en/about-claude/models/overview](https://platform.claude.com/docs/en/about-claude/models/overview)
 
+> **Superado por ADR-058 (2026-07-13):** el asistente IA del Estudio quedó con **Gemini** (Flash-Lite, nivel gratuito), no con Anthropic. Esta tabla queda como referencia histórica de la evaluación de costos.
+
 | Modelo                                              | Input USD/MTok | Output USD/MTok | Context     | Max output  |
 | --------------------------------------------------- | -------------- | --------------- | ----------- | ----------- |
 | **Claude Sonnet 4.6** (recomendado para Estudio IA) | **$3**         | **$15**         | 1M tokens   | 64k tokens  |
@@ -1179,6 +1261,8 @@ El drill manual sigue vigente para el calendario cuatrimestral de abajo:
 | Claude Opus 4.7 (más potente)                       | $5             | $25             | 1M tokens   | 128k tokens |
 
 > **Modelo elegido:** Sonnet 4.6 (per `INTEGRATIONS.md § Claude API`). Estimación de costo por sugerencia: ~500 tokens input + ~300 tokens output = **~$0.006 USD por sugerencia única**. Con cache 24h en Postgres (ADR-016) y rate limit por usuario, 1.000 sugerencias únicas/mes ≈ **$6 USD/mes**. Manejable. Tokens "Priority Tier" disponibles para escalado futuro.
+>
+> (2026-09-04: el proveedor real implementado es Gemini — ADR-058; Claude nunca se integró; ANTHROPIC_* eliminadas 2026-08-01).
 
 ### Cloudflare R2 Free — [developers.cloudflare.com/r2/pricing](https://developers.cloudflare.com/r2/pricing/)
 
@@ -1214,7 +1298,7 @@ El drill manual sigue vigente para el calendario cuatrimestral de abajo:
 | Resend 100/día                                 | OK para soft launch (~30 órdenes/día)                                                                                                   |
 | R2 egress gratis                               | Backups robustos sin temer costo de restore                                                                                             |
 | Turnstile 1M/sitio                             | Sin preocupación de tope                                                                                                                |
-| Sonnet 4.6 a $0.006/sugerencia                 | Con cache 24h, 1.000 sugerencias únicas/mes = $6 USD. Manejable                                                                         |
+| Sonnet 4.6 a $0.006/sugerencia                 | Con cache 24h, 1.000 sugerencias únicas/mes = $6 USD. Manejable. **Superado por ADR-058: el proveedor real es Gemini (free tier)**      |
 
 ---
 
@@ -1222,10 +1306,17 @@ El drill manual sigue vigente para el calendario cuatrimestral de abajo:
 
 > Registrar cambios en infraestructura, vars o procesos.
 
+- **2026-09-12** — **Remediación 360° (auditoría `docs/AUDITORIA_360.md` / `docs/audits/2026-09-11-coherencia-funcional-productiva.md`) aplicada en el árbol — scripts, seeds, guards, migraciones y saneamiento de datos.** (a) **Scripts nuevos** (todos en `packages/db/scripts/`, dry-run por defecto salvo que se indique): `seed-catalog-canonical.mjs` (`--apply` ejecuta; `--prune` opt-in con confirmación — su UPDATE nunca toca price/basePrice/images/isActive/deletedAt/isFeatured), `seed-demo-reviews.mjs` (`--apply`; reseñas demo SOLO dev/STG, marcadas `createdBy: system:seed-demo-reviews`), `purge-test-coupons.mjs` (`--apply` con backup previo a `tmp/backups/coupons-<env>-<ts>.json`; aborta si algún cupón tiene pedidos/usos salvo `--skip-referenced`), `remove-zombie-settings.mjs` (`--apply`; 15 keys candidatas en `lib/zombie-settings.mjs`) y el lint `scripts/lib/check-script-guards.mjs`. (b) **env-guard FAIL-CLOSED** (`scripts/lib/env-guard.mjs`): hosts no reconocidos o URLs no parseables bloquean la ejecución (antes fail-open); 63/63 scripts con escritura guardados. (c) **Split de seeds:** `seed-products.mjs` se dividió en `seed-catalog-canonical.mjs` + `seed-demo-reviews.mjs` (queda como wrapper de compat); seeds canónicos con dry-run default + `--apply`; `seed-templates.mjs` con barrido `--prune` opt-in y sin reset de estados salvo `--force-state`. (d) **One-shots archivados:** ~40 scripts ya ejecutados movidos a `packages/db/scripts/one-shot/`; borrados 5 (`cleanup-junk-categories`, `make-test-designs-clonable`, `reassign-separadores-gallery-tags`, `refactor-abecedario-separadores`, `seed-reviews-demo`). (e) **Makefile:** targets nuevos `seed-admin`, `admin-mfa-reset`, `seed-clean`, `audit-script-guards`; retirados los 4 one-shot de 2026-05 (`backfill-variant-prices`, `cleanup-slugs`, `consolidate-product-families`, `rename-family-base-slugs`); `seed-products` ahora invoca `seed-catalog-canonical.mjs --apply`. (f) **Lint de guards en CI:** `check-script-guards.mjs` corre en el job `quality` de `.github/workflows/ci.yml` (falla si un script que escribe no importa env-guard). (g) **Migraciones nuevas — orden de aplicación en deploy:** ① supabase `00000000000032_pgcron_expire_pending_orders` (agenda `lucams-expire-pending-orders`, horario minuto 23) → ② prisma `20260911120000_order_payment_failed_notified_refund_money_confirmed` (3 columnas aditivas nullable en `Order`: `paymentFailedNotifiedAt`, `refundMoneyConfirmedAt`, `refundMoneyConfirmedBy`) → ③ supabase `00000000000033_drop_stock_reservation_cleanup_job` (des-agenda `stock_reservation_cleanup`) → ④ prisma `20260912120000_drop_site_event_recommendation_log_stock_reservation` (DROP de las 3 tablas, `IF EXISTS … CASCADE`). Ese orden evita la ventana en que el job SQL fallaría contra la tabla ya dropeada. (h) **Crons resultantes: 9 HTTP + 1 SQL puro** (entra `lucams-expire-pending-orders`; sale `stock_reservation_cleanup`). El backup diario reporta su latido con `POST /api/cron/backup-heartbeat` (lo invoca `backup.yml` en GHA) → regla `backup_stale` (>36h) + tile en /admin/observability; el DR drill exige dump fresco ≤36h (`DRILL_MAX_BACKUP_AGE_HOURS`). (i) **Saneamiento de datos LOCAL/STG:** 42 cupones de test borrados en LOCAL y 41 en STG (backup JSON previo; en STG se preservó 1 por referencia de un pedido smoke documentado); settings CMS 51→37 en ambos (14 settings zombi eliminadas de las 15 candidatas — la ausente la reporta el script). (j) **Nota STG:** sus 5 jobs de email siguen DESAGENDADOS a propósito (decisión 2026-08-05) — las migraciones **032/033 SÍ son seguras de aplicar en STG**: la 032 solo agenda `lucams-expire-pending-orders` y declara expresamente NO tocar los demás jobs (no re-agenda los de email); la 033 solo des-agenda un job inexistente ahí (no-op con NOTICE). Las 015/016/021/023 sí re-agendarían los de email al re-aplicarse (estado deseado STG: desagendados).
+- **2026-09-11 (3)** — **Release del saneamiento a PRD (`8408440`).** PR #45 (2 commits) mergeado a `develop` con CI verde en ambas ramas; `production` ff `f35ab29` → `8408440`; deploy Vercel verificado en vivo: headers legales por versión propia (cookies «2026-09-11 · Versión 4», security «2026-07-25 · Versión 2»), `/rastrear` con formulario en modo full, `/contacto` con «Datos personales y temas legales: habeas-data@» (vía CMS `support.contacto.legal-note`), `/ayuda` con textos full + «máximo 2 días hábiles» + borrado self-serve, home con «Pagas en línea de forma segura». El ratchet de cobertura de contenido (CI) quedó en 35.63% con 0 literales nuevos sin cubrir. Campos `support.contacto.legal-note` y `support.contacto.success-note` migrados a los 3 ambientes. Sin acciones humanas pendientes de este paquete: queda solo la respuesta del abogado (identidad de la titular — COMPLIANCE.md § Identificación).
+- **2026-09-11 (2)** — **Paquete legal v5 PUBLICADO en los 3 ambientes + homologación verificada.** Decisión de Lucy del mismo día («Sí, lanzar textos legales»). (a) `packages/db/scripts/publish-legal-v5-20260911.mjs` (mismo mecanismo revertible CMS v2): publica los 6 cuerpos v5 desde el canónico (`legal.terminos`, `legal.privacidad`, `legal.devoluciones`, `legal.garantias`, `legal.habeas-data`, `legal.subprocesadores`) y sube `PRIVACY_POLICY_VERSION` a «v5 · 2026-09-04» — **re-consent activo**: los consentimientos previos quedan invalidados (re-banner a recurrentes; decisión deliberada 2026-09-05). Premisa de veracidad verificada pre-publicación: PRD-full con Wompi prod, Aveonline real y asistente IA activos. Coletilla «en revisión por asesoría legal» sigue en los textos hasta que opine el abogado. (b) **Homologación de contenido verificada por hash** (22 claves CMS + `productionDays` por producto + total de campos): LOCAL ≡ PRD idénticos; STG igual tras la migración de los 3 campos `track.*` (los upserts del site map contra el pooler remoto tardan >10 min — correr la migración sin tope de tiempo). Drifts intencionales conocidos e inalterados: precios «Sin imán» STG espejo, crons de email desagendados en STG, cuentas sandbox en STG/Preview. (c) Verificado en vivo tras invalidación de caché: home con «Pagas en línea de forma segura» y «máx. 2 días hábiles», `/legal/terminos` sirviendo v5, `/legal/cookies` v4 sin «[pendiente verificación]». Header «Versión 4/2» por página para cookies/security sale con el próximo deploy (código); hasta entonces esas dos páginas muestran el header común v5 sobre cuerpo v4/v2 — ventana conocida.
+- **2026-09-11** — **Saneamiento integral de información pública / legal / centro de ayuda aplicado en LOCAL/STG/PRD.** Origen: auditoría del mismo día (consolidada en STATE.md). (a) Scripts revertibles nuevos (historial de versiones CMS): `packages/db/scripts/update-public-content-20260911.mjs` (12 campos: FAQs `faq.01-04` homologadas a la variante FULL, `home.howitworks.step3.description` FULL — PRD-full seguía sirviendo el texto de catálogo sembrado 2026-08-01 —, `faq.08` self-serve, `PRODUCTION_DAYS_DEFAULT="2"` — despacho real confirmado por Lucy —, `DELIVERY_DAYS_ESTIMATE="2 a 5"`, `checkout.shipping.note`, `legal.cookies` v4 · 2026-09-11, `legal.security` coletilla, `support.help.cta.subtext`) y `packages/db/scripts/update-production-days-20260911.mjs` (9 productos: `productionDays` 3→2, NONE→1) — ambos con dry-run por defecto y `--apply`, corridos con `.env.local`, `.env.stg` y `.env.local.nube-backup`. (b) **Textos sensibles al modo gateados en código:** la DB ya no puede contradecir al modo — `CodAwareCmsText` (how-it-works) y `/ayuda` fuerzan la variante catálogo del fallback cuando `isCatalogMode()` (nuevo prop `forceFallback` en `CmsMarkdown`); la DB homologa la variante full. (c) Campos CMS nuevos `track.subtext-catalog` / `track.catalog-note` / `track.catalog-cta` (site map) migrados en los 3 ambientes — `/rastrear` en modo catálogo muestra tarjeta WhatsApp. (d) `make migrate-cms-v2` reparado: ahora corre con `npx dotenv -e ../../.env.local --` (antes fallaba fuera de `db-local-seed` porque el script escribía `DATABASE_URL="undefined"`). (e) **ACCIÓN HUMANA (Lucy): invalidar el caché CMS en PRD** (botón «Actualizar caché de contenido» en /admin/contenido) — hasta entonces PRD sirve los textos anteriores (TTL 1 h). (f) **Gotcha dev:** el caché CMS en dev vive en `.next/dev/cache` (no `.next/cache`) y un `next-server` huérfano puede seguir sirviendo `:4000` tras `make web-stop` — si el render local no refleja la DB: `make web-stop && pkill -9 -f next-server && rm -rf apps/web/.next && make web-start`. (g) Pendiente previo sin cambios: abogado → publicar paquete legal v5 + `PRIVACY_POLICY_VERSION` → «v5 · 2026-09-04».
+- **2026-09-04** — **F-16 (ALTA) cerrado: mirror cifrado de Supabase Storage a R2.** El backup diario solo cubría la DB; los objetos de Storage (`customer-uploads` — fotos de clientas, PII y materia prima de producción —, `production-assets`, `design-previews`, `cms-media`, `product-images`) no tenían copia off-site. Aprobado por Lucy: mirror cifrado. (a) Nuevo `apps/web/scripts/backup-storage-to-r2.mjs` (+ helpers puros testeados en `backup-storage-lib.mjs`): snapshot completo por bucket en streaming (ustar propio → gzip → gpg AES256 con passphrase por fd, misma `BACKUP_GPG_PASSPHRASE`) → `db-storage/<bucket>/lucams-<UTC>.tar.gz.gpg` + manifiesto JSON por corrida (solo conteos) + retención `BACKUP_KEEP`=30 por bucket. (b) Job `backup-storage` en `backup.yml` con gate propio (salta limpio si faltan los secrets nuevos). (c) Job `drill-storage` en `dr-drill.yml` (mensual): descifra el archivo de un bucket y lo cuadra contra el manifiesto (prueba de legibilidad, no restore completo). (d) **ACCIÓN HUMANA pendiente (Lucy):** crear los GitHub Secrets `BACKUP_SUPABASE_URL` y `BACKUP_SUPABASE_SECRET_KEY` — hasta entonces el mirror corre inactivo con aviso amarillo. **Sigue sin cubrir:** restore validado de `auth.users` y la config del proyecto Supabase (auth providers, policies, Vault).
+- **2026-09-03** — **Sync documental contra el repo + ⚠️ hallazgo en vivo: PRD responde con señales de modo FULL.** Verificación de este documento contra el código y el sitio en vivo: las 5 comprobaciones del runbook (RUNBOOK_GO_LIVE FASE 11.c) devuelven hoy la firma de modo **full** (`/checkout/pago` → 307 `/carrito`, `/checkout/datos` con "Pago seguro Wompi", manifest con "pago en línea seguro", JSON-LD con `schema.org/InStock`), cuando la matriz de env vars declara `NEXT_PUBLIC_STORE_MODE=catalog` en Production (Preview pasó a `full` a propósito el 2026-08-07). **Pendiente humano:** confirmar el valor real de `NEXT_PUBLIC_STORE_MODE` en el scope Production de Vercel — si quedó en `full` (sospecha: la edición del 2026-08-07 pudo tocar ambos scopes), corregir a `catalog` + redeploy (es `NEXT_PUBLIC_*`: se inlinea en build). También verificado hoy: `production` sigue SIN branch protection (API GitHub: "Branch not protected") — la ACCIÓN HUMANA de «Estrategia de ramas y releases» sigue pendiente.
+- **2026-08-29** — **Auditoría OWASP cerrada: backups cifrados gpg, DR drill con descifrado, audit gate y hook pre-commit.** (a) El backup diario a R2 pasa a `pg_dump | gzip | gpg -c` (simétrico AES256; llaves `.sql.gz.gpg`) — nuevo GitHub secret `BACKUP_GPG_PASSPHRASE` (fail-closed; el valor quedó en el gestor de Lucy); primer backup cifrado verificado en R2 el mismo día. (b) `apps/web/scripts/dr-drill.mjs` descifra con gpg antes de restaurar (solo llaves `.gpg` candidatas). (c) `pnpm audit --prod` verde vía `overrides` + `auditConfig.ignoreGhsas` documentados en `pnpm-workspace.yaml` (gate `dep-audit` de CI). (d) Hook pre-commit versionado en `scripts/git-hooks/pre-commit` (gitleaks sobre lo staged) — activado en esta VM con `git config core.hooksPath scripts/git-hooks`. (e) Migraciones Supabase **025–029** aplicadas en LOCAL/STG/PRD y verificadas en vivo + migraciones Prisma **51–52** (52/52 en los 3 ambientes, mismo deploy). (f) Actions de los workflows pineadas por SHA. (g) Health públicos minimizados (C-3/C-4): `/api/health` sin `version`/`environment`; el detalle de `/api/health/crons` y `/api/health/all` quedó tras `x-cron-secret` (pendiente configurar ese header en los monitores de uptime).
 - **2026-08-01** — **Webhook de Resend ACTIVO + higiene de `.env*`.** `RESEND_WEBHOOK_SECRET` distribuido (Vercel Production + `.env.local` + `.env.local.nube-backup`) y verificado end-to-end tras redeploy: evento `email.delivered` firmado Svix → 200 + `EmailEvent` creada (fila de prueba borrada). El webhook llevaba inoperativo desde siempre (sin secreto, rechazaba fail-closed). **OJO:** la selección de eventos del webhook en el dashboard de Resend debe quedar SOLO en el grupo _emails_ — contacts/domains/suppression no traen `email_id` y la ruta responde 400 (reintentos Svix → auto-deshabilitaría el endpoint). Higiene `.env*`: eliminadas vars muertas (`ANTHROPIC_*`, `NEXT_PUBLIC_WOMPI_PUBLIC_KEY`), `.env.stg` sin Resend/Aveonline reales ni R2/ngrok, archivos reordenados por secciones, `apps/web/.env.local` → symlink a la raíz (era copia estática apuntando a prod).
 - **2026-08-01** — **STG creado + limpieza pre-apertura de PRD.** `lucams-stg` (Supabase Free, us-east-2) montado end-to-end: esquema + seeds + pg_cron/pg_net + 10 jobs + secretos Vault; matriz de env vars de Vercel por ambiente (17 preview-only / 24 production-only / 6 compartidas — ver «Variables de entorno por ambiente»); smoke verificado (previews `stg-verify*`: rutas 200, catálogo desde stg, sitekey Turnstile test en el bundle). Catálogo real sincronizado PRD→STG (612 productos, 572 categorías, 772 variantes, 115 ocasiones, 979 campos CMS, 130 redirects, 24 plantillas, 43 cupones reales; la FK circular `CmsField↔CmsFieldVersion` exigió soltar y recrear constraints — Supabase cloud no permite `DISABLE TRIGGER` sin superuser). **PRD limpio de datos de prueba** (decisión de Lucy; backup previo verificado `tmp/backups/prod-pre-cleanup-20260801.dump` — 2.4MB, 94 tablas, fuera de git; dump del catálogo en `catalogo-prod-20260801.dump`): borrados 229 pedidos, 107 customers, 22 cotizaciones, 328 carts, 435 designs, 26 reviews, 61 cupones test, 24 admins `mfaitest_*` (residuo de specs MFA) y telemetría de dev (WebVital 23.9k, Consent 2.8k, ErrorLog 560, WebhookEvent, rate_limit_buckets) — conservados catálogo, CMS, redirects, plantillas, 43 cupones reales, `AdminActionLog` (101) y el único admin real. Verificado: transaccional en 0, sitio vivo 200. **Pendiente:** flip Production Branch `develop`→`production` en Vercel (Lucy). _(Hecho el 2026-08-05 — ver la entrada 2026-08-05 (2).)_
 - **2026-08-05** — **DR drill #2: VERIFICADO — el backup de R2 restaura.** Nuevo workflow `dr-drill.yml` (mensual día 2 08:27 UTC + manual) + `scripts/dr-drill.mjs`: baja el dump más nuevo de R2 y lo restaura en el engine supabase/postgres del runner. Primer run falló por mecánica del restore (pg_cron solo se crea en la DB `postgres`; schemas auth/storage/realtime exigen `supabase_admin`) — corregido y re-ejecutado: **`Product=612 · Category=572 · OcasionTag=115 · CmsField=979 · 0 errores SQL`** (run 30972179553). Además `backup.yml` pasó de semanal a **diario** (07:13 UTC, retención 30 ≈ 1 mes) — una tienda viva no puede perder hasta 7 días de datos.
-- **2026-08-05 (3)** — **Centro de notificaciones en el admin (adiós al spam de correo).** Nueva tabla `Notification` (RLS deny-by-default; migración `20260805120000_add_notifications` + `00000000000024_rls_notifications` aplicadas en los 3 ambientes) + `/admin/notificaciones` (feed con severidades, filtros, marcar leída/todas, deep links) + badge de no leídas en el nav del admin. **Política nueva de emails de fondo:** alertas del sistema → notificación in-app siempre y email SOLO si alguna es crítica (dedup `AlertState` intacto); resumen diario → notificación (sin email); fallos de cron → notificación `CRON` (los éxitos no se registran); cotización nueva → notificación + se mantiene el email (canal de venta). Emails a clientes (pedidos, carrito, stock, reseñas) sin cambio. Plan: `docs/PLAN_CENTRO_NOTIFICACIONES.md`.
+- **2026-08-05 (3)** — **Centro de notificaciones en el admin (adiós al spam de correo).** Nueva tabla `Notification` (RLS deny-by-default; migración `20260805120000_add_notifications` + `00000000000024_rls_notifications` aplicadas en los 3 ambientes) + `/admin/notificaciones` (feed con severidades, filtros, marcar leída/todas, deep links) + badge de no leídas en el nav del admin. **Política nueva de emails de fondo:** alertas del sistema → notificación in-app siempre y email SOLO si alguna es crítica (dedup `AlertState` intacto); resumen diario → notificación (sin email); fallos de cron → notificación `CRON` (los éxitos no se registran); cotización nueva → notificación + se mantiene el email (canal de venta). Emails a clientes (pedidos, carrito, stock, reseñas) sin cambio.
 - **2026-08-05 (2)** — **Crons de email DESAGENDADOS en STG.** Los previews de Vercel recibieron `RESEND_API_KEY` el 2026-08-04 (scope Preview) y los jobs pg_cron de stg empezaron a enviar correos reales (alertas cada 30 min, resumen diario duplicado con el de prod). Desagendados en stg los 5 jobs que envían email: `lucams-alerts`, `lucams-daily-summary`, `lucams-review-request`, `lucams-cart-recovery`, `lucams-back-in-stock`. Quedan agendados: `lucams-cms-publish-scheduled`, `lucams-purge-anon-designs`, `lucams-purge-event-logs` + los 2 SQL puros (`rate_limit_cleanup`, `stock_reservation_cleanup`). PRD sigue con los 10 (verificado por query a `cron.job` en ambos proyectos). **OJO:** las migraciones 015/023 re-agendan por patrón unschedule→schedule — re-aplicar migraciones en stg devuelve los crons de email; el estado deseado en stg es desagendados. Mismo día: **flip de Production Branch hecho** — Vercel ya despliega PRD desde `production` y los push a `develop` generan previews (verificado: último deploy Production desde la rama `production`).
 - **2026-08-04 (3)** — **P0-4 Backups R2: CERRADO (estaba operando desde 2026-07-27).** Los docs lo seguían listando abierto, pero los secrets de GitHub se configuraron el 2026-07-21 y el workflow `backup.yml` (lunes 07:00 UTC) corre verde desde el 2026-07-27 — última corrida 2026-08-03: subido `db/lucams-2026-08-03T104925Z.sql.gz` (1.18 MB) con retención funcionando (3 conservados). Los `R2_*` de los `.env*` quedan como PLACEHOLDER (los reales viven solo en GitHub Secrets; llenarlos solo para correr `pnpm db:backup` a mano). **Lo que sigue sin hacerse: el DR drill** (restaurar un dump de R2 en una DB de prueba y verificarla).
 - **2026-08-04 (2)** — **Aveonline: facturación ARMADA en producción (decisión Lucy).** `AVEONLINE_GENERATE_REAL=true` y `AVEONLINE_FORCE_BILLING=true` en Vercel scope Production + `.env.local.nube-backup` (redeploy aplicado, health ok). Filosofía: la restricción es de ACCIÓN (no hacer compras/guías de prueba en prod porque cobran — para eso está stg), no de configuración. **El único freno restante es el modo `catalog`** (ningún camino genera guías: UI oculta, actions con stage-guard, saga solo vía checkout): el flip `STORE_MODE=full` en Production activa cobro real en la primera guía → SOLO el día del lanzamiento. Preview/local/stg quedan en `false` + cuenta demo.
@@ -1235,4 +1326,4 @@ El drill manual sigue vigente para el calendario cuatrimestral de abajo:
 - **2026-05-09** — Cierre de Fase 0a. Auditoría de coherencia aplicada (21 hallazgos resueltos). 6 ADRs nuevos (014–019). Variables de entorno expandidas con Turnstile (`TURNSTILE_*`) y R2 (`R2_*`). Política de stock cerrada (reserva al `PENDING_PAYMENT` + descuento al `PAID`). Background jobs migran de Vercel Cron a `pgmq` + `pg_cron`. Rate-limit y cache se mueven a Postgres. Documento `SECURITY.md` creado como fuente única de seguridad.
 - **2026-05-09** — Documento creado en Fase 0a.
 
-> **Estado pg_cron (verificado 2026-07-18 con la key de la DB).** Los 7 jobs HTTP (`lucams-*`) quedaron **agendados y corriendo** en el proyecto Supabase de dev: se crearon los secretos `cron_base_url` (= URL ngrok fija de dev) y `cron_secret` (= `CRON_SECRET`) en el Vault, y se aplicaron las migraciones `supabase/migrations/015` + `016`. Confirmado end-to-end: el endpoint responde 200 con el header `x-cron-secret` y 401 sin él; `cron.job_run_details` + los heartbeats (`AlertState cron:*`, dead-man switch #15) muestran ejecuciones reales. **Para producción:** actualizar el secreto `cron_base_url` del Vault a `https://lucamsshop.com` cuando el dominio esté vivo (`select vault.update_secret((select id from vault.secrets where name='cron_base_url'), 'https://lucamsshop.com');`).
+> **Estado pg_cron (verificado 2026-07-18 con la key de la DB).** Los 7 jobs HTTP (`lucams-*`) quedaron **agendados y corriendo** en el proyecto Supabase de dev: se crearon los secretos `cron_base_url` (= URL ngrok fija de dev) y `cron_secret` (= `CRON_SECRET`) en el Vault, y se aplicaron las migraciones `supabase/migrations/015` + `016`. Confirmado end-to-end: el endpoint responde 200 con el header `x-cron-secret` y 401 sin él; `cron.job_run_details` + los heartbeats (`AlertState cron:*`, dead-man switch #15) muestran ejecuciones reales. **Para producción:** actualizar el secreto `cron_base_url` del Vault a `https://lucamsshop.com` cuando el dominio esté vivo (`select vault.update_secret((select id from vault.secrets where name='cron_base_url'), 'https://lucamsshop.com');`). _(Hecho — el `cron_base_url` de PRD ya apunta a `https://lucamsshop.com` (homologación 2026-08-01) y hoy son 8 jobs HTTP + 2 SQL puros: ver «Jobs HTTP pg_cron».)_

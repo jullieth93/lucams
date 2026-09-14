@@ -11,7 +11,12 @@
  *
  * `version` viene del campo CMS PRIVACY_POLICY_VERSION editable
  * desde admin. Cambiar el valor de ese setting invalida los consents
- * previos y dispara re-banner para visitantes recurrentes.
+ * previos y dispara re-banner para visitantes recurrentes (implementado
+ * en CF-15/N-15): el root layout lee la versión vigente con
+ * `getSiteSetting` (cacheada, tag `cms`) y se la pasa a `<CookiesBanner>`,
+ * que la compara contra la `policyVersion` guardada en la cookie de
+ * consentimiento — mismatch → re-consent. La versión se estampa acá
+ * server-side (no se confía en la del cliente).
  */
 
 import "server-only";
@@ -27,7 +32,7 @@ export async function recordCookieConsent(input: {
   ip?: string | null;
   userAgent?: string | null;
 }) {
-  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1");
+  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v5 · 2026-09-04");
 
   const rows = CONSENT_SCOPES.map((s) => ({
     scope: s.scope,
@@ -55,7 +60,7 @@ export async function recordHabeasDataConsent(input: {
   ip?: string | null;
   userAgent?: string | null;
 }) {
-  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1");
+  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v5 · 2026-09-04");
   await prisma.consent.create({
     data: {
       scope: "HABEAS_DATA",
@@ -90,7 +95,7 @@ export async function buildQuoteConsentRow(input: {
   ip?: string | null;
   userAgent?: string | null;
 }) {
-  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1");
+  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v5 · 2026-09-04");
   return {
     version,
     row: {
@@ -112,7 +117,7 @@ export async function recordCheckoutDataConsent(input: {
   ip?: string | null;
   userAgent?: string | null;
 }) {
-  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1");
+  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v5 · 2026-09-04");
   await prisma.consent.create({
     data: {
       scope: "HABEAS_DATA",

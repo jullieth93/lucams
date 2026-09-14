@@ -110,3 +110,63 @@ export const geminiProvider: AiProvider = {
     );
   },
 };
+
+// ──────────────────────────── Sonda de salud (panel /admin/integraciones) ────────────────────────────
+
+export type GeminiHealth = {
+  status: "ok" | "fail" | "skipped";
+  detail?: string;
+  latencyMs: number;
+};
+
+/**
+ * Sonda SEGURA de Gemini (N-19c, auditoría 2026-09-11): listado de modelos
+ * (`GET /v1beta/models`, autenticada con el mismo header x-goog-api-key que el
+ * provider). Valida que la key AUTENTICA — el modo de fallo que importa: una key
+ * inválida/revocada deja las sugerencias del Estudio cayendo en silencio a
+ * "sin ideas". NUNCA llama generateContent: una sonda no debe consumir cuota de
+ * generación ni tener efectos laterales. Sin GEMINI_API_KEY → skipped (no
+ * configurada, nunca una falsa alarma).
+ */
+export async function probeGeminiHealth(): Promise<GeminiHealth> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return { status: "skipped", detail: "GEMINI_API_KEY no configurada.", latencyMs: 0 };
+  }
+  const start = Date.now();
+  try {
+    const res = await fetchWithTimeout(API_BASE, {
+      timeoutMs: 6000,
+      headers: { "x-goog-api-key": apiKey },
+    });
+    const latencyMs = Date.now() - start;
+    if (!res.ok) {
+      // 400/401/403 = la API responde pero la key no autentica; 5xx = Google caído.
+      logger.warn({ event: "health.gemini.http_fail", status: res.status, latencyMs });
+      return {
+        status: "fail",
+        detail: `Gemini devolvió HTTP ${res.status} (¿GEMINI_API_KEY inválida/revocada o API caída?).`,
+        latencyMs,
+      };
+    }
+    const data = (await res.json()) as { models?: unknown[] };
+    const modelCount = Array.isArray(data.models) ? data.models.length : 0;
+    return {
+      status: "ok",
+      detail: `Key válida · ${modelCount} modelos disponibles`,
+      latencyMs,
+    };
+  } catch (err) {
+    const latencyMs = Date.now() - start;
+    logger.error({
+      event: "health.gemini.fail",
+      latencyMs,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      status: "fail",
+      detail: "Gemini healthcheck falló (timeout o error de red).",
+      latencyMs,
+    };
+  }
+}

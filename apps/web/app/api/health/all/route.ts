@@ -20,7 +20,7 @@ import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
-import { getTrustedSelfBaseUrl } from "@/lib/origin";
+import { getTrustedSelfBaseUrl, vercelBypassHeaders } from "@/lib/origin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,8 +39,9 @@ async function probe(name: string, path: string, baseUrl: string): Promise<Check
       cache: "no-store",
       // `manual`: un 3xx aquí NO es el sub-probe, es una interposición (Deployment Protection,
       // portal cautivo). Siguiéndolo se parseaba el HTML del login y salía un críptico
-      // "Unexpected token '<'" en vez de decir qué pasó realmente.
+      // "Unexpected token '<'" en vez de decir qué pasó realmente. Con bypass si está disponible.
       redirect: "manual",
+      headers: vercelBypassHeaders(),
       signal: AbortSignal.timeout(6000),
     });
     const latencyMs = Date.now() - start;

@@ -16,8 +16,9 @@
  *
  * El mensaje es PACK-LEVEL: escribe el override en TODOS los slots (la misma
  * frase va impresa en cada imán del pack). Ola 4 (Lucy 2026-07-23): el mensaje es
- * OPCIONAL — vacío = NO se imprime nada (el placeholder "Escribe tu mensaje" es
- * solo guía, en el canvas se ve atenuado y nunca se hornea en producción).
+ * OPCIONAL — vacío = NO se imprime nada. Ola 25 (2026-09-09): el placeholder
+ * "Escribe tu mensaje" ya no se dibuja NI atenuado en el canvas — la tarjeta nace
+ * vacía y el default solo se ve como placeholder gris de este campo.
  */
 
 import { useStore } from "zustand";
@@ -79,6 +80,15 @@ export function StudioMessageField({ store }: { store: StoreApi<StudioStoreState
         className="border-brand-purple/15 text-brand-purple-dark focus:border-brand-turquoise focus:ring-brand-turquoise/30 w-full rounded-md border px-3 py-2 text-sm transition-colors focus:ring-2 focus:outline-none"
       />
       <p className="text-brand-muted mt-2 text-xs">{texts.texto.mensajeAyuda}</p>
+      {/* Lucy 2026-09-08 — aviso visible (aprobado "Mantener con aviso"): el mensaje
+          es PACK-LEVEL, se imprime igual en todas las fotos del set. Va en caja
+          destacada (no en el gris del hint) para que no pase desapercibido. */}
+      <p
+        role="note"
+        className="bg-brand-yellow/15 border-brand-yellow/40 text-brand-purple-dark mt-2 rounded-md border px-3 py-2 text-xs leading-snug font-medium"
+      >
+        {texts.texto.mensajeGlobalAviso}
+      </p>
     </section>
   );
 }

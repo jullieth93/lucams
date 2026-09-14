@@ -28,17 +28,26 @@
  */
 
 import { frameColorById, isStripTemplate } from "./frame-palette";
+import { designUnitPriceMultiplier, letterSetUnitCount } from "./design-units";
 
 /**
  * Qué es físicamente lo que sale de la impresora. Es una unión discriminada porque cada caso lleva
  * un paso de armado distinto y confundirlos arruina la pieza.
+ *
+ * Multi-unidad (2026-09-09): el diseño puede contener N UNIDADES (2 tiras, 2
+ * calendarios, 2 sets de fichas) — cada caso declara las unidades para que el
+ * armado las separe por pieza física y no las mezcle.
  */
 export type FormatoFisico =
-  | { tipo: "lamina-fichas"; fichas: number }
-  | { tipo: "tira-continua"; segmentos: number }
+  | { tipo: "lamina-fichas"; fichas: number; laminas?: number }
+  | { tipo: "tira-continua"; segmentos: number; tiras?: number }
   | { tipo: "tira-desplegada"; tiras: number }
   | { tipo: "caras-sueltas"; unidades: number }
-  | { tipo: "piezas-sueltas"; piezas: number };
+  | {
+      tipo: "piezas-sueltas";
+      piezas: number;
+      unidades?: { count: number; singular: string; plural: string; piezasPorUnidad: number };
+    };
 
 export type DatoDeFicha = { etiqueta: string; valor: string; color?: string };
 
@@ -97,7 +106,9 @@ function resolverFormato(e: Entrada): FormatoFisico {
   const letters = e.designMetadata?.letters;
   if (Array.isArray(letters) && letters.length > 0) {
     // El editor de nombre/abecedario dibuja TODAS las fichas en un solo canvas y sube un PNG.
-    return { tipo: "lamina-fichas", fichas: letters.length };
+    // Multi-unidad (2026-09-09): con N sets el cliente sube N láminas (una por set).
+    const laminas = letterSetUnitCount(e.designMetadata);
+    return { tipo: "lamina-fichas", fichas: letters.length, ...(laminas > 1 ? { laminas } : {}) };
   }
 
   const unitTemplate = (e.canvasData?.unitTemplate ?? {}) as Record<string, unknown>;
@@ -106,7 +117,22 @@ function resolverFormato(e: Entrada): FormatoFisico {
     isStripTemplate(unitTemplate as { gridCols?: unknown; gridGap?: unknown }) ||
     (grid.cols === 1 && grid.gap === 0);
   if (esTira && e.productionUrls.length > 0) {
-    return { tipo: "tira-continua", segmentos: e.productionUrls.length };
+    // Multi-unidad (2026-09-09): el diseño declara cuántas fotos lleva CADA tira
+    // (unitSlots) → los archivos se agrupan en tiras independientes (2 tiras de
+    // 3 segmentos ≠ 6 segmentos de una tira).
+    const unitSlots =
+      typeof e.canvasData?.unitSlots === "number" && e.canvasData.unitSlots >= 1
+        ? e.canvasData.unitSlots
+        : null;
+    const tiras =
+      unitSlots !== null && e.productionUrls.length > unitSlots
+        ? Math.round(e.productionUrls.length / unitSlots)
+        : 1;
+    return {
+      tipo: "tira-continua",
+      segmentos: e.productionUrls.length,
+      ...(tiras > 1 ? { tiras } : {}),
+    };
   }
 
   const facesPerUnit = n(e.productSchema?.facesPerUnit) ?? 1;
@@ -118,6 +144,30 @@ function resolverFormato(e: Entrada): FormatoFisico {
       return { tipo: "tira-desplegada", tiras: e.productionUrls.length };
     }
     return { tipo: "caras-sueltas", unidades: Math.ceil(e.productionUrls.length / 2) };
+  }
+
+  // Multi-unidad (2026-09-09): piezas sueltas que forman SETS (calendario ×2 =
+  // 2 calendarios de 12 páginas). unitCount/unitSlots declarados en el diseño.
+  const unitCount =
+    typeof e.canvasData?.unitCount === "number" && e.canvasData.unitCount > 1
+      ? e.canvasData.unitCount
+      : null;
+  const unitSlots =
+    typeof e.canvasData?.unitSlots === "number" && e.canvasData.unitSlots >= 1
+      ? e.canvasData.unitSlots
+      : null;
+  if (unitCount !== null && unitSlots !== null) {
+    const esCalendario = e.personalizationKind === "CALENDAR_PHOTO_MONTH";
+    return {
+      tipo: "piezas-sueltas",
+      piezas: e.productionUrls.length,
+      unidades: {
+        count: unitCount,
+        singular: esCalendario ? "calendario" : "unidad",
+        plural: esCalendario ? "calendarios" : "unidades",
+        piezasPorUnidad: unitSlots,
+      },
+    };
   }
 
   return { tipo: "piezas-sueltas", piezas: e.productionUrls.length };
@@ -135,24 +185,39 @@ function describirFormato(
     : ["⚠️ Esta variante va SIN imán: no le pegues imán."];
 
   switch (f.tipo) {
-    case "lamina-fichas":
+    case "lamina-fichas": {
+      const laminas = f.laminas ?? 1;
       return {
-        frase: `1 lámina con las ${f.fichas} fichas dibujadas juntas. NO es una pieza: hay que recortarla.`,
+        frase:
+          laminas > 1
+            ? `${laminas} láminas (una por set), cada una con las ${f.fichas} fichas dibujadas juntas. NO son piezas: hay que recortarlas.`
+            : `1 lámina con las ${f.fichas} fichas dibujadas juntas. NO es una pieza: hay que recortarla.`,
         pasos: [
-          `Imprime la lámina completa, tal cual, sin recortarla en el computador.`,
-          `Recorta las ${f.fichas} fichas siguiendo la separación entre ellas.`,
+          laminas > 1
+            ? `Imprime las ${laminas} láminas completas, tal cual, sin recortarlas en el computador.`
+            : `Imprime la lámina completa, tal cual, sin recortarla en el computador.`,
+          `Recorta las ${f.fichas} fichas de cada lámina siguiendo la separación entre ellas (${laminas > 1 ? `${laminas} × ${f.fichas} en total` : `${f.fichas} en total`}).`,
           ...pegarImán,
         ],
       };
-    case "tira-continua":
+    }
+    case "tira-continua": {
+      const tiras = f.tiras ?? 1;
+      const porTira = tiras > 1 ? Math.round(f.segmentos / tiras) : f.segmentos;
       return {
-        frase: `${f.segmentos} archivos que son SEGMENTOS de UNA sola tira. No son ${f.segmentos} piezas.`,
+        frase:
+          tiras > 1
+            ? `${f.segmentos} archivos que son SEGMENTOS de ${tiras} tiras (${porTira} por tira). No son ${f.segmentos} piezas ni una sola tira.`
+            : `${f.segmentos} archivos que son SEGMENTOS de UNA sola tira. No son ${f.segmentos} piezas.`,
         pasos: [
           `Imprime los ${f.segmentos} segmentos.`,
-          `Únelos a tope, en orden, para formar la tira completa. Sin separación entre ellos.`,
+          tiras > 1
+            ? `Únelos a tope, en orden, ${porTira} por tira: forman ${tiras} tiras completas. Sin separación entre segmentos.`
+            : `Únelos a tope, en orden, para formar la tira completa. Sin separación entre ellos.`,
           ...pegarImán,
         ],
       };
+    }
     case "tira-desplegada":
       return {
         frase: `${f.tiras} tira(s) DESPLEGADA(S): cada archivo trae las dos caras lado a lado.`,
@@ -171,7 +236,18 @@ function describirFormato(
           ...pegarImán,
         ],
       };
-    case "piezas-sueltas":
+    case "piezas-sueltas": {
+      if (f.unidades && f.unidades.count > 1) {
+        const u = f.unidades;
+        return {
+          frase: `${f.piezas} archivos que forman ${u.count} ${u.plural} de ${u.piezasPorUnidad} piezas cada uno. No son ${f.piezas} piezas sueltas.`,
+          pasos: [
+            `Imprime los ${f.piezas} archivos.`,
+            `Agrúpalos en ${u.count} ${u.plural}: cada uno lleva sus ${u.piezasPorUnidad} piezas en orden.`,
+            ...pegarImán,
+          ],
+        };
+      }
       return {
         frase: `${f.piezas} pieza(s), una por archivo.`,
         pasos: [
@@ -180,6 +256,7 @@ function describirFormato(
           ...pegarImán,
         ],
       };
+    }
   }
 }
 
@@ -191,7 +268,14 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
   // Multiplicador de pack: "Set Notas Magnéticas ×2" son 8 imanes, no 2. 101 variantes lo traen y
   // hasta hoy no lo leía nadie.
   const piezasPorPack = n(attrs.quantity) ?? 1;
-  const unidadesFisicas = e.lineQty * piezasPorPack;
+  // Multi-unidad (2026-09-09): el DISEÑO puede contener N unidades cuando la variante
+  // cubre UNA (tiras, calendarios, sets de letras ×N). Mismo multiplicador que el
+  // precio en el carrito (design-units.ts) — imprenta debe fabricar TODAS las
+  // unidades de la línea. Packs (polaroid/separadores) → 1: la variante ya es el pack.
+  const designUnits =
+    designUnitPriceMultiplier(e.canvasData, n(e.productSchema?.facesPerUnit) ?? 1) *
+    letterSetUnitCount(e.designMetadata);
+  const unidadesFisicas = e.lineQty * piezasPorPack * designUnits;
 
   // `magnet: false` existe en 33 variantes (los sets de letras y el nombre se venden en las dos
   // versiones). Por defecto SÍ lleva: es lo que vende la tienda.
@@ -234,6 +318,15 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
   }
 
   const personalizacion: DatoDeFicha[] = [];
+  // Multi-unidad (2026-09-09) — el diseño contiene N unidades y TODAS se fabrican
+  // (tiras ×2, calendarios ×2, sets ×2). La ficha lo dice explícito: del PNG solo
+  // no se deduce que son varias piezas independientes.
+  if (designUnits > 1) {
+    personalizacion.push({
+      etiqueta: "Unidades del diseño",
+      valor: `${designUnits} unidades distintas — fabricar TODAS (ver «Qué es cada archivo»)`,
+    });
+  }
   // El color del marco lo eligió el CLIENTE en el Estudio; la variante trae un `frameStyle` que solo
   // es el valor inicial. Imprimir el de la variante da un color equivocado en el control de calidad.
   const border = s(e.canvasData?.borderColor);
@@ -266,6 +359,18 @@ export function resolveProductionSpec(e: Entrada): ProductionSpec {
   }
   const estilo = s(e.designMetadata?.styleSetId);
   if (estilo) personalizacion.push({ etiqueta: "Estilo ilustrado", valor: estilo });
+
+  // Lucy 2026-09-05 — opción de diseño "Sin borde" de los sets de letras; Lucy 2026-09-09 —
+  // la misma opción en las tiras de nombre. El PNG la refleja, pero la ficha debe decirla
+  // explícita: sin borde la lámina se recorta por el contorno de cada ficha, no por el marco
+  // de color. Default retrocompatible: metadata sin la clave = con borde (lo histórico), así
+  // que solo se anota el caso distinto.
+  if (
+    (e.designMetadata?.surface === "letterset" || e.designMetadata?.surface === "name") &&
+    e.designMetadata.withBorder === false
+  ) {
+    personalizacion.push({ etiqueta: "Borde", valor: "Sin borde — recortar a ras del contorno" });
+  }
 
   // Textos que escribió el cliente: hay que cotejarlos con lo impreso (tildes incluidas).
   const slots = e.canvasData?.slots;

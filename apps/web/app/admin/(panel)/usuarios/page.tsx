@@ -28,7 +28,7 @@ import {
   AdminTableHead,
   AdminTableRow,
 } from "@/components/admin-page";
-import { ConfirmAction } from "@/components/admin/confirm-action";
+import { ReauthForm } from "@/components/admin/mfa-reauth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getCurrentAdmin } from "@/lib/auth";
@@ -324,7 +324,10 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         {!isSelf && (
-                          <form action={changeAdminRoleAction} className="flex items-center gap-1">
+                          <ReauthForm
+                            action={changeAdminRoleAction}
+                            className="flex items-center gap-1"
+                          >
                             <input type="hidden" name="id" value={a.id} />
                             <select
                               name="role"
@@ -343,12 +346,12 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                             >
                               Guardar
                             </button>
-                          </form>
+                          </ReauthForm>
                         )}
                         {!isSelf && (
-                          <ConfirmAction
+                          <ReauthForm
                             action={toggleAdminActiveAction}
-                            message={
+                            confirmMessage={
                               a.isActive
                                 ? `¿Desactivar ${a.email}? No podrá acceder al panel hasta que se reactive.`
                                 : `¿Reactivar ${a.email}?`
@@ -365,7 +368,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                             >
                               {a.isActive ? "Desactivar" : "Reactivar"}
                             </button>
-                          </ConfirmAction>
+                          </ReauthForm>
                         )}
                       </div>
                     </td>

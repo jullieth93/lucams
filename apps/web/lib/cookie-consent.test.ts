@@ -5,9 +5,13 @@ import {
   COOKIE_CONSENT_NAME,
   COOKIE_CONSENT_VERSION,
   emptyPreferences,
+  hasAnalyticsConsent,
+  needsConsentBanner,
   readClientCookiePreferences,
   rejectAllPreferences,
+  withPolicyVersion,
   writeClientCookiePreferences,
+  type CookiePreferences,
 } from "./cookie-consent";
 
 afterEach(() => {
@@ -58,6 +62,18 @@ describe("read/write client cookie", () => {
     expect(read?.marketing).toBe(true);
   });
 
+  it("round-trips the accepted policyVersion (N-15 re-consent)", () => {
+    writeClientCookiePreferences(withPolicyVersion(acceptAllPreferences(), "v5 · 2026-09-04"));
+    expect(readClientCookiePreferences()?.policyVersion).toBe("v5 · 2026-09-04");
+  });
+
+  it("drops a policyVersion with invalid shape (non-string / empty)", () => {
+    document.cookie = `${COOKIE_CONSENT_NAME}=${encodeURIComponent(
+      JSON.stringify({ v: COOKIE_CONSENT_VERSION, necessary: true, policyVersion: "" }),
+    )}; Path=/`;
+    expect(readClientCookiePreferences()?.policyVersion).toBeUndefined();
+  });
+
   it("invalidates cookie of older version", () => {
     document.cookie = `${COOKIE_CONSENT_NAME}=${encodeURIComponent(
       JSON.stringify({ v: 0, necessary: true, functional: true }),
@@ -68,5 +84,78 @@ describe("read/write client cookie", () => {
   it("returns null if cookie value is malformed JSON", () => {
     document.cookie = `${COOKIE_CONSENT_NAME}=not-a-json-value; Path=/`;
     expect(readClientCookiePreferences()).toBeNull();
+  });
+});
+
+describe("needsConsentBanner (N-15 re-consent)", () => {
+  const decided: CookiePreferences = { ...acceptAllPreferences(), policyVersion: "v5" };
+
+  it("sin cookie → true (primera visita)", () => {
+    expect(needsConsentBanner(null, "v5")).toBe(true);
+    expect(needsConsentBanner(null, null)).toBe(true);
+  });
+
+  it("setting CMS ausente (null) → NUNCA re-muestra (fallback = comportamiento de hoy)", () => {
+    expect(needsConsentBanner(decided, null)).toBe(false);
+    // Incluso una cookie sin versión aceptada: sin versión vigente no hay con qué comparar.
+    expect(needsConsentBanner(acceptAllPreferences(), null)).toBe(false);
+  });
+
+  it("cookie legacy sin policyVersion → false (se sana en silencio, no se re-muestra)", () => {
+    expect(needsConsentBanner(acceptAllPreferences(), "v5")).toBe(false);
+  });
+
+  it("misma versión aceptada → false", () => {
+    expect(needsConsentBanner(decided, "v5")).toBe(false);
+  });
+
+  it("versión NUEVA del aviso → true (re-consent a visitantes recurrentes)", () => {
+    expect(needsConsentBanner(decided, "v6")).toBe(true);
+  });
+});
+
+describe("withPolicyVersion (N-15)", () => {
+  it("estampa la versión vigente conservando la decisión", () => {
+    const stamped = withPolicyVersion(rejectAllPreferences(), "v5");
+    expect(stamped.policyVersion).toBe("v5");
+    expect(stamped.functional).toBe(false);
+    expect(stamped.analytics).toBe(false);
+  });
+
+  it("con null no firma una versión que el sitio no conoce", () => {
+    const stamped = withPolicyVersion(acceptAllPreferences(), null);
+    expect(stamped.policyVersion).toBeUndefined();
+  });
+});
+
+describe("hasAnalyticsConsent (F-19 gate)", () => {
+  it("returns false when the visitor has not answered yet (no cookie)", () => {
+    // Opt-in: sin respuesta explícita no corre nada de analítica.
+    expect(hasAnalyticsConsent()).toBe(false);
+  });
+
+  it("returns false after 'Solo necesarias' (reject all)", () => {
+    writeClientCookiePreferences(rejectAllPreferences());
+    expect(hasAnalyticsConsent()).toBe(false);
+  });
+
+  it("returns true after 'Aceptar todas'", () => {
+    writeClientCookiePreferences(acceptAllPreferences());
+    expect(hasAnalyticsConsent()).toBe(true);
+  });
+
+  it("returns true with a granular choice of analytics only", () => {
+    writeClientCookiePreferences({
+      ...rejectAllPreferences(),
+      analytics: true,
+    });
+    expect(hasAnalyticsConsent()).toBe(true);
+  });
+
+  it("reflects a mid-session revocation without reload", () => {
+    writeClientCookiePreferences(acceptAllPreferences());
+    expect(hasAnalyticsConsent()).toBe(true);
+    writeClientCookiePreferences(rejectAllPreferences());
+    expect(hasAnalyticsConsent()).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 /*
- * Fixture de auth E2E — storageState por ambiente (PROMPT_E2E_HOMOLOGACION §8:
+ * Fixture de auth E2E — storageState por ambiente (docs/TESTING.md —
  * "auth compartida SOLO vía storageState generado en global.setup por ambiente").
  *
  *   import { test, expect } from "./fixtures/auth";

@@ -2,12 +2,12 @@
  * FULL-MODE E2E §7.5.5 — Stock: oversold imposible sobre la última unidad.
  *
  * DIVERGENCIA documentada respecto al prompt: el repo NO implementa reservas
- * (`StockReservation` existe en el schema sin consumidores y no existe el cron
- * `stock_reservation_cleanup` — features/orders/stock.ts:25). El modelo real
- * es: lectura validadora en cada paso + DECREMENTO ATÓMICO condicional
- * (UPDATE … WHERE stock>=qty) dentro de la tx del PAID. La carrera sobre la
- * última unidad se resuelve así: el segundo pago NO se confirma — la orden
- * queda PENDING_PAYMENT marcada needsReconciliation (visible en
+ * (`StockReservation` se retiró del schema en N-10a — nunca tuvo consumidores;
+ * su cron `stock_reservation_cleanup` se des-agenda en la migración supabase 033).
+ * El modelo real es: lectura validadora en cada paso + DECREMENTO ATÓMICO
+ * condicional (UPDATE … WHERE stock>=qty) dentro de la tx del PAID. La carrera
+ * sobre la última unidad se resuelve así: el segundo pago NO se confirma — la
+ * orden queda PENDING_PAYMENT marcada needsReconciliation (visible en
  * /admin/pedidos) y el stock JAMÁS queda negativo. Este spec certifica ESE
  * modelo, no el del prompt.
  *

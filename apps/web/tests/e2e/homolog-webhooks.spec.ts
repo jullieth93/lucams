@@ -1,6 +1,5 @@
 /*
- * HOMOLOGACIÓN E2E — webhooks entrantes como flujo (PROMPT_E2E_HOMOLOGACION
- * §8): "firma Wompi sintética bien/mal formada (200/401), dedup por reintento
+ * HOMOLOGACIÓN E2E — webhooks entrantes como flujo (docs/TESTING.md): "firma Wompi sintética bien/mal formada (200/401), dedup por reintento
  * del mismo evento, environment-match (sandbox≠prod); Resend Svix (firma +
  * tolerancia anti-replay + idempotencia por resendId); Aveonline con secret
  * por header (dedup + timing-safe). Sin compras ni guías reales."

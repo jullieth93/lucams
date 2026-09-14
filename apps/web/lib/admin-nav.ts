@@ -25,7 +25,6 @@ import {
   ShieldBan,
   BarChart2,
   Settings,
-  MessageSquare,
   Box,
   Users,
   AlertCircle,
@@ -57,6 +56,7 @@ import {
   Headset,
   Image,
   Bell,
+  LayoutTemplate,
 } from "lucide-react";
 import { isCatalogMode } from "@/lib/store-mode";
 
@@ -155,7 +155,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/soporte",
         icon: LifeBuoy,
         description:
-          "Tickets de soporte que llegan desde /contacto: responder por email, asignar estado y cerrar. La respuesta sale con la plantilla de correo configurada.",
+          "Tickets de soporte que llegan desde /contacto: responder por email (mailto), asignar estado y cerrar. Al cerrar, el cliente recibe aviso por correo. Bandeja única — acá converge la antigua /admin/mensajes (N-09).",
       },
       {
         label: "Moderación",
@@ -209,12 +209,27 @@ export const ADMIN_NAV: NavGroup[] = [
         description:
           "Revisa el preview REAL de cada plantilla del Estudio y apruébala (aparece para el cliente) u ocúltala. Aprobar una descartada la restaura.",
       },
+      // N-16 (2026-09-11): módulos completos que solo eran alcanzables desde los
+      // QuickLinks del dashboard. Mismo grupo que "Plantillas del Estudio" (los 3
+      // alimentan el Estudio; permiso de ruta CATALOG/MANAGER_UP en admin-rbac).
+      {
+        label: "Diseños prediseñados",
+        href: "/admin/disenos",
+        icon: LayoutTemplate,
+        description:
+          "Imágenes de diseño listas que el cliente aplica con un toque en el Estudio (en vez de subir su propia foto), agrupadas por producto.",
+      },
+      {
+        label: "Fichas del abecedario",
+        href: "/admin/fichas",
+        icon: Shapes,
+        description:
+          "Abecedarios ilustrados por tema (Animales, Navidad…). Alimentan el editor de nombres y los packs de letras del Estudio.",
+      },
       // Lucy 2026-06-26 — Opción C — Entries placeholder eliminadas del sidebar:
       // - "Plantillas" (chocaba con /admin/email-templates y con PersonalizationTemplate
       //   ya seedeado en BD). Cuando se construya el editor de plantillas del Estudio,
       //   irá en grupo "Estudio" con nombre "Plantillas del Estudio".
-      // - "Recomendaciones" será dashboard de analytics sobre RecommendationLog, no
-      //   editor — pertenece al grupo "Analítica" cuando llegue Fase 4.
     ],
   },
   {
@@ -375,7 +390,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/email-templates",
         icon: Mail,
         description:
-          "Lista de CmsBlocks tipo EMAIL (asunto + cuerpo + CTA). Editor reusa /admin/contenido. Layout react-email vive en código.",
+          "Textos de correo que SÍ viven en el CMS (hoy: asunto y preheader de la bienvenida al newsletter). Las demás plantillas transaccionales viven en código (features/emails/templates); sus datos globales (email de contacto, WhatsApp) se editan en Ajustes del sitio.",
       },
       // P1-17: movido desde "Promociones" — es plumbing SEO, no oferta comercial.
       {
@@ -387,14 +402,16 @@ export const ADMIN_NAV: NavGroup[] = [
       },
     ],
   },
-  {
-    title: "Mensajes",
-    icon: MessageSquare,
-    href: "/admin/mensajes",
-    description:
-      "Bandeja de mensajes de clientes (tickets de soporte): abiertos, en proceso y cerrados.",
-  },
 ];
+
+/* N-09 (2026-09-11): la entrada top-level "Mensajes" (/admin/mensajes) se ELIMINÓ
+ * del nav — era una segunda bandeja sobre el mismo servicio de tickets que
+ * /admin/soporte (mismas acciones, permisos y auditoría). /admin/mensajes queda
+ * como redirect permanente (308) a /admin/soporte; la bandeja operativa única es
+ * "Soporte" dentro del grupo "Servicio al cliente". La decisión de NO fusionar de
+ * más arriba (Servicio al cliente, 2026-07-28) cubre los 4 tipos de caso legales;
+ * este par SÍ se fusionó porque no había flujo legal distinto: misma tabla, mismo
+ * servicio, misma matriz RBAC (CATALOG). */
 
 /**
  * NAV efectivo según el modo de tienda (Etapa 1/2 — lib/store-mode).

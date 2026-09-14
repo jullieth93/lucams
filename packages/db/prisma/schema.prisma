@@ -11,7 +11,7 @@
 //   - Audit fields en TODA entidad MUTABLE: createdAt, updatedAt,
 //     createdBy, updatedBy, deletedAt, deletedBy.
 //   - Append-only logs (InventoryLog, LoyaltyTxn, AdminActionLog,
-//     WebhookEvent, Referral, StockReservation): solo createdAt.
+//     WebhookEvent, Referral): solo createdAt.
 //   - Soft delete: filtrar por `deletedAt IS NULL` en repositories.
 //   - onDelete explícito en cada relación.
 //
@@ -149,8 +149,6 @@ model Customer {
   backInStockSubs    BackInStockSubscription[]
   // PLAN_CATALOG_V2 3.9 — tracking de cupones usados.
   couponUsages       CouponUsage[]
-  // PLAN_CATALOG_V2 6.10 — logs de recomendaciones consumidas (CTR + conversión).
-  recommendationLogs RecommendationLog[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -364,6 +362,19 @@ model Product {
   deletedAt DateTime?
   deletedBy String?
 
+  // NOTA F-13 (auditoría 2026-09-04): los índices GIN trigram de búsqueda de
+  // este modelo son de EXPRESIÓN (public.immutable_unaccent(lower(...))) y
+  // viven en supabase/migrations/00000000000031_product_search_trgm_expression_indexes.sql
+  // — reemplazan a los de la 00000000000005 y a Product_richDescription_trgm_idx
+  // (Prisma 20260515), que no matcheaban las queries reales. Si cambian las
+  // expresiones de búsqueda en apps/web/lib/catalog.ts, hay que cambiar los
+  // índices: el planner exige match estructural o no los usa.
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+
   @@index([deletedAt])
   @@index([categoryId])
   @@index([isActive, isFeatured])
@@ -395,7 +406,6 @@ model ProductVariant {
   cartItems      CartItem[]
   orderItems     OrderItem[]
   quoteItems     QuoteItem[]
-  reservations   StockReservation[]
   isActive       Boolean            @default(true)
 
   createdAt DateTime  @default(now())
@@ -404,6 +414,12 @@ model ProductVariant {
   updatedBy String?
   deletedAt DateTime?
   deletedBy String?
+
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([productId, deletedAt])
   @@index([stock])
@@ -479,6 +495,12 @@ model CartItem {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+
   @@index([cartId])
   @@index([variantId])
   @@index([designId])
@@ -525,6 +547,18 @@ model Order {
   refundedBy              String?
   refundReason            String?
   refundAmount            Int?
+  // N-17 — confirmación OBLIGATORIA del dinero en el reembolso: el movimiento
+  // en Wompi es manual y el admin debe marcar el checkbox "el dinero ya fue
+  // devuelto" ANTES de que la orden pase a REFUNDED y salga el email
+  // refund-issued. refundMoneyConfirmedBy = AdminUser.id de quien confirmó.
+  refundMoneyConfirmedAt  DateTime?
+  refundMoneyConfirmedBy  String?
+  // N-22a — anti-spam del email "tu pago no fue aprobado" (webhook Wompi
+  // DECLINED/ERROR con la orden aún PENDING_PAYMENT y reintentable): timestamp
+  // del último aviso al cliente (null = nunca avisado). El sender hace un claim
+  // atómico (updateMany gateado por cooldown) ANTES de enviar → máx. 1 email
+  // por orden cada N horas aunque el cliente reintente el pago muchas veces.
+  paymentFailedNotifiedAt DateTime?
   // #2 (post-launch Bloque A) — timestamp de envío del email de confirmación.
   // Hace el envío idempotente Y recuperable: si la saga crashea entre el commit
   // de PAID y el envío del email, un reintento de processPaidOrder lo manda
@@ -594,6 +628,12 @@ model Order {
   deletedAt DateTime?
   deletedBy String?
 
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+
   @@index([customerId, deletedAt])
   @@index([status, createdAt])
   @@index([wompiTransactionId])
@@ -648,6 +688,12 @@ model CodReconciliation {
   createdAt         DateTime                @default(now())
   updatedAt         DateTime                @updatedAt
 
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+
   @@index([status, updatedAt])
 }
 
@@ -681,6 +727,12 @@ model OrderItem {
   warrantyClaims WarrantyClaim[]
 
   createdAt DateTime @default(now())
+
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([orderId])
   @@index([variantId])
@@ -725,6 +777,14 @@ model Coupon {
   deletedAt DateTime?
   deletedBy String?
 
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+  // OJO: `value` queda en `>= 0` (no `> 0`) porque FREE_SHIPPING lo ignora
+  // y los cupones de envío gratis lo persisten en 0 (features/coupons/schemas.ts).
+
   @@index([code, isActive, deletedAt])
   @@index([validFrom, validTo])
   @@index([isPublic, isActive, deletedAt])
@@ -757,6 +817,12 @@ model CouponUsage {
   order      Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
   appliedAt  DateTime  @default(now())
   amount     Int // descuento aplicado en COP centavos
+
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([customerId, couponId])
   @@index([couponId, email])
@@ -794,6 +860,12 @@ model RetractRequest {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([status, requestedAt])
 }
@@ -950,22 +1022,6 @@ model WebhookEvent {
   @@index([processedAt])
 }
 
-// ──────────────────────── RESERVA DE STOCK (ADR-014) ────────────────────────
-
-model StockReservation {
-  id        String         @id @default(cuid())
-  orderId   String
-  variantId String
-  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  qty       Int
-  expiresAt DateTime
-  createdAt DateTime       @default(now())
-
-  @@index([expiresAt])
-  @@index([orderId])
-  @@index([variantId])
-}
-
 // ──────────────────────── AUDIT LOG ADMIN ────────────────────────
 
 model AdminActionLog {
@@ -1081,7 +1137,7 @@ model AlertState {
 // repeticiones de la misma alerta (se actualiza la fila no leída en vez de
 // duplicarla). Append-only salvo `readAt` (única mutación: marcar leída) —
 // no es entidad de negocio: sin audit fields ni soft delete, mismo criterio
-// que AlertState/SiteEvent. type/severity como String (no enum) para agregar
+// que AlertState/ErrorReport. type/severity como String (no enum) para agregar
 // tipos sin migración. Ver features/notifications/service.ts.
 model Notification {
   id          String    @id @default(cuid())
@@ -1099,25 +1155,6 @@ model Notification {
   @@index([readAt, createdAt])
   @@index([type, createdAt])
   @@index([dedupKey, createdAt])
-}
-
-// Eventos custom de funnel (add-to-cart, search, newsletter-signup,
-// product-view) — alternativa propia a Google Analytics. Solo se
-// escriben si el customer dió consentimiento ANALYTICS o MARKETING
-// según el caso. Append-only.
-
-model SiteEvent {
-  id         String   @id @default(cuid())
-  name       String // "cart.add" | "search.query" | "newsletter.signup" | "product.view" ...
-  customerId String?
-  sessionId  String?
-  route      String?
-  metadata   Json     @default("{}")
-  createdAt  DateTime @default(now())
-
-  @@index([name, createdAt])
-  @@index([customerId, createdAt])
-  @@index([sessionId, createdAt])
 }
 
 // Reportes de error capturados client+server, deduplicados por
@@ -1651,32 +1688,6 @@ model ProductOcasionTag {
   @@index([ocasionTagId])
 }
 
-// PLAN_CATALOG_V2 6.10 — tracking de recomendaciones para evolucionar scoring.
-// Cada call a /api/catalog/recommend, cross-sell cart, related PDP, o bot crea
-// un log. Datos para medir CTR + conversión + tunear pesos del scoring (decisión 6.2).
-model RecommendationLog {
-  id               String    @id @default(cuid())
-  sessionId        String // anon cart session UUID
-  customerId       String?
-  customer         Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  // "wizard" | "crosssell" | "related_pdp" | "api_bot" | "homepage_featured"
-  queryType        String
-  // Filtros / params usados en el query (JSON serializable).
-  queryParams      Json
-  // Productos sugeridos (slugs).
-  recommendedSlugs String[]
-  // Productos cliqueados por el cliente (slugs).
-  clickedSlugs     String[]  @default([])
-  // Productos efectivamente comprados de la sugerencia (slugs).
-  purchasedSlugs   String[]  @default([])
-
-  createdAt DateTime @default(now())
-
-  @@index([sessionId, createdAt])
-  @@index([customerId, createdAt])
-  @@index([queryType, createdAt])
-}
-
 // ──────────────────────── REDIRECTS (SEO) ────────────────────────
 //
 // UrlRedirect — mapeo arbitrario admin-managed para redirects 301/302
@@ -1803,6 +1814,12 @@ model Quote {
   deletedAt DateTime?
   deletedBy String?
 
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+
   @@index([status, createdAt])
   @@index([deletedAt])
 }
@@ -1830,6 +1847,12 @@ model QuoteItem {
 
   createdAt DateTime @default(now())
 
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+
   @@index([quoteId])
 }
 
@@ -1854,6 +1877,12 @@ model WholesaleTier {
   deletedAt DateTime?
   deletedBy String?
 
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
+
   @@index([productId, isActive])
   @@index([deletedAt])
 }
@@ -1876,6 +1905,12 @@ model Material {
   updatedBy String?
   deletedAt DateTime?
   deletedBy String?
+
+  // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
+  // de dinero/stock de este modelo viven en la migración Prisma
+  // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
+  // (mismo patrón SQL-only que el índice parcial de InventoryLog). Si agregás
+  // otra columna de centavos/stock acá, sumale su check en una migración nueva.
 
   @@index([isActive])
   @@index([deletedAt])

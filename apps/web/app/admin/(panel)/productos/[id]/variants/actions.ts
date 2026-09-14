@@ -23,7 +23,7 @@ import {
   VariantCreateSchema,
   VariantUpdateSchema,
   mergePreservingUnmanagedAttributes,
-  type ProductVariantAttributes,
+  parseAttributesFromForm,
 } from "@/features/products/variant-schemas";
 import { prisma } from "@/lib/db";
 
@@ -38,35 +38,11 @@ export type VariantActionState = {
  * Parsea attributes opcionales que vienen del form (todos como strings)
  * y convierte a tipo fuerte según valueType. Vacíos quedan undefined
  * para que Zod los omita.
+ *
+ * Vive en variant-schemas.ts (features/products) y no acá: un archivo
+ * "use server" solo puede exportar funciones async, y la lógica es pura
+ * (testeable en variant-schemas.test.ts).
  */
-function parseAttributesFromForm(fd: FormData): ProductVariantAttributes {
-  const attrs: ProductVariantAttributes = {};
-  const sizeCm = String(fd.get("attr_sizeCm") ?? "").trim();
-  if (sizeCm) attrs.sizeCm = sizeCm;
-  const photoSlots = String(fd.get("attr_photoSlots") ?? "").trim();
-  if (photoSlots) {
-    const n = Number(photoSlots);
-    if (Number.isInteger(n) && n > 0) attrs.photoSlots = n;
-  }
-  const quantity = String(fd.get("attr_quantity") ?? "").trim();
-  if (quantity) {
-    const n = Number(quantity);
-    if (Number.isInteger(n) && n > 0) attrs.quantity = n;
-  }
-  const color = String(fd.get("attr_color") ?? "").trim();
-  if (color) attrs.color = color;
-  const aspectRatio = String(fd.get("attr_aspectRatio") ?? "").trim();
-  if (aspectRatio) attrs.aspectRatio = aspectRatio;
-  const shape = String(fd.get("attr_shape") ?? "").trim();
-  if (shape && ["rectangle", "circle", "heart", "custom"].includes(shape)) {
-    attrs.shape = shape as ProductVariantAttributes["shape"];
-  }
-  const finish = String(fd.get("attr_finish") ?? "").trim();
-  if (finish && ["matte", "glossy", "soft-touch", "glass"].includes(finish)) {
-    attrs.finish = finish as ProductVariantAttributes["finish"];
-  }
-  return attrs;
-}
 
 // ─────────────────── CREATE ───────────────────
 
@@ -138,9 +114,10 @@ export async function updateVariantAction(
   const priceStr = String(formData.get("price") ?? "").trim();
   const compareStr = String(formData.get("compareAtPrice") ?? "").trim();
   // El form solo edita un subconjunto fijo de attributes; las dimensiones sin
-  // campo en el form (frameStyle, variantStyle, theme, language, magnet, size,
+  // campo en el form (frameStyle, variantStyle, theme, language, size,
   // variantShape…) se preservan del valor actual — antes se BORRABAN al guardar
-  // (catálogo WhatsApp 2026-07-22).
+  // (catálogo WhatsApp 2026-07-22). `magnet` SÍ tiene campo (select ¿Con imán?,
+  // 2026-09-08b) → viaja en parseAttributesFromForm.
   const variantId = String(formData.get("id") ?? "");
   const current = variantId
     ? await prisma.productVariant.findUnique({

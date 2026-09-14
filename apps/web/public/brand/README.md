@@ -25,14 +25,16 @@ Todo lo que esté en `public/brand/` es servido directo por Next.js bajo
   desde `<img>` directo. Next.js maneja lazy load, srcset, formato
   óptimo (WebP/AVIF) automáticamente.
 
-## Acción pendiente al momento de este README (2026-05-11)
+## Estado (actualizado 2026-09-03)
 
-Estamos esperando que la operadora del proyecto suba:
+Los assets ya llegaron y están en uso en producción:
 
-1. `lucams-logo.png` (o equivalente) — actualmente vive como SVG kawaii
-   placeholder dibujado a mano en `components/brand-mark.tsx`
-2. `lucams-mascot.png` (o equivalente) — actualmente reusa el placeholder
-3. `favicon.ico` brand-aware — actualmente Next.js default
+1. `lucams-logo.png` (468×468, RGBA) — recibido 2026-05-11. `components/lucams-logo.tsx`
+   lo referencia automáticamente; el placeholder SVG kawaii de `components/brand-mark.tsx`
+   queda como fallback onError.
+2. `lucams-mascot.png` (370×355, RGBA) — recibido 2026-05-11.
+3. Favicon brand-aware — desde 2026-07-22, con la convención de Next.js en `apps/web/app/`:
+   `favicon.ico`, `icon.png`, `apple-icon.png`.
 
-Cuando esos archivos lleguen, `components/lucams-logo.tsx` los referencia
-automáticamente y el placeholder SVG queda como fallback histórico.
+Pendiente: versiones **SVG** vectoriales del logo/mascota (hoy solo hay PNG — ver
+`docs/BRANDING.md` § Activos a producir).

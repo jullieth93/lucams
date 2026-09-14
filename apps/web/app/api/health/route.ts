@@ -3,7 +3,8 @@
  *
  * Devuelve 200 si el servidor Next.js está corriendo y puede ejecutar código
  * server-side. NO chequea dependencias externas (Postgres, Resend, etc.) —
- * para eso existe `/api/health/db` y `/api/health/integrations` (futuro).
+ * para eso existen `/api/health/db`, los probes por integración
+ * (`/api/health/{wompi,aveonline,resend,storage}`) y el agregador `/api/health/all`.
  *
  * Diseño:
  *  - Sin auth (es público intencionalmente).
