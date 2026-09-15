@@ -277,6 +277,16 @@ plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
   → **corcho de pared 120×80 cm** (12 tiras = grilla 6×2 DENTRO con márgenes). Dimensiones
   como fuente única en `FRIDGE_SCENE`/`BOARD_SCENE` (lib/cluster-layout) + tests de proporción
   física (109 verdes). Commit `d42babc` — pendiente el ojo de Lucy en STG y release a PRD.
+- **Iteración 3D ronda 2 (mismo día, cerrada):** "el mueble parece un closet" (referencia: French
+  door real) + "los imanes no pueden quedar centrados en los bordes de las puertas". Rediseño a
+  **French door**: 2 puertas top (~68%) + gaveta freezer con manija horizontal + dispensador en
+  puerta izquierda; `frenchDoorClusterLayout` reparte en dos sub-clústeres por puerta y NINGUNA
+  pieza toca la junta central (aserción `expectNeverOnSeam` en tests; 115 verdes). Commit
+  `c712bb0`. Y el **bug de plantillas de tiras** (introducido por mi fix del aspect: al quedar
+  ambas plantillas 1:1, el filtro ya no discriminaba): nuevo filtro por COMPOSICIÓN
+  (`filterTemplatesByPhotoSlots` — la plantilla declara photoSlots en canvasData; seed aplicado
+  en los 3 ambientes) → variante de 3 fotos solo ve la plantilla de 3 y viceversa (verificado
+  local y STG). Commit `d7fd10c`.
 
 ## Sesión — 2026-09-15 — Paquete coherencia catálogo/estudio/admin (ADR-101): Fotoimanes por packs de 6, precio vivo PDP, placeholder-guide, 3D tamaño real, admin consolidado
 
