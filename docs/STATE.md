@@ -233,6 +233,12 @@ plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
   ambientes (6 claves nuevas c/u) · render local validado (tachado 27.500 en PDP polaroid).
 - **Pendiente con Lucy:** invalidar caché CMS en STG/PRD (/admin/contenido) tras el deploy ·
   QA visual del 3D con 12 tiras y 24 fotoimanes (la matemática está testeada; falta ojo humano).
+- **Bug posterior reportado por Lucy (mismo día, cerrado):** «Color de tarjeta» desapareció del
+  Estudio junto a «Borde de foto». Causa raíz: el one-shot de packs REEMPLAZÓ el
+  `personalizationSchema` de polaroid/cuadrados y borró `frameOptions` (declarada por Ola 2A en
+  2026-07). Fix: ola2a-frame-options re-aplicado en los 3 ambientes + seed canónico la declara +
+  one-shot blindado (el schema se FUSIONA, nunca replace) — commit `fd8f38a`. Validado: el
+  Estudio de ambos productos recibe la paleta en local y STG.
 
 ## Sesión — 2026-09-15 — Paquete coherencia catálogo/estudio/admin (ADR-101): Fotoimanes por packs de 6, precio vivo PDP, placeholder-guide, 3D tamaño real, admin consolidado
 
