@@ -203,6 +203,24 @@ la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia veri
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
 
+## Sesión — 2026-09-15 (3) — HOMOLOGACIÓN TOTAL de los 3 ambientes certificada + release a PRD
+
+- **Certificación profunda (pedido del owner):** scripts nuevos `homologation-dump` +
+  `homologation-diff` (claves naturales slug/sku/key, nunca IDs; separan divergencias
+  VIVAS de drift en filas archivadas). Diagnóstico inicial: STG↔PRD 7 vivas · local↔STG
+  105 vivas (local atrasado en precios/flags de semillas viejas).
+- **Normalización ejecutada (`homologate-20260915.mjs`, espejo STG + decisiones Lucy):**
+  ① Calendario oficial $37.900/tachado $42.900 (valor STG) ② Nombre Personalizado ACTIVO
+  en los 3 ③ COD_ENABLED apagada en los 3 ④ fix drift "6x2"→"2×6" en SEP-MAG-2X6-*
+  (STG/PRD lo tenían volteado por edición manual — además invertía la pieza en el 3D)
+  ⑤ PRD: CMS `estudio.comun.listo`="Vista previa" y `faq.04-envios-cobertura` con token
+  {{cobertura}} ⑥ local al día en precios/flags (abecedario, vocales, separadores, tiras).
+- **RESULTADO: diff cruzado local↔STG↔PRD = 0 divergencias VIVAS en los 3 pares** (queda
+  drift solo en filas archivadas — ruido histórico documentado, sin impacto).
+- **Release:** develop (9 commits del paquete ADR-101 + rondas) → merge a `production` →
+  deploy Vercel PRD: la UI de PACKS y todo el feedback llega a lucamsshop.com (los datos
+  ya estaban migrados).
+
 ## Sesión — 2026-09-15 (2) — Ronda de validación de Lucy: tachado PDP (paridad real), 3D multi-columna, lienzo agrupado por unidad, badge ✨ Mejorada
 
 - **Tachado PDP — causa raíz con datos:** `resolvePromoDisplay` solo miraba `compareAtPrice`
