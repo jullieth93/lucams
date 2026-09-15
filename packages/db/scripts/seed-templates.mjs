@@ -575,6 +575,10 @@ const templatesData = [
           previewUrl: "/templates/tira-clasica.svg",
           canvasData: {
             version: 1,
+            // Composición de la unidad que diseña (filtro de visibilidad del Estudio:
+            // con la variante de 4 fotos elegida, esta plantilla se oculta — cada
+            // composición cobra su precio; bug 2026-09-15).
+            photoSlots: 3,
             stage: stage(390, 400), // 1/3 de la tira 6.5×20 cm (celda 6.5×6.667)
             gridCols: 1, // apilar las 3 fotos en vertical (la tira física es 1 columna)
             gridGap: 0, // celdas pegadas → la tira se lee como UNA pieza continua
@@ -625,6 +629,8 @@ const templatesData = [
           previewUrl: "/templates/tira-4-fotos.svg",
           canvasData: {
             version: 1,
+            // Composición de la unidad que diseña (misma regla que la de 3 fotos).
+            photoSlots: 4,
             stage: stage(390, 398), // 1/4 de la tira 6.5×26.5 cm (celda 6.5×6.625 ≈ 1:1)
             gridCols: 1, // apilar las 4 fotos en vertical (la tira física es 1 columna)
             gridGap: 0, // celdas pegadas → la tira se lee como UNA pieza continua

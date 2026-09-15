@@ -35,7 +35,11 @@ import { parsePhotoProductConfig } from "./schemas";
 import { listStagedSlotPaths, stagedSlotPath } from "./staged-slots";
 import { resolvePersonalizationSurface } from "./surface";
 import { unitCountOf, MAX_LETTER_SET_UNITS } from "./design-units";
-import { filterTemplatesByAspectRatio, preferProductSpecific } from "./template-visibility";
+import {
+  filterTemplatesByAspectRatio,
+  filterTemplatesByPhotoSlots,
+  preferProductSpecific,
+} from "./template-visibility";
 import { normalizeName } from "./name-input";
 import { remapCanvasAssetIds } from "./canvas-remap";
 import { calendarLayoutFromUnitTemplate } from "./calendar-layout";
@@ -1334,6 +1338,11 @@ export async function listTemplatesForKind(
      * (admin) necesita otro modo explícitamente.
      */
     mode?: "EDITABLE" | "PREMADE";
+    /**
+     * Composición de la unidad de la variante elegida (tiras 3/4 fotos) — oculta
+     * plantillas que declaren otra composición (filterTemplatesByPhotoSlots).
+     */
+    photoSlots?: number;
   },
 ) {
   const templates = await prisma.personalizationTemplate.findMany({
@@ -1371,7 +1380,10 @@ export async function listTemplatesForKind(
 
   // Aspect filter aterrizado 2026-05-13: solo mostrar plantillas cuyo
   // canvasData.stage.width/height matchee con el aspect ratio del producto.
-  return filterTemplatesByAspectRatio(visible, opts?.productAspectRatio).slice(0, opts?.take ?? 30);
+  const byAspect = filterTemplatesByAspectRatio(visible, opts?.productAspectRatio);
+  // 2026-09-15 — composición de la unidad (tiras 3/4 fotos): no ofrecer la plantilla
+  // de la composición que el cliente NO eligió (cada una cobra su precio).
+  return filterTemplatesByPhotoSlots(byAspect, opts?.photoSlots).slice(0, opts?.take ?? 30);
 }
 
 // ──────────────────────────────────────────────────────────────────

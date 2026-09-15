@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 import {
   filterTemplatesByAspectRatio,
+  filterTemplatesByPhotoSlots,
   parseAspectRatio,
   preferProductSpecific,
   templateAspectRatio,
@@ -83,5 +84,28 @@ describe("preferProductSpecific", () => {
   it("sin productId no aplica preferencia", () => {
     const list = [{ productId: "p1" }, { productId: null }];
     expect(preferProductSpecific(list, undefined)).toEqual(list);
+  });
+});
+
+describe("filterTemplatesByPhotoSlots (bug 2026-09-15 — tiras 3 vs 4 fotos)", () => {
+  const tira3 = { canvasData: { version: 1, photoSlots: 3, stage: { width: 390, height: 400 } } };
+  const tira4 = { canvasData: { version: 1, photoSlots: 4, stage: { width: 390, height: 398 } } };
+  const sinMarcador = { canvasData: { version: 1, stage: { width: 450, height: 600 } } };
+
+  it("variante de 3 fotos: oculta la plantilla que declara 4", () => {
+    expect(filterTemplatesByPhotoSlots([tira3, tira4], 3)).toEqual([tira3]);
+  });
+
+  it("variante de 4 fotos: oculta la plantilla que declara 3", () => {
+    expect(filterTemplatesByPhotoSlots([tira3, tira4], 4)).toEqual([tira4]);
+  });
+
+  it("plantilla sin marcador pasa siempre (la curaduría manda)", () => {
+    expect(filterTemplatesByPhotoSlots([tira3, sinMarcador], 4)).toEqual([sinMarcador]);
+  });
+
+  it("sin photoSlots del producto no se filtra (packs: 6/12/18/24 son piezas totales)", () => {
+    const list = [tira3, tira4];
+    expect(filterTemplatesByPhotoSlots(list, undefined)).toHaveLength(2);
   });
 });

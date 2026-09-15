@@ -52,6 +52,29 @@ export function filterTemplatesByAspectRatio<T extends { canvasData: unknown }>(
 }
 
 /**
+ * Filtro por COMPOSICIÓN de la unidad (bug 2026-09-15 — Tiras: al elegir la variante
+ * de 3 fotos el Estudio ofrecía también la plantilla de 4 fotos, que cobra otro
+ * precio): una plantilla puede DECLARAR `photoSlots` en su canvasData (la composición
+ * de unidad que diseña). Si el producto trae photoSlots (de la variante elegida) y la
+ * plantilla declara uno DISTINTO, se oculta. Plantillas SIN marcador pasan siempre
+ * (la curaduría manda, misma filosofía del filtro de aspect) — solo lo declaran las
+ * familias con varias composiciones de unidad (tiras 3/4 fotos); en packs (polaroid
+ * 6/12/18/24 = piezas totales, no composición) no se declara y no filtra.
+ */
+export function filterTemplatesByPhotoSlots<T extends { canvasData: unknown }>(
+  templates: T[],
+  photoSlots?: number,
+): T[] {
+  if (!photoSlots || !Number.isFinite(photoSlots)) return templates;
+  return templates.filter((t) => {
+    const cd = t.canvasData as { photoSlots?: unknown } | null;
+    const declared = typeof cd?.photoSlots === "number" ? cd.photoSlots : null;
+    if (declared === null) return true; // sin marcador → permitir
+    return declared === photoSlots;
+  });
+}
+
+/**
  * Ola 19 (Lucy 2026-07-26) — si el producto tiene plantillas ESPECÍFICAS curadas, se
  * usan SOLO esas (no se mezclan con globales del mismo kind); sin específicas, quedan
  * las globales. Sin `productId` no hay preferencia que aplicar.

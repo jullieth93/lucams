@@ -380,6 +380,7 @@ export default async function EstudioPage({
   const templatesRaw = await listTemplatesForKind(product.personalizationKind, {
     productId: product.id,
     productAspectRatio: photoConfig.aspectRatio,
+    photoSlots: photoConfig.photoSlots,
   });
   const templates = templatesRaw.map((t) => ({
     ...t,
