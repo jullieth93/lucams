@@ -608,9 +608,14 @@ const templatesData = [
         // aspectRatio "3:4" de la variante, el filtro de aspect dejaba la lista vacía
         // y el boot caía al template cuadrado genérico 1080×1080). Al declararla acá
         // el upsert la reactiva y el barrido la respeta (idempotente).
-        // Mismo dibujo que la de 3 escalado a 390×530 (misma altura por foto ≈133px):
-        // la celda es 1/4 de la tira y su aspect (0.736 ≈ 3:4) es la llave de ruteo
-        // con la variante FI-TIRA-4FOTOS (aspectRatio "3:4").
+        // FIX 2026-09-15 (bug "tiras se ven muy grandes en el 3D"): el stage era
+        // 390×530 (aspect 3:4) pero la celda FÍSICA de la tira 6.5×26.5 cm es
+        // 6.5×6.625 ≈ 1:1 (igual que la de 3 fotos y que el mockup tira-4-fotos.svg,
+        // 390×1590 = 4 celdas de 397.5). El 3D deriva el alto de la pieza del aspect
+        // de la textura → renderizaba la tira de 26.5 cm como si midiera ~35 cm.
+        // Stage corregido a 390×398 (aspect 0.98 ≈ la celda física; la variante
+        // pasa a aspectRatio "1:1", diff 0.02 < tolerancia 0.05 del ruteo) — mismo
+        // dibujo que la de 3 fotos.
         {
           slug: "photo-strip-4-fotos",
           productId: tirasProduct.id,
@@ -620,7 +625,7 @@ const templatesData = [
           previewUrl: "/templates/tira-4-fotos.svg",
           canvasData: {
             version: 1,
-            stage: stage(390, 530), // 1/4 de la tira 6.5×26.5 cm (celda 6.5×6.625)
+            stage: stage(390, 398), // 1/4 de la tira 6.5×26.5 cm (celda 6.5×6.625 ≈ 1:1)
             gridCols: 1, // apilar las 4 fotos en vertical (la tira física es 1 columna)
             gridGap: 0, // celdas pegadas → la tira se lee como UNA pieza continua
             layers: [
@@ -631,7 +636,7 @@ const templatesData = [
                 x: 12,
                 y: 0,
                 width: 366,
-                height: 530,
+                height: 398,
                 label: "Foto de la tira",
               }),
             ],

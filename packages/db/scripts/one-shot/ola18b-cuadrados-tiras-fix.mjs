@@ -105,7 +105,10 @@ async function fixTiras() {
   // Nueva variante 4 fotos (precio NO se pisa en re-runs)
   const sku4 = "FI-TIRA-4FOTOS";
   const found = await prisma.productVariant.findFirst({ where: { sku: sku4 } });
-  const attrs4 = { sizeCm: "6.5×26.5", photoSlots: 4, aspectRatio: "3:4", quantity: 1 };
+  // FIX 2026-09-15: aspectRatio "3:4" → "1:1" — la celda física de la tira
+  // 6.5×26.5 cm es 6.5×6.625 ≈ cuadrada (como la de 3 fotos). El 3:4 inflaba
+  // la pieza en el 3D (~35 cm en vez de 26.5) y desviaba el WYSIWYG del Estudio.
+  const attrs4 = { sizeCm: "6.5×26.5", photoSlots: 4, aspectRatio: "1:1", quantity: 1 };
   if (found) {
     await prisma.productVariant.update({
       where: { id: found.id },

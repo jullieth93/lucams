@@ -75,7 +75,12 @@ for (const p of products) {
     (v) => v.compareAtPrice != null && v.compareAtPrice > (v.price ?? p.basePrice),
   );
   if (denorm != null && variantPromos.length === 0) {
-    flag(`product.compareAtPrice=${pesos(denorm)} pero NINGUNA variante tiene promo válida (card la muestra, PDP no)`);
+    // 2026-09-15 — la PDP ya muestra la promo a nivel PRODUCTO (fallback de
+    // resolvePromoDisplay con chip/tachado según cubra el precio mostrado), así que
+    // ya no es inconsistencia: queda como nota informativa (modelo "promo de familia").
+    console.log(
+      `  · nota: promo solo a nivel producto (${pesos(denorm)}) — card y PDP la muestran (fallback 2026-09-15); si la promo es por opción, curar compareAtPrice en la variante`,
+    );
   }
   if (denorm == null && variantPromos.length > 0) {
     flag(`${variantPromos.length} variante(s) con promo pero product.compareAtPrice es null (correr syncProductBasePrice)`);
@@ -108,6 +113,26 @@ for (const p of products) {
         return Math.abs(st.width / st.height - target) <= 0.05;
       });
       if (!match) flag(`aspect ${a} SIN plantilla activa que matchee → Estudio cae al canvas cuadrado`);
+    }
+
+    // 3b. Consistencia FÍSICA de la celda (bug 2026-09-15 — tira 4 fotos: aspectRatio
+    // "3:4" con sizeCm 6.5×26.5 → el 3D inflaba la pieza 1.3× y el WYSIWYG mentía): en
+    // piezas de N celdas apiladas (photoSlots>1 y quantity=1 → el sizeCm describe la
+    // PIEZA ENTERA 1-columna, no una unidad del pack — distingue tiras de polaroid),
+    // el aspect físico por celda = (w/h del sizeCm) × photoSlots debe cuadrar con el
+    // aspectRatio declarado (±0.05, misma tolerancia del ruteo de plantillas).
+    for (const v of p.variants) {
+      const a = v.attributes ?? {};
+      const slots = Number(a.photoSlots);
+      const piece = parseAspect(a.sizeCm);
+      const declared = parseAspect(a.aspectRatio);
+      if (!slots || slots <= 1 || a.quantity !== 1 || piece == null || declared == null) continue;
+      const cellAspect = piece * slots;
+      if (Math.abs(cellAspect - declared) > 0.05) {
+        flag(
+          `variante ${v.sku}: aspectRatio "${a.aspectRatio}" contradice la física (celda = ${cellAspect.toFixed(2)} de ${a.sizeCm} ÷ ${slots}) → 3D/WYSIWYG distorsionado`,
+        );
+      }
     }
 
     // 4. Sanidad de plantillas activas del producto

@@ -231,6 +231,18 @@ plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
   del Estudio; metadata server-side requeriría migración — descartado).
 - **Verificación:** typecheck + lint limpios · suite 3 880 verdes · CMS migrado a los 3
   ambientes (6 claves nuevas c/u) · render local validado (tachado 27.500 en PDP polaroid).
+- **Bug 3D "tiras muy grandes" (mismo día, cerrado):** Lucy reportó que las piezas en la
+  nevera/mural no se veían al tamaño real. Causa raíz: la variante FI-TIRA-4FOTOS declaraba
+  aspectRatio "3:4" (ola18b) y su plantilla stage 390×530, pero la celda FÍSICA de la tira
+  6.5×26.5 cm es 6.5×6.625 ≈ 1:1 (el diseño original Ola 2A dice "1:1 por celda"; el mockup
+  tira-4-fotos.svg = 4 celdas de 397.5px siempre estuvo bien) → el 3D derivaba el alto del
+  aspect de la textura y renderizaba la tira de 26.5 cm como ~35 cm (1.3×), y el WYSIWYG del
+  Estudio mentía la forma de la celda. Fix en los 3 ambientes: variantes 4FOTOS (MAG/NOMAG) a
+  aspectRatio "1:1" (one-shot `fix-tira-4fotos-aspect-20260915.mjs`) + plantilla a stage
+  390×398 (seed-templates --apply) + ola18b parchado contra reruns. **Auditoría ganó chequeo
+  3b de consistencia física** (celda = sizeCm ÷ photoSlots vs aspectRatio declarado, ±0.05)
+  — LOCAL 0 issues; STG/PRD solo la anomalía conocida de Magnéticos (dato curado de Lucy).
+  El chequeo 2 de promo se baja a nota: la promo a nivel producto ya es válida (fallback PDP).
 - **Pendiente con Lucy:** invalidar caché CMS en STG/PRD (/admin/contenido) tras el deploy ·
   QA visual del 3D con 12 tiras y 24 fotoimanes (la matemática está testeada; falta ojo humano).
 - **Bug posterior reportado por Lucy (mismo día, cerrado):** «Color de tarjeta» desapareció del
