@@ -269,6 +269,14 @@ plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
   2026-07). Fix: ola2a-frame-options re-aplicado en los 3 ambientes + seed canónico la declara +
   one-shot blindado (el schema se FUSIONA, nunca replace) — commit `fd8f38a`. Validado: el
   Estudio de ambos productos recibe la paleta en local y STG.
+- **Proporción escenas 3D (mismo día, cerrado):** "sigue poco proporcional… la nevera es muy
+  pequeña? hazla más grande, inclusive puede ser un nevecón. Y ni hablar 3D Mural, totalmente
+  desproporcionada" (screenshot: 12 tiras en UNA fila de 78 cm desbordando un tablerito de
+  ~45 cm). Rediseño con dirección de Lucy: nevera top-freezer 170×68 → **NEVECÓN side-by-side
+  178×91×75 cm** (dos puertas full-height, clúster sobre ambas; tira = 15% del alto) y mural
+  → **corcho de pared 120×80 cm** (12 tiras = grilla 6×2 DENTRO con márgenes). Dimensiones
+  como fuente única en `FRIDGE_SCENE`/`BOARD_SCENE` (lib/cluster-layout) + tests de proporción
+  física (109 verdes). Commit `d42babc` — pendiente el ojo de Lucy en STG y release a PRD.
 
 ## Sesión — 2026-09-15 — Paquete coherencia catálogo/estudio/admin (ADR-101): Fotoimanes por packs de 6, precio vivo PDP, placeholder-guide, 3D tamaño real, admin consolidado
 
