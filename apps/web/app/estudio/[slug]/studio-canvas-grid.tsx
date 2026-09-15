@@ -359,7 +359,11 @@ export function StudioCanvasGrid({
       if (!mountedSlots.has(Number(el.dataset.slotObserve))) obs.observe(el);
     });
     return () => obs.disconnect();
-  }, [lazy, forceMountAll, mountedSlots]);
+    // slotCount en deps (bug tiras multi-unidad, owner 2026-09-14): al AGREGAR
+    // unidades/fotos las celdas nuevas no existían cuando se armó el observer y
+    // ninguna otra dep cambiaba → quedaban atrapadas como LazySlotPlaceholder
+    // ("Toca para elegir") para siempre. Re-correr re-registra las celdas nuevas.
+  }, [lazy, forceMountAll, mountedSlots, canvasData?.slotCount]);
 
   if (!canvasData || !layout) {
     return (

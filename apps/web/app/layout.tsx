@@ -1,5 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Caveat, Fredoka, Inter } from "next/font/google";
+import {
+  Baloo_2,
+  Caveat,
+  Dancing_Script,
+  Fredoka,
+  Inter,
+  Nunito,
+  Patrick_Hand,
+  Playfair_Display,
+} from "next/font/google";
 import { Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { WebVitalsReporter } from "@/components/web-vitals";
@@ -38,6 +47,45 @@ const caveat = Caveat({
   variable: "--font-caveat",
   subsets: ["latin"],
   weight: ["400", "700"],
+  display: "swap",
+});
+
+// 2026-09-14 (owner) — selector del calendario ampliado a 8 tipos de letra.
+// Cada una: CSS var para el canvas del cliente + TTF en assets/fonts para el
+// render de producción (production-render-canvas). Mismos pesos que usa
+// drawCalendarPage (700 clásico / 700+500 split; Patrick Hand solo tiene 400).
+const baloo2 = Baloo_2({
+  variable: "--font-baloo2",
+  subsets: ["latin"],
+  weight: ["500", "700"],
+  display: "swap",
+});
+
+const nunito = Nunito({
+  variable: "--font-nunito",
+  subsets: ["latin"],
+  weight: ["500", "700"],
+  display: "swap",
+});
+
+const patrick = Patrick_Hand({
+  variable: "--font-patrick",
+  subsets: ["latin"],
+  weight: ["400"],
+  display: "swap",
+});
+
+const playfair = Playfair_Display({
+  variable: "--font-playfair",
+  subsets: ["latin"],
+  weight: ["500", "700"],
+  display: "swap",
+});
+
+const dancing = Dancing_Script({
+  variable: "--font-dancing",
+  subsets: ["latin"],
+  weight: ["500", "700"],
   display: "swap",
 });
 
@@ -113,7 +161,7 @@ export default async function RootLayout({
   return (
     <html
       lang="es-CO"
-      className={`${fredoka.variable} ${inter.variable} ${caveat.variable} h-full antialiased`}
+      className={`${fredoka.variable} ${inter.variable} ${caveat.variable} ${baloo2.variable} ${nunito.variable} ${patrick.variable} ${playfair.variable} ${dancing.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
         {/* Skip-link (WCAG 2.4.1 Bypass Blocks): primer elemento enfocable —

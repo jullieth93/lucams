@@ -13,6 +13,38 @@
 
 ## Resumen actual
 
+**🎨 2026-09-14 (noche) — PAQUETE DE COHERENCIA ADMIN↔FRONT↔ESTUDIO EJECUTADO Y HOMOLOGADO EN LOS
+3 AMBIENTES (ADR-100).** Origen: la validación de Lucy en STG pre-salida (tachado sin reflejo,
+polaroid saltando de 10 en 10, Cuadrados sin stepper, Alargados/Magnéticos cayendo al canvas
+cuadrado, tiras perdiendo el lienzo al agregar unidades, texto preview vs color de tarjeta,
+plantillas demo acumuladas, 3 letras en el calendario). Todo con causa raíz corregida (sin
+macheteos) y decidido con Lucy: ① **Alargados/Magnéticos** — sus plantillas reales nunca se
+declararon en `seed-templates.mjs` (un --prune las soft-eliminó) → declaradas y reactivadas;
+el seed vuelve a ser fuente completa (11 plantillas, todas de producto, nombres+previews reales
+por composición/tamaño). ② **Tiras multi-unidad** — el lazy-mount no re-registraba los slots
+nuevos en el IntersectionObserver (deps sin slotCount) → quedaban atrapados como placeholder
+"Toca para elegir" para siempre; fix + test de regresión. ③ **Escaleras de unidades** —
+existían archivadas con precios graduados: restauradas (decisión Lucy "restaurar históricas"):
+polaroid 2–9 ($20.200–$33.000; FI-POL-75X10-2 traía $34.900 por error → corregido) y cuadrados
+2–10 ($17.600–$30.000) + todas las gemelas -NOMAG espejo → stepper de 1 en 1 en ambos. ④
+**Tachado con reflejo total** — `resolvePromoDisplay`: promo por opción siempre visible (tachado
+si la opción elegida/“Desde” la tiene; chip “Promo en otra opción desde $X” si la tiene otra).
+⑤ **Texto preview BLANCO solo sobre tarjeta NEGRA** (redefine ronda 5: rosa/lavanda vuelven a
+letra oscura; umbral 0.30 en `defaultTextFillOnCard`, WYSIWYG lienzo/editor/producción). ⑥
+**Vista previa bloqueada uniforme** — auditoría confirmó el gate único (`selectIsComplete` +
+bloqueos por superficie); blindado con test (agregar unidades re-bloquea). ⑦ **Plantillas demo
+eliminadas** (8 hard-delete con guard de diseños + backups; admin gana botón “Eliminar” con las
+mismas guardas) y previews SVG reales nuevos (6). ⑧ **Calendario a 8 tipos de letra** (+Baloo 2,
+Nunito, Patrick Hand, Playfair, Dancing — OFL, TTF en assets/fonts para el render de servidor +
+next/font para el lienzo; claves CMS nuevas). ⑨ **Auditoría repetible**
+`audit-storefront-consistency.mjs` (escaleras, promo denormalizada, cobertura de plantilla por
+aspect, nombres/previews). **Aplicado en LOCAL→STG→PRD** (PRD con bypass deliberado + backups en
+tmp/backups): LOCAL 0 inconsistencias; STG/PRD solo la anomalía REPORTADA a Lucy (Magnéticos 5
+unid. $12.500 > 6 unid. $12.000 — dato curado suyo, se ajusta en admin). Gates: lint 0 ·
+typecheck 0 · build 0 · unit **3 847** · E2E tiras+alargados **18/18** · E2E cal-font 1/1 ·
+ratchet CMS 37.43%. **Acciones humanas:** invalidar caché CMS en STG y PRD (/admin/contenido) y
+ajustar el precio de Magnéticos 6 unid. si aplica.
+
 **🟢 2026-09-14 — RELEASE COMPLETO A PRD Y VALIDADO EN VIVO. La remediación 360° ya opera en
 producción.** Flujo: `develop` (`1886b70`) → merge ff a `production` → deploy Vercel PRD →
 migraciones en PRD (032 agenda `lucams-expire-pending-orders` → prisma ×2 → 033 des-agenda
@@ -155,6 +187,32 @@ sanciona testimonios inventados como publicidad engañosa); ④ crecimiento: **s
 la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia verificados; cuando haya
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
+
+## Sesión — 2026-09-14 (3) — Paquete coherencia Admin↔Front↔Estudio (ADR-100) ejecutado y homologado
+
+- **Diagnóstico con datos reales (scripts read-only contra STG/PRD):** plantillas sep-alr/sep-mag
+  soft-eliminadas (caída al canvas 1080×1080); escaleras históricas de unidades archivadas con
+  precios graduados (polaroid 2–9, cuadrados 2–6); 19 plantillas con 6 globales demo OFF y 5 DEL;
+  tiras duplicando nombre "Plantilla Tiras" y el mismo preview de 3 fotos.
+- **Código:** fix observer lazy-mount (E1) · `resolvePromoDisplay` + PDP (A) · regla texto tarjeta
+  0.56→0.30 (E3) · seed-templates reworkeado + 6 previews SVG + cleanup-demo-templates + botón
+  "Eliminar" en /admin/plantillas (D/E2) · 8 fuentes calendario punta a punta: schemas, layout
+  (next/font), calendar-card-preview, production-render-canvas (TTF), studio-texts + CMS site map,
+  labels del modal (F) · auditoría `audit-storefront-consistency.mjs` (G).
+- **Datos aplicados LOCAL→STG→PRD** (PRD con `LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1`, backups JSON):
+  cleanup (renombres + 4 reactivaciones + 8 hard-delete) → seed-templates --apply (11 plantillas)
+  → create-unit-ladder-variants --apply (34 variantes: 13 reactivadas + 21 creadas, gemelas NOMAG
+  espejo) → migrate-cms-v2 (5 claves de fuentes).
+- **Verificación:** auditoría LOCAL 0 issues · STG/PRD solo la anomalía de Magnéticos (reportada,
+  no tocada) · gates lint/typecheck/build/unit 3 847 · E2E pdp-cantidad-tira + ola17-alargados
+  18/18 · E2E cal-font 1/1 (aserción actualizada a 8 opciones) · ratchet de contenido regenerado
+  (37.43%). Stack local podman levantado para suite+E2E (estaba apagado).
+- **Decisiones de Lucy en sesión:** tachado "por opción + reflejo total" · vista previa "bloquear
+  en todos" · fuentes "las 8 del editor de texto" (se implementaron 8 OFL con TTF servidor) ·
+  precios "restaurar históricas" (tras evidencia de las escaleras archivadas) · STG como
+  referencia de homologación.
+- **Pendientes con Lucy:** invalidar caché CMS en STG/PRD · ajustar precio Magnéticos 6 unid. ·
+  precios finos de las escaleras desde /admin/productos (quedaron con la histórica + espejo).
 
 ## Sesión — 2026-09-14 (2) — Monitor definitivo en Supabase STG + homologación + dependabot (cero pendientes)
 
@@ -3011,6 +3069,17 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-09-14 — Paquete coherencia Admin↔Front↔Estudio (ADR-100)
+
+- Reglas nuevas/cambiadas: promo por opción con reflejo total en PDP (`resolvePromoDisplay`);
+  texto preview blanco SOLO sobre tarjeta negra (redefine ronda 5); toda plantilla del catálogo
+  se declara en `seed-templates.mjs` o no existe; escaleras de unidades restauradas desde las
+  históricas archivadas (polaroid 1–10 y cuadrados 1–10, 1 en 1) con gemelas -NOMAG espejo;
+  calendario con 8 tipos de letra (5 OFL nuevas, TTF servidor + next/font); admin puede eliminar
+  plantillas demo (guard: no aprobadas y 0 diseños).
+- Auditoría repetible `packages/db/scripts/audit-storefront-consistency.mjs` (solo lectura).
+- Aplicado en los 3 ambientes con backups; anomalía Magnéticos 5>6 unid. reportada a Lucy.
 
 ### 2026-09-08 — PDP sin stepper de copias (regla global) + separación visible en galería
 

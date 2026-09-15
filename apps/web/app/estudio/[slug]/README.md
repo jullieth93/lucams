@@ -538,16 +538,17 @@ de todas las superficies personalizables.**
 
 ### Ola 29 (owner 2026-09-11) — validación ronda 5
 
-- **Letra por defecto que "visualmente se vea" sobre la tarjeta** (1.2.1.A
-  Clásica): regla nueva `defaultTextFillOnCard(cardHex, layerFill)` en
-  frame-palette — tarjeta blanca/pastel claro (aguamarina, amarillo) → el
-  oscuro de la plantilla; tarjeta oscura **o rosada** → blanco. Umbral Rec.601
-  de 0.56 (gusto explícito del owner: el rosado de marca #E85B9F, lum ≈ 0.552,
-  cuenta como oscuro PARA EL TEXTO). NO confundir con `isDarkColor` (0.5): esa
-  también decide la tarjeta BINARIA de Instagram y no se toca (si el rosa
-  contara como oscuro allí, la tarjeta IG se volvería rosada). Misma regla en
-  lienzo (studio-slot), producción (production-render-canvas) y el editor de
-  texto (pestaña Texto): el host arma `textDefaultFills` por capa (en IG con
+- **Letra por defecto sobre la tarjeta — REDEFINIDA 2026-09-14** (la regla de
+  ronda 5 quedó SUPERSEDED): `defaultTextFillOnCard(cardHex, layerFill)` en
+  frame-palette — letra BLANCA **solo con tarjeta NEGRA**; con blanca,
+  aguamarina, rosa, lavanda o amarilla la letra sale NEGRA (oscuro de la
+  plantilla). Umbral Rec.601 de 0.30 (solo los casi-negros cuentan como tarjeta
+  oscura). La regla vieja (0.56) pintaba blanco también sobre rosa y lavanda;
+  el owner lo revisó en STG y lo revirtió: el negro contrasta mejor sobre toda
+  la paleta pastel. NO confundir con `isDarkColor` (0.5): esa también decide la
+  tarjeta BINARIA de Instagram y no se toca. Misma regla en lienzo
+  (studio-slot), producción (production-render-canvas) y el editor de texto
+  (pestaña Texto): el host arma `textDefaultFills` por capa (en IG con
   `igTextFill`, que sigue mandando por capa) y el form arranca con ese color —
   sin tocar la paleta no se guarda override y preview/lienzo nunca divergen.
   El override de color del cliente siempre manda.

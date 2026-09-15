@@ -127,15 +127,35 @@ export const GridLayoutSchema = z.object({
 // "fredoka" (default) mantiene el look actual; el body/grilla SIEMPRE es Inter.
 // La clave viaja en canvasData (persistida) → producción la re-mapea a la familia
 // registrada vía lista blanca (NUNCA un string libre del cliente).
-export const CalendarFontKeySchema = z.enum(["fredoka", "inter", "caveat"]);
+// 2026-09-14 (owner): de 3 a 8 opciones — cada key tiene su TTF registrado en el
+// render de servidor (assets/fonts) y su CSS var de next/font en app/layout.tsx.
+export const CalendarFontKeySchema = z.enum([
+  "fredoka",
+  "inter",
+  "caveat",
+  "baloo2",
+  "nunito",
+  "patrick",
+  "playfair",
+  "dancing",
+]);
 export type CalendarFontKey = z.infer<typeof CalendarFontKeySchema>;
 
 /** Opciones curadas del selector (en ese orden). Los labels en español viven en studio-texts. */
-export const CALENDAR_FONT_OPTIONS: readonly CalendarFontKey[] = ["fredoka", "inter", "caveat"];
+export const CALENDAR_FONT_OPTIONS: readonly CalendarFontKey[] = [
+  "fredoka",
+  "inter",
+  "caveat",
+  "baloo2",
+  "nunito",
+  "patrick",
+  "playfair",
+  "dancing",
+];
 
 /** Retrocompatibilidad: ausente/inválido → fredoka (look histórico del calendario). */
 export function calendarFontOrDefault(key: unknown): CalendarFontKey {
-  return key === "inter" || key === "caveat" ? key : "fredoka";
+  return CalendarFontKeySchema.safeParse(key).success ? (key as CalendarFontKey) : "fredoka";
 }
 
 export const CanvasDataV2Schema = z.object({

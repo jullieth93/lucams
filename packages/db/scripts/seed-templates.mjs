@@ -188,10 +188,20 @@ const tirasProduct = await prisma.product.findUnique({
   select: { id: true },
 });
 
-// Ola 3 — Separadores de Libros (2 caras por unidad): las plantillas de CARA (una por forma)
-// se asignan a este producto. Si aún no existe, se omiten sin romper el seed.
-const separadoresProduct = await prisma.product.findUnique({
-  where: { slug: "separadores-libros" },
+// Separadores (2 caras por unidad): las plantillas de CARA se asignan a cada
+// producto de la familia. 2026-09-14 — el lookup viejo apuntaba a
+// "separadores-libros" (producto que ya no existe) → el bloque se saltaba y las
+// plantillas REALES de los separadores actuales (creadas por one-shots) quedaban
+// sin declarar: el barrido --prune las soft-deletó y el Estudio de Alargados y
+// Magnéticos cayó al canvas cuadrado 1080×1080 de respaldo (bug "se ven
+// cuadrados"). Si algún producto no existe (DB fresca), su plantilla se omite
+// sin romper el seed (idempotente).
+const sepMagProduct = await prisma.product.findUnique({
+  where: { slug: "separadores-magneticos" },
+  select: { id: true },
+});
+const sepAlrProduct = await prisma.product.findUnique({
+  where: { slug: "separadores-alargados" },
   select: { id: true },
 });
 
@@ -403,59 +413,83 @@ const templatesData = [
 
   // ════════════════════ Separadores 2 caras (Ola 3, Lucy 2026-07-22) ════════════════════
   //
-  // El separador físico es una TIRA doblada a la mitad: cada unidad tiene 2 caras con
-  // imagen propia. La plantilla define UNA CARA (el Estudio crea 2 slots por unidad,
-  // facesPerUnit=2 en el schema del producto, y producción compone la tira desplegada).
-  // Una plantilla por forma, alineada al aspect de la cara física:
-  //   - cuadrado    4×4.2 cm por cara (tira 8×4.2)  → stage 400×420
-  //   - rectangular 6×2 cm por cara  (tira 12×2)   → stage 600×200
-  // Foto a sangre (la cara se imprime entera); las esquinas REDONDAS del troquel las
-  // da el cornerRadiusPx del producto (canvas + tira de producción), no la plantilla.
-  ...(separadoresProduct
+  // El separador físico es una TIRA doblada a la mitad (Magnéticos) o una pieza
+  // PLANA alargada (Alargados): cada unidad tiene 2 caras con imagen propia. La
+  // plantilla define UNA CARA (el Estudio crea 2 slots por unidad, facesPerUnit=2
+  // en el schema del producto, y producción compone la tira desplegada). Una
+  // plantilla por TAMAÑO, alineada al aspect de la cara física (es la llave de
+  // ruteo del Estudio: el filtro de aspect matchea stage ≈ aspectRatio de la
+  // variante — sin plantilla activa que matchee, el boot cae al canvas cuadrado
+  // genérico, bug 2026-09-14). Foto a sangre (la cara se imprime entera); las
+  // esquinas redondas del troquel las da el cornerRadiusPx del producto.
+  // Slugs/stages = los de las plantillas reales ya curadas en catálogo.
+  ...(sepMagProduct
     ? [
         {
-          slug: "separador-cuadrado-cara",
-          productId: separadoresProduct.id,
+          slug: "sep-mag-2x6",
+          productId: sepMagProduct.id,
           kind: "PHOTO_PACK",
-          name: "Separador cuadrado (cara)",
-          order: 1,
-          previewUrl: "/templates/personalizacion-libre.svg",
+          name: "Magnéticos — 2×6 cm",
+          order: -10,
+          previewUrl: "/templates/sep-mag-2x6.svg",
           canvasData: {
             version: 1,
-            stage: stage(400, 420),
+            stage: stage(200, 600), // cara 6×2 cm (aspect 1:3)
             layers: [
               background("#FFFFFF"),
-              photoSlot({
-                id: "p1",
-                x: 0,
-                y: 0,
-                width: 400,
-                height: 420,
-                label: "Foto de la cara",
-              }),
+              photoSlot({ id: "photo", x: 0, y: 0, width: 200, height: 600, cornerRadius: 18, label: "Foto de la cara" }),
             ],
           },
         },
         {
-          slug: "separador-rectangular-cara",
-          productId: separadoresProduct.id,
+          slug: "sep-mag-4x4-2",
+          productId: sepMagProduct.id,
           kind: "PHOTO_PACK",
-          name: "Separador rectangular (cara)",
-          order: 2,
-          previewUrl: "/templates/personalizacion-libre.svg",
+          name: "Magnéticos — 4×4.2 cm",
+          order: -9,
+          previewUrl: "/templates/sep-mag-4x4-2.svg",
           canvasData: {
             version: 1,
-            stage: stage(600, 200),
+            stage: stage(400, 420), // cara 4×4.2 cm (aspect 20:21)
             layers: [
               background("#FFFFFF"),
-              photoSlot({
-                id: "p1",
-                x: 0,
-                y: 0,
-                width: 600,
-                height: 200,
-                label: "Foto de la cara",
-              }),
+              photoSlot({ id: "photo", x: 0, y: 0, width: 400, height: 420, cornerRadius: 24, label: "Foto de la cara" }),
+            ],
+          },
+        },
+      ]
+    : []),
+  ...(sepAlrProduct
+    ? [
+        {
+          slug: "sep-alr-4x12",
+          productId: sepAlrProduct.id,
+          kind: "PHOTO_PACK",
+          name: "Alargados — 4×12 cm",
+          order: -10,
+          previewUrl: "/templates/sep-alr-4x12.svg",
+          canvasData: {
+            version: 1,
+            stage: stage(400, 1200), // cara 4×12 cm (aspect 1:3)
+            layers: [
+              background("#FFFFFF"),
+              photoSlot({ id: "photo", x: 0, y: 0, width: 400, height: 1200, cornerRadius: 24, label: "Foto de la cara" }),
+            ],
+          },
+        },
+        {
+          slug: "sep-alr-4x15",
+          productId: sepAlrProduct.id,
+          kind: "PHOTO_PACK",
+          name: "Alargados — 4×15 cm",
+          order: -9,
+          previewUrl: "/templates/sep-alr-4x15.svg",
+          canvasData: {
+            version: 1,
+            stage: stage(400, 1500), // cara 4×15 cm (aspect 4:15)
+            layers: [
+              background("#FFFFFF"),
+              photoSlot({ id: "photo", x: 0, y: 0, width: 400, height: 1500, cornerRadius: 24, label: "Foto de la cara" }),
             ],
           },
         },
@@ -464,33 +498,11 @@ const templatesData = [
 
   // ════════════════════ Tira Magnética (photobooth) ════════════════════
   //
-  // Ola 4 (Lucy 2026-07-23) — foto-rectangular-simple queda registrada pero ARCHIVADA:
-  // su stage 3:4 (600×800) no calza con ninguna variante activa de Cuadrados (todas 1:1)
-  // y el filtro de aspect ya la ocultaba del estudio. Se conserva en el seed con
-  // archive:true para que el bloque de "legacy soft-delete" no la borre (deletedAt) en
-  // un re-seed: la regla es ARCHIVAR, nunca borrar (sus 33 diseños conservan templateId).
-  ...(cuadradosProduct
-    ? [
-        {
-          slug: "foto-rectangular-simple",
-          productId: cuadradosProduct.id,
-          kind: "PHOTO_PACK",
-          name: "Rectangular simple",
-          order: 98,
-          previewUrl: "/brand/lucams-logo.png",
-          archive: true,
-          canvasData: {
-            version: 1,
-            stage: stage(600, 800),
-            layers: [
-              background("#FFFFFF"),
-              photoSlot({ id: "p1", x: 0, y: 0, width: 600, height: 800, label: "Tu foto" }),
-            ],
-          },
-        },
-      ]
-    : []),
-
+  // 2026-09-14 — foto-rectangular-simple y las 6 globales "Personalización Libre"
+  // archivadas salieron del seed: eran plantillas DEMO sin producto activo ni
+  // diseños que las referencien; la remediación las HARD-DELETEA con
+  // scripts/cleanup-demo-templates.mjs (con guard de diseños referenciantes).
+  //
   // ════════════════════ Tira Magnética (photobooth) ════════════════════
   //
   // Ola 3c (Lucy 2026-07-22) — Tira Magnética REDISEÑADA al tamaño real 6.5×20 cm
@@ -515,7 +527,10 @@ const templatesData = [
           slug: "photo-strip-3-fotos",
           productId: tirasProduct.id,
           kind: "PHOTO_PACK",
-          name: "Plantilla Tiras",
+          // 2026-09-14 — nombre y preview DISTINTOS por composición: ambas se
+          // llamaban "Plantilla Tiras" con el mismo preview de 3 fotos y en el
+          // admin ninguna parecía de 4 (reporte del owner).
+          name: "Tira 3 fotos (6.5×20 cm)",
           order: 1,
           previewUrl: "/templates/tira-clasica.svg",
           canvasData: {
@@ -560,9 +575,9 @@ const templatesData = [
           slug: "photo-strip-4-fotos",
           productId: tirasProduct.id,
           kind: "PHOTO_PACK",
-          name: "Plantilla Tiras",
+          name: "Tira 4 fotos (6.5×26.5 cm)",
           order: 2,
-          previewUrl: "/templates/tira-clasica.svg",
+          previewUrl: "/templates/tira-4-fotos.svg",
           canvasData: {
             version: 1,
             stage: stage(390, 530), // 1/4 de la tira 6.5×26.5 cm (celda 6.5×6.625)
@@ -595,12 +610,16 @@ const templatesData = [
   ...(cuadradosProduct
     ? [
         {
-          slug: "libre-photo-pack",
+          // 2026-09-14 — slug renombrado (era "libre-photo-pack"): el prefijo
+          // "libre-" la marcaba como "respaldo" en el admin siendo LA plantilla
+          // real de Cuadrados, y su preview era el genérico "Personalización
+          // Libre". El rename en DBs existentes lo hace cleanup-demo-templates.mjs.
+          slug: "cuadrados-foto-y-texto",
           productId: cuadradosProduct.id,
           kind: "PHOTO_PACK",
           name: "Plantilla Cuadrado",
           order: 1,
-          previewUrl: "/templates/personalizacion-libre.svg",
+          previewUrl: "/templates/cuadrado-foto-texto.svg",
           // M.3.b.UX.v13 (Lucy 2026-05-15) — Stage cuadrado 600×600 para que el
           // shape físico (heart/circle/rect cuadrado) se vea proporcionado. Ola 4:
           // es la plantilla de los Fotoimanes Cuadrados 1:1 (sin borde → foto a
@@ -609,21 +628,12 @@ const templatesData = [
         },
       ]
     : []),
-  {
-    slug: "libre-photo-grid",
-    productId: null,
-    kind: "PHOTO_GRID",
-    name: "Personalización Libre",
-    order: 99,
-    previewUrl: "/templates/personalizacion-libre.svg",
-    // Ola 4 — ARCHIVADA: ningún producto activo usa el kind PHOTO_GRID.
-    archive: true,
-    canvasData: blankCanvas({ stageW: 720, stageH: 720, includeText: false }),
-  },
   ...(calendarioProduct
     ? [
         {
-          slug: "libre-calendar-photo-month",
+          // 2026-09-14 — slug renombrado (era "libre-calendar-photo-month"),
+          // misma razón que Cuadrados (badge "respaldo" engañoso en el admin).
+          slug: "calendario-mes-clasico",
           productId: calendarioProduct.id,
           kind: "CALENDAR_PHOTO_MONTH",
           name: "Calendario mes a mes",
@@ -684,89 +694,12 @@ const templatesData = [
         },
       ]
     : []),
-  {
-    slug: "libre-calendar-photo-hero",
-    productId: null,
-    kind: "CALENDAR_PHOTO_HERO",
-    name: "Personalización Libre",
-    order: 99,
-    previewUrl: "/templates/personalizacion-libre.svg",
-    // Ola 4 — ARCHIVADA: ningún producto activo usa el kind CALENDAR_PHOTO_HERO.
-    archive: true,
-    canvasData: blankCanvas({
-      stageW: 800,
-      stageH: 600,
-      photoLabel: "Foto hero",
-      includeText: false,
-    }),
-  },
-  {
-    slug: "libre-event-favor",
-    productId: null,
-    kind: "EVENT_FAVOR",
-    name: "Personalización Libre",
-    order: 99,
-    previewUrl: "/templates/personalizacion-libre.svg",
-    // Ola 4 — ARCHIVADA: ningún producto activo usa el kind EVENT_FAVOR.
-    archive: true,
-    canvasData: blankCanvas({ stageW: 600, stageH: 800, includeText: true }),
-  },
-  {
-    slug: "libre-business-logo",
-    productId: null,
-    kind: "BUSINESS_LOGO",
-    name: "Personalización Libre",
-    order: 99,
-    previewUrl: "/templates/personalizacion-libre.svg",
-    // Ola 4 — ARCHIVADA: ningún producto activo usa el kind BUSINESS_LOGO.
-    archive: true,
-    canvasData: blankCanvas({
-      stageW: 700,
-      stageH: 500,
-      photoLabel: "Tu logo",
-      includeText: true,
-    }),
-  },
-  {
-    slug: "libre-custom-decor",
-    productId: null,
-    kind: "CUSTOM_DECOR",
-    name: "Personalización Libre",
-    order: 99,
-    previewUrl: "/templates/personalizacion-libre.svg",
-    // Ola 4 — ARCHIVADA: ningún producto activo usa el kind CUSTOM_DECOR.
-    archive: true,
-    canvasData: blankCanvas({ stageW: 600, stageH: 800, includeText: true }),
-  },
-  {
-    slug: "libre-text-only",
-    productId: null,
-    kind: "TEXT_ONLY",
-    name: "Personalización Libre",
-    order: 99,
-    previewUrl: "/templates/personalizacion-libre.svg",
-    // Ola 4 — ARCHIVADA: el producto TEXT_ONLY (nombre-personalizado) usa el
-    // NameEditor (superficie "name"), que no carga plantillas.
-    archive: true,
-    canvasData: {
-      version: 1,
-      stage: stage(800, 800),
-      layers: [
-        background("#FFF8F0"),
-        text({
-          id: "main_text",
-          x: 400,
-          y: 400,
-          text: "Tu frase acá",
-          fontFamily: "Fredoka",
-          fontSize: 80,
-          fill: BRAND.purpleDark,
-          fontWeight: "bold",
-          editable: true,
-        }),
-      ],
-    },
-  },
+  // 2026-09-14 — fin del array: las globales demo archivadas (libre-photo-grid,
+  // libre-calendar-photo-hero, libre-event-favor, libre-business-logo,
+  // libre-custom-decor, libre-text-only) ya NO se declaran. Salen del catálogo
+  // con scripts/cleanup-demo-templates.mjs (decisión del owner: "son entera-
+  // mente demo, eliminarlas"). Sus kinds no tienen producto activo y las
+  // superficies no-foto (name/phrase/event/logo) no consumen plantillas.
 ];
 
 // ──────────────────────────────────────────────────────────────────

@@ -147,8 +147,17 @@ describe("CanvasDataV2Schema — calendarFont (Lucy 2026-09-07, selector de tipo
     gridLayout: { cols: 1, rows: 1, gap: 8 },
   };
 
-  it("acepta las 3 claves curadas del selector", () => {
-    for (const font of ["fredoka", "inter", "caveat"] as const) {
+  it("acepta las 8 claves curadas del selector (owner 2026-09-14)", () => {
+    for (const font of [
+      "fredoka",
+      "inter",
+      "caveat",
+      "baloo2",
+      "nunito",
+      "patrick",
+      "playfair",
+      "dancing",
+    ] as const) {
       const parsed = CanvasDataV2Schema.parse({ ...base, calendarFont: font });
       expect(parsed.calendarFont).toBe(font);
     }
@@ -174,6 +183,8 @@ describe("CanvasDataV2Schema — calendarFont (Lucy 2026-09-07, selector de tipo
     expect(calendarFontOrDefault(null)).toBe("fredoka");
     expect(calendarFontOrDefault("caveat")).toBe("caveat");
     expect(calendarFontOrDefault("inter")).toBe("inter");
+    expect(calendarFontOrDefault("baloo2")).toBe("baloo2");
+    expect(calendarFontOrDefault("playfair")).toBe("playfair");
     expect(calendarFontOrDefault("Papyrus")).toBe("fredoka");
     expect(calendarFontOrDefault({ family: "Fredoka" })).toBe("fredoka");
   });

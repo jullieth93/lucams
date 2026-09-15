@@ -50,6 +50,7 @@ import {
   PDP_PACK_PLUS_COPIES_SLUGS,
   PDP_QUANTITY_CHIP_DIMS,
   conImanDefaultVariant,
+  resolvePromoDisplay,
 } from "@/features/products/variant-schemas";
 import { NamePricePicker } from "./name-price-picker";
 import { CopiesQtyInput } from "./copies-qty-input";
@@ -216,9 +217,17 @@ export default async function ProductoDetallePage({
     getCurrentCustomer(),
   ]);
 
-  // Precio tachado (promo) de la OPCIÓN elegida (Lucy 2026-06-27). Solo se
-  // muestra si es estrictamente mayor al precio actual → nunca descuento negativo.
-  const displayCompareAt = selectedVariant?.compareAtPrice ?? null;
+  // Precio tachado con REFLEJO TOTAL (owner 2026-09-14): la promo vive por
+  // opción en el admin y el front la refleja SIEMPRE — tachado si la opción
+  // elegida (o el "Desde") la tiene, chip "Promo en otra opción desde $X" si
+  // la tiene otra. Antes solo se veía con la variante elegida (bug: la card
+  // mostraba el descuento y la ficha no). Nunca descuento negativo.
+  const { compareAt: displayCompareAt, promoElsewhereFrom } = resolvePromoDisplay(
+    selectable,
+    selectedVariant?.id ?? null,
+    displayPrice,
+    product.basePrice,
+  );
   const hasDiscount = displayCompareAt != null && displayCompareAt > displayPrice;
 
   const initialWishlisted = customer
@@ -366,6 +375,14 @@ export default async function ProductoDetallePage({
                     {hasDiscount && (
                       <span className="text-brand-muted text-lg tabular-nums line-through">
                         {formatCOP(displayCompareAt!)}
+                      </span>
+                    )}
+                    {/* Reflejo total (owner 2026-09-14): la promo vive en otra
+                        opción → se anuncia acá; antes era invisible en la ficha
+                        y solo se veía en la card del catálogo. */}
+                    {promoElsewhereFrom != null && (
+                      <span className="bg-brand-pink/10 text-brand-pink rounded-full px-3 py-1 text-xs font-semibold">
+                        🏷️ Promo en otra opción desde {formatCOP(promoElsewhereFrom)}
                       </span>
                     )}
                   </>

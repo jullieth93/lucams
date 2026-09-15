@@ -23,6 +23,7 @@ import {
   photoPackMinPrice,
   conImanDefaultVariant,
   parseAttributesFromForm,
+  resolvePromoDisplay,
 } from "./variant-schemas";
 
 describe("mergePreservingUnmanagedAttributes", () => {
@@ -394,5 +395,76 @@ describe("parseAttributesFromForm", () => {
       "photoSlots",
     );
     expect(parseAttributesFromForm(fd({ attr_quantity: "0" }))).not.toHaveProperty("quantity");
+  });
+});
+
+/*
+ * resolvePromoDisplay — precio tachado con REFLEJO TOTAL (owner 2026-09-14).
+ * La promo se edita por opción en el admin y el front la refleja SIEMPRE:
+ * tachado si la opción elegida (o el "Desde") la tiene; chip "promo en otra
+ * opción desde $X" si la tiene otra; nunca tachado falso ni descuento negativo.
+ */
+describe("resolvePromoDisplay", () => {
+  const V = (id: string, price: number | null, compareAtPrice: number | null) => ({
+    id,
+    price,
+    compareAtPrice,
+  });
+
+  it("la opción elegida tiene promo → tachado junto a su precio", () => {
+    const variants = [V("a", 3990000, 4490000), V("b", 3790000, null)];
+    expect(resolvePromoDisplay(variants, "a", 3990000, 3790000)).toEqual({
+      compareAt: 4490000,
+      promoElsewhereFrom: null,
+    });
+  });
+
+  it("promo solo en OTRA opción → chip desde el precio promo más barato", () => {
+    // Caso real calendario: promo en la NOMAG pero el default es la MAG.
+    const variants = [V("mag", 3990000, null), V("nomag", 3790000, 4290000)];
+    expect(resolvePromoDisplay(variants, "mag", 3990000, 3790000)).toEqual({
+      compareAt: null,
+      promoElsewhereFrom: 3790000,
+    });
+  });
+
+  it("sin selección y la promo más barata ES el 'Desde' → tachado directo", () => {
+    const variants = [V("mag", 3990000, null), V("nomag", 3790000, 4290000)];
+    expect(resolvePromoDisplay(variants, null, 3790000, 3790000)).toEqual({
+      compareAt: 4290000,
+      promoElsewhereFrom: null,
+    });
+  });
+
+  it("sin selección y el 'Desde' NO tiene promo → chip", () => {
+    const variants = [V("a", 100000, null), V("b", 200000, 300000)];
+    expect(resolvePromoDisplay(variants, null, 100000, 100000)).toEqual({
+      compareAt: null,
+      promoElsewhereFrom: 200000,
+    });
+  });
+
+  it("compareAt <= precio NO es promo (nunca descuento negativo)", () => {
+    const variants = [V("a", 3990000, 3000000)];
+    expect(resolvePromoDisplay(variants, "a", 3990000, 3990000)).toEqual({
+      compareAt: null,
+      promoElsewhereFrom: null,
+    });
+  });
+
+  it("variante sin precio propio usa basePrice para evaluar su promo", () => {
+    const variants = [V("a", null, 5000000), V("b", 2000000, null)];
+    expect(resolvePromoDisplay(variants, "b", 2000000, 4000000)).toEqual({
+      compareAt: null,
+      promoElsewhereFrom: 4000000,
+    });
+  });
+
+  it("nadie tiene promo → nada", () => {
+    const variants = [V("a", 100000, null), V("b", null, null)];
+    expect(resolvePromoDisplay(variants, "a", 100000, 100000)).toEqual({
+      compareAt: null,
+      promoElsewhereFrom: null,
+    });
   });
 });

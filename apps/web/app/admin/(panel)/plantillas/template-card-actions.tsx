@@ -1,12 +1,12 @@
 "use client";
 
 import { useActionState } from "react";
-import { Check, EyeOff } from "lucide-react";
-import { setTemplateApprovalAction } from "./actions";
+import { Check, EyeOff, Trash2 } from "lucide-react";
+import { setTemplateApprovalAction, deleteTemplateAction } from "./actions";
 
 type St = { error?: string; success?: string } | null;
 
-/** Botones Aprobar / Ocultar por plantilla. `status` decide qué CTA resaltar. */
+/** Botones Aprobar / Ocultar / Eliminar por plantilla. `status` decide qué CTA resaltar. */
 export function TemplateCardActions({
   id,
   status,
@@ -15,6 +15,10 @@ export function TemplateCardActions({
   status: "aprobada" | "oculta" | "descartada";
 }) {
   const [state, action, pending] = useActionState<St, FormData>(setTemplateApprovalAction, null);
+  const [delState, delAction, delPending] = useActionState<St, FormData>(
+    deleteTemplateAction,
+    null,
+  );
   const isApproved = status === "aprobada";
 
   return (
@@ -36,7 +40,7 @@ export function TemplateCardActions({
             {isApproved ? "Aprobada" : "Aprobar"}
           </button>
         </form>
-        {!isApproved ? null : (
+        {isApproved && (
           <form action={action}>
             <input type="hidden" name="id" value={id} />
             <input type="hidden" name="approved" value="0" />
@@ -50,8 +54,30 @@ export function TemplateCardActions({
             </button>
           </form>
         )}
+        {/* Eliminar (owner 2026-09-14): solo plantillas NO aprobadas; el servidor
+            además exige 0 diseños referenciantes (con diseños solo se descarta). */}
+        {!isApproved && (
+          <form
+            action={delAction}
+            onSubmit={(e) => {
+              if (!window.confirm("¿Eliminar esta plantilla definitivamente?")) e.preventDefault();
+            }}
+          >
+            <input type="hidden" name="id" value={id} />
+            <button
+              type="submit"
+              disabled={delPending}
+              aria-label="Eliminar plantilla"
+              className="inline-flex items-center justify-center rounded-md border border-rose-200 px-2 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-50 disabled:opacity-60"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </form>
+        )}
       </div>
       {state?.error && <p className="text-[11px] text-rose-700">{state.error}</p>}
+      {delState?.error && <p className="text-[11px] text-rose-700">{delState.error}</p>}
+      {delState?.success && <p className="text-[11px] text-emerald-700">{delState.success}</p>}
     </div>
   );
 }

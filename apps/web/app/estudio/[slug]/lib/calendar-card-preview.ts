@@ -30,6 +30,11 @@ const CALENDAR_TITLE_FONT_VARS: Record<CalendarFontKey, string> = {
   fredoka: "--font-fredoka",
   inter: "--font-inter",
   caveat: "--font-caveat",
+  baloo2: "--font-baloo2",
+  nunito: "--font-nunito",
+  patrick: "--font-patrick",
+  playfair: "--font-playfair",
+  dancing: "--font-dancing",
 };
 
 /**

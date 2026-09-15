@@ -292,24 +292,25 @@ describe("frame-palette — Ola 24 (photoBackingHexFor: respaldo neutro comparti
   });
 });
 
-// Ola 29 (owner 2026-09-11, ronda 5 — 1.2.1.A) — color de letra POR DEFECTO
-// sobre la tarjeta: "que visualmente se vea". Regla del owner: tarjeta blanca →
-// texto oscuro; tarjeta rosada → texto BLANCO. Umbral Rec.601 0.56 (el rosado de
-// marca, lum ≈ 0.552, cuenta como oscuro PARA EL TEXTO). Distinto de
-// isDarkColor (0.5), que sigue decidiendo la tarjeta binaria de Instagram.
-describe("defaultTextFillOnCard — la letra por defecto siempre se ve (owner 2026-09-11)", () => {
+// Owner 2026-09-14 (REDEFINE la regla de ronda 5 del 2026-09-11) — color de
+// letra POR DEFECTO sobre la tarjeta: BLANCO solo con tarjeta NEGRA; con
+// blanca, aguamarina, rosa, lavanda o amarilla la letra sale NEGRA (el negro
+// contrasta mejor sobre toda la paleta pastel — el owner lo revisó en STG).
+// Umbral Rec.601 0.30 (solo los casi-negros cuentan como tarjeta oscura).
+// Distinto de isDarkColor (0.5), que sigue decidiendo la tarjeta binaria de IG.
+describe("defaultTextFillOnCard — blanco solo sobre tarjeta negra (owner 2026-09-14)", () => {
   it("tarjeta BLANCA → letra oscura (el oscuro de la plantilla o #3D2E5C)", () => {
     expect(defaultTextFillOnCard("#FFFFFF", "#3D2E5C")).toBe("#3D2E5C");
     expect(defaultTextFillOnCard("#FFFFFF")).toBe("#3D2E5C");
   });
 
-  it("tarjeta ROSADA → letra BLANCA (el ejemplo explícito del owner)", () => {
-    expect(defaultTextFillOnCard("#E85B9F", "#3D2E5C")).toBe("#FFFFFF");
+  it("tarjeta NEGRA → letra BLANCA", () => {
+    expect(defaultTextFillOnCard("#221E25")).toBe("#FFFFFF");
   });
 
-  it("tarjeta NEGRA y LAVANDA → letra blanca", () => {
-    expect(defaultTextFillOnCard("#221E25")).toBe("#FFFFFF");
-    expect(defaultTextFillOnCard("#7C6AAD", "#3D2E5C")).toBe("#FFFFFF");
+  it("tarjeta ROSA y LAVANDA → letra oscura (regla redefinida 2026-09-14)", () => {
+    expect(defaultTextFillOnCard("#E85B9F", "#3D2E5C")).toBe("#3D2E5C");
+    expect(defaultTextFillOnCard("#7C6AAD", "#3D2E5C")).toBe("#3D2E5C");
   });
 
   it("pasteles claros (aguamarina/amarillo) → letra oscura", () => {

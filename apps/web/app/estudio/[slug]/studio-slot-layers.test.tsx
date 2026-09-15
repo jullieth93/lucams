@@ -997,10 +997,10 @@ describe("renderLayer — text", () => {
     expect(text.props.fill).toBe("#FFFFFF");
   });
 
-  // Ola 29 (owner 2026-09-11, ronda 5 — 1.2.1.A): "si es rosado el lienzo del
-  // fondo, blanco puede ser el preview del texto". El default de letra sale de
-  // defaultTextFillOnCard(cardBgHex): rosada → BLANCO; blanca → oscuro.
-  it("tarjeta ROSADA → texto BLANCO por defecto; tarjeta BLANCA → oscuro (regla del owner)", () => {
+  // Owner 2026-09-14 (redefine Ola 29): letra BLANCA solo con tarjeta NEGRA;
+  // rosa/lavanda/blanca/pasteles → letra oscura. El default sale de
+  // defaultTextFillOnCard(cardBgHex).
+  it("tarjeta NEGRA → texto BLANCO; rosa/blanca/pastel → oscuro (regla owner 2026-09-14)", () => {
     const fillFor = (cardBgHex: string) => {
       const el = renderLayer(
         textLayer,
@@ -1021,7 +1021,9 @@ describe("renderLayer — text", () => {
       }>;
       return text.props.fill;
     };
-    expect(fillFor("#E85B9F")).toBe("#FFFFFF"); // rosada → blanco
+    expect(fillFor("#221E25")).toBe("#FFFFFF"); // negra → blanco
+    expect(fillFor("#E85B9F")).toBe("#3D2E5C"); // rosa → oscuro
+    expect(fillFor("#7C6AAD")).toBe("#3D2E5C"); // lavanda → oscuro
     expect(fillFor("#FFFFFF")).toBe("#3D2E5C"); // blanca → oscuro de la plantilla
     expect(fillFor("#5DD9D1")).toBe("#3D2E5C"); // aguamarina → oscuro
   });

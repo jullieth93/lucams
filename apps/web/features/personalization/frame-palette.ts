@@ -63,17 +63,21 @@ export function isDarkColor(hex: string): boolean {
 }
 
 /**
- * Color de letra POR DEFECTO sobre una tarjeta de color (owner 2026-09-11,
- * validación ronda 5 — 1.2.1.A): "que visualmente se vea" — tarjeta blanca o
- * pastel claro → el oscuro de la plantilla; tarjeta oscura O ROSADA → blanco.
- * Umbral Rec. 601 de 0.56 (gusto explícito del owner: el rosado de marca
- * #E85B9F, luminancia ≈ 0.552, cuenta como "oscuro" PARA EL TEXTO).
- * DISTINTO de isDarkColor (0.5) a propósito: esa también decide la tarjeta
- * BINARIA de Instagram (instagramBackgroundHex) — si el rosado contara como
- * oscuro allí, la tarjeta IG se volvería rosada. Acá solo se decide la letra.
- * Misma regla en lienzo (studio-slot), editor de texto (pestaña Texto) y
- * producción (production-render-canvas) — WYSIWYG. El override de color del
- * cliente siempre manda sobre este default.
+ * Color de letra POR DEFECTO sobre una tarjeta de color (owner 2026-09-14,
+ * REDEFINICIÓN — reemplaza la regla de ronda 5 del 2026-09-11): letra BLANCA
+ * solo cuando la tarjeta es NEGRA; con tarjeta blanca, aguamarina, rosa,
+ * lavanda o amarilla la letra sale NEGRA (el oscuro de la plantilla). La regla
+ * anterior (umbral 0.56) pintaba blanco también sobre rosa y lavanda — el
+ * owner lo revisó en STG y lo revirtió: el negro contrasta mejor sobre toda la
+ * paleta pastel de marca (rosa #E85B9F y lavanda #7C6AAD quedan por ENCIMA del
+ * umbral nuevo).
+ * Umbral Rec. 601 de 0.30: solo los casi-negros (negro de marca #221E25,
+ * luminancia ≈ 0.13) cuentan como "tarjeta oscura" para la letra.
+ * DISTINTO de isDarkColor (0.5) a propósito: esa decide la tarjeta BINARIA de
+ * Instagram (instagramBackgroundHex) y no se toca. Misma regla en lienzo
+ * (studio-slot), editor de texto (pestaña Texto) y producción
+ * (production-render-canvas) — WYSIWYG. El override de color del cliente
+ * siempre manda sobre este default.
  */
 export function defaultTextFillOnCard(
   cardHex: string | null | undefined,
@@ -83,7 +87,7 @@ export function defaultTextFillOnCard(
     const r = parseInt(cardHex.slice(1, 3), 16) / 255;
     const g = parseInt(cardHex.slice(3, 5), 16) / 255;
     const b = parseInt(cardHex.slice(5, 7), 16) / 255;
-    if (0.299 * r + 0.587 * g + 0.114 * b < 0.56) return "#FFFFFF";
+    if (0.299 * r + 0.587 * g + 0.114 * b < 0.3) return "#FFFFFF";
   }
   return layerFill ?? "#3D2E5C";
 }

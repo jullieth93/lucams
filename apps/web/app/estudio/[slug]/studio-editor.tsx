@@ -510,11 +510,16 @@ export function StudioEditor({
   // Vivo del canvasData (persistido en el auto-save → producción lo usa tal cual).
   const liveCalendarFont = useStore(store, (s) => s.canvasData?.calendarFont ?? "fredoka");
   const setCalendarFont = useStore(store, (s) => s.setCalendarFont);
-  // Labels de las 3 opciones del selector (textos CMS).
+  // Labels de las 8 opciones del selector (textos CMS).
   const calendarFontLabels: Record<string, string> = {
     fredoka: texts.lienzo.calFontOptionFredoka,
     inter: texts.lienzo.calFontOptionInter,
     caveat: texts.lienzo.calFontOptionCaveat,
+    baloo2: texts.lienzo.calFontOptionBaloo2,
+    nunito: texts.lienzo.calFontOptionNunito,
+    patrick: texts.lienzo.calFontOptionPatrick,
+    playfair: texts.lienzo.calFontOptionPlayfair,
+    dancing: texts.lienzo.calFontOptionDancing,
   };
 
   // ── Ola 26 (owner 2026-09-09) — GUARD DE FINALIZACIÓN: textos requeridos IG ──

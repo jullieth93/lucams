@@ -149,7 +149,7 @@ describe("StudioSlotEditModal — Ola 9 sin slider de zoom", () => {
 });
 
 describe("StudioSlotEditModal — letra del calendario dentro de «Ajustar Foto» (Lucy 2026-09-08)", () => {
-  it("con onCalendarFontChange: el selector aparece en la pestaña Foto con las 3 fuentes", () => {
+  it("con onCalendarFontChange: el selector aparece en la pestaña Foto con las 8 fuentes", () => {
     const onCalendarFontChange = vi.fn();
     render(
       <StudioSlotEditModal
@@ -160,8 +160,8 @@ describe("StudioSlotEditModal — letra del calendario dentro de «Ajustar Foto�
     );
     const select = document.querySelector<HTMLSelectElement>("#cal-font-select");
     expect(select).not.toBeNull();
-    // Las 3 opciones curadas (CALENDAR_FONT_OPTIONS), fredoka seleccionada.
-    expect(select!.options.length).toBe(3);
+    // Las 8 opciones curadas (CALENDAR_FONT_OPTIONS, owner 2026-09-14), fredoka seleccionada.
+    expect(select!.options.length).toBe(8);
     expect(select!.value).toBe("fredoka");
     expect(screen.getByText("Esta letra aplica a los 12 meses de tu calendario.")).toBeTruthy();
 

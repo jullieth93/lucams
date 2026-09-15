@@ -65,13 +65,21 @@ function ensureFonts(mod: CanvasMod): boolean {
   if (fontsReady !== null) return fontsReady;
   try {
     const dir = path.join(process.cwd(), "assets", "fonts");
+    // 2026-09-14 (owner) — selector del calendario a 8 tipos de letra: cada key
+    // tiene su TTF (OFL) registrado acá. Patrick Hand es TTF ESTÁTICO (una sola
+    // cara) — el setBrandFont que fuerza el eje wght en variables es no-op con ella.
     const ok =
       mod.GlobalFonts.registerFromPath(path.join(dir, "Fredoka.ttf"), "Fredoka") &&
       mod.GlobalFonts.registerFromPath(path.join(dir, "Inter.ttf"), "Inter") &&
       // Lucy 2026-09-07 — selector de tipo de letra del calendario: Caveat (handwriting
       // OFL, TTF variable — @napi-rs/canvas la registra como familia "Caveat" y
       // setBrandFont fuerza el eje wght via fontVariationSettings, igual que Fredoka).
-      mod.GlobalFonts.registerFromPath(path.join(dir, "Caveat.ttf"), "Caveat");
+      mod.GlobalFonts.registerFromPath(path.join(dir, "Caveat.ttf"), "Caveat") &&
+      mod.GlobalFonts.registerFromPath(path.join(dir, "Baloo2.ttf"), "Baloo 2") &&
+      mod.GlobalFonts.registerFromPath(path.join(dir, "Nunito.ttf"), "Nunito") &&
+      mod.GlobalFonts.registerFromPath(path.join(dir, "PatrickHand.ttf"), "Patrick Hand") &&
+      mod.GlobalFonts.registerFromPath(path.join(dir, "PlayfairDisplay.ttf"), "Playfair Display") &&
+      mod.GlobalFonts.registerFromPath(path.join(dir, "DancingScript.ttf"), "Dancing Script");
     fontsReady = Boolean(ok);
   } catch {
     fontsReady = false;
@@ -84,8 +92,35 @@ function ensureFonts(mod: CanvasMod): boolean {
  * un string libre del cliente: cualquier valor fuera de la enum (o ausente) cae a Fredoka
  * (look histórico, retrocompatible). El body/grilla SIEMPRE es Inter (drawCalendarPage).
  */
-export function calendarFontFamilyForKey(key: unknown): "Fredoka" | "Inter" | "Caveat" {
-  return key === "inter" ? "Inter" : key === "caveat" ? "Caveat" : "Fredoka";
+export function calendarFontFamilyForKey(
+  key: unknown,
+):
+  | "Fredoka"
+  | "Inter"
+  | "Caveat"
+  | "Baloo 2"
+  | "Nunito"
+  | "Patrick Hand"
+  | "Playfair Display"
+  | "Dancing Script" {
+  switch (key) {
+    case "inter":
+      return "Inter";
+    case "caveat":
+      return "Caveat";
+    case "baloo2":
+      return "Baloo 2";
+    case "nunito":
+      return "Nunito";
+    case "patrick":
+      return "Patrick Hand";
+    case "playfair":
+      return "Playfair Display";
+    case "dancing":
+      return "Dancing Script";
+    default:
+      return "Fredoka";
+  }
 }
 
 // ── Tipos (mismos que production-render.ts, minimal) ────────────────────────

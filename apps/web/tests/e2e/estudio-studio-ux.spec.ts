@@ -484,9 +484,19 @@ test.describe("estudio Ola 22 — fuente del calendario en Ajustar Foto", () => 
     if (await fotoTab.count()) await fotoTab.click();
 
     // El selector de fuente del calendario vive AHORA también dentro del modal.
+    // Owner 2026-09-14: 8 tipos de letra (las 3 originales + 5 nuevas OFL).
     const modalSelect = dialog.locator("#cal-font-select");
     await expect(modalSelect).toBeVisible({ timeout: 30_000 });
-    await expect(modalSelect.locator("option")).toHaveText([/Redondeada/, /Moderna/, /Manuscrita/]);
+    await expect(modalSelect.locator("option")).toHaveText([
+      /Redondeada/,
+      /Moderna/,
+      /Manuscrita/,
+      /Bubble/,
+      /Suave/,
+      /Casual/,
+      /Elegante/,
+      /Caligráfica/,
+    ]);
     await modalSelect.selectOption("caveat");
 
     // El selector del BANNER del editor (el que ya existía) comparte el mismo

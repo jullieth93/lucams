@@ -96,11 +96,17 @@ export type StudioTexts = {
     calBannerTitulo: string;
     calBannerAno: string;
     calBannerHint: string;
-    /** Lucy 2026-09-07 — selector de tipo de letra del título/mes del calendario (banner). */
+    /** Lucy 2026-09-07 — selector de tipo de letra del título/mes del calendario (banner).
+     *  2026-09-14 (owner): 8 opciones (fredoka/inter/caveat + 5 nuevas OFL). */
     calFontLabel: string;
     calFontOptionFredoka: string;
     calFontOptionInter: string;
     calFontOptionCaveat: string;
+    calFontOptionBaloo2: string;
+    calFontOptionNunito: string;
+    calFontOptionPatrick: string;
+    calFontOptionPlayfair: string;
+    calFontOptionDancing: string;
     calFontAria: string;
     /** Lucy 2026-09-05 — packs: stepper "¿Cuántas fotos lleva tu imán?" (junto a la toolbar). */
     photoCountLabel: string;
@@ -616,6 +622,11 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     calFontOptionFredoka: "Redondeada (Fredoka)",
     calFontOptionInter: "Moderna (Inter)",
     calFontOptionCaveat: "Manuscrita (Caveat)",
+    calFontOptionBaloo2: "Bubble (Baloo 2)",
+    calFontOptionNunito: "Suave (Nunito)",
+    calFontOptionPatrick: "Casual (Patrick Hand)",
+    calFontOptionPlayfair: "Elegante (Playfair)",
+    calFontOptionDancing: "Caligráfica (Dancing)",
     calFontAria: "Tipo de letra del título del calendario",
     photoCountLabel: "¿Cuántas fotos lleva tu imán?",
     photoCountHint: "Tus fotos se conservan al cambiar el número",
@@ -1119,6 +1130,11 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.calFontOptionFredoka": "estudio.lienzo.cal-font-option-fredoka",
   "lienzo.calFontOptionInter": "estudio.lienzo.cal-font-option-inter",
   "lienzo.calFontOptionCaveat": "estudio.lienzo.cal-font-option-caveat",
+  "lienzo.calFontOptionBaloo2": "estudio.lienzo.cal-font-option-baloo2",
+  "lienzo.calFontOptionNunito": "estudio.lienzo.cal-font-option-nunito",
+  "lienzo.calFontOptionPatrick": "estudio.lienzo.cal-font-option-patrick",
+  "lienzo.calFontOptionPlayfair": "estudio.lienzo.cal-font-option-playfair",
+  "lienzo.calFontOptionDancing": "estudio.lienzo.cal-font-option-dancing",
   "lienzo.calFontAria": "estudio.lienzo.cal-font-aria",
   "lienzo.photoCountLabel": "estudio.lienzo.photo-count-label",
   "lienzo.photoCountHint": "estudio.lienzo.photo-count-hint",

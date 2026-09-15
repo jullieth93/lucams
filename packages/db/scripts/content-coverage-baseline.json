@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-08-28T20:45:10.840Z",
-  "threshold": 34.28,
+  "generatedAt": "2026-09-15T03:06:46.105Z",
+  "threshold": 37.43,
   "uncovered": [
     "apps/web/app/error.tsx :: Algo salió mal de nuestro lado",
     "apps/web/app/error.tsx :: Ya quedó registrado. Puedes intentar de nuevo o volver al inicio.",
@@ -26,7 +26,6 @@
     "apps/web/app/carrito/page.tsx :: Total",
     "apps/web/app/carrito/page.tsx :: Ver catálogo →",
     "apps/web/app/contacto/contact-form.tsx :: ¡Listo! Recibimos tu mensaje",
-    "apps/web/app/contacto/contact-form.tsx :: Te respondemos a tu email en menos de 24h. Tu ticket es",
     "apps/web/app/contacto/contact-form.tsx :: Si es urgente, escríbenos por WhatsApp.",
     "apps/web/app/contacto/contact-form.tsx :: Tu nombre",
     "apps/web/app/contacto/contact-form.tsx :: Lucía Rodríguez",
@@ -34,7 +33,6 @@
     "apps/web/app/contacto/contact-form.tsx :: Tu información se trata según el",
     "apps/web/app/contacto/contact-form.tsx :: Aviso de Privacidad",
     "apps/web/app/contacto/contact-form.tsx :: . Sin spam.",
-    "apps/web/app/contacto/page.tsx :: Para temas legales:",
     "apps/web/app/d/[token]/page.tsx :: Ver catálogo →",
     "apps/web/app/d/[token]/page.tsx :: Diseño compartido",
     "apps/web/app/d/[token]/page.tsx :: Hecho en el",
@@ -47,7 +45,6 @@
     "apps/web/app/estudio/[slug]/polaroid-3d-view.tsx :: Agrega al menos una foto para ver tus polaroids en 3D.",
     "apps/web/app/estudio/[slug]/room-board-view-3d.tsx :: Agrega tu diseño para verlo en el tablero.",
     "apps/web/app/estudio/[slug]/studio-preview-modal.tsx :: c/u",
-    "apps/web/app/estudio/[slug]/studio-preview-modal.tsx :: de tu diseño",
     "apps/web/app/legal/cookies/page.tsx :: ¿Quieres cambiar qué cookies aceptas?",
     "apps/web/app/mi-cuenta/page.tsx :: Invita y gana",
     "apps/web/app/mi-cuenta/page.tsx :: Comparte tu código: cuando un amigo se registre con él y haga su primera compra, los dos reciben un cupón de",
@@ -65,7 +62,6 @@
     "apps/web/app/ocasion/[slug]/page.tsx :: o usa el",
     "apps/web/app/pedido/[token]/page.tsx :: Ver dirección exacta",
     "apps/web/app/pedido/[token]/page.tsx :: Documento de guía (PDF)",
-    "apps/web/app/producto/[slug]/copies-qty-input.tsx :: Copias idénticas del mismo producto",
     "apps/web/app/producto/[slug]/name-price-picker.tsx :: ¿Cuántas letras tendrá?",
     "apps/web/app/producto/[slug]/name-price-picker.tsx :: por ficha ·",
     "apps/web/app/producto/[slug]/name-price-picker.tsx :: Más letras",
@@ -73,6 +69,7 @@
     "apps/web/app/producto/[slug]/name-price-picker.tsx :: Arma tu palabra y elige los colores · ves el precio exacto al escribir",
     "apps/web/app/producto/[slug]/page.tsx :: Ruta de navegación",
     "apps/web/app/producto/[slug]/page.tsx :: por ficha",
+    "apps/web/app/producto/[slug]/page.tsx :: 🏷️ Promo en otra opción desde",
     "apps/web/app/producto/[slug]/page.tsx :: Consultar por WhatsApp",
     "apps/web/app/producto/[slug]/page.tsx :: Envío, pago y garantía",
     "apps/web/app/producto/[slug]/page.tsx :: Lo producimos a mano y lo",
@@ -107,14 +104,12 @@
     "apps/web/app/producto/[slug]/review-form.tsx :: ¿Qué te pareció el producto? ¿Cómo llegó? ¿Lo recomiendas?",
     "apps/web/app/producto/[slug]/review-form.tsx :: Publicar reseña",
     "apps/web/app/producto/[slug]/variant-actions.tsx :: Personalizar",
-    "apps/web/app/producto/[slug]/variant-actions.tsx :: Elige las opciones primero ↑",
     "apps/web/app/producto/[slug]/variant-actions.tsx :: Personalizar",
     "apps/web/app/producto/[slug]/variant-actions.tsx :: Diseña en vivo • Vista previa al instante",
     "apps/web/app/producto/[slug]/variant-selector.tsx :: Elige tu opción",
     "apps/web/app/producto/[slug]/variant-selector.tsx :: Variantes del producto",
     "apps/web/app/producto/[slug]/variant-selector.tsx :: c/u",
     "apps/web/app/producto/[slug]/variant-selector.tsx :: · Agotado",
-    "apps/web/app/producto/[slug]/variant-selector.tsx :: Total:",
     "apps/web/app/producto/[slug]/variant-selector.tsx :: Las opciones tachadas están agotadas por ahora.",
     "apps/web/app/producto/[slug]/variant-selector.tsx :: Precio",
     "apps/web/app/productos/[categoria]/[subcategoria]/page.tsx :: Inicio",
@@ -230,7 +225,6 @@
     "apps/web/components/home/reviews-carousel.tsx :: Siguiente reseña",
     "apps/web/components/home/reviews-carousel.tsx :: Calificación:",
     "apps/web/components/product-detail/product-gallery.tsx :: Galería de",
-    "apps/web/components/product-detail/product-gallery.tsx :: Cerrar",
-    "apps/web/components/product-detail/templates-strip.tsx :: Listo"
+    "apps/web/components/product-detail/product-gallery.tsx :: Cerrar"
   ]
 }

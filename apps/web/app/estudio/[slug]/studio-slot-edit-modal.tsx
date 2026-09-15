@@ -171,11 +171,16 @@ export function StudioSlotEditModal({
       ? fillStudioText(texts.texto.slotEditTituloIndice, { n: slotIndex + 1 })
       : texts.comun.editar;
 
-  // Labels de las 3 opciones de letra del calendario (mismas keys CMS que el banner).
+  // Labels de las 8 opciones de letra del calendario (mismas keys CMS que el banner).
   const calendarFontLabels: Record<string, string> = {
     fredoka: texts.lienzo.calFontOptionFredoka,
     inter: texts.lienzo.calFontOptionInter,
     caveat: texts.lienzo.calFontOptionCaveat,
+    baloo2: texts.lienzo.calFontOptionBaloo2,
+    nunito: texts.lienzo.calFontOptionNunito,
+    patrick: texts.lienzo.calFontOptionPatrick,
+    playfair: texts.lienzo.calFontOptionPlayfair,
+    dancing: texts.lienzo.calFontOptionDancing,
   };
 
   return (

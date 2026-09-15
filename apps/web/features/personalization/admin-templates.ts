@@ -72,6 +72,30 @@ export async function listTemplatesForAdmin(): Promise<AdminTemplate[]> {
 }
 
 /**
+ * Eliminar DEFINITIVAMENTE una plantilla (owner 2026-09-14: las demo pendientes
+ * de aprobar sobran en el panel). Guard: solo si NO está aprobada y NINGÚN
+ * diseño la referencia (los diseños conservan templateId — con referencias la
+ * regla sigue siendo archivar, nunca borrar). Lanza Error con mensaje para UI.
+ */
+export async function deleteTemplateIfOrphan(id: string): Promise<void> {
+  const t = await prisma.personalizationTemplate.findUnique({
+    where: { id },
+    select: { isActive: true, deletedAt: true, _count: { select: { designs: true } } },
+  });
+  if (!t) throw new Error("La plantilla ya no existe.");
+  if (t.isActive && !t.deletedAt) {
+    throw new Error("No puedes eliminar una plantilla aprobada: ocúltala primero.");
+  }
+  if (t._count.designs > 0) {
+    throw new Error(
+      `Tiene ${t._count.designs} diseños que la usan: se conserva descartada, nunca se borra.`,
+    );
+  }
+  await prisma.personalizationTemplate.delete({ where: { id } });
+  updateTag("catalog");
+}
+
+/**
  * Aprobar = mostrar en el Estudio: isActive=true + restaurar (deletedAt=null) si
  * estaba descartada. Ocultar = isActive=false (se conserva). `actorId` para audit.
  */

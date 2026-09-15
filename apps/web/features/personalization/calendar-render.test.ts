@@ -93,10 +93,15 @@ describe("renderCalendarMonthPagesCanvas", () => {
 });
 
 describe("calendarFontFamilyForKey — lista blanca del título/mes (Lucy 2026-09-07)", () => {
-  it("mapea las claves curadas a las familias registradas", () => {
+  it("mapea las 8 claves curadas a las familias registradas (owner 2026-09-14)", () => {
     expect(calendarFontFamilyForKey("fredoka")).toBe("Fredoka");
     expect(calendarFontFamilyForKey("inter")).toBe("Inter");
     expect(calendarFontFamilyForKey("caveat")).toBe("Caveat");
+    expect(calendarFontFamilyForKey("baloo2")).toBe("Baloo 2");
+    expect(calendarFontFamilyForKey("nunito")).toBe("Nunito");
+    expect(calendarFontFamilyForKey("patrick")).toBe("Patrick Hand");
+    expect(calendarFontFamilyForKey("playfair")).toBe("Playfair Display");
+    expect(calendarFontFamilyForKey("dancing")).toBe("Dancing Script");
   });
 
   it("ausente o desconocido → Fredoka (retrocompatible), NUNCA un string libre", () => {
@@ -113,7 +118,7 @@ describe("calendarFontFamilyForKey — lista blanca del título/mes (Lucy 2026-0
 describe("renderCalendarMonthPagesCanvas — calendarFont", () => {
   it("caveat cambia el título: el PNG difiere del de fredoka", async () => {
     const photo = await solidPhoto();
-    const renderOne = (calendarFont: "fredoka" | "caveat") =>
+    const renderOne = (calendarFont: "fredoka" | "caveat" | "playfair") =>
       renderCalendarMonthPagesCanvas({
         slots: [{ slotIndex: 0, assetId: "p" }],
         loadAsset: async () => photo,
@@ -123,10 +128,15 @@ describe("renderCalendarMonthPagesCanvas — calendarFont", () => {
       });
     const [classic] = await renderOne("fredoka");
     const [script] = await renderOne("caveat");
+    const [serif] = await renderOne("playfair");
     expect(isPng(classic!)).toBe(true);
     expect(isPng(script!)).toBe(true);
+    expect(isPng(serif!)).toBe(true);
     // Mismo layout/foto/año: si la tipografía del título cambió, los píxeles difieren.
     expect(script!.equals(classic!)).toBe(false);
+    // 2026-09-14 — las fuentes nuevas también rasterizan distinto en producción.
+    expect(serif!.equals(classic!)).toBe(false);
+    expect(serif!.equals(script!)).toBe(false);
   });
 
   it("una clave inválida degrada a fredoka en vez de romper el render", async () => {

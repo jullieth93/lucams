@@ -384,6 +384,45 @@ export function photoPackMinPrice(
 }
 
 /**
+ * Precio tachado con REFLEJO TOTAL (owner 2026-09-14): la promo se edita POR
+ * OPCIÓN en el admin y el front debe reflejarla SIEMPRE — antes la PDP solo la
+ * mostraba si la variante elegida tenía compareAtPrice, así que una promo en
+ * otra opción (o sin selección guiada) era invisible en la ficha mientras la
+ * card del catálogo sí la mostraba (usa product.compareAtPrice denormalizado).
+ *
+ * Regla:
+ *  1. La variante elegida tiene promo (compareAt > precio mostrado) → tachado
+ *     junto al precio, como siempre.
+ *  2. Sin variante elegida (selección guiada) y la promo más barata ES el
+ *     precio "Desde" mostrado → tachado de esa opción junto al "Desde".
+ *  3. Si no, pero OTRA opción tiene promo → chip "Promo en otra opción desde
+ *     $X" (promoElsewhereFrom), nunca un tachado falso sobre el precio actual.
+ *  4. Nadie tiene promo → nada.
+ */
+export function resolvePromoDisplay<
+  T extends { id: string; price: number | null; compareAtPrice: number | null },
+>(
+  variants: readonly T[],
+  selectedId: string | null,
+  displayPrice: number,
+  basePrice: number,
+): { compareAt: number | null; promoElsewhereFrom: number | null } {
+  const selected = variants.find((v) => v.id === selectedId) ?? null;
+  if (selected?.compareAtPrice != null && selected.compareAtPrice > displayPrice) {
+    return { compareAt: selected.compareAtPrice, promoElsewhereFrom: null };
+  }
+  const promos = variants
+    .filter((v) => v.compareAtPrice != null && v.compareAtPrice > (v.price ?? basePrice))
+    .map((v) => ({ price: v.price ?? basePrice, compareAt: v.compareAtPrice! }))
+    .sort((a, b) => a.price - b.price);
+  if (promos.length === 0) return { compareAt: null, promoElsewhereFrom: null };
+  if (!selected && promos[0]!.price === displayPrice) {
+    return { compareAt: promos[0]!.compareAt, promoElsewhereFrom: null };
+  }
+  return { compareAt: null, promoElsewhereFrom: promos[0]!.price };
+}
+
+/**
  * Merge para el update del admin: las claves del form mandan, pero las claves
  * que el form NO puede expresar se PRESERVAN del valor existente en vez de
  * perderse. Sin esto, editar el precio de una variante desde /admin/productos

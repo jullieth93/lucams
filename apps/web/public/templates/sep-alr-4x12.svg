@@ -1,0 +1,19 @@
+<svg width="460" height="700" viewBox="0 0 460 700" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Mockup "Alargados — 4×12 cm" (2026-09-14) — marcapáginas PLANO (sin doblez)
+    personalizado en AMBAS caras. Se muestran las dos caras lado a lado:
+    frente y reverso, foto/diseño a sangre, bordes redondeados.
+  -->
+  <rect x="30" y="20" width="160" height="480" rx="24" fill="#7C6AAD"/>
+  <rect x="40" y="30" width="140" height="460" rx="18" fill="#F4ECFF"/>
+  <rect x="270" y="20" width="160" height="480" rx="24" fill="#7C6AAD"/>
+  <rect x="280" y="30" width="140" height="460" rx="18" fill="#FFE5EC"/>
+  <g fill="#7C6AAD" opacity="0.35">
+    <path d="M110 260c-13-10-28-21-28-35 0-8 6-14 14-14 6 0 10 3 14 9 4-6 8-9 14-9 8 0 14 6 14 14 0 14-15 25-28 35z"/>
+    <path d="M350 260c-13-10-28-21-28-35 0-8 6-14 14-14 6 0 10 3 14 9 4-6 8-9 14-9 8 0 14 6 14 14 0 14-15 25-28 35z"/>
+  </g>
+  <text x="110" y="545" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="17" fill="#3D2E5C">Frente</text>
+  <text x="350" y="545" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="17" fill="#3D2E5C">Reverso</text>
+  <text x="230" y="600" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="15" fill="#7C6AAD">Marcapáginas plano 4×12 cm</text>
+  <text x="230" y="626" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="15" fill="#7C6AAD">se personaliza por ambas caras</text>
+</svg>

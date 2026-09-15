@@ -21,7 +21,7 @@ import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, it, expect } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StudioUnitCountControl } from "./studio-unit-count-control";
-import { createStudioStore } from "./lib/store";
+import { createStudioStore, selectIsComplete } from "./lib/store";
 import type { CanvasDataV2 } from "./types";
 
 afterEach(() => cleanup());
@@ -154,5 +154,26 @@ describe("StudioUnitCountControl", () => {
     setup(2, { magnet: true });
     expect(screen.getByText(/Con imán/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /imán/i })).not.toBeInTheDocument();
+  });
+});
+
+// Uniformidad de la vista previa bloqueada (owner 2026-09-14 — regla D3):
+// NINGÚN producto muestra vista previa con fotos requeridas vacías. El gate es
+// selectIsComplete (todos los slots con asset) — acá se blinda que AGREGAR
+// unidades re-bloquea el diseño aunque las unidades previas estén completas.
+describe("gate uniforme de vista previa (owner 2026-09-14)", () => {
+  it("diseño completo → agregar una unidad re-bloquea (slots nuevos vacíos)", async () => {
+    const full = makeStripCanvas(1);
+    full.slots = full.slots.map((s, i) => ({
+      ...s,
+      assetId: `a${i}`,
+      assetUrl: `https://img/${i}.jpg`,
+    }));
+    const store = setup(1, { bare: full });
+    expect(selectIsComplete(store.getState())).toBe(true);
+
+    fireEvent.click(screen.getByLabelText("Aumentar unidades"));
+    await waitFor(() => expect(store.getState().canvasData!.unitCount).toBe(2));
+    expect(selectIsComplete(store.getState())).toBe(false);
   });
 });
