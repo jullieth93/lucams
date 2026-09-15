@@ -84,7 +84,14 @@ const POLAROID = {
       "Fotoimanes con tus fotos en formato polaroid clásico (6×8 cm). Bordes blancos icónicos, impresión alta resolución, acabado mate. Se venden por packs: 1 pack = 6 unidades. El estilo (Clásica/Instagram) lo eliges como plantilla en el Estudio.",
     basePrice: 2250000,
     compareAtPrice: 2750000,
-    personalizationSchema: { photoSlots: 6, aspectRatio: "6:8", allowText: true, sizeCm: "6×8" },
+    personalizationSchema: {
+      photoSlots: 6,
+      aspectRatio: "6:8",
+      allowText: true,
+      sizeCm: "6×8",
+      // Restaurada 2026-09-15 (ver nota en el update: el schema se fusiona).
+      frameOptions: ["blanco", "negro", "aguamarina", "rosa", "lavanda", "amarillo"],
+    },
   },
   variants: [6, 12, 18, 24].map((units, i) => ({
     // SKUs preservados: V1 (era Set 6) y V3 (era Set 12); V5/V6 estrenan.
@@ -109,7 +116,13 @@ const CUADRADOS = {
     description:
       "Fotoimanes cuadrados con tus fotos. Formato minimalista, sin bordes. Ideal para galerías extensas. Elige el tamaño (4×4, 5×5 o 7×7 cm) y los packs: 1 pack = 6 unidades.",
     basePrice: 2700000, // 1 pack de 5×5 (tamaño del schema)
-    personalizationSchema: { photoSlots: 6, aspectRatio: "1:1", sizeCm: "5×5", shape: "rectangle" },
+    personalizationSchema: {
+      photoSlots: 6,
+      aspectRatio: "1:1",
+      sizeCm: "5×5",
+      shape: "rectangle",
+      frameOptions: ["blanco", "negro", "aguamarina", "rosa", "lavanda", "amarillo"],
+    },
   },
   variants: CUADRADOS_SIZES.flatMap((s) =>
     [6, 12, 18, 24].map((units, i) => ({
@@ -134,10 +147,17 @@ async function migrateFamily(db, family) {
   console.log(`  producto: ${product.slug} (#${product.id})`);
 
   // Producto: basePrice = 1 pack, compareAt (polaroid), description y schema.
+  // OJO (bug 2026-09-15): el schema se FUSIONA con el existente, nunca se
+  // reemplaza — un replace borró `frameOptions` y el Estudio perdió «Color de
+  // tarjeta». Las claves declaradas acá mandan; las demás se conservan.
   console.log(
     `  ~ producto: basePrice=${family.product.basePrice} · compareAt=${family.product.compareAtPrice ?? "(sin tocar)"} · schema.photoSlots=6`,
   );
   if (APPLY) {
+    const current = await db.product.findUniqueOrThrow({
+      where: { id: product.id },
+      select: { personalizationSchema: true },
+    });
     await db.product.update({
       where: { id: product.id },
       data: {
@@ -147,7 +167,10 @@ async function migrateFamily(db, family) {
         ...(family.product.compareAtPrice !== undefined
           ? { compareAtPrice: family.product.compareAtPrice }
           : {}),
-        personalizationSchema: family.product.personalizationSchema,
+        personalizationSchema: {
+          ...(current.personalizationSchema ?? {}),
+          ...family.product.personalizationSchema,
+        },
       },
     });
   }

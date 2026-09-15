@@ -230,7 +230,16 @@ const productsData = [
     isPersonalizable: true,
     isFeatured: true,
     personalizationKind: "PHOTO_PACK",
-    personalizationSchema: { photoSlots: 6, aspectRatio: "6:8", allowText: true, sizeCm: "6×8" },
+    personalizationSchema: {
+      photoSlots: 6,
+      aspectRatio: "6:8",
+      allowText: true,
+      sizeCm: "6×8",
+      // Ola 2A — paleta de marcos del Estudio (borde/color de tarjeta). Si falta,
+      // el Estudio pierde «Color de tarjeta» (bug 2026-09-15: un one-shot que
+      // reemplazó el schema la borró — el seed la declara para no recaer).
+      frameOptions: ["blanco", "negro", "aguamarina", "rosa", "lavanda", "amarillo"],
+    },
     images: [UNSPLASH("1530541930197-ff16ac917b0e"), UNSPLASH("1502920917128-1aa500764cbd")],
     variants: [
       {
@@ -276,6 +285,8 @@ const productsData = [
       aspectRatio: "1:1",
       sizeCm: "5×5",
       shape: "rectangle",
+      // Ola 2A — paleta de marcos del Estudio (ver polaroid; bug 2026-09-15).
+      frameOptions: ["blanco", "negro", "aguamarina", "rosa", "lavanda", "amarillo"],
     },
     images: [UNSPLASH("1554080353-a576cf803bda")],
     // Variants modulares: Tamaño (4×4 / 5×5 / 7×7) × PACKS de 6 (1-4 packs).
