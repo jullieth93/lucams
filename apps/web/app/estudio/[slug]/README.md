@@ -337,6 +337,19 @@ packages/db/scripts/
   (`maxDistance` de ambas escenas sube a 60 para que el reencuadre no quede topeado en
   móvil vertical). La galería 3D gana un rótulo overlay "N tiras/unidades · tamaño real"
   (`countBadgeLabel`, DOM como los hints — no toca texturas ni el canvas WebGL).
+- **Proporciones pieza↔mueble REALES (mismo día, feedback dueña: nevera "como muy
+  grandes… puede ser un nevecón" · "3D Mural, totalmente desproporcionada").** Las
+  dimensiones físicas de las superficies se centralizan en `lib/cluster-layout.ts`
+  (`FRIDGE_SCENE` / `BOARD_SCENE`, fuente única que importan las vistas Y los tests de
+  proporción). (a) La nevera pasa de top-freezer 170×68 cm (angosta: una tira de 6.5 cm
+  era ~10% del ancho y dominaba) a NEVECÓN SIDE-BY-SIDE 178×91×75 cm — dos puertas
+  verticales full-height con junta central y manijas en la junta; el clúster se reparte
+  sobre AMBAS puertas con ancla en zona alta (una tira de 26.5 cm = ~15% del alto; un
+  fotoimán 6.5 = ~7% del ancho). (b) El mural pasa de tablerito 45×33 cm (solo cabía 1
+  fila de tiras → 12 columnas desbordadas por ambos lados) a corcho de pared 120×80 cm
+  con marco de 5.5 cm (escala redonda 0.1 u/cm): las 12 tiras 6.5×26.5 quedan en grilla
+  6×2 DENTRO del marco con aire; 24 fotoimanes 6×8 en grilla 4×6. Tests de proporción en
+  `cluster-layout.test.ts` (ratios cm↔cm y grillas que caben con márgenes).
 
 ### Ola 23 (Lucy 2026-09-08) — placeholders no imprimibles, marco constante, tira sin borde
 

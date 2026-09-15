@@ -14,14 +14,18 @@
  *  - Imanes con CUERPO (MagnetMesh extruido: canto blanco + brillo PET), no planos.
  *
  * Pase 2026-07-22 (ola 2B):
- *  - Imanes ESCALAN a su tamaño físico real (sizeCm de la variante o wCm/hCm por pieza): el
- *    tablero mide ~45 cm de ancho (7 u → 0.1556 u/cm; 5.2 u ↔ 33.4 cm de alto cuadra con un
- *    tablero decorativo real ~45×33 cm).
+ *  - Imanes ESCALAN a su tamaño físico real (sizeCm de la variante o wCm/hCm por pieza).
  *  - 2026-09-15: TAMAÑO REAL SIEMPRE — se eliminó el encogimiento a la celda (con muchas
  *    unidades las piezas se veían miniatura). Cuando una columna supera el alto útil del
  *    tablero se ABREN más columnas balanceadas (lib/cluster-layout, compartido con la nevera)
  *    y, si el conjunto desborda, la cámara reencuadra tablero + clúster. Nunca se encoge una
  *    pieza.
+ *  - Ola 30 (2026-09-15, feedback dueña: "3D Mural, totalmente desproporcionada"): el tablero
+ *    CRECE a un corcho de pared grande y realista, 120×80 cm (BOARD_SCENE en lib/cluster-layout,
+ *    fuente única compartida con los tests de proporción; escala redonda 0.1 u/cm). El
+ *    tablerito anterior de 45×33 cm era irreal para el producto: con su alto solo cabía UNA
+ *    fila de tiras de 26.5 cm → 12 tiras abrían 12 columnas y desbordaban por ambos lados.
+ *    Ahora las 12 tiras quedan en una grilla 6×2 DENTRO del marco, con aire.
  *  - La pared queda a RAS del tablero (z −1.2 → −0.14): antes había ~1 u de AIRE entre el tablero
  *    y la pared (flotaba); ahora cuelga como un tablero real y la sombra se lee nítida.
  *
@@ -44,17 +48,19 @@ import { FitCamera } from "./fit-camera";
 import { useIsTouch } from "./use-is-touch";
 import { StudioEnvironment } from "./studio-3d-environment";
 import { MagnetMesh, MAGNET_DEPTH, TILE_DEPTH, magnetWorldSizes } from "./magnet-3d";
-import { clusterLayout } from "./lib/cluster-layout";
+import { clusterLayout, BOARD_SCENE } from "./lib/cluster-layout";
 import { getCorkTexture } from "./lib/procedural-textures";
 import type { Magnet3D } from "./fridge-3d-view";
 
 export type BoardStyle = "memo" | "cork";
 
-// Tablero (tamaño fijo). El marco rodea una superficie magnética.
-const BOARD_W = 7;
-const BOARD_H = 5.2;
-const FRAME = 0.4;
-const DEPTH = 0.22;
+// Mural de corcho de pared GRANDE (tamaño fijo). Dimensiones REALES 120×80 cm (Ola 30 —
+// feedback dueña: el tablerito de 45×33 desbordaba con 12 tiras). Las constantes físicas viven
+// en BOARD_SCENE (lib/cluster-layout) — fuente única compartida con los tests de proporción.
+const BOARD_W = BOARD_SCENE.wU; // 12 u ↔ 120 cm
+const BOARD_H = BOARD_SCENE.hU; // 8 u ↔ 80 cm
+const FRAME = BOARD_SCENE.frameU; // marco de madera 0.55 u ↔ 5.5 cm
+const DEPTH = BOARD_SCENE.depthU; // 0.22 u ↔ 2.2 cm
 const INNER_W = BOARD_W - FRAME * 2;
 const INNER_H = BOARD_H - FRAME * 2;
 const FRONT_Z = DEPTH / 2;
@@ -77,17 +83,17 @@ const FRAME_COLOR = "#B98A5E"; // marco de madera
 // #F6F1E8): así la ficha blanca con su borde de color se lee nítida contra la superficie.
 const MEMO_COLOR = "#F1EBDD";
 
-// Escala física de la escena: tablero decorativo real ~45 cm de ancho (7 u).
-const BOARD_U_PER_CM = BOARD_W / 45;
+// Escala física de la escena: corcho de pared real de 120 cm de ancho (12 u → 0.1 u/cm).
+const BOARD_U_PER_CM = BOARD_SCENE.uPerCm;
 
 // Clúster a TAMAÑO REAL (2026-09-15): estos límites ya no ENCOGEN las piezas — definen la
-// disposición estética dentro del tablero. Cuando una columna supera el alto útil
-// (MAX_CLUSTER_H) se ABREN más columnas (lib/cluster-layout, compartido con la nevera — el
-// ancho puede crecer más allá del tablero si hace falta); si el conjunto desborda, FitCamera
-// reencuadra tablero + clúster (nunca se encoge una pieza).
-const MAGNET_GAP = 0.08;
-const MAX_CLUSTER_W = INNER_W * 0.92;
-const MAX_CLUSTER_H = INNER_H * 0.86;
+// disposición estética dentro del marco (BOARD_SCENE.cluster). Cuando una columna supera el
+// alto útil (MAX_CLUSTER_H) se ABREN más columnas (lib/cluster-layout, compartido con la
+// nevera — el ancho puede crecer más allá del tablero si hace falta); si el conjunto desborda,
+// FitCamera reencuadra tablero + clúster (nunca se encoge una pieza).
+const MAGNET_GAP = BOARD_SCENE.cluster.gap;
+const MAX_CLUSTER_W = BOARD_SCENE.cluster.maxW;
+const MAX_CLUSTER_H = BOARD_SCENE.cluster.maxH;
 
 type BoardItem = { m: Magnet3D; w: number; h: number; x: number; y: number };
 

@@ -8,29 +8,25 @@
  * snapshot del slot correspondiente (dataURL PNG con transparencia → respeta la silueta física:
  * rectángulo/corazón/círculo).
  *
- * Realismo (Lucy 2026-07-13, con foto de referencia: nevera convencional real):
- *  - Top-freezer de dos puertas, ALTA y esbelta, cuerpo GRIS SATINADO metálico (electrodoméstico
- *    real, no lavanda), cantos verticales redondeados y frente casi plano.
- *  - Manijas VERTICALES sobre el borde IZQUIERDO de cada puerta (como la referencia), tipo barra
- *    cromada satinada sobre un rebaje.
- *  - Freezer arriba (~1/3), refrigerador abajo (~2/3), sello/junta oscura entre puertas, patas en
- *    las 4 esquinas.
- *  - Los imanes son PEQUEÑOS y se agrupan en la parte alta de la puerta del refrigerador (como
- *    imanes de verdad). La nevera es de tamaño fijo (no crece con la cantidad de imanes).
- *  - 2026-07-22: los imanes ahora tienen CUERPO (MagnetMesh extruido desde su silueta, canto
- *    blanco del material base + brillo PET), ya no son planos sin grosor.
- *  - 2026-07-22 (ola 2B): los imanes ESCALAN a su tamaño físico real (sizeCm de la variante,
- *    o wCm/hCm por pieza): la nevera mide ~170 cm de alto (8.8 u → 0.0518 u/cm), así un
- *    7.5×10 se ve notablemente más grande que un 4×4.2.
- *  - 2026-09-15: TAMAÑO REAL SIEMPRE — se eliminó el encogimiento a la región fija de la puerta
- *    (con 12 unidades las piezas se veían miniatura). Ahora cada pieza conserva sus cm reales en
- *    cualquier cantidad: cuando una columna supera el alto útil de la puerta se ABREN más
- *    columnas balanceadas (lib/cluster-layout, compartido con el tablero — fix del desborde de
- *    las 12 tiras en UNA columna de 3+ m), y si el conjunto desborda, la cámara reencuadra
- *    nevera + clúster (FitCamera recibe los bounds del clúster; maxDistance holgado para que el
- *    reencuadre no quede topeado en móvil vertical). Además: shadow-camera de la luz key acotada
- *    explícita (antes se recortaba la sombra de la parte alta) y las patas APOYAN en el piso
- *    (antes flotaban ~2 cm sobre la sombra de contacto).
+ * Realismo (Ola 30 — 2026-09-15, feedback dueña: "no se ve alineado al tamaño de una nevera,
+ * como muy grandes… hazla más grande, inclusive puede ser un nevecón"):
+ *  - NEVECÓN SIDE-BY-SIDE: dos puertas VERTICALES de cuerpo completo con junta central, de
+ *    dimensiones reales 178 cm alto × 91 ancho × 75 fondo (FRIDGE_SCENE en lib/cluster-layout,
+ *    fuente única de verdad compartida con los tests de proporción). Antes era un top-freezer
+ *    de 170×68 cm — tan ANGOSTO que una tira de 6.5 cm era ~10% del ancho y dominaba la escena;
+ *    ahora la tira es ~15% del ALTO (26.5/178) y un fotoimán de 6.5 cm ~7% del ancho de puerta.
+ *  - Cuerpo GRIS SATINADO metálico (electrodoméstico real), cantos redondeados, paneles
+ *    biselados, manijas VERTICALES en los bordes de la JUNTA central (como un side-by-side
+ *    real), patas en las 4 esquinas. Mismo estilo/materiales de siempre.
+ *  - 2026-07-22: los imanes tienen CUERPO (MagnetMesh extruido desde su silueta, canto blanco
+ *    del material base + brillo PET), no son planos sin grosor.
+ *  - 2026-09-15: TAMAÑO REAL SIEMPRE — cada pieza conserva sus cm reales en cualquier cantidad
+ *    (uPerCm = 8.8 u / 178 cm): cuando una columna supera el alto útil de las puertas se ABREN
+ *    más columnas balanceadas (lib/cluster-layout, compartido con el tablero), y si el conjunto
+ *    desborda, la cámara reencuadra nevera + clúster (FitCamera recibe los bounds; maxDistance
+ *    holgado para que el reencuadre no quede topeado en móvil vertical). El clúster se reparte
+ *    sobre AMBAS puertas (región ancha, ancla en zona alta). Además: shadow-camera de la luz
+ *    key acotada explícita y las patas APOYAN en el piso.
  *
  * Restricciones respetadas:
  *  - CSP estricta: CERO assets externos (nada de Environment/HDR/GLTF/fuentes de CDN de drei). El
@@ -47,7 +43,7 @@ import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useIsTouch } from "./use-is-touch";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
 import { MagnetMesh, magnetWorldSizes, type MagnetShape } from "./magnet-3d";
-import { clusterLayout } from "./lib/cluster-layout";
+import { clusterLayout, FRIDGE_SCENE } from "./lib/cluster-layout";
 
 export type Magnet3D = {
   /** Snapshot PNG (dataURL) del imán, con transparencia fuera de la silueta. */
@@ -78,41 +74,32 @@ type FridgeView3DProps = {
   sizeCm?: string;
 };
 
-// ── Nevera de tamaño FIJO (no depende de la cantidad de imanes) ──
-// Proporción de nevera convencional real (alta y esbelta): H/W ≈ 2.5.
-const FRIDGE_W = 3.5;
-const FRIDGE_H = 8.8;
-const FRIDGE_D = 1.5;
-const FREEZER_FRAC = 0.31; // ~1/3 superior = freezer
+// ── Nevecón SIDE-BY-SIDE de tamaño FIJO (no depende de la cantidad de imanes) ──
+// Dimensiones REALES 178×91×75 cm (Ola 30): las constantes físicas viven en FRIDGE_SCENE
+// (lib/cluster-layout) — fuente única compartida con los tests de proporción.
+const FRIDGE_W = FRIDGE_SCENE.wU; // ≈ 4.499 u ↔ 91 cm
+const FRIDGE_H = FRIDGE_SCENE.hU; // 8.8 u ↔ 178 cm
+const FRIDGE_D = FRIDGE_SCENE.dU; // ≈ 3.708 u ↔ 75 cm
 const DOOR_Z = FRIDGE_D / 2; // frente del cuerpo
 
-// Layout del frente (puertas casi cubren la cara, con margen y una junta central).
-const M = 0.15; // margen del panel frontal respecto al borde del cuerpo
-const DOOR_GAP = 0.12; // junta oscura entre freezer y refrigerador
-const AVAIL_H = FRIDGE_H - 2 * M;
-const FREEZER_DOOR_H = FREEZER_FRAC * AVAIL_H - DOOR_GAP / 2;
-const FRIDGE_DOOR_H = (1 - FREEZER_FRAC) * AVAIL_H - DOOR_GAP / 2;
-const DOOR_W = FRIDGE_W - 2 * M;
-const FREEZER_CY = FRIDGE_H / 2 - M - FREEZER_DOOR_H / 2;
-const FRIDGE_CY = -FRIDGE_H / 2 + M + FRIDGE_DOOR_H / 2;
-const GAP_CY = FRIDGE_H / 2 - M - FREEZER_DOOR_H - DOOR_GAP / 2;
+// Layout del frente: dos puertas VERTICALES de cuerpo completo con junta central oscura.
+const M = 0.15; // margen de cada puerta respecto al borde del cuerpo
+const DOOR_GAP = 0.12; // junta vertical entre las dos puertas
+const DOOR_H = FRIDGE_H - 2 * M;
+const DOOR_W = (FRIDGE_W - 2 * M - DOOR_GAP) / 2; // cada puerta ≈ 2.04 u ↔ ~41 cm
+const DOOR_CX = DOOR_W / 2 + DOOR_GAP / 2; // |x| del centro de cada puerta
 const DOOR_T = 0.14; // grosor del panel de puerta (sobresale del cuerpo)
 const DOOR_FACE_Z = DOOR_Z + DOOR_T / 2; // cara frontal de la puerta
 
-// Clúster de imanes a TAMAÑO REAL (2026-09-15): la región ya no ENCOGE las piezas — solo define
-// los límites estéticos de la disposición sobre la puerta del refrigerador. Cuando una columna
-// supera el alto útil (CLUSTER_TOP_Y..CLUSTER_BOT_Y) se ABREN más columnas (lib/cluster-layout,
-// compartido con el tablero); si el conjunto desborda, FitCamera reencuadra nevera + clúster.
-const MAGNET_GAP = 0.06; // aire entre piezas vecinas del clúster
-const MAX_CLUSTER_W = DOOR_W * 0.78; // deja libre la manija (borde izq.) y margen derecho
-const CLUSTER_TOP_Y = GAP_CY - DOOR_GAP / 2 - 0.15; // apenas bajo la junta del freezer
-const CLUSTER_BOT_Y = FRIDGE_CY - FRIDGE_DOOR_H / 2 + 0.25; // margen sobre el borde inferior
-const MAGNET_REGION_CY = FRIDGE_CY + FRIDGE_DOOR_H * 0.22; // ancla estética: clúster chico, zona alta
+// Clúster de imanes a TAMAÑO REAL sobre AMBAS puertas (región/ancla en FRIDGE_SCENE.cluster):
+// cuando una columna supera el alto útil se ABREN más columnas (lib/cluster-layout); si el
+// conjunto desborda, FitCamera reencuadra nevera + clúster (nunca se encoge una pieza).
+const MAGNET_GAP = FRIDGE_SCENE.cluster.gap;
 const MAGNET_Z = DOOR_FACE_Z + 0.04; // centro del cuerpo extruido (canto visible sobre el panel)
 
-// Escala física de la escena: nevera top-freezer real ~170 cm de alto (y ~68 cm de ancho —
-// FRIDGE_W 3.5 u cuadra con la misma escala: 3.5/8.8·170 = 67.6 cm ✓).
-const FRIDGE_U_PER_CM = FRIDGE_H / 170;
+// Escala física de la escena: nevecón real de 178 cm de alto (8.8 u → 0.04944 u/cm; el ancho
+// 4.499 u ↔ 91 cm y el fondo 3.708 u ↔ 75 cm cuadran con la MISMA escala ✓).
+const FRIDGE_U_PER_CM = FRIDGE_SCENE.uPerCm;
 
 // Materiales (gris satinado de electrodoméstico; metalness baja para verse bien sin env-map).
 const BODY_COLOR = "#9297A0";
@@ -146,9 +133,18 @@ function Magnet({
   );
 }
 
-/** Manija vertical sobre el borde izquierdo: canal oscuro embutido + grip fino satinado. */
-function Handle({ doorW, centerY, handleH }: { doorW: number; centerY: number; handleH: number }) {
-  const x = -doorW / 2 + 0.22;
+/** Manija vertical en el borde de la JUNTA central: canal oscuro embutido + grip fino satinado.
+ *  `side` = +1 borde derecho de la puerta (puerta izquierda), −1 borde izquierdo (puerta der.). */
+function Handle({
+  doorW,
+  handleH,
+  side,
+}: {
+  doorW: number;
+  handleH: number;
+  side: 1 | -1;
+}) {
+  const x = side * (doorW / 2 - 0.22);
   return (
     <group>
       {/* Canal embutido (rebaje oscuro donde entran los dedos) */}
@@ -156,7 +152,7 @@ function Handle({ doorW, centerY, handleH }: { doorW: number; centerY: number; h
         args={[0.13, handleH + 0.16, 0.05]}
         radius={0.02}
         smoothness={3}
-        position={[x, centerY, DOOR_FACE_Z - 0.005]}
+        position={[x, 0, DOOR_FACE_Z - 0.005]}
       >
         <meshStandardMaterial color="#5A5E64" roughness={0.75} metalness={0.15} />
       </RoundedBox>
@@ -165,7 +161,7 @@ function Handle({ doorW, centerY, handleH }: { doorW: number; centerY: number; h
         args={[0.055, handleH, 0.075]}
         radius={0.025}
         smoothness={4}
-        position={[x, centerY, DOOR_FACE_Z + 0.055]}
+        position={[x, 0, DOOR_FACE_Z + 0.055]}
         castShadow
       >
         <meshStandardMaterial
@@ -179,16 +175,27 @@ function Handle({ doorW, centerY, handleH }: { doorW: number; centerY: number; h
   );
 }
 
-/** Una puerta: cuerpo saliente + panel biselado interno (borde con groove) + manija. */
-function Door({ width, height, centerY }: { width: number; height: number; centerY: number }) {
+/** Una puerta full-height del side-by-side: cuerpo saliente + panel biselado interno (borde con
+ *  groove) + manija en el borde de la junta central (`handleSide`). */
+function Door({
+  width,
+  height,
+  centerX,
+  handleSide,
+}: {
+  width: number;
+  height: number;
+  centerX: number;
+  handleSide: 1 | -1;
+}) {
   return (
-    <group>
+    <group position={[centerX, 0, 0]}>
       {/* Cuerpo de la puerta */}
       <RoundedBox
         args={[width, height, DOOR_T]}
         radius={0.08}
         smoothness={5}
-        position={[0, centerY, DOOR_Z]}
+        position={[0, 0, DOOR_Z]}
         castShadow
         receiveShadow
       >
@@ -205,7 +212,7 @@ function Door({ width, height, centerY }: { width: number; height: number; cente
         args={[width - 0.36, height - 0.36, 0.03]}
         radius={0.06}
         smoothness={4}
-        position={[0, centerY, DOOR_FACE_Z + 0.012]}
+        position={[0, 0, DOOR_FACE_Z + 0.012]}
         receiveShadow
       >
         <meshStandardMaterial
@@ -215,12 +222,12 @@ function Door({ width, height, centerY }: { width: number; height: number; cente
           envMapIntensity={1.4}
         />
       </RoundedBox>
-      <Handle doorW={width} centerY={centerY} handleH={height * 0.7} />
+      <Handle doorW={width} handleH={height * 0.55} side={handleSide} />
     </group>
   );
 }
 
-/** La nevera top-freezer: cuerpo + dos puertas + junta + patas. */
+/** El nevecón side-by-side: cuerpo + dos puertas full-height + junta central vertical + patas. */
 function Fridge() {
   const feetX = FRIDGE_W / 2 - 0.32;
   const feetZ = FRIDGE_D / 2 - 0.32;
@@ -242,15 +249,15 @@ function Fridge() {
         />
       </RoundedBox>
 
-      {/* Junta/sello oscuro entre freezer y refrigerador */}
-      <mesh position={[0, GAP_CY, DOOR_Z + 0.03]}>
-        <boxGeometry args={[DOOR_W + 0.04, DOOR_GAP, 0.02]} />
+      {/* Junta/sello oscuro VERTICAL entre las dos puertas */}
+      <mesh position={[0, 0, DOOR_Z + 0.03]}>
+        <boxGeometry args={[DOOR_GAP, DOOR_H + 0.04, 0.02]} />
         <meshStandardMaterial color={SEAM_COLOR} roughness={0.8} metalness={0.1} />
       </mesh>
 
-      {/* Freezer (arriba) y refrigerador (abajo) */}
-      <Door width={DOOR_W} height={FREEZER_DOOR_H} centerY={FREEZER_CY} />
-      <Door width={DOOR_W} height={FRIDGE_DOOR_H} centerY={FRIDGE_CY} />
+      {/* Puerta izquierda (freezer) y derecha (refrigerador), manijas en la junta central */}
+      <Door width={DOOR_W} height={DOOR_H} centerX={-DOOR_CX} handleSide={1} />
+      <Door width={DOOR_W} height={DOOR_H} centerX={DOOR_CX} handleSide={-1} />
 
       {/* Patas en las 4 esquinas (la base de la pata APOYA en el piso: centro = piso + alto/2) */}
       {[
@@ -273,10 +280,11 @@ type FridgeItem = { m: Magnet3D; w: number; h: number; x: number; y: number };
 /**
  * Disposición del clúster a TAMAÑO REAL (2026-09-15): cada pieza conserva sus cm reales en
  * cualquier cantidad (2 unidades se ven igual de grandes que 12). La matemática vive en
- * lib/cluster-layout (compartida con el tablero): las columnas pedidas se respetan mientras
- * quepan a lo ancho razonable de la puerta y, cuando una columna supera el ALTO útil, se ABREN
- * más columnas balanceadas (≤ 1 pieza de diferencia) — nunca se encoge una pieza. Si el conjunto
- * desborda la puerta, FitCamera reencuadra nevera + clúster (bounds devueltos acá).
+ * lib/cluster-layout (compartida con el tablero) y la región en FRIDGE_SCENE.cluster (ambas
+ * puertas, ancla en zona alta): las columnas pedidas se respetan mientras quepan a lo ancho
+ * razonable y, cuando una columna supera el ALTO útil, se ABREN más columnas balanceadas (≤ 1
+ * pieza de diferencia) — nunca se encoge una pieza. Si el conjunto desborda las puertas,
+ * FitCamera reencuadra nevera + clúster (bounds devueltos acá).
  */
 function fridgeClusterLayout(
   magnets: Magnet3D[],
@@ -286,13 +294,13 @@ function fridgeClusterLayout(
   const physical = magnetWorldSizes(magnets, FRIDGE_U_PER_CM, { fallbackSizeCm: sizeCm });
   if (physical) {
     const layout = clusterLayout(physical, {
-      maxW: MAX_CLUSTER_W,
-      maxH: CLUSTER_TOP_Y - CLUSTER_BOT_Y,
+      maxW: FRIDGE_SCENE.cluster.maxW,
+      maxH: FRIDGE_SCENE.cluster.topY - FRIDGE_SCENE.cluster.bottomY,
       gap: MAGNET_GAP,
       preferCols: cols,
-      anchorY: MAGNET_REGION_CY,
-      topY: CLUSTER_TOP_Y,
-      bottomY: CLUSTER_BOT_Y,
+      anchorY: FRIDGE_SCENE.cluster.anchorY,
+      topY: FRIDGE_SCENE.cluster.topY,
+      bottomY: FRIDGE_SCENE.cluster.bottomY,
     });
     return {
       items: layout.items.map((it, i) => ({ m: magnets[i]!, w: it.w, h: it.h, x: it.x, y: it.y })),
@@ -301,8 +309,9 @@ function fridgeClusterLayout(
     };
   }
   // Sin dato de cm (p.ej. letras del nombre): ajuste-a-celda histórico sobre la región vieja.
-  const regionW = MAX_CLUSTER_W;
-  const regionH = FRIDGE_DOOR_H * 0.28;
+  const regionW = FRIDGE_SCENE.cluster.maxW;
+  const regionH = DOOR_H * 0.28;
+  const anchorY = FRIDGE_SCENE.cluster.anchorY;
   const rows = Math.max(1, Math.ceil(magnets.length / cols));
   const cellW = regionW / cols;
   const cellH = regionH / rows;
@@ -317,10 +326,10 @@ function fridgeClusterLayout(
     const col = i % cols;
     const row = Math.floor(i / cols);
     const x = (col - (cols - 1) / 2) * cellW;
-    const y = MAGNET_REGION_CY + ((rows - 1) / 2 - row) * cellH;
+    const y = anchorY + ((rows - 1) / 2 - row) * cellH;
     return { m, w, h, x, y };
   });
-  return { items, halfW: regionW / 2, halfH: Math.abs(MAGNET_REGION_CY) + regionH / 2 };
+  return { items, halfW: regionW / 2, halfH: Math.abs(anchorY) + regionH / 2 };
 }
 
 function Magnets({ items }: { items: FridgeItem[] }) {
@@ -378,7 +387,7 @@ function Scene({ magnets, cols, sizeCm }: FridgeView3DProps) {
         scale={16}
         far={6}
       />
-      {/* #12 — encuadra la nevera (alta y angosta) al aspecto del viewport (fit-to-height).
+      {/* #12 — encuadra el nevecón al aspecto del viewport (fit-to-height).
           2026-09-15: si el clúster a tamaño real desborda la puerta, el encuadre crece hasta
           cubrir nevera + clúster completo (las piezas NUNCA se encogen). */}
       <FitCamera

@@ -2,14 +2,21 @@
  * Tests del layout de clúster UNIFICADO (2026-09-15 — columnas múltiples a tamaño real).
  * Casos ancla: 2 piezas, 12+ tiras (el bug de la columna única que desbordaba la nevera),
  * piezas de distinto tamaño, balanceo de columnas (≤ 1 pieza de diferencia) y bounds para
- * FitCamera. Escala nevera: 8.8 u / 170 cm ≈ 0.05176 u/cm.
+ * FitCamera.
+ *
+ * Ola 30 (mismo día, segunda pasada — proporciones pieza↔mueble, feedback dueña): las
+ * dimensiones de las escenas se importan de FRIDGE_SCENE / BOARD_SCENE (fuente única — nada
+ * de números duplicados). Nevecón side-by-side 178×91×75 cm (8.8 u → 0.04944 u/cm) y mural de
+ * corcho 120×80 cm (12 u → 0.1 u/cm); al final, aserciones de PROPORCIÓN FÍSICA (lo que la
+ * dueña mira al validar).
  */
 
 import { describe, expect, it } from "vitest";
 
-import { clusterColumnCount, clusterLayout } from "./cluster-layout";
+import { BOARD_SCENE, clusterColumnCount, clusterLayout, FRIDGE_SCENE } from "./cluster-layout";
 
-const FRIDGE_U_PER_CM = 8.8 / 170;
+const FRIDGE = FRIDGE_SCENE.cluster;
+const BOARD = BOARD_SCENE.cluster;
 
 /** Cuenta de piezas por columna (relleno por filas → se deriva de col de cada item). */
 function columnSizes(items: readonly { col: number }[]): number[] {
@@ -20,25 +27,43 @@ function columnSizes(items: readonly { col: number }[]): number[] {
 
 describe("clusterColumnCount — regla de cuándo se ABRE una columna nueva", () => {
   it("respeta las columnas pedidas mientras quepan a lo ancho (grid del editor)", () => {
-    // 4 fotoimanes 6.5 cm en nevera: preferCols 2 cabe → 2 columnas.
-    const cell = 6.5 * FRIDGE_U_PER_CM;
+    // 4 fotoimanes 6.5 cm en el nevecón: preferCols 2 cabe → 2 columnas.
+    const cell = 6.5 * FRIDGE_SCENE.uPerCm;
     expect(
-      clusterColumnCount(4, cell, cell, { maxW: 2.496, maxH: 5.4, gap: 0.06, preferCols: 2 }),
+      clusterColumnCount(4, cell, cell, {
+        maxW: FRIDGE.maxW,
+        maxH: FRIDGE.topY - FRIDGE.bottomY,
+        gap: FRIDGE.gap,
+        preferCols: 2,
+      }),
     ).toBe(2);
   });
 
-  it("ABRE columnas cuando una sola supera el alto útil (12 tiras ~26.5 cm: 3 por columna → 4 columnas)", () => {
-    const w = 5 * FRIDGE_U_PER_CM;
-    const h = 26.5 * FRIDGE_U_PER_CM; // ≈ 1.372 u — el caso del screenshot (columna de 3+ m)
-    // En el alto útil de la puerta (5.4 u) caben ⌊5.46/1.432⌋ = 3 tiras por columna.
+  it("ABRE columnas cuando una sola supera el alto útil (12 tiras 6.5×26.5 cm: 5 por columna → 3 columnas)", () => {
+    const w = 6.5 * FRIDGE_SCENE.uPerCm;
+    const h = 26.5 * FRIDGE_SCENE.uPerCm; // ≈ 1.310 u
+    // En el alto útil de las puertas (7.75 u) caben ⌊7.81/1.370⌋ = 5 tiras por columna.
     expect(
-      clusterColumnCount(12, w, h, { maxW: 2.496, maxH: 5.405, gap: 0.06, preferCols: 1 }),
-    ).toBe(4);
+      clusterColumnCount(12, w, h, {
+        maxW: FRIDGE.maxW,
+        maxH: FRIDGE.topY - FRIDGE.bottomY,
+        gap: FRIDGE.gap,
+        preferCols: 1,
+      }),
+    ).toBe(3);
   });
 
-  it("el ancho PUEDE crecer más allá de maxW si el alto manda (tira más alta que el tablero → 1 por columna)", () => {
-    // Tablero: alto útil 3.78 u < tira 4.12 u → una por columna, 12 columnas aunque no quepan a lo ancho.
-    expect(clusterColumnCount(12, 0.78, 4.12, { maxW: 5.7, maxH: 3.78, gap: 0.08, preferCols: 1 })).toBe(12);
+  it("el ancho PUEDE crecer más allá de maxW si el alto manda (pieza más alta que el alto útil → 1 por columna)", () => {
+    // Mural: alto útil ≈ 5.93 u < pieza de 6.5 u → una por columna, 12 columnas aunque a lo
+    // ancho solo quepan 11 — el clúster desborda y la cámara reencuadra (nunca se encoge).
+    expect(
+      clusterColumnCount(12, 0.78, 6.5, {
+        maxW: BOARD.maxW,
+        maxH: BOARD.maxH,
+        gap: BOARD.gap,
+        preferCols: 1,
+      }),
+    ).toBe(12);
   });
 
   it("nunca abre más columnas que piezas (sin columnas vacías)", () => {
@@ -46,19 +71,29 @@ describe("clusterColumnCount — regla de cuándo se ABRE una columna nueva", ()
   });
 
   it("tope de compra real: 24 fotoimanes 6.5×6.5 con grid de 5 → 5 columnas (caben en alto y ancho)", () => {
-    const cell = 6.5 * FRIDGE_U_PER_CM;
+    const cell = 6.5 * FRIDGE_SCENE.uPerCm;
     expect(
-      clusterColumnCount(24, cell, cell, { maxW: 2.496, maxH: 5.405, gap: 0.06, preferCols: 5 }),
+      clusterColumnCount(24, cell, cell, {
+        maxW: FRIDGE.maxW,
+        maxH: FRIDGE.topY - FRIDGE.bottomY,
+        gap: FRIDGE.gap,
+        preferCols: 5,
+      }),
     ).toBe(5);
   });
 
-  it("tope de compra real: 16 tiras (3 fotos/tira) → 6 columnas de ≤ 3", () => {
-    const w = 5 * FRIDGE_U_PER_CM;
-    const h = 26.5 * FRIDGE_U_PER_CM;
-    // ⌈16/3⌉ = 6 columnas.
+  it("tope de compra real: 16 tiras (3 fotos/tira) → 4 columnas de ≤ 5", () => {
+    const w = 6.5 * FRIDGE_SCENE.uPerCm;
+    const h = 26.5 * FRIDGE_SCENE.uPerCm;
+    // ⌈16/5⌉ = 4 columnas.
     expect(
-      clusterColumnCount(16, w, h, { maxW: 2.496, maxH: 5.405, gap: 0.06, preferCols: 1 }),
-    ).toBe(6);
+      clusterColumnCount(16, w, h, {
+        maxW: FRIDGE.maxW,
+        maxH: FRIDGE.topY - FRIDGE.bottomY,
+        gap: FRIDGE.gap,
+        preferCols: 1,
+      }),
+    ).toBe(4);
   });
 });
 
@@ -82,36 +117,36 @@ describe("clusterLayout — posiciones y bounds", () => {
     expect(layout.halfH).toBeCloseTo(0.17, 9);
   });
 
-  it("12 tiras a tamaño real (el bug de la dueña): 4 columnas × 3, alto ≤ alto útil, piezas intactas", () => {
-    const w = 5 * FRIDGE_U_PER_CM;
-    const h = 26.5 * FRIDGE_U_PER_CM;
+  it("12 tiras a tamaño real en el nevecón: 3 columnas × 4, alto ≤ alto útil, piezas intactas", () => {
+    const w = 6.5 * FRIDGE_SCENE.uPerCm;
+    const h = 26.5 * FRIDGE_SCENE.uPerCm;
     const sizes = Array.from({ length: 12 }, () => ({ w, h }));
     const layout = clusterLayout(sizes, {
-      maxW: 2.496,
-      maxH: 5.405,
-      gap: 0.06,
+      maxW: FRIDGE.maxW,
+      maxH: FRIDGE.topY - FRIDGE.bottomY,
+      gap: FRIDGE.gap,
       preferCols: 1, // la tira photobooth fuerza cols=1 en el editor — el layout abre columnas igual
-      anchorY: -0.07,
-      topY: 1.405,
-      bottomY: -4.0,
+      anchorY: FRIDGE.anchorY,
+      topY: FRIDGE.topY,
+      bottomY: FRIDGE.bottomY,
     });
-    expect(layout.cols).toBe(4);
-    expect(layout.rows).toBe(3);
-    // La columna YA NO desborda: el clúster cabe en el alto útil de la puerta.
-    expect(layout.height).toBeLessThanOrEqual(5.405);
-    expect(layout.height).toBeCloseTo(3 * h + 2 * 0.06, 9);
-    // Balance perfecto: 3/3/3/3.
-    expect(columnSizes(layout.items)).toEqual([3, 3, 3, 3]);
+    expect(layout.cols).toBe(3);
+    expect(layout.rows).toBe(4);
+    // La columna YA NO desborda: el clúster cabe en el alto útil de las puertas.
+    expect(layout.height).toBeLessThanOrEqual(FRIDGE.topY - FRIDGE.bottomY);
+    expect(layout.height).toBeCloseTo(4 * h + 3 * FRIDGE.gap, 9);
+    // Balance perfecto: 4/4/4.
+    expect(columnSizes(layout.items)).toEqual([4, 4, 4]);
     // NUNCA se encoge: cada pieza conserva sus cm reales.
     for (const it of layout.items) {
       expect(it.w).toBeCloseTo(w, 9);
       expect(it.h).toBeCloseTo(h, 9);
     }
-    // Ancho razonable: 4 tiras caben en la puerta (sin invadir la manija).
-    expect(layout.width).toBeLessThanOrEqual(2.496);
+    // Ancho razonable: 3 tiras caben con holgura sobre las dos puertas.
+    expect(layout.width).toBeLessThanOrEqual(FRIDGE.maxW);
     // Ancla acotada: el clúster queda entre topY y bottomY.
-    expect(layout.centerY + layout.height / 2).toBeLessThanOrEqual(1.405 + 1e-9);
-    expect(layout.centerY - layout.height / 2).toBeGreaterThanOrEqual(-4.0 - 1e-9);
+    expect(layout.centerY + layout.height / 2).toBeLessThanOrEqual(FRIDGE.topY + 1e-9);
+    expect(layout.centerY - layout.height / 2).toBeGreaterThanOrEqual(FRIDGE.bottomY - 1e-9);
     expect(layout.halfH).toBeCloseTo(Math.abs(layout.centerY) + layout.height / 2, 9);
   });
 
@@ -191,15 +226,15 @@ describe("clusterLayout — posiciones y bounds", () => {
 
   it("ancla estética respetada cuando el clúster chico cabe en la superficie", () => {
     const layout = clusterLayout([{ w: 0.3, h: 0.3 }], {
-      maxW: 2.5,
-      maxH: 5.4,
-      gap: 0.06,
+      maxW: FRIDGE.maxW,
+      maxH: FRIDGE.topY - FRIDGE.bottomY,
+      gap: FRIDGE.gap,
       preferCols: 1,
-      anchorY: -0.07,
-      topY: 1.4,
-      bottomY: -4,
+      anchorY: FRIDGE.anchorY,
+      topY: FRIDGE.topY,
+      bottomY: FRIDGE.bottomY,
     });
-    expect(layout.centerY).toBeCloseTo(-0.07, 9);
+    expect(layout.centerY).toBeCloseTo(FRIDGE.anchorY, 9);
   });
 
   it("robustez: lista vacía → layout vacío sin NaN", () => {
@@ -207,5 +242,101 @@ describe("clusterLayout — posiciones y bounds", () => {
     expect(layout.items).toEqual([]);
     expect(layout.halfW).toBe(0);
     expect(layout.halfH).toBe(0);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+//  Ola 30 — PROPORCIONES FÍSICAS pieza↔mueble (lo que la dueña valida a ojo)
+// ──────────────────────────────────────────────────────────────────
+
+describe("proporciones físicas de las escenas (Ola 30)", () => {
+  it("el nevecón es side-by-side real: 178×91×75 cm con UNA sola escala", () => {
+    expect(FRIDGE_SCENE.hU / FRIDGE_SCENE.uPerCm).toBeCloseTo(178, 6);
+    expect(FRIDGE_SCENE.wU / FRIDGE_SCENE.uPerCm).toBeCloseTo(91, 6);
+    expect(FRIDGE_SCENE.dU / FRIDGE_SCENE.uPerCm).toBeCloseTo(75, 6);
+  });
+
+  it("una tira de 26.5 cm se ve ~15% del alto del nevecón (ni miniatura ni dominante)", () => {
+    const ratio = (26.5 * FRIDGE_SCENE.uPerCm) / FRIDGE_SCENE.hU;
+    expect(ratio).toBeCloseTo(26.5 / 178, 9);
+    expect(ratio).toBeGreaterThan(0.12);
+    expect(ratio).toBeLessThan(0.18);
+  });
+
+  it("un fotoimán 6.5×6.5 en el nevecón ≈ proporción real (3.6% del alto, 7% del ancho)", () => {
+    const hRatio = (6.5 * FRIDGE_SCENE.uPerCm) / FRIDGE_SCENE.hU;
+    const wRatio = (6.5 * FRIDGE_SCENE.uPerCm) / FRIDGE_SCENE.wU;
+    expect(hRatio).toBeCloseTo(6.5 / 178, 9);
+    expect(hRatio).toBeGreaterThan(0.03);
+    expect(hRatio).toBeLessThan(0.05);
+    expect(wRatio).toBeCloseTo(6.5 / 91, 9);
+    expect(wRatio).toBeGreaterThan(0.05);
+    expect(wRatio).toBeLessThan(0.1);
+  });
+
+  it("fotoimán 6×8 en el nevecón ≈ proporción real (4.5% del alto, 6.6% del ancho)", () => {
+    expect((8 * FRIDGE_SCENE.uPerCm) / FRIDGE_SCENE.hU).toBeCloseTo(8 / 178, 9);
+    expect((6 * FRIDGE_SCENE.uPerCm) / FRIDGE_SCENE.wU).toBeCloseTo(6 / 91, 9);
+  });
+
+  it("el mural es un corcho de pared grande: 120×80 cm con escala redonda", () => {
+    expect(BOARD_SCENE.wU / BOARD_SCENE.uPerCm).toBeCloseTo(120, 6);
+    expect(BOARD_SCENE.hU / BOARD_SCENE.uPerCm).toBeCloseTo(80, 6);
+  });
+
+  it("12 tiras 6.5×26.5 en el mural: grilla de ≤ 2 filas DENTRO del tablero con márgenes (el bug del screenshot)", () => {
+    const w = 6.5 * BOARD_SCENE.uPerCm;
+    const h = 26.5 * BOARD_SCENE.uPerCm;
+    const layout = clusterLayout(Array.from({ length: 12 }, () => ({ w, h })), {
+      maxW: BOARD.maxW,
+      maxH: BOARD.maxH,
+      gap: BOARD.gap,
+      preferCols: 1,
+    });
+    expect(layout.rows).toBeLessThanOrEqual(2);
+    expect(layout.cols).toBe(6); // grilla 6×2
+    // NO desborda el corcho (superficie dentro del marco): cabe con márgenes.
+    const innerW = BOARD_SCENE.wU - 2 * BOARD_SCENE.frameU;
+    const innerH = BOARD_SCENE.hU - 2 * BOARD_SCENE.frameU;
+    expect(layout.width).toBeLessThanOrEqual(innerW);
+    expect(layout.height).toBeLessThanOrEqual(innerH);
+    // Tamaño real intacto.
+    for (const it of layout.items) {
+      expect(it.w).toBeCloseTo(w, 9);
+      expect(it.h).toBeCloseTo(h, 9);
+    }
+  });
+
+  it("24 fotoimanes 6×8 en el mural: grilla ordenada dentro del tablero", () => {
+    const w = 6 * BOARD_SCENE.uPerCm;
+    const h = 8 * BOARD_SCENE.uPerCm;
+    const layout = clusterLayout(Array.from({ length: 24 }, () => ({ w, h })), {
+      maxW: BOARD.maxW,
+      maxH: BOARD.maxH,
+      gap: BOARD.gap,
+      preferCols: 4,
+    });
+    expect(layout.cols).toBe(4);
+    expect(layout.rows).toBe(6);
+    const innerW = BOARD_SCENE.wU - 2 * BOARD_SCENE.frameU;
+    const innerH = BOARD_SCENE.hU - 2 * BOARD_SCENE.frameU;
+    expect(layout.width).toBeLessThanOrEqual(innerW);
+    expect(layout.height).toBeLessThanOrEqual(innerH);
+  });
+
+  it("2 piezas en el mural: tamaño real idéntico (nunca encoger)", () => {
+    const w = 6.5 * BOARD_SCENE.uPerCm;
+    const h = 26.5 * BOARD_SCENE.uPerCm;
+    const layout = clusterLayout([{ w, h }, { w, h }], {
+      maxW: BOARD.maxW,
+      maxH: BOARD.maxH,
+      gap: BOARD.gap,
+      preferCols: 2,
+    });
+    expect(layout.rows).toBe(1);
+    for (const it of layout.items) {
+      expect(it.w).toBeCloseTo(w, 9);
+      expect(it.h).toBeCloseTo(h, 9);
+    }
   });
 });

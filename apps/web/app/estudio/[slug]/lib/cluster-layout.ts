@@ -16,7 +16,59 @@
  *     p.ej. los meses del calendario).
  *
  * Módulo PURO (sin three ni react) → testeable en vitest node.
+ *
+ * Ola 30 (2026-09-15, segunda pasada — proporciones pieza↔mueble): las DIMENSIONES FÍSICAS de
+ * las dos superficies viven acá (`FRIDGE_SCENE` / `BOARD_SCENE`) como fuente única de verdad —
+ * la nevera creció a NEVECÓN side-by-side (178×91×75 cm; el top-freezer de 170×68 era tan
+ * angosto que una tira de 6.5 cm dominaba la escena) y el mural a un corcho de pared grande
+ * (120×80 cm; el tablerito de 45×33 solo dejaba UNA fila de tiras → 12 columnas desbordadas).
+ * Las vistas 3D construyen su geometría con estas constantes y los tests de proporción las
+ * importan — nada de números duplicados que diverjan.
  */
+
+// ── Dimensiones físicas de las escenas ──
+
+/** Nevecón SIDE-BY-SIDE real (dos puertas verticales de cuerpo completo con junta central). */
+export const FRIDGE_SCENE = {
+  /** cm reales: 178 alto × 91 ancho × 75 fondo. */
+  cm: { w: 91, h: 178, d: 75 },
+  /** Alto en unidades de mundo (escala histórica de la escena — se conserva). */
+  hU: 8.8,
+  /** u/cm derivado del alto: 8.8 / 178 ≈ 0.04944. */
+  uPerCm: 8.8 / 178,
+  /** Ancho/fondo en unidades, derivados de los cm reales con la MISMA escala. */
+  wU: (91 * 8.8) / 178, // ≈ 4.499
+  dU: (75 * 8.8) / 178, // ≈ 3.708
+  /** Región del clúster sobre AMBAS puertas (zona alta anclada; la junta central queda bajo
+   *  las piezas, que montan proud sobre ella como imanes reales pegados sobre la unión). */
+  cluster: {
+    gap: 0.06, // ≈ 1.2 cm de aire entre piezas
+    maxW: 3.55, // ≈ 72 cm — ambas puertas menos márgenes laterales estéticos
+    topY: 3.9, // bajo el borde superior de las puertas
+    bottomY: -3.85, // sobre el borde inferior
+    anchorY: 1.2, // ancla estética en la zona ALTA (imanes a la altura de los ojos)
+  },
+} as const;
+
+/** Mural de CORCHO de pared grande (12 tiras de 26.5 cm caben en grilla 6×2 CON márgenes —
+ *  el tablerito anterior de 45×33 cm solo daba 1 fila de alto → desborde seguro). */
+export const BOARD_SCENE = {
+  /** cm reales: 120 ancho × 80 alto (corcho de pared tipo moodboard grande). */
+  cm: { w: 120, h: 80 },
+  /** Unidades de mundo: escala redonda 0.1 u/cm. */
+  wU: 12,
+  hU: 8,
+  uPerCm: 0.1,
+  /** Marco de madera ~5.5 cm y grosor del tablero ~2.2 cm. */
+  frameU: 0.55,
+  depthU: 0.22,
+  /** Región del clúster dentro del marco, con aire estético. */
+  cluster: {
+    gap: 0.12, // 1.2 cm de aire entre piezas
+    maxW: (12 - 2 * 0.55) * 0.9, // ≈ 9.81 u (98 cm dentro del marco)
+    maxH: (8 - 2 * 0.55) * 0.86, // ≈ 5.93 u (59 cm dentro del marco)
+  },
+} as const;
 
 export type ClusterPieceSize = { w: number; h: number };
 
