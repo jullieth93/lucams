@@ -235,7 +235,12 @@ async function main() {
   console.log(`=== fotoimanes-packs-6-20260915 (${APPLY ? "APPLY" : "DRY-RUN"}) ===`);
   for (const family of [POLAROID, CUADRADOS]) {
     if (APPLY) {
-      await prisma.$transaction((tx) => migrateFamily(tx, family));
+      // Timeout extendido: ~30 round-trips por familia contra el pooler remoto
+      // (us-east-2) superan los 5 s por defecto → P2028 (visto en STG 2026-09-15).
+      await prisma.$transaction((tx) => migrateFamily(tx, family), {
+        timeout: 60_000,
+        maxWait: 15_000,
+      });
     } else {
       await migrateFamily(prisma, family);
     }
