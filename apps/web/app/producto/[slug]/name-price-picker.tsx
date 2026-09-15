@@ -17,12 +17,16 @@ import { useSelectedVariant } from "./variant-actions";
 export function NamePricePicker({
   slug,
   perTilePrice,
+  perTilePriceByVariantId,
   min,
   max,
   ctaNoun,
 }: {
   slug: string;
   perTilePrice: number;
+  /** A2 (2026-09-15) — precio por ficha VIVO por variante (tamaño/imán): el total
+   *  sigue al chip elegido sin esperar el re-render del RSC. Llave = variantId. */
+  perTilePriceByVariantId?: Record<string, number>;
   min: number;
   max: number;
   /** Sustantivo del CTA ("producto" — genérico para todo el catálogo). */
@@ -33,7 +37,12 @@ export function NamePricePicker({
   const { selectedId: variantId, copies } = useSelectedVariant();
   // Arranca en un ejemplo cómodo (5 letras) acotado a [min, max].
   const [count, setCount] = useState(() => Math.min(max, Math.max(min, 5)));
-  const total = count * perTilePrice;
+  // Precio por ficha vivo (la variante elegida manda; fallback al del server).
+  const livePerTile = (variantId ? perTilePriceByVariantId?.[variantId] : undefined) ?? perTilePrice;
+  // A2 (2026-09-15) — el total refleja TAMBIÉN las unidades del stepper
+  // "Unidades" (N nombres a diseñar): letras × por-ficha × unidades — el MISMO
+  // cálculo que el carrito (unitPrice × qty).
+  const total = count * livePerTile * copies;
   // Las unidades a diseñar viajan como ?copies=N (solo cuando N>1; el Estudio
   // arranca en 1 por defecto — nombre del parámetro conservado por compat).
   const params = new URLSearchParams();
@@ -48,7 +57,7 @@ export function NamePricePicker({
         <div>
           <p className="text-brand-purple-dark text-sm font-semibold">¿Cuántas letras tendrá?</p>
           <p className="text-brand-muted text-xs">
-            {formatCOP(perTilePrice)} por ficha · {min}–{max} letras
+            {formatCOP(livePerTile)} por ficha · {min}–{max} letras
           </p>
         </div>
         <div className="border-brand-purple/20 flex items-center gap-1 rounded-full border bg-white p-1">
@@ -78,7 +87,8 @@ export function NamePricePicker({
 
       <div className="border-brand-purple/15 flex items-baseline justify-between border-t border-dashed pt-3">
         <span className="text-brand-muted text-xs">
-          {count} × {formatCOP(perTilePrice)}
+          {count} × {formatCOP(livePerTile)}
+          {copies > 1 ? ` × ${copies} unidades` : ""}
         </span>
         <span className="text-brand-purple-dark text-2xl font-bold tabular-nums">
           {formatCOP(total)}

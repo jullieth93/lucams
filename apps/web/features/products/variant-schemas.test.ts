@@ -18,6 +18,8 @@ import {
   PDP_HIDDEN_DIMENSION_KEYS,
   PDP_DIMENSION_LABEL_OVERRIDES,
   PDP_PACK_PLUS_COPIES_SLUGS,
+  PDP_PACKS_OF_SIX_SLUGS,
+  PHOTO_PACK_UNITS_PER_PACK,
   isPhotoPackCatalog,
   photoPackDistinctSizes,
   photoPackMinPrice,
@@ -243,13 +245,18 @@ describe("packs — dimensión 'Unidades' en la PDP (regla 2026-09-08b)", () => 
     });
   });
 
-  it("polaroid/cuadrados: el pack size viaja en photoSlots con label 'Unidades'", () => {
+  it("polaroid/cuadrados: el pack size viaja en photoSlots con label 'Packs' (B2 2026-09-15)", () => {
     expect(PDP_DIMENSION_LABEL_OVERRIDES["set-fotoimanes-polaroid"]).toEqual({
-      photoSlots: "Unidades",
+      photoSlots: "Packs",
     });
     expect(PDP_DIMENSION_LABEL_OVERRIDES["set-fotoimanes-cuadrados"]).toEqual({
-      photoSlots: "Unidades",
+      photoSlots: "Packs",
     });
+    // Familias vendidas por packs de 6 (stepper cuenta packs, desglose a la izquierda).
+    expect(PDP_PACKS_OF_SIX_SLUGS.has("set-fotoimanes-polaroid")).toBe(true);
+    expect(PDP_PACKS_OF_SIX_SLUGS.has("set-fotoimanes-cuadrados")).toBe(true);
+    expect(PDP_PACKS_OF_SIX_SLUGS.has("tiras-magneticas-fotos")).toBe(false);
+    expect(PHOTO_PACK_UNITS_PER_PACK).toBe(6);
   });
 
   // (2026-09-09, owner) Tiras es HÍBRIDO: photoSlots es COMPOSICIÓN y se

@@ -3,12 +3,15 @@
 /*
  * StudioUnitCountControl — Ola 28 (owner 2026-09-11, 1.3.A).
  *
- * Stepper "Unidades" para productos de COMPOSICIÓN fija en el Estudio (tiras
- * photobooth): la composición (3/4 fotos por tira) se elige en la PDP y ya no
- * se repite acá ("ese texto sobra"); lo que el cliente ajusta en el lienzo es
- * CUÁNTAS tiras diseñar. Reemplaza al stepper "¿Cuántas fotos lleva tu imán?"
- * para este caso (StudioPhotoCountControl sigue para los packs de imán suelto,
- * donde el N de fotos ES el nº de unidades).
+ * Stepper "Unidades" para productos de COMPOSICIÓN fija en el Estudio: la
+ * composición (fotos por tira, meses del calendario) se elige en la PDP o la
+ * fija el producto, y no se repite acá; lo que el cliente ajusta en el lienzo
+ * es CUÁNTAS unidades diseñar. A3 (2026-09-15): el control es UNIVERSAL — la
+ * toolbar lo monta para TODO producto que no usa el stepper de fotos
+ * (StudioPhotoCountControl sigue para los packs de imán suelto, donde el N de
+ * fotos ES el nº de unidades). Cuando el producto no tiene unidades multi-slot
+ * que contar (unitSlots ≤ caras — imán suelto de 1 foto), el control se oculta
+ * solo: no hay N que elegir (el store.setUnitCount sería no-op de todos modos).
  *
  * Al cambiar N se redeclara el modelo multi-unidad (store.setUnitCount):
  * slotCount = unitSlots × N, secciones "Tira 1 de N"… El precio ×N lo deriva
@@ -25,18 +28,22 @@ import { useStudioTexts } from "./studio-texts-provider";
 
 export type StudioUnitCountControlProps = {
   store: StoreApi<StudioStoreState>;
-  /** Caras de diseño por unidad física (tiras: 1). */
-  facesPerUnit: number;
+  /** Caras de diseño por unidad física (tiras/calendario: 1). Default 1. */
+  facesPerUnit?: number;
   /** "¿Con imán?" — badge READ-ONLY de la elección de la PDP (mismo criterio
    *  que StudioPhotoCountControl: no es un control, se muestra para que el
    *  cliente vea qué va a recibir). undefined = no mostrar. */
   magnet?: boolean;
+  /** Hint junto al stepper. Default: el texto CMS (pensado para tiras). La
+   *  toolbar pasa uno genérico para el resto de productos (A3). */
+  hint?: string;
 };
 
 export function StudioUnitCountControl({
   store,
-  facesPerUnit,
+  facesPerUnit = 1,
   magnet,
+  hint,
 }: StudioUnitCountControlProps) {
   const texts = useStudioTexts();
   // N vivo de unidades + slots por unidad del canvasData. Selectores ATÓMICOS
@@ -44,7 +51,8 @@ export function StudioUnitCountControl({
   const unitCount = useStore(store, (s) => s.canvasData?.unitCount ?? 1);
   const unitSlots = useStore(store, (s) => s.canvasData?.unitSlots ?? facesPerUnit);
 
-  // El tope lo da el cap de 50 slots del schema (tira de 4 → 12, de 3 → 16).
+  // El tope lo da el cap de 50 slots del schema (tira de 4 → 12, de 3 → 16;
+  // calendario de 12 → 4).
   const clampedMax = Math.max(1, maxUnitsForProduct(unitSlots));
   const value = Math.min(clampedMax, Math.max(1, unitCount));
   const canDecrease = value > 1;
@@ -72,6 +80,11 @@ export function StudioUnitCountControl({
   }, [pendingDir, store, value, facesPerUnit, clampedMax]);
 
   const busy = pendingDir !== null;
+
+  // A3 — sin unidades multi-slot que contar (unitSlots ≤ caras: imán suelto de
+  // 1 foto, o boot aún sin canvasData) el stepper no aplica: setUnitCount sería
+  // no-op y mostrarlo prometería una elección que no existe.
+  if (unitSlots <= facesPerUnit) return null;
 
   return (
     <div className="border-brand-purple/10 bg-brand-cream/50 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t px-4 py-2">
@@ -114,7 +127,7 @@ export function StudioUnitCountControl({
         </button>
       </div>
       <span className="text-brand-purple-dark/70 text-xs font-medium">
-        {texts.lienzo.unitsCountHint}
+        {hint ?? texts.lienzo.unitsCountHint}
       </span>
       {typeof magnet === "boolean" && (
         <span className="ring-brand-purple/20 text-brand-purple-dark inline-flex items-center gap-1.5 rounded-full bg-white px-3 py-1.5 text-xs font-bold ring-1">

@@ -41,6 +41,7 @@ import {
 } from "./lib/store";
 import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
 import { compressImageForUpload } from "./client-image-compress";
+import { isStillBelowMinimum, upscalePhotoForPrint } from "./client-photo-upscale";
 import type { StudioAsset, StudioTemplate } from "./types";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -150,10 +151,16 @@ export function StudioSidebar({
     setUploadError(null);
     try {
       for (const file of Array.from(files)) {
+        // C2 (owner 2026-09-15) — mejora LOCAL previa: si la foto queda bajo la
+        // resolución requerida para imprimir el producto a 300 DPI, se
+        // re-muestrea en el navegador (progresivo + unsharp leve) ANTES de
+        // subir. null = no aplica (HEIC, sin sizeCm) o falló → original.
+        const upscaled = await upscalePhotoForPrint(file, productSizeCm);
+        const improvedButLow = upscaled ? isStillBelowMinimum(upscaled) : false;
         // Compresión cliente si la foto supera ~4 MB (el tope real de Vercel
         // es ~4.5 MB por request — fotos full-res de iPhone). HEIC pasa intacto
         // (el servidor lo decodifica con heic-decode). Ver client-image-compress.ts.
-        const prepared = await compressImageForUpload(file);
+        const prepared = await compressImageForUpload(upscaled?.file ?? file);
         const formData = new FormData();
         formData.append("file", prepared);
         if (designId) formData.append("designId", designId);
@@ -194,7 +201,13 @@ export function StudioSidebar({
           });
           // M.3.b.B.2 — Si la foto subió con calidad insuficiente, mostrar
           // banner naranja persistente con el mensaje (cliente decide si usarla).
-          if (result.validationLevel === "warning-strong" || result.validationLevel === "error") {
+          // C2 — si ya la mejoramos automáticamente y AÚN así quedó bajo el
+          // mínimo para imprimir, el aviso lo explica (mensaje mejorado).
+          if (improvedButLow) {
+            setUploadError(
+              fillStudioText(texts.fotos.avisoMejoraAuto, { size: productSizeCm ?? "" }),
+            );
+          } else if (result.validationLevel === "warning-strong" || result.validationLevel === "error") {
             setUploadError(result.validationMessage ?? texts.fotos.errorCalidad);
           }
         } else {

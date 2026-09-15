@@ -12,9 +12,18 @@
  *   1. Upsert "photo-pack-polaroid-clasica" (tarjeta con franja, frame-card +
  *      texto editable) y re-layout de "photo-pack-polaroid-instagram" a 450×600
  *      (3:4 = formato físico 7.5×10 → el filtro de aspect no la excluye más).
- *   2. Upsert plantillas de cara "separador-cuadrado-cara" (400×420) y
- *      "separador-rectangular-cara" (600×200) para separadores-libros.
- *   3. Producto separadores-libros: merge en personalizationSchema de
+ *   2. RETIRADO (D4, 2026-09-15): ya NO upserta las plantillas de cara
+ *      "separador-cuadrado-cara" (400×420) ni "separador-rectangular-cara"
+ *      (600×200) — al re-correr las ARCHIVA (soft-delete idempotente). La
+ *      rectangular tenía el stage HORIZONTAL para el formato 2×6 vertical
+ *      (aspect 3.0 no matchea ninguna variante → nunca visible en el Estudio)
+ *      y la cuadrada duplicaba exactamente a la canónica sep-mag-4x4-2; las
+ *      canónicas por tamaño (sep-mag-2x6, sep-mag-4x4-2 de seed-templates.mjs)
+ *      ya cubren ambas caras. Decisión: desactivar duplicados, no acumular
+ *      plantillas muertas — la normalización en DBs existentes la hace
+ *      scripts/one-shot/normalize-template-visibility-20260915.mjs.
+ *   3. Producto separadores (hoy "separadores-magneticos", renombrado por
+ *      ola19): merge en personalizationSchema de
  *      { facesPerUnit: 2, cornerRadiusPx: 28 } (2 caras por unidad + troquel redondo).
  *      NO toca variantes ni precios (eso es del frente de datos).
  *
@@ -26,7 +35,6 @@ import { assertDestructiveAllowed } from "../lib/env-guard.mjs";
 // Guarda de ambiente (N-06, 2026-09-12): one-shot aplicado — al re-correrlo
 // bloquea PRD/remotos no reconocidos (fail-closed, lib/env-guard.mjs).
 assertDestructiveAllowed("ola3-templates-2caras-polaroid.mjs");
-
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
@@ -48,8 +56,10 @@ if (!polaroidProduct) {
   process.exit(1);
 }
 
-const separadoresProduct = await prisma.product.findUnique({
-  where: { slug: "separadores-libros" },
+// D4 (2026-09-15) — el producto se llama hoy "separadores-magneticos" (ola19 lo
+// renombró); se busca por ambos slugs para que un rerun deliberado lo encuentre.
+const separadoresProduct = await prisma.product.findFirst({
+  where: { slug: { in: ["separadores-magneticos", "separadores-libros"] }, deletedAt: null },
   select: { id: true, personalizationSchema: true },
 });
 
@@ -193,58 +203,11 @@ const TEMPLATES = [
       ],
     },
   },
-  ...(separadoresProduct
-    ? [
-        {
-          slug: "separador-cuadrado-cara",
-          productId: separadoresProduct.id,
-          kind: "PHOTO_PACK",
-          name: "Separador cuadrado (cara)",
-          order: 1,
-          previewUrl: "/templates/personalizacion-libre.svg",
-          canvasData: {
-            version: 1,
-            stage: stage(400, 420),
-            layers: [
-              { id: "background", type: "background", color: "#FFFFFF" },
-              {
-                id: "p1",
-                type: "image-placeholder",
-                x: 0,
-                y: 0,
-                width: 400,
-                height: 420,
-                label: "Foto de la cara",
-              },
-            ],
-          },
-        },
-        {
-          slug: "separador-rectangular-cara",
-          productId: separadoresProduct.id,
-          kind: "PHOTO_PACK",
-          name: "Separador rectangular (cara)",
-          order: 2,
-          previewUrl: "/templates/personalizacion-libre.svg",
-          canvasData: {
-            version: 1,
-            stage: stage(600, 200),
-            layers: [
-              { id: "background", type: "background", color: "#FFFFFF" },
-              {
-                id: "p1",
-                type: "image-placeholder",
-                x: 0,
-                y: 0,
-                width: 600,
-                height: 200,
-                label: "Foto de la cara",
-              },
-            ],
-          },
-        },
-      ]
-    : []),
+  // D4 (2026-09-15) — las plantillas de cara "separador-cuadrado-cara" y
+  // "separador-rectangular-cara" salieron del upsert: la canónica por tamaño
+  // (sep-mag-2x6 / sep-mag-4x4-2 en seed-templates.mjs) ya cubre ambas y la
+  // rectangular estaba desorientada (stage 600×200 horizontal para el 2×6
+  // vertical). Abajo se archivan por si existen en la DB.
 ];
 
 for (const t of TEMPLATES) {
@@ -275,6 +238,23 @@ for (const t of TEMPLATES) {
   console.log(`  ✓ ${t.name} [${t.kind}]`);
 }
 
+// D4 (2026-09-15) — archivar las legadas de cara si existen (soft-delete
+// idempotente, reversible desde el admin): así un rerun deliberado de este
+// script no las deja activas compitiendo con las canónicas sep-mag-*.
+for (const slug of ["separador-cuadrado-cara", "separador-rectangular-cara"]) {
+  const legacy = await prisma.personalizationTemplate.findUnique({ where: { slug } });
+  if (!legacy || legacy.deletedAt) continue;
+  await prisma.personalizationTemplate.update({
+    where: { id: legacy.id },
+    data: {
+      deletedAt: new Date(),
+      isActive: false,
+      deletedBy: "system:ola3-retire-cara-templates",
+    },
+  });
+  console.log(`  ✓ ${slug} archivada (retirada D4 — la cubre la canónica sep-mag-*)`);
+}
+
 // Flags del producto separadores: 2 caras por unidad + esquinas redondas del troquel.
 if (separadoresProduct) {
   const current =
@@ -288,11 +268,11 @@ if (separadoresProduct) {
       personalizationSchema: { ...current, facesPerUnit: 2, cornerRadiusPx: 28 },
     },
   });
-  console.log("  ✓ separadores-libros schema += { facesPerUnit: 2, cornerRadiusPx: 28 }");
+  console.log("  ✓ separadores schema += { facesPerUnit: 2, cornerRadiusPx: 28 }");
 } else {
-  console.warn("  ⚠ separadores-libros no existe — se omitieron sus plantillas/flags.");
+  console.warn("  ⚠ producto separadores no existe — se omitieron sus flags.");
 }
 
-console.log("\nListo. Sin soft-deletes; solo upserts puntuales.");
+console.log("\nListo. Upserts puntuales + archivado idempotente de las legadas de cara (D4).");
 await prisma.$disconnect();
 process.exit(0);

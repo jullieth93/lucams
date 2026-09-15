@@ -70,6 +70,15 @@ type Variant = {
 
 type VariantSelectorProps = {
   productBasePrice: number;
+  /**
+   * A2 (2026-09-15) — fallback de los precios DERIVADOS del selector (card
+   * "Precio" y total del stepper): minVariantPrice de la familia (mismo criterio
+   * que la card del listado), porque el basePrice quedó desactualizado en varias
+   * familias. undefined = productBasePrice (comportamiento de siempre).
+   * NO reemplaza a productBasePrice en el fallback de variante SIN precio propio
+   * (lista single-dim): ahí el modelo de datos manda (price null = hereda base).
+   */
+  fallbackPrice?: number;
   variants: Variant[];
   /** #14 — en productos por-ficha (Nombre) el total lo lleva el NamePricePicker ("$X por ficha ·
    * count × price = total"); ocultamos el card "Precio" pelado del selector (confunde: parece el
@@ -104,6 +113,15 @@ type VariantSelectorProps = {
    * (CopiesQtyInput), no el pack size.
    */
   quantityStepperExclusions?: readonly string[];
+  /**
+   * B2 (2026-09-15) — familias vendidas por PACKS (PDP_PACKS_OF_SIX_SLUGS):
+   * el stepper de cantidad cuenta PACKS ("1 pack", "2 packs") con el desglose
+   * a la izquierda ("1 pack = 6 unidades"). Guard interno: solo aplica si TODOS
+   * los valores de la dimensión son múltiplos de `unitsPerPack` (un catálogo
+   * legacy 6/9/12 cae al conteo de unidades de siempre). El dato de la variante
+   * (photoSlots) y la selección NO cambian — es solo presentación.
+   */
+  packSize?: { unitsPerPack: number };
 };
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -281,12 +299,14 @@ function isOneToOnePerVariant(variants: Variant[], dimKey: string, keeperKey: st
 
 export function VariantSelector({
   productBasePrice,
+  fallbackPrice,
   variants: rawVariants,
   perTile = false,
   hiddenDimensions,
   dimensionLabels,
   singleDimAsChips = false,
   quantityStepperExclusions,
+  packSize,
 }: VariantSelectorProps) {
   // ──── SINGLE SOURCE OF TRUTH: el Context del buy-box (H12) ────
   // Antes el estado vivía LOCAL acá + router.replace; las acciones (CTA/carrito/precio) no se
@@ -619,7 +639,7 @@ export function VariantSelector({
   }
 
   // ── Modo multi-dimension: chips por dimensión + card de Precio ──
-  const currentPrice = selectedVariant?.price ?? productBasePrice;
+  const currentPrice = selectedVariant?.price ?? fallbackPrice ?? productBasePrice;
 
   // Con el salto por fallback (QA 2026-08-12) toda opción listada es alcanzable;
   // el único estado deshabilitado restante es "Agotado" (sin stock en ninguna
@@ -655,8 +675,17 @@ export function VariantSelector({
                   parseVariantAttributes(v.attributes)[dim.key as keyof ProductVariantAttributes],
                 ) === String(qty),
             );
-          const totalPrice = qtyVariant?.price ?? productBasePrice;
+          const totalPrice = qtyVariant?.price ?? fallbackPrice ?? productBasePrice;
           const unitPrice = Math.round(totalPrice / qty);
+          // B2 (2026-09-15) — modo PACKS (fotoimanes por formato): el conteo es
+          // "pack/packs" y el desglose va a la izquierda ("1 pack = 6 unidades").
+          // Guard: TODOS los tamaños del catálogo deben ser múltiplos del pack —
+          // un catálogo legacy (6/9/12) cae al conteo de unidades de siempre.
+          const packMode =
+            packSize != null &&
+            packSize.unitsPerPack > 1 &&
+            steps.every((s) => s % packSize.unitsPerPack === 0);
+          const packCount = packMode ? qty / packSize.unitsPerPack : null;
           // Fase 1 — el stepper salta cantidades agotadas: "+"/"−" apuntan al
           // tamaño siguiente/anterior que EXISTA y TENGA stock (no al valor
           // adyacente del set); si el siguiente existe pero está agotado se
@@ -695,10 +724,18 @@ export function VariantSelector({
                 aria-label={dim.label}
                 className="flex flex-wrap items-center gap-x-3 gap-y-2"
               >
+                {/* B2 — desglose del pack a la izquierda del stepper
+                    ("1 pack = 6 unidades" / "2 packs = 12 unidades"). */}
+                {packCount != null && (
+                  <span className="text-brand-muted text-xs tabular-nums">
+                    {packCount} {packCount === 1 ? "pack" : "packs"} = {qty}{" "}
+                    {qty === 1 ? "unidad" : "unidades"}
+                  </span>
+                )}
                 <div className="ring-brand-purple/15 inline-flex items-center rounded-lg bg-white ring-1">
                   <button
                     type="button"
-                    aria-label="Disminuir unidades"
+                    aria-label={packMode ? "Disminuir packs" : "Disminuir unidades"}
                     disabled={!canDecrease}
                     onClick={() =>
                       decreaseTo !== null && handleSelectValue(dim.key, String(decreaseTo))
@@ -714,19 +751,29 @@ export function VariantSelector({
                     {/* Sustantivo según la dimensión: photoSlots = fotos por unidad
                       (composición del pack); quantity = unidades. Regla 2026-09-08b:
                       el GRUPO se llama "Unidades" en toda PDP (label override por
-                      familia); el sustantivo del conteo describe las piezas. */}
-                    {qty}{" "}
-                    {dim.key === "photoSlots"
-                      ? qty === 1
-                        ? "foto"
-                        : "fotos"
-                      : qty === 1
-                        ? "unidad"
-                        : "unidades"}
+                      familia); el sustantivo del conteo describe las piezas.
+                      B2 (2026-09-15): en las familias por packs el conteo es
+                      "pack/packs" (el desglose de unidades va a la izquierda). */}
+                    {packCount != null ? (
+                      <>
+                        {packCount} {packCount === 1 ? "pack" : "packs"}
+                      </>
+                    ) : (
+                      <>
+                        {qty}{" "}
+                        {dim.key === "photoSlots"
+                          ? qty === 1
+                            ? "foto"
+                            : "fotos"
+                          : qty === 1
+                            ? "unidad"
+                            : "unidades"}
+                      </>
+                    )}
                   </span>
                   <button
                     type="button"
-                    aria-label="Aumentar unidades"
+                    aria-label={packMode ? "Aumentar packs" : "Aumentar unidades"}
                     disabled={!canIncrease}
                     onClick={() =>
                       increaseTo !== null && handleSelectValue(dim.key, String(increaseTo))

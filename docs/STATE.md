@@ -13,6 +13,21 @@
 
 ## Resumen actual
 
+**📦 2026-09-15 — PAQUETE FOTOIMANES-PACKS + COHERENCIA CATÁLOGO/ESTUDIO/ADMIN (ADR-101)
+IMPLEMENTADO Y VERIFICADO EN LOCAL.** Cuatro decisiones de Lucy en sesión: Fotoimanes se
+vende por PACKS de 6 (un producto por formato; estilo Clásica/Instagram = plantilla del
+Estudio), la foto de baja resolución se MEJORA en línea (upscale local en el navegador),
+las delimitaciones del lienzo se ven siempre (sutil → hover → drag) y el 3D muestra las
+piezas a TAMAÑO REAL sin importar las unidades. Además: PDP con precio total vivo y badge
+-% (paridad con la card), control de Unidades universal en el Estudio, placeholder de
+texto visible atenuado en la grilla (Ola 30), plantillas Magnéticas con orientación
+corregida (legadas ola3 archivadas, mockups regenerados), "Fichas del abecedario" embebido
+en /admin/disenos y /admin/plantillas agrupado por categoría con marca de visibilidad real
+en el Estudio. Migración de packs APLICADA en local (16 variantes en matriz, 40 legacy
+soft-eliminadas); **pendiente correr los 2 one-shots en STG y PRD** (`fotoimanes-packs-6`
+y `normalize-template-visibility`, ambos DRY-RUN por defecto). Gates: lint 0 · typecheck 0
+· build 0 · unit 3 851. Regla nueva: no se acumulan branches (CONVENTIONS + ADR-101).
+
 **🎨 2026-09-14 (noche) — PAQUETE DE COHERENCIA ADMIN↔FRONT↔ESTUDIO EJECUTADO Y HOMOLOGADO EN LOS
 3 AMBIENTES (ADR-100).** Origen: la validación de Lucy en STG pre-salida (tachado sin reflejo,
 polaroid saltando de 10 en 10, Cuadrados sin stepper, Alargados/Magnéticos cayendo al canvas
@@ -187,6 +202,36 @@ sanciona testimonios inventados como publicidad engañosa); ④ crecimiento: **s
 la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia verificados; cuando haya
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
+
+## Sesión — 2026-09-15 — Paquete coherencia catálogo/estudio/admin (ADR-101): Fotoimanes por packs de 6, precio vivo PDP, placeholder-guide, 3D tamaño real, admin consolidado
+
+- **4 decisiones de producto confirmadas por Lucy antes de codificar:** ① Fotoimanes = un
+  producto por formato vendido por PACKS de 6 (estilo Clásica/Instagram = plantilla del
+  Estudio) ② foto de baja resolución = upscale LOCAL en el navegador (sin servicios
+  externos) ③ delimitaciones de slot sutiles siempre + refuerzo progresivo hover/drag ④
+  3D tamaño real SIEMPRE (la región crece y la cámara encuadra; nunca encoge).
+- **Datos:** seed canónico re-modelado (Polaroid formato único 6×8 photoSlots 6/12/18/24
+  $3.750/und · Cuadrados Tamaño × packs $4.000/$4.500/$6.000 und) + one-shot
+  `fotoimanes-packs-6-20260915.mjs` (APLICADO en local: 16 variantes en matriz, 40 legacy
+  soft-eliminadas; STG/PRD pendientes) · `diagnose/normalize-template-visibility-20260915`
+  (local OK: todo producto/aspect con plantilla visible; legadas ola3 archivadas) ·
+  mockups `sep-mag-2x6.svg` (1:3) y `sep-mag-4x4-2.svg` (20:21) regenerados con aspect real.
+- **Código:** PDP con total vivo en stepper de unidades + fallback a precio mínimo de
+  familia + badge -% (A) · labels "Packs" con desglose en PDP/Estudio para fotoimanes,
+  Abecedario (27 ES/26 EN) y Vocales (5) (B2/F1) · control de Unidades universal en el
+  Estudio (A3) · placeholder-guide 40% en la grilla, excluido de snapshots vía
+  `.edit-indicator` (B4) · delimitaciones progresivas + `studio-brand.ts` (C1) ·
+  `client-photo-upscale.ts` + CMS `estudio.fotos.aviso-mejora-auto` (C2) · 3D: nuevo
+  contrato `magnetWorldSizes` sin encogimiento, `fridgeClusterLayout`/`boardClusterLayout`,
+  `flatBookmarkSlots(pieceW)` sin solape, galería respeta `flat`/noFold (E) · admin:
+  Fichas embebidas en /admin/disenos?tab=fichas (308 desde /admin/fichas) y /admin/plantillas
+  agrupado por categoría→producto con marca "Visible en el Estudio" (D).
+- **Verificación:** typecheck + lint limpios · suite vitest local 3 851 verdes · build de
+  producción OK.
+- **Docs:** ADR-101 (DECISIONS) · regla anti-acumulación de branches en CONVENTIONS ·
+  Ola 30 en el README del Estudio (redefine Ola 25/28 para la grilla).
+- **Pendientes con Lucy:** correr los 2 one-shots en STG y luego PRD (env-guard; PRD con
+  bypass) · confirmar el compareAt del pack Polaroid ($27.500, proporción histórica +22%).
 
 ## Sesión — 2026-09-14 (3) — Paquete coherencia Admin↔Front↔Estudio (ADR-100) ejecutado y homologado
 

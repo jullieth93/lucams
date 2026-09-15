@@ -81,6 +81,7 @@ import { getFilterParams } from "./lib/photo-filters";
 import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
+import { PLACEHOLDER_GUIDE_OPACITY, SLOT_GUIDE_COLORS } from "./studio-brand";
 
 const FOCUS_RING = "0 0 0 3px rgb(93 217 209)"; // brand-turquoise
 
@@ -249,6 +250,10 @@ function StudioSlotImpl({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
   const [isDropping, setIsDropping] = useState(false);
+  // C1 (owner 2026-09-15) — delimitaciones progresivas del slot vacío: reposo
+  // (morado sutil siempre visible) → hover (intensidad media) → drag-over
+  // (turquesa pleno, vía isDropping). Colores centralizados en studio-brand.
+  const [isSlotHovered, setIsSlotHovered] = useState(false);
   const texts = useStudioTexts();
   // M.3.b.UX.v5 (Lucy 2026-05-15) — flag para evitar que el drag de la foto
   // dispare el picker modal al soltar el click. Cuando Konva detecta drag,
@@ -675,6 +680,18 @@ function StudioSlotImpl({
     ? `${slotName}, con foto cargada. ${filledHints.join(", ")}.`
     : `${slotName}, vacío. Enter para subir foto.`;
 
+  // C1 — guía del slot vacío en 3 niveles (reposo → hover → drag-over).
+  const slotGuideStroke = isDropping
+    ? SLOT_GUIDE_COLORS.dropping
+    : isSlotHovered
+      ? SLOT_GUIDE_COLORS.hover
+      : SLOT_GUIDE_COLORS.rest;
+  const slotGuideFill = isDropping
+    ? SLOT_GUIDE_COLORS.droppingFill
+    : isSlotHovered
+      ? SLOT_GUIDE_COLORS.hoverFill
+      : SLOT_GUIDE_COLORS.restFill;
+
   return (
     <div className="group/wrapper relative flex flex-col items-center gap-1.5">
       {/* M.3.b.UX.v13 — SVG clipPath inline para shape heart. objectBoundingBox
@@ -719,6 +736,8 @@ function StudioSlotImpl({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
+          onMouseEnter={() => setIsSlotHovered(true)}
+          onMouseLeave={() => setIsSlotHovered(false)}
           data-slot-index={slotState.slotIndex}
           data-state={
             isDropping
@@ -957,7 +976,10 @@ function StudioSlotImpl({
                 {/* Borde punteado interno con la FORMA FÍSICA del imán (WYSIWYG, Lucy
                 2026-07-13): corazón/círculo trazan su silueta punteada + relleno sutil;
                 el rectángulo mantiene el rect redondeado. Así el slot VACÍO ya "se ve"
-                como el producto real, no como un cuadrado genérico. */}
+                como el producto real, no como un cuadrado genérico.
+                C1 (owner 2026-09-15) — delimitación progresiva: el contorno es
+                SIEMPRE visible (morado sutil en reposo, medio en hover, turquesa
+                pleno al arrastrar) — colores de studio-brand. */}
                 {shape === "heart" || shape === "circle" ? (
                   <svg
                     className="pointer-events-none absolute inset-0 h-full w-full"
@@ -968,8 +990,8 @@ function StudioSlotImpl({
                     {shape === "heart" ? (
                       <path
                         d={HEART_PATH_DATA}
-                        fill={isDropping ? "rgba(93, 217, 209, 0.14)" : "rgba(232, 91, 159, 0.07)"}
-                        stroke={isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.55)"}
+                        fill={slotGuideFill}
+                        stroke={slotGuideStroke}
                         strokeWidth={2.5}
                         strokeDasharray="5 3"
                         strokeLinejoin="round"
@@ -979,8 +1001,8 @@ function StudioSlotImpl({
                         cx="50"
                         cy="50"
                         r="45"
-                        fill={isDropping ? "rgba(93, 217, 209, 0.14)" : "rgba(124, 106, 173, 0.05)"}
-                        stroke={isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.55)"}
+                        fill={slotGuideFill}
+                        stroke={slotGuideStroke}
                         strokeWidth={2.5}
                         strokeDasharray="5 3"
                       />
@@ -989,7 +1011,7 @@ function StudioSlotImpl({
                 ) : (
                   <motion.div
                     animate={{
-                      borderColor: isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.25)",
+                      borderColor: slotGuideStroke,
                       scale: isDropping ? 1.02 : 1,
                     }}
                     transition={{ duration: 0.2 }}
@@ -1501,9 +1523,11 @@ export function renderLayer(
       // (igTextFill): usuario/ubicación/likes/título siguen el contraste de la
       // tarjeta, pero los hashtags SIEMPRE salen azul link IG (legible sobre
       // tarjeta clara u oscura) — nunca caen al blanco del contraste.
-      // Ola 28 (owner 2026-09-11): en IG el texto por defecto de la plantilla
-      // SE VE (isIg → showTemplateDefault); el resto de plantillas siguen
-      // naciendo vacías (Ola 25).
+      // Ola 28 (owner 2026-09-11) / B4 (owner 2026-09-15): el default de la
+      // plantilla sale como GUÍA atenuada en la grilla para TODAS las
+      // plantillas (Clásica e Instagram iguales — la excepción Ola 28 de
+      // dibujarlo a opacidad plena quedó reemplazada); el fill por capa de IG
+      // se conserva en la guía.
       // Ola 29 (owner 2026-09-11, ronda 5 — 1.2.1.A): fuera de IG el default
       // sale de defaultTextFillOnCard (frame-palette, compartida con producción):
       // tarjeta rosada/oscura → letra BLANCA; blanca/pastel → el oscuro de la
@@ -1511,7 +1535,7 @@ export function renderLayer(
       const defaultFill = isIg
         ? igTextFill(textLayer.id, textLayer.fill, darkCardBg)
         : defaultTextFillOnCard(cardBgHex, textLayer.fill);
-      return renderText(textLayer, stage, override, onTextEdit, false, defaultFill, isIg);
+      return renderText(textLayer, stage, override, onTextEdit, false, defaultFill);
     }
     case "shape":
       return renderShape(layer as never);
@@ -1780,51 +1804,38 @@ function renderText(
   // Ola 26 — en Instagram, por capa vía igTextFill: hashtags siempre azules).
   // Ausente → el fill de la plantilla (o el morado oscuro de marca).
   defaultFill?: string,
-  /**
-   * Ola 28 (owner 2026-09-11, 1.2.2.A) — EXCEPCIÓN Instagram a la regla Ola 25
-   * de "la tarjeta nace VACÍA": con la plantilla IG el texto por defecto de la
-   * plantilla SÍ se dibuja (con el color por capa de siempre) mientras el
-   * cliente no escribe el suyo — "actualmente no se ve texto preview (se ve
-   * vacío)". Sin riesgo de imprimir placeholders: los 4 textos requeridos
-   * BLOQUEAN «Vista previa» hasta tener override (Ola 26) y "362 me gusta" es
-   * decorativo (su default se imprime, como siempre se vio en el lienzo).
-   * Las DEMÁS plantillas siguen con la regla Ola 25 (vacío hasta escribir).
-   */
-  showTemplateDefault: boolean = false,
 ) {
   // Combinar layer base + override del slot. Cada campo del override
   // sobrescribe el layer base si está definido.
   //
   // REGLA GLOBAL DE PLACEHOLDERS (Ola 4 2026-07-23, reforzada Ola 23 2026-09-08,
-  // endurecida Ola 25 2026-09-09): el texto por defecto de TODA capa editable de
-  // CUALQUIER plantilla ("Escribe tu mensaje", "@tu_usuario", "362 me gusta",
-  // "Bogotá, Colombia"…) es un PLACEHOLDER, nunca contenido de la tarjeta:
-  //   - NADA se dibuja en la tarjeta hasta que el cliente escribe su texto: ni en
-  //     la grilla, ni en el preview del modal, ni en texturas 3D ni en el
-  //     compositado de confirmación. (Ola 23/24 lo atenuaban con itálica +
-  //     subrayado punteado; el dueño validó en STG que aun así se leía como
-  //     texto físico → regla estricta: la tarjeta nace VACÍA.)
-  //   - En la GRILLA (superficie editable) el campo se descubre como ZONA DE
-  //     EDICIÓN vacía: recuadro punteado turquesa + dot, todo name="edit-indicator"
-  //     (adorno de pantalla: el snapshot de producción/preview lo esconde antes de
-  //     toDataURL). La vía principal de edición es la pestaña Texto del modal de
-  //     edición del slot; el input ahí muestra el default como placeholder gris
+  // endurecida Ola 25 2026-09-09, unificada B4 owner 2026-09-15): el texto por
+  // defecto de TODA capa editable de CUALQUIER plantilla ("Escribe tu mensaje",
+  // "@tu_usuario", "362 me gusta", "Bogotá, Colombia"…) es un PLACEHOLDER,
+  // nunca contenido de la tarjeta:
+  //   - En la GRILLA del Estudio (superficie editable, onTextEdit presente) el
+  //     default de la plantilla SÍ se dibuja como GUÍA atenuada
+  //     (PLACEHOLDER_GUIDE_OPACITY ≈ 40%, estilo "así se verá") dentro de la
+  //     zona de edición punteada — B4: Clásica e Instagram se comportan IGUAL
+  //     (reemplaza la excepción Ola 28 de dibujar el default IG a opacidad
+  //     plena). La guía va marcada name="placeholder-guide edit-indicator":
+  //     es adorno de PANTALLA y se oculta antes de cada stage.toDataURL, igual
+  //     que el recuadro/dot → NUNCA se hornea en snapshots de producción ni en
+  //     el preview de confirmación.
+  //   - En las demás superficies (preview del modal, texturas 3D, confirmación)
+  //     no se dibuja NADA mientras el cliente no escribe su texto.
+  //   - La vía principal de edición es la pestaña Texto del modal de edición
+  //     del slot; el input ahí muestra el default como placeholder gris
   //     (atributo HTML), no como valor precargado.
   //   - En PRODUCCIÓN (renderTextLayer) una capa editable imprime SOLO el override
   //     del cliente; sin override.text no se imprime nada.
   //   - Ojo WYSIWYG: un override SIN texto (ej. solo cambió el color) sigue siendo
   //     placeholder — la tarjeta queda vacía y no se imprime nada.
-  //   - EXCEPCIÓN (Ola 28, owner 2026-09-11): plantilla INSTAGRAM (showTemplateDefault)
-  //     — el default de la plantilla se dibuja como texto normal (editable, con su
-  //     indicador dashed) en TODAS las superficies Konva (grilla, preview, 3D) y en
-  //     el snapshot de producción. Los requeridos no pueden quedar default al
-  //     finalizar (bloqueo Ola 26); el decorativo ("362 me gusta") imprime su default.
   // Las capas NO editables (texto fijo decorativo de la plantilla) sí imprimen su
   // texto base: no son placeholder de nada (no hay forma de editarlas).
   const customerText =
     typeof override?.text === "string" && override.text.trim() !== "" ? override.text : undefined;
-  const showDefault = showTemplateDefault && customerText === undefined;
-  const isPlaceholderGuide = layer.editable === true && customerText === undefined && !showDefault;
+  const isPlaceholderGuide = layer.editable === true && customerText === undefined;
   const finalText = customerText ?? layer.text;
   const fontSize = override?.fontSize ?? layer.fontSize ?? 48;
   const fontFamily = override?.fontFamily ?? layer.fontFamily ?? "Fredoka, Inter, sans-serif";
@@ -1861,11 +1872,14 @@ function renderText(
   const estHeight = fontSize * 1.2;
   const padding = Math.max(2, fontSize * 0.1);
 
-  // Ola 25 (Lucy 2026-09-09) — PLACEHOLDER (capa editable sin texto del cliente):
-  // la tarjeta NO muestra contenido de texto. En superficies no editables (preview
-  // del modal, texturas 3D, confirmación) no se dibuja NADA. En la grilla solo va
-  // la ZONA DE EDICIÓN vacía (recuadro punteado turquesa + dot + hit invisible que
-  // abre el editor), todo `edit-indicator` → jamás se hornea en el snapshot.
+  // B4 (owner 2026-09-15) — PLACEHOLDER (capa editable sin texto del cliente):
+  // la tarjeta NO imprime contenido de texto, pero en la GRILLA el default de
+  // la plantilla se dibuja como GUÍA atenuada ("así se verá") para TODAS las
+  // plantillas con texto editable. En superficies no editables (preview del
+  // modal, texturas 3D, confirmación) no se dibuja NADA. La guía + la ZONA DE
+  // EDICIÓN (recuadro punteado turquesa + dot + hit invisible que abre el
+  // editor) van marcadas `edit-indicator` → jamás se hornean en el snapshot
+  // (studio-editor las oculta antes de toDataURL con find(".edit-indicator")).
   if (isPlaceholderGuide) {
     if (!isEditable) return null;
     const zone = {
@@ -1876,6 +1890,25 @@ function renderText(
     };
     return (
       <Group key={layer.id} listening={true}>
+        {/* Guía "así se verá": default de la plantilla atenuado. Adorno de
+            pantalla — name="placeholder-guide edit-indicator": se oculta en
+            snapshots (producción + confirmación) igual que la zona dashed. */}
+        <Text
+          key={`${layer.id}-guide`}
+          name="placeholder-guide edit-indicator"
+          x={textX}
+          y={textY}
+          width={align === "center" ? stage.width : undefined}
+          text={layer.text}
+          fontFamily={fontFamily}
+          fontSize={fontSize}
+          fill={fill}
+          fontStyle={fontStyle}
+          align={align}
+          opacity={PLACEHOLDER_GUIDE_OPACITY}
+          listening={false}
+          preventDefault={false}
+        />
         <Rect
           name="edit-indicator"
           {...zone}

@@ -318,7 +318,7 @@ export default async function AdminDashboardPage({
               description="Diseños base que el cliente personaliza en el Estudio (fotoimanes, marcos…)."
             />
             <QuickLink
-              href="/admin/fichas"
+              href="/admin/disenos?tab=fichas"
               icon={Shapes}
               label="Fichas del abecedario"
               description="Los dibujos de cada letra (A de Avión…). Alimentan el editor de nombres y los sets."

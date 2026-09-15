@@ -201,126 +201,163 @@ const UNSPLASH = (id) => `https://images.unsplash.com/photo-${id}?w=800&q=80&fit
 const productsData = [
   // ────────────────────── foto-imanes (8) ──────────────────────
   // Base de familia Polaroid — variants creados por consolidate-product-families
-  // se preservan acá con SKUs explícitos (FI-POL-12-V1..V4). El upsert por SKU
+  // se preservan acá con SKUs explícitos (FI-POL-12-V1..V6). El upsert por SKU
   // los encuentra y no duplica. Naming aplicado: producto base sin cantidad ni
   // tamaño en el nombre.
+  //
+  // PACKS de 6 (2026-09-15, decisión de producto): el fotoimán polaroid se
+  // unifica en UN formato (6×8 cm) vendido por packs — 1 pack = 6 unidades.
+  // Variantes = photoSlots 6/12/18/24 (1-4 packs). Precio lineal derivado de la
+  // tabla vieja (Set 12 · 6×8: $45.000/12 = $3.750 und → pack de 6 = $22.500).
+  // Las variantes legacy que mezclaban cantidad+tamaño (Set 6·7×9, Set 9,
+  // Set 20 mini) se desactivan con el one-shot
+  // scripts/one-shot/fotoimanes-packs-6-20260915.mjs (STG/PRD); acá quedan
+  // fuera de lo declarado (--prune las archiva en frescos).
   {
-    slug: "set-12-fotoimanes-polaroid",
+    // Slug canónico vivo (renombrado por one-shot/rename-family-base-slugs.mjs;
+    // el slug viejo set-12-* quedó con 301 en lib/product-redirects.ts).
+    slug: "set-fotoimanes-polaroid",
     sku: "FI-POL-12",
     name: "Fotoimanes Polaroid",
     description:
-      "Fotoimanes con tus fotos en formato polaroid clásico. Bordes blancos icónicos, impresión alta resolución, acabado mate. Elige cantidad y tamaño en el selector.",
-    basePrice: 4500000,
-    compareAtPrice: 5500000,
+      "Fotoimanes con tus fotos en formato polaroid clásico (6×8 cm). Bordes blancos icónicos, impresión alta resolución, acabado mate. Se venden por packs: 1 pack = 6 unidades. El estilo (Clásica/Instagram) lo eliges como plantilla en el Estudio.",
+    basePrice: 2250000,
+    // Promo de referencia: mismo % que la tabla vieja (45.000 → 55.000 ≈ +22%).
+    // OJO: el update del seed NUNCA pisa basePrice/compareAtPrice (son del admin);
+    // estos valores aplican a seeds frescos y los alinea el one-shot de packs.
+    compareAtPrice: 2750000,
     categorySlug: "foto-imanes",
     isPersonalizable: true,
     isFeatured: true,
     personalizationKind: "PHOTO_PACK",
-    personalizationSchema: { photoSlots: 12, aspectRatio: "6:8", allowText: true, sizeCm: "6×8" },
+    personalizationSchema: { photoSlots: 6, aspectRatio: "6:8", allowText: true, sizeCm: "6×8" },
     images: [UNSPLASH("1530541930197-ff16ac917b0e"), UNSPLASH("1502920917128-1aa500764cbd")],
     variants: [
       {
         sku: "FI-POL-12-V1",
-        name: "Set 6 unidades · 7×9 cm",
-        price: 3500000,
-        attributes: { photoSlots: 6, sizeCm: "7×9", aspectRatio: "7:9" },
-      },
-      {
-        sku: "FI-POL-12-V2",
-        name: "Set 9 unidades · 6×8 cm",
-        price: 4500000,
-        attributes: { photoSlots: 9, sizeCm: "6×8", aspectRatio: "6:8" },
+        name: "1 pack (6 unidades) · 6×8 cm",
+        price: 2250000,
+        attributes: { photoSlots: 6, sizeCm: "6×8", aspectRatio: "6:8" },
       },
       {
         sku: "FI-POL-12-V3",
-        name: "Set 12 unidades · 6×8 cm",
+        name: "2 packs (12 unidades) · 6×8 cm",
         price: 4500000,
         attributes: { photoSlots: 12, sizeCm: "6×8", aspectRatio: "6:8" },
       },
       {
-        sku: "FI-POL-12-V4",
-        name: "Set 20 mini · 4×5 cm",
-        price: 5800000,
-        attributes: { photoSlots: 20, sizeCm: "4×5", aspectRatio: "4:5" },
+        sku: "FI-POL-12-V5",
+        name: "3 packs (18 unidades) · 6×8 cm",
+        price: 6750000,
+        attributes: { photoSlots: 18, sizeCm: "6×8", aspectRatio: "6:8" },
+      },
+      {
+        sku: "FI-POL-12-V6",
+        name: "4 packs (24 unidades) · 6×8 cm",
+        price: 9000000,
+        attributes: { photoSlots: 24, sizeCm: "6×8", aspectRatio: "6:8" },
       },
     ],
   },
   {
-    slug: "set-12-fotoimanes-cuadrados",
+    // Slug canónico vivo (redirect 301 del viejo set-12-* en
+    // lib/product-redirects.ts).
+    slug: "set-fotoimanes-cuadrados",
     sku: "FI-CUAD-12",
     name: "Fotoimanes Cuadrados",
     description:
-      "Fotoimanes cuadrados 5×5 cm con tus fotos. Formato minimalista, sin bordes. Ideal para galerías extensas. Elige cantidad en el selector.",
-    basePrice: 4500000,
+      "Fotoimanes cuadrados con tus fotos. Formato minimalista, sin bordes. Ideal para galerías extensas. Elige el tamaño (4×4, 5×5 o 7×7 cm) y los packs: 1 pack = 6 unidades.",
+    basePrice: 2700000,
     categorySlug: "foto-imanes",
     isPersonalizable: true,
     personalizationKind: "PHOTO_PACK",
     personalizationSchema: {
-      photoSlots: 12,
+      photoSlots: 6,
       aspectRatio: "1:1",
       sizeCm: "5×5",
       shape: "rectangle",
     },
     images: [UNSPLASH("1554080353-a576cf803bda")],
-    // Variants modulares: Cantidad (6/9/12) × Tamaño (4×4 / 5×5 / 7×7).
-    // Pricing unitario por tamaño: 4×4 $4k / 5×5 $4.5k / 7×7 $6k.
+    // Variants modulares: Tamaño (4×4 / 5×5 / 7×7) × PACKS de 6 (1-4 packs).
+    // Precio pack = 6 × unitario de la tabla: 4×4 $4.000 → $24.000;
+    // 5×5 $4.500 → $27.000; 7×7 $6.000 → $36.000 (múltiplos lineales).
+    // SKUs preservados de la matriz vieja (6/12 unidades → 1/2 packs); los de
+    // 9 unidades (V12/V22/V32) se desactivan con el one-shot de packs.
     variants: [
       // ── 4×4 cm ──
       {
         sku: "FI-CUAD-12-V11",
-        name: "6 unidades · 4×4 cm",
+        name: "1 pack (6 unidades) · 4×4 cm",
         price: 2400000,
         attributes: { photoSlots: 6, sizeCm: "4×4", aspectRatio: "1:1", shape: "rectangle" },
       },
       {
-        sku: "FI-CUAD-12-V12",
-        name: "9 unidades · 4×4 cm",
-        price: 3600000,
-        attributes: { photoSlots: 9, sizeCm: "4×4", aspectRatio: "1:1", shape: "rectangle" },
-      },
-      {
         sku: "FI-CUAD-12-V13",
-        name: "12 unidades · 4×4 cm",
+        name: "2 packs (12 unidades) · 4×4 cm",
         price: 4800000,
         attributes: { photoSlots: 12, sizeCm: "4×4", aspectRatio: "1:1", shape: "rectangle" },
+      },
+      {
+        sku: "FI-CUAD-12-V14",
+        name: "3 packs (18 unidades) · 4×4 cm",
+        price: 7200000,
+        attributes: { photoSlots: 18, sizeCm: "4×4", aspectRatio: "1:1", shape: "rectangle" },
+      },
+      {
+        sku: "FI-CUAD-12-V15",
+        name: "4 packs (24 unidades) · 4×4 cm",
+        price: 9600000,
+        attributes: { photoSlots: 24, sizeCm: "4×4", aspectRatio: "1:1", shape: "rectangle" },
       },
       // ── 5×5 cm ──
       {
         sku: "FI-CUAD-12-V21",
-        name: "6 unidades · 5×5 cm",
+        name: "1 pack (6 unidades) · 5×5 cm",
         price: 2700000,
         attributes: { photoSlots: 6, sizeCm: "5×5", aspectRatio: "1:1", shape: "rectangle" },
       },
       {
-        sku: "FI-CUAD-12-V22",
-        name: "9 unidades · 5×5 cm",
-        price: 4000000,
-        attributes: { photoSlots: 9, sizeCm: "5×5", aspectRatio: "1:1", shape: "rectangle" },
-      },
-      {
         sku: "FI-CUAD-12-V23",
-        name: "12 unidades · 5×5 cm",
+        name: "2 packs (12 unidades) · 5×5 cm",
         price: 5400000,
         attributes: { photoSlots: 12, sizeCm: "5×5", aspectRatio: "1:1", shape: "rectangle" },
+      },
+      {
+        sku: "FI-CUAD-12-V24",
+        name: "3 packs (18 unidades) · 5×5 cm",
+        price: 8100000,
+        attributes: { photoSlots: 18, sizeCm: "5×5", aspectRatio: "1:1", shape: "rectangle" },
+      },
+      {
+        sku: "FI-CUAD-12-V25",
+        name: "4 packs (24 unidades) · 5×5 cm",
+        price: 10800000,
+        attributes: { photoSlots: 24, sizeCm: "5×5", aspectRatio: "1:1", shape: "rectangle" },
       },
       // ── 7×7 cm ──
       {
         sku: "FI-CUAD-12-V31",
-        name: "6 unidades · 7×7 cm",
+        name: "1 pack (6 unidades) · 7×7 cm",
         price: 3600000,
         attributes: { photoSlots: 6, sizeCm: "7×7", aspectRatio: "1:1", shape: "rectangle" },
       },
       {
-        sku: "FI-CUAD-12-V32",
-        name: "9 unidades · 7×7 cm",
-        price: 5400000,
-        attributes: { photoSlots: 9, sizeCm: "7×7", aspectRatio: "1:1", shape: "rectangle" },
-      },
-      {
         sku: "FI-CUAD-12-V33",
-        name: "12 unidades · 7×7 cm",
+        name: "2 packs (12 unidades) · 7×7 cm",
         price: 7200000,
         attributes: { photoSlots: 12, sizeCm: "7×7", aspectRatio: "1:1", shape: "rectangle" },
+      },
+      {
+        sku: "FI-CUAD-12-V34",
+        name: "3 packs (18 unidades) · 7×7 cm",
+        price: 10800000,
+        attributes: { photoSlots: 18, sizeCm: "7×7", aspectRatio: "1:1", shape: "rectangle" },
+      },
+      {
+        sku: "FI-CUAD-12-V35",
+        name: "4 packs (24 unidades) · 7×7 cm",
+        price: 14400000,
+        attributes: { photoSlots: 24, sizeCm: "7×7", aspectRatio: "1:1", shape: "rectangle" },
       },
     ],
   },

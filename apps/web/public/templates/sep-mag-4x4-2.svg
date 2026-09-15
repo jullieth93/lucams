@@ -1,19 +1,32 @@
-<svg width="420" height="240" viewBox="0 0 420 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="400" height="420" viewBox="0 0 400 420" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!--
-    Mockup "Magnéticos — 4×4.2 cm" (2026-09-14) — separador de libros magnético:
-    UNA tira 8×4.2 cm que se DOBLA sobre la página. Desplegada: cara A | cara B,
-    línea de doblez al centro. El diseño del cliente va a sangre en cada cara.
+    Mockup "Magnéticos — 4×4.2 cm" (regenerado 2026-09-15, D4) — separador de
+    libros magnético: UNA tira 8×4.2 cm que se DOBLA sobre la página.
+    Composición CASI CUADRADA con el aspect real de la cara (20:21, stage
+    400×420): antes era apaisada (420×240, tira desplegada cara A | cara B) y
+    dentro del marco ~cuadrado del TemplateCard quedaba una franja horizontal.
+    Se muestra la pieza doblada sobre una página: cara B asomando por detrás,
+    línea de doblez en el borde de la hoja, cara A (~20:21) al frente. El
+    diseño del cliente va a sangre en cada cara.
   -->
-  <rect x="10" y="45" width="400" height="105" rx="20" fill="#7C6AAD"/>
-  <rect x="17" y="53" width="188" height="89" rx="14" fill="#F4ECFF"/>
-  <rect x="215" y="53" width="188" height="89" rx="14" fill="#DDF5F3"/>
-  <!-- línea de doblez -->
-  <line x1="210" y1="51" x2="210" y2="144" stroke="#3D2E5C" stroke-width="2" stroke-dasharray="6 6" opacity="0.6"/>
-  <g fill="#7C6AAD" opacity="0.35">
-    <path d="M111 106c-11-9-24-18-24-30 0-7 5-12 12-12 5 0 9 3 12 8 4-5 7-8 12-8 7 0 12 5 12 12 0 12-13 21-24 30z"/>
-    <path d="M309 106c-11-9-24-18-24-30 0-7 5-12 12-12 5 0 9 3 12 8 4-5 7-8 12-8 7 0 12 5 12 12 0 12-13 21-24 30z"/>
+  <text x="200" y="32" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="15" fill="#3D2E5C">Cara B</text>
+  <!-- cara B (detrás de la página, asoma por arriba) -->
+  <rect x="115" y="46" width="170" height="178" rx="18" fill="#7C6AAD"/>
+  <rect x="124" y="55" width="152" height="120" rx="12" fill="#DDF5F3"/>
+  <!-- página del libro -->
+  <rect x="40" y="110" width="320" height="240" rx="12" fill="#FFF8F0" stroke="#E7DFF3" stroke-width="2"/>
+  <!-- línea de doblez (la tira se pliega sobre el borde de la hoja) -->
+  <line x1="112" y1="110" x2="288" y2="110" stroke="#3D2E5C" stroke-width="2" stroke-dasharray="6 6" opacity="0.6"/>
+  <!-- cara A (frente, ~20:21 como la cara física 4×4.2) -->
+  <rect x="115" y="130" width="170" height="178" rx="18" fill="#7C6AAD"/>
+  <rect x="124" y="139" width="152" height="160" rx="12" fill="#F4ECFF"/>
+  <g fill="#7C6AAD" opacity="0.35" transform="translate(200 205)">
+    <path d="M0 21c-11-9-24-18-24-30 0-7 5-12 12-12 5 0 9 3 12 8 4-5 7-8 12-8 7 0 12 5 12 12 0 12-13 21-24 30z"/>
   </g>
-  <text x="111" y="180" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="16" fill="#3D2E5C">Cara A</text>
-  <text x="309" y="180" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="16" fill="#3D2E5C">Cara B</text>
-  <text x="210" y="216" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="15" fill="#7C6AAD">Separador magnético 4×4.2 cm · se dobla sobre la página</text>
+  <!-- imanes (interior de cada cara) -->
+  <circle cx="168" cy="283" r="4" fill="#3D2E5C" opacity="0.35"/>
+  <circle cx="232" cy="283" r="4" fill="#3D2E5C" opacity="0.35"/>
+  <text x="200" y="336" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="15" fill="#3D2E5C">Cara A</text>
+  <text x="200" y="384" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="15" fill="#7C6AAD">Separador magnético 4×4.2 cm</text>
+  <text x="200" y="408" text-anchor="middle" font-family="Fredoka, sans-serif" font-size="15" fill="#7C6AAD">se dobla sobre la página</text>
 </svg>

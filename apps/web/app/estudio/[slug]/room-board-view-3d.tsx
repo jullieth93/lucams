@@ -16,7 +16,10 @@
  * Pase 2026-07-22 (ola 2B):
  *  - Imanes ESCALAN a su tamaño físico real (sizeCm de la variante o wCm/hCm por pieza): el
  *    tablero mide ~45 cm de ancho (7 u → 0.1556 u/cm; 5.2 u ↔ 33.4 cm de alto cuadra con un
- *    tablero decorativo real ~45×33 cm). Mismo mecanismo de ajuste global uniforme que la nevera.
+ *    tablero decorativo real ~45×33 cm).
+ *  - 2026-09-15: TAMAÑO REAL SIEMPRE — se eliminó el encogimiento a la celda (con muchas
+ *    unidades las piezas se veían miniatura). La disposición crece en filas/columnas dentro del
+ *    tablero y, si desborda, la cámara reencuadra tablero + clúster. Nunca se encoge una pieza.
  *  - La pared queda a RAS del tablero (z −1.2 → −0.14): antes había ~1 u de AIRE entre el tablero
  *    y la pared (flotaba); ahora cuelga como un tablero real y la sombra se lee nítida.
  *
@@ -74,53 +77,69 @@ const MEMO_COLOR = "#F1EBDD";
 // Escala física de la escena: tablero decorativo real ~45 cm de ancho (7 u).
 const BOARD_U_PER_CM = BOARD_W / 45;
 
-function Magnets({
-  magnets,
-  cols,
-  style,
-  sizeCm,
-}: {
-  magnets: Magnet3D[];
-  cols: number;
-  style: BoardStyle;
-  sizeCm?: string;
-}) {
-  const items = useMemo(() => {
-    const rows = Math.max(1, Math.ceil(magnets.length / cols));
-    const regionW = INNER_W * 0.9;
-    const regionH = INNER_H * 0.82;
-    const cellW = regionW / cols;
-    const cellH = regionH / rows;
-    const gap = 0.08;
-    // Tamaños FÍSICOS (cm reales) si hay dato; null → ajuste-a-celda (p.ej. letras del nombre).
-    const physical = magnetWorldSizes(magnets, BOARD_U_PER_CM, {
-      cellW,
-      cellH,
-      gap,
-      fallbackSizeCm: sizeCm,
-    });
-    return magnets.map((m, i) => {
-      let w: number;
-      let h: number;
-      if (physical) {
-        ({ w, h } = physical[i]!);
-      } else {
-        const aspect = m.hRatio / m.wRatio;
-        w = cellW - gap;
-        h = w * aspect;
-        if (h > cellH - gap) {
-          h = cellH - gap;
-          w = h / aspect;
-        }
-      }
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const x = (col - (cols - 1) / 2) * cellW;
-      const y = ((rows - 1) / 2 - row) * cellH;
+// Clúster a TAMAÑO REAL (2026-09-15): estos límites ya no ENCOGEN las piezas — definen la
+// disposición estética dentro del tablero. Si el clúster real desborda, FitCamera reencuadra
+// tablero + clúster (nunca se encoge una pieza).
+const MAGNET_GAP = 0.08;
+const MAX_CLUSTER_W = INNER_W * 0.92;
+const MAX_CLUSTER_H = INNER_H * 0.86;
+
+type BoardItem = { m: Magnet3D; w: number; h: number; x: number; y: number };
+
+/**
+ * Disposición del clúster a tamaño real: las columnas pedidas se respetan mientras el clúster
+ * quepa a lo ancho del tablero; si no, se redistribuye en más filas (nunca se encoge). Devuelve
+ * las piezas posicionadas (centro del tablero) y los medios-bounds para FitCamera.
+ */
+function boardClusterLayout(
+  magnets: Magnet3D[],
+  cols: number,
+  sizeCm?: string,
+): { items: BoardItem[]; halfW: number; halfH: number } {
+  const physical = magnetWorldSizes(magnets, BOARD_U_PER_CM, { fallbackSizeCm: sizeCm });
+  if (physical) {
+    const maxW = Math.max(...physical.map((s) => s.w));
+    const maxH = Math.max(...physical.map((s) => s.h));
+    // Columnas que caben a tamaño real en el ancho razonable del tablero (mínimo 1).
+    const fitCols = Math.max(1, Math.floor((MAX_CLUSTER_W + MAGNET_GAP) / (maxW + MAGNET_GAP)));
+    const effCols = Math.max(1, Math.min(cols, fitCols));
+    const rows = Math.max(1, Math.ceil(magnets.length / effCols));
+    const clusterW = effCols * maxW + (effCols - 1) * MAGNET_GAP;
+    const clusterH = rows * maxH + (rows - 1) * MAGNET_GAP;
+    const items = magnets.map((m, i) => {
+      const { w, h } = physical[i]!;
+      const col = i % effCols;
+      const row = Math.floor(i / effCols);
+      const x = (col - (effCols - 1) / 2) * (maxW + MAGNET_GAP);
+      const y = ((rows - 1) / 2 - row) * (maxH + MAGNET_GAP);
       return { m, w, h, x, y };
     });
-  }, [magnets, cols, sizeCm]);
+    return { items, halfW: clusterW / 2, halfH: clusterH / 2 };
+  }
+  // Sin dato de cm (p.ej. letras del nombre): ajuste-a-celda histórico sobre la región vieja.
+  const regionW = MAX_CLUSTER_W;
+  const regionH = MAX_CLUSTER_H;
+  const rows = Math.max(1, Math.ceil(magnets.length / cols));
+  const cellW = regionW / cols;
+  const cellH = regionH / rows;
+  const items = magnets.map((m, i) => {
+    const aspect = m.hRatio / m.wRatio;
+    let w = cellW - MAGNET_GAP;
+    let h = w * aspect;
+    if (h > cellH - MAGNET_GAP) {
+      h = cellH - MAGNET_GAP;
+      w = h / aspect;
+    }
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = (col - (cols - 1) / 2) * cellW;
+    const y = ((rows - 1) / 2 - row) * cellH;
+    return { m, w, h, x, y };
+  });
+  return { items, halfW: regionW / 2, halfH: regionH / 2 };
+}
 
+function Magnets({ items, style }: { items: BoardItem[]; style: BoardStyle }) {
   const depth = boardDepth(style);
   const z = FRONT_Z + totalThickness(depth) / 2 + 0.005;
 
@@ -179,6 +198,7 @@ function Scene({
   style: BoardStyle;
   sizeCm?: string;
 }) {
+  const layout = useMemo(() => boardClusterLayout(magnets, cols, sizeCm), [magnets, cols, sizeCm]);
   return (
     <>
       {/* Pared del cuarto a RAS del tablero (cuelga de verdad, no flota), con luz cenital sutil;
@@ -211,10 +231,17 @@ function Scene({
       <directionalLight position={[-5, 2, 5]} intensity={0.3} />
 
       <Board style={style} />
-      <Magnets magnets={magnets} cols={cols} style={style} sizeCm={sizeCm} />
+      <Magnets items={layout.items} style={style} />
 
-      {/* #12 — encuadra el tablero al aspecto del viewport (fit-to-width en móvil vertical). */}
-      <FitCamera halfW={BOARD_W / 2} halfH={BOARD_H / 2} margin={1.12} camY={0.3} />
+      {/* #12 — encuadra el tablero al aspecto del viewport (fit-to-width en móvil vertical).
+          2026-09-15: si el clúster a tamaño real desborda el tablero, el encuadre crece hasta
+          cubrir tablero + clúster completo (las piezas NUNCA se encogen). */}
+      <FitCamera
+        halfW={Math.max(BOARD_W / 2, layout.halfW + 0.1)}
+        halfH={Math.max(BOARD_H / 2, layout.halfH + 0.1)}
+        margin={1.12}
+        camY={0.3}
+      />
       <OrbitControls
         makeDefault
         enablePan={false}

@@ -224,6 +224,10 @@ export type StudioTexts = {
     guiaGenerica: string;
     errorCalidad: string;
     errorCalidadMinima: string;
+    /** C2 (owner 2026-09-15) — la foto se mejoró automáticamente al subir
+     *  (upscale local) y AÚN así quedó bajo lo recomendado. {size} = tamaño
+     *  físico del producto (ej "5×5"). */
+    avisoMejoraAuto: string;
     autofillCta: string;
     tipVacio: string;
     todoLleno: string;
@@ -743,6 +747,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "{formatos} · máx {maxMb} MB por foto · para que se vea nítida al imprimir, usa la mayor resolución que tengas (salida 300 DPI).",
     errorCalidad: "La foto tiene problemas de calidad. Revisa la sugerencia.",
     errorCalidadMinima: "La foto subida no cumple los requisitos mínimos de calidad.",
+    avisoMejoraAuto:
+      "Mejoramos tu foto automáticamente, pero aun así quedó por debajo de lo recomendado para imprimir {size} cm. Si tienes la original en mayor resolución (no la de WhatsApp), úsala — se va a ver más nítida.",
     autofillCta: "Llenar slots con mis fotos",
     tipVacio:
       "Tip: sube tus fotos primero, después usa el botón mágico para repartirlas en los slots.",
@@ -952,7 +958,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     pruebaLabel: "Prueba:",
     repetidas: "Se repiten fichas: {lista} (una ficha por cada letra).",
     temaVacioHint:
-      "Este tema aún no tiene ilustraciones — se imprime como letra de color. Sube las ilustraciones en /admin/fichas para activarlo.",
+      "Este tema aún no tiene ilustraciones — se imprime como letra de color. Sube las ilustraciones en /admin/disenos (pestaña Fichas del abecedario) para activarlo.",
     vacioHint: "Aquí verás tu nombre en fichas 🦝",
     tocaHint: "👇 Toca una letra para darle el color que quieras",
     faltan: "Te faltan letras — mínimo {min}.",
@@ -1269,6 +1275,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "fotos.usadaAria": "estudio.fotos.usada-aria",
   "fotos.resolucionBajaAria": "estudio.fotos.resolucion-baja-aria",
   "fotos.avisoCalidadAria": "estudio.fotos.aviso-calidad-aria",
+  "fotos.avisoMejoraAuto": "estudio.fotos.aviso-mejora-auto",
   "fotos.fotoRevisionAlt": "estudio.fotos.foto-revision-alt",
   "texto.mensajeLabel": "estudio.texto.mensaje-label",
   "texto.mensajeOpcional": "estudio.texto.mensaje-opcional",

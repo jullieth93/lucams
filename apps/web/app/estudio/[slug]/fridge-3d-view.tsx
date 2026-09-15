@@ -21,10 +21,14 @@
  *    blanco del material base + brillo PET), ya no son planos sin grosor.
  *  - 2026-07-22 (ola 2B): los imanes ESCALAN a su tamaño físico real (sizeCm de la variante,
  *    o wCm/hCm por pieza): la nevera mide ~170 cm de alto (8.8 u → 0.0518 u/cm), así un
- *    7.5×10 se ve notablemente más grande que un 4×4.2. Ajuste global uniforme a la celda
- *    (verdad física relativa intacta); sin dato de cm cae al ajuste-a-celda de siempre.
- *    Además: shadow-camera de la luz key acotada explícita (antes se recortaba la sombra de la
- *    parte alta) y las patas APOYAN en el piso (antes flotaban ~2 cm sobre la sombra de contacto).
+ *    7.5×10 se ve notablemente más grande que un 4×4.2.
+ *  - 2026-09-15: TAMAÑO REAL SIEMPRE — se eliminó el encogimiento a la región fija de la puerta
+ *    (con 12 unidades las piezas se veían miniatura). Ahora cada pieza conserva sus cm reales en
+ *    cualquier cantidad: la disposición crece (más columnas/filas dentro de un ancho razonable
+ *    de puerta, y si desborda, la cámara reencuadra nevera + clúster — FitCamera recibe los
+ *    bounds del clúster). Además: shadow-camera de la luz key acotada explícita (antes se
+ *    recortaba la sombra de la parte alta) y las patas APOYAN en el piso (antes flotaban ~2 cm
+ *    sobre la sombra de contacto).
  *
  * Restricciones respetadas:
  *  - CSP estricta: CERO assets externos (nada de Environment/HDR/GLTF/fuentes de CDN de drei). El
@@ -92,11 +96,14 @@ const GAP_CY = FRIDGE_H / 2 - M - FREEZER_DOOR_H - DOOR_GAP / 2;
 const DOOR_T = 0.14; // grosor del panel de puerta (sobresale del cuerpo)
 const DOOR_FACE_Z = DOOR_Z + DOOR_T / 2; // cara frontal de la puerta
 
-// Clúster de imanes: PEQUEÑO respecto a la puerta (como imanes reales en una nevera grande),
-// agrupado en la parte alta-centro de la puerta del refrigerador.
-const MAGNET_REGION_W = DOOR_W * 0.46;
-const MAGNET_REGION_H = FRIDGE_DOOR_H * 0.28;
-const MAGNET_REGION_CY = FRIDGE_CY + FRIDGE_DOOR_H * 0.22;
+// Clúster de imanes a TAMAÑO REAL (2026-09-15): la región ya no ENCOGE las piezas — solo define
+// los límites estéticos de la disposición sobre la puerta del refrigerador. Si el clúster real
+// desborda estos límites, FitCamera reencuadra nevera + clúster (nunca se encoge una pieza).
+const MAGNET_GAP = 0.06; // aire entre piezas vecinas del clúster
+const MAX_CLUSTER_W = DOOR_W * 0.78; // deja libre la manija (borde izq.) y margen derecho
+const CLUSTER_TOP_Y = GAP_CY - DOOR_GAP / 2 - 0.15; // apenas bajo la junta del freezer
+const CLUSTER_BOT_Y = FRIDGE_CY - FRIDGE_DOOR_H / 2 + 0.25; // margen sobre el borde inferior
+const MAGNET_REGION_CY = FRIDGE_CY + FRIDGE_DOOR_H * 0.22; // ancla estética: clúster chico, zona alta
 const MAGNET_Z = DOOR_FACE_Z + 0.04; // centro del cuerpo extruido (canto visible sobre el panel)
 
 // Escala física de la escena: nevera top-freezer real ~170 cm de alto (y ~68 cm de ancho —
@@ -257,43 +264,74 @@ function Fridge() {
   );
 }
 
-function Magnets({ magnets, cols, sizeCm }: FridgeView3DProps) {
-  const items = useMemo(() => {
-    const rows = Math.max(1, Math.ceil(magnets.length / cols));
-    // Tamaño de celda para que TODO el clúster entre en la región de la puerta.
-    const cellW = MAGNET_REGION_W / cols;
-    const cellH = MAGNET_REGION_H / rows;
-    const gap = 0.06;
-    // Tamaños FÍSICOS (cm reales → unidades de escena) si hay dato; null → ajuste-a-celda viejo.
-    const physical = magnetWorldSizes(magnets, FRIDGE_U_PER_CM, {
-      cellW,
-      cellH,
-      gap,
-      fallbackSizeCm: sizeCm,
-    });
-    return magnets.map((m, i) => {
-      let w: number;
-      let h: number;
-      if (physical) {
-        ({ w, h } = physical[i]!);
-      } else {
-        const aspect = m.hRatio / m.wRatio;
-        // El imán entra en la celda respetando su proporción física.
-        w = cellW - gap;
-        h = w * aspect;
-        if (h > cellH - gap) {
-          h = cellH - gap;
-          w = h / aspect;
-        }
-      }
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const x = (col - (cols - 1) / 2) * cellW;
-      const y = MAGNET_REGION_CY + ((rows - 1) / 2 - row) * cellH;
+type FridgeItem = { m: Magnet3D; w: number; h: number; x: number; y: number };
+
+/**
+ * Disposición del clúster a TAMAÑO REAL (2026-09-15): cada pieza conserva sus cm reales en
+ * cualquier cantidad (2 unidades se ven igual de grandes que 12). Las columnas pedidas se
+ * respetan mientras el clúster quepa en el ancho razonable de la puerta; si no cabe, se
+ * REDISTRIBUYE en más filas (nunca se encoge una pieza). Si ni así cabe sobre la puerta, el
+ * clúster desborda y FitCamera reencuadra nevera + clúster (bounds devueltos acá).
+ */
+function fridgeClusterLayout(
+  magnets: Magnet3D[],
+  cols: number,
+  sizeCm?: string,
+): { items: FridgeItem[]; halfW: number; halfH: number } {
+  const physical = magnetWorldSizes(magnets, FRIDGE_U_PER_CM, { fallbackSizeCm: sizeCm });
+  if (physical) {
+    const maxW = Math.max(...physical.map((s) => s.w));
+    const maxH = Math.max(...physical.map((s) => s.h));
+    // Columnas que caben a tamaño real en el ancho razonable de puerta (mínimo 1).
+    const fitCols = Math.max(1, Math.floor((MAX_CLUSTER_W + MAGNET_GAP) / (maxW + MAGNET_GAP)));
+    const effCols = Math.max(1, Math.min(cols, fitCols));
+    const rows = Math.max(1, Math.ceil(magnets.length / effCols));
+    const clusterW = effCols * maxW + (effCols - 1) * MAGNET_GAP;
+    const clusterH = rows * maxH + (rows - 1) * MAGNET_GAP;
+    // Centro vertical: ancla estética en la zona alta, acotada para que el clúster quede sobre
+    // la puerta mientras quepa; si es más alto que la puerta, se centra en ella (la cámara abre).
+    const span = CLUSTER_TOP_Y - CLUSTER_BOT_Y;
+    const cy =
+      clusterH >= span
+        ? (CLUSTER_TOP_Y + CLUSTER_BOT_Y) / 2
+        : Math.min(
+            Math.max(MAGNET_REGION_CY, CLUSTER_BOT_Y + clusterH / 2),
+            CLUSTER_TOP_Y - clusterH / 2,
+          );
+    const items = magnets.map((m, i) => {
+      const { w, h } = physical[i]!;
+      const col = i % effCols;
+      const row = Math.floor(i / effCols);
+      const x = (col - (effCols - 1) / 2) * (maxW + MAGNET_GAP);
+      const y = cy + ((rows - 1) / 2 - row) * (maxH + MAGNET_GAP);
       return { m, w, h, x, y };
     });
-  }, [magnets, cols, sizeCm]);
+    return { items, halfW: clusterW / 2, halfH: Math.abs(cy) + clusterH / 2 };
+  }
+  // Sin dato de cm (p.ej. letras del nombre): ajuste-a-celda histórico sobre la región vieja.
+  const regionW = MAX_CLUSTER_W;
+  const regionH = FRIDGE_DOOR_H * 0.28;
+  const rows = Math.max(1, Math.ceil(magnets.length / cols));
+  const cellW = regionW / cols;
+  const cellH = regionH / rows;
+  const items = magnets.map((m, i) => {
+    const aspect = m.hRatio / m.wRatio;
+    let w = cellW - MAGNET_GAP;
+    let h = w * aspect;
+    if (h > cellH - MAGNET_GAP) {
+      h = cellH - MAGNET_GAP;
+      w = h / aspect;
+    }
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const x = (col - (cols - 1) / 2) * cellW;
+    const y = MAGNET_REGION_CY + ((rows - 1) / 2 - row) * cellH;
+    return { m, w, h, x, y };
+  });
+  return { items, halfW: regionW / 2, halfH: Math.abs(MAGNET_REGION_CY) + regionH / 2 };
+}
 
+function Magnets({ items }: { items: FridgeItem[] }) {
   return (
     <>
       {items.map(({ m, w, h, x, y }, i) => (
@@ -306,6 +344,8 @@ function Magnets({ magnets, cols, sizeCm }: FridgeView3DProps) {
 function Scene({ magnets, cols, sizeCm }: FridgeView3DProps) {
   // #16 — no autorrotar si el usuario pide reducir movimiento.
   const reduced = usePrefersReducedMotion();
+  // Clúster a tamaño real + sus bounds: la cámara encuadra nevera Y clúster completo.
+  const layout = useMemo(() => fridgeClusterLayout(magnets, cols, sizeCm), [magnets, cols, sizeCm]);
   return (
     <>
       {/* FB5 — env-map procedural (reflejos PBR reales) + backdrop de estudio (contexto/asiento). La
@@ -333,7 +373,7 @@ function Scene({ magnets, cols, sizeCm }: FridgeView3DProps) {
       <Center>
         <group>
           <Fridge />
-          <Magnets magnets={magnets} cols={cols} sizeCm={sizeCm} />
+          <Magnets items={layout.items} />
         </group>
       </Center>
 
@@ -346,8 +386,15 @@ function Scene({ magnets, cols, sizeCm }: FridgeView3DProps) {
         scale={16}
         far={6}
       />
-      {/* #12 — encuadra la nevera (alta y angosta) al aspecto del viewport (fit-to-height). */}
-      <FitCamera halfW={FRIDGE_W / 2} halfH={FRIDGE_H / 2} margin={1.12} camY={0.4} />
+      {/* #12 — encuadra la nevera (alta y angosta) al aspecto del viewport (fit-to-height).
+          2026-09-15: si el clúster a tamaño real desborda la puerta, el encuadre crece hasta
+          cubrir nevera + clúster completo (las piezas NUNCA se encogen). */}
+      <FitCamera
+        halfW={Math.max(FRIDGE_W / 2 + 0.1, layout.halfW + 0.1)}
+        halfH={Math.max(FRIDGE_H / 2, layout.halfH)}
+        margin={1.12}
+        camY={0.4}
+      />
       <OrbitControls
         makeDefault
         enablePan={false}
@@ -356,7 +403,7 @@ function Scene({ magnets, cols, sizeCm }: FridgeView3DProps) {
         minPolarAngle={Math.PI / 5}
         maxPolarAngle={Math.PI / 1.9}
         minDistance={7}
-        maxDistance={24}
+        maxDistance={30}
         target={[0, 0, 0]}
       />
     </>

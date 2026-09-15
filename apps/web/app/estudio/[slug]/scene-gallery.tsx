@@ -169,6 +169,10 @@ export function SceneGallery({
   onClose,
   /** Ola 10 — caras por unidad (separadores): para agrupar A/B en la vista 3D. */
   facesPerUnit,
+  /** Ola 17 — marcapáginas plano (Alargados, productConfig.noFold): la escena Libro los
+   *  muestra SIN doblez. Misma condición que el modal del Estudio (flat={productConfig.noFold}):
+   *  sin esta prop, los Alargados abiertos desde la galería se veían DOBLADOS. */
+  flat,
 }: {
   magnets: Magnet3D[];
   cols: number;
@@ -181,6 +185,8 @@ export function SceneGallery({
   onClose: () => void;
   /** Ola 10 — caras por unidad física (2 para separadores). */
   facesPerUnit?: number;
+  /** Ola 17 — marcapáginas plano (Alargados): la escena Libro los renderiza sin doblez. */
+  flat?: boolean;
 }) {
   const scenes = useMemo(
     () => filterPhotoScenes(scenesForKind(kind), isPolaroid),
@@ -358,7 +364,12 @@ export function SceneGallery({
           ) : activeScene === "memo" ? (
             <RoomBoardView3D magnets={magnets} cols={cols} style="memo" sizeCm={sizeCm} />
           ) : (
-            <BookView3D bookmarks={magnets} sizeCm={sizeCm} facesPerUnit={facesPerUnit} />
+            <BookView3D
+              bookmarks={magnets}
+              sizeCm={sizeCm}
+              facesPerUnit={facesPerUnit}
+              flat={flat}
+            />
           )
         ) : building && !flatUrl ? (
           <div className="text-brand-cream/90 flex h-full items-center justify-center text-sm">

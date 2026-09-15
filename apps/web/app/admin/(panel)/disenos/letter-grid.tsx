@@ -8,7 +8,7 @@
 import { useRef, useState, useTransition } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { uploadLetterTileAction, deleteLetterTileAction } from "./actions";
+import { uploadLetterTileAction, deleteLetterTileAction } from "./fichas-actions";
 
 type Tile = { imageUrl: string; label: string | null };
 

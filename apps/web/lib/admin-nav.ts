@@ -209,22 +209,18 @@ export const ADMIN_NAV: NavGroup[] = [
         description:
           "Revisa el preview REAL de cada plantilla del Estudio y apruébala (aparece para el cliente) u ocúltala. Aprobar una descartada la restaura.",
       },
-      // N-16 (2026-09-11): módulos completos que solo eran alcanzables desde los
-      // QuickLinks del dashboard. Mismo grupo que "Plantillas del Estudio" (los 3
-      // alimentan el Estudio; permiso de ruta CATALOG/MANAGER_UP en admin-rbac).
+      // N-16 (2026-09-11): módulo que solo era alcanzable desde los QuickLinks del
+      // dashboard. Mismo grupo que "Plantillas del Estudio" (ambos alimentan el
+      // Estudio; permiso de ruta CATALOG/MANAGER_UP en admin-rbac).
+      // 2026-09-15: "Fichas del abecedario" (antes item hermano /admin/fichas) se
+      // embebió como tab dentro de /admin/disenos — un solo entry point para todo
+      // el material visual del Estudio. /admin/fichas es redirect permanente.
       {
         label: "Diseños prediseñados",
         href: "/admin/disenos",
         icon: LayoutTemplate,
         description:
-          "Imágenes de diseño listas que el cliente aplica con un toque en el Estudio (en vez de subir su propia foto), agrupadas por producto.",
-      },
-      {
-        label: "Fichas del abecedario",
-        href: "/admin/fichas",
-        icon: Shapes,
-        description:
-          "Abecedarios ilustrados por tema (Animales, Navidad…). Alimentan el editor de nombres y los packs de letras del Estudio.",
+          "Imágenes de diseño listas que el cliente aplica con un toque en el Estudio (en vez de subir su propia foto), agrupadas por producto. Incluye el tab “Fichas del abecedario”: abecedarios ilustrados por tema (Animales, Navidad…) que alimentan el editor de nombres y los packs de letras.",
       },
       // Lucy 2026-06-26 — Opción C — Entries placeholder eliminadas del sidebar:
       // - "Plantillas" (chocaba con /admin/email-templates y con PersonalizationTemplate

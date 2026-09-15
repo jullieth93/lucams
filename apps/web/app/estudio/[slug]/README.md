@@ -289,9 +289,49 @@ packages/db/scripts/
   y radio solo en las puntas. Preview compositado: sin stroke morado por celda,
   un solo borde exterior.
 
+### Ola 30 (owner 2026-09-15) — placeholder-guide universal, delimitaciones progresivas, upscale local, 3D tamaño real
+
+- **Texto placeholder VISIBLE en la grilla, en TODAS las plantillas (redefine Ola 25 y
+  unifica la excepción Ola 28 de IG).** El owner pidió ver "cómo se vería" el texto
+  directamente en el canvas del Estudio (no solo en edición/preview): `renderText` dibuja
+  el default de la capa editable con opacidad 0.4 (`PLACEHOLDER_GUIDE_OPACITY`,
+  `studio-brand.ts`) como nodo `name="placeholder-guide edit-indicator"` — mismo fill por
+  capa (incluye `igTextFill`), `listening={false}`. Konva trocea `name()` por espacios,
+  así que los 4 puntos que ya ocultan `.edit-indicator` antes de `toDataURL` lo excluyen
+  de snapshots/preview-confirmación/producción SIN tocar esos call sites. Modal de
+  edición, preview, 3D y confirmación siguen sin dibujar placeholders (regla Ola 25
+  intacta fuera de la grilla) y el render server imprime solo `override.text`. El
+  parámetro `showTemplateDefault` (excepción IG) desapareció: Clásica e Instagram se
+  comportan idéntico. COROLARIO: el default decorativo de IG ("362 me gusta") ya no se
+  hornea en producción vía snapshot — los 4 requeridos de Ola 26 igual seguían
+  bloqueados hasta tener override.
+- **Delimitaciones de slot progresivas (C1).** Tres niveles, colores centralizados en
+  `SLOT_GUIDE_COLORS` (`studio-brand.ts`): reposo = contorno punteado morado sutil
+  (0.35) SIEMPRE visible en slots vacíos (antes solo aparecía algo al arrastrar);
+  hover = 0.6; drag-over = turquesa pleno (intacto). Respeta la forma física
+  (heart/circle/rect) con los mismos dibujos de siempre.
+- **Upscale local de fotos (C2, `client-photo-upscale.ts`).** Si la foto queda bajo el
+  ratio 1.0 para el tamaño del producto (misma regla del server: min(cm)×118.11 px),
+  se re-muestrea en el navegador ANTES de subir: pasos ≤×2 con
+  `imageSmoothingQuality:"high"` + unsharp 3×3 leve (k=0.3), tope ×4. Si aun así queda
+  bajo 0.5, banner con CMS `estudio.fotos.aviso-mejora-auto`. No crea información: una
+  foto muy pequeña seguirá con aviso (por eso el copy pide la original).
+- **3D tamaño real SIEMPRE (E1/E2).** `magnetWorldSizes` ya no encoge (se eliminó el
+  factor `f = min(1, …)`): cada pieza se dibuja a su tamaño físico (cm × uPerCm) en
+  nevera y tablero; el clúster crece en filas/columnas (`fridgeClusterLayout`,
+  `boardClusterLayout`) y `FitCamera` encuadra nevera + clúster. Alargados en el libro:
+  `flatBookmarkSlots(count, { pieceW })` separa centro-a-centro = pieza + 0.15 u y
+  reparte en filas balanceadas en z si se sale del ancho de la hoja (antes el spread
+  topeado a 0.9 u < pieza de 1.2 u los sobreponía siempre). La galería "en tu espacio"
+  recibe `flat` (noFold) y ya no rota 90° las texturas de Alargados (misma excepción
+  Ola 17 que el modal).
+
 ### Ola 23 (Lucy 2026-09-08) — placeholders no imprimibles, marco constante, tira sin borde
 
 - **Textos por defecto = placeholders NO imprimibles Y NO VISIBLES (TODAS las plantillas).**
+  *(Regla de la grilla REDEFINIDA por Ola 30: el placeholder SÍ se dibuja en la grilla
+  como guía atenuada al 40%, nunca en snapshots; fuera de la grilla esta regla sigue
+  vigente tal cual.)*
   El default de cualquier capa `editable` ("Escribe tu mensaje", "@tu_usuario", "362 me gusta"…)
   nunca es contenido de la tarjeta: NADA se dibuja (grilla, preview del modal, 3D,
   confirmación) hasta que el cliente escribe su texto. En la grilla el campo se descubre

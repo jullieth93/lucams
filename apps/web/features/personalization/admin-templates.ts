@@ -9,6 +9,11 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { updateTag } from "next/cache";
 import type { PersonalizationKind } from "@lucams/db";
+import {
+  preferProductSpecific,
+  filterTemplatesByAspectRatio,
+} from "./template-visibility";
+import { parsePhotoProductConfig } from "./schemas";
 
 export const KIND_LABEL: Record<PersonalizationKind, string> = {
   NONE: "Sin personalización",
@@ -27,12 +32,28 @@ export type AdminTemplate = {
   slug: string;
   name: string;
   kind: PersonalizationKind;
+  mode: "EDITABLE" | "PREMADE";
   previewUrl: string;
   isActive: boolean;
   isDeleted: boolean;
   isFallback: boolean; // "libre-*" (lienzo en blanco de respaldo)
   order: number;
+  productId: string | null;
   productSlug: string | null;
+  /** Nombre del producto dueño (null = plantilla global). */
+  productName: string | null;
+  /** Categoría de catálogo del producto dueño (null = global). */
+  categoryName: string | null;
+  /**
+   * ¿La ve el cliente en el Estudio? Calculada con la MISMA regla que usa el
+   * Estudio (service.listTemplatesForKind): mode EDITABLE + isActive +
+   * !deletedAt + kind/productId match (específicas > globales vía
+   * preferProductSpecific) + aspect ratio del producto ±0.05
+   * (filterTemplatesByAspectRatio) — helpers de template-visibility.ts.
+   */
+  studioVisible: boolean;
+  /** Productos del Estudio (kind != NONE, activos) cuyo lienzo alimenta. */
+  studioProductNames: string[];
 };
 
 /** Estado visible para Lucy: 🟢 aprobada · 🟡 oculta · ⚫ descartada. */
@@ -41,34 +62,83 @@ export function templateStatus(t: AdminTemplate): "aprobada" | "oculta" | "desca
   return t.isActive ? "aprobada" : "oculta";
 }
 
-/** Lista TODAS las plantillas (incl. soft-deleted) para el panel de aprobación. */
+/**
+ * Lista TODAS las plantillas (incl. soft-deleted) para el panel de aprobación,
+ * anotadas con categoría de catálogo (vía producto) y visibilidad REAL en el
+ * Estudio (`studioVisible` / `studioProductNames`).
+ */
 export async function listTemplatesForAdmin(): Promise<AdminTemplate[]> {
-  const rows = await prisma.personalizationTemplate.findMany({
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      kind: true,
-      previewUrl: true,
-      isActive: true,
-      deletedAt: true,
-      order: true,
-      product: { select: { slug: true } },
-    },
-    orderBy: [{ kind: "asc" }, { order: "asc" }, { name: "asc" }],
+  const [rows, studioProducts] = await Promise.all([
+    prisma.personalizationTemplate.findMany({
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        kind: true,
+        mode: true,
+        previewUrl: true,
+        isActive: true,
+        deletedAt: true,
+        order: true,
+        productId: true,
+        canvasData: true,
+        product: { select: { slug: true, name: true, category: { select: { name: true } } } },
+      },
+      orderBy: [{ kind: "asc" }, { order: "asc" }, { name: "asc" }],
+    }),
+    // Productos con Estudio: personalizables (kind != NONE), activos y no
+    // borrados — mismo universo que el catálogo usa para ofrecer "/estudio/<slug>".
+    prisma.product.findMany({
+      where: { isActive: true, deletedAt: null, personalizationKind: { not: "NONE" } },
+      select: { id: true, name: true, personalizationKind: true, personalizationSchema: true },
+    }),
+  ]);
+
+  // Visibilidad por producto — réplica de service.listTemplatesForKind usando
+  // los mismos helpers puros de template-visibility.ts (no se duplica criterio):
+  //   pool = EDITABLE + activa + no borrada + kind del producto + (producto o global)
+  //   → preferProductSpecific(pool, productId)
+  //   → filterTemplatesByAspectRatio(visible, aspect del producto)
+  // Ojo: igual que en el Estudio, una específica que luego cae por aspect igual
+  // TAPA a las globales (preferProductSpecific corre antes del filtro de aspect).
+  const candidates = rows.filter((r) => r.mode === "EDITABLE" && r.isActive && !r.deletedAt);
+  const visibleFor = new Map<string, Set<string>>();
+  for (const p of studioProducts) {
+    const aspectRatio = parsePhotoProductConfig(p.personalizationSchema).aspectRatio;
+    const pool = candidates.filter(
+      (t) => t.kind === p.personalizationKind && (t.productId === p.id || t.productId === null),
+    );
+    const visible = filterTemplatesByAspectRatio(preferProductSpecific(pool, p.id), aspectRatio);
+    for (const t of visible) {
+      const names = visibleFor.get(t.id) ?? new Set<string>();
+      names.add(p.name);
+      visibleFor.set(t.id, names);
+    }
+  }
+
+  return rows.map((r) => {
+    const studioProductNames = [...(visibleFor.get(r.id) ?? [])].sort((a, b) =>
+      a.localeCompare(b, "es"),
+    );
+    return {
+      id: r.id,
+      slug: r.slug,
+      name: r.name,
+      kind: r.kind,
+      mode: r.mode,
+      previewUrl: r.previewUrl,
+      isActive: r.isActive,
+      isDeleted: r.deletedAt !== null,
+      isFallback: r.slug.startsWith("libre-"),
+      order: r.order,
+      productId: r.productId,
+      productSlug: r.product?.slug ?? null,
+      productName: r.product?.name ?? null,
+      categoryName: r.product?.category.name ?? null,
+      studioVisible: studioProductNames.length > 0,
+      studioProductNames,
+    };
   });
-  return rows.map((r) => ({
-    id: r.id,
-    slug: r.slug,
-    name: r.name,
-    kind: r.kind,
-    previewUrl: r.previewUrl,
-    isActive: r.isActive,
-    isDeleted: r.deletedAt !== null,
-    isFallback: r.slug.startsWith("libre-"),
-    order: r.order,
-    productSlug: r.product?.slug ?? null,
-  }));
 }
 
 /**

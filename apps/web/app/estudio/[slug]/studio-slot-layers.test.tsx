@@ -814,10 +814,12 @@ describe("renderLayer — text", () => {
     expect(renderLayer(textLayer, slot(), STAGE, undefined, "rectangle")).toBeNull();
   });
 
-  it("editable sin override → SIN texto en la tarjeta: solo la zona de edición vacía", () => {
-    // Ola 25 (Lucy 2026-09-09) — regla estricta: la tarjeta nace VACÍA; el default
-    // de la plantilla no se dibuja en ninguna superficie. En la grilla (editable)
-    // solo queda la zona punteada turquesa + dot + hit invisible (edit-indicator).
+  it("editable sin override → la grilla muestra la GUÍA atenuada del default (B4), sin hornear", () => {
+    // B4 (owner 2026-09-15) — la tarjeta no imprime placeholder, pero en la
+    // grilla (editable) el default de la plantilla SÍ se dibuja como guía
+    // atenuada ("así se verá") junto a la zona punteada turquesa + dot + hit
+    // invisible. La guía va marcada "placeholder-guide edit-indicator" → se
+    // oculta antes de toDataURL igual que el resto de adornos.
     const el = renderLayer(
       textLayer,
       slot(),
@@ -835,15 +837,29 @@ describe("renderLayer — text", () => {
     const children = (
       (el.props as { children: Array<React.ReactElement | null> }).children ?? []
     ).filter(Boolean);
-    // NINGÚN nodo de texto.
+    // NO hay texto de contenido (el placeholder jamás es contenido).
     expect(children.some((c) => (c as React.ReactElement).key === "caption-text")).toBe(false);
+    // Guía atenuada con el default de la plantilla.
+    const guide = children.find(
+      (c) => (c as React.ReactElement).key === "caption-guide",
+    ) as React.ReactElement<{
+      name?: string;
+      opacity?: number;
+      text?: string;
+      listening?: boolean;
+    }>;
+    expect(guide).toBeDefined();
+    expect(guide.props.text).toBe("Escribe tu mensaje");
+    expect(guide.props.opacity).toBe(0.4);
+    expect(guide.props.name).toBe("placeholder-guide edit-indicator");
+    expect(guide.props.listening).toBe(false);
     // Zona de edición: rect punteado + dot, ambos edit-indicator (no se hornean).
-    const zone = children[0] as React.ReactElement<{ name?: string; dash?: number[] }>;
+    const zone = children[1] as React.ReactElement<{ name?: string; dash?: number[] }>;
     expect(zone.props.name).toBe("edit-indicator");
     expect(zone.props.dash).toEqual([5, 3]);
   });
 
-  it("Ola 25 — la zona vacía es tappeable: el hit invisible abre el editor de texto", () => {
+  it("B4 — la zona con guía es tappeable: el hit invisible abre el editor de texto", () => {
     const onTextEdit = vi.fn();
     render(
       renderLayer(
@@ -861,8 +877,11 @@ describe("renderLayer — text", () => {
         },
       ) as React.ReactElement,
     );
-    // No hay NINGÚN Text en el árbol Konva (la tarjeta no muestra el default).
-    expect(mocks.konvaProps.some((k) => k.name === "Text")).toBe(false);
+    // El único Text del árbol es la GUÍA (adorno, no escucha eventos).
+    const texts = mocks.konvaProps.filter((k) => k.name === "Text");
+    expect(texts.length).toBe(1);
+    expect(texts[0]!.props.name).toBe("placeholder-guide edit-indicator");
+    expect(texts[0]!.props.listening).toBe(false);
     // El hit es un Rect transparente (último del grupo) con el handler.
     const hit = [...mocks.konvaProps]
       .reverse()
@@ -898,9 +917,10 @@ describe("renderLayer — text", () => {
     expect(el).toBeNull();
   });
 
-  it("override SOLO de estilo (sin text) → sigue siendo placeholder: tarjeta vacía", () => {
-    // Ola 23/25 — el cliente cambió solo el color: sin texto del cliente no hay
-    // nada que mostrar ni imprimir (renderTextLayer tampoco imprime sin text).
+  it("override SOLO de estilo (sin text) → sigue siendo placeholder: guía atenuada, sin contenido", () => {
+    // Ola 23/25 + B4 — el cliente cambió solo el color: sin texto del cliente no
+    // hay nada que imprimir (renderTextLayer tampoco imprime sin text); en la
+    // grilla se ve la guía atenuada con el fill del override.
     const el = renderLayer(
       textLayer,
       slot({ textOverrides: { caption: { fill: "#E85B9F" } } }),
@@ -920,6 +940,9 @@ describe("renderLayer — text", () => {
     ).filter(Boolean);
     expect(children.some((c) => (c as React.ReactElement).key === "caption-text")).toBe(false);
     expect((children[0] as React.ReactElement<{ name?: string }>).props.name).toBe(
+      "placeholder-guide edit-indicator",
+    );
+    expect((children[1] as React.ReactElement<{ name?: string }>).props.name).toBe(
       "edit-indicator",
     );
   });
@@ -1130,12 +1153,14 @@ describe("renderLayer — text", () => {
     });
   });
 
-  // Ola 28 (owner 2026-09-11, 1.2.2.A) — excepción IG a Ola 25: el texto por
-  // defecto de la plantilla SE VE en el lienzo (con el color por capa) y en
-  // TODAS las superficies Konva (preview/3D/confirmación comparten renderLayer).
-  // Sin riesgo de imprimir placeholders: los requeridos bloquean «Vista previa»
-  // hasta tener override (Ola 26) y "362 me gusta" es decorativo.
-  describe("Ola 28 — IG: los textos por defecto se VEN (owner 2026-09-11)", () => {
+  // B4 (owner 2026-09-15) — UNIFICA la regla de placeholders: el default de la
+  // plantilla se dibuja como GUÍA atenuada (40%) en la GRILLA para TODAS las
+  // plantillas con texto editable (Clásica e Instagram iguales), conservando el
+  // color por capa de IG (igTextFill). La guía NO se hornea en snapshots
+  // (name="placeholder-guide edit-indicator") y en superficies NO editables no
+  // se dibuja nada. Reemplaza la excepción Ola 28 (default IG a opacidad plena
+  // en todas las superficies).
+  describe("B4 — guía de placeholder uniforme en la grilla (Clásica = Instagram)", () => {
     const hashtagsLayer = {
       id: "hashtags",
       type: "text",
@@ -1147,17 +1172,20 @@ describe("renderLayer — text", () => {
       editable: true,
     } as unknown as CanvasLayer;
 
-    const textPropsOf = (el: React.ReactElement, key: string) => {
-      const text = (el.props as { children: Array<React.ReactElement | null> }).children
+    const guidePropsOf = (el: React.ReactElement, key: string) => {
+      const guide = (el.props as { children: Array<React.ReactElement | null> }).children
         .filter(Boolean)
         .find((c) => (c as React.ReactElement).key === key) as React.ReactElement<{
         fill?: string;
         text?: string;
+        opacity?: number;
+        name?: string;
+        listening?: boolean;
       }>;
-      return text.props;
+      return guide.props;
     };
 
-    it("tarjeta CLARA sin override: caption default visible y OSCURO, hashtags AZULES", () => {
+    it("tarjeta CLARA sin override: guía del caption OSCURA, hashtags AZULES — ambas atenuadas", () => {
       const cap = renderLayer(
         textLayer,
         slot(),
@@ -1174,9 +1202,11 @@ describe("renderLayer — text", () => {
           darkCardBg: false,
         },
       ) as React.ReactElement;
-      const capProps = textPropsOf(cap, "caption-text");
+      const capProps = guidePropsOf(cap, "caption-guide");
       expect(capProps.text).toBe("Escribe tu mensaje");
       expect(capProps.fill).toBe("#262626");
+      expect(capProps.opacity).toBe(0.4);
+      expect(capProps.name).toBe("placeholder-guide edit-indicator");
 
       const ht = renderLayer(
         hashtagsLayer,
@@ -1194,12 +1224,13 @@ describe("renderLayer — text", () => {
           darkCardBg: false,
         },
       ) as React.ReactElement;
-      const htProps = textPropsOf(ht, "hashtags-text");
+      const htProps = guidePropsOf(ht, "hashtags-guide");
       expect(htProps.text).toBe("#mirecuerdo #lucamsshop");
       expect(htProps.fill).toBe("#00376B");
+      expect(htProps.opacity).toBe(0.4);
     });
 
-    it("tarjeta OSCURA sin override: caption default BLANCO, hashtags azul oscuro (#0095F6)", () => {
+    it("tarjeta OSCURA sin override: guía del caption BLANCA, hashtags azul oscuro (#0095F6)", () => {
       const cap = renderLayer(
         textLayer,
         slot(),
@@ -1216,7 +1247,7 @@ describe("renderLayer — text", () => {
           darkCardBg: true,
         },
       ) as React.ReactElement;
-      expect(textPropsOf(cap, "caption-text").fill).toBe("#FFFFFF");
+      expect(guidePropsOf(cap, "caption-guide").fill).toBe("#FFFFFF");
 
       const ht = renderLayer(
         hashtagsLayer,
@@ -1234,10 +1265,10 @@ describe("renderLayer — text", () => {
           darkCardBg: true,
         },
       ) as React.ReactElement;
-      expect(textPropsOf(ht, "hashtags-text").fill).toBe("#0095F6");
+      expect(guidePropsOf(ht, "hashtags-guide").fill).toBe("#0095F6");
     });
 
-    it("superficie NO editable (preview/3D/confirmación): el default TAMBIÉN se dibuja (WYSIWYG)", () => {
+    it("superficie NO editable (preview/3D/confirmación): no se dibuja NADA (igual que las demás)", () => {
       const el = renderLayer(
         textLayer,
         slot(),
@@ -1253,14 +1284,11 @@ describe("renderLayer — text", () => {
           isIg: true,
           darkCardBg: false,
         },
-      ) as React.ReactElement<{ text?: string; fill?: string }>;
-      // Sin onTextEdit el render es el <Text> plano (no el Group con indicadores).
-      expect(el).not.toBeNull();
-      expect(el.props.text).toBe("Escribe tu mensaje");
-      expect(el.props.fill).toBe("#262626");
+      );
+      expect(el).toBeNull();
     });
 
-    it("la excepción es SOLO Instagram: otra plantilla sin isIg sigue naciendo vacía (Ola 25)", () => {
+    it("la regla es para TODAS las plantillas: sin isIg la grilla también muestra la guía", () => {
       const el = renderLayer(
         textLayer,
         slot(),
@@ -1279,9 +1307,15 @@ describe("renderLayer — text", () => {
         (el.props as { children: Array<React.ReactElement | null> }).children ?? []
       ).filter(Boolean);
       expect(children.some((c) => (c as React.ReactElement).key === "caption-text")).toBe(false);
+      const guide = children.find(
+        (c) => (c as React.ReactElement).key === "caption-guide",
+      ) as React.ReactElement<{ name?: string; opacity?: number }> | undefined;
+      expect(guide).toBeDefined();
+      expect(guide!.props.name).toBe("placeholder-guide edit-indicator");
+      expect(guide!.props.opacity).toBe(0.4);
     });
 
-    it("el default visible sigue siendo EDITABLE: tocarlo abre el editor de esa capa", () => {
+    it("la guía NO escucha eventos: el hit invisible de la zona abre el editor de esa capa", () => {
       const onTextEdit = vi.fn();
       render(
         renderLayer(
@@ -1302,8 +1336,10 @@ describe("renderLayer — text", () => {
         ) as React.ReactElement,
       );
       const text = lastKonva("Text");
+      expect(text!.listening).toBe(false);
+      const hit = lastKonva("Rect");
       const stopPropagation = vi.fn();
-      (text!.onClick as (e: unknown) => void)({
+      (hit!.onClick as (e: unknown) => void)({
         cancelBubble: false,
         evt: { stopPropagation },
       });

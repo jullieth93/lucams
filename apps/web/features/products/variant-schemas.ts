@@ -278,6 +278,22 @@ export const PDP_QUANTITY_CHIP_DIMS: Readonly<Record<string, readonly string[]>>
 };
 
 /**
+ * B2 (2026-09-15) — fotoimanes unificados por formato, vendidos por PACKS de 6
+ * unidades: el stepper de cantidad de la PDP cuenta PACKS (1 pack = 6 unidades)
+ * con el desglose a la izquierda, no unidades sueltas. El dato de la variante
+ * sigue siendo photoSlots (6/12/18/24) — el pack es solo la presentación; el
+ * Estudio carga 6 lienzos por pack y el carrito resuelve la variante por
+ * photoSlots+sizeCm como siempre (photo-pack-resolve.ts). Llave = slug.
+ */
+export const PDP_PACKS_OF_SIX_SLUGS: ReadonlySet<string> = new Set([
+  "set-fotoimanes-polaroid",
+  "set-fotoimanes-cuadrados",
+]);
+
+/** Unidades por pack en las familias PDP_PACKS_OF_SIX_SLUGS. */
+export const PHOTO_PACK_UNITS_PER_PACK = 6;
+
+/**
  * Regla 2026-09-08b (Lucy) — UN concepto, UN label: la dimensión de pack size se
  * llama "Unidades" en TODA PDP. La CLAVE que lo transporta varía por familia:
  * en separadores es `quantity`; en polaroid/cuadrados es `photoSlots`
@@ -299,8 +315,11 @@ export const PDP_DIMENSION_LABEL_OVERRIDES: Readonly<
   // (2026-09-09, owner) Tiras híbrido: photoSlots = "Fotos por tira" (composición);
   // "Unidades" es el stepper de copias del buy-box (PDP_PACK_PLUS_COPIES_SLUGS).
   "tiras-magneticas-fotos": { photoSlots: "Fotos por tira" },
-  "set-fotoimanes-polaroid": { photoSlots: "Unidades" },
-  "set-fotoimanes-cuadrados": { photoSlots: "Unidades" },
+  // B2 (2026-09-15) — fotoimanes unificados por formato con PACKS de 6 unidades
+  // (PDP_PACKS_OF_SIX_SLUGS): la dimensión de cantidad se etiqueta "Packs" y el
+  // stepper cuenta packs con desglose ("1 pack = 6 unidades").
+  "set-fotoimanes-polaroid": { photoSlots: "Packs" },
+  "set-fotoimanes-cuadrados": { photoSlots: "Packs" },
   // (2026-09-07) Cobertura preventiva: INACTIVOS hoy; si Lucy los reactiva, su
   // pack size (sus variantes del seed FI-CIRC/FI-COR declaran SOLO photoSlots)
   // también sale como "Unidades" — no se oculta nada en PDP_HIDDEN_DIMENSION_KEYS.

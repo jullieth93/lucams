@@ -61,6 +61,12 @@
 | Tags Git                       | `v<semver>`                                                                  | `v0.3.1`                                                                    |
 | Imports absolutos              | `@/...` apuntando a `apps/web/`                                              | `import { cn } from '@/lib/utils'`                                          |
 
+**Regla anti-acumulación de branches (owner 2026-09-15):** `develop` es la ÚNICA rama de
+trabajo — los cambios se commitean ahí directo o entran por PR de corta vida que se
+mergea y se BORRA el mismo día. `production` solo recibe merges de release desde
+`develop`. Las ramas de dependabot se resuelven o cierran semanalmente. Ninguna rama
+feature vive más que su PR (ver ADR-101 en `docs/DECISIONS.md`).
+
 ---
 
 ## Estructura de carpetas detallada

@@ -175,6 +175,20 @@ function Separators({
 }
 
 /**
+ * Datos de layout de los Alargados planos (2026-09-15): se calculan UNA vez en Scene para que
+ * el encuadre de cámara cubra el ancho real del conjunto — la separación entre piezas es
+ * siempre ≥ ancho + gap (flatBookmarkSlots) y, si una fila no cabe en la hoja, se reparte en
+ * varias filas (z distinta). Las piezas NUNCA se encogen: la cámara abre.
+ */
+type FlatBookmarkData = {
+  units: { front: Magnet3D; back: Magnet3D }[];
+  dims: { w: number; h: number }[];
+  slots: { x: number; z: number; yaw: number }[];
+  maxW: number;
+  maxH: number;
+};
+
+/**
  * Ola 17 — marcapáginas ALARGADO PLANO (sin doblez): la pieza se ACUESTA sobre la hoja
  * derecha del libro, como el marcapáginas clásico de la foto de referencia (vertical,
  * bordes redondeados, diseño en toda la cara). Se extruye finita (~1 mm) con la textura
@@ -183,52 +197,35 @@ function Separators({
  * La textura del Estudio ya viene VERTICAL (stage 400×1500 / 400×1200) → NO se rota,
  * a diferencia de los separadores doblados (textura horizontal rotada 90° en el editor).
  */
-function FlatBookmarks({
-  items,
-  sizeCm,
-  facesPerUnit,
-}: {
-  items: Magnet3D[];
-  sizeCm?: string;
-  facesPerUnit?: number;
-}) {
-  const layout = useMemo(() => {
-    const units = bookmarkFaceUnits(items, facesPerUnit, sizeCm);
-    const slots = flatBookmarkSlots(units.length);
-    return units.map((unit, i) => {
-      const { w, h } = flatBookmarkDims(unit.front, sizeCm);
-      const slot = slots[i]!;
-      return {
-        key: i,
-        unit,
-        w,
-        h,
-        position: flatBookmarkPlacementUpright(slot.x, slot.z, h),
-        yaw: slot.yaw,
-      };
-    });
-  }, [items, sizeCm, facesPerUnit]);
-
+function FlatBookmarks({ data }: { data: FlatBookmarkData }) {
   return (
     <>
-      {layout.map(({ key, unit, w, h, position, yaw }) => (
-        <group key={key} position={position} rotation={[0, yaw, 0]}>
-          {/* Ola 18 — la pieza se muestra DE PIE sobre la hoja (sin rotación): la cara A
-              mira a la cámara y la cara B se descubre al orbitar detrás. El diseño físico del
-              alargado es plano, pero para que el cliente vea las 2 caras que montó en el
-              estudio, la pieza 3D se presenta erguida como los separadores doblados. */}
-          <MagnetMesh
-            dataUrl={unit.front.dataUrl}
-            backDataUrl={unit.back.dataUrl}
-            width={w}
-            height={h}
-            shape="rectangle"
-            depth={FLAT_BOOKMARK_T}
-            cornerRadiusRatio={0.06}
-            position={[0, 0, 0]}
-          />
-        </group>
-      ))}
+      {data.units.map((unit, i) => {
+        const { w, h } = data.dims[i]!;
+        const slot = data.slots[i]!;
+        return (
+          <group
+            key={i}
+            position={flatBookmarkPlacementUpright(slot.x, slot.z, h)}
+            rotation={[0, slot.yaw, 0]}
+          >
+            {/* Ola 18 — la pieza se muestra DE PIE sobre la hoja (sin rotación): la cara A
+                mira a la cámara y la cara B se descubre al orbitar detrás. El diseño físico del
+                alargado es plano, pero para que el cliente vea las 2 caras que montó en el
+                estudio, la pieza 3D se presenta erguida como los separadores doblados. */}
+            <MagnetMesh
+              dataUrl={unit.front.dataUrl}
+              backDataUrl={unit.back.dataUrl}
+              width={w}
+              height={h}
+              shape="rectangle"
+              depth={FLAT_BOOKMARK_T}
+              cornerRadiusRatio={0.06}
+              position={[0, 0, 0]}
+            />
+          </group>
+        );
+      })}
     </>
   );
 }
@@ -402,15 +399,36 @@ function Scene({
   }
   // #16 — no autorrotar si el usuario pide reducir movimiento.
   const reduced = usePrefersReducedMotion();
+  // 2026-09-15 — layout de los Alargados planos calculado UNA vez acá: la separación entre
+  // piezas es siempre ≥ ancho + gap y, si una fila no cabe en la hoja, se reparte en filas (z
+  // distinta). El encuadre de cámara usa el ancho/alto REALES del conjunto (nunca se encoge).
+  const flatData = useMemo<FlatBookmarkData | null>(() => {
+    if (!flat) return null;
+    const units = bookmarkFaceUnits(bookmarks, facesPerUnit, sizeCm);
+    if (units.length === 0) return null;
+    const dims = units.map((u) => flatBookmarkDims(u.front, sizeCm));
+    const maxW = Math.max(...dims.map((d) => d.w));
+    const maxH = Math.max(...dims.map((d) => d.h));
+    const slots = flatBookmarkSlots(units.length, { pieceW: maxW });
+    return { units, dims, slots, maxW, maxH };
+  }, [flat, bookmarks, facesPerUnit, sizeCm]);
   // Ola 18/19 — encuadre dinámico:
   // - Alargados planos (pieza alta 12/15 cm): encuadre más holgado y centrado en la hoja
-  //   derecha para que la pieza completa sea visible.
+  //   derecha para que la pieza completa sea visible; crece con el ancho/alto reales del
+  //   conjunto (2026-09-15: 2 o 12 unidades se ven al mismo tamaño, la cámara abre).
   // - Separadores doblados (pieza chica 2×6): encuadre más cercano para que la tira se lea.
   const fit = useMemo(() => {
     if (flat) {
+      const spreadX = flatData
+        ? flatData.slots.reduce((a, s) => Math.max(a, Math.abs(s.x - PAGE_W / 2)), 0) +
+          flatData.maxW / 2
+        : 0;
+      const spreadZ = flatData
+        ? flatData.slots.reduce((a, s) => Math.max(a, Math.abs(s.z)), 0)
+        : 0;
       return {
-        halfW: 3.0,
-        halfH: 5.0,
+        halfW: Math.max(3.0, spreadX + 0.3),
+        halfH: Math.max(5.0, (flatData?.maxH ?? 4.5) + 0.9 + spreadZ),
         polarDeg: 48,
         targetY: 1.2,
         targetX: PAGE_W / 2,
@@ -428,7 +446,7 @@ function Scene({
       margin: 1.12,
       minDistance: 5,
     };
-  }, [flat]);
+  }, [flat, flatData]);
   return (
     <>
       {/* FB5 — env-map procedural (reflejos en cubierta/cartulina) + ciclorama de estudio. */}
@@ -465,7 +483,9 @@ function Scene({
       <PageSheet side={1} />
       <PageSheet side={-1} />
       {flat ? (
-        <FlatBookmarks items={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} />
+        flatData ? (
+          <FlatBookmarks data={flatData} />
+        ) : null
       ) : (
         <Separators items={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} />
       )}

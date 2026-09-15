@@ -8,7 +8,7 @@
 
 import { useState, useTransition } from "react";
 import { Plus, Loader2 } from "lucide-react";
-import { createLetterSetAction } from "./actions";
+import { createLetterSetAction } from "./fichas-actions";
 
 export function CreateSetForm() {
   const [open, setOpen] = useState(false);

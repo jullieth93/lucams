@@ -423,6 +423,14 @@ const templatesData = [
   // genérico, bug 2026-09-14). Foto a sangre (la cara se imprime entera); las
   // esquinas redondas del troquel las da el cornerRadiusPx del producto.
   // Slugs/stages = los de las plantillas reales ya curadas en catálogo.
+  //
+  // D4 (2026-09-15) — las legadas de ola3 "separador-cuadrado-cara" y
+  // "separador-rectangular-cara" quedaron RETIRADAS (soft-delete): la
+  // rectangular tenía el stage horizontal (600×200, aspect 3.0) para el 2×6
+  // vertical y nunca matcheaba variante; la cuadrada duplicaba a sep-mag-4x4-2.
+  // No se declaran acá a propósito (un --prune las archiva si reaparecen) y el
+  // script ola3 ya no las re-upserta — ver su header y
+  // scripts/one-shot/normalize-template-visibility-20260915.mjs.
   ...(sepMagProduct
     ? [
         {
@@ -437,7 +445,15 @@ const templatesData = [
             stage: stage(200, 600), // cara 6×2 cm (aspect 1:3)
             layers: [
               background("#FFFFFF"),
-              photoSlot({ id: "photo", x: 0, y: 0, width: 200, height: 600, cornerRadius: 18, label: "Foto de la cara" }),
+              photoSlot({
+                id: "photo",
+                x: 0,
+                y: 0,
+                width: 200,
+                height: 600,
+                cornerRadius: 18,
+                label: "Foto de la cara",
+              }),
             ],
           },
         },
@@ -453,7 +469,15 @@ const templatesData = [
             stage: stage(400, 420), // cara 4×4.2 cm (aspect 20:21)
             layers: [
               background("#FFFFFF"),
-              photoSlot({ id: "photo", x: 0, y: 0, width: 400, height: 420, cornerRadius: 24, label: "Foto de la cara" }),
+              photoSlot({
+                id: "photo",
+                x: 0,
+                y: 0,
+                width: 400,
+                height: 420,
+                cornerRadius: 24,
+                label: "Foto de la cara",
+              }),
             ],
           },
         },
@@ -473,7 +497,15 @@ const templatesData = [
             stage: stage(400, 1200), // cara 4×12 cm (aspect 1:3)
             layers: [
               background("#FFFFFF"),
-              photoSlot({ id: "photo", x: 0, y: 0, width: 400, height: 1200, cornerRadius: 24, label: "Foto de la cara" }),
+              photoSlot({
+                id: "photo",
+                x: 0,
+                y: 0,
+                width: 400,
+                height: 1200,
+                cornerRadius: 24,
+                label: "Foto de la cara",
+              }),
             ],
           },
         },
@@ -489,7 +521,15 @@ const templatesData = [
             stage: stage(400, 1500), // cara 4×15 cm (aspect 4:15)
             layers: [
               background("#FFFFFF"),
-              photoSlot({ id: "photo", x: 0, y: 0, width: 400, height: 1500, cornerRadius: 24, label: "Foto de la cara" }),
+              photoSlot({
+                id: "photo",
+                x: 0,
+                y: 0,
+                width: 400,
+                height: 1500,
+                cornerRadius: 24,
+                label: "Foto de la cara",
+              }),
             ],
           },
         },

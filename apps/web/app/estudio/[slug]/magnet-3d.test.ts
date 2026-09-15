@@ -143,20 +143,12 @@ describe("magnetWorldSizes", () => {
   const U = 0.05; // 1 cm → 0.05 u de mundo
 
   it("sin dato de cm en ninguna fuente → null (caller cae al ajuste-a-celda)", () => {
-    const sizes = magnetWorldSizes([{ wRatio: 1, hRatio: 1 }], U, {
-      cellW: 1,
-      cellH: 1,
-      gap: 0.05,
-    });
+    const sizes = magnetWorldSizes([{ wRatio: 1, hRatio: 1 }], U);
     expect(sizes).toBeNull();
   });
 
   it("usa wCm/hCm por pieza cuando llegan en el Magnet3D", () => {
-    const sizes = magnetWorldSizes([{ wRatio: 1, hRatio: 1, wCm: 6.5, hCm: 6.5 }], U, {
-      cellW: 1,
-      cellH: 1,
-      gap: 0.05,
-    });
+    const sizes = magnetWorldSizes([{ wRatio: 1, hRatio: 1, wCm: 6.5, hCm: 6.5 }], U);
     expect(sizes).not.toBeNull();
     expect(sizes![0]!.w).toBeCloseTo(6.5 * U, 5);
     expect(sizes![0]!.h).toBeCloseTo(6.5 * U, 5);
@@ -164,9 +156,6 @@ describe("magnetWorldSizes", () => {
 
   it("cae al sizeCm de la variante y respeta el aspecto del template (7.5×10, stage 1080×1520)", () => {
     const sizes = magnetWorldSizes([{ wRatio: 1080, hRatio: 1520 }], U, {
-      cellW: 10,
-      cellH: 10,
-      gap: 0.05,
       fallbackSizeCm: "7.5×10",
     });
     expect(sizes).not.toBeNull();
@@ -181,25 +170,25 @@ describe("magnetWorldSizes", () => {
         { wRatio: 1, hRatio: 1, wCm: 4, hCm: 4.2 },
       ],
       U,
-      { cellW: 2, cellH: 2, gap: 0.05 },
     );
     expect(sizes).not.toBeNull();
     expect(sizes![0]!.w).toBeGreaterThan(sizes![1]!.w * 1.8);
   });
 
-  it("el ajuste a la celda es UNIFORME (no rompe la proporción relativa entre piezas)", () => {
+  it("TAMAÑO REAL SIEMPRE (2026-09-15): NUNCA encoge — la pieza conserva sus cm en cualquier cantidad", () => {
+    // Contrato nuevo: ya no existe el factor de ajuste a la celda (f ≤ 1). Una pieza enorme
+    // devuelve su tamaño físico exacto; el caller redistribuye el clúster y la cámara abre.
     const sizes = magnetWorldSizes(
       [
         { wRatio: 1, hRatio: 1, wCm: 6.5 },
         { wRatio: 1, hRatio: 1, wCm: 13 },
       ],
       1,
-      { cellW: 5, cellH: 100, gap: 0 },
     );
     expect(sizes).not.toBeNull();
-    // f = 5/13 para ambas → la relación 2:1 se mantiene.
-    expect(sizes![0]!.w).toBeCloseTo(6.5 * (5 / 13), 5);
-    expect(sizes![1]!.w).toBeCloseTo(5, 5);
+    expect(sizes![0]!.w).toBeCloseTo(6.5, 5);
+    expect(sizes![1]!.w).toBeCloseTo(13, 5);
+    // La proporción relativa entre piezas se mantiene (verdad física).
     expect(sizes![1]!.w / sizes![0]!.w).toBeCloseTo(2, 5);
   });
 
@@ -210,11 +199,6 @@ describe("magnetWorldSizes", () => {
         { wRatio: 1, hRatio: 1, wCm: 10 },
       ],
       1,
-      {
-        cellW: 100,
-        cellH: 100,
-        gap: 0,
-      },
     );
     expect(sizes).not.toBeNull();
     expect(sizes![0]!.w).toBeCloseTo(6.5, 5);

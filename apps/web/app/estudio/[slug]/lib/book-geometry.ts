@@ -290,18 +290,50 @@ export function flatBookmarkDims(
   return { w: 4 * CM, h: (aspect <= 0.3 ? 15 : 12) * CM };
 }
 
-/** Slots para piezas planas sobre la hoja DERECHA (x>0): centradas a lo ancho de la página,
- *  con giros naturales sutiles. Con 1 pieza queda centrada; con N se reparten. */
-export function flatBookmarkSlots(count: number): { x: number; z: number; yaw: number }[] {
+/** Aire mínimo entre piezas planas vecinas en la misma fila (2026-09-15 — separación real:
+ *  la distancia entre slots es ancho de pieza + gap; antes el spread tenía tope 0.9 u y con
+ *  piezas de 1.2 u de ancho (4 cm) se SOLAPABAN siempre que había 2+ unidades). */
+export const FLAT_GAP = 0.15;
+/** Separación entre FILAS (eje z) cuando una sola fila no cabe a lo ancho de la página. */
+export const FLAT_ROW_GAP = 0.55;
+/** Ancho útil de la hoja derecha para UNA fila de piezas (margen al lomo y al corte). */
+const FLAT_ROW_MAX_W = PAGE_W - 0.7;
+
+/**
+ * Slots para piezas planas sobre la hoja DERECHA (x>0), centradas a lo ancho de la página,
+ * con giros naturales sutiles. La separación entre piezas vecinas es SIEMPRE ≥ ancho de pieza
+ * + gap (nunca se solapan, en cualquier cantidad): si una fila no cabe a lo ancho, el conjunto
+ * se reparte en varias filas (z distinta) lo más parejas posible. El caller ajusta el encuadre
+ * de cámara al ancho resultante (las piezas NUNCA se encogen).
+ */
+export function flatBookmarkSlots(
+  count: number,
+  opts: { pieceW: number; gap?: number; maxRowW?: number },
+): { x: number; z: number; yaw: number }[] {
   if (count <= 0) return [];
+  const gap = opts.gap ?? FLAT_GAP;
+  const maxRowW = opts.maxRowW ?? FLAT_ROW_MAX_W;
+  const pieceW = Math.max(0.05, opts.pieceW);
   const cx = PAGE_W / 2;
   if (count === 1) return [{ x: cx, z: 0, yaw: -0.05 }];
-  const spread = Math.min(0.9, 0.45 * (count - 1));
-  return Array.from({ length: count }, (_, i) => ({
-    x: cx - spread + (2 * spread * i) / (count - 1),
-    z: 0,
-    yaw: (i % 2 === 0 ? -1 : 1) * 0.05,
-  }));
+  // Piezas que caben por fila sin solape; el resto desborda a filas extra (z distinta).
+  const perRow = Math.max(1, Math.floor((maxRowW + gap) / (pieceW + gap)));
+  const rows = Math.ceil(count / perRow);
+  const base = Math.floor(count / rows);
+  const extra = count % rows; // las primeras `extra` filas llevan base+1 piezas
+  const slots: { x: number; z: number; yaw: number }[] = [];
+  for (let r = 0; r < rows; r++) {
+    const n = base + (r < extra ? 1 : 0);
+    const z = (r - (rows - 1) / 2) * FLAT_ROW_GAP;
+    for (let i = 0; i < n; i++) {
+      slots.push({
+        x: cx + (i - (n - 1) / 2) * (pieceW + gap),
+        z,
+        yaw: (slots.length % 2 === 0 ? -1 : 1) * 0.05,
+      });
+    }
+  }
+  return slots;
 }
 
 /**

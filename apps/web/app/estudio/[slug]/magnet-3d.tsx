@@ -29,8 +29,9 @@
  * 2026-07-22 (ola 2B): helpers PUROS exportados para las escenas proporcionales —
  *  - `parseSizeCm`: "6.5×6.5" | "7.5x10" | "6" → cm reales (misma gramática que size-comparator).
  *  - `magnetWorldSizes`: tamaños físicos de escena (unidades de mundo) por imán a partir de sus
- *    cm reales + la escala de la escena (u/cm), con ajuste global uniforme a la celda del layout
- *    (un 7.5×10 se ve NOTABLEMENTE más grande que un 4×4.2, sin desbordar la región).
+ *    cm reales + la escala de la escena (u/cm). TAMAÑO REAL SIEMPRE (decisión de producto
+ *    2026-09-15): la pieza NUNCA se encoge — con más unidades la disposición crece y la cámara
+ *    reencuadra (un 7.5×10 se ve NOTABLEMENTE más grande que un 4×4.2, en cualquier cantidad).
  *  - `coverRegion`: región normalizada tipo background-size:cover (sin deformar la textura).
  *  - `foldedStripMetrics`: geometría del separador doblado (largo visible de cada cara + arco de
  *    la cresta) — usado por FoldedStripMesh y testeado aparte.
@@ -158,14 +159,15 @@ const DEFAULT_MAGNET_CM = 6.5;
  *    caller cae al layout viejo de ajuste-a-celda, p.ej. letras del nombre).
  *  - El ASPECTO físico lo manda wRatio/hRatio (el template): la textura nunca se deforma; los cm
  *    fijan la ESCALA (ancho), el alto se deriva del aspecto.
- *  - Ajuste global UNIFORME a la celda: un solo factor f ≤ 1 para todas las piezas, así un
- *    7.5×10 siempre se ve más grande que un 4×4.2 (verdad física), solo encogiendo todo si el
- *    más grande no cabe en su celda.
+ *  - TAMAÑO REAL SIEMPRE (2026-09-15): ya NO hay ajuste a la celda — la pieza conserva su tamaño
+ *    físico en cualquier cantidad (un 7.5×10 siempre se ve más grande que un 4×4.2). Cuando el
+ *    clúster no cabe en la región, el CALLER redistribuye (más filas/columnas) y la cámara
+ *    reencuadra el conjunto; encoger las piezas está prohibido.
  */
 export function magnetWorldSizes(
   items: readonly { wRatio: number; hRatio: number; wCm?: number; hCm?: number }[],
   uPerCm: number,
-  opts: { cellW: number; cellH: number; gap: number; fallbackSizeCm?: string },
+  opts: { fallbackSizeCm?: string } = {},
 ): { w: number; h: number }[] | null {
   const parsed = parseSizeCm(opts.fallbackSizeCm);
   const anyCm = items.some((m) => m.wCm ?? m.hCm ?? parsed);
@@ -179,8 +181,7 @@ export function magnetWorldSizes(
   const maxW = Math.max(...sizes.map((s) => s.w));
   const maxH = Math.max(...sizes.map((s) => s.h));
   if (!(maxW > 0) || !(maxH > 0)) return null; // cm inválidos (0/NaN) → ajuste-a-celda
-  const f = Math.min(1, (opts.cellW - opts.gap) / maxW, (opts.cellH - opts.gap) / maxH);
-  return sizes.map((s) => ({ w: s.w * f, h: s.h * f }));
+  return sizes;
 }
 
 /**

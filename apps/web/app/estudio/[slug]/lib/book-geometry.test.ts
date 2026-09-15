@@ -315,6 +315,8 @@ describe("composición ola 4 (libro más plano, separador un punto más erguido)
 
 import {
   FLAT_BOOKMARK_T,
+  FLAT_GAP,
+  FLAT_ROW_GAP,
   flatBookmarkDims,
   flatBookmarkPlacement,
   flatBookmarkSlots,
@@ -343,14 +345,17 @@ describe("flatBookmarkDims (ola 17 — pieza plana 4×15 / 4×12 cm reales)", ()
 });
 
 describe("flatBookmarkPlacement + slots (acostada sobre la hoja derecha)", () => {
+  // Pieza alargada típica: 4 cm de ancho → 1.2 u (0.3 u/cm).
+  const PIECE_W = 4 * CM;
+
   it("con 1 pieza queda centrada en la página derecha", () => {
-    const [slot] = flatBookmarkSlots(1);
+    const [slot] = flatBookmarkSlots(1, { pieceW: PIECE_W });
     expect(slot!.x).toBeCloseTo(PAGE_W / 2, 6);
     expect(slot!.z).toBe(0);
   });
 
   it("la pieza reposa JUSTO sobre la superficie de la hoja (ni flota ni se hunde)", () => {
-    for (const { x, z } of flatBookmarkSlots(1)) {
+    for (const { x, z } of flatBookmarkSlots(1, { pieceW: PIECE_W })) {
       const [, y] = flatBookmarkPlacement(x, z);
       // Centro de la pieza = superficie + medio grosor (tolerancia del epsilon anti-z-fight).
       expect(y).toBeGreaterThanOrEqual(pageSurfaceY(x) + FLAT_BOOKMARK_T / 2);
@@ -359,6 +364,63 @@ describe("flatBookmarkPlacement + slots (acostada sobre la hoja derecha)", () =>
   });
 
   it("sin piezas no hay slots", () => {
-    expect(flatBookmarkSlots(0)).toEqual([]);
+    expect(flatBookmarkSlots(0, { pieceW: PIECE_W })).toEqual([]);
+  });
+});
+
+describe("flatBookmarkSlots SIN SOLAPE (2026-09-15 — separación = ancho de pieza + gap)", () => {
+  const PIECE_W = 4 * CM; // 1.2 u
+
+  /** Agrupa slots por fila (z) y verifica separación ≥ pieceW + gap entre vecinas de fila. */
+  function expectNoOverlap(slots: { x: number; z: number }[], pieceW: number, gap: number) {
+    const byRow = new Map<number, number[]>();
+    for (const s of slots) {
+      const key = Math.round(s.z * 1000);
+      byRow.set(key, [...(byRow.get(key) ?? []), s.x]);
+    }
+    for (const xs of byRow.values()) {
+      xs.sort((a, b) => a - b);
+      for (let i = 1; i < xs.length; i++) {
+        expect(xs[i]! - xs[i - 1]!).toBeGreaterThanOrEqual(pieceW + gap - 1e-9);
+      }
+    }
+  }
+
+  it("2 unidades: separación = ancho de pieza + gap (antes se solapaban: spread tope 0.9 < 1.2)", () => {
+    const slots = flatBookmarkSlots(2, { pieceW: PIECE_W });
+    expect(slots).toHaveLength(2);
+    expectNoOverlap(slots, PIECE_W, FLAT_GAP);
+    // Una sola fila, centrada en la página derecha.
+    expect(new Set(slots.map((s) => s.z)).size).toBe(1);
+    expect((slots[0]!.x + slots[1]!.x) / 2).toBeCloseTo(PAGE_W / 2, 6);
+  });
+
+  it("12 unidades: ninguna se solapa; si una fila no cabe, se reparte en filas (z distinta)", () => {
+    const slots = flatBookmarkSlots(12, { pieceW: PIECE_W });
+    expect(slots).toHaveLength(12);
+    expectNoOverlap(slots, PIECE_W, FLAT_GAP);
+    // 12 piezas de 1.2 u no caben en una fila de la hoja → varias filas separadas FLAT_ROW_GAP.
+    const zs = [...new Set(slots.map((s) => Math.round(s.z * 1000)))].sort((a, b) => a - b);
+    expect(zs.length).toBeGreaterThan(1);
+    for (let i = 1; i < zs.length; i++) {
+      expect((zs[i]! - zs[i - 1]!) / 1000).toBeCloseTo(FLAT_ROW_GAP, 6);
+    }
+    // Las filas quedan balanceadas (diferencia de a lo sumo 1 pieza entre filas).
+    const counts = zs.map(
+      (z) => slots.filter((s) => Math.round(s.z * 1000) === z).length,
+    );
+    expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
+  });
+
+  it("cada fila respeta el ancho útil de la página", () => {
+    const slots = flatBookmarkSlots(12, { pieceW: PIECE_W });
+    for (const s of slots) {
+      expect(Math.abs(s.x - PAGE_W / 2) + PIECE_W / 2).toBeLessThanOrEqual(PAGE_W / 2 + 1e-9);
+    }
+  });
+
+  it("1 pieza sigue centrada; 0 piezas → sin slots", () => {
+    expect(flatBookmarkSlots(1, { pieceW: PIECE_W })[0]!.x).toBeCloseTo(PAGE_W / 2, 6);
+    expect(flatBookmarkSlots(0, { pieceW: PIECE_W })).toEqual([]);
   });
 });

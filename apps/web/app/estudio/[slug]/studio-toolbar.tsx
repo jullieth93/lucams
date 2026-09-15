@@ -218,8 +218,12 @@ export function StudioToolbar({
       {/* Lucy 2026-09-05 — packs de fotoimanes: el N de fotos por imán se elige ACÁ
           (en el Estudio), no en la PDP. Fila propia visible en mobile y desktop.
           Ola 28 (owner 2026-09-11) — composición fija (tiras): el stepper de fotos
-          sobra ("ya se eligió en la PDP"); en su lugar va el de UNIDADES a diseñar. */}
-      {photoCount && !photoCount.composition && (
+          sobra ("ya se eligió en la PDP"); en su lugar va el de UNIDADES a diseñar.
+          A3 (2026-09-15) — el stepper de UNIDADES es UNIVERSAL: todo producto sin
+          stepper de fotos lo muestra (calendario incluido — antes no salía). El
+          control mismo se oculta cuando el producto no tiene unidades multi-slot
+          que contar (unitSlots ≤ caras — imán suelto de 1 foto). */}
+      {photoCount && !photoCount.composition ? (
         <StudioPhotoCountControl
           store={store}
           min={photoCount.min}
@@ -228,12 +232,12 @@ export function StudioToolbar({
           sizeCm={photoCount.sizeCm}
           magnet={photoCount.magnet}
         />
-      )}
-      {photoCount?.composition && (
+      ) : (
         <StudioUnitCountControl
           store={store}
-          facesPerUnit={photoCount.facesPerUnit}
-          magnet={photoCount.magnet}
+          facesPerUnit={photoCount?.facesPerUnit ?? 1}
+          magnet={photoCount?.magnet}
+          hint={photoCount?.composition ? undefined : "Cada unidad se diseña por separado"}
         />
       )}
 

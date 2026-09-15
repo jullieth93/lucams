@@ -49,6 +49,8 @@ import {
   PDP_DIMENSION_LABEL_OVERRIDES,
   PDP_PACK_PLUS_COPIES_SLUGS,
   PDP_QUANTITY_CHIP_DIMS,
+  PDP_PACKS_OF_SIX_SLUGS,
+  PHOTO_PACK_UNITS_PER_PACK,
   conImanDefaultVariant,
   resolvePromoDisplay,
 } from "@/features/products/variant-schemas";
@@ -116,6 +118,23 @@ export default async function ProductoDetallePage({
   const isPhotoPack = isPhotoPackCatalog(product.personalizationKind, selectable);
   const packSizes = isPhotoPack ? photoPackDistinctSizes(selectable) : [];
   const packMinPrice = isPhotoPack ? photoPackMinPrice(selectable, product.basePrice) : null;
+  // A2 (2026-09-15) — minVariantPrice de la familia, MISMO criterio que la card del
+  // listado (product-card.tsx: min entre basePrice y los overrides de variante). Es
+  // el fallback de precio del VariantSelector: el basePrice quedó desactualizado en
+  // varias familias (ej. cuadrados base $45.000 con opciones desde $16.000).
+  const variantOverridePrices = selectable
+    .map((v) => v.price)
+    .filter((p): p is number => p != null && p > 0);
+  const familyMinPrice =
+    variantOverridePrices.length > 0
+      ? Math.min(product.basePrice, ...variantOverridePrices)
+      : product.basePrice;
+  // Precio unitario VIVO por variante para el stepper "Unidades" (CopiesQtyInput) y
+  // el NamePricePicker: el total ×N sigue al chip elegido sin esperar el re-render
+  // del RSC (mismo patrón H12 del selectedId en Context).
+  const priceByVariantId = Object.fromEntries(
+    selectable.map((v) => [v.id, v.price ?? product.basePrice]),
+  );
   // UX selección guiada (Lucy 2026-08-12): SIN preselección cuando hay varias
   // opciones — el cliente elige cada dimensión a propósito. EXCEPCIONES con
   // default claro (regla 2026-09-08b):
@@ -176,6 +195,29 @@ export default async function ProductoDetallePage({
   const isNamePerTile = selectable.some(
     (v) => parseVariantAttributes(v.attributes).variant === "name",
   );
+  // B2 (2026-09-15) — sets de letras vendidos por PACKS: el stepper "Unidades" se
+  // etiqueta "Packs" con el desglose de fichas a la izquierda. 1 pack = el set
+  // completo: abecedario ES 27 fichas (con Ñ) / EN 26 — conteos reales de
+  // features/personalization/letter-tiles.ts (ALPHABET) —; vocales: 5 (A E I O U).
+  // El desglose sigue al idioma de la variante elegida vía perPackByVariantId.
+  const letterSetPackLabel = !isLetterSetProduct
+    ? undefined
+    : letterSet === "vowels"
+      ? { label: "Packs", perPack: 5, pieceOne: "vocal", pieceMany: "vocales" }
+      : {
+          label: "Packs",
+          perPack: 27,
+          perPackByVariantId: Object.fromEntries(
+            selectable.map((v) => [
+              v.id,
+              parseVariantAttributes(v.attributes).language === "en" ? 26 : 27,
+            ]),
+          ),
+          pieceOne: "ficha",
+          pieceMany: "fichas",
+          contentOne: "abecedario completo",
+          contentMany: "abecedarios completos",
+        };
   const nameMin = selectedAttrs.letterCountMin ?? 3;
   const nameMax = selectedAttrs.letterCountMax ?? 10;
   // CTA genérico: no todos los productos son imanes (separadores, fichas, sets)
@@ -229,6 +271,11 @@ export default async function ProductoDetallePage({
     product.basePrice,
   );
   const hasDiscount = displayCompareAt != null && displayCompareAt > displayPrice;
+  // A1 (2026-09-15) — badge -% como en la card del listado (misma fórmula:
+  // % sobre el compareAt del precio REALMENTE mostrado).
+  const discountPct = hasDiscount
+    ? Math.round(((displayCompareAt! - displayPrice) / displayCompareAt!) * 100)
+    : 0;
 
   const initialWishlisted = customer
     ? (await getWishlistedProductIds(customer.customer.id, [product.id])).has(product.id)
@@ -360,6 +407,18 @@ export default async function ProductoDetallePage({
                     <span className="text-brand-muted text-sm">
                       · {formatCOP(displayPrice)} por ficha
                     </span>
+                    {/* A1 — paridad con la card: tachado + badge -% también en el
+                        precio por ficha (el compareAt de la variante es por ficha). */}
+                    {hasDiscount && (
+                      <>
+                        <span className="text-brand-muted text-sm tabular-nums line-through">
+                          {formatCOP(displayCompareAt!)}
+                        </span>
+                        <span className="bg-brand-pink-ink rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider text-white uppercase">
+                          -{discountPct}%
+                        </span>
+                      </>
+                    )}
                   </>
                 ) : (
                   <>
@@ -372,10 +431,17 @@ export default async function ProductoDetallePage({
                     <span className="text-brand-purple-dark text-3xl font-bold tabular-nums">
                       {formatCOP(displayPrice)}
                     </span>
+                    {/* A1 (2026-09-15) — paridad con la card del listado: tachado
+                        + badge -% de la variante elegida (o del "Desde"). */}
                     {hasDiscount && (
-                      <span className="text-brand-muted text-lg tabular-nums line-through">
-                        {formatCOP(displayCompareAt!)}
-                      </span>
+                      <>
+                        <span className="text-brand-muted text-lg tabular-nums line-through">
+                          {formatCOP(displayCompareAt!)}
+                        </span>
+                        <span className="bg-brand-pink-ink rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider text-white uppercase">
+                          -{discountPct}%
+                        </span>
+                      </>
                     )}
                     {/* Reflejo total (owner 2026-09-14): la promo vive en otra
                         opción → se anuncia acá; antes era invisible en la ficha
@@ -415,6 +481,10 @@ export default async function ProductoDetallePage({
                       productBasePrice={
                         isPhotoPack && packMinPrice != null ? packMinPrice : product.basePrice
                       }
+                      // A2 (2026-09-15) — fallback de los precios DERIVADOS del
+                      // selector (card "Precio" y total del stepper): minVariantPrice
+                      // de la familia, mismo criterio que la card del listado.
+                      fallbackPrice={familyMinPrice}
                       variants={selectable}
                       perTile={isNamePerTile}
                       hiddenDimensions={PDP_HIDDEN_DIMENSION_KEYS[product.slug]}
@@ -423,6 +493,8 @@ export default async function ProductoDetallePage({
                       // (separadores: quantity; polaroid/cuadrados: photoSlots).
                       // Excepción tiras (2026-09-09): photoSlots → "Fotos por tira"
                       // y "Unidades" es el stepper de copias de abajo.
+                      // B2 (2026-09-15): los fotoimanes por formato etiquetan la
+                      // cantidad como "Packs" (1 pack = 6 unidades).
                       dimensionLabels={PDP_DIMENSION_LABEL_OVERRIDES[product.slug]}
                       // (2026-09-09, owner) — excepción al stepper universal de
                       // pack size: la COMPOSICIÓN de los híbridos se queda en
@@ -431,6 +503,16 @@ export default async function ProductoDetallePage({
                       quantityStepperExclusions={PDP_QUANTITY_CHIP_DIMS[product.slug]}
                       // Packs: dimensión única de Tamaño como chips, no lista por variante.
                       singleDimAsChips={isPhotoPack}
+                      // B2 (2026-09-15) — fotoimanes por formato: el stepper de
+                      // cantidad cuenta PACKS de 6 unidades (desglose a la
+                      // izquierda). El guard interno exige que TODOS los valores
+                      // sean múltiplos del pack (catálogos legacy 6/9/12 caen al
+                      // conteo de unidades de siempre).
+                      packSize={
+                        PDP_PACKS_OF_SIX_SLUGS.has(product.slug)
+                          ? { unitsPerPack: PHOTO_PACK_UNITS_PER_PACK }
+                          : undefined
+                      }
                     />
                   )}
 
@@ -454,6 +536,9 @@ export default async function ProductoDetallePage({
                         <NamePricePicker
                           slug={product.slug}
                           perTilePrice={displayPrice}
+                          // A2 — precio por ficha VIVO por variante (tamaño/imán):
+                          // el total sigue al chip elegido sin esperar el RSC.
+                          perTilePriceByVariantId={priceByVariantId}
                           min={nameMin}
                           max={nameMax}
                           ctaNoun={ctaNoun}
@@ -478,7 +563,22 @@ export default async function ProductoDetallePage({
                       //     abre con N tiras de M fotos (?variant= + ?copies=N).
                       <>
                         {(!isPhotoPack || PDP_PACK_PLUS_COPIES_SLUGS.has(product.slug)) && (
-                          <CopiesQtyInput max={maxDesignUnits} />
+                          // A2 (2026-09-15) — total VIVO junto al stepper:
+                          // unitario de la variante elegida × N (antes el ×N solo
+                          // se veía en la modal de vista previa y el carrito).
+                          // B2 — sets de letras: el stepper cuenta PACKS con
+                          // desglose de fichas (1 pack = abecedario completo).
+                          <CopiesQtyInput
+                            max={maxDesignUnits}
+                            hint={
+                              letterSetPackLabel
+                                ? "Cada pack se diseña por separado en el Estudio"
+                                : undefined
+                            }
+                            unitPriceByVariantId={priceByVariantId}
+                            fallbackUnitPrice={displayPrice}
+                            packLabel={letterSetPackLabel}
+                          />
                         )}
                         <EstudioCtaLink
                           slug={product.slug}
@@ -493,7 +593,13 @@ export default async function ProductoDetallePage({
                           fija CartItem.qty (unidades idénticas, qty clásico 1..99)
                           vía su input oculto. El cliente puede ajustar después en
                           el carrito (QtyControls). */}
-                        <CopiesQtyInput hint="Copias idénticas del mismo producto" />
+                        {/* A2 (2026-09-15) — total vivo ×N también en la compra
+                          directa (qty clásico): mismo cálculo que el carrito. */}
+                        <CopiesQtyInput
+                          hint="Copias idénticas del mismo producto"
+                          unitPriceByVariantId={priceByVariantId}
+                          fallbackUnitPrice={displayPrice}
+                        />
                         <input type="hidden" name="returnTo" value={`/producto/${product.slug}`} />
                         {/* ADR-057 — variante elegida en el selector (H12: sync vía Context). */}
                         <CartVariantIdInput />

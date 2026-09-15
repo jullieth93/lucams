@@ -341,6 +341,7 @@ export function StudioEditor({
     sizeCm?: string;
     isPolaroid?: boolean;
     facesPerUnit?: number;
+    flat?: boolean;
   } | null>(null);
   const [sceneBuilding, setSceneBuilding] = useState(false);
   // CAL4 — construcción perezosa de las tarjetas mes para la galería (botón "Ver mi calendario").
@@ -991,7 +992,9 @@ export function StudioEditor({
       // Ola 6 — los separadores se renderizan de PIE en el libro 3D: la textura horizontal
       // del Estudio debe rotarse 90° para que el diseño lea derecho sobre la cara 2×6 cm.
       // Se hace ANTES de combinar tiras photobooth, para no mezclar la lógica de imanes.
-      if (isBookmark) textures = await rotateTextures90(textures);
+      // Ola 17 — el ALARGADO plano (noFold) ya viene vertical del Estudio: no se rota
+      // (misma excepción que el modal, :950).
+      if (isBookmark && !productConfig.noFold) textures = await rotateTextures90(textures);
       // Ola 6 — Tira magnética photobooth: la pieza física es continua (1 col, gap 0).
       // Combinamos los slots de cada TIRA (unitSlots) para que la nevera 3D muestre
       // tiras enteras. Multi-unidad (2026-09-09): una textura-tira POR UNIDAD — antes
@@ -1020,6 +1023,9 @@ export function StudioEditor({
         isPolaroid,
         // Ola 10 — para separadores 2 caras: la galería necesita saber el facesPerUnit.
         facesPerUnit: productConfig.facesPerUnit,
+        // Ola 17 — Alargados planos (noFold): la galería los muestra planos, no doblados
+        // (misma condición que el modal del libro, :1681).
+        flat: productConfig.noFold,
       });
     } catch (err) {
       state.setAutoSaveStatus({
@@ -1036,6 +1042,7 @@ export function StudioEditor({
     productConfig.shape,
     productConfig.sizeCm,
     productConfig.facesPerUnit,
+    productConfig.noFold,
     ensureAllStagesMounted,
     sceneBuilding,
     isBookmark,
@@ -1648,6 +1655,7 @@ export function StudioEditor({
           sizeCm={sceneMagnets.sizeCm}
           isPolaroid={sceneMagnets.isPolaroid}
           facesPerUnit={sceneMagnets.facesPerUnit}
+          flat={sceneMagnets.flat}
           onClose={() => setSceneMagnets(null)}
         />
       )}

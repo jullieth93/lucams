@@ -126,13 +126,17 @@ describe("StudioUnitCountControl", () => {
     expect(screen.getByLabelText("Disminuir unidades")).toBeEnabled();
   });
 
-  it("guard: con unitSlots = 1 (imán suelto) el store NO hace nada", async () => {
+  it("guard: con unitSlots = 1 (imán suelto) el control se oculta y el store NO hace nada", async () => {
     const polaroid = makeStripCanvas(2);
     delete polaroid.unitCount;
     delete polaroid.unitSlots;
     const store = setup(2, { bare: polaroid });
-    fireEvent.click(screen.getByLabelText("Aumentar unidades"));
-    // Espera corta: el frame del apply corre aunque la acción sea no-op.
+    // A3 (2026-09-15) — el control es universal pero se auto-oculta cuando no
+    // hay unidades multi-slot que contar (unitSlots ≤ caras): el stepper no se
+    // renderiza porque setUnitCount sería no-op de todos modos.
+    expect(screen.queryByLabelText("Aumentar unidades")).not.toBeInTheDocument();
+    // El guard del store sigue vivo como segunda línea (llamada directa no-op).
+    store.getState().setUnitCount(3, { facesPerUnit: 1, max: 50 });
     await new Promise((r) => setTimeout(r, 100));
     expect(store.getState().canvasData!.slotCount).toBe(6);
     expect(store.getState().canvasData!.unitCount).toBeUndefined();

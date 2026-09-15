@@ -2,6 +2,8 @@
  * ADR-057 — Server actions del admin de "Sets de fichas". Lucy sube una ilustración por
  * letra; el editor de nombre las usa. Reutiliza uploadProductImage (magic bytes) con el
  * setId como prefijo de carpeta en el bucket.
+ * (2026-09-15: el módulo vive como tab "Fichas del abecedario" dentro de /admin/disenos;
+ * la ruta vieja /admin/fichas quedó como redirect permanente.)
  */
 
 "use server";
@@ -39,7 +41,7 @@ export async function createLetterSetAction(formData: FormData): Promise<ActionR
       entityId: set.id,
       metadata: { name, language },
     });
-    revalidatePath("/admin/fichas");
+    revalidatePath("/admin/disenos");
     return {};
   } catch (err) {
     const message = err instanceof Error ? err.message : "No se pudo crear el estilo.";
@@ -78,7 +80,7 @@ export async function uploadLetterTileAction(formData: FormData): Promise<Action
       entityId: setId,
       metadata: { char },
     });
-    revalidatePath("/admin/fichas");
+    revalidatePath("/admin/disenos");
     return {};
   } catch (err) {
     const message = err instanceof StorageError ? err.message : "No se pudo subir la ficha.";
@@ -111,6 +113,6 @@ export async function deleteLetterTileAction(formData: FormData): Promise<Action
     entityId: setId,
     metadata: { char: char.toUpperCase() },
   });
-  revalidatePath("/admin/fichas");
+  revalidatePath("/admin/disenos");
   return {};
 }

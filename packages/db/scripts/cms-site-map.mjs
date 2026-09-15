@@ -7347,6 +7347,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 150,
             },
             {
+              key: "estudio.fotos.aviso-mejora-auto",
+              kind: "BLOCK",
+              type: "TEXTAREA",
+              label: "Aviso: mejora automática insuficiente",
+              helpText:
+                "Banner al subir una foto de baja resolución: la app la mejoró en línea (upscale local) pero aun así quedó bajo el mínimo. {size} se reemplaza por el tamaño del producto en cm.",
+              category: "HOME",
+              body: "Mejoramos tu foto automáticamente, pero aun así quedó por debajo de lo recomendado para imprimir {size} cm. Si tienes la original en mayor resolución (no la de WhatsApp), úsala — se va a ver más nítida.",
+              sortOrder: 155,
+            },
+            {
               key: "estudio.fotos.autofill-cta",
               kind: "BLOCK",
               type: "TEXT",

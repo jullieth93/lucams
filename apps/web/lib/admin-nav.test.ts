@@ -13,9 +13,10 @@
  *     "Integraciones" de "Configuración" (no hay pagos ni envíos integrados)
  *     y "Precios al por mayor" de "Promociones" (WholesaleTier sin consumidor en Etapa 1).
  *   - "Cotizaciones" es el primer item de "Ventas" en AMBOS modos.
- *   - Entradas del Estudio en "Catálogo" (N-16): /admin/disenos y
- *     /admin/fichas junto a "Plantillas del Estudio", visibles para
- *     MANAGER_UP (permiso de ruta CATALOG en admin-rbac).
+ *   - Entradas del Estudio en "Catálogo" (N-16): /admin/disenos junto a
+ *     "Plantillas del Estudio", visible para MANAGER_UP (permiso de ruta
+ *     CATALOG en admin-rbac). 2026-09-15: "Fichas del abecedario" dejó de ser
+ *     item plano — es un tab dentro de /admin/disenos (/admin/fichas es redirect).
  *   - N-09: NO existe entrada "Mensajes" (/admin/mensajes se consolidó en
  *     /admin/soporte, que sigue bajo "Servicio al cliente").
  *   - El filtrado NO muta ADMIN_NAV (el catch-all placeholder sigue viendo
@@ -116,19 +117,19 @@ describe("getAdminNav", () => {
   );
 
   it.each(["full", "catalog"] as const)(
-    "modo %s: Catálogo incluye los módulos del Estudio (plantillas, diseños, fichas) — N-16",
+    "modo %s: Catálogo incluye los módulos del Estudio (plantillas, diseños con tab fichas) — N-16",
     async (mode) => {
       const { nav } = await getNavForMode(mode);
       const catalogo = nav.find((g) => g.title === "Catálogo");
 
       const hrefs = (catalogo?.items ?? []).map((it) => it.href);
-      // Antes del N-16 solo eran alcanzables desde los QuickLinks del dashboard.
+      // Antes del N-16 solo era alcanzable desde los QuickLinks del dashboard.
       expect(hrefs).toContain("/admin/disenos");
-      expect(hrefs).toContain("/admin/fichas");
-      // Junto a "Plantillas del Estudio" (los 3 alimentan el Estudio).
+      // 2026-09-15: fichas se embebió como tab de /admin/disenos — ya no es item plano.
+      expect(hrefs).not.toContain("/admin/fichas");
+      // Junto a "Plantillas del Estudio" (ambos alimentan el Estudio).
       const iPlantillas = hrefs.indexOf("/admin/plantillas");
       expect(hrefs[iPlantillas + 1]).toBe("/admin/disenos");
-      expect(hrefs[iPlantillas + 2]).toBe("/admin/fichas");
     },
   );
 
@@ -156,18 +157,16 @@ describe("getAdminNav", () => {
     },
   );
 
-  it("filterNavByRole: MANAGER ve diseños y fichas (permiso CATALOG); FULFILLMENT no", async () => {
+  it("filterNavByRole: MANAGER ve diseños (con tab fichas; permiso CATALOG); FULFILLMENT no", async () => {
     const { nav } = await getNavForMode("catalog");
 
     const manager = filterNavByRole(nav, "MANAGER");
     const managerHrefs = manager.flatMap((g) => (g.items ?? []).map((it) => it.href));
     expect(managerHrefs).toContain("/admin/disenos");
-    expect(managerHrefs).toContain("/admin/fichas");
 
     const fulfillment = filterNavByRole(nav, "FULFILLMENT");
     const fulfillmentHrefs = fulfillment.flatMap((g) => (g.items ?? []).map((it) => it.href));
     expect(fulfillmentHrefs).not.toContain("/admin/disenos");
-    expect(fulfillmentHrefs).not.toContain("/admin/fichas");
   });
 
   it.each(["full", "catalog"] as const)("modo %s: el filtrado NO muta ADMIN_NAV", async (mode) => {
