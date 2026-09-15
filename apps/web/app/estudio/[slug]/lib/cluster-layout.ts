@@ -19,16 +19,24 @@
  *
  * Ola 30 (2026-09-15, segunda pasada — proporciones pieza↔mueble): las DIMENSIONES FÍSICAS de
  * las dos superficies viven acá (`FRIDGE_SCENE` / `BOARD_SCENE`) como fuente única de verdad —
- * la nevera creció a NEVECÓN side-by-side (178×91×75 cm; el top-freezer de 170×68 era tan
- * angosto que una tira de 6.5 cm dominaba la escena) y el mural a un corcho de pared grande
- * (120×80 cm; el tablerito de 45×33 solo dejaba UNA fila de tiras → 12 columnas desbordadas).
- * Las vistas 3D construyen su geometría con estas constantes y los tests de proporción las
- * importan — nada de números duplicados que diverjan.
+ * la nevera creció a NEVECÓN (178×91×75 cm; el top-freezer de 170×68 era tan angosto que una
+ * tira de 6.5 cm dominaba la escena) y el mural a un corcho de pared grande (120×80 cm; el
+ * tablerito de 45×33 solo dejaba UNA fila de tiras → 12 columnas desbordadas). Las vistas 3D
+ * construyen su geometría con estas constantes y los tests de proporción las importan — nada
+ * de números duplicados que diverjan.
+ *
+ * Ola 30 (tercera pasada — feedback dueña con foto de referencia): el nevecón se rediseña
+ * FRENCH DOOR (dos puertas superiores ~2/3 + gaveta de freezer inferior ~1/3 con manija
+ * horizontal + dispensador de agua en la puerta izquierda — el side-by-side de dos puertas
+ * full-height se leía como CLOSET) y el clúster se parte en DOS sub-clústeres, uno por puerta:
+ * regla física — un imán se pega a UNA puerta, NUNCA montado sobre la junta central
+ * (`frenchDoorClusterLayout`, y la gaveta NO lleva imanes).
  */
 
 // ── Dimensiones físicas de las escenas ──
 
-/** Nevecón SIDE-BY-SIDE real (dos puertas verticales de cuerpo completo con junta central). */
+/** Nevecón FRENCH DOOR real: dos puertas superiores (~2/3 del frente) + gaveta de freezer
+ *  inferior (~1/3, manija horizontal) + dispensador de agua/hielo en la puerta izquierda. */
 export const FRIDGE_SCENE = {
   /** cm reales: 178 alto × 91 ancho × 75 fondo. */
   cm: { w: 91, h: 178, d: 75 },
@@ -39,14 +47,28 @@ export const FRIDGE_SCENE = {
   /** Ancho/fondo en unidades, derivados de los cm reales con la MISMA escala. */
   wU: (91 * 8.8) / 178, // ≈ 4.499
   dU: (75 * 8.8) / 178, // ≈ 3.708
-  /** Región del clúster sobre AMBAS puertas (zona alta anclada; la junta central queda bajo
-   *  las piezas, que montan proud sobre ella como imanes reales pegados sobre la unión). */
+  /** Fracción del frente útil (alto entre márgenes) que ocupa la GAVETA del freezer (~1/3). */
+  drawerFrac: 0.32,
+  /** Dispensador de agua/hielo en la puerta IZQUIERDA (~11×23 cm, panel oscuro con receso a
+   *  la altura de los ojos). El clúster de ESA puerta queda SIEMPRE por debajo
+   *  (cluster.left.topY < dispenser.bottomY — testeado). */
+  dispenser: { wU: 0.55, hU: 1.15, bottomY: 2.3 },
+  /** Regiones del clúster: UN sub-clúster por puerta superior (la gaveta NO lleva imanes).
+   *  Regla física: ningún imán toca la franja de la junta central (`seamHalfW`). */
   cluster: {
     gap: 0.06, // ≈ 1.2 cm de aire entre piezas
-    maxW: 3.55, // ≈ 72 cm — ambas puertas menos márgenes laterales estéticos
-    topY: 3.9, // bajo el borde superior de las puertas
-    bottomY: -3.85, // sobre el borde inferior
-    anchorY: 1.2, // ancla estética en la zona ALTA (imanes a la altura de los ojos)
+    /** |x| del centro de cada puerta superior (la vista deriva la geometría de ESTE número:
+     *  ancho de puerta = 2·(doorCenterX − junta/2), con junta 0.12 y margen 0.15). */
+    doorCenterX: 1.08,
+    /** Ancho preferido del clúster DENTRO de una puerta — ni la junta central ni las manijas
+     *  (que viven pegadas a la junta) quedan bajo las piezas. */
+    doorMaxW: 1.55,
+    /** Franja prohibida alrededor de la junta central (|x| < seamHalfW): NINGÚN imán la toca. */
+    seamHalfW: 0.1,
+    /** Puerta IZQUIERDA: bajo el dispensador (topY < dispenser.bottomY). */
+    left: { topY: 2.15, bottomY: -1.1, anchorY: 0.7 },
+    /** Puerta DERECHA: frente completo de la puerta, ancla a la altura de los ojos. */
+    right: { topY: 3.9, bottomY: -1.1, anchorY: 2.0 },
   },
 } as const;
 
@@ -199,4 +221,68 @@ export function clusterLayout(
     halfW: width / 2,
     halfH: Math.abs(centerY) + height / 2,
   };
+}
+
+// ── Ola 30 (tercera pasada) — french door: UN sub-clúster por puerta, NADA sobre la junta ──
+
+export type FrenchDoorLayout = {
+  /** Items en coordenadas de ESCENA (x ya desplazada al centro de su puerta), en el ORDEN
+   *  original de las piezas (primero la puerta izquierda, luego la derecha). */
+  items: ClusterLayoutItem[];
+  /** Sub-layout de cada puerta (coords locales centradas en su puerta, antes del offset). */
+  left: ClusterLayout;
+  right: ClusterLayout;
+  /** Bounds del conjunto para FitCamera (nevera + ambos sub-clústeres). */
+  halfW: number;
+  halfH: number;
+};
+
+/**
+ * Reparto FRENCH DOOR del clúster (2026-09-15 — feedback dueña: "las fotoimanes no pueden
+ * estar centradas en los bordes de las puertas"). Regla física: un imán se pega a UNA puerta,
+ * NUNCA montado sobre la junta central — así que el clúster se parte en DOS sub-clústeres
+ * independientes, uno por puerta superior (la gaveta del freezer NO lleva imanes):
+ *
+ *  - La PRIMERA mitad (⌊n/2⌋) va a la puerta IZQUIERDA (bajo el dispensador) y el resto a la
+ *    DERECHA → se preserva el orden de lectura izquierda→derecha (meses del calendario) y con
+ *    1 sola pieza cae en la derecha (la puerta que más se usa).
+ *  - Cada sub-clúster se resuelve con `clusterLayout` dentro de SU región
+ *    (`FRIDGE_SCENE.cluster.left/right`, ancla en zona alta) con `doorMaxW` de ancho preferido
+ *    → por construcción ninguna pieza alcanza la franja de la junta (`seamHalfW`, testeado).
+ *  - `preferCols` (grid del editor) se reparte entre puertas: ⌊cols/2⌋ izq, ⌈cols/2⌉ der.
+ */
+export function frenchDoorClusterLayout(
+  sizes: readonly ClusterPieceSize[],
+  opts: { preferCols?: number } = {},
+): FrenchDoorLayout {
+  const c = FRIDGE_SCENE.cluster;
+  const n = sizes.length;
+  const leftCount = Math.floor(n / 2);
+
+  const perDoor = (side: "left" | "right"): { layout: ClusterLayout; items: ClusterLayoutItem[] } => {
+    const region = c[side];
+    const subset = side === "left" ? sizes.slice(0, leftCount) : sizes.slice(leftCount);
+    const preferCols = Math.max(
+      1,
+      Math[side === "left" ? "floor" : "ceil"]((opts.preferCols ?? 1) / 2),
+    );
+    const layout = clusterLayout(subset, {
+      maxW: c.doorMaxW,
+      maxH: region.topY - region.bottomY,
+      gap: c.gap,
+      preferCols,
+      anchorY: region.anchorY,
+      topY: region.topY,
+      bottomY: region.bottomY,
+    });
+    const dx = side === "left" ? -c.doorCenterX : c.doorCenterX;
+    return { layout, items: layout.items.map((it) => ({ ...it, x: it.x + dx })) };
+  };
+
+  const left = perDoor("left");
+  const right = perDoor("right");
+  const items = [...left.items, ...right.items];
+  const halfW = items.reduce((a, it) => Math.max(a, Math.abs(it.x) + it.w / 2), 0);
+  const halfH = items.reduce((a, it) => Math.max(a, Math.abs(it.y) + it.h / 2), 0);
+  return { items, left: left.layout, right: right.layout, halfW, halfH };
 }

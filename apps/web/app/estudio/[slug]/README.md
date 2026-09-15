@@ -350,6 +350,22 @@ packages/db/scripts/
   con marco de 5.5 cm (escala redonda 0.1 u/cm): las 12 tiras 6.5×26.5 quedan en grilla
   6×2 DENTRO del marco con aire; 24 fotoimanes 6×8 en grilla 4×6. Tests de proporción en
   `cluster-layout.test.ts` (ratios cm↔cm y grillas que caben con márgenes).
+- **Nevecón FRENCH DOOR + imanes que nunca cruzan la junta (mismo día, 3ª pasada — foto de
+  referencia de la dueña).** (a) El side-by-side de dos puertas full-height se leía como
+  CLOSET ("el mueble parece un closet y no una nevera"): la geometría se rediseña como la
+  referencia — DOS PUERTAS SUPERIORES (~68% del frente útil) + GAVETA DE FREEZER inferior
+  (~32%, manija HORIZONTAL cromada sobre canal embutido) + DISPENSADOR de agua/hielo en la
+  puerta izquierda (panel oscuro con receso y paleta, ~11×23 cm a la altura de los ojos).
+  Mismas dimensiones físicas 178×91×75 cm y materiales. (b) Regla física: "las fotoimanes no
+  pueden estar centradas en los bordes de las puertas" — un imán se pega a UNA puerta, NUNCA
+  sobre la junta central. El clúster se parte en DOS sub-clústeres independientes
+  (`frenchDoorClusterLayout` en `lib/cluster-layout.ts`, puro y testeado): la primera mitad
+  ⌊n/2⌋ a la puerta IZQUIERDA (orden de lectura) y el resto a la DERECHA (con 1 pieza cae en
+  la derecha, la que más se usa); cada sub-clúster usa `clusterLayout` dentro de SU región
+  (`FRIDGE_SCENE.cluster.left/right`, `doorMaxW` 1.55 u — ni junta ni manijas bajo las
+  piezas; la gaveta NO lleva imanes; el clúster izquierdo queda SIEMPRE bajo el dispensador,
+  `left.topY < dispenser.bottomY`). Tests: aserción explícita de que ningún item intersecta
+  la franja `seamHalfW` con 12 tiras (6/6), 24 fotoimanes (12/12), 1 y 2 piezas.
 
 ### Ola 23 (Lucy 2026-09-08) — placeholders no imprimibles, marco constante, tira sin borde
 
