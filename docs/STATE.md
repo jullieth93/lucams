@@ -287,6 +287,15 @@ plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
   (`filterTemplatesByPhotoSlots` — la plantilla declara photoSlots en canvasData; seed aplicado
   en los 3 ambientes) → variante de 3 fotos solo ve la plantilla de 3 y viceversa (verificado
   local y STG). Commit `d7fd10c`.
+- **CIERRE DEL FLUJO (mismo día, aprobado por Lucy):** release `develop → production`
+  (ff a `339bf66`) → deploy PRD. **Re-certificación total:** DB local↔STG↔PRD = 0
+  divergencias VIVAS en los 3 pares (dump+diff re-corridos post-release) · git:
+  `develop` = `production` = `339bf66` · PRD en vivo: PDP Polaroid con "Packs" +
+  tachado $27.500 + badge -18% (byte a byte igual a STG), Cuadrados con packs,
+  Estudio tiras con filtro de composición (3 fotos → solo su plantilla), Calendario
+  render idéntico STG/PRD ($39.900), todas las rutas clave 200. Observación
+  preexistente (igual en ambos, no regresión): `/productos/calendarios` 404 — la URL
+  de categoría difiere del slug; queda anotada para revisión futura.
 
 ## Sesión — 2026-09-15 — Paquete coherencia catálogo/estudio/admin (ADR-101): Fotoimanes por packs de 6, precio vivo PDP, placeholder-guide, 3D tamaño real, admin consolidado
 
