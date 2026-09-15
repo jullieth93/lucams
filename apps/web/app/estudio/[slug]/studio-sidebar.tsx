@@ -76,6 +76,11 @@ export function StudioSidebar({
   const [rightsAccepted, setRightsAccepted] = useState(false);
   // P0.2 — Toggle "ocultar usadas" tipo Mixbook Hide Used.
   const [hideUsed, setHideUsed] = useState(false);
+  // C2 (owner 2026-09-15) — fotos mejoradas automáticamente al subir (upscale
+  // local, client-photo-upscale): Set de assetIds para el badge "✨ Mejorada"
+  // del thumb. Client-side (el servidor no sabe que hubo re-muestreo — la foto
+  // ya llega mejorada); alcance de sesión del Estudio, suficiente para el badge.
+  const [improvedAssetIds, setImprovedAssetIds] = useState<ReadonlySet<string>>(new Set());
   const texts = useStudioTexts();
 
   // Suscripciones selectivas zustand
@@ -199,6 +204,13 @@ export function StudioSidebar({
             validationLevel: result.validationLevel,
             validationMessage: result.validationMessage,
           });
+          // C2 — la foto se re-muestreó en el navegador antes de subir: marcarla
+          // para el badge "✨ Mejorada" del thumb (el servidor recibe la versión
+          // ya mejorada y no puede saberlo).
+          if (upscaled?.improved) {
+            const { assetId } = result;
+            setImprovedAssetIds((prev) => new Set(prev).add(assetId));
+          }
           // M.3.b.B.2 — Si la foto subió con calidad insuficiente, mostrar
           // banner naranja persistente con el mensaje (cliente decide si usarla).
           // C2 — si ya la mejoramos automáticamente y AÚN así quedó bajo el
@@ -207,7 +219,10 @@ export function StudioSidebar({
             setUploadError(
               fillStudioText(texts.fotos.avisoMejoraAuto, { size: productSizeCm ?? "" }),
             );
-          } else if (result.validationLevel === "warning-strong" || result.validationLevel === "error") {
+          } else if (
+            result.validationLevel === "warning-strong" ||
+            result.validationLevel === "error"
+          ) {
             setUploadError(result.validationMessage ?? texts.fotos.errorCalidad);
           }
         } else {
@@ -365,6 +380,7 @@ export function StudioSidebar({
                   asset={asset}
                   idx={idx}
                   hideUsed={hideUsed}
+                  autoImproved={improvedAssetIds.has(asset.id)}
                   onDragStart={(e) => onDragStartAsset(e, asset)}
                 />
               ))}
@@ -697,12 +713,15 @@ function AssetThumb({
   asset,
   idx,
   hideUsed,
+  autoImproved = false,
   onDragStart,
 }: {
   store: StoreApi<StudioStoreState>;
   asset: StudioAsset;
   idx: number;
   hideUsed: boolean;
+  /** C2 — la foto se mejoró automáticamente al subir (upscale local): badge "✨ Mejorada". */
+  autoImproved?: boolean;
   onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
 }) {
   const isUsed = useStore(store, selectAssetIsUsed(asset.id));
@@ -793,6 +812,19 @@ function AssetThumb({
           >
             ⓘ
           </div>
+        )}
+
+        {/* C2 (owner 2026-09-15) — Badge "✨ Mejorada": la foto se re-muestreó
+            en el navegador al subir para imprimir mejor. Bottom-right (el check
+            de usada va bottom-left; los avisos de calidad, top-right). */}
+        {autoImproved && (
+          <span
+            className="bg-brand-turquoise/95 text-brand-purple-dark absolute right-1 bottom-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold shadow ring-1 ring-white"
+            title={texts.fotos.badgeMejoradaTitle}
+            aria-label={texts.fotos.badgeMejoradaTitle}
+          >
+            {texts.fotos.badgeMejorada}
+          </span>
         )}
       </motion.div>
 

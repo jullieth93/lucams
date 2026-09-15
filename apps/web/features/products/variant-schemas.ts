@@ -416,7 +416,17 @@ export function photoPackMinPrice(
  *     precio "Desde" mostrado → tachado de esa opción junto al "Desde".
  *  3. Si no, pero OTRA opción tiene promo → chip "Promo en otra opción desde
  *     $X" (promoElsewhereFrom), nunca un tachado falso sobre el precio actual.
- *  4. Nadie tiene promo → nada.
+ *  4. Nadie tiene promo a nivel variante → fallback al compareAt del PRODUCTO
+ *     (productCompareAt): syncProductBasePrice lo denormaliza = promo de la
+ *     opción más barata, y hay datos legados donde la promo vive SOLO a nivel
+ *     producto (ej. fotoimanes-packs-6-20260915.mjs limpió el compareAt de las
+ *     variantes de polaroid y dejó el del producto). La card del listado ya lo
+ *     muestra siempre → sin este fallback la PDP perdía el tachado (bug STG
+ *     2026-09-15). Como corresponde a la opción más barata (precio "Desde" =
+ *     basePrice): tachado si > precio mostrado; si el precio mostrado ya es
+ *     mayor (opción más cara elegida), chip desde basePrice; si no es promo
+ *     válida sobre basePrice, nada.
+ *  5. Nadie tiene promo → nada.
  */
 export function resolvePromoDisplay<
   T extends { id: string; price: number | null; compareAtPrice: number | null },
@@ -425,6 +435,7 @@ export function resolvePromoDisplay<
   selectedId: string | null,
   displayPrice: number,
   basePrice: number,
+  productCompareAt: number | null = null,
 ): { compareAt: number | null; promoElsewhereFrom: number | null } {
   const selected = variants.find((v) => v.id === selectedId) ?? null;
   if (selected?.compareAtPrice != null && selected.compareAtPrice > displayPrice) {
@@ -434,7 +445,16 @@ export function resolvePromoDisplay<
     .filter((v) => v.compareAtPrice != null && v.compareAtPrice > (v.price ?? basePrice))
     .map((v) => ({ price: v.price ?? basePrice, compareAt: v.compareAtPrice! }))
     .sort((a, b) => a.price - b.price);
-  if (promos.length === 0) return { compareAt: null, promoElsewhereFrom: null };
+  if (promos.length === 0) {
+    // Regla 4 — promo SOLO a nivel producto (paridad con la card del listado).
+    if (productCompareAt != null && productCompareAt > displayPrice) {
+      return { compareAt: productCompareAt, promoElsewhereFrom: null };
+    }
+    if (productCompareAt != null && productCompareAt > basePrice) {
+      return { compareAt: null, promoElsewhereFrom: basePrice };
+    }
+    return { compareAt: null, promoElsewhereFrom: null };
+  }
   if (!selected && promos[0]!.price === displayPrice) {
     return { compareAt: promos[0]!.compareAt, promoElsewhereFrom: null };
   }

@@ -160,6 +160,30 @@ export function galleryEscapeAction(
   return kind === "calendar" && cardCount > 0 ? "back-to-detail" : "close";
 }
 
+/**
+ * Rótulo de cantidad de la galería 3D (owner 2026-09-15 — "plasmar en el 3D X cantidad"):
+ * "N tiras · tamaño real" / "N unidades · tamaño real"… El sustantivo se deriva del tipo de
+ * producto; para fotoimanes genéricos se usa "unidades" (no llega un sustantivo por props).
+ * La tira photobooth se detecta por cols=1 con varias piezas (el editor fuerza ese grid).
+ * Las fichas de letras NO llevan claim de tamaño real: no tienen dato de cm (su escena usa el
+ * ajuste-a-celda histórico, no la escala física).
+ */
+export function countBadgeLabel(count: number, kind: SceneKind = "photo", cols = 1): string {
+  const one = count === 1;
+  switch (kind) {
+    case "bookmark":
+      return `${count} ${one ? "separador" : "separadores"} · tamaño real`;
+    case "calendar":
+      return `${count} ${one ? "tarjeta" : "tarjetas"} · tamaño real`;
+    case "letters":
+      return `${count} ${one ? "ficha" : "fichas"}`;
+    case "photo":
+    default:
+      if (!one && cols <= 1) return `${count} tiras · tamaño real`;
+      return `${count} ${one ? "unidad" : "unidades"} · tamaño real`;
+  }
+}
+
 export function SceneGallery({
   magnets,
   cols,
@@ -394,6 +418,14 @@ export function SceneGallery({
             />
           </div>
         ) : null}
+
+        {/* Rótulo de cantidad (owner 2026-09-15): "N tiras/unidades · tamaño real" — overlay
+          DOM como los hints, sin tocar texturas ni el canvas WebGL. Solo en escenas 3D. */}
+        {is3D && magnets.length > 0 && (
+          <p className="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1 text-center text-xs font-bold text-white">
+            {countBadgeLabel(magnets.length, kind, cols)}
+          </p>
+        )}
 
         <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
           {is3D

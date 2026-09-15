@@ -18,8 +18,10 @@
  *    tablero mide ~45 cm de ancho (7 u → 0.1556 u/cm; 5.2 u ↔ 33.4 cm de alto cuadra con un
  *    tablero decorativo real ~45×33 cm).
  *  - 2026-09-15: TAMAÑO REAL SIEMPRE — se eliminó el encogimiento a la celda (con muchas
- *    unidades las piezas se veían miniatura). La disposición crece en filas/columnas dentro del
- *    tablero y, si desborda, la cámara reencuadra tablero + clúster. Nunca se encoge una pieza.
+ *    unidades las piezas se veían miniatura). Cuando una columna supera el alto útil del
+ *    tablero se ABREN más columnas balanceadas (lib/cluster-layout, compartido con la nevera)
+ *    y, si el conjunto desborda, la cámara reencuadra tablero + clúster. Nunca se encoge una
+ *    pieza.
  *  - La pared queda a RAS del tablero (z −1.2 → −0.14): antes había ~1 u de AIRE entre el tablero
  *    y la pared (flotaba); ahora cuelga como un tablero real y la sombra se lee nítida.
  *
@@ -42,6 +44,7 @@ import { FitCamera } from "./fit-camera";
 import { useIsTouch } from "./use-is-touch";
 import { StudioEnvironment } from "./studio-3d-environment";
 import { MagnetMesh, MAGNET_DEPTH, TILE_DEPTH, magnetWorldSizes } from "./magnet-3d";
+import { clusterLayout } from "./lib/cluster-layout";
 import { getCorkTexture } from "./lib/procedural-textures";
 import type { Magnet3D } from "./fridge-3d-view";
 
@@ -78,8 +81,10 @@ const MEMO_COLOR = "#F1EBDD";
 const BOARD_U_PER_CM = BOARD_W / 45;
 
 // Clúster a TAMAÑO REAL (2026-09-15): estos límites ya no ENCOGEN las piezas — definen la
-// disposición estética dentro del tablero. Si el clúster real desborda, FitCamera reencuadra
-// tablero + clúster (nunca se encoge una pieza).
+// disposición estética dentro del tablero. Cuando una columna supera el alto útil
+// (MAX_CLUSTER_H) se ABREN más columnas (lib/cluster-layout, compartido con la nevera — el
+// ancho puede crecer más allá del tablero si hace falta); si el conjunto desborda, FitCamera
+// reencuadra tablero + clúster (nunca se encoge una pieza).
 const MAGNET_GAP = 0.08;
 const MAX_CLUSTER_W = INNER_W * 0.92;
 const MAX_CLUSTER_H = INNER_H * 0.86;
@@ -87,9 +92,11 @@ const MAX_CLUSTER_H = INNER_H * 0.86;
 type BoardItem = { m: Magnet3D; w: number; h: number; x: number; y: number };
 
 /**
- * Disposición del clúster a tamaño real: las columnas pedidas se respetan mientras el clúster
- * quepa a lo ancho del tablero; si no, se redistribuye en más filas (nunca se encoge). Devuelve
- * las piezas posicionadas (centro del tablero) y los medios-bounds para FitCamera.
+ * Disposición del clúster a tamaño real (2026-09-15): la matemática vive en lib/cluster-layout
+ * (compartida con la nevera): las columnas pedidas se respetan mientras quepan a lo ancho del
+ * tablero y, cuando una columna supera el ALTO útil, se ABREN más columnas balanceadas (≤ 1
+ * pieza de diferencia) — nunca se encoge una pieza. Devuelve las piezas posicionadas (centro del
+ * tablero) y los medios-bounds para FitCamera.
  */
 function boardClusterLayout(
   magnets: Magnet3D[],
@@ -98,23 +105,17 @@ function boardClusterLayout(
 ): { items: BoardItem[]; halfW: number; halfH: number } {
   const physical = magnetWorldSizes(magnets, BOARD_U_PER_CM, { fallbackSizeCm: sizeCm });
   if (physical) {
-    const maxW = Math.max(...physical.map((s) => s.w));
-    const maxH = Math.max(...physical.map((s) => s.h));
-    // Columnas que caben a tamaño real en el ancho razonable del tablero (mínimo 1).
-    const fitCols = Math.max(1, Math.floor((MAX_CLUSTER_W + MAGNET_GAP) / (maxW + MAGNET_GAP)));
-    const effCols = Math.max(1, Math.min(cols, fitCols));
-    const rows = Math.max(1, Math.ceil(magnets.length / effCols));
-    const clusterW = effCols * maxW + (effCols - 1) * MAGNET_GAP;
-    const clusterH = rows * maxH + (rows - 1) * MAGNET_GAP;
-    const items = magnets.map((m, i) => {
-      const { w, h } = physical[i]!;
-      const col = i % effCols;
-      const row = Math.floor(i / effCols);
-      const x = (col - (effCols - 1) / 2) * (maxW + MAGNET_GAP);
-      const y = ((rows - 1) / 2 - row) * (maxH + MAGNET_GAP);
-      return { m, w, h, x, y };
+    const layout = clusterLayout(physical, {
+      maxW: MAX_CLUSTER_W,
+      maxH: MAX_CLUSTER_H,
+      gap: MAGNET_GAP,
+      preferCols: cols,
     });
-    return { items, halfW: clusterW / 2, halfH: clusterH / 2 };
+    return {
+      items: layout.items.map((it, i) => ({ m: magnets[i]!, w: it.w, h: it.h, x: it.x, y: it.y })),
+      halfW: layout.halfW,
+      halfH: layout.halfH,
+    };
   }
   // Sin dato de cm (p.ej. letras del nombre): ajuste-a-celda histórico sobre la región vieja.
   const regionW = MAX_CLUSTER_W;
@@ -250,7 +251,7 @@ function Scene({
         minPolarAngle={Math.PI / 3.5}
         maxPolarAngle={Math.PI / 1.9}
         minDistance={7}
-        maxDistance={24}
+        maxDistance={60}
         target={[0, 0, 0]}
       />
     </>

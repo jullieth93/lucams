@@ -18,7 +18,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { StudioCanvasGrid } from "./studio-canvas-grid";
 import { createStudioStore } from "./lib/store";
 import type { CanvasDataV2 } from "./types";
@@ -164,5 +164,186 @@ describe("StudioCanvasGrid — lazy-mount multi-unidad", () => {
       expect(document.querySelector('[data-testid="studio-slot-10"]')).not.toBeNull();
       expect(document.querySelector('[data-testid="studio-slot-11"]')).not.toBeNull();
     });
+  });
+});
+
+// ── Delimitación visual de unidades (owner 2026-09-15) ───────────────
+//
+// La dueña pidió la misma delimitación que tienen los separadores ("Separador
+// 1", "Separador 2"…) en TODOS los productos multi-unidad: fotoimanes por
+// packs de 6 → tarjetas "Pack 1" (slots 1-6) / "Pack 2" (slots 7-12) con el
+// patrón visual de las tarjetas de separadores; calendario multi-set →
+// secciones "Set 1", "Set 2" (sustantivo por familia vía unitNoun).
+
+/** Pack de fotoimanes polaroid: N unidades sueltas, SIN modelo multi-unidad
+ *  declarado (unitSlots = 1 — la variante YA es el pack). */
+function makePolaroidCanvas(units: number): CanvasDataV2 {
+  return {
+    version: 2,
+    unitTemplate: {
+      version: 1,
+      stage: { width: 720, height: 920 },
+      layers: [{ id: "bg", type: "background", color: "#FFFFFF" }],
+    } as CanvasDataV2["unitTemplate"],
+    slotCount: units,
+    photoSlots: units,
+    sizeCm: "6×8",
+    slots: Array.from({ length: units }, (_, i) => ({
+      slotIndex: i,
+      assetId: null,
+      assetUrl: null,
+    })),
+    gridLayout: { cols: 3, rows: Math.ceil(units / 3), gap: 16 },
+  };
+}
+
+/** Calendario multi-set: 12 tarjetas por set (modelo multi-unidad declarado). */
+function makeCalendarCanvas(sets: number): CanvasDataV2 {
+  const unitSlots = 12;
+  const slotCount = unitSlots * sets;
+  return {
+    version: 2,
+    unitTemplate: {
+      version: 1,
+      stage: { width: 1080, height: 1350 },
+      layers: [{ id: "bg", type: "background", color: "#FFFFFF" }],
+    } as CanvasDataV2["unitTemplate"],
+    slotCount,
+    unitCount: sets,
+    unitSlots,
+    slots: Array.from({ length: slotCount }, (_, i) => ({
+      slotIndex: i,
+      assetId: null,
+      assetUrl: null,
+    })),
+    gridLayout: { cols: 3, rows: 4, gap: 12 },
+  };
+}
+
+function slotObserveIndexesOf(el: Element | null): number[] {
+  if (!el) return [];
+  return Array.from(el.querySelectorAll<HTMLElement>("[data-slot-observe]")).map((n) =>
+    Number(n.dataset.slotObserve),
+  );
+}
+
+describe("StudioCanvasGrid — delimitación de PACKS (fotoimanes 6+6)", () => {
+  it("12 unidades con unitGroupSlots=6 → dos tarjetas «Pack 1» (slots 0-5) y «Pack 2» (slots 6-11)", () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "set-fotoimanes-polaroid",
+      canvasData: makePolaroidCanvas(12),
+      templates: [],
+    });
+    render(
+      <StudioCanvasGrid
+        store={store}
+        unitGroupSlots={6}
+        unitNoun="Pack"
+        onSlotClick={() => {}}
+        stageZoomRaw={1}
+        onStageZoomState={() => {}}
+        registerSlotStages={() => {}}
+      />,
+    );
+
+    // Rótulos de las tarjetas (textos CMS por defecto: "Pack {n}").
+    expect(screen.getByText("Pack 1")).toBeInTheDocument();
+    expect(screen.getByText("Pack 2")).toBeInTheDocument();
+
+    // Cada tarjeta agrupa EXACTAMENTE sus 6 slots, en orden.
+    const card1 = document.getElementById("studio-unit-0");
+    const card2 = document.getElementById("studio-unit-1");
+    expect(card1?.getAttribute("aria-label")).toBe("Pack 1 de 2");
+    expect(card2?.getAttribute("aria-label")).toBe("Pack 2 de 2");
+    expect(slotObserveIndexesOf(card1)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(slotObserveIndexesOf(card2)).toEqual([6, 7, 8, 9, 10, 11]);
+
+    // Progreso por pack (0/6 en cada tarjeta).
+    expect(screen.getAllByText("0/6")).toHaveLength(2);
+  });
+
+  it("un solo pack (6 unidades) → grilla plana sin tarjetas (unitCount = 1)", () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "set-fotoimanes-polaroid",
+      canvasData: makePolaroidCanvas(6),
+      templates: [],
+    });
+    render(
+      <StudioCanvasGrid
+        store={store}
+        unitGroupSlots={6}
+        unitNoun="Pack"
+        onSlotClick={() => {}}
+        stageZoomRaw={1}
+        onStageZoomState={() => {}}
+        registerSlotStages={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText("Pack 1")).not.toBeInTheDocument();
+    expect(document.getElementById("studio-unit-0")).toBeNull();
+  });
+
+  it("diseño legacy no divisible por el pack (9 unidades) → grilla plana", () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "set-fotoimanes-polaroid",
+      canvasData: makePolaroidCanvas(9),
+      templates: [],
+    });
+    render(
+      <StudioCanvasGrid
+        store={store}
+        unitGroupSlots={6}
+        unitNoun="Pack"
+        onSlotClick={() => {}}
+        stageZoomRaw={1}
+        onStageZoomState={() => {}}
+        registerSlotStages={() => {}}
+      />,
+    );
+
+    expect(screen.queryByText("Pack 1")).not.toBeInTheDocument();
+    expect(document.getElementById("studio-unit-0")).toBeNull();
+  });
+});
+
+describe("StudioCanvasGrid — calendario multi-set (secciones «Set N»)", () => {
+  it("2 sets de 12 → dos secciones con sustantivo «Set» y sus 12 slots c/u", () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "calendario-set-12",
+      canvasData: makeCalendarCanvas(2),
+      templates: [],
+    });
+    render(
+      <StudioCanvasGrid
+        store={store}
+        unitNoun="Set"
+        calendarPreview={{ year: 2027, startMonth: 0 }}
+        onSlotClick={() => {}}
+        stageZoomRaw={1}
+        onStageZoomState={() => {}}
+        registerSlotStages={() => {}}
+      />,
+    );
+
+    // Secciones con el sustantivo de familia ("{nombre} {n} de {total}").
+    const set1 = document.getElementById("studio-unit-0");
+    const set2 = document.getElementById("studio-unit-1");
+    expect(set1?.getAttribute("aria-label")).toBe("Set 1 de 2");
+    expect(set2?.getAttribute("aria-label")).toBe("Set 2 de 2");
+    expect(slotObserveIndexesOf(set1)).toEqual(Array.from({ length: 12 }, (_, i) => i));
+    expect(slotObserveIndexesOf(set2)).toEqual(Array.from({ length: 12 }, (_, i) => i + 12));
+
+    // Header de sección + pastilla del pager usan el mismo rótulo.
+    expect(screen.getAllByText("Set 1 de 2").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("Set 2 de 2").length).toBeGreaterThanOrEqual(2);
   });
 });

@@ -76,6 +76,7 @@ import {
   photosPerUnitForEditor,
 } from "@/features/personalization/design-units";
 import { faceSlotLabels, facePairOfUnit } from "./lib/faces";
+import { PHOTO_PACK_UNITS_PER_PACK } from "@/features/products/variant-schemas";
 
 // FOTO4 — la galería de escenas del fotoimán (nevera/mural/repisa/regalo). Las vistas 3D pesadas
 // (three.js) van diferidas DENTRO de SceneGallery, así que este import estático no infla el bundle
@@ -477,14 +478,30 @@ export function StudioEditor({
   // aria y onboarding (pantalla=físico). Deriva de isBookmark; el calendario usa slotLabels propios.
   const slotNoun = isBookmark ? texts.lienzo.sustantivoSeparador : texts.lienzo.sustantivoIman;
   // Multi-unidad (2026-09-09) — sustantivo de la UNIDAD para el pager y los
-  // headers de sección del lienzo ("Tira 1 de 2", "Calendario 1 de 2"…).
+  // headers de sección del lienzo ("Tira 1 de 2", "Set 1 de 2"…).
+  // Delimitación de PACKS en el lienzo (owner 2026-09-15, ADR-101): familias
+  // vendidas por packs de unidades sueltas (fotoimanes: packs de 6). MISMA
+  // regla "packMode" del stepper de fotos (studio-photo-count-control): el
+  // catálogo del tamaño (min/max) y el N vivo son todos múltiplos del pack.
+  // Un diseño legacy (9/20 unidades) cae a null → grilla plana de siempre.
+  const packUnitsPerGroup =
+    isPhotoPack &&
+    packMinSlots >= PHOTO_PACK_UNITS_PER_PACK &&
+    packMinSlots % PHOTO_PACK_UNITS_PER_PACK === 0 &&
+    packMaxSlots % PHOTO_PACK_UNITS_PER_PACK === 0 &&
+    livePhotoSlots % PHOTO_PACK_UNITS_PER_PACK === 0
+      ? PHOTO_PACK_UNITS_PER_PACK
+      : null;
   const unitNoun = isCalendarMonth
-    ? texts.unidades.nombreCalendario
+    ? // Owner 2026-09-15: el calendario multi-set se nombra «Set» ("Set 1", "Set 2").
+      texts.unidades.nombreSet
     : isBookmark
       ? texts.unidades.nombreSeparador
       : liveIsStrip
         ? texts.unidades.nombreTira
-        : texts.unidades.nombrePieza;
+        : packUnitsPerGroup
+          ? texts.unidades.nombrePack
+          : texts.unidades.nombrePieza;
   const isTouch = useIsTouch(); // #9 — copy del gesto de zoom del libro 3D según táctil vs mouse.
   // FOTO4 — la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo) es la vista por
   // defecto del fotoimán: se muestra cuando NO es calendario ni separador (el `else` del botón).
@@ -1600,6 +1617,10 @@ export function StudioEditor({
             }
             // Multi-unidad — sustantivo de la unidad para pager/headers de sección.
             unitNoun={unitNoun}
+            // PACKS (owner 2026-09-15, ADR-101) — tamaño del pack para que la
+            // grilla plana se delimite en tarjetas "Pack N" (fotoimanes packs
+            // de 6); null = grilla plana de siempre.
+            unitGroupSlots={packUnitsPerGroup}
             // Ola 4 (Lucy 2026-07-23) — calendario: cada slot previsualiza la TARJETA
             // compuesta del mes (foto + título + grilla), no la foto a sangre.
             calendarPreview={

@@ -269,6 +269,9 @@ export default async function ProductoDetallePage({
     selectedVariant?.id ?? null,
     displayPrice,
     product.basePrice,
+    // A3 (2026-09-15) — fallback: promo SOLO a nivel producto (legado packs de
+    // fotoimanes: variantes con compareAt limpio). La card ya lo muestra.
+    product.compareAtPrice,
   );
   const hasDiscount = displayCompareAt != null && displayCompareAt > displayPrice;
   // A1 (2026-09-15) — badge -% como en la card del listado (misma fórmula:

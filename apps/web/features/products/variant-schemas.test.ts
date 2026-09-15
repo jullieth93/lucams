@@ -474,4 +474,59 @@ describe("resolvePromoDisplay", () => {
       promoElsewhereFrom: null,
     });
   });
+
+  /*
+   * Fallback al compareAt del PRODUCTO (A3 2026-09-15, bug STG): datos legados
+   * con la promo SOLO a nivel producto (fotoimanes-packs-6-20260915.mjs limpió
+   * el compareAt de las variantes de polaroid y dejó product.compareAtPrice).
+   * La card del listado ya lo mostraba → la PDP quedaba sin tachado.
+   */
+  it("promo SOLO a nivel producto (variantes con compareAt null) → tachado (caso polaroid)", () => {
+    // Estado real STG 2026-09-15 de set-fotoimanes-polaroid: 4 variantes sin
+    // compareAt, producto con basePrice 22.500 y compareAt 27.500. La PDP
+    // preselecciona el pack mínimo (precio = basePrice).
+    const variants = [
+      V("p1", 2250000, null),
+      V("p2", 4500000, null),
+      V("p3", 6750000, null),
+      V("p4", 9000000, null),
+    ];
+    expect(resolvePromoDisplay(variants, "p1", 2250000, 2250000, 2750000)).toEqual({
+      compareAt: 2750000,
+      promoElsewhereFrom: null,
+    });
+  });
+
+  it("promo a nivel producto con opción más CARA elegida → chip desde basePrice, nunca tachado falso", () => {
+    // Mismo polaroid pero con el pack de 2 elegido: el compareAt del producto
+    // (27.500) es la promo de la opción más barata → tacharlo sobre 45.000
+    // sería falso (27.500 < 45.000); se anuncia como promo en otra opción.
+    const variants = [V("p1", 2250000, null), V("p2", 4500000, null)];
+    expect(resolvePromoDisplay(variants, "p2", 4500000, 2250000, 2750000)).toEqual({
+      compareAt: null,
+      promoElsewhereFrom: 2250000,
+    });
+  });
+
+  it("compareAt de producto <= basePrice NO es promo (nunca descuento negativo)", () => {
+    const variants = [V("a", 100000, null)];
+    expect(resolvePromoDisplay(variants, "a", 100000, 100000, 100000)).toEqual({
+      compareAt: null,
+      promoElsewhereFrom: null,
+    });
+    expect(resolvePromoDisplay(variants, "a", 100000, 100000, 90000)).toEqual({
+      compareAt: null,
+      promoElsewhereFrom: null,
+    });
+  });
+
+  it("promo de variante tiene PRIORIDAD sobre la del producto", () => {
+    // El compareAt del producto es denormalización de la opción más barata;
+    // si hay promos de variante, mandan las reglas 1-3.
+    const variants = [V("a", 3990000, 4490000), V("b", 3790000, null)];
+    expect(resolvePromoDisplay(variants, "b", 3790000, 3790000, 4490000)).toEqual({
+      compareAt: null,
+      promoElsewhereFrom: 3990000,
+    });
+  });
 });

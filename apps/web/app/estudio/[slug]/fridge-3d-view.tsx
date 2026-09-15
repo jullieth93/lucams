@@ -24,11 +24,13 @@
  *    7.5×10 se ve notablemente más grande que un 4×4.2.
  *  - 2026-09-15: TAMAÑO REAL SIEMPRE — se eliminó el encogimiento a la región fija de la puerta
  *    (con 12 unidades las piezas se veían miniatura). Ahora cada pieza conserva sus cm reales en
- *    cualquier cantidad: la disposición crece (más columnas/filas dentro de un ancho razonable
- *    de puerta, y si desborda, la cámara reencuadra nevera + clúster — FitCamera recibe los
- *    bounds del clúster). Además: shadow-camera de la luz key acotada explícita (antes se
- *    recortaba la sombra de la parte alta) y las patas APOYAN en el piso (antes flotaban ~2 cm
- *    sobre la sombra de contacto).
+ *    cualquier cantidad: cuando una columna supera el alto útil de la puerta se ABREN más
+ *    columnas balanceadas (lib/cluster-layout, compartido con el tablero — fix del desborde de
+ *    las 12 tiras en UNA columna de 3+ m), y si el conjunto desborda, la cámara reencuadra
+ *    nevera + clúster (FitCamera recibe los bounds del clúster; maxDistance holgado para que el
+ *    reencuadre no quede topeado en móvil vertical). Además: shadow-camera de la luz key acotada
+ *    explícita (antes se recortaba la sombra de la parte alta) y las patas APOYAN en el piso
+ *    (antes flotaban ~2 cm sobre la sombra de contacto).
  *
  * Restricciones respetadas:
  *  - CSP estricta: CERO assets externos (nada de Environment/HDR/GLTF/fuentes de CDN de drei). El
@@ -45,6 +47,7 @@ import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useIsTouch } from "./use-is-touch";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
 import { MagnetMesh, magnetWorldSizes, type MagnetShape } from "./magnet-3d";
+import { clusterLayout } from "./lib/cluster-layout";
 
 export type Magnet3D = {
   /** Snapshot PNG (dataURL) del imán, con transparencia fuera de la silueta. */
@@ -97,8 +100,9 @@ const DOOR_T = 0.14; // grosor del panel de puerta (sobresale del cuerpo)
 const DOOR_FACE_Z = DOOR_Z + DOOR_T / 2; // cara frontal de la puerta
 
 // Clúster de imanes a TAMAÑO REAL (2026-09-15): la región ya no ENCOGE las piezas — solo define
-// los límites estéticos de la disposición sobre la puerta del refrigerador. Si el clúster real
-// desborda estos límites, FitCamera reencuadra nevera + clúster (nunca se encoge una pieza).
+// los límites estéticos de la disposición sobre la puerta del refrigerador. Cuando una columna
+// supera el alto útil (CLUSTER_TOP_Y..CLUSTER_BOT_Y) se ABREN más columnas (lib/cluster-layout,
+// compartido con el tablero); si el conjunto desborda, FitCamera reencuadra nevera + clúster.
 const MAGNET_GAP = 0.06; // aire entre piezas vecinas del clúster
 const MAX_CLUSTER_W = DOOR_W * 0.78; // deja libre la manija (borde izq.) y margen derecho
 const CLUSTER_TOP_Y = GAP_CY - DOOR_GAP / 2 - 0.15; // apenas bajo la junta del freezer
@@ -268,10 +272,11 @@ type FridgeItem = { m: Magnet3D; w: number; h: number; x: number; y: number };
 
 /**
  * Disposición del clúster a TAMAÑO REAL (2026-09-15): cada pieza conserva sus cm reales en
- * cualquier cantidad (2 unidades se ven igual de grandes que 12). Las columnas pedidas se
- * respetan mientras el clúster quepa en el ancho razonable de la puerta; si no cabe, se
- * REDISTRIBUYE en más filas (nunca se encoge una pieza). Si ni así cabe sobre la puerta, el
- * clúster desborda y FitCamera reencuadra nevera + clúster (bounds devueltos acá).
+ * cualquier cantidad (2 unidades se ven igual de grandes que 12). La matemática vive en
+ * lib/cluster-layout (compartida con el tablero): las columnas pedidas se respetan mientras
+ * quepan a lo ancho razonable de la puerta y, cuando una columna supera el ALTO útil, se ABREN
+ * más columnas balanceadas (≤ 1 pieza de diferencia) — nunca se encoge una pieza. Si el conjunto
+ * desborda la puerta, FitCamera reencuadra nevera + clúster (bounds devueltos acá).
  */
 function fridgeClusterLayout(
   magnets: Magnet3D[],
@@ -280,33 +285,20 @@ function fridgeClusterLayout(
 ): { items: FridgeItem[]; halfW: number; halfH: number } {
   const physical = magnetWorldSizes(magnets, FRIDGE_U_PER_CM, { fallbackSizeCm: sizeCm });
   if (physical) {
-    const maxW = Math.max(...physical.map((s) => s.w));
-    const maxH = Math.max(...physical.map((s) => s.h));
-    // Columnas que caben a tamaño real en el ancho razonable de puerta (mínimo 1).
-    const fitCols = Math.max(1, Math.floor((MAX_CLUSTER_W + MAGNET_GAP) / (maxW + MAGNET_GAP)));
-    const effCols = Math.max(1, Math.min(cols, fitCols));
-    const rows = Math.max(1, Math.ceil(magnets.length / effCols));
-    const clusterW = effCols * maxW + (effCols - 1) * MAGNET_GAP;
-    const clusterH = rows * maxH + (rows - 1) * MAGNET_GAP;
-    // Centro vertical: ancla estética en la zona alta, acotada para que el clúster quede sobre
-    // la puerta mientras quepa; si es más alto que la puerta, se centra en ella (la cámara abre).
-    const span = CLUSTER_TOP_Y - CLUSTER_BOT_Y;
-    const cy =
-      clusterH >= span
-        ? (CLUSTER_TOP_Y + CLUSTER_BOT_Y) / 2
-        : Math.min(
-            Math.max(MAGNET_REGION_CY, CLUSTER_BOT_Y + clusterH / 2),
-            CLUSTER_TOP_Y - clusterH / 2,
-          );
-    const items = magnets.map((m, i) => {
-      const { w, h } = physical[i]!;
-      const col = i % effCols;
-      const row = Math.floor(i / effCols);
-      const x = (col - (effCols - 1) / 2) * (maxW + MAGNET_GAP);
-      const y = cy + ((rows - 1) / 2 - row) * (maxH + MAGNET_GAP);
-      return { m, w, h, x, y };
+    const layout = clusterLayout(physical, {
+      maxW: MAX_CLUSTER_W,
+      maxH: CLUSTER_TOP_Y - CLUSTER_BOT_Y,
+      gap: MAGNET_GAP,
+      preferCols: cols,
+      anchorY: MAGNET_REGION_CY,
+      topY: CLUSTER_TOP_Y,
+      bottomY: CLUSTER_BOT_Y,
     });
-    return { items, halfW: clusterW / 2, halfH: Math.abs(cy) + clusterH / 2 };
+    return {
+      items: layout.items.map((it, i) => ({ m: magnets[i]!, w: it.w, h: it.h, x: it.x, y: it.y })),
+      halfW: layout.halfW,
+      halfH: layout.halfH,
+    };
   }
   // Sin dato de cm (p.ej. letras del nombre): ajuste-a-celda histórico sobre la región vieja.
   const regionW = MAX_CLUSTER_W;
@@ -403,7 +395,7 @@ function Scene({ magnets, cols, sizeCm }: FridgeView3DProps) {
         minPolarAngle={Math.PI / 5}
         maxPolarAngle={Math.PI / 1.9}
         minDistance={7}
-        maxDistance={30}
+        maxDistance={60}
         target={[0, 0, 0]}
       />
     </>

@@ -154,6 +154,8 @@ apps/web/app/estudio/[slug]/
 ├── use-window-textures.ts             # Texturas de ventana para escenas
 └── lib/
     ├── grid-layout.ts                 # generateGridLayout(N, stage) → cols/rows
+    ├── cluster-layout.ts              # Clúster 3D a tamaño real (nevera/tablero): columnas
+    │                                  #   balanceadas que se abren al superar el alto útil
     ├── canvas-migrate.ts              # migrateCanvasV1ToV2
     ├── photo-filters.ts               # 5 presets + apply Konva filters
     ├── smart-crop.ts                  # Smart auto-crop (smartcrop.js) de fotos nuevas
@@ -318,13 +320,23 @@ packages/db/scripts/
   foto muy pequeña seguirá con aviso (por eso el copy pide la original).
 - **3D tamaño real SIEMPRE (E1/E2).** `magnetWorldSizes` ya no encoge (se eliminó el
   factor `f = min(1, …)`): cada pieza se dibuja a su tamaño físico (cm × uPerCm) en
-  nevera y tablero; el clúster crece en filas/columnas (`fridgeClusterLayout`,
-  `boardClusterLayout`) y `FitCamera` encuadra nevera + clúster. Alargados en el libro:
+  nevera y tablero; el clúster crece en filas/columnas y `FitCamera` encuadra
+  nevera + clúster. Alargados en el libro:
   `flatBookmarkSlots(count, { pieceW })` separa centro-a-centro = pieza + 0.15 u y
   reparte en filas balanceadas en z si se sale del ancho de la hoja (antes el spread
   topeado a 0.9 u < pieza de 1.2 u los sobreponía siempre). La galería "en tu espacio"
   recibe `flat` (noFold) y ya no rota 90° las texturas de Alargados (misma excepción
   Ola 17 que el modal).
+- **Fix desborde del clúster (mismo día, feedback owner: 12 tiras en UNA columna de 3+ m).**
+  La lógica de disposición se UNIFICÓ en `lib/cluster-layout.ts` (`clusterLayout` /
+  `clusterColumnCount`, puro y testeado), compartida por nevera y tablero (antes dos copias
+  paralelas que divergían). Regla nueva: cuando una columna supera el ALTO útil de la
+  superficie se ABREN más columnas balanceadas (≤ 1 pieza de diferencia entre columnas;
+  relleno por filas → preserva el orden de lectura del grid, p.ej. meses del calendario) —
+  el ancho puede crecer más allá de la puerta/tablero si hace falta y la cámara reencuadra
+  (`maxDistance` de ambas escenas sube a 60 para que el reencuadre no quede topeado en
+  móvil vertical). La galería 3D gana un rótulo overlay "N tiras/unidades · tamaño real"
+  (`countBadgeLabel`, DOM como los hints — no toca texturas ni el canvas WebGL).
 
 ### Ola 23 (Lucy 2026-09-08) — placeholders no imprimibles, marco constante, tira sin borde
 

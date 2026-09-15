@@ -43,6 +43,7 @@ import {
 } from "./lib/store";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { unitIndexOfSlot } from "./lib/faces";
+import { generateGridLayout } from "./lib/grid-layout";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 
@@ -73,6 +74,11 @@ import {
 // un placeholder liviano hasta que se acerca. Nunca se desmonta un slot ya montado (no perder el
 // stage registrado para el snapshot). Packs chicos (≤ umbral, incluye heart/circle) siguen eager.
 const LAZY_MOUNT_THRESHOLD = 6;
+
+// PACKS (2026-09-15) — padding horizontal total de la tarjeta-unidad que agrupa
+// un pack en la grilla plana (p-2 a cada lado, mismas clases de la tarjeta de
+// separadores): la sub-grilla descuenta este marco al repartir el ancho.
+const UNIT_CARD_PAD_X = 16;
 
 // M.3.b.UX.7 — Responsive progresivo. 4 breakpoints (definidos en
 // studio-canvas-grid-size.ts junto al resto de las reglas de tamaño).
@@ -128,6 +134,16 @@ type StudioCanvasGridProps = {
    */
   unitNoun?: string;
   /**
+   * Delimitación visual de PACKS (owner 2026-09-15, ADR-101): cuando el producto
+   * se vende por packs de N unidades sueltas (fotoimanes: 6 por pack), el editor
+   * pasa el tamaño del pack y la grilla plana se AGRUPA en tarjetas-unidad —
+   * "Pack 1" (slots 1-6), "Pack 2" (slots 7-12) — con el MISMO patrón visual de
+   * las tarjetas de separadores (borde sutil de marca + rótulo + progreso).
+   * Solo aplica fuera del modo agrupado de separadores y de las secciones
+   * multi-unidad (tiras/calendarios), que ya delimitan. null/undefined → plana.
+   */
+  unitGroupSlots?: number | null;
+  /**
    * FB4 — si false (táctil), los slots de la grilla NO capturan gestos (drag/pinch/wheel) → el dedo
    * scrollea la página; el pan/zoom se hace en el editor a pantalla completa (tocar = abrir). En
    * desktop (true) se conserva el inline drag/rueda.
@@ -174,6 +190,7 @@ export function StudioCanvasGrid({
   frameFullBleed = false,
   facesPerUnit = 1,
   unitNoun,
+  unitGroupSlots = null,
   interactiveSlots = true,
   onSlotClick,
   stageZoomRaw,
@@ -279,9 +296,27 @@ export function StudioCanvasGrid({
   const unitCount = canvasData?.unitCount ?? 1;
   const groupedForUnits = facesPerUnit === 2 && (canvasData?.slotCount ?? 0) % 2 === 0;
   const multiUnitSections = !groupedForUnits && unitCount > 1 && unitSlots > 1;
-  // Slots que describe la grilla: una unidad en modo secciones; el diseño completo
-  // en cualquier otro caso (retrocompatible).
-  const layoutSlotCount = multiUnitSections ? unitSlots : (canvasData?.slotCount ?? 0);
+  // PACKS de unidades sueltas (owner 2026-09-15, ADR-101): la grilla plana se
+  // divide en tarjetas-unidad de `unitGroupSlots` slots ("Pack 1" / "Pack 2"…).
+  // Exige división exacta — un diseño legacy (9/20 unidades) no calza en packs
+  // de 6 y se queda plano, igual que el stepper de fotos (packMode).
+  const slotCountNow = canvasData?.slotCount ?? 0;
+  const packGroups =
+    !groupedForUnits &&
+    !multiUnitSections &&
+    typeof unitGroupSlots === "number" &&
+    unitGroupSlots > 1 &&
+    slotCountNow > unitGroupSlots &&
+    slotCountNow % unitGroupSlots === 0;
+  const packSlots = packGroups ? (unitGroupSlots as number) : 0;
+  const packCount = packGroups ? slotCountNow / packSlots : 0;
+  // Slots que describe la grilla: una unidad en modo secciones, un pack en modo
+  // tarjetas-pack; el diseño completo en cualquier otro caso (retrocompatible).
+  const layoutSlotCount = multiUnitSections
+    ? unitSlots
+    : packGroups
+      ? packSlots
+      : (canvasData?.slotCount ?? 0);
 
   const layout = useMemo(() => {
     if (!canvasData) return null;
@@ -297,13 +332,30 @@ export function StudioCanvasGrid({
       gridCols: canvasData.gridLayout.cols,
     });
 
-    const cols = Math.min(maxCols, canvasData.gridLayout.cols);
+    let cols = Math.min(maxCols, canvasData.gridLayout.cols);
+    // PACKS — columnas de la SUB-grilla de cada tarjeta: el preset de la unidad
+    // (pack de 6 → 3×2) capeado al viewport, siempre divisor del pack para que
+    // las filas de cada tarjeta queden completas.
+    if (packGroups) {
+      const preset = generateGridLayout(packSlots, canvasData.unitTemplate.stage);
+      cols = Math.max(1, Math.min(cols, preset.cols));
+      while (cols > 1 && packSlots % cols !== 0) cols -= 1;
+      return { ...canvasData.gridLayout, cols, rows: Math.ceil(packSlots / cols) };
+    }
     if (cols === canvasData.gridLayout.cols) return canvasData.gridLayout;
     // Multi-unidad: las filas se calculan sobre la UNIDAD (layoutSlotCount), no
     // sobre el diseño completo.
     const rows = Math.ceil(layoutSlotCount / cols);
     return { ...canvasData.gridLayout, cols, rows };
-  }, [canvasData, containerWidth, isCalendar, hasEditableText, layoutSlotCount]);
+  }, [
+    canvasData,
+    containerWidth,
+    isCalendar,
+    hasEditableText,
+    layoutSlotCount,
+    packGroups,
+    packSlots,
+  ]);
 
   // A2.6 — Crossfade visual al cambiar plantilla. Detectamos cambio en
   // unitTemplate (referencia distinta = template aplicado nuevo) y disparamos
@@ -418,7 +470,11 @@ export function StudioCanvasGrid({
       ? Math.floor((containerWidth - UNIT_SECTION_GAP * (sectionsPerRow - 1)) / sectionsPerRow)
       : containerWidth;
 
-  const availableW = sectionAvailableW - layout.gap * (layout.cols - 1);
+  const availableW =
+    // PACKS — la sub-grilla vive DENTRO de la tarjeta: descuenta su padding
+    // horizontal (p-2 a cada lado) para que las celdas no desborden el marco.
+    (packGroups ? containerWidth - UNIT_CARD_PAD_X : sectionAvailableW) -
+    layout.gap * (layout.cols - 1);
 
   // Ola 6 — límite de alto del slot según cantidad de slots, para evitar que
   // productos de pocos slots (ej. Polaroid de 1 slot) ocupen toda la pantalla.
@@ -487,10 +543,13 @@ export function StudioCanvasGrid({
   // (mismos 16+8 de la fórmula byWidth de arriba).
   const contentWidthBase = grouped
     ? unitCols * (slotDisplaySize * 2 + 16 + 8) + layout.gap * (unitCols - 1)
-    : // Ola 29 — con secciones de tira en fila, el contenido es la FILA completa
-      // (N tiras + gaps de sección): el tope de zoom sigue sin desbordar.
-      sectionsPerRow * (slotDisplaySize * layout.cols + layout.gap * (layout.cols - 1)) +
-      UNIT_SECTION_GAP * (sectionsPerRow - 1);
+    : packGroups
+      ? // PACKS — una tarjeta por fila: sub-grilla + su padding de tarjeta.
+        slotDisplaySize * layout.cols + layout.gap * (layout.cols - 1) + UNIT_CARD_PAD_X
+      : // Ola 29 — con secciones de tira en fila, el contenido es la FILA completa
+        // (N tiras + gaps de sección): el tope de zoom sigue sin desbordar.
+        sectionsPerRow * (slotDisplaySize * layout.cols + layout.gap * (layout.cols - 1)) +
+        UNIT_SECTION_GAP * (sectionsPerRow - 1);
   const stageZoomCap = computeStageZoomCap(containerWidth, contentWidthBase);
   const stageZoom = Math.max(STAGE_ZOOM_MIN, Math.min(stageZoomRaw, stageZoomCap));
   const zoomedSlotW = Math.round(slotDisplaySize * stageZoom);
@@ -652,11 +711,11 @@ export function StudioCanvasGrid({
           Las secciones quedan TODAS montadas y visibles (apiladas): el cliente
           ve todo lo que va a recibir y los stages Konva viven en el DOM para el
           snapshot de producción/preview (WYSIWYG). */}
-      {multiUnitSections && (
+      {(multiUnitSections || packGroups) && (
         <UnitPager
           store={store}
-          unitCount={unitCount}
-          unitSlots={unitSlots}
+          unitCount={multiUnitSections ? unitCount : packCount}
+          unitSlots={multiUnitSections ? unitSlots : packSlots}
           noun={unitNoun ?? texts.unidades.nombrePieza}
         />
       )}
@@ -724,6 +783,60 @@ export function StudioCanvasGrid({
             );
           })}
         </div>
+      ) : packGroups ? (
+        // PACKS (owner 2026-09-15, ADR-101) — tarjeta por pack con el MISMO
+        // patrón visual de las tarjetas-unidad de separadores (borde sutil de
+        // marca + rótulo + progreso): "Pack 1" slots 1-6, "Pack 2" slots 7-12.
+        <motion.div
+          className="flex w-full flex-col items-center gap-6"
+          initial={reducedMotion ? false : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
+        >
+          {Array.from({ length: packCount }, (_, p) => (
+            <section
+              key={p}
+              id={`studio-unit-${p}`}
+              role="group"
+              aria-label={fillStudioText(texts.lienzo.unidadGrupoAria, {
+                nombre: unitNoun ?? texts.unidades.nombrePieza,
+                n: p + 1,
+                total: packCount,
+              })}
+              className="border-brand-purple/15 flex w-full scroll-mt-32 flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
+            >
+              <span className="text-brand-purple-dark text-xs font-bold">
+                {fillStudioText(texts.lienzo.unitPack, { n: p + 1 })}
+              </span>
+              {/* Sin «Aplicar este diseño a todas»: la acción del store opera con
+                  canvasData.unitSlots y los packs de imán suelto NO lo declaran
+                  (cada imán es su unidad) — copiar pack-a-pack requeriría soporte
+                  nuevo en el store. Solo progreso, como pide la delimitación. */}
+              <UnitMiniActions
+                store={store}
+                unitIndex={p}
+                unitSlots={packSlots}
+                unitCount={packCount}
+                onApplied={announceApplied}
+                allowApply={false}
+              />
+              <div
+                className="grid"
+                style={{
+                  gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
+                  gap: layout.gap,
+                  ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
+                }}
+              >
+                <AnimatePresence>
+                  {canvasData.slots
+                    .slice(p * packSlots, (p + 1) * packSlots)
+                    .map((slot) => renderSlotCell(slot))}
+                </AnimatePresence>
+              </div>
+            </section>
+          ))}
+        </motion.div>
       ) : (
         <motion.div
           className={
@@ -1021,12 +1134,16 @@ function UnitMiniActions({
   unitSlots,
   unitCount,
   onApplied,
+  allowApply = true,
 }: {
   store: StoreApi<StudioStoreState>;
   unitIndex: number;
   unitSlots: number;
   unitCount: number;
   onApplied: () => void;
+  /** PACKS: false — applyUnitToAllUnits opera con canvasData.unitSlots y los
+   *  packs de imán suelto no lo declaran (copiaría slot-a-slot, no pack-a-pack). */
+  allowApply?: boolean;
 }) {
   const texts = useStudioTexts();
   const filled = useStore(store, selectUnitFilledCount(unitIndex, unitSlots));
@@ -1052,7 +1169,7 @@ function UnitMiniActions({
         {complete && <Check className="h-2.5 w-2.5" aria-hidden />}
         {filled}/{unitSlots}
       </span>
-      {unitCount > 1 && (
+      {allowApply && unitCount > 1 && (
         <button
           type="button"
           onClick={() => {

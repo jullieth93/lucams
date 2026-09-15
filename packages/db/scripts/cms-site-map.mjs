@@ -5851,6 +5851,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 170,
             },
             {
+              key: "estudio.lienzo.unit-pack",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Tarjeta de unidad (packs)",
+              helpText:
+                "Título de la tarjeta que agrupa un pack de unidades sueltas en la grilla (fotoimanes por packs de 6, ADR-101). {n} = número del pack.",
+              category: "HOME",
+              body: "Pack {n}",
+              sortOrder: 175,
+            },
+            {
               key: "estudio.lienzo.unit-cara-a",
               kind: "BLOCK",
               type: "TEXT",
@@ -6226,7 +6237,8 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               kind: "BLOCK",
               type: "TEXT",
               label: "Selector de letra: opción Playfair Display",
-              helpText: "Nombre visible de la opción elegante (Playfair Display, serif de eventos).",
+              helpText:
+                "Nombre visible de la opción elegante (Playfair Display, serif de eventos).",
               category: "HOME",
               body: "Elegante (Playfair)",
               sortOrder: 477,
@@ -6837,6 +6849,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 840,
             },
             {
+              key: "estudio.lienzo.unidad-grupo-aria",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Grupo de unidad N de M (lector de pantalla)",
+              helpText:
+                "Nombre audible genérico de una tarjeta que agrupa una unidad en la grilla (packs de fotoimanes). {nombre} = sustantivo (Pack…); {n} = número; {total} = total.",
+              category: "HOME",
+              body: "{nombre} {n} de {total}",
+              sortOrder: 845,
+            },
+            {
               key: "estudio.lienzo.tarjeta-detalle-aria",
               kind: "BLOCK",
               type: "TEXT",
@@ -7372,9 +7395,10 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               kind: "BLOCK",
               type: "TEXTAREA",
               label: "Tip inicial (sin fotos)",
-              helpText: "Consejo que aparece cuando aún no se ha subido ninguna foto.",
+              helpText:
+                "Consejo que aparece cuando aún no se ha subido ninguna foto. Nombra el botón real de auto-reparto («Llenar slots con mis fotos», clave estudio.fotos.autofill-cta) — antes decía «botón mágico» y se confundía con la mejora automática de calidad.",
               category: "HOME",
-              body: "Tip: sube tus fotos primero, después usa el botón mágico para repartirlas en los slots.",
+              body: "Tip: sube tus fotos primero; el botón «Llenar slots con mis fotos» las reparte por ti en los espacios.",
               sortOrder: 170,
             },
             {
@@ -7407,6 +7431,28 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               category: "HOME",
               body: "Click para ver detalles del problema de calidad.",
               sortOrder: 200,
+            },
+            {
+              key: "estudio.fotos.badge-mejorada",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Badge «Mejorada» de la miniatura",
+              helpText:
+                "Etiqueta pequeña sobre la foto que se mejoró automáticamente al subirla (upscale local para imprimir mejor).",
+              category: "HOME",
+              body: "✨ Mejorada",
+              sortOrder: 195,
+            },
+            {
+              key: "estudio.fotos.badge-mejorada-title",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Badge «Mejorada»: ayuda",
+              helpText:
+                "Aparece al pasar el mouse sobre el badge «Mejorada» y lo lee el lector de pantalla.",
+              category: "HOME",
+              body: "La mejoramos automáticamente para imprimir mejor",
+              sortOrder: 197,
             },
             {
               key: "estudio.fotos.thumb-arrastrar",
@@ -9770,10 +9816,22 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               kind: "BLOCK",
               type: "TEXT",
               label: "Sustantivo «Set»",
-              helpText: "Nombre de la unidad en sets de letras (abecedario/vocales).",
+              helpText:
+                "Nombre de la unidad en sets de letras (abecedario/vocales) y en calendarios multi-set («Set 1», «Set 2»).",
               category: "HOME",
               body: "Set",
               sortOrder: 60,
+            },
+            {
+              key: "estudio.unidades.nombre-pack",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Sustantivo «Pack»",
+              helpText:
+                "Nombre de la unidad en familias vendidas por packs de unidades sueltas (fotoimanes por packs de 6, ADR-101): «Pack 1», «Pack 2»…",
+              category: "HOME",
+              body: "Pack",
+              sortOrder: 65,
             },
             {
               key: "estudio.unidades.nombre-pieza",

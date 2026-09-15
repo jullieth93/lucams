@@ -203,6 +203,37 @@ la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia veri
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
 
+## Sesión — 2026-09-15 (2) — Ronda de validación de Lucy: tachado PDP (paridad real), 3D multi-columna, lienzo agrupado por unidad, badge ✨ Mejorada
+
+- **Tachado PDP — causa raíz con datos:** `resolvePromoDisplay` solo miraba `compareAtPrice`
+  a nivel VARIANTE; la migración de packs limpió el compareAt de variantes y dejó la promo a
+  nivel PRODUCTO → la card la mostraba y la PDP no (Calendarios sí: tiene compareAt en
+  variantes). Fix 100% de código: regla 4 de fallback al `compareAtPrice` del producto
+  (tachado si cubre el precio mostrado; chip "Promo en otra opción" si solo cubre el "Desde";
+  nunca tachado falso ni descuento negativo) + 4 tests. Sin script de datos (el dato ya era
+  correcto en los 3 ambientes).
+- **3D multi-columna a tamaño real (decisión Lucy):** módulo compartido `lib/cluster-layout.ts`
+  (unifica nevera y mural — antes dos copias paralelas); `clusterColumnCount` abre columna
+  nueva cuando una supera el alto útil (12 tiras → 4 columnas × 3, nada se desborda ni se
+  encoge); relleno por filas (orden de lectura intacto), columnas balanceadas ≤1 pieza;
+  `maxDistance` 30→60 (recorte en móvil). Rótulo DOM en la galería: "N unidades/tiras/
+  separadores/tarjetas · tamaño real" (`countBadgeLabel`). 15 tests nuevos del módulo.
+- **Lienzo agrupado por unidad, uniforme (decisión Lucy):** fotoimanes muestra tarjetas
+  "Pack 1"/"Pack 2" (6 slots c/u, mismo estilo de las tarjetas de separadores; activo solo
+  con múltiplos exactos de 6 — legacy 9/20 cae a grilla plana); calendario multi-set dice
+  "Set N de 2"; tiras ("Tira N de N") y separadores ("Separador N") ya estaban — verificado,
+  sin tocar. Rótulos CMS-able (5 claves nuevas `estudio.lienzo.unit-pack`,
+  `estudio.unidades.nombre-pack`, `estudio.fotos.badge-mejorada*`, etc.).
+- **"Botón mágico" desconfundido:** el tip decía literal "usa el botón mágico" (se refiere a
+  «Llenar slots», no a la mejora de calidad) → body CMS `estudio.fotos.tip-vacio` actualizado
+  en los 3 ambientes (migrate-cms-v2 no pisa campos existentes; update directo). Badge
+  "✨ Mejorada" en la miniatura de las fotos que el upscale local mejoró (estado de sesión
+  del Estudio; metadata server-side requeriría migración — descartado).
+- **Verificación:** typecheck + lint limpios · suite 3 880 verdes · CMS migrado a los 3
+  ambientes (6 claves nuevas c/u) · render local validado (tachado 27.500 en PDP polaroid).
+- **Pendiente con Lucy:** invalidar caché CMS en STG/PRD (/admin/contenido) tras el deploy ·
+  QA visual del 3D con 12 tiras y 24 fotoimanes (la matemática está testeada; falta ojo humano).
+
 ## Sesión — 2026-09-15 — Paquete coherencia catálogo/estudio/admin (ADR-101): Fotoimanes por packs de 6, precio vivo PDP, placeholder-guide, 3D tamaño real, admin consolidado
 
 - **4 decisiones de producto confirmadas por Lucy antes de codificar:** ① Fotoimanes = un

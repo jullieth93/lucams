@@ -11,6 +11,7 @@ vi.mock("next/dynamic", () => ({
 }));
 
 import {
+  countBadgeLabel,
   filterPhotoScenes,
   galleryEscapeAction,
   initialModalView,
@@ -91,5 +92,36 @@ describe("flujo detalle-first del calendario (ola 3 — Lucy: detalle primero, e
     expect(galleryEscapeAction("letters", 27)).toBe("close");
     expect(galleryEscapeAction("bookmark", 4)).toBe("close");
     expect(galleryEscapeAction("calendar", 0)).toBe("close");
+  });
+});
+
+describe("countBadgeLabel — rótulo de cantidad en la escena 3D (owner 2026-09-15)", () => {
+  it("tiras photobooth (kind photo, cols=1, varias piezas): 'N tiras · tamaño real'", () => {
+    expect(countBadgeLabel(12, "photo", 1)).toBe("12 tiras · tamaño real");
+    expect(countBadgeLabel(16, "photo", 1)).toBe("16 tiras · tamaño real");
+  });
+
+  it("fotoimanes genéricos (grid con cols>1): sustantivo genérico 'unidades'", () => {
+    expect(countBadgeLabel(24, "photo", 5)).toBe("24 unidades · tamaño real");
+    expect(countBadgeLabel(6, "photo", 3)).toBe("6 unidades · tamaño real");
+  });
+
+  it("singular: '1 unidad · tamaño real' (una sola pieza, cols=1 NO dice 'tiras')", () => {
+    expect(countBadgeLabel(1, "photo", 1)).toBe("1 unidad · tamaño real");
+  });
+
+  it("separadores y calendario llevan su sustantivo propio", () => {
+    expect(countBadgeLabel(10, "bookmark", 1)).toBe("10 separadores · tamaño real");
+    expect(countBadgeLabel(1, "bookmark", 1)).toBe("1 separador · tamaño real");
+    expect(countBadgeLabel(12, "calendar", 4)).toBe("12 tarjetas · tamaño real");
+  });
+
+  it("letras SIN claim de tamaño real (no tienen dato de cm — escala de celda histórica)", () => {
+    expect(countBadgeLabel(27, "letters", 7)).toBe("27 fichas");
+    expect(countBadgeLabel(27, "letters", 7)).not.toContain("tamaño real");
+  });
+
+  it("kind por defecto es photo (retrocompatible)", () => {
+    expect(countBadgeLabel(1)).toBe("1 unidad · tamaño real");
   });
 });

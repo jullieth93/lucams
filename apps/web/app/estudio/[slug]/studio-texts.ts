@@ -67,6 +67,11 @@ export type StudioTexts = {
     slotLabelFallback: string;
     slotTocaElegir: string;
     unitSeparador: string;
+    /** ADR-101 (owner 2026-09-15) — rótulo de la tarjeta que agrupa un PACK de
+     *  unidades sueltas en la grilla plana (fotoimanes: "Pack 1", "Pack 2"…). */
+    unitPack: string;
+    /** Nombre audible genérico de una tarjeta-unidad agrupada ("{nombre} {n} de {total}"). */
+    unidadGrupoAria: string;
     unitCaraA: string;
     unitCaraB: string;
     slotTooltipCentrar: string;
@@ -234,6 +239,10 @@ export type StudioTexts = {
     thumbUsada: string;
     thumbAviso: string;
     thumbArrastrar: string;
+    /** ADR-101 (owner 2026-09-15) — badge de la foto que se mejoró automáticamente
+     *  al subir (upscale local, client-photo-upscale). */
+    badgeMejorada: string;
+    badgeMejoradaTitle: string;
     calidadTituloFuerte: string;
     calidadTituloSuave: string;
     calidadSubSuave: string;
@@ -497,6 +506,9 @@ export type StudioTexts = {
     nombreCalendario: string;
     nombreSeparador: string;
     nombreSet: string;
+    /** ADR-101 (owner 2026-09-15) — sustantivo de la unidad en familias vendidas
+     *  por packs de unidades sueltas (fotoimanes: "Pack 1", "Pack 2"…). */
+    nombrePack: string;
     nombrePieza: string;
     /** Aria del chip de progreso de una unidad ("{n} de {total} fotos listas…"). */
     progresoAria: string;
@@ -591,6 +603,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     slotLabelFallback: "Espacio {n} de {total}",
     slotTocaElegir: "Toca para elegir",
     unitSeparador: "Separador {n}",
+    unitPack: "Pack {n}",
+    unidadGrupoAria: "{nombre} {n} de {total}",
     unitCaraA: "Cara A",
     unitCaraB: "Cara B",
     slotTooltipCentrar: "Volver al centro y resetear zoom",
@@ -751,12 +765,14 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "Mejoramos tu foto automáticamente, pero aun así quedó por debajo de lo recomendado para imprimir {size} cm. Si tienes la original en mayor resolución (no la de WhatsApp), úsala — se va a ver más nítida.",
     autofillCta: "Llenar slots con mis fotos",
     tipVacio:
-      "Tip: sube tus fotos primero, después usa el botón mágico para repartirlas en los slots.",
+      "Tip: sube tus fotos primero; el botón «Llenar slots con mis fotos» las reparte por ti en los espacios.",
     todoLleno:
       "✨ Todos los imanes tienen foto. Toca un imán para cambiarle la foto (o arrástrale otra en computador).",
     thumbUsada: "Ya está pegada en algún imán. Puedes arrastrar otra foto.",
     thumbAviso: "Click para ver detalles del problema de calidad.",
     thumbArrastrar: "Arrastra al canvas o toca un slot vacío para asignar",
+    badgeMejorada: "✨ Mejorada",
+    badgeMejoradaTitle: "La mejoramos automáticamente para imprimir mejor",
     calidadTituloFuerte: "Cuidado con esta foto",
     calidadTituloSuave: "Aviso sobre esta foto",
     calidadSubSuave: "Se puede usar igual, pero",
@@ -1015,6 +1031,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     nombreCalendario: "Calendario",
     nombreSeparador: "Separador",
     nombreSet: "Set",
+    nombrePack: "Pack",
     nombrePieza: "Pieza",
     progresoAria: "{n} de {total} fotos listas en esta unidad",
     aplicarATodas: "Aplicar este diseño a todas",
@@ -1103,6 +1120,8 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.slotLabelFallback": "estudio.lienzo.slot-label-fallback",
   "lienzo.slotTocaElegir": "estudio.lienzo.slot-toca-elegir",
   "lienzo.unitSeparador": "estudio.lienzo.unit-separador",
+  "lienzo.unitPack": "estudio.lienzo.unit-pack",
+  "lienzo.unidadGrupoAria": "estudio.lienzo.unidad-grupo-aria",
   "lienzo.unitCaraA": "estudio.lienzo.unit-cara-a",
   "lienzo.unitCaraB": "estudio.lienzo.unit-cara-b",
   "lienzo.slotTooltipCentrar": "estudio.lienzo.slot-tooltip-centrar",
@@ -1251,6 +1270,8 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "fotos.thumbUsada": "estudio.fotos.thumb-usada",
   "fotos.thumbAviso": "estudio.fotos.thumb-aviso",
   "fotos.thumbArrastrar": "estudio.fotos.thumb-arrastrar",
+  "fotos.badgeMejorada": "estudio.fotos.badge-mejorada",
+  "fotos.badgeMejoradaTitle": "estudio.fotos.badge-mejorada-title",
   "fotos.calidadTituloFuerte": "estudio.fotos.calidad-titulo-fuerte",
   "fotos.calidadTituloSuave": "estudio.fotos.calidad-titulo-suave",
   "fotos.calidadSubSuave": "estudio.fotos.calidad-sub-suave",
@@ -1476,6 +1497,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "unidades.nombreCalendario": "estudio.unidades.nombre-calendario",
   "unidades.nombreSeparador": "estudio.unidades.nombre-separador",
   "unidades.nombreSet": "estudio.unidades.nombre-set",
+  "unidades.nombrePack": "estudio.unidades.nombre-pack",
   "unidades.nombrePieza": "estudio.unidades.nombre-pieza",
   "unidades.progresoAria": "estudio.unidades.progreso-aria",
   "unidades.aplicarATodas": "estudio.unidades.aplicar-a-todas",
