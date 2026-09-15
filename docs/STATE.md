@@ -230,8 +230,15 @@ plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
   producción OK.
 - **Docs:** ADR-101 (DECISIONS) · regla anti-acumulación de branches en CONVENTIONS ·
   Ola 30 en el README del Estudio (redefine Ola 25/28 para la grilla).
-- **Pendientes con Lucy:** correr los 2 one-shots en STG y luego PRD (env-guard; PRD con
-  bypass) · confirmar el compareAt del pack Polaroid ($27.500, proporción histórica +22%).
+- **Pendientes con Lucy:** confirmar el compareAt del pack Polaroid ($27.500, proporción histórica +22%).
+- **Cierre 2026-09-15 (tarde):** commit `b16e31e` + push a `develop` (deploy STG automático) ·
+  one-shots aplicados en **STG** (packs: 16 en matriz + 40 legacy; plantillas ya estaban OK) y en
+  **PRD** con bypass + backup `tmp/backups/fotoimanes-packs-prd-*.json` (misma matriz, 40 legacy;
+  fix P2028: timeout extendido en el script, commit `46d4718`) · certificación HTTP: STG
+  (lucams-shop-git-develop) muestra "Packs" + precios + tachado en ambas PDPs; PRD
+  (lucamsshop.com, rama production con UI vieja) muestra las variantes nuevas como stepper de
+  unidades con precios correctos — la UI "Packs" llega a PRD con el próximo release
+  develop→production · diagnóstico de plantillas OK en los 3 ambientes.
 
 ## Sesión — 2026-09-14 (3) — Paquete coherencia Admin↔Front↔Estudio (ADR-100) ejecutado y homologado
 
