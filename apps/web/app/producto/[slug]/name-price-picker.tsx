@@ -38,7 +38,8 @@ export function NamePricePicker({
   // Arranca en un ejemplo cómodo (5 letras) acotado a [min, max].
   const [count, setCount] = useState(() => Math.min(max, Math.max(min, 5)));
   // Precio por ficha vivo (la variante elegida manda; fallback al del server).
-  const livePerTile = (variantId ? perTilePriceByVariantId?.[variantId] : undefined) ?? perTilePrice;
+  const livePerTile =
+    (variantId ? perTilePriceByVariantId?.[variantId] : undefined) ?? perTilePrice;
   // A2 (2026-09-15) — el total refleja TAMBIÉN las unidades del stepper
   // "Unidades" (N nombres a diseñar): letras × por-ficha × unidades — el MISMO
   // cálculo que el carrito (unitPrice × qty).

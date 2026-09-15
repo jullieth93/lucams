@@ -1307,9 +1307,8 @@ describe("renderLayer — text", () => {
         (el.props as { children: Array<React.ReactElement | null> }).children ?? []
       ).filter(Boolean);
       expect(children.some((c) => (c as React.ReactElement).key === "caption-text")).toBe(false);
-      const guide = children.find(
-        (c) => (c as React.ReactElement).key === "caption-guide",
-      ) as React.ReactElement<{ name?: string; opacity?: number }> | undefined;
+      const guide = children.find((c) => (c as React.ReactElement).key === "caption-guide") as
+        React.ReactElement<{ name?: string; opacity?: number }> | undefined;
       expect(guide).toBeDefined();
       expect(guide!.props.name).toBe("placeholder-guide edit-indicator");
       expect(guide!.props.opacity).toBe(0.4);

@@ -423,9 +423,7 @@ function Scene({
         ? flatData.slots.reduce((a, s) => Math.max(a, Math.abs(s.x - PAGE_W / 2)), 0) +
           flatData.maxW / 2
         : 0;
-      const spreadZ = flatData
-        ? flatData.slots.reduce((a, s) => Math.max(a, Math.abs(s.z)), 0)
-        : 0;
+      const spreadZ = flatData ? flatData.slots.reduce((a, s) => Math.max(a, Math.abs(s.z)), 0) : 0;
       return {
         halfW: Math.max(3.0, spreadX + 0.3),
         halfH: Math.max(5.0, (flatData?.maxH ?? 4.5) + 0.9 + spreadZ),

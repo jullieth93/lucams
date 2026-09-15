@@ -9,10 +9,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { updateTag } from "next/cache";
 import type { PersonalizationKind } from "@lucams/db";
-import {
-  preferProductSpecific,
-  filterTemplatesByAspectRatio,
-} from "./template-visibility";
+import { preferProductSpecific, filterTemplatesByAspectRatio } from "./template-visibility";
 import { parsePhotoProductConfig } from "./schemas";
 
 export const KIND_LABEL: Record<PersonalizationKind, string> = {

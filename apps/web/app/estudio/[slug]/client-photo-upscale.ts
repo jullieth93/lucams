@@ -74,7 +74,10 @@ function applyUnsharpMask(ctx: CanvasRenderingContext2D, width: number, height: 
       for (let c = 0; c < 3; c++) {
         const center = original[i + c] * (1 + 4 * k);
         const neighbors =
-          original[i - stride + c] + original[i + stride + c] + original[i - 4 + c] + original[i + 4 + c];
+          original[i - stride + c] +
+          original[i + stride + c] +
+          original[i - 4 + c] +
+          original[i + 4 + c];
         src[i + c] = center - neighbors * k;
       }
     }

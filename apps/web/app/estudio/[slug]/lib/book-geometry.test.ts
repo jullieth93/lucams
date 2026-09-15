@@ -406,9 +406,7 @@ describe("flatBookmarkSlots SIN SOLAPE (2026-09-15 — separación = ancho de pi
       expect((zs[i]! - zs[i - 1]!) / 1000).toBeCloseTo(FLAT_ROW_GAP, 6);
     }
     // Las filas quedan balanceadas (diferencia de a lo sumo 1 pieza entre filas).
-    const counts = zs.map(
-      (z) => slots.filter((s) => Math.round(s.z * 1000) === z).length,
-    );
+    const counts = zs.map((z) => slots.filter((s) => Math.round(s.z * 1000) === z).length);
     expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
   });
 

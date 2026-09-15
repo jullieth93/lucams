@@ -39,7 +39,10 @@ export default async function DisenosAdminPage() {
           del abecedario para el editor de nombres.
         </p>
       </header>
-      <DisenosTabs productos={<GalleryManager items={items} tagOptions={tagOptions} />} fichas={<FichasSection />} />
+      <DisenosTabs
+        productos={<GalleryManager items={items} tagOptions={tagOptions} />}
+        fichas={<FichasSection />}
+      />
     </div>
   );
 }

@@ -147,15 +147,7 @@ function Magnet({
 
 /** Manija vertical en el borde de la JUNTA central: canal oscuro embutido + grip fino satinado.
  *  `side` = +1 borde derecho de la puerta (puerta izquierda), −1 borde izquierdo (puerta der.). */
-function Handle({
-  doorW,
-  handleH,
-  side,
-}: {
-  doorW: number;
-  handleH: number;
-  side: 1 | -1;
-}) {
+function Handle({ doorW, handleH, side }: { doorW: number; handleH: number; side: 1 | -1 }) {
   const x = side * (doorW / 2 - 0.22);
   return (
     <group>

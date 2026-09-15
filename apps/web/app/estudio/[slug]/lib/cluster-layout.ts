@@ -259,7 +259,9 @@ export function frenchDoorClusterLayout(
   const n = sizes.length;
   const leftCount = Math.floor(n / 2);
 
-  const perDoor = (side: "left" | "right"): { layout: ClusterLayout; items: ClusterLayoutItem[] } => {
+  const perDoor = (
+    side: "left" | "right",
+  ): { layout: ClusterLayout; items: ClusterLayoutItem[] } => {
     const region = c[side];
     const subset = side === "left" ? sizes.slice(0, leftCount) : sizes.slice(leftCount);
     const preferCols = Math.max(

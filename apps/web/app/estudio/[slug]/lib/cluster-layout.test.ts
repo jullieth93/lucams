@@ -100,20 +100,26 @@ describe("clusterColumnCount — regla de cuándo se ABRE una columna nueva", ()
     const w = 6.5 * FRIDGE_SCENE.uPerCm;
     const h = 26.5 * FRIDGE_SCENE.uPerCm;
     // ⌈16/5⌉ = 4 columnas (alto útil de 7.75 u, el de la geometría side-by-side anterior).
-    expect(
-      clusterColumnCount(16, w, h, { maxW: 10, maxH: 7.75, gap: 0.06, preferCols: 1 }),
-    ).toBe(4);
+    expect(clusterColumnCount(16, w, h, { maxW: 10, maxH: 7.75, gap: 0.06, preferCols: 1 })).toBe(
+      4,
+    );
   });
 });
 
 describe("clusterLayout — posiciones y bounds", () => {
   it("2 piezas iguales: 2 columnas × 1 fila, simétricas, bounds exactos", () => {
-    const layout = clusterLayout([{ w: 0.34, h: 0.34 }, { w: 0.34, h: 0.34 }], {
-      maxW: 2.5,
-      maxH: 5.4,
-      gap: 0.06,
-      preferCols: 2,
-    });
+    const layout = clusterLayout(
+      [
+        { w: 0.34, h: 0.34 },
+        { w: 0.34, h: 0.34 },
+      ],
+      {
+        maxW: 2.5,
+        maxH: 5.4,
+        gap: 0.06,
+        preferCols: 2,
+      },
+    );
     expect(layout.cols).toBe(2);
     expect(layout.rows).toBe(1);
     expect(layout.width).toBeCloseTo(0.74, 9);
@@ -157,12 +163,15 @@ describe("clusterLayout — posiciones y bounds", () => {
   });
 
   it("balanceo: 10 piezas en 4 columnas → 3/3/2/2 (diferencia ≤ 1)", () => {
-    const layout = clusterLayout(Array.from({ length: 10 }, () => ({ w: 0.3, h: 0.3 })), {
-      maxW: 5,
-      maxH: 2, // caben 4 por columna → el alto no fuerza nada
-      gap: 0.05,
-      preferCols: 4,
-    });
+    const layout = clusterLayout(
+      Array.from({ length: 10 }, () => ({ w: 0.3, h: 0.3 })),
+      {
+        maxW: 5,
+        maxH: 2, // caben 4 por columna → el alto no fuerza nada
+        gap: 0.05,
+        preferCols: 4,
+      },
+    );
     expect(layout.cols).toBe(4);
     const counts = columnSizes(layout.items);
     expect(counts).toEqual([3, 3, 2, 2]);
@@ -170,12 +179,15 @@ describe("clusterLayout — posiciones y bounds", () => {
   });
 
   it("relleno por filas: preserva el orden de lectura (1,2,3… de izquierda a derecha)", () => {
-    const layout = clusterLayout(Array.from({ length: 6 }, () => ({ w: 0.3, h: 0.3 })), {
-      maxW: 5,
-      maxH: 5,
-      gap: 0.05,
-      preferCols: 3,
-    });
+    const layout = clusterLayout(
+      Array.from({ length: 6 }, () => ({ w: 0.3, h: 0.3 })),
+      {
+        maxW: 5,
+        maxH: 5,
+        gap: 0.05,
+        preferCols: 3,
+      },
+    );
     // Fila 0 = piezas 0,1,2 (como el grid del editor: los meses del calendario se leen en orden).
     expect(layout.items[0]).toMatchObject({ col: 0, row: 0 });
     expect(layout.items[1]).toMatchObject({ col: 1, row: 0 });
@@ -217,12 +229,18 @@ describe("clusterLayout — posiciones y bounds", () => {
   });
 
   it("sin topY/bottomY: centrado en el ancla (tablero: 0)", () => {
-    const layout = clusterLayout([{ w: 1, h: 1 }, { w: 1, h: 1 }], {
-      maxW: 10,
-      maxH: 10,
-      gap: 0.1,
-      preferCols: 1,
-    });
+    const layout = clusterLayout(
+      [
+        { w: 1, h: 1 },
+        { w: 1, h: 1 },
+      ],
+      {
+        maxW: 10,
+        maxH: 10,
+        gap: 0.1,
+        preferCols: 1,
+      },
+    );
     expect(layout.cols).toBe(1);
     expect(layout.centerY).toBe(0);
     expect(layout.items[0]!.y).toBeCloseTo(0.55, 9);
@@ -259,9 +277,12 @@ describe("frenchDoorClusterLayout — reparto por puerta (regla física: nada so
   it("12 tiras 6.5×26.5: 6 por puerta, grillas dentro de cada puerta, NINGUNA toca la junta", () => {
     const w = 6.5 * FRIDGE_SCENE.uPerCm;
     const h = 26.5 * FRIDGE_SCENE.uPerCm;
-    const layout = frenchDoorClusterLayout(Array.from({ length: 12 }, () => ({ w, h })), {
-      preferCols: 1, // la tira photobooth fuerza cols=1 — el reparto abre columnas igual
-    });
+    const layout = frenchDoorClusterLayout(
+      Array.from({ length: 12 }, () => ({ w, h })),
+      {
+        preferCols: 1, // la tira photobooth fuerza cols=1 — el reparto abre columnas igual
+      },
+    );
     expect(layout.items).toHaveLength(12);
     expect(layout.left.items).toHaveLength(6);
     expect(layout.right.items).toHaveLength(6);
@@ -294,9 +315,12 @@ describe("frenchDoorClusterLayout — reparto por puerta (regla física: nada so
   it("24 fotoimanes 6×8: 12 por puerta en grillas ordenadas, sin tocar la junta", () => {
     const w = 6 * FRIDGE_SCENE.uPerCm;
     const h = 8 * FRIDGE_SCENE.uPerCm;
-    const layout = frenchDoorClusterLayout(Array.from({ length: 24 }, () => ({ w, h })), {
-      preferCols: 4,
-    });
+    const layout = frenchDoorClusterLayout(
+      Array.from({ length: 24 }, () => ({ w, h })),
+      {
+        preferCols: 4,
+      },
+    );
     expect(layout.left.items).toHaveLength(12);
     expect(layout.right.items).toHaveLength(12);
     expectNeverOnSeam(layout.items);
@@ -317,7 +341,10 @@ describe("frenchDoorClusterLayout — reparto por puerta (regla física: nada so
   it("2 piezas: una por puerta (como en una casa real), tamaño real idéntico", () => {
     const w = 6.5 * FRIDGE_SCENE.uPerCm;
     const h = 26.5 * FRIDGE_SCENE.uPerCm;
-    const layout = frenchDoorClusterLayout([{ w, h }, { w, h }]);
+    const layout = frenchDoorClusterLayout([
+      { w, h },
+      { w, h },
+    ]);
     expect(layout.left.items).toHaveLength(1);
     expect(layout.right.items).toHaveLength(1);
     expect(layout.items[0]!.x).toBeLessThan(0);
@@ -331,7 +358,9 @@ describe("frenchDoorClusterLayout — reparto por puerta (regla física: nada so
 
   it("orden de lectura: la PRIMERA mitad va a la izquierda (meses 1-6 izq, 7-12 der)", () => {
     const cell = 0.3;
-    const layout = frenchDoorClusterLayout(Array.from({ length: 12 }, () => ({ w: cell, h: cell })));
+    const layout = frenchDoorClusterLayout(
+      Array.from({ length: 12 }, () => ({ w: cell, h: cell })),
+    );
     // items preservan el orden original: índices 0-5 a la izquierda (x<0), 6-11 a la derecha.
     for (const [i, it] of layout.items.entries()) {
       if (i < 6) expect(it.x).toBeLessThan(0);
@@ -390,12 +419,15 @@ describe("proporciones físicas de las escenas (Ola 30)", () => {
   it("12 tiras 6.5×26.5 en el mural: grilla de ≤ 2 filas DENTRO del tablero con márgenes (el bug del screenshot)", () => {
     const w = 6.5 * BOARD_SCENE.uPerCm;
     const h = 26.5 * BOARD_SCENE.uPerCm;
-    const layout = clusterLayout(Array.from({ length: 12 }, () => ({ w, h })), {
-      maxW: BOARD.maxW,
-      maxH: BOARD.maxH,
-      gap: BOARD.gap,
-      preferCols: 1,
-    });
+    const layout = clusterLayout(
+      Array.from({ length: 12 }, () => ({ w, h })),
+      {
+        maxW: BOARD.maxW,
+        maxH: BOARD.maxH,
+        gap: BOARD.gap,
+        preferCols: 1,
+      },
+    );
     expect(layout.rows).toBeLessThanOrEqual(2);
     expect(layout.cols).toBe(6); // grilla 6×2
     // NO desborda el corcho (superficie dentro del marco): cabe con márgenes.
@@ -413,12 +445,15 @@ describe("proporciones físicas de las escenas (Ola 30)", () => {
   it("24 fotoimanes 6×8 en el mural: grilla ordenada dentro del tablero", () => {
     const w = 6 * BOARD_SCENE.uPerCm;
     const h = 8 * BOARD_SCENE.uPerCm;
-    const layout = clusterLayout(Array.from({ length: 24 }, () => ({ w, h })), {
-      maxW: BOARD.maxW,
-      maxH: BOARD.maxH,
-      gap: BOARD.gap,
-      preferCols: 4,
-    });
+    const layout = clusterLayout(
+      Array.from({ length: 24 }, () => ({ w, h })),
+      {
+        maxW: BOARD.maxW,
+        maxH: BOARD.maxH,
+        gap: BOARD.gap,
+        preferCols: 4,
+      },
+    );
     expect(layout.cols).toBe(4);
     expect(layout.rows).toBe(6);
     const innerW = BOARD_SCENE.wU - 2 * BOARD_SCENE.frameU;
@@ -430,12 +465,18 @@ describe("proporciones físicas de las escenas (Ola 30)", () => {
   it("2 piezas en el mural: tamaño real idéntico (nunca encoger)", () => {
     const w = 6.5 * BOARD_SCENE.uPerCm;
     const h = 26.5 * BOARD_SCENE.uPerCm;
-    const layout = clusterLayout([{ w, h }, { w, h }], {
-      maxW: BOARD.maxW,
-      maxH: BOARD.maxH,
-      gap: BOARD.gap,
-      preferCols: 2,
-    });
+    const layout = clusterLayout(
+      [
+        { w, h },
+        { w, h },
+      ],
+      {
+        maxW: BOARD.maxW,
+        maxH: BOARD.maxH,
+        gap: BOARD.gap,
+        preferCols: 2,
+      },
+    );
     expect(layout.rows).toBe(1);
     for (const it of layout.items) {
       expect(it.w).toBeCloseTo(w, 9);

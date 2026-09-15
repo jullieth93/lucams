@@ -105,13 +105,11 @@ export function StudioPhotoCountControl({
   useEffect(() => {
     if (pendingDir === null) return;
     const raf = requestAnimationFrame(() => {
-      store
-        .getState()
-        .setPhotoSlotsPerUnit(value + pendingDir * stepSize, {
-          facesPerUnit,
-          max: clampedMax,
-          sizeCm,
-        });
+      store.getState().setPhotoSlotsPerUnit(value + pendingDir * stepSize, {
+        facesPerUnit,
+        max: clampedMax,
+        sizeCm,
+      });
       setPendingDir(null);
     });
     return () => cancelAnimationFrame(raf);

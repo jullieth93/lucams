@@ -139,8 +139,8 @@ export default async function AdminPlantillasPage() {
           Cada imagen es el preview REAL de la plantilla (cómo se ve el imán), agrupada por la
           categoría y el producto del catálogo al que pertenece. 🟢 aprobada · 🟡 oculta · ⚫
           descartada. ✅/🚫 indica si el Estudio la lista HOY en el lienzo (misma regla que usa el
-          editor: editable, activa, aspect del producto y específicas del producto por encima de
-          las globales). Aprobar una descartada la restaura.
+          editor: editable, activa, aspect del producto y específicas del producto por encima de las
+          globales). Aprobar una descartada la restaura.
         </p>
 
         {groups.map((g) => {

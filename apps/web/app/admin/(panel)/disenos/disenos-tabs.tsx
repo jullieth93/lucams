@@ -15,7 +15,11 @@ const TABS = [
 ] as const;
 
 export function DisenosTabs({ productos, fichas }: { productos: ReactNode; fichas: ReactNode }) {
-  const active = useAdminActiveTab("tab", "productos", TABS.map((t) => t.value));
+  const active = useAdminActiveTab(
+    "tab",
+    "productos",
+    TABS.map((t) => t.value),
+  );
   return (
     <>
       <AdminTabBar param="tab" defaultTab="productos" tabs={[...TABS]} />

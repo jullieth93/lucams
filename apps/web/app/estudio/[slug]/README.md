@@ -370,9 +370,9 @@ packages/db/scripts/
 ### Ola 23 (Lucy 2026-09-08) — placeholders no imprimibles, marco constante, tira sin borde
 
 - **Textos por defecto = placeholders NO imprimibles Y NO VISIBLES (TODAS las plantillas).**
-  *(Regla de la grilla REDEFINIDA por Ola 30: el placeholder SÍ se dibuja en la grilla
+  _(Regla de la grilla REDEFINIDA por Ola 30: el placeholder SÍ se dibuja en la grilla
   como guía atenuada al 40%, nunca en snapshots; fuera de la grilla esta regla sigue
-  vigente tal cual.)*
+  vigente tal cual.)_
   El default de cualquier capa `editable` ("Escribe tu mensaje", "@tu_usuario", "362 me gusta"…)
   nunca es contenido de la tarjeta: NADA se dibuja (grilla, preview del modal, 3D,
   confirmación) hasta que el cliente escribe su texto. En la grilla el campo se descubre
