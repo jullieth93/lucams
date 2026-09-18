@@ -203,6 +203,26 @@ la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia veri
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
 
+## Sesión — 2026-09-18 — Documentación al día + CI verde + fix secret del heartbeat de backups
+
+- **Auditoría de documentación (pedido del owner):** cerrados los 4 huecos — ADR-102 en
+  DECISIONS (homologación total + decisiones comerciales: calendario $37.900, Nombre
+  Personalizado activo en los 3, COD apagada + fix "6x2"→"2×6" + French door/mural +
+  filtro de plantillas por composición + gates pre-push); OPERATIONS gana el procedimiento
+  de homologación verificable (dump/diff, criterio 0 divergencias vivas, qué se
+  auto-normaliza y qué se pregunta); CONVENTIONS documenta los gates pre-push completos
+  (typecheck/lint/format:check/ratchet CMS/tests); cabecera de audit-storefront-consistency
+  al día (chequeos 2 como nota + 3b físico).
+- **CI rojos del 15-09 resueltos:** eran format:check (14 archivos sin prettier) + ratchet
+  CMS (baseline regenerado 37.32%). Los "cancelled" eran concurrency cancel-in-progress
+  (normal con pushes seguidos). CI verde en develop y production (`83bbb1c`).
+- **Incidente menor resuelto:** el workflow "Backup DB → R2" fallaba el paso "Latido al
+  panel" — faltaba el secret CRON_SECRET en GitHub Actions; al setearlo dio 401 (el valor
+  correcto de PRD vive como SENSITIVE en Vercel = no legible). Se tomó el valor funcional
+  del Vault de Supabase PRD (`cron_secret`, el que usan los pg_cron que sí funcionan) →
+  GitHub secret actualizado sin exponerlo → rerun verde. El backup en sí (pg_dump→R2 y
+  mirror de Storage) nunca falló; solo el latido al panel.
+
 ## Sesión — 2026-09-15 (3) — HOMOLOGACIÓN TOTAL de los 3 ambientes certificada + release a PRD
 
 - **Certificación profunda (pedido del owner):** scripts nuevos `homologation-dump` +
