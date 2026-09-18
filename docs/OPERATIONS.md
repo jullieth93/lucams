@@ -330,6 +330,28 @@ Dos ramas en `github.com/jullieth93/lucams`:
 
   **ACCIÓN HUMANA (Lucy) — PENDIENTE:** GitHub → Settings → Branches → branch protection de `production` → marcar los 7 jobs como _required status checks_. Ya hay runs verdes en `production`, así que marcarlos no deja la rama bloqueada. (Verificado 2026-09-03 vía la API de GitHub: `production` sigue sin protección — "Branch not protected".)
 
+### Homologación de ambientes — procedimiento verificable (ADR-102, 2026-09-15)
+
+Los 3 ambientes (local / STG / PRD) deben tener **0 divergencias VIVAS** en catálogo, variantes, plantillas y CMS. Procedimiento (todo desde `packages/db`):
+
+```bash
+# 1. Snapshot por ambiente (solo lectura):
+pnpm exec dotenv -e ../../.env.local            -- node scripts/one-shot/homologation-dump-20260915.mjs local
+pnpm exec dotenv -e ../../.env.stg              -- node scripts/one-shot/homologation-dump-20260915.mjs stg
+pnpm exec dotenv -e ../../.env.local.nube-backup -- node scripts/one-shot/homologation-dump-20260915.mjs prd
+
+# 2. Diff cruzado (debe decir "HOMOLOGADOS en lo VIVO" en los 3 pares):
+node scripts/one-shot/homologation-diff-20260915.mjs local stg
+node scripts/one-shot/homologation-diff-20260915.mjs stg prd
+node scripts/one-shot/homologation-diff-20260915.mjs local prd
+```
+
+- El diff separa divergencias **vivas** (bloquean) de **drift en filas archivadas** (ruido histórico de soft-deletes — se reporta, no bloquea).
+- Las divergencias de DATOS CURADOS (precios, activación de productos) NO se auto-normalizan: se le preguntan a Lucy y se registran como decisión (precedente: ADR-102 ②).
+- La normalización masiva usa `homologate-20260915.mjs` (espejo STG + overrides documentados, dry-run por defecto, env-guard; PRD con bypass).
+- El drift archivado NO se persigue: modificar historia archivada no aporta y confunde.
+- **Gate pre-push (lección CI 2026-09-15):** además de typecheck/lint/test/build, correr `pnpm format:check` y `node packages/db/scripts/audit-content-coverage.mjs --check` antes de cada push — fueron los 2 rojos del día (formato + ratchet CMS).
+
 ### `vercel.json` del repo
 
 El único `vercel.json` versionado es [`apps/web/vercel.json`](../apps/web/vercel.json) y es **minimal**: solo declara `{ "framework": "nextjs" }` (+ `$schema`). **No hay `vercel.json` en la raíz del repo** ni `ignoreCommand` en el código. La configuración de build/install/output viene del **Root Directory** del proyecto en Vercel UI (debe estar seteado a `apps/web`).

@@ -3415,3 +3415,21 @@ intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar
 **No se acumulan branches.** `develop` es la ÚNICA rama de trabajo: todo cambio se commitea ahí directo (o entra por PR de corta vida que se mergea y se BORRA el mismo día). `production` solo recibe merges de release desde `develop`. Las ramas `depbot-*`/dependabot se resuelven o se cierran semanalmente — ninguna rama feature vive más que su PR. Esta regla también está en `docs/CONVENTIONS.md` (tabla Naming → Branches Git).
 
 ---
+
+## ADR-102 — Ronda 2 de coherencia (2026-09-15/18): homologación TOTAL de ambientes, decisiones comerciales de calendario/Nombre Personalizado/COD, escenas 3D proporcionales (French door + mural 120×80) y plantillas filtradas por composición
+
+**Fecha:** 2026-09-15 (documentada 2026-09-18)
+**Estado:** ✅ Aceptada (decisiones de producto tomadas por Lucy en sesión; implementación y certificación verificadas)
+
+**Contexto:** tras el paquete ADR-101, Lucy validó STG y pidió explícitamente: "certificar profundamente que todos los ambientes estén verdaderamente homologados, incluyendo DB", reportando que PRD no reflejaba los cambios (el código nuevo no se había liberado) y que las escenas 3D seguían desproporcionadas ("el mueble parece un closet", "los imanes no pueden quedar centrados en los bordes de las puertas", "mural totalmente desproporcionado"). También apareció un bug nuevo de regresión: el Estudio de tiras de 3 fotos ofrecía la plantilla de 4 fotos.
+
+**Decisión:**
+① **Homologación total certificable y repetible.** Los 3 ambientes (local/STG/PRD) se comparan por claves naturales (slug/sku/key) con `homologation-dump` + `homologation-diff` (one-shots), separando divergencias VIVAS de drift en filas archivadas (ruido histórico sin impacto). La normalización (`homologate-20260915`) espeja STG (referencia curada) con overrides explícitos. Criterio de aprobado: **0 divergencias vivas en los 3 pares** — alcanzado y re-verificado post-release.
+② **Decisiones comerciales de Lucy (2026-09-15):** Calendario Magnético oficial **$37.900** (tachado $42.900; variante MAG $39.900/$44.900, NOMAG $37.900/$42.900) — se homologó el precio de STG a PRD y local. **Nombre Personalizado: ACTIVO en los 3 ambientes.** **COD (contraentrega): apagada en los 3** (local la tenía activa de desarrollo). Fix sin pregunta por evidencia (ola19 + lenguaje de la dueña): separadores magnéticos "6x2" → **"2×6 cm"** (drift manual en STG/PRD que además volteaba la pieza en el 3D).
+③ **El mueble 3D debe ser realista para el producto.** Nevera: top-freezer 170×68 → **French door 178×91×75 cm** (2 puertas top ~68% + gaveta freezer + dispensador), clúster repartido **por puerta** (`frenchDoorClusterLayout`) con la regla física "ningún imán sobre la junta" blindada con test (`expectNeverOnSeam`). Mural: tablerito ~45 cm → **corcho de pared 120×80 cm** (12 tiras = grilla 6×2 dentro, sin desborde). Dimensiones como fuente única (`FRIDGE_SCENE`/`BOARD_SCENE`) con tests de proporción física.
+④ **Las plantillas declaran su composición.** `filterTemplatesByPhotoSlots` (template-visibility): la plantilla declara `photoSlots` en su canvasData y el Estudio oculta las que no matchean la variante elegida (tiras 3 vs 4 fotos — cada una cobra su precio). Sin marcador, la plantilla pasa siempre (curaduría manda; los packs no se afectan).
+⑤ **Gates locales alineados con CI.** Lección de los rojos del 2026-09-15: antes de cada push se corre también `format:check` y el ratchet `audit-content-coverage --check` (no solo typecheck/lint/test/build). El baseline CMS se regenera solo con `--write-baseline` cuando el cambio es legítimo.
+
+**Consecuencia:** la homologación deja de ser un evento y se vuelve un procedimiento verificable (scripts versionados + criterio de cero divergencias vivas); PRD quedó liberado con todo el paquete (develop = production); las escenas 3D tienen proporción física testeada; y la clase de bug "plantilla de otra composición" queda estructuralmente imposible donde haya marcador.
+
+---

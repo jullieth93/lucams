@@ -830,6 +830,7 @@ logger.info({ event: "order.created", orderId, customerId });
 ## Code style
 
 - **Prettier** (`pnpm format` / `format:check`, gate `format-check` en CI) + **ESLint** flat config (`eslint-config-next` core-web-vitals + typescript, más `no-restricted-imports` para sharp — F-4). Pre-commit hook versionado en `scripts/git-hooks/pre-commit` = scan de secretos con **gitleaks** (activar una vez por clone: `git config core.hooksPath scripts/git-hooks`); la capa forzosa es GitHub Push Protection + el job `secrets-scan` de CI.
+- **Gates ANTES de cada push (lección CI 2026-09-15):** `pnpm typecheck && pnpm lint && pnpm format:check && node packages/db/scripts/audit-content-coverage.mjs --check` + la suite de tests que aplique. El ratchet de cobertura CMS solo se regenera con `--write-baseline` cuando el cambio es legítimo (y se commitean juntos).
 - **TypeScript estricto:** `"strict": true` en `apps/web/tsconfig.json`.
 - **No usar `any`.** Si no hay tipo, usar `unknown` y narrow.
 - **Archivos < 400 líneas** (split en submódulos si crece).

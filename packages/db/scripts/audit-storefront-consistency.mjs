@@ -1,13 +1,19 @@
 /*
  * audit-storefront-consistency.mjs (2026-09-14) — barrido global admin↔PDP↔Estudio
- * (SOLO LECTURA). Cubre las clases de bugs del paquete 2026-09-14:
+ * (SOLO LECTURA). Cubre las clases de bugs del paquete 2026-09-14 (y 2026-09-15):
  *
  *   1. ESCALERAS: photoSlots no monótonos en precio (packs de tamaño variable).
  *   2. PROMO: drift entre product.compareAtPrice (denormalizado, lo usan las
- *      cards) y las compareAtPrice de las variantes (lo usa la PDP).
+ *      cards) y las compareAtPrice de las variantes. Desde 2026-09-15 la promo a
+ *      nivel PRODUCTO es válida (la PDP la muestra vía fallback, regla 4 de
+ *      resolvePromoDisplay) → se reporta como NOTA, no como inconsistencia.
  *   3. COBERTURA DE PLANTILLA: variante/producto cuyo aspectRatio NO matchea
  *      ninguna plantilla ACTIVA (tolerancia 0.05, regla template-visibility)
  *      → el Estudio caería al canvas cuadrado de respaldo (bug "Alargados").
+ *   3b. CONSISTENCIA FÍSICA DE LA CELDA (2026-09-15): en piezas 1-columna de N
+ *      celdas (photoSlots>1 y quantity=1 — tiras), el aspect físico por celda
+ *      (sizeCm ÷ photoSlots) debe cuadrar con el aspectRatio declarado (±0.05)
+ *      → si no, el 3D/WYSIWYG distorsionan (bug "tira 4 fotos 3:4").
  *   4. SANIDAD DE PLANTILLAS ACTIVAS: nombres duplicados dentro del mismo
  *      producto o preview placeholder (/brand/lucams-logo.png).
  *
