@@ -35,14 +35,66 @@ test.afterAll(async () => {
 });
 
 test("auditoría responsive E3 — storefront sin overflow en 4 anchos (gate)", async ({ page }) => {
-  // Un producto real publicado para PDP y Estudio.
-  const product = await prisma.product.findFirst({
-    where: { isActive: true, slug: { not: undefined } },
-    select: { slug: true },
-    orderBy: { createdAt: "asc" },
-  });
-  const slug = product?.slug;
-  if (!slug) throw new Error("No hay producto activo para la auditoría E3");
+  // Producto para la PDP: el primero activo del catálogo; si el ambiente no
+  // tiene (CI siembra placeholders isActive:false — el gate de PR falló el
+  // 2026-09-18 por eso), se crea una fixture efímera no-personalizable
+  // (patrón de compra.spec) y se borra al terminar.
+  let slug = (
+    await prisma.product.findFirst({
+      where: { isActive: true },
+      select: { slug: true },
+      orderBy: { createdAt: "asc" },
+    })
+  )?.slug;
+  let fixtureCategoryId: string | null = null;
+  let fixtureProductId: string | null = null;
+  if (!slug) {
+    const RUN = `e3-${Date.now()}`;
+    const category = await prisma.category.create({
+      data: { slug: `${RUN}-cat`, name: `Cat ${RUN}` },
+    });
+    fixtureCategoryId = category.id;
+    const product = await prisma.product.create({
+      data: {
+        slug: `${RUN}-simple`,
+        name: `E3 Simple ${RUN}`,
+        description: "Producto efímero para la auditoría E3.",
+        basePrice: 19_900,
+        sku: `${RUN}-SIMPLE`.toUpperCase(),
+        categoryId,
+        variants: {
+          create: [
+            {
+              name: "Default",
+              sku: `${RUN}-SIMPLE-DEFAULT`.toUpperCase(),
+              price: 19_900,
+              stock: 100,
+              attributes: {},
+            },
+          ],
+        },
+      },
+      select: { id: true, slug: true },
+    });
+    fixtureProductId = product.id;
+    slug = product.slug;
+  }
+  // Ruta del Estudio: solo si hay producto personalizable ACTIVO en el ambiente
+  // (local: sí; CI con placeholders: no — se reporta y sigue, patrón test.skip
+  // de estudio.spec; el lienzo del Estudio queda gateado por las 70 capturas
+  // de la auditoría de estudios y los specs de estudio).
+  const studioSlug = (
+    await prisma.product.findFirst({
+      where: { personalizationKind: { not: "NONE" }, isActive: true },
+      select: { slug: true },
+      orderBy: { createdAt: "asc" },
+    })
+  )?.slug;
+  if (!studioSlug) {
+    console.log(
+      "⚠️  sin producto personalizable activo: la ruta /estudio se omite en este ambiente",
+    );
+  }
 
   const ROUTES: { name: string; path: string; waitMs?: number }[] = [
     { name: "home", path: "/" },
@@ -51,7 +103,7 @@ test("auditoría responsive E3 — storefront sin overflow en 4 anchos (gate)", 
     { name: "carrito", path: "/carrito" },
     { name: "checkout", path: "/checkout" },
     // El Estudio es una app client pesada (canvas) — espera extra.
-    { name: "estudio", path: `/estudio/${slug}`, waitMs: 7000 },
+    ...(studioSlug ? [{ name: "estudio", path: `/estudio/${studioSlug}`, waitMs: 7000 }] : []),
   ];
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
@@ -65,43 +117,58 @@ test("auditoría responsive E3 — storefront sin overflow en 4 anchos (gate)", 
     status: number | null;
   }[] = [];
 
-  for (const vp of VIEWPORTS) {
-    await page.setViewportSize(vp);
-    for (const route of ROUTES) {
-      const resp = await page.goto(route.path, { waitUntil: "domcontentloaded" }).catch(() => null);
-      await page.waitForTimeout(route.waitMs ?? 3000);
-      const metrics = await page.evaluate(() => ({
-        scrollWidth: document.documentElement.scrollWidth,
-        clientWidth: document.documentElement.clientWidth,
-      }));
-      const shot = `${vp.width}/${route.name}.png`;
-      await page.screenshot({ path: path.join(OUT_DIR, shot), fullPage: true });
-      const horizontalOverflow = metrics.scrollWidth > metrics.clientWidth + 1;
-      summary.push({
-        route: route.path,
-        width: vp.width,
-        screenshot: `tmp/screenshots/e3/${shot}`,
-        horizontalOverflow,
-        scrollWidth: metrics.scrollWidth,
-        clientWidth: metrics.clientWidth,
-        status: resp?.status() ?? null,
-      });
-      console.log(
-        `${horizontalOverflow ? "❌ OVERFLOW" : "✅"} @${vp.width} ${route.path} — scrollW ${metrics.scrollWidth} / clientW ${metrics.clientWidth} (HTTP ${resp?.status() ?? "?"})`,
-      );
+  try {
+    for (const vp of VIEWPORTS) {
+      await page.setViewportSize(vp);
+      for (const route of ROUTES) {
+        const resp = await page
+          .goto(route.path, { waitUntil: "domcontentloaded" })
+          .catch(() => null);
+        await page.waitForTimeout(route.waitMs ?? 3000);
+        const metrics = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        }));
+        const shot = `${vp.width}/${route.name}.png`;
+        await page.screenshot({ path: path.join(OUT_DIR, shot), fullPage: true });
+        const horizontalOverflow = metrics.scrollWidth > metrics.clientWidth + 1;
+        summary.push({
+          route: route.path,
+          width: vp.width,
+          screenshot: `tmp/screenshots/e3/${shot}`,
+          horizontalOverflow,
+          scrollWidth: metrics.scrollWidth,
+          clientWidth: metrics.clientWidth,
+          status: resp?.status() ?? null,
+        });
+        console.log(
+          `${horizontalOverflow ? "❌ OVERFLOW" : "✅"} @${vp.width} ${route.path} — scrollW ${metrics.scrollWidth} / clientW ${metrics.clientWidth} (HTTP ${resp?.status() ?? "?"})`,
+        );
+      }
+    }
+
+    fs.writeFileSync(path.join(OUT_DIR, "summary.json"), JSON.stringify(summary, null, 2));
+    const failures = summary.filter((s) => s.horizontalOverflow);
+    console.log(
+      `\nRESUMEN E3: ${failures.length}/${summary.length} mediciones con overflow horizontal`,
+    );
+    // GATE (ci.yml, 2026-09-18): CERO overflow horizontal en cualquier ancho.
+    expect(
+      failures.map(
+        (f) => `@${f.width} ${f.route} (scrollW ${f.scrollWidth} > clientW ${f.clientWidth})`,
+      ),
+      `Overflow horizontal detectado:\n${failures.map((f) => `  @${f.width} ${f.route}`).join("\n")}`,
+    ).toEqual([]);
+  } finally {
+    // La fixture efímera se borra pase o falle el gate.
+    if (fixtureProductId) {
+      await prisma.productVariant
+        .deleteMany({ where: { productId: fixtureProductId } })
+        .catch(() => {});
+      await prisma.product.delete({ where: { id: fixtureProductId } }).catch(() => {});
+    }
+    if (fixtureCategoryId) {
+      await prisma.category.delete({ where: { id: fixtureCategoryId } }).catch(() => {});
     }
   }
-
-  fs.writeFileSync(path.join(OUT_DIR, "summary.json"), JSON.stringify(summary, null, 2));
-  const failures = summary.filter((s) => s.horizontalOverflow);
-  console.log(
-    `\nRESUMEN E3: ${failures.length}/${summary.length} mediciones con overflow horizontal`,
-  );
-  // GATE (ci.yml, 2026-09-18): CERO overflow horizontal en cualquier ancho.
-  expect(
-    failures.map(
-      (f) => `@${f.width} ${f.route} (scrollW ${f.scrollWidth} > clientW ${f.clientWidth})`,
-    ),
-    `Overflow horizontal detectado:\n${failures.map((f) => `  @${f.width} ${f.route}`).join("\n")}`,
-  ).toEqual([]);
 });
