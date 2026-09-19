@@ -23,8 +23,10 @@ del owner con spec de zoom y referencia **Magnéticos**): columnas por ancho obj
 producto en móvil, letras sin apretamiento — calendario intacto aprobado), PDP con primera
 variante preseleccionada, fix del guardado admin de productos (errores invisibles + trampa
 de dato legado + HTML5 en tabs ocultas) y RUM con el ELEMENTO del INP (`WebVital.target`).
-Evidencia: 70/70 estudios, 164/164 admin, 24/24 storefront sin overflow; unit 3931+ verde;
-sonda px: polaroid/cuadrados 448px @1280. Detalle:
+Evidencia: 70/70 estudios, 164/164 admin, 24/24 storefront sin overflow; unit 3936+ verde;
+sonda px: polaroid/cuadrados 448px @1280. **VALIDADO por Lucy en STG (2026-09-18:
+"aparentemente todo Ok"); CI develop 100% verde. Pendiente: liberación a PRD (decisión de
+Lucy) y revisión RUM de INP en ~1 semana.** Detalle:
 `docs/audits/2026-09-18-responsive-ux-estudios-admin.md`.
 
 **📦 2026-09-15 — PAQUETE FOTOIMANES-PACKS + COHERENCIA CATÁLOGO/ESTUDIO/ADMIN (ADR-101)
@@ -216,6 +218,22 @@ sanciona testimonios inventados como publicidad engañosa); ④ crecimiento: **s
 la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia verificados; cuando haya
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
+
+## Sesión — 2026-09-18 (5) — STG VALIDADO por Lucy + estado real de CI
+
+- **Lucy validó STG: "aparentemente todo Ok"** (los 2 paquetes responsive, ADR-103/104).
+  La auditoría §E queda con validación del owner superada; pendientes para su cierre total:
+  liberación a PRD (decisión de Lucy) y revisión RUM de INP en ~1 semana.
+- **Estado real de CI (pregunta de Lucy "¿hay que ajustar los CI?"): NO hace falta ajuste.**
+  Los 3 rojos de la racha tenían causa distinta y ya están resueltos: ① #935/#937 = bugs
+  REALES del gate nuevo (spec asumía catálogo activo en CI + shorthand `categoryId` sin
+  variable) — corregidos en `6bdfb6a`/`5b20fd9`; ② #939 = flake de INFRA (`ECONNRESET`
+  subiendo el artifact de gitleaks — el scan mismo reportó "no leaks found") → re-run
+  manual y quedó 7/7 verde; ③ PR #51 de dependabot = heredó el gate roto de `e84848d`
+  (brancheó antes del fix) → `@dependabot rebase` disparado, su CI re-corre con el gate
+  ya corregido. Develop queda 100% verde en `c5f65f8`.
+- Regla reforzada (queda acá): tras CADA edit correr typecheck — el rojo de `categoryId`
+  llegó a CI por no re-correrlo tras un edit "menor".
 
 ## Sesión — 2026-09-18 (4) — Release a STG del paquete responsive (ADR-103/104)
 

@@ -7,10 +7,11 @@
 > ② no limitarse a sus comentarios — auditar más allá. Más dos avisos de Vercel: INP alto
 > en `main#contenido` (home) y CSP sin dominios de la Vercel Toolbar.
 >
-> **Estado:** ✅ **REMEDIADA** el 2026-09-18 (dos rondas en la misma iniciativa; la ronda 2
-> nace de la validación del owner sobre la ronda 1 — ver §E). Decisiones en **ADR-103** y
-> **ADR-104** (DECISIONS.md). Changelog técnico del estudio: "Olas 31-34" en
-> `apps/web/app/estudio/[slug]/README.md`.
+> **Estado:** ✅ **REMEDIADA y VALIDADA por el owner en STG** el 2026-09-18 (dos rondas en la
+> misma iniciativa; la ronda 2 nace de la validación del owner sobre la ronda 1 — ver §E).
+> Pendientes de consolidación: liberación a PRD y revisión RUM de INP en ~1 semana (§D).
+> Decisiones en **ADR-103** y **ADR-104** (DECISIONS.md). Changelog técnico del estudio:
+> "Olas 31-34" en `apps/web/app/estudio/[slug]/README.md`.
 
 ## A. Alcance y método
 
@@ -170,10 +171,13 @@ parciales del abecedario también centran).
 
 ## D. Cierre y deuda residual
 
-**Cerrado al 100% en código local.** Para que la auditoría quede absorbida por los docs
-canónicos falta: ① desplegar y revisar en ~1 semana Vercel Speed Insights (p75 INP de
-`#contenido`) — si no mejora, ejecutar la fase 2 de B-7; ② confirmar en un preview que la
-Vercel Toolbar carga sin errores CSP en consola.
+**Cerrado al 100% en código y VALIDADO por el owner en STG (2026-09-18, "aparentemente todo
+Ok")** — release a STG en los commits `4ed8887`/`73b66e3`/`e84848d` (+2 fixes del gate e2e)
+con CI 7/7 verde y migración `WebVital.target` aplicada en STG. Para la consolidación final
+de la auditoría falta: ① liberación a PRD (decisión del owner); ② revisar en ~1 semana
+Vercel Speed Insights (p75 INP de `#contenido`, ahora con el elemento exacto en
+`WebVital.target`) — si no mejora, ejecutar la fase 2 de B-7/E-4; ③ confirmación visual de
+la Vercel Toolbar en el preview (el despliegue ya sirve la CSP ampliada).
 
 **Deuda anotada (no crítica):**
 - Estético admin: aviso "lista publicada / Publicar nueva versión" en 3 columnas apretadas a
