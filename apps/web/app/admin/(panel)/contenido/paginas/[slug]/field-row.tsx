@@ -34,6 +34,8 @@ export type InlineField = {
   helpText: string | null;
   /** Valor a mostrar: el publicado si existe, si no el borrador. */
   value: string;
+  /** Valor publicado (lo que el sitio muestra AHORA); null si nunca se publicó. */
+  publishedValue: string | null;
   /** true cuando lo mostrado es el borrador (nada publicado aún). */
   showingDraft: boolean;
   /** Hay una versión más nueva que la publicada (o nunca se publicó). */
@@ -73,6 +75,20 @@ export function FieldRow({
     if (state?.ok) queueMicrotask(() => setSavedValue(value));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
+
+  useEffect(() => {
+    // Si el servidor re-renderiza con OTRO valor (publicar/despublicar desde la
+    // misma fila, "Actualizar caché", o edición hecha en otra sesión) y no hay
+    // una edición en curso, sincroniza el input — antes el useState inicial
+    // quedaba congelado con el valor viejo (feedback Lucy 2026-09-18).
+    if (field.value !== savedValue && value === savedValue) {
+      queueMicrotask(() => {
+        setValue(field.value);
+        setSavedValue(field.value);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [field.value]);
 
   const canPublish = field.kind === "BLOCK" && field.hasDraft && latestVersionId;
 
@@ -138,6 +154,21 @@ export function FieldRow({
         </div>
         {field.helpText && <p className="text-brand-muted mt-0.5 text-xs">{field.helpText}</p>}
         <p className="text-brand-muted mt-0.5 font-mono text-[10px]">{field.key}</p>
+        {/* Lucy 2026-09-18 — el «label» de campos como «Guardando...» ES el texto
+            original sembrado y no cambia al editar; esta línea muestra explícito
+            qué valor está VIVO en el sitio para que no se confunda con el label. */}
+        {field.publishedValue !== null && (
+          <p className="text-brand-muted mt-1 text-xs">
+            En el sitio ahora:{" "}
+            <span className="text-brand-purple-dark font-medium">
+              «
+              {field.publishedValue.length > 90
+                ? `${field.publishedValue.slice(0, 90)}…`
+                : field.publishedValue}
+              »
+            </span>
+          </p>
+        )}
       </div>
 
       <div className="w-full max-w-md space-y-2">

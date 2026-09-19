@@ -58,6 +58,32 @@ const NAV = getAdminNav();
 // Alias local para compatibilidad con el código que usaba `Badge`.
 type Badge = NavBadge;
 
+/*
+ * Ítem activo = el href MÁS ESPECÍFICO del nav que coincide con el pathname.
+ * Antes cada ítem se marcaba con `pathname.startsWith(href + "/")` y, como
+ * /admin/finanzas es prefijo de /admin/finanzas/conciliacion (ídem
+ * /admin/contenido vs /admin/contenido/paginas/global), quedaban 2-4 filas
+ * blancas "activas" a la vez (feedback Lucy 2026-09-18). Ahora se recorren
+ * todos los hrefs y solo gana el más largo que matchee.
+ */
+const ALL_NAV_HREFS: string[] = NAV.flatMap((g) => [
+  ...(g.href ? [g.href] : []),
+  ...(g.items ?? []).map((it) => it.href),
+]);
+
+function activeNavHref(pathname: string): string | null {
+  let best: string | null = null;
+  for (const href of ALL_NAV_HREFS) {
+    if (
+      (pathname === href || pathname.startsWith(href + "/")) &&
+      (best === null || href.length > best.length)
+    ) {
+      best = href;
+    }
+  }
+  return best;
+}
+
 // ─────────────────── Role badges (sidebar footer) ───────────────────
 // Diccionario único compartido (lib/admin-roles) — antes el sidebar usaba
 // valores de enum inexistentes y no coincidía con /admin/usuarios.
@@ -263,6 +289,7 @@ function SidebarContent({
   unreadNotifications: number;
   onNavigate: () => void;
 }) {
+  const activeHref = activeNavHref(pathname);
   return (
     <div className="relative z-10 flex h-full flex-col overflow-y-auto">
       {/* Header brand */}
@@ -292,7 +319,7 @@ function SidebarContent({
             <NavGroupItem
               key={group.title}
               group={group}
-              pathname={pathname}
+              activeHref={activeHref}
               unreadNotifications={unreadNotifications}
               onNavigate={onNavigate}
             />
@@ -405,19 +432,17 @@ function UnreadNotificationsPill({ count }: { count: number }) {
 
 function NavGroupItem({
   group,
-  pathname,
+  activeHref,
   unreadNotifications,
   onNavigate,
 }: {
   group: NavGroup;
-  pathname: string;
+  activeHref: string | null;
   unreadNotifications: number;
   onNavigate: () => void;
 }) {
   if (!group.items) {
-    const isActive = group.href
-      ? pathname === group.href || pathname.startsWith(group.href + "/")
-      : false;
+    const isActive = group.href != null && group.href === activeHref;
     const Icon = group.icon;
     const isSoon =
       group.badge?.tone === "soon" ||
@@ -461,7 +486,7 @@ function NavGroupItem({
   return (
     <NavGroupExpandable
       group={group}
-      pathname={pathname}
+      activeHref={activeHref}
       unreadNotifications={unreadNotifications}
       onNavigate={onNavigate}
     />
@@ -470,17 +495,17 @@ function NavGroupItem({
 
 function NavGroupExpandable({
   group,
-  pathname,
+  activeHref,
   unreadNotifications,
   onNavigate,
 }: {
   group: NavGroup;
-  pathname: string;
+  activeHref: string | null;
   unreadNotifications: number;
   onNavigate: () => void;
 }) {
   const items = group.items ?? [];
-  const hasActive = items.some((it) => pathname === it.href || pathname.startsWith(it.href + "/"));
+  const hasActive = items.some((it) => it.href === activeHref);
   const [open, setOpen] = useState(group.defaultOpen ?? hasActive);
   const Icon = group.icon;
 
@@ -503,7 +528,7 @@ function NavGroupExpandable({
       {open && (
         <ul className="mt-0.5 ml-3 flex flex-col gap-0.5 border-l border-white/20 pl-2">
           {items.map((it) => {
-            const isActive = pathname === it.href || pathname.startsWith(it.href + "/");
+            const isActive = it.href === activeHref;
             const isSoon =
               it.badge?.tone === "soon" ||
               it.badge?.tone === "phase4" ||

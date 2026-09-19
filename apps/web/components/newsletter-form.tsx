@@ -53,7 +53,7 @@ export function NewsletterForm({
           required
           placeholder="tu-email@ejemplo.com"
           disabled={pending}
-          className="bg-white"
+          className="text-brand-purple-dark bg-white"
         />
         <Button
           type="submit"

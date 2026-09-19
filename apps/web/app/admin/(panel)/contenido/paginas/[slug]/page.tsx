@@ -161,6 +161,25 @@ export default async function EditarPaginaCmsPage({
       />
 
       <AdminPageBody>
+        {/* Fase 4 (feedback Lucy 2026-09-18): la página "emails" del CMS solo
+            edita asunto/preheader del newsletter welcome (Ruta A). El módulo
+            nuevo /admin/email-templates cubre TODAS las plantillas con preview
+            y overrides — se enlaza acá para que quien llegue por el camino
+            viejo lo encuentre. Este editor sigue funcionando igual. */}
+        {page.slug === "emails" && (
+          <AdminNotice tone="info">
+            Acá editas el asunto y preheader de la <strong>bienvenida al newsletter</strong>. Para
+            ver y editar <strong>todas</strong> las plantillas de correo (con vista previa y envío
+            de prueba), ve a{" "}
+            <Link
+              href="/admin/email-templates"
+              className="font-semibold underline underline-offset-2"
+            >
+              Plantillas de correo
+            </Link>
+            .
+          </AdminNotice>
+        )}
         {justPublished && (
           <AdminNotice tone="success">Publicado. Los cambios ya se ven en el sitio.</AdminNotice>
         )}
@@ -291,6 +310,7 @@ export default async function EditarPaginaCmsPage({
                             label: f.label,
                             helpText: f.helpText,
                             value: publishedBody ?? f.body,
+                            publishedValue: publishedBody,
                             showingDraft: publishedBody === null,
                             hasDraft,
                             isPublished: f.isPublished,

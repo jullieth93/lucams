@@ -51,6 +51,7 @@ import {
   type PanelStatus,
 } from "@/lib/integration-health";
 import { isCatalogMode } from "@/lib/store-mode";
+import { getTrustedSelfBaseUrl, vercelBypassHeaders } from "@/lib/origin";
 
 export const metadata: Metadata = {
   title: "Integraciones",
@@ -135,10 +136,30 @@ async function probeHealth(
   try {
     const r = await fetch(`${baseUrl}${endpoint}`, {
       cache: "no-store",
+      // Mismos guards que /api/health/all: `manual` porque un 3xx aquí es una
+      // interposición (Deployment Protection de Vercel); seguirlo devolvía el
+      // HTML del login y r.json() explotaba con "Unexpected token '<' ...".
+      redirect: "manual",
+      headers: vercelBypassHeaders(),
       signal: AbortSignal.timeout(6000),
     });
     const latencyMs = Date.now() - start;
+    if (r.status >= 300 && r.status < 400) {
+      return {
+        status: "fail",
+        detail: `HTTP ${r.status} — redirección inesperada (¿Deployment Protection?)`,
+        latencyMs,
+      };
+    }
     if (!r.ok) return { status: "fail", detail: `HTTP ${r.status}`, latencyMs };
+    const contentType = r.headers.get("content-type") ?? "";
+    if (!contentType.includes("json")) {
+      return {
+        status: "fail",
+        detail: `respuesta no-JSON (content-type: ${contentType.split(";")[0] || "desconocido"})`,
+        latencyMs,
+      };
+    }
     const data = (await r.json()) as { status?: string; detail?: string };
     if (data.status === "ok") return { status: "ok", latencyMs };
     if (data.status === "skipped")
@@ -161,7 +182,8 @@ export default async function AdminIntegracionesPage() {
   // oculta esta página; esto cierra también el acceso por URL directa.
   if (isCatalogMode()) redirect("/admin/dashboard");
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4000";
+  // ADR-062: base de self-fetch confiable (env del deployment), no spoofable.
+  const baseUrl = getTrustedSelfBaseUrl();
 
   const supabaseConfigured = envConfigured([
     "NEXT_PUBLIC_SUPABASE_URL",

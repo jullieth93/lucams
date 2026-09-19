@@ -1400,14 +1400,14 @@ export function StudioStageZoomControl({
 }) {
   const texts = useStudioTexts();
   const zoomButtonClass =
-    "text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-9 w-9 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent";
+    "text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40 disabled:hover:bg-transparent sm:h-9 sm:w-9";
   return (
     <div
       role="group"
       aria-label={fillStudioText(texts.lienzo.stageZoomTitle, {
         pct: Math.round(zoom * 100),
       })}
-      className="ring-brand-purple/15 inline-flex h-12 items-center gap-0.5 rounded-full bg-white px-1.5 shadow-xl ring-4"
+      className="ring-brand-purple/15 inline-flex h-11 items-center gap-0.5 rounded-full bg-white px-1 shadow-xl ring-2 sm:h-12 sm:px-1.5 sm:ring-4"
     >
       <button
         type="button"
@@ -1420,7 +1420,7 @@ export function StudioStageZoomControl({
         <Minus className="h-4 w-4" aria-hidden />
       </button>
       <span
-        className="text-brand-purple-dark w-11 text-center text-xs font-bold tabular-nums"
+        className="text-brand-purple-dark w-9 text-center text-xs font-bold tabular-nums sm:w-11"
         aria-hidden
       >
         {Math.round(zoom * 100)}%

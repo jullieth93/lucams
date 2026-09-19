@@ -1523,9 +1523,11 @@ export function StudioEditor({
               Lucy 2026-09-08 — separación vertical real respecto al lienzo (mb-6/lg:mb-8):
               con mb-2 los pills (h-12 + ring-4) quedaban pegados al borde superior del canvas.
               Ola 32 (owner 2026-09-18) — chrome móvil compacto: a 375px la fila envolvía en
-              2-3 líneas y el lienzo quedaba bajo el fold. En <sm UNA sola fila con scroll
-              horizontal (los pills conservan su h-12 ≥44px); ≥sm el wrap centrado de siempre. */}
-          <div className="mt-1 mb-3 flex flex-nowrap items-center gap-2 overflow-x-auto px-4 sm:mt-2 sm:mb-6 sm:flex-wrap sm:justify-center sm:overflow-visible lg:mb-8 [&>*]:shrink-0">
+              2-3 líneas y el lienzo quedaba bajo el fold. Ola 32b (mismo día, feedback visual):
+              el scroll horizontal se veía roto ("se sale de pantalla"). Ahora los pills son
+              compactos en <sm (h-11 = 44px de target, px-3, text-xs, ring-2) y la fila envuelve
+              centrada sin scroll; ≥sm conserva el tamaño original (h-12, ring-4). */}
+          <div className="mt-1 mb-3 flex flex-wrap items-center justify-center gap-1.5 px-2 sm:mt-2 sm:mb-6 sm:gap-2 sm:px-4 lg:mb-8">
             {aiEnabled && (
               <button
                 type="button"
@@ -1534,9 +1536,9 @@ export function StudioEditor({
                 // texto de 14px). Se baja al tono de tinta YA existente (ADR-044): 5.31:1. La paleta
                 // no se toca. El nombre accesible sale del CONTENIDO (no de aria-label) para que
                 // contenga el texto visible — WCAG 2.5.3, control por voz dice lo que ve.
-                className="bg-brand-pink-ink ring-brand-pink-ink/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
+                className="bg-brand-pink-ink ring-brand-pink-ink/25 inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white shadow-xl ring-2 transition-transform hover:scale-105 active:scale-95 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm sm:ring-4"
               >
-                <Sparkles className="h-5 w-5" aria-hidden />
+                <Sparkles className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
                 <span>{texts.lienzo.btnIdeas}</span>
                 <span className="sr-only">&nbsp;{texts.lienzo.ideasSr}</span>
               </button>
@@ -1547,14 +1549,14 @@ export function StudioEditor({
                 onClick={handleOpenCalendar3D}
                 disabled={calendarBuilding}
                 aria-busy={calendarBuilding}
-                className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60"
+                className="bg-brand-purple ring-brand-purple/25 inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white shadow-xl ring-2 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm sm:ring-4"
               >
                 {/* Lucy 2026-09-09 — spinner visible mientras se componen las 12 tarjetas
                     (antes solo cambiaba el texto y parecía no haber pasado nada). */}
                 {calendarBuilding ? (
-                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                  <Loader2 className="h-4 w-4 animate-spin sm:h-5 sm:w-5" aria-hidden />
                 ) : (
-                  <CalendarDays className="h-5 w-5" aria-hidden />
+                  <CalendarDays className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
                 )}
                 <span>{calendarBuilding ? texts.comun.armando : texts.lienzo.btnCalendario}</span>
                 <span className="sr-only">{texts.lienzo.calBtnSr}</span>
@@ -1565,12 +1567,12 @@ export function StudioEditor({
                 onClick={handleOpen3D}
                 disabled={bookBuilding}
                 aria-busy={bookBuilding}
-                className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60"
+                className="bg-brand-purple ring-brand-purple/25 inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white shadow-xl ring-2 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm sm:ring-4"
               >
                 {bookBuilding ? (
-                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                  <Loader2 className="h-4 w-4 animate-spin sm:h-5 sm:w-5" aria-hidden />
                 ) : (
-                  <Box className="h-5 w-5" aria-hidden />
+                  <Box className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
                 )}
                 <span>{bookBuilding ? texts.comun.armando : texts.lienzo.btnLibro}</span>
                 <span className="sr-only">&nbsp;{texts.lienzo.libroBtnSr}</span>
@@ -1582,12 +1584,12 @@ export function StudioEditor({
                 onClick={handleOpenScene}
                 disabled={sceneBuilding}
                 aria-busy={sceneBuilding}
-                className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60"
+                className="bg-brand-purple ring-brand-purple/25 inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-white shadow-xl ring-2 transition-transform hover:scale-105 active:scale-95 disabled:scale-100 disabled:opacity-60 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm sm:ring-4"
               >
                 {sceneBuilding ? (
-                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                  <Loader2 className="h-4 w-4 animate-spin sm:h-5 sm:w-5" aria-hidden />
                 ) : (
-                  <Box className="h-5 w-5" aria-hidden />
+                  <Box className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
                 )}
                 <span>{sceneBuilding ? texts.comun.armando : texts.lienzo.btnEspacio}</span>
                 <span className="sr-only">{texts.lienzo.espacioBtnSr}</span>
