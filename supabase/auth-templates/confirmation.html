@@ -1,0 +1,40 @@
+<!doctype html>
+<!--
+  Plantilla de confirmación de correo (Supabase Auth → OTP) — PRODUCCIÓN.
+  Se sube al proyecto Supabase cloud con scripts/supabase-auth-email-config.mjs
+  (Management API). Las de supabase-local/supabase/templates/ son solo del
+  stack local. Variables Go template disponibles: {{ .Token }}, {{ .Email }},
+  {{ .SiteURL }}. NO incluir link de confirmación: Gmail hace prefetch de las
+  URLs y consumía el token antes del usuario (por eso el flujo es OTP).
+-->
+<html lang="es">
+  <body style="margin:0;padding:0;background:#FFF8F0;font-family:Arial,Helvetica,sans-serif;">
+    <div style="max-width:520px;margin:0 auto;padding:24px 16px;">
+      <div style="background:#3D2E5C;border-radius:16px 16px 0 0;padding:24px;text-align:center;">
+        <div style="font-size:28px;">💜</div>
+        <div style="color:#FFFFFF;font-size:20px;font-weight:bold;letter-spacing:0.5px;">
+          Lucams_shop
+        </div>
+      </div>
+      <div style="background:#FFFFFF;padding:32px 28px;border-radius:0 0 16px 16px;border:1px solid #EFE6F7;border-top:none;">
+        <h1 style="margin:0 0 12px;font-size:20px;color:#3D2E5C;">Confirma tu correo</h1>
+        <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#3D2E5C;">
+          Hola 👋 Gracias por crear tu cuenta. Tu código de confirmación es:
+        </p>
+        <div style="background:#FFF8F0;border:2px dashed #7C6AAD;border-radius:12px;padding:18px;text-align:center;margin:0 0 20px;">
+          <span style="font-size:34px;font-weight:bold;letter-spacing:6px;color:#3D2E5C;">{{ .Token }}</span>
+        </div>
+        <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#3D2E5C;">
+          Ingrésalo en la pantalla de confirmación que tienes abierta. El código expira en pocos minutos.
+        </p>
+        <p style="margin:0;font-size:13px;line-height:1.6;color:#8A7FA8;">
+          Si no creaste esta cuenta, ignora este correo: nadie podrá usarlo sin el código.
+        </p>
+      </div>
+      <p style="margin:16px 0 0;font-size:11px;line-height:1.5;color:#8A7FA8;text-align:center;">
+        Lucams_shop (persona natural) · Bogotá D.C., Colombia ·
+        <a href="mailto:hola@lucamsshop.com" style="color:#7C6AAD;">hola@lucamsshop.com</a>
+      </p>
+    </div>
+  </body>
+</html>
