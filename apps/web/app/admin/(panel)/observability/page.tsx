@@ -25,9 +25,11 @@ import {
   Mail,
   DatabaseBackup,
   Radar,
+  HardDrive,
+  ChevronDown,
 } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
-import { getTechHealth } from "@/features/observability/service";
+import { getStorageQuota, getTechHealth } from "@/features/observability/service";
 import { getDailySummary } from "@/features/observability/daily-summary";
 import { getSloStatus, type SloResult } from "@/features/observability/slos";
 import {
@@ -52,9 +54,16 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
   minute: "2-digit",
 });
 
+/** Bytes → texto corto para el tile de Storage (KB/MB/GB con 1 decimal). */
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.round(bytes / 1024)} KB`;
+}
+
 export default async function AdminObservabilityPage() {
   await requireRole(["SUPERADMIN"]);
-  const [h, ops, slos, crons, email, backup, monitor] = await Promise.all([
+  const [h, ops, slos, crons, email, backup, monitor, storage] = await Promise.all([
     getTechHealth(),
     getDailySummary(),
     getSloStatus(),
@@ -62,6 +71,7 @@ export default async function AdminObservabilityPage() {
     getEmailDeliverabilityStats(),
     getBackupHealth(),
     getMonitorHealth(),
+    getStorageQuota(),
   ]);
   const revenue = `$${Math.round(ops.revenueLast24hCop / 100).toLocaleString("es-CO")}`;
   const recoveryPct =
@@ -211,13 +221,60 @@ export default async function AdminObservabilityPage() {
         </Section>
 
         {/*
+         * Fase 3D — cuota de Supabase Storage por bucket. Va FUERA del
+         * <details> técnico a propósito (mismo criterio que entregabilidad):
+         * llenar el plan Free (1 GB) tumba las subidas de fotos de clientas —
+         * es negocio, no solo técnica. Los bytes salen SOLO de tablas de la
+         * app (la Management API de Supabase no está disponible en runtime);
+         * los buckets sin bytes guardados se reportan como "N archivos".
+         */}
+        <Section title="Almacenamiento (Supabase Storage)" icon={<HardDrive className="h-4 w-4" />}>
+          <div className="flex flex-wrap gap-3 text-sm">
+            {storage.buckets.map((b) => (
+              <VitalPill
+                key={b.bucket}
+                label={b.bucket}
+                value={
+                  b.bytes !== null
+                    ? `${formatBytes(b.bytes)} · ${b.files} archivo${b.files === 1 ? "" : "s"}`
+                    : `${b.files} archivo${b.files === 1 ? "" : "s"}`
+                }
+                tone="slate"
+              />
+            ))}
+            <VitalPill
+              label="Total medido"
+              value={formatBytes(storage.measuredBytes)}
+              tone={storage.measuredBytes > 800 * 1024 * 1024 ? "amber" : "emerald"}
+            />
+          </div>
+          <p className="text-brand-muted mt-2 text-xs">
+            El total suma solo los buckets que guardan el tamaño de cada archivo en la base de datos
+            (<code>customer-uploads</code> y <code>cms-media</code>) — es un piso: las vistas
+            previas, los PNG de producción y las fotos de producto se cuentan por archivos porque su
+            tamaño no está registrado. Límite del plan Supabase: <strong>1 GB (Free)</strong> ·{" "}
+            <strong>100 GB (Pro)</strong>. Si el total se acerca al límite, limpia la mediateca (
+            <Link
+              href="/admin/contenido/mediateca"
+              className="text-brand-purple-dark hover:text-brand-purple font-semibold underline"
+            >
+              filtro «Sin uso»
+            </Link>
+            ) o sube de plan.
+          </p>
+        </Section>
+
+        {/*
          * H4 — todo lo puramente técnico (SLOs, webhooks, crons, errores,
          * Web Vitals) queda colapsado: Lucy ve los tiles operativos de arriba
          * y soporte abre esto cuando lo necesita. <details> nativo, sin JS.
          */}
-        <details className="mt-6">
-          <summary className="text-brand-purple-dark mb-2 flex cursor-pointer items-center gap-2 text-sm font-bold">
-            <Activity className="h-4 w-4" /> Detalle técnico (para soporte)
+        <details className="group mt-6">
+          <summary className="border-brand-purple/15 text-brand-purple-dark hover:border-brand-purple/35 mb-2 flex cursor-pointer items-center gap-2 rounded-lg border bg-white/70 px-4 py-3 text-sm font-bold shadow-sm transition-colors [&::-webkit-details-marker]:hidden">
+            <Activity className="h-4 w-4" />
+            <span className="flex-1">Detalle técnico (para soporte)</span>
+            <span className="text-brand-muted text-xs font-normal">Clic para desplegar</span>
+            <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
           </summary>
 
           {/* ─── SLOs (objetivos de nivel de servicio, de datos reales) ─── */}

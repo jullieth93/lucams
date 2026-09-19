@@ -26,12 +26,16 @@ const SHARED_PATHS = ["/admin/dashboard", "/admin/pedidos"];
 // Garantías: SUPER+MANAGER — la página y sus actions piden MANAGER_UP; antes la
 // ruta era ALL y FULFILLMENT rebotaba con ?denied=1 (N-21).
 const MANAGER_UP_PATHS = ["/admin/garantias"];
-// Contenido del sitio: SUPERADMIN + CMS_EDITOR (set CONTENT).
-const CONTENT_PATHS = ["/admin/contenido", "/admin/email-templates"];
+// Contenido del sitio: SUPERADMIN + CMS_EDITOR (set CONTENT). La página
+// "emails" del CMS (newsletter welcome, Ruta A) sigue acá; el módulo NUEVO
+// /admin/email-templates (Fase 4, 2026-09-18) subió a solo-SUPERADMIN.
+const CONTENT_PATHS = ["/admin/contenido"];
 // Autoservicio de cuenta (MFA obligatorio, B-1): los cuatro roles.
 const ACCOUNT_PATHS = ["/admin/seguridad"];
 // Rutas solo-SUPERADMIN: las NO listadas (deny-by-default) + /admin/retractos,
-// declarada explícita SUPER en la matriz (página y actions piden SUPER — N-21).
+// declarada explícita SUPER en la matriz (página y actions piden SUPER — N-21)
+// + /admin/email-templates (Fase 4: módulo real de plantillas — preview,
+// overrides y envío de prueba; ya no es el redirect legacy al CMS).
 const SUPERADMIN_ONLY_PATHS = [
   "/admin/finanzas",
   "/admin/cupones",
@@ -47,6 +51,7 @@ const SUPERADMIN_ONLY_PATHS = [
   "/admin/performance",
   "/admin/redirects",
   "/admin/retractos",
+  "/admin/email-templates",
 ];
 
 describe("canAccessAdminPath — SUPERADMIN", () => {
@@ -153,10 +158,17 @@ describe("canAccessAdminPath — FULFILLMENT", () => {
 });
 
 describe("canAccessAdminPath — CMS_EDITOR", () => {
-  it("permite contenido del sitio y plantillas de correo", () => {
+  it("permite contenido del sitio (incluye la página 'emails' del CMS)", () => {
     for (const p of CONTENT_PATHS) {
       expect(canAccessAdminPath("CMS_EDITOR", p)).toBe(true);
     }
+  });
+
+  it("NIEGA el módulo de plantillas de correo (Fase 4: subió a solo-SUPERADMIN)", () => {
+    expect(canAccessAdminPath("CMS_EDITOR", "/admin/email-templates")).toBe(false);
+    expect(canAccessAdminPath("CMS_EDITOR", "/admin/email-templates/order-confirmation")).toBe(
+      false,
+    );
   });
 
   it("permite subrutas del CMS (editor de página/campo, ajustes globales) y query", () => {
@@ -222,7 +234,8 @@ describe("canAccessAdminPath — matriz completa rol × ruta representativa", ()
     ["/admin/clientes", true, true, false, false],
     ["/admin/contenido", true, false, false, true],
     ["/admin/contenido/paginas/global", true, false, false, true],
-    ["/admin/email-templates", true, false, false, true],
+    // Fase 4 (2026-09-18): el módulo de plantillas es config sensible → SUPER.
+    ["/admin/email-templates", true, false, false, false],
     ["/admin/finanzas", true, false, false, false],
     ["/admin/usuarios", true, false, false, false],
     // B-1: autoservicio de cuenta (MFA obligatorio) → los cuatro roles.
@@ -442,13 +455,12 @@ describe("filterNavByRole — CMS_EDITOR", () => {
     expect(contenido?.items?.map((i) => i.href)).toEqual(["/admin/contenido"]);
   });
 
-  it("Configuración queda con 'Ajustes del sitio', 'Seguridad' (B-1) y 'Plantillas de correo'", () => {
+  it("Configuración queda con 'Ajustes del sitio' y 'Seguridad' (B-1); 'Plantillas de correo' ya no (Fase 4: solo SUPERADMIN)", () => {
     const out = filterNavByRole(buildNavConContenido(), "CMS_EDITOR");
     const config = out.find((g) => g.label === "Configuración");
     expect(config?.items?.map((i) => i.href)).toEqual([
       "/admin/contenido/paginas/global",
       "/admin/seguridad",
-      "/admin/email-templates",
     ]);
   });
 

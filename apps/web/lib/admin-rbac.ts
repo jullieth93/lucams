@@ -65,6 +65,8 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   { prefix: "/admin/retractos", roles: ["SUPERADMIN"] },
   { prefix: "/admin/soporte", roles: CATALOG },
   // Cotizaciones (Etapa 1): las mutaciones del service exigen MANAGER_UP.
+  // Oculto del nav (feedback Lucy 2026-09-18) pero la ruta sigue viva por URL
+  // directa (histórico Etapa 1), así que la matriz se conserva.
   { prefix: "/admin/cotizaciones", roles: CATALOG },
   // MANAGER_UP (= CATALOG): rutas cuyas actions ya exigen ADMIN_ROLE_SETS.MANAGER_UP
   // (reclamos, diseños/galería, fichas y plantillas del Estudio).
@@ -83,11 +85,18 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   { prefix: "/admin/ocasiones", roles: CATALOG },
   { prefix: "/admin/resenas", roles: CATALOG },
   { prefix: "/admin/clientes", roles: CATALOG },
+  // Marketing > Suscriptores (Fase 3A): misma matriz que Clientes — la página
+  // es solo lectura + export CSV sobre Consent NEWSLETTER, sin mutaciones.
+  { prefix: "/admin/marketing", roles: CATALOG },
   // Contenido del sitio (CMS v2): "Páginas del sitio" (/admin/contenido, incluye
-  // /admin/contenido/paginas/global = "Ajustes del sitio") y "Plantillas de
-  // correo" (/admin/email-templates, redirect legacy a /admin/contenido/paginas/emails).
+  // /admin/contenido/paginas/global = "Ajustes del sitio"). La página "emails"
+  // (asunto/preheader del newsletter welcome, Ruta A) sigue acá con CONTENT.
   { prefix: "/admin/contenido", roles: CONTENT },
-  { prefix: "/admin/email-templates", roles: CONTENT },
+  // Fase 4 (2026-09-18): /admin/email-templates dejó de ser redirect al CMS y
+  // es el módulo real de plantillas transaccionales (preview + overrides +
+  // envío de prueba). Como config sensible sube a SUPERADMIN — la misma barra
+  // que redirects/integraciones (deny-by-default del resto del panel).
+  { prefix: "/admin/email-templates", roles: ["SUPERADMIN"] },
   // Seguridad de la cuenta (MFA + recovery codes): abierta a TODOS los roles porque
   // el MFA es obligatorio para todo admin (B-1). Sin esta excepción, el redirect de
   // enrolamiento forzado del guard caería en el deny-by-default (loop con el home).

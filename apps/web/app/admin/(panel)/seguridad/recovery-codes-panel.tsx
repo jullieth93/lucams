@@ -3,26 +3,21 @@
 /*
  * <RecoveryCodesPanel> — generar/regenerar códigos de respaldo de MFA y
  * mostrarlos una sola vez (Lucy 2026-06-27).
+ * El bloque de "una sola vista" (grilla + copiar/descargar) lo comparte con el
+ * enrolamiento vía <RecoveryCodesReveal> (Fase 3B, feedback Lucy 2026-09-18).
  */
 
-import { useActionState, useState } from "react";
-import { Loader2, KeyRound, Copy, Check, AlertTriangle } from "lucide-react";
+import { useActionState } from "react";
+import { Loader2, KeyRound } from "lucide-react";
 import { generateRecoveryCodesAction, type RecoveryCodesState } from "./actions";
+import { RecoveryCodesReveal } from "./recovery-codes-reveal";
 
 export function RecoveryCodesPanel({ unusedCount }: { unusedCount: number }) {
   const [state, formAction, pending] = useActionState<RecoveryCodesState | null, FormData>(
     async () => generateRecoveryCodesAction(),
     null,
   );
-  const [copied, setCopied] = useState(false);
   const hasCodes = unusedCount > 0;
-
-  function copyAll(codes: string[]) {
-    navigator.clipboard?.writeText(codes.join("\n")).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
 
   return (
     <div className="space-y-3">
@@ -41,39 +36,7 @@ export function RecoveryCodesPanel({ unusedCount }: { unusedCount: number }) {
         )}
       </p>
 
-      {state?.codes && (
-        <div className="border-brand-purple/15 bg-brand-cream/40 rounded-lg border p-4">
-          <div className="mb-2 flex items-center gap-2 text-amber-700">
-            <AlertTriangle className="h-4 w-4" />
-            <span className="text-xs font-semibold">
-              Cópialos AHORA — no los volverás a ver. Si los regeneras, los anteriores dejan de
-              servir.
-            </span>
-          </div>
-          <ul className="grid grid-cols-1 gap-1.5 font-mono text-sm sm:grid-cols-2">
-            {state.codes.map((c) => (
-              <li
-                key={c}
-                className="text-brand-purple-dark rounded bg-white px-2 py-1 text-center tracking-wider"
-              >
-                {c}
-              </li>
-            ))}
-          </ul>
-          <button
-            type="button"
-            onClick={() => copyAll(state.codes!)}
-            className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 mt-3 inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-xs font-semibold"
-          >
-            {copied ? (
-              <Check className="h-3.5 w-3.5 text-emerald-600" />
-            ) : (
-              <Copy className="h-3.5 w-3.5" />
-            )}
-            {copied ? "¡Copiados!" : "Copiar todos"}
-          </button>
-        </div>
-      )}
+      {state?.codes && <RecoveryCodesReveal codes={state.codes} />}
 
       {state?.error && <p className="text-sm text-rose-600">{state.error}</p>}
 

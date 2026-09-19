@@ -9,25 +9,36 @@
  *   1. mfa.enroll({ factorType: 'totp' }) → QR + secret.
  *   2. Lucy escanea con Google Authenticator / Authy.
  *   3. Ingresa el código de 6 dígitos → mfa.challengeAndVerify → factor verificado.
- *   4. Recarga: el server marca "activado".
+ *   4. INMEDIATAMENTE se generan los códigos de respaldo (server action) y se
+ *      muestran UNA sola vez; sin marcar "Ya guardé mis códigos" no se puede
+ *      finalizar. Fase 3B (feedback Lucy 2026-09-18): antes el flujo pasaba
+ *      directo a "listo" y Lucy quedaba enrolada SIN códigos si no los generaba
+ *      a mano en el panel.
+ *   5. Recarga: el server marca "activado".
  *
  * Si pierde el teléfono: break-glass `make admin-mfa-reset EMAIL=...` (service role).
  */
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, ShieldCheck, ShieldAlert } from "lucide-react";
+import { Loader2, ShieldCheck, ShieldAlert, KeyRound } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
+import { generateRecoveryCodesAction } from "./actions";
+import { RecoveryCodesReveal } from "./recovery-codes-reveal";
 
 export function MfaEnroll() {
   const router = useRouter();
-  const [step, setStep] = useState<"idle" | "qr" | "done">("idle");
+  const [step, setStep] = useState<"idle" | "qr" | "codes" | "done">("idle");
   const [qrSvg, setQrSvg] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
   const [factorId, setFactorId] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // Paso "codes": códigos de respaldo recién generados (en claro, una sola vista).
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const [codesError, setCodesError] = useState<string | null>(null);
+  const [codesSaved, setCodesSaved] = useState(false);
 
   async function startEnroll() {
     setError(null);
@@ -55,6 +66,29 @@ export function MfaEnroll() {
     setStep("qr");
   }
 
+  /*
+   * Genera los códigos de respaldo tras verificar el TOTP. Se puede reintentar
+   * sin re-enrolar (el factor ya quedó verificado). Re-enroll: la regeneración
+   * REEMPLAZA los códigos anteriores — generateRecoveryCodes borra el set previo
+   * y crea uno nuevo en una transacción (features/admin-mfa/recovery-codes.ts).
+   */
+  async function loadCodes() {
+    setCodesError(null);
+    setPending(true);
+    try {
+      const res = await generateRecoveryCodesAction();
+      if (res.error || !res.codes) {
+        setCodesError(res.error ?? "No se pudieron generar los códigos de respaldo.");
+      } else {
+        setCodes(res.codes);
+      }
+    } catch {
+      setCodesError("No se pudieron generar los códigos de respaldo. Intenta de nuevo.");
+    } finally {
+      setPending(false);
+    }
+  }
+
   async function verify(e: React.FormEvent) {
     e.preventDefault();
     if (!factorId) return;
@@ -65,13 +99,20 @@ export function MfaEnroll() {
       factorId,
       code: code.trim(),
     });
-    setPending(false);
     if (verifyErr) {
+      setPending(false);
       setError(
         "Código incorrecto o vencido. Revisa el código actual en tu app e intenta de nuevo.",
       );
       return;
     }
+    // Factor verificado: el paso siguiente (códigos de respaldo) es OBLIGATORIO,
+    // no opcional — loadCodes maneja `pending` de aquí en adelante.
+    setStep("codes");
+    await loadCodes();
+  }
+
+  function finish() {
     setStep("done");
     router.refresh();
   }
@@ -82,6 +123,73 @@ export function MfaEnroll() {
         <ShieldCheck className="h-5 w-5" />
         ¡Listo! La verificación en 2 pasos quedó activada. La próxima vez que entres te pediremos el
         código.
+      </div>
+    );
+  }
+
+  if (step === "codes") {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <ShieldCheck className="h-5 w-5" />
+          Tu app de autenticación quedó vinculada. Falta un último paso.
+        </div>
+        <div className="flex items-center gap-2">
+          <KeyRound className="text-brand-muted h-5 w-5" />
+          <h3 className="text-brand-purple-dark font-semibold">Guarda tus códigos de respaldo</h3>
+        </div>
+        <p className="text-brand-purple-dark/70 text-sm">
+          Son tu única forma de entrar si pierdes el teléfono o cambias de app. Se muestran{" "}
+          <strong>una única vez</strong>: cópialos o descárgalos y guárdalos en un lugar seguro.
+        </p>
+
+        {pending && !codes && !codesError && (
+          <p className="text-brand-purple-dark/70 flex items-center gap-2 text-sm">
+            <Loader2 className="h-4 w-4 animate-spin" /> Generando tus códigos de respaldo…
+          </p>
+        )}
+
+        {codesError && (
+          <div className="space-y-2">
+            <p className="flex items-center gap-1 text-sm text-rose-600">
+              <ShieldAlert className="h-4 w-4" /> {codesError}
+            </p>
+            {/* El TOTP YA quedó verificado: reintentar NO repite el enrolamiento. */}
+            <button
+              type="button"
+              onClick={loadCodes}
+              disabled={pending}
+              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-md border bg-white px-4 py-2 text-sm font-semibold disabled:opacity-60"
+            >
+              {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Reintentar
+            </button>
+          </div>
+        )}
+
+        {codes && (
+          <RecoveryCodesReveal codes={codes}>
+            <div className="border-brand-purple/10 mt-4 space-y-3 border-t pt-4">
+              <label className="text-brand-purple-dark flex items-start gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={codesSaved}
+                  onChange={(ev) => setCodesSaved(ev.target.checked)}
+                  className="accent-brand-purple mt-0.5 h-4 w-4"
+                />
+                Ya guardé mis códigos de respaldo en un lugar seguro
+              </label>
+              <button
+                type="button"
+                onClick={finish}
+                disabled={!codesSaved}
+                className="bg-gradient-brand inline-flex h-10 items-center gap-1.5 rounded-md px-4 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                Finalizar
+              </button>
+            </div>
+          </RecoveryCodesReveal>
+        )}
       </div>
     );
   }

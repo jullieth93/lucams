@@ -175,8 +175,9 @@ test.describe("modo catálogo — panel admin", () => {
       totpSecret,
     });
 
-    // El sidebar muestra "Cotizaciones" como primer item de Ventas.
-    await expect(page.getByRole("link", { name: "Cotizaciones" }).first()).toBeVisible();
+    // Feedback Lucy 2026-09-18: "Cotizaciones" salió del sidebar en AMBOS modos
+    // (módulo heredado de Etapa 1); la página sigue viva por URL directa.
+    await expect(page.getByRole("link", { name: "Cotizaciones" })).toHaveCount(0);
 
     await page.goto("/admin/cotizaciones");
     await expect(page.getByRole("heading", { name: "Cotizaciones" })).toBeVisible();

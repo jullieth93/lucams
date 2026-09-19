@@ -4,6 +4,10 @@
  * Server action — crear cotización desde el carrito (Etapa 1, modo catálogo).
  *
  * Pipeline (mismo patrón que features/support/actions.ts):
+ *  0. Guard de modo (feedback Lucy 2026-09-18): la cotización SOLO existe en
+ *     modo catálogo. En modo tienda (full, Wompi/COD) se rechaza de entrada —
+ *     el QuoteForm ni se renderiza (isCatalogMode), así que un envío acá sería
+ *     un POST crafteado o un cliente con la página cacheada de Etapa 1.
  *  1. Valida con Zod (QuoteFormSchema).
  *  2. Exige la autorización de tratamiento de datos (Ley 1581) ANTES de persistir la PII.
  *  3. Turnstile anti-bot (en dev sin secret pasa automáticamente).
@@ -26,6 +30,7 @@ import { logger } from "@/lib/logger";
 import { getClientIp } from "@/lib/client-ip";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { getOrCreateCartSession } from "@/lib/cart-session";
+import { isCatalogMode } from "@/lib/store-mode";
 import { QuoteFormSchema, type QuoteFormInput } from "./schemas";
 import { QuoteError, createQuoteFromCart } from "./service";
 import { sendQuoteAdminNotification } from "./emails";
@@ -45,6 +50,13 @@ export async function createQuoteAction(
   _prev: QuoteActionState,
   formData: FormData,
 ): Promise<QuoteActionState> {
+  // Guard de modo (feedback Lucy 2026-09-18): en modo tienda no se crean
+  // cotizaciones — el canal es el checkout con pago (Wompi/COD). Va PRIMERO,
+  // antes de validar o tocar PII: la creación no aplica en este modo, punto.
+  if (!isCatalogMode()) {
+    return { ok: false, error: "Las cotizaciones no están disponibles en modo tienda." };
+  }
+
   const parsed = QuoteFormSchema.safeParse({
     customerName: String(formData.get("customerName") ?? "").trim(),
     customerWhatsapp: String(formData.get("customerWhatsapp") ?? "").trim(),

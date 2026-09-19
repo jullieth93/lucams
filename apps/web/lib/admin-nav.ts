@@ -57,6 +57,8 @@ import {
   Image,
   Bell,
   LayoutTemplate,
+  Megaphone,
+  MailCheck,
 } from "lucide-react";
 import { isCatalogMode } from "@/lib/store-mode";
 
@@ -107,15 +109,12 @@ export const ADMIN_NAV: NavGroup[] = [
     icon: ShoppingCart,
     defaultOpen: true,
     items: [
-      {
-        // Etapa 1 (modo catálogo): canal principal de venta. En modo full queda
-        // como histórico de las cotizaciones creadas en Etapa 1.
-        label: "Cotizaciones",
-        href: "/admin/cotizaciones",
-        icon: FileText,
-        description:
-          "Cotizaciones que llegan del catálogo (Etapa 1): contactar por WhatsApp, cambiar estado y notas internas.",
-      },
+      // Feedback Lucy 2026-09-18: "Cotizaciones" (/admin/cotizaciones) salió del
+      // nav — es módulo heredado de la Etapa 1 (modo catálogo) y la tienda corre
+      // en modo full (Wompi/COD); el QuoteForm ni se renderiza (isCatalogMode).
+      // Las páginas SIGUEN vivas por URL directa (histórico Etapa 1 + RBAC
+      // CATALOG en admin-rbac): solo se oculta la entrada del sidebar, en AMBOS
+      // modos. Además createQuoteAction rechaza creaciones fuera de modo catálogo.
       {
         label: "Pedidos",
         href: "/admin/pedidos",
@@ -242,6 +241,22 @@ export const ADMIN_NAV: NavGroup[] = [
       },
       // P1-17: "Redirects 301" se movió a Configuración — no es una promo,
       // es plumbing SEO. Lo dejamos cerca de Integraciones y General.
+    ],
+  },
+  {
+    // Feedback Lucy 2026-09-18 (Fase 3A): primer módulo de marketing — la vista
+    // de suscriptores del newsletter (tabla Consent scope=NEWSLETTER + Resend
+    // Contacts). Solo lectura + export CSV; las campañas se envían desde Resend.
+    title: "Marketing",
+    icon: Megaphone,
+    items: [
+      {
+        label: "Suscriptores",
+        href: "/admin/marketing/suscriptores",
+        icon: MailCheck,
+        description:
+          "Audiencia del newsletter: emails suscritos (y dados de baja) con fecha y versión del aviso de privacidad. Exportable a CSV.",
+      },
     ],
   },
   {
@@ -386,7 +401,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/email-templates",
         icon: Mail,
         description:
-          "Textos de correo que SÍ viven en el CMS (hoy: asunto y preheader de la bienvenida al newsletter). Las demás plantillas transaccionales viven en código (features/emails/templates); sus datos globales (email de contacto, WhatsApp) se editan en Ajustes del sitio.",
+          "Las 26 plantillas transaccionales (pedidos, retracto, soporte, garantías, marketing): preview renderizado, edición de asunto/preheader/titular y envío de prueba. Solo Superadmin.",
       },
       // P1-17: movido desde "Promociones" — es plumbing SEO, no oferta comercial.
       {

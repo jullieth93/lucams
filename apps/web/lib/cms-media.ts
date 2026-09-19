@@ -9,9 +9,9 @@
  *
  * Seguridad: mismo pipeline que uploadProductImage (lib/storage.ts) — tamaño,
  * MIME declarado contra allow-list y MIME REAL por magic bytes (anti-polyglot:
- * un .html renombrado a .jpg no entra). Además se prueban las dimensiones con
- * sharp endurecido (sharp-safe: loaders con CVE bloqueados), lo que también
- * confirma que el archivo decodifica de verdad.
+ * un .html renombrado a .jpg no entra). Desde 2026-09-18 (feedback Lucy) el archivo se OPTIMIZA
+ * con sharp endurecido antes de subir (WebP q82, borde largo ≤2000 px — optimizeCatalogImage),
+ * lo que también confirma que decodifica de verdad: si sharp falla, se rechaza.
  *
  * Borrado con guarda de uso: si algún campo (borrador o cualquier versión del
  * historial) apunta al asset — sea un campo IMAGE (body = id) o un campo
@@ -23,7 +23,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { prisma, type Prisma } from "@/lib/db";
 import { supabaseService } from "@/lib/supabase/service";
-import { StorageError, sniffImageMime } from "@/lib/storage";
+import { StorageError, optimizeCatalogImage, sniffImageMime } from "@/lib/storage";
 import { CmsValidationError } from "@/features/cms/service";
 
 type CmsMedia = Prisma.CmsMediaGetPayload<object>;
@@ -84,37 +84,21 @@ export async function uploadCmsMedia(opts: {
     );
   }
 
-  // Dimensiones reales + confirmación de que decodifica (sharp endurecido).
-  const sharp = (await import("@/features/personalization/sharp-safe")).default;
-  let width: number;
-  let height: number;
-  try {
-    const meta = await sharp(buffer).metadata();
-    if (!meta.width || !meta.height) throw new Error("sin dimensiones");
-    width = meta.width;
-    height = meta.height;
-  } catch {
-    throw new StorageError(
-      "INVALID_TYPE",
-      "No pudimos leer la imagen. ¿Está completa y sin daños?",
-    );
-  }
+  // Optimización de catálogo (feedback Lucy 2026-09-18): mismo pipeline que uploadProductImage —
+  // WebP q82 con borde largo ≤2000 px. Reemplaza la "prueba de dimensiones" anterior: si el
+  // archivo no decodifica, optimizeCatalogImage ya rechaza con UPLOAD_FAILED (fail-closed).
+  // La salida es siempre .webp / image/webp y las dimensiones son las POST-resize.
+  const optimized = await optimizeCatalogImage(buffer);
 
-  const ext =
-    realMime === "image/jpeg"
-      ? "jpg"
-      : realMime === "image/png"
-        ? "png"
-        : realMime === "image/webp"
-          ? "webp"
-          : "avif";
-  const path = `media/${randomUUID()}.${ext}`;
+  const path = `media/${randomUUID()}.webp`;
 
-  const { error: uploadErr } = await supabaseService.storage.from(BUCKET).upload(path, buffer, {
-    contentType: realMime,
-    cacheControl: "31536000", // 1 año — el path lleva UUID, es inmutable
-    upsert: false,
-  });
+  const { error: uploadErr } = await supabaseService.storage
+    .from(BUCKET)
+    .upload(path, optimized.data, {
+      contentType: "image/webp",
+      cacheControl: "31536000", // 1 año — el path lleva UUID, es inmutable
+      upsert: false,
+    });
   if (uploadErr) {
     throw new StorageError("UPLOAD_FAILED", `Error subiendo: ${uploadErr.message}`);
   }
@@ -124,10 +108,10 @@ export async function uploadCmsMedia(opts: {
       bucket: BUCKET,
       path,
       alt,
-      width,
-      height,
-      bytes: file.size,
-      mime: realMime,
+      width: optimized.width,
+      height: optimized.height,
+      bytes: optimized.data.length,
+      mime: "image/webp",
       ...(createdBy ? { createdBy } : {}),
     },
   });
@@ -147,25 +131,65 @@ export async function listCmsMedia(limit = 120): Promise<CmsMediaWithUrl[]> {
   return media.map((m) => ({ ...m, url: cmsMediaPublicUrl(m.bucket, m.path) }));
 }
 
-/** Mapa `CmsMedia.id → keys de campos activos que lo usan en su borrador actual`. */
-export async function getCmsMediaUsage(ids: string[]): Promise<Map<string, string[]>> {
-  const usage = new Map<string, string[]>();
+/** Referencia de uso de un asset: qué campo CMS lo usa y en qué página vive. */
+export type CmsMediaUsageRef = {
+  fieldId: string;
+  key: string;
+  label: string;
+  pageSlug: string;
+  pageTitle: string;
+};
+
+/**
+ * Mapa `CmsMedia.id → campos activos que lo usan en su borrador actual`, con
+ * la página a la que pertenece cada campo. Fase 3D (feedback Lucy 2026-09-18):
+ * la mediateca muestra QUÉ campos/páginas usan cada imagen, no solo el conteo.
+ */
+export async function getCmsMediaUsageDetail(
+  ids: string[],
+): Promise<Map<string, CmsMediaUsageRef[]>> {
+  const usage = new Map<string, CmsMediaUsageRef[]>();
   if (ids.length === 0) return usage;
   // `contains` y no igualdad: en los campos LISTA con subcampo IMAGE (roadmap
   // B6, ej. home.banners) el id va EMBEBIDO en el body JSON del campo; en un
   // campo type IMAGE el body ES el id (contains también matchea).
   const fields = await prisma.cmsField.findMany({
     where: { deletedAt: null, OR: ids.map((id) => ({ body: { contains: id } })) },
-    select: { key: true, body: true },
+    select: {
+      id: true,
+      key: true,
+      label: true,
+      body: true,
+      section: { select: { page: { select: { slug: true, title: true } } } },
+    },
   });
   for (const f of fields) {
     for (const id of ids) {
       if (f.body.includes(id)) {
         const list = usage.get(id) ?? [];
-        list.push(f.key);
+        list.push({
+          fieldId: f.id,
+          key: f.key,
+          label: f.label,
+          pageSlug: f.section.page.slug,
+          pageTitle: f.section.page.title,
+        });
         usage.set(id, list);
       }
     }
+  }
+  return usage;
+}
+
+/** Mapa `CmsMedia.id → keys de campos activos que lo usan en su borrador actual`. */
+export async function getCmsMediaUsage(ids: string[]): Promise<Map<string, string[]>> {
+  const detail = await getCmsMediaUsageDetail(ids);
+  const usage = new Map<string, string[]>();
+  for (const [id, refs] of detail) {
+    usage.set(
+      id,
+      refs.map((r) => r.key),
+    );
   }
   return usage;
 }

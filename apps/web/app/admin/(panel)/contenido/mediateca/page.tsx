@@ -9,6 +9,10 @@
  * Por asset: miniatura, texto alternativo editable (a11y), dimensiones/peso,
  * conteo de uso (campos que la referencian — si está en uso NO se puede
  * borrar, la guarda vive en el service) y borrado con confirmación.
+ *
+ * Fase 3D (feedback Lucy 2026-09-18): botón "Copiar URL" por asset, filtro
+ * "Sin uso" para cazar huérfanos y detalle expandible de QUÉ campos/páginas
+ * usan cada imagen (getCmsMediaUsageDetail en lib/cms-media.ts).
  */
 
 import type { Metadata } from "next";
@@ -16,7 +20,7 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, Images } from "lucide-react";
 import { AdminButton, AdminPage, AdminPageBody, AdminPageHeader } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
-import { getCmsMediaUsage, listCmsMedia } from "@/lib/cms-media";
+import { getCmsMediaUsageDetail, listCmsMedia } from "@/lib/cms-media";
 import { MediaLibraryClient } from "./media-library-client";
 
 export const metadata: Metadata = {
@@ -28,7 +32,7 @@ export default async function MediatecaPage() {
   if (!session) redirect("/admin/login");
 
   const media = await listCmsMedia(120);
-  const usage = await getCmsMediaUsage(media.map((m) => m.id));
+  const usage = await getCmsMediaUsageDetail(media.map((m) => m.id));
 
   return (
     <AdminPage>

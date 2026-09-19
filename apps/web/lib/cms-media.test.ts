@@ -7,8 +7,9 @@
  *  - alt obligatorio (a11y): vacío o >300 → CmsValidationError, sin tocar Storage.
  *  - Mismo magic gate que product-images: polyglot (declarado png, bytes HTML)
  *    → INVALID_TYPE; archivo vacío → EMPTY_FILE; >5 MB → FILE_TOO_LARGE.
- *  - Happy path: PNG real (generado con sharp) → upload con contentType=MIME
- *    REAL, path media/<uuid>.png, fila CmsMedia con width/height/alt, URL pública.
+ *  - Happy path: PNG real (generado con sharp) → optimizado a WebP q82 ≤2000 px
+ *    (optimizeCatalogImage, feedback Lucy 2026-09-18) → upload con contentType image/webp,
+ *    path media/<uuid>.webp, fila CmsMedia con width/height/alt/mime webp, URL pública.
  *  - Borrado: en uso por un campo (borrador) o por una versión del historial →
  *    CmsValidationError y NO se borra nada; libre → fila + archivo fuera.
  *
@@ -182,7 +183,7 @@ describe("uploadCmsMedia — validaciones", () => {
 });
 
 describe("uploadCmsMedia — happy path", () => {
-  it("sube con contentType=MIME real, path media/<uuid>.png y registra la fila", async () => {
+  it("optimiza a WebP (≤2000 px), sube como media/<uuid>.webp y registra la fila", async () => {
     const media = await uploadCmsMedia({
       file: asFile(REAL_PNG, "image/png", "banner.png"),
       alt: "Banner de prueba",
@@ -190,9 +191,14 @@ describe("uploadCmsMedia — happy path", () => {
     });
 
     expect(uploadMock).toHaveBeenCalledTimes(1);
-    const [path, , opts] = uploadMock.mock.calls[0]!;
-    expect(path).toMatch(/^media\/[0-9a-f-]{36}\.png$/);
-    expect(opts).toMatchObject({ contentType: "image/png", upsert: false });
+    const [path, body, opts] = uploadMock.mock.calls[0]!;
+    expect(path).toMatch(/^media\/[0-9a-f-]{36}\.webp$/);
+    expect(opts).toMatchObject({ contentType: "image/webp", upsert: false });
+    // El buffer subido es el WebP optimizado (la entrada 40×30 no se agranda).
+    const meta = await sharp(body as Buffer).metadata();
+    expect(meta.format).toBe("webp");
+    expect(meta.width).toBe(40);
+    expect(meta.height).toBe(30);
 
     expect(cmsMediaCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -201,7 +207,8 @@ describe("uploadCmsMedia — happy path", () => {
         alt: "Banner de prueba",
         width: 40,
         height: 30,
-        mime: "image/png",
+        bytes: (body as Buffer).length, // bytes del WebP optimizado, no del PNG original
+        mime: "image/webp",
         createdBy: "admin-1",
       }),
     });

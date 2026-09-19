@@ -5,11 +5,17 @@
  * uploader (drag & drop + alt obligatorio) y grilla de assets con edición
  * de texto alternativo y borrado con guarda de uso (el service rechaza el
  * borrado si algún campo usa el asset; el botón se deshabilita acá también).
+ *
+ * Fase 3D (feedback Lucy 2026-09-18): la biblioteca se volvió ÚTIL de verdad —
+ * botón "Copiar URL" por asset (mismo patrón copy-to-clipboard de referidos:
+ * feedback inline + toast), filtro "Sin uso" para cazar assets huérfanos y
+ * detalle expandible del conteo de usos (qué campos/páginas CMS la usan).
  */
 
 import { startTransition, useActionState, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
-import { Check, ImagePlus, Loader2, Trash2, Upload } from "lucide-react";
+import { Check, Copy, ImagePlus, Loader2, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +26,15 @@ import {
   type CmsMediaActionState,
 } from "@/app/admin/(panel)/contenido/actions";
 
+/** Referencia de uso (misma forma que CmsMediaUsageRef de lib/cms-media.ts). */
+export type MediaUsageRef = {
+  fieldId: string;
+  key: string;
+  label: string;
+  pageSlug: string;
+  pageTitle: string;
+};
+
 export type MediaLibraryItem = {
   id: string;
   url: string;
@@ -27,8 +42,8 @@ export type MediaLibraryItem = {
   width: number;
   height: number;
   bytes: number;
-  /** keys de los campos IMAGE que usan el asset en su borrador actual. */
-  usedBy: string[];
+  /** campos IMAGE (o LISTA con subcampo IMAGE) que usan el asset en su borrador actual. */
+  usedBy: MediaUsageRef[];
 };
 
 function formatKb(bytes: number): string {
@@ -167,6 +182,42 @@ function UploadCard() {
   );
 }
 
+/**
+ * Botón "Copiar URL" del asset (Fase 3D). Mismo patrón copy-to-clipboard del
+ * repo (referral-copy-button / copy-quote-link): navigator.clipboard con
+ * feedback inline breve; si el clipboard no está disponible, el toast muestra
+ * la URL para copiarla a mano.
+ */
+function CopyUrlButton({ url }: { url: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-live="polite"
+      title="Copiar la URL pública de la imagen"
+      onClick={async () => {
+        try {
+          if (!navigator.clipboard) throw new Error("clipboard unavailable");
+          await navigator.clipboard.writeText(url);
+          setCopied(true);
+          toast.success("URL copiada al portapapeles.");
+          setTimeout(() => setCopied(false), 1600);
+        } catch {
+          toast("Copia la URL a mano:", { description: url, duration: 10000 });
+        }
+      }}
+      className="text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-semibold transition-colors"
+    >
+      {copied ? (
+        <Check className="h-3.5 w-3.5" aria-hidden />
+      ) : (
+        <Copy className="h-3.5 w-3.5" aria-hidden />
+      )}
+      {copied ? "¡Copiada!" : "Copiar URL"}
+    </button>
+  );
+}
+
 /** Tarjeta de un asset: thumb + alt editable + metadata + borrado. */
 function MediaCard({ item }: { item: MediaLibraryItem }) {
   const [altState, altDispatch, altPending] = useActionState<CmsMediaActionState | null, FormData>(
@@ -250,17 +301,43 @@ function MediaCard({ item }: { item: MediaLibraryItem }) {
         <p className="text-brand-muted text-[11px]">
           {item.width} × {item.height} px · {formatKb(item.bytes)}
         </p>
+        {/*
+         * Conteo de usos expandible (Fase 3D): el click despliega QUÉ campos
+         * la usan y en qué página CMS viven, con link directo a editarlos.
+         */}
+        {inUse ? (
+          <details className="group">
+            <summary className="cursor-pointer list-none text-[11px] font-medium text-emerald-700 hover:underline">
+              En uso ({item.usedBy.length}) · ver dónde
+            </summary>
+            <ul className="mt-1 space-y-1.5 rounded-md bg-emerald-50/60 p-2">
+              {item.usedBy.map((ref) => (
+                <li key={ref.fieldId} className="text-[11px] leading-tight">
+                  <Link
+                    href={`/admin/contenido/campos/${ref.fieldId}`}
+                    className="text-brand-purple-dark font-semibold hover:underline"
+                  >
+                    {ref.label}
+                  </Link>{" "}
+                  <span className="text-brand-muted font-mono text-[10px]">({ref.key})</span>
+                  <div className="text-brand-muted">
+                    en{" "}
+                    <Link
+                      href={`/admin/contenido/paginas/${ref.pageSlug}`}
+                      className="hover:text-brand-purple-dark hover:underline"
+                    >
+                      {ref.pageTitle}
+                    </Link>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : (
+          <span className="text-brand-muted text-[11px]">Sin usar — candidata a limpiar</span>
+        )}
         <div className="flex items-center justify-between gap-2">
-          {inUse ? (
-            <span
-              className="text-[11px] font-medium text-emerald-700"
-              title={`La usan: ${item.usedBy.join(", ")}`}
-            >
-              En uso ({item.usedBy.length})
-            </span>
-          ) : (
-            <span className="text-brand-muted text-[11px]">Sin usar</span>
-          )}
+          <CopyUrlButton url={item.url} />
           <Button
             type="button"
             variant="ghost"
@@ -269,7 +346,7 @@ function MediaCard({ item }: { item: MediaLibraryItem }) {
             disabled={delPending || inUse}
             title={
               inUse
-                ? `No se puede borrar: la usan ${item.usedBy.join(", ")}`
+                ? `No se puede borrar: la usan ${item.usedBy.map((r) => r.key).join(", ")}`
                 : "Borrar de la mediateca"
             }
             className="h-7 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"
@@ -287,6 +364,12 @@ function MediaCard({ item }: { item: MediaLibraryItem }) {
 }
 
 export function MediaLibraryClient({ media }: { media: MediaLibraryItem[] }) {
+  // Filtro "Sin uso" (Fase 3D, feedback Lucy 2026-09-18): vista para cazar
+  // assets huérfanos — subidos alguna vez pero que ya ningún campo referencia.
+  const [filter, setFilter] = useState<"all" | "unused">("all");
+  const unusedCount = media.filter((m) => m.usedBy.length === 0).length;
+  const visible = filter === "unused" ? media.filter((m) => m.usedBy.length === 0) : media;
+
   return (
     <div className="space-y-6">
       <UploadCard />
@@ -297,14 +380,53 @@ export function MediaLibraryClient({ media }: { media: MediaLibraryItem[] }) {
         </p>
       ) : (
         <section>
-          <h2 className="text-brand-purple-dark font-display mb-3 text-base font-bold">
-            Biblioteca ({media.length})
-          </h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {media.map((m) => (
-              <MediaCard key={m.id} item={m} />
-            ))}
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <h2 className="text-brand-purple-dark font-display text-base font-bold">
+              Biblioteca ({media.length})
+            </h2>
+            <div
+              role="group"
+              aria-label="Filtrar por uso"
+              className="border-brand-purple/15 ml-auto inline-flex overflow-hidden rounded-lg border bg-white text-xs font-semibold"
+            >
+              <button
+                type="button"
+                onClick={() => setFilter("all")}
+                aria-pressed={filter === "all"}
+                className={`px-3 py-1.5 transition-colors ${
+                  filter === "all"
+                    ? "bg-brand-purple text-white"
+                    : "text-brand-purple-dark hover:bg-brand-purple/5"
+                }`}
+              >
+                Todas ({media.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter("unused")}
+                aria-pressed={filter === "unused"}
+                className={`px-3 py-1.5 transition-colors ${
+                  filter === "unused"
+                    ? "bg-brand-purple text-white"
+                    : "text-brand-purple-dark hover:bg-brand-purple/5"
+                }`}
+              >
+                Sin uso ({unusedCount})
+              </button>
+            </div>
           </div>
+          {visible.length === 0 ? (
+            <p className="border-brand-purple/15 text-brand-muted rounded-xl border border-dashed bg-white/60 px-4 py-8 text-center text-sm">
+              Ninguna imagen sin uso — todas las de la biblioteca las referencia al menos un campo.
+              🎉
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {visible.map((m) => (
+                <MediaCard key={m.id} item={m} />
+              ))}
+            </div>
+          )}
         </section>
       )}
     </div>

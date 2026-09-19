@@ -7,13 +7,31 @@
  * acá solo se REFLEJA ese estado para que Lucy lo vea sin abrir Vercel, y se
  * concentran los links operativos del canal (tienda, sitemap, robots, status).
  *
+ * Fase 3D (feedback Lucy 2026-09-18): la página ya no es solo "la URL y los
+ * links" — suma pulso real del canal (solo lectura): estado de la contraentrega
+ * (COD_ENABLED, fail-closed como el checkout), productos activos vs total,
+ * variantes con stock bajo y pedidos totales (conteos Prisma en vivo).
+ *
  * La salud de Wompi/Aveonline NO se duplica acá: la tarjeta de integraciones
  * enlaza a /admin/integraciones, que es su única fuente de verdad.
  */
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Activity, Bot, ExternalLink, Globe, Map, Plug, Store } from "lucide-react";
+import {
+  Activity,
+  Bot,
+  ExternalLink,
+  Globe,
+  Map,
+  Package,
+  PackageX,
+  Plug,
+  ShoppingBag,
+  Store,
+  Wallet,
+} from "lucide-react";
 import {
   AdminBadge,
   AdminButton,
@@ -25,6 +43,8 @@ import {
   QuickLink,
 } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
+import { getSettingValue } from "@/lib/cms";
+import { prisma } from "@/lib/db";
 import { getCanonicalSiteUrl } from "@/lib/public-url";
 import { STORE_MODE } from "@/lib/store-mode";
 
@@ -46,6 +66,27 @@ export default async function AdminCanalTiendaPage() {
 
   const siteUrl = getCanonicalSiteUrl();
   const isCatalog = STORE_MODE === "catalog";
+
+  // Pulso del canal (Fase 3D, solo lectura): conteos Prisma en vivo + el
+  // ajuste COD_ENABLED con el mismo criterio fail-closed del checkout (solo
+  // "true" exacto la habilita). ProductVariant NO tiene minStock: el umbral
+  // de stock bajo es el operativo ≤5 (mismo del resumen diario/observability).
+  const [codEnabledRaw, productsActive, productsTotal, lowStockVariants, ordersTotal] =
+    await Promise.all([
+      getSettingValue("COD_ENABLED", "false"),
+      prisma.product.count({ where: { isActive: true, deletedAt: null } }),
+      prisma.product.count({ where: { deletedAt: null } }),
+      prisma.productVariant.count({
+        where: {
+          stock: { lte: 5 },
+          isActive: true,
+          deletedAt: null,
+          product: { isActive: true, deletedAt: null },
+        },
+      }),
+      prisma.order.count({ where: { deletedAt: null } }),
+    ]);
+  const codEnabled = codEnabledRaw === "true";
 
   return (
     <AdminPage>
@@ -119,6 +160,124 @@ export default async function AdminCanalTiendaPage() {
                 : "Los clientes pagan en línea (Wompi) y el envío se integra con Aveonline."}
             </p>
           </AdminCard>
+        </div>
+
+        {/* Pulso del canal (Fase 3D, solo lectura): números reales del catálogo,
+            pedidos y contraentrega, con acceso directo al módulo que los gestiona. */}
+        <div>
+          <h2 className="text-brand-purple-dark font-display mb-3 text-base font-bold">
+            Pulso del canal
+          </h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <AdminCard className="p-5">
+              <div className="flex items-center gap-2">
+                <div className="bg-brand-purple/10 text-brand-purple flex h-8 w-8 items-center justify-center rounded-lg">
+                  <Package className="h-4 w-4" />
+                </div>
+                <h3 className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
+                  Catálogo
+                </h3>
+              </div>
+              <p className="text-brand-purple-dark font-display mt-3 text-2xl font-bold tabular-nums">
+                {productsActive}
+                <span className="text-brand-muted text-sm font-normal"> de {productsTotal}</span>
+              </p>
+              <p className="text-brand-muted mt-1 text-xs">
+                productos activos.{" "}
+                <Link
+                  href="/admin/productos"
+                  className="text-brand-purple-dark font-semibold underline"
+                >
+                  Gestionar
+                </Link>
+              </p>
+            </AdminCard>
+
+            <AdminCard className="p-5">
+              <div className="flex items-center gap-2">
+                <div className="bg-brand-purple/10 text-brand-purple flex h-8 w-8 items-center justify-center rounded-lg">
+                  <ShoppingBag className="h-4 w-4" />
+                </div>
+                <h3 className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
+                  Pedidos
+                </h3>
+              </div>
+              <p className="text-brand-purple-dark font-display mt-3 text-2xl font-bold tabular-nums">
+                {ordersTotal}
+              </p>
+              <p className="text-brand-muted mt-1 text-xs">
+                pedidos en total.{" "}
+                <Link
+                  href="/admin/pedidos"
+                  className="text-brand-purple-dark font-semibold underline"
+                >
+                  Ver pedidos
+                </Link>
+              </p>
+            </AdminCard>
+
+            <AdminCard className="p-5">
+              <div className="flex items-center gap-2">
+                <div
+                  className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                    lowStockVariants > 0
+                      ? "bg-amber-100 text-amber-700"
+                      : "bg-brand-purple/10 text-brand-purple"
+                  }`}
+                >
+                  <PackageX className="h-4 w-4" />
+                </div>
+                <h3 className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
+                  Stock bajo
+                </h3>
+              </div>
+              <p
+                className={`font-display mt-3 text-2xl font-bold tabular-nums ${
+                  lowStockVariants > 0 ? "text-amber-700" : "text-brand-purple-dark"
+                }`}
+              >
+                {lowStockVariants}
+              </p>
+              <p className="text-brand-muted mt-1 text-xs">
+                variantes activas con ≤5 unidades.{" "}
+                <Link
+                  href="/admin/inventario"
+                  className="text-brand-purple-dark font-semibold underline"
+                >
+                  Ver inventario
+                </Link>
+              </p>
+            </AdminCard>
+
+            <AdminCard className="p-5">
+              <div className="flex items-center gap-2">
+                <div className="bg-brand-purple/10 text-brand-purple flex h-8 w-8 items-center justify-center rounded-lg">
+                  <Wallet className="h-4 w-4" />
+                </div>
+                <h3 className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
+                  Contraentrega
+                </h3>
+              </div>
+              <p className="mt-3">
+                <AdminBadge tone={codEnabled ? "emerald" : "amber"}>
+                  {codEnabled ? "Activa (COD_ENABLED)" : "Desactivada"}
+                </AdminBadge>
+              </p>
+              <p className="text-brand-muted mt-2 text-xs">
+                {isCatalog
+                  ? "Sin checkout de pagos en modo catálogo."
+                  : codEnabled
+                    ? "Los clientes pueden pagar al recibir."
+                    : "El checkout no ofrece pago al recibir."}{" "}
+                <Link
+                  href="/admin/finanzas/conciliacion"
+                  className="text-brand-purple-dark font-semibold underline"
+                >
+                  Conciliación
+                </Link>
+              </p>
+            </AdminCard>
+          </div>
         </div>
 
         <div>

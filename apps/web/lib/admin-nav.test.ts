@@ -12,7 +12,11 @@
  *   - modo catalog: además oculta el grupo "Finanzas" completo, el item
  *     "Integraciones" de "Configuración" (no hay pagos ni envíos integrados)
  *     y "Precios al por mayor" de "Promociones" (WholesaleTier sin consumidor en Etapa 1).
- *   - "Cotizaciones" es el primer item de "Ventas" en AMBOS modos.
+ *   - "Cotizaciones" ya NO está en el nav (feedback Lucy 2026-09-18: módulo
+ *     heredado de Etapa 1; las páginas siguen por URL directa). "Pedidos" es
+ *     ahora el primer item de "Ventas" en AMBOS modos.
+ *   - Grupo "Marketing" (Fase 3A): "Suscriptores" (/admin/marketing/suscriptores)
+ *     visible en ambos modos para MANAGER_UP; FULFILLMENT/CMS_EDITOR no lo ven.
  *   - Entradas del Estudio en "Catálogo" (N-16): /admin/disenos junto a
  *     "Plantillas del Estudio", visible para MANAGER_UP (permiso de ruta
  *     CATALOG en admin-rbac). 2026-09-15: "Fichas del abecedario" dejó de ser
@@ -106,15 +110,47 @@ describe("getAdminNav", () => {
   });
 
   it.each(["full", "catalog"] as const)(
-    "Cotizaciones es el primer item de Ventas (modo %s)",
+    "Cotizaciones ya NO está en el nav; Pedidos es el primer item de Ventas (modo %s, feedback Lucy 2026-09-18)",
     async (mode) => {
-      const { nav } = await getNavForMode(mode);
-      const ventas = nav.find((g) => g.title === "Ventas");
+      const { mod, nav } = await getNavForMode(mode);
 
-      expect(ventas?.items?.[0]?.label).toBe("Cotizaciones");
-      expect(ventas?.items?.[0]?.href).toBe("/admin/cotizaciones");
+      // Ni el nav efectivo ni ADMIN_NAV (fuente del catch-all) lo listan: el
+      // módulo heredado de Etapa 1 sigue vivo solo por URL directa.
+      for (const source of [nav, mod.ADMIN_NAV]) {
+        const ventas = source.find((g) => g.title === "Ventas");
+        expect(ventas?.items?.[0]?.label).toBe("Pedidos");
+        expect(ventas?.items?.some((it) => it.href === "/admin/cotizaciones")).toBe(false);
+      }
     },
   );
+
+  it.each(["full", "catalog"] as const)(
+    "modo %s: Marketing > Suscriptores visible (/admin/marketing/suscriptores) — Fase 3A",
+    async (mode) => {
+      const { nav } = await getNavForMode(mode);
+      const marketing = nav.find((g) => g.title === "Marketing");
+
+      expect(marketing?.items?.some((it) => it.href === "/admin/marketing/suscriptores")).toBe(
+        true,
+      );
+    },
+  );
+
+  it("filterNavByRole: MANAGER ve Suscriptores (CATALOG); FULFILLMENT y CMS_EDITOR no", async () => {
+    const { nav } = await getNavForMode("full");
+
+    const manager = filterNavByRole(nav, "MANAGER");
+    expect(
+      manager
+        .find((g) => g.title === "Marketing")
+        ?.items?.some((it) => it.href === "/admin/marketing/suscriptores"),
+    ).toBe(true);
+
+    for (const role of ["FULFILLMENT", "CMS_EDITOR"] as const) {
+      const visible = filterNavByRole(nav, role);
+      expect(visible.some((g) => g.title === "Marketing")).toBe(false);
+    }
+  });
 
   it.each(["full", "catalog"] as const)(
     "modo %s: Catálogo incluye los módulos del Estudio (plantillas, diseños con tab fichas) — N-16",
@@ -251,7 +287,7 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
   );
 
   it.each(["full", "catalog"] as const)(
-    "modo %s: ve exactamente Páginas del sitio, Ajustes del sitio, Seguridad y Plantillas de correo",
+    "modo %s: ve exactamente Páginas del sitio, Ajustes del sitio y Seguridad (Plantillas de correo subió a SUPERADMIN en Fase 4)",
     async (mode) => {
       const { nav } = await getNavForMode(mode);
       const visible = filterNavByRole(nav, "CMS_EDITOR");
@@ -264,10 +300,11 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
 
       const config = visible.find((g) => g.title === "Configuración");
       // Seguridad (autoservicio MFA) quedó abierta a todos los roles en B-1.
+      // /admin/email-templates ya NO aparece acá: Fase 4 (2026-09-18) lo subió
+      // a solo-SUPERADMIN (módulo real con overrides y envío de prueba).
       expect(config?.items?.map((it) => it.href)).toEqual([
         "/admin/contenido/paginas/global",
         "/admin/seguridad",
-        "/admin/email-templates",
       ]);
     },
   );
@@ -286,13 +323,11 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
       expect(allHrefs).not.toContain("/admin/usuarios");
       expect(allHrefs).not.toContain("/admin/finanzas");
       expect(allHrefs).not.toContain("/admin/cupones");
-      // Y todo lo visible es contenido o autoservicio de cuenta (coherente con la matriz).
+      // Y todo lo visible es contenido o autoservicio de cuenta (coherente con la matriz;
+      // /admin/email-templates ya no entra acá — Fase 4 lo subió a solo-SUPERADMIN).
+      expect(allHrefs).not.toContain("/admin/email-templates");
       for (const href of allHrefs) {
-        expect(
-          href.startsWith("/admin/contenido") ||
-            href === "/admin/email-templates" ||
-            href === "/admin/seguridad",
-        ).toBe(true);
+        expect(href.startsWith("/admin/contenido") || href === "/admin/seguridad").toBe(true);
       }
     },
   );

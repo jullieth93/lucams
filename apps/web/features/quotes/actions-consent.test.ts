@@ -17,6 +17,11 @@ const createQuoteFromCart = vi.hoisted(() =>
 );
 const verifyTurnstileToken = vi.hoisted(() => vi.fn(async () => ({ success: true })));
 const rateLimit = vi.hoisted(() => vi.fn(async () => ({ allowed: true })));
+// El guard de modo (feedback Lucy 2026-09-18) rechaza la creación fuera de modo
+// catálogo y la suite corre en "full" (tests/setup-env.ts): por defecto estos
+// tests ejercitan el flujo de Etapa 1 (catálogo); el caso de rechazo lo fija a
+// false en su propio describe.
+const isCatalogMode = vi.hoisted(() => vi.fn(() => true));
 
 vi.mock("next/headers", () => ({
   headers: async () => new Headers({ "user-agent": "vitest", "x-forwarded-for": "1.2.3.4" }),
@@ -30,6 +35,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 vi.mock("@/lib/turnstile", () => ({ verifyTurnstileToken }));
 vi.mock("@/lib/rate-limit", () => ({ rateLimit }));
+vi.mock("@/lib/store-mode", () => ({ isCatalogMode }));
 vi.mock("@/lib/cart-session", () => ({ getOrCreateCartSession: async () => "sess_1" }));
 vi.mock("./service", () => ({
   createQuoteFromCart,
@@ -60,6 +66,24 @@ beforeEach(() => {
   vi.clearAllMocks();
   verifyTurnstileToken.mockResolvedValue({ success: true });
   rateLimit.mockResolvedValue({ allowed: true });
+  isCatalogMode.mockReturnValue(true);
+});
+
+describe("createQuoteAction — guard de modo (feedback Lucy 2026-09-18)", () => {
+  it("en modo tienda (full) rechaza la creación SIN validar ni tocar PII", async () => {
+    isCatalogMode.mockReturnValue(false);
+
+    const res = await createQuoteAction(null, quoteForm());
+
+    expect(res).toMatchObject({
+      ok: false,
+      error: "Las cotizaciones no están disponibles en modo tienda.",
+    });
+    // El guard va primero: ni anti-bot, ni rate-limit, ni el service se invocan.
+    expect(verifyTurnstileToken).not.toHaveBeenCalled();
+    expect(rateLimit).not.toHaveBeenCalled();
+    expect(createQuoteFromCart).not.toHaveBeenCalled();
+  });
 });
 
 describe("createQuoteAction — autorización de tratamiento obligatoria", () => {

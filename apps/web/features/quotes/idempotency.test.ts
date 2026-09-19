@@ -70,6 +70,9 @@ vi.mock("next/server", () => ({ after: (fn: () => unknown) => afterTasks.push(fn
 vi.mock("@/lib/turnstile", () => ({ verifyTurnstileToken: async () => ({ success: true }) }));
 vi.mock("@/lib/rate-limit", () => ({ rateLimit: async () => ({ allowed: true }) }));
 vi.mock("@/lib/cart-session", () => ({ getOrCreateCartSession: async () => "sess_1" }));
+// Estos tests ejercitan el flujo de Etapa 1: la action tiene guard de modo
+// (feedback Lucy 2026-09-18) y la suite corre en "full" (tests/setup-env.ts).
+vi.mock("@/lib/store-mode", () => ({ isCatalogMode: () => true }));
 
 import { createQuoteAction } from "./actions";
 import { QuoteError, createQuoteFromCart } from "./service";

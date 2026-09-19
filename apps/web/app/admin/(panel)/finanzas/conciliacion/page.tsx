@@ -5,6 +5,10 @@
  * pero aún no llegó a la tienda), "remitido" (Lucy recibió el depósito) o "discrepancia" (no cuadra).
  * Antifraude: hace visible el efectivo que el courier debe y las diferencias. Hereda SUPERADMIN por
  * la matriz RBAC deny-by-default; igual lo exigimos explícito (dinero).
+ *
+ * Fase 3D: banner superior de estado de la contraentrega (setting CMS
+ * COD_ENABLED, leído fail-closed igual que el checkout). Activa → esmeralda
+ * con link a Ajustes; desactivada → ámbar + botón para activarla ahí mismo.
  */
 
 import type { Metadata } from "next";
@@ -25,6 +29,7 @@ import {
   AdminTableRow,
 } from "@/components/admin-page";
 import { requireRole } from "@/lib/admin-rbac-guard";
+import { getSettingValue } from "@/lib/cms";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
 import {
@@ -34,6 +39,7 @@ import {
   type CodReconStatus,
 } from "@/features/orders/cod-reconciliation";
 import { CodRowActions } from "./conciliacion-actions";
+import { CodEnableButton } from "./cod-enable-button";
 
 export const metadata: Metadata = {
   title: "Conciliación contra entrega",
@@ -80,10 +86,14 @@ export default async function ConciliacionCodPage({
     : "all";
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
 
-  const [totals, list] = await Promise.all([
+  // Estado del setting COD_ENABLED — mismo criterio fail-closed del checkout
+  // (features/checkout/service.ts): solo el valor exacto "true" la habilita.
+  const [totals, list, codEnabledRaw] = await Promise.all([
     getCodReconciliationTotals(),
     listCodReconciliation({ filter, page }),
+    getSettingValue("COD_ENABLED", "false"),
   ]);
+  const codEnabled = codEnabledRaw === "true";
   const { items, total, totalPages } = list;
 
   return (
@@ -100,6 +110,36 @@ export default async function ConciliacionCodPage({
       />
 
       <AdminPageBody>
+        {/* Banner de estado COD (Fase 3D): sin este aviso el módulo quedaba
+            vacío "en silencio" cuando la contraentrega está apagada y Lucy no
+            sabía si era un bug o una decisión. */}
+        {codEnabled ? (
+          <AdminNotice tone="success">
+            <strong>Contraentrega activa:</strong> los clientes pueden elegir «pago contra entrega»
+            en el checkout. Se apaga en{" "}
+            <Link
+              href="/admin/contenido/paginas/global"
+              className="font-semibold underline hover:text-emerald-900"
+            >
+              Contenido › Ajustes del sitio › Comercio
+            </Link>{" "}
+            (ajuste COD_ENABLED).
+          </AdminNotice>
+        ) : (
+          <AdminNotice tone="warning">
+            <strong>Contraentrega DESACTIVADA:</strong> este módulo no tendrá movimientos nuevos —
+            la tabla de abajo es solo el histórico. El checkout no ofrece «pago contra entrega» (el
+            ajuste COD_ENABLED está apagado o no existe).{" "}
+            <Link
+              href="/admin/contenido/paginas/global"
+              className="font-semibold underline hover:text-amber-900"
+            >
+              Editar en Ajustes del sitio › Comercio
+            </Link>
+            <CodEnableButton />
+          </AdminNotice>
+        )}
+
         <AdminNotice tone="info">
           El efectivo de un pedido contra entrega lo cobra el mensajero al entregar y luego lo{" "}
           <strong>remite</strong> a tu cuenta. Aquí marcas cuándo recibiste cada remesa. Lo que

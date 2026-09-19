@@ -13,7 +13,9 @@ export class AdminDashboardPage {
 
   async expectLoaded() {
     await expect(this.page).toHaveURL(/\/admin\/dashboard/);
-    await expect(this.page.getByRole("link", { name: "Cotizaciones" }).first()).toBeVisible();
+    // Sentinel del sidebar cargado: "Pedidos" (primer item de Ventas desde que
+    // "Cotizaciones" salió del nav — feedback Lucy 2026-09-18).
+    await expect(this.page.getByRole("link", { name: "Pedidos" }).first()).toBeVisible();
   }
 
   /** Sin overflow horizontal en el viewport actual (regresión fix E2). */
