@@ -13,6 +13,25 @@
 
 ## Resumen actual
 
+**🧪 2026-09-19 — AUDITORÍA FUNCIONAL TOTAL DEL OWNER (cliente + admin) REMEDIADA Y EN STG.**
+Origen: validación visual/funcional de Lucy sobre TODO el producto (~22 hallazgos). Paquete en
+12 commits en `develop` (CI 100% verde, deploy preview STG Ready): bugs visuales (newsletter
+con texto invisible, sidebar con varios activos, probe de Integraciones parseando HTML de
+Vercel, pills del Estudio con scroll horizontal en móvil, field-row CMS confuso), **emails de
+autenticación branded vía SMTP Resend en STG y PRD** (los correos salían genéricos de Supabase
+y sin el código OTP; rate limit de 2/hora corregido a 30), módulos admin maduros (suscriptores
+newsletter con CSV, códigos de respaldo MFA automáticos tras el QR, banner COD en conciliación,
+tile de cuota de Storage, Mediateca con copiar URL y usos, Cotizaciones fuera del nav),
+**módulo nuevo de Plantillas de correo** (preview real + overrides que aplican a los 13 envíos
+reales), Finanzas con datos reales (período/método/AOV), **retención post-entrega 90 días**
+(protege la cuota de Supabase Free) + optimización WebP de imágenes admin, validación en vivo
+en auth y **costeo por materiales** (receta por producto + costo sugerido). Emails legales
+des-hardcodeados a settings CMS (tokens `{{email_*}}`) y republicados en los 3 ambientes con
+render idéntico. Además: backup Storage→R2 dejaba de funcionar ~50% de las noches (5xx del
+gateway de Supabase) — ahora con retry/backoff, validado con dispatch manual exitoso.
+**Pendiente: liberación a PRD (decisión de Lucy) + tras el deploy correr la migración 035
+(pg_cron purge-delivered-designs) en el proyecto que se actualice (ya agendada en STG).**
+
 **📱 2026-09-18 — AUDITORÍA UX RESPONSIVE TOTAL (estudios + admin + avisos Vercel) REMEDIADA
 EN 2 RONDAS (ADR-103 + ADR-104).** Origen: validación del owner en web/tablet/móvil. Ronda 1:
 todos los estudios convergen a la plantilla (lienzo por ANCHO, tarjeta-unidad universal,
@@ -218,6 +237,58 @@ sanciona testimonios inventados como publicidad engañosa); ④ crecimiento: **s
 la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia verificados; cuando haya
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
+
+## Sesión — 2026-09-19 — Auditoría funcional total del owner remediada (12 commits) + fix backup R2
+
+- **Origen:** validación de Lucy con ~22 hallazgos sobre capa cliente y capa admin ("quiero
+  que TODO EL PRODUCTO sea maduro y efectivo"). Plan aprobado en 7 fases; 4 decisiones del
+  owner por AskUserQuestion (SMTP con acceso propio, Cotizaciones fuera del nav, editor
+  completo de plantillas con preview, purga 90d post-entrega).
+- **F1 bugs visuales** (verificados con screenshots Playwright en local): newsletter
+  `text-white` heredado sobre `bg-white`; sidebar con `startsWith` marcando 2-4 activos
+  (ahora gana el href más específico); `probeHealth` de Integraciones sin guards (el
+  "Unexpected token '<'" era el HTML de Deployment Protection); `<details>` de Salud técnica
+  sin affordance (ahora tarjeta + chevron); pills del Estudio móvil compactas sin scroll
+  horizontal (375/360px medidos); field-row CMS con línea "En el sitio ahora: «...»" + fix
+  de estado congelado tras publicar.
+- **F2 emails auth (STG+PRD, verificado E2E con signup real y log de Resend):** SMTP
+  `smtp.resend.com:587` vía Management API (`scripts/supabase-auth-email-config.mjs`,
+  reejecutable), remitente `Lucams_shop <hola@mail.lucamsshop.com>`, plantillas OTP branded
+  (`supabase/auth-templates/`), `rate_limit_email_sent` 2→30/hora. Gotcha gotrue: el From
+  sale de `smtp_admin_email`. Token del owner en `tmp/.supabase-access-token` (chmod 600).
+- **F3 admin:** 130 redirects basura de tests borrados de STG (con OK de Lucy) +
+  `cleanup-test-junk` los cubre; Cotizaciones fuera del nav + guard de modo en la action;
+  Marketing › Suscriptores (ledger Consent deduplicado + CSV); MFA muestra los 10 códigos
+  de respaldo tras el QR (checkbox obligatorio); Mediateca con copiar URL/filtro sin-uso/
+  detalle de usos; banner COD_ENABLED con toggle en Conciliación; pulso real en Canales ›
+  Tienda; tile de cuota Storage en Salud técnica.
+- **F4 emails transaccionales:** `/admin/email-templates` real — registry de las 26
+  plantillas, preview en iframe (600/375px), envío de prueba `[PRUEBA]`, overrides
+  SUBJECT/PREHEADER/HEADING en `EmailTemplateOverride` que aplican a los 13 senders reales
+  (recableados al registry; wrapper `withOverrides` con interpolación de tokens `{campo}`
+  y fallback total al copy base). RBAC SUPERADMIN.
+- **F5 finanzas:** ingresos por período (7/30/90/mes, barras CSS), breakdown por método,
+  AOV con comparativa; criterio idéntico al KPI. IVA/DIAN quedan como integración externa.
+- **F6 retención/imágenes:** `Design.purgedAt` + cron `purge-delivered-designs` (90d
+  post-entrega: borra crudas y renders, conserva preview+snapshot; excluye retracto/garantía
+  abierta y reorders recientes) + purga de DRAFT idle de logueados (90d) + pipeline sharp
+  WebP q82 ≤2000px en uploads admin + compresión cliente >2MB. Crons pg_cron: la 035 quedó
+  agendada SOLO en STG (en PRD tras el release — el endpoint no existe en la app de PRD aún).
+- **F7:** validación en vivo en auth (on-blur, typo de dominio, aria) y costeo por
+  materiales (`ProductMaterial`, pestaña "Materiales" en producto, columna "Sugerido" en
+  Costos con botón "Usar sugerido" — nunca pisa el costo solo).
+- **Legales:** emails de contacto des-hardcodeados a settings CMS con tokens `{{email_*}}`
+  en los 8 .md canónicos + fallbacks; seed + republicación en local/STG/PRD (render
+  idéntico verificado).
+- **Fix extra encontrado de paso:** backup Storage→R2 fallaba ~50% de las noches (5xx del
+  gateway Supabase en UN listado tumbaba el run) → `withRetry` con backoff en listados y
+  descargas; validado con `workflow_dispatch` exitoso.
+- **Gates:** lint 0 · typecheck 0 · unit 4077 · build OK · e2e fullmode 12/12 · e2e admin
+  9 OK (+1 flaky que pasó en reintento) · CI develop 100% verde (incl. Lighthouse y e2e
+  gate) · deploy preview STG Ready. Baseline de cobertura CMS regenerado (3 literales de
+  validación auth = chrome legítimo).
+- **Pendiente:** release a PRD (decisión de Lucy); tras ese deploy correr la migración 035
+  en PRD; revocar el PAT de Supabase cuando ya no se use.
 
 ## Sesión — 2026-09-18 (6) — RELEASE A PRD del paquete responsive + limpieza de ramas
 
