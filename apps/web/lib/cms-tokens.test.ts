@@ -56,6 +56,26 @@ describe("resolveCmsTokens", () => {
     expect(await resolveCmsTokens("envío a {{ciudad}}", { city: "Cali" })).toBe("envío a Cali");
   });
 
+  it("los tokens de email caen al fallback cuando el setting no existe", async () => {
+    expect(
+      await resolveCmsTokens(
+        "{{email_contacto}} · {{email_habeas_data}} · {{email_retracto}} · {{email_security}}",
+      ),
+    ).toBe(
+      "hola@lucamsshop.com · habeas-data@lucamsshop.com · retracto@lucamsshop.com · security@lucamsshop.com",
+    );
+  });
+
+  it("un cambio de setting de email se propaga al texto legal", async () => {
+    const { getSettingValue } = await import("@/lib/cms");
+    vi.mocked(getSettingValue).mockImplementation(async (key: string, fallback: string) =>
+      key === "HABEAS_DATA_EMAIL" ? "datos@lucamsshop.com" : fallback,
+    );
+    expect(await resolveCmsTokens("escríbenos a {{email_habeas_data}}")).toBe(
+      "escríbenos a datos@lucamsshop.com",
+    );
+  });
+
   it("tokens desconocidos pasan intactos y texto sin tokens no toca settings", async () => {
     expect(await resolveCmsTokens("cupón {{raro}} sin resolver")).toBe(
       "cupón {{raro}} sin resolver",

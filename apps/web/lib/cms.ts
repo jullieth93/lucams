@@ -115,6 +115,8 @@ const PUBLIC_SETTING_KEYS = new Set([
   // Identidad y contacto público
   "APP_NAME",
   "CONTACT_EMAIL",
+  "HABEAS_DATA_EMAIL",
+  "RETRACTO_EMAIL",
   "SECURITY_EMAIL",
   "BUSINESS_HOURS",
   "BUSINESS_LOCATION",

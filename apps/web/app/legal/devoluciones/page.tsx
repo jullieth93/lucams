@@ -41,7 +41,7 @@ Los productos personalizados quedan por fuera del retracto porque la ley except�
 
 Es sencillo, y estamos para ayudarte en cada paso:
 
-1. **Escríbenos dentro de los 5 días hábiles** siguientes a la entrega, a **retracto@lucamsshop.com** o por **WhatsApp**. Cuéntanos tu número de pedido o de cotización.
+1. **Escríbenos dentro de los 5 días hábiles** siguientes a la entrega, a **{{email_retracto}}** o por **WhatsApp**. Cuéntanos tu número de pedido o de cotización.
 2. Te confirmamos que tu retracto aplica y te damos las instrucciones para la **devolución del producto**.
 3. **Devuelves el producto** en las mismas condiciones en que lo recibiste (sin uso, con su empaque original y lo que venía incluido).
 4. Nos indicas los datos para hacerte el **reembolso**.
@@ -72,13 +72,13 @@ Si pagaste con **medios electrónicos** (tarjeta, PSE u otro instrumento de pago
 
 **Cómo pedirla (procedimiento manual):**
 
-1. Escríbenos a **retracto@lucamsshop.com** o por **WhatsApp** **cuanto antes**: la ley te da **cinco (5) días hábiles** desde que te diste cuenta del cobro fraudulento o no solicitado, o desde que debiste recibir el producto o lo recibiste defectuoso o distinto a lo pedido (Decreto 1074 de 2015, arts. 2.2.2.51.4 y 2.2.2.51.6). Indícanos tu **número de pedido** y la **causal** (fraude, cobro no solicitado, producto no recibido, defectuoso o distinto al pedido). La queja se presenta ante nosotras como proveedor y, dentro del mismo plazo, se notifica al **emisor de tu medio de pago** (tu banco o billetera) — nosotras te guiamos para que no se te pase el plazo.
+1. Escríbenos a **{{email_retracto}}** o por **WhatsApp** **cuanto antes**: la ley te da **cinco (5) días hábiles** desde que te diste cuenta del cobro fraudulento o no solicitado, o desde que debiste recibir el producto o lo recibiste defectuoso o distinto a lo pedido (Decreto 1074 de 2015, arts. 2.2.2.51.4 y 2.2.2.51.6). Indícanos tu **número de pedido** y la **causal** (fraude, cobro no solicitado, producto no recibido, defectuoso o distinto al pedido). La queja se presenta ante nosotras como proveedor y, dentro del mismo plazo, se notifica al **emisor de tu medio de pago** (tu banco o billetera) — nosotras te guiamos para que no se te pase el plazo.
 2. Te confirmamos la recepción de tu solicitud y la tramitamos con la **pasarela de pagos (Wompi)** y los demás participantes del proceso de pago.
 3. El plazo de **quince (15) días hábiles** para devolverte el dinero corre contra **los participantes del proceso de pago** —tu banco, la pasarela y el emisor de la tarjeta—, no contra la tienda (Decreto 1074 de 2015, art. 2.2.2.51.8). Nosotras te acompañamos en el trámite.
 
 ## ¿Dudas?
 
-Estamos para ayudarte. Escríbenos a **retracto@lucamsshop.com**, a **hola@lucamsshop.com** o por **WhatsApp**, y con gusto te acompañamos en el proceso. También puedes conocer más sobre tus derechos en la [Superintendencia de Industria y Comercio (SIC)](https://www.sic.gov.co).
+Estamos para ayudarte. Escríbenos a **{{email_retracto}}**, a **{{email_contacto}}** o por **WhatsApp**, y con gusto te acompañamos en el proceso. También puedes conocer más sobre tus derechos en la [Superintendencia de Industria y Comercio (SIC)](https://www.sic.gov.co).
 
 ---
 

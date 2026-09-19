@@ -26,8 +26,8 @@ Este aviso es un resumen. El documento vinculante y completo es nuestra **Polít
 
 Puedes contactarnos por:
 
-- **Correo:** hola@lucamsshop.com
-- **Habeas Data (trámites de datos personales):** habeas-data@lucamsshop.com
+- **Correo:** {{email_contacto}}
+- **Habeas Data (trámites de datos personales):** {{email_habeas_data}}
 - **WhatsApp:** el botón de WhatsApp que ves en el sitio.
 
 > Si necesitas nuestros datos para un trámite formal o una reclamación, escríbenos por cualquiera de estos canales y te los damos.
@@ -74,7 +74,7 @@ De acuerdo con la Ley 1581 de 2012 (art. 8), tienes derecho a:
 
 ## Cómo ejercer tus derechos
 
-Escríbenos a **habeas-data@lucamsshop.com** (o a hola@lucamsshop.com, o por WhatsApp). Según la ley:
+Escríbenos a **{{email_habeas_data}}** (o a {{email_contacto}}, o por WhatsApp). Según la ley:
 
 - Respondemos tus **consultas** en máximo **10 días hábiles**.
 - Respondemos tus **reclamos** en máximo **15 días hábiles**.

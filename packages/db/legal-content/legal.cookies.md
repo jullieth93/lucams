@@ -1,6 +1,6 @@
 Las **cookies** son archivos pequeñitos que tu navegador guarda cuando visitas un sitio. Nos sirven para que **Lucams_shop** funcione (que puedas iniciar sesión y que tu carrito no se pierda) y, si tú lo autorizas, para mejorar tu experiencia. Aquí te contamos, sin letra menuda, qué cookies usamos, para qué, cuánto duran y cómo las controlas.
 
-Responsable del tratamiento: **Lucams_shop (persona natural), Bogotá D.C., Colombia**, titular de la marca **Lucams_shop**. Tratamos tus datos conforme a la **Ley 1581 de 2012** y su **Decreto reglamentario 1377 de 2013, compilado en el Decreto 1074 de 2015**. Para dudas o para ejercer tus derechos, escríbenos a **habeas-data@lucamsshop.com** (encuentras el detalle en el **Aviso de Privacidad** y en **Hábeas Data**). Si necesitas nuestros datos para un trámite formal o una reclamación, escríbenos y te los damos.
+Responsable del tratamiento: **Lucams_shop (persona natural), Bogotá D.C., Colombia**, titular de la marca **Lucams_shop**. Tratamos tus datos conforme a la **Ley 1581 de 2012** y su **Decreto reglamentario 1377 de 2013, compilado en el Decreto 1074 de 2015**. Para dudas o para ejercer tus derechos, escríbenos a **{{email_habeas_data}}** (encuentras el detalle en el **Aviso de Privacidad** y en **Hábeas Data**). Si necesitas nuestros datos para un trámite formal o una reclamación, escríbenos y te los damos.
 
 ## Cómo clasificamos las cookies
 

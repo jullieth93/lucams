@@ -23,12 +23,12 @@ Al comprar en **lucamsshop.com** aceptas estos Términos y Condiciones. Léelos 
 
 **Lucams_shop** es una marca de productos magnéticos personalizados en Colombia, operada por **Lucams_shop (persona natural), Bogotá D.C., Colombia**.
 
-- Correo de contacto: **hola@lucamsshop.com**
+- Correo de contacto: **{{email_contacto}}**
 - WhatsApp: disponible en el sitio (botón de contacto).
-- Peticiones de datos personales (Hábeas Data): **habeas-data@lucamsshop.com**
-- Retracto y devoluciones: **retracto@lucamsshop.com**
+- Peticiones de datos personales (Hábeas Data): **{{email_habeas_data}}**
+- Retracto y devoluciones: **{{email_retracto}}**
 
-Si necesitas nuestros datos para un trámite formal o una reclamación, escríbenos a **hola@lucamsshop.com** y te los damos.
+Si necesitas nuestros datos para un trámite formal o una reclamación, escríbenos a **{{email_contacto}}** y te los damos.
 
 ## Objeto
 
@@ -73,7 +73,7 @@ Cuando ejerces el retracto, te **devolvemos el dinero en un máximo de quince (1
 
 **Excepción — productos personalizados:** conforme al mismo art. 47 (parágrafo 3, literal c), los productos **claramente personalizados o confeccionados según tus especificaciones** —los que llevan tu foto, tu texto o tu diseño hecho en el Estudio— **no admiten retracto**, porque se elaboran solo para ti. Los productos del **catálogo estándar** (sin personalización tuya) **sí tienen retracto**.
 
-Para ejercerlo, escríbenos a **retracto@lucamsshop.com** o por WhatsApp. Más detalle en [Devoluciones y Retracto](/legal/devoluciones).
+Para ejercerlo, escríbenos a **{{email_retracto}}** o por WhatsApp. Más detalle en [Devoluciones y Retracto](/legal/devoluciones).
 
 ## Garantía legal
 
@@ -93,7 +93,7 @@ Si pagaste con **tarjeta de crédito, débito, PSE u otro instrumento de pago el
 
 **Cómo pedirla (procedimiento manual):**
 
-1. Escríbenos a **retracto@lucamsshop.com** o por **WhatsApp** **cuanto antes**: la ley te da **cinco (5) días hábiles** desde que te diste cuenta del cobro fraudulento o no solicitado, o desde que debiste recibir el producto o lo recibiste defectuoso o distinto a lo pedido (Decreto 1074 de 2015, arts. 2.2.2.51.4 y 2.2.2.51.6). Indícanos tu **número de pedido** y la **causal** (fraude, cobro no solicitado, producto no recibido, defectuoso o distinto al pedido). La queja se presenta ante nosotras como proveedor y, dentro del mismo plazo, se notifica al **emisor de tu medio de pago** (tu banco o billetera) — nosotras te guiamos para que no se te pase el plazo.
+1. Escríbenos a **{{email_retracto}}** o por **WhatsApp** **cuanto antes**: la ley te da **cinco (5) días hábiles** desde que te diste cuenta del cobro fraudulento o no solicitado, o desde que debiste recibir el producto o lo recibiste defectuoso o distinto a lo pedido (Decreto 1074 de 2015, arts. 2.2.2.51.4 y 2.2.2.51.6). Indícanos tu **número de pedido** y la **causal** (fraude, cobro no solicitado, producto no recibido, defectuoso o distinto al pedido). La queja se presenta ante nosotras como proveedor y, dentro del mismo plazo, se notifica al **emisor de tu medio de pago** (tu banco o billetera) — nosotras te guiamos para que no se te pase el plazo.
 2. Te confirmamos la recepción de tu solicitud y la tramitamos con la **pasarela de pagos (Wompi)** y los demás participantes del proceso de pago.
 3. La devolución del dinero corre contra **los participantes del proceso de pago** —tu banco, la pasarela y el emisor de la tarjeta—, que tienen **quince (15) días hábiles** para devolver el dinero (Decreto 1074 de 2015, art. 2.2.2.51.8). Nosotras te acompañamos en el trámite y respondemos lo que nos corresponda.
 
@@ -119,7 +119,7 @@ Algunos de nuestros proveedores tecnológicos están fuera de Colombia (por ejem
 
 ## PQR y atención al cliente
 
-Estamos para ayudarte. Escríbenos a **hola@lucamsshop.com**, por WhatsApp, o —para temas de datos— a **habeas-data@lucamsshop.com**.
+Estamos para ayudarte. Escríbenos a **{{email_contacto}}**, por WhatsApp, o —para temas de datos— a **{{email_habeas_data}}**.
 
 - Toda **petición, queja o reclamo (PQR)** que presentes la radicamos con **número y fecha-hora** y te confirmamos la radicación por el mismo canal; puedes pedir seguimiento en cualquier momento (Ley 1480 de 2011, art. 50, adicionado por la Ley 2439 de 2024).
 - Respondemos tus **consultas** en máximo **diez (10) días hábiles**.

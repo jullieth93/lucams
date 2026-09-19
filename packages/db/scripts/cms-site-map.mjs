@@ -10228,6 +10228,39 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               body: "hola@lucamsshop.com",
               sortOrder: 5,
             },
+            {
+              key: "HABEAS_DATA_EMAIL",
+              kind: "SETTING",
+              type: "EMAIL",
+              label: "Email de datos personales (Hábeas Data)",
+              helpText:
+                "Buzón para trámites de datos personales. Aparece en las páginas legales (privacidad, hábeas data, cookies y términos) y en la página de contacto. Si está vacío, se usa habeas-data@lucamsshop.com.",
+              category: "CONTACT",
+              body: "habeas-data@lucamsshop.com",
+              sortOrder: 10,
+            },
+            {
+              key: "RETRACTO_EMAIL",
+              kind: "SETTING",
+              type: "EMAIL",
+              label: "Email de retracto y devoluciones",
+              helpText:
+                "Buzón para retracto, devoluciones y reversión del pago. Aparece en las páginas legales (términos y devoluciones). Si está vacío, se usa retracto@lucamsshop.com.",
+              category: "CONTACT",
+              body: "retracto@lucamsshop.com",
+              sortOrder: 20,
+            },
+            {
+              key: "SECURITY_EMAIL",
+              kind: "SETTING",
+              type: "EMAIL",
+              label: "Email de seguridad",
+              helpText:
+                "Buzón para reportes de vulnerabilidades. Aparece en la página legal de seguridad. Si está vacío, se usa security@lucamsshop.com.",
+              category: "CONTACT",
+              body: "security@lucamsshop.com",
+              sortOrder: 30,
+            },
           ],
         },
         {

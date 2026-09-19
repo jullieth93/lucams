@@ -1,6 +1,6 @@
 Para armar tus imanes, cobrarte de forma segura y llevarte el pedido hasta la puerta, un pequeño equipo de proveedores de confianza nos ayuda entre bambalinas. A esos proveedores la ley los llama **encargados del tratamiento**: tratan tus datos personales **por cuenta nuestra**, solo para lo necesario y bajo un contrato que les exige cuidarlos.
 
-El **responsable del tratamiento** de tus datos es **Lucams_shop (persona natural), Bogotá D.C., Colombia**. Puedes escribirnos a **hola@lucamsshop.com** o por **WhatsApp** (el número está en el pie de página del sitio). Si necesitas nuestros datos para un trámite formal, escríbenos y te los damos.
+El **responsable del tratamiento** de tus datos es **Lucams_shop (persona natural), Bogotá D.C., Colombia**. Puedes escribirnos a **{{email_contacto}}** o por **WhatsApp** (el número está en el pie de página del sitio). Si necesitas nuestros datos para un trámite formal, escríbenos y te los damos.
 
 ## ¿Qué es un subprocesador?
 
@@ -50,7 +50,7 @@ Todo esto se hace conforme al **artículo 26 de la Ley 1581 de 2012**, que regul
 
 ## Cómo ejercer tus derechos
 
-Puedes **conocer, actualizar, rectificar y suprimir** tus datos, **revocar** la autorización y **pedir prueba** de la autorización otorgada. Escríbenos a **hola@lucamsshop.com** o usa el formulario de la página de [Habeas Data](/legal/habeas-data). Los plazos legales son:
+Puedes **conocer, actualizar, rectificar y suprimir** tus datos, **revocar** la autorización y **pedir prueba** de la autorización otorgada. Escríbenos a **{{email_contacto}}** o usa el formulario de la página de [Habeas Data](/legal/habeas-data). Los plazos legales son:
 
 - **Consultas:** te respondemos en máximo **10 días hábiles** (Ley 1581, art. 14).
 - **Reclamos:** los resolvemos en máximo **15 días hábiles** (Ley 1581, art. 15).

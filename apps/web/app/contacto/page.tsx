@@ -29,9 +29,10 @@ export async function generateMetadata(): Promise<Metadata> {
 export const dynamic = "force-dynamic";
 
 export default async function ContactoPage() {
-  const [waSupportUrl, contactEmail, successNoteBlock] = await Promise.all([
+  const [waSupportUrl, contactEmail, habeasDataEmail, successNoteBlock] = await Promise.all([
     buildWhatsAppUrl({ kind: "support" }),
     getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
+    getSettingValue("HABEAS_DATA_EMAIL", "habeas-data@lucamsshop.com"),
     getCmsBlock("support.contacto.success-note"),
   ]);
   // <ContactForm> es client component y no lee el CMS: el texto de éxito se
@@ -99,8 +100,8 @@ export default async function ContactoPage() {
                     blockKey="support.contacto.legal-note"
                     fallback="Datos personales y temas legales:"
                   />{" "}
-                  <a href="mailto:habeas-data@lucamsshop.com" className="hover:text-brand-purple">
-                    habeas-data@lucamsshop.com
+                  <a href={`mailto:${habeasDataEmail}`} className="hover:text-brand-purple">
+                    {habeasDataEmail}
                   </a>
                 </p>
               </div>

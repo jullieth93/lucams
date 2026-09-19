@@ -19,10 +19,10 @@ El tratamiento de tus datos está a cargo de:
 
 - **Responsable:** **Lucams_shop (persona natural), Bogotá D.C., Colombia**, titular de la marca **Lucams_shop**.
 - **Domicilio:** Bogotá D.C., Colombia.
-- **Correo de contacto:** hola@lucamsshop.com
+- **Correo de contacto:** {{email_contacto}}
 - **WhatsApp:** disponible en el sitio (botón de WhatsApp).
 
-Si necesitas nuestros datos para un trámite formal o una reclamación, escríbenos a **habeas-data@lucamsshop.com** y te los damos.
+Si necesitas nuestros datos para un trámite formal o una reclamación, escríbenos a **{{email_habeas_data}}** y te los damos.
 
 ## Qué datos tratamos
 
@@ -95,7 +95,7 @@ Como titular de tus datos personales, la Ley 1581 (art. 8) te garantiza:
 
 La atención de peticiones, consultas y reclamos sobre tus datos está a cargo del **canal de Protección de Datos de Lucams_shop**:
 
-- **Correo:** hola@lucamsshop.com
+- **Correo:** {{email_contacto}}
 - **WhatsApp:** botón disponible en el sitio.
 
 Es el punto único al que puedes escribir para ejercer cualquiera de tus derechos.
@@ -105,7 +105,7 @@ Es el punto único al que puedes escribir para ejercer cualquiera de tus derecho
 Tienes dos caminos:
 
 1. **Tú mismo, al instante:** puedes eliminar tu cuenta y tus datos desde [Mi cuenta → Seguridad](/mi-cuenta/seguridad). Para dejar de recibir correos de marketing, usa el enlace **"Cancelar suscripción"** al final de cualquier correo nuestro.
-2. **Escribiéndonos:** manda tu solicitud a **hola@lucamsshop.com** o por WhatsApp, indicando:
+2. **Escribiéndonos:** manda tu solicitud a **{{email_contacto}}** o por WhatsApp, indicando:
    - Tu nombre completo y documento de identidad.
    - El correo **o el número de WhatsApp** con el que nos escribiste o pediste tu cotización (si cotizaste como invitado, el correo es opcional y tu WhatsApp basta para identificarte).
    - El derecho que quieres ejercer.

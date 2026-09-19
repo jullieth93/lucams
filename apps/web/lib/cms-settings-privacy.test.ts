@@ -47,6 +47,8 @@ describe("isPublicSettingKey (allowlist)", () => {
   it("expone los settings que el sitio público sí consume", () => {
     const publicKeys = [
       "CONTACT_EMAIL",
+      "HABEAS_DATA_EMAIL",
+      "RETRACTO_EMAIL",
       "SECURITY_EMAIL",
       "BUSINESS_HOURS",
       "BUSINESS_LOCATION",

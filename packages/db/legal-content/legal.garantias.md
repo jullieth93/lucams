@@ -4,7 +4,7 @@ En Lucams_shop respondemos por lo que hacemos. Todos nuestros productos tienen *
 
 Lucams_shop es una marca operada por **Lucams_shop (persona natural), Bogotá D.C., Colombia**. Somos quienes respondemos directamente por la garantía de todo lo que compras aquí.
 
-- Correo: **hola@lucamsshop.com**
+- Correo: **{{email_contacto}}**
 - WhatsApp: el número que ves en nuestro sitio.
 
 Si necesitas nuestros datos completos de identificación, te los damos con gusto por estos mismos canales.
@@ -46,7 +46,7 @@ Si tu producto sale con defecto dentro del año de garantía:
 
 ## Cómo la haces efectiva
 
-1. Escríbenos a **hola@lucamsshop.com** (o por WhatsApp) con:
+1. Escríbenos a **{{email_contacto}}** (o por WhatsApp) con:
    - tu número de pedido o de cotización,
    - una foto o un video del defecto,
    - una breve descripción de qué pasó.

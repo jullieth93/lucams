@@ -15,7 +15,7 @@ Lucams_shop es operado por **Lucams_shop (persona natural), Bogotá D.C., Colomb
 
 ## Cómo reportar
 
-Escríbenos a **security@lucamsshop.com** e incluye, si puedes:
+Escríbenos a **{{email_security}}** e incluye, si puedes:
 
 - Descripción del problema.
 - Pasos para reproducirlo.

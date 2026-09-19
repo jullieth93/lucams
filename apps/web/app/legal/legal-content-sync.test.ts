@@ -66,6 +66,15 @@ describe("contenido legal — el fallback renderizado coincide con la fuente can
     expect(pageFallback(name)).toBe(canonicalMarkdown(name));
   });
 
+  // Fase 3C (2026-09-18): los correos de contacto/legal son editables desde
+  // «Ajustes del sitio» (settings CONTACT_EMAIL / HABEAS_DATA_EMAIL / RETRACTO_EMAIL /
+  // SECURITY_EMAIL). Los documentos referencian tokens ({{email_contacto}}, etc.) que
+  // resolveCmsTokens sustituye en render — si alguien reintroduce el literal, editar el
+  // setting no mueve el texto legal y esto lo caza.
+  it.each(LEGAL_DOCS)("legal/%s: los correos van como tokens {{email_*}}, no literales", (name) => {
+    expect(canonicalMarkdown(name)).not.toContain("@lucamsshop.com");
+  });
+
   // Guardas de veracidad para el modo FULL (auditoría 2026-09-04, hallazgo F-01): la tienda YA
   // cobra en línea (decisión de la dueña del 2026-09-03: Wompi, Aveonline y asistente IA activos),
   // así que el encuadre de la Etapa 1 ("todavía no cobramos", "cuando activemos…") quedó
