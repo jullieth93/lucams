@@ -219,6 +219,23 @@ la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia veri
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
 
+## Sesión — 2026-09-18 (6) — RELEASE A PRD del paquete responsive + limpieza de ramas
+
+- **Release a PRD con OK de Lucy:** `production` ff `1f0fa2b` → `475b348` (7 commits: paquete
+  responsive rondas 1-2 + fixes del gate e2e + docs). Deploy Vercel success; verificado en vivo
+  con marcador inequívoco: PDP de polaroid en lucamsshop.com muestra la PRIMERA variante
+  preseleccionada con precio exacto (sin "Desde") — la feature de ADR-104 corriendo en
+  producción. Smoke: home/catálogo/estudio 200. Migración `WebVital.target` aplicada en PRD
+  (mismo procedimiento que STG). Ojo: la API de Deployments de GitHub no registró el deploy de
+  producción, pero el commit status "Vercel: success" + el marcador en vivo lo confirman.
+- **Ramas eliminadas SIN pérdida (depbot-33, depbot-41):** eran solo locales. depbot-41 ya
+  estaba contenida en develop; el único commit de depbot-33 era un merge cuyo contenido
+  (bump `actions/upload-artifact` v4→v7.0.1) ya estaba en develop con el mismo SHA — verificado
+  antes de borrar (`git diff` del merge vs develop-side parent: 3 líneas, idénticas a develop).
+- **Auditoría responsive cerrada en PRD.** Único pendiente para su consolidación documental:
+  revisión RUM de INP en ~1 semana (con `WebVital.target` ya capturando el elemento en los 3
+  ambientes).
+
 ## Sesión — 2026-09-18 (5) — STG VALIDADO por Lucy + estado real de CI
 
 - **Lucy validó STG: "aparentemente todo Ok"** (los 2 paquetes responsive, ADR-103/104).
