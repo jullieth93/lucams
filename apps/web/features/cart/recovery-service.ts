@@ -10,7 +10,7 @@ import {
   buildCommercialEmailHeaders,
   encodeUnsubscribeParam,
 } from "@/features/newsletter/unsubscribe";
-import { cartRecoveryEmail } from "@/features/emails/templates/cart-recovery";
+import { renderCartRecoveryEmail } from "@/features/emails/registry";
 
 /*
  * Recuperación de carrito abandonado (palanca de ingreso, auditoría 2026-07-13).
@@ -114,7 +114,7 @@ export async function sendCartRecoveryReminders(
         where: { id: row.id },
         data: { recoverTokenHash: hashBearerToken(recoverToken) },
       });
-      const tpl = await cartRecoveryEmail({
+      const tpl = await renderCartRecoveryEmail({
         recoverToken,
         items,
         unsubscribeUrl: `${siteUrl}/unsubscribe?u=${encodeUnsubscribeParam(row.email)}`,

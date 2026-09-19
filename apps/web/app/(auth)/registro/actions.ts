@@ -32,7 +32,7 @@ import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { recordHabeasDataConsent } from "@/features/consent/service";
 import { attachReferral, findReferrerByCode } from "@/features/referrals/service";
-import { accountExistsNoticeEmail } from "@/features/emails/templates/account-exists-notice";
+import { renderAccountExistsNoticeEmail } from "@/features/emails/registry";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseService } from "@/lib/supabase/service";
 import { getClientIp } from "@/lib/client-ip";
@@ -238,7 +238,7 @@ export async function signupAction(
     // por email al dueño de la cuenta. Best-effort: si el envío falla, la
     // respuesta al cliente no cambia (tampoco debe delatar nada).
     try {
-      const notice = await accountExistsNoticeEmail();
+      const notice = await renderAccountExistsNoticeEmail();
       await sendEmail({
         to: parsed.data.email,
         subject: notice.subject,

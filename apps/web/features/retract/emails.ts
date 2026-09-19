@@ -7,10 +7,12 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
-import { retractReceivedEmail } from "@/features/emails/templates/retract-received";
-import { retractApprovedEmail } from "@/features/emails/templates/retract-approved";
-import { retractRejectedEmail } from "@/features/emails/templates/retract-rejected";
-import { retractRefundedEmail } from "@/features/emails/templates/retract-refunded";
+import {
+  renderRetractReceivedEmail,
+  renderRetractApprovedEmail,
+  renderRetractRejectedEmail,
+  renderRetractRefundedEmail,
+} from "@/features/emails/registry";
 
 function escapeHtml(s: string): string {
   return s
@@ -67,7 +69,7 @@ export async function sendRetractRequested(id: string): Promise<void> {
     const d = await loadRetract(id);
     if (!d) return;
     // 1) Acuse al cliente.
-    const tpl = await retractReceivedEmail({
+    const tpl = await renderRetractReceivedEmail({
       orderNumber: d.orderNumber,
       customerName: d.customerName,
       productName: d.productName,
@@ -112,7 +114,7 @@ export async function sendRetractApproved(id: string): Promise<void> {
   try {
     const d = await loadRetract(id);
     if (!d) return;
-    const tpl = await retractApprovedEmail({
+    const tpl = await renderRetractApprovedEmail({
       orderNumber: d.orderNumber,
       customerName: d.customerName,
       productName: d.productName,
@@ -151,7 +153,7 @@ export async function sendRetractRejected(id: string): Promise<void> {
   try {
     const d = await loadRetract(id);
     if (!d) return;
-    const tpl = await retractRejectedEmail({
+    const tpl = await renderRetractRejectedEmail({
       orderNumber: d.orderNumber,
       customerName: d.customerName,
       productName: d.productName,
@@ -188,7 +190,7 @@ export async function sendRetractRefunded(id: string): Promise<void> {
   try {
     const d = await loadRetract(id);
     if (!d) return;
-    const tpl = await retractRefundedEmail({
+    const tpl = await renderRetractRefundedEmail({
       orderNumber: d.orderNumber,
       customerName: d.customerName,
       productName: d.productName,

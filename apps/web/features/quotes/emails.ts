@@ -28,7 +28,7 @@ import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
 import { notify } from "@/features/notifications/service";
-import { quoteAdminNotificationEmail } from "@/features/emails/templates/quote-admin-notification";
+import { renderQuoteAdminNotificationEmail } from "@/features/emails/registry";
 
 /** Envia el aviso de cotización nueva al admin. Best-effort: nunca lanza. */
 export async function sendQuoteAdminNotification(quoteId: string): Promise<void> {
@@ -43,7 +43,7 @@ export async function sendQuoteAdminNotification(quoteId: string): Promise<void>
     // setting ALERT_EMAIL del CMS (editable en el admin), fallback al buzón
     // principal. Es aviso interno, NUNCA va al cliente.
     const to = await getSettingValue("ALERT_EMAIL", "hola@lucamsshop.com");
-    const tpl = await quoteAdminNotificationEmail({
+    const tpl = await renderQuoteAdminNotificationEmail({
       quoteId: quote.id,
       quoteNumber: quote.number,
       customerName: quote.customerName,

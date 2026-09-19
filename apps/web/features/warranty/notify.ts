@@ -9,8 +9,10 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
-import { warrantyReceivedEmail } from "@/features/emails/templates/warranty-received";
-import { warrantyResolvedEmail } from "@/features/emails/templates/warranty-resolved";
+import {
+  renderWarrantyReceivedEmail,
+  renderWarrantyResolvedEmail,
+} from "@/features/emails/registry";
 
 function escapeHtml(s: string): string {
   return s
@@ -63,7 +65,7 @@ export async function notifyWarrantyClaimCreated(id: string): Promise<void> {
     const d = await loadClaim(id);
     if (!d) return;
     // 1) Confirmación al cliente.
-    const tpl = await warrantyReceivedEmail({
+    const tpl = await renderWarrantyReceivedEmail({
       customerName: d.customerName,
       claimId: id,
       orderNumber: d.orderNumber,
@@ -112,7 +114,7 @@ export async function notifyWarrantyResolved(id: string): Promise<void> {
   try {
     const d = await loadClaim(id);
     if (!d || !d.resolutionType) return;
-    const tpl = await warrantyResolvedEmail({
+    const tpl = await renderWarrantyResolvedEmail({
       customerName: d.customerName,
       claimId: id,
       productName: d.productName,

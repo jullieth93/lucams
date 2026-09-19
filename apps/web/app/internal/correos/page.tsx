@@ -2,11 +2,16 @@
  * Galería de PREVIEW de los correos transaccionales (dev-only). No es de cara al cliente.
  *
  * Motivación (auditoría v3 · Tanda 3): los correos transaccionales son plantillas de CÓDIGO
- * (features/emails/templates/*.ts) que renderizan HTML vía renderEmailLayout — NO viven en el CMS,
- * así que no aparecen en /admin/email-templates. Esta ruta los renderiza TODOS con datos de ejemplo,
- * en un iframe por correo (aislado del CSS de la app), para que Lucy los revise con el ojo sin tener
- * que disparar el flujo real ni enviar nada. Cada correo con variante INVITADO vs CON-CUENTA cuando
- * el link cambia según haya token público (#10).
+ * (features/emails/templates/*.ts) que renderizan HTML vía renderEmailLayout. Esta ruta los
+ * renderiza TODOS con datos de ejemplo, en un iframe por correo (aislado del CSS de la app),
+ * para que Lucy los revise con el ojo sin tener que disparar el flujo real ni enviar nada.
+ * Cada correo con variante INVITADO vs CON-CUENTA cuando el link cambia según haya token
+ * público (#10).
+ *
+ * Ojo (Fase 4, 2026-09-18): acá se renderiza el COPY BASE (imports directos de templates/,
+ * sin overrides) a propósito — la vista con los textos editados en /admin/email-templates
+ * aplicados es el preview de /admin/email-templates/[id] (mismo wrapper withOverrides
+ * que usa el envío real vía los exports render* del registry).
  *
  * Seguridad: NUNCA debe existir en un deploy Vercel (production NI preview) — `VERCEL_ENV` está
  * definido en cualquier deploy y es undefined en dev local. Mismo patrón que

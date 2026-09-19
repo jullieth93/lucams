@@ -19,7 +19,7 @@ import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
-import { referralRewardEmail } from "@/features/emails/templates/referral-reward";
+import { renderReferralRewardEmail } from "@/features/emails/registry";
 
 const REWARD_PERCENT = 10;
 const REWARD_DAYS = 90;
@@ -185,7 +185,7 @@ export async function issueReferralRewardsIfFirstPaidOrder(orderId: string): Pro
       orderNumber: order.number,
     };
     if (referee) {
-      const tpl = await referralRewardEmail({
+      const tpl = await renderReferralRewardEmail({
         ...rewardData,
         role: "referee",
         couponCode: refereeCouponCode,
@@ -201,7 +201,7 @@ export async function issueReferralRewardsIfFirstPaidOrder(orderId: string): Pro
         tags: [{ name: "type", value: "referral_reward" }],
       });
     }
-    const tplR = await referralRewardEmail({
+    const tplR = await renderReferralRewardEmail({
       ...rewardData,
       role: "referrer",
       couponCode: referrerCouponCode,

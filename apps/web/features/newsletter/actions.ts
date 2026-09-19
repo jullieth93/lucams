@@ -18,7 +18,7 @@ import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { sendEmail } from "@/lib/resend";
 import { getSiteUrl } from "@/features/emails/layout";
-import { newsletterWelcomeEmail } from "@/features/emails/templates/newsletter-welcome";
+import { renderNewsletterWelcomeEmail } from "@/features/emails/registry";
 import {
   buildCommercialEmailHeaders,
   computeUnsubscribeToken,
@@ -100,7 +100,7 @@ export async function subscribeNewsletterAction(
     // matando un `void (async …)()` antes de que corra. after() difiere el trabajo para DESPUÉS de
     // enviar la respuesta, garantizando que el correo de bienvenida se envíe (auditoría v3 · #14).
     after(async () => {
-      const tpl = await newsletterWelcomeEmail({ email, unsubscribeToken });
+      const tpl = await renderNewsletterWelcomeEmail({ email, unsubscribeToken });
       const siteUrl = await getSiteUrl();
       await sendEmail({
         to: email,

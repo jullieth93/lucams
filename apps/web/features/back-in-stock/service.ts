@@ -4,7 +4,7 @@ import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
 import { getSiteUrl } from "@/features/emails/layout";
-import { backInStockEmail } from "@/features/emails/templates/back-in-stock";
+import { renderBackInStockEmail } from "@/features/emails/registry";
 import {
   buildCommercialEmailHeaders,
   encodeUnsubscribeParam,
@@ -114,7 +114,7 @@ export async function sendBackInStockNotifications(
   for (const s of eligible) {
     try {
       const unsubscribeUrl = `${siteUrl}/unsubscribe?u=${encodeUnsubscribeParam(s.email)}`;
-      const tpl = await backInStockEmail({
+      const tpl = await renderBackInStockEmail({
         productName: s.product.name,
         productSlug: s.product.slug,
         unsubscribeUrl,

@@ -15,6 +15,9 @@
  *     (fallback hola@lucamsshop.com, misma fuente que el resumen diario), idempotencyKey
  *     derivado del quote id, notificación in-app además del email (centro de
  *     notificaciones 2026-08-05), y un fallo de Resend NUNCA se propaga (fire-and-forget).
+ *   - Overrides EmailTemplateOverride (Fase 4): el wrapper renderiza vía registry
+ *     (withOverrides) → un override SUBJECT/HEADING/PREHEADER aplica al envío real
+ *     (tokens {campo} interpolados) y sin fila (o DB caída) cae al copy base.
  *
  * Ojo con el dinero: formatCOP usa Intl es-CO y emite "$ X.XXX" con ESPACIO DURO U+00A0;
  * las aserciones usan \s en regex (mismo criterio que templates.test.ts).
@@ -26,6 +29,11 @@ const sendEmail = vi.hoisted(() =>
   vi.fn(async (_input: unknown): Promise<unknown> => ({ sent: true, id: "email_1" })),
 );
 const quoteFindFirst = vi.hoisted(() => vi.fn());
+// Overrides del módulo /admin/email-templates: el wrapper sendQuoteAdminNotification
+// renderiza vía registry (withOverrides) → lee EmailTemplateOverride por templateId.
+const emailTemplateOverrideFindMany = vi.hoisted(() =>
+  vi.fn(async (): Promise<Array<{ key: string; value: string }>> => []),
+);
 // Notificación in-app del aviso (centro de notificaciones 2026-08-05): dedup + create.
 const notificationFindFirst = vi.hoisted(() => vi.fn(async () => null));
 const notificationCreate = vi.hoisted(() => vi.fn(async (_args: unknown) => ({})));
@@ -47,6 +55,7 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     quote: { findFirst: quoteFindFirst },
     notification: { findFirst: notificationFindFirst, create: notificationCreate },
+    emailTemplateOverride: { findMany: emailTemplateOverrideFindMany },
   },
   Prisma: { PrismaClientKnownRequestError: class extends Error {} },
 }));
@@ -93,6 +102,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   sendEmail.mockResolvedValue({ sent: true, id: "email_1" });
   quoteFindFirst.mockResolvedValue(QUOTE_ROW);
+  // Default: sin overrides guardados → el render cae al copy base.
+  emailTemplateOverrideFindMany.mockResolvedValue([]);
 });
 
 // ───────────────────── quoteAdminNotificationEmail (render) ─────────────────
@@ -212,5 +223,61 @@ describe("sendQuoteAdminNotification", () => {
 
     await sendQuoteAdminNotification("quote_ghost");
     expect(sendEmail).not.toHaveBeenCalled();
+  });
+});
+
+// ───── Overrides EmailTemplateOverride (módulo /admin/email-templates) ─────
+// El wrapper renderiza vía registry (withOverrides): un override guardado en
+// el admin aplica al ENVÍO REAL, con fallback total al copy base.
+
+describe("sendQuoteAdminNotification — overrides del admin en el envío real", () => {
+  it("con fila SUBJECT, el envío usa el override con los tokens {campo} interpolados", async () => {
+    emailTemplateOverrideFindMany.mockResolvedValue([
+      { key: "SUBJECT", value: "Cotización {quoteNumber} de {customerName} ({city})" },
+    ]);
+
+    await sendQuoteAdminNotification("quote_1");
+
+    expect(emailTemplateOverrideFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { templateId: "quote-admin-notification" } }),
+    );
+    const arg = sendEmail.mock.calls[0]![0] as Record<string, unknown>;
+    expect(arg.subject).toBe("Cotización COT-ABC234 de Lucía Pérez (Bogotá D.C.)");
+  });
+
+  it("overrides HEADING/PREHEADER reemplazan el h1 y el preheader del html (el text plano no se toca)", async () => {
+    emailTemplateOverrideFindMany.mockResolvedValue([
+      { key: "HEADING", value: "Cotización {quoteNumber} recibida" },
+      { key: "PREHEADER", value: "Revisa los datos de {customerName}" },
+    ]);
+
+    await sendQuoteAdminNotification("quote_1");
+
+    const arg = sendEmail.mock.calls[0]![0] as Record<string, unknown>;
+    expect(arg.html).toContain("Cotización COT-ABC234 recibida");
+    expect(arg.html).toContain("Revisa los datos de Lucía Pérez");
+    // El subject base y el text plano quedan intactos (sin override de SUBJECT).
+    expect(arg.subject).toBe("Nueva cotización COT-ABC234 — Lucía Pérez (Bogotá D.C.)");
+    expect(arg.text).not.toContain("Cotización COT-ABC234 recibida");
+    // replyTo se conserva (el wrapper hace spread del resultado base).
+    expect(arg.replyTo).toBe("lucia@example.com");
+  });
+
+  it("sin filas, el envío cae al copy base (fallback total)", async () => {
+    emailTemplateOverrideFindMany.mockResolvedValue([]);
+
+    await sendQuoteAdminNotification("quote_1");
+
+    const arg = sendEmail.mock.calls[0]![0] as Record<string, unknown>;
+    expect(arg.subject).toBe("Nueva cotización COT-ABC234 — Lucía Pérez (Bogotá D.C.)");
+  });
+
+  it("si la lectura de overrides falla (DB caída), el envío cae al copy base", async () => {
+    emailTemplateOverrideFindMany.mockRejectedValue(new Error("db caída"));
+
+    await sendQuoteAdminNotification("quote_1");
+
+    const arg = sendEmail.mock.calls[0]![0] as Record<string, unknown>;
+    expect(arg.subject).toBe("Nueva cotización COT-ABC234 — Lucía Pérez (Bogotá D.C.)");
   });
 });

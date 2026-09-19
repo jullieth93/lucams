@@ -14,8 +14,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/resend", () => ({
   sendEmail: vi.fn(async () => ({ sent: true, id: "test-email-id" })),
 }));
-vi.mock("@/features/emails/templates/cart-recovery", () => ({
-  cartRecoveryEmail: vi.fn(async () => ({ subject: "s", html: "h", text: "t" })),
+// El service importa el render envuelto del registry (overrides aplicados);
+// el render en sí se sigue mockeando.
+vi.mock("@/features/emails/registry", () => ({
+  renderCartRecoveryEmail: vi.fn(async () => ({ subject: "s", html: "h", text: "t" })),
 }));
 
 import { prisma } from "@/lib/db";

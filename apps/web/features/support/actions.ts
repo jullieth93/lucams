@@ -29,8 +29,10 @@ import { getCurrentCustomer } from "@/lib/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
-import { supportTicketReceivedEmail } from "@/features/emails/templates/support-ticket-received";
-import { supportTicketInternalEmail } from "@/features/emails/templates/support-ticket-internal";
+import {
+  renderSupportTicketReceivedEmail,
+  renderSupportTicketInternalEmail,
+} from "@/features/emails/registry";
 import { SupportTicketSchema, type SupportTicketInput } from "./schemas";
 import { getClientIp } from "@/lib/client-ip";
 
@@ -128,13 +130,13 @@ export async function submitContactAction(
     after(async () => {
       const contactEmail = await getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com");
       const [received, internal] = await Promise.all([
-        supportTicketReceivedEmail({
+        renderSupportTicketReceivedEmail({
           customerName: parsed.data.name,
           ticketId: ticket.id,
           subject: parsed.data.subject,
           message: parsed.data.message,
         }),
-        supportTicketInternalEmail({
+        renderSupportTicketInternalEmail({
           customerName: parsed.data.name,
           customerEmail: parsed.data.email,
           ticketId: ticket.id,

@@ -7,7 +7,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
-import { designRejectedEmail } from "@/features/emails/templates/design-rejected";
+import { renderDesignRejectedEmail } from "@/features/emails/registry";
 import type { RejectResult } from "./service";
 
 type ShippingAddrSnapshot = { fullName?: string };
@@ -34,7 +34,7 @@ export async function sendDesignRejectedEmails(
         select: { shippingAddress: true },
       });
       const name = (order?.shippingAddress as ShippingAddrSnapshot | null)?.fullName ?? "Cliente";
-      const tpl = await designRejectedEmail({
+      const tpl = await renderDesignRejectedEmail({
         orderNumber: o.number,
         customerName: name,
         productName: result.productName,

@@ -7,7 +7,7 @@ import {
   buildCommercialEmailHeaders,
   encodeUnsubscribeParam,
 } from "@/features/newsletter/unsubscribe";
-import { reviewRequestEmail } from "@/features/emails/templates/review-request";
+import { renderReviewRequestEmail } from "@/features/emails/registry";
 
 /*
  * Palanca de reseñas (auditoría 2026-07-13): follow-up DEMORADO a pedidos entregados hace 7-30 días
@@ -69,7 +69,7 @@ export async function sendReviewRequests(
       }
 
       const ship = (order.shippingAddress ?? {}) as ShippingAddr;
-      const tpl = await reviewRequestEmail({
+      const tpl = await renderReviewRequestEmail({
         orderNumber: order.number,
         customerName: ship.fullName ?? "Cliente",
         products,

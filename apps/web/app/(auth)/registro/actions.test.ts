@@ -20,7 +20,7 @@ const rateLimit = vi.hoisted(() => vi.fn(async () => ({ allowed: true })));
 const checkPwnedPassword = vi.hoisted(() => vi.fn(async () => ({ pwned: false, count: 0 })));
 const recordHabeasDataConsent = vi.hoisted(() => vi.fn(async () => {}));
 const sendEmail = vi.hoisted(() => vi.fn(async () => ({ sent: true as const, id: "mail-1" })));
-const accountExistsNoticeEmail = vi.hoisted(() =>
+const renderAccountExistsNoticeEmail = vi.hoisted(() =>
   vi.fn(async () => ({
     subject: "¿Intentaste crear una cuenta en Lucams_shop?",
     html: "<p>html</p>",
@@ -52,7 +52,8 @@ vi.mock("@/features/referrals/service", () => ({
   attachReferral: vi.fn(async () => {}),
   findReferrerByCode: vi.fn(async () => null),
 }));
-vi.mock("@/features/emails/templates/account-exists-notice", () => ({ accountExistsNoticeEmail }));
+// La action importa el render envuelto del registry (overrides aplicados).
+vi.mock("@/features/emails/registry", () => ({ renderAccountExistsNoticeEmail }));
 vi.mock("@/lib/resend", () => ({ sendEmail }));
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({ auth: { signUp } }),
@@ -96,7 +97,7 @@ describe("signupAction — anti-enumeración (B-3)", () => {
     expect(res.error).toBeUndefined();
     expect(res.success).toMatch(/si el correo está disponible/i);
     // El aviso sale al correo del dueño, con el template dedicado.
-    expect(accountExistsNoticeEmail).toHaveBeenCalledTimes(1);
+    expect(renderAccountExistsNoticeEmail).toHaveBeenCalledTimes(1);
     expect(sendEmail).toHaveBeenCalledTimes(1);
     expect(sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({

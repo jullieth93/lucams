@@ -13,14 +13,17 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
-import { orderConfirmationEmail } from "@/features/emails/templates/order-confirmation";
-import { orderShippedEmail } from "@/features/emails/templates/order-shipped";
-import { orderDeliveredEmail } from "@/features/emails/templates/order-delivered";
-import { orderPaymentFailedEmail } from "@/features/emails/templates/order-payment-failed";
-import { orderPaymentDeclinedEmail } from "@/features/emails/templates/order-payment-declined";
-import { orderReturnedEmail } from "@/features/emails/templates/order-returned";
-import { orderCancelledEmail } from "@/features/emails/templates/order-cancelled";
-import { refundIssuedEmail } from "@/features/emails/templates/refund-issued";
+import {
+  renderOrderConfirmationEmail,
+  renderOrderShippedEmail,
+  renderOrderDeliveredEmail,
+  renderOrderPaymentFailedEmail,
+  renderOrderPaymentDeclinedEmail,
+  renderOrderReturnedEmail,
+  renderOrderCancelledEmail,
+  renderRefundIssuedEmail,
+  renderOrderAdminNotificationEmail,
+} from "@/features/emails/registry";
 
 type ShippingAddrSnapshot = {
   fullName?: string;
@@ -55,7 +58,7 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
     const ship = order.shippingAddress as ShippingAddrSnapshot;
     const customerName = ship.fullName ?? "Cliente";
 
-    const tpl = await orderConfirmationEmail({
+    const tpl = await renderOrderConfirmationEmail({
       orderNumber: order.number,
       customerName,
       total: order.total,
@@ -170,7 +173,7 @@ export async function sendOrderShipped(orderId: string): Promise<void> {
     if (!order || !order.trackingNumber) return;
 
     const ship = order.shippingAddress as ShippingAddrSnapshot;
-    const tpl = await orderShippedEmail({
+    const tpl = await renderOrderShippedEmail({
       orderNumber: order.number,
       customerName: ship.fullName ?? "Cliente",
       carrier: order.shippingCarrier
@@ -222,7 +225,7 @@ export async function sendOrderPaymentFailed(orderId: string, reason: string): P
     });
     if (!order) return;
     const ship = order.shippingAddress as ShippingAddrSnapshot;
-    const tpl = await orderPaymentFailedEmail({
+    const tpl = await renderOrderPaymentFailedEmail({
       orderNumber: order.number,
       customerName: ship.fullName ?? "Cliente",
       total: order.total,
@@ -341,7 +344,7 @@ export async function sendOrderPaymentDeclined(input: {
     }
 
     const ship = order.shippingAddress as ShippingAddrSnapshot;
-    const tpl = await orderPaymentDeclinedEmail({
+    const tpl = await renderOrderPaymentDeclinedEmail({
       orderNumber: order.number,
       customerName: ship.fullName ?? "Cliente",
       total: order.total,
@@ -388,7 +391,7 @@ export async function sendOrderDelivered(orderId: string): Promise<void> {
     if (!order) return;
 
     const ship = order.shippingAddress as ShippingAddrSnapshot;
-    const tpl = await orderDeliveredEmail({
+    const tpl = await renderOrderDeliveredEmail({
       orderNumber: order.number,
       customerName: ship.fullName ?? "Cliente",
       publicTrackingToken: null, // F-11 — ver sendOrderConfirmation
@@ -433,7 +436,7 @@ export async function sendOrderCancelled(orderId: string, reason?: string | null
     if (!order) return;
 
     const ship = order.shippingAddress as ShippingAddrSnapshot;
-    const tpl = await orderCancelledEmail({
+    const tpl = await renderOrderCancelledEmail({
       orderNumber: order.number,
       customerName: ship.fullName ?? "Cliente",
       reason: reason ?? null,
@@ -482,7 +485,7 @@ export async function sendOrderRefunded(orderId: string): Promise<void> {
     if (!order) return;
 
     const ship = order.shippingAddress as ShippingAddrSnapshot;
-    const tpl = await refundIssuedEmail({
+    const tpl = await renderRefundIssuedEmail({
       orderNumber: order.number,
       customerName: ship.fullName ?? "Cliente",
       amount: order.refundAmount ?? order.total,
@@ -523,7 +526,6 @@ export async function sendOrderRefunded(orderId: string): Promise<void> {
 
 import { getSettingValue } from "@/lib/cms";
 import { notify } from "@/features/notifications/service";
-import { orderAdminNotificationEmail } from "@/features/emails/templates/order-admin-notification";
 
 /**
  * Avisa al negocio que un pedido quedó PAGADO (o COD confirmado). Se llama en
@@ -573,7 +575,7 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
 
     // 2) Email al buzón interno (mismo destinatario que las alertas operativas).
     const to = await getSettingValue("ALERT_EMAIL", "hola@lucamsshop.com");
-    const tpl = await orderAdminNotificationEmail({
+    const tpl = await renderOrderAdminNotificationEmail({
       orderId: order.id,
       orderNumber: order.number,
       customerName,
@@ -682,7 +684,7 @@ export async function notifyOrderReturned(input: {
 
     // 2) Email al cliente (sin promesas: "te contactamos").
     const ship = order.shippingAddress as ShippingAddrSnapshot;
-    const tpl = await orderReturnedEmail({
+    const tpl = await renderOrderReturnedEmail({
       orderNumber: order.number,
       customerName: ship.fullName ?? "Cliente",
     });

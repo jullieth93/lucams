@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
-import { supportTicketClosedEmail } from "@/features/emails/templates/support-ticket-closed";
+import { renderSupportTicketClosedEmail } from "@/features/emails/registry";
 import type { SUBJECT_LABELS } from "@/features/support/schemas";
 
 /*
@@ -59,7 +59,7 @@ async function sendTicketClosedEmail(ticket: {
   subject: string;
 }): Promise<void> {
   try {
-    const tpl = await supportTicketClosedEmail({
+    const tpl = await renderSupportTicketClosedEmail({
       customerName: ticket.name,
       ticketId: ticket.id,
       // Los tickets se crean validados por SupportTicketSchema (mismo enum).
