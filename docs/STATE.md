@@ -238,6 +238,17 @@ la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia veri
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
 
+## Sesión — 2026-09-19 (2) — RELEASE A PRD de la auditoría funcional total
+
+- `production` ff `475b348` → `6ed0d71` (14 commits: las 7 fases + baseline + fix backup +
+  docs). Deploy Vercel Production **Ready** (dpukuougb, 2m).
+- Verificado en vivo: lucamsshop.com 200 con el fix del newsletter servido;
+  `/api/health/all` → todos los servicios `ok`.
+- Migración 035 aplicada en PRD: `lucams-purge-delivered-designs` agendado (0 9 * * *) junto
+  a los 9 jobs existentes — la retención post-entrega ya corre en los dos ambientes.
+- Pendiente: revocar el PAT de Supabase del owner cuando ya no se use; validación visual de
+  Lucy en PRD (registro con correo branded, 2FA con códigos, módulos nuevos).
+
 ## Sesión — 2026-09-19 — Auditoría funcional total del owner remediada (12 commits) + fix backup R2
 
 - **Origen:** validación de Lucy con ~22 hallazgos sobre capa cliente y capa admin ("quiero
