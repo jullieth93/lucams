@@ -13,10 +13,9 @@
  *   - Cierre del dropdown por click-fuera.
  *   - onChange propio del consumidor sigue disparándose.
  *
- * Nota: el JSDoc del componente menciona "validación" pero la validación real
- * es HTML5 nativa (type=email + pattern) — el componente NO renderiza mensajes
- * de error propios ni normaliza el value (lo pasa tal cual). Se verifica el
- * comportamiento real, no el descrito.
+ * Nota Fase 7a (feedback Lucy 2026-09-18): el componente SÍ renderiza mensajes
+ * inline propios desde la validación en vivo on-blur (ver último describe);
+ * la validación de submit sigue siendo HTML5 nativa + Zod server-side.
  *
  * Sin @testing-library/user-event en el repo → fireEvent (igual que
  * product-card.test.tsx). globals:false → cleanup manual en afterEach.
@@ -180,5 +179,94 @@ describe("EmailInput — autocomplete de dominios", () => {
     // El handler escucha "mousedown" en document.
     fireEvent.mouseDown(document.body);
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+});
+
+describe("EmailInput — validación en vivo on-blur (Fase 7a)", () => {
+  it("no valida mientras se escribe la primera vez (sin blur no hay mensaje)", () => {
+    render(<EmailInput aria-label="Correo" />);
+    const input = screen.getByRole("textbox", { name: "Correo" });
+    fireEvent.change(input, { target: { value: "lucy@" } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(input).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("on-blur con formato inválido muestra mensaje + aria-invalid/aria-describedby", () => {
+    render(<EmailInput aria-label="Correo" />);
+    const input = screen.getByRole("textbox", { name: "Correo" });
+    fireEvent.change(input, { target: { value: "lucy@" } });
+    fireEvent.blur(input);
+    const error = screen.getByRole("alert");
+    expect(error).toHaveTextContent(/falta el @ o el dominio/i);
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(input.getAttribute("aria-describedby")).toContain(error.id);
+  });
+
+  it("on-blur con email válido no muestra nada", () => {
+    render(<EmailInput aria-label="Correo" />);
+    const input = screen.getByRole("textbox", { name: "Correo" });
+    fireEvent.change(input, { target: { value: "lucy@gmail.com" } });
+    fireEvent.blur(input);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(input).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("on-blur con campo vacío no muestra nada (el required HTML5 lo cubre en submit)", () => {
+    render(<EmailInput aria-label="Correo" required />);
+    const input = screen.getByRole("textbox", { name: "Correo" });
+    fireEvent.blur(input);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(input).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("typo de dominio conocido sugiere corrección sin marcar error ni auto-corregir", () => {
+    const onValueChange = vi.fn();
+    render(<EmailInput aria-label="Correo" onValueChange={onValueChange} />);
+    const input = screen.getByRole("textbox", { name: "Correo" }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "lucy@gmial.com" } });
+    fireEvent.blur(input);
+    // Sugerencia como status (aria-live polite), NO como alert de error.
+    const hint = screen.getByRole("status");
+    expect(hint).toHaveTextContent("¿Quisiste decir lucy@gmail.com?");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(input).not.toHaveAttribute("aria-invalid", "true");
+    // El value NO se auto-corrige.
+    expect(input.value).toBe("lucy@gmial.com");
+    expect(onValueChange).not.toHaveBeenCalledWith("lucy@gmail.com");
+  });
+
+  it("dominio válido que no es typo no muestra sugerencia", () => {
+    render(<EmailInput aria-label="Correo" />);
+    const input = screen.getByRole("textbox", { name: "Correo" });
+    fireEvent.change(input, { target: { value: "lucy@empresa.com.co" } });
+    fireEvent.blur(input);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("una vez mostrado el error, se re-evalúa on-change y desaparece al corregir", () => {
+    render(<EmailInput aria-label="Correo" />);
+    const input = screen.getByRole("textbox", { name: "Correo" });
+    fireEvent.change(input, { target: { value: "lucy@" } });
+    fireEvent.blur(input);
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+    // Corrige sin salir del campo: el mensaje se limpia solo.
+    fireEvent.change(input, { target: { value: "lucy@gmail.com" } });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(input).not.toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("preserva el aria-describedby del padre (errores server-side) junto al live", () => {
+    render(<EmailInput aria-label="Correo" aria-describedby="email-error" aria-invalid={true} />);
+    const input = screen.getByRole("textbox", { name: "Correo" });
+    fireEvent.change(input, { target: { value: "lucy@" } });
+    fireEvent.blur(input);
+    const error = screen.getByRole("alert");
+    const describedBy = input.getAttribute("aria-describedby")!;
+    expect(describedBy).toContain("email-error");
+    expect(describedBy).toContain(error.id);
+    expect(input).toHaveAttribute("aria-invalid", "true");
   });
 });

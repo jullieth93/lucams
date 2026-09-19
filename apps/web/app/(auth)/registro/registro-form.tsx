@@ -38,8 +38,15 @@ export function RegistroForm({
   const [passwordConfirm, setPasswordConfirm] = useState("");
   // Autorización de tratamiento (Ley 1581) — acto afirmativo, obligatorio antes de crear la cuenta.
   const [dataConsent, setDataConsent] = useState(false);
+  // Feedback en vivo on-blur (feedback Lucy 2026-09-18 / Fase 7a): no se valida
+  // mientras se escribe la primera vez; tras el primer blur se re-valida on-change.
+  const [firstName, setFirstName] = useState("");
+  const [firstNameTouched, setFirstNameTouched] = useState(false);
+  const [confirmTouched, setConfirmTouched] = useState(false);
 
   const passwordsMatch = !passwordConfirm || password === passwordConfirm;
+  const showFirstNameError = firstNameTouched && !firstName.trim();
+  const showMismatch = confirmTouched && !passwordsMatch;
 
   return (
     <Card className="border-brand-purple/10 animate-in fade-in slide-in-from-bottom-3 shadow-xl duration-500">
@@ -72,8 +79,17 @@ export function RegistroForm({
                 required
                 placeholder={texts.firstNamePlaceholder}
                 disabled={pending}
-                aria-invalid={Boolean(state?.fieldErrors?.firstName)}
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                onBlur={() => setFirstNameTouched(true)}
+                aria-invalid={Boolean(state?.fieldErrors?.firstName) || showFirstNameError}
+                aria-describedby={showFirstNameError ? "firstName-live-error" : undefined}
               />
+              {showFirstNameError && (
+                <p id="firstName-live-error" role="alert" className="text-destructive text-sm">
+                  Tu nombre es obligatorio
+                </p>
+              )}
               {state?.fieldErrors?.firstName && (
                 <p className="text-destructive text-sm">{state.fieldErrors.firstName[0]}</p>
               )}
@@ -168,9 +184,15 @@ export function RegistroForm({
               disabled={pending}
               value={passwordConfirm}
               onValueChange={setPasswordConfirm}
-              aria-invalid={Boolean(state?.fieldErrors?.passwordConfirm) || !passwordsMatch}
+              onBlur={() => setConfirmTouched(true)}
+              aria-invalid={Boolean(state?.fieldErrors?.passwordConfirm) || showMismatch}
+              aria-describedby={showMismatch ? "passwordConfirm-live-error" : undefined}
             />
-            {!passwordsMatch && <p className="text-destructive text-sm">{texts.mismatch}</p>}
+            {showMismatch && (
+              <p id="passwordConfirm-live-error" role="alert" className="text-destructive text-sm">
+                {texts.mismatch}
+              </p>
+            )}
             {state?.fieldErrors?.passwordConfirm && passwordsMatch && (
               <p className="text-destructive text-sm">{state.fieldErrors.passwordConfirm[0]}</p>
             )}

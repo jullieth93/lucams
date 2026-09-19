@@ -41,6 +41,11 @@ export function ConfirmarForm({
     FormData
   >(resendCodeAction, null);
   const [token, setToken] = useState("");
+  // Feedback en vivo on-blur (feedback Lucy 2026-09-18 / Fase 7a): el pattern
+  // HTML5 solo bloquea el submit; tras el primer blur se muestra el mensaje
+  // inline y se re-evalúa on-change.
+  const [tokenTouched, setTokenTouched] = useState(false);
+  const showTokenError = tokenTouched && token.length > 0 && !/^\d{6,10}$/.test(token);
 
   return (
     <Card className="border-brand-purple/10 animate-in fade-in slide-in-from-bottom-3 shadow-xl duration-500">
@@ -76,12 +81,23 @@ export function ConfirmarForm({
               autoFocus
               value={token}
               onChange={(e) => setToken(e.target.value.replace(/\D/g, ""))}
+              onBlur={() => setTokenTouched(true)}
               placeholder="00000000"
               className="h-14 text-center font-mono text-2xl tracking-[0.4em]"
               disabled={verifying}
-              aria-invalid={Boolean(verifyState?.fieldErrors?.token)}
+              aria-invalid={Boolean(verifyState?.fieldErrors?.token) || showTokenError}
+              aria-describedby={showTokenError ? "token-live-error" : undefined}
             />
             <p className="text-muted-foreground text-center text-xs">{texts.codeHint}</p>
+            {showTokenError && (
+              <p
+                id="token-live-error"
+                role="alert"
+                className="text-destructive text-center text-sm"
+              >
+                El código es numérico, de 6 a 10 dígitos.
+              </p>
+            )}
             {verifyState?.fieldErrors?.token && (
               <p className="text-destructive text-center text-sm">
                 {verifyState.fieldErrors.token[0]}

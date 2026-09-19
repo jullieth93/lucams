@@ -12,6 +12,14 @@
  *   live.com, hotmail.es, yahoo.es — cubre ~95% de cuentas de
  *   consumo en LATAM/Colombia. Configurable si se necesita más.
  *
+ *   4. Validación en vivo on-blur (feedback Lucy 2026-09-18 / Fase 7a):
+ *      al salir del campo con valor NO vacío e inválido según EMAIL_PATTERN
+ *      muestra mensaje inline (aria-invalid + aria-describedby, role="alert").
+ *      Si el formato es válido pero el dominio es un typo conocido
+ *      (gmial.com, hotmial.com, …) sugiere "¿Quisiste decir …?" como texto
+ *      (role="status") — NO auto-corrige ni marca error. Una vez mostrado,
+ *      el mensaje se re-evalúa on-change (desaparece al corregir).
+ *
  * Patrón:
  *   - Uncontrolled por default — el form lee `name` del input.
  *   - Opcional `value` + `onValueChange` para uso controlado.
@@ -24,7 +32,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent, type ComponentProps } from "react";
+import { useEffect, useId, useRef, useState, type ChangeEvent, type ComponentProps } from "react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +56,43 @@ const POPULAR_DOMAINS = [
 // navegador logueaba "Pattern attribute value … is not a valid regular
 // expression" en TODOS los formularios (login, registro, cotización, admin).
 const EMAIL_PATTERN = "^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,24}$";
+const EMAIL_REGEX = new RegExp(EMAIL_PATTERN);
+
+// Typos de dominio comunes en ES/LATAM → dominio probable (Fase 7a).
+// Solo transposiciones/omisiones evidentes: la sugerencia es texto informativo
+// ("¿Quisiste decir…?"), nunca se auto-corrige el value. El autocomplete de
+// dominios cubre prefijos MIENTRAS se escribe; esto cubre el typo COMPLETO
+// que ya no es prefijo de ningún dominio popular (no se duplican).
+const DOMAIN_TYPOS: Record<string, string> = {
+  "gmial.com": "gmail.com",
+  "gmal.com": "gmail.com",
+  "gamil.com": "gmail.com",
+  "gimail.com": "gmail.com",
+  "gmail.con": "gmail.com",
+  "hotmial.com": "hotmail.com",
+  "hotmal.com": "hotmail.com",
+  "hotmil.com": "hotmail.com",
+  "hotmail.con": "hotmail.com",
+  "outlok.com": "outlook.com",
+  "outloook.com": "outlook.com",
+  "outlook.es": "outlook.com",
+  "outlook.con": "outlook.com",
+  "yaho.com": "yahoo.com",
+  "yahooo.com": "yahoo.com",
+  "yhaoo.com": "yahoo.com",
+  "yahoo.con": "yahoo.com",
+  "iclou.com": "icloud.com",
+  "iclod.com": "icloud.com",
+  "live.con": "live.com",
+};
+
+/** Si el dominio es un typo conocido, devuelve el email corregido sugerido. */
+function suggestDomainTypo(v: string): string | null {
+  const at = v.lastIndexOf("@");
+  if (at < 0) return null;
+  const fix = DOMAIN_TYPOS[v.slice(at + 1).toLowerCase()];
+  return fix ? `${v.slice(0, at)}@${fix}` : null;
+}
 
 type Props = Omit<ComponentProps<"input">, "type" | "pattern"> & {
   value?: string;
@@ -62,10 +107,16 @@ export function EmailInput({
   onChange,
   onFocus,
   onBlur,
+  "aria-invalid": ariaInvalidProp,
+  "aria-describedby": ariaDescribedByProp,
   ...inputProps
 }: Props) {
   const [internalValue, setInternalValue] = useState(String(defaultValue ?? ""));
   const [open, setOpen] = useState(false);
+  // Fase 7a: la validación en vivo arranca en el PRIMER blur (no mientras se
+  // escribe por primera vez); después se re-evalúa en cada change.
+  const [touched, setTouched] = useState(false);
+  const liveMsgId = useId();
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const value = controlledValue ?? internalValue;
@@ -100,6 +151,20 @@ export function EmailInput({
 
   const shouldShow = open && suggestions.length > 0;
 
+  // Feedback en vivo (Fase 7a): formato inválido = error; typo de dominio con
+  // formato válido = sugerencia (no es error → no marca aria-invalid).
+  const showFormatError = touched && value.length > 0 && !EMAIL_REGEX.test(value);
+  const typoSuggestion = touched && !showFormatError ? suggestDomainTypo(value) : null;
+  const liveMessage = showFormatError
+    ? "Revisa el formato del correo: falta el @ o el dominio."
+    : typoSuggestion
+      ? `¿Quisiste decir ${typoSuggestion}?`
+      : null;
+  const ariaInvalid = Boolean(ariaInvalidProp) || showFormatError || undefined;
+  const ariaDescribedBy =
+    [ariaDescribedByProp, liveMessage ? liveMsgId : undefined].filter(Boolean).join(" ") ||
+    undefined;
+
   const handleSelect = (domain: string) => {
     const newValue = `${local}@${domain}`;
     setValue(newValue);
@@ -114,6 +179,8 @@ export function EmailInput({
         pattern={EMAIL_PATTERN}
         value={value}
         className={className}
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
         onChange={(e: ChangeEvent<HTMLInputElement>) => {
           setValue(e.target.value);
           setOpen(true);
@@ -124,6 +191,7 @@ export function EmailInput({
           onFocus?.(e);
         }}
         onBlur={(e) => {
+          setTouched(true);
           // setTimeout para permitir que el click en sugerencia se procese
           // antes de cerrar el dropdown.
           setTimeout(() => setOpen(false), 150);
@@ -131,6 +199,17 @@ export function EmailInput({
         }}
         autoComplete={inputProps.autoComplete ?? "email"}
       />
+
+      {liveMessage && (
+        <p
+          id={liveMsgId}
+          role={showFormatError ? "alert" : "status"}
+          className={showFormatError ? "text-destructive mt-1.5 text-sm" : "mt-1.5 text-xs"}
+          style={showFormatError ? undefined : { color: "var(--warning)" }}
+        >
+          {liveMessage}
+        </p>
+      )}
 
       {shouldShow && (
         <ul

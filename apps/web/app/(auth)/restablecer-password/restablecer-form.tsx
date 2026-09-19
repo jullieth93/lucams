@@ -33,8 +33,16 @@ export function RestablecerForm({
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [token, setToken] = useState("");
+  // Feedback en vivo on-blur (feedback Lucy 2026-09-18 / Fase 7a): no se valida
+  // mientras se escribe la primera vez; tras el primer blur se re-valida on-change.
+  const [tokenTouched, setTokenTouched] = useState(false);
+  const [confirmTouched, setConfirmTouched] = useState(false);
 
   const passwordsMatch = !passwordConfirm || password === passwordConfirm;
+  // Mismo contrato que el pattern HTML5 ("\d{6,10}") y el Zod server-side —
+  // el pattern solo bloquea el submit; acá se da el mensaje inline.
+  const showTokenError = tokenTouched && token.length > 0 && !/^\d{6,10}$/.test(token);
+  const showMismatch = confirmTouched && !passwordsMatch;
 
   return (
     <Card className="border-brand-purple/10 animate-in fade-in slide-in-from-bottom-3 shadow-xl duration-500">
@@ -71,11 +79,22 @@ export function RestablecerForm({
               autoFocus
               value={token}
               onChange={(e) => setToken(e.target.value.replace(/\D/g, ""))}
+              onBlur={() => setTokenTouched(true)}
               placeholder="00000000"
               className="h-14 text-center font-mono text-2xl tracking-[0.4em]"
               disabled={pending}
-              aria-invalid={Boolean(state?.fieldErrors?.token)}
+              aria-invalid={Boolean(state?.fieldErrors?.token) || showTokenError}
+              aria-describedby={showTokenError ? "token-live-error" : undefined}
             />
+            {showTokenError && (
+              <p
+                id="token-live-error"
+                role="alert"
+                className="text-destructive text-center text-sm"
+              >
+                El código es numérico, de 6 a 10 dígitos.
+              </p>
+            )}
             {state?.fieldErrors?.token && (
               <p className="text-destructive text-center text-sm">{state.fieldErrors.token[0]}</p>
             )}
@@ -112,9 +131,15 @@ export function RestablecerForm({
               disabled={pending}
               value={passwordConfirm}
               onValueChange={setPasswordConfirm}
-              aria-invalid={Boolean(state?.fieldErrors?.passwordConfirm) || !passwordsMatch}
+              onBlur={() => setConfirmTouched(true)}
+              aria-invalid={Boolean(state?.fieldErrors?.passwordConfirm) || showMismatch}
+              aria-describedby={showMismatch ? "passwordConfirm-live-error" : undefined}
             />
-            {!passwordsMatch && <p className="text-destructive text-sm">{texts.mismatch}</p>}
+            {showMismatch && (
+              <p id="passwordConfirm-live-error" role="alert" className="text-destructive text-sm">
+                {texts.mismatch}
+              </p>
+            )}
             {state?.fieldErrors?.passwordConfirm && passwordsMatch && (
               <p className="text-destructive text-sm">{state.fieldErrors.passwordConfirm[0]}</p>
             )}
