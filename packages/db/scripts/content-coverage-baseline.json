@@ -1,7 +1,10 @@
 {
-  "generatedAt": "2026-09-15T21:16:27.840Z",
-  "threshold": 37.32,
+  "generatedAt": "2026-09-19T16:17:25.017Z",
+  "threshold": 37.01,
   "uncovered": [
+    "apps/web/app/(auth)/confirmar-codigo/confirmar-form.tsx :: El código es numérico, de 6 a 10 dígitos.",
+    "apps/web/app/(auth)/registro/registro-form.tsx :: Tu nombre es obligatorio",
+    "apps/web/app/(auth)/restablecer-password/restablecer-form.tsx :: El código es numérico, de 6 a 10 dígitos.",
     "apps/web/app/error.tsx :: Algo salió mal de nuestro lado",
     "apps/web/app/error.tsx :: Ya quedó registrado. Puedes intentar de nuevo o volver al inicio.",
     "apps/web/app/error.tsx :: Intentar de nuevo",
