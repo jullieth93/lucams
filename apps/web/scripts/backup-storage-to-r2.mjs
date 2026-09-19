@@ -87,6 +87,36 @@ function requireEnv(name, ...fallbacks) {
   );
 }
 
+/**
+ * Reintenta operaciones del Storage API ante errores transitorios del gateway
+ * de Supabase (502 Bad Gateway / 504 Gateway Timeout / fetch failed…). El backup
+ * programado fallaba ~50% de las noches por un único listado que devolvía 5xx
+ * (2026-09 — historial del workflow Backup DB → R2). 6 intentos con backoff
+ * exponencial + jitter; errores NO transitorios (auth, 4xx) lanzan de inmediato.
+ */
+const TRANSIENT_RE =
+  /bad gateway|gateway timeout|service unavailable|internal server error|fetch failed|econnreset|etimedout|socket|\b50[234]\b/i;
+const RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 45_000, 90_000];
+
+async function withRetry(label, fn) {
+  let lastErr;
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!TRANSIENT_RE.test(msg) || attempt === RETRY_DELAYS_MS.length) throw err;
+      const wait = RETRY_DELAYS_MS[attempt] * (0.75 + Math.random() * 0.5);
+      console.warn(
+        `  ⚠ ${label}: error transitorio (${msg.slice(0, 80)}) — reintento ${attempt + 1}/${RETRY_DELAYS_MS.length} en ${Math.round(wait / 1000)}s`,
+      );
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  throw lastErr;
+}
+
 /** Lists every object of a bucket, recursively, page by page (max 1000/page). */
 async function listAllObjects(supabase, bucket) {
   const PAGE = 1000;
@@ -94,11 +124,22 @@ async function listAllObjects(supabase, bucket) {
   async function walk(prefix) {
     let offset = 0;
     for (;;) {
-      const { data, error } = await supabase.storage.from(bucket).list(prefix, {
-        limit: PAGE,
-        offset,
-        sortBy: { column: "name", order: "asc" },
-      });
+      const { data, error } = await withRetry(
+        `listing ${bucket}/${prefix ? `${prefix}/` : ""}`,
+        async () => {
+          // supabase-js NO lanza ante 5xx del gateway: devuelve { error }.
+          // Si es transitorio lo convertimos en excepción para que withRetry reintente.
+          const res = await supabase.storage.from(bucket).list(prefix, {
+            limit: PAGE,
+            offset,
+            sortBy: { column: "name", order: "asc" },
+          });
+          if (res.error && TRANSIENT_RE.test(res.error.message)) {
+            throw new Error(res.error.message);
+          }
+          return res;
+        },
+      );
       if (error) {
         throw new Error(`listing ${bucket}/${prefix ? `${prefix}/` : ""}: ${error.message}`);
       }
@@ -133,7 +174,13 @@ async function listAllObjects(supabase, bucket) {
 
 /** Opens a download stream for one object (Blob → web stream → node stream). */
 async function openObjectStream(supabase, bucket, path) {
-  const { data, error } = await supabase.storage.from(bucket).download(path);
+  const { data, error } = await withRetry(`downloading ${bucket}/${path}`, async () => {
+    const res = await supabase.storage.from(bucket).download(path);
+    if (res.error && TRANSIENT_RE.test(res.error.message)) {
+      throw new Error(res.error.message);
+    }
+    return res;
+  });
   if (error) throw new Error(`downloading ${bucket}/${path}: ${error.message}`);
   if (!data) throw new Error(`downloading ${bucket}/${path}: empty response body`);
   return Readable.fromWeb(data.stream());
