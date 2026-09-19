@@ -36,9 +36,12 @@
  * [pendiente verificación del artículo exacto]). Al purgar se limpia también QuoteItem.previewUrl:
  * ese preview muestra la misma cara y sus bytes ya no existen.
  *
- * NO toca: diseños de clientes logueados (los rige el ciclo de vida de la cuenta), USED_IN_ORDER /
- * ARCHIVED, READY nunca cotizados, ni nada referenciado por un carrito vivo o un pedido. Política
- * documentada en docs/COMPLIANCE.md. Se agenda por pg_cron (mandato #11) — ver docs/OPERATIONS.md.
+ * NO toca: USED_IN_ORDER (lo rige la retención post-entrega de retention-delivered.ts) /
+ * ARCHIVED, READY nunca cotizados, ni nada referenciado por un carrito vivo o un pedido. Los DRAFT
+ * de clientes logueados los purga purgeIdleCustomerDesigns (abajo) tras 90 días sin actividad
+ * (feedback Lucy 2026-09-18); el resto de lo logueado lo rige el ciclo de vida de la cuenta.
+ * Política documentada en docs/COMPLIANCE.md. Se agenda por pg_cron (mandato #11) — ver
+ * docs/OPERATIONS.md.
  */
 
 import "server-only";
@@ -54,6 +57,13 @@ const PRODUCTION_BUCKET = "production-assets";
 
 /** Un diseño DRAFT anónimo sin actividad por este tiempo se considera abandonado y se purga. */
 export const PURGE_ANON_DESIGN_AFTER_DAYS = 30;
+
+/**
+ * Un diseño DRAFT de cliente LOGUEADO sin actividad por este tiempo se purga igual que el anónimo
+ * (feedback Lucy 2026-09-18): la cuenta viva no es finalidad para conservar fotos crudas de un
+ * boceto que nadie tocó en 3 meses. Más laxo que el anónimo (30d) porque el cliente puede volver.
+ */
+export const PURGE_IDLE_DESIGN_AFTER_DAYS = 90;
 
 /**
  * Gracia tras apagarse la cotización (CLOSED / DISCARDED / borrada) antes de purgar sus fotos.
@@ -292,4 +302,64 @@ export async function purgeAbandonedAnonymousDesigns(
     olderThanDays: days,
   });
   return { designsPurged, assetsPurged };
+}
+
+/**
+ * Resuelve los días de la purga de DRAFTs idle de logueados: override explícito (tests) > env var
+ * PURGE_IDLE_DESIGN_AFTER_DAYS (ajuste operativo) > default PURGE_IDLE_DESIGN_AFTER_DAYS.
+ */
+function resolveIdleDays(overrideDays: number | undefined): number {
+  if (overrideDays !== undefined) return overrideDays;
+  const raw = process.env.PURGE_IDLE_DESIGN_AFTER_DAYS;
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : PURGE_IDLE_DESIGN_AFTER_DAYS;
+}
+
+/**
+ * Purga los diseños DRAFT de clientes LOGUEADOS abandonados (feedback Lucy 2026-09-18): la cuenta
+ * viva blindaba estos bocetos para siempre (la política original excluía todo lo con customerId),
+ * acumulando fotos crudas sin finalidad vigente — mismo principio de temporalidad que la purga
+ * anónima. Mismas guardas: sin carrito vivo, sin pedido y sin cotización vigente. NO toca READY
+ * (cotizado o no), USED_IN_ORDER (lo rige retention-delivered.ts) ni ARCHIVED (decisión explícita
+ * del cliente; lo cubre la supresión de cuenta). Corre desde el mismo cron purge-anon-designs.
+ * @param opts.olderThanDays días sin actividad (default PURGE_IDLE_DESIGN_AFTER_DAYS / env var).
+ */
+export async function purgeIdleCustomerDesigns(
+  opts?: {
+    olderThanDays?: number;
+    batchSize?: number;
+    /** Acota por prefijo de customerId (tests/purgas dirigidas; el cron lo omite). */
+    customerIdPrefix?: string;
+  } & QuoteRetentionOptions,
+): Promise<PurgeResult> {
+  const now = opts?.now ?? new Date();
+  const days = resolveIdleDays(opts?.olderThanDays);
+  const batchSize = opts?.batchSize ?? 500;
+  const cutoff = new Date(now.getTime() - days * DAY_MS);
+  const customerScope = opts?.customerIdPrefix
+    ? { customerId: { startsWith: opts?.customerIdPrefix } }
+    : {};
+  const stillNeeded = activeQuoteWhere(opts);
+
+  const drafts = await prisma.design.findMany({
+    where: {
+      status: "DRAFT",
+      customerId: { not: null, ...customerScope.customerId },
+      updatedAt: { lt: cutoff },
+      cartItems: NO_LIVE_CART_ITEM,
+      orderItems: { none: {} },
+      quoteItems: { none: { quote: stillNeeded } },
+    },
+    select: CANDIDATE_SELECT,
+    take: batchSize,
+  });
+  const result = await purgeDesignBatch(drafts);
+
+  logger.info({
+    event: "retention.purge_idle_customer_designs",
+    designsPurged: result.designsPurged,
+    assetsPurged: result.assetsPurged,
+    olderThanDays: days,
+  });
+  return result;
 }

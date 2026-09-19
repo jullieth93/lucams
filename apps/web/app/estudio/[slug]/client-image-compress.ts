@@ -8,7 +8,9 @@
  * cumple en la práctica sin chocar el tope de plataforma.
  *
  * Reglas:
- * - Solo JPEG/PNG/WebP raster y solo si superan el umbral seguro (~4 MB).
+ * - Solo JPEG/PNG/WebP raster y solo si superan el umbral seguro (~2 MB — bajado de 4 MB el
+ *   2026-09-18: las fotos del cliente son el mayor consumidor del GB de Storage del plan Free;
+ *   a 2400 px q0.85 el resultado queda en ~300–600 KB, ~10× menos que el original de iPhone).
  *   HEIC pasa intacto (el navegador no lo decodifica; el servidor ya lo
  *   resuelve con heic-decode, y los HEIC de iPhone pesan 1–2 MB).
  * - Redimensión al borde largo ≤ 2400 px: sobra para imprimir a 300 DPI en
@@ -18,7 +20,7 @@
 
 "use client";
 
-export const COMPRESS_THRESHOLD_BYTES = 4 * 1024 * 1024; // ~4 MB, bajo el tope de Vercel
+export const COMPRESS_THRESHOLD_BYTES = 2 * 1024 * 1024; // ~2 MB, holgado bajo el tope de Vercel
 const MAX_EDGE_PX = 2400;
 const JPEG_QUALITY = 0.85;
 

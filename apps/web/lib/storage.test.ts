@@ -1,30 +1,29 @@
 /*
  * Test de SEGURIDAD para lib/storage.ts — validación de MIME por magic bytes
- * (Bloque C / F1). El cliente puede falsificar `file.type`; la defensa real es
- * leer los magic bytes del archivo (`sniffImageMime`) y FORZARLOS como
- * contentType en el upload (anti-polyglot / anti-XSS). Si los bytes reales no
- * corresponden a una imagen permitida, el upload se rechaza con INVALID_TYPE.
+ * (Bloque C / F1) + pipeline de optimización de catálogo (feedback Lucy 2026-09-18).
+ *
+ * El cliente puede falsificar `file.type`; la defensa real es leer los magic bytes del archivo
+ * (`sniffImageMime`). Si los bytes reales no corresponden a una imagen permitida, el upload se
+ * rechaza con INVALID_TYPE. Desde 2026-09-18 TODA imagen aceptada pasa por sharp
+ * (`optimizeCatalogImage`: WebP q82, borde largo ≤2000 px) ANTES de subir → la salida es siempre
+ * `.webp` / `image/webp`, y un archivo con magic válido pero indecodificable ahora se RECHAZA
+ * (fail-closed: son imágenes públicas del catálogo).
  *
  * FOCO:
- *  - Bytes reales de JPEG (FF D8 FF), PNG (89 50 4E 47 0D 0A 1A 0A),
- *    WebP (RIFF....WEBP), AVIF (....ftyp + brand avif/avis) → ACEPTADOS, y el
- *    contentType del upload se fuerza al MIME REAL detectado (no al declarado).
+ *  - Bytes reales de JPEG/PNG/WebP/AVIF (imágenes REALES generadas con sharp — los fixtures
+ *    de solo-magic-bytes ya no pasan: sharp no los decodifica) → ACEPTADOS, y el upload sale
+ *    siempre como WebP optimizado (contentType image/webp), no en el formato original.
  *  - Mismatch peligroso: `file.type` declarado permitido (ej image/png) pero los
- *    bytes son HTML / GIF / SVG / WAV / MP4-isom → RECHAZADO en el magic gate.
- *  - Mismatch benigno: declarado image/png pero bytes JPEG reales → ACEPTADO,
- *    porque ambos están en la allow-list; el código confía en los bytes (ext y
- *    contentType salen del MIME real = image/jpeg). Comportamiento documentado.
- *  - Archivo vacío → EMPTY_FILE (antes de mirar MIME).
- *  - Archivo demasiado grande → FILE_TOO_LARGE (antes de mirar MIME).
- *  - Archivo truncado/corrupto (<12 bytes, o header parcial) → INVALID_TYPE.
+ *    bytes son HTML / GIF / SVG / WAV / MP4-isom → RECHAZADO en el magic gate (antes de sharp).
+ *  - Mismatch benigno: declarado image/png pero bytes JPEG reales → ACEPTADO, y la salida es
+ *    WebP igualmente (la conversión normaliza cualquier formato de entrada).
+ *  - Archivo vacío → EMPTY_FILE; demasiado grande → FILE_TOO_LARGE (ambos antes de mirar MIME).
+ *  - Archivo truncado (<12 bytes) o con magic válido pero cuerpo corrupto → INVALID_TYPE.
  *
  * ESTRATEGIA: mock de fetch NO aplica aquí. La única dependencia de red es
  * Supabase Storage; la mockeamos (`@/lib/supabase/service`) para aislar la
  * validación PURA de bytes y NO tocar ningún bucket real. `server-only` lo
- * stubea vitest.config.ts. No es DB-coupled.
- *
- * Comportamiento verificado contra el código real con probes temporales antes
- * de fijar las aserciones (mensajes de error y contentType forzado incluidos).
+ * stubea vitest.config.ts. sharp corre de verdad (determinista y offline). No es DB-coupled.
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -85,6 +84,7 @@ import {
   StorageError,
   deleteProductImage,
   refreshCustomerUploadSignedUrl,
+  sniffImageMime,
   uploadCustomerPhoto,
   uploadProductImage,
 } from "./storage";
@@ -102,15 +102,7 @@ function pad(header: number[] | Buffer, totalLen = 32): Buffer {
 const JPEG_BYTES = pad([0xff, 0xd8, 0xff, 0xe0]);
 /** PNG: 89 50 4E 47 0D 0A 1A 0A */
 const PNG_BYTES = pad([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-/** WebP: "RIFF" <4 bytes size> "WEBP" */
-const WEBP_BYTES = pad(
-  Buffer.concat([Buffer.from("RIFF"), Buffer.from([0x10, 0x00, 0x00, 0x00]), Buffer.from("WEBP")]),
-);
-/** AVIF: <4 bytes> "ftyp" "avif" */
-const AVIF_BYTES = pad(
-  Buffer.concat([Buffer.from([0x00, 0x00, 0x00, 0x20]), Buffer.from("ftyp"), Buffer.from("avif")]),
-);
-/** AVIF brand "avis" (image sequence) — también aceptado. */
+/** AVIF brand "avis" (image sequence) — también aceptado por el sniffer. */
 const AVIS_BYTES = pad(
   Buffer.concat([Buffer.from([0x00, 0x00, 0x00, 0x20]), Buffer.from("ftyp"), Buffer.from("avis")]),
 );
@@ -131,6 +123,25 @@ const MP4_BYTES = pad(
 const HEIC_BYTES = pad(
   Buffer.concat([Buffer.from([0x00, 0x00, 0x00, 0x20]), Buffer.from("ftyp"), Buffer.from("heic")]),
 );
+
+// ── Imágenes REALES (generadas con sharp) ────────────────────────────────────
+// Desde 2026-09-18 uploadProductImage procesa con sharp de verdad: los fixtures de solo-magic-
+// bytes ya no pasan el pipeline (sharp no los decodifica → INVALID_TYPE). Estas sí.
+let REAL_JPEG: Buffer; // 80×60
+let REAL_PNG: Buffer; // 120×90
+let REAL_WEBP: Buffer; // 60×40
+let REAL_AVIF: Buffer; // 20×10 (sharp prebuilt sí decodifica/codifica AVIF vía libheif)
+let REAL_PNG_GRANDE: Buffer; // 3000×1500 — para afirmar el resize a ≤2000 px
+
+beforeAll(async () => {
+  const make = (width: number, height: number, bg: { r: number; g: number; b: number }) =>
+    sharp({ create: { width, height, channels: 3, background: bg } });
+  REAL_JPEG = await make(80, 60, { r: 200, g: 100, b: 50 }).jpeg().toBuffer();
+  REAL_PNG = await make(120, 90, { r: 100, g: 110, b: 120 }).png().toBuffer();
+  REAL_WEBP = await make(60, 40, { r: 10, g: 200, b: 90 }).webp().toBuffer();
+  REAL_AVIF = await make(20, 10, { r: 1, g: 2, b: 3 }).avif().toBuffer();
+  REAL_PNG_GRANDE = await make(3000, 1500, { r: 30, g: 60, b: 90 }).png().toBuffer();
+});
 
 function asFile(bytes: Buffer, type: string, name = "upload"): File {
   // new Uint8Array(bytes): Buffer<ArrayBufferLike> no es BlobPart válido en TS
@@ -170,66 +181,61 @@ afterEach(() => {
 // ─────────────────────────────────────────────────────────────────────────────
 // uploadProductImage — magic-byte acceptance (happy paths)
 // ─────────────────────────────────────────────────────────────────────────────
+// Desde 2026-09-18 la salida es SIEMPRE WebP optimizado (≤2000 px, q82) — el pipeline sharp
+// normaliza cualquier formato de entrada, así que ext y contentType ya no reflejan el MIME de
+// origen sino el formato final del catálogo.
 describe("uploadProductImage — formatos válidos por magic bytes", () => {
-  it("acepta JPEG real (FF D8 FF), sube con ext .jpg y contentType image/jpeg", async () => {
+  it("acepta JPEG real (FF D8 FF) y lo sube convertido a WebP", async () => {
     const result = await uploadProductImage({
       productId: "prod-jpeg",
-      file: asFile(JPEG_BYTES, "image/jpeg"),
+      file: asFile(REAL_JPEG, "image/jpeg"),
     });
 
-    expect(result.path).toMatch(/^prod-jpeg\/[0-9a-f-]{36}\.jpg$/);
+    expect(result.path).toMatch(/^prod-jpeg\/[0-9a-f-]{36}\.webp$/);
     expect(result.publicUrl).toBe(
       `https://ref.supabase.co/storage/v1/object/public/product-images/${result.path}`,
     );
-    // El contentType se fuerza al MIME REAL (anti-polyglot), no al declarado.
     expect(uploadMock).toHaveBeenCalledTimes(1);
     const [uploadedPath, uploadedBuffer, opts] = uploadMock.mock.calls[0];
     expect(uploadedPath).toBe(result.path);
     expect(Buffer.isBuffer(uploadedBuffer)).toBe(true);
-    expect(opts).toMatchObject({ contentType: "image/jpeg", upsert: false });
+    // El buffer subido es el WebP optimizado, no el JPEG original.
+    expect(uploadedBuffer.length).toBeLessThan(REAL_JPEG.length * 2);
+    expect(opts).toMatchObject({ contentType: "image/webp", upsert: false });
   });
 
-  it("acepta PNG real (89 50 4E 47 0D 0A 1A 0A) con ext .png", async () => {
+  it("acepta PNG real y lo sube como .webp (normalización de catálogo)", async () => {
     const result = await uploadProductImage({
       productId: "prod-png",
-      file: asFile(PNG_BYTES, "image/png"),
+      file: asFile(REAL_PNG, "image/png"),
     });
 
-    expect(result.path).toMatch(/^prod-png\/[0-9a-f-]{36}\.png$/);
-    expect(uploadMock.mock.calls[0][2]).toMatchObject({ contentType: "image/png" });
+    expect(result.path).toMatch(/^prod-png\/[0-9a-f-]{36}\.webp$/);
+    expect(uploadMock.mock.calls[0][2]).toMatchObject({ contentType: "image/webp" });
   });
 
-  it("acepta WebP real (RIFF....WEBP) con ext .webp", async () => {
+  it("acepta WebP real (se re-optimiza, sigue .webp)", async () => {
     const result = await uploadProductImage({
       productId: "prod-webp",
-      file: asFile(WEBP_BYTES, "image/webp"),
+      file: asFile(REAL_WEBP, "image/webp"),
     });
 
     expect(result.path).toMatch(/^prod-webp\/[0-9a-f-]{36}\.webp$/);
     expect(uploadMock.mock.calls[0][2]).toMatchObject({ contentType: "image/webp" });
   });
 
-  it("acepta AVIF real (ftyp + brand avif) con ext .avif", async () => {
+  it("acepta AVIF real (ftyp + brand avif) y lo convierte a WebP", async () => {
     const result = await uploadProductImage({
       productId: "prod-avif",
-      file: asFile(AVIF_BYTES, "image/avif"),
+      file: asFile(REAL_AVIF, "image/avif"),
     });
 
-    expect(result.path).toMatch(/^prod-avif\/[0-9a-f-]{36}\.avif$/);
-    expect(uploadMock.mock.calls[0][2]).toMatchObject({ contentType: "image/avif" });
-  });
-
-  it("acepta AVIF con brand 'avis' (secuencia de imagen)", async () => {
-    const result = await uploadProductImage({
-      productId: "prod-avis",
-      file: asFile(AVIS_BYTES, "image/avif"),
-    });
-    expect(result.path).toMatch(/\.avif$/);
-    expect(uploadMock.mock.calls[0][2]).toMatchObject({ contentType: "image/avif" });
+    expect(result.path).toMatch(/^prod-avif\/[0-9a-f-]{36}\.webp$/);
+    expect(uploadMock.mock.calls[0][2]).toMatchObject({ contentType: "image/webp" });
   });
 
   it("usa cacheControl de 1 año y upsert:false (nombres con UUID son inmutables)", async () => {
-    await uploadProductImage({ productId: "p", file: asFile(JPEG_BYTES, "image/jpeg") });
+    await uploadProductImage({ productId: "p", file: asFile(REAL_JPEG, "image/jpeg") });
     expect(uploadMock.mock.calls[0][2]).toMatchObject({
       cacheControl: "31536000",
       upsert: false,
@@ -237,11 +243,52 @@ describe("uploadProductImage — formatos válidos por magic bytes", () => {
   });
 
   it("genera paths únicos (UUID) para subidas repetidas del mismo producto", async () => {
-    const a = await uploadProductImage({ productId: "p", file: asFile(PNG_BYTES, "image/png") });
-    const b = await uploadProductImage({ productId: "p", file: asFile(PNG_BYTES, "image/png") });
+    const a = await uploadProductImage({ productId: "p", file: asFile(REAL_PNG, "image/png") });
+    const b = await uploadProductImage({ productId: "p", file: asFile(REAL_PNG, "image/png") });
     expect(a.path).not.toBe(b.path);
     expect(a.path.startsWith("p/")).toBe(true);
     expect(b.path.startsWith("p/")).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// uploadProductImage — pipeline de optimización (feedback Lucy 2026-09-18)
+// ─────────────────────────────────────────────────────────────────────────────
+// Toda imagen pública del catálogo se normaliza a WebP q82 con borde largo ≤2000 px vía
+// optimizeCatalogImage (sharp-safe). Fail-CLOSED: si sharp no decodifica, se rechaza.
+describe("uploadProductImage — optimización de catálogo (WebP ≤2000px)", () => {
+  it("redimensiona al borde largo ≤2000 px y convierte a WebP (PNG 3000×1500 → 2000×1000)", async () => {
+    await uploadProductImage({ productId: "p", file: asFile(REAL_PNG_GRANDE, "image/png") });
+
+    const [, body, opts] = uploadMock.mock.calls[0];
+    expect(opts).toMatchObject({ contentType: "image/webp" });
+    const meta = await sharp(body as Buffer).metadata();
+    expect(meta.format).toBe("webp");
+    expect(meta.width).toBe(2000);
+    expect(meta.height).toBe(1000);
+    // Y el WebP pesa MUCHO menos que el PNG original de 4.5 Mpx.
+    expect((body as Buffer).length).toBeLessThan(REAL_PNG_GRANDE.length / 4);
+  });
+
+  it("no agranda imágenes chicas (withoutEnlargement): 120×90 queda 120×90", async () => {
+    await uploadProductImage({ productId: "p", file: asFile(REAL_PNG, "image/png") });
+
+    const [, body] = uploadMock.mock.calls[0];
+    const meta = await sharp(body as Buffer).metadata();
+    expect(meta.format).toBe("webp");
+    expect(meta.width).toBe(120);
+    expect(meta.height).toBe(90);
+  });
+
+  it("RECHAZA magic bytes válidos pero cuerpo indecodificable (fail-closed, no fail-open)", async () => {
+    // PNG_BYTES tiene el header correcto pero no decodifica: antes del pipeline se subía tal
+    // cual al bucket PÚBLICO; ahora sharp lo rechaza y el archivo nunca llega a Storage.
+    const err = await expectStorageError(
+      uploadProductImage({ productId: "p", file: asFile(PNG_BYTES, "image/png") }),
+    );
+    expect(err.code).toBe("INVALID_TYPE");
+    expect(err.message).toBe("No pudimos leer la imagen. ¿Está completa y sin daños?");
+    expect(uploadMock).not.toHaveBeenCalled();
   });
 });
 
@@ -292,17 +339,22 @@ describe("uploadProductImage — mismatch declarado vs bytes reales (F1)", () =>
     expect(uploadMock).not.toHaveBeenCalled();
   });
 
-  it("DOCUMENTA: mismatch benigno (declarado png, bytes JPEG) se ACEPTA y gana el byte real", async () => {
-    // Ambos MIME están en la allow-list, así que el magic gate no bloquea. El
-    // código confía en los BYTES: ext y contentType salen del MIME real
-    // (image/jpeg), no del declarado (image/png). Esto es seguro (sirve la
-    // imagen como lo que realmente es) y es el comportamiento intencionado.
+  it("el brand 'avis' (secuencia AVIF) sigue siendo reconocido por el sniffer como image/avif", async () => {
+    // No hay fixture AVIS real fácil de producir con sharp; el gate que la acepta es el SNIFFER
+    // (sharp luego decodifica el AVIF real, cubierto por el happy path de arriba).
+    expect(sniffImageMime(AVIS_BYTES)).toBe("image/avif");
+  });
+
+  it("DOCUMENTA: mismatch benigno (declarado png, bytes JPEG) se ACEPTA y sale como WebP", async () => {
+    // Ambos MIME están en la allow-list, así que el magic gate no bloquea. Antes el código
+    // conservaba el formato real de origen; desde 2026-09-18 el pipeline normaliza TODO a WebP,
+    // así que ext y contentType son .webp / image/webp sin importar el origen.
     const result = await uploadProductImage({
       productId: "p",
-      file: asFile(JPEG_BYTES, "image/png"),
+      file: asFile(REAL_JPEG, "image/png"),
     });
-    expect(result.path).toMatch(/\.jpg$/); // ext del MIME real, no del declarado
-    expect(uploadMock.mock.calls[0][2]).toMatchObject({ contentType: "image/jpeg" });
+    expect(result.path).toMatch(/\.webp$/);
+    expect(uploadMock.mock.calls[0][2]).toMatchObject({ contentType: "image/webp" });
   });
 });
 
@@ -362,14 +414,15 @@ describe("uploadProductImage — tamaño y corrupción", () => {
     expect(uploadMock).not.toHaveBeenCalled();
   });
 
-  it("ACEPTA archivo exactamente en el límite (5 MB) con bytes JPEG válidos", async () => {
-    const exact = Buffer.alloc(5 * 1024 * 1024);
-    JPEG_BYTES.copy(exact, 0); // header JPEG + relleno hasta 5 MB exactos
+  it("ACEPTA archivo exactamente en el límite (5 MB) — JPEG real con relleno", async () => {
+    // El gate de tamaño mira file.size ANTES de sharp. Un JPEG real seguido de ceros hasta 5 MB
+    // exactos: el sniffer lee el header y libvips decodifica hasta el EOI (el relleno sobra).
+    const exact = Buffer.concat([REAL_JPEG, Buffer.alloc(5 * 1024 * 1024 - REAL_JPEG.length)]);
     const result = await uploadProductImage({
       productId: "p",
       file: asFile(exact, "image/jpeg"),
     });
-    expect(result.path).toMatch(/\.jpg$/);
+    expect(result.path).toMatch(/\.webp$/);
     expect(uploadMock).toHaveBeenCalledTimes(1);
   });
 
@@ -417,7 +470,7 @@ describe("uploadProductImage — error del backend de Storage", () => {
   it("envuelve un error de Supabase upload en UPLOAD_FAILED preservando el mensaje", async () => {
     uploadMock.mockResolvedValueOnce({ error: { message: "bucket policy denied" } });
     const err = await expectStorageError(
-      uploadProductImage({ productId: "p", file: asFile(JPEG_BYTES, "image/jpeg") }),
+      uploadProductImage({ productId: "p", file: asFile(REAL_JPEG, "image/jpeg") }),
     );
     expect(err.code).toBe("UPLOAD_FAILED");
     expect(err.message).toContain("bucket policy denied");

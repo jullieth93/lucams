@@ -56,8 +56,8 @@ describe("cron-heartbeat", () => {
     else process.env.CRON_JOBS_DISABLED = originalDisabled;
   });
 
-  it("rastrea los 9 jobs HTTP, incluidos cms-publish-scheduled (5 min) y expire-pending-orders (N-12)", () => {
-    expect(Object.keys(CRON_JOBS)).toHaveLength(9);
+  it("rastrea los 10 jobs HTTP, incluidos cms-publish-scheduled (5 min) y expire-pending-orders (N-12)", () => {
+    expect(Object.keys(CRON_JOBS)).toHaveLength(10);
     expect(CRON_JOBS["cms-publish-scheduled"]).toEqual({
       intervalMs: 5 * 60 * 1000,
       label: "Publicación programada CMS",
@@ -67,6 +67,11 @@ describe("cron-heartbeat", () => {
     expect(CRON_JOBS["expire-pending-orders"]).toEqual({
       intervalMs: 60 * 60 * 1000,
       label: "Expiración de pedidos sin pagar",
+    });
+    // Feedback Lucy 2026-09-18: purga post-entrega de fotos + renders (migración pg_cron 035).
+    expect(CRON_JOBS["purge-delivered-designs"]).toEqual({
+      intervalMs: 24 * 60 * 60 * 1000,
+      label: "Purga diseños entregados",
     });
   });
 

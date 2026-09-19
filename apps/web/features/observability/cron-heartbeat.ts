@@ -32,6 +32,11 @@ export const CRON_JOBS: Record<string, { intervalMs: number; label: string }> = 
   "cart-recovery": { intervalMs: 60 * 60 * 1000, label: "Recuperación de carritos" },
   "back-in-stock": { intervalMs: 30 * 60 * 1000, label: "Aviso de reposición" },
   "purge-anon-designs": { intervalMs: 24 * 60 * 60 * 1000, label: "Purga diseños anónimos" },
+  // Migración 035 (feedback Lucy 2026-09-18): purga post-entrega de fotos + renders (≥90d DELIVERED).
+  "purge-delivered-designs": {
+    intervalMs: 24 * 60 * 60 * 1000,
+    label: "Purga diseños entregados",
+  },
   "purge-event-logs": { intervalMs: 24 * 60 * 60 * 1000, label: "Purga logs con PII (180d)" },
   "cms-publish-scheduled": { intervalMs: 5 * 60 * 1000, label: "Publicación programada CMS" },
   // N-12 — migración 032: expira órdenes WOMPI en PENDING_PAYMENT > PENDING_PAYMENT_EXPIRY_HOURS.

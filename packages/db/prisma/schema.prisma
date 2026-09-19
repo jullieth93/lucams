@@ -348,6 +348,8 @@ model Product {
   quoteItems            QuoteItem[]
   // Ola Admin 100% — niveles de precio mayorista B2B por producto (/admin/mayorista).
   wholesaleTiers        WholesaleTier[]
+  // Fase 7b — receta de materiales/insumos por unidad (costeo por materiales).
+  recipe                ProductMaterial[]
   // PLAN_CATALOG_V2 1.5 / 2.10 — tags transversales por ocasión (matrimonio, día madre, etc.).
   ocasionTags           ProductOcasionTag[]
   isActive              Boolean                   @default(true)
@@ -1482,6 +1484,12 @@ model Design {
   // uno por imán físico del pack. Admin descarga el ZIP de N PNGs 300 DPI
   // para imprenta. Empty array hasta status=READY o USED_IN_ORDER.
   productionUrls   String[]                 @default([])
+  // Retención post-entrega (feedback Lucy 2026-09-18, Ley 1581 art. 4 lit. f): timestamp del
+  // purgado de bytes pesados (fotos crudas de customer-uploads + renders de production-assets)
+  // una vez la orden lleva ≥90 días entregada y sin retracto/garantía abierto. Se conservan
+  // previewUrl, canvasData y la fila (historial del pedido). null = bytes todavía vivos.
+  // También es la marca de idempotencia del cron purge-delivered-designs.
+  purgedAt         DateTime?
   // metadata: selección plantilla + marco + color + ajustes filtros foto-edit.
   metadata         Json                     @default("{}")
   // shareToken: link público read-only para colaboración (sub-bloque K+M
@@ -1506,6 +1514,8 @@ model Design {
   @@index([productId])
   @@index([templateId])
   @@index([status, updatedAt])
+  // Candidatos del cron de purga post-entrega: USED_IN_ORDER con purgedAt null.
+  @@index([status, purgedAt])
   // Cola de moderación: diseños pendientes ordenados por antigüedad.
   @@index([moderationStatus, createdAt])
 }
@@ -1910,6 +1920,9 @@ model Material {
   deletedAt DateTime?
   deletedBy String?
 
+  // Fase 7b — recetas de productos que usan este insumo (costeo por materiales).
+  usedIn ProductMaterial[]
+
   // NOTA F-24 (auditoría 2026-09-04): los CHECK `>= 0` / `> 0` de las columnas
   // de dinero/stock de este modelo viven en la migración Prisma
   // 20260904144657_money_stock_nonnegative_checks — Prisma no expresa CHECK
@@ -1918,4 +1931,53 @@ model Material {
 
   @@index([isActive])
   @@index([deletedAt])
+}
+
+/// Fase 7b — costeo por materiales: receta (bill of materials simple) de un
+/// producto. Cada fila dice "para fabricar 1 unidad del producto se usan
+/// `quantity` unidades del material". El costo sugerido de fabricación es
+/// Σ quantity × Material.costPerUnit (centavos COP) y se calcula en
+/// features/products/recipe-cost.ts. Es INFORMATIVO: no pisa Product.cost
+/// hasta que Lucy lo aplique a mano desde /admin/costos.
+model ProductMaterial {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  materialId String
+  // onDelete: Restrict — Material usa soft delete (deletedAt) para conservar la
+  // trazabilidad de costos históricos; una receta no debe desaparecer ni
+  // permitir borrar el insumo en cascada.
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Restrict)
+  // Float como Material.stock: las unidades de insumo no siempre son enteras
+  // (metros, ml, kilos…). CHECK > 0 vive en la migración SQL (patrón F-24:
+  // Prisma no expresa CHECK).
+  quantity   Float
+  note       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  @@unique([productId, materialId])
+  @@index([materialId])
+}
+
+/// Override editable de textos clave de una plantilla de email transaccional
+/// (módulo /admin/email-templates, Fase 4 — feedback Lucy 2026-09-18). El copy
+/// base vive en código (apps/web/features/emails/templates); acá solo se
+/// guarda lo que Lucy editó desde el admin. El consumo es por wrapper
+/// (features/emails/overrides.ts · withOverrides) con fallback al texto base:
+/// si la fila no existe o la DB falla, el correo sale con el copy de código.
+model EmailTemplateOverride {
+  id         String @id @default(cuid())
+  templateId String // nombre del archivo en features/emails/templates (sin .ts), ej. "order-confirmation"
+  key        String // "SUBJECT" | "PREHEADER" | "HEADING"
+  value      String // admite tokens {campo} interpolados con los datos del envío (ej. {orderNumber})
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  updatedBy String? // email del admin que hizo la edición
+
+  @@unique([templateId, key])
 }

@@ -9,7 +9,8 @@
  * sin firmar — next/image (Vercel optimizer) las consume y sirve WebP.
  *
  * Patrón filename:
- *   <productId>/<uuid>.<ext>
+ *   <productId>/<uuid>.webp   (desde 2026-09-18 toda imagen de catálogo se
+ *   normaliza a WebP ≤2000 px con sharp antes de subir — optimizeCatalogImage)
  * Garantiza no colisión incluso si dos admins suben simultáneamente.
  */
 
@@ -37,6 +38,49 @@ export type UploadedImage = {
   path: string; // path dentro del bucket: "<productId>/<uuid>.webp"
   publicUrl: string; // URL absoluta servible por next/image
 };
+
+/**
+ * Optimización de catálogo (feedback Lucy 2026-09-18): toda imagen pública del catálogo/mediateca
+ * se normaliza a WebP q82 con borde largo ≤2000 px antes de subir. Antes se subía el archivo TAL
+ * CUAL (hasta 5 MB): PNGs de 4 MB servidos crudos a cada visita. 2000 px sobra para PDP/zoom
+ * (el borde largo en pantalla nunca pasa de ~1200 px ×2 DPR) y WebP q82 baja el peso ~5-10×.
+ */
+export const CATALOG_IMAGE_MAX_EDGE_PX = 2000;
+export const CATALOG_IMAGE_WEBP_QUALITY = 82;
+
+/**
+ * Normaliza una imagen de catálogo a WebP optimizado (borde largo ≤2000 px, q82, auto-orient y
+ * sin EXIF). FAIL-CLOSED a propósito (a diferencia del compresor del Estudio, que es fail-open):
+ * si sharp no puede decodificarla se rechaza con INVALID_TYPE — son imágenes públicas del
+ * catálogo y un archivo que no decodifica no debe llegar al bucket (mismo contrato que tenía la
+ * mediateca con su prueba de dimensiones). Usa sharp-safe (loaders con CVE bloqueados), la única
+ * puerta de entrada a sharp del proyecto.
+ */
+export async function optimizeCatalogImage(buffer: Buffer): Promise<{
+  data: Buffer;
+  width: number;
+  height: number;
+}> {
+  const sharp = (await import("@/features/personalization/sharp-safe")).default;
+  try {
+    const out = await sharp(buffer)
+      .rotate() // auto-orient por EXIF + strip
+      .resize({
+        width: CATALOG_IMAGE_MAX_EDGE_PX,
+        height: CATALOG_IMAGE_MAX_EDGE_PX,
+        fit: "inside",
+        withoutEnlargement: true, // no inventar píxeles si ya viene chica
+      })
+      .webp({ quality: CATALOG_IMAGE_WEBP_QUALITY })
+      .toBuffer({ resolveWithObject: true });
+    return { data: out.data, width: out.info.width, height: out.info.height };
+  } catch {
+    throw new StorageError(
+      "INVALID_TYPE",
+      "No pudimos leer la imagen. ¿Está completa y sin daños?",
+    );
+  }
+}
 
 function inferExtension(mime: string): string {
   switch (mime) {
@@ -106,6 +150,11 @@ export function sniffImageMime(buf: Buffer): string | null {
  * Sube una imagen al bucket. El llamador (server action admin) ya
  * verificó que el usuario es admin — esta función no re-checkea
  * auth, asume llamador autorizado.
+ *
+ * Pipeline (feedback Lucy 2026-09-18): valida tamaño + MIME declarado + MIME REAL por magic
+ * bytes, y luego OPTIMIZA con sharp: redimensiona al borde largo ≤2000 px y convierte a WebP q82
+ * (optimizeCatalogImage). La salida es siempre .webp / image/webp, venga en jpg, png, webp o avif.
+ * Si sharp falla, RECHAZA (fail-closed: son imágenes públicas del catálogo).
  */
 export async function uploadProductImage(opts: {
   productId: string;
@@ -134,15 +183,19 @@ export async function uploadProductImage(opts: {
     );
   }
 
-  const ext = inferExtension(realMime);
-  const filename = `${productId}/${randomUUID()}.${ext}`;
+  // Optimización de catálogo: la salida es siempre WebP ≤2000 px (ver optimizeCatalogImage).
+  const optimized = await optimizeCatalogImage(buffer);
+
+  const filename = `${productId}/${randomUUID()}.webp`;
   const supabase = supabaseService;
 
-  const { error: uploadErr } = await supabase.storage.from(BUCKET).upload(filename, buffer, {
-    contentType: realMime,
-    cacheControl: "31536000", // 1 año — los nombres ya tienen UUID, son inmutables
-    upsert: false,
-  });
+  const { error: uploadErr } = await supabase.storage
+    .from(BUCKET)
+    .upload(filename, optimized.data, {
+      contentType: "image/webp",
+      cacheControl: "31536000", // 1 año — los nombres ya tienen UUID, son inmutables
+      upsert: false,
+    });
 
   if (uploadErr) {
     throw new StorageError("UPLOAD_FAILED", `Error subiendo: ${uploadErr.message}`);
