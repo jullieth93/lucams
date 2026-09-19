@@ -1,5 +1,5 @@
 /*
- * <ProductSectionNav> — sub-nav del producto con [Editar | Opciones | Reseñas].
+ * <ProductSectionNav> — sub-nav del producto con [Editar | Opciones | Reseñas | Materiales].
  *
  * Lucy 2026-06-26 — Opción C Sprint 2: el problema era que las opciones (stock
  * + precio efectivo, datos diarios) vivían en sub-ruta escondida que solo se
@@ -17,18 +17,20 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-export type ProductSection = "editar" | "opciones" | "resenas";
+export type ProductSection = "editar" | "opciones" | "resenas" | "materiales";
 
 export function ProductSectionNav({
   productId,
   currentSection,
   variantsCount,
   pendingReviewsCount,
+  materialsCount = 0,
 }: {
   productId: string;
   currentSection: ProductSection;
   variantsCount: number;
   pendingReviewsCount: number;
+  materialsCount?: number;
 }) {
   return (
     <nav
@@ -52,6 +54,13 @@ export function ProductSectionNav({
         active={currentSection === "resenas"}
         badge={pendingReviewsCount > 0 ? pendingReviewsCount : undefined}
         badgeTone={pendingReviewsCount > 0 ? "amber" : "default"}
+      />
+      {/* Fase 7b — receta de materiales/insumos por unidad (costeo). */}
+      <SectionLink
+        href={`/admin/productos/${productId}?section=materiales`}
+        label="Materiales"
+        active={currentSection === "materiales"}
+        badge={materialsCount > 0 ? materialsCount : undefined}
       />
     </nav>
   );

@@ -1,7 +1,9 @@
 "use server";
 
 /*
- * Server Actions del módulo Materiales e insumos (Fase 5 — gestión interna).
+ * Server Actions del módulo Materiales e insumos (Fase 5 — gestión interna;
+ * Fase 7b: los insumos se recetan a productos vía ProductMaterial — ver
+ * app/admin/(panel)/productos/product-materials-actions.ts).
  *
  * A diferencia de redirects/garantías, acá NO hay service en features/: la
  * regla del módulo es autocontenerse bajo app/admin/(panel)/materiales, y el

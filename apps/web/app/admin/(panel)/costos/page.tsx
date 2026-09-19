@@ -1,10 +1,16 @@
 /*
  * Admin > Costos y márgenes — análisis de costo de fabricación vs precio de venta.
  *
- * No hay modelo de costeo propio (Fase 5 traerá costeo por materiales): el costo
- * unitario vive en Product.cost (centavos COP) y el precio de venta se deriva de
- * las variantes — ProductVariant.price con fallback a Product.basePrice cuando la
- * opción no tiene precio propio (misma regla de herencia que aplica el PDP).
+ * Dos fuentes de costo por producto:
+ *   - MANUAL: Product.cost (centavos COP), editable inline acá mismo.
+ *   - SUGERIDO POR MATERIALES (Fase 7b — costeo por materiales): Σ cantidad ×
+ *     costo unitario de la receta ProductMaterial (features/products/recipe-cost.ts).
+ *     Es INFORMATIVO — nunca pisa Product.cost solo; Lucy lo aplica con el
+ *     botón "Usar sugerido", que llama a la misma action del costo manual.
+ *
+ * El precio de venta se deriva de las variantes — ProductVariant.price con
+ * fallback a Product.basePrice cuando la opción no tiene precio propio (misma
+ * regla de herencia que aplica el PDP).
  *
  * El margen se calcula sobre el precio MÍNIMO de variantes (peor escenario de
  * venta) y la tabla ordena ascendente: los productos que menos dejan aparecen
@@ -33,6 +39,7 @@ import { Input } from "@/components/ui/input";
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
+import { computeRecipeCost } from "@/features/products/recipe-cost";
 import { updateProductCostAction } from "./actions";
 
 export const metadata: Metadata = {
@@ -47,6 +54,10 @@ type Row = {
   name: string;
   sku: string;
   cost: number | null;
+  /** Fase 7b — costo sugerido por receta (centavos); null = sin receta o insumo sin costo. */
+  suggestedCost: number | null;
+  /** Tiene receta cargada (aunque no sea calculable por falta de costos de insumos). */
+  hasRecipe: boolean;
   minPrice: number;
   maxPrice: number;
   margin: number | null;
@@ -79,6 +90,11 @@ export default async function AdminCostosPage({ searchParams }: { searchParams: 
         where: { deletedAt: null, isActive: true },
         select: { price: true },
       },
+      // Fase 7b — receta de materiales para el costo sugerido (roll-up en JS
+      // con computeRecipeCost; el filtro de insumos sin costo lo hace la función).
+      recipe: {
+        select: { quantity: true, material: { select: { costPerUnit: true } } },
+      },
     },
     orderBy: { name: "asc" },
   });
@@ -97,6 +113,10 @@ export default async function AdminCostosPage({ searchParams }: { searchParams: 
       name: p.name,
       sku: p.sku,
       cost: p.cost,
+      suggestedCost: computeRecipeCost(
+        p.recipe.map((i) => ({ quantity: i.quantity, costPerUnit: i.material.costPerUnit })),
+      ),
+      hasRecipe: p.recipe.length > 0,
       minPrice,
       maxPrice,
       margin,
@@ -143,8 +163,11 @@ export default async function AdminCostosPage({ searchParams }: { searchParams: 
           <strong>¿Cómo leer esta tabla?</strong> Escribe el{" "}
           <strong>costo de fabricación por unidad</strong> (materiales + mano de obra, en pesos) y
           la tabla calcula el margen contra el <strong>precio mínimo de venta</strong> del producto
-          (su opción más barata). Los productos con peor margen aparecen primero: ahí es donde
-          conviene subir precio o bajar costo.
+          (su opción más barata). Si el producto tiene <strong>receta de materiales</strong> (se
+          arma en su pestaña “Materiales”), verás además el <strong>costo sugerido</strong> por
+          insumos y la diferencia contra tu costo — con “Usar sugerido” lo aplicas tal cual. Los
+          productos con peor margen aparecen primero: ahí es donde conviene subir precio o bajar
+          costo.
         </AdminNotice>
 
         {sp.updated === "1" && <AdminNotice tone="success">Costo actualizado.</AdminNotice>}
@@ -157,11 +180,12 @@ export default async function AdminCostosPage({ searchParams }: { searchParams: 
             description="Cuando tengas productos activos en el catálogo, acá verás su costo y margen."
           />
         ) : (
-          <AdminTable minWidth={800}>
+          <AdminTable minWidth={1000}>
             <AdminTableHead>
               <tr>
                 <th className="px-4 py-3 text-left font-semibold">Producto</th>
                 <th className="px-4 py-3 text-left font-semibold">Costo unitario</th>
+                <th className="px-4 py-3 text-left font-semibold">Sugerido por materiales</th>
                 <th className="px-4 py-3 text-right font-semibold">Precio mín.</th>
                 <th className="px-4 py-3 text-right font-semibold">Precio máx.</th>
                 <th className="px-4 py-3 text-right font-semibold">Margen $</th>
@@ -199,6 +223,42 @@ export default async function AdminCostosPage({ searchParams }: { searchParams: 
                       <p className="text-brand-muted mt-1 text-[11px]">{formatCOP(r.cost)}</p>
                     ) : (
                       <p className="mt-1 text-[11px] text-slate-400">sin costo</p>
+                    )}
+                  </td>
+                  {/* Fase 7b — costo sugerido por receta de materiales. INFORMATIVO:
+                      solo se aplica a Product.cost con el botón "Usar sugerido"
+                      (misma action del costo manual). */}
+                  <td className="px-4 py-3 align-top">
+                    {r.suggestedCost != null ? (
+                      <div className="space-y-1.5">
+                        <p className="text-brand-purple-dark/85 text-sm tabular-nums">
+                          {formatCOP(r.suggestedCost)}
+                        </p>
+                        {r.cost != null &&
+                          r.cost !== r.suggestedCost &&
+                          (() => {
+                            const diff = r.cost - r.suggestedCost;
+                            return (
+                              <AdminBadge tone="amber">
+                                {diff > 0
+                                  ? `tu costo +${formatCOP(diff)}`
+                                  : `tu costo −${formatCOP(-diff)}`}
+                              </AdminBadge>
+                            );
+                          })()}
+                        <form action={updateProductCostAction}>
+                          <input type="hidden" name="productId" value={r.id} />
+                          {/* El action recibe PESOS; el sugerido está en centavos. */}
+                          <input type="hidden" name="costPesos" value={r.suggestedCost / 100} />
+                          <AdminButton type="submit" size="sm" variant="secondary" pendingLabel="…">
+                            Usar sugerido
+                          </AdminButton>
+                        </form>
+                      </div>
+                    ) : r.hasRecipe ? (
+                      <AdminBadge tone="amber">falta costo de insumo</AdminBadge>
+                    ) : (
+                      <span className="text-[11px] text-slate-400">sin receta</span>
                     )}
                   </td>
                   <td className="text-brand-purple-dark/85 px-4 py-3 text-right align-top tabular-nums">

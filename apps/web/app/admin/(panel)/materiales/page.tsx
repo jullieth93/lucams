@@ -1,5 +1,7 @@
 /*
- * Admin > Materiales e insumos (Fase 5 — gestión interna).
+ * Admin > Materiales e insumos (Fase 5 — gestión interna; Fase 7b conecta
+ * estos insumos con productos vía la receta ProductMaterial, que alimenta el
+ * "costo sugerido por materiales" de /admin/costos).
  *
  * CRUD de materias primas de producción (papel, tintas, imanes, empaques…)
  * con ALERTA de "Bajo stock" cuando stock < minStock: badge rosa en la fila

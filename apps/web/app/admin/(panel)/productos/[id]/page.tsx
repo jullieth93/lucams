@@ -1,9 +1,10 @@
 /*
- * /admin/productos/[id] — vista detalle del producto con 3 secciones:
+ * /admin/productos/[id] — vista detalle del producto con 4 secciones:
  *
  *   ?section=editar (default) → ProductForm + StockPanel + CouponsWidget + Images
  *   ?section=opciones        → ProductVariantsPanel (movido de /variants)
  *   ?section=resenas          → ProductReviewsPanel (nuevo)
+ *   ?section=materiales       → ProductMaterialsPanel (Fase 7b — receta/costeo)
  *
  * Lucy 2026-06-26 — Opción C Sprint 2: el sub-nav <ProductSectionNav> arriba
  * del contenido reemplaza el botón "Variantes (N)" enterrado en el header.
@@ -21,6 +22,7 @@ import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/compon
 import { ProductSectionNav, type ProductSection } from "@/components/admin/product-section-nav";
 import { ProductVariantsPanel } from "@/components/admin/product-variants-panel";
 import { ProductReviewsPanel } from "@/components/admin/product-reviews-panel";
+import { ProductMaterialsPanel } from "@/components/admin/product-materials-panel";
 import { ProductCouponsWidget } from "@/components/admin/product-coupons-widget";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getProductById, listCategoriesForSelect } from "@/features/products/service";
@@ -41,7 +43,7 @@ export const metadata: Metadata = {
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
-const VALID_SECTIONS: ProductSection[] = ["editar", "opciones", "resenas"];
+const VALID_SECTIONS: ProductSection[] = ["editar", "opciones", "resenas", "materiales"];
 
 export default async function ProductoDetallePage({
   params,
@@ -88,6 +90,32 @@ export default async function ProductoDetallePage({
       deletedAt: null,
     },
   });
+
+  // Fase 7b — receta de materiales: el count alimenta el badge del sub-nav
+  // (siempre); la receta completa y el catálogo de insumos solo se consultan
+  // cuando la pestaña activa es "materiales".
+  const materialsCount = await prisma.productMaterial.count({ where: { productId: id } });
+  const recipeItems =
+    section === "materiales"
+      ? await prisma.productMaterial.findMany({
+          where: { productId: id },
+          select: {
+            id: true,
+            quantity: true,
+            note: true,
+            material: { select: { id: true, name: true, unit: true, costPerUnit: true } },
+          },
+          orderBy: { material: { name: "asc" } },
+        })
+      : [];
+  const availableMaterials =
+    section === "materiales"
+      ? await prisma.material.findMany({
+          where: { deletedAt: null, isActive: true },
+          select: { id: true, name: true, unit: true, costPerUnit: true },
+          orderBy: { name: "asc" },
+        })
+      : [];
 
   const stockVariants = product.variants.map((v) => ({
     id: v.id,
@@ -158,6 +186,7 @@ export default async function ProductoDetallePage({
           currentSection={section}
           variantsCount={activeVariants.length}
           pendingReviewsCount={pendingReviewsCount}
+          materialsCount={materialsCount}
         />
 
         {/* ── Section: EDITAR (default) ── */}
@@ -247,6 +276,16 @@ export default async function ProductoDetallePage({
           <ProductReviewsPanel
             productId={product.id}
             productSlug={product.slug}
+            searchParams={sp}
+          />
+        )}
+
+        {/* ── Section: MATERIALES (Fase 7b — receta/costeo) ── */}
+        {section === "materiales" && (
+          <ProductMaterialsPanel
+            productId={product.id}
+            items={recipeItems}
+            availableMaterials={availableMaterials}
             searchParams={sp}
           />
         )}
