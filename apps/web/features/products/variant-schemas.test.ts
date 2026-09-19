@@ -23,7 +23,7 @@ import {
   isPhotoPackCatalog,
   photoPackDistinctSizes,
   photoPackMinPrice,
-  conImanDefaultVariant,
+  pdpDefaultVariant,
   parseAttributesFromForm,
   resolvePromoDisplay,
 } from "./variant-schemas";
@@ -323,39 +323,97 @@ describe("packs — dimensión 'Unidades' en la PDP (regla 2026-09-08b)", () => 
 });
 
 /*
- * Default "Con imán" (regla 2026-09-08b): cuando las variantes del producto son
- * el MISMO diseño en las dos opciones (solo difiere `magnet`), la PDP
- * preselecciona la de Con imán — el cliente no hace un click para quedarse con
- * el default. Con más dimensiones de elección (tamaño/idioma…) NO aplica: sigue
- * la selección guiada (el re-anchor del selector prefiere Con imán).
+ * Default de la PDP (2026-09-18, owner): al entrar SIN ?variant= la ficha abre
+ * con la PRIMERA opción de cada dimensión ya seleccionada (antes: selección
+ * guiada Lucy 2026-08-12 sin preselección). pdpDefaultVariant materializa ese
+ * default: primer valor visible de cada dimensión (mismo orden de los chips del
+ * selector: es antes que en, Con imán antes que Sin imán, cantidades/tamaños
+ * ascendentes), prefiriendo siempre la primera opción CON STOCK. Subsume los
+ * defaults especiales que existían: "Con imán" cuando las variantes solo
+ * difieren en magnet (regla 2026-09-08b, ex conImanDefaultVariant) y la variante
+ * de N mínimo de los packs de un solo tamaño (polaroid).
  */
-describe("conImanDefaultVariant", () => {
-  const v = (id: string, attributes: Record<string, unknown>) => ({ id, attributes });
-
-  it("devuelve la variante Con imán cuando las variantes solo difieren en magnet", () => {
-    // Espejo del calendario tras seed-magnet-variants.mjs.
-    const variants = [
-      v("cal-mag", { sizeCm: "7.5×10", photoSlots: 12, aspectRatio: "3:4", magnet: true }),
-      v("cal-nomag", { sizeCm: "7.5×10", photoSlots: 12, aspectRatio: "3:4", magnet: false }),
-    ];
-    expect(conImanDefaultVariant(variants)?.id).toBe("cal-mag");
+describe("pdpDefaultVariant", () => {
+  const v = (id: string, attributes: Record<string, unknown>, stock = 100) => ({
+    id,
+    attributes,
+    stock,
   });
 
-  it("null cuando hay más dimensiones de elección (selección guiada sigue)", () => {
+  it("primera opción de cada dimensión, aunque el orden del catálogo sea otro", () => {
+    // Catálogo desordenado a propósito: el default NO es "la primera fila de la
+    // DB" sino la combinación de los primeros valores visibles de cada grupo.
     const variants = [
+      v("d", { sizeCm: "7×10", magnet: false }),
+      v("c", { sizeCm: "7×10", magnet: true }),
+      v("b", { sizeCm: "5×7", magnet: false }),
       v("a", { sizeCm: "5×7", magnet: true }),
+    ];
+    expect(pdpDefaultVariant(variants)?.id).toBe("a");
+  });
+
+  it("cantidades y tamaños ascendentes (pack de un solo tamaño: N mínimo, ex regla polaroid)", () => {
+    const variants = [
+      v("p10", { sizeCm: "7.5×10", photoSlots: 10 }),
+      v("p6", { sizeCm: "7.5×10", photoSlots: 6 }),
+      v("p1", { sizeCm: "7.5×10", photoSlots: 1 }),
+    ];
+    expect(pdpDefaultVariant(variants)?.id).toBe("p1");
+    // sizeCm numérico por el primer número ("10×14" va DESPUÉS de "5×7").
+    expect(pdpDefaultVariant([v("g", { sizeCm: "10×14" }), v("p", { sizeCm: "5×7" })])?.id).toBe(
+      "p",
+    );
+  });
+
+  it("idioma: Español antes que Inglés (orden fijo, no alfabético)", () => {
+    const variants = [v("en", { language: "en" }), v("es", { language: "es" })];
+    expect(pdpDefaultVariant(variants)?.id).toBe("es");
+  });
+
+  it("Con imán primero cuando las variantes solo difieren en magnet (ex conImanDefaultVariant)", () => {
+    // Espejo del calendario tras seed-magnet-variants.mjs (orden DB: Sin imán primero).
+    const variants = [
+      v("cal-nomag", { sizeCm: "7.5×10", photoSlots: 12, aspectRatio: "3:4", magnet: false }),
+      v("cal-mag", { sizeCm: "7.5×10", photoSlots: 12, aspectRatio: "3:4", magnet: true }),
+    ];
+    expect(pdpDefaultVariant(variants)?.id).toBe("cal-mag");
+  });
+
+  it("respeta el stock: primera opción DISPONIBLE aunque la combinación default esté agotada", () => {
+    const variants = [
+      v("a", { sizeCm: "5×7", magnet: true }, 0), // combinación de primeras opciones, agotada
       v("b", { sizeCm: "5×7", magnet: false }),
       v("c", { sizeCm: "7×10", magnet: true }),
-      v("d", { sizeCm: "7×10", magnet: false }),
     ];
-    expect(conImanDefaultVariant(variants)).toBeNull();
+    // La primera candidata con stock dentro de los primeros valores (5×7, imán
+    // cualquiera por el sort Con-imán-primero): "b". Si TODAS las de 5×7 estuvieran
+    // agotadas, caería a la primera con stock del catálogo ("c").
+    expect(pdpDefaultVariant(variants)?.id).toBe("b");
+    expect(
+      pdpDefaultVariant([
+        v("a", { sizeCm: "5×7", magnet: true }, 0),
+        v("b", { sizeCm: "5×7", magnet: false }, 0),
+        v("c", { sizeCm: "7×10", magnet: true }),
+      ])?.id,
+    ).toBe("c");
   });
 
-  it("null sin par completo (solo Con imán, o alguna variante sin la clave)", () => {
-    expect(conImanDefaultVariant([v("a", { magnet: true }), v("b", { magnet: true })])).toBeNull();
-    expect(conImanDefaultVariant([v("a", { magnet: true }), v("b", { sizeCm: "5×5" })])).toBeNull();
-    expect(conImanDefaultVariant([v("a", { magnet: true })])).toBeNull();
-    expect(conImanDefaultVariant([])).toBeNull();
+  it("todo agotado: devuelve la candidata default igual (el buy-box pinta «Agotado»)", () => {
+    const variants = [v("a", { sizeCm: "5×7" }, 0), v("b", { sizeCm: "7×10" }, 0)];
+    expect(pdpDefaultVariant(variants)?.id).toBe("a");
+  });
+
+  it("una sola variante se auto-selecciona; lista vacía → null", () => {
+    expect(pdpDefaultVariant([v("u", { sizeCm: "5×5" })])?.id).toBe("u");
+    expect(pdpDefaultVariant([])).toBeNull();
+  });
+
+  it("variante sin alguna clave de dimensión no rompe el default (dato incompleto)", () => {
+    const variants = [
+      v("incompleta", { sizeCm: "5×7" }), // sin magnet: no se descarta por esa dimensión
+      v("b", { sizeCm: "7×10", magnet: false }),
+    ];
+    expect(pdpDefaultVariant(variants)?.id).toBe("incompleta");
   });
 });
 

@@ -41,7 +41,14 @@ export function buildCsp(nonce: string, isProd: boolean): string {
   // Vercel Live inyecta su script de feedback en los previews (VERCEL_ENV=preview):
   // sin esta entrada el script-src lo bloqueaba en TODAS las páginas del preview
   // (error CSP permanente en consola, verificación E2E 2026-08-05).
-  const vercelLive = process.env.VERCEL_ENV === "preview" ? " https://vercel.live" : "";
+  // 2026-09-18 (aviso Vercel): la Toolbar necesita además img/connect/style/font
+  // (valores oficiales: vercel.com/docs/workflow-collaboration/vercel-toolbar/managing-toolbar).
+  // Todo sigue gateado a preview — producción no carga la toolbar.
+  const isVercelPreview = process.env.VERCEL_ENV === "preview";
+  const vercelLive = isVercelPreview ? " https://vercel.live" : "";
+  const vercelImg = isVercelPreview ? " https://vercel.live https://vercel.com" : "";
+  const vercelConnect = isVercelPreview ? " https://vercel.live wss://ws-us3.pusher.com" : "";
+  const vercelFont = isVercelPreview ? " https://vercel.live https://assets.vercel.com" : "";
   const scriptSrc = isProd
     ? `script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com https://checkout.wompi.co${vercelLive}`
     : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://checkout.wompi.co";
@@ -59,7 +66,7 @@ export function buildCsp(nonce: string, isProd: boolean): string {
   return [
     "default-src 'self'",
     scriptSrc,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com${vercelLive}`,
     // img-src incluye images.unsplash.com TEMPORALMENTE: fotos placeholder del seed que
     // Lucy reemplazará por fotos reales (vía admin/Supabase Storage). La decisión es
     // coherente con next.config images.remotePatterns (que ya permite Unsplash vía proxy
@@ -69,11 +76,11 @@ export function buildCsp(nonce: string, isProd: boolean): string {
     // customer-uploads salen con el host del stack local (http://<lan-ip>:54321) y la
     // CSP las bloqueaba — las minis del Estudio no pintaban en local mientras STG/PRD
     // (https://*.supabase.co) sí. Duplicado en prod es inocuo (ya cubierto por el wildcard).
-    `img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com https://images.unsplash.com${supabaseOrigin}`,
-    "font-src 'self' https://fonts.gstatic.com",
+    `img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com https://images.unsplash.com${vercelImg}${supabaseOrigin}`,
+    `font-src 'self' https://fonts.gstatic.com${vercelFont}`,
     // Solo hosts que el NAVEGADOR contacta: Supabase (auth/storage/realtime) + Wompi (widget/checkout).
     // El envío (Aveonline) y la IA (Gemini) se llaman SERVER-SIDE → no van en connect-src.
-    `connect-src 'self' https://*.supabase.co https://api.wompi.co${supabaseOrigin}`,
+    `connect-src 'self' https://*.supabase.co https://api.wompi.co${vercelConnect}${supabaseOrigin}`,
     // frame-src también lleva vercel.live en previews (H14, 2026-08-06): el fix
     // de 2026-08-05 lo había agregado SOLO a script-src, pero la toolbar de
     // Vercel Live es un IFRAME y seguía bloqueada por frame-src (error CSP en

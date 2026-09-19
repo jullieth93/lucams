@@ -187,7 +187,9 @@ jobs:
       # por eso NO corren en el gate por-PR) + cms-editing-flow (D4: flujo de edición del CMS).
       # Excluye 'visual' (baselines por-píxel).
       - name: Playwright (completo, incl. admin/MFA/Estudio/CMS)
-        run: pnpm --filter web exec playwright test smoke.spec a11y.spec axe.spec compra.spec admin-login.spec admin-mfa.spec estudio.spec cms-editing-flow.spec --project=desktop-chrome
+        # responsive-admin-audit (2026-09-18): GATE de overflow horizontal de las
+        # 41 secciones admin × 4 anchos (crea su propio admin efímero + TOTP).
+        run: pnpm --filter web exec playwright test smoke.spec a11y.spec axe.spec compra.spec admin-login.spec admin-mfa.spec estudio.spec cms-editing-flow.spec responsive-admin-audit.spec --project=desktop-chrome
       - name: Cross-browser smoke (Firefox + WebKit, read-only)
         run: pnpm --filter web exec playwright test --project=desktop-firefox --project=desktop-webkit
       - name: Subir reporte Playwright (si falla)

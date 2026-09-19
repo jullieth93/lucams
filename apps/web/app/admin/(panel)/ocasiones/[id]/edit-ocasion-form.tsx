@@ -94,7 +94,7 @@ export function EditOcasionForm({ ocasion }: Props) {
 
         <fieldset className="rounded-md border border-slate-200 p-3">
           <legend className="px-2 text-sm font-semibold text-slate-700">Cantidad sugerida</legend>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs text-slate-600">Mínimo</label>
               <input

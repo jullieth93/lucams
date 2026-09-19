@@ -177,7 +177,11 @@ test.describe("estudio — modal «Vista previa» sin stepper «Copias» (regla 
     // Sin ?copies= → 1 copia (default): modal sin desglose de copias.
     await page.goto(`/estudio/${product.slug}`, { waitUntil: "domcontentloaded" });
     await dismissCookies();
-    const listo = page.getByRole("button", { name: /Vista previa/ });
+    const listo = page
+      .getByRole("button", { name: /Vista previa/ })
+      // Ola 32 — hay dos botones «Vista previa» (header sticky + panel de
+      // controles; misma acción): se usa el del panel (el CTA histórico).
+      .last();
     await expect(listo).toBeVisible({ timeout: 30_000 });
     await listo.click();
     await expect(previewDialog).toBeVisible({ timeout: 30_000 });

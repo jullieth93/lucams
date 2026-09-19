@@ -264,7 +264,10 @@ describe("StudioCanvasGrid — delimitación de PACKS (fotoimanes 6+6)", () => {
     expect(screen.getAllByText("0/6")).toHaveLength(2);
   });
 
-  it("un solo pack (6 unidades) → grilla plana sin tarjetas (unitCount = 1)", () => {
+  it("un solo pack (6 unidades) → tarjeta-unidad SÍ, pero sin rótulo «Pack 1» ni pager (owner 2026-09-18)", () => {
+    // Contrato nuevo (antes: 1 pack caía a grilla plana SIN tarjeta): todo pack
+    // va envuelto en la tarjeta-unidad estándar (fondo que recubre + progreso);
+    // solo se omiten el rótulo y el pager, que son ruido para una sola tarjeta.
     const store = createStudioStore();
     store.getState().init({
       designId: "d1",
@@ -284,11 +287,19 @@ describe("StudioCanvasGrid — delimitación de PACKS (fotoimanes 6+6)", () => {
       />,
     );
 
+    // La tarjeta queda, con sus 6 slots en orden y su progreso.
+    const card = document.getElementById("studio-unit-0");
+    expect(card).not.toBeNull();
+    expect(card?.getAttribute("aria-label")).toBe("Pack 1 de 1");
+    expect(slotObserveIndexesOf(card)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(screen.getByText("0/6")).toBeInTheDocument();
+
+    // Sin rótulo "Pack 1" ni pager de unidades (una pastilla sola no salta a nada).
     expect(screen.queryByText("Pack 1")).not.toBeInTheDocument();
-    expect(document.getElementById("studio-unit-0")).toBeNull();
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   });
 
-  it("diseño legacy no divisible por el pack (9 unidades) → grilla plana", () => {
+  it("diseño legacy no divisible por el pack (9 unidades) → grilla plana (en su tarjeta de modo plano)", () => {
     const store = createStudioStore();
     store.getState().init({
       designId: "d1",
@@ -309,6 +320,41 @@ describe("StudioCanvasGrid — delimitación de PACKS (fotoimanes 6+6)", () => {
     );
 
     expect(screen.queryByText("Pack 1")).not.toBeInTheDocument();
+    expect(document.getElementById("studio-unit-0")).toBeNull();
+  });
+});
+
+describe("StudioCanvasGrid — modo plano con tarjeta-unidad (owner 2026-09-18)", () => {
+  it("el grid plano (sin packs, sin agrupado, sin secciones) va envuelto en la tarjeta estándar", () => {
+    // Ej. cuadro-3-fotos / planner: slots sueltos sin unitGroupSlots. Antes el
+    // grid quedaba "desnudo" (sin el fondo que recubre de separadores/packs).
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "cuadro-3-fotos",
+      canvasData: makePolaroidCanvas(3),
+      templates: [],
+    });
+    const { container } = render(
+      <StudioCanvasGrid
+        store={store}
+        onSlotClick={() => {}}
+        stageZoomRaw={1}
+        onStageZoomState={() => {}}
+        registerSlotStages={() => {}}
+      />,
+    );
+
+    // La tarjeta de modo plano: mismo visual que separadores/packs
+    // (borde brand + bg-white/70 + rounded-2xl), con TODOS los slots dentro.
+    const card = Array.from(container.querySelectorAll("div.rounded-2xl")).find((el) =>
+      el.className.includes("bg-white/70"),
+    );
+    expect(card).toBeDefined();
+    expect(slotObserveIndexesOf(card ?? null)).toEqual([0, 1, 2]);
+
+    // Sin rótulos ni pager de unidad: el plano no declara unidades.
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
     expect(document.getElementById("studio-unit-0")).toBeNull();
   });
 });

@@ -116,7 +116,14 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
   }));
 
   return (
-    <form action={formAction} className="space-y-5">
+    // noValidate (fix owner 2026-09-18): la validación nativa HTML5 bloquea el
+    // submit EN SILENCIO cuando el control inválido vive en una tab oculta
+    // (los paneles usan `hidden` — "invalid form control is not focusable" en
+    // consola y nada más: 51/63 productos con peso 10-49g no se podían guardar
+    // por el min=50 del input de peso, que Zod ya había bajado a 10). La fuente
+    // de verdad es Zod en la server action y sus errores se muestran en el
+    // alert global + error por campo + dot rojo en la tab.
+    <form action={formAction} noValidate className="space-y-5">
       {initialProduct && <input type="hidden" name="id" value={initialProduct.id} />}
 
       <AdminTabBar tabs={tabsWithBadges} param="tab" defaultTab="basico" />
@@ -410,13 +417,16 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
                 id="weightGrams"
                 name="weightGrams"
                 type="number"
-                min={50}
+                // min alineado con el schema Zod (2026-08-11: 50→10 porque los
+                // separadores pesan 12g; el input quedó en 50 y bloqueaba el
+                // guardado de 51 productos — fix owner 2026-09-18).
+                min={10}
                 max={50000}
                 step={1}
                 defaultValue={initialProduct?.weightGrams ?? ""}
                 placeholder="500"
               />
-              <p className="text-brand-muted mt-1 text-xs">50 – 50.000 g</p>
+              <p className="text-brand-muted mt-1 text-xs">10 – 50.000 g</p>
             </div>
             <div>
               <Label htmlFor="widthCm">Ancho (cm)</Label>
@@ -612,13 +622,46 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
         </SectionCard>
       </AdminTabPanel>
 
-      {/* Error global (no atado a campo) */}
-      {state?.error && !state.fieldErrors && (
+      {/*
+       * Feedback de ÉXITO (fix owner 2026-09-18): la action antes retornaba {}
+       * y el form no decía nada — "aparentemente no hace nada". role=status
+       * (polite) para que lo anuncie el lector de pantalla sin robar foco.
+       */}
+      {state?.success && (
+        <div
+          role="status"
+          className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+        >
+          ✅ Cambios guardados — ya se reflejan en la tienda.
+        </div>
+      )}
+
+      {/*
+       * Error global. Se muestra SIEMPRE que haya state.error — antes exigía
+       * `!state.fieldErrors`, así que un fallo de validación en un campo SIN
+       * error propio renderizado (garantía, tiempos, peso/dims…) no mostraba
+       * NADA: el guardado se perdía en silencio (bug del owner 2026-09-18:
+       * productos legados con garantía < 12 meses rechazados por Zod al
+       * guardar cualquier cambio). Acá se lista cada campo con su etiqueta
+       * humana + mensaje; el dot rojo del tab indica además dónde corregirlo.
+       */}
+      {state?.error && (
         <div
           role="alert"
           className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
         >
-          {state.error}
+          <p className="font-semibold">{state.error}</p>
+          {state.fieldErrors && (
+            <ul className="mt-1 list-inside list-disc space-y-0.5">
+              {Object.entries(state.fieldErrors).map(([field, messages]) =>
+                messages?.[0] ? (
+                  <li key={field}>
+                    <strong>{FIELD_LABELS[field] ?? field}:</strong> {messages[0]}
+                  </li>
+                ) : null,
+              )}
+            </ul>
+          )}
         </div>
       )}
 
@@ -807,6 +850,41 @@ function slugify(s: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
 }
+
+/**
+ * Etiquetas humanas de los campos del schema — para el alert global de error.
+ * Muchos campos de "Detalles"/"Avanzado" no renderizan su propio mensaje de
+ * error, así que el alert los nombra acá (fix owner 2026-09-18).
+ */
+const FIELD_LABELS: Record<string, string> = {
+  name: "Nombre del producto",
+  slug: "Dirección web (slug)",
+  description: "Descripción",
+  basePrice: "Precio base",
+  compareAtPrice: "Precio tachado",
+  cost: "Costo interno",
+  sku: "Código de familia",
+  categoryId: "Categoría",
+  isActive: "Visible en la tienda",
+  isFeatured: "Destacado en home",
+  isPersonalizable: "Personalizable",
+  seoTitle: "Título para Google",
+  seoDescription: "Descripción para Google",
+  richDescription: "Descripción rica",
+  whyChooseThis: "¿Por qué elegir este producto?",
+  idealFor: "Escenarios ideales",
+  warrantyMonths: "Garantía (meses)",
+  productionDays: "Días hábiles hasta el despacho",
+  shippingDaysMin: "Envío mínimo (días)",
+  shippingDaysMax: "Envío máximo (días)",
+  minimumQuantity: "Cantidad mínima por orden",
+  maximumQuantity: "Cantidad máxima por orden",
+  premadeSurcharge: "Recargo plantillas premium",
+  weightGrams: "Peso (gramos)",
+  widthCm: "Ancho (cm)",
+  heightCm: "Alto (cm)",
+  depthCm: "Largo (cm)",
+};
 
 /**
  * Mapea fieldErrors → set de tabs que contienen al menos 1 error.

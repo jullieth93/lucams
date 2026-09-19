@@ -161,8 +161,13 @@ export function AdminShell({
         </div>
       )}
 
-      {/* Contenido principal */}
-      <div className="flex flex-1 flex-col overflow-x-hidden">
+      {/* Contenido principal.
+          overflow-x-clip (no -hidden) en <lg: clip recorta igual el overflow
+          horizontal PERO no crea scroll container, así que el sticky del
+          AdminTabBar sí funciona bajo la topbar móvil (con -hidden quedaba
+          roto: la tabbar scrolleaba con la página o quedaba tras la topbar).
+          En ≥lg se conserva -hidden = comportamiento exacto de hoy. */}
+      <div className="flex flex-1 flex-col overflow-x-clip lg:overflow-x-hidden">
         <AdminTopBar pathname={pathname} />
         <main id="contenido" tabIndex={-1} className="flex-1">
           {children}

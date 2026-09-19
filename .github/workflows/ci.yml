@@ -270,9 +270,12 @@ jobs:
       - name: Build de producción (necesario para el next start del webServer)
         run: pnpm --filter web build
 
-      - name: Playwright (smoke + a11y + axe + compra)
+      - name: Playwright (smoke + a11y + axe + compra + gate responsive)
         # El webServer del config levanta `next start` en :4000 y lo gestiona.
-        run: pnpm --filter web exec playwright test smoke.spec a11y.spec axe.spec compra.spec estudio.spec --project=desktop-chrome
+        # mobile-storefront-audit (2026-09-18): GATE de overflow horizontal del
+        # storefront en 4 anchos (375/768/1024/1280) — nace de la auditoría UX
+        # responsive del owner; falla el PR si una pantalla se sale del ancho.
+        run: pnpm --filter web exec playwright test smoke.spec a11y.spec axe.spec compra.spec estudio.spec mobile-storefront-audit.spec --project=desktop-chrome
 
       - name: Subir reporte Playwright (si falla)
         if: ${{ failure() }}

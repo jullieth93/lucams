@@ -328,37 +328,133 @@ export const PDP_DIMENSION_LABEL_OVERRIDES: Readonly<
 };
 
 /**
- * Default "Con imán" (regla 2026-09-08b — ¿Con imán? en TODOS los productos):
- * cuando TODAS las variantes seleccionables del producto son idénticas salvo por
- * `magnet` (mismo diseño, solo cambia con/sin imán) y hay al menos una de cada
- * opción, la PDP preselecciona la primera variante CON imán — el cliente no debe
- * hacer un click para quedarse con el default que la mayoría quiere. Devuelve
- * esa variante, o null si el producto tiene más dimensiones de elección (esas
- * siguen con selección guiada: el re-anchor del selector prefiere Con imán).
+ * Dimensiones de variante que la PDP puede mostrar como grupo (chips/stepper),
+ * en el orden en que se evalúan. Es la MISMA lista que usa el VariantSelector
+ * para construir sus grupos visibles — una sola fuente para que la variante
+ * por defecto (pdpDefaultVariant) corresponda exactamente a "la primera opción
+ * de cada dimensión" que el cliente ve.
+ * photoSlots ANTES que quantity: cuando ambas coinciden en todas las variants
+ * (packs de fotoimanes/separadores) el dedupe del selector conserva la PRIMERA.
  */
-export function conImanDefaultVariant<T extends { attributes: unknown }>(
+export const PDP_VARIANT_DIMENSION_KEYS: readonly (keyof ProductVariantAttributes)[] = [
+  "language",
+  "photoSlots",
+  "quantity",
+  "sizeCm",
+  "shape",
+  "color",
+  "finish",
+  "magnet",
+  "frameStyle",
+  "variantStyle",
+  "theme",
+];
+
+/**
+ * Orden preferido de los valores por dimensión no numérica (lo demás =
+ * numérico en quantity/photoSlots/sizeCm, alfabético en el resto). MISMO orden
+ * que usa el VariantSelector para pintar los chips → "la primera opción" de la
+ * regla del default es literalmente el primer chip visible de cada grupo.
+ */
+export const PDP_DIMENSION_VALUE_ORDER: Record<string, string[]> = {
+  language: ["es", "en"],
+  magnet: ["true", "false"],
+  frameStyle: ["blanco", "negro"],
+  variantStyle: ["blanco-clasico", "pasteles", "instagram"],
+  theme: ["animales", "frutas", "profesiones"],
+};
+
+/** Ordena los valores de una dimensión igual que el VariantSelector (chips). */
+function orderVariantDimensionValues(key: string, values: string[]): string[] {
+  const order = PDP_DIMENSION_VALUE_ORDER[key];
+  if (order) {
+    // Orden fijo (idioma, imantado); valores fuera de la lista al final.
+    return [...values].sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
+  }
+  if (key === "quantity" || key === "photoSlots" || key === "sizeCm") {
+    // Numérico por el primer número (sizeCm "10×14" no debe ir antes que "5×7").
+    return [...values].sort((a, b) => parseFloat(a) - parseFloat(b));
+  }
+  return [...values].sort();
+}
+
+/**
+ * (2026-09-18, owner) — Default de la PDP: al entrar SIN ?variant= la ficha abre
+ * con la PRIMERA opción de cada dimensión ya seleccionada (antes: selección
+ * guiada sin preselección — regla Lucy 2026-08-12 — y el CTA salía bloqueado
+ * pidiendo "Elige las opciones primero").
+ *
+ * Devuelve la variante que materializa ese default:
+ *   1. A cada variante se le calcula un RANK por dimensión: el índice de su
+ *      valor en el orden visible de esa dimensión (mismo orden de los chips del
+ *      selector: es antes que en, Con imán antes que Sin imán, cantidades/
+ *      tamaños ascendentes; 0 = primera opción). Una variante sin la clave no
+ *      se penaliza: el dato incompleto no rompe el default.
+ *   2. Manda el STOCK ("primera opción DISPONIBLE"): entre las variantes con
+ *      stock gana la de rank lexicográfico MENOR (las dimensiones pesan en el
+ *      orden de PDP_VARIANT_DIMENSION_KEYS → si la primera opción de una
+ *      dimensión está agotada se conserva la primera opción de las demás en lo
+ *      posible). Solo si TODAS están agotadas se elige entre las agotadas (el
+ *      buy-box ya pinta "Agotado" por variante — selección coherente).
+ *   3. Con UNA sola variante devuelve esa (auto-selección de siempre).
+ *
+ * El empate de ranks lo rompe el orden del catálogo con el sort ESTABLE "Con
+ * imán primero" del VariantSelector → subsume la regla 2026-09-08b
+ * (conImanDefaultVariant, eliminada: este helper la generaliza) y la preselección
+ * de N mínimo de los packs de un solo tamaño (polaroid: photoSlots ascendente).
+ */
+export function pdpDefaultVariant<T extends { attributes: unknown; stock?: number }>(
   variants: readonly T[],
 ): T | null {
-  if (variants.length < 2) return null;
-  let sawCon = false;
-  let sawSin = false;
-  let signature: string | null = null;
-  for (const v of variants) {
-    const attrs = parseVariantAttributes(v.attributes);
-    const { magnet, ...rest } = attrs;
-    if (magnet === true) sawCon = true;
-    else if (magnet === false) sawSin = true;
-    else return null; // variante sin la dimensión: no aplica el default
-    const sig = JSON.stringify(
-      Object.entries(rest)
-        .filter(([, value]) => value !== undefined)
-        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
-    );
-    if (signature === null) signature = sig;
-    else if (signature !== sig) return null; // difieren en más que el imán
+  if (variants.length === 0) return null;
+  // Sort estable "Con imán primero" (mismo criterio del VariantSelector):
+  // desempata ranks iguales a favor de la opción con imán.
+  const sorted = [...variants].sort((a, b) => {
+    const am = parseVariantAttributes(a.attributes).magnet === false ? 1 : 0;
+    const bm = parseVariantAttributes(b.attributes).magnet === false ? 1 : 0;
+    return am - bm;
+  });
+  // Valores ordenados de cada dimensión presente en el catálogo (orden de chips).
+  const orderedValuesByKey = new Map<string, string[]>();
+  for (const key of PDP_VARIANT_DIMENSION_KEYS) {
+    const values = new Set<string>();
+    for (const v of sorted) {
+      const value = parseVariantAttributes(v.attributes)[key];
+      if (value !== undefined && value !== null) values.add(String(value));
+    }
+    if (values.size > 0) orderedValuesByKey.set(key, orderVariantDimensionValues(key, [...values]));
   }
-  if (!sawCon || !sawSin) return null;
-  return variants.find((v) => parseVariantAttributes(v.attributes).magnet === true) ?? null;
+  const rankOf = (v: T): number[] => {
+    const attrs = parseVariantAttributes(v.attributes);
+    return PDP_VARIANT_DIMENSION_KEYS.map((key) => {
+      const ordered = orderedValuesByKey.get(key);
+      if (!ordered) return 0;
+      const value = attrs[key];
+      if (value === undefined || value === null) return 0;
+      const idx = ordered.indexOf(String(value));
+      return idx === -1 ? ordered.length : idx;
+    });
+  };
+  const compareRanks = (a: number[], b: number[]): number => {
+    for (let i = 0; i < a.length; i++) {
+      const diff = (a[i] ?? 0) - (b[i] ?? 0);
+      if (diff !== 0) return diff;
+    }
+    return 0;
+  };
+  const hasStock = (v: T) => (v.stock ?? 1) > 0;
+  const inStock = sorted.filter(hasStock);
+  const pool = inStock.length > 0 ? inStock : sorted;
+  let best: T | null = null;
+  let bestRank: number[] = [];
+  for (const v of pool) {
+    const rank = rankOf(v);
+    if (best === null || compareRanks(rank, bestRank) < 0) {
+      best = v;
+      bestRank = rank;
+    }
+  }
+  return best;
 }
 
 /**

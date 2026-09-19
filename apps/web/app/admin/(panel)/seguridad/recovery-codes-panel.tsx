@@ -50,7 +50,7 @@ export function RecoveryCodesPanel({ unusedCount }: { unusedCount: number }) {
               servir.
             </span>
           </div>
-          <ul className="grid grid-cols-2 gap-1.5 font-mono text-sm">
+          <ul className="grid grid-cols-1 gap-1.5 font-mono text-sm sm:grid-cols-2">
             {state.codes.map((c) => (
               <li
                 key={c}

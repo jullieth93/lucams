@@ -1455,7 +1455,13 @@ export function StudioEditor({
         {/* Auditoría v3 · H15: flex-COL para que el banner del calendario quede ARRIBA del grid (antes
             era flex-row → banner y grid en fila → overflow horizontal y slots sangrando). El banner ya
             trae mb-3, pensado para apilado. */}
-        <section className="flex flex-1 flex-col items-center p-4 pb-28 sm:pb-24 lg:p-8 lg:pb-16">
+        {/* Owner 2026-09-18 · overflow real @1024-1280: `min-w-0` es INNEGOCIABLE acá.
+            Como flex item del row lg (con el aside), el default min-width:auto dejaba
+            que la sección se ESTIRARA con su contenido: el grid medía el ancho ya
+            estirado (ResizeObserver), lo fijaba y el documento desbordaba en bucle
+            (el aside llegaba a encogerse de 288 a ~153px). Con min-w-0 la sección
+            respeta su parte del flex y el observer mide el ancho útil real. */}
+        <section className="flex min-w-0 flex-1 flex-col items-center p-4 pb-28 sm:pb-24 lg:p-8 lg:pb-16">
           <StudioStyleToolbar store={store} frameOptions={productConfig.frameOptions} />
 
           {/* ADR-057 Fase D + CAL2 — banner de calendario: el cliente elige el AÑO (selector) y
@@ -1515,8 +1521,11 @@ export function StudioEditor({
               y arriba del grid para no tapar los slots; en desktop se sientan debajo del banner.
               Se elimina el posicionamiento fixed que superponía los botones de edición/eliminación.
               Lucy 2026-09-08 — separación vertical real respecto al lienzo (mb-6/lg:mb-8):
-              con mb-2 los pills (h-12 + ring-4) quedaban pegados al borde superior del canvas. */}
-          <div className="mt-2 mb-6 flex flex-wrap items-center justify-center gap-2 px-4 lg:mb-8">
+              con mb-2 los pills (h-12 + ring-4) quedaban pegados al borde superior del canvas.
+              Ola 32 (owner 2026-09-18) — chrome móvil compacto: a 375px la fila envolvía en
+              2-3 líneas y el lienzo quedaba bajo el fold. En <sm UNA sola fila con scroll
+              horizontal (los pills conservan su h-12 ≥44px); ≥sm el wrap centrado de siempre. */}
+          <div className="mt-1 mb-3 flex flex-nowrap items-center gap-2 overflow-x-auto px-4 sm:mt-2 sm:mb-6 sm:flex-wrap sm:justify-center sm:overflow-visible lg:mb-8 [&>*]:shrink-0">
             {aiEnabled && (
               <button
                 type="button"

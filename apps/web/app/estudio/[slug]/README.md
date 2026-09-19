@@ -641,6 +641,8 @@ de todas las superficies personalizables.**
   (`sectionAvailableW`) y el tope de zoom considera la fila completa. Solo
   tiras: calendarios (secciones anchas) y separadores (modo agrupado) intactos.
   Pager, lazy-mount y snapshots (todas las secciones montadas) sin cambios.
+  _(Umbrales REDEFINIDOS por Ola 34: móvil <640px 1 por fila full-width; la 3ª
+  columna solo con contenedor ≥1400px — secciones ~×1.5 más anchas.)_
 
 ## Piezas posteriores (2026-07 en adelante) — confirmación con copias, letras, IA, 3D, copy CMS
 
@@ -707,13 +709,16 @@ de todas las superficies personalizables.**
 
 ### Ola 22 (Lucy 2026-09-08) — zoom de lienzo, badge a la barra, avatar tappeable, fuente del calendario
 
-- **Stage más grande + zoom de lienzo (display-only)**: `MAX_VIEWPORT_WIDTH` 1024 → 1280.
+- **Stage más grande + zoom de lienzo (display-only)**: `MAX_VIEWPORT_WIDTH` 1024 → 1280
+  (2026-09-18: 1280 → 1600, ver «Canvas fluido» más abajo).
   Control −/+%/reset INLINE en la fila de pills superior del editor (junto a «Ideas» /
   «Ver en tu espacio» — 2026-09-09: antes flotaba sobre la esquina del lienzo e "invadía
   el canvas"). El estado crudo vive en `studio-editor.tsx`; el grid lo clampa contra el
-  tope por ancho (`stageZoomCap = containerWidth/contentWidth`, acercar hasta 2.5, alejar
-  hasta 0.5, pasos de 0.25 — helpers en `studio-canvas-grid-size.ts`) y reporta el estado
-  efectivo al pill (`StudioStageZoomControl`, exportado desde `studio-canvas-grid.tsx`).
+  tope (Ola 33: fijo en `STAGE_ZOOM_MAX` 2.5 con scroll-x interno en el wrapper — antes
+  `containerWidth/contentWidth`, que el dimensionado por ancho de Ola 31 dejaba en 1;
+  alejar hasta 0.5, pasos de 0.25 — helpers en `studio-canvas-grid-size.ts`) y reporta
+  el estado efectivo al pill (`StudioStageZoomControl`, exportado desde
+  `studio-canvas-grid.tsx`).
   Los tamaños zoomados alimentan celdas, slots y placeholders,
   así el slot crece completo (no estira la foto): nada se desborda horizontalmente. Solo
   botones (no wheel/pinch del stage) para no pisar el wheel de zoom de la FOTO en edición.
@@ -737,6 +742,127 @@ de todas las superficies personalizables.**
   muestra el selector `#cal-font-select` en la pestaña Foto (después de "Cambiar foto").
   El banner del editor sigue existiendo; ambos comparten el mismo estado del store.
   Contrato en `studio-slot-edit-modal.test.tsx`.
+
+### Ola 31 (owner 2026-09-18) — canvas fluido, tarjeta-unidad universal, cero overflow horizontal
+
+- **Contexto**: el owner validó UX y fijó como referencia POSITIVA el estudio de
+  separadores (canvas al ancho de pantalla, cada unidad en tarjeta `bg-white/70`) y
+  como NEGATIVA fotoimanes/modo plano (canvas angosto centrado, sin tarjeta). La
+  auditoría responsive (`tmp/responsive-audit`) detectó overflow horizontal real en
+  polaroid @768/@1024, cuadrados @1024 y calendario @1024/@1280.
+- **Decisión**: (1) el marco de 82vh solo aplica a productos de UNA fila — los grids
+  multi-fila se dimensionan por ANCHO (cap por slots) y la página scrollea vertical;
+  (2) los pisos de slot NUNCA desbordan el contenedor: si `minSize*cols + gaps` no
+  cabe, se reducen columnas (`fitColsToFloor`); (3) `MAX_VIEWPORT_WIDTH` 1280 → 1600;
+  (4) tarjeta-unidad SIEMPRE en packs (`slotCount >= unitGroupSlots`; con 1 pack, sin
+  rótulo "Pack 1" ni pager) y TAMBIÉN en modo plano; (5) `min-w-0` en la `<section>`
+  del editor — la causa raíz del overflow ≥1024 era un loop de medición: la sección
+  (flex item con min-width:auto) se estiraba con el contenido y el ResizeObserver
+  fijaba el ancho YA estirado (el aside se encogía de 288 a ~153px).
+- **Contratos**: `studio-canvas-grid-size.test.ts` (marco multi-fila + guarda de piso)
+  y `studio-canvas-grid.test.tsx` (1 pack con tarjeta sin rótulo/pager; plano con
+  tarjeta). Auditoría: 70/70 capturas sin overflow ni errores (antes 5 con overflow).
+
+### Ola 32 (owner 2026-09-18) — editores de letras al lienzo fluido + chrome móvil compacto
+
+- **Contexto**: continuación de Ola 31 — los estudios de "Juegos y Aprendizaje"
+  (Nombre Personalizado, Abecedario, Pack Vocales) seguían en una columna fija
+  `max-w-3xl` (aire lateral en desktop) y con su propio chrome (back-link +
+  header centrado), mientras el estudio de foto ya tenía la plantilla
+  adaptativa de referencia. En móvil (375px) el estudio de foto apilaba ~700px
+  de chrome antes del lienzo (stepper + hint, toolbar de estilo con labels
+  partidos en 3 líneas, pills envueltos).
+- **Decisión**: (1) header sticky UNIFICADO para los editores simples
+  (`studio-simple-header.tsx` — idioma del StudioToolbar sin el store zustand:
+  pill «Salir», avatar+nombre, total en vivo + CTA «Vista previa»); (2) layout
+  a dos columnas en lg (controles en tarjeta lateral `lg:w-80`, lienzo fluido en
+  la tarjeta-unidad `bg-white/70`) y lienzo PRIMERO en móvil; contenedor fluido
+  con cap `STUDIO_MAX_WIDTH=1600` (`studio-layout.ts` — el canvas-grid conserva
+  su propia constante inline por estar congelado); (3) fichas del Nombre
+  FLUIDAS (ResizeObserver + callback-ref, tope 120px = ficha de producción,
+  piso 44px táctil) y grilla del set de letras con columnas progresivas
+  (4/6/8/10/12/13); (4) el estado de color por set del letter-set se separó del
+  markup: `LetterSetUnitPanel` → `LetterSetUnitState` (render-prop) porque el
+  picker de tema va con los controles y la grilla ES el lienzo, pero el
+  `useLetterColors` debe ser UNO por set; (5) chrome móvil del estudio foto:
+  toolbar de estilo en una sola línea con scroll horizontal (labels
+  `whitespace-nowrap`), fila de pills `flex-nowrap overflow-x-auto` en <sm,
+  hint del stepper de packs oculto en <sm — el lienzo (tarjeta del pack) ya
+  inicia visible en el primer viewport de 375×812.
+- **Contratos**: mismos tests de vista previa (los selectores «Vista previa»
+  ahora resuelven 2 botones — header + panel, misma acción: los specs pulsan el
+  del panel); e2e `estudio-letterset` (orden borde → colores intacto: ambos en
+  la columna de controles). Auditoría: 70/70 capturas sin overflow ni errores.
+
+### Ola 33 (owner 2026-09-18) — zoom de lienzo restaurado (tope fijo + scroll-x interno), sondas e2e B4, grilla de letras centrada
+
+- **Contexto**: Ola 31 dimensionó los grids por ANCHO (llenan el contenedor a
+  zoom 1) → el tope de acercar por ancho (`containerWidth/contentWidth`)
+  quedó en 1 y el "+" del zoom de lienzo (feature de Ola 22 pedida por el
+  owner para ver detalles finos) no hacía nada.
+- **Decisión**: (1) `computeStageZoomCap()` devuelve SIEMPRE `STAGE_ZOOM_MAX`
+  (2.5) — cuando el contenido zoomado excede el ancho del marco, el WRAPPER
+  INTERNO del grid scrollea horizontal (`overflow-x-auto` solo si hay overflow
+  real, `needsStageHScroll`; a zoom ≤100% queda en `visible` y no clipea
+  anillos/sombras). La PÁGINA jamás desborda: el gate
+  `scrollWidth === clientWidth` sigue 0/70. Alejar (piso 0.5) intacto; el "+"
+  del pill solo se deshabilita al llegar al 250% real (el UI no miente).
+  (2) Sondas e2e de píxeles (`estudio-studio-ux.spec.ts`) actualizadas a dos
+  reglas de render VIGENTES que las habían quedado obsoletas (no eran
+  regresiones de render): B4 (2026-09-15) dibuja los textos por defecto como
+  GUÍA atenuada al 40% (`PLACEHOLDER_GUIDE_OPACITY`) → los matchers de tinta
+  plena se relajaron (light >90, blue con dominio de b >8); y la letra por
+  defecto sale BLANCA solo sobre tarjeta casi-negra (regla owner 2026-09-14,
+  `defaultTextFillOnCard`) → el test de la Clásica ahora exige oscuro sobre
+  rosa y blanco sobre negro (antes pedía blanco sobre rosa, la regla vieja).
+  (3) LetterSetEditor: la grilla de fichas pasa de `grid` a flex centrado con
+  anchos idénticos por breakpoint — con pocas fichas (pack-vocales, 5) quedaba
+  pegada a la izquierda de la tarjeta-lienzo.
+- **Contratos**: `studio-canvas-grid-size.test.ts` (tope fijo MAX, pasos,
+  pisos); e2e `estudio-studio-ux` (zoom 100→125→75→100 con canvas que
+  crece/encoge) y `estudio-letterset` verdes; auditoría responsive 0/70.
+
+### Ola 34 (owner 2026-09-18) — spec de tamaños v2: slots grandes tipo Magnéticos, móvil 1 col, título móvil, letras sin apretar
+
+- **Contexto**: el owner validó los estudios midiendo con el ZOOM del estudio:
+  "el 100% debería verse como se ve al 150% en web / al 125% en móvil (cuadrados
+  móvil: al 250%)". En píxeles: slots objetivo ~430-470px en desktop para
+  productos de pocos slots; en móvil el pack a UNA columna full-width (el 250%
+  de cuadrados ≈ 343px = el ancho útil de un teléfono de 390px — la regla de 2
+  columnas a 380-639 quedó rechazada explícitamente). Único "Ok" previo: el
+  Calendario (INTOCABLE). Referencia correcta: el estudio de Magnéticos
+  (tarjeta-unidad grande por unidad física). Editores de letras: "web mal
+  distribuido; móvil mejor pero muy apretado". Y en móvil no se veía QUÉ
+  producto se estaba trabajando.
+- **Decisión**: (1) columnas por ANCHO OBJETIVO de slot en vez de breakpoints
+  fijos (`resolveMaxCols`: cols = clamp(floor(containerW/objetivo), 1, preset),
+  objetivo 450px ≤6 slots / 300px ≥7 slots, piso 2 cols desde 640px;
+  `fitColsToFloor` intacto — el piso de tap nunca desborda); (2) móvil
+  (<640px) SIEMPRE 1 columna full-width en todos los estudios foto
+  (BP_NARROW eliminado de las reglas); (3) caps por conteo subidos
+  (few 640/600/600, medium 700/660/600, many 640/600/560) para que no anulen
+  el objetivo (polaroid 2×460×1.28 → alto 588 > cap viejo 560); (4) marco en
+  alto de UNA fila FIJO en móvil (`MOBILE_FRAME_HEIGHT=640`): el alto del
+  viewport móvil cambia al ocultarse la barra del navegador al scrollear y el
+  tamaño del slot no debe moverse; (5) separadores (modo agrupado): las filas
+  del marco se cuentan en UNIDADES físicas, no en slots — las caras heredan el
+  cap completo y crecen ~×1.25 donde el ancho lo permite; (6) tiras: móvil 1
+  sección full-width por fila; la 3ª columna solo con contenedor ≥1400px
+  (secciones ≥ ~440px ≈ ×1.5 vs los ~280px de Ola 29); (7) título del producto
+  visible en móvil en AMBOS headers: en `StudioToolbar` dentro de la fila móvil
+  de progreso (cero altura extra) y en `StudioSimpleHeader` en una fila fina
+  propia (py-1) — la tarjeta del canvas sigue iniciando dentro del primer
+  viewport de 375×812; (8) editores de letras: grilla del set 3/4/5/7/8 cols
+  (antes 4/6/8/10/12/13) con tope 128px y gaps sm 16px — ficha móvil ~65→93px,
+  desktop ya no se encoge a ~44px a 1024; lienzo con aire vertical
+  (min-h 280/360 + contenido centrado); fichas del nombre con tope 144px
+  (antes 120) y lienzo min-h 220/320.
+- **Contratos**: `studio-canvas-grid-size.test.ts` reescrito al nuevo contrato
+  (1 col móvil, ancho objetivo 450/300 con piso 2, marco móvil fijo, caps
+  subidos, secciones de tira 1/2/3); `studio-canvas-grid.test.tsx` intacto.
+  Sonda de píxeles (`tmp/responsive-audit/probe-slot-px.mjs`): polaroid/cuadrados
+  @1280 ~450px (antes ~293), @375 1 col ~327px; tira @1280 ~640px (antes 429);
+  separadores conserva el patrón Magnéticos con caras ~×1.25. Auditoría: 0/70.
 
 ## Wireframes ASCII
 

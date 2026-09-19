@@ -47,7 +47,7 @@ import { generateGridLayout } from "./lib/grid-layout";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 
-const MAX_VIEWPORT_WIDTH = 1280; // px lógicos máximo del grid en desktop (Lucy 2026-09-08: 1024→1280 — la plantilla se veía chica con márgenes vacíos en pantallas anchas)
+const MAX_VIEWPORT_WIDTH = 1600; // px lógicos máximo del grid en desktop (Lucy 2026-09-08: 1024→1280 — la plantilla se veía chica con márgenes vacíos; owner 2026-09-18: 1280→1600 — en pantallas anchas seguía habiendo aire lateral; el ancho útil real lo acotan sidebar + padding del layout)
 
 // Constantes y funciones puras de tamaño de stage extraídas a studio-canvas-grid-size.ts
 // (Lucy 2026-09-07) para testear unitariamente el cálculo sin montar Konva/React.
@@ -59,6 +59,7 @@ import {
   computeFlatSlotDisplaySize,
   computeMaxFrameH,
   computeStageZoomCap,
+  fitColsToFloor,
   hasEditableTextLayers,
   resolveMaxCols,
   resolveMinSlotSize,
@@ -152,10 +153,11 @@ type StudioCanvasGridProps = {
   onSlotClick: (slotIndex: number) => void;
   /**
    * Ola 22 (Lucy 2026-09-09) — zoom de LIENZO controlado desde la fila de pills
-   * superior (studio-editor): `stageZoomRaw` es el valor PEDIDO (se clampa al render
-   * contra el tope por ancho); el grid reporta el estado efectivo vía
-   * `onStageZoomState` para que el control (StudioStageZoomControl) pinte el % y
-   * habilite/deshabilite −/+.
+   * superior (studio-editor): `stageZoomRaw` es el valor PEDIDO (se clampa al
+   * render contra el tope — Ola 33: siempre STAGE_ZOOM_MAX, el wrapper del grid
+   * scrollea horizontal si el contenido zoomado excede el ancho); el grid
+   * reporta el estado efectivo vía `onStageZoomState` para que el control
+   * (StudioStageZoomControl) pinte el % y habilite/deshabilite −/+.
    */
   stageZoomRaw: number;
   onStageZoomState: (state: { zoom: number; cap: number }) => void;
@@ -222,8 +224,9 @@ export function StudioCanvasGrid({
   const announceApplied = useCallback(() => setAppliedTick((t) => t + 1), []);
   // Ola 22 (Lucy 2026-09-08) — zoom de LIENZO: acerca TODA la plantilla (display-only,
   // no toca el diseño ni la exportación). El valor crudo lo pide el padre (prop
-  // `stageZoomRaw`, control en la fila de pills); el tope depende del ancho disponible,
-  // así que se clampa al render (si el viewport se achica, el zoom efectivo baja solo).
+  // `stageZoomRaw`, control en la fila de pills); el tope es STAGE_ZOOM_MAX (Ola 33)
+  // y se clampa al render (si el viewport se achica, el zoom se mantiene y el
+  // wrapper del grid scrollea horizontal).
 
   // Ola 8 — cuando el padre pide abrir el editor unificado (ej. clic en slot lleno),
   // reflejamos la petición en el estado local y limpiamos el callback del padre.
@@ -300,13 +303,16 @@ export function StudioCanvasGrid({
   // divide en tarjetas-unidad de `unitGroupSlots` slots ("Pack 1" / "Pack 2"…).
   // Exige división exacta — un diseño legacy (9/20 unidades) no calza en packs
   // de 6 y se queda plano, igual que el stepper de fotos (packMode).
+  // Owner 2026-09-18: `>=` (antes `>`) — UN solo pack también va en tarjeta-unidad
+  // (mismo fondo que recubre de separadores), solo se omiten el rótulo "Pack 1"
+  // y el pager, que son ruido para una sola tarjeta.
   const slotCountNow = canvasData?.slotCount ?? 0;
   const packGroups =
     !groupedForUnits &&
     !multiUnitSections &&
     typeof unitGroupSlots === "number" &&
     unitGroupSlots > 1 &&
-    slotCountNow > unitGroupSlots &&
+    slotCountNow >= unitGroupSlots &&
     slotCountNow % unitGroupSlots === 0;
   const packSlots = packGroups ? (unitGroupSlots as number) : 0;
   const packCount = packGroups ? slotCountNow / packSlots : 0;
@@ -318,29 +324,80 @@ export function StudioCanvasGrid({
       ? packSlots
       : (canvasData?.slotCount ?? 0);
 
+  // Ola 3 (separadores 2 caras) — modo AGRUPADO: los slots se renderizan en
+  // tarjetas-unidad ("Separador N") con las 2 caras lado a lado (la tira
+  // desplegada física).
+  const grouped = groupedForUnits;
+  // Ola 3c — modo TIRA (gridGap=0, tira photobooth): las celdas se tocan → la tira
+  // se lee como UNA pieza continua de color. Sin reserva de barra de acciones entre
+  // celdas (flota sobre la foto, ver StudioSlot overlayActions). Regla 2026-09-08:
+  // la separación visible ENTRE fotos la dibuja stripPhotoRect DENTRO de cada celda
+  // (media canaleta del color del marco) — el gap CSS entre celdas sigue en 0.
+  const stripMode = !grouped && (canvasData?.gridLayout.gap ?? 1) === 0;
+
+  // Ola 29 (owner 2026-09-11, 1.3.A mejora visual) — secciones de TIRA en filas
+  // de 2-3 (wrap): cada sección se dimensiona con SU parte del ancho del
+  // contenedor, no con el ancho completo (si no, cada tira se calcula como si
+  // fuera dueña de la fila y desbordaría). Solo modo secciones multi-unidad de
+  // tiras; calendarios (secciones anchas) y separadores (agrupados) intactos.
+  // Se calcula ANTES del memo de layout: la guarda de piso vs ancho lo necesita.
+  const sectionsPerRow = unitSectionsPerRowFor({
+    isStripSections: multiUnitSections && stripMode,
+    unitCount,
+    containerWidth,
+  });
+  const sectionAvailableW =
+    sectionsPerRow > 1
+      ? Math.floor((containerWidth - UNIT_SECTION_GAP * (sectionsPerRow - 1)) / sectionsPerRow)
+      : containerWidth;
+
   const layout = useMemo(() => {
     if (!canvasData) return null;
-    // M.3.b.UX.7 — Responsive progresivo: cap de cols según viewport.
-    //   <380px  → max 1 col (slot fullwidth)
-    //   <640px  → max 2 cols (1 col si el template tiene texto editable)
-    //   <1024px → max 3 cols
-    //   ≥1024px → cols del gridLayout original (3-5 según slotCount)
+    // Ola 34 (owner 2026-09-18) — cap de cols: móvil (<640) SIEMPRE 1 columna
+    // full-width; tablet/desktop por ANCHO OBJETIVO de slot (450px ≤6 slots /
+    // 300px ≥7 slots, piso 2 cols). El conteo que manda es el de la grilla que
+    // se dibuja: una unidad (secciones), un pack (tarjetas-pack) o el diseño
+    // completo (plano) — ver layoutSlotCount.
     const maxCols = resolveMaxCols({
       containerWidth,
       isCalendar,
-      hasEditableText,
       gridCols: canvasData.gridLayout.cols,
+      slotCount: layoutSlotCount,
     });
 
     let cols = Math.min(maxCols, canvasData.gridLayout.cols);
+    // Guarda de PISO vs ANCHO (owner 2026-09-18): el piso de displaySize por
+    // slot NUNCA puede desbordar el contenedor — si `minSize*cols + gaps` no
+    // cabe en el ancho disponible, se reducen columnas. Causa del overflow
+    // horizontal real @768-1024: sidebar lg (288px) + piso de texto editable
+    // 260 × 3 cols > ancho útil restante. El ancho de la guarda descuenta el
+    // marco de la tarjeta (packs y plano van en tarjeta p-2) o reparte la fila
+    // entre secciones de tira. Modo agrupado (separadores): su tarjeta-unidad
+    // tiene fórmula propia de ancho (byWidth con caras) — no aplica.
+    const minSlot = resolveMinSlotSize({ isCalendar, hasEditableText });
+    const floorW = multiUnitSections ? sectionAvailableW : containerWidth - UNIT_CARD_PAD_X;
     // PACKS — columnas de la SUB-grilla de cada tarjeta: el preset de la unidad
     // (pack de 6 → 3×2) capeado al viewport, siempre divisor del pack para que
     // las filas de cada tarjeta queden completas.
     if (packGroups) {
       const preset = generateGridLayout(packSlots, canvasData.unitTemplate.stage);
       cols = Math.max(1, Math.min(cols, preset.cols));
+      cols = fitColsToFloor({
+        cols,
+        minSize: minSlot,
+        gap: canvasData.gridLayout.gap,
+        availableW: floorW,
+      });
       while (cols > 1 && packSlots % cols !== 0) cols -= 1;
       return { ...canvasData.gridLayout, cols, rows: Math.ceil(packSlots / cols) };
+    }
+    if (!groupedForUnits) {
+      cols = fitColsToFloor({
+        cols,
+        minSize: minSlot,
+        gap: canvasData.gridLayout.gap,
+        availableW: floorW,
+      });
     }
     if (cols === canvasData.gridLayout.cols) return canvasData.gridLayout;
     // Multi-unidad: las filas se calculan sobre la UNIDAD (layoutSlotCount), no
@@ -355,6 +412,9 @@ export function StudioCanvasGrid({
     layoutSlotCount,
     packGroups,
     packSlots,
+    groupedForUnits,
+    multiUnitSections,
+    sectionAvailableW,
   ]);
 
   // A2.6 — Crossfade visual al cambiar plantilla. Detectamos cambio en
@@ -429,17 +489,10 @@ export function StudioCanvasGrid({
   // `containerWidth`. Mantenemos el aspect ratio del unitTemplate.
   const slotAspect = canvasData.unitTemplate.stage.height / canvasData.unitTemplate.stage.width;
 
-  // Ola 3 (separadores 2 caras) — modo AGRUPADO: los slots se renderizan en
-  // tarjetas-unidad ("Separador N") con las 2 caras lado a lado (la tira
-  // desplegada física). unitCols: 1 en móvil; en desktop 2 unidades por fila,
-  // salvo caras muy anchas (rectangular 6:2 → tira 6:1, 1 por fila).
-  const grouped = groupedForUnits;
-  // Ola 3c — modo TIRA (gridGap=0, tira photobooth): las celdas se tocan → la tira
-  // se lee como UNA pieza continua de color. Sin reserva de barra de acciones entre
-  // celdas (flota sobre la foto, ver StudioSlot overlayActions). Regla 2026-09-08:
-  // la separación visible ENTRE fotos la dibuja stripPhotoRect DENTRO de cada celda
-  // (media canaleta del color del marco) — el gap CSS entre celdas sigue en 0.
-  const stripMode = !grouped && canvasData.gridLayout.gap === 0;
+  // (modo AGRUPADO y modo TIRA se declaran junto al modelo multi-unidad, antes
+  // del memo de layout: la guarda de piso vs ancho los necesita). unitCols:
+  // 1 en móvil; en desktop 2 unidades por fila, salvo caras muy anchas
+  // (rectangular 6:2 → tira 6:1, 1 por fila).
   // Unidades físicas que se RENDERIZAN como tarjeta/sección: en modo agrupado,
   // slotCount/2 (caras); en modo secciones multi-unidad, unitCount del modelo;
   // en plano, cada slot se muestra suelto.
@@ -455,25 +508,12 @@ export function StudioCanvasGrid({
   // Columnas VISUALES de slots para la navegación por teclado (flechas).
   const navCols = grouped ? unitCols * 2 : layout.cols;
 
-  // Ola 29 (owner 2026-09-11, 1.3.A mejora visual) — secciones de TIRA en filas
-  // de 2-3 (wrap): cada sección se dimensiona con SU parte del ancho del
-  // contenedor, no con el ancho completo (si no, cada tira se calcula como si
-  // fuera dueña de la fila y desbordaría). Solo modo secciones multi-unidad de
-  // tiras; calendarios (secciones anchas) y separadores (agrupados) intactos.
-  const sectionsPerRow = unitSectionsPerRowFor({
-    isStripSections: multiUnitSections && stripMode,
-    unitCount,
-    containerWidth,
-  });
-  const sectionAvailableW =
-    sectionsPerRow > 1
-      ? Math.floor((containerWidth - UNIT_SECTION_GAP * (sectionsPerRow - 1)) / sectionsPerRow)
-      : containerWidth;
-
   const availableW =
-    // PACKS — la sub-grilla vive DENTRO de la tarjeta: descuenta su padding
-    // horizontal (p-2 a cada lado) para que las celdas no desborden el marco.
-    (packGroups ? containerWidth - UNIT_CARD_PAD_X : sectionAvailableW) -
+    // PACKS y PLANO (owner 2026-09-18) — la grilla vive DENTRO de la
+    // tarjeta-unidad: descuenta su padding horizontal (p-2 a cada lado) para
+    // que las celdas no desborden el marco. Secciones multi-unidad (tiras /
+    // calendarios): su parte de la fila (Ola 29), sin tarjeta envolvente.
+    (multiUnitSections ? sectionAvailableW : containerWidth - UNIT_CARD_PAD_X) -
     layout.gap * (layout.cols - 1);
 
   // Ola 6 — límite de alto del slot según cantidad de slots, para evitar que
@@ -489,17 +529,29 @@ export function StudioCanvasGrid({
   // como un estudio de una sola unidad y las secciones se apilan).
   const slotMaxHeight = slotHeightCapByCount(layoutSlotCount, containerWidth, isCalendar);
 
-  // Ola 4 — marco máximo en ALTO (82% del viewport, acotado): las celdas se achican
-  // si el grid completo no cabe en pantalla. Ola 6: se respeta también el cap por slot.
-  // Calendario: el marco lo define el CONTENIDO (maxFrameHBySlots), no el viewport —
-  // las 12 tarjetas se apilan a tamaño completo y el grid scrollea vertical.
+  // Ola 34 (owner 2026-09-18) — modo AGRUPADO (separadores): las filas del
+  // marco se cuentan en UNIDADES físicas (tarjetas "Separador N"), no en slots.
+  // Con filas-slot el presupuesto de alto se repartía entre las 2 caras y las
+  // caras quedaban chicas (120-153px); con filas-unidad cada cara hereda el
+  // cap completo y crece (~×1.25, pedido del owner) donde el ancho lo permite.
+  const frameRows = grouped ? Math.max(1, Math.ceil(physicalUnits / unitCols)) : layout.rows;
+
+  // Ola 4 — marco máximo en ALTO. Owner 2026-09-18: el marco de 82vh SOLO aplica
+  // a productos de UNA fila (bug original de stages gigantes: polaroid 1-slot,
+  // tira 1-col) y en MÓVIL es FIJO (MOBILE_FRAME_HEIGHT — el alto del viewport
+  // cambia al ocultarse la barra del navegador al scrollear y el tamaño del slot
+  // NO debe moverse). En grids multi-fila el tamaño se deriva del ANCHO y el
+  // marco lo define el contenido (cap por slots): la página scrollea vertical y
+  // las celdas ya no se achican al piso en ventanas bajas (grid diminuto
+  // centrado). Calendario: marco por contenido desde siempre (maxFrameHBySlots).
   const reserve = stripMode ? 0 : ACTION_BAR_RESERVE;
   const maxFrameH = computeMaxFrameH({
     viewportH,
+    containerWidth,
     isCalendar,
     hasEditableText,
     slotMaxHeight,
-    rows: layout.rows,
+    rows: frameRows,
     gap: layout.gap,
     reserve,
   });
@@ -514,8 +566,10 @@ export function StudioCanvasGrid({
           ((containerWidth - layout.gap * (unitCols - 1)) / unitCols - 16 - 8) / 2,
         );
         if (!maxFrameH) return Math.max(MIN_SLOT_SIZE, byWidth);
-        const usableH = maxFrameH - layout.gap * (layout.rows - 1) - layout.rows * reserve;
-        const byHeight = Math.floor(usableH / layout.rows / slotAspect);
+        // Ola 34 — filas en UNIDADES (frameRows), no en slots: cada cara hereda
+        // el cap completo y crece donde el ancho lo permite.
+        const usableH = maxFrameH - layout.gap * (frameRows - 1) - frameRows * reserve;
+        const byHeight = Math.floor(usableH / frameRows / slotAspect);
         return Math.max(MIN_SLOT_SIZE, Math.min(byWidth, byHeight));
       })()
     : computeFlatSlotDisplaySize({
@@ -534,13 +588,17 @@ export function StudioCanvasGrid({
       });
   const slotHeight = slotDisplaySize * slotAspect;
 
-  // Ola 22 — tope y valor efectivo del zoom de lienzo. El ancho del contenido a
-  // zoom 1 es el que el grid ya ocuparía sin zoom; acercar nunca debe desbordar
-  // el contenedor en horizontal (el scroll vertical de página absorbe el extra).
-  // Lucy 2026-09-09 — el zoom también ALEJA (piso STAGE_ZOOM_MIN): el valor
-  // efectivo se clampa por ambos lados (alejar jamás desborda el ancho).
-  // Modo agrupado (separadores): ancho de tarjeta-unidad = 2 caras + paddings
-  // (mismos 16+8 de la fórmula byWidth de arriba).
+  // Ola 22 — valor efectivo del zoom de lienzo (display-only: nunca toca el
+  // diseño ni la exportación). Ola 33 (owner 2026-09-18) — el tope de ACERCAR
+  // es SIEMPRE STAGE_ZOOM_MAX: con el dimensionado por ancho de Ola 31 el grid
+  // llena el contenedor a zoom 1 y el tope viejo (containerWidth/contentWidth)
+  // quedaba en 1 → el "+" no hacía nada y la feature de acercar (ver detalles
+  // finos de la plantilla) moría. Ahora, si el contenido zoomado excede el
+  // ancho, el WRAPPER INTERNO scrollea horizontal (overflow-x abajo) — nunca
+  // la página. Lucy 2026-09-09 — el zoom también ALEJA (piso STAGE_ZOOM_MIN).
+  // El ancho de contenido a zoom 1 sigue calculándose para decidir si el
+  // wrapper necesita scroll-x. Modo agrupado (separadores): ancho de
+  // tarjeta-unidad = 2 caras + paddings (mismos 16+8 de la fórmula byWidth).
   const contentWidthBase = grouped
     ? unitCols * (slotDisplaySize * 2 + 16 + 8) + layout.gap * (unitCols - 1)
     : packGroups
@@ -548,12 +606,21 @@ export function StudioCanvasGrid({
         slotDisplaySize * layout.cols + layout.gap * (layout.cols - 1) + UNIT_CARD_PAD_X
       : // Ola 29 — con secciones de tira en fila, el contenido es la FILA completa
         // (N tiras + gaps de sección): el tope de zoom sigue sin desbordar.
+        // Plano (owner 2026-09-18): suma el padding de la tarjeta que envuelve
+        // la grilla para que el zoom nunca la saque del marco.
         sectionsPerRow * (slotDisplaySize * layout.cols + layout.gap * (layout.cols - 1)) +
-        UNIT_SECTION_GAP * (sectionsPerRow - 1);
-  const stageZoomCap = computeStageZoomCap(containerWidth, contentWidthBase);
+        UNIT_SECTION_GAP * (sectionsPerRow - 1) +
+        (multiUnitSections ? 0 : UNIT_CARD_PAD_X);
+  const stageZoomCap = computeStageZoomCap();
   const stageZoom = Math.max(STAGE_ZOOM_MIN, Math.min(stageZoomRaw, stageZoomCap));
   const zoomedSlotW = Math.round(slotDisplaySize * stageZoom);
   const zoomedSlotH = Math.round(slotHeight * stageZoom);
+
+  // Ola 33 (owner 2026-09-18) — con zoom > 100% el contenido puede superar el
+  // ancho del marco: el WRAPPER del grid scrollea horizontal (overflow-x-auto
+  // solo cuando hace falta, para no clipear anillos/sombras a zoom 1) y la
+  // PÁGINA jamás desborda (gate scrollWidth === clientWidth sigue en 0).
+  const needsStageHScroll = contentWidthBase * stageZoom > containerWidth + 1;
 
   // Ola 4 — ancho EXPLÍCITO del grid (celdas + gaps): si el cap de alto achicó las
   // celdas, el grid no se estira a lo ancho — queda centrado en el marco (margin auto).
@@ -710,8 +777,10 @@ export function StudioCanvasGrid({
           "Tira 2"… con el progreso de cada una; saltan a su sección (scroll).
           Las secciones quedan TODAS montadas y visibles (apiladas): el cliente
           ve todo lo que va a recibir y los stages Konva viven en el DOM para el
-          snapshot de producción/preview (WYSIWYG). */}
-      {(multiUnitSections || packGroups) && (
+          snapshot de producción/preview (WYSIWYG).
+          Owner 2026-09-18: con UN solo pack el pager es ruido (una pastilla
+          sola que no salta a nada) — solo multi-unidad o multi-pack. */}
+      {(multiUnitSections || (packGroups && packCount > 1)) && (
         <UnitPager
           store={store}
           unitCount={multiUnitSections ? unitCount : packCount}
@@ -720,55 +789,118 @@ export function StudioCanvasGrid({
         />
       )}
 
-      {multiUnitSections ? (
-        // Ola 29 (owner 2026-09-11) — las secciones de TIRA van en grilla
-        // horizontal de 2-3 por fila (wrap): 4 unidades → 3 + 1. El resto de
-        // productos multi-unidad (calendarios) sigue apilado una por fila.
-        <div
-          className={
-            sectionsPerRow > 1
-              ? "grid w-full justify-items-center"
-              : "flex w-full flex-col items-center gap-10"
-          }
-          style={
-            sectionsPerRow > 1
-              ? {
-                  gridTemplateColumns: `repeat(${sectionsPerRow}, minmax(0, 1fr))`,
-                  gap: UNIT_SECTION_GAP,
-                }
-              : undefined
-          }
-        >
-          {Array.from({ length: unitCount }, (_, u) => {
-            const { start, end } = unitSlotRange(u, unitSlots);
-            return (
+      {/* Ola 33 (owner 2026-09-18) — wrapper del scroll HORIZONTAL del zoom de
+          lienzo: cuando el contenido zoomado excede el ancho del marco, ESTE
+          contenedor scrollea (overflow-x-auto), nunca la página. Solo se activa
+          con overflow real (needsStageHScroll): a zoom ≤100% queda en visible y
+          no clipea anillos de selección ni sombras. */}
+      <div className={needsStageHScroll ? "w-full overflow-x-auto" : undefined}>
+        {multiUnitSections ? (
+          // Ola 29 (owner 2026-09-11) — las secciones de TIRA van en grilla
+          // horizontal de 2-3 por fila (wrap): 4 unidades → 3 + 1. El resto de
+          // productos multi-unidad (calendarios) sigue apilado una por fila.
+          <div
+            className={
+              sectionsPerRow > 1
+                ? "grid w-full justify-items-center"
+                : "flex w-full flex-col items-center gap-10"
+            }
+            style={
+              sectionsPerRow > 1
+                ? {
+                    gridTemplateColumns: `repeat(${sectionsPerRow}, minmax(0, 1fr))`,
+                    gap: UNIT_SECTION_GAP,
+                  }
+                : undefined
+            }
+          >
+            {Array.from({ length: unitCount }, (_, u) => {
+              const { start, end } = unitSlotRange(u, unitSlots);
+              return (
+                <section
+                  key={u}
+                  id={`studio-unit-${u}`}
+                  aria-label={fillStudioText(texts.unidades.unidadDe, {
+                    nombre: unitNoun ?? texts.unidades.nombrePieza,
+                    n: u + 1,
+                    total: unitCount,
+                  })}
+                  className="w-full scroll-mt-32"
+                >
+                  <UnitSectionHeader
+                    store={store}
+                    unitIndex={u}
+                    unitSlots={unitSlots}
+                    unitCount={unitCount}
+                    noun={unitNoun ?? texts.unidades.nombrePieza}
+                    onApplied={announceApplied}
+                  />
+                  <div
+                    className={
+                      stripMode
+                        ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza
+                          // entera (las celdas no llevan sombra). Multi-unidad: una
+                          // sombra por TIRA (cada sección es una pieza física).
+                          "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
+                        : "grid"
+                    }
+                    style={{
+                      gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
+                      gap: layout.gap,
+                      ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
+                    }}
+                  >
+                    <AnimatePresence>
+                      {canvasData.slots.slice(start, end).map((slot) => renderSlotCell(slot))}
+                    </AnimatePresence>
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        ) : packGroups ? (
+          // PACKS (owner 2026-09-15, ADR-101) — tarjeta por pack con el MISMO
+          // patrón visual de las tarjetas-unidad de separadores (borde sutil de
+          // marca + rótulo + progreso): "Pack 1" slots 1-6, "Pack 2" slots 7-12.
+          // Owner 2026-09-18: con UN solo pack la tarjeta se queda (el fondo que
+          // recubre) pero SIN rótulo "Pack 1" — ruido para una sola tarjeta.
+          <motion.div
+            className="flex w-full flex-col items-center gap-6"
+            initial={reducedMotion ? false : { opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
+          >
+            {Array.from({ length: packCount }, (_, p) => (
               <section
-                key={u}
-                id={`studio-unit-${u}`}
-                aria-label={fillStudioText(texts.unidades.unidadDe, {
+                key={p}
+                id={`studio-unit-${p}`}
+                role="group"
+                aria-label={fillStudioText(texts.lienzo.unidadGrupoAria, {
                   nombre: unitNoun ?? texts.unidades.nombrePieza,
-                  n: u + 1,
-                  total: unitCount,
+                  n: p + 1,
+                  total: packCount,
                 })}
-                className="w-full scroll-mt-32"
+                className="border-brand-purple/15 flex w-full scroll-mt-32 flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
               >
-                <UnitSectionHeader
+                {packCount > 1 && (
+                  <span className="text-brand-purple-dark text-xs font-bold">
+                    {fillStudioText(texts.lienzo.unitPack, { n: p + 1 })}
+                  </span>
+                )}
+                {/* Sin «Aplicar este diseño a todas»: la acción del store opera con
+                  canvasData.unitSlots y los packs de imán suelto NO lo declaran
+                  (cada imán es su unidad) — copiar pack-a-pack requeriría soporte
+                  nuevo en el store. Solo progreso, como pide la delimitación. */}
+                <UnitMiniActions
                   store={store}
-                  unitIndex={u}
-                  unitSlots={unitSlots}
-                  unitCount={unitCount}
-                  noun={unitNoun ?? texts.unidades.nombrePieza}
+                  unitIndex={p}
+                  unitSlots={packSlots}
+                  unitCount={packCount}
                   onApplied={announceApplied}
+                  allowApply={false}
                 />
                 <div
-                  className={
-                    stripMode
-                      ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza
-                        // entera (las celdas no llevan sombra). Multi-unidad: una
-                        // sombra por TIRA (cada sección es una pieza física).
-                        "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
-                      : "grid"
-                  }
+                  className="grid"
                   style={{
                     gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
                     gap: layout.gap,
@@ -776,141 +908,111 @@ export function StudioCanvasGrid({
                   }}
                 >
                   <AnimatePresence>
-                    {canvasData.slots.slice(start, end).map((slot) => renderSlotCell(slot))}
+                    {canvasData.slots
+                      .slice(p * packSlots, (p + 1) * packSlots)
+                      .map((slot) => renderSlotCell(slot))}
                   </AnimatePresence>
                 </div>
               </section>
-            );
-          })}
-        </div>
-      ) : packGroups ? (
-        // PACKS (owner 2026-09-15, ADR-101) — tarjeta por pack con el MISMO
-        // patrón visual de las tarjetas-unidad de separadores (borde sutil de
-        // marca + rótulo + progreso): "Pack 1" slots 1-6, "Pack 2" slots 7-12.
-        <motion.div
-          className="flex w-full flex-col items-center gap-6"
-          initial={reducedMotion ? false : { opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
-        >
-          {Array.from({ length: packCount }, (_, p) => (
-            <section
-              key={p}
-              id={`studio-unit-${p}`}
-              role="group"
-              aria-label={fillStudioText(texts.lienzo.unidadGrupoAria, {
-                nombre: unitNoun ?? texts.unidades.nombrePieza,
-                n: p + 1,
-                total: packCount,
-              })}
-              className="border-brand-purple/15 flex w-full scroll-mt-32 flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
-            >
-              <span className="text-brand-purple-dark text-xs font-bold">
-                {fillStudioText(texts.lienzo.unitPack, { n: p + 1 })}
-              </span>
-              {/* Sin «Aplicar este diseño a todas»: la acción del store opera con
-                  canvasData.unitSlots y los packs de imán suelto NO lo declaran
-                  (cada imán es su unidad) — copiar pack-a-pack requeriría soporte
-                  nuevo en el store. Solo progreso, como pide la delimitación. */}
-              <UnitMiniActions
-                store={store}
-                unitIndex={p}
-                unitSlots={packSlots}
-                unitCount={packCount}
-                onApplied={announceApplied}
-                allowApply={false}
-              />
-              <div
-                className="grid"
-                style={{
-                  gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
-                  gap: layout.gap,
-                  ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
-                }}
-              >
-                <AnimatePresence>
-                  {canvasData.slots
-                    .slice(p * packSlots, (p + 1) * packSlots)
-                    .map((slot) => renderSlotCell(slot))}
-                </AnimatePresence>
-              </div>
-            </section>
-          ))}
-        </motion.div>
-      ) : (
-        <motion.div
-          className={
-            stripMode
-              ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza entera (las
-                // celdas individuales no llevan sombra — separaban la tira visualmente).
-                // Sin overflow-hidden: el anillo de selección del slot no debe cortarse.
-                "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
-              : "grid"
-          }
-          style={{
-            gridTemplateColumns: `repeat(${grouped ? unitCols : layout.cols}, 1fr)`,
-            gap: layout.gap,
-            // Ola 4 — ancho explícito + margin auto: el grid siempre centrado en el marco,
-            // sin estirarse cuando el cap de alto achica las celdas.
-            ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
-          }}
-          initial={reducedMotion ? false : { opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
-        >
-          <AnimatePresence>
-            {grouped
-              ? // Ola 3 — tarjeta por UNIDAD física: "Separador N" con cara A | cara B
-                // lado a lado (la tira desplegada que se imprime). El filete central
-                // punteado sugiere el doblez de la tira.
-                Array.from({ length: physicalUnits }, (_, unitIndex) => (
-                  <div
-                    key={unitIndex}
-                    role="group"
-                    aria-label={fillStudioText(texts.lienzo.unidadAria, {
-                      n: unitIndex + 1,
-                      total: physicalUnits,
-                    })}
-                    className="border-brand-purple/15 flex flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
-                  >
-                    <span className="text-brand-purple-dark text-xs font-bold">
-                      {fillStudioText(texts.lienzo.unitSeparador, { n: unitIndex + 1 })}
-                    </span>
-                    {/* Multi-unidad (2026-09-09) — progreso de la unidad + atajo
-                        "Aplicar este diseño a todas" (copia las 2 caras de este
-                        separador a los demás). */}
-                    <UnitMiniActions
-                      store={store}
-                      unitIndex={unitIndex}
-                      unitSlots={2}
-                      unitCount={physicalUnits}
-                      onApplied={announceApplied}
-                    />
-                    <div className="flex items-start justify-center gap-2">
-                      {canvasData.slots
-                        .filter((slot) => unitIndexOfSlot(slot.slotIndex, 2) === unitIndex)
-                        .map((slot, i) => (
-                          <div
-                            key={slot.slotIndex}
-                            className={
-                              i === 0
-                                ? "border-brand-purple/25 flex flex-col items-center gap-1 border-r border-dashed pr-2"
-                                : "flex flex-col items-center gap-1"
-                            }
-                          >
-                            <span className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
-                              {i === 0 ? texts.lienzo.unitCaraA : texts.lienzo.unitCaraB}
-                            </span>
-                            {renderSlotCell(slot)}
-                          </div>
-                        ))}
-                    </div>
+            ))}
+          </motion.div>
+        ) : grouped ? (
+          // Ola 3 — tarjeta por UNIDAD física: "Separador N" con cara A | cara B
+          // lado a lado (la tira desplegada que se imprime). El filete central
+          // punteado sugiere el doblez de la tira. (Referencia POSITIVA del owner:
+          // este patrón de tarjeta-unidad es el estándar de todo el Estudio.)
+          <motion.div
+            className="grid"
+            style={{
+              gridTemplateColumns: `repeat(${unitCols}, 1fr)`,
+              gap: layout.gap,
+            }}
+            initial={reducedMotion ? false : { opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
+          >
+            <AnimatePresence>
+              {Array.from({ length: physicalUnits }, (_, unitIndex) => (
+                <div
+                  key={unitIndex}
+                  role="group"
+                  aria-label={fillStudioText(texts.lienzo.unidadAria, {
+                    n: unitIndex + 1,
+                    total: physicalUnits,
+                  })}
+                  className="border-brand-purple/15 flex flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
+                >
+                  <span className="text-brand-purple-dark text-xs font-bold">
+                    {fillStudioText(texts.lienzo.unitSeparador, { n: unitIndex + 1 })}
+                  </span>
+                  {/* Multi-unidad (2026-09-09) — progreso de la unidad + atajo
+                    "Aplicar este diseño a todas" (copia las 2 caras de este
+                    separador a los demás). */}
+                  <UnitMiniActions
+                    store={store}
+                    unitIndex={unitIndex}
+                    unitSlots={2}
+                    unitCount={physicalUnits}
+                    onApplied={announceApplied}
+                  />
+                  <div className="flex items-start justify-center gap-2">
+                    {canvasData.slots
+                      .filter((slot) => unitIndexOfSlot(slot.slotIndex, 2) === unitIndex)
+                      .map((slot, i) => (
+                        <div
+                          key={slot.slotIndex}
+                          className={
+                            i === 0
+                              ? "border-brand-purple/25 flex flex-col items-center gap-1 border-r border-dashed pr-2"
+                              : "flex flex-col items-center gap-1"
+                          }
+                        >
+                          <span className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
+                            {i === 0 ? texts.lienzo.unitCaraA : texts.lienzo.unitCaraB}
+                          </span>
+                          {renderSlotCell(slot)}
+                        </div>
+                      ))}
                   </div>
-                ))
-              : canvasData.slots.map((slot) => renderSlotCell(slot))}
-          </AnimatePresence>
-        </motion.div>
-      )}
+                </div>
+              ))}
+            </AnimatePresence>
+          </motion.div>
+        ) : (
+          // MODO PLANO con tarjeta (owner 2026-09-18) — la grilla suelta (cuadro
+          // de 3 fotos, planner, fotoimán suelto sin pack completo, tira de 1
+          // unidad) va envuelta en el MISMO visual de tarjeta-unidad de
+          // separadores/packs: todo estudio foto tiene el fondo que recubre.
+          <motion.div
+            className="border-brand-purple/15 flex w-full flex-col items-center rounded-2xl border bg-white/70 p-2 shadow-sm"
+            initial={reducedMotion ? false : { opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
+          >
+            <div
+              className={
+                stripMode
+                  ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza entera (las
+                    // celdas individuales no llevan sombra — separaban la tira visualmente).
+                    // Sin overflow-hidden: el anillo de selección del slot no debe cortarse.
+                    "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
+                  : "grid"
+              }
+              style={{
+                gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
+                gap: layout.gap,
+                // Ola 4 — ancho explícito + margin auto: el grid siempre centrado en
+                // el marco, sin estirarse cuando el cap de alto achica las celdas.
+                ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
+              }}
+            >
+              <AnimatePresence>
+                {canvasData.slots.map((slot) => renderSlotCell(slot))}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+      </div>
 
       {/* Feedback aria-live del atajo "Aplicar este diseño a todas". */}
       <span aria-live="polite" role="status" className="sr-only">
@@ -919,10 +1021,11 @@ export function StudioCanvasGrid({
 
       {/* Ola 22 (Lucy 2026-09-09) — el control del zoom de LIENZO vive en la fila de
         pills superior del editor (junto a «Ideas» / «Ver en tu espacio»), NUNCA flotando
-        sobre el canvas. Acá solo se REPORTA el estado efectivo (zoom clampado + tope por
-        ancho) para que aquel control pinte el % y habilite −/+. Display-only: la
-        exportación usa el tamaño LÓGICO del stage (pixelRatio relativo), así el PNG de
-        imprenta sale igual con cualquier zoom. */}
+        sobre el canvas. Acá solo se REPORTA el estado efectivo (zoom clampado; Ola 33:
+        tope fijo STAGE_ZOOM_MAX con scroll-x interno en el wrapper) para que aquel
+        control pinte el % y habilite −/+. Display-only: la exportación usa el tamaño
+        LÓGICO del stage (pixelRatio relativo), así el PNG de imprenta sale igual con
+        cualquier zoom. */}
       <StageZoomReporter zoom={stageZoom} cap={stageZoomCap} onReport={onStageZoomState} />
 
       {/* Ola 6 — Modal unificado de edición por slot (tabs Foto/Texto). */}
@@ -1277,8 +1380,10 @@ function StageZoomReporter({
  * antes flotaba sobre la esquina del lienzo e "invadía el canvas" — ahora es un pill
  * inline con el mismo lenguaje visual de la fila (rounded-full, h-12, shadow-xl,
  * ring-4) y jamás se superpone a la plantilla. Es presentacional puro: el valor crudo
- * lo guarda el padre y el grid lo clampa contra el tope de ancho (rango 0.5–2.5,
- * helpers en studio-canvas-grid-size.ts).
+ * lo guarda el padre y el grid lo clampa contra el tope fijo STAGE_ZOOM_MAX (Ola 33:
+ * si el contenido zoomado excede el ancho, el wrapper del grid scrollea horizontal;
+ * rango 0.5–2.5, helpers en studio-canvas-grid-size.ts). Como el tope es fijo, el
+ * "+" solo se deshabilita al llegar al 250% real — nunca miente.
  */
 export function StudioStageZoomControl({
   zoom,
@@ -1288,7 +1393,7 @@ export function StudioStageZoomControl({
 }: {
   /** Zoom efectivo ya clampado por el grid (lo que se ve en el %). */
   zoom: number;
-  /** Tope de ACERCAR (ancho disponible / ancho del contenido, ≥ 1). */
+  /** Tope de ACERCAR (Ola 33: siempre STAGE_ZOOM_MAX — el exceso lo scrollea el wrapper). */
   cap: number;
   onStep: (direction: 1 | -1) => void;
   onReset: () => void;

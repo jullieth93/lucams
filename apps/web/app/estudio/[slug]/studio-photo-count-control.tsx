@@ -160,7 +160,10 @@ export function StudioPhotoCountControl({
           <Plus className="h-4 w-4" aria-hidden />
         </button>
       </div>
-      <span className="text-brand-purple-dark/70 text-xs font-medium">
+      {/* Ola 32 — el hint descriptivo se oculta en <sm: a 375px sumaba ~2 líneas
+          de chrome antes del lienzo (la info sigue disponible ≥sm y el stepper
+          conserva sus aria-labels). */}
+      <span className="text-brand-purple-dark/70 hidden text-xs font-medium sm:inline">
         {packCount != null
           ? // B3 — desglose coherente con la PDP + el hint de conservación (CMS).
             `${packCount} ${packCount === 1 ? "pack" : "packs"} = ${value} unidades · ${texts.lienzo.photoCountHint}`

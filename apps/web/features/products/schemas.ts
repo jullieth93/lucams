@@ -52,13 +52,36 @@ export const ProductCreateSchema = z.object({
   idealFor: z.array(z.string().max(120)).max(20).optional(),
   // PLAN_CATALOG_V2 4.2 — garantía + tiempos. Piso legal 12 meses: la garantía legal (Ley 1480
   // art. 7-8) es de mínimo 1 año e irrenunciable → el admin no puede anunciar menos.
-  warrantyMonths: z.number().int().min(12).max(120).optional(),
-  productionDays: z.number().int().min(1).max(60).optional(),
-  shippingDaysMin: z.number().int().min(0).max(30).optional(),
-  shippingDaysMax: z.number().int().min(0).max(60).optional(),
+  // Mensaje en español (owner 2026-09-18): productos creados antes de esta regla traen <12 y
+  // el form debe decir CLARO qué corregir, no un "Too small" en inglés.
+  warrantyMonths: z
+    .number()
+    .int()
+    .min(12, "Mínimo 12 meses (la garantía legal es de 1 año)")
+    .max(120, "Máximo 120 meses")
+    .optional(),
+  productionDays: z.number().int().min(1, "Mínimo 1 día").max(60, "Máximo 60 días").optional(),
+  shippingDaysMin: z
+    .number()
+    .int()
+    .min(0, "No puede ser negativo")
+    .max(30, "Máximo 30 días")
+    .optional(),
+  shippingDaysMax: z
+    .number()
+    .int()
+    .min(0, "No puede ser negativo")
+    .max(60, "Máximo 60 días")
+    .optional(),
   // PLAN_CATALOG_V2 3.3 — min/max cantidad
-  minimumQuantity: z.number().int().min(1).max(10_000).optional(),
-  maximumQuantity: z.number().int().min(1).max(10_000).optional().nullable(),
+  minimumQuantity: z.number().int().min(1, "Mínimo 1").max(10_000, "Máximo 10.000").optional(),
+  maximumQuantity: z
+    .number()
+    .int()
+    .min(1, "Mínimo 1")
+    .max(10_000, "Máximo 10.000")
+    .optional()
+    .nullable(),
   // PLAN_CATALOG_V2 5.5 — surcharge para templates PREMADE
   premadeSurcharge: z.number().int().min(0).max(100).optional(),
   // PR C (Lucy 2026-05-21) — Envío: peso + dims del paquete final.
@@ -68,10 +91,34 @@ export const ProductCreateSchema = z.object({
   // separadores pesan 12g — con min 50 el form rechazaba guardar ese producto)
   // e INT estricto en dims: cm fraccionados (7.5/0.5) rompían la cotización
   // de envío (safeParse falla entero → dims null → banner en checkout).
-  weightGrams: z.number().int().min(10).max(50_000).optional().nullable(),
-  widthCm: z.number().int().min(1).max(100).optional().nullable(),
-  heightCm: z.number().int().min(1).max(100).optional().nullable(),
-  depthCm: z.number().int().min(1).max(100).optional().nullable(),
+  weightGrams: z
+    .number()
+    .int("Debe ser un entero (gramos)")
+    .min(10, "Mínimo 10 g")
+    .max(50_000, "Máximo 50.000 g")
+    .optional()
+    .nullable(),
+  widthCm: z
+    .number()
+    .int("Debe ser un entero (cm)")
+    .min(1, "Mínimo 1 cm")
+    .max(100, "Máximo 100 cm")
+    .optional()
+    .nullable(),
+  heightCm: z
+    .number()
+    .int("Debe ser un entero (cm)")
+    .min(1, "Mínimo 1 cm")
+    .max(100, "Máximo 100 cm")
+    .optional()
+    .nullable(),
+  depthCm: z
+    .number()
+    .int("Debe ser un entero (cm)")
+    .min(1, "Mínimo 1 cm")
+    .max(100, "Máximo 100 cm")
+    .optional()
+    .nullable(),
 });
 
 export type ProductCreateInput = z.infer<typeof ProductCreateSchema>;

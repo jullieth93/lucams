@@ -181,19 +181,20 @@ export function AdminTable({
             {children}
           </table>
         </div>
-        {/* Indicación de scroll horizontal en móvil (roadmap E2, auditoría E1
-            P1): las tablas tienen minWidth ≥ 640 → a 375px SIEMPRE hay más
-            columnas a la derecha, pero nada lo decía. Degradado de borde como
-            affordance + pista textual. Solo visible < sm y solo mientras no
-            estén activas las tarjetas (AdminTableAutoCards). */}
+        {/* Indicación de scroll horizontal en móvil/tablet (roadmap E2,
+            auditoría E1 P1): las tablas tienen minWidth ≥ 640 → bajo lg
+            SIEMPRE hay más columnas a la derecha, pero nada lo decía.
+            Degradado de borde como affordance + pista textual. Solo visible
+            < lg y solo mientras no estén activas las tarjetas
+            (AdminTableAutoCards — en el mismo rango <lg). */}
         <div
           aria-hidden
-          className="admin-table-scroll-affordance pointer-events-none absolute inset-y-0 right-0 w-10 rounded-r-xl bg-gradient-to-l from-white to-transparent sm:hidden"
+          className="admin-table-scroll-affordance pointer-events-none absolute inset-y-0 right-0 w-10 rounded-r-xl bg-gradient-to-l from-white to-transparent lg:hidden"
         />
       </div>
       <p
         aria-hidden
-        className="admin-table-hint text-brand-muted mt-1 text-right text-[11px] italic sm:hidden"
+        className="admin-table-hint text-brand-muted mt-1 text-right text-[11px] italic lg:hidden"
       >
         Desliza para ver más columnas →
       </p>

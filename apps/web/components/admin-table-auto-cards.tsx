@@ -2,8 +2,10 @@
 
 /*
  * <AdminTableAutoCards> — tablas del admin como TARJETAS apiladas en móvil
- * (<640px). Backlog del punto 5: pendiente deliberado de E2 ("el scroll con
- * pista es el piso usable; las tarjetas son el salto de comodidad").
+ * y tablet (< lg / 1024px). Backlog del punto 5: pendiente deliberado de E2
+ * ("el scroll con pista es el piso usable; las tarjetas son el salto de
+ * comodidad"). Antes el rango era < 640px; se amplió a todo <lg porque las
+ * tablas con minWidth 640-800 desbordan su wrapper en el rango tablet.
  *
  * Cómo funciona: al montar, lee los encabezados del <thead> de la tabla
  * hermana y etiqueta cada <td> del <tbody> con `data-label` (columna a

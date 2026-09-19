@@ -2,18 +2,20 @@
  * Carousel de productos destacados — Embla con autoplay.
  *
  * Pausa en hover + botón pausa/play visible (WCAG 2.2.2). Con
- * prefers-reduced-motion el autoplay NO se inicializa. Dots con área
- * táctil ≥ 24×24 (WCAG 2.5.8) + arrows kawaii. Responsive (2/3/4
- * slides visibles según ancho).
+ * prefers-reduced-motion el autoplay NO se inicializa. El autoplay solo
+ * corre mientras el carrusel está en viewport (IntersectionObserver, INP).
+ * Dots con área táctil ≥ 24×24 (WCAG 2.5.8) + arrows kawaii. Responsive
+ * (2/3/4 slides visibles según ancho).
  */
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import Autoplay from "embla-carousel-autoplay";
 import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
 import { ProductCard } from "@/components/product-card";
+import { useAutoplayWhenVisible } from "@/components/home/use-autoplay-when-visible";
 import { usePrefersReducedMotion } from "@/app/estudio/[slug]/use-prefers-reduced-motion";
 import type { StorefrontProductCard } from "@/features/products/public-service";
 
@@ -35,6 +37,9 @@ export function FeaturedCarousel({ products }: { products: StorefrontProductCard
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [scrollSnaps, setScrollSnaps] = useState<number[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
+  // INP: el autoplay solo corre mientras el carrusel está en pantalla (ver hook).
+  const rootRef = useRef<HTMLDivElement>(null);
+  useAutoplayWhenVisible(emblaApi, rootRef, !prefersReducedMotion);
 
   const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
   const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
@@ -83,7 +88,7 @@ export function FeaturedCarousel({ products }: { products: StorefrontProductCard
   if (products.length === 0) return null;
 
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       {/* Padding lateral en desktop para que las arrows queden fuera del slide area */}
       <div className="px-0 sm:px-12">
         <div className="overflow-hidden" ref={emblaRef}>

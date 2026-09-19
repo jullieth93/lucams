@@ -84,7 +84,7 @@ export default async function AdminModeracionPage({
                 <div className="sm:w-64 sm:flex-shrink-0">
                   {d.productionUrls.length > 0 ? (
                     <>
-                      <div className="grid grid-cols-3 gap-1.5">
+                      <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
                         {d.productionUrls.map((path, i) => {
                           const url = signed.get(path);
                           return url ? (

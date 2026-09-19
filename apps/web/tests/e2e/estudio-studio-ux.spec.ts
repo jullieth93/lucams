@@ -623,10 +623,18 @@ const nearWhite = (px: number[]) => px[0]! > 235 && px[1]! > 235 && px[2]! > 235
 
 /**
  * Conteo de píxeles de "tinta" en una zona del slot, con matcher parametrizable
- * (Ola 28). "dark"/"light" exigen |r−g|,|g−b| pequeños (gris/negro/blanco de la
- * tipografía) → NO cuentan el turquesa de las zonas de edición punteadas
- * (g−r ≈ 124) ni la foto a color; "blue" captura el azul link de los hashtags
- * IG, que el matcher de grises no cuenta.
+ * (Ola 28; reescrito Ola 33 2026-09-18). La tinta se detecta por CONTRASTE DE
+ * LUMINANCIA contra la tarjeta (muestreada en `cardAt`, coords de stage), NO
+ * por neutralidad de grises: la letra por defecto de la Clásica es el púrpura
+ * de marca #3D2E5C (|g−b| = 46 — el matcher de grises viejo la rechazaba y
+ * "dark sobre rosa" daba 0 aunque el texto se veía perfecto). Además B4
+ * (owner 2026-09-15) dibuja los textos por defecto como GUÍA atenuada al 40%
+ * (PLACEHOLDER_GUIDE_OPACITY) → la tinta llega mezclada con la tarjeta.
+ *  - "dark"/"light": luminancia Rec.601 por debajo/encima de la tarjeta con
+ *    margen 40, excluyendo el turquesa de las zonas de edición punteadas
+ *    (g domina a r) para no contar el recuadro dashed como tinta.
+ *  - "blue": el azul link de los hashtags IG — b domina a r/g aun mezclado al
+ *    40% (#00376B→blanco ≈ (153,175,196), #0095F6→negro ≈ (20,78,120)).
  */
 async function countInkInZone(
   page: Page,
@@ -635,9 +643,10 @@ async function countInkInZone(
   stageH: number,
   zone: { x: number; y: number; w: number; h: number },
   match: "dark" | "light" | "blue",
+  cardAt: [number, number] = [15, 300],
 ): Promise<number> {
   return page.evaluate(
-    ({ slotIndex: idx, stageW: w0, stageH: h0, zone: z, match: m }) => {
+    ({ slotIndex: idx, stageW: w0, stageH: h0, zone: z, match: m, cardAt: ca }) => {
       const slotEl = document.querySelector(`[data-slot-index='${idx}']`);
       if (!slotEl) return -1;
       const canvases = [...slotEl.querySelectorAll("canvas")];
@@ -651,6 +660,9 @@ async function countInkInZone(
       for (const c of canvases) octx.drawImage(c, 0, 0, w, h);
       const sx = w / w0;
       const sy = h / h0;
+      // Luminancia de la TARJETA en el punto de referencia (Rec.601).
+      const cp = octx.getImageData(Math.round(ca[0] * sx), Math.round(ca[1] * sy), 1, 1).data;
+      const cardLum = 0.299 * cp[0]! + 0.587 * cp[1]! + 0.114 * cp[2]!;
       const img = octx.getImageData(
         Math.round(z.x * sx),
         Math.round(z.y * sy),
@@ -664,15 +676,21 @@ async function countInkInZone(
         const b = img[i + 2]!;
         const a = img[i + 3]!;
         if (a <= 200) continue;
-        if (m === "dark" && Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && r < 225) ink++;
-        if (m === "light" && Math.abs(r - g) < 15 && Math.abs(g - b) < 15 && r > 225) ink++;
-        // Azul link IG (#00376B clara / #0095F6 oscura): b domina a r y g.
-        // El turquesa de las zonas de edición tiene g ≈ b → no entra.
-        if (m === "blue" && b > 90 && b - Math.max(r, g) > 25) ink++;
+        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        // Turquesa de las zonas de edición (g domina a r): NUNCA es tinta.
+        const turquoise = g > r + 20 && g >= b - 20;
+        // Saturación moderada: admite el púrpura de marca #3D2E5C (spread 46)
+        // pero NO los íconos de color del chrome IG (corazón rojo, spread 171)
+        // — sin esto el corazón contaría como tinta "dark" aunque faltaran
+        // los textos (falso positivo).
+        const lowSat = Math.max(r, g, b) - Math.min(r, g, b) < 80;
+        if (m === "dark" && !turquoise && lowSat && lum < cardLum - 40) ink++;
+        if (m === "light" && !turquoise && lowSat && lum > cardLum + 40) ink++;
+        if (m === "blue" && b > 100 && b - Math.max(r, g) > 8) ink++;
       }
       return ink;
     },
-    { slotIndex, stageW, stageH, zone, match },
+    { slotIndex, stageW, stageH, zone, match, cardAt },
   );
 }
 
@@ -695,9 +713,11 @@ test.describe("estudio Ola 25+28 — textos IG visibles con color por capa + mar
     await uploadAndFillSlot1(page, panel, ctx.igProductId);
 
     // A) Los textos por defecto SE VEN (Ola 28, owner 2026-09-11: "no se ve texto
-    // preview, se ve vacío"): header (usuario/ubicación) y footer (likes/título)
+    // preview, se ve vacío"; B4, owner 2026-09-15: como GUÍA atenuada al 40% para
+    // TODAS las plantillas): header (usuario/ubicación) y footer (likes/título)
     // con tinta OSCURA sobre la tarjeta BLANCA por defecto; los hashtags, AZULES.
-    // (Ola 25 los dejaba invisibles — el owner lo revirtió pidiendo el preview.)
+    // (Ola 25 los dejaba invisibles — el owner lo revirtió pidiendo el preview.
+    // La sonda admite el blend del 40% — ver countInkInZone.)
     const headerInk = await countInkInZone(
       page,
       0,
@@ -816,7 +836,7 @@ test.describe("estudio Ola 25+28 — textos IG visibles con color por capa + mar
 });
 
 test.describe("estudio Ola 29 — letra por defecto sobre el color de la tarjeta (Polaroid Clásica)", () => {
-  test("el mensaje sale OSCURO sobre tarjeta blanca y BLANCO sobre tarjeta rosada (sin que el cliente elija color)", async ({
+  test("el mensaje sale OSCURO sobre tarjeta blanca Y rosada, y BLANCO solo sobre negra (regla owner 2026-09-14)", async ({
     page,
   }, testInfo) => {
     test.skip(!ctx.igSlug, "no hay producto con plantilla photo-pack-polaroid-instagram en la DB");
@@ -848,18 +868,36 @@ test.describe("estudio Ola 29 — letra por defecto sobre el color de la tarjeta
 
     // Franja del mensaje de la Clásica (stage 450×600, capa message y=512).
     const MSG_ZONE = { x: 100, y: 490, w: 250, h: 44 };
-    // Tarjeta BLANCA (default) → tinta OSCURA visible.
-    const darkOnWhite = await countInkInZone(page, 0, 450, 600, MSG_ZONE, "dark");
+    // Punto de referencia del color de TARJETA: dentro de la franja del mensaje
+    // pero a la izquierda del texto centrado (en la Clásica la foto cubre casi
+    // todo el ancho — el default [15,300] caería SOBRE la foto).
+    const MSG_CARD_AT: [number, number] = [25, 512];
+    // Tarjeta BLANCA (default) → tinta OSCURA visible (púrpura de marca #3D2E5C
+    // — la sonda mide contraste de luminancia, no grises).
+    const darkOnWhite = await countInkInZone(page, 0, 450, 600, MSG_ZONE, "dark", MSG_CARD_AT);
     expect(darkOnWhite).toBeGreaterThan(0);
 
-    // Tarjeta ROSADA → el mismo texto (sin override de color) sale BLANCO…
+    // Tarjeta ROSADA → la letra SIGUE OSCURA (regla REDEFINIDA owner 2026-09-14,
+    // defaultTextFillOnCard en frame-palette.ts: letra BLANCA solo cuando la
+    // tarjeta es casi-negra — luminancia Rec.601 < 0.30; el negro contrasta
+    // mejor sobre toda la paleta pastel de marca, rosa incluida. La regla
+    // anterior — blanco también sobre rosa/lavanda — la revirtió el owner en
+    // STG). Este test exigía la regla VIEJA y por eso fallaba.
     await page.getByRole("radio", { name: "Rosa" }).first().click();
     await page.waitForTimeout(800);
-    const lightOnPink = await countInkInZone(page, 0, 450, 600, MSG_ZONE, "light");
-    expect(lightOnPink).toBeGreaterThan(0);
-    // …y no queda tinta oscura residual en la franja.
-    const darkOnPink = await countInkInZone(page, 0, 450, 600, MSG_ZONE, "dark");
-    expect(darkOnPink).toBe(0);
+    const darkOnPink = await countInkInZone(page, 0, 450, 600, MSG_ZONE, "dark", MSG_CARD_AT);
+    expect(darkOnPink).toBeGreaterThan(0);
+    // …y NO sale tinta clara sobre el rosa.
+    const lightOnPink = await countInkInZone(page, 0, 450, 600, MSG_ZONE, "light", MSG_CARD_AT);
+    expect(lightOnPink).toBe(0);
+
+    // Tarjeta NEGRA → ahí SÍ: la letra por defecto sale BLANCA (única tarjeta
+    // por debajo del umbral 0.30). (Sin assert de tinta oscura residual: el
+    // fondo negro de la tarjeta ES tinta "dark" para la sonda — indistinguible.)
+    await page.getByRole("radio", { name: "Negro" }).first().click();
+    await page.waitForTimeout(800);
+    const lightOnBlack = await countInkInZone(page, 0, 450, 600, MSG_ZONE, "light", MSG_CARD_AT);
+    expect(lightOnBlack).toBeGreaterThan(0);
   });
 });
 

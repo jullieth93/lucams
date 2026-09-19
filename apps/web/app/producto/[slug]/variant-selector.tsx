@@ -55,6 +55,8 @@ import { useSelectedVariant } from "./variant-actions";
 import {
   parseVariantAttributes,
   generateVariantLabel,
+  PDP_VARIANT_DIMENSION_KEYS as VISIBLE_DIMENSIONS,
+  PDP_DIMENSION_VALUE_ORDER as DIMENSION_VALUE_ORDER,
   type ProductVariantAttributes,
 } from "@/features/products/variant-schemas";
 
@@ -138,14 +140,8 @@ const DIMENSION_LABELS: Record<string, string> = {
   theme: "Tema",
 };
 
-/** Orden preferido por dimensión no numérica (lo demás = alfabético). */
-const DIMENSION_VALUE_ORDER: Record<string, string[]> = {
-  language: ["es", "en"],
-  magnet: ["true", "false"],
-  frameStyle: ["blanco", "negro"],
-  variantStyle: ["blanco-clasico", "pasteles", "instagram"],
-  theme: ["animales", "frutas", "profesiones"],
-};
+/** Orden preferido por dimensión no numérica (lo demás = alfabético): vive en
+ * variant-schemas (PDP_DIMENSION_VALUE_ORDER), compartido con pdpDefaultVariant. */
 
 function formatDimensionValue(key: string, value: unknown): string {
   if (key === "quantity") return `${value} unidades`;
@@ -197,29 +193,18 @@ function formatDimensionValue(key: string, value: unknown): string {
   return String(value);
 }
 
-const VISIBLE_DIMENSIONS: (keyof ProductVariantAttributes)[] = [
-  "language",
-  // photoSlots ANTES que quantity (Lucy 2026-09-05): cuando ambas coinciden en
-  // todas las variants (packs de fotoimanes/separadores: cada unidad lleva 1 foto
-  // por slot) y AMBAS son visibles, el dedupe conserva la PRIMERA — "Fotos"
-  // describe lo que compone el pack. Regla 2026-09-08b — el grupo visible se
-  // RENOMBRA a "Unidades" por familia (PDP_DIMENSION_LABEL_OVERRIDES): un
-  // concepto, un label. Excepción por familia: en separadores photoSlots va
-  // OCULTA (PDP_HIDDEN_DIMENSION_KEYS) y el dedupe corre DESPUÉS del filtro de
-  // ocultas, así que sobrevive quantity → el pack size se muestra con su label
-  // override "Unidades"; en tiras el visible es photoSlots, relabelado "Fotos
-  // por tira" (2026-09-09 — "Unidades" es allí el stepper de copias).
-  "photoSlots",
-  "quantity",
-  "sizeCm",
-  "shape",
-  "color",
-  "finish",
-  "magnet",
-  "frameStyle",
-  "variantStyle",
-  "theme",
-];
+// VISIBLE_DIMENSIONS vive en variant-schemas (PDP_VARIANT_DIMENSION_KEYS) —
+// compartida con pdpDefaultVariant (default 2026-09-18: primera opción de cada
+// dimensión). photoSlots ANTES que quantity (Lucy 2026-09-05): cuando ambas
+// coinciden en todas las variants (packs de fotoimanes/separadores: cada unidad
+// lleva 1 foto por slot) y AMBAS son visibles, el dedupe conserva la PRIMERA —
+// "Fotos" describe lo que compone el pack. Regla 2026-09-08b — el grupo visible
+// se RENOMBRA a "Unidades" por familia (PDP_DIMENSION_LABEL_OVERRIDES): un
+// concepto, un label. Excepción por familia: en separadores photoSlots va
+// OCULTA (PDP_HIDDEN_DIMENSION_KEYS) y el dedupe corre DESPUÉS del filtro de
+// ocultas, así que sobrevive quantity → el pack size se muestra con su label
+// override "Unidades"; en tiras el visible es photoSlots, relabelado "Fotos
+// por tira" (2026-09-09 — "Unidades" es allí el stepper de copias).
 
 /**
  * Dimensiones visibles AUN con 1 solo valor (Lucy 2026-07-22). Regla:

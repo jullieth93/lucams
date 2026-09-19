@@ -241,8 +241,23 @@ export function StudioToolbar({
         />
       )}
 
-      {/* Progress badge mobile (visible solo < md) */}
+      {/* Progress badge mobile (visible solo < md).
+          Ola 34 (owner 2026-09-18) — nombre del producto EN MÓVIL: el hero
+          avatar+nombre es md+ y el cliente no veía qué producto estaba
+          trabajando ("en el estudio en versión móvil no aparece qué producto
+          estoy trabajando"). Va EN ESTA MISMA FILA (ya existía) truncado a una
+          línea → cero altura extra de chrome: la tarjeta del canvas sigue
+          iniciando dentro del primer viewport de 375×812. */}
       <div className="border-brand-purple/10 bg-brand-cream/50 flex items-center justify-center gap-2 border-t py-2 md:hidden">
+        <span
+          className="text-brand-purple-dark max-w-[38%] truncate text-xs font-semibold"
+          title={productName}
+        >
+          {productName}
+        </span>
+        <span aria-hidden className="text-brand-purple/25">
+          ·
+        </span>
         <ProgressBadge filled={filled} total={total} />
         {/* AutoSave indicator mobile abajo del progress */}
         <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} />

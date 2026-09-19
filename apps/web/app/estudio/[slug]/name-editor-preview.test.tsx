@@ -100,7 +100,10 @@ function renderEditor(extraProps?: { initialCopies?: number; initialWithBorder?:
 async function openPreviewWith(name: string): Promise<number> {
   const input = screen.getByRole("textbox");
   fireEvent.change(input, { target: { value: name } });
-  fireEvent.click(screen.getByRole("button", { name: /Vista previa/ }));
+  // Ola 32 — hay DOS botones «Vista previa» (el del header sticky y el grande del
+  // panel de controles; misma acción). Se pulsa el del panel: el CTA histórico.
+  const ctas = screen.getAllByRole("button", { name: /Vista previa/ });
+  fireEvent.click(ctas[ctas.length - 1]!);
   await waitFor(() => expect(screen.getByText(/Así se verá tu pedido/i)).toBeInTheDocument());
   return name.length;
 }

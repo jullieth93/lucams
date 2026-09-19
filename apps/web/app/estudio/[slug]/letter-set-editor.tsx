@@ -33,9 +33,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import nextDynamic from "next/dynamic";
-import { Box, ChevronLeft, Copy, Loader2, Sparkles, X } from "lucide-react";
+import { Box, Copy, Loader2, Sparkles, X } from "lucide-react";
 import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
 import {
   createLetterSetDesignAction,
@@ -51,6 +50,8 @@ import {
 import { MAX_LETTER_SET_UNITS } from "@/features/personalization/design-units";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { StudioPreviewModal } from "./studio-preview-modal";
+import { StudioSimpleHeader } from "./studio-simple-header";
+import { STUDIO_MAX_WIDTH } from "./studio-layout";
 import { resolveLetterSetVariant, type LetterSetVariant } from "./lib/letter-set-resolve";
 import type { Magnet3D } from "./fridge-3d-view";
 import { buildLetterTileTextures, LETTER_TILE_CORNER_RATIO } from "./lib/letter-tile-textures";
@@ -284,6 +285,7 @@ function shortSetName(name: string): string {
 
 export function LetterSetEditor({
   product,
+  productImageUrl,
   variantId,
   variants,
   basePrice,
@@ -298,6 +300,8 @@ export function LetterSetEditor({
   subtitle,
 }: {
   product: { id: string; slug: string; name: string };
+  /** Ola 32 — mini avatar del header sticky unificado (StudioSimpleHeader). */
+  productImageUrl?: string;
   variantId: string;
   variants: LetterSetVariant[];
   /** Precio base del producto (centavos) por si la variante no tiene override. */
@@ -609,261 +613,403 @@ export function LetterSetEditor({
   const showLanguagePicker = letterSet === "full" && availableLanguages.length > 1;
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-5 py-8">
-      <Link
-        href={`/producto/${product.slug}`}
-        className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 mb-4 inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg active:scale-[0.98]"
+    <>
+      {/* Ola 32 — chrome unificado del Estudio: barra sticky con el idioma visual
+          del StudioToolbar del estudio de foto (pill «Salir», avatar+nombre del
+          producto, total en vivo + CTA «Vista previa» — la MISMA acción del botón
+          grande del panel de controles). */}
+      <StudioSimpleHeader
+        productName={product.name}
+        productSlug={product.slug}
+        productImageUrl={productImageUrl}
+        trailing={
+          <span className="text-brand-purple-dark text-sm font-bold whitespace-nowrap tabular-nums">
+            {priceLabel}
+          </span>
+        }
+        ctaLabel={texts.comun.listo}
+        ctaBusyLabel={preparing ? texts.comun.preparando : texts.comun.agregando}
+        ctaBusy={preparing || submitting}
+        ctaDisabled={building3D}
+        ctaSrHint={texts.letras.listoSr}
+        onCta={handleShowPreview}
+      />
+
+      <div
+        className="mx-auto w-full px-4 py-6 sm:px-6 lg:px-8"
+        style={{ maxWidth: STUDIO_MAX_WIDTH }}
       >
-        <ChevronLeft className="h-4 w-4" />
-        {texts.comun.volver}
-      </Link>
+        {/* h1 visible (WCAG): el eyebrow "Personalizar · {producto}" ya vive en el
+            header sticky (md+), no se repite acá. */}
+        <header className="mb-5 text-center">
+          <h1 className="font-display text-brand-purple-dark text-2xl sm:text-3xl">
+            {texts.letras.titulo}
+          </h1>
+          {subtitle && <p className="text-brand-muted mx-auto mt-1 max-w-md text-sm">{subtitle}</p>}
+        </header>
 
-      <header className="mb-6 text-center">
-        <p className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
-          {fillStudioText(texts.lienzo.headerTitle, { producto: product.name })}
-        </p>
-        <h1 className="font-display text-brand-purple-dark mt-1 text-3xl sm:text-4xl">
-          {texts.letras.titulo}
-        </h1>
-        {subtitle && <p className="text-brand-muted mx-auto mt-2 max-w-md text-sm">{subtitle}</p>}
-      </header>
+        {/* Panel del set activo (colores por ficha). key por (set, tick): al cambiar
+            de set o tras "Aplicar a todas" se remonta leyendo el snapshot del Map.
+            Ola 32 — el estado de color es UNO por set (useLetterColors) pero sus
+            piezas se reparten en las DOS columnas del layout: el picker de tema va
+            con los controles y la grilla de fichas ES el lienzo. */}
+        <LetterSetUnitState
+          key={`${activeUnit}-${applyTick}`}
+          unit={activeUnit}
+          letters={letters}
+          initial={snapshots.get(activeUnit)}
+          onSnapshot={recordSnapshot}
+        >
+          {(unit) => (
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-6">
+              {/* PREVIEW = el lienzo: tarjeta-unidad estándar del Estudio (mismo
+              lenguaje que las tarjetas del estudio de foto). Primero en móvil;
+              en lg columna fluida a la derecha. */}
+              <section
+                aria-label={texts.letras.titulo}
+                className="order-1 min-w-0 lg:order-2 lg:flex-1"
+              >
+                <div className="border-brand-purple/15 rounded-2xl border bg-white/70 p-2 shadow-sm sm:p-4">
+                  {/* Preview del set (WYSIWYG) — cada ficha es seleccionable para pintarla
+                  a gusto. Ola 28 (owner 2026-09-11, 1.7): con «Sin borde» no hay marco
+                  de color que pintar → sin hint y fichas NO seleccionables (la paleta
+                  ya quedó inerte).
+                  Ola 32 — la grilla aprovecha el ancho del lienzo: sube columnas con
+                  el viewport (el ancho mínimo de columna mantiene el tap target ≥44px). */}
+                  <div className="bg-brand-cream/50 flex min-h-[280px] flex-col justify-center rounded-xl p-4 sm:min-h-[360px] sm:p-5">
+                    {withBorder && unit.selectedIndex === null && (
+                      <p className="text-brand-purple-dark mb-3 flex items-center justify-center text-center text-xs font-semibold">
+                        <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
+                          {texts.letras.tocaHint}
+                        </span>
+                      </p>
+                    )}
+                    {/* Grilla de fichas: FLEX centrado (Ola 33) + Ola 34 (owner
+                        2026-09-18, "móvil apretado / web mal distribuido"):
+                        columnas por breakpoint 3/4/5/7/8 (antes 4/6/8/10/12/13)
+                        con tope de ficha de 128px — en móvil la ficha sube de
+                        ~65px (4 col) a ~93px (3 col, límite físico de 375px) y
+                        en desktop deja de encogerse dentro de la tarjeta-lienzo
+                        (a 1024px eran ~44px con 10 col en el lienzo con
+                        sidebar). El ancho calc descuenta los gaps (12px base,
+                        16px sm+) para llenar la fila exacta. */}
+                    <div className="flex flex-wrap justify-center gap-3 sm:gap-4">
+                      {letters.map((ch, i) => {
+                        const tile = activeTiles[ch];
+                        const color = unit.effectiveColors[i];
+                        const isSel = withBorder && unit.selectedIndex === i;
+                        return (
+                          <button
+                            key={ch}
+                            type="button"
+                            data-letter-tile
+                            onClick={() => withBorder && unit.toggleSelected(i)}
+                            disabled={!withBorder}
+                            aria-pressed={withBorder ? isSel : undefined}
+                            aria-label={fillStudioText(texts.letras.pintarAria, { letra: ch })}
+                            className={`flex w-[calc((100%-24px)/3)] max-w-32 flex-col items-center rounded-xl transition sm:w-[calc((100%-48px)/4)] md:w-[calc((100%-64px)/5)] xl:w-[calc((100%-96px)/7)] 2xl:w-[calc((100%-112px)/8)] ${
+                              isSel
+                                ? "ring-brand-purple scale-105 ring-2 ring-offset-2"
+                                : withBorder
+                                  ? "hover:scale-105"
+                                  : "cursor-default"
+                            }`}
+                          >
+                            {/* Ficha VERTICAL (aspect 5/6.5) — espeja el imán físico rectangular.
+                            Sin borde: la ficha queda blanca a ras (el PNG y la textura 3D
+                            hacen lo mismo). */}
+                            <div
+                              className="flex aspect-[5/6.5] w-full items-center justify-center overflow-hidden rounded-xl bg-white"
+                              style={{
+                                border: withBorder ? `2px solid ${color}` : "2px solid transparent",
+                                boxShadow: `0 3px 10px ${color}22`,
+                              }}
+                            >
+                              {tile ? (
+                                // eslint-disable-next-line @next/next/no-img-element -- ficha del bucket público
+                                <img
+                                  src={tile.imageUrl}
+                                  alt={fillStudioText(texts.letras.letraAlt, { letra: ch })}
+                                  className="h-full w-full object-contain p-1"
+                                />
+                              ) : (
+                                <span
+                                  className="font-display text-base font-extrabold"
+                                  style={{ color }}
+                                >
+                                  {ch}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-brand-muted mt-1 text-[10px] font-semibold">
+                              {ch}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
 
-      <div className="border-brand-purple/12 rounded-3xl border bg-white p-6 shadow-sm sm:p-8">
-        {/* Ola 2A — Selector de TEMA (antes dimensión de la PDP). Siempre visible: Default
+                    {/* Fila de colores para la ficha seleccionada — control compartido.
+                    Con «Sin borde» no aplica (no hay marco de color que pintar). */}
+                    {withBorder && unit.selectedIndex !== null && letters[unit.selectedIndex] && (
+                      <SwatchRow
+                        letter={letters[unit.selectedIndex]}
+                        onPick={unit.setColorForSelected}
+                      />
+                    )}
+                  </div>
+                </div>
+              </section>
+
+              {/* Controles: tarjeta blanca lateral en lg (idioma del StudioSidebar),
+              debajo del lienzo en móvil. */}
+              <aside className="order-2 lg:order-1 lg:w-80 lg:shrink-0">
+                <div className="border-brand-purple/12 rounded-3xl border bg-white p-5 shadow-sm sm:p-6">
+                  {/* Ola 2A — Selector de TEMA (antes dimensión de la PDP). Siempre visible: Default
             ("Solo letra") + un chip por set del idioma (vacíos degradan a letra estándar). */}
-        <div className="mb-5">
-          <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
-            {texts.letras.temaTitulo}
-            <span className="text-brand-muted ml-2 text-xs font-normal">
-              {texts.letras.temaHint}
-            </span>
-          </p>
-          <div
-            role="radiogroup"
-            aria-label={texts.letras.temaAria}
-            className="flex flex-wrap gap-2"
-          >
-            <button
-              type="button"
-              role="radio"
-              aria-checked={styleId === null}
-              onClick={() => handleSelectTheme(null)}
-              className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
-                styleId === null
-                  ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
-                  : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
-              }`}
-            >
-              <span aria-hidden="true">✏️</span>
-              {texts.letras.soloLetra}
-            </button>
-            {optionsForLanguage.map((o) => {
-              const active = o.id === styleId;
-              return (
-                <button
-                  key={o.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => handleSelectTheme(o.id)}
-                  className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
-                    active
-                      ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
-                      : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
-                  }`}
-                >
-                  <span aria-hidden="true">{themeEmoji(o.theme, o.name)}</span>
-                  {shortSetName(o.name)}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+                  <div className="mb-5">
+                    <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
+                      {texts.letras.temaTitulo}
+                      <span className="text-brand-muted ml-2 text-xs font-normal">
+                        {texts.letras.temaHint}
+                      </span>
+                    </p>
+                    <div
+                      role="radiogroup"
+                      aria-label={texts.letras.temaAria}
+                      className="flex flex-wrap gap-2"
+                    >
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={styleId === null}
+                        onClick={() => handleSelectTheme(null)}
+                        className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
+                          styleId === null
+                            ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                            : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
+                        }`}
+                      >
+                        <span aria-hidden="true">✏️</span>
+                        {texts.letras.soloLetra}
+                      </button>
+                      {optionsForLanguage.map((o) => {
+                        const active = o.id === styleId;
+                        return (
+                          <button
+                            key={o.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={active}
+                            onClick={() => handleSelectTheme(o.id)}
+                            className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
+                              active
+                                ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                                : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
+                            }`}
+                          >
+                            <span aria-hidden="true">{themeEmoji(o.theme, o.name)}</span>
+                            {shortSetName(o.name)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-        {/* Ola 2A — Selector de IDIOMA (antes dimensión de la PDP). Solo abecedario (el
+                  {/* Ola 2A — Selector de IDIOMA (antes dimensión de la PDP). Solo abecedario (el
             alfabeto cambia: la Ñ) y solo si el producto tiene ambos idiomas. */}
-        {showLanguagePicker && (
-          <div className="mb-5">
-            <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
-              {texts.letras.idiomaTitulo}
-            </p>
-            <div
-              role="radiogroup"
-              aria-label={texts.letras.idiomaTitulo}
-              className="flex flex-wrap gap-2"
-            >
-              {availableLanguages.map((lang) => {
-                const active = lang === language;
-                return (
-                  <button
-                    key={lang}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    onClick={() => handleSelectLanguage(lang)}
-                    className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
-                      active
-                        ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
-                        : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
-                    }`}
-                  >
-                    <span aria-hidden="true">{lang === "es" ? "🇪🇸" : "🇬🇧"}</span>
-                    {lang === "es" ? texts.letras.idiomaEs : texts.letras.idiomaEn}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+                  {showLanguagePicker && (
+                    <div className="mb-5">
+                      <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
+                        {texts.letras.idiomaTitulo}
+                      </p>
+                      <div
+                        role="radiogroup"
+                        aria-label={texts.letras.idiomaTitulo}
+                        className="flex flex-wrap gap-2"
+                      >
+                        {availableLanguages.map((lang) => {
+                          const active = lang === language;
+                          return (
+                            <button
+                              key={lang}
+                              type="button"
+                              role="radio"
+                              aria-checked={active}
+                              onClick={() => handleSelectLanguage(lang)}
+                              className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
+                                active
+                                  ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                                  : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
+                              }`}
+                            >
+                              <span aria-hidden="true">{lang === "es" ? "🇪🇸" : "🇬🇧"}</span>
+                              {lang === "es" ? texts.letras.idiomaEs : texts.letras.idiomaEn}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
-        {/* Lucy 2026-09-05 — opción de diseño "Con borde / Sin borde" (mismo precio). Es una
+                  {/* Lucy 2026-09-05 — opción de diseño "Con borde / Sin borde" (mismo precio). Es una
             decisión de LIENZO que viaja en Design.metadata y se refleja en el PNG de producción,
             no una variante del catálogo. Default "Con borde": lo que siempre se imprimió.
             Lucy 2026-09-08 — el selector SIEMPRE queda habilitado (es la vía para reactivar
             los colores); "Sin borde" solo desactiva la sección de colores de abajo.
             Multi-unidad (2026-09-09): el borde es a NIVEL DISEÑO (todos los sets lo
             comparten); lo que cambia por set son los COLORES de las fichas. */}
-        <div className="mt-5">
-          <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
-            {texts.letras.bordeTitulo}
-            <span className="text-brand-muted ml-2 text-xs font-normal">
-              {texts.letras.bordeHint}
-            </span>
-          </p>
-          <div
-            role="radiogroup"
-            aria-label={texts.letras.bordeTitulo}
-            className="flex flex-wrap gap-2"
-          >
-            <button
-              type="button"
-              role="radio"
-              aria-checked={withBorder}
-              onClick={() => setWithBorder(true)}
-              className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
-                withBorder
-                  ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
-                  : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
-              }`}
-            >
-              <span aria-hidden="true">◻️</span>
-              {texts.letras.bordeCon}
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={!withBorder}
-              onClick={() => setWithBorder(false)}
-              className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
-                !withBorder
-                  ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
-                  : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
-              }`}
-            >
-              <span aria-hidden="true">⬜</span>
-              {texts.letras.bordeSin}
-            </button>
-          </div>
-        </div>
+                  <div className="mt-5">
+                    <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
+                      {texts.letras.bordeTitulo}
+                      <span className="text-brand-muted ml-2 text-xs font-normal">
+                        {texts.letras.bordeHint}
+                      </span>
+                    </p>
+                    <div
+                      role="radiogroup"
+                      aria-label={texts.letras.bordeTitulo}
+                      className="flex flex-wrap gap-2"
+                    >
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={withBorder}
+                        onClick={() => setWithBorder(true)}
+                        className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
+                          withBorder
+                            ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                            : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
+                        }`}
+                      >
+                        <span aria-hidden="true">◻️</span>
+                        {texts.letras.bordeCon}
+                      </button>
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={!withBorder}
+                        onClick={() => setWithBorder(false)}
+                        className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
+                          !withBorder
+                            ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                            : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
+                        }`}
+                      >
+                        <span aria-hidden="true">⬜</span>
+                        {texts.letras.bordeSin}
+                      </button>
+                    </div>
+                  </div>
 
-        {/* Multi-unidad (2026-09-09) — pager de sets + "Aplicar este diseño a todas".
+                  {/* Multi-unidad (2026-09-09) — pager de sets + "Aplicar este diseño a todas".
             Cada set lleva sus propios colores por ficha (el tema/idioma/borde son del
             diseño completo). Las láminas de TODOS los sets se ven en la Vista previa. */}
-        {unitCount > 1 && (
-          <div className="mt-5 flex flex-col items-center gap-3">
-            <nav
-              aria-label={texts.unidades.pagerAria}
-              className="flex flex-wrap items-center justify-center gap-2"
-            >
-              {Array.from({ length: unitCount }, (_, u) => (
-                <button
-                  key={u}
-                  type="button"
-                  onClick={() => setActiveUnit(u)}
-                  aria-pressed={u === activeUnit}
-                  className={`inline-flex items-center gap-1.5 rounded-full border-2 px-4 py-2 text-sm font-bold transition ${
-                    u === activeUnit
-                      ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
-                      : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
-                  }`}
-                >
-                  {fillStudioText(texts.unidades.unidadDe, {
-                    nombre: texts.unidades.nombreSet,
-                    n: u + 1,
-                    total: unitCount,
-                  })}
-                </button>
-              ))}
-            </nav>
-            <button
-              type="button"
-              onClick={handleApplyToAll}
-              aria-label={texts.unidades.aplicarATodasAria}
-              title={texts.unidades.aplicarATodasTitle}
-              className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-4 py-2 text-xs font-bold transition active:scale-95"
-            >
-              <Copy className="h-3.5 w-3.5" aria-hidden />
-              {texts.unidades.aplicarATodas}
-            </button>
-          </div>
-        )}
+                  {unitCount > 1 && (
+                    <div className="mt-5 flex flex-col items-center gap-3">
+                      <nav
+                        aria-label={texts.unidades.pagerAria}
+                        className="flex flex-wrap items-center justify-center gap-2"
+                      >
+                        {Array.from({ length: unitCount }, (_, u) => (
+                          <button
+                            key={u}
+                            type="button"
+                            onClick={() => setActiveUnit(u)}
+                            aria-pressed={u === activeUnit}
+                            className={`inline-flex items-center gap-1.5 rounded-full border-2 px-4 py-2 text-sm font-bold transition ${
+                              u === activeUnit
+                                ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                                : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
+                            }`}
+                          >
+                            {fillStudioText(texts.unidades.unidadDe, {
+                              nombre: texts.unidades.nombreSet,
+                              n: u + 1,
+                              total: unitCount,
+                            })}
+                          </button>
+                        ))}
+                      </nav>
+                      <button
+                        type="button"
+                        onClick={handleApplyToAll}
+                        aria-label={texts.unidades.aplicarATodasAria}
+                        title={texts.unidades.aplicarATodasTitle}
+                        className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-4 py-2 text-xs font-bold transition active:scale-95"
+                      >
+                        <Copy className="h-3.5 w-3.5" aria-hidden />
+                        {texts.unidades.aplicarATodas}
+                      </button>
+                    </div>
+                  )}
 
-        {/* Panel del set activo (colores por ficha). key por (set, tick): al cambiar
-            de set o tras "Aplicar a todas" se remonta leyendo el snapshot del Map. */}
-        <LetterSetUnitPanel
-          key={`${activeUnit}-${applyTick}`}
-          unit={activeUnit}
-          letters={letters}
-          activeTiles={activeTiles}
-          withBorder={withBorder}
-          initial={snapshots.get(activeUnit)}
-          onSnapshot={recordSnapshot}
-        />
+                  {/* Picker de tema de color del set activo (barajar al re-clic) — control
+            compartido con Nombre. Lucy 2026-09-08 — con «Sin borde» las fichas no
+            llevan el marco de color, así que la sección «Elige los colores» se
+            DESACTIVA (visible + inerte, con el porqué). Al volver a «Con borde» se
+            reactiva conservando la selección: el estado de colores (useLetterColors,
+            vía LetterSetUnitState) nunca se resetea al desactivar.
+            Ola 32 — la grilla de fichas que alimenta vive en el lienzo (tarjeta-unidad). */}
+                  <ThemePicker
+                    themeId={unit.themeId}
+                    customized={unit.customized}
+                    onApply={unit.applyTheme}
+                    disabled={!withBorder}
+                    disabledHint={texts.letras.bordeSinColoresHint}
+                  />
 
-        {error && (
-          <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-center text-sm text-rose-700">
-            {error}
-          </p>
-        )}
+                  {error && (
+                    <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-center text-sm text-rose-700">
+                      {error}
+                    </p>
+                  )}
 
-        <div className="mt-6 flex flex-col items-center gap-2">
-          <button
-            type="button"
-            onClick={handleOpen3D}
-            disabled={building3D || submitting || preparing}
-            aria-label={texts.escenas.setBtnTableroAria}
-            className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 inline-flex items-center gap-2 rounded-full border-2 bg-white px-6 py-2.5 text-sm font-bold transition disabled:opacity-60"
-          >
-            {building3D ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Box className="h-4 w-4" />
-            )}
-            {building3D ? texts.comun.armando : texts.escenas.setBtnTablero}
-          </button>
-          {/* El botón ya no agrega al carrito: abre la vista previa. El texto lo dice ("Vista
+                  <div className="mt-6 flex flex-col items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleOpen3D}
+                      disabled={building3D || submitting || preparing}
+                      aria-label={texts.escenas.setBtnTableroAria}
+                      className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 inline-flex items-center gap-2 rounded-full border-2 bg-white px-6 py-2.5 text-sm font-bold transition disabled:opacity-60"
+                    >
+                      {building3D ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Box className="h-4 w-4" />
+                      )}
+                      {building3D ? texts.comun.armando : texts.escenas.setBtnTablero}
+                    </button>
+                    {/* El botón ya no agrega al carrito: abre la vista previa. El texto lo dice ("Vista
               previa", igual que el Estudio principal) y el sr-only completa la promesa sin romper
               WCAG 2.5.3 (el nombre accesible empieza por el texto visible). */}
-          <button
-            type="button"
-            onClick={handleShowPreview}
-            disabled={submitting || preparing || building3D}
-            className="bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 disabled:opacity-60"
-          >
-            {preparing || submitting ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Sparkles className="h-5 w-5" />
-            )}
-            {preparing
-              ? texts.comun.preparando
-              : submitting
-                ? texts.comun.agregando
-                : texts.comun.listo}
-            {!preparing && !submitting && <span className="sr-only">{texts.letras.listoSr}</span>}
-          </button>
-          <span className="text-brand-muted text-sm font-semibold">{priceLabel}</span>
-        </div>
+                    <button
+                      type="button"
+                      onClick={handleShowPreview}
+                      disabled={submitting || preparing || building3D}
+                      className="bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 disabled:opacity-60"
+                    >
+                      {preparing || submitting ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-5 w-5" />
+                      )}
+                      {preparing
+                        ? texts.comun.preparando
+                        : submitting
+                          ? texts.comun.agregando
+                          : texts.comun.listo}
+                      {!preparing && !submitting && (
+                        <span className="sr-only">{texts.letras.listoSr}</span>
+                      )}
+                    </button>
+                    <span className="text-brand-muted text-sm font-semibold">{priceLabel}</span>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          )}
+        </LetterSetUnitState>
       </div>
 
       {/* Vista previa pre-carrito (Lucy 2026-07-25) — "Así se verá tu pedido". El estado abierto
@@ -922,52 +1068,45 @@ export function LetterSetEditor({
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
 // ──────────────────────────────────────────────────────────────────
-//  Multi-unidad (2026-09-09) — panel de UN set (colores por ficha)
+//  Multi-unidad (2026-09-09) — estado de color de UN set
 // ──────────────────────────────────────────────────────────────────
 
 /**
- * Panel de edición de color de UN set del diseño multi-unidad: picker de tema
- * (barajar al re-clic) + grilla de fichas seleccionables + fila de colores de la
- * ficha elegida. El estado vive en `useLetterColors` con snapshot exportable:
- * el padre lo persiste por set (al cambiar de pestaña se remonta con `initial`)
- * y lo clona a todos con "Aplicar este diseño a todas".
+ * Estado de color de UN set del diseño multi-unidad. Ola 32: dejó de ser un
+ * "panel" con markup propio para ser un wrapper de ESTADO con render-prop: el
+ * layout del editor reparte las piezas en dos columnas (picker de tema con los
+ * controles; grilla de fichas como lienzo) pero el `useLetterColors` debe ser
+ * UNO por set — dos instancias se desincronizarían (el tema barajado no sería
+ * el que pinta la grilla).
+ *
+ * El estado vive en `useLetterColors` con snapshot exportable: el padre lo
+ * persiste por set (al cambiar de pestaña se remonta con `initial`) y lo clona
+ * a todos con "Aplicar este diseño a todas".
  *
  * `onSnapshot` se llama en CADA cambio de color (tema, barajar, ficha pintada):
  * el Map del padre siempre tiene el estado fresco de este set para dibujar las
  * láminas de la vista previa y crear el diseño.
  */
-function LetterSetUnitPanel({
+function LetterSetUnitState({
   unit,
   letters,
-  activeTiles,
-  withBorder,
   initial,
   onSnapshot,
+  children,
 }: {
   unit: number;
   letters: string[];
-  activeTiles: LetterTileMap;
-  withBorder: boolean;
   initial?: LetterColorsSnapshot;
   onSnapshot: (unit: number, snap: LetterColorsSnapshot) => void;
+  children: (colors: ReturnType<typeof useLetterColors>) => React.ReactNode;
 }) {
-  const texts = useStudioTexts();
-  const {
-    themeId,
-    activeColors,
-    letterColors,
-    effectiveColors,
-    selectedIndex,
-    toggleSelected,
-    applyTheme,
-    setColorForSelected,
-    customized,
-  } = useLetterColors(letters.length, initial);
+  const colors = useLetterColors(letters.length, initial);
+  const { themeId, activeColors, letterColors } = colors;
 
   // Reportar el snapshot al padre SOLO en cambios reales (tema, orden barajado u
   // overrides por ficha): depende de las piezas de estado del hook (estables entre
@@ -977,87 +1116,5 @@ function LetterSetUnitPanel({
     onSnapshot(unit, { themeId, activeColors, letterColors });
   }, [unit, themeId, activeColors, letterColors, onSnapshot]);
 
-  return (
-    <>
-      {/* Picker de tema de color — control compartido con Nombre (barajar al re-clic).
-          Lucy 2026-09-08 — con «Sin borde» las fichas no llevan el marco de color, así que
-          la sección «Elige los colores» se DESACTIVA (visible + inerte, con el porqué).
-          Al volver a «Con borde» se reactiva conservando la selección: el estado de
-          colores (useLetterColors) nunca se resetea al desactivar. */}
-      <ThemePicker
-        themeId={themeId}
-        customized={customized}
-        onApply={applyTheme}
-        disabled={!withBorder}
-        disabledHint={texts.letras.bordeSinColoresHint}
-      />
-
-      {/* Preview del set (WYSIWYG) — cada ficha es seleccionable para pintarla a gusto.
-          Ola 28 (owner 2026-09-11, 1.7): con «Sin borde» no hay marco de color que
-          pintar → sin hint y fichas NO seleccionables (la paleta ya quedó inerte). */}
-      <div className="bg-brand-cream/50 mt-5 rounded-2xl p-5">
-        {withBorder && selectedIndex === null && (
-          <p className="text-brand-purple-dark mb-3 flex items-center justify-center text-center text-xs font-semibold">
-            <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
-              {texts.letras.tocaHint}
-            </span>
-          </p>
-        )}
-        <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 md:grid-cols-9">
-          {letters.map((ch, i) => {
-            const tile = activeTiles[ch];
-            const color = effectiveColors[i];
-            const isSel = withBorder && selectedIndex === i;
-            return (
-              <button
-                key={ch}
-                type="button"
-                onClick={() => withBorder && toggleSelected(i)}
-                disabled={!withBorder}
-                aria-pressed={withBorder ? isSel : undefined}
-                aria-label={fillStudioText(texts.letras.pintarAria, { letra: ch })}
-                className={`flex flex-col items-center rounded-xl transition ${
-                  isSel
-                    ? "ring-brand-purple scale-105 ring-2 ring-offset-2"
-                    : withBorder
-                      ? "hover:scale-105"
-                      : "cursor-default"
-                }`}
-              >
-                {/* Ficha VERTICAL (aspect 5/6.5) — espeja el imán físico rectangular. Sin borde:
-                    la ficha queda blanca a ras (el PNG y la textura 3D hacen lo mismo). */}
-                <div
-                  className="flex aspect-[5/6.5] w-full items-center justify-center overflow-hidden rounded-xl bg-white"
-                  style={{
-                    border: withBorder ? `2px solid ${color}` : "2px solid transparent",
-                    boxShadow: `0 3px 10px ${color}22`,
-                  }}
-                >
-                  {tile ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- ficha del bucket público
-                    <img
-                      src={tile.imageUrl}
-                      alt={fillStudioText(texts.letras.letraAlt, { letra: ch })}
-                      className="h-full w-full object-contain p-1"
-                    />
-                  ) : (
-                    <span className="font-display text-base font-extrabold" style={{ color }}>
-                      {ch}
-                    </span>
-                  )}
-                </div>
-                <span className="text-brand-muted mt-1 text-[10px] font-semibold">{ch}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Fila de colores para la ficha seleccionada — control compartido.
-            Con «Sin borde» no aplica (no hay marco de color que pintar). */}
-        {withBorder && selectedIndex !== null && letters[selectedIndex] && (
-          <SwatchRow letter={letters[selectedIndex]} onPick={setColorForSelected} />
-        )}
-      </div>
-    </>
-  );
+  return <>{children(colors)}</>;
 }

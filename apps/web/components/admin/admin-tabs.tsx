@@ -86,7 +86,11 @@ export function AdminTabBar({
       role="tablist"
       aria-label="Secciones del formulario"
       className={
-        "border-brand-purple/15 sticky top-0 z-10 -mx-4 mb-6 flex gap-1 overflow-x-auto border-b bg-white/95 px-4 py-1 backdrop-blur sm:mx-0 sm:rounded-t-xl sm:border sm:border-b-0 sm:px-2 " +
+        // Sticky bajo la topbar móvil del shell (60px = logo h-9 + py-3,
+        // también sticky top-0 z-30): antes era top-0 siempre y en <lg la
+        // tabbar quedaba OCULTA tras la topbar al hacer scroll. En ≥lg la
+        // topbar móvil no existe → top-0 como siempre.
+        "border-brand-purple/15 sticky top-15 z-10 -mx-4 mb-6 flex gap-1 overflow-x-auto border-b bg-white/95 px-4 py-1 backdrop-blur sm:mx-0 sm:rounded-t-xl sm:border sm:border-b-0 sm:px-2 lg:top-0 " +
         (className ?? "")
       }
     >

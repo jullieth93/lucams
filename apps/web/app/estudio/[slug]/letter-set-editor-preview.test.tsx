@@ -97,7 +97,10 @@ function renderEditor() {
 
 /** Pulsa "Vista previa" (antes "¡Listo!") y espera a que la vista previa esté en pantalla. */
 async function openPreview() {
-  fireEvent.click(screen.getByRole("button", { name: /Vista previa/ }));
+  // Ola 32 — hay DOS botones «Vista previa» (header sticky + panel de controles;
+  // misma acción). Se pulsa el del panel: el CTA histórico.
+  const ctas = screen.getAllByRole("button", { name: /Vista previa/ });
+  fireEvent.click(ctas[ctas.length - 1]!);
   await screen.findByText("Así se verá tu pedido");
 }
 

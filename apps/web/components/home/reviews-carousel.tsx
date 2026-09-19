@@ -2,18 +2,20 @@
  * Carousel de reseñas reales (featured).
  *
  * Usa Embla con autoplay lento + botón pausa/play (WCAG 2.2.2); con
- * prefers-reduced-motion el autoplay NO se inicializa. Dots con área
- * táctil ≥ 24×24 (WCAG 2.5.8). Si no hay reseñas, el padre renderea
- * empty state con mascote.
+ * prefers-reduced-motion el autoplay NO se inicializa. El autoplay solo
+ * corre mientras el carrusel está en viewport (IntersectionObserver, INP).
+ * Dots con área táctil ≥ 24×24 (WCAG 2.5.8). Si no hay reseñas, el padre
+ * renderea empty state con mascote.
  */
 
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import Autoplay from "embla-carousel-autoplay";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Pause, Play, Star } from "lucide-react";
+import { useAutoplayWhenVisible } from "@/components/home/use-autoplay-when-visible";
 import { usePrefersReducedMotion } from "@/app/estudio/[slug]/use-prefers-reduced-motion";
 import type { StorefrontReview } from "@/features/reviews/public-service";
 
@@ -29,6 +31,9 @@ export function ReviewsCarousel({ reviews }: { reviews: StorefrontReview[] }) {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [snaps, setSnaps] = useState<number[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
+  // INP: el autoplay solo corre mientras el carrusel está en pantalla (ver hook).
+  const rootRef = useRef<HTMLDivElement>(null);
+  useAutoplayWhenVisible(emblaApi, rootRef, !prefersReducedMotion);
   const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
   const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
   // WCAG 2.2.2 — control visible para pausar/reanudar el movimiento automático.
@@ -74,7 +79,7 @@ export function ReviewsCarousel({ reviews }: { reviews: StorefrontReview[] }) {
   if (reviews.length === 0) return null;
 
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       <div className="px-0 sm:px-12">
         <div className="overflow-hidden" ref={emblaRef}>
           <div className="flex gap-4">

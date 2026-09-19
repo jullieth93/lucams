@@ -187,6 +187,8 @@ export default async function EstudioPage({
           <StudioTextsProvider texts={texts}>
             <NameEditor
               product={{ id: product.id, slug: product.slug, name: product.name }}
+              // Ola 32 — mini avatar del header sticky unificado (fallback al mascote).
+              productImageUrl={product.images[0]}
               variantId={selectedVariant.id}
               config={surface.config}
               pricePerTile={pricePerTile}
@@ -241,6 +243,8 @@ export default async function EstudioPage({
           <StudioTextsProvider texts={texts}>
             <LetterSetEditor
               product={{ id: product.id, slug: product.slug, name: product.name }}
+              // Ola 32 — mini avatar del header sticky unificado (fallback al mascote).
+              productImageUrl={product.images[0]}
               variantId={selectedVariant.id}
               variants={selectable.map((v) => {
                 const a = parseVariantAttributes(v.attributes);

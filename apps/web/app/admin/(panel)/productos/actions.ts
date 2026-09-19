@@ -27,21 +27,12 @@ import { ProductCreateSchema, ProductUpdateSchema } from "@/features/products/sc
 
 export type ProductActionState = {
   error?: string;
-  fieldErrors?: Partial<
-    Record<
-      | "name"
-      | "slug"
-      | "description"
-      | "basePrice"
-      | "compareAtPrice"
-      | "cost"
-      | "sku"
-      | "categoryId"
-      | "seoTitle"
-      | "seoDescription",
-      string[]
-    >
-  >;
+  /** true cuando el guardado aplicó — el form de edición muestra el aviso de
+   * éxito (antes retornaba {} y "aparentemente no hacía nada", owner 2026-09-18). */
+  success?: boolean;
+  /** Claves = campos del schema Zod (cualquiera, no solo los del form). El form
+   * las traduce a etiquetas humanas en el alert global. */
+  fieldErrors?: Partial<Record<string, string[]>>;
 };
 
 /**
@@ -60,7 +51,11 @@ function parsePayload(formData: FormData) {
     name: String(get("name") ?? "").trim(),
     slug: String(get("slug") ?? "").trim(),
     description: String(get("description") ?? "").trim(),
-    basePrice: getOptNum("basePrice") ?? 0,
+    // null cuando vacío (antes ?? 0): con noValidate en el form el navegador ya
+    // no bloquea el precio vacío al CREAR y un 0 silencioso crearía una opción
+    // gratis; Zod rechaza null con "Precio inválido" (visible en el form). En
+    // edición el hidden siempre trae valor → número.
+    basePrice: getOptNum("basePrice"),
     compareAtPrice: getOptNum("compareAtPrice"),
     cost: getOptNum("cost"),
     sku: String(get("sku") ?? "")
@@ -188,7 +183,7 @@ export async function updateProductAction(
     revalidatePath("/productos");
     revalidatePath(`/producto/${product.slug}`);
     revalidatePath("/", "layout"); // home featured + categorías
-    return {};
+    return { success: true };
   } catch (err) {
     if (err instanceof ProductValidationError) {
       return {

@@ -123,7 +123,7 @@ export function CreateOcasionForm() {
         <p className="mb-2 text-xs text-slate-500">
           Rango típico de unidades para esta ocasión. El bot recomendará variants según.
         </p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <label htmlFor="rangeMin" className="mb-1 block text-xs text-slate-600">
               Mínimo

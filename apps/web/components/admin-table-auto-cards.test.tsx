@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /*
  * Test de componente — AdminTableAutoCards (backlog punto 5: tablas admin
- * como tarjetas en móvil).
+ * como tarjetas en móvil y tablet, rango <lg en globals.css).
  *
  * El componente etiqueta cada <td> del tbody con el texto de su columna del
  * thead (data-label, lo usa el CSS para el rótulo de la tarjeta), activa

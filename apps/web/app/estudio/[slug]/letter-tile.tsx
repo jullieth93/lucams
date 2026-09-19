@@ -150,6 +150,7 @@ export function LetterTile({
       className={`relative flex flex-shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm transition ${
         interactive ? "cursor-pointer hover:-translate-y-0.5" : "cursor-default"
       }`}
+      data-name-tile
       style={{
         width: size,
         height: size * 1.18,

@@ -451,15 +451,21 @@ html.cms-edit-mode [data-cms-key]:hover {
 }
 
 /*
- * Tablas admin → tarjetas apiladas en móvil (backlog punto 5; pendiente
- * deliberado de E2 — el scroll con pista era el piso usable, esto es el salto
- * de comodidad: cada fila se lee como una tarjeta con sus rótulos).
+ * Tablas admin → tarjetas apiladas en móvil Y tablet (backlog punto 5;
+ * pendiente deliberado de E2 — el scroll con pista era el piso usable, esto
+ * es el salto de comodidad: cada fila se lee como una tarjeta con sus
+ * rótulos).
+ *
+ * Rango: todo < lg (max-width: 1023px). Antes era solo < 640px, pero las
+ * tablas con minWidth 640-800 desbordan su wrapper en todo el rango tablet
+ * (640-1023) — a 768px una tabla de 800px obligaba a scroll horizontal.
+ * A ≥1024 (desktop, con sidebar) la tabla se ve como siempre.
  *
  * Se activa SOLO cuando <AdminTableAutoCards> etiquetó las celdas con
  * data-label y agregó .admin-cards-on al wrapper. Sin JS la tabla queda como
  * siempre: scroll horizontal + pista «Desliza…» de E2.
  */
-@media (max-width: 639px) {
+@media (max-width: 1023px) {
   /* La pista de scroll y su degradado sobran cuando hay tarjetas. */
   [data-admin-table].admin-cards-on .admin-table-hint,
   [data-admin-table].admin-cards-on .admin-table-scroll-affordance {

@@ -96,7 +96,7 @@ export function SectionRenameForm({
       </summary>
       <form
         action={updateCmsSectionAction}
-        className="border-brand-purple/15 absolute left-0 z-20 mt-1 grid w-72 gap-2 rounded-xl border bg-white p-3 shadow-lg"
+        className="border-brand-purple/15 absolute left-0 z-20 mt-1 grid w-72 gap-2 rounded-xl border bg-white p-3 shadow-lg max-sm:fixed max-sm:right-4 max-sm:left-4 max-sm:w-auto"
       >
         <input type="hidden" name="id" value={sectionId} />
         <input type="hidden" name="redirectTo" value={redirectTo} />

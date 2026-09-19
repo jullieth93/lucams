@@ -44,14 +44,13 @@ import {
   parseVariantAttributes,
   PDP_HIDDEN_DIMENSION_KEYS,
   isPhotoPackCatalog,
-  photoPackDistinctSizes,
   photoPackMinPrice,
   PDP_DIMENSION_LABEL_OVERRIDES,
   PDP_PACK_PLUS_COPIES_SLUGS,
   PDP_QUANTITY_CHIP_DIMS,
   PDP_PACKS_OF_SIX_SLUGS,
   PHOTO_PACK_UNITS_PER_PACK,
-  conImanDefaultVariant,
+  pdpDefaultVariant,
   resolvePromoDisplay,
 } from "@/features/products/variant-schemas";
 import { NamePricePicker } from "./name-price-picker";
@@ -114,9 +113,10 @@ export default async function ProductoDetallePage({
   const requestedVariantId = typeof sp.variant === "string" ? sp.variant : undefined;
   const selectable = selectableVariants(product.variants);
   // Regla 2026-09-08b — packs de fotoimanes: la PDP elige "Unidades" (pack size)
-  // → la variante fija el precio EXACTO ("Desde" solo antes de elegir).
+  // → la variante fija el precio EXACTO. Con la preselección 2026-09-18 siempre
+  // hay variante elegida → "Desde" ya no aparece (showFromPrice queda para el
+  // edge de catálogo sin variantes seleccionables).
   const isPhotoPack = isPhotoPackCatalog(product.personalizationKind, selectable);
-  const packSizes = isPhotoPack ? photoPackDistinctSizes(selectable) : [];
   const packMinPrice = isPhotoPack ? photoPackMinPrice(selectable, product.basePrice) : null;
   // A2 (2026-09-15) — minVariantPrice de la familia, MISMO criterio que la card del
   // listado (product-card.tsx: min entre basePrice y los overrides de variante). Es
@@ -135,31 +135,18 @@ export default async function ProductoDetallePage({
   const priceByVariantId = Object.fromEntries(
     selectable.map((v) => [v.id, v.price ?? product.basePrice]),
   );
-  // UX selección guiada (Lucy 2026-08-12): SIN preselección cuando hay varias
-  // opciones — el cliente elige cada dimensión a propósito. EXCEPCIONES con
-  // default claro (regla 2026-09-08b):
-  //   - ¿Con imán?: si TODAS las variantes difieren solo en `magnet`, se
-  //     preselecciona la de Con imán (default del catálogo).
-  //   - Pack de UN solo tamaño (polaroid): la única elección es "Unidades"
-  //     (stepper 1..N) — sin preselección el valor 1 sería inalcanzable (el
-  //     stepper arranca mostrando 1 pero el − nunca selecciona variante) y el
-  //     CTA quedaría bloqueado. Se preselecciona la variante de N mínimo.
-  // Con UNA sola variante se auto-selecciona (no hay nada que elegir). El
-  // deep-link ?variant= manda sobre todo.
+  // (2026-09-18, owner) — PRIMERA opción de cada dimensión PRESELECCIONADA al
+  // entrar sin ?variant=: la ficha abre con tamaño/imán/unidades ya elegidos y
+  // precio/CTA coherentes con esa selección (antes: selección guiada Lucy
+  // 2026-08-12 sin preselección — el CTA salía bloqueado). pdpDefaultVariant
+  // respeta el stock (primera opción DISPONIBLE) y subsume los defaults
+  // especiales que existían: "Con imán" cuando las variantes solo difieren en
+  // magnet (regla 2026-09-08b) y la variante de N mínimo de los packs de un
+  // solo tamaño (polaroid: photoSlots ascendente). Con UNA sola variante se
+  // auto-selecciona (no hay nada que elegir). El deep-link ?variant= manda
+  // sobre todo.
   const selectedVariant =
-    selectable.find((v) => v.id === requestedVariantId) ??
-    (selectable.length === 1
-      ? (selectable[0] ?? null)
-      : (conImanDefaultVariant(selectable) ??
-        (isPhotoPack && packSizes.length <= 1
-          ? selectable.reduce<(typeof selectable)[number] | null>((min, v) => {
-              const n = parseVariantAttributes(v.attributes).photoSlots ?? Number.MAX_SAFE_INTEGER;
-              const minN = min
-                ? (parseVariantAttributes(min.attributes).photoSlots ?? Number.MAX_SAFE_INTEGER)
-                : Number.MAX_SAFE_INTEGER;
-              return n < minN ? v : min;
-            }, null)
-          : null)));
+    selectable.find((v) => v.id === requestedVariantId) ?? pdpDefaultVariant(selectable);
   const showFromPrice = isPhotoPack && !selectedVariant;
   // Precio final: variant.price override o basePrice
   const displayPrice =

@@ -138,13 +138,18 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   const colorDisabled = (isIg || isPolaroidClasica || isStrip) && isFullBleed;
 
   return (
-    <div className="border-brand-purple/10 mb-4 w-full max-w-xl rounded-2xl border bg-white/95 px-4 py-3 shadow-sm">
-      {/* Ola 24 — «Borde de foto» PRIMERO y «Color de tarjeta» DEBAJO (apilados). */}
-      <div className="flex flex-col items-center gap-3">
+    // Ola 32 — chrome móvil compacto (owner 2026-09-18): a 375px esta tarjeta más
+    // el stepper y los pills empujaban el lienzo bajo el fold. En móvil las filas
+    // van EN UNA SOLA LÍNEA con scroll horizontal (labels sin wrap — "Color de
+    // tarjeta" se partía en 3 líneas) y paddings compactos; ≥sm se mantiene
+    // exactamente el apilado centrado de siempre.
+    <div className="border-brand-purple/10 mb-3 w-full max-w-xl rounded-2xl border bg-white/95 px-2.5 py-2 shadow-sm sm:mb-4 sm:px-4 sm:py-3">
+      {/* Ola 24 — «Borde de foto» PRIMERO y «Color de tarjeta» DEBAJO (apilados en ≥sm). */}
+      <div className="flex items-center gap-3 overflow-x-auto sm:flex-col sm:gap-3 sm:overflow-visible">
         {/* Borde de foto */}
         {(isIg || isPolaroidClasica || frameColors.length > 0) && (
-          <div className="flex items-center gap-2">
-            <span className="text-brand-purple-dark text-xs font-semibold">
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-brand-purple-dark text-xs font-semibold whitespace-nowrap">
               {texts.texto.estiloBordeTitulo}
             </span>
             <div
@@ -172,12 +177,13 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
         {frameColors.length > 0 && (
           <div
             aria-disabled={colorDisabled || undefined}
-            className={["flex flex-col items-center gap-1", colorDisabled ? "opacity-60" : ""].join(
-              " ",
-            )}
+            className={[
+              "flex shrink-0 flex-col items-center gap-1",
+              colorDisabled ? "opacity-60" : "",
+            ].join(" ")}
           >
             <div className="flex items-center gap-2">
-              <span className="text-brand-purple-dark text-xs font-semibold">
+              <span className="text-brand-purple-dark text-xs font-semibold whitespace-nowrap">
                 {texts.texto.estiloColorTitulo}
               </span>
               <div

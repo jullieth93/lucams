@@ -276,7 +276,7 @@ export default async function AdminPedidoDetallePage({
 
             {/* Cliente */}
             <Card icon={<User className="h-4 w-4" />} title="Cliente">
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+              <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
                 <Row label="Nombre" value={ship.fullName ?? "—"} />
                 <Row label="Email" value={order.email} />
                 <Row label="Teléfono" value={order.phone} />

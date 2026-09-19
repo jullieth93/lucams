@@ -61,6 +61,34 @@ describe("buildCsp — prod (nonce + 'self', sin strict-dynamic)", () => {
       .find((d) => d.startsWith("img-src"))!;
     expect(imgSrcOff).not.toContain("localhost");
   });
+
+  it("en preview la Vercel Toolbar queda permitida en script/frame/img/connect/style/font", () => {
+    // 2026-09-18 (aviso Vercel "CSP missing domains used by the Vercel Toolbar"):
+    // script-src y frame-src ya llevaban vercel.live (2026-08-05/06) pero img-src,
+    // connect-src, style-src y font-src no — la toolbar quedaba rota en previews.
+    // Valores oficiales: vercel.com/docs/workflow-collaboration/vercel-toolbar/managing-toolbar.
+    process.env.VERCEL_ENV = "preview";
+    const csp = buildCsp("N", true);
+    const dir = (name: string) => csp.split("; ").find((d) => d.startsWith(name))!;
+    expect(dir("script-src")).toContain("https://vercel.live");
+    expect(dir("frame-src")).toContain("https://vercel.live");
+    expect(dir("img-src")).toContain("https://vercel.live");
+    expect(dir("img-src")).toContain("https://vercel.com");
+    expect(dir("connect-src")).toContain("https://vercel.live");
+    expect(dir("connect-src")).toContain("wss://ws-us3.pusher.com");
+    expect(dir("style-src")).toContain("https://vercel.live");
+    expect(dir("font-src")).toContain("https://vercel.live");
+    expect(dir("font-src")).toContain("https://assets.vercel.com");
+    delete process.env.VERCEL_ENV;
+  });
+
+  it("fuera de preview la CSP NO menciona Vercel (producción no carga la toolbar)", () => {
+    delete process.env.VERCEL_ENV;
+    const csp = buildCsp("N", true);
+    expect(csp).not.toContain("vercel.live");
+    expect(csp).not.toContain("vercel.com");
+    expect(csp).not.toContain("pusher.com");
+  });
 });
 
 describe("buildCsp — dev (permisivo para HMR)", () => {

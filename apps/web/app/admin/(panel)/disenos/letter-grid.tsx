@@ -63,7 +63,10 @@ export function LetterGrid({
   return (
     <>
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={onFile} />
-      <div className="grid grid-cols-6 gap-2 sm:grid-cols-9">
+      {/* 4 columnas base (no 1): son 26+ tiles cuadrados — 1 columna sería
+          interminable y a 375px 4 columnas dan tiles de ~80px (touch target
+          cómodo). Nunca overflow: grid sin min-widths. */}
+      <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-9">
         {alphabet.map((char) => {
           const tile = tiles[char];
           const busy = pending && activeChar === char;

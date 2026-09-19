@@ -1,15 +1,18 @@
-import { test } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import "../setup-env";
 import { PrismaClient } from "@lucams/db";
 import fs from "node:fs";
 import path from "node:path";
 
 /*
- * Auditoría móvil del STOREFRONT (roadmap E3 — capa cliente): recorrido a
- * 375×812 por las pantallas críticas del cliente: home, catálogo, PDP,
- * carrito, checkout (estado vacío) y el Estudio (crítico: canvas + gestures).
- * Misma estrategia que E1: screenshot full-page + medición objetiva de
- * overflow horizontal por pantalla → tmp/screenshots/e3/ (gitignored).
+ * Auditoría responsive del STOREFRONT (roadmap E3 — capa cliente; generalizada
+ * 2026-09-18 a 4 anchos + GATE de overflow): recorrido por las pantallas
+ * críticas del cliente (home, catálogo, PDP, carrito, checkout vacío y el
+ * Estudio) midiendo overflow horizontal OBJETIVO
+ * (documentElement.scrollWidth > clientWidth). El gate nace de la auditoría
+ * UX 2026-09-18: el owner validó web/tablet/móvil y aparecieron overflows
+ * reales en estudios a 768-1280px — este spec es la trampa para que no
+ * regresen (corre en el gate de PR, ci.yml).
  *
  * No requiere auth. Local: corre contra el dev server (:4000).
  */
@@ -17,14 +20,21 @@ import path from "node:path";
 const prisma = new PrismaClient();
 const OUT_DIR = path.resolve(__dirname, "../../../../tmp/screenshots/e3");
 
-test.setTimeout(300_000);
-test.use({ viewport: { width: 375, height: 812 } });
+// Móvil / tablet vertical / tablet horizontal (o laptop sin sidebar admin) / desktop.
+const VIEWPORTS = [
+  { width: 375, height: 812 },
+  { width: 768, height: 1024 },
+  { width: 1024, height: 768 },
+  { width: 1280, height: 800 },
+];
+
+test.setTimeout(600_000);
 
 test.afterAll(async () => {
   await prisma.$disconnect();
 });
 
-test("auditoría móvil E3 — storefront a 375px", async ({ page }) => {
+test("auditoría responsive E3 — storefront sin overflow en 4 anchos (gate)", async ({ page }) => {
   // Un producto real publicado para PDP y Estudio.
   const product = await prisma.product.findFirst({
     where: { isActive: true, slug: { not: undefined } },
@@ -47,6 +57,7 @@ test("auditoría móvil E3 — storefront a 375px", async ({ page }) => {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const summary: {
     route: string;
+    width: number;
     screenshot: string;
     horizontalOverflow: boolean;
     scrollWidth: number;
@@ -54,32 +65,43 @@ test("auditoría móvil E3 — storefront a 375px", async ({ page }) => {
     status: number | null;
   }[] = [];
 
-  for (const route of ROUTES) {
-    const resp = await page.goto(route.path, { waitUntil: "domcontentloaded" }).catch(() => null);
-    await page.waitForTimeout(route.waitMs ?? 3000);
-    const metrics = await page.evaluate(() => ({
-      scrollWidth: document.documentElement.scrollWidth,
-      clientWidth: document.documentElement.clientWidth,
-    }));
-    const shot = `${route.name}.png`;
-    await page.screenshot({ path: path.join(OUT_DIR, shot), fullPage: true });
-    const horizontalOverflow = metrics.scrollWidth > metrics.clientWidth + 1;
-    summary.push({
-      route: route.path,
-      screenshot: `tmp/screenshots/e3/${shot}`,
-      horizontalOverflow,
-      scrollWidth: metrics.scrollWidth,
-      clientWidth: metrics.clientWidth,
-      status: resp?.status() ?? null,
-    });
-    console.log(
-      `${horizontalOverflow ? "❌ OVERFLOW" : "✅"} ${route.path} — scrollW ${metrics.scrollWidth} / clientW ${metrics.clientWidth} (HTTP ${resp?.status() ?? "?"})`,
-    );
+  for (const vp of VIEWPORTS) {
+    await page.setViewportSize(vp);
+    for (const route of ROUTES) {
+      const resp = await page.goto(route.path, { waitUntil: "domcontentloaded" }).catch(() => null);
+      await page.waitForTimeout(route.waitMs ?? 3000);
+      const metrics = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      }));
+      const shot = `${vp.width}/${route.name}.png`;
+      await page.screenshot({ path: path.join(OUT_DIR, shot), fullPage: true });
+      const horizontalOverflow = metrics.scrollWidth > metrics.clientWidth + 1;
+      summary.push({
+        route: route.path,
+        width: vp.width,
+        screenshot: `tmp/screenshots/e3/${shot}`,
+        horizontalOverflow,
+        scrollWidth: metrics.scrollWidth,
+        clientWidth: metrics.clientWidth,
+        status: resp?.status() ?? null,
+      });
+      console.log(
+        `${horizontalOverflow ? "❌ OVERFLOW" : "✅"} @${vp.width} ${route.path} — scrollW ${metrics.scrollWidth} / clientW ${metrics.clientWidth} (HTTP ${resp?.status() ?? "?"})`,
+      );
+    }
   }
 
   fs.writeFileSync(path.join(OUT_DIR, "summary.json"), JSON.stringify(summary, null, 2));
-  const withOverflow = summary.filter((s) => s.horizontalOverflow).length;
+  const failures = summary.filter((s) => s.horizontalOverflow);
   console.log(
-    `\nRESUMEN E3: ${withOverflow}/${summary.length} pantallas con overflow horizontal a 375px`,
+    `\nRESUMEN E3: ${failures.length}/${summary.length} mediciones con overflow horizontal`,
   );
+  // GATE (ci.yml, 2026-09-18): CERO overflow horizontal en cualquier ancho.
+  expect(
+    failures.map(
+      (f) => `@${f.width} ${f.route} (scrollW ${f.scrollWidth} > clientW ${f.clientWidth})`,
+    ),
+    `Overflow horizontal detectado:\n${failures.map((f) => `  @${f.width} ${f.route}`).join("\n")}`,
+  ).toEqual([]);
 });

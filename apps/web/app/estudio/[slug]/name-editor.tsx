@@ -13,12 +13,11 @@
  * en Design.metadata; el PNG aprobado es el mismo que ven carrito/orden/producción.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import nextDynamic from "next/dynamic";
-import { ChevronLeft, Loader2, Sparkles, Minus, Plus, Box, X } from "lucide-react";
+import { Loader2, Sparkles, Minus, Plus, Box, X } from "lucide-react";
 import { normalizeName, type NameLanguage } from "@/features/personalization/name-input";
 import type { Magnet3D } from "./fridge-3d-view";
 import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
@@ -31,6 +30,8 @@ import { useLetterColors } from "./use-letter-colors";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { LetterStylePicker } from "./letter-style-picker";
 import { StudioPreviewModal } from "./studio-preview-modal";
+import { StudioSimpleHeader } from "./studio-simple-header";
+import { STUDIO_MAX_WIDTH } from "./studio-layout";
 import { useIsTouch } from "./use-is-touch";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, splitStudioText } from "./studio-texts";
@@ -56,6 +57,8 @@ const RoomBoardView3D = nextDynamic(() => import("./room-board-view-3d"), {
 
 type NameEditorProps = {
   product: { id: string; slug: string; name: string };
+  /** Ola 32 — mini avatar del header sticky unificado (StudioSimpleHeader). */
+  productImageUrl?: string;
   /** Variante ya elegida en la ficha (tamaño/imantado). El editor solo arma la palabra. */
   variantId: string;
   config: { min: number; max: number; language: NameLanguage };
@@ -113,6 +116,15 @@ function loadImage(url: string): Promise<HTMLImageElement | null> {
 
 const TILE_W = 120;
 const TILE_H = 142;
+// Ola 32 — fichas FLUIDAS del preview en vivo: crecen con el ancho de la tarjeta
+// hasta el ancho de la ficha del PNG de producción (TILE_W) y nunca bajan del
+// piso de tap target de 44px (WCAG 2.5.5 — envuelven a otra fila antes de eso).
+// Ola 34 (owner 2026-09-18, "web mal distribuido") — el tope sube a 144px: el
+// preview es display-only (el PNG de producción sigue en TILE_W) y en desktop
+// las fichas de 120px quedaban chicas dentro de la tarjeta-lienzo grande.
+const PREVIEW_TILE_MAX = 144;
+const PREVIEW_TILE_MIN = 44;
+const PREVIEW_TILE_GAP = 12; // gap-3 del contenedor de fichas
 
 /** Dibuja UNA ficha kawaii (recuadro blanco + borde de color + ilustración o letra) en (x,y).
  *  `withBorder` (default true, lo histórico): sin borde la ficha queda blanca a ras —
@@ -225,6 +237,7 @@ async function renderNameStripDataUrl(
 
 export function NameEditor({
   product,
+  productImageUrl,
   variantId,
   config,
   pricePerTile,
@@ -480,381 +493,480 @@ export function NameEditor({
   // que lo calcula el carrito (Design.metadata.letters.length × variant.price) → sin desajuste.
   const liveTotal = letters.length * pricePerTile;
 
+  // Ola 32 — tamaño FLUIDO de las fichas del preview: se mide el contenedor
+  // (mismo patrón ResizeObserver del grid del estudio de foto) y cada ficha toma
+  // su parte del ancho, acotada entre el piso táctil y el tope de producción.
+  // Callback-ref (no useRef+effect montado): la fila se REMONTA al pasar de
+  // casillas-hint a letras escritas, y el observer debe seguir al nodo nuevo.
+  // Sin ResizeObserver (jsdom/SSR) queda el default histórico de 72px.
+  const [previewRowEl, setPreviewRowEl] = useState<HTMLDivElement | null>(null);
+  const [previewRowWidth, setPreviewRowWidth] = useState(0);
+  useEffect(() => {
+    if (!previewRowEl || typeof ResizeObserver === "undefined") return;
+    const update = () => setPreviewRowWidth(previewRowEl.clientWidth);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(previewRowEl);
+    return () => ro.disconnect();
+  }, [previewRowEl]);
+  const previewTileCount = Math.max(1, letters.length > 0 ? letters.length : count);
+  const previewTileSize =
+    previewRowWidth > 0
+      ? Math.min(
+          PREVIEW_TILE_MAX,
+          Math.max(
+            PREVIEW_TILE_MIN,
+            Math.floor(
+              (previewRowWidth - (previewTileCount - 1) * PREVIEW_TILE_GAP) / previewTileCount,
+            ),
+          ),
+        )
+      : 72;
+
   return (
-    <div className="mx-auto w-full max-w-3xl px-5 py-8">
-      <Link
-        href={`/producto/${product.slug}`}
-        className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 mb-4 inline-flex items-center gap-1 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg active:scale-[0.98]"
-      >
-        <ChevronLeft className="h-4 w-4" />
-        {texts.comun.volver}
-      </Link>
-
-      <header className="mb-6 text-center">
-        <p className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
-          {fillStudioText(texts.lienzo.headerTitle, { producto: product.name })}
-        </p>
-        <h1 className="font-display text-brand-purple-dark mt-1 text-3xl sm:text-4xl">
-          {texts.nombre.titulo}
-        </h1>
-        <p className="text-brand-muted mx-auto mt-2 max-w-md text-sm">{texts.nombre.subtitulo}</p>
-      </header>
-
-      <div className="border-brand-purple/12 rounded-3xl border bg-white p-6 shadow-sm sm:p-8">
-        {/* Input + cantidad de fichas */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <label
-            htmlFor="name-input"
-            className="text-brand-purple-dark block text-sm font-semibold"
-          >
-            {texts.nombre.inputLabel}
-          </label>
-          {/* Stepper: cuántas letras (fichas). El campo queda limitado a esta cantidad. */}
-          <div className="border-brand-purple/20 flex items-center gap-1 rounded-full border bg-white p-1">
-            <button
-              type="button"
-              onClick={() => changeCount(-1)}
-              disabled={count <= config.min}
-              aria-label={texts.nombre.menosAria}
-              className="text-brand-purple hover:bg-brand-purple/10 relative flex h-7 w-7 items-center justify-center rounded-full transition before:absolute before:-inset-2 before:content-[''] disabled:opacity-30"
-            >
-              <Minus className="h-3.5 w-3.5" />
-            </button>
-            <span className="text-brand-purple-dark w-16 text-center text-xs font-semibold tabular-nums">
-              {count === 1
-                ? fillStudioText(texts.nombre.contadorUna, { n: count })
-                : fillStudioText(texts.nombre.contadorMuchas, { n: count })}
+    <>
+      {/* Ola 32 — chrome unificado del Estudio: barra sticky con el idioma visual
+          del StudioToolbar del estudio de foto (pill «Salir», avatar+nombre del
+          producto, total en vivo + CTA «Vista previa» — la MISMA acción del botón
+          grande del panel de controles). */}
+      <StudioSimpleHeader
+        productName={product.name}
+        productSlug={product.slug}
+        productImageUrl={productImageUrl}
+        trailing={
+          letters.length > 0 ? (
+            <span className="text-brand-purple-dark text-sm font-bold whitespace-nowrap tabular-nums">
+              {formatCOP(liveTotal)}
             </span>
-            <button
-              type="button"
-              onClick={() => changeCount(1)}
-              disabled={count >= config.max}
-              aria-label={texts.nombre.masAria}
-              className="text-brand-purple hover:bg-brand-purple/10 relative flex h-7 w-7 items-center justify-center rounded-full transition before:absolute before:-inset-2 before:content-[''] disabled:opacity-30"
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-        <div className="mt-2 flex items-center gap-3">
-          <input
-            id="name-input"
-            type="text"
-            inputMode="text"
-            autoComplete="off"
-            autoCapitalize="characters"
-            maxLength={config.max}
-            value={raw}
-            onChange={(e) => {
-              const next = e.target.value;
-              setRaw(next);
-              // #11 — antes maxLength={count} tragaba letras en silencio ("MATEO"→"MAT" sin aviso).
-              // Ahora el tope duro es el máximo REAL del producto y la cantidad de fichas CRECE sola
-              // hasta ahí a medida que se escribe (nunca encoge → contador y precio quedan en sync).
-              const typed = normalizeName(next, { ...config, max: config.max }).letters.length;
-              setCount((c) => Math.min(config.max, Math.max(config.min, Math.max(c, typed))));
-            }}
-            placeholder={
-              config.language === "es" ? texts.nombre.placeholderEs : texts.nombre.placeholderEn
-            }
-            className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-turquoise/40 font-display text-brand-purple-dark w-full rounded-2xl border-2 bg-white px-4 py-3 text-2xl tracking-wide uppercase outline-none focus:ring-4"
-          />
-          <span
-            className={`font-display flex-shrink-0 text-sm font-bold tabular-nums ${
-              counterOver ? "text-rose-500" : "text-brand-muted"
-            }`}
+          ) : undefined
+        }
+        ctaLabel={texts.comun.listo}
+        ctaBusyLabel={preparingPreview ? texts.comun.preparando : texts.comun.agregando}
+        ctaBusy={preparingPreview || submitting}
+        ctaDisabled={!valid}
+        ctaSrHint={texts.nombre.listoSr}
+        onCta={handleShowPreview}
+      />
+
+      <div
+        className="mx-auto w-full px-4 py-6 sm:px-6 lg:px-8"
+        style={{ maxWidth: STUDIO_MAX_WIDTH }}
+      >
+        {/* h1 visible (WCAG): el eyebrow "Personalizar · {producto}" ya vive en el
+            header sticky (md+), no se repite acá. */}
+        <header className="mb-5 text-center">
+          <h1 className="font-display text-brand-purple-dark text-2xl sm:text-3xl">
+            {texts.nombre.titulo}
+          </h1>
+          <p className="text-brand-muted mx-auto mt-1 max-w-md text-sm">{texts.nombre.subtitulo}</p>
+        </header>
+
+        {/* Ola 32 — dos columnas en lg: lienzo fluido a la derecha y controles en
+            lateral ~w-80 (idioma del StudioSidebar); en móvil una sola columna con
+            el lienzo PRIMERO (es la estrella del editor). */}
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-6">
+          {/* PREVIEW = el lienzo: tarjeta-unidad estándar del Estudio (el mismo
+              lenguaje de las tarjetas del estudio de foto, referencia del owner). */}
+          <section
+            aria-label={texts.nombre.titulo}
+            className="order-1 min-w-0 lg:order-2 lg:flex-1"
           >
-            {letters.length}/{count}
-          </span>
-        </div>
-        <p className="text-brand-muted mt-2 text-xs">
-          {fillStudioText(config.language === "es" ? texts.nombre.ayudaEs : texts.nombre.ayudaEn, {
-            min: config.min,
-            max: config.max,
-          })}
-        </p>
+            <div className="border-brand-purple/15 rounded-2xl border bg-white/70 p-2 shadow-sm sm:p-4">
+              {/* Ola 34 — el lienzo respira: aire vertical mínimo y contenido
+                  centrado (antes min-h 168px → las fichas quedaban pegadas
+                  arriba en una tarjeta grande, "mal distribuido" del owner). */}
+              <div className="bg-brand-cream/60 flex min-h-[220px] flex-col justify-center rounded-xl p-4 sm:min-h-[320px] sm:p-5">
+                {letters.length === 0 ? (
+                  <div className="flex flex-col items-center gap-3">
+                    {/* Casillas-hint: N fichas vacías según lo elegido en la ficha (nº de letras).
+                        Ola 32 — tamaño fluido medido del contenedor (mismo tamaño que las fichas
+                        reales, para que el salto al escribir no reacomode el ojo). */}
+                    <div
+                      ref={setPreviewRowEl}
+                      className="flex w-full flex-wrap items-center justify-center gap-3"
+                      aria-hidden="true"
+                    >
+                      {Array.from({ length: count }).map((_, i) => (
+                        <div
+                          key={i}
+                          data-name-tile
+                          className="border-brand-purple/25 flex items-center justify-center rounded-xl border-2 border-dashed bg-white/60"
+                          style={{ width: previewTileSize, height: previewTileSize * 1.18 }}
+                        >
+                          <span
+                            className="text-brand-purple/30 font-display"
+                            style={{ fontSize: Math.round(previewTileSize * 0.32) }}
+                          >
+                            ?
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-brand-muted text-sm">{texts.nombre.vacioHint}</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Descubribilidad del color por letra: barra visible, no un texto perdido.
+                        Ola 28 (owner 2026-09-11, 1.7): con «Sin borde» las fichas no llevan
+                        color → sin hint y fichas no seleccionables (la paleta ya quedó
+                        desactivada abajo; aquí tampoco aplica pintar letra a letra). */}
+                    {withBorder && selectedIndex === null && (
+                      <p className="text-brand-purple-dark mb-3 flex items-center justify-center gap-1.5 text-center text-xs font-semibold">
+                        <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
+                          {texts.nombre.tocaHint}
+                        </span>
+                      </p>
+                    )}
+                    {/* Ola 32 — fichas FLUIDAS: llenan el ancho de la tarjeta (crecen
+                        hasta el tamaño de producción; piso 44px → envuelven en móvil). */}
+                    <div
+                      ref={setPreviewRowEl}
+                      className="flex flex-wrap items-center justify-center gap-3"
+                    >
+                      {letters.map((ch, i) => (
+                        <LetterTile
+                          key={`${ch}-${i}`}
+                          letter={ch}
+                          color={effectiveColors[i]}
+                          imageUrl={activeTiles[ch]?.imageUrl}
+                          size={previewTileSize}
+                          selected={withBorder && selectedIndex === i}
+                          onClick={withBorder ? () => toggleSelected(i) : undefined}
+                          withBorder={withBorder}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
 
-        {/* Ejemplos de arranque (menos fricción) */}
-        {raw.trim() === "" && (
-          <div className="text-brand-muted mt-3 flex flex-wrap items-center gap-2 text-xs">
-            <span>{texts.nombre.pruebaLabel}</span>
-            {examples.map((ex) => (
-              <button
-                key={ex}
-                type="button"
-                onClick={() => {
-                  // Ajusta la cantidad al ejemplo para que quepa completo (no lo corta).
-                  const n = Math.min(config.max, Math.max(config.min, ex.length));
-                  setCount(n);
-                  setRaw(ex.slice(0, n));
-                }}
-                className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 rounded-full border px-3 py-1 font-semibold"
-              >
-                {ex}
-              </button>
-            ))}
-          </div>
-        )}
+                {/* Fila de colores para la letra seleccionada — control compartido.
+                    Con «Sin borde» no aplica (no hay marco de color que pintar). */}
+                {withBorder && selectedIndex !== null && letters[selectedIndex] && (
+                  <SwatchRow letter={letters[selectedIndex]} onPick={setColorForSelected} />
+                )}
+              </div>
 
-        {/* Aviso de letras repetidas (transparencia) */}
-        {repeats.length > 0 && (
-          <p className="text-brand-muted mt-3 text-xs">
-            {(() => {
-              // {lista} se interpola conservando el <span> resaltado (roadmap B1).
-              const parts = splitStudioText(texts.nombre.repetidas, "lista");
-              if (!parts) {
-                return fillStudioText(texts.nombre.repetidas, { lista: repeats.join(" · ") });
-              }
-              return (
-                <>
-                  {parts[0]}
-                  <span className="text-brand-purple-dark font-semibold">
-                    {repeats.join(" · ")}
-                  </span>
-                  {parts[1]}
-                </>
-              );
-            })()}
-          </p>
-        )}
-
-        {/* Avisos amables */}
-        {notices.length > 0 && (
-          <ul className="mt-3 flex flex-wrap gap-2">
-            {notices.map((n) => (
-              <li
-                key={n}
-                className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
-              >
-                {n}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {/* Selector de estilo (tema/ocasión de las ilustraciones) — antes del color.
-            Siempre visible: con themeOptions muestra también los sets vacíos (0 fichas)
-            con el hint de /admin/fichas; sin themeOptions, cae a los estilos con fichas. */}
-        {(themeOptions ?? styles).length > 0 && (
-          <div className="mt-5">
-            <LetterStylePicker
-              styles={(themeOptions ?? styles).map((s) => ({ id: s.id, name: s.name }))}
-              selectedId={styleId}
-              onSelect={setStyleId}
-            />
-            {themeOptions &&
-              styleId &&
-              (themeOptions.find((t) => t.id === styleId)?.tileCount ?? 0) === 0 && (
-                <p className="text-brand-purple-dark/70 mt-2 text-xs">
-                  {texts.nombre.temaVacioHint}
+              {tooShort && letters.length > 0 && (
+                <p className="text-brand-muted mt-3 text-center text-sm">
+                  {fillStudioText(texts.nombre.faltan, { min: config.min })}
                 </p>
               )}
-          </div>
-        )}
+            </div>
+          </section>
 
-        {/* Opción de diseño "Con borde / Sin borde" (mismo precio), espejo del selector del
+          {/* Controles: tarjeta blanca lateral en lg (idioma del StudioSidebar),
+              debajo del lienzo en móvil. */}
+          <aside className="order-2 lg:order-1 lg:w-80 lg:shrink-0">
+            <div className="border-brand-purple/12 rounded-3xl border bg-white p-5 shadow-sm sm:p-6">
+              {/* Input + cantidad de fichas */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label
+                  htmlFor="name-input"
+                  className="text-brand-purple-dark block text-sm font-semibold"
+                >
+                  {texts.nombre.inputLabel}
+                </label>
+                {/* Stepper: cuántas letras (fichas). El campo queda limitado a esta cantidad. */}
+                <div className="border-brand-purple/20 flex items-center gap-1 rounded-full border bg-white p-1">
+                  <button
+                    type="button"
+                    onClick={() => changeCount(-1)}
+                    disabled={count <= config.min}
+                    aria-label={texts.nombre.menosAria}
+                    className="text-brand-purple hover:bg-brand-purple/10 relative flex h-7 w-7 items-center justify-center rounded-full transition before:absolute before:-inset-2 before:content-[''] disabled:opacity-30"
+                  >
+                    <Minus className="h-3.5 w-3.5" />
+                  </button>
+                  <span className="text-brand-purple-dark w-16 text-center text-xs font-semibold tabular-nums">
+                    {count === 1
+                      ? fillStudioText(texts.nombre.contadorUna, { n: count })
+                      : fillStudioText(texts.nombre.contadorMuchas, { n: count })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => changeCount(1)}
+                    disabled={count >= config.max}
+                    aria-label={texts.nombre.masAria}
+                    className="text-brand-purple hover:bg-brand-purple/10 relative flex h-7 w-7 items-center justify-center rounded-full transition before:absolute before:-inset-2 before:content-[''] disabled:opacity-30"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-3">
+                <input
+                  id="name-input"
+                  type="text"
+                  inputMode="text"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  maxLength={config.max}
+                  value={raw}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setRaw(next);
+                    // #11 — antes maxLength={count} tragaba letras en silencio ("MATEO"→"MAT" sin aviso).
+                    // Ahora el tope duro es el máximo REAL del producto y la cantidad de fichas CRECE sola
+                    // hasta ahí a medida que se escribe (nunca encoge → contador y precio quedan en sync).
+                    const typed = normalizeName(next, { ...config, max: config.max }).letters
+                      .length;
+                    setCount((c) => Math.min(config.max, Math.max(config.min, Math.max(c, typed))));
+                  }}
+                  placeholder={
+                    config.language === "es"
+                      ? texts.nombre.placeholderEs
+                      : texts.nombre.placeholderEn
+                  }
+                  className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-turquoise/40 font-display text-brand-purple-dark w-full rounded-2xl border-2 bg-white px-4 py-3 text-2xl tracking-wide uppercase outline-none focus:ring-4"
+                />
+                <span
+                  className={`font-display flex-shrink-0 text-sm font-bold tabular-nums ${
+                    counterOver ? "text-rose-500" : "text-brand-muted"
+                  }`}
+                >
+                  {letters.length}/{count}
+                </span>
+              </div>
+              <p className="text-brand-muted mt-2 text-xs">
+                {fillStudioText(
+                  config.language === "es" ? texts.nombre.ayudaEs : texts.nombre.ayudaEn,
+                  {
+                    min: config.min,
+                    max: config.max,
+                  },
+                )}
+              </p>
+
+              {/* Ejemplos de arranque (menos fricción) */}
+              {raw.trim() === "" && (
+                <div className="text-brand-muted mt-3 flex flex-wrap items-center gap-2 text-xs">
+                  <span>{texts.nombre.pruebaLabel}</span>
+                  {examples.map((ex) => (
+                    <button
+                      key={ex}
+                      type="button"
+                      onClick={() => {
+                        // Ajusta la cantidad al ejemplo para que quepa completo (no lo corta).
+                        const n = Math.min(config.max, Math.max(config.min, ex.length));
+                        setCount(n);
+                        setRaw(ex.slice(0, n));
+                      }}
+                      className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 rounded-full border px-3 py-1 font-semibold"
+                    >
+                      {ex}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Aviso de letras repetidas (transparencia) */}
+              {repeats.length > 0 && (
+                <p className="text-brand-muted mt-3 text-xs">
+                  {(() => {
+                    // {lista} se interpola conservando el <span> resaltado (roadmap B1).
+                    const parts = splitStudioText(texts.nombre.repetidas, "lista");
+                    if (!parts) {
+                      return fillStudioText(texts.nombre.repetidas, { lista: repeats.join(" · ") });
+                    }
+                    return (
+                      <>
+                        {parts[0]}
+                        <span className="text-brand-purple-dark font-semibold">
+                          {repeats.join(" · ")}
+                        </span>
+                        {parts[1]}
+                      </>
+                    );
+                  })()}
+                </p>
+              )}
+
+              {/* Avisos amables */}
+              {notices.length > 0 && (
+                <ul className="mt-3 flex flex-wrap gap-2">
+                  {notices.map((n) => (
+                    <li
+                      key={n}
+                      className="rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
+                    >
+                      {n}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Selector de estilo (tema/ocasión de las ilustraciones) — antes del color.
+            Siempre visible: con themeOptions muestra también los sets vacíos (0 fichas)
+            con el hint de /admin/fichas; sin themeOptions, cae a los estilos con fichas. */}
+              {(themeOptions ?? styles).length > 0 && (
+                <div className="mt-5">
+                  <LetterStylePicker
+                    styles={(themeOptions ?? styles).map((s) => ({ id: s.id, name: s.name }))}
+                    selectedId={styleId}
+                    onSelect={setStyleId}
+                  />
+                  {themeOptions &&
+                    styleId &&
+                    (themeOptions.find((t) => t.id === styleId)?.tileCount ?? 0) === 0 && (
+                      <p className="text-brand-purple-dark/70 mt-2 text-xs">
+                        {texts.nombre.temaVacioHint}
+                      </p>
+                    )}
+                </div>
+              )}
+
+              {/* Opción de diseño "Con borde / Sin borde" (mismo precio), espejo del selector del
             set de letras: se refleja en las fichas del preview, en el PNG de producción y en
             la vista 3D (WYSIWYG). El selector SIEMPRE queda habilitado: es la vía para
             reactivar los colores.
             Ola 26 (owner 2026-09-09) — va ARRIBA de «Elige los colores»: primero se define
             el borde y debajo queda la paleta que se desactiva con «Sin borde» (mismo orden
             que la barra de estilo del Estudio de foto, Ola 24). */}
-        <div className="mt-5">
-          <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
-            {texts.nombre.bordeTitulo}
-            <span className="text-brand-muted ml-2 text-xs font-normal">
-              {texts.nombre.bordeHint}
-            </span>
-          </p>
-          <div
-            role="radiogroup"
-            aria-label={texts.nombre.bordeTitulo}
-            className="flex flex-wrap gap-2"
-          >
-            <button
-              type="button"
-              role="radio"
-              aria-checked={withBorder}
-              onClick={() => setWithBorder(true)}
-              className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
-                withBorder
-                  ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
-                  : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
-              }`}
-            >
-              <span aria-hidden="true">◻️</span>
-              {texts.nombre.bordeCon}
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={!withBorder}
-              onClick={() => setWithBorder(false)}
-              className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
-                !withBorder
-                  ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
-                  : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
-              }`}
-            >
-              <span aria-hidden="true">⬜</span>
-              {texts.nombre.bordeSin}
-            </button>
-          </div>
-        </div>
+              <div className="mt-5">
+                <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
+                  {texts.nombre.bordeTitulo}
+                  <span className="text-brand-muted ml-2 text-xs font-normal">
+                    {texts.nombre.bordeHint}
+                  </span>
+                </p>
+                <div
+                  role="radiogroup"
+                  aria-label={texts.nombre.bordeTitulo}
+                  className="flex flex-wrap gap-2"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={withBorder}
+                    onClick={() => setWithBorder(true)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
+                      withBorder
+                        ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                        : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
+                    }`}
+                  >
+                    <span aria-hidden="true">◻️</span>
+                    {texts.nombre.bordeCon}
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={!withBorder}
+                    onClick={() => setWithBorder(false)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
+                      !withBorder
+                        ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                        : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
+                    }`}
+                  >
+                    <span aria-hidden="true">⬜</span>
+                    {texts.nombre.bordeSin}
+                  </button>
+                </div>
+              </div>
 
-        {/* Paleta de colores (tema de las fichas) — control compartido con Set de letras.
+              {/* Paleta de colores (tema de las fichas) — control compartido con Set de letras.
             Lucy 2026-09-09 — misma regla que el set de letras: con «Sin borde» las fichas
             no llevan el marco de color, así que la sección se DESACTIVA (visible + inerte,
             con el porqué) hasta volver a «Con borde». El estado de colores (useLetterColors)
             nunca se resetea al desactivar. */}
-        <div className="mt-5">
-          <ThemePicker
-            themeId={themeId}
-            customized={customized}
-            onApply={applyTheme}
-            disabled={!withBorder}
-            disabledHint={texts.nombre.bordeSinColoresHint}
-          />
-        </div>
-
-        {/* Preview de la tira de fichas (cada una seleccionable para pintarla) */}
-        <div className="bg-brand-cream/60 mt-5 rounded-2xl p-5">
-          {letters.length === 0 ? (
-            <div className="flex flex-col items-center gap-3">
-              {/* Casillas-hint: N fichas vacías según lo elegido en la ficha (nº de letras). */}
-              <div className="flex flex-wrap items-center justify-center gap-3" aria-hidden="true">
-                {Array.from({ length: count }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="border-brand-purple/25 flex h-[72px] w-[62px] items-center justify-center rounded-xl border-2 border-dashed bg-white/60"
-                  >
-                    <span className="text-brand-purple/30 font-display text-xl">?</span>
-                  </div>
-                ))}
+              <div className="mt-5">
+                <ThemePicker
+                  themeId={themeId}
+                  customized={customized}
+                  onApply={applyTheme}
+                  disabled={!withBorder}
+                  disabledHint={texts.nombre.bordeSinColoresHint}
+                />
               </div>
-              <p className="text-brand-muted text-sm">{texts.nombre.vacioHint}</p>
-            </div>
-          ) : (
-            <>
-              {/* Descubribilidad del color por letra: barra visible, no un texto perdido.
-                  Ola 28 (owner 2026-09-11, 1.7): con «Sin borde» las fichas no llevan
-                  color → sin hint y fichas no seleccionables (la paleta ya quedó
-                  desactivada arriba; aquí tampoco aplica pintar letra a letra). */}
-              {withBorder && selectedIndex === null && (
-                <p className="text-brand-purple-dark mb-3 flex items-center justify-center gap-1.5 text-center text-xs font-semibold">
-                  <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
-                    {texts.nombre.tocaHint}
-                  </span>
+
+              {/* Ola 32 — el preview de la tira de fichas se movió a la tarjeta-unidad
+            de la derecha (el lienzo); acá quedan solo los controles. */}
+
+              {error && (
+                <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-center text-sm text-rose-700">
+                  {error}
                 </p>
               )}
-              <div className="flex flex-wrap items-center justify-center gap-3">
-                {letters.map((ch, i) => (
-                  <LetterTile
-                    key={`${ch}-${i}`}
-                    letter={ch}
-                    color={effectiveColors[i]}
-                    imageUrl={activeTiles[ch]?.imageUrl}
-                    selected={withBorder && selectedIndex === i}
-                    onClick={withBorder ? () => toggleSelected(i) : undefined}
-                    withBorder={withBorder}
-                  />
-                ))}
-              </div>
-            </>
-          )}
 
-          {/* Fila de colores para la letra seleccionada — control compartido.
-              Con «Sin borde» no aplica (no hay marco de color que pintar). */}
-          {withBorder && selectedIndex !== null && letters[selectedIndex] && (
-            <SwatchRow letter={letters[selectedIndex]} onPick={setColorForSelected} />
-          )}
-        </div>
-
-        {tooShort && letters.length > 0 && (
-          <p className="text-brand-muted mt-3 text-center text-sm">
-            {fillStudioText(texts.nombre.faltan, { min: config.min })}
-          </p>
-        )}
-
-        {error && (
-          <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-center text-sm text-rose-700">
-            {error}
-          </p>
-        )}
-
-        {/* CTA */}
-        <div className="mt-6 flex flex-col items-center gap-2">
-          {/* NOM2 — ver el nombre deletreado con imanes en un tablero magnético 3D */}
-          {letters.length > 0 && (
-            <button
-              type="button"
-              onClick={handleOpen3D}
-              disabled={building3D}
-              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/5 mb-1 inline-flex items-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold transition disabled:opacity-60"
-            >
-              <Box className="h-4 w-4" />
-              {building3D ? texts.comun.armando : texts.escenas.nombreBtnTablero}
-            </button>
-          )}
-          {/* El CTA ya no agrega directo: abre la vista previa. El sr-only lo deja explícito para
+              {/* CTA */}
+              <div className="mt-6 flex flex-col items-center gap-2">
+                {/* NOM2 — ver el nombre deletreado con imanes en un tablero magnético 3D */}
+                {letters.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleOpen3D}
+                    disabled={building3D}
+                    className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/5 mb-1 inline-flex items-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold transition disabled:opacity-60"
+                  >
+                    <Box className="h-4 w-4" />
+                    {building3D ? texts.comun.armando : texts.escenas.nombreBtnTablero}
+                  </button>
+                )}
+                {/* El CTA ya no agrega directo: abre la vista previa. El sr-only lo deja explícito para
               lectores de pantalla sin alargar el botón (el texto visible sigue contenido en el
               nombre accesible — WCAG 2.5.3). */}
-          <button
-            type="button"
-            onClick={handleShowPreview}
-            disabled={!valid || preparingPreview || submitting}
-            className="bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {preparingPreview || submitting ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Sparkles className="h-5 w-5" />
-            )}
-            {preparingPreview
-              ? texts.comun.preparando
-              : submitting
-                ? texts.comun.agregando
-                : texts.comun.listo}
-            <span className="sr-only">{texts.nombre.listoSr}</span>
-          </button>
-          {/* Precio EN VIVO por ficha — lo que ves es lo que pagas (igual que el carrito). */}
-          {letters.length > 0 ? (
-            <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
-              {(() => {
-                // {total} se interpola conservando el <span> morado del precio (roadmap B1).
-                const parts = splitStudioText(texts.nombre.precioVivo, "total");
-                const fichas =
-                  letters.length === 1 ? texts.exportar.piezaFicha : texts.exportar.piezaFichas;
-                if (!parts) {
-                  return fillStudioText(texts.nombre.precioVivo, {
-                    n: letters.length,
-                    fichas,
-                    precio: formatCOP(pricePerTile),
-                    total: formatCOP(liveTotal),
-                  });
-                }
-                return (
-                  <>
-                    {fillStudioText(parts[0], {
-                      n: letters.length,
-                      fichas,
+                <button
+                  type="button"
+                  onClick={handleShowPreview}
+                  disabled={!valid || preparingPreview || submitting}
+                  className="bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {preparingPreview || submitting ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-5 w-5" />
+                  )}
+                  {preparingPreview
+                    ? texts.comun.preparando
+                    : submitting
+                      ? texts.comun.agregando
+                      : texts.comun.listo}
+                  <span className="sr-only">{texts.nombre.listoSr}</span>
+                </button>
+                {/* Precio EN VIVO por ficha — lo que ves es lo que pagas (igual que el carrito). */}
+                {letters.length > 0 ? (
+                  <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
+                    {(() => {
+                      // {total} se interpola conservando el <span> morado del precio (roadmap B1).
+                      const parts = splitStudioText(texts.nombre.precioVivo, "total");
+                      const fichas =
+                        letters.length === 1
+                          ? texts.exportar.piezaFicha
+                          : texts.exportar.piezaFichas;
+                      if (!parts) {
+                        return fillStudioText(texts.nombre.precioVivo, {
+                          n: letters.length,
+                          fichas,
+                          precio: formatCOP(pricePerTile),
+                          total: formatCOP(liveTotal),
+                        });
+                      }
+                      return (
+                        <>
+                          {fillStudioText(parts[0], {
+                            n: letters.length,
+                            fichas,
+                            precio: formatCOP(pricePerTile),
+                          })}
+                          <span className="text-brand-purple">{formatCOP(liveTotal)}</span>
+                          {parts[1]}
+                        </>
+                      );
+                    })()}
+                  </span>
+                ) : (
+                  <span className="text-brand-muted text-sm font-semibold tabular-nums">
+                    {fillStudioText(texts.nombre.precioHint, {
                       precio: formatCOP(pricePerTile),
+                      n: count,
+                      total: formatCOP(pricePerTile * count),
                     })}
-                    <span className="text-brand-purple">{formatCOP(liveTotal)}</span>
-                    {parts[1]}
-                  </>
-                );
-              })()}
-            </span>
-          ) : (
-            <span className="text-brand-muted text-sm font-semibold tabular-nums">
-              {fillStudioText(texts.nombre.precioHint, {
-                precio: formatCOP(pricePerTile),
-                n: count,
-                total: formatCOP(pricePerTile * count),
-              })}
-            </span>
-          )}
+                  </span>
+                )}
+              </div>
+            </div>
+          </aside>
         </div>
       </div>
 
@@ -909,6 +1021,6 @@ export function NameEditor({
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
