@@ -175,10 +175,50 @@ las filas `DesignAsset`/`Design`. Igual para los `DesignAsset` anónimos **huér
 usados). Implementación: `features/personalization/retention-service.ts` (`purgeAbandonedAnonymousDesigns`)
 vía el cron `/api/cron/purge-anon-designs` (agendado por `pg_cron`, ver [OPERATIONS.md](OPERATIONS.md)).
 
-**Qué NO toca:** diseños de clientes **logueados** (los rige el ciclo de vida de la cuenta / supresión a
-pedido), ni `READY`/`USED_IN_ORDER`/`ARCHIVED`, ni nada referenciado por un carrito o pedido (esos tienen
-finalidad vigente). El borrado de bytes es **best-effort con reintento**: si la remoción del bucket falla,
-las filas NO se borran → el siguiente ciclo reintenta (nunca deja bytes sin registro en DB).
+**Qué NO toca la pasada anónima:** `READY`/`USED_IN_ORDER`/`ARCHIVED`, ni nada referenciado por un
+carrito vivo o un pedido (esos tienen finalidad vigente). El borrado de bytes es **best-effort con
+reintento**: si la remoción del bucket falla, las filas NO se borran → el siguiente ciclo reintenta
+(nunca deja bytes sin registro en DB).
+
+### Retención de DRAFTs idle de clientes logueados (2026-09-18)
+
+La política anterior excluía TODO diseño con `customerId` ("lo rige el ciclo de vida de la cuenta"): un
+boceto de una cuenta viva conservaba sus fotos crudas **indefinidamente**, aunque nadie lo tocara en
+años — misma violación de temporalidad que la de los anónimos. Desde 2026-09-18, un diseño **DRAFT de
+cliente logueado sin actividad ≥ 90 días** (`PURGE_IDLE_DESIGN_AFTER_DAYS`, env var homónima opcional)
+y sin carrito vivo / pedido / cotización vigente se purga igual que el anónimo (misma función de
+borrado seguro). El plazo es más laxo que el anónimo (30d) porque el cliente puede volver a su cuenta.
+**NO toca** `READY` (cotizado o no), `USED_IN_ORDER` (ver la política post-entrega de abajo) ni
+`ARCHIVED` (decisión explícita del titular; lo cubre la supresión de cuenta). Corre en la misma
+corrida del cron `/api/cron/purge-anon-designs` (`purgeIdleCustomerDesigns`).
+
+### Retención POST-ENTREGA de fotos y renders de producción (2026-09-18)
+
+Cuando la compra SÍ se concreta, la finalidad de las fotos crudas (`customer-uploads`) y de los renders
+300 DPI (`production-assets`) era producir y entregar el pedido. Cumplida —y vencida la ventana
+operativa de reposición— no hay finalidad que justifique conservarlos: un pedido puede dejar ~57 MB y
+el plan de Supabase tiene 1 GB de Storage.
+
+**Política:** un diseño `USED_IN_ORDER` cuya orden está **DELIVERED desde ≥ 90 días**
+(`PURGE_DELIVERED_DESIGN_AFTER_DAYS`, anclado a `Order.deliveredAt`, env var homónima opcional) se
+depura así (`features/personalization/retention-delivered.ts`, cron `/api/cron/purge-delivered-designs`,
+pg_cron migración 035):
+
+- **Se borran los bytes**: fotos crudas del bucket privado `customer-uploads` y renders de
+  `production-assets` (`productionUrls[]`, el legacy `productionUrl` y el área de paso `_client/`).
+  Las filas `DesignAsset` se borran con ellos (su única finalidad era apuntar a los bytes; la
+  evidencia de consentimiento de derechos de imagen se conserva a nivel pedido en
+  `Order.contentRightsAcceptedAt`).
+- **Se conservan**: `previewUrl` (el preview que el cliente ve en su pedido), `canvasData`, la fila
+  `Design` y el **snapshot inmutable del OrderItem** (`customDesign` + `designAssetUrl` + metadata) —
+  historial del pedido y retención fiscal DIAN. Los punteros a bytes borrados dentro del snapshot
+  quedan muertos y la UI de admin ya lo tolera.
+- **Exclusiones (reimpresiones y post-venta)**: no se purga mientras alguna orden del diseño siga en
+  curso o recién entregada, ni con **retracto abierto** (PENDING/APPROVED/RECEIVED — Ley 1480 art. 47)
+  ni **garantía abierta** (PENDING/IN_REVIEW/APPROVED — un remedio REPLACE reimprime desde
+  `productionUrls`).
+- **Idempotencia**: el diseño queda marcado con `Design.purgedAt` solo si TODOS los bytes se borraron;
+  si Storage falla, no se marca y el próximo ciclo reintenta.
 
 ### Retención de logs de eventos con PII (2026-08-29)
 
@@ -604,6 +644,8 @@ No usamos cookies de idioma/tema ni un request-id en cookie (el `X-Request-Id` v
 | Exportación de datos self-service                                | Pendiente (hoy: canal manual `habeas-data@`)                                                     | ✅ Sí           |
 | Eliminación de cuenta self-service (anonimización + soft-delete) | ✅ Implementado en `/mi-cuenta/seguridad → Eliminar mi cuenta`                                   | ✅ Sí           |
 | Purga por retención de logs con PII (`purge-event-logs`)         | ✅ Implementado (90/180 días; desde 2026-09-12 también Notification leídas >90d y WebVital >35d) | ✅ Sí           |
+| Purga de fotos anónimas abandonadas (`purge-anon-designs`)       | ✅ Implementado (DRAFT anónimos ≥30d; desde 2026-09-18 también DRAFT idle de logueados ≥90d)     | ✅ Sí           |
+| Purga post-entrega de fotos/renders (`purge-delivered-designs`)  | ✅ Implementado (DELIVERED ≥90d, excluye retracto/garantía abierta; conserva preview + snapshot) | ✅ Sí           |
 | Flujo de retracto end-to-end                                     | ✅ Implementado (`/mi-cuenta/pedidos/[number]` + `/admin/retractos`)                             | ✅ Sí           |
 | Flujo de garantía                                                | ✅ Implementado (`/mi-cuenta/pedidos/[number]` + `/admin/garantias`)                             | ✅ Sí           |
 | Reporte de incidente a SIC ante brecha (procedimiento)           | Documentar en Fase 7                                                                             | ✅ Sí           |

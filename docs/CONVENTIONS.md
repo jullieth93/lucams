@@ -680,20 +680,22 @@ model OrderItem {
 
 ## DB — retention y archival
 
-Implementado hoy (cron `/api/cron/purge-event-logs` diario 03:00 y `/api/cron/purge-anon-designs` 08:00, más los cleanups SQL puros de la migración `00000000000012`):
+Implementado hoy (crons `/api/cron/purge-event-logs` diario 03:00, `/api/cron/purge-anon-designs` 08:00 y `/api/cron/purge-delivered-designs` 09:00, más los cleanups SQL puros de la migración `00000000000012`):
 
-| Datos                                     | Retención             | Mecanismo                                                                                                            |
-| ----------------------------------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `EmailEvent` (contiene email del cliente) | 180 días              | `purgeExpiredEventLogs` (`features/observability/event-log-retention.ts`) — Ley 1581 minimización                    |
-| `WebhookEvent` (payload crudo con PII)    | 180 días              | Ídem                                                                                                                 |
-| `ErrorLog` / `ErrorReport`                | 90 días               | Ídem (F-6, auditoría 2026-08-24; `ErrorReport` se purga por `lastSeenAt`: un error que sigue ocurriendo NO se borra) |
-| `Design` anónimo abandonado               | 30 días               | `purgeAbandonedAnonymousDesigns` (`features/personalization/retention-service.ts`)                                   |
-| `Quote` cerrada                           | 90 días de gracia     | Ídem (`PURGE_AFTER_QUOTE_CLOSED_DAYS`)                                                                               |
-| `Quote` abierta sin movimiento            | 365 días              | Ídem (`PURGE_STALE_QUOTE_AFTER_DAYS`)                                                                                |
-| `rate_limit_buckets`                      | 1 día tras la ventana | `rate_limit_cleanup` (pg_cron, SQL puro)                                                                             |
-| `StockReservation` expiradas              | Inmediato             | `stock_reservation_cleanup` (pg_cron, SQL puro) — sin consumidores hoy (ADR-014 diferida)                            |
-| `Customer` borrado (PII)                  | Inmediato             | Anonimización + soft-delete al solicitar la baja (`features/account/delete-service.ts`)                              |
-| Logs Vercel                               | Lo que cubre el plan  | Sin acción (Vercel maneja)                                                                                           |
+| Datos                                      | Retención             | Mecanismo                                                                                                            |
+| ------------------------------------------ | --------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `EmailEvent` (contiene email del cliente)  | 180 días              | `purgeExpiredEventLogs` (`features/observability/event-log-retention.ts`) — Ley 1581 minimización                    |
+| `WebhookEvent` (payload crudo con PII)     | 180 días              | Ídem                                                                                                                 |
+| `ErrorLog` / `ErrorReport`                 | 90 días               | Ídem (F-6, auditoría 2026-08-24; `ErrorReport` se purga por `lastSeenAt`: un error que sigue ocurriendo NO se borra) |
+| `Design` anónimo abandonado                | 30 días               | `purgeAbandonedAnonymousDesigns` (`features/personalization/retention-service.ts`)                                   |
+| `Design` DRAFT de logueado sin actividad   | 90 días               | `purgeIdleCustomerDesigns` (ídem; feedback Lucy 2026-09-18)                                                          |
+| Fotos crudas + renders de pedido entregado | 90 días post-entrega  | `purgeDeliveredDesignAssets` (`retention-delivered.ts`) — excluye retracto/garantía abierta; marca `Design.purgedAt` |
+| `Quote` cerrada                            | 90 días de gracia     | Ídem (`PURGE_AFTER_QUOTE_CLOSED_DAYS`)                                                                               |
+| `Quote` abierta sin movimiento             | 365 días              | Ídem (`PURGE_STALE_QUOTE_AFTER_DAYS`)                                                                                |
+| `rate_limit_buckets`                       | 1 día tras la ventana | `rate_limit_cleanup` (pg_cron, SQL puro)                                                                             |
+| `StockReservation` expiradas               | Inmediato             | `stock_reservation_cleanup` (pg_cron, SQL puro) — sin consumidores hoy (ADR-014 diferida)                            |
+| `Customer` borrado (PII)                   | Inmediato             | Anonimización + soft-delete al solicitar la baja (`features/account/delete-service.ts`)                              |
+| Logs Vercel                                | Lo que cubre el plan  | Sin acción (Vercel maneja)                                                                                           |
 
 > **Política no implementada todavía** (sin cron ni script): archivo de `Order` (5 años, obligación legal) y de `AdminActionLog` (2 años) a storage frío, y particionado de `InventoryLog` si crece. Cuando se implemente, actualizar esta tabla con el mecanismo real.
 

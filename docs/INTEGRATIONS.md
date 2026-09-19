@@ -232,6 +232,30 @@ const channel = supabase
 - **500 MB DB.** Suficiente para todo el dev.
 - **1 GB Storage.** Suficiente para imágenes de prueba; al lanzar migrar a Pro (100 GB).
 
+### Emails de autenticación (SMTP custom + plantillas OTP branded)
+
+Configurado 2026-09-18 en **STG y PRD** vía Management API con
+`scripts/supabase-auth-email-config.mjs` (reejecutable, idempotente):
+
+- **SMTP Resend** (`smtp.resend.com:587`, user `resend`, pass = `RESEND_API_KEY`) —
+  los correos de confirmación/recuperación salen de `Lucams_shop <hola@mail.lucamsshop.com>`
+  (dominio verificado), no de `Supabase Auth <noreply@mail.app.supabase.io>`.
+  OJO: en gotrue el `From` real sale de `smtp_admin_email`, no de `smtp_sender`.
+- **Plantillas branded** en `supabase/auth-templates/{confirmation,recovery}.html`
+  (español, código OTP grande, SIN link — Gmail prefetch). Las de
+  `supabase-local/supabase/templates/` son solo del stack local.
+- **`rate_limit_email_sent` = 30/hora** (estaba en 2 — bloqueaba registros reales).
+
+Para reaplicar o clonar a otro proyecto:
+
+```bash
+SUPABASE_ACCESS_TOKEN=sbp_… RESEND_API_KEY=re_… \
+  node scripts/supabase-auth-email-config.mjs --ref <project-ref>
+```
+
+Verificado end-to-end 2026-09-19 (UTC): signup real en STG y PRD → correo entregado
+con remitente y asunto branded (log de Resend).
+
 ---
 
 ## 4. Resend (email)
@@ -504,20 +528,21 @@ ADR-017 (2026-05-09) decidió `pgmq` + `pg_cron` con consumidores Edge Function.
 - **Auth del endpoint:** cada route compara el header `x-cron-secret` contra `CRON_SECRET` (env) con `timingSafeEqual`; 401 si falta o no coincide. No se acepta `?secret=` (queda en logs).
 - **Observabilidad:** cada cron registra heartbeat (`recordCronHeartbeat` — dead-man switch supervisado por `/api/health/crons`), captura errores en `ErrorLog` y notifica el FALLO al centro de notificaciones admin (`notifyCronFailure`). Los éxitos no se registran (anti-ruido).
 
-### Jobs activos (9 HTTP + 1 SQL puro)
+### Jobs activos (10 HTTP + 1 SQL puro)
 
-| Job pg_cron                    | Endpoint                          | Schedule (UTC) | Qué hace                                                                           |
-| ------------------------------ | --------------------------------- | -------------- | ---------------------------------------------------------------------------------- |
-| `lucams-alerts`                | `/api/cron/alerts`                | `*/5 * * * *`  | Evalúa alertas operativas (webhooks stuck, SLO, errores, bounce rate, backup)      |
-| `lucams-daily-summary`         | `/api/cron/daily-summary`         | `0 13 * * *`   | Resumen diario del negocio (8am Colombia)                                          |
-| `lucams-review-request`        | `/api/cron/review-request`        | `0 17 * * *`   | Emails de solicitud de reseña (~7 días post-entrega)                               |
-| `lucams-cart-recovery`         | `/api/cron/cart-recovery`         | `0 * * * *`    | Recordatorio de carritos abandonados ≥4h (un solo envío)                           |
-| `lucams-back-in-stock`         | `/api/cron/back-in-stock`         | `*/30 * * * *` | Avisos "avísame cuando vuelva"                                                     |
-| `lucams-purge-anon-designs`    | `/api/cron/purge-anon-designs`    | `0 8 * * *`    | Purga de diseños anónimos vencidos (retención)                                     |
-| `lucams-purge-event-logs`      | `/api/cron/purge-event-logs`      | `0 3 * * *`    | Purga diaria de EventLog (retención)                                               |
-| `lucams-cms-publish-scheduled` | `/api/cron/cms-publish-scheduled` | `*/5 * * * *`  | Publicación programada de contenido CMS                                            |
-| `lucams-expire-pending-orders` | `/api/cron/expire-pending-orders` | `23 * * * *`   | Auto-cancela pedidos Wompi en PENDING_PAYMENT > 24h (N-12, migración 032)          |
-| `rate_limit_cleanup` (SQL)     | — (SQL puro en DB)                | `*/15 * * * *` | Borra buckets de rate limit > 1 día (migración 012; es el único job SQL que queda) |
+| Job pg_cron                      | Endpoint                            | Schedule (UTC) | Qué hace                                                                                        |
+| -------------------------------- | ----------------------------------- | -------------- | ----------------------------------------------------------------------------------------------- |
+| `lucams-alerts`                  | `/api/cron/alerts`                  | `*/5 * * * *`  | Evalúa alertas operativas (webhooks stuck, SLO, errores, bounce rate, backup)                   |
+| `lucams-daily-summary`           | `/api/cron/daily-summary`           | `0 13 * * *`   | Resumen diario del negocio (8am Colombia)                                                       |
+| `lucams-review-request`          | `/api/cron/review-request`          | `0 17 * * *`   | Emails de solicitud de reseña (~7 días post-entrega)                                            |
+| `lucams-cart-recovery`           | `/api/cron/cart-recovery`           | `0 * * * *`    | Recordatorio de carritos abandonados ≥4h (un solo envío)                                        |
+| `lucams-back-in-stock`           | `/api/cron/back-in-stock`           | `*/30 * * * *` | Avisos "avísame cuando vuelva"                                                                  |
+| `lucams-purge-anon-designs`      | `/api/cron/purge-anon-designs`      | `0 8 * * *`    | Purga de diseños anónimos vencidos (retención) + DRAFT idle de logueados (90d)                  |
+| `lucams-purge-delivered-designs` | `/api/cron/purge-delivered-designs` | `0 9 * * *`    | Purga post-entrega: fotos crudas + renders de pedidos DELIVERED ≥90d (retención, migración 035) |
+| `lucams-purge-event-logs`        | `/api/cron/purge-event-logs`        | `0 3 * * *`    | Purga diaria de EventLog (retención)                                                            |
+| `lucams-cms-publish-scheduled`   | `/api/cron/cms-publish-scheduled`   | `*/5 * * * *`  | Publicación programada de contenido CMS                                                         |
+| `lucams-expire-pending-orders`   | `/api/cron/expire-pending-orders`   | `23 * * * *`   | Auto-cancela pedidos Wompi en PENDING_PAYMENT > 24h (N-12, migración 032)                       |
+| `rate_limit_cleanup` (SQL)       | — (SQL puro en DB)                  | `*/15 * * * *` | Borra buckets de rate limit > 1 día (migración 012; es el único job SQL que queda)              |
 
 > Fuera de pg_cron: el **backup diario a R2** corre en GitHub Actions (`backup.yml`) y reporta su
 > éxito con `POST /api/cron/backup-heartbeat` tras cada corrida (upsert del latido que leen la
@@ -616,6 +641,26 @@ curl https://lucamsshop.com/api/cms/settings?category=contact
   ]
 }
 ```
+
+**Emails de contacto/legal (Fase 3C, 2026-09-18).** Los correos que aparecen en las
+páginas legales y de contacto son settings de la categoría `CONTACT`, editables desde
+«Ajustes del sitio» (`/admin/contenido/paginas/global`):
+
+| Setting             | Default                      | Dónde aparece                                                           |
+| ------------------- | ---------------------------- | ----------------------------------------------------------------------- |
+| `CONTACT_EMAIL`     | `hola@lucamsshop.com`        | Footer, /contacto, páginas legales, emails transaccionales              |
+| `HABEAS_DATA_EMAIL` | `habeas-data@lucamsshop.com` | Páginas legales (privacidad, hábeas data, cookies, términos), /contacto |
+| `RETRACTO_EMAIL`    | `retracto@lucamsshop.com`    | Páginas legales (términos, devoluciones)                                |
+| `SECURITY_EMAIL`    | `security@lucamsshop.com`    | Página legal de seguridad                                               |
+
+Dentro de los textos legales (`packages/db/legal-content/*.md` y sus fallbacks) los
+correos NO van literales: van como tokens `{{email_contacto}}`, `{{email_habeas_data}}`,
+`{{email_retracto}}` y `{{email_security}}`, que `resolveCmsTokens`
+(`apps/web/lib/cms-tokens.ts`) sustituye en render con el valor del setting (fallback al
+default si no existe). Ojo: el cuerpo ya publicado de un bloque legal manda sobre el
+fallback — si tiene los correos literales, hay que republicarlo (desde
+`/admin/contenido` o con un script de publicación que lea el `.md` canónico) para que el
+setting tome efecto.
 
 #### GET `/api/cms/search?q=texto`
 

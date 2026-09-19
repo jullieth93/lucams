@@ -117,10 +117,11 @@ make db-local-stop    # apaga el stack (los datos quedan en los volúmenes)
 - **Emails:** Mailpit en http://localhost:54324 (bandeja de los correos que
   emita la app en dev — registro, recuperación, cotizaciones).
 - **Logs:** Logflare en :54323 (pestaña Logs del Studio).
-- **pg_cron:** instalado + los 10 jobs de la nube (9 HTTP + 1 SQL puro —
+- **pg_cron:** instalado + los 11 jobs de la nube (10 HTTP + 1 SQL puro —
   habilitado con `CREATE EXTENSION pg_cron` en el setup; homologación verificada
   2026-08-05; conteo actualizado 2026-09-12: entró `lucams-expire-pending-orders` (032)
-  y salió `stock_reservation_cleanup` (033)).
+  y salió `stock_reservation_cleanup` (033); 2026-09-19: entró
+  `lucams-purge-delivered-designs` (035)).
 
 **Notas operativas:**
 
@@ -190,17 +191,18 @@ GUARDADA (pg_cron + pg_net) e IDEMPOTENTE.
 `CRON_SECRET` desde **Supabase Vault** (`vault.decrypted_secrets`) y manda el secreto por el header
 `x-cron-secret` (no en la URL). El texto versionado solo contiene la BÚSQUEDA en el vault.
 
-| Job                            | Schedule (UTC) | Endpoint                          | Qué hace                                                                         |
-| ------------------------------ | -------------- | --------------------------------- | -------------------------------------------------------------------------------- |
-| `lucams-alerts`                | `*/5 * * * *`  | `/api/cron/alerts`                | Alertas (5xx en pico, reconciliación, webhooks)                                  |
-| `lucams-daily-summary`         | `0 13 * * *`   | `/api/cron/daily-summary`         | Resumen diario 8am Colombia                                                      |
-| `lucams-review-request`        | `0 17 * * *`   | `/api/cron/review-request`        | Solicitud de reseña 7–30 días post-entrega                                       |
-| `lucams-cart-recovery`         | `0 * * * *`    | `/api/cron/cart-recovery`         | Recordatorio de carrito abandonado (≥4h)                                         |
-| `lucams-back-in-stock`         | `*/30 * * * *` | `/api/cron/back-in-stock`         | "Avísame cuando vuelva"                                                          |
-| `lucams-purge-anon-designs`    | `0 8 * * *`    | `/api/cron/purge-anon-designs`    | Retención: purga diseños DRAFT anónimos (Ley 1581)                               |
-| `lucams-purge-event-logs`      | `0 3 * * *`    | `/api/cron/purge-event-logs`      | Retención: purga logs con PII — EmailEvent + WebhookEvent > 180d (migración 016) |
-| `lucams-cms-publish-scheduled` | `*/5 * * * *`  | `/api/cron/cms-publish-scheduled` | CMS: publica versiones programadas (roadmap C3, e.g. campañas)                   |
-| `lucams-expire-pending-orders` | `23 * * * *`   | `/api/cron/expire-pending-orders` | Expira órdenes WOMPI en PENDING_PAYMENT > 24h (N-12, migración 032)              |
+| Job                              | Schedule (UTC) | Endpoint                            | Qué hace                                                                                        |
+| -------------------------------- | -------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `lucams-alerts`                  | `*/5 * * * *`  | `/api/cron/alerts`                  | Alertas (5xx en pico, reconciliación, webhooks)                                                 |
+| `lucams-daily-summary`           | `0 13 * * *`   | `/api/cron/daily-summary`           | Resumen diario 8am Colombia                                                                     |
+| `lucams-review-request`          | `0 17 * * *`   | `/api/cron/review-request`          | Solicitud de reseña 7–30 días post-entrega                                                      |
+| `lucams-cart-recovery`           | `0 * * * *`    | `/api/cron/cart-recovery`           | Recordatorio de carrito abandonado (≥4h)                                                        |
+| `lucams-back-in-stock`           | `*/30 * * * *` | `/api/cron/back-in-stock`           | "Avísame cuando vuelva"                                                                         |
+| `lucams-purge-anon-designs`      | `0 8 * * *`    | `/api/cron/purge-anon-designs`      | Retención: purga diseños DRAFT anónimos (Ley 1581) + DRAFT idle de logueados (90d, 2026-09-18)  |
+| `lucams-purge-delivered-designs` | `0 9 * * *`    | `/api/cron/purge-delivered-designs` | Retención post-entrega: borra fotos crudas + renders de diseños entregados ≥90d (migración 035) |
+| `lucams-purge-event-logs`        | `0 3 * * *`    | `/api/cron/purge-event-logs`        | Retención: purga logs con PII — EmailEvent + WebhookEvent > 180d (migración 016)                |
+| `lucams-cms-publish-scheduled`   | `*/5 * * * *`  | `/api/cron/cms-publish-scheduled`   | CMS: publica versiones programadas (roadmap C3, e.g. campañas)                                  |
+| `lucams-expire-pending-orders`   | `23 * * * *`   | `/api/cron/expire-pending-orders`   | Expira órdenes WOMPI en PENDING_PAYMENT > 24h (N-12, migración 032)                             |
 
 > **STG difiere (2026-08-05): los 5 jobs que envían email quedaron DESAGENDADOS en stg**
 > (`lucams-alerts`, `lucams-daily-summary`, `lucams-review-request`, `lucams-cart-recovery`,
@@ -229,7 +231,7 @@ select vault.create_secret('<CRON_SECRET real>',    'cron_secret');
 select vault.create_secret('<VERCEL_BYPASS_TOKEN>', 'cron_vercel_bypass');
 ```
 
-Luego re-aplicar las migraciones con jobs (la 015 agenda 6; la 016 y la 021 agregan 1 cada una; la 032 agenda `lucams-expire-pending-orders` → los 9 HTTP + 1 SQL puro). Para rotar el secreto: `vault.update_secret`.
+Luego re-aplicar las migraciones con jobs (la 015 agenda 6; la 016 y la 021 agregan 1 cada una; la 032 agenda `lucams-expire-pending-orders`; la 035 agenda `lucams-purge-delivered-designs` → los 10 HTTP + 1 SQL puro). Para rotar el secreto: `vault.update_secret`.
 Sin los secretos, los jobs quedan agendados pero fallan en runtime hasta setearlos.
 
 > **Tercer secreto `cron_vercel_bypass` (migración 023, 2026-08-01):** los previews de Vercel tienen

@@ -592,13 +592,14 @@ Las migraciones `00000000000012/015/016/021/023/032` agendan los jobs (idempoten
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  pg_cron (Supabase) — jobs versionados en migraciones     │
-│  HTTP (015/016/021/023/032, header x-cron-secret desde Vault):│
+│  HTTP (015/016/021/023/032/035, header x-cron-secret desde Vault):│
 │    lucams-alerts (*/5min)        → /api/cron/alerts       │
 │    lucams-daily-summary (13:00)  → /api/cron/daily-summary│
 │    lucams-review-request (17:00) → /api/cron/review-request│
 │    lucams-cart-recovery (c/1h)   → /api/cron/cart-recovery│
 │    lucams-back-in-stock (*/30min)→ /api/cron/back-in-stock│
 │    lucams-purge-anon-designs (08:00) → /api/cron/purge-anon-designs│
+│    lucams-purge-delivered-designs (09:00) → /api/cron/purge-delivered-designs│
 │    lucams-purge-event-logs (03:00)   → /api/cron/purge-event-logs  │
 │    lucams-cms-publish-scheduled (*/5min) → /api/cron/cms-publish-scheduled│
 │    lucams-expire-pending-orders (c/1h, min 23) → /api/cron/expire-pending-orders│
@@ -687,6 +688,8 @@ Cinco buckets con políticas distintas (detalle exhaustivo en [`SECURITY.md` § 
 - Nombres de archivo aleatorios (UUID) para evitar enumeración.
 - Allowlist de extensiones: `jpg`, `png`, `webp`, `avif`; el bucket `customer-uploads` acepta además `heic`/`heif` (fotos de iPhone, decodificadas en server con `heic-decode`).
 - Tamaño máximo: 10 MB por imagen original en `customer-uploads`; el render server-side a 300 DPI vive en `production-assets`.
+- **Optimización de catálogo (2026-09-18)**: toda imagen pública (`product-images`, `cms-media`) se normaliza en server con sharp a **WebP q82, borde largo ≤2000 px** antes de subir (`optimizeCatalogImage` en `lib/storage.ts`; fail-closed: si no decodifica, se rechaza). Las fotos del Estudio se comprimen en el navegador a JPEG ≤2400 px cuando superan 2 MB (`client-image-compress.ts`).
+- **Retención (Ley 1581, temporalidad)**: `customer-uploads` y `production-assets` se purgan por cron — DRAFT anónimos ≥30d y DRAFT idle de logueados ≥90d (`purge-anon-designs`), y fotos crudas + renders de pedidos **DELIVERED ≥90d** sin retracto/garantía abierto (`purge-delivered-designs`, marca `Design.purgedAt`; conserva preview, canvas y snapshot del pedido). Política completa en [`COMPLIANCE.md`](./COMPLIANCE.md).
 
 ---
 
