@@ -217,6 +217,21 @@ la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia veri
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
 
+## Sesión — 2026-09-18 (4) — Release a STG del paquete responsive (ADR-103/104)
+
+- **Desplegado a STG** (push a `develop`, commits `4ed8887`/`73b66e3`/`e84848d` + 2 fixes de
+  gate e2e): preview de develop sirviendo el paquete responsive completo (estudios Olas
+  31-34, admin tablet, PDP variante por defecto, form admin con feedback, CSP Toolbar,
+  autoplay por visibilidad, RUM con `WebVital.target`). Migración `WebVital.target` aplicada
+  en STG. Smoke en vivo: home/catálogo/estudios 200, /admin → login.
+- **Lección CI (2 rojos del propio gate nuevo):** el audit de storefront asumía catálogo
+  activo (CI siembra placeholders `isActive:false`) → fixture efímera + ruta /estudio
+  condicional; y un shorthand `categoryId` sin variable rompió typecheck en CI (local no lo
+  había re-corrido tras el edit — lección: typecheck después de CADA edit, no solo al final).
+- CI verde total en `5b20fd9` (7/7 jobs, incl. el gate responsive storefront en PR).
+- **Pendiente de Lucy:** validación funcional en STG (celular/tablet/PC) — es el criterio
+  de cierre de la auditoría §E para liberar a PRD.
+
 ## Sesión — 2026-09-18 (3) — Ronda 2 responsive: tamaños por ancho objetivo (Ola 34), variante por defecto PDP, fix guardado admin, RUM con elemento del INP (ADR-104)
 
 - **Validación del owner sobre la ronda 1:** spec de tamaños medido con el zoom ("100% =
