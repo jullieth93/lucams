@@ -18,6 +18,12 @@
   ADR-097 en DECISIONS.md y su parte operativa en el changelog 2026-09-12 de OPERATIONS.md
   (crons 9 HTTP + 1 SQL, migraciones 032/033 + 2 Prisma, saneamiento LOCAL/STG, split de seeds y
   env-guard fail-closed).
+- **`2026-09-18-responsive-ux-estudios-admin.md`** — Auditoría UX responsive de toda la
+  solución (validación del owner en móvil/tablet/desktop: plantilla de Estudio unificada con
+  referencia Separadores + admin en tablet + avisos Vercel INP/CSP), **remediada el
+  2026-09-18**. Sus decisiones quedaron como **ADR-103** en DECISIONS.md y sus gates de
+  overflow horizontal cableados en CI (storefront en PR, admin en nightly). Pendiente solo la
+  verificación RUM de INP en Speed Insights tras el despliegue para su consolidación.
 - Post-mortem de incidente activo: `docs/incidents/2026-05-09-secret-key-leak.md` (fuera de
   esta carpeta, enlazado desde SECURITY.md).
 

@@ -3433,3 +3433,43 @@ intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar
 **Consecuencia:** la homologación deja de ser un evento y se vuelve un procedimiento verificable (scripts versionados + criterio de cero divergencias vivas); PRD quedó liberado con todo el paquete (develop = production); las escenas 3D tienen proporción física testeada; y la clase de bug "plantilla de otra composición" queda estructuralmente imposible donde haya marcador.
 
 ---
+
+## ADR-103 — Plantilla de Estudio unificada y adaptativa (dimensionar por ancho + tarjeta-unidad universal), admin responsive en tablet, CSP de la Vercel Toolbar y autoplay por visibilidad
+
+**Fecha:** 2026-09-18
+**Estado:** ✅ Aceptada (validación UX responsive del owner en web/tablet/móvil; auditoría y remediación completa en `docs/audits/2026-09-18-responsive-ux-estudios-admin.md`)
+
+**Contexto:** el owner validó toda la solución en móvil/tablet/desktop y fijó el estudio de Separadores de Libros como referencia ("el canvas se distribuye correcto al ancho y tiene un fondo que recubre el pack"); fotoimanes y los editores de Juegos y Aprendizaje se veían angostos, sin tarjeta y con chrome inconforme. La auditoría automatizada encontró además overflow horizontal real en 5 combinaciones slug/ancho (768-1280px), tablas admin con scroll interno en tablet (640-1023px), el AdminTabBar sticky estructuralmente roto, y dos avisos de Vercel: INP alto en el `<main>` de la home y CSP sin dominios de la Toolbar.
+
+**Decisión:**
+① **El lienzo se dimensiona por ANCHO; el alto lo absorbe el scroll de página.** El marco de 82vh solo protege productos de UNA fila (el bug original de stages gigantes); en grids multi-fila manda el ancho con caps por slot. Los pisos de slot NUNCA desbordan: si `minSize×cols + gaps` no cabe, se reducen columnas (`fitColsToFloor`). Cap de contenedor 1280→1600 (`STUDIO_MAX_WIDTH` compartido) y `min-w-0` estructural en la sección del lienzo (sin él, el ResizeObserver fijaba el ancho estirado por flex).
+② **UNA tarjeta-unidad para todo el Estudio.** El patrón de separadores (`bg-white/70` + borde de marca + progreso) envuelve TODOS los modos: agrupado, packs de fotoimanes incluido UN solo pack (sin rótulo ni pager cuando hay 1), y modo plano. Los editores de Nombre y Abecedario/Vocales dejan la columna fija 768px y pasan al mismo lienzo fluido con header sticky unificado (`studio-simple-header`), controles laterales en lg+, lienzo primero en móvil y fichas fluidas (piso táctil 44px). El chrome móvil del estudio foto se compacta a una línea scrollable (~700→~390px antes del canvas).
+③ **El zoom de lienzo recupera su tope fijo (2.5×) y el exceso scrollea DENTRO del wrapper** (`overflow-x-auto` condicional): la página jamás desborda. Las sondas e2e de píxeles miden contraste de luminancia contra la tarjeta (la tinta por defecto es guía atenuada desde 2026-09-15), y el test de la Polaroid Clásica se alinea a la regla vigente (letra blanca solo sobre tarjeta casi-negra).
+④ **Admin: tabla→tarjetas en TODO el rango <lg** (media query 639→1023px; Lucy opera en tablet), AdminTabBar `sticky top-15 lg:top-0` bajo la topbar móvil, y `overflow-x-clip` en <lg para que el sticky funcione (`overflow-x-hidden` creaba scroll container y lo anulaba en todos los anchos). Desktop ≥1024 queda pixel-idéntico.
+⑤ **CSP de la Vercel Toolbar solo en preview** (img/connect/style/font con los valores oficiales; producción no carga la toolbar) y **autoplay de carruseles solo dentro del viewport** (IntersectionObserver; WCAG 2.2.2 intacto) como quick win de INP — su validación real es RUM en Speed Insights, con fase 2 (reducir JS de hidratación de la home) si no mejora.
+⑥ **El overflow horizontal queda gateado en CI:** el audit de storefront (6 rutas × 4 anchos) corre en el gate de PR y el audit de admin (41 rutas × 4 anchos, con admin efímero + MFA) en el nightly; ambos fallan el build si una pantalla se sale del ancho.
+
+**Por qué:** el ancho es el recurso escaso y predecible en cualquier dispositivo; dimensionar por ancho + una sola tarjeta visual elimina las inconformidades entre estudios sin tocar la lógica de negocio ni el store. Los fixes de admin se verifican con medición objetiva (164 mediciones, 0 overflows) y desktop queda intacto porque es el happy path actual de operación.
+
+**Consecuencia:** 70/70 capturas de estudios y 24/24 de storefront sin overflow; suite unitaria 3919 verde; e2e de estudio restaurados (zoom + sondas robustas); la regresión "zoom inerte" quedó atrapada por e2e a los pocos días de introducida, evidencia de por qué los gates responsive ahora son CI. Los previews dejan de mostrar el aviso CSP de la Toolbar y el INP real se medirá en Speed Insights tras el despliegue (deuda: fase 2 si persiste; estéticos menores admin anotados en la auditoría).
+
+---
+
+## ADR-104 — Tamaños del Estudio por ancho objetivo (spec del owner), variante por defecto en PDP, feedback total en el form de productos y atribución de INP en el RUM
+
+**Fecha:** 2026-09-18
+**Estado:** ✅ Aceptada (ronda 2 de la validación responsive del owner; auditoría en `docs/audits/2026-09-18-responsive-ux-estudios-admin.md` §E)
+
+**Contexto:** el owner validó la ronda 1 (ADR-103) y reportó falta de uniformidad y tamaños pequeños con un spec medido con el zoom del estudio ("el 100% debe verse como hoy el 150% en web / 125% en móvil / 250% en cuadrados móvil"), aclarando que la referencia correcta es Magnéticos (tarjeta grande por unidad). Sumó 4 frentes: PDP sin variante preseleccionada, estudio móvil sin título de producto, guardado de productos en admin que "no hace nada", y varias alertas "Interaction Timing" de Vercel por validar.
+
+**Decisión:**
+① **Columnas por ANCHO OBJETIVO de slot, no por breakpoints.** 450px (≤6 slots) / 300px (≥7); móvil (<640px) TODO estudio foto a UNA columna full-width; `MOBILE_FRAME_HEIGHT` constante para que el tamaño no cambie al ocultarse la barra del navegador; tiras ×1.5 desktop; caras de separadores ×1.3-1.7; calendario intacto (aprobado por el owner). Título del producto visible en móvil en ambos headers sin inflar el chrome. Editores de letras con fichas grandes y lienzo centrado.
+② **PDP: primera opción de cada dimensión preseleccionada** (`pdpDefaultVariant`, primera combinación con stock; `?variant=` manda). El CTA nunca abre bloqueado y los packs muestran precio exacto en vez de "Desde".
+③ **El form de productos muestra TODO resultado del guardado:** se elimina la validación HTML5 (`noValidate` — bloqueaba submits en silencio con controles en tabs ocultas), Zod es la única fuente, los errores se listan siempre con etiquetas humanas + dot en el tab, y el éxito se confirma visible. La causa del síntoma "no hace nada" era invisible: datos legados que violan pisos nuevos (garantía ≥12, Ley 1480) rechazaban TODO el guardado sin mensaje.
+④ **El RUM propio persiste el elemento del INP** (`WebVital.target` = `attribution.interactionTarget`, migración aplicada) y normaliza `/estudio/[slug]`. Las alertas de Vercel se atacan con datos: en ~1 semana el p75 por ruta+elemento dirá si el sospechoso #1 (canvas síncrono del Estudio: upscale/unsharp, snapshots Konva, smartcrop) amerita workers/OffscreenCanvas — no se refactoriza a ciegas.
+
+**Por qué:** el spec del owner es objetivo (px verificados con sonda: polaroid/cuadrados 448px @1280, 1 col @375, tiras 643px); la uniformidad se logra con UNA tarjeta-unidad grande y UN objetivo de tamaño por familia. El guardado admin debe fallar en voz alta: un error invisible cuesta más ventas que un form estricto.
+
+**Consecuencia:** 0/70 overflow mantenido; e2e de estudio verdes; guardado admin verificado end-to-end (nombre→PDP, destacado→home); los previews de Vercel darán el elemento exacto del INP en adelante. Deuda registrada: specs e2e con drift de la fase B2 ("Unidades"→"Packs", seed magnet polaroid) y la fase 2 de INP condicionada al RUM.
+
+---

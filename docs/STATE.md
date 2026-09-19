@@ -13,6 +13,20 @@
 
 ## Resumen actual
 
+**📱 2026-09-18 — AUDITORÍA UX RESPONSIVE TOTAL (estudios + admin + avisos Vercel) REMEDIADA
+EN 2 RONDAS (ADR-103 + ADR-104).** Origen: validación del owner en web/tablet/móvil. Ronda 1:
+todos los estudios convergen a la plantilla (lienzo por ANCHO, tarjeta-unidad universal,
+zoom restaurado), admin en tablet (tarjetas <lg, sticky reparado), CSP de la Toolbar en
+preview, autoplay por visibilidad, gates CI de overflow (PR + nightly). Ronda 2 (validación
+del owner con spec de zoom y referencia **Magnéticos**): columnas por ancho objetivo
+(450/300px, móvil TODO a 1 columna full-width, tiras ×1.5, caras ×1.3-1.7, título de
+producto en móvil, letras sin apretamiento — calendario intacto aprobado), PDP con primera
+variante preseleccionada, fix del guardado admin de productos (errores invisibles + trampa
+de dato legado + HTML5 en tabs ocultas) y RUM con el ELEMENTO del INP (`WebVital.target`).
+Evidencia: 70/70 estudios, 164/164 admin, 24/24 storefront sin overflow; unit 3931+ verde;
+sonda px: polaroid/cuadrados 448px @1280. Detalle:
+`docs/audits/2026-09-18-responsive-ux-estudios-admin.md`.
+
 **📦 2026-09-15 — PAQUETE FOTOIMANES-PACKS + COHERENCIA CATÁLOGO/ESTUDIO/ADMIN (ADR-101)
 IMPLEMENTADO Y VERIFICADO EN LOCAL.** Cuatro decisiones de Lucy en sesión: Fotoimanes se
 vende por PACKS de 6 (un producto por formato; estilo Clásica/Instagram = plantilla del
@@ -202,6 +216,64 @@ sanciona testimonios inventados como publicidad engañosa); ④ crecimiento: **s
 la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia verificados; cuando haya
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
+
+## Sesión — 2026-09-18 (3) — Ronda 2 responsive: tamaños por ancho objetivo (Ola 34), variante por defecto PDP, fix guardado admin, RUM con elemento del INP (ADR-104)
+
+- **Validación del owner sobre la ronda 1:** spec de tamaños medido con el zoom ("100% =
+  lo que se ve al 150% web / 125% móvil / 250% cuadrados móvil") y referencia correcta
+  aclarada: **Magnéticos** (tarjeta grande por unidad). Ola 34: columnas por ANCHO OBJETIVO
+  (450/300px), móvil TODO a 1 columna full-width, `MOBILE_FRAME_HEIGHT` (el tamaño ya no
+  cambia al ocultarse la barra del navegador — queja de tiras), tiras ×1.5, caras
+  separadores ×1.3-1.7, título de producto visible en móvil en ambos headers, editores de
+  letras con fichas grandes y lienzo centrado. Sonda px: polaroid/cuadrados 448px @1280,
+  1 col @375. Calendario intacto (aprobado).
+- **PDP:** `pdpDefaultVariant` — primera opción de cada dimensión preseleccionada (primera
+  con stock; `?variant=` manda); CTA nunca abre bloqueado, packs con precio exacto.
+- **Guardado admin productos ("no hace nada"):** causa triple — error de validación
+  invisible (alert exigía `!fieldErrors`), trampa de dato legado (`warrantyMonths` <12 →
+  Zod rechazaba TODO en silencio) y validación HTML5 en tabs ocultas. Fix: `noValidate`,
+  errores siempre visibles con etiquetas humanas + dot en tab, confirmación de éxito.
+  Verificado end-to-end (nombre→PDP/catálogo, destacado→home). Mapa para Lucy: productos =
+  datos estructurales, `/admin/contenido` = textos editoriales; el nombre NUNCA viene del CMS.
+- **Interaction Timing (Vercel):** validación completa — RUM propio no guardaba el ELEMENTO
+  del INP → `WebVital.target` (attribution.interactionTarget, migración aplicada) +
+  `/estudio/[slug]` normalizado. Sospechosos rankeados: canvas síncrono del Estudio
+  (upscale/unsharp, snapshots Konva, smartcrop). Decisión: no refactorizar a ciegas — el
+  RUM con `target` dirá en ~1 semana qué atacar (fase 2: workers).
+- **Infra de tests:** fixture de separadores para `finalize-server-render` (script nuevo
+  `seed-fixture-separadores-design.mjs`; las fixtures habían desaparecido de la BD local) +
+  `sharp` declarado como devDep de `@lucams/db` (los scripts de fixture no lo resolvían).
+- **Deuda:** specs e2e con drift B2 (`pdp-unidades`, `pdp-cantidad-tira`, `ola19-separadores`
+  — labels "Unidades"→"Packs", seed magnet polaroid); fase 2 INP condicionada al RUM.
+- Todo el detalle: `docs/audits/2026-09-18-responsive-ux-estudios-admin.md` §E.
+
+## Sesión — 2026-09-18 (2) — Auditoría UX responsive total: plantilla de Estudio unificada + admin tablet + Vercel (CSP/INP) + gates CI (ADR-103)
+
+- **Pedido del owner:** validación responsive (móvil/tablet/desktop) de TODA la solución con
+  el estudio de Separadores como plantilla de referencia; "mirar mucho más allá" de sus
+  comentarios y dejar todo documentado. Más 2 avisos Vercel: INP en `main#contenido` y CSP
+  sin dominios de la Toolbar.
+- **Estudios (Olas 31-33, changelog en el README del estudio):** baseline automatizado
+  (14 slugs × 5 anchos) encontró 5 overflows reales → causa raíz doble (loop de medición
+  flex + pisos de slot > ancho útil). Dimensionado por ANCHO en multi-fila, tarjeta-unidad
+  universal (1 pack incluido y modo plano), `STUDIO_MAX_WIDTH=1600`, NameEditor/
+  LetterSetEditor al lienzo fluido con header sticky unificado, chrome móvil ~700→~390px,
+  zoom de lienzo restaurado (tope fijo + scroll interno; la regresión la atrapó el e2e) y
+  sondas de píxeles reescritas por contraste de luminancia.
+- **Admin:** nuevo audit e2e (41 rutas × 4 anchos, admin efímero + MFA) → tablas→tarjetas
+  en <lg, AdminTabBar sticky reparado (`top-15` + `overflow-x-clip`: el `overflow-x-hidden`
+  del shell anulaba el sticky en todos los anchos), grids base colapsan, dropdown rename
+  fixed en <sm. Desktop ≥1024 pixel-idéntico. 164 mediciones, 0 overflows.
+- **Vercel:** CSP de la Toolbar completa en preview (img/connect/style/font, valores
+  oficiales; producción intacta) + autoplay de carruseles gateado por visibilidad
+  (`use-autoplay-when-visible`) — TBT de laboratorio sin delta concluyente; la validación
+  real es RUM en Speed Insights (fase 2 documentada si persiste).
+- **Gates CI:** `mobile-storefront-audit` reescrito (4 anchos + assert) en el gate de PR;
+  `responsive-admin-audit` con assert en el nightly. El overflow horizontal no puede
+  regresar sin romper el build.
+- **Verificación:** unit 3919 verde, typecheck/lint 0, e2e estudio 8/8, smoke 9/9,
+  admin-link/login 4/4; auditoría completa en
+  `docs/audits/2026-09-18-responsive-ux-estudios-admin.md`.
 
 ## Sesión — 2026-09-18 — Documentación al día + CI verde + fix secret del heartbeat de backups
 
