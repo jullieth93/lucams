@@ -18,6 +18,11 @@
  * email '*@lucams.test'), que una corrida interrumpida deja como SUPERADMIN activos (audit v3 #20).
  * El admin REAL no usa @lucams.test, así que el filtro nunca lo toca.
  *
+ * Y los UrlRedirect residuales del CRUD de redirects (fromPath '/itestredir<epoch>/…'):
+ * las corridas de integración de 2026-07 dejaron ~130 filas activas en STG que Lucy
+ * veía como "basura" en Redirecciones (SEO) — hard-delete directo, no tienen FKs
+ * (feedback Lucy 2026-09-18).
+ *
  * Uso:
  *   node scripts/cleanup-test-junk.mjs            # DRY-RUN: solo lista qué haría
  *   node scripts/cleanup-test-junk.mjs --apply    # ejecuta el borrado
@@ -56,6 +61,17 @@ const slugLooksLikeTest = (slug) =>
   /1[0-9]{12}/.test(slug) && RUN_PREFIXES.some((p) => slug.startsWith(p));
 
 async function main() {
+  // UrlRedirect residuales del CRUD de redirects (fromPath '/itestredir<epoch>/…',
+  // createdBy 'itestredir…-admin'). Hard-delete: la tabla no tiene FKs salientes.
+  // Va PRIMERO: los early-returns de categorías más abajo no deben saltarlo.
+  const redirJunkWhere = { fromPath: { startsWith: "/itestredir" } };
+  const redirJunk = await prisma.urlRedirect.count({ where: redirJunkWhere });
+  console.log(`Redirects residuales de test (/itestredir*): ${redirJunk}`);
+  if (redirJunk > 0 && APPLY) {
+    const { count } = await prisma.urlRedirect.deleteMany({ where: redirJunkWhere });
+    console.log(`  → borrados: ${count}`);
+  }
+
   // Candidatas: cualquier categoría cuyo slug parezca fixture (el name ya no se
   // exige "Cat …" — los tests usan `prod<ts>-ZZZ-cat`, `Beta cat<ts>`, etc.).
   const candidates = await prisma.category.findMany({
@@ -104,6 +120,7 @@ async function main() {
   console.log(`Categorías vivas: ${candidates.length} · confirmadas como test: ${junk.length}`);
   if (junk.length === 0 && junkProds.length === 0) {
     console.log("Nada que limpiar. ✓");
+    await adminSweep();
     return;
   }
 
@@ -127,6 +144,7 @@ async function main() {
 
   if (junk.length === 0) {
     console.log("Categorías: nada que limpiar. ✓");
+    await adminSweep();
     return;
   }
 
@@ -224,6 +242,13 @@ async function main() {
   // supabaseUserId 'mfaitest_*' / email '*@lucams.test'; una corrida interrumpida los deja
   // vivos (SUPERADMIN activos) en la BD compartida. El admin REAL no usa @lucams.test, así que
   // el filtro nunca lo toca. AdminRecoveryCode cae por Cascade.
+  // (2026-09-18: extraído a adminSweep() — los early-returns de arriba lo saltaban.)
+  await adminSweep();
+
+  if (!APPLY) console.log("\nPara ejecutar: node scripts/cleanup-test-junk.mjs --apply");
+}
+
+async function adminSweep() {
   const adminJunkWhere = {
     OR: [{ supabaseUserId: { startsWith: "mfaitest_" } }, { email: { endsWith: "@lucams.test" } }],
   };
@@ -244,8 +269,6 @@ async function main() {
       `⚠ ${e2eResidual} AdminUser e2e-mfa-*@example.com: purga con el service client de Supabase (auth.users), no cubierto aquí.`,
     );
   }
-
-  if (!APPLY) console.log("\nPara ejecutar: node scripts/cleanup-test-junk.mjs --apply");
 }
 
 main()
