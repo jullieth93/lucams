@@ -61,7 +61,7 @@ test("auditoría responsive E3 — storefront sin overflow en 4 anchos (gate)", 
         description: "Producto efímero para la auditoría E3.",
         basePrice: 19_900,
         sku: `${RUN}-SIMPLE`.toUpperCase(),
-        categoryId,
+        categoryId: category.id,
         variants: {
           create: [
             {
