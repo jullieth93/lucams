@@ -42,6 +42,9 @@ const VitalSchema = z.object({
     .max(200)
     .regex(/^\/[a-zA-Z0-9/_\-[\]]*$/),
   sessionId: z.string().max(100).optional(),
+  // 2026-09-18: selector CSS del elemento que produjo el INP
+  // (attribution.interactionTarget). Solo lo envía el reporter para INP.
+  target: z.string().max(200).optional(),
 });
 
 export async function POST(request: Request) {
@@ -74,6 +77,7 @@ export async function POST(request: Request) {
         navType: parsed.data.navType ?? null,
         route: parsed.data.route,
         sessionId: parsed.data.sessionId ?? null,
+        target: parsed.data.target ?? null,
         userAgent: ua,
       },
     });

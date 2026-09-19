@@ -26,7 +26,8 @@
  * Consumidores del dato (verificados antes de escribir):
  *   - PDP (variant-selector.tsx): `magnet` es dimensión visible "¿Con imán?"
  *     (Con imán primero/default); si las variantes solo difieren en magnet, la
- *     PDP preselecciona Con imán (conImanDefaultVariant).
+ *     PDP preselecciona Con imán (pdpDefaultVariant, 2026-09-18: primera opción
+ *     de cada dimensión por defecto).
  *   - Estudio: el merge de la variante sobre el schema lleva `magnet` (letter
  *     sets ya lo usan: letter-set-resolve.ts / ficha vs imán). En los packs de
  *     foto (PHOTO_PACK) el Estudio lo persiste en `canvasData.magnet` (auto-save)

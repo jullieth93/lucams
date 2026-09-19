@@ -1091,6 +1091,10 @@ model WebVital {
   navType   String? // "navigate" | "reload" | "back-forward" | "prerender"
   route     String // path normalizado (e.g. "/producto/[slug]")
   sessionId String?
+  // 2026-09-18 — selector CSS del elemento que produjo el INP
+  // (web-vitals attribution.interactionTarget). Permite responder "¿QUÉ
+  // elemento?" ante las alertas "Interaction Timing" de Vercel.
+  target    String?
   userAgent String?
   createdAt DateTime @default(now())
 

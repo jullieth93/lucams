@@ -85,3 +85,33 @@ describe("POST /api/vitals — backstop global (C-1)", () => {
     expect(webVitalCreate).not.toHaveBeenCalled();
   });
 });
+
+describe("POST /api/vitals — target del INP (2026-09-18)", () => {
+  it("persiste el selector del elemento cuando el payload lo trae", async () => {
+    const res = await POST(
+      req({
+        name: "INP",
+        value: 232,
+        rating: "needs-improvement",
+        delta: 232,
+        route: "/estudio/[slug]",
+        target: "main.bg-brand-cream.flex-1#contenido",
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(webVitalCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: "INP",
+        target: "main.bg-brand-cream.flex-1#contenido",
+      }),
+    });
+  });
+
+  it("sin target en el payload persiste null (retrocompatible)", async () => {
+    const res = await POST(req());
+    expect(res.status).toBe(200);
+    expect(webVitalCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ target: null }),
+    });
+  });
+});

@@ -4,10 +4,11 @@
  *
  * Por qué (hallazgo del paquete ADR-100): en PRD 30 variantes base activas no
  * tienen la clave `magnet` en sus attributes (STG/LOCAL: 0). Efectos medidos
- * en vivo: `conImanDefaultVariant` no preselecciona la opción Con imán → la
- * PDP abre sin variante elegida → el precio tachado no se renderiza (bug
- * reportado por Lucy en "Calendario Set 12 Tarjetas") y el grupo de chips
- * «Con/Sin imán» ni siquiera aparece (la gemela -NOMAG queda inalcanzable).
+ * en vivo: sin la clave la PDP no puede preseleccionar la opción Con imán por
+ * defecto (la ficha abría sin variante elegida) → el precio tachado no se
+ * renderiza (bug reportado por Lucy en "Calendario Set 12 Tarjetas") y el grupo
+ * de chips «Con/Sin imán» ni siquiera aparece (la gemela -NOMAG queda
+ * inalcanzable).
  *
  * Regla (quirúrgica): variante ACTIVA con attributes.magnet ausente/null y
  * SKU que NO termina en -NOMAG → magnet:true. Nunca toca precio, stock,

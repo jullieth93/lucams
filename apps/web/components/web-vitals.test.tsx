@@ -32,11 +32,13 @@ type ReportedMetric = {
   rating: string;
   delta: number;
   navigationType: string;
+  attribution?: Record<string, unknown>;
 };
 
 // Holder for the callback the component passes to useReportWebVitals.
 const vitals = vi.hoisted(() => ({
   callback: null as null | ((metric: ReportedMetric) => void),
+  pathname: "/producto/imantado-corazon-123",
 }));
 
 vi.mock("next/web-vitals", () => ({
@@ -46,7 +48,7 @@ vi.mock("next/web-vitals", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/producto/imantado-corazon-123",
+  usePathname: () => vitals.pathname,
   useSelectedLayoutSegments: () => [],
 }));
 
@@ -81,6 +83,7 @@ beforeEach(() => {
   clearConsentCookie();
   fetchMock.mockClear();
   vi.stubGlobal("fetch", fetchMock);
+  vitals.pathname = "/producto/imantado-corazon-123";
 });
 
 afterEach(() => {
@@ -150,5 +153,42 @@ describe("WebVitalsReporter — consent gate (F-19)", () => {
     expect(url).toBe("/api/vitals");
     expect(blob.type).toBe("application/json");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("normaliza /estudio/<slug> → /estudio/[slug] (INP del Estudio agregable, 2026-09-18)", () => {
+    vitals.pathname = "/estudio/set-fotoimanes-polaroid";
+    writeClientCookiePreferences(acceptAllPreferences());
+    render(<WebVitalsReporter />);
+    fireMetric();
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
+    expect(JSON.parse(init.body)).toMatchObject({ route: "/estudio/[slug]" });
+  });
+
+  it("para INP adjunta el selector del elemento (attribution.interactionTarget)", () => {
+    // 2026-09-18 — las alertas "Interaction Timing" de Vercel dan el elemento;
+    // el RUM propio debe guardarlo para poder correlacionar página↔elemento.
+    writeClientCookiePreferences(acceptAllPreferences());
+    render(<WebVitalsReporter />);
+    vitals.callback!({
+      name: "INP",
+      value: 232,
+      rating: "needs-improvement",
+      delta: 232,
+      navigationType: "navigate",
+      attribution: { interactionTarget: "main.bg-brand-cream.flex-1#contenido" },
+    });
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
+    expect(JSON.parse(init.body)).toMatchObject({
+      name: "INP",
+      target: "main.bg-brand-cream.flex-1#contenido",
+    });
+  });
+
+  it("NO adjunta target en métricas que no son INP", () => {
+    writeClientCookiePreferences(acceptAllPreferences());
+    render(<WebVitalsReporter />);
+    fireMetric(); // LCP sin attribution
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
+    expect(JSON.parse(init.body)).not.toHaveProperty("target");
   });
 });

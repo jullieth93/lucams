@@ -34,6 +34,9 @@ import { hasAnalyticsConsent } from "@/lib/cookie-consent";
 // segmento que matchea estos patrones, lo reemplazamos por placeholder.
 const DYNAMIC_PATTERNS: Array<[RegExp, string]> = [
   [/^\/producto\/[^/]+$/, "/producto/[slug]"],
+  // 2026-09-18 (alertas INP de Vercel): el Estudio es el flujo más pesado de
+  // interacción — sin este patrón quedaba fragmentado por slug en el RUM.
+  [/^\/estudio\/[^/]+$/, "/estudio/[slug]"],
   [/^\/admin\/productos\/[^/]+$/, "/admin/productos/[id]"],
   [/^\/admin\/categorias\/[^/]+$/, "/admin/categorias/[id]"],
 ];
@@ -56,6 +59,16 @@ export function WebVitalsReporter() {
     // Opt-in gate: skip silently until "Analíticas" is explicitly accepted.
     if (!hasAnalyticsConsent()) return;
     const route = normalizeRoute(pathname);
+    // 2026-09-18 (alertas "Interaction Timing" de Vercel): para INP guardamos
+    // TAMBIÉN el selector del elemento (attribution.interactionTarget del
+    // build de atribución de web-vitals). Sin esto el RUM decía "/estudio
+    // tiene INP 200ms" pero no QUÉ elemento — Vercel sí lo da y hay que
+    // poder correlacionar. Es un selector CSS (clases/id), no dato personal.
+    const attribution = metric.attribution as { interactionTarget?: unknown } | undefined;
+    const target =
+      metric.name === "INP" && typeof attribution?.interactionTarget === "string"
+        ? attribution.interactionTarget.slice(0, 200)
+        : undefined;
     // Envío fire-and-forget; el endpoint nunca devuelve error útil
     // al cliente. Usamos sendBeacon si está disponible para no
     // bloquear la navegación.
@@ -66,6 +79,7 @@ export function WebVitalsReporter() {
       delta: metric.delta,
       navType: metric.navigationType,
       route,
+      ...(target ? { target } : {}),
     });
     if (typeof navigator !== "undefined" && "sendBeacon" in navigator) {
       try {
