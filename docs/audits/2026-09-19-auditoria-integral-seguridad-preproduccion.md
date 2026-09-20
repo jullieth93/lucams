@@ -586,3 +586,5 @@ Matriz ejecutada contra STG (Vercel SSO bypass + Supabase STG) con las 7 cuentas
 Nota operativa: `AVEONLINE_WEBHOOK_SECRET` no está en Vercel STG (webhook → 503 fail-closed, seguro); subirla si se quiere probar el flujo Aveonline en STG.
 
 **Con esto queda cubierto el último requisito del gate (§66: evidencia dinámica en flujos críticos).** Restan únicamente: firma de los riesgos residuales §T por el propietario y los chequeos de portal del registrador (autorrenovación/MFA — detección ya cubierta por el vigilante de dominio).
+
+**L-F3 — CERRADO (2026-09-20):** `csvCell` neutraliza formula injection (prefijo `'` en valores que empiezan por `= + - @ tab CR`) — `apps/web/features/newsletter/admin-service.ts:158`. Test que fallaba antes y pasa después; commit `6670e51`, CI verde, desplegado en PRD.
