@@ -13,6 +13,22 @@
 
 ## Resumen actual
 
+**🛡️ 2026-09-19 (3) — AUDITORÍA INTEGRAL 360° PRE-PRODUCCIÓN (FASE A) + FASE B parcial (F-01/F-02 cerrados).**
+Auditoría completa según `docs/AUDITORIA_360.md` (8 auditores por dominio + verificador
+adversarial): **0 críticos, 0 altos, 7 medios**; veredicto **`PRODUCCIÓN CONDICIONADA`**.
+Gates todos verdes (lint/typecheck/4077 tests/build/audit 0 prod/**RLS 56-56 vs Supabase LOCAL**).
+Postura madura verificada con evidencia; 0 regresiones de la auditoría histórica. Con aprobación
+de Lucy se cerraron en GitHub: **F-01** (branch protection en `production` y `develop`: 7 required
+checks, ff-only, sin force-push/delete, enforce_admins) y **F-02** (secret scanning + push
+protection + Dependabot security updates activados en el repo público). En segunda tanda
+autorizada se cerraron **F-03…F-07** en código (reconciliación expire-pending, grace de crons
+nuevos, step-up MFA en conciliación COD y autogestión MFA, tabla SecurityEvent + 2 alertas de
+seguridad) — 4111 tests, RLS 58/58, build y format verdes; **sin commit ni deploy aún**.
+Informe: `docs/audits/2026-09-19-auditoria-integral-seguridad-preproduccion.md`.
+**Pendiente:** commit+release del paquete (aplica 3 migraciones nuevas a STG/PRD — orden en
+OPERATIONS changelog), checklist §U de evidencia en vivo PRD (humano, ~30 min) y verificar que
+`/api/health/crons` queda en 200 tras el deploy.
+
 **🧪 2026-09-19 — AUDITORÍA FUNCIONAL TOTAL DEL OWNER (cliente + admin) REMEDIADA Y EN STG.**
 Origen: validación visual/funcional de Lucy sobre TODO el producto (~22 hallazgos). Paquete en
 12 commits en `develop` (CI 100% verde, deploy preview STG Ready): bugs visuales (newsletter
@@ -237,6 +253,36 @@ sanciona testimonios inventados como publicidad engañosa); ④ crecimiento: **s
 la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia verificados; cuando haya
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
+
+## Sesión — 2026-09-19 (3) — Auditoría integral 360° (FASE A) + cierre F-01/F-02 (FASE B)
+
+- **FASE A** según `docs/AUDITORIA_360.md`: línea base (`develop==production==3e1dad0`, diff
+  vacío), recon pasivo PRD (DNS/TLS/headers/CT — sin hallazgos medios+), 8 auditores por dominio
+  - verificador adversarial (refutación de medios + unknown-unknowns). Gates: lint, typecheck,
+    **4077/4077 tests**, build, prettier, `pnpm audit --prod` 0 vulns, **RLS 56/56 vs Supabase
+    LOCAL** (58/58 tablas con RLS, grants anon/authenticated = 0). Inventario: 113 páginas, 65
+    archivos de Server Actions (65/65 con guard), 46 route handlers, 3 webhooks (firma timing-safe
+  - idempotencia verificadas), 12 crons (fail-closed), 5 buckets. **Veredicto: PRODUCCIÓN
+    CONDICIONADA** — informe: `docs/audits/2026-09-19-auditoria-integral-seguridad-preproduccion.md`.
+- **FASE B autorizada por Lucy solo para F-01/F-02** (config GitHub, sin código):
+  - **F-01** — `gh api -X PUT …/branches/{production,develop}/protection`: 7 required status
+    checks (nombres exactos del run 35464444766), `enforce_admins: true`, linear history,
+    force-push/deletes bloqueados. Verificado con GET posterior (ambas ramas). Sin required
+    reviews (operador único — riesgo residual registrado).
+  - **F-02** — `gh api -X PATCH repos/jullieth93/lucams`: secret scanning, push protection y
+    Dependabot security updates **enabled**. `validity_checks` y `non_provider_patterns` no son
+    activables vía API en este repo (API acepta pero quedan disabled) — pendiente menor en
+    Settings → Code security. El comentario del pre-commit hook que la citaba queda correcto.
+  - Docs canónicos actualizados: `docs/OPERATIONS.md` (acción humana de branch protection
+    marcada HECHA con rollback) y este STATE. Sin commits (requieren autorización aparte).
+- **Pendiente de aprobación:** commit + release del paquete F-03…F-07 (gates verdes: 4111 tests,
+  RLS 58/58, build OK). Las 3 migraciones nuevas se aplican a STG/PRD con ese release (orden en
+  OPERATIONS changelog 2026-09-19). **F-03/04/05/06/07 CERRADOS en el árbol** — detalle en el
+  Addendum 2 del informe de auditoría.
+- **Pendiente humano (§U del informe):** foto en vivo de RLS/grants/crons en PRD (SQL incluido),
+  config GoTrue, dashboards Wompi/Aveonline/Resend/registrador/R2, cuentas de prueba por rol.
+- **Verificación gratuita post-deploy:** `/api/health/crons` debe quedar en 200 (el fix de F-04
+  es code-only); con el cron de purga ya latido el 2026-09-20 ~09:05 UTC, el 503 actual desaparece.
 
 ## Sesión — 2026-09-19 (2) — RELEASE A PRD de la auditoría funcional total
 

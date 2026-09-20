@@ -90,12 +90,22 @@
 - `security.pwned.api_fail` / `security.pwned.fetch_error` (HIBP caído)
 - Rate-limit hits ya van como `auth.*.rate_limited` (con `ipCount` + `emailCount`).
 
+**Persistencia (F-07, auditoría 2026-09-19):** además del log, los eventos de seguridad
+_rechazados_ quedan en la tabla `SecurityEvent` (`lib/security-events.ts`, fail-open):
+login fallido de cliente (`auth.login.fail`) y de admin (`auth.admin_login.fail`), y
+firma/secreto de webhook inválido (`webhook.invalid_signature`, con `metadata.source` =
+wompi/aveonline/resend). La IP se guarda como `ipHash` (SHA-256 truncado, mismo hash del
+rate-limit — nunca en claro). Los consume `evaluateAlerts` con dos reglas:
+`security_admin_login_fails` (≥5 logins admin fallidos en 15 min, alta) y
+`security_webhook_invalid` (≥3 firmas/secretos inválidos en 5 min, media). Retención:
+180 días vía el cron `purge-event-logs`.
+
 ### MFA
 
 - **Para TODOS los roles admin (`SUPERADMIN`/`MANAGER`/`FULFILLMENT`/`CMS_EDITOR`): obligatorio y ENFORCEADO por código** (auditoría 2026-08-24, hallazgo B-1 — antes era opt-in y contradecía esta política). El guard central (`lib/admin-rbac-guard.ts`) y el layout del panel redirigen a `/admin/seguridad?enroll=required` a cualquier admin sin factor TOTP verificado; el enrolamiento está abierto a todos los roles admin; las acciones admin siguen exigiendo aal2. Supabase Auth soporta TOTP.
 - **Para clientes: no implementada aún.** Supabase Auth soporta TOTP; el flujo existe solo para admin (`/admin/seguridad`, `/admin/login/mfa`). Ofrecerla a clientes queda como mejora futura.
 - **Recovery codes admin** (B-5, 2026-08-29): 16 chars (~79 bits), HMAC-SHA256 con `CSRF_SECRET` como pepper (nunca SHA-256 plano), consumo atómico (`updateMany` condicional — un solo uso real). Fallback de lectura para códigos legacy SHA-256 hasta su rotación (TODO en `features/admin-mfa/recovery-codes.ts`).
-- **Step-up MFA en acciones destructivas** (F-10, auditoría 2026-09-04): reembolsar pedido (`refundOrderAction`), reembolsar retracto (`refundRetractAction`), promover admin, cambiar rol y desactivar admin exigen un **aal2 reciente (≤10 min)** medido por el timestamp del claim `amr` del JWT (`lib/admin-reauth.ts`, fail-closed). Si está vencido, la UI abre `MfaReauthModal`, verifica el TOTP server-side (`verifyAdminMfaReauthAction` — refresca el JWT con aal2 fresco) y reintenta la acción una vez. Rate-limit propio doble IP+admin (`admin-mfa-reauth`, 5/15 min) y audit `mfa.reauth.success/failure`. Cierra el escenario "sesión admin robada con aal2 fresco emite reembolsos o crea otro SUPERADMIN".
+- **Step-up MFA en acciones destructivas** (F-10, auditoría 2026-09-04; cobertura ampliada F-05/F-06, auditoría integral 2026-09-19): reembolsar pedido (`refundOrderAction`), reembolsar retracto (`refundRetractAction`), promover admin, cambiar rol y desactivar admin, conciliación COD (`markCodRemittedAction`, `flagCodDiscrepancyAction`, `setCodEnabledAction`) y autogestión de MFA (`disableMfaAction`, `changeMfaDeviceAction`, `generateRecoveryCodesAction`) exigen un **aal2 reciente (≤10 min)** medido por el timestamp del claim `amr` del JWT (`lib/admin-reauth.ts`, fail-closed). Si está vencido, la UI abre `MfaReauthModal`, verifica el TOTP server-side (`verifyAdminMfaReauthAction` — refresca el JWT con aal2 fresco) y reintenta la acción una vez. Rate-limit propio doble IP+admin (`admin-mfa-reauth`, 5/15 min) y audit `mfa.reauth.success/failure`. Cierra el escenario "sesión admin robada con aal2 fresco emite reembolsos o crea otro SUPERADMIN" y "sesión aal2 robada enrola el TOTP del atacante o maquilla el ledger COD". El enrolamiento INICIAL de MFA no exige step-up (aún no hay factor): acaba de hacer `challengeAndVerify` en el browser, así que su `amr` ya viene fresco.
 
 ### Verificación de email
 
@@ -560,6 +570,7 @@ export async function GET(req: Request) {
 | URL firmada `production-assets`           | 1 h (default, configurable)  | Idem (acceso solo admin)                                                  |
 | `EmailEvent` / `WebhookEvent`             | 180 días                     | Cron `purge-event-logs` (`features/observability/event-log-retention.ts`) |
 | `ErrorLog` / `ErrorReport`                | 90 días                      | Idem (ErrorReport por `lastSeenAt`: lo que sigue ocurriendo no se purga)  |
+| `SecurityEvent`                           | 180 días                     | Idem (F-07 — IP solo como `ipHash`, nunca en claro)                       |
 | Audit logs admin                          | 2 años                       | Política legal                                                            |
 | Backups en R2                             | ~30 días (diarios)           | Pipeline `pg_dump → gzip → gpg AES256` diario + lifecycle rule en bucket  |
 
@@ -743,14 +754,14 @@ Implementado en el logger global (`apps/web/lib/logger.ts` — implementación p
 
 ### Datos personales recolectados
 
-| Campo                   | Origen              | Propósito                                            | Retención                                      |
-| ----------------------- | ------------------- | ---------------------------------------------------- | ---------------------------------------------- |
-| Email                   | Registro / checkout | Auth, comunicación transaccional, marketing (opt-in) | Mientras la cuenta exista + 1 año              |
-| Teléfono                | Checkout            | Logística (contacto del repartidor)                  | Mientras la orden esté activa + 5 años (legal) |
-| Dirección               | Checkout            | Logística                                            | Idem                                           |
-| Nombre                  | Checkout / registro | Personalización + emails                             | Idem                                           |
-| Fotos subidas (estudio) | Personalización     | Producción del imán                                  | Mientras la orden esté activa + 90 días        |
-| IP                      | Logs / rate limit   | Seguridad, prevención de fraude                      | Hasheada en rate-limit; logs Vercel 1-7 días   |
+| Campo                   | Origen              | Propósito                                            | Retención                                                      |
+| ----------------------- | ------------------- | ---------------------------------------------------- | -------------------------------------------------------------- |
+| Email                   | Registro / checkout | Auth, comunicación transaccional, marketing (opt-in) | Mientras la cuenta exista + 1 año                              |
+| Teléfono                | Checkout            | Logística (contacto del repartidor)                  | Mientras la orden esté activa + 5 años (legal)                 |
+| Dirección               | Checkout            | Logística                                            | Idem                                                           |
+| Nombre                  | Checkout / registro | Personalización + emails                             | Idem                                                           |
+| Fotos subidas (estudio) | Personalización     | Producción del imán                                  | Mientras la orden esté activa + 90 días                        |
+| IP                      | Logs / rate limit   | Seguridad, prevención de fraude                      | Hasheada en rate-limit y `SecurityEvent`; logs Vercel 1-7 días |
 
 ### Derechos del titular (Ley 1581)
 
