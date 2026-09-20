@@ -34,6 +34,13 @@ grants residuales revocados (mig. 038, 0 grants en 3 ambientes), Wompi STG webho
 (GHA → `/api/cron/domain-watch`, baseline sembrado: expira 2027-07-19, NS Cloudflare, transfer
 lock) y **batería dinámica §58 en STG: 30+ casos TODOS PASS, 0 hallazgos nuevos** (L-F3
 confirmado en vivo, pendiente menor). Informe con Addendums 1-5.
+**🔗 HOMOLOGACIÓN TOTAL 2026-09-20:** los 3 ambientes quedaron espejo de STG (decisión de
+Lucy) — 0 divergencias vivas en los 3 pares (diff ADR-102). 26+2 cambios DB en PRD, LOCAL
+reseteado y espejado (83+15+111+2), imágenes de catálogo autosuficientes por ambiente (PRD ya no
+depende del bucket de STG). Scripts one-shot: `homologate-stg-20260920.mjs` +
+`sync-product-images-stg-20260920.mjs` (dry-run, env-guard). Hero CMS llega a PRD al expirar el
+caché (1 h).
+
 **VEREDICTO FINAL 2026-09-20: `APTO CON RIESGOS RESIDUALES ACEPTADOS`** — Lucy firmó los 6
 riesgos residuales §T (Addendum 6): segundo admin posteriormente, plan Supabase pago al
 lanzamiento comercial, y revisión del autoreferido cuando llegue el documento DIAN. Vigencia
