@@ -289,6 +289,13 @@ plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
   revocados (migración 038 en los 3 ambientes), 7 cuentas QA por rol creadas en STG
   (credenciales en `tmp/qa-credentials-stg.txt`, 600), Resend/Wompi/Aveonline verificados por
   datos (hallazgo menor: RESEND_API_KEY de los .env locales inválida — la viva está en Vercel).
+- **Vigilante del dominio (L-H3/L-N1, esta sesión):** `POST /api/cron/domain-watch` +
+  `features/observability/domain-watch.ts` (baseline en `AlertState`, alertas críticas por
+  expiración 60/30/14/7/3/1 días y por cambio de nameservers/status — anti secuestro) +
+  workflow GHA `domain-watch.yml` diario (productor; la vía pg_cron+pg_net se descartó:
+  RDAP rechaza las conexiones salientes de pg_net, verificado en vivo). `domain-watch` en
+  `CRON_JOBS` (24 h) con latido sembrado en la migración supabase **039** (pendiente de
+  aplicar en STG/PRD con el próximo release). Usa el `CRON_SECRET` ya existente en GitHub.
 
 ## Sesión — 2026-09-19 (2) — RELEASE A PRD de la auditoría funcional total
 

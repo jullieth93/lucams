@@ -50,6 +50,10 @@ export const CRON_JOBS: Record<string, { intervalMs: number; label: string }> = 
   "cms-publish-scheduled": { intervalMs: 5 * 60 * 1000, label: "Publicación programada CMS" },
   // N-12 — migración 032: expira órdenes WOMPI en PENDING_PAYMENT > PENDING_PAYMENT_EXPIRY_HOURS.
   "expire-pending-orders": { intervalMs: 60 * 60 * 1000, label: "Expiración de pedidos sin pagar" },
+  // Vigilante del dominio (2026-09-20, L-H3/L-N1): NO es job pg_cron — su productor es
+  // el workflow domain-watch.yml de GitHub Actions (RDAP rechaza las conexiones de pg_net).
+  // La ruta /api/cron/domain-watch registra el latido tras cada observación procesada.
+  "domain-watch": { intervalMs: 24 * 60 * 60 * 1000, label: "Vigilancia del dominio (RDAP)" },
 };
 
 /**

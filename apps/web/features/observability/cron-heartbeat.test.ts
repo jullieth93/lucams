@@ -58,8 +58,8 @@ describe("cron-heartbeat", () => {
     else process.env.CRON_JOBS_DISABLED = originalDisabled;
   });
 
-  it("rastrea los 10 jobs HTTP, incluidos cms-publish-scheduled (5 min) y expire-pending-orders (N-12)", () => {
-    expect(Object.keys(CRON_JOBS)).toHaveLength(10);
+  it("rastrea los 11 jobs HTTP, incluidos cms-publish-scheduled (5 min) y expire-pending-orders (N-12)", () => {
+    expect(Object.keys(CRON_JOBS)).toHaveLength(11);
     expect(CRON_JOBS["cms-publish-scheduled"]).toEqual({
       intervalMs: 5 * 60 * 1000,
       label: "Publicación programada CMS",
@@ -74,6 +74,12 @@ describe("cron-heartbeat", () => {
     expect(CRON_JOBS["purge-delivered-designs"]).toEqual({
       intervalMs: 24 * 60 * 60 * 1000,
       label: "Purga diseños entregados",
+    });
+    // L-H3/L-N1 (2026-09-20): vigilante del dominio — su productor es GitHub Actions
+    // (domain-watch.yml), no pg_cron; el latido lo registra /api/cron/domain-watch.
+    expect(CRON_JOBS["domain-watch"]).toEqual({
+      intervalMs: 24 * 60 * 60 * 1000,
+      label: "Vigilancia del dominio (RDAP)",
     });
   });
 

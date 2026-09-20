@@ -1,0 +1,127 @@
+name: Domain watch (RDAP → app)
+
+# Vigilante del dominio lucamsshop.com (FASE B auditoría 2026-09-19 — L-H3/L-N1:
+# el dominio expira 2027-07-19 sin alerta y un cambio de nameservers/status era
+# invisible → secuestro/suspensión ICANN indetectables).
+#
+# Diseño: el PRODUCTOR es este workflow (runners Azure). La alternativa
+# pg_cron+pg_net dentro de Supabase STG se descartó el 2026-09-20: Verisign y
+# rdap.org RECHAZAN las conexiones HTTPS salientes de pg_net (verificado en vivo:
+# "Failure when receiving data from the peer"; api.github.com sí responde 200
+# desde el mismo pg_net — el bloqueo es del lado RDAP, no de Supabase).
+#
+# Flujo: consulta RDAP (rdap.verisign.com, 2 intentos × 20 s), parsea con jq
+# (expiración, nameservers, status EPP) y hace POST a
+# /api/cron/domain-watch de PRD con CRON_SECRET (el MISMO secret que ya usan los
+# heartbeats de backup.yml — no hay secreto nuevo que crear). Si RDAP falla en
+# ambos intentos, reporta {"rdapOk": false} (la app alerta a la 2ª corrida
+# seguida). La app guarda el baseline en AlertState y alerta por expiración
+# (umbrales 60/30/14/7/3/1 días + recordatorio ≤3 días) y por cambio de
+# nameservers/status (posible secuestro — crítica). Ver
+# apps/web/features/observability/domain-watch.ts y docs/OPERATIONS.md.
+#
+# El secreto NUNCA se imprime: solo viaja en el header x-cron-secret del POST.
+on:
+  schedule:
+    # Diario 11:17 UTC (~6:17 America/Bogotá). Los cron de GitHub corren en UTC;
+    # minuto fuera de :00/:30 para no caer en el pico de todos los schedules.
+    - cron: "17 11 * * *"
+  workflow_dispatch: {} # permite dispararlo manualmente desde la pestaña Actions
+
+# Least privilege: solo lectura del repo. La credencial viaja por secrets.
+permissions:
+  contents: read
+
+concurrency:
+  group: domain-watch
+  cancel-in-progress: false # nunca cortar una observación a medias
+
+jobs:
+  # Gate: si falta CRON_SECRET el job se SALTA limpio (verde con aviso, sin
+  # correo de error diario) — mismo patrón que el gate de backup.yml.
+  gate:
+    name: ¿Secrets configurados?
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        env:
+          HAS_CRON: ${{ secrets.CRON_SECRET != '' }}
+        run: |
+          if [ "$HAS_CRON" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Domain watch inactivo: falta el secret CRON_SECRET (Settings → Secrets and variables → Actions). Sin él no hay vigilancia de expiración ni de secuestro del dominio."
+          fi
+
+  watch:
+    name: RDAP + POST a /api/cron/domain-watch
+    needs: gate
+    if: needs.gate.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Consultar RDAP de Verisign y reportar a PRD
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          # Bypass de Deployment Protection SOLO si existe (previews con SSO);
+          # PRD (dominio público) no lo necesita y el header no se manda.
+          VERCEL_BYPASS_TOKEN: ${{ secrets.VERCEL_BYPASS_TOKEN }}
+          RDAP_URL: https://rdap.verisign.com/com/v1/domain/lucamsshop.com
+          WATCH_URL: https://lucamsshop.com/api/cron/domain-watch
+        run: |
+          set -euo pipefail
+
+          # RDAP con retry: 2 intentos, 20 s de timeout cada uno. Una falla
+          # transitoria NO debe contar como corrida ciega (la app alerta a la
+          # 2ª corrida seguida con rdapOk=false).
+          rdap_ok=false
+          for attempt in 1 2; do
+            if curl -fsS --max-time 20 "$RDAP_URL" -o /tmp/rdap.json; then
+              rdap_ok=true
+              break
+            fi
+            echo "::warning::RDAP intento $attempt/2 falló para lucamsshop.com"
+            sleep 3
+          done
+
+          if [ "$rdap_ok" = "true" ]; then
+            expires=$(jq -r '[.events[]? | select(.eventAction=="expiration")][0].eventDate // empty' /tmp/rdap.json)
+            # Normalización mínima acá (minúsculas + orden); la app re-normaliza
+            # antes de comparar contra el baseline.
+            ns=$(jq -c '[.nameservers[]?.ldhName | ascii_downcase] | unique' /tmp/rdap.json)
+            status=$(jq -c '[.status[]?] | unique' /tmp/rdap.json)
+            days_left=""
+            if [ -n "$expires" ]; then
+              days_left=$(( ( $(date -d "$expires" +%s) - $(date +%s) ) / 86400 ))
+              # Un dominio vencido reporta 0 días (la app exige daysLeft >= 0).
+              if [ "$days_left" -lt 0 ]; then days_left=0; fi
+            fi
+            payload=$(jq -nc \
+              --arg expires "$expires" \
+              --arg dl "$days_left" \
+              --argjson ns "$ns" \
+              --argjson st "$status" '
+              { rdapOk: true, nameservers: $ns, status: $st }
+              + (if $expires != "" then { expiresAt: $expires } else {} end)
+              + (if $dl != "" then { daysLeft: ($dl | tonumber) } else {} end)')
+          else
+            echo "::warning::RDAP falló en ambos intentos — se reporta {\"rdapOk\": false} (la app cuenta las corridas ciegas seguidas)"
+            payload='{"rdapOk": false}'
+          fi
+
+          args=(-fsS -X POST "$WATCH_URL" -H "x-cron-secret: $CRON_SECRET" -H "content-type: application/json" -o /tmp/watch-resp.json -w "%{http_code}")
+          if [ -n "${VERCEL_BYPASS_TOKEN:-}" ]; then
+            args+=(-H "x-vercel-protection-bypass: $VERCEL_BYPASS_TOKEN")
+          fi
+          code=$(curl "${args[@]}" -d "$payload")
+          cat /tmp/watch-resp.json
+          # Si el POST falla, el job sale ROJO a propósito (patrón heartbeat de
+          # backup.yml): una observación que no logra reportarse deja la
+          # vigilancia muda — debe verse acá el mismo día.
+          if [ "$code" != "200" ]; then
+            echo "::error::El POST a domain-watch falló (HTTP $code). Revisar /api/cron/domain-watch y el secret CRON_SECRET."
+            exit 1
+          fi

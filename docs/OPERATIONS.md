@@ -806,7 +806,27 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 >
 > Complemento in-app (ya implementado en la remediación 360°): heartbeat de backups vía
 > `POST /api/cron/backup-heartbeat` (lo invoca `backup.yml` al terminar; regla `backup_stale`
-> si pasan >36 h sin latido) y `/api/health/crons` con los 9 jobs.
+> si pasan >36 h sin latido) y `/api/health/crons` con los 11 jobs.
+>
+> **Vigilante del dominio lucamsshop.com (2026-09-19 — L-H3/L-N1 de la auditoría 360°):**
+> el dominio (expira 2027-07-19) no tenía alerta de renovación ni detección de secuestro.
+> Productor: **workflow `domain-watch.yml` de GitHub Actions** (diario 11:17 UTC ≈ 6:17 AM
+> Colombia, runners Azure) — la vía pg_cron+pg_net desde Supabase STG se descartó el mismo
+> día: Verisign y rdap.org RECHAZAN las conexiones HTTPS salientes de pg_net (verificado en
+> vivo; api.github.com sí responde desde el mismo pg_net — el bloqueo es del lado RDAP). El
+> workflow consulta `https://rdap.verisign.com/com/v1/domain/lucamsshop.com` (2 intentos ×
+> 20 s) y hace POST a `/api/cron/domain-watch` de PRD con `x-cron-secret` (el MISMO secret
+> `CRON_SECRET` ya existente en GitHub — no hay secreto nuevo). La app
+> (`features/observability/domain-watch.ts`, estado en `AlertState` keys `domain-watch:*`)
+> siembra el baseline en la primera observación sin alertar y luego alerta: **expiración**
+> (crítica al cruzar 60/30/14/7/3/1 días, una vez por umbral; con ≤3 días, recordatorio si
+> la última alerta tiene >20 h), **cambio de nameservers o status EPP** (crítica — posible
+> secuestro/suspensión ICANN, p.ej. aparece `client hold`; se alerta por CAMBIO y se
+> actualiza el baseline) y **RDAP caído** (alta a la 2ª corrida seguida con `rdapOk=false`).
+> El latido `cron:domain-watch` (CRON_JOBS, 24 h) lo cubre el dead-man switch: si el workflow
+> deja de correr, `cron_stale_domain-watch` dispara a las 48 h. Acción humana ante alerta de
+> NS/status: verificar en el registrador (mi.com.co) que el cambio sea propio; si no, rotar
+> clave de la cuenta + MFA + transfer-lock y contactar soporte (posible secuestro en curso).
 >
 > ~~Decisión pendiente: alternativa gratuita antes del lanzamiento.~~ (Las opciones SaaS quedan
 > descartadas; ADR futura solo si se necesita algo más fino que el monitor de STG.)

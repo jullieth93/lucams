@@ -326,6 +326,34 @@ function buildAlertEmail(alerts: FiringAlert[]): { subject: string; html: string
 }
 
 /**
+ * Envía el email de un lote de alertas al setting `ALERT_EMAIL` reutilizando
+ * `buildAlertEmail`. Lo comparten dispatchAlerts (ciclo pg_cron de 5 min) y los
+ * productores EXTERNOS con anti-spam propio (p.ej. domain-watch, 2026-09-20 —
+ * su productor es GitHub Actions diario, no el cron de alertas). Devuelve
+ * `false` si el envío falló: el caller decide si sella su dedup (misma política
+ * que el ciclo: no sellar en fallo, para reintentar en la próxima corrida).
+ */
+export async function sendAlertEmail(alerts: FiringAlert[]): Promise<boolean> {
+  const to = await getSettingValue("ALERT_EMAIL", "hola@lucamsshop.com");
+  const { subject, html, text } = buildAlertEmail(alerts);
+  const result = await sendEmail({ to, subject, html, text });
+
+  // Auditoría 2026-07-13: si el email NO se envió, NO se sella el dedup → la
+  // alerta se reintenta en el próximo ciclo (antes se marcaba "enviada" pase lo
+  // que pase, silenciando la alerta justo cuando el sistema falla).
+  if (!result.sent) {
+    logger.error({
+      event: "alerts.email_failed",
+      keys: alerts.map((a) => a.key),
+      reason: result.reason ?? "unknown",
+    });
+    return false;
+  }
+  logger.info({ event: "alerts.sent", keys: alerts.map((a) => a.key), emailed: result.sent });
+  return true;
+}
+
+/**
  * Evalúa + registra las alertas que disparan. CADA una deja notificación in-app;
  * el EMAIL del lote solo sale si alguna es "crítica", respetando el anti-spam por
  * `key` (30 min, AlertState). `now` inyectable para tests.
@@ -372,22 +400,8 @@ export async function dispatchAlerts(
     return { sent, skipped };
   }
 
-  const to = await getSettingValue("ALERT_EMAIL", "hola@lucamsshop.com");
-  const { subject, html, text } = buildAlertEmail(toSend);
-  const result = await sendEmail({ to, subject, html, text });
-
-  // Auditoría 2026-07-13: si el email NO se envió, NO marcamos lastSentAt → la alerta se
-  // reintenta en el próximo ciclo (antes se marcaba "enviada" pase lo que pase, silenciando
-  // la alerta 30 min justo cuando el sistema falla — punto ciego en el peor momento).
-  if (!result.sent) {
-    logger.error({
-      event: "alerts.email_failed",
-      keys: toSend.map((a) => a.key),
-      reason: result.reason ?? "unknown",
-    });
-    return { sent, skipped };
-  }
-  logger.info({ event: "alerts.sent", keys: toSend.map((a) => a.key), emailed: result.sent });
+  const emailed = await sendAlertEmail(toSend);
+  if (!emailed) return { sent, skipped };
 
   for (const a of toSend) {
     await prisma.alertState.upsert({
