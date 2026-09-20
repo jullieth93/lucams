@@ -282,10 +282,13 @@ plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
   RLS 58/58, build OK). Las 3 migraciones nuevas se aplican a STG/PRD con ese release (orden en
   OPERATIONS changelog 2026-09-19). **F-03/04/05/06/07 CERRADOS en el árbol** — detalle en el
   Addendum 2 del informe de auditoría.
-- **Pendiente humano (§U del informe — reducido tras esta sesión):** dashboards Wompi/Aveonline/
-  Resend/Cloudflare/registrador; subir `password_min_length` a 8 en Supabase Auth PRD; revocar los
-  grants no-DML residuales de `EmailTemplateOverride`/`ProductMaterial`; cuentas de prueba por rol.
-  §U-1 (foto RLS/crons PRD) y §U-4 parcial (config GoTrue) ya quedaron capturados — Addendum 3.
+- **Pendiente humano (§U del informe — reducido tras esta sesión):** registrador mi.com.co
+  (auto-renew + MFA + transfer lock), Cloudflare (object-lock R2), dashboard Wompi (URL del
+  webhook — 1 min), y ejecutar la batería dinámica §58 en STG con las cuentas QA.
+  **Cerrado el 2026-09-20 (Addendum 4):** `password_min_length` 8 en PRD+STG, grants residuales
+  revocados (migración 038 en los 3 ambientes), 7 cuentas QA por rol creadas en STG
+  (credenciales en `tmp/qa-credentials-stg.txt`, 600), Resend/Wompi/Aveonline verificados por
+  datos (hallazgo menor: RESEND_API_KEY de los .env locales inválida — la viva está en Vercel).
 
 ## Sesión — 2026-09-19 (2) — RELEASE A PRD de la auditoría funcional total
 
