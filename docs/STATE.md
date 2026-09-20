@@ -25,9 +25,12 @@ autorizada se cerraron **F-03…F-07** en código (reconciliación expire-pendin
 nuevos, step-up MFA en conciliación COD y autogestión MFA, tabla SecurityEvent + 2 alertas de
 seguridad) — 4111 tests, RLS 58/58, build y format verdes; **sin commit ni deploy aún**.
 Informe: `docs/audits/2026-09-19-auditoria-integral-seguridad-preproduccion.md`.
-**Pendiente:** commit+release del paquete (aplica 3 migraciones nuevas a STG/PRD — orden en
-OPERATIONS changelog), checklist §U de evidencia en vivo PRD (humano, ~30 min) y verificar que
-`/api/health/crons` queda en 200 tras el deploy.
+**CERRADO EL MISMO DÍA:** release `production` ff → `b361e75` (CI verde, deploy Ready),
+3 migraciones aplicadas en STG y PRD, `/api/health/crons` → 200 en vivo, evidencia §U-1/§U-4
+capturada (RLS PRD limpia en vivo, 11 crons activos, GoTrue verificado, escape hatches OFF).
+**Pendiente (humano, ~20 min):** dashboards de proveedores/registrador/R2, subir
+`password_min_length` a 8 en Supabase Auth, revocar 2 grants no-DML residuales (EmailTemplateOverride,
+ProductMaterial), cuentas de prueba por rol para la batería dinámica §58 en STG.
 
 **🧪 2026-09-19 — AUDITORÍA FUNCIONAL TOTAL DEL OWNER (cliente + admin) REMEDIADA Y EN STG.**
 Origen: validación visual/funcional de Lucy sobre TODO el producto (~22 hallazgos). Paquete en
@@ -279,10 +282,10 @@ plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
   RLS 58/58, build OK). Las 3 migraciones nuevas se aplican a STG/PRD con ese release (orden en
   OPERATIONS changelog 2026-09-19). **F-03/04/05/06/07 CERRADOS en el árbol** — detalle en el
   Addendum 2 del informe de auditoría.
-- **Pendiente humano (§U del informe):** foto en vivo de RLS/grants/crons en PRD (SQL incluido),
-  config GoTrue, dashboards Wompi/Aveonline/Resend/registrador/R2, cuentas de prueba por rol.
-- **Verificación gratuita post-deploy:** `/api/health/crons` debe quedar en 200 (el fix de F-04
-  es code-only); con el cron de purga ya latido el 2026-09-20 ~09:05 UTC, el 503 actual desaparece.
+- **Pendiente humano (§U del informe — reducido tras esta sesión):** dashboards Wompi/Aveonline/
+  Resend/Cloudflare/registrador; subir `password_min_length` a 8 en Supabase Auth PRD; revocar los
+  grants no-DML residuales de `EmailTemplateOverride`/`ProductMaterial`; cuentas de prueba por rol.
+  §U-1 (foto RLS/crons PRD) y §U-4 parcial (config GoTrue) ya quedaron capturados — Addendum 3.
 
 ## Sesión — 2026-09-19 (2) — RELEASE A PRD de la auditoría funcional total
 

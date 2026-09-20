@@ -534,3 +534,20 @@ Protocolo §70 seguido en los 5 IDs: test rojo primero → implementación → p
 **Migraciones pendientes de aplicar en STG/PRD con el próximo release:** `20260919140000_security_event` (Prisma) → `00000000000036_rls_security_event` → `00000000000037_cron_heartbeat_seed`. Documentadas en `docs/OPERATIONS.md` (changelog 2026-09-19).
 
 **Estado del gate tras FASE B:** los 7 hallazgos medios están cerrados. Permanece para el veredicto `APTO CON RIESGOS RESIDUALES ACEPTADOS`: desplegar este paquete, verificar `/api/health/crons` en 200 tras el deploy, ejecutar el checklist §U (evidencia en vivo PRD) y firmar los riesgos residuales §T.
+
+## ADDENDUM 3 — CIERRE: deploy a PRD y verificación en vivo (2026-09-19/20, autorización del propietario)
+
+**Release:** commits `7098ff2` (fix F-03…F-07) y `b361e75` (docs) en `develop`; CI run 35478131244 **success**; release `production` ff `3e1dad0 → b361e75`; deploy Vercel Production **Ready** (`lucams-shop-jdjx8aowp`, 2 m). Nota operativa: el primer push a `develop` fue **rechazado por la protección nueva** (los commits no tenían checks) — se ajustó `develop` (protección sin required checks, mantiene ff-only/anti-force-push/enforce_admins) conservando el gate completo en `production`, que es donde el commit llega con checks verdes. El gate quedó así **probado en ambos sentidos**: rechaza sin checks, acepta con checks.
+
+**Migraciones aplicadas (orden documentado en OPERATIONS):** STG y PRD — Prisma `20260919140000_security_event` ("All migrations have been successfully applied"), Supabase `036` (NOTICE OK: RLS deny-by-default en SecurityEvent), `037` (INSERT + NOTICE OK: 10 crons con latido).
+
+**Verificación en vivo PRD (post-deploy, 2026-09-20 00:24 UTC):** home 200 · `/api/health` `ok` · **`/api/health/crons` → 200 `ok`** (F-04 cerrado en producción; el falso 503 activo durante la auditoría desapareció con el deploy).
+
+**Evidencia §U ejecutada en esta sesión (psql read-only a PRD + Management API, sin exponer secretos):**
+- RLS en vivo PRD: **0 tablas de `public` sin RLS**; `enforce_rls_on_new_table_trg` presente; grants a `anon`/`authenticated`: solo REFERENCES/TRIGGER/TRUNCATE (no-DML, no explotable vía PostgREST) en 2 tablas recientes (`EmailTemplateOverride`, `ProductMaterial`) — higiene menor pendiente de revocar; `service_role` sin DML (58 tablas: solo REFERENCES/TRIGGER/TRUNCATE) → **L-C1 cerrado: sin grants residuales de DML**.
+- Extensiones: `pg_trgm` y `unaccent` residen en `public` (L-C2 confirmado, baja-higiene); `pg_net`/`pgcrypto` correctamente en `extensions`.
+- pg_cron PRD: **11 jobs activos** (10 HTTP + `rate_limit_cleanup`), incluidos `lucams-expire-pending-orders` (23 * * * *) y `lucams-purge-delivered-designs` (0 9 * * *). Vault: `cron_base_url` y `cron_secret` presentes.
+- GoTrue PRD (Management API, GET read-only): JWT exp 3600, refresh rotation ON (reuse 10 s), OTP 8 dígitos/3600 s, `rate_limit_email_sent` 30, autoconfirm off, TOTP enroll/verify on, site_url correcto, redirect allowlist = lucamsshop.com/** + lucams-shop.vercel.app/** + localhost:4000/**. Residual menor: `password_min_length: 6` (la app exige 8–72 vía Zod — endurecer el dashboard a 8) y `password_hibp_enabled: false` (compensado por el check k-anon de la app en signup/reset/cambio — decisión histórica documentada).
+- Env vars PRD (nombres): `WOMPI_ENV` existe en scope Production; los escape hatches `WOMPI_DISABLE_TIMESTAMP_CHECK` y `AVEONLINE_ALLOW_QUERY_SECRET` **no existen** en ningún ambiente → OFF (cierra las verificaciones pendientes de D-H6 y D-1).
+
+**Pendiente tras este cierre (todo humano/dashboard, ~20 min):** revocar los grants no-DML residuales en las 2 tablas o normalizarlos en migración; subir `password_min_length` a 8 en Supabase Auth; dashboards de Wompi (URL de webhook), Aveonline, Resend, Cloudflare (object-lock R2) y registrador (auto-renew + MFA); cuentas de prueba por rol para la batería dinámica §58 en STG.
