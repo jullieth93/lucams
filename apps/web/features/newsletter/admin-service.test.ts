@@ -259,4 +259,30 @@ describe("buildNewsletterCsv", () => {
     expect(lines[1]).toContain("ACTIVO");
     expect(lines[2]).toContain("DE BAJA");
   });
+
+  it("neutraliza formula injection de hojas de cálculo (L-F3): prefijo ' en celdas = + - @ tab", () => {
+    const csv = buildNewsletterCsv([
+      {
+        email: "+1+1@example.com",
+        status: "active",
+        subscribedAt: null,
+        unsubscribedAt: null,
+        version: "=2+5",
+      },
+      {
+        email: "normal@example.com",
+        status: "active",
+        subscribedAt: null,
+        unsubscribedAt: null,
+        version: "@cmd",
+      },
+    ]);
+    const lines = csv.slice(1).split("\r\n");
+    // Ninguna celda exportada puede empezar por un carácter de fórmula.
+    expect(lines[1]).toContain("'+1+1@example.com");
+    expect(lines[1]).toContain("'=2+5");
+    expect(lines[2]).toContain("'@cmd");
+    // Los valores normales quedan intactos.
+    expect(lines[2]).toContain("normal@example.com");
+  });
 });

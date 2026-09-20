@@ -154,9 +154,15 @@ export async function listAllNewsletterSubscribers(): Promise<NewsletterSubscrib
   return groupNewsletterConsents(rows);
 }
 
-/** Escapa una celda CSV (RFC 4180): comillas dobles si trae separador, comilla o salto. */
+/**
+ * Escapa una celda CSV (RFC 4180): comillas dobles si trae separador, comilla o salto.
+ * Además neutraliza formula injection de hojas de cálculo (L-F3, auditoría
+ * 2026-09-19 — confirmado en vivo en STG): un valor que empieza por = + - @ tab CR
+ * se prefija con comilla simple, así Excel/Sheets lo tratan como texto.
+ */
 function csvCell(value: string): string {
-  return /[",\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return /[",\n\r]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
 const CSV_DATE = new Intl.DateTimeFormat("es-CO", {
