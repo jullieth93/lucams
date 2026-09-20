@@ -34,8 +34,10 @@ grants residuales revocados (mig. 038, 0 grants en 3 ambientes), Wompi STG webho
 (GHA → `/api/cron/domain-watch`, baseline sembrado: expira 2027-07-19, NS Cloudflare, transfer
 lock) y **batería dinámica §58 en STG: 30+ casos TODOS PASS, 0 hallazgos nuevos** (L-F3
 confirmado en vivo, pendiente menor). Informe con Addendums 1-5.
-**Pendiente:** firma de riesgos residuales §T (humano) → veredicto sube a
-`APTO CON RIESGOS RESIDUALES ACEPTADOS`. Opcional: portal mi.com.co (autorrenovación/MFA) y
+**VEREDICTO FINAL 2026-09-20: `APTO CON RIESGOS RESIDUALES ACEPTADOS`** — Lucy firmó los 6
+riesgos residuales §T (Addendum 6): segundo admin posteriormente, plan Supabase pago al
+lanzamiento comercial, y revisión del autoreferido cuando llegue el documento DIAN. Vigencia
+hasta 2026-12-19 o condiciones §68. Opcional: portal mi.com.co (autorrenovación/MFA) y
 `AVEONLINE_WEBHOOK_SECRET` en Vercel STG si se quiere probar ese flujo allí.
 
 **🧪 2026-09-19 — AUDITORÍA FUNCIONAL TOTAL DEL OWNER (cliente + admin) REMEDIADA Y EN STG.**

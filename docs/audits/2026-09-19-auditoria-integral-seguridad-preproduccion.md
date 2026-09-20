@@ -49,7 +49,11 @@ CI verde no equivale a seguridad aprobada: los gates anteriores se tratan como e
 
 ## B. VEREDICTO EJECUTIVO
 
-# **`PRODUCCIÓN CONDICIONADA`**
+# **`APTO CON RIESGOS RESIDUALES ACEPTADOS`** — veredicto final, 2026-09-20
+
+> Veredicto al momento de la FASE A (2026-09-19): `PRODUCCIÓN CONDICIONADA` (texto original conservado abajo). La elevación se produjo el 2026-09-20 tras verificarse: los 7 medios cerrados y desplegados en PRD (Addendums 1-2), evidencia en vivo capturada (RLS/crons/GoTrue/env vars PRD, Addendum 3), pendientes humanos ejecutados (Addendum 4), batería dinámica §58 con 30+ casos PASS y 0 hallazgos nuevos (Addendum 5), y **los 6 riesgos residuales §T firmados por la propietaria el 2026-09-20**. El sistema está desplegado en `01b52d1` con CI verde.
+
+**Texto original del veredicto FASE A (2026-09-19):** `PRODUCCIÓN CONDICIONADA`
 
 - **0 hallazgos CRÍTICOS, 0 ALTOS.** 7 medios (3 de ellos media-baja tras refutación adversarial), ~45 bajos/informativos en ledger.
 - La postura de ingeniería es madura y verificada con evidencia: RLS estructural en el 100 % de tablas (56/56 tests RLS verdes contra PostgreSQL real), grants revocados a anon/authenticated, RBAC admin con MFA TOTP obligatorio y step-up en reembolsos, webhooks con firma timing-safe + idempotencia, precios siempre recalculados server-side, backups cifrados con DR drill real mensual, CSP con nonce, historial git de 1.129 commits limpio de secretos, actions 100 % pineadas por SHA.
@@ -486,7 +490,7 @@ Runbooks: 11 existentes (6 en OPERATIONS + IRP-001/002/003/004 + DR + modo mante
 | Falta de detección | Parcial (F-04 degrada el dead-man switch AHORA; F-07) |
 | Evidencia dinámica insuficiente en flujos críticos | Parcial (sin pentest activo autorizado; §U-8) |
 
-**Decisión del gate: `PRODUCCIÓN CONDICIONADA`.** Para subir a `APTO CON RIESGOS RESIDUALES ACEPTADOS`: cerrar F-01/F-02/F-03/F-04 (P0), ejecutar el checklist §U completo sin sorpresas, y firmar los riesgos residuales §T.
+**Decisión del gate: `APTO CON RIESGOS RESIDUALES ACEPTADOS` (2026-09-20).** ~~`PRODUCCIÓN CONDICIONADA`~~ — las condiciones se cumplieron: F-01/F-02/F-03/F-04 (P0) cerrados el mismo día; checklist §U ejecutado sin sorpresas (RLS PRD limpia en vivo, 11 crons activos, GoTrue endurecido, escape hatches OFF, dashboards verificados o con evidencia indirecta); batería dinámica §58 PASS; riesgos residuales §T firmados por la propietaria el 2026-09-20 (ver §T y Addendum 6).
 
 ---
 
@@ -588,3 +592,20 @@ Nota operativa: `AVEONLINE_WEBHOOK_SECRET` no está en Vercel STG (webhook → 5
 **Con esto queda cubierto el último requisito del gate (§66: evidencia dinámica en flujos críticos).** Restan únicamente: firma de los riesgos residuales §T por el propietario y los chequeos de portal del registrador (autorrenovación/MFA — detección ya cubierta por el vigilante de dominio).
 
 **L-F3 — CERRADO (2026-09-20):** `csvCell` neutraliza formula injection (prefijo `'` en valores que empiezan por `= + - @ tab CR`) — `apps/web/features/newsletter/admin-service.ts:158`. Test que fallaba antes y pasa después; commit `6670e51`, CI verde, desplegado en PRD.
+
+## ADDENDUM 6 — FIRMA DE RIESGOS RESIDUALES Y VEREDICTO FINAL (2026-09-20)
+
+La propietaria (Lucy) firmó los 6 riesgos residuales §T el 2026-09-20, con estas precisiones:
+
+1. **Bus factor 1** — ACEPTADO. Nota de la propietaria: se incorporará un segundo administrador posteriormente (revisión 2026-12-19 o antes).
+2. **Supabase Free sin PITR** — ACEPTADO. Nota: se pagará el plan al salir a producción plena (la tienda opera en modo full pero sin campaña de lanzamiento; 0 ventas reales a la fecha). Gatillo: lanzamiento comercial formal.
+3. **Previews de diseños por link** — ACEPTADO.
+4. **Logs de Vercel como ventana forense** — ACEPTADO.
+5. **extract-zip sin parche (dev-only)** — ACEPTADO. Recomendación del auditor seguida: no existe acción alternativa (no hay versión parchada; reachability nula; revisión mensual vía Dependabot ya vigente).
+6. **Autoreferido multi-cuenta** — ACEPTADO por ahora. Gatillo de revisión adicional acordado: cuando la facturación electrónica DIAN aporte el documento en los pedidos, evaluar bloqueo de autoreferidos por documento (revisión 2026-12-19).
+
+Con la firma registrada y todos los requisitos del gate §66 verificados, el veredicto final del sistema es:
+
+# **`APTO CON RIESGOS RESIDUALES ACEPTADOS`**
+
+Vigencia: hasta 2026-12-19 o antes ante cualquier condición de §68 (nuevo dominio/proveedor/rol/tabla/policy, cambios en pagos/auth/MFA/checkout/CI-CD, incidente, secreto filtrado, cambio de propietario o de plan de Supabase).
