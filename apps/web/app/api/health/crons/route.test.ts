@@ -21,14 +21,16 @@ const { rateLimit, getCronHealth } = vi.hoisted(() => ({
       intervalMs: 300_000,
       lastRunAt: new Date("2026-08-29T10:00:00Z"),
       overdue: false,
+      pending: false,
       disabled: false,
     },
     {
       job: "daily-summary",
       label: "Resumen diario",
       intervalMs: 86_400_000,
-      lastRunAt: null,
+      lastRunAt: new Date("2026-08-26T10:00:00Z"), // >2×24h → vencido de verdad
       overdue: true,
+      pending: false,
       disabled: false,
     },
     {
@@ -37,6 +39,7 @@ const { rateLimit, getCronHealth } = vi.hoisted(() => ({
       intervalMs: 86_400_000,
       lastRunAt: null,
       overdue: false,
+      pending: false,
       disabled: true,
     },
   ]),
@@ -109,6 +112,7 @@ describe("GET /api/health/crons — respuesta pública mínima (C-4)", () => {
         intervalMs: 300_000,
         lastRunAt: new Date(),
         overdue: false,
+        pending: false,
         disabled: false,
       },
     ]);
@@ -116,6 +120,56 @@ describe("GET /api/health/crons — respuesta pública mínima (C-4)", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { status: string };
     expect(body.status).toBe("ok");
+  });
+
+  it("F-04: un cron recién agendado (pending, sin primer latido) NO degrada el health", async () => {
+    getCronHealth.mockResolvedValueOnce([
+      {
+        job: "alerts",
+        label: "Alertas",
+        intervalMs: 300_000,
+        lastRunAt: new Date(),
+        overdue: false,
+        pending: false,
+        disabled: false,
+      },
+      {
+        job: "purge-delivered-designs",
+        label: "Purga diseños entregados",
+        intervalMs: 86_400_000,
+        lastRunAt: null,
+        overdue: false,
+        pending: true,
+        disabled: false,
+      },
+    ]);
+    // Sin secreto: 200 con la respuesta mínima (el monitor externo no alerta).
+    const pub = await GET(req());
+    expect(pub.status).toBe(200);
+    expect(((await pub.json()) as { status: string }).status).toBe("ok");
+
+    // Con secreto: el detalle reporta el job como pending (visible, no degradado).
+    getCronHealth.mockResolvedValueOnce([
+      {
+        job: "purge-delivered-designs",
+        label: "Purga diseños entregados",
+        intervalMs: 86_400_000,
+        lastRunAt: null,
+        overdue: false,
+        pending: true,
+        disabled: false,
+      },
+    ]);
+    const res = await GET(req(SECRET));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      status: string;
+      pending: string[];
+      jobs: Array<{ job: string; pending: boolean }>;
+    };
+    expect(body.status).toBe("ok");
+    expect(body.pending).toEqual(["purge-delivered-designs"]);
+    expect(body.jobs[0]).toMatchObject({ job: "purge-delivered-designs", pending: true });
   });
 
   it("la key de rate-limit lleva la IP hasheada (C-8)", async () => {

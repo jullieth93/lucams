@@ -14,13 +14,31 @@
 import { revalidatePath, updateTag } from "next/cache";
 import { logger } from "@/lib/logger";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { CmsValidationError, getCmsFieldByKey, saveCmsFieldDraft } from "@/features/cms/service";
 import { markCodRemitted, flagCodDiscrepancy } from "@/features/orders/cod-reconciliation";
 import { formatCOP } from "@/lib/format";
 
-type ActionResult = { error?: string; success?: string };
+type ActionResult = { error?: string; success?: string; reauthRequired?: boolean };
+
+/**
+ * F-05 (auditoría integral 2026-09-19): el ledger de efectivo COD es operación
+ * financiera → aal2 RECIENTE, no solo SUPERADMIN (el estándar que este archivo
+ * ya declaraba en el encabezado). Si la elevación es vieja, devuelve el
+ * marcador `reauthRequired`: la UI abre el modal TOTP
+ * (components/admin/mfa-reauth) y reintenta la acción una vez.
+ */
+async function requireRecentMfaOrMarker(): Promise<{ reauthRequired: true } | null> {
+  try {
+    await requireRecentMfa();
+    return null;
+  } catch (err) {
+    if (isMfaReauthRequired(err)) return { reauthRequired: true };
+    throw err;
+  }
+}
 
 /** Convierte un input en PESOS (lo que teclea Lucy) a centavos COP; vacío → undefined. */
 function pesosToCents(raw: FormDataEntryValue | null): number | undefined {
@@ -48,6 +66,9 @@ export async function setCodEnabledAction(
   _formData: FormData,
 ): Promise<ActionResult> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+
+  const reauth = await requireRecentMfaOrMarker();
+  if (reauth) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
 
   try {
     const field = await getCmsFieldByKey("COD_ENABLED");
@@ -98,6 +119,9 @@ export async function markCodRemittedAction(
 ): Promise<ActionResult> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
+  const reauth = await requireRecentMfaOrMarker();
+  if (reauth) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
+
   const orderId = String(formData.get("orderId") ?? "");
   if (!orderId) return { error: "Falta el pedido" };
   const remittedAmount = pesosToCents(formData.get("remittedAmountPesos"));
@@ -143,6 +167,9 @@ export async function flagCodDiscrepancyAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+
+  const reauth = await requireRecentMfaOrMarker();
+  if (reauth) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
 
   const orderId = String(formData.get("orderId") ?? "");
   if (!orderId) return { error: "Falta el pedido" };

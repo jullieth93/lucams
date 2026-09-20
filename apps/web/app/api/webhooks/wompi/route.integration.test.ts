@@ -50,6 +50,7 @@ async function makeOrder(
   reference: string,
   total: number,
   status = "PENDING_PAYMENT",
+  paymentMethod: "WOMPI" | "COD" = "WOMPI",
 ): Promise<string> {
   const o = await prisma.order.create({
     data: {
@@ -60,7 +61,7 @@ async function makeOrder(
       subtotal: total - 10000,
       shipping: 10000,
       total,
-      paymentMethod: "WOMPI",
+      paymentMethod,
       status: status as never,
     },
     select: { id: true },
@@ -390,9 +391,9 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
     });
   });
 
-  it("PENDING → noop (espera próximo evento), sin saga", async () => {
+  it("PENDING → noop de saga, pero PERSISTE el txId en la orden (F-03: el cron lo necesita para verificar)", async () => {
     const ref = `${RUN}-LCM-PEND`;
-    await makeOrder(ref, 55000);
+    const orderId = await makeOrder(ref, 55000);
     const res = await POST(
       req(
         signedEvent({
@@ -405,6 +406,40 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
     );
     expect(res.status).toBe(200);
     expect(sagaCalls).toHaveLength(0);
+    // F-03 (auditoría 2026-09-19): sin el txId persistido, si el evento APPROVED
+    // posterior se pierde Y el cliente no vuelve a /checkout/gracias, el cron
+    // expire-pending cancela a ciegas (veredicto no_txid) una venta cobrada.
+    const o = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true, wompiTransactionId: true },
+    });
+    expect(o?.status).toBe("PENDING_PAYMENT"); // sigue esperando el desenlace
+    expect(o?.wompiTransactionId).toBe(`${RUN}-tx9`);
+  });
+
+  it("PENDING sobre una orden COD → NO persiste el txId (backstop anti-doble-cobro de la saga)", async () => {
+    // Una reference Wompi jamás debería apuntar a una COD, pero si pasa (reuso
+    // malicioso/error), escribir el txId apagaría el backstop anti-doble-cobro
+    // de la saga (saga.ts: paymentMethod COD + wompiTransactionId = prepagada).
+    const ref = `${RUN}-LCM-PENDCOD`;
+    const orderId = await makeOrder(ref, 55000, "PENDING_PAYMENT", "COD");
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx9b`,
+          status: "PENDING",
+          amountInCents: 55000,
+          reference: ref,
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    const o = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { paymentMethod: true, wompiTransactionId: true },
+    });
+    expect(o?.paymentMethod).toBe("COD");
+    expect(o?.wompiTransactionId).toBeNull();
   });
 
   it("carrera de dedup (findUnique miss + create P2002 por entrega concurrente) → 200, sin doble saga ni 500", async () => {

@@ -5,22 +5,25 @@
  * mostrarlos una sola vez (Lucy 2026-06-27).
  * El bloque de "una sola vista" (grilla + copiar/descargar) lo comparte con el
  * enrolamiento vía <RecoveryCodesReveal> (Fase 3B, feedback Lucy 2026-09-18).
+ *
+ * F-06 (auditoría integral 2026-09-19): la regeneración exige aal2 reciente;
+ * ante `reauthRequired` el hook abre el modal TOTP y reintenta.
  */
 
-import { useActionState } from "react";
 import { Loader2, KeyRound } from "lucide-react";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import { generateRecoveryCodesAction, type RecoveryCodesState } from "./actions";
 import { RecoveryCodesReveal } from "./recovery-codes-reveal";
 
 export function RecoveryCodesPanel({ unusedCount }: { unusedCount: number }) {
-  const [state, formAction, pending] = useActionState<RecoveryCodesState | null, FormData>(
+  const [state, formAction, pending, reauthModal] = useMfaReauthAction<RecoveryCodesState>(
     async () => generateRecoveryCodesAction(),
-    null,
   );
   const hasCodes = unusedCount > 0;
 
   return (
     <div className="space-y-3">
+      {reauthModal}
       <div className="flex items-center gap-2">
         <KeyRound className="text-brand-muted h-5 w-5" />
         <h3 className="text-brand-purple-dark font-semibold">Códigos de respaldo</h3>

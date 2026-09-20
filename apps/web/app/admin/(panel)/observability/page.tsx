@@ -326,7 +326,7 @@ export default async function AdminObservabilityPage() {
             />
           </div>
 
-          {/* ─── Crons (dead-man switch, #15) ─── */}
+          {/* ─── Crons (dead-man switch, #15; estado `pending` de F-04) ─── */}
           <h2 className="text-brand-purple-dark mt-6 mb-2 flex items-center gap-2 text-sm font-bold">
             <Clock className="h-4 w-4" /> Trabajos automáticos (crons)
           </h2>
@@ -336,10 +336,14 @@ export default async function AdminObservabilityPage() {
                 key={c.job}
                 icon={<Clock className="h-4 w-4" />}
                 label={c.label}
-                value={c.overdue ? "Sin correr" : "Al día"}
+                value={c.overdue ? "Sin correr" : c.pending ? "Pendiente" : "Al día"}
                 danger={c.overdue}
                 hint={
-                  c.lastRunAt ? `últ. ${dateFmt.format(c.lastRunAt)}` : "sin registro de ejecución"
+                  c.lastRunAt
+                    ? `últ. ${dateFmt.format(c.lastRunAt)}`
+                    : c.pending
+                      ? "agendado — aún sin primera ejecución"
+                      : "sin registro de ejecución"
                 }
               />
             ))}

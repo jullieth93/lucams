@@ -1041,6 +1041,32 @@ model AdminActionLog {
   @@index([entityType, entityId])
 }
 
+// ──────────────────────── EVENTOS DE SEGURIDAD ────────────────────────
+// F-07 (auditoría 2026-09-19): persistencia durable de eventos de seguridad
+// rechazados (login fallido cliente/admin, firma/secreto de webhook inválido)
+// — antes solo vivían en logs efímeros de Vercel con la IP redactada, así que
+// una campaña de password-spraying o de firmas falsas era prevenida pero
+// INVISIBLE e investigable solo dentro de la retención de logs de Vercel.
+// ipHash = hashIp() de lib/rate-limit-keys.ts (SHA-256 truncado a 16 hex):
+// la IP es dato personal (Ley 1581, política C-8) y jamás se guarda en claro,
+// pero el hash determinista permite correlacionar una campaña por origen.
+// Append-only. Escribe lib/security-events.ts (fail-open, como admin-audit);
+// leen evaluateAlerts (reglas security_admin_login_fails /
+// security_webhook_invalid) y el cron purge-event-logs (retención 180 días).
+
+model SecurityEvent {
+  id        String   @id @default(cuid())
+  event     String // p.ej. "auth.login.fail", "auth.admin_login.fail", "webhook.invalid_signature"
+  outcome   String // "failure" (auth rechazada) | "rejected" (firma/secreto inválido)
+  ipHash    String?
+  actorId   String?
+  metadata  Json
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([event, createdAt])
+}
+
 // ──────────────────────── CONSENTIMIENTO LEY 1581 ────────────────────────
 // Registro granular de consentimiento del titular según Ley 1581.
 // Cada toggle del banner cookies + newsletter + autorización general

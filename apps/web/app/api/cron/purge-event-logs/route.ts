@@ -1,8 +1,9 @@
 /*
  * Cron de retención: purga EmailEvent y WebhookEvent con más de 180 días (auditoría v3 · #10),
  * ErrorLog/ErrorReport con más de 90 días (auditoría 2026-08-24, F-6), Notification LEÍDAS con
- * más de 90 días y WebVital con más de 35 días (auditoría 2026-09-11, N-13) — Ley 1581
- * minimización/retención; ver event-log-retention.ts y COMPLIANCE.md.
+ * más de 90 días y WebVital con más de 35 días (2026-09-11, N-13), y SecurityEvent con más de
+ * 180 días (F-07, auditoría 2026-09-19) — Ley 1581 minimización/retención; ver
+ * event-log-retention.ts y COMPLIANCE.md.
  * Protegido por CRON_SECRET (header `x-cron-secret` — nunca en la URL, para no filtrarlo en logs).
  *
  * Se agenda con pg_cron en Supabase (mandato #11) — SQL versionado en la migración de crons HTTP.

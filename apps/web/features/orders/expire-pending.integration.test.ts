@@ -17,10 +17,12 @@
  *   - APPROVED (+monto OK) → NO cancela: corre la saga processPaidOrder como
  *     auto-sanación y la cuenta en `healed` (webhook perdido = venta real).
  *   - APPROVED con monto desfasado → ni cancela ni sana: needsReconciliation.
- *   - PENDING/DECLINED (no aprobado) → cancela, con veredicto en el log.
- *   - API caída / tx inexistente → cancela como siempre.
- *   - Sin llaves WOMPI_* (getWompiConfig lanza) → NO verifica y cancela.
- *   - Sin wompiTransactionId → cancela directo SIN llamar a Wompi.
+ *   - PENDING/DECLINED (no aprobado) → cancela limpia, con veredicto en el log.
+ *   - API caída / tx inexistente → cancela PERO marca needsReconciliation (F-03:
+ *     la cancelación fue a ciegas y pudo haber dinero capturado → visible).
+ *   - Sin llaves WOMPI_* (getWompiConfig lanza) → NO verifica; cancela + flag (F-03).
+ *   - Sin wompiTransactionId → cancela directo SIN llamar a Wompi y SIN flag
+ *     (abandono real antes de pagar: no hay cobro potencial que reconciliar).
  * La capa de Wompi (lib/wompi) y la saga se mockean como hacen los tests del
  * webhook (route.integration.test.ts): la DB es real, el tercero no.
  *
@@ -383,7 +385,7 @@ describe.skipIf(!hasDb)(
         },
       );
 
-      it("API de Wompi caída (lookup revienta) → cancela como siempre", async () => {
+      it("API de Wompi caída (lookup revienta) → cancela PERO marca needsReconciliation (F-03)", async () => {
         const id = await makeOrder({
           tag: "w54-apidown",
           ageMs: STALE_AGE,
@@ -394,10 +396,19 @@ describe.skipIf(!hasDb)(
         await expireStalePendingOrders();
 
         expect(wompiMocks.processPaidOrder).not.toHaveBeenCalled();
-        expect((await orderState(id))?.status).toBe("CANCELLED");
+        const o = await prisma.order.findUnique({
+          where: { id },
+          select: { status: true, needsReconciliation: true, reconciliationReason: true },
+        });
+        expect(o?.status).toBe("CANCELLED");
+        // F-03 (auditoría 2026-09-19): la cancelación fue a ciegas (no se pudo
+        // verificar el cobro contra Wompi) → NO puede quedar silenciosa: el flag
+        // dispara la alerta crítica `reconciliation` para contraste manual.
+        expect(o?.needsReconciliation).toBe(true);
+        expect(o?.reconciliationReason).toContain(TX);
       });
 
-      it("sin llaves WOMPI_* (getWompiConfig lanza) → NO verifica y cancela como siempre", async () => {
+      it("sin llaves WOMPI_* (getWompiConfig lanza) → cancela PERO marca needsReconciliation (F-03)", async () => {
         const id = await makeOrder({
           tag: "w54-noconfig",
           ageMs: STALE_AGE,
@@ -410,19 +421,53 @@ describe.skipIf(!hasDb)(
         await expireStalePendingOrders();
 
         expect(wompiMocks.getTransaction).not.toHaveBeenCalled();
-        expect((await orderState(id))?.status).toBe("CANCELLED");
+        const o = await prisma.order.findUnique({
+          where: { id },
+          select: { status: true, needsReconciliation: true },
+        });
+        expect(o?.status).toBe("CANCELLED");
+        // F-03 — una orden CON txId y sin llaves es anómala (el cobro pudo
+        // existir): la cancelación no puede ser silenciosa.
+        expect(o?.needsReconciliation).toBe(true);
       });
 
-      it("orden SIN wompiTransactionId → cancela directo SIN llamar a Wompi", async () => {
+      it("orden SIN wompiTransactionId → cancela directo SIN llamar a Wompi y SIN flag (abandono real)", async () => {
         const id = await makeOrder({ tag: "w54-notxid", ageMs: STALE_AGE });
 
         await expireStalePendingOrders();
 
-        expect((await orderState(id))?.status).toBe("CANCELLED");
+        const o = await prisma.order.findUnique({
+          where: { id },
+          select: { status: true, needsReconciliation: true },
+        });
+        expect(o?.status).toBe("CANCELLED");
+        // F-03 — el abandono ANTES de pagar sigue cancelándose limpio: sin txId
+        // no hay cobro potencial que reconciliar.
+        expect(o?.needsReconciliation).toBe(false);
         // El afterEach del test anterior barrió los fixtures con txId: en esta
         // corrida no hay ninguna orden propia con txId → cero llamadas a Wompi.
         expect(wompiMocks.getTransaction).not.toHaveBeenCalled();
         expect(wompiMocks.processPaidOrder).not.toHaveBeenCalled();
+      });
+
+      it("tx verificada NO aprobada (DECLINED) → cancela limpia SIN flag (Wompi confirmó que no hay cobro)", async () => {
+        const id = await makeOrder({
+          tag: "w54-declined-clean",
+          ageMs: STALE_AGE,
+          wompiTransactionId: TX,
+        });
+        wompiMocks.getTransaction.mockResolvedValue(makeTx({ status: "DECLINED" }));
+
+        await expireStalePendingOrders();
+
+        const o = await prisma.order.findUnique({
+          where: { id },
+          select: { status: true, needsReconciliation: true },
+        });
+        expect(o?.status).toBe("CANCELLED");
+        // La verificación SÍ corrió y descartó el cobro → cancelación informada,
+        // no hay nada que reconciliar.
+        expect(o?.needsReconciliation).toBe(false);
       });
     });
   },

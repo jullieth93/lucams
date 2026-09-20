@@ -42,13 +42,17 @@
  *     simétrica al webhook y al fallback (tx.amount_in_cents === order.total):
  *     un APPROVED con monto desfasado NO se sana ni se cancela — se marca
  *     needsReconciliation y queda para un humano (cuenta como `skipped`).
- *   - PENDING / DECLINED / ERROR / VOIDED, transacción inexistente (404) o API
- *     caída → se cancela como siempre (el veredicto queda en el log).
- *   - Si Wompi NO está configurado (faltan WOMPI_* — modo catálogo) NO se
- *     verifica y se cancela como siempre: sin llaves no hay cobro real que
- *     sanar (criterio documentado, veredicto "not_configured").
+ *   - PENDING / DECLINED / ERROR / VOIDED → se cancela limpio: la verificación
+ *     SÍ corrió y descartó el cobro (el veredicto queda en el log).
+ *   - Transacción inexistente (404) / API caída (lookup_failed) o Wompi NO
+ *     configurado (not_configured) → se cancela (sin prueba de pago no se puede
+ *     retener la orden para siempre) PERO se marca needsReconciliation (F-03,
+ *     auditoría 2026-09-19): la cancelación fue a ciegas y pudo haber dinero
+ *     capturado — la alerta crítica `reconciliation` la hace visible para
+ *     contraste manual contra el panel Wompi. Ninguna orden con pago potencial
+ *     se cancela en silencio.
  * Órdenes sin wompiTransactionId (abandono antes de pagar) → cancelación
- * directa sin llamar a Wompi, como antes.
+ * directa sin llamar a Wompi y SIN flag: no hay cobro potencial que reconciliar.
  *
  * Auditoría: no hay columna de "motivo de cancelación" en Order (solo
  * refundReason); la razón ORDER_EXPIRED queda en updatedBy="cron:expire-pending-orders"
@@ -95,10 +99,10 @@ function wompiVerificationAvailable(): boolean {
 
 /** Veredicto de la verificación Wompi — queda en el log de cada orden cancelada. */
 type WompiVerdict =
-  | "no_txid" // abandonó antes de pagar → cancela directo (sin llamar a Wompi)
-  | "not_configured" // sin llaves WOMPI_* → no se puede verificar, cancela como siempre
-  | "not_approved" // PENDING/DECLINED/ERROR/VOIDED → cancela
-  | "lookup_failed"; // API caída / tx inexistente (404) → cancela
+  | "no_txid" // abandonó antes de pagar → cancela directo (sin llamar a Wompi) y SIN flag
+  | "not_configured" // sin llaves WOMPI_* → no se puede verificar: cancela + needsReconciliation (F-03)
+  | "not_approved" // PENDING/DECLINED/ERROR/VOIDED → cancela limpio (cobro descartado)
+  | "lookup_failed"; // API caída / tx inexistente (404) → cancela + needsReconciliation (F-03)
 
 export async function expireStalePendingOrders(
   now: Date = new Date(),
@@ -143,7 +147,8 @@ export async function expireStalePendingOrders(
           tx = await getTransaction(order.wompiTransactionId);
         } catch (err) {
           // API caída, timeout, circuit-open o tx inexistente (404): sin prueba
-          // de pago, se cancela como siempre (comportamiento previo a 5.4).
+          // de pago se cancela, pero la cancelación fue a ciegas → F-03 la
+          // marca needsReconciliation al cancelar (más abajo).
           verdict = "lookup_failed";
           logger.warn({
             event: "order.expire_pending.wompi_lookup_failed",
@@ -222,6 +227,23 @@ export async function expireStalePendingOrders(
     try {
       await transitionOrder(order.id, "CANCELLED", { actorAdminId: EXPIRE_PENDING_ACTOR });
       expired += 1;
+      // F-03 (auditoría 2026-09-19): si la orden TENÍA txId pero la verificación
+      // contra Wompi NO se ejecutó (sin llaves o API caída/404), la cancelación
+      // fue a ciegas — pudo haber dinero capturado detrás. La marcamos
+      // needsReconciliation para que la alerta crítica `reconciliation` (cuenta
+      // needsReconciliation sin importar el estado) la haga visible: ninguna
+      // orden con pago potencial se cancela en silencio. Los veredictos no_txid
+      // (abandono antes de pagar) y not_approved (Wompi confirmó que NO hay
+      // cobro) se cancelan limpios, como siempre.
+      if (verdict === "not_configured" || verdict === "lookup_failed") {
+        await prisma.order.updateMany({
+          where: { id: order.id, needsReconciliation: false },
+          data: {
+            needsReconciliation: true,
+            reconciliationReason: `El cron expire-pending canceló la orden SIN poder verificar su tx Wompi (${order.wompiTransactionId}) — veredicto ${verdict}. Contrastar contra el panel Wompi: si el cobro está APPROVED, hubo una venta cobrada cancelada (confirmar stock o reembolsar).`,
+          },
+        });
+      }
       logger.info({
         event: "order.expired_pending_payment",
         reason: "ORDER_EXPIRED",

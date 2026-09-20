@@ -20,6 +20,7 @@ import { requireRole } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { countUnusedRecoveryCodes } from "@/features/admin-mfa/recovery-codes";
+import { ReauthForm } from "@/components/admin/mfa-reauth";
 import { MfaEnroll } from "./mfa-enroll";
 import { RecoveryCodesPanel } from "./recovery-codes-panel";
 import { disableMfaAction, changeMfaDeviceAction } from "./actions";
@@ -83,14 +84,16 @@ export default async function AdminSeguridadPage({ searchParams }: { searchParam
                   ¿Cambiaste de celular o de app? Esto desactiva el actual y te muestra un código QR
                   nuevo para volver a configurarlo.
                 </p>
-                <form action={changeMfaDeviceAction}>
+                {/* F-06: step-up MFA — con aal2 viejo el form devuelve
+                    `reauthRequired` y ReauthForm abre el modal TOTP. */}
+                <ReauthForm action={changeMfaDeviceAction}>
                   <button
                     type="submit"
                     className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/5 rounded-md border bg-white px-4 py-2 text-sm font-semibold"
                   >
                     Cambiar dispositivo
                   </button>
-                </form>
+                </ReauthForm>
               </div>
 
               {/* Desactivar */}
@@ -100,14 +103,14 @@ export default async function AdminSeguridadPage({ searchParams }: { searchParam
                   Quita la verificación en 2 pasos (también borra tus códigos de respaldo). Tu
                   cuenta quedará protegida solo con la contraseña.
                 </p>
-                <form action={disableMfaAction}>
+                <ReauthForm action={disableMfaAction}>
                   <button
                     type="submit"
                     className="rounded-md border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
                   >
                     Desactivar verificación en 2 pasos
                   </button>
-                </form>
+                </ReauthForm>
               </div>
             </div>
           ) : (

@@ -24,10 +24,21 @@ import {
 import { getEmailDeliverabilityStats } from "./email-deliverability";
 import { getSettingValue } from "@/lib/cms";
 import { logger } from "@/lib/logger";
+import { SECURITY_EVENT } from "@/lib/security-events";
 import { PENDING_PAYMENT_EXPIRY_HOURS } from "@/features/orders/constants";
 import { notify, type NotificationSeverity } from "@/features/notifications/service";
 
 const DEDUP_WINDOW_MS = 30 * 60 * 1000; // 30 min
+
+// F-07 (2026-09-19) — umbrales de las reglas de seguridad sobre SecurityEvent.
+// El de logins admin es coherente con el rate limit del panel (5/15 min por IP
+// y por email, app/admin/login/actions.ts): llegar a ≥5 fallos registrados en
+// la ventana implica múltiples orígenes o emails — una campaña, no un despiste.
+const ADMIN_LOGIN_FAIL_THRESHOLD = 5;
+const ADMIN_LOGIN_FAIL_WINDOW_MS = 15 * 60 * 1000;
+// Objetivo documentado en docs/OBSERVABILITY.md ("3+ firmas inválidas/5 min").
+const WEBHOOK_INVALID_THRESHOLD = 3;
+const WEBHOOK_INVALID_WINDOW_MS = 5 * 60 * 1000;
 
 // Severidad de la regla (es-CO) → severidad del centro de notificaciones.
 const SEVERITY_TO_NOTIFICATION: Record<FiringAlert["severity"], NotificationSeverity> = {
@@ -56,40 +67,55 @@ export type FiringAlert = {
 export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAlert[]> {
   const firing: FiringAlert[] = [];
 
-  const [errGroups, recon, stuck, stalePendingWompi] = await Promise.all([
-    // N-33 — errors_spike agrupa por RUTA (routePath): el doc (OBSERVABILITY.md)
-    // define el pico como "5+ errores 500 en 5 min en una misma ruta", no un
-    // conteo global (ruido repartido en N rutas sanas no es un incidente).
-    // ErrorLog solo registra errores de servidor (captureServerError), así que
-    // "500" es preciso. Filas sin routePath no son atribuibles a una ruta →
-    // no disparan esta regla. groupBy sin `having` (mismo patrón que
-    // daily-summary.ts) y el umbral se aplica acá: ventana chica y acotada.
-    prisma.errorLog.groupBy({
-      by: ["routePath"],
-      where: { createdAt: { gte: new Date(now.getTime() - 5 * 60 * 1000) } },
-      _count: { _all: true },
-    }),
-    prisma.order.count({ where: { needsReconciliation: true, deletedAt: null } }),
-    prisma.webhookEvent.count({
-      where: { processedAt: null, createdAt: { lt: new Date(now.getTime() - 60 * 60 * 1000) } },
-    }),
-    // #9 + N-12b (2026-09-11) — orden Wompi que supera PENDING_PAYMENT_EXPIRY_HOURS
-    // en PENDING_PAYMENT. Antes alertaba a las 2h: un checkout abandonado es ESPERADO
-    // (la mayoría no paga) y la alerta ardía en falso. Hoy el cron expire-pending-orders
-    // auto-cancela al vencer la ventana → una orden que la SUPERA sin cancelarse significa
-    // que la auto-cancelación NO corrió (fallo real del sistema) o que el pago se capturó
-    // sin confirmación. Mismo umbral que el cron (features/orders/constants).
-    prisma.order.count({
-      where: {
-        status: "PENDING_PAYMENT",
-        paymentMethod: "WOMPI",
-        deletedAt: null,
-        createdAt: {
-          lt: new Date(now.getTime() - PENDING_PAYMENT_EXPIRY_HOURS * 60 * 60 * 1000),
+  const [errGroups, recon, stuck, stalePendingWompi, adminLoginFails, webhookInvalid] =
+    await Promise.all([
+      // N-33 — errors_spike agrupa por RUTA (routePath): el doc (OBSERVABILITY.md)
+      // define el pico como "5+ errores 500 en 5 min en una misma ruta", no un
+      // conteo global (ruido repartido en N rutas sanas no es un incidente).
+      // ErrorLog solo registra errores de servidor (captureServerError), así que
+      // "500" es preciso. Filas sin routePath no son atribuibles a una ruta →
+      // no disparan esta regla. groupBy sin `having` (mismo patrón que
+      // daily-summary.ts) y el umbral se aplica acá: ventana chica y acotada.
+      prisma.errorLog.groupBy({
+        by: ["routePath"],
+        where: { createdAt: { gte: new Date(now.getTime() - 5 * 60 * 1000) } },
+        _count: { _all: true },
+      }),
+      prisma.order.count({ where: { needsReconciliation: true, deletedAt: null } }),
+      prisma.webhookEvent.count({
+        where: { processedAt: null, createdAt: { lt: new Date(now.getTime() - 60 * 60 * 1000) } },
+      }),
+      // #9 + N-12b (2026-09-11) — orden Wompi que supera PENDING_PAYMENT_EXPIRY_HOURS
+      // en PENDING_PAYMENT. Antes alertaba a las 2h: un checkout abandonado es ESPERADO
+      // (la mayoría no paga) y la alerta ardía en falso. Hoy el cron expire-pending-orders
+      // auto-cancela al vencer la ventana → una orden que la SUPERA sin cancelarse significa
+      // que la auto-cancelación NO corrió (fallo real del sistema) o que el pago se capturó
+      // sin confirmación. Mismo umbral que el cron (features/orders/constants).
+      prisma.order.count({
+        where: {
+          status: "PENDING_PAYMENT",
+          paymentMethod: "WOMPI",
+          deletedAt: null,
+          createdAt: {
+            lt: new Date(now.getTime() - PENDING_PAYMENT_EXPIRY_HOURS * 60 * 60 * 1000),
+          },
         },
-      },
-    }),
-  ]);
+      }),
+      // F-07 (2026-09-19) — reglas de seguridad sobre SecurityEvent (la persistencia
+      // durable que antes no existía: estos rechazos solo vivían en logs efímeros).
+      prisma.securityEvent.count({
+        where: {
+          event: SECURITY_EVENT.ADMIN_LOGIN_FAIL,
+          createdAt: { gte: new Date(now.getTime() - ADMIN_LOGIN_FAIL_WINDOW_MS) },
+        },
+      }),
+      prisma.securityEvent.count({
+        where: {
+          event: SECURITY_EVENT.WEBHOOK_INVALID_SIGNATURE,
+          createdAt: { gte: new Date(now.getTime() - WEBHOOK_INVALID_WINDOW_MS) },
+        },
+      }),
+    ]);
 
   const spikes = errGroups
     .filter((g) => g.routePath !== null && g._count._all >= 5)
@@ -140,10 +166,44 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
     });
   }
 
+  // F-07 (2026-09-19) — password-spraying contra /admin/login: el rate limit
+  // (5/15 min por IP y por email) ya lo FRENA, pero sin esta regla la campaña
+  // era invisible. ALTA (in-app; NO crítica): la prevención primaria existe —
+  // la alerta es para investigar, no para re-emailar cada 30 min.
+  if (adminLoginFails >= ADMIN_LOGIN_FAIL_THRESHOLD) {
+    firing.push({
+      key: "security_admin_login_fails",
+      severity: "alta",
+      title: `${adminLoginFails} logins de admin fallidos en 15 minutos`,
+      detail: `Umbral ${ADMIN_LOGIN_FAIL_THRESHOLD} en 15 min (coherente con el rate limit del panel): superarlo implica múltiples IPs o emails — patrón de password-spraying, no un usuario que olvidó su clave. Los intentos quedan en SecurityEvent con la IP hasheada.`,
+      action:
+        "Revisa /admin/observability y la tabla SecurityEvent (evento auth.admin_login.fail, agrupa por ipHash): si la campaña sigue, considera bloqueo a nivel edge (Cloudflare/Vercel) y forzar rotación de claves admin.",
+    });
+  }
+
+  // F-07 (2026-09-19) — firmas/secretos de webhook inválidos (Wompi/Aveonline/
+  // Resend): la firma timing-safe ya los RECHAZA, pero un volumen sostenido es
+  // una campaña de replay o de sondeo que antes no dejaba señal agregada.
+  // MEDIA: cada entrega inválida individual es ruido (un secreto viejo tras
+  // rotar también la causa); el patrón solo importa en volumen.
+  if (webhookInvalid >= WEBHOOK_INVALID_THRESHOLD) {
+    firing.push({
+      key: "security_webhook_invalid",
+      severity: "media",
+      title: `${webhookInvalid} firmas/secretos de webhook inválidos en 5 minutos`,
+      detail: `Umbral ${WEBHOOK_INVALID_THRESHOLD} en 5 min (objetivo de docs/OBSERVABILITY.md). Posible ataque de replay/sondeo contra los webhooks — o un proveedor reenviando con un secreto viejo tras una rotación. Los eventos quedan en SecurityEvent (evento webhook.invalid_signature) con la IP hasheada y el proveedor en metadata.source.`,
+      action:
+        "Revisa SecurityEvent (webhook.invalid_signature, agrupa por ipHash y metadata.source): si es un solo proveedor y hubo rotación reciente, reconfigura su webhook; si son orígenes variados y sostenidos, evalúa bloqueo a nivel edge.",
+    });
+  }
+
   // #15 — dead-man switch (capa interna): un cron que no corre en 2× su intervalo probablemente dejó
   // de ejecutarse (CRON_SECRET rotado, dominio cambiado, secreto de Vault ausente). Detecta todos
   // los jobs menos el PROPIO cron de alertas; su caída la cubre el monitor externo vía
   // /api/health/crons. Los jobs de CRON_JOBS_DISABLED llegan con overdue=false: no alertan.
+  // F-04 (2026-09-19): los jobs `pending` (agendados sin primer latido) llegan con overdue=false
+  // — un cron nuevo jamás dispara cron_stale_*; si nunca corre, el latido SEMBRADO al agendarlo
+  // (supabase/migrations 037) se vence a los 2× intervalo y alerta como cualquier otro.
   const cronHealth = await getCronHealth(now);
   for (const c of cronHealth) {
     if (c.job === "alerts") continue; // el cron de alertas no puede detectar su propia caída

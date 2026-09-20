@@ -4,13 +4,16 @@
  * ADR-064 — Acciones por fila de la conciliación COD. Dos formularios colapsables: "Registrar remesa"
  * (recibí el efectivo) y "Registrar discrepancia" (no cuadra / no llegó). Patrón order-actions.tsx
  * (useActionState + <details>). Montos en PESOS (lo familiar para Lucy); el server los pasa a centavos.
+ *
+ * F-05 (auditoría integral 2026-09-19): ambas acciones exigen aal2 reciente; ante
+ * `reauthRequired` el hook useMfaReauthAction abre el modal TOTP y reintenta.
  */
 
-import { useActionState } from "react";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import { markCodRemittedAction, flagCodDiscrepancyAction } from "./actions";
 import { formatCOP } from "@/lib/format";
 
-type Result = { error?: string; success?: string } | null;
+type Result = { error?: string; success?: string; reauthRequired?: boolean } | null;
 
 function Notice({ state }: { state: Result }) {
   if (!state?.success && !state?.error) return null;
@@ -34,12 +37,16 @@ export function CodRowActions({
   expectedAmount: number;
   status: "PENDING_REMIT" | "REMITTED" | "DISCREPANCY";
 }) {
-  const [remitState, remitAction, remitPending] = useActionState(markCodRemittedAction, null);
-  const [discState, discAction, discPending] = useActionState(flagCodDiscrepancyAction, null);
+  const [remitState, remitAction, remitPending, remitReauthModal] =
+    useMfaReauthAction(markCodRemittedAction);
+  const [discState, discAction, discPending, discReauthModal] =
+    useMfaReauthAction(flagCodDiscrepancyAction);
   const expectedPesos = Math.round(expectedAmount / 100);
 
   return (
     <div className="flex flex-col gap-1.5">
+      {remitReauthModal}
+      {discReauthModal}
       {/* Registrar remesa (recibí el efectivo) */}
       <details className="group">
         <summary className="text-brand-purple-dark hover:bg-brand-purple/5 border-brand-purple/20 cursor-pointer list-none rounded-md border px-2 py-1 text-[11px] font-semibold">

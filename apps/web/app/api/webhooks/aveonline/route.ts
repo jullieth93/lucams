@@ -22,6 +22,8 @@ import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { getClientIp } from "@/lib/client-ip";
+import { recordSecurityEvent, SECURITY_EVENT } from "@/lib/security-events";
 import { secureEquals } from "@/lib/timing-safe";
 import { getShippingProvider } from "@/features/shipping/provider";
 import { processTrackingUpdate } from "@/features/orders/saga";
@@ -82,6 +84,14 @@ export async function POST(req: Request) {
         gotQ: !!providedQ,
         gotH: !!providedH,
         gotT: !!providedT,
+      });
+      // F-07 (2026-09-19): persistencia durable del rechazo (fail-open) — alimenta
+      // la alerta security_webhook_invalid (≥3 en 5 min, anti replay/sondeo).
+      await recordSecurityEvent({
+        event: SECURITY_EVENT.WEBHOOK_INVALID_SIGNATURE,
+        outcome: "rejected",
+        ip: getClientIp(req.headers),
+        metadata: { source: "aveonline", gotQ: !!providedQ, gotH: !!providedH, gotT: !!providedT },
       });
       return NextResponse.json({ error: "invalid secret" }, { status: 401 });
     }

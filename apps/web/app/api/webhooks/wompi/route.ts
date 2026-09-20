@@ -13,7 +13,9 @@
  *      - VOIDED → processFailedPaymentOrder (dinero capturado → refund/cancel)
  *      - DECLINED/ERROR → noop: sin dinero movido, la orden queda PENDING_PAYMENT
  *        (Wompi habilita reintento con la misma reference ~3 min — doc oficial)
- *      - PENDING → log y esperar próximo evento
+ *      - PENDING → persiste el txId en la orden (F-03: el cron expire-pending
+ *        lo necesita para verificar el cobro si el evento final se pierde)
+ *        y esperar próximo evento
  *   5. Marcar WebhookEvent.processedAt + devolver 200.
  *
  * Wompi reintenta hasta 3 veces si no recibe 200 (ver doc). Por eso devolvemos
@@ -28,6 +30,8 @@ import { createHash } from "node:crypto";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { verifyWebhookSignature, getWompiExpectedWebhookEnv } from "@/lib/wompi";
+import { getClientIp } from "@/lib/client-ip";
+import { recordSecurityEvent, SECURITY_EVENT } from "@/lib/security-events";
 import { processPaidOrder, processFailedPaymentOrder } from "@/features/orders/saga";
 import { sendOrderPaymentDeclined } from "@/features/orders/emails";
 
@@ -77,6 +81,13 @@ export async function POST(req: Request) {
       // bodies across retries/rotations) with zero content exposure.
       bodyHash: createHash("sha256").update(rawBody).digest("hex").slice(0, 16),
     });
+    // F-07: persistencia durable (fail-open) — alimenta la alerta security_webhook_invalid.
+    await recordSecurityEvent({
+      event: SECURITY_EVENT.WEBHOOK_INVALID_SIGNATURE,
+      outcome: "rejected",
+      ip: getClientIp(req.headers),
+      metadata: { source: "wompi", reason: verification.reason },
+    });
     return NextResponse.json({ error: "invalid signature" }, { status: 401 });
   }
 
@@ -114,6 +125,14 @@ export async function POST(req: Request) {
       nowSec,
       ageSec,
       windowSec: TIMESTAMP_WINDOW_SEC,
+    });
+    // F-07: un replay rechazado (firma válida pero timestamp fuera de ventana) es
+    // la misma clase de señal que una firma inválida — persistir para la alerta.
+    await recordSecurityEvent({
+      event: SECURITY_EVENT.WEBHOOK_INVALID_SIGNATURE,
+      outcome: "rejected",
+      ip: getClientIp(req.headers),
+      metadata: { source: "wompi", reason: "timestamp_out_of_window" },
     });
     return NextResponse.json({ error: "timestamp out of window" }, { status: 401 });
   }
@@ -286,7 +305,25 @@ export async function POST(req: Request) {
         reason: transaction.status_message ?? transaction.status,
       });
     } else {
-      // PENDING — Wompi enviará otro evento cuando finalice. Sólo log.
+      // PENDING — Wompi enviará otro evento cuando finalice.
+      // F-03 (auditoría 2026-09-19): persistir el txId en la orden mientras siga
+      // PENDING_PAYMENT. Sin él, si el evento APPROVED posterior se pierde Y el
+      // cliente no vuelve a /checkout/gracias, el cron expire-pending no puede
+      // verificar el cobro contra Wompi (veredicto no_txid) y cancelaría a
+      // ciegas una venta potencialmente cobrada. Update gateado: solo si la
+      // orden sigue PENDING_PAYMENT, es WOMPI (una COD JAMÁS debe quedar con
+      // txId — apagaría el backstop anti-doble-cobro de la saga) y el campo
+      // está null (no pisar una tx previa; cuando el pago se apruebe, la saga
+      // lo sobrescribe con la tx que de verdad pagó).
+      await prisma.order.updateMany({
+        where: {
+          id: order.id,
+          status: "PENDING_PAYMENT",
+          paymentMethod: "WOMPI",
+          wompiTransactionId: null,
+        },
+        data: { wompiTransactionId: transaction.id },
+      });
       logger.info({
         event: "webhook.wompi.pending_noop",
         orderNumber: order.number,

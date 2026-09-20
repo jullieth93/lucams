@@ -3,18 +3,21 @@
 /*
  * Botón "Activar contraentrega" del banner de estado COD (Fase 3D). Vive en el
  * banner ámbar cuando COD_ENABLED ≠ "true"; escribe el ajuste vía
- * setCodEnabledAction (SUPERADMIN + MFA aal2, ver actions.ts).
+ * setCodEnabledAction (SUPERADMIN + MFA aal2 reciente, ver actions.ts).
+ * F-05 (auditoría integral 2026-09-19): ante `reauthRequired` el hook abre el
+ * modal TOTP y reintenta la activación.
  */
 
-import { useActionState } from "react";
 import { Loader2, Power } from "lucide-react";
+import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import { setCodEnabledAction } from "./actions";
 
 export function CodEnableButton() {
-  const [state, dispatch, pending] = useActionState(setCodEnabledAction, null);
+  const [state, dispatch, pending, reauthModal] = useMfaReauthAction(setCodEnabledAction);
 
   return (
     <span className="mt-1.5 block">
+      {reauthModal}
       <form action={dispatch} className="inline">
         <button
           type="submit"

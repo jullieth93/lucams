@@ -35,6 +35,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
+import { recordSecurityEvent, SECURITY_EVENT } from "@/lib/security-events";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClientIp } from "@/lib/client-ip";
 
@@ -100,6 +101,14 @@ export async function adminLoginAction(
       ip,
       code: authError?.code,
       status: authError?.status,
+    });
+    // F-07 (2026-09-19): persistencia durable del rechazo (fail-open) — alimenta
+    // la alerta security_admin_login_fails (≥5 en 15 min, anti password-spraying).
+    await recordSecurityEvent({
+      event: SECURITY_EVENT.ADMIN_LOGIN_FAIL,
+      outcome: "failure",
+      ip,
+      metadata: { code: authError?.code ?? null },
     });
     return { error: "Credenciales incorrectas." };
   }

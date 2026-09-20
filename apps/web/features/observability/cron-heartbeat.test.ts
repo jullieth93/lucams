@@ -11,6 +11,8 @@
  * reporta disabled:true y nunca cuenta como overdue (anti falso-degraded eterno).
  */
 
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // vi.hoisted: el factory de vi.mock se eleva sobre los imports (mismo patrón que
@@ -75,18 +77,36 @@ describe("cron-heartbeat", () => {
     });
   });
 
-  it("marca overdue el job sin latido o vencido en 2× su intervalo", async () => {
+  it("marca overdue el job vencido en 2× su intervalo; el que NUNCA ha latido queda pending (F-04)", async () => {
     heartbeats({
       alerts: new Date(NOW.getTime() - 4 * 60 * 1000), // dentro de 2×5min → al día
       "daily-summary": new Date(NOW.getTime() - 49 * 60 * 60 * 1000), // >2×24h → vencido
-      // cms-publish-scheduled sin latido → vencido
+      // cms-publish-scheduled sin latido → pending (NO overdue): un cron recién
+      // agendado jamás degrada el health (F-04, auditoría 2026-09-19).
     });
     const health = await getCronHealth(NOW);
     const byJob = new Map(health.map((c) => [c.job, c]));
-    expect(byJob.get("alerts")?.overdue).toBe(false);
-    expect(byJob.get("daily-summary")?.overdue).toBe(true);
-    expect(byJob.get("cms-publish-scheduled")?.overdue).toBe(true);
-    expect(byJob.get("cms-publish-scheduled")?.lastRunAt).toBeNull();
+    expect(byJob.get("alerts")).toMatchObject({ overdue: false, pending: false });
+    expect(byJob.get("daily-summary")).toMatchObject({ overdue: true, pending: false });
+    expect(byJob.get("cms-publish-scheduled")).toMatchObject({
+      overdue: false,
+      pending: true,
+      lastRunAt: null,
+    });
+  });
+
+  it("un job con latido sembrado que NUNCA corre SÍ se vence pasada la gracia de 2× intervalo", async () => {
+    // La siembra (supabase/migrations 037) convierte el "nunca corrió" en un
+    // lastRunAt real → el dead-man switch sigue detectando un cron nuevo roto.
+    heartbeats({
+      "purge-delivered-designs": new Date(NOW.getTime() - 49 * 60 * 60 * 1000), // >2×24h
+    });
+    const health = await getCronHealth(NOW);
+    const byJob = new Map(health.map((c) => [c.job, c]));
+    expect(byJob.get("purge-delivered-designs")).toMatchObject({
+      overdue: true,
+      pending: false,
+    });
   });
 
   it("CRON_JOBS_DISABLED: el job desagendado a propósito NO cuenta como overdue", async () => {
@@ -95,12 +115,20 @@ describe("cron-heartbeat", () => {
     heartbeats({}); // ningún latido: sin la var TODOS estarían vencidos
     const health = await getCronHealth(NOW);
     const byJob = new Map(health.map((c) => [c.job, c]));
-    // Disabled: reportados como disabled y nunca overdue.
-    expect(byJob.get("alerts")).toMatchObject({ disabled: true, overdue: false });
+    // Disabled: reportados como disabled y nunca overdue ni pending.
+    expect(byJob.get("alerts")).toMatchObject({ disabled: true, overdue: false, pending: false });
     expect(byJob.get("back-in-stock")).toMatchObject({ disabled: true, overdue: false });
-    // No disabled: siguen evaluando normal (sin latido → vencidos).
-    expect(byJob.get("cms-publish-scheduled")).toMatchObject({ disabled: false, overdue: true });
-    expect(byJob.get("purge-event-logs")).toMatchObject({ disabled: false, overdue: true });
+    // No disabled: sin latido → pending (NO vencidos — F-04).
+    expect(byJob.get("cms-publish-scheduled")).toMatchObject({
+      disabled: false,
+      overdue: false,
+      pending: true,
+    });
+    expect(byJob.get("purge-event-logs")).toMatchObject({
+      disabled: false,
+      overdue: false,
+      pending: true,
+    });
   });
 
   it("getDisabledCronJobs: parsea comma-separado, recorta espacios e ignora nombres ajenos", () => {
@@ -108,6 +136,21 @@ describe("cron-heartbeat", () => {
     expect(getDisabledCronJobs()).toEqual(["alerts", "purge-event-logs"]);
     delete process.env.CRON_JOBS_DISABLED;
     expect(getDisabledCronJobs()).toEqual([]);
+  });
+
+  it("F-04: todo job de CRON_JOBS tiene su latido 'cron:<job>' sembrado en supabase/migrations", () => {
+    // Convención estructural: como un cron sin latido queda `pending` y JAMÁS
+    // degrada el health, la única señal contra un cron nuevo que nunca corre es
+    // la siembra del latido inicial en la migración que lo agenda (ver 037).
+    // Agregar un cron a CRON_JOBS sin su INSERT en AlertState rompe este gate.
+    const dir = resolve(__dirname, "../../../../supabase/migrations");
+    const sql = readdirSync(dir)
+      .filter((f) => f.endsWith(".sql"))
+      .map((f) => readFileSync(join(dir, f), "utf8"))
+      .join("\n");
+    for (const job of Object.keys(CRON_JOBS)) {
+      expect(sql, `falta la siembra del latido inicial de "${job}"`).toContain(`cron:${job}`);
+    }
   });
 });
 

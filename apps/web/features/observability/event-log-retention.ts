@@ -18,6 +18,11 @@
  *   - WebVital (métricas RUM crudas): serie de alta frecuencia cuyo uso es el diagnóstico
  *     reciente (percentiles por ruta, /admin/performance). Se purgan a los 35 días: cubre
  *     la comparación mes-a-mes sin acumulación indefinida.
+ *
+ * F-07 (auditoría 2026-09-19): SecurityEvent (logins fallidos, firmas de webhook
+ * inválidas) se purga a los 180 días por createdAt — mismo plazo que EmailEvent/
+ * WebhookEvent: ventana forense amplia sin acumulación indefinida (la IP ya va
+ * hasheada, pero la minimización aplica igual).
  */
 
 import "server-only";
@@ -34,6 +39,8 @@ export const ERROR_REPORT_RETENTION_DAYS = 90;
 // N-13 (2026-09-11): notificaciones LEÍDAS > 90 días; WebVitals > 35 días.
 export const NOTIFICATION_RETENTION_DAYS = 90;
 export const WEB_VITAL_RETENTION_DAYS = 35;
+// F-07 (2026-09-19): eventos de seguridad > 180 días (mismo plazo que Email/Webhook).
+export const SECURITY_EVENT_RETENTION_DAYS = 180;
 
 export async function purgeExpiredEventLogs(opts?: {
   emailOlderThanDays?: number;
@@ -42,6 +49,7 @@ export async function purgeExpiredEventLogs(opts?: {
   errorReportOlderThanDays?: number;
   notificationOlderThanDays?: number;
   webVitalOlderThanDays?: number;
+  securityEventOlderThanDays?: number;
 }): Promise<{
   emailEventsPurged: number;
   webhookEventsPurged: number;
@@ -49,6 +57,7 @@ export async function purgeExpiredEventLogs(opts?: {
   errorReportsPurged: number;
   notificationsPurged: number;
   webVitalsPurged: number;
+  securityEventsPurged: number;
 }> {
   const emailCutoff = new Date(
     Date.now() - (opts?.emailOlderThanDays ?? EMAIL_EVENT_RETENTION_DAYS) * DAY_MS,
@@ -67,6 +76,9 @@ export async function purgeExpiredEventLogs(opts?: {
   );
   const webVitalCutoff = new Date(
     Date.now() - (opts?.webVitalOlderThanDays ?? WEB_VITAL_RETENTION_DAYS) * DAY_MS,
+  );
+  const securityEventCutoff = new Date(
+    Date.now() - (opts?.securityEventOlderThanDays ?? SECURITY_EVENT_RETENTION_DAYS) * DAY_MS,
   );
 
   const emailRes = await prisma.emailEvent.deleteMany({
@@ -93,6 +105,11 @@ export async function purgeExpiredEventLogs(opts?: {
   const webVitalRes = await prisma.webVital.deleteMany({
     where: { createdAt: { lt: webVitalCutoff } },
   });
+  // SecurityEvent (F-07): por createdAt, sin guards adicionales — cada fila es un
+  // evento ya consumado (un rechazo), no hay "en curso" que proteger.
+  const securityEventRes = await prisma.securityEvent.deleteMany({
+    where: { createdAt: { lt: securityEventCutoff } },
+  });
 
   logger.info({
     event: "retention.purge_event_logs",
@@ -102,6 +119,7 @@ export async function purgeExpiredEventLogs(opts?: {
     errorReportsPurged: errorReportRes.count,
     notificationsPurged: notificationRes.count,
     webVitalsPurged: webVitalRes.count,
+    securityEventsPurged: securityEventRes.count,
   });
   return {
     emailEventsPurged: emailRes.count,
@@ -110,5 +128,6 @@ export async function purgeExpiredEventLogs(opts?: {
     errorReportsPurged: errorReportRes.count,
     notificationsPurged: notificationRes.count,
     webVitalsPurged: webVitalRes.count,
+    securityEventsPurged: securityEventRes.count,
   };
 }

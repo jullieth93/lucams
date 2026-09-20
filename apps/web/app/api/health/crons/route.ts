@@ -1,10 +1,14 @@
 /*
  * GET /api/health/crons — dead-man switch EXTERNO del pipeline pg_cron (auditoría v3 · #15).
  *
- * Devuelve 503 si algún cron no se ha ejecutado en 2× su intervalo (o nunca), 200 si todos están
+ * Devuelve 503 si algún cron no se ha ejecutado en 2× su intervalo, 200 si todos están
  * al día. Pensado para un monitor de uptime EXTERNO gratuito (UptimeRobot/BetterStack) que polee
  * esta ruta cada ~15 min: así se cubre incluso la caída del PROPIO cron de alertas (que la capa
  * interna de evaluateAlerts no puede detectar por sí misma).
+ *
+ * F-04 (auditoría 2026-09-19): un cron recién agendado llega como `pending` (sin primer latido)
+ * y NO degrada el status — antes `!lastRunAt → overdue` dejaba esta ruta en 503 hasta la primera
+ * corrida del cron (hasta 24h en diarios), quemando al monitor externo con un falso degraded.
  *
  * Respuesta PÚBLICA mínima (auditoría 2026-08-24, C-4): solo { status, timestamp } — los nombres
  * de jobs, lastRunAt y cuáles están desagendados por ambiente son topología operativa interna.
@@ -63,10 +67,13 @@ export async function GET(req: Request): Promise<Response> {
   const body = {
     status: degraded ? "degraded" : "ok",
     overdue: overdue.map((c) => ({ job: c.job, lastRunAt: c.lastRunAt })),
+    // F-04: crons agendados aún sin primer latido — visibles acá, jamás degradan el status.
+    pending: health.filter((c) => c.pending).map((c) => c.job),
     disabled: health.filter((c) => c.disabled).map((c) => c.job),
     jobs: health.map((c) => ({
       job: c.job,
       overdue: c.overdue,
+      pending: c.pending,
       disabled: c.disabled,
       lastRunAt: c.lastRunAt,
     })),

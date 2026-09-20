@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { isMfaReauthRequired, MFA_REAUTH_MESSAGE, requireRecentMfa } from "@/lib/admin-reauth";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getClientIp } from "@/lib/client-ip";
@@ -13,6 +14,28 @@ import { rateLimit } from "@/lib/rate-limit";
 import { ipKey, ownerKey } from "@/lib/rate-limit-keys";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { generateRecoveryCodes } from "@/features/admin-mfa/recovery-codes";
+
+/**
+ * F-06 (auditoría integral 2026-09-19): la autogestión de MFA (desactivar,
+ * cambiar de dispositivo, regenerar recovery codes) exige aal2 RECIENTE — una
+ * sesión robada con aal2 viejo no puede enrolar el TOTP del atacante ni
+ * cosechar recovery codes nuevos (que se devuelven en claro al cliente).
+ * Si la elevación es vieja, devuelve el marcador `reauthRequired`: la UI abre
+ * el modal TOTP (components/admin/mfa-reauth) y reintenta la acción una vez.
+ *
+ * Sin loop con el enrolamiento INICIAL (B-1): ese flujo hace challengeAndVerify
+ * en el browser segundos antes de llamar generateRecoveryCodesAction, así que
+ * su amr ya viene fresco y el check pasa sin fricción nueva.
+ */
+async function requireRecentMfaOrMarker(): Promise<{ reauthRequired: true } | null> {
+  try {
+    await requireRecentMfa();
+    return null;
+  } catch (err) {
+    if (isMfaReauthRequired(err)) return { reauthRequired: true };
+    throw err;
+  }
+}
 
 async function unenrollAllTotp(): Promise<void> {
   const supabase = await createSupabaseServerClient();
@@ -25,10 +48,13 @@ async function unenrollAllTotp(): Promise<void> {
 }
 
 /** Desactiva (unenroll) los factores TOTP del admin actual + borra recovery codes. */
-export async function disableMfaAction(): Promise<void> {
+export async function disableMfaAction(): Promise<{ reauthRequired: true } | void> {
   // Autoservicio de la PROPIA cuenta (session.admin.id): con MFA obligatorio para
   // todo rol (B-1), la pantalla y sus acciones son ALL_PLUS_CMS. aal2 se mantiene.
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
+
+  const reauth = await requireRecentMfaOrMarker();
+  if (reauth) return reauth;
 
   await unenrollAllTotp();
   await prismaDeleteRecoveryCodes(session.admin.id);
@@ -49,8 +75,11 @@ export async function disableMfaAction(): Promise<void> {
  * enrolamiento obligatorio (B-1) la deja justo donde va el redirect de abajo
  * (/admin/seguridad, la excepción abierta a todos los roles).
  */
-export async function changeMfaDeviceAction(): Promise<void> {
+export async function changeMfaDeviceAction(): Promise<{ reauthRequired: true } | void> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
+
+  const reauth = await requireRecentMfaOrMarker();
+  if (reauth) return reauth;
 
   await unenrollAllTotp();
   logger.info({ event: "security.admin_mfa_device_change", adminId: session.admin.id });
@@ -64,11 +93,14 @@ export async function changeMfaDeviceAction(): Promise<void> {
   redirect("/admin/seguridad?reconfig=1");
 }
 
-export type RecoveryCodesState = { codes?: string[]; error?: string };
+export type RecoveryCodesState = { codes?: string[]; error?: string; reauthRequired?: boolean };
 
 /** Genera (o regenera) los códigos de respaldo y los devuelve para mostrarlos una vez. */
 export async function generateRecoveryCodesAction(): Promise<RecoveryCodesState> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL_PLUS_CMS });
+
+  const reauth = await requireRecentMfaOrMarker();
+  if (reauth) return { error: MFA_REAUTH_MESSAGE, reauthRequired: true };
 
   const codes = await generateRecoveryCodes(session.admin.id);
   logger.info({ event: "security.admin_mfa_recovery_generated", adminId: session.admin.id });

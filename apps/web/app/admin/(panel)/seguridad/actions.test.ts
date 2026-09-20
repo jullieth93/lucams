@@ -13,24 +13,46 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { rateLimit, getCurrentAdmin, recordAdminAction, listFactors, challengeAndVerify, redirect } =
-  vi.hoisted(() => ({
-    rateLimit: vi.fn(async (_key: string, _limit?: number, _windowSeconds?: number) => ({
-      allowed: true,
-      count: 1,
-      resetAt: new Date(),
-    })),
-    getCurrentAdmin: vi.fn(async () => ({
-      user: { id: "sb_user_1" },
-      admin: { id: "adm_1", email: "lucy@lucamsshop.com" },
-    })),
-    recordAdminAction: vi.fn(async () => {}),
-    listFactors: vi.fn(async () => ({
-      data: { all: [{ id: "factor_1", factor_type: "totp", status: "verified" }] },
-    })),
-    challengeAndVerify: vi.fn(async () => ({ error: null })),
-    redirect: vi.fn(),
-  }));
+const {
+  state,
+  rateLimit,
+  getCurrentAdmin,
+  recordAdminAction,
+  listFactors,
+  unenroll,
+  challengeAndVerify,
+  getAuthenticatorAssuranceLevel,
+  deleteRecoveryCodes,
+  generateRecoveryCodes,
+  redirect,
+} = vi.hoisted(() => ({
+  state: {
+    aal: null as {
+      currentLevel: string | null;
+      nextLevel: string | null;
+      currentAuthenticationMethods: unknown;
+    } | null,
+  },
+  rateLimit: vi.fn(async (_key: string, _limit?: number, _windowSeconds?: number) => ({
+    allowed: true,
+    count: 1,
+    resetAt: new Date(),
+  })),
+  getCurrentAdmin: vi.fn(async () => ({
+    user: { id: "sb_user_1" },
+    admin: { id: "adm_1", email: "lucy@lucamsshop.com" },
+  })),
+  recordAdminAction: vi.fn(async () => {}),
+  listFactors: vi.fn(async () => ({
+    data: { all: [{ id: "factor_1", factor_type: "totp", status: "verified" }] },
+  })),
+  unenroll: vi.fn(async () => ({})),
+  challengeAndVerify: vi.fn(async () => ({ error: null })),
+  getAuthenticatorAssuranceLevel: vi.fn(async () => ({ data: state.aal })),
+  deleteRecoveryCodes: vi.fn(async () => ({})),
+  generateRecoveryCodes: vi.fn(async () => ["CODE-00-AAAA-BBBB"]),
+  redirect: vi.fn(),
+}));
 
 vi.mock("next/headers", () => ({
   headers: async () => new Headers({ "x-vercel-forwarded-for": "203.0.113.7" }),
@@ -43,17 +65,30 @@ vi.mock("@/lib/logger", () => ({
 }));
 vi.mock("@/lib/rate-limit", () => ({ rateLimit }));
 vi.mock("@/lib/admin-audit", () => ({ recordAdminAction }));
-vi.mock("@/lib/admin-rbac-guard", () => ({ requireAdminAction: vi.fn() }));
+vi.mock("@/lib/admin-rbac-guard", () => ({
+  requireAdminAction: vi.fn(async () => ({
+    user: { id: "sb_user_1" },
+    admin: { id: "adm_1", email: "lucy@lucamsshop.com", role: "SUPERADMIN" },
+  })),
+}));
+vi.mock("@/lib/db", () => ({
+  prisma: { adminRecoveryCode: { deleteMany: deleteRecoveryCodes } },
+}));
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({
-    auth: { mfa: { listFactors, challengeAndVerify } },
+    auth: { mfa: { listFactors, unenroll, challengeAndVerify, getAuthenticatorAssuranceLevel } },
   }),
 }));
 vi.mock("@/features/admin-mfa/recovery-codes", () => ({
-  generateRecoveryCodes: vi.fn(async () => []),
+  generateRecoveryCodes,
 }));
 
-import { verifyAdminMfaReauthAction } from "./actions";
+import {
+  changeMfaDeviceAction,
+  disableMfaAction,
+  generateRecoveryCodesAction,
+  verifyAdminMfaReauthAction,
+} from "./actions";
 
 function form(code = "123456"): FormData {
   const fd = new FormData();
@@ -64,9 +99,23 @@ function form(code = "123456"): FormData {
 const allowed = { allowed: true, count: 1, resetAt: new Date() };
 const blocked = { allowed: false, count: 99, resetAt: new Date() };
 
+/** amr con elevación TOTP de hace `secondsAgo` (timestamps relativos a ahora). */
+function aal2WithTotp(secondsAgo: number) {
+  const nowSec = Math.floor(Date.now() / 1000);
+  return {
+    currentLevel: "aal2",
+    nextLevel: "aal2",
+    currentAuthenticationMethods: [
+      { method: "password", timestamp: nowSec - 1800 },
+      { method: "totp", timestamp: nowSec - secondsAgo },
+    ],
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.unstubAllEnvs();
+  state.aal = aal2WithTotp(60);
   rateLimit.mockResolvedValue(allowed);
   listFactors.mockResolvedValue({
     data: { all: [{ id: "factor_1", factor_type: "totp", status: "verified" }] },
@@ -211,5 +260,93 @@ describe("verifyAdminMfaReauthAction — verificación y audit trail", () => {
       code: "123456",
     });
     expect(res.success).toBe(true);
+  });
+});
+
+/*
+ * Wiring F-06 (auditoría integral 2026-09-19): la autogestión de MFA (desactivar,
+ * cambiar de dispositivo, regenerar recovery codes) exige aal2 RECIENTE. Una
+ * sesión aal2 robada con elevación vieja ya no puede enrolar el TOTP del
+ * atacante ni cosechar recovery codes nuevos: las acciones devuelven el
+ * marcador `reauthRequired` SIN tocar factores ni códigos, y la UI abre el
+ * modal TOTP (verifyAdminMfaReauthAction) y reintenta.
+ */
+describe("autogestión MFA — step-up (F-06)", () => {
+  it("disableMfaAction con aal2 viejo (15 min) → reauthRequired, sin unenroll ni borrado de códigos", async () => {
+    state.aal = aal2WithTotp(15 * 60);
+
+    const res = await disableMfaAction();
+
+    expect(res).toEqual({ reauthRequired: true });
+    expect(unenroll).not.toHaveBeenCalled();
+    expect(deleteRecoveryCodes).not.toHaveBeenCalled();
+    expect(recordAdminAction).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: "admin.mfa.disable" }),
+    );
+  });
+
+  it("disableMfaAction con aal2 fresco → desactiva y borra códigos como antes", async () => {
+    const res = await disableMfaAction();
+
+    expect(res).toBeUndefined();
+    expect(unenroll).toHaveBeenCalledWith({ factorId: "factor_1" });
+    expect(deleteRecoveryCodes).toHaveBeenCalled();
+    expect(recordAdminAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "admin.mfa.disable" }),
+    );
+  });
+
+  it("changeMfaDeviceAction con aal2 viejo → reauthRequired, sin unenroll ni redirect", async () => {
+    state.aal = aal2WithTotp(15 * 60);
+
+    const res = await changeMfaDeviceAction();
+
+    expect(res).toEqual({ reauthRequired: true });
+    expect(unenroll).not.toHaveBeenCalled();
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("changeMfaDeviceAction con aal2 fresco → unenroll + redirect a reconfig como antes", async () => {
+    const res = await changeMfaDeviceAction();
+
+    expect(res).toBeUndefined();
+    expect(unenroll).toHaveBeenCalledWith({ factorId: "factor_1" });
+    expect(redirect).toHaveBeenCalledWith("/admin/seguridad?reconfig=1");
+  });
+
+  it("generateRecoveryCodesAction con aal2 viejo → reauthRequired, sin regenerar códigos", async () => {
+    state.aal = aal2WithTotp(15 * 60);
+
+    const res = await generateRecoveryCodesAction();
+
+    expect(res.reauthRequired).toBe(true);
+    expect(res.error).toMatch(/confirmar tu identidad/);
+    expect(res.codes).toBeUndefined();
+    expect(generateRecoveryCodes).not.toHaveBeenCalled();
+  });
+
+  it("generateRecoveryCodesAction sin entrada TOTP en amr → fail-closed", async () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    state.aal = {
+      currentLevel: "aal1",
+      nextLevel: "aal2",
+      currentAuthenticationMethods: [{ method: "password", timestamp: nowSec - 30 }],
+    };
+
+    const res = await generateRecoveryCodesAction();
+
+    expect(res.reauthRequired).toBe(true);
+    expect(generateRecoveryCodes).not.toHaveBeenCalled();
+  });
+
+  it("generateRecoveryCodesAction con aal2 fresco (ej. recién enrolado) → genera y devuelve los códigos", async () => {
+    const res = await generateRecoveryCodesAction();
+
+    expect(res.reauthRequired).toBeUndefined();
+    expect(res.codes).toEqual(["CODE-00-AAAA-BBBB"]);
+    expect(generateRecoveryCodes).toHaveBeenCalledWith("adm_1");
+    expect(recordAdminAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "admin.mfa.recovery_codes.generate" }),
+    );
   });
 });

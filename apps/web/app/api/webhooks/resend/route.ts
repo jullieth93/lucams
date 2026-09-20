@@ -25,6 +25,8 @@ import { headers } from "next/headers";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { getClientIp } from "@/lib/client-ip";
+import { recordSecurityEvent, SECURITY_EVENT } from "@/lib/security-events";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -106,6 +108,14 @@ export async function POST(req: Request): Promise<Response> {
     )
   ) {
     logger.warn({ event: "webhook.resend.invalid_signature" });
+    // F-07 (2026-09-19): persistencia durable del rechazo (fail-open) — alimenta
+    // la alerta security_webhook_invalid (≥3 en 5 min, anti replay/sondeo).
+    await recordSecurityEvent({
+      event: SECURITY_EVENT.WEBHOOK_INVALID_SIGNATURE,
+      outcome: "rejected",
+      ip: getClientIp(hdrs),
+      metadata: { source: "resend" },
+    });
     return new Response("Invalid signature", { status: 401 });
   }
 

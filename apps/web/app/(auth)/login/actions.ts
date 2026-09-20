@@ -27,6 +27,7 @@ import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { safeRedirectTarget } from "@/lib/safe-redirect";
+import { recordSecurityEvent, SECURITY_EVENT } from "@/lib/security-events";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getClientIp } from "@/lib/client-ip";
 
@@ -89,6 +90,14 @@ export async function loginAction(
       code: error.code,
       status: error.status,
       emailRlCount: rlEmail.count,
+    });
+    // F-07 (2026-09-19): persistencia durable del rechazo (fail-open — nunca
+    // rompe el login). Sin email en metadata (PII); el código basta.
+    await recordSecurityEvent({
+      event: SECURITY_EVENT.LOGIN_FAIL,
+      outcome: "failure",
+      ip,
+      metadata: { code: error.code ?? null },
     });
     return { error: "Credenciales incorrectas. Intenta de nuevo." };
   }

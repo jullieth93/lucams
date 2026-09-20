@@ -8,7 +8,8 @@
  * Casos:
  *  - APPROVED: mostrar success + número de orden + tracking futuro
  *    + limpiar cookie checkout.
- *  - PENDING (raro, ej. PSE async): mostrar mensaje "estamos verificando"
+ *  - PENDING (raro, ej. PSE async): persistir txId en la orden (F-03) +
+ *    mostrar mensaje "estamos verificando"
  *  - DECLINED/VOIDED/ERROR: mostrar error + CTA "Reintentar pago" → /carrito
  *  - Sin query id (acceso directo): redirect a home.
  *  - Modo catálogo (Etapa 1): no existen TX Wompi → redirect a home (N-16).
@@ -57,6 +58,28 @@ export async function generateMetadata(): Promise<Metadata> {
 // debe poder contener ese presupuesto para no matar createShipment a mitad → guía
 // huérfana. 60s (default Vercel 300s; ver ADR-049).
 export const maxDuration = 60;
+
+/**
+ * F-03 (auditoría 2026-09-19) — persistir el txId de Wompi en la orden mientras
+ * siga PENDING_PAYMENT aunque la tx NO dispare la saga (PSE/transferencia async,
+ * monto desfasado). Sin ese dato, si el webhook APPROVED final se pierde Y el
+ * cliente no vuelve a esta página, el cron expire-pending cancela a ciegas
+ * (veredicto no_txid) una venta potencialmente cobrada. Update gateado: solo
+ * PENDING_PAYMENT + WOMPI (una COD jamás debe quedar con txId — backstop
+ * anti-doble-cobro de la saga) + campo null (no pisar una tx previa; la saga
+ * lo sobrescribe con la tx aprobada).
+ */
+async function persistPendingWompiTxId(orderId: string, txId: string): Promise<void> {
+  await prisma.order.updateMany({
+    where: {
+      id: orderId,
+      status: "PENDING_PAYMENT",
+      paymentMethod: "WOMPI",
+      wompiTransactionId: null,
+    },
+    data: { wompiTransactionId: txId },
+  });
+}
 
 type SearchParams = Promise<{ id?: string; env?: string; status?: string }>;
 
@@ -164,6 +187,10 @@ export default async function CheckoutGraciasPage({
       });
       // No procesamos: el webhook (con la misma validación) lo marcará para
       // revisión. Mostramos página honesta de "verificando" en vez de confirmar.
+      // F-03 — persistir el txId igual: si el webhook se pierde, el cron
+      // expire-pending podrá verificar el cobro y marcar reconciliación en vez
+      // de cancelar a ciegas una orden con dinero detrás.
+      await persistPendingWompiTxId(order.id, tx.id);
       return <PaymentReceivedPage orderNumber={order.number} txId={tx.id} />;
     }
 
@@ -243,6 +270,12 @@ export default async function CheckoutGraciasPage({
     return <PaymentReceivedPage orderNumber={order?.number ?? tx.reference} txId={tx.id} />;
   }
   if (tx.status === "PENDING") {
+    // F-03 — PSE/transferencia tarda en confirmarse: persistir el txId ahora
+    // (gateado) para que el cron expire-pending pueda verificar el cobro real
+    // antes de cancelar si el webhook final se pierde y el cliente no vuelve.
+    if (order) {
+      await persistPendingWompiTxId(order.id, tx.id);
+    }
     return <PendingPage orderNumber={tx.reference} txId={tx.id} />;
   }
   // DECLINED, VOIDED, ERROR

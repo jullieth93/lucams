@@ -10,6 +10,15 @@
  *   2. Externa: /api/health/crons devuelve 503 si algún cron está overdue → para un monitor de
  *      uptime EXTERNO (UptimeRobot/BetterStack) que cubra también la caída del cron de alertas.
  *
+ * F-04 (auditoría 2026-09-19): un cron recién agendado NO tiene latido hasta su primera corrida
+ * (hasta 24h en crons diarios) y `!lastRunAt → overdue` dejaba el health en 503 y disparaba la
+ * alerta `cron_stale_*` en falso todo ese tiempo (pasó en PRD con purge-delivered-designs,
+ * migración 035). Hoy un job sin primer latido queda `pending` (warning visible, NO degrada el
+ * health ni alerta) y la migración que agenda el cron SIEMBRA su latido inicial en AlertState
+ * (ver supabase/migrations 037) → si el cron nuevo nunca corre, el latido sembrado se vence a los
+ * 2× intervalo y el dead-man switch alerta igual. El test "siembra de latido inicial" de
+ * cron-heartbeat.test.ts hace cumplir la convención para crons futuros.
+ *
  * Jobs deshabilitados por ambiente (CRON_JOBS_DISABLED, comma-separado): un job desagendado A
  * PROPÓSITO (ej. los 5 crons de email en STG, 2026-08-05) se reporta `disabled: true` y NUNCA
  * cuenta como overdue — sin esto el monitor externo quedaría en falso degraded eterno.
@@ -86,12 +95,20 @@ export type CronHealth = {
   intervalMs: number;
   lastRunAt: Date | null;
   overdue: boolean;
+  /**
+   * F-04: agendado pero AÚN sin primer latido (ni siquiera el sembrado). Warning
+   * visible en el panel/health detallado — NUNCA cuenta como overdue: un cron
+   * nuevo no debe degradar /api/health/crons ni disparar `cron_stale_*` antes de
+   * su primera ventana de ejecución.
+   */
+  pending: boolean;
   /** Desagendado a propósito en este ambiente (CRON_JOBS_DISABLED): nunca cuenta como overdue. */
   disabled: boolean;
 };
 
 /**
- * Estado de cada cron: `overdue` si no corrió en 2× su intervalo (o nunca corrió).
+ * Estado de cada cron: `overdue` si su último latido supera 2× su intervalo; `pending`
+ * si NUNCA ha latido (ni sembrado — F-04: un cron recién agendado no degrada el health).
  * Los jobs de CRON_JOBS_DISABLED devuelven `disabled: true, overdue: false` — están
  * desagendados a propósito en este ambiente y no deben degradar el health ni alertar.
  */
@@ -105,9 +122,10 @@ export async function getCronHealth(now: Date = new Date()): Promise<CronHealth[
   return Object.entries(CRON_JOBS).map(([job, { intervalMs, label }]) => {
     const disabled = disabledJobs.has(job);
     const lastRunAt = byJob.get(job) ?? null;
+    const pending = !disabled && lastRunAt === null;
     const overdue =
-      !disabled && (!lastRunAt || now.getTime() - lastRunAt.getTime() > 2 * intervalMs);
-    return { job, label, intervalMs, lastRunAt, overdue, disabled };
+      !disabled && lastRunAt !== null && now.getTime() - lastRunAt.getTime() > 2 * intervalMs;
+    return { job, label, intervalMs, lastRunAt, overdue, pending, disabled };
   });
 }
 

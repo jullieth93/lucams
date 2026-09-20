@@ -24,6 +24,10 @@ const groupBy = vi.hoisted(() => vi.fn());
 // (status PENDING_PAYMENT) del conteo de reconciliación.
 const orderCount = vi.hoisted(() => vi.fn(async (_args?: { where?: { status?: string } }) => 0));
 const webhookCount = vi.hoisted(() => vi.fn(async () => 0));
+// F-07 (2026-09-19): las reglas de seguridad cuentan SecurityEvent por `event`.
+const securityEventCount = vi.hoisted(() =>
+  vi.fn(async (_args?: { where?: { event?: string } }) => 0),
+);
 const getCronHealth = vi.hoisted(() => vi.fn(async () => []));
 // Tipos explícitos: sin ellos TS infiere `lastSuccessAt: Date` / `bounceRatePct:
 // null` del valor inicial y los mockResolvedValue posteriores (null / number) fallan.
@@ -71,6 +75,7 @@ vi.mock("@/lib/db", () => ({
     errorLog: { groupBy },
     order: { count: orderCount },
     webhookEvent: { count: webhookCount },
+    securityEvent: { count: securityEventCount },
   },
 }));
 vi.mock("@/lib/resend", () => ({ sendEmail: vi.fn(async () => ({ sent: true })) }));
@@ -96,6 +101,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   errorGroups([]);
   orderCount.mockResolvedValue(0);
+  securityEventCount.mockResolvedValue(0);
   getCronHealth.mockResolvedValue([]);
   getBackupHealth.mockResolvedValue({ lastSuccessAt: new Date(), stale: false });
   getMonitorHealth.mockResolvedValue({
@@ -393,5 +399,69 @@ describe("evaluateAlerts — monitor externo de uptime (VM, 2026-09-13)", () => 
 
     expect(firing.some((a) => a.key === "uptime_monitor_stale")).toBe(false);
     expect(firing.some((a) => a.key === "uptime_monitor_failing")).toBe(false);
+  });
+});
+
+describe("evaluateAlerts — reglas de seguridad sobre SecurityEvent (F-07, 2026-09-19)", () => {
+  /** Solo el evento indicado devuelve `n`; el resto de conteos queda en 0. */
+  function securityCount(event: string, n: number) {
+    securityEventCount.mockImplementation((args?: { where?: { event?: string } }) =>
+      Promise.resolve(args?.where?.event === event ? n : 0),
+    );
+  }
+
+  it("cuenta logins admin fallidos en la ventana de 15 min desde `now`", async () => {
+    const now = new Date("2026-09-19T12:00:00Z");
+
+    await evaluateAlerts(now);
+
+    expect(securityEventCount).toHaveBeenCalledWith({
+      where: {
+        event: "auth.admin_login.fail",
+        createdAt: { gte: new Date("2026-09-19T11:45:00Z") },
+      },
+    });
+  });
+
+  it("≥5 logins admin fallidos en 15 min → ALTA (umbral coherente con el rate limit 5/15 min)", async () => {
+    securityCount("auth.admin_login.fail", 7);
+
+    const firing = await evaluateAlerts();
+    const alert = firing.find((a) => a.key === "security_admin_login_fails");
+
+    expect(alert).toBeDefined();
+    // ALTA (in-app; NO crítica): el rate limit ya frena al atacante — la alerta
+    // es para investigar la campaña, no para re-emailar cada 30 min.
+    expect(alert!.severity).toBe("alta");
+    expect(alert!.title).toContain("7");
+    expect(alert!.action).toContain("/admin/observability");
+  });
+
+  it("<5 logins admin fallidos → NO dispara (un usuario que olvidó su clave no es un ataque)", async () => {
+    securityCount("auth.admin_login.fail", 4);
+
+    const firing = await evaluateAlerts();
+
+    expect(firing.some((a) => a.key === "security_admin_login_fails")).toBe(false);
+  });
+
+  it("≥3 firmas/secretos de webhook inválidos en 5 min → MEDIA (objetivo OBSERVABILITY.md)", async () => {
+    securityCount("webhook.invalid_signature", 3);
+
+    const firing = await evaluateAlerts();
+    const alert = firing.find((a) => a.key === "security_webhook_invalid");
+
+    expect(alert).toBeDefined();
+    expect(alert!.severity).toBe("media");
+    expect(alert!.title).toContain("3");
+    expect(alert!.detail.toLowerCase()).toContain("replay");
+  });
+
+  it("<3 firmas inválidas → NO dispara", async () => {
+    securityCount("webhook.invalid_signature", 2);
+
+    const firing = await evaluateAlerts();
+
+    expect(firing.some((a) => a.key === "security_webhook_invalid")).toBe(false);
   });
 });
