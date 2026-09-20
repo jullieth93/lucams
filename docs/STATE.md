@@ -28,9 +28,15 @@ Informe: `docs/audits/2026-09-19-auditoria-integral-seguridad-preproduccion.md`.
 **CERRADO EL MISMO DÍA:** release `production` ff → `b361e75` (CI verde, deploy Ready),
 3 migraciones aplicadas en STG y PRD, `/api/health/crons` → 200 en vivo, evidencia §U-1/§U-4
 capturada (RLS PRD limpia en vivo, 11 crons activos, GoTrue verificado, escape hatches OFF).
-**Pendiente (humano, ~20 min):** dashboards de proveedores/registrador/R2, subir
-`password_min_length` a 8 en Supabase Auth, revocar 2 grants no-DML residuales (EmailTemplateOverride,
-ProductMaterial), cuentas de prueba por rol para la batería dinámica §58 en STG.
+**CIERRE TOTAL 2026-09-20:** pendientes humanos ejecutados — `password_min_length` 8 (PRD+STG),
+grants residuales revocados (mig. 038, 0 grants en 3 ambientes), Wompi STG webhook tras SSO
+(validado end-to-end), R2 Bucket Lock `lock-backups-29d` activo, **vigilante mensual del dominio**
+(GHA → `/api/cron/domain-watch`, baseline sembrado: expira 2027-07-19, NS Cloudflare, transfer
+lock) y **batería dinámica §58 en STG: 30+ casos TODOS PASS, 0 hallazgos nuevos** (L-F3
+confirmado en vivo, pendiente menor). Informe con Addendums 1-5.
+**Pendiente:** firma de riesgos residuales §T (humano) → veredicto sube a
+`APTO CON RIESGOS RESIDUALES ACEPTADOS`. Opcional: portal mi.com.co (autorrenovación/MFA) y
+`AVEONLINE_WEBHOOK_SECRET` en Vercel STG si se quiere probar ese flujo allí.
 
 **🧪 2026-09-19 — AUDITORÍA FUNCIONAL TOTAL DEL OWNER (cliente + admin) REMEDIADA Y EN STG.**
 Origen: validación visual/funcional de Lucy sobre TODO el producto (~22 hallazgos). Paquete en
