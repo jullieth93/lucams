@@ -78,7 +78,7 @@ describe("cron-heartbeat", () => {
     // L-H3/L-N1 (2026-09-20): vigilante del dominio — su productor es GitHub Actions
     // (domain-watch.yml), no pg_cron; el latido lo registra /api/cron/domain-watch.
     expect(CRON_JOBS["domain-watch"]).toEqual({
-      intervalMs: 24 * 60 * 60 * 1000,
+      intervalMs: 31 * 24 * 60 * 60 * 1000,
       label: "Vigilancia del dominio (RDAP)",
     });
   });

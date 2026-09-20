@@ -23,9 +23,12 @@ name: Domain watch (RDAP → app)
 # El secreto NUNCA se imprime: solo viaja en el header x-cron-secret del POST.
 on:
   schedule:
-    # Diario 11:17 UTC (~6:17 America/Bogotá). Los cron de GitHub corren en UTC;
-    # minuto fuera de :00/:30 para no caer en el pico de todos los schedules.
-    - cron: "17 11 * * *"
+    # Mensual: día 5, 11:23 UTC (~6:23 America/Bogotá). Decisión Lucy 2026-09-20:
+    # mensual, no diario (hoy el repo es público y GHA es gratis, pero no lo será
+    # siempre). Trade-off aceptado: los umbrales alcanzables son 60/30 días y un
+    # cambio de NS/status puede tardar hasta ~30 días en detectarse.
+    # Los cron de GitHub corren en UTC; minuto fuera de :00/:30.
+    - cron: "23 11 5 * *"
   workflow_dispatch: {} # permite dispararlo manualmente desde la pestaña Actions
 
 # Least privilege: solo lectura del repo. La credencial viaja por secrets.
@@ -38,7 +41,7 @@ concurrency:
 
 jobs:
   # Gate: si falta CRON_SECRET el job se SALTA limpio (verde con aviso, sin
-  # correo de error diario) — mismo patrón que el gate de backup.yml.
+  # correo de error en cada corrida) — mismo patrón que el gate de backup.yml.
   gate:
     name: ¿Secrets configurados?
     runs-on: ubuntu-latest

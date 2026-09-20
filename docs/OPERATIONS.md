@@ -810,8 +810,11 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 >
 > **Vigilante del dominio lucamsshop.com (2026-09-19 — L-H3/L-N1 de la auditoría 360°):**
 > el dominio (expira 2027-07-19) no tenía alerta de renovación ni detección de secuestro.
-> Productor: **workflow `domain-watch.yml` de GitHub Actions** (diario 11:17 UTC ≈ 6:17 AM
-> Colombia, runners Azure) — la vía pg_cron+pg_net desde Supabase STG se descartó el mismo
+> Productor: **workflow `domain-watch.yml` de GitHub Actions** (**mensual: día 5, 11:23 UTC ≈
+> 6:23 AM Colombia** — decisión Lucy 2026-09-20: mensual, no diario, porque el repo no será
+> público siempre y en privado los minutos de GHA contarían; trade-off aceptado: umbrales de
+> expiración alcanzables 60/30 días y detección de cambio de NS/status en hasta ~30 días; runners
+> Azure) — la vía pg_cron+pg_net desde Supabase STG se descartó el mismo
 > día: Verisign y rdap.org RECHAZAN las conexiones HTTPS salientes de pg_net (verificado en
 > vivo; api.github.com sí responde desde el mismo pg_net — el bloqueo es del lado RDAP). El
 > workflow consulta `https://rdap.verisign.com/com/v1/domain/lucamsshop.com` (2 intentos ×

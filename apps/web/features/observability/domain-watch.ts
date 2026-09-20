@@ -24,10 +24,11 @@
  *      retroactivamente por un dominio ya dentro de ventana).
  *   2. Nameservers o status distintos del baseline → alerta CRÍTICA (posible
  *      secuestro/suspensión — p.ej. aparece "client hold") y se actualiza el
- *      baseline: se alerta por CAMBIO, no a diario mientras el cambio persista.
+ *      baseline: se alerta por CAMBIO, no en cada corrida mientras persista.
  *   3. Expiración: alerta crítica al cruzar cada umbral 60/30/14/7/3/1 días, una
  *      sola vez por umbral; ya con ≤3 días, recordatorio si la última alerta tiene
- *      >20 h (el productor corre 1 vez al día → como mucho 1 recordatorio diario).
+ *      >20 h. NOTA de cadencia: el productor corre MENSUAL (decisión Lucy
+ *      2026-09-20) → en la práctica solo los umbrales 60/30 son alcanzables.
  *   4. rdapOk=false: incrementa el contador; a las 2 seguidas alerta ALTA (la
  *      vigilancia está ciega — no es secuestro en sí, así que NO crítica ni email).
  *      rdapOk=true lo resetea.
@@ -57,7 +58,7 @@ export const DOMAIN_WATCH_KEYS = {
 /** Umbrales de días para la alerta de expiración (de mayor a menor). */
 export const EXPIRY_THRESHOLDS_DAYS = [60, 30, 14, 7, 3, 1] as const;
 
-/** Ventana del recordatorio cuando quedan ≤3 días (el productor corre a diario). */
+/** Ventana del recordatorio cuando quedan ≤3 días (entre corridas del productor). */
 const EXPIRY_REMINDER_MS = 20 * 60 * 60 * 1000;
 
 export type DomainObservation = {
@@ -125,7 +126,7 @@ async function dispatchDomainAlert(a: FiringAlert): Promise<boolean> {
 }
 
 /**
- * Procesa la observación diaria del workflow. Devuelve las keys de las alertas
+ * Procesa la observación del workflow (cadencia mensual). Devuelve las keys de las alertas
  * disparadas (para el detalle del heartbeat y la respuesta del endpoint).
  * LANZA si la DB falla — la route responde 500 a propósito para que el job de
  * GitHub salga rojo el mismo día (patrón backup-heartbeat), en vez de fingir

@@ -1,5 +1,5 @@
 /*
- * POST /api/cron/domain-watch — observación diaria del vigilante del dominio
+ * POST /api/cron/domain-watch — observación del vigilante del dominio (mensual)
  * (FASE B auditoría 2026-09-19, L-H3/L-N1: expiración y secuestro/suspensión de
  * lucamsshop.com eran invisibles).
  *
@@ -18,7 +18,7 @@
  * Si el procesamiento falla (p.ej. DB caída) respondemos 500 A PROPÓSITO: el job
  * de GitHub sale rojo el mismo día en vez de dejar la vigilancia muda en silencio
  * (patrón backup-heartbeat). El latido `cron:domain-watch` (recordCronHeartbeat,
- * intervalo 24 h en CRON_JOBS) cierra el dead-man: si el workflow deja de correr,
+ * intervalo 31 días en CRON_JOBS) cierra el dead-man: si el workflow deja de correr,
  * la regla cron_stale_domain-watch lo delata a las 48 h.
  */
 
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
   try {
     const { alerts } = await processDomainObservation(parsed.data);
     // Latido best-effort (nunca lanza): el resumen queda en AlertState.lastDetail
-    // (nunca secretos). Sin latido en 2×24h → cron_stale_domain-watch.
+    // (nunca secretos). Sin latido en 2×31 días → cron_stale_domain-watch.
     const detail = parsed.data.rdapOk
       ? `rdap ok · ${parsed.data.daysLeft ?? "?"} días · ${alerts.length} alerta(s)`
       : `rdap FALLA · ${alerts.length} alerta(s)`;

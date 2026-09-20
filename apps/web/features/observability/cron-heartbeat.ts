@@ -53,7 +53,12 @@ export const CRON_JOBS: Record<string, { intervalMs: number; label: string }> = 
   // Vigilante del dominio (2026-09-20, L-H3/L-N1): NO es job pg_cron — su productor es
   // el workflow domain-watch.yml de GitHub Actions (RDAP rechaza las conexiones de pg_net).
   // La ruta /api/cron/domain-watch registra el latido tras cada observación procesada.
-  "domain-watch": { intervalMs: 24 * 60 * 60 * 1000, label: "Vigilancia del dominio (RDAP)" },
+  // Cadencia MENSUAL (día 5, decisión Lucy 2026-09-20: el repo no será público siempre) →
+  // dead-man a 2× = ~62 días sin corrida. Intervalo 31 días (mes largo) para no falsos-positivos.
+  "domain-watch": {
+    intervalMs: 31 * 24 * 60 * 60 * 1000,
+    label: "Vigilancia del dominio (RDAP)",
+  },
 };
 
 /**
