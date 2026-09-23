@@ -22,7 +22,8 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Loader2, MessageCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -394,7 +395,7 @@ export function QuoteForm({
             </>
           ) : (
             <>
-              <MessageCircle className="mr-2 h-4 w-4" /> {texts.submit}
+              <WhatsAppIcon className="mr-2 h-4 w-4" /> {texts.submit}
             </>
           )}
         </Button>

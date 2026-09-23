@@ -40,6 +40,7 @@ import {
   getOwnedDesign,
   saveCanvas,
 } from "./service";
+import { compressPreviewImage, PREVIEW_ALLOWED_MIME, type PreviewMime } from "./sharp-safe";
 
 // ──────────── Helpers ────────────
 
@@ -214,8 +215,15 @@ export async function saveCanvasAction(input: {
 // `NEEDS_CLIENT_SLOTS` (ningún tier server-side reproduce el diseño → el cliente sube los suyos).
 
 const MAX_PRODUCTION_BUFFER_BYTES = 20 * 1024 * 1024; // 20 MB por slot
-// Techo del preview: por debajo de los 4.5 MB de Vercel, con margen para el resto del multipart.
+// Techo del preview YA aceptado: por debajo de los 4.5 MB de Vercel, con margen
+// para el resto del multipart (y max file size del bucket design-previews).
 const MAX_PREVIEW_BUFFER_BYTES = 3 * 1024 * 1024;
+// Límite ABSOLUTO de entrada del preview (T2, 2026-09-22): entre 3 MB y 8 MB se
+// RE-COMPRIME con sharp (compressPreviewImage, sharp-safe.ts) en vez de rechazar
+// al cliente. >8 MB sí se rechaza — en producción el cap de 4.5 MB del body de
+// Vercel corta antes de que llegue, así que este guard solo acota memoria/CPU en
+// dev/self-host frente a un multipart armado a mano.
+const MAX_PREVIEW_INPUT_BYTES = 8 * 1024 * 1024;
 
 export async function finalizeDesignAction(formData: FormData): Promise<
   | { ok: true; previewUrl: string | null; status: string; productionSlotsCount: number }
@@ -253,15 +261,24 @@ export async function finalizeDesignAction(formData: FormData): Promise<
   if (!(previewBlob instanceof Blob)) {
     return { ok: false, code: "VALIDATION", message: "preview blob requerido" };
   }
-  if (previewBlob.size > MAX_PREVIEW_BUFFER_BYTES) {
+  // Contrato con el Estudio: el cliente manda WebP q0.85 (fallback JPEG/PNG).
+  const previewMime = previewBlob.type;
+  if (!(PREVIEW_ALLOWED_MIME as readonly string[]).includes(previewMime)) {
     return {
       ok: false,
       code: "VALIDATION",
-      message: `preview demasiado grande (${Math.round(previewBlob.size / 1024 / 1024)}MB, max 3MB)`,
+      message: "formato de preview no soportado (aceptamos webp, jpeg o png)",
     };
   }
   if (previewBlob.size === 0) {
     return { ok: false, code: "VALIDATION", message: "preview vacío" };
+  }
+  if (previewBlob.size > MAX_PREVIEW_INPUT_BYTES) {
+    return {
+      ok: false,
+      code: "VALIDATION",
+      message: `preview demasiado grande (${Math.round(previewBlob.size / 1024 / 1024)}MB, max 8MB)`,
+    };
   }
 
   // Snapshots inline: OPCIONALES (ADR-081). Solo los mandan los editores de una sola ficha. Si
@@ -289,7 +306,44 @@ export async function finalizeDesignAction(formData: FormData): Promise<
     }
   }
 
-  const previewBuffer = Buffer.from(await previewBlob.arrayBuffer());
+  let previewBuffer = Buffer.from(await previewBlob.arrayBuffer());
+  let finalPreviewMime: PreviewMime = previewMime as PreviewMime;
+
+  // T2 (2026-09-22) — preview >3MB: NUNCA rechazar al usuario. Se re-comprime
+  // con sharp (webp, calidad decreciente + resize hasta caber bajo el techo).
+  // Fail-closed solo si es físicamente imposible comprimirlo (o no es imagen).
+  if (previewBuffer.length > MAX_PREVIEW_BUFFER_BYTES) {
+    try {
+      const compressed = await compressPreviewImage(previewBuffer, MAX_PREVIEW_BUFFER_BYTES);
+      logger.info(
+        {
+          event: "design.finalize.preview_recompressed",
+          designId,
+          inputBytes: previewBuffer.length,
+          outputBytes: compressed.buffer.length,
+          width: compressed.width,
+        },
+        "Preview re-comprimido para caber bajo el techo de 3MB",
+      );
+      previewBuffer = compressed.buffer;
+      finalPreviewMime = compressed.mime;
+    } catch (err) {
+      logger.warn(
+        {
+          event: "design.finalize.preview_compress_fail",
+          designId,
+          inputBytes: previewBuffer.length,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "No se pudo comprimir el preview",
+      );
+      return {
+        ok: false,
+        code: "VALIDATION",
+        message: "No pudimos procesar la imagen del preview. Intenta con fotos más livianas.",
+      };
+    }
+  }
 
   // ADR-063 CAL2 — año elegido por el cliente para un calendario mes-a-mes (opcional; solo lo envía
   // el editor de ese kind). Se valida el rango antes de confiar en él para el render server-side.
@@ -302,6 +356,7 @@ export async function finalizeDesignAction(formData: FormData): Promise<
     const design = await finalizeDesign({
       designId,
       previewBuffer,
+      previewMime: finalPreviewMime,
       productionBuffers,
       useStagedClientSlots: formData.get("useStagedSlots") === "1",
       customerId,

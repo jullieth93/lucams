@@ -74,8 +74,14 @@ import {
   gridSlotCountForLayout,
   maxUnitsForProduct,
   photosPerUnitForEditor,
+  designUnitPriceMultiplier,
 } from "@/features/personalization/design-units";
-import { faceSlotLabels, facePairOfUnit } from "./lib/faces";
+import { faceSlotLabels, facePairOfUnit, deployedSizeCm } from "./lib/faces";
+import {
+  canvasToPreviewDataUrl,
+  previewFileExtension,
+  reencodePreviewDataUrl,
+} from "./lib/preview-encode";
 import { PHOTO_PACK_UNITS_PER_PACK } from "@/features/products/variant-schemas";
 
 // FOTO4 — la galería de escenas del fotoimán (nevera/mural/repisa/regalo). Las vistas 3D pesadas
@@ -390,6 +396,13 @@ export function StudioEditor({
   // stroke sobre blanco. Misma regla en producción (service.ts → frameFullBleed).
   const frameFullBleed = (productConfig.frameOptions?.length ?? 0) > 0;
   const facesPerUnit = productConfig.facesPerUnit === 2 ? 2 : 1;
+  // Cara B OPCIONAL (2026-09-22) — lo declara el personalizationSchema del
+  // producto (backOptional: true vía script de BD). Se lee crudo como
+  // galleryTag/startMonth porque el schema Zod (PhotoProductConfigSchema) aún
+  // no lo conoce; solo tiene sentido con productos de 2 caras (separadores).
+  const backOptional =
+    facesPerUnit === 2 &&
+    (product.personalizationSchema as { backOptional?: boolean } | null)?.backOptional === true;
   // Lucy 2026-09-05 — packs de fotoimanes: el N de fotos por imán se elige en el
   // Estudio (prop packVariants). Los demás productos foto mantienen N fijo del
   // schema/variante (packVariants vacío → isPhotoPack false → cero cambios).
@@ -452,6 +465,18 @@ export function StudioEditor({
   // Lucy 2026-09-08 — "¿Con imán?" del pack: vivo del canvasData (persistido en el
   // auto-save → el carrito resuelve la variante con él). Read-only: lo fija la PDP.
   const liveMagnet = useStore(store, (s) => s.canvasData?.magnet ?? initialMagnet);
+  // Multiplicador de precio VIVO (2026-09-22) — el MISMO cálculo del servidor
+  // (design-units.ts, módulo puro compartido): ceil(slotCount / lo que cubre la
+  // variante). CRÍTICO cuando la variante YA es el pack (separadores: la variante
+  // de 5 unidades cuesta $12.500 en total → multiplicador 1, no 5). La modal de
+  // confirmación lo usa en vez del unitCount crudo (bug: mostraba $62.500).
+  const livePriceMultiplier = useStore(store, (s) =>
+    s.canvasData ? designUnitPriceMultiplier(s.canvasData, facesPerUnit) : 1,
+  );
+  // "Sin imán" (2026-09-22): la variante sin imán no tiene sentido en la nevera/
+  // espacio 3D (tampoco libro) → ni botón ni vista 3D. `undefined` (catálogo sin
+  // la dimensión) conserva el comportamiento de siempre.
+  const hide3DView = liveMagnet === false;
   // Precio VIVO del pack para el N actual (vista de la modal; el cobro lo
   // resuelve el servidor al agregar al carrito — nunca se confía en este valor).
   const effectiveUnitPrice = useMemo(() => {
@@ -901,7 +926,9 @@ export function StudioEditor({
           calendarLayout,
           liveCalendarFont,
         );
-        setPreviewDataUrl(await buildCalendarPreviewMontage(pages));
+        // WebP q0.85 (fallback JPEG): el montaje sale PNG del compositor
+        // (lib/compose-calendar-page, no editable desde acá) → se re-codifica.
+        setPreviewDataUrl(await reencodePreviewDataUrl(await buildCalendarPreviewMontage(pages)));
         setPreviewModalOpen(true);
         return;
       }
@@ -912,12 +939,22 @@ export function StudioEditor({
       // Ola 3 — separadores 2 caras: el preview de confirmación muestra las TIRAS
       // desplegadas (cara A | cara B por unidad, con el doblez punteado), no una
       // grilla de caras sueltas — es la pieza física que el cliente va a recibir.
+      // 2026-09-22 — noFold (Alargados): sin doblez ni "desplegado"; backOptional:
+      // cara B vacía se dibuja NEGRA (reverso del imán), no con el placeholder.
+      const foldCaption = (() => {
+        if (facesPerUnit !== 2 || productConfig.noFold) return undefined;
+        const deployed = deployedSizeCm(productConfig.sizeCm);
+        return deployed
+          ? fillStudioText(texts.lienzo.doblezDesplegado, { tamano: `${deployed} cm` })
+          : undefined;
+      })();
       const previewUrl =
         facesPerUnit === 2
           ? await buildBookmarkStripPreview(
               state.canvasData,
               slotStagesRef.current,
               productConfig.cornerRadiusPx,
+              { noFold: productConfig.noFold === true, backOptional, foldCaption },
             )
           : await buildCompositedPreview(
               state.canvasData,
@@ -940,6 +977,9 @@ export function StudioEditor({
     store,
     productConfig.shape,
     productConfig.cornerRadiusPx,
+    productConfig.noFold,
+    productConfig.sizeCm,
+    backOptional,
     ensureAllStagesMounted,
     isCalendarMonth,
     facesPerUnit,
@@ -956,7 +996,7 @@ export function StudioEditor({
   // un libro, no la nevera). Si la captura falla, no rompemos el Estudio — solo no abrimos el 3D.
   const handleOpen3D = useCallback(async () => {
     const state = store.getState();
-    if (!state.canvasData || bookBuilding) return;
+    if (!state.canvasData || bookBuilding || hide3DView) return;
     setBookBuilding(true);
     try {
       await ensureAllStagesMounted(); // T5: la vista 3D necesita la textura de TODOS los slots
@@ -989,6 +1029,7 @@ export function StudioEditor({
     ensureAllStagesMounted,
     isBookmark,
     bookBuilding,
+    hide3DView,
     texts,
   ]);
 
@@ -997,7 +1038,7 @@ export function StudioEditor({
   // demanda. Si la captura falla, no rompemos el Estudio — solo no abrimos la galería.
   const handleOpenScene = useCallback(async () => {
     const state = store.getState();
-    if (!state.canvasData || sceneBuilding) return;
+    if (!state.canvasData || sceneBuilding || hide3DView) return;
     setSceneBuilding(true);
     try {
       await ensureAllStagesMounted(); // T5: la galería necesita la textura de TODOS los slots
@@ -1063,6 +1104,7 @@ export function StudioEditor({
     ensureAllStagesMounted,
     sceneBuilding,
     isBookmark,
+    hide3DView,
     texts,
   ]);
 
@@ -1176,7 +1218,14 @@ export function StudioEditor({
           // ADR-063 CAL2 — para calendarios mes-a-mes, el año elegido viaja al server (que lo hornea en
           // cada página del mes y lo persiste por-diseño).
           if (isCalendarMonth) fd.set("calendarYear", String(selectedYear));
-          fd.set("preview", dataURLtoBlob(previewDataUrl), "preview.png");
+          // 2026-09-22 — el preview sale WebP/JPEG (no PNG): la extensión del
+          // archivo refleja el mime REAL del dataURL (el servidor acepta los 3
+          // formatos y guarda con la extensión correcta — contrato preview).
+          fd.set(
+            "preview",
+            dataURLtoBlob(previewDataUrl),
+            `preview.${previewFileExtension(previewDataUrl)}`,
+          );
           return fd;
         };
 
@@ -1432,6 +1481,8 @@ export function StudioEditor({
         }}
         isPreviewBuilding={previewBuilding}
         finalizeBlockReason={igFinalizeBlockReason}
+        // Cara B opcional (separadores): el guard exige solo las caras A.
+        backOptional={backOptional}
         onFinalize={handleFinalize}
       />
 
@@ -1561,7 +1612,8 @@ export function StudioEditor({
                 <span>{calendarBuilding ? texts.comun.armando : texts.lienzo.btnCalendario}</span>
                 <span className="sr-only">{texts.lienzo.calBtnSr}</span>
               </button>
-            ) : isBookmark ? (
+            ) : // "Sin imán" (2026-09-22): sin botón ni vista 3D (ni libro ni espacio).
+            hide3DView ? null : isBookmark ? (
               <button
                 type="button"
                 onClick={handleOpen3D}
@@ -1649,6 +1701,8 @@ export function StudioEditor({
             allowText={allowText}
             frameFullBleed={frameFullBleed}
             facesPerUnit={facesPerUnit}
+            // Alargados planos (noFold): sin línea de doblez en la tarjeta-unidad.
+            noFold={productConfig.noFold === true}
             interactiveSlots={!isTouch}
             onSlotClick={handleSlotClick}
             stageZoomRaw={stageZoomRaw}
@@ -1679,7 +1733,7 @@ export function StudioEditor({
       {/* FOTO4/CAL4 — Galería de escenas "en tu espacio" en un solo modal (kind decide las escenas:
           fotoimanes → nevera/polaroid/mural/repisa/regalo · calendario → abre en el DETALLE
           tarjeta-a-tarjeta y sube a nevera/tablero con "Míralo en tu espacio", ola 3). */}
-      {sceneMagnets !== null && (
+      {sceneMagnets !== null && !hide3DView && (
         <SceneGallery
           magnets={sceneMagnets.magnets}
           cols={sceneMagnets.cols}
@@ -1688,12 +1742,14 @@ export function StudioEditor({
           isPolaroid={sceneMagnets.isPolaroid}
           facesPerUnit={sceneMagnets.facesPerUnit}
           flat={sceneMagnets.flat}
+          // Cara B opcional (2026-09-22): cara B vacía → reverso negro en 3D.
+          backOptional={backOptional}
           onClose={() => setSceneMagnets(null)}
         />
       )}
 
       {/* SEP1 — Modal del separador en un libro 3D (lazy, client-only). */}
-      {book3D !== null && (
+      {book3D !== null && !hide3DView && (
         <div
           ref={book3DRef}
           role="dialog"
@@ -1719,6 +1775,8 @@ export function StudioEditor({
               sizeCm={productConfig.sizeCm}
               facesPerUnit={productConfig.facesPerUnit}
               flat={productConfig.noFold}
+              // Cara B opcional (2026-09-22): cara B vacía → reverso negro en 3D.
+              backOptional={backOptional}
             />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
               {isTouch ? texts.escenas.hintTouch : texts.escenas.hintMouse}
@@ -1814,6 +1872,12 @@ export function StudioEditor({
         slotsPerUnit={liveIsStrip || isCalendarMonth ? liveUnitSlots : undefined}
         sizeCm={productConfig.sizeCm}
         unitPrice={effectiveUnitPrice}
+        // 2026-09-22 — multiplicador del SERVIDOR (design-units): la variante
+        // puede YA ser el pack (separadores ×5 → ×1). La modal lo usa en vez
+        // del unitCount crudo para el total (bug: mostraba pack × N).
+        priceMultiplier={livePriceMultiplier}
+        // Separadores planos (Alargados): textos sin "doblado".
+        noFold={productConfig.noFold === true}
         // Multi-unidad: el diseño YA contiene las unidades → qty 1 al carrito;
         // el total de la modal = precio unitario × unidades.
         unitCount={liveUnitCount}
@@ -1838,6 +1902,8 @@ export function StudioEditor({
         store={store}
         isPreviewBuilding={previewBuilding}
         finalizeBlockReason={igFinalizeBlockReason}
+        // Cara B opcional (separadores): el guard exige solo las caras A.
+        backOptional={backOptional}
         onFinalize={handleFinalize}
       />
 
@@ -2171,7 +2237,9 @@ async function buildCompositedPreview(
     }
   }
 
-  return compositeCanvas.toDataURL("image/png");
+  // 2026-09-22 — WebP q0.85 (fallback JPEG si el navegador no lo soporta en
+  // toDataURL): el PNG sin compresión superaba el límite de 3 MB del servidor.
+  return canvasToPreviewDataUrl(compositeCanvas);
 }
 
 /**
@@ -2181,21 +2249,33 @@ async function buildCompositedPreview(
  * que producción compone a 300 DPI (composeFaceStrips) — el cliente aprueba la
  * pieza física real, no una grilla de caras sueltas. Las esquinas exteriores se
  * redondean (troquel) y el doblez central se marca con un filete punteado.
+ *
+ * 2026-09-22:
+ *  - noFold (Alargados planos): SIN filete de doblez (la pieza no se pliega).
+ *  - backOptional: una cara B vacía se dibuja NEGRA (#111, reverso real del
+ *    imán) en vez del placeholder del editor.
+ *  - foldCaption: indicación del tamaño desplegado bajo cada tira (texto CMS
+ *    ya resuelto por el caller, ej. "Doblez · Desplegado: 2×12 cm").
  */
 async function buildBookmarkStripPreview(
   canvasData: CanvasDataV2,
   stages: Map<number, Konva.Stage | null>,
   cornerRadiusPx?: number,
+  opts?: { noFold?: boolean; backOptional?: boolean; foldCaption?: string },
 ): Promise<string> {
   const { unitTemplate, slots } = canvasData;
+  const noFold = opts?.noFold === true;
+  const backOptional = opts?.backOptional === true;
+  const foldCaption = opts?.foldCaption;
   const units = Math.floor(slots.length / 2);
   const faceW = 300;
   const faceH = Math.round(faceW * (unitTemplate.stage.height / unitTemplate.stage.width));
   const pad = 24;
   const gap = 18;
+  const captionH = foldCaption ? 20 : 0; // renglón de la indicación bajo la tira
   const stripW = faceW * 2;
   const canvasW = stripW + pad * 2;
-  const canvasH = pad * 2 + units * faceH + (units - 1) * gap;
+  const canvasH = pad * 2 + units * (faceH + captionH) + (units - 1) * gap;
 
   const compositeCanvas = document.createElement("canvas");
   compositeCanvas.width = canvasW;
@@ -2214,7 +2294,7 @@ async function buildBookmarkStripPreview(
   for (let unit = 0; unit < units; unit++) {
     const { faceA, faceB } = facePairOfUnit(unit);
     const x = pad;
-    const y = pad + unit * (faceH + gap);
+    const y = pad + unit * (faceH + captionH + gap);
     // Troquel redondeado de la tira: clipeamos A+B al mismo roundRect → la
     // silueta impresa coincide con la de producción (WYSIWYG).
     ctx.save();
@@ -2222,6 +2302,14 @@ async function buildBookmarkStripPreview(
     ctx.roundRect(x, y, stripW, faceH, radius);
     ctx.clip();
     for (const [i, slotIndex] of [faceA, faceB].entries()) {
+      // Cara B opcional vacía → reverso NEGRO del imán (no el placeholder del
+      // editor, que es UI de pantalla y no existe en la pieza física).
+      const slotState = slots.find((s) => s.slotIndex === slotIndex);
+      if (backOptional && i === 1 && !slotState?.assetUrl) {
+        ctx.fillStyle = "#111";
+        ctx.fillRect(x + i * faceW, y, faceW, faceH);
+        continue;
+      }
       const stage = stages.get(slotIndex);
       if (!stage) continue;
       // H6 — sin indicadores de edición en el preview de confirmación.
@@ -2244,25 +2332,38 @@ async function buildBookmarkStripPreview(
       });
     }
     ctx.restore();
-    // Filete del doblez (pliegue central de la tira) + borde sutil de la silueta.
+    // Filete del doblez (pliegue central de la tira) + borde sutil de la
+    // silueta. noFold (Alargados): la pieza es PLANA → sin filete de doblez.
     ctx.save();
-    ctx.strokeStyle = "rgba(124, 106, 173, 0.55)"; // brand-purple/55
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    ctx.moveTo(x + faceW, y + 4);
-    ctx.lineTo(x + faceW, y + faceH - 4);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    if (!noFold) {
+      ctx.strokeStyle = "rgba(124, 106, 173, 0.55)"; // brand-purple/55
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(x + faceW, y + 4);
+      ctx.lineTo(x + faceW, y + faceH - 4);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
     ctx.strokeStyle = "rgba(124, 106, 173, 0.7)";
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.roundRect(x, y, stripW, faceH, radius);
     ctx.stroke();
     ctx.restore();
+    // Indicación del tamaño total desplegado bajo la tira (mismo texto CMS que
+    // la tarjeta-unidad del lienzo).
+    if (foldCaption) {
+      ctx.save();
+      ctx.fillStyle = "rgba(60, 45, 100, 0.85)";
+      ctx.font = "600 12px Inter, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(foldCaption, x + stripW / 2, y + faceH + 14);
+      ctx.restore();
+    }
   }
 
-  return compositeCanvas.toDataURL("image/png");
+  return canvasToPreviewDataUrl(compositeCanvas);
 }
 
 /**

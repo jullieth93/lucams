@@ -16,7 +16,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
-import { Box, User, MapPin, CreditCard, Truck, Package, Undo2, MessageCircle } from "lucide-react";
+import { Box, User, MapPin, CreditCard, Truck, Package, Undo2 } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/brand";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getOrder } from "@/features/orders/service";
@@ -315,7 +316,7 @@ export default async function AdminPedidoDetallePage({
                   rel="noopener noreferrer"
                   className="text-brand-purple-dark hover:bg-brand-purple/5 mt-3 inline-flex items-center gap-1.5 rounded-md border border-emerald-600/30 bg-emerald-50 px-3 py-1.5 text-xs font-semibold"
                 >
-                  <MessageCircle className="h-3.5 w-3.5 text-emerald-700" aria-hidden />
+                  <WhatsAppIcon className="h-3.5 w-3.5 text-emerald-700" />
                   Escribir al WhatsApp del cliente
                 </a>
               )}

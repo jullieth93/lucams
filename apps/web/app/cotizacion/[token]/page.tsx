@@ -18,7 +18,8 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CheckCircle2, MessageCircle, Sparkles } from "lucide-react";
+import { CheckCircle2, Sparkles } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/brand";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { CmsText } from "@/components/cms/cms-text";
@@ -175,7 +176,7 @@ export default async function CotizacionPage({ params }: { params: Params }) {
               className="w-full bg-emerald-700 text-white shadow-lg hover:bg-emerald-800 sm:w-auto sm:px-8"
             >
               <a href={waUrl} target="_blank" rel="noopener noreferrer">
-                <MessageCircle className="mr-2 h-5 w-5" />
+                <WhatsAppIcon className="mr-2 h-5 w-5" />
                 <CmsText
                   blockKey="quote.confirmation.wa-cta"
                   fallback="Enviar cotización por WhatsApp"

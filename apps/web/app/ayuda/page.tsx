@@ -14,7 +14,8 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronDown, MessageCircle, Mail } from "lucide-react";
+import { ChevronDown, Mail } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/brand";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { CmsText } from "@/components/cms/cms-text";
@@ -232,7 +233,7 @@ export default async function AyudaPage() {
                 rel="noopener noreferrer"
                 className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm"
               >
-                <MessageCircle className="h-4 w-4" />
+                <WhatsAppIcon className="h-4 w-4" />
                 WhatsApp
               </a>
               <a

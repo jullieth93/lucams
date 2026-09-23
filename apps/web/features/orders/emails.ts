@@ -13,6 +13,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
+import { designDisplayUnits } from "@/features/personalization/design-units";
 import {
   renderOrderConfirmationEmail,
   renderOrderShippedEmail,
@@ -40,6 +41,20 @@ function formatAddressLine(ship: ShippingAddrSnapshot): string {
   return [line1, city, ship.zip].filter(Boolean).join(" · ");
 }
 
+/**
+ * Unidades FÍSICAS de una línea de pedido para el ×N del correo (modelo
+ * multi-unidad 2026-09-09): unidades del diseño × qty de la línea (la línea
+ * suele tener qty=1 con el pack en unitPrice, pero el mismo diseño agregado
+ * dos veces agrupa en qty=2). null = línea sin diseño → el template usa qty.
+ */
+function lineDisplayUnits(item: {
+  qty: number;
+  design: { canvasData: unknown; metadata: unknown } | null;
+}): number | undefined {
+  const perDesign = designDisplayUnits(item.design);
+  return perDesign === null ? undefined : perDesign * item.qty;
+}
+
 /** Envia order-confirmation tras Order PAID. */
 export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
   try {
@@ -49,6 +64,10 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
         items: {
           include: {
             variant: { select: { sku: true, product: { select: { name: true } } } },
+            // Modelo multi-unidad (2026-09-09): la línea tiene qty=1 y el pack
+            // va en unitPrice; las unidades reales salen del diseño (canvas o
+            // metadata.unitCount) para mostrar ×N en el correo.
+            design: { select: { canvasData: true, metadata: true } },
           },
         },
       },
@@ -71,6 +90,7 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
       items: order.items.map((it) => ({
         name: it.variant.product.name,
         qty: it.qty,
+        units: lineDisplayUnits(it),
         lineTotal: it.unitPrice * it.qty,
       })),
       shippingAddress: formatAddressLine(ship),
@@ -541,6 +561,8 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
         items: {
           include: {
             variant: { select: { product: { select: { name: true } } } },
+            // Multi-unidad: unidades reales del diseño para el ×N del aviso.
+            design: { select: { canvasData: true, metadata: true } },
           },
         },
       },
@@ -592,6 +614,7 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
       items: order.items.map((it) => ({
         name: it.variant.product.name,
         qty: it.qty,
+        units: lineDisplayUnits(it),
         lineTotal: it.unitPrice * it.qty,
       })),
     });

@@ -7,7 +7,8 @@
  */
 
 import Link from "next/link";
-import { ArrowLeft, Lock, MessageCircle } from "lucide-react";
+import { ArrowLeft, Lock } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/brand";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { isCatalogMode } from "@/lib/store-mode";
 import { getCheckoutTexts } from "./checkout-texts.server";
@@ -60,7 +61,7 @@ export default async function CheckoutLayout({ children }: { children: React.Rea
           <div className="flex items-center gap-1.5">
             {isCatalogMode() ? (
               <>
-                <MessageCircle className="h-3 w-3" />
+                <WhatsAppIcon className="h-3 w-3" />
                 {texts.layout.footerCatalog}
               </>
             ) : (

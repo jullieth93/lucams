@@ -7,7 +7,8 @@
  */
 
 import type { Metadata } from "next";
-import { MessageCircle, Mail, Clock } from "lucide-react";
+import { Mail, Clock } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/brand";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { CmsText } from "@/components/cms/cms-text";
@@ -64,7 +65,7 @@ export default async function ContactoPage() {
             <aside className="space-y-4">
               <div className="border-brand-purple/15 to-brand-turquoise/10 rounded-2xl border bg-gradient-to-br from-emerald-50 p-6">
                 <h2 className="font-display text-brand-purple-dark flex items-center gap-2 text-xl">
-                  <MessageCircle className="h-5 w-5 text-emerald-600" />
+                  <WhatsAppIcon className="h-5 w-5 text-emerald-600" />
                   <CmsText blockKey="support.contacto.wa-card-title" fallback="WhatsApp" />
                 </h2>
                 <p className="text-brand-purple-dark/75 mt-2 text-sm">
@@ -79,7 +80,7 @@ export default async function ContactoPage() {
                   rel="noopener noreferrer"
                   className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800"
                 >
-                  <MessageCircle className="h-4 w-4" />
+                  <WhatsAppIcon className="h-4 w-4" />
                   <CmsText blockKey="support.contacto.wa-cta" fallback="Háblanos por WhatsApp →" />
                 </a>
               </div>

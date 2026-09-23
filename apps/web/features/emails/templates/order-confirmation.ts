@@ -17,7 +17,13 @@ export type OrderConfirmationData = {
   /** Descuento por cupón (centavos COP, positivo). 0/undefined ⇒ no se muestra la fila. */
   discount?: number;
   shippingCarrier: string | null;
-  items: Array<{ name: string; qty: number; lineTotal: number }>;
+  /**
+   * `qty` es la cantidad de LÍNEAS (modelo multi-unidad 2026-09-09: un diseño
+   * con N unidades es UNA línea con qty=1 y el pack va en unitPrice).
+   * `units` = unidades físicas reales del diseño cuando existe; se muestra
+   * ×(units ?? qty). El dinero no cambia: lineTotal = unitPrice × qty.
+   */
+  items: Array<{ name: string; qty: number; units?: number; lineTotal: number }>;
   shippingAddress: string; // ya formateada
   /** Token público para vista guest /pedido/<token> sin login. */
   publicTrackingToken: string | null;
@@ -32,7 +38,7 @@ export async function orderConfirmationEmail(data: OrderConfirmationData) {
       (it) => `
 <tr>
   <td style="padding:8px 0;border-bottom:1px solid #f0e7e0;color:#3D2E5C;">
-    ${escapeHtml(it.name)} <span style="opacity:0.55;">×${it.qty}</span>
+    ${escapeHtml(it.name)} <span style="opacity:0.55;">×${it.units ?? it.qty}</span>
   </td>
   <td style="padding:8px 0;border-bottom:1px solid #f0e7e0;text-align:right;color:#3D2E5C;font-weight:600;">${formatCOP(it.lineTotal)}</td>
 </tr>`,
@@ -110,7 +116,7 @@ ${
 }
 
 Items:
-${data.items.map((it) => `  - ${it.name} ×${it.qty} → ${formatCOP(it.lineTotal)}`).join("\n")}
+${data.items.map((it) => `  - ${it.name} ×${it.units ?? it.qty} → ${formatCOP(it.lineTotal)}`).join("\n")}
 
 Subtotal: ${formatCOP(data.subtotal)}
 Envío${data.shippingCarrier ? ` (${data.shippingCarrier})` : ""}: ${formatCOP(data.shipping)}${discount > 0 ? `\nDescuento: −${formatCOP(discount)}` : ""}

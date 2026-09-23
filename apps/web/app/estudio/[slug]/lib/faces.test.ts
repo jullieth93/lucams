@@ -11,6 +11,8 @@ import {
   faceOfSlot,
   faceSlotLabels,
   facePairOfUnit,
+  missingFaceACount,
+  deployedSizeCm,
 } from "./faces";
 
 describe("faces (Ola 3 — separadores 2 caras)", () => {
@@ -45,5 +47,25 @@ describe("faces (Ola 3 — separadores 2 caras)", () => {
   it("facePairOfUnit devuelve los slots de la tira desplegada (A izquierda, B derecha)", () => {
     expect(facePairOfUnit(0)).toEqual({ faceA: 0, faceB: 1 });
     expect(facePairOfUnit(2)).toEqual({ faceA: 4, faceB: 5 });
+  });
+
+  // 2026-09-22 — cara B opcional (backOptional) y tamaño desplegado.
+  it("missingFaceACount cuenta solo las caras A (slots pares) sin foto", () => {
+    const slots = [
+      { slotIndex: 0, assetUrl: "a.jpg" }, // A con foto
+      { slotIndex: 1, assetUrl: null }, // B vacía — NO cuenta
+      { slotIndex: 2, assetUrl: null }, // A vacía — cuenta
+      { slotIndex: 3, assetUrl: "b.jpg" },
+    ];
+    expect(missingFaceACount(slots)).toBe(1);
+    expect(missingFaceACount([])).toBe(0);
+  });
+
+  it("deployedSizeCm duplica la dimensión mayor (el largo del doblez)", () => {
+    expect(deployedSizeCm("2×6")).toBe("2×12");
+    expect(deployedSizeCm("4×4.2")).toBe("4×8.4");
+    expect(deployedSizeCm("5x5")).toBe("5×10");
+    expect(deployedSizeCm("grande")).toBeNull();
+    expect(deployedSizeCm(undefined)).toBeNull();
   });
 });

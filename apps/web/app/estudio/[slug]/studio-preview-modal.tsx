@@ -19,7 +19,6 @@
  * por debajo.
  */
 
-import Image from "next/image";
 import { Loader2, Pencil, Sparkles, ShoppingCart } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -65,6 +64,21 @@ type StudioPreviewModalProps = {
   sizeCm?: string;
   unitPrice: number | null; // precio en centavos COP de la variant elegida
   /**
+   * Multiplicador de precio del SERVIDOR (designUnitPriceMultiplier, mismo
+   * cálculo del carrito: ceil(slotCount / cubierto-por-variante)). Es lo que
+   * multiplica al unitPrice en el total mostrado. CRÍTICO para packs donde la
+   * variante YA es el pack (separadores: variante = 5 unidades → multiplicador
+   * 1 aunque el diseño tenga 5 unidades; antes se multiplicaba por unitCount y
+   * la modal mostraba 5× el precio real — bug 2026-09-22). undefined → cae al
+   * comportamiento legacy (unitCount ?? copies).
+   */
+  priceMultiplier?: number;
+  /**
+   * Separadores PLANOS (noFold, Alargados): la pieza no se dobla → los textos
+   * no hablan de "doblado". Solo tiene sentido con productKind="bookmarks".
+   */
+  noFold?: boolean;
+  /**
    * Modelo MULTI-UNIDAD (owner 2026-09-09): unidades que contiene el DISEÑO
    * (cada una diseñada por separado en el Estudio). El total = unitario ×
    * unidades y el carrito recibe UNA línea con qty=1 (onConfirm recibe 1).
@@ -103,6 +117,8 @@ export function StudioPreviewModal({
   slotsPerUnit,
   sizeCm,
   unitPrice,
+  priceMultiplier,
+  noFold = false,
   unitCount,
   initialCopies,
   isFinalizing,
@@ -121,8 +137,13 @@ export function StudioPreviewModal({
   const copies = Math.min(99, Math.max(1, Math.trunc(initialCopies ?? 1) || 1));
   // Qty al confirmar: multi-unidad → 1; legacy → las copias de la PDP.
   const confirmQty = unitCount !== undefined ? 1 : copies;
-  // Multiplicador del total mostrado: unidades del diseño (nuevo) o copias (legacy).
-  const totalMultiplier = unitCount !== undefined ? units : copies;
+  // Multiplicador del total mostrado: el del SERVIDOR cuando llega
+  // (priceMultiplier — la variante puede YA ser el pack, p.ej. separadores:
+  // 5 unidades a $12.500 el pack → ×1, no ×5); si no, unidades del diseño
+  // (modelo nuevo) o copias (legacy).
+  const serverMultiplier = Math.min(99, Math.max(1, Math.trunc(priceMultiplier ?? 1) || 1));
+  const totalMultiplier =
+    priceMultiplier !== undefined ? serverMultiplier : unitCount !== undefined ? units : copies;
 
   if (!previewUrl) return null;
 
@@ -238,8 +259,13 @@ export function StudioPreviewModal({
               {sizeCm && (
                 <>
                   {" "}
+                  {/* noFold (Alargados): la pieza es PLANA — sin "doblado". */}
                   <StrongVar
-                    template={texts.exportar.descSeparadoresTamano}
+                    template={
+                      noFold
+                        ? texts.exportar.descSeparadoresTamanoPlano
+                        : texts.exportar.descSeparadoresTamano
+                    }
                     varName="tamano"
                     value={sizeCm}
                   />
@@ -282,30 +308,28 @@ export function StudioPreviewModal({
           )}
         </DialogDescription>
 
-        {/* Preview compositado del grid. La imagen se capa por ALTO de viewport
-            además de por ancho (min(28rem, 42dvh)): con aspect-square el alto sigue
-            al ancho, así que limitar el ancho en dvh garantiza que la imagen nunca
-            se coma el viewport en pantallas bajas (el resto del contenido sigue
-            accesible con el scroll del diálogo). */}
+        {/* Preview compositado del grid. La imagen usa su ASPECTO NATURAL
+            (2026-09-22 — antes un contenedor aspect-square fijo letterboxeaba
+            mal las tiras altas de separadores, que quedaban diminutas con
+            aire lateral): se capa por ALTO de viewport (max-h en dvh) y por
+            ancho del diálogo, así la imagen nunca se come el viewport en
+            pantallas bajas y el resto del contenido sigue accesible con el
+            scroll del diálogo. */}
         <div className="border-brand-purple/15 from-brand-cream relative mt-3 overflow-hidden rounded-xl border bg-gradient-to-br to-white p-4">
-          <div className="relative mx-auto aspect-square w-full max-w-[min(28rem,42dvh)]">
-            <Image
-              src={previewUrl}
-              alt={
-                isCalendar
-                  ? `Vista previa de las ${slotCount} páginas de tu calendario${calendarYear ? ` ${calendarYear}` : ""}`
-                  : isBookmarks
-                    ? `Vista previa de ${slotCount} separadores desplegados con sus 2 caras`
-                    : isStrips
-                      ? `Vista previa de ${slotCount === 1 ? "tu tira" : `tus ${slotCount} tiras`} — cada una con ${perUnit} fotos`
-                      : `Vista previa de ${slotCount} imanes`
-              }
-              fill
-              sizes="(max-width: 640px) 90vw, 480px"
-              className="object-contain drop-shadow-lg"
-              unoptimized
-            />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element -- dataURL local del compositor; next/image no aporta optimización acá (ya iba unoptimized) */}
+          <img
+            src={previewUrl}
+            alt={
+              isCalendar
+                ? `Vista previa de las ${slotCount} páginas de tu calendario${calendarYear ? ` ${calendarYear}` : ""}`
+                : isBookmarks
+                  ? `Vista previa de ${slotCount} separadores desplegados con sus 2 caras`
+                  : isStrips
+                    ? `Vista previa de ${slotCount === 1 ? "tu tira" : `tus ${slotCount} tiras`} — cada una con ${perUnit} fotos`
+                    : `Vista previa de ${slotCount} imanes`
+            }
+            className="mx-auto max-h-[min(28rem,42dvh)] w-auto max-w-full object-contain drop-shadow-lg"
+          />
         </div>
 
         {/* Resumen */}

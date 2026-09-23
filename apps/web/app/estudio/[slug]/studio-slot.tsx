@@ -287,6 +287,21 @@ function StudioSlotImpl({
     onProfilePhotoEdit?.();
   }, [onProfilePhotoEdit]);
 
+  // Drag táctil inline (2026-09-22) — en dispositivos táctiles la grilla NO
+  // captura gestos (interactiveSlots=false → el dedo scrollea la página y el
+  // encuadre se hace en «Ajustar foto»). EXCEPCIÓN: una foto con ZOOM aplicado
+  // (scale ≠ 1, hecho en el modal) sí se re-encuadra arrastrando con 1 dedo —
+  // el pan solo tiene efecto visible cuando hay zoom, así que el scroll de la
+  // página queda intacto para fotos a escala 1 (que son casi todas: el grid es
+  // full-width en móvil y bloquear el scroll ahí dejaría la página atrapada).
+  // El pinch/wheel del modal «Ajustar foto» no se toca.
+  const touchPanEnabled =
+    !interactiveSlots &&
+    !!onPhotoTransformChange &&
+    !!slotState.assetUrl &&
+    Math.abs((slotState.photoTransform?.scale ?? 1) - 1) > 0.001;
+  const photoDragEnabled = !!onPhotoTransformChange && (interactiveSlots || touchPanEnabled);
+
   // M.3.b.UX.v13 (Lucy 2026-05-15) — CSS clip-path para que el slot wrapper
   // SE VEA con el shape físico del imán (heart/circle/rect). useId genera
   // un ID único por slot para el SVG clipPath inline (objectBoundingBox 0-1
@@ -434,8 +449,18 @@ function StudioSlotImpl({
   // Tamaño/escala EFECTIVOS del Stage: con bandeja, la tarjeta se dibuja inset; sin
   // ella, llena el slot como siempre. El aspect y el contenido no cambian (todo el
   // dibujo interno es proporcional vía scale → WYSIWYG intacto).
+  // Bug 2026-09-22 (banda azul del feedback): el inset era FIJO en px en ambos ejes
+  // (slotWidth−16, slotHeight−16), lo que ROMPE la proporción en tarjetas no
+  // cuadradas (separadores alargados 1:3/1:3.75): el contenido escala por ANCHO
+  // (stageScale) y el canvas quedaba más alto que el contenido → banda vacía
+  // grande en la parte INFERIOR del marco (~40px abajo vs 8px arriba en un 4×12).
+  // Ahora el alto del Stage se DERIVA del ancho inset conservando el aspect: el
+  // contenido llena el canvas exactamente y, como la bandeja centra el Stage
+  // (flex items-center justify-center), el aire queda homogéneo arriba/abajo
+  // (más grueso en tarjetas altas, como un paspartú). Bonus: los snapshots
+  // (preview/3D/fallback de producción) ya no hornean la franja muerta.
   const stageSlotWidth = whiteCardTray ? slotWidth - WHITE_CARD_TRAY_PAD * 2 : slotWidth;
-  const stageSlotHeight = whiteCardTray ? slotHeight - WHITE_CARD_TRAY_PAD * 2 : slotHeight;
+  const stageSlotHeight = whiteCardTray ? stageSlotWidth * aspect : slotHeight;
   const stageScale = stageSlotWidth / unitTemplate.stage.width;
   const frameStyle = useMemo(() => {
     if (!borderColor || shape === "heart" || shape === "circle" || hasFrameCard || fullBleed)
@@ -807,7 +832,10 @@ function StudioSlotImpl({
             // se hace con pellizco en el preview del modal de edición (Ola 9). Además las capas
             // Konva no-interactivas van con preventDefault={false} para no matar el inicio
             // del scroll (ver ImagePlaceholder).
-            touchAction: onPhotoTransformChange && interactiveSlots ? "none" : "pan-y",
+            // 2026-09-22 — excepción táctil: con zoom aplicado (touchPanEnabled) el
+            // arrastre de 1 dedo re-encuadra la foto → touch-action:none SOLO en
+            // ese caso (a escala 1 el scroll manda, ver photoDragEnabled arriba).
+            touchAction: photoDragEnabled ? "none" : "pan-y",
           }}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
@@ -840,9 +868,10 @@ function StudioSlotImpl({
             }}
             // M.3.b.D — Stage debe escuchar eventos para captar clicks sobre
             // text layers editables. M.3.b.UX.v4+: también si hay drag/zoom de foto
-            // y el slot es interactivo (desktop). En táctil la grilla no captura
-            // gestos inline, salvo taps sobre textos editables.
-            listening={!!onTextEdit || (!!onPhotoTransformChange && interactiveSlots)}
+            // y el slot es interactivo (desktop). 2026-09-22: también con drag
+            // táctil armado (foto con zoom — photoDragEnabled); en el resto de
+            // la grilla táctil no captura gestos inline, salvo taps sobre textos.
+            listening={!!onTextEdit || photoDragEnabled}
             // M.3.b.UX.v10 (Lucy 2026-05-15) — gestos de zoom:
             //   Desktop: wheel sobre la foto → zoom in/out
             //   Mobile:  pinch 2 dedos → zoom
@@ -882,7 +911,10 @@ function StudioSlotImpl({
                   templateStageWidth={unitTemplate.stage.width}
                   stageWidth={unitTemplate.stage.width}
                   stageHeight={unitTemplate.stage.height}
-                  onPhotoTransformChange={interactiveSlots ? onPhotoTransformChange : undefined}
+                  onPhotoTransformChange={photoDragEnabled ? onPhotoTransformChange : undefined}
+                  // 2026-09-22 — drag táctil (foto con zoom): sin preventDefault
+                  // para que el TAP siga abriendo el editor (click sintético).
+                  touchDrag={touchPanEnabled}
                   onPhotoDragStart={handlePhotoDragStart}
                   onPhotoDragEnd={handlePhotoDragEnd}
                 />
@@ -924,6 +956,9 @@ function StudioSlotImpl({
                       // padre cablea el flujo (la vista previa del modal no lo hace).
                       onProfilePhotoEdit: onProfilePhotoEdit ? handleProfilePhotoEdit : undefined,
                       profilePhotoHint: texts.texto.perfilAvatarHint,
+                      // 2026-09-22 — drag táctil inline de la foto (solo con zoom
+                      // aplicado; desktop sigue con interactiveSlots).
+                      touchDrag: touchPanEnabled,
                     },
                   ),
                 )
@@ -1384,6 +1419,12 @@ export function renderLayer(
     onProfilePhotoEdit?: () => void;
     /** Tooltip del avatar (copy CMS) — solo se usa cuando onProfilePhotoEdit está set. */
     profilePhotoHint?: string;
+    /**
+     * Drag TÁCTIL inline (2026-09-22): habilita el arrastre de la foto en la
+     * grilla táctil (interactiveSlots=false) cuando el pan tiene efecto visible
+     * (foto con zoom ≠ 1). Desktop sigue gobernado por interactiveSlots.
+     */
+    touchDrag?: boolean;
   },
 ) {
   const borderColor = opts?.borderColor ?? null;
@@ -1501,6 +1542,7 @@ export function renderLayer(
           onPhotoDragStart={onPhotoDragStart}
           onPhotoDragEnd={onPhotoDragEnd}
           interactiveSlots={interactiveSlots}
+          touchDrag={opts?.touchDrag}
         />
       );
     }
@@ -2243,6 +2285,7 @@ function ImagePlaceholder({
   onPhotoDragStart,
   onPhotoDragEnd,
   interactiveSlots = true,
+  touchDrag = false,
 }: {
   layer: ImagePlaceholderLayer;
   slotState: SlotState;
@@ -2267,6 +2310,14 @@ function ImagePlaceholder({
   onPhotoDragStart?: () => void;
   onPhotoDragEnd?: () => void;
   interactiveSlots?: boolean;
+  /**
+   * Drag TÁCTIL inline (2026-09-22): permite arrastrar la foto aunque el slot
+   * no sea interactivo (grilla táctil) — lo arma el StudioSlot cuando la foto
+   * tiene zoom ≠ 1 (pan con efecto visible). Con touchDrag, preventDefault
+   * queda en false para que el TAP siga abriendo el editor (click sintético);
+   * el scroll lo bloquea el `touch-action:none` del wrapper, no Konva.
+   */
+  touchDrag?: boolean;
 }) {
   const [image] = useImage(slotState.assetUrl ?? "", "anonymous");
   const imageNodeRef = useRef<Konva.Image | null>(null);
@@ -2392,7 +2443,7 @@ function ImagePlaceholder({
       ? { x: slotState.photoTransform.offsetX, y: slotState.photoTransform.offsetY }
       : { x: 0, y: 0 };
 
-    const isDraggable = !!onPhotoTransformChange && interactiveSlots;
+    const isDraggable = !!onPhotoTransformChange && (interactiveSlots || touchDrag);
 
     // Clip del Group local: rounded rect cuando cornerRadius, rect plano resto.
     // Para heart/circle no hace falta acá porque el Layer-level clipFunc del
@@ -2459,7 +2510,10 @@ function ImagePlaceholder({
           // el SCROLL de la página. Sin gestos inline (interactiveSlots=false)
           // dejamos preventDefault={false} y el dedo scrollea libre (pan-y).
           // En desktop interactivo el wheel/pinch necesita capturar el evento.
-          preventDefault={isDraggable}
+          // 2026-09-22 — drag táctil (touchDrag): preventDefault sigue en FALSE
+          // para que el tap sintetice click y abra el editor; el scroll lo
+          // bloquea el touch-action:none del wrapper (solo con zoom aplicado).
+          preventDefault={isDraggable && interactiveSlots}
           // M.3.b.UX.v9 — drag SIN bounds (libre). El cliente decide dónde
           // poner la foto. Si la mueve fuera del slot, ve el background (warning
           // visible). Patrón industria: Mixbook, Canva, Vistaprint.

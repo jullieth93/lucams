@@ -140,6 +140,11 @@ export function stripDimsForFace(
  *
  * Diseños VIEJOS de tira completa (lienzo vertical, pre-ola-3): no traen cara B — cada textura
  * es su propia unidad y repite el diseño en ambas caras (comportamiento histórico).
+ *
+ * 2026-09-22 — `opts.backOptional`: la cara B es OPCIONAL; cuando falta, `back` es null (el 3D
+ * muestra el NEGRO del imán en el reverso) en vez de duplicar la cara A. Sin la opción se
+ * conserva el comportamiento histórico (back = front). El tipo de retorno admite null siempre;
+ * los callers que no pasan la opción nunca reciben null en runtime.
  */
 export function bookmarkFaceUnits<
   T extends {
@@ -155,9 +160,13 @@ export function bookmarkFaceUnits<
   facesPerUnit?: number,
   /** sizeCm de la variante: si llega, confirma que estamos en el flujo moderno de caras. */
   sizeCm?: string,
-): { front: T; back: T }[] {
+  /** backOptional: con cara B faltante devolver back=null en vez de duplicar la cara A. */
+  opts?: { backOptional?: boolean },
+): { front: T; back: T | null }[] {
+  const backOptional = opts?.backOptional === true;
   // Ola 10 — si el producto declara facesPerUnit=2, agrupamos por pares de slotIndex
-  // (no por orden del array). La cara B sin foto propia usa la misma textura que la cara A.
+  // (no por orden del array). La cara B sin foto propia usa la misma textura que la cara A
+  // (o null con backOptional: el 3D pinta el reverso negro del imán).
   if (
     facesPerUnit === 2 &&
     bookmarks.length > 0 &&
@@ -166,14 +175,16 @@ export function bookmarkFaceUnits<
     const bySlot = new Map<number, T>();
     for (const b of bookmarks) bySlot.set(b.slotIndex!, b);
     const maxSlot = Math.max(...bookmarks.map((b) => b.slotIndex!));
-    const units: { front: T; back: T }[] = [];
+    const units: { front: T; back: T | null }[] = [];
     for (let k = 0; 2 * k <= maxSlot; k++) {
       const front = bySlot.get(2 * k);
       if (!front) continue; // unidad sin cara A: no renderizar
       const back = bySlot.get(2 * k + 1);
       // Magnet3D usa dataUrl (textura capturada del stage), no assetUrl. Si la cara B
-      // no tiene textura propia, reusamos la frontal (comportamiento histórico).
-      units.push({ front, back: back?.dataUrl || back?.assetUrl ? back : front });
+      // no tiene textura propia, reusamos la frontal (comportamiento histórico) o null
+      // (backOptional → reverso negro).
+      const hasBack = Boolean(back?.dataUrl || back?.assetUrl);
+      units.push({ front, back: hasBack ? back! : backOptional ? null : front });
     }
     return units;
   }
@@ -182,10 +193,10 @@ export function bookmarkFaceUnits<
     sizeCm !== undefined ||
     (bookmarks.length > 0 && bookmarks.every((b) => b.wRatio / b.hRatio >= FACE_CANVAS_MIN_ASPECT));
   if (!looksLikeFaces) return bookmarks.map((b) => ({ front: b, back: b }));
-  const units: { front: T; back: T }[] = [];
+  const units: { front: T; back: T | null }[] = [];
   for (let k = 0; 2 * k < bookmarks.length; k++) {
     const front = bookmarks[2 * k]!;
-    units.push({ front, back: bookmarks[2 * k + 1] ?? front });
+    units.push({ front, back: bookmarks[2 * k + 1] ?? (backOptional ? null : front) });
   }
   return units;
 }

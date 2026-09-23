@@ -15,7 +15,8 @@
  */
 
 import Link from "next/link";
-import { Mail, MessageCircle } from "lucide-react";
+import { Mail } from "lucide-react";
+import { FacebookIcon, InstagramIcon, TikTokIcon, WhatsAppIcon } from "@/components/icons/brand";
 import { NewsletterForm } from "@/components/newsletter-form";
 import { CmsText } from "@/components/cms/cms-text";
 import { CmsSetting } from "@/components/cms/cms-setting";
@@ -58,45 +59,6 @@ function validateLegalLink(v: unknown): LegalLink | null {
   return item;
 }
 
-// SVG inline — Instagram + TikTok no están en la versión actual de
-// lucide-react. Estos son simplified glyphs propios para el footer.
-function InstagramIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-      className={className}
-    >
-      <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
-      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-      <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
-    </svg>
-  );
-}
-
-function TikTokIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
-      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.31a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.84-.74z" />
-    </svg>
-  );
-}
-
-// Facebook tampoco está en lucide-react 1.14 (brand icons removidos) — glyph
-// propio en el mismo estilo que Instagram/TikTok.
-function FacebookIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
-      <path d="M13.5 21v-8h2.7l.4-3.1h-3.1V7.9c0-.9.25-1.5 1.55-1.5h1.65V3.6c-.3-.04-1.3-.1-2.45-.1-2.4 0-4.05 1.47-4.05 4.17v2.23H7.5V13h2.7v8h3.3z" />
-    </svg>
-  );
-}
-
 export async function SiteFooter() {
   // Settings que se usan como atributos (href/mailto) los necesitamos
   // como string raw — los display los wrappea <CmsSetting>.
@@ -131,7 +93,10 @@ export async function SiteFooter() {
     getSettingValue("SOCIAL_TIKTOK_ENABLED", "true"),
     getSettingValue("SOCIAL_FACEBOOK_ENABLED", "true"),
   ]);
-  const buildVersion = process.env.NEXT_PUBLIC_BUILD_VERSION ?? "dev";
+  // Sin NEXT_PUBLIC_BUILD_VERSION (inyectada en build por next.config.ts desde
+  // VERCEL_GIT_COMMIT_SHA en Vercel) no se muestra badge de versión — evita el
+  // "vdev" sin sentido en local/preview.
+  const buildVersion = process.env.NEXT_PUBLIC_BUILD_VERSION;
   const waNumberDisplay = waNumber.replace(/^57(\d{3})(\d{3})(\d{4})$/, "+57 $1 $2 $3");
 
   return (
@@ -199,7 +164,7 @@ export async function SiteFooter() {
                 aria-label="WhatsApp"
                 className={`inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20 ${FOCUS_VISIBLE_CIRCLE}`}
               >
-                <MessageCircle className="h-4 w-4" />
+                <WhatsAppIcon className="h-4 w-4" />
               </a>
             </div>
           </div>
@@ -267,7 +232,7 @@ export async function SiteFooter() {
                   rel="noopener noreferrer"
                   className={`inline-flex items-center gap-1.5 transition-colors hover:text-white ${FOCUS_VISIBLE}`}
                 >
-                  <MessageCircle className="h-4 w-4" />
+                  <WhatsAppIcon className="h-4 w-4" />
                   {waNumberDisplay}
                 </a>
               </li>
@@ -356,7 +321,9 @@ export async function SiteFooter() {
               © <CmsSetting settingKey="COPYRIGHT_YEAR" fallback="2026" /> Lucams_shop ·{" "}
               <CmsSetting settingKey="COPYRIGHT_TAGLINE" fallback="Hecho con 💜 en Bogotá" />
             </p>
-            <p className="font-mono text-[10px] text-white/40">v{buildVersion.slice(0, 7)}</p>
+            {buildVersion && (
+              <p className="font-mono text-[10px] text-white/40">v{buildVersion.slice(0, 7)}</p>
+            )}
           </div>
         </div>
       </div>

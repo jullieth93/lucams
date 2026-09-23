@@ -11,16 +11,8 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  ArrowLeft,
-  FileText,
-  Hammer,
-  MapPin,
-  MessageCircle,
-  Sparkles,
-  StickyNote,
-  User,
-} from "lucide-react";
+import { ArrowLeft, FileText, Hammer, MapPin, Sparkles, StickyNote, User } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/brand";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP, formatCityDept } from "@/lib/format";
 import { getQuoteById } from "@/features/quotes/admin-service";
@@ -106,7 +98,7 @@ export default async function AdminCotizacionDetallePage({ params }: { params: P
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
             >
-              <MessageCircle className="h-4 w-4" />
+              <WhatsAppIcon className="h-4 w-4" />
               Abrir WhatsApp
             </a>
           </>

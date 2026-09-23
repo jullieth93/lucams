@@ -42,7 +42,7 @@ import {
   type StudioStoreState,
 } from "./lib/store";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
-import { unitIndexOfSlot } from "./lib/faces";
+import { unitIndexOfSlot, deployedSizeCm } from "./lib/faces";
 import { generateGridLayout } from "./lib/grid-layout";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -129,6 +129,12 @@ type StudioCanvasGridProps = {
    */
   facesPerUnit?: number;
   /**
+   * Separadores PLANOS (noFold, Alargados): la pieza no se dobla → en el modo
+   * agrupado NO hay línea de doblez ni indicación de tamaño desplegado (las 2
+   * caras son frente/reverso de una pieza plana). Default false.
+   */
+  noFold?: boolean;
+  /**
    * Modelo multi-unidad (owner 2026-09-09) — sustantivo de la unidad para los
    * headers de sección y el pager ("Tira", "Calendario", "Separador", "Pieza").
    * Lo deriva el editor del tipo de producto (textos CMS estudio.unidades.*).
@@ -191,6 +197,7 @@ export function StudioCanvasGrid({
   allowText = false,
   frameFullBleed = false,
   facesPerUnit = 1,
+  noFold = false,
   unitNoun,
   unitGroupSlots = null,
   interactiveSlots = true,
@@ -963,7 +970,13 @@ export function StudioCanvasGrid({
                           key={slot.slotIndex}
                           className={
                             i === 0
-                              ? "border-brand-purple/25 flex flex-col items-center gap-1 border-r border-dashed pr-2"
+                              ? noFold
+                                ? // Alargados planos: SIN línea de doblez (la pieza no
+                                  // se pliega) — separación sutil entre frente y reverso.
+                                  "border-brand-purple/10 flex flex-col items-center gap-1 border-r pr-2"
+                                : // Línea de DOBLEZ explícita (2026-09-22): más visible
+                                  // (2px, morado medio) — es el pliegue físico de la tira.
+                                  "border-brand-purple/50 flex flex-col items-center gap-1 border-r-2 border-dashed pr-2"
                               : "flex flex-col items-center gap-1"
                           }
                         >
@@ -974,6 +987,21 @@ export function StudioCanvasGrid({
                         </div>
                       ))}
                   </div>
+                  {/* Indicación del tamaño total DESPLEGADO junto al doblez
+                      (2026-09-22): "Doblez · Desplegado: 2×12 cm". Solo
+                      plegables — los Alargados (noFold) no se despliegan. */}
+                  {!noFold &&
+                    (() => {
+                      const deployed = deployedSizeCm(sizeCm);
+                      if (!deployed) return null;
+                      return (
+                        <span className="text-brand-purple-dark/80 text-[10px] font-semibold">
+                          {fillStudioText(texts.lienzo.doblezDesplegado, {
+                            tamano: `${deployed} cm`,
+                          })}
+                        </span>
+                      );
+                    })()}
                 </div>
               ))}
             </AnimatePresence>

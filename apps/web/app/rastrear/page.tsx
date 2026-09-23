@@ -8,7 +8,8 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { PackageSearch, MessageCircle } from "lucide-react";
+import { PackageSearch } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/brand";
 import { CmsText } from "@/components/cms/cms-text";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
@@ -99,7 +100,7 @@ export default async function RastrearPage() {
                 rel="noopener noreferrer"
                 className="bg-brand-purple hover:bg-brand-purple-dark mt-4 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm"
               >
-                <MessageCircle className="h-4 w-4" />
+                <WhatsAppIcon className="h-4 w-4" />
                 <CmsText blockKey="track.catalog-cta" fallback="Preguntar por WhatsApp →" />
               </a>
             </div>

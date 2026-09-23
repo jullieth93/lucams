@@ -8,7 +8,7 @@ import { renderEmailLayout, ctaButton, getSiteUrl } from "../layout";
 
 export type CartRecoveryData = {
   recoverToken: string;
-  items: Array<{ name: string; qty: number }>;
+  items: Array<{ name: string; qty: number; units?: number }>;
   /** Enlace de baja visible (correo comercial). */
   unsubscribeUrl?: string;
 };
@@ -18,9 +18,9 @@ export async function cartRecoveryEmail(data: CartRecoveryData) {
   const recoverUrl = `${siteUrl}/carrito/recuperar/${encodeURIComponent(data.recoverToken)}`;
 
   const itemsHtml = data.items
-    .map((i) => `<li style="margin-bottom:4px;">${escapeHtml(i.name)} ×${i.qty}</li>`)
+    .map((i) => `<li style="margin-bottom:4px;">${escapeHtml(i.name)} ×${i.units ?? i.qty}</li>`)
     .join("");
-  const itemsText = data.items.map((i) => `- ${i.name} ×${i.qty}`).join("\n");
+  const itemsText = data.items.map((i) => `- ${i.name} ×${i.units ?? i.qty}`).join("\n");
 
   const bodyHtml = `
 <h1 style="margin:0 0 12px 0;font-size:22px;color:#3D2E5C;">¿Se te quedó algo? 🛒</h1>

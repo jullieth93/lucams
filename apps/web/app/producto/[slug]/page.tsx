@@ -17,7 +17,8 @@ import { JsonLd } from "@/components/json-ld";
 import { breadcrumbList } from "@/lib/seo/structured-data";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, MessageCircle, RotateCcw, Truck, Wallet, ShieldCheck } from "lucide-react";
+import { ChevronRight, RotateCcw, Truck, Wallet, ShieldCheck } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/brand";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { WishlistButton } from "@/components/wishlist-button";
@@ -610,7 +611,7 @@ export default async function ProductoDetallePage({
                         rel="noopener noreferrer"
                         className="border-brand-turquoise bg-brand-turquoise/10 text-brand-purple-dark hover:bg-brand-turquoise/20 inline-flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-semibold"
                       >
-                        <MessageCircle className="h-4 w-4" />
+                        <WhatsAppIcon className="h-4 w-4" />
                         Consultar por WhatsApp
                       </a>
                     )}

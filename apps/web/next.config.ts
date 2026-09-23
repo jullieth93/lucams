@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
+// Badge de versión del footer: en Vercel usamos el sha del commit
+// (VERCEL_GIT_COMMIT_SHA, inyectado por la plataforma en build); en CI u otro
+// ambiente se puede setear NEXT_PUBLIC_BUILD_VERSION explícita. En local no
+// hay ninguna de las dos → no se expone la variable y el footer no renderiza
+// badge (evita el "vdev" sin sentido).
+const buildVersion = process.env.NEXT_PUBLIC_BUILD_VERSION ?? process.env.VERCEL_GIT_COMMIT_SHA;
+
 const nextConfig: NextConfig = {
+  env: buildVersion ? { NEXT_PUBLIC_BUILD_VERSION: buildVersion } : {},
   // Permite que el dev server acepte requests HMR / dev-resources desde
   // hosts distintos a localhost. Necesario cuando se navega a la app
   // por la IP LAN de la VM (192.168.x.x) o por el dev domain ngrok en

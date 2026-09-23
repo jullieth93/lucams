@@ -173,4 +173,43 @@ describe("StudioPreviewModal — modelo MULTI-UNIDAD (unitCount: las unidades va
     fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
     expect(props.onConfirm).toHaveBeenCalledWith(1);
   });
+
+  // 2026-09-22 — bug $62.500: la variante de separadores YA es el pack (5
+  // unidades por $12.500). priceMultiplier (mismo cálculo del servidor) manda
+  // sobre unitCount para el total.
+  it("pack (separadores): priceMultiplier=1 con unitCount=5 → total = pack, sin 'c/u'", () => {
+    const props = baseProps();
+    render(
+      <StudioPreviewModal
+        {...props}
+        productKind="bookmarks"
+        slotCount={5}
+        unitCount={5}
+        priceMultiplier={1}
+      />,
+    );
+    // Total = precio del pack (no ×5), sin la etiqueta de precio "c/u" engañosa
+    // (el "(2 caras c/u)" del resumen de separadores es legítimo y se mantiene).
+    expect(screen.getByText(cop(UNIT_PRICE))).toBeInTheDocument();
+    expect(screen.queryByText(`${cop(UNIT_PRICE)} c/u`)).not.toBeInTheDocument();
+    // Las unidades del diseño se siguen anunciando.
+    expect(screen.getByText(/5 unidades — cada una con su propio diseño/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
+    expect(props.onConfirm).toHaveBeenCalledWith(1);
+  });
+
+  it("priceMultiplier > 1 (calendario ×2): total ×2 con c/u", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productKind="calendar"
+        slotCount={2}
+        slotsPerUnit={12}
+        unitCount={2}
+        priceMultiplier={2}
+      />,
+    );
+    expect(screen.getByText(cop(UNIT_PRICE * 2))).toBeInTheDocument();
+    expect(screen.getByText(`${cop(UNIT_PRICE)} c/u`)).toBeInTheDocument();
+  });
 });

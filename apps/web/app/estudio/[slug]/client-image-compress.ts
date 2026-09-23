@@ -15,14 +15,37 @@
  *   resuelve con heic-decode, y los HEIC de iPhone pesan 1–2 MB).
  * - Redimensión al borde largo ≤ 2400 px: sobra para imprimir a 300 DPI en
  *   los tamaños del catálogo (hasta ~20 cm) y no afecta el DPI-check.
- * - Salida JPEG q0.85 (los imanes se imprimen; el alpha no aplica acá).
+ * - Salida WebP q0.85 cuando el navegador sabe codificarlo (2026-09-22: WebP
+ *   pesa ~25-35% menos que JPEG a igual calidad; el pipeline del servidor ya
+ *   acepta image/webp de punta a punta), JPEG q0.85 como fallback (Safari
+ *   viejo). Los imanes se imprimen; el alpha no aplica acá.
  */
 
 "use client";
 
 export const COMPRESS_THRESHOLD_BYTES = 2 * 1024 * 1024; // ~2 MB, holgado bajo el tope de Vercel
 const MAX_EDGE_PX = 2400;
-const JPEG_QUALITY = 0.85;
+const ENCODE_QUALITY = 0.85;
+
+let webpEncodeSupport: boolean | null = null;
+
+/**
+ * ¿El navegador puede codificar WebP con canvas? Detectado una vez vía
+ * toDataURL (síncrono, 1×1 px): si no soporta el mime, devuelve PNG. Safari
+ * <14 cae acá; los demás (Chrome/Edge/Firefox/Safari ≥14) codifican WebP.
+ */
+export function supportsWebpEncode(): boolean {
+  if (webpEncodeSupport !== null) return webpEncodeSupport;
+  try {
+    const probe = document.createElement("canvas");
+    probe.width = 1;
+    probe.height = 1;
+    webpEncodeSupport = probe.toDataURL("image/webp", 0.5).startsWith("data:image/webp");
+  } catch {
+    webpEncodeSupport = false;
+  }
+  return webpEncodeSupport;
+}
 
 /** ¿Este archivo pasa por el compresor? (raster permitido y sobre el umbral). */
 export function shouldCompress(file: Pick<File, "type" | "size">): boolean {
@@ -31,8 +54,9 @@ export function shouldCompress(file: Pick<File, "type" | "size">): boolean {
 
 /**
  * Devuelve el archivo listo para subir: original si no hace falta comprimir,
- * o un JPEG redimensionado/comprimido si superaba el umbral. Si el navegador
- * no puede procesarlo (raro), devuelve el original y que decida el servidor.
+ * o un WebP (JPEG si el navegador no codifica WebP) redimensionado/comprimido
+ * si superaba el umbral. Si el navegador no puede procesarlo (raro), devuelve
+ * el original y que decida el servidor.
  */
 export async function compressImageForUpload(file: File): Promise<File> {
   if (!shouldCompress(file)) return file;
@@ -48,12 +72,13 @@ export async function compressImageForUpload(file: File): Promise<File> {
     if (!ctx) return file;
     ctx.drawImage(bitmap, 0, 0, width, height);
     bitmap.close();
+    const mime = supportsWebpEncode() ? "image/webp" : "image/jpeg";
     const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY),
+      canvas.toBlob(resolve, mime, ENCODE_QUALITY),
     );
     if (!blob) return file;
-    const name = file.name.replace(/\.[^.]+$/, "") + ".jpg";
-    return new File([blob], name, { type: "image/jpeg", lastModified: file.lastModified });
+    const name = file.name.replace(/\.[^.]+$/, "") + (mime === "image/webp" ? ".webp" : ".jpg");
+    return new File([blob], name, { type: mime, lastModified: file.lastModified });
   } catch {
     return file; // ante cualquier fallo del compresor, que el servidor intente como antes
   }

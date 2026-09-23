@@ -139,4 +139,78 @@ describe("StudioToolbar — botón «Vista previa»", () => {
     );
     expect(screen.getByRole("button", { name: "Vista previa de tu pedido" })).toBeEnabled();
   });
+
+  // 2026-09-22 — cara B opcional (separadores backOptional): el guard exige
+  // solo las caras A (slots pares); las B vacías no bloquean «Vista previa».
+  it("backOptional: con caras A completas y B vacías, «Vista previa» habilitado", () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "separadores-magneticos",
+      canvasData: makeCanvasData(0, 4), // 2 unidades × 2 caras
+      templates: [],
+    });
+    // Llenar solo las caras A (slots 0 y 2).
+    const canvas = store.getState().canvasData!;
+    store.getState().init({
+      designId: "d1",
+      productSlug: "separadores-magneticos",
+      canvasData: {
+        ...canvas,
+        slots: canvas.slots.map((s) =>
+          s.slotIndex % 2 === 0 ? { ...s, assetId: "a", assetUrl: "https://img/a.jpg" } : s,
+        ),
+      },
+      templates: [],
+    });
+    const onFinalize = vi.fn();
+    render(
+      <StudioToolbar
+        store={store}
+        productName="Separadores magnéticos"
+        productSlug="separadores-magneticos"
+        backOptional
+        onFinalize={onFinalize}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Vista previa de tu pedido" })).toBeEnabled();
+  });
+
+  it("backOptional: falta una cara A → bloqueado contando solo las A faltantes", () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "separadores-magneticos",
+      canvasData: makeCanvasData(0, 4),
+      templates: [],
+    });
+    const canvas = store.getState().canvasData!;
+    store.getState().init({
+      designId: "d1",
+      productSlug: "separadores-magneticos",
+      canvasData: {
+        ...canvas,
+        slots: canvas.slots.map((s) =>
+          // Llena la cara A de la unidad 1 y la B de la unidad 2: sigue
+          // faltando UNA cara A (slot 2) — la B no salva el guard.
+          s.slotIndex === 0 || s.slotIndex === 3
+            ? { ...s, assetId: "a", assetUrl: "https://img/a.jpg" }
+            : s,
+        ),
+      },
+      templates: [],
+    });
+    render(
+      <StudioToolbar
+        store={store}
+        productName="Separadores magnéticos"
+        productSlug="separadores-magneticos"
+        backOptional
+        onFinalize={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Faltan 1 fotos por cargar para ver la vista previa" }),
+    ).toBeDisabled();
+  });
 });

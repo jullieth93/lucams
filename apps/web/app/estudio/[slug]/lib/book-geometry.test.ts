@@ -164,7 +164,7 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
   it("agrupa 2N texturas en N unidades: A al frente, B atrás", () => {
     const slots = [face("1A"), face("1B"), face("2A"), face("2B"), face("3A"), face("3B")];
     const units = bookmarkFaceUnits(slots);
-    expect(units.map((u) => [u.front.id, u.back.id])).toEqual([
+    expect(units.map((u) => [u.front.id, u.back?.id])).toEqual([
       ["1A", "1B"],
       ["2A", "2B"],
       ["3A", "3B"],
@@ -176,19 +176,19 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
     const units = bookmarkFaceUnits(slots);
     expect(units).toHaveLength(2);
     expect(units[1]!.front.id).toBe("2A");
-    expect(units[1]!.back.id).toBe("2B");
+    expect(units[1]!.back?.id).toBe("2B");
   });
 
   it("unidad impar (no debería con facesPerUnit=2): la última repite su diseño atrás", () => {
     const units = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")]);
     expect(units).toHaveLength(2);
-    expect(units[1]!.back.id).toBe("2A");
+    expect(units[1]!.back?.id).toBe("2A");
   });
 
   it("diseños VIEJOS de tira completa (vertical) NO se parean: cada uno repite su diseño", () => {
     const legacy = [face("tira1", 500, 1400), face("tira2", 500, 1400)];
     const units = bookmarkFaceUnits(legacy);
-    expect(units.map((u) => [u.front.id, u.back.id])).toEqual([
+    expect(units.map((u) => [u.front.id, u.back?.id])).toEqual([
       ["tira1", "tira1"],
       ["tira2", "tira2"],
     ]);
@@ -207,7 +207,7 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
       face("2B", 200, 600),
     ];
     // Sin sizeCm el aspecto < 0.6 se confunde con tira vieja y NO empareja.
-    expect(bookmarkFaceUnits(rotated).map((u) => [u.front.id, u.back.id])).toEqual([
+    expect(bookmarkFaceUnits(rotated).map((u) => [u.front.id, u.back?.id])).toEqual([
       ["1A", "1A"],
       ["1B", "1B"],
       ["2A", "2A"],
@@ -215,10 +215,41 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
     ]);
     // Con sizeCm se confirma que son caras de separador moderno → A al frente, B atrás.
     const units = bookmarkFaceUnits(rotated, undefined, "6×2");
-    expect(units.map((u) => [u.front.id, u.back.id])).toEqual([
+    expect(units.map((u) => [u.front.id, u.back?.id])).toEqual([
       ["1A", "1B"],
       ["2A", "2B"],
     ]);
+  });
+
+  it("backOptional (2026-09-22): cara B faltante → back null (reverso negro), no duplica A", () => {
+    const opts = { backOptional: true };
+    // Pareo por pares: unidad impar sin cara B.
+    const units = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")], undefined, "6×2", opts);
+    expect(units.map((u) => [u.front.id, u.back?.id ?? null])).toEqual([
+      ["1A", "1B"],
+      ["2A", null],
+    ]);
+    // Pareo por slotIndex (facesPerUnit=2): la cara B existe como slot pero sin textura.
+    const slot = (id: string, slotIndex: number, dataUrl?: string) => ({
+      id,
+      wRatio: 600,
+      hRatio: 200,
+      slotIndex,
+      dataUrl: dataUrl ?? null,
+    });
+    const bySlotUnits = bookmarkFaceUnits(
+      [slot("1A", 0, "a.png"), slot("1B", 1), slot("2A", 2, "a2.png"), slot("2B", 3, "b2.png")],
+      2,
+      "6×2",
+      opts,
+    );
+    expect(bySlotUnits.map((u) => [u.front.id, u.back?.id ?? null])).toEqual([
+      ["1A", null],
+      ["2A", "2B"],
+    ]);
+    // Sin la opción se conserva el histórico (back = front).
+    const legacy = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")], undefined, "6×2");
+    expect(legacy[1]!.back?.id).toBe("2A");
   });
 });
 

@@ -98,6 +98,27 @@ export function unitCountOf(canvasData: unknown): number {
   return 1;
 }
 
+/**
+ * Unidades físicas reales de un diseño para MOSTRAR en correos/admin (×N).
+ *
+ * Lee primero el canvas (`unitCountOf`); como fallback usa `metadata.unitCount`,
+ * que el finalize escribe como espejo del canvas en V2 (service.ts) y los sets
+ * de letras escriben al crear. Devuelve null cuando no hay diseño (el caller
+ * cae al `qty` de la línea). Nunca toca el dinero: `lineTotal` sigue siendo
+ * `unitPrice × qty` con `unitPrice` = precio del pack.
+ */
+export function designDisplayUnits(
+  design: { canvasData?: unknown; metadata?: unknown } | null | undefined,
+): number | null {
+  if (!design) return null;
+  const fromCanvas = unitCountOf(design.canvasData);
+  if (fromCanvas > 1) return fromCanvas;
+  const meta = design.metadata as { unitCount?: unknown } | null | undefined;
+  const n = meta && typeof meta === "object" ? meta.unitCount : undefined;
+  if (typeof n === "number" && Number.isInteger(n) && n >= 1) return n;
+  return fromCanvas;
+}
+
 /** Índice de unidad (0-based) dueña de un slot. */
 export function unitIndexOfSlot(slotIndex: number, unitSlots: number): number {
   return Math.floor(slotIndex / Math.max(1, unitSlots));

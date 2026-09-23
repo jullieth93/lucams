@@ -355,6 +355,14 @@ export const PhotoProductConfigSchema = z.object({
    * espalda con espalda, igual que los separadores doblados. Default false/undefined.
    */
   noFold: z.boolean().optional(),
+  /**
+   * Cara B OPCIONAL (2026-09-22 — separadores magnéticos 2×6/4×4.2 y alargados):
+   * el cliente puede dejar el reverso sin diseñar. `true` → finalize exige
+   * snapshots solo para las caras A (slots pares, 2k) y permite B faltantes;
+   * producción duplica la cara A en la B vacía. Solo tiene sentido con
+   * facesPerUnit=2. Default false/undefined (las 2 caras son obligatorias).
+   */
+  backOptional: z.boolean().optional(),
 });
 export type PhotoProductConfig = z.infer<typeof PhotoProductConfigSchema>;
 

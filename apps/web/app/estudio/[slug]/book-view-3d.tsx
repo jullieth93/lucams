@@ -59,7 +59,7 @@ import { useIsTouch } from "./use-is-touch";
 import { OrbitControls, RoundedBox, ContactShadows } from "@react-three/drei";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
-import { FoldedStripMesh, MagnetMesh } from "./magnet-3d";
+import { FoldedStripMesh, MagnetMesh, MAGNET_BACK_COLOR } from "./magnet-3d";
 import { getPageEdgesTexture, getPagePrintTexture } from "./lib/procedural-textures";
 import {
   BLOCK_T,
@@ -122,13 +122,16 @@ function Separators({
   items,
   sizeCm,
   facesPerUnit,
+  backOptional,
 }: {
   items: Magnet3D[];
   sizeCm?: string;
   facesPerUnit?: number;
+  /** Cara B opcional: si falta, el reverso se muestra NEGRO (no duplica la cara A). */
+  backOptional?: boolean;
 }) {
   const layout = useMemo(() => {
-    const units = bookmarkFaceUnits(items, facesPerUnit, sizeCm);
+    const units = bookmarkFaceUnits(items, facesPerUnit, sizeCm, { backOptional });
     const slots = separatorSlotsForCount(units.length);
     return slots
       .map(({ x, yaw }, i) => {
@@ -150,7 +153,7 @@ function Separators({
         position: [x, p.crestY, p.crestZ] as [number, number, number],
         rotation: [p.tilt, yaw, 0] as [number, number, number],
       }));
-  }, [items, sizeCm, facesPerUnit]);
+  }, [items, sizeCm, facesPerUnit, backOptional]);
 
   return (
     <>
@@ -158,7 +161,7 @@ function Separators({
         <group key={key} position={position} rotation={rotation}>
           <FoldedStripMesh
             dataUrl={unit.front.dataUrl}
-            backDataUrl={unit.back.dataUrl}
+            backDataUrl={unit.back?.dataUrl ?? undefined}
             wRatio={unit.front.wRatio}
             hRatio={unit.front.hRatio}
             stripW={stripW}
@@ -167,6 +170,7 @@ function Separators({
             rFold={SEP_R_FOLD}
             cornerRadiusRatio={SEP_CORNER_RATIO}
             backLean={backLean}
+            backOptional={backOptional}
           />
         </group>
       ))}
@@ -181,7 +185,7 @@ function Separators({
  * varias filas (z distinta). Las piezas NUNCA se encogen: la cámara abre.
  */
 type FlatBookmarkData = {
-  units: { front: Magnet3D; back: Magnet3D }[];
+  units: { front: Magnet3D; back: Magnet3D | null }[];
   dims: { w: number; h: number }[];
   slots: { x: number; z: number; yaw: number }[];
   maxW: number;
@@ -215,7 +219,8 @@ function FlatBookmarks({ data }: { data: FlatBookmarkData }) {
                 estudio, la pieza 3D se presenta erguida como los separadores doblados. */}
             <MagnetMesh
               dataUrl={unit.front.dataUrl}
-              backDataUrl={unit.back.dataUrl}
+              backDataUrl={unit.back?.dataUrl}
+              backColor={unit.back ? undefined : MAGNET_BACK_COLOR}
               width={w}
               height={h}
               shape="rectangle"
@@ -382,12 +387,15 @@ function Scene({
   sizeCm,
   facesPerUnit,
   flat,
+  backOptional,
 }: {
   bookmarks: Magnet3D[];
   sizeCm?: string;
   facesPerUnit?: number;
   /** Ola 17 — marcapáginas plano (Alargados): acostado sobre la hoja, sin doblez. */
   flat?: boolean;
+  /** Cara B opcional: si falta, el reverso se muestra NEGRO (no duplica la cara A). */
+  backOptional?: boolean;
 }) {
   // Ola 16 — defensa: si el producto no declara 2 caras, el 3D no puede mostrar
   // la cara B real. Log para soporte; el UI del Estudio sigue funcionando con 1 cara.
@@ -404,14 +412,14 @@ function Scene({
   // distinta). El encuadre de cámara usa el ancho/alto REALES del conjunto (nunca se encoge).
   const flatData = useMemo<FlatBookmarkData | null>(() => {
     if (!flat) return null;
-    const units = bookmarkFaceUnits(bookmarks, facesPerUnit, sizeCm);
+    const units = bookmarkFaceUnits(bookmarks, facesPerUnit, sizeCm, { backOptional });
     if (units.length === 0) return null;
     const dims = units.map((u) => flatBookmarkDims(u.front, sizeCm));
     const maxW = Math.max(...dims.map((d) => d.w));
     const maxH = Math.max(...dims.map((d) => d.h));
     const slots = flatBookmarkSlots(units.length, { pieceW: maxW });
     return { units, dims, slots, maxW, maxH };
-  }, [flat, bookmarks, facesPerUnit, sizeCm]);
+  }, [flat, bookmarks, facesPerUnit, sizeCm, backOptional]);
   // Ola 18/19 — encuadre dinámico:
   // - Alargados planos (pieza alta 12/15 cm): encuadre más holgado y centrado en la hoja
   //   derecha para que la pieza completa sea visible; crece con el ancho/alto reales del
@@ -485,7 +493,12 @@ function Scene({
           <FlatBookmarks data={flatData} />
         ) : null
       ) : (
-        <Separators items={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} />
+        <Separators
+          items={bookmarks}
+          sizeCm={sizeCm}
+          facesPerUnit={facesPerUnit}
+          backOptional={backOptional}
+        />
       )}
 
       {/* Escena estática (el autoRotate mueve la CÁMARA) → sombra horneada 1 vez. */}
@@ -527,6 +540,7 @@ export default function BookView3D({
   sizeCm,
   facesPerUnit,
   flat,
+  backOptional,
 }: {
   bookmarks: Magnet3D[];
   /** sizeCm de la variante (ej "6×2", "4×4.2") — fija el tamaño real de la tira. */
@@ -535,6 +549,9 @@ export default function BookView3D({
   facesPerUnit?: number;
   /** Ola 17 — marcapáginas plano (Alargados): acostado sobre la hoja, sin doblez. */
   flat?: boolean;
+  /** Cara B opcional (2026-09-22): si falta, el reverso se muestra NEGRO (color del imán)
+   *  en vez de duplicar la cara A. */
+  backOptional?: boolean;
 }) {
   const isTouch = useIsTouch();
   if (bookmarks.length === 0) {
@@ -554,7 +571,13 @@ export default function BookView3D({
     >
       <color attach="background" args={["#FFF8F0"]} />
       <Suspense fallback={null}>
-        <Scene bookmarks={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} flat={flat} />
+        <Scene
+          bookmarks={bookmarks}
+          sizeCm={sizeCm}
+          facesPerUnit={facesPerUnit}
+          flat={flat}
+          backOptional={backOptional}
+        />
       </Suspense>
     </Canvas>
   );

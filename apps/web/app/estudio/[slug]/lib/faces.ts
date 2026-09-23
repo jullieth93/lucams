@@ -45,3 +45,36 @@ export function faceSlotLabels(
 export function facePairOfUnit(unitIndex: number): { faceA: number; faceB: number } {
   return { faceA: unitIndex * 2, faceB: unitIndex * 2 + 1 };
 }
+
+/**
+ * Cara B OPCIONAL (backOptional, 2026-09-22): faltantes de CARA A (slots
+ * pares) — el guard de finalización exige solo las caras A; las B pueden
+ * quedar vacías (el reverso sale negro en producción/preview). Productos
+ * sin backOptional siguen exigiendo TODAS las caras (no usar este helper).
+ */
+export function missingFaceACount(
+  slots: ReadonlyArray<{ slotIndex: number; assetUrl?: string | null }>,
+): number {
+  let n = 0;
+  for (const s of slots) if (s.slotIndex % 2 === 0 && !s.assetUrl) n++;
+  return n;
+}
+
+/**
+ * Tamaño de la tira DESPLEGADA de un separador 2 caras a partir del sizeCm de
+ * la CARA ("2×6" → "2×12"): el doblez parte la dimensión larga, así que al
+ * desplegar se duplica la mayor y se conserva la menor. null si no parsea.
+ * Separadores noFold (Alargados): NO hay despliegue — no usar este helper.
+ */
+export function deployedSizeCm(sizeCm: string | undefined): string | null {
+  if (!sizeCm) return null;
+  const m = sizeCm.match(/(\d+(?:[.,]\d+)?)\s*[×x]\s*(\d+(?:[.,]\d+)?)/i);
+  if (!m) return null;
+  const a = parseFloat(m[1]!.replace(",", "."));
+  const b = parseFloat(m[2]!.replace(",", "."));
+  const fmt = (n: number) => {
+    const r = Math.round(n * 10) / 10;
+    return Number.isInteger(r) ? String(r) : String(r);
+  };
+  return `${fmt(Math.min(a, b))}×${fmt(2 * Math.max(a, b))}`;
+}

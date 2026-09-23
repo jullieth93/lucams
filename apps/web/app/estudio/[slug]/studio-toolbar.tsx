@@ -35,6 +35,7 @@ import {
   selectTotalSlotCount,
   type StudioStoreState,
 } from "./lib/store";
+import { missingFaceACount } from "./lib/faces";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, splitStudioText } from "./studio-texts";
 
@@ -92,6 +93,13 @@ type StudioToolbarProps = {
    * bloqueo por fotos: botón deshabilitado + tooltip/aria con el motivo.
    */
   finalizeBlockReason?: string | null;
+  /**
+   * Cara B OPCIONAL (2026-09-22, separadores magnéticos 2×6 / 4×4.2 y
+   * Alargados): el guard de finalización exige solo las CARAS A (slots pares);
+   * las caras B pueden quedar vacías (el reverso sale negro). Solo llega true
+   * cuando el producto es de 2 caras y su schema declara backOptional.
+   */
+  backOptional?: boolean;
 };
 
 export function StudioToolbar({
@@ -108,6 +116,7 @@ export function StudioToolbar({
   photoCount,
   isPreviewBuilding = false,
   finalizeBlockReason = null,
+  backOptional = false,
   onFinalize,
 }: StudioToolbarProps) {
   const autoSaveStatus = useStore(store, (s) => s.autoSaveStatus);
@@ -116,13 +125,21 @@ export function StudioToolbar({
   // un selector compuesto. Ver lib/store.ts comment "Selectores ATÓMICOS".
   const filled = useStore(store, selectFilledSlotCount);
   const total = useStore(store, selectTotalSlotCount);
-  const complete = useStore(store, selectIsComplete);
+  const completeAll = useStore(store, selectIsComplete);
+  // Cara B opcional (separadores): solo las caras A (slots pares) son
+  // obligatorias. Selectores primitivos (número) → sin re-render en cascada.
+  const missingFaceA = useStore(store, (s) =>
+    backOptional ? missingFaceACount(s.canvasData?.slots ?? []) : 0,
+  );
   const texts = useStudioTexts();
 
+  const complete = backOptional ? total > 0 && missingFaceA === 0 : completeAll;
   const canFinalize = complete && !finalizeBlockReason && !isFinalizing && !isPreviewBuilding;
 
   const disabledTooltip = !complete
-    ? fillStudioText(texts.lienzo.finalizeTooltip, { n: total - filled })
+    ? fillStudioText(texts.lienzo.finalizeTooltip, {
+        n: backOptional ? missingFaceA : total - filled,
+      })
     : (finalizeBlockReason ?? undefined);
 
   return (
@@ -421,22 +438,36 @@ export function StudioFinalizeFab({
   store,
   isPreviewBuilding = false,
   finalizeBlockReason = null,
+  backOptional = false,
   onFinalize,
 }: {
   store: StoreApi<StudioStoreState>;
   isPreviewBuilding?: boolean;
   /** Ola 26 — mismo bloqueo extra que el toolbar inline (textos requeridos IG). */
   finalizeBlockReason?: string | null;
+  /**
+   * Cara B OPCIONAL (2026-09-22, separadores magnéticos 2×6 / 4×4.2 y
+   * Alargados): el guard de finalización exige solo las CARAS A (slots pares);
+   * las caras B pueden quedar vacías (el reverso sale negro). Solo llega true
+   * cuando el producto es de 2 caras y su schema declara backOptional.
+   */
+  backOptional?: boolean;
   onFinalize: () => void;
 }) {
   const isFinalizing = useStore(store, (s) => s.isFinalizing);
   const filled = useStore(store, selectFilledSlotCount);
   const total = useStore(store, selectTotalSlotCount);
-  const complete = useStore(store, selectIsComplete);
+  const completeAll = useStore(store, selectIsComplete);
+  const missingFaceA = useStore(store, (s) =>
+    backOptional ? missingFaceACount(s.canvasData?.slots ?? []) : 0,
+  );
   const texts = useStudioTexts();
+  const complete = backOptional ? total > 0 && missingFaceA === 0 : completeAll;
   const canFinalize = complete && !finalizeBlockReason && !isFinalizing && !isPreviewBuilding;
   const disabledTooltip = !complete
-    ? fillStudioText(texts.lienzo.finalizeTooltip, { n: total - filled })
+    ? fillStudioText(texts.lienzo.finalizeTooltip, {
+        n: backOptional ? missingFaceA : total - filled,
+      })
     : (finalizeBlockReason ?? undefined);
   return (
     <FinalizeButton

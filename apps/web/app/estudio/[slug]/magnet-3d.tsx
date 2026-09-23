@@ -60,6 +60,15 @@
  *  - La cara B además se veía ESPEJADA desde atrás (la cara gira ~π sobre X): `flipU` nuevo —
  *    flipV+flipU = rotación de 180° de la textura → el diseño B se lee derecho, de pie.
  *  - `TILE_DEPTH` baja OTRO punto (0.025 → 0.015): "siguen muy gruesas", sin llegar a planas.
+ *
+ * 2026-09-22 (reverso imán + cara B plana espejada):
+ *  - REVERSO NEGRO: la cara contraria al diseño de los separadores doblados es el negro de la
+ *    goma ferrita (MAGNET_BACK_COLOR), no el cartón crema — decisión del cliente.
+ *  - FIX cara B ESPEJADA en el path plano (Alargados): la textura trasera se clonaba con
+ *    flipU Y el mesh se rotaba π sobre Y → doble espejo. La rotación π YA espeja una vez, así
+ *    el clon usa los flips de la región, sin forzar flipU. Además se eliminó el mesh BackSide
+ *    extra (ola 18) que pintaba la cara B en la posición FRONTAL.
+ *  - `backOptional` en FoldedStripMesh: sin cara B, la trasera se muestra NEGRA (no duplica A).
  */
 
 import { useEffect, useMemo } from "react";
@@ -231,6 +240,11 @@ export const MAGNET_DEPTH = 0.04;
  *  fino, no plana. El z del tablero deriva de este depth (totalThickness) → no se hunden. */
 export const TILE_DEPTH = 0.015;
 
+/** Negro del IMÁN (goma ferrita sin laminar): el reverso de los separadores magnéticos — la
+ *  cara contraria al diseño — y el reverso completo cuando la cara B es opcional y falta
+ *  (backOptional). NO es el cartón crema histórico (#F1EBDD): decisión del cliente 2026-09-22. */
+export const MAGNET_BACK_COLOR = "#1A1A1A";
+
 /** Silueta física centrada en el origen (unidades de mundo). Espejo exacto de buildShapePath. */
 function buildSilhouette(
   shape: MagnetShape,
@@ -296,6 +310,7 @@ export function ExtrudedMagnetMesh({
   backTexture,
   textureRegion,
   cornerRadiusRatio,
+  blankColor = "#FDFBF4",
   position = [0, 0, 0],
 }: {
   /** Textura base (null = cargando → cara en color papel). La propiedad queda en el caller. */
@@ -316,6 +331,9 @@ export function ExtrudedMagnetMesh({
   textureRegion?: TextureRegion;
   /** Radio de esquina como fracción del ancho (default 8/512 — espejo de buildShapePath). */
   cornerRadiusRatio?: number;
+  /** Color de la tapa frontal cuando NO hay textura (cargando → papel; reverso de imán sin
+   *  imprimir → MAGNET_BACK_COLOR). */
+  blankColor?: string;
   position?: [number, number, number];
 }) {
   const { x: rx, y: ry, w: rw, h: rh, flipV, flipU } = textureRegion ?? FULL_REGION;
@@ -379,17 +397,17 @@ export function ExtrudedMagnetMesh({
   );
   useEffect(() => () => backGeo?.dispose(), [backGeo]);
 
-  // Ola 17 — textura clonada para la cara TRASERA real (cara B): misma región que la
-  // frontal pero con flipU, así el diseño B se lee DERECHO al ver la pieza desde atrás
-  // (la tapa trasera es una ShapeGeometry rotada π sobre Y — espejo de la convención
-  // flipU de FoldedStripMesh, testeada en textureRegionTransform).
+  // Textura clonada para la cara TRASERA real (cara B): MISMA región y flips que la frontal.
+  // La tapa trasera es una ShapeGeometry rotada π sobre Y, y esa rotación YA espeja la textura
+  // una vez (al verla desde atrás se lee derecha). Forzar flipU acá (ola 17/18) la espejaba
+  // por SEGUNDA vez → la cara B se veía en espejo en el path plano (Alargados). 2026-09-22.
   const backTex = useMemo(() => {
     if (!backTexture) return null;
     const t = backTexture.clone();
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 8;
     const { repeat, offset } = textureRegionTransform(
-      { x: rx, y: ry, w: rw, h: rh, flipV, flipU: true },
+      { x: rx, y: ry, w: rw, h: rh, flipV, flipU },
       width,
       height,
     );
@@ -397,7 +415,7 @@ export function ExtrudedMagnetMesh({
     t.offset.set(offset[0], offset[1]);
     t.needsUpdate = true;
     return t;
-  }, [backTexture, width, height, rx, ry, rw, rh, flipV]);
+  }, [backTexture, width, height, rx, ry, rw, rh, flipV, flipU]);
   useEffect(() => () => backTex?.dispose(), [backTex]);
 
   const frontZ = depth / 2 + depth * 0.2 + 0.0012;
@@ -418,27 +436,16 @@ export function ExtrudedMagnetMesh({
       <mesh geometry={faceGeo} position={[0, 0, frontZ]} castShadow receiveShadow>
         <meshStandardMaterial
           map={tex}
-          color={tex ? "#ffffff" : "#FDFBF4"}
+          color={tex ? "#ffffff" : blankColor}
           roughness={0.38}
           metalness={0}
           envMapIntensity={1.15}
         />
       </mesh>
-      {/* Ola 18 — para piezas planas (alargados) la cara B queda contra la página y no se
-          ve. Este mesh extra usa la MISMA posición que la tapa frontal pero con side:BackSide
-          y la textura de la cara B, así al orbitar por debajo se ve el reverso impreso. */}
-      {backTexture && (
-        <mesh geometry={faceGeo} position={[0, 0, frontZ - 0.0005]}>
-          <meshStandardMaterial
-            map={backTex}
-            color={backTex ? "#ffffff" : "#FDFBF4"}
-            roughness={0.5}
-            metalness={0}
-            envMapIntensity={1.0}
-            side={THREE.BackSide}
-          />
-        </mesh>
-      )}
+      {/* Tapa trasera REAL en su posición física (backZ): la rotación π sobre Y deja la cara B
+          leyéndose derecha desde atrás (sin flip extra en la textura — eso la espejaba dos
+          veces). El mesh BackSide extra de la ola 18 (cara B en la posición FRONTAL) se
+          eliminó 2026-09-22: pintaba el reverso flotando sobre la cara A. */}
       {backGeo && backTexture ? (
         <mesh geometry={backGeo} position={[0, 0, backZ]} rotation={[0, Math.PI, 0]} castShadow>
           <meshStandardMaterial
@@ -535,6 +542,11 @@ const CARD_THICK = 0.012;
  * `foldAngle` = ángulo entre las dos caras: π = doblado plano (sobre una hoja); ~2.16 = sobre
  * el lomo de un libro en carpa (28° de apertura por cara). La cresta (medio cilindro hueco de
  * cartulina) solo se dibuja cuando el arco es visible (> ~2°).
+ *
+ * 2026-09-22 (reverso NEGRO imán): la cara contraria al diseño (la tapa trasera de cada cara)
+ * es el negro de la goma ferrita (MAGNET_BACK_COLOR), no el cartón crema — decisión del cliente.
+ * Con `backOptional` y cara B faltante, la TRASERA completa se muestra negra (reverso sin
+ * imprimir) en vez de duplicar la cara A.
  */
 export function FoldedStripMesh({
   dataUrl,
@@ -548,6 +560,7 @@ export function FoldedStripMesh({
   cardColor = "#F1EBDD",
   cornerRadiusRatio,
   backLean = 0,
+  backOptional = false,
   position = [0, 0, 0],
 }: {
   dataUrl: string;
@@ -569,14 +582,19 @@ export function FoldedStripMesh({
   cornerRadiusRatio?: number;
   /** Apertura extra de la cara trasera (rad) para recostarla sobre la mesa. Default 0. */
   backLean?: number;
+  /** Cara B OPCIONAL: si falta `backDataUrl`, la trasera se muestra NEGRA (reverso del imán
+   *  sin imprimir) en vez de duplicar la cara A. Default false (duplica A, histórico). */
+  backOptional?: boolean;
   position?: [number, number, number];
 }) {
   const { delta, hang, crestArc } = foldedStripMetrics(stripL, rFold, foldAngle);
   const region = coverRegion(wRatio / hRatio, stripW / hang);
+  const blankBack = backOptional && !backDataUrl;
 
   return (
     <group position={position}>
-      {/* Cara frontal: cuelga hacia −Y del lado +Z, diseño mirando a +Z (de pie). */}
+      {/* Cara frontal: cuelga hacia −Y del lado +Z, diseño mirando a +Z (de pie). La tapa
+          trasera de CADA cara es el negro del imán (la cara contraria al diseño). */}
       <group rotation={[-delta, 0, 0]}>
         <MagnetMesh
           dataUrl={dataUrl}
@@ -584,7 +602,7 @@ export function FoldedStripMesh({
           height={hang}
           depth={CARD_THICK}
           edgeColor={cardColor}
-          backColor={cardColor}
+          backColor={MAGNET_BACK_COLOR}
           textureRegion={region}
           cornerRadiusRatio={cornerRadiusRatio}
           position={[0, -hang / 2, rFold]}
@@ -594,19 +612,34 @@ export function FoldedStripMesh({
           flipU = rotación de 180° de la textura: compensa EXACTO la rotación del mesh sobre X,
           así el diseño B se lee DERECHO (de pie, no espejado) al mirarla desde atrás.
           backDataUrl = cara B REAL de la unidad (ola 3); backLean la recuesta sobre la mesa
-          cuando es larga. */}
+          cuando es larga. Con backOptional y sin cara B: pieza NEGRA completa (reverso del
+          imán sin imprimir) en vez de duplicar la cara A. */}
       <group rotation={[Math.PI + delta + backLean, 0, 0]}>
-        <MagnetMesh
-          dataUrl={backDataUrl ?? dataUrl}
-          width={stripW}
-          height={hang}
-          depth={CARD_THICK}
-          edgeColor={cardColor}
-          backColor={cardColor}
-          textureRegion={{ ...region, flipV: true, flipU: true }}
-          cornerRadiusRatio={cornerRadiusRatio}
-          position={[0, hang / 2, rFold]}
-        />
+        {blankBack ? (
+          <ExtrudedMagnetMesh
+            texture={null}
+            width={stripW}
+            height={hang}
+            depth={CARD_THICK}
+            edgeColor={MAGNET_BACK_COLOR}
+            blankColor={MAGNET_BACK_COLOR}
+            backColor={MAGNET_BACK_COLOR}
+            cornerRadiusRatio={cornerRadiusRatio}
+            position={[0, hang / 2, rFold]}
+          />
+        ) : (
+          <MagnetMesh
+            dataUrl={backDataUrl ?? dataUrl}
+            width={stripW}
+            height={hang}
+            depth={CARD_THICK}
+            edgeColor={cardColor}
+            backColor={MAGNET_BACK_COLOR}
+            textureRegion={{ ...region, flipV: true, flipU: true }}
+            cornerRadiusRatio={cornerRadiusRatio}
+            position={[0, hang / 2, rFold]}
+          />
+        )}
       </group>
       {/* Cresta del pliegue: tubo parcial de cartulina abrazando el borde, tangente a ambas
           caras (thetaStart = delta sobre el eje del pliegue, arco = crestArc; sin tapas). */}

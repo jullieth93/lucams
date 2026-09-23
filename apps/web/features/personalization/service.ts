@@ -35,6 +35,7 @@ import { parsePhotoProductConfig } from "./schemas";
 import { listStagedSlotPaths, stagedSlotPath } from "./staged-slots";
 import { resolvePersonalizationSurface } from "./surface";
 import { unitCountOf, MAX_LETTER_SET_UNITS } from "./design-units";
+import { PREVIEW_ALLOWED_MIME, previewExtensionForMime, type PreviewMime } from "./sharp-safe";
 import {
   filterTemplatesByAspectRatio,
   filterTemplatesByPhotoSlots,
@@ -945,9 +946,11 @@ export async function saveCanvas(opts: {
 //
 // Server:
 //   1. Valida ownership + status DRAFT
-//   2. Valida productionDataUrls.length === Design canvasData.slotCount
+//   2. Valida productionDataUrls.length === slots REQUERIDOS del canvas
 //      (todos los slots tienen snapshot — el cliente NO debe enviar
-//       finalize si hay slots vacíos; el server bloquea por defensa)
+//       finalize si hay slots vacíos; el server bloquea por defensa.
+//       Excepción 2026-09-22: con `backOptional` en el schema del producto
+//       las caras B —slots impares— pueden faltar; producción duplica la A)
 //   3. Sube preview compositado a bucket design-previews (público)
 //   4. Sube N production PNGs a bucket production-assets (privado)
 //   5. Marca Design.status=READY, persiste previewUrl + productionUrls[]
@@ -1001,11 +1004,10 @@ export async function createClientSlotUploadTickets(opts: {
     where: { id: design.productId },
     select: { personalizationSchema: true },
   });
-  const allowed = product ? parsePhotoProductConfig(product.personalizationSchema).photoSlots : 1;
+  const productConfig = parsePhotoProductConfig(product?.personalizationSchema);
+  const allowed = product ? productConfig.photoSlots : 1;
   // `facesPerUnit: 2` (separadores) manda 2 snapshots por unidad: el tope es por CARA, no por pieza.
-  const faces = product
-    ? (parsePhotoProductConfig(product.personalizationSchema).facesPerUnit ?? 1)
-    : 1;
+  const faces = product ? (productConfig.facesPerUnit ?? 1) : 1;
   const maxSlots = Math.max(1, allowed * faces * declaredUnits);
   if (slotCount > maxSlots) {
     throw new Error(
@@ -1013,8 +1015,22 @@ export async function createClientSlotUploadTickets(opts: {
     );
   }
 
+  // Cara B opcional (backOptional, 2026-09-22): las caras B sin diseñar (slot
+  // impar sin assetUrl) NO reciben ticket — el cliente solo sube caras A y las
+  // B que sí diseñó; finalize duplica la A de la pareja en cada B vacía.
+  const skipBackSlots = new Set<number>(
+    productConfig.facesPerUnit === 2 &&
+      productConfig.backOptional === true &&
+      canvasData.version === 2
+      ? (canvasData as CanvasDataV2).slots
+          .filter((s) => s.slotIndex % 2 === 1 && !s.assetUrl)
+          .map((s) => s.slotIndex)
+      : [],
+  );
+
   const tickets: { slotIndex: number; url: string }[] = [];
   for (let i = 0; i < slotCount; i++) {
+    if (skipBackSlots.has(i)) continue;
     const { data, error } = await supabaseService.storage
       .from(BUCKET_PRODUCTION)
       .createSignedUploadUrl(stagedSlotPath(design.id, i), { upsert: true });
@@ -1026,10 +1042,10 @@ export async function createClientSlotUploadTickets(opts: {
   return tickets;
 }
 
-/** Recoge del área de paso los N snapshots que subió el cliente. */
-async function readStagedClientSlots(designId: string, slotCount: number): Promise<Buffer[]> {
+/** Recoge del área de paso los snapshots que subió el cliente (uno por índice REQUERIDO). */
+async function readStagedClientSlots(designId: string, slotIndexes: number[]): Promise<Buffer[]> {
   const out: Buffer[] = [];
-  for (let i = 0; i < slotCount; i++) {
+  for (const i of slotIndexes) {
     const { data, error } = await supabaseService.storage
       .from(BUCKET_PRODUCTION)
       .download(stagedSlotPath(designId, i));
@@ -1046,6 +1062,22 @@ async function readStagedClientSlots(designId: string, slotCount: number): Promi
     out.push(buf);
   }
   return out;
+}
+
+/**
+ * Cara B opcional (backOptional, 2026-09-22): expande un array de buffers que
+ * solo cubre los slots REQUERIDOS a uno con un buffer por slot del canvas,
+ * duplicando la cara A de la pareja (slot 2k) en cada cara B vacía (2k+1).
+ * Sin caras B vacías es identidad.
+ */
+function expandMissingBackFaces(
+  buffers: Buffer[],
+  requiredSlotIndexes: number[],
+  slotCount: number,
+): Buffer[] {
+  if (requiredSlotIndexes.length === slotCount) return buffers;
+  const byIndex = new Map(requiredSlotIndexes.map((slotIndex, k) => [slotIndex, buffers[k]!]));
+  return Array.from({ length: slotCount }, (_, i) => byIndex.get(i) ?? byIndex.get(i - 1)!);
 }
 
 /**
@@ -1070,6 +1102,13 @@ export async function finalizeDesign(opts: {
   designId: string;
   /** Buffer binario del preview compositado (PNG 1080×1080 típico). */
   previewBuffer: Buffer;
+  /**
+   * Mime real del preview (T2, 2026-09-22): el Estudio manda WebP/JPEG y el
+   * server action re-comprime a WebP cuando el blob supera el techo. Define la
+   * extensión del archivo en Storage (preview.webp/.jpg/.png) y su contentType.
+   * Default "image/png" (clientes viejos que mandan PNG).
+   */
+  previewMime?: string;
   /**
    * Buffers binarios de los N snapshots production (PNG 300 DPI por slot).
    *
@@ -1114,23 +1153,62 @@ export async function finalizeDesign(opts: {
     throw new Error(`Design is ${design.status} — only DRAFT can be finalized`);
   }
 
-  // Si el cliente mandó snapshots, deben ser exactamente uno por slot.
+  // Si el cliente mandó snapshots, deben ser exactamente uno por slot REQUERIDO.
   const canvasData = design.canvasData as unknown as CanvasData;
-  const expectedSlotCount = canvasData.version === 2 ? (canvasData as CanvasDataV2).slotCount : 1;
-  if (opts.productionBuffers && opts.productionBuffers.length !== expectedSlotCount) {
+  const v2 = canvasData.version === 2 ? (canvasData as CanvasDataV2) : null;
+  const expectedSlotCount = v2 ? v2.slotCount : 1;
+
+  // Cara B OPCIONAL (backOptional, 2026-09-22 — separadores magnéticos 2×6/4×4.2
+  // y alargados): cuando el schema del producto lo declara, las caras B (slots
+  // impares 2k+1 — convención de lib/faces.ts) pueden quedar SIN diseñar. Solo
+  // se exige snapshot de las caras A y de las B que sí tienen asset; producción
+  // duplica la cara A de la pareja en cada B vacía (más abajo, expandMissingBackFaces).
+  const product = await prisma.product.findUnique({
+    where: { id: design.productId },
+    select: { personalizationSchema: true },
+  });
+  const productConfig = parsePhotoProductConfig(product?.personalizationSchema);
+  const backOptional = productConfig.facesPerUnit === 2 && productConfig.backOptional === true;
+  const emptyBackSlots = new Set<number>(
+    backOptional && v2
+      ? v2.slots.filter((s) => s.slotIndex % 2 === 1 && !s.assetUrl).map((s) => s.slotIndex)
+      : [],
+  );
+  // Índices de slot que SÍ requieren snapshot, en orden (posicional para los
+  // arrays de buffers inline/staged del cliente).
+  const requiredSlotIndexes = Array.from({ length: expectedSlotCount }, (_, i) => i).filter(
+    (i) => !emptyBackSlots.has(i),
+  );
+  if (opts.productionBuffers && opts.productionBuffers.length !== requiredSlotIndexes.length) {
     throw new Error(
-      `INCOMPLETE_SLOTS: expected ${expectedSlotCount} production snapshots, got ${opts.productionBuffers.length}`,
+      `INCOMPLETE_SLOTS: expected ${requiredSlotIndexes.length} production snapshots, got ${opts.productionBuffers.length}`,
     );
   }
 
-  // Validar también que todos los slots V2 tienen assetUrl (defensa server)
-  if (canvasData.version === 2) {
-    const v2 = canvasData as CanvasDataV2;
-    const empty = v2.slots.filter((s) => !s.assetUrl).map((s) => s.slotIndex);
+  // Validar también que todos los slots V2 REQUERIDOS tienen assetUrl (defensa server)
+  if (v2) {
+    const empty = v2.slots
+      .filter((s) => !s.assetUrl && !emptyBackSlots.has(s.slotIndex))
+      .map((s) => s.slotIndex);
     if (empty.length > 0) {
       throw new Error(`INCOMPLETE_SLOTS: slots vacíos ${empty.join(", ")}`);
     }
   }
+
+  // Para el render server-side, las caras B vacías se renderizan como COPIA de
+  // la cara A de su pareja (mismo asset/encuadre): el motor exige un asset por
+  // slot y producción necesita la tira completa A|B.
+  const canvasForRender =
+    v2 && emptyBackSlots.size > 0
+      ? {
+          ...v2,
+          slots: v2.slots.map((s) => {
+            if (!emptyBackSlots.has(s.slotIndex)) return s;
+            const faceA = v2.slots.find((x) => x.slotIndex === s.slotIndex - 1);
+            return faceA ? { ...faceA, slotIndex: s.slotIndex } : s;
+          }),
+        }
+      : v2;
 
   const supabase = supabaseService;
 
@@ -1146,9 +1224,11 @@ export async function finalizeDesign(opts: {
   // 2026-07-25). Resolver primero los PNG deja el efecto de red recién cuando el finalize va a salir.
   // Cuando el render server-side sale bien GANA sobre los snapshots inline del cliente: es el
   // archivo de imprenta de calidad garantizada, sin adornos de pantalla y sin depender del celular.
-  let productionBuffers = opts.productionBuffers;
-  if (canvasData.version === 2) {
-    const serverBuffers = await tryServerRenderProduction(design.id, canvasData as CanvasDataV2, {
+  let productionBuffers = opts.productionBuffers
+    ? expandMissingBackFaces(opts.productionBuffers, requiredSlotIndexes, expectedSlotCount)
+    : undefined;
+  if (canvasForRender) {
+    const serverBuffers = await tryServerRenderProduction(design.id, canvasForRender, {
       calendarYear: opts.calendarYear,
     });
     if (serverBuffers && serverBuffers.length === expectedSlotCount) {
@@ -1166,7 +1246,11 @@ export async function finalizeDesign(opts: {
   // Fuera del `if` de v2: con canvasData v1 también se emiten tickets, y dejar la lectura dentro
   // dejaba al cliente en un bucle —sube los PNG, y el finalize vuelve a pedírselos— sin salida.
   if (!productionBuffers && opts.useStagedClientSlots) {
-    productionBuffers = await readStagedClientSlots(design.id, expectedSlotCount);
+    productionBuffers = expandMissingBackFaces(
+      await readStagedClientSlots(design.id, requiredSlotIndexes),
+      requiredSlotIndexes,
+      expectedSlotCount,
+    );
     logger.info(
       {
         event: "design.finalize.staged_slots_used",
@@ -1176,6 +1260,16 @@ export async function finalizeDesign(opts: {
       "Snapshots del cliente recogidos del área de paso",
     );
   }
+  if (productionBuffers && emptyBackSlots.size > 0) {
+    logger.info(
+      {
+        event: "design.finalize.back_faces_duplicated",
+        designId: design.id,
+        backs: [...emptyBackSlots],
+      },
+      "Caras B vacías resueltas como copia de la cara A (backOptional)",
+    );
+  }
   if (!productionBuffers) {
     // El caller traduce esto a un pedido de snapshots al cliente (subida directa a Storage).
     throw new Error(
@@ -1183,11 +1277,16 @@ export async function finalizeDesign(opts: {
     );
   }
 
-  // Subir preview compositado del grid completo
-  const previewPath = `${design.id}/preview.png`;
+  // Subir preview compositado del grid completo. La extensión refleja el mime
+  // REAL (T2, 2026-09-22: webp/jpg/png) — los consumers (OrderItem.designAssetUrl,
+  // admin) solo usan la URL pública, nunca asumen ".png".
+  const previewMime = PREVIEW_ALLOWED_MIME.includes(opts.previewMime as PreviewMime)
+    ? (opts.previewMime as PreviewMime)
+    : "image/png";
+  const previewPath = `${design.id}/preview.${previewExtensionForMime(previewMime)}`;
   const { error: pErr } = await supabase.storage
     .from(BUCKET_PREVIEWS)
-    .upload(previewPath, opts.previewBuffer, { contentType: "image/png", upsert: true });
+    .upload(previewPath, opts.previewBuffer, { contentType: previewMime, upsert: true });
   if (pErr) {
     logger.warn(
       { event: "design.finalize.upload_preview_fail", err: pErr.message },
@@ -1206,11 +1305,7 @@ export async function finalizeDesign(opts: {
   // exteriores redondeadas del troquel. Aplica igual a buffers server-side o del cliente.
   let facesComposed = false;
   if (canvasData.version === 2) {
-    const product = await prisma.product.findUnique({
-      where: { id: design.productId },
-      select: { personalizationSchema: true },
-    });
-    const productConfig = parsePhotoProductConfig(product?.personalizationSchema);
+    // productConfig ya se cargó arriba (validación de slots / backOptional).
     if (productConfig.facesPerUnit === 2 && productionBuffers.length % 2 === 0) {
       try {
         // cornerRadiusPx del schema es en px LÓGICOS del stage de la cara; los buffers

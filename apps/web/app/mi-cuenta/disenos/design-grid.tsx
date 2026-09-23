@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Share2, Archive, ExternalLink, MessageCircle, Loader2 } from "lucide-react";
+import { Share2, Archive, ExternalLink, Loader2 } from "lucide-react";
+import { WhatsAppIcon } from "@/components/icons/brand";
 import { toast } from "sonner";
 import { buildPublicShareUrl } from "@/lib/public-url";
 import { shareDesignAction, archiveDesignAction, revokeShareAction } from "./actions";
@@ -169,7 +170,7 @@ function DesignCard({ design, texts }: { design: DesignCardData; texts: AccountT
             aria-label={texts.shareWa}
             className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-60"
           >
-            <MessageCircle className="h-3.5 w-3.5" />
+            <WhatsAppIcon className="h-3.5 w-3.5" />
           </button>
           {(token || shared) && (
             <>

@@ -37,6 +37,8 @@ export type OrderAdminNotificationData = {
   items: Array<{
     name: string;
     qty: number;
+    /** Unidades físicas reales del diseño (multi-unidad); se muestra ×(units ?? qty). */
+    units?: number;
     lineTotal: number; // centavos COP
   }>;
 };
@@ -57,7 +59,7 @@ export async function orderAdminNotificationEmail(data: OrderAdminNotificationDa
       (it) => `
 <tr>
   <td style="padding:8px 0;border-bottom:1px solid #f0e7e0;color:#3D2E5C;">
-    ${escapeHtml(it.name)} <span style="opacity:0.55;">×${it.qty}</span>
+    ${escapeHtml(it.name)} <span style="opacity:0.55;">×${it.units ?? it.qty}</span>
   </td>
   <td style="padding:8px 0;border-bottom:1px solid #f0e7e0;text-align:right;color:#3D2E5C;font-weight:600;">${formatCOP(it.lineTotal)}</td>
 </tr>`,
@@ -120,7 +122,7 @@ Ciudad: ${location}
 Pago: ${paymentLabel}
 
 Items:
-${data.items.map((it) => `  - ${it.name} ×${it.qty} → ${formatCOP(it.lineTotal)}`).join("\n")}
+${data.items.map((it) => `  - ${it.name} ×${it.units ?? it.qty} → ${formatCOP(it.lineTotal)}`).join("\n")}
 
 Subtotal (productos): ${formatCOP(data.subtotal)}
 Envío${data.shippingCarrier ? ` (${data.shippingCarrier.toUpperCase().replace(/-/g, " ")})` : ""}: ${formatCOP(data.shipping)}${data.discount > 0 ? `\nDescuento (cupón): −${formatCOP(data.discount)}` : ""}

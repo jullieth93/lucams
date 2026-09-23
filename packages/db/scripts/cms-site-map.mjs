@@ -5882,6 +5882,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 190,
             },
             {
+              key: "estudio.lienzo.doblez-desplegado",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Línea de doblez (separadores)",
+              helpText:
+                "Indicación bajo las caras de un separador plegable: marca la unión/doblez y el tamaño total desplegado. {tamano} = tamaño desplegado (p.ej. 2×12). No aplica a separadores planos (noFold).",
+              category: "HOME",
+              body: "Doblez · Desplegado: {tamano}",
+              sortOrder: 195,
+            },
+            {
               key: "estudio.lienzo.slot-tooltip-centrar",
               kind: "BLOCK",
               type: "TEXT",
@@ -8553,6 +8564,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               category: "HOME",
               body: "Cada separador mide {tamano} doblado.",
               sortOrder: 80,
+            },
+            {
+              key: "estudio.exportar.desc-separadores-tamano-plano",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Vista previa: medida (separadores planos)",
+              helpText:
+                "Frase de la medida para separadores PLANOS (Alargados, noFold): la pieza NO se pliega, así que no lleva «doblado». {tamano} = medida final.",
+              category: "HOME",
+              body: "Cada separador mide {tamano}.",
+              sortOrder: 85,
             },
             {
               key: "estudio.exportar.desc-iman-uno",

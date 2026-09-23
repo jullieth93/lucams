@@ -69,6 +69,7 @@ export function CalendarCardLayer({
   onPhotoTransformChange,
   onPhotoDragStart,
   onPhotoDragEnd,
+  touchDrag = false,
 }: {
   assetUrl?: string | null;
   photoTransform?: PhotoTransform | null;
@@ -84,6 +85,13 @@ export function CalendarCardLayer({
   ) => void;
   onPhotoDragStart?: () => void;
   onPhotoDragEnd?: () => void;
+  /**
+   * Drag TÁCTIL inline (2026-09-22): el drag viene armado desde la grilla
+   * táctil (foto con zoom ≠ 1). En ese modo preventDefault queda en false
+   * para que el TAP siga abriendo el editor (click sintético) — el scroll lo
+   * bloquea el touch-action:none del wrapper, no Konva.
+   */
+  touchDrag?: boolean;
 }) {
   const [photo] = useImage(assetUrl ?? "", "anonymous");
   const imageNodeRef = useRef<Konva.Image | null>(null);
@@ -215,7 +223,9 @@ export function CalendarCardLayer({
       draggable={isDraggable}
       // Igual que ImagePlaceholder: sin gestos inline (grilla táctil) no hay nada que
       // proteger → preventDefault={false} y el dedo scrollea la página (pan-y).
-      preventDefault={isDraggable}
+      // 2026-09-22 — con drag táctil (touchDrag) también false: el tap debe seguir
+      // abriendo el editor (click sintético); el scroll lo bloquea el wrapper.
+      preventDefault={isDraggable && !touchDrag}
       onDragStart={() => {
         dragDeltaRef.current = { x: 0, y: 0 };
         setDragDelta({ x: 0, y: 0 });

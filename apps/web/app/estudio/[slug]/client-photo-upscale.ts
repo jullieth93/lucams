@@ -20,12 +20,16 @@
  * Sin servicios externos (CSP estricta): todo Canvas2D local. Formatos:
  * solo raster decodificable por el navegador (JPEG/PNG/WebP); HEIC devuelve
  * null (lo decodifica el servidor con heic-decode). Conserva PNG si el
- * original era PNG (alpha); el resto sale JPEG q0.92.
+ * original era PNG (alpha); el resto sale WebP q0.92 cuando el navegador lo
+ * codifica (2026-09-22 — el pipeline del servidor acepta image/webp), JPEG
+ * q0.92 como fallback.
  *
  * Memoria: el ImageBitmap se cierra y los canvases intermedios se liberan
  * (width=0) apenas dejan de usarse — fotos de 12+ MP re-muestreadas a
  * ~1800px no deben dejar bitmaps gigantes vivos.
  */
+
+import { supportsWebpEncode } from "./client-image-compress";
 
 /** Píxeles por cm a 300 DPI — MISMO valor que lib/photo-validation.ts (server). */
 const PX_PER_CM_300DPI = 300 / 2.54;
@@ -39,7 +43,7 @@ const MAX_UPSCALE_FACTOR = 4;
 /** Fuerza del unsharp mask leve (kernel [0,-k,0,-k,1+4k,-k,0,-k,0]). */
 const UNSHARP_AMOUNT = 0.3;
 
-const JPEG_QUALITY = 0.92;
+const ENCODE_QUALITY = 0.92;
 
 export type PhotoUpscaleResult = {
   /** Archivo listo para subir (el original si no hizo falta mejorar). */
@@ -158,15 +162,18 @@ export async function upscalePhotoForPrint(
     applyUnsharpMask(srcCtx, curW, curH);
 
     const keepPng = file.type === "image/png";
-    const mime = keepPng ? "image/png" : "image/jpeg";
+    const useWebp = !keepPng && supportsWebpEncode();
+    const mime = keepPng ? "image/png" : useWebp ? "image/webp" : "image/jpeg";
     const blob = await new Promise<Blob | null>((resolve) =>
-      srcCanvas.toBlob(resolve, mime, keepPng ? undefined : JPEG_QUALITY),
+      srcCanvas.toBlob(resolve, mime, keepPng ? undefined : ENCODE_QUALITY),
     );
     srcCanvas.width = 0;
     srcCanvas.height = 0;
     if (!blob) return null;
 
-    const name = keepPng ? file.name : file.name.replace(/\.[^.]+$/, "") + ".jpg";
+    const name = keepPng
+      ? file.name
+      : file.name.replace(/\.[^.]+$/, "") + (useWebp ? ".webp" : ".jpg");
     const improved = new File([blob], name, { type: mime, lastModified: file.lastModified });
     const ratioAfter = Math.min(curW, curH) / requiredPx;
     return { file: improved, improved: true, ratioBefore, ratioAfter };

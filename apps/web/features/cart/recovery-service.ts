@@ -11,6 +11,7 @@ import {
   encodeUnsubscribeParam,
 } from "@/features/newsletter/unsubscribe";
 import { renderCartRecoveryEmail } from "@/features/emails/registry";
+import { designDisplayUnits } from "@/features/personalization/design-units";
 
 /*
  * Recuperación de carrito abandonado (palanca de ingreso, auditoría 2026-07-13).
@@ -78,7 +79,14 @@ export async function sendCartRecoveryReminders(
         select: {
           deletedAt: true,
           items: {
-            select: { qty: true, variant: { select: { product: { select: { name: true } } } } },
+            select: {
+              qty: true,
+              variant: { select: { product: { select: { name: true } } } },
+              // Multi-unidad (2026-09-09): la línea de un diseño con N unidades
+              // tiene qty=1 (el pack va en unitPrice) — el ×N del correo sale
+              // de las unidades reales del diseño.
+              design: { select: { canvasData: true, metadata: true } },
+            },
           },
         },
       },
@@ -97,7 +105,15 @@ export async function sendCartRecoveryReminders(
         recovered++;
         continue;
       }
-      const items = row.cart.items.map((i) => ({ name: i.variant.product.name, qty: i.qty }));
+      const items = row.cart.items.map((i) => {
+        // Multi-unidad: unidades físicas = unidades del diseño × qty de la línea.
+        const perDesign = designDisplayUnits(i.design);
+        return {
+          name: i.variant.product.name,
+          qty: i.qty,
+          units: perDesign === null ? undefined : perDesign * i.qty,
+        };
+      });
       // Carrito vaciado → marcar reminder para no reconsiderarlo cada corrida.
       if (items.length === 0) {
         await prisma.abandonedCart.update({

@@ -74,6 +74,9 @@ export type StudioTexts = {
     unidadGrupoAria: string;
     unitCaraA: string;
     unitCaraB: string;
+    /** Línea de doblez de la tira de separador (solo plegables, no noFold):
+     *  "Doblez · Desplegado: {tamano}" — {tamano} = tamaño total desplegado. */
+    doblezDesplegado: string;
     slotTooltipCentrar: string;
     slotTooltipEditarAmbos: string;
     slotTooltipEditarFoto: string;
@@ -366,6 +369,8 @@ export type StudioTexts = {
     descCalendarioRevisa: string;
     descSeparadores: string;
     descSeparadoresTamano: string;
+    /** Separadores PLANOS (noFold, Alargados): sin "doblado" — la pieza no se pliega. */
+    descSeparadoresTamanoPlano: string;
     descImanUno: string;
     descImanes: string;
     descImanTamano: string;
@@ -607,6 +612,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     unidadGrupoAria: "{nombre} {n} de {total}",
     unitCaraA: "Cara A",
     unitCaraB: "Cara B",
+    doblezDesplegado: "Doblez · Desplegado: {tamano}",
     slotTooltipCentrar: "Volver al centro y resetear zoom",
     slotTooltipEditarAmbos: "Ajustar foto y texto",
     slotTooltipEditarFoto: "Ajustar foto",
@@ -896,6 +902,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     descSeparadores:
       "Esta es la vista previa de los {n} separadores que vas a recibir — cada uno desplegado con sus 2 caras (así se imprime la tira).",
     descSeparadoresTamano: "Cada separador mide {tamano} doblado.",
+    descSeparadoresTamanoPlano: "Cada separador mide {tamano}.",
     descImanUno: "Esta es la vista previa del {pieza} que vas a recibir.",
     descImanes: "Esta es la vista previa de los {n} {piezas} que vas a recibir.",
     descImanTamano: "Cada {pieza} mide {tamano}.",
@@ -1124,6 +1131,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.unidadGrupoAria": "estudio.lienzo.unidad-grupo-aria",
   "lienzo.unitCaraA": "estudio.lienzo.unit-cara-a",
   "lienzo.unitCaraB": "estudio.lienzo.unit-cara-b",
+  "lienzo.doblezDesplegado": "estudio.lienzo.doblez-desplegado",
   "lienzo.slotTooltipCentrar": "estudio.lienzo.slot-tooltip-centrar",
   "lienzo.slotTooltipEditarAmbos": "estudio.lienzo.slot-tooltip-editar-ambos",
   "lienzo.slotTooltipEditarFoto": "estudio.lienzo.slot-tooltip-editar-foto",
@@ -1378,6 +1386,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "exportar.descCalendarioRevisa": "estudio.exportar.desc-calendario-revisa",
   "exportar.descSeparadores": "estudio.exportar.desc-separadores",
   "exportar.descSeparadoresTamano": "estudio.exportar.desc-separadores-tamano",
+  "exportar.descSeparadoresTamanoPlano": "estudio.exportar.desc-separadores-tamano-plano",
   "exportar.descImanUno": "estudio.exportar.desc-iman-uno",
   "exportar.descImanes": "estudio.exportar.desc-imanes",
   "exportar.descImanTamano": "estudio.exportar.desc-iman-tamano",
