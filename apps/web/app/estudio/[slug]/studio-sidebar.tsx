@@ -27,10 +27,8 @@ import {
 import { toast } from "sonner";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
-import {
-  uploadDesignAssetAction,
-  assignPredesignedToDesignAction,
-} from "@/features/personalization/actions";
+import { uploadDesignAssetAction } from "@/features/personalization/actions";
+import { applyPredesignedToSlot, PREDESIGNED_DRAG_MIME } from "./lib/apply-predesigned";
 import { StudioMessageField } from "./studio-message-field";
 import { ConsentText } from "./studio-consent-text";
 import {
@@ -94,12 +92,12 @@ export function StudioSidebar({
   const addAsset = useStore(store, (s) => s.addAsset);
   const autoFillSlots = useStore(store, (s) => s.autoFillSlots);
   const applyTemplate = useStore(store, (s) => s.applyTemplate);
-  const assignAssetToSlot = useStore(store, (s) => s.assignAssetToSlot);
   const selectedSlotIndex = useStore(store, (s) => s.selectedSlotIndex);
   const [applyingPredesignedId, setApplyingPredesignedId] = useState<string | null>(null);
 
   // Ola 21 — aplicar un diseño prediseñado al slot seleccionado (o al primer slot vacío).
-  // Reusa la acción del asset picker: sube la imagen como asset del diseño y la asigna.
+  // 2026-09-22 — la aplicación vive en applyPredesignedToSlot (helper compartido
+  // con el drop del lienzo): misma vía para clic y drag & drop.
   const handleApplyPredesigned = async (
     item: import("./studio-asset-picker-modal").PredesignedItem,
   ) => {
@@ -114,32 +112,10 @@ export function StudioSidebar({
     }
     setApplyingPredesignedId(item.id);
     try {
-      const res = await assignPredesignedToDesignAction({ designId, galleryImageId: item.id });
+      const res = await applyPredesignedToSlot({ store, item, targetSlot });
       if (!res.ok) {
-        toast.error(res.message);
+        toast.error(res.message || texts.plantillas.toastError);
         return;
-      }
-      const assetA: StudioAsset = {
-        id: res.assetId,
-        signedUrl: res.signedUrl,
-        width: res.width,
-        height: res.height,
-      };
-      addAsset(assetA);
-      assignAssetToSlot(targetSlot, assetA);
-      if (res.assetB) {
-        const assetB: StudioAsset = {
-          id: res.assetB.assetId,
-          signedUrl: res.assetB.signedUrl,
-          width: res.assetB.width,
-          height: res.assetB.height,
-        };
-        addAsset(assetB);
-        // Asignar cara B al slot siguiente si existe (convención separadores 2 caras).
-        const nextSlot = store
-          .getState()
-          .canvasData?.slots.find((s) => s.slotIndex === targetSlot + 1 && !s.assetUrl);
-        if (nextSlot) assignAssetToSlot(nextSlot.slotIndex, assetB);
       }
       toast.success(fillStudioText(texts.plantillas.toastPredisenado, { nombre: item.name }));
     } catch (err) {
@@ -478,7 +454,18 @@ export function StudioSidebar({
                   nombre: item.name,
                 })}
                 title={item.name}
-                className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none disabled:opacity-50"
+                // 2026-09-22 — drag & drop al lienzo (desktop): la tarjeta se
+                // arrastra hasta un slot (highlight de drop target ya existe en
+                // el slot). El clic sigue aplicando al slot seleccionado/vacío.
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(
+                    PREDESIGNED_DRAG_MIME,
+                    JSON.stringify({ id: item.id, name: item.name }),
+                  );
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
+                className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none active:cursor-grabbing disabled:opacity-50"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -486,6 +473,8 @@ export function StudioSidebar({
                   alt={item.name}
                   className="h-full w-full object-cover"
                   loading="lazy"
+                  // La imagen interna no debe secuestrar el drag del botón.
+                  draggable={false}
                 />
                 {applyingPredesignedId === item.id && (
                   <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">

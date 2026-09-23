@@ -79,6 +79,7 @@ import type { CalendarFontKey } from "@/features/personalization/schemas";
 
 import { getFilterParams } from "./lib/photo-filters";
 import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
+import { PREDESIGNED_DRAG_MIME, type PredesignedDragPayload } from "./lib/apply-predesigned";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 import { PLACEHOLDER_GUIDE_OPACITY, SLOT_GUIDE_COLORS } from "./studio-brand";
@@ -212,6 +213,12 @@ type StudioSlotProps = {
    *  si la foto fue transformada (offset != 0 o scale != 1). */
   onCenterPhoto?: () => void;
   onAssetDrop: (asset: StudioAsset) => void;
+  /**
+   * Drop de un DISEÑO PREDISEÑADO (2026-09-22 — drag desde la lista del
+   * sidebar): el grid orquesta la aplicación (server action + asignación al
+   * slot). Sin la prop, el drop de prediseñados se ignora.
+   */
+  onPredesignedDrop?: (item: PredesignedDragPayload) => void;
   onKeyboardNav: (direction: "up" | "down" | "left" | "right") => void;
   onRegisterStage?: (stage: Konva.Stage | null) => void;
 };
@@ -243,6 +250,7 @@ function StudioSlotImpl({
   onPhotoTransformChange,
   onCenterPhoto,
   onAssetDrop,
+  onPredesignedDrop,
   onKeyboardNav,
   onRegisterStage,
   interactiveSlots = true,
@@ -481,8 +489,14 @@ function StudioSlotImpl({
   }, [borderColor, shape, unitTemplate, hasFrameCard, fullBleed]);
 
   // ──────────── Drag & drop nativo ────────────
+  // 2026-09-22 — además de assets (fotos ya subidas), el slot acepta DISEÑOS
+  // PREDISEÑADOS arrastrados desde la lista del sidebar (mismo highlight de
+  // drop target; la aplicación la orquesta el grid vía onPredesignedDrop).
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    if (e.dataTransfer.types.includes("application/lucams-asset")) {
+    if (
+      e.dataTransfer.types.includes("application/lucams-asset") ||
+      e.dataTransfer.types.includes(PREDESIGNED_DRAG_MIME)
+    ) {
       e.preventDefault();
       e.dataTransfer.dropEffect = "copy";
       setIsDropping(true);
@@ -495,6 +509,16 @@ function StudioSlotImpl({
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       setIsDropping(false);
+      const rawPredesigned = e.dataTransfer.getData(PREDESIGNED_DRAG_MIME);
+      if (rawPredesigned) {
+        try {
+          const item = JSON.parse(rawPredesigned) as PredesignedDragPayload;
+          if (item && typeof item.id === "string") onPredesignedDrop?.(item);
+        } catch {
+          // Payload inválido, ignorar
+        }
+        return;
+      }
       const raw = e.dataTransfer.getData("application/lucams-asset");
       if (!raw) return;
       try {
@@ -504,7 +528,7 @@ function StudioSlotImpl({
         // Asset payload inválido, ignorar
       }
     },
-    [onAssetDrop],
+    [onAssetDrop, onPredesignedDrop],
   );
 
   // ──────────── Keyboard ────────────
@@ -1910,9 +1934,15 @@ function renderText(
   const textY = layer.y - fontSize / 2;
   const textX = align === "center" ? 0 : layer.x;
   const guideLength = (isPlaceholderGuide ? layer.text : finalText).length;
-  const estWidth = align === "center" ? stage.width : Math.max(60, guideLength * fontSize * 0.55);
   const estHeight = fontSize * 1.2;
   const padding = Math.max(2, fontSize * 0.1);
+  // 2026-09-22 (QA STG) — el recuadro punteado ABRAZA el texto estimado: con
+  // align="center" antes abarcaba TODO el ancho del stage (estWidth =
+  // stage.width), un recuadro gigante desalineado del contenido real — peor en
+  // canvas con aire muerto. Con align center el texto se centra en el stage
+  // (x=0 + width=stage.width), así que la zona se centra sobre ese mismo eje.
+  const estWidth = Math.min(stage.width - padding * 2, Math.max(60, guideLength * fontSize * 0.55));
+  const zoneX = align === "center" ? (stage.width - estWidth) / 2 : layer.x;
 
   // B4 (owner 2026-09-15) — PLACEHOLDER (capa editable sin texto del cliente):
   // la tarjeta NO imprime contenido de texto, pero en la GRILLA el default de
@@ -1925,7 +1955,7 @@ function renderText(
   if (isPlaceholderGuide) {
     if (!isEditable) return null;
     const zone = {
-      x: textX - padding,
+      x: zoneX - padding,
       y: textY - padding,
       width: estWidth + padding * 2,
       height: estHeight + padding * 2,
@@ -2070,7 +2100,7 @@ function renderText(
     <Group key={layer.id} listening={true}>
       <Rect
         name="edit-indicator"
-        x={textX - padding}
+        x={zoneX - padding}
         y={textY - padding}
         width={estWidth + padding * 2}
         height={estHeight + padding * 2}
@@ -2086,7 +2116,7 @@ function renderText(
           visual evidente vs textos no editables del template */}
       <Circle
         name="edit-indicator"
-        x={textX + estWidth + padding - 2}
+        x={zoneX + estWidth + padding - 2}
         y={textY - padding + 2}
         radius={3.5}
         fill="#5DD9D1"

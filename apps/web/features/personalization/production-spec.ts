@@ -41,8 +41,8 @@ import { designUnitPriceMultiplier, letterSetUnitCount } from "./design-units";
 export type FormatoFisico =
   | { tipo: "lamina-fichas"; fichas: number; laminas?: number }
   | { tipo: "tira-continua"; segmentos: number; tiras?: number }
-  | { tipo: "tira-desplegada"; tiras: number }
-  | { tipo: "caras-sueltas"; unidades: number }
+  | { tipo: "tira-desplegada"; tiras: number; plana?: boolean }
+  | { tipo: "caras-sueltas"; unidades: number; plana?: boolean }
   | {
       tipo: "piezas-sueltas";
       piezas: number;
@@ -137,13 +137,23 @@ function resolverFormato(e: Entrada): FormatoFisico {
 
   const facesPerUnit = n(e.productSchema?.facesPerUnit) ?? 1;
   if (facesPerUnit === 2) {
+    // noFold (Alargados planos): la pieza NO se dobla — se imprime espalda con espalda.
+    const plana = e.productSchema?.noFold === true;
     // `composeFaceStrips` es best-effort: si falló, subió las caras sueltas y NO escribió metadata.
     // Los dos casos se ven igual en el PNG y se arman al revés.
     const compuestas = e.designMetadata?.faceStrips;
     if (compuestas && typeof compuestas === "object") {
-      return { tipo: "tira-desplegada", tiras: e.productionUrls.length };
+      return {
+        tipo: "tira-desplegada",
+        tiras: e.productionUrls.length,
+        ...(plana ? { plana } : {}),
+      };
     }
-    return { tipo: "caras-sueltas", unidades: Math.ceil(e.productionUrls.length / 2) };
+    return {
+      tipo: "caras-sueltas",
+      unidades: Math.ceil(e.productionUrls.length / 2),
+      ...(plana ? { plana } : {}),
+    };
   }
 
   // Multi-unidad (2026-09-09): piezas sueltas que forman SETS (calendario ×2 =
@@ -219,14 +229,27 @@ function describirFormato(
       };
     }
     case "tira-desplegada":
-      return {
-        frase: `${f.tiras} tira(s) DESPLEGADA(S): cada archivo trae las dos caras lado a lado.`,
-        pasos: [
-          "Imprime cada tira completa.",
-          "Dobla por el centro, dejando las dos caras hacia afuera.",
-          ...pegarImán,
-        ],
-      };
+      // Plegables (fix geometría 2026-09-22): tira VERTICAL — cara A arriba y
+      // cara B abajo ROTADA 180° (así ambas se leen derechas con la tira
+      // colgando plegada de la página). Planas (noFold): horizontal A|B, sin
+      // rotación, se imprime espalda con espalda.
+      return f.plana
+        ? {
+            frase: `${f.tiras} pieza(s) PLANA(S) de 2 caras: cada archivo trae frente y reverso lado a lado.`,
+            pasos: [
+              "Imprime cada pieza completa.",
+              "Monta frente y reverso espalda con espalda (la pieza NO se dobla).",
+              ...pegarImán,
+            ],
+          }
+        : {
+            frase: `${f.tiras} tira(s) DESPLEGADA(S): cada archivo trae las dos caras apiladas (cara A arriba, cara B abajo, impresa rotada 180°).`,
+            pasos: [
+              "Imprime cada tira completa.",
+              "Dobla por el centro (doblez horizontal, sobre el ancho), dejando las dos caras hacia afuera: ambas se leen derechas.",
+              ...pegarImán,
+            ],
+          };
     case "caras-sueltas":
       return {
         frase: `⚠️ Caras SUELTAS: ${f.unidades} unidad(es), cada una con su cara A y su cara B en archivos separados.`,

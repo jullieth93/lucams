@@ -59,7 +59,7 @@ import { useIsTouch } from "./use-is-touch";
 import { OrbitControls, RoundedBox, ContactShadows } from "@react-three/drei";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
-import { FoldedStripMesh, MagnetMesh, MAGNET_BACK_COLOR } from "./magnet-3d";
+import { FoldedStripMesh, MagnetMesh, BLANK_BACK_COLOR } from "./magnet-3d";
 import { getPageEdgesTexture, getPagePrintTexture } from "./lib/procedural-textures";
 import {
   BLOCK_T,
@@ -127,7 +127,7 @@ function Separators({
   items: Magnet3D[];
   sizeCm?: string;
   facesPerUnit?: number;
-  /** Cara B opcional: si falta, el reverso se muestra NEGRO (no duplica la cara A). */
+  /** Cara B opcional: si falta, el reverso se muestra en BLANCO papel (no duplica la cara A). */
   backOptional?: boolean;
 }) {
   const layout = useMemo(() => {
@@ -216,11 +216,13 @@ function FlatBookmarks({ data }: { data: FlatBookmarkData }) {
             {/* Ola 18 — la pieza se muestra DE PIE sobre la hoja (sin rotación): la cara A
                 mira a la cámara y la cara B se descubre al orbitar detrás. El diseño físico del
                 alargado es plano, pero para que el cliente vea las 2 caras que montó en el
-                estudio, la pieza 3D se presenta erguida como los separadores doblados. */}
+                estudio, la pieza 3D se presenta erguida como los separadores doblados.
+                backOptional sin cara B (unit.back null): reverso en BLANCO papel
+                (BLANK_BACK_COLOR — superficie imprimible vacía, QA 2026-09-22). */}
             <MagnetMesh
               dataUrl={unit.front.dataUrl}
               backDataUrl={unit.back?.dataUrl}
-              backColor={unit.back ? undefined : MAGNET_BACK_COLOR}
+              backColor={unit.back ? undefined : BLANK_BACK_COLOR}
               width={w}
               height={h}
               shape="rectangle"
@@ -394,7 +396,7 @@ function Scene({
   facesPerUnit?: number;
   /** Ola 17 — marcapáginas plano (Alargados): acostado sobre la hoja, sin doblez. */
   flat?: boolean;
-  /** Cara B opcional: si falta, el reverso se muestra NEGRO (no duplica la cara A). */
+  /** Cara B opcional: si falta, el reverso se muestra en BLANCO papel (no duplica la cara A). */
   backOptional?: boolean;
 }) {
   // Ola 16 — defensa: si el producto no declara 2 caras, el 3D no puede mostrar
@@ -549,8 +551,8 @@ export default function BookView3D({
   facesPerUnit?: number;
   /** Ola 17 — marcapáginas plano (Alargados): acostado sobre la hoja, sin doblez. */
   flat?: boolean;
-  /** Cara B opcional (2026-09-22): si falta, el reverso se muestra NEGRO (color del imán)
-   *  en vez de duplicar la cara A. */
+  /** Cara B opcional (2026-09-22): si falta, el reverso se muestra en BLANCO papel
+   *  (superficie imprimible vacía) en vez de duplicar la cara A. */
   backOptional?: boolean;
 }) {
   const isTouch = useIsTouch();

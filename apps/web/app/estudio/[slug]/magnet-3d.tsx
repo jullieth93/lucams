@@ -68,7 +68,8 @@
  *    flipU Y el mesh se rotaba π sobre Y → doble espejo. La rotación π YA espeja una vez, así
  *    el clon usa los flips de la región, sin forzar flipU. Además se eliminó el mesh BackSide
  *    extra (ola 18) que pintaba la cara B en la posición FRONTAL.
- *  - `backOptional` en FoldedStripMesh: sin cara B, la trasera se muestra NEGRA (no duplica A).
+ *  - `backOptional` en FoldedStripMesh: sin cara B, la trasera se muestra en BLANCO papel
+ *    (superficie imprimible vacía — QA 2026-09-22), no duplica A.
  */
 
 import { useEffect, useMemo } from "react";
@@ -241,9 +242,14 @@ export const MAGNET_DEPTH = 0.04;
 export const TILE_DEPTH = 0.015;
 
 /** Negro del IMÁN (goma ferrita sin laminar): el reverso de los separadores magnéticos — la
- *  cara contraria al diseño — y el reverso completo cuando la cara B es opcional y falta
- *  (backOptional). NO es el cartón crema histórico (#F1EBDD): decisión del cliente 2026-09-22. */
+ *  cara contraria al diseño — y los cantos/tapas internas (material del imán). NO es el cartón
+ *  crema histórico (#F1EBDD): decisión del cliente 2026-09-22. */
 export const MAGNET_BACK_COLOR = "#1A1A1A";
+
+/** Blanco PAPEL sin imprimir: la CARA B cuando es opcional (backOptional) y queda vacía — es
+ *  superficie IMPRIMIBLE, no material del imán (QA 2026-09-22: el físico real sale en blanco).
+ *  Mismo papel histórico de la tapa sin textura (#FDFBF4). */
+export const BLANK_BACK_COLOR = "#FDFBF4";
 
 /** Silueta física centrada en el origen (unidades de mundo). Espejo exacto de buildShapePath. */
 function buildSilhouette(
@@ -331,8 +337,8 @@ export function ExtrudedMagnetMesh({
   textureRegion?: TextureRegion;
   /** Radio de esquina como fracción del ancho (default 8/512 — espejo de buildShapePath). */
   cornerRadiusRatio?: number;
-  /** Color de la tapa frontal cuando NO hay textura (cargando → papel; reverso de imán sin
-   *  imprimir → MAGNET_BACK_COLOR). */
+  /** Color de la tapa frontal cuando NO hay textura (cargando → papel; cara B vacía opcional
+   *  → BLANK_BACK_COLOR). */
   blankColor?: string;
   position?: [number, number, number];
 }) {
@@ -545,8 +551,9 @@ const CARD_THICK = 0.012;
  *
  * 2026-09-22 (reverso NEGRO imán): la cara contraria al diseño (la tapa trasera de cada cara)
  * es el negro de la goma ferrita (MAGNET_BACK_COLOR), no el cartón crema — decisión del cliente.
- * Con `backOptional` y cara B faltante, la TRASERA completa se muestra negra (reverso sin
- * imprimir) en vez de duplicar la cara A.
+ * Con `backOptional` y cara B faltante, la TRASERA se muestra en BLANCO papel (BLANK_BACK_COLOR,
+ * superficie imprimible vacía — QA 2026-09-22) en vez de duplicar la cara A; el canto y la tapa
+ * interna siguen negros (material del imán).
  */
 export function FoldedStripMesh({
   dataUrl,
@@ -582,8 +589,9 @@ export function FoldedStripMesh({
   cornerRadiusRatio?: number;
   /** Apertura extra de la cara trasera (rad) para recostarla sobre la mesa. Default 0. */
   backLean?: number;
-  /** Cara B OPCIONAL: si falta `backDataUrl`, la trasera se muestra NEGRA (reverso del imán
-   *  sin imprimir) en vez de duplicar la cara A. Default false (duplica A, histórico). */
+  /** Cara B OPCIONAL: si falta `backDataUrl`, la trasera se muestra en BLANCO papel
+   *  (BLANK_BACK_COLOR — superficie imprimible vacía) en vez de duplicar la cara A.
+   *  Default false (duplica A, histórico). */
   backOptional?: boolean;
   position?: [number, number, number];
 }) {
@@ -612,8 +620,9 @@ export function FoldedStripMesh({
           flipU = rotación de 180° de la textura: compensa EXACTO la rotación del mesh sobre X,
           así el diseño B se lee DERECHO (de pie, no espejado) al mirarla desde atrás.
           backDataUrl = cara B REAL de la unidad (ola 3); backLean la recuesta sobre la mesa
-          cuando es larga. Con backOptional y sin cara B: pieza NEGRA completa (reverso del
-          imán sin imprimir) en vez de duplicar la cara A. */}
+          cuando es larga. Con backOptional y sin cara B: cara en BLANCO papel (superficie
+          imprimible vacía — el canto y la tapa interna siguen NEGROS, material del imán)
+          en vez de duplicar la cara A. */}
       <group rotation={[Math.PI + delta + backLean, 0, 0]}>
         {blankBack ? (
           <ExtrudedMagnetMesh
@@ -622,7 +631,7 @@ export function FoldedStripMesh({
             height={hang}
             depth={CARD_THICK}
             edgeColor={MAGNET_BACK_COLOR}
-            blankColor={MAGNET_BACK_COLOR}
+            blankColor={BLANK_BACK_COLOR}
             backColor={MAGNET_BACK_COLOR}
             cornerRadiusRatio={cornerRadiusRatio}
             position={[0, hang / 2, rFold]}

@@ -20,6 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Copy, Minus, Plus, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
 import type Konva from "konva";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
@@ -29,6 +30,7 @@ import type { CanvasDataV2, StudioAsset, TextLayer } from "./types";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
 import type { CalendarFontKey } from "@/features/personalization/schemas";
 import { unitSlotRange } from "@/features/personalization/design-units";
+import { applyPredesignedToSlot, type PredesignedDragPayload } from "./lib/apply-predesigned";
 import {
   cardBackgroundHex,
   defaultTextFillOnCard,
@@ -261,6 +263,31 @@ export function StudioCanvasGrid({
   const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
   const selectSlot = useStore(store, (s) => s.selectSlot);
   const texts = useStudioTexts();
+
+  // 2026-09-22 — drop de un DISEÑO PREDISEÑADO sobre un slot (arrastrado desde
+  // la lista del sidebar). Misma vía que el clic (applyPredesignedToSlot): la
+  // server action sube la imagen como asset del diseño y se asigna al slot
+  // destino (con par A/B, la cara B va al slot siguiente vacío).
+  const [applyingPredesigned, setApplyingPredesigned] = useState(false);
+  const handlePredesignedDrop = useCallback(
+    async (slotIndex: number, item: PredesignedDragPayload) => {
+      if (applyingPredesigned) return;
+      setApplyingPredesigned(true);
+      try {
+        const res = await applyPredesignedToSlot({ store, item, targetSlot: slotIndex });
+        if (!res.ok) {
+          toast.error(res.message || texts.plantillas.toastError);
+          return;
+        }
+        toast.success(fillStudioText(texts.plantillas.toastPredisenado, { nombre: item.name }));
+      } catch {
+        toast.error(texts.plantillas.toastError);
+      } finally {
+        setApplyingPredesigned(false);
+      }
+    },
+    [store, applyingPredesigned, texts],
+  );
 
   // Responsive scale (ancho del contenedor, cap MAX_VIEWPORT_WIDTH)
   useEffect(() => {
@@ -568,15 +595,19 @@ export function StudioCanvasGrid({
       // marco. Sin esto, un separador vertical 2×6 (aspect 3) ocupaba el ancho que le
       // dejaba la tarjeta (~350px) y terminaba altísimo, desbordando la pantalla.
       // Regla: byWidth = ancho disponible por cara; byHeight = alto útil / aspect.
+      // 2026-09-22 — PLEGABLES (noFold=false): las caras van APILADAS verticalmente
+      // (la tira desplegada es 2×12, doblez horizontal): la tarjeta-unidad tiene 1
+      // cara de ancho (no /2) pero 2 caras de ALTO (el presupuesto vertical se parte
+      // a la mitad). Alargados (noFold): lado a lado como siempre (sin doblez).
       (() => {
-        const byWidth = Math.floor(
-          ((containerWidth - layout.gap * (unitCols - 1)) / unitCols - 16 - 8) / 2,
-        );
+        const stacked = !noFold;
+        const cardW = (containerWidth - layout.gap * (unitCols - 1)) / unitCols - 16;
+        const byWidth = Math.floor(stacked ? cardW : (cardW - 8) / 2);
         if (!maxFrameH) return Math.max(MIN_SLOT_SIZE, byWidth);
         // Ola 34 — filas en UNIDADES (frameRows), no en slots: cada cara hereda
         // el cap completo y crece donde el ancho lo permite.
         const usableH = maxFrameH - layout.gap * (frameRows - 1) - frameRows * reserve;
-        const byHeight = Math.floor(usableH / frameRows / slotAspect);
+        const byHeight = Math.floor(usableH / frameRows / slotAspect / (stacked ? 2 : 1));
         return Math.max(MIN_SLOT_SIZE, Math.min(byWidth, byHeight));
       })()
     : computeFlatSlotDisplaySize({
@@ -607,7 +638,11 @@ export function StudioCanvasGrid({
   // wrapper necesita scroll-x. Modo agrupado (separadores): ancho de
   // tarjeta-unidad = 2 caras + paddings (mismos 16+8 de la fórmula byWidth).
   const contentWidthBase = grouped
-    ? unitCols * (slotDisplaySize * 2 + 16 + 8) + layout.gap * (unitCols - 1)
+    ? // 2026-09-22 — plegables (caras apiladas): la tarjeta tiene 1 cara de
+      // ancho; noFold (lado a lado): 2 caras + gap, como siempre.
+      noFold
+      ? unitCols * (slotDisplaySize * 2 + 16 + 8) + layout.gap * (unitCols - 1)
+      : unitCols * (slotDisplaySize + 16) + layout.gap * (unitCols - 1)
     : packGroups
       ? // PACKS — una tarjeta por fila: sub-grilla + su padding de tarjeta.
         slotDisplaySize * layout.cols + layout.gap * (layout.cols - 1) + UNIT_CARD_PAD_X
@@ -751,6 +786,10 @@ export function StudioCanvasGrid({
             onCenterPhoto={() => setSlotPhotoTransform(slot.slotIndex, null)}
             interactiveSlots={interactiveSlots}
             onAssetDrop={(asset: StudioAsset) => assignAssetToSlot(slot.slotIndex, asset)}
+            onPredesignedDrop={(item) => {
+              selectSlot(slot.slotIndex);
+              void handlePredesignedDrop(slot.slotIndex, item);
+            }}
             onKeyboardNav={(dir) => handleKeyboardNav(slot.slotIndex, dir)}
             onRegisterStage={registerStage(slot.slotIndex)}
           />
@@ -924,10 +963,14 @@ export function StudioCanvasGrid({
             ))}
           </motion.div>
         ) : grouped ? (
-          // Ola 3 — tarjeta por UNIDAD física: "Separador N" con cara A | cara B
-          // lado a lado (la tira desplegada que se imprime). El filete central
-          // punteado sugiere el doblez de la tira. (Referencia POSITIVA del owner:
+          // Ola 3 — tarjeta por UNIDAD física: "Separador N" con sus 2 caras (la
+          // tira desplegada que se imprime). (Referencia POSITIVA del owner:
           // este patrón de tarjeta-unidad es el estándar de todo el Estudio.)
+          // 2026-09-22 — orientación REAL del doblez (feedback QA STG): el
+          // separador plegable se pliega por la MITAD de la tira vertical 2×12
+          // (doblez en la punta de 2cm) → las caras van APILADAS (Cara A arriba,
+          // Cara B abajo) con el filete de doblez HORIZONTAL en la unión.
+          // Alargados (noFold): la pieza es plana → caras lado a lado, sin doblez.
           <motion.div
             className="grid"
             style={{
@@ -962,22 +1005,31 @@ export function StudioCanvasGrid({
                     unitCount={physicalUnits}
                     onApplied={announceApplied}
                   />
-                  <div className="flex items-start justify-center gap-2">
+                  <div
+                    className={
+                      noFold
+                        ? "flex items-start justify-center gap-2"
+                        : "flex flex-col items-center"
+                    }
+                  >
                     {canvasData.slots
                       .filter((slot) => unitIndexOfSlot(slot.slotIndex, 2) === unitIndex)
                       .map((slot, i) => (
                         <div
                           key={slot.slotIndex}
                           className={
-                            i === 0
-                              ? noFold
+                            noFold
+                              ? i === 0
                                 ? // Alargados planos: SIN línea de doblez (la pieza no
                                   // se pliega) — separación sutil entre frente y reverso.
                                   "border-brand-purple/10 flex flex-col items-center gap-1 border-r pr-2"
-                                : // Línea de DOBLEZ explícita (2026-09-22): más visible
-                                  // (2px, morado medio) — es el pliegue físico de la tira.
-                                  "border-brand-purple/50 flex flex-col items-center gap-1 border-r-2 border-dashed pr-2"
-                              : "flex flex-col items-center gap-1"
+                                : "flex flex-col items-center gap-1"
+                              : i === 0
+                                ? // Línea de DOBLEZ horizontal (2026-09-22): la tira se
+                                  // pliega por la mitad — el filete marca la unión
+                                  // entre Cara A (arriba) y Cara B (abajo).
+                                  "border-brand-purple/50 flex flex-col items-center gap-1 border-b-2 border-dashed pb-2"
+                                : "flex flex-col items-center gap-1 pt-2"
                           }
                         >
                           <span className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">

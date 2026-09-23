@@ -179,7 +179,11 @@ export function StudioPhotoPreview({
   // Misma exclusión que en la grilla: modo tira (dibujaría costuras entre celdas).
   const whiteCardTray = cardBgHex.toUpperCase() === "#FFFFFF" && !isStrip;
   const stageWidth = whiteCardTray ? displayWidth - WHITE_CARD_TRAY_PAD * 2 : displayWidth;
-  const stageHeight = whiteCardTray ? displayHeight - WHITE_CARD_TRAY_PAD * 2 : displayHeight;
+  // Bug 2026-09-22 (mismo de la grilla): el inset fijo en px rompía el aspect en
+  // tarjetas no cuadradas (alargados 1:3+) → banda de canvas muerta abajo. El
+  // alto se deriva del ancho inset: el contenido llena el canvas y la bandeja
+  // (que centra con flex) reparte el aire parejo arriba/abajo.
+  const stageHeight = whiteCardTray ? stageWidth * aspect : displayHeight;
   const stageScale = stageWidth / unitTemplate.stage.width;
 
   // ── Gestos de zoom (rueda en desktop, pellizco en táctil) ──

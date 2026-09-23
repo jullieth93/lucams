@@ -221,7 +221,7 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
     ]);
   });
 
-  it("backOptional (2026-09-22): cara B faltante → back null (reverso negro), no duplica A", () => {
+  it("backOptional (2026-09-22): cara B faltante → back null (reverso blanco papel), no duplica A", () => {
     const opts = { backOptional: true };
     // Pareo por pares: unidad impar sin cara B.
     const units = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")], undefined, "6×2", opts);

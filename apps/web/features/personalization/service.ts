@@ -1298,11 +1298,15 @@ export async function finalizeDesign(opts: {
     data: { publicUrl: previewPublicUrl },
   } = supabase.storage.from(BUCKET_PREVIEWS).getPublicUrl(previewPath);
 
-  // Ola 3 (Lucy 2026-07-22) — SEPARADORES 2 CARAS: la pieza física es una tira doblada;
-  // la imprenta recibe la tira DESPLEGADA con las 2 caras lado a lado (8×4.2 / 12×2 cm).
-  // El cliente sube 2N snapshots (uno por slot cara A/B, espejo del canvas); acá se componen
-  // N tiras (slot 2k = cara A izquierda, slot 2k+1 = cara B derecha) con las esquinas
-  // exteriores redondeadas del troquel. Aplica igual a buffers server-side o del cliente.
+  // Ola 3 (Lucy 2026-07-22) — SEPARADORES 2 CARAS: la pieza física es una tira que se
+  // pliega HORIZONTALMENTE a la mitad; la imprenta recibe la tira DESPLEGADA VERTICAL
+  // con las 2 caras apiladas (2×12 / 4×8.4 cm desplegado; fix 2026-09-22 — antes se
+  // componía horizontal A|B, resto del stage horizontal viejo). El cliente sube 2N
+  // snapshots (uno por slot cara A/B, espejo del canvas); acá se componen N tiras
+  // (slot 2k = cara A arriba, slot 2k+1 = cara B abajo ROTADA 180° para que se lea
+  // derecha colgando plegada) con las esquinas exteriores redondeadas del troquel.
+  // noFold (Alargados planos): composición horizontal A|B sin rotar (histórico).
+  // Aplica igual a buffers server-side o del cliente.
   let facesComposed = false;
   if (canvasData.version === 2) {
     // productConfig ya se cargó arriba (validación de slots / backOptional).
@@ -1314,6 +1318,7 @@ export async function finalizeDesign(opts: {
         const { composeFaceStrips } = await import("./bookmark-strips");
         productionBuffers = await composeFaceStrips(productionBuffers, {
           cornerRadiusPx: (productConfig.cornerRadiusPx ?? 0) * 3,
+          noFold: productConfig.noFold === true,
         });
         facesComposed = true;
         logger.info(

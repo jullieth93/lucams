@@ -197,8 +197,9 @@ export function SceneGallery({
    *  muestra SIN doblez. Misma condición que el modal del Estudio (flat={productConfig.noFold}):
    *  sin esta prop, los Alargados abiertos desde la galería se veían DOBLADOS. */
   flat,
-  /** Cara B opcional (2026-09-22): si falta, el reverso 3D se muestra NEGRO (color del
-   *  imán) en vez de duplicar la cara A. La pasa el Estudio (productConfig). */
+  /** Cara B opcional (2026-09-22): si falta, el reverso 3D se muestra en BLANCO papel
+   *  (superficie imprimible vacía) en vez de duplicar la cara A. La pasa el Estudio
+   *  (productConfig). */
   backOptional,
 }: {
   magnets: Magnet3D[];
@@ -214,7 +215,7 @@ export function SceneGallery({
   facesPerUnit?: number;
   /** Ola 17 — marcapáginas plano (Alargados): la escena Libro los renderiza sin doblez. */
   flat?: boolean;
-  /** Cara B opcional: reverso negro del imán cuando falta la cara B. */
+  /** Cara B opcional: reverso en blanco papel cuando falta la cara B. */
   backOptional?: boolean;
 }) {
   const scenes = useMemo(

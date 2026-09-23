@@ -142,7 +142,8 @@ export function stripDimsForFace(
  * es su propia unidad y repite el diseño en ambas caras (comportamiento histórico).
  *
  * 2026-09-22 — `opts.backOptional`: la cara B es OPCIONAL; cuando falta, `back` es null (el 3D
- * muestra el NEGRO del imán en el reverso) en vez de duplicar la cara A. Sin la opción se
+ * muestra el reverso en BLANCO papel — superficie imprimible vacía) en vez de duplicar la
+ * cara A. Sin la opción se
  * conserva el comportamiento histórico (back = front). El tipo de retorno admite null siempre;
  * los callers que no pasan la opción nunca reciben null en runtime.
  */
@@ -166,7 +167,7 @@ export function bookmarkFaceUnits<
   const backOptional = opts?.backOptional === true;
   // Ola 10 — si el producto declara facesPerUnit=2, agrupamos por pares de slotIndex
   // (no por orden del array). La cara B sin foto propia usa la misma textura que la cara A
-  // (o null con backOptional: el 3D pinta el reverso negro del imán).
+  // (o null con backOptional: el 3D pinta el reverso en blanco papel).
   if (
     facesPerUnit === 2 &&
     bookmarks.length > 0 &&
@@ -182,7 +183,7 @@ export function bookmarkFaceUnits<
       const back = bySlot.get(2 * k + 1);
       // Magnet3D usa dataUrl (textura capturada del stage), no assetUrl. Si la cara B
       // no tiene textura propia, reusamos la frontal (comportamiento histórico) o null
-      // (backOptional → reverso negro).
+      // (backOptional → reverso blanco papel).
       const hasBack = Boolean(back?.dataUrl || back?.assetUrl);
       units.push({ front, back: hasBack ? back! : backOptional ? null : front });
     }

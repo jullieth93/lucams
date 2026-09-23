@@ -937,8 +937,9 @@ export function StudioEditor({
       // la silueta real (corazón, círculo, etc.) y no se vea un rectángulo
       // Lucy 2026-05-21 feedback: "se ve completa, no como corazón".
       // Ola 3 — separadores 2 caras: el preview de confirmación muestra las TIRAS
-      // desplegadas (cara A | cara B por unidad, con el doblez punteado), no una
-      // grilla de caras sueltas — es la pieza física que el cliente va a recibir.
+      // desplegadas (plegables: Cara A sobre Cara B con el doblez horizontal en la
+      // unión, la tira vertical 2×12 real; noFold: frente | reverso lado a lado),
+      // no una grilla de caras sueltas — es la pieza física que el cliente va a recibir.
       // 2026-09-22 — noFold (Alargados): sin doblez ni "desplegado"; backOptional:
       // cara B vacía se dibuja NEGRA (reverso del imán), no con el placeholder.
       const foldCaption = (() => {
@@ -2244,16 +2245,22 @@ async function buildCompositedPreview(
 
 /**
  * Ola 3 (Lucy 2026-07-22) — Preview de confirmación para SEPARADORES 2 CARAS:
- * una TIRA DESPLEGADA por unidad física (cara A | cara B lado a lado, 8×4.2 /
- * 12×2 cm), apiladas en vertical sobre fondo crema. Es el espejo pequeño de lo
- * que producción compone a 300 DPI (composeFaceStrips) — el cliente aprueba la
- * pieza física real, no una grilla de caras sueltas. Las esquinas exteriores se
- * redondean (troquel) y el doblez central se marca con un filete punteado.
+ * una TIRA DESPLEGADA por unidad física sobre fondo crema. Es el espejo
+ * pequeño de la pieza física que el cliente va a recibir, no una grilla de
+ * caras sueltas. Las esquinas exteriores se redondean (troquel).
  *
- * 2026-09-22:
- *  - noFold (Alargados planos): SIN filete de doblez (la pieza no se pliega).
- *  - backOptional: una cara B vacía se dibuja NEGRA (#111, reverso real del
- *    imán) en vez del placeholder del editor.
+ * 2026-09-22 — orientación REAL del doblez (feedback QA STG): el separador
+ * plegable se pliega por la MITAD de la tira vertical (2×12: 2cm ancho × 12cm
+ * alto, doblez en la punta de 2cm) → la tira del preview es VERTICAL: Cara A
+ * ARRIBA, Cara B ABAJO, filete de doblez HORIZONTAL en la unión. Las unidades
+ * se disponen lado a lado en el montaje. Producción (composeFaceStrips) compone
+ * con esta misma geometría — la B además se imprime rotada 180° para que ambas
+ * caras lean derechas con la tira colgando plegada (acá no se rota: es preview
+ * visual para el cliente, no el archivo de imprenta).
+ *  - noFold (Alargados planos): la pieza no se pliega → caras lado a lado
+ *    (frente | reverso) y unidades apiladas, SIN filete de doblez.
+ *  - backOptional: una cara B vacía se dibuja BLANCA (#FFFFFF — el físico sin
+ *    diseñar sale en blanco), no con el placeholder del editor.
  *  - foldCaption: indicación del tamaño desplegado bajo cada tira (texto CMS
  *    ya resuelto por el caller, ej. "Doblez · Desplegado: 2×12 cm").
  */
@@ -2273,9 +2280,16 @@ async function buildBookmarkStripPreview(
   const pad = 24;
   const gap = 18;
   const captionH = foldCaption ? 20 : 0; // renglón de la indicación bajo la tira
-  const stripW = faceW * 2;
-  const canvasW = stripW + pad * 2;
-  const canvasH = pad * 2 + units * (faceH + captionH) + (units - 1) * gap;
+  // Geometría de la tira por unidad: plegable = VERTICAL (A sobre B, 1 cara de
+  // ancho × 2 de alto); noFold = horizontal (A | B) como siempre.
+  const stripW = noFold ? faceW * 2 : faceW;
+  const stripH = noFold ? faceH : faceH * 2;
+  // Montaje: plegables → unidades LADO A LADO (cada tira es alta); noFold →
+  // unidades apiladas en vertical (cada tira es ancha).
+  const canvasW = noFold ? stripW + pad * 2 : pad * 2 + units * stripW + (units - 1) * gap;
+  const canvasH = noFold
+    ? pad * 2 + units * (stripH + captionH) + (units - 1) * gap
+    : pad * 2 + stripH + captionH;
 
   const compositeCanvas = document.createElement("canvas");
   compositeCanvas.width = canvasW;
@@ -2293,21 +2307,29 @@ async function buildBookmarkStripPreview(
 
   for (let unit = 0; unit < units; unit++) {
     const { faceA, faceB } = facePairOfUnit(unit);
-    const x = pad;
-    const y = pad + unit * (faceH + captionH + gap);
+    const x = noFold ? pad : pad + unit * (stripW + gap);
+    const y = noFold ? pad + unit * (stripH + captionH + gap) : pad;
+    // Rect de cada cara dentro de la tira: plegable = apiladas (A arriba, B
+    // abajo); noFold = lado a lado (A izquierda, B derecha).
+    const faceRect = (i: number) =>
+      noFold
+        ? { fx: x + i * faceW, fy: y, fw: faceW, fh: faceH }
+        : { fx: x, fy: y + i * faceH, fw: faceW, fh: faceH };
     // Troquel redondeado de la tira: clipeamos A+B al mismo roundRect → la
     // silueta impresa coincide con la de producción (WYSIWYG).
     ctx.save();
     ctx.beginPath();
-    ctx.roundRect(x, y, stripW, faceH, radius);
+    ctx.roundRect(x, y, stripW, stripH, radius);
     ctx.clip();
     for (const [i, slotIndex] of [faceA, faceB].entries()) {
-      // Cara B opcional vacía → reverso NEGRO del imán (no el placeholder del
-      // editor, que es UI de pantalla y no existe en la pieza física).
+      const { fx, fy, fw, fh } = faceRect(i);
+      // Cara B opcional vacía → BLANCO (el físico sin diseñar sale en blanco;
+      // el borde del troquel la delimita sobre el fondo crema del lienzo). No
+      // el placeholder del editor, que es UI de pantalla.
       const slotState = slots.find((s) => s.slotIndex === slotIndex);
       if (backOptional && i === 1 && !slotState?.assetUrl) {
-        ctx.fillStyle = "#111";
-        ctx.fillRect(x + i * faceW, y, faceW, faceH);
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(fx, fy, fw, fh);
         continue;
       }
       const stage = stages.get(slotIndex);
@@ -2324,7 +2346,7 @@ async function buildBookmarkStripPreview(
       await new Promise<void>((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
-          ctx.drawImage(img, x + i * faceW, y, faceW, faceH);
+          ctx.drawImage(img, fx, fy, fw, fh);
           resolve();
         };
         img.onerror = () => reject(new Error("No se pudo cargar snapshot de la cara"));
@@ -2333,22 +2355,23 @@ async function buildBookmarkStripPreview(
     }
     ctx.restore();
     // Filete del doblez (pliegue central de la tira) + borde sutil de la
-    // silueta. noFold (Alargados): la pieza es PLANA → sin filete de doblez.
+    // silueta. Plegables: filete HORIZONTAL en la unión (a mitad de la tira
+    // vertical). noFold (Alargados): pieza PLANA → sin filete.
     ctx.save();
     if (!noFold) {
       ctx.strokeStyle = "rgba(124, 106, 173, 0.55)"; // brand-purple/55
       ctx.lineWidth = 1.5;
       ctx.setLineDash([4, 4]);
       ctx.beginPath();
-      ctx.moveTo(x + faceW, y + 4);
-      ctx.lineTo(x + faceW, y + faceH - 4);
+      ctx.moveTo(x + 4, y + faceH);
+      ctx.lineTo(x + faceW - 4, y + faceH);
       ctx.stroke();
       ctx.setLineDash([]);
     }
     ctx.strokeStyle = "rgba(124, 106, 173, 0.7)";
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.roundRect(x, y, stripW, faceH, radius);
+    ctx.roundRect(x, y, stripW, stripH, radius);
     ctx.stroke();
     ctx.restore();
     // Indicación del tamaño total desplegado bajo la tira (mismo texto CMS que
@@ -2358,7 +2381,7 @@ async function buildBookmarkStripPreview(
       ctx.fillStyle = "rgba(60, 45, 100, 0.85)";
       ctx.font = "600 12px Inter, system-ui, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(foldCaption, x + stripW / 2, y + faceH + 14);
+      ctx.fillText(foldCaption, x + stripW / 2, y + stripH + 14);
       ctx.restore();
     }
   }
