@@ -78,9 +78,9 @@ type Props = {
     widthCm?: number | null;
     heightCm?: number | null;
     depthCm?: number | null;
-    /** Estudio por producto (2026-09-24): zoom inicial del lienzo (null = default 1). */
-    canvasInitialZoom?: number | null;
-    /** Estudio por producto (2026-09-24): columnas de la grilla (null = grilla del template). */
+    /** Estudio por producto (2026-09-24 v2): tamaño BASE del lienzo — el "100%" del cliente (null = 1). */
+    canvasBaseScale?: number | null;
+    /** Estudio por producto (2026-09-24 v2): columnas FORZADAS de la grilla en desktop (null = automático). */
     gridColsOverride?: number | null;
   };
   action: typeof createProductAction | typeof updateProductAction;
@@ -632,9 +632,10 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
         </SectionCard>
 
         {/*
-         * Estudio de personalización POR PRODUCTO (owner 2026-09-24): zoom
-         * inicial del lienzo ("100%" de arranque y del botón reset) y columnas
-         * de la grilla de canvas. Solo aplica a productos personalizables; al
+         * Estudio de personalización POR PRODUCTO (owner 2026-09-24, v2 tras
+         * prueba STG): TAMAÑO BASE del lienzo (lo que el cliente ve como su
+         * "100%" — su control de zoom es relativo a esta base) y columnas
+         * FORZADAS de la grilla. Solo aplica a productos personalizables; al
          * apagar "Personalizable" los valores viajan en inputs ocultos para no
          * perderse. Vaciar un campo = volver al default del Estudio (el service
          * elimina la key del personalizationSchema).
@@ -646,19 +647,19 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field
-                id="canvasInitialZoom"
-                label="Zoom inicial del lienzo"
-                hint="1 = 100% (estándar). Rango 0.5 – 2.5, en pasos de 0.25. Es el zoom con el que abre el Estudio y al que vuelve el botón de reinicio."
-                error={state?.fieldErrors?.canvasInitialZoom?.[0]}
+                id="canvasBaseScale"
+                label="Tamaño base del lienzo"
+                hint="1 = tamaño estándar; 0.5 = se ve a la mitad de grande; 2 = el doble. Rango 0.5 – 2.5. El cliente siempre verá este tamaño como su 100% y su control de zoom parte de ahí."
+                error={state?.fieldErrors?.canvasBaseScale?.[0]}
               >
                 <Input
-                  id="canvasInitialZoom"
-                  name="canvasInitialZoom"
+                  id="canvasBaseScale"
+                  name="canvasBaseScale"
                   type="number"
                   min={0.5}
                   max={2.5}
                   step={0.25}
-                  defaultValue={initialProduct?.canvasInitialZoom ?? ""}
+                  defaultValue={initialProduct?.canvasBaseScale ?? ""}
                   placeholder="1"
                   disabled={pending}
                 />
@@ -666,7 +667,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
               <Field
                 id="gridColsOverride"
                 label="Columnas de la grilla"
-                hint="1 – 6 columnas. Las filas se calculan solas. En celular (<640px) siempre es 1 columna, este ajuste no aplica ahí."
+                hint="Fuerza N columnas (1 – 6) en desktop/tablet, aunque el cálculo automático dé menos. Las filas se calculan solas. En celular siempre es 1 columna, este ajuste no aplica ahí."
                 error={state?.fieldErrors?.gridColsOverride?.[0]}
               >
                 <Input
@@ -689,8 +690,8 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
           <>
             <input
               type="hidden"
-              name="canvasInitialZoom"
-              value={initialProduct?.canvasInitialZoom ?? ""}
+              name="canvasBaseScale"
+              value={initialProduct?.canvasBaseScale ?? ""}
             />
             <input
               type="hidden"
@@ -966,7 +967,7 @@ const FIELD_LABELS: Record<string, string> = {
   widthCm: "Ancho (cm)",
   heightCm: "Alto (cm)",
   depthCm: "Largo (cm)",
-  canvasInitialZoom: "Zoom inicial del lienzo",
+  canvasBaseScale: "Tamaño base del lienzo",
   gridColsOverride: "Columnas de la grilla",
 };
 
@@ -1011,7 +1012,7 @@ function computeErrorTabs(
     sku: "avanzado",
     cost: "avanzado",
     premadeSurcharge: "avanzado",
-    canvasInitialZoom: "avanzado",
+    canvasBaseScale: "avanzado",
     gridColsOverride: "avanzado",
   };
   for (const [field, errors] of Object.entries(fieldErrors)) {

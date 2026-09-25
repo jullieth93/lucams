@@ -373,19 +373,25 @@ export const PhotoProductConfigSchema = z.object({
    */
   backOptional: z.boolean().optional(),
   /**
-   * Zoom INICIAL del lienzo del Estudio (2026-09-24 — admin → producto →
-   * Avanzado, por producto): define el "100%" con el que abre el canvas y el
-   * valor al que vuelve el botón de reset del control de zoom. Rango alineado
-   * con STAGE_ZOOM_MIN/MAX del Estudio. undefined/null = 1 (comportamiento de
-   * siempre). Display-only: la exportación de producción es inmune al zoom.
+   * Tamaño BASE del lienzo del Estudio (2026-09-24, v2 tras prueba en STG —
+   * admin → producto → Avanzado, por producto): multiplicador de escala del
+   * sizing del lienzo. 1 = tamaño estándar; 0.5 = el lienzo se renderiza a la
+   * mitad. El control de zoom del CLIENTE es relativo a esta base: siempre
+   * abre en su "100%" (stageZoom=1) y su reset vuelve a 1. undefined/null = 1.
+   * Display-only: la exportación de producción es inmune a esta escala (el
+   * pixelRatio del snapshot es relativo al tamaño lógico del stage).
+   * (Primera versión se llamó `canvasInitialZoom` e inicializaba el zoom del
+   * cliente — renombrada antes de llegar a PROD, solo existió en STG.)
    */
-  canvasInitialZoom: z.number().min(0.5).max(2.5).optional(),
+  canvasBaseScale: z.number().min(0.5).max(2.5).optional(),
   /**
    * Override de columnas de la grilla del Estudio (2026-09-24 — mismo origen):
-   * reemplaza las columnas del template (las filas se derivan: ceil slots/cols).
-   * Clamp [1..6]; el Estudio lo capea además contra resolveMaxCols, así que en
-   * móvil (<640px) NO aplica — móvil es siempre 1 columna (decisión del owner).
-   * undefined/null = grilla automática del template.
+   * FUERZA las columnas (clamp [1..6]) sin capear contra el ancho objetivo ni
+   * contra las columnas del template; las filas se derivan (ceil slots/cols).
+   * Guardas: en móvil (<640px) NO aplica (siempre 1 columna, decisión del
+   * owner), nunca más columnas que slots/unidades, y fitColsToFloor puede
+   * reducir si los pisos de tamaño no caben. En modo agrupado (separadores)
+   * cuenta TARJETAS DE UNIDAD por fila. undefined/null = grilla automática.
    */
   gridColsOverride: z.number().int().min(1).max(6).optional(),
 });

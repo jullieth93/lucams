@@ -212,20 +212,21 @@ function buildPhysicalSpecsFromInput(input: {
 }
 
 /**
- * Estudio por producto (owner 2026-09-24): zoom inicial del lienzo + override
- * de columnas. Se persisten dentro de personalizationSchema Json. Al CREAR se
+ * Estudio por producto (owner 2026-09-24, v2 STG): tamaño BASE del lienzo
+ * (canvasBaseScale — el "100%" del cliente) + override FORZADO de columnas.
+ * Se persisten dentro de personalizationSchema Json. Al CREAR se
  * escribe un schema mínimo (photoSlots: 1 = el default seguro de
  * parsePhotoProductConfig; la config completa del Estudio la ponen los scripts
  * de catálogo). En UPDATE el merge vive en updateProduct (null = borrar key).
  */
 function buildPersonalizationSchemaFromInput(input: {
-  canvasInitialZoom?: number | null;
+  canvasBaseScale?: number | null;
   gridColsOverride?: number | null;
 }): Prisma.InputJsonValue | undefined {
-  if (input.canvasInitialZoom == null && input.gridColsOverride == null) return undefined;
+  if (input.canvasBaseScale == null && input.gridColsOverride == null) return undefined;
   return {
     photoSlots: 1,
-    ...(input.canvasInitialZoom != null && { canvasInitialZoom: input.canvasInitialZoom }),
+    ...(input.canvasBaseScale != null && { canvasBaseScale: input.canvasBaseScale }),
     ...(input.gridColsOverride != null && { gridColsOverride: input.gridColsOverride }),
   } as Prisma.InputJsonValue;
 }
@@ -327,18 +328,18 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
 
   // PR C — peso/dims se persisten dentro de physicalSpecs Json (mergeado
   // con specs existentes para no pisar otras keys como `material`).
-  // 2026-09-24 — zoom inicial / columnas del Estudio se persisten dentro de
+  // 2026-09-24 v2 — tamaño base / columnas del Estudio se persisten dentro de
   // personalizationSchema Json con el MISMO patrón de merge (no pisar
   // photoSlots, frameOptions, facesPerUnit, etc.). Una sola lectura para ambos.
   const { weightGrams, widthCm, heightCm, depthCm, ...restNoShipping } = rest;
-  const { canvasInitialZoom, gridColsOverride, ...restWithoutStudio } = restNoShipping;
+  const { canvasBaseScale, gridColsOverride, ...restWithoutStudio } = restNoShipping;
   const needsPhysicalSpecs =
     weightGrams !== undefined ||
     widthCm !== undefined ||
     heightCm !== undefined ||
     depthCm !== undefined;
   const needsPersonalizationSchema =
-    canvasInitialZoom !== undefined || gridColsOverride !== undefined;
+    canvasBaseScale !== undefined || gridColsOverride !== undefined;
   const existingJson =
     needsPhysicalSpecs || needsPersonalizationSchema
       ? await prisma.product.findUnique({
@@ -360,16 +361,16 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
     } as Prisma.InputJsonValue;
   }
 
-  // Estudio por producto (owner 2026-09-24): null = el admin VACIÓ el campo en
-  // el form → se ELIMINA la key y el Estudio vuelve a su default (zoom 1 /
-  // grilla del template). undefined = el form no envió el campo → no se toca.
+  // Estudio por producto (owner 2026-09-24, v2 STG): null = el admin VACIÓ el
+  // campo en el form → se ELIMINA la key y el Estudio vuelve a su default
+  // (tamaño base 1 / grilla automática). undefined = no se envió → no se toca.
   let personalizationSchemaUpdate: Prisma.InputJsonValue | undefined;
   if (needsPersonalizationSchema) {
     const current =
       (existingJson?.personalizationSchema as Record<string, unknown> | null | undefined) ?? {};
     const next: Record<string, unknown> = { ...current };
-    if (canvasInitialZoom === null) delete next.canvasInitialZoom;
-    else if (canvasInitialZoom !== undefined) next.canvasInitialZoom = canvasInitialZoom;
+    if (canvasBaseScale === null) delete next.canvasBaseScale;
+    else if (canvasBaseScale !== undefined) next.canvasBaseScale = canvasBaseScale;
     if (gridColsOverride === null) delete next.gridColsOverride;
     else if (gridColsOverride !== undefined) next.gridColsOverride = gridColsOverride;
     personalizationSchemaUpdate = next as Prisma.InputJsonValue;

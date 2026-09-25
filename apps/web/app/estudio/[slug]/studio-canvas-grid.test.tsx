@@ -26,9 +26,13 @@ import type { CanvasDataV2 } from "./types";
 // ── Mocks de frontera ────────────────────────────────────────────────
 
 vi.mock("./studio-slot", () => ({
-  StudioSlot: ({ slotState }: { slotState: { slotIndex: number } }) => (
-    <div data-testid={`studio-slot-${slotState.slotIndex}`} />
-  ),
+  StudioSlot: ({
+    slotState,
+    displaySize,
+  }: {
+    slotState: { slotIndex: number };
+    displaySize?: number;
+  }) => <div data-testid={`studio-slot-${slotState.slotIndex}`} data-display-size={displaySize} />,
 }));
 vi.mock("./studio-slot-edit-modal", () => ({ StudioSlotEditModal: () => null }));
 vi.mock("./use-prefers-reduced-motion", () => ({ usePrefersReducedMotion: () => true }));
@@ -359,20 +363,23 @@ describe("StudioCanvasGrid — modo plano con tarjeta-unidad (owner 2026-09-18)"
   });
 });
 
-// ── Override de columnas por producto (owner 2026-09-24) ─────────────
+// ── Overrides del lienzo por producto (owner 2026-09-24, v2 STG) ──────
 //
-// El admin puede fijar las columnas de la grilla por producto
-// (personalizationSchema.gridColsOverride). El grid las clampa [1..6] y las
-// capea contra resolveMaxCols — el template solo manda cuando no hay override.
-describe("StudioCanvasGrid — override de columnas por producto (owner 2026-09-24)", () => {
+// El admin fija por producto (personalizationSchema): gridColsOverride FUERZA
+// las columnas en desktop (sin capear contra el ancho objetivo ni el template)
+// y canvasBaseScale es el TAMAÑO BASE del lienzo (el "100%" que ve el cliente
+// — su control de zoom es relativo a esa base).
+describe("StudioCanvasGrid — overrides del lienzo por producto (owner 2026-09-24, v2 STG)", () => {
   // En jsdom clientWidth es 0 → el grid mediría 0px y resolvería 1 columna
-  // (regla móvil). Stub a 1600px (desktop) para ejercitar las columnas reales.
+  // (regla móvil). Stub configurable por test (el efecto lo lee al montar).
+  let stubWidth = 1600;
   let clientWidthDesc: PropertyDescriptor | undefined;
   beforeEach(() => {
+    stubWidth = 1600;
     clientWidthDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
     Object.defineProperty(HTMLElement.prototype, "clientWidth", {
       configurable: true,
-      get: () => 1600,
+      get: () => stubWidth,
     });
   });
   afterEach(() => {
@@ -387,19 +394,23 @@ describe("StudioCanvasGrid — override de columnas por producto (owner 2026-09-
       .filter((v) => v.startsWith("repeat("));
   }
 
-  function renderFlat3Slots(gridColsOverride?: number) {
+  function renderFlat(
+    slots: number,
+    overrides: { gridColsOverride?: number; canvasBaseScale?: number } = {},
+  ) {
     const store = createStudioStore();
     store.getState().init({
       designId: "d1",
       productSlug: "cuadro-3-fotos",
-      canvasData: makePolaroidCanvas(3), // gridLayout del template: 3 cols
+      canvasData: makePolaroidCanvas(slots), // gridLayout del template: 3 cols
       templates: [],
     });
     const onStageZoomState = vi.fn();
     const { container } = render(
       <StudioCanvasGrid
         store={store}
-        gridColsOverride={gridColsOverride}
+        gridColsOverride={overrides.gridColsOverride}
+        canvasBaseScale={overrides.canvasBaseScale}
         onSlotClick={() => {}}
         stageZoomRaw={1}
         onStageZoomState={onStageZoomState}
@@ -410,42 +421,110 @@ describe("StudioCanvasGrid — override de columnas por producto (owner 2026-09-
   }
 
   it("override=2 reemplaza las 3 columnas del template en la grilla plana", () => {
-    const { container } = renderFlat3Slots(2);
+    const { container } = renderFlat(3, { gridColsOverride: 2 });
     expect(gridTemplateColsOf(container)).toContain("repeat(2, 1fr)");
     expect(gridTemplateColsOf(container)).not.toContain("repeat(3, 1fr)");
   });
 
   it("sin override la grilla del template queda intacta (3 columnas)", () => {
-    const { container } = renderFlat3Slots();
+    const { container } = renderFlat(3);
     expect(gridTemplateColsOf(container)).toContain("repeat(3, 1fr)");
   });
 
-  it("override MAYOR que el template no ensancha la grilla: queda capeado por resolveMaxCols", () => {
-    // Template 3 cols, override 6 → resolveMaxCols capea a las 3 del template.
-    const { container } = renderFlat3Slots(6);
+  it("el override FUERZA 3 columnas aunque el ancho objetivo dé 2 (v2 STG)", () => {
+    // 950px de contenedor → resolveMaxCols da 2 (floor(950/450)); sin override
+    // el grid mostraría 2. El admin pidió 3 → se ven 3.
+    stubWidth = 950;
+    const { container } = renderFlat(6, { gridColsOverride: 3 });
+    expect(gridTemplateColsOf(container)).toContain("repeat(3, 1fr)");
+    expect(gridTemplateColsOf(container)).not.toContain("repeat(2, 1fr)");
+  });
+
+  it("guarda: nunca más columnas que slots disponibles (override 6 con 3 slots → 3)", () => {
+    const { container } = renderFlat(3, { gridColsOverride: 6 });
     expect(gridTemplateColsOf(container)).toContain("repeat(3, 1fr)");
     expect(gridTemplateColsOf(container)).not.toContain("repeat(6, 1fr)");
   });
 
-  it("zoom: el grid reporta el zoom pedido por el padre (el editor lo inicializa con canvasInitialZoom)", async () => {
+  it("guarda: en móvil (<640px) el override NO aplica — siempre 1 columna", () => {
+    stubWidth = 390;
+    const { container } = renderFlat(6, { gridColsOverride: 3 });
+    expect(gridTemplateColsOf(container)).toContain("repeat(1, 1fr)");
+    expect(gridTemplateColsOf(container)).not.toContain("repeat(3, 1fr)");
+  });
+
+  it("modo agrupado (separadores): el override cuenta TARJETAS DE UNIDAD por fila", () => {
+    // 3 separadores de 2 caras (6 slots): default desktop = 2 tarjetas por
+    // fila; override=3 → las 3 tarjetas-unidad en una fila.
     const store = createStudioStore();
     store.getState().init({
       designId: "d1",
-      productSlug: "cuadro-3-fotos",
-      canvasData: makePolaroidCanvas(3),
+      productSlug: "separadores-magneticos",
+      canvasData: {
+        ...makePolaroidCanvas(6),
+        unitSlots: 2,
+        unitCount: 3,
+        gridLayout: { cols: 1, rows: 2, gap: 12 },
+      },
       templates: [],
     });
-    const onStageZoomState = vi.fn();
-    render(
+    const { container } = render(
       <StudioCanvasGrid
         store={store}
+        facesPerUnit={2}
+        gridColsOverride={3}
         onSlotClick={() => {}}
-        // El editor pasa acá resolveInitialStageZoom(canvasInitialZoom) — ej. 1.5.
-        stageZoomRaw={1.5}
-        onStageZoomState={onStageZoomState}
+        stageZoomRaw={1}
+        onStageZoomState={() => {}}
         registerSlotStages={() => {}}
       />,
     );
+    expect(gridTemplateColsOf(container)).toContain("repeat(3, 1fr)");
+  });
+
+  it("tamaño base 0.5 renderiza los slots a la MITAD y el control del cliente sigue en su 100%", async () => {
+    const full = renderFlat(3);
+    const half = renderFlat(3, { canvasBaseScale: 0.5 });
+    const sizeOf = (c: HTMLElement) =>
+      Number(c.querySelector<HTMLElement>('[data-testid="studio-slot-0"]')?.dataset.displaySize);
+    const fullSize = sizeOf(full.container);
+    const halfSize = sizeOf(half.container);
+    expect(fullSize).toBeGreaterThan(0);
+    // baseScale 0.5 → la mitad (±1px por el redondeo del sizing).
+    expect(Math.abs(halfSize - fullSize / 2)).toBeLessThanOrEqual(1);
+
+    // El zoom del CLIENTE es relativo a la base: con stageZoomRaw=1 el control
+    // reporta 1 (= su 100%) aunque el lienzo se renderice más chico.
+    await waitFor(() =>
+      expect(half.onStageZoomState).toHaveBeenCalledWith(
+        expect.objectContaining({ zoom: 1, cap: expect.any(Number) }),
+      ),
+    );
+  });
+
+  it("zoom: el grid reporta el zoom pedido por el padre (relativo al tamaño base)", async () => {
+    const { onStageZoomState } = (() => {
+      const store = createStudioStore();
+      store.getState().init({
+        designId: "d1",
+        productSlug: "cuadro-3-fotos",
+        canvasData: makePolaroidCanvas(3),
+        templates: [],
+      });
+      const onStageZoomState = vi.fn();
+      render(
+        <StudioCanvasGrid
+          store={store}
+          canvasBaseScale={0.5}
+          onSlotClick={() => {}}
+          // Zoom del CLIENTE (150% sobre la base): lo pide el control de pills.
+          stageZoomRaw={1.5}
+          onStageZoomState={onStageZoomState}
+          registerSlotStages={() => {}}
+        />,
+      );
+      return { onStageZoomState };
+    })();
     await waitFor(() =>
       expect(onStageZoomState).toHaveBeenCalledWith(
         expect.objectContaining({ zoom: 1.5, cap: expect.any(Number) }),

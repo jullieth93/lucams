@@ -86,10 +86,10 @@ function parsePayload(formData: FormData) {
     widthCm: getOptNum("widthCm"),
     heightCm: getOptNum("heightCm"),
     depthCm: getOptNum("depthCm"),
-    // Estudio por producto (2026-09-24): zoom inicial + columnas de la grilla.
-    // Vacío → null → en edición el service ELIMINA la key del
-    // personalizationSchema (vuelve al default del Estudio).
-    canvasInitialZoom: getOptNum("canvasInitialZoom"),
+    // Estudio por producto (2026-09-24 v2): tamaño base del lienzo + columnas
+    // forzadas de la grilla. Vacío → null → en edición el service ELIMINA la
+    // key del personalizationSchema (vuelve al default del Estudio).
+    canvasBaseScale: getOptNum("canvasBaseScale"),
     gridColsOverride: getOptNum("gridColsOverride"),
   };
 }

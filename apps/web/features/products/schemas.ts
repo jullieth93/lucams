@@ -119,11 +119,12 @@ export const ProductCreateSchema = z.object({
     .max(100, "Máximo 100 cm")
     .optional()
     .nullable(),
-  // Estudio de personalización POR PRODUCTO (owner 2026-09-24, tab Avanzado) —
-  // se persisten dentro de personalizationSchema Json (merge estilo
-  // physicalSpecs en updateProduct). Vacío (null) = default del Estudio;
-  // en edición, vaciar el campo ELIMINA la key (vuelve al default).
-  canvasInitialZoom: z
+  // Estudio de personalización POR PRODUCTO (owner 2026-09-24, v2 STG, tab
+  // Avanzado) — se persisten dentro de personalizationSchema Json (merge estilo
+  // physicalSpecs en updateProduct). canvasBaseScale = TAMAÑO BASE del lienzo
+  // (el "100%" que ve el cliente), NO su zoom inicial. Vacío (null) = default
+  // del Estudio; en edición, vaciar el campo ELIMINA la key (vuelve al default).
+  canvasBaseScale: z
     .number()
     .min(0.5, "Mínimo 0.5 (50%)")
     .max(2.5, "Máximo 2.5 (250%)")

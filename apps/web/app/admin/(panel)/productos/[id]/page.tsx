@@ -137,15 +137,13 @@ export default async function ProductoDetallePage({
       ? Math.min(...activeForPrice.map((v) => v.price ?? product.basePrice))
       : product.basePrice;
 
-  // Estudio por producto (2026-09-24): zoom inicial + columnas de grilla viven
-  // en personalizationSchema (JSON libre). Se parsea con el schema Zod en modo
-  // partial para leer solo las keys conocidas sin exigir photoSlots.
+  // Estudio por producto (2026-09-24 v2): tamaño base del lienzo + columnas de
+  // grilla viven en personalizationSchema (JSON libre). Se parsea con el schema
+  // Zod en modo partial para leer solo las keys conocidas sin exigir photoSlots.
   const studioConfig = PhotoProductConfigSchema.partial().safeParse(
     product.personalizationSchema ?? {},
   );
-  const canvasInitialZoom = studioConfig.success
-    ? (studioConfig.data.canvasInitialZoom ?? null)
-    : null;
+  const canvasBaseScale = studioConfig.success ? (studioConfig.data.canvasBaseScale ?? null) : null;
   const gridColsOverride = studioConfig.success
     ? (studioConfig.data.gridColsOverride ?? null)
     : null;
@@ -267,7 +265,7 @@ export default async function ProductoDetallePage({
                 widthCm: parsePhysicalSpecs(product.physicalSpecs).widthCm ?? null,
                 heightCm: parsePhysicalSpecs(product.physicalSpecs).heightCm ?? null,
                 depthCm: parsePhysicalSpecs(product.physicalSpecs).depthCm ?? null,
-                canvasInitialZoom,
+                canvasBaseScale,
                 gridColsOverride,
               }}
               action={updateProductAction}

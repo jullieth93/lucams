@@ -282,24 +282,29 @@ export function stepStageZoom(current: number, direction: 1 | -1, cap: number): 
 }
 
 /**
- * Zoom INICIAL del lienzo configurable por producto (owner 2026-09-24 — admin →
- * producto → Avanzado → `canvasInitialZoom` en el personalizationSchema): es el
- * "100%" con el que abre el canvas y el valor al que vuelve el botón de reset.
- * Clamp defensivo al rango del zoom de stage (el schema Zod ya valida, pero el
- * JSON del producto es libre). Default 1 = comportamiento de siempre.
+ * Tamaño BASE del lienzo configurable por producto (owner 2026-09-24, v2 tras
+ * prueba en STG — admin → producto → Avanzado → `canvasBaseScale` del
+ * personalizationSchema): multiplicador de escala del sizing del lienzo
+ * (1 = estándar, 0.5 = mitad de grande). El zoom del CLIENTE es relativo a
+ * esta base: su control siempre abre en 100% y su reset vuelve a 100%; la base
+ * la aplica el grid como factor de escala display-only (la exportación de
+ * producción es inmune). Clamp defensivo al rango del zoom de stage (el schema
+ * Zod ya valida, pero el JSON del producto es libre). Default 1.
  */
-export function resolveInitialStageZoom(configValue: number | null | undefined): number {
+export function resolveCanvasBaseScale(configValue: number | null | undefined): number {
   if (configValue == null || !Number.isFinite(configValue)) return 1;
   return Math.max(STAGE_ZOOM_MIN, Math.min(STAGE_ZOOM_MAX, configValue));
 }
 
 /**
- * Override de columnas de la grilla por producto (owner 2026-09-24 — admin →
- * producto → Avanzado → `gridColsOverride`): reemplaza las columnas del
- * template; las filas se derivan (ceil slots/cols). Clamp [1..6] alineado con
- * el schema Zod. El grid lo capea además contra `resolveMaxCols`, así que en
- * móvil (<BP_MOBILE) el override NO aplica — móvil es siempre 1 columna
- * (decisión del owner). null = grilla automática del template.
+ * Override de columnas de la grilla por producto (owner 2026-09-24, v2 tras
+ * prueba en STG — admin → producto → Avanzado → `gridColsOverride`): FUERZA
+ * las columnas (clamp [1..6]) SIN capear contra resolveMaxCols ni contra las
+ * columnas del template; las filas se derivan (ceil slots/cols). Guardas en el
+ * grid: móvil (<BP_MOBILE) sigue SIEMPRE en 1 columna (decisión del owner),
+ * nunca más columnas que slots/unidades disponibles, y fitColsToFloor puede
+ * reducir si los pisos no caben. En modo agrupado (separadores) cuenta
+ * tarjetas de UNIDAD por fila. null = grilla automática del template.
  */
 export function clampGridColsOverride(override: number | null | undefined): number | null {
   if (override == null || !Number.isFinite(override)) return null;

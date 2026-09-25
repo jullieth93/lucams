@@ -64,6 +64,7 @@ import {
   clampGridColsOverride,
   fitColsToFloor,
   hasEditableTextLayers,
+  resolveCanvasBaseScale,
   resolveMaxCols,
   resolveMinSlotSize,
   slotHeightCapByCount,
@@ -171,14 +172,22 @@ type StudioCanvasGridProps = {
   stageZoomRaw: number;
   onStageZoomState: (state: { zoom: number; cap: number }) => void;
   /**
-   * Override de columnas por PRODUCTO (owner 2026-09-24 — admin → producto →
-   * Avanzado, `gridColsOverride` del personalizationSchema): reemplaza las
-   * columnas del template; las filas se derivan (ceil slots/cols). Se clampa
-   * [1..6] y queda capeado por resolveMaxCols, así que en móvil (<640px) NO
-   * aplica — móvil es siempre 1 columna (decisión del owner). null/undefined =
-   * grilla automática del template.
+   * Override de columnas por PRODUCTO (owner 2026-09-24, v2 tras prueba STG —
+   * admin → producto → Avanzado, `gridColsOverride` del personalizationSchema):
+   * FUERZA las columnas (clamp [1..6], sin capear contra el ancho objetivo ni
+   * el template); las filas se derivan (ceil slots/cols). Guardas: móvil
+   * (<640px) siempre 1 columna; nunca más columnas que slots/unidades;
+   * fitColsToFloor puede reducir. En modo agrupado (separadores) cuenta
+   * tarjetas de UNIDAD por fila. null/undefined = grilla automática.
    */
   gridColsOverride?: number | null;
+  /**
+   * Tamaño BASE del lienzo por PRODUCTO (mismo origen, `canvasBaseScale`):
+   * multiplicador de escala del sizing (1 = estándar, 0.5 = mitad). El zoom
+   * del cliente es RELATIVO a esta base — su control siempre abre en 100% y
+   * su reset vuelve a 100%. Display-only (la exportación es inmune).
+   */
+  canvasBaseScale?: number | null;
   /** Ola 8 — Abre el modal unificado de edición para el slot indicado (desde clic en slot lleno). */
   openEditSlot?: { slotIndex: number; tab: "photo" | "text" } | null;
   /** Ola 8 — Callback cuando el modal unificado se cierra. */
@@ -217,6 +226,7 @@ export function StudioCanvasGrid({
   stageZoomRaw,
   onStageZoomState,
   gridColsOverride = null,
+  canvasBaseScale = null,
   openEditSlot,
   onEditClose,
   registerSlotStages,
@@ -399,6 +409,14 @@ export function StudioCanvasGrid({
       ? Math.floor((containerWidth - UNIT_SECTION_GAP * (sectionsPerRow - 1)) / sectionsPerRow)
       : containerWidth;
 
+  // Override de columnas por producto (owner 2026-09-24, v2 tras prueba STG —
+  // admin → producto → Avanzado): FUERZA las columnas (clamp [1..6]). Guardas:
+  // (a) móvil (<BP_MOBILE) sigue SIEMPRE en 1 columna; (b) nunca más columnas
+  // que slots/unidades disponibles; (c) fitColsToFloor puede reducir si los
+  // pisos de tamaño no caben. En modo agrupado (separadores) cuenta TARJETAS
+  // DE UNIDAD por fila (ver desiredUnitCols abajo). null = grilla automática.
+  const colsOverride = clampGridColsOverride(gridColsOverride);
+
   const layout = useMemo(() => {
     if (!canvasData) return null;
     // Ola 34 (owner 2026-09-18) — cap de cols: móvil (<640) SIEMPRE 1 columna
@@ -413,14 +431,15 @@ export function StudioCanvasGrid({
       slotCount: layoutSlotCount,
     });
 
-    // Override de columnas por producto (owner 2026-09-24 — admin): reemplaza
-    // las columnas del template, clamp [1..6] vía clampGridColsOverride. Queda
-    // capeado por maxCols (resolveMaxCols) → en móvil (<640px) el override NO
-    // aplica (móvil es SIEMPRE 1 columna, decisión del owner) y la guarda de
-    // piso (fitColsToFloor, abajo) puede reducirlo si los pisos no caben. Las
-    // filas se derivan del override (ceil slots/cols), no hay override separado.
-    const colsOverride = clampGridColsOverride(gridColsOverride);
-    let cols = Math.min(maxCols, colsOverride ?? canvasData.gridLayout.cols);
+    // Con override (v2 STG): las columnas SON el override — sin capear contra
+    // maxCols ni contra gridLayout.cols del template (el admin manda). Solo se
+    // ignora en móvil (<BP_MOBILE → 1 columna) y se capea a la cantidad de
+    // slots disponibles (no columnas vacías). Las filas se derivan del
+    // override (ceil slots/cols), no hay override separado.
+    const overrideApplies = colsOverride != null && containerWidth >= BP_MOBILE;
+    let cols = overrideApplies
+      ? Math.min(colsOverride, Math.max(1, layoutSlotCount))
+      : Math.min(maxCols, canvasData.gridLayout.cols);
     // Guarda de PISO vs ANCHO (owner 2026-09-18): el piso de displaySize por
     // slot NUNCA puede desbordar el contenedor — si `minSize*cols + gaps` no
     // cabe en el ancho disponible, se reducen columnas. Causa del overflow
@@ -433,7 +452,9 @@ export function StudioCanvasGrid({
     const floorW = multiUnitSections ? sectionAvailableW : containerWidth - UNIT_CARD_PAD_X;
     // PACKS — columnas de la SUB-grilla de cada tarjeta: el preset de la unidad
     // (pack de 6 → 3×2) capeado al viewport, siempre divisor del pack para que
-    // las filas de cada tarjeta queden completas.
+    // las filas de cada tarjeta queden completas. El override del admin fluye
+    // acá pero el preset y la divisibilidad siguen mandando (un pack de 6 no
+    // admite 4 columnas sin filas incompletas).
     if (packGroups) {
       const preset = generateGridLayout(packSlots, canvasData.unitTemplate.stage);
       cols = Math.max(1, Math.min(cols, preset.cols));
@@ -470,7 +491,7 @@ export function StudioCanvasGrid({
     groupedForUnits,
     multiUnitSections,
     sectionAvailableW,
-    gridColsOverride,
+    colsOverride,
   ]);
 
   // A2.6 — Crossfade visual al cambiar plantilla. Detectamos cambio en
@@ -559,7 +580,11 @@ export function StudioCanvasGrid({
   // Ola 19 — separadores: si solo hay UNA unidad física, no la obliguemos a compartir
   // el ancho con una columna fantasma. La tarjeta debe usar el alto disponible para
   // verse proporcional al producto real (vertical estrecho).
-  const desiredUnitCols = containerWidth < BP_MOBILE || stripAspect >= 3 ? 1 : 2;
+  // Override del admin (v2 STG): en desktop cuenta TARJETAS DE UNIDAD por fila
+  // (lo que el owner ve: "3 separadores por fila"). Móvil (<640) sigue en 1 y
+  // las tiras muy anchas (stripAspect ≥ 3) también — protección de alto, una
+  // tira 6:1 por fila ya llena el marco. unitCols capea a physicalUnits (b).
+  const desiredUnitCols = containerWidth < BP_MOBILE || stripAspect >= 3 ? 1 : (colsOverride ?? 2);
   const unitCols = grouped ? Math.min(physicalUnits, desiredUnitCols) : 0;
   // Columnas VISUALES de slots para la navegación por teclado (flechas).
   const navCols = grouped ? unitCols * 2 : layout.cols;
@@ -677,14 +702,22 @@ export function StudioCanvasGrid({
         (multiUnitSections ? 0 : UNIT_CARD_PAD_X);
   const stageZoomCap = computeStageZoomCap();
   const stageZoom = Math.max(STAGE_ZOOM_MIN, Math.min(stageZoomRaw, stageZoomCap));
-  const zoomedSlotW = Math.round(slotDisplaySize * stageZoom);
-  const zoomedSlotH = Math.round(slotHeight * stageZoom);
+  // Tamaño BASE por producto (owner 2026-09-24, v2 tras prueba STG — admin →
+  // Avanzado, canvasBaseScale): multiplica el sizing del lienzo IGUAL que el
+  // zoom del cliente, pero el control del cliente sigue mostrando `stageZoom`
+  // (su 100% = este tamaño base; su reset vuelve a 1). Display-only: la
+  // exportación calcula el pixelRatio RELATIVO al tamaño lógico del stage, así
+  // que el PNG de imprenta es inmune a la base igual que al zoom.
+  const baseScale = resolveCanvasBaseScale(canvasBaseScale);
+  const displayScale = baseScale * stageZoom;
+  const zoomedSlotW = Math.round(slotDisplaySize * displayScale);
+  const zoomedSlotH = Math.round(slotHeight * displayScale);
 
   // Ola 33 (owner 2026-09-18) — con zoom > 100% el contenido puede superar el
   // ancho del marco: el WRAPPER del grid scrollea horizontal (overflow-x-auto
   // solo cuando hace falta, para no clipear anillos/sombras a zoom 1) y la
   // PÁGINA jamás desborda (gate scrollWidth === clientWidth sigue en 0).
-  const needsStageHScroll = contentWidthBase * stageZoom > containerWidth + 1;
+  const needsStageHScroll = contentWidthBase * displayScale > containerWidth + 1;
 
   // Ola 4 — ancho EXPLÍCITO del grid (celdas + gaps): si el cap de alto achicó las
   // celdas, el grid no se estira a lo ancho — queda centrado en el marco (margin auto).
