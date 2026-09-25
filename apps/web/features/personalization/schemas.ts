@@ -406,3 +406,27 @@ export function parsePhotoProductConfig(raw: unknown): PhotoProductConfig {
   if (parsed.success) return parsed.data;
   return { photoSlots: 1 };
 }
+
+/**
+ * Lectura DEFENSIVA por-key de los overrides del lienzo (2026-09-25 — fix del
+ * admin, owner: "configuré 0.5 y al re-entrar el campo sale vacío"). Leerlos
+ * con un safeParse del schema completo (incluso `.partial()`) fallaba ENTERO
+ * si CUALQUIER otra key del JSON era inválida según el schema — caso real:
+ * los imanes de vidrio del seed traen `finish: "glass"`, fuera del enum
+ * ["matte","glossy","soft-touch"] → el parse completo falla y los campos se
+ * leen como vacíos AUNQUE el valor sí quedó guardado en BD. Acá cada key se
+ * valida por separado contra su propio field schema: ausente o inválida →
+ * null (default del Estudio), sin arrastrar a la otra.
+ */
+export function parseStudioCanvasOverrides(raw: unknown): {
+  canvasBaseScale: number | null;
+  gridColsOverride: number | null;
+} {
+  const obj = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const base = PhotoProductConfigSchema.shape.canvasBaseScale.safeParse(obj.canvasBaseScale);
+  const cols = PhotoProductConfigSchema.shape.gridColsOverride.safeParse(obj.gridColsOverride);
+  return {
+    canvasBaseScale: base.success ? (base.data ?? null) : null,
+    gridColsOverride: cols.success ? (cols.data ?? null) : null,
+  };
+}

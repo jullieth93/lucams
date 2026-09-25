@@ -139,6 +139,13 @@ type StudioCanvasGridProps = {
    */
   noFold?: boolean;
   /**
+   * Cara B OPCIONAL (backOptional, separadores 2026-09-25): el placeholder del
+   * slot vacío de una Cara B (slot impar, convención lib/faces.ts) avisa que
+   * puede quedar sin diseñar (badge "Opcional"). El editor solo lo pasa true
+   * para productos de 2 caras con backOptional en el schema.
+   */
+  backOptional?: boolean;
+  /**
    * Modelo multi-unidad (owner 2026-09-09) — sustantivo de la unidad para los
    * headers de sección y el pager ("Tira", "Calendario", "Separador", "Pieza").
    * Lo deriva el editor del tipo de producto (textos CMS estudio.unidades.*).
@@ -219,6 +226,7 @@ export function StudioCanvasGrid({
   frameFullBleed = false,
   facesPerUnit = 1,
   noFold = false,
+  backOptional = false,
   unitNoun,
   unitGroupSlots = null,
   interactiveSlots = true,
@@ -808,6 +816,9 @@ export function StudioCanvasGrid({
                 : null
             }
             slotNoun={slotNoun}
+            // Cara B opcional (backOptional): placeholder del slot vacío con
+            // badge "Opcional" (solo caras B = slots impares de productos 2 caras).
+            slotOptional={backOptional && slot.slotIndex % 2 === 1}
             sizeCm={sizeCm}
             shape={shape}
             finish={finish}
@@ -861,6 +872,7 @@ export function StudioCanvasGrid({
             displayHeight={zoomedSlotH}
             shape={shape}
             label={slotLabels?.[slot.slotIndex]}
+            optional={backOptional && slot.slotIndex % 2 === 1}
             onClick={() => {
               // Montar de inmediato + seleccionar + abrir el picker (igual que un slot real).
               setMountedSlots((prev) => new Set(prev).add(slot.slotIndex));
@@ -1441,6 +1453,7 @@ function LazySlotPlaceholder({
   displayHeight,
   shape,
   label,
+  optional = false,
   onClick,
 }: {
   assetUrl?: string | null;
@@ -1448,6 +1461,8 @@ function LazySlotPlaceholder({
   displayHeight: number;
   shape?: "rectangle" | "circle" | "heart" | "custom";
   label?: string;
+  /** Cara B opcional (backOptional): el placeholder avisa que puede quedar vacío. */
+  optional?: boolean;
   onClick: () => void;
 }) {
   const texts = useStudioTexts();
@@ -1482,6 +1497,11 @@ function LazySlotPlaceholder({
         <span className="text-brand-muted absolute inset-0 flex flex-col items-center justify-center gap-1 text-center text-xs font-semibold">
           {label ? <span className="text-brand-purple-dark">{label}</span> : null}
           <span>{texts.lienzo.slotTocaElegir}</span>
+          {optional && (
+            <span className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-bold">
+              {texts.lienzo.slotCaraBOpcional}
+            </span>
+          )}
         </span>
       )}
     </button>

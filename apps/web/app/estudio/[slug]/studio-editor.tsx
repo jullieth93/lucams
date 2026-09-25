@@ -1010,11 +1010,18 @@ export function StudioEditor({
         slotStagesRef.current,
         productConfig.shape,
       );
-      if (isBookmark && !productConfig.noFold) {
+      if (
+        isBookmark &&
+        !productConfig.noFold &&
+        state.canvasData.unitTemplate.stage.width > state.canvasData.unitTemplate.stage.height
+      ) {
         // Ola 6 — el separador se dobla de PIE sobre el borde del libro: la textura
         // horizontal del Estudio se rota 90° para que el diseño lea derecho en la cara 3D.
         // Ola 17 — el marcapáginas ALARGADO plano (noFold) ya viene vertical del Estudio
         // (stage 400×1500/400×1200): no se rota, se acuesta tal cual sobre la hoja.
+        // 2026-09-25 — la rotación solo aplica a stages HORIZONTALES (legacy Ola 6);
+        // los stages de separadores actuales son verticales (2×6 → 200×600; 4×4.2 →
+        // 400×420) y la vista 3D ya es robusta a ambos casos → no se rota nada.
         textures = await rotateTextures90(textures);
       }
       setBook3D(textures);
@@ -1057,7 +1064,15 @@ export function StudioEditor({
       // Se hace ANTES de combinar tiras photobooth, para no mezclar la lógica de imanes.
       // Ola 17 — el ALARGADO plano (noFold) ya viene vertical del Estudio: no se rota
       // (misma excepción que el modal, :950).
-      if (isBookmark && !productConfig.noFold) textures = await rotateTextures90(textures);
+      // 2026-09-25 — solo si el stage es HORIZONTAL (legacy Ola 6): los stages de
+      // separadores actuales son verticales/cuadrados y la vista 3D ya maneja ambos
+      // casos → con stage vertical no se rota nada (trabajo innecesario).
+      if (
+        isBookmark &&
+        !productConfig.noFold &&
+        state.canvasData.unitTemplate.stage.width > state.canvasData.unitTemplate.stage.height
+      )
+        textures = await rotateTextures90(textures);
       // Ola 6 — Tira magnética photobooth: la pieza física es continua (1 col, gap 0).
       // Combinamos los slots de cada TIRA (unitSlots) para que la nevera 3D muestre
       // tiras enteras. Multi-unidad (2026-09-09): una textura-tira POR UNIDAD — antes
@@ -1708,6 +1723,9 @@ export function StudioEditor({
             facesPerUnit={facesPerUnit}
             // Alargados planos (noFold): sin línea de doblez en la tarjeta-unidad.
             noFold={productConfig.noFold === true}
+            // Cara B opcional (separadores backOptional): el placeholder del slot
+            // vacío de Cara B avisa que puede quedar sin diseñar.
+            backOptional={backOptional}
             interactiveSlots={!isTouch}
             onSlotClick={handleSlotClick}
             stageZoomRaw={stageZoomRaw}

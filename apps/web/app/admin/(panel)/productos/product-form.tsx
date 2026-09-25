@@ -637,19 +637,25 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
          * "100%" — su control de zoom es relativo a esta base) y columnas
          * FORZADAS de la grilla. Solo aplica a productos personalizables; al
          * apagar "Personalizable" los valores viajan en inputs ocultos para no
-         * perderse. Vaciar un campo = volver al default del Estudio (el service
-         * elimina la key del personalizationSchema).
+         * perderse.
+         * 2026-09-25 (owner): los inputs muestran SIEMPRE el valor vigente —
+         * tamaño base muestra el override o 1 (el estándar); columnas muestra
+         * el override o vacío="Automático" (el automático es RESPONSIVO: 1 en
+         * celular, 2-3 en computador según el ancho — no hay un único número
+         * calculable desde el admin). Reset: vaciar el campo (null → el service
+         * elimina la key del personalizationSchema); en tamaño base, poner 1
+         * equivale al estándar.
          */}
         {personalizable ? (
           <SectionCard
             title="Estudio de personalización"
-            description="Ajustes finos del lienzo del Estudio para ESTE producto. Déjalos vacíos para el comportamiento estándar."
+            description="Ajustes finos del lienzo del Estudio para ESTE producto. El valor que ves es el que está vigente hoy."
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field
                 id="canvasBaseScale"
                 label="Tamaño base del lienzo"
-                hint="1 = tamaño estándar; 0.5 = se ve a la mitad de grande; 2 = el doble. Rango 0.5 – 2.5. El cliente siempre verá este tamaño como su 100% y su control de zoom parte de ahí."
+                hint="1 = tamaño estándar; 0.5 = se ve a la mitad de grande; 2 = el doble. Rango 0.5 – 2.5. El cliente siempre verá este tamaño como su 100% y su control de zoom parte de ahí. Para volver al estándar, pon 1 (o vacía el campo)."
                 error={state?.fieldErrors?.canvasBaseScale?.[0]}
               >
                 <Input
@@ -659,7 +665,10 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
                   min={0.5}
                   max={2.5}
                   step={0.25}
-                  defaultValue={initialProduct?.canvasBaseScale ?? ""}
+                  // Siempre muestra el valor VIGENTE (owner 2026-09-25): el
+                  // override guardado o 1 (el estándar). Guardar con 1 escribe
+                  // la key explícita — equivale al default del Estudio.
+                  defaultValue={initialProduct?.canvasBaseScale ?? 1}
                   placeholder="1"
                   disabled={pending}
                 />
@@ -667,7 +676,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
               <Field
                 id="gridColsOverride"
                 label="Columnas de la grilla"
-                hint="Fuerza N columnas (1 – 6) en desktop/tablet, aunque el cálculo automático dé menos. Las filas se calculan solas. En celular siempre es 1 columna, este ajuste no aplica ahí."
+                hint="Fuerza N columnas (1 – 6) en computador/tablet, aunque el cálculo automático dé menos. Vacío = automático (2 – 3 en computador según el ancho; en celular siempre 1). Las filas se calculan solas."
                 error={state?.fieldErrors?.gridColsOverride?.[0]}
               >
                 <Input
@@ -677,6 +686,9 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
                   min={1}
                   max={6}
                   step={1}
+                  // Con override guardado se muestra; sin override queda vacío
+                  // ("Automático"): el valor automático es responsivo y no es
+                  // un único número calculable desde el admin (owner 2026-09-25).
                   defaultValue={initialProduct?.gridColsOverride ?? ""}
                   placeholder="Automático"
                   disabled={pending}

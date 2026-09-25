@@ -29,7 +29,7 @@ import { getProductById, listCategoriesForSelect } from "@/features/products/ser
 import { getStorefrontVisibility } from "@/features/products/storefront-visibility";
 import { StorefrontVisibilityChip } from "@/components/admin/storefront-visibility-chip";
 import { parsePhysicalSpecs } from "@/features/products/shipping-schemas";
-import { PhotoProductConfigSchema } from "@/features/personalization/schemas";
+import { parseStudioCanvasOverrides } from "@/features/personalization/schemas";
 import { getStockEmoji, summarizeStock } from "@/features/products/stock-constants";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
@@ -138,15 +138,13 @@ export default async function ProductoDetallePage({
       : product.basePrice;
 
   // Estudio por producto (2026-09-24 v2): tamaño base del lienzo + columnas de
-  // grilla viven en personalizationSchema (JSON libre). Se parsea con el schema
-  // Zod en modo partial para leer solo las keys conocidas sin exigir photoSlots.
-  const studioConfig = PhotoProductConfigSchema.partial().safeParse(
-    product.personalizationSchema ?? {},
+  // grilla viven en personalizationSchema (JSON libre). Lectura DEFENSIVA
+  // por-key (2026-09-25 — fix: el safeParse del schema completo fallaba entero
+  // si otra key era inválida, ej. finish:"glass", y los campos se veían vacíos
+  // aunque el valor sí estaba guardado).
+  const { canvasBaseScale, gridColsOverride } = parseStudioCanvasOverrides(
+    product.personalizationSchema,
   );
-  const canvasBaseScale = studioConfig.success ? (studioConfig.data.canvasBaseScale ?? null) : null;
-  const gridColsOverride = studioConfig.success
-    ? (studioConfig.data.gridColsOverride ?? null)
-    : null;
 
   return (
     <AdminPage>

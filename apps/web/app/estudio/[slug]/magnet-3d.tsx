@@ -70,6 +70,15 @@
  *    extra (ola 18) que pintaba la cara B en la posición FRONTAL.
  *  - `backOptional` en FoldedStripMesh: sin cara B, la trasera se muestra en BLANCO papel
  *    (superficie imprimible vacía — QA 2026-09-22), no duplica A.
+ *
+ * 2026-09-25 (bug STG — fotos ROTADAS 90° en el libro 3D): los stages de los separadores
+ * doblados ahora son VERTICALES (2×6 → 200×600; 4×4.2 → 400×420) pero el editor sigue
+ * aplicando `rotateTextures90` (ola 6 — suposición legacy de lienzo horizontal) antes de
+ * entregar las texturas: llegaban HORIZONTALES a una cara física vertical y la foto se veía
+ * de lado (con recorte cover severo). Fix acá: `foldedFaceRegion` detecta la orientación
+ * cruzada textura/cara y activa `swapAxes` en la región → `textureRegionTransform` derota por
+ * UV (texture.rotation = +π/2). Si el editor deja de rotar, la orientación coincide y no se
+ * derota — ambos mundos cubiertos.
  */
 
 import { useEffect, useMemo } from "react";
@@ -103,6 +112,13 @@ export function parseSizeCm(sizeCm: string | undefined): { wCm: number; hCm: num
  * el horizontal (la cara trasera del separador doblado cuelga rotada ~180° sobre el pliegue:
  * flipV+flipU = rotación de 180° de la textura → el diseño B se lee DERECHO desde atrás, no
  * espejado ni cabeza abajo).
+ *
+ * `swapAxes` (2026-09-25): la textura llegó ROTADA 90° respecto a la cara física — el editor
+ * aún aplica `rotateTextures90` (ola 6, pensada para los stages horizontales legacy 600×200)
+ * sobre stages que ahora son VERTICALES (200×600 / 400×420). El muestreo cruza los ejes UV
+ * (texture.rotation = +π/2) para que la cara se vea EXACTAMENTE como el cliente la diseñó en
+ * el canvas. Si el editor deja de rotar, la textura llega con la orientación de la cara y
+ * `swapAxes` no se activa (ver foldedFaceRegion) — ambos mundos quedan cubiertos.
  */
 export type TextureRegion = {
   x: number;
@@ -111,13 +127,14 @@ export type TextureRegion = {
   h: number;
   flipV?: boolean;
   flipU?: boolean;
+  swapAxes?: boolean;
 };
 
 const FULL_REGION: TextureRegion = { x: 0, y: 0, w: 1, h: 1 };
 
 /**
- * Transform de la textura clonada (repeat/offset) para mapear `region` sobre la tapa del
- * extruido. Los UV de la tapa del ExtrudeGeometry son las coordenadas CRUDAS del shape
+ * Transform de la textura clonada (repeat/offset/rotation) para mapear `region` sobre la tapa
+ * del extruido. Los UV de la tapa del ExtrudeGeometry son las coordenadas CRUDAS del shape
  * (x ∈ [−w/2, w/2], y ∈ [−h/2, h/2]), así: u_img = x·repeat.x + offset.x, v_img = y·repeat.y +
  * offset.y. Con v medido desde ABAJO en three y `ry` desde ARRIBA en la imagen:
  *   sin flip:  u_img = rx + rw/2 + x·rw/w,   v_img = (1 − ry − rh) + (y/h + 0.5)·rh
@@ -126,16 +143,30 @@ const FULL_REGION: TextureRegion = { x: 0, y: 0, w: 1, h: 1 };
  * (Ola 4 — bug de la cara B NEGRA: el offset viejo sumaba +rh con flipV → v ≥ 1 fuera de rango;
  *  con ClampToEdgeWrapping toda la cara muestreaba la fila del borde superior del lienzo —
  *  transparente (0,0,0,0 → negro) u oscura — estirada.)
+ *
+ * Con `swapAxes` se devuelve rotation = +π/2 (centro UV (0,0) = centro del shape): la matriz UV
+ * de three queda u_img = repeat.x·y + offset.x, v_img = −repeat.y·x + offset.y — los ejes se
+ * cruzan y la región (calculada contra el aspecto DEROTADO en foldedFaceRegion) se muestrea
+ * derecha. flipV niega repeat.x y flipU lleva repeat.y a positivo (misma regla de "negar el
+ * repeat", con los ejes ya cruzados); los offsets no cambian.
  */
 export function textureRegionTransform(
   region: TextureRegion,
   width: number,
   height: number,
-): { repeat: [number, number]; offset: [number, number] } {
-  const { x: rx, y: ry, w: rw, h: rh, flipV, flipU } = region;
+): { repeat: [number, number]; offset: [number, number]; rotation: number } {
+  const { x: rx, y: ry, w: rw, h: rh, flipV, flipU, swapAxes } = region;
+  if (swapAxes) {
+    return {
+      repeat: [(flipV ? -rh : rh) / height, (flipU ? rw : -rw) / width],
+      offset: [1 - ry - rh / 2, rx + rw / 2],
+      rotation: Math.PI / 2,
+    };
+  }
   return {
     repeat: [(flipU ? -rw : rw) / width, (flipV ? -rh : rh) / height],
     offset: [rx + rw / 2, 1 - ry - rh / 2],
+    rotation: 0,
   };
 }
 
@@ -153,6 +184,32 @@ export function coverRegion(srcAspect: number, dstAspect: number): TextureRegion
   }
   const w = dstAspect / srcAspect;
   return { x: (1 - w) / 2, y: 0, w, h: 1 };
+}
+
+/**
+ * Región de textura para una cara del separador doblado (FoldedStripMesh).
+ *
+ * 2026-09-25 — bug STG "fotos ROTADAS 90° en el 3D": los stages de los separadores ahora son
+ * VERTICALES (2×6 → 200×600; 4×4.2 → 400×420) pero el editor sigue aplicando `rotateTextures90`
+ * (ola 6 — pensada para el lienzo horizontal legacy 600×200) antes de entregar las texturas,
+ * así que llegan HORIZONTALES (600×200 / 420×400) a una cara física vertical (ancho = lado
+ * corto, largo = lado largo). Si la orientación de la textura y la de la cara se cruzan
+ * (una horizontal y la otra vertical), la región cover se calcula contra el aspecto DEROTADO
+ * y se marca `swapAxes` para muestrear con los ejes UV cruzados — la cara se ve exactamente
+ * como el cliente la diseñó en el canvas. Cuando el editor deje de rotar, la textura llega
+ * vertical (orientación coincidente) y no se activa nada: ambos mundos quedan cubiertos.
+ */
+export function foldedFaceRegion(
+  wRatio: number,
+  hRatio: number,
+  stripW: number,
+  hang: number,
+): TextureRegion {
+  const srcAspect = wRatio / hRatio;
+  const dstAspect = stripW / hang;
+  const swapAxes = (srcAspect - 1) * (dstAspect - 1) < 0;
+  const region = coverRegion(swapAxes ? 1 / srcAspect : srcAspect, dstAspect);
+  return swapAxes ? { ...region, swapAxes: true } : region;
 }
 
 /** Tamaño físico por defecto cuando falta el dato de cm (imán cuadrado típico de la tienda). */
@@ -342,7 +399,7 @@ export function ExtrudedMagnetMesh({
   blankColor?: string;
   position?: [number, number, number];
 }) {
-  const { x: rx, y: ry, w: rw, h: rh, flipV, flipU } = textureRegion ?? FULL_REGION;
+  const { x: rx, y: ry, w: rw, h: rh, flipV, flipU, swapAxes } = textureRegion ?? FULL_REGION;
   // Clon por pieza: UV de la tapa = coords del shape → repeat/offset derivados de la región
   // (textureRegionTransform, puro y testeado: el muestreo queda siempre dentro de la región,
   // también con flips — ola 4, bug de la cara B negra).
@@ -353,16 +410,19 @@ export function ExtrudedMagnetMesh({
     const t = texture.clone();
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 8;
-    const { repeat, offset } = textureRegionTransform(
-      { x: rx, y: ry, w: rw, h: rh, flipV, flipU },
+    const { repeat, offset, rotation } = textureRegionTransform(
+      { x: rx, y: ry, w: rw, h: rh, flipV, flipU, swapAxes },
       width,
       height,
     );
     t.repeat.set(repeat[0], repeat[1]);
     t.offset.set(offset[0], offset[1]);
+    // swapAxes (2026-09-25): derrotar la textura que el editor rotó 90° de más. El centro UV
+    // queda en (0,0) = centro del shape (los UV de la tapa son coords crudas del shape).
+    t.rotation = rotation;
     t.needsUpdate = true;
     return t;
-  }, [texture, width, height, rx, ry, rw, rh, flipV, flipU]);
+  }, [texture, width, height, rx, ry, rw, rh, flipV, flipU, swapAxes]);
   useEffect(() => () => tex?.dispose(), [tex]);
 
   // Ola 18 — el extruido usa SOLO material-1 (canto) en todas sus caras. Las tapas se
@@ -412,16 +472,17 @@ export function ExtrudedMagnetMesh({
     const t = backTexture.clone();
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 8;
-    const { repeat, offset } = textureRegionTransform(
-      { x: rx, y: ry, w: rw, h: rh, flipV, flipU },
+    const { repeat, offset, rotation } = textureRegionTransform(
+      { x: rx, y: ry, w: rw, h: rh, flipV, flipU, swapAxes },
       width,
       height,
     );
     t.repeat.set(repeat[0], repeat[1]);
     t.offset.set(offset[0], offset[1]);
+    t.rotation = rotation;
     t.needsUpdate = true;
     return t;
-  }, [backTexture, width, height, rx, ry, rw, rh, flipV, flipU]);
+  }, [backTexture, width, height, rx, ry, rw, rh, flipV, flipU, swapAxes]);
   useEffect(() => () => backTex?.dispose(), [backTex]);
 
   const frontZ = depth / 2 + depth * 0.2 + 0.0012;
@@ -554,6 +615,11 @@ const CARD_THICK = 0.012;
  * Con `backOptional` y cara B faltante, la TRASERA se muestra en BLANCO papel (BLANK_BACK_COLOR,
  * superficie imprimible vacía — QA 2026-09-22) en vez de duplicar la cara A; el canto y la tapa
  * interna siguen negros (material del imán).
+ *
+ * 2026-09-25 (fotos rotadas 90° en STG): la región de cada cara sale de `foldedFaceRegion` —
+ * si la textura llega con la orientación cruzada respecto a la cara física (el editor aún rota
+ * 90° los stages ya verticales), se derota por UV (swapAxes) y la cara se ve EXACTAMENTE como
+ * en el canvas del cliente.
  */
 export function FoldedStripMesh({
   dataUrl,
@@ -596,7 +662,7 @@ export function FoldedStripMesh({
   position?: [number, number, number];
 }) {
   const { delta, hang, crestArc } = foldedStripMetrics(stripL, rFold, foldAngle);
-  const region = coverRegion(wRatio / hRatio, stripW / hang);
+  const region = foldedFaceRegion(wRatio, hRatio, stripW, hang);
   const blankBack = backOptional && !backDataUrl;
 
   return (

@@ -15,6 +15,7 @@ import {
   UploadAssetMetadataSchema,
   PhotoProductConfigSchema,
   parsePhotoProductConfig,
+  parseStudioCanvasOverrides,
   calendarFontOrDefault,
 } from "./schemas";
 
@@ -454,5 +455,66 @@ describe("FinalizeDesignSchema — cap del tamaño TOTAL de producción", () => 
       productionDataUrls: [png(1024), png(1024)],
     });
     expect(result.success).toBe(true);
+  });
+});
+
+/*
+ * parseStudioCanvasOverrides (2026-09-25 — fix admin, owner STG): lectura
+ * DEFENSIVA por-key de canvasBaseScale/gridColsOverride para el form de
+ * producto. Bug que blinda: leerlos con PhotoProductConfigSchema.partial()
+ * .safeParse() fallaba ENTERO si cualquier OTRA key del JSON era inválida
+ * (caso real del seed: finish:"glass" fuera del enum) → el form mostraba los
+ * campos vacíos aunque el valor sí estaba guardado en BD.
+ */
+describe("parseStudioCanvasOverrides — lectura defensiva por-key (fix admin 2026-09-25)", () => {
+  it("lee ambos overrides guardados", () => {
+    expect(
+      parseStudioCanvasOverrides({ photoSlots: 6, canvasBaseScale: 0.5, gridColsOverride: 3 }),
+    ).toEqual({ canvasBaseScale: 0.5, gridColsOverride: 3 });
+  });
+
+  it("sin overrides → null/null (defaults del Estudio); tolera null y no-objetos", () => {
+    expect(parseStudioCanvasOverrides({ photoSlots: 6 })).toEqual({
+      canvasBaseScale: null,
+      gridColsOverride: null,
+    });
+    expect(parseStudioCanvasOverrides(null)).toEqual({
+      canvasBaseScale: null,
+      gridColsOverride: null,
+    });
+    expect(parseStudioCanvasOverrides("no-objeto")).toEqual({
+      canvasBaseScale: null,
+      gridColsOverride: null,
+    });
+  });
+
+  it("REGRESIÓN: otra key inválida (finish:'glass' del seed) NO oculta los overrides guardados", () => {
+    // Con el safeParse del schema completo esto fallaba entero → campos vacíos.
+    const schemaConGlass = {
+      photoSlots: 6,
+      shape: "circle",
+      finish: "glass", // fuera del enum ["matte","glossy","soft-touch"]
+      sizeCm: "3",
+      canvasBaseScale: 0.75,
+      gridColsOverride: 2,
+    };
+    // El parse completo sigue fallando (contrato del schema)…
+    expect(PhotoProductConfigSchema.safeParse(schemaConGlass).success).toBe(false);
+    // …pero la lectura por-key recupera los valores.
+    expect(parseStudioCanvasOverrides(schemaConGlass)).toEqual({
+      canvasBaseScale: 0.75,
+      gridColsOverride: 2,
+    });
+  });
+
+  it("un override inválido → null para ESA key, sin arrastrar la otra", () => {
+    expect(parseStudioCanvasOverrides({ canvasBaseScale: 99, gridColsOverride: 4 })).toEqual({
+      canvasBaseScale: null, // fuera de [0.5, 2.5]
+      gridColsOverride: 4,
+    });
+    expect(parseStudioCanvasOverrides({ canvasBaseScale: 1.5, gridColsOverride: 0 })).toEqual({
+      canvasBaseScale: 1.5,
+      gridColsOverride: null, // fuera de [1, 6]
+    });
   });
 });

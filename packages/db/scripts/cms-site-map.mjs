@@ -5893,6 +5893,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 195,
             },
             {
+              key: "estudio.lienzo.slot-cara-b-opcional",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Slot Cara B — badge «Opcional»",
+              helpText:
+                "Badge del slot vacío de la Cara B cuando el producto tiene cara B opcional (backOptional). Sin placeholders.",
+              category: "HOME",
+              body: "Opcional",
+              sortOrder: 196,
+            },
+            {
               key: "estudio.lienzo.slot-tooltip-centrar",
               kind: "BLOCK",
               type: "TEXT",

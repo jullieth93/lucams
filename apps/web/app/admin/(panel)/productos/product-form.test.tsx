@@ -111,8 +111,8 @@ describe("ProductForm — feedback de guardado (regresión 2026-09-18)", () => {
 describe("ProductForm — Estudio de personalización por producto (2026-09-24 v2)", () => {
   const STUDIO_PRODUCT = {
     ...INITIAL_PRODUCT,
-    canvasBaseScale: 0.5,
-    gridColsOverride: 2,
+    canvasBaseScale: 0.5 as number | null,
+    gridColsOverride: 2 as number | null,
   };
 
   function renderStudioForm(product: typeof STUDIO_PRODUCT) {
@@ -137,6 +137,24 @@ describe("ProductForm — Estudio de personalización por producto (2026-09-24 v
     expect(
       screen.getByText(/el cliente siempre verá este tamaño como su 100%/i),
     ).toBeInTheDocument();
+  });
+
+  it("sin overrides: los inputs muestran el default VIGENTE (owner 2026-09-25)", () => {
+    // Sin canvasBaseScale guardado → el input muestra 1 (el estándar), no vacío.
+    // Sin gridColsOverride → vacío con placeholder "Automático": el valor
+    // automático es responsivo (1 en celular, 2-3 en computador), no un número
+    // único calculable desde el admin — el hint lo documenta.
+    renderStudioForm({
+      ...STUDIO_PRODUCT,
+      canvasBaseScale: null,
+      gridColsOverride: null,
+    });
+    const base = screen.getByLabelText(/tamaño base del lienzo/i) as HTMLInputElement;
+    const cols = screen.getByLabelText(/columnas de la grilla/i) as HTMLInputElement;
+    expect(base.value).toBe("1");
+    expect(cols.value).toBe("");
+    expect(cols.placeholder).toBe("Automático");
+    expect(screen.getByText(/vacío = automático/i)).toBeInTheDocument();
   });
 
   it("producto NO personalizable: sección oculta y valores preservados en inputs ocultos", () => {

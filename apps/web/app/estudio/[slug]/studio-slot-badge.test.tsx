@@ -22,7 +22,7 @@
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 
 vi.mock("react-konva", () => {
   const passthrough = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
@@ -134,5 +134,30 @@ describe("StudioSlot — identificador de slot (chip en la barra de acciones)", 
     const zoomChip = container.querySelector(".top-1\\.5.right-1\\.5");
     expect(zoomChip).not.toBeNull();
     expect(zoomChip!.textContent).toBe("150%");
+  });
+
+  // 2026-09-25 — Cara B opcional (separadores backOptional): el placeholder del
+  // slot vacío avisa que la cara B puede quedar sin diseñar.
+  it("slot vacío con slotOptional (Cara B): badge 'Opcional' + aria que lo dice", () => {
+    const { container } = renderSlot({
+      slotState: { slotIndex: 1, assetId: null, assetUrl: null } as unknown as SlotState,
+      slotLabel: "1B",
+      slotOptional: true,
+    });
+    expect(screen.getByText("Opcional")).toBeInTheDocument();
+    const slot = container.querySelector('[data-slot-index="1"]');
+    expect(slot!.getAttribute("aria-label")).toContain("opcional");
+  });
+
+  it("slot vacío SIN slotOptional (Cara A u otro producto): sin badge 'Opcional'", () => {
+    renderSlot({
+      slotState: { slotIndex: 0, assetId: null, assetUrl: null } as unknown as SlotState,
+    });
+    expect(screen.queryByText("Opcional")).not.toBeInTheDocument();
+  });
+
+  it("slot LLENO con slotOptional: sin badge (solo aplica al placeholder vacío)", () => {
+    renderSlot({ slotOptional: true });
+    expect(screen.queryByText("Opcional")).not.toBeInTheDocument();
   });
 });

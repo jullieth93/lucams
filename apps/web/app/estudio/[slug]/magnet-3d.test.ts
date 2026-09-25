@@ -14,6 +14,7 @@ import {
   MAGNET_DEPTH,
   TILE_DEPTH,
   coverRegion,
+  foldedFaceRegion,
   foldedStripMetrics,
   magnetWorldSizes,
   parseSizeCm,
@@ -96,6 +97,106 @@ describe("textureRegionTransform (ola 4 — bug de la cara B negra)", () => {
       expect(u).toBeGreaterThanOrEqual(region.x - 1e-9);
       expect(u).toBeLessThanOrEqual(region.x + region.w + 1e-9);
     }
+  });
+
+  it("sin swapAxes no hay rotación UV (rotation = 0)", () => {
+    expect(textureRegionTransform({ x: 0, y: 0, w: 1, h: 1 }, W, H).rotation).toBe(0);
+  });
+});
+
+describe("textureRegionTransform — swapAxes (2026-09-25: derotar la textura que el editor rotó 90° de más)", () => {
+  // Cara 2×6 de pie: W = 0.6 (ancho = lado corto), H = 1.8 (largo colgante = lado largo).
+  const W = 0.6;
+  const H = 1.8;
+  // Matriz UV de three con rotation=+π/2 y centro (0,0): u' = repeat.x·y + offset.x,
+  // v' = −repeat.y·x + offset.y (los ejes quedan CRUZADOS).
+  const uAt = (offset: number, repeat: number, y: number) => y * repeat + offset;
+  const vAt = (offset: number, repeat: number, x: number) => -x * repeat + offset;
+
+  it("cara vertical + textura horizontal: derota — el tope de la cara muestrea el tope de la imagen original", () => {
+    // La textura llegó rotada 90° visualmente en sentido horario (rotateTextures90 del editor):
+    // el TOPE de la imagen original quedó en el borde DERECHO (u=1) de la textura rotada.
+    const { repeat, offset, rotation } = textureRegionTransform(
+      { x: 0, y: 0, w: 1, h: 1, swapAxes: true },
+      W,
+      H,
+    );
+    expect(rotation).toBeCloseTo(Math.PI / 2, 9);
+    // Tope de la cara (y=+H/2) → u=1 (tope de la imagen original): derecha, no volteada.
+    expect(uAt(offset[0], repeat[0], H / 2)).toBeCloseTo(1, 9);
+    expect(uAt(offset[0], repeat[0], -H / 2)).toBeCloseTo(0, 9);
+    // Derecha de la cara (x=+W/2) → v=1 (derecha de la imagen original): no espejada.
+    expect(vAt(offset[1], repeat[1], W / 2)).toBeCloseTo(1, 9);
+    expect(vAt(offset[1], repeat[1], -W / 2)).toBeCloseTo(0, 9);
+  });
+
+  it("swapAxes + flipV + flipU (cara trasera): 180° extra y muestreo DENTRO de [0,1]", () => {
+    const { repeat, offset, rotation } = textureRegionTransform(
+      { x: 0, y: 0, w: 1, h: 1, swapAxes: true, flipV: true, flipU: true },
+      W,
+      H,
+    );
+    expect(rotation).toBeCloseTo(Math.PI / 2, 9);
+    // Tope de la cara → u=0 y derecha de la cara → v=0: exactamente la rotación de 180°
+    // que compensa el giro ~π sobre X de la cara trasera (se lee DERECHA desde atrás).
+    expect(uAt(offset[0], repeat[0], H / 2)).toBeCloseTo(0, 9);
+    expect(uAt(offset[0], repeat[0], -H / 2)).toBeCloseTo(1, 9);
+    expect(vAt(offset[1], repeat[1], W / 2)).toBeCloseTo(0, 9);
+    expect(vAt(offset[1], repeat[1], -W / 2)).toBeCloseTo(1, 9);
+    for (const y of [-H / 2, 0, H / 2]) {
+      const u = uAt(offset[0], repeat[0], y);
+      expect(u).toBeGreaterThanOrEqual(0);
+      expect(u).toBeLessThanOrEqual(1);
+    }
+    for (const x of [-W / 2, 0, W / 2]) {
+      const v = vAt(offset[1], repeat[1], x);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("con sub-región (cover) y swapAxes, el muestreo queda dentro de la región", () => {
+    const region = { x: 0.1, y: 0.2, w: 0.8, h: 0.6, swapAxes: true };
+    const { repeat, offset } = textureRegionTransform(region, W, H);
+    // u muestrea el eje y de la cara dentro de [1−ry−rh, 1−ry]; v muestrea x dentro de [rx, rx+rw].
+    for (const y of [-H / 2, H / 2]) {
+      const u = uAt(offset[0], repeat[0], y);
+      expect(u).toBeGreaterThanOrEqual(1 - region.y - region.h - 1e-9);
+      expect(u).toBeLessThanOrEqual(1 - region.y + 1e-9);
+    }
+    for (const x of [-W / 2, W / 2]) {
+      const v = vAt(offset[1], repeat[1], x);
+      expect(v).toBeGreaterThanOrEqual(region.x - 1e-9);
+      expect(v).toBeLessThanOrEqual(region.x + region.w + 1e-9);
+    }
+  });
+});
+
+describe("foldedFaceRegion (2026-09-25 — orientación textura vs cara física)", () => {
+  // Caras físicas de los separadores doblados: ancho = lado corto, largo = lado largo.
+  it("textura VERTICAL (stage nuevo 200×600) en cara 2×6 vertical → NO derota", () => {
+    const region = foldedFaceRegion(200, 600, 0.6, 1.8);
+    expect(region.swapAxes).toBeUndefined();
+    expect(region).toMatchObject({ x: 0, y: 0, w: 1, h: 1 });
+  });
+
+  it("textura HORIZONTAL (600×200 — rotateTextures90 sobre el stage vertical) → derota con región completa", () => {
+    const region = foldedFaceRegion(600, 200, 0.6, 1.8);
+    expect(region.swapAxes).toBe(true);
+    // Contra el aspecto derotado (1/3 ≈ aspecto de la cara) el cover no recorta nada.
+    expect(region.x).toBeCloseTo(0, 9);
+    expect(region.y).toBeCloseTo(0, 9);
+    expect(region.w).toBeCloseTo(1, 9);
+    expect(region.h).toBeCloseTo(1, 9);
+  });
+
+  it("4×4.2: stage vertical 400×420 no derota; rotado 420×400 sí derota", () => {
+    expect(foldedFaceRegion(400, 420, 1.2, 1.26).swapAxes).toBeUndefined();
+    expect(foldedFaceRegion(420, 400, 1.2, 1.26).swapAxes).toBe(true);
+  });
+
+  it("legado ola 6 (stage horizontal 600×200 ya rotado a 200×600 por el editor) → llega vertical: NO derota", () => {
+    expect(foldedFaceRegion(200, 600, 0.6, 1.8).swapAxes).toBeUndefined();
   });
 });
 

@@ -228,6 +228,13 @@ type StudioSlotProps = {
   assetOriginalWidth?: number;
   assetOriginalHeight?: number;
   /**
+   * Cara B OPCIONAL (backOptional, separadores 2026-09-25): el slot vacío
+   * muestra un badge "Opcional" bajo la invitación — el cliente sabe que esa
+   * cara puede quedar sin diseñar. Lo calcula el grid (slots impares de
+   * productos 2 caras con backOptional).
+   */
+  slotOptional?: boolean;
+  /**
    * Drop de un DISEÑO PREDISEÑADO (2026-09-22 — drag desde la lista del
    * sidebar): el grid orquesta la aplicación (server action + asignación al
    * slot). Sin la prop, el drop de prediseñados se ignora.
@@ -267,6 +274,7 @@ function StudioSlotImpl({
   onPredesignedDrop,
   assetOriginalWidth,
   assetOriginalHeight,
+  slotOptional = false,
   onKeyboardNav,
   onRegisterStage,
   interactiveSlots = true,
@@ -760,7 +768,10 @@ function StudioSlotImpl({
   if (onCenterPhoto && slotState.photoTransform) filledHints.push("C para centrar");
   const ariaLabel = slotState.assetUrl
     ? `${slotName}, con foto cargada. ${filledHints.join(", ")}.`
-    : `${slotName}, vacío. Enter para subir foto.`;
+    : slotOptional
+      ? // Cara B opcional (backOptional): el nombre audible también lo dice.
+        `${slotName}, vacío, ${texts.lienzo.slotCaraBOpcional.toLowerCase()}. Enter para subir foto.`
+      : `${slotName}, vacío. Enter para subir foto.`;
 
   // C1 — guía del slot vacío en 3 niveles (reposo → hover → drag-over).
   const slotGuideStroke = isDropping
@@ -1140,6 +1151,16 @@ function StudioSlotImpl({
                   {isDropping ? texts.lienzo.slotEmptyDrop : texts.lienzo.slotEmptyInvite}
                 </span>
 
+                {/* Cara B OPCIONAL (backOptional, 2026-09-25): badge compacto
+                    bajo la invitación — en los slots angostos de separadores un
+                    texto largo no cabe; el pill corto lo dice sin ensanchar el
+                    slot. Solo caras B de productos backOptional. */}
+                {slotOptional && (
+                  <span className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide uppercase">
+                    {texts.lienzo.slotCaraBOpcional}
+                  </span>
+                )}
+
                 {/* Indicador del slot: mes (calendario) o "Imán #N". */}
                 <span className="text-brand-muted text-[9px] font-medium tracking-wider uppercase">
                   {slotLabel ??
@@ -1392,6 +1413,7 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.slotState.photoTransform === next.slotState.photoTransform &&
     prev.assetOriginalWidth === next.assetOriginalWidth &&
     prev.assetOriginalHeight === next.assetOriginalHeight &&
+    prev.slotOptional === next.slotOptional &&
     prev.isSelected === next.isSelected &&
     prev.displaySize === next.displaySize &&
     prev.displayHeight === next.displayHeight &&

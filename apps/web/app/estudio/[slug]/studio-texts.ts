@@ -74,6 +74,9 @@ export type StudioTexts = {
     unidadGrupoAria: string;
     unitCaraA: string;
     unitCaraB: string;
+    /** Badge del slot VACÍO de Cara B cuando el producto tiene backOptional
+     *  (separadores 2026-09-25): la cara B puede quedar sin diseñar. */
+    slotCaraBOpcional: string;
     /** Línea de doblez de la tira de separador (solo plegables, no noFold):
      *  "Doblez · Desplegado: {tamano}" — {tamano} = tamaño total desplegado. */
     doblezDesplegado: string;
@@ -613,6 +616,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     unidadGrupoAria: "{nombre} {n} de {total}",
     unitCaraA: "Cara A",
     unitCaraB: "Cara B",
+    slotCaraBOpcional: "Opcional",
     doblezDesplegado: "Doblez · Desplegado: {tamano}",
     slotTooltipCentrar: "Volver al centro y resetear zoom",
     slotTooltipEditarAmbos: "Ajustar foto y texto",
@@ -1133,6 +1137,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.unidadGrupoAria": "estudio.lienzo.unidad-grupo-aria",
   "lienzo.unitCaraA": "estudio.lienzo.unit-cara-a",
   "lienzo.unitCaraB": "estudio.lienzo.unit-cara-b",
+  "lienzo.slotCaraBOpcional": "estudio.lienzo.slot-cara-b-opcional",
   "lienzo.doblezDesplegado": "estudio.lienzo.doblez-desplegado",
   "lienzo.slotTooltipCentrar": "estudio.lienzo.slot-tooltip-centrar",
   "lienzo.slotTooltipEditarAmbos": "estudio.lienzo.slot-tooltip-editar-ambos",
