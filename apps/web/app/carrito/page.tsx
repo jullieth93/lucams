@@ -2,7 +2,10 @@
  * Storefront — Carrito.
  *
  * Lista los items del cart anon (o del cart del customer si está
- * logueado). Controles: editar qty (form con +/-/input), remover ítem.
+ * logueado). Controles: editar qty (form con +/-/input) SOLO en líneas de
+ * catálogo simple — las personalizadas (designId) muestran las unidades del
+ * diseño como texto y ofrecen "Editar" (Estudio) y "Ver" (lightbox del
+ * preview); remover ítem en todas.
  * CTA principal → /checkout/datos: "Ir a pagar" en modo full; "Cotizar
  * por WhatsApp" en modo catálogo (Etapa 1 — features/quotes).
  *
@@ -12,7 +15,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { Minus, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Minus, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
@@ -25,6 +28,7 @@ import { peekCartSession } from "@/lib/cart-session";
 import { removeItemAction, updateQtyAction } from "./actions";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { IconSubmitButton } from "./qty-button";
+import { DesignPreviewDialog } from "./design-preview-dialog";
 
 export const metadata: Metadata = {
   title: "Carrito",
@@ -85,15 +89,36 @@ export default async function CarritoPage() {
                             {item.productName}
                           </Link>
                           {item.designId ? (
-                            <p className="text-brand-purple/80 text-xs font-medium">
-                              ✨ Tu diseño ·{" "}
-                              <Link
-                                href={`/estudio/${item.productSlug}?designId=${item.designId}`}
-                                className="text-brand-purple-dark hover:text-brand-purple underline"
-                              >
-                                Editar
-                              </Link>
-                            </p>
+                            <div className="mt-1 flex flex-col gap-1.5">
+                              <p className="text-brand-purple/80 text-xs font-medium">
+                                ✨ Tu diseño
+                              </p>
+                              {/* QA owner 2026-09-25 — "Editar" era un texto con forma
+                                  de enlace; ahora es un botón outline real (mismo href
+                                  al Estudio). "Ver" abre el lightbox con el preview del
+                                  diseño (DesignPreviewDialog, client). */}
+                              <div className="flex flex-wrap items-center gap-2">
+                                <Button
+                                  asChild
+                                  variant="outline"
+                                  size="sm"
+                                  className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 hover:text-brand-purple-dark"
+                                >
+                                  <Link
+                                    href={`/estudio/${item.productSlug}?designId=${item.designId}`}
+                                  >
+                                    <Pencil aria-hidden="true" />
+                                    Editar
+                                  </Link>
+                                </Button>
+                                {item.designPreviewUrl && (
+                                  <DesignPreviewDialog
+                                    previewUrl={item.designPreviewUrl}
+                                    productName={item.productName}
+                                  />
+                                )}
+                              </div>
+                            </div>
                           ) : (
                             item.isPersonalizable && (
                               <p className="text-brand-muted text-xs">Personalizable</p>
@@ -127,7 +152,18 @@ export default async function CarritoPage() {
                         </form>
                       </div>
                       <div className="flex items-center justify-between gap-3">
-                        <QtyControls itemId={item.itemId} qty={item.qty} />
+                        {/* Modelo multi-unidad (QA owner 2026-09-25): una línea
+                            personalizada tiene qty=1 y el diseño contiene N unidades
+                            — subir qty duplicaría el pack entero (×5 → ×10) y el
+                            cliente lo leía como error. Sin stepper: la cantidad se
+                            muestra como texto (unidades del diseño × qty) y se cambia
+                            editando el diseño. Líneas de catálogo simple conservan
+                            el stepper. */}
+                        {item.designId ? (
+                          <DesignUnitsLabel units={item.designUnits} qty={item.qty} />
+                        ) : (
+                          <QtyControls itemId={item.itemId} qty={item.qty} />
+                        )}
                         <span className="text-brand-purple-dark font-bold tabular-nums">
                           {formatCOP(item.lineTotal)}
                         </span>
@@ -218,6 +254,21 @@ function EmptyCart() {
         Ver catálogo →
       </Link>
     </div>
+  );
+}
+
+/**
+ * Línea personalizada (designId set): la cantidad NO se edita acá. Se muestra
+ * el total de unidades físicas que recibirá el cliente: unidades del diseño
+ * (designUnits, multi-unidad 2026-09-09) × qty de la línea (qty puede ser >1
+ * por agrupación de diseños idénticos o copias legacy del flujo de nombre).
+ */
+function DesignUnitsLabel({ units, qty }: { units: number | null; qty: number }) {
+  const total = (units ?? 1) * qty;
+  return (
+    <span className="text-brand-purple-dark/80 text-sm font-medium tabular-nums">
+      {total} {total === 1 ? "unidad" : "unidades"}
+    </span>
   );
 }
 

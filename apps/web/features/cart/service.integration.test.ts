@@ -558,6 +558,9 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       // El item preexistente se preservó y sumó (2 + 1).
       expect(adopted.items).toHaveLength(1);
       expect(adopted.items[0].qty).toBe(3);
+      // Línea de catálogo simple (sin diseño): designUnits null → conserva el
+      // stepper de qty en el carrito (2026-09-25).
+      expect(adopted.items[0].designUnits).toBeNull();
 
       // La adopción persistió en DB sobre la MISMA fila Cart.
       const row = await prisma.cart.findUnique({
@@ -674,6 +677,9 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       // El preview del Design reemplaza la imagen genérica del producto.
       expect(item.designPreviewUrl).toBe("https://cdn.lucams.test/preview-ready-1.png");
       expect(item.imageUrl).toBe("https://cdn.lucams.test/preview-ready-1.png");
+      // Multi-unidad (2026-09-25): el fixture no declara unidades → 1 (texto
+      // "1 unidad" en el carrito en vez del stepper).
+      expect(item.designUnits).toBe(1);
     });
 
     it("sin variantId: fallback a la PRIMERA variant activa (orden createdAt) = Set 6", async () => {

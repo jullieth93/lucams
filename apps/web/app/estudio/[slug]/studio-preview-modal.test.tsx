@@ -6,7 +6,8 @@
  * la PDP). Las copias llegan ya decididas vía `initialCopies` (?copies=N de
  * la PDP — solo productos de composición fija) y la modal solo CONFIRMA.
  * Blinda:
- *   1. No hay stepper ni grupo "Copias" (la cantidad se ajusta en el carrito).
+ *   1. No hay stepper ni grupo "Copias" (la cantidad viene de la PDP; el
+ *      carrito ya no tiene stepper para líneas personalizadas — 2026-09-25).
  *   2. El total mostrado es unitario × copias de la PDP (mismo cálculo del carrito).
  *   3. onConfirm recibe las copias de la PDP (van como qty al carrito) — 1 por defecto.
  *   4. Con >1 copia se muestra el dato ("N copias idénticas") para que el total no sorprenda.
@@ -51,7 +52,7 @@ function baseProps() {
 }
 
 describe("StudioPreviewModal — sin stepper de copias (regla 2026-09-08b)", () => {
-  it("NO muestra stepper ni grupo 'Copias' (la cantidad viene de la PDP / se ajusta en el carrito)", () => {
+  it("NO muestra stepper ni grupo 'Copias' (la cantidad viene de la PDP)", () => {
     render(<StudioPreviewModal {...baseProps()} initialCopies={4} />);
     expect(screen.queryByRole("group", { name: "Copias" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Aumentar copias")).not.toBeInTheDocument();
@@ -70,6 +71,12 @@ describe("StudioPreviewModal — sin stepper de copias (regla 2026-09-08b)", () 
     expect(screen.getByText(cop(UNIT_PRICE * 4))).toBeInTheDocument();
     expect(screen.getByText(`${cop(UNIT_PRICE)} c/u`)).toBeInTheDocument();
     expect(screen.getByText(/4 copias idénticas de tu diseño/)).toBeInTheDocument();
+    // 2026-09-25 — la nota ya no dice "ajusta la cantidad en el carrito"
+    // (las líneas personalizadas no tienen stepper en el carrito).
+    expect(
+      screen.getByText("La cantidad la elegiste en la página del producto."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/ajustar la cantidad en el carrito/i)).not.toBeInTheDocument();
   });
 
   it("onConfirm recibe las copias de la PDP (van como qty al carrito)", () => {
@@ -109,6 +116,9 @@ describe("StudioPreviewModal — modelo MULTI-UNIDAD (unitCount: las unidades va
     // La línea dice unidades DISEÑADAS, no "copias idénticas" (concepto eliminado).
     expect(screen.getByText(/2 unidades — cada una con su propio diseño/)).toBeInTheDocument();
     expect(screen.queryByText(/copias idénticas/)).not.toBeInTheDocument();
+    // 2026-09-25 — sin nota "ajusta en el carrito": las líneas personalizadas ya
+    // no tienen stepper; las unidades se cambian en el editor («Volver a editar»).
+    expect(screen.queryByText(/cantidad/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
     expect(props.onConfirm).toHaveBeenCalledWith(1);
   });

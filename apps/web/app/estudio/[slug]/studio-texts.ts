@@ -405,6 +405,12 @@ export type StudioTexts = {
     piezaFichas: string;
     /** Dato de copias cuando la PDP fijó N>1 (regla 2026-09-08b: sin stepper acá). */
     copiasIdenticas: string;
+    /**
+     * Nota bajo el dato de copias (SOLO path legacy — nombre). Hasta 2026-09-25
+     * decía "Puedes ajustar la cantidad en el carrito", pero las líneas
+     * personalizadas ya no tienen stepper en el carrito (modelo multi-unidad):
+     * la cantidad se eligió en la PDP y cambiarla implica volver a ella.
+     */
     copiasAjusteCarrito: string;
   };
   /** Vistas 3D y escenas. */
@@ -940,7 +946,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     piezaImanes: "imanes",
     piezaFichas: "fichas",
     copiasIdenticas: "{n} copias idénticas de tu diseño",
-    copiasAjusteCarrito: "Puedes ajustar la cantidad en el carrito.",
+    copiasAjusteCarrito: "La cantidad la elegiste en la página del producto.",
   },
   escenas: {
     titulo: "✨ Míralo en tu espacio",

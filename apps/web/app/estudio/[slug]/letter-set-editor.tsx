@@ -717,9 +717,15 @@ export function LetterSetEditor({
                           >
                             {/* Ficha VERTICAL (aspect 5/6.5) — espeja el imán físico rectangular.
                             Sin borde: la ficha queda blanca a ras (el PNG y la textura 3D
-                            hacen lo mismo). */}
+                            hacen lo mismo).
+                            2026-09-25 (QA owner): la letra era `text-base` FIJO (16px) —
+                            en fichas de hasta 128px quedaba diminuta con mucho aire,
+                            distinto del preview/3D. Ahora escala con la ficha vía
+                            container query (50cqw = MISMA proporción letra/ficha del
+                            compositor de producción y de la textura 3D: fontPx =
+                            0.5 × ancho — letterTileMetrics/renderLetterSetBlob). */}
                             <div
-                              className="flex aspect-[5/6.5] w-full items-center justify-center overflow-hidden rounded-xl bg-white"
+                              className="[container-type:inline-size] flex aspect-[5/6.5] w-full items-center justify-center overflow-hidden rounded-xl bg-white"
                               style={{
                                 border: withBorder ? `2px solid ${color}` : "2px solid transparent",
                                 boxShadow: `0 3px 10px ${color}22`,
@@ -734,8 +740,8 @@ export function LetterSetEditor({
                                 />
                               ) : (
                                 <span
-                                  className="font-display text-base font-extrabold"
-                                  style={{ color }}
+                                  className="font-display leading-none font-extrabold select-none"
+                                  style={{ color, fontSize: "50cqw" }}
                                 >
                                   {ch}
                                 </span>

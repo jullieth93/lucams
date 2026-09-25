@@ -190,6 +190,9 @@ export default async function EstudioPage({
               // Ola 32 — mini avatar del header sticky unificado (fallback al mascote).
               productImageUrl={product.images[0]}
               variantId={selectedVariant.id}
+              // 2026-09-25 — flag Con/Sin imán de la variante para que la modal
+              // de confirmación nombre bien la pieza (imán vs ficha).
+              variantMagnet={parseVariantAttributes(selectedVariant.attributes).magnet}
               config={surface.config}
               pricePerTile={pricePerTile}
               initialCount={initialCount}

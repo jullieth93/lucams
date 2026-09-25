@@ -61,6 +61,14 @@ type NameEditorProps = {
   productImageUrl?: string;
   /** Variante ya elegida en la ficha (tamaño/imantado). El editor solo arma la palabra. */
   variantId: string;
+  /**
+   * 2026-09-25 — flag `magnet` de la variante elegida (PDP). La modal de
+   * confirmación nombra la pieza según esto: Con imán → "imán", Sin imán →
+   * "ficha" (mismo criterio que letter-set-editor; antes estaba quemado
+   * "magnets" y la variante Sin imán decía "imán" — afirmación falsa sobre el
+   * producto físico justo en la pantalla de confirmación, Ley 1480 art. 23).
+   */
+  variantMagnet?: boolean;
   config: { min: number; max: number; language: NameLanguage };
   /**
    * ADR-057 — precio POR FICHA (centavos COP). El total mostrado y el del carrito =
@@ -239,6 +247,7 @@ export function NameEditor({
   product,
   productImageUrl,
   variantId,
+  variantMagnet,
   config,
   pricePerTile,
   initialCount,
@@ -985,7 +994,9 @@ export function NameEditor({
         initialCopies={initialCopies}
         isFinalizing={submitting}
         errorMessage={previewError}
-        productKind="magnets"
+        // 2026-09-25 — el término sale de la variante (Con imán → "imán", Sin
+        // imán → "ficha"), igual que letter-set-editor; antes quemado "magnets".
+        productKind={variantMagnet === false ? "tiles" : "magnets"}
         onEdit={handleEditFromPreview}
         onConfirm={handleConfirmAddToCart}
       />

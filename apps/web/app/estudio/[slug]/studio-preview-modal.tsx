@@ -367,13 +367,18 @@ export function StudioPreviewModal({
           {/* Unidades del DISEÑO (modelo multi-unidad 2026-09-09): el cliente ya
             las diseñó una a una — la línea del carrito es UNA (qty 1) y producción
             recibe TODAS las unidades. Path legacy (nombre): copias idénticas de la
-            PDP como dato. */}
+            PDP como dato.
+            QA owner 2026-09-25 — el carrito ya NO tiene stepper para líneas
+            personalizadas: en la rama multi-unidad se eliminó la nota "Puedes
+            ajustar la cantidad en el carrito" (falsa ahí; las unidades se cambian
+            en el editor — el CTA «Volver a editar» está justo abajo). En la rama
+            legacy la nota sigue, con texto actualizado (la cantidad se eligió en
+            la PDP). */}
           {unitCount !== undefined && isMultiUnit ? (
             <div className="border-brand-purple/10 mt-3 border-t pt-3">
               <p className="text-brand-purple-dark text-sm font-semibold">
                 {fillStudioText(texts.unidades.modalUnidades, { n: units })}
               </p>
-              <p className="text-brand-muted text-xs">{texts.exportar.copiasAjusteCarrito}</p>
             </div>
           ) : unitCount === undefined && copies > 1 ? (
             <div className="border-brand-purple/10 mt-3 border-t pt-3">

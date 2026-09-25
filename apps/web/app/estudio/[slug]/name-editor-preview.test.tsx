@@ -83,7 +83,11 @@ beforeEach(() => {
   addPersonalizedToCartAction.mockResolvedValue({ ok: true });
 });
 
-function renderEditor(extraProps?: { initialCopies?: number; initialWithBorder?: boolean }) {
+function renderEditor(extraProps?: {
+  initialCopies?: number;
+  initialWithBorder?: boolean;
+  variantMagnet?: boolean;
+}) {
   return render(
     <NameEditor
       product={{ id: "prod-1", slug: "nombre-personalizado", name: "Nombre Personalizado" }}
@@ -189,6 +193,24 @@ describe("NameEditor — vista previa antes del carrito", () => {
 
     await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
     expect(addPersonalizedToCartAction).toHaveBeenCalledWith(expect.objectContaining({ qty: 1 }));
+  });
+
+  // 2026-09-25 — nomenclatura imán/ficha según la variante (Ley 1480 art. 23):
+  // antes la modal quemaba productKind="magnets" y la variante Sin imán decía
+  // "imán" en la pantalla de confirmación.
+  it("variante SIN imán (variantMagnet=false): la modal habla de 'fichas', no de 'imanes'", async () => {
+    renderEditor({ variantMagnet: false });
+    await openPreviewWith("LUCIA");
+
+    expect(screen.getByText(/5 fichas personalizadas/)).toBeInTheDocument();
+    expect(screen.queryByText(/imanes personalizados/)).not.toBeInTheDocument();
+  });
+
+  it("variante CON imán (default): la modal habla de 'imanes' como siempre", async () => {
+    renderEditor();
+    await openPreviewWith("LUCIA");
+
+    expect(screen.getByText(/5 imanes personalizados/)).toBeInTheDocument();
   });
 
   /*

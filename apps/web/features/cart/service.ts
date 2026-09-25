@@ -35,6 +35,7 @@ import { designIdentity } from "./design-identity";
 import { describePieces, pieceKindFor } from "./line-preview";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import {
+  designDisplayUnits,
   designUnitPriceMultiplier,
   letterSetUnitCount,
 } from "@/features/personalization/design-units";
@@ -55,6 +56,13 @@ export type CartLineItem = {
   designId: string | null;
   /** Si designId está set, este es el previewUrl del Design (1080×1080 PNG público). */
   designPreviewUrl: string | null;
+  /**
+   * Unidades físicas que contiene el diseño (modelo multi-unidad 2026-09-09,
+   * `designDisplayUnits`). El carrito las muestra como texto informativo en vez
+   * del stepper de qty: subir qty duplicaría el pack entero (×5 → ×10) y el
+   * cliente lo lee como error. `null` en líneas sin diseño (catálogo simple).
+   */
+  designUnits: number | null;
   /**
    * Frase que describe la pieza FÍSICA ("6 imanes · 6×6 cm cada imán"), para que el checkout pueda
    * mostrar lo mismo que la modal del Estudio y el cliente confirme sabiendo qué recibe.
@@ -144,6 +152,9 @@ const cartItemsInclude = {
           // "Sin borde" de los sets de letras, Lucy 2026-09-05). El PNG las refleja; el texto
           // evita que el cliente tenga que deducirlas de la imagen.
           metadata: true,
+          // Multi-unidad (2026-09-25): el canvas declara unitCount/unitSlots — con
+          // designDisplayUnits el carrito muestra "N unidades" en vez del stepper.
+          canvasData: true,
         },
       },
     },
@@ -274,6 +285,7 @@ function toDetail(cart: RawCart): CartDetail {
       imageUrl: i.design?.previewUrl ?? i.variant.product.images[0] ?? null,
       designId: i.designId,
       designPreviewUrl: i.design?.previewUrl ?? null,
+      designUnits: designDisplayUnits(i.design),
       pieceSummary: describeLine(i),
       borderNote: letterSetBorderNote(i.design?.metadata),
     }));
