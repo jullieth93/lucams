@@ -1,9 +1,10 @@
 /*
  * Test del compositor de tiras desplegadas (Ola 3 — separadores 2 caras):
- * 2N caras → N tiras. Plegables (default): tira VERTICAL (A arriba, B abajo
- * ROTADA 180° — así se lee derecha colgando plegada); noFold (Alargados):
- * HORIZONTAL A|B sin rotar (histórico). Esquinas exteriores redondeadas
- * (troquel) y transparencia fuera de la silueta.
+ * 2N caras → N tiras. Plegables (default): tira VERTICAL "cabezas al doblez"
+ * (tête-bêche) — cara B ARRIBA rotada 180°, cara A ABAJO derecha (el separador
+ * cuelga de la página con el doblez arriba; convención corregida por el owner
+ * 2026-09-25). noFold (Alargados): HORIZONTAL A|B sin rotar (histórico).
+ * Esquinas exteriores redondeadas (troquel) y transparencia fuera de la silueta.
  */
 
 import { describe, expect, it } from "vitest";
@@ -64,7 +65,7 @@ async function rgbaAt(
 }
 
 describe("composeFaceStrips (separadores 2 caras — tira desplegada)", () => {
-  it("plegable (default): tira VERTICAL, cara A arriba y cara B abajo", async () => {
+  it("plegable (default): tira VERTICAL cabezas al doblez — cara B arriba, cara A abajo", async () => {
     const a = await fakeFace(120, 126, "#FF0000"); // cara A roja
     const b = await fakeFace(120, 126, "#0000FF"); // cara B azul
     const strips = await composeFaceStrips([a, b]);
@@ -73,23 +74,26 @@ describe("composeFaceStrips (separadores 2 caras — tira desplegada)", () => {
     // 4×4.2 cm por cara → la tira es el DOBLE de ALTA (4×8.4), mismo ancho.
     expect(meta.width).toBe(120);
     expect(meta.height).toBe(252);
-    // Mitad superior = cara A (roja), mitad inferior = cara B (azul).
+    // Mitad superior = cara B (azul), mitad inferior = cara A (roja).
     const [r1, g1, b1] = await rgbaAt(strips[0], 60, 63);
-    expect([r1, g1, b1]).toEqual([255, 0, 0]);
+    expect([r1, g1, b1]).toEqual([0, 0, 255]);
     const [r2, g2, b2] = await rgbaAt(strips[0], 60, 189);
-    expect([r2, g2, b2]).toEqual([0, 0, 255]);
+    expect([r2, g2, b2]).toEqual([255, 0, 0]);
   });
 
-  it("plegable: la cara B se imprime ROTADA 180° (se lee derecha con la tira plegada)", async () => {
+  it("plegable: la cara B se imprime ROTADA 180° en la mitad superior (cabeza hacia el doblez)", async () => {
     const a = await fakeFace(100, 100, "#FFFFFF");
     // Cara B: izquierda verde, derecha azul. Tras rotar 180°, en la zona de B
-    // de la tira la izquierda muestra lo que era la derecha (azul) y viceversa.
+    // (mitad superior) la izquierda muestra lo que era la derecha (azul).
     const b = await fakeFaceSplit(100, 100, "#00FF00", "#0000FF");
     const strips = await composeFaceStrips([a, b]);
-    const [, gLeft, bLeft] = await rgbaAt(strips[0], 10, 150); // zona B, lado izquierdo
+    const [, gLeft, bLeft] = await rgbaAt(strips[0], 10, 50); // zona B, lado izquierdo
     expect([gLeft, bLeft]).toEqual([0, 255]); // azul (era la derecha de B)
-    const [, gRight, bRight] = await rgbaAt(strips[0], 90, 150); // zona B, lado derecho
+    const [, gRight, bRight] = await rgbaAt(strips[0], 90, 50); // zona B, lado derecho
     expect([gRight, bRight]).toEqual([255, 0]); // verde (era la izquierda de B)
+    // La cara A NO se rota: blanca y derecha en la mitad inferior.
+    const [ra, ga, ba] = await rgbaAt(strips[0], 50, 150);
+    expect([ra, ga, ba]).toEqual([255, 255, 255]);
   });
 
   it("noFold (Alargados planos): tira HORIZONTAL A|B y cara B SIN rotar (histórico)", async () => {
@@ -118,11 +122,11 @@ describe("composeFaceStrips (separadores 2 caras — tira desplegada)", () => {
     ]);
     const strips = await composeFaceStrips(faces);
     expect(strips).toHaveLength(2);
-    // Unidad 2: cara A azul (arriba), cara B blanca (abajo).
-    const [, , b] = await rgbaAt(strips[1], 30, 30);
-    expect(b).toBe(255);
-    const [rw, gw, bw] = await rgbaAt(strips[1], 30, 90);
+    // Unidad 2: cara B blanca (arriba), cara A azul (abajo).
+    const [rw, gw, bw] = await rgbaAt(strips[1], 30, 30);
     expect([rw, gw, bw]).toEqual([255, 255, 255]);
+    const [, , b] = await rgbaAt(strips[1], 30, 90);
+    expect(b).toBe(255);
   });
 
   it("esquinas exteriores redondeadas (troquel): transparente en la esquina, opaco al centro", async () => {
@@ -132,7 +136,7 @@ describe("composeFaceStrips (separadores 2 caras — tira desplegada)", () => {
     // Esquina superior-izquierda de la tira → fuera del troquel redondeado.
     const [, , , alphaCorner] = await rgbaAt(strips[0], 2, 2);
     expect(alphaCorner).toBe(0);
-    // Centro de la cara A → dentro.
+    // Centro de la cara B (mitad superior) → dentro.
     const [, , , alphaCenter] = await rgbaAt(strips[0], 50, 50);
     expect(alphaCenter).toBe(255);
     // El pliegue central NO se redondea: el borde de la unión (horizontal, a
@@ -161,7 +165,8 @@ describe("composeFaceStrips (separadores 2 caras — tira desplegada)", () => {
     const meta = await sharp(strips[0]).metadata();
     expect(meta.width).toBe(100);
     expect(meta.height).toBe(160);
-    const [, , bBottom] = await rgbaAt(strips[0], 50, 120);
-    expect(bBottom).toBe(255);
+    // B reescalada ocupa la mitad SUPERIOR (azul).
+    const [, , bTop] = await rgbaAt(strips[0], 50, 40);
+    expect(bTop).toBe(255);
   });
 });

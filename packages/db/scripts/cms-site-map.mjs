@@ -5911,7 +5911,7 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               helpText:
                 "Nota junto a la línea de doblez en separadores plegables: explica que la Cara B se imprime rotada 180° para leerse derecha al doblar. Sin placeholders.",
               category: "HOME",
-              body: "La Cara B se imprime girada 180° — al doblarla sobre la página se lee derecha.",
+              body: "La tira se imprime con las caras cabeza a cabeza hacia el doblez — al doblarla sobre la página ambas se leen derechas.",
               sortOrder: 197,
             },
             {

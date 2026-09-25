@@ -2,22 +2,33 @@
  * Ola 3 (Lucy 2026-07-22) — Separadores de libros 2 CARAS: composición de la TIRA
  * DESPLEGADA para producción.
  *
- * El separador físico es una tira que se pliega HORIZONTALMENTE a la mitad (doblez
- * sobre la punta corta) para colgar de la página: cada unidad tiene 2 caras con
- * imagen propia (cara A al frente / cara B atrás). La imprenta recibe la tira
- * DESPLEGADA VERTICAL con las 2 caras APILADAS (cara A ARRIBA, cara B ABAJO):
- *   - rectangular 2×6 cm por cara  → tira 2×12 cm  (doblez a los 6 cm)
- *   - cuadrado    4×4.2 cm por cara → tira 4×8.4 cm (doblez a los 4.2 cm)
+ * El separador físico cuelga de la página con el DOBLEZ ARRIBA (sobre el borde
+ * superior) y las dos piernas colgando hacia abajo: cara A al FRENTE, cara B al
+ * RESPALDO. Para que una cara se lea DERECHA al colgar, la CABEZA de su imagen
+ * tiene que quedar JUNTO AL DOBLEZ. Por eso la imprenta recibe la tira plana
+ * VERTICAL en disposición "cabezas al doblez" (tête-bêche):
  *
- * (Bug 2026-09-22: hasta hoy componía HORIZONTAL A|B — resto de cuando el stage
- * era horizontal. El físico se pliega sobre el ANCHO, no sobre el largo, y el
- * canvas/preview del Estudio ya muestran las caras apiladas con filete de
- * doblez horizontal. Confirmado por el owner: desplegado total 2×12 y 4×8.4.)
+ *   ┌───────────┐
+ *   │  B (↑180°)│  ← cara B en la MITAD SUPERIOR, ROTADA 180° (cabeza hacia
+ *   ├─ doblez ──┤    ABAJO, hacia el pliegue)
+ *   │  A (0°)   │  ← cara A en la MITAD INFERIOR, DERECHA (cabeza hacia ARRIBA,
+ *   └───────────┘    hacia el pliegue)
  *
- * ROTACIÓN DE LA CARA B (plegables): para que ambas caras se lean DERECHAS
- * cuando la tira cuelga plegada de la página, la cara B se imprime ROTADA 180°
- * en la tira plana. Es la misma convención de la vista 3D (FoldedStripMesh en
- * magnet-3d.tsx: la textura trasera lleva flipV+flipU = rotación de 180°).
+ * Al doblar, la mitad superior se voltea 180° sobre el eje del doblez hacia
+ * atrás: A cuelga al frente leyéndose derecha y B cuelga al respaldo leyéndose
+ * derecha (el doblez sobre eje horizontal NO espeja izquierda-derecha, y el
+ * respaldo se ve directo desde atrás — simulación del plegado verificada por
+ * el owner, que opera la producción física, 2026-09-25).
+ *
+ * Tamaños desplegados (doblez a la mitad del alto):
+ *   - rectangular 2×6 cm por cara  → tira 2×12 cm
+ *   - cuadrado    4×4.2 cm por cara → tira 4×8.4 cm
+ *
+ * Historial de la convención:
+ *   - 2026-09-22: componía HORIZONTAL A|B (resto del stage horizontal viejo).
+ *   - 2026-09-22 (fix 1): VERTICAL pero A arriba derecha + B abajo rotada =
+ *     cabezas hacia AFUERA → ambas caras colgaban cabeza-abajo. MAL.
+ *   - 2026-09-25 (fix 2, actual): cabezas AL DOBLEZ (B arriba rotada, A abajo).
  *
  * NOFOLD (Alargados, marcapáginas plano): la pieza NO se pliega — se conserva
  * la composición HORIZONTAL histórica (frente | reverso lado a lado, producción
@@ -46,7 +57,8 @@ export type ComposeFaceStripsOptions = {
   /**
    * `true` (Alargados, personalizationSchema.noFold): la pieza es PLANA → composición
    * HORIZONTAL A|B histórica, cara B SIN rotar. `false`/undefined (separadores
-   * plegables): tira VERTICAL (A arriba, B abajo) con la cara B rotada 180°.
+   * plegables): tira VERTICAL "cabezas al doblez" — cara B ARRIBA rotada 180°,
+   * cara A ABAJO derecha.
    */
   noFold?: boolean;
 };
@@ -89,21 +101,28 @@ export async function composeFaceStrips(
       metaB.width === w && metaB.height === h
         ? faceB
         : await sharp(faceB, { failOn: "none" }).resize(w, h, { fit: "fill" }).png().toBuffer();
-    // Plegables: la cara B se imprime rotada 180° para que se lea derecha con la
-    // tira colgando plegada (doblez horizontal sobre la punta corta). noFold: sin
-    // rotación (pieza plana, reverso contra la página — ver FlatBookmarks).
+    // Plegables: la cara B va ROTADA 180° en la mitad SUPERIOR — su cabeza apunta
+    // hacia el doblez central, así cuelga derecha en el respaldo al plegar (ver el
+    // docblock: "cabezas al doblez"). noFold: sin rotación (pieza plana, reverso
+    // contra la página — ver FlatBookmarks).
     if (!noFold) {
       bBuffer = await sharp(bBuffer).rotate(180).png().toBuffer();
     }
 
-    // Geometría de la tira: plegable = VERTICAL (A arriba, B abajo — doblez
-    // horizontal a mitad del alto); noFold = HORIZONTAL (A | B, histórico).
+    // Geometría de la tira: plegable = VERTICAL con B ARRIBA (rotada) y A ABAJO
+    // (derecha) — cabezas al doblez horizontal a mitad del alto; noFold =
+    // HORIZONTAL (A | B, histórico).
     const stripW = noFold ? w * 2 : w;
     const stripH = noFold ? h : h * 2;
-    const composites: OverlayOptions[] = [
-      { input: faceA, left: 0, top: 0 },
-      { input: bBuffer, left: noFold ? w : 0, top: noFold ? 0 : h },
-    ];
+    const composites: OverlayOptions[] = noFold
+      ? [
+          { input: faceA, left: 0, top: 0 },
+          { input: bBuffer, left: w, top: 0 },
+        ]
+      : [
+          { input: bBuffer, left: 0, top: 0 },
+          { input: faceA, left: 0, top: h },
+        ];
 
     // Esquinas exteriores redondeadas (troquel redondo del separador): máscara SVG
     // dest-in recorta el alpha de las 4 esquinas; la unión central queda intacta.

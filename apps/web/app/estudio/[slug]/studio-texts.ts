@@ -80,8 +80,9 @@ export type StudioTexts = {
     /** Línea de doblez de la tira de separador (solo plegables, no noFold):
      *  "Doblez · Desplegado: {tamano}" — {tamano} = tamaño total desplegado. */
     doblezDesplegado: string;
-    /** Nota junto al doblez (solo plegables, 2026-09-25): la Cara B se imprime
-     *  rotada 180° para que al doblar sobre la página ambas caras lean derechas. */
+    /** Nota junto al doblez (solo plegables, 2026-09-25): la tira se imprime con
+     *  las caras cabeza a cabeza hacia el doblez — al doblarla sobre la página
+     *  ambas se leen derechas. */
     doblezNotaRotacion: string;
     slotTooltipCentrar: string;
     slotTooltipEditarAmbos: string;
@@ -622,7 +623,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     slotCaraBOpcional: "Opcional",
     doblezDesplegado: "Doblez · Desplegado: {tamano}",
     doblezNotaRotacion:
-      "La Cara B se imprime girada 180° — al doblarla sobre la página se lee derecha.",
+      "La tira se imprime con las caras cabeza a cabeza hacia el doblez — al doblarla sobre la página ambas se leen derechas.",
     slotTooltipCentrar: "Volver al centro y resetear zoom",
     slotTooltipEditarAmbos: "Ajustar foto y texto",
     slotTooltipEditarFoto: "Ajustar foto",

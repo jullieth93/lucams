@@ -941,10 +941,10 @@ export function StudioEditor({
       // la silueta real (corazón, círculo, etc.) y no se vea un rectángulo
       // Lucy 2026-05-21 feedback: "se ve completa, no como corazón".
       // Ola 3 — separadores 2 caras: el preview de confirmación muestra las TIRAS
-      // desplegadas (plegables: Cara A sobre Cara B — B rotada 180° como en
-      // imprenta — con el doblez horizontal en la unión; noFold: frente | reverso
-      // lado a lado), no una grilla de caras sueltas — es la pieza física que el
-      // cliente va a recibir.
+      // desplegadas (plegables: "cabezas al doblez" — Cara B arriba rotada 180°,
+      // Cara A abajo derecha, doblez horizontal en la unión, igual que imprenta;
+      // noFold: frente | reverso lado a lado), no una grilla de caras sueltas —
+      // es la pieza física que el cliente va a recibir.
       // 2026-09-22 — noFold (Alargados): sin doblez ni "desplegado"; backOptional:
       // cara B vacía se dibuja NEGRA (reverso del imán), no con el placeholder.
       const foldCaption = (() => {
@@ -2279,19 +2279,23 @@ async function buildCompositedPreview(
  *
  * 2026-09-22 — orientación REAL del doblez (feedback QA STG): el separador
  * plegable se pliega por la MITAD de la tira vertical (2×12: 2cm ancho × 12cm
- * alto, doblez en la punta de 2cm) → la tira del preview es VERTICAL: Cara A
- * ARRIBA, Cara B ABAJO, filete de doblez HORIZONTAL en la unión. Las unidades
- * se disponen lado a lado en el montaje.
- * 2026-09-25 — la Cara B se dibuja ROTADA 180° en la tira plana, EXACTAMENTE
- * como producción (composeFaceStrips) y el libro 3D: al doblar la tira sobre
- * la página ambas caras se leen derechas. El texto del modal dice "así se
- * imprime la tira" y la imagen la heredan carrito/admin/correos → fidelidad
- * total a imprenta.
+ * alto, doblez en la punta de 2cm) → la tira del preview es VERTICAL con filete
+ * de doblez HORIZONTAL en la unión. Las unidades se disponen lado a lado en el
+ * montaje.
+ * 2026-09-25 (corrección del owner — la convención anterior A arriba/B abajo
+ * estaba mal) — geometría "CABEZAS AL DOBLEZ": Cara B en la MITAD SUPERIOR
+ * ROTADA 180°, Cara A en la MITAD INFERIOR DERECHA. El separador cuelga del
+ * borde superior de la página; con ambas cabezas apuntando al doblez, las dos
+ * caras se leen derechas al doblar. EXACTAMENTE como producción
+ * (composeFaceStrips) y el libro 3D. Bonus UX: la cara principal (A) se ve
+ * derecha en la preview. El texto del modal dice "así se imprime la tira" y la
+ * imagen la heredan carrito/admin/correos → fidelidad total a imprenta.
  *  - noFold (Alargados planos): la pieza no se pliega → caras lado a lado
  *    (frente | reverso, B SIN rotar — montaje espalda con espalda) y unidades
  *    apiladas, SIN filete de doblez.
  *  - backOptional: una cara B vacía se dibuja BLANCA (#FFFFFF — el físico sin
- *    diseñar sale en blanco), no con el placeholder del editor.
+ *    diseñar sale en blanco; la rotación es irrelevante sobre un sólido), no
+ *    con el placeholder del editor.
  *  - foldCaption: indicación del tamaño desplegado bajo cada tira (texto CMS
  *    ya resuelto por el caller, ej. "Doblez · Desplegado: 2×12 cm").
  */
@@ -2340,12 +2344,18 @@ async function buildBookmarkStripPreview(
     const { faceA, faceB } = facePairOfUnit(unit);
     const x = noFold ? pad : pad + unit * (stripW + gap);
     const y = noFold ? pad + unit * (stripH + captionH + gap) : pad;
-    // Rect de cada cara dentro de la tira: plegable = apiladas (A arriba, B
-    // abajo); noFold = lado a lado (A izquierda, B derecha).
+    // Rect de cada cara dentro de la tira: plegable = apiladas con CABEZAS AL
+    // DOBLEZ (2026-09-25, corrección del owner — la convención anterior A arriba
+    // / B abajo estaba mal): Cara B en la MITAD SUPERIOR (se rota 180° al pintar,
+    // abajo) y Cara A en la MITAD INFERIOR derecha — ambas cabezas apuntan al
+    // doblez horizontal central, así al doblar la tira sobre el borde superior de
+    // la página ambas caras cuelgan leyéndose derechas (igual que producción y
+    // el 3D). Bonus UX: la cara principal del cliente se ve derecha en la
+    // preview. noFold = lado a lado (A izquierda, B derecha), sin rotar.
     const faceRect = (i: number) =>
       noFold
         ? { fx: x + i * faceW, fy: y, fw: faceW, fh: faceH }
-        : { fx: x, fy: y + i * faceH, fw: faceW, fh: faceH };
+        : { fx: x, fy: y + (1 - i) * faceH, fw: faceW, fh: faceH };
     // Troquel redondeado de la tira: clipeamos A+B al mismo roundRect → la
     // silueta impresa coincide con la de producción (WYSIWYG).
     ctx.save();
@@ -2378,10 +2388,12 @@ async function buildBookmarkStripPreview(
         const img = new Image();
         img.onload = () => {
           if (!noFold && i === 1) {
-            // 2026-09-25 — la Cara B se imprime ROTADA 180° en la tira plana:
-            // al doblarla sobre la página ambas caras se leen derechas. Igual
-            // que producción (composeFaceStrips ya la rota) y el libro 3D —
-            // la preview es fiel a imprenta (la heredan carrito/admin/correos).
+            // 2026-09-25 — "cabezas al doblez": la Cara B va en la MITAD
+            // SUPERIOR de la tira, ROTADA 180° — al doblar la tira sobre el
+            // borde superior de la página ambas caras cuelgan leyéndose
+            // derechas. Igual que producción (composeFaceStrips) y el libro
+            // 3D — la preview es fiel a imprenta (la heredan
+            // carrito/admin/correos).
             ctx.save();
             ctx.translate(fx + fw / 2, fy + fh / 2);
             ctx.rotate(Math.PI);

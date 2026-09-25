@@ -1298,13 +1298,14 @@ export async function finalizeDesign(opts: {
     data: { publicUrl: previewPublicUrl },
   } = supabase.storage.from(BUCKET_PREVIEWS).getPublicUrl(previewPath);
 
-  // Ola 3 (Lucy 2026-07-22) — SEPARADORES 2 CARAS: la pieza física es una tira que se
-  // pliega HORIZONTALMENTE a la mitad; la imprenta recibe la tira DESPLEGADA VERTICAL
-  // con las 2 caras apiladas (2×12 / 4×8.4 cm desplegado; fix 2026-09-22 — antes se
-  // componía horizontal A|B, resto del stage horizontal viejo). El cliente sube 2N
-  // snapshots (uno por slot cara A/B, espejo del canvas); acá se componen N tiras
-  // (slot 2k = cara A arriba, slot 2k+1 = cara B abajo ROTADA 180° para que se lea
-  // derecha colgando plegada) con las esquinas exteriores redondeadas del troquel.
+  // Ola 3 (Lucy 2026-07-22) — SEPARADORES 2 CARAS: la pieza física cuelga de la página
+  // con el DOBLEZ ARRIBA; la imprenta recibe la tira DESPLEGADA VERTICAL en disposición
+  // "cabezas al doblez" (tête-bêche): cara B ARRIBA rotada 180°, cara A ABAJO derecha —
+  // así ambas caras se leen derechas al colgar (corrección del owner 2026-09-25; la
+  // convención anterior —A arriba, B abajo rotada— dejaba ambas cabeza-abajo).
+  // Desplegado: 2×12 / 4×8.4 cm. El cliente sube 2N snapshots (uno por slot cara A/B,
+  // espejo del canvas); acá se componen N tiras (slot 2k = cara A, slot 2k+1 = cara B)
+  // con las esquinas exteriores redondeadas del troquel.
   // noFold (Alargados planos): composición horizontal A|B sin rotar (histórico).
   // Aplica igual a buffers server-side o del cliente.
   let facesComposed = false;

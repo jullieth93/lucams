@@ -229,9 +229,11 @@ function describirFormato(
       };
     }
     case "tira-desplegada":
-      // Plegables (fix geometría 2026-09-22): tira VERTICAL — cara A arriba y
-      // cara B abajo ROTADA 180° (así ambas se leen derechas con la tira
-      // colgando plegada de la página). Planas (noFold): horizontal A|B, sin
+      // Plegables (geometría corregida 2026-09-25, owner): tira VERTICAL
+      // "cabezas al doblez" (tête-bêche) — cara B ARRIBA impresa rotada 180°,
+      // cara A ABAJO derecha. El separador cuelga de la página con el doblez
+      // arriba, así la cabeza de cada imagen queda junto al pliegue y ambas
+      // caras se leen derechas al colgar. Planas (noFold): horizontal A|B, sin
       // rotación, se imprime espalda con espalda.
       return f.plana
         ? {
@@ -243,10 +245,10 @@ function describirFormato(
             ],
           }
         : {
-            frase: `${f.tiras} tira(s) DESPLEGADA(S): cada archivo trae las dos caras apiladas (cara A arriba, cara B abajo, impresa rotada 180°).`,
+            frase: `${f.tiras} tira(s) DESPLEGADA(S): cada archivo trae las dos caras cabeza a cabeza hacia el doblez (cara B arriba, impresa rotada 180°; cara A abajo, derecha).`,
             pasos: [
               "Imprime cada tira completa.",
-              "Dobla por el centro (doblez horizontal, sobre el ancho), dejando las dos caras hacia afuera: ambas se leen derechas.",
+              "Dobla por el centro (doblez horizontal, sobre el ancho) con las caras hacia afuera: al colgar de la página con el doblez arriba, ambas caras se leen derechas.",
               ...pegarImán,
             ],
           };
