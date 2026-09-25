@@ -92,11 +92,18 @@ export async function analyzeSmartCrop(
  * @param image - HTMLImageElement cargada
  * @param sizeCm - tamaño físico del imán en cm (ej "6×6" o "7×9"). Si no hay
  *   info, devuelve { ok: true } por default.
+ * @param originalDims - 2026-09-24: dimensiones de la foto ORIGINAL cuando el
+ *   archivo subido pasó por upscale local (client-photo-upscale). El
+ *   re-muestreo NO crea detalle, así que medir el archivo mejorado inflaría
+ *   el DPI percibido y apagaría el aviso falsamente — con originalDims el
+ *   ratio/severidad se calculan sobre la original (y los px mostrados en el
+ *   mensaje son los de la original).
  * @returns ok=false con detalles si la resolución es insuficiente.
  */
 export function checkPhotoQuality(
   image: HTMLImageElement,
   sizeCm: string | undefined,
+  originalDims?: { width: number; height: number },
 ): {
   ok: boolean;
   requiredPx?: { w: number; h: number };
@@ -116,8 +123,8 @@ export function checkPhotoQuality(
   const requiredW = widthCm * PX_PER_CM;
   const requiredH = widthCm * PX_PER_CM; // simplificado — asume cuadrado
 
-  const actualW = image.naturalWidth;
-  const actualH = image.naturalHeight;
+  const actualW = originalDims?.width ?? image.naturalWidth;
+  const actualH = originalDims?.height ?? image.naturalHeight;
 
   // Umbrales:
   //   >= requirement: OK

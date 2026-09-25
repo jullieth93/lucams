@@ -108,6 +108,34 @@ describe("SlotStateSchema — encuadre + texto del usuario sobreviven (ADR-057 F
     ).toBe(false);
   });
 
+  it("2026-09-24 — conserva originalWidth/originalHeight (dims de la foto ORIGINAL pre-upscale)", () => {
+    const parsed = SlotStateSchema.parse({
+      slotIndex: 0,
+      assetId: "a",
+      assetUrl: "u",
+      originalWidth: 3024,
+      originalHeight: 4032,
+    });
+    expect(parsed.originalWidth).toBe(3024);
+    expect(parsed.originalHeight).toBe(4032);
+  });
+
+  it("2026-09-24 — originalWidth/originalHeight opcionales y con rangos sanos (anti-tamper)", () => {
+    const parsed = SlotStateSchema.parse({ slotIndex: 0, assetId: "a", assetUrl: "u" });
+    expect(parsed.originalWidth).toBeUndefined();
+    expect(parsed.originalHeight).toBeUndefined();
+    for (const bad of [0, -10, 1.5, 99999, "3024"]) {
+      expect(
+        SlotStateSchema.safeParse({
+          slotIndex: 0,
+          assetId: "a",
+          assetUrl: "u",
+          originalWidth: bad,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it("un canvasData V2 completo round-trips el encuadre de cada slot", () => {
     const canvas = {
       version: 2 as const,

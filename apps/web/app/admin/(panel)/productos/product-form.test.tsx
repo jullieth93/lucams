@@ -99,3 +99,77 @@ describe("ProductForm — feedback de guardado (regresión 2026-09-18)", () => {
     expect(alert).toHaveTextContent("Algo salió mal actualizando el producto");
   });
 });
+
+/*
+ * Estudio de personalización POR PRODUCTO (owner 2026-09-24) — tab Avanzado:
+ * zoom inicial del lienzo (canvasInitialZoom) y columnas de la grilla
+ * (gridColsOverride). La sección solo se muestra si el producto es
+ * personalizable; al apagar el checkbox los valores se conservan en inputs
+ * ocultos (guardar el form no los borra del personalizationSchema).
+ */
+describe("ProductForm — Estudio de personalización por producto (2026-09-24)", () => {
+  const STUDIO_PRODUCT = {
+    ...INITIAL_PRODUCT,
+    canvasInitialZoom: 1.25,
+    gridColsOverride: 2,
+  };
+
+  function renderStudioForm(product: typeof STUDIO_PRODUCT) {
+    const action = vi.fn(async () => ({}));
+    render(
+      <ProductForm
+        categories={CATEGORIES}
+        initialProduct={product}
+        action={action}
+        submitLabel="Guardar cambios"
+      />,
+    );
+  }
+
+  it("producto personalizable: muestra zoom inicial y columnas con los valores guardados", () => {
+    renderStudioForm(STUDIO_PRODUCT);
+    const zoom = screen.getByLabelText(/zoom inicial del lienzo/i) as HTMLInputElement;
+    const cols = screen.getByLabelText(/columnas de la grilla/i) as HTMLInputElement;
+    expect(zoom.value).toBe("1.25");
+    expect(cols.value).toBe("2");
+  });
+
+  it("producto NO personalizable: sección oculta y valores preservados en inputs ocultos", () => {
+    renderStudioForm({ ...STUDIO_PRODUCT, isPersonalizable: false });
+    expect(screen.queryByText("Estudio de personalización")).not.toBeInTheDocument();
+    // Los hidden conservan los valores → guardar no los borra del schema.
+    const zoomHidden = document.querySelector<HTMLInputElement>(
+      'input[type="hidden"][name="canvasInitialZoom"]',
+    );
+    const colsHidden = document.querySelector<HTMLInputElement>(
+      'input[type="hidden"][name="gridColsOverride"]',
+    );
+    expect(zoomHidden?.value).toBe("1.25");
+    expect(colsHidden?.value).toBe("2");
+  });
+
+  it("al apagar «Personalizable» la sección desaparece sin perder los valores", () => {
+    renderStudioForm(STUDIO_PRODUCT);
+    fireEvent.click(screen.getByLabelText(/🎨 Personalizable/));
+    expect(screen.queryByLabelText(/zoom inicial del lienzo/i)).not.toBeInTheDocument();
+    expect(
+      document.querySelector<HTMLInputElement>('input[type="hidden"][name="gridColsOverride"]')
+        ?.value,
+    ).toBe("2");
+    // Al reactivarlo, la sección vuelve con los valores iniciales.
+    fireEvent.click(screen.getByLabelText(/🎨 Personalizable/));
+    expect((screen.getByLabelText(/columnas de la grilla/i) as HTMLInputElement).value).toBe("2");
+  });
+
+  it("el alert global nombra los campos nuevos con etiqueta humana", async () => {
+    const form = renderForm({
+      error: "Datos inválidos.",
+      fieldErrors: { gridColsOverride: ["Máximo 6 columnas"] },
+    });
+    fireEvent.submit(form);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Columnas de la grilla");
+    expect(alert).toHaveTextContent("Máximo 6 columnas");
+  });
+});

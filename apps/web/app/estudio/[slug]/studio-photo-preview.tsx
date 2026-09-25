@@ -26,6 +26,7 @@ import {
   WHITE_CARD_CHECKER,
   WHITE_CARD_CHECKER_SIZE,
   WHITE_CARD_TRAY_PAD,
+  WHITE_CARD_TRAY_MAX_ASPECT,
 } from "./studio-slot";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
 import {
@@ -177,7 +178,10 @@ export function StudioPhotoPreview({
   // "transparencia") para que la Polaroid Clásica blanca se lea acá también.
   // Adorno 100% DOM/pantalla alrededor del Stage — nunca entra al snapshot.
   // Misma exclusión que en la grilla: modo tira (dibujaría costuras entre celdas).
-  const whiteCardTray = cardBgHex.toUpperCase() === "#FFFFFF" && !isStrip;
+  // 2026-09-24 — tarjetas MUY altas (aspect ≥ 2, alargados): SIN bandeja (margen
+  // mínimo alrededor de la imagen, QA STG) — misma regla que StudioSlot.
+  const whiteCardTray =
+    cardBgHex.toUpperCase() === "#FFFFFF" && !isStrip && aspect < WHITE_CARD_TRAY_MAX_ASPECT;
   const stageWidth = whiteCardTray ? displayWidth - WHITE_CARD_TRAY_PAD * 2 : displayWidth;
   // Bug 2026-09-22 (mismo de la grilla): el inset fijo en px rompía el aspect en
   // tarjetas no cuadradas (alargados 1:3+) → banda de canvas muerta abajo. El

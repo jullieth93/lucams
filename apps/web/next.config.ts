@@ -6,9 +6,15 @@ import type { NextConfig } from "next";
 // hay ninguna de las dos → no se expone la variable y el footer no renderiza
 // badge (evita el "vdev" sin sentido).
 const buildVersion = process.env.NEXT_PUBLIC_BUILD_VERSION ?? process.env.VERCEL_GIT_COMMIT_SHA;
+// El badge es una herramienta de soporte/depuración: solo se expone fuera de
+// producción (VERCEL_ENV=production lo oculta; local/preview lo muestran).
+const appEnv = process.env.NEXT_PUBLIC_APP_ENV ?? process.env.VERCEL_ENV ?? "development";
 
 const nextConfig: NextConfig = {
-  env: buildVersion ? { NEXT_PUBLIC_BUILD_VERSION: buildVersion } : {},
+  env: {
+    ...(buildVersion ? { NEXT_PUBLIC_BUILD_VERSION: buildVersion } : {}),
+    NEXT_PUBLIC_APP_ENV: appEnv,
+  },
   // Permite que el dev server acepte requests HMR / dev-resources desde
   // hosts distintos a localhost. Necesario cuando se navega a la app
   // por la IP LAN de la VM (192.168.x.x) o por el dev domain ngrok en

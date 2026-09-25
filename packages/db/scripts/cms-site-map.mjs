@@ -7447,22 +7447,22 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               key: "estudio.fotos.badge-mejorada",
               kind: "BLOCK",
               type: "TEXT",
-              label: "Badge «Mejorada» de la miniatura",
+              label: "Badge «Optimizada» de la miniatura",
               helpText:
-                "Etiqueta pequeña sobre la foto que se mejoró automáticamente al subirla (upscale local para imprimir mejor).",
+                "Etiqueta pequeña sobre la foto que se ajustó automáticamente al subirla (upscale local para el tamaño de impresión). Texto honesto: el ajuste suaviza, no recupera detalle.",
               category: "HOME",
-              body: "✨ Mejorada",
+              body: "✨ Optimizada",
               sortOrder: 195,
             },
             {
               key: "estudio.fotos.badge-mejorada-title",
               kind: "BLOCK",
               type: "TEXT",
-              label: "Badge «Mejorada»: ayuda",
+              label: "Badge «Optimizada»: ayuda",
               helpText:
-                "Aparece al pasar el mouse sobre el badge «Mejorada» y lo lee el lector de pantalla.",
+                "Aparece al pasar el mouse sobre el badge «Optimizada» y lo lee el lector de pantalla. Debe ser honesto: el ajuste suaviza la foto pero no recupera detalle.",
               category: "HOME",
-              body: "La mejoramos automáticamente para imprimir mejor",
+              body: "La ajustamos automáticamente al tamaño de impresión. Ojo: esto suaviza la foto pero no recupera detalle — si tienes la original en mayor resolución, úsala.",
               sortOrder: 197,
             },
             {

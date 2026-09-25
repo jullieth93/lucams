@@ -95,8 +95,12 @@ export async function SiteFooter() {
   ]);
   // Sin NEXT_PUBLIC_BUILD_VERSION (inyectada en build por next.config.ts desde
   // VERCEL_GIT_COMMIT_SHA en Vercel) no se muestra badge de versión — evita el
-  // "vdev" sin sentido en local/preview.
-  const buildVersion = process.env.NEXT_PUBLIC_BUILD_VERSION;
+  // "vdev" sin sentido en local/preview. Y en producción no se muestra nunca:
+  // el sha es herramienta de soporte/QA, no información para el cliente.
+  const buildVersion =
+    process.env.NEXT_PUBLIC_APP_ENV === "production"
+      ? undefined
+      : process.env.NEXT_PUBLIC_BUILD_VERSION;
   const waNumberDisplay = waNumber.replace(/^57(\d{3})(\d{3})(\d{4})$/, "+57 $1 $2 $3");
 
   return (

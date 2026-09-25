@@ -54,6 +54,13 @@ export type PhotoUpscaleResult = {
   ratioBefore: number;
   /** Ratio tras el upscale. */
   ratioAfter: number;
+  /**
+   * Dimensiones de la foto ORIGINAL (2026-09-24): el caller las adjunta al
+   * asset para que el indicador de calidad mida la nitidez real (el upscale
+   * suaviza, no crea detalle).
+   */
+  originalWidth: number;
+  originalHeight: number;
 };
 
 function parseSizeCm(sizeCm: string | undefined): { widthCm: number; heightCm: number } | null {
@@ -106,19 +113,29 @@ export async function upscalePhotoForPrint(
   try {
     const requiredPx = Math.ceil(Math.min(parsed.widthCm, parsed.heightCm) * PX_PER_CM_300DPI);
     const bitmap = await createImageBitmap(file);
-    const actualMinPx = Math.min(bitmap.width, bitmap.height);
+    // Capturar antes de cualquier close() — tras close() las dimensiones no son confiables.
+    const originalWidth = bitmap.width;
+    const originalHeight = bitmap.height;
+    const actualMinPx = Math.min(originalWidth, originalHeight);
     const ratioBefore = actualMinPx / requiredPx;
 
     if (ratioBefore >= 1) {
       bitmap.close();
-      return { file, improved: false, ratioBefore, ratioAfter: ratioBefore };
+      return {
+        file,
+        improved: false,
+        ratioBefore,
+        ratioAfter: ratioBefore,
+        originalWidth,
+        originalHeight,
+      };
     }
 
     // Tamaño objetivo: el lado MENOR llega a requiredPx (aspect conservado),
     // topeado a ×4 el original.
     const factor = Math.min(requiredPx / actualMinPx, MAX_UPSCALE_FACTOR);
-    const targetW = Math.max(1, Math.round(bitmap.width * factor));
-    const targetH = Math.max(1, Math.round(bitmap.height * factor));
+    const targetW = Math.max(1, Math.round(originalWidth * factor));
+    const targetH = Math.max(1, Math.round(originalHeight * factor));
 
     // Re-muestreo progresivo: pasos de factor ≤ 2 con smoothing de alta calidad.
     let srcCanvas = document.createElement("canvas");
@@ -176,7 +193,14 @@ export async function upscalePhotoForPrint(
       : file.name.replace(/\.[^.]+$/, "") + (useWebp ? ".webp" : ".jpg");
     const improved = new File([blob], name, { type: mime, lastModified: file.lastModified });
     const ratioAfter = Math.min(curW, curH) / requiredPx;
-    return { file: improved, improved: true, ratioBefore, ratioAfter };
+    return {
+      file: improved,
+      improved: true,
+      ratioBefore,
+      ratioAfter,
+      originalWidth,
+      originalHeight,
+    };
   } catch {
     // Ante cualquier fallo del pipeline local, que el servidor decida como antes.
     return null;

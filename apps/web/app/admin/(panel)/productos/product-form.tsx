@@ -78,6 +78,10 @@ type Props = {
     widthCm?: number | null;
     heightCm?: number | null;
     depthCm?: number | null;
+    /** Estudio por producto (2026-09-24): zoom inicial del lienzo (null = default 1). */
+    canvasInitialZoom?: number | null;
+    /** Estudio por producto (2026-09-24): columnas de la grilla (null = grilla del template). */
+    gridColsOverride?: number | null;
   };
   action: typeof createProductAction | typeof updateProductAction;
   submitLabel: string;
@@ -92,6 +96,11 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
   const isEdit = Boolean(initialProduct);
   const [name, setName] = useState(initialProduct?.name ?? "");
   const [slug, setSlug] = useState(initialProduct?.slug ?? "");
+  // Estudio por producto (2026-09-24): la sección "Estudio de personalización"
+  // del tab Avanzado solo se muestra cuando el producto es personalizable; al
+  // apagar el checkbox los valores se conservan vía inputs ocultos (no se
+  // pierden si Lucy lo vuelve a activar).
+  const [personalizable, setPersonalizable] = useState(initialProduct?.isPersonalizable ?? false);
 
   const [slugTouched, setSlugTouched] = useState(false);
   const onNameChange = (v: string) => {
@@ -251,6 +260,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
             hint="Activa el estudio de personalización en vivo en la página del producto."
             defaultChecked={initialProduct?.isPersonalizable ?? false}
             disabled={pending}
+            onChange={(checked) => setPersonalizable(checked)}
           />
         </SectionCard>
       </AdminTabPanel>
@@ -620,6 +630,75 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
             </Field>
           </div>
         </SectionCard>
+
+        {/*
+         * Estudio de personalización POR PRODUCTO (owner 2026-09-24): zoom
+         * inicial del lienzo ("100%" de arranque y del botón reset) y columnas
+         * de la grilla de canvas. Solo aplica a productos personalizables; al
+         * apagar "Personalizable" los valores viajan en inputs ocultos para no
+         * perderse. Vaciar un campo = volver al default del Estudio (el service
+         * elimina la key del personalizationSchema).
+         */}
+        {personalizable ? (
+          <SectionCard
+            title="Estudio de personalización"
+            description="Ajustes finos del lienzo del Estudio para ESTE producto. Déjalos vacíos para el comportamiento estándar."
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field
+                id="canvasInitialZoom"
+                label="Zoom inicial del lienzo"
+                hint="1 = 100% (estándar). Rango 0.5 – 2.5, en pasos de 0.25. Es el zoom con el que abre el Estudio y al que vuelve el botón de reinicio."
+                error={state?.fieldErrors?.canvasInitialZoom?.[0]}
+              >
+                <Input
+                  id="canvasInitialZoom"
+                  name="canvasInitialZoom"
+                  type="number"
+                  min={0.5}
+                  max={2.5}
+                  step={0.25}
+                  defaultValue={initialProduct?.canvasInitialZoom ?? ""}
+                  placeholder="1"
+                  disabled={pending}
+                />
+              </Field>
+              <Field
+                id="gridColsOverride"
+                label="Columnas de la grilla"
+                hint="1 – 6 columnas. Las filas se calculan solas. En celular (<640px) siempre es 1 columna, este ajuste no aplica ahí."
+                error={state?.fieldErrors?.gridColsOverride?.[0]}
+              >
+                <Input
+                  id="gridColsOverride"
+                  name="gridColsOverride"
+                  type="number"
+                  min={1}
+                  max={6}
+                  step={1}
+                  defaultValue={initialProduct?.gridColsOverride ?? ""}
+                  placeholder="Automático"
+                  disabled={pending}
+                />
+              </Field>
+            </div>
+          </SectionCard>
+        ) : (
+          // Producto NO personalizable: preservar los valores guardados (si los
+          // hay) para que guardar el form no los borre del personalizationSchema.
+          <>
+            <input
+              type="hidden"
+              name="canvasInitialZoom"
+              value={initialProduct?.canvasInitialZoom ?? ""}
+            />
+            <input
+              type="hidden"
+              name="gridColsOverride"
+              value={initialProduct?.gridColsOverride ?? ""}
+            />
+          </>
+        )}
       </AdminTabPanel>
 
       {/*
@@ -817,12 +896,14 @@ function Checkbox({
   hint,
   defaultChecked,
   disabled,
+  onChange,
 }: {
   name: string;
   label: string;
   hint?: string;
   defaultChecked: boolean;
   disabled: boolean;
+  onChange?: (checked: boolean) => void;
 }) {
   return (
     <label className="text-brand-purple-dark/80 hover:bg-brand-purple/5 flex cursor-pointer items-start gap-3 rounded-lg border border-transparent p-2 text-sm">
@@ -831,6 +912,7 @@ function Checkbox({
         name={name}
         defaultChecked={defaultChecked}
         disabled={disabled}
+        onChange={onChange ? (e) => onChange(e.target.checked) : undefined}
         className="border-brand-purple/25 text-brand-purple-dark focus:ring-brand-purple/50 mt-0.5 h-5 w-5 rounded"
       />
       <span className="flex-1">
@@ -884,6 +966,8 @@ const FIELD_LABELS: Record<string, string> = {
   widthCm: "Ancho (cm)",
   heightCm: "Alto (cm)",
   depthCm: "Largo (cm)",
+  canvasInitialZoom: "Zoom inicial del lienzo",
+  gridColsOverride: "Columnas de la grilla",
 };
 
 /**
@@ -927,6 +1011,8 @@ function computeErrorTabs(
     sku: "avanzado",
     cost: "avanzado",
     premadeSurcharge: "avanzado",
+    canvasInitialZoom: "avanzado",
+    gridColsOverride: "avanzado",
   };
   for (const [field, errors] of Object.entries(fieldErrors)) {
     if (errors && errors.length > 0 && mapping[field]) {

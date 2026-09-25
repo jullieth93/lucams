@@ -45,8 +45,10 @@ import {
   computeFlatSlotDisplaySize,
   computeMaxFrameH,
   computeStageZoomCap,
+  clampGridColsOverride,
   fitColsToFloor,
   hasEditableTextLayers,
+  resolveInitialStageZoom,
   resolveMaxCols,
   resolveMinSlotSize,
   slotHeightCapByCount,
@@ -615,5 +617,72 @@ describe("fitColsToFloor — los pisos nunca desbordan el contenedor", () => {
   it("entradas defensivas: cols 0 o ancho ≤ 0 → 1 (nunca NaN ni 0 columnas)", () => {
     expect(fitColsToFloor({ cols: 0, minSize: MIN_SLOT_SIZE, gap: 16, availableW: 500 })).toBe(1);
     expect(fitColsToFloor({ cols: 3, minSize: MIN_SLOT_SIZE, gap: 16, availableW: 0 })).toBe(1);
+  });
+});
+
+// Owner 2026-09-24 — Estudio configurable por producto (admin → Avanzado):
+// zoom inicial del lienzo (canvasInitialZoom) y override de columnas de la
+// grilla (gridColsOverride), ambos guardados en el personalizationSchema.
+describe("resolveInitialStageZoom — zoom inicial por producto", () => {
+  it("sin configurar (null/undefined/NaN) → 1 (el 100% de siempre)", () => {
+    expect(resolveInitialStageZoom(undefined)).toBe(1);
+    expect(resolveInitialStageZoom(null)).toBe(1);
+    expect(resolveInitialStageZoom(NaN)).toBe(1);
+  });
+
+  it("valor configurado dentro del rango → se respeta", () => {
+    expect(resolveInitialStageZoom(1.5)).toBe(1.5);
+    expect(resolveInitialStageZoom(0.5)).toBe(STAGE_ZOOM_MIN);
+    expect(resolveInitialStageZoom(2.5)).toBe(STAGE_ZOOM_MAX);
+  });
+
+  it("fuera de rango (JSON libre del producto) → clamp a [MIN, MAX]", () => {
+    expect(resolveInitialStageZoom(0.1)).toBe(STAGE_ZOOM_MIN);
+    expect(resolveInitialStageZoom(99)).toBe(STAGE_ZOOM_MAX);
+  });
+});
+
+describe("clampGridColsOverride — override de columnas por producto", () => {
+  it("sin override (null/undefined/NaN) → null (grilla automática del template)", () => {
+    expect(clampGridColsOverride(undefined)).toBeNull();
+    expect(clampGridColsOverride(null)).toBeNull();
+    expect(clampGridColsOverride(NaN)).toBeNull();
+  });
+
+  it("valor válido → se respeta; se redondea por si llega fraccionado", () => {
+    expect(clampGridColsOverride(3)).toBe(3);
+    expect(clampGridColsOverride(1)).toBe(1);
+    expect(clampGridColsOverride(2.7)).toBe(3);
+  });
+
+  it("clamp [1..6]: 0 → 1 y 12 → 6", () => {
+    expect(clampGridColsOverride(0)).toBe(1);
+    expect(clampGridColsOverride(12)).toBe(6);
+  });
+
+  it("móvil (<640px): el override NO aplica — resolveMaxCols capea a 1 y el grid hace min(maxCols, override)", () => {
+    // Contrato del owner: móvil es SIEMPRE 1 columna. El grid calcula
+    // cols = Math.min(resolveMaxCols(...), clampGridColsOverride(...)); como
+    // resolveMaxCols retorna 1 bajo 640px, el override queda inerte ahí sin
+    // importar su valor.
+    const maxColsMobile = resolveMaxCols({
+      containerWidth: 390,
+      isCalendar: false,
+      gridCols: 4,
+      slotCount: 6,
+    });
+    expect(maxColsMobile).toBe(1);
+    expect(Math.min(maxColsMobile, clampGridColsOverride(4) ?? 4)).toBe(1);
+    // En desktop ANCHO el mismo override SÍ gobierna (hasta el tope por ancho
+    // y por las columnas del template): 1900px / 450px objetivo → maxCols 4.
+    const maxColsDesktop = resolveMaxCols({
+      containerWidth: 1900,
+      isCalendar: false,
+      gridCols: 4,
+      slotCount: 6,
+    });
+    expect(maxColsDesktop).toBe(4);
+    expect(Math.min(maxColsDesktop, clampGridColsOverride(4) ?? 4)).toBe(4);
+    expect(Math.min(maxColsDesktop, clampGridColsOverride(2) ?? 2)).toBe(2);
   });
 });

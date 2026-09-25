@@ -211,6 +211,25 @@ function buildPhysicalSpecsFromInput(input: {
   } as Prisma.InputJsonValue;
 }
 
+/**
+ * Estudio por producto (owner 2026-09-24): zoom inicial del lienzo + override
+ * de columnas. Se persisten dentro de personalizationSchema Json. Al CREAR se
+ * escribe un schema mínimo (photoSlots: 1 = el default seguro de
+ * parsePhotoProductConfig; la config completa del Estudio la ponen los scripts
+ * de catálogo). En UPDATE el merge vive en updateProduct (null = borrar key).
+ */
+function buildPersonalizationSchemaFromInput(input: {
+  canvasInitialZoom?: number | null;
+  gridColsOverride?: number | null;
+}): Prisma.InputJsonValue | undefined {
+  if (input.canvasInitialZoom == null && input.gridColsOverride == null) return undefined;
+  return {
+    photoSlots: 1,
+    ...(input.canvasInitialZoom != null && { canvasInitialZoom: input.canvasInitialZoom }),
+    ...(input.gridColsOverride != null && { gridColsOverride: input.gridColsOverride }),
+  } as Prisma.InputJsonValue;
+}
+
 export async function createProduct(input: ProductCreateInput, createdBy: string | null) {
   // Verificar unicidad slug + sku (mejor mensaje de error que el de
   // Prisma P2002 genérico).
@@ -258,6 +277,13 @@ export async function createProduct(input: ProductCreateInput, createdBy: string
           const ps = buildPhysicalSpecsFromInput(input);
           return ps !== undefined ? { physicalSpecs: ps } : {};
         })(),
+        // Estudio por producto (2026-09-24) — zoom inicial / columnas de grilla
+        // iniciales dentro de personalizationSchema Json (schema mínimo; los
+        // scripts de catálogo lo pisan con la config completa).
+        ...(() => {
+          const ps = buildPersonalizationSchemaFromInput(input);
+          return ps !== undefined ? { personalizationSchema: ps } : {};
+        })(),
         categoryId: input.categoryId,
         images: [],
         ...(createdBy ? { createdBy } : {}),
@@ -301,19 +327,30 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
 
   // PR C — peso/dims se persisten dentro de physicalSpecs Json (mergeado
   // con specs existentes para no pisar otras keys como `material`).
+  // 2026-09-24 — zoom inicial / columnas del Estudio se persisten dentro de
+  // personalizationSchema Json con el MISMO patrón de merge (no pisar
+  // photoSlots, frameOptions, facesPerUnit, etc.). Una sola lectura para ambos.
   const { weightGrams, widthCm, heightCm, depthCm, ...restNoShipping } = rest;
-  let physicalSpecsUpdate: Prisma.InputJsonValue | undefined;
-  if (
+  const { canvasInitialZoom, gridColsOverride, ...restWithoutStudio } = restNoShipping;
+  const needsPhysicalSpecs =
     weightGrams !== undefined ||
     widthCm !== undefined ||
     heightCm !== undefined ||
-    depthCm !== undefined
-  ) {
-    const existing = await prisma.product.findUnique({
-      where: { id },
-      select: { physicalSpecs: true },
-    });
-    const current = (existing?.physicalSpecs as Record<string, unknown> | null | undefined) ?? {};
+    depthCm !== undefined;
+  const needsPersonalizationSchema =
+    canvasInitialZoom !== undefined || gridColsOverride !== undefined;
+  const existingJson =
+    needsPhysicalSpecs || needsPersonalizationSchema
+      ? await prisma.product.findUnique({
+          where: { id },
+          select: { physicalSpecs: true, personalizationSchema: true },
+        })
+      : null;
+
+  let physicalSpecsUpdate: Prisma.InputJsonValue | undefined;
+  if (needsPhysicalSpecs) {
+    const current =
+      (existingJson?.physicalSpecs as Record<string, unknown> | null | undefined) ?? {};
     physicalSpecsUpdate = {
       ...current,
       ...(weightGrams !== undefined && weightGrams !== null && { weightGrams }),
@@ -323,14 +360,32 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
     } as Prisma.InputJsonValue;
   }
 
+  // Estudio por producto (owner 2026-09-24): null = el admin VACIÓ el campo en
+  // el form → se ELIMINA la key y el Estudio vuelve a su default (zoom 1 /
+  // grilla del template). undefined = el form no envió el campo → no se toca.
+  let personalizationSchemaUpdate: Prisma.InputJsonValue | undefined;
+  if (needsPersonalizationSchema) {
+    const current =
+      (existingJson?.personalizationSchema as Record<string, unknown> | null | undefined) ?? {};
+    const next: Record<string, unknown> = { ...current };
+    if (canvasInitialZoom === null) delete next.canvasInitialZoom;
+    else if (canvasInitialZoom !== undefined) next.canvasInitialZoom = canvasInitialZoom;
+    if (gridColsOverride === null) delete next.gridColsOverride;
+    else if (gridColsOverride !== undefined) next.gridColsOverride = gridColsOverride;
+    personalizationSchemaUpdate = next as Prisma.InputJsonValue;
+  }
+
   // idealFor es Json — necesita tratamiento especial para tipos Prisma.
-  const { idealFor, ...restWithoutJson } = restNoShipping;
+  const { idealFor, ...restWithoutJson } = restWithoutStudio;
   const updated = await prisma.product.update({
     where: { id },
     data: {
       ...restWithoutJson,
       ...(idealFor !== undefined && { idealFor }),
       ...(physicalSpecsUpdate !== undefined && { physicalSpecs: physicalSpecsUpdate }),
+      ...(personalizationSchemaUpdate !== undefined && {
+        personalizationSchema: personalizationSchemaUpdate,
+      }),
       ...(updatedBy ? { updatedBy } : {}),
     },
   });

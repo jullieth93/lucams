@@ -61,6 +61,7 @@ import {
   computeFlatSlotDisplaySize,
   computeMaxFrameH,
   computeStageZoomCap,
+  clampGridColsOverride,
   fitColsToFloor,
   hasEditableTextLayers,
   resolveMaxCols,
@@ -169,6 +170,15 @@ type StudioCanvasGridProps = {
    */
   stageZoomRaw: number;
   onStageZoomState: (state: { zoom: number; cap: number }) => void;
+  /**
+   * Override de columnas por PRODUCTO (owner 2026-09-24 — admin → producto →
+   * Avanzado, `gridColsOverride` del personalizationSchema): reemplaza las
+   * columnas del template; las filas se derivan (ceil slots/cols). Se clampa
+   * [1..6] y queda capeado por resolveMaxCols, así que en móvil (<640px) NO
+   * aplica — móvil es siempre 1 columna (decisión del owner). null/undefined =
+   * grilla automática del template.
+   */
+  gridColsOverride?: number | null;
   /** Ola 8 — Abre el modal unificado de edición para el slot indicado (desde clic en slot lleno). */
   openEditSlot?: { slotIndex: number; tab: "photo" | "text" } | null;
   /** Ola 8 — Callback cuando el modal unificado se cierra. */
@@ -206,6 +216,7 @@ export function StudioCanvasGrid({
   onSlotClick,
   stageZoomRaw,
   onStageZoomState,
+  gridColsOverride = null,
   openEditSlot,
   onEditClose,
   registerSlotStages,
@@ -262,6 +273,9 @@ export function StudioCanvasGrid({
   const clearSlot = useStore(store, (s) => s.clearSlot);
   const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
   const selectSlot = useStore(store, (s) => s.selectSlot);
+  // 2026-09-24 — assets del store para resolver las dimensiones ORIGINALES de
+  // la foto del slot cuando hubo upscale local (chip de calidad honesto).
+  const assets = useStore(store, (s) => s.assets);
   const texts = useStudioTexts();
 
   // 2026-09-22 — drop de un DISEÑO PREDISEÑADO sobre un slot (arrastrado desde
@@ -399,7 +413,14 @@ export function StudioCanvasGrid({
       slotCount: layoutSlotCount,
     });
 
-    let cols = Math.min(maxCols, canvasData.gridLayout.cols);
+    // Override de columnas por producto (owner 2026-09-24 — admin): reemplaza
+    // las columnas del template, clamp [1..6] vía clampGridColsOverride. Queda
+    // capeado por maxCols (resolveMaxCols) → en móvil (<640px) el override NO
+    // aplica (móvil es SIEMPRE 1 columna, decisión del owner) y la guarda de
+    // piso (fitColsToFloor, abajo) puede reducirlo si los pisos no caben. Las
+    // filas se derivan del override (ceil slots/cols), no hay override separado.
+    const colsOverride = clampGridColsOverride(gridColsOverride);
+    let cols = Math.min(maxCols, colsOverride ?? canvasData.gridLayout.cols);
     // Guarda de PISO vs ANCHO (owner 2026-09-18): el piso de displaySize por
     // slot NUNCA puede desbordar el contenedor — si `minSize*cols + gaps` no
     // cabe en el ancho disponible, se reducen columnas. Causa del overflow
@@ -449,6 +470,7 @@ export function StudioCanvasGrid({
     groupedForUnits,
     multiUnitSections,
     sectionAvailableW,
+    gridColsOverride,
   ]);
 
   // A2.6 — Crossfade visual al cambiar plantilla. Detectamos cambio en
@@ -708,6 +730,10 @@ export function StudioCanvasGrid({
   // grid plano y por las tarjetas-unidad del modo agrupado (separadores 2 caras).
   const renderSlotCell = (slot: CanvasDataV2["slots"][number]) => {
     const mounted = !lazy || forceMountAll || mountedSlots.has(slot.slotIndex);
+    // 2026-09-24 — dimensiones de la foto ORIGINAL si el asset pasó por el
+    // upscale local (chip de calidad medido sobre la nitidez real, no sobre
+    // los píxeles re-muestreados).
+    const slotAsset = slot.assetId ? assets.find((a) => a.id === slot.assetId) : undefined;
     return (
       <motion.div
         key={slot.slotIndex}
@@ -786,6 +812,8 @@ export function StudioCanvasGrid({
             onCenterPhoto={() => setSlotPhotoTransform(slot.slotIndex, null)}
             interactiveSlots={interactiveSlots}
             onAssetDrop={(asset: StudioAsset) => assignAssetToSlot(slot.slotIndex, asset)}
+            assetOriginalWidth={slotAsset?.originalWidth}
+            assetOriginalHeight={slotAsset?.originalHeight}
             onPredesignedDrop={(item) => {
               selectSlot(slot.slotIndex);
               void handlePredesignedDrop(slot.slotIndex, item);

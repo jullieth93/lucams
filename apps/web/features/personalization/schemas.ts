@@ -96,6 +96,15 @@ export const SlotStateSchema = z.object({
   // claves no declaradas) — igual que photoTransform/textOverrides (ADR-057 Fase A).
   profileAssetId: z.string().nullable().optional(),
   profileAssetUrl: z.string().max(2048).optional(),
+  // 2026-09-24 — dimensiones (px) de la foto ORIGINAL que subió el cliente, ANTES
+  // del upscale/compresión de pipeline. El chip de calidad del Estudio mide el DPI
+  // real contra estas dims, no contra el archivo ya re-muestreado (medir el archivo
+  // procesado inflaba el DPI percibido sin detalle real). Declararlas acá es lo que
+  // las hace sobrevivir al auto-save/recarga (Zod stripea claves no declaradas —
+  // mismo motivo que profileAssetId/photoTransform arriba). 2 números por slot:
+  // impacto de payload despreciable (~20 bytes/slot, cap de canvasData intacto).
+  originalWidth: z.number().int().min(1).max(50000).optional(),
+  originalHeight: z.number().int().min(1).max(50000).optional(),
   // ADR-057 Fase A — ENCUADRE del usuario (pan/zoom de la foto dentro del slot). ANTES no se
   // persistía (Zod strip) → el encuadre manual se perdía al guardar/recargar (bug) y el servidor
   // no podía reconstruir el render fiel. Ahora sobrevive; es la fuente de verdad del encuadre.
@@ -363,6 +372,22 @@ export const PhotoProductConfigSchema = z.object({
    * facesPerUnit=2. Default false/undefined (las 2 caras son obligatorias).
    */
   backOptional: z.boolean().optional(),
+  /**
+   * Zoom INICIAL del lienzo del Estudio (2026-09-24 — admin → producto →
+   * Avanzado, por producto): define el "100%" con el que abre el canvas y el
+   * valor al que vuelve el botón de reset del control de zoom. Rango alineado
+   * con STAGE_ZOOM_MIN/MAX del Estudio. undefined/null = 1 (comportamiento de
+   * siempre). Display-only: la exportación de producción es inmune al zoom.
+   */
+  canvasInitialZoom: z.number().min(0.5).max(2.5).optional(),
+  /**
+   * Override de columnas de la grilla del Estudio (2026-09-24 — mismo origen):
+   * reemplaza las columnas del template (las filas se derivan: ceil slots/cols).
+   * Clamp [1..6]; el Estudio lo capea además contra resolveMaxCols, así que en
+   * móvil (<640px) NO aplica — móvil es siempre 1 columna (decisión del owner).
+   * undefined/null = grilla automática del template.
+   */
+  gridColsOverride: z.number().int().min(1).max(6).optional(),
 });
 export type PhotoProductConfig = z.infer<typeof PhotoProductConfigSchema>;
 

@@ -282,6 +282,31 @@ export function stepStageZoom(current: number, direction: 1 | -1, cap: number): 
 }
 
 /**
+ * Zoom INICIAL del lienzo configurable por producto (owner 2026-09-24 — admin →
+ * producto → Avanzado → `canvasInitialZoom` en el personalizationSchema): es el
+ * "100%" con el que abre el canvas y el valor al que vuelve el botón de reset.
+ * Clamp defensivo al rango del zoom de stage (el schema Zod ya valida, pero el
+ * JSON del producto es libre). Default 1 = comportamiento de siempre.
+ */
+export function resolveInitialStageZoom(configValue: number | null | undefined): number {
+  if (configValue == null || !Number.isFinite(configValue)) return 1;
+  return Math.max(STAGE_ZOOM_MIN, Math.min(STAGE_ZOOM_MAX, configValue));
+}
+
+/**
+ * Override de columnas de la grilla por producto (owner 2026-09-24 — admin →
+ * producto → Avanzado → `gridColsOverride`): reemplaza las columnas del
+ * template; las filas se derivan (ceil slots/cols). Clamp [1..6] alineado con
+ * el schema Zod. El grid lo capea además contra `resolveMaxCols`, así que en
+ * móvil (<BP_MOBILE) el override NO aplica — móvil es siempre 1 columna
+ * (decisión del owner). null = grilla automática del template.
+ */
+export function clampGridColsOverride(override: number | null | undefined): number | null {
+  if (override == null || !Number.isFinite(override)) return null;
+  return Math.max(1, Math.min(6, Math.round(override)));
+}
+
+/**
  * Ola 29 (owner 2026-09-11, 1.3.A mejora visual) — secciones de TIRA en filas:
  * con N unidades multi-slot tipo tira photobooth (angostas y altas), las
  * secciones ya no se apilan una por fila — van 2-3 por fila y el resto envuelve

@@ -1,20 +1,17 @@
 // @vitest-environment jsdom
 
 /*
- * Test de regresión — bandeja de tarjeta blanca (WHITE_CARD_TRAY) en slots
- * ALTOS (bug 2026-09-22, "banda azul" del feedback del usuario).
+ * Test de la bandeja de tarjeta blanca (WHITE_CARD_TRAY) — dos rondas de QA:
  *
- * Causa raíz: el inset de la bandeja era FIJO en px en ambos ejes
- * (stageSlotWidth = slotWidth−16, stageSlotHeight = slotHeight−16). El
- * contenido Konva escala por ANCHO (scaleX=scaleY=ancho/stage.width), así que
- * en tarjetas no cuadradas (separadores alargados 1:3 / 1:3.75) el canvas
- * quedaba más alto que el contenido → banda vacía grande en la parte INFERIOR
- * del marco (~40px abajo vs 8px arriba en un 4×12), en vez de aire parejo.
- *
- * Contrato blindado: con bandeja, el alto del Stage se DERIVA del ancho inset
- * conservando el aspect del slot (el contenido llena el canvas y la bandeja,
- * que centra con flex, reparte el aire arriba/abajo en partes iguales).
- * Productos cuadrados (1:1) quedan idénticos a antes.
+ * 2026-09-22 ("banda azul"): el inset era FIJO en px en ambos ejes y rompía el
+ *   aspect en tarjetas no cuadradas → banda de canvas muerta abajo. Fix: el alto
+ *   del Stage se deriva del ancho inset.
+ * 2026-09-24 (este contrato): en tarjetas MUY altas (aspect ≥ 2, separadores
+ *   alargados/magnéticos 1:3+) la bandeja con aspect conservado dejaba márgenes
+ *   checkerboard grandes en los 4 lados → el usuario pidió espacio MÍNIMO
+ *   alrededor de la imagen: esas tarjetas NO llevan bandeja (el Stage llena el
+ *   marco; el borde lo da el filete de contraste). Tarjetas bajas/cuadradas
+ *   conservan la bandeja con aspect (Polaroid Clásica blanca, cuadrados).
  *
  * Konva no corre en jsdom → react-konva mockeado (patrón de
  * studio-slot-badge.test.tsx); el Stage mock captura sus props.
@@ -90,23 +87,32 @@ function renderSlot(template: CanvasDataV1, displaySize: number, displayHeight: 
 }
 
 describe("StudioSlot — bandeja de tarjeta blanca conserva el aspect (bug banda inferior)", () => {
-  it("separador alargado 1:3 (4×12): el Stage inset conserva la proporción, sin banda muerta", () => {
-    // Caso real: cara 400×1200, display 204×612 (slotDisplaySize × aspect).
+  it("tarjeta blanca baja (1:1.33, tipo Polaroid): bandeja con aspect conservado", () => {
+    // 600×800 → aspect 1.33 < 2 → bandeja activa; alto derivado del ancho inset.
+    renderSlot(whiteTemplate(600, 800), 300, 400);
+    expect(stageProps).not.toBeNull();
+    expect(stageProps!.width).toBe(300 - 16);
+    expect(stageProps!.height).toBe((300 - 16) * (800 / 600));
+  });
+
+  it("separador alargado 1:3 (4×12): SIN bandeja — el Stage llena el marco (margen mínimo)", () => {
+    // 2026-09-24 (QA STG): con bandeja el usuario veía márgenes checkerboard
+    // grandes alrededor de la foto (el inset con aspect conservado crece con el
+    // aspect). En tarjetas ≥2:1 el Stage llena el marco y el borde lo da el
+    // filete de contraste — cero aire muerto alrededor del diseño.
     renderSlot(whiteTemplate(400, 1200), 204, 612);
     expect(stageProps).not.toBeNull();
-    expect(stageProps!.width).toBe(204 - 16);
-    // Antes: 612−16 = 596 (canvas más alto que el contenido 564 → banda abajo).
-    // Ahora: (204−16) × 3 = 564 — el contenido llena el canvas exactamente.
-    expect(stageProps!.height).toBe((204 - 16) * 3);
+    expect(stageProps!.width).toBe(204);
+    expect(stageProps!.height).toBe(612);
   });
 
-  it("separador alargado 1:3.75 (4×15): mismo contrato", () => {
+  it("separador alargado 1:3.75 (4×15): mismo contrato (sin bandeja)", () => {
     renderSlot(whiteTemplate(400, 1500), 176, 660);
-    expect(stageProps!.width).toBe(176 - 16);
-    expect(stageProps!.height).toBe((176 - 16) * 3.75);
+    expect(stageProps!.width).toBe(176);
+    expect(stageProps!.height).toBe(660);
   });
 
-  it("tarjeta cuadrada (1:1): idéntica a antes (inset simétrico 16px)", () => {
+  it("tarjeta cuadrada (1:1): bandeja activa, inset simétrico 16px", () => {
     renderSlot(whiteTemplate(1080, 1080), 300, 300);
     expect(stageProps!.width).toBe(284);
     expect(stageProps!.height).toBe(284);

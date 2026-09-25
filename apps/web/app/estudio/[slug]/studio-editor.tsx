@@ -35,7 +35,7 @@ import {
 import { parsePhotoProductConfig, CALENDAR_FONT_OPTIONS } from "@/features/personalization/schemas";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { StudioCanvasGrid, StudioStageZoomControl } from "./studio-canvas-grid";
-import { stepStageZoom } from "./studio-canvas-grid-size";
+import { stepStageZoom, resolveInitialStageZoom } from "./studio-canvas-grid-size";
 import { StudioSidebar } from "./studio-sidebar";
 import { StudioToolbar, StudioFinalizeFab } from "./studio-toolbar";
 import { StudioStyleToolbar } from "./studio-style-toolbar";
@@ -369,21 +369,27 @@ export function StudioEditor({
   // "Ideas" ni el panel se renderizan; el resto del Estudio sigue intacto.
   const aiEnabled = !isCatalogMode();
 
+  // M.3.b.A2.5 — Lee `sizeCm` del producto para badge visual en cada slot.
+  // Producto config viene como JSON unknown, parsePhotoProductConfig hace
+  // safeParse Zod con fallback a {photoSlots: 1}.
+  // Declarado ANTES del estado de zoom (2026-09-24): el zoom inicial del lienzo
+  // se lee de acá (canvasInitialZoom).
+  const productConfig = useMemo(
+    () => parsePhotoProductConfig(product.personalizationSchema),
+    [product.personalizationSchema],
+  );
+
   // Ola 22 (Lucy 2026-09-09) — zoom de LIENZO: el valor crudo vive ACÁ porque el
   // control (− / % / + / reset) se renderiza en la fila de pills superior (junto a
   // «Ideas» / «Ver en tu espacio»), nunca flotando sobre el canvas ("invadía el
   // lienzo"). El grid lo clampa contra el tope por ancho y reporta el estado
   // efectivo (zoom real + cap) para el % y los disabled de −/+.
-  const [stageZoomRaw, setStageZoomRaw] = useState(1);
-  const [stageZoomState, setStageZoomState] = useState({ zoom: 1, cap: 1 });
-
-  // M.3.b.A2.5 — Lee `sizeCm` del producto para badge visual en cada slot.
-  // Producto config viene como JSON unknown, parsePhotoProductConfig hace
-  // safeParse Zod con fallback a {photoSlots: 1}. Solo usamos sizeCm.
-  const productConfig = useMemo(
-    () => parsePhotoProductConfig(product.personalizationSchema),
-    [product.personalizationSchema],
-  );
+  // 2026-09-24 (owner) — el zoom INICIAL es configurable por producto
+  // (canvasInitialZoom del personalizationSchema, admin → Avanzado): es el "100%"
+  // de arranque y el valor al que vuelve el botón de reset. Default 1.
+  const initialStageZoom = resolveInitialStageZoom(productConfig.canvasInitialZoom);
+  const [stageZoomRaw, setStageZoomRaw] = useState(initialStageZoom);
+  const [stageZoomState, setStageZoomState] = useState({ zoom: initialStageZoom, cap: 1 });
   // Ola 3 (Lucy 2026-07-22) — flags del producto, via schema (NO por slug):
   //  - allowText: el texto editable es de la Polaroid; Fotoimanes Cuadrados y
   //    separadores NO dibujan las capas de texto de la plantilla.
@@ -1655,7 +1661,9 @@ export function StudioEditor({
               zoom={stageZoomState.zoom}
               cap={stageZoomState.cap}
               onStep={(dir) => setStageZoomRaw((z) => stepStageZoom(z, dir, stageZoomState.cap))}
-              onReset={() => setStageZoomRaw(1)}
+              // Reset → zoom inicial DEL PRODUCTO (canvasInitialZoom), no siempre 1
+              // (owner 2026-09-24: ese valor es el "100%" configurado en admin).
+              onReset={() => setStageZoomRaw(initialStageZoom)}
             />
           </div>
 
@@ -1708,6 +1716,9 @@ export function StudioEditor({
             onSlotClick={handleSlotClick}
             stageZoomRaw={stageZoomRaw}
             onStageZoomState={setStageZoomState}
+            // Override de columnas por producto (owner 2026-09-24, admin →
+            // Avanzado). null = grilla automática del template.
+            gridColsOverride={productConfig.gridColsOverride ?? null}
             openEditSlot={openEditSlot}
             onEditClose={() => setOpenEditSlot(null)}
             onRequestChangePhoto={handleRequestChangePhoto}

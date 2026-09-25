@@ -242,8 +242,9 @@ export type StudioTexts = {
     thumbUsada: string;
     thumbAviso: string;
     thumbArrastrar: string;
-    /** ADR-101 (owner 2026-09-15) — badge de la foto que se mejoró automáticamente
-     *  al subir (upscale local, client-photo-upscale). */
+    /** ADR-101 (owner 2026-09-15) — badge de la foto que se ajustó automáticamente
+     *  al subir (upscale local, client-photo-upscale). 2026-09-24: wording honesto —
+     *  "Optimizada", sin prometer nitidez (el re-muestreo no crea detalle). */
     badgeMejorada: string;
     badgeMejoradaTitle: string;
     calidadTituloFuerte: string;
@@ -777,8 +778,9 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     thumbUsada: "Ya está pegada en algún imán. Puedes arrastrar otra foto.",
     thumbAviso: "Click para ver detalles del problema de calidad.",
     thumbArrastrar: "Arrastra al canvas o toca un slot vacío para asignar",
-    badgeMejorada: "✨ Mejorada",
-    badgeMejoradaTitle: "La mejoramos automáticamente para imprimir mejor",
+    badgeMejorada: "✨ Optimizada",
+    badgeMejoradaTitle:
+      "La ajustamos automáticamente al tamaño de impresión. Ojo: esto suaviza la foto pero no recupera detalle — si tienes la original en mayor resolución, úsala.",
     calidadTituloFuerte: "Cuidado con esta foto",
     calidadTituloSuave: "Aviso sobre esta foto",
     calidadSubSuave: "Se puede usar igual, pero",

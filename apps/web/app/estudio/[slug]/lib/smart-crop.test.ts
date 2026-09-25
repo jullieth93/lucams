@@ -80,4 +80,21 @@ describe("checkPhotoQuality — resolución mínima de imprenta (300 DPI)", () =
     // 10 cm → 1180 px requeridos; lado menor 700 → < 60% → warn.
     expect(checkPhotoQuality(img(4000, 700), "10×10").severity).toBe("warn");
   });
+
+  // 2026-09-24 — auditoría honestidad (frente B): tras upscale local el archivo
+  // subido tiene MÁS píxeles, pero el re-muestreo no crea detalle. El aviso se
+  // calcula sobre la foto ORIGINAL (originalDims), no sobre el archivo mejorado.
+  it("con originalDims (hubo upscale): mide la ORIGINAL, no el archivo re-muestreado", () => {
+    // Foto original 400×300 subida a 6×6 cm (708px requeridos): tras upscale ×2
+    // el archivo queda 800×600 (ratio ≥1, verde falso) — con originalDims la
+    // advertencia persiste (ratio ~0.42 → error) y muestra los px originales.
+    const r = checkPhotoQuality(img(800, 600), "6×6", { width: 400, height: 300 });
+    expect(r.ok).toBe(false);
+    expect(r.severity).toBe("error");
+    expect(r.actualPx).toEqual({ w: 400, h: 300 });
+  });
+
+  it("con originalDims suficientes → ok (foto original buena, upscale no aplicó)", () => {
+    expect(checkPhotoQuality(img(1000, 800), "6×6", { width: 1000, height: 800 }).ok).toBe(true);
+  });
 });

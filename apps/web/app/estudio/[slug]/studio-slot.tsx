@@ -113,6 +113,13 @@ export function nextWheelScale(current: number, deltaY: number, min = 0.5, max =
 export const WHITE_CARD_CHECKER = "repeating-conic-gradient(#CDC7DB 0% 25%, #FFFFFF 0% 50%)";
 export const WHITE_CARD_CHECKER_SIZE = "16px 16px";
 export const WHITE_CARD_TRAY_PAD = 8;
+// 2026-09-24 (QA STG) — la bandeja NO aplica a tarjetas MUY altas (aspect ≥ 2:
+// separadores alargados/magnéticos 1:3+). Como el inset conserva el aspect, la
+// bandeja vertical crece con el aspect (paspartú de ~24-30px por lado en una
+// tira 1:3.75) y el usuario veía "márgenes checkerboard" por todos lados —
+// pidió espacio MÍNIMO alrededor de la imagen. En esas tarjetas el Stage
+// llena el marco y el borde lo da el filete de contraste (cardContrastEdge).
+export const WHITE_CARD_TRAY_MAX_ASPECT = 2;
 
 type StudioSlotProps = {
   slotState: SlotState;
@@ -214,6 +221,13 @@ type StudioSlotProps = {
   onCenterPhoto?: () => void;
   onAssetDrop: (asset: StudioAsset) => void;
   /**
+   * Dimensiones de la foto ORIGINAL cuando el asset del slot pasó por upscale
+   * local al subir (2026-09-24 — las resuelve el grid desde el asset del
+   * store). Alimentan el chip de calidad: el aviso mide la nitidez real.
+   */
+  assetOriginalWidth?: number;
+  assetOriginalHeight?: number;
+  /**
    * Drop de un DISEÑO PREDISEÑADO (2026-09-22 — drag desde la lista del
    * sidebar): el grid orquesta la aplicación (server action + asignación al
    * slot). Sin la prop, el drop de prediseñados se ignora.
@@ -251,6 +265,8 @@ function StudioSlotImpl({
   onCenterPhoto,
   onAssetDrop,
   onPredesignedDrop,
+  assetOriginalWidth,
+  assetOriginalHeight,
   onKeyboardNav,
   onRegisterStage,
   interactiveSlots = true,
@@ -328,8 +344,16 @@ function StudioSlotImpl({
   const [photoImage] = useImage(slotState.assetUrl ?? "", "anonymous");
   const photoQuality = useMemo(() => {
     if (!photoImage || !slotState.assetUrl) return null;
-    return checkPhotoQuality(photoImage, sizeCm);
-  }, [photoImage, slotState.assetUrl, sizeCm]);
+    // 2026-09-24 (auditoría honestidad): si la foto subida pasó por upscale
+    // local, el aviso se calcula sobre las dimensiones de la ORIGINAL — el
+    // re-muestreo suaviza pero NO crea detalle, y medir el archivo mejorado
+    // apagaría el aviso falsamente.
+    const originalDims =
+      assetOriginalWidth && assetOriginalHeight
+        ? { width: assetOriginalWidth, height: assetOriginalHeight }
+        : undefined;
+    return checkPhotoQuality(photoImage, sizeCm, originalDims);
+  }, [photoImage, slotState.assetUrl, sizeCm, assetOriginalWidth, assetOriginalHeight]);
 
   // Expose Konva stage to parent (para snapshot al finalizar)
   useEffect(() => {
@@ -453,7 +477,16 @@ function StudioSlotImpl({
   // Adorno de PANTALLA a nivel DOM: el snapshot de producción captura solo el canvas
   // Konva → la bandeja NUNCA se hornea (lo impreso no cambia). Mismas exclusiones
   // que el filete: tira (costuras entre celdas) y heart/circle (silueta recortada).
-  const whiteCardTray = cardBgHex.toUpperCase() === "#FFFFFF" && !isStrip && !slotClipPath;
+  // 2026-09-24 (QA STG) — tarjetas MUY altas (aspect ≥ TRAY_MAX_ASPECT: separadores
+  // alargados/magnéticos 1:3+): SIN bandeja. Con el inset conservando el aspect (fix
+  // 2026-09-22) la bandeja vertical crecía con el aspect y el usuario veía márgenes
+  // checkerboard grandes arriba/abajo/lados — pidió espacio MÍNIMO alrededor de la
+  // imagen. El Stage llena el marco y el borde lo da el filete de contraste.
+  const whiteCardTray =
+    cardBgHex.toUpperCase() === "#FFFFFF" &&
+    !isStrip &&
+    !slotClipPath &&
+    aspect < WHITE_CARD_TRAY_MAX_ASPECT;
   // Tamaño/escala EFECTIVOS del Stage: con bandeja, la tarjeta se dibuja inset; sin
   // ella, llena el slot como siempre. El aspect y el contenido no cambian (todo el
   // dibujo interno es proporcional vía scale → WYSIWYG intacto).
@@ -1357,6 +1390,8 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.slotState.filter === next.slotState.filter &&
     prev.slotState.textOverrides === next.slotState.textOverrides &&
     prev.slotState.photoTransform === next.slotState.photoTransform &&
+    prev.assetOriginalWidth === next.assetOriginalWidth &&
+    prev.assetOriginalHeight === next.assetOriginalHeight &&
     prev.isSelected === next.isSelected &&
     prev.displaySize === next.displaySize &&
     prev.displayHeight === next.displayHeight &&

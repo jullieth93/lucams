@@ -74,10 +74,10 @@ export function StudioSidebar({
   const [rightsAccepted, setRightsAccepted] = useState(false);
   // P0.2 — Toggle "ocultar usadas" tipo Mixbook Hide Used.
   const [hideUsed, setHideUsed] = useState(false);
-  // C2 (owner 2026-09-15) — fotos mejoradas automáticamente al subir (upscale
-  // local, client-photo-upscale): Set de assetIds para el badge "✨ Mejorada"
-  // del thumb. Client-side (el servidor no sabe que hubo re-muestreo — la foto
-  // ya llega mejorada); alcance de sesión del Estudio, suficiente para el badge.
+  // C2 (owner 2026-09-15) — fotos ajustadas automáticamente al subir (upscale
+  // local, client-photo-upscale): Set de assetIds para el badge "✨ Optimizada"
+  // del thumb (el servidor recibe la versión ya ajustada y no puede saberlo).
+  // Alcance de sesión del Estudio, suficiente para el badge.
   const [improvedAssetIds, setImprovedAssetIds] = useState<ReadonlySet<string>>(new Set());
   const texts = useStudioTexts();
 
@@ -177,12 +177,18 @@ export function StudioSidebar({
             signedUrl: result.signedUrl,
             width: result.width,
             height: result.height,
+            // 2026-09-24 — si hubo upscale local, guardamos las dimensiones de la
+            // ORIGINAL (metadata de sesión): el chip de calidad del slot mide la
+            // nitidez real, no los píxeles re-muestreados (que no crean detalle).
+            ...(upscaled?.improved
+              ? { originalWidth: upscaled.originalWidth, originalHeight: upscaled.originalHeight }
+              : {}),
             validationLevel: result.validationLevel,
             validationMessage: result.validationMessage,
           });
           // C2 — la foto se re-muestreó en el navegador antes de subir: marcarla
-          // para el badge "✨ Mejorada" del thumb (el servidor recibe la versión
-          // ya mejorada y no puede saberlo).
+          // para el badge "✨ Optimizada" del thumb (el servidor recibe la versión
+          // ya ajustada y no puede saberlo).
           if (upscaled?.improved) {
             const { assetId } = result;
             setImprovedAssetIds((prev) => new Set(prev).add(assetId));
@@ -803,9 +809,11 @@ function AssetThumb({
           </div>
         )}
 
-        {/* C2 (owner 2026-09-15) — Badge "✨ Mejorada": la foto se re-muestreó
-            en el navegador al subir para imprimir mejor. Bottom-right (el check
-            de usada va bottom-left; los avisos de calidad, top-right). */}
+        {/* C2 (owner 2026-09-15) — Badge "✨ Optimizada": la foto se re-muestreó
+            en el navegador al subir (ajuste al tamaño de impresión; NO crea
+            detalle — el título lo dice explícito, auditoría 2026-09-24).
+            Bottom-right (el check de usada va bottom-left; los avisos de
+            calidad, top-right). */}
         {autoImproved && (
           <span
             className="bg-brand-turquoise/95 text-brand-purple-dark absolute right-1 bottom-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold shadow ring-1 ring-white"

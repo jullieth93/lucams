@@ -379,6 +379,16 @@ export type StudioAsset = {
   width: number;
   height: number;
   /**
+   * 2026-09-24 — dimensiones de la foto ORIGINAL cuando hubo upscale local al
+   * subir (client-photo-upscale). Metadata de SESIÓN (no se persiste): permite
+   * que el indicador de calidad del slot se calcule sobre la foto original y
+   * no sobre los píxeles re-muestreados — el re-muestreo NO crea detalle, así
+   * que medir el archivo subido inflaría el DPI percibido y apagaría el aviso
+   * falsamente (auditoría honestidad de calidad, frente B).
+   */
+  originalWidth?: number;
+  originalHeight?: number;
+  /**
    * Resultado de validación sharp server-side. `level === 'error'` bloquea
    * el upload; los otros niveles permiten pero muestran warning UI.
    */

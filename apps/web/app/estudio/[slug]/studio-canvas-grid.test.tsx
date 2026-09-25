@@ -359,6 +359,101 @@ describe("StudioCanvasGrid — modo plano con tarjeta-unidad (owner 2026-09-18)"
   });
 });
 
+// ── Override de columnas por producto (owner 2026-09-24) ─────────────
+//
+// El admin puede fijar las columnas de la grilla por producto
+// (personalizationSchema.gridColsOverride). El grid las clampa [1..6] y las
+// capea contra resolveMaxCols — el template solo manda cuando no hay override.
+describe("StudioCanvasGrid — override de columnas por producto (owner 2026-09-24)", () => {
+  // En jsdom clientWidth es 0 → el grid mediría 0px y resolvería 1 columna
+  // (regla móvil). Stub a 1600px (desktop) para ejercitar las columnas reales.
+  let clientWidthDesc: PropertyDescriptor | undefined;
+  beforeEach(() => {
+    clientWidthDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 1600,
+    });
+  });
+  afterEach(() => {
+    if (clientWidthDesc) {
+      Object.defineProperty(HTMLElement.prototype, "clientWidth", clientWidthDesc);
+    }
+  });
+
+  function gridTemplateColsOf(container: HTMLElement): string[] {
+    return Array.from(container.querySelectorAll<HTMLElement>("div"))
+      .map((el) => el.style.gridTemplateColumns)
+      .filter((v) => v.startsWith("repeat("));
+  }
+
+  function renderFlat3Slots(gridColsOverride?: number) {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "cuadro-3-fotos",
+      canvasData: makePolaroidCanvas(3), // gridLayout del template: 3 cols
+      templates: [],
+    });
+    const onStageZoomState = vi.fn();
+    const { container } = render(
+      <StudioCanvasGrid
+        store={store}
+        gridColsOverride={gridColsOverride}
+        onSlotClick={() => {}}
+        stageZoomRaw={1}
+        onStageZoomState={onStageZoomState}
+        registerSlotStages={() => {}}
+      />,
+    );
+    return { container, onStageZoomState };
+  }
+
+  it("override=2 reemplaza las 3 columnas del template en la grilla plana", () => {
+    const { container } = renderFlat3Slots(2);
+    expect(gridTemplateColsOf(container)).toContain("repeat(2, 1fr)");
+    expect(gridTemplateColsOf(container)).not.toContain("repeat(3, 1fr)");
+  });
+
+  it("sin override la grilla del template queda intacta (3 columnas)", () => {
+    const { container } = renderFlat3Slots();
+    expect(gridTemplateColsOf(container)).toContain("repeat(3, 1fr)");
+  });
+
+  it("override MAYOR que el template no ensancha la grilla: queda capeado por resolveMaxCols", () => {
+    // Template 3 cols, override 6 → resolveMaxCols capea a las 3 del template.
+    const { container } = renderFlat3Slots(6);
+    expect(gridTemplateColsOf(container)).toContain("repeat(3, 1fr)");
+    expect(gridTemplateColsOf(container)).not.toContain("repeat(6, 1fr)");
+  });
+
+  it("zoom: el grid reporta el zoom pedido por el padre (el editor lo inicializa con canvasInitialZoom)", async () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "cuadro-3-fotos",
+      canvasData: makePolaroidCanvas(3),
+      templates: [],
+    });
+    const onStageZoomState = vi.fn();
+    render(
+      <StudioCanvasGrid
+        store={store}
+        onSlotClick={() => {}}
+        // El editor pasa acá resolveInitialStageZoom(canvasInitialZoom) — ej. 1.5.
+        stageZoomRaw={1.5}
+        onStageZoomState={onStageZoomState}
+        registerSlotStages={() => {}}
+      />,
+    );
+    await waitFor(() =>
+      expect(onStageZoomState).toHaveBeenCalledWith(
+        expect.objectContaining({ zoom: 1.5, cap: expect.any(Number) }),
+      ),
+    );
+  });
+});
+
 describe("StudioCanvasGrid — calendario multi-set (secciones «Set N»)", () => {
   it("2 sets de 12 → dos secciones con sustantivo «Set» y sus 12 slots c/u", () => {
     const store = createStudioStore();

@@ -29,6 +29,7 @@ import { getProductById, listCategoriesForSelect } from "@/features/products/ser
 import { getStorefrontVisibility } from "@/features/products/storefront-visibility";
 import { StorefrontVisibilityChip } from "@/components/admin/storefront-visibility-chip";
 import { parsePhysicalSpecs } from "@/features/products/shipping-schemas";
+import { PhotoProductConfigSchema } from "@/features/personalization/schemas";
 import { getStockEmoji, summarizeStock } from "@/features/products/stock-constants";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
@@ -135,6 +136,19 @@ export default async function ProductoDetallePage({
     activeForPrice.length > 0
       ? Math.min(...activeForPrice.map((v) => v.price ?? product.basePrice))
       : product.basePrice;
+
+  // Estudio por producto (2026-09-24): zoom inicial + columnas de grilla viven
+  // en personalizationSchema (JSON libre). Se parsea con el schema Zod en modo
+  // partial para leer solo las keys conocidas sin exigir photoSlots.
+  const studioConfig = PhotoProductConfigSchema.partial().safeParse(
+    product.personalizationSchema ?? {},
+  );
+  const canvasInitialZoom = studioConfig.success
+    ? (studioConfig.data.canvasInitialZoom ?? null)
+    : null;
+  const gridColsOverride = studioConfig.success
+    ? (studioConfig.data.gridColsOverride ?? null)
+    : null;
 
   return (
     <AdminPage>
@@ -253,6 +267,8 @@ export default async function ProductoDetallePage({
                 widthCm: parsePhysicalSpecs(product.physicalSpecs).widthCm ?? null,
                 heightCm: parsePhysicalSpecs(product.physicalSpecs).heightCm ?? null,
                 depthCm: parsePhysicalSpecs(product.physicalSpecs).depthCm ?? null,
+                canvasInitialZoom,
+                gridColsOverride,
               }}
               action={updateProductAction}
               submitLabel="Guardar cambios"
