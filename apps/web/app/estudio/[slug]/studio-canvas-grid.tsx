@@ -1127,6 +1127,15 @@ export function StudioCanvasGrid({
                         </span>
                       );
                     })()}
+                  {/* Nota de la rotación de imprenta (2026-09-25): en el canvas
+                      ambas caras se ven derechas (para editar), pero la Cara B se
+                      imprime girada 180° — el cliente lo entiende antes de la
+                      vista previa. Solo plegables. */}
+                  {!noFold && (
+                    <span className="text-brand-muted max-w-52 text-center text-[9px] leading-tight">
+                      {texts.lienzo.doblezNotaRotacion}
+                    </span>
+                  )}
                 </div>
               ))}
             </AnimatePresence>

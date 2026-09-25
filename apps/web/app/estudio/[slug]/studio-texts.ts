@@ -80,6 +80,9 @@ export type StudioTexts = {
     /** Línea de doblez de la tira de separador (solo plegables, no noFold):
      *  "Doblez · Desplegado: {tamano}" — {tamano} = tamaño total desplegado. */
     doblezDesplegado: string;
+    /** Nota junto al doblez (solo plegables, 2026-09-25): la Cara B se imprime
+     *  rotada 180° para que al doblar sobre la página ambas caras lean derechas. */
+    doblezNotaRotacion: string;
     slotTooltipCentrar: string;
     slotTooltipEditarAmbos: string;
     slotTooltipEditarFoto: string;
@@ -618,6 +621,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     unitCaraB: "Cara B",
     slotCaraBOpcional: "Opcional",
     doblezDesplegado: "Doblez · Desplegado: {tamano}",
+    doblezNotaRotacion:
+      "La Cara B se imprime girada 180° — al doblarla sobre la página se lee derecha.",
     slotTooltipCentrar: "Volver al centro y resetear zoom",
     slotTooltipEditarAmbos: "Ajustar foto y texto",
     slotTooltipEditarFoto: "Ajustar foto",
@@ -1139,6 +1144,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.unitCaraB": "estudio.lienzo.unit-cara-b",
   "lienzo.slotCaraBOpcional": "estudio.lienzo.slot-cara-b-opcional",
   "lienzo.doblezDesplegado": "estudio.lienzo.doblez-desplegado",
+  "lienzo.doblezNotaRotacion": "estudio.lienzo.doblez-nota-rotacion",
   "lienzo.slotTooltipCentrar": "estudio.lienzo.slot-tooltip-centrar",
   "lienzo.slotTooltipEditarAmbos": "estudio.lienzo.slot-tooltip-editar-ambos",
   "lienzo.slotTooltipEditarFoto": "estudio.lienzo.slot-tooltip-editar-foto",

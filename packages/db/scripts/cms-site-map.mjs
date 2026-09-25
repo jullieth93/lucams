@@ -5904,6 +5904,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 196,
             },
             {
+              key: "estudio.lienzo.doblez-nota-rotacion",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Doblez — nota rotación Cara B",
+              helpText:
+                "Nota junto a la línea de doblez en separadores plegables: explica que la Cara B se imprime rotada 180° para leerse derecha al doblar. Sin placeholders.",
+              category: "HOME",
+              body: "La Cara B se imprime girada 180° — al doblarla sobre la página se lee derecha.",
+              sortOrder: 197,
+            },
+            {
               key: "estudio.lienzo.slot-tooltip-centrar",
               kind: "BLOCK",
               type: "TEXT",
