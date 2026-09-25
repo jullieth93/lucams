@@ -2176,7 +2176,60 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
       path: "/carrito",
       icon: "ShoppingCart",
       sortOrder: 80,
-      sections: [{ key: "general", title: "Estados y textos", prefixes: ["cart."], sortOrder: 10 }],
+      sections: [
+        {
+          key: "general",
+          title: "Estados y textos",
+          prefixes: ["cart."],
+          sortOrder: 10,
+          fields: [
+            {
+              key: "cart.diseno-badge",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Línea personalizada: badge «Tu diseño»",
+              helpText:
+                "Rótulo sobre los botones de una línea con diseño personalizado (2026-09-25).",
+              category: "HOME",
+              body: "✨ Tu diseño",
+              sortOrder: 10,
+            },
+            {
+              key: "cart.ver-diseno",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Línea personalizada: botón «Ver»",
+              helpText:
+                "Abre la vista previa ampliada del diseño (lightbox). Va junto al botón «Editar».",
+              category: "HOME",
+              body: "Ver",
+              sortOrder: 20,
+            },
+            {
+              key: "cart.vista-previa-diseno-titulo",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Vista previa del diseño: título",
+              helpText:
+                "Título del lightbox con el preview del diseño; el nombre del producto se agrega solo después de este texto.",
+              category: "HOME",
+              body: "Tu diseño ·",
+              sortOrder: 30,
+            },
+            {
+              key: "cart.vista-previa-diseno-desc",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Vista previa del diseño: descripción (accesibilidad)",
+              helpText:
+                "Texto solo para lectores de pantalla (sr-only) que describe el lightbox del preview.",
+              category: "HOME",
+              body: "Vista previa ampliada del diseño personalizado de esta línea del carrito.",
+              sortOrder: 40,
+            },
+          ],
+        },
+      ],
     },
     {
       slug: "mi-cuenta",

@@ -91,12 +91,13 @@ export default async function CarritoPage() {
                           {item.designId ? (
                             <div className="mt-1 flex flex-col gap-1.5">
                               <p className="text-brand-purple/80 text-xs font-medium">
-                                ✨ Tu diseño
+                                <CmsText blockKey="cart.diseno-badge" fallback="✨ Tu diseño" />
                               </p>
                               {/* QA owner 2026-09-25 — "Editar" era un texto con forma
                                   de enlace; ahora es un botón outline real (mismo href
                                   al Estudio). "Ver" abre el lightbox con el preview del
-                                  diseño (DesignPreviewDialog, client). */}
+                                  diseño (DesignPreviewDialog, client — sus textos bajan
+                                  resueltos por props porque el client no lee el CMS). */}
                               <div className="flex flex-wrap items-center gap-2">
                                 <Button
                                   asChild
@@ -115,6 +116,21 @@ export default async function CarritoPage() {
                                   <DesignPreviewDialog
                                     previewUrl={item.designPreviewUrl}
                                     productName={item.productName}
+                                    triggerLabel={
+                                      <CmsText blockKey="cart.ver-diseno" fallback="Ver" />
+                                    }
+                                    title={
+                                      <CmsText
+                                        blockKey="cart.vista-previa-diseno-titulo"
+                                        fallback="Tu diseño ·"
+                                      />
+                                    }
+                                    description={
+                                      <CmsText
+                                        blockKey="cart.vista-previa-diseno-desc"
+                                        fallback="Vista previa ampliada del diseño personalizado de esta línea del carrito."
+                                      />
+                                    }
                                   />
                                 )}
                               </div>

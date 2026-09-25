@@ -8,8 +8,14 @@
  * diseño en grande ANTES de pagar sin salir del carrito (QA owner 2026-09-25).
  * Radix Dialog (components/ui/dialog) ya trae foco atrapado, cierre por ESC y
  * por backdrop, y aria-modal — acá solo se compone.
+ *
+ * Es client component y NO puede leer el CMS: sus textos llegan resueltos por
+ * props desde app/carrito/page.tsx (server), como <CmsText> por cada rótulo —
+ * así el ratchet de cobertura de contenido los cuenta como cubiertos (mismo
+ * patrón que label={<CmsText …/>} en app/pedido/[token]/page.tsx).
  */
 
+import type { ReactNode } from "react";
 import { Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,9 +29,18 @@ import {
 export function DesignPreviewDialog({
   previewUrl,
   productName,
+  triggerLabel,
+  title,
+  description,
 }: {
   previewUrl: string;
   productName: string;
+  /** Rótulo del botón que abre el lightbox (CMS: cart.ver-diseno). */
+  triggerLabel: ReactNode;
+  /** Título del lightbox; el nombre del producto se concatena después (CMS: cart.vista-previa-diseno-titulo). */
+  title: ReactNode;
+  /** Descripción sr-only para lectores de pantalla (CMS: cart.vista-previa-diseno-desc). */
+  description: ReactNode;
 }) {
   return (
     <Dialog>
@@ -36,7 +51,7 @@ export function DesignPreviewDialog({
           className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 hover:text-brand-purple-dark"
         >
           <Eye aria-hidden="true" />
-          Ver
+          {triggerLabel}
         </Button>
       </DialogTrigger>
       {/* El ancho se sobreescribe con la variante prefijada `sm:max-w-lg` — la
@@ -44,11 +59,9 @@ export function DesignPreviewDialog({
           a un `max-w-lg` sin prefijo (mismo caso documentado en studio-preview-modal). */}
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogTitle className="text-brand-purple-dark font-display text-lg font-bold">
-          Tu diseño · {productName}
+          {title} {productName}
         </DialogTitle>
-        <DialogDescription className="sr-only">
-          Vista previa ampliada del diseño personalizado de esta línea del carrito.
-        </DialogDescription>
+        <DialogDescription className="sr-only">{description}</DialogDescription>
         {/* Aspecto NATURAL del PNG (no siempre es cuadrado — tiras/separadores
             son altos): se capa por ALTO de viewport y por ancho del diálogo,
             object-contain, sin letterboxing forzado. Mismo criterio que la
