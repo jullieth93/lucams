@@ -1,14 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import {
-  Baloo_2,
-  Caveat,
-  Dancing_Script,
-  Fredoka,
-  Inter,
-  Nunito,
-  Patrick_Hand,
-  Playfair_Display,
-} from "next/font/google";
+// 2026-09-25 — next/font/local con los TTF ya vendorizados en assets/fonts
+// (los mismos que usa el render de producción 300 DPI): el build ya NO descarga
+// fuentes de fonts.googleapis.com, que tumbaba el CI intermitentemente
+// (Turbopack: "Can't resolve '@vercel/turbopack-next/internal/font/google/font'").
+// Mismas familias, mismas CSS vars → cero cambio visual aguas abajo.
+import localFont from "next/font/local";
 import { Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { WebVitalsReporter } from "@/components/web-vitals";
@@ -29,24 +25,24 @@ import "./globals.css";
  * ADR-021: docs/DECISIONS.md
  */
 
-const fredoka = Fredoka({
+const fredoka = localFont({
+  src: "../assets/fonts/Fredoka.ttf",
   variable: "--font-fredoka",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: "300 700",
   display: "swap",
 });
 
-const inter = Inter({
+const inter = localFont({
+  src: "../assets/fonts/Inter.ttf",
   variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: "100 900",
   display: "swap",
 });
 
-const caveat = Caveat({
+const caveat = localFont({
+  src: "../assets/fonts/Caveat.ttf",
   variable: "--font-caveat",
-  subsets: ["latin"],
-  weight: ["400", "700"],
+  weight: "400 700",
   display: "swap",
 });
 
@@ -54,38 +50,38 @@ const caveat = Caveat({
 // Cada una: CSS var para el canvas del cliente + TTF en assets/fonts para el
 // render de producción (production-render-canvas). Mismos pesos que usa
 // drawCalendarPage (700 clásico / 700+500 split; Patrick Hand solo tiene 400).
-const baloo2 = Baloo_2({
+const baloo2 = localFont({
+  src: "../assets/fonts/Baloo2.ttf",
   variable: "--font-baloo2",
-  subsets: ["latin"],
-  weight: ["500", "700"],
+  weight: "400 800",
   display: "swap",
 });
 
-const nunito = Nunito({
+const nunito = localFont({
+  src: "../assets/fonts/Nunito.ttf",
   variable: "--font-nunito",
-  subsets: ["latin"],
-  weight: ["500", "700"],
+  weight: "200 1000",
   display: "swap",
 });
 
-const patrick = Patrick_Hand({
+const patrick = localFont({
+  src: "../assets/fonts/PatrickHand.ttf",
   variable: "--font-patrick",
-  subsets: ["latin"],
-  weight: ["400"],
+  weight: "400",
   display: "swap",
 });
 
-const playfair = Playfair_Display({
+const playfair = localFont({
+  src: "../assets/fonts/PlayfairDisplay.ttf",
   variable: "--font-playfair",
-  subsets: ["latin"],
-  weight: ["500", "700"],
+  weight: "400 900",
   display: "swap",
 });
 
-const dancing = Dancing_Script({
+const dancing = localFont({
+  src: "../assets/fonts/DancingScript.ttf",
   variable: "--font-dancing",
-  subsets: ["latin"],
-  weight: ["500", "700"],
+  weight: "400 700",
   display: "swap",
 });
 

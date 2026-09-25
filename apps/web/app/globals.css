@@ -61,7 +61,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
-  /* Tipografías (cargadas vía next/font/google en app/layout.tsx) */
+  /* Tipografías (cargadas vía next/font/local en app/layout.tsx (TTF en assets/fonts)) */
   --font-display: var(--font-fredoka), "Baloo 2", system-ui, sans-serif;
   --font-body: var(--font-inter), "Nunito", system-ui, sans-serif;
 

@@ -59,6 +59,6 @@ apps/web/
 
 - Tailwind v4 CSS-first: los tokens de marca están en `app/globals.css` (`@theme`),
   documentados en [docs/BRANDING.md](../../docs/BRANDING.md).
-- Fuentes: Fredoka (display) + Inter (body) vía `next/font/google` en `app/layout.tsx`.
+- Fuentes: Fredoka (display) + Inter (body) vía `next/font/local` en `app/layout.tsx` (TTF vendorizados en assets/fonts).
 - El Estudio de Personalización tiene su propio README: `app/estudio/[slug]/README.md`.
 - Este repo usa APIs nuevas de Next 16 — ver `AGENTS.md` de esta carpeta antes de codear.

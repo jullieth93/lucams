@@ -34,7 +34,7 @@ export type FontPreset = {
  * Helvetica/Arial, Courier son system-safe).
  *
  * Para agregar más fonts (Baloo 2, Caveat, Patrick Hand), primero hay que
- * importarlas en app/layout.tsx vía next/font/google y exponer la variable.
+ * vendorizar el TTF en assets/fonts, registrarla en app/layout.tsx vía next/font/local y exponer la variable.
  */
 export const FONT_PRESETS: FontPreset[] = [
   {
