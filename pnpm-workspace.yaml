@@ -71,10 +71,14 @@ overrides:
   # uuid 8.3.2→11.1.1: GHSA-w5hq-g745-h8pq. Fuera del rango de @lhci/cli (^8.3.1) pero
   # uuid@11 mantiene build CJS dual y el named export v4 que usa lhci (node-runner.js).
   uuid: 11.1.1
-  # PENDIENTE — extract-zip 2.0.1 (GHSA-jmr9-qjv8-65gv, patched >=2.0.2): la versión
-  # parchada NO está publicada en npm a 2026-08-29 (latest = 2.0.1). Cadena
-  # @lhci/cli→lighthouse→puppeteer-core→@puppeteer/browsers, solo CI local. Reintentar
-  # cuando exista 2.0.2 o cuando @lhci/cli actualice @puppeteer/browsers.
+  # extract-zip (GHSA-jmr9-qjv8-65gv + GHSA symlink traversal, ambas high): sin patch
+  # publicado (latest 2.0.1, paquete abandonado 2020). La cadena es
+  # @lhci/cli→lighthouse→puppeteer-core@24→@puppeteer/browsers@2. Resuelto 2026-09-25
+  # forzando @puppeteer/browsers@3.2.3 (reemplazó extract-zip por modern-tar). Fuera del
+  # rango de puppeteer-core@24 (^2.x) — probe de API: Browser/launch/TimeoutError/
+  # computeExecutablePath/computeSystemExecutablePath/createProfile/CDP_WEBSOCKET_ENDPOINT_REGEX/
+  # WEBDRIVER_BIDI_WEBSOCKET_ENDPOINT_REGEX todos presentes en v3 (exports estables).
+  "@puppeteer/browsers": 3.2.3
 
 # sharp queda clavado en 0.34.4 a propósito: la línea 0.35.x rompía las lambdas de Vercel
 # (ERR_DLOPEN_FAILED libvips → 500 en todas las PDP — detectado en la certificación del
