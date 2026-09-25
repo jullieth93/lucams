@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@lhci/cli": "^0.15.1",
-    "prettier": "^3.9.6",
+    "prettier": "^3.9.8",
     "prettier-plugin-tailwindcss": "^0.8.1"
   }
 }
