@@ -25,6 +25,7 @@ import { createNameDesignAction, finalizeDesignAction } from "@/features/persona
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { formatCOP } from "@/lib/format";
 import { LetterTile } from "./letter-tile";
+import { loadCanvasImage } from "./lib/canvas-image";
 import { buildLetterTileTextures } from "./lib/letter-tile-textures";
 import { useLetterColors } from "./use-letter-colors";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
@@ -113,13 +114,9 @@ function roundRectPath(
 }
 
 function loadImage(url: string): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous"; // bucket público con CORS → canvas no se contamina
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = url;
-  });
+  // 2026-09-25 — carga vía optimizador de Next (mismo origen, sin exigencia de
+  // CORS del bucket) con fallback a la URL directa (lib/canvas-image).
+  return loadCanvasImage(url);
 }
 
 const TILE_W = 120;

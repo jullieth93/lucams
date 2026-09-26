@@ -31,6 +31,7 @@
 
 import type { LetterTileMap } from "@/features/personalization/letter-tiles";
 import type { Magnet3D } from "../fridge-3d-view";
+import { loadCanvasImage } from "./canvas-image";
 
 /** Aspecto físico de la ficha: vertical ~5×6.5 cm (espeja el preview `aspect-[5/6.5]`). */
 export const LETTER_TILE_RATIO = { w: 5, h: 6.5 } as const;
@@ -132,13 +133,10 @@ export function drawLetterTile(
 }
 
 function loadTileImage(url: string): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = url;
-  });
+  // 2026-09-25 — la carga pasa por el optimizador de Next (mismo origen): las
+  // URLs del bucket que no responden CORS al origen actual (bug STG: fichas
+  // solo-letra en 3D) así cargan igual; fallback a la URL directa dentro.
+  return loadCanvasImage(url);
 }
 
 /**

@@ -53,6 +53,7 @@ import { StudioPreviewModal } from "./studio-preview-modal";
 import { StudioSimpleHeader } from "./studio-simple-header";
 import { STUDIO_MAX_WIDTH } from "./studio-layout";
 import { resolveLetterSetVariant, type LetterSetVariant } from "./lib/letter-set-resolve";
+import { loadCanvasImage } from "./lib/canvas-image";
 import type { Magnet3D } from "./fridge-3d-view";
 import { buildLetterTileTextures, LETTER_TILE_CORNER_RATIO } from "./lib/letter-tile-textures";
 import { useDialogA11y } from "./use-dialog-a11y";
@@ -91,13 +92,9 @@ export type { LetterSetVariant };
 const VOWELS = ["A", "E", "I", "O", "U"];
 
 function loadImage(url: string): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
-    img.src = url;
-  });
+  // 2026-09-25 — carga vía optimizador de Next (mismo origen, sin exigencia de
+  // CORS del bucket) con fallback a la URL directa (lib/canvas-image).
+  return loadCanvasImage(url);
 }
 
 function roundRect(
