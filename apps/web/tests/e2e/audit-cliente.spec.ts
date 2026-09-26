@@ -18,9 +18,11 @@ import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
  * Evidencia: /tmp/audit-cliente-*.png + resumen JSON en /tmp/audit-cliente.json
  */
 
-// Slugs vivos consultados contra la DB local (homologada con PRD) el 2026-09-25.
-// `nombre-personalizado` fue ARCHIVADO (isActive=false) — ya no es parte del catálogo.
-const PRODUCTS = [
+// El catálogo vivo se resuelve contra la DB del ambiente (los slugs cambian con
+// archivados/nuevos — hardcodearlos rompió la auditoría al archivar
+// nombre-personalizado el 2026-09-25). Fallback a la última lista conocida si
+// no hay DATABASE_URL (ej. corrida puntual sin env).
+const PRODUCTS_FALLBACK = [
   "set-fotoimanes-polaroid",
   "set-fotoimanes-cuadrados",
   "tiras-magneticas-fotos",
@@ -30,6 +32,27 @@ const PRODUCTS = [
   "separadores-magneticos",
   "separadores-alargados",
 ];
+
+async function resolveLiveProducts(): Promise<string[]> {
+  if (!process.env.DATABASE_URL?.startsWith("postgres")) return PRODUCTS_FALLBACK;
+  try {
+    const { PrismaClient } = await import("@lucams/db");
+    const prisma = new PrismaClient();
+    const rows = await prisma.product.findMany({
+      where: { deletedAt: null, isActive: true },
+      select: { slug: true },
+    });
+    await prisma.$disconnect();
+    return rows.length ? rows.map((r) => r.slug) : PRODUCTS_FALLBACK;
+  } catch {
+    return PRODUCTS_FALLBACK;
+  }
+}
+
+let PRODUCTS = PRODUCTS_FALLBACK;
+test.beforeAll(async () => {
+  PRODUCTS = await resolveLiveProducts();
+});
 
 const MASCOT = "/home/ansible/workspaces/lucams_shop/apps/web/public/brand/lucams-mascot.png";
 

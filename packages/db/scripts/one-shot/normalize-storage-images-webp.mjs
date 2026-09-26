@@ -159,64 +159,30 @@ async function listAllObjects(bucket) {
 
 // ─── Actualización de referencias en DB cuando cambia el path (ext → .webp) ───
 // Devuelve cuántas filas se tocaron (o se tocarían en dry-run).
+// NOTA 2026-09-25: el match es por PATH (no por URL completa) — las URLs en DB
+// pueden tener un host distinto al del env (LOCAL guarda 192.168.x.x y el script
+// corría con 127.0.0.1 → no actualizó nada y las refs quedaron rotas). Y ojo:
+// las columnas con URLs van MÁS ALLÁ de Product/Design (LetterTile, galería
+// prediseñada, snapshots de pedidos/cotizaciones — el olvido de estas rompió el
+// 3D de letras en STG/PRD tras la primera corrida).
+const REF_QUERIES = {
+  "design-previews": [
+    { find: (p) => prisma.design.findMany({ where: { previewUrl: { contains: p } }, select: { id: true, previewUrl: true } }), get: (r) => r.previewUrl, set: (r, u) => prisma.design.update({ where: { id: r.id }, data: { previewUrl: u } }) },
+    { find: (p) => prisma.personalizationTemplate.findMany({ where: { previewUrl: { contains: p } }, select: { id: true, previewUrl: true } }), get: (r) => r.previewUrl, set: (r, u) => prisma.personalizationTemplate.update({ where: { id: r.id }, data: { previewUrl: u } }) },
+    { find: (p) => prisma.orderItem.findMany({ where: { designAssetUrl: { contains: p } }, select: { id: true, designAssetUrl: true } }), get: (r) => r.designAssetUrl, set: (r, u) => prisma.orderItem.update({ where: { id: r.id }, data: { designAssetUrl: u } }) },
+    { find: (p) => prisma.quoteItem.findMany({ where: { previewUrl: { contains: p } }, select: { id: true, previewUrl: true } }), get: (r) => r.previewUrl, set: (r, u) => prisma.quoteItem.update({ where: { id: r.id }, data: { previewUrl: u } }) },
+  ],
+  "product-images": [
+    { find: (p) => prisma.letterTile.findMany({ where: { imageUrl: { contains: p } }, select: { id: true, imageUrl: true } }), get: (r) => r.imageUrl, set: (r, u) => prisma.letterTile.update({ where: { id: r.id }, data: { imageUrl: u } }) },
+    { find: (p) => prisma.designGalleryImage.findMany({ where: { imageUrl: { contains: p } }, select: { id: true, imageUrl: true } }), get: (r) => r.imageUrl, set: (r, u) => prisma.designGalleryImage.update({ where: { id: r.id }, data: { imageUrl: u } }) },
+    { find: (p) => prisma.designGalleryImage.findMany({ where: { imageUrlB: { contains: p } }, select: { id: true, imageUrlB: true } }), get: (r) => r.imageUrlB, set: (r, u) => prisma.designGalleryImage.update({ where: { id: r.id }, data: { imageUrlB: u } }) },
+  ],
+};
+
 async function updateDbRefs(bucket, oldPath, newPath, meta, apply) {
-  const oldUrl = publicUrlOf(bucket, oldPath);
-  const newUrl = publicUrlOf(bucket, newPath);
   let touched = 0;
 
-  if (bucket === "design-previews") {
-    if (oldPath !== newPath) {
-      const designs = await prisma.design.findMany({
-        where: { previewUrl: { contains: `/design-previews/${oldPath}` } },
-        select: { id: true, previewUrl: true },
-      });
-      const templates = await prisma.personalizationTemplate.findMany({
-        where: { previewUrl: { contains: `/design-previews/${oldPath}` } },
-        select: { id: true, previewUrl: true },
-      });
-      touched += designs.length + templates.length;
-      if (apply) {
-        for (const d of designs) {
-          await prisma.design.update({
-            where: { id: d.id },
-            data: { previewUrl: d.previewUrl.replace(oldUrl, newUrl) },
-          });
-        }
-        for (const t of templates) {
-          await prisma.personalizationTemplate.update({
-            where: { id: t.id },
-            data: { previewUrl: t.previewUrl.replace(oldUrl, newUrl) },
-          });
-        }
-      }
-    }
-  } else if (bucket === "product-images") {
-    if (oldPath !== newPath) {
-      const products = await prisma.product.findMany({
-        where: { images: { has: oldUrl } },
-        select: { id: true, images: true },
-      });
-      const variants = await prisma.productVariant.findMany({
-        where: { images: { has: oldUrl } },
-        select: { id: true, images: true },
-      });
-      touched += products.length + variants.length;
-      if (apply) {
-        for (const p of products) {
-          await prisma.product.update({
-            where: { id: p.id },
-            data: { images: p.images.map((u) => (u === oldUrl ? newUrl : u)) },
-          });
-        }
-        for (const v of variants) {
-          await prisma.productVariant.update({
-            where: { id: v.id },
-            data: { images: v.images.map((u) => (u === oldUrl ? newUrl : u)) },
-          });
-        }
-      }
-    }
-  } else if (bucket === "cms-media") {
+  if (bucket === "cms-media") {
     // La URL pública se DERIVA de bucket+path: hay que actualizar la fila
     // siempre que se reemplace el objeto (path, mime, bytes y dimensiones
     // post-resize), cambie o no la extensión.
@@ -234,6 +200,37 @@ async function updateDbRefs(bucket, oldPath, newPath, meta, apply) {
             height: meta.height,
           },
         });
+      }
+    }
+  }
+
+  // Refs por columna (match por path — host-agnóstico). Product/ProductVariant
+  // guardan arrays: se filtran en JS por el mismo criterio.
+  if (oldPath !== newPath) {
+    for (const q of REF_QUERIES[bucket] ?? []) {
+      const rows = await q.find(oldPath);
+      touched += rows.length;
+      if (apply) {
+        for (const r of rows) {
+          await q.set(r, q.get(r).replaceAll(oldPath, newPath));
+        }
+      }
+    }
+    if (bucket === "product-images") {
+      const rows = [];
+      for (const p of await prisma.product.findMany({ select: { id: true, images: true } })) {
+        if (p.images.some((u) => u.includes(oldPath))) rows.push({ t: "p", id: p.id, images: p.images });
+      }
+      for (const v of await prisma.productVariant.findMany({ select: { id: true, images: true } })) {
+        if (v.images.some((u) => u.includes(oldPath))) rows.push({ t: "v", id: v.id, images: v.images });
+      }
+      touched += rows.length;
+      if (apply) {
+        for (const r of rows) {
+          const images = r.images.map((u) => u.replaceAll(oldPath, newPath));
+          if (r.t === "p") await prisma.product.update({ where: { id: r.id }, data: { images } });
+          else await prisma.productVariant.update({ where: { id: r.id }, data: { images } });
+        }
       }
     }
   }
