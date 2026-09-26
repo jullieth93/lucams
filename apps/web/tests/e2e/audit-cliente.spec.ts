@@ -18,12 +18,13 @@ import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
  * Evidencia: /tmp/audit-cliente-*.png + resumen JSON en /tmp/audit-cliente.json
  */
 
+// Slugs vivos consultados contra la DB local (homologada con PRD) el 2026-09-25.
+// `nombre-personalizado` fue ARCHIVADO (isActive=false) — ya no es parte del catálogo.
 const PRODUCTS = [
   "set-fotoimanes-polaroid",
   "set-fotoimanes-cuadrados",
   "tiras-magneticas-fotos",
   "calendario-mes-a-mes-fotos",
-  "nombre-personalizado",
   "pack-vocales",
   "abecedario-completo",
   "separadores-magneticos",

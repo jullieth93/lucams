@@ -34,6 +34,13 @@ const nextConfig: NextConfig = {
   //   - Unsplash CDN (fotos demo hot-linked en seed-products.mjs hasta
   //     que Lucy reemplace por foto real).
   images: {
+    // Next 16 bloquea por default que el optimizer fetchee IPs privadas/loopback
+    // (guard SSRF — breaking change, ver docs upgrading/version-16). En dev el
+    // stack local de Supabase Storage vive en 127.0.0.1/localhost/IP-LAN: sin
+    // este flag TODAS las imágenes de storage devuelven 400 en local. Se activa
+    // solo fuera de producción; en Vercel el optimizer solo fetchea supabase.co
+    // (IP pública) y el guard queda intacto.
+    dangerouslyAllowLocalIP: process.env.NODE_ENV !== "production",
     remotePatterns: [
       {
         protocol: "https",
