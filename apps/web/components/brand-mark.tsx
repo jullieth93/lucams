@@ -39,11 +39,17 @@ export function BrandMark({
   href = "/",
   animated = false,
   className,
+  priority = true,
 }: {
   size?: Size;
   href?: string;
   animated?: boolean;
   className?: string;
+  // Todas las superficies actuales son headers above-the-fold (site-header,
+  // layout auth, layout mi-cuenta): el logo ES el LCP ahí y Next lo advertía
+  // ("…detected as the Largest Contentful Paint… add loading=eager").
+  // priority=true → preload + fetchPriority=high + loading=eager.
+  priority?: boolean;
 }) {
   const px = LOGO_PX[size];
 
@@ -68,7 +74,7 @@ export function BrandMark({
           alt="Lucams_shop"
           width={px}
           height={px}
-          priority={size === "lg"}
+          priority={priority}
         />
       </span>
     </Link>

@@ -16,6 +16,14 @@ import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
  *   9. Errores de consola y de red (4xx/5xx) en TODA la navegación.
  *
  * Evidencia: /tmp/audit-cliente-*.png + resumen JSON en /tmp/audit-cliente.json
+ *
+ * OJO: todos los screenshots llevan `caret: "initial"`. El default
+ * (`caret: "hide"`) hace que Chromium ponga caret-color:transparent en TODOS
+ * los inputs al capturar; si la hidratación de React 19 sigue en curso, el
+ * diff de hidratación lo reporta como mismatch SSR↔cliente FALSO
+ * ("A tree hydrated but some attributes…") en páginas con formularios
+ * (/login, /registro, /ayuda) — verificado 2026-09-26: mismas acciones sin
+ * screenshot = 0 warnings; con screenshot = 3 warnings.
  */
 
 // El catálogo vivo se resuelve contra la DB del ambiente (los slugs cambian con
@@ -124,7 +132,11 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     // Copy vigente (commit 2b80bb5): se promete DESPACHO en máx. 2 días hábiles,
     // la entrega depende de la transportadora (realidad multi-transportadora, sin falsa promesa).
     await expect(page.getByText(/días hábiles/i).first()).toBeVisible();
-    await page.screenshot({ path: "/tmp/audit-cliente-home.png", fullPage: true });
+    await page.screenshot({
+      caret: "initial",
+      path: "/tmp/audit-cliente-home.png",
+      fullPage: true,
+    });
     findings.push({ area: "home", ok: true, detail: `categorías OK · load ${loadMs}ms` });
   });
 
@@ -136,11 +148,21 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
       "Fotoimanes Polaroid",
       "Calendario Set 12 Tarjetas",
       "Magnéticos",
-      "Alargados",
+      "Largos", // separadores-alargados se renombró "Separadores Largos" (2026-09)
     ]) {
-      await expect(page.getByText(p, { exact: false }).first()).toBeVisible({ timeout: 15_000 });
+      // El primer match en DOM puede estar oculto (mega-menú del header o el
+      // panel de filtros colapsado en mobile) — se filtra a elementos visibles
+      // (falso negativo detectado 2026-09-25: la página renderiza bien y el
+      // test fallaba por el primer match oculto).
+      await expect(
+        page.getByText(p, { exact: false }).filter({ visible: true }).first(),
+      ).toBeVisible({ timeout: 15_000 });
     }
-    await page.screenshot({ path: "/tmp/audit-cliente-catalogo.png", fullPage: true });
+    await page.screenshot({
+      caret: "initial",
+      path: "/tmp/audit-cliente-catalogo.png",
+      fullPage: true,
+    });
     findings.push({ area: "catalogo", ok: true, detail: "grid OK con productos reales" });
   });
 
@@ -152,7 +174,7 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
       expect(resp?.status(), `PDP ${slug} status`).toBe(200);
       await expect(page.locator("h1").first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText("$").first()).toBeVisible();
-      await page.screenshot({ path: `/tmp/audit-cliente-pdp-${slug}.png` });
+      await page.screenshot({ caret: "initial", path: `/tmp/audit-cliente-pdp-${slug}.png` });
       findings.push({ area: `pdp:${slug}`, ok: true, detail: "200 + h1 + precio" });
     });
   }
@@ -178,7 +200,7 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
         } else {
           await expect(page.locator("canvas").first()).toBeVisible({ timeout: 30_000 });
         }
-        await page.screenshot({ path: `/tmp/audit-cliente-estudio-${slug}.png` });
+        await page.screenshot({ caret: "initial", path: `/tmp/audit-cliente-estudio-${slug}.png` });
         findings.push({ area: `estudio:${slug}`, ok: true, detail: "canvas/editor OK" });
       } else {
         // Superficie no-estudio (editor propio o direct-cart) — se verifica que cargue.
@@ -197,47 +219,90 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
   }) => {
     watch(page, "cotizacion");
     await page.goto("/estudio/set-fotoimanes-polaroid", { waitUntil: "domcontentloaded" });
+    // El onboarding del estudio monta DESPUÉS de hidratar: si se intenta
+    // dismiss inmediato aún no existe, y luego aparece tapando el checkbox de
+    // consentimiento (intercepts pointer events → click timeout). Esperar su
+    // ventana de montaje antes de dismiss.
+    await page
+      .locator('div[role="dialog"][aria-labelledby="onboarding-title"]')
+      .waitFor({ state: "attached", timeout: 8_000 })
+      .catch(() => {});
     await dismissOverlays(page);
+    // En mobile (390px) el panel "Mis fotos" no está en pantalla: vive tras el
+    // FAB «Editar» (bottom sheet). En desktop el panel lateral ya es visible.
+    const editarFab = page.getByRole("button", { name: /^Editar/i }).first();
+    if (
+      (await editarFab.count()) &&
+      !(await page
+        .getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i })
+        .isVisible()
+        .catch(() => false))
+    ) {
+      await editarFab.click();
+    }
+    // El consent y los overlays hay que operarlos DESPUÉS de hidratar: un click
+    // pre-hydration cae en un botón sin handlers y se pierde en silencio (React
+    // re-renderiza y resetea el checkbox) — race detectada 2026-09-25.
     const consent = page.getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i });
-    if (await consent.count()) await consent.check();
-    const input = page.locator('input[type="file"]').first();
-    await input.setInputFiles([MASCOT]);
-    await page.waitForTimeout(9000);
-    await dismissOverlays(page);
-    const wand = page.getByRole("button", { name: /Llenar slots con mis fotos/i });
-    if (await wand.count()) await wand.first().click();
-    await page.waitForTimeout(3000);
-    await page.screenshot({ path: "/tmp/audit-cliente-cotizacion-estudio.png" });
+    await consent.waitFor({ state: "visible", timeout: 20_000 });
+    await page.waitForTimeout(1_500);
+    await consent.check();
+    await expect(consent).toBeChecked();
+    // El producto exige el pack COMPLETO (6 fotos) para habilitar «Vista previa».
+    // En mobile hay DOS inputs file ocultos (panel desktop + bottom sheet):
+    // hay que usar el del sheet/diálogo abierto — el del panel no procesa.
+    const dialogInput = page.locator(
+      'div[role="dialog"] input[type="file"], [data-slot="sheet-content"] input[type="file"]',
+    );
+    const input = (await dialogInput.count())
+      ? dialogInput.first()
+      : page.locator('input[type="file"]').first();
+    await input.setInputFiles([MASCOT, MASCOT, MASCOT, MASCOT, MASCOT, MASCOT]);
+    // El wand rellena min(fotos procesadas, slots): si se clickea cuando solo
+    // 1 foto terminó de procesarse, llena 1 slot. Su aria-label es dinámico
+    // ("Llenar N slots vacíos con mis fotos", N = fotos listas): esperar N=6.
+    const wand = page.getByRole("button", { name: /Llenar \d+ slots?/i });
+    await page
+      .getByRole("button", { name: /Llenar 6 slots?/i })
+      .waitFor({ state: "visible", timeout: 90_000 });
+    await wand.first().click();
+    // Primer match puede ser el chip oculto del panel desktop — filtrar visible.
+    await expect(page.getByText("6/6 fotos").filter({ visible: true }).first()).toBeVisible({
+      timeout: 30_000,
+    });
+    await page.keyboard.press("Escape"); // cierra el tip "Cómo editar tu foto"
+    await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-cotizacion-estudio.png" });
 
-    // Finalizar diseño (botón "Vista previa", antes "¡Listo!")
+    // Finalizar diseño: «Vista previa» abre el modal "Así se verá tu pedido" y
+    // de ahí se agrega al carrito (flujo vigente 2026-09; antes era directo).
     const listo = page.getByRole("button", { name: /Vista previa|Listo/i }).first();
-    if (await listo.count()) {
-      await listo.click({ force: true });
-      await page.waitForTimeout(5000);
-      await page.screenshot({ path: "/tmp/audit-cliente-cotizacion-form.png" });
-      // Buscar el CTA de WhatsApp en la página resultante (form de cotización o carrito)
-      const waLink = page.locator('a[href*="wa.me"], a[href*="whatsapp"]').first();
-      if (await waLink.count()) {
-        const href = await waLink.getAttribute("href");
-        expect(href).toContain("573208873826");
-        findings.push({
-          area: "cotizacion",
-          ok: true,
-          detail: `WhatsApp link OK (${href?.slice(0, 80)})`,
-        });
-      } else {
-        await page.screenshot({ path: "/tmp/audit-cliente-cotizacion-sin-wa.png" });
-        findings.push({
-          area: "cotizacion",
-          ok: false,
-          detail: "no se encontró link wa.me tras finalizar",
-        });
-      }
+    await expect(listo).toBeEnabled({ timeout: 15_000 });
+    await listo.click();
+    const agregar = page.getByRole("button", { name: /agregar al carrito/i }).first();
+    await agregar.waitFor({ state: "visible", timeout: 20_000 });
+    await agregar.click();
+    await page.waitForURL(/\/carrito/, { timeout: 20_000 });
+    await page.waitForTimeout(3000);
+    await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-cotizacion-form.png" });
+    // Buscar el CTA de WhatsApp en el carrito
+    const waLink = page.locator('a[href*="wa.me"], a[href*="whatsapp"]').first();
+    if (await waLink.count()) {
+      const href = await waLink.getAttribute("href");
+      expect(href).toContain("573208873826");
+      findings.push({
+        area: "cotizacion",
+        ok: true,
+        detail: `WhatsApp link OK (${href?.slice(0, 80)})`,
+      });
     } else {
+      await page.screenshot({
+        caret: "initial",
+        path: "/tmp/audit-cliente-cotizacion-sin-wa.png",
+      });
       findings.push({
         area: "cotizacion",
         ok: false,
-        detail: "botón «Vista previa» no disponible (foto no asignó)",
+        detail: "no se encontró link wa.me tras finalizar",
       });
     }
   });
@@ -248,16 +313,25 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     await expect(page.locator('input[type="email"], input[name="email"]').first()).toBeVisible({
       timeout: 15_000,
     });
-    const turnstile = await page
-      .locator('[class*="turnstile"], [data-turnstile-sitekey], iframe[src*="turnstile"]')
-      .count();
-    await page.screenshot({ path: "/tmp/audit-cliente-login.png" });
+    // /login NO lleva Turnstile a propósito: el login se protege con rate limit
+    // dual (IP + email, 15 intentos/15 min en prod — app/(auth)/login/actions.ts).
+    // El widget va en registro/recuperación/contacto/cotización/newsletter.
+    // Verificado 2026-09-26 en LOCAL y PRD: /login sin host, /registro con host.
+    await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-login.png" });
     await page.goto("/registro", { waitUntil: "domcontentloaded" });
     await expect(page.locator('input[type="email"], input[name="email"]').first()).toBeVisible({
       timeout: 15_000,
     });
-    await page.screenshot({ path: "/tmp/audit-cliente-registro.png" });
-    findings.push({ area: "auth", ok: true, detail: `forms OK · turnstile nodes: ${turnstile}` });
+    // El host del widget va en el HTML SSR (lucams-turnstile-host); el iframe de
+    // Cloudflare se monta tras hydration vía window.turnstile.render (by design,
+    // script afterInteractive) — se verifica el host, no el iframe (timing).
+    const turnstileHost = await page.locator(".lucams-turnstile-host").count();
+    await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-registro.png" });
+    findings.push({
+      area: "auth",
+      ok: turnstileHost > 0,
+      detail: `forms OK · turnstile host en /registro: ${turnstileHost}`,
+    });
   });
 
   test("7. /ayuda coherente (sin factura DIAN) + legales", async ({ page }) => {
@@ -266,12 +340,20 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     await dismissOverlays(page);
     // Coherencia: la ayuda puede mencionar DIAN para aclarar que HOY NO emitimos factura;
     // el error sería prometerla. Buscamos frases positivas de facturación DIAN.
+    // Lookbehind (?<!no ): "Hoy no emitimos factura electrónica de la DIAN; te
+    // entregamos el documento…" es la aclaración correcta y NO debe contar como
+    // promesa (falso positivo detectado 2026-09-25 — el regex sin anclar matcheaba
+    // dentro de la negación).
     const promesasDian = await page
       .getByText(
-        /emitimos factura electrónica|factura electrónica de la DIAN|facturación electrónica obligatoria/i,
+        /(?<!no )emitimos factura electrónica|(?<!no )emitimos la factura electrónica|facturación electrónica obligatoria/i,
       )
       .count();
-    await page.screenshot({ path: "/tmp/audit-cliente-ayuda.png", fullPage: true });
+    await page.screenshot({
+      caret: "initial",
+      path: "/tmp/audit-cliente-ayuda.png",
+      fullPage: true,
+    });
     for (const legal of ["/legal/privacidad", "/legal/terminos", "/legal/devoluciones"]) {
       const r = await page.goto(legal, { waitUntil: "domcontentloaded" });
       expect(r?.status(), `${legal} status`).toBe(200);
@@ -318,7 +400,7 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
       if (await input.count()) {
         await input.fill("polaroid");
         await page.waitForTimeout(1500);
-        await page.screenshot({ path: "/tmp/audit-cliente-busqueda.png" });
+        await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-busqueda.png" });
         findings.push({
           area: "busqueda",
           ok: true,
