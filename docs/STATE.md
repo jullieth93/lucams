@@ -33,10 +33,14 @@ nuevo job `rls-behavior`), **nightly 4/4 verde sobre `7f07c43` incluido el E2E D
 (checkout Wompi sandbox 4242 → PAID → guía Aveonline real, con secrets sandbox cargados y fixture
 idempotente de pickup settings — el primer intento reveló que el localstack no los tenía y se
 corrigió la causa raíz). Pendiente: ① añadir `RLS behavior (rls-matrix contra Supabase local)` a
-los required checks de `production` (Settings → Branches; el token CLI no tiene permiso de admin),
-② decisión owner sobre push directo a `production` (F-07), ③ con el deploy a STG/PRD: verificar
-`prisma migrate deploy` (incluye `20260926120000_admin_recovery_code`) y la primera corrida del
-post-deploy-smoke. Modo del release: `full` (decisión vigente de Lucy 2026-09-03).
+los required checks de `production` (Settings → Branches; el token CLI no tiene permiso de admin —
+**verificado 2026-09-27 11:20: sigue sin estar, la regla tiene los 7 contexts originales**),
+② decisión owner sobre push directo a `production` (F-07), ③ drill de rollback o aceptación
+explícita (A9-09), ④ con el deploy a PRD: verificar `prisma migrate deploy` (incluye
+`20260926120000_admin_recovery_code`, ya aplicada y verificada en STG) y la primera corrida del
+post-deploy-smoke. **Informe final formal: `docs/audits/2026-09-27-final-release-certification.md`
+— veredicto NOT_CERTIFIED solo por ②③ (decisiones owner); el código está completo y verde.**
+Modo del release: `full` (decisión vigente de Lucy 2026-09-03).
 
 <details><summary>Historial de resúmenes anteriores</summary>
 
