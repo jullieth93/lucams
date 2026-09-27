@@ -40,6 +40,7 @@ import {
   RedirectValidationError,
   archiveRedirect,
   createRedirect,
+  createSlugRenameRedirect,
   incrementRedirectHit,
   listRedirects,
   lookupActiveRedirect,
@@ -997,6 +998,100 @@ describe.skipIf(!hasDb)(
         expect(item!.createdAt).toBeInstanceOf(Date);
         expect(item!.updatedAt).toBeInstanceOf(Date);
         expect(item!.statusCode).toBe(302);
+      });
+    });
+
+    // ─────────────────── createSlugRenameRedirect (A11-02, cert 2026-09-26) ───
+    // Política: rename autoritativo (upsert sobre la URL vieja), rename de
+    // vuelta archiva el redirect que ocupa el destino, cadenas se aplanan.
+
+    describe("createSlugRenameRedirect — redirect automático por rename de slug", () => {
+      it("crea un 301 activo viejo→nuevo con los campos correctos", async () => {
+        const from = nextPath("-old");
+        const to = nextPath("-new");
+
+        await createSlugRenameRedirect({ fromPath: from, toPath: to, actorAdminId: ACTOR });
+
+        const row = await prisma.urlRedirect.findUnique({ where: { fromPath: from } });
+        expect(row).toMatchObject({
+          toPath: to,
+          statusCode: 301,
+          isActive: true,
+          deletedAt: null,
+          createdBy: ACTOR,
+        });
+        expect(row!.description).toContain(from);
+        expect(await lookupActiveRedirect(from)).toEqual({ toPath: to, statusCode: 301 });
+      });
+
+      it("normaliza el fromPath a minúsculas (#29), igual que createRedirect", async () => {
+        const from = `/${RUN}/MiXeD-${++seq}`;
+        const to = nextPath();
+        await createSlugRenameRedirect({ fromPath: from, toPath: to, actorAdminId: ACTOR });
+        const row = await prisma.urlRedirect.findUnique({
+          where: { fromPath: from.toLowerCase() },
+        });
+        expect(row).not.toBeNull();
+      });
+
+      it("no-op si el slug no cambió (from === to): no crea fila", async () => {
+        const p = nextPath("-same");
+        await createSlugRenameRedirect({ fromPath: p, toPath: p, actorAdminId: ACTOR });
+        expect(await prisma.urlRedirect.findUnique({ where: { fromPath: p } })).toBeNull();
+      });
+
+      it("rename AUTORITATIVO: un redirect activo preexistente sobre la URL vieja se re-apunta al nuevo slug", async () => {
+        const from = nextPath("-taken");
+        await seedRedirect({ fromPath: from, toPath: "/legal/ayuda", description: "manual" });
+
+        await createSlugRenameRedirect({
+          fromPath: from,
+          toPath: nextPath("-new"),
+          actorAdminId: ACTOR,
+        });
+
+        const row = await prisma.urlRedirect.findUnique({ where: { fromPath: from } });
+        expect(row!.toPath).not.toBe("/legal/ayuda");
+        expect(row!.isActive).toBe(true);
+        expect(row!.description).toBe("manual"); // conserva la descripción manual si existía
+      });
+
+      it("una fila ARCHIVADA para la URL vieja se revive re-apuntada al nuevo slug", async () => {
+        const from = nextPath("-archived");
+        await seedRedirect({ fromPath: from, toPath: "/viejo-destino", deletedAt: new Date() });
+
+        const to = nextPath("-new");
+        await createSlugRenameRedirect({ fromPath: from, toPath: to, actorAdminId: ACTOR });
+
+        const row = await prisma.urlRedirect.findUnique({ where: { fromPath: from } });
+        expect(row).toMatchObject({ toPath: to, deletedAt: null, isActive: true });
+      });
+
+      it("rename de vuelta (A→B→A): el redirect que ocupaba el DESTINO se archiva (la página vuelve a estar viva)", async () => {
+        const a = nextPath("-a");
+        const b = nextPath("-b");
+        // A→B (primer rename)…
+        await createSlugRenameRedirect({ fromPath: a, toPath: b, actorAdminId: ACTOR });
+        // …y rename de vuelta B→A: A vuelve a ser página viva.
+        await createSlugRenameRedirect({ fromPath: b, toPath: a, actorAdminId: ACTOR });
+
+        const oldRedirect = await prisma.urlRedirect.findUnique({ where: { fromPath: a } });
+        expect(oldRedirect!.deletedAt).not.toBeNull();
+        expect(oldRedirect!.isActive).toBe(false);
+        const newRedirect = await prisma.urlRedirect.findUnique({ where: { fromPath: b } });
+        expect(newRedirect).toMatchObject({ toPath: a, isActive: true, deletedAt: null });
+      });
+
+      it("aplana cadenas: redirects que apuntaban a la URL vieja se re-apuntan a la nueva (A→B→C ⇒ A→C + B→C)", async () => {
+        const a = nextPath("-ca");
+        const b = nextPath("-cb");
+        const c = nextPath("-cc");
+        await createSlugRenameRedirect({ fromPath: a, toPath: b, actorAdminId: ACTOR });
+        // Rename B→C: A→B debe aplanarse a A→C (sin cadena).
+        await createSlugRenameRedirect({ fromPath: b, toPath: c, actorAdminId: ACTOR });
+
+        expect((await prisma.urlRedirect.findUnique({ where: { fromPath: a } }))!.toPath).toBe(c);
+        expect((await prisma.urlRedirect.findUnique({ where: { fromPath: b } }))!.toPath).toBe(c);
       });
     });
   },

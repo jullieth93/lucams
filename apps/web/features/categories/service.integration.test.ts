@@ -57,6 +57,12 @@ vi.mock("next/cache", () => ({
   updateTag: vi.fn(),
   revalidateTag: vi.fn(),
   revalidatePath: vi.fn(),
+  // unstable_cache passthrough: el service importa (transitivo, vía
+  // features/redirects/service) lib/catalog, que lo invoca a nivel de módulo.
+  unstable_cache:
+    (fn: (...args: unknown[]) => unknown) =>
+    (...args: unknown[]) =>
+      fn(...args),
 }));
 
 import { Prisma, prisma } from "@/lib/db";
@@ -134,6 +140,10 @@ describe.skipIf(!hasDb)(
       // Limpieza SCOPED al prefijo RUN, respetando FKs Restrict:
       // products → categorías hijas → categorías madre. Desarchivamos primero por
       // si algún test dejó deletedAt seteado (no afecta el borrado pero es prolijo).
+      // Redirects automáticos creados por los renames de slug (A11-02).
+      await prisma.urlRedirect.deleteMany({
+        where: { fromPath: { startsWith: `/productos/${RUN}` } },
+      });
       await prisma.product.deleteMany({ where: { sku: { startsWith: RUN } } });
       // Hijas (parentId != null) antes que madres (Restrict en parent).
       await prisma.category.deleteMany({
@@ -252,6 +262,52 @@ describe.skipIf(!hasDb)(
           ),
         ).rejects.toMatchObject({ name: "CategoryValidationError", field: "general" });
       });
+
+      // A11R-03 (revisión adversarial de la remediación, 2026-09-27): alta con
+      // slug liberado — un redirect activo que ocupa la URL nueva se ARCHIVA:
+      // la página viva gana. Sin esto, la categoría nueva era inalcanzable
+      // (el proxy sirve el 301 antes que la página).
+      it("crear con un slug que tiene redirect activo archiva el redirect (raíz e hija)", async () => {
+        // Caso raíz: /productos/<slug>.
+        const slugRaiz = nextSlug("redir-raiz");
+        await prisma.urlRedirect.create({
+          data: {
+            fromPath: `/productos/${slugRaiz}`,
+            toPath: "/productos",
+            statusCode: 301,
+            isActive: true,
+            createdBy: "admin-1",
+          },
+        });
+        await createCategory({ name: "Reusada", slug: slugRaiz, isActive: true }, "admin-1");
+        const redirRaiz = await prisma.urlRedirect.findUnique({
+          where: { fromPath: `/productos/${slugRaiz}` },
+        });
+        expect(redirRaiz?.isActive).toBe(false);
+        expect(redirRaiz?.deletedAt).not.toBeNull();
+
+        // Caso hija: /productos/<madre>/<slug>.
+        const madre = await seedCat();
+        const slugHija = nextSlug("redir-hija");
+        await prisma.urlRedirect.create({
+          data: {
+            fromPath: `/productos/${madre.slug}/${slugHija}`,
+            toPath: "/productos",
+            statusCode: 301,
+            isActive: true,
+            createdBy: "admin-1",
+          },
+        });
+        await createCategory(
+          { name: "Hija Reusada", slug: slugHija, isActive: true, parentId: madre.id },
+          null,
+        );
+        const redirHija = await prisma.urlRedirect.findUnique({
+          where: { fromPath: `/productos/${madre.slug}/${slugHija}` },
+        });
+        expect(redirHija?.isActive).toBe(false);
+        expect(redirHija?.deletedAt).not.toBeNull();
+      });
     });
 
     // ───────────────────────── updateCategory ─────────────────────────
@@ -274,6 +330,71 @@ describe.skipIf(!hasDb)(
         const newSlug = nextSlug("renamed");
         const updated = await updateCategory(cat.id, { slug: newSlug }, null);
         expect(updated.slug).toBe(newSlug);
+      });
+
+      // A11-02 (cert 2026-09-26): rename de slug público crea UrlRedirect viejo→nuevo.
+      it("renombrar el slug de una categoría RAÍZ crea redirect 301 /productos/<viejo> → /productos/<nuevo>", async () => {
+        const cat = await seedCat();
+        const newSlug = nextSlug("redir");
+        await updateCategory(cat.id, { slug: newSlug }, "admin-1");
+
+        const redirect = await prisma.urlRedirect.findUnique({
+          where: { fromPath: `/productos/${cat.slug}` },
+        });
+        expect(redirect).toMatchObject({
+          toPath: `/productos/${newSlug}`,
+          statusCode: 301,
+          isActive: true,
+          deletedAt: null,
+        });
+      });
+
+      it("renombrar una MADRE también crea redirect para la URL de cada hija viva", async () => {
+        const madre = await seedCat();
+        const hija = await seedCat({ parentId: madre.id });
+        const hijaArchivada = await seedCat({ parentId: madre.id, deletedAt: new Date() });
+        const newSlug = nextSlug("madre-renombrada");
+
+        await updateCategory(madre.id, { slug: newSlug }, null);
+
+        // Redirect de la madre misma.
+        expect(
+          await prisma.urlRedirect.findUnique({ where: { fromPath: `/productos/${madre.slug}` } }),
+        ).toMatchObject({ toPath: `/productos/${newSlug}`, statusCode: 301 });
+        // Redirect de la hija viva: /productos/<madre-vieja>/<hija> → /productos/<madre-nueva>/<hija>.
+        expect(
+          await prisma.urlRedirect.findUnique({
+            where: { fromPath: `/productos/${madre.slug}/${hija.slug}` },
+          }),
+        ).toMatchObject({ toPath: `/productos/${newSlug}/${hija.slug}`, statusCode: 301 });
+        // La hija archivada (su URL ya no era pública) NO genera redirect.
+        expect(
+          await prisma.urlRedirect.findUnique({
+            where: { fromPath: `/productos/${madre.slug}/${hijaArchivada.slug}` },
+          }),
+        ).toBeNull();
+      });
+
+      it("renombrar una SUB-categoría crea redirect con el prefijo de su madre", async () => {
+        const madre = await seedCat();
+        const hija = await seedCat({ parentId: madre.id });
+        const newSlug = nextSlug("hija-renombrada");
+
+        await updateCategory(hija.id, { slug: newSlug }, null);
+
+        expect(
+          await prisma.urlRedirect.findUnique({
+            where: { fromPath: `/productos/${madre.slug}/${hija.slug}` },
+          }),
+        ).toMatchObject({ toPath: `/productos/${madre.slug}/${newSlug}`, statusCode: 301 });
+      });
+
+      it("re-guardar el MISMO slug NO crea redirect", async () => {
+        const cat = await seedCat();
+        await updateCategory(cat.id, { slug: cat.slug, name: "Mismo slug" }, null);
+        expect(
+          await prisma.urlRedirect.findUnique({ where: { fromPath: `/productos/${cat.slug}` } }),
+        ).toBeNull();
       });
 
       it("permite 're-guardar' el mismo slug del propio registro (excluye self con id:not)", async () => {

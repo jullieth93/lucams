@@ -11,11 +11,15 @@
  *   - Actualiza Product.images array.
  *   - Registra AdminActionLog.
  *   - Logger estructurado.
+ *   - updateTag("catalog") (A3-01, cert 2026-09-26): invalida los listados
+ *     cacheados del storefront (PLP, /ocasion, cross-sell, /api/catalog/* del
+ *     bot) — antes solo se revalidaban paths /admin/* y la foto vieja se servía
+ *     hasta el TTL (5 min listas / 1 h detalle bot).
  */
 
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
@@ -95,6 +99,7 @@ export async function uploadProductImagesAction(formData: FormData): Promise<Act
     });
     revalidatePath(`/admin/productos/${product.id}`);
     revalidatePath("/admin/productos");
+    updateTag("catalog");
   }
 
   if (failure) {
@@ -154,6 +159,7 @@ export async function reorderProductImagesAction(formData: FormData): Promise<Ac
 
   revalidatePath(`/admin/productos/${product.id}`);
   revalidatePath("/admin/productos");
+  updateTag("catalog");
   return {};
 }
 
@@ -215,5 +221,6 @@ export async function deleteProductImageAction(formData: FormData): Promise<Acti
 
   revalidatePath(`/admin/productos/${product.id}`);
   revalidatePath("/admin/productos");
+  updateTag("catalog");
   return {};
 }

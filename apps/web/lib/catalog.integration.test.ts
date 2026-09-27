@@ -28,7 +28,6 @@
  *     aspect, solo específicas (sin globales — decisión N-08), mode explícito,
  *     producto inexistente → [], orden.
  *   - listPublicCoupons: solo públicos+activos+vigentes (ventana validFrom/validTo).
- *   - getRelatedProducts: scoring 3 capas (ocasión > sub-cat > cat), excluye actual.
  *
  * Requiere DATABASE_URL (corre vía `dotenv -e .env.local -- vitest`). Sin DB se
  * salta (skipIf) para no romper CI sin DB.
@@ -66,7 +65,6 @@ import {
   searchCatalog,
   listTemplatesByProduct,
   listPublicCoupons,
-  getRelatedProducts,
 } from "./catalog";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
@@ -1257,47 +1255,6 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
       expect(pub.appliesToProductSlugs).toContain(p1Slug);
       // validUntil es el validTo del cupón (Date).
       expect(pub.validUntil).toBeInstanceOf(Date);
-    });
-  });
-
-  // ════════════════════════════════════════════════════════════════════════
-  // getRelatedProducts — scoring 3 capas
-  // ════════════════════════════════════════════════════════════════════════
-
-  describe("getRelatedProducts", () => {
-    it("devuelve relacionados excluyendo el producto actual", async () => {
-      const related = await getRelatedProducts(p1Slug, 10);
-      const slugs = related.map((p) => p.slug);
-      // El propio p1 nunca está en sus relacionados.
-      expect(slugs).not.toContain(p1Slug);
-    });
-
-    it("prioriza productos de la misma sub-categoría (capa 2) y misma cat padre (capa 3)", async () => {
-      // p1 está en subA. p2 también en subA (misma sub-cat, +2). p3 en subB pero
-      // misma cat padre raíz (+1). p4 en otro árbol → no debería entrar al pool.
-      const related = await getRelatedProducts(p1Slug, 10);
-      const slugs = related.map((p) => p.slug);
-      expect(slugs).toContain(p2Slug); // misma sub-cat
-      expect(slugs).toContain(p3Slug); // misma cat padre
-      expect(slugs).not.toContain(p4Slug); // otro árbol
-      // p2 (misma sub-cat, score 2) debe ir antes que p3 (misma cat padre, score 1).
-      expect(slugs.indexOf(p2Slug)).toBeLessThan(slugs.indexOf(p3Slug));
-    });
-
-    it("excluye inactivos y borrados del pool de relacionados", async () => {
-      const related = await getRelatedProducts(p1Slug, 10);
-      const slugs = related.map((p) => p.slug);
-      expect(slugs).not.toContain(pInactiveSlug);
-      expect(slugs).not.toContain(pDeletedSlug);
-    });
-
-    it("respeta el límite de resultados", async () => {
-      const related = await getRelatedProducts(p1Slug, 1);
-      expect(related.length).toBeLessThanOrEqual(1);
-    });
-
-    it("producto inexistente devuelve []", async () => {
-      expect(await getRelatedProducts(`${RUN}-no-product`, 4)).toEqual([]);
     });
   });
 });

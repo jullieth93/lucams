@@ -3,7 +3,10 @@
  *
  * Separado de service.ts (admin) para que sea evidente que estas
  * queries son las que el storefront público consume y nunca filtran
- * datos no-publicables:
+ * datos no-publicables. El gate de visibilidad vive en UN solo módulo
+ * (F-04, cert 2026-09-26): storefront-visibility.ts exporta
+ * STOREFRONT_PRODUCT_WHERE, consumido también por el stack AI-ready
+ * (lib/catalog.ts) para que ambos no puedan divergir:
  *   - deletedAt: null   (no archivados)
  *   - isActive: true    (admin-toggled visible)
  *   - category.isActive: true + category.deletedAt: null
@@ -19,6 +22,7 @@ import "server-only";
 import { cache } from "react";
 import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
+import { STOREFRONT_PRODUCT_WHERE } from "./storefront-visibility";
 
 export type StorefrontProductCard = {
   id: string;
@@ -86,11 +90,9 @@ export type PersonalizationKind =
   | "TEXT_ONLY"
   | "NONE";
 
-const STOREFRONT_WHERE = {
-  deletedAt: null,
-  isActive: true,
-  category: { deletedAt: null, isActive: true },
-} as const;
+// Alias local: el predicado ES el exportado por storefront-visibility.ts
+// (fuente única, F-04) — no redefinirlo acá.
+const STOREFRONT_WHERE = STOREFRONT_PRODUCT_WHERE;
 
 /**
  * Lista de categorías activas para storefront, SIN las vacías.

@@ -1,6 +1,8 @@
 import "server-only";
 import { updateTag } from "next/cache";
 import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import { createSlugRenameRedirect, archiveRedirectOccupyingPath } from "@/features/redirects/service";
 import type { CategoryCreateInput } from "./schemas";
 
 export class CategoryValidationError extends Error {
@@ -162,6 +164,29 @@ export async function createCategory(input: CategoryCreateInput, createdBy: stri
     },
   });
   updateTag("catalog");
+
+  // A11R-03 — alta con slug liberado: si un redirect activo ocupa la URL nueva
+  // (/productos/<slug> o /productos/<madre>/<slug>, p.ej. quedó de un rename
+  // previo), la página viva gana → archivarlo; si no, la categoría nueva sería
+  // inalcanzable (301 al renombrado) sin señal al admin. Best-effort (mismo
+  // criterio que A11-02): el alta ya quedó; un fallo acá es warn, no error.
+  try {
+    const parentSlug = parentId
+      ? (await prisma.category.findUnique({ where: { id: parentId }, select: { slug: true } }))
+          ?.slug
+      : null;
+    await archiveRedirectOccupyingPath(
+      parentSlug ? `/productos/${parentSlug}/${created.slug}` : `/productos/${created.slug}`,
+      createdBy,
+    );
+  } catch (err) {
+    logger.warn({
+      event: "catalog.create_archive_redirect_fail",
+      entity: "category",
+      entityId: created.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return created;
 }
 
@@ -183,6 +208,11 @@ export async function updateCategory(
       throw new CategoryValidationError("slug", `Slug "${input.slug}" ya existe`);
     }
   }
+
+  // A11-02 — slug/parent actual (para el redirect automático si el slug cambia).
+  const prevCategory = input.slug
+    ? await prisma.category.findUnique({ where: { id }, select: { slug: true, parentId: true } })
+    : null;
 
   // D2: si cambia la categoría madre, validamos el límite de 1 nivel y
   // reubicamos el `order` al final del nuevo grupo de hermanas.
@@ -208,6 +238,53 @@ export async function updateCategory(
     },
   });
   updateTag("catalog");
+
+  // A11-02 — rename de slug público: crear UrlRedirect viejo→nuevo para que la
+  // URL vieja no quede en 404 (best-effort: el rename ya quedó; un fallo acá es
+  // warn, no error de la acción). Si es categoría MADRE, el rename también mueve
+  // las URLs de sus hijas (/productos/<madre>/<hija>) → un redirect por hija viva.
+  if (prevCategory && updated.slug !== prevCategory.slug) {
+    try {
+      const slugOf = async (parentId: string | null) =>
+        parentId
+          ? (await prisma.category.findUnique({ where: { id: parentId }, select: { slug: true } }))
+              ?.slug
+          : null;
+      const oldParentSlug = await slugOf(prevCategory.parentId);
+      const newParentSlug =
+        updated.parentId === prevCategory.parentId ? oldParentSlug : await slugOf(updated.parentId);
+      const catPath = (parentSlug: string | null | undefined, slug: string) =>
+        parentSlug ? `/productos/${parentSlug}/${slug}` : `/productos/${slug}`;
+      const description = `Auto: slug de categoría renombrado (${prevCategory.slug} → ${updated.slug})`;
+      await createSlugRenameRedirect({
+        fromPath: catPath(oldParentSlug, prevCategory.slug),
+        toPath: catPath(newParentSlug, updated.slug),
+        actorAdminId: updatedBy,
+        description,
+      });
+      if (!prevCategory.parentId) {
+        const children = await prisma.category.findMany({
+          where: { parentId: id, deletedAt: null },
+          select: { slug: true },
+        });
+        for (const child of children) {
+          await createSlugRenameRedirect({
+            fromPath: `/productos/${prevCategory.slug}/${child.slug}`,
+            toPath: `/productos/${updated.slug}/${child.slug}`,
+            actorAdminId: updatedBy,
+            description,
+          });
+        }
+      }
+    } catch (err) {
+      logger.warn({
+        event: "catalog.slug_rename_redirect_fail",
+        entity: "category",
+        entityId: id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
   return updated;
 }
 

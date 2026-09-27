@@ -47,6 +47,12 @@ vi.mock("next/cache", () => ({
   updateTag: vi.fn(),
   revalidateTag: vi.fn(),
   revalidatePath: vi.fn(),
+  // unstable_cache passthrough: el service importa (transitivo, vía
+  // features/redirects/service) lib/catalog, que lo invoca a nivel de módulo.
+  unstable_cache:
+    (fn: (...args: unknown[]) => unknown) =>
+    (...args: unknown[]) =>
+      fn(...args),
 }));
 
 import { prisma } from "@/lib/db";
@@ -146,6 +152,10 @@ describe.skipIf(!hasDb)(
 
     afterAll(async () => {
       // Orden de borrado respeta FKs. Todo SCOPED al prefijo RUN.
+      // Redirects automáticos creados por los renames de slug (A11-02).
+      await prisma.urlRedirect.deleteMany({
+        where: { fromPath: { startsWith: `/ocasion/${RUN}` } },
+      });
       // ProductOcasionTag (pivot) referencia tag (Cascade) y product (Cascade); lo
       // borramos explícito por claridad y para no dejar huérfanos si algo cambia.
       await prisma.productOcasionTag.deleteMany({
@@ -232,6 +242,32 @@ describe.skipIf(!hasDb)(
         expect(err.message).toMatch(/slug/i);
         expect(await prisma.ocasionTag.count({ where: { slug } })).toBe(1);
       });
+
+      // A11R-03 (revisión adversarial de la remediación, 2026-09-27): alta con
+      // slug liberado — un redirect activo que ocupa la URL nueva se ARCHIVA:
+      // la página viva gana. Sin esto, /ocasion/<slug> de la ocasión nueva era
+      // inalcanzable (el proxy sirve el 301 antes que la página).
+      it("crear con un slug que tiene redirect activo archiva el redirect (la página viva gana)", async () => {
+        const slug = nextSlug("redir");
+        await prisma.urlRedirect.create({
+          data: {
+            fromPath: `/ocasion/${slug}`,
+            toPath: "/productos",
+            statusCode: 301,
+            isActive: true,
+            createdBy: ACTOR,
+          },
+        });
+
+        await createOcasionTag(baseInput({ slug }), ACTOR);
+
+        const redirect = await prisma.urlRedirect.findUnique({
+          where: { fromPath: `/ocasion/${slug}` },
+        });
+        expect(redirect?.isActive).toBe(false);
+        expect(redirect?.deletedAt).not.toBeNull();
+        expect(redirect?.deletedBy).toBe(ACTOR);
+      });
     });
 
     // ════════════════════════════════════════════════════════════════════════
@@ -280,6 +316,31 @@ describe.skipIf(!hasDb)(
         await expect(
           updateOcasionTag({ id: `${RUN}-no-such-id`, name: "x" }, ACTOR),
         ).rejects.toMatchObject({ code: "P2025" });
+      });
+
+      // A11-02 (cert 2026-09-26): rename de slug público crea UrlRedirect viejo→nuevo.
+      it("renombrar el slug crea redirect 301 /ocasion/<viejo> → /ocasion/<nuevo>", async () => {
+        const tag = await makeTag({ name: "Ocasión redir" });
+        const newSlug = `${tag.slug}-renombrada`;
+        await updateOcasionTag({ id: tag.id, slug: newSlug }, ACTOR);
+
+        const redirect = await prisma.urlRedirect.findUnique({
+          where: { fromPath: `/ocasion/${tag.slug}` },
+        });
+        expect(redirect).toMatchObject({
+          toPath: `/ocasion/${newSlug}`,
+          statusCode: 301,
+          isActive: true,
+          deletedAt: null,
+        });
+      });
+
+      it("re-guardar el MISMO slug NO crea redirect", async () => {
+        const tag = await makeTag({ name: "Mismo slug" });
+        await updateOcasionTag({ id: tag.id, slug: tag.slug, name: "Otro nombre" }, ACTOR);
+        expect(
+          await prisma.urlRedirect.findUnique({ where: { fromPath: `/ocasion/${tag.slug}` } }),
+        ).toBeNull();
       });
     });
 

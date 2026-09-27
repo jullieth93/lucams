@@ -8,6 +8,8 @@
 
 import { prisma, Prisma } from "@/lib/db";
 import { updateTag } from "next/cache";
+import { logger } from "@/lib/logger";
+import { createSlugRenameRedirect, archiveRedirectOccupyingPath } from "@/features/redirects/service";
 import type { OcasionCreateInput, OcasionUpdateInput } from "./schemas";
 
 export class OcasionValidationError extends Error {
@@ -90,11 +92,31 @@ export async function createOcasionTag(input: OcasionCreateInput, actorId: strin
     },
   });
   updateTag("catalog");
+
+  // A11R-03 — alta con slug liberado: si un redirect activo ocupa la URL nueva
+  // (/ocasion/<slug>, p.ej. quedó de un rename previo), la página viva gana →
+  // archivarlo; si no, la ocasión nueva sería inalcanzable (301 al renombrado)
+  // sin señal al admin. Best-effort (mismo criterio que A11-02): el alta ya
+  // quedó; un fallo acá es warn, no error de la acción.
+  try {
+    await archiveRedirectOccupyingPath(`/ocasion/${created.slug}`, actorId);
+  } catch (err) {
+    logger.warn({
+      event: "catalog.create_archive_redirect_fail",
+      entity: "ocasion",
+      entityId: created.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return created;
 }
 
 export async function updateOcasionTag(input: OcasionUpdateInput, actorId: string) {
   const { id, suggestedQuantityRange, ...data } = input;
+  // A11-02 — slug público actual (para el redirect automático si cambia).
+  const prevSlug = data.slug
+    ? (await prisma.ocasionTag.findUnique({ where: { id }, select: { slug: true } }))?.slug
+    : undefined;
   const updated = await prisma.ocasionTag.update({
     where: { id },
     data: {
@@ -107,6 +129,26 @@ export async function updateOcasionTag(input: OcasionUpdateInput, actorId: strin
     },
   });
   updateTag("catalog");
+
+  // A11-02 — rename de slug público: la URL vieja (/ocasion/<slug>) quedaría en
+  // 404 inmediato. Best-effort: el rename ya quedó; un fallo acá es warn en logs.
+  if (prevSlug && updated.slug !== prevSlug) {
+    try {
+      await createSlugRenameRedirect({
+        fromPath: `/ocasion/${prevSlug}`,
+        toPath: `/ocasion/${updated.slug}`,
+        actorAdminId: actorId,
+        description: `Auto: slug de ocasión renombrado (${prevSlug} → ${updated.slug})`,
+      });
+    } catch (err) {
+      logger.warn({
+        event: "catalog.slug_rename_redirect_fail",
+        entity: "ocasion",
+        entityId: id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
   return updated;
 }
 
