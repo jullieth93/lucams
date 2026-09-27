@@ -103,6 +103,44 @@ async function markNeedsReconciliation(orderId: string, reason: string): Promise
   }
 }
 
+/**
+ * F-02 (certificación release 2026-09-26) — guard simétrico al B2 de
+ * processFailedPaymentOrder, pero para APROBADOS: una reference admite varios
+ * intentos Wompi, así que un APPROVED cuya tx es DISTINTA de la que pagó la orden
+ * es un SEGUNDO COBRO real (reintento del checkout hospedado, PSE que aprueba
+ * tarde + segundo pago con tarjeta, doble pestaña). El dedup del webhook es por
+ * txId y el amount check pasa (mismo monto de la misma reference) → sin este flag
+ * el doble cobro solo era visible cruzando a mano el panel Wompi.
+ *
+ * NO muta el estado de la orden ni dispara side effects: marca needsReconciliation
+ * (la hace visible en /admin/pedidos + alerta crítica `reconciliation`) con ambos
+ * txIds en el motivo, para evaluar el reembolso del duplicado. No-op si falta
+ * alguno de los dos txIds o si coinciden (reintento legítimo del mismo pago).
+ * Exportada: el fallback /checkout/gracias aplica la misma comparación cuando la
+ * orden ya está pagada (allí la saga no corre porque no hay PENDING_PAYMENT).
+ */
+export async function flagForeignApprovedPayment(input: {
+  orderId: string;
+  orderNumber?: string;
+  paidTxId: string | null;
+  incomingTxId?: string | null;
+}): Promise<void> {
+  const { orderId, paidTxId, incomingTxId } = input;
+  if (!incomingTxId || !paidTxId || incomingTxId === paidTxId) return;
+  logger.warn({
+    event: "order.saga.paid.foreign_approved_tx",
+    orderId,
+    orderNumber: input.orderNumber ?? null,
+    paidTxId,
+    incomingTxId,
+  });
+  await markNeedsReconciliation(
+    orderId,
+    `Segundo pago Wompi APROBADO (tx ${incomingTxId}) sobre una orden ya pagada (tx ${paidTxId}). ` +
+      `Doble cobro al cliente: contrastar contra el panel Wompi y evaluar el reembolso del duplicado.`,
+  );
+}
+
 async function flagOrderNeedsReconciliation(
   orderId: string,
   wompiTransactionId: string | null,
@@ -165,6 +203,15 @@ export async function processPaidOrder(
           `(guía ${order.trackingNumber}). Doble cobro: reembolsar el pago en línea o convertir la guía a prepagada.`,
       );
     }
+    // F-02 — un APPROVED de una tx DISTINTA a la que pagó la orden es un segundo
+    // cobro real (el guard H2 de arriba cubre solo el cruce Wompi×COD). La orden
+    // no se toca: queda flagueada para evaluar el reembolso del duplicado.
+    await flagForeignApprovedPayment({
+      orderId: order.id,
+      orderNumber: order.number,
+      paidTxId: order.wompiTransactionId,
+      incomingTxId: input.wompiTransactionId,
+    });
     // #7 — self-heal: una orden PAID con guía cuya transición a FULFILLING falló en la saga queda
     // atascada (los webhooks de tracking solo avanzan desde FULFILLING → serían noop para siempre,
     // sin SHIPPED/DELIVERED ni deliveredAt, el ancla del retracto). Un reintento del webhook Wompi
@@ -308,7 +355,15 @@ export async function processPaidOrder(
         // para evitar doble-guía Aveonline. Re-leemos para devolver el tracking.
         const winner = await prisma.order.findUnique({
           where: { id: order.id },
-          select: { trackingNumber: true },
+          select: { trackingNumber: true, wompiTransactionId: true },
+        });
+        // F-02 — si el ganador pagó con OTRA tx, esta invocación es el APPROVED de
+        // un segundo cobro real sobre la misma reference: queda flagueada.
+        await flagForeignApprovedPayment({
+          orderId: order.id,
+          orderNumber: order.number,
+          paidTxId: winner?.wompiTransactionId ?? null,
+          incomingTxId: input.wompiTransactionId,
         });
         logger.info({
           event: "order.saga.paid.concurrent_idempotent_skip",
@@ -376,6 +431,57 @@ export async function processPaidOrder(
       status: "transition_failed",
       reason: `Order en estado ${order.status}, no PENDING_PAYMENT`,
     };
+  } else {
+    // PAID/FULFILLING sin tracking (guía falló antes o claim en curso): si este
+    // APPROVED viene de una tx DISTINTA a la que pagó, es un segundo cobro real
+    // (F-02). Se flaguea ANTES del claim para cubrir también el caso en que esta
+    // invocación gane el claim y cree la guía (la orden sí está pagada y debe
+    // despacharse; la anomalía es el doble cobro, no la guía).
+    await flagForeignApprovedPayment({
+      orderId: order.id,
+      orderNumber: order.number,
+      paidTxId: order.wompiTransactionId,
+      incomingTxId: input.wompiTransactionId,
+    });
+
+    // A11R-01 (revisión adversarial de la remediación, 2026-09-27) — la variante
+    // que F-02 NO cubre: paidTxId === null. Una orden reusada WOMPI→COD tras un
+    // intento abandonado (p.ej. PSE) queda con wompiTransactionId=null; si fue
+    // confirmada pero la guía falló, está PAID sin tracking. Si ese intento
+    // aprueba TARDE, este APPROVED trae un txId que la orden no tiene → el
+    // cliente YA pagó en línea. Seguir al claim crearía la guía con
+    // `isCod = paymentMethod==="COD" && !wompiTransactionId` = true → RECAUDO
+    // sobre un cobro ya hecho (doble cobro vía mensajero, invisible incluso en
+    // la conciliación COD: la remesa cuadra contra el total). Acá se persiste el
+    // txId (update gateado: no pisa uno existente), se flaguea y NO se crea guía
+    // en esta pasada — el retry admin o la reconciliación deciden. Con el txId ya
+    // persistido, la próxima guía sale PREPAGADA (el backstop B1 apaga el recaudo).
+    if (input.wompiTransactionId && !order.wompiTransactionId) {
+      await prisma.order.updateMany({
+        where: { id: order.id, wompiTransactionId: null },
+        data: { wompiTransactionId: input.wompiTransactionId },
+      });
+      logger.warn({
+        event: "order.saga.paid.late_approved_no_txid",
+        orderId: order.id,
+        orderNumber: order.number,
+        paymentMethod: order.paymentMethod,
+        incomingTxId: input.wompiTransactionId,
+      });
+      await markNeedsReconciliation(
+        order.id,
+        `Pago Wompi tardío APROBADO (tx ${input.wompiTransactionId}) sobre una orden ${order.paymentMethod} ` +
+          `sin txId registrado y sin guía (pedido ${order.number}). El cobro en línea YA se capturó: NO se ` +
+          `generó guía en esta pasada para no crear una guía con recaudo sobre un cliente ya cobrado. ` +
+          `Verificar el cobro en el panel Wompi y decidir: reintentar la guía desde el pedido (saldrá ` +
+          `prepagada) o reembolsar.`,
+      );
+      return {
+        status: "shipment_failed",
+        reason:
+          "Pago Wompi tardío sobre orden sin txId registrado — flagueada para reconciliación; guía NO creada",
+      };
+    }
   }
 
   // #2 (post-launch Bloque A) — Email de confirmación idempotente Y recuperable.
@@ -433,6 +539,16 @@ export async function processPaidOrder(
       orderNumber: order.number,
       missingVariants: missingDims,
     });
+    // A11-04 (certificación release 2026-09-26): la orden queda PAID con el email
+    // de confirmación YA enviado y el webhook sellado (sin reintento automático) —
+    // sin este flag la única señal era la columna de tracking vacía en
+    // /admin/pedidos. El claim aún no se tomó (esta rama va antes), así que el
+    // retry admin sigue funcionando una vez configuradas las dims.
+    await markNeedsReconciliation(
+      order.id,
+      `Variantes sin peso/dimensiones: ${missingDims.join(", ")}. El pago se confirmó pero no se puede ` +
+        `generar la guía — configurar las dims en /admin/productos y reintentar la guía desde el pedido.`,
+    );
     return {
       status: "shipment_failed",
       reason: `Variantes sin peso/dimensiones: ${missingDims.join(", ")}. Configurar en /admin/productos.`,

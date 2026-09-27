@@ -51,8 +51,14 @@
  *     capturado — la alerta crítica `reconciliation` la hace visible para
  *     contraste manual contra el panel Wompi. Ninguna orden con pago potencial
  *     se cancela en silencio.
- * Órdenes sin wompiTransactionId (abandono antes de pagar) → cancelación
- * directa sin llamar a Wompi y SIN flag: no hay cobro potencial que reconciliar.
+ * Órdenes sin wompiTransactionId (veredicto `no_txid`) → cancelación directa sin
+ * llamar a Wompi y SIN flag (el abandono antes de pagar es el caso común: marcar
+ * cada una devaluaría la alerta crítica `reconciliation`). PERO la cancelación es
+ * a ciegas — Wompi pudo cobrar sin entregar webhook y sin que el cliente volviera
+ * a /checkout/gracias — así que NO es silenciosa: el resumen diario cuenta las
+ * canceladas por este cron con txId null (`expiredPendingWompi24h` en
+ * features/observability/daily-summary.ts) para el cruce manual contra el panel
+ * Wompi (F-03, certificación release 2026-09-26).
  *
  * Auditoría: no hay columna de "motivo de cancelación" en Order (solo
  * refundReason); la razón ORDER_EXPIRED queda en updatedBy="cron:expire-pending-orders"
@@ -99,7 +105,7 @@ function wompiVerificationAvailable(): boolean {
 
 /** Veredicto de la verificación Wompi — queda en el log de cada orden cancelada. */
 type WompiVerdict =
-  | "no_txid" // abandonó antes de pagar → cancela directo (sin llamar a Wompi) y SIN flag
+  | "no_txid" // abandonó antes de pagar → cancela directo (sin llamar a Wompi) y SIN flag; visible vía resumen diario (F-03)
   | "not_configured" // sin llaves WOMPI_* → no se puede verificar: cancela + needsReconciliation (F-03)
   | "not_approved" // PENDING/DECLINED/ERROR/VOIDED → cancela limpio (cobro descartado)
   | "lookup_failed"; // API caída / tx inexistente (404) → cancela + needsReconciliation (F-03)

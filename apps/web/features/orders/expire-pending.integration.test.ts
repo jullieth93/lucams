@@ -64,6 +64,7 @@ vi.mock("@/features/orders/saga", () => ({
 
 import { prisma } from "@/lib/db";
 import { expireStalePendingOrders, EXPIRE_PENDING_ACTOR } from "./expire-pending";
+import { getDailySummary } from "@/features/observability/daily-summary";
 import { PENDING_PAYMENT_EXPIRY_HOURS } from "./constants";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
@@ -271,6 +272,28 @@ describe.skipIf(!hasDb)(
       });
       expect(remainingMine).toBe(0);
       expect(second.scanned).toBeGreaterThanOrEqual(0); // corrida válida, sin efecto sobre lo propio
+    });
+
+    it("F-03: la cancelación no_txid queda VISIBLE en el resumen diario (cruce contra el panel Wompi)", async () => {
+      // Orden WOMPI vieja sin txId: Wompi pudo cobrar sin entregar webhook y sin
+      // que el cliente volviera a /gracias → la cancelación es a ciegas. No lleva
+      // flag (el abandono es el caso común y devaluaría la alerta crítica), pero
+      // DEBE aparecer en el resumen diario para el cruce manual contra el panel.
+      const id = await makeOrder({ tag: "notxid-summary", ageMs: STALE_AGE });
+      const before = (await getDailySummary()).expiredPendingWompi24h;
+
+      await expireStalePendingOrders();
+
+      const o = await prisma.order.findUnique({
+        where: { id },
+        select: { status: true, updatedBy: true, needsReconciliation: true },
+      });
+      expect(o?.status).toBe("CANCELLED");
+      // La marca de auditoría + txId null es lo que la hace contable en el resumen.
+      expect(o?.updatedBy).toBe(EXPIRE_PENDING_ACTOR);
+      expect(o?.needsReconciliation).toBe(false);
+      const after = (await getDailySummary()).expiredPendingWompi24h;
+      expect(after).toBeGreaterThanOrEqual(before + 1);
     });
 
     // ─────────────────────────────────────────────────────────────────────

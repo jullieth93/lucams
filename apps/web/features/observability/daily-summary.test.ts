@@ -26,6 +26,7 @@ const base: DailySummary = {
   errors24h: 0,
   topErrorRoute: null,
   needsReconciliation: 0,
+  expiredPendingWompi24h: 0,
   breachedSlos: [],
   emailBounceRateAlert: false,
   emailBounceRatePct: null,
@@ -77,6 +78,19 @@ describe("buildDailySummaryEmail", () => {
     );
     expect(html).toContain("Nada pendiente de atención");
     expect(html).not.toContain("necesitan reconciliación");
+  });
+
+  it("F-03 — avisa de pedidos Wompi expirados sin pago confirmado (cruce contra el panel Wompi)", () => {
+    const { html, text } = buildDailySummaryEmail({ ...base, expiredPendingWompi24h: 2 }, NOW);
+    expect(html).toContain("2</strong> pedido(s) Wompi expiraron sin pago confirmado");
+    expect(html).toContain("panel Wompi");
+    expect(text).toContain("2 pedido(s) Wompi expirados sin pago confirmado");
+  });
+
+  it("F-03 — sin expirados sin pago confirmado, no muestra la línea", () => {
+    const { html, text } = buildDailySummaryEmail({ ...base, ordersLast24h: 1 }, NOW);
+    expect(html).not.toContain("expiraron sin pago confirmado");
+    expect(text).not.toContain("expirados sin pago confirmado");
   });
 
   it("calcula el % de recuperación de carritos", () => {

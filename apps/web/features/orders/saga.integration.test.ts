@@ -56,6 +56,10 @@ type CreateShipmentArgs = {
   items: Array<{ productSlug: string; qty: number; declaredValueCop: number }>;
   delivery: { city: string; department: string; address: string };
   pickup: { city: string; department: string };
+  // Recaudo COD (A11R-01): se registran para asertar que una guía NO sale con
+  // recaudo cuando el cliente ya pagó en línea.
+  contraentrega?: boolean;
+  valorRecaudoCop?: number;
 };
 const shipmentCalls: CreateShipmentArgs[] = [];
 let shipmentShouldThrow: Error | null = null;
@@ -210,6 +214,7 @@ async function makePendingOrder(
     couponId?: string;
     discount?: number;
     customerId?: string;
+    paymentMethod?: "WOMPI" | "COD";
   },
 ): Promise<string> {
   const subtotal = items.reduce((a, it) => a + it.unitPrice * it.qty, 0);
@@ -225,7 +230,7 @@ async function makePendingOrder(
       shipping: 0,
       total: subtotal - discount,
       currency: "COP",
-      paymentMethod: "WOMPI",
+      paymentMethod: opts.paymentMethod ?? "WOMPI",
       status: "PENDING_PAYMENT",
       shippingCarrier: "envia",
       cartId: opts.cartId,
@@ -754,6 +759,145 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
     }, 30000);
   });
 
+  // ═══════════ processPaidOrder — F-02: 2ª tx APPROVED (misma reference, tx distinta) ═══════════
+
+  describe("processPaidOrder — F-02: APPROVED de transacción ajena (doble cobro)", () => {
+    it("2ª tx APPROVED (txId distinto) sobre orden ya pagada con guía → already_processed + needsReconciliation, orden intacta y sin side effects", async () => {
+      const variantId = await makeVariant(10, "dbl");
+      const orderId = await makePendingOrder([{ variantId, qty: 2, unitPrice: 5000 }], {
+        numberTag: "DBL1",
+      });
+      shipmentResult = {
+        trackingNumber: `${RUN}-GUIA-DBL`,
+        trackingUrl: "https://track.test/dbl",
+        labelUrl: "https://label.test/dbl.pdf",
+        carrier: "envia",
+        estimatedDeliveryAt: null,
+      };
+
+      // 1ra pasada: la orden se paga con tx-1 (flujo completo hasta FULFILLING).
+      const first = await processPaidOrder({ orderId, wompiTransactionId: "tx-dbl-1" });
+      expect(first.status).toBe("ok");
+      expect(await stockOf(variantId)).toBe(8);
+      expect(shipmentCalls).toHaveLength(1);
+      expect(emailCalls.filter((c) => c.fn === "sendOrderConfirmationOnce")).toHaveLength(1);
+
+      // Llega el APPROVED de una SEGUNDA transacción (misma reference, txId distinto):
+      // el cliente fue cobrado 2×. El dedup por txId la deja pasar y la saga la
+      // reconoce como ajena → flag para reconciliación, SIN tocar la orden.
+      const second = await processPaidOrder({ orderId, wompiTransactionId: "tx-dbl-2" });
+      expect(second.status).toBe("already_processed");
+      expect(second.trackingNumber).toBe(`${RUN}-GUIA-DBL`);
+
+      const o = await getOrder(orderId);
+      // La orden sigue exactamente como quedó (estado, guía y tx que la pagó).
+      expect(o?.status).toBe("FULFILLING");
+      expect(o?.trackingNumber).toBe(`${RUN}-GUIA-DBL`);
+      expect(o?.wompiTransactionId).toBe("tx-dbl-1");
+      // Visible para reconciliación, con AMBOS txIds en el motivo.
+      expect(o?.needsReconciliation).toBe(true);
+      expect(o?.reconciliationReason).toContain("tx-dbl-1");
+      expect(o?.reconciliationReason).toContain("tx-dbl-2");
+      // Sin side effects duplicados: stock, guía, ledger y emails intactos.
+      expect(await stockOf(variantId)).toBe(8);
+      expect(shipmentCalls).toHaveLength(1);
+      expect(await logsFor(orderId, INVENTORY_REASON.ORDER_PAID)).toHaveLength(1);
+      expect(emailCalls.filter((c) => c.fn === "sendOrderConfirmationOnce")).toHaveLength(1);
+    }, 30000);
+
+    it("control: reentrada con el MISMO txId sigue siendo no-op limpio (sin flag)", async () => {
+      const variantId = await makeVariant(10, "dblctl");
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 5000 }], {
+        numberTag: "DBLCTL1",
+      });
+
+      const first = await processPaidOrder({ orderId, wompiTransactionId: "tx-ctl" });
+      expect(first.status).toBe("ok");
+
+      const second = await processPaidOrder({ orderId, wompiTransactionId: "tx-ctl" });
+      expect(second.status).toBe("already_processed");
+
+      const o = await getOrder(orderId);
+      expect(o?.status).toBe("FULFILLING");
+      expect(o?.needsReconciliation).toBe(false);
+      expect(o?.reconciliationReason).toBeNull();
+      expect(await stockOf(variantId)).toBe(9);
+      expect(shipmentCalls).toHaveLength(1);
+    }, 30000);
+
+    it("tx ajena sobre orden PAID sin guía (falló antes): crea la guía (la orden SÍ está pagada) PERO flaguea el doble cobro", async () => {
+      const variantId = await makeVariant(10, "dblng");
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 5000 }], {
+        numberTag: "DBLNG1",
+      });
+
+      // 1ra pasada: pagó con tx-1 pero Aveonline falló → PAID sin tracking.
+      shipmentShouldThrow = new Error("Aveonline caído (test)");
+      const first = await processPaidOrder({ orderId, wompiTransactionId: "tx-ng-1" });
+      expect(first.status).toBe("shipment_failed");
+      expect((await getOrder(orderId))?.status).toBe("PAID");
+      shipmentShouldThrow = null;
+
+      // El APPROVED de tx-2 llega cuando aún no hay guía: el fulfillment debe
+      // avanzar (la venta de tx-1 es real) y el doble cobro debe quedar flagueado.
+      const second = await processPaidOrder({ orderId, wompiTransactionId: "tx-ng-2" });
+      expect(second.status).toBe("ok");
+
+      const o = await getOrder(orderId);
+      expect(o?.status).toBe("FULFILLING");
+      expect(o?.trackingNumber).toBe("TRACK-DEFAULT");
+      // La tx registrada sigue siendo la que pagó primero (no se sobrescribe).
+      expect(o?.wompiTransactionId).toBe("tx-ng-1");
+      expect(o?.needsReconciliation).toBe(true);
+      expect(o?.reconciliationReason).toContain("tx-ng-2");
+      // Stock decrementado una sola vez.
+      expect(await stockOf(variantId)).toBe(9);
+      expect(await logsFor(orderId, INVENTORY_REASON.ORDER_PAID)).toHaveLength(1);
+    }, 30000);
+
+    // A11R-01 (revisión adversarial de la remediación, 2026-09-27) — la variante
+    // que F-02 no cubría: paidTxId=null. Orden reusada WOMPI→COD (el switch no
+    // limpia/llena txId) confirmada con guía FALLIDA (PAID, tracking null) y el
+    // intento PSE abandonado aprueba TARDE. Sin el fix, la saga caía al claim con
+    // `isCod = COD && !txId` = true → guía CON RECAUDO para un cliente que ya
+    // pagó en línea (doble cobro vía mensajero, invisible en conciliación COD).
+    it("APPROVED tardío con txId sobre orden COD PAID sin guía y sin txId → persiste txId, flaguea y NO crea guía (sin recaudo)", async () => {
+      const variantId = await makeVariant(10, "codlate");
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 5000 }], {
+        numberTag: "CODLATE1",
+        paymentMethod: "COD",
+      });
+      // Simula la confirmación COD con guía fallida: PAID, sin tracking, sin txId.
+      await prisma.order.update({ where: { id: orderId }, data: { status: "PAID" } });
+
+      const res = await processPaidOrder({ orderId, wompiTransactionId: `${RUN}-tx-tardio` });
+      expect(res.status).toBe("shipment_failed");
+      expect(res.reason).toMatch(/reconciliación/i);
+
+      const o = await getOrder(orderId);
+      // El txId tardío quedó persistido (ancla para reconciliar contra Wompi).
+      expect(o?.wompiTransactionId).toBe(`${RUN}-tx-tardio`);
+      // Visible en /admin/pedidos con el txId en el motivo.
+      expect(o?.needsReconciliation).toBe(true);
+      expect(o?.reconciliationReason).toContain(`${RUN}-tx-tardio`);
+      // NO se creó guía → imposible que salga con recaudo.
+      expect(o?.trackingNumber).toBeNull();
+      expect(shipmentCalls).toHaveLength(0);
+      // Sin emails ni decrementos extra en esta pasada.
+      expect(emailCalls).toHaveLength(0);
+
+      // La decisión queda en humanos: un retry admin (sin txId) ahora sí crea la
+      // guía, pero PREPAGADA — el txId persistido apaga el recaudo (backstop B1).
+      // (La rama fresh del claim no se gatea por needsReconciliation — deliberado.)
+      const retry = await processPaidOrder({ orderId });
+      expect(retry.status).toBe("ok");
+      expect(shipmentCalls).toHaveLength(1);
+      expect(shipmentCalls[0].contraentrega).toBe(false);
+      expect(shipmentCalls[0].valorRecaudoCop).toBeUndefined();
+      expect((await getOrder(orderId))?.trackingNumber).toBe("TRACK-DEFAULT");
+    }, 30000);
+  });
+
   // ═══════════════════ processPaidOrder — BORDES / INVÁLIDOS ═══════════════════
 
   describe("processPaidOrder — bordes e inválidos", () => {
@@ -833,6 +977,12 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       const o = await getOrder(orderId);
       expect(o?.status).toBe("PAID");
       expect(await stockOf(bareVariant.id)).toBe(4);
+      // A11-04 — la orden quedó PAID con email enviado y el webhook se sella
+      // (sin reintento): el flag la hace visible en /admin/pedidos + alerta
+      // `reconciliation`, con el detalle de las variantes en el motivo.
+      expect(o?.needsReconciliation).toBe(true);
+      expect(o?.reconciliationReason).toMatch(/sin peso\/dimensiones/i);
+      expect(o?.reconciliationReason).toContain(bareVariant.id);
 
       // Cleanup del producto extra (fuera del productId compartido).
       await prisma.inventoryLog.deleteMany({ where: { variantId: bareVariant.id } });

@@ -94,6 +94,7 @@ describe.skipIf(!hasDb)("daily-summary — integración DB", () => {
       "recoveredCarts24h",
       "errors24h",
       "needsReconciliation",
+      "expiredPendingWompi24h",
     ] as const) {
       expect(typeof s[k]).toBe("number");
       expect(s[k]).toBeGreaterThanOrEqual(0);
