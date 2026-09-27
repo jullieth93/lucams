@@ -35,7 +35,10 @@ Veredicto formal: `docs/audits/2026-09-27-final-release-certification.md` → **
 `develop@fcc912c` (árbol de producto `7f07c43`). Pendiente solo del deploy: ① PR
 `develop`→`production` (nuevo flujo con PR obligatorio — el push directo quedó cerrado), ②
 `prisma migrate deploy` en PRD (ya verificado en STG; pasos en la sección de la sesión), ③ primera
-corrida del post-deploy-smoke, ④ verificación funcional rápida en PRD.
+corrida del post-deploy-smoke, ④ verificación funcional rápida en PRD, ⑤ **drill de rollback**
+(Vercel → Deployments → deployment anterior → Rollback → verificar → volver al nuevo; registrar
+fecha/resultado aquí — ADR-105 addendum). Nota: la regla expand/contract que hace seguro el
+rollback quedó explicitada en CONVENTIONS.md §migration strategy.
 
 <details><summary>Historial de resúmenes anteriores</summary>
 

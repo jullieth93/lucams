@@ -544,6 +544,13 @@ No hay una infraestructura genérica de `Idempotency-Key` headers ni tabla `idem
 ## DB — migration strategy (expand-then-contract)
 
 > Toda migración debe poder aplicarse y revertirse sin tirar el sitio. Nunca un cambio destructivo en una sola release.
+>
+> **Por qué esto es también la estrategia de rollback (ADR-105):** el rollback de Vercel revierte
+> el CÓDIGO, no la base de datos. Si una release aplica una migración destructiva y hay que volver
+> atrás, el código viejo revienta contra el schema nuevo y el rollback no salva nada. Este patrón
+> es lo que hace que el rollback instantáneo sea seguro: mientras toda migración destructiva pase
+> por expand → migrate → cutover → contract, el código viejo siempre convive con el schema
+> presente en DB. Una migración destructiva en una sola release invalida la opción de rollback.
 
 ### Patrón
 

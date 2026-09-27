@@ -3488,3 +3488,5 @@ intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar
 **Por qué:** ① el costo de la restricción es mínimo (misma disciplina ff, más 1 click) y elimina la única vía de desplegar código no gateado; ② el drill exige ventana de deploy controlada y la owner prefiere asumir el riesgo con mitigaciones activas.
 
 **Consecuencia:** el gate §20 de la misión queda sin bloqueos: `production migration path` PROVEN (LOCAL+STG), rollback = riesgo aceptado firmado, F-07 = remediado. Veredicto de la certificación: **CERTIFIED** sobre `develop@fcc912c` (árbol de producto `7f07c43`).
+
+**Addendum (mismo día):** ① la mitigación profunda ya existía como convención — `docs/CONVENTIONS.md` §"DB — migration strategy (expand-then-contract)" — y quedó explicitado allí que ese patrón ES lo que hace seguro el rollback instantáneo (Vercel revierte código, no DB); una migración destructiva en una sola release invalida el rollback. ② El drill de rollback queda agendado como paso del próximo deploy a PRD (no bloquea la certificación; registra fecha/resultado en STATE.md al hacerlo).
