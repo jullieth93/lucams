@@ -2,10 +2,10 @@
  * Storefront — Detalle de producto.
  *
  * Página individual de producto. Renderiza:
- *   - galería (placeholder hasta que haya imágenes reales en Storage),
+ *   - galería de imágenes reales (ProductGallery, assets en Storage),
  *   - nombre / categoría / precio + descuento si aplica,
  *   - descripción larga,
- *   - botones: añadir al carrito (placeholder) + consultar por WhatsApp,
+ *   - selector de variante con añadir al carrito + consultar por WhatsApp,
  *   - breadcrumb minimalista.
  *
  * SEO: metadata dinámica usa seoTitle/seoDescription si están seteados,

@@ -10,6 +10,12 @@
  *  - La capa HTTP (route handlers, server actions) captura `AppError` y
  *    lo convierte a `Response` con `problemResponse(err, requestId)`.
  *
+ * Hoy solo `InternalError` tiene consumidores reales (healthchecks). Las
+ * subclases 401/403/409/422/429 se retiraron en la remediación R6 (2026-09-27,
+ * A6-03) por 0 referencias en todo el repo — se reintroducen junto a su primer
+ * consumidor. Sus slugs se conservan en `ProblemSlug`: son el catálogo público
+ * RFC 7807 documentado en docs/CONVENTIONS.md.
+ *
  * Cada `type` apunta a `https://lucamsshop.com/problems/<slug>`. Esos URIs
  * deben ser dereferenceables — su contenido se sirve desde
  * `app/(legal)/problems/[slug]/page.tsx` (pendiente).
@@ -85,46 +91,6 @@ export class NotFoundError extends AppError {
   constructor(resource: string) {
     super("not-found", 404, "Recurso no encontrado", `No se encontró ${resource}.`);
     this.name = "NotFoundError";
-  }
-}
-
-export class UnauthorizedError extends AppError {
-  constructor(detail?: string) {
-    super("unauthorized", 401, "No autenticado", detail);
-    this.name = "UnauthorizedError";
-  }
-}
-
-export class ForbiddenError extends AppError {
-  constructor(detail?: string) {
-    super("forbidden", 403, "Sin permiso", detail);
-    this.name = "ForbiddenError";
-  }
-}
-
-export class ConflictError extends AppError {
-  constructor(detail: string) {
-    super("conflict", 409, "Conflicto", detail);
-    this.name = "ConflictError";
-  }
-}
-
-export class UnprocessableError extends AppError {
-  constructor(detail: string) {
-    super("unprocessable", 422, "Estado inválido para la operación", detail);
-    this.name = "UnprocessableError";
-  }
-}
-
-export class TooManyRequestsError extends AppError {
-  constructor() {
-    super(
-      "too-many-requests",
-      429,
-      "Demasiadas solicitudes",
-      "Por favor espera unos momentos antes de reintentar.",
-    );
-    this.name = "TooManyRequestsError";
   }
 }
 

@@ -19,12 +19,12 @@
  * (imprime ANTES por consola) o editando en /admin/productos.
  *
  * Uso:
- *   node scripts/update-production-days-20260911.mjs           # dry-run (default)
- *   node scripts/update-production-days-20260911.mjs --apply   # aplica
+ *   node scripts/one-shot/update-production-days-20260911.mjs           # dry-run (default)
+ *   node scripts/one-shot/update-production-days-20260911.mjs --apply   # aplica
  * Con dotenv según ambiente (desde packages/db):
- *   npx dotenv -e ../../.env.local -- node scripts/update-production-days-20260911.mjs --apply
- *   npx dotenv -e ../../.env.stg   -- node scripts/update-production-days-20260911.mjs --apply
- *   npx dotenv -e ../../.env.local.nube-backup -- node scripts/update-production-days-20260911.mjs --apply
+ *   npx dotenv -e ../../.env.local -- node scripts/one-shot/update-production-days-20260911.mjs --apply
+ *   npx dotenv -e ../../.env.stg   -- node scripts/one-shot/update-production-days-20260911.mjs --apply
+ *   npx dotenv -e ../../.env.local.nube-backup -- node scripts/one-shot/update-production-days-20260911.mjs --apply
  *
  * N-06 (2026-09-12): EXENCIÓN deliberada del env-guard. Su caso de uso ES la
  * corrección de datos en PRD (ya se aplicó en los 3 ambientes el 2026-09-11),

@@ -46,10 +46,11 @@ export default defineConfig({
   timeout: 60_000,
   fullyParallel: true,
   forbidOnly: isCI,
-  // 2 reintentos: los flujos que mutan el carrito corren contra `next dev` (no
-  // optimizado para concurrencia) + el pooler de Supabase; bajo carga el
-  // read-after-write flakea. toPass cubre la mayoría; los reintentos son la red.
-  retries: 2,
+  // Retries SOLO en CI (A10-05, remediación R6 2026-09-27): los flujos que mutan
+  // el carrito flakean bajo carga (read-after-write del pooler); toPass cubre la
+  // mayoría y los 2 reintentos son la red. En local son 0 a propósito (debugging
+  // más claro y sin lavar no-determinismo — ver header).
+  retries: isCI ? 2 : 0,
   // Local (contra `next dev`): 1 worker. El dev server + el pooler de Supabase no
   // toleran mutaciones de carrito concurrentes — dos add-to-cart en paralelo hacen
   // que uno pierda su redirect `?added=1` (verificado: serial pasa, paralelo flakea).

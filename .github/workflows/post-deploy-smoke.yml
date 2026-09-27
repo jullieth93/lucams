@@ -1,0 +1,55 @@
+name: Post-deploy smoke (PRD)
+
+# F-08 (auditoría 2026-09-26, remediación R3): smoke post-deploy AUTOMATIZADO.
+# Antes la verificación post-deploy de PRD era un spec manual — un deploy "verde"
+# con una capacidad rota podía durar 10-20 min hasta que el monitor externo la
+# viera. Este workflow sondea los health endpoints públicos + 2 journeys
+# read-only (homepage, catálogo) y sale ROJO si algo no responde 200.
+#
+# Triggers:
+#   - workflow_run del CI sobre `production`: el push a production dispara el
+#     deploy de Vercel y el CI a la vez; el CI tarda más que el build de Vercel,
+#     así que al completar el CI el deploy ya está (o casi) servido — el script
+#     tolera la propagación con reintentos. NO existe workflow de deploy propio
+#     (Vercel despliega por integración Git, sin workflow_run de deployment), así
+#     que el cierre del CI sobre production es el proxy más fiel disponible.
+#   - schedule ligero (2 veces por hora): segunda red independiente del monitor
+#     de STG (A9-12 — si STG está pausado no hay sondeo externo; este vive en
+#     GitHub). Getters públicos, costo cero.
+#   - workflow_dispatch: verificación manual post-hotfix.
+#
+# NO usa secrets: todo es GET público read-only (los health endpoints son
+# públicos a propósito; el detalle sensible de /api/health/crons exige
+# x-cron-secret y acá NO se pide — solo el status agregado).
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [production]
+  schedule:
+    # Minutos 7 y 37 de cada hora (fuera de las marcas :00/:30 de la manada).
+    - cron: "7,37 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-deploy-smoke
+  cancel-in-progress: false # un smoke a medias no se cancela: su resultado importa
+
+jobs:
+  smoke:
+    name: Health endpoints + journeys read-only de PRD
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Sin pnpm install ni build: el script es Node 22 pelado (fetch nativo),
+      # cero dependencias — el smoke no debe depender del toolchain del repo.
+      - name: Smoke post-deploy (health + homepage + catálogo)
+        run: node apps/web/scripts/post-deploy-smoke.mjs
+        env:
+          SMOKE_BASE_URL: https://lucamsshop.com

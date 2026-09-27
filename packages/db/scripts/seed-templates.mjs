@@ -541,7 +541,7 @@ const templatesData = [
   // 2026-09-14 — foto-rectangular-simple y las 6 globales "Personalización Libre"
   // archivadas salieron del seed: eran plantillas DEMO sin producto activo ni
   // diseños que las referencien; la remediación las HARD-DELETEA con
-  // scripts/cleanup-demo-templates.mjs (con guard de diseños referenciantes).
+  // scripts/one-shot/cleanup-demo-templates.mjs (con guard de diseños referenciantes).
   //
   // ════════════════════ Tira Magnética (photobooth) ════════════════════
   //
@@ -748,7 +748,7 @@ const templatesData = [
   // 2026-09-14 — fin del array: las globales demo archivadas (libre-photo-grid,
   // libre-calendar-photo-hero, libre-event-favor, libre-business-logo,
   // libre-custom-decor, libre-text-only) ya NO se declaran. Salen del catálogo
-  // con scripts/cleanup-demo-templates.mjs (decisión del owner: "son entera-
+  // con scripts/one-shot/cleanup-demo-templates.mjs (decisión del owner: "son entera-
   // mente demo, eliminarlas"). Sus kinds no tienen producto activo y las
   // superficies no-foto (name/phrase/event/logo) no consumen plantillas.
 ];

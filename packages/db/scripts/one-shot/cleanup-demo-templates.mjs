@@ -33,15 +33,15 @@
  *   - Conteos antes/después.
  *
  * Uso:
- *   cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/cleanup-demo-templates.mjs          # DRY-RUN
- *   cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/cleanup-demo-templates.mjs --apply  # ejecuta
+ *   cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/one-shot/cleanup-demo-templates.mjs          # DRY-RUN
+ *   cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/one-shot/cleanup-demo-templates.mjs --apply  # ejecuta
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
-import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+import { assertDestructiveAllowed } from "../lib/env-guard.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
@@ -52,7 +52,7 @@ assertDestructiveAllowed("cleanup-demo-templates.mjs");
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes("--apply");
 const HERE = dirname(fileURLToPath(import.meta.url));
-const BACKUP_DIR = join(HERE, "..", "..", "..", "tmp", "backups");
+const BACKUP_DIR = join(HERE, "..", "..", "..", "..", "tmp", "backups");
 
 const RENAMES = [
   { from: "libre-photo-pack", to: "cuadrados-foto-y-texto" },
@@ -133,7 +133,11 @@ async function main() {
       if (APPLY && !t.deletedAt) {
         await prisma.personalizationTemplate.update({
           where: { id: t.id },
-          data: { deletedAt: new Date(), isActive: false, deletedBy: "system:cleanup-demo-templates" },
+          data: {
+            deletedAt: new Date(),
+            isActive: false,
+            deletedBy: "system:cleanup-demo-templates",
+          },
         });
       }
       continue;

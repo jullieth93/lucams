@@ -18,15 +18,15 @@
  * env-guard fail-closed; backup JSON previo en tmp/backups.
  *
  * Uso:
- *   cd packages/db && npx dotenv -e ../../.env.local.nube-backup -- node scripts/normalize-magnet-attr.mjs          # DRY-RUN
- *   cd packages/db && npx dotenv -e ../../.env.local.nube-backup -- node scripts/normalize-magnet-attr.mjs --apply  # ejecuta
+ *   cd packages/db && npx dotenv -e ../../.env.local.nube-backup -- node scripts/one-shot/normalize-magnet-attr.mjs          # DRY-RUN
+ *   cd packages/db && npx dotenv -e ../../.env.local.nube-backup -- node scripts/one-shot/normalize-magnet-attr.mjs --apply  # ejecuta
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
-import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+import { assertDestructiveAllowed } from "../lib/env-guard.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
@@ -37,7 +37,7 @@ assertDestructiveAllowed("normalize-magnet-attr.mjs");
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes("--apply");
 const HERE = dirname(fileURLToPath(import.meta.url));
-const BACKUP_DIR = join(HERE, "..", "..", "..", "tmp", "backups");
+const BACKUP_DIR = join(HERE, "..", "..", "..", "..", "tmp", "backups");
 
 async function main() {
   console.log(`=== normalize-magnet-attr (${APPLY ? "APPLY" : "DRY-RUN"}) ===\n`);
@@ -51,7 +51,9 @@ async function main() {
     select: { id: true, sku: true, attributes: true, product: { select: { slug: true } } },
   });
   const missing = targets.filter((v) => (v.attributes ?? {}).magnet == null);
-  console.log(`Variantes activas (sin -NOMAG): ${targets.length} · sin clave magnet: ${missing.length}\n`);
+  console.log(
+    `Variantes activas (sin -NOMAG): ${targets.length} · sin clave magnet: ${missing.length}\n`,
+  );
   for (const v of missing) {
     console.log(`  ${APPLY ? "✓" : "→"} ${v.sku} (${v.product.slug}) → magnet:true`);
     if (APPLY) {

@@ -31,12 +31,12 @@
  * a ella (el historial queda — revertible desde /admin/contenido).
  *
  * Uso:
- *   node scripts/publish-legal-v5-20260911.mjs           # dry-run (default)
- *   node scripts/publish-legal-v5-20260911.mjs --apply   # aplica
+ *   node scripts/one-shot/publish-legal-v5-20260911.mjs           # dry-run (default)
+ *   node scripts/one-shot/publish-legal-v5-20260911.mjs --apply   # aplica
  * Con dotenv según ambiente (desde packages/db):
- *   npx dotenv -e ../../.env.local -- node scripts/publish-legal-v5-20260911.mjs --apply
- *   npx dotenv -e ../../.env.stg   -- node scripts/publish-legal-v5-20260911.mjs --apply
- *   npx dotenv -e ../../.env.local.nube-backup -- node scripts/publish-legal-v5-20260911.mjs --apply
+ *   npx dotenv -e ../../.env.local -- node scripts/one-shot/publish-legal-v5-20260911.mjs --apply
+ *   npx dotenv -e ../../.env.stg   -- node scripts/one-shot/publish-legal-v5-20260911.mjs --apply
+ *   npx dotenv -e ../../.env.local.nube-backup -- node scripts/one-shot/publish-legal-v5-20260911.mjs --apply
  *
  * Tras aplicar: invalidar el caché CMS desde /admin/contenido (o esperar 1 h).
  *
@@ -57,7 +57,7 @@ const APPLY = process.argv.includes("--apply");
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 const legalBody = (name) =>
-  readFileSync(join(HERE, "..", "legal-content", `legal.${name}.md`), "utf-8").trim();
+  readFileSync(join(HERE, "..", "..", "legal-content", `legal.${name}.md`), "utf-8").trim();
 
 const NEW_BODIES = {
   "legal.terminos": legalBody("terminos"),

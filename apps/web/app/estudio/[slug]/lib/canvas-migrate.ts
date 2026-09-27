@@ -152,37 +152,3 @@ export function extractAssetFromV1(v1: CanvasDataV1): { assetId: string; assetUr
   }
   return null;
 }
-
-/**
- * Helper inverso (no usado por el editor productivo, pero útil para
- * admin/debugging): tomar un V2 y "aplanar" a V1 para preview retro-compat.
- *
- * Inyecta el assetUrl del slot[0] en el primer image-placeholder del unit
- * template. Útil para generar el preview compositado del grid completo en
- * el server-side (Capa 6 — usando sharp para apilar N snapshots V1).
- */
-export function flattenSlotToV1(v2: MultiSlotCanvasData, slotIndex: number): CanvasDataV1 {
-  const slot = v2.slots[slotIndex];
-  if (!slot) {
-    throw new Error(
-      `flattenSlotToV1: slotIndex ${slotIndex} out of range (slotCount=${v2.slotCount})`,
-    );
-  }
-
-  const flattened: CanvasDataV1 = {
-    ...v2.unitTemplate,
-    layers: v2.unitTemplate.layers.map((layer) => {
-      if (layer.type === "image-placeholder" && slot.assetUrl) {
-        const img = layer as ImagePlaceholderLayer;
-        return {
-          ...img,
-          assetId: slot.assetId ?? undefined,
-          assetUrl: slot.assetUrl,
-        };
-      }
-      return layer;
-    }),
-  };
-
-  return flattened;
-}

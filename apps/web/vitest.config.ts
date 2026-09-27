@@ -19,29 +19,21 @@ export default defineConfig({
     globals: false,
     setupFiles: ["./tests/setup-env.ts"],
     globalSetup: ["./tests/vitest-global-teardown.ts"],
-    // Retry para flakes TRANSITORIOS de infraestructura: los tests de integración
-    // pegan al pooler de Supabase (pgbouncer :6543), que bajo concurrencia
-    // ocasionalmente rechaza/cae una conexión ("Can't reach database server").
-    // La lógica de los tests es determinista → un retry reconecta y pasa; un bug
-    // real falla los 3 intentos. En CI con Postgres local (directo) no aplica.
-    retry: 2,
+    // Retries SOLO en CI (A10-05, remediación R6 2026-09-27): 2 reintentos para
+    // flakes transitorios de infraestructura del runner. En local son 0 a
+    // propósito — un retry local lava no-determinismo y esconde flakes que el
+    // developer debe ver (un bug real falla los 3 intentos igual en CI).
+    retry: process.env.CI ? 2 : 0,
     include: ["**/*.{test,spec}.{ts,tsx}"],
     exclude: [
       "**/node_modules/**",
       "**/.next/**",
       "**/tests/e2e/**",
-      // Nightly A3 (stack Supabase local efímero, NIGHTLY_LOCALSTACK=1): estas
-      // dos suites exigen el universo de datos de la DB COMPARTIDA de dev
-      // (diseños reales clonables con assets en Storage, letter sets —
-      // construido por decenas de scripts históricos, no reproducible con un
-      // seed). Corren en local contra esa DB; hacerlas stack-agnostic es
-      // trabajo aparte (ver docs/CMS_ROADMAP.md § A3).
-      ...(process.env.NIGHTLY_LOCALSTACK === "1"
-        ? [
-            "**/features/personalization/finalize-server-render.integration.test.ts",
-            "**/features/personalization/letter-tiles.integration.test.ts",
-          ]
-        : []),
+      // (Hasta la remediación R3 del 2026-09-26 acá se excluían, con
+      // NIGHTLY_LOCALSTACK=1, finalize-server-render y letter-tiles por exigir la
+      // DB compartida de dev. A11-05: ambas suites son ahora AUTOCONTENIDAS —
+      // siembran sus propios fixtures (producto, diseños, assets en Storage) — y
+      // corren en cualquier stack limpio, nightly localstack incluido.)
     ],
     coverage: {
       provider: "v8",

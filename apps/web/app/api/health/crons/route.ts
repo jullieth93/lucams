@@ -22,22 +22,13 @@
  * Sin auth (público, como /api/health) para el status agregado. force-dynamic para no cachear.
  */
 
-import { timingSafeEqual } from "node:crypto";
 import { getCronHealth } from "@/features/observability/cron-heartbeat";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
+import { cronSecretOk } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
-
-// Mismo chequeo que las rutas /api/cron/* (comparación en tiempo constante contra CRON_SECRET).
-function secretOk(provided: string | null): boolean {
-  const expected = process.env.CRON_SECRET?.trim();
-  if (!expected || !provided) return false;
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 export async function GET(req: Request): Promise<Response> {
   // Rate-limit por IP (auditoría experto 2026-07-26): healthcheck público que consulta
@@ -57,7 +48,7 @@ export async function GET(req: Request): Promise<Response> {
   const degraded = overdue.length > 0;
 
   // Sin secreto: respuesta mínima — alcanza para que el monitor externo alerte (503/200).
-  if (!secretOk(req.headers.get("x-cron-secret"))) {
+  if (!cronSecretOk(req.headers.get("x-cron-secret"))) {
     return Response.json(
       { status: degraded ? "degraded" : "ok", timestamp: new Date().toISOString() },
       { status: degraded ? 503 : 200 },

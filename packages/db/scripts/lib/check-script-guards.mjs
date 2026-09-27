@@ -21,9 +21,9 @@
  *
  * ALLOWLIST (PRD-deliberado — su caso de uso ES correr contra PRD; ya tienen
  * dry-run por defecto + `--apply` y la justificación en su header):
- *   - update-public-content-20260911.mjs
- *   - update-production-days-20260911.mjs
- *   - publish-legal-v5-20260911.mjs
+ *   - one-shot/update-public-content-20260911.mjs
+ *   - one-shot/update-production-days-20260911.mjs
+ *   - one-shot/publish-legal-v5-20260911.mjs
  * Agregar a la allowlist exige editar ESTE archivo (dif visible en PR) con la
  * misma justificación en el header del script exento.
  *
@@ -39,9 +39,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS_DIR = join(HERE, "..");
 
 const ALLOWLIST_PRD_DELIBERADO = new Set([
-  "update-public-content-20260911.mjs",
-  "update-production-days-20260911.mjs",
-  "publish-legal-v5-20260911.mjs",
+  "one-shot/update-public-content-20260911.mjs",
+  "one-shot/update-production-days-20260911.mjs",
+  "one-shot/publish-legal-v5-20260911.mjs",
 ]);
 
 const WRITE_RE =
@@ -88,7 +88,9 @@ for (const file of listScripts(SCRIPTS_DIR)) {
 // la entrada sobrante es deuda que hay que limpiar acá).
 for (const rel of ALLOWLIST_PRD_DELIBERADO) {
   if (!existsSync(join(SCRIPTS_DIR, rel))) {
-    offenders.push(`(allowlist huérfana) ${rel} — el script ya no existe; limpiar check-script-guards.mjs`);
+    offenders.push(
+      `(allowlist huérfana) ${rel} — el script ya no existe; limpiar check-script-guards.mjs`,
+    );
   }
 }
 

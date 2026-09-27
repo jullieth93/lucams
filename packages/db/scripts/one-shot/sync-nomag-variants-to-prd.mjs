@@ -17,18 +17,18 @@
  *   - Las que ya existen en PRD se reportan y NO se tocan (idempotente).
  *
  * Uso (el env-guard bloquea PRD como destino; esto es escritura deliberada en PRD):
- *   cd packages/db && LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1 npx dotenv -e ../../.env.local.nube-backup -- node scripts/sync-nomag-variants-to-prd.mjs          # dry-run
- *   cd packages/db && LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1 npx dotenv -e ../../.env.local.nube-backup -- node scripts/sync-nomag-variants-to-prd.mjs --apply
+ *   cd packages/db && LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1 npx dotenv -e ../../.env.local.nube-backup -- node scripts/one-shot/sync-nomag-variants-to-prd.mjs          # dry-run
+ *   cd packages/db && LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1 npx dotenv -e ../../.env.local.nube-backup -- node scripts/one-shot/sync-nomag-variants-to-prd.mjs --apply
  */
 import { PrismaClient } from "@prisma/client";
 import { readFileSync } from "node:fs";
-import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+import { assertDestructiveAllowed } from "../lib/env-guard.mjs";
 
 assertDestructiveAllowed("sync-nomag-variants-to-prd.mjs");
 
 const APPLY = process.argv.includes("--apply");
-const STG_ENV = new URL("../../../.env.stg", import.meta.url).pathname;
-const PRD_ENV = new URL("../../../.env.local.nube-backup", import.meta.url).pathname;
+const STG_ENV = new URL("../../../../.env.stg", import.meta.url).pathname;
+const PRD_ENV = new URL("../../../../.env.local.nube-backup", import.meta.url).pathname;
 
 function loadEnvFile(path) {
   const out = {};
@@ -85,7 +85,9 @@ async function main() {
   }
 
   console.log(`\n=== sync-nomag-variants-to-prd (${APPLY ? "APPLY" : "DRY-RUN"}) ===`);
-  console.log(`STG gemelas NOMAG: ${stgNomag.length} · ya en PRD: ${alreadyThere.length} · a crear: ${missing.length}`);
+  console.log(
+    `STG gemelas NOMAG: ${stgNomag.length} · ya en PRD: ${alreadyThere.length} · a crear: ${missing.length}`,
+  );
   for (const v of missing) {
     const baseSku = v.sku.replace(/-NOMAG$/, "-MAG");
     const baseImages = imagesBySku.get(baseSku) ?? [];

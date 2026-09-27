@@ -1,14 +1,25 @@
+import path from "node:path";
 import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
+// OJO: el import debe ser ESTÁTICO (patrón de a11y.spec.ts). Un
+// `await import("@lucams/db")` dentro del beforeAll revienta en el worker de
+// Playwright ("exports is not defined in ES module scope" — el paquete es
+// type:module) y el catch lo tragaba en silencio: la resolución del catálogo
+// vivo era código muerto y TODO corría siempre con los fallbacks (causa raíz
+// de los 19 rojos del nightly 36284570981, junto con el seed incompleto).
+import { PrismaClient } from "@lucams/db";
 
 /*
  * AUDITORÍA PROFUNDA — catalogo-whatsapp (capa CLIENTE) contra PRODUCCIÓN.
  *
  * Cobertura:
- *   1. Home: categorías reales, CTAs, sin errores de consola.
- *   2. Catálogo (/productos): grid con los 9 productos reales.
- *   3. PDP ×9: carga 200, precio, selector de variantes, CTA.
- *   4. Estudio ×9: canvas carga sin 500.
- *   5. Flujo de cotización: PDP → Estudio (polaroid, sube foto) → finalizar →
+ *   1. Home: TODAS las categorías raíz con productos (derivadas de la DB), CTAs,
+ *      sin errores de consola.
+ *   2. Catálogo (/productos): grid con una muestra REAL de la página 1 (derivada
+ *      de la DB: destacados → recientes) y precios.
+ *   3. PDP ×N (todos los productos vivos): carga 200, precio, CTA.
+ *   4. Estudio ×N: superficie esperada por producto (foto→canvas, letterset,
+ *      nombre, gate ADR-063, direct-cart) sin 500.
+ *   5. Flujo de cotización: PDP → Estudio (foto-pack, sube fotos) → finalizar →
  *      form de cotización → link de WhatsApp con número y mensaje correctos.
  *   6. Autenticación: /ingresar y /registro renderizan con Turnstile.
  *   7. Páginas estáticas: /ayuda (sin promesas DIAN), legales.
@@ -26,43 +37,188 @@ import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
  * screenshot = 0 warnings; con screenshot = 3 warnings.
  */
 
-// El catálogo vivo se resuelve contra la DB del ambiente (los slugs cambian con
-// archivados/nuevos — hardcodearlos rompió la auditoría al archivar
-// nombre-personalizado el 2026-09-25). Fallback a la última lista conocida si
-// no hay DATABASE_URL (ej. corrida puntual sin env).
-const PRODUCTS_FALLBACK = [
-  "set-fotoimanes-polaroid",
-  "set-fotoimanes-cuadrados",
-  "tiras-magneticas-fotos",
-  "calendario-mes-a-mes-fotos",
-  "pack-vocales",
-  "abecedario-completo",
-  "separadores-magneticos",
-  "separadores-alargados",
+/*
+ * El catálogo vivo se resuelve contra la DB del ambiente en beforeAll (los
+ * slugs/nombres cambian con archivados/renombres — hardcodearlos rompió la
+ * auditoría al archivar nombre-personalizado el 2026-09-25, y de nuevo en el
+ * nightly 36284570981 contra el localstack recién sembrado). Fallback a la
+ * última lista conocida del catálogo dev si no hay DATABASE_URL (corrida
+ * puntual sin env).
+ *
+ * OJO (R5, 2026-09-26): los tests 3/4 NO se registran por-slug en load-time —
+ * un `for` sobre un array module-scope congela el fallback ANTES del beforeAll
+ * (la resolución "viva" era código muerto para ellos: los PDP del nightly
+ * corrieron siempre con los slugs del fallback). Ahora son tests únicos que
+ * iteran PRODUCTS ya resuelto, con un test.step por producto.
+ */
+
+type LiveProduct = {
+  slug: string;
+  name: string;
+  kind: string;
+  /** personalizationSchema mergeado con la 1ª variante activa (como /estudio/[slug]). */
+  schema: Record<string, unknown>;
+};
+
+const PRODUCTS_FALLBACK: LiveProduct[] = [
+  {
+    slug: "set-fotoimanes-polaroid",
+    name: "Fotoimanes Polaroid",
+    kind: "PHOTO_PACK",
+    schema: { photoSlots: 6 },
+  },
+  {
+    slug: "set-fotoimanes-cuadrados",
+    name: "Fotoimanes Cuadrados",
+    kind: "PHOTO_PACK",
+    schema: { photoSlots: 6 },
+  },
+  {
+    slug: "tiras-magneticas-fotos",
+    name: "Tiras Magnéticas",
+    kind: "PHOTO_PACK",
+    schema: { photoSlots: 3 },
+  },
+  {
+    slug: "calendario-mes-a-mes-fotos",
+    name: "Calendario Set 12 Tarjetas",
+    kind: "CALENDAR_PHOTO_MONTH",
+    schema: { photoSlots: 12 },
+  },
+  { slug: "pack-vocales", name: "Pack Vocales", kind: "NONE", schema: { letterSet: "vowels" } },
+  {
+    slug: "abecedario-completo",
+    name: "Abecedario Completo",
+    kind: "NONE",
+    schema: { letterSet: "full" },
+  },
+  {
+    slug: "separadores-magneticos",
+    name: "Separadores Magnéticos",
+    kind: "PHOTO_PACK",
+    schema: { photoSlots: 1 },
+  },
+  {
+    slug: "separadores-alargados",
+    name: "Separadores Largos",
+    kind: "PHOTO_PACK",
+    schema: { photoSlots: 6 },
+  },
 ];
 
-async function resolveLiveProducts(): Promise<string[]> {
-  if (!process.env.DATABASE_URL?.startsWith("postgres")) return PRODUCTS_FALLBACK;
-  try {
-    const { PrismaClient } = await import("@lucams/db");
-    const prisma = new PrismaClient();
-    const rows = await prisma.product.findMany({
-      where: { deletedAt: null, isActive: true },
-      select: { slug: true },
-    });
-    await prisma.$disconnect();
-    return rows.length ? rows.map((r) => r.slug) : PRODUCTS_FALLBACK;
-  } catch {
-    return PRODUCTS_FALLBACK;
-  }
-}
+// Raíces con productos comprables en el catálogo dev (2026-09-26).
+const HOME_CATEGORIES_FALLBACK = [
+  { slug: "foto-imanes", name: "Fotoimanes" },
+  { slug: "calendarios", name: "Calendarios Magnéticos" },
+  { slug: "separadores", name: "Separadores de Libros" },
+  { slug: "juegos-aprendizaje", name: "Juegos y Aprendizaje" },
+];
 
-let PRODUCTS = PRODUCTS_FALLBACK;
+// Muestra de la página 1 de /productos cuando no hay DB accesible.
+const CATALOGO_SAMPLE_FALLBACK = [
+  "Fotoimanes Polaroid",
+  "Calendario Set 12 Tarjetas",
+  "Magnéticos",
+  "Largos",
+];
+
+let PRODUCTS: LiveProduct[] = PRODUCTS_FALLBACK;
+let HOME_CATEGORIES = HOME_CATEGORIES_FALLBACK;
+let CATALOGO_SAMPLE = CATALOGO_SAMPLE_FALLBACK;
+
 test.beforeAll(async () => {
-  PRODUCTS = await resolveLiveProducts();
+  if (!process.env.DATABASE_URL?.startsWith("postgres")) return;
+  const prisma = new PrismaClient();
+  try {
+    // Productos visibles en el storefront (mismo gate que la tienda: producto
+    // Y categoría activos y no archivados — STOREFRONT_PRODUCT_WHERE). Orden
+    // = el default de /productos (destacados → recientes), paginado de a 12.
+    const rows = await prisma.product.findMany({
+      where: {
+        deletedAt: null,
+        isActive: true,
+        category: { deletedAt: null, isActive: true },
+      },
+      orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
+      select: {
+        slug: true,
+        name: true,
+        personalizationKind: true,
+        personalizationSchema: true,
+        variants: {
+          where: { deletedAt: null, isActive: true },
+          orderBy: { createdAt: "asc" },
+          select: { attributes: true },
+          take: 1,
+        },
+      },
+    });
+    if (rows.length) {
+      PRODUCTS = rows.map((r) => ({
+        slug: r.slug,
+        name: r.name,
+        kind: r.personalizationKind,
+        // /estudio mergea la 1ª variante sobre el schema del producto
+        // (mergeVariantOverProduct, shallow) antes de enrutar la superficie.
+        schema: {
+          ...((r.personalizationSchema as Record<string, unknown> | null) ?? {}),
+          ...((r.variants[0]?.attributes as Record<string, unknown> | null) ?? {}),
+        },
+      }));
+      CATALOGO_SAMPLE = rows.slice(0, 4).map((r) => r.name);
+    }
+    // Categorías raíz que la home SÍ renderiza: activas con conteo efectivo
+    // > 0 (productos directos + los de sus hijas activas) — la misma regla
+    // de listStorefrontCategories({ topLevelOnly: true }) en public-service.
+    const cats = await prisma.category.findMany({
+      where: { deletedAt: null, isActive: true },
+      orderBy: [{ order: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        parentId: true,
+        _count: { select: { products: { where: { deletedAt: null, isActive: true } } } },
+      },
+    });
+    const effective = new Map<string, number>();
+    for (const c of cats) if (c.parentId === null) effective.set(c.id, c._count.products);
+    for (const c of cats)
+      if (c.parentId !== null)
+        effective.set(c.parentId, (effective.get(c.parentId) ?? 0) + c._count.products);
+    const roots = cats.filter((c) => c.parentId === null && (effective.get(c.id) ?? 0) > 0);
+    if (roots.length) HOME_CATEGORIES = roots.map((c) => ({ slug: c.slug, name: c.name }));
+  } catch (e) {
+    // Sin DB accesible: quedan los fallbacks declarados arriba. Se deja rastro
+    // visible — el catch mudo de la versión anterior escondió el import roto.
+    console.warn(`[audit-cliente] resolución de catálogo vivo falló, usando fallbacks: ${e}`);
+  } finally {
+    await prisma.$disconnect();
+  }
 });
 
-const MASCOT = "/home/ansible/workspaces/lucams_shop/apps/web/public/brand/lucams-mascot.png";
+// Superficie que /estudio/[slug] resolverá para cada producto (réplica mínima
+// de resolvePersonalizationSurface en features/personalization/surface.ts — si
+// esa función cambia, actualizar acá).
+type ExpectedSurface = "photo" | "letterset" | "name" | "gate" | "direct-cart";
+function expectedSurface(p: LiveProduct): ExpectedSurface {
+  const s = p.schema;
+  if (s.letterSet === "full" || s.letterSet === "vowels") return "letterset";
+  if (p.kind === "NONE") return "direct-cart";
+  if (p.kind === "TEXT_ONLY") {
+    if (s.variant === "full" || s.variant === "vowels") return "direct-cart";
+    const isPhrase =
+      s.variant !== "name" && (typeof s.maxChars === "number" || Array.isArray(s.fontOptions));
+    return isPhrase ? "gate" : "name";
+  }
+  if (p.kind === "EVENT_FAVOR" || p.kind === "BUSINESS_LOGO") return "gate";
+  return "photo";
+}
+
+// Ruta RELATIVA al spec — el absoluto /home/ansible/... que había antes no
+// existe en el runner de CI (landmine latente: el upload del test 5 hubiera
+// fallado ahí aunque el estudio cargara).
+const MASCOT = path.resolve(__dirname, "../../public/brand/lucams-mascot.png");
 
 const consoleErrors: string[] = [];
 const networkErrors: string[] = [];
@@ -120,13 +276,15 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await dismissOverlays(page);
     const loadMs = Date.now() - t0;
-    for (const cat of [
-      "Fotoimanes",
-      "Calendarios Magnéticos",
-      "Separadores de Libros",
-      "Juegos y Aprendizaje",
-    ]) {
-      await expect(page.getByText(cat, { exact: false }).first()).toBeVisible({ timeout: 15_000 });
+    // Las categorías esperadas se derivan de la DB del ambiente (raíces con
+    // productos comprables — la misma regla del grid). Se aserta la CARD del
+    // grid (link /productos?categoria=<slug> + nombre), no texto suelto: el
+    // hero menciona "Fotoimanes" en prosa y un getByText pelado PASABA con el
+    // grid vacío (falso verde parcial en el nightly 36284570981).
+    for (const cat of HOME_CATEGORIES) {
+      const card = page.locator(`a[href="/productos?categoria=${cat.slug}"]`).first();
+      await expect(card, `home grid: categoría "${cat.name}"`).toBeVisible({ timeout: 15_000 });
+      await expect(card).toContainText(cat.name);
     }
     await expect(page.getByText("Llega a tus manos", { exact: false }).first()).toBeVisible();
     // Copy vigente (commit 2b80bb5): se promete DESPACHO en máx. 2 días hábiles,
@@ -144,12 +302,9 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     watch(page, "catalogo");
     await page.goto("/productos", { waitUntil: "domcontentloaded" });
     await dismissOverlays(page);
-    for (const p of [
-      "Fotoimanes Polaroid",
-      "Calendario Set 12 Tarjetas",
-      "Magnéticos",
-      "Largos", // separadores-alargados se renombró "Separadores Largos" (2026-09)
-    ]) {
+    // Muestra REAL derivada de la página 1 del storefront (destacados →
+    // recientes, mismo orderBy que /productos) — nada de nombres hardcodeados.
+    for (const p of CATALOGO_SAMPLE) {
       // El primer match en DOM puede estar oculto (mega-menú del header o el
       // panel de filtros colapsado en mobile) — se filtra a elementos visibles
       // (falso negativo detectado 2026-09-25: la página renderiza bien y el
@@ -166,59 +321,110 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     findings.push({ area: "catalogo", ok: true, detail: "grid OK con productos reales" });
   });
 
-  for (const slug of PRODUCTS) {
-    test(`3. PDP ${slug}`, async ({ page }) => {
-      watch(page, `pdp:${slug}`);
-      const resp = await page.goto(`/producto/${slug}`, { waitUntil: "domcontentloaded" });
-      await dismissOverlays(page);
-      expect(resp?.status(), `PDP ${slug} status`).toBe(200);
-      await expect(page.locator("h1").first()).toBeVisible({ timeout: 15_000 });
-      await expect(page.getByText("$").first()).toBeVisible();
-      await page.screenshot({ caret: "initial", path: `/tmp/audit-cliente-pdp-${slug}.png` });
-      findings.push({ area: `pdp:${slug}`, ok: true, detail: "200 + h1 + precio" });
+  test("3. PDPs del catálogo vivo: 200 + h1 + precio", async ({ page }) => {
+    test.setTimeout(Math.max(300_000, PRODUCTS.length * 20_000));
+    watch(page, "pdp");
+    expect(PRODUCTS.length, "el catálogo vivo tiene productos activos").toBeGreaterThan(0);
+    for (const p of PRODUCTS) {
+      await test.step(`PDP ${p.slug}`, async () => {
+        const resp = await page.goto(`/producto/${p.slug}`, { waitUntil: "domcontentloaded" });
+        await dismissOverlays(page);
+        expect(resp?.status(), `PDP ${p.slug} status`).toBe(200);
+        await expect(page.locator("h1").first()).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByText("$").first()).toBeVisible();
+      });
+    }
+    await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-pdp-ultima.png" });
+    findings.push({
+      area: "pdp",
+      ok: true,
+      detail: `${PRODUCTS.length} PDPs 200 + h1 + precio`,
     });
-  }
+  });
 
-  for (const slug of PRODUCTS) {
-    test(`4. Estudio ${slug}`, async ({ page }) => {
-      watch(page, `estudio:${slug}`);
-      const resp = await page.goto(`/estudio/${slug}`, { waitUntil: "domcontentloaded" });
-      await dismissOverlays(page);
-      const status = resp?.status() ?? 0;
-      expect([200, 307, 308]).toContain(status);
-      if (page.url().includes("/estudio/")) {
-        if (slug === "nombre-personalizado") {
-          // Superficie propia "Arma tu palabra" (editor de nombre, sin canvas Konva).
-          await expect(page.getByText("Arma tu palabra", { exact: false }).first()).toBeVisible({
-            timeout: 30_000,
-          });
-        } else if (slug === "pack-vocales" || slug === "abecedario-completo") {
+  test("4. Estudio (superficie foto): canvas carga sin 5xx", async ({ page }) => {
+    const photoProducts = PRODUCTS.filter((p) => expectedSurface(p) === "photo");
+    test.setTimeout(Math.max(300_000, photoProducts.length * 30_000));
+    watch(page, "estudio-foto");
+    for (const p of photoProducts) {
+      await test.step(`Estudio ${p.slug}`, async () => {
+        const resp = await page.goto(`/estudio/${p.slug}`, { waitUntil: "domcontentloaded" });
+        await dismissOverlays(page);
+        expect(resp?.status(), `Estudio ${p.slug} status`).toBe(200);
+        await expect(page.locator("canvas").first()).toBeVisible({ timeout: 30_000 });
+      });
+    }
+    if (photoProducts.length)
+      await page.screenshot({
+        caret: "initial",
+        path: `/tmp/audit-cliente-estudio-${photoProducts.at(-1)!.slug}.png`,
+      });
+    findings.push({
+      area: "estudio-foto",
+      ok: true,
+      detail: `${photoProducts.length} editores de foto con canvas OK`,
+    });
+  });
+
+  test("4b. Estudio (superficies alternas): letterset / nombre / gate / direct-cart", async ({
+    page,
+  }) => {
+    const alternas = PRODUCTS.filter((p) => expectedSurface(p) !== "photo");
+    test.setTimeout(Math.max(300_000, alternas.length * 20_000));
+    watch(page, "estudio-alt");
+    for (const p of alternas) {
+      const surface = expectedSurface(p);
+      await test.step(`Estudio ${p.slug} (${surface})`, async () => {
+        const resp = await page.goto(`/estudio/${p.slug}`, { waitUntil: "domcontentloaded" });
+        await dismissOverlays(page);
+        if (surface === "direct-cart") {
+          // Set fijo o no personalizable → /estudio redirige a la PDP (ADR-057).
+          await page.waitForURL(`/producto/${p.slug}`, { timeout: 15_000 });
+          await expect(page.locator("h1").first()).toBeVisible({ timeout: 15_000 });
+          return;
+        }
+        expect(resp?.status(), `Estudio ${p.slug} status`).toBe(200);
+        if (surface === "letterset") {
           // Editores de sets (letras): HTML con tema/idioma/colores, sin canvas Konva.
           await expect(page.getByText("Elige los colores", { exact: false }).first()).toBeVisible({
             timeout: 30_000,
           });
+        } else if (surface === "name") {
+          // Superficie "Arma tu palabra" (editor de nombre, sin canvas Konva).
+          await expect(page.getByText("Arma tu palabra", { exact: false }).first()).toBeVisible({
+            timeout: 30_000,
+          });
         } else {
-          await expect(page.locator("canvas").first()).toBeVisible({ timeout: 30_000 });
+          // gate (phrase/event/logo): aviso claro + cotización por WhatsApp
+          // (ADR-063 D1) — se verifica que renderice, no que abra el editor de foto.
+          await expect(page.locator("h1").first()).toBeVisible({ timeout: 30_000 });
         }
-        await page.screenshot({ caret: "initial", path: `/tmp/audit-cliente-estudio-${slug}.png` });
-        findings.push({ area: `estudio:${slug}`, ok: true, detail: "canvas/editor OK" });
-      } else {
-        // Superficie no-estudio (editor propio o direct-cart) — se verifica que cargue.
-        await expect(page.locator("body")).toBeVisible();
-        findings.push({
-          area: `estudio:${slug}`,
-          ok: true,
-          detail: `superficie alterna (${page.url().split("/").pop()})`,
-        });
-      }
+      });
+    }
+    findings.push({
+      area: "estudio-alt",
+      ok: true,
+      detail: `${alternas.length} superficies alternas OK`,
     });
-  }
+  });
 
-  test("5. Flujo cotización: polaroid → estudio → finalizar → form → WhatsApp", async ({
+  test("5. Flujo cotización: foto-pack → estudio → finalizar → form → WhatsApp", async ({
     page,
   }) => {
     watch(page, "cotizacion");
-    await page.goto("/estudio/set-fotoimanes-polaroid", { waitUntil: "domcontentloaded" });
+    // Producto del flujo: un foto-pack del catálogo VIVO (polaroid preferido;
+    // el pack completo de fotos es requisito para habilitar «Vista previa»).
+    // Antes estaba hardcodeado a set-fotoimanes-polaroid: si ese slug se
+    // archiva/renombra, el flujo entero quebraba aunque hubiera otros packs.
+    const photoPacks = PRODUCTS.filter(
+      (p) => expectedSurface(p) === "photo" && Number(p.schema.photoSlots) > 0,
+    );
+    const target =
+      photoPacks.find((p) => p.slug.includes("polaroid") && Number(p.schema.photoSlots) <= 6) ??
+      photoPacks.sort((a, b) => Number(a.schema.photoSlots) - Number(b.schema.photoSlots))[0];
+    expect(target, "el catálogo vivo tiene un foto-pack para el flujo de cotización").toBeTruthy();
+    const slots = Number(target!.schema.photoSlots);
+    await page.goto(`/estudio/${target!.slug}`, { waitUntil: "domcontentloaded" });
     // El onboarding del estudio monta DESPUÉS de hidratar: si se intenta
     // dismiss inmediato aún no existe, y luego aparece tapando el checkbox de
     // consentimiento (intercepts pointer events → click timeout). Esperar su
@@ -248,7 +454,7 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     await page.waitForTimeout(1_500);
     await consent.check();
     await expect(consent).toBeChecked();
-    // El producto exige el pack COMPLETO (6 fotos) para habilitar «Vista previa».
+    // El producto exige el pack COMPLETO (N fotos) para habilitar «Vista previa».
     // En mobile hay DOS inputs file ocultos (panel desktop + bottom sheet):
     // hay que usar el del sheet/diálogo abierto — el del panel no procesa.
     const dialogInput = page.locator(
@@ -257,19 +463,19 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     const input = (await dialogInput.count())
       ? dialogInput.first()
       : page.locator('input[type="file"]').first();
-    await input.setInputFiles([MASCOT, MASCOT, MASCOT, MASCOT, MASCOT, MASCOT]);
+    await input.setInputFiles(Array.from({ length: slots }, () => MASCOT));
     // El wand rellena min(fotos procesadas, slots): si se clickea cuando solo
     // 1 foto terminó de procesarse, llena 1 slot. Su aria-label es dinámico
-    // ("Llenar N slots vacíos con mis fotos", N = fotos listas): esperar N=6.
+    // ("Llenar N slots vacíos con mis fotos", N = fotos listas): esperar N=slots.
     const wand = page.getByRole("button", { name: /Llenar \d+ slots?/i });
     await page
-      .getByRole("button", { name: /Llenar 6 slots?/i })
+      .getByRole("button", { name: new RegExp(`Llenar ${slots} slots?`, "i") })
       .waitFor({ state: "visible", timeout: 90_000 });
     await wand.first().click();
     // Primer match puede ser el chip oculto del panel desktop — filtrar visible.
-    await expect(page.getByText("6/6 fotos").filter({ visible: true }).first()).toBeVisible({
-      timeout: 30_000,
-    });
+    await expect(
+      page.getByText(`${slots}/${slots} fotos`).filter({ visible: true }).first(),
+    ).toBeVisible({ timeout: 30_000 });
     await page.keyboard.press("Escape"); // cierra el tip "Cómo editar tu foto"
     await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-cotizacion-estudio.png" });
 
@@ -281,7 +487,10 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     const agregar = page.getByRole("button", { name: /agregar al carrito/i }).first();
     await agregar.waitFor({ state: "visible", timeout: 20_000 });
     await agregar.click();
-    await page.waitForURL(/\/carrito/, { timeout: 20_000 });
+    // El click dispara design.finalize: render SERVER-SIDE de la producción
+    // (6 slots × foto original ≈ 28 MB — medido 21.6s en dev sobre el stack
+    // sembrado). 20s de timeout hacían flaky este paso aun con el render OK.
+    await page.waitForURL(/\/carrito/, { timeout: 60_000 });
     await page.waitForTimeout(3000);
     await page.screenshot({ caret: "initial", path: "/tmp/audit-cliente-cotizacion-form.png" });
     // Buscar el CTA de WhatsApp en el carrito

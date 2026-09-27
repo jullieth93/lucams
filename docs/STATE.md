@@ -13,6 +13,27 @@
 
 ## Resumen actual
 
+**🏆 2026-09-27 — CERTIFICACIÓN DE RELEASE (discovery + remediación) según
+`LUCAMS_RELEASE_CERTIFICATION_PROMPT.md`.** Auditoría global multiagente (15 roles) sobre
+`develop@742dcf8a`: 0 P0, 1 P1, 10 P2, 26 P3; 50 aristas de wiring (41 PROVEN), 40 journeys
+(28 PROVEN). **Remediación ejecutada en worktree (SIN COMMIT):** cerrados el P1 (pago E2E cableado
+al nightly con guard de secrets) y los P2 de dinero (doble pago silencioso → reconciliación;
+cancelación `no_txid` visible en resumen diario), catálogo (predicado de visibilidad único —
+categoría inactiva ya no deja cards fantasma; redirect 301 automático en rename de slug),
+moderación (diseño rechazado ya no es público), gates CI (RLS behavior + drift check
+Prisma↔Supabase + tests packages/db en PR; smoke post-deploy nuevo), tests de auth cliente contra
+GoTrue real y E2E retracto/garantía, y bug real encontrado: el seed canónico declaraba 13 productos
+legacy → soft-404 en DBs frescas (saneado) y el nightly sembraba solo el delta (cadena de seeds
+completa). **Gates de recertificación: 4275/4275 tests verdes, typecheck/lint/build/RLS 58/58/drift
+0, E2E local verde.** Adversario + juez de evidencia sobre la remediación: fixes SOBREVIVEN.
+Informe: `docs/audits/2026-09-26-release-certification.md` (anexos en `tmp/audit-20260926-cert/`).
+**Estado: NOT_CERTIFIED hasta cerrar lo operativo:** commit+push con CI verde, secrets sandbox
+Wompi/Aveonline en GitHub (job e2e-wompi-sandbox), nightly verde sobre el SHA remediado, añadir
+`rls-behavior` a required checks, decisiones owner (modo release = full; push directo a production)
+y verificar la migración `20260926120000_admin_recovery_code` en STG/PRD con el deploy.
+
+<details><summary>Historial de resúmenes anteriores</summary>
+
 **🛡️ 2026-09-19 (3) — AUDITORÍA INTEGRAL 360° PRE-PRODUCCIÓN (FASE A) + FASE B parcial (F-01/F-02 cerrados).**
 Auditoría completa según `docs/AUDITORIA_360.md` (8 auditores por dominio + verificador
 adversarial): **0 críticos, 0 altos, 7 medios**; veredicto **`PRODUCCIÓN CONDICIONADA`**.
@@ -271,6 +292,42 @@ sanciona testimonios inventados como publicidad engañosa); ④ crecimiento: **s
 la app ya tiene índices, pooling con tope, rate-limits, CDN e idempotencia verificados; cuando haya
 campaña programada (avisar con ~1 semana): subir plan de Resend (gratis ≈100 correos/día), confirmar
 plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
+
+</details>
+
+## Sesión — 2026-09-27 — Certificación de release: discovery + remediación (multiagente)
+
+- **Misión:** `LUCAMS_RELEASE_CERTIFICATION_PROMPT.md` (certificación integral pre-producción).
+  Freeze: `develop@742dcf8a`, worktree limpio. 15 roles (A0 commander, A1–A12, runtime, CBJ) como
+  subagentes sin solapes; PRD read-only; regla de evidencia estricta.
+- **Discovery (Checkpoint 1-6):** inventario (113 páginas, 65 actions, 42 API routes, 57 modelos),
+  matriz de wiring 50 aristas (41 PROVEN), 40 CBJ (28 PROVEN tras degradaciones del juez), gates
+  base verdes salvo 4 tests acoplados a la DB compartida (FLAKY-ENV verificado). Findings: 0 P0,
+  1 P1 (pago E2E navegador nunca corre en CI), 10 P2, 26 P3. Informe:
+  `docs/audits/2026-09-26-release-certification.md`; anexos `tmp/audit-20260926-cert/`.
+- **Adversario (A11) encontró:** doble pago Wompi silencioso (2ª tx APPROVED misma reference pasaba
+  el dedup sin flag), orden pagada cancelable en silencio (`no_txid`), y refutó el "nightly rojo"
+  (era del commit padre; el SHA congelado era el fix — pero el nightly nunca había corrido sobre él;
+  al despacharlo, audit-cliente seguía rojo por seed incompleto del localstack).
+- **Remediación (R1–R7, sin commit):** ver tabla en la auditoría §14. Incluye: reconciliación de
+  pagos multi-tx (`flagForeignApprovedPayment`), visibilidad `no_txid` en resumen diario, predicado
+  de visibilidad storefront ÚNICO (`storefront-visibility.ts`) consumido por ambos stacks de
+  catálogo, revocación de share token al rechazar diseños, `updateTag("catalog")` en imágenes de
+  producto, redirects 301 automáticos en rename de slug (y archivado al reutilizar slug liberado),
+  `lib/cron-auth.ts` compartido (15 handlers), migración Prisma aditiva para `AdminRecoveryCode`
+  (cierra el drift A5-01), `audit-schema-drift.mjs` + job `rls-behavior` en CI de PR, job
+  `e2e-wompi-sandbox` y `homolog-auth`+`retracto-garantia-cliente` en nightly, workflow
+  `post-deploy-smoke`, cadena de seeds completa en el nightly, seed canónico saneado (13 productos
+  legacy eliminados), retries solo-CI, cupones PERCENT 1-100, 11 one-shots archivados.
+- **Recertificación:** typecheck/lint/build ✅, **4275/4275 tests** ✅, RLS 58/58 ✅, drift 0 ✅,
+  E2E local (gate + admin-login + retracto + estudio) ✅. Adversario fase 2: 12/13 fixes SOBREVIVEN
+  (2 P3 residuales cerrados por R7). Juez de evidencia: F-02/03/04/05 CERRADOS; F-01/06/08/10
+  CERRADOS_CONDICIONADOS a CI/secrets.
+- **Pendiente para certificar (operativo, no código):** commit+push y CI verde; secrets sandbox
+  Wompi/Aveonline en GitHub; nightly verde sobre el SHA nuevo; `rls-behavior` en required checks;
+  decisiones owner (modo full; push directo a production); migración nueva a STG/PRD con el deploy;
+  primera corrida de post-deploy-smoke. **Próximo paso:** commit del paquete (convencional) y push
+  a develop, luego dispatch del nightly.
 
 ## Sesión — 2026-09-19 (3) — Auditoría integral 360° (FASE A) + cierre F-01/F-02 (FASE B)
 
@@ -1413,9 +1470,11 @@ previo al lanzamiento, 8 comentarios resueltos:
   piso de tarjeta 280px. QA visual con screenshots en 375/768/1440.
 - **Admin**: aclaración del modelo pack=variante (ayuda "packs, no unidades sueltas" en el editor
   de stock de Inventario + nota única y encabezado "Stock (packs)" en el panel de opciones);
-  chip **"Visible en tienda"** (helper puro `features/products/storefront-visibility.ts` que
-  replica el gate real: producto/categoría pausada o archivada, sin opciones activas, todo
-  agotado) en listado y ficha; copy de restaurar producto corregido.
+  chip **"Visible en tienda"** (helper puro `features/products/storefront-visibility.ts`; desde la
+  cert 2026-09-26 (F-04) ese módulo ES la fuente única del gate —exporta `STOREFRONT_PRODUCT_WHERE`
+  que consumen ambos stacks de catálogo— y el clasificador replica esa misma semántica: producto/
+  categoría pausada o archivada, sin opciones activas, todo agotado) en listado y ficha; copy de
+  restaurar producto corregido.
 - **Envíos (bug PRD)**: la causa raíz del "No pudimos cotizar el envío" era que un destino SIN
   cobertura devuelve todas las transportadoras con `numbererror=999` y el provider LANZABA →
   banner transitorio que nunca se resolvía (verificado con sonda live: un destino inexistente

@@ -18,7 +18,14 @@
  *
  * Sin assets reales: las fichas son PNGs de color sólido generados con sharp. Todos los
  * fixtures llevan prefijo RUN único y se borran en afterAll (sets, tiles, diseño, objetos
- * de storage). Comparte la Supabase de dev; salta si faltan llaves (CI sin Supabase).
+ * de storage).
+ *
+ * AUTOCONTENIDA (A11-05, remediación R3 2026-09-26): antes clavaba el diseño sobre el
+ * producto REAL "pack-vocales" de la DB compartida de dev → no corría en ningún pipeline
+ * (excluida vía NIGHTLY_LOCALSTACK en vitest.config.ts). Ahora siembra su propia
+ * categoría + producto letterSet=vowels + variante en el beforeAll y los borra en el
+ * afterAll → corre contra CUALQUIER stack limpio (nightly localstack incluido). Solo
+ * sigue exigiendo Supabase real (Storage + service key): salta limpio sin llaves.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -51,7 +58,11 @@ const storageCleanup: { bucket: string; paths: string[] }[] = [];
 
 let setId = "";
 let fullSetId = "";
+let defaultSetId = "";
 let designId = "";
+let categoryId = "";
+let productId = "";
+let variantId = "";
 
 /** PNG de color sólido 200×260 (ficha vertical de prueba). */
 async function solidTile(hex: string): Promise<Buffer> {
@@ -80,6 +91,44 @@ async function uploadAndPersistTile(
 }
 
 beforeAll(async () => {
+  // 0) Producto EFÍMERO letterSet=vowels (antes se clavaba sobre el "pack-vocales"
+  //    real de la DB de dev — la razón por la que esta suite no corría en CI).
+  const category = await prisma.category.create({
+    data: { slug: `${RUN}-cat`, name: `TEST ${RUN} Categoría` },
+  });
+  categoryId = category.id;
+  const product = await prisma.product.create({
+    data: {
+      slug: `${RUN}-vocales`,
+      name: `TEST ${RUN} Pack Vocales`,
+      description: "Fixture efímero del test de fichas (autocontenido).",
+      basePrice: 1_000_000,
+      sku: `${RUN}-VOC`.toUpperCase(),
+      categoryId,
+      personalizationSchema: { letterSet: "vowels" },
+      variants: {
+        create: [
+          { name: "Default", sku: `${RUN}-VOC-D`.toUpperCase(), stock: 100, attributes: {} },
+        ],
+      },
+    },
+    include: { variants: true },
+  });
+  productId = product.id;
+  variantId = product.variants[0]!.id;
+
+  // Default "es" PRIMERO: createLetterSet marca isDefault al primer set del
+  // idioma, y la regla Ola 19 CONSERVA el default aunque esté incompleto/vacío
+  // (para degradar a letra plana). En la DB de dev/PRD ya existe un default "es";
+  // en un stack limpio, sin este set, el incompleto de abajo quedaría como
+  // default y el editor lo ofrecería — falso negativo del test.
+  const defaultSet = await createLetterSet({
+    name: `TEST ${RUN} Default · Español`,
+    language: "es",
+    adminId: `test-${RUN}`,
+  });
+  defaultSetId = defaultSet.id;
+
   // 1) Set INCOMPLETO (2 fichas: A y E) — certifica la regla Ola 19 de ocultamiento.
   const set = await createLetterSet({
     name: `TEST ${RUN} · Español`,
@@ -119,11 +168,19 @@ afterAll(async () => {
   if (designId) {
     await safe(prisma.design.deleteMany({ where: { id: designId } }));
   }
-  for (const id of [setId, fullSetId]) {
+  for (const id of [setId, fullSetId, defaultSetId]) {
     if (id) {
       await safe(prisma.letterTile.deleteMany({ where: { setId: id } }));
       await safe(prisma.letterTileSet.deleteMany({ where: { id } }));
     }
+  }
+  // Fixture de producto (diseño ya borrado arriba — su FK a Product es Restrict).
+  if (productId) {
+    await safe(prisma.productVariant.deleteMany({ where: { productId } }));
+    await safe(prisma.product.deleteMany({ where: { id: productId } }));
+  }
+  if (categoryId) {
+    await safe(prisma.category.deleteMany({ where: { id: categoryId } }));
   }
 });
 
@@ -169,21 +226,10 @@ describe.skipIf(!canRunStorage)("certificación fichas end-to-end (Ola 2A + Ola 
     "diseño de vocales con styleSetId + language → finalize (preview + producción en Storage)",
     { timeout: 60_000 },
     async () => {
-      // Producto REAL Pack Vocales (compartido) + una variante activa suya.
-      const product = await prisma.product.findUnique({
-        where: { slug: "pack-vocales" },
-        select: { id: true },
-      });
-      expect(product).not.toBeNull();
-      const variant = await prisma.productVariant.findFirst({
-        where: { productId: product!.id, isActive: true, deletedAt: null },
-        select: { id: true },
-      });
-      expect(variant).not.toBeNull();
-
+      // Producto efímero propio (sembrado en beforeAll) + su variante activa.
       const created = await createLetterSetDesign({
-        productId: product!.id,
-        variantId: variant!.id,
+        productId,
+        variantId,
         frameTheme: "arcoiris",
         colors: ["#5DD9D1", "#E85B9F", "#7C6AAD", "#FFD93D", "#5DD9D1"],
         styleSetId: setId,

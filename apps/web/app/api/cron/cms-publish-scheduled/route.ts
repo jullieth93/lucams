@@ -15,27 +15,19 @@
  */
 
 import type { NextRequest } from "next/server";
-import { timingSafeEqual } from "node:crypto";
 import { revalidateTag } from "next/cache";
 import { publishScheduledCmsFields } from "@/features/cms/service";
 import { logger } from "@/lib/logger";
 import { captureServerError } from "@/lib/error-capture";
 import { recordCronHeartbeat } from "@/features/observability/cron-heartbeat";
 import { notifyCronFailure } from "@/features/notifications/service";
+import { cronSecretOk } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
 
-function secretOk(provided: string | null): boolean {
-  const expected = process.env.CRON_SECRET?.trim();
-  if (!expected || !provided) return false;
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export async function GET(req: NextRequest) {
   const provided = req.headers.get("x-cron-secret"); // #14 solo header (?secret= queda en logs)
-  if (!secretOk(provided)) {
+  if (!cronSecretOk(provided)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
   try {
