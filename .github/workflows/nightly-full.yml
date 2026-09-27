@@ -34,9 +34,6 @@ jobs:
     env:
       CSRF_SECRET: nightly-csrf-secret-32-chars-minimo
       NEXT_TELEMETRY_DISABLED: "1"
-      # Activa las exclusiones de vitest.config.ts para el stack efímero
-      # (finalize-server-render y letter-tiles exigen la DB compartida de dev).
-      NIGHTLY_LOCALSTACK: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
@@ -93,9 +90,9 @@ jobs:
             psql "$SUPABASE_ADMIN_URL" -v ON_ERROR_STOP=1 -f "$f"
           done
       # Corre TODO el vitest: con las llaves reales, rls-matrix y los tests de
-      # storage (que se saltan en el gate por-PR) ahora SÍ ejecutan. La env
-      # NIGHTLY_LOCALSTACK=1 activa en vitest.config.ts la exclusión de las 2
-      # suites que exigen la DB compartida de dev (razón documentada ahí).
+      # storage (que se saltan en el gate por-PR) ahora SÍ ejecutan — incluidas
+      # finalize-server-render y letter-tiles, autocontenidas desde la
+      # remediación R3 (2026-09-26): siembran sus propios fixtures.
       - name: Vitest (incl. rls-matrix de comportamiento)
         run: pnpm --filter web test
 
@@ -107,6 +104,12 @@ jobs:
       NEXT_PUBLIC_SITE_URL: http://localhost:3000
       NEXT_PUBLIC_WA_NUMBER: "573208873826"
       CSRF_SECRET: nightly-csrf-secret-32-chars-minimo
+      # Llaves de PRUEBA de Cloudflare Turnstile (públicas, documentadas por
+      # Cloudflare — "always pass"): homolog-auth hace signup/recover por UI y
+      # esos forms exigen token; con NODE_ENV=production (next start) el server
+      # corre fail-closed sin ellas. Mismo patrón que el job e2e-wompi-sandbox.
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+      TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
       # Smoke LIVE de Wompi (ADR-067): si se cargan los WOMPI_* SANDBOX como GitHub Secrets, el
       # nightly los usa y corre el smoke contra la API real de sandbox; si no, cae al dummy y el
       # smoke se salta (skipIf). Los tests mockeados pasan en ambos casos. NUNCA usar keys de prod.
@@ -168,6 +171,16 @@ jobs:
             echo "→ $f"
             psql "$SUPABASE_ADMIN_URL" -v ON_ERROR_STOP=1 -f "$f"
           done
+      - name: Seed del catálogo CANÓNICO (base que el delta v2 exige)
+        # R5 (2026-09-26, run 36284570981): el job corría SOLO el delta v2, cuyo
+        # propio header declara "Pre-requisito: seed-products + seed-ocasiones".
+        # Sin la base el stack quedaba con 0 productos activos y 1 categoría
+        # raíz → el storefront renderizaba VACÍO y audit-cliente.spec caía ×19
+        # (home sin grid, /productos sin cards, PDPs 404). Canónicos: dry-run
+        # por defecto (N-06) — CI pasa --apply explícito.
+        run: pnpm --filter @lucams/db exec node scripts/seed-catalog-canonical.mjs --apply
+      - name: Seed de ocasiones (prerrequisito de los links del delta v2)
+        run: pnpm --filter @lucams/db exec node scripts/seed-ocasiones.mjs --apply
       - name: Seed del catálogo (productos para PDP/carrito/estudio)
         # N-06: los canónicos son dry-run por defecto — CI pasa --apply explícito.
         run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs --apply
@@ -186,10 +199,15 @@ jobs:
       # Suite COMPLETA: incluye admin-login + admin-mfa + estudio (los que necesitan GoTrue real y
       # por eso NO corren en el gate por-PR) + cms-editing-flow (D4: flujo de edición del CMS).
       # Excluye 'visual' (baselines por-píxel).
+      # homolog-auth (F-05, R4 2026-09-26): registro+OTP+login+recuperar+restablecer de CLIENTE
+      # end-to-end — el stack localstack ya trae enable_confirmations + plantillas OTP
+      # (.github/ci/localstack/supabase/config.toml) y Mailpit en :54324.
+      # retracto-garantia-cliente (F-10, R4 2026-09-26): la UI cliente de retracto/garantía
+      # (mi-cuenta/pedidos/[number]) con pedidos DELIVERED propios del spec.
       - name: Playwright (completo, incl. admin/MFA/Estudio/CMS)
         # responsive-admin-audit (2026-09-18): GATE de overflow horizontal de las
         # 41 secciones admin × 4 anchos (crea su propio admin efímero + TOTP).
-        run: pnpm --filter web exec playwright test smoke.spec a11y.spec axe.spec compra.spec admin-login.spec admin-mfa.spec estudio.spec cms-editing-flow.spec responsive-admin-audit.spec audit-cliente.spec --project=desktop-chrome
+        run: pnpm --filter web exec playwright test smoke.spec a11y.spec axe.spec compra.spec admin-login.spec admin-mfa.spec estudio.spec cms-editing-flow.spec responsive-admin-audit.spec audit-cliente.spec homolog-auth.spec retracto-garantia-cliente.spec --project=desktop-chrome
       - name: Cross-browser smoke (Firefox + WebKit, read-only)
         run: pnpm --filter web exec playwright test --project=desktop-firefox --project=desktop-webkit
       - name: Subir reporte Playwright (si falla)
@@ -201,3 +219,134 @@ jobs:
             apps/web/playwright-report/
             /tmp/audit-cliente.json
             /tmp/audit-cliente-*.png
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # F-01 (auditoría 2026-09-26, remediación R3) — EL JOURNEY DE DINERO E2E EN CI.
+  # wompi-sandbox.spec.ts es el único spec que completa el pago de verdad:
+  # navegador → checkout hospedado de Wompi SANDBOX (tarjeta 4242 → APPROVED) →
+  # regreso a /checkout/gracias → webhook firmado → saga PAID + guía Aveonline
+  # sandbox. Antes de este job era SOLO-manual: un release podía certificarse con
+  # el tramo navegador del pago roto.
+  #
+  # GATE DE SECRETS (patrón backup.yml): sin los secrets sandbox el job se SALTA
+  # limpio con warning (fail-suave) — pero su VERDE es REQUISITO DEL CHECKLIST DE
+  # RELEASE (docs/TESTING.md § gate de release): si el job salta por secrets
+  # ausentes, la certificación exige la corrida manual equivalente con artifacts.
+  # Secrets requeridos (Settings → Secrets and variables → Actions):
+  #   WOMPI_PUBLIC_KEY / WOMPI_PRIVATE_KEY / WOMPI_INTEGRITY_SECRET /
+  #   WOMPI_EVENTS_SECRET (SANDBOX — NUNCA keys de producción)
+  #   AVEONLINE_USUARIO / AVEONLINE_CLAVE (cuenta sandbox/test, no facturable:
+  #   AVEONLINE_ENV=test por defecto + bloquegenerarguia, doble gate en
+  #   features/shipping/aveonline.ts)
+  gate-wompi-sandbox:
+    name: ¿Secrets sandbox Wompi/Aveonline configurados?
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        env:
+          HAS_WOMPI: ${{ secrets.WOMPI_PUBLIC_KEY != '' && secrets.WOMPI_PRIVATE_KEY != '' && secrets.WOMPI_INTEGRITY_SECRET != '' && secrets.WOMPI_EVENTS_SECRET != '' }}
+          HAS_AVEONLINE: ${{ secrets.AVEONLINE_USUARIO != '' && secrets.AVEONLINE_CLAVE != '' }}
+        run: |
+          if [ "$HAS_WOMPI" = "true" ] && [ "$HAS_AVEONLINE" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::E2E de dinero (wompi-sandbox) INACTIVO: faltan secrets sandbox (WOMPI_PUBLIC_KEY/WOMPI_PRIVATE_KEY/WOMPI_INTEGRITY_SECRET/WOMPI_EVENTS_SECRET y/o AVEONLINE_USUARIO/AVEONLINE_CLAVE). Es GATE DE RELEASE: sin este job verde, la certificación exige la corrida manual documentada en docs/TESTING.md."
+          fi
+
+  e2e-wompi-sandbox:
+    name: E2E dinero — checkout Wompi sandbox (4242 → PAID + guía)
+    needs: gate-wompi-sandbox
+    if: needs.gate-wompi-sandbox.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      NEXT_PUBLIC_SITE_URL: http://localhost:4000
+      NEXT_PUBLIC_WA_NUMBER: "573208873826"
+      # Modo full EXPLÍCITO: el spec ejerce el checkout transaccional completo.
+      NEXT_PUBLIC_STORE_MODE: full
+      CSRF_SECRET: nightly-csrf-secret-32-chars-minimo
+      WOMPI_ENV: sandbox
+      WOMPI_PUBLIC_KEY: ${{ secrets.WOMPI_PUBLIC_KEY }}
+      WOMPI_PRIVATE_KEY: ${{ secrets.WOMPI_PRIVATE_KEY }}
+      WOMPI_INTEGRITY_SECRET: ${{ secrets.WOMPI_INTEGRITY_SECRET }}
+      WOMPI_EVENTS_SECRET: ${{ secrets.WOMPI_EVENTS_SECRET }}
+      AVEONLINE_USUARIO: ${{ secrets.AVEONLINE_USUARIO }}
+      AVEONLINE_CLAVE: ${{ secrets.AVEONLINE_CLAVE }}
+      # Llaves de PRUEBA de Cloudflare Turnstile (públicas y documentadas por
+      # Cloudflare — "always pass"): el widget emite token en el navegador y el
+      # siteverify del server responde success. Sin ellas el server corre
+      # fail-closed (NODE_ENV=production vía next start) y el checkout rebota.
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+      TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
+      # Chromium COMPLETO (no headless shell): el anti-bot del checkout hospedado
+      # de Wompi detecta el shell y bloquea el CTA ~50% de las corridas
+      # (playwright.config.ts, verificado 2026-07-28).
+      PW_CHANNEL: chromium
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lucams/db db:generate
+      - uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3
+        with:
+          version: 2.111.0
+      - name: Levantar Supabase local y exportar credenciales
+        working-directory: .github/ci/localstack
+        run: |
+          supabase start
+          supabase status -o env | tee sb-status.env
+          ANON=$(grep -E '^(ANON_KEY|PUBLISHABLE_KEY|SUPABASE_ANON_KEY)=' sb-status.env | head -1 | cut -d'=' -f2- | tr -d '"')
+          SERVICE=$(grep -E '^(SERVICE_ROLE_KEY|SECRET_KEY|SUPABASE_SERVICE_ROLE_KEY)=' sb-status.env | head -1 | cut -d'=' -f2- | tr -d '"')
+          if [ -z "$ANON" ] || [ -z "$SERVICE" ]; then
+            echo "::error::No se pudieron extraer las keys del stack local (ver sb-status.env arriba)."
+            exit 1
+          fi
+          {
+            echo "DATABASE_URL=postgresql://postgres:postgres@localhost:54322/postgres"
+            echo "DIRECT_URL=postgresql://postgres:postgres@localhost:54322/postgres"
+            echo "SUPABASE_ADMIN_URL=postgresql://supabase_admin:postgres@localhost:54322/postgres"
+            echo "NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$ANON"
+            echo "SUPABASE_SECRET_KEY=$SERVICE"
+          } >> "$GITHUB_ENV"
+      - name: Extensiones Postgres prerequisito (pg_trgm/unaccent — las exigen migraciones viejas)
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f .github/ci/localstack/prereq-extensions.sql
+      - name: Aplicar migraciones Prisma
+        run: pnpm --filter @lucams/db exec prisma migrate deploy
+      - name: Aplicar migraciones SQL de Supabase (RLS, storage, pg_cron)
+        run: |
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            echo "→ $f"
+            psql "$SUPABASE_ADMIN_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+      - name: Seed del catálogo (contexto de storefront para el checkout)
+        # N-06: los canónicos son dry-run por defecto — CI pasa --apply explícito.
+        run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs --apply
+      - name: Instalar navegador Playwright (chromium completo + deps)
+        run: pnpm --filter web exec playwright install --with-deps chromium
+      - name: Build de producción (next start del webServer)
+        run: pnpm --filter web build
+      - name: Playwright (wompi-sandbox — journey de dinero completo)
+        run: pnpm --filter web exec playwright test wompi-sandbox.spec --project=desktop-chrome
+      # Evidencia SIEMPRE (éxito o fallo): el verde de este job con artifacts es
+      # la prueba del journey de dinero para la certificación de release (F-01).
+      - name: Subir evidencia del journey de dinero
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: wompi-sandbox-evidence
+          path: |
+            apps/web/playwright-report/
+            /tmp/e2e-tx-*.png
+            /tmp/wompi-hosted-filled.png
+          retention-days: 30

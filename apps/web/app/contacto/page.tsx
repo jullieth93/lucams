@@ -1,9 +1,9 @@
 /*
  * /contacto — Formulario de soporte + WhatsApp CTA prominente.
  *
- * Form server-action driven (ContactForm client component). El email
- * de notificación a hola@lucamsshop.com se difiere a sub-bloque G
- * (cuando esté lib/resend.ts centralizado).
+ * Form server-action driven (ContactForm client component). La action
+ * (features/support/actions.ts) persiste el ticket, valida Turnstile y
+ * envía los emails de acuse/notificación vía Resend.
  */
 
 import type { Metadata } from "next";

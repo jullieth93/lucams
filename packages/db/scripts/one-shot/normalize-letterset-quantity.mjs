@@ -27,18 +27,18 @@
  *     no cambian de grupo.
  *
  * Uso:
- *   node scripts/normalize-letterset-quantity.mjs           # dry-run (default)
- *   node scripts/normalize-letterset-quantity.mjs --apply   # aplica
+ *   node scripts/one-shot/normalize-letterset-quantity.mjs           # dry-run (default)
+ *   node scripts/one-shot/normalize-letterset-quantity.mjs --apply   # aplica
  * Con dotenv según ambiente (desde packages/db):
- *   npx dotenv -e ../../.env.local -- node scripts/normalize-letterset-quantity.mjs --apply
- *   npx dotenv -e ../../.env.stg   -- node scripts/normalize-letterset-quantity.mjs --apply
+ *   npx dotenv -e ../../.env.local -- node scripts/one-shot/normalize-letterset-quantity.mjs --apply
+ *   npx dotenv -e ../../.env.stg   -- node scripts/one-shot/normalize-letterset-quantity.mjs --apply
  * PRD queda bloqueado por el env-guard salvo intervención deliberada:
  *   LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1 npx dotenv -e ../../.env.local.nube-backup \
- *     -- node scripts/normalize-letterset-quantity.mjs --apply
+ *     -- node scripts/one-shot/normalize-letterset-quantity.mjs --apply
  */
 
 import { PrismaClient } from "@prisma/client";
-import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+import { assertDestructiveAllowed } from "../lib/env-guard.mjs";
 
 const APPLY = process.argv.includes("--apply");
 assertDestructiveAllowed("normalize-letterset-quantity");

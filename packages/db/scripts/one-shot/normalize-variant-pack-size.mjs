@@ -26,16 +26,16 @@
  *   - variantCoverSignature ignora quantity/photoSlots → portadas intactas.
  *
  * Uso:
- *   node scripts/normalize-variant-pack-size.mjs           # dry-run (default)
- *   node scripts/normalize-variant-pack-size.mjs --apply   # aplica
+ *   node scripts/one-shot/normalize-variant-pack-size.mjs           # dry-run (default)
+ *   node scripts/one-shot/normalize-variant-pack-size.mjs --apply   # aplica
  * Con dotenv según ambiente (desde packages/db):
- *   npx dotenv -e ../../.env.local -- node scripts/normalize-variant-pack-size.mjs --apply
- *   npx dotenv -e ../../.env.stg   -- node scripts/normalize-variant-pack-size.mjs --apply
+ *   npx dotenv -e ../../.env.local -- node scripts/one-shot/normalize-variant-pack-size.mjs --apply
+ *   npx dotenv -e ../../.env.stg   -- node scripts/one-shot/normalize-variant-pack-size.mjs --apply
  * PRD queda bloqueado por el env-guard salvo intervención deliberada.
  */
 
 import { PrismaClient } from "@prisma/client";
-import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+import { assertDestructiveAllowed } from "../lib/env-guard.mjs";
 
 const APPLY = process.argv.includes("--apply");
 assertDestructiveAllowed("normalize-variant-pack-size");
@@ -54,7 +54,13 @@ function withNumber(n, noun) {
 async function main() {
   const variants = await prisma.productVariant.findMany({
     where: { isActive: true, deletedAt: null, product: { isActive: true, deletedAt: null } },
-    select: { id: true, sku: true, name: true, attributes: true, product: { select: { slug: true } } },
+    select: {
+      id: true,
+      sku: true,
+      name: true,
+      attributes: true,
+      product: { select: { slug: true } },
+    },
     orderBy: [{ product: { slug: "asc" } }, { sku: "asc" }],
   });
 
@@ -81,7 +87,10 @@ async function main() {
     const nameM = countSeg.match(NAME_N);
     const rename =
       nameM && Number(nameM[1]) !== n
-        ? v.name.replace(countSeg, countSeg.replace(NAME_N, () => withNumber(n, nameM[2])))
+        ? v.name.replace(
+            countSeg,
+            countSeg.replace(NAME_N, () => withNumber(n, nameM[2])),
+          )
         : null;
 
     if (Object.keys(updates).length === 0 && !rename) {

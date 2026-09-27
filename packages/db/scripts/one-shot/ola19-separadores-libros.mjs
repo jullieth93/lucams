@@ -15,11 +15,11 @@
  *
  * N-06 (2026-09-12): env-guard fail-closed (bloquea PRD/remotos no reconocidos).
  *
- * Uso: pnpm --filter @lucams/db exec dotenv -e ../../.env.local -- node scripts/ola19-separadores-libros.mjs
+ * Uso: pnpm --filter @lucams/db exec dotenv -e ../../.env.local -- node scripts/one-shot/ola19-separadores-libros.mjs
  */
 
 import { PrismaClient } from "@prisma/client";
-import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+import { assertDestructiveAllowed } from "../lib/env-guard.mjs";
 
 // Guarda de ambiente: reestructura productos (upsert + reset de precios a 0) — bloquea PRD/remotos no STG.
 assertDestructiveAllowed("ola19-separadores-libros.mjs");

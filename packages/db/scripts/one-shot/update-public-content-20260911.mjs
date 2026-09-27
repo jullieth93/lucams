@@ -43,12 +43,12 @@
  * campo a ella (el historial queda — revertible desde /admin/contenido).
  *
  * Uso:
- *   node scripts/update-public-content-20260911.mjs           # dry-run (default)
- *   node scripts/update-public-content-20260911.mjs --apply   # aplica
+ *   node scripts/one-shot/update-public-content-20260911.mjs           # dry-run (default)
+ *   node scripts/one-shot/update-public-content-20260911.mjs --apply   # aplica
  * Con dotenv según ambiente (desde packages/db):
- *   npx dotenv -e ../../.env.local -- node scripts/update-public-content-20260911.mjs --apply
- *   npx dotenv -e ../../.env.stg   -- node scripts/update-public-content-20260911.mjs --apply
- *   npx dotenv -e ../../.env.local.nube-backup -- node scripts/update-public-content-20260911.mjs --apply
+ *   npx dotenv -e ../../.env.local -- node scripts/one-shot/update-public-content-20260911.mjs --apply
+ *   npx dotenv -e ../../.env.stg   -- node scripts/one-shot/update-public-content-20260911.mjs --apply
+ *   npx dotenv -e ../../.env.local.nube-backup -- node scripts/one-shot/update-public-content-20260911.mjs --apply
  *
  * OJO: tras aplicar, invalidar el caché CMS desde /admin/contenido
  * ("Actualizar caché de contenido") o esperar la revalidación (1 h).
@@ -71,7 +71,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // Los cuerpos legales se leen de la fuente canónica en git para no duplicar
 // texto (misma regla que el test legal-content-sync: una sola copia).
 const legalBody = (name) =>
-  readFileSync(join(HERE, "..", "legal-content", `legal.${name}.md`), "utf-8").trim();
+  readFileSync(join(HERE, "..", "..", "legal-content", `legal.${name}.md`), "utf-8").trim();
 
 // Textos NUEVOS — variantes FULL canónicas (homologación de ambientes; el modo
 // catálogo las sobrescribe en render vía código). Deben coincidir con los

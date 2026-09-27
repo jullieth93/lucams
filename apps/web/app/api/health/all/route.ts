@@ -15,12 +15,12 @@
  * solo aceptan un endpoint para verificar.
  */
 
-import { timingSafeEqual } from "node:crypto";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
 import { getTrustedSelfBaseUrl, vercelBypassHeaders } from "@/lib/origin";
+import { cronSecretOk } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -94,15 +94,6 @@ async function probe(name: string, path: string, baseUrl: string): Promise<Check
   }
 }
 
-// Mismo chequeo que las rutas /api/cron/* (comparación en tiempo constante contra CRON_SECRET).
-function secretOk(provided: string | null): boolean {
-  const expected = process.env.CRON_SECRET?.trim();
-  if (!expected || !provided) return false;
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export async function GET(req: Request): Promise<Response> {
   // Rate-limit por IP (auditoría 2026-07-13): endpoint público que dispara 5 sub-probes →
   // sin límite era amplificable. 30/min es holgado para un uptime monitor (típico cada 30-60s).
@@ -140,7 +131,7 @@ export async function GET(req: Request): Promise<Response> {
 
   // Detalle de deploy solo con secreto (C-3): el SHA completo identifica el commit exacto
   // en el repo público. Con el header `x-cron-secret` el monitor sí puede conocerlo.
-  if (secretOk(req.headers.get("x-cron-secret"))) {
+  if (cronSecretOk(req.headers.get("x-cron-secret"))) {
     body.version = process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_GIT_SHA ?? "dev";
     body.environment = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "unknown";
   }

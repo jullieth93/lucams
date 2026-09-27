@@ -21,24 +21,16 @@
  */
 
 import type { NextRequest } from "next/server";
-import { timingSafeEqual } from "node:crypto";
 import { recordMonitorHeartbeat } from "@/features/observability/cron-heartbeat";
 import { logger } from "@/lib/logger";
 import { captureServerError } from "@/lib/error-capture";
+import { cronSecretOk } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
 
-function secretOk(provided: string | null): boolean {
-  const expected = process.env.CRON_SECRET?.trim();
-  if (!expected || !provided) return false;
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export async function POST(req: NextRequest) {
   const provided = req.headers.get("x-cron-secret"); // #14 solo header (?secret= queda en logs)
-  if (!secretOk(provided)) {
+  if (!cronSecretOk(provided)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 

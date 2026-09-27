@@ -19,8 +19,17 @@
  *      aprendió a hornear el marco (service.ts, rama "con marco"), y sin forzar el fallo este
  *      test quedó rojo fijo (detectado 2026-09-11).
  *
- * ATENCIÓN: dev y producción comparten la MISMA Supabase. Cada diseño que se crea acá se borra en el
- * afterAll, junto con sus filas de assets y sus objetos de Storage.
+ * AUTOCONTENIDA (A11-05, remediación R3 2026-09-26): antes clonaba diseños REALES de la
+ * base compartida de dev (productos separadores-magneticos / set-fotoimanes-polaroid con
+ * fotos ya subidas) — data construida por decenas de scripts históricos, irreproducible
+ * en un stack limpio, y por eso estaba excluida de TODO pipeline (NIGHTLY_LOCALSTACK en
+ * vitest.config.ts). Ahora siembra TODO lo que necesita en el beforeAll: categoría +
+ * producto photo-pack efímeros, 2 PNG subidos a customer-uploads y, por caso, un Design
+ * DRAFT con canvasData V2 + DesignAssets propios que apuntan a esos PNG. Corre contra
+ * cualquier stack con Supabase real (nightly localstack incluido); salta limpio sin llaves.
+ *
+ * Cada diseño que se crea acá se borra en el afterAll, junto con sus filas de assets,
+ * sus objetos de Storage y el producto/categoría fixture.
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -94,78 +103,119 @@ const PNG_1X1 = Buffer.from(
   "base64",
 );
 
+/** Fixture efímero: producto photo-pack + categoría, y los paths de las 2 fotos subidas. */
+let productId = "";
+let categoryId = "";
+const assetPaths: string[] = [];
+
 /**
- * Clona un diseño REAL de la base (con sus fotos ya subidas) a un borrador nuestro. Partir de datos
- * reales es lo que da valor a la prueba: los assets existen en Storage y el render server-side tiene
- * material de verdad que componer.
+ * Crea un borrador PROPIO, renderizable en servidor: canvasData V2 con una
+ * unitTemplate solo-foto embebida (background + un image-placeholder que cubre el
+ * stage — la forma mínima que el tier sharp reproduce con fidelidad, ver
+ * production-render.ts assertServerRenderable) y 2 slots con assetIds de filas
+ * DesignAsset NUEVAS que apuntan a los PNG subidos en el beforeAll (el mismo
+ * patrón de cloneDesignToDraft: el objeto de Storage se comparte, solo se lee).
  */
-async function clonarBorradorReal(slug: string): Promise<string | null> {
-  const product = await prisma.product.findFirst({ where: { slug }, select: { id: true } });
-  if (!product) return null;
-
-  const candidatos = await prisma.design.findMany({
-    where: { productId: product.id },
-    orderBy: { updatedAt: "desc" },
-    take: 60,
-    select: { id: true, canvasData: true, templateId: true, metadata: true },
-  });
-  const origen = candidatos.find((d) => {
-    const cd = d.canvasData as { version?: number; slots?: { assetId?: string }[] } | null;
-    return cd?.version === 2 && !!cd.slots?.length && cd.slots.every((s) => !!s.assetId);
-  });
-  if (!origen) return null;
-
-  const assets = await prisma.designAsset.findMany({ where: { designId: origen.id } });
-  if (assets.length === 0) return null;
-
+async function crearBorradorPropio(): Promise<string> {
   const clon = await prisma.design.create({
     data: {
-      productId: product.id,
-      templateId: origen.templateId,
+      productId,
+      templateId: null,
       sessionId: RUN,
       status: "DRAFT",
-      canvasData: origen.canvasData as never,
-      metadata: (origen.metadata ?? undefined) as never,
+      canvasData: {},
+      metadata: { kind: "PHOTO_PACK", surface: "photo", schemaVersion: 2 },
     },
     select: { id: true },
   });
   creados.push(clon.id);
 
-  // Filas de asset nuevas apuntando al MISMO objeto de Storage (solo se lee), y se remapean los
-  // assetId del canvas a los ids nuevos — igual que hace cloneDesignToDraft en el servicio.
-  const mapa = new Map<string, string>();
-  for (const a of assets) {
-    const nuevo = await prisma.designAsset.create({
+  const assetIds: string[] = [];
+  for (const path of assetPaths) {
+    const asset = await prisma.designAsset.create({
       data: {
         designId: clon.id,
-        storageUrl: a.storageUrl,
-        mimeType: a.mimeType,
-        sizeBytes: a.sizeBytes,
-        width: a.width,
-        height: a.height,
+        sessionId: RUN,
+        storageUrl: path,
+        mimeType: "image/png",
+        sizeBytes: PNG_1X1.length,
+        width: 1,
+        height: 1,
       },
       select: { id: true },
     });
-    mapa.set(a.id, nuevo.id);
+    assetIds.push(asset.id);
   }
-  const cd = origen.canvasData as { slots: { assetId?: string }[] };
-  const remapeado = {
-    ...(origen.canvasData as object),
-    slots: cd.slots.map((s) => ({
-      ...s,
-      assetId: s.assetId ? (mapa.get(s.assetId) ?? s.assetId) : s.assetId,
+
+  const canvasData = {
+    version: 2,
+    slotCount: assetIds.length,
+    unitTemplate: {
+      version: 1,
+      stage: { width: 300, height: 300 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        { id: "ph", type: "image-placeholder", x: 0, y: 0, width: 300, height: 300 },
+      ],
+    },
+    slots: assetIds.map((assetId, i) => ({
+      slotIndex: i,
+      assetId,
+      // assetUrl solo se exige truthy en la validación de finalize (INCOMPLETE_SLOTS);
+      // el render server-side resuelve los bytes por assetId → DesignAsset.storageUrl.
+      assetUrl: assetPaths[i],
+      photoTransform: { offsetX: 0, offsetY: 0, scale: 1 },
     })),
   };
-  await prisma.design.update({ where: { id: clon.id }, data: { canvasData: remapeado as never } });
+  await prisma.design.update({
+    where: { id: clon.id },
+    data: { canvasData: canvasData as never },
+  });
 
   return clon.id;
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   if (SKIP) return;
   if (!process.env.SUPABASE_SECRET_KEY) throw new Error("falta SUPABASE_SECRET_KEY");
   supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY);
-});
+
+  // Fixture autocontenido: las 2 fotos del pack subidas al bucket real
+  // (customer-uploads — el mismo del que loadAsset descarga en el finalize).
+  for (let i = 0; i < 2; i++) {
+    const path = `${RUN}/asset-${i}.png`;
+    const { error } = await supabase.storage
+      .from("customer-uploads")
+      .upload(path, PNG_1X1, { contentType: "image/png" });
+    if (error) throw new Error(`no se pudo subir la foto fixture ${path}: ${error.message}`);
+    assetPaths.push(path);
+  }
+
+  // Producto photo-pack efímero: el schema declara 2 slots (el cap de tickets de
+  // createClientSlotUploadTickets sale de acá, no del canvas) y forma rectangle
+  // (nada de heart/circle → el tier sharp la reproduce sin caer al canvas).
+  const category = await prisma.category.create({
+    data: { slug: `${RUN}-cat`, name: `TEST ${RUN} Categoría` },
+  });
+  categoryId = category.id;
+  const product = await prisma.product.create({
+    data: {
+      slug: `${RUN}-fotopack`,
+      name: `TEST ${RUN} Foto Pack`,
+      description: "Fixture efímero del test de finalize server-render (autocontenido).",
+      basePrice: 1_000_000,
+      sku: `${RUN}-FP`.toUpperCase(),
+      categoryId,
+      isPersonalizable: true,
+      personalizationKind: "PHOTO_PACK",
+      personalizationSchema: { photoSlots: 2, shape: "rectangle", allowText: false },
+      variants: {
+        create: [{ name: "Default", sku: `${RUN}-FP-D`.toUpperCase(), stock: 100, attributes: {} }],
+      },
+    },
+  });
+  productId = product.id;
+}, 120_000);
 
 /*
  * La limpieza lleva timeout EXPLÍCITO y generoso. El de vitest son 10 s, y con varios diseños —cada
@@ -198,16 +248,28 @@ afterAll(async () => {
     await prisma.design.delete({ where: { id: r.id } }).catch(() => undefined);
   }
   expect(await prisma.design.count({ where: { sessionId: RUN } })).toBe(0);
+  // Fotos fixture de customer-uploads y producto/categoría propios.
+  if (assetPaths.length > 0) {
+    await supabase.storage
+      .from("customer-uploads")
+      .remove(assetPaths)
+      .catch(() => undefined);
+  }
+  if (productId) {
+    await prisma.productVariant.deleteMany({ where: { productId } }).catch(() => undefined);
+    await prisma.product.deleteMany({ where: { id: productId } }).catch(() => undefined);
+  }
+  if (categoryId) {
+    await prisma.category.deleteMany({ where: { id: categoryId } }).catch(() => undefined);
+  }
 }, 180_000);
 
 describe.skipIf(SKIP)("finalizeDesign — el cliente ya no manda los PNG de imprenta", () => {
   it("camino normal: el servidor renderiza y el diseño queda READY sin recibir un solo blob", async () => {
-    const designId = await clonarBorradorReal("separadores-magneticos");
-    // Omitir en silencio sería fingir cobertura — justo lo que dejó vivir este bug meses.
-    expect(designId, "no hay ningún diseño real de separadores-magneticos que clonar").toBeTruthy();
+    const designId = await crearBorradorPropio();
 
     const design = await finalizeDesign({
-      designId: designId!,
+      designId,
       previewBuffer: PNG_1X1,
       // productionBuffers ausente A PROPÓSITO: eso es lo que se está probando.
       ...OWNER,
@@ -218,28 +280,24 @@ describe.skipIf(SKIP)("finalizeDesign — el cliente ya no manda los PNG de impr
     expect(design.previewUrl).toBeTruthy();
 
     // Y los archivos existen de verdad en Storage, no solo la fila en la base.
-    const { data: files } = await supabase.storage.from("production-assets").list(designId!);
+    const { data: files } = await supabase.storage.from("production-assets").list(designId);
     const png = (files ?? []).filter((f) => f.name.endsWith(".png"));
     expect(png.length).toBe(design.productionUrls.length);
   }, 600_000);
 
   it("fallback: si ningún tier puede renderizar, se piden los PNG al cliente y suben por Storage", async () => {
-    const designId = await clonarBorradorReal("set-fotoimanes-polaroid");
-    expect(
-      designId,
-      "no hay ningún diseño real de set-fotoimanes-polaroid que clonar",
-    ).toBeTruthy();
+    const designId = await crearBorradorPropio();
 
     // Forzar el fallo de TODOS los tiers de render server (ver el comentario de
-    // renderControl arriba): la Polaroid ya SÍ se renderiza en servidor, así que
+    // renderControl arriba): el fixture ES renderizable en servidor, así que
     // el "no se puede" del escenario lo ponen los mocks, no el diseño elegido.
     renderControl.failAll = true;
     renderControl.attempts = 0;
     try {
       // 1) Sin blobs y sin render posible → el servicio lo dice con un error reconocible.
-      await expect(
-        finalizeDesign({ designId: designId!, previewBuffer: PNG_1X1, ...OWNER }),
-      ).rejects.toThrow(/NEEDS_CLIENT_SLOTS/);
+      await expect(finalizeDesign({ designId, previewBuffer: PNG_1X1, ...OWNER })).rejects.toThrow(
+        /NEEDS_CLIENT_SLOTS/,
+      );
 
       // Los motores se INTENTARON y fallaron — si attempts fuera 0, el error
       // vendría de otro lado y el test no estaría probando el fallback.
@@ -247,15 +305,15 @@ describe.skipIf(SKIP)("finalizeDesign — el cliente ya no manda los PNG de impr
 
       // El diseño NO puede haberse quedado a medias.
       const trasFallo = await prisma.design.findUnique({
-        where: { id: designId! },
+        where: { id: designId },
         select: { status: true },
       });
       expect(trasFallo?.status).toBe("DRAFT");
 
       // 2) URLs firmadas de subida, una por slot.
-      const tickets = await createClientSlotUploadTickets({ designId: designId!, ...OWNER });
+      const tickets = await createClientSlotUploadTickets({ designId, ...OWNER });
       const cd = (await prisma.design.findUnique({
-        where: { id: designId! },
+        where: { id: designId },
         select: { canvasData: true },
       }))!.canvasData as { slotCount: number };
       expect(tickets.length).toBe(cd.slotCount);
@@ -276,7 +334,7 @@ describe.skipIf(SKIP)("finalizeDesign — el cliente ya no manda los PNG de impr
       // 4) Segunda pasada: el servidor vuelve a intentar el render (sigue
       // fallando, por eso importa) y recoge los blobs del área de paso.
       const design = await finalizeDesign({
-        designId: designId!,
+        designId,
         previewBuffer: PNG_1X1,
         useStagedClientSlots: true,
         ...OWNER,
@@ -287,7 +345,7 @@ describe.skipIf(SKIP)("finalizeDesign — el cliente ya no manda los PNG de impr
       // 5) El área de paso queda limpia: los definitivos son los que sube finalizeDesign.
       const { data: staged } = await supabase.storage
         .from("production-assets")
-        .list(`${designId!}/_client`);
+        .list(`${designId}/_client`);
       expect(staged ?? []).toHaveLength(0);
     } finally {
       renderControl.failAll = false;
@@ -300,18 +358,17 @@ describe.skipIf(SKIP)("finalizeDesign — el cliente ya no manda los PNG de impr
    * completar la compra. Como un READY ya no se puede editar, re-finalizarlo debe ser un no-op.
    */
   it("finalizar dos veces es idempotente: el segundo intento no rompe el reintento del carrito", async () => {
-    const designId = await clonarBorradorReal("separadores-magneticos");
-    expect(designId).toBeTruthy();
+    const designId = await crearBorradorPropio();
 
     const primero = await finalizeDesign({
-      designId: designId!,
+      designId,
       previewBuffer: PNG_1X1,
       ...OWNER,
     });
     expect(primero.status).toBe("READY");
 
     const segundo = await finalizeDesign({
-      designId: designId!,
+      designId,
       previewBuffer: PNG_1X1,
       ...OWNER,
     });
@@ -324,31 +381,27 @@ describe.skipIf(SKIP)("finalizeDesign — el cliente ya no manda los PNG de impr
    * contrastarlo contra el producto, pedir el fallback regalaba hasta 50 permisos de escritura.
    */
   it("no emite más URLs de subida que piezas admite el producto", async () => {
-    const designId = await clonarBorradorReal("set-fotoimanes-polaroid");
-    expect(designId).toBeTruthy();
+    const designId = await crearBorradorPropio();
 
     const d = await prisma.design.findUnique({
-      where: { id: designId! },
+      where: { id: designId },
       select: { canvasData: true },
     });
     const cd = d!.canvasData as Record<string, unknown>;
     // El cliente infla el contador a 50 (el máximo que deja pasar el esquema).
     await prisma.design.update({
-      where: { id: designId! },
+      where: { id: designId },
       data: { canvasData: { ...cd, slotCount: 50 } as never },
     });
 
-    await expect(createClientSlotUploadTickets({ designId: designId!, ...OWNER })).rejects.toThrow(
-      /admite/i,
-    );
+    await expect(createClientSlotUploadTickets({ designId, ...OWNER })).rejects.toThrow(/admite/i);
   }, 600_000);
 
   it("no emite URLs de subida para un diseño ajeno", async () => {
-    const designId = await clonarBorradorReal("set-fotoimanes-polaroid");
-    expect(designId).toBeTruthy();
+    const designId = await crearBorradorPropio();
     await expect(
       createClientSlotUploadTickets({
-        designId: designId!,
+        designId,
         customerId: null,
         sessionId: `${RUN}-otra-sesion`,
       }),

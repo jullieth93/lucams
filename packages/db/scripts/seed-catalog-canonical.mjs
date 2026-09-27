@@ -32,6 +32,15 @@
  *   node scripts/seed-catalog-canonical.mjs --apply            # siembra/alinea
  *   node scripts/seed-catalog-canonical.mjs --prune            # lista archivables
  *   node scripts/seed-catalog-canonical.mjs --apply --prune    # + archiva (pide confirmación)
+ *
+ * R5 (2026-09-26): se eliminaron 13 productos cuyos slugs declarados eran
+ * LEGACY — lib/product-redirects.ts los 301-redirige a slugs consolidados que
+ * el seed nunca declaró, así que en una DB fresca sus PDPs/estudios caían en
+ * soft-404 (detectado sembrando el localstack del nightly). En STG/PRD/LOCAL
+ * esos 13 están archivados desde la homologación certificada del 2026-09-20
+ * (STG = referencia, "respect archived state"): el seed ahora declara solo el
+ * catálogo vivo. Las filas archivadas existentes NO se tocan (sin --prune el
+ * seed no barre; y nunca resucita).
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -524,138 +533,8 @@ const productsData = [
       },
     ],
   },
-  {
-    slug: "set-glass-magnets-personalizados",
-    sku: "FI-GLASS-6",
-    name: "Glass Magnets",
-    description:
-      "Imanes con frente de vidrio premium 3 cm. Lupa natural que magnifica tu foto. El detalle gourmet del catálogo.",
-    basePrice: 2500000,
-    categorySlug: "foto-imanes",
-    isPersonalizable: true,
-    personalizationKind: "PHOTO_PACK",
-    personalizationSchema: { photoSlots: 6, shape: "circle", finish: "glass", sizeCm: "3" },
-    images: [UNSPLASH("1604782206219-3b9576575203")],
-    variants: [
-      {
-        sku: "FI-GLASS-6-V1",
-        name: "Set 6 unidades · 3 cm",
-        price: 2500000,
-        attributes: { photoSlots: 6, sizeCm: "3", shape: "circle", finish: "glass" },
-      },
-      {
-        sku: "FI-GLASS-6-V2",
-        name: "Set 12 unidades · 3 cm",
-        price: 4600000,
-        attributes: { photoSlots: 12, sizeCm: "3", shape: "circle", finish: "glass" },
-      },
-    ],
-  },
 
-  // ────────────────────── recuerdos (6) ──────────────────────
-  // Naming: "Recuerdos de [Evento]" sin sufijo de cantidad — la cantidad
-  // es variant. Slug histórico se conserva para SEO (proxy.ts redirige).
-  {
-    slug: "recuerdos-cumpleanos-x20",
-    sku: "EVT-CUMP-20",
-    name: "Recuerdos de Cumpleaños",
-    description:
-      "Imanes personalizados para cumpleaños. Nombre, edad y motivo de la fiesta. Empaque individual incluido. Elige la cantidad según invitados.",
-    basePrice: 11500000,
-    categorySlug: "recuerdos",
-    isPersonalizable: true,
-    personalizationKind: "EVENT_FAVOR",
-    personalizationSchema: { quantity: 20, eventFields: ["name", "age", "date"], allowPhoto: true },
-    images: [UNSPLASH("1530103862676-de8c9debad1d")],
-    variants: [
-      {
-        sku: "EVT-CUMP-20-V1",
-        name: "x12 invitados",
-        price: 7200000,
-        attributes: { quantity: 12 },
-      },
-      {
-        sku: "EVT-CUMP-20-V2",
-        name: "x20 invitados",
-        price: 11500000,
-        attributes: { quantity: 20 },
-      },
-      {
-        sku: "EVT-CUMP-20-V3",
-        name: "x30 invitados",
-        price: 16500000,
-        attributes: { quantity: 30 },
-      },
-    ],
-  },
-  {
-    slug: "recuerdos-bautizo-x12",
-    sku: "EVT-BAUT-12",
-    name: "Recuerdos de Bautizo",
-    description:
-      "Imanes personalizados para bautizo. Diseño tierno con nombre del bebé, fecha y motivo religioso. Empaque incluido.",
-    basePrice: 9000000,
-    categorySlug: "recuerdos",
-    isPersonalizable: true,
-    personalizationKind: "EVENT_FAVOR",
-    personalizationSchema: {
-      quantity: 12,
-      eventFields: ["babyName", "date", "venue"],
-      allowPhoto: true,
-    },
-    images: [UNSPLASH("1525258946800-98cfd641d0de")],
-    variants: [
-      {
-        sku: "EVT-BAUT-12-V1",
-        name: "x12 invitados",
-        price: 9000000,
-        attributes: { quantity: 12 },
-      },
-      {
-        sku: "EVT-BAUT-12-V2",
-        name: "x20 invitados",
-        price: 14500000,
-        attributes: { quantity: 20 },
-      },
-    ],
-  },
-  {
-    slug: "recuerdos-graduacion-x20",
-    sku: "EVT-GRAD-20",
-    name: "Recuerdos de Graduación",
-    description:
-      "Imanes personalizados con birrete, diploma y fecha. El recordatorio perfecto para los invitados de graduación.",
-    basePrice: 9000000,
-    categorySlug: "recuerdos",
-    isPersonalizable: true,
-    personalizationKind: "EVENT_FAVOR",
-    personalizationSchema: {
-      quantity: 20,
-      eventFields: ["graduateName", "degree", "date"],
-      allowPhoto: true,
-    },
-    images: [UNSPLASH("1523580494863-6f3031224c94")],
-    variants: [
-      {
-        sku: "EVT-GRAD-20-V1",
-        name: "x12 invitados",
-        price: 5800000,
-        attributes: { quantity: 12 },
-      },
-      {
-        sku: "EVT-GRAD-20-V2",
-        name: "x20 invitados",
-        price: 9000000,
-        attributes: { quantity: 20 },
-      },
-      {
-        sku: "EVT-GRAD-20-V3",
-        name: "x30 invitados",
-        price: 13000000,
-        attributes: { quantity: 30 },
-      },
-    ],
-  },
+  // ────────────────────── recuerdos (3) ──────────────────────
   {
     slug: "recuerdos-matrimonio",
     sku: "EVT-MAT-VAR",
@@ -788,102 +667,8 @@ const productsData = [
     personalizationKind: "NONE",
     images: [UNSPLASH("1577563908411-5077b6dc7624")],
   },
-  {
-    slug: "mini-calendarios-x10",
-    sku: "CAL-MINI-10",
-    name: "Mini Calendarios para Regalar",
-    description:
-      "Mini calendarios magnéticos 5×7 cm. Perfectos como detalle para clientes o invitados. Diseño kawaii Lucams. Elige la cantidad.",
-    basePrice: 700000,
-    categorySlug: "calendarios",
-    isPersonalizable: false,
-    personalizationKind: "NONE",
-    images: [UNSPLASH("1577563908411-5077b6dc7624")],
-    variants: [
-      { sku: "CAL-MINI-10-V1", name: "x10 unidades", price: 700000, attributes: { quantity: 10 } },
-      { sku: "CAL-MINI-10-V2", name: "x20 unidades", price: 1300000, attributes: { quantity: 20 } },
-    ],
-  },
 
-  // ────────────────────── publicitarios (5) ──────────────────────
-  // Naming singular ("Imán Publicitario X") — el plural era inconsistente
-  // con "Imán Tarjeta de Presentación".
-  {
-    slug: "imanes-publicitarios-rectos-7x5",
-    sku: "B2B-REC-7x5",
-    name: "Imán Publicitario Rectangular",
-    description:
-      "Imanes publicitarios rectangulares con tu logo + datos de contacto. Mínimo 50 unidades. Elige el tamaño.",
-    basePrice: 180000,
-    categorySlug: "publicitarios",
-    isPersonalizable: true,
-    personalizationKind: "BUSINESS_LOGO",
-    personalizationSchema: {
-      shape: "rectangle",
-      sizeCm: "7×5",
-      minQuantity: 50,
-      fields: ["logo", "phone", "email", "website"],
-    },
-    images: [UNSPLASH("1577563908411-5077b6dc7624")],
-    variants: [
-      {
-        sku: "B2B-REC-7x5-V1",
-        name: "5×3 cm",
-        price: 140000,
-        attributes: { sizeCm: "5×3", shape: "rectangle" },
-      },
-      {
-        sku: "B2B-REC-7x5-V2",
-        name: "7×5 cm",
-        price: 180000,
-        attributes: { sizeCm: "7×5", shape: "rectangle" },
-      },
-      {
-        sku: "B2B-REC-7x5-V3",
-        name: "9×6 cm",
-        price: 230000,
-        attributes: { sizeCm: "9×6", shape: "rectangle" },
-      },
-    ],
-  },
-  {
-    slug: "imanes-publicitarios-circulares-6cm",
-    sku: "B2B-CIRC-6",
-    name: "Imán Publicitario Circular",
-    description:
-      "Imanes publicitarios circulares con tu marca y frase corta. Mínimo 50 unidades. Elige el diámetro.",
-    basePrice: 200000,
-    categorySlug: "publicitarios",
-    isPersonalizable: true,
-    personalizationKind: "BUSINESS_LOGO",
-    personalizationSchema: {
-      shape: "circle",
-      sizeCm: "6",
-      minQuantity: 50,
-      fields: ["logo", "tagline"],
-    },
-    images: [UNSPLASH("1577563908411-5077b6dc7624")],
-    variants: [
-      {
-        sku: "B2B-CIRC-6-V1",
-        name: "5 cm de diámetro",
-        price: 170000,
-        attributes: { sizeCm: "5", shape: "circle" },
-      },
-      {
-        sku: "B2B-CIRC-6-V2",
-        name: "6 cm de diámetro",
-        price: 200000,
-        attributes: { sizeCm: "6", shape: "circle" },
-      },
-      {
-        sku: "B2B-CIRC-6-V3",
-        name: "8 cm de diámetro",
-        price: 260000,
-        attributes: { sizeCm: "8", shape: "circle" },
-      },
-    ],
-  },
+  // ────────────────────── publicitarios (3) ──────────────────────
   {
     slug: "imanes-publicitarios-troquelados",
     sku: "B2B-TROQ",
@@ -915,45 +700,8 @@ const productsData = [
     },
     images: [UNSPLASH("1577563908411-5077b6dc7624")],
   },
-  {
-    slug: "pack-empresarial-mixto-100",
-    sku: "B2B-MIX-100",
-    name: "Pack Empresarial Mixto",
-    description:
-      "Imanes mixtos (rectos + circulares) con tu marca. Ideal para ferias, eventos o repartir en tienda física. Elige el volumen.",
-    basePrice: 380000,
-    categorySlug: "publicitarios",
-    isPersonalizable: true,
-    personalizationKind: "BUSINESS_LOGO",
-    personalizationSchema: {
-      quantity: 100,
-      mix: ["rect-7x5", "circle-6"],
-      fields: ["logo", "phone", "social"],
-    },
-    images: [UNSPLASH("1577563908411-5077b6dc7624")],
-    variants: [
-      {
-        sku: "B2B-MIX-100-V1",
-        name: "x50 unidades mixtas",
-        price: 200000,
-        attributes: { quantity: 50 },
-      },
-      {
-        sku: "B2B-MIX-100-V2",
-        name: "x100 unidades mixtas",
-        price: 380000,
-        attributes: { quantity: 100 },
-      },
-      {
-        sku: "B2B-MIX-100-V3",
-        name: "x200 unidades mixtas",
-        price: 700000,
-        attributes: { quantity: 200 },
-      },
-    ],
-  },
 
-  // ────────────────────── organizate (6) ──────────────────────
+  // ────────────────────── organizate (5) ──────────────────────
   {
     slug: "planner-semanal-magnetico",
     sku: "ORG-SEM",
@@ -1002,23 +750,6 @@ const productsData = [
     personalizationKind: "CALENDAR_PHOTO_HERO",
     personalizationSchema: { photoSlots: 1, layout: "header", plannerType: "monthly" },
     images: [UNSPLASH("1577563908411-5077b6dc7624")],
-  },
-  {
-    slug: "set-4-notas-magneticas",
-    sku: "ORG-NOT-4",
-    name: "Notas Magnéticas",
-    description:
-      "Notas magnéticas (10×15 cm) borrables. Diseños kawaii Lucams: lista, recordatorios, mood, mini-meta. Marcador incluido. Elige cuántas quieres.",
-    basePrice: 3000000,
-    categorySlug: "organizate",
-    isPersonalizable: false,
-    personalizationKind: "NONE",
-    images: [UNSPLASH("1517842645767-c639042777db")],
-    variants: [
-      { sku: "ORG-NOT-4-V1", name: "Set 4 notas", price: 3000000, attributes: { quantity: 4 } },
-      { sku: "ORG-NOT-4-V2", name: "Set 8 notas", price: 5500000, attributes: { quantity: 8 } },
-      { sku: "ORG-NOT-4-V3", name: "Set 12 notas", price: 7800000, attributes: { quantity: 12 } },
-    ],
   },
   {
     slug: "pack-separadores-libros",
@@ -1105,45 +836,7 @@ const productsData = [
     images: [UNSPLASH("1607344645866-009c320b63e0")],
   },
 
-  // ────────────────────── de-temporada (3) ──────────────────────
-  // Ediciones estacionales por fechas del año. Stock por campaña.
-  {
-    slug: "big-box-dia-mama",
-    sku: "REG-BB-MAMA",
-    name: "Box Día de la Madre",
-    description:
-      "Caja temática para Día de la Madre con set de fotoimanes + planner + nota personalizada + empaque premium. Elige Big o Mini según presupuesto.",
-    basePrice: 6800000,
-    categorySlug: "de-temporada",
-    isPersonalizable: true,
-    isFeatured: true,
-    personalizationKind: "CUSTOM_DECOR",
-    personalizationSchema: {
-      photoSlots: 6,
-      allowText: true,
-      includesNote: true,
-      shape: "rectangle",
-      sizeCm: "5×5",
-      finish: "matte",
-      cornerRadiusPx: 32,
-    },
-    images: [UNSPLASH("1549465220-1a8b9238cd48")],
-    // Variants V1 (Big) + V2 (Mini) creados por consolidate-product-families
-    variants: [
-      {
-        sku: "REG-BB-MAMA-V1",
-        name: "Big · 6 fotos + planner",
-        price: 6800000,
-        attributes: { photoSlots: 6, sizeCm: "5×5" },
-      },
-      {
-        sku: "REG-BB-MAMA-V2",
-        name: "Mini · 4 fotos + nota",
-        price: 4500000,
-        attributes: { photoSlots: 4, sizeCm: "5×5" },
-      },
-    ],
-  },
+  // ────────────────────── de-temporada (2) ──────────────────────
   {
     slug: "box-dia-papa",
     sku: "SEA-BB-PAPA",
@@ -1192,47 +885,7 @@ const productsData = [
     images: [UNSPLASH("1542838132-92c53300491e")],
   },
 
-  // ────────────────────── cuadros-decoracion (4) ──────────────────────
-  {
-    slug: "cuadro-15x15-con-foto",
-    sku: "DEC-CUAD-15",
-    name: "Cuadro con Foto",
-    description:
-      "Cuadro magnético con tu foto. Marco fino brand-purple. Composición libre en canvas. Elige el tamaño.",
-    basePrice: 2700000,
-    categorySlug: "cuadros-decoracion",
-    isPersonalizable: true,
-    personalizationKind: "CUSTOM_DECOR",
-    personalizationSchema: {
-      photoSlots: 1,
-      sizeCm: "15×15",
-      allowText: true,
-      shape: "rectangle",
-      finish: "glossy",
-      cornerRadiusPx: 20,
-    },
-    images: [UNSPLASH("1513519245088-0e12902e5a38")],
-    variants: [
-      {
-        sku: "DEC-CUAD-15-V1",
-        name: "15×15 cm",
-        price: 2700000,
-        attributes: { sizeCm: "15×15", shape: "rectangle" },
-      },
-      {
-        sku: "DEC-CUAD-15-V2",
-        name: "20×20 cm",
-        price: 3900000,
-        attributes: { sizeCm: "20×20", shape: "rectangle" },
-      },
-      {
-        sku: "DEC-CUAD-15-V3",
-        name: "30×30 cm",
-        price: 5800000,
-        attributes: { sizeCm: "30×30", shape: "rectangle" },
-      },
-    ],
-  },
+  // ────────────────────── cuadros-decoracion (2) ──────────────────────
   {
     slug: "cuadro-3-fotos",
     sku: "DEC-CUAD-3F",
@@ -1245,28 +898,6 @@ const productsData = [
     personalizationKind: "PHOTO_GRID",
     personalizationSchema: { photoSlots: 3, gridCols: 3, gridRows: 1, sizeCm: "30×10" },
     images: [UNSPLASH("1547119957-637f8679db1e")],
-  },
-  {
-    slug: "cuadro-frase-personalizada-20x20",
-    sku: "DEC-FRASE-20",
-    name: "Cuadro con Frase",
-    description:
-      "Cuadro magnético con tu frase favorita. Tipografías kawaii, colores brand. Sin fotos, solo texto. Elige el tamaño.",
-    basePrice: 3200000,
-    categorySlug: "cuadros-decoracion",
-    isPersonalizable: true,
-    personalizationKind: "TEXT_ONLY",
-    personalizationSchema: {
-      sizeCm: "20×20",
-      maxChars: 80,
-      fontOptions: ["fredoka", "baloo", "inter"],
-    },
-    images: [UNSPLASH("1513519245088-0e12902e5a38")],
-    variants: [
-      { sku: "DEC-FRASE-20-V1", name: "15×15 cm", price: 2400000, attributes: { sizeCm: "15×15" } },
-      { sku: "DEC-FRASE-20-V2", name: "20×20 cm", price: 3200000, attributes: { sizeCm: "20×20" } },
-      { sku: "DEC-FRASE-20-V3", name: "30×30 cm", price: 4800000, attributes: { sizeCm: "30×30" } },
-    ],
   },
   {
     slug: "marcos-magneticos-cuadrados",
@@ -1361,7 +992,7 @@ const productsData = [
     images: [UNSPLASH("1503454537195-1dcabb73ffb9")],
   },
 
-  // ────────────────────── juegos-aprendizaje (4) ──────────────────────
+  // ────────────────────── juegos-aprendizaje (3) ──────────────────────
   // KID-RUT-9 archivado por consolidate-product-families (variant V2 de KID-RUT-7).
   {
     slug: "abecedario-magnetico",
@@ -1386,33 +1017,6 @@ const productsData = [
     isPersonalizable: false,
     personalizationKind: "NONE",
     images: [UNSPLASH("1503676260728-1c00da094a0b")],
-  },
-  {
-    slug: "rutina-infantil-7-actividades",
-    sku: "KID-RUT-7",
-    name: "Rutina Infantil Magnética",
-    description:
-      "Fichas magnéticas con actividades del día (cepillarse, comer, jugar, leer...). Para que los peques sigan su rutina con autonomía. Elige cuántas actividades.",
-    basePrice: 2700000,
-    categorySlug: "juegos-aprendizaje",
-    isPersonalizable: false,
-    personalizationKind: "NONE",
-    images: [UNSPLASH("1503454537195-1dcabb73ffb9")],
-    // Variants V1 (estándar 7) + V2 (XL 9) creados por consolidate-product-families.
-    variants: [
-      {
-        sku: "KID-RUT-7-V1",
-        name: "Estándar · 7 actividades",
-        price: 2700000,
-        attributes: { quantity: 7 },
-      },
-      {
-        sku: "KID-RUT-7-V2",
-        name: "XL · 9 actividades",
-        price: 3600000,
-        attributes: { quantity: 9 },
-      },
-    ],
   },
   {
     slug: "planner-emociones-kids",

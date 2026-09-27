@@ -81,6 +81,13 @@ jobs:
       - name: Lint de guards en scripts de DB (N-06)
         run: pnpm --filter @lucams/db exec node scripts/lib/check-script-guards.mjs
 
+      # Tests unitarios de los propios guards (A10-06, remediación R3 2026-09-26):
+      # env-guard (clasificación fail-closed de hosts — lo que protege PRD),
+      # zombie-settings y test-coupon-signal corren con node --test y antes no
+      # corrían en NINGÚN pipeline. Son rápidos (~1s) y no tocan DB.
+      - name: Tests de guards de scripts DB (env-guard, node --test)
+        run: pnpm --filter @lucams/db test
+
       # Guard es-CO: el copy debe ser TUTEO, nunca voseo (mandato de idioma). Falla si
       # aparece cualquier token de voseo en el código fuente (excluye tests y los scripts
       # que justamente corrigen voseo).
@@ -159,6 +166,12 @@ jobs:
       - name: Aplicar migraciones Prisma (schema desde cero)
         run: pnpm --filter @lucams/db exec prisma migrate deploy
 
+      # A9-08 (remediación R3 2026-09-26): drift check Prisma ↔ Supabase.
+      # Snapshot del schema public JUSTO después de Prisma → el check posterior
+      # aísla exactamente lo que las SQL de Supabase agregan/quitan.
+      - name: Snapshot del schema post-Prisma (drift check)
+        run: pnpm --filter @lucams/db exec node scripts/audit-schema-drift.mjs snapshot --out "$RUNNER_TEMP/schema-post-prisma.json"
+
       - name: Aplicar migraciones SQL de Supabase (RLS, funciones)
         run: |
           for f in $(ls supabase/migrations/*.sql | sort); do
@@ -166,11 +179,101 @@ jobs:
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
           done
 
+      # Falla el PR si las fuentes divergen: algo declarado en schema.prisma que
+      # no existe, SQL creando tablas/columnas no allowlisteadas, o SQL quitando
+      # algo que Prisma creó. Tolerancias conocidas (rate_limit_buckets,
+      # AdminRecoveryCode/A5-01) salen como warning. Ver docs/TESTING.md.
+      - name: Drift check Prisma ↔ Supabase (A9-08)
+        run: pnpm --filter @lucams/db exec node scripts/audit-schema-drift.mjs check --baseline "$RUNNER_TEMP/schema-post-prisma.json"
+
       - name: Run vitest (unit + integración) + gate de cobertura
         # test:coverage = vitest run --coverage. Los thresholds de vitest.config.ts
         # (lines/statements/functions/branches) fallan el job si la cobertura cae por
         # debajo del piso → gate de regresión. text-summary imprime el % en el log.
         run: pnpm --filter web test:coverage
+
+  # F-06 (auditoría 2026-09-26, remediación R3): el comportamiento RLS (rls-matrix —
+  # ¿una policy AISLA de verdad?, 58 policies) solo corría en nightly → una migración
+  # que debilitara una policy se mergeaba y se detectaba hasta 24h después. Este job
+  # lo promueve al gate de PR con el MISMO patrón del nightly (Supabase localstack
+  # efímero in-runner: GoTrue + PostgREST reales). Corre SOLO las 2 suites RLS
+  # (~2s de tests; el costo es levantar el stack, ~4-6 min en paralelo con el resto
+  # del CI — no alarga el camino crítico del gate, que es el job e2e).
+  # admin-login/admin-mfa quedan en nightly A PROPÓSITO: exigen build + navegador
+  # + seed CMS (~15 min) y eso SÍ inflaría el gate de PR — ver docs/TESTING.md
+  # (recordatorio: su verde del nightly es requisito del checklist de release).
+  rls-behavior:
+    name: RLS behavior (rls-matrix contra Supabase local)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CSRF_SECRET: ci-rls-csrf-secret-32-chars-minimo
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @lucams/db db:generate
+
+      - uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3
+        with:
+          # Versión FIJADA (misma que nightly-full.yml): `latest` se topa con el
+          # rate limit de la API de GitHub.
+          version: 2.111.0
+
+      # Mismo patrón que nightly-full.yml: stack efímero sin auto-aplicar
+      # migrations (workdir pelado .github/ci/localstack) + parseo tolerante de keys.
+      - name: Levantar Supabase local y exportar credenciales
+        working-directory: .github/ci/localstack
+        run: |
+          supabase start
+          supabase status -o env | tee sb-status.env
+          ANON=$(grep -E '^(ANON_KEY|PUBLISHABLE_KEY|SUPABASE_ANON_KEY)=' sb-status.env | head -1 | cut -d'=' -f2- | tr -d '"')
+          SERVICE=$(grep -E '^(SERVICE_ROLE_KEY|SECRET_KEY|SUPABASE_SERVICE_ROLE_KEY)=' sb-status.env | head -1 | cut -d'=' -f2- | tr -d '"')
+          if [ -z "$ANON" ] || [ -z "$SERVICE" ]; then
+            echo "::error::No se pudieron extraer las keys del stack local (ver sb-status.env arriba)."
+            exit 1
+          fi
+          {
+            echo "DATABASE_URL=postgresql://postgres:postgres@localhost:54322/postgres"
+            echo "DIRECT_URL=postgresql://postgres:postgres@localhost:54322/postgres"
+            echo "SUPABASE_ADMIN_URL=postgresql://supabase_admin:postgres@localhost:54322/postgres"
+            echo "NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$ANON"
+            echo "SUPABASE_SECRET_KEY=$SERVICE"
+          } >> "$GITHUB_ENV"
+
+      - name: Extensiones Postgres prerequisito (pg_trgm/unaccent — las exigen migraciones viejas)
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f .github/ci/localstack/prereq-extensions.sql
+
+      - name: Aplicar migraciones Prisma
+        run: pnpm --filter @lucams/db exec prisma migrate deploy
+
+      - name: Aplicar migraciones SQL de Supabase (RLS, storage, pg_cron)
+        # SUPABASE_ADMIN_URL (superuser del stack local): el event trigger de la
+        # migración 014 exige privilegios que el rol postgres no tiene.
+        run: |
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            echo "→ $f"
+            psql "$SUPABASE_ADMIN_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Vitest RLS (rls-coverage + rls-matrix de comportamiento)
+        run: pnpm --filter web exec vitest run features/security/rls-coverage.integration.test.ts features/security/rls-matrix.integration.test.ts
 
   e2e:
     name: E2E + a11y (axe WCAG) — Playwright

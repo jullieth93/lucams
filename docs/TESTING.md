@@ -136,9 +136,11 @@ Los helpers de `packages/db/scripts/lib/` se testean con el runner nativo de Nod
 `pnpm --filter @lucams/db test` → `node --test "scripts/lib/*.test.mjs"` — cubre
 `env-guard.test.mjs` (clasificación fail-closed de hosts), `zombie-settings.test.mjs` (la lista de
 settings zombi es exacta y ninguna vuelve al site map) y `test-coupon-signal.test.mjs` (el regex de
-cupones de test atrapa todas las señales de suite). El **lint de guards** se corre a mano con
-`make audit-script-guards` y es gate del job `quality` de CI (`scripts/lib/check-script-guards.mjs`:
-todo script que escribe en DB debe importar `env-guard.mjs`).
+cupones de test atrapa todas las señales de suite). **Corren en CI** (A10-06, remediación R3
+2026-09-26): paso propio del job `quality` — antes estaban fuera de todo pipeline y una regresión
+del env-guard (lo que protege PRD de un script destructivo) pasaba invisible. El **lint de guards**
+se corre a mano con `make audit-script-guards` y también es gate del job `quality`
+(`scripts/lib/check-script-guards.mjs`: todo script que escribe en DB debe importar `env-guard.mjs`).
 
 ### Ejemplo
 
@@ -317,10 +319,12 @@ describe("createOrder (integration)", () => {
 > levantado en el propio runner** (`supabase start` desde `.github/ci/localstack`, + `prisma
 migrate deploy` + las SQL de `supabase/migrations` aplicadas con el rol `supabase_admin`) —
 > ya NO hacen falta un proyecto externo ni secrets `STAGING_*`: cada corrida es efímera y
-> reproducible. Exclusiones documentadas por depender del universo del catálogo real completo
-> (566 productos — cifra corregida 2026-08-07, la histórica 612 incluía 46
-> fixtures de tests ya barridos; los seeds del runner/local siembran el subconjunto base):
-> `finalize-server-render` y `letter-tiles` (env `NIGHTLY_LOCALSTACK` en `vitest.config.ts`).
+> reproducible. **F-06 (remediación R3 2026-09-26):** `rls-matrix` ADEMÁS corre en el gate por-PR
+> vía el job **`rls-behavior`** de `ci.yml` (mismo patrón localstack, solo las 2 suites RLS —
+> ~2s de tests; el stack tarda ~4-6 min en paralelo, sin inflar el camino crítico del gate).
+> Las suites `finalize-server-render` y `letter-tiles` ya NO se excluyen en el nightly
+> (A11-05, remediación R3): son autocontenidas — siembran sus propios fixtures (producto
+> efímero, diseños, PNG en Storage) en vez de depender del universo de la DB compartida de dev.
 > La postura de grants de prod (PostgREST cerrado para anon/authenticated) quedó codificada en
 > `supabase/migrations/00000000000022_revoke_anon_table_grants.sql` para que cualquier ambiente
 > nuevo la reproduzca.
@@ -368,7 +372,9 @@ describe("RLS: Customer isolation", () => {
 });
 ```
 
-> **CI:** `rls-coverage` corre en cada PR y bloquea merge si falla; `rls-matrix` corre en el nightly. `make test-rls` corre ambos localmente vía vitest.
+> **CI:** `rls-coverage` corre en cada PR y bloquea merge si falla; `rls-matrix` corre en cada PR
+> (job `rls-behavior`, desde 2026-09-26) y en el nightly. `make test-rls` corre ambos localmente
+> vía vitest.
 
 ---
 
@@ -388,11 +394,27 @@ describe("RLS: Customer isolation", () => {
 >
 > **Solo en nightly** (`.github/workflows/nightly-full.yml`, con el stack Supabase local levantado
 > en el propio runner): **`admin-login`/`admin-mfa`** y **`cms-editing-flow`** (crean usuarios vía
-> service role → necesitan GoTrue real). **Sin correr en CI:** la **regresión visual**
+> service role → necesitan GoTrue real). **F-05/F-10 (remediación R4 2026-09-26):** también en el
+> nightly, **`homolog-auth`** (registro → OTP Mailpit → login → recuperar → restablecer → login con
+> la clave nueva, de CLIENTE) y **`retracto-garantia-cliente`** (pedido DELIVERED → solicitar
+> retracto/garantía desde /mi-cuenta → acuse + fila PENDING en DB + casos de ventana vencida). El
+> localstack del nightly trae `enable_confirmations` + plantillas OTP `{{ .Token }}`
+> (`.github/ci/localstack/supabase/config.toml`) para que el flujo de email sea el real, y el job
+> corre con las llaves Turnstile always-pass de Cloudflare. Las **actions de auth** tienen además
+> unit tests (PR) e **integración contra GoTrue real**
+> (`app/(auth)/auth-actions.integration.test.ts` — anti-enumeración verificada contra el proveedor,
+> rate limit real que bloquea el intento 16, flujo OTP completo vía Mailpit) en el job
+> `vitest-supabase-real`.
+> **F-01 (remediación R3 2026-09-26):** el E2E de **compra
+> pagada real** (`wompi-sandbox.spec` — tarjeta 4242 en el checkout hospedado de Wompi sandbox →
+> webhook firmado → orden PAID + guía Aveonline sandbox) corre en el job **`e2e-wompi-sandbox`**
+> del nightly, gated por los secrets sandbox (`WOMPI_*` + `AVEONLINE_USUARIO/CLAVE`): si faltan,
+> el job se salta con warning (fail-suave) — pero su verde es **GATE DE RELEASE** (ver
+> § "Gate de release" abajo). Turnstile corre con las llaves de prueba públicas de Cloudflare
+> (always-pass) y el navegador es chromium completo (`PW_CHANNEL=chromium`: el anti-bot de Wompi
+> detecta el headless shell). **Sigue sin correr en CI:** la **regresión visual**
 > (`visual.spec`, snapshots por-píxel → requieren baseline en imagen pinneada para ser
-> deterministas cross-máquina) y el E2E de **compra pagada real** (Wompi sandbox, redirect +
-> retorno + webhook) — pendiente por fragilidad de red; hoy el pago se valida a nivel de webhook
-> en integración, no end-to-end en navegador.
+> deterministas cross-máquina).
 
 ### Ambiente E2E (`E2E_ENV`)
 
@@ -417,17 +439,17 @@ dashboard). Los códigos TOTP se generan con `tests/e2e/_helpers/totp.ts`.
 
 ### Flujos críticos (ESTADO OBJETIVO — no todos tienen E2E real)
 
-| Flujo                                 | Descripción                                                                          | Frecuencia objetivo         | Estado real (2026-08-01)                                                       |
-| ------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------- | ------------------------------------------------------------------------------ |
-| **Compra Wompi sandbox completa**     | Catálogo → PDP → carrito → checkout → tarjeta `4242` → orden PAID                    | Cada PR + cada deploy       | Objetivo — sin E2E; el pago se valida a nivel de webhook en integración        |
-| **Compra COD completa**               | Idem pero contraentrega                                                              | Cada PR                     | Objetivo — sin E2E dedicado                                                    |
-| **Personalización + compra**          | Estudio canvas → guardar diseño → checkout                                           | Cada PR                     | Parcial — `estudio` corre por PR; el flujo combinado hasta checkout pagado no  |
-| **Registro + login + reset password** | Auth completo                                                                        | Cada PR                     | Objetivo — auth de cliente sin E2E (`admin-login`/`admin-mfa` solo en nightly) |
-| **Aplicar cupón**                     | Cupón válido, vencido, agotado                                                       | Cada PR                     | Objetivo — sin E2E                                                             |
-| **Admin: crear producto**             | Login admin → CRUD producto → revalidate                                             | Cada PR                     | Objetivo — los E2E de admin corren solo en nightly                             |
-| **Admin: cambiar estado de orden**    | Manual con razón → email notificación                                                | Cada PR                     | Objetivo — sin E2E                                                             |
-| **Retracto**                          | Solicitar retracto → aprobar → recibir → reembolsar                                  | Fase 4+                     | Objetivo (Fase 4+)                                                             |
-| **Stock oversold (negative path)**    | Dos clientes compran último item simultáneamente → uno gana, otro recibe error claro | Cada PR (después de Fase 4) | Objetivo — sin E2E                                                             |
+| Flujo                                 | Descripción                                                                          | Frecuencia objetivo         | Estado real (2026-08-01)                                                                                                              |
+| ------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Compra Wompi sandbox completa**     | Catálogo → PDP → carrito → checkout → tarjeta `4242` → orden PAID                    | Cada PR + cada deploy       | **Nightly + release gate** (job `e2e-wompi-sandbox`, desde 2026-09-26; antes solo manual)                                             |
+| **Compra COD completa**               | Idem pero contraentrega                                                              | Cada PR                     | Objetivo — sin E2E dedicado                                                                                                           |
+| **Personalización + compra**          | Estudio canvas → guardar diseño → checkout                                           | Cada PR                     | Parcial — `estudio` corre por PR; el flujo combinado hasta checkout pagado no                                                         |
+| **Registro + login + reset password** | Auth completo                                                                        | Cada PR                     | **Nightly** (`homolog-auth`, desde 2026-09-26 R4) + unit (PR) + integración GoTrue real (nightly vitest)                              |
+| **Aplicar cupón**                     | Cupón válido, vencido, agotado                                                       | Cada PR                     | Objetivo — sin E2E                                                                                                                    |
+| **Admin: crear producto**             | Login admin → CRUD producto → revalidate                                             | Cada PR                     | Objetivo — los E2E de admin corren solo en nightly                                                                                    |
+| **Admin: cambiar estado de orden**    | Manual con razón → email notificación                                                | Cada PR                     | Objetivo — sin E2E                                                                                                                    |
+| **Retracto**                          | Solicitar retracto → aprobar → recibir → reembolsar                                  | Fase 4+                     | **Parcial** — cliente cubierto en nightly (`retracto-garantia-cliente`, R4 2026-09-26); el ciclo admin completo sigue siendo objetivo |
+| **Stock oversold (negative path)**    | Dos clientes compran último item simultáneamente → uno gana, otro recibe error claro | Cada PR (después de Fase 4) | Objetivo — sin E2E                                                                                                                    |
 
 ### Estructura
 
@@ -601,6 +623,17 @@ export default function () {
 
 ## Smoke tests post-deploy
 
+**Automatizado desde 2026-09-26 (F-08, remediación R3):** `.github/workflows/post-deploy-smoke.yml`
+corre `apps/web/scripts/post-deploy-smoke.mjs` contra PRD al completarse el CI de `production`,
+cada 30 min (schedule) y on-demand. Sonda `/api/health`, `/api/health/db`, `/api/health/crons`,
+`/` y `/productos` (todo GET público read-only, sin secrets) y **falla el workflow** si alguno no
+devuelve 200 — un smoke rojo post-deploy es señal de evaluar rollback (docs/OPERATIONS.md §
+Release strategy). Desde 2026-09-27 (A11R-04, remediación R7) las sondas HTML (`/` y `/productos`)
+además aserten contenido mínimo: marcadores estructurales estables del layout (`lang="es-CO"`,
+skip-link `href="#contenido"`, `<main id="contenido">`) — un 200 con body vacío/degradado ya no
+sale verde. El set de abajo queda como referencia del smoke E2E manual profundo
+(`release-check-a1.spec.ts`).
+
 Set mínimo de tests E2E que correr **inmediatamente después de un deploy a producción**. Si fallan: rollback automático.
 
 ```ts
@@ -651,25 +684,51 @@ test.describe.parallel("Smoke", () => {
 
 ## CI workflow
 
-> **Estado real (verificado 2026-09-03):** el CI real es `.github/workflows/ci.yml` (ramas
+> **Estado real (verificado 2026-09-03; actualizado 2026-09-26 con la remediación R3):** el CI real es `.github/workflows/ci.yml` (ramas
 > `develop`/`production`/`catalogo-whatsapp` — `main` NO existe) con estos jobs:
 >
-> - **`quality`** — typecheck + lint + build, más tres gates propios: la **auditoría de cobertura
+> - **`quality`** — typecheck + lint + build, más cuatro gates propios: la **auditoría de cobertura
 >   de contenido** (`packages/db/scripts/audit-content-coverage.mjs --check` — falla si aparece
 >   copy nuevo en español fuera del CMS o si el % global baja del baseline
 >   `content-coverage-baseline.json`; reporte local con `make audit-content`), el **lint de
 >   guards de scripts de DB** (`check-script-guards.mjs`, N-06 2026-09-12 — todo script que
->   escribe en DB debe importar `env-guard.mjs`; local con `make audit-script-guards`) y el
+>   escribe en DB debe importar `env-guard.mjs`; local con `make audit-script-guards`), los
+>   **tests de los guards** (`pnpm --filter @lucams/db test` — env-guard/zombie-settings/
+>   coupon-signal con `node --test`; R3 2026-09-26) y el
 >   **lint de voseo** (el copy es-CO es tuteo).
 > - **`unit-tests`** — `pnpm --filter web test:coverage` contra un Postgres service container
 >   (+ `supabase-compat.sql` y las SQL de `supabase/migrations`); incluye el gate de coverage y
->   `rls-coverage`. Los tests que exigen Supabase real saltan limpio.
+>   `rls-coverage`. Los tests que exigen Supabase real saltan limpio. Entre las migraciones Prisma
+>   y las SQL corre el **drift check Prisma ↔ Supabase** (`audit-schema-drift.mjs`, R3 2026-09-26):
+>   snapshot post-Prisma + check post-SQL; falla el PR si las dos fuentes del schema divergen
+>   (tolerancias documentadas: `rate_limit_buckets`; `AdminRecoveryCode`/A5-01 salió de la
+>   allowlist en R6 2026-09-27 — ya la crea la migración Prisma `20260926120000_admin_recovery_code`).
+> - **`rls-behavior`** (R3 2026-09-26) — `rls-coverage` + `rls-matrix` de COMPORTAMIENTO contra un
+>   Supabase localstack efímero en el runner (mismo patrón que el nightly). Promueve al gate de PR
+>   lo que antes solo se detectaba en la corrida nocturna.
 > - **`e2e`** — smoke + a11y + axe + compra + estudio contra el build de producción.
 > - **`lighthouse`**, **`secrets-scan`** (gitleaks), **`format-check`**, **`dep-audit`**
 >   (`pnpm audit --prod --audit-level=high`).
 >
-> El sketch de abajo queda como referencia de la estructura conceptual; RLS no es job aparte
-> (coverage corre en `unit-tests`, matrix en `.github/workflows/nightly-full.yml`).
+> El sketch de abajo queda como referencia de la estructura conceptual.
+
+### Gate de release (certificación)
+
+Además del gate por-PR, la certificación de un release exige **verde reciente del nightly**
+(`.github/workflows/nightly-full.yml`, on-demand con `workflow_dispatch` sobre el SHA del release)
+en estos jobs — su rojo bloquea la certificación:
+
+- **`e2e-supabase-real`** — incluye `admin-login` + `admin-mfa` (MFA admin obligatorio desde
+  2026-08-29) y `cms-editing-flow`. No están en el gate por-PR a propósito: exigen build +
+  navegador + GoTrue (~15 min) e inflarían cada PR; su red es este gate de release.
+- **`e2e-wompi-sandbox`** (F-01, R3 2026-09-26) — el journey de dinero E2E. Si el job se SALTA por
+  secrets sandbox ausentes, la certificación exige la **corrida manual equivalente**
+  (`scripts/e2e-fullmode.sh wompi-sandbox` con las llaves sandbox en `.env.local`) con artifacts
+  (`/tmp/e2e-tx-*.png`) archivados sobre el SHA del release — MANUAL_CONTROLLED.
+- **`vitest-supabase-real`** — suite completa contra Supabase real (incl. `rls-matrix`, las suites
+  autocontenidas de personalization y storage real).
+- **Post-deploy:** `post-deploy-smoke.yml` verde sobre el deploy del release (o su corrida manual
+  con `SMOKE_BASE_URL`).
 
 ```yaml
 # .github/workflows/ci.yml (estructura propuesta)

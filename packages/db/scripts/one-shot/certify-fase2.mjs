@@ -2,7 +2,7 @@
 /*
  * Certificación F2.0 — llamadas reales a Wompi sandbox + Aveonline.
  *
- * Uso:  node packages/db/scripts/certify-fase2.mjs
+ * Uso:  node packages/db/scripts/one-shot/certify-fase2.mjs
  * Requiere: set -a && source apps/web/.env.local && set +a
  *
  * Tests:

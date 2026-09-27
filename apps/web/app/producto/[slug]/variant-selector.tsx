@@ -379,7 +379,7 @@ export function VariantSelector({
     // catálogo (photoSlots↔sizeCm en polaroid/tiras) son elección real del cliente —
     // la foto y el tamaño se quieren ver aunque una implique la otra — y siguen visibles.
     // Requiere el dato normalizado en TODAS las variants (script
-    // packages/db/scripts/normalize-letterset-quantity.mjs): una variant sin quantity
+    // packages/db/scripts/one-shot/normalize-letterset-quantity.mjs): una variant sin quantity
     // rompe la correlación y la dimensión vuelve a mostrarse (degradación segura).
     const hiddenByLanguage = new Map<string, string>(); // hiddenKey -> "language"
     if (visibleKeys.includes("language")) {

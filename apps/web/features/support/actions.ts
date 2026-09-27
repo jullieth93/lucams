@@ -5,17 +5,15 @@
  *
  * Pipeline:
  *  1. Valida con Zod
- *  2. Rate-limit por IP (5 mensajes/día) y por email (3/día) para
+ *  2. Turnstile anti-bot (en dev sin secret pasa automáticamente)
+ *  3. Rate-limit por IP (5 mensajes/día) y por email (3/día) para
  *     mitigar spam — combinación cubre tanto botnets como un atacante
  *     único con muchos emails
- *  3. Crea SupportTicket en DB (status=OPEN)
- *  4. Loguea evento support.ticket.created
- *
- * Email a hola@lucamsshop.com se difiere a sub-bloque G (lib/resend.ts
- * + templates react-email). Por ahora solo persiste en DB.
- *
- * Turnstile: validación pendiente para sub-bloque F (cuando se cablée
- * el widget en el form).
+ *  4. Crea SupportTicket en DB (status=OPEN)
+ *  5. Loguea evento support.ticket.created
+ *  6. Emails vía Resend (lib/resend.ts + templates del registry), fire-and-forget
+ *     con after(): acuse al cliente y notificación interna a la setting
+ *     CONTACT_EMAIL (default hola@lucamsshop.com) con Reply-To al cliente.
  */
 
 import { headers } from "next/headers";

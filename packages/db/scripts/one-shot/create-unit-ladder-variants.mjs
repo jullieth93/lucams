@@ -28,15 +28,15 @@
  * env-guard fail-closed; backup JSON de las filas reactivadas en tmp/backups.
  *
  * Uso:
- *   cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/create-unit-ladder-variants.mjs          # DRY-RUN
- *   cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/create-unit-ladder-variants.mjs --apply  # ejecuta
+ *   cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/one-shot/create-unit-ladder-variants.mjs          # DRY-RUN
+ *   cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/one-shot/create-unit-ladder-variants.mjs --apply  # ejecuta
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
-import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+import { assertDestructiveAllowed } from "../lib/env-guard.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
@@ -47,7 +47,7 @@ assertDestructiveAllowed("create-unit-ladder-variants.mjs");
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes("--apply");
 const HERE = dirname(fileURLToPath(import.meta.url));
-const BACKUP_DIR = join(HERE, "..", "..", "..", "tmp", "backups");
+const BACKUP_DIR = join(HERE, "..", "..", "..", "..", "tmp", "backups");
 
 /**
  * Plan de restauración por familia. Precios en CENTAVOS COP.
@@ -204,7 +204,9 @@ async function main() {
         continue;
       }
       const name = `${plan.sizeCm} cm · ${n} unidades — Sin imán`;
-      console.log(`  ${APPLY ? "+" : "→"} ${nomagSku} NUEVA · ${name} · ${pesos(mirrorPrice)} (espejo)`);
+      console.log(
+        `  ${APPLY ? "+" : "→"} ${nomagSku} NUEVA · ${name} · ${pesos(mirrorPrice)} (espejo)`,
+      );
       if (APPLY) {
         await prisma.productVariant.create({
           data: {

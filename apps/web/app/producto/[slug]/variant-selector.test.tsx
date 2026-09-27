@@ -514,7 +514,7 @@ describe("VariantSelector — pack size 'Unidades' en la PDP (regla 2026-09-08b)
  * la cantidad del set la DEFINE el idioma (es=27 con Ñ, en=26) — no es elección del
  * cliente. El grupo "Cantidad" se oculta como selector y su valor se describe como
  * texto bajo el grupo "Idioma". Requiere el dato normalizado en TODAS las variants
- * (packages/db/scripts/normalize-letterset-quantity.mjs); si falta en alguna, la
+ * (packages/db/scripts/one-shot/normalize-letterset-quantity.mjs); si falta en alguna, la
  * correlación se rompe y el grupo vuelve a mostrarse (degradación segura).
  * Otras correlaciones 1:1 del catálogo (photoSlots↔sizeCm en polaroid/tiras) son
  * elección real del cliente y SIGUEN visibles — el gate es solo language.
