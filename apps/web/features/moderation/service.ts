@@ -5,6 +5,10 @@
  * TODOS los diseños de pedidos activos (PAID/FULFILLING) antes de producir. El gate del envío
  * (transitionOrderAction → SHIPPED) bloquea hasta que todos los diseños del pedido estén APPROVED.
  *
+ * A4-01 (cert 2026-09-26): la cola también incluye diseños COMPARTIDOS por link público
+ * (/d/<token>) aunque no tengan pedido ni cotización — son contenido público y deben
+ * moderarse igual. Rechazar un diseño revoca su link público (ver rejectDesign).
+ *
  * La app opera vía Prisma (rol privilegiado). Estas funciones son server-only.
  */
 
@@ -32,11 +36,15 @@ export type PendingModerationDesign = {
   productionUrls: string[];
   productName: string;
   createdAt: Date;
-  /** Pedidos Y cotizaciones que esperan por este diseño. */
+  /** Pedidos Y cotizaciones que esperan por este diseño. Vacío si el diseño
+   *  solo está COMPARTIDO por link público (A4-01). */
   sources: ModerationSource[];
+  /** true si el diseño tiene link público /d/<token> vivo (shareTokenHash != null). */
+  shared: boolean;
 };
 
-/** Cola de moderación: diseños PENDING de pedidos activos, más antiguos primero. */
+/** Cola de moderación: diseños PENDING de pedidos activos, cotizaciones activas
+ *  o COMPARTIDOS por link público, más antiguos primero. */
 export async function listPendingModeration(): Promise<PendingModerationDesign[]> {
   const designs = await prisma.design.findMany({
     where: {
@@ -45,6 +53,10 @@ export async function listPendingModeration(): Promise<PendingModerationDesign[]
       // Filtrar solo por pedidos la dejaba ESTRUCTURALMENTE vacía —no hay pedidos mientras la tienda
       // opera por cotización—, así que los 699 diseños de la base estaban en PENDING sin forma
       // humana de aprobarlos y toda hoja de taller habría salido marcada "no imprimir".
+      //
+      // A4-01 (cert 2026-09-26): la tercera rama (shareTokenHash != null) cubre los diseños
+      // SOLO-COMPARTIDOS — el cliente los publica en /d/<token> sin pedido ni cotización, y sin
+      // esta rama nunca pasaban por moderación pese a ser contenido público.
       OR: [
         {
           orderItems: {
@@ -56,6 +68,7 @@ export async function listPendingModeration(): Promise<PendingModerationDesign[]
             some: { quote: { status: { in: [...ACTIVE_QUOTE_STATUSES] }, deletedAt: null } },
           },
         },
+        { shareTokenHash: { not: null } },
       ],
     },
     orderBy: { createdAt: "asc" },
@@ -64,6 +77,8 @@ export async function listPendingModeration(): Promise<PendingModerationDesign[]
       previewUrl: true,
       productionUrls: true,
       createdAt: true,
+      // Solo para derivar `shared` (boolean) — el hash NUNCA sale del service.
+      shareTokenHash: true,
       product: { select: { name: true } },
       orderItems: {
         where: { order: { status: { in: [...ACTIVE_ORDER_STATUSES] }, deletedAt: null } },
@@ -81,6 +96,7 @@ export async function listPendingModeration(): Promise<PendingModerationDesign[]
     productionUrls: d.productionUrls,
     productName: d.product.name,
     createdAt: d.createdAt,
+    shared: d.shareTokenHash !== null,
     sources: dedupeSources([
       ...d.orderItems.map((o) => ({
         tipo: "pedido" as const,
@@ -114,6 +130,14 @@ export type RejectResult = { productName: string; sources: ModerationSource[] };
 /**
  * Rechaza un diseño (contenido no apto para imprimir). Devuelve la info para avisar al cliente
  * (pedidos afectados + producto). El gate impedirá que esos pedidos se marquen SHIPPED.
+ *
+ * A4-01 (cert 2026-09-26): el rechazo también REVOCA el link público /d/<token>
+ * (shareTokenHash=null) — un diseño rechazado no puede seguir publicado. Si luego
+ * se aprueba, el link NO se restaura: el token plano es irrecuperable por diseño
+ * (F-11, solo queda el hash); el cliente puede volver a compartir desde "Mis
+ * diseños" y eso genera un token NUEVO (el viejo queda muerto).
+ * No se toca previewUrl: las vistas de pedido/cotización la leen en vivo (misma
+ * regla que archiveCustomerDesign).
  */
 export async function rejectDesign(
   designId: string,
@@ -127,6 +151,7 @@ export async function rejectDesign(
       moderationReason: reason,
       moderatedAt: new Date(),
       moderatedById: adminId,
+      shareTokenHash: null,
     },
     select: {
       product: { select: { name: true } },

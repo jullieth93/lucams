@@ -17,6 +17,8 @@
 import "server-only";
 import { updateTag } from "next/cache";
 import { prisma, type Prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import { createSlugRenameRedirect, archiveRedirectOccupyingPath } from "@/features/redirects/service";
 import type { ProductCreateInput, ProductUpdateInput } from "./schemas";
 import { getEffectiveShippingDims } from "./shipping-schemas";
 
@@ -304,6 +306,22 @@ export async function createProduct(input: ProductCreateInput, createdBy: string
     return product;
   });
   updateTag("catalog");
+
+  // A11R-03 — alta con slug liberado: si un redirect activo ocupa la URL nueva
+  // (/producto/<slug>, p.ej. quedó de un rename previo), la página viva gana →
+  // archivarlo; si no, la PDP del producto nuevo sería inalcanzable (301 al
+  // renombrado) sin señal al admin. Best-effort (mismo criterio que A11-02):
+  // el alta ya quedó persistida; un fallo acá es warn, no error de la acción.
+  try {
+    await archiveRedirectOccupyingPath(`/producto/${created.slug}`, createdBy);
+  } catch (err) {
+    logger.warn({
+      event: "catalog.create_archive_redirect_fail",
+      entity: "product",
+      entityId: created.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
   return created;
 }
 
@@ -325,6 +343,11 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
     });
     if (conflict) throw new ProductValidationError("sku", `SKU "${rest.sku}" ya existe`);
   }
+
+  // A11-02 — slug público actual (para el redirect automático si cambia).
+  const prevSlug = rest.slug
+    ? (await prisma.product.findUnique({ where: { id }, select: { slug: true } }))?.slug
+    : undefined;
 
   // PR C — peso/dims se persisten dentro de physicalSpecs Json (mergeado
   // con specs existentes para no pisar otras keys como `material`).
@@ -391,6 +414,28 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
     },
   });
   updateTag("catalog");
+
+  // A11-02 — rename de slug público: la URL vieja (/producto/<slug>) quedaría
+  // en 404 inmediato (SEO, links de WhatsApp ya enviados, bot). Crear el
+  // UrlRedirect viejo→nuevo. Best-effort: el rename YA quedó persistido; un
+  // fallo acá no debe reportar "error al actualizar" — queda warn en logs.
+  if (prevSlug && updated.slug !== prevSlug) {
+    try {
+      await createSlugRenameRedirect({
+        fromPath: `/producto/${prevSlug}`,
+        toPath: `/producto/${updated.slug}`,
+        actorAdminId: updatedBy,
+        description: `Auto: slug de producto renombrado (${prevSlug} → ${updated.slug})`,
+      });
+    } catch (err) {
+      logger.warn({
+        event: "catalog.slug_rename_redirect_fail",
+        entity: "product",
+        entityId: id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
   return updated;
 }
 

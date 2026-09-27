@@ -11,6 +11,15 @@
  * Cache: `unstable_cache` con tag "catalog" → invalidación cuando admin
  * actualiza productos/categorías/ocasiones via `updateTag("catalog")`.
  *
+ * Gate de visibilidad (F-04 / A4-02, cert 2026-09-26): TODA query de productos
+ * de este módulo aplica el predicado compartido STOREFRONT_PRODUCT_WHERE de
+ * `@/features/products/storefront-visibility` (producto activo + no archivado
+ * + CATEGORÍA activa + no archivada) — el mismo que el stack SSR
+ * (features/products/public-service.ts). Antes el gate se escribía inline sin
+ * el filtro de categoría y los stacks divergían (cards fantasma → PDP 404).
+ * Las queries $queryRaw (searchCatalog) replican el gate con el JOIN a
+ * "Category" y quedan cubiertas por storefront-visibility.integration.test.ts.
+ *
  * try/catch silencioso devuelve [] o null si DB unreachable (build con placeholder).
  */
 
@@ -18,6 +27,10 @@ import { revalidateTag, unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { filterTemplatesByAspectRatio } from "@/features/personalization/template-visibility";
+import {
+  STOREFRONT_CATEGORY_WHERE,
+  STOREFRONT_PRODUCT_WHERE,
+} from "@/features/products/storefront-visibility";
 
 const CATALOG_TAG = "catalog";
 const CATALOG_TTL = 3600; // 1h
@@ -160,7 +173,10 @@ export const getCategoryTree = unstable_cache(
   async (): Promise<CategoryNode[]> => {
     try {
       const all = await prisma.category.findMany({
-        where: { deletedAt: null },
+        // Gate storefront (F-04): solo categorías activas y no archivadas —
+        // antes incluía las pausadas (isActive=false) y el mega-menú/API del
+        // bot enlazaban categorías que el stack SSR no muestra.
+        where: { ...STOREFRONT_CATEGORY_WHERE },
         // Desempate por nombre: si dos categorías tienen el mismo `order` (caso
         // común: todas en 0), Postgres devolvía orden indeterminado en el menú
         // del cliente. Bug reportado por Lucy 2026-06-27.
@@ -251,7 +267,7 @@ export const getCategoryBySlug = unstable_cache(
           },
         },
       });
-      if (!cat || cat.deletedAt) return null;
+      if (!cat || cat.deletedAt || !cat.isActive) return null;
       return {
         slug: cat.slug,
         name: cat.name,
@@ -356,19 +372,21 @@ type ProductWithIncludes = Awaited<ReturnType<typeof prisma.product.findFirst>> 
 export const listCatalogProducts = unstable_cache(
   async (filters: ProductListFilters): Promise<CatalogProductSummary[]> => {
     try {
-      const where: Record<string, unknown> = {
-        isActive: true,
-        deletedAt: null,
-      };
+      // Gate storefront compartido (F-04): incluye el filtro de CATEGORÍA
+      // (isActive + deletedAt) — sin él una categoría pausada/archivada dejaba
+      // sus productos visibles acá mientras el stack SSR los escondía.
+      const where: Record<string, unknown> = { ...STOREFRONT_PRODUCT_WHERE };
 
-      // Filtro por categoría/sub-categoría
+      // Filtro por categoría/sub-categoría (siempre CON el gate de categoría:
+      // el spread del where base ya lo aplica como AND, pero acá se reescribe
+      // la key `category`, así que hay que re-fusionarlo).
       if (filters.subCategorySlug) {
-        where.category = { slug: filters.subCategorySlug };
+        where.category = { ...STOREFRONT_CATEGORY_WHERE, slug: filters.subCategorySlug };
       } else if (filters.categorySlug) {
         // Match en categoría padre O cualquier sub-categoría hija
         where.OR = [
-          { category: { slug: filters.categorySlug } },
-          { category: { parent: { slug: filters.categorySlug } } },
+          { category: { ...STOREFRONT_CATEGORY_WHERE, slug: filters.categorySlug } },
+          { category: { ...STOREFRONT_CATEGORY_WHERE, parent: { slug: filters.categorySlug } } },
         ];
       }
 
@@ -379,10 +397,11 @@ export const listCatalogProducts = unstable_cache(
         where.personalizationKind = "NONE";
       }
 
-      // Filtro ocasión
+      // Filtro ocasión (misma regla que el stack SSR: solo ocasiones activas
+      // no archivadas matchean — una ocasión pausada no arrastra productos).
       if (filters.ocasionSlug) {
         where.ocasionTags = {
-          some: { ocasionTag: { slug: filters.ocasionSlug } },
+          some: { ocasionTag: { slug: filters.ocasionSlug, isActive: true, deletedAt: null } },
         };
       }
 
@@ -432,7 +451,10 @@ export const getCatalogProductDetail = unstable_cache(
   async (slug: string): Promise<CatalogProductDetail | null> => {
     try {
       const product = await prisma.product.findFirst({
-        where: { slug, isActive: true, deletedAt: null },
+        // Gate compartido (F-04): el detalle también se esconde si la categoría
+        // está pausada/archivada (antes solo miraba el producto → PDP del bot
+        // servía lo que el storefront ya no lista).
+        where: { slug, ...STOREFRONT_PRODUCT_WHERE },
         include: {
           category: { include: { parent: true } },
           variants: {
@@ -525,8 +547,10 @@ export const listOcasiones = unstable_cache(
         include: {
           // #6 — contar solo productos ACTIVOS no borrados (vía el pivot product), igual que el grid
           // y que los conteos de categoría; antes contaba todo el pivot y descuadraba con el grid.
+          // F-04 — con el gate COMPLETO (incluye categoría activa): un producto cuya categoría está
+          // pausada/archivada no aparece en /ocasion/[slug], así que tampoco cuenta acá.
           _count: {
-            select: { products: { where: { product: { isActive: true, deletedAt: null } } } },
+            select: { products: { where: { product: { ...STOREFRONT_PRODUCT_WHERE } } } },
           },
         },
       });
@@ -552,10 +576,11 @@ export const getOcasionBySlug = unstable_cache(
     try {
       const o = await prisma.ocasionTag.findUnique({
         where: { slug },
-        // #6 — ver listOcasiones: contar solo productos activos no borrados vía el pivot.
+        // #6 — ver listOcasiones: contar solo productos activos no borrados vía el pivot
+        // (F-04: con el gate completo, incluye categoría activa no archivada).
         include: {
           _count: {
-            select: { products: { where: { product: { isActive: true, deletedAt: null } } } },
+            select: { products: { where: { product: { ...STOREFRONT_PRODUCT_WHERE } } } },
           },
         },
       });
@@ -633,10 +658,9 @@ const DESTINATARIO_LABELS: Record<string, string> = {
  */
 export async function recommendProducts(input: RecommendInput): Promise<RecommendationResult[]> {
   try {
-    const where: Record<string, unknown> = {
-      isActive: true,
-      deletedAt: null,
-    };
+    // Gate storefront compartido (F-04): el recomendador/cross-sell/bot no
+    // sugiere productos cuya categoría está pausada o archivada.
+    const where: Record<string, unknown> = { ...STOREFRONT_PRODUCT_WHERE };
 
     // Personalización
     if (input.personalizationPreference === "personalizable") {
@@ -645,10 +669,11 @@ export async function recommendProducts(input: RecommendInput): Promise<Recommen
       where.personalizationKind = "NONE";
     }
 
-    // Filtro ocasión (al menos una match)
+    // Filtro ocasión (al menos una match; solo ocasiones activas no archivadas,
+    // misma regla que listCatalogProducts y el stack SSR)
     if (input.ocasionSlugs && input.ocasionSlugs.length > 0) {
       where.ocasionTags = {
-        some: { ocasionTag: { slug: { in: input.ocasionSlugs } } },
+        some: { ocasionTag: { slug: { in: input.ocasionSlugs }, isActive: true, deletedAt: null } },
       };
     }
 
@@ -764,16 +789,15 @@ export async function recommendProducts(input: RecommendInput): Promise<Recommen
 export const getCatalogFilters = unstable_cache(
   async (categorySlug?: string, subCategorySlug?: string): Promise<CatalogFilterContext> => {
     try {
-      const where: Record<string, unknown> = {
-        isActive: true,
-        deletedAt: null,
-      };
+      // Gate storefront compartido (F-04): los facets se calculan sobre el
+      // MISMO pool que ve el cliente (categoría pausada/archivada → fuera).
+      const where: Record<string, unknown> = { ...STOREFRONT_PRODUCT_WHERE };
       if (subCategorySlug) {
-        where.category = { slug: subCategorySlug };
+        where.category = { ...STOREFRONT_CATEGORY_WHERE, slug: subCategorySlug };
       } else if (categorySlug) {
         where.OR = [
-          { category: { slug: categorySlug } },
-          { category: { parent: { slug: categorySlug } } },
+          { category: { ...STOREFRONT_CATEGORY_WHERE, slug: categorySlug } },
+          { category: { ...STOREFRONT_CATEGORY_WHERE, parent: { slug: categorySlug } } },
         ];
       }
 
@@ -886,19 +910,27 @@ export async function searchCatalog(query: string, limit = 20): Promise<CatalogS
     // matchean estructuralmente los índices GIN de expresión de la migración
     // 00000000000031 (F-13, auditoría 2026-09-04) y el planner puede usarlos.
     // Semántica idéntica: el wrapper ejecuta el mismo unaccent por dentro.
+    // F-04 — gate de categoría: la query cruda no puede consumir
+    // STOREFRONT_PRODUCT_WHERE (es un fragmento Prisma), así que replica el
+    // mismo predicado con el JOIN a "Category" — idéntico al de
+    // searchStorefrontProducts (features/products/public-service.ts). El gate
+    // queda fijado por storefront-visibility.integration.test.ts (ambos stacks).
     const rows = await prisma.$queryRaw<Array<{ id: string; rank: number }>>`
-      SELECT id,
+      SELECT p.id,
              GREATEST(
-               similarity(public.immutable_unaccent(lower(name)), public.immutable_unaccent(lower(${q}))),
-               similarity(public.immutable_unaccent(lower(COALESCE("richDescription", ''))), public.immutable_unaccent(lower(${q})))
+               similarity(public.immutable_unaccent(lower(p.name)), public.immutable_unaccent(lower(${q}))),
+               similarity(public.immutable_unaccent(lower(COALESCE(p."richDescription", ''))), public.immutable_unaccent(lower(${q})))
              ) as rank
-      FROM "Product"
-      WHERE "isActive" = true
-        AND "deletedAt" IS NULL
+      FROM "Product" p
+      JOIN "Category" c ON c.id = p."categoryId"
+      WHERE p."isActive" = true
+        AND p."deletedAt" IS NULL
+        AND c."isActive" = true
+        AND c."deletedAt" IS NULL
         AND (
-          public.immutable_unaccent(lower(name)) % public.immutable_unaccent(lower(${q}))
-          OR public.immutable_unaccent(lower(COALESCE("richDescription", ''))) % public.immutable_unaccent(lower(${q}))
-          OR public.immutable_unaccent(lower(COALESCE("description", ''))) % public.immutable_unaccent(lower(${q}))
+          public.immutable_unaccent(lower(p.name)) % public.immutable_unaccent(lower(${q}))
+          OR public.immutable_unaccent(lower(COALESCE(p."richDescription", ''))) % public.immutable_unaccent(lower(${q}))
+          OR public.immutable_unaccent(lower(COALESCE(p."description", ''))) % public.immutable_unaccent(lower(${q}))
         )
       ORDER BY rank DESC
       LIMIT ${limit}
@@ -906,8 +938,10 @@ export async function searchCatalog(query: string, limit = 20): Promise<CatalogS
 
     if (rows.length === 0) return [];
 
+    // Re-fetch con el gate completo (defensa en profundidad: la query cruda ya
+    // filtró, pero si el gate cambia acá también se aplica).
     const products = await prisma.product.findMany({
-      where: { id: { in: rows.map((r) => r.id) } },
+      where: { id: { in: rows.map((r) => r.id) }, ...STOREFRONT_PRODUCT_WHERE },
       include: {
         category: { include: { parent: true } },
         variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
@@ -1046,77 +1080,3 @@ export const listPublicCoupons = unstable_cache(
   ["catalog-public-coupons"],
   { tags: [CATALOG_TAG, "coupons"], revalidate: 600 }, // 10 min — cupones cambian más rápido
 );
-
-// ─────────────────── Productos relacionados (PDP — decisión 6.4) ───────────────────
-// Scoring 3 capas: ocasión > sub-cat > cat. Excluye producto actual.
-
-export async function getRelatedProducts(
-  slug: string,
-  limit = 4,
-): Promise<CatalogProductSummary[]> {
-  try {
-    const current = await prisma.product.findUnique({
-      where: { slug },
-      include: {
-        category: true,
-        ocasionTags: { select: { ocasionTagId: true } },
-      },
-    });
-    if (!current) return [];
-
-    const ocasionIds = current.ocasionTags.map((t) => t.ocasionTagId);
-    // Buscar pool amplio: misma ocasión OR misma sub-cat OR misma cat
-    const where: Record<string, unknown> = {
-      isActive: true,
-      deletedAt: null,
-      slug: { not: slug },
-      OR: [
-        { ocasionTags: { some: { ocasionTagId: { in: ocasionIds } } } },
-        { categoryId: current.categoryId },
-        {
-          category: {
-            parentId: current.category.parentId ?? current.categoryId,
-          },
-        },
-      ],
-    };
-
-    const pool = await prisma.product.findMany({
-      where,
-      take: 30,
-      include: {
-        category: { include: { parent: true } },
-        variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
-        ocasionTags: {
-          include: { ocasionTag: { select: { slug: true, name: true } } },
-        },
-      },
-    });
-
-    // Scoring 3 capas
-    const scored = pool.map((p) => {
-      let score = 0;
-      // Capa 1: ocasión compartida (+3 cada una)
-      const sharedOcasiones = p.ocasionTags.filter((t) =>
-        ocasionIds.includes(t.ocasionTagId),
-      ).length;
-      score += sharedOcasiones * 3;
-      // Capa 2: misma sub-cat (+2)
-      if (p.categoryId === current.categoryId) score += 2;
-      // Capa 3: misma cat padre (+1)
-      else if (current.category.parentId && p.category.parentId === current.category.parentId) {
-        score += 1;
-      }
-      // Boost featured (+0.5)
-      if (p.isFeatured) score += 0.5;
-
-      return { product: p, score };
-    });
-
-    scored.sort((a, b) => b.score - a.score);
-
-    return scored.slice(0, limit).map((s) => summarizeProduct(s.product as ProductWithIncludes));
-  } catch {
-    return [];
-  }
-}

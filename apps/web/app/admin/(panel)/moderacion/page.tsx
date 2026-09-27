@@ -2,7 +2,8 @@
  * Admin — cola de moderación de contenido (ADR-062 P0-2).
  * Print-on-demand: Lucy revisa el contenido de cada diseño personalizado ANTES de imprimirlo.
  * Aprobar → habilita producción/envío. Rechazar → avisa al cliente con el motivo y bloquea el
- * envío del pedido. Solo diseños de pedidos activos (PAID/FULFILLING) pendientes de revisar.
+ * envío del pedido. Diseños de pedidos activos (PAID/FULFILLING), cotizaciones activas y
+ * diseños compartidos por link público (/d/<token>) pendientes de revisar (A4-01).
  */
 
 import type { Metadata } from "next";
@@ -157,6 +158,13 @@ export default async function AdminModeracionPage({
                         {s.tipo === "pedido" ? "Pedido" : "Cotización"} {s.numero}
                       </Link>
                     ))}
+                    {/* A4-01 — un diseño solo-compartido no tiene pedido/cotización:
+                        el badge explica por qué está en la cola (contenido público /d/<token>). */}
+                    {d.shared && (
+                      <span className="bg-brand-cream/60 text-brand-purple-dark rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                        Link público compartido
+                      </span>
+                    )}
                   </div>
                   <p className="text-brand-muted mt-1 text-xs">
                     En cola desde {dateFmt.format(d.createdAt)}

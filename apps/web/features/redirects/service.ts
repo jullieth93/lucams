@@ -295,6 +295,106 @@ export async function createRedirect(input: RedirectCreateInput, actorAdminId: s
   });
 }
 
+/**
+ * Redirect automático al RENOMBRAR un slug público (A11-02, cert 2026-09-26):
+ * producto (/producto/<slug>), categoría (/productos/<slug>[/...]) u ocasión
+ * (/ocasion/<slug>). Antes el rename dejaba las URLs viejas en 404 inmediato
+ * (SEO, links de WhatsApp, bot). Lo llaman los services de cada entidad DESPUÉS
+ * de un update exitoso, así que el fromPath ya no es una página viva por
+ * construcción (no se corre assertFromPathNotLive — los getters dinámicos de
+ * esa guardia están cacheados con tag "catalog" y podrían leer stale dentro de
+ * la misma acción).
+ *
+ * Política ante colisiones (decisión de dominio):
+ *   1. El rename es AUTORITATIVO sobre la URL vieja: si ya existe un redirect
+ *      (activo o archivado) con ese fromPath —p.ej. uno manual del admin— se
+ *      RE-APUNTA al slug nuevo y se reactiva (301). La alternativa (respetar el
+ *      manual) dejaría la URL vieja apuntando a un destino que ya no refleja el
+ *      catálogo.
+ *   2. Rename de vuelta (A→B→A): si el DESTINO ya es el fromPath de un redirect
+ *      activo, ese path vuelve a ser una página viva → el redirect se ARCHIVA
+ *      (dejarlo ocultaría la página y formaría bucle A↔B).
+ *   3. Cadenas: redirects activos que apuntaban a la URL vieja se re-apuntan a
+ *      la nueva (A→B→C se aplana en A→C + B→C), así nunca se forma cadena.
+ */
+export async function createSlugRenameRedirect(opts: {
+  fromPath: string;
+  toPath: string;
+  actorAdminId: string | null;
+  description?: string;
+}): Promise<void> {
+  const fromPath = normalizeFromPath(opts.fromPath); // minúsculas (#29)
+  const toPath = normalizePath(opts.toPath);
+  assertAllowedToPath(toPath);
+  if (fromPath === toPath.toLowerCase()) return; // slug sin cambio real
+
+  // (2) El destino vuelve a ser página viva → archivar el redirect que lo ocupa.
+  await prisma.urlRedirect.updateMany({
+    where: { fromPath: toPath.toLowerCase(), deletedAt: null },
+    data: { deletedAt: new Date(), deletedBy: opts.actorAdminId, isActive: false },
+  });
+
+  // (3) Aplanar cadenas: quien apuntaba a la URL vieja ahora apunta a la nueva.
+  await prisma.urlRedirect.updateMany({
+    where: { toPath: fromPath, isActive: true, deletedAt: null },
+    data: { toPath, updatedBy: opts.actorAdminId },
+  });
+
+  // (1) Upsert autoritativo sobre la URL vieja.
+  const description =
+    opts.description ?? `Redirect automático por cambio de slug (${fromPath} → ${toPath})`;
+  const existing = await prisma.urlRedirect.findUnique({ where: { fromPath } });
+  if (existing) {
+    await prisma.urlRedirect.update({
+      where: { id: existing.id },
+      data: {
+        toPath,
+        statusCode: 301,
+        description: existing.description ?? description,
+        isActive: true,
+        deletedAt: null,
+        deletedBy: null,
+        updatedBy: opts.actorAdminId,
+      },
+    });
+  } else {
+    await prisma.urlRedirect.create({
+      data: {
+        fromPath,
+        toPath,
+        statusCode: 301,
+        description,
+        isActive: true,
+        createdBy: opts.actorAdminId,
+      },
+    });
+  }
+}
+
+/**
+ * A11R-03 (revisión adversarial de la remediación, 2026-09-27) — ALTA con slug
+ * liberado: si un redirect activo ocupa la URL de la entidad NUEVA (típicamente
+ * quedó de un rename previo: A→B deja `/producto/A → /producto/B` y luego se crea
+ * un producto nuevo con slug A), el proxy serviría el 301 ANTES que la página
+ * (proxy.ts) → la entidad nueva queda inalcanzable sin señal al admin.
+ *
+ * Política: la página VIVA gana — el redirect que ocupa la URL nueva se ARCHIVA.
+ * Es exactamente el paso (2) de createSlugRenameRedirect, aplicado al alta (en el
+ * rename ese paso cubre el "rename de vuelta" A→B→A; acá cubre el reuso por alta).
+ * Lo llaman los services de catálogo DESPUÉS de crear la entidad, best-effort:
+ * el alta ya quedó persistida; un fallo acá es warn en logs, no error de la acción.
+ */
+export async function archiveRedirectOccupyingPath(
+  path: string,
+  actorAdminId: string | null,
+): Promise<void> {
+  const fromPath = normalizeFromPath(path); // minúsculas (#29) — llave del proxy
+  await prisma.urlRedirect.updateMany({
+    where: { fromPath, deletedAt: null },
+    data: { deletedAt: new Date(), deletedBy: actorAdminId, isActive: false },
+  });
+}
+
 export type RedirectUpdateInput = {
   id: string;
   toPath: string;

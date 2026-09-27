@@ -33,7 +33,16 @@ vi.mock("next/navigation", () => ({
     throw new RedirectError(to);
   },
 }));
-vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+vi.mock("next/cache", () => ({
+  revalidatePath: () => {},
+  // unstable_cache passthrough: las acciones importan (transitivo, vía
+  // products/service → features/redirects/service) lib/catalog, que lo invoca
+  // a nivel de módulo (mismo patrón que los integration tests de catálogo).
+  unstable_cache:
+    (fn: (...args: unknown[]) => unknown) =>
+    (...args: unknown[]) =>
+      fn(...args),
+}));
 vi.mock("@/lib/auth", () => ({ getCurrentAdmin: async () => state.session }));
 vi.mock("@/lib/supabase/server", () => ({
   createSupabaseServerClient: async () => ({

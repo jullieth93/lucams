@@ -213,6 +213,19 @@ describe("getSharedDesign (vista pública)", () => {
     expect(row!.status).toBe("ARCHIVED");
     expect(row!.shareTokenHash).toBeNull();
   });
+
+  it("A4-01 — no resuelve un diseño REJECTED aunque el shareTokenHash siga presente", async () => {
+    // Defensa en profundidad: rejectDesign ya revoca el hash (cubierto en
+    // features/moderation/service.integration.test.ts), pero si un dato histórico
+    // o un re-compartir del cliente dejara un link vivo sobre un diseño rechazado,
+    // la vista pública igual no lo sirve.
+    const shareId = await makeDesign({ customerId: ownerId, status: "READY" });
+    const token = (await ensureDesignShareToken(shareId, ownerId))!;
+    expect(await getSharedDesign(token)).not.toBeNull();
+
+    await prisma.design.update({ where: { id: shareId }, data: { moderationStatus: "REJECTED" } });
+    expect(await getSharedDesign(token)).toBeNull();
+  });
 });
 
 describe("archiveCustomerDesign", () => {

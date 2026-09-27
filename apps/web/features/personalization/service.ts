@@ -1627,11 +1627,19 @@ export async function revokeDesignShareToken(
  * (el preview puede incluir su foto); el token va solo a quien él se lo mande.
  *
  * F-11: el lookup es por el hash sha256 del token (la columna en claro ya no existe).
+ *
+ * A4-01 (cert 2026-09-26): tampoco expone diseños RECHAZADOS por moderación.
+ * rejectDesign ya revoca el shareTokenHash (el link muere en origen), pero este
+ * filtro es defensa en profundidad ante datos históricos o un re-compartir del
+ * cliente (ensureDesignShareToken puede regenerar token sobre un diseño REJECTED).
  */
 export async function getSharedDesign(shareToken: string) {
   if (!/^[a-f0-9]{32}$/.test(shareToken)) return null;
-  const design = await prisma.design.findUnique({
-    where: { shareTokenHash: hashBearerToken(shareToken) },
+  const design = await prisma.design.findFirst({
+    where: {
+      shareTokenHash: hashBearerToken(shareToken),
+      moderationStatus: { not: "REJECTED" },
+    },
     select: {
       previewUrl: true,
       status: true,

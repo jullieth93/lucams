@@ -6,6 +6,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
+import { ensureDesignShareToken, getSharedDesign } from "@/features/personalization/service";
 import {
   listPendingModeration,
   approveDesign,
@@ -166,5 +167,66 @@ describe("moderation service", () => {
   it("un pedido sin diseños personalizados no bloquea el envío", async () => {
     const plain = await makeOrder("PLAIN", null);
     expect(await orderHasUnmoderatedDesigns(plain.id)).toBe(false);
+  });
+});
+
+// A4-01 (cert 2026-09-26): un diseño COMPARTIDO por link público (/d/<token>) es
+// contenido público y debe pasar por moderación aunque no tenga pedido ni
+// cotización; rechazarlo revoca el link.
+describe("diseños compartidos por link público (A4-01)", () => {
+  async function makeSharedDesign(): Promise<{ id: string; token: string }> {
+    const id = (
+      await prisma.design.create({
+        data: {
+          customerId,
+          productId,
+          status: "READY",
+          canvasData: {},
+          previewUrl: "https://cdn.lucams.test/shared.png",
+        },
+        select: { id: true },
+      })
+    ).id;
+    const token = (await ensureDesignShareToken(id, customerId))!;
+    return { id, token };
+  }
+
+  it("un diseño SOLO-compartido (sin pedido/cotización) aparece en la cola, shared=true y sin sources", async () => {
+    const { id } = await makeSharedDesign();
+    const rows = await listPendingModeration();
+    const mine = rows.find((r) => r.designId === id);
+    expect(mine).toBeTruthy();
+    expect(mine!.shared).toBe(true);
+    expect(mine!.sources).toEqual([]);
+  });
+
+  it("compartir → rechazar: /d/<token> deja de resolver y el shareTokenHash queda revocado", async () => {
+    const { id, token } = await makeSharedDesign();
+    expect(await getSharedDesign(token)).not.toBeNull();
+
+    await rejectDesign(id, ADMIN_ID, "Contenido no apto");
+
+    const row = await prisma.design.findUnique({
+      where: { id },
+      select: { moderationStatus: true, shareTokenHash: true },
+    });
+    expect(row!.moderationStatus).toBe("REJECTED");
+    // Revocación real en origen: el link muere aunque el token circule por ahí.
+    expect(row!.shareTokenHash).toBeNull();
+    expect(await getSharedDesign(token)).toBeNull();
+    // Y sale de la cola (ya no está PENDING).
+    const rows = await listPendingModeration();
+    expect(rows.some((r) => r.designId === id)).toBe(false);
+  });
+
+  it("aprobar un diseño compartido NO toca el link (sigue resolviendo) y sale de la cola", async () => {
+    // Decisión de dominio: aprobar conserva el share. (El camino inverso no existe:
+    // un diseño rechazado perdió el hash y re-aprobarlo NO restaura el link viejo —
+    // el cliente re-comparte y genera token nuevo; ver rejectDesign en service.ts.)
+    const { id, token } = await makeSharedDesign();
+    await approveDesign(id, ADMIN_ID);
+    expect(await getSharedDesign(token)).not.toBeNull();
+    const rows = await listPendingModeration();
+    expect(rows.some((r) => r.designId === id)).toBe(false);
   });
 });
