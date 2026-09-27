@@ -27,10 +27,14 @@ legacy → soft-404 en DBs frescas (saneado) y el nightly sembraba solo el delta
 completa). **Gates de recertificación: 4275/4275 tests verdes, typecheck/lint/build/RLS 58/58/drift
 0, E2E local verde.** Adversario + juez de evidencia sobre la remediación: fixes SOBREVIVEN.
 Informe: `docs/audits/2026-09-26-release-certification.md` (anexos en `tmp/audit-20260926-cert/`).
-**Estado: NOT_CERTIFIED hasta cerrar lo operativo:** commit+push con CI verde, secrets sandbox
-Wompi/Aveonline en GitHub (job e2e-wompi-sandbox), nightly verde sobre el SHA remediado, añadir
-`rls-behavior` a required checks, decisiones owner (modo release = full; push directo a production)
-y verificar la migración `20260926120000_admin_recovery_code` en STG/PRD con el deploy.
+**Estado: NOT_CERTIFIED hasta cerrar lo operativo.** Ya HECHO (2026-09-27): paquete en 4 commits
+convencionales pusheado a `develop` (`ce74f6d`…`0ba0fa6`), **CI 8/8 verde sobre `0ba0fa6`** (incl.
+el nuevo job `rls-behavior`), **nightly verde sobre `c326d1b`** (E2E completo con seeds reparados +
+homolog-auth + retracto + MFA; el job de dinero saltó por diseño: secrets sandbox ausentes).
+Pendiente: secrets sandbox Wompi/Aveonline en GitHub (job e2e-wompi-sandbox), añadir `rls-behavior`
+a required checks, decisiones owner (modo release = full; push directo a production), verificar la
+migración `20260926120000_admin_recovery_code` en STG/PRD con el deploy y primera corrida del
+post-deploy-smoke.
 
 <details><summary>Historial de resúmenes anteriores</summary>
 
