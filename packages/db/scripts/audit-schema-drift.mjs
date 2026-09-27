@@ -56,6 +56,13 @@ const KNOWN_SQL_ONLY_TABLES = new Map([
     "SQL-only (supabase/migrations/003); drift tolerado documentado en headers de migraciones Prisma",
   ],
   ["_prisma_migrations", "tabla interna de Prisma (historial de migraciones)"],
+  // Monitor de uptime en STG (scripts/monitor-uptime-stg.sql, pg_net cada 12 min):
+  // drift INTENCIONAL — solo existe en STG, no en LOCAL/PRD ni en el pipeline CI.
+  [
+    "uptime_monitor_requests",
+    "SQL-only STG (scripts/monitor-uptime-stg.sql); drift intencional STG",
+  ],
+  ["uptime_monitor_state", "SQL-only STG (scripts/monitor-uptime-stg.sql); drift intencional STG"],
 ]);
 
 // Tablas declaradas en schema.prisma cuyo CREATE TABLE vive SOLO en las SQL de
