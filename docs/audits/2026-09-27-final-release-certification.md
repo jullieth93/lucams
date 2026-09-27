@@ -117,8 +117,8 @@ gemelas -NOMAG (ADR-099), password_min_length auth (no config-as-code, P4).
 1. **F-07 (P2, decisión owner):** push directo a `production` despliega sin esperar gates
    (convención actual = push ff). Requiere decisión explícita: restringir o aceptar.
 2. **A9-09 (P3):** rollback de despliegue nunca ensayado (drill o aceptación explícita).
-3. **Required check pendiente:** `RLS behavior` corre en PRs pero aún no bloquea merges a
-   `production` hasta agregarlo en Settings → Branches.
+3. **Required check pendiente:** ~~`RLS behavior` corre en PRs pero aún no bloquea~~ **RESUELTO
+   2026-09-27:** `production` exige los 8 checks incl. `RLS behavior` (verificado por API).
 4. **Deploy pendiente:** aplicar migración en PRD + primera corrida del post-deploy-smoke.
 
 # Accepted risks
