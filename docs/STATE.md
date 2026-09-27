@@ -27,19 +27,15 @@ legacy → soft-404 en DBs frescas (saneado) y el nightly sembraba solo el delta
 completa). **Gates de recertificación: 4275/4275 tests verdes, typecheck/lint/build/RLS 58/58/drift
 0, E2E local verde.** Adversario + juez de evidencia sobre la remediación: fixes SOBREVIVEN.
 Informe: `docs/audits/2026-09-26-release-certification.md` (anexos en `tmp/audit-20260926-cert/`).
-**Estado: CÓDIGO CERTIFICADO — pendientes solo 3 acciones operativas/de decisión.** Ya HECHO
-(2026-09-27): paquete en 6 commits en `develop` (`ce74f6d`…`7f07c43`), **CI 8/8 verde** (incl. el
-nuevo job `rls-behavior`), **nightly 4/4 verde sobre `7f07c43` incluido el E2E DE DINERO en CI**
-(checkout Wompi sandbox 4242 → PAID → guía Aveonline real, con secrets sandbox cargados y fixture
-idempotente de pickup settings — el primer intento reveló que el localstack no los tenía y se
-corrigió la causa raíz). Pendiente: ① ~~añadir `RLS behavior` a los required checks~~ **HECHO 2026-09-27 vía API (PATCH) —
-la regla de `production` ya exige los 8 checks**, ② decisión owner sobre push directo a
-`production` (F-07), ③ drill de rollback o aceptación explícita (A9-09), ④ con el deploy a PRD:
-verificar `prisma migrate deploy` (incluye `20260926120000_admin_recovery_code`, ya aplicada y
-verificada en STG) y la primera corrida del post-deploy-smoke. **Informe final formal:
-`docs/audits/2026-09-27-final-release-certification.md` — veredicto NOT_CERTIFIED solo por ②③
-(decisiones owner); el código está completo y verde.**
-Modo del release: `full` (decisión vigente de Lucy 2026-09-03).
+**Estado: ✅ CERTIFIED (2026-09-27, ADR-105).** Paquete en `develop` (`ce74f6d`…`fcc912c`), CI 8/8
+y nightly 4/4 verdes (incl. E2E de dinero Wompi sandbox 4242 → PAID → guía real). Decisiones owner
+registradas en ADR-105: **F-07 restringido** (`production` exige PR + 8 required checks, verificado
+por API) y **rollback = riesgo aceptado firmado** (forward-fix + post-deploy-smoke como mitigación).
+Veredicto formal: `docs/audits/2026-09-27-final-release-certification.md` → **CERTIFIED** sobre
+`develop@fcc912c` (árbol de producto `7f07c43`). Pendiente solo del deploy: ① PR
+`develop`→`production` (nuevo flujo con PR obligatorio — el push directo quedó cerrado), ②
+`prisma migrate deploy` en PRD (ya verificado en STG; pasos en la sección de la sesión), ③ primera
+corrida del post-deploy-smoke, ④ verificación funcional rápida en PRD.
 
 <details><summary>Historial de resúmenes anteriores</summary>
 
