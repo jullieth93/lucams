@@ -17,3 +17,23 @@ project_id = "lucams-ci"
 [auth.mfa.totp]
 enroll_enabled = true
 verify_enabled = true
+
+# Flujo OTP de auth cliente en el nightly (F-05, remediación R4 2026-09-26):
+# homolog-auth.spec y app/(auth)/auth-actions.integration.test.ts ejercen el
+# registro/recuperación REALES leyendo el código {{ .Token }} del Mailpit del
+# stack (localhost:54324). Sin enable_confirmations + plantillas OTP, GoTrue
+# autoconfirma el signup y manda un link PKCE genérico — nada que ver con el
+# flujo de PRD (mismo criterio que supabase-local/supabase/config.toml; las
+# plantillas son copia de las de ese directorio). El content_path se resuelve
+# relativo a ESTE workdir.
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+
+[auth.email.template.confirmation]
+subject = "Tu código de confirmación — Lucams (CI)"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Tu código para restablecer la contraseña — Lucams (CI)"
+content_path = "./supabase/templates/recovery.html"

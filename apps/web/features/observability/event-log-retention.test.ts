@@ -82,7 +82,9 @@ describe("purgeExpiredEventLogs", () => {
     const reportCutoff = (errorReportWhere.lastSeenAt.lt as Date).getTime();
     for (const cutoff of [logCutoff, reportCutoff]) {
       const ageDays = (before - cutoff) / DAY_MS;
-      expect(ageDays).toBeGreaterThanOrEqual(90);
+      // La función calcula el cutoff con su propio Date.now() (>= before), así que la edad
+      // medida desde `before` es 90 días menos los ms de ejecución: cota inferior con epsilon.
+      expect(ageDays).toBeGreaterThanOrEqual(89.9999);
       expect(ageDays).toBeLessThan(91);
       expect(cutoff).toBeLessThanOrEqual(after - 90 * DAY_MS + 1000);
     }
