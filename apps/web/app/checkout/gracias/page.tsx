@@ -37,7 +37,7 @@ import { getClientIp } from "@/lib/client-ip";
 import { rateLimit } from "@/lib/rate-limit";
 import { isCatalogMode } from "@/lib/store-mode";
 import { ClearCheckoutSession } from "./clear-checkout-session";
-import { processPaidOrder } from "@/features/orders/saga";
+import { processPaidOrder, flagForeignApprovedPayment } from "@/features/orders/saga";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { getCurrentCustomer } from "@/lib/auth";
@@ -149,6 +149,8 @@ export default async function CheckoutGraciasPage({
       email: true,
       shippingCarrier: true,
       shippingAddress: true,
+      // F-02 — necesario para detectar un APPROVED de una tx distinta a la que pagó.
+      wompiTransactionId: true,
       // F-11 — el publicAccessToken ya no se puede releer de la DB (solo hash);
       // el invitado rastrea su pedido desde /rastrear (número + correo).
       // ADR-070 (pieza #1) — miniaturas de lo que pediste; el diseño usa su snapshot autocontenido.
@@ -165,6 +167,20 @@ export default async function CheckoutGraciasPage({
   });
 
   if (tx.status === "APPROVED") {
+    // F-02 (certificación release 2026-09-26) — la misma comparación que la saga:
+    // si la orden YA está pagada y este APPROVED viene de una tx DISTINTA, es un
+    // segundo cobro real sobre la misma reference. Acá la saga NO corre (el
+    // fallback solo dispara desde PENDING_PAYMENT), así que sin este guard el
+    // doble cobro quedaría invisible si además el webhook de la 2ª tx se perdió.
+    // No muta estado ni dispara side effects: solo marca needsReconciliation.
+    if (order && order.status !== "PENDING_PAYMENT") {
+      await flagForeignApprovedPayment({
+        orderId: order.id,
+        orderNumber: order.number,
+        paidTxId: order.wompiTransactionId,
+        incomingTxId: tx.id,
+      });
+    }
     // P0-012 — Fallback idempotente: si la Order sigue en PENDING_PAYMENT,
     // el webhook Wompi no llegó (o se demoró). Disparamos processPaidOrder
     // acá. Si ya pasó por el webhook, processPaidOrder retorna
@@ -225,6 +241,7 @@ export default async function CheckoutGraciasPage({
             email: true,
             shippingCarrier: true,
             shippingAddress: true,
+            wompiTransactionId: true,
             items: {
               select: {
                 id: true,

@@ -18,6 +18,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { notify } from "@/features/notifications/service";
 import { getCodReconciliationTotals } from "@/features/orders/cod-reconciliation";
+import { EXPIRE_PENDING_ACTOR } from "@/features/orders/expire-pending";
 import { getSloStatus } from "./slos";
 import { getEmailDeliverabilityStats } from "./email-deliverability";
 
@@ -49,6 +50,14 @@ export type DailySummary = {
   errors24h: number;
   topErrorRoute: string | null;
   needsReconciliation: number;
+  // F-03 (certificación release 2026-09-26) — órdenes WOMPI canceladas por el cron
+  // expire-pending en las últimas 24h con veredicto `no_txid` (nunca se persistió
+  // una transacción). La cancelación fue a ciegas: si Wompi cobró pero el webhook
+  // se perdió del todo y el cliente no volvió a /checkout/gracias, hay una venta
+  // cobrada y cancelada. NO llevan needsReconciliation (el abandono antes de pagar
+  // es el caso común y el flag crítico se devaluaría); se hacen visibles ACÁ para
+  // el cruce diario contra el panel Wompi.
+  expiredPendingWompi24h: number;
   // ADR-066 — SLOs incumplidos (con datos suficientes) para alertar en el resumen.
   breachedSlos: string[];
   // N-04 — entregabilidad de email (7 días): la línea de atención sale solo cuando
@@ -81,6 +90,7 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     errors24h,
     topErrorRaw,
     needsReconciliation,
+    expiredPendingWompi24h,
     codRecon,
     slos,
     emailStats,
@@ -145,6 +155,20 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
       take: 1,
     }),
     prisma.order.count({ where: { needsReconciliation: true, deletedAt: null } }),
+    // F-03 — canceladas por el cron expire-pending SIN txId persistido (veredicto
+    // no_txid): la ventana la da updatedAt (el cron las tocó al cancelar). Con txId
+    // verificado-not_approved o con flag ya tienen su canal (quedan fuera).
+    prisma.order.count({
+      where: {
+        paymentMethod: "WOMPI",
+        status: "CANCELLED",
+        updatedBy: EXPIRE_PENDING_ACTOR,
+        wompiTransactionId: null,
+        needsReconciliation: false,
+        deletedAt: null,
+        updatedAt: { gte: from },
+      },
+    }),
     // ADR-064 — fuente ÚNICA de los KPIs de conciliación COD (evita divergencia con /admin/finanzas).
     getCodReconciliationTotals(),
     // ADR-066 — SLOs incumplidos con datos suficientes.
@@ -172,6 +196,7 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     errors24h,
     topErrorRoute: topErrorRaw[0]?.routePath ?? null,
     needsReconciliation,
+    expiredPendingWompi24h,
     breachedSlos: slos.filter((s) => s.status === "breached").map((s) => s.label),
     emailBounceRateAlert: emailStats.bounceRateAlert,
     emailBounceRatePct: emailStats.bounceRatePct,
@@ -201,6 +226,10 @@ export function buildDailySummaryEmail(
   if (s.needsReconciliation > 0)
     attention.push(
       `🔴 <strong>${s.needsReconciliation}</strong> orden(es) necesitan reconciliación — /admin/pedidos (filtro "Necesitan atención")`,
+    );
+  if (s.expiredPendingWompi24h > 0)
+    attention.push(
+      `💳 <strong>${s.expiredPendingWompi24h}</strong> pedido(s) Wompi expiraron sin pago confirmado (24h) — cruza contra el panel Wompi: si alguno figura APPROVED, fue una venta cobrada y cancelada`,
     );
   for (const slo of s.breachedSlos)
     attention.push(`📉 SLO incumplido: <strong>${escapeHtml(slo)}</strong> — /admin/observability`);
@@ -289,6 +318,9 @@ export function buildDailySummaryEmail(
     ``,
     `Necesitan atención:`,
     s.needsReconciliation > 0 ? `- ${s.needsReconciliation} orden(es) a reconciliar` : null,
+    s.expiredPendingWompi24h > 0
+      ? `- ${s.expiredPendingWompi24h} pedido(s) Wompi expirados sin pago confirmado — cruzar contra el panel Wompi`
+      : null,
     s.pendingReviews > 0 ? `- ${s.pendingReviews} reseña(s) por aprobar` : null,
     s.lowStock > 0 ? `- ${s.lowStock} variante(s) con stock bajo (<=5)` : null,
     s.errors24h > 0
