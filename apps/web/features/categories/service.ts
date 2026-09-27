@@ -2,7 +2,10 @@ import "server-only";
 import { updateTag } from "next/cache";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { createSlugRenameRedirect, archiveRedirectOccupyingPath } from "@/features/redirects/service";
+import {
+  createSlugRenameRedirect,
+  archiveRedirectOccupyingPath,
+} from "@/features/redirects/service";
 import type { CategoryCreateInput } from "./schemas";
 
 export class CategoryValidationError extends Error {
