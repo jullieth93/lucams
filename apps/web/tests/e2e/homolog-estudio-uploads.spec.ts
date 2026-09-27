@@ -316,7 +316,11 @@ test("matriz de uploads del Estudio: consent + JPG/PNG/WebP/HEIC/>4.5MB/>10MB/no
     createdStoragePaths.push(...assets.map((a) => a.storageUrl));
 
     const [jpg, png, webp, heic, big] = assets;
-    expect(jpg!.mimeType).toBe("image/jpeg");
+    // El JPG del fixture (800×600) queda bajo la resolución de impresión del
+    // Polaroid (~709px @300DPI para 6cm) y el upscale en línea (C2, 2026-09-15)
+    // lo re-codifica a WebP cuando el browser lo soporta: ambos mimes son el
+    // comportamiento correcto.
+    expect(["image/jpeg", "image/webp"]).toContain(jpg!.mimeType);
     expect(png!.mimeType).toBe("image/png");
     expect(webp!.mimeType).toBe("image/webp");
     expect(heic!.mimeType, "el HEIC quedó transcodificado a JPEG").toBe("image/jpeg");
@@ -325,7 +329,8 @@ test("matriz de uploads del Estudio: consent + JPG/PNG/WebP/HEIC/>4.5MB/>10MB/no
       true,
       `jpg=${jpg!.mimeType} png=${png!.mimeType} webp=${webp!.mimeType} heic→${heic!.mimeType}`,
     );
-    expect(big!.mimeType).toBe("image/jpeg");
+    // El bigJpg (>2 MB) pasa por el compresor en línea, que también entrega WebP.
+    expect(["image/jpeg", "image/webp"]).toContain(big!.mimeType);
     expect(Math.max(big!.width, big!.height)).toBeLessThanOrEqual(2400);
     expect(big!.sizeBytes).toBeLessThan(4 * MB);
     record(

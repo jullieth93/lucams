@@ -45,9 +45,17 @@ export function WarrantyControl({
 
   if (item.activeClaimStatus) {
     return (
-      <p className="bg-brand-purple/5 text-brand-purple-dark mt-1.5 inline-block rounded-md px-2 py-1 text-[11px] font-medium">
-        {STATUS_LABEL[item.activeClaimStatus] ?? item.activeClaimStatus}
-      </p>
+      <>
+        {/* La action revalida la página en el mismo render que devuelve
+            state.success: sin este guard el badge tapaba el mensaje y la rama
+            de éxito era inalcanzable (R4/R6). El badge persistente no cambia. */}
+        {state?.success && (
+          <p className="mt-1.5 text-[11px] font-medium text-emerald-700">{state.success}</p>
+        )}
+        <p className="bg-brand-purple/5 text-brand-purple-dark mt-1.5 inline-block rounded-md px-2 py-1 text-[11px] font-medium">
+          {STATUS_LABEL[item.activeClaimStatus] ?? item.activeClaimStatus}
+        </p>
+      </>
     );
   }
 

@@ -3,7 +3,8 @@
  *
  * Flujo:
  *   1. Validar input con Zod.
- *   2. Rate-limit por IP (5 intentos / 15 min) para mitigar brute force.
+ *   2. Rate-limit por IP y por email (15 intentos / 15 min en prod, 50 en dev)
+ *      para mitigar brute force.
  *   3. supabase.auth.signInWithPassword(...).
  *   4. En éxito: redirect a `/` (la cookie ya está escrita por proxy.ts).
  *   5. En error: devolver { error } sin distinguir "email no existe" de
