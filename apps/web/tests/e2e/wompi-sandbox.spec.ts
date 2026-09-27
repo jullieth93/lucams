@@ -27,6 +27,7 @@ import "../setup-env";
 import crypto from "node:crypto";
 import { PrismaClient } from "@lucams/db";
 import { dismissCookieBanner } from "./fixtures/auth";
+import { ensurePickupSettings, type PickupSettingsHandle } from "./fixtures/pickup-settings";
 
 const prisma = new PrismaClient();
 const RUN = `wompi-e2e-${Date.now()}`;
@@ -38,6 +39,7 @@ let slug = "";
 let orderId = "";
 let orderNumber = "";
 let wompiTxId = "";
+let pickupSettings: PickupSettingsHandle | null = null;
 
 const strip = (v: string | undefined) => v?.replace(/^["']|["']$/g, "");
 const WOMPI_EVENTS_SECRET = strip(process.env.WOMPI_EVENTS_SECRET) ?? "";
@@ -47,6 +49,12 @@ const WOMPI_API = "https://sandbox.wompi.co/v1";
 test.setTimeout(600_000);
 
 test.beforeAll(async () => {
+  // Settings BUSINESS de recogida (PICKUP_*): sin ellos la saga PAID → guía
+  // Aveonline falla con shipment_failed (CI run 36325762084). Idempotente:
+  // en dev/STG ya existen y no se tocan; en la DB scratch de CI se siembran.
+  // Va PRIMERO: el server cachea getSiteSetting (tag "cms", TTL 1h) en la
+  // primera lectura y la cotización del checkout lee PICKUP_CITY/DEPARTMENT.
+  pickupSettings = await ensurePickupSettings();
   const category = await prisma.category.create({
     data: { slug: `${RUN}-cat`, name: `Cat ${RUN}` },
   });
@@ -117,6 +125,9 @@ test.afterAll(async () => {
         data: { isActive: false, deletedAt: new Date(), updatedAt: new Date() },
       })
       .catch(() => {});
+  // Settings PICKUP_*: borra SOLO los que el beforeAll creó (los preexistentes
+  // de dev/STG quedan intactos — el handle lleva el registro).
+  if (pickupSettings) await pickupSettings.cleanup();
   await prisma.$disconnect();
 });
 
