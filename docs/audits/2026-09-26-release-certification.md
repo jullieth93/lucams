@@ -265,10 +265,9 @@ secrets sandbox y saltó el job de dinero con warning (como está diseñado).
    SERVIENTREGA + 4242 APPROVED + trackingNumber). **Run 36328807610: 4/4 jobs verdes, incluido
    "E2E dinero — checkout Wompi sandbox (4242 → PAID + guía)"** — el journey de dinero completo
    ahora corre en CI cada noche con artifacts de 30 días.
-4. **Branch protection:** añadir `RLS behavior (rls-matrix contra Supabase local)` a los required
-   checks de `production` — acción humana en Settings (el token CLI actual no tiene permiso de
-   administración: PUT devuelve 404; Settings → Branches → regla de `production` → Required status
-   checks → agregar ese contexto). `e2e-wompi-sandbox` corre solo en nightly: su verde es gate de
+4. ~~**Branch protection:**~~ **HECHO 2026-09-27 (vía API, PATCH):** `production` ahora exige 8
+   required checks, incluido `RLS behavior (rls-matrix contra Supabase local)` (verificado: la
+   regla lista los 8 contexts). `e2e-wompi-sandbox` corre solo en nightly: su verde es gate de
    release por política (documentado en TESTING.md), no por required check.
 5. **Decisiones owner:** modo del release (`full` — PRD opera en `full` por decisión de Lucy del
    2026-09-03 → F-09 NOT_APPLICABLE para este release) y política de push directo a `production`
