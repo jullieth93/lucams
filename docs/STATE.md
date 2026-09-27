@@ -32,13 +32,18 @@ y nightly 4/4 verdes (incl. E2E de dinero Wompi sandbox 4242 → PAID → guía 
 registradas en ADR-105: **F-07 restringido** (`production` exige PR + 8 required checks, verificado
 por API) y **rollback = riesgo aceptado firmado** (forward-fix + post-deploy-smoke como mitigación).
 Veredicto formal: `docs/audits/2026-09-27-final-release-certification.md` → **CERTIFIED** sobre
-`develop@fcc912c` (árbol de producto `7f07c43`). Pendiente solo del deploy: ① PR
-`develop`→`production` (nuevo flujo con PR obligatorio — el push directo quedó cerrado), ②
-`prisma migrate deploy` en PRD (ya verificado en STG; pasos en la sección de la sesión), ③ primera
-corrida del post-deploy-smoke, ④ verificación funcional rápida en PRD, ⑤ **drill de rollback**
-(Vercel → Deployments → deployment anterior → Rollback → verificar → volver al nuevo; registrar
-fecha/resultado aquí — ADR-105 addendum). Nota: la regla expand/contract que hace seguro el
-rollback quedó explicitada en CONVENTIONS.md §migration strategy.
+`develop@fcc912c` (árbol de producto `7f07c43`). **🚀 DEPLOY A PRD EJECUTADO 2026-09-27:** PR #54
+`develop`→`production` mergeado con 8/8 checks verdes, deploy Vercel
+`dpl_B8mjkrg5u8rujmiKB8Mq1RXAcoec` **Ready** en lucamsshop.com, migración
+`20260926120000_admin_recovery_code` **aplicada en PRD** vía `prisma migrate deploy` (ya verificada
+en STG), **post-deploy-smoke 5/5 verde** (health, db, crons, home y catálogo con contenido). Nota de
+historia git: el rebase-merge del PR reescribió SHAs en `production` (f503185…); `develop` remoto
+conserva los originales (d4bf3d4…) con árbol idéntico — divergencia cosmética (la protección
+ff-only+linear de develop bloquea el re-sync sin force-push; opción limpia: toggle temporal de la
+regla de develop + force-push, o convivir — los próximos PR con rebase-merge absorben los patches
+duplicados). Pendiente solo: ① verificación funcional rápida en PRD (owner, 2 min), ② **drill de
+rollback** (Vercel → Deployments → anterior → Rollback → verificar → volver; registrar
+fecha/resultado aquí — ADR-105 addendum).
 
 <details><summary>Historial de resúmenes anteriores</summary>
 
