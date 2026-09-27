@@ -27,14 +27,16 @@ legacy → soft-404 en DBs frescas (saneado) y el nightly sembraba solo el delta
 completa). **Gates de recertificación: 4275/4275 tests verdes, typecheck/lint/build/RLS 58/58/drift
 0, E2E local verde.** Adversario + juez de evidencia sobre la remediación: fixes SOBREVIVEN.
 Informe: `docs/audits/2026-09-26-release-certification.md` (anexos en `tmp/audit-20260926-cert/`).
-**Estado: NOT_CERTIFIED hasta cerrar lo operativo.** Ya HECHO (2026-09-27): paquete en 4 commits
-convencionales pusheado a `develop` (`ce74f6d`…`0ba0fa6`), **CI 8/8 verde sobre `0ba0fa6`** (incl.
-el nuevo job `rls-behavior`), **nightly verde sobre `c326d1b`** (E2E completo con seeds reparados +
-homolog-auth + retracto + MFA; el job de dinero saltó por diseño: secrets sandbox ausentes).
-Pendiente: secrets sandbox Wompi/Aveonline en GitHub (job e2e-wompi-sandbox), añadir `rls-behavior`
-a required checks, decisiones owner (modo release = full; push directo a production), verificar la
-migración `20260926120000_admin_recovery_code` en STG/PRD con el deploy y primera corrida del
-post-deploy-smoke.
+**Estado: CÓDIGO CERTIFICADO — pendientes solo 3 acciones operativas/de decisión.** Ya HECHO
+(2026-09-27): paquete en 6 commits en `develop` (`ce74f6d`…`7f07c43`), **CI 8/8 verde** (incl. el
+nuevo job `rls-behavior`), **nightly 4/4 verde sobre `7f07c43` incluido el E2E DE DINERO en CI**
+(checkout Wompi sandbox 4242 → PAID → guía Aveonline real, con secrets sandbox cargados y fixture
+idempotente de pickup settings — el primer intento reveló que el localstack no los tenía y se
+corrigió la causa raíz). Pendiente: ① añadir `RLS behavior (rls-matrix contra Supabase local)` a
+los required checks de `production` (Settings → Branches; el token CLI no tiene permiso de admin),
+② decisión owner sobre push directo a `production` (F-07), ③ con el deploy a STG/PRD: verificar
+`prisma migrate deploy` (incluye `20260926120000_admin_recovery_code`) y la primera corrida del
+post-deploy-smoke. Modo del release: `full` (decisión vigente de Lucy 2026-09-03).
 
 <details><summary>Historial de resúmenes anteriores</summary>
 
