@@ -3473,3 +3473,18 @@ intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar
 **Consecuencia:** 0/70 overflow mantenido; e2e de estudio verdes; guardado admin verificado end-to-end (nombre→PDP, destacado→home); los previews de Vercel darán el elemento exacto del INP en adelante. Deuda registrada: specs e2e con drift de la fase B2 ("Unidades"→"Packs", seed magnet polaroid) y la fase 2 de INP condicionada al RUM.
 
 ---
+
+## ADR-105 — Certificación de release: PR obligatorio a `production` y aceptación del riesgo de rollback sin drill
+
+**Fecha:** 2026-09-27
+**Estado:** ✅ Aceptada (decisión de Lucy, registrada en la certificación `docs/audits/2026-09-27-final-release-certification.md`)
+
+**Contexto:** la certificación integral de release (2026-09-26/27, `docs/audits/2026-09-26-release-certification.md`) cerró todos los hallazgos de código (P1/P2) y dejó dos condiciones de gate de decisión de la owner: F-07 (push directo a `production` despliega sin esperar gates — los checks solo gateaban PRs) y A9-09 (rollback de despliegue documentado pero nunca ensayado).
+
+**Decisión:**
+① **F-07 → restringir.** `production` ahora exige **pull request** (0 approvals — flujo de owner única sin fricción) + los **8 required checks** (los 7 históricos + `RLS behavior (rls-matrix contra Supabase local)`, agregado el mismo día). El push directo a `production` queda cerrado también para admins (`enforce_admins` ya estaba activo). El release pasa a ser: PR `develop`→`production` → 8 checks verdes → merge ff → deploy.
+② **A9-09 → riesgo aceptado.** No se hará drill de rollback antes del release. La recuperación real es **forward-fix** (push con fix + CI verde en minutos, camino ya ejercido en la operación diaria) y `vercel rollback` queda como opción documentada (RUNBOOK_GO_LIVE) sin evidencia de ensayo. Riesgo residual: si un deploy rompe PRD, la vuelta atrás depende de un mecanismo no practicado; se mitiga con el post-deploy-smoke (detecta en minutos) y el forward-fix.
+
+**Por qué:** ① el costo de la restricción es mínimo (misma disciplina ff, más 1 click) y elimina la única vía de desplegar código no gateado; ② el drill exige ventana de deploy controlada y la owner prefiere asumir el riesgo con mitigaciones activas.
+
+**Consecuencia:** el gate §20 de la misión queda sin bloqueos: `production migration path` PROVEN (LOCAL+STG), rollback = riesgo aceptado firmado, F-07 = remediado. Veredicto de la certificación: **CERTIFIED** sobre `develop@fcc912c` (árbol de producto `7f07c43`).

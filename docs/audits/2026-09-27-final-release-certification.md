@@ -114,16 +114,21 @@ gemelas -NOMAG (ADR-099), password_min_length auth (no config-as-code, P4).
 
 # Open risks
 
-1. **F-07 (P2, decisión owner):** push directo a `production` despliega sin esperar gates
-   (convención actual = push ff). Requiere decisión explícita: restringir o aceptar.
-2. **A9-09 (P3):** rollback de despliegue nunca ensayado (drill o aceptación explícita).
-3. **Required check pendiente:** ~~`RLS behavior` corre en PRs pero aún no bloquea~~ **RESUELTO
-   2026-09-27:** `production` exige los 8 checks incl. `RLS behavior` (verificado por API).
-4. **Deploy pendiente:** aplicar migración en PRD + primera corrida del post-deploy-smoke.
+1. ~~F-07~~ **RESUELTO (ADR-105 ①, 2026-09-27):** `production` exige PR + 8 required checks
+   (verificado por API: `required_pull_request_reviews` activo con 0 approvals — flujo owner
+   única — , `enforce_admins`, 8 contexts).
+2. ~~A9-09~~ movido a Accepted risks (ADR-105 ②).
+3. ~~Required check pendiente~~ **RESUELTO 2026-09-27:** `production` exige los 8 checks incl.
+   `RLS behavior` (verificado por API).
+4. **Deploy pendiente (operativo, no de código):** aplicar migración en PRD (ya verificada en
+   STG; aditiva e idempotente) + primera corrida del post-deploy-smoke.
 
 # Accepted risks
 
 Heredados de la firma 2026-09-20 (§T): bus factor 1, Supabase Free sin PITR, autoreferido DIAN.
+**ADR-105 ② (firma owner 2026-09-27): rollback de despliegue sin drill** — la recuperación real es
+forward-fix (push + CI verde en minutos, ejercido a diario) y `vercel rollback` documentado sin
+ensayo; mitigado por el post-deploy-smoke (detección en minutos).
 Nuevos menores (P3/P4 con seguimiento en `12-findings.md`): A8-03 (sin polling Aveonline),
 A11-03 (doble email en carrera extrema), A11R-02 (sin vía admin para limpiar needsReconciliation),
 A6-04 (rutas REST del bot), A9-05 (R2 Bucket Lock), A10-02 (57 specs fuera de workflows).
@@ -142,17 +147,22 @@ Aristas críticas Admin↔Cliente UNPROVEN/BROKEN = 0 · Controles críticos de 
 Migration path producción = PROVEN en LOCAL+STG · Env contract = resuelto
 ```
 
-## Veredicto: **NOT_CERTIFIED** (formalismo de la misión, §20)
+## Veredicto: **CERTIFIED**
 
-Dos bloqueos de gate siguen abiertos y ambos son **decisión/acción de la owner, no código**:
+Las dos condiciones de gate que quedaban abiertas se resolvieron el 2026-09-27 por decisión de la
+owner (ADR-105):
 
-1. `rollback/forward recovery for release UNPROVEN` (A9-09): se requiere un drill de rollback
-   (`vercel rollback` ensayado) o aceptación de riesgo explícita firmada.
-2. F-07 (push directo a production sin gates): aceptación de riesgo explícita o restricción.
+1. ~~`rollback/forward recovery for release UNPROVEN`~~ → **riesgo aceptado y firmado** (ADR-105 ②):
+   recuperación por forward-fix + `vercel rollback` documentado, mitigado por post-deploy-smoke.
+2. ~~F-07~~ → **remediado** (ADR-105 ①): `production` exige PR + 8 required checks (verificado por
+   API el 2026-09-27).
 
-Además, como follow-up operativo no bloqueante pero recomendado antes del release: agregar el
-required check `RLS behavior` en branch protection de `production` y verificar la migración
-`20260926120000` en PRD durante el deploy.
+Gate §20 completo: P0=0 · P1=0 · BROKEN critical journeys=0 · UNPROVEN critical journeys=0 ·
+aristas críticas Admin↔Cliente=0 UNPROVEN/BROKEN · controles críticos de seguridad=PROVEN ·
+migration path producción=PROVEN (LOCAL+STG) · rollback=riesgo aceptado firmado · env contract
+=resuelto · required env/branch checks=8/8.
 
-**En cuanto la owner registre esas dos decisiones (aceptación o remediación), este SHA pasa a
-CERTIFIED sin más evidencia de código.** Todo lo demás está probado y verde.
+**Este SHA está CERTIFIED para release:** `develop@fcc912c` (árbol de producto `7f07c43`; encima
+solo documentación). Follow-up operativo del deploy (no bloquea): aplicar la migración
+`20260926120000` en PRD con `prisma migrate deploy` y observar la primera corrida del
+post-deploy-smoke (pasos C1–C3 registrados en STATE.md).
