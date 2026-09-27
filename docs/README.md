@@ -60,9 +60,12 @@
 
 Ver [`audits/README.md`](audits/README.md) — convención: una auditoría se cierra con sección de
 remediación y, una vez absorbida por los docs canónicos, se consolida (git conserva la historia).
-Vigente: la auditoría OWASP Top 10 (2026-08-24, cerrada 2026-08-30), la 360° de coherencia
-funcional (2026-09-11, remediada) y la de UX responsive estudios+admin (2026-09-18, remediada —
-ADR-103).
+Vigentes: la auditoría OWASP Top 10 (2026-08-24, cerrada 2026-08-30), la 360° de coherencia
+funcional (2026-09-11, remediada), la de UX responsive estudios+admin (2026-09-18, remediada —
+ADR-103), la integral de seguridad preproducción (2026-09-19, APTO con riesgos residuales
+firmados 2026-09-20) y la **certificación de release (2026-09-26/27, CERTIFIED — ADR-105)**,
+tras la cual se ejecutó el deploy a PRD el 2026-09-27 (migración aplicada + smoke 5/5 + drill
+de rollback PROVEN).
 
 ## Módulos con doc propia
 

@@ -798,7 +798,7 @@ model Coupon {
 //
 // G-5 (security audit 2026-08-24): the per-customer cap is enforced AT THE DB
 // by the BEFORE INSERT trigger `coupon_usage_per_customer_limit` (migration
-// 20260829120000_coupon_usage_per_customer_trigger): it takes a
+// 20260829150300_coupon_usage_per_customer_trigger): it takes a
 // pg_advisory_xact_lock per (couponId, lower(email)) / (couponId, customerId)
 // and re-counts under the lock, so two concurrent PAID checkouts with the same
 // identity can no longer both pass the app's read-then-write count. The loser

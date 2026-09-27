@@ -10,7 +10,12 @@
 >    pegado a mano en Supabase Dashboard → Authentication → Emails.
 > 2. **Resend (código)** — funciones TS en
 >    `apps/web/features/emails/templates/` enviadas vía `lib/resend.ts`
->    (ver "Templates transaccionales Resend" abajo).
+>    (ver "Templates transaccionales Resend" abajo). Estas soportan
+>    **overrides admin** (`EmailTemplateOverride`, módulo
+>    `/admin/...` de plantillas de correo): SUBJECT/PREHEADER/HEADING
+>    editables desde el panel vía `withOverrides` en
+>    `apps/web/features/emails/overrides.ts`, con fallback total al
+>    template de código si no hay override o falla la lectura.
 
 ## Convención visual (válida para todos)
 

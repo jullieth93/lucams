@@ -132,7 +132,7 @@ rate-limit — nunca en claro). Los consume `evaluateAlerts` con dos reglas:
 
 - Tabla `AdminUser` con `role` y `isActive`.
 - El proxy (`apps/web/proxy.ts` — Next.js 16 renombró `middleware.ts` → `proxy.ts`) solo hace de gate anónimo: redirige a `/admin/login` toda request `/admin/*` sin sesión Supabase. **No corre Prisma ahí.**
-- La verificación real de `AdminUser` activo + rol la hace el servidor en cada página/acción: `getCurrentAdmin()` (`lib/auth.ts`) en las pages y `requireAdminAction({ roles })` (`lib/admin-rbac-guard.ts`) al inicio de toda Server Action admin mutante — incluye el gate de MFA (enrolamiento obligatorio + aal2, ver § MFA).
+- La verificación real de `AdminUser` activo + rol la hace el servidor en cada página/acción: `getCurrentAdmin()` (`lib/auth.ts`) en las pages y `requireAdminAction({ roles })` (`lib/admin-rbac-guard.ts`) al inicio de toda Server Action admin mutante — incluye el gate de MFA (enrolamiento obligatorio + aal2, ver § MFA). **Cobertura verificada: 41/41 Server Actions admin bajo `app/admin/(panel)` invocan el guard con rol explícito** (certificación de release 2026-09-26/27); las únicas actions admin sin guard son `/admin/login` y `/admin/login/mfa` (públicas por diseño, con rate limit 5/15 min).
 - **Defense in depth:** cada Server Action/API route verifica el rol explícitamente (no confiar solo en el gate del proxy).
 
 ### Row-Level Security (Supabase / Postgres RLS)
@@ -204,10 +204,10 @@ describe('RLS', () => {
 
 ### Reglas de oro
 
-1. **Las API keys nunca viven en el front-end.** Las únicas vars expuestas al navegador son las que empiezan con `NEXT_PUBLIC_*` y deben ser **diseñadas para ser públicas** (publishable key de Supabase, public key de Wompi, site key de Turnstile).
+1. **Las API keys nunca viven en el front-end.** Las únicas vars expuestas al navegador son las que empiezan con `NEXT_PUBLIC_*` y deben ser **diseñadas para ser públicas** (publishable key de Supabase, site key de Turnstile). **Ninguna llave de Wompi es `NEXT_PUBLIC_*`**: el checkout es redirección al hosted checkout de Wompi (no hay widget en cliente) y las 4 vars `WOMPI_*` son server-only — `NEXT_PUBLIC_WOMPI_PUBLIC_KEY` no existe en el código (eliminada de los `.env*` el 2026-08-01; declarar cualquier `NEXT_PUBLIC_WOMPI_*` está prohibido, ver `OPERATIONS.md` § Variables de entorno).
 2. **Las llaves "públicas" se protegen con reglas de dominio:**
    - **Supabase publishable key (`sb_publishable_*`):** mapea al rol Postgres `anon`; sus permisos están limitados por RLS. Aunque sea visible, sin RLS rota no puede leer datos privados. Reemplaza la legacy `anon` JWT key (deprecada para proyectos creados después del 2025-11-01).
-   - **Wompi public key:** Wompi valida que las transacciones se generen desde dominios autorizados en su panel. Configurar `lucamsshop.com` y `*.vercel.app` en Wompi.
+   - **Wompi public key (`WOMPI_PUBLIC_KEY`, server-side):** aunque Wompi la llama "pública", en Lucams_shop vive solo en el servidor (firma de integridad + hosted checkout por redirección). Wompi valida que las transacciones se generen desde dominios autorizados en su panel. Configurar `lucamsshop.com` y `*.vercel.app` en Wompi.
    - **Turnstile site key:** Cloudflare valida site key contra dominio. Configurar dominios permitidos en panel.
    - **Gemini API key:** **NUNCA es pública.** Solo server-side (`features/ai`, ADR-058): el cliente invoca la Server Action del asistente, nunca el endpoint de Google directo.
 3. **Las llaves privadas viven en `.env.local` (dev) y en Vercel env vars (prod).** Nunca commiteadas.
@@ -216,23 +216,23 @@ describe('RLS', () => {
 
 ### Inventario de claves
 
-| Variable                                                    | Tipo                      | Visible en cliente | Doc oficial protección                                                                                                                                                           |
-| ----------------------------------------------------------- | ------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_*`) | Pública (RLS-protected)   | Sí                 | Mapea al rol Postgres `anon` · permisos limitados por RLS · whitelist de dominio en Supabase si se activa                                                                        |
-| `NEXT_PUBLIC_SUPABASE_URL`                                  | Pública                   | Sí                 | —                                                                                                                                                                                |
-| `SUPABASE_SECRET_KEY` (`sb_secret_*`)                       | **PRIVADA — bypassa RLS** | **NO**             | Mapea al rol Postgres `service_role`. Solo server, gitignored. Múltiples secret keys soportadas (rotación sin downtime)                                                          |
-| `NEXT_PUBLIC_WOMPI_PUBLIC_KEY`                              | Pública                   | Sí                 | Whitelist de dominio en panel Wompi                                                                                                                                              |
-| `WOMPI_PRIVATE_KEY`                                         | Privada                   | **NO**             | —                                                                                                                                                                                |
-| `WOMPI_INTEGRITY_SECRET`                                    | Privada                   | **NO**             | —                                                                                                                                                                                |
-| `WOMPI_EVENTS_SECRET`                                       | Privada (firma webhooks)  | **NO**             | Esquema SHA-256 de eventos Wompi (ver § Webhooks)                                                                                                                                |
-| `AVEONLINE_USUARIO` / `AVEONLINE_CLAVE`                     | Privada                   | **NO**             | —                                                                                                                                                                                |
-| `AVEONLINE_WEBHOOK_SECRET`                                  | Privada (webhooks)        | **NO**             | Credencial compartida (Aveonline no documenta HMAC): header `x-aveonline-secret` o `payload.token`; la vía `?secret=` está OFF por defecto (`AVEONLINE_ALLOW_QUERY_SECRET`, D-1) |
-| `RESEND_API_KEY`                                            | Privada                   | **NO**             | —                                                                                                                                                                                |
-| `RESEND_WEBHOOK_SECRET`                                     | Privada (firma webhooks)  | **NO**             | HMAC-SHA256 esquema Svix; var CORE en prod (fail-fast al arranque si falta — D-5)                                                                                                |
-| `GEMINI_API_KEY`                                            | Privada                   | **NO**             | Server-only (`features/ai`, ADR-058): la llamada sale servidor→Google, no toca el navegador                                                                                      |
-| `NEXT_PUBLIC_TURNSTILE_SITE_KEY`                            | Pública                   | Sí                 | Whitelist de dominio en Cloudflare                                                                                                                                               |
-| `TURNSTILE_SECRET_KEY`                                      | Privada                   | **NO**             | Server-only para validación de token                                                                                                                                             |
-| `R2_*`                                                      | Privada                   | **NO**             | —                                                                                                                                                                                |
+| Variable                                                    | Tipo                             | Visible en cliente | Doc oficial protección                                                                                                                                                           |
+| ----------------------------------------------------------- | -------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_*`) | Pública (RLS-protected)          | Sí                 | Mapea al rol Postgres `anon` · permisos limitados por RLS · whitelist de dominio en Supabase si se activa                                                                        |
+| `NEXT_PUBLIC_SUPABASE_URL`                                  | Pública                          | Sí                 | —                                                                                                                                                                                |
+| `SUPABASE_SECRET_KEY` (`sb_secret_*`)                       | **PRIVADA — bypassa RLS**        | **NO**             | Mapea al rol Postgres `service_role`. Solo server, gitignored. Múltiples secret keys soportadas (rotación sin downtime)                                                          |
+| `WOMPI_PUBLIC_KEY`                                          | Pública (Wompi), **server-side** | **NO**             | Hosted checkout por redirección — no hay widget en cliente, así que ninguna llave Wompi es `NEXT_PUBLIC_*` (la extinta `NEXT_PUBLIC_WOMPI_PUBLIC_KEY` se eliminó 2026-08-01)     |
+| `WOMPI_PRIVATE_KEY`                                         | Privada                          | **NO**             | —                                                                                                                                                                                |
+| `WOMPI_INTEGRITY_SECRET`                                    | Privada                          | **NO**             | —                                                                                                                                                                                |
+| `WOMPI_EVENTS_SECRET`                                       | Privada (firma webhooks)         | **NO**             | Esquema SHA-256 de eventos Wompi (ver § Webhooks)                                                                                                                                |
+| `AVEONLINE_USUARIO` / `AVEONLINE_CLAVE`                     | Privada                          | **NO**             | —                                                                                                                                                                                |
+| `AVEONLINE_WEBHOOK_SECRET`                                  | Privada (webhooks)               | **NO**             | Credencial compartida (Aveonline no documenta HMAC): header `x-aveonline-secret` o `payload.token`; la vía `?secret=` está OFF por defecto (`AVEONLINE_ALLOW_QUERY_SECRET`, D-1) |
+| `RESEND_API_KEY`                                            | Privada                          | **NO**             | —                                                                                                                                                                                |
+| `RESEND_WEBHOOK_SECRET`                                     | Privada (firma webhooks)         | **NO**             | HMAC-SHA256 esquema Svix; var CORE en prod (fail-fast al arranque si falta — D-5)                                                                                                |
+| `GEMINI_API_KEY`                                            | Privada                          | **NO**             | Server-only (`features/ai`, ADR-058): la llamada sale servidor→Google, no toca el navegador                                                                                      |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY`                            | Pública                          | Sí                 | Whitelist de dominio en Cloudflare                                                                                                                                               |
+| `TURNSTILE_SECRET_KEY`                                      | Privada                          | **NO**             | Server-only para validación de token                                                                                                                                             |
+| `R2_*`                                                      | Privada                          | **NO**             | —                                                                                                                                                                                |
 
 ### Detección automática de secretos
 
@@ -686,7 +686,7 @@ Toda acción mutante de admin escribe en `AdminActionLog` (tabla en `ARCHITECTUR
 - Login/logout del admin.
 - Promoción/democión de roles en `AdminUser`.
 
-Helper: `recordAdminAction()` (`apps/web/lib/admin-audit.ts`), usado en las actions admin (35+ callsites).
+Helper: `recordAdminAction()` (`apps/web/lib/admin-audit.ts`), usado en las actions admin (120+ callsites).
 
 ### Qué NO se registra
 
@@ -814,8 +814,7 @@ El cliente gestiona sus datos desde `/mi-cuenta`:
 - **Secrets** declarados en repo Settings → Secrets, **nunca hardcodeados**.
 - **Permisos mínimos** del `GITHUB_TOKEN` (read-only por defecto, escalar solo donde se necesite).
 - **`pull_request_target`** evitado salvo necesidad — el patrón seguro es `pull_request` + `permissions: contents: read`.
-- **Branch protection** en `main`: PRs requeridos, review obligatorio, status checks must pass, no force push.
-- **Signed commits** requeridos para `main` (vía GitHub web UI o gpg).
+- **Branch protection** en `production` (verificado en vivo vía `gh api` 2026-09-26; endurecido con ADR-105, 2026-09-27): **pull request obligatorio** (0 approvals — flujo de owner única), **8 required checks** (incl. Gitleaks, Dependency audit y `RLS behavior` — rls-matrix contra Supabase local), `enforce_admins` activo (ni admins pueden saltarse el gate), historia lineal, no force push. No existe rama `main`: el flujo es PR `develop` → `production` → 8 checks verdes → merge ff → deploy.
 
 ### Steps mínimos del CI
 
@@ -898,16 +897,16 @@ Decisión definitiva de observabilidad de errores: ADR-022 abierto en Fase 7. Al
 
 #### Flujo 4: Background jobs (pg_cron → endpoints HTTP)
 
-Los jobs vivos son `pg_cron` en Supabase llamando endpoints `/api/cron/*` por HTTP (secretos en Supabase Vault, migraciones 015/016/021/023) + jobs SQL puros de limpieza (migración 012). No hay cola pgmq ni Edge Functions consumer en producción.
+Los jobs vivos son `pg_cron` en Supabase llamando endpoints `/api/cron/*` por HTTP (secretos en Supabase Vault, migraciones 015/016/021/023/032) + jobs SQL puros de limpieza (migración 012) + 3 endpoints cron alimentados desde fuera de pg_cron (backup-heartbeat vía GitHub Actions, domain-watch vía GitHub Actions mensual, monitor-heartbeat vía el job de uptime en Supabase STG). No hay cola pgmq ni Edge Functions consumer en producción.
 
-| Vector STRIDE          | Amenaza                                  | Mitigación                                                                                       |
-| ---------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Spoofing               | Atacante invoca `/api/cron/*` directo    | Header `x-cron-secret` verificado con comparación timing-safe en los 8 endpoints cron            |
-| Tampering              | Secreto del cron en la URL (access logs) | El secreto viaja por header, nunca por query-string; leído desde Vault en runtime                |
-| Repudiation            | Job corrió pero "nadie sabe qué pasó"    | `recordCronHeartbeat` por job + log estructurado; fallos → notificación in-app admin             |
-| Information Disclosure | Detalle de crons/health expone topología | Respuesta pública mínima (`status`+`timestamp`); detalle solo tras `x-cron-secret` (C-3/C-4)     |
-| Denial of Service      | Job de purga borra de más                | Purgas con criterios conservadores (webhook solo si `processedAt`, ErrorReport por `lastSeenAt`) |
-| Elevation of Privilege | Cron escala permisos                     | Los endpoints usan Prisma/`service` solo para la operación explícita del job                     |
+| Vector STRIDE          | Amenaza                                  | Mitigación                                                                                                                                                           |
+| ---------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spoofing               | Atacante invoca `/api/cron/*` directo    | Header `x-cron-secret` verificado con el helper compartido `cronSecretOk` (`lib/cron-auth.ts`, comparación timing-safe, fail-closed) en los **13/13 endpoints cron** |
+| Tampering              | Secreto del cron en la URL (access logs) | El secreto viaja por header, nunca por query-string; leído desde Vault en runtime                                                                                    |
+| Repudiation            | Job corrió pero "nadie sabe qué pasó"    | `recordCronHeartbeat` por job + log estructurado; fallos → notificación in-app admin                                                                                 |
+| Information Disclosure | Detalle de crons/health expone topología | Respuesta pública mínima (`status`+`timestamp`); detalle solo tras `x-cron-secret` (C-3/C-4)                                                                         |
+| Denial of Service      | Job de purga borra de más                | Purgas con criterios conservadores (webhook solo si `processedAt`, ErrorReport por `lastSeenAt`)                                                                     |
+| Elevation of Privilege | Cron escala permisos                     | Los endpoints usan Prisma/`service` solo para la operación explícita del job                                                                                         |
 
 ### Pendiente
 
@@ -1218,6 +1217,7 @@ export function isAllowedRedirectDestination(input: unknown): input is string {
 - **RPO (Recovery Point Objective):** ≤ 24 h (perder máximo 24 h de datos).
 - **RTO (Recovery Time Objective):** ≤ 4 h (recuperar el sitio en máximo 4 h).
 - **Plan:** documentado en `OPERATIONS.md` con pasos: restaurar Supabase desde PITR, redeploy en Vercel, repoblar Storage desde R2.
+- **Rollback de despliegue ensayado (PROVEN 2026-09-27, ADR-105 addendum):** drill ejecutado con evidencia — `vercel rollback` al deployment anterior (código viejo) → smoke 5/5 contra la DB migrada → rollback hacia adelante → smoke 5/5. La seguridad del rollback instantáneo la da la convención de migraciones **expand-then-contract** (`CONVENTIONS.md` § DB — migration strategy): Vercel revierte código, no DB; una migración destructiva en una sola release invalida el rollback.
 
 ---
 
