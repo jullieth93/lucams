@@ -41,9 +41,13 @@ historia git: el rebase-merge del PR reescribió SHAs en `production` (f503185�
 conserva los originales (d4bf3d4…) con árbol idéntico — divergencia cosmética (la protección
 ff-only+linear de develop bloquea el re-sync sin force-push; opción limpia: toggle temporal de la
 regla de develop + force-push, o convivir — los próximos PR con rebase-merge absorben los patches
-duplicados). Pendiente solo: ① verificación funcional rápida en PRD (owner, 2 min), ② **drill de
-rollback** (Vercel → Deployments → anterior → Rollback → verificar → volver; registrar
-fecha/resultado aquí — ADR-105 addendum).
+duplicados). **🔄 DRILL DE ROLLBACK EJECUTADO Y PROVEN 2026-09-27 13:45:** rollback instantáneo de
+PRD al deployment anterior (`dpl_EZZZXAzMU5GhuSxRdbceiP3S4TXw`, código pre-paquete) → alias
+verificado sirviendo el deploy viejo → **smoke 5/5 verde contra el código viejo con la DB ya
+migrada** (prueba viva de expand/contract: la migración aditiva no rompió el rollback) → rollback
+hacia adelante al deploy certificado (`dpl_B8mjkrg5u8rujmiKB8Mq1RXAcoec`) → alias verificado →
+**smoke 5/5 verde final**. A9-09 queda PROVEN (el riesgo aceptado en ADR-105 queda además cubierto
+por evidencia). Pendiente solo: ① verificación funcional rápida en PRD (owner, 2 min).
 
 <details><summary>Historial de resúmenes anteriores</summary>
 

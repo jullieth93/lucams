@@ -126,9 +126,10 @@ gemelas -NOMAG (ADR-099), password_min_length auth (no config-as-code, P4).
 # Accepted risks
 
 Heredados de la firma 2026-09-20 (§T): bus factor 1, Supabase Free sin PITR, autoreferido DIAN.
-**ADR-105 ② (firma owner 2026-09-27): rollback de despliegue sin drill** — la recuperación real es
-forward-fix (push + CI verde en minutos, ejercido a diario) y `vercel rollback` documentado sin
-ensayo; mitigado por el post-deploy-smoke (detección en minutos).
+**ADR-105 ② + drill 2026-09-27: rollback PROVEN.** La aceptación firmada quedó superada por
+evidencia el mismo día: rollback instantáneo a `dpl_EZZZ…` (código viejo, smoke 5/5 contra la DB
+migrada — expand/contract validado en vivo) y vuelta a `dpl_B8mj…` (smoke 5/5). El mecanismo de
+rollback está ensayado; la convención expand/contract (CONVENTIONS.md) cubre la reversa de schema.
 Nuevos menores (P3/P4 con seguimiento en `12-findings.md`): A8-03 (sin polling Aveonline),
 A11-03 (doble email en carrera extrema), A11R-02 (sin vía admin para limpiar needsReconciliation),
 A6-04 (rutas REST del bot), A9-05 (R2 Bucket Lock), A10-02 (57 specs fuera de workflows).
