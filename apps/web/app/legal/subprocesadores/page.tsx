@@ -80,7 +80,7 @@ Si vamos a **agregar o cambiar** un subprocesador, avisaremos por correo a los c
 
 ---
 
-_Versión 5 · vigente desde 2026-09-04 · actualizada: Wompi, Aveonline y el asistente con IA ya operan; se agregan Meta/WhatsApp y los respaldos cifrados en Cloudflare R2 · en revisión por asesoría legal_
+_Versión 1 · vigente desde 2026-09-29_
 `;
 
 export default function Page() {

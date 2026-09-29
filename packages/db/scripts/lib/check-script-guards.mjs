@@ -24,6 +24,7 @@
  *   - one-shot/update-public-content-20260911.mjs
  *   - one-shot/update-production-days-20260911.mjs
  *   - one-shot/publish-legal-v5-20260911.mjs
+ *   - one-shot/publish-legal-v1-20260929.mjs
  * Agregar a la allowlist exige editar ESTE archivo (dif visible en PR) con la
  * misma justificación en el header del script exento.
  *
@@ -42,6 +43,7 @@ const ALLOWLIST_PRD_DELIBERADO = new Set([
   "one-shot/update-public-content-20260911.mjs",
   "one-shot/update-production-days-20260911.mjs",
   "one-shot/publish-legal-v5-20260911.mjs",
+  "one-shot/publish-legal-v1-20260929.mjs",
 ]);
 
 const WRITE_RE =

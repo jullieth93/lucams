@@ -141,7 +141,7 @@ Esta política rige desde su fecha de entrada en vigencia y se mantiene mientras
 
 ---
 
-_Versión 5 · vigente desde 2026-09-04 · actualizada: terceros activos (Wompi, Aveonline, IA, WhatsApp, respaldos en R2) y plazos concretos de retención · en revisión por asesoría legal_
+_Versión 1 · vigente desde 2026-09-29_
 `;
 
 export default function Page() {

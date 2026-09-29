@@ -58,4 +58,4 @@ El archivo legible por máquina con nuestra información de contacto de segurida
 
 ---
 
-_Versión 2 · vigente desde 2026-07-25 · en revisión por asesoría legal_
+_Versión 1 · vigente desde 2026-09-29_

@@ -95,4 +95,4 @@ Si cambiamos este aviso de forma sustancial, te lo informaremos y actualizaremos
 
 ---
 
-_Versión 5 · vigente desde 2026-09-04 · actualizada: el pago en línea con Wompi y el asistente de diseño con IA ya están activos · en revisión por asesoría legal._
+_Versión 1 · vigente desde 2026-09-29_

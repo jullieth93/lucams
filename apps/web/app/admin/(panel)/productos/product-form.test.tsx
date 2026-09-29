@@ -6,8 +6,9 @@
  * nada y no se refleja el cambio". Causa raíz doble:
  *
  *   1. updateProductAction retornaba {} al guardar → cero feedback de éxito.
- *   2. Si Zod rechazaba (ej. producto legado con garantía < 12 meses — el
- *      schema subió min(0)→min(12) en el barrido legal ADR-072), el alert
+ *   2. Si Zod rechazaba (ej. producto legado con garantía bajo el piso
+ *      informado — el schema subió min(0)→min(12) en el barrido legal
+ *      ADR-072; hoy el piso es 3 meses, ver products/schemas.ts), el alert
  *      global exigía `state.error && !state.fieldErrors` → con fieldErrors
  *      NO se renderizaba nada y el campo garantía no pinta error propio:
  *      el guardado se perdía EN SILENCIO.
@@ -73,14 +74,16 @@ describe("ProductForm — feedback de guardado (regresión 2026-09-18)", () => {
   it("muestra el error global AUNQUE haya fieldErrors, con etiqueta humana del campo", async () => {
     const form = renderForm({
       error: "Datos inválidos.",
-      fieldErrors: { warrantyMonths: ["Mínimo 12 meses (la garantía legal es de 1 año)"] },
+      fieldErrors: {
+        warrantyMonths: ["Mínimo 3 meses (el término de garantía informado al consumidor)"],
+      },
     });
     fireEvent.submit(form);
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Datos inválidos");
     expect(alert).toHaveTextContent("Garantía (meses)");
-    expect(alert).toHaveTextContent("Mínimo 12 meses");
+    expect(alert).toHaveTextContent("Mínimo 3 meses");
   });
 
   it("muestra confirmación visible cuando el guardado aplica", async () => {
