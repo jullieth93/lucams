@@ -55,6 +55,7 @@ import { reviewRequestEmail } from "./templates/review-request";
 import { supportTicketClosedEmail } from "./templates/support-ticket-closed";
 import { supportTicketInternalEmail } from "./templates/support-ticket-internal";
 import { supportTicketReceivedEmail } from "./templates/support-ticket-received";
+import { supportTicketReplyEmail } from "./templates/support-ticket-reply";
 import { warrantyReceivedEmail } from "./templates/warranty-received";
 import { warrantyResolvedEmail } from "./templates/warranty-resolved";
 
@@ -448,6 +449,21 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
     sampleData: { customerName: CUSTOMER, ticketId: TICKET, subject: "MI_PEDIDO" },
   }),
   define({
+    id: "support-ticket-reply",
+    name: "Soporte: respuesta del equipo",
+    group: "Soporte y garantía",
+    description:
+      "Cuando el admin escribe una respuesta pública en el hilo del ticket (/admin/soporte/[id]).",
+    render: supportTicketReplyEmail,
+    sampleData: {
+      customerName: CUSTOMER,
+      ticketId: TICKET,
+      subject: "MI_PEDIDO",
+      replyBody:
+        "¡Hola! Tu pedido LCM-2026-1042 ya va en camino, llega entre mañana y pasado mañana. Te compartimos la guía apenas el transportador la active.",
+    },
+  }),
+  define({
     id: "warranty-received",
     name: "Garantía recibida",
     group: "Soporte y garantía",
@@ -583,6 +599,10 @@ export const renderSupportTicketInternalEmail = withOverrides(
 export const renderSupportTicketClosedEmail = withOverrides(
   "support-ticket-closed",
   supportTicketClosedEmail,
+);
+export const renderSupportTicketReplyEmail = withOverrides(
+  "support-ticket-reply",
+  supportTicketReplyEmail,
 );
 export const renderWarrantyReceivedEmail = withOverrides(
   "warranty-received",

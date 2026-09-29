@@ -50,4 +50,44 @@ describe("SupportTicketSchema", () => {
       expect(SUBJECT_LABELS[s]).toBeTruthy();
     }
   });
+
+  it("acepta los asuntos nuevos de operación (envíos/rastreo y pagos)", () => {
+    for (const s of ["ENVIO_RASTREO", "PAGO_FACTURACION"] as const) {
+      const r = SupportTicketSchema.safeParse({ ...validInput, subject: s });
+      expect(r.success, `subject=${s}`).toBe(true);
+    }
+  });
+
+  describe("orderNumber", () => {
+    it("acepta número completo (LCM-2026-0001) y lo normaliza a mayúsculas", () => {
+      const r = SupportTicketSchema.safeParse({ ...validInput, orderNumber: "lcm-2026-1042" });
+      expect(r.success).toBe(true);
+      if (r.success) expect(r.data.orderNumber).toBe("LCM-2026-1042");
+    });
+
+    it("acepta solo dígitos", () => {
+      const r = SupportTicketSchema.safeParse({ ...validInput, orderNumber: "1042" });
+      expect(r.success).toBe(true);
+      if (r.success) expect(r.data.orderNumber).toBe("1042");
+    });
+
+    it("string vacío → undefined (campo opcional)", () => {
+      const r = SupportTicketSchema.safeParse({ ...validInput, orderNumber: "" });
+      expect(r.success).toBe(true);
+      if (r.success) expect(r.data.orderNumber).toBeUndefined();
+    });
+
+    it("ausente → válido (opcional)", () => {
+      const r = SupportTicketSchema.safeParse(validInput);
+      expect(r.success).toBe(true);
+      if (r.success) expect(r.data.orderNumber).toBeUndefined();
+    });
+
+    it("rechaza formatos inválidos", () => {
+      for (const bad of ["ABC", "LCM-2026", "pedido 1042", "LCM-20-0001"]) {
+        const r = SupportTicketSchema.safeParse({ ...validInput, orderNumber: bad });
+        expect(r.success, `orderNumber=${bad}`).toBe(false);
+      }
+    });
+  });
 });

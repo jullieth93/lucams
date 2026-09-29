@@ -1,10 +1,11 @@
 /*
- * /mi-cuenta/soporte — Bandeja de tickets del cliente (5.3, 2026-09-13).
+ * /mi-cuenta/soporte — Bandeja de tickets del cliente (5.3, 2026-09-13),
+ * con hilo de respuestas del equipo (flujo de solución, 2026-09-29).
  *
- * ADR-092 difería esta bandeja; aprobada en la remediación 360°. El canal de
- * respuesta SIGUE siendo el correo (la respuesta es humana, llega al email de
- * la cuenta): acá el cliente solo consulta qué pidió y en qué estado está.
- * Copy honesto al respecto — no se promete chat ni respuesta en pantalla.
+ * ADR-092 difería esta bandeja; aprobada en la remediación 360°. La respuesta
+ * sigue llegando TAMBIÉN por correo (cada reply dispara support-ticket-reply);
+ * acá el cliente ve las respuestas públicas del equipo. Las notas internas del
+ * panel NUNCA llegan a esta vista (filtro en la query de customer-service).
  *
  * Solo tickets con customerId (creados logueado desde /contacto); los de
  * invitado no tienen dueño y quedan fuera. Aislamiento por customerId.
@@ -152,6 +153,39 @@ export default async function MiCuentaSoportePage() {
                 {subjectLabel(t.subject)}
               </p>
               <p className="text-brand-muted mt-1 text-sm whitespace-pre-line">{t.message}</p>
+              {t.ownOrderNumber && (
+                <p className="mt-2 text-xs">
+                  <Link
+                    href={`/mi-cuenta/pedidos/${t.ownOrderNumber}`}
+                    className="text-brand-pink-ink hover:text-brand-coral-ink font-semibold"
+                  >
+                    <CmsText blockKey="account.support.order.link" fallback="Ver mi pedido" />
+                  </Link>{" "}
+                  <span className="text-brand-muted font-mono">{t.ownOrderNumber}</span>
+                </p>
+              )}
+              {t.replies.length > 0 && (
+                <div className="border-brand-purple/15 mt-3 rounded-xl border bg-white/60 p-3">
+                  <p className="text-brand-purple-dark text-xs font-semibold">
+                    <CmsText
+                      blockKey="account.support.replies.title"
+                      fallback="Respuestas del equipo"
+                    />
+                  </p>
+                  <ul className="mt-2 space-y-2">
+                    {t.replies.map((r, i) => (
+                      <li key={i} className="border-brand-purple/10 border-l-2 pl-3">
+                        <p className="text-brand-purple-dark/90 text-sm whitespace-pre-line">
+                          {r.body}
+                        </p>
+                        <p className="text-brand-muted mt-0.5 text-xs">
+                          {dateFmt.format(r.createdAt)}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {t.resolvedAt && (
                 <p className="text-brand-muted mt-2 text-xs">
                   <CmsText blockKey="account.support.resolvedLabel" fallback="Resuelta el" />{" "}
