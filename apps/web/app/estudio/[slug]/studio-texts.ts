@@ -59,6 +59,12 @@ export type StudioTexts = {
     /** Ola 26 (owner 2026-09-09) — «Vista previa» bloqueado por textos requeridos
      *  sin llenar (Polaroid Instagram). {campos} = lista de campos faltantes. */
     finalizeTooltipTextos: string;
+    /** Fase 1A (2026-09-27) — popover "qué falta" de «Vista previa»: lista las
+     *  fotos por cargar (label de cada slot) y los textos IG por unidad. */
+    finalizePopoverAria: string;
+    finalizePopoverTitulo: string;
+    finalizePopoverFotos: string;
+    finalizePopoverTextos: string;
     finalizeGuardando: string;
     gesturesButtonTitle: string;
     slotEmptyInvite: string;
@@ -301,6 +307,23 @@ export type StudioTexts = {
     campoIgUbicacion: string;
     campoIgTitulo: string;
     campoIgHashtags: string;
+    /** Fase 1B — bloque de diligenciamiento masivo de la Polaroid Instagram en el
+     *  sidebar ("Datos de la publicación"): un campo por capa editable que escribe
+     *  en TODAS las fotos del set (equivalente multi-campo de "Tu mensaje"). */
+    igDatosTitulo: string;
+    igDatosSub: string;
+    igCampoUsuario: string;
+    igCampoUbicacion: string;
+    igCampoLikes: string;
+    igCampoTitulo: string;
+    igCampoHashtags: string;
+    igCampoRequerido: string;
+    igCampoOpcional: string;
+    /** Chip/placeholder cuando las unidades difieren en esa capa (edición por foto). */
+    igVariaPorFoto: string;
+    igVariaPlaceholder: string;
+    /** Aviso pack-level del bloque (misma caja destacada del aviso de "Tu mensaje"). */
+    igGlobalAviso: string;
     tamanoLabel: string;
     negrita: string;
     cursiva: string;
@@ -308,6 +331,8 @@ export type StudioTexts = {
     /** Ola 28 (owner 2026-09-11, 1.2.1.A) — aviso cuando el color de texto elegido
      *  casi no contrasta con la tarjeta (blanco sobre tarjeta blanca = invisible). */
     colorSinContrasteHint: string;
+    /** Fase 1B — aria de la opción «Personalizado» del picker de color de texto. */
+    colorPersonalizado: string;
     tipografiaLabel: string;
     reset: string;
     aplicar: string;
@@ -315,6 +340,8 @@ export type StudioTexts = {
     aplicando: string;
     estiloColorTitulo: string;
     estiloSinColor: string;
+    /** Fase 1B — opción «Personalizado» de la paleta de tarjeta (input color nativo). */
+    estiloColorPersonalizado: string;
     estiloBordeTitulo: string;
     estiloConBorde: string;
     estiloSinBorde: string;
@@ -337,11 +364,19 @@ export type StudioTexts = {
     perfilPickerDesc: string;
     /** Ola 22 — tooltip del avatar tappeable del chrome IG (abre el picker de perfil). */
     perfilAvatarHint: string;
+    /** Fase 1B — encuadre (zoom/pan) de la foto de perfil IG en el editor de slot. */
+    perfilEncuadreTitulo: string;
+    perfilEncuadreHint: string;
+    perfilZoomAria: string;
     slotEditListo: string;
     capasVolver: string;
     capasElegir: string;
     capaEditadaBadge: string;
     capaEditando: string;
+    /** Fase 1B — «Aplicar a todas» por capa de texto (setTextOverrideAllSlots). */
+    capaAplicarATodas: string;
+    capaAplicarATodasAria: string;
+    capaAplicadaFeedback: string;
     ajustarReset: string;
     ajustarRotar: string;
     /** Lucy 2026-09-08 — selector de letra del calendario DENTRO de "Ajustar Foto". */
@@ -484,6 +519,8 @@ export type StudioTexts = {
     ejemplosEs: string;
     ejemplosEn: string;
     swatchAria: string;
+    /** Fase 1B — aria de la opción «Personalizado» de la fila de swatches. */
+    swatchPersonalizadoAria: string;
     listoSr: string;
   };
   /** Editor de set de letras. */
@@ -614,6 +651,10 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     finalizeBtn: "Vista previa",
     finalizeTooltip: "Faltan {n} fotos por cargar para ver la vista previa",
     finalizeTooltipTextos: "Completa los textos de tu diseño para ver la vista previa: {campos}",
+    finalizePopoverAria: "Qué falta para ver la vista previa",
+    finalizePopoverTitulo: "Para ver tu vista previa te falta:",
+    finalizePopoverFotos: "Fotos por cargar:",
+    finalizePopoverTextos: "Textos por completar:",
     finalizeGuardando: "Guardando diseño...",
     gesturesButtonTitle: "Cómo editar tu foto (drag, zoom, doble click)",
     slotEmptyInvite: "Pásame una foto",
@@ -844,18 +885,36 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     campoIgUbicacion: "ubicación",
     campoIgTitulo: "título",
     campoIgHashtags: "hashtags",
+    // Fase 1B — diligenciamiento masivo de los textos IG desde el sidebar (owner:
+    // la Clásica tiene "Tu mensaje" para todo el set y la Instagram no tenía
+    // equivalente). Un campo por capa; cada uno escribe en TODAS las fotos.
+    igDatosTitulo: "Datos de la publicación",
+    igDatosSub: "(para todas las fotos)",
+    igCampoUsuario: "@usuario",
+    igCampoUbicacion: "Ubicación",
+    igCampoLikes: "«Me gusta»",
+    igCampoTitulo: "Título",
+    igCampoHashtags: "Hashtags",
+    igCampoRequerido: "(obligatorio)",
+    igCampoOpcional: "(opcional — si lo dejas vacío, no se imprime)",
+    igVariaPorFoto: "Varía por foto",
+    igVariaPlaceholder: "Varía por foto — escribe para unificar",
+    igGlobalAviso:
+      "Estos datos se aplican a TODAS las fotos del set. Para personalizar una en particular, toca la foto.",
     tamanoLabel: "Tamaño",
     negrita: "Negrita",
     cursiva: "Cursiva",
     colorLabel: "Color",
     colorSinContrasteHint:
       "Este color casi no se va a ver sobre la tarjeta — para que se lea al imprimir, elige otro.",
+    colorPersonalizado: "Elegir un color personalizado",
     tipografiaLabel: "Tipografía",
     reset: "Volver al original",
     aplicar: "Aplicar",
     aplicando: "Aplicando…",
     estiloColorTitulo: "Color de tarjeta",
     estiloSinColor: "Sin color",
+    estiloColorPersonalizado: "Personalizado",
     estiloBordeTitulo: "Borde de foto",
     estiloConBorde: "Con borde",
     estiloSinBorde: "Sin borde",
@@ -878,11 +937,17 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     perfilPickerDesc: "Se recorta en círculo dentro del anillo del encabezado.",
     // Ola 22 — tooltip del avatar tappeable del chrome IG (abre el picker de perfil).
     perfilAvatarHint: "Foto de perfil — toca para cambiarla",
+    perfilEncuadreTitulo: "Encuadre de la foto de perfil",
+    perfilEncuadreHint: "Arrastra la foto para centrarla · doble clic para resetear",
+    perfilZoomAria: "Zoom de la foto de perfil",
     slotEditListo: "Listo",
     capasVolver: "Volver a capas",
     capasElegir: "Elige un texto para editar",
     capaEditadaBadge: "editado",
     capaEditando: "Editando: {texto}",
+    capaAplicarATodas: "Aplicar a todas",
+    capaAplicarATodasAria: "Aplicar «{texto}» a todas las unidades",
+    capaAplicadaFeedback: "Texto aplicado a todas las unidades",
     ajustarReset: "Centrar y resetear zoom",
     ajustarRotar: "Rotar 90°",
     // Lucy 2026-09-08 — la letra del calendario también se elige desde "Ajustar Foto"
@@ -1021,6 +1086,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     ejemplosEs: "Mía, Mateo, Amor",
     ejemplosEn: "Mia, Noah, Love",
     swatchAria: "Pintar de {color}",
+    swatchPersonalizadoAria: "Elegir un color personalizado para la letra",
     listoSr: ": te mostramos cómo queda antes de agregarlo al carrito",
   },
   letras: {
@@ -1137,6 +1203,10 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.finalizeBtn": "estudio.lienzo.finalize-btn",
   "lienzo.finalizeTooltip": "estudio.lienzo.finalize-tooltip",
   "lienzo.finalizeTooltipTextos": "estudio.lienzo.finalize-tooltip-textos",
+  "lienzo.finalizePopoverAria": "estudio.lienzo.finalize-popover-aria",
+  "lienzo.finalizePopoverTitulo": "estudio.lienzo.finalize-popover-titulo",
+  "lienzo.finalizePopoverFotos": "estudio.lienzo.finalize-popover-fotos",
+  "lienzo.finalizePopoverTextos": "estudio.lienzo.finalize-popover-textos",
   "lienzo.finalizeGuardando": "estudio.lienzo.finalize-guardando",
   "lienzo.gesturesButtonTitle": "estudio.lienzo.gestures-button-title",
   "lienzo.slotEmptyInvite": "estudio.lienzo.slot-empty-invite",
@@ -1341,17 +1411,31 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.campoIgUbicacion": "estudio.texto.campo-ig-ubicacion",
   "texto.campoIgTitulo": "estudio.texto.campo-ig-titulo",
   "texto.campoIgHashtags": "estudio.texto.campo-ig-hashtags",
+  "texto.igDatosTitulo": "estudio.texto.ig-datos-titulo",
+  "texto.igDatosSub": "estudio.texto.ig-datos-sub",
+  "texto.igCampoUsuario": "estudio.texto.ig-campo-usuario",
+  "texto.igCampoUbicacion": "estudio.texto.ig-campo-ubicacion",
+  "texto.igCampoLikes": "estudio.texto.ig-campo-likes",
+  "texto.igCampoTitulo": "estudio.texto.ig-campo-titulo",
+  "texto.igCampoHashtags": "estudio.texto.ig-campo-hashtags",
+  "texto.igCampoRequerido": "estudio.texto.ig-campo-requerido",
+  "texto.igCampoOpcional": "estudio.texto.ig-campo-opcional",
+  "texto.igVariaPorFoto": "estudio.texto.ig-varia-por-foto",
+  "texto.igVariaPlaceholder": "estudio.texto.ig-varia-placeholder",
+  "texto.igGlobalAviso": "estudio.texto.ig-global-aviso",
   "texto.tamanoLabel": "estudio.texto.tamano-label",
   "texto.negrita": "estudio.texto.negrita",
   "texto.cursiva": "estudio.texto.cursiva",
   "texto.colorLabel": "estudio.texto.color-label",
   "texto.colorSinContrasteHint": "estudio.texto.color-sin-contraste-hint",
+  "texto.colorPersonalizado": "estudio.texto.color-personalizado",
   "texto.tipografiaLabel": "estudio.texto.tipografia-label",
   "texto.reset": "estudio.texto.reset",
   "texto.aplicar": "estudio.texto.aplicar",
   "texto.aplicando": "estudio.texto.aplicando",
   "texto.estiloColorTitulo": "estudio.texto.estilo-color-titulo",
   "texto.estiloSinColor": "estudio.texto.estilo-sin-color",
+  "texto.estiloColorPersonalizado": "estudio.texto.estilo-color-personalizado",
   "texto.estiloBordeTitulo": "estudio.texto.estilo-borde-titulo",
   "texto.estiloConBorde": "estudio.texto.estilo-con-borde",
   "texto.estiloSinBorde": "estudio.texto.estilo-sin-borde",
@@ -1370,11 +1454,17 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.perfilPickerTitulo": "estudio.texto.perfil-picker-titulo",
   "texto.perfilPickerDesc": "estudio.texto.perfil-picker-desc",
   "texto.perfilAvatarHint": "estudio.texto.perfil-avatar-hint",
+  "texto.perfilEncuadreTitulo": "estudio.texto.perfil-encuadre-titulo",
+  "texto.perfilEncuadreHint": "estudio.texto.perfil-encuadre-hint",
+  "texto.perfilZoomAria": "estudio.texto.perfil-zoom-aria",
   "texto.slotEditListo": "estudio.texto.slot-edit-listo",
   "texto.capasVolver": "estudio.texto.capas-volver",
   "texto.capasElegir": "estudio.texto.capas-elegir",
   "texto.capaEditadaBadge": "estudio.texto.capa-editada-badge",
   "texto.capaEditando": "estudio.texto.capa-editando",
+  "texto.capaAplicarATodas": "estudio.texto.capa-aplicar-a-todas",
+  "texto.capaAplicarATodasAria": "estudio.texto.capa-aplicar-a-todas-aria",
+  "texto.capaAplicadaFeedback": "estudio.texto.capa-aplicada-feedback",
   "texto.ajustarReset": "estudio.texto.ajustar-reset",
   "texto.ajustarRotar": "estudio.texto.ajustar-rotar",
   "texto.calFontModalHint": "estudio.texto.cal-font-modal-hint",
@@ -1498,6 +1588,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "nombre.ejemplosEs": "estudio.nombre.ejemplos-es",
   "nombre.ejemplosEn": "estudio.nombre.ejemplos-en",
   "nombre.swatchAria": "estudio.nombre.swatch-aria",
+  "nombre.swatchPersonalizadoAria": "estudio.nombre.swatch-personalizado-aria",
   "nombre.listoSr": "estudio.nombre.listo-sr",
   "letras.titulo": "estudio.letras.titulo",
   "letras.subVocalesIlustrado": "estudio.letras.sub-vocales-ilustrado",

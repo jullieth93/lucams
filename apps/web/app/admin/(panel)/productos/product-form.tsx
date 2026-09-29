@@ -348,14 +348,18 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
           description="Lo que el cliente ve sobre cuánto demora y qué incluye."
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Field id="warrantyMonths" label="Garantía (meses)" hint="Ley 1480 mínimo 12.">
+            <Field
+              id="warrantyMonths"
+              label="Garantía (meses)"
+              hint="Ley 1480: mínimo 3 (término informado al consumidor)."
+            >
               <Input
                 id="warrantyMonths"
                 name="warrantyMonths"
                 type="number"
                 min={0}
                 max={120}
-                defaultValue={initialProduct?.warrantyMonths ?? 12}
+                defaultValue={initialProduct?.warrantyMonths ?? 3}
                 disabled={pending}
               />
             </Field>
@@ -733,8 +737,8 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
        * `!state.fieldErrors`, así que un fallo de validación en un campo SIN
        * error propio renderizado (garantía, tiempos, peso/dims…) no mostraba
        * NADA: el guardado se perdía en silencio (bug del owner 2026-09-18:
-       * productos legados con garantía < 12 meses rechazados por Zod al
-       * guardar cualquier cambio). Acá se lista cada campo con su etiqueta
+       * productos legados con garantía bajo el piso informado rechazados
+       * por Zod al guardar cualquier cambio). Acá se lista cada campo con su etiqueta
        * humana + mensaje; el dot rojo del tab indica además dónde corregirlo.
        */}
       {state?.error && (

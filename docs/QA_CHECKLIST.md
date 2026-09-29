@@ -96,7 +96,7 @@
 - [ ] Cupón válido escrito en el campo de **`/checkout/pago`** → descuento aplicado al total (el campo NO está en el carrito)
 - [ ] Cupón inválido/vencido en /checkout/pago → mensaje claro sin romper el checkout
 - [ ] Pago Wompi sandbox aprobado → webhook confirma → orden PAID + email de confirmación
-- [ ] Pago COD (contraentrega) → orden queda PENDING_PAYMENT con ledger COD para conciliar al entregar
+- [ ] Pago COD (contraentrega) → la saga confirma inline: orden queda PAID con guía COD `valorrecaudo = total` para conciliar el recaudo al entregar
 - [ ] /checkout/gracias?id=TX_ID muestra confirmación con número de pedido (el estado se verifica contra Wompi, no contra el query param)
 - [ ] /rastrear (invitado, sin cuenta): número de pedido + correo → vista pública /pedido/<token> con estado, timeline y guía
 - [ ] /rastrear con datos que no cruzan → error genérico anti-enumeración (no revela si el pedido o el correo existen)

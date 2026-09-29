@@ -798,7 +798,7 @@ model Coupon {
 //
 // G-5 (security audit 2026-08-24): the per-customer cap is enforced AT THE DB
 // by the BEFORE INSERT trigger `coupon_usage_per_customer_limit` (migration
-// 20260829120000_coupon_usage_per_customer_trigger): it takes a
+// 20260829150300_coupon_usage_per_customer_trigger): it takes a
 // pg_advisory_xact_lock per (couponId, lower(email)) / (couponId, customerId)
 // and re-counts under the lock, so two concurrent PAID checkouts with the same
 // identity can no longer both pass the app's read-then-write count. The loser
@@ -1238,18 +1238,28 @@ model EmailEvent {
 // ──────────────────────── SOPORTE ────────────────────────
 
 model SupportTicket {
-  id         String    @id @default(cuid())
-  customerId String?
-  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  email      String
-  name       String
-  subject    String
-  message    String
-  status     String    @default("OPEN") // "OPEN" | "IN_PROGRESS" | "CLOSED"
-  ip         String?
-  userAgent  String?
-  resolvedAt DateTime?
-  resolvedBy String?
+  id             String    @id @default(cuid())
+  customerId     String?
+  customer       Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  email          String
+  name           String
+  subject        String
+  message        String
+  status         String    @default("OPEN") // "OPEN" | "IN_PROGRESS" | "CLOSED"
+  ip             String?
+  userAgent      String?
+  // Pedido relacionado (Order.number, ej. "LCM-2026-0001"). Lo pide el form de
+  // /contacto cuando el asunto es de pedido (MI_PEDIDO / GARANTIA_DEVOLUCION /
+  // ENVIO_RASTREO).
+  orderNumber    String?
+  // Enlace al caso especializado creado desde el panel ("warranty" | "retract"):
+  // un ticket GARANTIA_DEVOLUCION deja de ser genérico y entra a la máquina de
+  // estados del módulo legal correspondiente.
+  linkedCaseType String?
+  linkedCaseId   String?
+  resolvedAt     DateTime?
+  resolvedBy     String?
+  messages       SupportTicketMessage[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1257,6 +1267,25 @@ model SupportTicket {
   @@index([status, createdAt])
   @@index([customerId])
   @@index([email])
+  @@index([orderNumber])
+}
+
+// Hilo de conversación del ticket: respuestas del equipo al cliente (visibles en
+// /mi-cuenta/soporte y enviadas por correo) y notas internas (isInternal = true:
+// NUNCA se muestran al cliente ni se envían). authorId = AdminUser.id cuando
+// authorKind = "ADMIN" (Customer.id si algún día el cliente responde en app).
+model SupportTicketMessage {
+  id         String        @id @default(cuid())
+  ticketId   String
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorKind String // "CUSTOMER" | "ADMIN"
+  authorId   String?
+  body       String
+  isInternal Boolean       @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
 }
 
 // ──────────────────────── CMS BLOCKS ────────────────────────

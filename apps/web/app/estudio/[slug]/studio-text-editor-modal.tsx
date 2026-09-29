@@ -363,6 +363,44 @@ export function StudioTextEditorForm({
               </button>
             );
           })}
+          {/* Fase 1B — opción «Personalizado» (input color nativo, sin dependencias):
+              el hex entra al mismo estado `fill` que un preset (misma persistencia). */}
+          {(() => {
+            const isCustom = !TEXT_COLOR_PRESETS.some((c) => c.color === fill);
+            return (
+              <label
+                title={texts.texto.colorPersonalizado}
+                className={[
+                  "focus-within:ring-brand-turquoise relative h-7 w-7 cursor-pointer rounded-full transition-transform focus-within:ring-2 hover:scale-110",
+                  isCustom
+                    ? "ring-brand-turquoise scale-110 ring-2 ring-offset-2"
+                    : "ring-brand-purple/15 hover:ring-brand-purple/40 ring-1",
+                ].join(" ")}
+                style={{
+                  background: isCustom
+                    ? fill
+                    : "conic-gradient(#E85B9F, #FFD93D, #5DD9D1, #7C6AAD, #E85B9F)",
+                }}
+              >
+                <input
+                  type="color"
+                  value={isCustom ? fill : "#7C6AAD"}
+                  onChange={(e) => setFill(e.target.value)}
+                  aria-label={texts.texto.colorPersonalizado}
+                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                />
+                {isCustom && (
+                  <Check
+                    className={[
+                      "absolute inset-0 m-auto h-4 w-4",
+                      fill === "#FFFFFF" ? "text-brand-purple-dark" : "text-white",
+                    ].join(" ")}
+                    strokeWidth={3}
+                  />
+                )}
+              </label>
+            );
+          })()}
         </div>
       </div>
 

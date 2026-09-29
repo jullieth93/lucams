@@ -100,6 +100,15 @@ export type StudioStoreState = {
    * Va por setCanvasData → undo + auto-save.
    */
   setSlotProfilePhoto: (slotIndex: number, asset: StudioAsset | null) => void;
+  /**
+   * Fase 1B — encuadre de la foto de perfil IG (zoom/pan dentro del círculo).
+   * `transform = null` resetea al cover centrado; objeto parcial hace merge sobre
+   * el actual (mismo patrón que setSlotPhotoTransform).
+   */
+  setSlotProfileTransform: (
+    slotIndex: number,
+    transform: { offsetX?: number; offsetY?: number; scale?: number } | null,
+  ) => void;
   /** M.3.b.D — Aplicar/quitar override de un text layer editable en un slot.
    *  Si `override === null`, limpia el override del textLayerId (vuelve al
    *  texto/color/fuente base del template). */
@@ -281,6 +290,8 @@ export function createStudioStore() {
                 // Ola 17 — el reset del slot también suelta la foto de perfil.
                 profileAssetId: null,
                 profileAssetUrl: undefined,
+                // Fase 1B — y su encuadre (vuelve al cover centrado).
+                profileTransform: undefined,
               }
             : s,
         ),
@@ -309,9 +320,34 @@ export function createStudioStore() {
                 ...s,
                 profileAssetId: asset ? asset.id : null,
                 profileAssetUrl: asset ? asset.signedUrl : undefined,
+                // Fase 1B — al quitar/cambiar la foto el encuadre anterior no aplica.
+                ...(asset ? {} : { profileTransform: undefined }),
               }
             : s,
         ),
+      };
+      get().setCanvasData(next);
+    },
+
+    setSlotProfileTransform: (slotIndex, transform) => {
+      const { canvasData } = get();
+      if (!canvasData) return;
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        slots: canvasData.slots.map((s) => {
+          if (s.slotIndex !== slotIndex) return s;
+          if (transform === null) return { ...s, profileTransform: undefined };
+          // Merge: solo override los campos provistos (patrón setSlotPhotoTransform).
+          const current = s.profileTransform ?? { offsetX: 0, offsetY: 0, scale: 1 };
+          return {
+            ...s,
+            profileTransform: {
+              offsetX: transform.offsetX ?? current.offsetX,
+              offsetY: transform.offsetY ?? current.offsetY,
+              scale: transform.scale ?? current.scale,
+            },
+          };
+        }),
       };
       get().setCanvasData(next);
     },
@@ -652,7 +688,11 @@ export function createStudioStore() {
                   ...s,
                   ...(s.assetId === assetId ? { assetId: null, assetUrl: null } : {}),
                   ...(s.profileAssetId === assetId
-                    ? { profileAssetId: null, profileAssetUrl: undefined }
+                    ? {
+                        profileAssetId: null,
+                        profileAssetUrl: undefined,
+                        profileTransform: undefined,
+                      }
                     : {}),
                 }
               : s,
@@ -808,6 +848,20 @@ export function selectIsComplete(state: StudioStoreState): boolean {
   const total = state.canvasData.slotCount;
   if (total === 0) return false;
   return state.canvasData.slots.filter((s) => !!s.assetUrl).length === total;
+}
+
+/**
+ * Índices de los slots SIN foto (faltantes para finalizar) como string
+ * "0,3,5" — primitivo → suscripción atómica (mismo patrón de
+ * selectFilledSlotCount). Con backOptional (separadores) solo cuentan las
+ * caras A (slots pares). Lo consume el popover de «Vista previa» (Fase 1A).
+ */
+export function selectMissingSlotIndexesKey(state: StudioStoreState, backOptional = false): string {
+  if (!state.canvasData) return "";
+  return state.canvasData.slots
+    .filter((s) => !s.assetUrl && (!backOptional || s.slotIndex % 2 === 0))
+    .map((s) => s.slotIndex)
+    .join(",");
 }
 
 // ──────────────────────────────────────────────────────────────────

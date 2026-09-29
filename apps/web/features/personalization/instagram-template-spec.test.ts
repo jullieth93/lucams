@@ -23,6 +23,7 @@ import {
   igTextTop,
   igTextFill,
   igMissingRequiredTextLayerIds,
+  igMissingRequiredTextLayersPerSlot,
 } from "./instagram-template-spec";
 
 describe("instagram-template-spec (geometría footer vs fila de iconos)", () => {
@@ -259,5 +260,63 @@ describe("instagram-template-spec (textos requeridos para finalizar — Ola 26)"
       ),
     );
     expect(notIg).toEqual([]);
+  });
+});
+
+describe("igMissingRequiredTextLayersPerSlot (Fase 1A — detalle por unidad para el popover)", () => {
+  const igLayers = [
+    { id: "frame", type: "asset", src: "/templates/ig_post_3x4.svg" },
+    { id: "user_name", type: "text", editable: true },
+    { id: "location", type: "text", editable: true },
+    { id: "likes_count", type: "text", editable: true },
+    { id: "caption", type: "text", editable: true },
+    { id: "hashtags", type: "text", editable: true },
+  ];
+  const canvasWith = (
+    slots: ReadonlyArray<{
+      slotIndex: number;
+      textOverrides?: Record<string, { text?: unknown } | undefined>;
+    }>,
+  ) => ({ unitTemplate: { layers: igLayers }, slots });
+
+  it("desagrega los faltantes por slot (los slots completos no aparecen)", () => {
+    const perSlot = igMissingRequiredTextLayersPerSlot(
+      canvasWith([
+        {
+          slotIndex: 0,
+          textOverrides: {
+            user_name: { text: "@lucy" },
+            location: { text: "Bogotá" },
+            caption: { text: "Mi recuerdo" },
+            hashtags: { text: "#amor" },
+          },
+        },
+        { slotIndex: 1, textOverrides: { user_name: { text: "@lu" } } },
+      ]),
+    );
+    expect(perSlot).toEqual([{ slotIndex: 1, layerIds: ["location", "caption", "hashtags"] }]);
+  });
+
+  it("tarjeta recién creada → cada slot reporta los 4 campos en orden de plantilla", () => {
+    const perSlot = igMissingRequiredTextLayersPerSlot(
+      canvasWith([
+        { slotIndex: 0, textOverrides: undefined },
+        { slotIndex: 1, textOverrides: undefined },
+      ]),
+    );
+    expect(perSlot).toEqual([
+      { slotIndex: 0, layerIds: ["user_name", "location", "caption", "hashtags"] },
+      { slotIndex: 1, layerIds: ["user_name", "location", "caption", "hashtags"] },
+    ]);
+  });
+
+  it("coherente con el agregado: la unión por slot = igMissingRequiredTextLayerIds", () => {
+    const data = canvasWith([
+      { slotIndex: 0, textOverrides: { hashtags: { text: "#a" } } },
+      { slotIndex: 1, textOverrides: { caption: { text: "Otro" } } },
+    ]);
+    const perSlot = igMissingRequiredTextLayersPerSlot(data);
+    const union = [...new Set(perSlot.flatMap((e) => e.layerIds))];
+    expect(union).toEqual(igMissingRequiredTextLayerIds(data));
   });
 });

@@ -15,10 +15,11 @@
  * modal centrado compacto.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import { ImageIcon, Type, ChevronLeft, Copy } from "lucide-react";
 import { StudioPhotoAdjustForm } from "./studio-photo-adjust-modal";
 import { StudioPhotoPreview } from "./studio-photo-preview";
@@ -26,10 +27,13 @@ import { StudioTextEditorForm } from "./studio-text-editor-modal";
 import type { CanvasDataV1, PhotoFilterPreset, TextLayer, TextOverride } from "./types";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
 import { CALENDAR_FONT_OPTIONS, type CalendarFontKey } from "@/features/personalization/schemas";
+import { IG_PROFILE_PHOTO_LAYER } from "@/features/personalization/instagram-template-spec";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 
 type PhotoTransform = { offsetX: number; offsetY: number; scale: number; rotation?: number };
+/** Fase 1B — encuadre del avatar IG (zoom/pan; sin rotación: es un círculo). */
+type ProfileTransform = { offsetX: number; offsetY: number; scale: number };
 
 type StudioSlotEditModalProps = {
   isOpen: boolean;
@@ -75,6 +79,18 @@ type StudioSlotEditModalProps = {
   profilePhotoUrl?: string | null;
   onChangeProfilePhoto?: () => void;
   onClearProfilePhoto?: () => void;
+  /**
+   * Fase 1B — encuadre (zoom/pan) de la foto de perfil IG dentro de su círculo.
+   * Persiste en SlotState.profileTransform vía store.setSlotProfileTransform.
+   */
+  profileTransform?: ProfileTransform | null;
+  onProfileTransformChange?: (t: Partial<ProfileTransform>) => void;
+  /**
+   * Fase 1B — «Aplicar a todas» POR CAPA de texto (Polaroid Instagram: replica
+   * el override de ESA capa en todos los slots vía setTextOverrideAllSlots).
+   * Ausente → no se muestra el botón (packs de 1 solo imán).
+   */
+  onApplyTextToAll?: (layerId: string, override: TextOverride) => void;
   /**
    * Lucy 2026-09-08 — tipo de letra del calendario DENTRO de "Ajustar Foto".
    * Solo se pasa para productos calendario (el wrapper lo cablea al store).
@@ -142,6 +158,9 @@ export function StudioSlotEditModal({
   profilePhotoUrl = null,
   onChangeProfilePhoto,
   onClearProfilePhoto,
+  profileTransform = null,
+  onProfileTransformChange,
+  onApplyTextToAll,
   calendarFont = "fredoka",
   onCalendarFontChange,
   applyToAll,
@@ -248,6 +267,8 @@ export function StudioSlotEditModal({
                         textOverrides: currentTextOverrides,
                         // Ola 17 — la vista previa del editor muestra la foto de perfil.
                         profileAssetUrl: profilePhotoUrl ?? undefined,
+                        // Fase 1B — y su encuadre (WYSIWYG con la grilla).
+                        profileTransform: profileTransform ?? undefined,
                       }}
                       totalSlots={preview.totalSlots}
                       borderColor={preview.borderColor}
@@ -365,6 +386,15 @@ export function StudioSlotEditModal({
                           </button>
                         )}
                       </div>
+                      {/* Fase 1B — encuadre del avatar (zoom/pan dentro del círculo),
+                          mismo lenguaje de gestos del preview principal. */}
+                      {profilePhotoUrl && onProfileTransformChange && (
+                        <ProfilePhotoFramer
+                          photoUrl={profilePhotoUrl}
+                          transform={profileTransform}
+                          onChange={onProfileTransformChange}
+                        />
+                      )}
                     </div>
                   )}
                   <StudioPhotoAdjustForm
@@ -389,6 +419,7 @@ export function StudioSlotEditModal({
                   focusTextLayerId={focusTextLayerId}
                   cardColor={cardColor}
                   textDefaultFills={textDefaultFills}
+                  onApplyToAll={onApplyTextToAll}
                 />
               )}
             </TabsContent>
@@ -433,6 +464,7 @@ function TextLayersEditor({
   focusTextLayerId,
   cardColor = null,
   textDefaultFills,
+  onApplyToAll,
 }: {
   layers: TextLayer[];
   currentOverrides: Record<string, TextOverride> | undefined;
@@ -440,6 +472,9 @@ function TextLayersEditor({
   focusTextLayerId?: string;
   cardColor?: string | null;
   textDefaultFills?: Record<string, string>;
+  /** Fase 1B — «Aplicar a todas» por capa (replica el override de la capa en
+   *  todos los slots). Ausente → el botón no se muestra. */
+  onApplyToAll?: (layerId: string, override: TextOverride) => void;
 }) {
   const texts = useStudioTexts();
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(() => {
@@ -449,6 +484,8 @@ function TextLayersEditor({
     }
     return layers.length === 1 ? (layers[0]?.id ?? null) : null;
   });
+  // Feedback aria-live tras «Aplicar a todas» (mismo patrón sr-only del grid).
+  const [appliedLayerId, setAppliedLayerId] = useState<string | null>(null);
 
   const selectedLayer = useMemo(
     () => layers.find((l) => l.id === selectedLayerId) ?? layers[0] ?? null,
@@ -497,30 +534,59 @@ function TextLayersEditor({
               const override = currentOverrides?.[layer.id];
               const displayText = override?.text ?? layer.text;
               const hasOverride = !!override && Object.keys(override).length > 0;
+              // Fase 1B — «Aplicar a todas» por capa: solo cuando hay un override
+              // con texto del cliente en ESTE slot (no tiene sentido propagar el
+              // placeholder vacío) y el host cableó la acción (pack > 1 unidad).
+              const canApplyToAll = !!onApplyToAll && !!override && !!override.text?.trim();
               return (
-                <button
+                <div
                   key={layer.id}
-                  type="button"
-                  onClick={() => setSelectedLayerId(layer.id)}
-                  className="border-brand-purple/15 hover:border-brand-purple/40 hover:bg-brand-cream/50 flex items-center justify-between rounded-lg border p-3 text-left transition-colors"
+                  className="border-brand-purple/15 flex items-center gap-2 rounded-lg border p-1.5 pl-3"
                 >
-                  <span className="text-brand-purple-dark truncate text-sm font-medium">
-                    {displayText || (
-                      <span className="italic opacity-50">{texts.texto.sinTexto}</span>
-                    )}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    {hasOverride && (
-                      <span className="bg-brand-turquoise/10 text-brand-turquoise shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold">
-                        {texts.texto.capaEditadaBadge}
-                      </span>
-                    )}
-                    <span className="text-brand-muted text-xs">{texts.comun.editar}</span>
-                  </div>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLayerId(layer.id)}
+                    className="hover:bg-brand-cream/50 flex flex-1 items-center justify-between gap-2 rounded-md p-1.5 text-left transition-colors"
+                  >
+                    <span className="text-brand-purple-dark truncate text-sm font-medium">
+                      {displayText || (
+                        <span className="italic opacity-50">{texts.texto.sinTexto}</span>
+                      )}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {hasOverride && (
+                        <span className="bg-brand-turquoise/10 text-brand-turquoise shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold">
+                          {texts.texto.capaEditadaBadge}
+                        </span>
+                      )}
+                      <span className="text-brand-muted text-xs">{texts.comun.editar}</span>
+                    </div>
+                  </button>
+                  {canApplyToAll && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onApplyToAll(layer.id, override);
+                        setAppliedLayerId(layer.id);
+                      }}
+                      aria-label={fillStudioText(texts.texto.capaAplicarATodasAria, {
+                        texto: displayText,
+                      })}
+                      title={texts.texto.capaAplicarATodas}
+                      className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 focus-visible:ring-brand-turquoise inline-flex shrink-0 items-center gap-1 rounded-full border-2 bg-white px-2.5 py-1.5 text-[11px] font-bold transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95"
+                    >
+                      <Copy className="h-3 w-3" aria-hidden />
+                      {texts.texto.capaAplicarATodas}
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
+          {/* Feedback aria-live del «Aplicar a todas» por capa (patrón sr-only). */}
+          <span aria-live="polite" role="status" className="sr-only">
+            {appliedLayerId ? texts.texto.capaAplicadaFeedback : ""}
+          </span>
         </div>
       ) : selectedLayer ? (
         <div className="space-y-3">
@@ -551,6 +617,126 @@ function TextLayersEditor({
           />
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Fase 1B — Encuadre de la FOTO DE PERFIL de la Polaroid Instagram (zoom/pan del
+ * avatar dentro de su círculo). El preview principal (`StudioPhotoPreview`) está
+ * atado al `photoTransform` de la foto grande y no es reutilizable acá, así que
+ * este control compacto replica su lenguaje de gestos en DOM puro: arrastre = pan,
+ * slider = zoom, doble clic = centrar. La matemática es la MISMA del renderer
+ * Konva (`ProfilePhotoLayerRenderer`): cover × scale, centro + offset en coords
+ * del stage (radio del spec IG_PROFILE_PHOTO_LAYER) — WYSIWYG con la grilla.
+ * Accesible: el círculo es focusable y las flechas del teclado hacen pan.
+ */
+const PROFILE_FRAMER_SIZE = 128; // px de display del círculo de encuadre
+
+function ProfilePhotoFramer({
+  photoUrl,
+  transform,
+  onChange,
+}: {
+  photoUrl: string;
+  transform: ProfileTransform | null;
+  onChange: (t: Partial<ProfileTransform>) => void;
+}) {
+  const texts = useStudioTexts();
+  const [imgSize, setImgSize] = useState<{ w: number; h: number } | null>(null);
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    baseX: number;
+    baseY: number;
+  } | null>(null);
+
+  const t = transform ?? { offsetX: 0, offsetY: 0, scale: 1 };
+  const D = PROFILE_FRAMER_SIZE;
+  const stageDiameter = IG_PROFILE_PHOTO_LAYER.radius * 2;
+  // Los offsets viven en coords del stage (igual que photoTransform); el display
+  // los escala por D / diámetro-del-círculo-en-el-stage.
+  const displayScale = D / stageDiameter;
+  const base = imgSize ? Math.max(D / imgSize.w, D / imgSize.h) : 1;
+  const w = imgSize ? imgSize.w * base * t.scale : 0;
+  const h = imgSize ? imgSize.h * base * t.scale : 0;
+  const left = (D - w) / 2 + t.offsetX * displayScale;
+  const top = (D - h) / 2 + t.offsetY * displayScale;
+
+  return (
+    <div className="border-brand-purple/10 mt-3 border-t pt-3">
+      <p className="text-brand-purple-dark text-xs font-semibold">
+        {texts.texto.perfilEncuadreTitulo}
+      </p>
+      <div className="mt-2 flex items-center gap-3">
+        <div
+          role="application"
+          tabIndex={0}
+          aria-label={`${texts.texto.perfilEncuadreTitulo}. ${texts.texto.perfilEncuadreHint}`}
+          className="border-brand-purple/20 focus-visible:ring-brand-turquoise relative shrink-0 cursor-grab touch-none overflow-hidden rounded-full border-2 select-none focus-visible:ring-2 focus-visible:outline-none active:cursor-grabbing"
+          style={{ width: D, height: D }}
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            dragRef.current = {
+              startX: e.clientX,
+              startY: e.clientY,
+              baseX: t.offsetX,
+              baseY: t.offsetY,
+            };
+          }}
+          onPointerMove={(e) => {
+            const d0 = dragRef.current;
+            if (!d0) return;
+            onChange({
+              offsetX: d0.baseX + (e.clientX - d0.startX) / displayScale,
+              offsetY: d0.baseY + (e.clientY - d0.startY) / displayScale,
+            });
+          }}
+          onPointerUp={() => {
+            dragRef.current = null;
+          }}
+          onPointerCancel={() => {
+            dragRef.current = null;
+          }}
+          onDoubleClick={() => onChange({ offsetX: 0, offsetY: 0, scale: 1 })}
+          onKeyDown={(e) => {
+            // Pan por teclado (alternativa al arrastre): paso de 4px de display.
+            const step = 4 / displayScale;
+            if (e.key === "ArrowLeft") onChange({ offsetX: t.offsetX - step });
+            else if (e.key === "ArrowRight") onChange({ offsetX: t.offsetX + step });
+            else if (e.key === "ArrowUp") onChange({ offsetY: t.offsetY - step });
+            else if (e.key === "ArrowDown") onChange({ offsetY: t.offsetY + step });
+            else return;
+            e.preventDefault();
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- preview local del avatar */}
+          <img
+            src={photoUrl}
+            alt=""
+            draggable={false}
+            onLoad={(e) => {
+              const img = e.currentTarget;
+              setImgSize({ w: img.naturalWidth, h: img.naturalHeight });
+            }}
+            className="pointer-events-none absolute max-w-none"
+            style={{ left, top, width: w, height: h }}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <Slider
+            min={1}
+            max={3}
+            step={0.05}
+            value={[Math.max(1, t.scale)]}
+            onValueChange={(v) => onChange({ scale: v[0] })}
+            aria-label={texts.texto.perfilZoomAria}
+          />
+          <p className="text-brand-muted mt-1.5 text-[11px] leading-snug">
+            {texts.texto.perfilEncuadreHint}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

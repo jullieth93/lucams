@@ -76,7 +76,10 @@ test("contacto: form → ticket OPEN en DB + 8 legales 200 + /ayuda FAQ", async 
     await expect(async () => {
       await form.locator('input[name="name"]').fill(`Cliente Prueba ${run.slice(-4)}`);
       await form.locator('input[name="email"]').fill(EMAIL);
-      await form.locator("#contact-subject").selectOption({ index: 1 });
+      // Asunto de pedido → aparece el campo "Número de pedido" (opcional).
+      await form.locator("#contact-subject").selectOption("MI_PEDIDO");
+      await expect(form.locator('input[name="orderNumber"]')).toBeVisible({ timeout: 3_000 });
+      await form.locator('input[name="orderNumber"]').fill("LCM-2026-0001");
       await form
         .locator("#contact-message")
         .fill(`Mensaje de homologación ${run}: el form de contacto funciona end to end.`);
@@ -96,11 +99,13 @@ test("contacto: form → ticket OPEN en DB + 8 legales 200 + /ayuda FAQ", async 
     await expect(async () => {
       const ticket = await db().supportTicket.findFirst({
         where: { email: EMAIL },
-        select: { id: true, subject: true, status: true },
+        select: { id: true, subject: true, status: true, orderNumber: true },
       });
       expect(ticket, "el ticket del run debe existir").not.toBeNull();
       expect(ticket!.status).toBe("OPEN");
-      expect(ticket!.subject).not.toBe("CONSULTA_PRODUCTO"); // elegimos index 1
+      expect(ticket!.subject).toBe("MI_PEDIDO");
+      // El campo "Número de pedido" del form se persiste normalizado (mayúsculas).
+      expect(ticket!.orderNumber).toBe("LCM-2026-0001");
     }).toPass({ timeout: 20_000 });
     record(
       "db-ticket-open",

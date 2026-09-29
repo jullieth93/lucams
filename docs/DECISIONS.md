@@ -3489,4 +3489,40 @@ intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar
 
 **Consecuencia:** el gate §20 de la misión queda sin bloqueos: `production migration path` PROVEN (LOCAL+STG), rollback = riesgo aceptado firmado, F-07 = remediado. Veredicto de la certificación: **CERTIFIED** sobre `develop@fcc912c` (árbol de producto `7f07c43`).
 
-**Addendum (mismo día):** ① la mitigación profunda ya existía como convención — `docs/CONVENTIONS.md` §"DB — migration strategy (expand-then-contract)" — y quedó explicitado allí que ese patrón ES lo que hace seguro el rollback instantáneo (Vercel revierte código, no DB); una migración destructiva en una sola release invalida el rollback. ② El drill de rollback queda agendado como paso del próximo deploy a PRD (no bloquea la certificación; registra fecha/resultado en STATE.md al hacerlo).
+**Addendum (mismo día):** ① la mitigación profunda ya existía como convención — `docs/CONVENTIONS.md` §"DB — migration strategy (expand-then-contract)" — y quedó explicitado allí que ese patrón ES lo que hace seguro el rollback instantáneo (Vercel revierte código, no DB); una migración destructiva en una sola release invalida el rollback. ② El drill de rollback quedó agendado como paso del deploy a PRD y **se ejecutó el 2026-09-27 13:45 con evidencia**: rollback a `dpl_EZZZ…` (código viejo) → smoke 5/5 contra la DB migrada → rollback hacia adelante a `dpl_B8mj…` → smoke 5/5. El mecanismo queda **PROVEN** (ya no es solo riesgo aceptado).
+
+---
+
+## ADR-106 — Garantía de 3 meses (término informado, Ley 1480 art. 8) y paquete legal "Versión 1"
+
+**Fecha:** 2026-09-29
+**Estado:** ✅ Aceptada (decisión de Lucy; el cambio de versionado aprobado por asesoría legal)
+
+**Contexto:** el producto nunca ha sido público, pero los 8 documentos legales decían «Versión 5 · vigente desde 2026-09-04» con la coletilla «en revisión por asesoría legal», y la garantía se anunciaba como «1 año» (el defecto legal cuando no se informa término). Los productos son papelería magnética personalizada de alta manipulación.
+
+**Decisión:**
+① **Versionado:** los 8 documentos pasan a **«Versión 1 · vigente desde 2026-09-29»** y se elimina la coletilla de revisión legal en todas las superficies (canónico `packages/db/legal-content/*.md`, fallbacks de `/legal/*`, header común, `PRIVACY_POLICY_VERSION` = «v1 · 2026-09-29» en consent y back-in-stock). Al nunca haber sido públicos, no hubo cambios frente a clientes que versionar.
+② **Garantía: 3 meses desde la entrega**, fijados e **informados expresamente** al consumidor conforme a la Ley 1480 de 2011 (art. 8: si no se informa término, el defecto es 1 año; el productor puede informar uno acorde a la naturaleza del bien). Cobertura: defectos de fabricación/impresión y adherencia del imán de fábrica. Exclusiones: mal uso, humedad, golpes, desgaste natural, manipulación indebida. El piso baja de 12 a 3 en `ProductCreateSchema.warrantyMonths` (min 3), default del form admin y piso de la PDP (`Math.max(…, 3)`); el script `publish-legal-v1-20260929.mjs` homologa `Product.warrantyMonths` a 3.
+
+**Por qué:** anunciar 1 año en productos personalizados y manipulables expone a la tienda a reclamos desproporcionados frente a la vida útil razonable del bien; la ley permite informar un término menor siempre que quede expreso. El retracto ya exceptúa personalizados (Ley 1480 art. 47), y esa excepción se mantiene.
+
+**Consecuencia:** textos legales, FAQ de ayuda, checkout, email de confirmación de pedido, nav del admin y COMPLIANCE.md coherentes con 3 meses. Re-consent: `PRIVACY_POLICY_VERSION` cambia de «v5» a «v1», así que el banner vuelve a aparecer — sin impacto real (sin público previo). Follow-up sugerido: bajar el default de `Product.warrantyMonths @default(12)` en una migración futura.
+
+---
+
+## ADR-107 — Envío propio «Envío Lucam's» (Bogotá, por localidades) + toggle de transportadoras Aveonline + soporte end-to-end
+
+**Fecha:** 2026-09-29
+**Estado:** ✅ Aceptada (decisión de Lucy)
+
+**Contexto:** ① Lucy quería ofrecer entrega el mismo día en Bogotá con tarifa fija y control de localidades (ej. no operar Usme directamente), conviviendo con Aveonline; ② no existía forma de apagar transportadoras individuales de Aveonline sin tocar código; ③ el formulario de contacto creaba tickets que morían en `/admin/soporte` sin conexión con los módulos especializados (garantías/retractos) y sin hilo de respuesta.
+
+**Decisión:**
+① **«Envío Lucam's» como carrier interno adicional** (`carrier = "lucams"`): settings operativas CMS `LUCAMS_SHIPPING_ENABLED`, `LUCAMS_SHIPPING_PRICE_COP` (default $10.000), `LUCAMS_SHIPPING_CUTOFF_HOUR` (default 12) y `LUCAMS_SHIPPING_LOCALITIES` (JSON de ids del catálogo nuevo `lib/bogota-localities.ts`, 20 localidades). Se ofrece **como opción adicional** en el checkout (el cliente elige; no oculta Aveonline) solo si destino = Bogotá y localidad habilitada; promesa «Entrega hoy» antes del cutoff (hora America/Bogota) o «Entrega mañana». La dirección de Bogotá pide localidad (exigida server-side solo si el envío propio está activo) y se persiste en `Address.structured`/`Order.shippingAddress`. La oferta pasa por el mismo sello HMAC y re-validación de `finalizeCheckout` (anti-manipulación intacto). Post-pago: la saga NO genera guía Aveonline; `trackingNumber = INTERNO-<orderNumber>` con claim atómico, badge «Entrega propia» en el admin y acciones manuales de enviado/entregado.
+② **Toggle de transportadoras:** setting `SHIPPING_DISABLED_CARRIERS` administrada desde `/admin/integraciones/aveonline` (lista viva de `listarTransportadorasPorEmpresa`); `quoteShipping()` filtra antes de sellar.
+③ **Soporte end-to-end:** `SupportTicket` + `orderNumber` (String — los números reales son `LCM-2026-0001`), `linkedCaseType/Id`; nueva tabla `SupportTicketMessage` (hilo admin↔cliente, notas internas, RLS deny-by-default). El admin responde desde el panel (email transaccional `support-ticket-reply`, idempotente, best-effort), y **convierte** tickets `GARANTIA_DEVOLUCION` en reclamo de garantía o retracto con referencia cruzada. Las acciones `createWarrantyClaimAsAdmin`/`createRetractRequestAsAdmin` son **válvula admin**: exigen pedido DELIVERED y sin caso activo, pero saltan las ventanas de tiempo (3 meses / 5 días hábiles) — la potestad de excepción queda en el admin autenticado con audit trail, no en el cliente.
+④ **Asuntos del form ampliados:** `ENVIO_RASTREO` y `PAGO_FACTURACION` agregados al final del enum (valores históricos intactos).
+
+**Por qué:** ① la entrega propia es un diferenciador comercial real en Bogotá y como carrier interno reusa toda la maquinaria anti-manipulación y de idempotencia existente; ② apagar carriers no debe exigir un deploy; ③ un ticket de garantía fuera del módulo especializado pierde la trazabilidad legal (diagnóstico, remedio, plazos) que la Ley 1480 exige poder demostrar.
+
+**Consecuencia:** migración Prisma `20260929120000_support_ticket_thread_case_links` + RLS `00000000000040` pendientes de aplicar en STG/PRD con el deploy. La respuesta del cliente desde `/mi-cuenta` (reapertura CLOSED→OPEN) quedó fuera por riesgo (superficie autenticada nueva) — iteración separada; el cliente responde por email (Reply-To al buzón). El gate de la FAQ «envío mismo día» quedó fail-closed tras `SAME_DAY_DELIVERY_ENABLED` (activación operativa aparte).

@@ -19,6 +19,7 @@ import {
   CheckoutError,
 } from "@/features/checkout/service";
 import { getSavedAddressesForCheckout } from "@/features/addresses/service";
+import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { getCheckoutTexts } from "../checkout-texts.server";
 
 // Mensaje único cuando un item se agotó mientras estaba en el carrito (auditoría 2026-07-16).
@@ -47,6 +48,12 @@ export default async function CheckoutDatosPage() {
   // Las direcciones guardadas solo las usa el formulario full (DatosForm).
   const savedAddresses =
     !catalog && ctx.customerId ? await getSavedAddressesForCheckout(ctx.customerId) : [];
+  // Envío propio Lucam's: el select de zona aparece para cualquier ciudad con
+  // zonas habilitadas (catálogo multi-ciudad, lib/lucams-zones.ts). Si está
+  // activo, la zona es obligatoria en esas ciudades (el server la re-valida).
+  const lucamsSettings = catalog
+    ? { enabled: false, zones: {} as Record<string, string[]> }
+    : await getLucamsShippingSettings();
   // Roadmap B8 — textos CMS del paso (formulario de datos o cotización + resumen).
   const texts = await getCheckoutTexts();
 
@@ -63,6 +70,8 @@ export default async function CheckoutDatosPage() {
               initial={ctx.state}
               savedAddresses={savedAddresses}
               canSaveAddress={Boolean(ctx.customerId)}
+              lucamsShippingEnabled={lucamsSettings.enabled}
+              lucamsZones={lucamsSettings.zones}
               texts={texts.datos}
             />
           )}

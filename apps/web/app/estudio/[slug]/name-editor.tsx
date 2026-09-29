@@ -300,11 +300,18 @@ export function NameEditor({
   // a "Con borde" — la selección de colores se conserva (nunca se resetea). La elección
   // se persiste en Design.metadata.withBorder al crear el diseño, y al re-abrir uno
   // guardado llega en `initialWithBorder` (sin la clave = con borde, lo histórico).
+  // Fase 1B — EXCEPCIÓN al apagado: con estilo «Solo letra» (styleId === null) el
+  // color sigue pintando el relleno de la letra aun sin borde → colorsEnabled.
   const [withBorder, setWithBorder] = useState(initialWithBorder !== false);
   const activeTiles = useMemo(
     () => (styleId ? (styles.find((s) => s.id === styleId)?.tiles ?? {}) : {}),
     [styleId, styles],
   );
+  // Fase 1B — la paleta pinta el BORDE de la ficha (temas con ilustración) pero
+  // también el RELLENO de la letra cuando el estilo es «Solo letra» (styleId ===
+  // null, drawLetterTile fillText). Regla: la paleta solo se desactiva con
+  // «Sin borde» Y estilo ilustrado; con «Solo letra» queda activa aun sin borde.
+  const colorsEnabled = withBorder || styleId === null;
 
   // La normalización usa count como tope (que ya sigue a lo tecleado, ver onChange del input): así
   // el − que reduce fichas recorta el texto sobrante, pero teclear no pierde letras (crece count).
@@ -615,8 +622,11 @@ export function NameEditor({
                     {/* Descubribilidad del color por letra: barra visible, no un texto perdido.
                         Ola 28 (owner 2026-09-11, 1.7): con «Sin borde» las fichas no llevan
                         color → sin hint y fichas no seleccionables (la paleta ya quedó
-                        desactivada abajo; aquí tampoco aplica pintar letra a letra). */}
-                    {withBorder && selectedIndex === null && (
+                        desactivada abajo; aquí tampoco aplica pintar letra a letra).
+                        Fase 1B — REDEFINIDA: el apagado solo aplica con estilo ILUSTRADO;
+                        con «Solo letra» el color pinta el relleno de la letra aun sin
+                        borde → el pintado por letra sigue activo (colorsEnabled). */}
+                    {colorsEnabled && selectedIndex === null && (
                       <p className="text-brand-purple-dark mb-3 flex items-center justify-center gap-1.5 text-center text-xs font-semibold">
                         <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
                           {texts.nombre.tocaHint}
@@ -636,8 +646,8 @@ export function NameEditor({
                           color={effectiveColors[i]}
                           imageUrl={activeTiles[ch]?.imageUrl}
                           size={previewTileSize}
-                          selected={withBorder && selectedIndex === i}
-                          onClick={withBorder ? () => toggleSelected(i) : undefined}
+                          selected={colorsEnabled && selectedIndex === i}
+                          onClick={colorsEnabled ? () => toggleSelected(i) : undefined}
                           withBorder={withBorder}
                         />
                       ))}
@@ -646,9 +656,14 @@ export function NameEditor({
                 )}
 
                 {/* Fila de colores para la letra seleccionada — control compartido.
-                    Con «Sin borde» no aplica (no hay marco de color que pintar). */}
-                {withBorder && selectedIndex !== null && letters[selectedIndex] && (
-                  <SwatchRow letter={letters[selectedIndex]} onPick={setColorForSelected} />
+                    Fase 1B: solo se apaga con «Sin borde» Y estilo ilustrado; con
+                    «Solo letra» el color pinta el relleno de la letra aun sin borde. */}
+                {colorsEnabled && selectedIndex !== null && letters[selectedIndex] && (
+                  <SwatchRow
+                    letter={letters[selectedIndex]}
+                    currentColor={effectiveColors[selectedIndex]}
+                    onPick={setColorForSelected}
+                  />
                 )}
               </div>
 
@@ -875,13 +890,16 @@ export function NameEditor({
             Lucy 2026-09-09 — misma regla que el set de letras: con «Sin borde» las fichas
             no llevan el marco de color, así que la sección se DESACTIVA (visible + inerte,
             con el porqué) hasta volver a «Con borde». El estado de colores (useLetterColors)
-            nunca se resetea al desactivar. */}
+            nunca se resetea al desactivar.
+            Fase 1B — el apagado SOLO aplica con estilo ilustrado (styleId !== null):
+            con «Solo letra» el color pinta el RELLENO de la letra (drawLetterTile
+            fillText) aun sin borde, así que la sección permanece activa en ese caso. */}
               <div className="mt-5">
                 <ThemePicker
                   themeId={themeId}
                   customized={customized}
                   onApply={applyTheme}
-                  disabled={!withBorder}
+                  disabled={!colorsEnabled}
                   disabledHint={texts.nombre.bordeSinColoresHint}
                 />
               </div>

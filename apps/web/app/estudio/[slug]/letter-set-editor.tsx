@@ -371,6 +371,13 @@ export function LetterSetEditor({
   // es el comportamiento histórico, así los diseños guardados antes de la opción quedan válidos.
   const [withBorder, setWithBorder] = useState(true);
 
+  // Fase 1B — la paleta de colores pinta el BORDE de la ficha (temas con
+  // ilustración) pero también el RELLENO de la letra cuando el tema es «Solo
+  // letra» (styleId === null, drawLetterTile fillText). Regla: la paleta solo se
+  // desactiva con «Sin borde» Y tema ilustrado (ahí sí no hay nada que pintar);
+  // con «Solo letra» queda activa aun sin borde (el color sigue pintando la letra).
+  const colorsEnabled = withBorder || styleId === null;
+
   const letters = useMemo(
     () => (letterSet === "vowels" ? VOWELS : (alphabets[language] ?? alphabets.es)),
     [letterSet, alphabets, language],
@@ -671,10 +678,14 @@ export function LetterSetEditor({
                   a gusto. Ola 28 (owner 2026-09-11, 1.7): con «Sin borde» no hay marco
                   de color que pintar → sin hint y fichas NO seleccionables (la paleta
                   ya quedó inerte).
+                  Fase 1B — REDEFINIDA: el apagado solo aplica con tema ILUSTRADO
+                  (styleId !== null); con «Solo letra» el color pinta el RELLENO de la
+                  letra aun sin borde, así que el pintado por ficha sigue activo
+                  (colorsEnabled = withBorder || styleId === null).
                   Ola 32 — la grilla aprovecha el ancho del lienzo: sube columnas con
                   el viewport (el ancho mínimo de columna mantiene el tap target ≥44px). */}
                   <div className="bg-brand-cream/50 flex min-h-[280px] flex-col justify-center rounded-xl p-4 sm:min-h-[360px] sm:p-5">
-                    {withBorder && unit.selectedIndex === null && (
+                    {colorsEnabled && unit.selectedIndex === null && (
                       <p className="text-brand-purple-dark mb-3 flex items-center justify-center text-center text-xs font-semibold">
                         <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
                           {texts.letras.tocaHint}
@@ -694,20 +705,20 @@ export function LetterSetEditor({
                       {letters.map((ch, i) => {
                         const tile = activeTiles[ch];
                         const color = unit.effectiveColors[i];
-                        const isSel = withBorder && unit.selectedIndex === i;
+                        const isSel = colorsEnabled && unit.selectedIndex === i;
                         return (
                           <button
                             key={ch}
                             type="button"
                             data-letter-tile
-                            onClick={() => withBorder && unit.toggleSelected(i)}
-                            disabled={!withBorder}
-                            aria-pressed={withBorder ? isSel : undefined}
+                            onClick={() => colorsEnabled && unit.toggleSelected(i)}
+                            disabled={!colorsEnabled}
+                            aria-pressed={colorsEnabled ? isSel : undefined}
                             aria-label={fillStudioText(texts.letras.pintarAria, { letra: ch })}
                             className={`flex w-[calc((100%-24px)/3)] max-w-32 flex-col items-center rounded-xl transition sm:w-[calc((100%-48px)/4)] md:w-[calc((100%-64px)/5)] xl:w-[calc((100%-96px)/7)] 2xl:w-[calc((100%-112px)/8)] ${
                               isSel
                                 ? "ring-brand-purple scale-105 ring-2 ring-offset-2"
-                                : withBorder
+                                : colorsEnabled
                                   ? "hover:scale-105"
                                   : "cursor-default"
                             }`}
@@ -753,13 +764,17 @@ export function LetterSetEditor({
                     </div>
 
                     {/* Fila de colores para la ficha seleccionada — control compartido.
-                    Con «Sin borde» no aplica (no hay marco de color que pintar). */}
-                    {withBorder && unit.selectedIndex !== null && letters[unit.selectedIndex] && (
-                      <SwatchRow
-                        letter={letters[unit.selectedIndex]}
-                        onPick={unit.setColorForSelected}
-                      />
-                    )}
+                    Fase 1B: solo se apaga con «Sin borde» Y tema ilustrado; con
+                    «Solo letra» el color pinta el relleno de la letra aun sin borde. */}
+                    {colorsEnabled &&
+                      unit.selectedIndex !== null &&
+                      letters[unit.selectedIndex] && (
+                        <SwatchRow
+                          letter={letters[unit.selectedIndex]}
+                          currentColor={unit.effectiveColors[unit.selectedIndex]}
+                          onPick={unit.setColorForSelected}
+                        />
+                      )}
                   </div>
                 </div>
               </section>
@@ -953,12 +968,15 @@ export function LetterSetEditor({
             DESACTIVA (visible + inerte, con el porqué). Al volver a «Con borde» se
             reactiva conservando la selección: el estado de colores (useLetterColors,
             vía LetterSetUnitState) nunca se resetea al desactivar.
+            Fase 1B — el apagado SOLO aplica con tema ilustrado (styleId !== null):
+            con «Solo letra» el color pinta el RELLENO de la letra (fillText) aun sin
+            borde, así que la sección permanece activa en ese caso.
             Ola 32 — la grilla de fichas que alimenta vive en el lienzo (tarjeta-unidad). */}
                   <ThemePicker
                     themeId={unit.themeId}
                     customized={unit.customized}
                     onApply={unit.applyTheme}
-                    disabled={!withBorder}
+                    disabled={!colorsEnabled}
                     disabledHint={texts.letras.bordeSinColoresHint}
                   />
 

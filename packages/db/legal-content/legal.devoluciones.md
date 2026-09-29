@@ -17,7 +17,7 @@ De acuerdo con la **Ley 1480 de 2011 (art. 47)**, tienes **5 días hábiles** co
 | **Combos del catálogo estándar**                                               | ✅ **Sí**                                   |
 | **Combos que incluyen al menos un producto personalizado**                     | ❌ **No**                                   |
 
-Los productos personalizados quedan por fuera del retracto porque la ley exceptúa los bienes _"confeccionados conforme a las especificaciones del consumidor o claramente personalizados"_ (Ley 1480, art. 47, parágrafo 3, literal c). Como los hacemos con tu foto o tu texto, no podemos revenderlos: por eso no tienen retracto. Esto también te lo avisamos en la página de cada producto antes de comprar.
+Los productos personalizados quedan por fuera del retracto porque la ley exceptúa los bienes _"confeccionados conforme a las especificaciones del consumidor o claramente personalizados"_ (Ley 1480, art. 47, numeral 3). Como los hacemos con tu foto o tu texto, no podemos revenderlos: por eso no tienen retracto. Esto también te lo avisamos en la página de cada producto antes de comprar.
 
 ## ¿Cómo ejerces el retracto?
 
@@ -64,4 +64,4 @@ Estamos para ayudarte. Escríbenos a **{{email_retracto}}**, a **{{email_contact
 
 ---
 
-_Versión 5 · vigente desde 2026-09-04 · actualizada: la reversión del pago ya es un procedimiento vigente (pago en línea activo con Wompi); plazo del consumidor corregido a 5 días hábiles (Decreto 1074 de 2015, arts. 2.2.2.51.4 y 2.2.2.51.6) y derechos de la Ley 2439 de 2024 añadidos · en revisión por asesoría legal_
+_Versión 1 · vigente desde 2026-09-29_

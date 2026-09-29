@@ -50,14 +50,16 @@ export const ProductCreateSchema = z.object({
   richDescription: z.string().max(5000).optional().nullable(),
   whyChooseThis: z.string().max(2000).optional().nullable(),
   idealFor: z.array(z.string().max(120)).max(20).optional(),
-  // PLAN_CATALOG_V2 4.2 — garantía + tiempos. Piso legal 12 meses: la garantía legal (Ley 1480
-  // art. 7-8) es de mínimo 1 año e irrenunciable → el admin no puede anunciar menos.
-  // Mensaje en español (owner 2026-09-18): productos creados antes de esta regla traen <12 y
-  // el form debe decir CLARO qué corregir, no un "Too small" en inglés.
+  // PLAN_CATALOG_V2 4.2 — garantía + tiempos. Piso 3 meses: por la naturaleza de los productos
+  // (papelería magnética personalizada, de alta manipulación) la tienda fija e INFORMA el término
+  // de 3 meses al consumidor, como permite la Ley 1480 de 2011 (art. 8) — el admin no puede
+  // anunciar menos (decisión de garantía 2026-09-27; antes el piso era 12, garantía legal default).
+  // Mensaje en español (owner 2026-09-18): productos creados antes de esta regla pueden traer
+  // un valor bajo y el form debe decir CLARO qué corregir, no un "Too small" en inglés.
   warrantyMonths: z
     .number()
     .int()
-    .min(12, "Mínimo 12 meses (la garantía legal es de 1 año)")
+    .min(3, "Mínimo 3 meses (el término de garantía informado al consumidor)")
     .max(120, "Máximo 120 meses")
     .optional(),
   productionDays: z.number().int().min(1, "Mínimo 1 día").max(60, "Máximo 60 días").optional(),

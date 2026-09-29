@@ -184,6 +184,22 @@ export function countBadgeLabel(count: number, kind: SceneKind = "photo", cols =
   }
 }
 
+/**
+ * Escenas efectivamente ofrecidas en la galería: las del kind filtradas por
+ * polaroid y — Fase 1A (2026-09-27) — por imán. Una variante SIN IMÁN
+ * (magnet === false) no ofrece NINGUNA escena "en tu espacio" (nevera/tablero/
+ * memo asumen imán: mostrarlas sería una afirmación falsa del producto físico);
+ * el flujo del calendario vive entonces en el visor de detalle tarjeta-a-tarjeta.
+ */
+export function galleryScenes(
+  kind: SceneKind = "photo",
+  isPolaroid = false,
+  magnet?: boolean,
+): Scene[] {
+  if (magnet === false) return [];
+  return filterPhotoScenes(scenesForKind(kind), isPolaroid);
+}
+
 export function SceneGallery({
   magnets,
   cols,
@@ -201,6 +217,12 @@ export function SceneGallery({
    *  (superficie imprimible vacía) en vez de duplicar la cara A. La pasa el Estudio
    *  (productConfig). */
   backOptional,
+  /** Fase 1A (2026-09-27) — "¿Con imán?" de la variante. `false` (SIN IMÁN): las
+   *  escenas que asumen imán (nevera/tablero/memo) NO se ofrecen — pegar tarjetas
+   *  sin imán en la nevera es una afirmación falsa del producto físico. El visor
+   *  de detalle del calendario (CalendarCardFocus) sigue disponible: es válido
+   *  sin imán. undefined conserva el comportamiento de siempre. */
+  magnet,
 }: {
   magnets: Magnet3D[];
   cols: number;
@@ -217,10 +239,14 @@ export function SceneGallery({
   flat?: boolean;
   /** Cara B opcional: reverso en blanco papel cuando falta la cara B. */
   backOptional?: boolean;
+  /** Fase 1A — variante SIN IMÁN (false): sin escenas nevera/tablero. */
+  magnet?: boolean;
 }) {
   const scenes = useMemo(
-    () => filterPhotoScenes(scenesForKind(kind), isPolaroid),
-    [kind, isPolaroid],
+    // SIN IMÁN: ninguna escena "en tu espacio" aplica (todas asumen imán) → la
+    // galería queda vacía y el flujo vive en el visor de detalle (calendario).
+    () => galleryScenes(kind, isPolaroid, magnet),
+    [kind, isPolaroid, magnet],
   );
   const [scene, setScene] = useState<Scene>(() => scenes[0]!);
   // Si el kind cambia con el modal abierto, la escena activa puede no existir en la nueva lista:
@@ -452,7 +478,9 @@ export function SceneGallery({
           index={focusIndex}
           onIndexChange={setFocusIndex}
           onClose={closeModal}
-          onOpenGallery={openGallery}
+          // Fase 1A — SIN IMÁN no hay escenas "en tu espacio" que ofrecer: el
+          // botón «Míralo en tu espacio» se omite (sin destino al que subir).
+          onOpenGallery={scenes.length > 0 ? openGallery : undefined}
         />
       )}
     </div>

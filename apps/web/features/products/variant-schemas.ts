@@ -510,8 +510,9 @@ export function photoPackMinPrice(
  *     junto al precio, como siempre.
  *  2. Sin variante elegida (selección guiada) y la promo más barata ES el
  *     precio "Desde" mostrado → tachado de esa opción junto al "Desde".
- *  3. Si no, pero OTRA opción tiene promo → chip "Promo en otra opción desde
- *     $X" (promoElsewhereFrom), nunca un tachado falso sobre el precio actual.
+ *  3. Si no, pero OTRA opción tiene promo → chip "Otras presentaciones con
+ *     descuento desde $X" (promoElsewhereFrom), nunca un tachado falso sobre
+ *     el precio actual.
  *  4. Nadie tiene promo a nivel variante → fallback al compareAt del PRODUCTO
  *     (productCompareAt): syncProductBasePrice lo denormaliza = promo de la
  *     opción más barata, y hay datos legados donde la promo vive SOLO a nivel

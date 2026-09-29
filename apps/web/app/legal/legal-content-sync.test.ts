@@ -116,14 +116,16 @@ describe("contenido legal — el fallback renderizado coincide con la fuente can
  * la Ley 1581 se rompe en silencio, y justo en el flujo nuevo.
  */
 describe("contenido legal — versionado coherente", () => {
-  it("los documentos tocados en la Etapa 1 declaran la MISMA versión", () => {
+  it("los 8 documentos declaran la MISMA versión (paquete v1 · 2026-09-29, lanzamiento)", () => {
     const versionOf = (name: string) =>
       canonicalMarkdown(name)
         .match(/Versión (\d+) · vigente desde (\d{4}-\d{2}-\d{2})/)
         ?.slice(1, 3);
 
-    const touched = ["terminos", "devoluciones", "garantias", "privacidad", "habeas-data"];
-    const versions = touched.map((n) => ({ n, v: versionOf(n) }));
+    // Desde el paquete v1 (2026-09-29: el producto nunca fue público, el
+    // versionado arranca de cero) los 8 documentos comparten versión — antes
+    // cookies y security llevaban la suya propia.
+    const versions = LEGAL_DOCS.map((n) => ({ n, v: versionOf(n) }));
 
     for (const { n, v } of versions) {
       expect(v, `legal.${n}.md no declara una línea de versión reconocible`).toBeDefined();

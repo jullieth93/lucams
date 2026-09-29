@@ -68,6 +68,12 @@ const BaseAddressFields = z.object({
     .regex(/^\d{6}$/, "Código postal debe tener 6 dígitos")
     .optional()
     .or(z.literal("")),
+  // Zona de entrega del envío propio Lucam's (id de lib/lucams-zones.ts) — solo
+  // ciudades del catálogo; alimenta la oferta de envío propio. Nombre histórico
+  // "localityId" (V1 solo-Bogotá): representa la zona genérica (localidad,
+  // comuna, …). Opcional en el schema: la obligatoriedad la decide el server
+  // según LUCAMS_SHIPPING_ENABLED y las zonas habilitadas de la ciudad.
+  localityId: z.string().max(60).trim().optional(),
   notes: z.string().max(500).trim().optional(),
 });
 

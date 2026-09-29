@@ -456,7 +456,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 
 - [x] **`AdminActionLog` populated** en TODA acción mutante de admin (cambio estado, ajuste inventario, aprobación reseña, edición precio, etc.)
 - [x] **Página `/admin/auditoria`** para consultar `AdminActionLog` con filtros por actor/entidad/fecha
-- [x] **MFA obligatorio** para `SUPERADMIN` y `MANAGER` (enroll forzado tras login — auditoría 2026-08-24 · B-1)
+- [x] **MFA obligatorio** para TODOS los roles admin (`SUPERADMIN`/`MANAGER`/`FULFILLMENT`/`CMS_EDITOR`) (enroll forzado tras login, enforceado por código en `lib/admin-rbac-guard.ts` — auditoría 2026-08-24 · B-1)
 - [x] **Schema `WarrantyClaim`** + flujo de garantía (Ley 1480 art. 7-15 — `/admin/garantias` + `/mi-cuenta`)
 - [ ] **B2B IVA + retenciones:** lógica de cálculo en checkout B2B (cliente como agente retenedor)
 - [ ] **Resolución de numeración DIAN** para B2B (puede ser distinta del B2C)

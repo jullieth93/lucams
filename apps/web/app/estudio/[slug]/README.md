@@ -616,6 +616,11 @@ de todas las superficies personalizables.**
   "Toca una letra/ficha…" desaparece, las fichas quedan NO seleccionables
   (disabled) y la fila de colores por ficha se oculta. La paleta de temas ya se
   desactivaba (Ola 24/26); esto cierra la superficie.
+  **REDEFINIDA (Fase 1B, owner 2026-09-29):** el apagado solo aplica con tema
+  ILUSTRADO (`styleId !== null`). Con tema «Solo letra» el color pinta el
+  relleno de la letra (`fillText`), así que la paleta, la selección por ficha
+  y la fila de colores permanecen ACTIVAS aunque sea «Sin borde»
+  (`colorsEnabled = withBorder || styleId === null`).
 
 ### Ola 29 (owner 2026-09-11) — validación ronda 5
 
@@ -863,6 +868,36 @@ de todas las superficies personalizables.**
   Sonda de píxeles (`tmp/responsive-audit/probe-slot-px.mjs`): polaroid/cuadrados
   @1280 ~450px (antes ~293), @375 1 col ~327px; tira @1280 ~640px (antes 429);
   separadores conserva el patrón Magnéticos con caras ~×1.25. Auditoría: 0/70.
+
+### Fase 1A (owner 2026-09-27) — sustantivo real de la pieza, popover «qué falta», calendario SIN IMÁN abre su visor
+
+- **`resolveSlotNoun(productKind, magnet, texts)`** (`lib/slot-noun.ts`, puro y
+  testeado): fuente única del sustantivo de la pieza. Usa el productKind REAL
+  (calendar→"tarjetas", bookmarks→"separadores", strips→"fotos" — el chip cuenta
+  la composición —, tiles→"fichas") y una variante SIN IMÁN (`magnet === false`)
+  NUNCA dice "imán" (cae a "ficha"). Bug corregido: el chip del toolbar le decía
+  "12 imanes" al Calendario Set 12 Tarjetas aun en la variante sin imán. El
+  editor lo cablea al chip del toolbar (par `{ one, many }`), al sustantivo de
+  los slots/onboarding (singular) y a la modal de confirmación (productKind
+  "tiles" cuando `magnet === false`). Los chips "📐" de sidebar/slot solo
+  muestran tamaño (sin sustantivo) — verificados intactos.
+- **Popover «qué falta» de «Vista previa»** (radix Popover, mismo paquete del
+  Dialog): cuando el botón está bloqueado lista EXPLÍCITAMENTE las fotos por
+  cargar con la label de cada slot ("Ene", "1A"…) y los textos IG faltantes por
+  unidad (`igMissingRequiredTextLayersPerSlot` + etiquetas CMS `campo-ig-*`).
+  Hover (desktop), tap/click (móvil), foco + Enter/Espacio (teclado), Esc
+  cierra; trigger con nombre audible propio. Mismo patrón en el FAB móvil.
+  Selector atómico nuevo en el store: `selectMissingSlotIndexesKey` (string
+  primitivo, patrón `selectFilledSlotCount`; con backOptional solo caras A).
+  Textos CMS: `estudio.lienzo.finalize-popover-*`. El tooltip nativo queda como
+  fallback. Contrato en `studio-toolbar.test.tsx`.
+- **Calendario SIN IMÁN abre «Ver mi calendario»**: el mount de la galería ya
+  no se gatea entero por `hide3DView` cuando el kind es "calendar" — el visor
+  detalle tarjeta-a-tarjeta (`CalendarCardFocus`) es válido sin imán. El gate se
+  mueve ADENTRO: `SceneGallery` recibe `magnet` y con `magnet === false` la
+  lista de escenas queda vacía (`galleryScenes`, puro y testeado) — nevera/
+  tablero asumen imán y no se ofrecen — y el botón «Míralo en tu espacio» del
+  visor se omite (`onOpenGallery` opcional).
 
 ## Wireframes ASCII
 

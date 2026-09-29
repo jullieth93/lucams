@@ -466,8 +466,9 @@ describe("parseAttributesFromForm", () => {
 /*
  * resolvePromoDisplay — precio tachado con REFLEJO TOTAL (owner 2026-09-14).
  * La promo se edita por opción en el admin y el front la refleja SIEMPRE:
- * tachado si la opción elegida (o el "Desde") la tiene; chip "promo en otra
- * opción desde $X" si la tiene otra; nunca tachado falso ni descuento negativo.
+ * tachado si la opción elegida (o el "Desde") la tiene; chip "Otras
+ * presentaciones con descuento desde $X" si la tiene otra; nunca tachado
+ * falso ni descuento negativo.
  */
 describe("resolvePromoDisplay", () => {
   const V = (id: string, price: number | null, compareAtPrice: number | null) => ({

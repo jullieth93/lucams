@@ -45,6 +45,9 @@ type BaseAddress = {
   department: string;
   city: string;
   zip?: string;
+  /** Zona de entrega del envío propio Lucam's (id de lib/lucams-zones.ts).
+   *  Nombre histórico (V1 solo-Bogotá) — representa la zona genérica. */
+  localityId?: string;
   notes?: string;
 };
 

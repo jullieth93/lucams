@@ -210,6 +210,18 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
                     disabled={colorDisabled}
                   />
                 ))}
+                {/* Fase 1B — color libre (input color nativo): solo donde el producto
+                    permite color libre (NO en Instagram: blanco/negro por diseño) y
+                    sujeto a la misma desactivación por «Sin borde» que los swatches. */}
+                {!isIg && (
+                  <CustomColorButton
+                    value={borderColor}
+                    paletteHexes={frameColors.map((c) => c.hex)}
+                    label={texts.texto.estiloColorPersonalizado}
+                    onChange={handleBorderChange}
+                    disabled={colorDisabled}
+                  />
+                )}
               </div>
             </div>
             {colorDisabled && (
@@ -298,5 +310,57 @@ function ColorButton({
         <ActiveCheck dark={LIGHT_HEXES.has(color?.toUpperCase() ?? "")} />
       ) : null}
     </button>
+  );
+}
+
+/**
+ * Fase 1B — opción «Personalizado» de la paleta de tarjeta: input color nativo
+ * (sin dependencias). El hex entra al mismo estado `borderColor` que un swatch
+ * (persiste en el diseño y viaja a producción igual). El botón muestra el color
+ * personalizado actual; si no hay uno, un gradiente arcoíris como affordance.
+ */
+function CustomColorButton({
+  value,
+  paletteHexes,
+  label,
+  onChange,
+  disabled = false,
+}: {
+  /** borderColor actual (null = sin color). */
+  value: string | null;
+  /** Hexes de la paleta curada — un valor fuera de ella es el "personalizado". */
+  paletteHexes: string[];
+  label: string;
+  onChange: (hex: string) => void;
+  disabled?: boolean;
+}) {
+  const palette = new Set(paletteHexes.map((h) => h.toUpperCase()));
+  const customValue = value && !palette.has(value.toUpperCase()) ? value : null;
+  const active = customValue !== null;
+  return (
+    <label
+      title={label}
+      aria-disabled={disabled || undefined}
+      className={[
+        "focus-within:ring-brand-turquoise relative flex h-8 w-8 items-center justify-center rounded-full transition-all focus-within:ring-2",
+        disabled ? "cursor-not-allowed" : "cursor-pointer",
+        active
+          ? "ring-brand-turquoise shadow-md ring-2 ring-offset-2"
+          : "ring-brand-purple/20 hover:ring-brand-purple/50 ring-1",
+      ].join(" ")}
+      style={{
+        background: customValue ?? "conic-gradient(#E85B9F, #FFD93D, #5DD9D1, #7C6AAD, #E85B9F)",
+      }}
+    >
+      <input
+        type="color"
+        value={customValue ?? "#7C6AAD"}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={label}
+        disabled={disabled}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
+      />
+      {active ? <ActiveCheck dark={LIGHT_HEXES.has(customValue.toUpperCase())} /> : null}
+    </label>
   );
 }

@@ -237,6 +237,12 @@ export type SlotState = {
    */
   profileAssetId?: string | null;
   profileAssetUrl?: string;
+  /**
+   * Fase 1B — encuadre de la foto de perfil IG dentro de su círculo (zoom/pan),
+   * mismo shape que `photoTransform` (sin rotación: el avatar es un círculo).
+   * `undefined` = cover centrado (comportamiento histórico de Ola 17).
+   */
+  profileTransform?: { offsetX: number; offsetY: number; scale: number };
   // Per-slot overrides (Capa 4 — filtros y ajustes foto in-canvas):
   cropX?: number;
   cropY?: number;
