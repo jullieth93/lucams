@@ -307,6 +307,23 @@ export type StudioTexts = {
     campoIgUbicacion: string;
     campoIgTitulo: string;
     campoIgHashtags: string;
+    /** Fase 1B — bloque de diligenciamiento masivo de la Polaroid Instagram en el
+     *  sidebar ("Datos de la publicación"): un campo por capa editable que escribe
+     *  en TODAS las fotos del set (equivalente multi-campo de "Tu mensaje"). */
+    igDatosTitulo: string;
+    igDatosSub: string;
+    igCampoUsuario: string;
+    igCampoUbicacion: string;
+    igCampoLikes: string;
+    igCampoTitulo: string;
+    igCampoHashtags: string;
+    igCampoRequerido: string;
+    igCampoOpcional: string;
+    /** Chip/placeholder cuando las unidades difieren en esa capa (edición por foto). */
+    igVariaPorFoto: string;
+    igVariaPlaceholder: string;
+    /** Aviso pack-level del bloque (misma caja destacada del aviso de "Tu mensaje"). */
+    igGlobalAviso: string;
     tamanoLabel: string;
     negrita: string;
     cursiva: string;
@@ -868,6 +885,22 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     campoIgUbicacion: "ubicación",
     campoIgTitulo: "título",
     campoIgHashtags: "hashtags",
+    // Fase 1B — diligenciamiento masivo de los textos IG desde el sidebar (owner:
+    // la Clásica tiene "Tu mensaje" para todo el set y la Instagram no tenía
+    // equivalente). Un campo por capa; cada uno escribe en TODAS las fotos.
+    igDatosTitulo: "Datos de la publicación",
+    igDatosSub: "(para todas las fotos)",
+    igCampoUsuario: "@usuario",
+    igCampoUbicacion: "Ubicación",
+    igCampoLikes: "«Me gusta»",
+    igCampoTitulo: "Título",
+    igCampoHashtags: "Hashtags",
+    igCampoRequerido: "(obligatorio)",
+    igCampoOpcional: "(opcional — si lo dejas vacío, no se imprime)",
+    igVariaPorFoto: "Varía por foto",
+    igVariaPlaceholder: "Varía por foto — escribe para unificar",
+    igGlobalAviso:
+      "Estos datos se aplican a TODAS las fotos del set. Para personalizar una en particular, toca la foto.",
     tamanoLabel: "Tamaño",
     negrita: "Negrita",
     cursiva: "Cursiva",
@@ -1378,6 +1411,18 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.campoIgUbicacion": "estudio.texto.campo-ig-ubicacion",
   "texto.campoIgTitulo": "estudio.texto.campo-ig-titulo",
   "texto.campoIgHashtags": "estudio.texto.campo-ig-hashtags",
+  "texto.igDatosTitulo": "estudio.texto.ig-datos-titulo",
+  "texto.igDatosSub": "estudio.texto.ig-datos-sub",
+  "texto.igCampoUsuario": "estudio.texto.ig-campo-usuario",
+  "texto.igCampoUbicacion": "estudio.texto.ig-campo-ubicacion",
+  "texto.igCampoLikes": "estudio.texto.ig-campo-likes",
+  "texto.igCampoTitulo": "estudio.texto.ig-campo-titulo",
+  "texto.igCampoHashtags": "estudio.texto.ig-campo-hashtags",
+  "texto.igCampoRequerido": "estudio.texto.ig-campo-requerido",
+  "texto.igCampoOpcional": "estudio.texto.ig-campo-opcional",
+  "texto.igVariaPorFoto": "estudio.texto.ig-varia-por-foto",
+  "texto.igVariaPlaceholder": "estudio.texto.ig-varia-placeholder",
+  "texto.igGlobalAviso": "estudio.texto.ig-global-aviso",
   "texto.tamanoLabel": "estudio.texto.tamano-label",
   "texto.negrita": "estudio.texto.negrita",
   "texto.cursiva": "estudio.texto.cursiva",
