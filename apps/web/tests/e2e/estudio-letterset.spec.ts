@@ -105,28 +105,53 @@ test.describe("estudio — sets de letras: selector «Con borde / Sin borde»", 
         "false",
       );
 
-      // Lucy 2026-09-08 — con «Sin borde» las fichas no llevan el marco de color:
-      // la sección «Elige los colores» se desactiva (botones disabled + aviso del
-      // porqué) y el selector de borde SIEMPRE queda habilitado para poder volver.
-      await expect(page.getByRole("button", { name: /Arcoíris/ }), product.name).toBeDisabled();
-      await expect(page.getByRole("button", { name: /Vibrante/ }), product.name).toBeDisabled();
-      await expect(page.getByRole("note"), product.name).toContainText("los colores se desactivan");
-      await expect(page.getByRole("radio", { name: "Con borde" }), product.name).toBeEnabled();
-      await expect(page.getByRole("radio", { name: "Sin borde" }), product.name).toBeEnabled();
-
-      // Ola 28 (owner 2026-09-11, 1.7): con «Sin borde» TAMPOCO aplica el pintado
-      // ficha a ficha — el hint "Toca una ficha…" desaparece y las fichas quedan
-      // no seleccionables (disabled), igual que la paleta de temas.
-      await expect(page.getByText(/Toca una ficha para darle el color/i), product.name).toHaveCount(
-        0,
-      );
+      // Fase 1B (2026-09) — la regla de apagado de Lucy 2026-09-08 quedó REDEFINIDA:
+      // la sección «Elige los colores» solo se desactiva con tema ILUSTRADO + «Sin
+      // borde» (ahí no hay nada que pintar). Con «Solo letra» el color pinta el
+      // RELLENO de la letra aun sin borde → la paleta y el pintado ficha a ficha
+      // permanecen ACTIVOS. El tema inicial depende de la variante de la PDP (no es
+      // determinista), así que se fija «Solo letra» antes de validar la excepción.
+      await page.getByRole("radio", { name: "Solo letra" }).click();
+      await expect(page.getByRole("button", { name: /Arcoíris/ }), product.name).toBeEnabled();
+      await expect(page.getByRole("button", { name: /Vibrante/ }), product.name).toBeEnabled();
+      await expect(page.getByRole("note"), product.name).toHaveCount(0);
+      // …y el pintado ficha a ficha también sigue activo con «Solo letra».
+      await expect(
+        page.getByText(/Toca una ficha para darle el color/i),
+        product.name,
+      ).toBeVisible();
       const fichaA = page.getByRole("button", { name: "Pintar la ficha A" }).first();
-      await expect(fichaA, product.name).toBeDisabled();
+      await expect(fichaA, product.name).toBeEnabled();
+
+      // Si el catálogo tiene un tema ilustrado COMPLETO para este producto, se
+      // valida el apagado real (la única combinación sin nada que pintar): botones
+      // disabled + aviso del porqué + fichas no seleccionables, con el selector de
+      // borde SIEMPRE habilitado para poder volver (Lucy 2026-09-08, intacto).
+      const temaGroup = page.getByRole("radiogroup", { name: "Tema de las fichas" });
+      const temasCount = await temaGroup.getByRole("radio").count();
+      if (temasCount > 1) {
+        await temaGroup.getByRole("radio").nth(1).click();
+        await expect(page.getByRole("button", { name: /Arcoíris/ }), product.name).toBeDisabled();
+        await expect(page.getByRole("button", { name: /Vibrante/ }), product.name).toBeDisabled();
+        await expect(page.getByRole("note"), product.name).toContainText(
+          "los colores se desactivan",
+        );
+        // Ola 28 (owner 2026-09-11, 1.7): con el apagado TAMPOCO aplica el pintado
+        // ficha a ficha — el hint "Toca una ficha…" desaparece y las fichas quedan
+        // no seleccionables (disabled), igual que la paleta de temas.
+        await expect(
+          page.getByText(/Toca una ficha para darle el color/i),
+          product.name,
+        ).toHaveCount(0);
+        await expect(fichaA, product.name).toBeDisabled();
+        await expect(page.getByRole("radio", { name: "Con borde" }), product.name).toBeEnabled();
+        await expect(page.getByRole("radio", { name: "Sin borde" }), product.name).toBeEnabled();
+      }
 
       // Al volver a «Con borde» la sección se reactiva (la selección de colores se conserva).
       await page.getByRole("radio", { name: "Con borde" }).click();
       await expect(page.getByRole("button", { name: /Arcoíris/ }), product.name).toBeEnabled();
-      await expect(page.getByRole("note"), product.name).toBeHidden();
+      await expect(page.getByRole("note"), product.name).toHaveCount(0);
       // …y el pintado ficha a ficha vuelve (hint + fichas habilitadas).
       await expect(
         page.getByText(/Toca una ficha para darle el color/i),

@@ -87,6 +87,11 @@ function renderEditor(extraProps?: {
   initialCopies?: number;
   initialWithBorder?: boolean;
   variantMagnet?: boolean;
+  styles?: {
+    id: string;
+    name: string;
+    tiles: Record<string, { imageUrl: string; label: string | null }>;
+  }[];
 }) {
   return render(
     <NameEditor
@@ -99,6 +104,11 @@ function renderEditor(extraProps?: {
     />,
   );
 }
+
+/** Estilo ILUSTRADO de prueba: con él activo (default: el primero) la paleta se
+ *  desactiva con «Sin borde» (Fase 1B — el apagado solo aplica a temas con
+ *  ilustración; sin styles el editor queda en «Solo letra» y la paleta sigue viva). */
+const ILLUSTRATED_STYLES = [{ id: "style-animales", name: "Animales", tiles: {} }];
 
 /** Escribe un nombre y abre la vista previa. Devuelve el nº de letras escritas. */
 async function openPreviewWith(name: string): Promise<number> {
@@ -245,6 +255,8 @@ describe("NameEditor — vista previa antes del carrito", () => {
  * habilitado; con «Sin borde» la sección «Elige los colores» se desactiva (las fichas
  * no llevan el marco de color) con aviso del porqué, y al volver a «Con borde» se
  * reactiva conservando la selección (useLetterColors nunca se resetea).
+ * Fase 1B — el apagado SOLO aplica con estilo ILUSTRADO activo: con «Solo letra»
+ * el color pinta el relleno de la letra aun sin borde → la paleta permanece activa.
  */
 describe("NameEditor — opción «Con borde / Sin borde» (regla del set de letras)", () => {
   it("el selector «Borde de las fichas» aparece y arranca en «Con borde» (default histórico)", () => {
@@ -264,8 +276,8 @@ describe("NameEditor — opción «Con borde / Sin borde» (regla del set de let
     expect(screen.queryByRole("note")).not.toBeInTheDocument();
   });
 
-  it("«Sin borde» desactiva «Elige los colores» con aviso, y el selector de borde sigue habilitado", () => {
-    renderEditor();
+  it("«Sin borde» con estilo ilustrado desactiva «Elige los colores» con aviso, y el selector de borde sigue habilitado", () => {
+    renderEditor({ styles: ILLUSTRATED_STYLES });
 
     fireEvent.click(screen.getByRole("radio", { name: "Sin borde" }));
 
@@ -278,20 +290,35 @@ describe("NameEditor — opción «Con borde / Sin borde» (regla del set de let
     expect(screen.getByRole("radio", { name: "Sin borde" })).toBeEnabled();
   });
 
+  it("Fase 1B — «Solo letra» + «Sin borde» mantiene la paleta ACTIVA (el color pinta el relleno de la letra)", () => {
+    renderEditor(); // sin styles → estilo «Solo letra» (styleId === null)
+
+    fireEvent.click(screen.getByRole("radio", { name: "Sin borde" }));
+
+    for (const tema of ["Arcoíris", "Vibrante", "Neutro"]) {
+      expect(screen.getByRole("button", { name: new RegExp(tema) })).toBeEnabled();
+    }
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    // …y el pintado letra a letra también sigue activo (hint visible + fichas seleccionables).
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "LUCIA" } });
+    expect(screen.getByText(/Toca una letra para darle el color/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cambiar el color de la letra L" })).toBeEnabled();
+  });
+
   it("Ola 26 (owner 2026-09-09) — «Borde de las fichas» va ARRIBA de «Elige los colores»", () => {
-    renderEditor();
+    renderEditor({ styles: ILLUSTRATED_STYLES });
 
     const borde = screen.getByRole("radiogroup", { name: "Borde de las fichas" });
     const colores = screen.getByText("Elige los colores");
     // compareDocumentPosition: DOCUMENT_POSITION_FOLLOWING = colores va DESPUÉS de borde.
     expect(borde.compareDocumentPosition(colores) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // La regla de desactivado sigue intacta en el nuevo orden.
+    // La regla de desactivado sigue intacta en el nuevo orden (con estilo ilustrado, Fase 1B).
     fireEvent.click(screen.getByRole("radio", { name: "Sin borde" }));
     expect(screen.getByRole("button", { name: /Arcoíris/ })).toBeDisabled();
   });
 
   it("al volver a «Con borde» los colores se reactivan conservando la selección", () => {
-    renderEditor();
+    renderEditor({ styles: ILLUSTRATED_STYLES });
 
     // El cliente elige un tema distinto al default…
     fireEvent.click(screen.getByRole("button", { name: /Vibrante/ }));
@@ -300,8 +327,9 @@ describe("NameEditor — opción «Con borde / Sin borde» (regla del set de let
       "true",
     );
 
-    // …apaga el borde (colores desactivados) y lo vuelve a encender.
+    // …apaga el borde (estilo ilustrado → colores desactivados, Fase 1B) y lo vuelve a encender.
     fireEvent.click(screen.getByRole("radio", { name: "Sin borde" }));
+    expect(screen.getByRole("button", { name: /Vibrante/ })).toBeDisabled();
     fireEvent.click(screen.getByRole("radio", { name: "Con borde" }));
 
     expect(screen.getByRole("button", { name: /Vibrante/ })).toBeEnabled();
@@ -345,7 +373,7 @@ describe("NameEditor — opción «Con borde / Sin borde» (regla del set de let
   });
 
   it("re-abrir un diseño guardado sin borde arranca el toggle en «Sin borde» (round-trip)", () => {
-    renderEditor({ initialWithBorder: false });
+    renderEditor({ initialWithBorder: false, styles: ILLUSTRATED_STYLES });
 
     expect(screen.getByRole("radio", { name: "Sin borde" })).toHaveAttribute(
       "aria-checked",
@@ -355,7 +383,8 @@ describe("NameEditor — opción «Con borde / Sin borde» (regla del set de let
       "aria-checked",
       "false",
     );
-    // …y la sección de colores arranca desactivada, coherente con la elección guardada.
+    // …y la sección de colores arranca desactivada, coherente con la elección guardada
+    // (con estilo ilustrado — Fase 1B; con «Solo letra» seguiría activa).
     expect(screen.getByRole("button", { name: /Arcoíris/ })).toBeDisabled();
   });
 

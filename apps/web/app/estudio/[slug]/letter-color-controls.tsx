@@ -79,10 +79,26 @@ export function ThemePicker({
 }
 
 /** Fila de swatches para pintar la ficha seleccionada a gusto. */
-export function SwatchRow({ letter, onPick }: { letter: string; onPick: (color: string) => void }) {
+export function SwatchRow({
+  letter,
+  currentColor,
+  onPick,
+}: {
+  letter: string;
+  /** Color actual de la ficha seleccionada (si es un hex personalizado —no está en
+   *  la paleta— se muestra en el botón del picker libre). */
+  currentColor?: string;
+  onPick: (color: string) => void;
+}) {
   const texts = useStudioTexts();
   // {letra} se interpola conservando el <span> display de la letra (roadmap B1).
   const titleParts = splitStudioText(texts.nombre.swatchTitulo, "letra");
+  // Fase 1B — opción «Personalizado»: input color nativo (sin dependencias). El hex
+  // entra al mismo estado que un swatch (persiste igual en el diseño).
+  const customValue =
+    currentColor && !(LETTER_SWATCHES as readonly string[]).includes(currentColor)
+      ? currentColor
+      : null;
   return (
     <div className="border-brand-purple/15 mt-4 rounded-xl border bg-white p-3">
       <p className="text-brand-purple-dark mb-2 text-center text-xs font-semibold">
@@ -111,6 +127,22 @@ export function SwatchRow({ letter, onPick }: { letter: string; onPick: (color: 
             style={{ backgroundColor: c }}
           />
         ))}
+        <label
+          className="relative h-10 w-10 cursor-pointer rounded-full ring-2 ring-black/5 transition hover:scale-110"
+          style={{
+            background:
+              customValue ?? "conic-gradient(#E85B9F, #FFD93D, #5DD9D1, #7C6AAD, #E85B9F)",
+          }}
+          title={texts.nombre.swatchPersonalizadoAria}
+        >
+          <input
+            type="color"
+            value={customValue ?? "#7C6AAD"}
+            onChange={(e) => onPick(e.target.value)}
+            aria-label={texts.nombre.swatchPersonalizadoAria}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          />
+        </label>
       </div>
     </div>
   );

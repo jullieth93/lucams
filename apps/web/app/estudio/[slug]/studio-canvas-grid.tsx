@@ -1699,6 +1699,12 @@ function StudioSlotEditModalWrapper({
       ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.profileAssetUrl ?? null)
       : null,
   );
+  // Fase 1B — encuadre de la foto de perfil (zoom/pan dentro del círculo).
+  const slotProfileTransform = useStore(store, (s) =>
+    slotIndex !== null
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.profileTransform ?? null)
+      : null,
+  );
   const unitTemplate = useStore(store, (s) => s.canvasData?.unitTemplate);
   const slotCount = useStore(store, (s) => s.canvasData?.slotCount ?? 0);
   const borderColor = useStore(store, (s) => s.canvasData?.borderColor ?? null);
@@ -1745,6 +1751,8 @@ function StudioSlotEditModalWrapper({
   const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
   const setSlotTextOverride = useStore(store, (s) => s.setSlotTextOverride);
   const setSlotProfilePhoto = useStore(store, (s) => s.setSlotProfilePhoto);
+  const setSlotProfileTransform = useStore(store, (s) => s.setSlotProfileTransform);
+  const setTextOverrideAllSlots = useStore(store, (s) => s.setTextOverrideAllSlots);
   const texts = useStudioTexts();
 
   // Ola 17 — la plantilla (unitTemplate) declara la capa `profile-photo` que
@@ -1838,6 +1846,18 @@ function StudioSlotEditModalWrapper({
       onClearProfilePhoto={() => {
         if (slotIndex !== null) setSlotProfilePhoto(slotIndex, null);
       }}
+      // Fase 1B — encuadre de la foto de perfil IG (zoom/pan del avatar).
+      profileTransform={slotProfileTransform}
+      onProfileTransformChange={(t) => {
+        if (slotIndex !== null) setSlotProfileTransform(slotIndex, t);
+      }}
+      // Fase 1B — «Aplicar a todas» POR CAPA de texto (Polaroid Instagram: cada
+      // capa editable se puede replicar a todas las unidades por separado).
+      onApplyTextToAll={
+        slotCount > 1
+          ? (layerId, override) => setTextOverrideAllSlots(layerId, override)
+          : undefined
+      }
       // Multi-unidad (2026-09-09) — atajo "Aplicar este diseño a todas" para
       // productos de imán suelto (unitSlots = 1: el slot ES la unidad).
       applyToAll={

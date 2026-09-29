@@ -17,10 +17,18 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { StudioToolbar } from "./studio-toolbar";
 import { createStudioStore } from "./lib/store";
 import type { CanvasDataV2 } from "./types";
+
+// El popover de radix (Fase 1A) usa ResizeObserver via react-use-size, ausente
+// en jsdom → stub global (mismo patrón de global-search.test.tsx).
+globalThis.ResizeObserver = class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver;
 
 afterEach(() => cleanup());
 
@@ -212,5 +220,72 @@ describe("StudioToolbar — botón «Vista previa»", () => {
     expect(
       screen.getByRole("button", { name: "Faltan 1 fotos por cargar para ver la vista previa" }),
     ).toBeDisabled();
+  });
+
+  // Fase 1A (2026-09-27) — popover "qué falta": reemplaza al tooltip nativo con
+  // un listado visible de las fotos faltantes (label de cada slot).
+  it("popover de faltantes: lista las fotos por cargar con la label de cada slot", async () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "calendario-magnetico",
+      canvasData: makeCanvasData(10, 12), // faltan los slots 10 y 11
+      templates: [],
+    });
+    const months = [
+      "Ene",
+      "Feb",
+      "Mar",
+      "Abr",
+      "May",
+      "Jun",
+      "Jul",
+      "Ago",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dic",
+    ];
+    render(
+      <StudioToolbar
+        store={store}
+        productName="Calendario magnético"
+        productSlug="calendario-magnetico"
+        slotLabels={months}
+        onFinalize={vi.fn()}
+      />,
+    );
+    // Bloqueado: el botón interno conserva su nombre/tooltip y el trigger del
+    // popover tiene nombre audible propio (accesible por teclado).
+    expect(
+      screen.getByRole("button", { name: "Faltan 2 fotos por cargar para ver la vista previa" }),
+    ).toBeDisabled();
+    const trigger = screen.getByRole("button", { name: "Qué falta para ver la vista previa" });
+    fireEvent.click(trigger);
+    expect(await screen.findByText("Para ver tu vista previa te falta:")).toBeInTheDocument();
+    expect(screen.getByText("Fotos por cargar:")).toBeInTheDocument();
+    expect(screen.getByText("Nov")).toBeInTheDocument();
+    expect(screen.getByText("Dic")).toBeInTheDocument();
+    // Sin labels cae al número de slot (1-based).
+    cleanup();
+    render(
+      <StudioToolbar
+        store={store}
+        productName="Calendario magnético"
+        productSlug="calendario-magnetico"
+        onFinalize={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Qué falta para ver la vista previa" }));
+    expect(await screen.findByText("11")).toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
+  });
+
+  it("diseño completo: sin popover (el botón se habilita normal)", () => {
+    setup({ filled: 2 });
+    expect(
+      screen.queryByRole("button", { name: "Qué falta para ver la vista previa" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Vista previa de tu pedido" })).toBeEnabled();
   });
 });

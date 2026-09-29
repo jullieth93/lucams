@@ -97,6 +97,7 @@ const BookView3D = nextDynamic(() => import("./book-view-3d"), {
   loading: () => <Book3DLoadingFallback />,
 });
 import { createStudioStore } from "./lib/store";
+import { resolveSlotNoun, type StudioSlotProductKind } from "./lib/slot-noun";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
 import { ensureCanvasV2 } from "./lib/canvas-migrate";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -503,9 +504,29 @@ export function StudioEditor({
   // su vista inmersiva es un LIBRO, no la nevera.
   const galleryTag = (product.personalizationSchema as { galleryTag?: string } | null)?.galleryTag;
   const isBookmark = typeof galleryTag === "string" && galleryTag.startsWith("separadores");
-  // #14 — sustantivo del slot: en separadores el producto NO es un imán → "separador" en los labels,
-  // aria y onboarding (pantalla=físico). Deriva de isBookmark; el calendario usa slotLabels propios.
-  const slotNoun = isBookmark ? texts.lienzo.sustantivoSeparador : texts.lienzo.sustantivoIman;
+  // #14 — sustantivo del slot: Fase 1A (2026-09-27) lo centraliza en
+  // resolveSlotNoun (lib/slot-noun) — usa el productKind REAL (el calendario
+  // dice "tarjetas", no "imanes"; las tiras cuentan "fotos") y una variante
+  // SIN IMÁN (magnet === false) NUNCA dice "imán" (dice "ficha"). El par
+  // { one, many } lo consume el chip del toolbar; el singular alimenta los
+  // aria/fallback de slots y el onboarding (pantalla=físico).
+  const slotProductKind: StudioSlotProductKind = isCalendarMonth
+    ? "calendar"
+    : isBookmark
+      ? "bookmarks"
+      : liveIsStrip
+        ? "strips"
+        : "magnets";
+  const slotNounPair = resolveSlotNoun(slotProductKind, liveMagnet, texts);
+  // Labels por slot compartidas por la grilla, el toolbar y el FAB (popover de
+  // faltantes de «Vista previa», Fase 1A): calendario → meses ("Ene"…, repetidos
+  // por unidad cuando hay N sets); separadores 2 caras → "1A","1B"…; el resto
+  // undefined → se cae al número de slot.
+  const resolvedSlotLabels = isCalendarMonth
+    ? slotLabels && liveUnitCount > 1
+      ? Array.from({ length: liveSlotCount }, (_, i) => slotLabels[i % slotLabels.length])
+      : slotLabels
+    : faceSlotLabels(livePhotoSlots, facesPerUnit);
   // Multi-unidad (2026-09-09) — sustantivo de la UNIDAD para el pager y los
   // headers de sección del lienzo ("Tira 1 de 2", "Set 1 de 2"…).
   // Delimitación de PACKS en el lienzo (owner 2026-09-15, ADR-101): familias
@@ -1477,7 +1498,10 @@ export function StudioEditor({
         productImageUrl={product.images?.[0]}
         productSizeCm={productConfig.sizeCm}
         productSlotCount={livePhotoSlots}
-        slotNoun={slotNoun}
+        slotNoun={slotNounPair}
+        // Fase 1A — labels por slot para el popover de faltantes de «Vista
+        // previa» (mismas de la grilla: "Ene", "1A"…).
+        slotLabels={resolvedSlotLabels}
         showRealismGuides={false}
         photoCount={
           isPhotoPack
@@ -1688,17 +1712,9 @@ export function StudioEditor({
             showRealismGuides={showRealismGuides}
             // Ola 3 — calendario: meses; separadores 2 caras: "1A","1B",… por unidad.
             // Multi-unidad (2026-09-09): con N calendarios los meses se repiten por
-            // unidad (cada una vuelve a empezar en Enero).
-            slotLabels={
-              isCalendarMonth
-                ? slotLabels && liveUnitCount > 1
-                  ? Array.from(
-                      { length: liveSlotCount },
-                      (_, i) => slotLabels[i % slotLabels.length],
-                    )
-                  : slotLabels
-                : faceSlotLabels(livePhotoSlots, facesPerUnit)
-            }
+            // unidad (cada una vuelve a empezar en Enero). Fase 1A — la expresión
+            // vive en resolvedSlotLabels (compartida con toolbar/FAB).
+            slotLabels={resolvedSlotLabels}
             // Multi-unidad — sustantivo de la unidad para pager/headers de sección.
             unitNoun={unitNoun}
             // PACKS (owner 2026-09-15, ADR-101) — tamaño del pack para que la
@@ -1718,7 +1734,7 @@ export function StudioEditor({
                   }
                 : null
             }
-            slotNoun={slotNoun}
+            slotNoun={slotNounPair.one}
             allowText={allowText}
             frameFullBleed={frameFullBleed}
             facesPerUnit={facesPerUnit}
@@ -1761,8 +1777,11 @@ export function StudioEditor({
 
       {/* FOTO4/CAL4 — Galería de escenas "en tu espacio" en un solo modal (kind decide las escenas:
           fotoimanes → nevera/polaroid/mural/repisa/regalo · calendario → abre en el DETALLE
-          tarjeta-a-tarjeta y sube a nevera/tablero con "Míralo en tu espacio", ola 3). */}
-      {sceneMagnets !== null && !hide3DView && (
+          tarjeta-a-tarjeta y sube a nevera/tablero con "Míralo en tu espacio", ola 3).
+          Fase 1A (2026-09-27) — el calendario SIN IMÁN (hide3DView) SÍ abre: su visor de
+          detalle tarjeta-a-tarjeta es válido sin imán; la galería recibe `magnet` y gatea
+          INTERNO las escenas nevera/tablero (que sí asumen imán). */}
+      {sceneMagnets !== null && (!hide3DView || sceneMagnets.kind === "calendar") && (
         <SceneGallery
           magnets={sceneMagnets.magnets}
           cols={sceneMagnets.cols}
@@ -1771,6 +1790,9 @@ export function StudioEditor({
           isPolaroid={sceneMagnets.isPolaroid}
           facesPerUnit={sceneMagnets.facesPerUnit}
           flat={sceneMagnets.flat}
+          // Fase 1A — "Sin imán": la galería oculta las escenas que asumen imán
+          // (nevera/tablero); el detalle del calendario sigue disponible.
+          magnet={liveMagnet}
           // Cara B opcional (2026-09-22): cara B vacía → reverso negro en 3D.
           backOptional={backOptional}
           onClose={() => setSceneMagnets(null)}
@@ -1919,7 +1941,11 @@ export function StudioEditor({
               ? "bookmarks"
               : liveIsStrip
                 ? "strips"
-                : "magnets"
+                : // Fase 1A — SIN IMÁN (magnet === false) la modal dice "fichas",
+                  // nunca "imanes" (misma regla del helper resolveSlotNoun).
+                  liveMagnet === false
+                  ? "tiles"
+                  : "magnets"
         }
         calendarYear={selectedYear}
         onEdit={handleClosePreviewModal}
@@ -1933,12 +1959,14 @@ export function StudioEditor({
         finalizeBlockReason={igFinalizeBlockReason}
         // Cara B opcional (separadores): el guard exige solo las caras A.
         backOptional={backOptional}
+        // Fase 1A — labels por slot para el popover de faltantes (móvil).
+        slotLabels={resolvedSlotLabels}
         onFinalize={handleFinalize}
       />
 
       {/* M.3.b.UX.5 — Onboarding tutorial primera vez. Se auto-detecta via
           localStorage; si ya se onboardeó (key="v1"), no muestra nada. */}
-      <StudioOnboarding slotNoun={slotNoun} />
+      <StudioOnboarding slotNoun={slotNounPair.one} />
 
       {/* M.3.b.UX.v11/v12 — Banner de gestos. Auto-trigger 1ª vez cuando hay
         foto + abierto manualmente desde botón "?" del toolbar. */}

@@ -14,6 +14,7 @@ import {
   countBadgeLabel,
   filterPhotoScenes,
   galleryEscapeAction,
+  galleryScenes,
   initialModalView,
   scenesForKind,
 } from "./scene-gallery";
@@ -65,6 +66,20 @@ describe("scenesForKind", () => {
       expect(scenes.length).toBeGreaterThan(0);
       expect(new Set(scenes).size).toBe(scenes.length);
     }
+  });
+});
+
+describe("galleryScenes — gate SIN IMÁN (Fase 1A, 2026-09-27)", () => {
+  it("magnet === false: ninguna escena 'en tu espacio' (todas asumen imán)", () => {
+    expect(galleryScenes("calendar", false, false)).toEqual([]);
+    expect(galleryScenes("photo", true, false)).toEqual([]);
+    expect(galleryScenes("bookmark", false, false)).toEqual([]);
+  });
+
+  it("magnet true/undefined: mismas escenas de siempre por kind", () => {
+    expect(galleryScenes("calendar", false, true)).toEqual(["fridge", "board"]);
+    expect(galleryScenes("calendar", false, undefined)).toEqual(["fridge", "board"]);
+    expect(galleryScenes("photo", true)).toEqual(["fridge", "polaroid", "board", "shelf", "gift"]);
   });
 });
 

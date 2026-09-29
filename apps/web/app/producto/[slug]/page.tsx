@@ -249,8 +249,8 @@ export default async function ProductoDetallePage({
 
   // Precio tachado con REFLEJO TOTAL (owner 2026-09-14): la promo vive por
   // opción en el admin y el front la refleja SIEMPRE — tachado si la opción
-  // elegida (o el "Desde") la tiene, chip "Promo en otra opción desde $X" si
-  // la tiene otra. Antes solo se veía con la variante elegida (bug: la card
+  // elegida (o el "Desde") la tiene, chip "Otras presentaciones con descuento
+  // desde $X" si la tiene otra. Antes solo se veía con la variante elegida (bug: la card
   // mostraba el descuento y la ficha no). Nunca descuento negativo.
   const { compareAt: displayCompareAt, promoElsewhereFrom } = resolvePromoDisplay(
     selectable,
@@ -282,9 +282,10 @@ export default async function ProductoDetallePage({
   // cliente) están exceptuados del retracto. `isPersonalizable` (personalización OPCIONAL) NO basta:
   // comprado sin diseño custom, conserva el retracto (verificación adversarial).
   const alwaysCustom = requiresPersonalization || isLetterSetProduct || isNamePerTile;
-  // Garantía legal irrenunciable: nunca anunciar menos del mínimo de 1 año (art. 7-8), aunque un
-  // dato legado traiga < 12.
-  const warrantyMonths = Math.max(product.warrantyMonths ?? 12, 12);
+  // Garantía: nunca anunciar menos del término informado al consumidor (3 meses, Ley 1480
+  // art. 8 — término fijado e informado por la naturaleza del producto), aunque un dato
+  // legado traiga < 3. Default 3 para productos sin valor explícito.
+  const warrantyMonths = Math.max(product.warrantyMonths ?? 3, 3);
 
   // JSON-LD Product structured data — Google rich results.
   // priceValidUntil usa la updatedAt + 1 año (no Date.now() para evitar
@@ -439,7 +440,7 @@ export default async function ProductoDetallePage({
                         y solo se veía en la card del catálogo. */}
                     {promoElsewhereFrom != null && (
                       <span className="bg-brand-pink/10 text-brand-pink rounded-full px-3 py-1 text-xs font-semibold">
-                        🏷️ Promo en otra opción desde {formatCOP(promoElsewhereFrom)}
+                        🏷️ Otras presentaciones con descuento desde {formatCOP(promoElsewhereFrom)}
                       </span>
                     )}
                   </>

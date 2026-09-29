@@ -1687,6 +1687,7 @@ export function renderLayer(
           key={layer.id}
           layer={layer as ProfilePhotoLayer}
           profileAssetUrl={slotState.profileAssetUrl ?? null}
+          profileTransform={slotState.profileTransform ?? null}
           stageWidth={stage.width}
           onEdit={opts?.onProfilePhotoEdit}
           hint={opts?.profilePhotoHint}
@@ -1715,12 +1716,16 @@ export function renderLayer(
 function ProfilePhotoLayerRenderer({
   layer,
   profileAssetUrl,
+  profileTransform,
   stageWidth,
   onEdit,
   hint,
 }: {
   layer: ProfilePhotoLayer;
   profileAssetUrl: string | null;
+  /** Fase 1B — encuadre del avatar dentro del círculo (zoom/pan). null = cover
+   *  centrado (comportamiento histórico de Ola 17). */
+  profileTransform?: { offsetX: number; offsetY: number; scale: number } | null;
   stageWidth: number;
   /** Ola 22 — si viene, el avatar abre el picker de foto de perfil al tocarlo. */
   onEdit?: () => void;
@@ -1737,9 +1742,15 @@ function ProfilePhotoLayerRenderer({
   const d = layer.radius * 2;
   // Cover dentro del círculo: la foto más chica se agrupa hasta cubrirlo y se
   // centra (misma matemática cover que el image-placeholder, sin overscan).
-  const scale = image ? Math.max(d / image.width, d / image.height) : 1;
+  // Fase 1B — el encuadre del cliente multiplica el cover (scale) y desplaza el
+  // centro (offsetX/Y en coords del stage), todo DENTRO del clip circular.
+  const scale = image
+    ? Math.max(d / image.width, d / image.height) * (profileTransform?.scale ?? 1)
+    : 1;
   const w = image ? image.width * scale : 0;
   const h = image ? image.height * scale : 0;
+  const imgX = (d - w) / 2 + (profileTransform?.offsetX ?? 0);
+  const imgY = (d - h) / 2 + (profileTransform?.offsetY ?? 0);
 
   // Tooltip bajo el avatar (el header no tiene aire arriba: el anillo de historia
   // llega a y≈14). Se clampa al ancho del stage para no cortarse en el borde.
@@ -1761,7 +1772,7 @@ function ProfilePhotoLayerRenderer({
           }}
           listening={false}
         >
-          <KonvaImage image={image} x={(d - w) / 2} y={(d - h) / 2} width={w} height={h} />
+          <KonvaImage image={image} x={imgX} y={imgY} width={w} height={h} />
         </Group>
       )}
       {/* Anillo de affordance PERMANENTE (punteado turquesa, como los textos
