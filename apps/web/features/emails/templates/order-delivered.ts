@@ -9,14 +9,20 @@ export type OrderDeliveredData = {
   orderNumber: string;
   customerName: string;
   publicTrackingToken: string | null;
+  /** true = entrega propia "Envío Lucam's": la confirmación la hizo nuestro
+   *  equipo (no una transportadora externa). */
+  internalDelivery?: boolean;
 };
 
 export async function orderDeliveredEmail(data: OrderDeliveredData) {
   const siteUrl = await getSiteUrl();
+  const deliveredBy = data.internalDelivery
+    ? "nuestro equipo Lucam's entregó"
+    : "según la transportadora, llegó";
 
   const bodyHtml = `
 <h1 style="margin:0 0 12px 0;font-size:22px;color:#3D2E5C;">¡Tu pedido llegó! 💜</h1>
-<p>Hola ${escapeHtml(data.customerName)}, según la transportadora tu pedido <strong>${escapeHtml(data.orderNumber)}</strong> ya está en tus manos.</p>
+<p>Hola ${escapeHtml(data.customerName)}, ${deliveredBy} tu pedido <strong>${escapeHtml(data.orderNumber)}</strong> y ya está en tus manos.</p>
 <p>Esperamos que te enamore tanto como a nosotros nos enamora hacerlo.</p>
 
 <p style="margin-top:18px;font-size:15px;"><strong>¿Nos cuentas cómo te fue?</strong></p>
@@ -36,7 +42,7 @@ ${ctaButton(
 
 Hola ${data.customerName},
 
-Tu pedido ${data.orderNumber} ya está en tus manos según la transportadora.
+Tu pedido ${data.orderNumber} ya está en tus manos (${data.internalDelivery ? "lo entregó nuestro equipo Lucam's" : "confirmado por la transportadora"}).
 
 ¿Nos cuentas cómo te fue? Una reseña nos ayuda mucho:
 ${data.publicTrackingToken ? `${siteUrl}/pedido/${data.publicTrackingToken}` : `${siteUrl}/rastrear`}

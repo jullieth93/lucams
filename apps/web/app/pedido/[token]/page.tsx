@@ -27,6 +27,7 @@ import { prisma } from "@/lib/db";
 import { formatCOP, maskEmail } from "@/lib/format";
 import { hashBearerToken } from "@/lib/token-hash";
 import { carrierTrackingPageUrl } from "@/features/shipping/tracking-urls";
+import { LUCAMS_CARRIER, carrierDisplayName } from "@/features/shipping/lucams-shipping";
 import { letterSetBorderNote } from "@/features/personalization/letter-set-border";
 import { buildWhatsAppUrl } from "@/lib/wa";
 
@@ -112,11 +113,19 @@ export default async function PublicOrderPage({
   });
   const progress = timelineProgress(order.status);
   const isCancelled = order.status === "CANCELLED" || order.status === "REFUNDED";
+  // Entrega propia "Envío Lucam's" (trackingNumber INTERNO-*): NO hay guía de
+  // transportadora ni rastreo externo — el estado se muestra en lenguaje claro
+  // con los datos internos (nunca se consulta Aveonline para estas órdenes).
+  const isInternalDelivery = order.shippingCarrier === LUCAMS_CARRIER;
   // #2 — contraentrega: el cliente aún NO ha pagado (paga en efectivo al recibir). No mostrar
   // "Pagado"; usar "Confirmado" + un aviso persistente del monto a pagar hasta que se entregue.
   const isCod = order.paymentMethod === "COD";
   const statusText =
-    isCod && order.status === "PAID" ? "Confirmado" : (STATUS_LABEL[order.status] ?? order.status);
+    isCod && order.status === "PAID"
+      ? "Confirmado"
+      : isInternalDelivery && order.status === "SHIPPED"
+        ? "En camino con nuestro equipo"
+        : (STATUS_LABEL[order.status] ?? order.status);
   const showCodBanner = isCod && !isCancelled && order.status !== "DELIVERED";
   // #5 — PENDING_PAYMENT no es un callejón sin salida: en vez del timeline gris mudo, un banner
   // ámbar que explica ("estamos confirmando tu pago") + salida a WhatsApp para resolver.
@@ -398,16 +407,29 @@ export default async function PublicOrderPage({
             >
               <Row
                 label={<CmsText blockKey="order.status.carrier-label" fallback="Transportadora" />}
-                value={order.shippingCarrier ?? "—"}
+                value={carrierDisplayName(order.shippingCarrier)}
               />
               <Row
-                label={<CmsText blockKey="order.status.tracking-label" fallback="Número de guía" />}
+                label={
+                  isInternalDelivery ? (
+                    "Referencia"
+                  ) : (
+                    <CmsText blockKey="order.status.tracking-label" fallback="Número de guía" />
+                  )
+                }
                 value={
                   <span className="text-brand-purple-dark/85 font-mono text-xs">
                     {order.trackingNumber}
                   </span>
                 }
               />
+              {isInternalDelivery && (
+                <p className="text-brand-muted mt-2 text-xs">
+                  {order.status === "DELIVERED"
+                    ? "Tu pedido fue entregado por nuestro equipo Lucam&apos;s."
+                    : "Tu pedido va con nuestro equipo Lucam&apos;s — la entrega es directa, sin transportadora externa."}
+                </p>
+              )}
               {/* Rastreo (feedback Lucy 2026-08-11): el portal oficial de la
                   transportadora como enlace principal (el trackingUrl guardado
                   es el PDF del documento de guía — ahora va etiquetado como tal). */}

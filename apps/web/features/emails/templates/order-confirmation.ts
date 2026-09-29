@@ -29,6 +29,9 @@ export type OrderConfirmationData = {
   publicTrackingToken: string | null;
   /** COD ⇒ el cliente paga en efectivo al recibir (no hubo pago online). */
   paymentMethod?: "WOMPI" | "COD";
+  /** true = entrega propia "Envío Lucam's": no hay guía ni transportadora
+   *  externa — el texto lo dice en esos términos. */
+  internalDelivery?: boolean;
 };
 
 export async function orderConfirmationEmail(data: OrderConfirmationData) {
@@ -72,7 +75,11 @@ export async function orderConfirmationEmail(data: OrderConfirmationData) {
       : `recibimos tu pago para el pedido <strong>${escapeHtml(data.orderNumber)}</strong>.`
   }</p>
 ${codCallout}
-<p>Ya empezamos a preparar tu pedido: lo despachamos en máximo <strong>2 días hábiles</strong> y te avisamos con el número de guía apenas salga. De ahí en adelante el tiempo lo pone la transportadora y depende de tu ciudad.</p>
+${
+  data.internalDelivery
+    ? `<p>Ya empezamos a preparar tu pedido: lo despachamos en máximo <strong>2 días hábiles</strong> con <strong>nuestro equipo Lucam's</strong> (entrega directa, sin transportadora externa) y te avisamos apenas salga.</p>`
+    : `<p>Ya empezamos a preparar tu pedido: lo despachamos en máximo <strong>2 días hábiles</strong> y te avisamos con el número de guía apenas salga. De ahí en adelante el tiempo lo pone la transportadora y depende de tu ciudad.</p>`
+}
 
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;border-collapse:collapse;">
   ${itemsRows}
@@ -99,7 +106,7 @@ ${ctaButton(
   "Ver mi pedido →",
 )}
 
-<p style="font-size:12px;color:#3D2E5C;opacity:0.6;margin-top:16px;">Los valores están en pesos colombianos (COP) y son el total que pagas. Conoce tu <a href="${siteUrl}/legal/devoluciones" style="color:#7C6AAD;">derecho de retracto</a> (5 días hábiles para el catálogo estándar; los productos personalizados no aplican) y la <a href="${siteUrl}/legal/garantias" style="color:#7C6AAD;">garantía legal de 1 año</a>.</p>
+<p style="font-size:12px;color:#3D2E5C;opacity:0.6;margin-top:16px;">Los valores están en pesos colombianos (COP) y son el total que pagas. Conoce tu <a href="${siteUrl}/legal/devoluciones" style="color:#7C6AAD;">derecho de retracto</a> (5 días hábiles para el catálogo estándar; los productos personalizados no aplican) y la <a href="${siteUrl}/legal/garantias" style="color:#7C6AAD;">garantía de 3 meses</a>.</p>
 
 <p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:14px;">¿Algún cambio? Escríbenos por WhatsApp o responde este correo.</p>
 `;
@@ -128,7 +135,7 @@ Ver mi pedido: ${data.publicTrackingToken ? `${siteUrl}/pedido/${data.publicTrac
 
 Los valores están en pesos colombianos (COP) y son el total que pagas.
 Retracto (5 días hábiles, catálogo estándar): ${siteUrl}/legal/devoluciones
-Garantía legal (1 año): ${siteUrl}/legal/garantias`;
+Garantía (3 meses desde la entrega): ${siteUrl}/legal/garantias`;
 
   return {
     subject: `Pedido ${data.orderNumber} confirmado 🎉`,

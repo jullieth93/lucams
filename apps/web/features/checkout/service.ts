@@ -29,6 +29,9 @@ import {
 import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/redemption";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { getShippingProvider } from "@/features/shipping/provider";
+import { getDisabledCarriersNormalized, normalizeCarrierKey } from "@/features/shipping/settings";
+import { buildLucamsOffer } from "@/features/shipping/lucams-shipping";
+import { getZone } from "@/lib/lucams-zones";
 import {
   getEffectiveShippingDims,
   MissingShippingDimsError,
@@ -304,6 +307,20 @@ export async function quoteShipping(input: {
     );
   }
 
+  // Config operativa del envío (settings CmsField SETTING, /admin/envios):
+  // transportadoras deshabilitadas a filtrar + oferta del envío propio Lucam's
+  // (solo Bogotá con localidad habilitada; null si no aplica).
+  const address = ctx.state.address ?? null;
+  const [disabledCarriers, lucamsOffer] = await Promise.all([
+    getDisabledCarriersNormalized(),
+    address
+      ? buildLucamsOffer({
+          cityCode: address.cityCode,
+          zoneId: address.localityId ?? null,
+        })
+      : Promise.resolve(null),
+  ]);
+
   try {
     const quotes = await provider.quote({
       origin: { city: pickupCity, department: pickupDept },
@@ -316,18 +333,36 @@ export async function quoteShipping(input: {
     // ShippingSelectionInput sellado — es solo display para la UI ("tarifa
     // estimada"); el anti-tamper del offersToken queda intacto.
     const estimated = quotes.length > 0 && quotes.every((q) => q.estimated === true);
+    // Transportadoras deshabilitadas por el negocio: se filtran ANTES de sellar
+    // el HMAC (el set sellado nunca las incluye → no son seleccionables).
+    const filtered = disabledCarriers.length
+      ? quotes.filter((q) => !disabledCarriers.includes(normalizeCarrierKey(q.carrierName)))
+      : quotes;
     return {
       estimated,
-      quotes: quotes.map((q) => ({
-        carrier: q.carrier,
-        carrierName: q.carrierName,
-        fleteCop: q.fleteCop,
-        deliveryDays: q.deliveryDays,
-        contraentrega: q.contraentrega,
-        quoteId: q.quoteId,
-      })),
+      quotes: [
+        ...filtered.map((q) => ({
+          carrier: q.carrier,
+          carrierName: q.carrierName,
+          fleteCop: q.fleteCop,
+          deliveryDays: q.deliveryDays,
+          contraentrega: q.contraentrega,
+          quoteId: q.quoteId,
+        })),
+        ...(lucamsOffer ? [lucamsOffer] : []),
+      ],
     };
   } catch (err) {
+    // Si Aveonline falla pero el destino tiene envío propio disponible, el
+    // checkout sigue operando con esa única opción (mejor que el banner de
+    // "no pudimos cotizar" para un pedido de Bogotá que sí podemos entregar).
+    if (lucamsOffer) {
+      logger.warn({
+        event: "checkout.quote_shipping.aveonline_fail_lucams_only",
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return { estimated: false, quotes: [lucamsOffer] };
+    }
     // warn (no error): la página /checkout/envio maneja esto con banner
     // amarillo "No pudimos cotizar el envío" — no es crash.
     logger.warn({
@@ -408,6 +443,14 @@ export async function finalizeCheckout(input: {
         department: state.address.department,
         addressLine1,
         zip: state.address.zip,
+        // Zona de entrega del envío propio Lucam's (campos localityId/localityName,
+        // nombre histórico — ver lib/lucams-zones.ts) — snapshot en shippingAddress.
+        ...(state.address.localityId
+          ? {
+              localityId: state.address.localityId,
+              localityName: getZone(state.address.cityCode, state.address.localityId)?.name,
+            }
+          : {}),
         notes: state.address.notes,
       },
       shippingSelection: state.shippingSelection,

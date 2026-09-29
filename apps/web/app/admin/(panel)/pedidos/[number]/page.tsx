@@ -22,6 +22,12 @@ import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/compone
 import { getCurrentAdmin } from "@/lib/auth";
 import { getOrder } from "@/features/orders/service";
 import { getProductionAssetSignedUrls } from "@/lib/storage";
+import {
+  bogotaHour,
+  LUCAMS_CARRIER,
+  carrierDisplayName,
+} from "@/features/shipping/lucams-shipping";
+import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { formatCOP } from "@/lib/format";
 import { OrderActions } from "./order-actions";
 
@@ -66,6 +72,7 @@ type ShippingAddrSnapshot = {
   addressLine1?: string;
   addressLine2?: string;
   zip?: string;
+  localityName?: string;
   notes?: string;
 };
 
@@ -98,6 +105,21 @@ export default async function AdminPedidoDetallePage({
   const hasUnapproved = unapprovedPieceCount > 0;
 
   const ship = order.shippingAddress as ShippingAddrSnapshot;
+  const isInternalDelivery = order.shippingCarrier === LUCAMS_CARRIER;
+  // Entrega propia: promesa (misma regla del checkout: pedido creado antes del
+  // cutoff, hora Colombia → mismo día) para mostrarla en la tarjeta de envío.
+  const lucamsSettings = isInternalDelivery ? await getLucamsShippingSettings() : null;
+  const internalPromise =
+    isInternalDelivery && lucamsSettings
+      ? bogotaHour(order.createdAt) < lucamsSettings.cutoffHour
+        ? "Entrega hoy"
+        : "Entrega mañana"
+      : null;
+  // Para entrega propia, SHIPPED se lee mejor como "En ruta" (no hay courier externo).
+  const statusLabel =
+    isInternalDelivery && order.status === "SHIPPED"
+      ? "En ruta"
+      : (STATUS_LABEL[order.status] ?? order.status);
   const dateFmt = new Intl.DateTimeFormat("es-CO", {
     day: "2-digit",
     month: "short",
@@ -114,9 +136,7 @@ export default async function AdminPedidoDetallePage({
         title={order.number}
         subtitle={
           <span className="flex items-center gap-2">
-            <AdminBadge tone={STATUS_TONE[order.status] ?? "slate"}>
-              {STATUS_LABEL[order.status] ?? order.status}
-            </AdminBadge>
+            <AdminBadge tone={STATUS_TONE[order.status] ?? "slate"}>{statusLabel}</AdminBadge>
             <span>· creado {dateFmt.format(order.createdAt)}</span>
           </span>
         }
@@ -330,6 +350,7 @@ export default async function AdminPedidoDetallePage({
               </div>
               <div className="text-brand-muted mt-1 text-xs">
                 {ship.city}, {ship.department}
+                {ship.localityName ? ` · Localidad ${ship.localityName}` : ""}
                 {ship.zip ? ` · ${ship.zip}` : ""}
               </div>
               {ship.notes && (
@@ -395,22 +416,54 @@ export default async function AdminPedidoDetallePage({
                   }
                 />
               )}
-              <Row label="Estado" value={STATUS_LABEL[order.status] ?? order.status} />
+              <Row label="Estado" value={statusLabel} />
             </Card>
 
             {/* Envío */}
             <Card icon={<Truck className="h-4 w-4" />} title="Envío">
-              <Row label="Transportadora" value={order.shippingCarrier ?? "—"} />
+              <Row
+                label="Transportadora"
+                value={
+                  <span className="inline-flex items-center gap-1.5">
+                    {carrierDisplayName(order.shippingCarrier)}
+                    {isInternalDelivery && (
+                      <span className="bg-brand-turquoise/40 rounded px-1.5 py-0.5 text-[10px] font-bold text-teal-900">
+                        Entrega propia
+                      </span>
+                    )}
+                  </span>
+                }
+              />
               {order.trackingNumber ? (
                 <>
                   <Row
-                    label="N° de guía"
+                    label={isInternalDelivery ? "Referencia" : "N° de guía"}
                     value={
                       <span className="text-brand-purple-dark/85 font-mono text-xs">
                         {order.trackingNumber}
                       </span>
                     }
                   />
+                  {isInternalDelivery && (
+                    <>
+                      {ship.localityName && (
+                        <Row label="Zona de entrega" value={ship.localityName} />
+                      )}
+                      {internalPromise && <Row label="Promesa" value={internalPromise} />}
+                      <p className="text-brand-muted mt-1 text-[10px]">
+                        Entrega interna (mensajería propia): no hay guía de transportadora. Marca la
+                        salida en ruta y la entrega a mano con las acciones de abajo.
+                      </p>
+                      <a
+                        href={`/admin/pedidos/${encodeURIComponent(order.number)}/guia`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-brand-purple hover:bg-brand-purple-dark mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white transition-colors"
+                      >
+                        🖨 Imprimir guía de entrega
+                      </a>
+                    </>
+                  )}
                   {isSimulatedTracking && (
                     <p className="mt-1 text-[10px] text-amber-700">
                       ⚠️ Guía simulada (modo test). Producción genera guía real.
@@ -438,7 +491,19 @@ export default async function AdminPedidoDetallePage({
                   )}
                 </>
               ) : (
-                <p className="text-brand-muted text-xs">Sin guía generada todavía</p>
+                <>
+                  <p className="text-brand-muted text-xs">Sin guía generada todavía</p>
+                  {isInternalDelivery && (
+                    <a
+                      href={`/admin/pedidos/${encodeURIComponent(order.number)}/guia`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-brand-purple hover:bg-brand-purple-dark mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white transition-colors"
+                    >
+                      🖨 Imprimir guía de entrega
+                    </a>
+                  )}
+                </>
               )}
             </Card>
 
@@ -450,6 +515,7 @@ export default async function AdminPedidoDetallePage({
               paymentMethod={order.paymentMethod}
               isNoShow={!!order.noShowAt}
               hasAddressKey={!!order.shippingAddressKey}
+              isInternalDelivery={isInternalDelivery}
             />
           </div>
         </div>

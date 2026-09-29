@@ -13,6 +13,8 @@ import { saveCheckoutAddressToAccount } from "@/features/addresses/service";
 import { recordCheckoutDataConsent } from "@/features/consent/service";
 import { recordAbandonedCartEmail } from "@/features/cart/recovery-service";
 import { guardTransactionalAction } from "@/lib/stage-guard";
+import { getLucamsShippingSettings } from "@/features/shipping/settings";
+import { getZoneCityByCode } from "@/lib/lucams-zones";
 
 export type DatosActionState = {
   error?: string;
@@ -61,6 +63,27 @@ export async function saveDatosAction(
   const addressParsed = parseStructuredAddress(formData);
   if (!addressParsed.ok) {
     return { error: addressParsed.error, fieldErrors: addressParsed.fieldErrors };
+  }
+
+  // ─── Zona de entrega (envío propio "Envío Lucam's") ───
+  // Si la ciudad tiene zonas habilitadas y el envío propio está ACTIVO, la zona
+  // es obligatoria: sin ella no podemos ofrecer/validar esa opción en el step 2.
+  // Apagado (o ciudad sin zonas habilitadas) → queda opcional.
+  if (!addressParsed.data.localityId) {
+    const zoneCity = getZoneCityByCode(addressParsed.data.cityCode);
+    if (zoneCity) {
+      const lucams = await getLucamsShippingSettings();
+      if (lucams.enabled && (lucams.zones[zoneCity.cityCode] ?? []).length > 0) {
+        return {
+          error: `Falta la ${zoneCity.zoneLabel.toLowerCase()} de entrega`,
+          fieldErrors: {
+            localityId: [
+              `Elige tu ${zoneCity.zoneLabel.toLowerCase()} — la necesitamos para ofrecerte el envío propio.`,
+            ],
+          },
+        };
+      }
+    }
   }
 
   // ─── Facturación opcional ───

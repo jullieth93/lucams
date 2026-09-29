@@ -413,6 +413,15 @@ async function listEnabledCarriers(): Promise<Array<{ id: number; text: string }
 }
 
 /**
+ * Lista las transportadoras habilitadas en la cuenta Aveonline (cache 24h) para
+ * la UI de admin (/admin/envios). Lanza si la API está caída o
+ * las credenciales fallan — el caller muestra el mensaje claro.
+ */
+export async function listCarriersForAdmin(): Promise<Array<{ id: number; text: string }>> {
+  return listEnabledCarriers();
+}
+
+/**
  * Normaliza un carrier-name a slug comparable: lowercase + sin espacios +
  * sin tildes. Ej: "COORDINADORA MERCANTIL" → "coordinadoramercantil";
  * "coordinadora-mercantil" → "coordinadoramercantil".

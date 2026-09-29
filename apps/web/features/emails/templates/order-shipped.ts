@@ -15,10 +15,14 @@ export type OrderShippedData = {
   trackingUrl: string | null;
   estimatedDays: number | null;
   publicTrackingToken: string | null;
+  /** true = entrega propia "Envío Lucam's" (trackingNumber INTERNO-*): el
+   *  correo NO menciona guía rastreable ni transportadora externa. */
+  internalDelivery?: boolean;
 };
 
 export async function orderShippedEmail(data: OrderShippedData) {
   const siteUrl = await getSiteUrl();
+  const internal = data.internalDelivery === true;
   const etaText = data.estimatedDays
     ? `<p>Estimado de la transportadora: <strong>${data.estimatedDays} día${data.estimatedDays === 1 ? "" : "s"} hábil${data.estimatedDays === 1 ? "" : "es"}</strong> desde el despacho. Es un estimado del courier, no una fecha garantizada.</p>`
     : "";
@@ -32,27 +36,35 @@ export async function orderShippedEmail(data: OrderShippedData) {
   const orderPageUrl = data.publicTrackingToken
     ? `${siteUrl}/pedido/${data.publicTrackingToken}`
     : `${siteUrl}/rastrear`;
-  const carrierPage = carrierTrackingPageUrl(data.carrier);
+  const carrierPage = internal ? null : carrierTrackingPageUrl(data.carrier);
 
   const trackingBlock = `
 ${ctaButton(orderPageUrl, "Rastrear mi pedido →")}
-${data.publicTrackingToken ? "" : `<p style="margin-top:6px;font-size:13px;color:#3D2E5C;opacity:0.75;">En «Rastrear mi pedido» te pedimos el número de pedido (${escapeHtml(data.orderNumber)}) y tu correo. Número de guía: <code style="background:#f5f0eb;padding:2px 6px;border-radius:4px;">${escapeHtml(data.trackingNumber)}</code></p>`}
+${data.publicTrackingToken ? "" : `<p style="margin-top:6px;font-size:13px;color:#3D2E5C;opacity:0.75;">En «Rastrear mi pedido» te pedimos el número de pedido (${escapeHtml(data.orderNumber)}) y tu correo.${internal ? "" : ` Número de guía: <code style="background:#f5f0eb;padding:2px 6px;border-radius:4px;">${escapeHtml(data.trackingNumber)}</code>`}</p>`}
 <p style="margin-top:10px;font-size:13px;color:#3D2E5C;opacity:0.75;">${
     carrierPage
       ? `También la puedes rastrear en la web de la transportadora: <a href="${carrierPage}" style="color:#7C6AAD;">${escapeHtml(carrierPage.replace(/^https:\/\//, "").replace(/\/$/, ""))}</a> (digita la guía ${escapeHtml(data.trackingNumber)}).`
       : ""
-  }${data.trackingUrl ? ` · <a href="${escapeHtml(data.trackingUrl)}" style="color:#7C6AAD;">Documento de guía (PDF)</a>` : ""}</p>`;
+  }${!internal && data.trackingUrl ? ` · <a href="${escapeHtml(data.trackingUrl)}" style="color:#7C6AAD;">Documento de guía (PDF)</a>` : ""}</p>`;
 
   const bodyHtml = `
 <h1 style="margin:0 0 12px 0;font-size:22px;color:#3D2E5C;">¡Tu pedido va en camino! 🚚</h1>
 <p>Hola ${escapeHtml(data.customerName)}, despachamos tu pedido <strong>${escapeHtml(data.orderNumber)}</strong>.</p>
-<p>Transportadora: <strong>${escapeHtml(data.carrier)}</strong></p>
-<p>Número de guía: <code style="background:#f5f0eb;padding:2px 6px;border-radius:4px;">${escapeHtml(data.trackingNumber)}</code></p>
-${etaText}
+${
+  internal
+    ? `<p>Va en camino con <strong>nuestro equipo Lucam's</strong> — la entrega es directa, sin transportadora externa.</p>`
+    : `<p>Transportadora: <strong>${escapeHtml(data.carrier)}</strong></p>
+<p>Número de guía: <code style="background:#f5f0eb;padding:2px 6px;border-radius:4px;">${escapeHtml(data.trackingNumber)}</code></p>`
+}
+${internal ? "" : etaText}
 
 ${trackingBlock}
 
-<p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">Si nadie atiende cuando lleguen, la transportadora intentará entregar 2 veces más antes de devolver el paquete.</p>
+<p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">${
+    internal
+      ? "Si nadie atiende cuando lleguemos, te contactamos para acordar la entrega."
+      : "Si nadie atiende cuando lleguen, la transportadora intentará entregar 2 veces más antes de devolver el paquete."
+  }</p>
 `;
 
   const text = `¡Tu pedido va en camino!
@@ -61,14 +73,20 @@ Hola ${data.customerName},
 
 Despachamos tu pedido ${data.orderNumber}.
 
-Transportadora: ${data.carrier}
-Número de guía: ${data.trackingNumber}
-${data.estimatedDays ? `Estimado de la transportadora: ${data.estimatedDays} día(s) hábil(es) desde el despacho\n` : ""}${orderPageUrl ? `Rastrear mi pedido: ${orderPageUrl}\n` : ""}${carrierPage ? `Rastreo en la transportadora: ${carrierPage}\n` : ""}Cualquier duda, escríbenos al ${siteUrl}/contacto`;
+${
+  internal
+    ? "Va en camino con nuestro equipo Lucam's — la entrega es directa, sin transportadora externa."
+    : `Transportadora: ${data.carrier}
+Número de guía: ${data.trackingNumber}`
+}
+${!internal && data.estimatedDays ? `Estimado de la transportadora: ${data.estimatedDays} día(s) hábil(es) desde el despacho\n` : ""}${orderPageUrl ? `Rastrear mi pedido: ${orderPageUrl}\n` : ""}${carrierPage ? `Rastreo en la transportadora: ${carrierPage}\n` : ""}Cualquier duda, escríbenos al ${siteUrl}/contacto`;
 
   return {
     subject: `Tu pedido ${data.orderNumber} va en camino 🚚`,
     html: await renderEmailLayout({
-      preview: `Guía ${data.trackingNumber} · ${data.carrier}`,
+      preview: internal
+        ? `${data.carrier} · entrega propia`
+        : `Guía ${data.trackingNumber} · ${data.carrier}`,
       bodyHtml,
     }),
     text,

@@ -23,6 +23,7 @@ import { getRetractableItems } from "@/features/retract/service";
 import { getWarrantyItems } from "@/features/warranty/service";
 import { orderStatusLabel } from "@/features/orders/order-status-display";
 import { carrierTrackingPageUrl } from "@/features/shipping/tracking-urls";
+import { carrierDisplayName, LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 import { RetractControl } from "./retract-control";
 import { WarrantyControl } from "./warranty-control";
 import { getAccountTexts } from "../../account-texts.server";
@@ -101,16 +102,18 @@ export default async function CustomerPedidoDetallePage({
   const isCancelled = order.status === "CANCELLED" || order.status === "REFUNDED";
   // #2 — contraentrega: no mostrar "Pagado" (aún no paga); "Confirmado" + aviso del monto en efectivo.
   const isCod = order.paymentMethod === "COD";
+  // Entrega propia "Envío Lucam's": SHIPPED se lee como "en camino con nuestro
+  // equipo" (no hay courier externo) — coherente con la vista pública /pedido.
+  const isInternalDelivery = order.shippingCarrier === LUCAMS_CARRIER;
   const statusText =
-    isCod && order.status === "PAID" ? "Confirmado" : orderStatusLabel(order.status);
+    isCod && order.status === "PAID"
+      ? "Confirmado"
+      : isInternalDelivery && order.status === "SHIPPED"
+        ? "En camino con nuestro equipo"
+        : orderStatusLabel(order.status);
   const showCodBanner = isCod && !isCancelled && order.status !== "DELIVERED";
-  // #9 — transportadora legible (title-case) en vez del slug crudo ("tcc-sa" → "Tcc Sa").
-  const carrierLabel = order.shippingCarrier
-    ? order.shippingCarrier
-        .split("-")
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ")
-    : "—";
+  // #9 — transportadora legible (el envío propio tiene nombre propio).
+  const carrierLabel = carrierDisplayName(order.shippingCarrier);
 
   // F3 — elegibilidad de retracto por item (solo si el pedido fue entregado).
   const retractable =

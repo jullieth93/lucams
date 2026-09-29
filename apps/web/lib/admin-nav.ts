@@ -59,6 +59,7 @@ import {
   LayoutTemplate,
   Megaphone,
   MailCheck,
+  Truck,
 } from "lucide-react";
 import { isCatalogMode } from "@/lib/store-mode";
 
@@ -175,7 +176,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/garantias",
         icon: BadgeCheck,
         description:
-          "Reclamos de garantía legal (1 año, Ley 1480): recibir, evaluar, resolver (reparación/reposición/devolución) y notificar al cliente en cada paso.",
+          "Reclamos de garantía (3 meses, término informado — Ley 1480 art. 8): recibir, evaluar, resolver (reparación/reposición/devolución) y notificar al cliente en cada paso.",
       },
       {
         label: "Reclamos",
@@ -390,6 +391,16 @@ export const ADMIN_NAV: NavGroup[] = [
           "Gestión de admins: listar, promover clientes existentes, cambiar rol (Superadmin/Manager/Fulfillment), activar/desactivar. Solo Superadmin.",
       },
       {
+        // Casa de la configuración de transporte del checkout (owner 2026-09-29):
+        // antes vivía dentro de Integraciones › Aveonline, pero el envío propio
+        // Lucam's no es parte de esa integración — es config de negocio.
+        label: "Envíos",
+        href: "/admin/envios",
+        icon: Truck,
+        description:
+          "Transportadoras que el checkout ofrece (activar/desactivar, incluido el envío propio Lucam's) y configuración del envío propio: precio, hora límite «entrega hoy» y zonas de entrega por ciudad.",
+      },
+      {
         label: "Integraciones",
         href: "/admin/integraciones",
         icon: Plug,
@@ -473,7 +484,12 @@ export function getAdminNav(): NavGroup[] {
         return { ...group, items: group.items.filter((it) => it.href !== "/admin/mayorista") };
       }
       if (group.title === "Configuración" && group.items) {
-        return { ...group, items: group.items.filter((it) => it.href !== "/admin/integraciones") };
+        return {
+          ...group,
+          items: group.items.filter(
+            (it) => it.href !== "/admin/integraciones" && it.href !== "/admin/envios",
+          ),
+        };
       }
       return group;
     })

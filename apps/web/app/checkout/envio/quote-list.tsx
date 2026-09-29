@@ -76,15 +76,30 @@ export function QuoteList({
                   <div className="text-brand-purple-dark text-sm font-semibold">
                     {q.carrierName}
                   </div>
-                  <div className="text-brand-muted mt-0.5 flex items-center gap-2 text-xs">
+                  <div className="text-brand-muted mt-0.5 flex flex-wrap items-center gap-2 text-xs">
                     <Clock className="h-3 w-3" />
-                    {/* #25 — es tiempo de TRÁNSITO, no de entrega total; nunca "Entrega hoy" a secas
-                      (falta la fabricación). Ver la nota bajo la lista. */}
-                    {q.deliveryDays === 0
-                      ? "Estimado de la transportadora: el mismo día del despacho"
-                      : q.deliveryDays === 1
-                        ? "Estimado de la transportadora: 1 día hábil tras el despacho"
-                        : `Estimado de la transportadora: ${q.deliveryDays} días hábiles tras el despacho`}
+                    {q.carrier === "lucams" ? (
+                      <>
+                        {/* Envío propio Lucam's: mensajería interna Bogotá — la
+                            promesa sí es de entrega (no hay fabricación + transportadora). */}
+                        {q.deliveryDays === 0 ? "Entrega hoy" : "Entrega mañana"}
+                        <span className="bg-brand-turquoise/40 rounded px-1.5 py-0.5 text-[10px] font-semibold text-teal-900">
+                          {q.deliveryDays === 0
+                            ? "Envío Lucam's · mismo día"
+                            : "Envío Lucam's · entrega mañana"}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        {/* #25 — es tiempo de TRÁNSITO, no de entrega total; nunca "Entrega hoy" a secas
+                          (falta la fabricación). Ver la nota bajo la lista. */}
+                        {q.deliveryDays === 0
+                          ? "Estimado de la transportadora: el mismo día del despacho"
+                          : q.deliveryDays === 1
+                            ? "Estimado de la transportadora: 1 día hábil tras el despacho"
+                            : `Estimado de la transportadora: ${q.deliveryDays} días hábiles tras el despacho`}
+                      </>
+                    )}
                     {q.contraentrega && (
                       <span className="bg-brand-yellow/30 ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
                         Contraentrega

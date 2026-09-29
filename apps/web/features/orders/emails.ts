@@ -25,6 +25,7 @@ import {
   renderRefundIssuedEmail,
   renderOrderAdminNotificationEmail,
 } from "@/features/emails/registry";
+import { carrierDisplayName, LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 
 type ShippingAddrSnapshot = {
   fullName?: string;
@@ -84,9 +85,7 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
       subtotal: order.subtotal,
       shipping: order.shipping,
       discount: order.discount,
-      shippingCarrier: order.shippingCarrier
-        ? order.shippingCarrier.toUpperCase().replace(/-/g, " ")
-        : null,
+      shippingCarrier: order.shippingCarrier ? carrierDisplayName(order.shippingCarrier) : null,
       items: order.items.map((it) => ({
         name: it.variant.product.name,
         qty: it.qty,
@@ -99,6 +98,7 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
       // rastrea con número + correo en /rastrear.
       publicTrackingToken: null,
       paymentMethod: order.paymentMethod,
+      internalDelivery: order.shippingCarrier === LUCAMS_CARRIER,
     });
 
     const result = await sendEmail({
@@ -196,13 +196,12 @@ export async function sendOrderShipped(orderId: string): Promise<void> {
     const tpl = await renderOrderShippedEmail({
       orderNumber: order.number,
       customerName: ship.fullName ?? "Cliente",
-      carrier: order.shippingCarrier
-        ? order.shippingCarrier.toUpperCase().replace(/-/g, " ")
-        : "Transportadora",
+      carrier: carrierDisplayName(order.shippingCarrier),
       trackingNumber: order.trackingNumber,
       trackingUrl: order.trackingUrl,
       estimatedDays: null,
       publicTrackingToken: null, // F-11 — ver sendOrderConfirmation
+      internalDelivery: order.shippingCarrier === LUCAMS_CARRIER,
     });
 
     const result = await sendEmail({
@@ -406,6 +405,7 @@ export async function sendOrderDelivered(orderId: string): Promise<void> {
         number: true,
         email: true,
         shippingAddress: true,
+        shippingCarrier: true,
       },
     });
     if (!order) return;
@@ -415,6 +415,7 @@ export async function sendOrderDelivered(orderId: string): Promise<void> {
       orderNumber: order.number,
       customerName: ship.fullName ?? "Cliente",
       publicTrackingToken: null, // F-11 — ver sendOrderConfirmation
+      internalDelivery: order.shippingCarrier === LUCAMS_CARRIER,
     });
 
     const result = await sendEmail({
@@ -608,7 +609,7 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
       paymentMethod: order.paymentMethod,
       subtotal: order.subtotal,
       shipping: order.shipping,
-      shippingCarrier: order.shippingCarrier,
+      shippingCarrier: order.shippingCarrier ? carrierDisplayName(order.shippingCarrier) : null,
       discount: order.discount,
       total: order.total,
       items: order.items.map((it) => ({
