@@ -647,7 +647,13 @@ export default async function ProductoDetallePage({
                             despachamos en máximo {product.productionDays} días hábiles
                           </strong>
                           . Desde ahí, las transportadoras aliadas estiman {product.shippingDaysMin}
-                          –{product.shippingDaysMax} días según tu ciudad.
+                          –{product.shippingDaysMax} días según tu ciudad. En Bogotá, con{" "}
+                          <strong>Envío Lucam&apos;s</strong> (localidades habilitadas) la entrega es
+                          el <strong>mismo día del despacho</strong>
+                          {product.productionDays === 0
+                            ? " — y si pides antes de la hora límite, te llega hoy"
+                            : ""}
+                          .
                         </>
                       )}
                     </span>

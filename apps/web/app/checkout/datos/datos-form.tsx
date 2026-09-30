@@ -10,6 +10,9 @@
  *   - Documento: regex por tipo (CC/CE/NIT/PP/TI)
  *   - Departamento/Ciudad: dropdowns DANE divipola (catálogo curado)
  *   - Código postal: autocompletado por ciudad si DANE lo tiene
+ *   - Localidad (zona del catálogo lib/lucams-zones.ts): obligatoria si la
+ *     ciudad está en el catálogo — dato de dirección, no filtro de oferta
+ *   - Barrio: texto libre opcional (todas las ciudades)
  *   - Dirección: 4 campos estructurados (Vía + Número + #Cruce + Detalle)
  */
 
@@ -50,20 +53,12 @@ export function DatosForm({
   initial,
   savedAddresses = [],
   canSaveAddress = false,
-  lucamsShippingEnabled = false,
-  lucamsZones = {},
   texts,
 }: {
   initial: CheckoutState;
   savedAddresses?: CheckoutPrefillAddress[];
   // true solo si hay cliente logueado → ofrecer "guardar esta dirección".
   canSaveAddress?: boolean;
-  /** true si el envío propio "Envío Lucam's" está activo → la zona de entrega
-   *  es obligatoria en las ciudades con zonas habilitadas (el server la
-   *  re-valida en saveDatosAction). */
-  lucamsShippingEnabled?: boolean;
-  /** Zonas habilitadas por ciudad ({ cityCode: [zoneId] }) — settings LUCAMS_SHIPPING_ZONES. */
-  lucamsZones?: Record<string, string[]>;
   /** Textos CMS del formulario (roadmap B8) — los resuelve el padre server. */
   texts: CheckoutTexts["datos"];
 }) {
@@ -93,15 +88,16 @@ export function DatosForm({
   const [deptCode, setDeptCode] = useState(initial.address?.deptCode ?? "");
   const [cityCode, setCityCode] = useState(initial.address?.cityCode ?? "");
   const [zip, setZip] = useState(initial.address?.zip ?? "");
-  // Zona de entrega (envío propio Lucam's) — visible si la ciudad elegida está
-  // en el catálogo y tiene zonas habilitadas en las settings.
+  // Zona de entrega (localidad/comuna — lib/lucams-zones.ts) — DATO DE DIRECCIÓN:
+  // se muestran TODAS las zonas del catálogo y es obligatoria siempre que la
+  // ciudad esté en el catálogo, haya o no envío propio activo (las zonas
+  // habilitadas en /admin/envios solo deciden si aparece la oferta "Envío
+  // Lucam's" en el paso de envío).
   const [localityId, setLocalityId] = useState(initial.address?.localityId ?? "");
+  const [neighborhood, setNeighborhood] = useState(initial.address?.neighborhood ?? "");
   const zoneCity = getZoneCityByCode(cityCode);
-  const enabledZoneIds = zoneCity ? (lucamsZones[zoneCity.cityCode] ?? []) : [];
-  const showZoneSelect = zoneCity !== null && enabledZoneIds.length > 0;
-  const zoneOptions = showZoneSelect
-    ? zoneCity.zones.filter((z) => enabledZoneIds.includes(z.id))
-    : [];
+  const showZoneSelect = zoneCity !== null;
+  const zoneOptions = zoneCity?.zones ?? [];
   // Discriminated union urbana/rural (Lucy 2026-05-21)
   const [addressKind, setAddressKind] = useState<"urban" | "rural">(
     initial.address?.kind ?? "urban",
@@ -199,6 +195,7 @@ export function DatosForm({
     setCityCode("");
     setZip("");
     setLocalityId("");
+    setNeighborhood("");
     setAddressKind("urban");
     setViaType("Calle");
     setViaNumber("");
@@ -224,6 +221,7 @@ export function DatosForm({
       setCityCode(String(s.cityCode ?? ""));
       setZip(String(s.zip ?? ""));
       setLocalityId(String(s.localityId ?? ""));
+      setNeighborhood(String(s.neighborhood ?? ""));
       const kind = s.kind === "rural" ? "rural" : "urban";
       setAddressKind(kind);
       if (kind === "urban") {
@@ -604,6 +602,9 @@ export function DatosForm({
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
               inputMode="numeric"
             />
+            {/* El CP se autocompleta a nivel MUNICIPAL (DANE): es el estándar que
+                usan las transportadoras para cotizar en Colombia — no existe fuente
+                confiable y gratuita con precisión sub-municipal. */}
             <FieldHint
               clientError={null}
               serverError={err("zip")}
@@ -612,24 +613,48 @@ export function DatosForm({
           </div>
         </div>
 
-        {/* Zona de entrega (envío propio Lucam's) — cualquier ciudad del
-            catálogo con zonas habilitadas; obligatoria si el envío propio está
-            activo (lo re-valida el server). */}
+        {/* Barrio (opcional, todas las ciudades) — convive con la zona/localidad:
+            no son lo mismo (la zona sale del catálogo, el barrio es texto libre). */}
+        <div className="mt-4">
+          <Label
+            htmlFor="neighborhood"
+            className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+          >
+            {texts.neighborhoodLabel}
+          </Label>
+          <Input
+            id="neighborhood"
+            name="neighborhood"
+            value={neighborhood}
+            onChange={(e) => setNeighborhood(e.target.value)}
+            placeholder={texts.neighborhoodPlaceholder}
+            maxLength={100}
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:max-w-xs"
+          />
+          <FieldHint
+            clientError={null}
+            serverError={err("neighborhood")}
+            hint={texts.neighborhoodHint}
+          />
+        </div>
+
+        {/* Zona de entrega (localidad/comuna del catálogo lib/lucams-zones.ts) —
+            dato de dirección: obligatoria siempre que la ciudad esté en el
+            catálogo (lo re-valida el server), haya o no envío propio activo. */}
         {showZoneSelect && zoneCity && (
           <div className="mt-4">
             <Label
               htmlFor="localityId"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              {zoneCity.zoneLabel}{" "}
-              {lucamsShippingEnabled && <span className="text-rose-600">*</span>}
+              {zoneCity.zoneLabel} <span className="text-rose-600">*</span>
             </Label>
             <select
               id="localityId"
               name="localityId"
               value={localityId}
               onChange={(e) => setLocalityId(e.target.value)}
-              required={lucamsShippingEnabled}
+              required
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none sm:max-w-xs"
             >
               <option value="">Elige tu {zoneCity.zoneLabel.toLowerCase()}…</option>
@@ -642,7 +667,7 @@ export function DatosForm({
             <FieldHint
               clientError={null}
               serverError={err("localityId")}
-              hint={`En ${zoneCity.cityName} ofrecemos envío propio con entrega el mismo día según tu ${zoneCity.zoneLabel.toLowerCase()}.`}
+              hint={texts.zoneHint.replace("{zona}", zoneCity.zoneLabel.toLowerCase())}
             />
           </div>
         )}

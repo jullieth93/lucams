@@ -112,9 +112,17 @@ export async function payWompiAction(formData: FormData): Promise<void> {
       });
       redirect(
         `/carrito?error=${encodeURIComponent(
-          "Uno de los productos ya no está disponible. Por favor revisa tu carrito.",
+          err.customerMessage() ??
+            "Uno de los productos ya no está disponible. Por favor revisa tu carrito.",
         )}`,
       );
+    }
+    // Carrera TOCTOU (2026-09-29): el webhook pagó la orden mientras se creaba/reconciliaba.
+    // No es un error para el cliente — su pedido quedó confirmado; lo llevamos a la vista de
+    // confirmación (gracias?id=<txId> verifica la tx contra Wompi y sana la orden).
+    if (err instanceof CheckoutError && err.code === "ORDER_ALREADY_PAID") {
+      logger.info({ event: "checkout.pago.order_already_paid", method: "WOMPI" });
+      redirect(err.redirectTo ?? "/");
     }
     // #3 caso B — el cupón se invalidó en carrera (válido al render, inválido al pagar). finalize ya
     // limpió el cupón del state; avisamos con un aviso SUAVE (couponNotice) — no es un fallo de pago,
@@ -222,9 +230,16 @@ export async function payCodAction(formData: FormData): Promise<void> {
         `/carrito?error=${encodeURIComponent(
           err instanceof CheckoutError
             ? err.message
-            : "Uno de los productos ya no está disponible. Por favor revisa tu carrito.",
+            : (err.customerMessage() ??
+              "Uno de los productos ya no está disponible. Por favor revisa tu carrito."),
         )}`,
       );
+    }
+    // Carrera TOCTOU — ver payWompiAction: la orden ya quedó confirmada por otro
+    // proceso; redirigir a su estado actual (nunca crear otra orden ni cobrar).
+    if (err instanceof CheckoutError && err.code === "ORDER_ALREADY_PAID") {
+      logger.info({ event: "checkout.pago.order_already_paid", method: "COD" });
+      redirect(err.redirectTo ?? "/");
     }
     // #3 caso B — cupón invalidado en carrera: aviso suave, no fallo de pago (ver payWompiAction).
     if (err instanceof CheckoutError && err.code === "COUPON_INVALIDATED") {

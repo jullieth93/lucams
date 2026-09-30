@@ -54,6 +54,7 @@ type ShippingAddrSnapshot = {
   city?: string;
   department?: string;
   zip?: string;
+  neighborhood?: string;
   notes?: string;
 };
 
@@ -282,6 +283,7 @@ export default async function CustomerPedidoDetallePage({
         </p>
         <p className="text-brand-muted mt-1 text-xs">
           {ship.city}, {ship.department}
+          {ship.neighborhood ? ` · Barrio ${ship.neighborhood}` : ""}
           {ship.zip ? ` · ${ship.zip}` : ""}
         </p>
         {ship.notes && (

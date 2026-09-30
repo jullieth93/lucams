@@ -32,6 +32,7 @@ export function EnvioStep({
   subtextTemplate,
   summaryTexts,
   shippingTexts,
+  lucamsCutoffHour,
 }: {
   cart: CartDetail;
   quotes: ShippingSelectionInput[];
@@ -49,6 +50,8 @@ export function EnvioStep({
   /** Textos CMS del resumen y de la lista de envío (roadmap B8). */
   summaryTexts: CheckoutTexts["summary"];
   shippingTexts: CheckoutTexts["shipping"];
+  /** Hora límite del envío propio, leída de settings por la página server. */
+  lucamsCutoffHour: number;
 }) {
   // State compartido — Lucy 2026-05-21: sidebar reactivo al cambio de radio.
   const initial = preselectedQuoteId ?? quotes[0]?.quoteId ?? null;
@@ -76,6 +79,7 @@ export function EnvioStep({
             preselectedQuoteId={selectedQuoteId ?? undefined}
             onSelectionChange={setSelectedQuoteId}
             texts={shippingTexts}
+            lucamsCutoffHour={lucamsCutoffHour}
           />
           {quotesEstimated && (
             <p

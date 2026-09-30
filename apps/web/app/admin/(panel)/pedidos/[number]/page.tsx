@@ -23,10 +23,10 @@ import { getCurrentAdmin } from "@/lib/auth";
 import { getOrder } from "@/features/orders/service";
 import { getProductionAssetSignedUrls } from "@/lib/storage";
 import {
-  bogotaHour,
   LUCAMS_CARRIER,
   carrierDisplayName,
 } from "@/features/shipping/lucams-shipping";
+import { lucamsDeliveryDays, maxProductionDaysOf } from "@/lib/delivery-estimate";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { formatCOP } from "@/lib/format";
 import { OrderActions } from "./order-actions";
@@ -73,6 +73,7 @@ type ShippingAddrSnapshot = {
   addressLine2?: string;
   zip?: string;
   localityName?: string;
+  neighborhood?: string;
   notes?: string;
 };
 
@@ -106,15 +107,30 @@ export default async function AdminPedidoDetallePage({
 
   const ship = order.shippingAddress as ShippingAddrSnapshot;
   const isInternalDelivery = order.shippingCarrier === LUCAMS_CARRIER;
-  // Entrega propia: promesa (misma regla del checkout: pedido creado antes del
-  // cutoff, hora Colombia → mismo día) para mostrarla en la tarjeta de envío.
+  // Entrega propia: promesa con la MISMA regla del checkout (producción + hora
+  // de corte, lib/delivery-estimate.ts). Los días de fabricación se derivan de
+  // los items persistidos de la orden (variant → product.productionDays actual;
+  // getOrder ya los incluye) — sin snapshot extra: si Lucy ajusta el
+  // productionDays de un producto, la promesa mostrada refleja el dato vigente.
   const lucamsSettings = isInternalDelivery ? await getLucamsShippingSettings() : null;
-  const internalPromise =
+  const internalPromiseDays =
     isInternalDelivery && lucamsSettings
-      ? bogotaHour(order.createdAt) < lucamsSettings.cutoffHour
-        ? "Entrega hoy"
-        : "Entrega mañana"
+      ? lucamsDeliveryDays({
+          maxProductionDays: maxProductionDaysOf(
+            order.items.map((it) => it.variant.product.productionDays),
+          ),
+          cutoffHour: lucamsSettings.cutoffHour,
+          now: order.createdAt,
+        })
       : null;
+  const internalPromise =
+    internalPromiseDays === null
+      ? null
+      : internalPromiseDays === 0
+        ? "Entrega hoy"
+        : internalPromiseDays === 1
+          ? "Entrega mañana"
+          : `Entrega en ${internalPromiseDays} días hábiles`;
   // Para entrega propia, SHIPPED se lee mejor como "En ruta" (no hay courier externo).
   const statusLabel =
     isInternalDelivery && order.status === "SHIPPED"
@@ -351,6 +367,7 @@ export default async function AdminPedidoDetallePage({
               <div className="text-brand-muted mt-1 text-xs">
                 {ship.city}, {ship.department}
                 {ship.localityName ? ` · Localidad ${ship.localityName}` : ""}
+                {ship.neighborhood ? ` · Barrio ${ship.neighborhood}` : ""}
                 {ship.zip ? ` · ${ship.zip}` : ""}
               </div>
               {ship.notes && (

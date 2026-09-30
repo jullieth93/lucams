@@ -23,6 +23,7 @@ import { processPaidOrder } from "@/features/orders/saga";
 import { assertStockAvailable } from "@/features/orders/stock";
 import {
   InsufficientStockError,
+  OrderAlreadyPaidError,
   OrderAmountTooLargeError,
   OrderUnavailableItemsError,
 } from "@/features/orders/errors";
@@ -31,6 +32,7 @@ import { getPaymentProvider } from "@/features/payments/provider";
 import { getShippingProvider } from "@/features/shipping/provider";
 import { getDisabledCarriersNormalized, normalizeCarrierKey } from "@/features/shipping/settings";
 import { buildLucamsOffer } from "@/features/shipping/lucams-shipping";
+import { maxProductionDaysOf } from "@/lib/delivery-estimate";
 import { getZone } from "@/lib/lucams-zones";
 import {
   getEffectiveShippingDims,
@@ -66,8 +68,16 @@ export class CheckoutError extends Error {
       | "STOCK_UNAVAILABLE"
       | "COUPON_INVALIDATED"
       | "CART_ITEMS_UNAVAILABLE"
-      | "COD_NOT_ALLOWED",
+      | "COD_NOT_ALLOWED"
+      | "ORDER_ALREADY_PAID",
     message?: string,
+    /**
+     * Destino de redirect customer-safe para códigos que NO muestran mensaje
+     * (hoy: ORDER_ALREADY_PAID → /checkout/gracias?id=<txId>, que verifica la
+     * transacción contra Wompi y sana la orden). Lo construye finalizeCheckout
+     * con datos server-side; las actions solo lo consumen.
+     */
+    public redirectTo?: string,
   ) {
     super(message ?? code);
     this.name = "CheckoutError";
@@ -153,7 +163,13 @@ export async function assertCheckoutAvailability(ctx: CheckoutContext): Promise<
     );
   } catch (err) {
     if (err instanceof InsufficientStockError) {
-      throw new CheckoutError("STOCK_UNAVAILABLE", err.message);
+      // El error ya trae el nombre del producto agotado (customer-safe); sin
+      // nombre, el genérico. La página redirige a /carrito con este mensaje.
+      throw new CheckoutError(
+        "STOCK_UNAVAILABLE",
+        err.customerMessage() ??
+          "Uno de los productos ya no está disponible. Por favor revisa tu carrito.",
+      );
     }
     throw err;
   }
@@ -176,6 +192,31 @@ export function fingerprintCartItems(
 /** Llave de destino de una dirección de checkout (depto + ciudad DANE). */
 export function destinationKeyOf(address: NonNullable<CheckoutState["address"]>): string {
   return `${address.deptCode}:${address.cityCode}`;
+}
+
+/**
+ * Nombre del primer item del carrito cuyo stock YA no alcanza (agregado por
+ * variante — dos líneas del mismo variant suman). Se usa para nombrar el
+ * producto agotado en la carrera de stock COD, cuando la saga no confirmó.
+ */
+async function firstShortItemName(
+  items: ReadonlyArray<{ variantId: string; qty: number; productName: string }>,
+): Promise<string | null> {
+  const totals = new Map<string, { qty: number; productName: string }>();
+  for (const it of items) {
+    const acc = totals.get(it.variantId);
+    if (acc) acc.qty += it.qty;
+    else totals.set(it.variantId, { qty: it.qty, productName: it.productName });
+  }
+  const variants = await prisma.productVariant.findMany({
+    where: { id: { in: [...totals.keys()] } },
+    select: { id: true, stock: true },
+  });
+  for (const v of variants) {
+    const acc = totals.get(v.id);
+    if (acc && v.stock < acc.qty) return acc.productName;
+  }
+  return null;
 }
 
 /** Match EXACTO de una selección contra las cotizaciones que el servidor ofreció. */
@@ -242,10 +283,17 @@ export async function quoteShipping(input: {
     select: {
       id: true,
       attributes: true,
-      product: { select: { slug: true, physicalSpecs: true } },
+      product: { select: { slug: true, physicalSpecs: true, productionDays: true } },
     },
   });
   const variantById = new Map(variants.map((v) => [v.id, v]));
+
+  // Promesa "Envío Lucam's" = fabricación a mano + hora de corte (regla única
+  // en lib/delivery-estimate.ts): el despacho toma el MÁXIMO de productionDays
+  // del carrito y la entrega es el mismo día del despacho. Se calcula UNA vez
+  // acá (al ofrecer) — finalizeCheckout no recotiza: re-valida la selección
+  // contra el set sellado HMAC, así que oferta y re-validación nunca divergen.
+  const maxProductionDays = maxProductionDaysOf(variants.map((v) => v.product.productionDays));
 
   const items = ctx.cart.items.map((it) => {
     const v = variantById.get(it.variantId);
@@ -314,10 +362,13 @@ export async function quoteShipping(input: {
   const [disabledCarriers, lucamsOffer] = await Promise.all([
     getDisabledCarriersNormalized(),
     address
-      ? buildLucamsOffer({
-          cityCode: address.cityCode,
-          zoneId: address.localityId ?? null,
-        })
+      ? buildLucamsOffer(
+          {
+            cityCode: address.cityCode,
+            zoneId: address.localityId ?? null,
+          },
+          { maxProductionDays },
+        )
       : Promise.resolve(null),
   ]);
 
@@ -407,6 +458,10 @@ export async function finalizeCheckout(input: {
   // o volver al step 1, cambiar la dirección y saltar directo a /checkout/pago por URL.
   // Sin esto, la Order se crea con un flete obsoleto (casi siempre más barato) y
   // Aveonline nos cobra el flete real de la dirección/peso nuevo.
+  // OJO (2026-09-29): acá NO se recotiza la oferta Lucam's — se exige match
+  // exacto contra el set sellado al cotizar (donde se aplicó la regla
+  // producción+cutoff de lib/delivery-estimate.ts con el maxProductionDays del
+  // carrito). Si el carrito cambió, cartHash ya no matchea y se rechaza.
   const sealedOffers = state.shippingOffers;
   if (
     !sealedOffers ||
@@ -443,8 +498,9 @@ export async function finalizeCheckout(input: {
         department: state.address.department,
         addressLine1,
         zip: state.address.zip,
-        // Zona de entrega del envío propio Lucam's (campos localityId/localityName,
-        // nombre histórico — ver lib/lucams-zones.ts) — snapshot en shippingAddress.
+        neighborhood: state.address.neighborhood,
+        // Zona de entrega (campos localityId/localityName, nombre histórico —
+        // ver lib/lucams-zones.ts) — snapshot en shippingAddress.
         ...(state.address.localityId
           ? {
               localityId: state.address.localityId,
@@ -490,6 +546,35 @@ export async function finalizeCheckout(input: {
         dropped: err.items,
       });
       throw new CheckoutError("CART_ITEMS_UNAVAILABLE", err.message);
+    }
+    // Carrera TOCTOU de reconciliación (2026-09-29): el webhook Wompi commiteó PAID mientras
+    // createOrderFromCart releía/reconciliaba la orden PENDING de este cart. El gate atómico
+    // abortó sin pisar nada. Camino seguro: NO crear otra orden ni cobrar — la action redirige
+    // a la confirmación. Con txId de Wompi → /checkout/gracias?id=<txId> (verifica la tx contra
+    // la API y sana la orden); sin txId (carrera COD doble-submit) → pedidos de la cuenta si
+    // está logueado, home si es guest.
+    if (err instanceof OrderAlreadyPaidError) {
+      const paid = await prisma.order.findFirst({
+        where: { id: err.orderId, deletedAt: null },
+        select: { status: true, wompiTransactionId: true },
+      });
+      const redirectTo = paid?.wompiTransactionId
+        ? `/checkout/gracias?id=${encodeURIComponent(paid.wompiTransactionId)}`
+        : ctx.customerId
+          ? "/mi-cuenta/pedidos"
+          : "/";
+      logger.info({
+        event: "checkout.finalize.order_already_paid",
+        orderId: err.orderId,
+        orderNumber: err.orderNumber,
+        status: paid?.status ?? null,
+        redirectTo,
+      });
+      throw new CheckoutError(
+        "ORDER_ALREADY_PAID",
+        "Tu pedido ya quedó confirmado. Te llevamos a su estado actual.",
+        redirectTo,
+      );
     }
     logger.error({
       event: "checkout.finalize.order_create_fail",
@@ -565,9 +650,15 @@ export async function finalizeCheckout(input: {
           where: { id: order.id, status: "PENDING_PAYMENT" },
           data: { status: "CANCELLED", needsReconciliation: false },
         });
+        // Nombrar el producto que se agotó (2026-09-29): "uno de los productos" obligaba
+        // al cliente a adivinar. Re-leemos el stock de las variantes del carrito para
+        // encontrar la que ya no alcanza; si no la identificamos, fallback genérico.
+        const goneName = await firstShortItemName(ctx.cart.items);
         throw new CheckoutError(
           "STOCK_UNAVAILABLE",
-          "Uno de los productos se agotó mientras confirmábamos tu pedido. Revisa tu carrito.",
+          goneName
+            ? `«${goneName}» se agotó mientras confirmábamos tu pedido. Revisa tu carrito.`
+            : "Uno de los productos se agotó mientras confirmábamos tu pedido. Revisa tu carrito.",
         );
       }
       // La orden quedó PAID pero SIN guía (Aveonline falló). El pedido existe (stock

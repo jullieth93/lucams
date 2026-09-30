@@ -25,6 +25,7 @@ export type StructuredAddressValue = {
   deptCode: string;
   cityCode: string;
   zip: string;
+  neighborhood: string;
   kind: "urban" | "rural";
   viaType: string;
   viaNumber: string;
@@ -42,6 +43,7 @@ export const EMPTY_STRUCTURED_ADDRESS: StructuredAddressValue = {
   deptCode: "",
   cityCode: "",
   zip: "",
+  neighborhood: "",
   kind: "urban",
   viaType: "Calle",
   viaNumber: "",
@@ -142,6 +144,22 @@ export function StructuredAddressFields({
             aria-invalid={Boolean(err("zip"))}
           />
           {err("zip") && <p className="text-destructive text-sm">{err("zip")}</p>}
+        </div>
+        <div className="space-y-1.5 sm:col-span-6">
+          <Label htmlFor="neighborhood">Barrio (opcional)</Label>
+          <Input
+            id="neighborhood"
+            name="neighborhood"
+            value={value.neighborhood}
+            disabled={disabled}
+            onChange={(e) => onChange({ neighborhood: e.target.value })}
+            placeholder="Ej. Cedritos, La Alameda"
+            maxLength={100}
+            aria-invalid={Boolean(err("neighborhood"))}
+          />
+          {err("neighborhood") && (
+            <p className="text-destructive text-sm">{err("neighborhood")}</p>
+          )}
         </div>
       </div>
 

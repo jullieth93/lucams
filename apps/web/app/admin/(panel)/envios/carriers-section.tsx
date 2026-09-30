@@ -9,7 +9,9 @@
  */
 
 import { useActionState, useState, useTransition } from "react";
+import Image from "next/image";
 import { Loader2 } from "lucide-react";
+import { carrierLogo } from "@/lib/carrier-logos";
 import {
   setCarrierDisabledAction,
   setLucamsShippingEnabledAction,
@@ -58,18 +60,21 @@ export function CarriersSection({
       <ul className="divide-brand-purple/10 divide-y">
         {/* Envío propio — una transportadora más de la lista (badge «Propio»). */}
         <li className="flex items-center justify-between gap-3 py-2.5">
-          <div className="min-w-0">
-            <p className="text-brand-purple-dark text-sm font-semibold">
-              Envío Lucam&apos;s{" "}
-              <span className="bg-brand-turquoise/40 ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold text-teal-900">
-                Propio
-              </span>
-            </p>
-            <p className="text-brand-muted text-xs">
-              {lucamsEnabled
-                ? "Se ofrece en el checkout para las zonas habilitadas (config abajo)."
-                : "Mensajería interna por zonas — desactivado."}
-            </p>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <CarrierLogoMark carrier="lucams" />
+            <div className="min-w-0">
+              <p className="text-brand-purple-dark text-sm font-semibold">
+                Envío Lucam&apos;s{" "}
+                <span className="bg-brand-turquoise/40 ml-1 rounded px-1.5 py-0.5 text-[10px] font-bold text-teal-900">
+                  Propio
+                </span>
+              </p>
+              <p className="text-brand-muted text-xs">
+                {lucamsEnabled
+                  ? "Se ofrece en el checkout para las zonas habilitadas (config abajo)."
+                  : "Mensajería interna por zonas — desactivado."}
+              </p>
+            </div>
           </div>
           <form action={lucamsAction} className="flex-shrink-0">
             <input type="hidden" name="enable" value={lucamsEnabled ? "0" : "1"} />
@@ -93,13 +98,16 @@ export function CarriersSection({
 
         {carriers.map((c) => (
           <li key={c.id} className="flex items-center justify-between gap-3 py-2.5">
-            <div className="min-w-0">
-              <p className="text-brand-purple-dark text-sm font-semibold">{c.text}</p>
-              <p className="text-brand-muted text-xs">
-                {c.disabled
-                  ? "No se ofrece al cliente en el checkout."
-                  : "Se ofrece al cliente cuando cotiza la ruta."}
-              </p>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <CarrierLogoMark carrier={c.text} />
+              <div className="min-w-0">
+                <p className="text-brand-purple-dark text-sm font-semibold">{c.text}</p>
+                <p className="text-brand-muted text-xs">
+                  {c.disabled
+                    ? "No se ofrece al cliente en el checkout."
+                    : "Se ofrece al cliente cuando cotiza la ruta."}
+                </p>
+              </div>
             </div>
             <button
               type="button"
@@ -124,5 +132,24 @@ export function CarriersSection({
       {lucamsState?.ok && <p className="mt-2 text-xs text-emerald-700">{lucamsState.ok}</p>}
       {aveonlineError && <p className="mt-2 text-xs text-rose-600">{aveonlineError}</p>}
     </div>
+  );
+}
+
+/** Logo de la transportadora junto al nombre (mismo mapa que el checkout).
+ *  Null (sin logo en el mapa) → no se renderiza nada. */
+function CarrierLogoMark({ carrier }: { carrier: string }) {
+  const logo = carrierLogo(carrier);
+  if (!logo) return null;
+  return (
+    <span className="border-brand-purple/10 flex h-8 flex-shrink-0 items-center justify-center rounded-md border bg-white px-1.5">
+      <Image
+        src={logo.src}
+        alt={logo.alt}
+        width={logo.width}
+        height={logo.height}
+        unoptimized={logo.src.endsWith(".svg")}
+        className="h-5 w-auto max-w-20 object-contain"
+      />
+    </span>
   );
 }

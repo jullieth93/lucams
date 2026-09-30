@@ -63,6 +63,10 @@ export type CheckoutTexts = {
     zipLabel: string;
     zipHintAuto: string;
     zipHint: string;
+    zoneHint: string;
+    neighborhoodLabel: string;
+    neighborhoodPlaceholder: string;
+    neighborhoodHint: string;
     kindLabel: string;
     kindUrban: string;
     kindUrbanDesc: string;
@@ -136,6 +140,12 @@ export type CheckoutTexts = {
     errorWa: string;
     listTitle: string;
     free: string;
+    /** Promesa "Envío Lucam's" cuando deliveryDays = 0. Token {{cutoff}} = hora
+     *  límite (settings LUCAMS_SHIPPING_CUTOFF_HOUR), inyectada por la página. */
+    lucamsToday: string;
+    /** Promesa "Envío Lucam's" cuando deliveryDays > 0 (fabricación + corte).
+     *  Token {{days}} = días hábiles calculados server-side. */
+    lucamsDays: string;
     note: string;
     back: string;
     next: string;
@@ -239,8 +249,13 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     cityWait: "Elige departamento primero",
     cityMissing: "No tenemos esa ciudad en el catálogo. Contáctanos por WhatsApp.",
     zipLabel: "Código postal (opcional)",
-    zipHintAuto: "Autocompletado para tu ciudad",
+    zipHintAuto: "Autocompletado para tu ciudad — ajústalo si conoces el tuyo exacto",
     zipHint: "6 dígitos",
+    // "{zona}" se interpola con la etiqueta del catálogo de zonas ("localidad", "comuna"…).
+    zoneHint: "Tu {zona} nos ayuda a ofrecerte las mejores opciones de entrega.",
+    neighborhoodLabel: "Barrio (opcional)",
+    neighborhoodPlaceholder: "Ej. Cedritos, La Alameda",
+    neighborhoodHint: "Ayuda al courier a ubicar tu dirección más rápido",
     kindLabel: "Tipo de dirección",
     kindUrban: "🏙️ Urbana",
     kindUrbanDesc: "Calle / Carrera + número (nomenclatura DIAN)",
@@ -322,7 +337,9 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     errorWa: "Contáctanos por WhatsApp",
     listTitle: "Opciones de envío",
     free: "Gratis",
-    note: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **despachamos en máximo 2 días hábiles** y de ahí corre el tránsito.",
+    lucamsToday: "Entrega hoy · pedido antes de las {{cutoff}}:00",
+    lucamsDays: "Entrega en {{days}} día(s) hábil(es) · fabricamos y entregamos con nuestro equipo",
+    note: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **despachamos en máximo 2 días hábiles** y el tránsito corre **después del despacho**. Con **Envío Lucam's** (mensajería propia) la entrega es el **mismo día del despacho**.",
     back: "← Cambiar dirección",
     next: "Continuar al pago →",
   },
@@ -429,6 +446,10 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "datos.zipLabel": "checkout.datos.zip-label",
   "datos.zipHintAuto": "checkout.datos.zip-hint-auto",
   "datos.zipHint": "checkout.datos.zip-hint",
+  "datos.zoneHint": "checkout.datos.zone-hint",
+  "datos.neighborhoodLabel": "checkout.datos.neighborhood-label",
+  "datos.neighborhoodPlaceholder": "checkout.datos.neighborhood-placeholder",
+  "datos.neighborhoodHint": "checkout.datos.neighborhood-hint",
   "datos.kindLabel": "checkout.datos.kind-label",
   "datos.kindUrban": "checkout.datos.kind-urban",
   "datos.kindUrbanDesc": "checkout.datos.kind-urban-desc",
@@ -498,6 +519,8 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "shipping.errorWa": "checkout.shipping.error-wa",
   "shipping.listTitle": "checkout.shipping.list-title",
   "shipping.free": "checkout.shipping.free",
+  "shipping.lucamsToday": "checkout.shipping.lucams-today",
+  "shipping.lucamsDays": "checkout.shipping.lucams-days",
   "shipping.note": "checkout.shipping.note",
   "shipping.back": "checkout.shipping.back",
   "shipping.next": "checkout.shipping.next",

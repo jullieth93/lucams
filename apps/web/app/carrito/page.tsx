@@ -175,11 +175,14 @@ export default async function CarritoPage() {
                             muestra como texto (unidades del diseño × qty) y se cambia
                             editando el diseño. Líneas de catálogo simple conservan
                             el stepper. */}
-                        {item.designId ? (
-                          <DesignUnitsLabel units={item.designUnits} qty={item.qty} />
-                        ) : (
-                          <QtyControls itemId={item.itemId} qty={item.qty} />
-                        )}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          {item.designId ? (
+                            <DesignUnitsLabel units={item.designUnits} qty={item.qty} />
+                          ) : (
+                            <QtyControls itemId={item.itemId} qty={item.qty} stock={item.stock} />
+                          )}
+                          <LowStockBadge qty={item.qty} stock={item.stock} />
+                        </div>
                         <span className="text-brand-purple-dark font-bold tabular-nums">
                           {formatCOP(item.lineTotal)}
                         </span>
@@ -288,7 +291,35 @@ function DesignUnitsLabel({ units, qty }: { units: number | null; qty: number })
   );
 }
 
-function QtyControls({ itemId, qty }: { itemId: string; qty: number }) {
+/**
+ * Badge inline de stock bajo (2026-09-29): avisa antes del checkout que la
+ * variante está por agotarse. Regla: stock < qty×2 (subir una más ya aprieta)
+ * o stock ≤ 5 (piso absoluto). Con stock 0 la línea quedó "en vuelo" tras un
+ * agotado — lo decimos explícito para que el cliente la ajuste o quite.
+ */
+function LowStockBadge({ qty, stock }: { qty: number; stock: number }) {
+  if (stock <= 0) {
+    return (
+      <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+        Agotado
+      </span>
+    );
+  }
+  if (stock < qty * 2 || stock <= 5) {
+    return (
+      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">
+        Solo quedan {stock}
+      </span>
+    );
+  }
+  return null;
+}
+
+function QtyControls({ itemId, qty, stock }: { itemId: string; qty: number; stock: number }) {
+  // Tope del stepper: el stock real de la variante (el 99 queda como límite
+  // secundario). El server valida igual — esto solo evita el roundtrip con
+  // error cuando el cliente llega al máximo disponible.
+  const maxQty = Math.min(99, Math.max(stock, 1));
   return (
     <div className="border-brand-purple/20 inline-flex items-center rounded-md border bg-white">
       <form action={updateQtyAction}>
@@ -311,7 +342,7 @@ function QtyControls({ itemId, qty }: { itemId: string; qty: number }) {
         <IconSubmitButton
           className="text-brand-purple-dark hover:bg-brand-purple/10 flex h-11 w-11 items-center justify-center disabled:opacity-40"
           aria-label="Aumentar cantidad"
-          disabled={qty >= 99}
+          disabled={qty >= maxQty}
         >
           <Plus className="h-3.5 w-3.5" />
         </IconSubmitButton>

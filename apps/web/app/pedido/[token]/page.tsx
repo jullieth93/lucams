@@ -427,7 +427,7 @@ export default async function PublicOrderPage({
                 <p className="text-brand-muted mt-2 text-xs">
                   {order.status === "DELIVERED"
                     ? "Tu pedido fue entregado por nuestro equipo Lucam&apos;s."
-                    : "Tu pedido va con nuestro equipo Lucam&apos;s — la entrega es directa, sin transportadora externa."}
+                    : "Tu pedido va con nuestro equipo Lucam&apos;s — la entrega es directa, el mismo día del despacho, sin transportadora externa."}
                 </p>
               )}
               {/* Rastreo (feedback Lucy 2026-08-11): el portal oficial de la

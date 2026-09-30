@@ -52,6 +52,12 @@ export type CartLineItem = {
   qty: number;
   unitPrice: number;
   lineTotal: number;
+  /**
+   * Stock actual de la variante (2026-09-29): la UI del carrito lo usa para el
+   * badge "Solo quedan N" y para capar el stepper (no subir por encima del
+   * stock disponible). No es una reserva — puede cambiar hasta el pago.
+   */
+  stock: number;
   imageUrl: string | null;
   designId: string | null;
   /** Si designId está set, este es el previewUrl del Design (1080×1080 PNG público). */
@@ -93,13 +99,28 @@ export class CartError extends Error {
       | "QTY_INVALID"
       | "ITEM_NOT_FOUND"
       | "STOCK_UNAVAILABLE",
+    /**
+     * Copy customer-safe opcional que nombra el producto/stock (p. ej. "Solo
+     * quedan 3 unidades de «Imán Nevera»"). Las actions lo prefieren sobre el
+     * mensaje genérico del code. Nunca lleva internals (ids, variantId).
+     */
+    public detail?: string,
   ) {
-    super(code);
+    super(detail ?? code);
     this.name = "CartError";
   }
 }
 
 const MAX_QTY_PER_ITEM = 99;
+
+/**
+ * Copy es-CO para el rechazo por stock en el carrito: nombra el producto y las
+ * unidades disponibles, y aclara cuántas ya tiene en el carrito cuando aplica.
+ */
+function stockLimitMessage(productName: string, stock: number, inCart: number): string {
+  const base = `Solo quedan ${stock} ${stock === 1 ? "unidad" : "unidades"} de «${productName}»`;
+  return inCart > 0 ? `${base} y ya tienes ${inCart} en tu carrito.` : `${base}.`;
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // Lookup / creación
@@ -280,6 +301,7 @@ function toDetail(cart: RawCart): CartDetail {
       qty: i.qty,
       unitPrice: i.unitPrice,
       lineTotal: i.qty * i.unitPrice,
+      stock: i.variant.stock,
       // Si CartItem tiene designId vinculado, mostramos el preview del Design
       // en vez de la imagen genérica del producto. Mejora el "WYSIWYG" del cart.
       imageUrl: i.design?.previewUrl ?? i.variant.product.images[0] ?? null,
@@ -343,6 +365,8 @@ export async function addProductToCart(opts: {
     select: {
       id: true,
       basePrice: true,
+      // name: para el copy del rechazo por stock ("Solo quedan N unidades de «X»").
+      name: true,
       variants: {
         // Con variantId: esa variante (scoping por producto valida ownership).
         // Sin variantId: la variante legacy `-DEFAULT`.
@@ -360,7 +384,9 @@ export async function addProductToCart(opts: {
   // Fase 1 (stock por variante): la variante elegida agotada no es comprable.
   // El checkout ya lo validaba con STOCK_UNAVAILABLE; aquí evitamos que entre
   // al carrito en primer lugar (mismo código de error para un manejo coherente).
-  if (variant.stock <= 0) throw new CartError("STOCK_UNAVAILABLE");
+  if (variant.stock <= 0) {
+    throw new CartError("STOCK_UNAVAILABLE", `«${product.name}» está agotado por ahora.`);
+  }
 
   const unitPrice = variant.price ?? product.basePrice;
 
@@ -370,6 +396,17 @@ export async function addProductToCart(opts: {
   // suma qty. CartItem no tiene unique compuesto, así que lo manejamos
   // a mano.
   const existing = cart.items.find((i) => i.variantId === variant.id);
+  // Blindaje de qty contra stock (2026-09-29): no basta con stock>0 — lo que
+  // entra al carrito MÁS lo que ya tiene el cliente no puede superar el stock
+  // de la variante (sin reservas, el checkout sigue siendo la defensa final
+  // contra concurrencia; esto cierra el oversell "en frío" por acumulación).
+  const inCart = existing?.qty ?? 0;
+  if (inCart + opts.qty > variant.stock) {
+    throw new CartError(
+      "STOCK_UNAVAILABLE",
+      stockLimitMessage(product.name, variant.stock, inCart),
+    );
+  }
   if (existing) {
     await prisma.cartItem.update({
       where: { id: existing.id },
@@ -457,6 +494,8 @@ export async function addPersonalizedToCart(opts: {
         select: {
           id: true,
           basePrice: true,
+          // name: copy del rechazo por stock ("Solo quedan N unidades de «X»").
+          name: true,
           isActive: true,
           deletedAt: true,
           // Multi-unidad — facesPerUnit para el multiplicador (separadores: 2 caras;
@@ -518,7 +557,9 @@ export async function addPersonalizedToCart(opts: {
   if (!variant) throw new CartError("NO_DEFAULT_VARIANT");
   // Fase 1 (stock por variante): misma regla que addProductToCart — la variante
   // agotada no entra al carrito (el checkout sigue como backstop de concurrencia).
-  if (variant.stock <= 0) throw new CartError("STOCK_UNAVAILABLE");
+  if (variant.stock <= 0) {
+    throw new CartError("STOCK_UNAVAILABLE", `«${design.product.name}» está agotado por ahora.`);
+  }
 
   // ADR-057 — precio POR FICHA. El gate es la VARIANTE (verdad del servidor, anti-tamper),
   // NO metadata.surface: un draft genérico (createDraftDesign) sobre el producto Nombre no
@@ -602,11 +643,26 @@ export async function addPersonalizedToCart(opts: {
     }
 
     if (existing) {
+      // Mismo blindaje de qty contra stock que addProductToCart (2026-09-29):
+      // agrupar un diseño idéntico SUMA qty sobre la misma variante.
+      const inCart = existing.qty;
+      if (inCart + opts.qty > variant.stock) {
+        throw new CartError(
+          "STOCK_UNAVAILABLE",
+          stockLimitMessage(design.product.name, variant.stock, inCart),
+        );
+      }
       await prisma.cartItem.update({
         where: { id: existing.id },
         data: { qty: Math.min(MAX_QTY_PER_ITEM, existing.qty + opts.qty) },
       });
     } else {
+      if (opts.qty > variant.stock) {
+        throw new CartError(
+          "STOCK_UNAVAILABLE",
+          stockLimitMessage(design.product.name, variant.stock, 0),
+        );
+      }
       await prisma.cartItem.create({
         data: {
           cartId: cart.id,
@@ -637,6 +693,16 @@ export async function updateCartItemQty(
   if (qty === 0) {
     await prisma.cartItem.delete({ where: { id: itemId } });
   } else {
+    // Blindaje contra stock (2026-09-29): el tope 99 queda como límite
+    // secundario; el límite que manda es el stock REAL de la variante.
+    // El stepper del carrito ya capa el "+", pero la action es un endpoint
+    // POST invocable directo — defensa en profundidad server-side.
+    if (qty > item.variant.stock) {
+      throw new CartError(
+        "STOCK_UNAVAILABLE",
+        stockLimitMessage(item.variant.product.name, item.variant.stock, 0),
+      );
+    }
     await prisma.cartItem.update({
       where: { id: itemId },
       data: { qty },

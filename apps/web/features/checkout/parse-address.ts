@@ -30,9 +30,10 @@ export function parseStructuredAddress(formData: FormData): ParsedStructuredAddr
   }
 
   const addressKind = String(formData.get("addressKind") ?? "") === "rural" ? "rural" : "urban";
-  // Zona de entrega (envío propio Lucam's): solo se conserva si la ciudad está
-  // en el catálogo de zonas y el id es válido para ESA ciudad (anti-tamper;
-  // fuera del catálogo se descarta en silencio).
+  // Zona de entrega: solo se conserva si la ciudad está en el catálogo de zonas
+  // y el id es válido para ESA ciudad (anti-tamper; fuera del catálogo se
+  // descarta en silencio). Es dato de dirección — su obligatoriedad la aplica
+  // el caller (saveDatosAction), no las settings del envío propio.
   const localityRaw = String(formData.get("localityId") ?? "").trim();
   const localityId = isValidZone(cityCode, localityRaw) ? localityRaw : undefined;
   const baseFields = {
@@ -42,6 +43,7 @@ export function parseStructuredAddress(formData: FormData): ParsedStructuredAddr
     city: city.name,
     zip: (formData.get("zip") as string)?.trim() || undefined,
     localityId,
+    neighborhood: (formData.get("neighborhood") as string)?.trim() || undefined,
     notes: (formData.get("notes") as string)?.trim() || undefined,
   };
   const addressRaw =

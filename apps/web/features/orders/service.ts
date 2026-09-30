@@ -21,8 +21,9 @@ import crypto from "node:crypto";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { canTransition, type ShippingAddressInput } from "./schemas";
-import { assertStockAvailable, revertStockForOrder } from "./stock";
+import { assertStockAvailable, revertStockForOrder, variantDisplayName } from "./stock";
 import {
+  OrderAlreadyPaidError,
   OrderAmountTooLargeError,
   OrderUnavailableItemsError,
   RefundMoneyNotConfirmedError,
@@ -241,9 +242,12 @@ async function createOrderFromCartTx(
               select: {
                 id: true,
                 sku: true,
+                // name (variante + producto): OrderUnavailableItemsError nombra el
+                // producto retirado en el aviso al cliente (2026-09-29).
+                name: true,
                 isActive: true,
                 deletedAt: true,
-                product: { select: { isActive: true, deletedAt: true } },
+                product: { select: { isActive: true, deletedAt: true, name: true } },
               },
             },
             // ADR-070 (pieza #1) — snapshot autocontenido del diseño en el pedido.
@@ -288,7 +292,11 @@ async function createOrderFromCartTx(
         dropped: unavailableItems.map((it) => ({ variantId: it.variantId, sku: it.variant.sku })),
       });
       throw new OrderUnavailableItemsError(
-        unavailableItems.map((it) => ({ variantId: it.variantId, sku: it.variant.sku })),
+        unavailableItems.map((it) => ({
+          variantId: it.variantId,
+          sku: it.variant.sku,
+          name: variantDisplayName(it.variant),
+        })),
       );
     }
 
@@ -487,10 +495,15 @@ async function createOrderFromCartTx(
       if (identical) {
         // Refresh idempotente (reload de /checkout/pago sin cambios) → misma orden.
         // F-11: rotamos el token (solo hay hash del viejo) y devolvemos el plano fresco.
-        await tx.order.update({
-          where: { id: existing.id },
+        // TOCTOU (2026-09-29): el UPDATE va gateado por status — si el webhook Wompi
+        // commiteó PAID entre el findFirst de arriba y este punto, count=0 y NO tocamos
+        // la orden pagada (OrderAlreadyPaidError aborta la tx; el checkout redirige a la
+        // vista de confirmación en vez de crear otra orden/cobro).
+        const gated = await tx.order.updateMany({
+          where: { id: existing.id, status: "PENDING_PAYMENT" },
           data: { publicAccessTokenHash },
         });
+        if (gated.count === 0) throw new OrderAlreadyPaidError(existing.id, existing.number);
         return {
           id: existing.id,
           number: existing.number,
@@ -506,10 +519,23 @@ async function createOrderFromCartTx(
       // pagar" y "pagar". Actualizamos la MISMA orden (mismo id/número; el token rota — F-11: ya no
       // se guarda en claro para releerlo) con datos frescos, en vez de devolver la vieja — que
       // cobraría el total, los items o el MÉTODO obsoletos.
+      //
+      // TOCTOU (2026-09-29): antes se hacía deleteMany(items) + update SIN gatear por estado; si el
+      // webhook Wompi commiteaba PAID entre el findFirst y estas escrituras, la reconciliación PISABA
+      // una orden ya pagada (items/total distintos a lo cobrado). Ahora el gate atómico va PRIMERO:
+      // UPDATE … WHERE id AND status='PENDING_PAYMENT'. Si count=0, la orden ya no es nuestra →
+      // OrderAlreadyPaidError (rollback de la tx, no se borra ni se crea nada). Si count=1, el
+      // row-lock de Postgres queda tomado hasta el commit de ESTA $transaction, así que el swap de
+      // items de abajo no puede quedar entremedio de una transición a PAID.
+      const gated = await tx.order.updateMany({
+        where: { id: existing.id, status: "PENDING_PAYMENT" },
+        data: { ...orderScalars, publicAccessTokenHash },
+      });
+      if (gated.count === 0) throw new OrderAlreadyPaidError(existing.id, existing.number);
       await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
       const reconciled = await tx.order.update({
         where: { id: existing.id },
-        data: { ...orderScalars, publicAccessTokenHash, items: { create: orderItemsCreate } },
+        data: { items: { create: orderItemsCreate } },
         select: returnSelect,
       });
       await markDesignsUsed();
@@ -776,7 +802,10 @@ export async function getOrder(idOrNumber: string) {
               name: true,
               productId: true,
               price: true,
-              product: { select: { name: true } },
+              // productionDays: la promesa de entrega propia ("Envío Lucam's" =
+              // fabricación + hora de corte, lib/delivery-estimate.ts) se deriva
+              // del Product actual vía los items persistidos — sin snapshot extra.
+              product: { select: { name: true, productionDays: true } },
             },
           },
           // productionUrls: paths de los PNGs 300 DPI para imprenta (ADR-063 T1). El admin los
