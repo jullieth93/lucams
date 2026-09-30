@@ -46,22 +46,26 @@ overrides:
   # WebSocket permessage-deflate). Sobre el pin anterior: 12 advisories resueltos en
   # 7.29.0 (ver gate 2026-08-29 abajo). jsdom ^7.25.0 y shadcn ^7.27.2 lo admiten.
   undici: 7.29.1
-  # fast-uri 3.1.6→3.1.7 (2026-09-30): GHSA-qw65-cvwx-89v3 / CVE-2026-84292 (authority
-  # injection por puerto sin validar en serialize) y GHSA-58mr-gqgx-xq4g /
-  # CVE-2026-84394 (host confusion por bracket sin cerrar). Sobre el pin anterior:
-  # GHSA-4c8g-83qw-93j6 / GHSA-7p8r-x3mc-p8w7 / GHSA-v2hh-gcrm-f6hx (ajv ^3.0.1 vía
-  # shadcn→@modelcontextprotocol/sdk — solo dev/CI).
-  fast-uri: 3.1.7
-  # ip-address 10.2.0→10.7.0: GHSA-22jq-vg5j-6vgg / GHSA-4xrf-jv44-h6hh /
-  # GHSA-mwp4-54f8-5fhr (socks ^10.1.1 vía @lhci/cli→puppeteer; express-rate-limit ^10.2.0).
-  ip-address: 10.7.0
+  # fast-uri 3.1.7→3.1.8 (2026-09-30): GHSA-hrr3-gc8f-f4qj (medium). Se queda en la
+  # línea 3.x porque ajv declara ^3.0.1 (la 4.x es latest pero rompería el rango).
+  # Pins previos: 3.1.7 (CVE-2026-84292, CVE-2026-84394), 3.1.6 (GHSA-4c8g-83qw-93j6
+  # y 2 más). Cadena: ajv vía shadcn→@modelcontextprotocol/sdk — solo dev/CI.
+  fast-uri: 3.1.8
+  # ip-address 10.7.0→10.7.2 (2026-09-30): GHSA-j6r3-76f7-8jcv y GHSA-h3mg-xc3c-68pw
+  # (medium; primera versión parchada 10.7.1, se pina el último 10.7.2). Pin previo:
+  # GHSA-22jq-vg5j-6vgg / GHSA-4xrf-jv44-h6hh / GHSA-mwp4-54f8-5fhr
+  # (socks ^10.1.1 vía @lhci/cli→puppeteer; express-rate-limit ^10.2.0).
+  ip-address: 10.7.2
   # body-parser 2.2.2→2.3.0: GHSA-v422-hmwv-36x6. Selector acotado a la línea 2.x
   # (express@5 ^2.2.1 vía @modelcontextprotocol/sdk); express@4 (~1.20.5) no es vulnerable.
   "body-parser@^2.2.1": 2.3.0
-  # brace-expansion: GHSA-3jxr-9vmj-r5cp / GHSA-mh99-v99m-4gvg / GHSA-rgw5-rvv9-x895.
-  # 1.1.14→1.1.18 (minimatch@3 ^1.1.7) y 5.0.6→5.0.9 (minimatch@10 ^5.0.5).
-  "brace-expansion@^1.1.7": 1.1.18
-  "brace-expansion@^5.0.5": 5.0.9
+  # brace-expansion (2026-09-30): 1.1.18→1.1.21 y 5.0.9→5.0.12 por las tandas nuevas
+  # GHSA-6j4f-fj2g-mc7p (high), GHSA-qhr7-859c-m2p7 (high) y GHSA-q2hr-2g5m-vwhr
+  # (medium) — la versión parchada más alta de cada línea (1.x: 1.1.21; 5.x: 5.0.12).
+  # Pins previos: GHSA-3jxr-9vmj-r5cp / GHSA-mh99-v99m-4gvg / GHSA-rgw5-rvv9-x895
+  # (minimatch@3 ^1.1.7 y minimatch@10 ^5.0.5).
+  "brace-expansion@^1.1.7": 1.1.21
+  "brace-expansion@^5.0.5": 5.0.12
   # js-yaml: GHSA-52cp-r559-cp3m / GHSA-5p4m-2wfm-xmqj / GHSA-h67p-54hq-rp68.
   # 3.15.0→3.15.2 (@lhci/utils ^3.13.1) y 4.1.1→4.3.2 (@eslint/eslintrc ^4.1.1,
   # cosmiconfig ^4.1.0).
