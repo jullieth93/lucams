@@ -471,6 +471,14 @@ jobs:
     name: Gitleaks secret scan
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # El workflow fija `permissions: contents: read` (least privilege), pero en eventos
+    # pull_request la action lista los commits del PR vía API (pulls/<n>/commits) y con
+    # ese token mínimo GitHub responde 403 "Resource not accessible by integration"
+    # (fallaron así los runs de PR #56 y #58, 2026-09-30). Job-level: se añade SOLO
+    # pull-requests: read a este job; el resto hereda el mínimo global.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
