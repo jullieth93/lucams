@@ -277,6 +277,7 @@ function AddressForm({
         onChange={(patch) => setAddr((prev) => ({ ...prev, ...patch }))}
         errors={state?.fieldErrors}
         disabled={pending}
+        neighborhoodPlaceholder={texts.neighborhoodPlaceholder}
       />
 
       <F

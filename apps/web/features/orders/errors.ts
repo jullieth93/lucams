@@ -116,7 +116,9 @@ export class OrderAlreadyPaidError extends Error {
     public orderNumber: string,
   ) {
     // Mensaje técnico (va a logs); el cliente nunca lo ve — la action redirige.
-    super(`Order ${orderNumber} (${orderId}) ya no está PENDING_PAYMENT — la confirmó otro proceso`);
+    super(
+      `Order ${orderNumber} (${orderId}) ya no está PENDING_PAYMENT — la confirmó otro proceso`,
+    );
     this.name = "OrderAlreadyPaidError";
   }
 }

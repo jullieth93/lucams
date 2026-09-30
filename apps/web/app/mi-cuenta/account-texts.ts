@@ -88,6 +88,7 @@ export type AccountTexts = {
     editTitle: string;
     newTitle: string;
     subtitle: string;
+    neighborhoodPlaceholder: string;
   };
   designs: {
     title: string;
@@ -241,6 +242,7 @@ export const DEFAULT_ACCOUNT_TEXTS: AccountTexts = {
     editTitle: "Editar dirección",
     newTitle: "Nueva dirección",
     subtitle: "Guárdalas para que tu próximo pedido sea más rápido.",
+    neighborhoodPlaceholder: "Ej. Cedritos, La Alameda",
   },
   designs: {
     title: "Mis diseños",
@@ -385,6 +387,7 @@ export const ACCOUNT_TEXT_KEYS: Record<string, string> = {
   "address.editTitle": "account.address.edit-title",
   "address.newTitle": "account.address.new-title",
   "address.subtitle": "account.address.subtitle",
+  "address.neighborhoodPlaceholder": "account.address.neighborhood-placeholder",
   "designs.title": "account.designs.title",
   "designs.subtitle": "account.designs.subtitle",
   "designs.emptyTitle": "account.designs.empty-title",

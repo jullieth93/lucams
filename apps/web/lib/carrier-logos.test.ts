@@ -18,9 +18,7 @@ describe("carrierLogo", () => {
   it("mapea los slugs que genera el provider Aveonline", () => {
     // aveonline.ts: nombreTransportadora.toLowerCase().replace(/\s+/g, "-")
     expect(carrierLogo("servientrega")?.src).toBe("/carriers/servientrega.svg");
-    expect(carrierLogo("coordinadora-mercantil")?.src).toBe(
-      "/carriers/coordinadora-mercantil.svg",
-    );
+    expect(carrierLogo("coordinadora-mercantil")?.src).toBe("/carriers/coordinadora-mercantil.svg");
     expect(carrierLogo("interrapidisimo")?.src).toBe("/carriers/interrapidisimo.svg");
     expect(carrierLogo("envia")?.src).toBe("/carriers/envia.png");
     expect(carrierLogo("tcc-sa")?.src).toBe("/carriers/tcc-sa.svg");
@@ -32,9 +30,7 @@ describe("carrierLogo", () => {
 
   it("normaliza nombres crudos de Aveonline (admin usa el `text` tal cual)", () => {
     expect(carrierLogo("SERVIENTREGA")?.src).toBe("/carriers/servientrega.svg");
-    expect(carrierLogo("COORDINADORA MERCANTIL")?.src).toBe(
-      "/carriers/coordinadora-mercantil.svg",
-    );
+    expect(carrierLogo("COORDINADORA MERCANTIL")?.src).toBe("/carriers/coordinadora-mercantil.svg");
     expect(carrierLogo("TCC SA")?.src).toBe("/carriers/tcc-sa.svg");
     expect(carrierLogo("Envía")?.src).toBe("/carriers/envia.png");
   });

@@ -109,7 +109,14 @@ const ADDRESS = {
 };
 
 const ctx = {
-  cart: { cartId: "cart_1", sessionId: "sess_1", customerId: null, itemCount: 2, subtotal: 30_000, items: CART_ITEMS },
+  cart: {
+    cartId: "cart_1",
+    sessionId: "sess_1",
+    customerId: null,
+    itemCount: 2,
+    subtotal: 30_000,
+    items: CART_ITEMS,
+  },
   customerId: null,
   state: { step: 2, updatedAt: Date.now(), address: ADDRESS },
 } as never;

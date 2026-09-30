@@ -38,7 +38,9 @@ vi.mock("@/lib/logger", () => ({
 vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("@/lib/cart-session", () => ({ peekCartSession: vi.fn(async () => "sess_1") }));
 vi.mock("@/lib/auth", () => ({ getCurrentUser: vi.fn(async () => null) }));
-vi.mock("@/lib/cms", () => { return { getSettingValue: vi.fn(async (_k: string, fallback: string) => fallback) }; });
+vi.mock("@/lib/cms", () => {
+  return { getSettingValue: vi.fn(async (_k: string, fallback: string) => fallback) };
+});
 vi.mock("@/lib/stage-guard", () => ({ assertTransactionalAllowed: vi.fn() }));
 vi.mock("@/features/orders/service", () => ({ createOrderFromCart }));
 vi.mock("@/features/orders/saga", () => ({ processPaidOrder: vi.fn() }));
@@ -90,9 +92,7 @@ import {
 } from "./service";
 import { InsufficientStockError, OrderAlreadyPaidError } from "@/features/orders/errors";
 
-const CART_ITEMS = [
-  { variantId: "v1", qty: 2, unitPrice: 10_000, productName: "Imán Nevera" },
-];
+const CART_ITEMS = [{ variantId: "v1", qty: 2, unitPrice: 10_000, productName: "Imán Nevera" }];
 
 const cartFixture = {
   cartId: "cart_1",

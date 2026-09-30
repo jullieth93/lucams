@@ -27,9 +27,9 @@ describe("lucamsDeliveryDays — matriz producción × corte", () => {
     [2, BEFORE_CUTOFF, 2],
     [2, AFTER_CUTOFF, 3],
   ])("productionDays=%i a las %s → %i días", (productionDays, now, expected) => {
-    expect(
-      lucamsDeliveryDays({ maxProductionDays: productionDays, cutoffHour: CUTOFF, now }),
-    ).toBe(expected);
+    expect(lucamsDeliveryDays({ maxProductionDays: productionDays, cutoffHour: CUTOFF, now })).toBe(
+      expected,
+    );
   });
 
   it("justo a la hora de corte ya corre desde el día siguiente (>= cutoff)", () => {

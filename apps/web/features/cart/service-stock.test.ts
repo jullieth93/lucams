@@ -2,10 +2,15 @@
  * Unit tests del blindaje de qty contra stock en el carrito (2026-09-29).
  *
  * Sin DB: prisma se mockea con estado en memoria (mismo patrón que los tests
- * de actions del admin). Cubre:
- *  - addProductToCart: rechazo cuando qty pedida + la ya en carrito supera el
- *    stock de la variante, con copy que nombra producto y unidades.
- *  - updateCartItemQty: qty > stock rechazada; el tope 99 queda secundario.
+ * de actions del admin). Semántica CLAMP: el tope efectivo es min(99, stock) —
+ * sumar/pedir más allá del tope se TOPA al tope (como el clamp legacy a 99).
+ * Solo se rechaza cuando NO hay margen: stock 0 ("está agotado por ahora") o
+ * la línea ya está en el tope y se intenta sumar más ("Solo quedan N…").
+ * Cubre:
+ *  - addProductToCart: clamp al stock (qty pedida y acumulado), rechazo sin
+ *    margen con copy que nombra producto y unidades.
+ *  - updateCartItemQty: clamp al stock en el set absoluto; el tope 99 queda
+ *    secundario; rechazo solo con la variante agotada.
  *  - El DTO expone `stock` por línea (badge "Solo quedan N" + cap del stepper).
  */
 
@@ -81,24 +86,30 @@ vi.mock("@/lib/db", () => ({
         if (item && typeof data.qty === "number") item.qty = data.qty;
         return item;
       }),
-      create: vi.fn(async ({ data }: { data: { cartId: string; variantId: string; qty: number; unitPrice: number } }) => {
-        const variant = state.product?.variants.find((v) => v.id === data.variantId);
-        const item: CartItemFixture = {
-          id: `ci_${state.cart!.items.length + 1}`,
-          cartId: data.cartId,
-          variantId: data.variantId,
-          qty: data.qty,
-          unitPrice: data.unitPrice,
-          designId: null,
-          customDesign: null,
-          templateId: null,
-          metadata: null,
-          design: null,
-          variant: makeVariant(variant?.id ?? data.variantId, variant?.stock ?? 0),
-        };
-        state.cart!.items.push(item);
-        return item;
-      }),
+      create: vi.fn(
+        async ({
+          data,
+        }: {
+          data: { cartId: string; variantId: string; qty: number; unitPrice: number };
+        }) => {
+          const variant = state.product?.variants.find((v) => v.id === data.variantId);
+          const item: CartItemFixture = {
+            id: `ci_${state.cart!.items.length + 1}`,
+            cartId: data.cartId,
+            variantId: data.variantId,
+            qty: data.qty,
+            unitPrice: data.unitPrice,
+            designId: null,
+            customDesign: null,
+            templateId: null,
+            metadata: null,
+            design: null,
+            variant: makeVariant(variant?.id ?? data.variantId, variant?.stock ?? 0),
+          };
+          state.cart!.items.push(item);
+          return item;
+        },
+      ),
       delete: vi.fn(async ({ where }: { where: { id: string } }) => {
         if (state.cart) state.cart.items = state.cart.items.filter((i) => i.id !== where.id);
       }),
@@ -160,7 +171,10 @@ function seedCart(items: Array<{ qty: number; variantId?: string; stock?: number
       templateId: null,
       metadata: null,
       design: null,
-      variant: makeVariant(it.variantId ?? "var_1", it.stock ?? state.product?.variants[0]?.stock ?? 0),
+      variant: makeVariant(
+        it.variantId ?? "var_1",
+        it.stock ?? state.product?.variants[0]?.stock ?? 0,
+      ),
     })),
   };
 }
@@ -171,29 +185,49 @@ beforeEach(() => {
 });
 
 describe("addProductToCart — validación de qty contra stock", () => {
-  it("rechaza cuando la qty pedida supera el stock, nombrando el producto", async () => {
+  it("clampea la qty pedida al stock disponible (no rechaza mientras haya margen)", async () => {
     seedProduct(3);
     seedCart([]);
+    const detail = await addProductToCart({
+      sessionId: "sess_1",
+      customerId: null,
+      productSlug: "iman-nevera",
+      qty: 4,
+    });
+    // 4 pedidas con stock 3 → entran 3 (clamp, como el legacy con 99).
+    expect(detail.items[0].qty).toBe(3);
+  });
+
+  it("clampea el ACUMULADO con lo que ya está en el carrito", async () => {
+    seedProduct(3);
+    seedCart([{ qty: 2 }]);
+    const detail = await addProductToCart({
+      sessionId: "sess_1",
+      customerId: null,
+      productSlug: "iman-nevera",
+      qty: 2,
+    });
+    // 2 en carrito + 2 pedidas con stock 3 → queda en 3 (tope).
+    expect(detail.items[0].qty).toBe(3);
+  });
+
+  it("rechaza cuando la línea YA está en el tope de stock y se intenta sumar más", async () => {
+    seedProduct(3);
+    seedCart([{ qty: 3 }]);
     await expect(
-      addProductToCart({ sessionId: "sess_1", customerId: null, productSlug: "iman-nevera", qty: 4 }),
+      addProductToCart({
+        sessionId: "sess_1",
+        customerId: null,
+        productSlug: "iman-nevera",
+        qty: 1,
+      }),
     ).rejects.toMatchObject({
       name: "CartError",
       code: "STOCK_UNAVAILABLE",
-      detail: "Solo quedan 3 unidades de «Imán Nevera».",
-    });
-  });
-
-  it("rechaza el ACUMULADO con lo que ya está en el carrito y lo aclara", async () => {
-    seedProduct(3);
-    seedCart([{ qty: 2 }]);
-    await expect(
-      addProductToCart({ sessionId: "sess_1", customerId: null, productSlug: "iman-nevera", qty: 2 }),
-    ).rejects.toMatchObject({
-      code: "STOCK_UNAVAILABLE",
-      detail: "Solo quedan 3 unidades de «Imán Nevera» y ya tienes 2 en tu carrito.",
+      detail: "Solo quedan 3 unidades de «Imán Nevera» y ya tienes 3 en tu carrito.",
     });
     // No tocó la línea existente.
-    expect(state.cart!.items[0].qty).toBe(2);
+    expect(state.cart!.items[0].qty).toBe(3);
   });
 
   it("acepta justo hasta el stock disponible (2 en carrito + 1 nueva con stock 3)", async () => {
@@ -212,7 +246,12 @@ describe("addProductToCart — validación de qty contra stock", () => {
     seedProduct(0);
     seedCart([]);
     await expect(
-      addProductToCart({ sessionId: "sess_1", customerId: null, productSlug: "iman-nevera", qty: 1 }),
+      addProductToCart({
+        sessionId: "sess_1",
+        customerId: null,
+        productSlug: "iman-nevera",
+        qty: 1,
+      }),
     ).rejects.toMatchObject({
       code: "STOCK_UNAVAILABLE",
       detail: "«Imán Nevera» está agotado por ahora.",
@@ -232,23 +271,38 @@ describe("addProductToCart — validación de qty contra stock", () => {
     expect(detail.items[0].stock).toBe(150);
   });
 
+  it("clamp legacy: con stock alto, sumar más allá de 99 se topa en 99", async () => {
+    seedProduct(150);
+    seedCart([{ qty: 90 }]);
+    const detail = await addProductToCart({
+      sessionId: "sess_1",
+      customerId: null,
+      productSlug: "iman-nevera",
+      qty: 50,
+    });
+    // 90 + 50 = 140 → clamp a 99 (min(99, stock=150)).
+    expect(detail.items[0].qty).toBe(99);
+  });
+
   it("qty > 99 sigue siendo QTY_INVALID aunque haya stock", async () => {
     seedProduct(200);
     seedCart([]);
     await expect(
-      addProductToCart({ sessionId: "sess_1", customerId: null, productSlug: "iman-nevera", qty: 100 }),
+      addProductToCart({
+        sessionId: "sess_1",
+        customerId: null,
+        productSlug: "iman-nevera",
+        qty: 100,
+      }),
     ).rejects.toMatchObject({ code: "QTY_INVALID" });
   });
 });
 
 describe("updateCartItemQty — validación de qty contra stock", () => {
-  it("rechaza qty > stock nombrando el producto", async () => {
+  it("clampea al stock disponible cuando se pide de más", async () => {
     seedCart([{ qty: 1, stock: 2 }]);
-    await expect(updateCartItemQty("sess_1", "ci_1", 3)).rejects.toMatchObject({
-      code: "STOCK_UNAVAILABLE",
-      detail: "Solo quedan 2 unidades de «Imán Nevera».",
-    });
-    expect(state.cart!.items[0].qty).toBe(1);
+    const detail = await updateCartItemQty("sess_1", "ci_1", 3);
+    expect(detail.items[0].qty).toBe(2);
   });
 
   it("acepta qty == stock", async () => {
@@ -270,10 +324,14 @@ describe("updateCartItemQty — validación de qty contra stock", () => {
     expect(detail.items).toHaveLength(0);
   });
 
-  it("el error es un CartError con detail customer-safe (sin internals)", async () => {
-    seedCart([{ qty: 1, stock: 1 }]);
+  it("variante agotada con la línea en vuelo: rechaza con copy customer-safe (sin internals)", async () => {
+    seedCart([{ qty: 1, stock: 0 }]);
     const err = await updateCartItemQty("sess_1", "ci_1", 2).catch((e) => e);
     expect(err).toBeInstanceOf(CartError);
+    expect(err).toMatchObject({
+      code: "STOCK_UNAVAILABLE",
+      detail: "«Imán Nevera» está agotado por ahora.",
+    });
     expect(err.detail).not.toContain("var_1");
   });
 });

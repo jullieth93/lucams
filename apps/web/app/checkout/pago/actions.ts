@@ -231,7 +231,7 @@ export async function payCodAction(formData: FormData): Promise<void> {
           err instanceof CheckoutError
             ? err.message
             : (err.customerMessage() ??
-              "Uno de los productos ya no está disponible. Por favor revisa tu carrito."),
+                "Uno de los productos ya no está disponible. Por favor revisa tu carrito."),
         )}`,
       );
     }

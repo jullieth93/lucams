@@ -22,10 +22,7 @@ import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/compone
 import { getCurrentAdmin } from "@/lib/auth";
 import { getOrder } from "@/features/orders/service";
 import { getProductionAssetSignedUrls } from "@/lib/storage";
-import {
-  LUCAMS_CARRIER,
-  carrierDisplayName,
-} from "@/features/shipping/lucams-shipping";
+import { LUCAMS_CARRIER, carrierDisplayName } from "@/features/shipping/lucams-shipping";
 import { lucamsDeliveryDays, maxProductionDaysOf } from "@/lib/delivery-estimate";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { formatCOP } from "@/lib/format";

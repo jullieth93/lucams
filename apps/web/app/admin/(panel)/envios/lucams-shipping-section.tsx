@@ -74,10 +74,10 @@ export function LucamsShippingSection({
           Zonas de entrega habilitadas
         </legend>
         <p className="text-brand-muted mb-2 text-xs">
-          Estas zonas solo controlan si la oferta «Envío Lucam&rsquo;s» aparece en el paso de envío del
-          checkout. La localidad se pide siempre como dato de dirección en el paso de datos, haya o
-          no zonas habilitadas. El on/off del servicio se maneja en la lista de transportadoras de
-          arriba.
+          Estas zonas solo controlan si la oferta «Envío Lucam&rsquo;s» aparece en el paso de envío
+          del checkout. La localidad se pide siempre como dato de dirección en el paso de datos,
+          haya o no zonas habilitadas. El on/off del servicio se maneja en la lista de
+          transportadoras de arriba.
         </p>
         <div className="space-y-3">
           {LUCAMS_ZONE_CITIES.map((city) => (

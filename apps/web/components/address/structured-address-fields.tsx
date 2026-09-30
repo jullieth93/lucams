@@ -66,11 +66,16 @@ export function StructuredAddressFields({
   onChange,
   errors,
   disabled,
+  neighborhoodPlaceholder,
 }: {
   value: StructuredAddressValue;
   onChange: (patch: Partial<StructuredAddressValue>) => void;
   errors?: Record<string, string[] | undefined>;
   disabled?: boolean;
+  /* Copy CMS (account.address.neighborhood-placeholder): baja resuelto por
+     props porque este client no lee el CMS (mismo patrón que los demás
+     textos del área de cliente). */
+  neighborhoodPlaceholder: string;
 }) {
   const cities = value.deptCode ? getCitiesByDeptCode(value.deptCode) : [];
   const deptName = getDepartmentByCode(value.deptCode)?.name ?? "";
@@ -153,13 +158,11 @@ export function StructuredAddressFields({
             value={value.neighborhood}
             disabled={disabled}
             onChange={(e) => onChange({ neighborhood: e.target.value })}
-            placeholder="Ej. Cedritos, La Alameda"
+            placeholder={neighborhoodPlaceholder}
             maxLength={100}
             aria-invalid={Boolean(err("neighborhood"))}
           />
-          {err("neighborhood") && (
-            <p className="text-destructive text-sm">{err("neighborhood")}</p>
-          )}
+          {err("neighborhood") && <p className="text-destructive text-sm">{err("neighborhood")}</p>}
         </div>
       </div>
 

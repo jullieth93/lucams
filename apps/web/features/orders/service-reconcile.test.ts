@@ -206,7 +206,9 @@ describe("createOrderFromCart — gate TOCTOU de reconciliación", () => {
     expect(tx.order.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "ord_1" },
-        data: expect.objectContaining({ items: expect.objectContaining({ create: expect.any(Array) }) }),
+        data: expect.objectContaining({
+          items: expect.objectContaining({ create: expect.any(Array) }),
+        }),
       }),
     );
   });

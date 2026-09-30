@@ -396,28 +396,33 @@ export async function addProductToCart(opts: {
   // suma qty. CartItem no tiene unique compuesto, así que lo manejamos
   // a mano.
   const existing = cart.items.find((i) => i.variantId === variant.id);
-  // Blindaje de qty contra stock (2026-09-29): no basta con stock>0 — lo que
-  // entra al carrito MÁS lo que ya tiene el cliente no puede superar el stock
-  // de la variante (sin reservas, el checkout sigue siendo la defensa final
-  // contra concurrencia; esto cierra el oversell "en frío" por acumulación).
+  // Tope efectivo de la línea: min(99, stock) con SEMÁNTICA DE CLAMP
+  // (2026-09-29) — sumar más allá del tope se topa al tope, igual que el clamp
+  // legacy a 99, ahora también contra el stock real de la variante. Solo se
+  // RECHAZA cuando no hay margen: stock 0 (arriba) o el carrito ya está en el
+  // tope y se intenta sumar más. Sin reservas, el checkout sigue siendo la
+  // defensa final contra concurrencia; esto cierra el oversell "en frío" por
+  // acumulación sin castigar al cliente que se pasa por un clic de más.
+  const cap = Math.min(MAX_QTY_PER_ITEM, variant.stock);
   const inCart = existing?.qty ?? 0;
-  if (inCart + opts.qty > variant.stock) {
+  if (inCart >= cap) {
     throw new CartError(
       "STOCK_UNAVAILABLE",
       stockLimitMessage(product.name, variant.stock, inCart),
     );
   }
+  const newQty = Math.min(cap, inCart + opts.qty);
   if (existing) {
     await prisma.cartItem.update({
       where: { id: existing.id },
-      data: { qty: Math.min(MAX_QTY_PER_ITEM, existing.qty + opts.qty) },
+      data: { qty: newQty },
     });
   } else {
     await prisma.cartItem.create({
       data: {
         cartId: cart.id,
         variantId: variant.id,
-        qty: opts.qty,
+        qty: newQty,
         unitPrice,
       },
     });
@@ -643,10 +648,12 @@ export async function addPersonalizedToCart(opts: {
     }
 
     if (existing) {
-      // Mismo blindaje de qty contra stock que addProductToCart (2026-09-29):
-      // agrupar un diseño idéntico SUMA qty sobre la misma variante.
+      // Mismo tope min(99, stock) con clamp que addProductToCart (2026-09-29):
+      // agrupar un diseño idéntico SUMA qty sobre la misma variante; se rechaza
+      // solo cuando la línea ya está en el tope (sin margen).
+      const cap = Math.min(MAX_QTY_PER_ITEM, variant.stock);
       const inCart = existing.qty;
-      if (inCart + opts.qty > variant.stock) {
+      if (inCart >= cap) {
         throw new CartError(
           "STOCK_UNAVAILABLE",
           stockLimitMessage(design.product.name, variant.stock, inCart),
@@ -654,21 +661,17 @@ export async function addPersonalizedToCart(opts: {
       }
       await prisma.cartItem.update({
         where: { id: existing.id },
-        data: { qty: Math.min(MAX_QTY_PER_ITEM, existing.qty + opts.qty) },
+        data: { qty: Math.min(cap, inCart + opts.qty) },
       });
     } else {
-      if (opts.qty > variant.stock) {
-        throw new CartError(
-          "STOCK_UNAVAILABLE",
-          stockLimitMessage(design.product.name, variant.stock, 0),
-        );
-      }
+      // Alta nueva: el stock>0 ya se validó arriba, así que hay margen; la qty
+      // pedida se topa al stock disponible (clamp, no rechazo).
       await prisma.cartItem.create({
         data: {
           cartId: cart.id,
           variantId: variant.id,
           designId: opts.designId,
-          qty: opts.qty,
+          qty: Math.min(MAX_QTY_PER_ITEM, variant.stock, opts.qty),
           unitPrice,
         },
       });
@@ -693,19 +696,21 @@ export async function updateCartItemQty(
   if (qty === 0) {
     await prisma.cartItem.delete({ where: { id: itemId } });
   } else {
-    // Blindaje contra stock (2026-09-29): el tope 99 queda como límite
-    // secundario; el límite que manda es el stock REAL de la variante.
-    // El stepper del carrito ya capa el "+", pero la action es un endpoint
-    // POST invocable directo — defensa en profundidad server-side.
-    if (qty > item.variant.stock) {
+    // Tope efectivo min(99, stock) con SEMÁNTICA DE CLAMP (2026-09-29): el set
+    // absoluto se topa al stock real de la variante (el stepper UI ya capa el
+    // "+", pero la action es un endpoint POST invocable directo — defensa en
+    // profundidad server-side). Si el clamp deja la qty igual a la actual,
+    // aplica igual (no-op). Solo se rechaza cuando no hay margen alguno: la
+    // variante quedó agotada con la línea en vuelo.
+    if (item.variant.stock <= 0) {
       throw new CartError(
         "STOCK_UNAVAILABLE",
-        stockLimitMessage(item.variant.product.name, item.variant.stock, 0),
+        `«${item.variant.product.name}» está agotado por ahora.`,
       );
     }
     await prisma.cartItem.update({
       where: { id: itemId },
-      data: { qty },
+      data: { qty: Math.min(qty, item.variant.stock) },
     });
   }
   const reloaded = await findCartBySession(sessionId);

@@ -76,9 +76,7 @@ describe("QuoteList — logos de transportadora", () => {
       quote({ carrier: "lucams", carrierName: "Envío Lucam's", quoteId: "lucams-bog-chapinero" }),
     ]);
     const img = screen.getByAltText("Logo de Lucam's");
-    expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain(
-      "/brand/lucams-mascot.png",
-    );
+    expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain("/brand/lucams-mascot.png");
   });
 
   it("cae al ícono genérico (sin <img> de carrier) cuando no hay logo en el mapa", () => {
