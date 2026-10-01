@@ -117,7 +117,9 @@ export default async function MiCuentaPage() {
       select: { referredEmail: true, status: true, createdAt: true },
     }),
   ]);
-  const referralUrl = `${siteUrl}/registro?ref=${encodeURIComponent(customer.referralCode)}`;
+  // T8 (2026-10-01) — el link de compartir es el short-link /r/<codigo>
+  // (redirect 307 a /registro?ref=<codigo>, ver app/r/[codigo]/route.ts).
+  const referralUrl = `${siteUrl}/r/${encodeURIComponent(customer.referralCode)}`;
 
   // Textos del hub: editables desde /admin/contenido (página "Mi cuenta",
   // sección "Resumen de cuenta"). Fallback = texto exacto anterior.

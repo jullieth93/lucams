@@ -106,7 +106,7 @@ const NEW_FAQS = [
   {
     key: "faq.11-envio-mismo-dia",
     title: "¿Tienen envío el mismo día en Bogotá?",
-    body: "Sí: **Envío Lucam's**, nuestro servicio propio de entrega local. Está disponible en **localidades seleccionadas de Bogotá**: si tu pedido queda confirmado **antes de las 12:00 m.**, te llega **el mismo día**, con **tarifa fija** que ves antes de pagar. Si la opción no aparece en tu checkout, tu localidad aún no está cubierta — siempre puedes elegir el envío por transportadora aliada.",
+    body: "Sí: **Envío Lucam's**, nuestro servicio propio de entrega local. Está disponible en **localidades seleccionadas de Bogotá** y la entrega es **el mismo día del despacho**, con **tarifa fija** que ves antes de pagar. Si el producto está **listo (sin fabricación pendiente)** y tu pedido queda confirmado **antes de las 12:00 m.**, te llega **ese mismo día**; si hay que fabricarlo a mano, primero lo producimos y te llega el día que lo despachemos. Si la opción no aparece en tu checkout, tu localidad aún no está cubierta — siempre puedes elegir el envío por transportadora aliada.",
     helpText:
       "FAQ Envío Lucam's (mismo día, Bogotá). Gateada en código por la setting SAME_DAY_DELIVERY_ENABLED: no se muestra hasta activarla.",
     gated: true,

@@ -953,7 +953,11 @@ const productsData = [
     categorySlug: "coleccionables",
     isPersonalizable: false,
     personalizationKind: "NONE",
-    images: [UNSPLASH("1530989054533-9c3e6daa5b9e")],
+    // T5 (2026-10-01): la URL anterior (1530989054533-9c3e6daa5b9e) devuelve 404 — verificado
+    // con HEAD. Reemplazada por una foto motivacional viva (zacdurant, persona en cima de
+    // montaña al atardecer — temática "tú puedes"). Sigue hot-linked; el one-shot
+    // migrate-unsplash-to-bucket.mjs la pasará al bucket product-images junto con las demás.
+    images: [UNSPLASH("1499209974431-9dddcece7f88")],
   },
   {
     slug: "pack-animalitos-kawaii",

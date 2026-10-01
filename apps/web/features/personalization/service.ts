@@ -1286,7 +1286,15 @@ export async function finalizeDesign(opts: {
   const previewPath = `${design.id}/preview.${previewExtensionForMime(previewMime)}`;
   const { error: pErr } = await supabase.storage
     .from(BUCKET_PREVIEWS)
-    .upload(previewPath, opts.previewBuffer, { contentType: previewMime, upsert: true });
+    .upload(previewPath, opts.previewBuffer, {
+      contentType: previewMime,
+      // 1 año: el path va versionado por diseño (<designId>/preview.<ext>) y el contenido
+      // no cambia una vez finalizado (T4). OJO: si el diseño se RE-finaliza, el upsert
+      // pisa el mismo path y el CDN/navegador puede servir el preview anterior hasta que
+      // venza el cache — riesgo aceptado (re-finalize es excepcional y admin-driven).
+      cacheControl: "31536000",
+      upsert: true,
+    });
   if (pErr) {
     logger.warn(
       { event: "design.finalize.upload_preview_fail", err: pErr.message },
@@ -1356,9 +1364,15 @@ export async function finalizeDesign(opts: {
     const path = facesComposed
       ? `${design.id}/tira-${String(i + 1).padStart(2, "0")}.png`
       : `${design.id}/slot-${String(i + 1).padStart(2, "0")}.png`;
-    const { error: prodErr } = await supabase.storage
-      .from(BUCKET_PRODUCTION)
-      .upload(path, buf, { contentType: "image/png", upsert: true });
+    const { error: prodErr } = await supabase.storage.from(BUCKET_PRODUCTION).upload(path, buf, {
+      contentType: "image/png",
+      // 1h, alineado con el TTL de los signed URLs (getProductionAssetSignedUrls): el bucket
+      // es PRIVADO y cada acceso genera una firma nueva, así que un cache-control largo no
+      // se aprovecharía (la URL rotativa cambia el query string = cache key distinto). Con
+      // 3600 el navegador sí puede reusar la pieza mientras la firma siga viva (T4).
+      cacheControl: "3600",
+      upsert: true,
+    });
     if (prodErr) {
       logger.warn(
         { event: "design.finalize.upload_production_fail", err: prodErr.message, slotIndex: i },

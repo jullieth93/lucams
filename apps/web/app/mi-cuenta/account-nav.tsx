@@ -2,7 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, Palette, Heart, MapPin, Star, ShieldCheck } from "lucide-react";
+import {
+  LayoutDashboard,
+  Package,
+  Palette,
+  Heart,
+  MapPin,
+  Star,
+  User,
+  LifeBuoy,
+  ShieldCheck,
+} from "lucide-react";
 import type { AccountTexts } from "./account-texts";
 
 /**
@@ -21,6 +31,8 @@ export function AccountNav({ labels }: { labels: AccountTexts["nav"] }) {
     { href: "/mi-cuenta/favoritos", label: labels.favoritos, icon: Heart },
     { href: "/mi-cuenta/direcciones", label: labels.direcciones, icon: MapPin },
     { href: "/mi-cuenta/resenas", label: labels.resenas, icon: Star },
+    { href: "/mi-cuenta/perfil", label: labels.perfil, icon: User },
+    { href: "/mi-cuenta/soporte", label: labels.soporte, icon: LifeBuoy },
     { href: "/mi-cuenta/seguridad", label: labels.seguridad, icon: ShieldCheck },
   ] as const;
   const pathname = usePathname();

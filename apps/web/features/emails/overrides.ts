@@ -13,7 +13,7 @@
  *                 que inyecta renderEmailLayout)
  *   - HEADING   → titular principal (primer <h1> del body)
  *
- * Consumo SISTEMÁTICO (sin reescribir las 26 plantillas): el wrapper
+ * Consumo SISTEMÁTICO (sin reescribir las 27 plantillas): el wrapper
  * `withOverrides(templateId, render)` post-procesa el {subject, html} que
  * devuelve la plantilla — reemplaza el subject, el contenido del div oculto
  * de preview y el primer <h1>. El registry (features/emails/registry.ts)

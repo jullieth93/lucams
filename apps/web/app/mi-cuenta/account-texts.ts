@@ -15,12 +15,21 @@ export type AccountTexts = {
     favoritos: string;
     direcciones: string;
     resenas: string;
+    perfil: string;
+    soporte: string;
     seguridad: string;
     logout: string;
     aria: string;
   };
   back: { miCuenta: string; misPedidos: string };
-  perfil: { title: string; subtitle: string };
+  perfil: {
+    title: string;
+    subtitle: string;
+    docTypeLabel: string;
+    docTypePlaceholder: string;
+    docNumberLabel: string;
+    docHint: string;
+  };
   orders: {
     countSingle: string;
     countMany: string;
@@ -88,6 +97,7 @@ export type AccountTexts = {
     editTitle: string;
     newTitle: string;
     subtitle: string;
+    neighborhoodPlaceholder: string;
   };
   designs: {
     title: string;
@@ -163,6 +173,8 @@ export const DEFAULT_ACCOUNT_TEXTS: AccountTexts = {
     favoritos: "Favoritos",
     direcciones: "Direcciones",
     resenas: "Reseñas",
+    perfil: "Perfil",
+    soporte: "Soporte",
     seguridad: "Seguridad",
     logout: "Cerrar sesión",
     aria: "Secciones de mi cuenta",
@@ -171,6 +183,10 @@ export const DEFAULT_ACCOUNT_TEXTS: AccountTexts = {
   perfil: {
     title: "Editar perfil",
     subtitle: "Tu correo {email} es tu identidad y no se cambia aquí.",
+    docTypeLabel: "Tipo de documento",
+    docTypePlaceholder: "Elige el tipo",
+    docNumberLabel: "Número de documento",
+    docHint: "Lo usamos para pre-llenar tu checkout y para tu documento de venta si lo pides.",
   },
   orders: {
     countSingle: "{n} pedido en tu historial",
@@ -241,6 +257,7 @@ export const DEFAULT_ACCOUNT_TEXTS: AccountTexts = {
     editTitle: "Editar dirección",
     newTitle: "Nueva dirección",
     subtitle: "Guárdalas para que tu próximo pedido sea más rápido.",
+    neighborhoodPlaceholder: "Ej. Cedritos, La Alameda",
   },
   designs: {
     title: "Mis diseños",
@@ -320,6 +337,8 @@ export const ACCOUNT_TEXT_KEYS: Record<string, string> = {
   "nav.favoritos": "account.nav.favoritos",
   "nav.direcciones": "account.nav.direcciones",
   "nav.resenas": "account.nav.resenas",
+  "nav.perfil": "account.nav.perfil",
+  "nav.soporte": "account.nav.soporte",
   "nav.seguridad": "account.nav.seguridad",
   "nav.logout": "account.nav.logout",
   "nav.aria": "account.nav.aria",
@@ -327,6 +346,10 @@ export const ACCOUNT_TEXT_KEYS: Record<string, string> = {
   "back.misPedidos": "account.back.mis-pedidos",
   "perfil.title": "account.perfil.title",
   "perfil.subtitle": "account.perfil.subtitle",
+  "perfil.docTypeLabel": "account.perfil.doc-type-label",
+  "perfil.docTypePlaceholder": "account.perfil.doc-type-placeholder",
+  "perfil.docNumberLabel": "account.perfil.doc-number-label",
+  "perfil.docHint": "account.perfil.doc-hint",
   "orders.countSingle": "account.orders.count-single",
   "orders.countMany": "account.orders.count-many",
   "orders.limitNote": "account.orders.limit-note",
@@ -385,6 +408,7 @@ export const ACCOUNT_TEXT_KEYS: Record<string, string> = {
   "address.editTitle": "account.address.edit-title",
   "address.newTitle": "account.address.new-title",
   "address.subtitle": "account.address.subtitle",
+  "address.neighborhoodPlaceholder": "account.address.neighborhood-placeholder",
   "designs.title": "account.designs.title",
   "designs.subtitle": "account.designs.subtitle",
   "designs.emptyTitle": "account.designs.empty-title",

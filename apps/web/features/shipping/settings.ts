@@ -260,7 +260,7 @@ export async function saveLucamsShippingSettings(
     {
       label: "Hora límite envío mismo día",
       helpText:
-        "Hora de Colombia (0-23) hasta la cual el envío propio se entrega el mismo día; después se promete «entrega mañana». Se gestiona desde Envíos (/admin/envios).",
+        "Hora de Colombia (0-23) hasta la cual el pedido entra a producción el mismo día; después, arranca el siguiente día hábil. La promesa «Entrega hoy» solo aplica a productos listos (sin fabricación pendiente). Se gestiona desde Envíos (/admin/envios).",
       type: "NUMBER",
     },
     adminId,

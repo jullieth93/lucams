@@ -147,7 +147,8 @@ export const GridLayoutSchema = z.object({
 // La clave viaja en canvasData (persistida) → producción la re-mapea a la familia
 // registrada vía lista blanca (NUNCA un string libre del cliente).
 // 2026-09-14 (owner): de 3 a 8 opciones — cada key tiene su TTF registrado en el
-// render de servidor (assets/fonts) y su CSS var de next/font en app/layout.tsx.
+// render de servidor (assets/fonts) y su CSS var de next/font (las de marca en
+// app/layout.tsx; las 6 del selector en app/estudio/layout.tsx desde 2026-10-01).
 export const CalendarFontKeySchema = z.enum([
   "fredoka",
   "inter",

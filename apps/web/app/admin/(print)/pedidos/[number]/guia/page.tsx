@@ -8,7 +8,7 @@
  * segunda página: tipografía 8-10px, items en una línea, firmas en líneas
  * simples. Prioridad del contenido: nº pedido + referencia INTERNO, cliente
  * + teléfono, dirección + zona + ciudad, «COBRAR AL ENTREGAR» si es COD y la
- * promesa (hoy/mañana). La URL de rastreo va en tamaño mínimo (es lo primero
+ * promesa (producción + hora de corte — lib/delivery-estimate.ts). La URL de rastreo va en tamaño mínimo (es lo primero
  * que se sacrifica si algo no cabe).
  *
  * Ruta fuera del shell (panel): sin chrome admin. Sin QR (no hay lib de QR
@@ -24,7 +24,8 @@ import { requireRole } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { getOrder } from "@/features/orders/service";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
-import { bogotaHour, LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
+import { LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
+import { lucamsDeliveryDays, maxProductionDaysOf } from "@/lib/delivery-estimate";
 import { getSettingValue } from "@/lib/cms";
 import { formatCOP } from "@/lib/format";
 import { PrintGuideButton } from "./print-button";
@@ -46,6 +47,7 @@ type ShippingAddrSnapshot = {
   addressLine2?: string;
   zip?: string;
   localityName?: string;
+  neighborhood?: string;
   notes?: string;
 };
 
@@ -67,12 +69,22 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
     getSettingValue("SITE_URL", process.env.NEXT_PUBLIC_SITE_URL ?? "https://lucamsshop.com"),
   ]);
 
-  // Promesa calculada con la MISMA regla del checkout (buildLucamsOffer):
-  // pedido creado antes del cutoff (hora Colombia) → entrega el mismo día.
-  const sameDay = bogotaHour(order.createdAt) < settings.cutoffHour;
-  const promiseText = sameDay
-    ? `Entrega hoy — pedido antes de las ${String(settings.cutoffHour).padStart(2, "0")}:00`
-    : "Entrega mañana";
+  // Promesa calculada con la MISMA regla del checkout (lib/delivery-estimate.ts):
+  // producción a mano (máx. productionDays de los items de la orden) + hora de
+  // corte sobre order.createdAt; la entrega es el mismo día del despacho.
+  const deliveryDays = lucamsDeliveryDays({
+    maxProductionDays: maxProductionDaysOf(
+      order.items.map((it) => it.variant.product.productionDays),
+    ),
+    cutoffHour: settings.cutoffHour,
+    now: order.createdAt,
+  });
+  const promiseText =
+    deliveryDays === 0
+      ? `Entrega hoy — pedido antes de las ${String(settings.cutoffHour).padStart(2, "0")}:00`
+      : deliveryDays === 1
+        ? "Entrega mañana"
+        : `Entrega en ${deliveryDays} días hábiles`;
   const isCod = order.paymentMethod === "COD";
   const dateFmt = new Intl.DateTimeFormat("es-CO", {
     day: "2-digit",
@@ -147,6 +159,7 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
           </p>
           <p>{[ship.addressLine1, ship.addressLine2].filter(Boolean).join(" · ")}</p>
           <p>
+            {ship.neighborhood ? `Barrio ${ship.neighborhood}, ` : ""}
             {ship.localityName ? `${ship.localityName}, ` : ""}
             {ship.city}
             {ship.zip ? ` · CP ${ship.zip}` : ""}

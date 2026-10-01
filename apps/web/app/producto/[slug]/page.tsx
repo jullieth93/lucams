@@ -21,6 +21,7 @@ import { ChevronRight, RotateCcw, Truck, Wallet, ShieldCheck } from "lucide-reac
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { CmsText } from "@/components/cms/cms-text";
 import { WishlistButton } from "@/components/wishlist-button";
 import { BackInStockButton } from "@/components/back-in-stock-button";
 import { getCurrentCustomer } from "@/lib/auth";
@@ -647,7 +648,28 @@ export default async function ProductoDetallePage({
                             despachamos en máximo {product.productionDays} días hábiles
                           </strong>
                           . Desde ahí, las transportadoras aliadas estiman {product.shippingDaysMin}
-                          –{product.shippingDaysMax} días según tu ciudad.
+                          –{product.shippingDaysMax}{" "}
+                          <CmsText
+                            blockKey="pdp.envio.lucams-ciudades"
+                            fallback="días según tu ciudad. En Bogotá, con"
+                          />{" "}
+                          <strong>
+                            <CmsText blockKey="pdp.envio.lucams-nombre" fallback="Envío Lucam's" />
+                          </strong>{" "}
+                          <CmsText
+                            blockKey="pdp.envio.lucams-entrega"
+                            fallback="(localidades habilitadas) la entrega es el"
+                          />{" "}
+                          <strong>
+                            <CmsText
+                              blockKey="pdp.envio.lucams-mismo-dia"
+                              fallback="mismo día del despacho"
+                            />
+                          </strong>
+                          {product.productionDays === 0
+                            ? " — y si pides antes de la hora límite, te llega hoy"
+                            : ""}
+                          .
                         </>
                       )}
                     </span>

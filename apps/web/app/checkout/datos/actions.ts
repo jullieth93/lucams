@@ -13,7 +13,6 @@ import { saveCheckoutAddressToAccount } from "@/features/addresses/service";
 import { recordCheckoutDataConsent } from "@/features/consent/service";
 import { recordAbandonedCartEmail } from "@/features/cart/recovery-service";
 import { guardTransactionalAction } from "@/lib/stage-guard";
-import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { getZoneCityByCode } from "@/lib/lucams-zones";
 
 export type DatosActionState = {
@@ -65,24 +64,23 @@ export async function saveDatosAction(
     return { error: addressParsed.error, fieldErrors: addressParsed.fieldErrors };
   }
 
-  // ─── Zona de entrega (envío propio "Envío Lucam's") ───
-  // Si la ciudad tiene zonas habilitadas y el envío propio está ACTIVO, la zona
-  // es obligatoria: sin ella no podemos ofrecer/validar esa opción en el step 2.
-  // Apagado (o ciudad sin zonas habilitadas) → queda opcional.
+  // ─── Zona de entrega (localidad/comuna — dato de dirección) ───
+  // Si la ciudad está en el catálogo de zonas (lib/lucams-zones.ts), la zona es
+  // OBLIGATORIA siempre: es parte de la dirección de entrega, no un filtro de la
+  // oferta de envío propio (esa visibilidad la decide buildLucamsOffer con las
+  // zonas habilitadas de /admin/envios). La validez del id contra el catálogo
+  // completo ya la hizo parseStructuredAddress.
   if (!addressParsed.data.localityId) {
     const zoneCity = getZoneCityByCode(addressParsed.data.cityCode);
     if (zoneCity) {
-      const lucams = await getLucamsShippingSettings();
-      if (lucams.enabled && (lucams.zones[zoneCity.cityCode] ?? []).length > 0) {
-        return {
-          error: `Falta la ${zoneCity.zoneLabel.toLowerCase()} de entrega`,
-          fieldErrors: {
-            localityId: [
-              `Elige tu ${zoneCity.zoneLabel.toLowerCase()} — la necesitamos para ofrecerte el envío propio.`,
-            ],
-          },
-        };
-      }
+      return {
+        error: `Falta la ${zoneCity.zoneLabel.toLowerCase()} de entrega`,
+        fieldErrors: {
+          localityId: [
+            `Elige tu ${zoneCity.zoneLabel.toLowerCase()} — la necesitamos para tu dirección de entrega.`,
+          ],
+        },
+      };
     }
   }
 

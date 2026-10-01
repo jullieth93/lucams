@@ -22,13 +22,11 @@ import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/compone
 import { getCurrentAdmin } from "@/lib/auth";
 import { getOrder } from "@/features/orders/service";
 import { getProductionAssetSignedUrls } from "@/lib/storage";
-import {
-  bogotaHour,
-  LUCAMS_CARRIER,
-  carrierDisplayName,
-} from "@/features/shipping/lucams-shipping";
+import { LUCAMS_CARRIER, carrierDisplayName } from "@/features/shipping/lucams-shipping";
+import { lucamsDeliveryDays, maxProductionDaysOf } from "@/lib/delivery-estimate";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { formatCOP } from "@/lib/format";
+import { customerWaLink } from "@/lib/wa";
 import { OrderActions } from "./order-actions";
 
 export const metadata: Metadata = { title: "Detalle pedido" };
@@ -73,6 +71,7 @@ type ShippingAddrSnapshot = {
   addressLine2?: string;
   zip?: string;
   localityName?: string;
+  neighborhood?: string;
   notes?: string;
 };
 
@@ -106,15 +105,30 @@ export default async function AdminPedidoDetallePage({
 
   const ship = order.shippingAddress as ShippingAddrSnapshot;
   const isInternalDelivery = order.shippingCarrier === LUCAMS_CARRIER;
-  // Entrega propia: promesa (misma regla del checkout: pedido creado antes del
-  // cutoff, hora Colombia → mismo día) para mostrarla en la tarjeta de envío.
+  // Entrega propia: promesa con la MISMA regla del checkout (producción + hora
+  // de corte, lib/delivery-estimate.ts). Los días de fabricación se derivan de
+  // los items persistidos de la orden (variant → product.productionDays actual;
+  // getOrder ya los incluye) — sin snapshot extra: si Lucy ajusta el
+  // productionDays de un producto, la promesa mostrada refleja el dato vigente.
   const lucamsSettings = isInternalDelivery ? await getLucamsShippingSettings() : null;
-  const internalPromise =
+  const internalPromiseDays =
     isInternalDelivery && lucamsSettings
-      ? bogotaHour(order.createdAt) < lucamsSettings.cutoffHour
-        ? "Entrega hoy"
-        : "Entrega mañana"
+      ? lucamsDeliveryDays({
+          maxProductionDays: maxProductionDaysOf(
+            order.items.map((it) => it.variant.product.productionDays),
+          ),
+          cutoffHour: lucamsSettings.cutoffHour,
+          now: order.createdAt,
+        })
       : null;
+  const internalPromise =
+    internalPromiseDays === null
+      ? null
+      : internalPromiseDays === 0
+        ? "Entrega hoy"
+        : internalPromiseDays === 1
+          ? "Entrega mañana"
+          : `Entrega en ${internalPromiseDays} días hábiles`;
   // Para entrega propia, SHIPPED se lee mejor como "En ruta" (no hay courier externo).
   const statusLabel =
     isInternalDelivery && order.status === "SHIPPED"
@@ -128,6 +142,14 @@ export default async function AdminPedidoDetallePage({
     minute: "2-digit",
   });
   const isSimulatedTracking = order.trackingNumber?.startsWith("TEST-") ?? false;
+
+  // Contacto directo: wa.me con el teléfono del comprador (normalizado con
+  // indicativo 57 — lib/wa) y mensaje pre-armado con el número de pedido
+  // (Lucy 2026-08-11). null = teléfono no parseable → se oculta el botón.
+  const customerWa = customerWaLink(
+    order.phone,
+    `Hola ${ship.fullName ?? ""}, te escribo de Lucams por tu pedido ${order.number}. `,
+  );
 
   return (
     <AdminPage>
@@ -327,11 +349,9 @@ export default async function AdminPedidoDetallePage({
               </dl>
               {/* Contacto directo: wa.me con el teléfono del comprador y mensaje
                   pre-armado con el número de pedido (Lucy 2026-08-11). */}
-              {order.phone.replace(/\D/g, "").length >= 10 && (
+              {customerWa && (
                 <a
-                  href={`https://wa.me/${order.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
-                    `Hola ${ship.fullName ?? ""}, te escribo de Lucams por tu pedido ${order.number}. `,
-                  )}`}
+                  href={customerWa}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-brand-purple-dark hover:bg-brand-purple/5 mt-3 inline-flex items-center gap-1.5 rounded-md border border-emerald-600/30 bg-emerald-50 px-3 py-1.5 text-xs font-semibold"
@@ -351,6 +371,7 @@ export default async function AdminPedidoDetallePage({
               <div className="text-brand-muted mt-1 text-xs">
                 {ship.city}, {ship.department}
                 {ship.localityName ? ` · Localidad ${ship.localityName}` : ""}
+                {ship.neighborhood ? ` · Barrio ${ship.neighborhood}` : ""}
                 {ship.zip ? ` · ${ship.zip}` : ""}
               </div>
               {ship.notes && (

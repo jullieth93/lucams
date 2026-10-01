@@ -133,7 +133,11 @@ export async function listCustomers(opts: CustomerListOpts = {}): Promise<Custom
 
 /**
  * Detail completo para Customer 360 — incluye relaciones críticas:
- * orders, reviews, addresses, loyalty txns recientes, designs.
+ * orders, reviews, addresses, designs.
+ *
+ * (El include de `loyaltyTxns` se retiró en T7 2026-10-01: la página nunca lo
+ * renderizaba — los puntos están ocultos por diseño hasta Fase 5— y era un
+ * fetch muerto en el hot path del admin.)
  *
  * Limita orders/reviews a últimas 50 para no traer payloads enormes
  * de customers VIP. Si se necesita histórico completo se hace en pages
@@ -167,10 +171,6 @@ export async function getCustomerDetail(id: string) {
           product: { select: { id: true, slug: true, name: true } },
         },
       },
-      loyaltyTxns: {
-        orderBy: { createdAt: "desc" },
-        take: 20,
-      },
       designs: {
         orderBy: { createdAt: "desc" },
         take: 20,
@@ -196,6 +196,23 @@ export async function getCustomerDetail(id: string) {
         },
       },
     },
+  });
+}
+
+/**
+ * Filas del modelo `Referral` hechas por este customer (referrerId = id):
+ * email del referido + status PENDING/REWARDED/EXPIRED + fechas. El Customer
+ * 360 las muestra para que el admin vea si la recompensa (cupón 10%) se
+ * entregó — la relación `Customer.referrals` solo lista customers referidos,
+ * sin estado de recompensa (T7 2026-10-01). Referral no tiene @relation en el
+ * schema v1, por eso es query aparte y no include de getCustomerDetail.
+ */
+export async function getCustomerReferralRows(referrerId: string) {
+  return prisma.referral.findMany({
+    where: { referrerId },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    select: { id: true, referredEmail: true, status: true, createdAt: true, rewardedAt: true },
   });
 }
 

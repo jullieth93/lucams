@@ -57,7 +57,10 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
       redirect("/carrito");
     }
     if (err instanceof CheckoutError && err.code === "STOCK_UNAVAILABLE") {
-      redirect(`/carrito?error=${encodeURIComponent(STOCK_GONE_MSG)}`);
+      // El mensaje ya es customer-safe y nombra el producto cuando el service lo
+      // conoce (2026-09-29); STOCK_GONE_MSG queda como fallback defensivo.
+      const msg = err.message && err.message !== err.code ? err.message : STOCK_GONE_MSG;
+      redirect(`/carrito?error=${encodeURIComponent(msg)}`);
     }
     throw err;
   }

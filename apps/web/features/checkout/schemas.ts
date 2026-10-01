@@ -13,6 +13,16 @@
 
 import { z } from "zod";
 
+// Regla ÚNICA de documento de identidad (DIAN) — la reusan el checkout
+// (ContactSchema) y el perfil del cliente (/mi-cuenta/perfil, T7 2026-10-01)
+// para que ambos acepten exactamente lo mismo.
+export const DOCUMENT_TYPES = ["CC", "CE", "NIT", "PP", "TI"] as const;
+export const DocumentTypeSchema = z.enum(DOCUMENT_TYPES);
+export const DocumentNumberSchema = z
+  .string()
+  .min(6, "Mínimo 6 caracteres")
+  .max(15, "Máximo 15 caracteres");
+
 export const ContactSchema = z.object({
   fullName: z
     .string()
@@ -23,8 +33,8 @@ export const ContactSchema = z.object({
   email: z.email("Email inválido").max(254).trim().toLowerCase(),
   // Móvil colombiano: 10 dígitos empezando con 3 (sin espacios al persistir).
   phone: z.string().regex(/^3\d{9}$/, "Debe ser un móvil colombiano de 10 dígitos (300...)"),
-  documentType: z.enum(["CC", "CE", "NIT", "PP", "TI"]).optional(),
-  documentNumber: z.string().min(6).max(15).optional(),
+  documentType: DocumentTypeSchema.optional(),
+  documentNumber: DocumentNumberSchema.optional(),
 });
 export type ContactInput = z.infer<typeof ContactSchema>;
 
@@ -68,12 +78,17 @@ const BaseAddressFields = z.object({
     .regex(/^\d{6}$/, "Código postal debe tener 6 dígitos")
     .optional()
     .or(z.literal("")),
-  // Zona de entrega del envío propio Lucam's (id de lib/lucams-zones.ts) — solo
-  // ciudades del catálogo; alimenta la oferta de envío propio. Nombre histórico
-  // "localityId" (V1 solo-Bogotá): representa la zona genérica (localidad,
-  // comuna, …). Opcional en el schema: la obligatoriedad la decide el server
-  // según LUCAMS_SHIPPING_ENABLED y las zonas habilitadas de la ciudad.
+  // Zona de entrega (id de lib/lucams-zones.ts) — solo ciudades del catálogo.
+  // Es DATO DE DIRECCIÓN: la pide siempre el checkout cuando la ciudad está en
+  // el catálogo, y además alimenta la oferta de envío propio "Envío Lucam's".
+  // Nombre histórico "localityId" (V1 solo-Bogotá): representa la zona genérica
+  // (localidad, comuna, …). Opcional en el schema: la obligatoriedad la decide
+  // el server según el catálogo de zonas (getZoneCityByCode), no según las
+  // settings del envío propio.
   localityId: z.string().max(60).trim().optional(),
+  // Barrio (texto libre) — opcional para TODAS las ciudades; convive con la
+  // zona/localidad (no son lo mismo: la zona es del catálogo, el barrio es libre).
+  neighborhood: z.string().max(100).trim().optional(),
   notes: z.string().max(500).trim().optional(),
 });
 

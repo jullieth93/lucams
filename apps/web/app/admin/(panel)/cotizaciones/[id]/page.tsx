@@ -15,6 +15,7 @@ import { ArrowLeft, FileText, Hammer, MapPin, Sparkles, StickyNote, User } from 
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP, formatCityDept } from "@/lib/format";
+import { customerWaLink } from "@/lib/wa";
 import { getQuoteById } from "@/features/quotes/admin-service";
 import type { QuoteStatus } from "@lucams/db";
 import {
@@ -60,9 +61,10 @@ export default async function AdminCotizacionDetallePage({ params }: { params: P
   if (!quote) notFound();
 
   // WhatsApp al CLIENTE (vista admin — el número sí está disponible acá).
-  // El número se persiste normalizado a 10 dígitos CO → wa.me exige prefijo 57.
+  // El número se persiste normalizado a 10 dígitos CO; el indicativo 57 que
+  // exige wa.me lo pone el helper (lib/wa). null = no parseable → sin botón.
   const waMessage = `Hola ${quote.customerName.split(" ")[0]} 👋 Te escribo de Lucams por tu cotización ${quote.number}. ¿La revisamos juntos para concretar tu pedido? ✨`;
-  const waUrl = `https://wa.me/57${quote.customerWhatsapp}?text=${encodeURIComponent(waMessage)}`;
+  const waUrl = customerWaLink(quote.customerWhatsapp, waMessage);
 
   return (
     <AdminPage>
@@ -92,15 +94,17 @@ export default async function AdminCotizacionDetallePage({ params }: { params: P
               <Hammer className="h-4 w-4" />
               Hoja de taller
             </Link>
-            <a
-              href={waUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
-            >
-              <WhatsAppIcon className="h-4 w-4" />
-              Abrir WhatsApp
-            </a>
+            {waUrl && (
+              <a
+                href={waUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
+              >
+                <WhatsAppIcon className="h-4 w-4" />
+                Abrir WhatsApp
+              </a>
+            )}
           </>
         }
       />

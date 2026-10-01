@@ -116,11 +116,12 @@ export default async function EnviosAdminPage() {
             </h2>
           </div>
           <p className="text-brand-muted mb-3 text-xs">
-            Mensajería interna por zonas de entrega: aparece en el checkout como una opción más
-            («Entrega hoy» antes de la hora límite, «Entrega mañana» después). Estos pedidos NO
-            generan guía de Aveonline — se despachan a mano y tienen su propia guía de entrega
-            imprimible en el detalle del pedido. El on/off se maneja en la lista de transportadoras
-            de arriba.
+            Mensajería interna por zonas de entrega: aparece en el checkout como una opción más. La
+            promesa suma la fabricación a mano del pedido y la hora límite («Entrega hoy» solo si el
+            pedido entra antes de la hora límite y no hay fabricación pendiente; si no, «Entrega en
+            N días hábiles»). Estos pedidos NO generan guía de Aveonline — se despachan a mano y
+            tienen su propia guía de entrega imprimible en el detalle del pedido. El on/off se
+            maneja en la lista de transportadoras de arriba.
           </p>
           <LucamsShippingSection
             initial={{

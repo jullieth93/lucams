@@ -57,6 +57,7 @@ function buildFallbackFaqs(
   catalog: boolean,
   codEnabled: boolean,
   contactEmail: string,
+  cutoffHour: string,
 ): { slug: string; question: string; answer: string }[] {
   const codCatalog = codEnabled
     ? " Además tienes **contraentrega disponible**: pagas en efectivo al recibir tu pedido."
@@ -96,8 +97,7 @@ function buildFallbackFaqs(
     {
       slug: "envio-mismo-dia",
       question: "¿Tienen envío el mismo día en Bogotá?",
-      answer:
-        "Sí: **Envío Lucam's**, nuestro servicio propio de entrega local. Está disponible en **localidades seleccionadas de Bogotá**: si tu pedido queda confirmado **antes de las 12:00 m.**, te llega **el mismo día**, con **tarifa fija** que ves antes de pagar. Si la opción no aparece en tu checkout, tu localidad aún no está cubierta — siempre puedes elegir el envío por transportadora aliada.",
+      answer: `Sí: **Envío Lucam's**, nuestro servicio propio de entrega local. Está disponible en **localidades seleccionadas de Bogotá** y la entrega es **el mismo día del despacho**, con **tarifa fija** que ves antes de pagar. Si el producto está **listo (sin fabricación pendiente)** y tu pedido queda confirmado **antes de las ${cutoffHour}:00**, te llega **ese mismo día**; si hay que fabricarlo a mano, primero lo producimos y te llega el día que lo despachemos. Si la opción no aparece en tu checkout, tu localidad aún no está cubierta — siempre puedes elegir el envío por transportadora aliada.`,
     },
     {
       slug: "cambios-devoluciones",
@@ -143,13 +143,17 @@ function buildFallbackFaqs(
 }
 
 export default async function AyudaPage() {
-  const [faqs, waSupportUrl, contactEmail, codSetting, sameDaySetting] = await Promise.all([
-    getCmsBlocksByCategory("FAQ"),
-    buildWhatsAppUrl({ kind: "support" }),
-    getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
-    getSettingValue("COD_ENABLED", "false"),
-    getSettingValue("SAME_DAY_DELIVERY_ENABLED", "false"),
-  ]);
+  const [faqs, waSupportUrl, contactEmail, codSetting, sameDaySetting, cutoffSetting] =
+    await Promise.all([
+      getCmsBlocksByCategory("FAQ"),
+      buildWhatsAppUrl({ kind: "support" }),
+      getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
+      getSettingValue("COD_ENABLED", "false"),
+      getSettingValue("SAME_DAY_DELIVERY_ENABLED", "false"),
+      // Hora límite del envío propio (misma setting del checkout) para que el
+      // fallback de la FAQ `envio-mismo-dia` nunca cite una hora desactualizada.
+      getSettingValue("LUCAMS_SHIPPING_CUTOFF_HOUR", "12"),
+    ]);
   const catalog = isCatalogMode();
   const codEnabled = codSetting === "true";
   // Envío Lucam's (mismo día, Bogotá) — feature en construcción paralela. Gate
@@ -168,7 +172,7 @@ export default async function AyudaPage() {
     "metodos-pago",
     "envios-cobertura",
   ]);
-  const fallbackSet = buildFallbackFaqs(catalog, codEnabled, contactEmail);
+  const fallbackSet = buildFallbackFaqs(catalog, codEnabled, contactEmail, cutoffSetting);
   const catalogBodyBySlug = new Map(fallbackSet.map((f) => [f.slug, f.answer]));
 
   // Si hay FAQs en CMS, las usamos. Si no, fallback editorial.

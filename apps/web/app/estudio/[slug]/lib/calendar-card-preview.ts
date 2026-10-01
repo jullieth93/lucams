@@ -11,6 +11,12 @@
  * (definidas en app/layout.tsx) traen el nombre real; lo resolvemos una vez y lo reusamos.
  * Lucy 2026-09-07 — selector de tipo de letra: la del TÍTULO/mes se elige por key
  * ("fredoka" | "inter" | "caveat") y se resuelve igual vía su CSS var.
+ * 2026-10-01 — las vars de las 6 tipografías NO-marca (caveat, baloo2, nunito, patrick,
+ * playfair, dancing) ya NO viven en el <html> global: las define el wrapper
+ * `data-studio-fonts` del layout del Estudio (app/estudio/layout.tsx, perf: ~2 MB de
+ * TTF fuera de toda página pública). Se leen de ESE elemento; el fallback a
+ * document.documentElement cubre fredoka/inter (globales) y los tests que siembran
+ * las vars a mano en el <html>.
  */
 
 import type { CalendarFontKey } from "@/features/personalization/schemas";
@@ -24,8 +30,9 @@ export function firstFontFamily(cssFontFamily: string): string | null {
 
 export type BrandCanvasFonts = { title: string; body: string };
 
-/** Mapa key del selector → CSS var de la fuente del TÍTULO/mes (definidas en app/layout.tsx).
- *  El body/grilla del calendario SIEMPRE usa Inter, sin importar la elección. */
+/** Mapa key del selector → CSS var de la fuente del TÍTULO/mes (las de marca en
+ *  app/layout.tsx; las 6 del selector en app/estudio/layout.tsx, wrapper
+ *  `data-studio-fonts`). El body/grilla del calendario SIEMPRE usa Inter. */
 const CALENDAR_TITLE_FONT_VARS: Record<CalendarFontKey, string> = {
   fredoka: "--font-fredoka",
   inter: "--font-inter",
@@ -38,6 +45,16 @@ const CALENDAR_TITLE_FONT_VARS: Record<CalendarFontKey, string> = {
 };
 
 /**
+ * Elemento del que se leen las CSS vars `--font-*`: el wrapper `data-studio-fonts`
+ * del layout del Estudio (donde viven las 6 tipografías del selector desde
+ * 2026-10-01) o, si no está (tests que siembran las vars en el <html>, contextos
+ * sin el wrapper), el documentElement — ahí siguen fredoka/inter (globales).
+ */
+function fontVarsElement(): HTMLElement {
+  return document.querySelector<HTMLElement>("[data-studio-fonts]") ?? document.documentElement;
+}
+
+/**
  * Resuelve la familia real (nombre hasheado de next/font) del TÍTULO del calendario
  * según la key elegida. Devuelve null fuera del navegador o si la var no está
  * (fallback del caller: el literal "Fredoka"/"Inter"/"Caveat", que el server SÍ registra,
@@ -45,7 +62,7 @@ const CALENDAR_TITLE_FONT_VARS: Record<CalendarFontKey, string> = {
  */
 export function resolveCalendarTitleFont(key: CalendarFontKey): string | null {
   if (typeof window === "undefined" || typeof document === "undefined") return null;
-  const cs = getComputedStyle(document.documentElement);
+  const cs = getComputedStyle(fontVarsElement());
   return firstFontFamily(cs.getPropertyValue(CALENDAR_TITLE_FONT_VARS[key] ?? "--font-fredoka"));
 }
 
@@ -70,13 +87,14 @@ export async function ensureCalendarTitleFontLoaded(key: CalendarFontKey): Promi
 }
 
 /**
- * Resuelve las familias reales de Fredoka/Inter desde las CSS vars del root.
- * Devuelve null fuera del navegador o si las vars no están (fallback: drawCalendarPage
- * usa los literales "Fredoka"/"Inter", que el server SÍ registra).
+ * Resuelve las familias reales de Fredoka/Inter desde las CSS vars (wrapper del
+ * Estudio o root — ver fontVarsElement). Devuelve null fuera del navegador o si
+ * las vars no están (fallback: drawCalendarPage usa los literales "Fredoka"/"Inter",
+ * que el server SÍ registra).
  */
 export function resolveBrandCanvasFonts(): BrandCanvasFonts | null {
   if (typeof window === "undefined" || typeof document === "undefined") return null;
-  const cs = getComputedStyle(document.documentElement);
+  const cs = getComputedStyle(fontVarsElement());
   const title = firstFontFamily(cs.getPropertyValue("--font-fredoka"));
   const body = firstFontFamily(cs.getPropertyValue("--font-inter"));
   if (!title || !body) return null;

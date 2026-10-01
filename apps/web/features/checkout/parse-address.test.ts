@@ -42,9 +42,29 @@ describe("parseStructuredAddress — zona de entrega (localityId)", () => {
     if (res.ok) expect(res.data.localityId).toBeUndefined();
   });
 
-  it("sin zona → undefined (opcional; la obligatoriedad la decide saveDatosAction)", () => {
+  it("sin zona → undefined (opcional en el schema; la obligatoriedad la decide saveDatosAction)", () => {
     const res = parseStructuredAddress(urbanForm());
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.data.localityId).toBeUndefined();
+  });
+});
+
+describe("parseStructuredAddress — barrio (neighborhood)", () => {
+  it("conserva el barrio (trim) en cualquier ciudad", () => {
+    const res = parseStructuredAddress(urbanForm({ neighborhood: "  Cedritos  " }));
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.data.neighborhood).toBe("Cedritos");
+  });
+
+  it("vacío → undefined (opcional)", () => {
+    const res = parseStructuredAddress(urbanForm({ neighborhood: "   " }));
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.data.neighborhood).toBeUndefined();
+  });
+
+  it("rechaza un barrio de más de 100 caracteres", () => {
+    const res = parseStructuredAddress(urbanForm({ neighborhood: "x".repeat(101) }));
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.fieldErrors.neighborhood).toBeDefined();
   });
 });

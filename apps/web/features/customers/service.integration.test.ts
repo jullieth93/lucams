@@ -8,7 +8,9 @@
  *     teléfono), filtro status (all / with-orders / no-orders), sort (recent /
  *     name / orders) y derivados (fullName, ordersCount, reviewsCount).
  *   - getCustomerDetail(id): detail con relaciones (orders/reviews/addresses/
- *     loyaltyTxns/designs/referrals/_count), excluye soft-deleted.
+ *     designs/referrals/_count), excluye soft-deleted.
+ *   - getCustomerReferralRows(referrerId): filas del modelo Referral (email del
+ *     referido + status + fechas) para la sección Referidos del Customer 360.
  *   - getCustomerTotalSpent(customerId): suma orders.total con status PAID o
  *     posterior (PAID/FULFILLING/SHIPPED/DELIVERED), excluye soft-deleted.
  *
@@ -33,7 +35,12 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { getCustomerDetail, getCustomerTotalSpent, listCustomers } from "./service";
+import {
+  getCustomerDetail,
+  getCustomerReferralRows,
+  getCustomerTotalSpent,
+  listCustomers,
+} from "./service";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 
@@ -167,19 +174,20 @@ async function makeAddress(
   });
 }
 
-// LoyaltyTxn mínima: customerId/delta/reason. El `reason` lleva el prefijo RUN
-// para la limpieza SCOPED (afterAll borra por reason startsWith RUN).
-async function makeLoyaltyTxn(
-  customerId: string,
-  over: Partial<{ delta: number; reason: string; createdAt: Date }> = {},
+// Referral mínima: referrerId/referredEmail/status. El referredEmail lleva el
+// prefijo RUN para la limpieza SCOPED (afterAll borra por startsWith RUN).
+async function makeReferral(
+  referrerId: string,
+  over: Partial<{ referredEmail: string; status: string; createdAt: Date; rewardedAt: Date }> = {},
 ) {
   const id = nextId();
-  return prisma.loyaltyTxn.create({
+  return prisma.referral.create({
     data: {
-      customerId,
-      delta: over.delta ?? 10,
-      reason: over.reason ?? `${RUN}-txn-${id}`,
+      referrerId,
+      referredEmail: over.referredEmail ?? `${RUN}-ref-${id}@example.co`,
+      status: over.status ?? "PENDING",
       ...(over.createdAt ? { createdAt: over.createdAt } : {}),
+      ...(over.rewardedAt ? { rewardedAt: over.rewardedAt } : {}),
     },
   });
 }
@@ -205,13 +213,13 @@ describe.skipIf(!hasDb)("customers/service — integración DB (Customer 360, PI
 
   afterAll(async () => {
     // Orden de borrado respeta FKs. Todo SCOPED al prefijo RUN.
-    // Reviews/Orders/Designs/LoyaltyTxns referencian customers (SetNull al borrar
+    // Reviews/Orders/Designs/Referrals referencian customers (SetNull al borrar
     // customer, pero los borramos explícito por claridad y para no dejar huérfanos
     // con RUN). Designs/Reviews → product (Restrict) → category (Restrict): por eso
     // se borran ANTES que product/category.
     await prisma.review.deleteMany({ where: { comment: { startsWith: RUN } } });
     await prisma.design.deleteMany({ where: { productId: sharedProductId } });
-    await prisma.loyaltyTxn.deleteMany({ where: { reason: { startsWith: RUN } } });
+    await prisma.referral.deleteMany({ where: { referredEmail: { startsWith: RUN } } });
     // Address: el include de getCustomerDetail no filtra soft-deleted y el name
     // lleva el prefijo RUN → borrado explícito SCOPED (además del cascade al
     // borrar el customer). Antes de borrar customers para no depender del cascade.
@@ -695,46 +703,38 @@ describe.skipIf(!hasDb)("customers/service — integración DB (Customer 360, PI
       expect(detail!.addresses[1].city).toBe("Bogotá");
     }, 30000);
 
-    it("carga loyaltyTxns: take 20 (descarta los más viejos) y orden createdAt desc", async () => {
-      const cust = await makeCustomer({ firstName: "LoyaltyOwner" });
-      // 22 txns con createdAt creciente → al ordenar desc, las 2 más viejas
-      // (idx 0 y 1) caen fuera del take:20. La más reciente es idx 21.
+    it("getCustomerReferralRows: filtra por referrerId, orden createdAt desc y trae status/fechas", async () => {
+      const referrer = await makeCustomer({ firstName: "ReferrerOwner" });
+      const other = await makeCustomer({ firstName: "OtherReferrer" });
       const base = Date.now();
-      for (let i = 0; i < 22; i++) {
-        await makeLoyaltyTxn(cust.id, {
-          delta: i,
-          reason: `${RUN}-loy-${String(i).padStart(2, "0")}`,
-          createdAt: new Date(base + i * 1000),
-        });
-      }
-
-      const detail = await getCustomerDetail(cust.id);
-      expect(detail).not.toBeNull();
-
-      // take:20 → solo 20 aunque sembramos 22.
-      expect(detail!.loyaltyTxns).toHaveLength(20);
-
-      // orderBy createdAt desc → la primera es la más reciente (idx 21),
-      // la última de las 20 es idx 02 (idx 00 y 01 quedaron fuera).
-      const reasons = detail!.loyaltyTxns.map((t) => t.reason);
-      expect(reasons[0]).toBe(`${RUN}-loy-21`);
-      expect(reasons[reasons.length - 1]).toBe(`${RUN}-loy-02`);
-      expect(detail!.loyaltyTxns[0].delta).toBe(21);
-
-      // Orden estrictamente descendente por createdAt en toda la ventana.
-      for (let i = 1; i < detail!.loyaltyTxns.length; i++) {
-        expect(detail!.loyaltyTxns[i - 1].createdAt.getTime()).toBeGreaterThanOrEqual(
-          detail!.loyaltyTxns[i].createdAt.getTime(),
-        );
-      }
-
-      // _count NO incluye loyaltyTxns en el select del service → no se asume.
-      // Verificamos persistencia real de las 22 directamente.
-      const persisted = await prisma.loyaltyTxn.count({
-        where: { customerId: cust.id, reason: { startsWith: `${RUN}-loy-` } },
+      const older = await makeReferral(referrer.id, {
+        referredEmail: `${RUN}-ref-older@example.co`,
+        status: "REWARDED",
+        createdAt: new Date(base),
+        rewardedAt: new Date(base + 500),
       });
-      expect(persisted).toBe(22);
-    }, 60000);
+      const newer = await makeReferral(referrer.id, {
+        referredEmail: `${RUN}-ref-newer@example.co`,
+        status: "PENDING",
+        createdAt: new Date(base + 1000),
+      });
+      // Ruido: una Referral de OTRO referrer no debe colarse.
+      await makeReferral(other.id, { referredEmail: `${RUN}-ref-ajena@example.co` });
+
+      const rows = await getCustomerReferralRows(referrer.id);
+
+      expect(rows.map((r) => r.id)).toEqual([newer.id, older.id]);
+      expect(rows[0].referredEmail).toBe(`${RUN}-ref-newer@example.co`);
+      expect(rows[0].status).toBe("PENDING");
+      expect(rows[0].rewardedAt).toBeNull();
+      expect(rows[1].status).toBe("REWARDED");
+      expect(rows[1].rewardedAt).toBeInstanceOf(Date);
+    });
+
+    it("getCustomerReferralRows: sin referidos devuelve lista vacía", async () => {
+      const cust = await makeCustomer({ firstName: "SinReferidos" });
+      await expect(getCustomerReferralRows(cust.id)).resolves.toEqual([]);
+    });
   });
 
   // ───────────────────────── getCustomerTotalSpent ─────────────────────────

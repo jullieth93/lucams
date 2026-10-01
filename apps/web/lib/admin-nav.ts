@@ -27,7 +27,6 @@ import {
   Settings,
   Box,
   Users,
-  AlertCircle,
   ShieldAlert,
   Star,
   Layers,
@@ -140,12 +139,16 @@ export const ADMIN_NAV: NavGroup[] = [
     ],
   },
   {
-    // 2026-07-28 — decisión Lucy/Kimi: los 4 tipos de caso (Soporte, Retractos,
-    // Garantías, Reclamos) + la revisión de diseños NO se fusionan en un solo
-    // módulo: legalmente son flujos distintos (retracto Ley 1480, garantía
-    // legal, SAC) y cada uno conserva su pantalla y su proceso. Solo se
-    // REAGRUPAN bajo esta sección (colapsada por defecto) para que el menú
-    // quede corto: Ventas = lo del día a día; acá = los casos puntuales.
+    // 2026-07-28 — decisión Lucy/Kimi: los tipos de caso (Soporte, Retractos,
+    // Garantías) + la revisión de diseños NO se fusionan en un solo módulo:
+    // legalmente son flujos distintos (retracto Ley 1480, garantía legal, SAC)
+    // y cada uno conserva su pantalla y su proceso. Solo se REAGRUPAN bajo
+    // esta sección (colapsada por defecto) para que el menú quede corto:
+    // Ventas = lo del día a día; acá = los casos puntuales.
+    // 2026-10-01 — EXCEPCIÓN: "Reclamos" (/admin/reclamos) SÍ se fusionó en
+    // "Garantías": operaba la MISMA tabla WarrantyClaim con lógica divergente
+    // (cierre directo que nunca notificaba al cliente). La ruta vieja queda
+    // como redirect permanente (308), igual que /admin/mensajes → /admin/soporte.
     title: "Servicio al cliente",
     icon: Headset,
     defaultOpen: false,
@@ -155,7 +158,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/soporte",
         icon: LifeBuoy,
         description:
-          "Tickets de soporte que llegan desde /contacto: responder por email (mailto), asignar estado y cerrar. Al cerrar, el cliente recibe aviso por correo. Bandeja única — acá converge la antigua /admin/mensajes (N-09).",
+          "Tickets de soporte que llegan desde /contacto: hilo de conversación in-app con respuesta pública (el cliente la recibe por correo), asignar estado y cerrar. Bandeja única — acá converge la antigua /admin/mensajes (N-09).",
       },
       {
         label: "Moderación",
@@ -176,14 +179,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/garantias",
         icon: BadgeCheck,
         description:
-          "Reclamos de garantía (3 meses, término informado — Ley 1480 art. 8): recibir, evaluar, resolver (reparación/reposición/devolución) y notificar al cliente en cada paso.",
-      },
-      {
-        label: "Reclamos",
-        href: "/admin/reclamos",
-        icon: AlertCircle,
-        description:
-          "Gestión de reclamos de garantía: revisa, resuelve o rechaza con remedio (reparación, cambio o devolución).",
+          "Reclamos de garantía (3 meses, término informado — Ley 1480 art. 8): recibir, evaluar, resolver (reparación/reposición/devolución) o rechazar, y notificar al cliente en cada cierre. Módulo único — absorbe la antigua bandeja /admin/reclamos (redirect 308).",
       },
     ],
   },
@@ -412,7 +408,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/email-templates",
         icon: Mail,
         description:
-          "Las 26 plantillas transaccionales (pedidos, retracto, soporte, garantías, marketing): preview renderizado, edición de asunto/preheader/titular y envío de prueba. Solo Superadmin.",
+          "Las 27 plantillas transaccionales (pedidos, retracto, soporte, garantías, marketing): preview renderizado, edición de asunto/preheader/titular y envío de prueba. Solo Superadmin.",
       },
       // P1-17: movido desde "Promociones" — es plumbing SEO, no oferta comercial.
       {
@@ -431,9 +427,15 @@ export const ADMIN_NAV: NavGroup[] = [
  * /admin/soporte (mismas acciones, permisos y auditoría). /admin/mensajes queda
  * como redirect permanente (308) a /admin/soporte; la bandeja operativa única es
  * "Soporte" dentro del grupo "Servicio al cliente". La decisión de NO fusionar de
- * más arriba (Servicio al cliente, 2026-07-28) cubre los 4 tipos de caso legales;
+ * más arriba (Servicio al cliente, 2026-07-28) cubre los tipos de caso legales;
  * este par SÍ se fusionó porque no había flujo legal distinto: misma tabla, mismo
- * servicio, misma matriz RBAC (CATALOG). */
+ * servicio, misma matriz RBAC (CATALOG).
+ *
+ * 2026-10-01 — mismo criterio aplicado a "Reclamos" (/admin/reclamos): era una
+ * segunda bandeja sobre la MISMA tabla WarrantyClaim de /admin/garantias, con
+ * cierre directo que nunca notificaba al cliente. Se elimina del nav y la ruta
+ * queda como redirect permanente (308) a /admin/garantias; el flujo largo de
+ * garantías (que sí notifica en RESOLVED y REJECTED) es el único operativo. */
 
 /**
  * NAV efectivo según el modo de tienda (Etapa 1/2 — lib/store-mode).

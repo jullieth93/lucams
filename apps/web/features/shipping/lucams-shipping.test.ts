@@ -1,7 +1,9 @@
 /*
  * Tests del envío propio "Envío Lucam's" (mensajería interna multi-ciudad):
  * la oferta del checkout (buildLucamsOffer) — cuándo aplica, precio desde
- * settings, promesa "hoy/mañana" según la hora de Colombia vs el cutoff —
+ * settings, promesa producción + hora de corte (deliveryDays = días de
+ * fabricación del carrito + 1 si el pedido entra al corte o después —
+ * la regla pura está testeada a fondo en lib/delivery-estimate.test.ts) —
  * y el catálogo de zonas por ciudad (lib/lucams-zones.ts).
  */
 
@@ -67,10 +69,10 @@ describe("buildLucamsOffer", () => {
 
   it("oferta con precio de settings y quoteId amarrado a ciudad+zona", async () => {
     getLucamsShippingSettings.mockResolvedValue(settings({ priceCop: 850_000 }));
-    // 2026-09-29 14:00 UTC = 09:00 Bogotá < cutoff 12 → mismo día.
+    // 2026-09-29 14:00 UTC = 09:00 Bogotá < cutoff 12 → sin producción, mismo día.
     const offer = await buildLucamsOffer(
       { cityCode: BOGOTA, zoneId: "chapinero" },
-      new Date("2026-09-29T14:00:00Z"),
+      { maxProductionDays: 0, now: new Date("2026-09-29T14:00:00Z") },
     );
     expect(offer).toMatchObject({
       carrier: LUCAMS_CARRIER,
@@ -82,14 +84,40 @@ describe("buildLucamsOffer", () => {
     });
   });
 
-  it("después del cutoff promete entrega mañana (deliveryDays 1)", async () => {
+  it("sin producción: después del cutoff promete entrega mañana (deliveryDays 1)", async () => {
     getLucamsShippingSettings.mockResolvedValue(settings({ cutoffHour: 12 }));
     // 2026-09-29 18:00 UTC = 13:00 Bogotá ≥ cutoff 12 → mañana.
     const offer = await buildLucamsOffer(
       { cityCode: BOGOTA, zoneId: "usaquen" },
-      new Date("2026-09-29T18:00:00Z"),
+      { maxProductionDays: 0, now: new Date("2026-09-29T18:00:00Z") },
     );
     expect(offer?.deliveryDays).toBe(1);
+  });
+
+  it("con producción: los días de fabricación se SUMAN al corte (regla producción + cutoff)", async () => {
+    getLucamsShippingSettings.mockResolvedValue(settings({ cutoffHour: 12 }));
+    const dest = { cityCode: BOGOTA, zoneId: "chapinero" };
+    // Producto con 2 días de producción: antes del cutoff → 2; después → 3.
+    const antes = await buildLucamsOffer(dest, {
+      maxProductionDays: 2,
+      now: new Date("2026-09-29T14:00:00Z"), // 09:00 Bogotá
+    });
+    const despues = await buildLucamsOffer(dest, {
+      maxProductionDays: 2,
+      now: new Date("2026-09-29T18:00:00Z"), // 13:00 Bogotá
+    });
+    expect(antes?.deliveryDays).toBe(2);
+    expect(despues?.deliveryDays).toBe(3);
+  });
+
+  it("sin maxProductionDays (caller viejo/dato faltante): default fail-safe de 2 días", async () => {
+    getLucamsShippingSettings.mockResolvedValue(settings({ cutoffHour: 12 }));
+    const offer = await buildLucamsOffer(
+      { cityCode: BOGOTA, zoneId: "chapinero" },
+      { now: new Date("2026-09-29T14:00:00Z") },
+    );
+    // Nunca promete de menos por falta de dato: 2 (producción) + 0 (antes del corte).
+    expect(offer?.deliveryDays).toBe(2);
   });
 });
 

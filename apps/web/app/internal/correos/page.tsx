@@ -179,16 +179,26 @@ async function buildGroups(): Promise<Group[]> {
       orderNumber: ORDER,
       customerName: CUSTOMER,
       products: [
-        { name: "Fotoimanes Cuadrados", slug: "fotoimanes-cuadrados" },
-        { name: "Set Corazón", slug: "set-corazon" },
+        {
+          id: "cprod0000000000000000001",
+          name: "Fotoimanes Cuadrados",
+          slug: "fotoimanes-cuadrados",
+        },
+        { id: "cprod0000000000000000002", name: "Set Corazón", slug: "set-corazon" },
       ],
-      publicTrackingToken: TOKEN,
+      reviewToken: TOKEN,
     }),
     reviewRequestEmail({
       orderNumber: ORDER,
       customerName: CUSTOMER,
-      products: [{ name: "Fotoimanes Cuadrados", slug: "fotoimanes-cuadrados" }],
-      publicTrackingToken: null,
+      products: [
+        {
+          id: "cprod0000000000000000001",
+          name: "Fotoimanes Cuadrados",
+          slug: "fotoimanes-cuadrados",
+        },
+      ],
+      reviewToken: null,
     }),
     cartRecoveryEmail({
       recoverToken: TOKEN,

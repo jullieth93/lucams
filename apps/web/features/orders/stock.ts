@@ -110,13 +110,24 @@ export async function assertStockAvailable(
   for (const it of aggregateByVariant(items)) {
     const v = await tx.productVariant.findUnique({
       where: { id: it.variantId },
-      select: { id: true, stock: true },
+      // name/sku + product.name: el error los propaga para que el checkout nombre el
+      // producto agotado en el aviso al cliente (no solo el variantId interno).
+      select: { id: true, stock: true, name: true, sku: true, product: { select: { name: true } } },
     });
     if (!v) throw new InsufficientStockError(it.variantId, it.qty, 0);
     if (v.stock < it.qty) {
-      throw new InsufficientStockError(it.variantId, it.qty, v.stock);
+      throw new InsufficientStockError(it.variantId, it.qty, v.stock, variantDisplayName(v));
     }
   }
+}
+
+/** Nombre de display de una variante: producto solo si es la variante default; si no, "Producto (Variante)". */
+export function variantDisplayName(v: {
+  name: string;
+  sku: string;
+  product: { name: string };
+}): string {
+  return v.sku.endsWith("-DEFAULT") ? v.product.name : `${v.product.name} (${v.name})`;
 }
 
 /**
@@ -166,7 +177,19 @@ export async function decrementStockForOrder(
     if (res.count !== 1) {
       // Carrera perdida: stock se agotó entre validación y este UPDATE.
       // Throw → tx caller rollback → Order NO transiciona a PAID.
-      throw new InsufficientStockError(item.variantId, item.qty);
+      // Lookup del nombre para que el aviso al cliente nombre el producto
+      // agotado (la saga lo re-lee vía err.productName); ruta rara, una
+      // lectura extra es inocua.
+      const v = await tx.productVariant.findUnique({
+        where: { id: item.variantId },
+        select: { stock: true, name: true, sku: true, product: { select: { name: true } } },
+      });
+      throw new InsufficientStockError(
+        item.variantId,
+        item.qty,
+        v?.stock,
+        v ? variantDisplayName(v) : undefined,
+      );
     }
     try {
       await tx.inventoryLog.create({

@@ -77,7 +77,7 @@ export async function orderConfirmationEmail(data: OrderConfirmationData) {
 ${codCallout}
 ${
   data.internalDelivery
-    ? `<p>Ya empezamos a preparar tu pedido: lo despachamos en máximo <strong>2 días hábiles</strong> con <strong>nuestro equipo Lucam's</strong> (entrega directa, sin transportadora externa) y te avisamos apenas salga.</p>`
+    ? `<p>Ya empezamos a preparar tu pedido: lo despachamos en máximo <strong>2 días hábiles</strong> y te lo entregamos <strong>el mismo día del despacho</strong> con <strong>nuestro equipo Lucam's</strong> (entrega directa, sin transportadora externa). Te avisamos apenas salga.</p>`
     : `<p>Ya empezamos a preparar tu pedido: lo despachamos en máximo <strong>2 días hábiles</strong> y te avisamos con el número de guía apenas salga. De ahí en adelante el tiempo lo pone la transportadora y depende de tu ciudad.</p>`
 }
 

@@ -127,6 +127,10 @@ function AddressCard({
           <p className="text-brand-muted mt-1 text-sm">
             {address.line1} · {address.city}, {address.department}
           </p>
+          {typeof address.structured?.neighborhood === "string" &&
+            address.structured.neighborhood && (
+              <p className="text-brand-muted text-xs">Barrio {address.structured.neighborhood}</p>
+            )}
           <p className="text-brand-muted text-xs">Tel: {address.phone}</p>
         </div>
       </div>
@@ -273,6 +277,7 @@ function AddressForm({
         onChange={(patch) => setAddr((prev) => ({ ...prev, ...patch }))}
         errors={state?.fieldErrors}
         disabled={pending}
+        neighborhoodPlaceholder={texts.neighborhoodPlaceholder}
       />
 
       <F

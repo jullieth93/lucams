@@ -15,9 +15,14 @@
  * (checkout-session, Address.structured, Order.shippingAddress) son el nombre
  * HISTÓRICO de la "zona" genérica de entrega (localidad en Bogotá, comuna en
  * Medellín). Se conservan por compatibilidad con datos ya guardados.
+ *
+ * Promesa de entrega = producción a mano + hora de corte (fabricamos y
+ * entregamos el mismo día del despacho): la regla vive en
+ * lib/delivery-estimate.ts y es compartida con admin/guía/emails.
  */
 
 import "server-only";
+import { bogotaHour, lucamsDeliveryDays } from "@/lib/delivery-estimate";
 import { getZone, getZoneCityByCode } from "@/lib/lucams-zones";
 import { getLucamsShippingSettings } from "./settings";
 import type { ShippingSelectionInput } from "@/features/checkout/schemas";
@@ -25,16 +30,10 @@ import type { ShippingSelectionInput } from "@/features/checkout/schemas";
 export const LUCAMS_CARRIER = "lucams";
 export const LUCAMS_CARRIER_NAME = "Envío Lucam's";
 
-/** Hora actual en Colombia (America/Bogota, 0-23) — rige el cutoff de entrega mismo día. */
-export function bogotaHour(now: Date = new Date()): number {
-  const formatted = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Bogota",
-    hour: "numeric",
-    hourCycle: "h23",
-  }).format(now);
-  const hour = Number.parseInt(formatted, 10);
-  return Number.isFinite(hour) ? hour : 0;
-}
+// La regla de la promesa (producción + hora de corte) vive en
+// lib/delivery-estimate.ts; se re-exporta la hora Colombia por compatibilidad
+// con los callers existentes (admin, guía imprimible).
+export { bogotaHour };
 
 export type LucamsDestination = {
   cityCode: string;
@@ -47,12 +46,19 @@ export type LucamsDestination = {
  * Construye la oferta de envío propio para un destino, o null si no aplica
  * (apagado, ciudad fuera del catálogo, sin zona, zona inválida o zona no
  * habilitada para esa ciudad en las settings). Es la ÚNICA fuente de verdad
- * del precio/días: la usan quoteShipping (al ofrecer) y finalizeCheckout (al
- * re-validar la selección sellada).
+ * del precio/días: la usan quoteShipping (al ofrecer) y el offersToken sellado
+ * HMAC que finalizeCheckout re-valida con match exacto.
+ *
+ * Promesa de entrega (regla única de lib/delivery-estimate.ts):
+ * `deliveryDays = maxProductionDays + (hora Colombia >= cutoff ? 1 : 0)` —
+ * los días de fabricación a mano del carrito corren desde hoy si el pedido
+ * entra antes del cutoff (si no, desde el siguiente día hábil) y la entrega
+ * es el mismo día del despacho. `opts.maxProductionDays` ausente → default
+ * fail-safe (LUCAMS_DEFAULT_PRODUCTION_DAYS), nunca promete de menos.
  */
 export async function buildLucamsOffer(
   destination: LucamsDestination,
-  now: Date = new Date(),
+  opts?: { maxProductionDays?: number; now?: Date },
 ): Promise<ShippingSelectionInput | null> {
   const settings = await getLucamsShippingSettings();
   if (!settings.enabled) return null;
@@ -61,12 +67,16 @@ export async function buildLucamsOffer(
   const zone = getZone(city.cityCode, destination.zoneId);
   if (!zone || !(settings.zones[city.cityCode] ?? []).includes(zone.id)) return null;
 
-  const sameDay = bogotaHour(now) < settings.cutoffHour;
+  const deliveryDays = lucamsDeliveryDays({
+    maxProductionDays: opts?.maxProductionDays ?? Number.NaN,
+    cutoffHour: settings.cutoffHour,
+    now: opts?.now,
+  });
   return {
     carrier: LUCAMS_CARRIER,
     carrierName: LUCAMS_CARRIER_NAME,
     fleteCop: settings.priceCop,
-    deliveryDays: sameDay ? 0 : 1,
+    deliveryDays,
     contraentrega: false,
     // El quoteId amarra la oferta a la zona: queda sellado en el offersToken y
     // la re-validación exige match exacto (anti-manipulación). Con cityCode

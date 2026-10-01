@@ -61,8 +61,10 @@ export function LucamsShippingSection({
             ))}
           </select>
           <span className="text-brand-muted mt-1 block text-xs font-normal">
-            Pedidos antes de esta hora (Colombia) se prometen «Entrega hoy»; después, «Entrega
-            mañana».
+            Pedidos antes de esta hora (Colombia) entran a producción el mismo día; a esta hora o
+            después, el siguiente día hábil. La entrega es el día que termina la fabricación:
+            «Entrega hoy» solo aplica a productos listos (sin fabricación pendiente) pedidos antes
+            de la hora límite.
           </span>
         </label>
       </div>
@@ -72,8 +74,10 @@ export function LucamsShippingSection({
           Zonas de entrega habilitadas
         </legend>
         <p className="text-brand-muted mb-2 text-xs">
-          El envío propio solo se ofrece si la zona del cliente está marcada aquí. El on/off del
-          servicio se maneja en la lista de transportadoras de arriba.
+          Estas zonas solo controlan si la oferta «Envío Lucam&rsquo;s» aparece en el paso de envío
+          del checkout. La localidad se pide siempre como dato de dirección en el paso de datos,
+          haya o no zonas habilitadas. El on/off del servicio se maneja en la lista de
+          transportadoras de arriba.
         </p>
         <div className="space-y-3">
           {LUCAMS_ZONE_CITIES.map((city) => (
