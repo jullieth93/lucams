@@ -1,5 +1,5 @@
 /*
- * /mi-cuenta/perfil — Editar datos del perfil (nombre + teléfono).
+ * /mi-cuenta/perfil — Editar datos del perfil (nombre + teléfono + documento DIAN).
  * El correo no es editable acá (es la identidad de la cuenta).
  */
 
@@ -51,7 +51,10 @@ export default async function PerfilPage() {
             firstName: customer.firstName ?? "",
             lastName: customer.lastName ?? "",
             phone: customer.phone ?? "",
+            documentType: customer.documentType ?? "",
+            documentNumber: customer.documentNumber ?? "",
           }}
+          texts={texts.perfil}
         />
       </div>
     </div>

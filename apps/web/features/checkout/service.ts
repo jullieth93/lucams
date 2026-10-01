@@ -586,6 +586,45 @@ export async function finalizeCheckout(input: {
     );
   }
 
+  // T7 (2026-10-01) — Persistir el documento DIAN en el PERFIL del Customer.
+  // El checkout lo captura (contacto, o facturación si pidió documento de venta)
+  // pero solo llegaba al snapshot de la Order: el prefill de checkout y el
+  // Customer 360 lo leían siempre vacíos (circuito muerto). El punto es acá —
+  // DESPUÉS de crear la orden y best-effort — y no dentro de createOrderFromCart:
+  // esa tx ya es densa (cupón, stock, reconciliación) y se reuso en caminos
+  // idempotentes; la escritura del perfil no es parte del invariante del pedido
+  // y no debe alargar la transacción ni romper el pago si falla. Solo se escribe
+  // cuando AMBOS campos están vacíos: el updateMany condicional es atómico, así
+  // nunca pisa un documento ya guardado (ni en carrera con /mi-cuenta/perfil).
+  // Fuente: el documento del contacto; si no hay, el de facturación.
+  const profileDoc =
+    state.contact.documentType && state.contact.documentNumber
+      ? { documentType: state.contact.documentType, documentNumber: state.contact.documentNumber }
+      : billing.wantsInvoice && billing.documentType && billing.documentNumber
+        ? { documentType: billing.documentType, documentNumber: billing.documentNumber }
+        : null;
+  if (ctx.customerId && profileDoc) {
+    try {
+      const persisted = await prisma.customer.updateMany({
+        where: { id: ctx.customerId, documentType: null, documentNumber: null },
+        data: { ...profileDoc, updatedBy: ctx.customerId },
+      });
+      if (persisted.count > 0) {
+        logger.info({
+          event: "checkout.finalize.customer_document_saved",
+          customerId: ctx.customerId,
+          documentType: profileDoc.documentType,
+        });
+      }
+    } catch (err) {
+      logger.warn({
+        event: "checkout.finalize.customer_document_save_fail",
+        customerId: ctx.customerId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   // 2. Contraentrega (COD): no hay pago online. Confirmamos la orden AHORA reusando el
   //    saga battle-tested (commit stock + guía Aveonline con contraentrega + valor a
   //    recaudar + email). El courier cobra el total en efectivo al entregar y lo remite.

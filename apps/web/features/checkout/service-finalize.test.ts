@@ -24,7 +24,7 @@ const { prisma, createOrderFromCart, assertStockAvailable, checkoutState } = vi.
       update: vi.fn(),
     },
     productVariant: { findMany: vi.fn(async () => []) },
-    customer: { findFirst: vi.fn(async () => null) },
+    customer: { findFirst: vi.fn(async () => null), updateMany: vi.fn(async () => ({ count: 0 })) },
   },
   createOrderFromCart: vi.fn(),
   assertStockAvailable: vi.fn(async () => {}),
@@ -91,6 +91,7 @@ import {
   fingerprintCartItems,
 } from "./service";
 import { InsufficientStockError, OrderAlreadyPaidError } from "@/features/orders/errors";
+import { getPaymentProvider } from "@/features/payments/provider";
 
 const CART_ITEMS = [{ variantId: "v1", qty: 2, unitPrice: 10_000, productName: "Imán Nevera" }];
 
@@ -183,6 +184,68 @@ describe("finalizeCheckout — OrderAlreadyPaidError (carrera TOCTOU)", () => {
     );
     expect(err.code).toBe("ORDER_ALREADY_PAID");
     expect(err.redirectTo).toBe("/");
+  });
+});
+
+describe("finalizeCheckout — persiste el documento DIAN en el perfil (T7)", () => {
+  function mockWompiOk() {
+    createOrderFromCart.mockResolvedValue({
+      id: "ord_1",
+      number: "LCM-2026-0001",
+      total: 25_000,
+      subtotal: 20_000,
+      shipping: 5_000,
+      discount: 0,
+      publicAccessToken: "tok",
+      paymentMethod: "WOMPI",
+    });
+    vi.mocked(getPaymentProvider).mockReturnValue({
+      createCheckout: vi.fn(async () => ({ checkoutUrl: "https://wompi.example/x" })),
+    } as never);
+  }
+
+  it("customer logueado con documento en el contacto: lo guarda SOLO si el perfil está vacío", async () => {
+    cartFixture.customerId = "cust_1";
+    checkoutState.current!.contact = {
+      fullName: "Ana Prueba",
+      email: "ana@example.co",
+      phone: "3001234567",
+      documentType: "CC",
+      documentNumber: "1234567890",
+    };
+    mockWompiOk();
+    prisma.customer.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await finalizeCheckout({ redirectUrl: "https://x.co/gracias" });
+    expect(res.checkoutUrl).toBe("https://wompi.example/x");
+    // updateMany condicional atómico: where documentType/documentNumber null → jamás pisa.
+    expect(prisma.customer.updateMany).toHaveBeenCalledWith({
+      where: { id: "cust_1", documentType: null, documentNumber: null },
+      data: { documentType: "CC", documentNumber: "1234567890", updatedBy: "cust_1" },
+    });
+  });
+
+  it("sin documento en el contacto: cae al de facturación (wantsInvoice)", async () => {
+    cartFixture.customerId = "cust_1";
+    checkoutState.current!.billing = {
+      wantsInvoice: true,
+      documentType: "NIT",
+      documentNumber: "900123456",
+      name: "Empresa SAS",
+    };
+    mockWompiOk();
+
+    await finalizeCheckout({ redirectUrl: "https://x.co/gracias" });
+    expect(prisma.customer.updateMany).toHaveBeenCalledWith({
+      where: { id: "cust_1", documentType: null, documentNumber: null },
+      data: { documentType: "NIT", documentNumber: "900123456", updatedBy: "cust_1" },
+    });
+  });
+
+  it("guest o checkout sin documento: NO escribe en el perfil", async () => {
+    mockWompiOk();
+    await finalizeCheckout({ redirectUrl: "https://x.co/gracias" });
+    expect(prisma.customer.updateMany).not.toHaveBeenCalled();
   });
 });
 
