@@ -640,6 +640,34 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 ---
 
+## Procedimientos operativos frecuentes
+
+### Procedimiento: Reembolso de un pedido (dinero 100% manual)
+
+Qué hace el SISTEMA cuando reembolsas desde `/admin/pedidos/[number]` → "Reembolsar pedido…"
+(requiere SUPERADMIN + MFA reciente + checkbox "el dinero ya fue devuelto"):
+
+1. **Tú primero mueves el dinero, a mano**: Wompi → dashboard → transacción → "Devolver"
+   (tarjeta/billetera), o transferencia bancaria si el pedido fue contraentrega (COD — no
+   existe transacción Wompi que revertir). NO hay llamada automática a la API de Wompi:
+   el sistema nunca mueve plata.
+2. Con el checkbox marcado, la acción registra de forma **atómica** (una sola transacción DB):
+   - `Order.status = REFUNDED` con `refundedAt/By`, motivo y monto total del pedido.
+   - **Stock repuesto** de cada variante (revert del decremento del pago, idempotente).
+   - **Cupón liberado** si el pedido usó uno (vuelve a estar disponible para el cliente).
+   - Auditoría `order.refund` con quién confirmó el dinero.
+3. **Email automático al cliente** ("Reembolso procesado — pedido \<n\>") con monto, motivo
+   opcional y la nota de que la acreditación puede tardar unos días hábiles (esa espera la
+   define Wompi/el banco, no nosotros).
+4. Lo que el sistema **NO hace**: anular la guía Aveonline (si ya se generó, gestión manual),
+   ni tocar retractos (flujo aparte: `/admin/retractos`, también con dinero manual), ni
+   reembolsos parciales (siempre es por el total del pedido).
+
+Si el email no llega, ver "Incidente: Email no llega al cliente". El registro del reembolso
+NO depende del email (es best-effort): la orden ya quedó REFUNDED aunque el correo falle.
+
+---
+
 ## Runbook de incidentes
 
 > Cada incidente debe quedar registrado en un archivo `docs/incidents/YYYY-MM-DD-titulo.md` con: descripción, impacto, root cause, mitigación, prevención.
