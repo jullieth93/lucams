@@ -105,6 +105,10 @@ regexes = [
     '''re_mode-por-flag''',
     # Token ficticio de las previews de email (apps/web/app/internal/correos/page.tsx).
     '''a1b2c3d4e5f6''',
+    # Secret dummy CSRF de los tests del token de reseña (features/reviews/*.test.ts,
+    # 2026-10-01): valor de fixture para firmar/verificar tokens HMAC en unitarios,
+    # nunca sale del proceso de test. Prefijo "test-" explícito por convención.
+    '''test-csrf-secret-[0-9a-f]+''',
     # IDs públicos de advisories (GHSA-…) citados en docs y comentarios.
     '''GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}''',
 ]
