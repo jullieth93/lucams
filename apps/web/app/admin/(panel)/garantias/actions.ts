@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
+import { prisma } from "@/lib/db";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
@@ -13,7 +14,7 @@ import {
   WARRANTY_RESOLUTIONS,
   type WarrantyResolution,
 } from "@/features/warranty/service";
-import { notifyWarrantyResolved } from "@/features/warranty/notify";
+import { notifyWarrantyRejected, notifyWarrantyResolved } from "@/features/warranty/notify";
 
 type St = { error?: string; success?: string } | null;
 
@@ -92,7 +93,21 @@ export async function resolveWarrantyAction(_p: St, fd: FormData): Promise<St> {
       logger.warn({ event: "admin.warranty.notify_resolved_fail", id, err: String(e) }),
     );
     await audit(g.adminId, "warranty.resolve", id);
-    return { success: "Garantía resuelta — cliente avisado." };
+    // Remedio REFUND: el dinero se emite MANUAL en Wompi/transferencia y queda
+    // fuera de todo tracking — el aviso en pantalla es el recordatorio operativo
+    // (además del aviso persistente junto al estado en la lista).
+    const closed = await prisma.warrantyClaim.findUnique({
+      where: { id },
+      select: {
+        resolutionType: true,
+        orderItem: { select: { order: { select: { number: true } } } },
+      },
+    });
+    const refundReminder =
+      closed?.resolutionType === "REFUND"
+        ? ` ⚠️ Devolución del dinero: emítela manual en Wompi/transferencia y deja constancia en el pedido ${closed.orderItem.order.number} — no queda en ningún tracking automático.`
+        : "";
+    return { success: `Garantía resuelta — cliente avisado.${refundReminder}` };
   } catch (err) {
     return fail("resolve", id, err);
   }
@@ -107,8 +122,13 @@ export async function rejectWarrantyAction(_p: St, fd: FormData): Promise<St> {
   if (!note) return { error: "Escribe el motivo del rechazo." };
   try {
     await rejectWarrantyClaim(id, g.adminId, note);
+    // Aviso al cliente con el motivo del rechazo (best-effort) — antes el
+    // REJECTED no notificaba en ninguna vista y el cliente nunca se enteraba.
+    await notifyWarrantyRejected(id).catch((e) =>
+      logger.warn({ event: "admin.warranty.notify_rejected_fail", id, err: String(e) }),
+    );
     await audit(g.adminId, "warranty.reject", id, { note });
-    return { success: "Reclamo rechazado." };
+    return { success: "Reclamo rechazado — cliente avisado." };
   } catch (err) {
     return fail("reject", id, err);
   }

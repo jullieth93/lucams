@@ -4,7 +4,7 @@
  * Matriz ruta→roles derivada de SECURITY.md §113-118:
  *   - SUPERADMIN: todo.
  *   - MANAGER:    catálogo (productos/inventario/categorías/ocasiones), pedidos,
- *                 garantías, reclamos, reseñas, clientes.
+ *                 garantías, reseñas, clientes.
  *   - FULFILLMENT: solo pedidos (cambio de estado, descarga PNG).
  *   - CMS_EDITOR: solo contenido del sitio (CMS v2 en /admin/contenido y
  *                 /admin/email-templates). NO entra a nada más.
@@ -59,8 +59,7 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   // lo que su página exige — antes ambas eran ALL y el rol rebotaba con ?denied=1.
   // Garantías: página y actions piden SUPER+MANAGER → CATALOG. Retractos: página y
   // actions piden SUPER → declarado explícito (equivale al deny-by-default, pero
-  // queda visible en la matriz). /admin/reclamos (bandeja aparte, sí existe) queda
-  // MANAGER_UP más abajo, igual que sus actions.
+  // queda visible en la matriz).
   { prefix: "/admin/garantias", roles: CATALOG },
   { prefix: "/admin/retractos", roles: ["SUPERADMIN"] },
   { prefix: "/admin/soporte", roles: CATALOG },
@@ -69,7 +68,11 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   // directa (histórico Etapa 1), así que la matriz se conserva.
   { prefix: "/admin/cotizaciones", roles: CATALOG },
   // MANAGER_UP (= CATALOG): rutas cuyas actions ya exigen ADMIN_ROLE_SETS.MANAGER_UP
-  // (reclamos, diseños/galería, fichas y plantillas del Estudio).
+  // (diseños/galería, fichas y plantillas del Estudio).
+  // 2026-10-01: /admin/reclamos ya no es módulo — se fusionó en /admin/garantias y
+  // la ruta es redirect permanente (308). Se CONSERVA el prefix con el mismo set
+  // (CATALOG) para que un MANAGER con el link viejo siga el redirect en vez de
+  // caer en el deny-by-default (?denied=1) — mismo criterio que /admin/mensajes.
   { prefix: "/admin/reclamos", roles: CATALOG },
   // N-09: /admin/mensajes ya no es módulo — es redirect permanente a /admin/soporte.
   // Se CONSERVA el prefix con el mismo set de /admin/soporte para que un MANAGER con

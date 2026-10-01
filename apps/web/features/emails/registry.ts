@@ -2,7 +2,7 @@
  * Registry de plantillas de email transaccional (módulo /admin/email-templates,
  * Fase 4 — feedback Lucy 2026-09-18).
  *
- * Catálogo ÚNICO de las 26 plantillas de features/emails/templates: id (nombre
+ * Catálogo ÚNICO de las 27 plantillas de features/emails/templates: id (nombre
  * del archivo), nombre legible, cuándo se envía (de los headers de cada
  * plantilla), la función render ya envuelta en `withOverrides` (los textos
  * clave editados en el admin aplican sin tocar el copy base) y SAMPLE DATA
@@ -57,6 +57,7 @@ import { supportTicketInternalEmail } from "./templates/support-ticket-internal"
 import { supportTicketReceivedEmail } from "./templates/support-ticket-received";
 import { supportTicketReplyEmail } from "./templates/support-ticket-reply";
 import { warrantyReceivedEmail } from "./templates/warranty-received";
+import { warrantyRejectedEmail } from "./templates/warranty-rejected";
 import { warrantyResolvedEmail } from "./templates/warranty-resolved";
 
 /** Resultado común de todas las plantillas (support-internal/closed suman replyTo). */
@@ -359,10 +360,14 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
       orderNumber: ORDER,
       customerName: CUSTOMER,
       products: [
-        { name: "Fotoimanes Cuadrados", slug: "fotoimanes-cuadrados" },
-        { name: "Set Corazón", slug: "set-corazon" },
+        {
+          id: "cprod0000000000000000001",
+          name: "Fotoimanes Cuadrados",
+          slug: "fotoimanes-cuadrados",
+        },
+        { id: "cprod0000000000000000002", name: "Set Corazón", slug: "set-corazon" },
       ],
-      publicTrackingToken: TOKEN,
+      reviewToken: TOKEN,
       unsubscribeUrl: "https://lucamsshop.com/unsubscribe?u=ejemplo",
     },
   }),
@@ -491,6 +496,22 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
       note: "Te enviamos el reemplazo sin costo. Lo despachamos en máximo 2 días hábiles; desde ahí, el tiempo final lo pone la transportadora según tu ciudad.",
     },
   }),
+  define({
+    id: "warranty-rejected",
+    name: "Garantía rechazada",
+    group: "Soporte y garantía",
+    description:
+      "Aviso al cliente de que su reclamo de garantía no procede, con el motivo (mal uso, fuera de garantía, daño no cubierto — Ley 1480).",
+    render: warrantyRejectedEmail,
+    sampleData: {
+      customerName: CUSTOMER,
+      claimId: "wr_123456",
+      orderNumber: ORDER,
+      productName: "Fotoimanes Cuadrados",
+      reason:
+        "El daño reportado es por un golpe posterior a la entrega, no por un defecto de fabricación, así que la garantía legal no lo cubre.",
+    },
+  }),
 
   // ─────────────────────── Cuenta ───────────────────────
   define({
@@ -611,6 +632,10 @@ export const renderWarrantyReceivedEmail = withOverrides(
 export const renderWarrantyResolvedEmail = withOverrides(
   "warranty-resolved",
   warrantyResolvedEmail,
+);
+export const renderWarrantyRejectedEmail = withOverrides(
+  "warranty-rejected",
+  warrantyRejectedEmail,
 );
 
 export const renderQuoteAdminNotificationEmail = withOverrides(

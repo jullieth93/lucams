@@ -132,3 +132,51 @@ export async function buildWhatsAppUrl(
   const message = await buildWhatsAppMessage(ctx);
   return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
 }
+
+// ─────────────────────── Teléfono del CLIENTE ───────────────────────
+// Ojo: `getWhatsAppNumber`/`buildWhatsAppUrl` apuntan al WhatsApp DEL NEGOCIO
+// (buzón de Lucy). Los helpers de abajo son para escribir/llamar AL CLIENTE
+// con el teléfono que dejó en el checkout o en la cotización.
+
+/**
+ * Normaliza el teléfono de un cliente a dígitos con indicativo de país, apto
+ * para wa.me y tel: (E.164 sin el '+').
+ *
+ * Supuestos (contexto Lucams, tienda es-CO):
+ *  - El checkout valida móvil colombiano `^3\d{9}$` (10 dígitos, empieza en 3)
+ *    y la cotización persiste 10 dígitos CO — esos casos SIEMPRE llevan el
+ *    indicativo 57 antepuesto, que es lo que wa.me exige (bug sistémico: los
+ *    links salían como wa.me/300… sin 57 y WhatsApp los rechaza).
+ *  - Si el número YA trae indicativo (57 + 10 dígitos = 12, u otro código de
+ *    país plausible — E.164 admite hasta 15 dígitos), se respeta tal cual.
+ *  - Cualquier otra cosa (basura, fijo de 7 dígitos, longitudes raras) NO se
+ *    adivina: devuelve null y el caller OCULTA el link — mejor sin link que
+ *    un link roto.
+ */
+export function normalizeCustomerPhone(phone: string): string | null {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 10 && digits.startsWith("3")) return `57${digits}`;
+  // 57 + 10 dígitos, o internacional plausible (11–15 dígitos E.164).
+  if (digits.length >= 11 && digits.length <= 15) return digits;
+  return null;
+}
+
+/**
+ * Link wa.me al WhatsApp del CLIENTE con mensaje opcional pre-armado.
+ * null si el teléfono no es parseable con confianza (ver normalizeCustomerPhone).
+ */
+export function customerWaLink(phone: string, text?: string): string | null {
+  const number = normalizeCustomerPhone(phone);
+  if (!number) return null;
+  const base = `https://wa.me/${number}`;
+  return text ? `${base}?text=${encodeURIComponent(text)}` : base;
+}
+
+/**
+ * Link tel:+<e164> para llamar al CLIENTE.
+ * null si el teléfono no es parseable con confianza (ver normalizeCustomerPhone).
+ */
+export function customerTelLink(phone: string): string | null {
+  const number = normalizeCustomerPhone(phone);
+  return number ? `tel:+${number}` : null;
+}

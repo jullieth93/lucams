@@ -26,6 +26,7 @@ import { LUCAMS_CARRIER, carrierDisplayName } from "@/features/shipping/lucams-s
 import { lucamsDeliveryDays, maxProductionDaysOf } from "@/lib/delivery-estimate";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { formatCOP } from "@/lib/format";
+import { customerWaLink } from "@/lib/wa";
 import { OrderActions } from "./order-actions";
 
 export const metadata: Metadata = { title: "Detalle pedido" };
@@ -141,6 +142,14 @@ export default async function AdminPedidoDetallePage({
     minute: "2-digit",
   });
   const isSimulatedTracking = order.trackingNumber?.startsWith("TEST-") ?? false;
+
+  // Contacto directo: wa.me con el teléfono del comprador (normalizado con
+  // indicativo 57 — lib/wa) y mensaje pre-armado con el número de pedido
+  // (Lucy 2026-08-11). null = teléfono no parseable → se oculta el botón.
+  const customerWa = customerWaLink(
+    order.phone,
+    `Hola ${ship.fullName ?? ""}, te escribo de Lucams por tu pedido ${order.number}. `,
+  );
 
   return (
     <AdminPage>
@@ -340,11 +349,9 @@ export default async function AdminPedidoDetallePage({
               </dl>
               {/* Contacto directo: wa.me con el teléfono del comprador y mensaje
                   pre-armado con el número de pedido (Lucy 2026-08-11). */}
-              {order.phone.replace(/\D/g, "").length >= 10 && (
+              {customerWa && (
                 <a
-                  href={`https://wa.me/${order.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
-                    `Hola ${ship.fullName ?? ""}, te escribo de Lucams por tu pedido ${order.number}. `,
-                  )}`}
+                  href={customerWa}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-brand-purple-dark hover:bg-brand-purple/5 mt-3 inline-flex items-center gap-1.5 rounded-md border border-emerald-600/30 bg-emerald-50 px-3 py-1.5 text-xs font-semibold"

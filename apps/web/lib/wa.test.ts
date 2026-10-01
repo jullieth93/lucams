@@ -31,7 +31,10 @@ vi.mock("@/lib/cms", () => ({
 import {
   buildWhatsAppMessage,
   buildWhatsAppUrl,
+  customerTelLink,
+  customerWaLink,
   getWhatsAppNumber,
+  normalizeCustomerPhone,
   type WhatsAppContext,
 } from "./wa";
 
@@ -333,4 +336,79 @@ describe("buildWhatsAppUrl — cobertura de todos los kinds (round-trip decode)"
       expect(decodeURIComponent(text)).toBe(expectedDecoded);
     },
   );
+});
+
+// =============================================================================
+// Teléfono del CLIENTE (normalizeCustomerPhone / customerWaLink / customerTelLink)
+// =============================================================================
+// Bug sistémico que cubren: el checkout guarda 10 dígitos CO (^3\d{9}$) y los
+// links salían como wa.me/300… SIN el indicativo 57 → WhatsApp los rechaza.
+// Estos helpers son puros (no tocan el CMS) → el mock de arriba no influye.
+
+describe("normalizeCustomerPhone", () => {
+  it("10 dígitos CO empezando en 3 → antepone 57", () => {
+    expect(normalizeCustomerPhone("3002182026")).toBe("573002182026");
+  });
+
+  it("ya trae 57 (12 dígitos) → se respeta tal cual", () => {
+    expect(normalizeCustomerPhone("573002182026")).toBe("573002182026");
+  });
+
+  it("con +57, espacios y guiones → strip no-dígitos y queda 57 + 10", () => {
+    expect(normalizeCustomerPhone("+57 300 218-2026")).toBe("573002182026");
+    expect(normalizeCustomerPhone("+57 (300) 218 2026")).toBe("573002182026");
+  });
+
+  it("formato coloquial con espacios (300 218 2026) → 57 + dígitos", () => {
+    expect(normalizeCustomerPhone("300 218 2026")).toBe("573002182026");
+  });
+
+  it("internacional plausible (>10 dígitos, otro código de país) → se respeta", () => {
+    // +1 (US/CA) 555 123 4567 → 11 dígitos.
+    expect(normalizeCustomerPhone("+1 555 123 4567")).toBe("15551234567");
+    // +34 (ES) 612 345 678 → 11 dígitos.
+    expect(normalizeCustomerPhone("+34 612 345 678")).toBe("34612345678");
+  });
+
+  it("basura / no parseable con confianza → null (el caller oculta el link)", () => {
+    expect(normalizeCustomerPhone("")).toBeNull();
+    expect(normalizeCustomerPhone("abc")).toBeNull();
+    expect(normalizeCustomerPhone("12345")).toBeNull();
+    // 10 dígitos que NO empiezan en 3: no es el móvil CO del checkout → no se adivina.
+    expect(normalizeCustomerPhone("6012345678")).toBeNull();
+    // Demasiado largo para E.164 (>15 dígitos).
+    expect(normalizeCustomerPhone("5730021820269999")).toBeNull();
+  });
+});
+
+describe("customerWaLink", () => {
+  it("10 dígitos CO → wa.me/57… (el fix del bug)", () => {
+    expect(customerWaLink("3002182026")).toBe("https://wa.me/573002182026");
+  });
+
+  it("con mensaje → querystring text= encodeURIComponent", () => {
+    const url = customerWaLink("300 218 2026", "Hola Ana, te escribo de Lucams.");
+    expect(url).toBe(
+      "https://wa.me/573002182026?text=" + encodeURIComponent("Hola Ana, te escribo de Lucams."),
+    );
+  });
+
+  it("teléfono no parseable → null (mejor sin link que link roto)", () => {
+    expect(customerWaLink("no-es-un-telefono")).toBeNull();
+    expect(customerWaLink("123")).toBeNull();
+  });
+});
+
+describe("customerTelLink", () => {
+  it("10 dígitos CO → tel:+57…", () => {
+    expect(customerTelLink("3002182026")).toBe("tel:+573002182026");
+  });
+
+  it("ya internacional → tel:+<tal cual>", () => {
+    expect(customerTelLink("+1 555 123 4567")).toBe("tel:+15551234567");
+  });
+
+  it("teléfono no parseable → null", () => {
+    expect(customerTelLink("xyz")).toBeNull();
+  });
 });

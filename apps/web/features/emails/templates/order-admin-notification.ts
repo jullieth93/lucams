@@ -15,12 +15,13 @@
 
 import { renderEmailLayout, escapeHtml, ctaButton, getSiteUrl } from "../layout";
 import { formatCOP, formatCityDept } from "@/lib/format";
+import { customerTelLink, customerWaLink } from "@/lib/wa";
 
 export type OrderAdminNotificationData = {
   orderId: string;
   orderNumber: string;
   customerName: string;
-  /** Teléfono del checkout tal cual (se sanitiza a dígitos para wa.me). */
+  /** Teléfono del checkout tal cual (10 dígitos CO; el indicativo 57 lo pone lib/wa). */
   customerPhone: string;
   customerEmail: string;
   city: string;
@@ -46,11 +47,13 @@ export type OrderAdminNotificationData = {
 export async function orderAdminNotificationEmail(data: OrderAdminNotificationData) {
   const siteUrl = await getSiteUrl();
   const adminUrl = `${siteUrl}/admin/pedidos/${data.orderNumber}`;
-  const waDigits = data.customerPhone.replace(/\D/g, "");
-  const waText = encodeURIComponent(
+  // Links al cliente con el indicativo de país resuelto (lib/wa): el checkout
+  // guarda 10 dígitos CO y wa.me/tel: exigen el 57. null = no parseable → sin link.
+  const customerWaUrl = customerWaLink(
+    data.customerPhone,
     `Hola ${data.customerName}, te escribo de Lucams por tu pedido ${data.orderNumber}. `,
   );
-  const customerWaUrl = waDigits ? `https://wa.me/${waDigits}?text=${waText}` : null;
+  const customerTelUrl = customerTelLink(data.customerPhone);
   const location = formatCityDept(data.city, data.department);
   const paymentLabel = data.paymentMethod === "COD" ? "Contraentrega" : "Wompi (online)";
 
@@ -70,7 +73,11 @@ export async function orderAdminNotificationEmail(data: OrderAdminNotificationDa
 <h1 style="margin:0 0 12px 0;font-size:20px;">📦 Nuevo pedido ${escapeHtml(data.orderNumber)}</h1>
 <table cellpadding="6" cellspacing="0" border="0" style="font-size:14px;width:100%;border-collapse:collapse;">
   <tr><td style="color:#3D2E5C;opacity:0.6;width:110px;">Cliente:</td><td><strong>${escapeHtml(data.customerName)}</strong></td></tr>
-  <tr><td style="color:#3D2E5C;opacity:0.6;">Teléfono:</td><td><a href="tel:+${waDigits}" style="color:#3D2E5C;">${escapeHtml(data.customerPhone)}</a></td></tr>
+  <tr><td style="color:#3D2E5C;opacity:0.6;">Teléfono:</td><td>${
+    customerTelUrl
+      ? `<a href="${customerTelUrl}" style="color:#3D2E5C;">${escapeHtml(data.customerPhone)}</a>`
+      : escapeHtml(data.customerPhone)
+  }</td></tr>
   ${
     customerWaUrl
       ? `<tr><td style="color:#3D2E5C;opacity:0.6;">WhatsApp:</td><td><a href="${customerWaUrl}" style="display:inline-block;background:#25D366;color:#ffffff;text-decoration:none;font-weight:700;font-size:12px;padding:4px 10px;border-radius:6px;">✆ Abrir chat</a></td></tr>`
