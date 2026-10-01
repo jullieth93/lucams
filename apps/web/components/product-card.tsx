@@ -1,9 +1,9 @@
 /*
  * ProductCard — tarjeta usada en /productos y módulos "destacados".
  *
- * Sin imágenes reales todavía: fallback con gradient + nombre + icon.
- * Cuando se conecten imágenes (Supabase Storage) se reemplaza el block
- * placeholder por <Image src={product.images[0]} ... />.
+ * Imagen: primera de product.images vía ProductCardImage (wrapper client con
+ * fallback onError, T5); sin imágenes (o si la URL falla) → placeholder Sparkles
+ * sobre el gradiente de marca.
  *
  * Navegación: patrón stretched-link INVERSO — el <Link> es un overlay
  * absoluto que cubre toda la card (zona clickeable idéntica a antes) en
@@ -12,11 +12,11 @@
  * el corazón va por ENCIMA del overlay con z-10 y su click no navega.
  */
 
-import Image from "next/image";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { formatCOP } from "@/lib/format";
 import { WishlistButton } from "@/components/wishlist-button";
+import { ProductCardImage } from "@/components/product-card-image";
 import type { StorefrontProductCard } from "@/features/products/public-service";
 
 export function ProductCard({
@@ -41,16 +41,9 @@ export function ProductCard({
     <div className="group border-brand-purple/10 relative flex flex-col overflow-hidden rounded-xl border bg-white transition-shadow hover:shadow-lg">
       <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square w-full overflow-hidden bg-gradient-to-br">
         {product.images.length > 0 ? (
-          <Image
-            src={product.images[0]}
-            alt=""
-            fill
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            loading="lazy"
-            className={`object-cover transition-transform duration-300 group-hover:scale-105 ${
-              outOfStock ? "opacity-50 grayscale" : ""
-            }`}
-          />
+          // Wrapper client (T5): onError → el mismo placeholder Sparkles de "sin imágenes",
+          // para que una URL rota (404) no quede como imagen quebrada.
+          <ProductCardImage src={product.images[0]} outOfStock={outOfStock} />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <Sparkles className="text-brand-muted h-12 w-12" />

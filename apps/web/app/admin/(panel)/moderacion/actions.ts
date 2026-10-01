@@ -10,8 +10,37 @@ import { redirect } from "next/navigation";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { approveDesign, rejectDesign } from "@/features/moderation/service";
+import {
+  approveDesign,
+  getDesignProductionPaths,
+  rejectDesign,
+} from "@/features/moderation/service";
 import { sendDesignRejectedEmails } from "@/features/moderation/emails";
+import { getProductionAssetSignedUrls } from "@/lib/storage";
+
+export type SignedProductionPiece = { path: string; url: string };
+
+/**
+ * Firma bajo demanda las piezas reales de producción de UN diseño (T4, ADR-063 T2 revisitado).
+ * Antes la página de la cola firmaba TODOS los productionUrls de la grilla al renderizar:
+ * PNGs 300 DPI de 2-5 MB c/u (hasta 24 por diseño) descargados por el navegador aunque Lucy
+ * solo revisara un par. Ahora la grilla muestra el previewUrl (mosaico público ~50-150 KB) y
+ * el modal "Ver piezas reales" llama esta acción, que firma SOLO las rutas de ese designId.
+ * TTL 1h (mismo que la firma en lote anterior); el path se devuelve para rotular cada pieza.
+ */
+export async function getDesignProductionSignedUrlsAction(
+  designId: string,
+): Promise<SignedProductionPiece[]> {
+  await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+  const id = designId.trim();
+  if (!id) return [];
+  const paths = await getDesignProductionPaths(id);
+  const signed = await getProductionAssetSignedUrls(paths);
+  return paths.flatMap((path) => {
+    const url = signed.get(path);
+    return url ? [{ path, url }] : [];
+  });
+}
 
 export async function approveDesignAction(formData: FormData): Promise<void> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });

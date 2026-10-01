@@ -112,6 +112,20 @@ export async function listPendingModeration(): Promise<PendingModerationDesign[]
   }));
 }
 
+/**
+ * Paths de las piezas reales de producción de UN diseño (bucket privado production-assets).
+ * La cola de moderación ya no firma los PNGs de todos los diseños al renderizar (eran 2-5 MB
+ * por pieza × hasta 24 por diseño): la grilla muestra el previewUrl y el admin pide las piezas
+ * reales bajo demanda (modal "ver piezas") — la server action firma solo estas rutas.
+ */
+export async function getDesignProductionPaths(designId: string): Promise<string[]> {
+  const design = await prisma.design.findUnique({
+    where: { id: designId },
+    select: { productionUrls: true },
+  });
+  return design?.productionUrls ?? [];
+}
+
 /** Aprueba un diseño para producción. Idempotente en la práctica (re-aprobar es no-op semántico). */
 export async function approveDesign(designId: string, adminId: string): Promise<void> {
   await prisma.design.update({
