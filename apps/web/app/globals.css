@@ -510,12 +510,24 @@ html.cms-edit-mode [data-cms-key]:hover {
 
   [data-admin-table].admin-cards-on tbody > tr > td {
     display: flex;
+    /* 2026-10-01 — flex-wrap: sin él, celdas con más de una pieza (form input+botón
+       + valor guardado, p. ej. "Costo unitario" en /admin/costos, receta de
+       materiales, editor de stock) desbordaban la tarjeta en móvil: el rótulo
+       (::before, hasta 45%) + el contenido en una sola fila nowrap superaban el
+       ancho útil. Con wrap, el excedente cae a una segunda fila dentro de la
+       tarjeta. `min-w-0` en los hijos permite que forms/inputs se encojan en vez
+       de imponer su min-width:auto. Una sola palanca cubre todas las AdminTable. */
+    flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 1rem;
+    gap: 0.5rem 1rem;
     padding: 0.625rem 0;
     border-bottom: 1px solid color-mix(in srgb, var(--brand-purple) 8%, transparent);
     text-align: right;
+  }
+
+  [data-admin-table].admin-cards-on tbody > tr > td > * {
+    min-width: 0;
   }
 
   [data-admin-table].admin-cards-on tbody > tr > td:last-child {
