@@ -11,8 +11,11 @@
  *   - orden: recent | price-asc | price-desc | featured | name
  *
  * SSR puro: cada combinación de filtros consulta DB. listStorefront-
- * Products acepta todos los filtros. Si el catálogo crece y se vuelve
- * lento, sumar unstable_cache con tag "products" invalidado en admin.
+ * Products acepta todos los filtros. Las consultas ESTRUCTURALES
+ * (categorías, rango de precios, ocasiones) YA van con data cache
+ * cross-request tag "catalog" (2026-10-01, ver public-service.ts y
+ * lib/catalog.ts); los LISTADOS quedan sin cache a propósito (exponen
+ * inStock, que cambia por-venta — ver el header de public-service.ts).
  */
 
 import type { Metadata } from "next";

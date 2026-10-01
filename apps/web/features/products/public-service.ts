@@ -13,16 +13,58 @@
  *
  * Cache (auditoría 2026-07-13): getStorefrontProductBySlug usa React cache() → dedup por
  * request (la PDP lo llama en generateMetadata + render). NO se usa unstable_cache (data cache
- * cross-request) en los listados a propósito: exponen `inStock`, que cambia en CADA venta
- * (decremento de stock en la saga) → cachearlo mostraría "Agotado" stale. El listado se apoya
+ * cross-request) en los LISTADOS de productos a propósito: exponen `inStock`, que cambia en CADA
+ * venta (decremento de stock en la saga) → cachearlo mostraría "Agotado" stale. El listado se apoya
  * en el route cache (revalidatePath("/productos") en las mutaciones admin).
+ *
+ * 2026-10-01 (perf) — las CONSULTAS ESTRUCTURALES sí van con data cache cross-request:
+ * listStorefrontCategories y getStorefrontPriceRange usan `unstable_cache` con el tag
+ * "catalog" de lib/catalog.ts (TTL 1h + invalidación inmediata vía updateTag("catalog"),
+ * que YA disparan todas las mutaciones admin de productos/categorías/ocasiones/stock).
+ * Cambian solo cuando el admin edita el catálogo (no por-venta como el stock) y se
+ * consultan en TODA página (footer + mega-menú + body + metadata) — eran las queries
+ * más repetidas del SSR de home y /productos. Encima se mantiene el React cache()
+ * por-request existente.
  */
 
 import "server-only";
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { STOREFRONT_PRODUCT_WHERE } from "./storefront-visibility";
+
+/* Mismo tag/TTL que lib/catalog.ts: updateTag("catalog") en las mutaciones admin
+   (features/products/service.ts, features/categories/service.ts, stock-admin.ts,
+   ocasiones, cupones, templates) invalida este cache en el acto; el TTL de 1h es
+   la red de seguridad si algo edita la DB por fuera del admin. */
+const CATALOG_TAG = "catalog";
+const CATALOG_TTL = 3600; // 1h — alineado con CATALOG_TTL de lib/catalog.ts
+
+/**
+ * `unstable_cache` con degradación grácil cuando NO hay `incrementalCache` de
+ * Next disponible (fuera de un request/render: vitest sin mock, scripts
+ * standalone). Mismo guard que `cachedCms` de lib/cms.ts: en Next 16 llamar un
+ * `unstable_cache` sin ese contexto lanza el invariante E469; lo capturamos
+ * EXCLUSIVAMENTE y ejecutamos la función cruda. Cualquier otro error se re-lanza.
+ */
+function cachedCatalog<A extends unknown[], R>(
+  fn: (...args: A) => Promise<R>,
+  keyParts: string[],
+): (...args: A) => Promise<R> {
+  const cached = unstable_cache(fn, keyParts, { tags: [CATALOG_TAG], revalidate: CATALOG_TTL });
+  return async (...args: A): Promise<R> => {
+    try {
+      return await cached(...args);
+    } catch (err) {
+      const code = (err as { __NEXT_ERROR_CODE?: string } | null)?.__NEXT_ERROR_CODE;
+      const missingCache =
+        code === "E469" || (err instanceof Error && err.message.includes("incrementalCache"));
+      if (missingCache) return fn(...args);
+      throw err;
+    }
+  };
+}
 
 export type StorefrontProductCard = {
   id: string;
@@ -121,52 +163,64 @@ const STOREFRONT_WHERE = STOREFRONT_PRODUCT_WHERE;
 // porque cache() compara args por referencia (Object.is) y cada call site pasa un objeto literal
 // distinto ({topLevelOnly:true}) → no deduparían. Request-scoped (misma garantía que
 // getStorefrontProductBySlug), sin staleness cross-request.
+//
+// 2026-10-01 (perf) — el fetch+conteo va ADEMÁS en data cache cross-request (tag "catalog",
+// ver el header del módulo): la home y /productos lo consultaban en cada SSR pese a que el
+// árbol de categorías solo cambia cuando el admin edita el catálogo. El filtro topLevelOnly
+// queda en la capa por-request (es un filter barato sobre el árbol ya cacheado).
+const fetchStorefrontCategoryTree = cachedCatalog(
+  async function fetchStorefrontCategoryTree() {
+    // Se consulta SIEMPRE el árbol completo (aunque se pidan solo madres): el
+    // conteo efectivo de una madre necesita los conteos de sus hijas.
+    const all = await prisma.category.findMany({
+      where: {
+        deletedAt: null,
+        isActive: true,
+      },
+      orderBy: [{ order: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        parentId: true,
+        // Roadmap B3 — visual de catálogo (icono lucide + gradiente del home
+        // grid). Null → el componente cae al fallback por slug / default.
+        icon: true,
+        gradient: true,
+        _count: {
+          select: {
+            products: { where: { deletedAt: null, isActive: true } },
+          },
+        },
+      },
+    });
+
+    // Conteo efectivo: hijas = sus directos; madres = directos + hijas activas
+    // (todas las filas de `all` ya son isActive + no borradas). Árbol de 1 nivel.
+    const effectiveCount = new Map<string, number>();
+    for (const c of all) {
+      if (c.parentId === null) effectiveCount.set(c.id, c._count.products);
+    }
+    for (const c of all) {
+      if (c.parentId !== null) {
+        effectiveCount.set(c.id, c._count.products);
+        effectiveCount.set(c.parentId, (effectiveCount.get(c.parentId) ?? 0) + c._count.products);
+      }
+    }
+
+    return all
+      .filter((c) => (effectiveCount.get(c.id) ?? 0) > 0)
+      .map((c) => ({ ...c, _count: { products: effectiveCount.get(c.id) ?? 0 } }));
+  },
+  ["storefront-category-tree"],
+);
+
 const listStorefrontCategoriesCached = cache(async function listStorefrontCategoriesCached(
   topLevelOnly: boolean,
 ) {
-  // Se consulta SIEMPRE el árbol completo (aunque se pidan solo madres): el
-  // conteo efectivo de una madre necesita los conteos de sus hijas.
-  const all = await prisma.category.findMany({
-    where: {
-      deletedAt: null,
-      isActive: true,
-    },
-    orderBy: [{ order: "asc" }, { name: "asc" }],
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      description: true,
-      parentId: true,
-      // Roadmap B3 — visual de catálogo (icono lucide + gradiente del home
-      // grid). Null → el componente cae al fallback por slug / default.
-      icon: true,
-      gradient: true,
-      _count: {
-        select: {
-          products: { where: { deletedAt: null, isActive: true } },
-        },
-      },
-    },
-  });
-
-  // Conteo efectivo: hijas = sus directos; madres = directos + hijas activas
-  // (todas las filas de `all` ya son isActive + no borradas). Árbol de 1 nivel.
-  const effectiveCount = new Map<string, number>();
-  for (const c of all) {
-    if (c.parentId === null) effectiveCount.set(c.id, c._count.products);
-  }
-  for (const c of all) {
-    if (c.parentId !== null) {
-      effectiveCount.set(c.id, c._count.products);
-      effectiveCount.set(c.parentId, (effectiveCount.get(c.parentId) ?? 0) + c._count.products);
-    }
-  }
-
-  return all
-    .filter((c) => (effectiveCount.get(c.id) ?? 0) > 0)
-    .filter((c) => (topLevelOnly ? c.parentId === null : true))
-    .map((c) => ({ ...c, _count: { products: effectiveCount.get(c.id) ?? 0 } }));
+  const all = await fetchStorefrontCategoryTree();
+  return topLevelOnly ? all.filter((c) => c.parentId === null) : all;
 });
 
 export function listStorefrontCategories(opts: { topLevelOnly?: boolean } = {}) {
@@ -334,18 +388,23 @@ export async function listStorefrontProducts(
 /**
  * Min/max precio del catálogo activo — usado para definir los
  * límites del slider de filtro de precio en /productos.
+ * 2026-10-01 (perf): data cache cross-request (tag "catalog") — solo cambia
+ * cuando el admin edita precios/catálogo, no por visita.
  */
-export async function getStorefrontPriceRange(): Promise<{ min: number; max: number }> {
-  const agg = await prisma.product.aggregate({
-    where: STOREFRONT_WHERE,
-    _min: { basePrice: true },
-    _max: { basePrice: true },
-  });
-  return {
-    min: agg._min.basePrice ?? 0,
-    max: agg._max.basePrice ?? 0,
-  };
-}
+export const getStorefrontPriceRange = cachedCatalog(
+  async function getStorefrontPriceRange(): Promise<{ min: number; max: number }> {
+    const agg = await prisma.product.aggregate({
+      where: STOREFRONT_WHERE,
+      _min: { basePrice: true },
+      _max: { basePrice: true },
+    });
+    return {
+      min: agg._min.basePrice ?? 0,
+      max: agg._max.basePrice ?? 0,
+    };
+  },
+  ["storefront-price-range"],
+);
 
 /**
  * Búsqueda fuzzy con tolerancia a typos via pg_trgm similarity.

@@ -18,11 +18,18 @@ import { CmsEditOverlay } from "@/components/cms/cms-edit-overlay";
 import "./globals.css";
 
 /*
- * Fredoka (display) — bubble redondeada, encaja con el logo "LUCAMS" multicolor.
- * Inter (body)     — sans serif estándar e-commerce, con tabular-nums para precios.
- * Caveat (script)  — handwriting kawaii, opción del selector de tipo de letra del
- *                    calendario (Lucy 2026-09-07) — solo título/mes de la tarjeta.
+ * Fuentes de marca GLOBALES (las únicas que paga toda página):
+ *   Fredoka (display) — bubble redondeada, encaja con el logo "LUCAMS" multicolor.
+ *   Inter (body)      — sans serif estándar e-commerce, con tabular-nums para precios.
  * ADR-021: docs/DECISIONS.md
+ *
+ * 2026-10-01 (perf) — las 6 tipografías del selector del calendario del Estudio
+ * (Caveat, Baloo2, Nunito, Patrick Hand, Playfair, DancingScript; ~2 MB de TTF
+ * entre @font-face + preload por página) se movieron al layout de /estudio/*
+ * (app/estudio/fonts.ts + app/estudio/layout.tsx) con carga bajo demanda
+ * (preload: false — el canvas las pide vía document.fonts.load solo si se usan).
+ * Sus CSS vars `--font-*` las define el wrapper `data-studio-fonts` de ese
+ * layout; el canvas las resuelve ahí (calendar-card-preview.ts).
  */
 
 const fredoka = localFont({
@@ -36,52 +43,6 @@ const inter = localFont({
   src: "../assets/fonts/Inter.ttf",
   variable: "--font-inter",
   weight: "100 900",
-  display: "swap",
-});
-
-const caveat = localFont({
-  src: "../assets/fonts/Caveat.ttf",
-  variable: "--font-caveat",
-  weight: "400 700",
-  display: "swap",
-});
-
-// 2026-09-14 (owner) — selector del calendario ampliado a 8 tipos de letra.
-// Cada una: CSS var para el canvas del cliente + TTF en assets/fonts para el
-// render de producción (production-render-canvas). Mismos pesos que usa
-// drawCalendarPage (700 clásico / 700+500 split; Patrick Hand solo tiene 400).
-const baloo2 = localFont({
-  src: "../assets/fonts/Baloo2.ttf",
-  variable: "--font-baloo2",
-  weight: "400 800",
-  display: "swap",
-});
-
-const nunito = localFont({
-  src: "../assets/fonts/Nunito.ttf",
-  variable: "--font-nunito",
-  weight: "200 1000",
-  display: "swap",
-});
-
-const patrick = localFont({
-  src: "../assets/fonts/PatrickHand.ttf",
-  variable: "--font-patrick",
-  weight: "400",
-  display: "swap",
-});
-
-const playfair = localFont({
-  src: "../assets/fonts/PlayfairDisplay.ttf",
-  variable: "--font-playfair",
-  weight: "400 900",
-  display: "swap",
-});
-
-const dancing = localFont({
-  src: "../assets/fonts/DancingScript.ttf",
-  variable: "--font-dancing",
-  weight: "400 700",
   display: "swap",
 });
 
@@ -155,10 +116,7 @@ export default async function RootLayout({
     getSiteSetting("PRIVACY_POLICY_VERSION"),
   ]);
   return (
-    <html
-      lang="es-CO"
-      className={`${fredoka.variable} ${inter.variable} ${caveat.variable} ${baloo2.variable} ${nunito.variable} ${patrick.variable} ${playfair.variable} ${dancing.variable} h-full antialiased`}
-    >
+    <html lang="es-CO" className={`${fredoka.variable} ${inter.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
         {/* Skip-link (WCAG 2.4.1 Bypass Blocks): primer elemento enfocable —
             oculto hasta recibir foco por teclado (Tab), salta al <main id="contenido">

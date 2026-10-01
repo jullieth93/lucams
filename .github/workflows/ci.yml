@@ -459,6 +459,12 @@ jobs:
       - name: Lighthouse CI (autorun — levanta next start :4000)
         run: pnpm lhci
 
+      - name: Lighthouse CI móvil (misma 2 URLs, emulación móvil default)
+        # Segunda corrida con lighthouserc.mobile.js: el gate desktop no cubre el
+        # form factor de la mayoría del tráfico. Performance en WARN 0.4 conservador
+        # (baseline móvil aún no medido — ratchet hacia arriba documentado en el config).
+        run: pnpm lhci:mobile
+
       - name: Subir reportes Lighthouse (si falla)
         if: ${{ failure() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
