@@ -94,7 +94,7 @@ export function GalleryDetailModal({
                   <img
                     src={item.imageUrl}
                     alt={`${item.name} — cara A`}
-                    className="max-h-72 w-full rounded-lg bg-white object-contain ring-brand-purple/10 ring-1"
+                    className="ring-brand-purple/10 max-h-72 w-full rounded-lg bg-white object-contain ring-1"
                   />
                   <figcaption className="text-brand-purple-dark mt-1 text-center text-xs font-semibold">
                     Cara A (frente)
@@ -106,7 +106,7 @@ export function GalleryDetailModal({
                     <img
                       src={item.imageUrlB}
                       alt={`${item.name} — cara B`}
-                      className="max-h-72 w-full rounded-lg bg-white object-contain ring-brand-purple/10 ring-1"
+                      className="ring-brand-purple/10 max-h-72 w-full rounded-lg bg-white object-contain ring-1"
                     />
                     <figcaption className="text-brand-purple-dark mt-1 text-center text-xs font-semibold">
                       Cara B (respaldo)
@@ -126,7 +126,10 @@ export function GalleryDetailModal({
                   <dt className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
                     Producto
                   </dt>
-                  <dd className="text-brand-purple-dark truncate text-xs font-semibold" title={productLabel}>
+                  <dd
+                    className="text-brand-purple-dark truncate text-xs font-semibold"
+                    title={productLabel}
+                  >
                     {productLabel}
                   </dd>
                 </div>

@@ -348,8 +348,7 @@ export function StudioCanvasGrid({
   const [viewportH, setViewportH] = useState<number | null>(null);
   useEffect(() => {
     const isCoarsePointer =
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(pointer: coarse)").matches;
+      typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches;
     let lastWidth: number | null = null;
     const update = () => {
       const w = window.innerWidth;

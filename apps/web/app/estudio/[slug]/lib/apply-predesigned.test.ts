@@ -15,10 +15,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CanvasDataV2 } from "../types";
 import { createStudioStore } from "./store";
-import {
-  applyPredesignedToSlot,
-  applyPredesignedVarietyToEmptySlots,
-} from "./apply-predesigned";
+import { applyPredesignedToSlot, applyPredesignedVarietyToEmptySlots } from "./apply-predesigned";
 import type { PredesignedItem } from "../studio-asset-picker-modal";
 
 const { calls } = vi.hoisted(() => ({

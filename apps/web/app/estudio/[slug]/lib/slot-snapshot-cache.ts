@@ -120,7 +120,15 @@ export function snapshotSlotForPreview(
     const oldest = cache.keys().next().value;
     if (oldest !== undefined) cache.delete(oldest);
   }
-  cache.set(slot.slotIndex, { slot, unitTemplate: ctx.unitTemplate, borderColor, stageW, stageH, fontsStatus, dataUrl });
+  cache.set(slot.slotIndex, {
+    slot,
+    unitTemplate: ctx.unitTemplate,
+    borderColor,
+    stageW,
+    stageH,
+    fontsStatus,
+    dataUrl,
+  });
   return dataUrl;
 }
 
@@ -143,8 +151,9 @@ export function slotSnapshotCacheStats(): { hits: number; misses: number; size: 
 
 // El harness de INP (tmp/inp-audit) lee estos contadores desde la página en dev.
 if (process.env.NODE_ENV === "development" && typeof window !== "undefined") {
-  (window as unknown as { __slotSnapshotCacheStats?: typeof slotSnapshotCacheStats })
-    .__slotSnapshotCacheStats = slotSnapshotCacheStats;
+  (
+    window as unknown as { __slotSnapshotCacheStats?: typeof slotSnapshotCacheStats }
+  ).__slotSnapshotCacheStats = slotSnapshotCacheStats;
 }
 
 /**
@@ -153,9 +162,7 @@ if (process.env.NODE_ENV === "development" && typeof window !== "undefined") {
  * "continuación de interacción"; setTimeout 0 es el fallback universal.
  */
 export function yieldToMain(): Promise<void> {
-  const scheduler = (
-    globalThis as { scheduler?: { yield?: () => Promise<void> } }
-  ).scheduler;
+  const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
   if (scheduler?.yield) return scheduler.yield();
   return new Promise<void>((resolve) => setTimeout(resolve, 0));
 }

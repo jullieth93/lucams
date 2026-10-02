@@ -110,8 +110,12 @@ export default async function EstudioPage({
   const requestedVariantId = typeof sp.variant === "string" ? sp.variant : undefined;
   const selectedVariant =
     product.variants.find((v) => v.id === requestedVariantId) ?? product.variants[0] ?? null;
-  const { mergeVariantOverProduct, parseVariantAttributes, selectableVariants, describeVariantAttributes } =
-    await import("@/features/products/variant-schemas");
+  const {
+    mergeVariantOverProduct,
+    parseVariantAttributes,
+    selectableVariants,
+    describeVariantAttributes,
+  } = await import("@/features/products/variant-schemas");
   const mergedSchema = selectedVariant
     ? mergeVariantOverProduct(
         product.personalizationSchema as Record<string, unknown>,
@@ -197,9 +201,9 @@ export default async function EstudioPage({
               // Paquete F (2026-10-02) — desglose de la variante (fija en esta
               // superficie) para el resumen de la vista previa.
               variantLabel={
-                describeVariantAttributes(
-                  parseVariantAttributes(selectedVariant.attributes),
-                ).join(" · ") || undefined
+                describeVariantAttributes(parseVariantAttributes(selectedVariant.attributes)).join(
+                  " · ",
+                ) || undefined
               }
               config={surface.config}
               pricePerTile={pricePerTile}

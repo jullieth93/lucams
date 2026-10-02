@@ -21,7 +21,13 @@ function makeSlot(index: number, extra: Partial<SlotState> = {}): SlotState {
 }
 
 function makeTemplate(tag: string): CanvasDataV1 {
-  return { version: 1, stage: { width: 100, height: 100 }, layers: [], background: null, tag } as unknown as CanvasDataV1;
+  return {
+    version: 1,
+    stage: { width: 100, height: 100 },
+    layers: [],
+    background: null,
+    tag,
+  } as unknown as CanvasDataV1;
 }
 
 function makeStage(w = 450, h = 575) {

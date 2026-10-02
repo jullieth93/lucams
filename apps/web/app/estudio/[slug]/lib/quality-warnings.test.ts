@@ -22,7 +22,11 @@ function canvas(...assetIds: (string | null)[]): CanvasDataV2 {
     version: 2,
     unitTemplate: { version: 1, stage: { width: 1080, height: 1080 }, layers: [] },
     slotCount: assetIds.length,
-    slots: assetIds.map((assetId, i) => ({ slotIndex: i, assetId, assetUrl: assetId ? "u" : null })),
+    slots: assetIds.map((assetId, i) => ({
+      slotIndex: i,
+      assetId,
+      assetUrl: assetId ? "u" : null,
+    })),
     gridLayout: { cols: 2, rows: 2, gap: 8 },
   };
 }

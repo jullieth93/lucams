@@ -16,11 +16,7 @@
  * `startIndex`: con `count <= items.length` no hay repetidos; al agotarse el
  * catálogo la selección vuelve al inicio. Catálogo vacío → [].
  */
-export function roundRobinPredesigned<T>(
-  items: readonly T[],
-  count: number,
-  startIndex = 0,
-): T[] {
+export function roundRobinPredesigned<T>(items: readonly T[], count: number, startIndex = 0): T[] {
   if (items.length === 0 || count <= 0) return [];
   const out: T[] = [];
   for (let i = 0; i < count; i++) {

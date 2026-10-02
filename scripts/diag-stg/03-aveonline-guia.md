@@ -11,6 +11,7 @@ curl -s https://<URL-STG>/api/health/aveonline | jq
 ```
 
 Qué buscar:
+
 - `idempresa`: si es `15289` (cuenta DEMO pública), esa es muy probablemente la causa —
   con la cuenta demo la transportadora rechaza guías (cobertura/agentes limitados).
 - Modo (sandbox/producción) y si las credenciales son las esperadas para STG.
@@ -26,6 +27,7 @@ shipping.aveonline.createshipment.fail
 Ese log incluye `msg` (mensaje de Aveonline) y `requestBodySent` (origen, destino,
 idtransportador, valorrecaudo, bloquegenerarguia — sin PII). Con eso se sabe si el
 rechazo fue por:
+
 - destino sin cobertura de esa transportadora (código -2 / equivalente),
 - formato de ciudad inválido (`CIUDAD(DEPTO)` sin tildes, `formatAveonlineCity`),
 - rechazo genérico de cuenta demo.

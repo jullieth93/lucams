@@ -91,10 +91,7 @@ export default async function AdminModeracionPage({
                     // cuadrado fijo) + zoom al click — el moderador compara contra
                     // lo que aprobó el cliente (misma idea que la Vista Previa del
                     // Estudio, que capa por alto y nunca letterboxea).
-                    <ModerationPreviewZoom
-                      src={d.previewUrl}
-                      alt={`Diseño de ${d.productName}`}
-                    />
+                    <ModerationPreviewZoom src={d.previewUrl} alt={`Diseño de ${d.productName}`} />
                   ) : (
                     <div className="text-brand-muted border-brand-purple/10 flex aspect-square w-40 items-center justify-center rounded-lg border text-xs">
                       Sin vista previa

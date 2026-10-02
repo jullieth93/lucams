@@ -195,11 +195,15 @@ function seedCart(
       templateId: null,
       metadata: null,
       design: it.design ?? null,
-      variant: makeVariant(it.variantId ?? "var_1", it.stock ?? state.product?.variants[0]?.stock ?? 0, {
-        images: it.variantImages,
-        productImages: it.productImages,
-        attributes: it.attributes,
-      }),
+      variant: makeVariant(
+        it.variantId ?? "var_1",
+        it.stock ?? state.product?.variants[0]?.stock ?? 0,
+        {
+          images: it.variantImages,
+          productImages: it.productImages,
+          attributes: it.attributes,
+        },
+      ),
     })),
   };
 }
@@ -418,11 +422,7 @@ describe("toDetail — imagen por variante y desglose (Paquete F)", () => {
   it("expone variantBreakdown desde los attributes de la variante (incluye Con/Sin imán)", async () => {
     seedCart([{ qty: 1, stock: 5, attributes: { photoSlots: 12, sizeCm: "6×8", magnet: false } }]);
     const detail = await updateCartItemQty("sess_1", "ci_1", 1);
-    expect(detail.items[0].variantBreakdown).toEqual([
-      "12 fotos",
-      "6×8 cm",
-      "Sin imán (adhesivo)",
-    ]);
+    expect(detail.items[0].variantBreakdown).toEqual(["12 fotos", "6×8 cm", "Sin imán (adhesivo)"]);
   });
 
   it("variante sin attributes: variantBreakdown vacío (la UI pinta solo el nombre)", async () => {

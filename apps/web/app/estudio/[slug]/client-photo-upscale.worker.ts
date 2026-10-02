@@ -25,7 +25,13 @@ export type UpscaleWorkerRequest = {
 };
 
 export type UpscaleWorkerResponse =
-  | { ok: true; blob: Blob; mime: "image/png" | "image/webp" | "image/jpeg"; width: number; height: number }
+  | {
+      ok: true;
+      blob: Blob;
+      mime: "image/png" | "image/webp" | "image/jpeg";
+      width: number;
+      height: number;
+    }
   | { ok: false; error: string };
 
 let webpEncodeSupport: boolean | null = null;

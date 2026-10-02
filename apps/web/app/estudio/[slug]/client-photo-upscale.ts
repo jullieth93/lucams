@@ -111,7 +111,9 @@ function upscaleInWorker(
       worker.terminate();
       const res = event.data;
       if (!res.ok) console.warn("[upscale] worker devolvió error — fallback inline:", res.error);
-      resolve(res.ok ? { blob: res.blob, mime: res.mime, width: res.width, height: res.height } : null);
+      resolve(
+        res.ok ? { blob: res.blob, mime: res.mime, width: res.width, height: res.height } : null,
+      );
     };
     worker.onerror = (event) => {
       clearTimeout(timer);
@@ -221,9 +223,7 @@ export async function upscalePhotoForPrint(
       // → se reporta el ratio sin tocar el archivo).
       const parsed = parseSizeCm(productSizeCm);
       if (!parsed) return null;
-      const requiredPx = Math.ceil(
-        Math.min(parsed.widthCm, parsed.heightCm) * PX_PER_CM_300DPI,
-      );
+      const requiredPx = Math.ceil(Math.min(parsed.widthCm, parsed.heightCm) * PX_PER_CM_300DPI);
       const ratio = Math.min(originalWidth, originalHeight) / requiredPx;
       return {
         file,
@@ -237,7 +237,8 @@ export async function upscalePhotoForPrint(
 
     const keepPng = file.type === "image/png";
     // Preferido: worker (fuera del main thread). Fallback: inline.
-    const out = (await upscaleInWorker(bitmap, plan, keepPng)) ??
+    const out =
+      (await upscaleInWorker(bitmap, plan, keepPng)) ??
       (await upscaleInline(bitmap, plan, keepPng));
     bitmap.close();
     if (!out) return null;

@@ -579,9 +579,7 @@ export function StudioEditor({
   // Paquete C (2026-10-02) — fotos con aviso de calidad ASIGNADAS al diseño: las
   // lista la Vista Previa con checkbox de aceptación obligatorio. Suscripción
   // atómica por clave primitiva (patrón del store), detalle memoizado.
-  const qualityWarningsKeyStr = useStore(store, (s) =>
-    qualityWarningsKey(s.assets, s.canvasData),
-  );
+  const qualityWarningsKeyStr = useStore(store, (s) => qualityWarningsKey(s.assets, s.canvasData));
   const qualityWarnings = useMemo(
     () => collectQualityWarnings(store.getState().assets, store.getState().canvasData),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- la clave resume el contenido
@@ -926,9 +924,7 @@ export function StudioEditor({
       // Paquete A (2026-10-02) — la cara B de un prediseñado NUNCA pisa el
       // contenido del usuario: slot ocupado → no se aplica y se avisa (antes
       // se sobreescribía o se descartaba en silencio según la vía).
-      const slot = store
-        .getState()
-        .canvasData?.slots.find((s) => s.slotIndex === slotIndex);
+      const slot = store.getState().canvasData?.slots.find((s) => s.slotIndex === slotIndex);
       if (slot?.assetUrl) {
         toast.warning(texts.plantillas.toastCaraBOcupada);
         return;

@@ -847,7 +847,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     badgeDosCaras: "2 caras",
     badgeUnaCara: "1 cara",
     badgeDosCarasTitle: "Este diseño trae frente y respaldo.",
-    badgeUnaCaraTitle: "Este diseño trae solo el frente: el respaldo se imprime igual que el frente.",
+    badgeUnaCaraTitle:
+      "Este diseño trae solo el frente: el respaldo se imprime igual que el frente.",
     toastError: "No pudimos aplicar el diseño. Intenta de nuevo.",
     toastSinSlot: "Selecciona un slot vacío primero",
     elegirAria: "Selecciona plantilla del imán",

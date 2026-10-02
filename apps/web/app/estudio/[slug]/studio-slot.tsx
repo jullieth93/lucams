@@ -2484,7 +2484,13 @@ function ImagePlaceholder({
     // la key se mantiene y el re-cache se debouncea (ver header del effect).
     const key = `${image.src}|${slotState.filter ?? "none"}|${filtersArray.length}`;
     filterRecacher.request(key, apply);
-  }, [image, filtersArray.length, slotState.filter, slotState.photoTransform?.scale, filterRecacher]);
+  }, [
+    image,
+    filtersArray.length,
+    slotState.filter,
+    slotState.photoTransform?.scale,
+    filterRecacher,
+  ]);
 
   // M.3.b.UX.v11 (Lucy 2026-05-15) — Smart auto-crop al cargar foto NUEVA.
   // Solo aplica si:

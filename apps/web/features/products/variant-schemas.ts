@@ -638,8 +638,10 @@ const VARIANT_BREAKDOWN_THEME_LABELS: Record<string, string> = {
 
 export function describeVariantAttributes(attrs: ProductVariantAttributes): string[] {
   const parts: string[] = [];
-  if (attrs.quantity) parts.push(`${attrs.quantity} ${attrs.quantity === 1 ? "unidad" : "unidades"}`);
-  if (attrs.photoSlots) parts.push(`${attrs.photoSlots} ${attrs.photoSlots === 1 ? "foto" : "fotos"}`);
+  if (attrs.quantity)
+    parts.push(`${attrs.quantity} ${attrs.quantity === 1 ? "unidad" : "unidades"}`);
+  if (attrs.photoSlots)
+    parts.push(`${attrs.photoSlots} ${attrs.photoSlots === 1 ? "foto" : "fotos"}`);
   if (attrs.sizeCm) parts.push(`${attrs.sizeCm} cm`);
   if (attrs.shape) parts.push(VARIANT_BREAKDOWN_SHAPE_LABELS[attrs.shape] ?? attrs.shape);
   if (attrs.finish) parts.push(VARIANT_BREAKDOWN_FINISH_LABELS[attrs.finish] ?? attrs.finish);
@@ -651,7 +653,9 @@ export function describeVariantAttributes(attrs: ProductVariantAttributes): stri
     parts.push(VARIANT_BREAKDOWN_LANGUAGE_LABELS[attrs.language] ?? attrs.language);
   }
   if (attrs.frameStyle) {
-    parts.push(`Marco ${VARIANT_BREAKDOWN_FRAME_STYLE_LABELS[attrs.frameStyle] ?? attrs.frameStyle}`);
+    parts.push(
+      `Marco ${VARIANT_BREAKDOWN_FRAME_STYLE_LABELS[attrs.frameStyle] ?? attrs.frameStyle}`,
+    );
   }
   if (attrs.variantStyle) {
     parts.push(

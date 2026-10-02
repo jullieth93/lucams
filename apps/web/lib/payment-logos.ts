@@ -58,10 +58,6 @@ export const WOMPI_PAYMENT_LOGOS: readonly PaymentLogo[] = [
  */
 export function paymentLogo(method: string | null | undefined): PaymentLogo | null {
   if (!method) return null;
-  const key = method
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .trim();
+  const key = method.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
   return PAYMENT_LOGOS[key] ?? null;
 }
