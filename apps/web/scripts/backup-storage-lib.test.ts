@@ -15,6 +15,7 @@ import {
   buildStorageManifestKey,
   STORAGE_BACKUP_KEY_RE,
   STORAGE_MANIFEST_KEY_RE,
+  STORAGE_TRANSIENT_RE,
   buildManifest,
   buildTarHeader,
   parseTarHeader,
@@ -22,6 +23,36 @@ import {
   TAR_BLOCK_SIZE,
 } from "./backup-storage-lib.mjs";
 import { selectStaleKeys, BACKUP_KEY_RE } from "./backup-lib.mjs";
+
+describe("STORAGE_TRANSIENT_RE", () => {
+  it("matchea los transitorios del gateway y de red", () => {
+    for (const msg of [
+      "502 Bad Gateway",
+      "504 Gateway Timeout",
+      "503 Service Unavailable",
+      "500 Internal Server Error",
+      "fetch failed",
+      "read ECONNRESET",
+      "connect ETIMEDOUT",
+      "socket hang up",
+    ]) {
+      expect(STORAGE_TRANSIENT_RE.test(msg), msg).toBe(true);
+    }
+  });
+
+  it("REGRESIÓN 2026-10-02 (run 37015636246): matchea la saturación de conexiones del Storage server", () => {
+    expect(STORAGE_TRANSIENT_RE.test("Too many connections issued to the database")).toBe(true);
+    expect(STORAGE_TRANSIENT_RE.test("remaining connection slots are reserved for superuser")).toBe(
+      true,
+    );
+  });
+
+  it("NO matchea errores permanentes (auth/4xx) — esos lanzan de inmediato", () => {
+    for (const msg of ["Invalid JWT", "Unauthorized", "The resource was not found", "400"]) {
+      expect(STORAGE_TRANSIENT_RE.test(msg), msg).toBe(false);
+    }
+  });
+});
 
 describe("parseStorageBuckets", () => {
   it("returns the five default buckets when unset or empty", () => {

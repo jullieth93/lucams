@@ -101,6 +101,16 @@ export function buildManifest({ startedAt, finishedAt, prefix, keep, buckets }) 
   };
 }
 
+// ─── Errores transitorios del gateway/Storage API ──────────────────────────
+// Patrón de errores que ameritan reintento con backoff (lo usa withRetry en
+// backup-storage-to-r2.mjs): 5xx del gateway de Supabase, caídas de red, y
+// saturación de conexiones del servidor Storage ("Too many connections issued
+// to the database", run 37015636246 del 2026-10-02 — el Storage API administrado
+// agota su pool contra Postgres; es transitorio por definición). Errores NO
+// transitorios (auth, 4xx) deben lanzar de inmediato.
+export const STORAGE_TRANSIENT_RE =
+  /bad gateway|gateway timeout|service unavailable|internal server error|fetch failed|econnreset|etimedout|socket|\b50[234]\b|too many connections|remaining connection slots/i;
+
 // ─── Minimal ustar (POSIX tar) encode/decode ───────────────────────────────
 // Just enough to pack a bucket streaming, with no tar binary and no npm
 // dependency. Every entry is a regular file; names longer than 100 bytes use
@@ -117,7 +127,9 @@ function writeOctal(header, value, offset, length) {
   // Field of `length` bytes: (length-1) octal digits + NUL terminator.
   const s = value.toString(8).padStart(length - 1, "0");
   if (s.length > length - 1) {
-    throw new Error(`tar field overflow: value ${value} does not fit in ${length - 1} octal digits`);
+    throw new Error(
+      `tar field overflow: value ${value} does not fit in ${length - 1} octal digits`,
+    );
   }
   header.write(s, offset, "ascii");
   header.writeUInt8(0, offset + length - 1);
