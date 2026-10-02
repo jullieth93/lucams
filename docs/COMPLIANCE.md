@@ -220,6 +220,37 @@ pg_cron migración 035):
 - **Idempotencia**: el diseño queda marcado con `Design.purgedAt` solo si TODOS los bytes se borraron;
   si Storage falla, no se marca y el próximo ciclo reintenta.
 
+### Reorder («Volver a pedir») y fotos de terceros desde el link público (2026-10-02)
+
+El link público del pedido `/pedido/<token>` (invitados Wompi; **reenviable** — cualquiera con el
+link lo abre) históricamente permitía VER las fotos del pedido; desde 2026-10-02 también permite
+**REUSARLAS en un pedido nuevo** (reorder del invitado, ADR-117/119).
+
+**Análisis de aceptación:** no amplía el acceso real — quien tiene el link ya podía ver (y
+descargar) ese contenido; el reuso operativo no expone nada nuevo a nadie nuevo. El alcance sigue
+acotado por la retención: las fotos crudas se purgan a los 90 días de entregado (política de
+arriba) y un ítem ya purgado **NO es re-ordenable** — el CTA pide re-subir las fotos al estudio,
+que es de hecho un re-consentimiento (quien sube la foto la tiene). El clon del reorder
+**copia los bytes** a paths propios con ciclo de retención independiente: la purga del pedido
+original no borra las fotos del pedido nuevo, y viceversa (cada compra tiene su propia finalidad
+vigente; los 90 días corren por pedido).
+
+**Riesgo residual aceptado:** quien reenvía el link comparte también la capacidad de reusar las
+fotos — mismo alcance que ya tenía para verlas. El token se ROTA en cada envío del email
+(ADR-119), así que un link viejo reenviado muere con el próximo envío.
+
+### Aceptación de calidad de fotos — `Design.qualityAcknowledgedAt` (2026-10-02)
+
+Cuando una foto dispara avisos de calidad en el estudio (resolución baja, etc.), el cliente debe
+marcar una **casilla de aceptación** («imprimir con avisos de calidad») antes de finalizar; la
+aceptación queda persistida con timestamp en **`Design.qualityAcknowledgedAt`**.
+
+**Finalidad:** trazabilidad ante reclamos de garantía (Ley 1480 art. 7-16): si el cliente reclama
+por nitidez o resolución de la impresión, el registro prueba que fue **informado** del aviso y
+aceptó imprimir de todas formas — la garantía legal no cubre el resultado de una limitación del
+insumo del cliente que fue informada y aceptada (causal de exoneración, art. 16). Visible en
+moderación (`/admin/disenos`) y en el detalle del pedido del admin.
+
 ### Retención de logs de eventos con PII (2026-08-29)
 
 Mismo principio de temporalidad aplicado a los logs que el sistema acumula solo

@@ -3629,3 +3629,112 @@ intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar
 **Por qué:** el peso que no se usa es el peor peso (2MB de fuentes penalizaban el LCP de toda la tienda); y sin percentiles por ruta se optimiza a ciegas — el p75 por ruta dice dónde duele de verdad (continúa la línea de ADR-104: RUM antes que refactor).
 
 **Consecuencia:** la home y el catálogo dejan de descargar las fuentes del Estudio y el iframe de Turnstile en cada navegación. El gate móvil hace regresión-imposible una caída brusca de perf/a11y móvil. Mismo paquete: **Next 16.3.4→16.3.6** (commit `5f323f3`) por GHSA-vcvr-r3jv-pc5j (RCE crítica en `next/og` ImageResponse) — el gate de audit prod (high+) falló en el push y el bump de patch lo cerró con `pnpm audit --prod` limpio.
+
+---
+
+## ADR-114 — Regla única de cara B vacía: espejo de la cara A en TODOS los renders
+
+**Fecha:** 2026-10-02
+**Estado:** ✅ Aceptada (sesión 2026-10-02, paquetes A/D/E)
+
+**Contexto:** los productos de 2 caras (separadores magnéticos y todo `backOptional`) tenían **3 comportamientos contradictorios** cuando el cliente dejaba la cara B vacía: según la superficie, se pintaba en blanco, en negro o como espejo de la cara A. El preview y la producción podían decir cosas distintas del mismo diseño.
+
+**Decisión:** **«cara B vacía = espejo de la cara A» en TODOS los renders** — canvas del estudio, vista previa del cliente, vista 3D y producción. En producción la regla la aplica estructuralmente `expandMissingBackFaces` (expande las caras faltantes copiando la A); las demás superficies consumen la misma regla, no la reimplementan.
+
+**Por qué:** una sola regla elimina la divergencia preview↔producción (el cliente debe recibir lo que vio — WYSIWYG, información veraz Ley 1480 art. 23) y simplifica el modelo mental: la cara B es opcional de verdad; si no la personaliza, queda espejo, nunca «en blanco».
+
+**Consecuencia:** todo render nuevo de productos de 2 caras debe pasar por la misma expansión; «cara B en blanco/negro» deja de ser un estado representable. Complementa la línea WYSIWYG del paquete D (renders) y queda como precondición del ADR-118 (preview unificado).
+
+---
+
+## ADR-115 — Patrón único de CTA ocupado del estudio («Preparando…/Agregando…»)
+
+**Fecha:** 2026-10-02
+**Estado:** ✅ Aceptada (sesión 2026-10-02, paquete E)
+
+**Contexto:** las 4 superficies con acción principal del estudio (toolbar de foto, letter-set, name, header simple) tenían **4 implementaciones divergentes** del estado ocupado: distintas opacidades, distintos textos (o ninguno), y comportamientos de deshabilitado inconsistentes — el mismo producto «se sentía» distinto según por dónde se finalizara.
+
+**Decisión:** helper único **`studio-busy-cta.ts`** que centraliza el patrón: **opacidad 70% uniforme** + texto de progreso («Preparando…» al preparar/finalizar, «Agregando…» al agregar al carrito), aplicado en las 4 superficies.
+
+**Por qué:** el feedback de ocupado es una convención de producto, no una decisión por superficie; centralizarlo garantiza feedback consistente (el cliente siempre sabe que su click está procesando) y una sola implementación que mantener.
+
+**Consecuencia:** cualquier CTA nuevo del estudio usa el helper; una divergencia visual en el estado ocupado es ahora un bug, no una opción de diseño.
+
+---
+
+## ADR-116 — `dark:` de Tailwind responde a la clase `.dark`, no a `prefers-color-scheme` del SO
+
+**Fecha:** 2026-10-02
+**Estado:** ✅ Aceptada (sesión 2026-10-02, paquete E)
+
+**Contexto:** el sitio es **solo tema claro** (no tiene modo oscuro), pero Tailwind mapea por defecto la variante `dark:` a `prefers-color-scheme: dark`: en un SO con tema oscuro las utilidades `dark:` se activaban solas. Bug original: el botón **«Volver a editar» quedaba blanco sobre blanco** (invisible) para usuarios con el SO en oscuro.
+
+**Decisión:** **`@custom-variant dark` en `globals.css`** para que `dark:` responda a la clase `.dark` en el árbol — clase que el sitio nunca aplica.
+
+**Por qué:** las utilidades `dark:` del código existen para componentes de terceros y estados puntuales, no como tema del sitio; atarlas a una clase que controlamos devuelve el control del tema al producto y hace imposible la regresión según la configuración del SO del cliente.
+
+**Consecuencia:** el sitio se ve idéntico en SO claro u oscuro. Si algún día se implementa modo oscuro, basta con alternar la clase `.dark` en `<html>` — la infraestructura ya quedó del lado correcto.
+
+---
+
+## ADR-117 — Reorder («Volver a pedir»): el clon COPIA los bytes y hereda un ciclo de retención independiente
+
+**Fecha:** 2026-10-02
+**Estado:** ✅ Aceptada (sesión 2026-10-02, paquete I)
+
+**Contexto:** el reorder clonaba el diseño referenciando los mismos bytes (fotos + renders) del diseño original. Dos problemas: ① el ciclo de purga de 90 días post-entrega del original dejaría al clon con punteros muertos; ② un ítem ya purgado seguía ofreciéndose como re-ordenable aunque ya no teníamos las fotos para reimprimirlo.
+
+**Decisión:** **`cloneDesignForReorder` COPIA los bytes** (fotos de `customer-uploads` + renders de `production-assets`) a paths propios del clon, que hereda un **ciclo de retención independiente** — la purga del pedido original nunca afecta al reorder y viceversa. Los ítems ya purgados (>90 días de entregado) **no se pueden reimprimir** (Ley 1581: la finalidad de conservar esas fotos ya venció) → el CTA lleva a **re-subir las fotos al estudio**.
+
+**Por qué:** dos diseños no pueden compartir bytes teniendo políticas de borrado independientes (la purga de uno mataría al otro); y reimprimir desde bytes que la política de retención ya destruyó contradice la promesa de privacidad publicada.
+
+**Consecuencia:** el costo de storage del reorder es deliberado y acotado (duplica solo cuando hay reorder real). El link público `/pedido/<token>` pasa a permitir también REUSAR las fotos en un pedido nuevo — análisis de privacidad registrado en COMPLIANCE.md. Nota operativa en OPERATIONS.md.
+
+---
+
+## ADR-118 — (PROPUESTA registrada, NO implementada) Unificar el preview del cliente con el renderer de producción server-side
+
+**Fecha:** 2026-10-02
+**Estado:** 📋 Propuesta registrada (pendiente de implementación)
+
+**Contexto:** el preview del cliente (Konva en el navegador) y el renderer de producción (`production-render-canvas.ts`, `@napi-rs/canvas` server-side) son **dos implementaciones del mismo render** — fuente permanente de divergencias WYSIWYG (cada fix de render hay que hacerlo dos veces, y las dos pueden seguir diciendo cosas distintas).
+
+**Decisión (diferida):** unificar a futuro: que el preview del cliente consuma el **renderer de producción server-side** — una sola salida, un solo código de render, cero divergencia posible.
+
+**Por qué:** elimina la doble implementación Konva/`@napi-rs/canvas` y la clase entera de bugs «se veía distinto en el preview que en el producto recibido». Queda registrado ahora porque la sesión 2026-10-02 homologó las reglas de render (ADR-114) y es el momento en que la deuda quedó explícita.
+
+**Consecuencia:** al implementarlo, evaluar costo de compute server-side por preview (render on-demand vs cacheado por hash de `canvasData`), latencia percibida en el estudio y estrategia de invalidación. Hasta entonces, la regla es: todo cambio de render se hace en AMBAS implementaciones en el mismo paquete.
+
+---
+
+## ADR-119 — Botón «Ver mi pedido» de los emails: destino bifurcado por tipo de comprador, con token ROTADO al enviar
+
+**Fecha:** 2026-10-02
+**Estado:** ✅ Aceptada (sesión 2026-10-02, paquete H)
+
+**Contexto:** F-11 (el token público de tracking se guarda solo como hash — nunca en claro) dejaba a los invitados sin URL de pedido recuperable en los emails transaccionales: el CTA «Ver mi pedido» caía en fallbacks genéricos justo para el segmento mayoritario.
+
+**Decisión:** el botón «Ver mi pedido» se **bifurca por tipo de comprador**:
+
+- **Registrado** → `/mi-cuenta/pedidos/<number>` (su cuenta, sin token).
+- **Invitado Wompi** → `/pedido/<token>` con el token **ROTADO al enviar** (helper `features/orders/public-token.ts`: cada envío genera un token nuevo y reemplaza el hash almacenado).
+- **Invitado COD** → `/rastrear` **sin rotar** (su pedido no está confirmado hasta conciliar el pago — no se le entrega URL de pedido).
+
+**Por qué:** mantiene intacta la decisión **F-11** (el token nunca se almacena en claro; solo circula en el correo recién enviado) pero devuelve al invitado ya pagado una URL viva de su pedido. La rotación al enviar acota la validez de cada link a los correos efectivamente enviados y mata los tokens viejos.
+
+**Consecuencia:** un link `/pedido/<token>` reenviado deja de funcionar con el próximo envío que rote el token (comportamiento deliberado, documentado en COMPLIANCE.md junto al reuso de fotos del reorder). Los demás CTAs post-pago conservan sus fallbacks documentados en EMAIL_TEMPLATES.md.
+
+---
+
+## ADR-120 — Zonas de entrega: fallback legacy solo si la key V2 está AUSENTE + re-validación de la oferta Lucams en `finalizeCheckout`
+
+**Fecha:** 2026-10-02
+**Estado:** ✅ Aceptada (sesión 2026-10-02, paquete G)
+
+**Contexto:** dos riesgos convivían: ① la key legacy `LUCAMS_SHIPPING_LOCALITIES` seguía vigente junto a la V2 `LUCAMS_SHIPPING_ZONES` — con ambas presentes no quedaba claro cuál mandaba y una V2 mal guardada podía reactivar silenciosamente la legacy; ② la oferta «Envío Lucam's» se confiaba solo al **sello HMAC** emitido en la cotización: si el admin cambiaba zonas o precio entre la cotización y el pago, se cobraba una oferta que ya no era vigente.
+
+**Decisión:** ① el fallback legacy **solo aplica si `LUCAMS_SHIPPING_ZONES` está AUSENTE**; un `"{}"` vacío es **fail-closed** (sin envío propio) — la presencia explícita de la V2 es la única señal de configuración vigente. ② **`finalizeCheckout` re-valida la oferta Lucams contra los settings vigentes** (zona habilitada + precio actual), no solo el sello HMAC.
+
+**Por qué:** el HMAC prueba integridad (nadie alteró la oferta en tránsito), no vigencia (la oferta sigue existiendo al cobrar) — la configuración de envíos es un dato vivo que debe re-verificarse en el momento del dinero. Y la ambigüedad «qué key manda» desaparece con una regla de precedencia explícita y fail-closed.
+
+**Consecuencia:** pendiente operativo registrado en OPERATIONS.md: borrar la key legacy `LUCAMS_SHIPPING_LOCALITIES` en STG/PRD una vez confirmado que `LUCAMS_SHIPPING_ZONES` existe; después se podrá eliminar el fallback legacy de `features/shipping/settings.ts`.
