@@ -13,7 +13,7 @@
 
 ## Resumen actual
 
-**🧩 2026-10-02 — 10 PAQUETES (E–J, ~90 ARCHIVOS) DE MADURACIÓN ESTUDIO/CHECKOUT/EMAILS/RENDIMIENTO EN EL ÁRBOL, ~4659 TESTS VERDES; 2 MIGRACIONES PENDIENTES DE APLICAR EN STG/PRD.** Origen: reporte funcional del owner (22 escenarios) + continuación de la línea de los paquetes A/B (2026-10-01). **E — vista previa UI:** regla única de cara B vacía = espejo de la cara A en TODOS los renders (canvas, vista previa, 3D, producción vía `expandMissingBackFaces`, ADR-114); patrón único de CTA ocupado del estudio (`studio-busy-cta.ts`, opacidad 70% en las 4 superficies, ADR-115); `dark:` de Tailwind por clase `.dark` (`@custom-variant`, ADR-116 — fix del botón «Volver a editar» blanco sobre blanco en SO oscuro). **B — canvas responsive. C — avisos de foto + checkbox de aceptación:** `Design.qualityAcknowledgedAt` (trazabilidad ante reclamos de garantía — COMPLIANCE). **A — prediseñados:** variedad/caras + detalle en admin. **D — WYSIWYG:** renders + botón 3D (ADR-118 registrada, NO implementada: unificar el preview con el renderer server-side `production-render-canvas.ts`). **F — checkout/carrito:** desglose de variantes, imágenes en el carrito e íconos de pago (`public/payments/` + `lib/payment-logos.ts`). **G — zonas + Aveonline:** fallback legacy solo si `LUCAMS_SHIPPING_ZONES` está AUSENTE (`"{}"` fail-closed) y re-validación de la oferta Lucams contra settings vigentes en `finalizeCheckout` (ADR-120); trazabilidad de guías fallidas con `Order.shipmentLastError` (admin → detalle del pedido). **H — dedupe carrito/emails + «Ver mi pedido» bifurcado** (registrado → `/mi-cuenta/pedidos/<number>`; invitado Wompi → `/pedido/<token>` con token ROTADO al enviar, `features/orders/public-token.ts`; invitado COD → `/rastrear` sin rotar — ADR-119, mantiene F-11). **I — «Volver a pedir»:** `cloneDesignForReorder` COPIA los bytes (fotos + renders) con ciclo de retención independiente; ítems purgados (>90d) no re-ordenables → CTA a re-subir fotos (ADR-117, nota de privacidad en COMPLIANCE). **J — INP:** worker/caché/debounce + sección «INP por elemento (p75)» en /admin/performance (budget <200ms móvil). **Gates: ~4659 tests verdes.** **Próximo paso:** aplicar las 2 migraciones en STG/PRD (`pnpm -C packages/db db:migrate:deploy`), correr los scripts de `scripts/diag-stg/`, borrar la key legacy `LUCAMS_SHIPPING_LOCALITIES` en STG/PRD y verificación E2E en STG de los 22 escenarios del reporte original (owner).
+**🧩 2026-10-02 — 10 PAQUETES (E–J, ~90 ARCHIVOS) DE MADURACIÓN ESTUDIO/CHECKOUT/EMAILS/RENDIMIENTO EN EL ÁRBOL, ~4659 TESTS VERDES; 2 MIGRACIONES PENDIENTES DE APLICAR EN STG/PRD.** Origen: reporte funcional del owner (22 escenarios) + continuación de la línea de los paquetes A/B (2026-10-01). **E — vista previa UI:** regla única de cara B vacía = espejo de la cara A en TODOS los renders (canvas, vista previa, 3D, producción vía `expandMissingBackFaces`, ADR-114); patrón único de CTA ocupado del estudio (`studio-busy-cta.ts`, opacidad 70% en las 4 superficies, ADR-115); `dark:` de Tailwind por clase `.dark` (`@custom-variant`, ADR-116 — fix del botón «Volver a editar» blanco sobre blanco en SO oscuro). **B — canvas responsive. C — avisos de foto + checkbox de aceptación:** `Design.qualityAcknowledgedAt` (trazabilidad ante reclamos de garantía — COMPLIANCE). **A — prediseñados:** variedad/caras + detalle en admin. **D — WYSIWYG:** renders + botón 3D (ADR-118 registrada, NO implementada: unificar el preview con el renderer server-side `production-render-canvas.ts`). **F — checkout/carrito:** desglose de variantes, imágenes en el carrito e íconos de pago (`public/payments/` + `lib/payment-logos.ts`). **G — zonas + Aveonline:** fallback legacy solo si `LUCAMS_SHIPPING_ZONES` está AUSENTE (`"{}"` fail-closed) y re-validación de la oferta Lucams contra settings vigentes en `finalizeCheckout` (ADR-120); trazabilidad de guías fallidas con `Order.shipmentLastError` (admin → detalle del pedido). **H — dedupe carrito/emails + «Ver mi pedido» bifurcado** (registrado → `/mi-cuenta/pedidos/<number>`; invitado Wompi → `/pedido/<token>` con token ROTADO al enviar, `features/orders/public-token.ts`; invitado COD → `/rastrear` sin rotar — ADR-119, mantiene F-11). **I — «Volver a pedir»:** `cloneDesignForReorder` COPIA los bytes (fotos + renders) con ciclo de retención independiente; ítems purgados (>90d) no re-ordenables → CTA a re-subir fotos (ADR-117, nota de privacidad en COMPLIANCE). **J — INP:** worker/caché/debounce + sección «INP por elemento (p75)» en /admin/performance (budget <200ms móvil). **Gates: ~4659 tests verdes.** **Próximo paso:** aplicar las 2 migraciones en STG/PRD (`pnpm -C packages/db db:migrate:deploy`), correr los scripts de `scripts/diag-stg/`, borrar la key legacy `LUCAMS_SHIPPING_LOCALITIES` en STG/PRD y verificación E2E en STG de los 22 escenarios del reporte original (owner). **Continuación (mismo día, tarde):** homologación STG↔PRD ejecutada con el script reusable nuevo `scripts/diag-stg/homologacion.sh` (`bae9803`) — esquema alineado salvo lo esperado, catálogo y CMS 100% idénticos, env vars con solo 2 diferencias intencionales; correctivos en PRD con respaldo en `tmp/rollback-prd-20261002/` (10 FKs legacy duplicadas eliminadas, 3 variantes legacy corregidas + precio `ABC-COMP-ES-MINI-NOMAG`, migración ADITIVA de prediseñados STG→PRD: 66 filas + 67 archivos, 0 duplicados por hash); criterios registrados en ADR-121 (IDs internos NO se alinean — SKU = llave; settings `LUCAMS_SHIPPING_*` por ambiente). **PR de promoción #63 (develop→production) creado, pendiente de merge.**
 
 <details><summary>Historial de resúmenes anteriores</summary>
 
@@ -332,7 +332,16 @@ plan Supabase/Vercel y correr la prueba de carga k6 contra STG antes del pico.
 - **Paquete I — «Volver a pedir» (ADR-117):** `cloneDesignForReorder` **COPIA los bytes** (fotos + renders) a paths propios para que el ciclo de purga de 90 días del original no afecte el reorder (ciclo de retención independiente); los ítems purgados (>90d de entregado) NO se pueden reimprimir (Ley 1581) → CTA a re-subir las fotos al estudio. El link público `/pedido/<token>` pasa a permitir reusar las fotos (análisis de aceptación en COMPLIANCE.md).
 - **Paquete J — INP:** worker/caché/debounce en las interacciones calientes; nueva sección **«INP por elemento (p75)»** en `/admin/performance`; query manual `scripts/diag-stg/04-inp-webvitals.sql`; harness local `tmp/inp-audit/inp-harness.mjs` (`make local-up` → `node tmp/inp-audit/inp-harness.mjs --label <x>`); budget INP <200ms móvil.
 - **Gates finales:** **~4659 tests verdes.**
-- **Pendiente:** ① aplicar las 2 migraciones en STG/PRD (`pnpm -C packages/db db:migrate:deploy`: `20261002120000_design_quality_acknowledged_at` + `20261002130000_order_shipment_last_error`); ② ejecutar los scripts de diagnóstico de `scripts/diag-stg/` contra STG (zonas, OrderItems duplicados, Aveonline, INP); ③ borrar la key legacy `LUCAMS_SHIPPING_LOCALITIES` en STG/PRD una vez confirmado que `LUCAMS_SHIPPING_ZONES` existe (luego se podrá retirar el fallback de `features/shipping/settings.ts`); ④ **verificación E2E en STG de los 22 escenarios del reporte original (owner).**
+- **Pendiente:** ① aplicar las 2 migraciones en STG/PRD (`pnpm -C packages/db db:migrate:deploy`: `20261002120000_design_quality_acknowledged_at` + `20261002130000_order_shipment_last_error`); ② ejecutar los scripts de diagnóstico de `scripts/diag-stg/` contra STG (zonas, OrderItems duplicados, Aveonline, INP); ③ borrar la key legacy `LUCAMS_SHIPPING_LOCALITIES` en STG/PRD una vez confirmado que `LUCAMS_SHIPPING_ZONES` existe (luego se podrá retirar el fallback de `features/shipping/settings.ts`); ④ **verificación E2E en STG de los 22 escenarios del reporte original (owner).** _(Actualizado en la continuación de abajo: ① y ② quedaron absorbidos por la homologación/PR #63.)_
+
+### Continuación (mismo día, tarde) — homologación STG↔PRD, correctivos en PRD, migración de prediseñados y PR #63
+
+- **Homologación ejecutada** con el script reusable nuevo **`scripts/diag-stg/homologacion.sh`** (commiteado en `bae9803`): migraciones Prisma pendientes, firma de esquema completa (columnas/índices/constraints/triggers/funciones/enums/RLS/policies/secuencias/crons/buckets) vía `information_schema`/`pg_catalog` con `psql` (NO `pg_dump --schema-only`: el pg_dump local es v13 contra servidores PG17), conteos/checksums de datos y matriz de env vars Vercel.
+- **Resultados:** esquema alineado salvo lo esperado (correctivos abajo); **catálogo y CMS de contenido 100% idénticos**; env vars Vercel con solo 2 diferencias intencionales (`AVEONLINE_WEBHOOK_SECRET` solo Production, `CRON_JOBS_DISABLED` solo Preview); crons: PRD con los 5 de email activos y STG sin ellos (decisión 2026-08-05), STG con `uptime-monitor-prd` (por diseño).
+- **Correctivos en PRD** (respaldo en `tmp/rollback-prd-20261002/`): ① 10 FK constraints legacy duplicadas eliminadas (nombres lowercase redundantes con las de Prisma; rollback SQL en ese directorio); ② 3 variantes legacy corregidas (`FI-POL-75X10-1` y `FI-CUAD-65-1`: photoSlots 6→1; `FI-POL-75X10-10`: nombre y photoSlots/quantity 1/12→10/10) + precio de `ABC-COMP-ES-MINI-NOMAG` alineado a STG ($33.900); ③ **migración ADITIVA de prediseñados STG→PRD**: 66 filas de `DesignGalleryImage` + 67 archivos al bucket `product-images` de PRD (mismo path, `x-upsert:false`, 0 duplicados por hash de contenido; PRD quedó con 78 activos, sus 12 originales intactos).
+- **Decisiones registradas (ADR-121):** NO alinear los IDs internos de las ~45 variantes divergentes (mismo SKU; la llave de negocio es el SKU, no el ID) y no copiar `LUCAMS_SHIPPING_*` entre ambientes (configurar en PRD desde `/admin/envios` cuando el negocio decida precio/zonas).
+- **PR de promoción #63 (`develop`→`production`) creado, pendiente de merge** — checklist: migraciones PRD primero → merge → smoke → crons → decisión envío propio.
+- **Pendientes actualizados:** ① validación funcional en dispositivo real (owner); ② revisión de INP en 3-5 días (RUM + `/admin/performance`, budget <200ms móvil); ③ **merge del PR #63 con su checklist** (aplicar las 2 migraciones en PRD antes del merge); ④ opcional: limpieza de datos de prueba en STG.
 
 ## Sesión — 2026-10-01 — Paquetes A (checkout/envíos/stock) + B (servicio al cliente/imágenes/móvil/rendimiento), operación de datos y deploy a PRD (PR #58)
 
@@ -3534,12 +3543,13 @@ sidebar fijo, Cancelar en cupones.
 
 ## Próximo paso
 
-**🆕 Actualizado 2026-10-02 (sesión de los 10 paquetes E–J):**
+**🆕 Actualizado 2026-10-02 (tarde — tras la homologación STG↔PRD y el PR #63):**
 
-1. **Aplicar las 2 migraciones en STG y PRD** — `pnpm -C packages/db db:migrate:deploy` (`20261002120000_design_quality_acknowledged_at` + `20261002130000_order_shipment_last_error`; detalle en OPERATIONS.md changelog 2026-10-02).
-2. **Ejecutar los scripts de diagnóstico de `scripts/diag-stg/` contra STG** — zonas de envío, OrderItems duplicados, Aveonline e INP (`04-inp-webvitals.sql`).
-3. **Borrar la key legacy `LUCAMS_SHIPPING_LOCALITIES` en STG/PRD** — una vez confirmado que `LUCAMS_SHIPPING_ZONES` existe (ADR-120; después se retira el fallback de `features/shipping/settings.ts`).
-4. **Verificación E2E en STG de los 22 escenarios del reporte original** — paso del owner; tras validar, release a PRD.
+1. **Merge del PR #63 (`develop`→`production`) con su checklist** — aplicar primero las 2 migraciones en PRD (`pnpm -C packages/db db:migrate:deploy`: `20261002120000_design_quality_acknowledged_at` + `20261002130000_order_shipment_last_error`) → merge → smoke → crons → decisión envío propio (`LUCAMS_SHIPPING_*` se configura en PRD desde `/admin/envios` cuando el negocio lo decida — ADR-121).
+2. **Validación funcional en dispositivo real** — paso del owner (22 escenarios del reporte original + flujos nuevos E–J).
+3. **Revisión de INP en 3-5 días** — RUM con la sección «INP por elemento (p75)» de `/admin/performance` (budget <200ms móvil); comparar contra el harness `tmp/inp-audit/inp-harness.mjs`.
+4. **Opcional: limpieza de datos de prueba en STG** — pedidos/diseños de smoke acumulados (con backup, mismo patrón de siempre).
+5. **Borrar la key legacy `LUCAMS_SHIPPING_LOCALITIES` en STG/PRD** — sigue vigente (ADR-120); con el fallback retirado después.
 
 **Pendientes previos (siguen vigentes):**
 
@@ -3652,6 +3662,25 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-10-02 (2) — Homologación STG↔PRD ejecutada + correctivos PRD + prediseñados migrados + PR #63
+
+- Script reusable nuevo `scripts/diag-stg/homologacion.sh` (`bae9803`): firma de esquema
+  completa vía `psql` (information_schema/pg_catalog — el pg_dump local v13 no sirve contra
+  PG17), datos por conteo/checksum y matriz de env vars Vercel.
+- Resultados: esquema alineado salvo lo esperado; catálogo y CMS 100% idénticos; env vars con
+  solo 2 diferencias intencionales (`AVEONLINE_WEBHOOK_SECRET` prod-only, `CRON_JOBS_DISABLED`
+  preview-only); crons divergentes por diseño (emails solo PRD, `uptime-monitor-prd` solo STG).
+- Correctivos PRD (respaldo `tmp/rollback-prd-20261002/`): 10 FKs legacy duplicadas eliminadas;
+  3 variantes corregidas (`FI-POL-75X10-1`, `FI-CUAD-65-1`, `FI-POL-75X10-10`) + precio
+  `ABC-COMP-ES-MINI-NOMAG` ($33.900); prediseñados STG→PRD aditivos (66 filas
+  `DesignGalleryImage` + 67 archivos, 0 duplicados por hash; PRD 78 activos, 12 originales
+  intactos).
+- ADR-121: IDs internos divergentes NO se alinean (SKU = llave de negocio); settings
+  `LUCAMS_SHIPPING_*` son por ambiente.
+- PR de promoción #63 (`develop`→`production`) creado con checklist (migraciones PRD primero),
+  pendiente de merge. Pendientes: validación en dispositivo real, INP en 3-5 días, opcional
+  limpieza de datos de prueba en STG.
 
 ### 2026-10-02 — 10 paquetes (E–J) en el árbol: preview WYSIWYG, zonas, dedupe, «Volver a pedir», INP
 

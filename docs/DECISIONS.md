@@ -3738,3 +3738,22 @@ intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar
 **Por qué:** el HMAC prueba integridad (nadie alteró la oferta en tránsito), no vigencia (la oferta sigue existiendo al cobrar) — la configuración de envíos es un dato vivo que debe re-verificarse en el momento del dinero. Y la ambigüedad «qué key manda» desaparece con una regla de precedencia explícita y fail-closed.
 
 **Consecuencia:** pendiente operativo registrado en OPERATIONS.md: borrar la key legacy `LUCAMS_SHIPPING_LOCALITIES` en STG/PRD una vez confirmado que `LUCAMS_SHIPPING_ZONES` existe; después se podrá eliminar el fallback legacy de `features/shipping/settings.ts`.
+
+---
+
+## ADR-121 — Homologación STG↔PRD con STG como base: FKs legacy fuera, IDs internos NO se alinean (SKU = llave de negocio), contenido curado migra aditivo, settings de negocio son por ambiente
+
+**Fecha:** 2026-10-02
+**Estado:** ✅ Aceptada (homologación ejecutada con `scripts/diag-stg/homologacion.sh`, commit `bae9803`; PR de promoción #63 pendiente de merge)
+
+**Contexto:** tras la sesión de los 10 paquetes se ejecutó una homologación completa STG↔PRD (firma de esquema vía `information_schema`/`pg_catalog`, conteos/checksums de datos y matriz de env vars). El ejercicio dejó 4 decisiones de criterio que se registran para futuras homologaciones:
+
+**Decisión:**
+① **FKs legacy duplicadas se eliminan (STG limpio es la referencia):** PRD arrastraba 10 constraints de FK con nombres lowercase redundantes con las que crea Prisma; se borraron en PRD con respaldo y rollback SQL en `tmp/rollback-prd-20261002/`.
+② **El drift de IDs internos entre ambientes NO se alinea:** ~45 variantes tienen IDs distintos en STG y PRD (mismo SKU, creadas a mano en cada ambiente). El riesgo de un UPDATE de PK con FKs referenciantes supera con creces el beneficio cosmético — **la llave de negocio es el SKU**, no el ID.
+③ **La migración de contenido curado (galería de prediseñados) es siempre ADITIVA STG→PRD:** 66 filas de `DesignGalleryImage` + 67 archivos copiados al bucket `product-images` de PRD con mismo path y `x-upsert:false` (sin pisar nada), verificación por hash de contenido (0 duplicados) y rollback documentado; PRD conservó intactos sus 12 originales (78 activos finales).
+④ **Las settings de negocio (`LUCAMS_SHIPPING_*`) no se copian entre ambientes:** existen solo en STG; se configuran en PRD desde el admin (`/admin/envios`) cuando el negocio decida precio y zonas — son decisión operativa por ambiente, no dato homologable.
+
+**Por qué:** homologar no es espejarlo todo a la fuerza: el esquema y el catálogo deben ser idénticos (lo son — catálogo y CMS 100%), pero los IDs internos son detalle de implementación (riesgo alto, beneficio nulo) y las settings de negocio son deliberadamente divergentes por ambiente (igual que los crons de email activos solo en PRD desde 2026-08-05 y `uptime-monitor-prd` solo en STG). Las migraciones de contenido aditivas con verificación por hash permiten ejecutar contra PRD con riesgo acotado y rollback real.
+
+**Consecuencia:** futuras homologaciones usan `scripts/diag-stg/homologacion.sh` como procedimiento canónico (firma de esquema por `psql`, no `pg_dump --schema-only` — el pg_dump local es v13 contra servidores PG17) y aplican estos 4 criterios: esquema/catálogo sí, IDs no, contenido aditivo verificado, settings de negocio por ambiente. Las env vars Vercel quedaron con solo 2 diferencias intencionales (`AVEONLINE_WEBHOOK_SECRET` solo Production, `CRON_JOBS_DISABLED` solo Preview) — cualquier diferencia nueva es señal de drift a investigar.
