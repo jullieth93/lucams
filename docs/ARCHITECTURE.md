@@ -579,7 +579,7 @@ certificación 2026-09-26). Inventario agrupado por módulo:
 | Observabilidad              | `WebVital`, `ErrorLog`, `ErrorReport`, `AlertState`, `Notification`, `EmailEvent`                       |
 | Soporte                     | `SupportTicket`                                                                                         |
 | CMS v2                      | `CmsPage`, `CmsSection`, `CmsField`, `CmsFieldVersion`, `CmsListItem`, `CmsMedia` (ver § CMS v2)        |
-| Emails                      | `EmailTemplateOverride` (overrides de copy de las 26 plantillas, `/admin/email-templates`)              |
+| Emails                      | `EmailTemplateOverride` (overrides de copy de las 27 plantillas, `/admin/email-templates`)              |
 | Personalización             | `Design`, `DesignAsset`, `PersonalizationTemplate`, `LetterTileSet`, `LetterTile`, `DesignGalleryImage` |
 | Storefront misc             | `UrlRedirect`, `WishlistItem`, `BackInStockSubscription`                                                |
 | B2B                         | `Quote`, `QuoteItem`, `WholesaleTier`                                                                   |

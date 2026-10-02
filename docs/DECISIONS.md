@@ -3526,3 +3526,106 @@ intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar
 **Por qué:** ① la entrega propia es un diferenciador comercial real en Bogotá y como carrier interno reusa toda la maquinaria anti-manipulación y de idempotencia existente; ② apagar carriers no debe exigir un deploy; ③ un ticket de garantía fuera del módulo especializado pierde la trazabilidad legal (diagnóstico, remedio, plazos) que la Ley 1480 exige poder demostrar.
 
 **Consecuencia:** migración Prisma `20260929120000_support_ticket_thread_case_links` + RLS `00000000000040` pendientes de aplicar en STG/PRD con el deploy. La respuesta del cliente desde `/mi-cuenta` (reapertura CLOSED→OPEN) quedó fuera por riesgo (superficie autenticada nueva) — iteración separada; el cliente responde por email (Reply-To al buzón). El gate de la FAQ «envío mismo día» quedó fail-closed tras `SAME_DAY_DELIVERY_ENABLED` (activación operativa aparte).
+
+---
+
+## ADR-108 — Localidad como dato de dirección (las zonas habilitadas solo gatean la oferta «Envío Lucam's») + regla única de promesa de entrega producción+cutoff + logos de transportadoras
+
+**Fecha:** 2026-10-01
+**Estado:** ✅ Aceptada (paquete A, commit `9d28390`; desplegado a PRD vía PR #58)
+
+**Contexto:** ① la localidad se pedía en el checkout SOLO si el envío propio estaba activo y la zona habilitada — mezclaba un dato estructural de la dirección (la localidad, que la logística necesita siempre en Bogotá) con una decisión comercial (qué localidades cubre «Envío Lucam's»), y una orden con envío Aveonline quedaba sin localidad; ② la promesa de entrega se calculaba en 6 superficies distintas (checkout, badge admin, guía imprimible, emails, PDP, FAQ) con lógicas divergentes — algunas prometían «mismo día» sin considerar el cutoff; ③ el listado de transportadoras era texto plano.
+
+**Decisión:**
+① **La localidad es un DATO DE DIRECCIÓN, no una condición de oferta.** `/checkout/datos` muestra TODAS las localidades del catálogo por ciudad (Bogotá: 20, requerido) sin importar la configuración de envío propio; las zonas habilitadas en `/admin/envios` solo controlan si aparece la OFERTA «Envío Lucam's» en `/checkout/envio`. Junto a ella, el campo opcional «Barrio» (`neighborhood`) en todas las ciudades, persistido en la sesión de checkout, `Order.shippingAddress` y `Address.structured`, y visible en admin, guía imprimible y mi-cuenta (copy del CP editable por CMS).
+② **UNA regla de promesa de entrega** (`lib/delivery-estimate.ts`): `deliveryDays = maxProductionDays + (hora Colombia >= cutoff ? 1 : 0)`, compartida por las 6 superficies — nadie promete por su cuenta y desaparecen las promesas incondicionales de mismo día.
+③ **Logos de transportadoras** (`lib/carrier-logos.ts` + `public/carriers/`): logos oficiales (Servientrega, Coordinadora, Interrapidísimo, Envía, TCC), monogramas para las sin logo usable (Deprisa, 99minutos, Go Envíos) y fallback `Truck`, en checkout y `/admin/envios`.
+
+**Por qué:** ① una dirección incompleta cuesta más que una oferta menos visible: la localidad es información logística permanente, mientras que la cobertura del envío propio cambia por decisión operativa; ② una promesa divergente por superficie es un reclamo garantizado (Ley 1480: la información dada al consumidor es vinculante); ③ los logos reducen fricción de elección en el paso con más abandono del checkout.
+
+**Consecuencia:** el admin puede encender/apagar zonas de «Envío Lucam's» sin afectar la captura de direcciones. La FAQ de envío mismo día (`faq.11-envio-mismo-dia`, versión 2 con copy producción+cutoff) consume la misma regla pero sigue gateada fail-closed por `SAME_DAY_DELIVERY_ENABLED` (activación pendiente del owner). Tests: matriz de la regla de entrega, schemas, logos.
+
+---
+
+## ADR-109 — Stock: clamp `min(99, stock)` con mensajes por producto + cierre de la carrera TOCTOU de reconciliación
+
+**Fecha:** 2026-10-01
+**Estado:** ✅ Aceptada (paquete A, commits `9d28390`/`32d8a1e`; desplegado a PRD vía PR #58)
+
+**Contexto:** ① el carrito rechazaba con error cualquier cantidad que superara el stock disponible — una fricción innecesaria cuando el cliente solo quiere «todo lo que haya» — y los errores no decían QUÉ producto fallaba; ② la auditoría encontró una carrera real (TOCTOU): si la reconciliación de una orden corría entre el pago aprobado en Wompi y la llegada del webhook, podía sobrescribir una orden ya `PAID`.
+
+**Decisión:**
+① **Semántica CLAMP en cantidad:** el tope efectivo es `min(99, stock)`; agregar/actualizar clampa al disponible en vez de rechazar, y solo se rechaza cuando no hay margen (stock 0 o la línea ya está en el tope) — con mensaje que NOMBRA el producto. El stepper se capa al stock real y el badge «Solo quedan N» avisa escasez. Los errores de checkout (`OrderUnavailableItemsError`) listan los productos no disponibles por nombre.
+② **Cierre de la carrera TOCTOU:** la reconciliación de la orden queda gateada por status (update condicionado al estado esperado); si la orden ya fue pagada por otro camino, se lanza `OrderAlreadyPaidError` y el flujo redirige a `/checkout/gracias` en vez de pisarla. Se mantiene el modelo SIN reservas de stock (ADR-014 SUPERSEDED por ADR-091: la protección real contra sobreventa es el UPDATE atómico `UPDATE … WHERE stock >= qty` al `PAID` + `needsReconciliation`).
+
+**Por qué:** ① clamp es la convención de e-commerce y convierte un dead-end en venta; nombrar el producto convierte un error críptico en una acción obvia para el cliente y para soporte. ② Una orden pagada no puede ser reabierta por un proceso de saneamiento: el dinero manda sobre cualquier job.
+
+**Consecuencia:** tests de la matriz de stock del carrito, de la carrera de reconciliación y de los mensajes por producto (57 tests nuevos del paquete). El comportamiento legado de clamp quedó cubierto por su test histórico (conserva la semántica).
+
+---
+
+## ADR-110 — Fusión Garantías+Reclamos en un solo módulo (una tabla, una máquina de estados, notificación garantizada al cliente)
+
+**Fecha:** 2026-10-01
+**Estado:** ✅ Aceptada (paquete B, commit `4cb2a1b`; desplegado a PRD vía PR #58)
+
+**Contexto:** `/admin/garantias` y `/admin/reclamos` operaban la MISMA tabla `WarrantyClaim` con lógicas divergentes (duplicado parcial documentado en la auditoría 2026-09-11), y el módulo de reclamos tenía un campo «nota al cliente» que NUNCA se enviaba — el cliente radicaba y quedaba sin respuesta, un riesgo legal directo (Ley 1480: trazabilidad de la gestión de garantías; SIC: términos de respuesta a PQR).
+
+**Decisión:**
+① **Un solo módulo:** `/admin/reclamos` se fusiona en `/admin/garantias` (redirect 308 permanente, entrada de nav retirada) — una tabla, una máquina de estados, una sola lógica de resolución.
+② **Notificación garantizada:** la resolución incluye la nota del equipo en el email al cliente, y el rechazo gana su propia plantilla **`warranty-rejected`** (la #27 del registry, registrada en el admin de overrides) con el motivo — ningún caso se cierra en silencio.
+③ **Recordatorio de dinero manual:** RESOLVED+REFUND muestra un recordatorio persistente (con link a la orden) de que el dinero se devuelve a mano (Wompi/transferencia) — el sistema nunca mueve plata (misma política del reembolso de pedidos).
+
+**Por qué:** dos vistas sobre la misma entidad divergen siempre; y un flujo que captura la queja pero no notifica la respuesta es peor que no tenerlo (genera la expectativa y la incumple). La fusión elimina la divergencia y hace la notificación estructural, no optativa.
+
+**Consecuencia:** los enlaces viejos a `/admin/reclamos` siguen funcionando (308). El inventario de plantillas pasa a 27 (EMAIL_TEMPLATES.md actualizado). Los helpers `customerWaLink`/`customerTelLink` (`lib/wa.ts`, normalización +57 para móviles CO de 10 dígitos) se aprovecharon para arreglar los links wa.me/tel: del detalle de pedido admin y de los emails de notificación internos.
+
+---
+
+## ADR-111 — Token firmado de reseña de un solo uso sin login (HMAC stateless, sin tabla)
+
+**Fecha:** 2026-10-01
+**Estado:** ✅ Aceptada (paquete B, commit `04a6ba6`; desplegado a PRD vía PR #58)
+
+**Contexto:** el email «deja tu reseña» caía en el fallback `/rastrear` desde F-11 (el token público de tracking se guarda solo como hash — no hay URL de pedido recuperable para invitados), así que el CTA llevaba a una página SIN UI de reseña: el canal de reseñas post-compra estaba muerto para guests, justo el segmento mayoritario.
+
+**Decisión:** **token firmado HMAC stateless** (`features/reviews/review-token.ts`): payload `{orderId, email, productIds, exp 30d}` firmado con `CSRF_SECRET` (con separación de dominio), SIN tabla nueva — la verificación es criptográfica. El email `review-request` emite el token y el CTA aterriza en **`/resena/<token>`**: página server-verified con selector de producto, estrellas + comentario con Turnstile, que crea la `Review` en estado `PENDING` (moderación intacta) SIN login. Un solo uso: índice único parcial (clientes identificados) + pre-chequeo del marcador `createdBy` (guests puros). 16 campos CMS `review.page.*` registrados para editar la página sin tocar código.
+
+**Por qué:** una tabla de tokens replicaría lo que HMAC ya garantiza (integridad + expiración) con costo operativo (cleanup, RLS, storage); el payload mínimo (orderId + email + productIds) es suficiente para verificar la compra contra la DB al consumir el token. Turnstile + PENDING mantienen la política anti-testimonios-falsos (decisión de Lucy 2026-09-05: solo reseñas de compras verificadas).
+
+**Consecuencia:** resuelve el fallback a `/rastrear` de F-11 para el flujo de reseñas (los demás CTAs post-pago siguen con el fallback documentado en EMAIL_TEMPLATES.md). `gitleaks` allowlist el secreto dummy del fixture de tests con justificación.
+
+---
+
+## ADR-112 — Saneamiento de imágenes de catálogo (audit + repair one-shots; causa raíz: rename de normalize-webp)
+
+**Fecha:** 2026-10-01
+**Estado:** ✅ Aceptada (operación de datos 2026-10-01, commit `9b66a4f`)
+
+**Contexto:** la auditoría de URLs (`one-shot/audit-product-image-urls.mjs`, HEAD-check de todas las imágenes de catálogo por ambiente) encontró **66 referencias rotas en STG y 73 en PRD**, más referencias cruzadas entre proyectos (PRD apuntando al bucket de STG y viceversa — dependencia frágil ya atacada en 2026-09-20 que había reaparecido).
+
+**Decisión:** reparación con `one-shot/repair-missing-bucket-objects.mjs` (dry-run por defecto, env-guard), por caso: **A** copiar el objeto faltante desde el bucket del otro proyecto; **B** normalizar referencias cruzadas (copiar + reescribir al host local); **C** reescribir las referencias `.png` muertas al objeto `.webp` migrado — **la causa raíz real de los 139 «huérfanos»**: `normalize-webp` renombró los objetos en el bucket y las referencias en DB quedaron rezagadas; **D** poda de referencias muertas SOLO en arrays con ≥1 imagen sana sobreviviente (nunca dejar un producto sin imagen por script). Además, migración de las últimas URLs Unsplash al bucket propio (`migrate-unsplash-to-bucket.mjs`, 3+3 objetos, sharp-optimizadas).
+
+**Por qué:** la reparación por casos con dry-run y poda conservadora permite ejecutar contra PRD con riesgo acotado; atacar la causa raíz (rename sin reescritura de refs) evita que el problema reaparezca en la próxima normalización.
+
+**Consecuencia:** **STG 201/201 y PRD 134/134 imágenes sanas, 0 rotas, 0 cruzadas.** Bugs del propio tooling corregidos en el camino: colección de refs de Category (variable indefinida) y el path de upload debe ser relativo al bucket (había objetos en `<bucket>/<bucket>/<path>`; las copias mal ubicadas se limpiaron en ambos buckets). La PDP gana además fallback onError en galería y ProductCard (commit `b80867f`) para que una URL muerta nunca más rompa el hero/LCP, y el seed canónico ya no referencia Unsplash.
+
+---
+
+## ADR-113 — Palancas de rendimiento: fuentes del Estudio fuera del root layout, Turnstile perezoso, vitals p75 por ruta, caché «catalog» y gate móvil Lighthouse
+
+**Fecha:** 2026-10-01
+**Estado:** ✅ Aceptada (paquete B, commit `dba3fed`; desplegado a PRD vía PR #58)
+
+**Contexto:** ① las 6 fuentes del selector de calendario del Estudio (~2MB de TTF) se cargaban en el layout global — las pagaba TODA la tienda aunque solo las usa `/estudio/*`; ② el widget Turnstile del newsletter del footer montaba en cada carga de página; ③ `/admin/performance` mostraba promedios (ocultan colas) sin desglose por ruta ni por métrica; ④ categorías y rango de precios se recalculaban en cada request de storefront; ⑤ el gate Lighthouse de CI solo corría emulación desktop.
+
+**Decisión:**
+① **Fuentes del Estudio scoped a `/estudio/*` con `preload:false`** (el canvas llama `document.fonts.load` on demand); el root layout conserva solo Fredoka + Inter.
+② **Turnstile del footer perezoso:** monta por IntersectionObserver/focus, no en cada page load; el submit espera el token y reintenta el challenge cuando se agota.
+③ **`/admin/performance` con p50/p75/p95 por ruta** (`features/observability/percentiles.ts`, percentileCont puro, ratings web.dev) y pills de vitals separadas por métrica — las decisiones de performance se toman sobre el p75, no sobre el promedio.
+④ **Categorías + rango de precios con `unstable_cache` tag «catalog»** (TTL 1h; la invalidación desde admin ya estaba cableada con ese tag).
+⑤ **Gate móvil Lighthouse en CI** (`lighthouserc.mobile.js`): corrida con emulación móvil para `/` y `/productos` (perf warn ≥0.4 como baseline conservador, a11y/SEO error ≥0.9).
+
+**Por qué:** el peso que no se usa es el peor peso (2MB de fuentes penalizaban el LCP de toda la tienda); y sin percentiles por ruta se optimiza a ciegas — el p75 por ruta dice dónde duele de verdad (continúa la línea de ADR-104: RUM antes que refactor).
+
+**Consecuencia:** la home y el catálogo dejan de descargar las fuentes del Estudio y el iframe de Turnstile en cada navegación. El gate móvil hace regresión-imposible una caída brusca de perf/a11y móvil. Mismo paquete: **Next 16.3.4→16.3.6** (commit `5f323f3`) por GHSA-vcvr-r3jv-pc5j (RCE crítica en `next/og` ImageResponse) — el gate de audit prod (high+) falló en el push y el bump de patch lo cerró con `pnpm audit --prod` limpio.
