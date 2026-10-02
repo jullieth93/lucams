@@ -132,11 +132,15 @@ export function ProductionPiecesButton({
                         title={`Pieza ${i + 1} — abrir a tamaño completo`}
                         className="bg-brand-cream/40 border-brand-purple/10 hover:ring-brand-purple/40 focus:ring-brand-turquoise relative block aspect-square overflow-hidden rounded-md border hover:ring-2 focus:ring-2 focus:outline-none"
                       >
+                        {/* Paquete D (2026-10-02 — WYSIWYG): object-CONTAIN sobre
+                            fondo neutro — la pieza (tira 2×12 alta) se ve ENTERA,
+                            como la imprime producción; object-cover la recortaba
+                            y el moderador no podía compararla con el preview. */}
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={piece.url}
                           alt={`Pieza ${i + 1} de ${productName}`}
-                          className="h-full w-full object-cover"
+                          className="h-full w-full object-contain p-1"
                           loading="lazy"
                         />
                         <span className="bg-brand-purple-dark/80 absolute right-0 bottom-0 px-1 text-[9px] font-bold text-white">

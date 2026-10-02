@@ -28,7 +28,12 @@ import { toast } from "sonner";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { uploadDesignAssetAction } from "@/features/personalization/actions";
-import { applyPredesignedToSlot, PREDESIGNED_DRAG_MIME } from "./lib/apply-predesigned";
+import {
+  applyPredesignedToSlot,
+  applyPredesignedVarietyToEmptySlots,
+  PREDESIGNED_DRAG_MIME,
+} from "./lib/apply-predesigned";
+import { predesignedFaceBadge } from "./lib/predesigned-variety";
 import { StudioMessageField } from "./studio-message-field";
 import { ConsentText } from "./studio-consent-text";
 import {
@@ -56,6 +61,9 @@ type StudioSidebarProps = {
   allowText?: boolean;
   /** Ola 21 — diseños prediseñados aplicables por slot (galería admin). */
   predesigned?: import("./studio-asset-picker-modal").PredesignedItem[];
+  /** Paquete A (2026-10-02) — caras del producto: badges 1/2 caras de los
+   *  prediseñados y llenado variado por pares A/B (default 1). */
+  facesPerUnit?: number;
 };
 
 export function StudioSidebar({
@@ -66,6 +74,7 @@ export function StudioSidebar({
   productShape,
   allowText = false,
   predesigned = [],
+  facesPerUnit = 1,
 }: StudioSidebarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
@@ -118,11 +127,39 @@ export function StudioSidebar({
         return;
       }
       toast.success(fillStudioText(texts.plantillas.toastPredisenado, { nombre: item.name }));
+      // Paquete A — la cara B no se descarta en silencio: si su slot estaba
+      // ocupado se avisa (no se pisa el contenido del usuario).
+      if (res.bBlocked) toast.warning(texts.plantillas.toastCaraBOcupada);
     } catch (err) {
       toast.error(texts.plantillas.toastError);
       void err;
     } finally {
       setApplyingPredesignedId(null);
+    }
+  };
+
+  // Paquete A (2026-10-02) — llenado VARIADO: recorre el catálogo del tag sin
+  // repetir diseño mientras haya variedad (bug: 20 slots con el mismo diseño).
+  // Las caras B ocupadas se respetan y se avisan en una sola pasada.
+  const [applyingVariety, setApplyingVariety] = useState(false);
+  const handleFillWithVariety = async () => {
+    if (!designId || applyingVariety || applyingPredesignedId) return;
+    setApplyingVariety(true);
+    try {
+      const res = await applyPredesignedVarietyToEmptySlots({
+        store,
+        items: predesigned,
+        facesPerUnit,
+      });
+      if (res.failed) toast.error(texts.plantillas.toastError);
+      if (res.applied > 0) {
+        toast.success(fillStudioText(texts.plantillas.toastPredisenadoVarios, { n: res.applied }));
+      }
+      if (res.bBlockedCount > 0) toast.warning(texts.plantillas.toastCaraBOcupada);
+    } catch {
+      toast.error(texts.plantillas.toastError);
+    } finally {
+      setApplyingVariety(false);
     }
   };
 
@@ -185,6 +222,10 @@ export function StudioSidebar({
               : {}),
             validationLevel: result.validationLevel,
             validationMessage: result.validationMessage,
+            // Paquete C — recomendación específica del caso + checks que
+            // fallaron (el modal de calidad los muestra como contenido principal).
+            validationRecommendation: result.validationRecommendation,
+            validationChecks: result.validationChecks,
           });
           // C2 — la foto se re-muestreó en el navegador antes de subir: marcarla
           // para el badge "✨ Optimizada" del thumb (el servidor recibe la versión
@@ -449,46 +490,84 @@ export function StudioSidebar({
             <span className="text-brand-muted text-xs font-normal">({predesigned.length})</span>
           </div>
           <p className="text-brand-muted mb-2 text-[11px]">{texts.plantillas.predisenadosHint}</p>
+          {/* Paquete A — llenado VARIADO de los slots vacíos (round-robin del
+              catálogo: nunca N slots con el mismo diseño habiendo variedad). */}
+          {emptySlots > 0 && (
+            <button
+              type="button"
+              onClick={handleFillWithVariety}
+              disabled={applyingVariety || applyingPredesignedId !== null}
+              aria-label={texts.plantillas.predisenadosLlenarAria}
+              className="bg-brand-turquoise/15 text-brand-purple-dark hover:bg-brand-turquoise/25 focus:ring-brand-turquoise mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2.5 text-sm font-semibold transition-colors focus:ring-2 focus:outline-none disabled:opacity-60"
+            >
+              {applyingVariety ? (
+                <Loader2 className="text-brand-purple h-4 w-4 animate-spin" />
+              ) : (
+                <Wand2 className="text-brand-purple h-4 w-4" />
+              )}
+              {texts.plantillas.predisenadosLlenarCta}
+            </button>
+          )}
           <div className="grid grid-cols-3 gap-2">
-            {predesigned.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleApplyPredesigned(item)}
-                disabled={applyingPredesignedId !== null}
-                aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
-                  nombre: item.name,
-                })}
-                title={item.name}
-                // 2026-09-22 — drag & drop al lienzo (desktop): la tarjeta se
-                // arrastra hasta un slot (highlight de drop target ya existe en
-                // el slot). El clic sigue aplicando al slot seleccionado/vacío.
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData(
-                    PREDESIGNED_DRAG_MIME,
-                    JSON.stringify({ id: item.id, name: item.name }),
-                  );
-                  e.dataTransfer.effectAllowed = "copy";
-                }}
-                className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none active:cursor-grabbing disabled:opacity-50"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={item.imageUrl}
-                  alt={item.name}
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                  // La imagen interna no debe secuestrar el drag del botón.
-                  draggable={false}
-                />
-                {applyingPredesignedId === item.id && (
-                  <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
-                    <Loader2 className="h-5 w-5 animate-spin text-white" />
-                  </div>
-                )}
-              </button>
-            ))}
+            {predesigned.map((item) => {
+              const faceBadge = predesignedFaceBadge(facesPerUnit, item.imageUrlB);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleApplyPredesigned(item)}
+                  disabled={applyingPredesignedId !== null || applyingVariety}
+                  aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
+                    nombre: item.name,
+                  })}
+                  title={item.name}
+                  // 2026-09-22 — drag & drop al lienzo (desktop): la tarjeta se
+                  // arrastra hasta un slot (highlight de drop target ya existe en
+                  // el slot). El clic sigue aplicando al slot seleccionado/vacío.
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(
+                      PREDESIGNED_DRAG_MIME,
+                      JSON.stringify({ id: item.id, name: item.name }),
+                    );
+                    e.dataTransfer.effectAllowed = "copy";
+                  }}
+                  className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none active:cursor-grabbing disabled:opacity-50"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={item.imageUrl}
+                    alt={item.name}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    // La imagen interna no debe secuestrar el drag del botón.
+                    draggable={false}
+                  />
+                  {/* Paquete A — badge 1/2 caras (solo productos de 2 caras):
+                      "1 cara" = el respaldo se imprime espejo del frente (regla
+                      única de cara B vacía — ver predesigned-variety.ts). */}
+                  {faceBadge && (
+                    <span
+                      className="text-brand-purple-dark absolute top-1 left-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold shadow"
+                      title={
+                        faceBadge === "two"
+                          ? texts.plantillas.badgeDosCarasTitle
+                          : texts.plantillas.badgeUnaCaraTitle
+                      }
+                    >
+                      {faceBadge === "two"
+                        ? texts.plantillas.badgeDosCaras
+                        : texts.plantillas.badgeUnaCara}
+                    </span>
+                  )}
+                  {applyingPredesignedId === item.id && (
+                    <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-white" />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </section>
       )}
@@ -791,21 +870,24 @@ function AssetThumb({
           </motion.div>
         )}
 
-        {/* M.3.b.B.2 — Badge validación calidad foto (top-right) */}
+        {/* M.3.b.B.2 — Badge validación calidad foto (top-right).
+            Paquete C (2026-10-02) — ya no es un emoji solo de 10px: badge con
+            texto corto y color por severidad, visible para cualquier cliente.
+            El thumb entero abre el modal de calidad al click (hasWarning). */}
         {asset.validationLevel === "warning-strong" && (
           <div
-            className="absolute top-1 right-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 shadow"
+            className="absolute top-1 right-1 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white shadow ring-1 ring-white"
             aria-label={texts.fotos.resolucionBajaAria}
           >
-            ⚠️
+            ⚠️ {texts.fotos.badgeRevisar}
           </div>
         )}
         {asset.validationLevel === "warning-soft" && (
           <div
-            className="absolute top-1 right-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 shadow"
+            className="absolute top-1 right-1 rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-amber-950 shadow ring-1 ring-white"
             aria-label={texts.fotos.avisoCalidadAria}
           >
-            ⓘ
+            ⚠️ {texts.fotos.badgeRevisar}
           </div>
         )}
 
@@ -938,6 +1020,20 @@ function PhotoQualityModal({
               </div>
               <div className="flex flex-1 flex-col justify-center text-sm">
                 <p className="text-brand-purple-dark leading-snug font-medium">{message}</p>
+                {/* Paquete C (2026-10-02) — la recomendación ESPECÍFICA del caso
+                    (resolución / nitidez / luz, generada por el servidor) es el
+                    contenido principal; los tips generales CMS quedan secundarios. */}
+                {asset.validationRecommendation && (
+                  <div
+                    className={[
+                      "mt-2 rounded-lg px-3 py-2 text-xs leading-snug",
+                      isStrong ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-900",
+                    ].join(" ")}
+                  >
+                    <p className="font-bold">{texts.fotos.calidadRecomendacionTitulo}</p>
+                    <p className="mt-0.5">{asset.validationRecommendation}</p>
+                  </div>
+                )}
                 <div className="text-brand-muted mt-2 space-y-1 text-xs">
                   <p className="font-semibold">{texts.fotos.calidadAccionesTitulo}</p>
                   <ul className="ml-3 list-disc space-y-0.5">

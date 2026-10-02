@@ -25,13 +25,16 @@
 
 import "server-only";
 import { prisma } from "@/lib/db";
-import { parseVariantAttributes } from "@/features/products/variant-schemas";
+import {
+  describeVariantAttributes,
+  parseVariantAttributes,
+} from "@/features/products/variant-schemas";
 import {
   readPhotoPackDesignInfo,
   resolvePhotoPackVariant,
 } from "@/features/products/photo-pack-resolve";
 import { logger } from "@/lib/logger";
-import { designIdentity } from "./design-identity";
+import { designIdentity, sameLineContent } from "./design-identity";
 import { describePieces, pieceKindFor } from "./line-preview";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import {
@@ -48,6 +51,14 @@ export type CartLineItem = {
   productName: string;
   variantId: string;
   variantName: string;
+  /**
+   * Desglose estructurado de la variante (Paquete F, 2026-10-02 —
+   * describeVariantAttributes): ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"].
+   * El variantName es texto libre y no siempre informa las dimensiones de
+   * compra (el set de 12 tarjetas no decía si era CON IMÁN). [] si la variante
+   * no declara attributes.
+   */
+  variantBreakdown: string[];
   isPersonalizable: boolean;
   qty: number;
   unitPrice: number;
@@ -169,6 +180,10 @@ const cartItemsInclude = {
           id: true,
           previewUrl: true,
           status: true,
+          // productId + canvasData + metadata: identidad de contenido del diseño
+          // (designIdentity) — los merges agrupan líneas con diseños distintos pero
+          // idénticos (Paquete H, 2026-10-02).
+          productId: true,
           // Metadata del diseño: opciones de diseño que se muestran en el resumen (p. ej.
           // "Sin borde" de los sets de letras, Lucy 2026-09-05). El PNG las refleja; el texto
           // evita que el cliente tenga que deducirlas de la imagen.
@@ -297,6 +312,7 @@ function toDetail(cart: RawCart): CartDetail {
       productName: i.variant.product.name,
       variantId: i.variantId,
       variantName: i.variant.name,
+      variantBreakdown: describeVariantAttributes(parseVariantAttributes(i.variant.attributes)),
       isPersonalizable: i.variant.product.isPersonalizable,
       qty: i.qty,
       unitPrice: i.unitPrice,
@@ -304,7 +320,10 @@ function toDetail(cart: RawCart): CartDetail {
       stock: i.variant.stock,
       // Si CartItem tiene designId vinculado, mostramos el preview del Design
       // en vez de la imagen genérica del producto. Mejora el "WYSIWYG" del cart.
-      imageUrl: i.design?.previewUrl ?? i.variant.product.images[0] ?? null,
+      // Paquete F (2026-10-02) — sin diseño, la foto de LA VARIANTE manda sobre
+      // la genérica del producto (ProductVariant.images, "vacío = hereda
+      // Product.images"): el separador 2×6 mostraba la portada del 4×4.2.
+      imageUrl: i.design?.previewUrl ?? i.variant.images[0] ?? i.variant.product.images[0] ?? null,
       designId: i.designId,
       designPreviewUrl: i.design?.previewUrl ?? null,
       designUnits: designDisplayUnits(i.design),
@@ -768,16 +787,18 @@ export async function mergeAnonCartIntoCustomer(
   if (customerCart.id === anonCart.id) return anonSessionId;
 
   // Caso 3: merge. Fold del anon en el customer cart.
-  // Items con designId NUNCA se agrupan con otros por variantId — cada diseño
-  // personalizado es único. Solo agrupamos por (variantId AND mismo designId)
-  // o (variantId AND ninguno tiene designId).
+  // Paquete H (2026-10-02): el dup se decide por CONTENIDO (sameLineContent),
+  // no solo por (variantId, designId) — dos Designs distintos pero idénticos
+  // (cada pasada por el Estudio crea uno nuevo) quedaban como dos líneas
+  // visualmente iguales en carrito, pedido y emails (reporte STG). Misma regla
+  // que addPersonalizedToCart: misma variante + mismo contenido → UNA línea con
+  // la qty sumada; diseños distintos → líneas separadas. La línea que sobrevive
+  // es la del cart del customer (conserva su diseño/preview); el Design del anon
+  // queda huérfano, igual que en addPersonalizedToCart — no se borra (puede
+  // estar referenciado por auditoría/historial del cliente).
   await prisma.$transaction(async (tx) => {
     for (const anonItem of anonCart.items) {
-      const dup = customerCart.items.find(
-        (i) =>
-          i.variantId === anonItem.variantId &&
-          (i.designId ?? null) === (anonItem.designId ?? null),
-      );
+      const dup = customerCart.items.find((i) => sameLineContent(i, anonItem));
       if (dup) {
         await tx.cartItem.update({
           where: { id: dup.id },
@@ -811,8 +832,8 @@ export async function mergeAnonCartIntoCustomer(
  * #18 — Adopta el carrito `source` DENTRO del `target` (fold de items, SIN pérdida) y borra el source.
  * Se usa al recuperar un carrito abandonado por link: se folda el carrito ACTUAL (source) en el
  * recuperado (target) para NO pisar lo que el cliente ya tenía. Mismo fold que mergeAnonCartIntoCustomer
- * (agrupa por variantId + mismo designId, cap MAX_QTY_PER_ITEM). Se folda hacia el target para preservar
- * el FK AbandonedCart.cartId del carrito recuperado.
+ * (Paquete H: agrupa por CONTENIDO — variante + identidad del diseño — cap MAX_QTY_PER_ITEM). Se folda
+ * hacia el target para preservar el FK AbandonedCart.cartId del carrito recuperado.
  */
 export async function mergeCartsAdopt(
   sourceSessionId: string,
@@ -826,9 +847,7 @@ export async function mergeCartsAdopt(
   if (!target || !source || source.items.length === 0 || source.id === target.id) return;
   await prisma.$transaction(async (tx) => {
     for (const it of source.items) {
-      const dup = target.items.find(
-        (t) => t.variantId === it.variantId && (t.designId ?? null) === (it.designId ?? null),
-      );
+      const dup = target.items.find((t) => sameLineContent(t, it));
       if (dup) {
         await tx.cartItem.update({
           where: { id: dup.id },

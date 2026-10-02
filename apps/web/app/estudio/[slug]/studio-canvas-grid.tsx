@@ -68,6 +68,7 @@ import {
   resolveMaxCols,
   resolveMinSlotSize,
   slotHeightCapByCount,
+  shouldRemeasureViewportH,
   unitSectionsPerRowFor,
   BP_MOBILE,
   STAGE_ZOOM_MIN,
@@ -164,7 +165,8 @@ type StudioCanvasGridProps = {
   /**
    * FB4 — si false (táctil), los slots de la grilla NO capturan gestos (drag/pinch/wheel) → el dedo
    * scrollea la página; el pan/zoom se hace en el editor a pantalla completa (tocar = abrir). En
-   * desktop (true) se conserva el inline drag/rueda.
+   * desktop (true) se conserva el inline drag y el zoom con ctrl/cmd+rueda (Paquete B 2026-10-02:
+   * la rueda SOLA scrollea la página, no zooomea la foto).
    */
   interactiveSlots?: boolean;
   onSlotClick: (slotIndex: number) => void;
@@ -312,6 +314,9 @@ export function StudioCanvasGrid({
           return;
         }
         toast.success(fillStudioText(texts.plantillas.toastPredisenado, { nombre: item.name }));
+        // Paquete A — la cara B no se descarta en silencio: si su slot estaba
+        // ocupado se avisa (no se pisa el contenido del usuario).
+        if (res.bBlocked) toast.warning(texts.plantillas.toastCaraBOcupada);
       } catch {
         toast.error(texts.plantillas.toastError);
       } finally {
@@ -336,9 +341,24 @@ export function StudioCanvasGrid({
 
   // Ola 4 — alto del viewport para el marco máximo en alto (null hasta hidratar:
   // el primer render usa solo el ancho, como antes; luego entra el cap de alto).
+  // Paquete B (2026-10-02, bug "el canvas respira" — Separadores 4×4.2cm en
+  // móvil Y tablet): el alto medido queda ESTABILIZADO — en puntero coarse solo
+  // se re-mide cuando cambia el ANCHO (rotación real), no cuando el scroll
+  // oculta/muestra la barra del navegador (ver shouldRemeasureViewportH).
   const [viewportH, setViewportH] = useState<number | null>(null);
   useEffect(() => {
-    const update = () => setViewportH(window.innerHeight);
+    const isCoarsePointer =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(pointer: coarse)").matches;
+    let lastWidth: number | null = null;
+    const update = () => {
+      const w = window.innerWidth;
+      if (!shouldRemeasureViewportH({ isCoarsePointer, prevWidth: lastWidth, nextWidth: w })) {
+        return;
+      }
+      lastWidth = w;
+      setViewportH(window.innerHeight);
+    };
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
@@ -1507,7 +1527,10 @@ function LazySlotPlaceholder({
           {label ? <span className="text-brand-purple-dark">{label}</span> : null}
           <span>{texts.lienzo.slotTocaElegir}</span>
           {optional && (
-            <span className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-bold">
+            <span
+              className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-bold"
+              title={texts.lienzo.slotCaraBOpcionalTitle}
+            >
               {texts.lienzo.slotCaraBOpcional}
             </span>
           )}

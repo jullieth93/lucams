@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Upload, Trash2, Loader2, ArrowUpDown } from "lucide-react";
 import { uploadGalleryImageAction, deleteGalleryImageAction } from "./actions";
+import { GalleryDetailModal } from "./gallery-detail-modal";
 
 type Item = {
   id: string;
@@ -16,6 +17,7 @@ type Item = {
   imageUrl: string;
   imageUrlB?: string | null;
   isActive: boolean;
+  order: number;
 };
 
 // Llega del server (page.tsx): productos activos que declaran galleryTag en su
@@ -82,6 +84,9 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
   const [stripFile, setStripFile] = useState<File | null>(null);
   const [swapFaces, setSwapFaces] = useState(false);
   const [stripPreview, setStripPreview] = useState<{ faceA: string; faceB: string } | null>(null);
+  // Paquete A (2026-10-02) — detalle del prediseñado (click en la tarjeta):
+  // caras A/B lado a lado + ficha (producto, orden, estado) + borrar.
+  const [detail, setDetail] = useState<Item | null>(null);
 
   const needsFaceB = tagOptions.find((t) => t.tag === tag)?.needsFaceB ?? false;
   // El modo tira solo aplica a productos de 2 caras; si el producto elegido no
@@ -433,12 +438,22 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                     key={it.id}
                     className="border-brand-purple/12 relative rounded-xl border bg-white p-2 shadow-sm"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element -- imagen del bucket público */}
-                    <img
-                      src={it.imageUrl}
-                      alt={it.name}
-                      className="aspect-square w-full rounded-lg object-cover"
-                    />
+                    {/* Paquete A — click en la tarjeta abre el detalle (caras
+                        A/B lado a lado + ficha). El borrar sigue aparte. */}
+                    <button
+                      type="button"
+                      onClick={() => setDetail(it)}
+                      aria-label={`Ver detalle de ${it.name}`}
+                      aria-haspopup="dialog"
+                      className="focus:ring-brand-turquoise block w-full rounded-lg focus:ring-2 focus:outline-none"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element -- imagen del bucket público */}
+                      <img
+                        src={it.imageUrl}
+                        alt={it.name}
+                        className="aspect-square w-full rounded-lg object-cover"
+                      />
+                    </button>
                     {previewB && (
                       <span className="text-brand-purple-dark absolute top-2 left-2 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold shadow">
                         A/B
@@ -466,6 +481,20 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
           )}
         </section>
       ))}
+
+      {/* Paquete A — detalle del prediseñado: caras A/B, ficha y borrar. */}
+      <GalleryDetailModal
+        item={detail}
+        productLabel={
+          detail ? (tagOptions.find((t) => t.tag === detail.tag)?.label ?? detail.tag) : ""
+        }
+        pending={pending}
+        onClose={() => setDetail(null)}
+        onDelete={(id) => {
+          setDetail(null);
+          onDelete(id);
+        }}
+      />
     </div>
   );
 }

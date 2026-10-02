@@ -64,6 +64,9 @@ export type CheckoutTexts = {
     zipHintAuto: string;
     zipHint: string;
     zoneHint: string;
+    /** Sufijo para las zonas SIN envío propio habilitado (dato informativo; la
+     *  zona sigue seleccionable como dato de dirección). */
+    zoneNoOwnSuffix: string;
     neighborhoodLabel: string;
     neighborhoodPlaceholder: string;
     neighborhoodHint: string;
@@ -253,6 +256,7 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     zipHint: "6 dígitos",
     // "{zona}" se interpola con la etiqueta del catálogo de zonas ("localidad", "comuna"…).
     zoneHint: "Tu {zona} nos ayuda a ofrecerte las mejores opciones de entrega.",
+    zoneNoOwnSuffix: "sin Envío Lucam's",
     neighborhoodLabel: "Barrio (opcional)",
     neighborhoodPlaceholder: "Ej. Cedritos, La Alameda",
     neighborhoodHint: "Ayuda al courier a ubicar tu dirección más rápido",
@@ -447,6 +451,7 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "datos.zipHintAuto": "checkout.datos.zip-hint-auto",
   "datos.zipHint": "checkout.datos.zip-hint",
   "datos.zoneHint": "checkout.datos.zone-hint",
+  "datos.zoneNoOwnSuffix": "checkout.datos.zone-no-own-suffix",
   "datos.neighborhoodLabel": "checkout.datos.neighborhood-label",
   "datos.neighborhoodPlaceholder": "checkout.datos.neighborhood-placeholder",
   "datos.neighborhoodHint": "checkout.datos.neighborhood-hint",

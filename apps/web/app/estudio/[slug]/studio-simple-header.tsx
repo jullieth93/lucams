@@ -20,6 +20,7 @@ import { useState } from "react";
 import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { STUDIO_MAX_WIDTH } from "./studio-layout";
+import { STUDIO_CTA_BUSY_CLASSES } from "./studio-busy-cta";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 
@@ -94,7 +95,11 @@ export function StudioSimpleHeader({
               "focus:ring-brand-purple inline-flex h-10 items-center gap-2 rounded-md px-3 text-sm font-semibold transition-all focus:ring-2 focus:ring-offset-2 focus:outline-none sm:px-4",
               ctaDisabled
                 ? "bg-brand-purple/30 cursor-not-allowed text-white"
-                : "bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 text-white shadow-md hover:shadow-lg",
+                : ctaBusy
+                  ? // Patrón único de CTA ocupado (studio-busy-cta.ts): conserva el
+                    // morado sólido y solo atenúa, igual que el StudioToolbar.
+                    `bg-brand-purple shadow-brand-purple/20 text-white shadow-md ${STUDIO_CTA_BUSY_CLASSES}`
+                  : "bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 text-white shadow-md hover:shadow-lg",
             ].join(" ")}
           >
             {ctaBusy ? (

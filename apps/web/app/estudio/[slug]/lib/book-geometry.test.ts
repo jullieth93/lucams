@@ -221,35 +221,33 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
     ]);
   });
 
-  it("backOptional (2026-09-22): cara B faltante → back null (reverso blanco papel), no duplica A", () => {
-    const opts = { backOptional: true };
+  it("Paquete D (2026-10-02) — REGLA ÚNICA: cara B vacía → espejo de la cara A (back = front)", () => {
     // Pareo por pares: unidad impar sin cara B.
-    const units = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")], undefined, "6×2", opts);
-    expect(units.map((u) => [u.front.id, u.back?.id ?? null])).toEqual([
+    const units = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")], undefined, "6×2");
+    expect(units.map((u) => [u.front.id, u.back.id])).toEqual([
       ["1A", "1B"],
-      ["2A", null],
+      ["2A", "2A"], // sin cara B → espejo de A (igual que producción)
     ]);
-    // Pareo por slotIndex (facesPerUnit=2): la cara B existe como slot pero sin textura.
-    const slot = (id: string, slotIndex: number, dataUrl?: string) => ({
+    // Pareo por slotIndex (facesPerUnit=2): la cara B existe como slot con su
+    // textura de stage (dataUrl SIEMPRE llega) pero SIN assetUrl — la misma
+    // condición "vacía" que producción (expandMissingBackFaces).
+    const slot = (id: string, slotIndex: number, assetUrl?: string) => ({
       id,
       wRatio: 600,
       hRatio: 200,
       slotIndex,
-      dataUrl: dataUrl ?? null,
+      dataUrl: `tex-${id}.png`,
+      assetUrl: assetUrl ?? null,
     });
     const bySlotUnits = bookmarkFaceUnits(
       [slot("1A", 0, "a.png"), slot("1B", 1), slot("2A", 2, "a2.png"), slot("2B", 3, "b2.png")],
       2,
       "6×2",
-      opts,
     );
-    expect(bySlotUnits.map((u) => [u.front.id, u.back?.id ?? null])).toEqual([
-      ["1A", null],
-      ["2A", "2B"],
+    expect(bySlotUnits.map((u) => [u.front.id, u.back.id])).toEqual([
+      ["1A", "1A"], // B sin assetUrl → espejo de A (antes: reverso blanco papel)
+      ["2A", "2B"], // B diseñada → su propia textura
     ]);
-    // Sin la opción se conserva el histórico (back = front).
-    const legacy = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")], undefined, "6×2");
-    expect(legacy[1]!.back?.id).toBe("2A");
   });
 });
 

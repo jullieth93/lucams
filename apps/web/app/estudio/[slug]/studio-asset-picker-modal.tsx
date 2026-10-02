@@ -31,6 +31,7 @@ import {
 } from "@/features/personalization/actions";
 import type { StudioAsset } from "./types";
 import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
+import { predesignedFaceBadge } from "./lib/predesigned-variety";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 import { ConsentText } from "./studio-consent-text";
@@ -69,6 +70,18 @@ type StudioAssetPickerModalProps = {
   /** Ola 21 — callback opcional para asignar el asset de la cara B en separadores. */
   onSelectAssetB?: (slotIndex: number, asset: StudioAsset) => void;
   onAssetUploaded: (asset: StudioAsset) => void;
+  /**
+   * Paquete A (2026-10-02) — DEDUPE de prediseñados: cache de sesión del
+   * diseño (store). Si el mismo galleryImageId ya se subió, se reusan sus
+   * assets en vez de crear una copia en el servidor por aplicación.
+   */
+  getCachedPredesigned?: (
+    galleryImageId: string,
+  ) => { a: StudioAsset; b?: StudioAsset } | undefined;
+  rememberPredesigned?: (
+    galleryImageId: string,
+    entry: { a: StudioAsset; b?: StudioAsset },
+  ) => void;
 };
 
 export function StudioAssetPickerModal({
@@ -85,6 +98,8 @@ export function StudioAssetPickerModal({
   onSelectAsset,
   onSelectAssetB,
   onAssetUploaded,
+  getCachedPredesigned,
+  rememberPredesigned,
 }: StudioAssetPickerModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -117,33 +132,47 @@ export function StudioAssetPickerModal({
     setApplyingId(item.id);
     setError(null);
     try {
-      const res = await assignPredesignedToDesignAction({ designId, galleryImageId: item.id });
-      if (!res.ok) {
-        setError(res.message);
-        return;
-      }
-      const assetA: StudioAsset = {
-        id: res.assetId,
-        signedUrl: res.signedUrl,
-        width: res.width,
-        height: res.height,
-      };
-      onAssetUploaded(assetA);
-
-      const isTwoFace = facesPerUnit === 2 && res.assetB;
-      if (isTwoFace && res.assetB) {
-        const assetB: StudioAsset = {
-          id: res.assetB.assetId,
-          signedUrl: res.assetB.signedUrl,
-          width: res.assetB.width,
-          height: res.assetB.height,
+      // Paquete A — dedupe: el mismo diseño ya aplicado en esta sesión reusa
+      // sus assets (no se sube una copia al servidor por aplicación).
+      const cached = getCachedPredesigned?.(item.id);
+      let assetA: StudioAsset;
+      let assetB: StudioAsset | undefined;
+      if (cached) {
+        assetA = cached.a;
+        assetB = cached.b;
+      } else {
+        const res = await assignPredesignedToDesignAction({ designId, galleryImageId: item.id });
+        if (!res.ok) {
+          setError(res.message);
+          return;
+        }
+        assetA = {
+          id: res.assetId,
+          signedUrl: res.signedUrl,
+          width: res.width,
+          height: res.height,
         };
-        onAssetUploaded(assetB);
+        assetB = res.assetB
+          ? {
+              id: res.assetB.assetId,
+              signedUrl: res.assetB.signedUrl,
+              width: res.assetB.width,
+              height: res.assetB.height,
+            }
+          : undefined;
+        onAssetUploaded(assetA);
+        if (assetB) onAssetUploaded(assetB);
+        rememberPredesigned?.(item.id, assetB ? { a: assetA, b: assetB } : { a: assetA });
+      }
 
+      const isTwoFace = facesPerUnit === 2 && assetB;
+      if (isTwoFace && assetB) {
         const isCurrentB = slotIndex % 2 === 1;
         const slotA = isCurrentB ? Math.max(0, slotIndex - 1) : slotIndex;
         const slotB = isCurrentB ? slotIndex : slotIndex + 1;
         onSelectAsset(slotA, assetA);
+        // Paquete A — la cara B NO pisa un slot ocupado: el guard vive en el
+        // callback del editor (handleAssetBSelected), que avisa con toast CMS.
         onSelectAssetB?.(slotB, assetB);
       } else {
         onSelectAsset(slotIndex, assetA);
@@ -210,6 +239,9 @@ export function StudioAssetPickerModal({
             height: result.height,
             validationLevel: result.validationLevel,
             validationMessage: result.validationMessage,
+            // Paquete C — recomendación específica + checks (ver sidebar).
+            validationRecommendation: result.validationRecommendation,
+            validationChecks: result.validationChecks,
           };
           onAssetUploaded(asset);
           // M.3.b.B.2 — Si validación falló con error, mostrar warning prominente
@@ -359,32 +391,52 @@ export function StudioAssetPickerModal({
                         {texts.plantillas.predisenadosTitulo}
                       </h3>
                       <div className="grid grid-cols-3 gap-2">
-                        {predesigned.map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => handleApplyPredesigned(item)}
-                            disabled={applyingId !== null}
-                            aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
-                              nombre: item.name,
-                            })}
-                            title={item.name}
-                            className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none disabled:opacity-50"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={item.imageUrl}
-                              alt={item.name}
-                              className="h-full w-full object-cover"
-                              loading="lazy"
-                            />
-                            {applyingId === item.id && (
-                              <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
-                                <Loader2 className="h-5 w-5 animate-spin text-white" />
-                              </div>
-                            )}
-                          </button>
-                        ))}
+                        {predesigned.map((item) => {
+                          const faceBadge = predesignedFaceBadge(facesPerUnit, item.imageUrlB);
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => handleApplyPredesigned(item)}
+                              disabled={applyingId !== null}
+                              aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
+                                nombre: item.name,
+                              })}
+                              title={item.name}
+                              className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none disabled:opacity-50"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={item.imageUrl}
+                                alt={item.name}
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                              />
+                              {/* Paquete A — badge 1/2 caras (solo productos de
+                                  2 caras): "1 cara" = respaldo espejo del frente
+                                  (regla única de cara B vacía). */}
+                              {faceBadge && (
+                                <span
+                                  className="text-brand-purple-dark absolute top-1 left-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold shadow"
+                                  title={
+                                    faceBadge === "two"
+                                      ? texts.plantillas.badgeDosCarasTitle
+                                      : texts.plantillas.badgeUnaCaraTitle
+                                  }
+                                >
+                                  {faceBadge === "two"
+                                    ? texts.plantillas.badgeDosCaras
+                                    : texts.plantillas.badgeUnaCara}
+                                </span>
+                              )}
+                              {applyingId === item.id && (
+                                <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
+                                  <Loader2 className="h-5 w-5 animate-spin text-white" />
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -431,21 +483,23 @@ export function StudioAssetPickerModal({
                                 <Loader2 className="h-5 w-5 animate-spin text-white" />
                               </div>
                             )}
-                            {/* M.3.b.B.2 — Badge de validación calidad foto */}
+                            {/* M.3.b.B.2 — Badge de validación calidad foto.
+                                Paquete C (2026-10-02): badge con texto corto y
+                                color por severidad (antes solo un emoji 10px). */}
                             {asset.validationLevel === "warning-strong" && (
                               <div
-                                className="absolute top-1 right-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 shadow"
+                                className="absolute top-1 right-1 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white shadow ring-1 ring-white"
                                 aria-hidden
                               >
-                                ⚠️
+                                ⚠️ {texts.fotos.badgeRevisar}
                               </div>
                             )}
                             {asset.validationLevel === "warning-soft" && (
                               <div
-                                className="absolute top-1 right-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 shadow"
+                                className="absolute top-1 right-1 rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-amber-950 shadow ring-1 ring-white"
                                 aria-hidden
                               >
-                                ⓘ
+                                ⚠️ {texts.fotos.badgeRevisar}
                               </div>
                             )}
                           </button>

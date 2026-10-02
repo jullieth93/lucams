@@ -1588,7 +1588,7 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       expect(merged!.items[0].qty).toBe(99);
     });
 
-    it("merge NO agrupa items con designId distinto aunque compartan variantId", async () => {
+    it("merge NO agrupa items con designId distinto y CONTENIDO distinto aunque compartan variantId", async () => {
       const customer = await makeCustomer();
 
       // Cart del customer con un item personalizado (design ready 1, variant A).
@@ -1617,6 +1617,59 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       expect(merged!.items).toHaveLength(2);
       const designIds = merged!.items.map((i) => i.designId).sort();
       expect(designIds).toEqual([readyDesignId, readyDesign2Id].sort());
+    });
+
+    it("Paquete H — merge SÍ agrupa designs distintos pero IDÉNTICOS (dos pasadas por el Estudio): una línea con qty sumada", async () => {
+      const customer = await makeCustomer();
+
+      // Dos Designs NUEVOS con el mismo contenido (cada pasada por el Estudio
+      // crea uno; el reporte STG del desglose duplicado en emails venía de aquí).
+      const canvas = { version: 2, slotCount: 1, marca: "gemelos-paquete-h" };
+      const gemeloCust = await prisma.design.create({
+        data: {
+          sessionId: sid("design"),
+          productId: persoProductId,
+          status: "READY",
+          canvasData: canvas,
+          previewUrl: "https://cdn.lucams.test/preview-gemelo-cust.png",
+        },
+        select: { id: true },
+      });
+      const gemeloAnon = await prisma.design.create({
+        data: {
+          sessionId: sid("design"),
+          productId: persoProductId,
+          status: "READY",
+          // Mismo contenido, orden de claves distinto (la huella es canónica).
+          canvasData: { marca: "gemelos-paquete-h", slotCount: 1, version: 2 },
+          previewUrl: "https://cdn.lucams.test/preview-gemelo-anon.png",
+        },
+        select: { id: true },
+      });
+
+      const custSession = sid("m8-cust");
+      await addPersonalizedToCart({
+        sessionId: custSession,
+        customerId: customer.id,
+        designId: gemeloCust.id,
+        variantId: persoVariantAId,
+        qty: 1,
+      });
+      const anonSession = sid("m8-anon");
+      await addPersonalizedToCart({
+        sessionId: anonSession,
+        customerId: null,
+        designId: gemeloAnon.id,
+        variantId: persoVariantAId,
+        qty: 2,
+      });
+
+      await mergeAnonCartIntoCustomer(anonSession, customer.id);
+      const merged = await getCartDetail(custSession);
+      // UNA línea con qty 1+2=3 — y sobrevive la línea del customer (su diseño/preview).
+      expect(merged!.items).toHaveLength(1);
+      expect(merged!.items[0].qty).toBe(3);
+      expect(merged!.items[0].designId).toBe(gemeloCust.id);
     });
 
     it("rama: customerCart.id === anonCart.id (mismo cart) → noop, devuelve su sessionId", async () => {

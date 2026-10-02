@@ -36,6 +36,10 @@ export type PendingModerationDesign = {
   productionUrls: string[];
   productName: string;
   createdAt: Date;
+  /** Paquete C (2026-10-02) — timestamp de la aceptación explícita de calidad
+   *  de fotos en la Vista Previa del Estudio (checkbox obligatorio cuando el
+   *  diseño usa fotos con avisos). null = sin avisos o diseño anterior. */
+  qualityAcknowledgedAt: Date | null;
   /** Pedidos Y cotizaciones que esperan por este diseño. Vacío si el diseño
    *  solo está COMPARTIDO por link público (A4-01). */
   sources: ModerationSource[];
@@ -77,6 +81,7 @@ export async function listPendingModeration(): Promise<PendingModerationDesign[]
       previewUrl: true,
       productionUrls: true,
       createdAt: true,
+      qualityAcknowledgedAt: true,
       // Solo para derivar `shared` (boolean) — el hash NUNCA sale del service.
       shareTokenHash: true,
       product: { select: { name: true } },
@@ -96,6 +101,7 @@ export async function listPendingModeration(): Promise<PendingModerationDesign[]
     productionUrls: d.productionUrls,
     productName: d.product.name,
     createdAt: d.createdAt,
+    qualityAcknowledgedAt: d.qualityAcknowledgedAt,
     shared: d.shareTokenHash !== null,
     sources: dedupeSources([
       ...d.orderItems.map((o) => ({

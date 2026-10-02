@@ -19,12 +19,14 @@
  * por debajo.
  */
 
-import { Loader2, Pencil, Sparkles, ShoppingCart } from "lucide-react";
+import { Loader2, Pencil, Sparkles, ShoppingCart, AlertTriangle } from "lucide-react";
+import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatCOP } from "@/lib/format";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, splitStudioText } from "./studio-texts";
+import type { StudioQualityWarning } from "./types";
 
 /**
  * Intercala un valor dinámico en <strong> dentro de un texto CMS (ej. la medida
@@ -103,10 +105,28 @@ type StudioPreviewModalProps = {
   productKind?: "magnets" | "calendar" | "bookmarks" | "tiles" | "strips";
   /** Año del calendario (solo cuando productKind==="calendar"). */
   calendarYear?: number;
+  /**
+   * Paquete F (2026-10-02) — desglose de la variante/opciones vigentes
+   * ("5×7 cm · Sin imán (adhesivo) · Español", describeVariantAttributes).
+   * Cada editor lo construye con su verdad EN VIVO (la variante re-resuelta,
+   * el magnet del canvas) — nunca con el deep-link de la PDP, que puede haber
+   * quedado viejo si el cliente cambió opciones en el Estudio.
+   */
+  variantLabel?: string;
+  /**
+   * Paquete C (2026-10-02) — fotos CON aviso de calidad que el diseño USA
+   * (collectQualityWarnings: solo las asignadas a slots). Si la lista llega
+   * con elementos, se muestra la sección "Calidad de tus fotos" y el cliente
+   * DEBE marcar la aceptación para habilitar el confirmar (la aceptación viaja
+   * en onConfirm y la persiste el servidor en Design.qualityAcknowledgedAt).
+   * undefined/vacía → flujo idéntico al histórico (sin sección ni checkbox).
+   */
+  qualityWarnings?: StudioQualityWarning[];
   onEdit: () => void;
   /** Recibe el qty para el carrito: 1 en el modelo multi-unidad (el diseño ya
-   *  contiene las unidades); las copias de la PDP en el path legacy (nombre). */
-  onConfirm: (copies: number) => void;
+   *  contiene las unidades); las copias de la PDP en el path legacy (nombre).
+   *  `opts.qualityAcknowledged` = el cliente marcó la aceptación de calidad. */
+  onConfirm: (copies: number, opts?: { qualityAcknowledged?: boolean }) => void;
 };
 
 export function StudioPreviewModal({
@@ -125,10 +145,23 @@ export function StudioPreviewModal({
   errorMessage,
   productKind = "magnets",
   calendarYear,
+  variantLabel,
+  qualityWarnings,
   onEdit,
   onConfirm,
 }: StudioPreviewModalProps) {
   const texts = useStudioTexts();
+
+  // Paquete C (2026-10-02) — aceptación explícita de calidad: checkbox obligatorio
+  // cuando el diseño usa fotos con aviso. La aceptación queda ligada al CONJUNTO
+  // de avisos vigente (su clave): si el cliente vuelve a editar y cambian las fotos
+  // con aviso, la aceptación anterior ya no aplica y tiene que marcarla de nuevo.
+  const hasQualityWarnings = !!qualityWarnings && qualityWarnings.length > 0;
+  const qualityWarningsKey = (qualityWarnings ?? [])
+    .map((w) => `${w.assetId}:${w.level}`)
+    .join(",");
+  const [acceptedWarningsKey, setAcceptedWarningsKey] = useState<string | null>(null);
+  const qualityAccepted = hasQualityWarnings && acceptedWarningsKey === qualityWarningsKey;
 
   // Modelo multi-unidad (2026-09-09): las unidades van DENTRO del diseño → el
   // carrito recibe qty=1. Path legacy (nombre): copias idénticas (qty 1..99).
@@ -337,6 +370,7 @@ export function StudioPreviewModal({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-brand-purple-dark font-semibold">{productName}</p>
+              {variantLabel && <p className="text-brand-muted text-xs">{variantLabel}</p>}
               <p className="text-brand-muted text-xs">
                 {summaryLine}
                 {summarySize && (
@@ -390,6 +424,66 @@ export function StudioPreviewModal({
           ) : null}
         </div>
 
+        {/* Paquete C (2026-10-02) — sección "Calidad de tus fotos": solo cuando el
+            diseño USA fotos con avisos de calidad. Lista cada foto con su mensaje
+            y la recomendación específica del servidor, y exige la aceptación
+            explícita (checkbox) antes de habilitar el confirmar. */}
+        {hasQualityWarnings && (
+          <section
+            aria-labelledby="quality-ack-title"
+            className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3"
+          >
+            <p
+              id="quality-ack-title"
+              className="flex items-center gap-1.5 text-sm font-bold text-amber-900"
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+              {texts.exportar.calidadSeccionTitulo}
+            </p>
+            <p className="mt-1 text-xs text-amber-900/80">{texts.exportar.calidadSeccionIntro}</p>
+            <ul className="mt-2 space-y-2">
+              {qualityWarnings.map((w) => (
+                <li
+                  key={w.assetId}
+                  className="flex items-start gap-2 rounded-md bg-white/70 p-2 ring-1 ring-amber-200"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element -- signed URL temporal del cliente */}
+                  <img
+                    src={w.signedUrl}
+                    alt=""
+                    className={[
+                      "h-12 w-12 shrink-0 rounded-md object-cover ring-1",
+                      w.level === "warning-soft" ? "ring-amber-300" : "ring-red-300",
+                    ].join(" ")}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-brand-purple-dark text-xs leading-snug font-semibold">
+                      {w.message}
+                    </p>
+                    {w.recommendation && (
+                      <p className="text-brand-muted mt-0.5 text-xs leading-snug">
+                        {w.recommendation}
+                      </p>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs font-semibold text-amber-950">
+              <input
+                type="checkbox"
+                checked={qualityAccepted}
+                onChange={(e) =>
+                  setAcceptedWarningsKey(e.target.checked ? qualityWarningsKey : null)
+                }
+                disabled={isFinalizing}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-amber-600"
+              />
+              <span>{texts.exportar.calidadAcepto}</span>
+            </label>
+          </section>
+        )}
+
         {errorMessage && (
           <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
             ⚠️ {errorMessage}
@@ -402,10 +496,13 @@ export function StudioPreviewModal({
               marca (mismo lenguaje del botón «Salir» del toolbar): el outline suave
               se leía como texto secundario y el cliente no encontraba la salida de
               la modal. Animación sutil del design system: transition-all + sombra
-              que crece en hover + leve compresión al presionar (active:scale). */}
+              que crece en hover + leve compresión al presionar (active:scale).
+              2026-10-02 — sin variant="outline": esa variante arrastra clases
+              dark: (dark:bg-input/30, casi blanco) que twMerge no puede limpiar
+              con el override morado; el botón ya define todo su estilo en
+              className, así que usa la variante default. */}
           <Button
             type="button"
-            variant="outline"
             size="lg"
             onClick={onEdit}
             disabled={isFinalizing}
@@ -417,8 +514,12 @@ export function StudioPreviewModal({
           <Button
             type="button"
             size="lg"
-            onClick={() => onConfirm(confirmQty)}
-            disabled={isFinalizing}
+            onClick={() =>
+              onConfirm(confirmQty, {
+                qualityAcknowledged: hasQualityWarnings && qualityAccepted,
+              })
+            }
+            disabled={isFinalizing || (hasQualityWarnings && !qualityAccepted)}
             aria-busy={isFinalizing}
             className="bg-gradient-brand text-white hover:brightness-110"
           >

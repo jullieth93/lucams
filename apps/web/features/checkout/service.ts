@@ -30,8 +30,12 @@ import {
 import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/redemption";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { getShippingProvider } from "@/features/shipping/provider";
-import { getDisabledCarriersNormalized, normalizeCarrierKey } from "@/features/shipping/settings";
-import { buildLucamsOffer } from "@/features/shipping/lucams-shipping";
+import {
+  getDisabledCarriersNormalized,
+  getLucamsShippingSettings,
+  normalizeCarrierKey,
+} from "@/features/shipping/settings";
+import { buildLucamsOffer, LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 import { maxProductionDaysOf } from "@/lib/delivery-estimate";
 import { getZone } from "@/lib/lucams-zones";
 import {
@@ -462,6 +466,8 @@ export async function finalizeCheckout(input: {
   // exacto contra el set sellado al cotizar (donde se aplicó la regla
   // producción+cutoff de lib/delivery-estimate.ts con el maxProductionDays del
   // carrito). Si el carrito cambió, cartHash ya no matchea y se rechaza.
+  // (Paquete G, 2026-10-02): además del match sellado, más abajo se re-valida
+  // que la ZONA Lucam's siga habilitada en las settings vigentes.
   const sealedOffers = state.shippingOffers;
   if (
     !sealedOffers ||
@@ -474,6 +480,30 @@ export async function finalizeCheckout(input: {
       hasOffers: Boolean(sealedOffers),
     });
     throw new CheckoutError("SHIPPING_SELECTION_INVALID", SHIPPING_SELECTION_INVALID_MSG);
+  }
+
+  // Paquete G (2026-10-02) — re-validación del envío propio Lucam's contra las
+  // settings VIGENTES. El sello HMAC garantiza que la oferta fue legítima AL
+  // COTIZAR, pero el admin pudo deshabilitar la zona (o apagar el servicio)
+  // entre la cotización y este click en "pagar": el offersToken sellado seguiría
+  // matcheando y crearíamos un pedido con entrega interna a una zona que ya no
+  // operamos. Si ya no está habilitada, se rechaza con SHIPPING_SELECTION_INVALID
+  // (mismo código que el flete obsoleto): las actions de pago redirigen a
+  // /checkout/envio?error=… y el cliente RE-COTIZA con las opciones actuales.
+  if (state.shippingSelection.carrier === LUCAMS_CARRIER) {
+    const lucamsSettings = await getLucamsShippingSettings();
+    const zoneStillEnabled =
+      lucamsSettings.enabled &&
+      (lucamsSettings.zones[state.address.cityCode] ?? []).includes(state.address.localityId ?? "");
+    if (!zoneStillEnabled) {
+      logger.warn({
+        event: "checkout.finalize.lucams_zone_disabled_mid_session",
+        cityCode: state.address.cityCode,
+        zoneId: state.address.localityId ?? null,
+        serviceEnabled: lucamsSettings.enabled,
+      });
+      throw new CheckoutError("SHIPPING_SELECTION_INVALID", LUCAMS_ZONE_DISABLED_MSG);
+    }
   }
 
   const billing = state.billing ?? { wantsInvoice: false };
@@ -803,6 +833,14 @@ export async function saveAddressStep(
  */
 const SHIPPING_SELECTION_INVALID_MSG =
   "La cotización de envío cambió. Elige de nuevo tu transportadora.";
+
+/**
+ * Copy customer-safe para la re-validación mid-sesión del envío propio (Paquete G):
+ * la zona quedó deshabilitada (o el servicio apagado) entre cotizar y pagar. Mismo
+ * código SHIPPING_SELECTION_INVALID → la UI manda a /checkout/envio a re-cotizar.
+ */
+const LUCAMS_ZONE_DISABLED_MSG =
+  "El envío Lucam's ya no está disponible para tu localidad. Elige de nuevo tu transportadora.";
 
 /**
  * Guarda la selección de envío del step 2. Anti-manipulación de flete

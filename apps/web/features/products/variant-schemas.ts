@@ -581,6 +581,90 @@ export function mergePreservingUnmanagedAttributes(
 }
 
 /**
+ * Desglose canónico de una variante (Paquete F, 2026-10-02) — TODAS las
+ * dimensiones de compra de sus attributes, como lista de frases cortas en
+ * español, listas para unir con " · " o renderizar una por línea. Es la fuente
+ * única para las superficies de compra (carrito, checkout, gracias, detalle de
+ * pedido, admin) y para los emails transaccionales (Paquete H).
+ *
+ * Los labels replican 1:1 las convenciones del VariantSelector de la PDP
+ * (app/producto/[slug]/variant-selector.tsx → formatDimensionValue): mismo
+ * vocabulario que el cliente vio al elegir. La PDP agrupa por dimensión
+ * ("Marco" → "Negro"); acá la lista es PLANA (sin encabezado de grupo), así
+ * que los valores ambiguos llevan su sustantivo ("Marco negro", no "Negro").
+ *
+ * Orden: cantidad → fotos → tamaño → presentación física (forma/acabado/color)
+ * → imantado → idioma → estilo (marco/estilo/tema). Dimensiones ausentes en
+ * attributes NO se mencionan ({} → []): la superficie decide si pinta algo
+ * (p. ej. solo el nombre de la variante) cuando la lista viene vacía.
+ *
+ * Client-safe: data plana + strings, sin imports de servidor.
+ */
+const VARIANT_BREAKDOWN_SHAPE_LABELS: Record<string, string> = {
+  rectangle: "Rectangular",
+  circle: "Circular",
+  heart: "Corazón",
+  custom: "Custom",
+};
+
+const VARIANT_BREAKDOWN_FINISH_LABELS: Record<string, string> = {
+  matte: "Mate",
+  glossy: "Brillante",
+  "soft-touch": "Soft-touch",
+  glass: "Vidrio",
+};
+
+const VARIANT_BREAKDOWN_LANGUAGE_LABELS: Record<string, string> = {
+  es: "Español",
+  en: "Inglés",
+};
+
+const VARIANT_BREAKDOWN_FRAME_STYLE_LABELS: Record<string, string> = {
+  blanco: "blanco",
+  negro: "negro",
+};
+
+const VARIANT_BREAKDOWN_VARIANT_STYLE_LABELS: Record<string, string> = {
+  "blanco-clasico": "Blanco clásico",
+  pasteles: "Pasteles",
+  instagram: "Instagram",
+};
+
+const VARIANT_BREAKDOWN_THEME_LABELS: Record<string, string> = {
+  animales: "Animales",
+  frutas: "Frutas",
+  profesiones: "Profesiones",
+};
+
+export function describeVariantAttributes(attrs: ProductVariantAttributes): string[] {
+  const parts: string[] = [];
+  if (attrs.quantity) parts.push(`${attrs.quantity} ${attrs.quantity === 1 ? "unidad" : "unidades"}`);
+  if (attrs.photoSlots) parts.push(`${attrs.photoSlots} ${attrs.photoSlots === 1 ? "foto" : "fotos"}`);
+  if (attrs.sizeCm) parts.push(`${attrs.sizeCm} cm`);
+  if (attrs.shape) parts.push(VARIANT_BREAKDOWN_SHAPE_LABELS[attrs.shape] ?? attrs.shape);
+  if (attrs.finish) parts.push(VARIANT_BREAKDOWN_FINISH_LABELS[attrs.finish] ?? attrs.finish);
+  if (attrs.color) parts.push(`Color ${attrs.color}`);
+  // magnet: "true = con imán (default), false = sin imán / adhesivo" (schema).
+  if (attrs.magnet === true) parts.push("Con imán");
+  if (attrs.magnet === false) parts.push("Sin imán (adhesivo)");
+  if (attrs.language) {
+    parts.push(VARIANT_BREAKDOWN_LANGUAGE_LABELS[attrs.language] ?? attrs.language);
+  }
+  if (attrs.frameStyle) {
+    parts.push(`Marco ${VARIANT_BREAKDOWN_FRAME_STYLE_LABELS[attrs.frameStyle] ?? attrs.frameStyle}`);
+  }
+  if (attrs.variantStyle) {
+    parts.push(
+      `Estilo ${VARIANT_BREAKDOWN_VARIANT_STYLE_LABELS[attrs.variantStyle] ?? attrs.variantStyle}`,
+    );
+  }
+  if (attrs.theme) {
+    parts.push(`Tema ${VARIANT_BREAKDOWN_THEME_LABELS[attrs.theme] ?? attrs.theme}`);
+  }
+  return parts;
+}
+
+/**
  * Genera el label human-readable de una variant a partir de sus attributes.
  * Ej. { photoSlots: 12, sizeCm: "6×8" } → "12 fotos · 6×8 cm"
  * Ej. { sizeCm: "20×20" } → "20×20 cm"

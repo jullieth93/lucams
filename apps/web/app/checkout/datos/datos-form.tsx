@@ -53,12 +53,17 @@ export function DatosForm({
   initial,
   savedAddresses = [],
   canSaveAddress = false,
+  lucamsOwnShipping = null,
   texts,
 }: {
   initial: CheckoutState;
   savedAddresses?: CheckoutPrefillAddress[];
   // true solo si hay cliente logueado → ofrecer "guardar esta dirección".
   canSaveAddress?: boolean;
+  /** Zonas con envío propio habilitado ({ cityCode: [zoneId] }) + flag del
+   *  servicio. Solo informativo: marca en el select las zonas SIN envío propio;
+   *  todas siguen seleccionables (dato de dirección). null = no informar. */
+  lucamsOwnShipping?: { enabled: boolean; zones: Record<string, string[]> } | null;
   /** Textos CMS del formulario (roadmap B8) — los resuelve el padre server. */
   texts: CheckoutTexts["datos"];
 }) {
@@ -98,6 +103,17 @@ export function DatosForm({
   const zoneCity = getZoneCityByCode(cityCode);
   const showZoneSelect = zoneCity !== null;
   const zoneOptions = zoneCity?.zones ?? [];
+  // Paquete G (2026-10-02) — zonas SIN envío propio habilitado (para marcarlas
+  // en el select con el sufijo CMS zoneNoOwnSuffix). Solo aplica si el servicio
+  // está activo; si está apagado no se marca nada (no hay oferta que esperar).
+  const zonesWithoutOwnShipping =
+    lucamsOwnShipping?.enabled && zoneCity
+      ? new Set(
+          zoneCity.zones
+            .map((z) => z.id)
+            .filter((id) => !(lucamsOwnShipping.zones[zoneCity.cityCode] ?? []).includes(id)),
+        )
+      : null;
   // Discriminated union urbana/rural (Lucy 2026-05-21)
   const [addressKind, setAddressKind] = useState<"urban" | "rural">(
     initial.address?.kind ?? "urban",
@@ -661,6 +677,7 @@ export function DatosForm({
               {zoneOptions.map((z) => (
                 <option key={z.id} value={z.id}>
                   {z.name}
+                  {zonesWithoutOwnShipping?.has(z.id) ? ` (${texts.zoneNoOwnSuffix})` : ""}
                 </option>
               ))}
             </select>

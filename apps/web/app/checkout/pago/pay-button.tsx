@@ -3,15 +3,21 @@
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
-import ReactMarkdown from "react-markdown";
-import rehypeSanitize from "rehype-sanitize";
-import remarkGfm from "remark-gfm";
+import Image from "next/image";
+import nextDynamic from "next/dynamic";
 import { Loader2, Lock, Wallet, CreditCard, CheckCircle2, Banknote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import { WOMPI_METHODS_SHORT } from "@/lib/payment-methods";
+import { WOMPI_PAYMENT_LOGOS } from "@/lib/payment-logos";
 import { payWompiAction, payCodAction } from "./actions";
 import type { CheckoutTexts } from "../checkout-texts";
+
+// Paquete J (2026-10-02) — react-markdown + plugins (~100 KB gz) salen del
+// chunk principal del checkout: el bloque de términos se SSR-igual (ssr:true,
+// el contenido legal no depende de JS) pero su JS de hidratación es un chunk
+// aparte que no compite con la interacción del botón de pago.
+const PayTermsMarkdown = nextDynamic(() => import("./pay-terms-markdown"));
 
 type Method = "WOMPI" | "COD";
 
@@ -65,12 +71,15 @@ function MethodCard({
   icon,
   title,
   desc,
+  logos,
 }: {
   selected: boolean;
   onSelect: () => void;
   icon: React.ReactNode;
   title: string;
   desc: string;
+  /** Paquete F (2026-10-02) — fila de badges de los medios incluidos (Wompi). */
+  logos?: React.ReactNode;
 }) {
   return (
     <button
@@ -88,9 +97,34 @@ function MethodCard({
       <span className="min-w-0 flex-1">
         <span className="text-brand-purple-dark block text-sm font-semibold">{title}</span>
         <span className="text-brand-muted block text-xs">{desc}</span>
+        {logos}
       </span>
       {selected && <CheckCircle2 className="text-brand-purple h-5 w-5 flex-shrink-0" />}
     </button>
+  );
+}
+
+/**
+ * Fila de badges de los medios Wompi (Paquete F): cada logo lleva su alt con
+ * la marca; el texto de apoyo (WOMPI_METHODS_SHORT) queda como `desc` de la
+ * tarjeta. Wompi es hosted checkout — los métodos se eligen DENTRO de Wompi,
+ * así que la fila es informativa, no un selector.
+ */
+function WompiMethodLogos() {
+  return (
+    <span className="mt-2 flex flex-wrap items-center gap-1.5">
+      {WOMPI_PAYMENT_LOGOS.map((logo) => (
+        <Image
+          key={logo.src}
+          src={logo.src}
+          alt={logo.alt}
+          width={logo.width}
+          height={logo.height}
+          unoptimized
+          className="h-5 w-auto rounded-[3px]"
+        />
+      ))}
+    </span>
   );
 }
 
@@ -135,6 +169,7 @@ export function PaymentMethodChooser({
             icon={<CreditCard className="h-6 w-6" />}
             title={texts.wompiTitle}
             desc={WOMPI_METHODS_SHORT}
+            logos={<WompiMethodLogos />}
           />
           <MethodCard
             selected={method === "COD"}
@@ -154,9 +189,7 @@ export function PaymentMethodChooser({
       {/* Consentimiento de baja fricción (ADR-062 P0-2): al confirmar, el cliente acepta los
           términos —que incluyen la declaración de derechos de imagen— sin checkbox extra. */}
       <div className="text-brand-muted [&_a:hover]:text-brand-purple-dark mb-4 text-[11px] leading-relaxed [&_a]:underline">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-          {texts.terms}
-        </ReactMarkdown>
+        <PayTermsMarkdown terms={texts.terms} />
       </div>
 
       <div className="flex flex-col items-end gap-2 sm:flex-row sm:justify-between">

@@ -78,6 +78,7 @@ import type { CalendarLayoutKey } from "@/features/personalization/calendar-layo
 import type { CalendarFontKey } from "@/features/personalization/schemas";
 
 import { getFilterParams } from "./lib/photo-filters";
+import { createFilterRecacher } from "./lib/filter-recache";
 import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
 import { PREDESIGNED_DRAG_MIME, type PredesignedDragPayload } from "./lib/apply-predesigned";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -657,11 +658,15 @@ function StudioSlotImpl({
   const pinchInitialDistRef = useRef<number | null>(null);
   const pinchInitialScaleRef = useRef<number>(1);
 
-  // Wheel handler: scroll up → zoom in, scroll down → zoom out.
+  // Wheel handler: ctrl/cmd + rueda → zoom de la foto (estándar de editores;
+  // el pinch del trackpad llega como wheel con ctrlKey). La rueda SOLA ya NO
+  // zooomea: scrollea la página (Paquete B 2026-10-02 — con el cursor sobre el
+  // canvas la página quedaba "atrapada" y la foto se zooomeaba sin querer).
   // Solo aplica en slots interactivos (desktop) y si la foto ya está cargada.
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
       if (!interactiveSlots || !slotState.assetUrl || !onPhotoTransformChange) return;
+      if (!e.evt.ctrlKey && !e.evt.metaKey) return; // rueda simple → scroll de página
       e.evt.preventDefault();
       const current = slotState.photoTransform?.scale ?? 1;
       const next = nextWheelScale(current, e.evt.deltaY, SCALE_MIN, SCALE_MAX);
@@ -675,10 +680,13 @@ function StudioSlotImpl({
   // Native wheel listener — backup que SIEMPRE puede preventDefault
   // independiente del estado del cache de Konva o de Radix Dialog.
   // Solo en slots interactivos; en táctil el dedo scrollea la página.
+  // Paquete B (2026-10-02): sin modificador (ctrl/cmd) el listener NO toca el
+  // evento — sin preventDefault la página scrollea con normalidad.
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !interactiveSlots || !slotState.assetUrl || !onPhotoTransformChange) return;
     function onWheelNative(e: WheelEvent) {
+      if (!e.ctrlKey && !e.metaKey) return; // rueda simple → scroll de página
       e.preventDefault();
       e.stopPropagation();
       const current = slotState.photoTransform?.scale ?? 1;
@@ -1156,7 +1164,10 @@ function StudioSlotImpl({
                     texto largo no cabe; el pill corto lo dice sin ensanchar el
                     slot. Solo caras B de productos backOptional. */}
                 {slotOptional && (
-                  <span className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide uppercase">
+                  <span
+                    className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide uppercase"
+                    title={texts.lienzo.slotCaraBOpcionalTitle}
+                  >
                     {texts.lienzo.slotCaraBOpcional}
                   </span>
                 )}
@@ -2447,19 +2458,33 @@ function ImagePlaceholder({
   // queda fijo y la imagen no re-renderea al nuevo tamaño con el filter.
   // Fix: re-cache también cuando cambian las dimensiones renderizadas
   // (renderedW/H se calculan de photoTransform.scale + filtersArray).
+  //
+  // Paquete J (2026-10-02, auditoría §E-4 candidato #3) — ese re-cache por
+  // CADA paso de scale re-corre los filtros píxel a píxel dentro del gesto de
+  // wheel/pinch (INP). Ahora lo planifica filter-recache: cambio de imagen o
+  // de preset → inmediato; misma imagen+filtro (solo cambió el zoom) →
+  // debounce al finalizar el gesto. Durante el gesto Konva estira el cache
+  // anterior (su comportamiento estándar — calidad aceptable en movimiento).
+  const [filterRecacher] = useState(() => createFilterRecacher());
+  useEffect(() => () => filterRecacher.cancel(), [filterRecacher]);
   useEffect(() => {
     const node = imageNodeRef.current;
     if (!node || !image) return;
-    if (filtersArray.length > 0) {
-      // pixelRatio 2 = bitmap a 2x del tamaño visible (calidad nítida sin
-      // que el cache sea desproporcionado en memoria).
-      node.cache({ pixelRatio: 2 });
+    const apply = () => {
+      if (filtersArray.length > 0) {
+        // pixelRatio 2 = bitmap a 2x del tamaño visible (calidad nítida sin
+        // que el cache sea desproporcionado en memoria).
+        node.cache({ pixelRatio: 2 });
+      } else {
+        node.clearCache();
+      }
       node.getLayer()?.batchDraw();
-    } else {
-      node.clearCache();
-      node.getLayer()?.batchDraw();
-    }
-  }, [image, filtersArray.length, slotState.filter, slotState.photoTransform?.scale]);
+    };
+    // key = identidad de (imagen, preset). Si solo cambió photoTransform.scale
+    // la key se mantiene y el re-cache se debouncea (ver header del effect).
+    const key = `${image.src}|${slotState.filter ?? "none"}|${filtersArray.length}`;
+    filterRecacher.request(key, apply);
+  }, [image, filtersArray.length, slotState.filter, slotState.photoTransform?.scale, filterRecacher]);
 
   // M.3.b.UX.v11 (Lucy 2026-05-15) — Smart auto-crop al cargar foto NUEVA.
   // Solo aplica si:

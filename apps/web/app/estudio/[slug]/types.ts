@@ -400,6 +400,31 @@ export type StudioAsset = {
    */
   validationLevel?: "ok" | "warning-soft" | "warning-strong" | "error";
   validationMessage?: string;
+  /**
+   * Paquete C (2026-10-02) — recomendación ESPECÍFICA del caso (resolución /
+   * nitidez / luz) que el servidor genera junto al mensaje. Es el contenido
+   * principal del modal de calidad; los tips generales CMS quedan secundarios.
+   */
+  validationRecommendation?: string;
+  /**
+   * Qué checks corrió el servidor y si pasaron (true = pasó). Permite a la UI
+   * decir "qué falló" sin re-analizar el mensaje. undefined = no validada.
+   */
+  validationChecks?: { resolution: boolean; brightness: boolean; blur: boolean };
+};
+
+/**
+ * Paquete C (2026-10-02) — foto CON aviso de calidad que el diseño USA (está
+ * asignada a al menos un slot). La arma collectQualityWarnings (lib/) y la
+ * consume la Vista Previa para la aceptación explícita del cliente antes de
+ * comprar (checkbox obligatorio → Design.qualityAcknowledgedAt).
+ */
+export type StudioQualityWarning = {
+  assetId: string;
+  signedUrl: string;
+  level: "warning-soft" | "warning-strong" | "error";
+  message?: string;
+  recommendation?: string;
 };
 
 export type AutoSaveStatus =

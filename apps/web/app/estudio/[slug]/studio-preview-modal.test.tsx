@@ -83,27 +83,27 @@ describe("StudioPreviewModal — sin stepper de copias (regla 2026-09-08b)", () 
     const props = baseProps();
     render(<StudioPreviewModal {...props} initialCopies={3} />);
     fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
-    expect(props.onConfirm).toHaveBeenCalledWith(3);
+    expect(props.onConfirm).toHaveBeenCalledWith(3, { qualityAcknowledged: false });
   });
 
   it("sin initialCopies, onConfirm recibe 1 (default del carrito)", () => {
     const props = baseProps();
     render(<StudioPreviewModal {...props} />);
     fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
-    expect(props.onConfirm).toHaveBeenCalledWith(1);
+    expect(props.onConfirm).toHaveBeenCalledWith(1, { qualityAcknowledged: false });
   });
 
   it("acota initialCopies fuera de rango a 1..99 (la URL la puede editar cualquiera)", () => {
     const propsAlto = baseProps();
     const { unmount } = render(<StudioPreviewModal {...propsAlto} initialCopies={150} />);
     fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
-    expect(propsAlto.onConfirm).toHaveBeenCalledWith(99);
+    expect(propsAlto.onConfirm).toHaveBeenCalledWith(99, { qualityAcknowledged: false });
     unmount();
 
     const propsBajo = baseProps();
     render(<StudioPreviewModal {...propsBajo} initialCopies={0} />);
     fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
-    expect(propsBajo.onConfirm).toHaveBeenCalledWith(1);
+    expect(propsBajo.onConfirm).toHaveBeenCalledWith(1, { qualityAcknowledged: false });
   });
 });
 
@@ -120,7 +120,7 @@ describe("StudioPreviewModal — modelo MULTI-UNIDAD (unitCount: las unidades va
     // no tienen stepper; las unidades se cambian en el editor («Volver a editar»).
     expect(screen.queryByText(/cantidad/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
-    expect(props.onConfirm).toHaveBeenCalledWith(1);
+    expect(props.onConfirm).toHaveBeenCalledWith(1, { qualityAcknowledged: false });
   });
 
   it("con 1 unidad (unitCount=1): total = precio unitario, sin desglose", () => {
@@ -181,7 +181,7 @@ describe("StudioPreviewModal — modelo MULTI-UNIDAD (unitCount: las unidades va
     render(<StudioPreviewModal {...props} unitCount={2} initialCopies={5} />);
     expect(screen.getByText(cop(UNIT_PRICE * 2))).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
-    expect(props.onConfirm).toHaveBeenCalledWith(1);
+    expect(props.onConfirm).toHaveBeenCalledWith(1, { qualityAcknowledged: false });
   });
 
   // 2026-09-22 — bug $62.500: la variante de separadores YA es el pack (5
@@ -205,7 +205,7 @@ describe("StudioPreviewModal — modelo MULTI-UNIDAD (unitCount: las unidades va
     // Las unidades del diseño se siguen anunciando.
     expect(screen.getByText(/5 unidades — cada una con su propio diseño/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Sí, agregar al carrito" }));
-    expect(props.onConfirm).toHaveBeenCalledWith(1);
+    expect(props.onConfirm).toHaveBeenCalledWith(1, { qualityAcknowledged: false });
   });
 
   it("priceMultiplier > 1 (calendario ×2): total ×2 con c/u", () => {
@@ -221,5 +221,61 @@ describe("StudioPreviewModal — modelo MULTI-UNIDAD (unitCount: las unidades va
     );
     expect(screen.getByText(cop(UNIT_PRICE * 2))).toBeInTheDocument();
     expect(screen.getByText(`${cop(UNIT_PRICE)} c/u`)).toBeInTheDocument();
+  });
+});
+
+describe("StudioPreviewModal — aceptación explícita de calidad de fotos (Paquete C)", () => {
+  const WARNING = {
+    assetId: "asset-1",
+    signedUrl: "https://signed.example/foto-baja.jpg",
+    level: "warning-strong" as const,
+    message: "Se va a ver pixelada al imprimir a tamaño real (5×5 cm).",
+    recommendation: "Una foto más grande va a quedar mejor al imprimir.",
+  };
+
+  it("sin avisos: no muestra la sección ni el checkbox y el confirmar queda habilitado", () => {
+    const props = baseProps();
+    render(<StudioPreviewModal {...props} />);
+    expect(screen.queryByText("Calidad de tus fotos")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    const cta = screen.getByRole("button", { name: "Sí, agregar al carrito" });
+    expect(cta).toBeEnabled();
+    fireEvent.click(cta);
+    expect(props.onConfirm).toHaveBeenCalledWith(1, { qualityAcknowledged: false });
+  });
+
+  it("con avisos: lista cada foto con su mensaje y la recomendación específica", () => {
+    render(<StudioPreviewModal {...baseProps()} qualityWarnings={[WARNING]} />);
+    expect(screen.getByText("Calidad de tus fotos")).toBeInTheDocument();
+    expect(
+      screen.getByText("Se va a ver pixelada al imprimir a tamaño real (5×5 cm)."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Una foto más grande va a quedar mejor al imprimir."),
+    ).toBeInTheDocument();
+  });
+
+  it("el confirmar queda DESHABILITADO hasta marcar el checkbox de aceptación", () => {
+    const props = baseProps();
+    render(<StudioPreviewModal {...props} qualityWarnings={[WARNING]} />);
+    const cta = screen.getByRole("button", { name: "Sí, agregar al carrito" });
+    expect(cta).toBeDisabled();
+    fireEvent.click(cta);
+    expect(props.onConfirm).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(cta).toBeEnabled();
+    fireEvent.click(cta);
+    expect(props.onConfirm).toHaveBeenCalledWith(1, { qualityAcknowledged: true });
+  });
+
+  it("desmarcar el checkbox vuelve a bloquear el confirmar", () => {
+    render(<StudioPreviewModal {...baseProps()} qualityWarnings={[WARNING]} />);
+    const checkbox = screen.getByRole("checkbox");
+    const cta = screen.getByRole("button", { name: "Sí, agregar al carrito" });
+    fireEvent.click(checkbox);
+    expect(cta).toBeEnabled();
+    fireEvent.click(checkbox);
+    expect(cta).toBeDisabled();
   });
 });

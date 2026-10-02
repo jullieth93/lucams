@@ -43,6 +43,10 @@ import { formatCOP } from "@/lib/format";
 import { getCurrentCustomer } from "@/lib/auth";
 import { getCmsBlock } from "@/lib/cms";
 import { CmsText } from "@/components/cms/cms-text";
+import {
+  describeVariantAttributes,
+  parseVariantAttributes,
+} from "@/features/products/variant-schemas";
 
 export async function generateMetadata(): Promise<Metadata> {
   // noindex: la URL trae el id de la transacción de Wompi.
@@ -159,7 +163,16 @@ export default async function CheckoutGraciasPage({
           id: true,
           qty: true,
           designAssetUrl: true,
-          variant: { select: { product: { select: { name: true, images: true } } } },
+          // Paquete F (2026-10-02) — name/attributes: desglose de la variante bajo
+          // las miniaturas; images: foto propia de la variante antes que la del producto.
+          variant: {
+            select: {
+              name: true,
+              attributes: true,
+              images: true,
+              product: { select: { name: true, images: true } },
+            },
+          },
           design: { select: { previewUrl: true } },
         },
       },
@@ -247,7 +260,14 @@ export default async function CheckoutGraciasPage({
                 id: true,
                 qty: true,
                 designAssetUrl: true,
-                variant: { select: { product: { select: { name: true, images: true } } } },
+                variant: {
+                  select: {
+                    name: true,
+                    attributes: true,
+                    images: true,
+                    product: { select: { name: true, images: true } },
+                  },
+                },
                 design: { select: { previewUrl: true } },
               },
             },
@@ -319,7 +339,12 @@ function ApprovedPage({
       id: string;
       qty: number;
       designAssetUrl: string | null;
-      variant: { product: { name: string; images: string[] } };
+      variant: {
+        name: string;
+        attributes: unknown;
+        images: string[];
+        product: { name: string; images: string[] };
+      };
       design: { previewUrl: string | null } | null;
     }[];
   } | null;
@@ -370,8 +395,14 @@ function ApprovedPage({
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2">
             {order.items.map((it) => {
+              // Paquete F (2026-10-02) — la foto de LA VARIANTE antes que la
+              // genérica del producto (mismo fallback que el carrito).
               const img =
-                it.designAssetUrl ?? it.design?.previewUrl ?? it.variant.product.images[0] ?? null;
+                it.designAssetUrl ??
+                it.design?.previewUrl ??
+                it.variant.images[0] ??
+                it.variant.product.images[0] ??
+                null;
               const personalized = Boolean(it.designAssetUrl ?? it.design?.previewUrl);
               return (
                 <div
@@ -407,6 +438,24 @@ function ApprovedPage({
               );
             })}
           </div>
+          {/* Paquete F (2026-10-02) — variante + desglose estructurado de cada ítem
+              (las miniaturas solas no informan Con/Sin imán, tamaño, idioma…). */}
+          <ul className="mx-auto mt-3 max-w-md space-y-1 text-left">
+            {order.items.map((it) => {
+              const breakdown = describeVariantAttributes(
+                parseVariantAttributes(it.variant.attributes),
+              );
+              return (
+                <li key={`desc-${it.id}`} className="text-brand-purple-dark/80 text-xs">
+                  <span className="font-semibold">{it.variant.product.name}</span>
+                  {" — "}
+                  {it.variant.name}
+                  {breakdown.length > 0 && ` · ${breakdown.join(" · ")}`}
+                  {it.qty > 1 && ` (×${it.qty})`}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 

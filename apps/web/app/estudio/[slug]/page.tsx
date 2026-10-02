@@ -31,6 +31,7 @@ import {
   ALPHABET,
 } from "@/features/personalization/letter-tiles";
 import { listGalleryImages } from "@/features/personalization/design-gallery";
+import { resolveGalleryTag } from "./lib/product-kind";
 import { NameEditor } from "./name-editor";
 import { LetterSetEditor } from "./letter-set-editor";
 import { peekCartSession } from "@/lib/cart-session";
@@ -109,7 +110,7 @@ export default async function EstudioPage({
   const requestedVariantId = typeof sp.variant === "string" ? sp.variant : undefined;
   const selectedVariant =
     product.variants.find((v) => v.id === requestedVariantId) ?? product.variants[0] ?? null;
-  const { mergeVariantOverProduct, parseVariantAttributes, selectableVariants } =
+  const { mergeVariantOverProduct, parseVariantAttributes, selectableVariants, describeVariantAttributes } =
     await import("@/features/products/variant-schemas");
   const mergedSchema = selectedVariant
     ? mergeVariantOverProduct(
@@ -193,6 +194,13 @@ export default async function EstudioPage({
               // 2026-09-25 — flag Con/Sin imán de la variante para que la modal
               // de confirmación nombre bien la pieza (imán vs ficha).
               variantMagnet={parseVariantAttributes(selectedVariant.attributes).magnet}
+              // Paquete F (2026-10-02) — desglose de la variante (fija en esta
+              // superficie) para el resumen de la vista previa.
+              variantLabel={
+                describeVariantAttributes(
+                  parseVariantAttributes(selectedVariant.attributes),
+                ).join(" · ") || undefined
+              }
               config={surface.config}
               pricePerTile={pricePerTile}
               initialCount={initialCount}
@@ -348,11 +356,10 @@ export default async function EstudioPage({
   // picker/sidebar muestran la sección cuando hay diseños del tag; sin uploads
   // del admin la lista llega vacía = empty state). El admin ve el mismo tag
   // efectivo en /admin/disenos (listGalleryTagOptions aplica el mismo fallback).
-  const explicitGalleryTag =
-    typeof (mergedSchema as { galleryTag?: unknown }).galleryTag === "string"
-      ? (mergedSchema as { galleryTag: string }).galleryTag
-      : null;
-  const galleryTag = explicitGalleryTag ?? product.slug;
+  // Paquete D (2026-10-02): la resolución vive en lib/product-kind — el MISMO
+  // helper usa el editor (isBookmark) para que el tipo de producto no dependa
+  // de dónde se lea.
+  const galleryTag = resolveGalleryTag(mergedSchema, product.slug);
   const predesigned = await listGalleryImages(galleryTag);
 
   // ADR-057 Fase D — Calendario: slots etiquetados por mes (Ene…Dic) + año, para que el cliente

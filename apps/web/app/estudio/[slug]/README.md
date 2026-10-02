@@ -158,7 +158,10 @@ apps/web/app/estudio/[slug]/
     │                                  #   balanceadas que se abren al superar el alto útil
     ├── canvas-migrate.ts              # migrateCanvasV1ToV2
     ├── photo-filters.ts               # 5 presets + apply Konva filters
+    ├── filter-recache.ts              # Debounce del re-cache de filtros Konva en zoom (Paquete J)
+    ├── slot-snapshot-cache.ts         # Cache de snapshots toDataURL por slot + yieldToMain (Paquete J)
     ├── smart-crop.ts                  # Smart auto-crop (smartcrop.js) de fotos nuevas
+    │                                  #   (análisis sobre copia ≤256px — Paquete J)
     ├── upload-guidance.ts             # accept (JPG/PNG/WebP/HEIC) + texto de resolución
     ├── size-comparator.ts             # "5×5 cm" vs objeto cotidiano (reemplazó al
     │                                  #   modal "Ver tamaño real")
@@ -318,6 +321,12 @@ packages/db/scripts/
   `imageSmoothingQuality:"high"` + unsharp 3×3 leve (k=0.3), tope ×4. Si aun así queda
   bajo 0.5, banner con CMS `estudio.fotos.aviso-mejora-auto`. No crea información: una
   foto muy pequeña seguirá con aviso (por eso el copy pide la original).
+  **Paquete J (2026-10-02):** el trabajo pesado corre en un **Web Worker con
+  OffscreenCanvas** (`client-photo-upscale.worker.ts` — antes era síncrono en el main
+  thread dentro del evento de subir foto: candidato #1 del INP, auditoría §E-4). La
+  matemática compartida (plan de re-muestreo + kernel unsharp) vive en
+  `client-photo-upscale-core.ts` (pura, testeada); sin Worker/OffscreenCanvas se cae al
+  pipeline inline con resultado idéntico.
 - **3D tamaño real SIEMPRE (E1/E2).** `magnetWorldSizes` ya no encoge (se eliminó el
   factor `f = min(1, …)`): cada pieza se dibuja a su tamaño físico (cm × uPerCm) en
   nevera y tablero; el clúster crece en filas/columnas y `FitCamera` encuadra
@@ -435,6 +444,11 @@ packages/db/scripts/
   ×1.15 — saltos toscos). La función `nextWheelScale` (studio-slot) la comparten el
   handler Konva, el listener nativo del slot y el preview del modal; el pinch sigue
   siendo continuo (ratio de distancia). El chip de % del slot refleja el valor exacto.
+  **Paquete B (2026-10-02)**: en la GRILLA el zoom con rueda exige modificador
+  explícito (ctrl/cmd+wheel — estándar de editores; el pinch del trackpad llega como
+  wheel con ctrlKey); la rueda SOLA sobre el canvas scrollea la página (antes la
+  foto se zooomeaba y la página quedaba atrapada). En el preview del modal de
+  edición la rueda sola sigue zooomeando (es el "modo edición").
 
 ### Ola 26 (Lucy 2026-09-09) — IG: textos por capa + textos requeridos; checkerboard fuerte; tira 4 fotos
 
@@ -849,7 +863,13 @@ de todas las superficies personalizables.**
   el objetivo (polaroid 2×460×1.28 → alto 588 > cap viejo 560); (4) marco en
   alto de UNA fila FIJO en móvil (`MOBILE_FRAME_HEIGHT=640`): el alto del
   viewport móvil cambia al ocultarse la barra del navegador al scrollear y el
-  tamaño del slot no debe moverse; (5) separadores (modo agrupado): las filas
+  tamaño del slot no debe moverse. **Paquete B (2026-10-02)** — el mismo bug
+  ("el canvas respira" al scrollear) se reprodujo TAMBIÉN en tablet
+  (Separadores 4×4.2cm, marco de 82vh aún vivo entre 640-1024px): el alto del
+  viewport medido por el grid ahora queda ESTABILIZADO en puntero coarse —
+  `shouldRemeasureViewportH` solo re-mide cuando cambia el ANCHO (rotación
+  real), nunca con el show/hide de la barra (cambio solo de alto). En puntero
+  fino (desktop) todo resize re-mide como antes; (5) separadores (modo agrupado): las filas
   del marco se cuentan en UNIDADES físicas, no en slots — las caras heredan el
   cap completo y crecen ~×1.25 donde el ancho lo permite; (6) tiras: móvil 1
   sección full-width por fila; la 3ª columna solo con contenedor ≥1400px
@@ -1135,6 +1155,14 @@ Estrategias aplicadas:
 - SVG mockups inline en lugar de PNG cuando aplique
 - Suspense boundaries por slot (cargan en paralelo)
 - Auto-save debounced 2s + dirty flag (no save si no hubo cambio real)
+- **Paquete J (2026-10-02, INP — auditoría §E-4):** upscale/unsharp de fotos en
+  Web Worker + OffscreenCanvas (`client-photo-upscale.worker.ts`, fallback inline
+  idéntico); snapshots `toDataURL` de preview/3D cacheados por slot con
+  invalidación por referencia (`lib/slot-snapshot-cache.ts`) + yields al event
+  loop + decodificación en paralelo; re-cache de filtros Konva debounceado al
+  finalizar el gesto de zoom (`lib/filter-recache.ts`); smartcrop sobre copia
+  ≤256px (`lib/smart-crop.ts`). Harness de medición LoAF: `tmp/inp-audit/`.
+  Cierre del ciclo: tabla "INP por elemento" en /admin/performance.
 
 ## Accessibility — checklist WCAG 2.1 AA
 

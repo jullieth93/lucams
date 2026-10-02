@@ -75,6 +75,18 @@ export type AccountTexts = {
     submit: string;
     out: string;
   };
+  reorder: {
+    cta: string;
+    pending: string;
+    addedTitle: string;
+    needsPhotosTitle: string;
+    needsPhotosNote: string;
+    photosCta: string;
+    unavailableTitle: string;
+    goToCart: string;
+    priceNow: string;
+    priceWas: string;
+  };
   address: {
     title: string;
     emptyTitle: string;
@@ -234,6 +246,19 @@ export const DEFAULT_ACCOUNT_TEXTS: AccountTexts = {
     submit: "Enviar reclamo",
     out: "Fuera del periodo de garantía.",
   },
+  reorder: {
+    cta: "Volver a pedir",
+    pending: "Armando tu carrito…",
+    addedTitle: "Agregamos a tu carrito:",
+    needsPhotosTitle: "Para repetir estos, sube las fotos de nuevo:",
+    needsPhotosNote:
+      "Por privacidad borramos las fotos de los pedidos entregados hace más de 90 días.",
+    photosCta: "Crearlo de nuevo",
+    unavailableTitle: "Ya no pudimos agregar:",
+    goToCart: "Ir al carrito",
+    priceNow: "ahora {precio}",
+    priceWas: "antes {precio}",
+  },
   address: {
     title: "Mis direcciones",
     emptyTitle: "Aún no tienes direcciones guardadas",
@@ -387,6 +412,16 @@ export const ACCOUNT_TEXT_KEYS: Record<string, string> = {
   "warranty.covered": "account.warranty.covered",
   "warranty.submit": "account.warranty.submit",
   "warranty.out": "account.warranty.out",
+  "reorder.cta": "account.reorder.cta",
+  "reorder.pending": "account.reorder.pending",
+  "reorder.addedTitle": "account.reorder.added-title",
+  "reorder.needsPhotosTitle": "account.reorder.needs-photos-title",
+  "reorder.needsPhotosNote": "account.reorder.needs-photos-note",
+  "reorder.photosCta": "account.reorder.photos-cta",
+  "reorder.unavailableTitle": "account.reorder.unavailable-title",
+  "reorder.goToCart": "account.reorder.go-to-cart",
+  "reorder.priceNow": "account.reorder.price-now",
+  "reorder.priceWas": "account.reorder.price-was",
   "address.title": "account.address.title",
   "address.emptyTitle": "account.address.empty-title",
   "address.emptySub": "account.address.empty-sub",

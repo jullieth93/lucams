@@ -592,6 +592,13 @@ model Order {
   trackingUrl             String?
   // PLAN_CATALOG_V2 4.10 — URL de impresión etiqueta (rutaimpresion en Aveonline).
   labelUrl                String?
+  // Paquete G (2026-10-02) — último intento FALLIDO de generación de guía,
+  // sanitizado (sin PII: scrubPii enmascara emails/teléfonos del mensaje crudo
+  // de la transportadora). Shape: { message, at (ISO), carrier, destination
+  // {city, department}, timeout }. Lo escribe la saga al fallar createShipment
+  // y lo limpia al persistir el tracking; lo lee el detalle admin del pedido
+  // para mostrar la causa REAL (no solo el throw genérico) + sugerencia.
+  shipmentLastError       Json?
   couponId                String?
   coupon                  Coupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
   // PLAN_CATALOG_V2 3.9 — tracking del uso de cupón (incluye monto descontado).
@@ -1545,6 +1552,12 @@ model Design {
   // previewUrl, canvasData y la fila (historial del pedido). null = bytes todavía vivos.
   // También es la marca de idempotencia del cron purge-delivered-designs.
   purgedAt         DateTime?
+  // Paquete C (2026-10-02) — aceptación EXPLÍCITA de calidad de fotos en la Vista Previa
+  // del Estudio: cuando el diseño usa fotos con avisos de calidad (resolución/nitidez/luz),
+  // el cliente debe marcar "entiendo y acepto el resultado" antes de confirmar. Timestamp
+  // del finalize que llevó esa aceptación — evidencia ante reclamos de garantía
+  // ("llegó pixelada/borroso"). null = diseño sin avisos, o finalizado antes de esta ola.
+  qualityAcknowledgedAt DateTime?
   // metadata: selección plantilla + marco + color + ajustes filtros foto-edit.
   metadata         Json                     @default("{}")
   // shareToken: link público read-only para colaboración (sub-bloque K+M

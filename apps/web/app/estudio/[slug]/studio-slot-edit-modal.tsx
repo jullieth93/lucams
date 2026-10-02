@@ -205,7 +205,17 @@ export function StudioSlotEditModal({
   return (
     <Dialog key={slotIndex ?? "closed"} open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        className="flex max-h-[95vh] w-[calc(100%-1rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
+        // Paquete B (2026-10-02) — en móvil/tablet el modal se sobre-dimensionaba:
+        // `95vh` no refleja la barra del navegador ni el teclado virtual (comen
+        // viewport) y la ventana excedía la pantalla visible. Mismo patrón del
+        // preview modal (studio-preview-modal):
+        //   - alto capado por dvh (viewport dinámico real);
+        //   - en móvil (<sm) comportamiento tipo sheet: anclado abajo, ancho
+        //     completo, max 92dvh, sin borde redondeado inferior;
+        //   - en sm+ centrado como siempre;
+        //   - el scroll vive en el contenido (overflow-y-auto abajo): cabecera
+        //     (título + cerrar) y acciones (footer) quedan siempre visibles.
+        className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 max-sm:top-auto max-sm:right-0 max-sm:bottom-0 max-sm:left-0 max-sm:max-h-[92dvh] max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none sm:max-w-2xl"
         showCloseButton={false}
       >
         <div className="border-brand-purple/10 flex shrink-0 items-center justify-between border-b px-4 py-3">

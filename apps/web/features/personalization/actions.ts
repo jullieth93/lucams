@@ -362,6 +362,9 @@ export async function finalizeDesignAction(formData: FormData): Promise<
       customerId,
       sessionId,
       calendarYear,
+      // Paquete C (2026-10-02) — el cliente marcó el checkbox de aceptación de
+      // calidad de fotos en la Vista Previa; el service sella el timestamp.
+      qualityAcknowledged: formData.get("qualityAcknowledged") === "1",
     });
     return {
       ok: true,
@@ -693,7 +696,17 @@ export async function uploadDesignAssetAction(formData: FormData) {
       // M.3.b.B.2 — Validación de calidad para que el cliente muestre warning UI.
       validationLevel: uploaded.validation?.level,
       validationMessage: uploaded.validation?.message,
+      // Paquete C (2026-10-02) — recomendación ESPECÍFICA del caso (resolución /
+      // nitidez / luz) y qué checks fallaron, para que la UI muestre el aviso
+      // concreto en vez de tips genéricos.
       validationRecommendation: uploaded.validation?.recommendation,
+      validationChecks: uploaded.validation
+        ? {
+            resolution: uploaded.validation.resolution.passed,
+            brightness: uploaded.validation.brightness.passed,
+            blur: uploaded.validation.blur.passed,
+          }
+        : undefined,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
