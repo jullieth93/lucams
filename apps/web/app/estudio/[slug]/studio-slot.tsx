@@ -83,6 +83,8 @@ import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
 import { PREDESIGNED_DRAG_MIME, type PredesignedDragPayload } from "./lib/apply-predesigned";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
+import { PhotoQualityModal } from "./photo-quality-modal";
+import { Hint } from "@/components/ui/tooltip";
 import { PLACEHOLDER_GUIDE_OPACITY, SLOT_GUIDE_COLORS } from "./studio-brand";
 
 const FOCUS_RING = "0 0 0 3px rgb(93 217 209)"; // brand-turquoise
@@ -287,6 +289,9 @@ function StudioSlotImpl({
   // (morado sutil siempre visible) → hover (intensidad media) → drag-over
   // (turquesa pleno, vía isDropping). Colores centralizados en studio-brand.
   const [isSlotHovered, setIsSlotHovered] = useState(false);
+  // Paridad desktop/móvil (2026-10-02) — el chip de calidad del slot abre el
+  // PhotoQualityModal compartido (antes solo un title= nativo en hover).
+  const [showQualityModal, setShowQualityModal] = useState(false);
   const texts = useStudioTexts();
   // M.3.b.UX.v5 (Lucy 2026-05-15) — flag para evitar que el drag de la foto
   // dispare el picker modal al soltar el click. Cuando Konva detecta drag,
@@ -1164,12 +1169,11 @@ function StudioSlotImpl({
                     texto largo no cabe; el pill corto lo dice sin ensanchar el
                     slot. Solo caras B de productos backOptional. */}
                 {slotOptional && (
-                  <span
-                    className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide uppercase"
-                    title={texts.lienzo.slotCaraBOpcionalTitle}
-                  >
-                    {texts.lienzo.slotCaraBOpcional}
-                  </span>
+                  <Hint content={texts.lienzo.slotCaraBOpcionalTitle}>
+                    <span className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide uppercase">
+                      {texts.lienzo.slotCaraBOpcional}
+                    </span>
+                  </Hint>
                 )}
 
                 {/* Indicador del slot: mes (calendario) o "Imán #N". */}
@@ -1207,20 +1211,23 @@ function StudioSlotImpl({
           {slotState.assetUrl &&
             slotState.photoTransform?.scale &&
             Math.abs(slotState.photoTransform.scale - 1) > 0.001 && (
-              <div
-                // A11Y — el % iba en blanco sobre turquesa: 1.62:1 con la mezcla /90 sobre foto
-                // clara (WCAG 1.4.3 AA pide 4.5:1). Sin tocar la paleta, el TEXTO pasa a
-                // brand-purple-dark → 7.43:1.
-                className="bg-brand-turquoise/90 text-brand-purple-dark absolute top-1.5 right-1.5 flex h-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold shadow-sm"
-                aria-label={fillStudioText(texts.lienzo.zoomAria, {
-                  pct: Math.round(slotState.photoTransform.scale * 100),
-                })}
-                title={fillStudioText(texts.lienzo.slotZoomTitle, {
+              <Hint
+                content={fillStudioText(texts.lienzo.slotZoomTitle, {
                   pct: Math.round(slotState.photoTransform.scale * 100),
                 })}
               >
-                {Math.round(slotState.photoTransform.scale * 100)}%
-              </div>
+                <div
+                  // A11Y — el % iba en blanco sobre turquesa: 1.62:1 con la mezcla /90 sobre foto
+                  // clara (WCAG 1.4.3 AA pide 4.5:1). Sin tocar la paleta, el TEXTO pasa a
+                  // brand-purple-dark → 7.43:1.
+                  className="bg-brand-turquoise/90 text-brand-purple-dark absolute top-1.5 right-1.5 flex h-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold shadow-sm"
+                  aria-label={fillStudioText(texts.lienzo.zoomAria, {
+                    pct: Math.round(slotState.photoTransform.scale * 100),
+                  })}
+                >
+                  {Math.round(slotState.photoTransform.scale * 100)}%
+                </div>
+              </Hint>
             )}
         </motion.div>
       </div>
@@ -1257,16 +1264,8 @@ function StudioSlotImpl({
               SIEMPRE en esta barra, FUERA del template — incluido el modo tira
               (overlayActions), donde la barra flota sobre la foto como unidad. */}
           {slotState.assetUrl && (
-            <span
-              className="text-brand-purple-dark/70 bg-brand-cream/90 ring-brand-purple/10 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[9px] font-bold ring-1"
-              aria-label={
-                slotLabel ??
-                fillStudioText(texts.lienzo.slotIndicator, {
-                  sustantivo: nounCap,
-                  n: slotState.slotIndex + 1,
-                })
-              }
-              title={
+            <Hint
+              content={
                 slotLabel ??
                 fillStudioText(texts.lienzo.slotIndicator, {
                   sustantivo: nounCap,
@@ -1274,59 +1273,90 @@ function StudioSlotImpl({
                 })
               }
             >
-              {slotLabel ? slotLabel.slice(0, 3) : slotState.slotIndex + 1}
-            </span>
+              <span
+                className="text-brand-purple-dark/70 bg-brand-cream/90 ring-brand-purple/10 inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[9px] font-bold ring-1"
+                aria-label={
+                  slotLabel ??
+                  fillStudioText(texts.lienzo.slotIndicator, {
+                    sustantivo: nounCap,
+                    n: slotState.slotIndex + 1,
+                  })
+                }
+              >
+                {slotLabel ? slotLabel.slice(0, 3) : slotState.slotIndex + 1}
+              </span>
+            </Hint>
           )}
 
           {/* Tamaño físico — chip a la izquierda con orientación explícita.
               En slots angostos se omite: el tamaño ya lo muestra el toolbar.
               En modo tira (overlay) también: estorbaría sobre la foto. */}
           {sizeCm && !compact && !overlayActions && (
-            <span
-              className="text-brand-purple-dark/70 bg-brand-cream/90 ring-brand-purple/10 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1"
-              aria-label={fillStudioText(texts.lienzo.slotTamanoAria, { size: sizeCm })}
-              title={fillStudioText(texts.lienzo.slotSizeTitle, { sizeCm })}
-            >
-              📐 {sizeCm}
-            </span>
+            <Hint content={fillStudioText(texts.lienzo.slotSizeTitle, { sizeCm })}>
+              <span
+                className="text-brand-purple-dark/70 bg-brand-cream/90 ring-brand-purple/10 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1"
+                aria-label={fillStudioText(texts.lienzo.slotTamanoAria, { size: sizeCm })}
+              >
+                📐 {sizeCm}
+              </span>
+            </Hint>
           )}
 
           {/* M.3.b.UX.v11 — Warning de calidad si la foto es de baja resolución
             para imprimir al tamaño físico. Detección automática al cargar foto
             (checkPhotoQuality calcula DPI efectivo a 300 DPI estándar imprenta).
-            Ola 2A — en slots angostos solo el icono (el detalle va en el title). */}
+            Ola 2A — en slots angostos solo el icono (el detalle va en el modal).
+            2026-10-02 (paridad desktop/móvil) — el chip es un <button> que abre
+            el PhotoQualityModal compartido (antes solo title= nativo, inalcanzable
+            en táctil). stopPropagation + tabIndex=-1 como los demás botones de la
+            barra: no interfiere con el drag/pan de la foto ni con el tab-order
+            del grid (1 parada por slot). */}
           {photoQuality && !photoQuality.ok && (
-            <span
-              className={[
-                "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1",
-                photoQuality.severity === "error"
-                  ? "bg-red-50 text-red-700 ring-red-200"
-                  : "bg-amber-50 text-amber-800 ring-amber-200",
-              ].join(" ")}
-              aria-label={
-                photoQuality.severity === "error"
-                  ? "Foto demasiado chica para imprimir bien"
-                  : "Foto al límite de resolución"
-              }
-              title={
-                photoQuality.severity === "error"
-                  ? fillStudioText(texts.lienzo.qualityErrorTitle, {
-                      ancho: photoQuality.actualPx?.w ?? "",
-                      alto: photoQuality.actualPx?.h ?? "",
-                      sizeCm: sizeCm ?? "",
-                      anchoMin: photoQuality.requiredPx?.w ?? "",
-                      altoMin: photoQuality.requiredPx?.h ?? "",
-                    })
-                  : fillStudioText(texts.lienzo.qualityWarnTitle, {
-                      sizeCm: sizeCm ?? "",
-                      anchoMin: photoQuality.requiredPx?.w ?? "",
-                      altoMin: photoQuality.requiredPx?.h ?? "",
-                    })
-              }
-            >
-              {photoQuality.severity === "error" ? "⚠" : "ⓘ"}
-              {compact ? "" : ` ${texts.lienzo.slotQualityChip}`}
-            </span>
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowQualityModal(true);
+                }}
+                tabIndex={-1}
+                className={[
+                  "focus:ring-brand-turquoise inline-flex cursor-pointer items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1 focus:ring-2 focus:outline-none",
+                  photoQuality.severity === "error"
+                    ? "bg-red-50 text-red-700 ring-red-200"
+                    : "bg-amber-50 text-amber-800 ring-amber-200",
+                ].join(" ")}
+                aria-label={
+                  photoQuality.severity === "error"
+                    ? "Foto demasiado chica para imprimir bien"
+                    : "Foto al límite de resolución"
+                }
+              >
+                {photoQuality.severity === "error" ? "⚠" : "ⓘ"}
+                {compact ? "" : ` ${texts.lienzo.slotQualityChip}`}
+              </button>
+              <PhotoQualityModal
+                open={showQualityModal}
+                onClose={() => setShowQualityModal(false)}
+                severity={photoQuality.severity === "error" ? "error" : "warning-soft"}
+                message={
+                  photoQuality.severity === "error"
+                    ? fillStudioText(texts.lienzo.qualityErrorTitle, {
+                        ancho: photoQuality.actualPx?.w ?? "",
+                        alto: photoQuality.actualPx?.h ?? "",
+                        sizeCm: sizeCm ?? "",
+                        anchoMin: photoQuality.requiredPx?.w ?? "",
+                        altoMin: photoQuality.requiredPx?.h ?? "",
+                      })
+                    : fillStudioText(texts.lienzo.qualityWarnTitle, {
+                        sizeCm: sizeCm ?? "",
+                        anchoMin: photoQuality.requiredPx?.w ?? "",
+                        altoMin: photoQuality.requiredPx?.h ?? "",
+                      })
+                }
+                imageUrl={slotState.assetUrl}
+              />
+            </>
           )}
 
           {/* Acciones secundarias derecha.
@@ -1339,71 +1369,76 @@ function StudioSlotImpl({
               {/* M.3.b.UX.v6 — Botón Centrar: visible solo si transform aplicado.
                 Resetea offsetX/Y a 0 + scale a 1 (cover overscan default). */}
               {onCenterPhoto && slotState.photoTransform && (
-                <motion.button
-                  type="button"
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.94 }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onCenterPhoto();
-                  }}
-                  aria-label={fillStudioText(texts.lienzo.slotCentrarAria, {
-                    n: slotState.slotIndex + 1,
-                  })}
-                  title={texts.lienzo.slotTooltipCentrar}
-                  className={`text-brand-purple-dark/70 ring-brand-purple/15 hover:bg-brand-purple/5 hover:text-brand-purple-dark focus:ring-brand-turquoise hover:ring-brand-purple/30 relative flex items-center justify-center rounded-md bg-white shadow-sm ring-1 before:absolute before:content-[''] focus:ring-2 focus:outline-none ${
-                    compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
-                  }`}
-                  tabIndex={-1}
-                >
-                  <RotateCcw className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
-                </motion.button>
+                <Hint content={texts.lienzo.slotTooltipCentrar}>
+                  <motion.button
+                    type="button"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.94 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCenterPhoto();
+                    }}
+                    aria-label={fillStudioText(texts.lienzo.slotCentrarAria, {
+                      n: slotState.slotIndex + 1,
+                    })}
+                    className={`text-brand-purple-dark/70 ring-brand-purple/15 hover:bg-brand-purple/5 hover:text-brand-purple-dark focus:ring-brand-turquoise hover:ring-brand-purple/30 relative flex items-center justify-center rounded-md bg-white shadow-sm ring-1 before:absolute before:content-[''] focus:ring-2 focus:outline-none ${
+                      compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
+                    }`}
+                    tabIndex={-1}
+                  >
+                    <RotateCcw className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                  </motion.button>
+                </Hint>
               )}
               {onEdit && (
-                <motion.button
-                  type="button"
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.94 }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit(slotState.assetUrl ? "photo" : "text");
-                  }}
-                  aria-label={fillStudioText(texts.lienzo.slotEditarAria, { nombre: slotName })}
-                  title={
+                <Hint
+                  content={
                     slotState.assetUrl && hasEditableText
                       ? texts.lienzo.slotTooltipEditarAmbos
                       : slotState.assetUrl
                         ? texts.lienzo.slotTooltipEditarFoto
                         : texts.texto.editorTitulo
                   }
-                  className={`text-brand-purple ring-brand-purple/20 hover:bg-brand-purple/5 focus:ring-brand-turquoise hover:ring-brand-purple/40 relative flex items-center justify-center rounded-md bg-white shadow-sm ring-1 before:absolute before:content-[''] focus:ring-2 focus:outline-none ${
-                    compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
-                  }`}
-                  tabIndex={-1}
                 >
-                  <Pencil className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
-                </motion.button>
+                  <motion.button
+                    type="button"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.94 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEdit(slotState.assetUrl ? "photo" : "text");
+                    }}
+                    aria-label={fillStudioText(texts.lienzo.slotEditarAria, { nombre: slotName })}
+                    className={`text-brand-purple ring-brand-purple/20 hover:bg-brand-purple/5 focus:ring-brand-turquoise hover:ring-brand-purple/40 relative flex items-center justify-center rounded-md bg-white shadow-sm ring-1 before:absolute before:content-[''] focus:ring-2 focus:outline-none ${
+                      compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
+                    }`}
+                    tabIndex={-1}
+                  >
+                    <Pencil className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                  </motion.button>
+                </Hint>
               )}
               {slotState.assetUrl && (
-                <motion.button
-                  type="button"
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.94 }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onClear();
-                  }}
-                  aria-label={fillStudioText(texts.lienzo.slotQuitarAria, {
-                    n: slotState.slotIndex + 1,
-                  })}
-                  title={texts.lienzo.slotTooltipQuitar}
-                  className={`relative flex items-center justify-center rounded-md bg-white text-red-600 shadow-sm ring-1 ring-red-200 before:absolute before:content-[''] hover:bg-red-50 hover:ring-red-400 focus:ring-2 focus:ring-red-500 focus:outline-none ${
-                    compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
-                  }`}
-                  tabIndex={-1}
-                >
-                  <Trash2 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
-                </motion.button>
+                <Hint content={texts.lienzo.slotTooltipQuitar}>
+                  <motion.button
+                    type="button"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.94 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onClear();
+                    }}
+                    aria-label={fillStudioText(texts.lienzo.slotQuitarAria, {
+                      n: slotState.slotIndex + 1,
+                    })}
+                    className={`relative flex items-center justify-center rounded-md bg-white text-red-600 shadow-sm ring-1 ring-red-200 before:absolute before:content-[''] hover:bg-red-50 hover:ring-red-400 focus:ring-2 focus:ring-red-500 focus:outline-none ${
+                      compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
+                    }`}
+                    tabIndex={-1}
+                  >
+                    <Trash2 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                  </motion.button>
+                </Hint>
               )}
             </div>
           )}

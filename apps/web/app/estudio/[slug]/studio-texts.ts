@@ -297,6 +297,8 @@ export type StudioTexts = {
      *  (sidebar y picker; antes solo un emoji). */
     badgeRevisar: string;
     calidadCerrar: string;
+    /** CTA del modal de calidad en el picker: asignar la foto con warning igual. */
+    calidadUsarDeTodosModos: string;
     pickerTitulo: string;
     pickerDesc: string;
     pickerVacio: string;
@@ -901,6 +903,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     calidadRecomendacionTitulo: "Nuestra recomendación para esta foto",
     badgeRevisar: "Revisar",
     calidadCerrar: "Entendido",
+    calidadUsarDeTodosModos: "Usar de todos modos",
     pickerTitulo: "Foto para el imán {n} de {total}",
     pickerDesc: "Elige una foto ya subida o suma una nueva.",
     pickerVacio: "Todavía no subiste fotos. Empieza arriba.",
@@ -1454,6 +1457,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "fotos.calidadRecomendacionTitulo": "estudio.fotos.calidad-recomendacion-titulo",
   "fotos.badgeRevisar": "estudio.fotos.badge-revisar",
   "fotos.calidadCerrar": "estudio.fotos.calidad-cerrar",
+  "fotos.calidadUsarDeTodosModos": "estudio.fotos.calidad-usar-de-todos-modos",
   "fotos.pickerTitulo": "estudio.fotos.picker-titulo",
   "fotos.pickerDesc": "estudio.fotos.picker-desc",
   "fotos.pickerVacio": "estudio.fotos.picker-vacio",
