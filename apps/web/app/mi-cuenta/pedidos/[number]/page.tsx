@@ -22,10 +22,16 @@ import { formatCOP } from "@/lib/format";
 import { getRetractableItems } from "@/features/retract/service";
 import { getWarrantyItems } from "@/features/warranty/service";
 import { orderStatusLabel } from "@/features/orders/order-status-display";
+import {
+  describeVariantAttributes,
+  parseVariantAttributes,
+} from "@/features/products/variant-schemas";
 import { carrierTrackingPageUrl } from "@/features/shipping/tracking-urls";
 import { carrierDisplayName, LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 import { RetractControl } from "./retract-control";
 import { WarrantyControl } from "./warranty-control";
+import { reorderAction } from "./actions";
+import { ReorderControl } from "@/components/orders/reorder-control";
 import { getAccountTexts } from "../../account-texts.server";
 
 export const metadata: Metadata = {
@@ -81,6 +87,8 @@ export default async function CustomerPedidoDetallePage({
               id: true,
               name: true,
               sku: true,
+              // Paquete F (2026-10-02) — attributes: desglose estructurado de la variante.
+              attributes: true,
               product: { select: { slug: true, name: true } },
             },
           },
@@ -216,6 +224,10 @@ export default async function CustomerPedidoDetallePage({
         <ul className="divide-brand-purple/10 divide-y">
           {order.items.map((it) => {
             const previewUrl = it.designAssetUrl ?? it.design?.previewUrl ?? null; // ADR-070 — snapshot primero
+            // Paquete F (2026-10-02) — desglose estructurado de la variante.
+            const variantBreakdown = describeVariantAttributes(
+              parseVariantAttributes(it.variant.attributes),
+            );
             return (
               <li key={it.id} className="flex items-start gap-3 py-3">
                 <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">
@@ -241,6 +253,11 @@ export default async function CustomerPedidoDetallePage({
                   <div className="text-brand-muted text-xs">
                     {it.variant.name} · {it.qty} × {formatCOP(it.unitPrice)}
                   </div>
+                  {variantBreakdown.length > 0 && (
+                    <div className="text-brand-purple-dark/70 text-xs">
+                      {variantBreakdown.join(" · ")}
+                    </div>
+                  )}
                   {retractByItem.has(it.id) && (
                     <RetractControl item={retractByItem.get(it.id)!} texts={texts.retract} />
                   )}
@@ -345,6 +362,18 @@ export default async function CustomerPedidoDetallePage({
             <Star className="h-3.5 w-3.5" />
             {texts.order.reviewCta}
           </Link>
+        </div>
+      )}
+
+      {/* Paquete I — "Volver a pedir": reconstruye el carrito a precio vigente; el
+          resumen inline dice qué entró, qué requiere fotos de nuevo y qué ya no está. */}
+      {!isCancelled && (
+        <div className="border-brand-purple/15 rounded-2xl border bg-white p-5 text-center shadow-sm">
+          <ReorderControl
+            action={reorderAction}
+            hiddenField={{ name: "orderNumber", value: order.number }}
+            texts={texts.reorder}
+          />
         </div>
       )}
     </div>

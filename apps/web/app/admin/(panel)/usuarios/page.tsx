@@ -31,6 +31,7 @@ import {
 import { ReauthForm } from "@/components/admin/mfa-reauth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Hint } from "@/components/ui/tooltip";
 import { getCurrentAdmin } from "@/lib/auth";
 import { ADMIN_ROLE_LABEL } from "@/lib/admin-roles";
 import { listAdminUsers } from "@/features/admin-users/service";
@@ -339,13 +340,14 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                               <option value="FULFILLMENT">Fulfillment</option>
                               <option value="CMS_EDITOR">Editor de contenido</option>
                             </select>
-                            <button
-                              type="submit"
-                              className="text-brand-purple-dark hover:text-brand-purple text-[11px] font-semibold"
-                              title="Cambiar rol"
-                            >
-                              Guardar
-                            </button>
+                            <Hint content="Cambiar rol">
+                              <button
+                                type="submit"
+                                className="text-brand-purple-dark hover:text-brand-purple text-[11px] font-semibold"
+                              >
+                                Guardar
+                              </button>
+                            </Hint>
                           </ReauthForm>
                         )}
                         {!isSelf && (

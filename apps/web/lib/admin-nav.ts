@@ -445,10 +445,11 @@ export const ADMIN_NAV: NavGroup[] = [
  * En modo catálogo (Etapa 1), además, no hay pagos en línea ni envíos
  * integrados, así que el sidebar oculta lo que no aplica:
  *   - el grupo "Finanzas" completo (resumen, conciliación y bloqueos COD),
- *   - "Integraciones" dentro de "Configuración" (Wompi/Aveonline apagadas),
- *   - "Precios al por mayor" dentro de "Promociones" (WholesaleTier no tiene NINGÚN
- *     consumidor fuera del admin: ni PDP, ni carrito, ni cotización aplican
- *     niveles B2B — módulo de Etapa 2).
+ *   - "Integraciones" dentro de "Configuración" (Wompi/Aveonline apagadas).
+ * ("Precios al por mayor" se OCULTABA aquí hasta el 2026-10-02; ese día el
+ * carrito pasó a aplicar los WholesaleTier como descuento por volumen público
+ * — features/cart/volume-pricing.ts — y el módulo quedó visible en todos los
+ * modos.)
  *
  * ADMIN_NAV se mantiene exportado e intacto: lo usa el catch-all placeholder
  * (findNavItem) para mostrar info contextual de módulos "Próximo". El consumidor
@@ -475,16 +476,14 @@ export function getAdminNav(): NavGroup[] {
   if (!isCatalogMode()) {
     return withoutFuture.filter((group) => !group.items || group.items.length > 0 || group.href);
   }
-  // Modo catálogo (Etapa 1): además de los futuros, se ocultan lo que solo aplica
-  // con pagos/envíos online (grupo Finanzas completo, Integraciones) y Precios al por mayor
-  // (WholesaleTier sin consumidor en storefront hasta Etapa 2). Coherente con los
-  // gates de página (esas rutas redirigen a /admin/dashboard en este modo).
+  // Modo catálogo (Etapa 1): además de los futuros, se oculta lo que solo aplica
+  // con pagos/envíos online (grupo Finanzas completo, Integraciones y Envíos).
+  // Coherente con los gates de página (esas rutas redirigen a /admin/dashboard
+  // en este modo). "Precios al por mayor" YA NO se oculta (2026-10-02): el
+  // carrito aplica los niveles de volumen a todos los clientes.
   return withoutFuture
     .filter((group) => group.title !== "Finanzas")
     .map((group) => {
-      if (group.title === "Promociones" && group.items) {
-        return { ...group, items: group.items.filter((it) => it.href !== "/admin/mayorista") };
-      }
       if (group.title === "Configuración" && group.items) {
         return {
           ...group,

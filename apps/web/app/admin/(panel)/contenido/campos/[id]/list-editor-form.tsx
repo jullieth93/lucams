@@ -25,6 +25,7 @@ import { ArrowDown, ArrowUp, ChevronDown, Loader2, Plus, Save, Trash2, Undo2 } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Hint } from "@/components/ui/tooltip";
 import {
   saveCmsFieldItemsAction,
   type CmsActionState,
@@ -205,42 +206,51 @@ export function ListEditorForm({
                 Elemento {index + 1}
               </span>
               <div className="flex items-center gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => moveRow(index, -1)}
-                  disabled={pending || index === 0}
-                  className="text-brand-purple-dark hover:bg-brand-purple/10 h-8 w-8 p-0"
-                  title="Subir"
-                  aria-label={`Subir elemento ${index + 1}`}
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => moveRow(index, 1)}
-                  disabled={pending || index === rows.length - 1}
-                  className="text-brand-purple-dark hover:bg-brand-purple/10 h-8 w-8 p-0"
-                  title="Bajar"
-                  aria-label={`Bajar elemento ${index + 1}`}
-                >
-                  <ArrowDown className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeRow(index)}
-                  disabled={pending}
-                  className="h-8 w-8 p-0 text-red-700 hover:bg-red-50"
-                  title="Eliminar"
-                  aria-label={`Eliminar elemento ${index + 1}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <Hint content="Subir">
+                  <span tabIndex={0} className="inline-flex">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => moveRow(index, -1)}
+                      disabled={pending || index === 0}
+                      className="text-brand-purple-dark hover:bg-brand-purple/10 h-8 w-8 p-0"
+                      aria-label={`Subir elemento ${index + 1}`}
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </Button>
+                  </span>
+                </Hint>
+                <Hint content="Bajar">
+                  <span tabIndex={0} className="inline-flex">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => moveRow(index, 1)}
+                      disabled={pending || index === rows.length - 1}
+                      className="text-brand-purple-dark hover:bg-brand-purple/10 h-8 w-8 p-0"
+                      aria-label={`Bajar elemento ${index + 1}`}
+                    >
+                      <ArrowDown className="h-4 w-4" />
+                    </Button>
+                  </span>
+                </Hint>
+                <Hint content="Eliminar">
+                  <span tabIndex={0} className="inline-flex">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeRow(index)}
+                      disabled={pending}
+                      className="h-8 w-8 p-0 text-red-700 hover:bg-red-50"
+                      aria-label={`Eliminar elemento ${index + 1}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </span>
+                </Hint>
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -365,23 +375,23 @@ export function ListEditorForm({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {isDirty && (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={discardChanges}
-              disabled={pending}
-              className="text-brand-purple-dark hover:bg-brand-purple/10"
-              title="Volver a la lista guardada, perdiendo los cambios actuales"
-            >
-              <Undo2 className="mr-1.5 h-4 w-4" />
-              Descartar cambios
-            </Button>
+            <Hint content="Volver a la lista guardada, perdiendo los cambios actuales">
+              <span tabIndex={0} className="inline-flex">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={discardChanges}
+                  disabled={pending}
+                  className="text-brand-purple-dark hover:bg-brand-purple/10"
+                >
+                  <Undo2 className="mr-1.5 h-4 w-4" />
+                  Descartar cambios
+                </Button>
+              </span>
+            </Hint>
           )}
-          <Button
-            type="submit"
-            disabled={pending || !isDirty}
-            className="bg-gradient-brand text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-            title={
+          <Hint
+            content={
               isDirty
                 ? isSetting
                   ? "Guardar y aplicar en el sitio"
@@ -389,17 +399,25 @@ export function ListEditorForm({
                 : "No hay cambios para guardar"
             }
           >
-            {pending ? (
-              <>
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Guardando...
-              </>
-            ) : (
-              <>
-                <Save className="mr-1.5 h-4 w-4" />
-                {isSetting ? "Guardar y aplicar" : "Guardar borrador"}
-              </>
-            )}
-          </Button>
+            <span tabIndex={0} className="inline-flex">
+              <Button
+                type="submit"
+                disabled={pending || !isDirty}
+                className="bg-gradient-brand text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {pending ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-1.5 h-4 w-4" />
+                    {isSetting ? "Guardar y aplicar" : "Guardar borrador"}
+                  </>
+                )}
+              </Button>
+            </span>
+          </Hint>
         </div>
       </div>
     </form>

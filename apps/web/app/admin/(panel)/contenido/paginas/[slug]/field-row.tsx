@@ -19,6 +19,7 @@ import { Check, Loader2, Save, Send } from "lucide-react";
 import { AdminBadge } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Hint } from "@/components/ui/tooltip";
 import {
   publishCmsFieldAction,
   saveCmsFieldAction,
@@ -175,22 +176,25 @@ export function FieldRow({
         <form action={formAction} className="flex items-start gap-2">
           <input type="hidden" name="id" value={field.id} />
           <div className="flex-1">{input}</div>
-          <Button
-            type="submit"
-            size="sm"
-            disabled={pending || !isDirty}
-            className="bg-gradient-brand text-white hover:brightness-110 disabled:opacity-50"
-            title={isDirty ? "Guardar el cambio" : "No hay cambios para guardar"}
-          >
-            {pending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <>
-                <Save className="mr-1 h-3.5 w-3.5" />
-                Guardar
-              </>
-            )}
-          </Button>
+          <Hint content={isDirty ? "Guardar el cambio" : "No hay cambios para guardar"}>
+            <span tabIndex={0} className="inline-flex">
+              <Button
+                type="submit"
+                size="sm"
+                disabled={pending || !isDirty}
+                className="bg-gradient-brand text-white hover:brightness-110 disabled:opacity-50"
+              >
+                {pending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <>
+                    <Save className="mr-1 h-3.5 w-3.5" />
+                    Guardar
+                  </>
+                )}
+              </Button>
+            </span>
+          </Hint>
         </form>
 
         {state?.error && <p className="text-xs text-rose-600">{state.error}</p>}
@@ -213,15 +217,16 @@ export function FieldRow({
             <input type="hidden" name="fieldId" value={field.id} />
             <input type="hidden" name="versionId" value={latestVersionId} />
             <input type="hidden" name="redirectTo" value={`/admin/contenido/paginas/${pageSlug}`} />
-            <Button
-              type="submit"
-              size="sm"
-              className="bg-emerald-600 text-white hover:bg-emerald-700"
-              title="Hacer público el último borrador guardado"
-            >
-              <Send className="mr-1 h-3.5 w-3.5" />
-              Publicar
-            </Button>
+            <Hint content="Hacer público el último borrador guardado">
+              <Button
+                type="submit"
+                size="sm"
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                <Send className="mr-1 h-3.5 w-3.5" />
+                Publicar
+              </Button>
+            </Hint>
           </form>
         )}
       </div>

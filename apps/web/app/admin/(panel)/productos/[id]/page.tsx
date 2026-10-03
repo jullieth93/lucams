@@ -29,7 +29,7 @@ import { getProductById, listCategoriesForSelect } from "@/features/products/ser
 import { getStorefrontVisibility } from "@/features/products/storefront-visibility";
 import { StorefrontVisibilityChip } from "@/components/admin/storefront-visibility-chip";
 import { parsePhysicalSpecs } from "@/features/products/shipping-schemas";
-import { parseStudioCanvasOverrides } from "@/features/personalization/schemas";
+import { readPersonalizationAdminConfig } from "@/features/products/personalization-schema";
 import { getStockEmoji, summarizeStock } from "@/features/products/stock-constants";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
@@ -137,14 +137,11 @@ export default async function ProductoDetallePage({
       ? Math.min(...activeForPrice.map((v) => v.price ?? product.basePrice))
       : product.basePrice;
 
-  // Estudio por producto (2026-09-24 v2): tamaño base del lienzo + columnas de
-  // grilla viven en personalizationSchema (JSON libre). Lectura DEFENSIVA
-  // por-key (2026-09-25 — fix: el safeParse del schema completo fallaba entero
-  // si otra key era inválida, ej. finish:"glass", y los campos se veían vacíos
-  // aunque el valor sí estaba guardado).
-  const { canvasBaseScale, gridColsOverride } = parseStudioCanvasOverrides(
-    product.personalizationSchema,
-  );
+  // Personalización (2026-10-02): kind (columna) + config del schema leída
+  // DEFENSIVA por-key (criterio 2026-09-25: una key inválida — ej. finish:
+  // "glass" del seed — no debe apagar las demás al precargar el form; sin
+  // precarga, guardar una edición pisaría la config a defaults).
+  const personalization = readPersonalizationAdminConfig(product.personalizationSchema);
 
   return (
     <AdminPage>
@@ -258,13 +255,12 @@ export default async function ProductoDetallePage({
                 shippingDaysMax: product.shippingDaysMax,
                 minimumQuantity: product.minimumQuantity,
                 maximumQuantity: product.maximumQuantity,
-                premadeSurcharge: product.premadeSurcharge,
                 weightGrams: parsePhysicalSpecs(product.physicalSpecs).weightGrams ?? null,
                 widthCm: parsePhysicalSpecs(product.physicalSpecs).widthCm ?? null,
                 heightCm: parsePhysicalSpecs(product.physicalSpecs).heightCm ?? null,
                 depthCm: parsePhysicalSpecs(product.physicalSpecs).depthCm ?? null,
-                canvasBaseScale,
-                gridColsOverride,
+                personalizationKind: product.personalizationKind,
+                personalization,
               }}
               action={updateProductAction}
               submitLabel="Guardar cambios"

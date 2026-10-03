@@ -19,6 +19,7 @@ import { CmsText } from "@/components/cms/cms-text";
 import { GlobalSearch } from "@/components/global-search";
 import { ShopMegaMenu, type MegaMenuTexts } from "@/components/shop-mega-menu";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { getCartItemCount } from "@/features/cart/service";
 import { getCategoryTree } from "@/lib/catalog";
 import { getCurrentAdmin, getCurrentCustomer } from "@/lib/auth";
@@ -120,28 +121,30 @@ export async function SiteHeader() {
             texts={megaMenuTexts}
           />
 
-          <Link
-            href="/recomendador"
-            className="bg-brand-purple/10 text-brand-purple-dark hover:bg-brand-purple/20 hidden items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors sm:inline-flex"
-            title="Te ayudamos a elegir en 4 preguntas"
-          >
-            <Sparkles className="h-3.5 w-3.5" />{" "}
-            <CmsText blockKey="header.menu.help-cta" fallback="¿Te ayudamos a elegir?" />
-          </Link>
+          <Hint content="Te ayudamos a elegir en 4 preguntas">
+            <Link
+              href="/recomendador"
+              className="bg-brand-purple/10 text-brand-purple-dark hover:bg-brand-purple/20 hidden items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors sm:inline-flex"
+            >
+              <Sparkles className="h-3.5 w-3.5" />{" "}
+              <CmsText blockKey="header.menu.help-cta" fallback="¿Te ayudamos a elegir?" />
+            </Link>
+          </Hint>
 
           <GlobalSearch />
 
           {/* Seguimiento de pedido sin cuenta (Lucy 2026-08-11): estaba solo en
               el footer y los invitados no lo encontraban. Ícono directo junto
               al carrito, visible en móvil y desktop. */}
-          <Link
-            href="/rastrear"
-            className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center p-1.5"
-            aria-label="Rastrear mi pedido"
-            title="Rastrear mi pedido"
-          >
-            <Truck className="h-5 w-5" />
-          </Link>
+          <Hint content="Rastrear mi pedido">
+            <Link
+              href="/rastrear"
+              className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center p-1.5"
+              aria-label="Rastrear mi pedido"
+            >
+              <Truck className="h-5 w-5" />
+            </Link>
+          </Hint>
 
           <Link
             href="/carrito"

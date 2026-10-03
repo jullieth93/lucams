@@ -19,6 +19,7 @@ import { Check, Copy, ImagePlus, Loader2, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Hint } from "@/components/ui/tooltip";
 import {
   deleteCmsMediaAction,
   updateCmsMediaAltAction,
@@ -191,30 +192,31 @@ function UploadCard() {
 function CopyUrlButton({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <button
-      type="button"
-      aria-live="polite"
-      title="Copiar la URL pública de la imagen"
-      onClick={async () => {
-        try {
-          if (!navigator.clipboard) throw new Error("clipboard unavailable");
-          await navigator.clipboard.writeText(url);
-          setCopied(true);
-          toast.success("URL copiada al portapapeles.");
-          setTimeout(() => setCopied(false), 1600);
-        } catch {
-          toast("Copia la URL a mano:", { description: url, duration: 10000 });
-        }
-      }}
-      className="text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-semibold transition-colors"
-    >
-      {copied ? (
-        <Check className="h-3.5 w-3.5" aria-hidden />
-      ) : (
-        <Copy className="h-3.5 w-3.5" aria-hidden />
-      )}
-      {copied ? "¡Copiada!" : "Copiar URL"}
-    </button>
+    <Hint content="Copiar la URL pública de la imagen">
+      <button
+        type="button"
+        aria-live="polite"
+        onClick={async () => {
+          try {
+            if (!navigator.clipboard) throw new Error("clipboard unavailable");
+            await navigator.clipboard.writeText(url);
+            setCopied(true);
+            toast.success("URL copiada al portapapeles.");
+            setTimeout(() => setCopied(false), 1600);
+          } catch {
+            toast("Copia la URL a mano:", { description: url, duration: 10000 });
+          }
+        }}
+        className="text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-semibold transition-colors"
+      >
+        {copied ? (
+          <Check className="h-3.5 w-3.5" aria-hidden />
+        ) : (
+          <Copy className="h-3.5 w-3.5" aria-hidden />
+        )}
+        {copied ? "¡Copiada!" : "Copiar URL"}
+      </button>
+    </Hint>
   );
 }
 
@@ -338,25 +340,30 @@ function MediaCard({ item }: { item: MediaLibraryItem }) {
         )}
         <div className="flex items-center justify-between gap-2">
           <CopyUrlButton url={item.url} />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleDelete}
-            disabled={delPending || inUse}
-            title={
+          <Hint
+            content={
               inUse
                 ? `No se puede borrar: la usan ${item.usedBy.map((r) => r.key).join(", ")}`
                 : "Borrar de la mediateca"
             }
-            className="h-7 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"
           >
-            {delPending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Trash2 className="h-3.5 w-3.5" />
-            )}
-          </Button>
+            <span tabIndex={0} className="inline-flex">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleDelete}
+                disabled={delPending || inUse}
+                className="h-7 text-xs text-red-700 hover:bg-red-50 disabled:opacity-40"
+              >
+                {delPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </span>
+          </Hint>
         </div>
       </div>
     </div>

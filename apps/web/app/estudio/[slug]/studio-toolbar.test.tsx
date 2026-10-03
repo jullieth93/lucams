@@ -21,6 +21,14 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { StudioToolbar } from "./studio-toolbar";
 import { createStudioStore } from "./lib/store";
 import type { CanvasDataV2 } from "./types";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import type { ReactElement } from "react";
+
+// El tooltip de marca (Hint, radix) exige un Provider — en la app lo monta
+// app/layout.tsx. delayDuration 0 para que abra al instante en los asserts.
+function renderStudio(ui: ReactElement) {
+  return render(<TooltipProvider delayDuration={0}>{ui}</TooltipProvider>);
+}
 
 // El popover de radix (Fase 1A) usa ResizeObserver via react-use-size, ausente
 // en jsdom → stub global (mismo patrón de global-search.test.tsx).
@@ -59,7 +67,7 @@ function setup(opts?: { filled?: number; isPreviewBuilding?: boolean }) {
     templates: [],
   });
   const onFinalize = vi.fn();
-  render(
+  renderStudio(
     <StudioToolbar
       store={store}
       productName="Fotoimanes cuadrados"
@@ -109,7 +117,7 @@ describe("StudioToolbar — botón «Vista previa»", () => {
     expect(btn).toHaveTextContent("Guardando diseño...");
   });
 
-  it("Ola 26 — finalizeBlockReason (textos requeridos IG): bloqueado CON las fotos completas, tooltip con los campos", () => {
+  it("Ola 26 — finalizeBlockReason (textos requeridos IG): bloqueado CON las fotos completas, tooltip con los campos", async () => {
     const store = createStudioStore();
     store.getState().init({
       designId: "d1",
@@ -119,7 +127,7 @@ describe("StudioToolbar — botón «Vista previa»", () => {
     });
     const onFinalize = vi.fn();
     const reason = "Completa los textos de tu diseño para ver la vista previa: usuario, hashtags";
-    const { rerender } = render(
+    const { rerender } = renderStudio(
       <StudioToolbar
         store={store}
         productName="Fotoimanes Polaroid"
@@ -132,18 +140,28 @@ describe("StudioToolbar — botón «Vista previa»", () => {
     // del bloqueo por fotos faltantes).
     const btn = screen.getByRole("button", { name: reason });
     expect(btn).toBeDisabled();
-    expect(btn).toHaveAttribute("title", reason);
+    // El motivo ya no viaja en el title nativo: es el tooltip de marca (Hint),
+    // que abre con foco de teclado sobre el wrapper focusable (el botón está
+    // disabled y no recibe foco).
+    const hintTrigger = btn.parentElement!;
+    expect(hintTrigger).toHaveAttribute("data-slot", "tooltip-trigger");
+    await act(async () => {
+      fireEvent.focus(hintTrigger);
+    });
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(reason);
     btn.click();
     expect(onFinalize).not.toHaveBeenCalled();
     // Sin el motivo (el cliente ya escribió los textos) → habilitado de nuevo.
     rerender(
-      <StudioToolbar
-        store={store}
-        productName="Fotoimanes Polaroid"
-        productSlug="fotoimanes-polaroid"
-        finalizeBlockReason={null}
-        onFinalize={onFinalize}
-      />,
+      <TooltipProvider delayDuration={0}>
+        <StudioToolbar
+          store={store}
+          productName="Fotoimanes Polaroid"
+          productSlug="fotoimanes-polaroid"
+          finalizeBlockReason={null}
+          onFinalize={onFinalize}
+        />
+      </TooltipProvider>,
     );
     expect(screen.getByRole("button", { name: "Vista previa de tu pedido" })).toBeEnabled();
   });
@@ -172,7 +190,7 @@ describe("StudioToolbar — botón «Vista previa»", () => {
       templates: [],
     });
     const onFinalize = vi.fn();
-    render(
+    renderStudio(
       <StudioToolbar
         store={store}
         productName="Separadores magnéticos"
@@ -208,7 +226,7 @@ describe("StudioToolbar — botón «Vista previa»", () => {
       },
       templates: [],
     });
-    render(
+    renderStudio(
       <StudioToolbar
         store={store}
         productName="Separadores magnéticos"
@@ -246,7 +264,7 @@ describe("StudioToolbar — botón «Vista previa»", () => {
       "Nov",
       "Dic",
     ];
-    render(
+    renderStudio(
       <StudioToolbar
         store={store}
         productName="Calendario magnético"
@@ -268,7 +286,7 @@ describe("StudioToolbar — botón «Vista previa»", () => {
     expect(screen.getByText("Dic")).toBeInTheDocument();
     // Sin labels cae al número de slot (1-based).
     cleanup();
-    render(
+    renderStudio(
       <StudioToolbar
         store={store}
         productName="Calendario magnético"

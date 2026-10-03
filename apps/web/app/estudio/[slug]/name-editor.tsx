@@ -32,6 +32,7 @@ import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { LetterStylePicker } from "./letter-style-picker";
 import { StudioPreviewModal } from "./studio-preview-modal";
 import { StudioSimpleHeader } from "./studio-simple-header";
+import { STUDIO_CTA_DISABLED_CLASSES } from "./studio-busy-cta";
 import { STUDIO_MAX_WIDTH } from "./studio-layout";
 import { useIsTouch } from "./use-is-touch";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -70,6 +71,13 @@ type NameEditorProps = {
    * producto físico justo en la pantalla de confirmación, Ley 1480 art. 23).
    */
   variantMagnet?: boolean;
+  /**
+   * Paquete F (2026-10-02) — desglose de la variante elegida en la ficha
+   * (describeVariantAttributes: "Sin imán (adhesivo) · Español"…). En esta
+   * superficie la variante es FIJA (se eligió en la PDP y no se cambia acá),
+   * así que la etiqueta de la página server es la verdad vigente.
+   */
+  variantLabel?: string;
   config: { min: number; max: number; language: NameLanguage };
   /**
    * ADR-057 — precio POR FICHA (centavos COP). El total mostrado y el del carrito =
@@ -245,6 +253,7 @@ export function NameEditor({
   productImageUrl,
   variantId,
   variantMagnet,
+  variantLabel,
   config,
   pricePerTile,
   initialCount,
@@ -934,7 +943,7 @@ export function NameEditor({
                   type="button"
                   onClick={handleShowPreview}
                   disabled={!valid || preparingPreview || submitting}
-                  className="bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={`bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 ${STUDIO_CTA_DISABLED_CLASSES}`}
                 >
                   {preparingPreview || submitting ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
@@ -1012,6 +1021,8 @@ export function NameEditor({
         // 2026-09-25 — el término sale de la variante (Con imán → "imán", Sin
         // imán → "ficha"), igual que letter-set-editor; antes quemado "magnets".
         productKind={variantMagnet === false ? "tiles" : "magnets"}
+        // Paquete F (2026-10-02) — desglose de la variante (imantado, idioma…).
+        variantLabel={variantLabel}
         onEdit={handleEditFromPreview}
         onConfirm={handleConfirmAddToCart}
       />

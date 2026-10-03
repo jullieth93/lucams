@@ -20,6 +20,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { CheckCircle2, EyeOff, Star, StarOff, X, Loader2 } from "lucide-react";
+import { Hint } from "@/components/ui/tooltip";
 import {
   bulkActivateProductsAction,
   bulkDeactivateProductsAction,
@@ -137,16 +138,20 @@ export function BulkActionBar() {
             onSubmit={() => startTransition(() => clearSelection())}
           />
 
-          <button
-            type="button"
-            onClick={clearSelection}
-            disabled={pending}
-            className="ml-2 inline-flex h-9 items-center gap-1 rounded-md border border-white/20 bg-white/10 px-3 text-xs font-semibold text-white hover:bg-white/20 disabled:opacity-50"
-            title="Limpiar selección"
-          >
-            <X className="h-3.5 w-3.5" />
-            Limpiar
-          </button>
+          <Hint content="Limpiar selección">
+            {/* span wrapper: el button disabled no recibe hover/foco, el span sí. */}
+            <span tabIndex={pending ? 0 : undefined} className="ml-2 inline-flex">
+              <button
+                type="button"
+                onClick={clearSelection}
+                disabled={pending}
+                className="inline-flex h-9 items-center gap-1 rounded-md border border-white/20 bg-white/10 px-3 text-xs font-semibold text-white hover:bg-white/20 disabled:opacity-50"
+              >
+                <X className="h-3.5 w-3.5" />
+                Limpiar
+              </button>
+            </span>
+          </Hint>
         </div>
 
         {pending && (
@@ -195,15 +200,19 @@ function BulkSubmitButton({
       }}
       className="inline-flex"
     >
-      <button
-        type="submit"
-        disabled={disabled}
-        title={title}
-        className={`inline-flex h-9 items-center gap-1 rounded-md px-3 text-xs font-semibold disabled:opacity-50 ${tones[tone]}`}
-      >
-        {icon}
-        {label}
-      </button>
+      <Hint content={title}>
+        {/* span wrapper: el button disabled no recibe hover/foco, el span sí. */}
+        <span tabIndex={disabled ? 0 : undefined} className="inline-flex">
+          <button
+            type="submit"
+            disabled={disabled}
+            className={`inline-flex h-9 items-center gap-1 rounded-md px-3 text-xs font-semibold disabled:opacity-50 ${tones[tone]}`}
+          >
+            {icon}
+            {label}
+          </button>
+        </span>
+      </Hint>
     </form>
   );
 }

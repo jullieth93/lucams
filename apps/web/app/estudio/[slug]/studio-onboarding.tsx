@@ -26,6 +26,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { LucamsLogo } from "@/components/lucams-logo";
+import { Hint } from "@/components/ui/tooltip";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { ArrowRight, Sparkles, X } from "lucide-react";
@@ -181,15 +182,16 @@ export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) 
                   {current.title}
                 </h2>
               </div>
-              <button
-                type="button"
-                onClick={skip}
-                aria-label={texts.comun.saltarTutorial}
-                title={texts.comun.saltarTutorial}
-                className="text-brand-muted hover:bg-brand-purple/10 hover:text-brand-purple-dark/70 flex h-7 w-7 items-center justify-center rounded-md transition-colors focus:outline-none"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <Hint content={texts.comun.saltarTutorial}>
+                <button
+                  type="button"
+                  onClick={skip}
+                  aria-label={texts.comun.saltarTutorial}
+                  className="text-brand-muted hover:bg-brand-purple/10 hover:text-brand-purple-dark/70 flex h-7 w-7 items-center justify-center rounded-md transition-colors focus:outline-none"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </Hint>
             </div>
 
             {/* Body */}

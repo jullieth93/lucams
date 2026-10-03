@@ -681,7 +681,13 @@ export async function uploadCmsMediaAction(
   }
 }
 
-/** Edita el texto alternativo de un asset (desde la mediateca). */
+/**
+ * Edita el texto alternativo de un asset (desde la mediateca). Invalida el tag
+ * "cms": el alt se sirve al storefront dentro de getCmsImage/getCmsBanners
+ * (lib/cms.ts), cacheados con TTL 1h — sin el updateTag la corrección de
+ * accesibilidad/SEO tardaba hasta 1h en verse (hallazgo M-2, auditoría
+ * cableado 2026-10-02).
+ */
 export async function updateCmsMediaAltAction(
   _prev: CmsMediaActionState | null,
   formData: FormData,
@@ -700,6 +706,7 @@ export async function updateCmsMediaAltAction(
       entityType: "CmsMedia",
       entityId: id,
     });
+    updateTag("cms");
     revalidatePath("/admin/contenido/mediateca");
     return { ok: true };
   } catch (err) {

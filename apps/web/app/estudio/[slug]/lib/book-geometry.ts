@@ -46,18 +46,22 @@ export function pageSurfaceY(x: number): number {
 
 // ── Separadores doblados sobre el borde superior (z = −PAGE_D/2) ──
 
-/** Ángulo entre las dos caras del separador: ~95° (la frontal reposa casi plana sobre la hoja
- *  —erguida solo SEP_FRONT_LIFT_DEG— y la trasera cuelga apenas pasada la vertical abrazando
- *  el canto del bloque). */
+/** Ángulo entre las dos caras del separador: ~95° (la frontal queda DE PIE sobre la hoja
+ *  —erguida SEP_FRONT_LIFT_DEG, casi de frente a la cámara— y la trasera cae ~35° pasada
+ *  la vertical abrazando el canto del bloque). */
 export const SEP_FOLD_ANGLE = (95 * Math.PI) / 180;
 /** Radio del pliegue: abraza el filo de la hoja (~2 mm de cartulina plastificada + holgura). */
 export const SEP_R_FOLD = 0.06;
 /** Esquinas REDONDAS del separador (foto Lucy): radio ≈ 11% del ancho de la tira. */
 export const SEP_CORNER_RATIO = 0.11;
-/** Elevación de la cara frontal sobre la hoja (ola 4 — Lucy: separador "un punto más erguido",
- *  de pie sobre el borde para leer ambas caras): 14° sobre la hoja (era 3°, casi acostada).
- *  La punta sigue REPOSANDO sobre la hoja — el pliegue sube lo justo (ver separatorPlacement). */
-export const SEP_FRONT_LIFT_DEG = 14;
+/** Elevación de la cara frontal sobre la hoja (2026-10-02 — bug STG: el separador 4×4.2 "no se
+ *  ve cuadrado e invade la superficie del libro"): 40° sobre la hoja, casi DE FRENTE a la cámara
+ *  fija (BOOK_FIT.polarDeg = 48° → la normal de la cara queda a ~2° del eje de vista: sin escorzo
+ *  apreciable, la cara se lee con su aspecto real ~cuadrado). Antes: 14° (ola 4) — la cara iba
+ *  casi acostada, se proyectaba ~1.08:1 apaisada y cubría 4.1 cm de página; ahora la invasión
+ *  baja a hang·cos(40°) ≈ 3.2 cm. La punta sigue REPOSANDO sobre la hoja: la cresta sube a
+ *  hang·sin(40°) como ÁPICE de la pose de pie (ver separatorPlacement). */
+export const SEP_FRONT_LIFT_DEG = 40;
 
 // ── Ola 3 (2026-07-22) — separadores con las 2 CARAS REALES del Estudio ──
 //
@@ -141,11 +145,12 @@ export function stripDimsForFace(
  * Diseños VIEJOS de tira completa (lienzo vertical, pre-ola-3): no traen cara B — cada textura
  * es su propia unidad y repite el diseño en ambas caras (comportamiento histórico).
  *
- * 2026-09-22 — `opts.backOptional`: la cara B es OPCIONAL; cuando falta, `back` es null (el 3D
- * muestra el reverso en BLANCO papel — superficie imprimible vacía) en vez de duplicar la
- * cara A. Sin la opción se
- * conserva el comportamiento histórico (back = front). El tipo de retorno admite null siempre;
- * los callers que no pasan la opción nunca reciben null en runtime.
+ * 2026-10-02 (Paquete D — REGLA ÚNICA de la cara B vacía): una cara B SIN
+ * diseñar (slot sin assetUrl — misma condición que producción,
+ * expandMissingBackFaces) se muestra ESPEJO de la cara A de su pareja
+ * (back = front), nunca en blanco: es lo que imprenta produce y lo que el
+ * cliente aprobó en la Vista Previa. Antes (2026-09-22, backOptional) el 3D
+ * pintaba el reverso en blanco papel — contradecía la regla.
  */
 export function bookmarkFaceUnits<
   T extends {
@@ -161,13 +166,11 @@ export function bookmarkFaceUnits<
   facesPerUnit?: number,
   /** sizeCm de la variante: si llega, confirma que estamos en el flujo moderno de caras. */
   sizeCm?: string,
-  /** backOptional: con cara B faltante devolver back=null en vez de duplicar la cara A. */
-  opts?: { backOptional?: boolean },
-): { front: T; back: T | null }[] {
-  const backOptional = opts?.backOptional === true;
+): { front: T; back: T }[] {
   // Ola 10 — si el producto declara facesPerUnit=2, agrupamos por pares de slotIndex
-  // (no por orden del array). La cara B sin foto propia usa la misma textura que la cara A
-  // (o null con backOptional: el 3D pinta el reverso en blanco papel).
+  // (no por orden del array). La cara B sin diseño propio (slot sin assetUrl — el
+  // snapshot del stage existe siempre, así que dataUrl NO discrimina) usa la misma
+  // textura que la cara A: espejo de la REGLA ÚNICA (Paquete D, 2026-10-02).
   if (
     facesPerUnit === 2 &&
     bookmarks.length > 0 &&
@@ -176,16 +179,14 @@ export function bookmarkFaceUnits<
     const bySlot = new Map<number, T>();
     for (const b of bookmarks) bySlot.set(b.slotIndex!, b);
     const maxSlot = Math.max(...bookmarks.map((b) => b.slotIndex!));
-    const units: { front: T; back: T | null }[] = [];
+    const units: { front: T; back: T }[] = [];
     for (let k = 0; 2 * k <= maxSlot; k++) {
       const front = bySlot.get(2 * k);
       if (!front) continue; // unidad sin cara A: no renderizar
       const back = bySlot.get(2 * k + 1);
-      // Magnet3D usa dataUrl (textura capturada del stage), no assetUrl. Si la cara B
-      // no tiene textura propia, reusamos la frontal (comportamiento histórico) o null
-      // (backOptional → reverso blanco papel).
-      const hasBack = Boolean(back?.dataUrl || back?.assetUrl);
-      units.push({ front, back: hasBack ? back! : backOptional ? null : front });
+      // Cara B con diseño propio ⇔ su slot tiene assetUrl (misma condición que
+      // producción). Sin él → espejo de la cara A.
+      units.push({ front, back: back?.assetUrl ? back : front });
     }
     return units;
   }
@@ -194,16 +195,16 @@ export function bookmarkFaceUnits<
     sizeCm !== undefined ||
     (bookmarks.length > 0 && bookmarks.every((b) => b.wRatio / b.hRatio >= FACE_CANVAS_MIN_ASPECT));
   if (!looksLikeFaces) return bookmarks.map((b) => ({ front: b, back: b }));
-  const units: { front: T; back: T | null }[] = [];
+  const units: { front: T; back: T }[] = [];
   for (let k = 0; 2 * k < bookmarks.length; k++) {
     const front = bookmarks[2 * k]!;
-    units.push({ front, back: bookmarks[2 * k + 1] ?? (backOptional ? null : front) });
+    units.push({ front, back: bookmarks[2 * k + 1] ?? front });
   }
   return units;
 }
 
 export type SeparatorPlacement = {
-  /** Altura del eje del pliegue sobre la mesa. */
+  /** Altura del eje del pliegue sobre la mesa (ÁPICE de la pose de pie: surfaceY + hang·sin(lift)). */
   crestY: number;
   /** z del eje del pliegue (apenas detrás del filo de la hoja). */
   crestZ: number;
@@ -217,9 +218,11 @@ export type SeparatorPlacement = {
   surfaceY: number;
   /** Aire bajo el fondo de la cara trasera colgando libre (≥ 0 → no toca la mesa). */
   backClearance: number;
-  /** Apertura EXTRA de la cara trasera (rad, ola 3): cuando la cara es larga (4×4.2) y colgando
-   *  libre atravesaría la mesa, la trasera se RECUESTÁ sobre la mesa detrás del libro — como la
-   *  cartulina flexible real. 0 cuando cuelga libre; Infinity cuando ni recostada cabe. */
+  /** Apertura EXTRA de la cara trasera (rad, ola 3): cuando una cara MUY larga colgando libre
+   *  atravesaría la mesa, la trasera se RECUESTÁ sobre la mesa detrás del libro — como la
+   *  cartulina flexible real. 0 cuando cuelga libre (con la pose de pie a 40° las caras del
+   *  catálogo ya no alcanzan la mesa: queda como salvaguarda); Infinity cuando ni recostada
+   *  cabe. */
   backLean: number;
 };
 
@@ -230,10 +233,14 @@ export type SeparatorPlacement = {
  * rotada −δ; la trasera π+δ; con δ = (π − foldAngle)/2. Al rotar el grupo COMPLETO θ sobre X:
  *   frontal: dirección (0, −cos(δ−θ), +sin(δ−θ))  → baja 90°−(δ−θ) bajo la horizontal
  *   trasera: dirección (0, −cos(δ+θ), −sin(δ+θ))  → baja 90°−(δ+θ) bajo la horizontal
- * θ se elige para que la frontal quede SEP_FRONT_LIFT_DEG sobre la hoja; la trasera cae ~9°
+ * θ se elige para que la frontal quede SEP_FRONT_LIFT_DEG sobre la hoja; la trasera cae ~35°
  * pasada la vertical (abrazando el canto del bloque, visible al orbitar detrás del libro).
- * Con la frontal erguida (14°), la cresta SUBE hang·sin(lift) para que la punta frontal siga
- * REPOSANDO sobre la hoja (si la cresta quedara a ras, la punta se hundiría en la página).
+ *
+ * Pose DE PIE (2026-10-02): con la frontal erguida a 40° la cresta queda a hang·sin(40°) sobre
+ * la hoja — es el ÁPICE de la carpa que forma la tira de pie sobre el borde, no un flote: la
+ * punta frontal reposa EXACTA sobre la hoja. (Bajar la cresta a ras del filo hundiría la punta
+ * hang·sin(40°) ≈ 2.7 cm DENTRO de la página y la cara se perdería en la malla de la hoja —
+ * la altura del ápice es la que fuerza la pose rígida; la cartulina real flexionaría.)
  */
 export function separatorPlacement(bx: number, stripL: number): SeparatorPlacement {
   // Espejo de foldedStripMetrics (magnet-3d) — duplicado para mantener este módulo sin three.
@@ -242,9 +249,10 @@ export function separatorPlacement(bx: number, stripL: number): SeparatorPlaceme
   const hang = Math.max(0.05, (stripL - SEP_R_FOLD * crestArc) / 2);
   const tilt = delta - (Math.PI / 2 - (SEP_FRONT_LIFT_DEG * Math.PI) / 180);
   const surfaceY = pageSurfaceY(bx);
-  // El pliegue abraza el filo de la hoja (80% del radio sobre la superficie, un radio + holgura
-  // detrás del filo)… pero con la cara frontal erguida la cresta sube hang·sin(lift) para que
-  // la punta repose justo sobre la hoja (frontTipY = crestY − hang·sin(lift) = surfaceY).
+  // El pliegue abraza el filo de la hoja en z (un radio + holgura detrás del filo); en y sube a
+  // hang·sin(lift): con la cara erguida la cresta es el ÁPICE de la pose de pie — así la punta
+  // frontal reposa justo sobre la hoja (frontTipY = crestY − hang·sin(lift) = surfaceY) en vez
+  // de hundirse en la página.
   const liftRad = (SEP_FRONT_LIFT_DEG * Math.PI) / 180;
   const crestY = surfaceY + Math.max(SEP_R_FOLD * 0.8, hang * Math.sin(liftRad));
   const crestZ = -PAGE_D / 2 - SEP_R_FOLD - 0.015;

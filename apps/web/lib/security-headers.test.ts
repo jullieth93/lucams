@@ -25,6 +25,13 @@ describe("buildCsp — prod (nonce + 'self', sin strict-dynamic)", () => {
     expect(scriptSrc).not.toContain("'strict-dynamic'");
   });
 
+  it("worker-src 'self' explícito (Paquete J — Web Worker del upscale del Estudio)", () => {
+    // Sin esta directiva el worker cae al fallback script-src (con nonce en
+    // prod) y algunos navegadores ignoran 'self' en ese fallback.
+    const workerSrc = csp.split("; ").find((d) => d.startsWith("worker-src"))!;
+    expect(workerSrc).toBe("worker-src 'self'");
+  });
+
   it("incluye upgrade-insecure-requests, object-src 'none' y base-uri 'self'", () => {
     expect(csp).toContain("upgrade-insecure-requests");
     expect(csp).toContain("object-src 'none'");

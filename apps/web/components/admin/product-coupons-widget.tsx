@@ -20,6 +20,7 @@
 import Link from "next/link";
 import { Ticket, ExternalLink } from "lucide-react";
 import { AdminCard } from "@/components/admin-page";
+import { Hint } from "@/components/ui/tooltip";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 
@@ -173,12 +174,11 @@ function CouponRow({
             {value}
           </span>
           {isStoreWide && (
-            <span
-              className="bg-brand-purple/10 text-brand-purple-dark rounded-full px-2 py-0.5 text-[10px] font-semibold"
-              title="Este cupón aplica a toda la tienda, no solo a este producto"
-            >
-              🏪 General
-            </span>
+            <Hint content="Este cupón aplica a toda la tienda, no solo a este producto">
+              <span className="bg-brand-purple/10 text-brand-purple-dark rounded-full px-2 py-0.5 text-[10px] font-semibold">
+                🏪 General
+              </span>
+            </Hint>
           )}
         </div>
         {coupon.description && (

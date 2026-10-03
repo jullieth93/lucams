@@ -23,6 +23,10 @@ import {
   archiveRedirectOccupyingPath,
 } from "@/features/redirects/service";
 import type { ProductCreateInput, ProductUpdateInput } from "./schemas";
+import {
+  buildPersonalizationSchemaFromInput,
+  mergePersonalizationAdminInput,
+} from "./personalization-schema";
 import { getEffectiveShippingDims } from "./shipping-schemas";
 
 export type ProductListItem = {
@@ -217,24 +221,13 @@ function buildPhysicalSpecsFromInput(input: {
 }
 
 /**
- * Estudio por producto (owner 2026-09-24, v2 STG): tamaño BASE del lienzo
- * (canvasBaseScale — el "100%" del cliente) + override FORZADO de columnas.
- * Se persisten dentro de personalizationSchema Json. Al CREAR se
- * escribe un schema mínimo (photoSlots: 1 = el default seguro de
- * parsePhotoProductConfig; la config completa del Estudio la ponen los scripts
- * de catálogo). En UPDATE el merge vive en updateProduct (null = borrar key).
+ * La config de personalización (kind + schema JSON por superficie: foto,
+ * nombre, frase, evento, logo, set de letras) se construye en
+ * ./personalization-schema.ts (módulo puro, unit-testeado) — el form del admin
+ * (tab "Personalización", 2026-10-02) la escribe completa; ya no depende de
+ * los scripts de catálogo. En UPDATE el merge vive en updateProduct
+ * (null = borrar key; las keys no gestionadas por el form se preservan).
  */
-function buildPersonalizationSchemaFromInput(input: {
-  canvasBaseScale?: number | null;
-  gridColsOverride?: number | null;
-}): Prisma.InputJsonValue | undefined {
-  if (input.canvasBaseScale == null && input.gridColsOverride == null) return undefined;
-  return {
-    photoSlots: 1,
-    ...(input.canvasBaseScale != null && { canvasBaseScale: input.canvasBaseScale }),
-    ...(input.gridColsOverride != null && { gridColsOverride: input.gridColsOverride }),
-  } as Prisma.InputJsonValue;
-}
 
 export async function createProduct(input: ProductCreateInput, createdBy: string | null) {
   // Verificar unicidad slug + sku (mejor mensaje de error que el de
@@ -245,6 +238,16 @@ export async function createProduct(input: ProductCreateInput, createdBy: string
   ]);
   if (slugConflict) throw new ProductValidationError("slug", `Slug "${input.slug}" ya existe`);
   if (skuConflict) throw new ProductValidationError("sku", `SKU "${input.sku}" ya existe`);
+
+  // Personalización (2026-10-02): el kind manda y isPersonalizable se DERIVA
+  // (kind ≠ NONE), mismo criterio que los scripts de seed — el form ya no
+  // expone el checkbox suelto. Callers directos que no mandan kind conservan
+  // el isPersonalizable que traigan (compat).
+  const personalizationKind = input.personalizationKind ?? "NONE";
+  const isPersonalizable =
+    input.personalizationKind !== undefined
+      ? personalizationKind !== "NONE"
+      : input.isPersonalizable;
 
   // Crear producto + variante default en la misma transacción.
   // CartItem y OrderItem requieren variantId — sin variante el producto
@@ -262,9 +265,10 @@ export async function createProduct(input: ProductCreateInput, createdBy: string
         compareAtPrice: input.compareAtPrice ?? null,
         cost: input.cost ?? null,
         sku: input.sku,
-        isPersonalizable: input.isPersonalizable,
+        isPersonalizable,
         isActive: input.isActive,
         isFeatured: input.isFeatured,
+        personalizationKind,
         seoTitle: input.seoTitle ?? null,
         seoDescription: input.seoDescription ?? null,
         // PLAN_CATALOG_V2 — campos AI-ready opcionales
@@ -277,18 +281,17 @@ export async function createProduct(input: ProductCreateInput, createdBy: string
         ...(input.shippingDaysMax !== undefined && { shippingDaysMax: input.shippingDaysMax }),
         ...(input.minimumQuantity !== undefined && { minimumQuantity: input.minimumQuantity }),
         ...(input.maximumQuantity !== undefined && { maximumQuantity: input.maximumQuantity }),
-        ...(input.premadeSurcharge !== undefined && { premadeSurcharge: input.premadeSurcharge }),
         // PR C — peso/dims iniciales dentro de physicalSpecs Json
         ...(() => {
           const ps = buildPhysicalSpecsFromInput(input);
           return ps !== undefined ? { physicalSpecs: ps } : {};
         })(),
-        // Estudio por producto (2026-09-24) — zoom inicial / columnas de grilla
-        // iniciales dentro de personalizationSchema Json (schema mínimo; los
-        // scripts de catálogo lo pisan con la config completa).
+        // Personalización (2026-10-02) — schema JSON completo por superficie
+        // (foto/nombre/frase/evento/logo/letterset), construido por el módulo
+        // puro ./personalization-schema. undefined = columna queda null.
         ...(() => {
           const ps = buildPersonalizationSchemaFromInput(input);
-          return ps !== undefined ? { personalizationSchema: ps } : {};
+          return ps !== undefined ? { personalizationSchema: ps as Prisma.InputJsonValue } : {};
         })(),
         categoryId: input.categoryId,
         images: [],
@@ -354,18 +357,61 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
 
   // PR C — peso/dims se persisten dentro de physicalSpecs Json (mergeado
   // con specs existentes para no pisar otras keys como `material`).
-  // 2026-09-24 v2 — tamaño base / columnas del Estudio se persisten dentro de
-  // personalizationSchema Json con el MISMO patrón de merge (no pisar
-  // photoSlots, frameOptions, facesPerUnit, etc.). Una sola lectura para ambos.
+  // Personalización (2026-10-02) — el schema JSON se mergea con el MISMO
+  // patrón (null = borrar key; keys ajenas al form — shape, minQuantity,
+  // frameOptions, year… — se preservan). Una sola lectura para ambos.
   const { weightGrams, widthCm, heightCm, depthCm, ...restNoShipping } = rest;
-  const { canvasBaseScale, gridColsOverride, ...restWithoutStudio } = restNoShipping;
+  const {
+    canvasBaseScale,
+    gridColsOverride,
+    photoSlots,
+    facesPerUnit,
+    aspectRatio,
+    galleryTag,
+    textOnlyVariant,
+    letterCountMin,
+    letterCountMax,
+    language,
+    maxChars,
+    fontOptions,
+    eventFields,
+    allowPhoto,
+    logoFields,
+    requiresVectorFile,
+    letterSet,
+    personalizationKind,
+    ...restWithoutStudio
+  } = restNoShipping;
   const needsPhysicalSpecs =
     weightGrams !== undefined ||
     widthCm !== undefined ||
     heightCm !== undefined ||
     depthCm !== undefined;
-  const needsPersonalizationSchema =
-    canvasBaseScale !== undefined || gridColsOverride !== undefined;
+  // El kind solo NO dispara rewrite del schema (callers directos que solo
+  // cambian el kind no tocan el JSON); el form siempre manda los campos del
+  // panel activo y nulls para las keys del panel anterior → esos sí mergean.
+  const personalizationFields = {
+    canvasBaseScale,
+    gridColsOverride,
+    photoSlots,
+    facesPerUnit,
+    aspectRatio,
+    galleryTag,
+    textOnlyVariant,
+    letterCountMin,
+    letterCountMax,
+    language,
+    maxChars,
+    fontOptions,
+    eventFields,
+    allowPhoto,
+    logoFields,
+    requiresVectorFile,
+    letterSet,
+  };
+  const needsPersonalizationSchema = Object.values(personalizationFields).some(
+    (v) => v !== undefined,
+  );
   const existingJson =
     needsPhysicalSpecs || needsPersonalizationSchema
       ? await prisma.product.findUnique({
@@ -387,19 +433,19 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
     } as Prisma.InputJsonValue;
   }
 
-  // Estudio por producto (owner 2026-09-24, v2 STG): null = el admin VACIÓ el
-  // campo en el form → se ELIMINA la key y el Estudio vuelve a su default
-  // (tamaño base 1 / grilla automática). undefined = no se envió → no se toca.
+  // Personalización por producto: null = el admin VACIÓ el campo (o el panel
+  // ya no aplica al kind elegido) → se ELIMINA la key y esa superficie vuelve
+  // a su default. undefined = no se envió → no se toca. La lógica de merge
+  // (incl. variant ← textOnlyVariant y fields ← logoFields) vive en el módulo
+  // puro ./personalization-schema.
   let personalizationSchemaUpdate: Prisma.InputJsonValue | undefined;
   if (needsPersonalizationSchema) {
     const current =
       (existingJson?.personalizationSchema as Record<string, unknown> | null | undefined) ?? {};
-    const next: Record<string, unknown> = { ...current };
-    if (canvasBaseScale === null) delete next.canvasBaseScale;
-    else if (canvasBaseScale !== undefined) next.canvasBaseScale = canvasBaseScale;
-    if (gridColsOverride === null) delete next.gridColsOverride;
-    else if (gridColsOverride !== undefined) next.gridColsOverride = gridColsOverride;
-    personalizationSchemaUpdate = next as Prisma.InputJsonValue;
+    personalizationSchemaUpdate = mergePersonalizationAdminInput(
+      current,
+      personalizationFields,
+    ) as Prisma.InputJsonValue;
   }
 
   // idealFor es Json — necesita tratamiento especial para tipos Prisma.
@@ -408,6 +454,14 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
     where: { id },
     data: {
       ...restWithoutJson,
+      // Kind explícito (el form siempre lo manda): persiste la columna y
+      // deriva isPersonalizable = kind ≠ NONE (2026-10-02 — mismo criterio
+      // que los seeds; el checkbox suelto salió del form). Va DESPUÉS del
+      // spread para ganarle a un isPersonalizable legado del payload.
+      ...(personalizationKind !== undefined && {
+        personalizationKind,
+        isPersonalizable: personalizationKind !== "NONE",
+      }),
       ...(idealFor !== undefined && { idealFor }),
       ...(physicalSpecsUpdate !== undefined && { physicalSpecs: physicalSpecsUpdate }),
       ...(personalizationSchemaUpdate !== undefined && {

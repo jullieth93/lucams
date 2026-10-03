@@ -3,10 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
 import { getCurrentCustomer } from "@/lib/auth";
+import { getOrCreateCartSession } from "@/lib/cart-session";
+import { rateLimit } from "@/lib/rate-limit";
+import { ownerKey } from "@/lib/rate-limit-keys";
 import { createRetractRequest, RetractError } from "@/features/retract/service";
 import { sendRetractRequested } from "@/features/retract/emails";
 import { createWarrantyClaim, WarrantyError } from "@/features/warranty/service";
 import { notifyWarrantyClaimCreated } from "@/features/warranty/notify";
+import { reorderRegisteredOrder, type ReorderActionState } from "@/features/orders/reorder";
 
 const REASON_MESSAGES: Record<string, string> = {
   NOT_FOUND: "No encontramos ese producto en tu pedido.",
@@ -107,5 +111,48 @@ export async function requestWarrantyAction(
       err: err instanceof Error ? err.message : String(err),
     });
     return { error: "No pudimos procesar tu reclamo. Intenta de nuevo." };
+  }
+}
+
+/**
+ * Paquete I — "Volver a pedir" desde /mi-cuenta/pedidos/[number]. El pedido debe ser del
+ * customer logueado (el service lo re-valida). Devuelve el resumen por ítem (agregados a
+ * precio vigente / requieren fotos / ya no disponibles) — la UI lo muestra inline.
+ */
+export async function reorderAction(
+  _prev: ReorderActionState | null,
+  formData: FormData,
+): Promise<ReorderActionState> {
+  const session = await getCurrentCustomer();
+  if (!session) return { error: "Inicia sesión para volver a pedir." };
+
+  const orderNumber = String(formData.get("orderNumber") ?? "").trim();
+  if (!orderNumber) return { error: "Falta el pedido." };
+
+  // Cada reorder CLONA bytes (fotos + renders) a Storage — un tope por cliente frena el
+  // abuso de clicks repetidos sin afectar un reorder normal (10 en 10 min es holgado).
+  const rl = await rateLimit(ownerKey("reorder", session.customer.id), 10, 600);
+  if (!rl.allowed) {
+    return { error: "Ya agregamos este pedido a tu carrito. Revisa tu carrito antes de repetir." };
+  }
+
+  const sessionId = await getOrCreateCartSession();
+  try {
+    const summary = await reorderRegisteredOrder({
+      orderNumber,
+      customerId: session.customer.id,
+      sessionId,
+    });
+    if (!summary) return { error: "No encontramos ese pedido en tu cuenta." };
+    revalidatePath("/carrito");
+    revalidatePath("/", "layout");
+    return { summary };
+  } catch (err) {
+    logger.error({
+      event: "orders.reorder.fail",
+      orderNumber,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { error: "No pudimos volver a armar tu pedido. Intenta de nuevo." };
   }
 }

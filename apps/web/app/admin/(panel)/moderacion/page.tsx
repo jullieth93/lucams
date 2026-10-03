@@ -8,7 +8,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import Image from "next/image";
 import { ShieldAlert } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { listPendingModeration } from "@/features/moderation/service";
@@ -21,6 +20,7 @@ import {
 } from "@/components/admin-page";
 import { ModerationActions } from "./moderation-actions";
 import { ProductionPiecesButton } from "./production-pieces-button";
+import { ModerationPreviewZoom } from "./preview-zoom";
 
 export const metadata: Metadata = { title: "Moderación" };
 
@@ -86,15 +86,12 @@ export default async function AdminModeracionPage({
               >
                 <div className="sm:w-64 sm:flex-shrink-0">
                   {d.previewUrl ? (
-                    <div className="bg-brand-cream/40 border-brand-purple/10 relative aspect-square w-40 overflow-hidden rounded-lg border">
-                      <Image
-                        src={d.previewUrl}
-                        alt={`Diseño de ${d.productName}`}
-                        fill
-                        sizes="160px"
-                        className="object-contain p-1"
-                      />
-                    </div>
+                    // Paquete D (2026-10-02 — WYSIWYG): el preview se muestra con su
+                    // ASPECTO NATURAL (una tira 2×12 alta ya no queda diminuta en un
+                    // cuadrado fijo) + zoom al click — el moderador compara contra
+                    // lo que aprobó el cliente (misma idea que la Vista Previa del
+                    // Estudio, que capa por alto y nunca letterboxea).
+                    <ModerationPreviewZoom src={d.previewUrl} alt={`Diseño de ${d.productName}`} />
                   ) : (
                     <div className="text-brand-muted border-brand-purple/10 flex aspect-square w-40 items-center justify-center rounded-lg border text-xs">
                       Sin vista previa
@@ -139,6 +136,15 @@ export default async function AdminModeracionPage({
                   <p className="text-brand-muted mt-1 text-xs">
                     En cola desde {dateFmt.format(d.createdAt)}
                   </p>
+                  {/* Paquete C (2026-10-02) — traza de la aceptación explícita de
+                      calidad de fotos (checkbox de la Vista Previa): si el cliente
+                      reclama una garantía por "llegó pixelada", acá está la
+                      evidencia de que fue informado y aceptó. */}
+                  {d.qualityAcknowledgedAt && (
+                    <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                      ⚠️ Aceptó calidad de fotos el {dateFmt.format(d.qualityAcknowledgedAt)}
+                    </p>
+                  )}
                 </div>
 
                 <div className="sm:w-52 sm:flex-shrink-0">

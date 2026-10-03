@@ -29,6 +29,7 @@ import {
   AdminNotice,
 } from "@/components/admin-page";
 import { formatCOP } from "@/lib/format";
+import { Hint } from "@/components/ui/tooltip";
 import {
   groupVariantsByCoverSignature,
   parseVariantAttributes,
@@ -268,13 +269,17 @@ export async function ProductVariantsPanel({
                           >
                             <input type="hidden" name="id" value={v.id} />
                             <input type="hidden" name="productId" value={productId} />
-                            <button
-                              type="submit"
-                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50"
-                              title="Archivar"
-                            >
-                              <Archive className="h-3.5 w-3.5" />
-                            </button>
+                            <Hint content="Archivar">
+                              {/* aria-label: antes el `title` hacía de nombre accesible
+                                  del botón (icon-only); Hint lo mueve a description. */}
+                              <button
+                                type="submit"
+                                aria-label="Archivar"
+                                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                              >
+                                <Archive className="h-3.5 w-3.5" />
+                              </button>
+                            </Hint>
                           </ConfirmAction>
                         </div>
                       </td>

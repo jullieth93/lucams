@@ -91,8 +91,18 @@ async function buildGroups(): Promise<Group[]> {
       discount: 0,
       shippingCarrier: "Coordinadora",
       items: [
-        { name: "Fotoimanes Cuadrados (x6)", qty: 1, lineTotal: 49_900 },
-        { name: "Imán Polaroid personalizado", qty: 2, lineTotal: 30_000 },
+        {
+          name: "Fotoimanes Cuadrados (x6)",
+          qty: 1,
+          lineTotal: 49_900,
+          breakdown: ["6 fotos", "6×6 cm", "Con imán"],
+        },
+        {
+          name: "Imán Polaroid personalizado",
+          qty: 2,
+          lineTotal: 30_000,
+          breakdown: ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"],
+        },
       ],
       shippingAddress: "Calle 10 # 43-25, Apto 302, Medellín, Antioquia",
       publicTrackingToken: TOKEN,
@@ -106,9 +116,18 @@ async function buildGroups(): Promise<Group[]> {
       shipping: 10_000,
       discount: 20_000,
       shippingCarrier: "Coordinadora",
-      items: [{ name: "Set Corazón (x9)", qty: 1, lineTotal: 139_900 }],
+      items: [
+        {
+          name: "Set Corazón (x9)",
+          qty: 1,
+          lineTotal: 139_900,
+          breakdown: ["9 fotos", "Corazón", "Con imán"],
+        },
+      ],
       shippingAddress: "Carrera 7 # 82-15, Bogotá, Cundinamarca",
+      // Paquete H — registrado: el CTA va a su pedido en la cuenta.
       publicTrackingToken: null,
+      accountOrderUrl: `https://lucamsshop.com/mi-cuenta/pedidos/${ORDER}`,
       paymentMethod: "WOMPI",
     }),
     orderConfirmationEmail({
@@ -118,9 +137,18 @@ async function buildGroups(): Promise<Group[]> {
       subtotal: 49_900,
       shipping: 10_000,
       shippingCarrier: "Coordinadora",
-      items: [{ name: "Imanes redondos (x4)", qty: 1, lineTotal: 49_900 }],
+      items: [
+        {
+          name: "Imanes redondos (x4)",
+          qty: 1,
+          lineTotal: 49_900,
+          breakdown: ["4 fotos", "Circular", "Con imán"],
+        },
+      ],
       shippingAddress: "Calle 10 # 43-25, Medellín, Antioquia",
-      publicTrackingToken: TOKEN,
+      // Paquete H — invitado COD: SIN token (no se rota; el de /gracias sigue
+      // vivo), el CTA cae a /rastrear.
+      publicTrackingToken: null,
       paymentMethod: "COD",
     }),
     orderShippedEmail({

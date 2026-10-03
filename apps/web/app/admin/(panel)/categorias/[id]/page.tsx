@@ -18,6 +18,7 @@ import {
   AdminNotice,
 } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -144,21 +145,26 @@ export default async function EditCategoryPage({
             message={`¿Archivar la categoría "${category.name}"? Quedará oculta de tu tienda. Esta acción es reversible (puedes traerla de vuelta después).`}
           >
             <input type="hidden" name="id" value={category.id} />
-            <Button
-              type="submit"
-              variant="ghost"
-              size="sm"
-              className="border border-rose-200 text-rose-600 hover:bg-rose-50"
-              disabled={category._count.products > 0}
-              title={
+            <Hint
+              content={
                 category._count.products > 0
                   ? "Tiene productos asociados — moverlos primero"
                   : "Archivar categoría"
               }
             >
-              <Trash2 className="mr-1.5 h-4 w-4" />
-              Archivar categoría
-            </Button>
+              <span tabIndex={0} className="inline-flex">
+                <Button
+                  type="submit"
+                  variant="ghost"
+                  size="sm"
+                  className="border border-rose-200 text-rose-600 hover:bg-rose-50"
+                  disabled={category._count.products > 0}
+                >
+                  <Trash2 className="mr-1.5 h-4 w-4" />
+                  Archivar categoría
+                </Button>
+              </span>
+            </Hint>
           </ConfirmAction>
         </AdminCard>
       </AdminPageBody>

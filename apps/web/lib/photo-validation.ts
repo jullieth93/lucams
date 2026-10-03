@@ -11,7 +11,10 @@
  *                            tamaño físico del imán (sizeCm).
  *                            Foto chica = imán pixelado.
  *   2. Brillo (luminance) — mean luminance del canal grayscale.
- *                            Foto oscura = imán negro al imprimir.
+ *                            Foto oscura = imán negro al imprimir. Ojo:
+ *                            un look oscuro / fondo negro deliberado NO es
+ *                            un defecto — umbrales estrictos y copy que
+ *                            reconoce la intención del cliente.
  *   3. Borrosidad         — stdev del kernel Laplaciano (técnica
  *                            estándar OpenCV's cv2.Laplacian.var()).
  *                            Foto blurry = imán sin nitidez.
@@ -48,10 +51,15 @@ const RES_THRESHOLDS = {
   WARNING_SOFT_BELOW: 1.0, // 80-100% borderline
 };
 
-/** Brillo: mean luminance escala 0-255 del canal grayscale. */
+/**
+ * Brillo: mean luminance escala 0-255 del canal grayscale.
+ * La métrica es una media GLOBAL: un retrato bien iluminado sobre fondo
+ * negro (look oscuro deliberado) cae fácilmente bajo 50, así que los
+ * umbrales de oscuridad son estrictos para no castigar ese estilo.
+ */
 const BRIGHTNESS_THRESHOLDS = {
-  TOO_DARK_BELOW: 25, // muy oscura
-  DARK_BELOW: 50, // borderline oscura
+  TOO_DARK_BELOW: 20, // muy oscura
+  DARK_BELOW: 40, // borderline oscura
   TOO_BRIGHT_ABOVE: 235, // sobreexpuesta
 };
 
@@ -206,14 +214,16 @@ export async function validatePhotoQuality(
         passed: false,
         level: "warning-strong",
         meanLuminance: meanLum,
-        message: "La foto se ve muy oscura. Considera tomar otra con más luz.",
+        message:
+          "La foto se ve muy oscura y puede perder detalle al imprimir. Si es el estilo que buscabas, puedes usarla igual.",
       };
     } else if (meanLum < BRIGHTNESS_THRESHOLDS.DARK_BELOW) {
       brightness = {
         passed: false,
         level: "warning-soft",
         meanLuminance: meanLum,
-        message: "La foto está algo oscura. Podría verse mejor con más luz.",
+        message:
+          "La foto está algo oscura. Si buscabas un look oscuro o con fondo negro, puedes ignorar este aviso.",
       };
     } else if (meanLum > BRIGHTNESS_THRESHOLDS.TOO_BRIGHT_ABOVE) {
       brightness = {
@@ -278,7 +288,8 @@ export async function validatePhotoQuality(
     } else if (blur.level !== "ok") {
       recommendation = "Prueba con una foto más nítida si la tienes.";
     } else if (brightness.level !== "ok") {
-      recommendation = "Una foto con más luz va a verse mejor.";
+      recommendation =
+        "Si el estilo oscuro es a propósito, no hay nada que hacer. Si no, una foto con más luz va a verse mejor.";
     }
   }
 

@@ -37,6 +37,7 @@ import {
 } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Hint } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { PendingSubmitButton } from "@/components/admin/pending-submit-button";
 import { listCategories, listParentCategoryOptions } from "@/features/categories/service";
@@ -323,17 +324,20 @@ export default async function AdminCategoriasPage({
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-center">
-                        <span
-                          title={`Visual ${c.icon || c.gradient ? "personalizado (BD)" : "fallback por defecto"}`}
-                          className={
-                            "border-brand-purple/10 inline-flex items-center justify-center rounded-md border bg-gradient-to-br p-1.5 " +
-                            visualGradient
-                          }
+                        <Hint
+                          content={`Visual ${c.icon || c.gradient ? "personalizado (BD)" : "fallback por defecto"}`}
                         >
-                          <span className="rounded-full bg-white/60 p-1">
-                            <VisualIcon className="text-brand-purple h-3.5 w-3.5" />
+                          <span
+                            className={
+                              "border-brand-purple/10 inline-flex items-center justify-center rounded-md border bg-gradient-to-br p-1.5 " +
+                              visualGradient
+                            }
+                          >
+                            <span className="rounded-full bg-white/60 p-1">
+                              <VisualIcon className="text-brand-purple h-3.5 w-3.5" />
+                            </span>
                           </span>
-                        </span>
+                        </Hint>
                       </div>
                     </td>
                     <td className="text-brand-purple-dark/85 px-4 py-3 text-center tabular-nums">
@@ -351,27 +355,32 @@ export default async function AdminCategoriasPage({
                         <form action={toggleCategoryActiveAction} className="inline">
                           <input type="hidden" name="id" value={c.id} />
                           <input type="hidden" name="next" value={c.isActive ? "false" : "true"} />
-                          <PendingSubmitButton
-                            spinnerClass="h-3 w-3"
-                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
-                              c.isActive
-                                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
-                                : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200"
-                            }`}
-                            title={
+                          <Hint
+                            content={
                               c.isActive
                                 ? "Clic para pausar (ocultar de tu tienda)"
                                 : "Clic para activar (mostrar en tu tienda)"
                             }
-                            idleIcon={
-                              <span
-                                className={`h-1.5 w-1.5 rounded-full ${c.isActive ? "bg-emerald-500" : "bg-slate-400"}`}
-                                aria-hidden
-                              />
-                            }
                           >
-                            {c.isActive ? "Activa" : "Inactiva"}
-                          </PendingSubmitButton>
+                            <span tabIndex={0} className="inline-flex">
+                              <PendingSubmitButton
+                                spinnerClass="h-3 w-3"
+                                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
+                                  c.isActive
+                                    ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                                    : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200"
+                                }`}
+                                idleIcon={
+                                  <span
+                                    className={`h-1.5 w-1.5 rounded-full ${c.isActive ? "bg-emerald-500" : "bg-slate-400"}`}
+                                    aria-hidden
+                                  />
+                                }
+                              >
+                                {c.isActive ? "Activa" : "Inactiva"}
+                              </PendingSubmitButton>
+                            </span>
+                          </Hint>
                         </form>
                       )}
                     </td>
@@ -380,48 +389,55 @@ export default async function AdminCategoriasPage({
                         {c.deletedAt ? (
                           <form action={restoreCategoryAction} className="inline">
                             <input type="hidden" name="id" value={c.id} />
-                            <Button
-                              type="submit"
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 gap-1 px-2 text-amber-700 hover:bg-amber-50"
-                              title="Restaurar de papelera (quedará inactiva)"
-                            >
-                              <RotateCcw className="h-3.5 w-3.5" />
-                              Restaurar
-                            </Button>
+                            <Hint content="Restaurar de papelera (quedará inactiva)">
+                              <Button
+                                type="submit"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 gap-1 px-2 text-amber-700 hover:bg-amber-50"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                Restaurar
+                              </Button>
+                            </Hint>
                           </form>
                         ) : (
                           <>
-                            <Link
-                              href={`/admin/categorias/${c.id}`}
-                              className="text-brand-purple hover:bg-brand-purple/10 inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium"
-                              title="Editar"
-                            >
-                              <Edit3 className="h-3.5 w-3.5" />
-                              Editar
-                            </Link>
+                            <Hint content="Editar">
+                              <Link
+                                href={`/admin/categorias/${c.id}`}
+                                className="text-brand-purple hover:bg-brand-purple/10 inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium"
+                              >
+                                <Edit3 className="h-3.5 w-3.5" />
+                                Editar
+                              </Link>
+                            </Hint>
                             <ConfirmAction
                               action={deleteCategoryAction}
                               message={`¿Archivar la categoría "${c.name}"? Quedará oculta de tu tienda.`}
                               className="inline"
                             >
                               <input type="hidden" name="id" value={c.id} />
-                              <Button
-                                type="submit"
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-rose-600 hover:bg-rose-50"
-                                aria-label={`Archivar ${c.name}`}
-                                disabled={c._count.products > 0}
-                                title={
+                              <Hint
+                                content={
                                   c._count.products > 0
                                     ? "Tiene productos asociados — moverlos primero"
                                     : "Archivar"
                                 }
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                                <span tabIndex={0} className="inline-flex">
+                                  <Button
+                                    type="submit"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-rose-600 hover:bg-rose-50"
+                                    aria-label={`Archivar ${c.name}`}
+                                    disabled={c._count.products > 0}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </span>
+                              </Hint>
                             </ConfirmAction>
                           </>
                         )}
@@ -481,12 +497,15 @@ function ReorderButton({
     <form action={moveCategoryAction} className="inline">
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="direction" value={direction} />
-      <PendingSubmitButton
-        ariaLabel={direction === "up" ? "Subir" : "Bajar"}
-        title={direction === "up" ? "Subir en el orden" : "Bajar en el orden"}
-        className={cls}
-        idleIcon={<Icon className="h-3.5 w-3.5" />}
-      />
+      <Hint content={direction === "up" ? "Subir en el orden" : "Bajar en el orden"}>
+        <span tabIndex={0} className="inline-flex">
+          <PendingSubmitButton
+            ariaLabel={direction === "up" ? "Subir" : "Bajar"}
+            className={cls}
+            idleIcon={<Icon className="h-3.5 w-3.5" />}
+          />
+        </span>
+      </Hint>
     </form>
   );
 }

@@ -7,6 +7,7 @@
  */
 
 import { NAME_TILE_THEMES, LETTER_SWATCHES, LETTER_SWATCH_LABELS } from "./letter-tile";
+import { Hint } from "@/components/ui/tooltip";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, splitStudioText } from "./studio-texts";
 
@@ -127,22 +128,23 @@ export function SwatchRow({
             style={{ backgroundColor: c }}
           />
         ))}
-        <label
-          className="relative h-10 w-10 cursor-pointer rounded-full ring-2 ring-black/5 transition hover:scale-110"
-          style={{
-            background:
-              customValue ?? "conic-gradient(#E85B9F, #FFD93D, #5DD9D1, #7C6AAD, #E85B9F)",
-          }}
-          title={texts.nombre.swatchPersonalizadoAria}
-        >
-          <input
-            type="color"
-            value={customValue ?? "#7C6AAD"}
-            onChange={(e) => onPick(e.target.value)}
-            aria-label={texts.nombre.swatchPersonalizadoAria}
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-          />
-        </label>
+        <Hint content={texts.nombre.swatchPersonalizadoAria}>
+          <label
+            className="relative h-10 w-10 cursor-pointer rounded-full ring-2 ring-black/5 transition hover:scale-110"
+            style={{
+              background:
+                customValue ?? "conic-gradient(#E85B9F, #FFD93D, #5DD9D1, #7C6AAD, #E85B9F)",
+            }}
+          >
+            <input
+              type="color"
+              value={customValue ?? "#7C6AAD"}
+              onChange={(e) => onPick(e.target.value)}
+              aria-label={texts.nombre.swatchPersonalizadoAria}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            />
+          </label>
+        </Hint>
       </div>
     </div>
   );

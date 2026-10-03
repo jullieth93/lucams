@@ -76,3 +76,67 @@ export function designIdentity(design: {
   };
   return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
+
+/**
+ * Lo mínimo que una línea de carrito/pedido necesita para compararse por CONTENIDO
+ * (Paquete H, 2026-10-02): la variante y, si es personalizada, el diseño con lo
+ * que alimenta designIdentity.
+ */
+export type LineIdentity = {
+  variantId: string;
+  designId: string | null;
+  design?: {
+    productId: string;
+    canvasData: Prisma.JsonValue;
+    metadata?: Prisma.JsonValue | null;
+  } | null;
+};
+
+/**
+ * ¿Dos líneas son la MISMA compra? (Paquete H — la regla de Lucy de
+ * addPersonalizedToCart, generalizada a los merges y al snapshot de la orden):
+ *
+ *   · variantId distinto                          → NO (otra opción de compra)
+ *   · ninguna con diseño                          → SÍ (catálogo simple, sumar qty)
+ *   · mismo designId                              → SÍ
+ *   · designId distinto, MISMO contenido visual   → SÍ (dos pasadas idénticas
+ *     por el Estudio crean dos Designs; al cliente se leen como una sola línea)
+ *   · contenido distinto (o falta el diseño para  → NO (líneas separadas)
+ *     compararlo)
+ *
+ * Falla hacia el lado seguro: si no se puede probar identidad, NO agrupa.
+ */
+export function sameLineContent(a: LineIdentity, b: LineIdentity): boolean {
+  if (a.variantId !== b.variantId) return false;
+  if (!a.designId && !b.designId) return true;
+  if (a.designId && b.designId) {
+    if (a.designId === b.designId) return true;
+    if (a.design && b.design) {
+      return designIdentity(a.design) === designIdentity(b.design);
+    }
+  }
+  return false;
+}
+
+/**
+ * Consolida una lista de líneas sumando el qty de las que son la misma compra
+ * (sameLineContent). Se conserva la PRIMERA línea de cada grupo — con el orden
+ * habitual del carrito (createdAt asc) es la más vieja, la que el cliente vio
+ * primero, y su diseño/preview es el que queda en la línea. Sin tope de qty:
+ * consolidar no cambia el total comprado (el cap de 99 es del carrito, no del
+ * pedido). Devuelve copias; no muta la entrada.
+ */
+export function consolidateIdenticalLines<T extends LineIdentity & { qty: number }>(
+  items: readonly T[],
+): T[] {
+  const out: T[] = [];
+  for (const item of items) {
+    const dup = out.find((o) => sameLineContent(o, item));
+    if (dup) {
+      dup.qty += item.qty;
+    } else {
+      out.push({ ...item });
+    }
+  }
+  return out;
+}

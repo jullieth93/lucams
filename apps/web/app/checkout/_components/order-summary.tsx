@@ -77,6 +77,13 @@ export function OrderSummary({
                 <p className="text-brand-purple-dark line-clamp-2 text-xs leading-snug font-medium">
                   {item.productName}
                 </p>
+                {/* Paquete F (2026-10-02) — variante + desglose (Con/Sin imán, tamaño…). */}
+                <p className="text-brand-muted line-clamp-1 text-[10px]">{item.variantName}</p>
+                {item.variantBreakdown.length > 0 && (
+                  <p className="text-brand-purple-dark/70 line-clamp-2 text-[10px]">
+                    {item.variantBreakdown.join(" · ")}
+                  </p>
+                )}
                 {item.isPersonalizable && item.designPreviewUrl && (
                   <p className="text-brand-muted text-[10px]">{texts.personalized}</p>
                 )}

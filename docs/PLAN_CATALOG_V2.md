@@ -937,6 +937,8 @@ model CouponUsage {
 
 ### [5.5] Pricing prediseñado igual a personalizable con upcharge configurable (2026-05-15)
 
+> **RETIRADO (2026-10-02).** El flujo PREMADE salió del storefront el 2026-09-11 (ADR-090: 0 plantillas PREMADE, 0 consumidores) y el surcharge nunca llegó a implementarse en el cálculo de precio — el campo quedó huérfano (hallazgo A-2 de la auditoría cableado cliente↔admin 2026-10-02). Se eliminó `Product.premadeSurcharge` del schema, admin, API y seeds (migración `20261002150000_drop_product_premade_surcharge`). Si la venta de diseños prediseñados vuelve, se diseña como feature nueva completa (pricing incluido). Lo que sigue es el registro histórico de la decisión original.
+
 - **Decisión**: por default, precio prediseñado = precio personalizable. `Product.premadeSurcharge: Int @default(0)` permite upcharge per-producto en %.
 - **Rationale**: cliente percibe valor por diseño/marca, no por trabajo del cliente. Diferenciar precio penalizaría comodidad. Excepción Universos puede tener +10-15% por "diseño curado premium" + cubrir potencial costo legal futuro (decisión 1.7).
 - **Implica**: migración Prisma + cálculo cart action aplica surcharge si `CartItem.metadata.templateId` apunta a template con `kind=PREMADE` Y producto tiene `premadeSurcharge > 0`.

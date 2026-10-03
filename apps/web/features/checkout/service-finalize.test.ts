@@ -60,10 +60,17 @@ vi.mock("@/features/payments/provider", () => ({ getPaymentProvider: vi.fn() }))
 vi.mock("@/features/shipping/provider", () => ({ getShippingProvider: vi.fn() }));
 vi.mock("@/features/shipping/settings", () => ({
   getDisabledCarriersNormalized: vi.fn(async () => []),
+  getLucamsShippingSettings: vi.fn(async () => ({
+    enabled: false,
+    priceCop: 1_000_000,
+    cutoffHour: 12,
+    zones: {},
+  })),
   normalizeCarrierKey: (s: string) => s,
 }));
 vi.mock("@/features/shipping/lucams-shipping", () => ({
   buildLucamsOffer: vi.fn(async () => null),
+  LUCAMS_CARRIER: "lucams",
 }));
 vi.mock("@/lib/lucams-zones", () => ({ getZone: vi.fn(() => undefined) }));
 vi.mock("@/features/products/shipping-schemas", () => ({
@@ -92,6 +99,7 @@ import {
 } from "./service";
 import { InsufficientStockError, OrderAlreadyPaidError } from "@/features/orders/errors";
 import { getPaymentProvider } from "@/features/payments/provider";
+import { getLucamsShippingSettings } from "@/features/shipping/settings";
 
 const CART_ITEMS = [{ variantId: "v1", qty: 2, unitPrice: 10_000, productName: "Imán Nevera" }];
 
@@ -246,6 +254,93 @@ describe("finalizeCheckout — persiste el documento DIAN en el perfil (T7)", ()
     mockWompiOk();
     await finalizeCheckout({ redirectUrl: "https://x.co/gracias" });
     expect(prisma.customer.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("finalizeCheckout — re-validación zona Lucam's mid-sesión (Paquete G)", () => {
+  const LUCAMS_SELECTION = {
+    carrier: "lucams",
+    carrierName: "Envío Lucam's",
+    fleteCop: 1_000_000,
+    deliveryDays: 1,
+    contraentrega: false,
+    quoteId: "lucams-11001-usme",
+  };
+  const LUCAMS_ADDRESS = { ...ADDRESS, localityId: "usme" };
+
+  function seedLucamsState() {
+    checkoutState.current = {
+      step: 3,
+      updatedAt: Date.now(),
+      contact: { fullName: "Ana Prueba", email: "ana@example.co", phone: "3001234567" },
+      address: LUCAMS_ADDRESS,
+      shippingSelection: LUCAMS_SELECTION,
+      paymentMethod: "WOMPI",
+      shippingOffers: {
+        offers: [LUCAMS_SELECTION],
+        cartHash: fingerprintCartItems(CART_ITEMS),
+        destKey: destinationKeyOf(LUCAMS_ADDRESS as never),
+        quotedAt: Date.now(),
+      },
+    };
+  }
+
+  it("zona deshabilitada entre cotizar y pagar → SHIPPING_SELECTION_INVALID y NO crea la orden", async () => {
+    seedLucamsState();
+    // El admin deshabilitó Usme (o apagó el servicio) DESPUÉS de sellar la oferta.
+    vi.mocked(getLucamsShippingSettings).mockResolvedValue({
+      enabled: true,
+      priceCop: 1_000_000,
+      cutoffHour: 12,
+      zones: { "11001": ["chapinero"] },
+    });
+
+    const err = await finalizeCheckout({ redirectUrl: "https://x.co/gracias" }).catch((e) => e);
+    expect(err).toBeInstanceOf(CheckoutError);
+    expect(err.code).toBe("SHIPPING_SELECTION_INVALID");
+    expect(err.message).toContain("Lucam's");
+    expect(createOrderFromCart).not.toHaveBeenCalled();
+  });
+
+  it("servicio apagado mid-sesión → también se rechaza", async () => {
+    seedLucamsState();
+    vi.mocked(getLucamsShippingSettings).mockResolvedValue({
+      enabled: false,
+      priceCop: 1_000_000,
+      cutoffHour: 12,
+      zones: { "11001": ["usme"] },
+    });
+
+    const err = await finalizeCheckout({ redirectUrl: "https://x.co/gracias" }).catch((e) => e);
+    expect(err.code).toBe("SHIPPING_SELECTION_INVALID");
+    expect(createOrderFromCart).not.toHaveBeenCalled();
+  });
+
+  it("zona aún habilitada → la orden se crea normal", async () => {
+    seedLucamsState();
+    vi.mocked(getLucamsShippingSettings).mockResolvedValue({
+      enabled: true,
+      priceCop: 1_000_000,
+      cutoffHour: 12,
+      zones: { "11001": ["usme", "chapinero"] },
+    });
+    createOrderFromCart.mockResolvedValue({
+      id: "ord_1",
+      number: "LCM-2026-0002",
+      total: 1_020_000,
+      subtotal: 20_000,
+      shipping: 1_000_000,
+      discount: 0,
+      publicAccessToken: "tok",
+      paymentMethod: "WOMPI",
+    });
+    vi.mocked(getPaymentProvider).mockReturnValue({
+      createCheckout: vi.fn(async () => ({ checkoutUrl: "https://wompi.example/x" })),
+    } as never);
+
+    const res = await finalizeCheckout({ redirectUrl: "https://x.co/gracias" });
+    expect(res.orderNumber).toBe("LCM-2026-0002");
+    expect(createOrderFromCart).toHaveBeenCalledOnce();
   });
 });
 

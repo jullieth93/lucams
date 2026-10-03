@@ -60,7 +60,7 @@ const [products, variants, categories, tiles, gallery] = await Promise.all([
 ]);
 for (const p of products) for (const url of p.images) refs.push({ tabla: "Product", id: p.slug, url });
 for (const v of variants) for (const url of v.images) refs.push({ tabla: "ProductVariant", id: v.sku, url });
-for (const c of categories) if (c.image) refs.push({ tabla: "Category", id: c.slug, url });
+for (const c of categories) if (c.image) refs.push({ tabla: "Category", id: c.slug, url: c.image });
 for (const t of tiles) refs.push({ tabla: "LetterTile", id: t.id, url: t.imageUrl });
 for (const g of gallery) {
   refs.push({ tabla: "DesignGalleryImage", id: g.id, url: g.imageUrl });

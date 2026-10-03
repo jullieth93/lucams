@@ -144,6 +144,12 @@ export function QuoteForm({
                       {item.productName}
                     </p>
                     <p className="text-brand-muted mt-0.5 text-xs">{item.variantName}</p>
+                    {/* Paquete F (2026-10-02) — desglose estructurado de la variante. */}
+                    {item.variantBreakdown.length > 0 && (
+                      <p className="text-brand-purple-dark/80 mt-0.5 text-xs">
+                        {item.variantBreakdown.join(" · ")}
+                      </p>
+                    )}
                     {item.pieceSummary && (
                       <p className="text-brand-purple-dark/80 mt-1 text-xs">
                         📐 {item.pieceSummary}

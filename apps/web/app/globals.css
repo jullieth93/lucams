@@ -1,6 +1,13 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* La variante `dark:` responde a la CLASE `.dark` (hoy nunca aplicada al <html>),
+ * no al prefers-color-scheme del SO. Sin esta línea, Tailwind v4 usa
+ * @media (prefers-color-scheme: dark) y los `dark:*` de shadcn (p.ej.
+ * dark:bg-input/30 de Button variant="outline") se activan en celulares con el
+ * SO en modo oscuro → botones blancos con texto blanco (bug 2026-10-02). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /*
  * Tokens de Lucams_shop — Tailwind v4 CSS-first config (ADR-015).
  *

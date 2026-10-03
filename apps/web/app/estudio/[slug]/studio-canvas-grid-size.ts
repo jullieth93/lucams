@@ -209,6 +209,27 @@ export function computeMaxFrameH(opts: {
 }
 
 /**
+ * Bug "el canvas respira" (Paquete B, 2026-10-02 — Separadores 4×4.2cm
+ * reproducido en móvil Y tablet): en dispositivos táctiles, scrollear la
+ * página oculta/muestra la barra del navegador → window dispara resize con
+ * cambio SOLO de alto → `viewportH` se re-medía y el marco de 1 fila (82vh)
+ * se recalculaba, agrandando/encogiendo el canvas solo. Regla: en puntero
+ * coarse solo se re-mide el alto cuando cambia el ANCHO (una rotación de
+ * orientación real siempre cambia el ancho; el show/hide de la barra, no).
+ * En puntero fino (desktop) TODO resize re-mide: no hay barra dinámica y una
+ * ventana que cambia solo de alto sí debe re-encuadrar el marco.
+ */
+export function shouldRemeasureViewportH(opts: {
+  isCoarsePointer: boolean;
+  prevWidth: number | null;
+  nextWidth: number;
+}): boolean {
+  if (!opts.isCoarsePointer) return true;
+  if (opts.prevWidth === null) return true;
+  return opts.prevWidth !== opts.nextWidth;
+}
+
+/**
  * Guarda de PISO vs ANCHO (owner 2026-09-18): los pisos de displaySize
  * (MIN_SLOT_SIZE / TEXT_MIN_SLOT_SIZE / CALENDAR_MIN_SLOT_SIZE) NUNCA pueden
  * desbordar el contenedor — si `minSize * cols + gaps` supera el ancho

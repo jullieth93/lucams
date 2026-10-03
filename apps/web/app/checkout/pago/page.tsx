@@ -8,9 +8,11 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { AlertCircle, CreditCard, MapPin, User, Receipt } from "lucide-react";
 import { isCatalogMode } from "@/lib/store-mode";
+import { carrierLogo } from "@/lib/carrier-logos";
 import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
 import { PaymentMethodChooser } from "./pay-button";
@@ -86,6 +88,10 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
 
   // Roadmap B8 — textos CMS del paso de pago (revisión, cupón, métodos, legales).
   const texts = await getCheckoutTexts();
+
+  // Paquete F (2026-10-02) — logo de la transportadora elegida en el resumen
+  // de envío (mismo asset que el selector de /checkout/envio vía carrier-logos).
+  const shipLogo = carrierLogo(shippingSelection.carrierName);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -179,10 +185,24 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
                 {texts.payment.note} {address.notes}
               </p>
             )}
-            <p className="text-brand-purple-dark mt-2 text-xs font-medium">
-              {texts.payment.via} {shippingSelection.carrierName}
-              {shippingSelection.deliveryDays > 0 &&
-                ` · estimado de la transportadora: ${shippingSelection.deliveryDays} día${shippingSelection.deliveryDays === 1 ? "" : "s"} hábil${shippingSelection.deliveryDays === 1 ? "" : "es"} tras el despacho`}
+            <p className="text-brand-purple-dark mt-2 flex items-center gap-2 text-xs font-medium">
+              {shipLogo && (
+                <span className="border-brand-purple/10 inline-flex h-6 flex-shrink-0 items-center justify-center rounded-md border bg-white px-1.5">
+                  <Image
+                    src={shipLogo.src}
+                    alt={shipLogo.alt}
+                    width={shipLogo.width}
+                    height={shipLogo.height}
+                    unoptimized={shipLogo.src.endsWith(".svg")}
+                    className="h-4 w-auto max-w-16 object-contain"
+                  />
+                </span>
+              )}
+              <span>
+                {texts.payment.via} {shippingSelection.carrierName}
+                {shippingSelection.deliveryDays > 0 &&
+                  ` · estimado de la transportadora: ${shippingSelection.deliveryDays} día${shippingSelection.deliveryDays === 1 ? "" : "s"} hábil${shippingSelection.deliveryDays === 1 ? "" : "es"} tras el despacho`}
+              </span>
             </p>
           </ReviewCard>
 

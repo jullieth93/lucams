@@ -12,6 +12,7 @@ import { useActionState, useState } from "react";
 import { Loader2, Save, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { AdminNotice } from "@/components/admin-page";
 import { createVariantAction, updateVariantAction, type VariantActionState } from "./actions";
 import type { ProductVariantAttributes } from "@/features/products/variant-schemas";
@@ -84,15 +85,16 @@ export function VariantForm({
             hint="Como lo verá el cliente al elegir esta opción."
           />
           {suggestedName && suggestedName !== name && (
-            <button
-              type="button"
-              onClick={() => setName(suggestedName)}
-              className="text-brand-purple-dark hover:text-brand-purple mt-1 inline-flex items-center gap-1 text-[11px] font-semibold"
-              title="Usar esta sugerencia como nombre"
-            >
-              <Sparkles className="h-3 w-3" />
-              Sugerencia: “{suggestedName}” · usar
-            </button>
+            <Hint content="Usar esta sugerencia como nombre">
+              <button
+                type="button"
+                onClick={() => setName(suggestedName)}
+                className="text-brand-purple-dark hover:text-brand-purple mt-1 inline-flex items-center gap-1 text-[11px] font-semibold"
+              >
+                <Sparkles className="h-3 w-3" />
+                Sugerencia: “{suggestedName}” · usar
+              </button>
+            </Hint>
           )}
         </div>
         <Field

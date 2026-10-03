@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { AdminSubmitButton } from "@/components/admin-submit-button";
 import { AdminTableAutoCards } from "@/components/admin-table-auto-cards";
+import { Hint } from "@/components/ui/tooltip";
 
 // ─────────────────── Layout primitives ───────────────────
 
@@ -286,20 +287,21 @@ export function SortableHeader({
       className={`px-4 py-3 font-semibold ${alignClass}`}
       aria-sort={isAsc ? "ascending" : isDesc ? "descending" : "none"}
     >
-      <Link
-        href={href}
-        title={`Ordenar por ${label.toLowerCase()}`}
-        className={`group hover:text-brand-purple-dark inline-flex items-center gap-1 ${justifyClass}`}
-      >
-        <span>{label}</span>
-        <Icon
-          className={`h-3.5 w-3.5 transition-colors ${
-            isActive
-              ? "text-brand-purple"
-              : "text-brand-purple-dark/25 group-hover:text-brand-muted"
-          }`}
-        />
-      </Link>
+      <Hint content={`Ordenar por ${label.toLowerCase()}`}>
+        <Link
+          href={href}
+          className={`group hover:text-brand-purple-dark inline-flex items-center gap-1 ${justifyClass}`}
+        >
+          <span>{label}</span>
+          <Icon
+            className={`h-3.5 w-3.5 transition-colors ${
+              isActive
+                ? "text-brand-purple"
+                : "text-brand-purple-dark/25 group-hover:text-brand-muted"
+            }`}
+          />
+        </Link>
+      </Hint>
     </th>
   );
 }

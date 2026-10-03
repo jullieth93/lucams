@@ -31,6 +31,7 @@ import {
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { computePercentiles, type VitalPercentiles } from "@/features/observability/percentiles";
+import { buildInpTargetTable } from "@/features/observability/inp-targets";
 
 export const metadata: Metadata = {
   title: "Rendimiento técnico",
@@ -183,9 +184,10 @@ export default async function AdminPerformancePage() {
       prisma.webVital.count({ where: { createdAt: { gte: since } } }),
       // Valores crudos de la ventana para los percentiles por (ruta, métrica).
       // Usa el índice (name, route, createdAt); tope documentado arriba.
+      // `target` alimenta la tabla "INP por elemento" (Paquete J 2026-10-02).
       prisma.webVital.findMany({
         where: { createdAt: { gte: since } },
-        select: { route: true, name: true, value: true },
+        select: { route: true, name: true, value: true, target: true },
         take: MAX_VITAL_ROWS,
       }),
     ]);
@@ -203,6 +205,9 @@ export default async function AdminPerformancePage() {
 
   // Percentiles por ruta (lo que promete el header de /api/vitals): la tabla de diagnóstico.
   const routeTable = buildRouteVitalTable(vitalRows);
+  // Paquete J (2026-10-02) — INP por ELEMENTO (target): qué botón/input/canvas
+  // duele dentro de cada página (cierra el ciclo de la auditoría §E-4).
+  const inpTargetTable = buildInpTargetTable(vitalRows);
 
   return (
     <AdminPage>
@@ -403,6 +408,76 @@ export default async function AdminPerformancePage() {
                     })}
                   </AdminTableRow>
                 ))}
+              </AdminTableBody>
+            </AdminTable>
+          )}
+        </section>
+
+        {/* ── INP por elemento (Paquete J, 2026-10-02) ── */}
+        <section aria-labelledby="inp-targets-heading">
+          <h2
+            id="inp-targets-heading"
+            className="text-brand-purple-dark font-display mb-1 text-base font-bold"
+          >
+            INP por elemento (p75) — últimos {WINDOW_DAYS} días
+          </h2>
+          <p className="text-brand-muted mb-3 text-xs">
+            Qué elemento concreto (botón, campo, canvas) produce las interacciones lentas en cada
+            página. Solo grupos con 3+ mediciones; ordenado de peor a mejor. Misma lectura que el
+            SQL de diagnóstico de INP, sin correrlo a mano.
+          </p>
+          {inpTargetTable.length === 0 ? (
+            <AdminEmpty
+              title="Sin interacciones lentas identificadas todavía"
+              description="Cuando haya suficientes mediciones de INP con elemento identificado, verás acá qué control conviene optimizar."
+            />
+          ) : (
+            <AdminTable minWidth={800}>
+              <AdminTableHead>
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold">Página</th>
+                  <th className="px-4 py-3 text-left font-semibold">Elemento</th>
+                  <th className="px-4 py-3 text-center font-semibold">Mediciones</th>
+                  <th className="px-4 py-3 text-center font-semibold">p75</th>
+                  <th className="px-4 py-3 text-center font-semibold">p95</th>
+                  <th className="px-4 py-3 text-center font-semibold">Peor</th>
+                </tr>
+              </AdminTableHead>
+              <AdminTableBody>
+                {inpTargetTable.map((row) => {
+                  const rating = ratingFor("INP", row.percentiles.p75);
+                  return (
+                    <AdminTableRow key={`${row.route}|${row.target}`}>
+                      <td className="px-4 py-3 align-top">
+                        <code className="text-brand-purple-dark bg-brand-purple/5 rounded px-1.5 py-0.5 font-mono text-[11px] break-all">
+                          {row.route}
+                        </code>
+                      </td>
+                      <td className="max-w-xs px-4 py-3 align-top">
+                        <code className="text-brand-purple-dark bg-brand-purple/5 rounded px-1.5 py-0.5 font-mono text-[11px] break-all">
+                          {row.target}
+                        </code>
+                      </td>
+                      <td className="text-brand-muted px-4 py-3 text-center align-top text-xs tabular-nums">
+                        {row.samples.toLocaleString("es-CO")}
+                      </td>
+                      <td className="px-4 py-3 text-center align-top">
+                        <div className="text-brand-purple-dark text-xs font-semibold tabular-nums">
+                          {formatMetric("INP", row.percentiles.p75)}
+                        </div>
+                        <div className="mt-1">
+                          <AdminBadge tone={RATING_TONE[rating]}>{RATING_LABEL[rating]}</AdminBadge>
+                        </div>
+                      </td>
+                      <td className="text-brand-purple-dark px-4 py-3 text-center align-top text-xs tabular-nums">
+                        {formatMetric("INP", row.percentiles.p95)}
+                      </td>
+                      <td className="text-brand-purple-dark px-4 py-3 text-center align-top text-xs tabular-nums">
+                        {formatMetric("INP", row.max)}
+                      </td>
+                    </AdminTableRow>
+                  );
+                })}
               </AdminTableBody>
             </AdminTable>
           )}

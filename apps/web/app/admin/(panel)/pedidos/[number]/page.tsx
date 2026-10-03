@@ -19,13 +19,22 @@ import { notFound, redirect } from "next/navigation";
 import { Box, User, MapPin, CreditCard, Truck, Package, Undo2 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/components/admin-page";
+import { Hint } from "@/components/ui/tooltip";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getOrder } from "@/features/orders/service";
 import { getProductionAssetSignedUrls } from "@/lib/storage";
 import { LUCAMS_CARRIER, carrierDisplayName } from "@/features/shipping/lucams-shipping";
+import {
+  parseShipmentLastError,
+  suggestShipmentFailureCause,
+} from "@/features/orders/shipment-error";
 import { lucamsDeliveryDays, maxProductionDaysOf } from "@/lib/delivery-estimate";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { formatCOP } from "@/lib/format";
+import {
+  describeVariantAttributes,
+  parseVariantAttributes,
+} from "@/features/products/variant-schemas";
 import { customerWaLink } from "@/lib/wa";
 import { OrderActions } from "./order-actions";
 
@@ -142,6 +151,12 @@ export default async function AdminPedidoDetallePage({
     minute: "2-digit",
   });
   const isSimulatedTracking = order.trackingNumber?.startsWith("TEST-") ?? false;
+  // Paquete G (2026-10-02) — último intento fallido de guía, persistido
+  // sanitizado por la saga (Order.shipmentLastError). Se muestra solo cuando
+  // aún NO hay guía: con trackingNumber presente el error ya es historia.
+  const shipmentLastError = order.trackingNumber
+    ? null
+    : parseShipmentLastError(order.shipmentLastError);
 
   // Contacto directo: wa.me con el teléfono del comprador (normalizado con
   // indicativo 57 — lib/wa) y mensaje pre-armado con el número de pedido
@@ -216,6 +231,10 @@ export default async function AdminPedidoDetallePage({
               <ul className="divide-brand-purple/10 divide-y">
                 {order.items.map((it) => {
                   const previewUrl = it.designAssetUrl ?? it.design?.previewUrl ?? null; // ADR-070 — snapshot primero
+                  // Paquete F (2026-10-02) — desglose estructurado de la variante.
+                  const variantBreakdown = describeVariantAttributes(
+                    parseVariantAttributes(it.variant.attributes),
+                  );
                   return (
                     <li key={it.id} className="flex items-start gap-3 py-3">
                       <div className="bg-brand-purple/5 relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg">
@@ -243,6 +262,13 @@ export default async function AdminPedidoDetallePage({
                           {it.variant.product.name}
                           <span className="text-brand-muted font-normal"> · {it.variant.name}</span>
                         </div>
+                        {/* Paquete F (2026-10-02) — desglose estructurado de la variante:
+                            producción ve Con/Sin imán, tamaño, idioma sin decodificar el nombre. */}
+                        {variantBreakdown.length > 0 && (
+                          <div className="text-brand-purple-dark/70 text-xs">
+                            {variantBreakdown.join(" · ")}
+                          </div>
+                        )}
                         <div className="text-brand-muted text-xs">
                           {formatCOP(it.unitPrice)} c/u · qty {it.qty} ·{" "}
                           <span className="font-mono">{it.variant.sku}</span>
@@ -269,6 +295,19 @@ export default async function AdminPedidoDetallePage({
                                     : "sin aprobar en Moderación"}
                                 </span>
                               )}
+                              {/* Paquete C (2026-10-02) — traza de la aceptación
+                                  explícita de calidad de fotos (checkbox de la Vista
+                                  Previa): evidencia ante reclamos de garantía. */}
+                              {it.design.qualityAcknowledgedAt && (
+                                <Hint
+                                  content={`Aceptación registrada el ${dateFmt.format(it.design.qualityAcknowledgedAt)}`}
+                                >
+                                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                                    ⚠️ aceptó calidad de fotos (
+                                    {dateFmt.format(it.design.qualityAcknowledgedAt)})
+                                  </span>
+                                </Hint>
+                              )}
                             </div>
                             <div className="flex flex-wrap gap-1.5">
                               {it.design.productionUrls.map((path, i) => {
@@ -276,24 +315,27 @@ export default async function AdminPedidoDetallePage({
                                 const label = `pieza-${String(i + 1).padStart(2, "0")}`;
                                 const approved = it.design?.moderationStatus === "APPROVED";
                                 return url ? (
-                                  <a
+                                  <Hint
                                     key={path}
-                                    href={url}
-                                    download={`${order.number}-${label}.png`}
-                                    title={
+                                    content={
                                       approved
                                         ? undefined
                                         : "No imprimir hasta aprobar en Moderación"
                                     }
-                                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${
-                                      approved
-                                        ? "border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5"
-                                        : "border-amber-200 bg-amber-50/60 text-amber-800 hover:bg-amber-50"
-                                    }`}
                                   >
-                                    ⬇ {label}
-                                    {!approved && <span>⚠️</span>}
-                                  </a>
+                                    <a
+                                      href={url}
+                                      download={`${order.number}-${label}.png`}
+                                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${
+                                        approved
+                                          ? "border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5"
+                                          : "border-amber-200 bg-amber-50/60 text-amber-800 hover:bg-amber-50"
+                                      }`}
+                                    >
+                                      ⬇ {label}
+                                      {!approved && <span>⚠️</span>}
+                                    </a>
+                                  </Hint>
                                 ) : (
                                   <span key={path} className="text-brand-muted text-[11px]">
                                     {label} (no disponible)
@@ -514,6 +556,39 @@ export default async function AdminPedidoDetallePage({
               ) : (
                 <>
                   <p className="text-brand-muted text-xs">Sin guía generada todavía</p>
+                  {/* Paquete G — causa REAL del último intento fallido (mensaje
+                      de la transportadora, sanitizado) + sugerencia operativa
+                      (docs/INTEGRATIONS_AVEONLINE.md §4.4). */}
+                  {shipmentLastError && !isInternalDelivery && (
+                    <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50/60 p-3">
+                      <p className="text-[11px] font-bold text-rose-800">
+                        Último error de la transportadora
+                        {shipmentLastError.at &&
+                          ` · ${dateFmt.format(new Date(shipmentLastError.at))}`}
+                      </p>
+                      <p className="mt-1 font-mono text-[11px] break-words text-rose-900">
+                        {shipmentLastError.message}
+                      </p>
+                      {(shipmentLastError.destination.city ||
+                        shipmentLastError.destination.department) && (
+                        <p className="text-brand-muted mt-1 text-[10px]">
+                          Destino:{" "}
+                          {[
+                            shipmentLastError.destination.city,
+                            shipmentLastError.destination.department,
+                          ]
+                            .filter(Boolean)
+                            .join(", ")}
+                          {shipmentLastError.carrier
+                            ? ` · carrier ${carrierDisplayName(shipmentLastError.carrier)}`
+                            : ""}
+                        </p>
+                      )}
+                      <p className="mt-1.5 text-[11px] text-amber-800">
+                        💡 {suggestShipmentFailureCause(shipmentLastError)}
+                      </p>
+                    </div>
+                  )}
                   {isInternalDelivery && (
                     <a
                       href={`/admin/pedidos/${encodeURIComponent(order.number)}/guia`}
