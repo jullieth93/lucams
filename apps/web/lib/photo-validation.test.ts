@@ -72,7 +72,7 @@ async function checker(side: number, lo: number, hi: number): Promise<Buffer> {
 // Imagen "buena" universal: nítida (stdev 30) y brillo medio (130).
 let goodImg: Buffer;
 // Brillo controlado, blur SIEMPRE OK (nítido), para aislar el check de brillo.
-let darkStrongImg: Buffer; // mean 20  → too dark (warning-strong)
+let darkStrongImg: Buffer; // mean 15  → too dark (warning-strong)
 let darkSoftImg: Buffer; //   mean 35  → dark    (warning-soft)
 let brightSoftImg: Buffer; // mean 237.5 → over-bright (warning-soft)
 // Blur controlado, brillo SIEMPRE OK (~130), para aislar el check de blur.
@@ -85,7 +85,7 @@ const garbageImg = Buffer.from("definitely-not-an-image-just-text-bytes");
 
 beforeAll(async () => {
   goodImg = await checker(120, 100, 160); // mean 130, stdev 30
-  darkStrongImg = await checker(120, 0, 40); // mean 20, stdev 20 (blur ok)
+  darkStrongImg = await checker(120, 0, 30); // mean 15, stdev 15 (blur ok)
   darkSoftImg = await checker(120, 20, 50); // mean 35, stdev 15 (blur ok, en el límite)
   brightSoftImg = await checker(120, 220, 255); // mean 237.5, stdev 17.5 (blur ok)
   blurStrongImg = await checker(120, 126, 134); // mean 130, stdev 4
@@ -289,49 +289,49 @@ describe("validatePhotoQuality · resolución (DPI)", () => {
 // ──────────────────────────────────────────────────────────────────
 
 describe("validatePhotoQuality · brillo", () => {
-  it("meanLuminance < 25 → warning-strong (muy oscura)", async () => {
+  it("meanLuminance < 20 → warning-strong (muy oscura)", async () => {
     const r = await validatePhotoQuality({ buffer: darkStrongImg, width: 600, height: 600 });
-    expect(r.brightness.meanLuminance).toBeCloseTo(20, 5);
+    expect(r.brightness.meanLuminance).toBeCloseTo(15, 5);
     expect(r.brightness.level).toBe("warning-strong");
     expect(r.brightness.passed).toBe(false);
     expect(r.brightness.message).toContain("muy oscura");
   });
 
-  it("borde: meanLuminance == 25 NO es muy oscura, es oscura soft", async () => {
-    // solid 25 → mean exactamente 25. 25 NO es < 25 → cae a la rama < 50 (soft).
-    const img = await solidGray(50, 25);
+  it("borde: meanLuminance == 20 NO es muy oscura, es oscura soft", async () => {
+    // solid 20 → mean exactamente 20. 20 NO es < 20 → cae a la rama < 40 (soft).
+    const img = await solidGray(50, 20);
     const r = await validatePhotoQuality({ buffer: img, width: 600, height: 600 });
-    expect(r.brightness.meanLuminance).toBe(25);
+    expect(r.brightness.meanLuminance).toBe(20);
     expect(r.brightness.level).toBe("warning-soft");
     expect(r.brightness.message).toContain("algo oscura");
   });
 
-  it("borde: meanLuminance == 24 SÍ es muy oscura (warning-strong)", async () => {
-    const img = await solidGray(50, 24);
+  it("borde: meanLuminance == 19 SÍ es muy oscura (warning-strong)", async () => {
+    const img = await solidGray(50, 19);
     const r = await validatePhotoQuality({ buffer: img, width: 600, height: 600 });
-    expect(r.brightness.meanLuminance).toBe(24);
+    expect(r.brightness.meanLuminance).toBe(19);
     expect(r.brightness.level).toBe("warning-strong");
   });
 
-  it("25 <= meanLuminance < 50 → warning-soft (oscura)", async () => {
+  it("20 <= meanLuminance < 40 → warning-soft (oscura)", async () => {
     const r = await validatePhotoQuality({ buffer: darkSoftImg, width: 600, height: 600 });
     expect(r.brightness.meanLuminance).toBeCloseTo(35, 5);
     expect(r.brightness.level).toBe("warning-soft");
     expect(r.brightness.message).toContain("algo oscura");
   });
 
-  it("borde: meanLuminance == 50 NO es oscura → OK", async () => {
-    const img = await solidGray(50, 50);
+  it("borde: meanLuminance == 40 NO es oscura → OK", async () => {
+    const img = await solidGray(50, 40);
     const r = await validatePhotoQuality({ buffer: img, width: 600, height: 600 });
-    expect(r.brightness.meanLuminance).toBe(50);
+    expect(r.brightness.meanLuminance).toBe(40);
     expect(r.brightness.passed).toBe(true);
     expect(r.brightness.level).toBe("ok");
   });
 
-  it("borde: meanLuminance == 49 SÍ es oscura (warning-soft)", async () => {
-    const img = await solidGray(50, 49);
+  it("borde: meanLuminance == 39 SÍ es oscura (warning-soft)", async () => {
+    const img = await solidGray(50, 39);
     const r = await validatePhotoQuality({ buffer: img, width: 600, height: 600 });
-    expect(r.brightness.meanLuminance).toBe(49);
+    expect(r.brightness.meanLuminance).toBe(39);
     expect(r.brightness.level).toBe("warning-soft");
   });
 
@@ -358,7 +358,7 @@ describe("validatePhotoQuality · brillo", () => {
     expect(r.brightness.message).toContain("sobreexpuesta");
   });
 
-  it("brillo medio (50..235) → OK sin mensaje", async () => {
+  it("brillo medio (40..235) → OK sin mensaje", async () => {
     const r = await validatePhotoQuality({ buffer: solidOkBrightnessImg, width: 600, height: 600 });
     expect(r.brightness.meanLuminance).toBe(128);
     expect(r.brightness.passed).toBe(true);
@@ -455,7 +455,9 @@ describe("validatePhotoQuality · agregación de nivel", () => {
     // resolución ok (sin mensaje) y blur ok (sin mensaje) → message cae a brightness.
     expect(r.message).toBe(r.brightness.message);
     expect(r.message).toContain("muy oscura");
-    expect(r.recommendation).toBe("Una foto con más luz va a verse mejor.");
+    expect(r.recommendation).toBe(
+      "Si el estilo oscuro es a propósito, no hay nada que hacer. Si no, una foto con más luz va a verse mejor.",
+    );
   });
 
   it("warning-strong de blur con resolución OK → recommendation de nitidez", async () => {
@@ -491,7 +493,7 @@ describe("validatePhotoQuality · agregación de nivel", () => {
 
   it("recommendation cae a blur cuando resolución OK pero blur warning (con brillo también warning)", async () => {
     // blurSoftImg es brillo ok; necesitamos blur warning + brillo warning + resolución ok.
-    // checker(0,40): mean 20 (brillo strong) y stdev 20 (blur OK) — no sirve.
+    // checker(0,30): mean 15 (brillo strong) y stdev 15 (blur OK) — no sirve.
     // Construimos uno: blur soft + brillo soft. checker brillo oscuro soft (mean 35)
     // implica lo=20 hi=50 → stdev 15 (blur ok). Para blur soft Y brillo soft a la vez
     // se necesita contraste pequeño Y media baja: lo=30 hi=40 → mean 35, stdev 5.
