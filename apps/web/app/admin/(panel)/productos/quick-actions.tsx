@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 import { Power, RotateCcw, Loader2 } from "lucide-react";
+import { Hint } from "@/components/ui/tooltip";
 import { restoreProductAction, toggleProductActiveAction } from "./actions";
 
 /** Botón submit que muestra spinner + se deshabilita mientras procesa. */
@@ -19,15 +20,15 @@ function ActionButton({
 }) {
   const { pending } = useFormStatus();
   return (
-    <button
-      type="submit"
-      disabled={pending}
-      className={`${className} disabled:opacity-60`}
-      title={title}
-    >
-      {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : icon}
-      {label}
-    </button>
+    <Hint content={title}>
+      {/* span wrapper: el button disabled no recibe hover/foco, el span sí. */}
+      <span tabIndex={pending ? 0 : undefined} className="inline-flex">
+        <button type="submit" disabled={pending} className={`${className} disabled:opacity-60`}>
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : icon}
+          {label}
+        </button>
+      </span>
+    </Hint>
   );
 }
 

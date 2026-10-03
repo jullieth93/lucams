@@ -29,6 +29,11 @@ export type TechHealth = {
   reconciliation: { count: number; orders: Array<{ number: string; reason: string | null }> };
   stockReverts7d: number;
   vitals7d: { good: number; needsImprovement: number; poor: number };
+  /** Desglose por métrica (LCP, INP, CLS, TTFB…) — una fila de pills por cada una
+   *  en /admin/observability. El agregado vitals7d se conserva para el resumen,
+   *  pero mezclar LCP (ms) con CLS (score) en un solo saco escondía el diagnóstico
+   *  (2026-10-01: 500 "pobres" podían ser TODOS de una sola métrica mala). */
+  vitalsByMetric7d: Array<{ name: string; good: number; needsImprovement: number; poor: number }>;
 };
 
 export async function getTechHealth(): Promise<TechHealth> {
@@ -75,7 +80,7 @@ export async function getTechHealth(): Promise<TechHealth> {
       },
     }),
     prisma.webVital.groupBy({
-      by: ["rating"],
+      by: ["name", "rating"],
       where: { createdAt: { gte: since(24 * 7) } },
       _count: { _all: true },
     }),
@@ -88,7 +93,24 @@ export async function getTechHealth(): Promise<TechHealth> {
     }),
   ]);
 
-  const ratingCount = (r: string) => vitalsRaw.find((v) => v.rating === r)?._count._all ?? 0;
+  const ratingCount = (r: string) =>
+    vitalsRaw.filter((v) => v.rating === r).reduce((acc, v) => acc + v._count._all, 0);
+
+  // Desglose por métrica, en orden fijo de importancia percibida (LCP primero)
+  // y luego cualquier otra presente (forward-compat con métricas nuevas).
+  const METRIC_ORDER = ["LCP", "INP", "CLS", "TTFB", "FCP", "FID"];
+  const metricNames = [...new Set(vitalsRaw.map((v) => v.name))].sort((a, b) => {
+    const ia = METRIC_ORDER.indexOf(a);
+    const ib = METRIC_ORDER.indexOf(b);
+    return (ia === -1 ? METRIC_ORDER.length : ia) - (ib === -1 ? METRIC_ORDER.length : ib);
+  });
+  const vitalsByMetric7d = metricNames.map((name) => ({
+    name,
+    good: vitalsRaw.find((v) => v.name === name && v.rating === "good")?._count._all ?? 0,
+    needsImprovement:
+      vitalsRaw.find((v) => v.name === name && v.rating === "needs-improvement")?._count._all ?? 0,
+    poor: vitalsRaw.find((v) => v.name === name && v.rating === "poor")?._count._all ?? 0,
+  }));
 
   return {
     errors: {
@@ -120,6 +142,7 @@ export async function getTechHealth(): Promise<TechHealth> {
       needsImprovement: ratingCount("needs-improvement"),
       poor: ratingCount("poor"),
     },
+    vitalsByMetric7d,
   };
 }
 

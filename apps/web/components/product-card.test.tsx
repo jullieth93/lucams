@@ -10,7 +10,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { ProductCard } from "./product-card";
 import type { StorefrontProductCard } from "@/features/products/public-service";
 
@@ -150,5 +150,16 @@ describe("ProductCard", () => {
       <ProductCard product={makeCard({ images: ["https://x/img.jpg"] })} />,
     );
     expect(container.querySelector("img")).toHaveAttribute("src", "https://x/img.jpg");
+  });
+
+  it("fallback onError (T5): una URL rota cae al placeholder Sparkles, no queda imagen quebrada", () => {
+    const { container } = render(
+      <ProductCard product={makeCard({ images: ["https://x/rota.jpg"] })} />,
+    );
+    const img = container.querySelector("img")!;
+    fireEvent.error(img);
+    // La <img> desaparece y queda el mismo placeholder del estado "sin imágenes" (svg Sparkles).
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("svg")).not.toBeNull();
   });
 });

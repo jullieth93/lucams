@@ -2,11 +2,13 @@
 
 /*
  * P2 backoffice — acciones por ticket de soporte (admin). Botones de estado según el estado
- * actual + un enlace "Responder" (mailto) para que Lucy conteste desde su correo con el asunto
- * y destinatario ya armados.
+ * actual + enlace "Ver hilo" al detalle (/admin/soporte/[id]), donde vive la respuesta al
+ * cliente, las notas internas y la conversión a garantía/retracto (flujo de solución,
+ * 2026-09-29 — antes el "Responder" era un mailto fuera del panel).
  */
 
 import { useActionState } from "react";
+import Link from "next/link";
 import { setTicketStatusAction } from "./actions";
 
 type St = { error?: string; success?: string } | null;
@@ -47,19 +49,8 @@ function StatusButton({
   );
 }
 
-export function TicketActions({
-  id,
-  status,
-  email,
-  subjectLabel,
-}: {
-  id: string;
-  status: string;
-  email: string;
-  subjectLabel: string;
-}) {
+export function TicketActions({ id, status }: { id: string; status: string }) {
   const [st, run, pending] = useActionState<St, FormData>(setTicketStatusAction, null);
-  const mailto = `mailto:${email}?subject=${encodeURIComponent(`Re: ${subjectLabel} — Lucams_shop`)}`;
 
   return (
     <div className="space-y-2">
@@ -69,12 +60,12 @@ export function TicketActions({
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <a
-          href={mailto}
+        <Link
+          href={`/admin/soporte/${id}`}
           className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 rounded-md border px-3 py-1.5 text-xs font-semibold"
         >
-          ✉️ Responder
-        </a>
+          Ver hilo
+        </Link>
         {status === "OPEN" && (
           <StatusButton
             id={id}

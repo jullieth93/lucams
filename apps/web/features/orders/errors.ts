@@ -20,12 +20,27 @@ export class InsufficientStockError extends Error {
     public variantId: string,
     public requested: number,
     public available?: number,
+    /** Nombre de display del producto/variante, para el copy customer-safe. */
+    public productName?: string,
   ) {
     super(
       `Stock insuficiente para variant ${variantId}: solicitado ${requested}` +
         (available !== undefined ? `, disponible ${available}` : ""),
     );
     this.name = "InsufficientStockError";
+  }
+
+  /**
+   * Copy customer-safe (es-CO, tuteo) que nombra el producto agotado, para los
+   * redirects a /carrito?error=... del checkout. `null` si no conocemos el
+   * nombre — el caller usa su mensaje genérico de fallback. El `message`
+   * técnico (variantId, cantidades) queda solo para logs.
+   */
+  customerMessage(): string | null {
+    if (!this.productName) return null;
+    return this.available !== undefined && this.available > 0
+      ? `Solo quedan ${this.available} ${this.available === 1 ? "unidad" : "unidades"} de «${this.productName}». Ajusta la cantidad en tu carrito.`
+      : `«${this.productName}» se agotó. Revisa tu carrito y confirma de nuevo.`;
   }
 }
 
@@ -67,11 +82,44 @@ export class StockAlreadyAppliedError extends Error {
  * Lanzado por `createOrderFromCartTx` ANTES de calcular totales/cupón.
  */
 export class OrderUnavailableItemsError extends Error {
-  constructor(public items: Array<{ variantId: string; sku: string }>) {
+  constructor(public items: Array<{ variantId: string; sku: string; name?: string }>) {
+    // Copy customer-safe que NOMBRA el producto retirado (2026-09-29): "ya no está
+    // disponible" sin nombre obligaba al cliente a adivinar qué item desapareció
+    // del carrito. Si no hay nombres (caller legacy), fallback al genérico.
+    const names = [...new Set(items.map((it) => it.name).filter((n): n is string => !!n))];
     super(
-      "Un producto de tu carrito ya no está disponible. Revisa tu carrito y confirma de nuevo.",
+      names.length === 1
+        ? `«${names[0]}» ya no está disponible. Revisa tu carrito y confirma de nuevo.`
+        : names.length > 1
+          ? `Estos productos ya no están disponibles: ${names.join(", ")}. Revisa tu carrito y confirma de nuevo.`
+          : "Un producto de tu carrito ya no está disponible. Revisa tu carrito y confirma de nuevo.",
     );
     this.name = "OrderUnavailableItemsError";
+  }
+}
+
+/**
+ * Carrera TOCTOU de reconciliación (2026-09-29): entre la lectura de la Order
+ * PENDING_PAYMENT existente (idempotencia por cartId) y la escritura de la
+ * reconciliación/refresh, el webhook de Wompi commiteó PAID. El UPDATE gateado
+ * por `status: "PENDING_PAYMENT"` devolvió count=0 → NO se pisa nada y NO se
+ * reintenta: la orden ya fue cobrada/confirmada por el ganador de la carrera.
+ *
+ * `finalizeCheckout` lo traduce a CheckoutError ORDER_ALREADY_PAID y la action
+ * redirige a la vista de confirmación (/checkout/gracias?id=<txId> verifica la
+ * transacción contra Wompi y sana la orden) — nunca se crea otra orden ni se
+ * cobra dos veces.
+ */
+export class OrderAlreadyPaidError extends Error {
+  constructor(
+    public orderId: string,
+    public orderNumber: string,
+  ) {
+    // Mensaje técnico (va a logs); el cliente nunca lo ve — la action redirige.
+    super(
+      `Order ${orderNumber} (${orderId}) ya no está PENDING_PAYMENT — la confirmó otro proceso`,
+    );
+    this.name = "OrderAlreadyPaidError";
   }
 }
 

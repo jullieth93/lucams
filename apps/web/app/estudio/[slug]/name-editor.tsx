@@ -32,6 +32,7 @@ import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { LetterStylePicker } from "./letter-style-picker";
 import { StudioPreviewModal } from "./studio-preview-modal";
 import { StudioSimpleHeader } from "./studio-simple-header";
+import { STUDIO_CTA_DISABLED_CLASSES } from "./studio-busy-cta";
 import { STUDIO_MAX_WIDTH } from "./studio-layout";
 import { useIsTouch } from "./use-is-touch";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -70,6 +71,13 @@ type NameEditorProps = {
    * producto físico justo en la pantalla de confirmación, Ley 1480 art. 23).
    */
   variantMagnet?: boolean;
+  /**
+   * Paquete F (2026-10-02) — desglose de la variante elegida en la ficha
+   * (describeVariantAttributes: "Sin imán (adhesivo) · Español"…). En esta
+   * superficie la variante es FIJA (se eligió en la PDP y no se cambia acá),
+   * así que la etiqueta de la página server es la verdad vigente.
+   */
+  variantLabel?: string;
   config: { min: number; max: number; language: NameLanguage };
   /**
    * ADR-057 — precio POR FICHA (centavos COP). El total mostrado y el del carrito =
@@ -245,6 +253,7 @@ export function NameEditor({
   productImageUrl,
   variantId,
   variantMagnet,
+  variantLabel,
   config,
   pricePerTile,
   initialCount,
@@ -300,11 +309,18 @@ export function NameEditor({
   // a "Con borde" — la selección de colores se conserva (nunca se resetea). La elección
   // se persiste en Design.metadata.withBorder al crear el diseño, y al re-abrir uno
   // guardado llega en `initialWithBorder` (sin la clave = con borde, lo histórico).
+  // Fase 1B — EXCEPCIÓN al apagado: con estilo «Solo letra» (styleId === null) el
+  // color sigue pintando el relleno de la letra aun sin borde → colorsEnabled.
   const [withBorder, setWithBorder] = useState(initialWithBorder !== false);
   const activeTiles = useMemo(
     () => (styleId ? (styles.find((s) => s.id === styleId)?.tiles ?? {}) : {}),
     [styleId, styles],
   );
+  // Fase 1B — la paleta pinta el BORDE de la ficha (temas con ilustración) pero
+  // también el RELLENO de la letra cuando el estilo es «Solo letra» (styleId ===
+  // null, drawLetterTile fillText). Regla: la paleta solo se desactiva con
+  // «Sin borde» Y estilo ilustrado; con «Solo letra» queda activa aun sin borde.
+  const colorsEnabled = withBorder || styleId === null;
 
   // La normalización usa count como tope (que ya sigue a lo tecleado, ver onChange del input): así
   // el − que reduce fichas recorta el texto sobrante, pero teclear no pierde letras (crece count).
@@ -615,8 +631,11 @@ export function NameEditor({
                     {/* Descubribilidad del color por letra: barra visible, no un texto perdido.
                         Ola 28 (owner 2026-09-11, 1.7): con «Sin borde» las fichas no llevan
                         color → sin hint y fichas no seleccionables (la paleta ya quedó
-                        desactivada abajo; aquí tampoco aplica pintar letra a letra). */}
-                    {withBorder && selectedIndex === null && (
+                        desactivada abajo; aquí tampoco aplica pintar letra a letra).
+                        Fase 1B — REDEFINIDA: el apagado solo aplica con estilo ILUSTRADO;
+                        con «Solo letra» el color pinta el relleno de la letra aun sin
+                        borde → el pintado por letra sigue activo (colorsEnabled). */}
+                    {colorsEnabled && selectedIndex === null && (
                       <p className="text-brand-purple-dark mb-3 flex items-center justify-center gap-1.5 text-center text-xs font-semibold">
                         <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
                           {texts.nombre.tocaHint}
@@ -636,8 +655,8 @@ export function NameEditor({
                           color={effectiveColors[i]}
                           imageUrl={activeTiles[ch]?.imageUrl}
                           size={previewTileSize}
-                          selected={withBorder && selectedIndex === i}
-                          onClick={withBorder ? () => toggleSelected(i) : undefined}
+                          selected={colorsEnabled && selectedIndex === i}
+                          onClick={colorsEnabled ? () => toggleSelected(i) : undefined}
                           withBorder={withBorder}
                         />
                       ))}
@@ -646,9 +665,14 @@ export function NameEditor({
                 )}
 
                 {/* Fila de colores para la letra seleccionada — control compartido.
-                    Con «Sin borde» no aplica (no hay marco de color que pintar). */}
-                {withBorder && selectedIndex !== null && letters[selectedIndex] && (
-                  <SwatchRow letter={letters[selectedIndex]} onPick={setColorForSelected} />
+                    Fase 1B: solo se apaga con «Sin borde» Y estilo ilustrado; con
+                    «Solo letra» el color pinta el relleno de la letra aun sin borde. */}
+                {colorsEnabled && selectedIndex !== null && letters[selectedIndex] && (
+                  <SwatchRow
+                    letter={letters[selectedIndex]}
+                    currentColor={effectiveColors[selectedIndex]}
+                    onPick={setColorForSelected}
+                  />
                 )}
               </div>
 
@@ -875,13 +899,16 @@ export function NameEditor({
             Lucy 2026-09-09 — misma regla que el set de letras: con «Sin borde» las fichas
             no llevan el marco de color, así que la sección se DESACTIVA (visible + inerte,
             con el porqué) hasta volver a «Con borde». El estado de colores (useLetterColors)
-            nunca se resetea al desactivar. */}
+            nunca se resetea al desactivar.
+            Fase 1B — el apagado SOLO aplica con estilo ilustrado (styleId !== null):
+            con «Solo letra» el color pinta el RELLENO de la letra (drawLetterTile
+            fillText) aun sin borde, así que la sección permanece activa en ese caso. */}
               <div className="mt-5">
                 <ThemePicker
                   themeId={themeId}
                   customized={customized}
                   onApply={applyTheme}
-                  disabled={!withBorder}
+                  disabled={!colorsEnabled}
                   disabledHint={texts.nombre.bordeSinColoresHint}
                 />
               </div>
@@ -916,7 +943,7 @@ export function NameEditor({
                   type="button"
                   onClick={handleShowPreview}
                   disabled={!valid || preparingPreview || submitting}
-                  className="bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={`bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 ${STUDIO_CTA_DISABLED_CLASSES}`}
                 >
                   {preparingPreview || submitting ? (
                     <Loader2 className="h-5 w-5 animate-spin" />
@@ -994,6 +1021,8 @@ export function NameEditor({
         // 2026-09-25 — el término sale de la variante (Con imán → "imán", Sin
         // imán → "ficha"), igual que letter-set-editor; antes quemado "magnets".
         productKind={variantMagnet === false ? "tiles" : "magnets"}
+        // Paquete F (2026-10-02) — desglose de la variante (imantado, idioma…).
+        variantLabel={variantLabel}
         onEdit={handleEditFromPreview}
         onConfirm={handleConfirmAddToCart}
       />

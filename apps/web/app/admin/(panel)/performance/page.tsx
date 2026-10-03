@@ -30,6 +30,8 @@ import {
 } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { computePercentiles, type VitalPercentiles } from "@/features/observability/percentiles";
+import { buildInpTargetTable } from "@/features/observability/inp-targets";
 
 export const metadata: Metadata = {
   title: "Rendimiento técnico",
@@ -38,6 +40,13 @@ export const metadata: Metadata = {
 
 const WINDOW_DAYS = 7;
 const MAX_ERRORS = 20;
+/* Tope de seguridad del fetch de valores RUM para los percentiles por ruta:
+   el cálculo es en JS (función pura testeada — ver percentiles.ts, ahí la
+   justificación vs percentile_cont en SQL). 200k filas de (name, route, value)
+   ≈ pocos MB; el volumen real de 7 días es de MILES, no cientos de miles —
+   el backstop de /api/vitals (3000 filas/5 min global) acota el peor caso y
+   este tope evita que una ventana inundada tumbe el panel admin. */
+const MAX_VITAL_ROWS = 200_000;
 
 const dateTimeFmt = new Intl.DateTimeFormat("es-CO", {
   day: "2-digit",
@@ -91,34 +100,97 @@ function windowStart(days: number): Date {
   return new Date(Date.now() - days * 24 * 3600 * 1000);
 }
 
+/* Tabla por ruta: las 4 métricas que responden "¿qué página duele y por qué?"
+   (FID quedó legacy — lo reemplaza INP — y FCP es secundario frente a LCP). */
+const ROUTE_TABLE_METRICS = ["LCP", "INP", "CLS", "TTFB"] as const;
+
+type RouteVitalRow = {
+  route: string;
+  samples: number;
+  byMetric: Partial<Record<(typeof ROUTE_TABLE_METRICS)[number], VitalPercentiles>>;
+  /** Peor ratio p75/umbral-pobre entre las métricas presentes — ordena la tabla. */
+  severity: number;
+};
+
+/**
+ * Agrupa los valores crudos por (route, name) y calcula p50/p75/p95 con la
+ * función pura testeada (features/observability/percentiles.ts). Solo se
+ * queda con las métricas de la tabla; una ruta sin ninguna no aparece.
+ */
+function buildRouteVitalTable(
+  rows: Array<{ route: string; name: string; value: number }>,
+): RouteVitalRow[] {
+  const byRoute = new Map<string, { samples: number; values: Map<string, number[]> }>();
+  for (const r of rows) {
+    let entry = byRoute.get(r.route);
+    if (!entry) {
+      entry = { samples: 0, values: new Map() };
+      byRoute.set(r.route, entry);
+    }
+    entry.samples += 1;
+    if (!(ROUTE_TABLE_METRICS as readonly string[]).includes(r.name)) continue;
+    const arr = entry.values.get(r.name);
+    if (arr) arr.push(r.value);
+    else entry.values.set(r.name, [r.value]);
+  }
+
+  const table: RouteVitalRow[] = [];
+  for (const [route, entry] of byRoute) {
+    const byMetric: RouteVitalRow["byMetric"] = {};
+    let severity = 0;
+    for (const name of ROUTE_TABLE_METRICS) {
+      const percentiles = computePercentiles(entry.values.get(name) ?? []);
+      if (!percentiles) continue;
+      byMetric[name] = percentiles;
+      const poor = METRIC_INFO[name].poor;
+      // CLS va en score (0.x) y el resto en ms — el ratio sobre el umbral pobre
+      // normaliza ambas escalas para comparar "qué tan mal" está cada métrica.
+      severity = Math.max(severity, percentiles.p75 / poor);
+    }
+    if (Object.keys(byMetric).length === 0) continue;
+    table.push({ route, samples: entry.samples, byMetric, severity });
+  }
+  // Peor p75 primero (ratio sobre el umbral pobre de web.dev); desempate por ruta.
+  return table.sort((a, b) => b.severity - a.severity || a.route.localeCompare(b.route));
+}
+
 export default async function AdminPerformancePage() {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
 
   const since = windowStart(WINDOW_DAYS);
 
-  const [errorCount7d, recentErrors, vitalsAvgRaw, vitalsSampleCount] = await Promise.all([
-    prisma.errorLog.count({ where: { createdAt: { gte: since } } }),
-    prisma.errorLog.findMany({
-      orderBy: { createdAt: "desc" },
-      take: MAX_ERRORS,
-      select: {
-        id: true,
-        message: true,
-        routePath: true,
-        requestPath: true,
-        method: true,
-        routeType: true,
-        createdAt: true,
-      },
-    }),
-    prisma.webVital.groupBy({
-      by: ["name"],
-      where: { createdAt: { gte: since } },
-      _avg: { value: true },
-    }),
-    prisma.webVital.count({ where: { createdAt: { gte: since } } }),
-  ]);
+  const [errorCount7d, recentErrors, vitalsAvgRaw, vitalsSampleCount, vitalRows] =
+    await Promise.all([
+      prisma.errorLog.count({ where: { createdAt: { gte: since } } }),
+      prisma.errorLog.findMany({
+        orderBy: { createdAt: "desc" },
+        take: MAX_ERRORS,
+        select: {
+          id: true,
+          message: true,
+          routePath: true,
+          requestPath: true,
+          method: true,
+          routeType: true,
+          createdAt: true,
+        },
+      }),
+      prisma.webVital.groupBy({
+        by: ["name"],
+        where: { createdAt: { gte: since } },
+        _avg: { value: true },
+      }),
+      prisma.webVital.count({ where: { createdAt: { gte: since } } }),
+      // Valores crudos de la ventana para los percentiles por (ruta, métrica).
+      // Usa el índice (name, route, createdAt); tope documentado arriba.
+      // `target` alimenta la tabla "INP por elemento" (Paquete J 2026-10-02).
+      prisma.webVital.findMany({
+        where: { createdAt: { gte: since } },
+        select: { route: true, name: true, value: true, target: true },
+        take: MAX_VITAL_ROWS,
+      }),
+    ]);
 
   // Métricas en orden fijo de importancia percibida; luego cualquier otra presente.
   const ORDER = ["LCP", "INP", "CLS", "FCP", "TTFB", "FID"];
@@ -130,6 +202,12 @@ export default async function AdminPerformancePage() {
       const ib = ORDER.indexOf(b.name);
       return (ia === -1 ? ORDER.length : ia) - (ib === -1 ? ORDER.length : ib);
     });
+
+  // Percentiles por ruta (lo que promete el header de /api/vitals): la tabla de diagnóstico.
+  const routeTable = buildRouteVitalTable(vitalRows);
+  // Paquete J (2026-10-02) — INP por ELEMENTO (target): qué botón/input/canvas
+  // duele dentro de cada página (cierra el ciclo de la auditoría §E-4).
+  const inpTargetTable = buildInpTargetTable(vitalRows);
 
   return (
     <AdminPage>
@@ -226,12 +304,13 @@ export default async function AdminPerformancePage() {
             id="vitals-heading"
             className="text-brand-purple-dark font-display mb-1 text-base font-bold"
           >
-            Web Vitals — promedio últimos {WINDOW_DAYS} días
+            Web Vitals — resumen últimos {WINDOW_DAYS} días
           </h2>
           <p className="text-brand-muted mb-3 text-xs">
             {vitalsSampleCount.toLocaleString("es-CO")}{" "}
             {vitalsSampleCount === 1 ? "medición recibida" : "mediciones recibidas"} de visitantes
-            reales.
+            reales. Promedio por métrica; el detalle accionable (p75 por página) está en la tabla de
+            abajo.
           </p>
           {vitals.length === 0 ? (
             <AdminEmpty
@@ -257,6 +336,150 @@ export default async function AdminPerformancePage() {
                 );
               })}
             </div>
+          )}
+        </section>
+
+        {/* ── Percentiles por ruta ── */}
+        <section aria-labelledby="routes-heading">
+          <h2
+            id="routes-heading"
+            className="text-brand-purple-dark font-display mb-1 text-base font-bold"
+          >
+            Percentiles por página (p75) — últimos {WINDOW_DAYS} días
+          </h2>
+          <p className="text-brand-muted mb-3 text-xs">
+            El p75 es el estándar de web.dev: lo que vive el 75% de las visitas. Ordenado de peor a
+            mejor; los colores usan los umbrales oficiales (bueno / a mejorar / pobre).
+          </p>
+          {routeTable.length === 0 ? (
+            <AdminEmpty
+              title="Sin datos por página todavía"
+              description="Apenas lleguen mediciones de LCP, INP, CLS o TTFB verás acá qué páginas van más lentas."
+            />
+          ) : (
+            <AdminTable minWidth={800}>
+              <AdminTableHead>
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold">Página</th>
+                  <th className="px-4 py-3 text-center font-semibold">Mediciones</th>
+                  {ROUTE_TABLE_METRICS.map((m) => (
+                    <th key={m} className="px-4 py-3 text-center font-semibold">
+                      {m} p75
+                    </th>
+                  ))}
+                </tr>
+              </AdminTableHead>
+              <AdminTableBody>
+                {routeTable.map((row) => (
+                  <AdminTableRow key={row.route}>
+                    <td className="px-4 py-3 align-top">
+                      <code className="text-brand-purple-dark bg-brand-purple/5 rounded px-1.5 py-0.5 font-mono text-[11px] break-all">
+                        {row.route}
+                      </code>
+                    </td>
+                    <td className="text-brand-muted px-4 py-3 text-center align-top text-xs tabular-nums">
+                      {row.samples.toLocaleString("es-CO")}
+                    </td>
+                    {ROUTE_TABLE_METRICS.map((m) => {
+                      const percentiles = row.byMetric[m];
+                      if (!percentiles) {
+                        return (
+                          <td
+                            key={m}
+                            className="text-brand-muted px-4 py-3 text-center align-top text-xs"
+                          >
+                            —
+                          </td>
+                        );
+                      }
+                      const rating = ratingFor(m, percentiles.p75);
+                      return (
+                        <td key={m} className="px-4 py-3 text-center align-top">
+                          <div className="text-brand-purple-dark text-xs font-semibold tabular-nums">
+                            {formatMetric(m, percentiles.p75)}
+                          </div>
+                          <div className="mt-1">
+                            <AdminBadge tone={RATING_TONE[rating]}>
+                              {RATING_LABEL[rating]}
+                            </AdminBadge>
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </AdminTableRow>
+                ))}
+              </AdminTableBody>
+            </AdminTable>
+          )}
+        </section>
+
+        {/* ── INP por elemento (Paquete J, 2026-10-02) ── */}
+        <section aria-labelledby="inp-targets-heading">
+          <h2
+            id="inp-targets-heading"
+            className="text-brand-purple-dark font-display mb-1 text-base font-bold"
+          >
+            INP por elemento (p75) — últimos {WINDOW_DAYS} días
+          </h2>
+          <p className="text-brand-muted mb-3 text-xs">
+            Qué elemento concreto (botón, campo, canvas) produce las interacciones lentas en cada
+            página. Solo grupos con 3+ mediciones; ordenado de peor a mejor. Misma lectura que el
+            SQL de diagnóstico de INP, sin correrlo a mano.
+          </p>
+          {inpTargetTable.length === 0 ? (
+            <AdminEmpty
+              title="Sin interacciones lentas identificadas todavía"
+              description="Cuando haya suficientes mediciones de INP con elemento identificado, verás acá qué control conviene optimizar."
+            />
+          ) : (
+            <AdminTable minWidth={800}>
+              <AdminTableHead>
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold">Página</th>
+                  <th className="px-4 py-3 text-left font-semibold">Elemento</th>
+                  <th className="px-4 py-3 text-center font-semibold">Mediciones</th>
+                  <th className="px-4 py-3 text-center font-semibold">p75</th>
+                  <th className="px-4 py-3 text-center font-semibold">p95</th>
+                  <th className="px-4 py-3 text-center font-semibold">Peor</th>
+                </tr>
+              </AdminTableHead>
+              <AdminTableBody>
+                {inpTargetTable.map((row) => {
+                  const rating = ratingFor("INP", row.percentiles.p75);
+                  return (
+                    <AdminTableRow key={`${row.route}|${row.target}`}>
+                      <td className="px-4 py-3 align-top">
+                        <code className="text-brand-purple-dark bg-brand-purple/5 rounded px-1.5 py-0.5 font-mono text-[11px] break-all">
+                          {row.route}
+                        </code>
+                      </td>
+                      <td className="max-w-xs px-4 py-3 align-top">
+                        <code className="text-brand-purple-dark bg-brand-purple/5 rounded px-1.5 py-0.5 font-mono text-[11px] break-all">
+                          {row.target}
+                        </code>
+                      </td>
+                      <td className="text-brand-muted px-4 py-3 text-center align-top text-xs tabular-nums">
+                        {row.samples.toLocaleString("es-CO")}
+                      </td>
+                      <td className="px-4 py-3 text-center align-top">
+                        <div className="text-brand-purple-dark text-xs font-semibold tabular-nums">
+                          {formatMetric("INP", row.percentiles.p75)}
+                        </div>
+                        <div className="mt-1">
+                          <AdminBadge tone={RATING_TONE[rating]}>{RATING_LABEL[rating]}</AdminBadge>
+                        </div>
+                      </td>
+                      <td className="text-brand-purple-dark px-4 py-3 text-center align-top text-xs tabular-nums">
+                        {formatMetric("INP", row.percentiles.p95)}
+                      </td>
+                      <td className="text-brand-purple-dark px-4 py-3 text-center align-top text-xs tabular-nums">
+                        {formatMetric("INP", row.max)}
+                      </td>
+                    </AdminTableRow>
+                  );
+                })}
+              </AdminTableBody>
+            </AdminTable>
           )}
         </section>
       </AdminPageBody>

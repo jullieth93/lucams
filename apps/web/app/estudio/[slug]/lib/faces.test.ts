@@ -11,6 +11,7 @@ import {
   faceOfSlot,
   faceSlotLabels,
   facePairOfUnit,
+  previewFacePairOfUnit,
   missingFaceACount,
   deployedSizeCm,
 } from "./faces";
@@ -47,6 +48,23 @@ describe("faces (Ola 3 — separadores 2 caras)", () => {
   it("facePairOfUnit devuelve los slots de la tira desplegada (A izquierda, B derecha)", () => {
     expect(facePairOfUnit(0)).toEqual({ faceA: 0, faceB: 1 });
     expect(facePairOfUnit(2)).toEqual({ faceA: 4, faceB: 5 });
+  });
+
+  // Paquete D (2026-10-02) — REGLA ÚNICA de la cara B vacía: en TODOS los
+  // renders (preview cliente, 3D, producción) se pinta ESPEJO de la cara A.
+  it("previewFacePairOfUnit: cara B vacía (backOptional) se pinta con el slot de la cara A", () => {
+    const slots = [
+      { slotIndex: 0, assetUrl: "a.jpg" }, // unidad 0 · A con foto
+      { slotIndex: 1, assetUrl: null }, // unidad 0 · B VACÍA
+      { slotIndex: 2, assetUrl: "b.jpg" }, // unidad 1 · A con foto
+      { slotIndex: 3, assetUrl: "c.jpg" }, // unidad 1 · B diseñada
+    ];
+    // B vacía → el slot efectivo de la B es el de su cara A (espejo).
+    expect(previewFacePairOfUnit(slots, 0, true)).toEqual({ faceA: 0, faceB: 0 });
+    // B diseñada → el par real, sin cambios.
+    expect(previewFacePairOfUnit(slots, 1, true)).toEqual({ faceA: 2, faceB: 3 });
+    // Sin backOptional el par es siempre el real (la B se exige diseñada).
+    expect(previewFacePairOfUnit(slots, 0, false)).toEqual({ faceA: 0, faceB: 1 });
   });
 
   // 2026-09-22 — cara B opcional (backOptional) y tamaño desplegado.

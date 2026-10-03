@@ -13,31 +13,39 @@
  *     de M.3 corregido)
  *
  * El botón «Vista previa» tiene 4 estados visuales:
- *   - Deshabilitado (morado atenuado + tooltip explicando qué falta)
+ *   - Deshabilitado por faltantes (morado atenuado /30–/40 + tooltip explicando qué falta)
  *   - Habilitado (morado solid + sombra on hover)
- *   - Preparando la vista previa (loader + "Preparando…", aria-busy)
- *   - Saving (loader + texto "Guardando diseño...")
+ *   - Preparando la vista previa (fondo sólido atenuado 70% + loader + "Preparando…",
+ *     aria-busy — patrón único del estudio, ver studio-busy-cta.ts)
+ *   - Saving (mismo patrón ocupado + texto "Guardando diseño...")
  */
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles, HelpCircle } from "lucide-react";
+import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles, HelpCircle, X } from "lucide-react";
+import { Popover as PopoverPrimitive } from "radix-ui";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { compareSizeToObject } from "./lib/size-comparator";
 import { LucamsLogo } from "@/components/lucams-logo";
+import { Hint } from "@/components/ui/tooltip";
 import { StudioPhotoCountControl } from "./studio-photo-count-control";
 import { StudioUnitCountControl } from "./studio-unit-count-control";
 import {
   selectFilledSlotCount,
   selectIsComplete,
+  selectMissingSlotIndexesKey,
   selectTotalSlotCount,
   type StudioStoreState,
 } from "./lib/store";
 import { missingFaceACount } from "./lib/faces";
+import type { SlotNoun } from "./lib/slot-noun";
+import { StudioQualityWarningsChip } from "./studio-quality-warnings-chip";
+import { igMissingRequiredTextLayersPerSlot } from "@/features/personalization/instagram-template-spec";
 import { useStudioTexts } from "./studio-texts-provider";
-import { fillStudioText, splitStudioText } from "./studio-texts";
+import { fillStudioText, splitStudioText, type StudioTexts } from "./studio-texts";
+import { STUDIO_CTA_BUSY_CLASSES } from "./studio-busy-cta";
 
 type StudioToolbarProps = {
   store: StoreApi<StudioStoreState>;
@@ -50,8 +58,13 @@ type StudioToolbarProps = {
   /** A1.1 — Cantidad total de unidades del pack (ej 6, 12). En separadores 2 caras
    *  es la cantidad de UNIDADES físicas (cada una con 2 caras de diseño). */
   productSlotCount?: number;
-  /** Ola 3 — sustantivo de la unidad ("imán" default, "separador" en separadores). */
-  slotNoun?: string;
+  /** Ola 3 — sustantivo de la unidad. Fase 1A (2026-09-27): par { one, many }
+   *  resuelto por resolveSlotNoun (productKind real + magnet — un calendario o
+   *  una variante SIN IMÁN nunca dicen "imanes"). */
+  slotNoun?: SlotNoun;
+  /** Fase 1A — etiquetas por slot ("Ene", "1A"…) para el popover de faltantes
+   *  de «Vista previa» (mismas labels de la grilla). undefined → números. */
+  slotLabels?: string[];
   /** M.3.b.B.1 — toggle bleed + safe area overlay guides. */
   showRealismGuides?: boolean;
   /** M.3.b.B.1 — callback al cambiar el toggle. */
@@ -109,7 +122,8 @@ export function StudioToolbar({
   productImageUrl,
   productSizeCm,
   productSlotCount,
-  slotNoun = "imán",
+  slotNoun = { one: "imán", many: "imanes" },
+  slotLabels,
   showRealismGuides,
   onToggleRealismGuides: _onToggleRealismGuides,
   onOpenGesturesHint,
@@ -135,6 +149,9 @@ export function StudioToolbar({
 
   const complete = backOptional ? total > 0 && missingFaceA === 0 : completeAll;
   const canFinalize = complete && !finalizeBlockReason && !isFinalizing && !isPreviewBuilding;
+  // Fase 1A — detalle de faltantes para el popover de «Vista previa» (fotos por
+  // slot con su label + textos IG por unidad). null cuando no falta nada.
+  const missing = useFinalizeMissing(store, backOptional, slotLabels);
 
   const disabledTooltip = !complete
     ? fillStudioText(texts.lienzo.finalizeTooltip, {
@@ -175,15 +192,7 @@ export function StudioToolbar({
                 {productSizeCm && <SizeChipWithComparator sizeCm={productSizeCm} />}
                 {productSlotCount && (
                   <span className="text-brand-muted">
-                    · {productSlotCount}{" "}
-                    {productSlotCount === 1
-                      ? slotNoun
-                      : // Plural es-CO: "imán"→"imanes", "separador"→"separadores".
-                        slotNoun === "imán"
-                        ? "imanes"
-                        : slotNoun === "separador"
-                          ? "separadores"
-                          : `${slotNoun}s`}
+                    · {productSlotCount} {productSlotCount === 1 ? slotNoun.one : slotNoun.many}
                   </span>
                 )}
               </p>
@@ -205,17 +214,22 @@ export function StudioToolbar({
           {/* M.3.b.UX.v12 (Lucy 2026-05-15) — Botón "?" para re-ver gestos.
             Icon-only para no ocupar espacio. Visible en mobile y desktop. */}
           {onOpenGesturesHint && (
-            <button
-              type="button"
-              onClick={onOpenGesturesHint}
-              aria-label={texts.lienzo.gestosAria}
-              title={texts.lienzo.gesturesButtonTitle}
-              className="text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark focus:ring-brand-purple inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
-            >
-              <HelpCircle className="h-4 w-4" aria-hidden />
-            </button>
+            <Hint content={texts.lienzo.gesturesButtonTitle}>
+              <button
+                type="button"
+                onClick={onOpenGesturesHint}
+                aria-label={texts.lienzo.gestosAria}
+                className="text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark focus:ring-brand-purple inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+              >
+                <HelpCircle className="h-4 w-4" aria-hidden />
+              </button>
+            </Hint>
           )}
           <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} />
+          {/* Paquete C (2026-10-02) — resumen visible de fotos con avisos de
+              calidad junto a «Vista previa» (popover con el detalle). Solo se
+              renderiza si hay avisos en fotos asignadas al diseño. */}
+          <StudioQualityWarningsChip store={store} />
           {/* M.3.b.UX.1 — Finalize button INLINE solo desktop (sm+).
               En mobile el FAB es la única forma de finalizar (montado por
               StudioEditor afuera del toolbar para que flote sobre el canvas). */}
@@ -225,6 +239,7 @@ export function StudioToolbar({
               isPreparing={isPreviewBuilding}
               canFinalize={canFinalize}
               disabledTooltip={disabledTooltip}
+              missing={missing}
               onFinalize={onFinalize}
               variant="inline"
             />
@@ -266,18 +281,19 @@ export function StudioToolbar({
           línea → cero altura extra de chrome: la tarjeta del canvas sigue
           iniciando dentro del primer viewport de 375×812. */}
       <div className="border-brand-purple/10 bg-brand-cream/50 flex items-center justify-center gap-2 border-t py-2 md:hidden">
-        <span
-          className="text-brand-purple-dark max-w-[38%] truncate text-xs font-semibold"
-          title={productName}
-        >
-          {productName}
-        </span>
+        <Hint content={productName}>
+          <span className="text-brand-purple-dark max-w-[38%] truncate text-xs font-semibold">
+            {productName}
+          </span>
+        </Hint>
         <span aria-hidden className="text-brand-purple/25">
           ·
         </span>
         <ProgressBadge filled={filled} total={total} />
         {/* AutoSave indicator mobile abajo del progress */}
         <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} />
+        {/* Paquete C — mismo resumen de avisos de calidad en la fila móvil. */}
+        <StudioQualityWarningsChip store={store} />
       </div>
 
       {/* M.3.b.UX.v4 Lucy 2026-05-15 — leyenda simplificada y contextualizada.
@@ -333,11 +349,188 @@ export function StudioToolbar({
 // vista previa (loader + disabled + aria-busy, patrón del resto del Estudio);
 // `isFinalizing` cubre el guardado/subida tras confirmar en la modal.
 
+// ──────────────────────────────────────────────────────────────────
+//  Fase 1A (2026-09-27) — Popover "qué falta" de «Vista previa»
+// ──────────────────────────────────────────────────────────────────
+//
+// Antes el botón bloqueado solo exponía un tooltip NATIVO (title) que en móvil
+// no existe y nunca decía QUÉ faltaba exactamente. Ahora, cuando «Vista
+// previa» está bloqueado por faltantes, un popover (radix-ui, mismo paquete
+// del Dialog/Sheet del proyecto) lista explícitamente:
+//   - Fotos por cargar, con la label de cada slot ("Ene", "1A", "3"…).
+//   - Textos requeridos IG faltantes, agrupados por unidad ("En 2: usuario").
+// Accesible: hover (desktop), tap/click (móvil), foco + Enter/Espacio
+// (teclado), Esc cierra (radix), trigger con nombre audible propio.
+
+/** Detalle de faltantes del diseño para el popover de «Vista previa». */
+export type FinalizeMissing = {
+  /** Labels de los slots sin foto ("Ene", "Feb", "1A", "3"…). */
+  photos: string[];
+  /** Textos requeridos IG faltantes, agrupados por unidad (slot). */
+  igTexts: Array<{ slot: string; fields: string[] }>;
+};
+
+/** Etiquetas CMS de los campos de texto requeridos de la Polaroid Instagram. */
+function igFieldLabels(texts: StudioTexts): Record<string, string> {
+  return {
+    user_name: texts.texto.campoIgUsuario,
+    location: texts.texto.campoIgUbicacion,
+    caption: texts.texto.campoIgTitulo,
+    hashtags: texts.texto.campoIgHashtags,
+  };
+}
+
+/**
+ * Hook compartido toolbar/FAB: arma el detalle de faltantes del diseño.
+ * Suscripciones ATÓMICAS (strings primitivos, patrón selectFilledSlotCount) →
+ * sin re-render en cascada; la expansión a labels se memoiza por clave.
+ * null = no falta nada (el botón se habilita normal, sin popover).
+ */
+function useFinalizeMissing(
+  store: StoreApi<StudioStoreState>,
+  backOptional: boolean,
+  slotLabels: string[] | undefined,
+): FinalizeMissing | null {
+  const texts = useStudioTexts();
+  const missingSlotKey = useStore(store, (s) => selectMissingSlotIndexesKey(s, backOptional));
+  const igPerSlotKey = useStore(store, (s) =>
+    s.canvasData
+      ? igMissingRequiredTextLayersPerSlot(s.canvasData)
+          .map((e) => `${e.slotIndex}:${e.layerIds.join("+")}`)
+          .join("|")
+      : "",
+  );
+  return useMemo(() => {
+    const labelOf = (slotIndex: number) => slotLabels?.[slotIndex] ?? String(slotIndex + 1);
+    const photos =
+      missingSlotKey === "" ? [] : missingSlotKey.split(",").map((k) => labelOf(Number(k)));
+    const fieldLabel = igFieldLabels(texts);
+    const igTexts =
+      igPerSlotKey === ""
+        ? []
+        : igPerSlotKey.split("|").map((entry) => {
+            const [slot, fields] = entry.split(":");
+            return {
+              slot: labelOf(Number(slot)),
+              fields: (fields ?? "")
+                .split("+")
+                .filter(Boolean)
+                .map((id) => fieldLabel[id] ?? id),
+            };
+          });
+    if (photos.length === 0 && igTexts.length === 0) return null;
+    return { photos, igTexts };
+  }, [missingSlotKey, igPerSlotKey, slotLabels, texts]);
+}
+
+function FinalizeMissingPopover({
+  missing,
+  side,
+  align = "end",
+  triggerClassName,
+  children,
+}: {
+  missing: FinalizeMissing;
+  side: "top" | "bottom";
+  align?: "start" | "center" | "end";
+  /** Clases del wrapper-trigger (el FAB le pasa su posicionamiento fixed). */
+  triggerClassName?: string;
+  children: React.ReactNode;
+}) {
+  const texts = useStudioTexts();
+  const [open, setOpen] = useState(false);
+  return (
+    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+      <PopoverPrimitive.Trigger asChild>
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={texts.lienzo.finalizePopoverAria}
+          className={[
+            "focus:ring-brand-purple cursor-help focus:ring-2 focus:ring-offset-2 focus:outline-none",
+            triggerClassName ?? "inline-flex rounded-md",
+          ].join(" ")}
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              setOpen((v) => !v);
+            }
+          }}
+        >
+          {children}
+        </span>
+      </PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          side={side}
+          align={align}
+          sideOffset={8}
+          collisionPadding={12}
+          aria-label={texts.lienzo.finalizePopoverAria}
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+          className="ring-brand-purple/15 z-50 w-72 max-w-[calc(100vw-2rem)] rounded-xl bg-white p-3 shadow-xl ring-1"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-brand-purple-dark text-xs font-bold">
+              {texts.lienzo.finalizePopoverTitulo}
+            </p>
+            <PopoverPrimitive.Close
+              aria-label={texts.comun.cerrar}
+              className="text-brand-muted hover:text-brand-purple-dark focus:ring-brand-purple inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full transition-colors focus:ring-2 focus:outline-none"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden />
+            </PopoverPrimitive.Close>
+          </div>
+          {missing.photos.length > 0 && (
+            <div className="mt-2">
+              <p className="text-brand-muted text-[11px] font-semibold">
+                {texts.lienzo.finalizePopoverFotos}
+              </p>
+              <ul className="mt-1 flex max-h-24 flex-wrap gap-1 overflow-y-auto">
+                {missing.photos.map((label) => (
+                  <li
+                    key={label}
+                    className="bg-brand-pink/10 text-brand-pink inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold"
+                  >
+                    {label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {missing.igTexts.length > 0 && (
+            <div className="mt-2">
+              <p className="text-brand-muted text-[11px] font-semibold">
+                {texts.lienzo.finalizePopoverTextos}
+              </p>
+              <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto">
+                {missing.igTexts.map((entry) => (
+                  <li key={entry.slot} className="text-brand-purple-dark text-[11px] leading-snug">
+                    <span className="bg-brand-purple/10 text-brand-purple-dark mr-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold">
+                      {entry.slot}
+                    </span>
+                    {entry.fields.join(", ")}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <PopoverPrimitive.Arrow className="fill-white" />
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
+  );
+}
+
 export function FinalizeButton({
   isFinalizing,
   isPreparing = false,
   canFinalize,
   disabledTooltip,
+  missing = null,
   onFinalize,
   variant,
 }: {
@@ -345,6 +538,8 @@ export function FinalizeButton({
   isPreparing?: boolean;
   canFinalize: boolean;
   disabledTooltip?: string;
+  /** Fase 1A — detalle de faltantes para el popover (null/undefined = sin popover). */
+  missing?: FinalizeMissing | null;
   onFinalize: () => void;
   variant: "inline" | "fab";
 }) {
@@ -363,67 +558,138 @@ export function FinalizeButton({
     : variant === "fab"
       ? texts.comun.guardando
       : texts.lienzo.finalizeGuardando;
+  const label = busy ? (
+    <>
+      <Loader2
+        className={variant === "fab" ? "h-5 w-5 animate-spin" : "h-4 w-4 animate-spin"}
+        aria-hidden
+      />
+      <span>{busyText}</span>
+    </>
+  ) : (
+    <>
+      <Sparkles className={variant === "fab" ? "h-5 w-5" : "h-4 w-4"} aria-hidden />
+      <span>{texts.lienzo.finalizeBtn}</span>
+    </>
+  );
+  // Fase 1A — el popover solo aparece bloqueado POR FALTANTES (no ocupado) y
+  // con detalle disponible. El botón conserva disabled (el popover se abre
+  // desde el wrapper: el botón queda pointer-events-none para que el tap/clic
+  // caiga en el trigger — un botón disabled no despacha eventos de puntero).
+  const showMissing =
+    !canFinalize &&
+    !busy &&
+    missing != null &&
+    (missing.photos.length > 0 || missing.igTexts.length > 0);
+  // Paquete E (2026-10-02) — patrón ÚNICO de CTA ocupado (studio-busy-cta.ts):
+  // ocupado = CONSERVA el fondo sólido del CTA activo y solo atenúa + bloquea
+  // el cursor; bloqueado por faltantes = morado /30–/40 (sin cambios).
+  const activeClasses =
+    variant === "fab"
+      ? "bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 ring-brand-purple/20 text-white shadow-2xl ring-4 hover:scale-105 active:scale-95"
+      : "bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 text-white shadow-md hover:shadow-lg";
+  const busyClasses =
+    (variant === "fab"
+      ? "bg-brand-purple shadow-brand-purple/30 ring-brand-purple/20 text-white shadow-2xl ring-4"
+      : "bg-brand-purple shadow-brand-purple/20 text-white shadow-md") +
+    ` ${STUDIO_CTA_BUSY_CLASSES}`;
+  const blockedClasses =
+    variant === "fab"
+      ? "bg-brand-purple/40 cursor-not-allowed text-white shadow-md"
+      : "bg-brand-purple/30 cursor-not-allowed text-white";
+  const stateClasses = busy ? busyClasses : canFinalize ? activeClasses : blockedClasses;
+
   if (variant === "fab") {
+    const fabBase = [
+      "focus:ring-brand-purple inline-flex h-14 items-center justify-center gap-2 rounded-full px-5 text-sm font-bold transition-all focus:ring-2 focus:ring-offset-2 focus:outline-none",
+      stateClasses,
+    ].join(" ");
+    if (showMissing) {
+      // El posicionamiento fixed pasa al WRAPPER (trigger del popover): el
+      // ancla de radix necesita la caja posicionada; el botón queda estático
+      // dentro y sin eventos de puntero (el tap lo recibe el wrapper).
+      return (
+        <FinalizeMissingPopover
+          missing={missing}
+          side="top"
+          align="end"
+          triggerClassName="fixed right-4 bottom-4 z-30 inline-flex rounded-full sm:hidden"
+        >
+          <button
+            type="button"
+            disabled
+            aria-label={ariaLabel}
+            aria-disabled
+            aria-busy={busy}
+            tabIndex={-1}
+            className={`${fabBase} pointer-events-none w-full`}
+          >
+            {label}
+          </button>
+        </FinalizeMissingPopover>
+      );
+    }
     return (
-      <button
-        type="button"
-        disabled={!canFinalize}
-        onClick={onFinalize}
-        title={disabledTooltip}
-        aria-label={ariaLabel}
-        aria-disabled={!canFinalize}
-        aria-busy={busy}
-        className={[
-          "focus:ring-brand-purple fixed right-4 bottom-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold transition-all focus:ring-2 focus:ring-offset-2 focus:outline-none sm:hidden",
-          canFinalize
-            ? "bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 ring-brand-purple/20 text-white shadow-2xl ring-4 hover:scale-105 active:scale-95"
-            : "bg-brand-purple/40 cursor-not-allowed text-white shadow-md",
-        ].join(" ")}
-      >
-        {busy ? (
-          <>
-            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-            <span>{busyText}</span>
-          </>
-        ) : (
-          <>
-            <Sparkles className="h-5 w-5" aria-hidden />
-            <span>{texts.lienzo.finalizeBtn}</span>
-          </>
-        )}
-      </button>
+      <Hint content={disabledTooltip}>
+        {/* Wrapper focusable: disabled no recibe hover/foco y el tooltip es
+            quien explica el bloqueo (motivo extra u ocupado, sin faltantes). */}
+        <span tabIndex={0} className="inline-flex">
+          <button
+            type="button"
+            disabled={!canFinalize}
+            onClick={onFinalize}
+            aria-label={ariaLabel}
+            aria-disabled={!canFinalize}
+            aria-busy={busy}
+            className={`${fabBase} fixed right-4 bottom-4 z-30 sm:hidden`}
+          >
+            {label}
+          </button>
+        </span>
+      </Hint>
     );
   }
 
   // Inline (desktop toolbar)
+  const inlineBase = [
+    "focus:ring-brand-purple inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-all focus:ring-2 focus:ring-offset-2 focus:outline-none",
+    stateClasses,
+  ].join(" ");
+  if (showMissing) {
+    return (
+      <FinalizeMissingPopover missing={missing} side="bottom" align="end">
+        <button
+          type="button"
+          disabled
+          aria-label={ariaLabel}
+          aria-disabled
+          aria-busy={busy}
+          tabIndex={-1}
+          className={`${inlineBase} pointer-events-none`}
+        >
+          {label}
+        </button>
+      </FinalizeMissingPopover>
+    );
+  }
   return (
-    <button
-      type="button"
-      disabled={!canFinalize}
-      onClick={onFinalize}
-      title={disabledTooltip}
-      aria-label={ariaLabel}
-      aria-disabled={!canFinalize}
-      aria-busy={busy}
-      className={[
-        "focus:ring-brand-purple inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-all focus:ring-2 focus:ring-offset-2 focus:outline-none",
-        canFinalize
-          ? "bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 text-white shadow-md hover:shadow-lg"
-          : "bg-brand-purple/30 cursor-not-allowed text-white",
-      ].join(" ")}
-    >
-      {busy ? (
-        <>
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          <span>{busyText}</span>
-        </>
-      ) : (
-        <>
-          <Sparkles className="h-4 w-4" aria-hidden />
-          <span>{texts.lienzo.finalizeBtn}</span>
-        </>
-      )}
-    </button>
+    <Hint content={disabledTooltip}>
+      {/* Wrapper focusable: disabled no recibe hover/foco y el tooltip es
+          quien explica el bloqueo (motivo extra u ocupado, sin faltantes). */}
+      <span tabIndex={0} className="inline-flex">
+        <button
+          type="button"
+          disabled={!canFinalize}
+          onClick={onFinalize}
+          aria-label={ariaLabel}
+          aria-disabled={!canFinalize}
+          aria-busy={busy}
+          className={inlineBase}
+        >
+          {label}
+        </button>
+      </span>
+    </Hint>
   );
 }
 
@@ -439,6 +705,7 @@ export function StudioFinalizeFab({
   isPreviewBuilding = false,
   finalizeBlockReason = null,
   backOptional = false,
+  slotLabels,
   onFinalize,
 }: {
   store: StoreApi<StudioStoreState>;
@@ -452,6 +719,8 @@ export function StudioFinalizeFab({
    * cuando el producto es de 2 caras y su schema declara backOptional.
    */
   backOptional?: boolean;
+  /** Fase 1A — labels por slot para el popover de faltantes (mismas de la grilla). */
+  slotLabels?: string[];
   onFinalize: () => void;
 }) {
   const isFinalizing = useStore(store, (s) => s.isFinalizing);
@@ -464,6 +733,8 @@ export function StudioFinalizeFab({
   const texts = useStudioTexts();
   const complete = backOptional ? total > 0 && missingFaceA === 0 : completeAll;
   const canFinalize = complete && !finalizeBlockReason && !isFinalizing && !isPreviewBuilding;
+  // Fase 1A — mismo detalle de faltantes del toolbar, para la variante móvil.
+  const missing = useFinalizeMissing(store, backOptional, slotLabels);
   const disabledTooltip = !complete
     ? fillStudioText(texts.lienzo.finalizeTooltip, {
         n: backOptional ? missingFaceA : total - filled,
@@ -475,6 +746,7 @@ export function StudioFinalizeFab({
       isPreparing={isPreviewBuilding}
       canFinalize={canFinalize}
       disabledTooltip={disabledTooltip}
+      missing={missing}
       onFinalize={onFinalize}
       variant="fab"
     />
@@ -540,16 +812,15 @@ function AutoSaveIndicator({
           </>
         )}
         {status.kind === "error" && (
-          <span
-            title={status.message}
-            className="flex max-w-[300px] items-center gap-1 truncate text-red-600 sm:max-w-[480px]"
-            role="alert"
-          >
-            <AlertCircle className="h-3 w-3 flex-shrink-0" />
-            <span className="truncate" title={status.message}>
-              {status.message || texts.lienzo.autosaveError}
+          <Hint content={status.message}>
+            <span
+              className="flex max-w-[300px] items-center gap-1 truncate text-red-600 sm:max-w-[480px]"
+              role="alert"
+            >
+              <AlertCircle className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">{status.message || texts.lienzo.autosaveError}</span>
             </span>
-          </span>
+          </Hint>
         )}
       </motion.span>
     </AnimatePresence>

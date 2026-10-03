@@ -67,6 +67,7 @@ const OBSERVED_EXPECTED = [
   'insert or update on table "sessions" violates foreign key constraint "sessions_user_id_fkey"',
   'insert or update on table "identities" violates foreign key constraint "identities_user_id_fkey"',
   'insert or update on table "mfa_factors" violates foreign key constraint "mfa_factors_user_id_fkey"',
+  'insert or update on table "one_time_tokens" violates foreign key constraint "one_time_tokens_user_id_fkey"',
   'column "is_sso_user" of relation "auth.users" does not exist',
   'column "email_confirmed_at" of relation "users" does not exist',
   'column "parent" of relation "refresh_tokens" does not exist',

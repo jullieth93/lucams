@@ -100,7 +100,6 @@ export type CatalogProductSummary = {
   shippingDaysMax: number;
   minimumQuantity: number;
   maximumQuantity: number | null;
-  premadeSurcharge: number;
   variantCount: number;
   /** #5 — hay al menos una variante activa con stock > 0 (para el badge "Agotado" en las cards). */
   inStock: boolean;
@@ -349,7 +348,6 @@ function summarizeProduct(p: ProductWithIncludes): CatalogProductSummary {
     shippingDaysMax: p.shippingDaysMax,
     minimumQuantity: p.minimumQuantity,
     maximumQuantity: p.maximumQuantity,
-    premadeSurcharge: p.premadeSurcharge,
     variantCount: p.variants.filter((v) => v.isActive && !v.deletedAt).length,
     inStock: p.variants.some((v) => v.isActive && !v.deletedAt && v.stock > 0), // #5
     minPrice: Math.min(...allPrices),

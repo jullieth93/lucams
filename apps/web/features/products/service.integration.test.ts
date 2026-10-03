@@ -883,6 +883,173 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
   });
 
   // ════════════════════════════════════════════════════════════════════════
+  // Personalización desde el admin (2026-10-02) — kind + schema round-trip
+  // ════════════════════════════════════════════════════════════════════════
+
+  describe("personalización (kind + schema)", () => {
+    it("createProduct persiste kind foto + schema completo y deriva isPersonalizable=true", async () => {
+      const cat = await makeCategory({ label: "pz-photo" });
+      const input = productInput(cat.id, {
+        personalizationKind: "PHOTO_GRID",
+        photoSlots: 6,
+        facesPerUnit: 2,
+        aspectRatio: "4:5",
+        galleryTag: `${RUN}-gallery`,
+        canvasBaseScale: 0.8,
+        gridColsOverride: 3,
+      });
+      const product = await createProduct(input, null);
+      const row = await prisma.product.findUnique({
+        where: { id: product.id },
+        select: { personalizationKind: true, personalizationSchema: true, isPersonalizable: true },
+      });
+      expect(row!.personalizationKind).toBe("PHOTO_GRID");
+      expect(row!.isPersonalizable).toBe(true);
+      expect(row!.personalizationSchema).toMatchObject({
+        photoSlots: 6,
+        facesPerUnit: 2,
+        aspectRatio: "4:5",
+        galleryTag: `${RUN}-gallery`,
+        canvasBaseScale: 0.8,
+        gridColsOverride: 3,
+      });
+    });
+
+    it("createProduct TEXT_ONLY nombre → schema {variant,letterCountMin/Max,language}", async () => {
+      const cat = await makeCategory({ label: "pz-name" });
+      const product = await createProduct(
+        productInput(cat.id, {
+          personalizationKind: "TEXT_ONLY",
+          textOnlyVariant: "name",
+          letterCountMin: 3,
+          letterCountMax: 10,
+          language: "es",
+        }),
+        null,
+      );
+      const row = await prisma.product.findUnique({
+        where: { id: product.id },
+        select: { personalizationSchema: true, isPersonalizable: true },
+      });
+      expect(row!.personalizationSchema).toEqual({
+        variant: "name",
+        letterCountMin: 3,
+        letterCountMax: 10,
+        language: "es",
+      });
+      expect(row!.isPersonalizable).toBe(true);
+    });
+
+    it("createProduct NONE explícito → schema null e isPersonalizable=false (derivado, gana al flag)", async () => {
+      const cat = await makeCategory({ label: "pz-none" });
+      const product = await createProduct(
+        productInput(cat.id, { personalizationKind: "NONE", isPersonalizable: true }),
+        null,
+      );
+      const row = await prisma.product.findUnique({
+        where: { id: product.id },
+        select: { personalizationKind: true, personalizationSchema: true, isPersonalizable: true },
+      });
+      expect(row!.personalizationKind).toBe("NONE");
+      expect(row!.personalizationSchema).toBeNull();
+      // El kind manda: NONE + isPersonalizable=true en el input → false.
+      expect(row!.isPersonalizable).toBe(false);
+    });
+
+    it("createProduct sin kind (caller directo legado) → NONE y conserva input.isPersonalizable", async () => {
+      const cat = await makeCategory({ label: "pz-legacy" });
+      const product = await createProduct(productInput(cat.id, { isPersonalizable: true }), null);
+      const row = await prisma.product.findUnique({
+        where: { id: product.id },
+        select: { personalizationKind: true, isPersonalizable: true },
+      });
+      expect(row!.personalizationKind).toBe("NONE");
+      expect(row!.isPersonalizable).toBe(true);
+    });
+
+    it("updateProduct foto → TEXT_ONLY limpia las keys de foto y preserva las no gestionadas", async () => {
+      const cat = await makeCategory({ label: "pz-switch" });
+      const p = await makeProduct({ categoryId: cat.id, label: "pz-switch-prod" });
+      await prisma.product.update({
+        where: { id: p.id },
+        data: {
+          personalizationKind: "PHOTO_PACK",
+          personalizationSchema: {
+            photoSlots: 6,
+            galleryTag: `${RUN}-old-tag`,
+            shape: "heart", // key NO gestionada por el form → sobrevive
+          },
+        },
+      });
+      const updated = await updateProduct(
+        {
+          id: p.id,
+          personalizationKind: "TEXT_ONLY",
+          textOnlyVariant: "phrase",
+          maxChars: 80,
+          // nulls del form: el panel de foto ya no aplica → borrar sus keys.
+          photoSlots: null,
+          facesPerUnit: null,
+          aspectRatio: null,
+          galleryTag: null,
+          canvasBaseScale: null,
+          gridColsOverride: null,
+        },
+        null,
+      );
+      expect(updated.personalizationKind).toBe("TEXT_ONLY");
+      expect(updated.isPersonalizable).toBe(true);
+      expect(updated.personalizationSchema).toEqual({
+        shape: "heart",
+        variant: "phrase",
+        maxChars: 80,
+      });
+    });
+
+    it("updateProduct con SOLO kind (sin campos) no toca el personalizationSchema", async () => {
+      const cat = await makeCategory({ label: "pz-kindonly" });
+      const p = await makeProduct({ categoryId: cat.id, label: "pz-kindonly-prod" });
+      await prisma.product.update({
+        where: { id: p.id },
+        data: {
+          personalizationKind: "NONE",
+          personalizationSchema: { letterSet: "vowels", language: "es" },
+        },
+      });
+      const updated = await updateProduct({ id: p.id, personalizationKind: "PHOTO_PACK" }, null);
+      expect(updated.personalizationKind).toBe("PHOTO_PACK");
+      expect(updated.isPersonalizable).toBe(true);
+      expect(updated.personalizationSchema).toEqual({ letterSet: "vowels", language: "es" });
+    });
+
+    it("updateProduct a NONE con nulls borra las keys gestionadas y deriva isPersonalizable=false", async () => {
+      const cat = await makeCategory({ label: "pz-tonone" });
+      const p = await makeProduct({ categoryId: cat.id, label: "pz-tonone-prod" });
+      await prisma.product.update({
+        where: { id: p.id },
+        data: {
+          personalizationKind: "EVENT_FAVOR",
+          isPersonalizable: true,
+          personalizationSchema: { eventFields: ["date"], allowPhoto: true, minQuantity: 30 },
+        },
+      });
+      const updated = await updateProduct(
+        {
+          id: p.id,
+          personalizationKind: "NONE",
+          eventFields: null,
+          allowPhoto: null,
+        },
+        null,
+      );
+      expect(updated.personalizationKind).toBe("NONE");
+      expect(updated.isPersonalizable).toBe(false);
+      // minQuantity no la gestiona el form → preservada.
+      expect(updated.personalizationSchema).toEqual({ minQuantity: 30 });
+    });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
   // softDeleteProduct / restoreProduct / toggleProductActive
   // ════════════════════════════════════════════════════════════════════════
 

@@ -19,7 +19,7 @@
  */
 
 import "server-only";
-import { prisma } from "@/lib/db";
+import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getShippingProvider } from "@/features/shipping/provider";
 import { getEffectiveShippingDims } from "@/features/products/shipping-schemas";
@@ -30,6 +30,8 @@ import { transitionOrder, clearCartAfterPaid, OrderTransitionError } from "./ser
 import { FetchTimeoutError } from "@/lib/fetch-with-timeout";
 import { decrementStockForOrder } from "./stock";
 import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
+import { LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
+import { buildShipmentLastError } from "./shipment-error";
 import type { ShippingAddressInput } from "./schemas";
 import {
   sendOrderConfirmationOnce,
@@ -503,6 +505,51 @@ export async function processPaidOrder(
   // Idempotente por Referral.status y best-effort (nunca interrumpe la saga).
   await issueReferralRewardsIfFirstPaidOrder(order.id);
 
+  // Envío propio "Envío Lucam's" (carrier "lucams"): NO se genera guía Aveonline
+  // — la entrega es mensajería interna de Bogotá que se opera a mano desde
+  // /admin/pedidos. Se marca trackingNumber INTERNO-<orderNumber>: el guard
+  // `if (order.trackingNumber)` de arriba hace los reintentos idempotentes y el
+  // webhook de Aveonline nunca la toca (esa guía no existe en su sistema). El
+  // claim condicional (trackingNumber IS NULL) serializa invocaciones
+  // concurrentes, igual que el claim de guía. Va ANTES del armado de items con
+  // dims: la entrega interna no necesita peso/dimensiones de Aveonline.
+  if (order.shippingCarrier === LUCAMS_CARRIER) {
+    const trackingNumber = `INTERNO-${order.number}`;
+    const internalClaim = await prisma.order.updateMany({
+      where: { id: order.id, trackingNumber: null },
+      data: { trackingNumber, shipmentClaimedAt: new Date() },
+    });
+    if (internalClaim.count !== 1) {
+      const fresh = await prisma.order.findUnique({
+        where: { id: order.id },
+        select: { trackingNumber: true },
+      });
+      return {
+        status: "already_processed",
+        trackingNumber: fresh?.trackingNumber ?? undefined,
+      };
+    }
+    try {
+      await transitionOrder(order.id, "FULFILLING");
+    } catch (err) {
+      // El tracking ya quedó persistido — un reintento del webhook la promueve
+      // (mismo self-heal #7 de las órdenes con guía).
+      logger.error({
+        event: "order.saga.paid.internal_delivery_transition_failed",
+        orderId: order.id,
+        orderNumber: order.number,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+    logger.info({
+      event: "order.saga.paid.internal_delivery_marked",
+      orderId: order.id,
+      orderNumber: order.number,
+      trackingNumber,
+    });
+    return { status: "ok", trackingNumber };
+  }
+
   // 4) Construir items para Aveonline desde OrderItem con dims efectivos.
   //    Si algún variant carece de dims (caso edge, legacy data), retornamos
   //    shipment_failed con detalle — admin reconcilia desde /admin/pedidos/[id].
@@ -679,6 +726,24 @@ export async function processPaidOrder(
     // request nunca salió: circuit-open), donde es seguro reintentar.
     const isTimeout =
       err instanceof FetchTimeoutError || (err instanceof Error && err.name === "TimeoutError");
+    // Paquete G (2026-10-02) — persistir el intento fallido SANITIZADO (sin PII)
+    // en Order.shipmentLastError: el detalle admin muestra la causa REAL de la
+    // transportadora + sugerencia operativa, no solo el throw genérico. Best-effort:
+    // si este update falla ya quedó el logger.error de arriba. Se limpia al
+    // persistir el tracking (guía generada OK en un reintento posterior).
+    await prisma.order
+      .updateMany({
+        where: { id: order.id },
+        data: {
+          shipmentLastError: buildShipmentLastError({
+            err,
+            carrier: order.shippingCarrier ?? null,
+            destination: { city: ship.city, department: ship.department },
+            timeout: isTimeout,
+          }),
+        },
+      })
+      .catch(() => null);
     if (isTimeout) {
       await markNeedsReconciliation(
         order.id,
@@ -720,6 +785,9 @@ export async function processPaidOrder(
         trackingUrl: shipmentResult.trackingUrl,
         labelUrl: shipmentResult.labelUrl,
         shippingCarrier: shipmentResult.carrier,
+        // La guía se generó: limpiar el último error persistido (Paquete G) —
+        // shipmentLastError solo describe intentos fallidos AÚN sin guía.
+        shipmentLastError: Prisma.DbNull,
       },
     });
   } catch (err) {

@@ -14,6 +14,7 @@ import Link from "next/link";
 import { Package, Plus, Edit3, ShoppingBag } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 // Note: las acciones de eliminar/archivar de productos están en el page
 // de edición /admin/productos/[id], no en este listado. Aquí solo edit.
 import {
@@ -513,13 +514,14 @@ function PaginationLink({
   if (status && status !== "all") params.set("status", status);
   if (sort && sort !== "recent") params.set("sort", sort);
   return (
-    <Link
-      href={`/admin/productos?${params.toString()}`}
-      title={title}
-      className="border-brand-purple/20 hover:bg-brand-purple/5 text-brand-purple-dark rounded-md border bg-white px-3 py-1.5 text-xs font-medium"
-    >
-      {children}
-    </Link>
+    <Hint content={title}>
+      <Link
+        href={`/admin/productos?${params.toString()}`}
+        className="border-brand-purple/20 hover:bg-brand-purple/5 text-brand-purple-dark rounded-md border bg-white px-3 py-1.5 text-xs font-medium"
+      >
+        {children}
+      </Link>
+    </Hint>
   );
 }
 

@@ -19,6 +19,7 @@
 import { useRef, useState, useTransition } from "react";
 import { Loader2, Plus, Trash2, ArrowUp, ArrowDown, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import {
   uploadProductImagesAction,
   reorderProductImagesAction,
@@ -147,27 +148,39 @@ export function ProductImages({ productId, images }: { productId: string; images
               ) : (
                 // 5a: un solo clic para volver portada cualquier foto (antes había
                 // que apretar ↑ varias veces). Siempre visible, no solo en hover.
-                <button
-                  type="button"
-                  className="text-brand-purple-dark absolute top-1.5 left-1.5 inline-flex items-center gap-1 rounded bg-white/95 px-1.5 py-0.5 text-[10px] font-semibold shadow-sm hover:bg-white disabled:opacity-40"
-                  onClick={() => handleReorder(idx, 0)}
-                  disabled={pending}
-                  title="Usar esta foto como portada del catálogo"
-                >
-                  <Star className="h-2.5 w-2.5" /> Hacer portada
-                </button>
+                <Hint content="Usar esta foto como portada del catálogo">
+                  {/* span wrapper: el button disabled no recibe hover/foco, el span sí.
+                      Las clases de posición absoluta viven en el span. */}
+                  <span
+                    tabIndex={pending ? 0 : undefined}
+                    className="absolute top-1.5 left-1.5 inline-flex"
+                  >
+                    <button
+                      type="button"
+                      className="text-brand-purple-dark inline-flex items-center gap-1 rounded bg-white/95 px-1.5 py-0.5 text-[10px] font-semibold shadow-sm hover:bg-white disabled:opacity-40"
+                      onClick={() => handleReorder(idx, 0)}
+                      disabled={pending}
+                    >
+                      <Star className="h-2.5 w-2.5" /> Hacer portada
+                    </button>
+                  </span>
+                </Hint>
               )}
               <div className="absolute right-1.5 bottom-1.5 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                <button
-                  type="button"
-                  className="text-brand-purple-dark/80 rounded bg-white/95 p-1.5 hover:bg-white disabled:opacity-40"
-                  onClick={() => handleReorder(idx, idx - 1)}
-                  disabled={pending || idx === 0}
-                  aria-label="Mover arriba"
-                  title="Mover una posición arriba"
-                >
-                  <ArrowUp className="h-3.5 w-3.5" />
-                </button>
+                <Hint content="Mover una posición arriba">
+                  {/* span wrapper: el button disabled no recibe hover/foco, el span sí. */}
+                  <span tabIndex={pending || idx === 0 ? 0 : undefined} className="inline-flex">
+                    <button
+                      type="button"
+                      className="text-brand-purple-dark/80 rounded bg-white/95 p-1.5 hover:bg-white disabled:opacity-40"
+                      onClick={() => handleReorder(idx, idx - 1)}
+                      disabled={pending || idx === 0}
+                      aria-label="Mover arriba"
+                    >
+                      <ArrowUp className="h-3.5 w-3.5" />
+                    </button>
+                  </span>
+                </Hint>
                 <button
                   type="button"
                   className="text-brand-purple-dark/80 rounded bg-white/95 p-1.5 hover:bg-white disabled:opacity-40"

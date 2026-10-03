@@ -5,7 +5,7 @@
  * @/lib/db) y expone una sola función:
  *   - recordCookieConsent({ prefs, customerId?, email?, ip?, userAgent? }):
  *     lee la versión vigente del aviso de privacidad vía
- *     getSettingValue("PRIVACY_POLICY_VERSION", "v5 · 2026-09-04") y persiste UNA FILA por
+ *     getSettingValue("PRIVACY_POLICY_VERSION", "v1 · 2026-09-29") y persiste UNA FILA por
  *     cada scope de CONSENT_SCOPES (las 4 cookies: NECESSARY/FUNCTIONAL/
  *     ANALYTICS/MARKETING) con `accepted = !!prefs[key]`, copiando version, ip,
  *     userAgent, customerId, email a cada fila. Devuelve `undefined` (no retorna
@@ -322,7 +322,7 @@ describe.skipIf(!hasDb)("consent/service — integración DB (audit trail Ley 15
 
       // Contrato real del SUT: clave + fallback exactos (el fallback sigue la
       // versión del texto canónico en packages/db/legal-content).
-      expect(getSettingValueMock).toHaveBeenCalledWith("PRIVACY_POLICY_VERSION", "v5 · 2026-09-04");
+      expect(getSettingValueMock).toHaveBeenCalledWith("PRIVACY_POLICY_VERSION", "v1 · 2026-09-29");
     });
 
     it("la MISMA versión se estampa en las 4 filas (consistencia del snapshot legal)", async () => {
@@ -364,11 +364,11 @@ describe.skipIf(!hasDb)("consent/service — integración DB (audit trail Ley 15
       // Simulamos que el setting no existe → getSettingValue devuelve su fallback.
       // Para mantener la limpieza SCOPED, lo enmascaramos con una versión que
       // contiene el fallback pero es RUN-única.
-      const fallbackVersion = `${nextId()}-v5 · 2026-09-04`;
+      const fallbackVersion = `${nextId()}-v1 · 2026-09-29`;
       usedVersions.add(fallbackVersion);
       getSettingValueMock.mockImplementationOnce((_key: string, fb: string) => {
         // Verificamos que el fallback que el SUT pasa es exactamente el canónico vigente.
-        expect(fb).toBe("v5 · 2026-09-04");
+        expect(fb).toBe("v1 · 2026-09-29");
         return fallbackVersion;
       });
 

@@ -142,18 +142,22 @@ export async function updateCoupon(input: CouponUpdateInput, actorId: string) {
 }
 
 /*
- * Invalidación de caché en pause/resume/archive: SOLO updateTag("coupons"), a
- * diferencia de create/update que también tocan "catalog". Es deliberado y
- * suficiente (CF-06): el único consumidor cacheado de cupones (listPublicCoupons
- * en lib/catalog.ts) lleva AMBOS tags, así que "coupons" ya lo invalida; marcar
- * además "catalog" barrería toda la caché de productos/categorías (1h TTL) en
- * cada pausa o archivo de cupón — innecesariamente amplio.
+ * Invalidación de caché en pause/resume/archive: AMBOS tags, igual que
+ * create/update. CF-06 (decisión original): solo "coupons" bastaba porque el
+ * único consumer cacheado de cupones (listPublicCoupons en lib/catalog.ts)
+ * lleva ambos tags, y marcar "catalog" barría toda la caché de
+ * productos/categorías (1h TTL) en cada pausa — innecesariamente amplio.
+ * B-7 (auditoría cableado cliente↔admin 2026-10-02) revierte esa decisión:
+ * un futuro consumer cacheado solo con "catalog" quedaría stale, y el costo
+ * de barrer "catalog" es aceptable porque pause/resume/archive son
+ * operaciones admin poco frecuentes.
  */
 export async function pauseCoupon(id: string, actorId: string) {
   await prisma.coupon.update({
     where: { id },
     data: { isActive: false, updatedBy: actorId },
   });
+  updateTag("catalog");
   updateTag("coupons");
 }
 
@@ -162,6 +166,7 @@ export async function resumeCoupon(id: string, actorId: string) {
     where: { id },
     data: { isActive: true, updatedBy: actorId },
   });
+  updateTag("catalog");
   updateTag("coupons");
 }
 
@@ -170,5 +175,6 @@ export async function archiveCoupon(id: string, actorId: string) {
     where: { id },
     data: { deletedAt: new Date(), deletedBy: actorId, isActive: false },
   });
+  updateTag("catalog");
   updateTag("coupons");
 }

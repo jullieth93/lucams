@@ -14,6 +14,7 @@ import {
   countBadgeLabel,
   filterPhotoScenes,
   galleryEscapeAction,
+  galleryScenes,
   initialModalView,
   scenesForKind,
 } from "./scene-gallery";
@@ -65,6 +66,32 @@ describe("scenesForKind", () => {
       expect(scenes.length).toBeGreaterThan(0);
       expect(new Set(scenes).size).toBe(scenes.length);
     }
+  });
+});
+
+describe("galleryScenes — gate SIN IMÁN", () => {
+  it("calendario sin imán (Fase 1A, 2026-09-27): sin escenas nevera/tablero — su flujo vive en el visor de detalle", () => {
+    expect(galleryScenes("calendar", false, false)).toEqual([]);
+  });
+
+  it("Paquete D (2026-10-02): el resto de productos NO se gatea por variante — el 3D es ilustrativo", () => {
+    // Botón 3D presente también con variante "sin imán" (separadores, tiras…).
+    expect(galleryScenes("photo", true, false)).toEqual([
+      "fridge",
+      "polaroid",
+      "board",
+      "shelf",
+      "gift",
+    ]);
+    expect(galleryScenes("photo", false, false)).toEqual(["fridge", "board", "shelf", "gift"]);
+    expect(galleryScenes("bookmark", false, false)).toEqual(["book"]);
+    expect(galleryScenes("letters", false, false)).toEqual(["memo"]);
+  });
+
+  it("magnet true/undefined: mismas escenas de siempre por kind", () => {
+    expect(galleryScenes("calendar", false, true)).toEqual(["fridge", "board"]);
+    expect(galleryScenes("calendar", false, undefined)).toEqual(["fridge", "board"]);
+    expect(galleryScenes("photo", true)).toEqual(["fridge", "polaroid", "board", "shelf", "gift"]);
   });
 });
 

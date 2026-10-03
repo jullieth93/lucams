@@ -15,6 +15,7 @@
  */
 
 import { AdminBadge } from "@/components/admin-page";
+import { Hint } from "@/components/ui/tooltip";
 import type { StorefrontVisibility } from "@/features/products/storefront-visibility";
 
 const LABELS: Record<StorefrontVisibility["status"], string> = {
@@ -42,13 +43,16 @@ export function StorefrontVisibilityChip({
 }) {
   const reason = "reason" in visibility ? visibility.reason : null;
   return (
-    <span className="inline-flex flex-col items-center gap-0.5" title={reason ?? undefined}>
-      <AdminBadge tone={TONES[visibility.status]}>{LABELS[visibility.status]}</AdminBadge>
-      {showReason && reason && (
-        <span className="text-brand-muted max-w-44 text-center text-[10px] leading-tight">
-          {reason}
-        </span>
-      )}
-    </span>
+    // Hint con content null renderiza el chip pelado — equivale al title ausente.
+    <Hint content={reason}>
+      <span className="inline-flex flex-col items-center gap-0.5">
+        <AdminBadge tone={TONES[visibility.status]}>{LABELS[visibility.status]}</AdminBadge>
+        {showReason && reason && (
+          <span className="text-brand-muted max-w-44 text-center text-[10px] leading-tight">
+            {reason}
+          </span>
+        )}
+      </span>
+    </Hint>
   );
 }

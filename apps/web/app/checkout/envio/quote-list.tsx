@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { Truck, Clock, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { carrierLogo } from "@/lib/carrier-logos";
 import { formatCOP } from "@/lib/format";
 import { selectShippingAction } from "./actions";
 import type { ShippingSelectionInput } from "@/features/checkout/schemas";
@@ -17,6 +19,7 @@ export function QuoteList({
   preselectedQuoteId,
   onSelectionChange,
   texts,
+  lucamsCutoffHour,
 }: {
   quotes: ShippingSelectionInput[];
   /** Set de cotizaciones sellado HMAC por el servidor (anti-manipulación de flete). */
@@ -25,6 +28,9 @@ export function QuoteList({
   onSelectionChange?: (quoteId: string) => void;
   /** Textos CMS de la lista de envío (roadmap B8). */
   texts: CheckoutTexts["shipping"];
+  /** Hora límite del envío propio (settings LUCAMS_SHIPPING_CUTOFF_HOUR) — la
+   *  inyecta la página server; NUNCA se hardcodea en el copy del cliente. */
+  lucamsCutoffHour: number;
 }) {
   const [selected, setSelected] = useState<string | null>(
     preselectedQuoteId ?? quotes[0]?.quoteId ?? null,
@@ -36,11 +42,19 @@ export function QuoteList({
 
   const chosen = quotes.find((q) => q.quoteId === selected);
 
+  // Promesas "Envío Lucam's" (CMS con tokens): {{cutoff}} = hora límite de
+  // settings, {{days}} = deliveryDays calculado server-side con la regla
+  // producción + corte (lib/delivery-estimate.ts — ya viene sellado en la oferta).
+  const cutoffLabel = String(lucamsCutoffHour).padStart(2, "0");
+  const lucamsTodayText = texts.lucamsToday.replace("{{cutoff}}", cutoffLabel);
+  const lucamsDaysText = (days: number) => texts.lucamsDays.replace("{{days}}", String(days));
+
   return (
     <form action={selectShippingAction} className="space-y-4">
       <ul role="radiogroup" aria-label={texts.listTitle} className="space-y-2">
         {quotes.map((q) => {
           const isSelected = selected === q.quoteId;
+          const logo = carrierLogo(q.carrier);
           return (
             <li key={q.quoteId}>
               <label
@@ -62,29 +76,63 @@ export function QuoteList({
                   className="sr-only"
                   aria-checked={isSelected}
                 />
-                <span
-                  className={
-                    "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full transition-colors " +
-                    (isSelected
-                      ? "bg-brand-purple text-white"
-                      : "bg-brand-purple/10 text-brand-muted")
-                  }
-                >
-                  {isSelected ? <Check className="h-5 w-5" /> : <Truck className="h-4 w-4" />}
-                </span>
+                {logo ? (
+                  // Logo oficial de la transportadora (o marca Lucam's). Caja
+                  // blanca redondeada: unifica el área visual y da contraste a
+                  // los assets transparentes/oscuros. max-w + object-contain:
+                  // los logos muy anchos (Servientrega 5.9:1) se letterboxean
+                  // sin distorsionar ni romper la fila.
+                  <span className="border-brand-purple/10 flex h-10 flex-shrink-0 items-center justify-center rounded-lg border bg-white px-2">
+                    <Image
+                      src={logo.src}
+                      alt={logo.alt}
+                      width={logo.width}
+                      height={logo.height}
+                      unoptimized={logo.src.endsWith(".svg")}
+                      className="h-7 w-auto max-w-24 object-contain"
+                    />
+                  </span>
+                ) : (
+                  <span
+                    className={
+                      "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full transition-colors " +
+                      (isSelected
+                        ? "bg-brand-purple text-white"
+                        : "bg-brand-purple/10 text-brand-muted")
+                    }
+                  >
+                    {isSelected ? <Check className="h-5 w-5" /> : <Truck className="h-4 w-4" />}
+                  </span>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="text-brand-purple-dark text-sm font-semibold">
                     {q.carrierName}
                   </div>
-                  <div className="text-brand-muted mt-0.5 flex items-center gap-2 text-xs">
+                  <div className="text-brand-muted mt-0.5 flex flex-wrap items-center gap-2 text-xs">
                     <Clock className="h-3 w-3" />
-                    {/* #25 — es tiempo de TRÁNSITO, no de entrega total; nunca "Entrega hoy" a secas
-                      (falta la fabricación). Ver la nota bajo la lista. */}
-                    {q.deliveryDays === 0
-                      ? "Estimado de la transportadora: el mismo día del despacho"
-                      : q.deliveryDays === 1
-                        ? "Estimado de la transportadora: 1 día hábil tras el despacho"
-                        : `Estimado de la transportadora: ${q.deliveryDays} días hábiles tras el despacho`}
+                    {q.carrier === "lucams" ? (
+                      <>
+                        {/* Envío propio Lucam's: deliveryDays YA incluye la
+                            fabricación a mano + la hora de corte (lo calculó el
+                            servidor con lib/delivery-estimate.ts). 0 = entrega
+                            hoy (solo posible sin fabricación pendiente y antes
+                            del cutoff); >0 = días hábiles hasta la entrega. */}
+                        {q.deliveryDays === 0 ? lucamsTodayText : lucamsDaysText(q.deliveryDays)}
+                        <span className="bg-brand-turquoise/40 rounded px-1.5 py-0.5 text-[10px] font-semibold text-teal-900">
+                          {q.deliveryDays === 0 ? "Envío Lucam's · mismo día" : "Envío Lucam's"}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        {/* #25 — es tiempo de TRÁNSITO, no de entrega total; nunca "Entrega hoy" a secas
+                          (falta la fabricación). Ver la nota bajo la lista. */}
+                        {q.deliveryDays === 0
+                          ? "Estimado de la transportadora: el mismo día del despacho"
+                          : q.deliveryDays === 1
+                            ? "Estimado de la transportadora: 1 día hábil tras el despacho"
+                            : `Estimado de la transportadora: ${q.deliveryDays} días hábiles tras el despacho`}
+                      </>
+                    )}
                     {q.contraentrega && (
                       <span className="bg-brand-yellow/30 ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
                         Contraentrega

@@ -36,7 +36,11 @@ import {
   AdminEmpty,
 } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
-import { getCustomerDetail, getCustomerTotalSpent } from "@/features/customers/service";
+import {
+  getCustomerDetail,
+  getCustomerReferralRows,
+  getCustomerTotalSpent,
+} from "@/features/customers/service";
 import { formatCOP } from "@/lib/format";
 
 export const metadata: Metadata = {
@@ -68,14 +72,27 @@ const ORDER_STATUS_LABEL: Record<string, string> = {
   REFUNDED: "Reembolsada",
 };
 
+const REFERRAL_STATUS_TONE: Record<string, "emerald" | "amber" | "slate"> = {
+  PENDING: "amber",
+  REWARDED: "emerald",
+  EXPIRED: "slate",
+};
+
+const REFERRAL_STATUS_LABEL: Record<string, string> = {
+  PENDING: "Pendiente",
+  REWARDED: "Cupón entregado",
+  EXPIRED: "Sin recompensa",
+};
+
 export default async function ClienteDetailPage({ params }: { params: RouteParams }) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
 
   const { id } = await params;
-  const [customer, totalSpent] = await Promise.all([
+  const [customer, totalSpent, referralRows] = await Promise.all([
     getCustomerDetail(id),
     getCustomerTotalSpent(id),
+    getCustomerReferralRows(id),
   ]);
 
   if (!customer) notFound();
@@ -370,36 +387,68 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
                 ({customer._count.referrals})
               </span>
             </h2>
-            {customer.referrals.length === 0 ? (
+            {customer.referrals.length === 0 && referralRows.length === 0 ? (
               <AdminEmpty
                 icon={<Award className="h-5 w-5" />}
                 title="Sin referidos aún"
                 description={`Si comparte su código ${customer.referralCode} y alguien se registra con él, aparecerá acá.`}
               />
             ) : (
-              <AdminCard className="overflow-hidden p-0">
-                <ul className="divide-brand-purple/10 divide-y">
-                  {customer.referrals.map((r) => {
-                    const refName = [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email;
-                    return (
-                      <li
-                        key={r.id}
-                        className="flex items-center justify-between gap-2 p-3 text-sm"
-                      >
-                        <Link
-                          href={`/admin/clientes/${r.id}`}
-                          className="text-brand-purple-dark hover:text-brand-purple truncate"
+              <div className="space-y-3">
+                {customer.referrals.length > 0 && (
+                  <AdminCard className="overflow-hidden p-0">
+                    <ul className="divide-brand-purple/10 divide-y">
+                      {customer.referrals.map((r) => {
+                        const refName =
+                          [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email;
+                        return (
+                          <li
+                            key={r.id}
+                            className="flex items-center justify-between gap-2 p-3 text-sm"
+                          >
+                            <Link
+                              href={`/admin/clientes/${r.id}`}
+                              className="text-brand-purple-dark hover:text-brand-purple truncate"
+                            >
+                              {refName}
+                            </Link>
+                            <span className="text-brand-muted text-[11px]">
+                              {dateFmt.format(r.createdAt)}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </AdminCard>
+                )}
+                {/* T7 — filas del modelo Referral: el admin ve si la recompensa
+                    (cupón 10%) se entregó, no solo quiénes se registraron. */}
+                {referralRows.length > 0 && (
+                  <AdminCard className="overflow-hidden p-0">
+                    <ul className="divide-brand-purple/10 divide-y">
+                      {referralRows.map((row) => (
+                        <li
+                          key={row.id}
+                          className="flex items-center justify-between gap-2 p-3 text-sm"
                         >
-                          {refName}
-                        </Link>
-                        <span className="text-brand-muted text-[11px]">
-                          {dateFmt.format(r.createdAt)}
-                        </span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </AdminCard>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-brand-purple-dark truncate">
+                              {row.referredEmail}
+                            </div>
+                            <div className="text-brand-muted text-[11px]">
+                              {dateFmt.format(row.createdAt)}
+                              {row.rewardedAt ? ` · cupón ${dateFmt.format(row.rewardedAt)}` : ""}
+                            </div>
+                          </div>
+                          <AdminBadge tone={REFERRAL_STATUS_TONE[row.status] ?? "slate"}>
+                            {REFERRAL_STATUS_LABEL[row.status] ?? row.status}
+                          </AdminBadge>
+                        </li>
+                      ))}
+                    </ul>
+                  </AdminCard>
+                )}
+              </div>
             )}
           </section>
         </div>

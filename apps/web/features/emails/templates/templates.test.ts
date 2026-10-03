@@ -341,6 +341,17 @@ describe("orderConfirmationEmail", () => {
     expect(r.text).not.toContain("Descuento");
   });
 
+  it("entrega propia (internalDelivery): no promete guía ni transportadora externa", async () => {
+    const r = await orderConfirmationEmail(
+      ocData({ shippingCarrier: "Envío Lucam's", internalDelivery: true }),
+    );
+    expect(r.html).toContain("nuestro equipo Lucam's");
+    expect(r.html).not.toContain("número de guía");
+    expect(r.html).not.toContain("el tiempo lo pone la transportadora");
+    // La fila de envío sigue mostrando el nombre del carrier junto al valor.
+    expect(r.html).toContain("Envío Lucam's");
+  });
+
   it("con publicTrackingToken el CTA apunta a la vista guest /pedido/<token>", async () => {
     const r = await orderConfirmationEmail(ocData({ publicTrackingToken: "TOKENGUEST" }));
     expect(r.html).toContain(`${SITE_URL}/pedido/TOKENGUEST`);
@@ -355,6 +366,45 @@ describe("orderConfirmationEmail", () => {
     expect(r.text).toContain(`${SITE_URL}/rastrear`);
     expect(r.html).not.toContain("/pedido/");
     expect(r.html).not.toContain("/mi-cuenta/pedidos");
+  });
+
+  it("Paquete H — con accountOrderUrl (registrado) el CTA va a su pedido en la cuenta y manda sobre el token", async () => {
+    const r = await orderConfirmationEmail(
+      ocData({
+        accountOrderUrl: `${SITE_URL}/mi-cuenta/pedidos/LS-1001`,
+        // Aunque viniera un token, la cuenta manda (decisión Paquete H).
+        publicTrackingToken: "TOKENGUEST",
+      }),
+    );
+    expect(r.html).toContain(`${SITE_URL}/mi-cuenta/pedidos/LS-1001`);
+    expect(r.text).toContain(`${SITE_URL}/mi-cuenta/pedidos/LS-1001`);
+    expect(r.html).not.toContain("/pedido/TOKENGUEST");
+    expect(r.html).not.toContain("/rastrear");
+  });
+
+  it("Paquete H — el desglose de la variante sale bajo el nombre en HTML y texto", async () => {
+    const r = await orderConfirmationEmail(
+      ocData({
+        items: [
+          {
+            name: "Fotoimanes Cuadrados",
+            qty: 1,
+            lineTotal: 3_000_000,
+            breakdown: ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"],
+          },
+        ],
+      }),
+    );
+    expect(r.html).toContain("12 fotos · 6×8 cm · Sin imán (adhesivo)");
+    expect(r.text).toContain("(12 fotos · 6×8 cm · Sin imán (adhesivo))");
+  });
+
+  it("Paquete H — ítem sin desglose (vacío/ausente) no pinta línea secundaria", async () => {
+    const r = await orderConfirmationEmail(
+      ocData({ items: [{ name: "Imán foto", qty: 1, lineTotal: 100, breakdown: [] }] }),
+    );
+    expect(r.text).toContain("- Imán foto ×1");
+    expect(r.text).not.toContain("Imán foto (");
   });
 
   it("sin transportadora (null) NO agrega el paréntesis de carrier en el label de envío", async () => {
@@ -530,6 +580,25 @@ describe("orderShippedEmail", () => {
     const r = await orderShippedEmail(shData());
     expect(r.text).toContain(`${SITE_URL}/contacto`);
   });
+
+  it("entrega propia (internalDelivery): sin guía ni transportadora externa en el copy", async () => {
+    const r = await orderShippedEmail(
+      shData({
+        carrier: "Envío Lucam's",
+        trackingNumber: "INTERNO-LS-2001",
+        trackingUrl: null,
+        internalDelivery: true,
+      }),
+    );
+    expect(r.html).toContain("nuestro equipo Lucam's");
+    expect(r.html).not.toContain("Número de guía");
+    expect(r.html).not.toContain("Documento de guía");
+    expect(r.html).not.toContain("la transportadora intentará");
+    expect(r.text).toContain("nuestro equipo Lucam's");
+    expect(r.text).not.toContain("Número de guía");
+    // El CTA de seguimiento sigue existiendo (vista propia del pedido).
+    expect(r.html).toContain("Rastrear mi pedido");
+  });
 });
 
 // =============================================================================
@@ -578,6 +647,13 @@ describe("orderDeliveredEmail", () => {
     const r = await orderDeliveredEmail(dlData());
     expect(r.text).toContain("LS-4001");
     expect(r.text).toContain(`${SITE_URL}/pedido/dtok`);
+  });
+
+  it("entrega propia (internalDelivery): la entrega la hizo nuestro equipo, no una transportadora", async () => {
+    const r = await orderDeliveredEmail(dlData({ internalDelivery: true }));
+    expect(r.html).toContain("nuestro equipo Lucam's entregó");
+    expect(r.html).not.toContain("según la transportadora");
+    expect(r.text).toContain("lo entregó nuestro equipo Lucam's");
   });
 });
 

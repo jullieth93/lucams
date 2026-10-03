@@ -220,6 +220,37 @@ pg_cron migración 035):
 - **Idempotencia**: el diseño queda marcado con `Design.purgedAt` solo si TODOS los bytes se borraron;
   si Storage falla, no se marca y el próximo ciclo reintenta.
 
+### Reorder («Volver a pedir») y fotos de terceros desde el link público (2026-10-02)
+
+El link público del pedido `/pedido/<token>` (invitados Wompi; **reenviable** — cualquiera con el
+link lo abre) históricamente permitía VER las fotos del pedido; desde 2026-10-02 también permite
+**REUSARLAS en un pedido nuevo** (reorder del invitado, ADR-117/119).
+
+**Análisis de aceptación:** no amplía el acceso real — quien tiene el link ya podía ver (y
+descargar) ese contenido; el reuso operativo no expone nada nuevo a nadie nuevo. El alcance sigue
+acotado por la retención: las fotos crudas se purgan a los 90 días de entregado (política de
+arriba) y un ítem ya purgado **NO es re-ordenable** — el CTA pide re-subir las fotos al estudio,
+que es de hecho un re-consentimiento (quien sube la foto la tiene). El clon del reorder
+**copia los bytes** a paths propios con ciclo de retención independiente: la purga del pedido
+original no borra las fotos del pedido nuevo, y viceversa (cada compra tiene su propia finalidad
+vigente; los 90 días corren por pedido).
+
+**Riesgo residual aceptado:** quien reenvía el link comparte también la capacidad de reusar las
+fotos — mismo alcance que ya tenía para verlas. El token se ROTA en cada envío del email
+(ADR-119), así que un link viejo reenviado muere con el próximo envío.
+
+### Aceptación de calidad de fotos — `Design.qualityAcknowledgedAt` (2026-10-02)
+
+Cuando una foto dispara avisos de calidad en el estudio (resolución baja, etc.), el cliente debe
+marcar una **casilla de aceptación** («imprimir con avisos de calidad») antes de finalizar; la
+aceptación queda persistida con timestamp en **`Design.qualityAcknowledgedAt`**.
+
+**Finalidad:** trazabilidad ante reclamos de garantía (Ley 1480 art. 7-16): si el cliente reclama
+por nitidez o resolución de la impresión, el registro prueba que fue **informado** del aviso y
+aceptó imprimir de todas formas — la garantía legal no cubre el resultado de una limitación del
+insumo del cliente que fue informada y aceptada (causal de exoneración, art. 16). Visible en
+moderación (`/admin/disenos`) y en el detalle del pedido del admin.
+
 ### Retención de logs de eventos con PII (2026-08-29)
 
 Mismo principio de temporalidad aplicado a los logs que el sistema acumula solo
@@ -327,11 +358,24 @@ model RetractRequest {
 }
 ```
 
-### Garantía legal (art. 7-15)
+### Garantía legal (art. 7-16)
 
-- **Plazo mínimo de garantía:** 1 año en productos con vida útil normal.
-- **Garantía cubre:** defectos de fabricación, no daño por uso indebido.
+- **Plazo de garantía:** el piso legal es 1 año, pero el art. 8 permite al productor **fijar el término acorde a la naturaleza del producto si lo informa expresamente** al consumidor (si no lo informa, rige el año). **Decisión 2026-09-29 (con aval del abogado): 3 meses contados desde la entrega**, informados en `/legal/garantias`, `/legal/terminos` § Garantía legal y la FAQ de `/ayuda` — los productos son papelería magnética personalizada, impresos hechos a pedido de alta manipulación. Piso de código: `Product.warrantyMonths` (default de formulario admin = 3; la ficha pública aplica `Math.max(warrantyMonths ?? 3, 3)`); la data existente se homologa a 3 con `packages/db/scripts/one-shot/publish-legal-v1-20260929.mjs` (la tienda nunca fue pública: nadie vio el valor anterior, no hay promesa previa que honrar).
+- **Garantía cubre:** defectos de fabricación, de materiales o de impresión (incluida la adherencia del imán de fábrica); no cubre mal uso, humedad, golpes, desgaste natural ni manipulación indebida (art. 16 — la carga de probar la causal de exclusión es nuestra).
 - **Reparación, sustitución o reembolso** a elección del consumidor si el bien presenta defecto en garantía.
+
+**Base normativa exacta** (texto oficial de la Ley 1480 de 2011, investigación 2026-09-29 — el blindaje de los textos públicos quedó propagado a canónico + fallbacks + FAQs en el paquete v1):
+
+| Norma                         | Qué ordena (texto oficial)                                                                                                                                                                                                                                                                                                                            | Dónde quedó en los textos públicos                                                                                              |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Art. 8** (término)          | El término es el dispuesto por la ley/autoridad competente; **a falta de ella, el anunciado por el productor y/o proveedor**; si no se indica, **1 año**. Corre desde la entrega.                                                                                                                                                                     | 3 meses anunciados: `legal.garantias.md` § Cuánto dura, `legal.terminos.md` § Garantía legal, FAQ de `/ayuda`.                  |
+| **Art. 9** (cómputo)          | El término se **suspende** mientras el consumidor está privado del producto por efectividad de la garantía; con **cambio total** del producto corre de nuevo completo.                                                                                                                                                                                | `legal.garantias.md` § Cómo se cuenta el plazo; FAQ (suspensión).                                                               |
+| **Art. 10** (responsables)    | Productor y proveedor responden **solidariamente**; **basta demostrar el defecto** (carga favorable al consumidor), salvo exoneraciones del art. 16.                                                                                                                                                                                                  | `legal.garantias.md` § Quién prueba qué.                                                                                        |
+| **Art. 11** (remedios)        | 1) Reparación **totalmente gratuita** + transporte; si no admite reparación → reposición o devolución del dinero. 2) Si la falla **se repite** → a elección del consumidor: nueva reparación, devolución total o parcial del precio, o cambio por otro de iguales o mejores características. 4) Suministrar **instrucciones de uso y mantenimiento**. | `legal.garantias.md` § Qué puedes pedir (escalera) y § Cómo cuidar tus productos; FAQ «¿Cómo cuido mis imanes?».                |
+| **Art. 16** (exoneraciones)   | Mal uso; fuerza mayor/caso fortuito; hecho de un tercero; **no seguir las instrucciones de uso y conservación**. La carga de probar la causal es del proveedor.                                                                                                                                                                                       | `legal.garantias.md` § Qué NO cubre (causales mapeadas) — las instrucciones publicadas habilitan la causal 16.4 en la práctica. |
+| **Art. 47 num. 3** (retracto) | Exceptúa los bienes «confeccionados conforme a las especificaciones del consumidor o **claramente personalizados**».                                                                                                                                                                                                                                  | `legal.devoluciones.md` y `legal.terminos.md` (cita corregida de «parágrafo 3, literal c» a **numeral 3**, 2026-09-29).         |
+| **Ley 2439 de 2024**          | Reembolso del retracto en e-commerce en máximo **15 días calendario** (modificó el inciso del art. 47).                                                                                                                                                                                                                                               | `legal.devoluciones.md` § Tu reembolso y `legal.terminos.md` § Derecho de retracto (ya citada).                                 |
+| **Art. 59.16** (SIC)          | La SIC puede fijar por reglamento **términos especiales de garantía** por tipo de bien. **No lo ha hecho** para papelería/imanes → rige el término anunciado (art. 8).                                                                                                                                                                                | Monitoreo: si la SIC reglamenta la categoría, el término oficial manda sobre el anunciado y habría que republicar.              |
 
 #### Implementación
 
@@ -537,7 +581,7 @@ export function calculateTax(subtotalCents: number): { iva: number; total: numbe
 
 > Cada documento tiene **versionado**: header `Versión X.Y — vigente desde YYYY-MM-DD`. Cambios mayores requieren re-aceptación del usuario activo.
 >
-> **Estado al 2026-09-11 (auditoría integral de info pública/legal/ayuda + decisión de Lucy «lanzar textos legales»):** los 6 documentos del paquete **v5 (2026-09-04)** — términos, privacidad, devoluciones, garantías, hábeas data, subprocesadores — están **PUBLICADOS en los 3 ambientes** (`publish-legal-v5-20260911.mjs`) y en vivo en PRD; su premisa «tienda en línea activa» es cierta en PRD-full (Wompi, Aveonline y asistente IA verificados activos). `PRIVACY_POLICY_VERSION` = «v5 · 2026-09-04» publicado (re-consent deliberado: invalida los consents previos — STATE.md 2026-09-05). Los textos conservan la coletilla «en revisión por asesoría legal» hasta que el abogado opine (retirarla republicando los 6 cuerpos desde /admin/contenido). Con versionado propio aparte: **cookies v4 · 2026-09-11** y **security v2 · 2026-07-25**, ambas publicadas; el header de cada página muestra su propia versión (`LegalPageHeader.lastUpdated`). La guarda de sincronía `apps/web/app/legal/legal-content-sync.test.ts` cubre **los 8 documentos** (fallback === canónico). Buzones: `habeas-data@lucamsshop.com` es el canal publicado para datos personales y temas legales (también en `/contacto`); `security@` es solo para divulgación de vulnerabilidades.
+> **Estado al 2026-09-29 (paquete v1 — lanzamiento):** el producto **nunca fue público**, así que el versionado arranca de cero (decisión de Lucy con aval del abogado): los **8 documentos** comparten **«Versión 1 · vigente desde 2026-09-29»** (antes: paquete v5 · 2026-09-04 + cookies v4 · 2026-09-11 + security v2 · 2026-07-25) y se **retiró la coletilla «en revisión por asesoría legal»** (los textos ya fueron aprobados por el abogado). El paquete incluye el cambio de garantía de 1 año a **3 meses informados** (art. 8) y el **blindaje de la política contra el texto oficial de la Ley 1480**: suspensión del plazo y reinicio tras reposición (art. 9), escalera de remedios (art. 11), solidaridad y carga de la prueba (art. 10), exoneraciones mapeadas (art. 16), instrucciones de uso y conservación publicadas (art. 11.4 — habilitan la exoneración 16.4) y cita del retracto corregida a **art. 47 numeral 3** (ver tabla de base normativa en § Garantía legal). Publicación a DB (paso humano, dry-run por defecto): `packages/db/scripts/one-shot/publish-legal-v1-20260929.mjs` — publica los 8 CmsBlock desde el canónico `packages/db/legal-content/*.md`, sube `PRIVACY_POLICY_VERSION` a «v1 · 2026-09-29» (re-consent deliberado: invalida los consents previos — mismo mecanismo que v5, STATE.md 2026-09-05), actualiza `legal.last-updated`, la FAQ de garantía/devoluciones (3 meses + suspensión del plazo), crea las FAQs nuevas `faq.11-envio-mismo-dia` (Envío Lucam's Bogotá — **gateada en código** por la setting `SAME_DAY_DELIVERY_ENABLED`, fail-closed) y `faq.12-cuidado-imanes` (instrucciones de conservación — visible de inmediato), y homologa `Product.warrantyMonths` a 3. La guarda de sincronía `apps/web/app/legal/legal-content-sync.test.ts` cubre **los 8 documentos** (fallback === canónico) y exige una única versión compartida. Buzones: `habeas-data@lucamsshop.com` es el canal publicado para datos personales y temas legales (también en `/contacto`); `security@` es solo para divulgación de vulnerabilidades.
 
 ### Identificación de la titular en el sitio — análisis «a requerimiento» vs publicación (investigación 2026-09-11)
 

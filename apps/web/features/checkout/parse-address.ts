@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { getCityByCode, getDepartmentByCode } from "@/lib/dane-divipola";
+import { isValidZone } from "@/lib/lucams-zones";
 import { AddressSchema, type AddressInput } from "./schemas";
 
 export type ParsedStructuredAddress =
@@ -29,12 +30,20 @@ export function parseStructuredAddress(formData: FormData): ParsedStructuredAddr
   }
 
   const addressKind = String(formData.get("addressKind") ?? "") === "rural" ? "rural" : "urban";
+  // Zona de entrega: solo se conserva si la ciudad está en el catálogo de zonas
+  // y el id es válido para ESA ciudad (anti-tamper; fuera del catálogo se
+  // descarta en silencio). Es dato de dirección — su obligatoriedad la aplica
+  // el caller (saveDatosAction), no las settings del envío propio.
+  const localityRaw = String(formData.get("localityId") ?? "").trim();
+  const localityId = isValidZone(cityCode, localityRaw) ? localityRaw : undefined;
   const baseFields = {
     deptCode,
     cityCode,
     department: dept.name,
     city: city.name,
     zip: (formData.get("zip") as string)?.trim() || undefined,
+    localityId,
+    neighborhood: (formData.get("neighborhood") as string)?.trim() || undefined,
     notes: (formData.get("notes") as string)?.trim() || undefined,
   };
   const addressRaw =

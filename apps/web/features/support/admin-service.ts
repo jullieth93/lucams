@@ -9,6 +9,8 @@ import type { SUBJECT_LABELS } from "@/features/support/schemas";
  * Gestión admin de tickets de soporte (P2 backoffice). Antes los tickets se guardaban y
  * notificaban por email pero NO había panel para gestionarlos → Lucy solo los veía en su
  * bandeja. Este servicio + la page /admin/soporte cierran ese hueco operativo.
+ * El hilo (responder / nota interna) y la conversión a garantía/retracto viven en
+ * thread-service.ts (flujo de solución, 2026-09-29).
  */
 
 export type SupportTicketStatus = "OPEN" | "IN_PROGRESS" | "CLOSED";
@@ -29,6 +31,9 @@ export async function listSupportTickets(filter?: { status?: SupportTicketStatus
       message: true,
       status: true,
       customerId: true,
+      orderNumber: true,
+      linkedCaseType: true,
+      linkedCaseId: true,
       resolvedAt: true,
       createdAt: true,
     },

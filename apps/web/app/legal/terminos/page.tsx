@@ -71,15 +71,17 @@ Como consumidor tienes **derecho de retracto** (Ley 1480 de 2011, art. 47): dent
 
 Cuando ejerces el retracto, te **devolvemos el dinero en un máximo de quince (15) días calendario** contados desde que ejerces el derecho (plazo de la **Ley 2439 de 2024**, que modificó el art. 47).
 
-**Excepción — productos personalizados:** conforme al mismo art. 47 (parágrafo 3, literal c), los productos **claramente personalizados o confeccionados según tus especificaciones** —los que llevan tu foto, tu texto o tu diseño hecho en el Estudio— **no admiten retracto**, porque se elaboran solo para ti. Los productos del **catálogo estándar** (sin personalización tuya) **sí tienen retracto**.
+**Excepción — productos personalizados:** conforme al mismo art. 47 (numeral 3), los productos **claramente personalizados o confeccionados según tus especificaciones** —los que llevan tu foto, tu texto o tu diseño hecho en el Estudio— **no admiten retracto**, porque se elaboran solo para ti. Los productos del **catálogo estándar** (sin personalización tuya) **sí tienen retracto**.
 
 Para ejercerlo, escríbenos a **{{email_retracto}}** o por WhatsApp. Más detalle en [Devoluciones y Retracto](/legal/devoluciones).
 
 ## Garantía legal
 
-Todos los productos cuentan con **garantía legal** (Ley 1480 de 2011, arts. 7 a 16) de **mínimo un (1) año** contado desde la entrega, frente a defectos de fabricación o de calidad. La garantía no cubre el daño causado por uso indebido, descuido o desgaste normal.
+Todos los productos cuentan con **garantía legal** (Ley 1480 de 2011, arts. 7 a 11 y 16) de **tres (3) meses** contados desde la entrega, frente a defectos de fabricación, de materiales o de impresión. Conforme al art. 8 de esa ley —que fija como término el **anunciado por el productor** a falta de disposición de la autoridad competente— fijamos este plazo acorde a la naturaleza de nuestros productos (papelería magnética personalizada, de alta manipulación) y te lo informamos expresamente aquí.
 
-Ante un defecto cubierto, primero lo **reparamos totalmente gratis**, y el transporte corre por nuestra cuenta. Si el producto **no admite reparación** o **la falla se repite** después de arreglarlo, ahí **eliges tú** entre que te lo **cambiemos** por uno nuevo o que te **devolvamos el dinero** (Ley 1480 de 2011, art. 11). Para hacerla efectiva, contáctanos por los canales de arriba. Más detalle en [Garantías](/legal/garantias).
+El plazo se **suspende** mientras tu producto esté en reparación por garantía y, si te reponemos el producto completo, **corre de nuevo desde cero** (art. 9). Ante un defecto cubierto, primero lo **reparamos totalmente gratis** —el transporte corre por nuestra cuenta—; si el producto **no admite reparación**, te lo reponemos por uno nuevo o te devolvemos el dinero; y si **la falla se repite**, tú eliges entre una nueva reparación, la devolución total o parcial del precio, o el cambio por otro producto de iguales o mejores características (art. 11). La garantía no cubre el daño por mal uso, fuerza mayor o caso fortuito, hecho de un tercero, o el incumplimiento de las instrucciones de uso y conservación (art. 16) —y probar esas causales nos corresponde a nosotros.
+
+Todo el detalle —cobertura, exclusiones, instrucciones de cuidado y procedimiento— está en [Garantías](/legal/garantias).
 
 ## Reversión del pago
 
@@ -135,7 +137,7 @@ Podemos actualizar estos Términos para reflejar cambios legales o de nuestro se
 
 ---
 
-_Versión 5 · vigente desde 2026-09-04 · actualizada para describir la tienda en línea ya activa (pago en línea con Wompi, envío calculado en el sitio con Aveonline y asistente de diseño con IA); plazo de reversión del consumidor corregido a 5 días hábiles y derechos de la Ley 2439 de 2024 añadidos (entrega máx. 30 días calendario, PQR con radicado) · en revisión por asesoría legal_
+_Versión 1 · vigente desde 2026-09-29_
 `;
 
 export default function Page() {

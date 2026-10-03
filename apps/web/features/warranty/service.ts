@@ -140,6 +140,49 @@ export async function createWarrantyClaim(input: {
 }
 
 // ── Listado + gestión (admin) ──
+
+/**
+ * Crea un reclamo de garantía INICIADO POR EL ADMIN (conversión desde un ticket
+ * de soporte GARANTIA_DEVOLUCION en /admin/soporte/[id]).
+ *
+ * Diferencias con createWarrantyClaim (flujo cliente):
+ *  - Sin chequeo de propiedad (FORBIDDEN): el admin actúa a nombre del cliente;
+ *    customerId se toma de la orden del item (puede quedar null en pedidos de
+ *    invitado — la columna lo permite).
+ *  - La ventana de tiempo NO se exige: el admin es la válvula legal (un cliente
+ *    que escribe por /contacto ya puede ir por fuera del cómputo exacto y la ley
+ *    se evalúa caso a caso). SÍ se exige pedido entregado y sin reclamo activo
+ *    (integridad de la máquina de estados).
+ */
+export async function createWarrantyClaimAsAdmin(input: {
+  orderItemId: string;
+  description: string;
+  adminId: string;
+}): Promise<{ id: string }> {
+  const item = await prisma.orderItem.findUnique({
+    where: { id: input.orderItemId },
+    select: {
+      id: true,
+      order: { select: { customerId: true, status: true, deletedAt: true } },
+      warrantyClaims: { where: { status: { in: ACTIVE_STATUSES } }, select: { id: true }, take: 1 },
+    },
+  });
+  if (!item || item.order.deletedAt) throw new WarrantyError("NOT_FOUND");
+  if (item.order.status !== "DELIVERED") throw new WarrantyError("NOT_DELIVERED");
+  if (item.warrantyClaims.length > 0) throw new WarrantyError("ACTIVE_CLAIM");
+  const description = input.description.trim();
+  if (description.length < 10) throw new WarrantyError("INVALID");
+  return prisma.warrantyClaim.create({
+    data: {
+      orderItemId: item.id,
+      customerId: item.order.customerId,
+      description: description.slice(0, 2000),
+      status: "PENDING",
+      processedBy: input.adminId,
+    },
+    select: { id: true },
+  });
+}
 export type WarrantyClaimRow = {
   id: string;
   status: WarrantyStatus;

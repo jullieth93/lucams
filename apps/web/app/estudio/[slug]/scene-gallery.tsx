@@ -184,6 +184,25 @@ export function countBadgeLabel(count: number, kind: SceneKind = "photo", cols =
   }
 }
 
+/**
+ * Escenas efectivamente ofrecidas en la galería: las del kind filtradas por
+ * polaroid y — Fase 1A (2026-09-27) — por imán SOLO en el calendario: una
+ * variante SIN IMÁN del calendario no ofrece las escenas nevera/tablero
+ * (asumen imán: mostrarlas sería una afirmación falsa del producto físico) y
+ * su flujo vive en el visor de detalle tarjeta-a-tarjeta. Paquete D
+ * (2026-10-02): el gate ya no aplica a los demás productos — su 3D es
+ * ilustrativo y el botón 3D no se esconde por variante (separadores/tiras
+ * sin imán también abren su vista 3D).
+ */
+export function galleryScenes(
+  kind: SceneKind = "photo",
+  isPolaroid = false,
+  magnet?: boolean,
+): Scene[] {
+  if (magnet === false && kind === "calendar") return [];
+  return filterPhotoScenes(scenesForKind(kind), isPolaroid);
+}
+
 export function SceneGallery({
   magnets,
   cols,
@@ -197,10 +216,13 @@ export function SceneGallery({
    *  muestra SIN doblez. Misma condición que el modal del Estudio (flat={productConfig.noFold}):
    *  sin esta prop, los Alargados abiertos desde la galería se veían DOBLADOS. */
   flat,
-  /** Cara B opcional (2026-09-22): si falta, el reverso 3D se muestra en BLANCO papel
-   *  (superficie imprimible vacía) en vez de duplicar la cara A. La pasa el Estudio
-   *  (productConfig). */
-  backOptional,
+  /** Fase 1A (2026-09-27) — "¿Con imán?" de la variante. `false` (SIN IMÁN) en el
+   *  CALENDARIO: las escenas que asumen imán (nevera/tablero) NO se ofrecen — pegar
+   *  tarjetas sin imán en la nevera es una afirmación falsa del producto físico; el
+   *  visor de detalle (CalendarCardFocus) sigue disponible. En los demás productos el
+   *  3D es ilustrativo y no se gatea (Paquete D, 2026-10-02). undefined conserva el
+   *  comportamiento de siempre. */
+  magnet,
 }: {
   magnets: Magnet3D[];
   cols: number;
@@ -215,12 +237,14 @@ export function SceneGallery({
   facesPerUnit?: number;
   /** Ola 17 — marcapáginas plano (Alargados): la escena Libro los renderiza sin doblez. */
   flat?: boolean;
-  /** Cara B opcional: reverso en blanco papel cuando falta la cara B. */
-  backOptional?: boolean;
+  /** Fase 1A — variante SIN IMÁN del calendario (false): sin escenas nevera/tablero. */
+  magnet?: boolean;
 }) {
   const scenes = useMemo(
-    () => filterPhotoScenes(scenesForKind(kind), isPolaroid),
-    [kind, isPolaroid],
+    // SIN IMÁN: ninguna escena "en tu espacio" aplica (todas asumen imán) → la
+    // galería queda vacía y el flujo vive en el visor de detalle (calendario).
+    () => galleryScenes(kind, isPolaroid, magnet),
+    [kind, isPolaroid, magnet],
   );
   const [scene, setScene] = useState<Scene>(() => scenes[0]!);
   // Si el kind cambia con el modal abierto, la escena activa puede no existir en la nueva lista:
@@ -399,7 +423,6 @@ export function SceneGallery({
               sizeCm={sizeCm}
               facesPerUnit={facesPerUnit}
               flat={flat}
-              backOptional={backOptional}
             />
           )
         ) : building && !flatUrl ? (
@@ -452,7 +475,9 @@ export function SceneGallery({
           index={focusIndex}
           onIndexChange={setFocusIndex}
           onClose={closeModal}
-          onOpenGallery={openGallery}
+          // Fase 1A — SIN IMÁN no hay escenas "en tu espacio" que ofrecer: el
+          // botón «Míralo en tu espacio» se omite (sin destino al que subir).
+          onOpenGallery={scenes.length > 0 ? openGallery : undefined}
         />
       )}
     </div>

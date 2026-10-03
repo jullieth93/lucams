@@ -34,12 +34,16 @@ const { state, MockStorageError } = vi.hoisted(() => {
       ticketsError: null as Error | null,
       uploadError: null as Error | null,
       assetCreateError: null as Error | null,
+      uploadValidation: undefined as unknown,
       uploadCalls: 0,
       assetCreateCalls: 0,
+      assetCreateArgs: [] as Array<Record<string, unknown>>,
+      galleryAssets: [] as Array<Record<string, unknown>>,
       saveCanvasCalls: 0,
       finalizeCalls: 0,
       saveCanvasArgs: [] as Array<Record<string, unknown>>,
       createDraftArgs: [] as Array<Record<string, unknown>>,
+      finalizeArgs: [] as Array<Record<string, unknown>>,
     },
   };
 });
@@ -78,18 +82,21 @@ vi.mock("@/lib/storage", () => ({
       sizeBytes: 3,
       mimeType: "image/jpeg",
       exifStripped: true,
-      validation: undefined,
+      validation: state.uploadValidation ?? undefined,
     };
   },
+  refreshCustomerUploadSignedUrl: async (path: string) => `https://signed.example/fresh/${path}`,
 }));
 vi.mock("@/lib/db", () => ({
   prisma: {
     designAsset: {
-      create: async () => {
+      create: async (args: { data: Record<string, unknown> }) => {
         state.assetCreateCalls += 1;
+        state.assetCreateArgs.push(args.data);
         if (state.assetCreateError) throw state.assetCreateError;
         return { id: "asset_1" };
       },
+      findMany: async () => state.galleryAssets,
     },
     product: { findUnique: async () => null },
   },
@@ -106,8 +113,9 @@ vi.mock("./service", () => ({
   },
   createNameDesign: vi.fn(),
   createLetterSetDesign: vi.fn(async () => ({ id: "design_ls1", letters: ["A"], language: "es" })),
-  finalizeDesign: async () => {
+  finalizeDesign: async (args: Record<string, unknown>) => {
     state.finalizeCalls += 1;
+    state.finalizeArgs.push(args);
     if (state.finalizeError) throw state.finalizeError;
     return {
       previewUrl: "https://cdn.example/preview.png",
@@ -115,7 +123,7 @@ vi.mock("./service", () => ({
       productionUrls: ["p0"],
     };
   },
-  getOwnedDesign: async () => null,
+  getOwnedDesign: vi.fn(async () => null),
   saveCanvas: async (args: Record<string, unknown>) => {
     state.saveCanvasCalls += 1;
     state.saveCanvasArgs.push(args);
@@ -124,6 +132,7 @@ vi.mock("./service", () => ({
 }));
 
 import {
+  assignPredesignedToDesignAction,
   createDraftDesignAction,
   createLetterSetDesignAction,
   createNameDesignAction,
@@ -131,7 +140,8 @@ import {
   saveCanvasAction,
   uploadDesignAssetAction,
 } from "./actions";
-import { createLetterSetDesign, createNameDesign } from "./service";
+import { createLetterSetDesign, createNameDesign, getOwnedDesign } from "./service";
+import { getGalleryImageById } from "./design-gallery";
 
 const VALID_LETTERSET_INPUT = {
   productId: "prod_1",
@@ -296,13 +306,22 @@ beforeEach(() => {
   state.ticketsError = null;
   state.uploadError = null;
   state.assetCreateError = null;
+  state.uploadValidation = undefined;
   state.uploadCalls = 0;
   state.assetCreateCalls = 0;
+  state.assetCreateArgs = [];
+  state.galleryAssets = [];
   state.saveCanvasCalls = 0;
   state.finalizeCalls = 0;
   state.saveCanvasArgs = [];
   state.createDraftArgs = [];
+  state.finalizeArgs = [];
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  vi.mocked(getOwnedDesign).mockReset();
+  vi.mocked(getOwnedDesign).mockResolvedValue(null);
+  vi.mocked(getGalleryImageById).mockReset();
+  vi.mocked(getGalleryImageById).mockResolvedValue(null);
   // Deterministic non-prod limits (the actions branch on VERCEL_ENV === "production").
   vi.stubEnv("VERCEL_ENV", "development");
 });
@@ -336,6 +355,61 @@ describe("uploadDesignAssetAction · rate-limit por IP (F-08)", () => {
     expect(result).toMatchObject({ ok: false, code: "RATE_LIMIT" });
     expect(state.rateLimitCalls).toHaveLength(2);
     expect(state.uploadCalls).toBe(0);
+  });
+});
+
+describe("uploadDesignAssetAction · recomendación específica de calidad (Paquete C)", () => {
+  it("serializa la recomendación del caso y qué checks fallaron al cliente", async () => {
+    state.uploadValidation = {
+      level: "warning-strong",
+      resolution: {
+        passed: false,
+        level: "warning-strong",
+        actualMinPx: 300,
+        requiredPx: 591,
+        ratio: 0.51,
+        message: "Se va a ver pixelada al imprimir a tamaño real (5×5 cm).",
+      },
+      brightness: { passed: true, level: "ok", meanLuminance: 120 },
+      blur: { passed: true, level: "ok", laplacianStdev: 40 },
+      message: "Se va a ver pixelada al imprimir a tamaño real (5×5 cm).",
+      recommendation: "Una foto más grande va a quedar mejor al imprimir.",
+    };
+    const result = await uploadDesignAssetAction(makeUploadForm());
+    expect(result).toMatchObject({
+      ok: true,
+      validationLevel: "warning-strong",
+      validationMessage: "Se va a ver pixelada al imprimir a tamaño real (5×5 cm).",
+      validationRecommendation: "Una foto más grande va a quedar mejor al imprimir.",
+      validationChecks: { resolution: false, brightness: true, blur: true },
+    });
+  });
+
+  it("sin validación (validator opcional falló) no rompe la respuesta", async () => {
+    const result = await uploadDesignAssetAction(makeUploadForm());
+    expect(result).toMatchObject({
+      ok: true,
+      validationLevel: undefined,
+      validationRecommendation: undefined,
+      validationChecks: undefined,
+    });
+  });
+});
+
+describe("finalizeDesignAction · aceptación explícita de calidad (Paquete C)", () => {
+  it("reenvía qualityAcknowledged=true al service cuando el checkbox viajó en el form", async () => {
+    const fd = makeFinalizeForm();
+    fd.set("qualityAcknowledged", "1");
+    const result = await finalizeDesignAction(fd);
+    expect(result.ok).toBe(true);
+    expect(state.finalizeArgs).toHaveLength(1);
+    expect(state.finalizeArgs[0]).toMatchObject({ qualityAcknowledged: true });
+  });
+
+  it("sin el flag en el form, el service recibe qualityAcknowledged=false", async () => {
+    const result = await finalizeDesignAction(makeFinalizeForm());
+    expect(result.ok).toBe(true);
+    expect(state.finalizeArgs[0]).toMatchObject({ qualityAcknowledged: false });
   });
 });
 
@@ -411,5 +485,122 @@ describe("F-30 · errores inesperados no devuelven err.message crudo al anónimo
     expect(result).toMatchObject({ ok: false, code: "INTERNAL" });
     expect(JSON.stringify(result)).not.toContain("row-level security");
     expect(JSON.stringify(result)).not.toContain("slot 1: new row");
+  });
+});
+
+describe("assignPredesignedToDesignAction · dedupe por galleryImageId (2026-10-02)", () => {
+  const SUPABASE = "https://supabase.example";
+  const URL_A = `${SUPABASE}/storage/v1/object/public/gallery/diseno-a.png`;
+  const URL_B = `${SUPABASE}/storage/v1/object/public/gallery/diseno-b.png`;
+
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", SUPABASE);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        arrayBuffer: async () => new ArrayBuffer(3),
+        headers: new Headers({ "content-type": "image/png" }),
+      })),
+    );
+    vi.mocked(getOwnedDesign).mockResolvedValue({ id: "design_1" } as never);
+    vi.mocked(getGalleryImageById).mockResolvedValue({
+      id: "gal_1",
+      imageUrl: URL_A,
+      imageUrlB: null,
+    });
+  });
+
+  it("sin asset previo: sube la imagen y crea el asset sellado con galleryImageId", async () => {
+    const result = await assignPredesignedToDesignAction({
+      designId: "design_1",
+      galleryImageId: "gal_1",
+    });
+    expect(result).toMatchObject({ ok: true, assetId: "asset_1" });
+    expect(state.uploadCalls).toBe(1);
+    expect(state.assetCreateCalls).toBe(1);
+    expect(state.assetCreateArgs[0]).toMatchObject({
+      designId: "design_1",
+      galleryImageId: "gal_1",
+    });
+  });
+
+  it("con asset previo: reusA sin fetch/upload/create y devuelve signedUrl fresca", async () => {
+    state.galleryAssets = [
+      {
+        id: "asset_previo",
+        storageUrl: "sess_test/previo.png",
+        width: 800,
+        height: 600,
+        createdAt: new Date("2026-10-01"),
+      },
+    ];
+    const result = await assignPredesignedToDesignAction({
+      designId: "design_1",
+      galleryImageId: "gal_1",
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      assetId: "asset_previo",
+      signedUrl: "https://signed.example/fresh/sess_test/previo.png",
+      width: 800,
+      height: 600,
+    });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(state.uploadCalls).toBe(0);
+    expect(state.assetCreateCalls).toBe(0);
+  });
+
+  it("par A/B: con ambos assets previos reusA los dos (orden createdAt); sin B, sube solo la B", async () => {
+    vi.mocked(getGalleryImageById).mockResolvedValue({
+      id: "gal_1",
+      imageUrl: URL_A,
+      imageUrlB: URL_B,
+    });
+
+    // Ambos existen → cero uploads.
+    state.galleryAssets = [
+      {
+        id: "asset_a",
+        storageUrl: "sess_test/a.png",
+        width: 800,
+        height: 600,
+        createdAt: new Date("2026-10-01T00:00:00Z"),
+      },
+      {
+        id: "asset_b",
+        storageUrl: "sess_test/b.png",
+        width: 800,
+        height: 600,
+        createdAt: new Date("2026-10-01T00:00:01Z"),
+      },
+    ];
+    const both = await assignPredesignedToDesignAction({
+      designId: "design_1",
+      galleryImageId: "gal_1",
+    });
+    expect(both).toMatchObject({
+      ok: true,
+      assetId: "asset_a",
+      assetB: { assetId: "asset_b" },
+    });
+    expect(state.assetCreateCalls).toBe(0);
+
+    // Solo existe la A → la B se sube nueva (sellada con galleryImageId).
+    state.galleryAssets = state.galleryAssets.slice(0, 1);
+    state.assetCreateCalls = 0;
+    state.uploadCalls = 0;
+    const onlyA = await assignPredesignedToDesignAction({
+      designId: "design_1",
+      galleryImageId: "gal_1",
+    });
+    expect(onlyA).toMatchObject({
+      ok: true,
+      assetId: "asset_a",
+      assetB: { assetId: "asset_1" },
+    });
+    expect(state.uploadCalls).toBe(1);
+    expect(state.assetCreateCalls).toBe(1);
+    expect(state.assetCreateArgs.at(-1)).toMatchObject({ galleryImageId: "gal_1" });
   });
 });

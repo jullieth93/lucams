@@ -31,7 +31,7 @@ import {
   renderSupportTicketReceivedEmail,
   renderSupportTicketInternalEmail,
 } from "@/features/emails/registry";
-import { SupportTicketSchema, type SupportTicketInput } from "./schemas";
+import { SupportTicketSchema, ORDER_RELATED_SUBJECTS, type SupportTicketInput } from "./schemas";
 import { getClientIp } from "@/lib/client-ip";
 
 export type SupportActionState =
@@ -50,6 +50,7 @@ export async function submitContactAction(
       .toLowerCase(),
     subject: formData.get("subject"),
     message: String(formData.get("message") ?? "").trim(),
+    orderNumber: String(formData.get("orderNumber") ?? ""),
   });
 
   if (!parsed.success) {
@@ -104,6 +105,11 @@ export async function submitContactAction(
         email: parsed.data.email,
         subject: parsed.data.subject,
         message: parsed.data.message,
+        // Solo se persiste cuando el asunto es de pedido (el form solo lo muestra
+        // en esos casos; acá se re-filtra por si viene forjado en el POST).
+        orderNumber: ORDER_RELATED_SUBJECTS.includes(parsed.data.subject)
+          ? (parsed.data.orderNumber ?? null)
+          : null,
         status: "OPEN",
         ip,
         userAgent,
@@ -126,42 +132,53 @@ export async function submitContactAction(
     // `void (async …)()` antes de que corra. after() difiere el trabajo para DESPUÉS de responder,
     // garantizando que ambos correos salgan (auditoría v3 · #14).
     after(async () => {
-      const contactEmail = await getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com");
-      const [received, internal] = await Promise.all([
-        renderSupportTicketReceivedEmail({
-          customerName: parsed.data.name,
+      // try/catch: un throw aquí (p. ej. DB caída al leer CONTACT_EMAIL o un template que
+      // revienta) mataría AMBOS correos como unhandled rejection silenciosa — el cliente ya
+      // recibió su ok y nadie se enteraría del fallo salvo en logs de runtime.
+      try {
+        const contactEmail = await getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com");
+        const [received, internal] = await Promise.all([
+          renderSupportTicketReceivedEmail({
+            customerName: parsed.data.name,
+            ticketId: ticket.id,
+            subject: parsed.data.subject,
+            message: parsed.data.message,
+          }),
+          renderSupportTicketInternalEmail({
+            customerName: parsed.data.name,
+            customerEmail: parsed.data.email,
+            ticketId: ticket.id,
+            subject: parsed.data.subject,
+            message: parsed.data.message,
+            ip,
+          }),
+        ]);
+        await Promise.all([
+          sendEmail({
+            to: parsed.data.email,
+            subject: received.subject,
+            html: received.html,
+            text: received.text,
+            idempotencyKey: `support:received:${ticket.id}`,
+            tags: [{ name: "kind", value: "support-received" }],
+          }),
+          sendEmail({
+            to: contactEmail,
+            subject: internal.subject,
+            html: internal.html,
+            text: internal.text,
+            replyTo: internal.replyTo,
+            idempotencyKey: `support:internal:${ticket.id}`,
+            tags: [{ name: "kind", value: "support-internal" }],
+          }),
+        ]);
+      } catch (err) {
+        logger.error({
+          event: "support.ticket.email_failed",
           ticketId: ticket.id,
-          subject: parsed.data.subject,
-          message: parsed.data.message,
-        }),
-        renderSupportTicketInternalEmail({
-          customerName: parsed.data.name,
-          customerEmail: parsed.data.email,
-          ticketId: ticket.id,
-          subject: parsed.data.subject,
-          message: parsed.data.message,
-          ip,
-        }),
-      ]);
-      await Promise.all([
-        sendEmail({
-          to: parsed.data.email,
-          subject: received.subject,
-          html: received.html,
-          text: received.text,
-          idempotencyKey: `support:received:${ticket.id}`,
-          tags: [{ name: "kind", value: "support-received" }],
-        }),
-        sendEmail({
-          to: contactEmail,
-          subject: internal.subject,
-          html: internal.html,
-          text: internal.text,
-          replyTo: internal.replyTo,
-          idempotencyKey: `support:internal:${ticket.id}`,
-          tags: [{ name: "kind", value: "support-internal" }],
-        }),
-      ]);
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     });
 
     return { ok: true, ticketId: ticket.id };

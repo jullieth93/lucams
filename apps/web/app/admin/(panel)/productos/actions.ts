@@ -47,6 +47,29 @@ function parsePayload(formData: FormData) {
     const n = Number(v);
     return Number.isFinite(n) ? n : null;
   };
+  // Texto opcional: vacío → null (en update, null = borrar la key del schema).
+  const getOptStr = (k: string) => {
+    const v = get(k);
+    if (v === null) return null;
+    const s = String(v).trim();
+    return s === "" ? null : s;
+  };
+  // Lista una-por-línea (textarea): vacío → null (mismo criterio de borrado).
+  const getLines = (k: string) => {
+    const lines = String(get(k) ?? "")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return lines.length > 0 ? lines : null;
+  };
+  // Checkbox del panel activo: marcado → true; ausente (apagado o el panel no
+  // aplica al kind elegido) → null = no declarar / borrar la key.
+  const getFlag = (k: string) => (get(k) === "on" ? true : null);
+  // El select del form expone el valor sintético "LETTERSET" (set de letras:
+  // abecedario completo / vocales). En DB es kind NONE + schema.letterSet —
+  // la convención de los seeds (restructure-abecedario.mjs) y surface.ts le
+  // da prioridad al marcador sobre el kind.
+  const rawKind = String(get("personalizationKind") ?? "NONE");
   return {
     name: String(get("name") ?? "").trim(),
     slug: String(get("slug") ?? "").trim(),
@@ -62,7 +85,8 @@ function parsePayload(formData: FormData) {
       .trim()
       .toUpperCase(),
     categoryId: String(get("categoryId") ?? ""),
-    isPersonalizable: get("isPersonalizable") === "on",
+    // isPersonalizable ya NO viaja: el checkbox salió del form (2026-10-02) y
+    // el service lo deriva del kind (kind ≠ NONE).
     isActive: get("isActive") === "on",
     isFeatured: get("isFeatured") === "on",
     seoTitle: (get("seoTitle") || null) as string | null,
@@ -80,12 +104,30 @@ function parsePayload(formData: FormData) {
     shippingDaysMax: getOptNum("shippingDaysMax") ?? undefined,
     minimumQuantity: getOptNum("minimumQuantity") ?? undefined,
     maximumQuantity: getOptNum("maximumQuantity"),
-    premadeSurcharge: getOptNum("premadeSurcharge") ?? undefined,
     // PR C — peso + dims del paquete final (para Aveonline cotización).
     weightGrams: getOptNum("weightGrams"),
     widthCm: getOptNum("widthCm"),
     heightCm: getOptNum("heightCm"),
     depthCm: getOptNum("depthCm"),
+    // Personalización (2026-10-02, tab "Personalización"). Campos de paneles
+    // que no aplican al kind elegido llegan ausentes → null → el service BORRA
+    // esa key del personalizationSchema (limpieza al cambiar de tipo).
+    personalizationKind: rawKind === "LETTERSET" ? "NONE" : rawKind,
+    photoSlots: getOptNum("photoSlots"),
+    facesPerUnit: getOptNum("facesPerUnit"),
+    aspectRatio: getOptStr("aspectRatio"),
+    galleryTag: getOptStr("galleryTag"),
+    textOnlyVariant: getOptStr("textOnlyVariant"),
+    letterCountMin: getOptNum("letterCountMin"),
+    letterCountMax: getOptNum("letterCountMax"),
+    language: getOptStr("language"),
+    maxChars: getOptNum("maxChars"),
+    fontOptions: getLines("fontOptions"),
+    eventFields: getLines("eventFields"),
+    allowPhoto: getFlag("allowPhoto"),
+    logoFields: getLines("logoFields"),
+    requiresVectorFile: getFlag("requiresVectorFile"),
+    letterSet: getOptStr("letterSet"),
     // Estudio por producto (2026-09-24 v2): tamaño base del lienzo + columnas
     // forzadas de la grilla. Vacío → null → en edición el service ELIMINA la
     // key del personalizationSchema (vuelve al default del Estudio).

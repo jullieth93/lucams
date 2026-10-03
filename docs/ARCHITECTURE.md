@@ -337,7 +337,7 @@ model CartItem {
   variant       ProductVariant @relation(fields: [variantId], references: [id])
   qty           Int
   customDesign  Json?          // Diseño del estudio de personalización
-  unitPrice     Int            // Snapshot del precio al agregar
+  unitPrice     Int            // Snapshot del precio al agregar (con tier de volumen si aplica; se re-pricea al cambiar qty — ver § Reglas)
 }
 
 enum OrderStatus {
@@ -514,6 +514,7 @@ model WebhookEvent {
 - **Reconciliación de pagos multi-tx** (F-02/F-03, certificación 2026-09-26): una reference de Wompi admite varios intentos; un `APPROVED` cuya tx es distinta de la que pagó la orden es un **segundo cobro real**. `flagForeignApprovedPayment` (`features/orders/saga.ts`, espejado en el fallback `/checkout/gracias`) marca `needsReconciliation` con ambos txIds sin mutar el estado ni disparar side effects (visible en `/admin/pedidos` + alerta crítica). Simétricamente, el resumen diario (`features/observability/daily-summary.ts`) reporta `expiredPendingWompi24h`: pedidos Wompi cancelados por el cron de expiración sin txId confirmado en 24h, para cruzar contra el panel Wompi.
 - **Revocación de share token al rechazar diseños** (A4-01, certificación 2026-09-26): `rejectDesign` (`features/moderation/service.ts`) pone `shareTokenHash=null` — un diseño rechazado no puede seguir publicado en `/d/<token>`; la cola de moderación incluye también diseños solo-compartidos.
 - **Audit log** (`AdminActionLog`): toda acción admin con `actorId`, `action`, `entityType`, `entityId`, `metadata`, `createdAt`.
+- **Precio por volumen (`WholesaleTier`) para TODOS los clientes** (regla aprobada e implementada 2026-10-02): los niveles son descuento por volumen PÚBLICO — sin flag de mayorista ni login (el checkout soporta invitados). El carrito resuelve el nivel aplicable en `addProductToCart`, `addPersonalizedToCart` y `updateCartItemQty` (`features/cart/service.ts` + helper puro `features/cart/volume-pricing.ts`): base actual (`variant.price ?? product.basePrice` + multiplicadores por-ficha/multi-unidad si es personalizado) → si hay niveles activos del producto (o globales `productId=null` cuando el producto no tiene propios), gana el de MAYOR `minQty <= qty` de la línea y su `unitPrice` (absoluto, centavos COP) REEMPLAZA el de la línea; un nivel más caro que el base nunca se aplica (anti-config errónea). `updateCartItemQty` re-pricea al cruzar umbrales en ambos sentidos; sin niveles configurados el snapshot queda intacto (semántica legacy). La "qty" del nivel es la cantidad de la LÍNEA (diseños/packs que paga el cliente), no las unidades internas de un diseño multi-unidad. Orden y cotización heredan el precio vía el snapshot del `CartItem`, sin cambios. Todo server-side desde la DB (anti-tamper); 1 query acotada de tiers por línea mutada.
 
 ### Modelos adicionales (ADR-014, ADR-016)
 
@@ -579,11 +580,24 @@ certificación 2026-09-26). Inventario agrupado por módulo:
 | Observabilidad              | `WebVital`, `ErrorLog`, `ErrorReport`, `AlertState`, `Notification`, `EmailEvent`                       |
 | Soporte                     | `SupportTicket`                                                                                         |
 | CMS v2                      | `CmsPage`, `CmsSection`, `CmsField`, `CmsFieldVersion`, `CmsListItem`, `CmsMedia` (ver § CMS v2)        |
-| Emails                      | `EmailTemplateOverride` (overrides de copy de las 26 plantillas, `/admin/email-templates`)              |
+| Emails                      | `EmailTemplateOverride` (overrides de copy de las 27 plantillas, `/admin/email-templates`)              |
 | Personalización             | `Design`, `DesignAsset`, `PersonalizationTemplate`, `LetterTileSet`, `LetterTile`, `DesignGalleryImage` |
-| Storefront misc             | `UrlRedirect`, `WishlistItem`, `BackInStockSubscription`                                                |
-| B2B                         | `Quote`, `QuoteItem`, `WholesaleTier`                                                                   |
-| Costeo / recetas (BOM)      | `Material`, `ProductMaterial`                                                                           |
+
+`DesignGalleryImage` (diseños prediseñados, `/admin/disenos`) se agrupa por `tag`
+(= `personalizationSchema.galleryTag` o, por fallback, el slug del producto) y, desde
+2026-10-02, puede segregarse por **atributo de variante** con `variantFilter Json?`
+(subset de `ProductVariant.attributes`, ej. `{"sizeCm":"2×6"}`; null = aplica a todas
+las variantes). El matching es puro (`features/personalization/design-gallery-filter.ts`,
+`matchesVariantFilter`); el Estudio filtra server-side con los attributes de la variante
+elegida y el admin valida el filtro contra las variantes reales antes de persistir.
+La configuración de personalización de un producto (`personalizationKind` +
+`personalizationSchema`) se edita completa desde el admin (`/admin/productos`, tab
+"Personalización" → `features/products/personalization-schema.ts`); ya no depende de
+los scripts de seed. Los tooltips de toda la app usan el primitivo de marca
+`components/ui/tooltip.tsx` (`Hint`/`Tooltip`, radix), nunca el `title=` nativo.
+| Storefront misc | `UrlRedirect`, `WishlistItem`, `BackInStockSubscription` |
+| B2B | `Quote`, `QuoteItem`, `WholesaleTier` (este último con consumidor storefront desde 2026-10-02: el carrito lo aplica como descuento por volumen público — ver § Reglas) |
+| Costeo / recetas (BOM) | `Material`, `ProductMaterial` |
 
 Campos (no modelos) que conviene conocer: `Order` lleva los datos de **facturación
 electrónica DIAN** (`billingDocumentType/Number/Name`, `dianStatus`, `dianCufe`,

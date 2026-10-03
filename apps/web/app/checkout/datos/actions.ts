@@ -13,6 +13,7 @@ import { saveCheckoutAddressToAccount } from "@/features/addresses/service";
 import { recordCheckoutDataConsent } from "@/features/consent/service";
 import { recordAbandonedCartEmail } from "@/features/cart/recovery-service";
 import { guardTransactionalAction } from "@/lib/stage-guard";
+import { getZoneCityByCode } from "@/lib/lucams-zones";
 
 export type DatosActionState = {
   error?: string;
@@ -61,6 +62,26 @@ export async function saveDatosAction(
   const addressParsed = parseStructuredAddress(formData);
   if (!addressParsed.ok) {
     return { error: addressParsed.error, fieldErrors: addressParsed.fieldErrors };
+  }
+
+  // ─── Zona de entrega (localidad/comuna — dato de dirección) ───
+  // Si la ciudad está en el catálogo de zonas (lib/lucams-zones.ts), la zona es
+  // OBLIGATORIA siempre: es parte de la dirección de entrega, no un filtro de la
+  // oferta de envío propio (esa visibilidad la decide buildLucamsOffer con las
+  // zonas habilitadas de /admin/envios). La validez del id contra el catálogo
+  // completo ya la hizo parseStructuredAddress.
+  if (!addressParsed.data.localityId) {
+    const zoneCity = getZoneCityByCode(addressParsed.data.cityCode);
+    if (zoneCity) {
+      return {
+        error: `Falta la ${zoneCity.zoneLabel.toLowerCase()} de entrega`,
+        fieldErrors: {
+          localityId: [
+            `Elige tu ${zoneCity.zoneLabel.toLowerCase()} — la necesitamos para tu dirección de entrega.`,
+          ],
+        },
+      };
+    }
   }
 
   // ─── Facturación opcional ───

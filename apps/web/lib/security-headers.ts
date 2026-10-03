@@ -66,6 +66,12 @@ export function buildCsp(nonce: string, isProd: boolean): string {
   return [
     "default-src 'self'",
     scriptSrc,
+    // Paquete J (2026-10-02) — el Web Worker del upscale local de fotos del
+    // Estudio (client-photo-upscale.worker.ts) se carga como script same-origin.
+    // Sin worker-src explícito rige el fallback a script-src, que en prod lleva
+    // nonce — y con nonce presente algunos navegadores ignoran 'self' al
+    // resolver el fallback (CSP3): la directiva explícita quita la ambigüedad.
+    "worker-src 'self'",
     `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com${vercelLive}`,
     // img-src incluye images.unsplash.com TEMPORALMENTE: fotos placeholder del seed que
     // Lucy reemplazará por fotos reales (vía admin/Supabase Storage). La decisión es

@@ -26,6 +26,7 @@ import {
   AdminTableRow,
 } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { getCurrentAdmin } from "@/lib/auth";
 import { cmsFieldHasDraft, listCmsDraftFields } from "@/features/cms/service";
@@ -157,19 +158,22 @@ export default async function BorradoresPage({ searchParams }: { searchParams: S
                                 name="redirectTo"
                                 value="/admin/contenido/borradores"
                               />
-                              <Button
-                                type="submit"
-                                size="sm"
-                                className="bg-emerald-600 text-white hover:bg-emerald-700"
-                                title={
+                              <Hint
+                                content={
                                   cmsFieldHasDraft(f)
                                     ? "Publicar el último borrador"
                                     : "Publicar la última versión"
                                 }
                               >
-                                <Send className="mr-1 h-3.5 w-3.5" />
-                                Publicar
-                              </Button>
+                                <Button
+                                  type="submit"
+                                  size="sm"
+                                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                                >
+                                  <Send className="mr-1 h-3.5 w-3.5" />
+                                  Publicar
+                                </Button>
+                              </Hint>
                             </form>
                           )}
                           <Link

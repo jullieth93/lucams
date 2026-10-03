@@ -23,12 +23,32 @@ export type OrderConfirmationData = {
    * `units` = unidades físicas reales del diseño cuando existe; se muestra
    * ×(units ?? qty). El dinero no cambia: lineTotal = unitPrice × qty.
    */
-  items: Array<{ name: string; qty: number; units?: number; lineTotal: number }>;
+  items: Array<{
+    name: string;
+    qty: number;
+    units?: number;
+    lineTotal: number;
+    /**
+     * Desglose de la variante (Paquete H, 2026-10-02 — describeVariantAttributes):
+     * ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"]. Se muestra como línea
+     * secundaria bajo el nombre; []/ausente ⇒ solo el nombre.
+     */
+    breakdown?: string[];
+  }>;
   shippingAddress: string; // ya formateada
   /** Token público para vista guest /pedido/<token> sin login. */
   publicTrackingToken: string | null;
+  /**
+   * Cliente REGISTRADO (Paquete H, 2026-10-02): URL de su pedido en la cuenta
+   * (/mi-cuenta/pedidos/<number>). Manda sobre publicTrackingToken y sobre el
+   * fallback /rastrear.
+   */
+  accountOrderUrl?: string | null;
   /** COD ⇒ el cliente paga en efectivo al recibir (no hubo pago online). */
   paymentMethod?: "WOMPI" | "COD";
+  /** true = entrega propia "Envío Lucam's": no hay guía ni transportadora
+   *  externa — el texto lo dice en esos términos. */
+  internalDelivery?: boolean;
 };
 
 export async function orderConfirmationEmail(data: OrderConfirmationData) {
@@ -38,12 +58,24 @@ export async function orderConfirmationEmail(data: OrderConfirmationData) {
       (it) => `
 <tr>
   <td style="padding:8px 0;border-bottom:1px solid #f0e7e0;color:#3D2E5C;">
-    ${escapeHtml(it.name)} <span style="opacity:0.55;">×${it.units ?? it.qty}</span>
+    ${escapeHtml(it.name)} <span style="opacity:0.55;">×${it.units ?? it.qty}</span>${
+      it.breakdown && it.breakdown.length > 0
+        ? `<div style="font-size:12px;color:#3D2E5C;opacity:0.6;">${escapeHtml(it.breakdown.join(" · "))}</div>`
+        : ""
+    }
   </td>
   <td style="padding:8px 0;border-bottom:1px solid #f0e7e0;text-align:right;color:#3D2E5C;font-weight:600;">${formatCOP(it.lineTotal)}</td>
 </tr>`,
     )
     .join("");
+
+  // Paquete H — destino del CTA "Ver mi pedido": cuenta del cliente registrado,
+  // vista guest por token fresco, o /rastrear (invitado COD) en ese orden.
+  const orderCtaUrl =
+    data.accountOrderUrl ??
+    (data.publicTrackingToken
+      ? `${siteUrl}/pedido/${data.publicTrackingToken}`
+      : `${siteUrl}/rastrear`);
 
   const discount = data.discount ?? 0;
   const discountRowHtml =
@@ -72,7 +104,11 @@ export async function orderConfirmationEmail(data: OrderConfirmationData) {
       : `recibimos tu pago para el pedido <strong>${escapeHtml(data.orderNumber)}</strong>.`
   }</p>
 ${codCallout}
-<p>Ya empezamos a preparar tu pedido: lo despachamos en máximo <strong>2 días hábiles</strong> y te avisamos con el número de guía apenas salga. De ahí en adelante el tiempo lo pone la transportadora y depende de tu ciudad.</p>
+${
+  data.internalDelivery
+    ? `<p>Ya empezamos a preparar tu pedido: lo despachamos en máximo <strong>2 días hábiles</strong> y te lo entregamos <strong>el mismo día del despacho</strong> con <strong>nuestro equipo Lucam's</strong> (entrega directa, sin transportadora externa). Te avisamos apenas salga.</p>`
+    : `<p>Ya empezamos a preparar tu pedido: lo despachamos en máximo <strong>2 días hábiles</strong> y te avisamos con el número de guía apenas salga. De ahí en adelante el tiempo lo pone la transportadora y depende de tu ciudad.</p>`
+}
 
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;border-collapse:collapse;">
   ${itemsRows}
@@ -92,14 +128,9 @@ ${codCallout}
 
 <p style="font-size:14px;color:#3D2E5C;"><strong>Enviamos a:</strong><br>${escapeHtml(data.shippingAddress)}</p>
 
-${ctaButton(
-  data.publicTrackingToken
-    ? `${siteUrl}/pedido/${data.publicTrackingToken}`
-    : `${siteUrl}/rastrear`,
-  "Ver mi pedido →",
-)}
+${ctaButton(orderCtaUrl, "Ver mi pedido →")}
 
-<p style="font-size:12px;color:#3D2E5C;opacity:0.6;margin-top:16px;">Los valores están en pesos colombianos (COP) y son el total que pagas. Conoce tu <a href="${siteUrl}/legal/devoluciones" style="color:#7C6AAD;">derecho de retracto</a> (5 días hábiles para el catálogo estándar; los productos personalizados no aplican) y la <a href="${siteUrl}/legal/garantias" style="color:#7C6AAD;">garantía legal de 1 año</a>.</p>
+<p style="font-size:12px;color:#3D2E5C;opacity:0.6;margin-top:16px;">Los valores están en pesos colombianos (COP) y son el total que pagas. Conoce tu <a href="${siteUrl}/legal/devoluciones" style="color:#7C6AAD;">derecho de retracto</a> (5 días hábiles para el catálogo estándar; los productos personalizados no aplican) y la <a href="${siteUrl}/legal/garantias" style="color:#7C6AAD;">garantía de 3 meses</a>.</p>
 
 <p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:14px;">¿Algún cambio? Escríbenos por WhatsApp o responde este correo.</p>
 `;
@@ -116,7 +147,7 @@ ${
 }
 
 Items:
-${data.items.map((it) => `  - ${it.name} ×${it.units ?? it.qty} → ${formatCOP(it.lineTotal)}`).join("\n")}
+${data.items.map((it) => `  - ${it.name}${it.breakdown && it.breakdown.length > 0 ? ` (${it.breakdown.join(" · ")})` : ""} ×${it.units ?? it.qty} → ${formatCOP(it.lineTotal)}`).join("\n")}
 
 Subtotal: ${formatCOP(data.subtotal)}
 Envío${data.shippingCarrier ? ` (${data.shippingCarrier})` : ""}: ${formatCOP(data.shipping)}${discount > 0 ? `\nDescuento: −${formatCOP(discount)}` : ""}
@@ -124,11 +155,11 @@ Total: ${formatCOP(data.total)}
 
 Enviamos a: ${data.shippingAddress}
 
-Ver mi pedido: ${data.publicTrackingToken ? `${siteUrl}/pedido/${data.publicTrackingToken}` : `${siteUrl}/rastrear`}
+Ver mi pedido: ${orderCtaUrl}
 
 Los valores están en pesos colombianos (COP) y son el total que pagas.
 Retracto (5 días hábiles, catálogo estándar): ${siteUrl}/legal/devoluciones
-Garantía legal (1 año): ${siteUrl}/legal/garantias`;
+Garantía (3 meses desde la entrega): ${siteUrl}/legal/garantias`;
 
   return {
     subject: `Pedido ${data.orderNumber} confirmado 🎉`,

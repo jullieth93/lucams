@@ -1,7 +1,9 @@
 /*
  * Emails de garantía (Ley 1480) — best-effort, capturan sus propios errores.
  *   - al crear: confirmación al cliente + aviso interno a Lucy (para que sepa que llegó).
- *   - al resolver: aviso al cliente con el remedio aplicado.
+ *   - al resolver: aviso al cliente con el remedio aplicado (incluye la nota del equipo).
+ *   - al rechazar: aviso al cliente con el motivo (antes el REJECTED no notificaba
+ *     en ninguna vista — ni garantías ni la bandeja legacy /admin/reclamos).
  */
 
 import "server-only";
@@ -11,6 +13,7 @@ import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
 import {
   renderWarrantyReceivedEmail,
+  renderWarrantyRejectedEmail,
   renderWarrantyResolvedEmail,
 } from "@/features/emails/registry";
 
@@ -140,6 +143,44 @@ export async function notifyWarrantyResolved(id: string): Promise<void> {
   } catch (err) {
     logger.error({
       event: "warranty.email.resolved.fail",
+      id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+export async function notifyWarrantyRejected(id: string): Promise<void> {
+  try {
+    const d = await loadClaim(id);
+    // El rechazo exige motivo (rejectWarrantyClaim lo valida) — sin nota no
+    // tiene sentido avisar: mejor callado que un correo sin explicación.
+    if (!d || !d.resolutionNote) return;
+    const tpl = await renderWarrantyRejectedEmail({
+      customerName: d.customerName,
+      claimId: id,
+      orderNumber: d.orderNumber,
+      productName: d.productName,
+      reason: d.resolutionNote,
+    });
+    const result = await sendEmail({
+      to: d.email,
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+      idempotencyKey: `warranty-${id}-rejected`,
+      tags: [
+        { name: "type", value: "warranty_rejected" },
+        { name: "order_number", value: d.orderNumber },
+      ],
+    });
+    logger.info({
+      event: "warranty.email.rejected.sent",
+      id,
+      result: result.sent ? "ok" : `skip:${result.reason}`,
+    });
+  } catch (err) {
+    logger.error({
+      event: "warranty.email.rejected.fail",
       id,
       err: err instanceof Error ? err.message : String(err),
     });

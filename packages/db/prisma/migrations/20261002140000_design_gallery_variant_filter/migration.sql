@@ -1,0 +1,22 @@
+-- Fase 5 (2026-10-02) — Diseños prediseñados segregados por ATRIBUTO DE VARIANTE.
+--
+-- Hasta acá la galería de diseños prediseñados (ADR-057 Fase B2) se agrupaba solo por
+-- `tag` (producto): TODO diseño subido a un producto aparecía en el Estudio para
+-- CUALQUIER variante — un diseño pensado para separadores 2×6 se ofrecía también en la
+-- variante 4×4.2 (proporción equivocada).
+--
+-- `variantFilter` es un SUBSET de ProductVariant.attributes (ej. {"sizeCm":"2×6"}):
+-- el diseño aplica solo a las variantes cuyos attributes contienen ese subset
+-- (toda clave del filtro coincide con el valor del atributo). El matching es puro y
+-- vive en apps/web/features/personalization/design-gallery-filter.ts
+-- (matchesVariantFilter); el Estudio filtra server-side con los attributes de la
+-- variante elegida y el admin valida el filtro contra las variantes reales del
+-- producto antes de persistir.
+--
+-- NULL = aplica a TODAS las variantes del producto (backfill natural: las filas
+-- existentes quedan null y su comportamiento no cambia). Aditiva y reversible
+-- (DROP COLUMN), sin backfill ni locks largos (columna nullable sin default =
+-- metadata-only). Escrita a mano y aplicada con `migrate deploy` — `migrate dev`
+-- no funciona contra esta DB (shadow DB en Supabase, convención del repo).
+
+ALTER TABLE "DesignGalleryImage" ADD COLUMN "variantFilter" JSONB;

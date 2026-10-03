@@ -45,6 +45,12 @@ type BaseAddress = {
   department: string;
   city: string;
   zip?: string;
+  /** Zona de entrega (id de lib/lucams-zones.ts) — dato de dirección en las
+   *  ciudades del catálogo. Nombre histórico (V1 solo-Bogotá) — representa la
+   *  zona genérica. */
+  localityId?: string;
+  /** Barrio (texto libre, opcional en todas las ciudades). */
+  neighborhood?: string;
   notes?: string;
 };
 

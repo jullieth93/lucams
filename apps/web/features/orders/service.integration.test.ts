@@ -714,22 +714,28 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
     async function makeArchivableFixture(tag: string): Promise<{
       productId: string;
       variantId: string;
+      variantSku: string;
       price: number;
     }> {
       const price = 11_000;
+      // uniq() en slug Y skus: vitest reintenta tests que fallan (retry x2) y
+      // el producto del intento fallido sigue vivo hasta el afterAll — sin
+      // uniq, el retry moría con P2002 (sku duplicado) y ocultaba el fallo real.
+      const u = uniq();
+      const variantSku = `${RUN}-N01-${tag}-${u}-V`.toUpperCase();
       const p = await prisma.product.create({
         data: {
-          slug: `${RUN}-n01-${tag}-${uniq()}`,
+          slug: `${RUN}-n01-${tag}-${u}`,
           name: `N01 ${tag} ${RUN}`,
           description: "fixture n-01",
           basePrice: price,
-          sku: `${RUN}-N01-${tag}`.toUpperCase(),
+          sku: `${RUN}-N01-${tag}-${u}`.toUpperCase(),
           categoryId,
           variants: {
             create: [
               {
                 name: "Única",
-                sku: `${RUN}-N01-${tag}-V`.toUpperCase(),
+                sku: variantSku,
                 price,
                 stock: 50,
                 attributes: {},
@@ -740,7 +746,7 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
         select: { id: true, variants: { select: { id: true } } },
       });
       createdProductIds.push(p.id);
-      return { productId: p.id, variantId: p.variants[0].id, price };
+      return { productId: p.id, variantId: p.variants[0].id, variantSku, price };
     }
 
     afterAll(async () => {
@@ -764,7 +770,7 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
 
       await expect(createOrderFromCart(baseInput(cartId))).rejects.toMatchObject({
         name: "OrderUnavailableItemsError",
-        items: [{ variantId: fx.variantId, sku: `${RUN}-N01-pa-V`.toUpperCase() }],
+        items: [{ variantId: fx.variantId, sku: fx.variantSku }],
       });
       expect(await prisma.order.count({ where: { cartId } })).toBe(0);
     });
@@ -798,10 +804,14 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
 
       const err = await createOrderFromCart(baseInput(cartId)).catch((e: unknown) => e);
       expect(err).toMatchObject({ name: "OrderUnavailableItemsError" });
-      // El error nombra SOLO el item retirado (el sano no se reporta).
-      expect((err as { items: Array<{ variantId: string }> }).items).toEqual([
-        { variantId: fx.variantId, sku: `${RUN}-N01-va-V`.toUpperCase() },
-      ]);
+      // El error nombra SOLO el item retirado (el sano no se reporta). Desde
+      // 2026-09-29 cada item lleva `name` (variantDisplayName) para el copy
+      // customer-safe — subset match, no igualdad estricta.
+      const items = (err as { items: Array<{ variantId: string; sku: string; name?: string }> })
+        .items;
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({ variantId: fx.variantId, sku: fx.variantSku });
+      expect(items[0]?.name).toBe(`N01 va ${RUN} (Única)`);
       // Ni siquiera se crea una order parcial con el item sano (nada de totales recalculados en silencio).
       expect(await prisma.order.count({ where: { cartId } })).toBe(0);
     });

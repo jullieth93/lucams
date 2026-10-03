@@ -169,8 +169,10 @@ export default function CalendarCardFocus({
   onIndexChange: (next: number) => void;
   /** Cierra el modal completo (este visor es la vista raíz del flujo del calendario). */
   onClose: () => void;
-  /** Sube UN nivel: cambia a la galería de escenas (nevera/corcho) dentro del mismo modal. */
-  onOpenGallery: () => void;
+  /** Sube UN nivel: cambia a la galería de escenas (nevera/corcho) dentro del mismo modal.
+   *  undefined (Fase 1A — variante SIN IMÁN): no hay escenas que asuman imán → el botón
+   *  «Míralo en tu espacio» no se renderiza. */
+  onOpenGallery?: () => void;
 }) {
   const isTouch = useIsTouch();
   const reduced = usePrefersReducedMotion();
@@ -232,15 +234,18 @@ export default function CalendarCardFocus({
         </span>
         <div className="flex items-center gap-2">
           {/* Ola 3 — "detalle primero, espacio después": desde el detalle se SUBE a la galería
-            (nevera/corcho) dentro del mismo modal; allá hay "Volver al detalle" para regresar. */}
-          <button
-            type="button"
-            onClick={onOpenGallery}
-            className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/15 px-4 text-sm font-bold text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
-          >
-            <Home className="h-4 w-4" aria-hidden />
-            <span>{texts.escenas.calBtnEspacio}</span>
-          </button>
+            (nevera/corcho) dentro del mismo modal; allá hay "Volver al detalle" para regresar.
+            Fase 1A — sin onOpenGallery (variante SIN IMÁN) el botón no aplica: no hay escenas. */}
+          {onOpenGallery && (
+            <button
+              type="button"
+              onClick={onOpenGallery}
+              className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/15 px-4 text-sm font-bold text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+            >
+              <Home className="h-4 w-4" aria-hidden />
+              <span>{texts.escenas.calBtnEspacio}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}

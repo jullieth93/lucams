@@ -8,6 +8,7 @@ import {
   encodeUnsubscribeParam,
 } from "@/features/newsletter/unsubscribe";
 import { renderReviewRequestEmail } from "@/features/emails/registry";
+import { createReviewToken } from "./review-token";
 
 /*
  * Palanca de reseñas (auditoría 2026-07-13): follow-up DEMORADO a pedidos entregados hace 7-30 días
@@ -41,7 +42,9 @@ export async function sendReviewRequests(
       email: true,
       shippingAddress: true,
       items: {
-        select: { variant: { select: { product: { select: { name: true, slug: true } } } } },
+        select: {
+          variant: { select: { product: { select: { id: true, name: true, slug: true } } } },
+        },
       },
     },
   });
@@ -53,12 +56,12 @@ export async function sendReviewRequests(
     try {
       // Productos ÚNICOS por slug (un pedido puede repetir producto en varias líneas).
       const seen = new Set<string>();
-      const products: Array<{ name: string; slug: string }> = [];
+      const products: Array<{ id: string; name: string; slug: string }> = [];
       for (const it of order.items) {
         const p = it.variant.product;
         if (!seen.has(p.slug)) {
           seen.add(p.slug);
-          products.push({ name: p.name, slug: p.slug });
+          products.push({ id: p.id, name: p.name, slug: p.slug });
         }
       }
 
@@ -69,14 +72,32 @@ export async function sendReviewRequests(
       }
 
       const ship = (order.shippingAddress ?? {}) as ShippingAddr;
+
+      // Token firmado de reseña (landing /resena/<token> sin login, ver
+      // review-token.ts). Si la emisión falla (p. ej. CSRF_SECRET ausente) el
+      // correo NO se sacrifica: va con reviewToken=null y la plantilla cae al
+      // fallback /rastrear + fichas de producto.
+      let reviewToken: string | null = null;
+      try {
+        reviewToken = createReviewToken({
+          orderId: order.id,
+          orderNumber: order.number,
+          email: order.email,
+          productIds: products.map((p) => p.id),
+        });
+      } catch (err) {
+        logger.error({
+          event: "review_request.token_fail",
+          orderId: order.id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+
       const tpl = await renderReviewRequestEmail({
         orderNumber: order.number,
         customerName: ship.fullName ?? "Cliente",
         products,
-        // #10 — link a la vista pública por token (invitados sin login); null → /mi-cuenta.
-        // F-11 — el token ya no se puede releer de la DB (solo hash); el
-        // invitado rastrea con número + correo en /rastrear.
-        publicTrackingToken: null,
+        reviewToken,
         unsubscribeUrl: `${siteUrl}/unsubscribe?u=${encodeUnsubscribeParam(order.email)}`,
       });
       const result = await sendEmail({

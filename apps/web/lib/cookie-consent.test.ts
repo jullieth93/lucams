@@ -63,8 +63,8 @@ describe("read/write client cookie", () => {
   });
 
   it("round-trips the accepted policyVersion (N-15 re-consent)", () => {
-    writeClientCookiePreferences(withPolicyVersion(acceptAllPreferences(), "v5 · 2026-09-04"));
-    expect(readClientCookiePreferences()?.policyVersion).toBe("v5 · 2026-09-04");
+    writeClientCookiePreferences(withPolicyVersion(acceptAllPreferences(), "v1 · 2026-09-29"));
+    expect(readClientCookiePreferences()?.policyVersion).toBe("v1 · 2026-09-29");
   });
 
   it("drops a policyVersion with invalid shape (non-string / empty)", () => {

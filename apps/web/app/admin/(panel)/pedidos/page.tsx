@@ -23,6 +23,7 @@ import {
   AdminNotice,
 } from "@/components/admin-page";
 import { Input } from "@/components/ui/input";
+import { Hint } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { getCurrentAdmin } from "@/lib/auth";
 import {
@@ -305,14 +306,15 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
                         </AdminBadge>
                         {/* #6 — flag visible de reconciliación pendiente. */}
                         {o.needsReconciliation && (
-                          <span
-                            className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-800"
-                            title={
+                          <Hint
+                            content={
                               o.reconciliationReason ?? "Pago cobrado sin stock — requiere atención"
                             }
                           >
-                            🔴 Reconciliar
-                          </span>
+                            <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-800">
+                              🔴 Reconciliar
+                            </span>
+                          </Hint>
                         )}
                       </div>
                     </td>

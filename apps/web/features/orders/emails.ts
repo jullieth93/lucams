@@ -15,6 +15,12 @@ import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
 import { designDisplayUnits } from "@/features/personalization/design-units";
 import {
+  describeVariantAttributes,
+  parseVariantAttributes,
+} from "@/features/products/variant-schemas";
+import { getSiteUrl } from "@/features/emails/layout";
+import { rotateOrderPublicAccessToken } from "./public-token";
+import {
   renderOrderConfirmationEmail,
   renderOrderShippedEmail,
   renderOrderDeliveredEmail,
@@ -25,6 +31,7 @@ import {
   renderRefundIssuedEmail,
   renderOrderAdminNotificationEmail,
 } from "@/features/emails/registry";
+import { carrierDisplayName, LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 
 type ShippingAddrSnapshot = {
   fullName?: string;
@@ -63,7 +70,15 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
       include: {
         items: {
           include: {
-            variant: { select: { sku: true, product: { select: { name: true } } } },
+            variant: {
+              select: {
+                sku: true,
+                product: { select: { name: true } },
+                // Paquete H — desglose de la variante (tamaño, fotos, imán…) bajo
+                // el nombre de cada línea del correo.
+                attributes: true,
+              },
+            },
             // Modelo multi-unidad (2026-09-09): la línea tiene qty=1 y el pack
             // va en unitPrice; las unidades reales salen del diseño (canvas o
             // metadata.unitCount) para mostrar ×N en el correo.
@@ -77,6 +92,24 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
     const ship = order.shippingAddress as ShippingAddrSnapshot;
     const customerName = ship.fullName ?? "Cliente";
 
+    // Paquete H (2026-10-02) — destino del botón "Ver mi pedido":
+    //  · Cliente REGISTRADO → su pedido en la cuenta (/mi-cuenta/pedidos/<number>).
+    //  · INVITADO no-COD → token público FRESCO rotado al enviar (F-11: el plano
+    //    nunca se persiste; los links previos quedan invalidados) y CTA a
+    //    /pedido/<token>. Seguro en el flujo Wompi: este email sale tras el
+    //    webhook APPROVED y el invitado nunca recibió el token original (la
+    //    página /checkout/gracias llega por txId de Wompi y su CTA es /rastrear).
+    //  · INVITADO COD → /rastrear (SIN rotar): con COD el cliente sí recibe el
+    //    token original (redirect del checkout a /pedido/<token>?nueva=1) y el
+    //    email puede llegar antes de que lo use — rotarlo rompería ese link.
+    let publicTrackingToken: string | null = null;
+    let accountOrderUrl: string | null = null;
+    if (order.customerId) {
+      accountOrderUrl = `${await getSiteUrl()}/mi-cuenta/pedidos/${order.number}`;
+    } else if (order.paymentMethod !== "COD") {
+      publicTrackingToken = await rotateOrderPublicAccessToken(order.id);
+    }
+
     const tpl = await renderOrderConfirmationEmail({
       orderNumber: order.number,
       customerName,
@@ -84,21 +117,19 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
       subtotal: order.subtotal,
       shipping: order.shipping,
       discount: order.discount,
-      shippingCarrier: order.shippingCarrier
-        ? order.shippingCarrier.toUpperCase().replace(/-/g, " ")
-        : null,
+      shippingCarrier: order.shippingCarrier ? carrierDisplayName(order.shippingCarrier) : null,
       items: order.items.map((it) => ({
         name: it.variant.product.name,
         qty: it.qty,
         units: lineDisplayUnits(it),
         lineTotal: it.unitPrice * it.qty,
+        breakdown: describeVariantAttributes(parseVariantAttributes(it.variant.attributes)),
       })),
       shippingAddress: formatAddressLine(ship),
-      // F-11 — el token público ya no se guarda en claro y este email se manda
-      // tras PAID (otro proceso): no hay link /pedido/<token>. El invitado
-      // rastrea con número + correo en /rastrear.
-      publicTrackingToken: null,
+      publicTrackingToken,
+      accountOrderUrl,
       paymentMethod: order.paymentMethod,
+      internalDelivery: order.shippingCarrier === LUCAMS_CARRIER,
     });
 
     const result = await sendEmail({
@@ -196,13 +227,12 @@ export async function sendOrderShipped(orderId: string): Promise<void> {
     const tpl = await renderOrderShippedEmail({
       orderNumber: order.number,
       customerName: ship.fullName ?? "Cliente",
-      carrier: order.shippingCarrier
-        ? order.shippingCarrier.toUpperCase().replace(/-/g, " ")
-        : "Transportadora",
+      carrier: carrierDisplayName(order.shippingCarrier),
       trackingNumber: order.trackingNumber,
       trackingUrl: order.trackingUrl,
       estimatedDays: null,
       publicTrackingToken: null, // F-11 — ver sendOrderConfirmation
+      internalDelivery: order.shippingCarrier === LUCAMS_CARRIER,
     });
 
     const result = await sendEmail({
@@ -406,6 +436,7 @@ export async function sendOrderDelivered(orderId: string): Promise<void> {
         number: true,
         email: true,
         shippingAddress: true,
+        shippingCarrier: true,
       },
     });
     if (!order) return;
@@ -415,6 +446,7 @@ export async function sendOrderDelivered(orderId: string): Promise<void> {
       orderNumber: order.number,
       customerName: ship.fullName ?? "Cliente",
       publicTrackingToken: null, // F-11 — ver sendOrderConfirmation
+      internalDelivery: order.shippingCarrier === LUCAMS_CARRIER,
     });
 
     const result = await sendEmail({
@@ -560,7 +592,13 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
       include: {
         items: {
           include: {
-            variant: { select: { product: { select: { name: true } } } },
+            variant: {
+              select: {
+                product: { select: { name: true } },
+                // Paquete H — desglose de la variante en el aviso (qué producir).
+                attributes: true,
+              },
+            },
             // Multi-unidad: unidades reales del diseño para el ×N del aviso.
             design: { select: { canvasData: true, metadata: true } },
           },
@@ -608,7 +646,7 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
       paymentMethod: order.paymentMethod,
       subtotal: order.subtotal,
       shipping: order.shipping,
-      shippingCarrier: order.shippingCarrier,
+      shippingCarrier: order.shippingCarrier ? carrierDisplayName(order.shippingCarrier) : null,
       discount: order.discount,
       total: order.total,
       items: order.items.map((it) => ({
@@ -616,6 +654,7 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
         qty: it.qty,
         units: lineDisplayUnits(it),
         lineTotal: it.unitPrice * it.qty,
+        breakdown: describeVariantAttributes(parseVariantAttributes(it.variant.attributes)),
       })),
     });
     const result = await sendEmail({

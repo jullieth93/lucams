@@ -6,6 +6,7 @@
  */
 
 import "server-only";
+import { unstable_cache, updateTag } from "next/cache";
 import { prisma } from "@/lib/db";
 import { isAllowedRedirectDestination } from "@/lib/safe-redirect";
 import { getStorefrontProductBySlug } from "@/features/products/public-service";
@@ -244,6 +245,19 @@ export type RedirectCreateInput = {
   isActive?: boolean;
 };
 
+/*
+ * Invalidación del tag "redirects" (B-8, auditoría cableado cliente↔admin
+ * 2026-10-02): TODA mutación de UrlRedirect que cambie lo que resuelve el
+ * proxy expira el tag de la Data Cache compartida (lookupActiveRedirectCached
+ * abajo). updateTag (semántica expire, read-your-own-writes) solo puede
+ * llamarse dentro de un Server Action — todos los callers de estas
+ * mutaciones lo son (actions de /admin/redirects y services de catálogo
+ * invocados desde actions).
+ */
+function invalidateRedirectsTag() {
+  updateTag("redirects");
+}
+
 export async function createRedirect(input: RedirectCreateInput, actorAdminId: string) {
   const fromPath = normalizeFromPath(input.fromPath); // #29 — llave case-insensitive
   const toPath = normalizePath(input.toPath);
@@ -268,31 +282,32 @@ export async function createRedirect(input: RedirectCreateInput, actorAdminId: s
   }
 
   // Si existe pero estaba archivado, reactivar reusando el row.
-  if (existing && existing.deletedAt) {
-    return prisma.urlRedirect.update({
-      where: { id: existing.id },
-      data: {
-        toPath,
-        statusCode: input.statusCode,
-        description: input.description ?? null,
-        isActive: input.isActive ?? true,
-        deletedAt: null,
-        deletedBy: null,
-        updatedBy: actorAdminId,
-      },
-    });
-  }
-
-  return prisma.urlRedirect.create({
-    data: {
-      fromPath,
-      toPath,
-      statusCode: input.statusCode,
-      description: input.description ?? null,
-      isActive: input.isActive ?? true,
-      createdBy: actorAdminId,
-    },
-  });
+  const saved =
+    existing && existing.deletedAt
+      ? await prisma.urlRedirect.update({
+          where: { id: existing.id },
+          data: {
+            toPath,
+            statusCode: input.statusCode,
+            description: input.description ?? null,
+            isActive: input.isActive ?? true,
+            deletedAt: null,
+            deletedBy: null,
+            updatedBy: actorAdminId,
+          },
+        })
+      : await prisma.urlRedirect.create({
+          data: {
+            fromPath,
+            toPath,
+            statusCode: input.statusCode,
+            description: input.description ?? null,
+            isActive: input.isActive ?? true,
+            createdBy: actorAdminId,
+          },
+        });
+  invalidateRedirectsTag();
+  return saved;
 }
 
 /**
@@ -369,6 +384,7 @@ export async function createSlugRenameRedirect(opts: {
       },
     });
   }
+  invalidateRedirectsTag();
 }
 
 /**
@@ -393,6 +409,7 @@ export async function archiveRedirectOccupyingPath(
     where: { fromPath, deletedAt: null },
     data: { deletedAt: new Date(), deletedBy: actorAdminId, isActive: false },
   });
+  invalidateRedirectsTag();
 }
 
 export type RedirectUpdateInput = {
@@ -424,7 +441,7 @@ export async function updateRedirect(input: RedirectUpdateInput, actorAdminId: s
   // fromPath es inmutable en update, así que no re-chequeamos assertFromPathNotLive.
   await assertNoRedirectChain(toPath, existing.fromPath);
 
-  return prisma.urlRedirect.update({
+  const updated = await prisma.urlRedirect.update({
     where: { id: input.id },
     data: {
       toPath,
@@ -434,6 +451,8 @@ export async function updateRedirect(input: RedirectUpdateInput, actorAdminId: s
       updatedBy: actorAdminId,
     },
   });
+  invalidateRedirectsTag();
+  return updated;
 }
 
 export async function toggleRedirectActive(id: string, actorAdminId: string) {
@@ -441,14 +460,16 @@ export async function toggleRedirectActive(id: string, actorAdminId: string) {
     where: { id, deletedAt: null },
   });
   if (!existing) throw new RedirectValidationError("id", "Redirect no encontrado.");
-  return prisma.urlRedirect.update({
+  const toggled = await prisma.urlRedirect.update({
     where: { id },
     data: { isActive: !existing.isActive, updatedBy: actorAdminId },
   });
+  invalidateRedirectsTag();
+  return toggled;
 }
 
 export async function archiveRedirect(id: string, actorAdminId: string) {
-  return prisma.urlRedirect.update({
+  const archived = await prisma.urlRedirect.update({
     where: { id },
     data: {
       deletedAt: new Date(),
@@ -456,21 +477,26 @@ export async function archiveRedirect(id: string, actorAdminId: string) {
       isActive: false,
     },
   });
+  invalidateRedirectsTag();
+  return archived;
 }
 
 export async function restoreRedirect(id: string, actorAdminId: string) {
-  return prisma.urlRedirect.update({
+  const restored = await prisma.urlRedirect.update({
     where: { id },
     data: { deletedAt: null, deletedBy: null, updatedBy: actorAdminId },
   });
+  invalidateRedirectsTag();
+  return restored;
 }
 
 /**
- * Lookup activo por fromPath. Llamado desde proxy.ts.
- * Devuelve { toPath, statusCode } o null si no hay match.
+ * Lookup activo por fromPath. Devuelve { toPath, statusCode } o null si no
+ * hay match.
  *
- * No usa cache acá: el caller decide caching (proxy debe cachear in-memory
- * 60s para no martillear la DB en cada request).
+ * Sin caché acá: es el query crudo. El camino caliente del proxy pasa por
+ * lookupActiveRedirectCached (abajo), que envuelve este lookup en
+ * unstable_cache con tag "redirects".
  */
 export async function lookupActiveRedirect(
   fromPath: string,
@@ -480,6 +506,44 @@ export async function lookupActiveRedirect(
     select: { toPath: true, statusCode: true },
   });
   return r;
+}
+
+const cachedLookupActiveRedirect = unstable_cache(
+  async (fromPath: string) => lookupActiveRedirect(fromPath),
+  ["url-redirect-lookup"],
+  { tags: ["redirects"], revalidate: 60 },
+);
+
+/**
+ * Lookup que consume el proxy (B-8, auditoría cableado cliente↔admin
+ * 2026-10-02). Antes el proxy llevaba un Map in-memory TTL 60s POR INSTANCIA:
+ * en un despliegue multi-instancia (Vercel) las copias divergían hasta 60s y
+ * un redirect nuevo tardaba en aplicar. `unstable_cache` usa la Data Cache
+ * COMPARTIDA con tag "redirects": toda mutación del service emite
+ * updateTag("redirects") (expire inmediato) y el revalidate de 60s queda solo
+ * como red de seguridad para cambios que bypassen la app (SQL/seed directo).
+ * El runtime del proxy en Next 16 es Node.js (fijo, no configurable — ver
+ * docs/upgrading/version-16.md § middleware to proxy), así que unstable_cache
+ * está disponible.
+ *
+ * Degradación grácil: sin incrementalCache de Next (vitest, scripts
+ * standalone) unstable_cache lanza el invariante E469 en Next 16 — lo
+ * capturamos y ejecutamos el lookup directo (mismo patrón que cachedCms en
+ * lib/cms.ts). Si la DB falla, el error se propaga y el caller decide (el
+ * proxy lo envuelve en .catch(() => null): la request sigue sin redirect).
+ */
+export async function lookupActiveRedirectCached(
+  fromPath: string,
+): Promise<{ toPath: string; statusCode: number } | null> {
+  try {
+    return await cachedLookupActiveRedirect(fromPath);
+  } catch (err) {
+    const code = (err as { __NEXT_ERROR_CODE?: string } | null)?.__NEXT_ERROR_CODE;
+    const missingCache =
+      code === "E469" || (err instanceof Error && err.message.includes("incrementalCache"));
+    if (missingCache) return lookupActiveRedirect(fromPath);
+    throw err;
+  }
 }
 
 /**

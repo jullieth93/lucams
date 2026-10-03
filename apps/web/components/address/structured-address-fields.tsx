@@ -25,6 +25,7 @@ export type StructuredAddressValue = {
   deptCode: string;
   cityCode: string;
   zip: string;
+  neighborhood: string;
   kind: "urban" | "rural";
   viaType: string;
   viaNumber: string;
@@ -42,6 +43,7 @@ export const EMPTY_STRUCTURED_ADDRESS: StructuredAddressValue = {
   deptCode: "",
   cityCode: "",
   zip: "",
+  neighborhood: "",
   kind: "urban",
   viaType: "Calle",
   viaNumber: "",
@@ -64,11 +66,16 @@ export function StructuredAddressFields({
   onChange,
   errors,
   disabled,
+  neighborhoodPlaceholder,
 }: {
   value: StructuredAddressValue;
   onChange: (patch: Partial<StructuredAddressValue>) => void;
   errors?: Record<string, string[] | undefined>;
   disabled?: boolean;
+  /* Copy CMS (account.address.neighborhood-placeholder): baja resuelto por
+     props porque este client no lee el CMS (mismo patrón que los demás
+     textos del área de cliente). */
+  neighborhoodPlaceholder: string;
 }) {
   const cities = value.deptCode ? getCitiesByDeptCode(value.deptCode) : [];
   const deptName = getDepartmentByCode(value.deptCode)?.name ?? "";
@@ -142,6 +149,20 @@ export function StructuredAddressFields({
             aria-invalid={Boolean(err("zip"))}
           />
           {err("zip") && <p className="text-destructive text-sm">{err("zip")}</p>}
+        </div>
+        <div className="space-y-1.5 sm:col-span-6">
+          <Label htmlFor="neighborhood">Barrio (opcional)</Label>
+          <Input
+            id="neighborhood"
+            name="neighborhood"
+            value={value.neighborhood}
+            disabled={disabled}
+            onChange={(e) => onChange({ neighborhood: e.target.value })}
+            placeholder={neighborhoodPlaceholder}
+            maxLength={100}
+            aria-invalid={Boolean(err("neighborhood"))}
+          />
+          {err("neighborhood") && <p className="text-destructive text-sm">{err("neighborhood")}</p>}
         </div>
       </div>
 

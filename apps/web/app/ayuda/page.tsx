@@ -6,7 +6,7 @@
  * `metadata.order` cuando esté presente o por key alfabético.
  *
  * Si el catálogo de FAQs está vacío, mostramos un set hardcoded de
- * 10 preguntas básicas como fallback editorial inicial. OJO: el modo
+ * preguntas básicas como fallback editorial inicial. OJO: el modo
  * edición NO auto-crea campos — la puerta por-key redirige al índice
  * de contenido si la key no existe; el CmsBlock hay que crearlo desde
  * /admin/contenido.
@@ -35,7 +35,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export const dynamic = "force-dynamic";
 
-// Fallback editorial: 10 preguntas iniciales. El modo edición NO
+// Fallback editorial: preguntas iniciales del centro de ayuda. El modo edición NO
 // auto-crea el CmsBlock de una key inexistente (la puerta por-key
 // /admin/contenido/campos/por-key redirige al índice de contenido);
 // el bloque hay que crearlo desde el admin. Cuando
@@ -48,10 +48,16 @@ export const dynamic = "force-dynamic";
 // `codEnabled`: el toggle COD del admin (SiteSetting COD_ENABLED) también
 // gobierna la mención de contraentrega — apagarlo quita la promesa (2026-07-22).
 // FAIL-CLOSED (CF-35): setting ausente/despublicada = no se promete contraentrega.
+// La FAQ `envio-mismo-dia` (Envío Lucam's, en construcción paralela en
+// features/shipping) NO se publica aquí sin más: AyudaPage la filtra salvo que
+// la setting SAME_DAY_DELIVERY_ENABLED sea "true" y el modo sea full — mismo
+// patrón fail-closed que COD_ENABLED (ningún texto público promete lo que la
+// tienda no opera hoy).
 function buildFallbackFaqs(
   catalog: boolean,
   codEnabled: boolean,
   contactEmail: string,
+  cutoffHour: string,
 ): { slug: string; question: string; answer: string }[] {
   const codCatalog = codEnabled
     ? " Además tienes **contraentrega disponible**: pagas en efectivo al recibir tu pedido."
@@ -89,10 +95,21 @@ function buildFallbackFaqs(
         : "Llegamos a **{{cobertura}} destinos** en Colombia a través de nuestras transportadoras aliadas. Al hacer el pedido calculamos automáticamente el costo, el tiempo estimado y qué transportadora llega a tu ciudad.",
     },
     {
+      slug: "envio-mismo-dia",
+      question: "¿Tienen envío el mismo día en Bogotá?",
+      answer: `Sí: **Envío Lucam's**, nuestro servicio propio de entrega local. Está disponible en **localidades seleccionadas de Bogotá** y la entrega es **el mismo día del despacho**, con **tarifa fija** que ves antes de pagar. Si el producto está **listo (sin fabricación pendiente)** y tu pedido queda confirmado **antes de las ${cutoffHour}:00**, te llega **ese mismo día**; si hay que fabricarlo a mano, primero lo producimos y te llega el día que lo despachemos. Si la opción no aparece en tu checkout, tu localidad aún no está cubierta — siempre puedes elegir el envío por transportadora aliada.`,
+    },
+    {
       slug: "cambios-devoluciones",
       question: "¿Cómo cambio o devuelvo un producto?",
       answer:
-        "Tienes **5 días hábiles** desde la entrega para retractarte (Ley 1480 art. 47), excepto en productos personalizados. Para garantía: 1 año desde la entrega. [Más detalles](/legal/devoluciones).",
+        "Tienes **5 días hábiles** desde la entrega para retractarte (Ley 1480 art. 47), excepto en productos personalizados. Para garantía: **3 meses** desde la entrega, y el plazo **se suspende** mientras tu producto esté en reparación. [Más detalles](/legal/devoluciones) y [Garantías](/legal/garantias).",
+    },
+    {
+      slug: "cuidado-imanes",
+      question: "¿Cómo cuido mis imanes?",
+      answer:
+        "Para que duren: **nada de agua ni humedad**; lejos del **calor extremo y del sol prolongado**; límpialos con **paño suave y seco** (sin químicos ni abrasivos); úsalos sobre superficies limpias, lisas y ferromagnéticas; y **no los dobles** ni los golpees. Las piezas pequeñas, lejos de niños **menores de 3 años**. Estas son las instrucciones de uso y conservación que rigen la [garantía](/legal/garantias).",
     },
     {
       slug: "comprobante-venta",
@@ -126,14 +143,23 @@ function buildFallbackFaqs(
 }
 
 export default async function AyudaPage() {
-  const [faqs, waSupportUrl, contactEmail, codSetting] = await Promise.all([
-    getCmsBlocksByCategory("FAQ"),
-    buildWhatsAppUrl({ kind: "support" }),
-    getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
-    getSettingValue("COD_ENABLED", "false"),
-  ]);
+  const [faqs, waSupportUrl, contactEmail, codSetting, sameDaySetting, cutoffSetting] =
+    await Promise.all([
+      getCmsBlocksByCategory("FAQ"),
+      buildWhatsAppUrl({ kind: "support" }),
+      getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
+      getSettingValue("COD_ENABLED", "false"),
+      getSettingValue("SAME_DAY_DELIVERY_ENABLED", "false"),
+      // Hora límite del envío propio (misma setting del checkout) para que el
+      // fallback de la FAQ `envio-mismo-dia` nunca cite una hora desactualizada.
+      getSettingValue("LUCAMS_SHIPPING_CUTOFF_HOUR", "12"),
+    ]);
   const catalog = isCatalogMode();
   const codEnabled = codSetting === "true";
+  // Envío Lucam's (mismo día, Bogotá) — feature en construcción paralela. Gate
+  // fail-closed: la FAQ solo se muestra cuando la tienda la tiene activa (setting
+  // explícita) y hay checkout donde ver la opción (modo full).
+  const sameDayEnabled = sameDaySetting === "true" && !catalog;
 
   // FAQs SENSIBLES al modo de tienda (pago/envío/cierre): la DB arrastra la
   // variante del modo en que se sembró y NO cambia al flipear STORE_MODE
@@ -146,7 +172,7 @@ export default async function AyudaPage() {
     "metodos-pago",
     "envios-cobertura",
   ]);
-  const fallbackSet = buildFallbackFaqs(catalog, codEnabled, contactEmail);
+  const fallbackSet = buildFallbackFaqs(catalog, codEnabled, contactEmail, cutoffSetting);
   const catalogBodyBySlug = new Map(fallbackSet.map((f) => [f.slug, f.answer]));
 
   // Si hay FAQs en CMS, las usamos. Si no, fallback editorial.
@@ -171,6 +197,13 @@ export default async function AyudaPage() {
           fromCms: false as const,
         }));
 
+  // Gate del Envío Lucam's: la FAQ `envio-mismo-dia` se oculta (venga del CMS o del
+  // fallback) mientras la setting SAME_DAY_DELIVERY_ENABLED no sea "true" en modo full
+  // — la feature se construye en paralelo y ningún texto público puede prometerla antes.
+  const visibleItems = sameDayEnabled
+    ? items
+    : items.filter((it) => it.slug.replace(/^\d+-/, "") !== "envio-mismo-dia");
+
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
@@ -190,7 +223,7 @@ export default async function AyudaPage() {
           </header>
 
           <div className="border-brand-purple/10 mb-8 divide-y rounded-xl border bg-white">
-            {items.map((it) => (
+            {visibleItems.map((it) => (
               <details
                 key={it.slug}
                 className="group [&_summary]:list-none [&_summary::-webkit-details-marker]:hidden"

@@ -49,6 +49,7 @@ import {
 } from "@/features/products/stock-constants";
 import { parseVariantAttributes } from "@/features/products/variant-schemas";
 import { CompactStockEditor } from "@/components/admin/compact-stock-editor";
+import { Hint } from "@/components/ui/tooltip";
 
 export const metadata: Metadata = {
   title: "Inventario · Admin",
@@ -214,12 +215,11 @@ export default async function InventarioPage({ searchParams }: { searchParams: S
                             <ExternalLink className="h-3 w-3 opacity-50" aria-hidden />
                           </Link>
                           {!row.isProductActive && (
-                            <span
-                              className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900"
-                              title="Producto pausado — no visible en la tienda"
-                            >
-                              Pausado
-                            </span>
+                            <Hint content="Producto pausado — no visible en la tienda">
+                              <span className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900">
+                                Pausado
+                              </span>
+                            </Hint>
                           )}
                         </div>
                         <p className="text-brand-muted mt-0.5 text-xs">

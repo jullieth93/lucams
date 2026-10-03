@@ -15,12 +15,13 @@
 
 import { renderEmailLayout, escapeHtml, ctaButton, getSiteUrl } from "../layout";
 import { formatCOP, formatCityDept } from "@/lib/format";
+import { customerTelLink, customerWaLink } from "@/lib/wa";
 
 export type OrderAdminNotificationData = {
   orderId: string;
   orderNumber: string;
   customerName: string;
-  /** Teléfono del checkout tal cual (se sanitiza a dígitos para wa.me). */
+  /** Teléfono del checkout tal cual (10 dígitos CO; el indicativo 57 lo pone lib/wa). */
   customerPhone: string;
   customerEmail: string;
   city: string;
@@ -40,17 +41,26 @@ export type OrderAdminNotificationData = {
     /** Unidades físicas reales del diseño (multi-unidad); se muestra ×(units ?? qty). */
     units?: number;
     lineTotal: number; // centavos COP
+    /**
+     * Desglose de la variante (Paquete H, 2026-10-02 — describeVariantAttributes):
+     * ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"]. Línea secundaria bajo el
+     * nombre; []/ausente ⇒ solo el nombre. A Lucy le dice qué producir sin abrir
+     * el admin.
+     */
+    breakdown?: string[];
   }>;
 };
 
 export async function orderAdminNotificationEmail(data: OrderAdminNotificationData) {
   const siteUrl = await getSiteUrl();
   const adminUrl = `${siteUrl}/admin/pedidos/${data.orderNumber}`;
-  const waDigits = data.customerPhone.replace(/\D/g, "");
-  const waText = encodeURIComponent(
+  // Links al cliente con el indicativo de país resuelto (lib/wa): el checkout
+  // guarda 10 dígitos CO y wa.me/tel: exigen el 57. null = no parseable → sin link.
+  const customerWaUrl = customerWaLink(
+    data.customerPhone,
     `Hola ${data.customerName}, te escribo de Lucams por tu pedido ${data.orderNumber}. `,
   );
-  const customerWaUrl = waDigits ? `https://wa.me/${waDigits}?text=${waText}` : null;
+  const customerTelUrl = customerTelLink(data.customerPhone);
   const location = formatCityDept(data.city, data.department);
   const paymentLabel = data.paymentMethod === "COD" ? "Contraentrega" : "Wompi (online)";
 
@@ -59,7 +69,11 @@ export async function orderAdminNotificationEmail(data: OrderAdminNotificationDa
       (it) => `
 <tr>
   <td style="padding:8px 0;border-bottom:1px solid #f0e7e0;color:#3D2E5C;">
-    ${escapeHtml(it.name)} <span style="opacity:0.55;">×${it.units ?? it.qty}</span>
+    ${escapeHtml(it.name)} <span style="opacity:0.55;">×${it.units ?? it.qty}</span>${
+      it.breakdown && it.breakdown.length > 0
+        ? `<div style="font-size:12px;color:#3D2E5C;opacity:0.6;">${escapeHtml(it.breakdown.join(" · "))}</div>`
+        : ""
+    }
   </td>
   <td style="padding:8px 0;border-bottom:1px solid #f0e7e0;text-align:right;color:#3D2E5C;font-weight:600;">${formatCOP(it.lineTotal)}</td>
 </tr>`,
@@ -70,7 +84,11 @@ export async function orderAdminNotificationEmail(data: OrderAdminNotificationDa
 <h1 style="margin:0 0 12px 0;font-size:20px;">📦 Nuevo pedido ${escapeHtml(data.orderNumber)}</h1>
 <table cellpadding="6" cellspacing="0" border="0" style="font-size:14px;width:100%;border-collapse:collapse;">
   <tr><td style="color:#3D2E5C;opacity:0.6;width:110px;">Cliente:</td><td><strong>${escapeHtml(data.customerName)}</strong></td></tr>
-  <tr><td style="color:#3D2E5C;opacity:0.6;">Teléfono:</td><td><a href="tel:+${waDigits}" style="color:#3D2E5C;">${escapeHtml(data.customerPhone)}</a></td></tr>
+  <tr><td style="color:#3D2E5C;opacity:0.6;">Teléfono:</td><td>${
+    customerTelUrl
+      ? `<a href="${customerTelUrl}" style="color:#3D2E5C;">${escapeHtml(data.customerPhone)}</a>`
+      : escapeHtml(data.customerPhone)
+  }</td></tr>
   ${
     customerWaUrl
       ? `<tr><td style="color:#3D2E5C;opacity:0.6;">WhatsApp:</td><td><a href="${customerWaUrl}" style="display:inline-block;background:#25D366;color:#ffffff;text-decoration:none;font-weight:700;font-size:12px;padding:4px 10px;border-radius:6px;">✆ Abrir chat</a></td></tr>`
@@ -122,7 +140,7 @@ Ciudad: ${location}
 Pago: ${paymentLabel}
 
 Items:
-${data.items.map((it) => `  - ${it.name} ×${it.units ?? it.qty} → ${formatCOP(it.lineTotal)}`).join("\n")}
+${data.items.map((it) => `  - ${it.name}${it.breakdown && it.breakdown.length > 0 ? ` (${it.breakdown.join(" · ")})` : ""} ×${it.units ?? it.qty} → ${formatCOP(it.lineTotal)}`).join("\n")}
 
 Subtotal (productos): ${formatCOP(data.subtotal)}
 Envío${data.shippingCarrier ? ` (${data.shippingCarrier.toUpperCase().replace(/-/g, " ")})` : ""}: ${formatCOP(data.shipping)}${data.discount > 0 ? `\nDescuento (cupón): −${formatCOP(data.discount)}` : ""}

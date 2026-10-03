@@ -24,15 +24,18 @@ Si necesitas nuestros datos completos de identificación, te los damos con gusto
 
 ## Cuánto dura (art. 8)
 
-Tienes **1 año de garantía legal**, contado **desde el día en que recibes tu producto**. Es el mínimo que exige la ley y aplica a todo nuestro catálogo, sin importar si compraste en línea o si cerramos tu pedido por WhatsApp a partir de una cotización del sitio.
+Tienes **3 meses de garantía**, contados **desde el día en que recibes tu producto**. La ley (art. 8) dice que, a falta de un término fijado por la autoridad competente, la garantía dura **lo que el productor anuncie** —y solo si no se anuncia nada, un año—. Nuestros productos son **papelería magnética personalizada** —impresos hechos a pedido, de alta manipulación— así que fijamos este término acorde a su naturaleza y te lo informamos expresamente aquí, antes de que compres. Aplica a todo nuestro catálogo, sin importar si compraste en línea o si cerramos tu pedido por WhatsApp a partir de una cotización del sitio.
 
-Mientras reparamos un producto en garantía, ese tiempo **no cuenta en tu contra**: el plazo se suspende y se extiende por los días que el producto esté con nosotros.
+## Cómo se cuenta el plazo (art. 9)
+
+- **Si tu producto entra a reparación, el reloj se pausa.** El término de la garantía se **suspende** durante todo el tiempo que estés sin tu producto por efectividad de la garantía, y se retoma cuando te lo devolvemos. Esos días nunca cuentan en tu contra.
+- **Si te reponemos el producto completo** por uno nuevo, el término **corre de nuevo desde cero**: 3 meses completos contados desde la entrega del producto repuesto.
 
 ## Qué cubre (art. 7 y 11)
 
-La garantía cubre los **defectos de fabricación, de materiales o de funcionamiento** que no sean culpa del uso. Por ejemplo:
+La garantía cubre los **defectos de fabricación, de materiales o de impresión** que no sean culpa del uso. Por ejemplo:
 
-- Imanes que se desprenden del soporte con uso normal.
+- El imán que se despega o pierde adherencia con uso normal (adherencia del imán de fábrica).
 - Impresión que se borra o destiñe rápido sin haber estado al sol o al agua.
 - Productos que llegan rotos o defectuosos por fabricación o por embalaje.
 
@@ -40,22 +43,44 @@ La garantía cubre los **defectos de fabricación, de materiales o de funcionami
 
 ## Qué NO cubre (art. 16)
 
-La garantía no cubre los daños que no vienen de fabricación, como:
+La ley (art. 16) exonera la garantía cuando el daño no viene de un defecto del producto sino de:
 
-- Mal uso, golpes, caídas o exposición prolongada al sol, al agua o al calor.
-- Desgaste normal del adhesivo al pegarlo en superficies no magnéticas.
-- Daños causados por un tercero o por no seguir las instrucciones de uso y cuidado.
+- **Mal uso**: golpes, caídas, dobladuras o un uso distinto al previsto.
+- **Fuerza mayor o caso fortuito**: inundaciones, incendios u otros eventos fuera de nuestro control.
+- **El hecho de un tercero**: daños causados por otra persona.
+- **No seguir las instrucciones de uso y conservación** que te damos abajo: agua, humedad, calor extremo, sol prolongado o químicos de limpieza.
+
+Tampoco es un defecto el **desgaste natural** por el uso normal del producto con el paso del tiempo.
 
 Eso sí: si creemos que tu caso entra en alguna de estas causales, **nos toca a nosotros demostrarlo** (así lo exige el art. 16). No pierdes tu garantía porque nosotros lo digamos; tienes derecho a que te expliquemos por qué, con razones.
 
+## Cómo cuidar tus productos (instrucciones de uso y conservación)
+
+La ley (art. 11) nos pide darte las instrucciones de uso y mantenimiento del producto —y seguirlas mantiene tu garantía a salvo:
+
+- **Nada de agua ni humedad**: no los sumerjas, no los laves bajo el grifo y no los dejes en sitios húmedos.
+- **Lejos del calor y del sol**: no los expongas a calor extremo (estufas, carros al sol) ni a sol directo prolongado, para que la impresión no se degrade.
+- **Limpieza suave**: usa un paño suave y seco o apenas húmedo; nunca químicos, solventes ni abrasivos.
+- **Superficies adecuadas**: úsalos sobre superficies limpias, lisas, secas y ferromagnéticas (nevera, tablero metálico).
+- **Sin doblar ni golpear**: manipúlalos por los bordes y evita doblarlos o dejarlos caer.
+- **Piezas pequeñas**: mantenlas lejos de niños y niñas **menores de 3 años** (riesgo de atragantamiento).
+
 ## Qué puedes pedir (art. 11)
 
-Si tu producto sale con defecto dentro del año de garantía:
+Si tu producto sale con defecto dentro de los **3 meses de garantía**, la ley fija esta escalera:
 
-1. Lo **reparamos totalmente gratis**. El transporte o el envío del producto también corre por nuestra cuenta, nunca por la tuya.
-2. Si el producto **no se puede reparar**, o si **la falla se repite** después de arreglarlo, **tú eliges** entre:
-   - que te lo **cambiemos** por uno nuevo, o
-   - que te **devolvamos el dinero que pagaste**.
+1. **Primero, reparación totalmente gratis.** El transporte o el envío del producto también corre por nuestra cuenta, nunca por la tuya.
+2. **Si el producto no admite reparación**, te lo **reponemos por uno nuevo** o te **devolvemos el dinero que pagaste**.
+3. **Si la falla se repite** después de haberlo reparado, ahí **tú eliges** entre:
+   - una **nueva reparación** (también gratis),
+   - la **devolución total o parcial** del precio que pagaste, o
+   - el **cambio** por otro producto de **iguales o mejores características**.
+
+## Quién prueba qué (art. 10)
+
+- A ti te basta **mostrar el defecto** (una foto o un video y tu número de pedido): la ley pone la carga de la prueba de nuestro lado, no del tuyo.
+- **Productor y proveedor respondemos solidariamente** por la garantía legal. En Lucams_shop somos ambos, así que respondemos directamente y sin intermediarios.
+- Solo quedamos exonerados si **probamos** que el daño viene de una causal del art. 16 (mal uso, fuerza mayor o caso fortuito, hecho de un tercero, o no seguir las instrucciones de uso y conservación).
 
 ## Cómo la haces efectiva
 
@@ -72,7 +97,7 @@ Queremos resolverlo directamente contigo, de la mejor manera. Pero si no quedas 
 
 ---
 
-_Versión 5 · vigente desde 2026-09-04 · sin cambios de fondo; se alinea la versión con el paquete legal v5 (tienda en línea activa) · en revisión por asesoría legal_
+_Versión 1 · vigente desde 2026-09-29_
 `;
 
 export default function Page() {

@@ -36,7 +36,8 @@ const ROUTES = [
   "/admin/garantias",
   "/admin/soporte",
   "/admin/clientes",
-  "/admin/reclamos",
+  // 2026-10-01: /admin/reclamos ya no es módulo — redirect permanente (308) a
+  // /admin/garantias; sale del inventario de rutas REALES.
   "/admin/resenas",
   "/admin/productos",
   "/admin/inventario",

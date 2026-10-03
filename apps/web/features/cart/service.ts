@@ -19,19 +19,29 @@
  *     checkout (si Lucy cambia un precio, aplica a carritos nuevos — cobrar
  *     de más lo ya exhibido sería peor para el cliente y para el Estatuto
  *     del Consumidor; la ventana de exposición la acota el TTL del carrito).
+ *   - Precio por volumen (WholesaleTier, 2026-10-02): si hay niveles activos
+ *     aplicables, el unitPrice de la línea es el del nivel alcanzado por la
+ *     qty (ver volume-pricing.ts — reglas y precedencia). Como el nivel
+ *     depende de la qty, el unitPrice se RE-CALCULA en addProductToCart /
+ *     addPersonalizedToCart / updateCartItemQty cada vez que la qty cambia;
+ *     cuando el producto NO tiene niveles configurados el snapshot queda
+ *     intacto (semántica legacy).
  *   - Variante default ("<sku>-DEFAULT") es la que se usa cuando un
  *     producto no tiene variantes reales — ver features/products/service.ts.
  */
 
 import "server-only";
 import { prisma } from "@/lib/db";
-import { parseVariantAttributes } from "@/features/products/variant-schemas";
+import {
+  describeVariantAttributes,
+  parseVariantAttributes,
+} from "@/features/products/variant-schemas";
 import {
   readPhotoPackDesignInfo,
   resolvePhotoPackVariant,
 } from "@/features/products/photo-pack-resolve";
 import { logger } from "@/lib/logger";
-import { designIdentity } from "./design-identity";
+import { designIdentity, sameLineContent } from "./design-identity";
 import { describePieces, pieceKindFor } from "./line-preview";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import {
@@ -40,6 +50,7 @@ import {
   letterSetUnitCount,
 } from "@/features/personalization/design-units";
 import { letterSetBorderNote } from "@/features/personalization/letter-set-border";
+import { applyVolumePricing, type VolumeTierInput } from "./volume-pricing";
 
 export type CartLineItem = {
   itemId: string;
@@ -48,10 +59,24 @@ export type CartLineItem = {
   productName: string;
   variantId: string;
   variantName: string;
+  /**
+   * Desglose estructurado de la variante (Paquete F, 2026-10-02 —
+   * describeVariantAttributes): ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"].
+   * El variantName es texto libre y no siempre informa las dimensiones de
+   * compra (el set de 12 tarjetas no decía si era CON IMÁN). [] si la variante
+   * no declara attributes.
+   */
+  variantBreakdown: string[];
   isPersonalizable: boolean;
   qty: number;
   unitPrice: number;
   lineTotal: number;
+  /**
+   * Stock actual de la variante (2026-09-29): la UI del carrito lo usa para el
+   * badge "Solo quedan N" y para capar el stepper (no subir por encima del
+   * stock disponible). No es una reserva — puede cambiar hasta el pago.
+   */
+  stock: number;
   imageUrl: string | null;
   designId: string | null;
   /** Si designId está set, este es el previewUrl del Design (1080×1080 PNG público). */
@@ -93,13 +118,89 @@ export class CartError extends Error {
       | "QTY_INVALID"
       | "ITEM_NOT_FOUND"
       | "STOCK_UNAVAILABLE",
+    /**
+     * Copy customer-safe opcional que nombra el producto/stock (p. ej. "Solo
+     * quedan 3 unidades de «Imán Nevera»"). Las actions lo prefieren sobre el
+     * mensaje genérico del code. Nunca lleva internals (ids, variantId).
+     */
+    public detail?: string,
   ) {
-    super(code);
+    super(detail ?? code);
     this.name = "CartError";
   }
 }
 
 const MAX_QTY_PER_ITEM = 99;
+
+/**
+ * Copy es-CO para el rechazo por stock en el carrito: nombra el producto y las
+ * unidades disponibles, y aclara cuántas ya tiene en el carrito cuando aplica.
+ */
+function stockLimitMessage(productName: string, stock: number, inCart: number): string {
+  const base = `Solo quedan ${stock} ${stock === 1 ? "unidad" : "unidades"} de «${productName}»`;
+  return inCart > 0 ? `${base} y ya tienes ${inCart} en tu carrito.` : `${base}.`;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Precio por volumen (WholesaleTier → carrito, 2026-10-02)
+// ─────────────────────────────────────────────────────────────────────
+//
+// Descuento por volumen PÚBLICO (todos los clientes, invitados incluidos).
+// La resolución del nivel es pura (volume-pricing.ts); aquí solo se carga la
+// data. ANTI-TAMPER: los tiers se leen server-side desde la DB en cada
+// mutación del carrito (mismo patrón que los multiplicadores por-ficha) —
+// nada del cálculo confía en payloads del cliente.
+//
+// Huella de queries: 1 query acotada por mutación de línea (producto +
+// globales en un solo WHERE OR; el helper decide la precedencia en memoria).
+// En updateCartItemQty es 1 query por línea afectada — aceptable: el stepper
+// mueve una línea a la vez y evita cargar tiers de todo el catálogo.
+
+/**
+ * Tiers activos (isActive, no soft-eliminados) que pueden aplicar al producto:
+ * los propios (productId) y los globales (productId null). Select acotado a
+ * lo que el helper puro necesita.
+ */
+async function loadActiveVolumeTiers(productId: string): Promise<VolumeTierInput[]> {
+  return prisma.wholesaleTier.findMany({
+    where: {
+      isActive: true,
+      deletedAt: null,
+      OR: [{ productId }, { productId: null }],
+    },
+    select: { productId: true, minQty: true, unitPrice: true, isActive: true, deletedAt: true },
+  });
+}
+
+/**
+ * Base VIGENTE de una línea ya en el carrito (sin tier de volumen): replica el
+ * cálculo de alta — `variant.price ?? product.basePrice` + multiplicadores
+ * por-ficha (ADR-057) y multi-unidad (design-units.ts) si la línea tiene
+ * diseño. Todo se deriva de datos server-side (variante, canvasData y metadata
+ * guardados del Design), nunca del cliente.
+ *
+ * Se usa en updateCartItemQty para re-pricear al cruzar un umbral de volumen.
+ * Devuelve null cuando la línea es inconsistente (variante por-ficha con
+ * diseño sin letras — al alta se rechaza; aquí se conserva el snapshot en vez
+ * de inventar un precio).
+ */
+function currentLineBaseUnitPrice(item: RawCart["items"][number]): number | null {
+  let base = item.variant.price ?? item.variant.product.basePrice;
+  if (!item.design) return base;
+  const attrs = parseVariantAttributes(item.variant.attributes);
+  const isPerTile = attrs.pricePerTile === true || attrs.variant === "name";
+  if (isPerTile) {
+    const meta = (item.design.metadata ?? null) as { letters?: unknown } | null;
+    const letters = Array.isArray(meta?.letters) ? meta.letters : null;
+    if (!letters || letters.length < 1) return null;
+    base *= Math.min(40, Math.max(1, letters.length));
+  }
+  const facesPerUnit =
+    parsePhotoProductConfig(item.variant.product.personalizationSchema).facesPerUnit ?? 1;
+  base *= designUnitPriceMultiplier(item.design.canvasData, facesPerUnit);
+  base *= letterSetUnitCount(item.design.metadata);
+  return base;
+}
 
 // ─────────────────────────────────────────────────────────────────────
 // Lookup / creación
@@ -148,6 +249,10 @@ const cartItemsInclude = {
           id: true,
           previewUrl: true,
           status: true,
+          // productId + canvasData + metadata: identidad de contenido del diseño
+          // (designIdentity) — los merges agrupan líneas con diseños distintos pero
+          // idénticos (Paquete H, 2026-10-02).
+          productId: true,
           // Metadata del diseño: opciones de diseño que se muestran en el resumen (p. ej.
           // "Sin borde" de los sets de letras, Lucy 2026-09-05). El PNG las refleja; el texto
           // evita que el cliente tenga que deducirlas de la imagen.
@@ -276,13 +381,18 @@ function toDetail(cart: RawCart): CartDetail {
       productName: i.variant.product.name,
       variantId: i.variantId,
       variantName: i.variant.name,
+      variantBreakdown: describeVariantAttributes(parseVariantAttributes(i.variant.attributes)),
       isPersonalizable: i.variant.product.isPersonalizable,
       qty: i.qty,
       unitPrice: i.unitPrice,
       lineTotal: i.qty * i.unitPrice,
+      stock: i.variant.stock,
       // Si CartItem tiene designId vinculado, mostramos el preview del Design
       // en vez de la imagen genérica del producto. Mejora el "WYSIWYG" del cart.
-      imageUrl: i.design?.previewUrl ?? i.variant.product.images[0] ?? null,
+      // Paquete F (2026-10-02) — sin diseño, la foto de LA VARIANTE manda sobre
+      // la genérica del producto (ProductVariant.images, "vacío = hereda
+      // Product.images"): el separador 2×6 mostraba la portada del 4×4.2.
+      imageUrl: i.design?.previewUrl ?? i.variant.images[0] ?? i.variant.product.images[0] ?? null,
       designId: i.designId,
       designPreviewUrl: i.design?.previewUrl ?? null,
       designUnits: designDisplayUnits(i.design),
@@ -343,6 +453,8 @@ export async function addProductToCart(opts: {
     select: {
       id: true,
       basePrice: true,
+      // name: para el copy del rechazo por stock ("Solo quedan N unidades de «X»").
+      name: true,
       variants: {
         // Con variantId: esa variante (scoping por producto valida ownership).
         // Sin variantId: la variante legacy `-DEFAULT`.
@@ -360,9 +472,15 @@ export async function addProductToCart(opts: {
   // Fase 1 (stock por variante): la variante elegida agotada no es comprable.
   // El checkout ya lo validaba con STOCK_UNAVAILABLE; aquí evitamos que entre
   // al carrito en primer lugar (mismo código de error para un manejo coherente).
-  if (variant.stock <= 0) throw new CartError("STOCK_UNAVAILABLE");
+  if (variant.stock <= 0) {
+    throw new CartError("STOCK_UNAVAILABLE", `«${product.name}» está agotado por ahora.`);
+  }
 
-  const unitPrice = variant.price ?? product.basePrice;
+  const baseUnitPrice = variant.price ?? product.basePrice;
+  // Precio por volumen (2026-10-02): tiers activos del producto (o globales si
+  // no tiene propios). El nivel se resuelve con la qty FINAL de la línea (tras
+  // clamp y acumulado) — cruzar un umbral re-pricea la línea existente.
+  const volumeTiers = await loadActiveVolumeTiers(product.id);
 
   const cart = await ensureCart(opts.sessionId, opts.customerId);
 
@@ -370,17 +488,39 @@ export async function addProductToCart(opts: {
   // suma qty. CartItem no tiene unique compuesto, así que lo manejamos
   // a mano.
   const existing = cart.items.find((i) => i.variantId === variant.id);
+  // Tope efectivo de la línea: min(99, stock) con SEMÁNTICA DE CLAMP
+  // (2026-09-29) — sumar más allá del tope se topa al tope, igual que el clamp
+  // legacy a 99, ahora también contra el stock real de la variante. Solo se
+  // RECHAZA cuando no hay margen: stock 0 (arriba) o el carrito ya está en el
+  // tope y se intenta sumar más. Sin reservas, el checkout sigue siendo la
+  // defensa final contra concurrencia; esto cierra el oversell "en frío" por
+  // acumulación sin castigar al cliente que se pasa por un clic de más.
+  const cap = Math.min(MAX_QTY_PER_ITEM, variant.stock);
+  const inCart = existing?.qty ?? 0;
+  if (inCart >= cap) {
+    throw new CartError(
+      "STOCK_UNAVAILABLE",
+      stockLimitMessage(product.name, variant.stock, inCart),
+    );
+  }
+  const newQty = Math.min(cap, inCart + opts.qty);
+  // Sin niveles configurados la línea existente conserva su snapshot (legacy);
+  // con niveles se re-pricea contra el base vigente (el tier es absoluto).
+  const unitPrice =
+    volumeTiers.length > 0
+      ? applyVolumePricing(baseUnitPrice, volumeTiers, product.id, newQty)
+      : (existing?.unitPrice ?? baseUnitPrice);
   if (existing) {
     await prisma.cartItem.update({
       where: { id: existing.id },
-      data: { qty: Math.min(MAX_QTY_PER_ITEM, existing.qty + opts.qty) },
+      data: { qty: newQty, unitPrice },
     });
   } else {
     await prisma.cartItem.create({
       data: {
         cartId: cart.id,
         variantId: variant.id,
-        qty: opts.qty,
+        qty: newQty,
         unitPrice,
       },
     });
@@ -457,6 +597,8 @@ export async function addPersonalizedToCart(opts: {
         select: {
           id: true,
           basePrice: true,
+          // name: copy del rechazo por stock ("Solo quedan N unidades de «X»").
+          name: true,
           isActive: true,
           deletedAt: true,
           // Multi-unidad — facesPerUnit para el multiplicador (separadores: 2 caras;
@@ -518,7 +660,9 @@ export async function addPersonalizedToCart(opts: {
   if (!variant) throw new CartError("NO_DEFAULT_VARIANT");
   // Fase 1 (stock por variante): misma regla que addProductToCart — la variante
   // agotada no entra al carrito (el checkout sigue como backstop de concurrencia).
-  if (variant.stock <= 0) throw new CartError("STOCK_UNAVAILABLE");
+  if (variant.stock <= 0) {
+    throw new CartError("STOCK_UNAVAILABLE", `«${design.product.name}» está agotado por ahora.`);
+  }
 
   // ADR-057 — precio POR FICHA. El gate es la VARIANTE (verdad del servidor, anti-tamper),
   // NO metadata.surface: un draft genérico (createDraftDesign) sobre el producto Nombre no
@@ -552,6 +696,12 @@ export async function addPersonalizedToCart(opts: {
     parsePhotoProductConfig(design.product.personalizationSchema).facesPerUnit ?? 1;
   unitPrice *= designUnitPriceMultiplier(design.canvasData, facesPerUnit);
   unitPrice *= letterSetUnitCount(design.metadata);
+  // Precio por volumen (2026-10-02): el tier REEMPLAZA el unitPrice FINAL por
+  // unidad (tras multiplicadores por-ficha / multi-unidad). La "qty" del nivel
+  // es la cantidad de la LÍNEA (diseños/packs que paga el cliente), no las
+  // unidades internas del diseño — es lo que el cliente ve en el stepper.
+  const baseUnitPrice = unitPrice;
+  const volumeTiers = await loadActiveVolumeTiers(design.product.id);
   const cart = await ensureCart(opts.sessionId, opts.customerId);
 
   // Edición desde el carrito: el diseño original se clonó a este (opts.designId). Reemplazamos EN
@@ -563,7 +713,12 @@ export async function addPersonalizedToCart(opts: {
   if (replacing) {
     await prisma.cartItem.update({
       where: { id: replacing.id },
-      data: { designId: opts.designId, variantId: variant.id, unitPrice },
+      data: {
+        designId: opts.designId,
+        variantId: variant.id,
+        // La línea conserva su qty; el tier se re-evalúa con esa qty.
+        unitPrice: applyVolumePricing(baseUnitPrice, volumeTiers, design.product.id, replacing.qty),
+      },
     });
   } else {
     // Buscar si ya hay un CartItem para este designId — agregar al qty existente.
@@ -602,18 +757,41 @@ export async function addPersonalizedToCart(opts: {
     }
 
     if (existing) {
+      // Mismo tope min(99, stock) con clamp que addProductToCart (2026-09-29):
+      // agrupar un diseño idéntico SUMA qty sobre la misma variante; se rechaza
+      // solo cuando la línea ya está en el tope (sin margen).
+      const cap = Math.min(MAX_QTY_PER_ITEM, variant.stock);
+      const inCart = existing.qty;
+      if (inCart >= cap) {
+        throw new CartError(
+          "STOCK_UNAVAILABLE",
+          stockLimitMessage(design.product.name, variant.stock, inCart),
+        );
+      }
+      const newQty = Math.min(cap, inCart + opts.qty);
       await prisma.cartItem.update({
         where: { id: existing.id },
-        data: { qty: Math.min(MAX_QTY_PER_ITEM, existing.qty + opts.qty) },
+        // Sumar qty puede cruzar un umbral de volumen → re-priceo de la línea.
+        // Sin niveles configurados se conserva el snapshot existente (legacy).
+        data: {
+          qty: newQty,
+          unitPrice:
+            volumeTiers.length > 0
+              ? applyVolumePricing(baseUnitPrice, volumeTiers, design.product.id, newQty)
+              : existing.unitPrice,
+        },
       });
     } else {
+      // Alta nueva: el stock>0 ya se validó arriba, así que hay margen; la qty
+      // pedida se topa al stock disponible (clamp, no rechazo).
+      const newQty = Math.min(MAX_QTY_PER_ITEM, variant.stock, opts.qty);
       await prisma.cartItem.create({
         data: {
           cartId: cart.id,
           variantId: variant.id,
           designId: opts.designId,
-          qty: opts.qty,
-          unitPrice,
+          qty: newQty,
+          unitPrice: applyVolumePricing(baseUnitPrice, volumeTiers, design.product.id, newQty),
         },
       });
     }
@@ -637,9 +815,38 @@ export async function updateCartItemQty(
   if (qty === 0) {
     await prisma.cartItem.delete({ where: { id: itemId } });
   } else {
+    // Tope efectivo min(99, stock) con SEMÁNTICA DE CLAMP (2026-09-29): el set
+    // absoluto se topa al stock real de la variante (el stepper UI ya capa el
+    // "+", pero la action es un endpoint POST invocable directo — defensa en
+    // profundidad server-side). Si el clamp deja la qty igual a la actual,
+    // aplica igual (no-op). Solo se rechaza cuando no hay margen alguno: la
+    // variante quedó agotada con la línea en vuelo.
+    if (item.variant.stock <= 0) {
+      throw new CartError(
+        "STOCK_UNAVAILABLE",
+        `«${item.variant.product.name}» está agotado por ahora.`,
+      );
+    }
+    const newQty = Math.min(qty, item.variant.stock);
+    // Re-priceo por volumen (2026-10-02): cruzar un umbral de WholesaleTier al
+    // cambiar la qty debe cambiar el unitPrice de la línea (bajar al subir de
+    // nivel, volver al base al quedar por debajo). El base se recalcula con el
+    // precio VIGENTE (mismo cálculo del alta, currentLineBaseUnitPrice) porque
+    // el tier es absoluto y solo es comparable contra el precio actual.
+    // Si el producto NO tiene niveles configurados, el snapshot queda intacto
+    // (semántica legacy: un cambio de qty nunca tocaba el precio exhibido).
+    // Líneas inconsistentes (base null) conservan su snapshot.
+    let unitPrice = item.unitPrice;
+    const baseUnitPrice = currentLineBaseUnitPrice(item);
+    if (baseUnitPrice !== null) {
+      const volumeTiers = await loadActiveVolumeTiers(item.variant.product.id);
+      if (volumeTiers.length > 0) {
+        unitPrice = applyVolumePricing(baseUnitPrice, volumeTiers, item.variant.product.id, newQty);
+      }
+    }
     await prisma.cartItem.update({
       where: { id: itemId },
-      data: { qty },
+      data: { qty: newQty, unitPrice },
     });
   }
   const reloaded = await findCartBySession(sessionId);
@@ -697,16 +904,18 @@ export async function mergeAnonCartIntoCustomer(
   if (customerCart.id === anonCart.id) return anonSessionId;
 
   // Caso 3: merge. Fold del anon en el customer cart.
-  // Items con designId NUNCA se agrupan con otros por variantId — cada diseño
-  // personalizado es único. Solo agrupamos por (variantId AND mismo designId)
-  // o (variantId AND ninguno tiene designId).
+  // Paquete H (2026-10-02): el dup se decide por CONTENIDO (sameLineContent),
+  // no solo por (variantId, designId) — dos Designs distintos pero idénticos
+  // (cada pasada por el Estudio crea uno nuevo) quedaban como dos líneas
+  // visualmente iguales en carrito, pedido y emails (reporte STG). Misma regla
+  // que addPersonalizedToCart: misma variante + mismo contenido → UNA línea con
+  // la qty sumada; diseños distintos → líneas separadas. La línea que sobrevive
+  // es la del cart del customer (conserva su diseño/preview); el Design del anon
+  // queda huérfano, igual que en addPersonalizedToCart — no se borra (puede
+  // estar referenciado por auditoría/historial del cliente).
   await prisma.$transaction(async (tx) => {
     for (const anonItem of anonCart.items) {
-      const dup = customerCart.items.find(
-        (i) =>
-          i.variantId === anonItem.variantId &&
-          (i.designId ?? null) === (anonItem.designId ?? null),
-      );
+      const dup = customerCart.items.find((i) => sameLineContent(i, anonItem));
       if (dup) {
         await tx.cartItem.update({
           where: { id: dup.id },
@@ -740,8 +949,8 @@ export async function mergeAnonCartIntoCustomer(
  * #18 — Adopta el carrito `source` DENTRO del `target` (fold de items, SIN pérdida) y borra el source.
  * Se usa al recuperar un carrito abandonado por link: se folda el carrito ACTUAL (source) en el
  * recuperado (target) para NO pisar lo que el cliente ya tenía. Mismo fold que mergeAnonCartIntoCustomer
- * (agrupa por variantId + mismo designId, cap MAX_QTY_PER_ITEM). Se folda hacia el target para preservar
- * el FK AbandonedCart.cartId del carrito recuperado.
+ * (Paquete H: agrupa por CONTENIDO — variante + identidad del diseño — cap MAX_QTY_PER_ITEM). Se folda
+ * hacia el target para preservar el FK AbandonedCart.cartId del carrito recuperado.
  */
 export async function mergeCartsAdopt(
   sourceSessionId: string,
@@ -755,9 +964,7 @@ export async function mergeCartsAdopt(
   if (!target || !source || source.items.length === 0 || source.id === target.id) return;
   await prisma.$transaction(async (tx) => {
     for (const it of source.items) {
-      const dup = target.items.find(
-        (t) => t.variantId === it.variantId && (t.designId ?? null) === (it.designId ?? null),
-      );
+      const dup = target.items.find((t) => sameLineContent(t, it));
       if (dup) {
         await tx.cartItem.update({
           where: { id: dup.id },

@@ -50,13 +50,16 @@ import {
 import { MAX_LETTER_SET_UNITS } from "@/features/personalization/design-units";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { StudioPreviewModal } from "./studio-preview-modal";
+import { describeVariantAttributes } from "@/features/products/variant-schemas";
 import { StudioSimpleHeader } from "./studio-simple-header";
+import { STUDIO_CTA_DISABLED_CLASSES } from "./studio-busy-cta";
 import { STUDIO_MAX_WIDTH } from "./studio-layout";
 import { resolveLetterSetVariant, type LetterSetVariant } from "./lib/letter-set-resolve";
 import { loadCanvasImage } from "./lib/canvas-image";
 import type { Magnet3D } from "./fridge-3d-view";
 import { buildLetterTileTextures, LETTER_TILE_CORNER_RATIO } from "./lib/letter-tile-textures";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { Hint } from "@/components/ui/tooltip";
 import { useIsTouch } from "./use-is-touch";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -371,6 +374,13 @@ export function LetterSetEditor({
   // es el comportamiento histórico, así los diseños guardados antes de la opción quedan válidos.
   const [withBorder, setWithBorder] = useState(true);
 
+  // Fase 1B — la paleta de colores pinta el BORDE de la ficha (temas con
+  // ilustración) pero también el RELLENO de la letra cuando el tema es «Solo
+  // letra» (styleId === null, drawLetterTile fillText). Regla: la paleta solo se
+  // desactiva con «Sin borde» Y tema ilustrado (ahí sí no hay nada que pintar);
+  // con «Solo letra» queda activa aun sin borde (el color sigue pintando la letra).
+  const colorsEnabled = withBorder || styleId === null;
+
   const letters = useMemo(
     () => (letterSet === "vowels" ? VOWELS : (alphabets[language] ?? alphabets.es)),
     [letterSet, alphabets, language],
@@ -671,10 +681,14 @@ export function LetterSetEditor({
                   a gusto. Ola 28 (owner 2026-09-11, 1.7): con «Sin borde» no hay marco
                   de color que pintar → sin hint y fichas NO seleccionables (la paleta
                   ya quedó inerte).
+                  Fase 1B — REDEFINIDA: el apagado solo aplica con tema ILUSTRADO
+                  (styleId !== null); con «Solo letra» el color pinta el RELLENO de la
+                  letra aun sin borde, así que el pintado por ficha sigue activo
+                  (colorsEnabled = withBorder || styleId === null).
                   Ola 32 — la grilla aprovecha el ancho del lienzo: sube columnas con
                   el viewport (el ancho mínimo de columna mantiene el tap target ≥44px). */}
                   <div className="bg-brand-cream/50 flex min-h-[280px] flex-col justify-center rounded-xl p-4 sm:min-h-[360px] sm:p-5">
-                    {withBorder && unit.selectedIndex === null && (
+                    {colorsEnabled && unit.selectedIndex === null && (
                       <p className="text-brand-purple-dark mb-3 flex items-center justify-center text-center text-xs font-semibold">
                         <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
                           {texts.letras.tocaHint}
@@ -694,20 +708,20 @@ export function LetterSetEditor({
                       {letters.map((ch, i) => {
                         const tile = activeTiles[ch];
                         const color = unit.effectiveColors[i];
-                        const isSel = withBorder && unit.selectedIndex === i;
+                        const isSel = colorsEnabled && unit.selectedIndex === i;
                         return (
                           <button
                             key={ch}
                             type="button"
                             data-letter-tile
-                            onClick={() => withBorder && unit.toggleSelected(i)}
-                            disabled={!withBorder}
-                            aria-pressed={withBorder ? isSel : undefined}
+                            onClick={() => colorsEnabled && unit.toggleSelected(i)}
+                            disabled={!colorsEnabled}
+                            aria-pressed={colorsEnabled ? isSel : undefined}
                             aria-label={fillStudioText(texts.letras.pintarAria, { letra: ch })}
                             className={`flex w-[calc((100%-24px)/3)] max-w-32 flex-col items-center rounded-xl transition sm:w-[calc((100%-48px)/4)] md:w-[calc((100%-64px)/5)] xl:w-[calc((100%-96px)/7)] 2xl:w-[calc((100%-112px)/8)] ${
                               isSel
                                 ? "ring-brand-purple scale-105 ring-2 ring-offset-2"
-                                : withBorder
+                                : colorsEnabled
                                   ? "hover:scale-105"
                                   : "cursor-default"
                             }`}
@@ -753,13 +767,17 @@ export function LetterSetEditor({
                     </div>
 
                     {/* Fila de colores para la ficha seleccionada — control compartido.
-                    Con «Sin borde» no aplica (no hay marco de color que pintar). */}
-                    {withBorder && unit.selectedIndex !== null && letters[unit.selectedIndex] && (
-                      <SwatchRow
-                        letter={letters[unit.selectedIndex]}
-                        onPick={unit.setColorForSelected}
-                      />
-                    )}
+                    Fase 1B: solo se apaga con «Sin borde» Y tema ilustrado; con
+                    «Solo letra» el color pinta el relleno de la letra aun sin borde. */}
+                    {colorsEnabled &&
+                      unit.selectedIndex !== null &&
+                      letters[unit.selectedIndex] && (
+                        <SwatchRow
+                          letter={letters[unit.selectedIndex]}
+                          currentColor={unit.effectiveColors[unit.selectedIndex]}
+                          onPick={unit.setColorForSelected}
+                        />
+                      )}
                   </div>
                 </div>
               </section>
@@ -934,16 +952,17 @@ export function LetterSetEditor({
                           </button>
                         ))}
                       </nav>
-                      <button
-                        type="button"
-                        onClick={handleApplyToAll}
-                        aria-label={texts.unidades.aplicarATodasAria}
-                        title={texts.unidades.aplicarATodasTitle}
-                        className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-4 py-2 text-xs font-bold transition active:scale-95"
-                      >
-                        <Copy className="h-3.5 w-3.5" aria-hidden />
-                        {texts.unidades.aplicarATodas}
-                      </button>
+                      <Hint content={texts.unidades.aplicarATodasTitle}>
+                        <button
+                          type="button"
+                          onClick={handleApplyToAll}
+                          aria-label={texts.unidades.aplicarATodasAria}
+                          className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-4 py-2 text-xs font-bold transition active:scale-95"
+                        >
+                          <Copy className="h-3.5 w-3.5" aria-hidden />
+                          {texts.unidades.aplicarATodas}
+                        </button>
+                      </Hint>
                     </div>
                   )}
 
@@ -953,12 +972,15 @@ export function LetterSetEditor({
             DESACTIVA (visible + inerte, con el porqué). Al volver a «Con borde» se
             reactiva conservando la selección: el estado de colores (useLetterColors,
             vía LetterSetUnitState) nunca se resetea al desactivar.
+            Fase 1B — el apagado SOLO aplica con tema ilustrado (styleId !== null):
+            con «Solo letra» el color pinta el RELLENO de la letra (fillText) aun sin
+            borde, así que la sección permanece activa en ese caso.
             Ola 32 — la grilla de fichas que alimenta vive en el lienzo (tarjeta-unidad). */}
                   <ThemePicker
                     themeId={unit.themeId}
                     customized={unit.customized}
                     onApply={unit.applyTheme}
-                    disabled={!withBorder}
+                    disabled={!colorsEnabled}
                     disabledHint={texts.letras.bordeSinColoresHint}
                   />
 
@@ -990,7 +1012,7 @@ export function LetterSetEditor({
                       type="button"
                       onClick={handleShowPreview}
                       disabled={submitting || preparing || building3D}
-                      className="bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 disabled:opacity-60"
+                      className={`bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 ${STUDIO_CTA_DISABLED_CLASSES}`}
                     >
                       {preparing || submitting ? (
                         <Loader2 className="h-5 w-5 animate-spin" />
@@ -1032,6 +1054,18 @@ export function LetterSetEditor({
         // Tamaño real de la variante vigente (la que se re-resuelve al cambiar tema/idioma).
         // El atributo se guarda sin unidad ("5×7"); sin esto la modal decía "Cada imán mide 7×10.".
         sizeCm={currentVariant?.sizeCm ? `${currentVariant.sizeCm} cm` : undefined}
+        // Paquete F (2026-10-02) — desglose de la variante VIGENTE (re-resuelta en
+        // vivo al cambiar tema/idioma): imantado, idioma y tema. El tamaño ya lo
+        // cubre sizeCm de arriba; no se duplica.
+        variantLabel={
+          currentVariant
+            ? describeVariantAttributes({
+                magnet: currentVariant.magnet,
+                language: currentVariant.language,
+                theme: currentVariant.theme,
+              }).join(" · ") || undefined
+            : undefined
+        }
         unitPrice={unitPriceCents}
         // Multi-unidad (2026-09-09): el diseño contiene TODOS los sets → total =
         // precio del set × N y la línea del carrito es UNA (qty 1).
