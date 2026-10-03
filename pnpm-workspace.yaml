@@ -30,7 +30,9 @@ overrides:
   # con CVEs moderados (hono <4.12.21: CVE-2026-47673..47676; @hono/node-server
   # <1.19.15: GHSA-frvp-7c67-39w9; qs ≤6.15.1: GHSA-q8mj-m7cp-5q26 / CVE-2026-8723).
   # Solo dev/CI (shadcn CLI), nada se despliega a Vercel. Gate 2026-08-29.
-  hono: ^4.12.21
+  # hono ^4.12.21 → ^4.13.7 (2026-10-03, Dependabot #19): GHSA XSS — hono/jsx
+  # renderizaba strings planos sin escapar en boundary components (<4.13.7).
+  hono: ^4.13.7
   "@hono/node-server": ^1.19.15
   # qs ≥6.16.0 (2026-09-30): GHSA-x5fp-wj9c-mxmx / CVE-2026-82562 (array-limit bypass
   # vía bracket-key comma) y GHSA-4mjr-xmp4-gh2g / CVE-2026-82417 (DoS isBuffer).
@@ -87,6 +89,12 @@ overrides:
   # computeExecutablePath/computeSystemExecutablePath/createProfile/CDP_WEBSOCKET_ENDPOINT_REGEX/
   # WEBDRIVER_BIDI_WEBSOCKET_ENDPOINT_REGEX todos presentes en v3 (exports estables).
   "@puppeteer/browsers": 3.2.3
+  # basic-ftp 5.3.1→^6.2.1 (2026-10-03, Dependabot #20, high): DoS de tiempo
+  # cuadrático en el parser de `Client.list()` (RE_LINE backtracking, ≤6.2.0).
+  # Cadena get-uri@6 → pac-proxy-agent → proxy-agent → @lhci/cli / puppeteer-core
+  # (Lighthouse CI local) — DEV-ONLY, jamás se despliega. get-uri@6.0.5 declara la
+  # línea 5.x, pero solo usa Client.connect/list/download (API estable en 6.x).
+  "basic-ftp": ^6.2.1
 
 # sharp queda clavado en 0.34.4 a propósito: la línea 0.35.x rompía las lambdas de Vercel
 # (ERR_DLOPEN_FAILED libvips → 500 en todas las PDP — detectado en la certificación del
@@ -98,3 +106,9 @@ overrides:
 auditConfig:
   ignoreGhsas:
     - GHSA-f88m-g3jw-g9cj
+    # GHSA-vfj7-8cjw-p6xm (braces ≤3.0.3, high, 2026-10-03): el advisory declara
+    # patched >=3.0.4 pero esa versión NO existe en npm (latest = 3.0.3,
+    # 2024-05-21) — advisory prematuro, no hay patch que aplicar. Cadena dev-only
+    # (fast-glob vía eslint-config-next y ts-morph/shadcn): nada se despliega y
+    # los consumidores no procesan globs de usuario. Revisar cuando exista 3.0.4.
+    - GHSA-vfj7-8cjw-p6xm
