@@ -11,7 +11,7 @@ UNION ALL SELECT 'CmsField' || '|' || count(*) || '|' || md5(string_agg(id || co
 UNION ALL SELECT 'CmsField.SETTING' || '|' || count(*) || '|' || md5(string_agg(key || coalesce(body,''), '|' ORDER BY key)) FROM "CmsField" WHERE kind='SETTING'
 UNION ALL SELECT 'UrlRedirect' || '|' || count(*) || '|' || md5(string_agg(id || coalesce("updatedAt"::text,''), '|' ORDER BY id)) FROM "UrlRedirect"
 UNION ALL SELECT 'PersonalizationTemplate' || '|' || count(*) || '|' || md5(string_agg(id || coalesce("updatedAt"::text,''), '|' ORDER BY id)) FROM "PersonalizationTemplate"
-UNION ALL SELECT 'DesignGalleryImage' || '|' || count(*) || '|' || md5(string_agg(id || coalesce("updatedAt"::text,'') || coalesce("imageUrl",''), '|' ORDER BY id)) FROM "DesignGalleryImage"
+UNION ALL SELECT 'DesignGalleryImage' || '|' || count(*) || '|' || md5(string_agg(id || coalesce("updatedAt"::text,'') || coalesce("imageUrl",'') || coalesce("imageUrlB",'') || coalesce("variantFilter"::text,''), '|' ORDER BY id)) FROM "DesignGalleryImage"
 UNION ALL SELECT 'Coupon' || '|' || count(*) || '|' || md5(string_agg(id || coalesce("updatedAt"::text,'') || coalesce(code,''), '|' ORDER BY id)) FROM "Coupon"
 UNION ALL SELECT 'LetterTileSet' || '|' || count(*) || '|' || md5(string_agg(id, '|' ORDER BY id)) FROM "LetterTileSet"
 UNION ALL SELECT 'LetterTile' || '|' || count(*) || '|' || md5(string_agg(id, '|' ORDER BY id)) FROM "LetterTile"
