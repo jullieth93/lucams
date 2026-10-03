@@ -27,7 +27,6 @@ import {
   Settings,
   Box,
   Users,
-  AlertCircle,
   ShieldAlert,
   Star,
   Layers,
@@ -59,6 +58,7 @@ import {
   LayoutTemplate,
   Megaphone,
   MailCheck,
+  Truck,
 } from "lucide-react";
 import { isCatalogMode } from "@/lib/store-mode";
 
@@ -139,12 +139,16 @@ export const ADMIN_NAV: NavGroup[] = [
     ],
   },
   {
-    // 2026-07-28 — decisión Lucy/Kimi: los 4 tipos de caso (Soporte, Retractos,
-    // Garantías, Reclamos) + la revisión de diseños NO se fusionan en un solo
-    // módulo: legalmente son flujos distintos (retracto Ley 1480, garantía
-    // legal, SAC) y cada uno conserva su pantalla y su proceso. Solo se
-    // REAGRUPAN bajo esta sección (colapsada por defecto) para que el menú
-    // quede corto: Ventas = lo del día a día; acá = los casos puntuales.
+    // 2026-07-28 — decisión Lucy/Kimi: los tipos de caso (Soporte, Retractos,
+    // Garantías) + la revisión de diseños NO se fusionan en un solo módulo:
+    // legalmente son flujos distintos (retracto Ley 1480, garantía legal, SAC)
+    // y cada uno conserva su pantalla y su proceso. Solo se REAGRUPAN bajo
+    // esta sección (colapsada por defecto) para que el menú quede corto:
+    // Ventas = lo del día a día; acá = los casos puntuales.
+    // 2026-10-01 — EXCEPCIÓN: "Reclamos" (/admin/reclamos) SÍ se fusionó en
+    // "Garantías": operaba la MISMA tabla WarrantyClaim con lógica divergente
+    // (cierre directo que nunca notificaba al cliente). La ruta vieja queda
+    // como redirect permanente (308), igual que /admin/mensajes → /admin/soporte.
     title: "Servicio al cliente",
     icon: Headset,
     defaultOpen: false,
@@ -154,7 +158,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/soporte",
         icon: LifeBuoy,
         description:
-          "Tickets de soporte que llegan desde /contacto: responder por email (mailto), asignar estado y cerrar. Al cerrar, el cliente recibe aviso por correo. Bandeja única — acá converge la antigua /admin/mensajes (N-09).",
+          "Tickets de soporte que llegan desde /contacto: hilo de conversación in-app con respuesta pública (el cliente la recibe por correo), asignar estado y cerrar. Bandeja única — acá converge la antigua /admin/mensajes (N-09).",
       },
       {
         label: "Moderación",
@@ -175,14 +179,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/garantias",
         icon: BadgeCheck,
         description:
-          "Reclamos de garantía legal (1 año, Ley 1480): recibir, evaluar, resolver (reparación/reposición/devolución) y notificar al cliente en cada paso.",
-      },
-      {
-        label: "Reclamos",
-        href: "/admin/reclamos",
-        icon: AlertCircle,
-        description:
-          "Gestión de reclamos de garantía: revisa, resuelve o rechaza con remedio (reparación, cambio o devolución).",
+          "Reclamos de garantía (3 meses, término informado — Ley 1480 art. 8): recibir, evaluar, resolver (reparación/reposición/devolución) o rechazar, y notificar al cliente en cada cierre. Módulo único — absorbe la antigua bandeja /admin/reclamos (redirect 308).",
       },
     ],
   },
@@ -390,6 +387,16 @@ export const ADMIN_NAV: NavGroup[] = [
           "Gestión de admins: listar, promover clientes existentes, cambiar rol (Superadmin/Manager/Fulfillment), activar/desactivar. Solo Superadmin.",
       },
       {
+        // Casa de la configuración de transporte del checkout (owner 2026-09-29):
+        // antes vivía dentro de Integraciones › Aveonline, pero el envío propio
+        // Lucam's no es parte de esa integración — es config de negocio.
+        label: "Envíos",
+        href: "/admin/envios",
+        icon: Truck,
+        description:
+          "Transportadoras que el checkout ofrece (activar/desactivar, incluido el envío propio Lucam's) y configuración del envío propio: precio, hora límite «entrega hoy» y zonas de entrega por ciudad.",
+      },
+      {
         label: "Integraciones",
         href: "/admin/integraciones",
         icon: Plug,
@@ -401,7 +408,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/email-templates",
         icon: Mail,
         description:
-          "Las 26 plantillas transaccionales (pedidos, retracto, soporte, garantías, marketing): preview renderizado, edición de asunto/preheader/titular y envío de prueba. Solo Superadmin.",
+          "Las 27 plantillas transaccionales (pedidos, retracto, soporte, garantías, marketing): preview renderizado, edición de asunto/preheader/titular y envío de prueba. Solo Superadmin.",
       },
       // P1-17: movido desde "Promociones" — es plumbing SEO, no oferta comercial.
       {
@@ -420,9 +427,15 @@ export const ADMIN_NAV: NavGroup[] = [
  * /admin/soporte (mismas acciones, permisos y auditoría). /admin/mensajes queda
  * como redirect permanente (308) a /admin/soporte; la bandeja operativa única es
  * "Soporte" dentro del grupo "Servicio al cliente". La decisión de NO fusionar de
- * más arriba (Servicio al cliente, 2026-07-28) cubre los 4 tipos de caso legales;
+ * más arriba (Servicio al cliente, 2026-07-28) cubre los tipos de caso legales;
  * este par SÍ se fusionó porque no había flujo legal distinto: misma tabla, mismo
- * servicio, misma matriz RBAC (CATALOG). */
+ * servicio, misma matriz RBAC (CATALOG).
+ *
+ * 2026-10-01 — mismo criterio aplicado a "Reclamos" (/admin/reclamos): era una
+ * segunda bandeja sobre la MISMA tabla WarrantyClaim de /admin/garantias, con
+ * cierre directo que nunca notificaba al cliente. Se elimina del nav y la ruta
+ * queda como redirect permanente (308) a /admin/garantias; el flujo largo de
+ * garantías (que sí notifica en RESOLVED y REJECTED) es el único operativo. */
 
 /**
  * NAV efectivo según el modo de tienda (Etapa 1/2 — lib/store-mode).
@@ -432,10 +445,11 @@ export const ADMIN_NAV: NavGroup[] = [
  * En modo catálogo (Etapa 1), además, no hay pagos en línea ni envíos
  * integrados, así que el sidebar oculta lo que no aplica:
  *   - el grupo "Finanzas" completo (resumen, conciliación y bloqueos COD),
- *   - "Integraciones" dentro de "Configuración" (Wompi/Aveonline apagadas),
- *   - "Precios al por mayor" dentro de "Promociones" (WholesaleTier no tiene NINGÚN
- *     consumidor fuera del admin: ni PDP, ni carrito, ni cotización aplican
- *     niveles B2B — módulo de Etapa 2).
+ *   - "Integraciones" dentro de "Configuración" (Wompi/Aveonline apagadas).
+ * ("Precios al por mayor" se OCULTABA aquí hasta el 2026-10-02; ese día el
+ * carrito pasó a aplicar los WholesaleTier como descuento por volumen público
+ * — features/cart/volume-pricing.ts — y el módulo quedó visible en todos los
+ * modos.)
  *
  * ADMIN_NAV se mantiene exportado e intacto: lo usa el catch-all placeholder
  * (findNavItem) para mostrar info contextual de módulos "Próximo". El consumidor
@@ -462,18 +476,21 @@ export function getAdminNav(): NavGroup[] {
   if (!isCatalogMode()) {
     return withoutFuture.filter((group) => !group.items || group.items.length > 0 || group.href);
   }
-  // Modo catálogo (Etapa 1): además de los futuros, se ocultan lo que solo aplica
-  // con pagos/envíos online (grupo Finanzas completo, Integraciones) y Precios al por mayor
-  // (WholesaleTier sin consumidor en storefront hasta Etapa 2). Coherente con los
-  // gates de página (esas rutas redirigen a /admin/dashboard en este modo).
+  // Modo catálogo (Etapa 1): además de los futuros, se oculta lo que solo aplica
+  // con pagos/envíos online (grupo Finanzas completo, Integraciones y Envíos).
+  // Coherente con los gates de página (esas rutas redirigen a /admin/dashboard
+  // en este modo). "Precios al por mayor" YA NO se oculta (2026-10-02): el
+  // carrito aplica los niveles de volumen a todos los clientes.
   return withoutFuture
     .filter((group) => group.title !== "Finanzas")
     .map((group) => {
-      if (group.title === "Promociones" && group.items) {
-        return { ...group, items: group.items.filter((it) => it.href !== "/admin/mayorista") };
-      }
       if (group.title === "Configuración" && group.items) {
-        return { ...group, items: group.items.filter((it) => it.href !== "/admin/integraciones") };
+        return {
+          ...group,
+          items: group.items.filter(
+            (it) => it.href !== "/admin/integraciones" && it.href !== "/admin/envios",
+          ),
+        };
       }
       return group;
     })

@@ -1,13 +1,13 @@
 /*
  * Admin — gestión de tickets de soporte (P2 backoffice).
- * Lista por estado + cambio de estado + responder por email. Antes los tickets solo llegaban al
- * correo de Lucy sin panel; ahora se gestionan acá (con audit trail).
+ * Lista por estado + enlace al detalle (/admin/soporte/[id]), donde vive el flujo de
+ * solución: hilo con respuesta al cliente (email), notas internas y conversión a
+ * garantía/retracto. Antes los tickets solo llegaban al correo de Lucy sin panel.
  *
  * N-09 (2026-09-11): bandeja operativa ÚNICA — la antigua /admin/mensajes (misma tabla,
  * mismo servicio, mismos permisos) se consolidó acá y hoy es redirect permanente.
  * N-14 (2026-09-11): al marcar CLOSED el cliente recibe email de cierre
- * (features/support/admin-service → template support-ticket-closed); la respuesta
- * humana sigue siendo mailto (decisión declarada: no hay bandeja in-app).
+ * (features/support/admin-service → template support-ticket-closed).
  */
 
 import type { Metadata } from "next";
@@ -72,7 +72,7 @@ export default async function AdminSoportePage({ searchParams }: { searchParams:
       <AdminPageHeader
         icon={<LifeBuoy className="h-5 w-5" />}
         title="Soporte"
-        subtitle="Mensajes de contacto y reclamos de clientes. Responde por email y marca su estado — al cerrar, el cliente recibe aviso por correo."
+        subtitle="Mensajes de contacto y reclamos de clientes. Abre el hilo para responder (el cliente lo recibe por correo y lo ve en su cuenta) y marca el estado — al cerrar, recibe aviso."
       />
       <AdminPageBody>
         <div className="mb-4 flex flex-wrap gap-2">
@@ -112,28 +112,32 @@ export default async function AdminSoportePage({ searchParams }: { searchParams:
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-brand-purple-dark font-semibold">
+                    <Link
+                      href={`/admin/soporte/${t.id}`}
+                      className="text-brand-purple-dark font-semibold hover:underline"
+                    >
                       {subjectLabel(t.subject)}
-                    </span>
+                    </Link>
                     <AdminBadge tone={STATUS_TONE[t.status as SupportTicketStatus]}>
                       {STATUS_LABEL[t.status as SupportTicketStatus] ?? t.status}
                     </AdminBadge>
+                    {t.linkedCaseId && (
+                      <AdminBadge tone="blue">
+                        {t.linkedCaseType === "retract" ? "Con retracto" : "Con garantía"}
+                      </AdminBadge>
+                    )}
                   </div>
                   <p className="text-brand-purple-dark/90 mt-1 text-sm whitespace-pre-wrap">
                     {t.message}
                   </p>
                   <p className="text-brand-muted mt-1 text-xs">
                     {t.name} · {t.email} · {dateFmt.format(t.createdAt)}
+                    {t.orderNumber ? ` · pedido ${t.orderNumber}` : ""}
                     {t.resolvedAt ? ` · cerrado ${dateFmt.format(t.resolvedAt)}` : ""}
                   </p>
                 </div>
                 <div className="sm:w-56 sm:flex-shrink-0">
-                  <TicketActions
-                    id={t.id}
-                    status={t.status}
-                    email={t.email}
-                    subjectLabel={subjectLabel(t.subject)}
-                  />
+                  <TicketActions id={t.id} status={t.status} />
                 </div>
               </li>
             ))}

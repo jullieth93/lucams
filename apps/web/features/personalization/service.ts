@@ -408,6 +408,161 @@ export async function cloneDesignForEdit(
   });
 }
 
+/**
+ * Reorder "Volver a pedir" (Paquete I, 2026-10-02) — clona un diseño USED_IN_ORDER a un
+ * diseño NUEVO en estado READY, listo para `addPersonalizedToCart`.
+ *
+ * A diferencia de cloneDesignForEdit (que comparte los storageUrl de los assets entre original
+ * y clon), acá los BYTES SE COPIAN a paths propios del clon — tanto las fotos crudas
+ * (customer-uploads) como los renders de imprenta (production-assets). Motivo: el original está
+ * en la ventana de retención post-entrega (retention-delivered.ts) y cuando su pedido cumpla 90
+ * días de entregado la purga borrará esos bytes y las filas DesignAsset originales. Si el clon
+ * los referenciara, el reorder quedaría roto a mitad de camino (su propio pedido aún en
+ * producción). Con bytes propios, el clon tiene su ciclo de retención independiente (se purgará
+ * 90 días después de entregado el NUEVO pedido).
+ *
+ * Por eso el clon tampoco RE-FINALIZA (no re-renderiza producción desde el canvas): el render
+ * server-side no reproduce todos los diseños (el marco SVG de la Polaroid exige los PNG que
+ * subió el cliente, ADR-081) y los renders vivos del original ya son el archivo de imprenta
+ * correcto — copiarlos es fiel y determinista.
+ *
+ * Ownership: la autorización la hizo el caller (el pedido es del cliente / token público válido),
+ * así que NO se exige que el original pertenezca al nuevo dueño — el clon nace con el
+ * customerId/sessionId ACTUALES para que el flujo de carrito del caller lo vea como suyo (un
+ * invitado que reordena meses después tiene otra sesión).
+ *
+ * El clon hereda moderationStatus del original (el contenido es byte-idéntico a uno ya moderado:
+ * no se vuelve a encolar) y qualityAcknowledgedAt (la aceptación de calidad es del mismo diseño).
+ * El previewUrl se REUSA sin copiar: el bucket design-previews nunca se purga.
+ *
+ * Devuelve null si el original no existe, no está USED_IN_ORDER, ya fue purgado (`purgedAt`) o
+ * no tiene renders vivos que copiar (nada que reimprimir). Ante un fallo de Storage a mitad de
+ * la copia se hace cleanup best-effort (bytes copiados + filas del clon) y devuelve null — el
+ * caller lo reporta como "no disponible" y no queda basura.
+ */
+export async function cloneDesignForReorder(
+  originalId: string,
+  newOwner: { customerId: string | null; sessionId: string | null },
+): Promise<{ id: string } | null> {
+  const ownerId = newOwner.customerId ?? newOwner.sessionId;
+  if (!ownerId) return null;
+
+  const original = await prisma.design.findUnique({ where: { id: originalId } });
+  if (!original || original.status !== "USED_IN_ORDER" || original.purgedAt) return null;
+  const assets = await prisma.designAsset.findMany({ where: { designId: original.id } });
+
+  // Renders vivos: el array V2 + el legacy V1 (designs M.3 con productionUrl single).
+  const renderPaths = [
+    ...original.productionUrls,
+    ...(original.productionUrl ? [original.productionUrl] : []),
+  ];
+  if (renderPaths.length === 0) return null;
+
+  // La fila se crea ANTES de copiar bytes (el path de destino lleva el id del clon) y se
+  // promueve a READY solo cuando TODAS las copias salieron — un clon a medias nunca es
+  // agregable al carrito.
+  const clone = await prisma.design.create({
+    data: {
+      productId: original.productId,
+      templateId: original.templateId,
+      customerId: newOwner.customerId,
+      sessionId: newOwner.sessionId,
+      status: "DRAFT",
+      canvasData: (original.canvasData ?? {}) as Prisma.InputJsonValue,
+      metadata: (original.metadata ?? {}) as Prisma.InputJsonValue,
+      previewUrl: original.previewUrl,
+      moderationStatus: original.moderationStatus,
+      qualityAcknowledgedAt: original.qualityAcknowledgedAt,
+      createdBy: ownerId,
+    },
+    select: { id: true },
+  });
+
+  const copiedUploads: string[] = [];
+  const copiedRenders: string[] = [];
+  try {
+    // 1) Fotos crudas: copia de bytes + fila NUEVA por asset (remap de ids en el canvas).
+    const idMap = new Map<string, string>();
+    for (const a of assets) {
+      const filename = a.storageUrl.split("/").pop() ?? "foto.webp";
+      const destPath = `${ownerId}/${clone.id}/${crypto.randomUUID()}-${filename}`;
+      const { error } = await supabaseService.storage
+        .from(BUCKET_CUSTOMER_UPLOADS)
+        .copy(a.storageUrl, destPath);
+      if (error) throw new Error(`copy asset ${a.id}: ${error.message}`);
+      copiedUploads.push(destPath);
+      const copy = await prisma.designAsset.create({
+        data: {
+          designId: clone.id,
+          customerId: newOwner.customerId,
+          sessionId: newOwner.sessionId,
+          storageUrl: destPath,
+          mimeType: a.mimeType,
+          sizeBytes: a.sizeBytes,
+          width: a.width,
+          height: a.height,
+          exifStripped: a.exifStripped,
+          malwareScanned: a.malwareScanned,
+          rightsAcceptedAt: a.rightsAcceptedAt,
+          rightsPolicyVersion: a.rightsPolicyVersion,
+        },
+        select: { id: true },
+      });
+      idMap.set(a.id, copy.id);
+    }
+
+    // 2) Renders de imprenta: copia a `<cloneId>/<nombre-original>` (mismo esquema que finalize).
+    const newRenderPaths: string[] = [];
+    for (const p of renderPaths) {
+      const dest = `${clone.id}/${p.split("/").pop()}`;
+      const { error } = await supabaseService.storage.from(BUCKET_PRODUCTION).copy(p, dest);
+      if (error) throw new Error(`copy render ${p}: ${error.message}`);
+      copiedRenders.push(dest);
+      newRenderPaths.push(dest);
+    }
+
+    // 3) Promoción a READY con canvas remapeado y los paths propios de producción.
+    const remapped =
+      idMap.size > 0 ? remapCanvasAssetIds(original.canvasData, idMap) : original.canvasData;
+    await prisma.design.update({
+      where: { id: clone.id },
+      data: {
+        status: "READY",
+        canvasData: remapped as Prisma.InputJsonValue,
+        productionUrls: newRenderPaths,
+        // Legacy V1: el campo single apunta a SU copia (es el último path copiado).
+        productionUrl: original.productionUrl
+          ? (newRenderPaths[renderPaths.indexOf(original.productionUrl)] ?? null)
+          : null,
+      },
+    });
+    logger.info(
+      {
+        event: "design.reorder_clone.success",
+        originalId: original.id,
+        cloneId: clone.id,
+        assets: idMap.size,
+        renders: newRenderPaths.length,
+      },
+      "Diseño clonado para reorder (bytes copiados, READY)",
+    );
+    return { id: clone.id };
+  } catch (err) {
+    logger.warn({
+      event: "design.reorder_clone.fail",
+      originalId: original.id,
+      cloneId: clone.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    // Cleanup best-effort: bytes ya copiados (ambos buckets) + filas del clon.
+    await removeStorage(BUCKET_CUSTOMER_UPLOADS, copiedUploads);
+    await removeStorage(BUCKET_PRODUCTION, copiedRenders);
+    await prisma.designAsset.deleteMany({ where: { designId: clone.id } }).catch(() => {});
+    await prisma.design.delete({ where: { id: clone.id } }).catch(() => {});
+    return null;
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────
 //  Grid layout helper (mirror del cliente, server-side)
 // ──────────────────────────────────────────────────────────────────
@@ -1131,6 +1286,13 @@ export async function finalizeDesign(opts: {
   sessionId: string | null;
   /** ADR-063 CAL2 — año elegido por el cliente para un calendario mes-a-mes (opcional). */
   calendarYear?: number;
+  /**
+   * Paquete C (2026-10-02) — aceptación EXPLÍCITA de calidad de fotos: el cliente
+   * marcó el checkbox de la Vista Previa ("entiendo que estas fotos pueden
+   * imprimirse con menor calidad"). Se sella en Design.qualityAcknowledgedAt —
+   * evidencia ante reclamos de garantía. Ausente/false → la columna queda null.
+   */
+  qualityAcknowledged?: boolean;
 }) {
   const design = await getOwnedDesign(opts.designId, opts);
   if (!design) {
@@ -1286,7 +1448,15 @@ export async function finalizeDesign(opts: {
   const previewPath = `${design.id}/preview.${previewExtensionForMime(previewMime)}`;
   const { error: pErr } = await supabase.storage
     .from(BUCKET_PREVIEWS)
-    .upload(previewPath, opts.previewBuffer, { contentType: previewMime, upsert: true });
+    .upload(previewPath, opts.previewBuffer, {
+      contentType: previewMime,
+      // 1 año: el path va versionado por diseño (<designId>/preview.<ext>) y el contenido
+      // no cambia una vez finalizado (T4). OJO: si el diseño se RE-finaliza, el upsert
+      // pisa el mismo path y el CDN/navegador puede servir el preview anterior hasta que
+      // venza el cache — riesgo aceptado (re-finalize es excepcional y admin-driven).
+      cacheControl: "31536000",
+      upsert: true,
+    });
   if (pErr) {
     logger.warn(
       { event: "design.finalize.upload_preview_fail", err: pErr.message },
@@ -1356,9 +1526,15 @@ export async function finalizeDesign(opts: {
     const path = facesComposed
       ? `${design.id}/tira-${String(i + 1).padStart(2, "0")}.png`
       : `${design.id}/slot-${String(i + 1).padStart(2, "0")}.png`;
-    const { error: prodErr } = await supabase.storage
-      .from(BUCKET_PRODUCTION)
-      .upload(path, buf, { contentType: "image/png", upsert: true });
+    const { error: prodErr } = await supabase.storage.from(BUCKET_PRODUCTION).upload(path, buf, {
+      contentType: "image/png",
+      // 1h, alineado con el TTL de los signed URLs (getProductionAssetSignedUrls): el bucket
+      // es PRIVADO y cada acceso genera una firma nueva, así que un cache-control largo no
+      // se aprovecharía (la URL rotativa cambia el query string = cache key distinto). Con
+      // 3600 el navegador sí puede reusar la pieza mientras la firma siga viva (T4).
+      cacheControl: "3600",
+      upsert: true,
+    });
     if (prodErr) {
       logger.warn(
         { event: "design.finalize.upload_production_fail", err: prodErr.message, slotIndex: i },
@@ -1397,6 +1573,9 @@ export async function finalizeDesign(opts: {
       productionUrls: productionPaths,
       // Legacy field: en V2 dejamos null (el array es source-of-truth).
       productionUrl: null,
+      // Paquete C — sello de la aceptación explícita de calidad (checkbox de la
+      // Vista Previa). Solo se escribe cuando el cliente la marcó.
+      ...(opts.qualityAcknowledged ? { qualityAcknowledgedAt: new Date() } : {}),
       ...(mergedMetadata ? { metadata: mergedMetadata as Prisma.InputJsonValue } : {}),
     },
   });
@@ -1408,6 +1587,7 @@ export async function finalizeDesign(opts: {
       previewBytes: opts.previewBuffer.length,
       productionSlotsCount: productionPaths.length,
       productionTotalBytes: totalProductionBytes,
+      qualityAcknowledged: opts.qualityAcknowledged === true,
     },
     "Design finalized (V2)",
   );

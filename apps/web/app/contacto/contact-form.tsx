@@ -6,7 +6,7 @@
  * Toast sonner al success/error.
  */
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import { submitContactAction } from "@/features/support/actions";
-import { SUBJECT_LABELS, SUPPORT_SUBJECTS } from "@/features/support/schemas";
+import {
+  SUBJECT_LABELS,
+  SUPPORT_SUBJECTS,
+  ORDER_RELATED_SUBJECTS,
+  type SupportSubject,
+} from "@/features/support/schemas";
 
 export function ContactForm({
   successNote = "Te respondemos a tu email en menos de 24h hábiles. Tu ticket es",
@@ -25,6 +30,8 @@ export function ContactForm({
   successNote?: string;
 }) {
   const [state, formAction, pending] = useActionState(submitContactAction, null);
+  const [subject, setSubject] = useState<SupportSubject>("CONSULTA_PRODUCTO");
+  const asksOrderNumber = ORDER_RELATED_SUBJECTS.includes(subject);
 
   useEffect(() => {
     if (state?.ok) {
@@ -104,7 +111,8 @@ export function ContactForm({
           id="contact-subject"
           name="subject"
           required
-          defaultValue="CONSULTA_PRODUCTO"
+          value={subject}
+          onChange={(e) => setSubject(e.target.value as SupportSubject)}
           className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
         >
           {SUPPORT_SUBJECTS.map((s) => (
@@ -117,6 +125,29 @@ export function ContactForm({
           <p className="text-xs text-red-700">{state.fieldErrors.subject[0]}</p>
         )}
       </div>
+
+      {asksOrderNumber && (
+        <div className="space-y-1.5">
+          <Label htmlFor="contact-order-number" className="text-brand-purple-dark/80 text-sm">
+            Número de pedido <span className="text-brand-muted font-normal">(opcional)</span>
+          </Label>
+          <Input
+            id="contact-order-number"
+            name="orderNumber"
+            maxLength={20}
+            inputMode="text"
+            autoComplete="off"
+            placeholder="LCM-2026-0001"
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+          />
+          <p className="text-brand-muted text-xs">
+            Lo encuentras en el correo de confirmación de tu compra.
+          </p>
+          {state?.fieldErrors?.orderNumber && (
+            <p className="text-xs text-red-700">{state.fieldErrors.orderNumber[0]}</p>
+          )}
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <Label htmlFor="contact-message" className="text-brand-purple-dark/80 text-sm">

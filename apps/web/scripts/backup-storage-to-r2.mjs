@@ -60,11 +60,7 @@ import {
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
 import { createClient } from "@supabase/supabase-js";
-import {
-  normalizeR2AccountId,
-  explainR2ConnectError,
-  selectStaleKeys,
-} from "./backup-lib.mjs";
+import { normalizeR2AccountId, explainR2ConnectError, selectStaleKeys } from "./backup-lib.mjs";
 import {
   parseStorageBuckets,
   buildStorageBackupKey,
@@ -74,6 +70,7 @@ import {
   tarPaddingSize,
   STORAGE_BACKUP_KEY_RE,
   STORAGE_MANIFEST_KEY_RE,
+  STORAGE_TRANSIENT_RE,
   TAR_BLOCK_SIZE,
 } from "./backup-storage-lib.mjs";
 
@@ -93,9 +90,11 @@ function requireEnv(name, ...fallbacks) {
  * programado fallaba ~50% de las noches por un único listado que devolvía 5xx
  * (2026-09 — historial del workflow Backup DB → R2). 6 intentos con backoff
  * exponencial + jitter; errores NO transitorios (auth, 4xx) lanzan de inmediato.
+ * 2026-10-02: el patrón vive en backup-storage-lib.mjs (STORAGE_TRANSIENT_RE)
+ * para ser testeable; se amplió con la saturación de conexiones del servidor
+ * Storage ("Too many connections issued to the database", run 37015636246).
  */
-const TRANSIENT_RE =
-  /bad gateway|gateway timeout|service unavailable|internal server error|fetch failed|econnreset|etimedout|socket|\b50[234]\b/i;
+const TRANSIENT_RE = STORAGE_TRANSIENT_RE;
 const RETRY_DELAYS_MS = [2_000, 5_000, 15_000, 45_000, 90_000];
 
 async function withRetry(label, fn) {
@@ -221,7 +220,17 @@ async function* tarEntries(supabase, bucket, objects) {
 async function gzipEncryptToFile(source, passphrase, outPath) {
   const gpg = spawn(
     "gpg",
-    ["--symmetric", "--cipher-algo", "AES256", "--batch", "--yes", "--passphrase-fd", "3", "-o", "-"],
+    [
+      "--symmetric",
+      "--cipher-algo",
+      "AES256",
+      "--batch",
+      "--yes",
+      "--passphrase-fd",
+      "3",
+      "-o",
+      "-",
+    ],
     { stdio: ["pipe", "pipe", "pipe", "pipe"] },
   );
   let stderr = "";
@@ -249,7 +258,9 @@ async function listAllKeys(r2, bucket, prefix) {
   const keys = [];
   let ContinuationToken;
   do {
-    const page = await r2.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken }));
+    const page = await r2.send(
+      new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken }),
+    );
     for (const o of page.Contents || []) if (o.Key) keys.push(o.Key);
     ContinuationToken = page.IsTruncated ? page.NextContinuationToken : undefined;
   } while (ContinuationToken);

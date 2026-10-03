@@ -3473,3 +3473,287 @@ intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar
 **Consecuencia:** 0/70 overflow mantenido; e2e de estudio verdes; guardado admin verificado end-to-end (nombre→PDP, destacado→home); los previews de Vercel darán el elemento exacto del INP en adelante. Deuda registrada: specs e2e con drift de la fase B2 ("Unidades"→"Packs", seed magnet polaroid) y la fase 2 de INP condicionada al RUM.
 
 ---
+
+## ADR-105 — Certificación de release: PR obligatorio a `production` y aceptación del riesgo de rollback sin drill
+
+**Fecha:** 2026-09-27
+**Estado:** ✅ Aceptada (decisión de Lucy, registrada en la certificación `docs/audits/2026-09-27-final-release-certification.md`)
+
+**Contexto:** la certificación integral de release (2026-09-26/27, `docs/audits/2026-09-26-release-certification.md`) cerró todos los hallazgos de código (P1/P2) y dejó dos condiciones de gate de decisión de la owner: F-07 (push directo a `production` despliega sin esperar gates — los checks solo gateaban PRs) y A9-09 (rollback de despliegue documentado pero nunca ensayado).
+
+**Decisión:**
+① **F-07 → restringir.** `production` ahora exige **pull request** (0 approvals — flujo de owner única sin fricción) + los **8 required checks** (los 7 históricos + `RLS behavior (rls-matrix contra Supabase local)`, agregado el mismo día). El push directo a `production` queda cerrado también para admins (`enforce_admins` ya estaba activo). El release pasa a ser: PR `develop`→`production` → 8 checks verdes → merge ff → deploy.
+② **A9-09 → riesgo aceptado.** No se hará drill de rollback antes del release. La recuperación real es **forward-fix** (push con fix + CI verde en minutos, camino ya ejercido en la operación diaria) y `vercel rollback` queda como opción documentada (RUNBOOK_GO_LIVE) sin evidencia de ensayo. Riesgo residual: si un deploy rompe PRD, la vuelta atrás depende de un mecanismo no practicado; se mitiga con el post-deploy-smoke (detecta en minutos) y el forward-fix.
+
+**Por qué:** ① el costo de la restricción es mínimo (misma disciplina ff, más 1 click) y elimina la única vía de desplegar código no gateado; ② el drill exige ventana de deploy controlada y la owner prefiere asumir el riesgo con mitigaciones activas.
+
+**Consecuencia:** el gate §20 de la misión queda sin bloqueos: `production migration path` PROVEN (LOCAL+STG), rollback = riesgo aceptado firmado, F-07 = remediado. Veredicto de la certificación: **CERTIFIED** sobre `develop@fcc912c` (árbol de producto `7f07c43`).
+
+**Addendum (mismo día):** ① la mitigación profunda ya existía como convención — `docs/CONVENTIONS.md` §"DB — migration strategy (expand-then-contract)" — y quedó explicitado allí que ese patrón ES lo que hace seguro el rollback instantáneo (Vercel revierte código, no DB); una migración destructiva en una sola release invalida el rollback. ② El drill de rollback quedó agendado como paso del deploy a PRD y **se ejecutó el 2026-09-27 13:45 con evidencia**: rollback a `dpl_EZZZ…` (código viejo) → smoke 5/5 contra la DB migrada → rollback hacia adelante a `dpl_B8mj…` → smoke 5/5. El mecanismo queda **PROVEN** (ya no es solo riesgo aceptado).
+
+---
+
+## ADR-106 — Garantía de 3 meses (término informado, Ley 1480 art. 8) y paquete legal "Versión 1"
+
+**Fecha:** 2026-09-29
+**Estado:** ✅ Aceptada (decisión de Lucy; el cambio de versionado aprobado por asesoría legal)
+
+**Contexto:** el producto nunca ha sido público, pero los 8 documentos legales decían «Versión 5 · vigente desde 2026-09-04» con la coletilla «en revisión por asesoría legal», y la garantía se anunciaba como «1 año» (el defecto legal cuando no se informa término). Los productos son papelería magnética personalizada de alta manipulación.
+
+**Decisión:**
+① **Versionado:** los 8 documentos pasan a **«Versión 1 · vigente desde 2026-09-29»** y se elimina la coletilla de revisión legal en todas las superficies (canónico `packages/db/legal-content/*.md`, fallbacks de `/legal/*`, header común, `PRIVACY_POLICY_VERSION` = «v1 · 2026-09-29» en consent y back-in-stock). Al nunca haber sido públicos, no hubo cambios frente a clientes que versionar.
+② **Garantía: 3 meses desde la entrega**, fijados e **informados expresamente** al consumidor conforme a la Ley 1480 de 2011 (art. 8: si no se informa término, el defecto es 1 año; el productor puede informar uno acorde a la naturaleza del bien). Cobertura: defectos de fabricación/impresión y adherencia del imán de fábrica. Exclusiones: mal uso, humedad, golpes, desgaste natural, manipulación indebida. El piso baja de 12 a 3 en `ProductCreateSchema.warrantyMonths` (min 3), default del form admin y piso de la PDP (`Math.max(…, 3)`); el script `publish-legal-v1-20260929.mjs` homologa `Product.warrantyMonths` a 3.
+
+**Por qué:** anunciar 1 año en productos personalizados y manipulables expone a la tienda a reclamos desproporcionados frente a la vida útil razonable del bien; la ley permite informar un término menor siempre que quede expreso. El retracto ya exceptúa personalizados (Ley 1480 art. 47), y esa excepción se mantiene.
+
+**Consecuencia:** textos legales, FAQ de ayuda, checkout, email de confirmación de pedido, nav del admin y COMPLIANCE.md coherentes con 3 meses. Re-consent: `PRIVACY_POLICY_VERSION` cambia de «v5» a «v1», así que el banner vuelve a aparecer — sin impacto real (sin público previo). Follow-up sugerido: bajar el default de `Product.warrantyMonths @default(12)` en una migración futura.
+
+---
+
+## ADR-107 — Envío propio «Envío Lucam's» (Bogotá, por localidades) + toggle de transportadoras Aveonline + soporte end-to-end
+
+**Fecha:** 2026-09-29
+**Estado:** ✅ Aceptada (decisión de Lucy)
+
+**Contexto:** ① Lucy quería ofrecer entrega el mismo día en Bogotá con tarifa fija y control de localidades (ej. no operar Usme directamente), conviviendo con Aveonline; ② no existía forma de apagar transportadoras individuales de Aveonline sin tocar código; ③ el formulario de contacto creaba tickets que morían en `/admin/soporte` sin conexión con los módulos especializados (garantías/retractos) y sin hilo de respuesta.
+
+**Decisión:**
+① **«Envío Lucam's» como carrier interno adicional** (`carrier = "lucams"`): settings operativas CMS `LUCAMS_SHIPPING_ENABLED`, `LUCAMS_SHIPPING_PRICE_COP` (default $10.000), `LUCAMS_SHIPPING_CUTOFF_HOUR` (default 12) y `LUCAMS_SHIPPING_LOCALITIES` (JSON de ids del catálogo nuevo `lib/bogota-localities.ts`, 20 localidades). Se ofrece **como opción adicional** en el checkout (el cliente elige; no oculta Aveonline) solo si destino = Bogotá y localidad habilitada; promesa «Entrega hoy» antes del cutoff (hora America/Bogota) o «Entrega mañana». La dirección de Bogotá pide localidad (exigida server-side solo si el envío propio está activo) y se persiste en `Address.structured`/`Order.shippingAddress`. La oferta pasa por el mismo sello HMAC y re-validación de `finalizeCheckout` (anti-manipulación intacto). Post-pago: la saga NO genera guía Aveonline; `trackingNumber = INTERNO-<orderNumber>` con claim atómico, badge «Entrega propia» en el admin y acciones manuales de enviado/entregado.
+② **Toggle de transportadoras:** setting `SHIPPING_DISABLED_CARRIERS` administrada desde `/admin/integraciones/aveonline` (lista viva de `listarTransportadorasPorEmpresa`); `quoteShipping()` filtra antes de sellar.
+③ **Soporte end-to-end:** `SupportTicket` + `orderNumber` (String — los números reales son `LCM-2026-0001`), `linkedCaseType/Id`; nueva tabla `SupportTicketMessage` (hilo admin↔cliente, notas internas, RLS deny-by-default). El admin responde desde el panel (email transaccional `support-ticket-reply`, idempotente, best-effort), y **convierte** tickets `GARANTIA_DEVOLUCION` en reclamo de garantía o retracto con referencia cruzada. Las acciones `createWarrantyClaimAsAdmin`/`createRetractRequestAsAdmin` son **válvula admin**: exigen pedido DELIVERED y sin caso activo, pero saltan las ventanas de tiempo (3 meses / 5 días hábiles) — la potestad de excepción queda en el admin autenticado con audit trail, no en el cliente.
+④ **Asuntos del form ampliados:** `ENVIO_RASTREO` y `PAGO_FACTURACION` agregados al final del enum (valores históricos intactos).
+
+**Por qué:** ① la entrega propia es un diferenciador comercial real en Bogotá y como carrier interno reusa toda la maquinaria anti-manipulación y de idempotencia existente; ② apagar carriers no debe exigir un deploy; ③ un ticket de garantía fuera del módulo especializado pierde la trazabilidad legal (diagnóstico, remedio, plazos) que la Ley 1480 exige poder demostrar.
+
+**Consecuencia:** migración Prisma `20260929120000_support_ticket_thread_case_links` + RLS `00000000000040` pendientes de aplicar en STG/PRD con el deploy. La respuesta del cliente desde `/mi-cuenta` (reapertura CLOSED→OPEN) quedó fuera por riesgo (superficie autenticada nueva) — iteración separada; el cliente responde por email (Reply-To al buzón). El gate de la FAQ «envío mismo día» quedó fail-closed tras `SAME_DAY_DELIVERY_ENABLED` (activación operativa aparte).
+
+---
+
+## ADR-108 — Localidad como dato de dirección (las zonas habilitadas solo gatean la oferta «Envío Lucam's») + regla única de promesa de entrega producción+cutoff + logos de transportadoras
+
+**Fecha:** 2026-10-01
+**Estado:** ✅ Aceptada (paquete A, commit `9d28390`; desplegado a PRD vía PR #58)
+
+**Contexto:** ① la localidad se pedía en el checkout SOLO si el envío propio estaba activo y la zona habilitada — mezclaba un dato estructural de la dirección (la localidad, que la logística necesita siempre en Bogotá) con una decisión comercial (qué localidades cubre «Envío Lucam's»), y una orden con envío Aveonline quedaba sin localidad; ② la promesa de entrega se calculaba en 6 superficies distintas (checkout, badge admin, guía imprimible, emails, PDP, FAQ) con lógicas divergentes — algunas prometían «mismo día» sin considerar el cutoff; ③ el listado de transportadoras era texto plano.
+
+**Decisión:**
+① **La localidad es un DATO DE DIRECCIÓN, no una condición de oferta.** `/checkout/datos` muestra TODAS las localidades del catálogo por ciudad (Bogotá: 20, requerido) sin importar la configuración de envío propio; las zonas habilitadas en `/admin/envios` solo controlan si aparece la OFERTA «Envío Lucam's» en `/checkout/envio`. Junto a ella, el campo opcional «Barrio» (`neighborhood`) en todas las ciudades, persistido en la sesión de checkout, `Order.shippingAddress` y `Address.structured`, y visible en admin, guía imprimible y mi-cuenta (copy del CP editable por CMS).
+② **UNA regla de promesa de entrega** (`lib/delivery-estimate.ts`): `deliveryDays = maxProductionDays + (hora Colombia >= cutoff ? 1 : 0)`, compartida por las 6 superficies — nadie promete por su cuenta y desaparecen las promesas incondicionales de mismo día.
+③ **Logos de transportadoras** (`lib/carrier-logos.ts` + `public/carriers/`): logos oficiales (Servientrega, Coordinadora, Interrapidísimo, Envía, TCC), monogramas para las sin logo usable (Deprisa, 99minutos, Go Envíos) y fallback `Truck`, en checkout y `/admin/envios`.
+
+**Por qué:** ① una dirección incompleta cuesta más que una oferta menos visible: la localidad es información logística permanente, mientras que la cobertura del envío propio cambia por decisión operativa; ② una promesa divergente por superficie es un reclamo garantizado (Ley 1480: la información dada al consumidor es vinculante); ③ los logos reducen fricción de elección en el paso con más abandono del checkout.
+
+**Consecuencia:** el admin puede encender/apagar zonas de «Envío Lucam's» sin afectar la captura de direcciones. La FAQ de envío mismo día (`faq.11-envio-mismo-dia`, versión 2 con copy producción+cutoff) consume la misma regla pero sigue gateada fail-closed por `SAME_DAY_DELIVERY_ENABLED` (activación pendiente del owner). Tests: matriz de la regla de entrega, schemas, logos.
+
+---
+
+## ADR-109 — Stock: clamp `min(99, stock)` con mensajes por producto + cierre de la carrera TOCTOU de reconciliación
+
+**Fecha:** 2026-10-01
+**Estado:** ✅ Aceptada (paquete A, commits `9d28390`/`32d8a1e`; desplegado a PRD vía PR #58)
+
+**Contexto:** ① el carrito rechazaba con error cualquier cantidad que superara el stock disponible — una fricción innecesaria cuando el cliente solo quiere «todo lo que haya» — y los errores no decían QUÉ producto fallaba; ② la auditoría encontró una carrera real (TOCTOU): si la reconciliación de una orden corría entre el pago aprobado en Wompi y la llegada del webhook, podía sobrescribir una orden ya `PAID`.
+
+**Decisión:**
+① **Semántica CLAMP en cantidad:** el tope efectivo es `min(99, stock)`; agregar/actualizar clampa al disponible en vez de rechazar, y solo se rechaza cuando no hay margen (stock 0 o la línea ya está en el tope) — con mensaje que NOMBRA el producto. El stepper se capa al stock real y el badge «Solo quedan N» avisa escasez. Los errores de checkout (`OrderUnavailableItemsError`) listan los productos no disponibles por nombre.
+② **Cierre de la carrera TOCTOU:** la reconciliación de la orden queda gateada por status (update condicionado al estado esperado); si la orden ya fue pagada por otro camino, se lanza `OrderAlreadyPaidError` y el flujo redirige a `/checkout/gracias` en vez de pisarla. Se mantiene el modelo SIN reservas de stock (ADR-014 SUPERSEDED por ADR-091: la protección real contra sobreventa es el UPDATE atómico `UPDATE … WHERE stock >= qty` al `PAID` + `needsReconciliation`).
+
+**Por qué:** ① clamp es la convención de e-commerce y convierte un dead-end en venta; nombrar el producto convierte un error críptico en una acción obvia para el cliente y para soporte. ② Una orden pagada no puede ser reabierta por un proceso de saneamiento: el dinero manda sobre cualquier job.
+
+**Consecuencia:** tests de la matriz de stock del carrito, de la carrera de reconciliación y de los mensajes por producto (57 tests nuevos del paquete). El comportamiento legado de clamp quedó cubierto por su test histórico (conserva la semántica).
+
+---
+
+## ADR-110 — Fusión Garantías+Reclamos en un solo módulo (una tabla, una máquina de estados, notificación garantizada al cliente)
+
+**Fecha:** 2026-10-01
+**Estado:** ✅ Aceptada (paquete B, commit `4cb2a1b`; desplegado a PRD vía PR #58)
+
+**Contexto:** `/admin/garantias` y `/admin/reclamos` operaban la MISMA tabla `WarrantyClaim` con lógicas divergentes (duplicado parcial documentado en la auditoría 2026-09-11), y el módulo de reclamos tenía un campo «nota al cliente» que NUNCA se enviaba — el cliente radicaba y quedaba sin respuesta, un riesgo legal directo (Ley 1480: trazabilidad de la gestión de garantías; SIC: términos de respuesta a PQR).
+
+**Decisión:**
+① **Un solo módulo:** `/admin/reclamos` se fusiona en `/admin/garantias` (redirect 308 permanente, entrada de nav retirada) — una tabla, una máquina de estados, una sola lógica de resolución.
+② **Notificación garantizada:** la resolución incluye la nota del equipo en el email al cliente, y el rechazo gana su propia plantilla **`warranty-rejected`** (la #27 del registry, registrada en el admin de overrides) con el motivo — ningún caso se cierra en silencio.
+③ **Recordatorio de dinero manual:** RESOLVED+REFUND muestra un recordatorio persistente (con link a la orden) de que el dinero se devuelve a mano (Wompi/transferencia) — el sistema nunca mueve plata (misma política del reembolso de pedidos).
+
+**Por qué:** dos vistas sobre la misma entidad divergen siempre; y un flujo que captura la queja pero no notifica la respuesta es peor que no tenerlo (genera la expectativa y la incumple). La fusión elimina la divergencia y hace la notificación estructural, no optativa.
+
+**Consecuencia:** los enlaces viejos a `/admin/reclamos` siguen funcionando (308). El inventario de plantillas pasa a 27 (EMAIL_TEMPLATES.md actualizado). Los helpers `customerWaLink`/`customerTelLink` (`lib/wa.ts`, normalización +57 para móviles CO de 10 dígitos) se aprovecharon para arreglar los links wa.me/tel: del detalle de pedido admin y de los emails de notificación internos.
+
+---
+
+## ADR-111 — Token firmado de reseña de un solo uso sin login (HMAC stateless, sin tabla)
+
+**Fecha:** 2026-10-01
+**Estado:** ✅ Aceptada (paquete B, commit `04a6ba6`; desplegado a PRD vía PR #58)
+
+**Contexto:** el email «deja tu reseña» caía en el fallback `/rastrear` desde F-11 (el token público de tracking se guarda solo como hash — no hay URL de pedido recuperable para invitados), así que el CTA llevaba a una página SIN UI de reseña: el canal de reseñas post-compra estaba muerto para guests, justo el segmento mayoritario.
+
+**Decisión:** **token firmado HMAC stateless** (`features/reviews/review-token.ts`): payload `{orderId, email, productIds, exp 30d}` firmado con `CSRF_SECRET` (con separación de dominio), SIN tabla nueva — la verificación es criptográfica. El email `review-request` emite el token y el CTA aterriza en **`/resena/<token>`**: página server-verified con selector de producto, estrellas + comentario con Turnstile, que crea la `Review` en estado `PENDING` (moderación intacta) SIN login. Un solo uso: índice único parcial (clientes identificados) + pre-chequeo del marcador `createdBy` (guests puros). 16 campos CMS `review.page.*` registrados para editar la página sin tocar código.
+
+**Por qué:** una tabla de tokens replicaría lo que HMAC ya garantiza (integridad + expiración) con costo operativo (cleanup, RLS, storage); el payload mínimo (orderId + email + productIds) es suficiente para verificar la compra contra la DB al consumir el token. Turnstile + PENDING mantienen la política anti-testimonios-falsos (decisión de Lucy 2026-09-05: solo reseñas de compras verificadas).
+
+**Consecuencia:** resuelve el fallback a `/rastrear` de F-11 para el flujo de reseñas (los demás CTAs post-pago siguen con el fallback documentado en EMAIL_TEMPLATES.md). `gitleaks` allowlist el secreto dummy del fixture de tests con justificación.
+
+---
+
+## ADR-112 — Saneamiento de imágenes de catálogo (audit + repair one-shots; causa raíz: rename de normalize-webp)
+
+**Fecha:** 2026-10-01
+**Estado:** ✅ Aceptada (operación de datos 2026-10-01, commit `9b66a4f`)
+
+**Contexto:** la auditoría de URLs (`one-shot/audit-product-image-urls.mjs`, HEAD-check de todas las imágenes de catálogo por ambiente) encontró **66 referencias rotas en STG y 73 en PRD**, más referencias cruzadas entre proyectos (PRD apuntando al bucket de STG y viceversa — dependencia frágil ya atacada en 2026-09-20 que había reaparecido).
+
+**Decisión:** reparación con `one-shot/repair-missing-bucket-objects.mjs` (dry-run por defecto, env-guard), por caso: **A** copiar el objeto faltante desde el bucket del otro proyecto; **B** normalizar referencias cruzadas (copiar + reescribir al host local); **C** reescribir las referencias `.png` muertas al objeto `.webp` migrado — **la causa raíz real de los 139 «huérfanos»**: `normalize-webp` renombró los objetos en el bucket y las referencias en DB quedaron rezagadas; **D** poda de referencias muertas SOLO en arrays con ≥1 imagen sana sobreviviente (nunca dejar un producto sin imagen por script). Además, migración de las últimas URLs Unsplash al bucket propio (`migrate-unsplash-to-bucket.mjs`, 3+3 objetos, sharp-optimizadas).
+
+**Por qué:** la reparación por casos con dry-run y poda conservadora permite ejecutar contra PRD con riesgo acotado; atacar la causa raíz (rename sin reescritura de refs) evita que el problema reaparezca en la próxima normalización.
+
+**Consecuencia:** **STG 201/201 y PRD 134/134 imágenes sanas, 0 rotas, 0 cruzadas.** Bugs del propio tooling corregidos en el camino: colección de refs de Category (variable indefinida) y el path de upload debe ser relativo al bucket (había objetos en `<bucket>/<bucket>/<path>`; las copias mal ubicadas se limpiaron en ambos buckets). La PDP gana además fallback onError en galería y ProductCard (commit `b80867f`) para que una URL muerta nunca más rompa el hero/LCP, y el seed canónico ya no referencia Unsplash.
+
+---
+
+## ADR-113 — Palancas de rendimiento: fuentes del Estudio fuera del root layout, Turnstile perezoso, vitals p75 por ruta, caché «catalog» y gate móvil Lighthouse
+
+**Fecha:** 2026-10-01
+**Estado:** ✅ Aceptada (paquete B, commit `dba3fed`; desplegado a PRD vía PR #58)
+
+**Contexto:** ① las 6 fuentes del selector de calendario del Estudio (~2MB de TTF) se cargaban en el layout global — las pagaba TODA la tienda aunque solo las usa `/estudio/*`; ② el widget Turnstile del newsletter del footer montaba en cada carga de página; ③ `/admin/performance` mostraba promedios (ocultan colas) sin desglose por ruta ni por métrica; ④ categorías y rango de precios se recalculaban en cada request de storefront; ⑤ el gate Lighthouse de CI solo corría emulación desktop.
+
+**Decisión:**
+① **Fuentes del Estudio scoped a `/estudio/*` con `preload:false`** (el canvas llama `document.fonts.load` on demand); el root layout conserva solo Fredoka + Inter.
+② **Turnstile del footer perezoso:** monta por IntersectionObserver/focus, no en cada page load; el submit espera el token y reintenta el challenge cuando se agota.
+③ **`/admin/performance` con p50/p75/p95 por ruta** (`features/observability/percentiles.ts`, percentileCont puro, ratings web.dev) y pills de vitals separadas por métrica — las decisiones de performance se toman sobre el p75, no sobre el promedio.
+④ **Categorías + rango de precios con `unstable_cache` tag «catalog»** (TTL 1h; la invalidación desde admin ya estaba cableada con ese tag).
+⑤ **Gate móvil Lighthouse en CI** (`lighthouserc.mobile.js`): corrida con emulación móvil para `/` y `/productos` (perf warn ≥0.4 como baseline conservador, a11y/SEO error ≥0.9).
+
+**Por qué:** el peso que no se usa es el peor peso (2MB de fuentes penalizaban el LCP de toda la tienda); y sin percentiles por ruta se optimiza a ciegas — el p75 por ruta dice dónde duele de verdad (continúa la línea de ADR-104: RUM antes que refactor).
+
+**Consecuencia:** la home y el catálogo dejan de descargar las fuentes del Estudio y el iframe de Turnstile en cada navegación. El gate móvil hace regresión-imposible una caída brusca de perf/a11y móvil. Mismo paquete: **Next 16.3.4→16.3.6** (commit `5f323f3`) por GHSA-vcvr-r3jv-pc5j (RCE crítica en `next/og` ImageResponse) — el gate de audit prod (high+) falló en el push y el bump de patch lo cerró con `pnpm audit --prod` limpio.
+
+---
+
+## ADR-114 — Regla única de cara B vacía: espejo de la cara A en TODOS los renders
+
+**Fecha:** 2026-10-02
+**Estado:** ✅ Aceptada (sesión 2026-10-02, paquetes A/D/E)
+
+**Contexto:** los productos de 2 caras (separadores magnéticos y todo `backOptional`) tenían **3 comportamientos contradictorios** cuando el cliente dejaba la cara B vacía: según la superficie, se pintaba en blanco, en negro o como espejo de la cara A. El preview y la producción podían decir cosas distintas del mismo diseño.
+
+**Decisión:** **«cara B vacía = espejo de la cara A» en TODOS los renders** — canvas del estudio, vista previa del cliente, vista 3D y producción. En producción la regla la aplica estructuralmente `expandMissingBackFaces` (expande las caras faltantes copiando la A); las demás superficies consumen la misma regla, no la reimplementan.
+
+**Por qué:** una sola regla elimina la divergencia preview↔producción (el cliente debe recibir lo que vio — WYSIWYG, información veraz Ley 1480 art. 23) y simplifica el modelo mental: la cara B es opcional de verdad; si no la personaliza, queda espejo, nunca «en blanco».
+
+**Consecuencia:** todo render nuevo de productos de 2 caras debe pasar por la misma expansión; «cara B en blanco/negro» deja de ser un estado representable. Complementa la línea WYSIWYG del paquete D (renders) y queda como precondición del ADR-118 (preview unificado).
+
+---
+
+## ADR-115 — Patrón único de CTA ocupado del estudio («Preparando…/Agregando…»)
+
+**Fecha:** 2026-10-02
+**Estado:** ✅ Aceptada (sesión 2026-10-02, paquete E)
+
+**Contexto:** las 4 superficies con acción principal del estudio (toolbar de foto, letter-set, name, header simple) tenían **4 implementaciones divergentes** del estado ocupado: distintas opacidades, distintos textos (o ninguno), y comportamientos de deshabilitado inconsistentes — el mismo producto «se sentía» distinto según por dónde se finalizara.
+
+**Decisión:** helper único **`studio-busy-cta.ts`** que centraliza el patrón: **opacidad 70% uniforme** + texto de progreso («Preparando…» al preparar/finalizar, «Agregando…» al agregar al carrito), aplicado en las 4 superficies.
+
+**Por qué:** el feedback de ocupado es una convención de producto, no una decisión por superficie; centralizarlo garantiza feedback consistente (el cliente siempre sabe que su click está procesando) y una sola implementación que mantener.
+
+**Consecuencia:** cualquier CTA nuevo del estudio usa el helper; una divergencia visual en el estado ocupado es ahora un bug, no una opción de diseño.
+
+---
+
+## ADR-116 — `dark:` de Tailwind responde a la clase `.dark`, no a `prefers-color-scheme` del SO
+
+**Fecha:** 2026-10-02
+**Estado:** ✅ Aceptada (sesión 2026-10-02, paquete E)
+
+**Contexto:** el sitio es **solo tema claro** (no tiene modo oscuro), pero Tailwind mapea por defecto la variante `dark:` a `prefers-color-scheme: dark`: en un SO con tema oscuro las utilidades `dark:` se activaban solas. Bug original: el botón **«Volver a editar» quedaba blanco sobre blanco** (invisible) para usuarios con el SO en oscuro.
+
+**Decisión:** **`@custom-variant dark` en `globals.css`** para que `dark:` responda a la clase `.dark` en el árbol — clase que el sitio nunca aplica.
+
+**Por qué:** las utilidades `dark:` del código existen para componentes de terceros y estados puntuales, no como tema del sitio; atarlas a una clase que controlamos devuelve el control del tema al producto y hace imposible la regresión según la configuración del SO del cliente.
+
+**Consecuencia:** el sitio se ve idéntico en SO claro u oscuro. Si algún día se implementa modo oscuro, basta con alternar la clase `.dark` en `<html>` — la infraestructura ya quedó del lado correcto.
+
+---
+
+## ADR-117 — Reorder («Volver a pedir»): el clon COPIA los bytes y hereda un ciclo de retención independiente
+
+**Fecha:** 2026-10-02
+**Estado:** ✅ Aceptada (sesión 2026-10-02, paquete I)
+
+**Contexto:** el reorder clonaba el diseño referenciando los mismos bytes (fotos + renders) del diseño original. Dos problemas: ① el ciclo de purga de 90 días post-entrega del original dejaría al clon con punteros muertos; ② un ítem ya purgado seguía ofreciéndose como re-ordenable aunque ya no teníamos las fotos para reimprimirlo.
+
+**Decisión:** **`cloneDesignForReorder` COPIA los bytes** (fotos de `customer-uploads` + renders de `production-assets`) a paths propios del clon, que hereda un **ciclo de retención independiente** — la purga del pedido original nunca afecta al reorder y viceversa. Los ítems ya purgados (>90 días de entregado) **no se pueden reimprimir** (Ley 1581: la finalidad de conservar esas fotos ya venció) → el CTA lleva a **re-subir las fotos al estudio**.
+
+**Por qué:** dos diseños no pueden compartir bytes teniendo políticas de borrado independientes (la purga de uno mataría al otro); y reimprimir desde bytes que la política de retención ya destruyó contradice la promesa de privacidad publicada.
+
+**Consecuencia:** el costo de storage del reorder es deliberado y acotado (duplica solo cuando hay reorder real). El link público `/pedido/<token>` pasa a permitir también REUSAR las fotos en un pedido nuevo — análisis de privacidad registrado en COMPLIANCE.md. Nota operativa en OPERATIONS.md.
+
+---
+
+## ADR-118 — (PROPUESTA registrada, NO implementada) Unificar el preview del cliente con el renderer de producción server-side
+
+**Fecha:** 2026-10-02
+**Estado:** 📋 Propuesta registrada (pendiente de implementación)
+
+**Contexto:** el preview del cliente (Konva en el navegador) y el renderer de producción (`production-render-canvas.ts`, `@napi-rs/canvas` server-side) son **dos implementaciones del mismo render** — fuente permanente de divergencias WYSIWYG (cada fix de render hay que hacerlo dos veces, y las dos pueden seguir diciendo cosas distintas).
+
+**Decisión (diferida):** unificar a futuro: que el preview del cliente consuma el **renderer de producción server-side** — una sola salida, un solo código de render, cero divergencia posible.
+
+**Por qué:** elimina la doble implementación Konva/`@napi-rs/canvas` y la clase entera de bugs «se veía distinto en el preview que en el producto recibido». Queda registrado ahora porque la sesión 2026-10-02 homologó las reglas de render (ADR-114) y es el momento en que la deuda quedó explícita.
+
+**Consecuencia:** al implementarlo, evaluar costo de compute server-side por preview (render on-demand vs cacheado por hash de `canvasData`), latencia percibida en el estudio y estrategia de invalidación. Hasta entonces, la regla es: todo cambio de render se hace en AMBAS implementaciones en el mismo paquete.
+
+---
+
+## ADR-119 — Botón «Ver mi pedido» de los emails: destino bifurcado por tipo de comprador, con token ROTADO al enviar
+
+**Fecha:** 2026-10-02
+**Estado:** ✅ Aceptada (sesión 2026-10-02, paquete H)
+
+**Contexto:** F-11 (el token público de tracking se guarda solo como hash — nunca en claro) dejaba a los invitados sin URL de pedido recuperable en los emails transaccionales: el CTA «Ver mi pedido» caía en fallbacks genéricos justo para el segmento mayoritario.
+
+**Decisión:** el botón «Ver mi pedido» se **bifurca por tipo de comprador**:
+
+- **Registrado** → `/mi-cuenta/pedidos/<number>` (su cuenta, sin token).
+- **Invitado Wompi** → `/pedido/<token>` con el token **ROTADO al enviar** (helper `features/orders/public-token.ts`: cada envío genera un token nuevo y reemplaza el hash almacenado).
+- **Invitado COD** → `/rastrear` **sin rotar** (su pedido no está confirmado hasta conciliar el pago — no se le entrega URL de pedido).
+
+**Por qué:** mantiene intacta la decisión **F-11** (el token nunca se almacena en claro; solo circula en el correo recién enviado) pero devuelve al invitado ya pagado una URL viva de su pedido. La rotación al enviar acota la validez de cada link a los correos efectivamente enviados y mata los tokens viejos.
+
+**Consecuencia:** un link `/pedido/<token>` reenviado deja de funcionar con el próximo envío que rote el token (comportamiento deliberado, documentado en COMPLIANCE.md junto al reuso de fotos del reorder). Los demás CTAs post-pago conservan sus fallbacks documentados en EMAIL_TEMPLATES.md.
+
+---
+
+## ADR-120 — Zonas de entrega: fallback legacy solo si la key V2 está AUSENTE + re-validación de la oferta Lucams en `finalizeCheckout`
+
+**Fecha:** 2026-10-02
+**Estado:** ✅ Aceptada (sesión 2026-10-02, paquete G)
+
+**Contexto:** dos riesgos convivían: ① la key legacy `LUCAMS_SHIPPING_LOCALITIES` seguía vigente junto a la V2 `LUCAMS_SHIPPING_ZONES` — con ambas presentes no quedaba claro cuál mandaba y una V2 mal guardada podía reactivar silenciosamente la legacy; ② la oferta «Envío Lucam's» se confiaba solo al **sello HMAC** emitido en la cotización: si el admin cambiaba zonas o precio entre la cotización y el pago, se cobraba una oferta que ya no era vigente.
+
+**Decisión:** ① el fallback legacy **solo aplica si `LUCAMS_SHIPPING_ZONES` está AUSENTE**; un `"{}"` vacío es **fail-closed** (sin envío propio) — la presencia explícita de la V2 es la única señal de configuración vigente. ② **`finalizeCheckout` re-valida la oferta Lucams contra los settings vigentes** (zona habilitada + precio actual), no solo el sello HMAC.
+
+**Por qué:** el HMAC prueba integridad (nadie alteró la oferta en tránsito), no vigencia (la oferta sigue existiendo al cobrar) — la configuración de envíos es un dato vivo que debe re-verificarse en el momento del dinero. Y la ambigüedad «qué key manda» desaparece con una regla de precedencia explícita y fail-closed.
+
+**Consecuencia:** pendiente operativo registrado en OPERATIONS.md: borrar la key legacy `LUCAMS_SHIPPING_LOCALITIES` en STG/PRD una vez confirmado que `LUCAMS_SHIPPING_ZONES` existe; después se podrá eliminar el fallback legacy de `features/shipping/settings.ts`.
+
+---
+
+## ADR-121 — Homologación STG↔PRD con STG como base: FKs legacy fuera, IDs internos NO se alinean (SKU = llave de negocio), contenido curado migra aditivo, settings de negocio son por ambiente
+
+**Fecha:** 2026-10-02
+**Estado:** ✅ Aceptada (homologación ejecutada con `scripts/diag-stg/homologacion.sh`, commit `bae9803`; PR de promoción #63 pendiente de merge)
+
+**Contexto:** tras la sesión de los 10 paquetes se ejecutó una homologación completa STG↔PRD (firma de esquema vía `information_schema`/`pg_catalog`, conteos/checksums de datos y matriz de env vars). El ejercicio dejó 4 decisiones de criterio que se registran para futuras homologaciones:
+
+**Decisión:**
+① **FKs legacy duplicadas se eliminan (STG limpio es la referencia):** PRD arrastraba 10 constraints de FK con nombres lowercase redundantes con las que crea Prisma; se borraron en PRD con respaldo y rollback SQL en `tmp/rollback-prd-20261002/`.
+② **El drift de IDs internos entre ambientes NO se alinea:** ~45 variantes tienen IDs distintos en STG y PRD (mismo SKU, creadas a mano en cada ambiente). El riesgo de un UPDATE de PK con FKs referenciantes supera con creces el beneficio cosmético — **la llave de negocio es el SKU**, no el ID.
+③ **La migración de contenido curado (galería de prediseñados) es siempre ADITIVA STG→PRD:** 66 filas de `DesignGalleryImage` + 67 archivos copiados al bucket `product-images` de PRD con mismo path y `x-upsert:false` (sin pisar nada), verificación por hash de contenido (0 duplicados) y rollback documentado; PRD conservó intactos sus 12 originales (78 activos finales).
+④ **Las settings de negocio (`LUCAMS_SHIPPING_*`) no se copian entre ambientes:** existen solo en STG; se configuran en PRD desde el admin (`/admin/envios`) cuando el negocio decida precio y zonas — son decisión operativa por ambiente, no dato homologable.
+
+**Por qué:** homologar no es espejarlo todo a la fuerza: el esquema y el catálogo deben ser idénticos (lo son — catálogo y CMS 100%), pero los IDs internos son detalle de implementación (riesgo alto, beneficio nulo) y las settings de negocio son deliberadamente divergentes por ambiente (igual que los crons de email activos solo en PRD desde 2026-08-05 y `uptime-monitor-prd` solo en STG). Las migraciones de contenido aditivas con verificación por hash permiten ejecutar contra PRD con riesgo acotado y rollback real.
+
+**Consecuencia:** futuras homologaciones usan `scripts/diag-stg/homologacion.sh` como procedimiento canónico (firma de esquema por `psql`, no `pg_dump --schema-only` — el pg_dump local es v13 contra servidores PG17) y aplican estos 4 criterios: esquema/catálogo sí, IDs no, contenido aditivo verificado, settings de negocio por ambiente. Las env vars Vercel quedaron con solo 2 diferencias intencionales (`AVEONLINE_WEBHOOK_SECRET` solo Production, `CRON_JOBS_DISABLED` solo Preview) — cualquier diferencia nueva es señal de drift a investigar.

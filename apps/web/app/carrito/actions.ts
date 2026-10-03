@@ -29,6 +29,9 @@ import { logger } from "@/lib/logger";
 
 function errorMessage(err: unknown): string {
   if (err instanceof CartError) {
+    // Copy customer-safe del service (nombra producto/stock) tiene prioridad
+    // sobre el genérico del code (2026-09-29).
+    if (err.detail) return err.detail;
     switch (err.code) {
       case "PRODUCT_NOT_FOUND":
         return "Este producto ya no está disponible.";
@@ -134,6 +137,9 @@ export async function updateQtyAction(formData: FormData): Promise<void> {
       qty: parsed.data.qty,
       err: err instanceof Error ? err.message : String(err),
     });
+    // Feedback al cliente (2026-09-29): antes el redirect pelado dejaba la qty
+    // igual sin explicación. RouteToasts muestra ?error=... como toast.
+    redirect(`/carrito?error=${encodeURIComponent(errorMessage(err))}`);
   }
   redirect("/carrito");
 }

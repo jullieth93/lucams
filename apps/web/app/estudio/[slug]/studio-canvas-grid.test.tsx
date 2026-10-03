@@ -22,6 +22,14 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { StudioCanvasGrid } from "./studio-canvas-grid";
 import { createStudioStore } from "./lib/store";
 import type { CanvasDataV2 } from "./types";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import type { ReactElement } from "react";
+
+// El tooltip de marca (Hint, radix) exige un Provider — en la app lo monta
+// app/layout.tsx.
+function renderStudio(ui: ReactElement) {
+  return render(<TooltipProvider delayDuration={0}>{ui}</TooltipProvider>);
+}
 
 // ── Mocks de frontera ────────────────────────────────────────────────
 
@@ -109,7 +117,7 @@ function setup(units: number) {
     canvasData: makeStripCanvas(units),
     templates: [],
   });
-  render(
+  renderStudio(
     <StudioCanvasGrid
       store={store}
       onSlotClick={() => {}}
@@ -161,7 +169,7 @@ describe("StudioCanvasGrid — lazy-mount multi-unidad", () => {
     // Al intersectar, las celdas nuevas montan su StudioSlot real (adiós
     // placeholder "Toca para elegir" permanente).
     fireIntersection(9, 10, 11);
-    const { container } = render(<></>); // noop para mantener act limpio
+    const { container } = renderStudio(<></>); // noop para mantener act limpio
     container.remove();
     await waitFor(() => {
       expect(document.querySelector('[data-testid="studio-slot-9"]')).not.toBeNull();
@@ -240,7 +248,7 @@ describe("StudioCanvasGrid — delimitación de PACKS (fotoimanes 6+6)", () => {
       canvasData: makePolaroidCanvas(12),
       templates: [],
     });
-    render(
+    renderStudio(
       <StudioCanvasGrid
         store={store}
         unitGroupSlots={6}
@@ -279,7 +287,7 @@ describe("StudioCanvasGrid — delimitación de PACKS (fotoimanes 6+6)", () => {
       canvasData: makePolaroidCanvas(6),
       templates: [],
     });
-    render(
+    renderStudio(
       <StudioCanvasGrid
         store={store}
         unitGroupSlots={6}
@@ -311,7 +319,7 @@ describe("StudioCanvasGrid — delimitación de PACKS (fotoimanes 6+6)", () => {
       canvasData: makePolaroidCanvas(9),
       templates: [],
     });
-    render(
+    renderStudio(
       <StudioCanvasGrid
         store={store}
         unitGroupSlots={6}
@@ -339,7 +347,7 @@ describe("StudioCanvasGrid — modo plano con tarjeta-unidad (owner 2026-09-18)"
       canvasData: makePolaroidCanvas(3),
       templates: [],
     });
-    const { container } = render(
+    const { container } = renderStudio(
       <StudioCanvasGrid
         store={store}
         onSlotClick={() => {}}
@@ -406,7 +414,7 @@ describe("StudioCanvasGrid — overrides del lienzo por producto (owner 2026-09-
       templates: [],
     });
     const onStageZoomState = vi.fn();
-    const { container } = render(
+    const { container } = renderStudio(
       <StudioCanvasGrid
         store={store}
         gridColsOverride={overrides.gridColsOverride}
@@ -468,7 +476,7 @@ describe("StudioCanvasGrid — overrides del lienzo por producto (owner 2026-09-
       },
       templates: [],
     });
-    const { container } = render(
+    const { container } = renderStudio(
       <StudioCanvasGrid
         store={store}
         facesPerUnit={2}
@@ -512,7 +520,7 @@ describe("StudioCanvasGrid — overrides del lienzo por producto (owner 2026-09-
         templates: [],
       });
       const onStageZoomState = vi.fn();
-      render(
+      renderStudio(
         <StudioCanvasGrid
           store={store}
           canvasBaseScale={0.5}
@@ -542,7 +550,7 @@ describe("StudioCanvasGrid — calendario multi-set (secciones «Set N»)", () =
       canvasData: makeCalendarCanvas(2),
       templates: [],
     });
-    render(
+    renderStudio(
       <StudioCanvasGrid
         store={store}
         unitNoun="Set"

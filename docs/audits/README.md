@@ -23,8 +23,22 @@
   referencia Separadores→Magnéticos + admin en tablet + avisos Vercel INP/CSP), **remediada
   en 2 rondas y VALIDADA por el owner en STG el 2026-09-18**. Sus decisiones quedaron como
   **ADR-103/104** en DECISIONS.md y sus gates de overflow horizontal cableados en CI
-  (storefront en PR, admin en nightly). Pendiente para su consolidación: liberación a PRD y
-  verificación RUM de INP en Speed Insights tras el despliegue.
+  (storefront en PR, admin en nightly). Pendiente para su consolidación: verificación RUM de
+  INP en Speed Insights tras el despliegue a PRD (ejecutado 2026-09-27).
+- **`2026-09-19-auditoria-integral-seguridad-preproduccion.md`** — Auditoría integral de
+  seguridad + red team controlado + gate de producción (2026-09-19), veredicto **APTO CON
+  RIESGOS RESIDUALES ACEPTADOS (2026-09-20)**: los 7 hallazgos medios (F-01…F-07) cerrados y
+  desplegados, batería dinámica §58 PASS y los 6 riesgos residuales §T firmados por la
+  propietaria (cierre hallazgo por hallazgo en los Addendums 1-6).
+- **`2026-09-26-release-certification.md`** — Certificación integral de release
+  (2026-09-26/27): discovery (15 roles + fase adversarial + juicio de evidencia independiente),
+  remediación de los hallazgos y recertificación, con anexos en `tmp/audit-20260926-cert/`.
+  Cerró las condiciones de gate con **ADR-105** (PR obligatorio a `production` + 8 required
+  checks; rollback ensayado y PROVEN el 2026-09-27).
+- **`2026-09-27-final-release-certification.md`** — Informe formal final de la certificación
+  de release (formato §21 de la misión): veredicto **CERTIFIED** sobre `develop@fcc912c`
+  (árbol de producto `7f07c43`), con el inventario del producto, los journeys críticos y la
+  evidencia por dominio.
 - Post-mortem de incidente activo: `docs/incidents/2026-05-09-secret-key-leak.md` (fuera de
   esta carpeta, enlazado desde SECURITY.md).
 

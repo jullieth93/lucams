@@ -20,6 +20,7 @@ import {
   type AdminTemplate,
 } from "@/features/personalization/admin-templates";
 import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
+import { Hint } from "@/components/ui/tooltip";
 import { TemplateCardActions } from "./template-card-actions";
 import { TemplatePreviewButton } from "./template-preview-button";
 
@@ -85,23 +86,28 @@ function TemplateCard({ t }: { t: AdminTemplate }) {
         )}
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-2.5">
-        <p className="text-brand-purple-dark truncate text-xs font-semibold" title={t.name}>
-          {t.name}
-        </p>
+        <Hint content={t.name}>
+          <p className="text-brand-purple-dark truncate text-xs font-semibold">{t.name}</p>
+        </Hint>
         <p className="text-brand-muted text-[11px]">{KIND_LABEL[t.kind] ?? t.kind}</p>
-        <p className="text-brand-muted text-[11px]" title={STATUS_UI[st].label}>
-          {STATUS_UI[st].dot} {st}
-        </p>
-        <p
-          className={`text-[11px] font-semibold ${t.studioVisible ? "text-emerald-700" : "text-brand-muted"}`}
-          title={
+        <Hint content={STATUS_UI[st].label}>
+          <p className="text-brand-muted text-[11px]">
+            {STATUS_UI[st].dot} {st}
+          </p>
+        </Hint>
+        <Hint
+          content={
             t.studioVisible
               ? "Cumple la regla de visibilidad del Estudio (editable, activa, aspect y curaduría del producto)"
               : "El Estudio no la lista hoy (oculta, descartada, aspect distinto o tapada por específicas del producto)"
           }
         >
-          {t.studioVisible ? "✅ Visible en el Estudio" : "🚫 No visible en el Estudio"}
-        </p>
+          <p
+            className={`text-[11px] font-semibold ${t.studioVisible ? "text-emerald-700" : "text-brand-muted"}`}
+          >
+            {t.studioVisible ? "✅ Visible en el Estudio" : "🚫 No visible en el Estudio"}
+          </p>
+        </Hint>
         <p className="text-brand-muted text-[11px] leading-snug">
           {t.studioProductNames.length > 0
             ? `Alimenta: ${t.studioProductNames.join(", ")}`

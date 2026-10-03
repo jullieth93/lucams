@@ -13,7 +13,6 @@
  */
 
 import { useRef, useState } from "react";
-import { useDialogA11y } from "./use-dialog-a11y";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload,
@@ -28,7 +27,12 @@ import { toast } from "sonner";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { uploadDesignAssetAction } from "@/features/personalization/actions";
-import { applyPredesignedToSlot, PREDESIGNED_DRAG_MIME } from "./lib/apply-predesigned";
+import {
+  applyPredesignedToSlot,
+  applyPredesignedVarietyToEmptySlots,
+  PREDESIGNED_DRAG_MIME,
+} from "./lib/apply-predesigned";
+import { predesignedFaceBadge } from "./lib/predesigned-variety";
 import { StudioMessageField } from "./studio-message-field";
 import { ConsentText } from "./studio-consent-text";
 import {
@@ -41,6 +45,8 @@ import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-gu
 import { compressImageForUpload } from "./client-image-compress";
 import { isStillBelowMinimum, upscalePhotoForPrint } from "./client-photo-upscale";
 import type { StudioAsset, StudioTemplate } from "./types";
+import { PhotoQualityModal } from "./photo-quality-modal";
+import { Hint } from "@/components/ui/tooltip";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 
@@ -56,6 +62,9 @@ type StudioSidebarProps = {
   allowText?: boolean;
   /** Ola 21 — diseños prediseñados aplicables por slot (galería admin). */
   predesigned?: import("./studio-asset-picker-modal").PredesignedItem[];
+  /** Paquete A (2026-10-02) — caras del producto: badges 1/2 caras de los
+   *  prediseñados y llenado variado por pares A/B (default 1). */
+  facesPerUnit?: number;
 };
 
 export function StudioSidebar({
@@ -66,6 +75,7 @@ export function StudioSidebar({
   productShape,
   allowText = false,
   predesigned = [],
+  facesPerUnit = 1,
 }: StudioSidebarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
@@ -118,11 +128,39 @@ export function StudioSidebar({
         return;
       }
       toast.success(fillStudioText(texts.plantillas.toastPredisenado, { nombre: item.name }));
+      // Paquete A — la cara B no se descarta en silencio: si su slot estaba
+      // ocupado se avisa (no se pisa el contenido del usuario).
+      if (res.bBlocked) toast.warning(texts.plantillas.toastCaraBOcupada);
     } catch (err) {
       toast.error(texts.plantillas.toastError);
       void err;
     } finally {
       setApplyingPredesignedId(null);
+    }
+  };
+
+  // Paquete A (2026-10-02) — llenado VARIADO: recorre el catálogo del tag sin
+  // repetir diseño mientras haya variedad (bug: 20 slots con el mismo diseño).
+  // Las caras B ocupadas se respetan y se avisan en una sola pasada.
+  const [applyingVariety, setApplyingVariety] = useState(false);
+  const handleFillWithVariety = async () => {
+    if (!designId || applyingVariety || applyingPredesignedId) return;
+    setApplyingVariety(true);
+    try {
+      const res = await applyPredesignedVarietyToEmptySlots({
+        store,
+        items: predesigned,
+        facesPerUnit,
+      });
+      if (res.failed) toast.error(texts.plantillas.toastError);
+      if (res.applied > 0) {
+        toast.success(fillStudioText(texts.plantillas.toastPredisenadoVarios, { n: res.applied }));
+      }
+      if (res.bBlockedCount > 0) toast.warning(texts.plantillas.toastCaraBOcupada);
+    } catch {
+      toast.error(texts.plantillas.toastError);
+    } finally {
+      setApplyingVariety(false);
     }
   };
 
@@ -185,6 +223,10 @@ export function StudioSidebar({
               : {}),
             validationLevel: result.validationLevel,
             validationMessage: result.validationMessage,
+            // Paquete C — recomendación específica del caso + checks que
+            // fallaron (el modal de calidad los muestra como contenido principal).
+            validationRecommendation: result.validationRecommendation,
+            validationChecks: result.validationChecks,
           });
           // C2 — la foto se re-muestreó en el navegador antes de subir: marcarla
           // para el badge "✨ Optimizada" del thumb (el servidor recibe la versión
@@ -257,20 +299,23 @@ export function StudioSidebar({
           </span>
           {/* P0.2 — Toggle "Solo no usadas" (Mixbook Hide Used) — solo visible si hay fotos */}
           {assets.length > 1 && (
-            <button
-              type="button"
-              onClick={() => setHideUsed((v) => !v)}
-              aria-pressed={hideUsed}
-              className={[
-                "text-[10px] font-bold tracking-wide uppercase transition-colors",
-                hideUsed
-                  ? "text-brand-turquoise"
-                  : "text-brand-muted hover:text-brand-purple-dark/70",
-              ].join(" ")}
-              title={hideUsed ? texts.fotos.toggleTitleTodas : texts.fotos.toggleTitleOcultar}
+            <Hint
+              content={hideUsed ? texts.fotos.toggleTitleTodas : texts.fotos.toggleTitleOcultar}
             >
-              {hideUsed ? texts.fotos.toggleOcultar : texts.fotos.toggleTodas}
-            </button>
+              <button
+                type="button"
+                onClick={() => setHideUsed((v) => !v)}
+                aria-pressed={hideUsed}
+                className={[
+                  "text-[10px] font-bold tracking-wide uppercase transition-colors",
+                  hideUsed
+                    ? "text-brand-turquoise"
+                    : "text-brand-muted hover:text-brand-purple-dark/70",
+                ].join(" ")}
+              >
+                {hideUsed ? texts.fotos.toggleOcultar : texts.fotos.toggleTodas}
+              </button>
+            </Hint>
           )}
         </div>
 
@@ -449,46 +494,90 @@ export function StudioSidebar({
             <span className="text-brand-muted text-xs font-normal">({predesigned.length})</span>
           </div>
           <p className="text-brand-muted mb-2 text-[11px]">{texts.plantillas.predisenadosHint}</p>
+          {/* Paquete A — llenado VARIADO de los slots vacíos (round-robin del
+              catálogo: nunca N slots con el mismo diseño habiendo variedad). */}
+          {emptySlots > 0 && (
+            <button
+              type="button"
+              onClick={handleFillWithVariety}
+              disabled={applyingVariety || applyingPredesignedId !== null}
+              aria-label={texts.plantillas.predisenadosLlenarAria}
+              className="bg-brand-turquoise/15 text-brand-purple-dark hover:bg-brand-turquoise/25 focus:ring-brand-turquoise mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2.5 text-sm font-semibold transition-colors focus:ring-2 focus:outline-none disabled:opacity-60"
+            >
+              {applyingVariety ? (
+                <Loader2 className="text-brand-purple h-4 w-4 animate-spin" />
+              ) : (
+                <Wand2 className="text-brand-purple h-4 w-4" />
+              )}
+              {texts.plantillas.predisenadosLlenarCta}
+            </button>
+          )}
           <div className="grid grid-cols-3 gap-2">
-            {predesigned.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleApplyPredesigned(item)}
-                disabled={applyingPredesignedId !== null}
-                aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
-                  nombre: item.name,
-                })}
-                title={item.name}
-                // 2026-09-22 — drag & drop al lienzo (desktop): la tarjeta se
-                // arrastra hasta un slot (highlight de drop target ya existe en
-                // el slot). El clic sigue aplicando al slot seleccionado/vacío.
-                draggable
-                onDragStart={(e) => {
-                  e.dataTransfer.setData(
-                    PREDESIGNED_DRAG_MIME,
-                    JSON.stringify({ id: item.id, name: item.name }),
-                  );
-                  e.dataTransfer.effectAllowed = "copy";
-                }}
-                className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none active:cursor-grabbing disabled:opacity-50"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={item.imageUrl}
-                  alt={item.name}
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                  // La imagen interna no debe secuestrar el drag del botón.
-                  draggable={false}
-                />
-                {applyingPredesignedId === item.id && (
-                  <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
-                    <Loader2 className="h-5 w-5 animate-spin text-white" />
-                  </div>
-                )}
-              </button>
-            ))}
+            {predesigned.map((item) => {
+              const faceBadge = predesignedFaceBadge(facesPerUnit, item.imageUrlB);
+              return (
+                <Hint key={item.id} content={item.name}>
+                  <button
+                    type="button"
+                    onClick={() => handleApplyPredesigned(item)}
+                    disabled={applyingPredesignedId !== null || applyingVariety}
+                    aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
+                      nombre: item.name,
+                    })}
+                    // 2026-09-22 — drag & drop al lienzo (desktop): la tarjeta se
+                    // arrastra hasta un slot (highlight de drop target ya existe en
+                    // el slot). El clic sigue aplicando al slot seleccionado/vacío.
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(
+                        PREDESIGNED_DRAG_MIME,
+                        JSON.stringify({ id: item.id, name: item.name }),
+                      );
+                      e.dataTransfer.effectAllowed = "copy";
+                    }}
+                    className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none active:cursor-grabbing disabled:opacity-50"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={item.imageUrl}
+                      alt={item.name}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      // La imagen interna no debe secuestrar el drag del botón.
+                      draggable={false}
+                    />
+                    {/* Paquete A — badge 1/2 caras (solo productos de 2 caras):
+                      "1 cara" = el respaldo se imprime espejo del frente (regla
+                      única de cara B vacía — ver predesigned-variety.ts). */}
+                    {faceBadge && (
+                      <Hint
+                        content={
+                          faceBadge === "two"
+                            ? texts.plantillas.badgeDosCarasTitle
+                            : texts.plantillas.badgeUnaCaraTitle
+                        }
+                      >
+                        {/* stopPropagation: el badge vive DENTRO del botón con su
+                            propio Hint — sin esto el hover abriría ambos tooltips. */}
+                        <span
+                          onPointerMove={(e) => e.stopPropagation()}
+                          className="text-brand-purple-dark absolute top-1 left-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold shadow"
+                        >
+                          {faceBadge === "two"
+                            ? texts.plantillas.badgeDosCaras
+                            : texts.plantillas.badgeUnaCara}
+                        </span>
+                      </Hint>
+                    )}
+                    {applyingPredesignedId === item.id && (
+                      <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
+                        <Loader2 className="h-5 w-5 animate-spin text-white" />
+                      </div>
+                    )}
+                  </button>
+                </Hint>
+              );
+            })}
           </div>
         </section>
       )}
@@ -731,99 +820,120 @@ function AssetThumb({
 
   return (
     <>
-      <motion.div
-        role="listitem"
-        draggable
-        onDragStart={(e) => onDragStart(e as unknown as React.DragEvent<HTMLDivElement>)}
-        onClick={hasWarning ? () => setShowQualityModal(true) : undefined}
-        title={
+      <Hint
+        content={
           isUsed
             ? texts.fotos.thumbUsada
             : hasWarning
               ? texts.fotos.thumbAviso
               : texts.fotos.thumbArrastrar
         }
-        initial={{ opacity: 0, scale: 0.85 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.85 }}
-        transition={{ duration: 0.2, delay: idx * 0.04 }}
-        className={[
-          "group/thumb relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all focus-within:ring-2 hover:shadow-md active:cursor-grabbing",
-          asset.validationLevel === "warning-strong"
-            ? "border-red-300/70 focus-within:ring-red-400 hover:border-red-500"
-            : asset.validationLevel === "warning-soft"
-              ? "border-amber-300/70 focus-within:ring-amber-400 hover:border-amber-500"
-              : isUsed
-                ? "border-emerald-400/70 focus-within:ring-emerald-400 hover:border-emerald-500"
-                : "border-brand-purple/20 hover:border-brand-purple focus-within:ring-brand-turquoise",
-        ].join(" ")}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={asset.signedUrl}
-          alt={`Foto subida ${idx + 1}`}
-          className={[
-            "h-full w-full object-cover transition-opacity",
-            isUsed ? "opacity-75" : "",
-          ].join(" ")}
-          draggable={false}
-        />
-
-        {/* M.3.b.UX.6 — Drag handle visual top-left, sutil, visible solo en hover.
-            Indica al cliente "esta foto se puede arrastrar al imán". */}
-        <div
-          className="bg-brand-purple/85 pointer-events-none absolute top-1 left-1 flex h-5 w-5 items-center justify-center rounded-md text-white opacity-0 shadow-sm transition-opacity group-hover/thumb:opacity-100"
-          aria-hidden
+        {/* 2026-10-02 — los badges de texto ("⚠️ Revisar" / "✨ Optimizada" /
+          "✓ Agregada") ya NO flotan absolute sobre la imagen: el thumb es ~77px
+          y los cubrían. El elemento animado del grid es ahora un wrapper
+          vertical (conserva role="listitem", drag y las animaciones de
+          AnimatePresence); la imagen queda limpia (solo el drag-handle
+          hover-only dentro) y los chips viven en una fila-caption debajo.
+          El click-to-quality-modal sigue en el wrapper: cubre el thumb Y los
+          chips (click en "Revisar" también abre el modal por burbuja). */}
+        <motion.div
+          role="listitem"
+          draggable
+          onDragStart={(e) => onDragStart(e as unknown as React.DragEvent<HTMLDivElement>)}
+          onClick={hasWarning ? () => setShowQualityModal(true) : undefined}
+          initial={{ opacity: 0, scale: 0.85 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.85 }}
+          transition={{ duration: 0.2, delay: idx * 0.04 }}
+          className="group/thumb flex cursor-grab flex-col gap-1 active:cursor-grabbing"
         >
-          <GripVertical className="h-3 w-3" />
-        </div>
-
-        {/* P0.2 — Green checkmark cuando foto está usada en al menos 1 slot */}
-        {isUsed && (
-          <motion.div
-            initial={{ scale: 0, rotate: -90 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ type: "spring", stiffness: 400, damping: 20 }}
-            className="absolute bottom-1 left-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 shadow ring-2 ring-white"
-            aria-label={texts.fotos.usadaAria}
-          >
-            <Check className="h-3 w-3 text-white" strokeWidth={3} />
-          </motion.div>
-        )}
-
-        {/* M.3.b.B.2 — Badge validación calidad foto (top-right) */}
-        {asset.validationLevel === "warning-strong" && (
           <div
-            className="absolute top-1 right-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 shadow"
-            aria-label={texts.fotos.resolucionBajaAria}
+            className={[
+              "relative aspect-square overflow-hidden rounded-md border-2 transition-all focus-within:ring-2 hover:shadow-md",
+              asset.validationLevel === "warning-strong"
+                ? "border-red-300/70 focus-within:ring-red-400 hover:border-red-500"
+                : asset.validationLevel === "warning-soft"
+                  ? "border-amber-300/70 focus-within:ring-amber-400 hover:border-amber-500"
+                  : isUsed
+                    ? "border-emerald-400/70 focus-within:ring-emerald-400 hover:border-emerald-500"
+                    : "border-brand-purple/20 hover:border-brand-purple focus-within:ring-brand-turquoise",
+            ].join(" ")}
           >
-            ⚠️
-          </div>
-        )}
-        {asset.validationLevel === "warning-soft" && (
-          <div
-            className="absolute top-1 right-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 shadow"
-            aria-label={texts.fotos.avisoCalidadAria}
-          >
-            ⓘ
-          </div>
-        )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={asset.signedUrl}
+              alt={`Foto subida ${idx + 1}`}
+              className={[
+                "h-full w-full object-cover transition-opacity",
+                isUsed ? "opacity-75" : "",
+              ].join(" ")}
+              draggable={false}
+            />
 
-        {/* C2 (owner 2026-09-15) — Badge "✨ Optimizada": la foto se re-muestreó
-            en el navegador al subir (ajuste al tamaño de impresión; NO crea
-            detalle — el título lo dice explícito, auditoría 2026-09-24).
-            Bottom-right (el check de usada va bottom-left; los avisos de
-            calidad, top-right). */}
-        {autoImproved && (
-          <span
-            className="bg-brand-turquoise/95 text-brand-purple-dark absolute right-1 bottom-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold shadow ring-1 ring-white"
-            title={texts.fotos.badgeMejoradaTitle}
-            aria-label={texts.fotos.badgeMejoradaTitle}
-          >
-            {texts.fotos.badgeMejorada}
-          </span>
-        )}
-      </motion.div>
+            {/* M.3.b.UX.6 — Drag handle visual top-left, sutil, visible solo en hover.
+              Indica al cliente "esta foto se puede arrastrar al imán". */}
+            <div
+              className="bg-brand-purple/85 pointer-events-none absolute top-1 left-1 flex h-5 w-5 items-center justify-center rounded-md text-white opacity-0 shadow-sm transition-opacity group-hover/thumb:opacity-100"
+              aria-hidden
+            >
+              <GripVertical className="h-3 w-3" />
+            </div>
+          </div>
+
+          {/* Fila-caption de chips (text-[9px], fondos suaves con texto oscuro —
+            A11Y: contraste sobre fondo claro, decisión Paquete C de badges
+            legibles se mantiene; solo cambian de lugar). */}
+          {(hasWarning || autoImproved || isUsed) && (
+            <div className="flex flex-wrap items-center gap-1">
+              {asset.validationLevel === "warning-strong" && (
+                <span
+                  className="rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-800"
+                  aria-label={texts.fotos.resolucionBajaAria}
+                >
+                  ⚠️ {texts.fotos.badgeRevisar}
+                </span>
+              )}
+              {asset.validationLevel === "warning-soft" && (
+                <span
+                  className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-900"
+                  aria-label={texts.fotos.avisoCalidadAria}
+                >
+                  ⚠️ {texts.fotos.badgeRevisar}
+                </span>
+              )}
+
+              {/* C2 (owner 2026-09-15) — "✨ Optimizada": la foto se re-muestreó
+                en el navegador al subir (NO crea detalle — el título lo dice
+                explícito, auditoría 2026-09-24). */}
+              {autoImproved && (
+                <Hint content={texts.fotos.badgeMejoradaTitle}>
+                  {/* stopPropagation: el chip tiene su propio Hint — sin esto el
+                      hover abriría ambos tooltips. */}
+                  <span
+                    onPointerMove={(e) => e.stopPropagation()}
+                    className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-bold"
+                    aria-label={texts.fotos.badgeMejoradaTitle}
+                  >
+                    {texts.fotos.badgeMejorada}
+                  </span>
+                </Hint>
+              )}
+
+              {/* P0.2 — la foto ya está asignada a al menos 1 slot (antes un
+                check ✓ flotante bottom-left sobre la imagen). */}
+              {isUsed && (
+                <span
+                  className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-800"
+                  aria-label={texts.fotos.usadaAria}
+                >
+                  {texts.fotos.badgeAgregada}
+                </span>
+              )}
+            </div>
+          )}
+        </motion.div>
+      </Hint>
 
       {/* P0.3 — Modal de calidad: explica el problema + sugerencia accionable */}
       <PhotoQualityModal
@@ -832,135 +942,5 @@ function AssetThumb({
         asset={asset}
       />
     </>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────────
-//  P0.3 — PhotoQualityModal: explica problemas de baja resolución/brillo/blur
-// ──────────────────────────────────────────────────────────────────
-//
-// Patrón Mixbook: cuando el cliente intenta usar una foto con problemas
-// de calidad, popup explicativo con sugerencia accionable. Reduce la
-// frustración post-compra ("llegó pixelado") + da al cliente alternativas.
-
-function PhotoQualityModal({
-  open,
-  onClose,
-  asset,
-}: {
-  open: boolean;
-  onClose: () => void;
-  asset: StudioAsset;
-}) {
-  const texts = useStudioTexts();
-  const isStrong = asset.validationLevel === "warning-strong";
-  const isSoft = asset.validationLevel === "warning-soft";
-  const message = asset.validationMessage ?? texts.fotos.calidadMensajeFallback;
-  // #15 — foco inicial + trap + Escape + retorno de foco.
-  const dialogRef = useRef<HTMLDivElement>(null);
-  useDialogA11y(dialogRef, { onClose, active: open });
-
-  return (
-    <AnimatePresence>
-      {open && (
-        <>
-          {/* Backdrop */}
-          <motion.button
-            type="button"
-            aria-label={texts.comun.cerrar}
-            onClick={onClose}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 cursor-default bg-black/40 backdrop-blur-sm"
-            tabIndex={-1}
-          />
-          {/* Modal */}
-          <motion.div
-            ref={dialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="photo-quality-title"
-            tabIndex={-1}
-            initial={{ opacity: 0, scale: 0.94, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.94, y: 8 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="ring-brand-purple/10 fixed top-1/2 left-1/2 z-50 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl bg-white shadow-2xl ring-1"
-          >
-            {/* Header con icono según severidad */}
-            <div
-              className={[
-                "flex items-start gap-3 px-5 pt-5 pb-3",
-                isStrong ? "bg-red-50" : "bg-amber-50",
-              ].join(" ")}
-            >
-              <div
-                className={[
-                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl shadow ring-2 ring-white",
-                  isStrong ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800",
-                ].join(" ")}
-                aria-hidden
-              >
-                {isStrong ? "⚠️" : "ⓘ"}
-              </div>
-              <div className="flex-1">
-                <h2
-                  id="photo-quality-title"
-                  className={[
-                    "text-base leading-tight font-bold",
-                    isStrong ? "text-red-800" : "text-amber-900",
-                  ].join(" ")}
-                >
-                  {isStrong ? texts.fotos.calidadTituloFuerte : texts.fotos.calidadTituloSuave}
-                </h2>
-                <p
-                  className={[
-                    "mt-1 text-xs",
-                    isStrong ? "text-red-700/85" : "text-amber-800/85",
-                  ].join(" ")}
-                >
-                  {isSoft ? texts.fotos.calidadSubSuave : texts.fotos.calidadSubFuerte}
-                </p>
-              </div>
-            </div>
-
-            {/* Body con thumbnail + mensaje */}
-            <div className="flex gap-3 px-5 py-4">
-              {/* Thumb grande */}
-              <div className="ring-brand-purple/10 h-24 w-24 shrink-0 overflow-hidden rounded-md ring-1">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={asset.signedUrl}
-                  alt={texts.fotos.fotoRevisionAlt}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <div className="flex flex-1 flex-col justify-center text-sm">
-                <p className="text-brand-purple-dark leading-snug font-medium">{message}</p>
-                <div className="text-brand-muted mt-2 space-y-1 text-xs">
-                  <p className="font-semibold">{texts.fotos.calidadAccionesTitulo}</p>
-                  <ul className="ml-3 list-disc space-y-0.5">
-                    <li>{texts.fotos.calidadTip1}</li>
-                    <li>{texts.fotos.calidadTip2}</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer actions */}
-            <div className="border-brand-purple/10 flex items-center justify-end gap-2 border-t px-5 py-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="text-brand-purple-dark/70 hover:bg-brand-purple/10 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
-              >
-                {texts.fotos.calidadCerrar}
-              </button>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
   );
 }

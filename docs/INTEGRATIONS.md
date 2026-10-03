@@ -39,9 +39,13 @@ WOMPI_EVENTS_SECRET=test_events_xxxxxxxxxxxxxx
 # WOMPI_PUBLIC_KEY=pub_prod_xxx
 # WOMPI_PRIVATE_KEY=prv_prod_xxx
 # etc.
-
-NEXT_PUBLIC_WOMPI_PUBLIC_KEY=$WOMPI_PUBLIC_KEY  # Para el widget en cliente
 ```
+
+> **No existe `NEXT_PUBLIC_WOMPI_PUBLIC_KEY`.** El checkout es redirección al hosted
+> checkout de Wompi (no hay widget en cliente), así que ninguna llave de Wompi se expone
+> al navegador: las 4 vars de arriba son **server-only**. La variable
+> `NEXT_PUBLIC_WOMPI_PUBLIC_KEY` se eliminó de los `.env*` el 2026-08-01 y el código no la
+> referencia — declararla está prohibido (ver `OPERATIONS.md` § Variables de entorno).
 
 ### Flujo de pago (Web Checkout — redirección)
 
@@ -277,6 +281,8 @@ EMAIL_REPLY_TO=hola@lucamsshop.com   # Reply-To real: el subdominio de envío no
 ### Plantillas (código, `apps/web/features/emails/templates/`)
 
 Los templates son funciones TS que devuelven `{ subject, html, text }` con inline CSS (SIN react-email — decisión J; layout base en `features/emails/layout.ts`). **Inventario completo con triggers y estado: [`EMAIL_TEMPLATES.md`](./EMAIL_TEMPLATES.md).**
+
+**Overrides admin (módulo `/admin/email-templates`, desde 2026-09-18):** el copy base sigue en código, pero Lucy edita los textos clave de las **27 plantillas** sin tocar código vía `EmailTemplateOverride` (una fila por `(templateId, key)`; keys acotadas: `SUBJECT`, `PREHEADER`, `HEADING`). El registry (`features/emails/registry.ts`) envuelve TODAS las plantillas con `withOverrides` (`features/emails/overrides.ts`), así que los overrides aplican a los envíos REALES con fallback total: sin fila en DB o DB caída → texto base del código; override vacío → se borra la fila y vuelve el base. Los overrides admiten tokens `{campo}` (ej. `{orderNumber}`). Un override NUNCA rompe un envío transaccional.
 
 Emisión centralizada en `lib/resend.ts` (REST por `fetch`, sin SDK): retry de hasta 4 intentos con backoff 1s/2s/4s (nunca reintenta 4xx), circuit breaker propio (>50% de fallos en los últimos 10 envíos → abre 30 s), `Idempotency-Key` por orden/evento (con fallback determinista `:r2` si el body cambió entre reintentos) y supresión de destinatarios con `email.bounced`/`email.complained` registrado — solo para correos **comerciales** (flag `commercial`); los transaccionales siempre se intentan.
 
@@ -525,7 +531,7 @@ ADR-017 (2026-05-09) decidió `pgmq` + `pg_cron` con consumidores Edge Function.
 
 - **Agendamiento versionado en migraciones** (idempotentes, con guard limpio si faltan las extensiones): `supabase/migrations/00000000000015_pgcron_http_jobs.sql` (6 jobs), `00000000000016_pgcron_purge_event_logs.sql`, `00000000000021_pgcron_cms_publish.sql`, `00000000000023_pgcron_cron_vercel_bypass.sql` (re-agenda los 8 originales con bypass opcional del SSO de Vercel vía secreto `cron_vercel_bypass` en Vault, solo ambientes con protección) y `00000000000032_pgcron_expire_pending_orders.sql` (agenda `lucams-expire-pending-orders`, ya con el bypass opcional; NO toca los demás jobs). La `00000000000033_drop_stock_reservation_cleanup_job.sql` des-agenda el cleanup SQL de `StockReservation` (tabla dropeada en la misma remediación).
 - **Secretos en Vault (acción humana por ambiente):** `cron_base_url` y `cron_secret` (`select vault.create_secret(...)` — ver docs/OPERATIONS.md). Sin ellos los jobs quedan agendados pero fallan en runtime.
-- **Auth del endpoint:** cada route compara el header `x-cron-secret` contra `CRON_SECRET` (env) con `timingSafeEqual`; 401 si falta o no coincide. No se acepta `?secret=` (queda en logs).
+- **Auth del endpoint:** las **13 rutas** `/api/cron/*` verifican el header `x-cron-secret` contra `CRON_SECRET` (env) con el helper compartido `cronSecretOk` (`apps/web/lib/cron-auth.ts`, comparación timing-safe, fail-closed); 401 si falta o no coincide. No se acepta `?secret=` (queda en logs).
 - **Observabilidad:** cada cron registra heartbeat (`recordCronHeartbeat` — dead-man switch supervisado por `/api/health/crons`), captura errores en `ErrorLog` y notifica el FALLO al centro de notificaciones admin (`notifyCronFailure`). Los éxitos no se registran (anti-ruido).
 
 ### Jobs activos (10 HTTP + 1 SQL puro)
@@ -544,9 +550,18 @@ ADR-017 (2026-05-09) decidió `pgmq` + `pg_cron` con consumidores Edge Function.
 | `lucams-expire-pending-orders`   | `/api/cron/expire-pending-orders`   | `23 * * * *`   | Auto-cancela pedidos Wompi en PENDING_PAYMENT > 24h (N-12, migración 032)                       |
 | `rate_limit_cleanup` (SQL)       | — (SQL puro en DB)                  | `*/15 * * * *` | Borra buckets de rate limit > 1 día (migración 012; es el único job SQL que queda)              |
 
-> Fuera de pg_cron: el **backup diario a R2** corre en GitHub Actions (`backup.yml`) y reporta su
-> éxito con `POST /api/cron/backup-heartbeat` tras cada corrida (upsert del latido que leen la
-> regla `backup_stale` y el tile de /admin/observability — ver OBSERVABILITY.md).
+> Fuera de pg_cron hay 3 endpoints cron más (mismo auth `cronSecretOk`):
+>
+> - **Backup diario a R2:** corre en GitHub Actions (`backup.yml`) y reporta su éxito con
+>   `POST /api/cron/backup-heartbeat` tras cada corrida (upsert del latido que leen la regla
+>   `backup_stale` y el tile de /admin/observability — ver OBSERVABILITY.md).
+> - **`/api/cron/domain-watch`:** el workflow mensual `domain-watch.yml` (GitHub Actions)
+>   consulta RDAP y hace POST con el resumen → baseline/alertas en `AlertState` (ver
+>   OPERATIONS.md § Plan de monitoreo).
+> - **`/api/cron/monitor-heartbeat`:** latido del monitor EXTERNO de uptime — el job
+>   `uptime-monitor-prd` corre en el proyecto Supabase de STG (`scripts/monitor-uptime-stg.sql`)
+>   sondeando los healthchecks de PRD cada 10 min y hace POST acá (reglas `uptime_monitor_stale`
+>   / `uptime_monitor_failing`).
 
 ### Variables de entorno
 

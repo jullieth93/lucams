@@ -46,6 +46,7 @@ vi.mock("next/navigation", () => ({
 
 import { VariantSelector } from "./variant-selector";
 import { SelectedVariantProvider } from "./variant-actions";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 // formatCOP usa NBSP (U+00A0) tras el "$"; el DOM lo colapsa a espacio normal al
 // comparar textContent. Helper: esperado con espacios normales, como queda en el DOM.
@@ -954,9 +955,11 @@ describe("VariantSelector — dimensión de 1 valor visible (Tamaño fijo)", () 
 describe("VariantSelector — stock por variante (Fase 1)", () => {
   function renderWithProvider(variants: TestVariant[], initialId: string) {
     return render(
-      <SelectedVariantProvider variantIds={variants.map((v) => v.id)} initialId={initialId}>
-        <VariantSelector productBasePrice={100_000} variants={variants} />
-      </SelectedVariantProvider>,
+      <TooltipProvider>
+        <SelectedVariantProvider variantIds={variants.map((v) => v.id)} initialId={initialId}>
+          <VariantSelector productBasePrice={100_000} variants={variants} />
+        </SelectedVariantProvider>
+      </TooltipProvider>,
     );
   }
 

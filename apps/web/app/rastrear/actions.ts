@@ -15,13 +15,12 @@
 
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import crypto from "node:crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
-import { hashBearerToken } from "@/lib/token-hash";
+import { rotateOrderPublicAccessToken } from "@/features/orders/public-token";
 import { logger } from "@/lib/logger";
 import { getCmsBlock } from "@/lib/cms";
 
@@ -90,10 +89,6 @@ export async function rastrearAction(
   // F-11 — identidad probada (número + correo, rate-limited): emitimos un token
   // NUEVO y redirigimos a él. Rotación: invalida los links previos de la orden
   // (el original no se puede releer — en DB solo queda su hash).
-  const token = crypto.randomBytes(16).toString("hex");
-  await prisma.order.update({
-    where: { id: order.id },
-    data: { publicAccessTokenHash: hashBearerToken(token) },
-  });
+  const token = await rotateOrderPublicAccessToken(order.id);
   redirect(`/pedido/${token}`);
 }

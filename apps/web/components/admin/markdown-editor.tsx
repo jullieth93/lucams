@@ -28,6 +28,7 @@ import {
   Code,
   Minus,
 } from "lucide-react";
+import { Hint } from "@/components/ui/tooltip";
 
 type ToolbarButton = {
   icon: typeof Bold;
@@ -216,16 +217,19 @@ export function MarkdownEditor({
             {group.buttons.map((btn, bi) => {
               const Icon = btn.icon;
               return (
-                <button
+                <Hint
                   key={bi}
-                  type="button"
-                  onClick={() => applyWrap(btn.wrap)}
-                  title={btn.shortcut ? `${btn.label} (${btn.shortcut})` : btn.label}
-                  aria-label={btn.label}
-                  className="text-brand-purple-dark/80 hover:bg-brand-purple/15 hover:text-brand-purple-dark active:bg-brand-purple/25 inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md transition-colors"
+                  content={btn.shortcut ? `${btn.label} (${btn.shortcut})` : btn.label}
                 >
-                  <Icon className="h-4 w-4" strokeWidth={2.5} />
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => applyWrap(btn.wrap)}
+                    aria-label={btn.label}
+                    className="text-brand-purple-dark/80 hover:bg-brand-purple/15 hover:text-brand-purple-dark active:bg-brand-purple/25 inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md transition-colors"
+                  >
+                    <Icon className="h-4 w-4" strokeWidth={2.5} />
+                  </button>
+                </Hint>
               );
             })}
           </div>

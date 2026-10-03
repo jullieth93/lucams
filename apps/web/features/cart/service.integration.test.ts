@@ -13,6 +13,9 @@
  *     variantId), validación de variantId (anti-tamper), fallback a 1ra variant.
  *   - updateCartItemQty / removeCartItem: cambio de qty, qty=0 borra, validación,
  *     item/cart inexistente.
+ *   - Precio por volumen (WholesaleTier, 2026-10-02): snapshot con tier en el
+ *     alta, re-priceo al cruzar umbrales en updateCartItemQty, precedencia
+ *     producto > global, filtros isActive/deletedAt contra DB real.
  *   - getCartDetail / getCartItemCount: cálculo de subtotal/itemCount, filtrado de
  *     productos archivados (isActive=false / deletedAt), preview de Design.
  *   - mergeAnonCartIntoCustomer: las 4 ramas (sin anon, anon vacío, customer sin
@@ -448,6 +451,9 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
     await prisma.design.deleteMany({ where: { product: { categoryId } } });
     // Customers de esta corrida (merge tests).
     await prisma.customer.deleteMany({ where: { email: { contains: RUN } } });
+    // Tiers de volumen de esta corrida (los globales —productId null— NO
+    // caen por cascade con el producto; quedarían alterando precios reales).
+    await prisma.wholesaleTier.deleteMany({ where: { note: { contains: RUN } } });
     // Variantes → productos → categoría (orden FK: CartItem.variant Restrict).
     await prisma.productVariant.deleteMany({ where: { product: { categoryId } } });
     await prisma.product.deleteMany({ where: { categoryId } });
@@ -1256,6 +1262,157 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
   });
 
   // ════════════════════════════════════════════════════════════════════════
+  // Precio por volumen (WholesaleTier → carrito, 2026-10-02)
+  //
+  // Descuento por volumen PÚBLICO (todos los clientes, invitados incluidos):
+  // el unitPrice del tier es ABSOLUTO y reemplaza el de la línea; niveles
+  // propios del producto > globales; nunca subir el precio. La lógica pura
+  // está cubierta en volume-pricing.test.ts y el cableado con mock en
+  // service-volume-pricing.test.ts; aquí se verifica contra la DB real
+  // (filtros isActive/deletedAt, persistencia del snapshot re-priceado).
+  // ════════════════════════════════════════════════════════════════════════
+
+  describe("precio por volumen (WholesaleTier)", () => {
+    // Tiers RUN-prefijados en `note`; se borran en el propio test (finally) y
+    // por barrido en afterAll — un tier GLOBAL que quede vivo alteraría el
+    // precio de productos REALES en esta DB compartida.
+    async function makeTier(data: { productId?: string; minQty: number; unitPrice: number }) {
+      return prisma.wholesaleTier.create({
+        data: { ...data, note: `${RUN} tier-test` },
+        select: { id: true },
+      });
+    }
+    async function cleanupTiers() {
+      await prisma.wholesaleTier.deleteMany({ where: { note: { contains: RUN } } });
+    }
+
+    it("addProductToCart: qty en el umbral snapshotea el precio del tier (no el base)", async () => {
+      await makeTier({ productId: simpleProductId, minQty: 10, unitPrice: 9_000 });
+      try {
+        const sessionId = sid("vol");
+        const detail = await addProductToCart({
+          sessionId,
+          customerId: null,
+          productSlug: simpleSlug,
+          qty: 10,
+        });
+        expect(detail.items[0].unitPrice).toBe(9_000);
+        expect(detail.subtotal).toBe(90_000);
+      } finally {
+        await cleanupTiers();
+      }
+    });
+
+    it("addProductToCart: bajo el umbral cobra el base de la variante", async () => {
+      await makeTier({ productId: simpleProductId, minQty: 10, unitPrice: 9_000 });
+      try {
+        const sessionId = sid("vol");
+        const detail = await addProductToCart({
+          sessionId,
+          customerId: null,
+          productSlug: simpleSlug,
+          qty: 3,
+        });
+        expect(detail.items[0].unitPrice).toBe(SIMPLE_PRICE);
+      } finally {
+        await cleanupTiers();
+      }
+    });
+
+    it("updateCartItemQty: cruzar el umbral re-pricea la línea EN AMBOS SENTIDOS", async () => {
+      await makeTier({ productId: simpleProductId, minQty: 10, unitPrice: 9_000 });
+      try {
+        const sessionId = sid("vol");
+        const added = await addProductToCart({
+          sessionId,
+          customerId: null,
+          productSlug: simpleSlug,
+          qty: 4,
+        });
+        const itemId = added.items[0].itemId;
+        expect(added.items[0].unitPrice).toBe(SIMPLE_PRICE);
+
+        // Sube a 10 → precio del tier.
+        const up = await updateCartItemQty(sessionId, itemId, 10);
+        expect(up.items[0].unitPrice).toBe(9_000);
+        expect(up.subtotal).toBe(90_000);
+
+        // Baja a 4 → vuelve al base vigente.
+        const down = await updateCartItemQty(sessionId, itemId, 4);
+        expect(down.items[0].unitPrice).toBe(SIMPLE_PRICE);
+      } finally {
+        await cleanupTiers();
+      }
+    });
+
+    it("tier global (productId null) aplica cuando el producto NO tiene niveles propios", async () => {
+      await makeTier({ minQty: 5, unitPrice: 9_500 });
+      try {
+        const sessionId = sid("vol");
+        const detail = await addProductToCart({
+          sessionId,
+          customerId: null,
+          productSlug: simpleSlug,
+          qty: 5,
+        });
+        expect(detail.items[0].unitPrice).toBe(9_500);
+      } finally {
+        await cleanupTiers();
+      }
+    });
+
+    it("el tier propio del producto tiene PRECEDENCIA sobre el global", async () => {
+      await makeTier({ minQty: 10, unitPrice: 8_000 }); // global, más barato
+      await makeTier({ productId: simpleProductId, minQty: 10, unitPrice: 9_500 }); // propio
+      try {
+        const sessionId = sid("vol");
+        const detail = await addProductToCart({
+          sessionId,
+          customerId: null,
+          productSlug: simpleSlug,
+          qty: 10,
+        });
+        expect(detail.items[0].unitPrice).toBe(9_500);
+      } finally {
+        await cleanupTiers();
+      }
+    });
+
+    it("tier inactivo o soft-eliminado NO aplica (filtro DB real)", async () => {
+      await prisma.wholesaleTier.create({
+        data: {
+          productId: simpleProductId,
+          minQty: 10,
+          unitPrice: 9_000,
+          isActive: false,
+          note: `${RUN} tier-test`,
+        },
+      });
+      await prisma.wholesaleTier.create({
+        data: {
+          productId: simpleProductId,
+          minQty: 10,
+          unitPrice: 8_500,
+          deletedAt: new Date(),
+          note: `${RUN} tier-test`,
+        },
+      });
+      try {
+        const sessionId = sid("vol");
+        const detail = await addProductToCart({
+          sessionId,
+          customerId: null,
+          productSlug: simpleSlug,
+          qty: 10,
+        });
+        expect(detail.items[0].unitPrice).toBe(SIMPLE_PRICE);
+      } finally {
+        await cleanupTiers();
+      }
+    });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
   // getCartDetail / getCartItemCount — filtrado de productos archivados
   // ════════════════════════════════════════════════════════════════════════
 
@@ -1588,7 +1745,7 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       expect(merged!.items[0].qty).toBe(99);
     });
 
-    it("merge NO agrupa items con designId distinto aunque compartan variantId", async () => {
+    it("merge NO agrupa items con designId distinto y CONTENIDO distinto aunque compartan variantId", async () => {
       const customer = await makeCustomer();
 
       // Cart del customer con un item personalizado (design ready 1, variant A).
@@ -1617,6 +1774,59 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       expect(merged!.items).toHaveLength(2);
       const designIds = merged!.items.map((i) => i.designId).sort();
       expect(designIds).toEqual([readyDesignId, readyDesign2Id].sort());
+    });
+
+    it("Paquete H — merge SÍ agrupa designs distintos pero IDÉNTICOS (dos pasadas por el Estudio): una línea con qty sumada", async () => {
+      const customer = await makeCustomer();
+
+      // Dos Designs NUEVOS con el mismo contenido (cada pasada por el Estudio
+      // crea uno; el reporte STG del desglose duplicado en emails venía de aquí).
+      const canvas = { version: 2, slotCount: 1, marca: "gemelos-paquete-h" };
+      const gemeloCust = await prisma.design.create({
+        data: {
+          sessionId: sid("design"),
+          productId: persoProductId,
+          status: "READY",
+          canvasData: canvas,
+          previewUrl: "https://cdn.lucams.test/preview-gemelo-cust.png",
+        },
+        select: { id: true },
+      });
+      const gemeloAnon = await prisma.design.create({
+        data: {
+          sessionId: sid("design"),
+          productId: persoProductId,
+          status: "READY",
+          // Mismo contenido, orden de claves distinto (la huella es canónica).
+          canvasData: { marca: "gemelos-paquete-h", slotCount: 1, version: 2 },
+          previewUrl: "https://cdn.lucams.test/preview-gemelo-anon.png",
+        },
+        select: { id: true },
+      });
+
+      const custSession = sid("m8-cust");
+      await addPersonalizedToCart({
+        sessionId: custSession,
+        customerId: customer.id,
+        designId: gemeloCust.id,
+        variantId: persoVariantAId,
+        qty: 1,
+      });
+      const anonSession = sid("m8-anon");
+      await addPersonalizedToCart({
+        sessionId: anonSession,
+        customerId: null,
+        designId: gemeloAnon.id,
+        variantId: persoVariantAId,
+        qty: 2,
+      });
+
+      await mergeAnonCartIntoCustomer(anonSession, customer.id);
+      const merged = await getCartDetail(custSession);
+      // UNA línea con qty 1+2=3 — y sobrevive la línea del customer (su diseño/preview).
+      expect(merged!.items).toHaveLength(1);
+      expect(merged!.items[0].qty).toBe(3);
+      expect(merged!.items[0].designId).toBe(gemeloCust.id);
     });
 
     it("rama: customerCart.id === anonCart.id (mismo cart) → noop, devuelve su sessionId", async () => {

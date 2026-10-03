@@ -96,6 +96,16 @@ export const SlotStateSchema = z.object({
   // claves no declaradas) — igual que photoTransform/textOverrides (ADR-057 Fase A).
   profileAssetId: z.string().nullable().optional(),
   profileAssetUrl: z.string().max(2048).optional(),
+  // Fase 1B — encuadre de la foto de perfil IG (zoom/pan dentro del círculo).
+  // Declararlo acá es lo que lo hace sobrevivir el auto-save (Zod stripea claves
+  // no declaradas — mismo motivo que profileAssetId/photoTransform).
+  profileTransform: z
+    .object({
+      offsetX: z.number().min(-20000).max(20000),
+      offsetY: z.number().min(-20000).max(20000),
+      scale: z.number().min(0.05).max(20),
+    })
+    .optional(),
   // 2026-09-24 — dimensiones (px) de la foto ORIGINAL que subió el cliente, ANTES
   // del upscale/compresión de pipeline. El chip de calidad del Estudio mide el DPI
   // real contra estas dims, no contra el archivo ya re-muestreado (medir el archivo
@@ -137,7 +147,8 @@ export const GridLayoutSchema = z.object({
 // La clave viaja en canvasData (persistida) → producción la re-mapea a la familia
 // registrada vía lista blanca (NUNCA un string libre del cliente).
 // 2026-09-14 (owner): de 3 a 8 opciones — cada key tiene su TTF registrado en el
-// render de servidor (assets/fonts) y su CSS var de next/font en app/layout.tsx.
+// render de servidor (assets/fonts) y su CSS var de next/font (las de marca en
+// app/layout.tsx; las 6 del selector en app/estudio/layout.tsx desde 2026-10-01).
 export const CalendarFontKeySchema = z.enum([
   "fredoka",
   "inter",

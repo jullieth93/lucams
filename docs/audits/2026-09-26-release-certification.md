@@ -243,20 +243,35 @@ RECERTIFICATION_TARGET_SHA=742dcf8a + diff de remediación (pendiente commit →
 
 ## 16. Release gate tras remediación
 
+**Estado al 2026-09-27 (post-push):** paquete commiteado en 4 commits convencionales
+(`ce74f6d` orders, `c5fa1be` catalog, `4843bd0` tests auth/retracto, `c326d1b` ci/higiene +
+`0ba0fa6` formato). **CI sobre `0ba0fa6`: verde (8/8 jobs, incl. el nuevo `rls-behavior`).**
+**Nightly sobre `c326d1b` (idéntico salvo formato): verde** — E2E completo (admin-login + MFA +
+Estudio + audit-cliente con la cadena de seeds reparada + homolog-auth + retracto-garantía) y
+RLS-matrix de comportamiento pasan; el guard de secrets detectó correctamente la ausencia de
+secrets sandbox y saltó el job de dinero con warning (como está diseñado).
+
 **NOT_CERTIFIED todavía** — las condiciones restantes ya no son de código sino operativas/decisión:
 
-1. **Commit + push** del paquete y CI verde sobre el nuevo SHA (incluye jobs nuevos
-   `rls-behavior` y drift check).
-2. **F-01 (condicionado):** cargar los secrets sandbox (`WOMPI_PUBLIC_KEY/PRIVATE_KEY/
-   INTEGRITY_SECRET/EVENTS_SECRET`, `AVEONLINE_USUARIO/CLAVE`) en GitHub y nightly
-   `e2e-wompi-sandbox` verde — o corrida manual certificada con artifacts. Hoy los secrets no
-   existen (verificado `gh secret list`) y el job se auto-saltaría.
-3. **Nightly completo verde** sobre el SHA remediado (cierra la evidencia de R5, homolog-auth y
-   retracto-garantía en CI).
-4. **Branch protection:** añadir `rls-behavior` (y `e2e-wompi-sandbox`) a los required checks de
-   `production` — acción humana en Settings.
-5. **Decisiones owner:** modo del release (`full` esperado → F-09 NOT_APPLICABLE) y política de
-   push directo a `production` (F-07 — hoy abierto, verificado `gh api`).
+1. ~~Commit + push del paquete y CI verde sobre el nuevo SHA~~ **HECHO** (`0ba0fa6`, CI 8/8).
+2. ~~Nightly verde sobre el SHA remediado~~ **HECHO** (runs 36323483460 sobre `c326d1b` y
+   36324374129 sobre `0ba0fa6` — ambos verdes; el job de dinero saltó por diseño: secrets sandbox
+   ausentes).
+3. ~~**F-01 (condicionado):**~~ **CERRADO 2026-09-27.** Secrets sandbox cargados en GitHub
+   (verificado `gh secret list`). Primera corrida (run 36325762084) reveló un hueco real de
+   fixtures: el localstack no tenía los settings BUSINESS de recogida (se configuran manual en
+   admin; ningún seed los crea) → guía Aveonline fallaba. Fix `7f07c43` (fixture idempotente
+   `tests/e2e/fixtures/pickup-settings.ts`, rehearsal de alta fidelidad con cotización real
+   SERVIENTREGA + 4242 APPROVED + trackingNumber). **Run 36328807610: 4/4 jobs verdes, incluido
+   "E2E dinero — checkout Wompi sandbox (4242 → PAID + guía)"** — el journey de dinero completo
+   ahora corre en CI cada noche con artifacts de 30 días.
+4. ~~**Branch protection:**~~ **HECHO 2026-09-27 (vía API, PATCH):** `production` ahora exige 8
+   required checks, incluido `RLS behavior (rls-matrix contra Supabase local)` (verificado: la
+   regla lista los 8 contexts). `e2e-wompi-sandbox` corre solo en nightly: su verde es gate de
+   release por política (documentado en TESTING.md), no por required check.
+5. **Decisiones owner:** modo del release (`full` — PRD opera en `full` por decisión de Lucy del
+   2026-09-03 → F-09 NOT_APPLICABLE para este release) y política de push directo a `production`
+   (F-07 — hoy abierto, verificado `gh api`; la convención actual es push ff directo).
 6. **Migración `20260926120000_admin_recovery_code`:** llega a STG/PRD con el deploy vía
    `prisma migrate deploy` (verificado en local; en nube postgres es owner y aplica completa).
 7. Primera corrida de `post-deploy-smoke` tras el deploy.

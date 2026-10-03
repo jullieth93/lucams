@@ -19,10 +19,23 @@ import { notFound, redirect } from "next/navigation";
 import { Box, User, MapPin, CreditCard, Truck, Package, Undo2 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/components/admin-page";
+import { Hint } from "@/components/ui/tooltip";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getOrder } from "@/features/orders/service";
 import { getProductionAssetSignedUrls } from "@/lib/storage";
+import { LUCAMS_CARRIER, carrierDisplayName } from "@/features/shipping/lucams-shipping";
+import {
+  parseShipmentLastError,
+  suggestShipmentFailureCause,
+} from "@/features/orders/shipment-error";
+import { lucamsDeliveryDays, maxProductionDaysOf } from "@/lib/delivery-estimate";
+import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { formatCOP } from "@/lib/format";
+import {
+  describeVariantAttributes,
+  parseVariantAttributes,
+} from "@/features/products/variant-schemas";
+import { customerWaLink } from "@/lib/wa";
 import { OrderActions } from "./order-actions";
 
 export const metadata: Metadata = { title: "Detalle pedido" };
@@ -66,6 +79,8 @@ type ShippingAddrSnapshot = {
   addressLine1?: string;
   addressLine2?: string;
   zip?: string;
+  localityName?: string;
+  neighborhood?: string;
   notes?: string;
 };
 
@@ -98,6 +113,36 @@ export default async function AdminPedidoDetallePage({
   const hasUnapproved = unapprovedPieceCount > 0;
 
   const ship = order.shippingAddress as ShippingAddrSnapshot;
+  const isInternalDelivery = order.shippingCarrier === LUCAMS_CARRIER;
+  // Entrega propia: promesa con la MISMA regla del checkout (producción + hora
+  // de corte, lib/delivery-estimate.ts). Los días de fabricación se derivan de
+  // los items persistidos de la orden (variant → product.productionDays actual;
+  // getOrder ya los incluye) — sin snapshot extra: si Lucy ajusta el
+  // productionDays de un producto, la promesa mostrada refleja el dato vigente.
+  const lucamsSettings = isInternalDelivery ? await getLucamsShippingSettings() : null;
+  const internalPromiseDays =
+    isInternalDelivery && lucamsSettings
+      ? lucamsDeliveryDays({
+          maxProductionDays: maxProductionDaysOf(
+            order.items.map((it) => it.variant.product.productionDays),
+          ),
+          cutoffHour: lucamsSettings.cutoffHour,
+          now: order.createdAt,
+        })
+      : null;
+  const internalPromise =
+    internalPromiseDays === null
+      ? null
+      : internalPromiseDays === 0
+        ? "Entrega hoy"
+        : internalPromiseDays === 1
+          ? "Entrega mañana"
+          : `Entrega en ${internalPromiseDays} días hábiles`;
+  // Para entrega propia, SHIPPED se lee mejor como "En ruta" (no hay courier externo).
+  const statusLabel =
+    isInternalDelivery && order.status === "SHIPPED"
+      ? "En ruta"
+      : (STATUS_LABEL[order.status] ?? order.status);
   const dateFmt = new Intl.DateTimeFormat("es-CO", {
     day: "2-digit",
     month: "short",
@@ -106,6 +151,20 @@ export default async function AdminPedidoDetallePage({
     minute: "2-digit",
   });
   const isSimulatedTracking = order.trackingNumber?.startsWith("TEST-") ?? false;
+  // Paquete G (2026-10-02) — último intento fallido de guía, persistido
+  // sanitizado por la saga (Order.shipmentLastError). Se muestra solo cuando
+  // aún NO hay guía: con trackingNumber presente el error ya es historia.
+  const shipmentLastError = order.trackingNumber
+    ? null
+    : parseShipmentLastError(order.shipmentLastError);
+
+  // Contacto directo: wa.me con el teléfono del comprador (normalizado con
+  // indicativo 57 — lib/wa) y mensaje pre-armado con el número de pedido
+  // (Lucy 2026-08-11). null = teléfono no parseable → se oculta el botón.
+  const customerWa = customerWaLink(
+    order.phone,
+    `Hola ${ship.fullName ?? ""}, te escribo de Lucams por tu pedido ${order.number}. `,
+  );
 
   return (
     <AdminPage>
@@ -114,9 +173,7 @@ export default async function AdminPedidoDetallePage({
         title={order.number}
         subtitle={
           <span className="flex items-center gap-2">
-            <AdminBadge tone={STATUS_TONE[order.status] ?? "slate"}>
-              {STATUS_LABEL[order.status] ?? order.status}
-            </AdminBadge>
+            <AdminBadge tone={STATUS_TONE[order.status] ?? "slate"}>{statusLabel}</AdminBadge>
             <span>· creado {dateFmt.format(order.createdAt)}</span>
           </span>
         }
@@ -174,6 +231,10 @@ export default async function AdminPedidoDetallePage({
               <ul className="divide-brand-purple/10 divide-y">
                 {order.items.map((it) => {
                   const previewUrl = it.designAssetUrl ?? it.design?.previewUrl ?? null; // ADR-070 — snapshot primero
+                  // Paquete F (2026-10-02) — desglose estructurado de la variante.
+                  const variantBreakdown = describeVariantAttributes(
+                    parseVariantAttributes(it.variant.attributes),
+                  );
                   return (
                     <li key={it.id} className="flex items-start gap-3 py-3">
                       <div className="bg-brand-purple/5 relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg">
@@ -201,6 +262,13 @@ export default async function AdminPedidoDetallePage({
                           {it.variant.product.name}
                           <span className="text-brand-muted font-normal"> · {it.variant.name}</span>
                         </div>
+                        {/* Paquete F (2026-10-02) — desglose estructurado de la variante:
+                            producción ve Con/Sin imán, tamaño, idioma sin decodificar el nombre. */}
+                        {variantBreakdown.length > 0 && (
+                          <div className="text-brand-purple-dark/70 text-xs">
+                            {variantBreakdown.join(" · ")}
+                          </div>
+                        )}
                         <div className="text-brand-muted text-xs">
                           {formatCOP(it.unitPrice)} c/u · qty {it.qty} ·{" "}
                           <span className="font-mono">{it.variant.sku}</span>
@@ -227,6 +295,19 @@ export default async function AdminPedidoDetallePage({
                                     : "sin aprobar en Moderación"}
                                 </span>
                               )}
+                              {/* Paquete C (2026-10-02) — traza de la aceptación
+                                  explícita de calidad de fotos (checkbox de la Vista
+                                  Previa): evidencia ante reclamos de garantía. */}
+                              {it.design.qualityAcknowledgedAt && (
+                                <Hint
+                                  content={`Aceptación registrada el ${dateFmt.format(it.design.qualityAcknowledgedAt)}`}
+                                >
+                                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                                    ⚠️ aceptó calidad de fotos (
+                                    {dateFmt.format(it.design.qualityAcknowledgedAt)})
+                                  </span>
+                                </Hint>
+                              )}
                             </div>
                             <div className="flex flex-wrap gap-1.5">
                               {it.design.productionUrls.map((path, i) => {
@@ -234,24 +315,27 @@ export default async function AdminPedidoDetallePage({
                                 const label = `pieza-${String(i + 1).padStart(2, "0")}`;
                                 const approved = it.design?.moderationStatus === "APPROVED";
                                 return url ? (
-                                  <a
+                                  <Hint
                                     key={path}
-                                    href={url}
-                                    download={`${order.number}-${label}.png`}
-                                    title={
+                                    content={
                                       approved
                                         ? undefined
                                         : "No imprimir hasta aprobar en Moderación"
                                     }
-                                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${
-                                      approved
-                                        ? "border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5"
-                                        : "border-amber-200 bg-amber-50/60 text-amber-800 hover:bg-amber-50"
-                                    }`}
                                   >
-                                    ⬇ {label}
-                                    {!approved && <span>⚠️</span>}
-                                  </a>
+                                    <a
+                                      href={url}
+                                      download={`${order.number}-${label}.png`}
+                                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${
+                                        approved
+                                          ? "border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5"
+                                          : "border-amber-200 bg-amber-50/60 text-amber-800 hover:bg-amber-50"
+                                      }`}
+                                    >
+                                      ⬇ {label}
+                                      {!approved && <span>⚠️</span>}
+                                    </a>
+                                  </Hint>
                                 ) : (
                                   <span key={path} className="text-brand-muted text-[11px]">
                                     {label} (no disponible)
@@ -307,11 +391,9 @@ export default async function AdminPedidoDetallePage({
               </dl>
               {/* Contacto directo: wa.me con el teléfono del comprador y mensaje
                   pre-armado con el número de pedido (Lucy 2026-08-11). */}
-              {order.phone.replace(/\D/g, "").length >= 10 && (
+              {customerWa && (
                 <a
-                  href={`https://wa.me/${order.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
-                    `Hola ${ship.fullName ?? ""}, te escribo de Lucams por tu pedido ${order.number}. `,
-                  )}`}
+                  href={customerWa}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-brand-purple-dark hover:bg-brand-purple/5 mt-3 inline-flex items-center gap-1.5 rounded-md border border-emerald-600/30 bg-emerald-50 px-3 py-1.5 text-xs font-semibold"
@@ -330,6 +412,8 @@ export default async function AdminPedidoDetallePage({
               </div>
               <div className="text-brand-muted mt-1 text-xs">
                 {ship.city}, {ship.department}
+                {ship.localityName ? ` · Localidad ${ship.localityName}` : ""}
+                {ship.neighborhood ? ` · Barrio ${ship.neighborhood}` : ""}
                 {ship.zip ? ` · ${ship.zip}` : ""}
               </div>
               {ship.notes && (
@@ -395,22 +479,54 @@ export default async function AdminPedidoDetallePage({
                   }
                 />
               )}
-              <Row label="Estado" value={STATUS_LABEL[order.status] ?? order.status} />
+              <Row label="Estado" value={statusLabel} />
             </Card>
 
             {/* Envío */}
             <Card icon={<Truck className="h-4 w-4" />} title="Envío">
-              <Row label="Transportadora" value={order.shippingCarrier ?? "—"} />
+              <Row
+                label="Transportadora"
+                value={
+                  <span className="inline-flex items-center gap-1.5">
+                    {carrierDisplayName(order.shippingCarrier)}
+                    {isInternalDelivery && (
+                      <span className="bg-brand-turquoise/40 rounded px-1.5 py-0.5 text-[10px] font-bold text-teal-900">
+                        Entrega propia
+                      </span>
+                    )}
+                  </span>
+                }
+              />
               {order.trackingNumber ? (
                 <>
                   <Row
-                    label="N° de guía"
+                    label={isInternalDelivery ? "Referencia" : "N° de guía"}
                     value={
                       <span className="text-brand-purple-dark/85 font-mono text-xs">
                         {order.trackingNumber}
                       </span>
                     }
                   />
+                  {isInternalDelivery && (
+                    <>
+                      {ship.localityName && (
+                        <Row label="Zona de entrega" value={ship.localityName} />
+                      )}
+                      {internalPromise && <Row label="Promesa" value={internalPromise} />}
+                      <p className="text-brand-muted mt-1 text-[10px]">
+                        Entrega interna (mensajería propia): no hay guía de transportadora. Marca la
+                        salida en ruta y la entrega a mano con las acciones de abajo.
+                      </p>
+                      <a
+                        href={`/admin/pedidos/${encodeURIComponent(order.number)}/guia`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-brand-purple hover:bg-brand-purple-dark mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white transition-colors"
+                      >
+                        🖨 Imprimir guía de entrega
+                      </a>
+                    </>
+                  )}
                   {isSimulatedTracking && (
                     <p className="mt-1 text-[10px] text-amber-700">
                       ⚠️ Guía simulada (modo test). Producción genera guía real.
@@ -438,7 +554,52 @@ export default async function AdminPedidoDetallePage({
                   )}
                 </>
               ) : (
-                <p className="text-brand-muted text-xs">Sin guía generada todavía</p>
+                <>
+                  <p className="text-brand-muted text-xs">Sin guía generada todavía</p>
+                  {/* Paquete G — causa REAL del último intento fallido (mensaje
+                      de la transportadora, sanitizado) + sugerencia operativa
+                      (docs/INTEGRATIONS_AVEONLINE.md §4.4). */}
+                  {shipmentLastError && !isInternalDelivery && (
+                    <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50/60 p-3">
+                      <p className="text-[11px] font-bold text-rose-800">
+                        Último error de la transportadora
+                        {shipmentLastError.at &&
+                          ` · ${dateFmt.format(new Date(shipmentLastError.at))}`}
+                      </p>
+                      <p className="mt-1 font-mono text-[11px] break-words text-rose-900">
+                        {shipmentLastError.message}
+                      </p>
+                      {(shipmentLastError.destination.city ||
+                        shipmentLastError.destination.department) && (
+                        <p className="text-brand-muted mt-1 text-[10px]">
+                          Destino:{" "}
+                          {[
+                            shipmentLastError.destination.city,
+                            shipmentLastError.destination.department,
+                          ]
+                            .filter(Boolean)
+                            .join(", ")}
+                          {shipmentLastError.carrier
+                            ? ` · carrier ${carrierDisplayName(shipmentLastError.carrier)}`
+                            : ""}
+                        </p>
+                      )}
+                      <p className="mt-1.5 text-[11px] text-amber-800">
+                        💡 {suggestShipmentFailureCause(shipmentLastError)}
+                      </p>
+                    </div>
+                  )}
+                  {isInternalDelivery && (
+                    <a
+                      href={`/admin/pedidos/${encodeURIComponent(order.number)}/guia`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-brand-purple hover:bg-brand-purple-dark mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white transition-colors"
+                    >
+                      🖨 Imprimir guía de entrega
+                    </a>
+                  )}
+                </>
               )}
             </Card>
 
@@ -450,6 +611,7 @@ export default async function AdminPedidoDetallePage({
               paymentMethod={order.paymentMethod}
               isNoShow={!!order.noShowAt}
               hasAddressKey={!!order.shippingAddressKey}
+              isInternalDelivery={isInternalDelivery}
             />
           </div>
         </div>

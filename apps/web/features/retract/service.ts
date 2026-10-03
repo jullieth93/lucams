@@ -222,6 +222,77 @@ export async function createRetractRequest(
 
 // ───────────────────────── Gestión admin ─────────────────────────
 
+/**
+ * Crea una solicitud de retracto INICIADA POR EL ADMIN (conversión desde un
+ * ticket de soporte GARANTIA_DEVOLUCION en /admin/soporte/[id]).
+ *
+ * Diferencias con createRetractRequest (flujo cliente):
+ *  - Sin chequeo de propiedad (FORBIDDEN): el admin actúa a nombre del cliente.
+ *  - La ventana de 5 días hábiles NO se exige: el admin es la válvula legal ya
+ *    documentada para los bordes del cómputo (un cliente que escribe por
+ *    /contacto suele llegar tarde al formulario self-service).
+ *  - SÍ se mantienen: pedido entregado, sin solicitud previa y excepción de
+ *    personalizados (Ley 1480 art. 47: no hay válvula para esa excepción).
+ * El prorrateo del descuento del cupón es idéntico al flujo cliente (#2).
+ */
+export async function createRetractRequestAsAdmin(
+  orderItemId: string,
+  opts: { reason?: string; adminId: string },
+): Promise<{ id: string; refundAmount: number }> {
+  const item = await prisma.orderItem.findUnique({
+    where: { id: orderItemId },
+    select: {
+      id: true,
+      qty: true,
+      unitPrice: true,
+      customDesign: true,
+      designId: true,
+      retractRequest: { select: { id: true } },
+      order: {
+        select: {
+          status: true,
+          deletedAt: true,
+          subtotal: true,
+          discount: true,
+          coupon: { select: { type: true } },
+        },
+      },
+    },
+  });
+  if (!item || item.order.deletedAt) throw new RetractError("NOT_FOUND");
+  if (item.retractRequest) throw new RetractError("ALREADY_REQUESTED");
+  if (item.order.status !== "DELIVERED") throw new RetractError("NOT_DELIVERED");
+  if (isItemPersonalized(item)) throw new RetractError("PERSONALIZED");
+
+  const lineTotal = item.unitPrice * item.qty;
+  const ord = item.order;
+  const subtotalDiscount = ord.coupon?.type === "FREE_SHIPPING" ? 0 : ord.discount;
+  const discountShare =
+    subtotalDiscount > 0 && ord.subtotal > 0
+      ? Math.round((subtotalDiscount * lineTotal) / ord.subtotal)
+      : 0;
+  const refundAmount = lineTotal - discountShare;
+  try {
+    const created = await prisma.retractRequest.create({
+      data: {
+        orderItemId,
+        reason: opts.reason?.trim().slice(0, 500) || null,
+        refundAmount,
+        status: "PENDING",
+        processedBy: opts.adminId,
+      },
+      select: { id: true },
+    });
+    return { id: created.id, refundAmount };
+  } catch (err) {
+    // Misma carrera que el flujo cliente: @unique(orderItemId) deja pasar una sola.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      throw new RetractError("ALREADY_REQUESTED");
+    }
+    throw err;
+  }
+}
+
 /** Transiciones legales del ciclo de vida de una solicitud de retracto. */
 export const RETRACT_TRANSITIONS: Record<RetractStatus, readonly RetractStatus[]> = {
   PENDING: ["APPROVED", "REJECTED"],

@@ -10,6 +10,7 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
+import { AdminPageBody } from "@/components/admin-page";
 import { listGalleryAdmin, listGalleryTagOptions } from "@/features/personalization/design-gallery";
 import { GalleryManager } from "./gallery-manager";
 import { FichasSection } from "./fichas-section";
@@ -28,21 +29,31 @@ export default async function DisenosAdminPage() {
   // única: la BD). Tag = galleryTag explícito o, sin él, el slug (default-on
   // 2026-09-09 — mismo fallback que aplica el Estudio). El selector del client y
   // la validación del upload leen de la misma lista.
-  const [items, tagOptions] = await Promise.all([listGalleryAdmin(), listGalleryTagOptions()]);
+  // B-5 (2026-10-02) — includeArchived: el manager separa los soft-deleted en la
+  // sección colapsable "Archivados" (con Restaurar); la grilla principal sigue
+  // mostrando solo los no borrados.
+  const [items, tagOptions] = await Promise.all([
+    listGalleryAdmin(undefined, { includeArchived: true }),
+    listGalleryTagOptions(),
+  ]);
   return (
-    <div className="mx-auto max-w-4xl">
-      <header className="mb-6">
-        <h1 className="text-brand-purple-dark font-display text-2xl">Diseños prediseñados</h1>
-        <p className="text-brand-muted mt-1 text-sm">
-          Todo el material visual tuyo que alimenta el Estudio: diseños listos por producto (el
-          cliente los aplica con un toque en vez de subir su propia foto) y las fichas ilustradas
-          del abecedario para el editor de nombres.
-        </p>
-      </header>
-      <DisenosTabs
-        productos={<GalleryManager items={items} tagOptions={tagOptions} />}
-        fichas={<FichasSection />}
-      />
-    </div>
+    // AdminPageBody aporta el padding responsive (px-4 sm:px-6): sin él, en móvil
+    // el header y las tarjetas quedaban pegados al borde de la pantalla (2026-10-01).
+    <AdminPageBody>
+      <div className="mx-auto max-w-4xl">
+        <header className="mb-6">
+          <h1 className="text-brand-purple-dark font-display text-2xl">Diseños prediseñados</h1>
+          <p className="text-brand-muted mt-1 text-sm">
+            Todo el material visual tuyo que alimenta el Estudio: diseños listos por producto (el
+            cliente los aplica con un toque en vez de subir su propia foto) y las fichas ilustradas
+            del abecedario para el editor de nombres.
+          </p>
+        </header>
+        <DisenosTabs
+          productos={<GalleryManager items={items} tagOptions={tagOptions} />}
+          fichas={<FichasSection />}
+        />
+      </div>
+    </AdminPageBody>
   );
 }

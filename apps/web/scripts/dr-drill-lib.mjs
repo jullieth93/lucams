@@ -137,7 +137,10 @@ const INTERNAL_RELATION_TARGETS = new Set([
 
 // COPYs de datos auth.* que fallan por FK al quedar auth.users vacía (la COPY
 // de auth.users revienta por el drift de columnas y la tabla queda vacía).
-const AUTH_DATA_TABLES = new Set(["sessions", "identities", "mfa_factors"]);
+// one_time_tokens se sumó el 2026-10-02 (run 37022691317): prod tuvo su primera
+// fila (OTP de recuperación de contraseña) y es la misma clase de colisión —
+// la tabla del drill queda vacía por el drift, no por un dump inconsistente.
+const AUTH_DATA_TABLES = new Set(["sessions", "identities", "mfa_factors", "one_time_tokens"]);
 
 // Objetos que el dump intenta dropear/referenciar y la imagen no tiene.
 const INTERNAL_MISSING_RELATIONS = new Set(["auth.users_email_partial_key"]);
@@ -288,7 +291,6 @@ export function dumpCopyRowCounts(sqlText) {
   }
   return counts;
 }
-
 
 /**
  * Tope de frescura del dump que restaura el drill (N-19b): el backup corre

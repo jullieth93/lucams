@@ -21,6 +21,7 @@
 import Link from "next/link";
 import { Star, CheckCircle2, Archive, StarOff, RotateCcw, MessageSquare } from "lucide-react";
 import { AdminCard, AdminEmpty, AdminBadge } from "@/components/admin-page";
+import { Hint } from "@/components/ui/tooltip";
 import { listReviewsAdmin } from "@/features/reviews/admin-service";
 import {
   approveReviewAction,
@@ -270,14 +271,15 @@ function ReviewCard({
               <form action={approveReviewAction}>
                 <input type="hidden" name="id" value={review.id} />
                 <input type="hidden" name="productSlug" value={productSlug} />
-                <button
-                  type="submit"
-                  className="inline-flex h-9 items-center gap-1 rounded-md bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700"
-                  title="Aprobar y publicar"
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Aprobar
-                </button>
+                <Hint content="Aprobar y publicar">
+                  <button
+                    type="submit"
+                    className="inline-flex h-9 items-center gap-1 rounded-md bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Aprobar
+                  </button>
+                </Hint>
               </form>
               {/* #14 — se retira "Rechazar": sobre una reseña pendiente era un no-op (isApproved
                 y featured ya son false). La salida reversible correcta para spam/ofensivo es
@@ -289,37 +291,39 @@ function ReviewCard({
             <form action={toggleFeaturedReviewAction}>
               <input type="hidden" name="id" value={review.id} />
               <input type="hidden" name="productSlug" value={productSlug} />
-              <button
-                type="submit"
-                className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1 rounded-md border bg-white px-3 text-xs font-semibold"
-                title={review.featured ? "Quitar destacado" : "Destacar en home"}
-              >
-                {review.featured ? (
-                  <>
-                    <StarOff className="h-3.5 w-3.5" />
-                    Quitar destacado
-                  </>
-                ) : (
-                  <>
-                    <Star className="h-3.5 w-3.5" />
-                    Destacar
-                  </>
-                )}
-              </button>
+              <Hint content={review.featured ? "Quitar destacado" : "Destacar en home"}>
+                <button
+                  type="submit"
+                  className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1 rounded-md border bg-white px-3 text-xs font-semibold"
+                >
+                  {review.featured ? (
+                    <>
+                      <StarOff className="h-3.5 w-3.5" />
+                      Quitar destacado
+                    </>
+                  ) : (
+                    <>
+                      <Star className="h-3.5 w-3.5" />
+                      Destacar
+                    </>
+                  )}
+                </button>
+              </Hint>
             </form>
           )}
           {showArchiveAction && (
             <form action={archiveReviewAction}>
               <input type="hidden" name="id" value={review.id} />
               <input type="hidden" name="productSlug" value={productSlug} />
-              <button
-                type="submit"
-                className="inline-flex h-9 items-center gap-1 rounded-md border border-amber-200 bg-white px-3 text-xs font-semibold text-amber-900 hover:bg-amber-50"
-                title="Archivar (no aparece en la tienda)"
-              >
-                <Archive className="h-3.5 w-3.5" />
-                Archivar
-              </button>
+              <Hint content="Archivar (no aparece en la tienda)">
+                <button
+                  type="submit"
+                  className="inline-flex h-9 items-center gap-1 rounded-md border border-amber-200 bg-white px-3 text-xs font-semibold text-amber-900 hover:bg-amber-50"
+                >
+                  <Archive className="h-3.5 w-3.5" />
+                  Archivar
+                </button>
+              </Hint>
             </form>
           )}
           {showRestoreAction && (
@@ -328,14 +332,15 @@ function ReviewCard({
             // productId real del producto + status=archived (#13), abriendo el
             // moderador global directamente en el tab donde la reseña archivada
             // es visible y restaurable.
-            <Link
-              href={`/admin/resenas?productId=${productId}&status=archived`}
-              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1 rounded-md border bg-white px-3 text-xs font-semibold"
-              title="Ir al moderador global para restaurar"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              Restaurar
-            </Link>
+            <Hint content="Ir al moderador global para restaurar">
+              <Link
+                href={`/admin/resenas?productId=${productId}&status=archived`}
+                className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1 rounded-md border bg-white px-3 text-xs font-semibold"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Restaurar
+              </Link>
+            </Hint>
           )}
         </div>
       </div>

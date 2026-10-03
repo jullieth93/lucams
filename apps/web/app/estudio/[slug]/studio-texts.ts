@@ -59,7 +59,19 @@ export type StudioTexts = {
     /** Ola 26 (owner 2026-09-09) — «Vista previa» bloqueado por textos requeridos
      *  sin llenar (Polaroid Instagram). {campos} = lista de campos faltantes. */
     finalizeTooltipTextos: string;
+    /** Fase 1A (2026-09-27) — popover "qué falta" de «Vista previa»: lista las
+     *  fotos por cargar (label de cada slot) y los textos IG por unidad. */
+    finalizePopoverAria: string;
+    finalizePopoverTitulo: string;
+    finalizePopoverFotos: string;
+    finalizePopoverTextos: string;
     finalizeGuardando: string;
+    /** Paquete C (2026-10-02) — chip resumen de avisos de calidad junto a
+     *  «Vista previa» (toolbar). {n} = fotos asignadas con aviso. */
+    calidadChipTexto: string;
+    calidadChipAria: string;
+    /** Título del popover del chip (lista las fotos con aviso). */
+    calidadPopoverTitulo: string;
     gesturesButtonTitle: string;
     slotEmptyInvite: string;
     slotEmptyDrop: string;
@@ -77,6 +89,10 @@ export type StudioTexts = {
     /** Badge del slot VACÍO de Cara B cuando el producto tiene backOptional
      *  (separadores 2026-09-25): la cara B puede quedar sin diseñar. */
     slotCaraBOpcional: string;
+    /** Paquete A (2026-10-02) — tooltip del badge «Opcional»: la regla única de
+     *  la cara B vacía (se imprime espejo de la cara A; producción:
+     *  expandMissingBackFaces en features/personalization/service.ts). */
+    slotCaraBOpcionalTitle: string;
     /** Línea de doblez de la tira de separador (solo plegables, no noFold):
      *  "Doblez · Desplegado: {tamano}" — {tamano} = tamaño total desplegado. */
     doblezDesplegado: string;
@@ -214,6 +230,18 @@ export type StudioTexts = {
     predisenadosTitulo: string;
     predisenadosHint: string;
     toastPredisenado: string;
+    /** Paquete A (2026-10-02) — confirmación del llenado VARIADO. {n} = cuántos diseños se aplicaron. */
+    toastPredisenadoVarios: string;
+    /** Paquete A — CTA del llenado variado de slots vacíos (round-robin del catálogo). */
+    predisenadosLlenarCta: string;
+    predisenadosLlenarAria: string;
+    /** Paquete A — la cara B NO se aplicó porque su slot ya tenía contenido (nunca se pisa ni se descarta en silencio). */
+    toastCaraBOcupada: string;
+    /** Paquete A — badges de caras de la tarjeta de prediseñado (solo productos de 2 caras). */
+    badgeDosCaras: string;
+    badgeUnaCara: string;
+    badgeDosCarasTitle: string;
+    badgeUnaCaraTitle: string;
     toastError: string;
     toastSinSlot: string;
     elegirAria: string;
@@ -262,7 +290,18 @@ export type StudioTexts = {
     calidadAccionesTitulo: string;
     calidadTip1: string;
     calidadTip2: string;
+    /** Paquete C (2026-10-02) — rótulo del bloque con la recomendación ESPECÍFICA
+     *  del caso (la genera el servidor según el check que falló). */
+    calidadRecomendacionTitulo: string;
+    /** Paquete C — texto corto del badge visible de aviso en las miniaturas
+     *  (sidebar y picker; antes solo un emoji). */
+    badgeRevisar: string;
+    /** Chip bajo la miniatura cuando la foto ya está asignada a un slot
+     *  (reemplaza el check ✓ flotante sobre la imagen). */
+    badgeAgregada: string;
     calidadCerrar: string;
+    /** CTA del modal de calidad en el picker: asignar la foto con warning igual. */
+    calidadUsarDeTodosModos: string;
     pickerTitulo: string;
     pickerDesc: string;
     pickerVacio: string;
@@ -301,6 +340,23 @@ export type StudioTexts = {
     campoIgUbicacion: string;
     campoIgTitulo: string;
     campoIgHashtags: string;
+    /** Fase 1B — bloque de diligenciamiento masivo de la Polaroid Instagram en el
+     *  sidebar ("Datos de la publicación"): un campo por capa editable que escribe
+     *  en TODAS las fotos del set (equivalente multi-campo de "Tu mensaje"). */
+    igDatosTitulo: string;
+    igDatosSub: string;
+    igCampoUsuario: string;
+    igCampoUbicacion: string;
+    igCampoLikes: string;
+    igCampoTitulo: string;
+    igCampoHashtags: string;
+    igCampoRequerido: string;
+    igCampoOpcional: string;
+    /** Chip/placeholder cuando las unidades difieren en esa capa (edición por foto). */
+    igVariaPorFoto: string;
+    igVariaPlaceholder: string;
+    /** Aviso pack-level del bloque (misma caja destacada del aviso de "Tu mensaje"). */
+    igGlobalAviso: string;
     tamanoLabel: string;
     negrita: string;
     cursiva: string;
@@ -308,6 +364,8 @@ export type StudioTexts = {
     /** Ola 28 (owner 2026-09-11, 1.2.1.A) — aviso cuando el color de texto elegido
      *  casi no contrasta con la tarjeta (blanco sobre tarjeta blanca = invisible). */
     colorSinContrasteHint: string;
+    /** Fase 1B — aria de la opción «Personalizado» del picker de color de texto. */
+    colorPersonalizado: string;
     tipografiaLabel: string;
     reset: string;
     aplicar: string;
@@ -315,6 +373,8 @@ export type StudioTexts = {
     aplicando: string;
     estiloColorTitulo: string;
     estiloSinColor: string;
+    /** Fase 1B — opción «Personalizado» de la paleta de tarjeta (input color nativo). */
+    estiloColorPersonalizado: string;
     estiloBordeTitulo: string;
     estiloConBorde: string;
     estiloSinBorde: string;
@@ -337,11 +397,19 @@ export type StudioTexts = {
     perfilPickerDesc: string;
     /** Ola 22 — tooltip del avatar tappeable del chrome IG (abre el picker de perfil). */
     perfilAvatarHint: string;
+    /** Fase 1B — encuadre (zoom/pan) de la foto de perfil IG en el editor de slot. */
+    perfilEncuadreTitulo: string;
+    perfilEncuadreHint: string;
+    perfilZoomAria: string;
     slotEditListo: string;
     capasVolver: string;
     capasElegir: string;
     capaEditadaBadge: string;
     capaEditando: string;
+    /** Fase 1B — «Aplicar a todas» por capa de texto (setTextOverrideAllSlots). */
+    capaAplicarATodas: string;
+    capaAplicarATodasAria: string;
+    capaAplicadaFeedback: string;
     ajustarReset: string;
     ajustarRotar: string;
     /** Lucy 2026-09-08 — selector de letra del calendario DENTRO de "Ajustar Foto". */
@@ -412,6 +480,18 @@ export type StudioTexts = {
      * la cantidad se eligió en la PDP y cambiarla implica volver a ella.
      */
     copiasAjusteCarrito: string;
+    /** Paquete C (2026-10-02) — sección "Calidad de tus fotos" de la Vista
+     *  Previa: lista las fotos asignadas con aviso y exige la aceptación
+     *  explícita antes de confirmar (solo aparece si hay avisos). */
+    calidadSeccionTitulo: string;
+    calidadSeccionIntro: string;
+    /** Texto del checkbox OBLIGATORIO de aceptación (habilita el confirmar).
+     *  Solo se muestra cuando hay avisos que exigen aceptación (requiresAck). */
+    calidadAcepto: string;
+    /** Fase 2 (2026-10-02) — nota que reemplaza al checkbox cuando TODOS los
+     *  avisos son informativos (brillo suave como único problema): no hay
+     *  nada que aceptar y el confirmar queda habilitado. */
+    calidadNotaInformativa: string;
   };
   /** Vistas 3D y escenas. */
   escenas: {
@@ -484,6 +564,8 @@ export type StudioTexts = {
     ejemplosEs: string;
     ejemplosEn: string;
     swatchAria: string;
+    /** Fase 1B — aria de la opción «Personalizado» de la fila de swatches. */
+    swatchPersonalizadoAria: string;
     listoSr: string;
   };
   /** Editor de set de letras. */
@@ -614,7 +696,15 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     finalizeBtn: "Vista previa",
     finalizeTooltip: "Faltan {n} fotos por cargar para ver la vista previa",
     finalizeTooltipTextos: "Completa los textos de tu diseño para ver la vista previa: {campos}",
+    finalizePopoverAria: "Qué falta para ver la vista previa",
+    finalizePopoverTitulo: "Para ver tu vista previa te falta:",
+    finalizePopoverFotos: "Fotos por cargar:",
+    finalizePopoverTextos: "Textos por completar:",
     finalizeGuardando: "Guardando diseño...",
+    // Paquete C (2026-10-02) — chip resumen de avisos de calidad junto a «Vista previa».
+    calidadChipTexto: "{n} por revisar",
+    calidadChipAria: "{n} fotos tienen avisos de calidad. Click para ver cuáles son.",
+    calidadPopoverTitulo: "Fotos con avisos de calidad",
     gesturesButtonTitle: "Cómo editar tu foto (drag, zoom, doble click)",
     slotEmptyInvite: "Pásame una foto",
     slotEmptyDrop: "¡Suéltala aquí! 💜",
@@ -627,6 +717,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     unitCaraA: "Cara A",
     unitCaraB: "Cara B",
     slotCaraBOpcional: "Opcional",
+    slotCaraBOpcionalTitle: "Si no diseñas el respaldo, lo imprimimos igual que el frente.",
     doblezDesplegado: "Doblez · Desplegado: {tamano}",
     doblezNotaRotacion:
       "La tira se imprime con las caras cabeza a cabeza hacia el doblez — al doblarla sobre la página ambas se leen derechas.",
@@ -758,6 +849,16 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     predisenadosTitulo: "Diseños prediseñados",
     predisenadosHint: "Aplica un diseño listo al slot seleccionado (o al primero vacío).",
     toastPredisenado: 'Diseño "{nombre}" aplicado',
+    toastPredisenadoVarios: "{n} diseños aplicados",
+    predisenadosLlenarCta: "Llenar con diseños variados",
+    predisenadosLlenarAria: "Llenar los espacios vacíos con diseños prediseñados distintos",
+    toastCaraBOcupada:
+      "El respaldo no se aplicó porque ese espacio ya tiene un diseño (no pisamos tu contenido).",
+    badgeDosCaras: "2 caras",
+    badgeUnaCara: "1 cara",
+    badgeDosCarasTitle: "Este diseño trae frente y respaldo.",
+    badgeUnaCaraTitle:
+      "Este diseño trae solo el frente: el respaldo se imprime igual que el frente.",
     toastError: "No pudimos aplicar el diseño. Intenta de nuevo.",
     toastSinSlot: "Selecciona un slot vacío primero",
     elegirAria: "Selecciona plantilla del imán",
@@ -805,7 +906,13 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     calidadAccionesTitulo: "¿Qué puedes hacer?",
     calidadTip1: "Subir una foto de mayor resolución (la original, no la de WhatsApp)",
     calidadTip2: "Si la foto ya es la mejor que tienes, igual la podemos imprimir",
+    // Paquete C (2026-10-02) — recomendación específica del caso (contenido principal
+    // del modal de calidad) + badge visible en miniaturas (antes solo un emoji).
+    calidadRecomendacionTitulo: "Nuestra recomendación para esta foto",
+    badgeRevisar: "Revisar",
+    badgeAgregada: "✓ Agregada",
     calidadCerrar: "Entendido",
+    calidadUsarDeTodosModos: "Usar de todos modos",
     pickerTitulo: "Foto para el imán {n} de {total}",
     pickerDesc: "Elige una foto ya subida o suma una nueva.",
     pickerVacio: "Todavía no subiste fotos. Empieza arriba.",
@@ -844,18 +951,36 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     campoIgUbicacion: "ubicación",
     campoIgTitulo: "título",
     campoIgHashtags: "hashtags",
+    // Fase 1B — diligenciamiento masivo de los textos IG desde el sidebar (owner:
+    // la Clásica tiene "Tu mensaje" para todo el set y la Instagram no tenía
+    // equivalente). Un campo por capa; cada uno escribe en TODAS las fotos.
+    igDatosTitulo: "Datos de la publicación",
+    igDatosSub: "(para todas las fotos)",
+    igCampoUsuario: "@usuario",
+    igCampoUbicacion: "Ubicación",
+    igCampoLikes: "«Me gusta»",
+    igCampoTitulo: "Título",
+    igCampoHashtags: "Hashtags",
+    igCampoRequerido: "(obligatorio)",
+    igCampoOpcional: "(opcional — si lo dejas vacío, no se imprime)",
+    igVariaPorFoto: "Varía por foto",
+    igVariaPlaceholder: "Varía por foto — escribe para unificar",
+    igGlobalAviso:
+      "Estos datos se aplican a TODAS las fotos del set. Para personalizar una en particular, toca la foto.",
     tamanoLabel: "Tamaño",
     negrita: "Negrita",
     cursiva: "Cursiva",
     colorLabel: "Color",
     colorSinContrasteHint:
       "Este color casi no se va a ver sobre la tarjeta — para que se lea al imprimir, elige otro.",
+    colorPersonalizado: "Elegir un color personalizado",
     tipografiaLabel: "Tipografía",
     reset: "Volver al original",
     aplicar: "Aplicar",
     aplicando: "Aplicando…",
     estiloColorTitulo: "Color de tarjeta",
     estiloSinColor: "Sin color",
+    estiloColorPersonalizado: "Personalizado",
     estiloBordeTitulo: "Borde de foto",
     estiloConBorde: "Con borde",
     estiloSinBorde: "Sin borde",
@@ -878,11 +1003,17 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     perfilPickerDesc: "Se recorta en círculo dentro del anillo del encabezado.",
     // Ola 22 — tooltip del avatar tappeable del chrome IG (abre el picker de perfil).
     perfilAvatarHint: "Foto de perfil — toca para cambiarla",
+    perfilEncuadreTitulo: "Encuadre de la foto de perfil",
+    perfilEncuadreHint: "Arrastra la foto para centrarla · doble clic para resetear",
+    perfilZoomAria: "Zoom de la foto de perfil",
     slotEditListo: "Listo",
     capasVolver: "Volver a capas",
     capasElegir: "Elige un texto para editar",
     capaEditadaBadge: "editado",
     capaEditando: "Editando: {texto}",
+    capaAplicarATodas: "Aplicar a todas",
+    capaAplicarATodasAria: "Aplicar «{texto}» a todas las unidades",
+    capaAplicadaFeedback: "Texto aplicado a todas las unidades",
     ajustarReset: "Centrar y resetear zoom",
     ajustarRotar: "Rotar 90°",
     // Lucy 2026-09-08 — la letra del calendario también se elige desde "Ajustar Foto"
@@ -947,6 +1078,17 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     piezaFichas: "fichas",
     copiasIdenticas: "{n} copias idénticas de tu diseño",
     copiasAjusteCarrito: "La cantidad la elegiste en la página del producto.",
+    // Paquete C (2026-10-02) — aceptación explícita de calidad en la Vista Previa:
+    // solo se muestra cuando el diseño usa fotos con avisos; el checkbox es
+    // obligatorio para habilitar el botón de confirmar.
+    // Fase 2 — los avisos de brillo SUAVE (único problema de la foto) son
+    // informativos: no exigen checkbox; se muestra la nota en su lugar.
+    calidadSeccionTitulo: "Calidad de tus fotos",
+    calidadSeccionIntro: "Estas fotos tienen avisos de calidad. Así como están, así se imprimirán.",
+    calidadAcepto:
+      "Entiendo que estas fotos pueden imprimirse con menor calidad y acepto el resultado.",
+    calidadNotaInformativa:
+      "Estos avisos son solo informativos — si el look es el que buscabas, puedes continuar sin marcar nada.",
   },
   escenas: {
     titulo: "✨ Míralo en tu espacio",
@@ -1021,6 +1163,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     ejemplosEs: "Mía, Mateo, Amor",
     ejemplosEn: "Mia, Noah, Love",
     swatchAria: "Pintar de {color}",
+    swatchPersonalizadoAria: "Elegir un color personalizado para la letra",
     listoSr: ": te mostramos cómo queda antes de agregarlo al carrito",
   },
   letras: {
@@ -1137,7 +1280,14 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.finalizeBtn": "estudio.lienzo.finalize-btn",
   "lienzo.finalizeTooltip": "estudio.lienzo.finalize-tooltip",
   "lienzo.finalizeTooltipTextos": "estudio.lienzo.finalize-tooltip-textos",
+  "lienzo.finalizePopoverAria": "estudio.lienzo.finalize-popover-aria",
+  "lienzo.finalizePopoverTitulo": "estudio.lienzo.finalize-popover-titulo",
+  "lienzo.finalizePopoverFotos": "estudio.lienzo.finalize-popover-fotos",
+  "lienzo.finalizePopoverTextos": "estudio.lienzo.finalize-popover-textos",
   "lienzo.finalizeGuardando": "estudio.lienzo.finalize-guardando",
+  "lienzo.calidadChipTexto": "estudio.lienzo.calidad-chip-texto",
+  "lienzo.calidadChipAria": "estudio.lienzo.calidad-chip-aria",
+  "lienzo.calidadPopoverTitulo": "estudio.lienzo.calidad-popover-titulo",
   "lienzo.gesturesButtonTitle": "estudio.lienzo.gestures-button-title",
   "lienzo.slotEmptyInvite": "estudio.lienzo.slot-empty-invite",
   "lienzo.slotEmptyDrop": "estudio.lienzo.slot-empty-drop",
@@ -1150,6 +1300,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.unitCaraA": "estudio.lienzo.unit-cara-a",
   "lienzo.unitCaraB": "estudio.lienzo.unit-cara-b",
   "lienzo.slotCaraBOpcional": "estudio.lienzo.slot-cara-b-opcional",
+  "lienzo.slotCaraBOpcionalTitle": "estudio.lienzo.slot-cara-b-opcional-title",
   "lienzo.doblezDesplegado": "estudio.lienzo.doblez-desplegado",
   "lienzo.doblezNotaRotacion": "estudio.lienzo.doblez-nota-rotacion",
   "lienzo.slotTooltipCentrar": "estudio.lienzo.slot-tooltip-centrar",
@@ -1270,6 +1421,14 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "plantillas.predisenadosTitulo": "estudio.plantillas.predisenados-titulo",
   "plantillas.predisenadosHint": "estudio.plantillas.predisenados-hint",
   "plantillas.toastPredisenado": "estudio.plantillas.toast-predisenado",
+  "plantillas.toastPredisenadoVarios": "estudio.plantillas.toast-predisenado-varios",
+  "plantillas.predisenadosLlenarCta": "estudio.plantillas.predisenados-llenar-cta",
+  "plantillas.predisenadosLlenarAria": "estudio.plantillas.predisenados-llenar-aria",
+  "plantillas.toastCaraBOcupada": "estudio.plantillas.toast-cara-b-ocupada",
+  "plantillas.badgeDosCaras": "estudio.plantillas.badge-dos-caras",
+  "plantillas.badgeUnaCara": "estudio.plantillas.badge-una-cara",
+  "plantillas.badgeDosCarasTitle": "estudio.plantillas.badge-dos-caras-title",
+  "plantillas.badgeUnaCaraTitle": "estudio.plantillas.badge-una-cara-title",
   "plantillas.toastError": "estudio.plantillas.toast-error",
   "plantillas.toastSinSlot": "estudio.plantillas.toast-sin-slot",
   "plantillas.elegirAria": "estudio.plantillas.elegir-aria",
@@ -1308,7 +1467,11 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "fotos.calidadAccionesTitulo": "estudio.fotos.calidad-acciones-titulo",
   "fotos.calidadTip1": "estudio.fotos.calidad-tip-1",
   "fotos.calidadTip2": "estudio.fotos.calidad-tip-2",
+  "fotos.calidadRecomendacionTitulo": "estudio.fotos.calidad-recomendacion-titulo",
+  "fotos.badgeRevisar": "estudio.fotos.badge-revisar",
+  "fotos.badgeAgregada": "estudio.fotos.badge-agregada",
   "fotos.calidadCerrar": "estudio.fotos.calidad-cerrar",
+  "fotos.calidadUsarDeTodosModos": "estudio.fotos.calidad-usar-de-todos-modos",
   "fotos.pickerTitulo": "estudio.fotos.picker-titulo",
   "fotos.pickerDesc": "estudio.fotos.picker-desc",
   "fotos.pickerVacio": "estudio.fotos.picker-vacio",
@@ -1341,17 +1504,31 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.campoIgUbicacion": "estudio.texto.campo-ig-ubicacion",
   "texto.campoIgTitulo": "estudio.texto.campo-ig-titulo",
   "texto.campoIgHashtags": "estudio.texto.campo-ig-hashtags",
+  "texto.igDatosTitulo": "estudio.texto.ig-datos-titulo",
+  "texto.igDatosSub": "estudio.texto.ig-datos-sub",
+  "texto.igCampoUsuario": "estudio.texto.ig-campo-usuario",
+  "texto.igCampoUbicacion": "estudio.texto.ig-campo-ubicacion",
+  "texto.igCampoLikes": "estudio.texto.ig-campo-likes",
+  "texto.igCampoTitulo": "estudio.texto.ig-campo-titulo",
+  "texto.igCampoHashtags": "estudio.texto.ig-campo-hashtags",
+  "texto.igCampoRequerido": "estudio.texto.ig-campo-requerido",
+  "texto.igCampoOpcional": "estudio.texto.ig-campo-opcional",
+  "texto.igVariaPorFoto": "estudio.texto.ig-varia-por-foto",
+  "texto.igVariaPlaceholder": "estudio.texto.ig-varia-placeholder",
+  "texto.igGlobalAviso": "estudio.texto.ig-global-aviso",
   "texto.tamanoLabel": "estudio.texto.tamano-label",
   "texto.negrita": "estudio.texto.negrita",
   "texto.cursiva": "estudio.texto.cursiva",
   "texto.colorLabel": "estudio.texto.color-label",
   "texto.colorSinContrasteHint": "estudio.texto.color-sin-contraste-hint",
+  "texto.colorPersonalizado": "estudio.texto.color-personalizado",
   "texto.tipografiaLabel": "estudio.texto.tipografia-label",
   "texto.reset": "estudio.texto.reset",
   "texto.aplicar": "estudio.texto.aplicar",
   "texto.aplicando": "estudio.texto.aplicando",
   "texto.estiloColorTitulo": "estudio.texto.estilo-color-titulo",
   "texto.estiloSinColor": "estudio.texto.estilo-sin-color",
+  "texto.estiloColorPersonalizado": "estudio.texto.estilo-color-personalizado",
   "texto.estiloBordeTitulo": "estudio.texto.estilo-borde-titulo",
   "texto.estiloConBorde": "estudio.texto.estilo-con-borde",
   "texto.estiloSinBorde": "estudio.texto.estilo-sin-borde",
@@ -1370,11 +1547,17 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.perfilPickerTitulo": "estudio.texto.perfil-picker-titulo",
   "texto.perfilPickerDesc": "estudio.texto.perfil-picker-desc",
   "texto.perfilAvatarHint": "estudio.texto.perfil-avatar-hint",
+  "texto.perfilEncuadreTitulo": "estudio.texto.perfil-encuadre-titulo",
+  "texto.perfilEncuadreHint": "estudio.texto.perfil-encuadre-hint",
+  "texto.perfilZoomAria": "estudio.texto.perfil-zoom-aria",
   "texto.slotEditListo": "estudio.texto.slot-edit-listo",
   "texto.capasVolver": "estudio.texto.capas-volver",
   "texto.capasElegir": "estudio.texto.capas-elegir",
   "texto.capaEditadaBadge": "estudio.texto.capa-editada-badge",
   "texto.capaEditando": "estudio.texto.capa-editando",
+  "texto.capaAplicarATodas": "estudio.texto.capa-aplicar-a-todas",
+  "texto.capaAplicarATodasAria": "estudio.texto.capa-aplicar-a-todas-aria",
+  "texto.capaAplicadaFeedback": "estudio.texto.capa-aplicada-feedback",
   "texto.ajustarReset": "estudio.texto.ajustar-reset",
   "texto.ajustarRotar": "estudio.texto.ajustar-rotar",
   "texto.calFontModalHint": "estudio.texto.cal-font-modal-hint",
@@ -1433,6 +1616,10 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "exportar.piezaFichas": "estudio.exportar.pieza-fichas",
   "exportar.copiasIdenticas": "estudio.exportar.copias-identicas",
   "exportar.copiasAjusteCarrito": "estudio.exportar.copias-ajuste-carrito",
+  "exportar.calidadSeccionTitulo": "estudio.exportar.calidad-seccion-titulo",
+  "exportar.calidadSeccionIntro": "estudio.exportar.calidad-seccion-intro",
+  "exportar.calidadAcepto": "estudio.exportar.calidad-acepto",
+  "exportar.calidadNotaInformativa": "estudio.exportar.calidad-nota-informativa",
   "escenas.titulo": "estudio.escenas.titulo",
   "escenas.volverDetalle": "estudio.escenas.volver-detalle",
   "escenas.chipNevera": "estudio.escenas.chip-nevera",
@@ -1498,6 +1685,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "nombre.ejemplosEs": "estudio.nombre.ejemplos-es",
   "nombre.ejemplosEn": "estudio.nombre.ejemplos-en",
   "nombre.swatchAria": "estudio.nombre.swatch-aria",
+  "nombre.swatchPersonalizadoAria": "estudio.nombre.swatch-personalizado-aria",
   "nombre.listoSr": "estudio.nombre.listo-sr",
   "letras.titulo": "estudio.letras.titulo",
   "letras.subVocalesIlustrado": "estudio.letras.sub-vocales-ilustrado",

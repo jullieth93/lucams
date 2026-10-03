@@ -23,6 +23,7 @@ export function OrderActions({
   paymentMethod,
   isNoShow = false,
   hasAddressKey = false,
+  isInternalDelivery = false,
 }: {
   orderId: string;
   orderStatus: string;
@@ -32,6 +33,8 @@ export function OrderActions({
   isNoShow?: boolean;
   /** Anti-abuso COD (ADR-065): el pedido tiene dirección normalizada bloqueable. */
   hasAddressKey?: boolean;
+  /** Envío propio Lucam's: NO hay guía Aveonline que (re)generar — la entrega es interna. */
+  isInternalDelivery?: boolean;
 }) {
   const [retryState, retryAction, retryPending] = useActionState(retryShipmentAction, null);
   const [transState, transAction, transPending] = useActionState(transitionOrderAction, null);
@@ -47,7 +50,9 @@ export function OrderActions({
   const showBlockAddr = isCod && hasAddressKey;
   const showAntiAbuse = isCod && (showNoShow || showBlockAddr || isNoShow);
 
-  const showRetry = orderStatus === "PAID" || (orderStatus === "FULFILLING" && !hasTracking);
+  const showRetry =
+    !isInternalDelivery &&
+    (orderStatus === "PAID" || (orderStatus === "FULFILLING" && !hasTracking));
   const showMarkShipped = orderStatus === "FULFILLING";
   const showMarkDelivered = orderStatus === "SHIPPED";
   // Cancelar (revierte stock, SIN reembolso). Para Wompi excluimos PAID: ahí el dinero
@@ -135,13 +140,15 @@ export function OrderActions({
         <details className="border-brand-purple/20 rounded-md border">
           <summary className="text-brand-purple-dark hover:bg-brand-purple/5 cursor-pointer list-none rounded-md px-3 py-2 text-xs font-semibold">
             <ArrowRight className="mr-1.5 inline h-3.5 w-3.5" />
-            Marcar como ENVIADO…
+            {isInternalDelivery ? "Marcar EN RUTA…" : "Marcar como ENVIADO…"}
           </summary>
           <form action={transAction} className="border-brand-purple/10 space-y-2 border-t p-3">
             <input type="hidden" name="orderId" value={orderId} />
             <input type="hidden" name="to" value="SHIPPED" />
             <p className="text-brand-muted text-[11px]">
-              Se le avisará al cliente por correo que su pedido va en camino. No se puede deshacer.
+              {isInternalDelivery
+                ? "El pedido sale en mensajería propia. Se le avisará al cliente por correo que va en camino con nuestro equipo. No se puede deshacer."
+                : "Se le avisará al cliente por correo que su pedido va en camino. No se puede deshacer."}
             </p>
             <Button
               type="submit"
@@ -150,7 +157,11 @@ export function OrderActions({
               variant="outline"
               className="w-full"
             >
-              {transPending ? "Marcando…" : "Confirmar envío"}
+              {transPending
+                ? "Marcando…"
+                : isInternalDelivery
+                  ? "Confirmar salida en ruta"
+                  : "Confirmar envío"}
             </Button>
           </form>
         </details>

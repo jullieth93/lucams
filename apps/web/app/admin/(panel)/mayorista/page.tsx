@@ -6,6 +6,12 @@
  * el catálogo") y aplica a cualquier producto; uno con producto solo a ese.
  * La lista se agrupa por alcance para que Lucy vea de un vistazo la escala
  * de precios de cada producto sin filtrar.
+ *
+ * Consumidor storefront (2026-10-02): los niveles SÍ alteran el precio — el
+ * carrito los aplica como descuento por volumen público en addProductToCart /
+ * addPersonalizedToCart / updateCartItemQty (features/cart/service.ts +
+ * volume-pricing.ts). Visible en TODOS los modos de tienda (ya no hay gate de
+ * modo catálogo: el checkout con invitados y las cotizaciones sí los cobran).
  */
 
 import type { Metadata } from "next";
@@ -28,7 +34,6 @@ import { ConfirmAction } from "@/components/admin/confirm-action";
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
-import { isCatalogMode } from "@/lib/store-mode";
 import { deleteWholesaleTierAction, toggleWholesaleTierAction } from "./actions";
 import { CreateTierForm } from "./create-tier-form";
 
@@ -48,10 +53,9 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
 export default async function AdminMayoristaPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
-  // Modo catálogo (Etapa 1): WholesaleTier NO tiene ningún consumidor fuera de
-  // este admin (ni PDP, ni carrito, ni cotización aplican niveles B2B) — el
-  // módulo es de Etapa 2. El nav ya lo oculta; esto cierra la URL directa.
-  if (isCatalogMode()) redirect("/admin/dashboard");
+  // 2026-10-02: el gate de modo catálogo se RETIRÓ — WholesaleTier ya tiene
+  // consumidor storefront (el carrito aplica los niveles como descuento por
+  // volumen público; ver features/cart/volume-pricing.ts). Visible siempre.
 
   const sp = await searchParams;
 

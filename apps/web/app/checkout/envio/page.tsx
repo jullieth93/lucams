@@ -23,6 +23,7 @@ import {
 } from "@/features/checkout/service";
 import { logger } from "@/lib/logger";
 import { getCmsBlock } from "@/lib/cms";
+import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { formatCityDept, splitCityTemplate } from "@/lib/format";
 import { RetryQuoteButton } from "./retry-quote-button";
 import { getCheckoutTexts } from "../checkout-texts.server";
@@ -63,7 +64,10 @@ export default async function CheckoutEnvioPage({
     if (err instanceof CheckoutError) {
       if (err.code === "CART_EMPTY" || err.code === "CART_NOT_FOUND") redirect("/carrito");
       if (err.code === "STOCK_UNAVAILABLE") {
-        redirect(`/carrito?error=${encodeURIComponent(STOCK_GONE_MSG)}`);
+        // El mensaje ya es customer-safe y nombra el producto cuando el service lo
+        // conoce (2026-09-29); STOCK_GONE_MSG queda como fallback defensivo.
+        const msg = err.message && err.message !== err.code ? err.message : STOCK_GONE_MSG;
+        redirect(`/carrito?error=${encodeURIComponent(msg)}`);
       }
     }
     throw err;
@@ -122,6 +126,9 @@ export default async function CheckoutEnvioPage({
   const sub = splitCityTemplate(subtextTemplate);
   // Roadmap B8 — textos CMS del paso de envío (errores, lista, resumen).
   const texts = await getCheckoutTexts();
+  // Hora límite del envío propio para el copy de la lista (token {{cutoff}}):
+  // sale de settings (LUCAMS_SHIPPING_CUTOFF_HOUR), nunca hardcodeada.
+  const lucamsSettings = await getLucamsShippingSettings();
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -185,6 +192,7 @@ export default async function CheckoutEnvioPage({
             subtextTemplate={subtextTemplate}
             summaryTexts={texts.summary}
             shippingTexts={texts.shipping}
+            lucamsCutoffHour={lucamsSettings.cutoffHour}
           />
         )}
       </div>

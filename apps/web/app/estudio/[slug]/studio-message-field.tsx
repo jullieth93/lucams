@@ -26,6 +26,7 @@ import type { StoreApi } from "zustand";
 import { MessageSquareHeart } from "lucide-react";
 import type { StudioStoreState } from "./lib/store";
 import { useStudioTexts } from "./studio-texts-provider";
+import { StudioIgPostFields } from "./studio-ig-post-fields";
 
 export function StudioMessageField({ store }: { store: StoreApi<StudioStoreState> }) {
   // Selectores atómicos: el layer editable (JSON estable) y el override vigente.
@@ -48,7 +49,6 @@ export function StudioMessageField({ store }: { store: StoreApi<StudioStoreState
   const setTextOverrideAllSlots = useStore(store, (s) => s.setTextOverrideAllSlots);
   const texts = useStudioTexts();
 
-  if (!layerId) return null;
   // Ola 4 (Lucy 2026-07-23) — el mensaje es OPCIONAL: el campo arranca VACÍO (el
   // placeholder "Escribe tu mensaje" es solo guía; vacío = NO se imprime nada).
   // Antes el campo mostraba el texto base como valor → el cliente creía estar
@@ -56,39 +56,51 @@ export function StudioMessageField({ store }: { store: StoreApi<StudioStoreState
   const value = currentText ?? "";
 
   return (
-    <section aria-labelledby="sidebar-mensaje" className="border-brand-purple/10 border-t pt-5">
-      <label
-        htmlFor="studio-message-input"
-        id="sidebar-mensaje"
-        className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
-      >
-        <MessageSquareHeart className="text-brand-purple h-4 w-4" />
-        {texts.texto.mensajeLabel}{" "}
-        <span className="text-brand-muted text-xs font-normal">{texts.texto.mensajeOpcional}</span>
-      </label>
-      <input
-        id="studio-message-input"
-        type="text"
-        value={value}
-        maxLength={120}
-        placeholder={texts.texto.mensajePlaceholder}
-        onChange={(e) => {
-          const text = e.target.value;
-          // Vacío → sin override (no se imprime nada). Cualquier texto → se imprime tal cual.
-          setTextOverrideAllSlots(layerId, text.trim() === "" ? null : { text });
-        }}
-        className="border-brand-purple/15 text-brand-purple-dark focus:border-brand-turquoise focus:ring-brand-turquoise/30 w-full rounded-md border px-3 py-2 text-sm transition-colors focus:ring-2 focus:outline-none"
-      />
-      <p className="text-brand-muted mt-2 text-xs">{texts.texto.mensajeAyuda}</p>
-      {/* Lucy 2026-09-08 — aviso visible (aprobado "Mantener con aviso"): el mensaje
-          es PACK-LEVEL, se imprime igual en todas las fotos del set. Va en caja
-          destacada (no en el gris del hint) para que no pase desapercibido. */}
-      <p
-        role="note"
-        className="bg-brand-yellow/15 border-brand-yellow/40 text-brand-purple-dark mt-2 rounded-md border px-3 py-2 text-xs leading-snug font-medium"
-      >
-        {texts.texto.mensajeGlobalAviso}
-      </p>
-    </section>
+    <>
+      {/* Fase 1B — el equivalente para Instagram (5 capas editables): bloque de
+          diligenciamiento masivo "Datos de la publicación". Se monta desde acá
+          (mismo punto del sidebar, misma condición allowText) porque es la
+          contraparte multi-campo de este campo; internamente solo renderiza con
+          plantilla Instagram, así que nunca convive con "Tu mensaje". */}
+      <StudioIgPostFields store={store} />
+      {layerId && (
+        <section aria-labelledby="sidebar-mensaje" className="border-brand-purple/10 border-t pt-5">
+          <label
+            htmlFor="studio-message-input"
+            id="sidebar-mensaje"
+            className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
+          >
+            <MessageSquareHeart className="text-brand-purple h-4 w-4" />
+            {texts.texto.mensajeLabel}{" "}
+            <span className="text-brand-muted text-xs font-normal">
+              {texts.texto.mensajeOpcional}
+            </span>
+          </label>
+          <input
+            id="studio-message-input"
+            type="text"
+            value={value}
+            maxLength={120}
+            placeholder={texts.texto.mensajePlaceholder}
+            onChange={(e) => {
+              const text = e.target.value;
+              // Vacío → sin override (no se imprime nada). Cualquier texto → se imprime tal cual.
+              setTextOverrideAllSlots(layerId, text.trim() === "" ? null : { text });
+            }}
+            className="border-brand-purple/15 text-brand-purple-dark focus:border-brand-turquoise focus:ring-brand-turquoise/30 w-full rounded-md border px-3 py-2 text-sm transition-colors focus:ring-2 focus:outline-none"
+          />
+          <p className="text-brand-muted mt-2 text-xs">{texts.texto.mensajeAyuda}</p>
+          {/* Lucy 2026-09-08 — aviso visible (aprobado "Mantener con aviso"): el mensaje
+              es PACK-LEVEL, se imprime igual en todas las fotos del set. Va en caja
+              destacada (no en el gris del hint) para que no pase desapercibido. */}
+          <p
+            role="note"
+            className="bg-brand-yellow/15 border-brand-yellow/40 text-brand-purple-dark mt-2 rounded-md border px-3 py-2 text-xs leading-snug font-medium"
+          >
+            {texts.texto.mensajeGlobalAviso}
+          </p>
+        </section>
+      )}
+    </>
   );
 }

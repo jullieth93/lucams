@@ -29,6 +29,7 @@ import { ConfirmAction } from "@/components/admin/confirm-action";
 import { BulkReviewBar, BulkSelectAllReviewsCheckbox } from "./bulk-review-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Hint } from "@/components/ui/tooltip";
 import { getCurrentAdmin } from "@/lib/auth";
 import { listReviewsAdmin } from "@/features/reviews/admin-service";
 import {
@@ -418,21 +419,24 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
                             <form action={toggleFeaturedReviewAction}>
                               <input type="hidden" name="id" value={r.id} />
                               <input type="hidden" name="productSlug" value={r.productSlug} />
-                              <button
-                                type="submit"
-                                className={
-                                  r.featured
-                                    ? "text-brand-purple-dark hover:text-brand-purple rounded-md border border-purple-300 px-2 py-1 text-[11px] font-semibold"
-                                    : "text-brand-purple hover:bg-brand-purple/10 rounded-md border border-purple-300 px-2 py-1 text-[11px] font-semibold"
-                                }
-                                title={
+                              <Hint
+                                content={
                                   r.featured
                                     ? "Quitar de carousel destacadas"
                                     : "Mostrar en carousel home"
                                 }
                               >
-                                {r.featured ? "★ Destacada" : "Destacar"}
-                              </button>
+                                <button
+                                  type="submit"
+                                  className={
+                                    r.featured
+                                      ? "text-brand-purple-dark hover:text-brand-purple rounded-md border border-purple-300 px-2 py-1 text-[11px] font-semibold"
+                                      : "text-brand-purple hover:bg-brand-purple/10 rounded-md border border-purple-300 px-2 py-1 text-[11px] font-semibold"
+                                  }
+                                >
+                                  {r.featured ? "★ Destacada" : "Destacar"}
+                                </button>
+                              </Hint>
                             </form>
                           )}
                           <ConfirmAction

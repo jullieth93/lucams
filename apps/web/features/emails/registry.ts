@@ -2,7 +2,7 @@
  * Registry de plantillas de email transaccional (módulo /admin/email-templates,
  * Fase 4 — feedback Lucy 2026-09-18).
  *
- * Catálogo ÚNICO de las 26 plantillas de features/emails/templates: id (nombre
+ * Catálogo ÚNICO de las 27 plantillas de features/emails/templates: id (nombre
  * del archivo), nombre legible, cuándo se envía (de los headers de cada
  * plantilla), la función render ya envuelta en `withOverrides` (los textos
  * clave editados en el admin aplican sin tocar el copy base) y SAMPLE DATA
@@ -55,7 +55,9 @@ import { reviewRequestEmail } from "./templates/review-request";
 import { supportTicketClosedEmail } from "./templates/support-ticket-closed";
 import { supportTicketInternalEmail } from "./templates/support-ticket-internal";
 import { supportTicketReceivedEmail } from "./templates/support-ticket-received";
+import { supportTicketReplyEmail } from "./templates/support-ticket-reply";
 import { warrantyReceivedEmail } from "./templates/warranty-received";
+import { warrantyRejectedEmail } from "./templates/warranty-rejected";
 import { warrantyResolvedEmail } from "./templates/warranty-resolved";
 
 /** Resultado común de todas las plantillas (support-internal/closed suman replyTo). */
@@ -142,11 +144,25 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
       discount: 0,
       shippingCarrier: "Coordinadora",
       items: [
-        { name: "Fotoimanes Cuadrados (x6)", qty: 1, lineTotal: 4_990_000 },
-        { name: "Imán Polaroid personalizado", qty: 2, lineTotal: 3_000_000 },
+        {
+          name: "Fotoimanes Cuadrados (x6)",
+          qty: 1,
+          lineTotal: 4_990_000,
+          breakdown: ["6 fotos", "6×6 cm", "Con imán"],
+        },
+        {
+          name: "Imán Polaroid personalizado",
+          qty: 2,
+          lineTotal: 3_000_000,
+          breakdown: ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"],
+        },
       ],
       shippingAddress: "Calle 10 # 43-25, Apto 302, Medellín, Antioquia",
-      publicTrackingToken: TOKEN,
+      // Paquete H (2026-10-02): el preview refleja el caso REGISTRADO — el CTA
+      // va a su pedido en la cuenta. Invitado no-COD → /pedido/<token fresco>;
+      // invitado COD → /rastrear (variantes en /internal/correos).
+      publicTrackingToken: null,
+      accountOrderUrl: `https://lucamsshop.com/mi-cuenta/pedidos/${ORDER}`,
       paymentMethod: "WOMPI",
     },
   }),
@@ -262,8 +278,18 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
       discount: 0,
       total: 8_990_000,
       items: [
-        { name: "Fotoimanes Cuadrados (x6)", qty: 1, lineTotal: 4_990_000 },
-        { name: "Imán Polaroid personalizado", qty: 2, lineTotal: 3_000_000 },
+        {
+          name: "Fotoimanes Cuadrados (x6)",
+          qty: 1,
+          lineTotal: 4_990_000,
+          breakdown: ["6 fotos", "6×6 cm", "Con imán"],
+        },
+        {
+          name: "Imán Polaroid personalizado",
+          qty: 2,
+          lineTotal: 3_000_000,
+          breakdown: ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"],
+        },
       ],
     },
   }),
@@ -358,10 +384,14 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
       orderNumber: ORDER,
       customerName: CUSTOMER,
       products: [
-        { name: "Fotoimanes Cuadrados", slug: "fotoimanes-cuadrados" },
-        { name: "Set Corazón", slug: "set-corazon" },
+        {
+          id: "cprod0000000000000000001",
+          name: "Fotoimanes Cuadrados",
+          slug: "fotoimanes-cuadrados",
+        },
+        { id: "cprod0000000000000000002", name: "Set Corazón", slug: "set-corazon" },
       ],
-      publicTrackingToken: TOKEN,
+      reviewToken: TOKEN,
       unsubscribeUrl: "https://lucamsshop.com/unsubscribe?u=ejemplo",
     },
   }),
@@ -448,6 +478,21 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
     sampleData: { customerName: CUSTOMER, ticketId: TICKET, subject: "MI_PEDIDO" },
   }),
   define({
+    id: "support-ticket-reply",
+    name: "Soporte: respuesta del equipo",
+    group: "Soporte y garantía",
+    description:
+      "Cuando el admin escribe una respuesta pública en el hilo del ticket (/admin/soporte/[id]).",
+    render: supportTicketReplyEmail,
+    sampleData: {
+      customerName: CUSTOMER,
+      ticketId: TICKET,
+      subject: "MI_PEDIDO",
+      replyBody:
+        "¡Hola! Tu pedido LCM-2026-1042 ya va en camino, llega entre mañana y pasado mañana. Te compartimos la guía apenas el transportador la active.",
+    },
+  }),
+  define({
     id: "warranty-received",
     name: "Garantía recibida",
     group: "Soporte y garantía",
@@ -473,6 +518,22 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
       productName: "Fotoimanes Cuadrados",
       resolutionType: "REPLACE",
       note: "Te enviamos el reemplazo sin costo. Lo despachamos en máximo 2 días hábiles; desde ahí, el tiempo final lo pone la transportadora según tu ciudad.",
+    },
+  }),
+  define({
+    id: "warranty-rejected",
+    name: "Garantía rechazada",
+    group: "Soporte y garantía",
+    description:
+      "Aviso al cliente de que su reclamo de garantía no procede, con el motivo (mal uso, fuera de garantía, daño no cubierto — Ley 1480).",
+    render: warrantyRejectedEmail,
+    sampleData: {
+      customerName: CUSTOMER,
+      claimId: "wr_123456",
+      orderNumber: ORDER,
+      productName: "Fotoimanes Cuadrados",
+      reason:
+        "El daño reportado es por un golpe posterior a la entrega, no por un defecto de fabricación, así que la garantía legal no lo cubre.",
     },
   }),
 
@@ -584,6 +645,10 @@ export const renderSupportTicketClosedEmail = withOverrides(
   "support-ticket-closed",
   supportTicketClosedEmail,
 );
+export const renderSupportTicketReplyEmail = withOverrides(
+  "support-ticket-reply",
+  supportTicketReplyEmail,
+);
 export const renderWarrantyReceivedEmail = withOverrides(
   "warranty-received",
   warrantyReceivedEmail,
@@ -591,6 +656,10 @@ export const renderWarrantyReceivedEmail = withOverrides(
 export const renderWarrantyResolvedEmail = withOverrides(
   "warranty-resolved",
   warrantyResolvedEmail,
+);
+export const renderWarrantyRejectedEmail = withOverrides(
+  "warranty-rejected",
+  warrantyRejectedEmail,
 );
 
 export const renderQuoteAdminNotificationEmail = withOverrides(

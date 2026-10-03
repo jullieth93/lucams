@@ -156,6 +156,23 @@ export default async function AdminGarantiasPage({ searchParams }: { searchParam
                       Nota: {c.resolutionNote}
                     </p>
                   )}
+                  {/* Remedio REFUND ya ejecutado: el dinero se emite MANUAL en
+                      Wompi/transferencia y queda fuera de todo tracking — el
+                      aviso persistente evita que el reembolso se pierda. */}
+                  {c.status === "RESOLVED" && c.resolutionType === "REFUND" && (
+                    <p className="mt-2 rounded-md border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 text-[11px] text-amber-800">
+                      ⚠️ <strong>Devolución del dinero pendiente de verificar:</strong> el reembolso
+                      se emite manualmente en Wompi/transferencia — no hay tracking automático. Deja
+                      constancia en el{" "}
+                      <Link
+                        href={`/admin/pedidos/${encodeURIComponent(c.orderNumber)}`}
+                        className="font-semibold underline"
+                      >
+                        pedido {c.orderNumber}
+                      </Link>
+                      .
+                    </p>
+                  )}
                 </div>
                 <div className="sm:w-60 sm:flex-shrink-0">
                   <WarrantyActions id={c.id} status={c.status} />

@@ -97,7 +97,7 @@ describe("buildQuoteConsentRow", () => {
     expect(row.accepted).toBe(true);
     expect(row.ipAddress).toBe("1.2.3.4");
     expect(row.userAgent).toBe("Mozilla/5.0");
-    expect(version).toBe("v5 · 2026-09-04"); // fallback del CMS (coincide con el aviso canónico)
+    expect(version).toBe("v1 · 2026-09-29"); // fallback del CMS (coincide con el aviso canónico)
   });
 
   it("conserva el email cuando el titular sí lo dio", async () => {
@@ -146,7 +146,7 @@ describe("createQuoteFromCart — prueba de la autorización", () => {
 
     const quoteArg = quoteCreate.mock.calls[0][0].data;
     expect(quoteArg.dataConsentAt).toBeInstanceOf(Date);
-    expect(quoteArg.dataConsentVersion).toBe("v5 · 2026-09-04");
+    expect(quoteArg.dataConsentVersion).toBe("v1 · 2026-09-29");
   });
 
   it("la marca de la Quote y la de Consent son el MISMO instante (nacen juntas)", async () => {

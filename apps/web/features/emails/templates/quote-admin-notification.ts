@@ -20,12 +20,13 @@
 
 import { renderEmailLayout, escapeHtml, ctaButton, getSiteUrl } from "../layout";
 import { formatCOP, formatCityDept } from "@/lib/format";
+import { customerWaLink } from "@/lib/wa";
 
 export type QuoteAdminNotificationData = {
   quoteId: string;
   quoteNumber: string;
   customerName: string;
-  /** Normalizado a 10 dígitos CO por el schema (wa.me exige prefijo 57). */
+  /** Normalizado a 10 dígitos CO por el schema; el indicativo 57 lo pone lib/wa. */
   customerWhatsapp: string;
   customerEmail: string | null;
   city: string;
@@ -43,7 +44,9 @@ export type QuoteAdminNotificationData = {
 export async function quoteAdminNotificationEmail(data: QuoteAdminNotificationData) {
   const siteUrl = await getSiteUrl();
   const adminUrl = `${siteUrl}/admin/cotizaciones/${data.quoteId}`;
-  const customerWaUrl = `https://wa.me/57${data.customerWhatsapp}`;
+  // Indicativo 57 resuelto por el helper (el schema guarda 10 dígitos CO).
+  // null = no parseable → el número se muestra sin link.
+  const customerWaUrl = customerWaLink(data.customerWhatsapp);
   const location = formatCityDept(data.city, data.department);
 
   const itemLabel = (it: QuoteAdminNotificationData["items"][number]) => {
@@ -75,7 +78,11 @@ export async function quoteAdminNotificationEmail(data: QuoteAdminNotificationDa
 <h1 style="margin:0 0 12px 0;font-size:20px;">🧾 Nueva cotización ${escapeHtml(data.quoteNumber)}</h1>
 <table cellpadding="6" cellspacing="0" border="0" style="font-size:14px;width:100%;border-collapse:collapse;">
   <tr><td style="color:#3D2E5C;opacity:0.6;width:110px;">Cliente:</td><td><strong>${escapeHtml(data.customerName)}</strong></td></tr>
-  <tr><td style="color:#3D2E5C;opacity:0.6;">WhatsApp:</td><td><a href="${customerWaUrl}" style="color:#7C6AAD;">${escapeHtml(data.customerWhatsapp)}</a></td></tr>
+  <tr><td style="color:#3D2E5C;opacity:0.6;">WhatsApp:</td><td>${
+    customerWaUrl
+      ? `<a href="${customerWaUrl}" style="color:#7C6AAD;">${escapeHtml(data.customerWhatsapp)}</a>`
+      : escapeHtml(data.customerWhatsapp)
+  }</td></tr>
   <tr><td style="color:#3D2E5C;opacity:0.6;">Email:</td><td>${
     data.customerEmail
       ? `<a href="mailto:${escapeHtml(data.customerEmail)}" style="color:#7C6AAD;">${escapeHtml(data.customerEmail)}</a>`
@@ -94,13 +101,15 @@ export async function quoteAdminNotificationEmail(data: QuoteAdminNotificationDa
 ${notesBlock}
 ${ctaButton(adminUrl, "Ver en el admin →")}
 
-<p style="font-size:13px;color:#3D2E5C;opacity:0.75;margin-top:14px;">Este aviso sale apenas se crea la cotización — si el cliente no te escribe por WhatsApp, escríbele tú primero: <a href="${customerWaUrl}" style="color:#7C6AAD;">abrir chat</a>.</p>
+<p style="font-size:13px;color:#3D2E5C;opacity:0.75;margin-top:14px;">Este aviso sale apenas se crea la cotización — si el cliente no te escribe por WhatsApp, escríbele tú primero${
+    customerWaUrl ? `: <a href="${customerWaUrl}" style="color:#7C6AAD;">abrir chat</a>` : ""
+  }.</p>
 `;
 
   const text = `Nueva cotización ${data.quoteNumber}
 
 Cliente: ${data.customerName}
-WhatsApp: ${data.customerWhatsapp} (${customerWaUrl})
+WhatsApp: ${data.customerWhatsapp}${customerWaUrl ? ` (${customerWaUrl})` : ""}
 Email: ${data.customerEmail ?? "—"}
 Ciudad: ${location}
 
@@ -109,8 +118,7 @@ ${data.items.map((it) => `  - ${itemLabel(it)} ×${it.quantity} → ${formatCOP(
 
 Total: ${formatCOP(data.total)}
 ${data.notes ? `\nNotas del cliente:\n${data.notes}\n` : ""}
-Ver en el admin: ${adminUrl}
-Escribirle por WhatsApp: ${customerWaUrl}`;
+Ver en el admin: ${adminUrl}${customerWaUrl ? `\nEscribirle por WhatsApp: ${customerWaUrl}` : ""}`;
 
   return {
     subject: `Nueva cotización ${data.quoteNumber} — ${data.customerName} (${data.city})`,

@@ -1,8 +1,9 @@
 /*
  * Tests de la geometría PURA del libro abierto (ola 2C): proporciones reales (17×24 cm, escala
  * 0.3 u/cm), camber de las hojas y colocación física de los separadores doblados sobre el borde
- * superior — la cara frontal REPOSA sobre la hoja (no flota ni se hunde) y la trasera cuelga
- * libre sin atravesar la mesa (visible al orbitar).
+ * superior — pose DE PIE (2026-10-02): la cara frontal erguida 40° (casi de frente a la cámara
+ * fija polar 48°) con la punta REPOSANDO sobre la hoja (no flota ni se hunde) y la trasera
+ * colgando libre sin atravesar la mesa (visible al orbitar).
  */
 
 import { describe, expect, it } from "vitest";
@@ -63,14 +64,17 @@ describe("camber (curvatura de la hoja hacia el lomo)", () => {
 });
 
 describe("separatorPlacement (separador doblado sobre el borde superior)", () => {
+  // Tiras REALES desplegadas: 2 caras + lo que come la cresta del pliegue (stripDimsForFace).
+  // (Antes el fixture usaba stripL = 4.2·CM —media tira— y las aserciones pasaban con un
+  // separador de mitad de tamaño: falso positivo.)
   const STRIPS = [
-    { name: "6×2 cm", stripL: 6 * CM },
-    { name: "4×4.2 cm", stripL: 4.2 * CM },
+    { name: "6×2 cm", stripL: stripDimsForFace({ wRatio: 600, hRatio: 200 }, "6×2").stripL },
+    { name: "4×4.2 cm", stripL: stripDimsForFace({ wRatio: 400, hRatio: 420 }, "4×4.2").stripL },
   ];
 
   for (const { name, stripL } of STRIPS) {
     describe(name, () => {
-      it("la cara frontal reposa sobre la hoja (ni flota ni se hunde)", () => {
+      it("la punta de la cara frontal reposa sobre la hoja (ni flota ni se hunde)", () => {
         for (const { x } of SEPARATOR_SLOTS) {
           const p = separatorPlacement(x, stripL);
           expect(p.frontTipY).toBeGreaterThanOrEqual(p.surfaceY - 0.005);
@@ -98,6 +102,11 @@ describe("separatorPlacement (separador doblado sobre el borde superior)", () =>
       });
     });
   }
+
+  it("el fixture es la tira REAL desplegada (2 caras + cresta): 12.33 cm y 8.73 cm", () => {
+    expect(STRIPS[0]!.stripL / CM).toBeCloseTo(12.33, 2);
+    expect(STRIPS[1]!.stripL / CM).toBeCloseTo(8.73, 2);
+  });
 
   it("los 3 slots quedan a distintas alturas (gracias al camber)", () => {
     const heights = SEPARATOR_SLOTS.map(({ x }) => separatorPlacement(x, 6 * CM).crestY);
@@ -221,62 +230,66 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
     ]);
   });
 
-  it("backOptional (2026-09-22): cara B faltante → back null (reverso blanco papel), no duplica A", () => {
-    const opts = { backOptional: true };
+  it("Paquete D (2026-10-02) — REGLA ÚNICA: cara B vacía → espejo de la cara A (back = front)", () => {
     // Pareo por pares: unidad impar sin cara B.
-    const units = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")], undefined, "6×2", opts);
-    expect(units.map((u) => [u.front.id, u.back?.id ?? null])).toEqual([
+    const units = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")], undefined, "6×2");
+    expect(units.map((u) => [u.front.id, u.back.id])).toEqual([
       ["1A", "1B"],
-      ["2A", null],
+      ["2A", "2A"], // sin cara B → espejo de A (igual que producción)
     ]);
-    // Pareo por slotIndex (facesPerUnit=2): la cara B existe como slot pero sin textura.
-    const slot = (id: string, slotIndex: number, dataUrl?: string) => ({
+    // Pareo por slotIndex (facesPerUnit=2): la cara B existe como slot con su
+    // textura de stage (dataUrl SIEMPRE llega) pero SIN assetUrl — la misma
+    // condición "vacía" que producción (expandMissingBackFaces).
+    const slot = (id: string, slotIndex: number, assetUrl?: string) => ({
       id,
       wRatio: 600,
       hRatio: 200,
       slotIndex,
-      dataUrl: dataUrl ?? null,
+      dataUrl: `tex-${id}.png`,
+      assetUrl: assetUrl ?? null,
     });
     const bySlotUnits = bookmarkFaceUnits(
       [slot("1A", 0, "a.png"), slot("1B", 1), slot("2A", 2, "a2.png"), slot("2B", 3, "b2.png")],
       2,
       "6×2",
-      opts,
     );
-    expect(bySlotUnits.map((u) => [u.front.id, u.back?.id ?? null])).toEqual([
-      ["1A", null],
-      ["2A", "2B"],
+    expect(bySlotUnits.map((u) => [u.front.id, u.back.id])).toEqual([
+      ["1A", "1A"], // B sin assetUrl → espejo de A (antes: reverso blanco papel)
+      ["2A", "2B"], // B diseñada → su propia textura
     ]);
-    // Sin la opción se conserva el histórico (back = front).
-    const legacy = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")], undefined, "6×2");
-    expect(legacy[1]!.back?.id).toBe("2A");
   });
 });
 
 describe("separatorPlacement con las caras reales (ola 3)", () => {
   const delta = (Math.PI - SEP_FOLD_ANGLE) / 2;
 
-  it("cara 6×2 (de pie sobre el libro): la trasera se RECUESTÁ sobre la mesa (backLean acotado)", () => {
+  it("cara 6×2 (de pie sobre el libro): la trasera cuelga LIBRE (la pose a 40° la despega de la mesa)", () => {
     const { stripL } = stripDimsForFace({ wRatio: 600, hRatio: 200 }, "6×2");
     for (const { x } of SEPARATOR_SLOTS) {
       const p = separatorPlacement(x, stripL);
-      // La cara de 6 cm es larga; colgando libre tocaría la mesa…
-      expect(p.backClearance).toBeLessThan(BACK_TIP_CLEARANCE);
-      // …pero recostada la punta queda justo sobre la mesa, dentro del límite de apertura.
-      expect(p.backLean).toBeGreaterThan(0);
-      expect(p.backLean).toBeLessThanOrEqual(MAX_BACK_LEAN);
-      const restedTipY = p.crestY - p.hang * Math.cos(delta + p.tilt + p.backLean);
-      expect(restedTipY).toBeCloseTo(BACK_TIP_CLEARANCE, 5);
+      // Con la frontal a 40° la cresta es el ápice de la pose de pie y la trasera (que cae ~35°
+      // pasada la vertical) ya NO alcanza la mesa — no necesita recostarse.
+      expect(p.backClearance).toBeGreaterThan(BACK_TIP_CLEARANCE);
+      expect(p.backLean).toBe(0);
     }
   });
 
-  it("cara larga (4×4.2): la trasera se RECUESTÁ sobre la mesa (backLean acotado, sin atravesarla)", () => {
+  it("cara 4×4.2: la trasera cuelga LIBRE (backLean = 0, sin atravesar la mesa)", () => {
     const { stripL } = stripDimsForFace({ wRatio: 400, hRatio: 420 }, "4×4.2");
     for (const { x } of SEPARATOR_SLOTS) {
       const p = separatorPlacement(x, stripL);
-      // Colgando libre tocaría la mesa…
+      expect(p.backClearance).toBeGreaterThan(BACK_TIP_CLEARANCE);
+      expect(p.backLean).toBe(0);
+    }
+  });
+
+  it("salvaguarda backLean: una cara MUCHO más larga que las del catálogo sí se RECUESTÁ", () => {
+    // Tira sintética de 36 cm desplegada (cara de ~17.8 cm): colgando libre atravesaría la
+    // mesa → la trasera se recuesta y la punta apoya justo sobre ella, dentro del límite.
+    const stripL = 36 * CM;
+    for (const { x } of SEPARATOR_SLOTS) {
+      const p = separatorPlacement(x, stripL);
       expect(p.backClearance).toBeLessThan(BACK_TIP_CLEARANCE);
-      // …pero recostada la punta queda justo sobre la mesa, dentro del límite de apertura.
       expect(p.backLean).toBeGreaterThan(0);
       expect(p.backLean).toBeLessThanOrEqual(MAX_BACK_LEAN);
       const restedTipY = p.crestY - p.hang * Math.cos(delta + p.tilt + p.backLean);
@@ -300,13 +313,53 @@ describe("separatorPlacement con las caras reales (ola 3)", () => {
 });
 
 // ──────────────────────────────────────────────────────────────────
-//  Ola 4 (2026-07-23) — composición: libro MÁS PLANO + separador MÁS ERGUIDO
+//  Pose DE PIE (2026-10-02) — bug STG: separador 4×4.2 "no se ve cuadrado e invade la
+//  superficie del libro" → cara frontal a 40°, casi de frente a la cámara fija (polar 48°)
 // ──────────────────────────────────────────────────────────────────
 
-describe("composición ola 4 (libro más plano, separador un punto más erguido)", () => {
-  it("la cara frontal se ergue lo justo para leerse de frente (ni acostada ni vertical)", () => {
-    expect(SEP_FRONT_LIFT_DEG).toBeGreaterThanOrEqual(8);
-    expect(SEP_FRONT_LIFT_DEG).toBeLessThanOrEqual(25);
+describe("pose de pie 2026-10-02 (cara frontal a 40°, de frente a la cámara)", () => {
+  it("la cara frontal se ergue lo justo para quedar DE FRENTE a la cámara (polar 48°)", () => {
+    // La elevación de la vista sobre la hoja es 90° − 48° = 42°: la cara a 40° queda a ~2°
+    // del eje de vista. Ni acostada (el bug: 14° → escorzo ~0.88, proyección apaisada) ni vertical.
+    expect(SEP_FRONT_LIFT_DEG).toBeGreaterThanOrEqual(35);
+    expect(SEP_FRONT_LIFT_DEG).toBeLessThanOrEqual(45);
+  });
+
+  it("sin escorzo apreciable: la cara 4×4.2 (0.95:1) se proyecta ~cuadrada, NO apaisada", () => {
+    const lift = (SEP_FRONT_LIFT_DEG * Math.PI) / 180;
+    const polar = (BOOK_FIT.polarDeg * Math.PI) / 180;
+    // Normal de la cara frontal (0, cos L, sin L) · dirección de vista (0, sin P, cos P):
+    const alignment = Math.cos(lift) * Math.sin(polar) + Math.sin(lift) * Math.cos(polar);
+    expect(alignment).toBeGreaterThan(0.99); // a 14° era 0.88 — el bug
+    // Factor de escorzo vertical: proyección del eje largo de la cara sobre la imagen.
+    const dv = -Math.cos(lift + polar); // eje largo de la cara · dirección de vista
+    const factor = Math.sqrt(1 - dv * dv);
+    expect(factor).toBeGreaterThan(0.99); // a 14° era 0.88
+    // Aspecto proyectado de la cara 4×4.2: se conserva el real (0.95:1, cuadrada).
+    const { stripW, stripL } = stripDimsForFace({ wRatio: 400, hRatio: 420 }, "4×4.2");
+    const hang = (stripL - SEP_R_FOLD * SEP_FOLD_ANGLE) / 2;
+    const projectedAspect = stripW / (hang * factor);
+    expect(projectedAspect).toBeCloseTo(400 / 420, 2);
+    expect(projectedAspect).toBeLessThan(1); // no apaisada (a 14° proyectaba ~1.08:1)
+  });
+
+  it("la proyección vertical de la cara (hang·sin 40°) fija el ÁPICE de la cresta (~2.7 cm)", () => {
+    const lift = (SEP_FRONT_LIFT_DEG * Math.PI) / 180;
+    const { stripL } = stripDimsForFace({ wRatio: 400, hRatio: 420 }, "4×4.2");
+    const hang = (stripL - SEP_R_FOLD * SEP_FOLD_ANGLE) / 2;
+    const rise = hang * Math.sin(lift);
+    // Rango esperado: 2.5–2.9 cm sobre la hoja — es el ápice de la pose de pie, no un flote
+    // (con la cresta a ras del filo la punta se hundiría esos 2.7 cm DENTRO de la página).
+    expect(rise / CM).toBeGreaterThan(2.5);
+    expect(rise / CM).toBeLessThan(2.9);
+    for (const { x } of SEPARATOR_SLOTS) {
+      const p = separatorPlacement(x, stripL);
+      expect(p.crestY - p.surfaceY).toBeCloseTo(rise, 9);
+    }
+    // Invasión de página: hang·cos(40°) ≈ 3.2 cm (era 4.1 cm a 14°).
+    const invasion = hang * Math.cos(lift);
+    expect(invasion / CM).toBeGreaterThan(3.0);
+    expect(invasion / CM).toBeLessThan(3.4);
   });
 
   it("con la cara erguida la cresta SUBE y la punta frontal reposa EXACTA sobre la hoja", () => {

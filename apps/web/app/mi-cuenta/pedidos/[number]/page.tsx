@@ -22,9 +22,16 @@ import { formatCOP } from "@/lib/format";
 import { getRetractableItems } from "@/features/retract/service";
 import { getWarrantyItems } from "@/features/warranty/service";
 import { orderStatusLabel } from "@/features/orders/order-status-display";
+import {
+  describeVariantAttributes,
+  parseVariantAttributes,
+} from "@/features/products/variant-schemas";
 import { carrierTrackingPageUrl } from "@/features/shipping/tracking-urls";
+import { carrierDisplayName, LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 import { RetractControl } from "./retract-control";
 import { WarrantyControl } from "./warranty-control";
+import { reorderAction } from "./actions";
+import { ReorderControl } from "@/components/orders/reorder-control";
 import { getAccountTexts } from "../../account-texts.server";
 
 export const metadata: Metadata = {
@@ -53,6 +60,7 @@ type ShippingAddrSnapshot = {
   city?: string;
   department?: string;
   zip?: string;
+  neighborhood?: string;
   notes?: string;
 };
 
@@ -79,6 +87,8 @@ export default async function CustomerPedidoDetallePage({
               id: true,
               name: true,
               sku: true,
+              // Paquete F (2026-10-02) — attributes: desglose estructurado de la variante.
+              attributes: true,
               product: { select: { slug: true, name: true } },
             },
           },
@@ -101,16 +111,18 @@ export default async function CustomerPedidoDetallePage({
   const isCancelled = order.status === "CANCELLED" || order.status === "REFUNDED";
   // #2 — contraentrega: no mostrar "Pagado" (aún no paga); "Confirmado" + aviso del monto en efectivo.
   const isCod = order.paymentMethod === "COD";
+  // Entrega propia "Envío Lucam's": SHIPPED se lee como "en camino con nuestro
+  // equipo" (no hay courier externo) — coherente con la vista pública /pedido.
+  const isInternalDelivery = order.shippingCarrier === LUCAMS_CARRIER;
   const statusText =
-    isCod && order.status === "PAID" ? "Confirmado" : orderStatusLabel(order.status);
+    isCod && order.status === "PAID"
+      ? "Confirmado"
+      : isInternalDelivery && order.status === "SHIPPED"
+        ? "En camino con nuestro equipo"
+        : orderStatusLabel(order.status);
   const showCodBanner = isCod && !isCancelled && order.status !== "DELIVERED";
-  // #9 — transportadora legible (title-case) en vez del slug crudo ("tcc-sa" → "Tcc Sa").
-  const carrierLabel = order.shippingCarrier
-    ? order.shippingCarrier
-        .split("-")
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ")
-    : "—";
+  // #9 — transportadora legible (el envío propio tiene nombre propio).
+  const carrierLabel = carrierDisplayName(order.shippingCarrier);
 
   // F3 — elegibilidad de retracto por item (solo si el pedido fue entregado).
   const retractable =
@@ -212,6 +224,10 @@ export default async function CustomerPedidoDetallePage({
         <ul className="divide-brand-purple/10 divide-y">
           {order.items.map((it) => {
             const previewUrl = it.designAssetUrl ?? it.design?.previewUrl ?? null; // ADR-070 — snapshot primero
+            // Paquete F (2026-10-02) — desglose estructurado de la variante.
+            const variantBreakdown = describeVariantAttributes(
+              parseVariantAttributes(it.variant.attributes),
+            );
             return (
               <li key={it.id} className="flex items-start gap-3 py-3">
                 <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">
@@ -237,6 +253,11 @@ export default async function CustomerPedidoDetallePage({
                   <div className="text-brand-muted text-xs">
                     {it.variant.name} · {it.qty} × {formatCOP(it.unitPrice)}
                   </div>
+                  {variantBreakdown.length > 0 && (
+                    <div className="text-brand-purple-dark/70 text-xs">
+                      {variantBreakdown.join(" · ")}
+                    </div>
+                  )}
                   {retractByItem.has(it.id) && (
                     <RetractControl item={retractByItem.get(it.id)!} texts={texts.retract} />
                   )}
@@ -279,6 +300,7 @@ export default async function CustomerPedidoDetallePage({
         </p>
         <p className="text-brand-muted mt-1 text-xs">
           {ship.city}, {ship.department}
+          {ship.neighborhood ? ` · Barrio ${ship.neighborhood}` : ""}
           {ship.zip ? ` · ${ship.zip}` : ""}
         </p>
         {ship.notes && (
@@ -340,6 +362,18 @@ export default async function CustomerPedidoDetallePage({
             <Star className="h-3.5 w-3.5" />
             {texts.order.reviewCta}
           </Link>
+        </div>
+      )}
+
+      {/* Paquete I — "Volver a pedir": reconstruye el carrito a precio vigente; el
+          resumen inline dice qué entró, qué requiere fotos de nuevo y qué ya no está. */}
+      {!isCancelled && (
+        <div className="border-brand-purple/15 rounded-2xl border bg-white p-5 text-center shadow-sm">
+          <ReorderControl
+            action={reorderAction}
+            hiddenField={{ name: "orderNumber", value: order.number }}
+            texts={texts.reorder}
+          />
         </div>
       )}
     </div>

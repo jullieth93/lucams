@@ -9,7 +9,10 @@
 import { prisma, Prisma } from "@/lib/db";
 import { updateTag } from "next/cache";
 import { logger } from "@/lib/logger";
-import { createSlugRenameRedirect, archiveRedirectOccupyingPath } from "@/features/redirects/service";
+import {
+  createSlugRenameRedirect,
+  archiveRedirectOccupyingPath,
+} from "@/features/redirects/service";
 import type { OcasionCreateInput, OcasionUpdateInput } from "./schemas";
 
 export class OcasionValidationError extends Error {

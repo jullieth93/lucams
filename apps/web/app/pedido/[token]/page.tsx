@@ -27,8 +27,15 @@ import { prisma } from "@/lib/db";
 import { formatCOP, maskEmail } from "@/lib/format";
 import { hashBearerToken } from "@/lib/token-hash";
 import { carrierTrackingPageUrl } from "@/features/shipping/tracking-urls";
+import { LUCAMS_CARRIER, carrierDisplayName } from "@/features/shipping/lucams-shipping";
 import { letterSetBorderNote } from "@/features/personalization/letter-set-border";
+import {
+  describeVariantAttributes,
+  parseVariantAttributes,
+} from "@/features/products/variant-schemas";
 import { buildWhatsAppUrl } from "@/lib/wa";
+import { reorderGuestAction } from "./actions";
+import { ReorderControl, type ReorderTexts } from "@/components/orders/reorder-control";
 
 export async function generateMetadata(): Promise<Metadata> {
   // noindex: la URL es de un solo uso y trae un token opaco.
@@ -94,6 +101,8 @@ export default async function PublicOrderPage({
             select: {
               id: true,
               name: true,
+              // Paquete F (2026-10-02) — attributes: desglose estructurado de la variante.
+              attributes: true,
               product: { select: { slug: true, name: true } },
             },
           },
@@ -112,11 +121,19 @@ export default async function PublicOrderPage({
   });
   const progress = timelineProgress(order.status);
   const isCancelled = order.status === "CANCELLED" || order.status === "REFUNDED";
+  // Entrega propia "Envío Lucam's" (trackingNumber INTERNO-*): NO hay guía de
+  // transportadora ni rastreo externo — el estado se muestra en lenguaje claro
+  // con los datos internos (nunca se consulta Aveonline para estas órdenes).
+  const isInternalDelivery = order.shippingCarrier === LUCAMS_CARRIER;
   // #2 — contraentrega: el cliente aún NO ha pagado (paga en efectivo al recibir). No mostrar
   // "Pagado"; usar "Confirmado" + un aviso persistente del monto a pagar hasta que se entregue.
   const isCod = order.paymentMethod === "COD";
   const statusText =
-    isCod && order.status === "PAID" ? "Confirmado" : (STATUS_LABEL[order.status] ?? order.status);
+    isCod && order.status === "PAID"
+      ? "Confirmado"
+      : isInternalDelivery && order.status === "SHIPPED"
+        ? "En camino con nuestro equipo"
+        : (STATUS_LABEL[order.status] ?? order.status);
   const showCodBanner = isCod && !isCancelled && order.status !== "DELIVERED";
   // #5 — PENDING_PAYMENT no es un callejón sin salida: en vez del timeline gris mudo, un banner
   // ámbar que explica ("estamos confirmando tu pago") + salida a WhatsApp para resolver.
@@ -141,6 +158,39 @@ export default async function PublicOrderPage({
     "Crea una cuenta con el email {email} y vas a tener historial, direcciones guardadas y descuentos exclusivos.";
   const codBanner =
     codBannerBlock?.body ?? "Pagas {total} en efectivo cuando el mensajero te entregue el pedido.";
+
+  // Paquete I — textos del "Volver a pedir" (CMS order.status.reorder-*; mismos
+  // defaults es-CO que account.reorder.* de mi-cuenta).
+  const showReorder = !isCancelled && !isPending;
+  const reorderTexts: ReorderTexts | null = showReorder
+    ? await (async () => {
+        const keys = {
+          cta: ["order.status.reorder-cta", "Volver a pedir"],
+          pending: ["order.status.reorder-pending", "Armando tu carrito…"],
+          addedTitle: ["order.status.reorder-added-title", "Agregamos a tu carrito:"],
+          needsPhotosTitle: [
+            "order.status.reorder-needs-photos-title",
+            "Para repetir estos, sube las fotos de nuevo:",
+          ],
+          needsPhotosNote: [
+            "order.status.reorder-needs-photos-note",
+            "Por privacidad borramos las fotos de los pedidos entregados hace más de 90 días.",
+          ],
+          photosCta: ["order.status.reorder-photos-cta", "Crearlo de nuevo"],
+          unavailableTitle: ["order.status.reorder-unavailable-title", "Ya no pudimos agregar:"],
+          goToCart: ["order.status.reorder-go-to-cart", "Ir al carrito"],
+          priceNow: ["order.status.reorder-price-now", "ahora {precio}"],
+          priceWas: ["order.status.reorder-price-was", "antes {precio}"],
+        } as const;
+        const blocks = await Promise.all(Object.values(keys).map(([key]) => getCmsBlock(key)));
+        const out = {} as Record<keyof typeof keys, string>;
+        Object.keys(keys).forEach((k, i) => {
+          const field = k as keyof typeof keys;
+          out[field] = blocks[i]?.body ?? keys[field][1];
+        });
+        return out as ReorderTexts;
+      })()
+    : null;
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -304,6 +354,11 @@ export default async function PublicOrderPage({
                 // Opciones de diseño del set de letras ("Sin borde") — el PNG las refleja, pero el
                 // texto evita que el cliente tenga que deducirlas de la miniatura (2026-09-05).
                 const borderNote = letterSetBorderNote(it.design?.metadata);
+                // Paquete F (2026-10-02) — desglose estructurado de la variante (el
+                // nombre libre no siempre informa Con/Sin imán, tamaño, idioma…).
+                const variantBreakdown = describeVariantAttributes(
+                  parseVariantAttributes(it.variant.attributes),
+                );
                 return (
                   <li key={it.id} className="flex items-start gap-3 py-3">
                     <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">
@@ -329,6 +384,11 @@ export default async function PublicOrderPage({
                       <div className="text-brand-muted text-xs">
                         {it.variant.name} · {it.qty} × {formatCOP(it.unitPrice)}
                       </div>
+                      {variantBreakdown.length > 0 && (
+                        <div className="text-brand-purple-dark/70 text-xs">
+                          {variantBreakdown.join(" · ")}
+                        </div>
+                      )}
                       {borderNote && <div className="text-brand-muted text-xs">{borderNote}</div>}
                     </div>
                     <div className="text-brand-purple-dark flex-shrink-0 text-right text-sm font-semibold tabular-nums">
@@ -398,16 +458,29 @@ export default async function PublicOrderPage({
             >
               <Row
                 label={<CmsText blockKey="order.status.carrier-label" fallback="Transportadora" />}
-                value={order.shippingCarrier ?? "—"}
+                value={carrierDisplayName(order.shippingCarrier)}
               />
               <Row
-                label={<CmsText blockKey="order.status.tracking-label" fallback="Número de guía" />}
+                label={
+                  isInternalDelivery ? (
+                    "Referencia"
+                  ) : (
+                    <CmsText blockKey="order.status.tracking-label" fallback="Número de guía" />
+                  )
+                }
                 value={
                   <span className="text-brand-purple-dark/85 font-mono text-xs">
                     {order.trackingNumber}
                   </span>
                 }
               />
+              {isInternalDelivery && (
+                <p className="text-brand-muted mt-2 text-xs">
+                  {order.status === "DELIVERED"
+                    ? "Tu pedido fue entregado por nuestro equipo Lucam&apos;s."
+                    : "Tu pedido va con nuestro equipo Lucam&apos;s — la entrega es directa, el mismo día del despacho, sin transportadora externa."}
+                </p>
+              )}
               {/* Rastreo (feedback Lucy 2026-08-11): el portal oficial de la
                   transportadora como enlace principal (el trackingUrl guardado
                   es el PDF del documento de guía — ahora va etiquetado como tal). */}
@@ -432,6 +505,18 @@ export default async function PublicOrderPage({
                 </a>
               )}
             </Card>
+          )}
+
+          {/* Paquete I — "Volver a pedir" (invitado): el token del link autoriza el reorder;
+              el resumen inline dice qué entró al carrito, qué requiere fotos y qué ya no está. */}
+          {reorderTexts && (
+            <div className="border-brand-purple/15 mb-4 rounded-2xl border bg-white p-5 text-center shadow-sm">
+              <ReorderControl
+                action={reorderGuestAction}
+                hiddenField={{ name: "token", value: token }}
+                texts={reorderTexts}
+              />
+            </div>
           )}
 
           <div className="border-brand-purple/15 from-brand-pink/10 to-brand-purple/10 rounded-2xl border bg-gradient-to-br p-5 text-center shadow-sm">

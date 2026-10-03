@@ -13,11 +13,56 @@
  */
 
 import { z } from "zod";
+import {
+  PERSONALIZATION_KINDS,
+  TEXT_ONLY_VARIANTS,
+  type PersonalizationFieldsInput,
+} from "./personalization-schema";
 
 const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const skuRegex = /^[A-Z0-9-]+$/;
 
-export const ProductCreateSchema = z.object({
+/**
+ * Refinamientos cruzados de la config de personalización (2026-10-02).
+ * Viven FUERA del objeto base: Zod 4 rechaza .partial() sobre objetos con
+ * refinements, y ProductUpdateSchema = base.partial()… — así que create y
+ * update aplican este mismo superRefine por separado.
+ */
+function personalizationRefinements(
+  data: Pick<
+    PersonalizationFieldsInput,
+    "letterCountMin" | "letterCountMax" | "letterSet" | "personalizationKind"
+  >,
+  ctx: z.RefinementCtx,
+): void {
+  if (
+    data.letterCountMin != null &&
+    data.letterCountMax != null &&
+    data.letterCountMin > data.letterCountMax
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["letterCountMax"],
+      message: "El máximo de letras no puede ser menor que el mínimo",
+    });
+  }
+  // El set de letras (abecedario/vocales) es un marcador con prioridad sobre
+  // el kind (surface.ts): declararlo junto a OTRO kind sería ambiguo — el
+  // form lo expresa como opción propia del select (kind persistido = NONE).
+  if (
+    data.letterSet != null &&
+    data.personalizationKind != null &&
+    data.personalizationKind !== "NONE"
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["letterSet"],
+      message: "El set de letras solo aplica a productos sin otro tipo de personalización",
+    });
+  }
+}
+
+const ProductBaseSchema = z.object({
   name: z.string().min(2, "Nombre muy corto (mín 2 chars)").max(120, "Máximo 120 chars"),
   slug: z
     .string()
@@ -50,14 +95,16 @@ export const ProductCreateSchema = z.object({
   richDescription: z.string().max(5000).optional().nullable(),
   whyChooseThis: z.string().max(2000).optional().nullable(),
   idealFor: z.array(z.string().max(120)).max(20).optional(),
-  // PLAN_CATALOG_V2 4.2 — garantía + tiempos. Piso legal 12 meses: la garantía legal (Ley 1480
-  // art. 7-8) es de mínimo 1 año e irrenunciable → el admin no puede anunciar menos.
-  // Mensaje en español (owner 2026-09-18): productos creados antes de esta regla traen <12 y
-  // el form debe decir CLARO qué corregir, no un "Too small" en inglés.
+  // PLAN_CATALOG_V2 4.2 — garantía + tiempos. Piso 3 meses: por la naturaleza de los productos
+  // (papelería magnética personalizada, de alta manipulación) la tienda fija e INFORMA el término
+  // de 3 meses al consumidor, como permite la Ley 1480 de 2011 (art. 8) — el admin no puede
+  // anunciar menos (decisión de garantía 2026-09-27; antes el piso era 12, garantía legal default).
+  // Mensaje en español (owner 2026-09-18): productos creados antes de esta regla pueden traer
+  // un valor bajo y el form debe decir CLARO qué corregir, no un "Too small" en inglés.
   warrantyMonths: z
     .number()
     .int()
-    .min(12, "Mínimo 12 meses (la garantía legal es de 1 año)")
+    .min(3, "Mínimo 3 meses (el término de garantía informado al consumidor)")
     .max(120, "Máximo 120 meses")
     .optional(),
   productionDays: z.number().int().min(1, "Mínimo 1 día").max(60, "Máximo 60 días").optional(),
@@ -82,8 +129,6 @@ export const ProductCreateSchema = z.object({
     .max(10_000, "Máximo 10.000")
     .optional()
     .nullable(),
-  // PLAN_CATALOG_V2 5.5 — surcharge para templates PREMADE
-  premadeSurcharge: z.number().int().min(0).max(100).optional(),
   // PR C (Lucy 2026-05-21) — Envío: peso + dims del paquete final.
   // Opcionales individualmente; el checkout valida que estén COMPLETOS
   // (los 4) antes de cotizar Aveonline.
@@ -119,11 +164,12 @@ export const ProductCreateSchema = z.object({
     .max(100, "Máximo 100 cm")
     .optional()
     .nullable(),
-  // Estudio de personalización POR PRODUCTO (owner 2026-09-24, v2 STG, tab
-  // Avanzado) — se persisten dentro de personalizationSchema Json (merge estilo
-  // physicalSpecs en updateProduct). canvasBaseScale = TAMAÑO BASE del lienzo
-  // (el "100%" que ve el cliente), NO su zoom inicial. Vacío (null) = default
-  // del Estudio; en edición, vaciar el campo ELIMINA la key (vuelve al default).
+  // Estudio de personalización POR PRODUCTO (owner 2026-09-24, v2 STG; desde
+  // 2026-10-02 en el tab Personalización, panel de foto) — se persisten dentro
+  // de personalizationSchema Json (merge estilo physicalSpecs en updateProduct).
+  // canvasBaseScale = TAMAÑO BASE del lienzo (el "100%" que ve el cliente), NO
+  // su zoom inicial. Vacío (null) = default del Estudio; en edición, vaciar el
+  // campo ELIMINA la key (vuelve al default).
   canvasBaseScale: z
     .number()
     .min(0.5, "Mínimo 0.5 (50%)")
@@ -137,12 +183,105 @@ export const ProductCreateSchema = z.object({
     .max(6, "Máximo 6 columnas")
     .optional()
     .nullable(),
+  // ── Personalización completa desde el form (2026-10-02, tab "Personalización") ──
+  // Antes personalizationKind/schema solo los escribían los scripts de catálogo
+  // y un producto creado desde el admin nunca llegaba al Estudio ni a
+  // /admin/disenos. SIN .default("NONE") a propósito: ProductUpdateSchema =
+  // base.partial() y en Zod 4 .partial() CONSERVA los defaults — un default
+  // acá resetearía el kind a NONE en todo update que no lo enviara.
+  // El service trata undefined como NONE al crear (y deriva isPersonalizable =
+  // kind ≠ "NONE", mismo criterio que los scripts de seed).
+  personalizationKind: z.enum(PERSONALIZATION_KINDS).optional(),
+  // Superficie foto (PHOTO_PACK, PHOTO_GRID, CALENDAR_*, CUSTOM_DECOR).
+  // Rangos alineados con PhotoProductConfigSchema (features/personalization).
+  photoSlots: z
+    .number()
+    .int("Debe ser un entero")
+    .min(1, "Mínimo 1 foto")
+    .max(50, "Máximo 50 fotos")
+    .optional()
+    .nullable(),
+  facesPerUnit: z
+    .number()
+    .int("Debe ser un entero")
+    .min(1, "Mínimo 1 cara")
+    .max(2, "Máximo 2 caras")
+    .optional()
+    .nullable(),
+  aspectRatio: z
+    .string()
+    .trim()
+    .regex(/^\d+:\d+$/, "Formato ancho:alto (ej. 4:5, 1:1)")
+    .max(12)
+    .optional()
+    .nullable(),
+  // Tag de la galería de diseños prediseñados (/admin/disenos). Vacío (null) =
+  // no declarar → el Estudio y el admin caen al SLUG del producto (fallback
+  // default-on 2026-09-09, design-gallery.ts).
+  galleryTag: z
+    .string()
+    .trim()
+    .max(80, "Máximo 80 chars")
+    .regex(slugRegex, "Solo minúsculas, números y guiones (ej. separadores-magneticos)")
+    .optional()
+    .nullable(),
+  // TEXT_ONLY — subtipo: nombre con fichas / cuadro con frase / set fijo.
+  textOnlyVariant: z.enum(TEXT_ONLY_VARIANTS).optional().nullable(),
+  letterCountMin: z
+    .number()
+    .int("Debe ser un entero")
+    .min(1, "Mínimo 1 letra")
+    .max(30, "Máximo 30 letras")
+    .optional()
+    .nullable(),
+  letterCountMax: z
+    .number()
+    .int("Debe ser un entero")
+    .min(1, "Mínimo 1 letra")
+    .max(30, "Máximo 30 letras")
+    .optional()
+    .nullable(),
+  // Idioma del alfabeto (nombre con fichas y set de letras).
+  language: z.enum(["es", "en"]).optional().nullable(),
+  maxChars: z
+    .number()
+    .int("Debe ser un entero")
+    .min(1, "Mínimo 1 caracter")
+    .max(280, "Máximo 280 caracteres")
+    .optional()
+    .nullable(),
+  fontOptions: z
+    .array(z.string().trim().min(1).max(40))
+    .max(12, "Máximo 12 fuentes")
+    .optional()
+    .nullable(),
+  // EVENT_FAVOR
+  eventFields: z
+    .array(z.string().trim().min(1).max(40))
+    .max(12, "Máximo 12 campos")
+    .optional()
+    .nullable(),
+  allowPhoto: z.boolean().optional().nullable(),
+  // BUSINESS_LOGO — se persiste como key "fields" del personalizationSchema
+  // (contrato de surface.ts LogoSurfaceConfig).
+  logoFields: z
+    .array(z.string().trim().min(1).max(40))
+    .max(12, "Máximo 12 campos")
+    .optional()
+    .nullable(),
+  requiresVectorFile: z.boolean().optional().nullable(),
+  // Set de letras (abecedario completo / vocales): kind NONE + este marcador.
+  letterSet: z.enum(["full", "vowels"]).optional().nullable(),
 });
+
+export const ProductCreateSchema = ProductBaseSchema.superRefine(personalizationRefinements);
 
 export type ProductCreateInput = z.infer<typeof ProductCreateSchema>;
 
-export const ProductUpdateSchema = ProductCreateSchema.partial().extend({
-  id: z.string().cuid(),
-});
+export const ProductUpdateSchema = ProductBaseSchema.partial()
+  .extend({
+    id: z.string().cuid(),
+  })
+  .superRefine(personalizationRefinements);
 
 export type ProductUpdateInput = z.infer<typeof ProductUpdateSchema>;

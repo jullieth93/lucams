@@ -44,6 +44,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Hint } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { getCurrentAdmin } from "@/lib/auth";
 import {
@@ -189,15 +190,16 @@ export default async function EditarCampoPage({
                 <input type="hidden" name="fieldId" value={field.id} />
                 <input type="hidden" name="versionId" value={latestVersion.id} />
                 <input type="hidden" name="redirectTo" value={selfHref} />
-                <Button
-                  type="submit"
-                  size="sm"
-                  className="bg-emerald-600 text-white hover:bg-emerald-700"
-                  title="Hacer pública la última versión guardada"
-                >
-                  <Send className="mr-1.5 h-3.5 w-3.5" />
-                  {field.isPublished ? "Publicar nueva versión" : "Publicar"}
-                </Button>
+                <Hint content="Hacer pública la última versión guardada">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    className="bg-emerald-600 text-white hover:bg-emerald-700"
+                  >
+                    <Send className="mr-1.5 h-3.5 w-3.5" />
+                    {field.isPublished ? "Publicar nueva versión" : "Publicar"}
+                  </Button>
+                </Hint>
               </form>
             )}
             {/* C3 — Publicación programada: el cron publica la versión cuando
@@ -212,14 +214,15 @@ export default async function EditarCampoPage({
                     <input type="hidden" name="fieldId" value={field.id} />
                     <input type="hidden" name="versionId" value={latestVersion.id} />
                     <input type="hidden" name="redirectTo" value={selfHref} />
-                    <button
-                      type="submit"
-                      className="ml-0.5 rounded-full p-0.5 hover:bg-sky-200"
-                      title="Quitar la programación (la versión queda como borrador)"
-                      aria-label="Quitar la programación"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+                    <Hint content="Quitar la programación (la versión queda como borrador)">
+                      <button
+                        type="submit"
+                        className="ml-0.5 rounded-full p-0.5 hover:bg-sky-200"
+                        aria-label="Quitar la programación"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Hint>
                   </form>
                 </span>
               ) : (
@@ -235,16 +238,17 @@ export default async function EditarCampoPage({
                     aria-label="Fecha y hora de publicación (hora de Colombia)"
                     className="border-brand-purple/20 h-8 rounded-md border bg-white px-2 text-xs shadow-sm"
                   />
-                  <Button
-                    type="submit"
-                    size="sm"
-                    variant="ghost"
-                    className="text-brand-purple-dark hover:bg-brand-purple/10"
-                    title="Programar: la versión se publica sola en esa fecha (hora de Colombia)"
-                  >
-                    <CalendarClock className="mr-1 h-3.5 w-3.5" />
-                    Programar
-                  </Button>
+                  <Hint content="Programar: la versión se publica sola en esa fecha (hora de Colombia)">
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="ghost"
+                      className="text-brand-purple-dark hover:bg-brand-purple/10"
+                    >
+                      <CalendarClock className="mr-1 h-3.5 w-3.5" />
+                      Programar
+                    </Button>
+                  </Hint>
                 </form>
               ))}
             {field.kind === "BLOCK" && field.isPublished && (
@@ -254,16 +258,17 @@ export default async function EditarCampoPage({
               >
                 <input type="hidden" name="fieldId" value={field.id} />
                 <input type="hidden" name="redirectTo" value={selfHref} />
-                <Button
-                  type="submit"
-                  variant="ghost"
-                  size="sm"
-                  className="text-brand-purple-dark hover:bg-brand-purple/10"
-                  title="Despublicar (el sitio caerá al texto por defecto)"
-                >
-                  <EyeOff className="mr-1.5 h-3.5 w-3.5" />
-                  Despublicar
-                </Button>
+                <Hint content="Despublicar (el sitio caerá al texto por defecto)">
+                  <Button
+                    type="submit"
+                    variant="ghost"
+                    size="sm"
+                    className="text-brand-purple-dark hover:bg-brand-purple/10"
+                  >
+                    <EyeOff className="mr-1.5 h-3.5 w-3.5" />
+                    Despublicar
+                  </Button>
+                </Hint>
               </ConfirmAction>
             )}
             <ConfirmAction
@@ -271,16 +276,17 @@ export default async function EditarCampoPage({
               message={`¿Archivar "${field.label}"? Quedará oculto del sitio. Tu historial de versiones se conserva.`}
             >
               <input type="hidden" name="fieldId" value={field.id} />
-              <Button
-                type="submit"
-                variant="ghost"
-                size="sm"
-                className="text-red-700 hover:bg-red-50"
-                title="Archivar campo"
-              >
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                Archivar
-              </Button>
+              <Hint content="Archivar campo">
+                <Button
+                  type="submit"
+                  variant="ghost"
+                  size="sm"
+                  className="text-red-700 hover:bg-red-50"
+                >
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                  Archivar
+                </Button>
+              </Hint>
             </ConfirmAction>
           </div>
         }

@@ -25,6 +25,7 @@ import {
 } from "@/components/admin-page";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { CreateOcasionForm } from "./create-ocasion-form";
 import { toggleOcasionActiveAction } from "./actions";
 
@@ -236,21 +237,22 @@ export default async function AdminOcasionesPage({ searchParams }: { searchParam
                       <form action={toggleOcasionActiveAction} className="inline">
                         <input type="hidden" name="id" value={o.id} />
                         <input type="hidden" name="next" value={o.isActive ? "false" : "true"} />
-                        <button
-                          type="submit"
-                          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
-                            o.isActive
-                              ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
-                              : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200"
-                          }`}
-                          title={o.isActive ? "Click para desactivar" : "Click para activar"}
-                        >
-                          <span
-                            className={`h-1.5 w-1.5 rounded-full ${o.isActive ? "bg-emerald-500" : "bg-slate-400"}`}
-                            aria-hidden
-                          />
-                          {o.isActive ? "Activa" : "Inactiva"}
-                        </button>
+                        <Hint content={o.isActive ? "Click para desactivar" : "Click para activar"}>
+                          <button
+                            type="submit"
+                            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
+                              o.isActive
+                                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                                : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200"
+                            }`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${o.isActive ? "bg-emerald-500" : "bg-slate-400"}`}
+                              aria-hidden
+                            />
+                            {o.isActive ? "Activa" : "Inactiva"}
+                          </button>
+                        </Hint>
                       </form>
                     </td>
                     <td className="px-4 py-3 text-right">

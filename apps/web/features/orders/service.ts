@@ -21,8 +21,9 @@ import crypto from "node:crypto";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { canTransition, type ShippingAddressInput } from "./schemas";
-import { assertStockAvailable, revertStockForOrder } from "./stock";
+import { assertStockAvailable, revertStockForOrder, variantDisplayName } from "./stock";
 import {
+  OrderAlreadyPaidError,
   OrderAmountTooLargeError,
   OrderUnavailableItemsError,
   RefundMoneyNotConfirmedError,
@@ -31,6 +32,7 @@ import { fitsMoneyInt4 } from "@/lib/money";
 import { invalidateCatalogListings } from "@/lib/catalog";
 import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/redemption";
 import { computeShippingAddressKey } from "@/features/checkout/address-key";
+import { consolidateIdenticalLines } from "@/features/cart/design-identity";
 import { hashBearerToken } from "@/lib/token-hash";
 import { sendOrderRefunded } from "./emails";
 import { assertTransactionalAllowed } from "@/lib/stage-guard";
@@ -241,14 +243,26 @@ async function createOrderFromCartTx(
               select: {
                 id: true,
                 sku: true,
+                // name (variante + producto): OrderUnavailableItemsError nombra el
+                // producto retirado en el aviso al cliente (2026-09-29).
+                name: true,
                 isActive: true,
                 deletedAt: true,
-                product: { select: { isActive: true, deletedAt: true } },
+                product: { select: { isActive: true, deletedAt: true, name: true } },
               },
             },
             // ADR-070 (pieza #1) — snapshot autocontenido del diseño en el pedido.
+            // canvasData/metadata/productId (Paquete H, 2026-10-02): identidad de
+            // contenido para consolidar líneas idénticas antes de crear los items.
             design: {
-              select: { previewUrl: true, productionUrl: true, productionUrls: true },
+              select: {
+                previewUrl: true,
+                productionUrl: true,
+                productionUrls: true,
+                productId: true,
+                canvasData: true,
+                metadata: true,
+              },
             },
           },
         },
@@ -288,7 +302,11 @@ async function createOrderFromCartTx(
         dropped: unavailableItems.map((it) => ({ variantId: it.variantId, sku: it.variant.sku })),
       });
       throw new OrderUnavailableItemsError(
-        unavailableItems.map((it) => ({ variantId: it.variantId, sku: it.variant.sku })),
+        unavailableItems.map((it) => ({
+          variantId: it.variantId,
+          sku: it.variant.sku,
+          name: variantDisplayName(it.variant),
+        })),
       );
     }
 
@@ -371,6 +389,16 @@ async function createOrderFromCartTx(
       throw new OrderAmountTooLargeError(Math.max(subtotal, total));
     }
 
+    // Paquete H (2026-10-02) — defensa en la puerta del pedido: si el carrito
+    // llega con líneas que son la MISMA compra (misma variante + mismo contenido
+    // de diseño, o sin personalización; mismo criterio que los merges de
+    // carrito), se consolidan ANTES de firmar/crear los OrderItems. Así un pedido
+    // nunca tiene dos líneas visualmente idénticas (el desglose duplicado del
+    // reporte STG venía de datos así). Se conserva la primera línea de cada
+    // grupo (la más vieja: su diseño/preview es el que queda en el snapshot);
+    // el qty se suma SIN tope (consolidar no cambia el total comprado).
+    const consolidatedItems = consolidateIdenticalLines(cart.items);
+
     // Firma de items (independiente del orden) para detectar si el carrito cambió respecto a la
     // orden PENDING existente. Incluye designId + unitPrice para captar re-personalizaciones.
     const itemSignature = (
@@ -385,10 +413,10 @@ async function createOrderFromCartTx(
         .map((it) => `${it.variantId}:${it.qty}:${it.designId ?? ""}:${it.unitPrice}`)
         .sort()
         .join("|");
-    const cartSig = itemSignature(cart.items);
+    const cartSig = itemSignature(consolidatedItems);
 
     // Data de items para crear/recrear los OrderItem (snapshot inmutable del cart).
-    const orderItemsCreate = cart.items.map((ci) => {
+    const orderItemsCreate = consolidatedItems.map((ci) => {
       // ADR-070 (pieza #1) — snapshot autocontenido del diseño: si el Design se borra luego
       // (borrado de cuenta, solicitud de datos Ley 1581, purga), el pedido conserva la imagen para
       // producción. designAssetUrl = preview público; las URLs de alta resolución van en metadata.
@@ -458,6 +486,8 @@ async function createOrderFromCartTx(
     } as const;
 
     // Marcar Designs vinculados como USED_IN_ORDER (immutable post-checkout).
+    // Se marcan TODOS los del carrito, incluidos los gemelos que la consolidación
+    // (Paquete H) absorbió en otra línea: su contenido también va en el pedido.
     const designIds = cart.items.map((ci) => ci.designId).filter((id): id is string => !!id);
     const markDesignsUsed = async () => {
       if (designIds.length > 0) {
@@ -487,10 +517,15 @@ async function createOrderFromCartTx(
       if (identical) {
         // Refresh idempotente (reload de /checkout/pago sin cambios) → misma orden.
         // F-11: rotamos el token (solo hay hash del viejo) y devolvemos el plano fresco.
-        await tx.order.update({
-          where: { id: existing.id },
+        // TOCTOU (2026-09-29): el UPDATE va gateado por status — si el webhook Wompi
+        // commiteó PAID entre el findFirst de arriba y este punto, count=0 y NO tocamos
+        // la orden pagada (OrderAlreadyPaidError aborta la tx; el checkout redirige a la
+        // vista de confirmación en vez de crear otra orden/cobro).
+        const gated = await tx.order.updateMany({
+          where: { id: existing.id, status: "PENDING_PAYMENT" },
           data: { publicAccessTokenHash },
         });
+        if (gated.count === 0) throw new OrderAlreadyPaidError(existing.id, existing.number);
         return {
           id: existing.id,
           number: existing.number,
@@ -506,10 +541,23 @@ async function createOrderFromCartTx(
       // pagar" y "pagar". Actualizamos la MISMA orden (mismo id/número; el token rota — F-11: ya no
       // se guarda en claro para releerlo) con datos frescos, en vez de devolver la vieja — que
       // cobraría el total, los items o el MÉTODO obsoletos.
+      //
+      // TOCTOU (2026-09-29): antes se hacía deleteMany(items) + update SIN gatear por estado; si el
+      // webhook Wompi commiteaba PAID entre el findFirst y estas escrituras, la reconciliación PISABA
+      // una orden ya pagada (items/total distintos a lo cobrado). Ahora el gate atómico va PRIMERO:
+      // UPDATE … WHERE id AND status='PENDING_PAYMENT'. Si count=0, la orden ya no es nuestra →
+      // OrderAlreadyPaidError (rollback de la tx, no se borra ni se crea nada). Si count=1, el
+      // row-lock de Postgres queda tomado hasta el commit de ESTA $transaction, así que el swap de
+      // items de abajo no puede quedar entremedio de una transición a PAID.
+      const gated = await tx.order.updateMany({
+        where: { id: existing.id, status: "PENDING_PAYMENT" },
+        data: { ...orderScalars, publicAccessTokenHash },
+      });
+      if (gated.count === 0) throw new OrderAlreadyPaidError(existing.id, existing.number);
       await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
       const reconciled = await tx.order.update({
         where: { id: existing.id },
-        data: { ...orderScalars, publicAccessTokenHash, items: { create: orderItemsCreate } },
+        data: { items: { create: orderItemsCreate } },
         select: returnSelect,
       });
       await markDesignsUsed();
@@ -776,7 +824,13 @@ export async function getOrder(idOrNumber: string) {
               name: true,
               productId: true,
               price: true,
-              product: { select: { name: true } },
+              // Paquete F (2026-10-02) — attributes: desglose estructurado de la
+              // variante en el detalle del pedido (Con/Sin imán, tamaño, idioma…).
+              attributes: true,
+              // productionDays: la promesa de entrega propia ("Envío Lucam's" =
+              // fabricación + hora de corte, lib/delivery-estimate.ts) se deriva
+              // del Product actual vía los items persistidos — sin snapshot extra.
+              product: { select: { name: true, productionDays: true } },
             },
           },
           // productionUrls: paths de los PNGs 300 DPI para imprenta (ADR-063 T1). El admin los
@@ -789,6 +843,9 @@ export async function getOrder(idOrNumber: string) {
               previewUrl: true,
               productionUrls: true,
               moderationStatus: true,
+              // Paquete C (2026-10-02) — aceptación explícita de calidad de fotos
+              // (checkbox de la Vista Previa): evidencia ante reclamos de garantía.
+              qualityAcknowledgedAt: true,
             },
           },
         },

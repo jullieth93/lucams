@@ -7,6 +7,9 @@
  * - Hasta 5 thumbnails horizontales debajo, click cambia el hero
  * - Click sobre hero abre Dialog fullscreen con navegación ←/→ y Esc
  * - Empty state: gradient brand + ícono Sparkles
+ * - Fallback onError (T5): una URL rota (404 hot-linked, objeto borrado) cae al MISMO
+ *   placeholder Sparkles del empty state, por imagen — el hero roto era el LCP con priority
+ *   y quedaba como imagen quebrada, peor en móvil.
  *
  * Props mínimas — el page server-side ya seleccionó las imágenes.
  */
@@ -16,9 +19,22 @@ import Image from "next/image";
 import { ChevronLeft, ChevronRight, Sparkles, X, ZoomIn } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
+/** Placeholder de marca: el mismo del empty state (gradiente lo aporta el contenedor). */
+function GalleryPlaceholder({ className }: { className: string }) {
+  return (
+    <div className="flex h-full w-full items-center justify-center">
+      <Sparkles className={className} />
+    </div>
+  );
+}
+
 export function ProductGallery({ images, alt }: { images: string[]; alt: string }) {
   const [activeIdx, setActiveIdx] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  // URLs cuya carga falló (onError de next/image) — se reemplazan por el placeholder.
+  const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
+  const markFailed = (url: string) =>
+    setFailed((prev) => (prev.has(url) ? prev : new Set(prev).add(url)));
 
   if (images.length === 0) {
     return (
@@ -41,14 +57,19 @@ export function ProductGallery({ images, alt }: { images: string[]; alt: string 
           aria-label="Ver imagen ampliada"
           className="border-brand-purple/10 from-brand-turquoise/15 via-brand-cream to-brand-pink/15 group relative aspect-square w-full overflow-hidden rounded-xl border bg-gradient-to-br"
         >
-          <Image
-            src={activeImage}
-            alt={alt}
-            fill
-            sizes="(max-width: 768px) 100vw, 50vw"
-            priority
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
-          />
+          {failed.has(activeImage) ? (
+            <GalleryPlaceholder className="text-brand-purple/30 h-20 w-20" />
+          ) : (
+            <Image
+              src={activeImage}
+              alt={alt}
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              priority
+              onError={() => markFailed(activeImage)}
+              className="object-cover transition-transform duration-300 group-hover:scale-105"
+            />
+          )}
           <div className="absolute right-2 bottom-2 rounded-full bg-white/90 p-2 opacity-0 shadow-md transition-opacity group-hover:opacity-100">
             <ZoomIn className="text-brand-purple-dark h-4 w-4" />
           </div>
@@ -71,13 +92,18 @@ export function ProductGallery({ images, alt }: { images: string[]; alt: string 
                   (idx === activeIdx ? "ring-brand-purple ring-2" : "opacity-70 hover:opacity-100")
                 }
               >
-                <Image
-                  src={img}
-                  alt={`${alt} — vista ${idx + 1}`}
-                  fill
-                  sizes="(max-width: 768px) 20vw, 10vw"
-                  className="object-cover"
-                />
+                {failed.has(img) ? (
+                  <GalleryPlaceholder className="text-brand-purple/30 h-6 w-6" />
+                ) : (
+                  <Image
+                    src={img}
+                    alt={`${alt} — vista ${idx + 1}`}
+                    fill
+                    sizes="(max-width: 768px) 20vw, 10vw"
+                    onError={() => markFailed(img)}
+                    className="object-cover"
+                  />
+                )}
               </button>
             ))}
           </div>
@@ -92,6 +118,8 @@ export function ProductGallery({ images, alt }: { images: string[]; alt: string 
             images={images}
             alt={alt}
             activeIdx={activeIdx}
+            failed={failed}
+            onImageError={markFailed}
             onChange={setActiveIdx}
             onClose={() => setLightboxOpen(false)}
             onNext={next}
@@ -107,6 +135,8 @@ function LightboxView({
   images,
   alt,
   activeIdx,
+  failed,
+  onImageError,
   onChange,
   onClose,
   onNext,
@@ -115,6 +145,8 @@ function LightboxView({
   images: string[];
   alt: string;
   activeIdx: number;
+  failed: ReadonlySet<string>;
+  onImageError: (url: string) => void;
   onChange: (i: number) => void;
   onClose: () => void;
   onNext: () => void;
@@ -141,14 +173,19 @@ function LightboxView({
         <X className="h-5 w-5" />
       </button>
       <div className="relative flex-1">
-        <Image
-          src={images[activeIdx]}
-          alt={alt}
-          fill
-          sizes="100vw"
-          className="object-contain"
-          priority
-        />
+        {failed.has(images[activeIdx]) ? (
+          <GalleryPlaceholder className="h-20 w-20 text-white/40" />
+        ) : (
+          <Image
+            src={images[activeIdx]}
+            alt={alt}
+            fill
+            sizes="100vw"
+            className="object-contain"
+            onError={() => onImageError(images[activeIdx])}
+            priority
+          />
+        )}
       </div>
       {images.length > 1 && (
         <>

@@ -225,7 +225,15 @@ export async function refundOrderAction(
       return { success: "La orden ya estaba reembolsada." };
     }
     return {
-      success: `Reembolso de ${formatCOP(res.amount)} registrado con tu confirmación de dinero devuelto.`,
+      // Checklist explícito del efecto real (2026-10-01): el admin confirmó el dinero
+      // ANTES (checkbox N-17), pero el resultado no le decía todo lo que el sistema
+      // hizo — la duda "¿y ahora qué pasó?" era recurrente. El dinero sigue siendo
+      // 100% manual (Wompi/transferencia); esto solo comunica lo ya ejecutado.
+      success:
+        `Reembolso de ${formatCOP(res.amount)} registrado. ` +
+        `✔ Orden en REFUNDED ✔ stock repuesto ✔ cupón liberado (si aplicaba) ` +
+        `✔ email enviado al cliente. El dinero ya debió devolverse por el canal manual ` +
+        `(Wompi o transferencia) — tu confirmación quedó en auditoría.`,
     };
   } catch (err) {
     logger.warn({

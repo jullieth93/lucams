@@ -349,10 +349,14 @@ describe("reviewRequestEmail", () => {
     orderNumber: "LS-5001",
     customerName: "Lucía",
     products: [
-      { name: "Fotoimanes Cuadrados", slug: "fotoimanes-cuadrados" },
-      { name: "Set Corazón", slug: "set-corazon" },
+      {
+        id: "cprod0000000000000000001",
+        name: "Fotoimanes Cuadrados",
+        slug: "fotoimanes-cuadrados",
+      },
+      { id: "cprod0000000000000000002", name: "Set Corazón", slug: "set-corazon" },
     ],
-    publicTrackingToken: null,
+    reviewToken: null as string | null,
   };
 
   it("subject personaliza con el nombre", async () => {
@@ -360,21 +364,28 @@ describe("reviewRequestEmail", () => {
     expect(r.subject).toBe("Lucía, ¿nos dejas tu reseña? ⭐");
   });
 
-  it("#10 con publicTrackingToken el CTA de reseña apunta a la vista guest /pedido/<token>", async () => {
-    const r = await reviewRequestEmail({ ...base, publicTrackingToken: "REVTOK" });
-    expect(r.html).toContain(`${SITE_URL}/pedido/REVTOK`);
-    expect(r.text).toContain(`${SITE_URL}/pedido/REVTOK`);
-    expect(r.html).not.toContain("/rastrear");
-  });
-
-  it("#10 sin token el CTA cae a /rastrear (fallback sin login, F-11)", async () => {
-    const r = await reviewRequestEmail(base);
+  it("con reviewToken el CTA apunta a /resena/<token> y cada producto a ?p=<id>", async () => {
+    const r = await reviewRequestEmail({ ...base, reviewToken: "REVTOK" });
+    expect(r.html).toContain(`${SITE_URL}/resena/REVTOK`);
+    expect(r.text).toContain(`${SITE_URL}/resena/REVTOK`);
+    // Links por producto: preselección ?p=<productId> (id encodeURIComponent).
+    expect(r.html).toContain(`${SITE_URL}/resena/REVTOK?p=cprod0000000000000000001`);
+    expect(r.html).toContain(`${SITE_URL}/resena/REVTOK?p=cprod0000000000000000002`);
+    // /rastrear queda solo como info secundaria del estado del pedido.
     expect(r.html).toContain(`${SITE_URL}/rastrear`);
     expect(r.html).not.toContain("/pedido/");
     expect(r.html).not.toContain("/mi-cuenta/pedidos");
   });
 
-  it("HTML lista cada producto con link a su ficha (encodeURIComponent del slug)", async () => {
+  it("sin token el CTA cae a /rastrear (fallback si la emisión del token falla)", async () => {
+    const r = await reviewRequestEmail(base);
+    expect(r.html).toContain(`${SITE_URL}/rastrear`);
+    expect(r.html).not.toContain("/resena/");
+    expect(r.html).not.toContain("/pedido/");
+    expect(r.html).not.toContain("/mi-cuenta/pedidos");
+  });
+
+  it("sin token los productos enlazan a su ficha (encodeURIComponent del slug)", async () => {
     const r = await reviewRequestEmail(base);
     expect(r.html).toContain(`${SITE_URL}/producto/fotoimanes-cuadrados`);
     expect(r.html).toContain(`${SITE_URL}/producto/set-corazon`);
@@ -387,7 +398,7 @@ describe("reviewRequestEmail", () => {
     const r = await reviewRequestEmail({
       ...base,
       customerName: "Ana <b>",
-      products: [{ name: "Set <script> & co", slug: "x" }],
+      products: [{ id: "cprod0000000000000000001", name: "Set <script> & co", slug: "x" }],
     });
     expect(r.html).toContain("Ana &lt;b&gt;");
     expect(r.html).toContain("Set &lt;script&gt; &amp; co");

@@ -16,6 +16,7 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ComponentProps } from "react";
 
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
@@ -51,6 +52,7 @@ vi.mock("@/app/carrito/actions", () => ({
 }));
 
 import { LetterSetEditor } from "./letter-set-editor";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 afterEach(() => cleanup());
 
@@ -77,23 +79,50 @@ beforeEach(() => {
   addPersonalizedToCartAction.mockClear();
 });
 
-function renderEditor() {
+function renderEditor(
+  extraProps?: Partial<
+    Pick<
+      ComponentProps<typeof LetterSetEditor>,
+      "themeOptions" | "stylesByLanguage" | "initialTheme"
+    >
+  >,
+) {
   return render(
-    <LetterSetEditor
-      product={{ id: "prod-1", slug: "pack-vocales", name: "Pack Vocales" }}
-      variantId="var-1"
-      variants={[{ id: "var-1", price: 45_000, sizeCm: "7×10", magnet: true, language: "es" }]}
-      basePrice={40_000}
-      letterSet="vowels"
-      alphabets={{ es: ["A", "B"], en: ["A", "B"] }}
-      availableLanguages={["es"]}
-      initialLanguage="es"
-      themeOptions={{ es: [], en: [] }}
-      initialTheme={null}
-      stylesByLanguage={{ es: [], en: [] }}
-    />,
+    // TooltipProvider: el tooltip de marca (Hint, radix) lo exige — en la app
+    // lo monta app/layout.tsx.
+    <TooltipProvider delayDuration={0}>
+      <LetterSetEditor
+        product={{ id: "prod-1", slug: "pack-vocales", name: "Pack Vocales" }}
+        variantId="var-1"
+        variants={[{ id: "var-1", price: 45_000, sizeCm: "7×10", magnet: true, language: "es" }]}
+        basePrice={40_000}
+        letterSet="vowels"
+        alphabets={{ es: ["A", "B"], en: ["A", "B"] }}
+        availableLanguages={["es"]}
+        initialLanguage="es"
+        themeOptions={{ es: [], en: [] }}
+        initialTheme={null}
+        stylesByLanguage={{ es: [], en: [] }}
+        {...extraProps}
+      />
+    </TooltipProvider>,
   );
 }
+
+/** Tema ILUSTRADO completo de prueba (5 vocales): con él activo la paleta se
+ *  desactiva con «Sin borde» (Fase 1B — el apagado solo aplica a temas con
+ *  ilustración; en «Solo letra» el color pinta el relleno y la paleta sigue viva). */
+const VOWEL_TILES = Object.fromEntries(
+  ["A", "E", "I", "O", "U"].map((c) => [c, { imageUrl: `/tiles/${c}.png`, label: null }]),
+);
+const ILLUSTRATED_PROPS = {
+  themeOptions: {
+    es: [{ id: "set-animales", name: "Animales", theme: "animales", language: "es", tileCount: 5 }],
+    en: [],
+  },
+  stylesByLanguage: { es: [{ id: "set-animales", name: "Animales", tiles: VOWEL_TILES }], en: [] },
+  initialTheme: "animales",
+};
 
 /** Pulsa "Vista previa" (antes "¡Listo!") y espera a que la vista previa esté en pantalla. */
 async function openPreview() {
@@ -209,8 +238,9 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
     // Lucy 2026-09-08 — con «Sin borde» las fichas no llevan el marco de color: la sección
     // «Elige los colores» se desactiva (visible + inerte, con el porqué) y el selector de
     // borde SIEMPRE queda habilitado para poder volver.
-    it("«Sin borde» desactiva «Elige los colores» con aviso, y el selector de borde sigue habilitado", () => {
-      renderEditor();
+    // Fase 1B — el apagado SOLO aplica con tema ILUSTRADO activo (styleId !== null).
+    it("«Sin borde» con tema ilustrado desactiva «Elige los colores» con aviso, y el selector de borde sigue habilitado", () => {
+      renderEditor(ILLUSTRATED_PROPS);
 
       fireEvent.click(screen.getByRole("radio", { name: /Sin borde/ }));
 
@@ -223,8 +253,22 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
       expect(screen.getByRole("radio", { name: /Sin borde/ })).toBeEnabled();
     });
 
+    it("Fase 1B — «Solo letra» + «Sin borde» mantiene la paleta ACTIVA (el color pinta el relleno de la letra)", () => {
+      renderEditor(); // sin tema ilustrado → «Solo letra» (styleId === null)
+
+      fireEvent.click(screen.getByRole("radio", { name: /Sin borde/ }));
+
+      for (const tema of ["Arcoíris", "Vibrante", "Neutro"]) {
+        expect(screen.getByRole("button", { name: new RegExp(tema) })).toBeEnabled();
+      }
+      expect(screen.queryByRole("note")).not.toBeInTheDocument();
+      // …y el pintado ficha a ficha también sigue activo (hint visible + fichas seleccionables).
+      expect(screen.getByText(/Toca una ficha para darle el color/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Pintar la ficha A" })).toBeEnabled();
+    });
+
     it("al volver a «Con borde» los colores se reactivan conservando la selección", () => {
-      renderEditor();
+      renderEditor(ILLUSTRATED_PROPS);
 
       // El cliente elige un tema distinto al default…
       fireEvent.click(screen.getByRole("button", { name: /Vibrante/ }));
@@ -233,8 +277,9 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
         "true",
       );
 
-      // …apaga el borde (colores desactivados) y lo vuelve a encender.
+      // …apaga el borde (tema ilustrado → colores desactivados, Fase 1B) y lo vuelve a encender.
       fireEvent.click(screen.getByRole("radio", { name: /Sin borde/ }));
+      expect(screen.getByRole("button", { name: /Vibrante/ })).toBeDisabled();
       fireEvent.click(screen.getByRole("radio", { name: /Con borde/ }));
 
       expect(screen.getByRole("button", { name: /Vibrante/ })).toBeEnabled();

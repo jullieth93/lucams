@@ -30,6 +30,7 @@ import {
 } from "@/components/admin-page";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { CreateCouponForm } from "./create-coupon-form";
 import { archiveCouponAction, pauseCouponAction, resumeCouponAction } from "./actions";
@@ -287,21 +288,22 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
                           className="inline"
                         >
                           <input type="hidden" name="id" value={c.id} />
-                          <button
-                            type="submit"
-                            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
-                              c.isActive
-                                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
-                                : "bg-amber-50 text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
-                            }`}
-                            title={c.isActive ? "Click para pausar" : "Click para reactivar"}
-                          >
-                            <span
-                              className={`h-1.5 w-1.5 rounded-full ${c.isActive ? "bg-emerald-500" : "bg-amber-500"}`}
-                              aria-hidden
-                            />
-                            {status.label}
-                          </button>
+                          <Hint content={c.isActive ? "Click para pausar" : "Click para reactivar"}>
+                            <button
+                              type="submit"
+                              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
+                                c.isActive
+                                  ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                                  : "bg-amber-50 text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
+                              }`}
+                            >
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${c.isActive ? "bg-emerald-500" : "bg-amber-500"}`}
+                                aria-hidden
+                              />
+                              {status.label}
+                            </button>
+                          </Hint>
                         </form>
                       ) : (
                         <AdminBadge tone={status.tone}>{status.label}</AdminBadge>

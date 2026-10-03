@@ -481,15 +481,27 @@ export default async function AdminObservabilityPage() {
             </Section>
           )}
 
-          {/* Web Vitals + enlaces */}
+          {/* Web Vitals + enlaces — pills desglosadas por métrica (2026-10-01:
+              el saco único sumaba LCP+INP+CLS+TTFB y escondía CUÁL métrica iba mal) */}
           <Section title="Rendimiento (Web Vitals, 7 días)" icon={<Gauge className="h-4 w-4" />}>
-            <div className="flex flex-wrap gap-3 text-sm">
-              <VitalPill label="Buenos" value={h.vitals7d.good} tone="emerald" />
-              <VitalPill label="A mejorar" value={h.vitals7d.needsImprovement} tone="amber" />
-              <VitalPill label="Pobres" value={h.vitals7d.poor} tone="rose" />
+            {h.vitalsByMetric7d.length === 0 ? (
+              <Empty>Sin mediciones de visitantes todavía. 🎉</Empty>
+            ) : (
+              <div className="space-y-2 text-sm">
+                {h.vitalsByMetric7d.map((m) => (
+                  <div key={m.name} className="flex flex-wrap items-center gap-2">
+                    <span className="text-brand-purple-dark w-12 text-xs font-bold">{m.name}</span>
+                    <VitalPill label="Buenos" value={m.good} tone="emerald" />
+                    <VitalPill label="A mejorar" value={m.needsImprovement} tone="amber" />
+                    <VitalPill label="Pobres" value={m.poor} tone="rose" />
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-3 flex justify-end">
               <Link
                 href="/admin/performance"
-                className="text-brand-purple-dark hover:text-brand-purple ml-auto inline-flex items-center gap-1 text-xs font-semibold underline"
+                className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-semibold underline"
               >
                 Ver detalle <ExternalLink className="h-3 w-3" />
               </Link>

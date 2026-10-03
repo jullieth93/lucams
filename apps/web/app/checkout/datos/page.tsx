@@ -19,6 +19,7 @@ import {
   CheckoutError,
 } from "@/features/checkout/service";
 import { getSavedAddressesForCheckout } from "@/features/addresses/service";
+import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { getCheckoutTexts } from "../checkout-texts.server";
 
 // Mensaje único cuando un item se agotó mientras estaba en el carrito (auditoría 2026-07-16).
@@ -38,7 +39,10 @@ export default async function CheckoutDatosPage() {
     if (err instanceof CheckoutError && err.code === "CART_EMPTY") redirect("/carrito");
     if (err instanceof CheckoutError && err.code === "CART_NOT_FOUND") redirect("/carrito");
     if (err instanceof CheckoutError && err.code === "STOCK_UNAVAILABLE") {
-      redirect(`/carrito?error=${encodeURIComponent(STOCK_GONE_MSG)}`);
+      // El mensaje ya es customer-safe y nombra el producto cuando el service lo
+      // conoce (2026-09-29); STOCK_GONE_MSG queda como fallback defensivo.
+      const msg = err.message && err.message !== err.code ? err.message : STOCK_GONE_MSG;
+      redirect(`/carrito?error=${encodeURIComponent(msg)}`);
     }
     throw err;
   }
@@ -49,6 +53,11 @@ export default async function CheckoutDatosPage() {
     !catalog && ctx.customerId ? await getSavedAddressesForCheckout(ctx.customerId) : [];
   // Roadmap B8 — textos CMS del paso (formulario de datos o cotización + resumen).
   const texts = await getCheckoutTexts();
+  // Paquete G (2026-10-02) — zonas con envío propio habilitado, para que el
+  // select de localidad marque cuáles NO lo tienen ("sin Envío Lucam's"). Es
+  // solo informativo: la localidad es dato de dirección y sigue seleccionable
+  // (puede haber transportadoras Aveonline para esa zona).
+  const lucamsSettings = catalog ? null : await getLucamsShippingSettings();
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -63,6 +72,11 @@ export default async function CheckoutDatosPage() {
               initial={ctx.state}
               savedAddresses={savedAddresses}
               canSaveAddress={Boolean(ctx.customerId)}
+              lucamsOwnShipping={
+                lucamsSettings
+                  ? { enabled: lucamsSettings.enabled, zones: lucamsSettings.zones }
+                  : null
+              }
               texts={texts.datos}
             />
           )}

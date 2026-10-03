@@ -165,3 +165,49 @@ export function igMissingRequiredTextLayerIds(canvasData: {
   // Orden estable = el de la plantilla (usuario, ubicación, título, hashtags).
   return layerIds.filter((id) => missing.has(id));
 }
+
+/**
+ * Fase 1A (2026-09-27) — detalle POR SLOT de los textos requeridos faltantes:
+ * misma regla que igMissingRequiredTextLayerIds pero desagregada, para que el
+ * popover de «Vista previa» pueda decir EN QUÉ unidad falta cada campo ("En
+ * 1A: usuario, hashtags"). Los slots sin faltantes no aparecen. Devuelve []
+ * para plantillas que no son Instagram.
+ */
+export function igMissingRequiredTextLayersPerSlot(canvasData: {
+  unitTemplate: {
+    layers: ReadonlyArray<{ type: string; id?: unknown; editable?: unknown; src?: unknown }>;
+  };
+  slots: ReadonlyArray<{
+    slotIndex?: number;
+    textOverrides?: Record<
+      string,
+      | {
+          text?: unknown;
+          fill?: unknown;
+          fontSize?: unknown;
+          fontFamily?: unknown;
+          fontWeight?: unknown;
+        }
+      | undefined
+    >;
+  }>;
+}): Array<{ slotIndex: number; layerIds: string[] }> {
+  if (!isInstagramTemplate(canvasData.unitTemplate.layers)) return [];
+  const required = new Set<string>(IG_REQUIRED_TEXT_LAYER_IDS);
+  const layerIds = canvasData.unitTemplate.layers
+    .filter(
+      (l) =>
+        l.type === "text" && l.editable === true && typeof l.id === "string" && required.has(l.id),
+    )
+    .map((l) => l.id as string);
+  if (layerIds.length === 0) return [];
+  const out: Array<{ slotIndex: number; layerIds: string[] }> = [];
+  canvasData.slots.forEach((slot, i) => {
+    const missing = layerIds.filter((id) => {
+      const t = slot.textOverrides?.[id]?.text;
+      return typeof t !== "string" || t.trim() === "";
+    });
+    if (missing.length > 0) out.push({ slotIndex: slot.slotIndex ?? i, layerIds: missing });
+  });
+  return out;
+}
