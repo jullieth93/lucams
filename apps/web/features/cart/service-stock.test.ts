@@ -26,7 +26,13 @@ type CartItemFixture = {
   customDesign: unknown;
   templateId: string | null;
   metadata: unknown;
-  design: null;
+  design: {
+    id: string;
+    previewUrl: string | null;
+    status: string;
+    metadata: unknown;
+    canvasData: unknown;
+  } | null;
   variant: {
     id: string;
     name: string;
@@ -34,6 +40,9 @@ type CartItemFixture = {
     price: number | null;
     stock: number;
     attributes: unknown;
+    // Paquete F (2026-10-02) — fotos propias de la variante (vacío = hereda
+    // Product.images). El DTO las prefiere sobre la genérica del producto.
+    images: string[];
     product: {
       id: string;
       slug: string;
@@ -73,6 +82,11 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     product: {
       findFirst: vi.fn(async () => state.product),
+    },
+    // Precio por volumen (2026-10-02): el service consulta los tiers activos en
+    // cada mutación. Sin tiers configurados → snapshot intacto (legacy).
+    wholesaleTier: {
+      findMany: vi.fn(async () => []),
     },
     cart: {
       findFirst: vi.fn(async () => state.cart),
@@ -122,20 +136,25 @@ import { addProductToCart, CartError, updateCartItemQty } from "./service";
 
 const PRODUCT = { id: "prod_1", slug: "iman-nevera", name: "Imán Nevera", basePrice: 12_000 };
 
-function makeVariant(id: string, stock: number): CartItemFixture["variant"] {
+function makeVariant(
+  id: string,
+  stock: number,
+  opts?: { images?: string[]; attributes?: unknown; productImages?: string[] },
+): CartItemFixture["variant"] {
   return {
     id,
     name: "Default",
     sku: "IMN-DEFAULT",
     price: null,
     stock,
-    attributes: {},
+    attributes: opts?.attributes ?? {},
+    images: opts?.images ?? [],
     product: {
       id: PRODUCT.id,
       slug: PRODUCT.slug,
       name: PRODUCT.name,
       basePrice: PRODUCT.basePrice,
-      images: [],
+      images: opts?.productImages ?? [],
       isPersonalizable: false,
       isActive: true,
       deletedAt: null,
@@ -154,7 +173,17 @@ function seedProduct(stock: number) {
   };
 }
 
-function seedCart(items: Array<{ qty: number; variantId?: string; stock?: number }>) {
+function seedCart(
+  items: Array<{
+    qty: number;
+    variantId?: string;
+    stock?: number;
+    variantImages?: string[];
+    productImages?: string[];
+    attributes?: unknown;
+    design?: CartItemFixture["design"];
+  }>,
+) {
   state.cart = {
     id: "cart_1",
     sessionId: "sess_1",
@@ -166,14 +195,19 @@ function seedCart(items: Array<{ qty: number; variantId?: string; stock?: number
       variantId: it.variantId ?? "var_1",
       qty: it.qty,
       unitPrice: 12_000,
-      designId: null,
+      designId: it.design?.id ?? null,
       customDesign: null,
       templateId: null,
       metadata: null,
-      design: null,
+      design: it.design ?? null,
       variant: makeVariant(
         it.variantId ?? "var_1",
         it.stock ?? state.product?.variants[0]?.stock ?? 0,
+        {
+          images: it.variantImages,
+          productImages: it.productImages,
+          attributes: it.attributes,
+        },
       ),
     })),
   };
@@ -333,5 +367,72 @@ describe("updateCartItemQty — validación de qty contra stock", () => {
       detail: "«Imán Nevera» está agotado por ahora.",
     });
     expect(err.detail).not.toContain("var_1");
+  });
+});
+
+/*
+ * Paquete F (2026-10-02) — toDetail: imagen correcta por variante y desglose
+ * estructurado. El bug original: el separador 2×6 mostraba la portada del
+ * 4×4.2 porque imageUrl siempre caía a Product.images (la variante tiene
+ * ProductVariant.images, "vacío = hereda Product.images").
+ */
+describe("toDetail — imagen por variante y desglose (Paquete F)", () => {
+  it("sin diseño: la foto de LA VARIANTE manda sobre la genérica del producto", async () => {
+    seedCart([
+      {
+        qty: 1,
+        stock: 5,
+        variantImages: ["https://cdn.test/variante-2x6.jpg"],
+        productImages: ["https://cdn.test/producto-generico.jpg"],
+      },
+    ]);
+    const detail = await updateCartItemQty("sess_1", "ci_1", 1);
+    expect(detail.items[0].imageUrl).toBe("https://cdn.test/variante-2x6.jpg");
+  });
+
+  it("variante sin fotos propias (vacío): hereda la imagen del producto", async () => {
+    seedCart([
+      { qty: 1, stock: 5, variantImages: [], productImages: ["https://cdn.test/producto.jpg"] },
+    ]);
+    const detail = await updateCartItemQty("sess_1", "ci_1", 1);
+    expect(detail.items[0].imageUrl).toBe("https://cdn.test/producto.jpg");
+  });
+
+  it("el preview del diseño personalizado manda sobre variante y producto", async () => {
+    seedCart([
+      {
+        qty: 1,
+        stock: 5,
+        variantImages: ["https://cdn.test/variante.jpg"],
+        productImages: ["https://cdn.test/producto.jpg"],
+        design: {
+          id: "design_1",
+          previewUrl: "https://cdn.test/preview-diseno.png",
+          status: "READY",
+          metadata: null,
+          canvasData: null,
+        },
+      },
+    ]);
+    const detail = await updateCartItemQty("sess_1", "ci_1", 1);
+    expect(detail.items[0].imageUrl).toBe("https://cdn.test/preview-diseno.png");
+  });
+
+  it("sin diseño ni fotos de variante ni de producto: imageUrl null (nunca undefined)", async () => {
+    seedCart([{ qty: 1, stock: 5 }]);
+    const detail = await updateCartItemQty("sess_1", "ci_1", 1);
+    expect(detail.items[0].imageUrl).toBeNull();
+  });
+
+  it("expone variantBreakdown desde los attributes de la variante (incluye Con/Sin imán)", async () => {
+    seedCart([{ qty: 1, stock: 5, attributes: { photoSlots: 12, sizeCm: "6×8", magnet: false } }]);
+    const detail = await updateCartItemQty("sess_1", "ci_1", 1);
+    expect(detail.items[0].variantBreakdown).toEqual(["12 fotos", "6×8 cm", "Sin imán (adhesivo)"]);
+  });
+
+  it("variante sin attributes: variantBreakdown vacío (la UI pinta solo el nombre)", async () => {
+    seedCart([{ qty: 1, stock: 5 }]);
+    const detail = await updateCartItemQty("sess_1", "ci_1", 1);
+    expect(detail.items[0].variantBreakdown).toEqual([]);
   });
 });

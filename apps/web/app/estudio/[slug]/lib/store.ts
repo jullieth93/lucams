@@ -64,6 +64,13 @@ export type StudioStoreState = {
   // Assets subidos por el cliente en esta sesión
   assets: StudioAsset[];
 
+  /**
+   * Paquete A (2026-10-02) — DEDUPE de prediseñados: galleryImageId → assets
+   * ya subidos en ESTA sesión/diseño. Aplicar el mismo diseño a otro slot
+   * reusa el asset en vez de subir una copia al servidor por slot.
+   */
+  predesignedAssetsByGalleryId: Record<string, { a: StudioAsset; b?: StudioAsset }>;
+
   // Plantillas disponibles para el kind del producto
   templates: StudioTemplate[];
 
@@ -186,6 +193,15 @@ export type StudioStoreState = {
    */
   applyUnitToAllUnits: (unitIndex: number) => void;
   addAsset: (asset: StudioAsset) => void;
+  /**
+   * Paquete A — registra los assets (cara A y, si hay, cara B) ya subidos para
+   * un diseño prediseñado, para que la próxima aplicación del mismo
+   * galleryImageId los reutilice (dedupe, ver apply-predesigned.ts).
+   */
+  rememberPredesignedAssets: (
+    galleryImageId: string,
+    entry: { a: StudioAsset; b?: StudioAsset },
+  ) => void;
   removeAsset: (assetId: string) => void;
   setAutoSaveStatus: (status: AutoSaveStatus) => void;
   setIsFinalizing: (v: boolean) => void;
@@ -205,6 +221,7 @@ const initialState = {
   selectedSlotIndex: null,
   selectedTemplateId: null,
   assets: [],
+  predesignedAssetsByGalleryId: {},
   templates: [],
   isDirty: false,
   autoSaveStatus: { kind: "idle" } as AutoSaveStatus,
@@ -667,7 +684,30 @@ export function createStudioStore() {
     },
 
     addAsset: (asset) => {
-      set((state) => ({ assets: [...state.assets, asset] }));
+      // Idempotente (2026-10-02): el boot siembra assets desde el canvas
+      // (extractAssetsFromCanvas: width/height 0 y signedUrl vieja) Y luego
+      // llama addAsset por cada DesignAsset de DB. Sin dedupe, toda foto usada
+      // en un slot aparecía 2× en "Mis fotos" (y React warning de keys
+      // duplicadas en la sidebar). Si el id ya existe, REEMPLAZA la entrada en
+      // su posición: la versión nueva gana (la de DB trae width/height reales
+      // y signedUrl fresca).
+      set((state) => {
+        const idx = state.assets.findIndex((a) => a.id === asset.id);
+        if (idx === -1) return { assets: [...state.assets, asset] };
+        const assets = state.assets.slice();
+        assets[idx] = asset;
+        return { assets };
+      });
+    },
+
+    rememberPredesignedAssets: (galleryImageId, entry) => {
+      if (!galleryImageId) return;
+      set((state) => ({
+        predesignedAssetsByGalleryId: {
+          ...state.predesignedAssetsByGalleryId,
+          [galleryImageId]: entry,
+        },
+      }));
     },
 
     removeAsset: (assetId) => {

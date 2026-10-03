@@ -368,6 +368,45 @@ describe("orderConfirmationEmail", () => {
     expect(r.html).not.toContain("/mi-cuenta/pedidos");
   });
 
+  it("Paquete H — con accountOrderUrl (registrado) el CTA va a su pedido en la cuenta y manda sobre el token", async () => {
+    const r = await orderConfirmationEmail(
+      ocData({
+        accountOrderUrl: `${SITE_URL}/mi-cuenta/pedidos/LS-1001`,
+        // Aunque viniera un token, la cuenta manda (decisión Paquete H).
+        publicTrackingToken: "TOKENGUEST",
+      }),
+    );
+    expect(r.html).toContain(`${SITE_URL}/mi-cuenta/pedidos/LS-1001`);
+    expect(r.text).toContain(`${SITE_URL}/mi-cuenta/pedidos/LS-1001`);
+    expect(r.html).not.toContain("/pedido/TOKENGUEST");
+    expect(r.html).not.toContain("/rastrear");
+  });
+
+  it("Paquete H — el desglose de la variante sale bajo el nombre en HTML y texto", async () => {
+    const r = await orderConfirmationEmail(
+      ocData({
+        items: [
+          {
+            name: "Fotoimanes Cuadrados",
+            qty: 1,
+            lineTotal: 3_000_000,
+            breakdown: ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"],
+          },
+        ],
+      }),
+    );
+    expect(r.html).toContain("12 fotos · 6×8 cm · Sin imán (adhesivo)");
+    expect(r.text).toContain("(12 fotos · 6×8 cm · Sin imán (adhesivo))");
+  });
+
+  it("Paquete H — ítem sin desglose (vacío/ausente) no pinta línea secundaria", async () => {
+    const r = await orderConfirmationEmail(
+      ocData({ items: [{ name: "Imán foto", qty: 1, lineTotal: 100, breakdown: [] }] }),
+    );
+    expect(r.text).toContain("- Imán foto ×1");
+    expect(r.text).not.toContain("Imán foto (");
+  });
+
   it("sin transportadora (null) NO agrega el paréntesis de carrier en el label de envío", async () => {
     const r = await orderConfirmationEmail(ocData({ shippingCarrier: null, shipping: 500_000 }));
     // El texto plano queda "Envío: $ 5.000" SIN el paréntesis "(carrier)".

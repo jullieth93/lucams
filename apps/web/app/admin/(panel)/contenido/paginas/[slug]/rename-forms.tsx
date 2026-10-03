@@ -10,6 +10,7 @@ import { Pencil, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Hint } from "@/components/ui/tooltip";
 import { updateCmsPageAction, updateCmsSectionAction } from "../../actions";
 
 const inputCls = "border-brand-purple/20 focus-visible:ring-brand-purple/30";
@@ -87,13 +88,14 @@ export function SectionRenameForm({
 }) {
   return (
     <details className="group relative inline-block">
-      <summary
-        className="text-brand-muted hover:text-brand-purple hover:bg-brand-purple/10 -mr-1 cursor-pointer list-none rounded-md p-1 transition-colors [&::-webkit-details-marker]:hidden"
-        title={`Renombrar la sección «${title}»`}
-        aria-label={`Renombrar la sección ${title}`}
-      >
-        <Pencil className="h-3.5 w-3.5" />
-      </summary>
+      <Hint content={`Renombrar la sección «${title}»`}>
+        <summary
+          className="text-brand-muted hover:text-brand-purple hover:bg-brand-purple/10 -mr-1 cursor-pointer list-none rounded-md p-1 transition-colors [&::-webkit-details-marker]:hidden"
+          aria-label={`Renombrar la sección ${title}`}
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </summary>
+      </Hint>
       <form
         action={updateCmsSectionAction}
         className="border-brand-purple/15 absolute left-0 z-20 mt-1 grid w-72 gap-2 rounded-xl border bg-white p-3 shadow-lg max-sm:fixed max-sm:right-4 max-sm:left-4 max-sm:w-auto"

@@ -10,6 +10,9 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ prisma: {} }));
+vi.mock("@/lib/logger", () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
 vi.mock("@/features/cms/service", () => ({
   createCmsField: vi.fn(),
   getCmsFieldByKey: vi.fn(),
@@ -79,6 +82,39 @@ describe("getLucamsShippingSettings", () => {
     getSettingValue.mockImplementation(async (k: string, fb: string) => values[k] ?? fb);
     const s = await getLucamsShippingSettings();
     expect(s.zones).toEqual({ "11001": ["suba"] });
+  });
+
+  it("V2 ausente + V1 presente: cae al legacy y loguea warn (visible en STG)", async () => {
+    const { logger } = await import("@/lib/logger");
+    const values: Record<string, string> = {
+      LUCAMS_SHIPPING_LOCALITIES: '["chapinero"]',
+    };
+    getSettingValue.mockImplementation(async (k: string, fb: string) => values[k] ?? fb);
+    const s = await getLucamsShippingSettings();
+    expect(s.zones).toEqual({ "11001": ["chapinero"] });
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "shipping.settings.lucams_legacy_localities_fallback" }),
+    );
+  });
+
+  it("Paquete G — V2 '{}' vacío explícito = NADA habilitado: NO cae al legacy V1", async () => {
+    const values: Record<string, string> = {
+      LUCAMS_SHIPPING_ZONES: "{}",
+      LUCAMS_SHIPPING_LOCALITIES: '["chapinero","usaquen"]',
+    };
+    getSettingValue.mockImplementation(async (k: string, fb: string) => values[k] ?? fb);
+    const s = await getLucamsShippingSettings();
+    expect(s.zones).toEqual({});
+  });
+
+  it("Paquete G — V2 con JSON inválido: fail-closed ({}), NO cae al legacy V1", async () => {
+    const values: Record<string, string> = {
+      LUCAMS_SHIPPING_ZONES: "{json roto",
+      LUCAMS_SHIPPING_LOCALITIES: '["chapinero"]',
+    };
+    getSettingValue.mockImplementation(async (k: string, fb: string) => values[k] ?? fb);
+    const s = await getLucamsShippingSettings();
+    expect(s.zones).toEqual({});
   });
 
   it("valores corruptos caen a los defaults (no rompen el checkout)", async () => {

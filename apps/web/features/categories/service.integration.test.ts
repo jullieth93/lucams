@@ -913,6 +913,75 @@ describe.skipIf(!hasDb)(
       });
     });
 
+    // ───────────── contenido de la sub-categoría (B-6, auditoría 2026-10-02) ─────────────
+
+    describe("richDescription/useCase/defaultSort (B-6 — editables desde el admin)", () => {
+      it("createCategory persiste los tres campos cuando vienen en el input", async () => {
+        const created = await createCategory(
+          {
+            name: "ConContenido",
+            slug: nextSlug("contenido"),
+            isActive: true,
+            richDescription: "Texto largo SEO de la categoría.",
+            useCase: "Ideal para lectores.",
+            defaultSort: "price_desc",
+          },
+          null,
+        );
+        expect(created.richDescription).toBe("Texto largo SEO de la categoría.");
+        expect(created.useCase).toBe("Ideal para lectores.");
+        expect(created.defaultSort).toBe("price_desc");
+      });
+
+      it("createCategory sin los campos los deja en null (PLP cae a 'recent' y omite secciones)", async () => {
+        const created = await createCategory(
+          { name: "SinContenido", slug: nextSlug("sincontenido"), isActive: true },
+          null,
+        );
+        expect(created.richDescription).toBeNull();
+        expect(created.useCase).toBeNull();
+        expect(created.defaultSort).toBeNull();
+      });
+
+      it("updateCategory actualiza los tres campos y permite limpiarlos a null", async () => {
+        const cat = await seedCat();
+        const updated = await updateCategory(
+          cat.id,
+          {
+            richDescription: "Descripción rica nueva",
+            useCase: "Casos de uso nuevos",
+            defaultSort: "featured",
+          },
+          null,
+        );
+        expect(updated.richDescription).toBe("Descripción rica nueva");
+        expect(updated.useCase).toBe("Casos de uso nuevos");
+        expect(updated.defaultSort).toBe("featured");
+
+        const cleared = await updateCategory(
+          cat.id,
+          { richDescription: null, useCase: null, defaultSort: null },
+          null,
+        );
+        expect(cleared.richDescription).toBeNull();
+        expect(cleared.useCase).toBeNull();
+        expect(cleared.defaultSort).toBeNull();
+      });
+
+      it("updateCategory sin los campos NO los pisa (partial update conserva lo previo)", async () => {
+        const cat = await seedCat();
+        await updateCategory(
+          cat.id,
+          { richDescription: "Se conserva", defaultSort: "recent" },
+          null,
+        );
+        const updated = await updateCategory(cat.id, { name: "Solo cambia el nombre" }, null);
+        expect(updated.name).toBe("Solo cambia el nombre");
+        expect(updated.richDescription).toBe("Se conserva");
+        expect(updated.defaultSort).toBe("recent");
+      });
+    });
+
     // ───────────────────────── integridad / seguridad ─────────────────────────
 
     describe("integridad de constraints DB", () => {

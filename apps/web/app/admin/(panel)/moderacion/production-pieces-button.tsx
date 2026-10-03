@@ -19,6 +19,7 @@
 import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, Loader2, X } from "lucide-react";
+import { Hint } from "@/components/ui/tooltip";
 import { useDialogA11y } from "../plantillas/use-dialog-a11y";
 import { getDesignProductionSignedUrlsAction, type SignedProductionPiece } from "./actions";
 
@@ -124,25 +125,29 @@ export function ProductionPiecesButton({
                 {pieces !== null && pieces.length > 0 && (
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                     {pieces.map((piece, i) => (
-                      <a
-                        key={piece.path}
-                        href={piece.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={`Pieza ${i + 1} — abrir a tamaño completo`}
-                        className="bg-brand-cream/40 border-brand-purple/10 hover:ring-brand-purple/40 focus:ring-brand-turquoise relative block aspect-square overflow-hidden rounded-md border hover:ring-2 focus:ring-2 focus:outline-none"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={piece.url}
-                          alt={`Pieza ${i + 1} de ${productName}`}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                        <span className="bg-brand-purple-dark/80 absolute right-0 bottom-0 px-1 text-[9px] font-bold text-white">
-                          {i + 1}
-                        </span>
-                      </a>
+                      <Hint key={piece.path} content={`Pieza ${i + 1} — abrir a tamaño completo`}>
+                        <a
+                          href={piece.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="bg-brand-cream/40 border-brand-purple/10 hover:ring-brand-purple/40 focus:ring-brand-turquoise relative block aspect-square overflow-hidden rounded-md border hover:ring-2 focus:ring-2 focus:outline-none"
+                        >
+                          {/* Paquete D (2026-10-02 — WYSIWYG): object-CONTAIN sobre
+                            fondo neutro — la pieza (tira 2×12 alta) se ve ENTERA,
+                            como la imprime producción; object-cover la recortaba
+                            y el moderador no podía compararla con el preview. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={piece.url}
+                            alt={`Pieza ${i + 1} de ${productName}`}
+                            className="h-full w-full object-contain p-1"
+                            loading="lazy"
+                          />
+                          <span className="bg-brand-purple-dark/80 absolute right-0 bottom-0 px-1 text-[9px] font-bold text-white">
+                            {i + 1}
+                          </span>
+                        </a>
+                      </Hint>
                     ))}
                   </div>
                 )}

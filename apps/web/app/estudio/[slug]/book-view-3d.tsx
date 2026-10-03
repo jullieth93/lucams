@@ -11,11 +11,12 @@
  *    valle de encuadernación), texto impreso procedural legible en ambas páginas, bloque de
  *    páginas en cuña (canto de hojas procedural), cubiertas con sobrehueso y lomo inferior.
  *  - 3 separadores DOBLADOS SOBRE EL BORDE SUPERIOR de las páginas (no sobre el lomo), a
- *    distintas alturas gracias al camber. La cara frontal reposa casi plana sobre la hoja
- *    mostrando el diseño del cliente hacia la cámara; la trasera cuelga apenas pasada la
- *    vertical abrazando el canto del bloque — al orbitar detrás se ve con el MISMO diseño
- *    legible de pie (así se imprimen los separadores reales: dos caras). El pliegue abraza el
- *    filo de la hoja (rFold ~2 mm) y las esquinas son REDONDAS (11% del ancho).
+ *    distintas alturas gracias al camber. La cara frontal queda DE PIE sobre la hoja (40°,
+ *    casi de frente a la cámara) mostrando el diseño del cliente con su aspecto real; la
+ *    trasera cae ~35° pasada la vertical abrazando el canto del bloque — al orbitar detrás
+ *    se ve con el MISMO diseño legible de pie (así se imprimen los separadores reales: dos
+ *    caras). El pliegue abraza el filo de la hoja (rFold ~2 mm) y las esquinas son REDONDAS
+ *    (11% del ancho).
  *  - PROPORCIONES REALES (0.3 u/cm): página 17×24 cm (pliego abierto 34×24) vs tira de 6×2 cm
  *    (o 4×4.2 cm) — toda la matemática vive en lib/book-geometry.ts (pura, testeada): el
  *    reposo de la cara frontal sobre la hoja y el aire bajo la cara trasera están verificados.
@@ -46,6 +47,14 @@
  *    separador queda un punto MÁS ERGUIDO sobre el borde (SEP_FRONT_LIFT_DEG 3° → 14°): la cara
  *    frontal se lee más de frente y la punta sigue reposando sobre la hoja (lib/book-geometry).
  *
+ * 2026-10-02 (bug STG — separador 4×4.2 "no se ve cuadrado e invade la superficie del libro"):
+ * la cara frontal pasa de 14° a 40° (SEP_FRONT_LIFT_DEG), casi DE FRENTE a la cámara fija
+ * (polar 48°): a 14° el escorzo vertical era ~0.88 y la cara 4×4.2 (0.95:1) se proyectaba
+ * ~1.08:1 apaisada; a 40° la proyección es fiel (factor ~1.0) y la invasión de página baja de
+ * 4.1 a ~3.2 cm. La cresta queda como ÁPICE de la pose de pie (hang·sin 40°) con la punta
+ * reposando sobre la hoja, y la trasera cuelga libre (backLean ya no hace falta para las caras
+ * del catálogo — queda como salvaguarda para caras más largas).
+ *
  * Restricciones (idénticas a fridge/calendar 3D):
  *  - CSP estricta: CERO assets externos. Materiales/texturas procedurales en runtime.
  *  - Client-only (WebGL) → el caller lo importa con dynamic ssr:false.
@@ -59,7 +68,7 @@ import { useIsTouch } from "./use-is-touch";
 import { OrbitControls, RoundedBox, ContactShadows } from "@react-three/drei";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
-import { FoldedStripMesh, MagnetMesh, BLANK_BACK_COLOR } from "./magnet-3d";
+import { FoldedStripMesh, MagnetMesh } from "./magnet-3d";
 import { getPageEdgesTexture, getPagePrintTexture } from "./lib/procedural-textures";
 import {
   BLOCK_T,
@@ -122,16 +131,13 @@ function Separators({
   items,
   sizeCm,
   facesPerUnit,
-  backOptional,
 }: {
   items: Magnet3D[];
   sizeCm?: string;
   facesPerUnit?: number;
-  /** Cara B opcional: si falta, el reverso se muestra en BLANCO papel (no duplica la cara A). */
-  backOptional?: boolean;
 }) {
   const layout = useMemo(() => {
-    const units = bookmarkFaceUnits(items, facesPerUnit, sizeCm, { backOptional });
+    const units = bookmarkFaceUnits(items, facesPerUnit, sizeCm);
     const slots = separatorSlotsForCount(units.length);
     return slots
       .map(({ x, yaw }, i) => {
@@ -153,7 +159,7 @@ function Separators({
         position: [x, p.crestY, p.crestZ] as [number, number, number],
         rotation: [p.tilt, yaw, 0] as [number, number, number],
       }));
-  }, [items, sizeCm, facesPerUnit, backOptional]);
+  }, [items, sizeCm, facesPerUnit]);
 
   return (
     <>
@@ -161,7 +167,7 @@ function Separators({
         <group key={key} position={position} rotation={rotation}>
           <FoldedStripMesh
             dataUrl={unit.front.dataUrl}
-            backDataUrl={unit.back?.dataUrl ?? undefined}
+            backDataUrl={unit.back.dataUrl}
             wRatio={unit.front.wRatio}
             hRatio={unit.front.hRatio}
             stripW={stripW}
@@ -170,7 +176,6 @@ function Separators({
             rFold={SEP_R_FOLD}
             cornerRadiusRatio={SEP_CORNER_RATIO}
             backLean={backLean}
-            backOptional={backOptional}
           />
         </group>
       ))}
@@ -185,7 +190,7 @@ function Separators({
  * varias filas (z distinta). Las piezas NUNCA se encogen: la cámara abre.
  */
 type FlatBookmarkData = {
-  units: { front: Magnet3D; back: Magnet3D | null }[];
+  units: { front: Magnet3D; back: Magnet3D }[];
   dims: { w: number; h: number }[];
   slots: { x: number; z: number; yaw: number }[];
   maxW: number;
@@ -217,12 +222,11 @@ function FlatBookmarks({ data }: { data: FlatBookmarkData }) {
                 mira a la cámara y la cara B se descubre al orbitar detrás. El diseño físico del
                 alargado es plano, pero para que el cliente vea las 2 caras que montó en el
                 estudio, la pieza 3D se presenta erguida como los separadores doblados.
-                backOptional sin cara B (unit.back null): reverso en BLANCO papel
-                (BLANK_BACK_COLOR — superficie imprimible vacía, QA 2026-09-22). */}
+                Cara B vacía (REGLA ÚNICA, Paquete D 2026-10-02): bookmarkFaceUnits la
+                resuelve ESPEJO de la cara A — lo mismo que imprime producción. */}
             <MagnetMesh
               dataUrl={unit.front.dataUrl}
-              backDataUrl={unit.back?.dataUrl}
-              backColor={unit.back ? undefined : BLANK_BACK_COLOR}
+              backDataUrl={unit.back.dataUrl}
               width={w}
               height={h}
               shape="rectangle"
@@ -389,15 +393,12 @@ function Scene({
   sizeCm,
   facesPerUnit,
   flat,
-  backOptional,
 }: {
   bookmarks: Magnet3D[];
   sizeCm?: string;
   facesPerUnit?: number;
   /** Ola 17 — marcapáginas plano (Alargados): acostado sobre la hoja, sin doblez. */
   flat?: boolean;
-  /** Cara B opcional: si falta, el reverso se muestra en BLANCO papel (no duplica la cara A). */
-  backOptional?: boolean;
 }) {
   // Ola 16 — defensa: si el producto no declara 2 caras, el 3D no puede mostrar
   // la cara B real. Log para soporte; el UI del Estudio sigue funcionando con 1 cara.
@@ -414,14 +415,14 @@ function Scene({
   // distinta). El encuadre de cámara usa el ancho/alto REALES del conjunto (nunca se encoge).
   const flatData = useMemo<FlatBookmarkData | null>(() => {
     if (!flat) return null;
-    const units = bookmarkFaceUnits(bookmarks, facesPerUnit, sizeCm, { backOptional });
+    const units = bookmarkFaceUnits(bookmarks, facesPerUnit, sizeCm);
     if (units.length === 0) return null;
     const dims = units.map((u) => flatBookmarkDims(u.front, sizeCm));
     const maxW = Math.max(...dims.map((d) => d.w));
     const maxH = Math.max(...dims.map((d) => d.h));
     const slots = flatBookmarkSlots(units.length, { pieceW: maxW });
     return { units, dims, slots, maxW, maxH };
-  }, [flat, bookmarks, facesPerUnit, sizeCm, backOptional]);
+  }, [flat, bookmarks, facesPerUnit, sizeCm]);
   // Ola 18/19 — encuadre dinámico:
   // - Alargados planos (pieza alta 12/15 cm): encuadre más holgado y centrado en la hoja
   //   derecha para que la pieza completa sea visible; crece con el ancho/alto reales del
@@ -495,12 +496,7 @@ function Scene({
           <FlatBookmarks data={flatData} />
         ) : null
       ) : (
-        <Separators
-          items={bookmarks}
-          sizeCm={sizeCm}
-          facesPerUnit={facesPerUnit}
-          backOptional={backOptional}
-        />
+        <Separators items={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} />
       )}
 
       {/* Escena estática (el autoRotate mueve la CÁMARA) → sombra horneada 1 vez. */}
@@ -542,7 +538,6 @@ export default function BookView3D({
   sizeCm,
   facesPerUnit,
   flat,
-  backOptional,
 }: {
   bookmarks: Magnet3D[];
   /** sizeCm de la variante (ej "6×2", "4×4.2") — fija el tamaño real de la tira. */
@@ -551,9 +546,6 @@ export default function BookView3D({
   facesPerUnit?: number;
   /** Ola 17 — marcapáginas plano (Alargados): acostado sobre la hoja, sin doblez. */
   flat?: boolean;
-  /** Cara B opcional (2026-09-22): si falta, el reverso se muestra en BLANCO papel
-   *  (superficie imprimible vacía) en vez de duplicar la cara A. */
-  backOptional?: boolean;
 }) {
   const isTouch = useIsTouch();
   if (bookmarks.length === 0) {
@@ -573,13 +565,7 @@ export default function BookView3D({
     >
       <color attach="background" args={["#FFF8F0"]} />
       <Suspense fallback={null}>
-        <Scene
-          bookmarks={bookmarks}
-          sizeCm={sizeCm}
-          facesPerUnit={facesPerUnit}
-          flat={flat}
-          backOptional={backOptional}
-        />
+        <Scene bookmarks={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} flat={flat} />
       </Suspense>
     </Canvas>
   );

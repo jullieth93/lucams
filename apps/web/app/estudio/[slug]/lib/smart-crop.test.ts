@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from "vitest";
 const smartcrop = vi.hoisted(() => ({ crop: vi.fn() }));
 vi.mock("smartcrop", () => ({ default: smartcrop }));
 
-import { analyzeSmartCrop, checkPhotoQuality } from "./smart-crop";
+import { analyzeSmartCrop, checkPhotoQuality, smartCropOffsetFromCrop } from "./smart-crop";
 
 const IMAGE = { naturalWidth: 1000, naturalHeight: 800 } as unknown as HTMLImageElement;
 
@@ -40,6 +40,43 @@ describe("analyzeSmartCrop", () => {
     expect(await analyzeSmartCrop(IMAGE, 200, 200, 1)).toBeNull();
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+describe("smartCropOffsetFromCrop — mapeo de coords tras downscale (Paquete J)", () => {
+  it("sin downscale (análisis = original) → mismo resultado histórico", () => {
+    // cropCenter (700, 400) vs imageCenter (500, 400): dx = −200, × scale 2.
+    const r = smartCropOffsetFromCrop(
+      { x: 600, y: 300, width: 200, height: 200 },
+      { width: 1000, height: 800 },
+      { width: 1000, height: 800 },
+      2,
+    );
+    expect(r).toEqual({ offsetX: -400, offsetY: 0 });
+  });
+
+  it("con downscale ×4 (4000×3200 → 1000×800) → el crop se escala de vuelta", () => {
+    // En el espacio de análisis el crop centra en (700, 400) → en la imagen
+    // original es (2800, 1600); centro original (2000, 1600); dx = −800 × 2.
+    const r = smartCropOffsetFromCrop(
+      { x: 600, y: 300, width: 200, height: 200 },
+      { width: 1000, height: 800 },
+      { width: 4000, height: 3200 },
+      2,
+    );
+    expect(r).toEqual({ offsetX: -1600, offsetY: 0 });
+  });
+
+  it("el redondeo del downscale no deforma: ratio por eje independiente", () => {
+    // 4000×2500 → 256×160 (scale 0.064): ratioX = 15.625, ratioY = 15.625.
+    const r = smartCropOffsetFromCrop(
+      { x: 0, y: 0, width: 256, height: 160 },
+      { width: 256, height: 160 },
+      { width: 4000, height: 2500 },
+      1,
+    );
+    // El crop cubre TODO → su centro ES el centro → offset 0.
+    expect(r).toEqual({ offsetX: 0, offsetY: 0 });
   });
 });
 

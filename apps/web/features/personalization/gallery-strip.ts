@@ -19,13 +19,17 @@
  * attrs.sizeCm — ej. separadores 2×6 → tira 2×12, ratio 6; 4×4.2 → 4×8.4,
  * ratio 2.1). Si no cuadra con ninguna, se rechaza con un error amable que
  * sugiere subir por caras (flujo por caras intacto).
+ *
+ * Fase 5 (2026-10-02) — si el diseño lleva variantFilter con sizeCm (aplica a
+ * UN tamaño de variante), la proporción se valida solo contra ESE sizeCm
+ * (getGalleryStripExpectations(tag, sizeCm)): una tira 2×12 ya no pasa por el
+ * ratio de la otra variante del producto.
  */
 
 import "server-only";
 import sharp from "./sharp-safe";
-import { prisma } from "@/lib/db";
 import { parseVariantAttributes } from "@/features/products/variant-schemas";
-import { resolvePersonalizationSurface } from "./surface";
+import { listGalleryTagVariantAttributes } from "./design-gallery";
 
 /** Tolerancia relativa de la proporción alto/ancho de la tira (±8%). */
 const STRIP_RATIO_TOLERANCE = 0.08;
@@ -48,48 +52,32 @@ export class GalleryStripError extends Error {
  * Proporciones de tira esperadas para un tag de galería, derivadas de las
  * variantes activas del producto que resuelve ese tag (misma resolución que
  * listGalleryTagOptions: galleryTag explícito o, sin él, el slug si la
- * superficie del Estudio es de foto). Si el producto tiene UN solo tamaño,
- * la validación es contra ese único ratio. [] si el tag no resuelve producto
- * o sus variantes no declaran sizeCm.
+ * superficie del Estudio es de foto — compartida vía
+ * listGalleryTagVariantAttributes). Si el producto tiene UN solo tamaño,
+ * la validación es contra ese único ratio.
+ *
+ * Fase 5 — con `onlySizeCm` (variantFilter.sizeCm del diseño: aplica a un
+ * tamaño específico) las expectativas se limitan a ESE sizeCm. [] si el tag no
+ * resuelve producto, sus variantes no declaran sizeCm, o onlySizeCm no existe
+ * entre ellas.
  */
-export async function getGalleryStripExpectations(tag: string): Promise<StripExpectation[]> {
-  const products = await prisma.product.findMany({
-    where: { isActive: true, deletedAt: null },
-    select: {
-      slug: true,
-      personalizationKind: true,
-      personalizationSchema: true,
-      variants: {
-        where: { isActive: true },
-        select: { attributes: true },
-      },
-    },
-  });
-  for (const p of products) {
-    const schema = p.personalizationSchema as { galleryTag?: unknown } | null;
-    const explicit = typeof schema?.galleryTag === "string" ? schema.galleryTag : null;
-    const resolved =
-      explicit ??
-      (resolvePersonalizationSurface(
-        p.personalizationKind,
-        p.personalizationSchema as Record<string, unknown> | null,
-      ).surface === "photo"
-        ? p.slug
-        : null);
-    if (resolved !== tag) continue;
-    const seen = new Set<string>();
-    const out: StripExpectation[] = [];
-    for (const v of p.variants) {
-      const sizeCm = parseVariantAttributes(v.attributes).sizeCm;
-      if (!sizeCm || seen.has(sizeCm)) continue;
-      const ratio = stripRatioOfFaceSize(sizeCm);
-      if (ratio === null) continue;
-      seen.add(sizeCm);
-      out.push({ sizeCm, ratio });
-    }
-    return out;
+export async function getGalleryStripExpectations(
+  tag: string,
+  onlySizeCm?: string,
+): Promise<StripExpectation[]> {
+  const variantsAttributes = await listGalleryTagVariantAttributes(tag);
+  const seen = new Set<string>();
+  const out: StripExpectation[] = [];
+  for (const attrs of variantsAttributes) {
+    const sizeCm = parseVariantAttributes(attrs).sizeCm;
+    if (!sizeCm || seen.has(sizeCm)) continue;
+    if (onlySizeCm !== undefined && sizeCm !== onlySizeCm) continue;
+    const ratio = stripRatioOfFaceSize(sizeCm);
+    if (ratio === null) continue;
+    seen.add(sizeCm);
+    out.push({ sizeCm, ratio });
   }
-  return [];
+  return out;
 }
 
 /**

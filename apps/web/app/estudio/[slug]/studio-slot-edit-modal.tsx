@@ -19,6 +19,7 @@ import { useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { Slider } from "@/components/ui/slider";
 import { ImageIcon, Type, ChevronLeft, Copy } from "lucide-react";
 import { StudioPhotoAdjustForm } from "./studio-photo-adjust-modal";
@@ -205,7 +206,17 @@ export function StudioSlotEditModal({
   return (
     <Dialog key={slotIndex ?? "closed"} open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent
-        className="flex max-h-[95vh] w-[calc(100%-1rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl"
+        // Paquete B (2026-10-02) — en móvil/tablet el modal se sobre-dimensionaba:
+        // `95vh` no refleja la barra del navegador ni el teclado virtual (comen
+        // viewport) y la ventana excedía la pantalla visible. Mismo patrón del
+        // preview modal (studio-preview-modal):
+        //   - alto capado por dvh (viewport dinámico real);
+        //   - en móvil (<sm) comportamiento tipo sheet: anclado abajo, ancho
+        //     completo, max 92dvh, sin borde redondeado inferior;
+        //   - en sm+ centrado como siempre;
+        //   - el scroll vive en el contenido (overflow-y-auto abajo): cabecera
+        //     (título + cerrar) y acciones (footer) quedan siempre visibles.
+        className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 max-sm:top-auto max-sm:right-0 max-sm:bottom-0 max-sm:left-0 max-sm:max-h-[92dvh] max-sm:max-w-full max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none sm:max-w-2xl"
         showCloseButton={false}
       >
         <div className="border-brand-purple/10 flex shrink-0 items-center justify-between border-b px-4 py-3">
@@ -432,16 +443,17 @@ export function StudioSlotEditModal({
               a todos los demás. */}
           <div>
             {applyToAll && (
-              <button
-                type="button"
-                onClick={applyToAll.onApply}
-                aria-label={applyToAll.ariaLabel}
-                title={applyToAll.title}
-                className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 focus-visible:ring-brand-turquoise inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-3.5 py-2 text-xs font-bold transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95"
-              >
-                <Copy className="h-3.5 w-3.5" aria-hidden />
-                {applyToAll.label}
-              </button>
+              <Hint content={applyToAll.title}>
+                <button
+                  type="button"
+                  onClick={applyToAll.onApply}
+                  aria-label={applyToAll.ariaLabel}
+                  className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 focus-visible:ring-brand-turquoise inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-3.5 py-2 text-xs font-bold transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95"
+                >
+                  <Copy className="h-3.5 w-3.5" aria-hidden />
+                  {applyToAll.label}
+                </button>
+              </Hint>
             )}
           </div>
           <Button
@@ -563,21 +575,22 @@ function TextLayersEditor({
                     </div>
                   </button>
                   {canApplyToAll && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onApplyToAll(layer.id, override);
-                        setAppliedLayerId(layer.id);
-                      }}
-                      aria-label={fillStudioText(texts.texto.capaAplicarATodasAria, {
-                        texto: displayText,
-                      })}
-                      title={texts.texto.capaAplicarATodas}
-                      className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 focus-visible:ring-brand-turquoise inline-flex shrink-0 items-center gap-1 rounded-full border-2 bg-white px-2.5 py-1.5 text-[11px] font-bold transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95"
-                    >
-                      <Copy className="h-3 w-3" aria-hidden />
-                      {texts.texto.capaAplicarATodas}
-                    </button>
+                    <Hint content={texts.texto.capaAplicarATodas}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onApplyToAll(layer.id, override);
+                          setAppliedLayerId(layer.id);
+                        }}
+                        aria-label={fillStudioText(texts.texto.capaAplicarATodasAria, {
+                          texto: displayText,
+                        })}
+                        className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 focus-visible:ring-brand-turquoise inline-flex shrink-0 items-center gap-1 rounded-full border-2 bg-white px-2.5 py-1.5 text-[11px] font-bold transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95"
+                      >
+                        <Copy className="h-3 w-3" aria-hidden />
+                        {texts.texto.capaAplicarATodas}
+                      </button>
+                    </Hint>
                   )}
                 </div>
               );

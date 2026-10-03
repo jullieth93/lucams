@@ -12,6 +12,11 @@
  *     Al CREAR pide un precio inicial; al EDITAR muestra "desde $X" (solo lectura).
  *   - Detalles (opcional): texto largo + bot AI + logística (tiempos, peso, dims)
  *     + SEO. Todo lo "se configura una vez".
+ *   - Personalización (2026-10-02): tipo de personalización (kind) + panel
+ *     condicional con su config (foto, nombre, frase, evento, logo, set de
+ *     letras) + tag de la galería de diseños prediseñados. Antes esto solo lo
+ *     escribían los scripts de catálogo y un producto creado acá nunca llegaba
+ *     al Estudio ni a /admin/disenos.
  *   - Avanzado: dirección web (slug), código de familia (sku), precio base por
  *     defecto (solo edición, respaldo), costos internos, recargo premium.
  *
@@ -31,16 +36,40 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AdminTabBar, AdminTabPanel, useAdminActiveTab } from "@/components/admin/admin-tabs";
 import { formatCOP } from "@/lib/format";
+import {
+  PHOTO_SURFACE_KINDS,
+  type PersonalizationAdminConfig,
+  type ProductPersonalizationKind,
+  type TextOnlyVariant,
+} from "@/features/products/personalization-schema";
 
 type Category = { id: string; name: string; slug: string; isSub?: boolean };
 
 const TABS = [
   { value: "basico", label: "Lo básico" },
   { value: "detalles", label: "Detalles" },
+  { value: "personalizacion", label: "Personalización" },
   { value: "avanzado", label: "Avanzado" },
 ] as const;
 
 const TAB_VALUES = TABS.map((t) => t.value);
+
+/** Valor del select de tipo: los 9 kinds del enum + "LETTERSET" sintético
+ *  (set de letras = kind NONE + schema.letterSet, convención de los seeds). */
+type KindSelectValue = ProductPersonalizationKind | "LETTERSET";
+
+const KIND_OPTIONS: Array<{ value: KindSelectValue; label: string }> = [
+  { value: "NONE", label: "No personalizable (compra directa)" },
+  { value: "PHOTO_PACK", label: "Pack de fotos (el cliente sube sus fotos)" },
+  { value: "PHOTO_GRID", label: "Cuadrícula de fotos" },
+  { value: "CALENDAR_PHOTO_MONTH", label: "Calendario foto por mes" },
+  { value: "CALENDAR_PHOTO_HERO", label: "Calendario foto principal + planner" },
+  { value: "CUSTOM_DECOR", label: "Decoración personalizada (foto o diseño libre)" },
+  { value: "TEXT_ONLY", label: "Solo texto (nombre o frase)" },
+  { value: "EVENT_FAVOR", label: "Recuerdo de evento (matrimonio, XV, baby shower)" },
+  { value: "BUSINESS_LOGO", label: "Logo de negocio (publicitario B2B)" },
+  { value: "LETTERSET", label: "Set de letras (abecedario completo / vocales)" },
+];
 
 type Props = {
   categories: Category[];
@@ -73,15 +102,14 @@ type Props = {
     shippingDaysMax?: number;
     minimumQuantity?: number;
     maximumQuantity?: number | null;
-    premadeSurcharge?: number;
     weightGrams?: number | null;
     widthCm?: number | null;
     heightCm?: number | null;
     depthCm?: number | null;
-    /** Estudio por producto (2026-09-24 v2): tamaño BASE del lienzo — el "100%" del cliente (null = 1). */
-    canvasBaseScale?: number | null;
-    /** Estudio por producto (2026-09-24 v2): columnas FORZADAS de la grilla en desktop (null = automático). */
-    gridColsOverride?: number | null;
+    /** Tipo de personalización persistido (columna, 2026-10-02). */
+    personalizationKind?: ProductPersonalizationKind;
+    /** Config del personalizationSchema ya leída por-key (readPersonalizationAdminConfig). */
+    personalization?: PersonalizationAdminConfig;
   };
   action: typeof createProductAction | typeof updateProductAction;
   submitLabel: string;
@@ -96,11 +124,23 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
   const isEdit = Boolean(initialProduct);
   const [name, setName] = useState(initialProduct?.name ?? "");
   const [slug, setSlug] = useState(initialProduct?.slug ?? "");
-  // Estudio por producto (2026-09-24): la sección "Estudio de personalización"
-  // del tab Avanzado solo se muestra cuando el producto es personalizable; al
-  // apagar el checkbox los valores se conservan vía inputs ocultos (no se
-  // pierden si Lucy lo vuelve a activar).
-  const [personalizable, setPersonalizable] = useState(initialProduct?.isPersonalizable ?? false);
+  // Personalización (2026-10-02): el tipo se elige acá y isPersonalizable se
+  // DERIVA en el service (kind ≠ NONE) — ya no hay checkbox suelto. "LETTERSET"
+  // es sintético: se persiste kind NONE + schema.letterSet. La config por-key
+  // precargada (initialProduct.personalization) evita pisar valores guardados
+  // al guardar una edición.
+  const [kindSel, setKindSel] = useState<KindSelectValue>(() =>
+    initialProduct?.personalization?.letterSet
+      ? "LETTERSET"
+      : (initialProduct?.personalizationKind ?? "NONE"),
+  );
+  const [textOnlyVariant, setTextOnlyVariant] = useState<TextOnlyVariant>(
+    initialProduct?.personalization?.textOnlyVariant ?? "name",
+  );
+  const personalization = initialProduct?.personalization;
+  // El kind que se persiste: LETTERSET → NONE (el marcador letterSet va aparte).
+  const effectiveKind: ProductPersonalizationKind = kindSel === "LETTERSET" ? "NONE" : kindSel;
+  const isPhotoKind = PHOTO_SURFACE_KINDS.has(effectiveKind);
 
   const [slugTouched, setSlugTouched] = useState(false);
   const onNameChange = (v: string) => {
@@ -253,14 +293,6 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
             hint="Aparece en la sección de destacados del home y primero en listings."
             defaultChecked={initialProduct?.isFeatured ?? false}
             disabled={pending}
-          />
-          <Checkbox
-            name="isPersonalizable"
-            label="🎨 Personalizable"
-            hint="Activa el estudio de personalización en vivo en la página del producto."
-            defaultChecked={initialProduct?.isPersonalizable ?? false}
-            disabled={pending}
-            onChange={(checked) => setPersonalizable(checked)}
           />
         </SectionCard>
       </AdminTabPanel>
@@ -533,6 +565,391 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
         </CollapsibleDetails>
       </AdminTabPanel>
 
+      {/* ─────── TAB: PERSONALIZACIÓN (2026-10-02 — config completa del Estudio) ─────── */}
+      <AdminTabPanel value="personalizacion" active={activeTab}>
+        {/*
+         * El kind viaja en input oculto (el select es controlado y LETTERSET es
+         * sintético → se persiste NONE). Los campos de los paneles que NO
+         * aplican al kind elegido quedan desmontados → la action los manda como
+         * null → el service BORRA esas keys del personalizationSchema (limpieza
+         * al cambiar de tipo). Las keys que el form no gestiona (shape,
+         * minQuantity, frameOptions…) se preservan en el merge.
+         */}
+        <input type="hidden" name="personalizationKind" value={effectiveKind} />
+        <SectionCard
+          title="Tipo de personalización"
+          description="Qué personaliza el cliente en el Estudio. Si eliges «No personalizable», la compra es directa."
+        >
+          <Field
+            id="personalizationKindSelect"
+            label="Tipo"
+            error={state?.fieldErrors?.personalizationKind?.[0]}
+          >
+            <select
+              id="personalizationKindSelect"
+              value={kindSel}
+              onChange={(e) => setKindSel(e.target.value as KindSelectValue)}
+              disabled={pending}
+              className="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-10 w-full rounded-lg border bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {KIND_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <p className="text-brand-muted text-xs">
+            {effectiveKind !== "NONE" ? (
+              <>
+                ✅ <strong>Personalizable</strong> — la página del producto abre el Estudio en vivo.
+              </>
+            ) : kindSel === "LETTERSET" ? (
+              <>
+                ✅ <strong>Set de letras</strong> — el cliente personaliza el color del marco en el
+                Estudio (el set físico es fijo).
+              </>
+            ) : (
+              <>🛒 Compra directa — el producto se añade al carrito sin pasar por el Estudio.</>
+            )}
+          </p>
+        </SectionCard>
+
+        {isPhotoKind && (
+          <SectionCard
+            title="Fotos del diseño"
+            description="Cuántas fotos sube el cliente y cómo se comporta el lienzo del Estudio para ESTE producto."
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field
+                id="photoSlots"
+                label="Número de fotos (slots)"
+                hint="Fotos que el cliente debe subir por unidad. Las opciones pueden fijar el suyo (ej. Set 6 / Set 12)."
+                error={state?.fieldErrors?.photoSlots?.[0]}
+              >
+                <Input
+                  id="photoSlots"
+                  name="photoSlots"
+                  type="number"
+                  min={1}
+                  max={50}
+                  step={1}
+                  defaultValue={personalization?.photoSlots ?? 1}
+                  disabled={pending}
+                />
+              </Field>
+              <Field
+                id="facesPerUnit"
+                label="Caras de diseño por unidad"
+                hint="2 = la pieza tiene frente y reverso (ej. separadores: cara A / cara B)."
+                error={state?.fieldErrors?.facesPerUnit?.[0]}
+              >
+                <select
+                  id="facesPerUnit"
+                  name="facesPerUnit"
+                  defaultValue={String(personalization?.facesPerUnit ?? 1)}
+                  disabled={pending}
+                  className="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-10 w-full rounded-lg border bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="1">1 cara</option>
+                  <option value="2">2 caras (frente y reverso)</option>
+                </select>
+              </Field>
+              <Field
+                id="aspectRatio"
+                label="Proporción del lienzo (ancho:alto)"
+                hint="ej. 4:5, 1:1, 400:580. Vacío = sin filtro de proporción para las plantillas."
+                error={state?.fieldErrors?.aspectRatio?.[0]}
+              >
+                <Input
+                  id="aspectRatio"
+                  name="aspectRatio"
+                  defaultValue={personalization?.aspectRatio ?? ""}
+                  placeholder="4:5"
+                  disabled={pending}
+                />
+              </Field>
+              <Field
+                id="galleryTag"
+                label="Grupo de diseños prediseñados"
+                hint="Vacío = usa el slug del producto. Los diseños que subas en /admin/disenos bajo este tag aparecen en el Estudio de este producto."
+                error={state?.fieldErrors?.galleryTag?.[0]}
+              >
+                <Input
+                  id="galleryTag"
+                  name="galleryTag"
+                  defaultValue={personalization?.galleryTag ?? ""}
+                  placeholder={initialProduct?.slug ?? "mi-producto"}
+                  className="font-mono"
+                  disabled={pending}
+                />
+              </Field>
+              {/*
+               * canvasBaseScale / gridColsOverride (2026-09-24 v2, movidos del
+               * tab Avanzado 2026-10-02): su único consumidor es la superficie
+               * de FOTO (PhotoProductConfigSchema), así que viven en este panel.
+               * Tamaño base muestra el override o 1 (el estándar); columnas
+               * muestra el override o vacío = automático (responsivo: 1 en
+               * celular, 2-3 en computador — no es un único número calculable).
+               * Reset: vaciar el campo (null → el service elimina la key).
+               */}
+              <Field
+                id="canvasBaseScale"
+                label="Tamaño base del lienzo"
+                hint="1 = tamaño estándar; 0.5 = se ve a la mitad de grande; 2 = el doble. Rango 0.5 – 2.5. El cliente siempre verá este tamaño como su 100% y su control de zoom parte de ahí. Para volver al estándar, pon 1 (o vacía el campo)."
+                error={state?.fieldErrors?.canvasBaseScale?.[0]}
+              >
+                <Input
+                  id="canvasBaseScale"
+                  name="canvasBaseScale"
+                  type="number"
+                  min={0.5}
+                  max={2.5}
+                  step={0.25}
+                  defaultValue={personalization?.canvasBaseScale ?? 1}
+                  placeholder="1"
+                  disabled={pending}
+                />
+              </Field>
+              <Field
+                id="gridColsOverride"
+                label="Columnas de la grilla"
+                hint="Fuerza N columnas (1 – 6) en computador/tablet, aunque el cálculo automático dé menos. Vacío = automático (2 – 3 en computador según el ancho; en celular siempre 1). Las filas se calculan solas."
+                error={state?.fieldErrors?.gridColsOverride?.[0]}
+              >
+                <Input
+                  id="gridColsOverride"
+                  name="gridColsOverride"
+                  type="number"
+                  min={1}
+                  max={6}
+                  step={1}
+                  defaultValue={personalization?.gridColsOverride ?? ""}
+                  placeholder="Automático"
+                  disabled={pending}
+                />
+              </Field>
+            </div>
+          </SectionCard>
+        )}
+
+        {kindSel === "TEXT_ONLY" && (
+          <SectionCard
+            title="Configuración de texto"
+            description="Qué escribe el cliente: un nombre con fichas de letras, una frase en un cuadro, o un set fijo que se compra directo."
+          >
+            <Field id="textOnlyVariant" label="Subtipo">
+              <select
+                id="textOnlyVariant"
+                name="textOnlyVariant"
+                value={textOnlyVariant}
+                onChange={(e) => setTextOnlyVariant(e.target.value as TextOnlyVariant)}
+                disabled={pending}
+                className="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-10 w-full rounded-lg border bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <option value="name">Nombre con fichas de letras</option>
+                <option value="phrase">Cuadro con frase</option>
+                <option value="full">Set fijo — abecedario completo (compra directa)</option>
+                <option value="vowels">Set fijo — solo vocales (compra directa)</option>
+              </select>
+            </Field>
+
+            {textOnlyVariant === "name" && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Field
+                  id="letterCountMin"
+                  label="Mínimo de letras"
+                  error={state?.fieldErrors?.letterCountMin?.[0]}
+                >
+                  <Input
+                    id="letterCountMin"
+                    name="letterCountMin"
+                    type="number"
+                    min={1}
+                    max={30}
+                    step={1}
+                    defaultValue={personalization?.letterCountMin ?? 1}
+                    disabled={pending}
+                  />
+                </Field>
+                <Field
+                  id="letterCountMax"
+                  label="Máximo de letras"
+                  hint="Tope del nombre que el cliente puede armar."
+                  error={state?.fieldErrors?.letterCountMax?.[0]}
+                >
+                  <Input
+                    id="letterCountMax"
+                    name="letterCountMax"
+                    type="number"
+                    min={1}
+                    max={30}
+                    step={1}
+                    defaultValue={personalization?.letterCountMax ?? 10}
+                    disabled={pending}
+                  />
+                </Field>
+                <Field id="language" label="Idioma del alfabeto" hint="Español incluye la Ñ.">
+                  <select
+                    id="language"
+                    name="language"
+                    defaultValue={personalization?.language ?? "es"}
+                    disabled={pending}
+                    className="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-10 w-full rounded-lg border bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <option value="es">Español</option>
+                    <option value="en">Inglés</option>
+                  </select>
+                </Field>
+              </div>
+            )}
+
+            {textOnlyVariant === "phrase" && (
+              <div className="space-y-4">
+                <Field
+                  id="maxChars"
+                  label="Máximo de caracteres de la frase"
+                  error={state?.fieldErrors?.maxChars?.[0]}
+                >
+                  <Input
+                    id="maxChars"
+                    name="maxChars"
+                    type="number"
+                    min={1}
+                    max={280}
+                    step={1}
+                    defaultValue={personalization?.maxChars ?? 80}
+                    disabled={pending}
+                  />
+                </Field>
+                <Field
+                  id="fontOptions"
+                  label="Fuentes permitidas (una por línea)"
+                  hint="Vacío = todas las fuentes de marca. ej. fredoka, baloo."
+                  error={state?.fieldErrors?.fontOptions?.[0]}
+                >
+                  <Textarea
+                    id="fontOptions"
+                    name="fontOptions"
+                    rows={3}
+                    defaultValue={personalization?.fontOptions?.join("\n") ?? ""}
+                    placeholder={"fredoka\nbaloo"}
+                    className="font-mono"
+                    disabled={pending}
+                  />
+                </Field>
+              </div>
+            )}
+
+            {(textOnlyVariant === "full" || textOnlyVariant === "vowels") && (
+              <p className="text-brand-muted text-xs">
+                🛒 El set es fijo: el cliente lo añade directo al carrito, sin abrir el Estudio.
+              </p>
+            )}
+          </SectionCard>
+        )}
+
+        {kindSel === "EVENT_FAVOR" && (
+          <SectionCard
+            title="Datos del evento"
+            description="Lo que el cliente diligencia para sus recuerdos (matrimonio, XV años, baby shower…)."
+          >
+            <Field
+              id="eventFields"
+              label="Campos a pedir (uno por línea)"
+              hint="ej. coupleNames, date, venue · babyName, birthDate. Vacío = formulario genérico."
+              error={state?.fieldErrors?.eventFields?.[0]}
+            >
+              <Textarea
+                id="eventFields"
+                name="eventFields"
+                rows={3}
+                defaultValue={personalization?.eventFields?.join("\n") ?? ""}
+                placeholder={"coupleNames\ndate\nvenue"}
+                className="font-mono"
+                disabled={pending}
+              />
+            </Field>
+            <Checkbox
+              name="allowPhoto"
+              label="📷 Admite una foto del evento"
+              hint="El cliente puede subir 1 foto opcional dentro de la plantilla."
+              defaultChecked={personalization?.allowPhoto ?? false}
+              disabled={pending}
+            />
+          </SectionCard>
+        )}
+
+        {kindSel === "BUSINESS_LOGO" && (
+          <SectionCard
+            title="Logo de negocio"
+            description="Datos que el cliente empresarial envía para su imán publicitario."
+          >
+            <Field
+              id="logoFields"
+              label="Campos a pedir (uno por línea)"
+              hint="ej. logo, phone, email, website · name, title, company. Vacío = solo el logo."
+              error={state?.fieldErrors?.logoFields?.[0]}
+            >
+              <Textarea
+                id="logoFields"
+                name="logoFields"
+                rows={3}
+                defaultValue={personalization?.logoFields?.join("\n") ?? ""}
+                placeholder={"logo\nphone\nemail"}
+                className="font-mono"
+                disabled={pending}
+              />
+            </Field>
+            <Checkbox
+              name="requiresVectorFile"
+              label="✂️ Troquelado (corte con forma especial)"
+              hint="Sin editor en vivo: la cotización se cierra por WhatsApp con el archivo vectorial del cliente."
+              defaultChecked={personalization?.requiresVectorFile ?? false}
+              disabled={pending}
+            />
+          </SectionCard>
+        )}
+
+        {kindSel === "LETTERSET" && (
+          <SectionCard
+            title="Set de letras"
+            description="Abecedario completo o pack de vocales. El set físico es fijo; el cliente personaliza el color del marco en el Estudio."
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field
+                id="letterSet"
+                label="Contenido del set"
+                error={state?.fieldErrors?.letterSet?.[0]}
+              >
+                <select
+                  id="letterSet"
+                  name="letterSet"
+                  defaultValue={personalization?.letterSet ?? "full"}
+                  disabled={pending}
+                  className="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-10 w-full rounded-lg border bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="full">Abecedario completo</option>
+                  <option value="vowels">Solo vocales (A E I O U)</option>
+                </select>
+              </Field>
+              <Field id="language" label="Idioma del alfabeto" hint="Español incluye la Ñ.">
+                <select
+                  id="language"
+                  name="language"
+                  defaultValue={personalization?.language ?? "es"}
+                  disabled={pending}
+                  className="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-10 w-full rounded-lg border bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="es">Español</option>
+                  <option value="en">Inglés</option>
+                </select>
+              </Field>
+            </div>
+          </SectionCard>
+        )}
+      </AdminTabPanel>
+
       {/* ─────── TAB: AVANZADO (setup ocasional) ─────── */}
       <AdminTabPanel value="avanzado" active={activeTab}>
         <SectionCard
@@ -617,105 +1034,8 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
               error={state?.fieldErrors?.cost?.[0]}
               pending={pending}
             />
-            <Field
-              id="premadeSurcharge"
-              label="Recargo plantillas premium (%)"
-              hint="0 = sin recargo. Si usas diseños bajo licencia (ej. Disney), 10-15%."
-            >
-              <Input
-                id="premadeSurcharge"
-                name="premadeSurcharge"
-                type="number"
-                min={0}
-                max={100}
-                defaultValue={initialProduct?.premadeSurcharge ?? 0}
-                disabled={pending}
-              />
-            </Field>
           </div>
         </SectionCard>
-
-        {/*
-         * Estudio de personalización POR PRODUCTO (owner 2026-09-24, v2 tras
-         * prueba STG): TAMAÑO BASE del lienzo (lo que el cliente ve como su
-         * "100%" — su control de zoom es relativo a esta base) y columnas
-         * FORZADAS de la grilla. Solo aplica a productos personalizables; al
-         * apagar "Personalizable" los valores viajan en inputs ocultos para no
-         * perderse.
-         * 2026-09-25 (owner): los inputs muestran SIEMPRE el valor vigente —
-         * tamaño base muestra el override o 1 (el estándar); columnas muestra
-         * el override o vacío="Automático" (el automático es RESPONSIVO: 1 en
-         * celular, 2-3 en computador según el ancho — no hay un único número
-         * calculable desde el admin). Reset: vaciar el campo (null → el service
-         * elimina la key del personalizationSchema); en tamaño base, poner 1
-         * equivale al estándar.
-         */}
-        {personalizable ? (
-          <SectionCard
-            title="Estudio de personalización"
-            description="Ajustes finos del lienzo del Estudio para ESTE producto. El valor que ves es el que está vigente hoy."
-          >
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field
-                id="canvasBaseScale"
-                label="Tamaño base del lienzo"
-                hint="1 = tamaño estándar; 0.5 = se ve a la mitad de grande; 2 = el doble. Rango 0.5 – 2.5. El cliente siempre verá este tamaño como su 100% y su control de zoom parte de ahí. Para volver al estándar, pon 1 (o vacía el campo)."
-                error={state?.fieldErrors?.canvasBaseScale?.[0]}
-              >
-                <Input
-                  id="canvasBaseScale"
-                  name="canvasBaseScale"
-                  type="number"
-                  min={0.5}
-                  max={2.5}
-                  step={0.25}
-                  // Siempre muestra el valor VIGENTE (owner 2026-09-25): el
-                  // override guardado o 1 (el estándar). Guardar con 1 escribe
-                  // la key explícita — equivale al default del Estudio.
-                  defaultValue={initialProduct?.canvasBaseScale ?? 1}
-                  placeholder="1"
-                  disabled={pending}
-                />
-              </Field>
-              <Field
-                id="gridColsOverride"
-                label="Columnas de la grilla"
-                hint="Fuerza N columnas (1 – 6) en computador/tablet, aunque el cálculo automático dé menos. Vacío = automático (2 – 3 en computador según el ancho; en celular siempre 1). Las filas se calculan solas."
-                error={state?.fieldErrors?.gridColsOverride?.[0]}
-              >
-                <Input
-                  id="gridColsOverride"
-                  name="gridColsOverride"
-                  type="number"
-                  min={1}
-                  max={6}
-                  step={1}
-                  // Con override guardado se muestra; sin override queda vacío
-                  // ("Automático"): el valor automático es responsivo y no es
-                  // un único número calculable desde el admin (owner 2026-09-25).
-                  defaultValue={initialProduct?.gridColsOverride ?? ""}
-                  placeholder="Automático"
-                  disabled={pending}
-                />
-              </Field>
-            </div>
-          </SectionCard>
-        ) : (
-          // Producto NO personalizable: preservar los valores guardados (si los
-          // hay) para que guardar el form no los borre del personalizationSchema.
-          <>
-            <input
-              type="hidden"
-              name="canvasBaseScale"
-              value={initialProduct?.canvasBaseScale ?? ""}
-            />
-            <input
-              type="hidden"
-              name="gridColsOverride"
-              value={initialProduct?.gridColsOverride ?? ""}
-            />
-          </>
-        )}
       </AdminTabPanel>
 
       {/*
@@ -978,11 +1298,26 @@ const FIELD_LABELS: Record<string, string> = {
   shippingDaysMax: "Envío máximo (días)",
   minimumQuantity: "Cantidad mínima por orden",
   maximumQuantity: "Cantidad máxima por orden",
-  premadeSurcharge: "Recargo plantillas premium",
   weightGrams: "Peso (gramos)",
   widthCm: "Ancho (cm)",
   heightCm: "Alto (cm)",
   depthCm: "Largo (cm)",
+  personalizationKind: "Tipo de personalización",
+  photoSlots: "Número de fotos",
+  facesPerUnit: "Caras de diseño por unidad",
+  aspectRatio: "Proporción del lienzo",
+  galleryTag: "Grupo de diseños prediseñados",
+  textOnlyVariant: "Subtipo de texto",
+  letterCountMin: "Mínimo de letras",
+  letterCountMax: "Máximo de letras",
+  language: "Idioma del alfabeto",
+  maxChars: "Máximo de caracteres",
+  fontOptions: "Fuentes permitidas",
+  eventFields: "Campos del evento",
+  allowPhoto: "Admite foto",
+  logoFields: "Campos del logo",
+  requiresVectorFile: "Troquelado",
+  letterSet: "Contenido del set",
   canvasBaseScale: "Tamaño base del lienzo",
   gridColsOverride: "Columnas de la grilla",
 };
@@ -1008,7 +1343,28 @@ function computeErrorTabs(
     compareAtPrice: priceTab,
     isActive: "basico",
     isFeatured: "basico",
-    isPersonalizable: "basico",
+    // Personalización (2026-10-02) — su propio tab. canvasBaseScale /
+    // gridColsOverride se movieron de "avanzado" al panel de foto acá (su
+    // único consumidor es la superficie de foto del Estudio).
+    isPersonalizable: "personalizacion",
+    personalizationKind: "personalizacion",
+    photoSlots: "personalizacion",
+    facesPerUnit: "personalizacion",
+    aspectRatio: "personalizacion",
+    galleryTag: "personalizacion",
+    textOnlyVariant: "personalizacion",
+    letterCountMin: "personalizacion",
+    letterCountMax: "personalizacion",
+    language: "personalizacion",
+    maxChars: "personalizacion",
+    fontOptions: "personalizacion",
+    eventFields: "personalizacion",
+    allowPhoto: "personalizacion",
+    logoFields: "personalizacion",
+    requiresVectorFile: "personalizacion",
+    letterSet: "personalizacion",
+    canvasBaseScale: "personalizacion",
+    gridColsOverride: "personalizacion",
     richDescription: "detalles",
     whyChooseThis: "detalles",
     idealFor: "detalles",
@@ -1027,9 +1383,6 @@ function computeErrorTabs(
     slug: "avanzado",
     sku: "avanzado",
     cost: "avanzado",
-    premadeSurcharge: "avanzado",
-    canvasBaseScale: "avanzado",
-    gridColsOverride: "avanzado",
   };
   for (const [field, errors] of Object.entries(fieldErrors)) {
     if (errors && errors.length > 0 && mapping[field]) {

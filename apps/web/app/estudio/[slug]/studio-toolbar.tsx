@@ -13,10 +13,11 @@
  *     de M.3 corregido)
  *
  * El botón «Vista previa» tiene 4 estados visuales:
- *   - Deshabilitado (morado atenuado + tooltip explicando qué falta)
+ *   - Deshabilitado por faltantes (morado atenuado /30–/40 + tooltip explicando qué falta)
  *   - Habilitado (morado solid + sombra on hover)
- *   - Preparando la vista previa (loader + "Preparando…", aria-busy)
- *   - Saving (loader + texto "Guardando diseño...")
+ *   - Preparando la vista previa (fondo sólido atenuado 70% + loader + "Preparando…",
+ *     aria-busy — patrón único del estudio, ver studio-busy-cta.ts)
+ *   - Saving (mismo patrón ocupado + texto "Guardando diseño...")
  */
 
 import Link from "next/link";
@@ -28,6 +29,7 @@ import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { compareSizeToObject } from "./lib/size-comparator";
 import { LucamsLogo } from "@/components/lucams-logo";
+import { Hint } from "@/components/ui/tooltip";
 import { StudioPhotoCountControl } from "./studio-photo-count-control";
 import { StudioUnitCountControl } from "./studio-unit-count-control";
 import {
@@ -39,9 +41,11 @@ import {
 } from "./lib/store";
 import { missingFaceACount } from "./lib/faces";
 import type { SlotNoun } from "./lib/slot-noun";
+import { StudioQualityWarningsChip } from "./studio-quality-warnings-chip";
 import { igMissingRequiredTextLayersPerSlot } from "@/features/personalization/instagram-template-spec";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, splitStudioText, type StudioTexts } from "./studio-texts";
+import { STUDIO_CTA_BUSY_CLASSES } from "./studio-busy-cta";
 
 type StudioToolbarProps = {
   store: StoreApi<StudioStoreState>;
@@ -210,17 +214,22 @@ export function StudioToolbar({
           {/* M.3.b.UX.v12 (Lucy 2026-05-15) — Botón "?" para re-ver gestos.
             Icon-only para no ocupar espacio. Visible en mobile y desktop. */}
           {onOpenGesturesHint && (
-            <button
-              type="button"
-              onClick={onOpenGesturesHint}
-              aria-label={texts.lienzo.gestosAria}
-              title={texts.lienzo.gesturesButtonTitle}
-              className="text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark focus:ring-brand-purple inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
-            >
-              <HelpCircle className="h-4 w-4" aria-hidden />
-            </button>
+            <Hint content={texts.lienzo.gesturesButtonTitle}>
+              <button
+                type="button"
+                onClick={onOpenGesturesHint}
+                aria-label={texts.lienzo.gestosAria}
+                className="text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark focus:ring-brand-purple inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+              >
+                <HelpCircle className="h-4 w-4" aria-hidden />
+              </button>
+            </Hint>
           )}
           <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} />
+          {/* Paquete C (2026-10-02) — resumen visible de fotos con avisos de
+              calidad junto a «Vista previa» (popover con el detalle). Solo se
+              renderiza si hay avisos en fotos asignadas al diseño. */}
+          <StudioQualityWarningsChip store={store} />
           {/* M.3.b.UX.1 — Finalize button INLINE solo desktop (sm+).
               En mobile el FAB es la única forma de finalizar (montado por
               StudioEditor afuera del toolbar para que flote sobre el canvas). */}
@@ -272,18 +281,19 @@ export function StudioToolbar({
           línea → cero altura extra de chrome: la tarjeta del canvas sigue
           iniciando dentro del primer viewport de 375×812. */}
       <div className="border-brand-purple/10 bg-brand-cream/50 flex items-center justify-center gap-2 border-t py-2 md:hidden">
-        <span
-          className="text-brand-purple-dark max-w-[38%] truncate text-xs font-semibold"
-          title={productName}
-        >
-          {productName}
-        </span>
+        <Hint content={productName}>
+          <span className="text-brand-purple-dark max-w-[38%] truncate text-xs font-semibold">
+            {productName}
+          </span>
+        </Hint>
         <span aria-hidden className="text-brand-purple/25">
           ·
         </span>
         <ProgressBadge filled={filled} total={total} />
         {/* AutoSave indicator mobile abajo del progress */}
         <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} />
+        {/* Paquete C — mismo resumen de avisos de calidad en la fila móvil. */}
+        <StudioQualityWarningsChip store={store} />
       </div>
 
       {/* M.3.b.UX.v4 Lucy 2026-05-15 — leyenda simplificada y contextualizada.
@@ -571,18 +581,28 @@ export function FinalizeButton({
     !busy &&
     missing != null &&
     (missing.photos.length > 0 || missing.igTexts.length > 0);
-  const stateClasses = canFinalize
-    ? "bg-brand-purple hover:bg-brand-purple-dark text-white"
-    : variant === "fab"
+  // Paquete E (2026-10-02) — patrón ÚNICO de CTA ocupado (studio-busy-cta.ts):
+  // ocupado = CONSERVA el fondo sólido del CTA activo y solo atenúa + bloquea
+  // el cursor; bloqueado por faltantes = morado /30–/40 (sin cambios).
+  const activeClasses =
+    variant === "fab"
+      ? "bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 ring-brand-purple/20 text-white shadow-2xl ring-4 hover:scale-105 active:scale-95"
+      : "bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 text-white shadow-md hover:shadow-lg";
+  const busyClasses =
+    (variant === "fab"
+      ? "bg-brand-purple shadow-brand-purple/30 ring-brand-purple/20 text-white shadow-2xl ring-4"
+      : "bg-brand-purple shadow-brand-purple/20 text-white shadow-md") +
+    ` ${STUDIO_CTA_BUSY_CLASSES}`;
+  const blockedClasses =
+    variant === "fab"
       ? "bg-brand-purple/40 cursor-not-allowed text-white shadow-md"
       : "bg-brand-purple/30 cursor-not-allowed text-white";
+  const stateClasses = busy ? busyClasses : canFinalize ? activeClasses : blockedClasses;
 
   if (variant === "fab") {
     const fabBase = [
       "focus:ring-brand-purple inline-flex h-14 items-center justify-center gap-2 rounded-full px-5 text-sm font-bold transition-all focus:ring-2 focus:ring-offset-2 focus:outline-none",
-      canFinalize
-        ? "bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 ring-brand-purple/20 text-white shadow-2xl ring-4 hover:scale-105 active:scale-95"
-        : stateClasses,
+      stateClasses,
     ].join(" ");
     if (showMissing) {
       // El posicionamiento fixed pasa al WRAPPER (trigger del popover): el
@@ -598,7 +618,6 @@ export function FinalizeButton({
           <button
             type="button"
             disabled
-            title={disabledTooltip}
             aria-label={ariaLabel}
             aria-disabled
             aria-busy={busy}
@@ -611,27 +630,30 @@ export function FinalizeButton({
       );
     }
     return (
-      <button
-        type="button"
-        disabled={!canFinalize}
-        onClick={onFinalize}
-        title={disabledTooltip}
-        aria-label={ariaLabel}
-        aria-disabled={!canFinalize}
-        aria-busy={busy}
-        className={`${fabBase} fixed right-4 bottom-4 z-30 sm:hidden`}
-      >
-        {label}
-      </button>
+      <Hint content={disabledTooltip}>
+        {/* Wrapper focusable: disabled no recibe hover/foco y el tooltip es
+            quien explica el bloqueo (motivo extra u ocupado, sin faltantes). */}
+        <span tabIndex={0} className="inline-flex">
+          <button
+            type="button"
+            disabled={!canFinalize}
+            onClick={onFinalize}
+            aria-label={ariaLabel}
+            aria-disabled={!canFinalize}
+            aria-busy={busy}
+            className={`${fabBase} fixed right-4 bottom-4 z-30 sm:hidden`}
+          >
+            {label}
+          </button>
+        </span>
+      </Hint>
     );
   }
 
   // Inline (desktop toolbar)
   const inlineBase = [
     "focus:ring-brand-purple inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-all focus:ring-2 focus:ring-offset-2 focus:outline-none",
-    canFinalize
-      ? "bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 text-white shadow-md hover:shadow-lg"
-      : stateClasses,
+    stateClasses,
   ].join(" ");
   if (showMissing) {
     return (
@@ -639,7 +661,6 @@ export function FinalizeButton({
         <button
           type="button"
           disabled
-          title={disabledTooltip}
           aria-label={ariaLabel}
           aria-disabled
           aria-busy={busy}
@@ -652,18 +673,23 @@ export function FinalizeButton({
     );
   }
   return (
-    <button
-      type="button"
-      disabled={!canFinalize}
-      onClick={onFinalize}
-      title={disabledTooltip}
-      aria-label={ariaLabel}
-      aria-disabled={!canFinalize}
-      aria-busy={busy}
-      className={inlineBase}
-    >
-      {label}
-    </button>
+    <Hint content={disabledTooltip}>
+      {/* Wrapper focusable: disabled no recibe hover/foco y el tooltip es
+          quien explica el bloqueo (motivo extra u ocupado, sin faltantes). */}
+      <span tabIndex={0} className="inline-flex">
+        <button
+          type="button"
+          disabled={!canFinalize}
+          onClick={onFinalize}
+          aria-label={ariaLabel}
+          aria-disabled={!canFinalize}
+          aria-busy={busy}
+          className={inlineBase}
+        >
+          {label}
+        </button>
+      </span>
+    </Hint>
   );
 }
 
@@ -786,16 +812,15 @@ function AutoSaveIndicator({
           </>
         )}
         {status.kind === "error" && (
-          <span
-            title={status.message}
-            className="flex max-w-[300px] items-center gap-1 truncate text-red-600 sm:max-w-[480px]"
-            role="alert"
-          >
-            <AlertCircle className="h-3 w-3 flex-shrink-0" />
-            <span className="truncate" title={status.message}>
-              {status.message || texts.lienzo.autosaveError}
+          <Hint content={status.message}>
+            <span
+              className="flex max-w-[300px] items-center gap-1 truncate text-red-600 sm:max-w-[480px]"
+              role="alert"
+            >
+              <AlertCircle className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">{status.message || texts.lienzo.autosaveError}</span>
             </span>
-          </span>
+          </Hint>
         )}
       </motion.span>
     </AnimatePresence>

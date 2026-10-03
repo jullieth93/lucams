@@ -26,6 +26,7 @@ import {
   AdminTableHead,
   AdminTableRow,
 } from "@/components/admin-page";
+import { Hint } from "@/components/ui/tooltip";
 import { getCurrentAdmin } from "@/lib/auth";
 import { cmsFieldHasDraft, listCmsPages, searchCmsFields } from "@/features/cms/service";
 import { refreshCmsCacheAction } from "./actions";
@@ -211,44 +212,46 @@ export default async function ContenidoIndexPage({ searchParams }: { searchParam
               const pending = fields.filter((f) => !f.isPublished || cmsFieldHasDraft(f)).length;
               return (
                 <AdminCard key={page.id} hover className="flex flex-col overflow-hidden">
-                  <Link
-                    href={`/admin/contenido/paginas/${page.slug}`}
-                    className="group flex-1 p-5"
-                    title={`Editar el contenido de ${page.title}`}
-                  >
-                    <div className="mb-3 flex items-center gap-3">
-                      <div className="from-brand-purple/15 to-brand-pink/15 group-hover:from-brand-purple/25 group-hover:to-brand-pink/25 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br transition-colors">
-                        <Icon className="text-brand-purple h-5 w-5" />
+                  <Hint content={`Editar el contenido de ${page.title}`}>
+                    <Link
+                      href={`/admin/contenido/paginas/${page.slug}`}
+                      className="group flex-1 p-5"
+                    >
+                      <div className="mb-3 flex items-center gap-3">
+                        <div className="from-brand-purple/15 to-brand-pink/15 group-hover:from-brand-purple/25 group-hover:to-brand-pink/25 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-gradient-to-br transition-colors">
+                          <Icon className="text-brand-purple h-5 w-5" />
+                        </div>
+                        <h2 className="text-brand-purple-dark font-display group-hover:text-brand-purple text-lg leading-tight font-bold transition-colors">
+                          {page.title}
+                        </h2>
                       </div>
-                      <h2 className="text-brand-purple-dark font-display group-hover:text-brand-purple text-lg leading-tight font-bold transition-colors">
-                        {page.title}
-                      </h2>
-                    </div>
-                    {page.description && (
-                      <p className="text-brand-muted line-clamp-2 text-xs leading-snug">
-                        {page.description}
+                      {page.description && (
+                        <p className="text-brand-muted line-clamp-2 text-xs leading-snug">
+                          {page.description}
+                        </p>
+                      )}
+                      <p className="text-brand-purple-dark/60 mt-2 text-xs font-medium">
+                        {fields.length} campo{fields.length === 1 ? "" : "s"} ·{" "}
+                        {page.sections.length} seccione{page.sections.length === 1 ? "s" : "s"}
                       </p>
-                    )}
-                    <p className="text-brand-purple-dark/60 mt-2 text-xs font-medium">
-                      {fields.length} campo{fields.length === 1 ? "" : "s"} · {page.sections.length}{" "}
-                      seccione{page.sections.length === 1 ? "s" : "s"}
-                    </p>
-                  </Link>
+                    </Link>
+                  </Hint>
                   <div className="border-brand-purple/10 flex items-center justify-between gap-2 border-t px-5 py-2.5">
                     <div>
                       {pending > 0 && <AdminBadge tone="amber">{pending} sin publicar</AdminBadge>}
                     </div>
                     {page.path && (
-                      <a
-                        href={page.path}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-semibold"
-                        title={`Abrir ${page.path} en una pestaña nueva`}
-                      >
-                        Ver página
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
+                      <Hint content={`Abrir ${page.path} en una pestaña nueva`}>
+                        <a
+                          href={page.path}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-semibold"
+                        >
+                          Ver página
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </Hint>
                     )}
                   </div>
                 </AdminCard>

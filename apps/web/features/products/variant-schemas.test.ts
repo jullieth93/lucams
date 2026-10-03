@@ -10,6 +10,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  describeVariantAttributes,
   groupVariantsByCoverSignature,
   mergePreservingUnmanagedAttributes,
   parseVariantAttributes,
@@ -587,5 +588,98 @@ describe("resolvePromoDisplay", () => {
       compareAt: null,
       promoElsewhereFrom: 3990000,
     });
+  });
+});
+
+/*
+ * Paquete F (2026-10-02) — describeVariantAttributes: desglose canónico de
+ * TODAS las dimensiones de la variante para las superficies de compra
+ * (carrito, checkout, gracias, pedidos, admin) y los emails (Paquete H).
+ * Los labels replican el vocabulario del VariantSelector de la PDP.
+ */
+describe("describeVariantAttributes", () => {
+  it("cubre todas las dimensiones en el orden canónico", () => {
+    expect(
+      describeVariantAttributes({
+        quantity: 20,
+        photoSlots: 12,
+        sizeCm: "6×8",
+        shape: "heart",
+        finish: "glass",
+        color: "rosa",
+        magnet: true,
+        language: "en",
+        frameStyle: "negro",
+        variantStyle: "blanco-clasico",
+        theme: "animales",
+      }),
+    ).toEqual([
+      "20 unidades",
+      "12 fotos",
+      "6×8 cm",
+      "Corazón",
+      "Vidrio",
+      "Color rosa",
+      "Con imán",
+      "Inglés",
+      "Marco negro",
+      "Estilo Blanco clásico",
+      "Tema Animales",
+    ]);
+  });
+
+  it("magnet true → «Con imán»", () => {
+    expect(describeVariantAttributes({ magnet: true })).toEqual(["Con imán"]);
+  });
+
+  it("magnet false → «Sin imán (adhesivo)» (la distinción que faltaba en el set de 12 tarjetas)", () => {
+    expect(describeVariantAttributes({ magnet: false })).toEqual(["Sin imán (adhesivo)"]);
+  });
+
+  it("magnet ausente → no se menciona el imantado (no se asume el default)", () => {
+    expect(describeVariantAttributes({ photoSlots: 6 })).toEqual(["6 fotos"]);
+  });
+
+  it("attributes vacíos → lista vacía (la superficie decide qué pintar)", () => {
+    expect(describeVariantAttributes({})).toEqual([]);
+  });
+
+  it("singulares: 1 unidad / 1 foto", () => {
+    expect(describeVariantAttributes({ quantity: 1, photoSlots: 1 })).toEqual([
+      "1 unidad",
+      "1 foto",
+    ]);
+  });
+
+  it("valores enum conocidos se traducen al español de la PDP", () => {
+    expect(describeVariantAttributes({ shape: "rectangle" })).toEqual(["Rectangular"]);
+    expect(describeVariantAttributes({ shape: "circle" })).toEqual(["Circular"]);
+    expect(describeVariantAttributes({ finish: "matte" })).toEqual(["Mate"]);
+    expect(describeVariantAttributes({ finish: "glossy" })).toEqual(["Brillante"]);
+    expect(describeVariantAttributes({ finish: "soft-touch" })).toEqual(["Soft-touch"]);
+    expect(describeVariantAttributes({ language: "es" })).toEqual(["Español"]);
+    expect(describeVariantAttributes({ frameStyle: "blanco" })).toEqual(["Marco blanco"]);
+    expect(describeVariantAttributes({ variantStyle: "pasteles" })).toEqual(["Estilo Pasteles"]);
+    expect(describeVariantAttributes({ variantStyle: "instagram" })).toEqual(["Estilo Instagram"]);
+    expect(describeVariantAttributes({ theme: "frutas" })).toEqual(["Tema Frutas"]);
+    expect(describeVariantAttributes({ theme: "profesiones" })).toEqual(["Tema Profesiones"]);
+  });
+
+  it("valores libres/desconocidos pasan en crudo (con su sustantivo si es estilo)", () => {
+    expect(describeVariantAttributes({ language: "fr" })).toEqual(["fr"]);
+    expect(describeVariantAttributes({ frameStyle: "dorado" })).toEqual(["Marco dorado"]);
+    expect(describeVariantAttributes({ theme: "navidad" })).toEqual(["Tema navidad"]);
+  });
+
+  it("claves no visibles (variant, size, letterCount…) no aparecen en el desglose", () => {
+    expect(
+      describeVariantAttributes({
+        variant: "name",
+        size: "grande",
+        letterCount: 27,
+        pricePerTile: true,
+        magnet: false,
+      }),
+    ).toEqual(["Sin imán (adhesivo)"]);
   });
 });

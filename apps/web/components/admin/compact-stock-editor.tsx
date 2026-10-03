@@ -21,6 +21,7 @@
 
 import { useActionState, useState } from "react";
 import { Save, AlertCircle } from "lucide-react";
+import { Hint } from "@/components/ui/tooltip";
 import { MAX_STOCK_VALUE } from "@/features/products/stock-constants";
 import {
   setVariantStockAction,
@@ -71,25 +72,31 @@ export function CompactStockEditor({
           aria-label="Nueva cantidad de stock"
           className="border-brand-purple/25 text-brand-purple-dark focus:border-brand-purple focus:ring-brand-purple/30 h-9 w-20 rounded-md border bg-white px-2 text-sm tabular-nums focus:ring-2 focus:outline-none disabled:opacity-50"
         />
-        <button
-          type="submit"
-          disabled={pending || !hasChange}
-          aria-label="Guardar nuevo stock"
-          title={
+        <Hint
+          content={
             !hasChange
               ? "Sin cambios para guardar"
               : delta > 0
                 ? `Agregar ${delta} unidades`
                 : `Quitar ${Math.abs(delta)} unidades`
           }
-          className="bg-brand-purple hover:bg-brand-purple-dark disabled:bg-brand-purple/30 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-white shadow-sm transition-colors disabled:cursor-not-allowed"
         >
-          {pending ? (
-            <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-          ) : (
-            <Save className="h-4 w-4" />
-          )}
-        </button>
+          {/* span wrapper: el button disabled no recibe hover/foco, el span sí. */}
+          <span tabIndex={pending || !hasChange ? 0 : undefined} className="inline-flex">
+            <button
+              type="submit"
+              disabled={pending || !hasChange}
+              aria-label="Guardar nuevo stock"
+              className="bg-brand-purple hover:bg-brand-purple-dark disabled:bg-brand-purple/30 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-white shadow-sm transition-colors disabled:cursor-not-allowed"
+            >
+              {pending ? (
+                <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+            </button>
+          </span>
+        </Hint>
       </div>
 
       {/*
@@ -109,14 +116,13 @@ export function CompactStockEditor({
           </p>
         )}
         {state?.error && (
-          <p
-            role="alert"
-            className="flex items-center gap-1 text-xs font-medium text-red-700"
-            title={state.error}
-          >
-            <AlertCircle className="h-3 w-3" />
-            {state.error.length > 30 ? `${state.error.slice(0, 28)}…` : state.error}
-          </p>
+          // Tooltip con el error completo (el texto visible se trunca a 30 chars).
+          <Hint content={state.error}>
+            <p role="alert" className="flex items-center gap-1 text-xs font-medium text-red-700">
+              <AlertCircle className="h-3 w-3" />
+              {state.error.length > 30 ? `${state.error.slice(0, 28)}…` : state.error}
+            </p>
+          </Hint>
         )}
       </div>
 

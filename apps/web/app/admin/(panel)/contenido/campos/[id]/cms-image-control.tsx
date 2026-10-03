@@ -21,6 +21,7 @@ import { Check, ImagePlus, Images, Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Hint } from "@/components/ui/tooltip";
 import {
   uploadCmsMediaAction,
   type CmsMediaActionState,
@@ -247,31 +248,33 @@ export function CmsImageControl({
                   .map((m) => {
                     const isSel = m.id === value;
                     return (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => {
-                          onChange(m.id);
-                          setPickerOpen(false);
-                        }}
-                        title={m.alt}
-                        className={`group relative aspect-square overflow-hidden rounded-lg ring-2 transition hover:scale-[1.02] ${
-                          isSel ? "ring-emerald-500" : "hover:ring-brand-purple/50 ring-transparent"
-                        }`}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element -- thumb admin del bucket */}
-                        <img
-                          src={m.url}
-                          alt={m.alt}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                        {isSel && (
-                          <span className="absolute top-1 right-1 rounded-full bg-emerald-500 p-0.5 text-white">
-                            <Check className="h-3.5 w-3.5" />
-                          </span>
-                        )}
-                      </button>
+                      <Hint key={m.id} content={m.alt}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onChange(m.id);
+                            setPickerOpen(false);
+                          }}
+                          className={`group relative aspect-square overflow-hidden rounded-lg ring-2 transition hover:scale-[1.02] ${
+                            isSel
+                              ? "ring-emerald-500"
+                              : "hover:ring-brand-purple/50 ring-transparent"
+                          }`}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element -- thumb admin del bucket */}
+                          <img
+                            src={m.url}
+                            alt={m.alt}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                          {isSel && (
+                            <span className="absolute top-1 right-1 rounded-full bg-emerald-500 p-0.5 text-white">
+                              <Check className="h-3.5 w-3.5" />
+                            </span>
+                          )}
+                        </button>
+                      </Hint>
                     );
                   })}
               </div>

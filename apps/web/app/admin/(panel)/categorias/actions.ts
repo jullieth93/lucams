@@ -20,7 +20,18 @@ import { logger } from "@/lib/logger";
 export type CategoryActionState = {
   error?: string;
   fieldErrors?: Partial<
-    Record<"name" | "slug" | "description" | "order" | "icon" | "gradient", string[]>
+    Record<
+      | "name"
+      | "slug"
+      | "description"
+      | "order"
+      | "icon"
+      | "gradient"
+      | "richDescription"
+      | "useCase"
+      | "defaultSort",
+      string[]
+    >
   >;
 };
 
@@ -30,6 +41,11 @@ function parsePayload(formData: FormData) {
   // cae al fallback por slug / default genérico (lib/category-visuals.ts).
   const iconRaw = String(formData.get("icon") ?? "").trim();
   const gradientRaw = String(formData.get("gradient") ?? "").trim();
+  // B-6 — contenido editable de la sub-categoría. "" => null = la tienda
+  // omite la sección / cae al orden default "recent".
+  const richDescriptionRaw = String(formData.get("richDescription") ?? "").trim();
+  const useCaseRaw = String(formData.get("useCase") ?? "").trim();
+  const defaultSortRaw = String(formData.get("defaultSort") ?? "").trim();
   return {
     name: String(formData.get("name") ?? "").trim(),
     slug: String(formData.get("slug") ?? "")
@@ -41,6 +57,9 @@ function parsePayload(formData: FormData) {
     parentId: parentRaw === "" ? null : parentRaw,
     icon: iconRaw === "" ? null : iconRaw,
     gradient: gradientRaw === "" ? null : gradientRaw,
+    richDescription: richDescriptionRaw === "" ? null : richDescriptionRaw,
+    useCase: useCaseRaw === "" ? null : useCaseRaw,
+    defaultSort: defaultSortRaw === "" ? null : defaultSortRaw,
     // D3: el orden ya NO viene del form — lo auto-asigna el service.
   };
 }

@@ -42,6 +42,7 @@ vi.mock("react-konva", () => {
 vi.mock("use-image", () => ({ default: () => [null, "loading"] }));
 
 import { StudioSlot } from "./studio-slot";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { CanvasDataV1, SlotState } from "./types";
 
 afterEach(() => cleanup());
@@ -61,20 +62,24 @@ function filledSlot(slotIndex = 0): SlotState {
 }
 
 function renderSlot(overrides: Partial<Parameters<typeof StudioSlot>[0]> = {}) {
+  // TooltipProvider: el slot usa Hint (tooltip radix de marca) en sus chips —
+  // en app lo monta app/layout.tsx.
   return render(
-    <StudioSlot
-      slotState={filledSlot()}
-      unitTemplate={UNIT_TEMPLATE}
-      displaySize={439}
-      displayHeight={586}
-      isSelected={false}
-      totalSlots={4}
-      onClick={vi.fn()}
-      onClear={vi.fn()}
-      onAssetDrop={vi.fn()}
-      onKeyboardNav={vi.fn()}
-      {...overrides}
-    />,
+    <TooltipProvider delayDuration={0}>
+      <StudioSlot
+        slotState={filledSlot()}
+        unitTemplate={UNIT_TEMPLATE}
+        displaySize={439}
+        displayHeight={586}
+        isSelected={false}
+        totalSlots={4}
+        onClick={vi.fn()}
+        onClear={vi.fn()}
+        onAssetDrop={vi.fn()}
+        onKeyboardNav={vi.fn()}
+        {...overrides}
+      />
+    </TooltipProvider>,
   );
 }
 

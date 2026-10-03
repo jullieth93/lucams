@@ -51,6 +51,7 @@
 import { useMemo } from "react";
 import { Check, Minus, Plus } from "lucide-react";
 import { formatCOP } from "@/lib/format";
+import { Hint } from "@/components/ui/tooltip";
 import { useSelectedVariant } from "./variant-actions";
 import {
   parseVariantAttributes,
@@ -804,7 +805,7 @@ export function VariantSelector({
                   findCompatibleInStock(dim.key, value) ?? findGlobalInStock(dim.key, value);
                 const soldOut = !isSelected && !globalVariant;
                 const available = isSingle || isSelected || Boolean(globalVariant);
-                return (
+                const chip = (
                   <button
                     key={value}
                     type="button"
@@ -812,7 +813,6 @@ export function VariantSelector({
                     aria-disabled={!available || isSingle}
                     disabled={!available || isSingle}
                     onClick={() => !isSingle && available && handleSelectValue(dim.key, value)}
-                    title={soldOut ? "Agotado en esta combinación." : undefined}
                     className={[
                       "focus:ring-brand-turquoise rounded-lg px-3 py-2 text-sm font-semibold transition-all focus:ring-2 focus:outline-none",
                       isSelected
@@ -827,6 +827,19 @@ export function VariantSelector({
                     {formatDimensionValue(dim.key, value)}
                     {soldOut ? " · Agotado" : ""}
                   </button>
+                );
+                // El tooltip de "Agotado" cae sobre un botón disabled (no
+                // recibe hover/foco) → el trigger es un <span> focuseable.
+                return (
+                  <Hint key={value} content={soldOut ? "Agotado en esta combinación." : undefined}>
+                    {soldOut ? (
+                      <span tabIndex={0} className="inline-flex">
+                        {chip}
+                      </span>
+                    ) : (
+                      chip
+                    )}
+                  </Hint>
                 );
               })}
             </div>

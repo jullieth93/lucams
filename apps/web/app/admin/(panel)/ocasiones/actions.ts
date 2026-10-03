@@ -6,7 +6,6 @@ import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
-import { prisma } from "@/lib/db";
 import {
   OcasionValidationError,
   createOcasionTag,
@@ -140,13 +139,17 @@ export async function updateOcasionAction(
 /**
  * Toggle activar/desactivar inline desde el listado. Mismo patrón que
  * `toggleCategoryActiveAction`. Activa = visible al cliente.
+ * Delega en `updateOcasionTag` del service (no escritura Prisma directa) para
+ * que el toggle invalide el tag "catalog" — sin eso, pausar/activar quedaba
+ * stale hasta 1h en PLP, recomendador, /ocasion/[slug] y /api/catalog/ocasiones
+ * (hallazgo M-1, auditoría cableado 2026-10-02).
  */
 export async function toggleOcasionActiveAction(formData: FormData): Promise<void> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
   const id = String(formData.get("id") ?? "");
   const next = formData.get("next") === "true";
   if (!id) return;
-  await prisma.ocasionTag.update({ where: { id }, data: { isActive: next } });
+  await updateOcasionTag({ id, isActive: next }, session.admin.id);
   await recordAdminAction({
     actorId: session.admin.id,
     action: next ? "ocasion.activate" : "ocasion.deactivate",

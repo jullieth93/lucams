@@ -13,8 +13,11 @@
  *   LUCAMS_SHIPPING_CUTOFF_HOUR 0-23, hora Colombia (default 12).
  *   LUCAMS_SHIPPING_ZONES       JSON { "<cityCode DANE>": ["<zoneId>", …] } —
  *                               zonas habilitadas por ciudad (lib/lucams-zones.ts).
- *                               Fallback de lectura: LUCAMS_SHIPPING_LOCALITIES
- *                               (V1 solo-Bogotá, array plano) migrado a { "11001": [...] }.
+ *                               "{}" vacío = NINGUNA habilitada (fail-closed).
+ *                               Fallback legacy (solo si la key V2 está AUSENTE):
+ *                               LUCAMS_SHIPPING_LOCALITIES (V1 solo-Bogotá, array
+ *                               plano) → { "11001": [...] }. A eliminar tras
+ *                               migrar los ambientes.
  *
  * Lecturas fail-safe: setting ausente o JSON inválido → fallback (transportadoras
  * todas habilitadas, envío propio apagado). Las escrituras son self-healing: si
@@ -24,6 +27,7 @@
 
 import "server-only";
 import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
 import { getSettingValue } from "@/lib/cms";
 import { createCmsField, getCmsFieldByKey, saveCmsFieldDraft } from "@/features/cms/service";
 
@@ -197,8 +201,19 @@ export function countEnabledZones(zones: Record<string, string[]>): number {
 
 /**
  * Lee la config del envío propio con defaults fail-closed (apagado si falta todo).
- * Migración suave V1→V2: si LUCAMS_SHIPPING_ZONES no existe aún, lee el formato
- * viejo LUCAMS_SHIPPING_LOCALITIES (array plano, implícitamente Bogotá "11001").
+ *
+ * Fallback legacy V1→V2 (LUCAMS_SHIPPING_LOCALITIES, array plano solo-Bogotá):
+ * SOLO aplica cuando la key V2 está AUSENTE. Si LUCAMS_SHIPPING_ZONES existe
+ * —incluso como "{}" (vacío explícito = NINGUNA zona habilitada) o con JSON
+ * inválido— NO se cae al legacy: el valor V2 es la verdad (fail-closed). Antes
+ * un "{}" guardado desde /admin/envios caía al array viejo = TODAS las zonas
+ * habilitadas, que fue una de las causas del bug "zona deshabilitada pero
+ * sugerida en checkout". Se loguea warn cada vez que el fallback legacy se usa
+ * para hacerlo visible en STG.
+ *
+ * TODO(migración): eliminar este fallback y la key LUCAMS_SHIPPING_LOCALITIES
+ * una vez migrados los ambientes (borrar la key legacy en STG/PROD desde
+ * Contenido › Ajustes o SQL).
  */
 export async function getLucamsShippingSettings(): Promise<LucamsShippingSettings> {
   const [enabledRaw, priceRaw, cutoffRaw, zonesRaw, legacyRaw] = await Promise.all([
@@ -210,10 +225,20 @@ export async function getLucamsShippingSettings(): Promise<LucamsShippingSetting
   ]);
   const priceCop = Number.parseInt(priceRaw, 10);
   const cutoffHour = Number.parseInt(cutoffRaw, 10);
-  let zones = zonesRaw ? parseZonesByCity(zonesRaw) : {};
-  if (Object.keys(zones).length === 0 && legacyRaw) {
+  let zones: Record<string, string[]> = {};
+  if (zonesRaw) {
+    // V2 presente (aunque sea "{}" o JSON roto) → verdad absoluta, sin legacy.
+    zones = parseZonesByCity(zonesRaw);
+  } else if (legacyRaw) {
     const legacy = parseStringArray(legacyRaw, []);
-    if (legacy.length > 0) zones = { "11001": legacy };
+    if (legacy.length > 0) {
+      zones = { "11001": legacy };
+      logger.warn({
+        event: "shipping.settings.lucams_legacy_localities_fallback",
+        localitiesCount: legacy.length,
+        msg: "LUCAMS_SHIPPING_ZONES ausente: usando el fallback legacy LUCAMS_SHIPPING_LOCALITIES. Migra la config a V2 y borra la key legacy.",
+      });
+    }
   }
   return {
     enabled: enabledRaw.trim() === "true",

@@ -21,6 +21,15 @@
  * bien para fotos típicas familiares + paisajes.
  *
  * Bundle: smartcrop.js ≈ 50KB gzipped. Vale la pena por el WOW moment.
+ *
+ * Paquete J (2026-10-02, auditoría §E-4 candidato #4) — el análisis corre
+ * sobre una copia reducida a ≤256 px de borde largo. smartcrop.js YA
+ * prescala internamente a 256px (options.prescale, default true), pero lo
+ * hace con un drawImage del original de ~12 MP en el main thread; acá el
+ * downscale se hace ANTES con createImageBitmap({resize...}) (pipeline de
+ * imagen del navegador, fuera del path de raster del canvas 2D) y smartcrop
+ * recibe la copia chica — su prescale queda en no-op. Las coords del crop
+ * vuelven al espacio de la imagen original multiplicando por el ratio.
  */
 
 import smartcrop from "smartcrop";
@@ -31,17 +40,96 @@ export type SmartCropResult = {
   offsetY: number;
 };
 
+/** Borde largo máximo de la copia que se analiza (saliency no necesita más). */
+const ANALYSIS_MAX_PX = 256;
+
+/**
+ * Mapea el topCrop (coords del ESPACIO ANALIZADO, posiblemente downscaleado)
+ * al offset de centrado en el slot: centro del crop → coords de la imagen
+ * original (× ratio) → delta contra el centro → × finalScale. Puro, testeable.
+ */
+export function smartCropOffsetFromCrop(
+  crop: { x: number; y: number; width: number; height: number },
+  analysisSize: { width: number; height: number },
+  imageSize: { width: number; height: number },
+  finalScale: number,
+): SmartCropResult {
+  const ratioX = imageSize.width / analysisSize.width;
+  const ratioY = imageSize.height / analysisSize.height;
+  // Centro del smart crop en coords de la IMAGEN ORIGINAL:
+  const cropCenterX = (crop.x + crop.width / 2) * ratioX;
+  const cropCenterY = (crop.y + crop.height / 2) * ratioY;
+  // Diferencia contra el centro default (cover crop):
+  const dxImage = imageSize.width / 2 - cropCenterX;
+  const dyImage = imageSize.height / 2 - cropCenterY;
+  // A slot coords aplicando finalScale (cuánto se renderea la imagen en el slot):
+  return {
+    offsetX: dxImage * finalScale,
+    offsetY: dyImage * finalScale,
+  };
+}
+
+type AnalysisInput = {
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+  /** Cerrar tras el análisis (solo si es un ImageBitmap que creamos acá). */
+  dispose?: () => void;
+};
+
+/**
+ * Copia ≤256px del borde largo para el análisis. Cadena de fallbacks:
+ * createImageBitmap resize → canvas drawImage → la imagen original (jsdom /
+ * navegadores sin resize: el prescale interno de smartcrop cubre ese caso).
+ */
+async function downscaleForAnalysis(image: HTMLImageElement): Promise<AnalysisInput> {
+  const w = image.naturalWidth;
+  const h = image.naturalHeight;
+  const scale = Math.min(1, ANALYSIS_MAX_PX / Math.max(w, h));
+  if (scale >= 1 || w === 0 || h === 0) return { source: image, width: w, height: h };
+  const dw = Math.max(1, Math.round(w * scale));
+  const dh = Math.max(1, Math.round(h * scale));
+  if (typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(image, {
+        resizeWidth: dw,
+        resizeHeight: dh,
+        resizeQuality: "high",
+      });
+      return { source: bitmap, width: dw, height: dh, dispose: () => bitmap.close() };
+    } catch {
+      // Sigue el fallback canvas.
+    }
+  }
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = dw;
+    canvas.height = dh;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(image, 0, 0, dw, dh);
+      return { source: canvas, width: dw, height: dh };
+    }
+  } catch {
+    // Cae al original.
+  }
+  return { source: image, width: w, height: h };
+}
+
 /**
  * Calcula el offset que centra la zona interesante de la imagen en el slot.
  *
  * Algoritmo:
- *   1. smartcrop.crop(image, { width: slotW, height: slotH }) → devuelve el
- *      mejor crop rectangular { x, y, width, height } en coords de la imagen.
- *   2. El centro de ese crop en image coords = (x + width/2, y + height/2).
- *   3. Default cover crop centra la imagen → mostraría el pixel (img.w/2, img.h/2).
- *   4. Para que el smart crop quede en el centro del slot, hay que mover la
+ *   1. Copia ≤256px (downscaleForAnalysis) → smartcrop.crop(copia, { width:
+ *      slotW, height: slotH }) → mejor crop rectangular en coords de la copia.
+ *   2. El centro de ese crop se escala de vuelta a coords de la imagen
+ *      original (× ratio del downscale) y se compara contra el centro default
+ *      del cover crop (smartCropOffsetFromCrop).
+ *   3. Para que el smart crop quede en el centro del slot, hay que mover la
  *      imagen tal que el centro del smart crop coincida con el centro del slot.
- *   5. El offset (en slot coords) es la diferencia × finalScale.
+ *   4. El offset (en slot coords) es la diferencia × finalScale.
  *
  * Devuelve `null` si la imagen no se puede analizar (corrupta, CORS, etc.).
  */
@@ -51,37 +139,30 @@ export async function analyzeSmartCrop(
   slotHeight: number,
   finalScale: number,
 ): Promise<SmartCropResult | null> {
+  let input: AnalysisInput | null = null;
   try {
-    const result = await smartcrop.crop(image, {
+    // Paquete J — analizar la copia ≤256px, no el original de ~12 MP.
+    input = await downscaleForAnalysis(image);
+    const result = await smartcrop.crop(input.source as HTMLImageElement, {
       width: slotWidth,
       height: slotHeight,
     });
     const crop = result.topCrop;
     if (!crop) return null;
 
-    // Centro del smart crop en image coords:
-    const cropCenterX = crop.x + crop.width / 2;
-    const cropCenterY = crop.y + crop.height / 2;
-
-    // Centro default (cover crop) está en el centro de la imagen:
-    const imageCenterX = image.naturalWidth / 2;
-    const imageCenterY = image.naturalHeight / 2;
-
-    // Diferencia en image coords:
-    const dxImage = imageCenterX - cropCenterX;
-    const dyImage = imageCenterY - cropCenterY;
-
-    // Convertir a slot coords aplicando finalScale (cuánto se renderea
-    // la imagen en el slot):
-    return {
-      offsetX: dxImage * finalScale,
-      offsetY: dyImage * finalScale,
-    };
+    return smartCropOffsetFromCrop(
+      crop,
+      { width: input.width, height: input.height },
+      { width: image.naturalWidth, height: image.naturalHeight },
+      finalScale,
+    );
   } catch (err) {
     // smartcrop puede fallar con imágenes muy chicas, cross-origin, etc.
     // No bloqueante: si falla, el editor usa cover crop centrado normal.
     console.warn("[smart-crop] análisis falló, usando cover crop default:", err);
     return null;
+  } finally {
+    input?.dispose?.();
   }
 }
 

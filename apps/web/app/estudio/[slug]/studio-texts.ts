@@ -66,6 +66,12 @@ export type StudioTexts = {
     finalizePopoverFotos: string;
     finalizePopoverTextos: string;
     finalizeGuardando: string;
+    /** Paquete C (2026-10-02) — chip resumen de avisos de calidad junto a
+     *  «Vista previa» (toolbar). {n} = fotos asignadas con aviso. */
+    calidadChipTexto: string;
+    calidadChipAria: string;
+    /** Título del popover del chip (lista las fotos con aviso). */
+    calidadPopoverTitulo: string;
     gesturesButtonTitle: string;
     slotEmptyInvite: string;
     slotEmptyDrop: string;
@@ -83,6 +89,10 @@ export type StudioTexts = {
     /** Badge del slot VACÍO de Cara B cuando el producto tiene backOptional
      *  (separadores 2026-09-25): la cara B puede quedar sin diseñar. */
     slotCaraBOpcional: string;
+    /** Paquete A (2026-10-02) — tooltip del badge «Opcional»: la regla única de
+     *  la cara B vacía (se imprime espejo de la cara A; producción:
+     *  expandMissingBackFaces en features/personalization/service.ts). */
+    slotCaraBOpcionalTitle: string;
     /** Línea de doblez de la tira de separador (solo plegables, no noFold):
      *  "Doblez · Desplegado: {tamano}" — {tamano} = tamaño total desplegado. */
     doblezDesplegado: string;
@@ -220,6 +230,18 @@ export type StudioTexts = {
     predisenadosTitulo: string;
     predisenadosHint: string;
     toastPredisenado: string;
+    /** Paquete A (2026-10-02) — confirmación del llenado VARIADO. {n} = cuántos diseños se aplicaron. */
+    toastPredisenadoVarios: string;
+    /** Paquete A — CTA del llenado variado de slots vacíos (round-robin del catálogo). */
+    predisenadosLlenarCta: string;
+    predisenadosLlenarAria: string;
+    /** Paquete A — la cara B NO se aplicó porque su slot ya tenía contenido (nunca se pisa ni se descarta en silencio). */
+    toastCaraBOcupada: string;
+    /** Paquete A — badges de caras de la tarjeta de prediseñado (solo productos de 2 caras). */
+    badgeDosCaras: string;
+    badgeUnaCara: string;
+    badgeDosCarasTitle: string;
+    badgeUnaCaraTitle: string;
     toastError: string;
     toastSinSlot: string;
     elegirAria: string;
@@ -268,7 +290,18 @@ export type StudioTexts = {
     calidadAccionesTitulo: string;
     calidadTip1: string;
     calidadTip2: string;
+    /** Paquete C (2026-10-02) — rótulo del bloque con la recomendación ESPECÍFICA
+     *  del caso (la genera el servidor según el check que falló). */
+    calidadRecomendacionTitulo: string;
+    /** Paquete C — texto corto del badge visible de aviso en las miniaturas
+     *  (sidebar y picker; antes solo un emoji). */
+    badgeRevisar: string;
+    /** Chip bajo la miniatura cuando la foto ya está asignada a un slot
+     *  (reemplaza el check ✓ flotante sobre la imagen). */
+    badgeAgregada: string;
     calidadCerrar: string;
+    /** CTA del modal de calidad en el picker: asignar la foto con warning igual. */
+    calidadUsarDeTodosModos: string;
     pickerTitulo: string;
     pickerDesc: string;
     pickerVacio: string;
@@ -447,6 +480,18 @@ export type StudioTexts = {
      * la cantidad se eligió en la PDP y cambiarla implica volver a ella.
      */
     copiasAjusteCarrito: string;
+    /** Paquete C (2026-10-02) — sección "Calidad de tus fotos" de la Vista
+     *  Previa: lista las fotos asignadas con aviso y exige la aceptación
+     *  explícita antes de confirmar (solo aparece si hay avisos). */
+    calidadSeccionTitulo: string;
+    calidadSeccionIntro: string;
+    /** Texto del checkbox OBLIGATORIO de aceptación (habilita el confirmar).
+     *  Solo se muestra cuando hay avisos que exigen aceptación (requiresAck). */
+    calidadAcepto: string;
+    /** Fase 2 (2026-10-02) — nota que reemplaza al checkbox cuando TODOS los
+     *  avisos son informativos (brillo suave como único problema): no hay
+     *  nada que aceptar y el confirmar queda habilitado. */
+    calidadNotaInformativa: string;
   };
   /** Vistas 3D y escenas. */
   escenas: {
@@ -656,6 +701,10 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     finalizePopoverFotos: "Fotos por cargar:",
     finalizePopoverTextos: "Textos por completar:",
     finalizeGuardando: "Guardando diseño...",
+    // Paquete C (2026-10-02) — chip resumen de avisos de calidad junto a «Vista previa».
+    calidadChipTexto: "{n} por revisar",
+    calidadChipAria: "{n} fotos tienen avisos de calidad. Click para ver cuáles son.",
+    calidadPopoverTitulo: "Fotos con avisos de calidad",
     gesturesButtonTitle: "Cómo editar tu foto (drag, zoom, doble click)",
     slotEmptyInvite: "Pásame una foto",
     slotEmptyDrop: "¡Suéltala aquí! 💜",
@@ -668,6 +717,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     unitCaraA: "Cara A",
     unitCaraB: "Cara B",
     slotCaraBOpcional: "Opcional",
+    slotCaraBOpcionalTitle: "Si no diseñas el respaldo, lo imprimimos igual que el frente.",
     doblezDesplegado: "Doblez · Desplegado: {tamano}",
     doblezNotaRotacion:
       "La tira se imprime con las caras cabeza a cabeza hacia el doblez — al doblarla sobre la página ambas se leen derechas.",
@@ -799,6 +849,16 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     predisenadosTitulo: "Diseños prediseñados",
     predisenadosHint: "Aplica un diseño listo al slot seleccionado (o al primero vacío).",
     toastPredisenado: 'Diseño "{nombre}" aplicado',
+    toastPredisenadoVarios: "{n} diseños aplicados",
+    predisenadosLlenarCta: "Llenar con diseños variados",
+    predisenadosLlenarAria: "Llenar los espacios vacíos con diseños prediseñados distintos",
+    toastCaraBOcupada:
+      "El respaldo no se aplicó porque ese espacio ya tiene un diseño (no pisamos tu contenido).",
+    badgeDosCaras: "2 caras",
+    badgeUnaCara: "1 cara",
+    badgeDosCarasTitle: "Este diseño trae frente y respaldo.",
+    badgeUnaCaraTitle:
+      "Este diseño trae solo el frente: el respaldo se imprime igual que el frente.",
     toastError: "No pudimos aplicar el diseño. Intenta de nuevo.",
     toastSinSlot: "Selecciona un slot vacío primero",
     elegirAria: "Selecciona plantilla del imán",
@@ -846,7 +906,13 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     calidadAccionesTitulo: "¿Qué puedes hacer?",
     calidadTip1: "Subir una foto de mayor resolución (la original, no la de WhatsApp)",
     calidadTip2: "Si la foto ya es la mejor que tienes, igual la podemos imprimir",
+    // Paquete C (2026-10-02) — recomendación específica del caso (contenido principal
+    // del modal de calidad) + badge visible en miniaturas (antes solo un emoji).
+    calidadRecomendacionTitulo: "Nuestra recomendación para esta foto",
+    badgeRevisar: "Revisar",
+    badgeAgregada: "✓ Agregada",
     calidadCerrar: "Entendido",
+    calidadUsarDeTodosModos: "Usar de todos modos",
     pickerTitulo: "Foto para el imán {n} de {total}",
     pickerDesc: "Elige una foto ya subida o suma una nueva.",
     pickerVacio: "Todavía no subiste fotos. Empieza arriba.",
@@ -1012,6 +1078,17 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     piezaFichas: "fichas",
     copiasIdenticas: "{n} copias idénticas de tu diseño",
     copiasAjusteCarrito: "La cantidad la elegiste en la página del producto.",
+    // Paquete C (2026-10-02) — aceptación explícita de calidad en la Vista Previa:
+    // solo se muestra cuando el diseño usa fotos con avisos; el checkbox es
+    // obligatorio para habilitar el botón de confirmar.
+    // Fase 2 — los avisos de brillo SUAVE (único problema de la foto) son
+    // informativos: no exigen checkbox; se muestra la nota en su lugar.
+    calidadSeccionTitulo: "Calidad de tus fotos",
+    calidadSeccionIntro: "Estas fotos tienen avisos de calidad. Así como están, así se imprimirán.",
+    calidadAcepto:
+      "Entiendo que estas fotos pueden imprimirse con menor calidad y acepto el resultado.",
+    calidadNotaInformativa:
+      "Estos avisos son solo informativos — si el look es el que buscabas, puedes continuar sin marcar nada.",
   },
   escenas: {
     titulo: "✨ Míralo en tu espacio",
@@ -1208,6 +1285,9 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.finalizePopoverFotos": "estudio.lienzo.finalize-popover-fotos",
   "lienzo.finalizePopoverTextos": "estudio.lienzo.finalize-popover-textos",
   "lienzo.finalizeGuardando": "estudio.lienzo.finalize-guardando",
+  "lienzo.calidadChipTexto": "estudio.lienzo.calidad-chip-texto",
+  "lienzo.calidadChipAria": "estudio.lienzo.calidad-chip-aria",
+  "lienzo.calidadPopoverTitulo": "estudio.lienzo.calidad-popover-titulo",
   "lienzo.gesturesButtonTitle": "estudio.lienzo.gestures-button-title",
   "lienzo.slotEmptyInvite": "estudio.lienzo.slot-empty-invite",
   "lienzo.slotEmptyDrop": "estudio.lienzo.slot-empty-drop",
@@ -1220,6 +1300,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.unitCaraA": "estudio.lienzo.unit-cara-a",
   "lienzo.unitCaraB": "estudio.lienzo.unit-cara-b",
   "lienzo.slotCaraBOpcional": "estudio.lienzo.slot-cara-b-opcional",
+  "lienzo.slotCaraBOpcionalTitle": "estudio.lienzo.slot-cara-b-opcional-title",
   "lienzo.doblezDesplegado": "estudio.lienzo.doblez-desplegado",
   "lienzo.doblezNotaRotacion": "estudio.lienzo.doblez-nota-rotacion",
   "lienzo.slotTooltipCentrar": "estudio.lienzo.slot-tooltip-centrar",
@@ -1340,6 +1421,14 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "plantillas.predisenadosTitulo": "estudio.plantillas.predisenados-titulo",
   "plantillas.predisenadosHint": "estudio.plantillas.predisenados-hint",
   "plantillas.toastPredisenado": "estudio.plantillas.toast-predisenado",
+  "plantillas.toastPredisenadoVarios": "estudio.plantillas.toast-predisenado-varios",
+  "plantillas.predisenadosLlenarCta": "estudio.plantillas.predisenados-llenar-cta",
+  "plantillas.predisenadosLlenarAria": "estudio.plantillas.predisenados-llenar-aria",
+  "plantillas.toastCaraBOcupada": "estudio.plantillas.toast-cara-b-ocupada",
+  "plantillas.badgeDosCaras": "estudio.plantillas.badge-dos-caras",
+  "plantillas.badgeUnaCara": "estudio.plantillas.badge-una-cara",
+  "plantillas.badgeDosCarasTitle": "estudio.plantillas.badge-dos-caras-title",
+  "plantillas.badgeUnaCaraTitle": "estudio.plantillas.badge-una-cara-title",
   "plantillas.toastError": "estudio.plantillas.toast-error",
   "plantillas.toastSinSlot": "estudio.plantillas.toast-sin-slot",
   "plantillas.elegirAria": "estudio.plantillas.elegir-aria",
@@ -1378,7 +1467,11 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "fotos.calidadAccionesTitulo": "estudio.fotos.calidad-acciones-titulo",
   "fotos.calidadTip1": "estudio.fotos.calidad-tip-1",
   "fotos.calidadTip2": "estudio.fotos.calidad-tip-2",
+  "fotos.calidadRecomendacionTitulo": "estudio.fotos.calidad-recomendacion-titulo",
+  "fotos.badgeRevisar": "estudio.fotos.badge-revisar",
+  "fotos.badgeAgregada": "estudio.fotos.badge-agregada",
   "fotos.calidadCerrar": "estudio.fotos.calidad-cerrar",
+  "fotos.calidadUsarDeTodosModos": "estudio.fotos.calidad-usar-de-todos-modos",
   "fotos.pickerTitulo": "estudio.fotos.picker-titulo",
   "fotos.pickerDesc": "estudio.fotos.picker-desc",
   "fotos.pickerVacio": "estudio.fotos.picker-vacio",
@@ -1523,6 +1616,10 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "exportar.piezaFichas": "estudio.exportar.pieza-fichas",
   "exportar.copiasIdenticas": "estudio.exportar.copias-identicas",
   "exportar.copiasAjusteCarrito": "estudio.exportar.copias-ajuste-carrito",
+  "exportar.calidadSeccionTitulo": "estudio.exportar.calidad-seccion-titulo",
+  "exportar.calidadSeccionIntro": "estudio.exportar.calidad-seccion-intro",
+  "exportar.calidadAcepto": "estudio.exportar.calidad-acepto",
+  "exportar.calidadNotaInformativa": "estudio.exportar.calidad-nota-informativa",
   "escenas.titulo": "estudio.escenas.titulo",
   "escenas.volverDetalle": "estudio.escenas.volver-detalle",
   "escenas.chipNevera": "estudio.escenas.chip-nevera",

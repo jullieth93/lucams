@@ -744,7 +744,6 @@ const PLACEHOLDER_PRODUCTS = [
     description: "Coleccionable temático Harry Potter (placeholder).",
     basePrice: 350000,
     personalizationKind: "NONE",
-    premadeSurcharge: 15,
   },
   {
     slug: "coleccionables-pokemon",
@@ -754,7 +753,6 @@ const PLACEHOLDER_PRODUCTS = [
     description: "Coleccionable temático Pokémon (placeholder).",
     basePrice: 350000,
     personalizationKind: "NONE",
-    premadeSurcharge: 15,
   },
   {
     slug: "coleccionables-star-wars",
@@ -764,7 +762,6 @@ const PLACEHOLDER_PRODUCTS = [
     description: "Coleccionable temático Star Wars (placeholder).",
     basePrice: 350000,
     personalizationKind: "NONE",
-    premadeSurcharge: 15,
   },
   {
     slug: "coleccionables-marvel",
@@ -774,7 +771,6 @@ const PLACEHOLDER_PRODUCTS = [
     description: "Coleccionable temático Marvel (placeholder).",
     basePrice: 350000,
     personalizationKind: "NONE",
-    premadeSurcharge: 15,
   },
   {
     slug: "coleccionables-dc",
@@ -784,7 +780,6 @@ const PLACEHOLDER_PRODUCTS = [
     description: "Coleccionable temático DC Comics (placeholder).",
     basePrice: 350000,
     personalizationKind: "NONE",
-    premadeSurcharge: 15,
   },
   {
     slug: "coleccionables-disney",
@@ -794,7 +789,6 @@ const PLACEHOLDER_PRODUCTS = [
     description: "Coleccionable temático Disney/Pixar (placeholder).",
     basePrice: 350000,
     personalizationKind: "NONE",
-    premadeSurcharge: 15,
   },
   {
     slug: "coleccionables-anime",
@@ -804,7 +798,6 @@ const PLACEHOLDER_PRODUCTS = [
     description: "Coleccionable Anime Retro 90s-2000s (placeholder).",
     basePrice: 350000,
     personalizationKind: "NONE",
-    premadeSurcharge: 15,
   },
   {
     slug: "coleccionables-cartoons",
@@ -814,7 +807,6 @@ const PLACEHOLDER_PRODUCTS = [
     description: "Coleccionable Cartoons 90s (placeholder).",
     basePrice: 350000,
     personalizationKind: "NONE",
-    premadeSurcharge: 15,
   },
 ];
 
@@ -1002,37 +994,39 @@ async function step3_PlaceholderProducts() {
     created++;
     if (APPLY) {
       await prisma.product.create({
-      data: {
-        slug: p.slug,
-        sku: p.sku,
-        name: p.name,
-        description: p.description,
-        basePrice: p.basePrice,
-        categoryId: subCategory.id,
-        personalizationKind: p.personalizationKind,
-        isActive: false, // placeholder
-        isPersonalizable: p.personalizationKind !== "NONE",
-        premadeSurcharge: p.premadeSurcharge || 0,
-        images: [UNSPLASH("1607082348824-0a96f2a4b9da")], // placeholder Unsplash
-        productionDays: DEFAULT_PRODUCTION_DAYS_BY_KIND[p.personalizationKind] || 2,
-        physicalSpecs:
-          DEFAULT_PHYSICAL_SPECS_BY_KIND[p.personalizationKind] ||
-          DEFAULT_PHYSICAL_SPECS_BY_KIND.NONE,
-        idealFor: ["regalo", "coleccionable"],
-        // Default variant para que CartItem pueda referenciar
-        variants: {
-          create: [
-            {
-              sku: `${p.sku}-DEFAULT`,
-              name: "Default",
-              price: p.basePrice,
-              attributes: {},
-              isActive: false,
-            },
-          ],
+        data: {
+          slug: p.slug,
+          sku: p.sku,
+          name: p.name,
+          description: p.description,
+          basePrice: p.basePrice,
+          categoryId: subCategory.id,
+          personalizationKind: p.personalizationKind,
+          isActive: false, // placeholder
+          isPersonalizable: p.personalizationKind !== "NONE",
+          // premadeSurcharge (PLAN_CATALOG_V2 5.5) retirado 2026-10-02: el flujo
+          // PREMADE salió del storefront el 2026-09-11 (ADR-090) y el recargo
+          // nunca se cobró. Los 8 Universos antes llevaban 15.
+          images: [UNSPLASH("1607082348824-0a96f2a4b9da")], // placeholder Unsplash
+          productionDays: DEFAULT_PRODUCTION_DAYS_BY_KIND[p.personalizationKind] || 2,
+          physicalSpecs:
+            DEFAULT_PHYSICAL_SPECS_BY_KIND[p.personalizationKind] ||
+            DEFAULT_PHYSICAL_SPECS_BY_KIND.NONE,
+          idealFor: ["regalo", "coleccionable"],
+          // Default variant para que CartItem pueda referenciar
+          variants: {
+            create: [
+              {
+                sku: `${p.sku}-DEFAULT`,
+                name: "Default",
+                price: p.basePrice,
+                attributes: {},
+                isActive: false,
+              },
+            ],
+          },
         },
-      },
-    });
+      });
     }
   }
   console.log(

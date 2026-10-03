@@ -50,13 +50,16 @@ import {
 import { MAX_LETTER_SET_UNITS } from "@/features/personalization/design-units";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { StudioPreviewModal } from "./studio-preview-modal";
+import { describeVariantAttributes } from "@/features/products/variant-schemas";
 import { StudioSimpleHeader } from "./studio-simple-header";
+import { STUDIO_CTA_DISABLED_CLASSES } from "./studio-busy-cta";
 import { STUDIO_MAX_WIDTH } from "./studio-layout";
 import { resolveLetterSetVariant, type LetterSetVariant } from "./lib/letter-set-resolve";
 import { loadCanvasImage } from "./lib/canvas-image";
 import type { Magnet3D } from "./fridge-3d-view";
 import { buildLetterTileTextures, LETTER_TILE_CORNER_RATIO } from "./lib/letter-tile-textures";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { Hint } from "@/components/ui/tooltip";
 import { useIsTouch } from "./use-is-touch";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -949,16 +952,17 @@ export function LetterSetEditor({
                           </button>
                         ))}
                       </nav>
-                      <button
-                        type="button"
-                        onClick={handleApplyToAll}
-                        aria-label={texts.unidades.aplicarATodasAria}
-                        title={texts.unidades.aplicarATodasTitle}
-                        className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-4 py-2 text-xs font-bold transition active:scale-95"
-                      >
-                        <Copy className="h-3.5 w-3.5" aria-hidden />
-                        {texts.unidades.aplicarATodas}
-                      </button>
+                      <Hint content={texts.unidades.aplicarATodasTitle}>
+                        <button
+                          type="button"
+                          onClick={handleApplyToAll}
+                          aria-label={texts.unidades.aplicarATodasAria}
+                          className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-4 py-2 text-xs font-bold transition active:scale-95"
+                        >
+                          <Copy className="h-3.5 w-3.5" aria-hidden />
+                          {texts.unidades.aplicarATodas}
+                        </button>
+                      </Hint>
                     </div>
                   )}
 
@@ -1008,7 +1012,7 @@ export function LetterSetEditor({
                       type="button"
                       onClick={handleShowPreview}
                       disabled={submitting || preparing || building3D}
-                      className="bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 disabled:opacity-60"
+                      className={`bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 ${STUDIO_CTA_DISABLED_CLASSES}`}
                     >
                       {preparing || submitting ? (
                         <Loader2 className="h-5 w-5 animate-spin" />
@@ -1050,6 +1054,18 @@ export function LetterSetEditor({
         // Tamaño real de la variante vigente (la que se re-resuelve al cambiar tema/idioma).
         // El atributo se guarda sin unidad ("5×7"); sin esto la modal decía "Cada imán mide 7×10.".
         sizeCm={currentVariant?.sizeCm ? `${currentVariant.sizeCm} cm` : undefined}
+        // Paquete F (2026-10-02) — desglose de la variante VIGENTE (re-resuelta en
+        // vivo al cambiar tema/idioma): imantado, idioma y tema. El tamaño ya lo
+        // cubre sizeCm de arriba; no se duplica.
+        variantLabel={
+          currentVariant
+            ? describeVariantAttributes({
+                magnet: currentVariant.magnet,
+                language: currentVariant.language,
+                theme: currentVariant.theme,
+              }).join(" · ") || undefined
+            : undefined
+        }
         unitPrice={unitPriceCents}
         // Multi-unidad (2026-09-09): el diseño contiene TODOS los sets → total =
         // precio del set × N y la línea del carrito es UNA (qty 1).

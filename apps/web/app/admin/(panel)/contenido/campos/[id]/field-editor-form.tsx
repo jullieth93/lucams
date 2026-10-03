@@ -25,6 +25,7 @@ import { Loader2, Save, ChevronDown, Lightbulb, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Hint } from "@/components/ui/tooltip";
 import { MarkdownEditor } from "@/components/admin/markdown-editor";
 import { saveCmsFieldAction, type CmsActionState } from "@/app/admin/(panel)/contenido/actions";
 import { CmsImageControl, type CmsMediaLite } from "./cms-image-control";
@@ -394,23 +395,23 @@ export function FieldEditorForm({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {isDirty && (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={discardChanges}
-              disabled={pending}
-              className="text-brand-purple-dark hover:bg-brand-purple/10"
-              title="Volver al contenido guardado, perdiendo los cambios actuales"
-            >
-              <Undo2 className="mr-1.5 h-4 w-4" />
-              Descartar cambios
-            </Button>
+            <Hint content="Volver al contenido guardado, perdiendo los cambios actuales">
+              <span tabIndex={0} className="inline-flex">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={discardChanges}
+                  disabled={pending}
+                  className="text-brand-purple-dark hover:bg-brand-purple/10"
+                >
+                  <Undo2 className="mr-1.5 h-4 w-4" />
+                  Descartar cambios
+                </Button>
+              </span>
+            </Hint>
           )}
-          <Button
-            type="submit"
-            disabled={pending || !isDirty}
-            className="bg-gradient-brand text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-            title={
+          <Hint
+            content={
               isDirty
                 ? isSetting
                   ? "Guardar y aplicar en el sitio"
@@ -418,17 +419,25 @@ export function FieldEditorForm({
                 : "No hay cambios para guardar"
             }
           >
-            {pending ? (
-              <>
-                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Guardando...
-              </>
-            ) : (
-              <>
-                <Save className="mr-1.5 h-4 w-4" />
-                {isSetting ? "Guardar y aplicar" : "Guardar borrador"}
-              </>
-            )}
-          </Button>
+            <span tabIndex={0} className="inline-flex">
+              <Button
+                type="submit"
+                disabled={pending || !isDirty}
+                className="bg-gradient-brand text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {pending ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Guardando...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-1.5 h-4 w-4" />
+                    {isSetting ? "Guardar y aplicar" : "Guardar borrador"}
+                  </>
+                )}
+              </Button>
+            </span>
+          </Hint>
         </div>
       </div>
     </form>

@@ -34,7 +34,22 @@
  * create/update; los tests de abajo verifican el bloqueo.
  */
 
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+
+// `next/cache.updateTag` se mockea a no-op: fuera de un Server Action real
+// lanza ("can only be called from within a Server Action"). unstable_cache
+// passthrough: el service lo invoca a nivel de módulo (B-8, lookup cacheado
+// del proxy) y la integración ejerce la función cruda contra la DB.
+vi.mock("next/cache", () => ({
+  updateTag: vi.fn(),
+  revalidateTag: vi.fn(),
+  revalidatePath: vi.fn(),
+  unstable_cache:
+    (fn: (...args: unknown[]) => unknown) =>
+    (...args: unknown[]) =>
+      fn(...args),
+}));
+
 import { prisma } from "@/lib/db";
 import {
   RedirectValidationError,

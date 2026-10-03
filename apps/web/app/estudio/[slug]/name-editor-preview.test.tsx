@@ -57,6 +57,7 @@ vi.mock("@/app/carrito/actions", () => ({
 }));
 
 import { NameEditor } from "./name-editor";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const PRICE_PER_TILE = 3_500_00; // centavos COP por ficha
 
@@ -94,14 +95,18 @@ function renderEditor(extraProps?: {
   }[];
 }) {
   return render(
-    <NameEditor
-      product={{ id: "prod-1", slug: "nombre-personalizado", name: "Nombre Personalizado" }}
-      variantId="var-1"
-      config={{ min: 3, max: 10, language: "es" }}
-      pricePerTile={PRICE_PER_TILE}
-      styles={[]}
-      {...extraProps}
-    />,
+    // TooltipProvider: el tooltip de marca (Hint, radix) lo exige — en la app
+    // lo monta app/layout.tsx.
+    <TooltipProvider delayDuration={0}>
+      <NameEditor
+        product={{ id: "prod-1", slug: "nombre-personalizado", name: "Nombre Personalizado" }}
+        variantId="var-1"
+        config={{ min: 3, max: 10, language: "es" }}
+        pricePerTile={PRICE_PER_TILE}
+        styles={[]}
+        {...extraProps}
+      />
+    </TooltipProvider>,
   );
 }
 

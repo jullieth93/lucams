@@ -52,6 +52,7 @@ vi.mock("@/app/carrito/actions", () => ({
 }));
 
 import { LetterSetEditor } from "./letter-set-editor";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 afterEach(() => cleanup());
 
@@ -87,20 +88,24 @@ function renderEditor(
   >,
 ) {
   return render(
-    <LetterSetEditor
-      product={{ id: "prod-1", slug: "pack-vocales", name: "Pack Vocales" }}
-      variantId="var-1"
-      variants={[{ id: "var-1", price: 45_000, sizeCm: "7×10", magnet: true, language: "es" }]}
-      basePrice={40_000}
-      letterSet="vowels"
-      alphabets={{ es: ["A", "B"], en: ["A", "B"] }}
-      availableLanguages={["es"]}
-      initialLanguage="es"
-      themeOptions={{ es: [], en: [] }}
-      initialTheme={null}
-      stylesByLanguage={{ es: [], en: [] }}
-      {...extraProps}
-    />,
+    // TooltipProvider: el tooltip de marca (Hint, radix) lo exige — en la app
+    // lo monta app/layout.tsx.
+    <TooltipProvider delayDuration={0}>
+      <LetterSetEditor
+        product={{ id: "prod-1", slug: "pack-vocales", name: "Pack Vocales" }}
+        variantId="var-1"
+        variants={[{ id: "var-1", price: 45_000, sizeCm: "7×10", magnet: true, language: "es" }]}
+        basePrice={40_000}
+        letterSet="vowels"
+        alphabets={{ es: ["A", "B"], en: ["A", "B"] }}
+        availableLanguages={["es"]}
+        initialLanguage="es"
+        themeOptions={{ es: [], en: [] }}
+        initialTheme={null}
+        stylesByLanguage={{ es: [], en: [] }}
+        {...extraProps}
+      />
+    </TooltipProvider>,
   );
 }
 

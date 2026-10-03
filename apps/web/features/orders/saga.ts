@@ -19,7 +19,7 @@
  */
 
 import "server-only";
-import { prisma } from "@/lib/db";
+import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getShippingProvider } from "@/features/shipping/provider";
 import { getEffectiveShippingDims } from "@/features/products/shipping-schemas";
@@ -31,6 +31,7 @@ import { FetchTimeoutError } from "@/lib/fetch-with-timeout";
 import { decrementStockForOrder } from "./stock";
 import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
 import { LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
+import { buildShipmentLastError } from "./shipment-error";
 import type { ShippingAddressInput } from "./schemas";
 import {
   sendOrderConfirmationOnce,
@@ -725,6 +726,24 @@ export async function processPaidOrder(
     // request nunca salió: circuit-open), donde es seguro reintentar.
     const isTimeout =
       err instanceof FetchTimeoutError || (err instanceof Error && err.name === "TimeoutError");
+    // Paquete G (2026-10-02) — persistir el intento fallido SANITIZADO (sin PII)
+    // en Order.shipmentLastError: el detalle admin muestra la causa REAL de la
+    // transportadora + sugerencia operativa, no solo el throw genérico. Best-effort:
+    // si este update falla ya quedó el logger.error de arriba. Se limpia al
+    // persistir el tracking (guía generada OK en un reintento posterior).
+    await prisma.order
+      .updateMany({
+        where: { id: order.id },
+        data: {
+          shipmentLastError: buildShipmentLastError({
+            err,
+            carrier: order.shippingCarrier ?? null,
+            destination: { city: ship.city, department: ship.department },
+            timeout: isTimeout,
+          }),
+        },
+      })
+      .catch(() => null);
     if (isTimeout) {
       await markNeedsReconciliation(
         order.id,
@@ -766,6 +785,9 @@ export async function processPaidOrder(
         trackingUrl: shipmentResult.trackingUrl,
         labelUrl: shipmentResult.labelUrl,
         shippingCarrier: shipmentResult.carrier,
+        // La guía se generó: limpiar el último error persistido (Paquete G) —
+        // shipmentLastError solo describe intentos fallidos AÚN sin guía.
+        shipmentLastError: Prisma.DbNull,
       },
     });
   } catch (err) {

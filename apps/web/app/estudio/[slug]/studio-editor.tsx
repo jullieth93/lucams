@@ -44,6 +44,7 @@ import { StudioGesturesHint, GESTURES_HINT_STORAGE_KEY } from "./studio-gestures
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
 import { readClientCookiePreferences } from "@/lib/cookie-consent";
 import { StudioPreviewModal } from "./studio-preview-modal";
+import { describeVariantAttributes } from "@/features/products/variant-schemas";
 import {
   Sheet,
   SheetClose,
@@ -53,6 +54,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useIsTouch } from "./use-is-touch";
+import { toast } from "sonner";
 import { Sparkles, Box, X, CalendarDays, Loader2 } from "lucide-react";
 import nextDynamic from "next/dynamic";
 import type { Magnet3D } from "./fridge-3d-view";
@@ -76,7 +78,8 @@ import {
   photosPerUnitForEditor,
   designUnitPriceMultiplier,
 } from "@/features/personalization/design-units";
-import { faceSlotLabels, facePairOfUnit, deployedSizeCm } from "./lib/faces";
+import { faceSlotLabels, previewFacePairOfUnit, deployedSizeCm } from "./lib/faces";
+import { isBookmarkGalleryTag, resolveGalleryTag } from "./lib/product-kind";
 import {
   canvasToPreviewDataUrl,
   previewFileExtension,
@@ -97,7 +100,9 @@ const BookView3D = nextDynamic(() => import("./book-view-3d"), {
   loading: () => <Book3DLoadingFallback />,
 });
 import { createStudioStore } from "./lib/store";
+import { snapshotSlotForPreview, yieldToMain } from "./lib/slot-snapshot-cache";
 import { resolveSlotNoun, type StudioSlotProductKind } from "./lib/slot-noun";
+import { collectQualityWarnings, qualityWarningsKey } from "./lib/quality-warnings";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
 import { ensureCanvasV2 } from "./lib/canvas-migrate";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -478,10 +483,12 @@ export function StudioEditor({
   const livePriceMultiplier = useStore(store, (s) =>
     s.canvasData ? designUnitPriceMultiplier(s.canvasData, facesPerUnit) : 1,
   );
-  // "Sin imán" (2026-09-22): la variante sin imán no tiene sentido en la nevera/
-  // espacio 3D (tampoco libro) → ni botón ni vista 3D. `undefined` (catálogo sin
-  // la dimensión) conserva el comportamiento de siempre.
-  const hide3DView = liveMagnet === false;
+  // "Sin imán" (2026-09-22 → REVISADO Paquete D, 2026-10-02): la variante sin imán
+  // ya NO esconde el botón ni la vista 3D — el 3D es ilustrativo del producto
+  // (los separadores y las tiras son magnéticos como producto aunque la variante
+  // no lo sea). La única superficie que sigue gateando por imán es la galería de
+  // escenas del CALENDARIO (sus escenas nevera/tablero afirman imán; su flujo sin
+  // imán vive en el visor de detalle — ver galleryScenes en scene-gallery.tsx).
   // Precio VIVO del pack para el N actual (vista de la modal; el cobro lo
   // resuelve el servidor al agregar al carrito — nunca se confía en este valor).
   const effectiveUnitPrice = useMemo(() => {
@@ -501,9 +508,12 @@ export function StudioEditor({
   // rango seguro (nunca un año pasado) y se persiste por-diseño en el finalize.
   // (`isCalendarMonth` se declara junto al bloque multi-unidad, más arriba.)
   // SEP1 — separadores (galleryTag "separadores" o "separadores-magneticos" / "separadores-alargados"):
-  // su vista inmersiva es un LIBRO, no la nevera.
-  const galleryTag = (product.personalizationSchema as { galleryTag?: string } | null)?.galleryTag;
-  const isBookmark = typeof galleryTag === "string" && galleryTag.startsWith("separadores");
+  // su vista inmersiva es un LIBRO, no la nevera. Paquete D (2026-10-02): el tag se resuelve con
+  // el MISMO helper de la página (resolveGalleryTag — explícito o fallback al slug): un producto
+  // separador sin galleryTag explícito en BD igual se detecta por su slug y conserva su 3D.
+  const isBookmark = isBookmarkGalleryTag(
+    resolveGalleryTag(product.personalizationSchema, product.slug),
+  );
   // #14 — sustantivo del slot: Fase 1A (2026-09-27) lo centraliza en
   // resolveSlotNoun (lib/slot-noun) — usa el productKind REAL (el calendario
   // dice "tarjetas", no "imanes"; las tiras cuentan "fotos") y una variante
@@ -566,6 +576,15 @@ export function StudioEditor({
   // Subscribir reactivamente al modal — assets/designId del store, no snapshot
   const modalAssets = useStore(store, (s) => s.assets);
   const modalDesignId = useStore(store, (s) => s.designId);
+  // Paquete C (2026-10-02) — fotos con aviso de calidad ASIGNADAS al diseño: las
+  // lista la Vista Previa con checkbox de aceptación obligatorio. Suscripción
+  // atómica por clave primitiva (patrón del store), detalle memoizado.
+  const qualityWarningsKeyStr = useStore(store, (s) => qualityWarningsKey(s.assets, s.canvasData));
+  const qualityWarnings = useMemo(
+    () => collectQualityWarnings(store.getState().assets, store.getState().canvasData),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- la clave resume el contenido
+    [store, qualityWarningsKeyStr],
+  );
   // PR A.3 — Subscribir reactivamente al flag de finalizing del store
   // para que el modal preview muestre el spinner durante upload.
   const isFinalizingFlag = useStore(store, (s) => s.isFinalizing);
@@ -902,8 +921,28 @@ export function StudioEditor({
 
   const handleAssetBSelected = useCallback(
     (slotIndex: number, asset: StudioAsset) => {
+      // Paquete A (2026-10-02) — la cara B de un prediseñado NUNCA pisa el
+      // contenido del usuario: slot ocupado → no se aplica y se avisa (antes
+      // se sobreescribía o se descartaba en silencio según la vía).
+      const slot = store.getState().canvasData?.slots.find((s) => s.slotIndex === slotIndex);
+      if (slot?.assetUrl) {
+        toast.warning(texts.plantillas.toastCaraBOcupada);
+        return;
+      }
       store.getState().assignAssetToSlot(slotIndex, asset);
     },
+    [store, texts],
+  );
+
+  // Paquete A — DEDUPE de prediseñados (cache de sesión del store): el mismo
+  // diseño aplicado 2+ veces (picker o llenado variado) se sube una sola vez.
+  const getCachedPredesigned = useCallback(
+    (galleryImageId: string) => store.getState().predesignedAssetsByGalleryId[galleryImageId],
+    [store],
+  );
+  const rememberPredesigned = useCallback(
+    (galleryImageId: string, entry: { a: StudioAsset; b?: StudioAsset }) =>
+      store.getState().rememberPredesignedAssets(galleryImageId, entry),
     [store],
   );
 
@@ -967,7 +1006,9 @@ export function StudioEditor({
       // noFold: frente | reverso lado a lado), no una grilla de caras sueltas —
       // es la pieza física que el cliente va a recibir.
       // 2026-09-22 — noFold (Alargados): sin doblez ni "desplegado"; backOptional:
-      // cara B vacía se dibuja NEGRA (reverso del imán), no con el placeholder.
+      // cara B vacía se pinta ESPEJO de la cara A (REGLA ÚNICA, Paquete A
+      // 2026-10-02 — producción: expandMissingBackFaces, service.ts), igual que
+      // en el libro 3D. Lo resuelve previewFacePairOfUnit dentro del compositor.
       const foldCaption = (() => {
         if (facesPerUnit !== 2 || productConfig.noFold) return undefined;
         const deployed = deployedSizeCm(productConfig.sizeCm);
@@ -1023,7 +1064,7 @@ export function StudioEditor({
   // un libro, no la nevera). Si la captura falla, no rompemos el Estudio — solo no abrimos el 3D.
   const handleOpen3D = useCallback(async () => {
     const state = store.getState();
-    if (!state.canvasData || bookBuilding || hide3DView) return;
+    if (!state.canvasData || bookBuilding) return;
     setBookBuilding(true);
     try {
       await ensureAllStagesMounted(); // T5: la vista 3D necesita la textura de TODOS los slots
@@ -1063,7 +1104,6 @@ export function StudioEditor({
     ensureAllStagesMounted,
     isBookmark,
     bookBuilding,
-    hide3DView,
     texts,
   ]);
 
@@ -1072,7 +1112,7 @@ export function StudioEditor({
   // demanda. Si la captura falla, no rompemos el Estudio — solo no abrimos la galería.
   const handleOpenScene = useCallback(async () => {
     const state = store.getState();
-    if (!state.canvasData || sceneBuilding || hide3DView) return;
+    if (!state.canvasData || sceneBuilding) return;
     setSceneBuilding(true);
     try {
       await ensureAllStagesMounted(); // T5: la galería necesita la textura de TODOS los slots
@@ -1146,7 +1186,6 @@ export function StudioEditor({
     ensureAllStagesMounted,
     sceneBuilding,
     isBookmark,
-    hide3DView,
     texts,
   ]);
 
@@ -1218,7 +1257,7 @@ export function StudioEditor({
   // precio = variante × N lo deriva el SERVIDOR del canvasData guardado
   // (design-units.ts — nunca se confía en un multiplicador del cliente).
   const handleConfirmFinalize = useCallback(
-    async (_copies: number) => {
+    async (_copies: number, opts?: { qualityAcknowledged?: boolean }) => {
       const state = store.getState();
       if (!state.designId || !state.canvasData || state.isFinalizing || !previewDataUrl) return;
       state.setIsFinalizing(true);
@@ -1257,6 +1296,9 @@ export function StudioEditor({
           const fd = new FormData();
           fd.set("designId", designId);
           fd.set("slotCount", String(canvasData.slots.length));
+          // Paquete C — aceptación explícita de calidad de fotos (checkbox de la
+          // Vista Previa): el servidor la sella en Design.qualityAcknowledgedAt.
+          if (opts?.qualityAcknowledged) fd.set("qualityAcknowledged", "1");
           // ADR-063 CAL2 — para calendarios mes-a-mes, el año elegido viaja al server (que lo hornea en
           // cada página del mes y lo persiste por-diseño).
           if (isCalendarMonth) fd.set("calendarYear", String(selectedYear));
@@ -1532,9 +1574,16 @@ export function StudioEditor({
       />
 
       <div className="flex flex-1 flex-col lg:flex-row">
-        {/* Sidebar desktop (visible lg+, oculto en mobile — usa sheet drawer) */}
+        {/* Sidebar desktop (visible lg+, oculto en mobile — usa sheet drawer).
+            2026-10-02 (UX scroll) — sticky con scroll PROPIO acotado al viewport:
+            el sidebar puede crecer largo (prediseñados + mis fotos + plantillas)
+            y antes arrastraba el scroll del documento entero, sacando el canvas
+            de vista. lg:self-start es requisito del sticky dentro del flex-row
+            (sin él, stretch le da la altura de la fila y no pega). top-16 ≈ alto
+            del SiteHeader sticky (py-3 + BrandMark sm). Móvil intacto (el sheet
+            ya tiene max-h + overflow propios). */}
         <aside
-          className="border-brand-purple/10 hidden bg-white lg:block lg:w-72 lg:border-r"
+          className="border-brand-purple/10 hidden bg-white lg:sticky lg:top-16 lg:block lg:max-h-[calc(100vh-4rem)] lg:w-72 lg:self-start lg:overflow-y-auto lg:border-r"
           aria-label={texts.lienzo.herramientasAria}
         >
           <StudioSidebar
@@ -1545,6 +1594,7 @@ export function StudioEditor({
             productShape={productConfig.shape}
             allowText={allowText}
             predesigned={predesigned}
+            facesPerUnit={facesPerUnit}
           />
         </aside>
 
@@ -1657,8 +1707,9 @@ export function StudioEditor({
                 <span>{calendarBuilding ? texts.comun.armando : texts.lienzo.btnCalendario}</span>
                 <span className="sr-only">{texts.lienzo.calBtnSr}</span>
               </button>
-            ) : // "Sin imán" (2026-09-22): sin botón ni vista 3D (ni libro ni espacio).
-            hide3DView ? null : isBookmark ? (
+            ) : // Paquete D (2026-10-02): la variante "sin imán" ya NO esconde el
+            // botón 3D — el 3D es ilustrativo del producto (ver nota junto a liveMagnet).
+            isBookmark ? (
               <button
                 type="button"
                 onClick={handleOpen3D}
@@ -1778,10 +1829,10 @@ export function StudioEditor({
       {/* FOTO4/CAL4 — Galería de escenas "en tu espacio" en un solo modal (kind decide las escenas:
           fotoimanes → nevera/polaroid/mural/repisa/regalo · calendario → abre en el DETALLE
           tarjeta-a-tarjeta y sube a nevera/tablero con "Míralo en tu espacio", ola 3).
-          Fase 1A (2026-09-27) — el calendario SIN IMÁN (hide3DView) SÍ abre: su visor de
-          detalle tarjeta-a-tarjeta es válido sin imán; la galería recibe `magnet` y gatea
+          Fase 1A (2026-09-27) — el calendario SIN IMÁN SÍ abre: su visor de detalle
+          tarjeta-a-tarjeta es válido sin imán; la galería recibe `magnet` y gatea
           INTERNO las escenas nevera/tablero (que sí asumen imán). */}
-      {sceneMagnets !== null && (!hide3DView || sceneMagnets.kind === "calendar") && (
+      {sceneMagnets !== null && (
         <SceneGallery
           magnets={sceneMagnets.magnets}
           cols={sceneMagnets.cols}
@@ -1790,17 +1841,15 @@ export function StudioEditor({
           isPolaroid={sceneMagnets.isPolaroid}
           facesPerUnit={sceneMagnets.facesPerUnit}
           flat={sceneMagnets.flat}
-          // Fase 1A — "Sin imán": la galería oculta las escenas que asumen imán
-          // (nevera/tablero); el detalle del calendario sigue disponible.
+          // Fase 1A — calendario "Sin imán": la galería oculta las escenas que
+          // asumen imán (nevera/tablero); el detalle sigue disponible.
           magnet={liveMagnet}
-          // Cara B opcional (2026-09-22): cara B vacía → reverso negro en 3D.
-          backOptional={backOptional}
           onClose={() => setSceneMagnets(null)}
         />
       )}
 
       {/* SEP1 — Modal del separador en un libro 3D (lazy, client-only). */}
-      {book3D !== null && !hide3DView && (
+      {book3D !== null && (
         <div
           ref={book3DRef}
           role="dialog"
@@ -1826,8 +1875,6 @@ export function StudioEditor({
               sizeCm={productConfig.sizeCm}
               facesPerUnit={productConfig.facesPerUnit}
               flat={productConfig.noFold}
-              // Cara B opcional (2026-09-22): cara B vacía → reverso negro en 3D.
-              backOptional={backOptional}
             />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
               {isTouch ? texts.escenas.hintTouch : texts.escenas.hintMouse}
@@ -1887,6 +1934,7 @@ export function StudioEditor({
               productShape={productConfig.shape}
               allowText={allowText}
               predesigned={predesigned}
+              facesPerUnit={facesPerUnit}
             />
           </div>
         </SheetContent>
@@ -1908,6 +1956,8 @@ export function StudioEditor({
         onSelectAsset={handleAssetSelected}
         onSelectAssetB={handleAssetBSelected}
         onAssetUploaded={handleAssetUploaded}
+        getCachedPredesigned={getCachedPredesigned}
+        rememberPredesigned={rememberPredesigned}
       />
 
       {/* PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito */}
@@ -1948,6 +1998,18 @@ export function StudioEditor({
                   : "magnets"
         }
         calendarYear={selectedYear}
+        // Paquete F (2026-10-02) — imantado vigente (del canvas si el diseño lo
+        // persistió; si no, el de la variante del deep-link). El resto del
+        // desglose (fotos/tamaño) ya lo cubre el resumen de la modal con datos
+        // vivos — no se duplica.
+        variantLabel={
+          liveMagnet === undefined
+            ? undefined
+            : describeVariantAttributes({ magnet: liveMagnet }).join(" · ") || undefined
+        }
+        // Paquete C — fotos con aviso de calidad asignadas al diseño: la modal
+        // exige la aceptación explícita antes de habilitar el confirmar.
+        qualityWarnings={qualityWarnings}
         onEdit={handleClosePreviewModal}
         onConfirm={handleConfirmFinalize}
       />
@@ -2230,56 +2292,57 @@ async function buildCompositedPreview(
   // preview muestre la silueta real (corazón, círculo, etc.) y no un
   // rectángulo. El Konva Stage devuelve siempre un rectángulo
   // (clipping CSS no se traduce a toDataURL); el clip va acá en Canvas2D.
+  //
+  // Paquete J (2026-10-02, auditoría §E-4 candidato #2): los snapshots se
+  // CACHEAN por slot (solo se re-rasteriza lo que cambió desde el último
+  // preview/3D — ver lib/slot-snapshot-cache), cediendo al event loop entre
+  // slots, y las decodificaciones dataURL→Image van EN PARALELO. Antes eran
+  // N toDataURL síncronos + N decodes secuenciales en el MISMO click.
+  const slotShots: Array<{ slot: (typeof slots)[number]; dataUrl: string }> = [];
   for (const slot of slots) {
     const stage = stages.get(slot.slotIndex);
     if (!stage) continue;
-    // H6 (auditoría v3): ocultar los indicadores de edición (recuadro punteado + dot) en el preview
-    // de confirmación — el cliente debe ver el producto final, no los hints de edición. El realismo
-    // (sombra/glossy) SÍ se conserva acá (hace ver el imán físico).
-    const indicators = stage.find(".edit-indicator");
-    indicators.forEach((l) => l.hide());
-    let slotDataUrl: string;
-    try {
-      slotDataUrl = stage.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
-    } finally {
-      indicators.forEach((l) => l.show());
-    }
-    await new Promise<void>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        // Posición DENTRO de la unidad (multi-unidad: gridLayout = 1 unidad).
-        const indexInUnit = multiUnit ? slot.slotIndex % unitSlots : slot.slotIndex;
-        const unitIndex = multiUnit ? Math.floor(slot.slotIndex / unitSlots) : 0;
-        const col = indexInUnit % gridLayout.cols;
-        const row = Math.floor(indexInUnit / gridLayout.cols);
-        const unitOffsetX = multiUnit && isStripPreview ? unitIndex * (unitGridW + unitGap) : 0;
-        const unitOffsetY = multiUnit && !isStripPreview ? unitIndex * (unitGridH + unitGap) : 0;
-        const x = unitOffsetX + col * (cellW + gap);
-        const y = unitOffsetY + row * (cellH + gap);
-        const path = buildShapePath(shape, x, y, cellW, cellH);
-        // 1) Foto clipeada al shape (sin fill blanco previo — la propia foto
-        //    es el fondo). Sombra externa via stroke ancho + transparencia.
-        ctx.save();
-        ctx.clip(path);
-        ctx.drawImage(img, x, y, cellW, cellH);
-        ctx.restore();
-        // 2) Borde visible para destacar la silueta sobre el fondo crema
-        //    (Lucy 2026-05-21: "el corazón y el fondo es blanco y no se
-        //    detalla bien el contorno"). Ola 4 — en modo TIRA se omite el
-        //    stroke por celda: la pieza es continua (solo borde exterior).
-        if (!isStripPreview) {
-          ctx.save();
-          ctx.strokeStyle = "rgba(124, 106, 173, 0.7)"; // brand-purple/70
-          ctx.lineWidth = 2.5;
-          ctx.stroke(path);
-          ctx.restore();
-        }
-        resolve();
-      };
-      img.onerror = () => reject(new Error("No se pudo cargar snapshot del slot"));
-      img.src = slotDataUrl;
+    slotShots.push({
+      slot,
+      dataUrl: snapshotSlotForPreview(stage, slot, {
+        unitTemplate,
+        borderColor: canvasData.borderColor ?? null,
+      }),
     });
+    await yieldToMain();
   }
+  const images = await Promise.all(slotShots.map((s) => loadImage(s.dataUrl)));
+
+  slotShots.forEach(({ slot }, i) => {
+    const img = images[i]!;
+    // Posición DENTRO de la unidad (multi-unidad: gridLayout = 1 unidad).
+    const indexInUnit = multiUnit ? slot.slotIndex % unitSlots : slot.slotIndex;
+    const unitIndex = multiUnit ? Math.floor(slot.slotIndex / unitSlots) : 0;
+    const col = indexInUnit % gridLayout.cols;
+    const row = Math.floor(indexInUnit / gridLayout.cols);
+    const unitOffsetX = multiUnit && isStripPreview ? unitIndex * (unitGridW + unitGap) : 0;
+    const unitOffsetY = multiUnit && !isStripPreview ? unitIndex * (unitGridH + unitGap) : 0;
+    const x = unitOffsetX + col * (cellW + gap);
+    const y = unitOffsetY + row * (cellH + gap);
+    const path = buildShapePath(shape, x, y, cellW, cellH);
+    // 1) Foto clipeada al shape (sin fill blanco previo — la propia foto
+    //    es el fondo). Sombra externa via stroke ancho + transparencia.
+    ctx.save();
+    ctx.clip(path);
+    ctx.drawImage(img, x, y, cellW, cellH);
+    ctx.restore();
+    // 2) Borde visible para destacar la silueta sobre el fondo crema
+    //    (Lucy 2026-05-21: "el corazón y el fondo es blanco y no se
+    //    detalla bien el contorno"). Ola 4 — en modo TIRA se omite el
+    //    stroke por celda: la pieza es continua (solo borde exterior).
+    if (!isStripPreview) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(124, 106, 173, 0.7)"; // brand-purple/70
+      ctx.lineWidth = 2.5;
+      ctx.stroke(path);
+      ctx.restore();
+    }
+  });
 
   // Ola 4 — TIRA: un solo borde exterior alrededor de cada pieza continua
   // (multi-unidad: un borde por TIRA, no uno global que las agrupe).
@@ -2321,9 +2384,10 @@ async function buildCompositedPreview(
  *  - noFold (Alargados planos): la pieza no se pliega → caras lado a lado
  *    (frente | reverso, B SIN rotar — montaje espalda con espalda) y unidades
  *    apiladas, SIN filete de doblez.
- *  - backOptional: una cara B vacía se dibuja BLANCA (#FFFFFF — el físico sin
- *    diseñar sale en blanco; la rotación es irrelevante sobre un sólido), no
- *    con el placeholder del editor.
+ *  - backOptional: una cara B vacía se dibuja ESPEJO de la cara A de su pareja
+ *    (REGLA ÚNICA, Paquete A 2026-10-02 — producción ya lo hace:
+ *    expandMissingBackFaces; el slot efectivo lo resuelve previewFacePairOfUnit),
+ *    nunca en blanco ni con el placeholder del editor.
  *  - foldCaption: indicación del tamaño desplegado bajo cada tira (texto CMS
  *    ya resuelto por el caller, ej. "Doblez · Desplegado: 2×12 cm").
  */
@@ -2368,8 +2432,42 @@ async function buildBookmarkStripPreview(
   const scale = faceW / unitTemplate.stage.width;
   const radius = Math.max(6, Math.round((cornerRadiusPx ?? 0) * scale));
 
+  // Paquete J (2026-10-02) — snapshots cacheados por slot + decodificación EN
+  // PARALELO antes de pintar (antes: toDataURL + decode secuencial por cara en
+  // el mismo click). Las caras espejo de backOptional repiten el MISMO slot de
+  // la cara A: el cache las resuelve con una sola rasterización.
+  const unitFaces: Array<{ faceA: number; faceB: number }> = [];
+  const faceSlotIndices = new Set<number>();
   for (let unit = 0; unit < units; unit++) {
-    const { faceA, faceB } = facePairOfUnit(unit);
+    const pair = previewFacePairOfUnit(slots, unit, backOptional);
+    unitFaces.push(pair);
+    faceSlotIndices.add(pair.faceA);
+    faceSlotIndices.add(pair.faceB);
+  }
+  const faceImages = new Map<number, HTMLImageElement>();
+  const faceJobs: Array<Promise<void>> = [];
+  for (const slotIndex of faceSlotIndices) {
+    const stage = stages.get(slotIndex);
+    const slot = slots.find((s) => s.slotIndex === slotIndex);
+    if (!stage || !slot) continue;
+    const dataUrl = snapshotSlotForPreview(stage, slot, {
+      unitTemplate,
+      borderColor: canvasData.borderColor ?? null,
+    });
+    faceJobs.push(
+      loadImage(dataUrl).then((img) => {
+        faceImages.set(slotIndex, img);
+      }),
+    );
+    await yieldToMain();
+  }
+  await Promise.all(faceJobs);
+
+  for (let unit = 0; unit < units; unit++) {
+    // Cara B vacía (backOptional) → su slot EFECTIVO es el de la cara A:
+    // la tira del preview se pinta A|A-espejo, exactamente lo que producción
+    // imprime (REGLA ÚNICA — previewFacePairOfUnit, lib/faces.ts).
+    const { faceA, faceB } = unitFaces[unit]!;
     const x = noFold ? pad : pad + unit * (stripW + gap);
     const y = noFold ? pad + unit * (stripH + captionH + gap) : pad;
     // Rect de cada cara dentro de la tira: plegable = apiladas con CABEZAS AL
@@ -2392,49 +2490,23 @@ async function buildBookmarkStripPreview(
     ctx.clip();
     for (const [i, slotIndex] of [faceA, faceB].entries()) {
       const { fx, fy, fw, fh } = faceRect(i);
-      // Cara B opcional vacía → BLANCO (el físico sin diseñar sale en blanco;
-      // el borde del troquel la delimita sobre el fondo crema del lienzo). No
-      // el placeholder del editor, que es UI de pantalla.
-      const slotState = slots.find((s) => s.slotIndex === slotIndex);
-      if (backOptional && i === 1 && !slotState?.assetUrl) {
-        ctx.fillStyle = "#FFFFFF";
-        ctx.fillRect(fx, fy, fw, fh);
-        continue;
+      const img = faceImages.get(slotIndex);
+      if (!img) continue;
+      if (!noFold && i === 1) {
+        // 2026-09-25 — "cabezas al doblez": la Cara B va en la MITAD
+        // SUPERIOR de la tira, ROTADA 180° — al doblar la tira sobre el
+        // borde superior de la página ambas caras cuelgan leyéndose
+        // derechas. Igual que producción (composeFaceStrips) y el libro
+        // 3D — la preview es fiel a imprenta (la heredan
+        // carrito/admin/correos).
+        ctx.save();
+        ctx.translate(fx + fw / 2, fy + fh / 2);
+        ctx.rotate(Math.PI);
+        ctx.drawImage(img, -fw / 2, -fh / 2, fw, fh);
+        ctx.restore();
+      } else {
+        ctx.drawImage(img, fx, fy, fw, fh);
       }
-      const stage = stages.get(slotIndex);
-      if (!stage) continue;
-      // H6 — sin indicadores de edición en el preview de confirmación.
-      const indicators = stage.find(".edit-indicator");
-      indicators.forEach((l) => l.hide());
-      let dataUrl: string;
-      try {
-        dataUrl = stage.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
-      } finally {
-        indicators.forEach((l) => l.show());
-      }
-      await new Promise<void>((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-          if (!noFold && i === 1) {
-            // 2026-09-25 — "cabezas al doblez": la Cara B va en la MITAD
-            // SUPERIOR de la tira, ROTADA 180° — al doblar la tira sobre el
-            // borde superior de la página ambas caras cuelgan leyéndose
-            // derechas. Igual que producción (composeFaceStrips) y el libro
-            // 3D — la preview es fiel a imprenta (la heredan
-            // carrito/admin/correos).
-            ctx.save();
-            ctx.translate(fx + fw / 2, fy + fh / 2);
-            ctx.rotate(Math.PI);
-            ctx.drawImage(img, -fw / 2, -fh / 2, fw, fh);
-            ctx.restore();
-          } else {
-            ctx.drawImage(img, fx, fy, fw, fh);
-          }
-          resolve();
-        };
-        img.onerror = () => reject(new Error("No se pudo cargar snapshot de la cara"));
-        img.src = dataUrl;
-      });
     }
     ctx.restore();
     // Filete del doblez (pliegue central de la tira) + borde sutil de la
@@ -2561,40 +2633,44 @@ async function buildMagnetTextures(
     64,
     Math.round(512 * (unitTemplate.stage.height / unitTemplate.stage.width)),
   );
-  const out: Magnet3D[] = [];
+  // Paquete J (2026-10-02) — snapshots cacheados por slot + decodificación EN
+  // PARALELO (antes: N toDataURL + N decodes secuenciales dentro del click
+  // "3D"/"en tu espacio"). El recorte a la silueta queda síncrono pero cede
+  // al event loop entre slots.
+  const slotShots: Array<{ slot: (typeof slots)[number]; dataUrl: string }> = [];
   for (const slot of slots) {
     const stage = stages.get(slot.slotIndex);
     if (!stage) continue;
-    // H6: sin indicadores de edición en las texturas 3D (nevera/mural/etc.) — muestran el producto.
-    const indicators = stage.find(".edit-indicator");
-    indicators.forEach((l) => l.hide());
-    let slotDataUrl: string;
-    try {
-      slotDataUrl = stage.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
-    } finally {
-      indicators.forEach((l) => l.show());
-    }
+    slotShots.push({
+      slot,
+      dataUrl: snapshotSlotForPreview(stage, slot, {
+        unitTemplate,
+        borderColor: canvasData.borderColor ?? null,
+      }),
+    });
+    await yieldToMain();
+  }
+  const images = await Promise.all(slotShots.map((s) => loadImage(s.dataUrl)));
+
+  const out: Magnet3D[] = [];
+  for (const [i, { slot }] of slotShots.entries()) {
+    const img = images[i]!;
     const dataUrl = await new Promise<string>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        const c = document.createElement("canvas");
-        c.width = texW;
-        c.height = texH;
-        const ctx = c.getContext("2d");
-        if (!ctx) {
-          reject(new Error("No se pudo crear contexto canvas para textura 3D"));
-          return;
-        }
-        // Recorte a la silueta física → transparencia fuera (sin fondo).
-        const path = buildShapePath(shape, 0, 0, texW, texH);
-        ctx.save();
-        ctx.clip(path);
-        ctx.drawImage(img, 0, 0, texW, texH);
-        ctx.restore();
-        resolve(c.toDataURL("image/png"));
-      };
-      img.onerror = () => reject(new Error("No se pudo cargar snapshot del slot para 3D"));
-      img.src = slotDataUrl;
+      const c = document.createElement("canvas");
+      c.width = texW;
+      c.height = texH;
+      const ctx = c.getContext("2d");
+      if (!ctx) {
+        reject(new Error("No se pudo crear contexto canvas para textura 3D"));
+        return;
+      }
+      // Recorte a la silueta física → transparencia fuera (sin fondo).
+      const path = buildShapePath(shape, 0, 0, texW, texH);
+      ctx.save();
+      ctx.clip(path);
+      ctx.drawImage(img, 0, 0, texW, texH);
+      ctx.restore();
+      resolve(c.toDataURL("image/png"));
     });
     out.push({
       dataUrl,
@@ -2606,6 +2682,7 @@ async function buildMagnetTextures(
       slotIndex: slot.slotIndex,
       assetUrl: slot.assetUrl,
     });
+    await yieldToMain();
   }
   return out;
 }

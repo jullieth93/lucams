@@ -41,30 +41,19 @@ import {
   sealAdminActivityMark,
 } from "@/lib/admin-activity";
 import { buildCsp, isOriginAllowed, SECURITY_HEADERS } from "@/lib/security-headers";
-import { incrementRedirectHit, lookupActiveRedirect } from "@/features/redirects/service";
+import { incrementRedirectHit, lookupActiveRedirectCached } from "@/features/redirects/service";
 
-// Cache in-memory para UrlRedirect lookups: evita hit DB en cada request.
-// TTL 60s — Lucy cambia un redirect y se ve aplicado en < 1min. Trade-off
-// aceptable vs latencia: con tráfico real, sin cache esto serían N requests
-// DB por minuto solo para misses (la mayoría de paths NO tienen redirect).
-type RedirectCacheEntry = {
-  value: { toPath: string; statusCode: number } | null;
-  expiresAt: number;
-};
-const redirectCache = new Map<string, RedirectCacheEntry>();
-const REDIRECT_CACHE_TTL_MS = 60_000;
-
-async function getRedirectWithCache(
-  path: string,
-): Promise<{ toPath: string; statusCode: number } | null> {
-  const cached = redirectCache.get(path);
-  const now = Date.now();
-  if (cached && cached.expiresAt > now) return cached.value;
-
-  const result = await lookupActiveRedirect(path).catch(() => null);
-  redirectCache.set(path, { value: result, expiresAt: now + REDIRECT_CACHE_TTL_MS });
-  return result;
-}
+// B-8 (auditoría cableado cliente↔admin 2026-10-02): el lookup de UrlRedirect
+// vive en lookupActiveRedirectCached (features/redirects/service.ts) —
+// unstable_cache con tag "redirects" sobre la Data Cache COMPARTIDA de Next,
+// en vez del Map in-memory TTL 60s por instancia que había acá (en Vercel
+// multi-instancia las copias divergían hasta 60s). Las mutaciones admin
+// emiten updateTag("redirects") → el redirect nuevo aplica de inmediato; el
+// revalidate de 60s queda como red de seguridad para cambios por fuera de la
+// app. El runtime del proxy en Next 16 es Node.js fijo (ver encabezado), así
+// que unstable_cache funciona. Si la DB falla, .catch(() => null) deja pasar
+// la request sin redirect (fallback de siempre: el sitio no se cae por un
+// redirect que no resolvió).
 
 // #30 — preserva el query entrante (UTM de campañas: link viejo de la bio de Instagram) al
 // redirigir. Las claves que el destino YA define ganan (p. ej. el ?variant= de PRODUCT_REDIRECTS).
@@ -173,7 +162,7 @@ export async function proxy(request: NextRequest) {
     // #29 — el match de fromPath es case-insensitive: se normaliza a minúsculas en la escritura
     // (createRedirect), así que la llave del lookup y del hit también se normaliza acá.
     const redirectPath = path.toLowerCase();
-    const dynamicRedirect = await getRedirectWithCache(redirectPath);
+    const dynamicRedirect = await lookupActiveRedirectCached(redirectPath).catch(() => null);
     if (dynamicRedirect) {
       // Incremento de hit count en background (no espera). Si falla, se ignora.
       void incrementRedirectHit(redirectPath);

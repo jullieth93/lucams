@@ -52,6 +52,7 @@ import {
   resolveMaxCols,
   resolveMinSlotSize,
   slotHeightCapByCount,
+  shouldRemeasureViewportH,
   stepStageZoom,
   unitSectionsPerRowFor,
 } from "./studio-canvas-grid-size";
@@ -299,6 +300,46 @@ describe("computeMaxFrameH — IG sin cap por conteo + marco móvil fijo (Ola 34
         rows: 1,
       }),
     ).toBeNull();
+  });
+});
+
+describe("shouldRemeasureViewportH — anti 'canvas respira' (Paquete B 2026-10-02)", () => {
+  // Bug reproducido en Separadores 4×4.2cm en móvil Y tablet: scrollear
+  // oculta/muestra la barra del navegador → resize SOLO de alto → el marco de
+  // 1 fila (82vh) se recalculaba y el canvas se agrandaba/encogía solo.
+  it("táctil: resize SOLO de alto (barra del navegador) → NO re-medir", () => {
+    expect(
+      shouldRemeasureViewportH({ isCoarsePointer: true, prevWidth: 768, nextWidth: 768 }),
+    ).toBe(false);
+    expect(
+      shouldRemeasureViewportH({ isCoarsePointer: true, prevWidth: 375, nextWidth: 375 }),
+    ).toBe(false);
+  });
+
+  it("táctil: cambia el ANCHO (rotación real) → SÍ re-medir", () => {
+    expect(
+      shouldRemeasureViewportH({ isCoarsePointer: true, prevWidth: 768, nextWidth: 1024 }),
+    ).toBe(true);
+    expect(
+      shouldRemeasureViewportH({ isCoarsePointer: true, prevWidth: 375, nextWidth: 667 }),
+    ).toBe(true);
+  });
+
+  it("táctil: primera medición (prevWidth null) → SÍ re-medir", () => {
+    expect(
+      shouldRemeasureViewportH({ isCoarsePointer: true, prevWidth: null, nextWidth: 768 }),
+    ).toBe(true);
+  });
+
+  it("desktop (puntero fino): TODO resize re-mide, incluso solo de alto", () => {
+    // Sin barra dinámica: una ventana que cambia solo de alto sí debe
+    // re-encuadrar el marco de 82vh.
+    expect(
+      shouldRemeasureViewportH({ isCoarsePointer: false, prevWidth: 1280, nextWidth: 1280 }),
+    ).toBe(true);
+    expect(
+      shouldRemeasureViewportH({ isCoarsePointer: false, prevWidth: null, nextWidth: 1280 }),
+    ).toBe(true);
   });
 });
 

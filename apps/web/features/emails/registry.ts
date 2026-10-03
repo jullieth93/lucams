@@ -144,11 +144,25 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
       discount: 0,
       shippingCarrier: "Coordinadora",
       items: [
-        { name: "Fotoimanes Cuadrados (x6)", qty: 1, lineTotal: 4_990_000 },
-        { name: "Imán Polaroid personalizado", qty: 2, lineTotal: 3_000_000 },
+        {
+          name: "Fotoimanes Cuadrados (x6)",
+          qty: 1,
+          lineTotal: 4_990_000,
+          breakdown: ["6 fotos", "6×6 cm", "Con imán"],
+        },
+        {
+          name: "Imán Polaroid personalizado",
+          qty: 2,
+          lineTotal: 3_000_000,
+          breakdown: ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"],
+        },
       ],
       shippingAddress: "Calle 10 # 43-25, Apto 302, Medellín, Antioquia",
-      publicTrackingToken: TOKEN,
+      // Paquete H (2026-10-02): el preview refleja el caso REGISTRADO — el CTA
+      // va a su pedido en la cuenta. Invitado no-COD → /pedido/<token fresco>;
+      // invitado COD → /rastrear (variantes en /internal/correos).
+      publicTrackingToken: null,
+      accountOrderUrl: `https://lucamsshop.com/mi-cuenta/pedidos/${ORDER}`,
       paymentMethod: "WOMPI",
     },
   }),
@@ -264,8 +278,18 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
       discount: 0,
       total: 8_990_000,
       items: [
-        { name: "Fotoimanes Cuadrados (x6)", qty: 1, lineTotal: 4_990_000 },
-        { name: "Imán Polaroid personalizado", qty: 2, lineTotal: 3_000_000 },
+        {
+          name: "Fotoimanes Cuadrados (x6)",
+          qty: 1,
+          lineTotal: 4_990_000,
+          breakdown: ["6 fotos", "6×6 cm", "Con imán"],
+        },
+        {
+          name: "Imán Polaroid personalizado",
+          qty: 2,
+          lineTotal: 3_000_000,
+          breakdown: ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"],
+        },
       ],
     },
   }),

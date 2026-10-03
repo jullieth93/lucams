@@ -88,6 +88,15 @@ export default async function CarritoPage() {
                           >
                             {item.productName}
                           </Link>
+                          {/* Paquete F (2026-10-02) — nombre de la variante + su desglose
+                              estructurado (variantBreakdown): el nombre libre no siempre
+                              informa las dimensiones de compra (p. ej. Con/Sin imán). */}
+                          <p className="text-brand-muted mt-0.5 text-xs">{item.variantName}</p>
+                          {item.variantBreakdown.length > 0 && (
+                            <p className="text-brand-purple-dark/80 mt-0.5 text-xs">
+                              {item.variantBreakdown.join(" · ")}
+                            </p>
+                          )}
                           {item.designId ? (
                             <div className="mt-1 flex flex-col gap-1.5">
                               <p className="text-brand-purple/80 text-xs font-medium">
