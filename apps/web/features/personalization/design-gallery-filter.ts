@@ -88,6 +88,21 @@ export function variantFilterMatchesAnyVariant(
   return variantsAttributes.some((attrs) => matchesVariantFilter(normalized, attrs));
 }
 
+/**
+ * ¿Dos filtros (crudos de DB/form) son el MISMO? Compara normalizados con
+ * claves ordenadas: null ≡ filtro vacío/inválido ≡ null ("todas"). La usa el
+ * filtro por chips de la grilla del admin (emparejar el variantFilter de cada
+ * tarjeta con la opción elegida) sin depender del orden de claves del Json.
+ */
+export function sameVariantFilter(a: unknown, b: unknown): boolean {
+  const na = normalizeVariantFilter(a);
+  const nb = normalizeVariantFilter(b);
+  if (na === null || nb === null) return na === nb;
+  const ka = Object.keys(na).sort();
+  const kb = Object.keys(nb).sort();
+  return ka.length === kb.length && ka.every((key, i) => key === kb[i] && na[key] === nb[key]);
+}
+
 export type VariantFilterOption = {
   /** Clave de atributo elegida para el filtro (ej. "sizeCm"). */
   key: string;

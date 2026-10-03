@@ -12,6 +12,7 @@ import {
   describeVariantFilter,
   matchesVariantFilter,
   normalizeVariantFilter,
+  sameVariantFilter,
   variantFilterMatchesAnyVariant,
 } from "./design-gallery-filter";
 
@@ -142,5 +143,26 @@ describe("describeVariantFilter — badge del admin", () => {
   it("una clave → su valor; multi-clave → join ' · '", () => {
     expect(describeVariantFilter({ sizeCm: "2×6" })).toBe("2×6");
     expect(describeVariantFilter({ sizeCm: "2×6", magnet: true })).toBe("2×6 · Con imán");
+  });
+});
+
+describe("sameVariantFilter — chips de la grilla del admin (Fase 5b)", () => {
+  it("null ≡ null; null ≢ filtro", () => {
+    expect(sameVariantFilter(null, null)).toBe(true);
+    expect(sameVariantFilter(null, {})).toBe(true); // vacío normaliza a null
+    expect(sameVariantFilter(null, { sizeCm: "2×6" })).toBe(false);
+  });
+
+  it("igualdad sin depender del orden de claves del Json", () => {
+    expect(
+      sameVariantFilter({ sizeCm: "2×6", magnet: true }, { magnet: true, sizeCm: "2×6" }),
+    ).toBe(true);
+    expect(sameVariantFilter({ sizeCm: "2×6" }, { sizeCm: "4×4.2" })).toBe(false);
+    expect(sameVariantFilter({ sizeCm: "2×6" }, { sizeCm: "2×6", magnet: true })).toBe(false);
+  });
+
+  it("normaliza antes de comparar (valores vacíos/no primitivos se descartan)", () => {
+    expect(sameVariantFilter({ sizeCm: "2×6", color: "" }, { sizeCm: "2×6" })).toBe(true);
+    expect(sameVariantFilter("basura", null)).toBe(true);
   });
 });

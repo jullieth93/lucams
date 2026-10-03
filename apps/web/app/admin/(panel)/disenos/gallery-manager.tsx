@@ -8,16 +8,29 @@
  * atributo de variante (ej. tamaño 2×6) persistiéndose como variantFilter Json
  * (subset de attributes; "" = "Todas las variantes"). Las tarjetas muestran
  * badge con el filtro ("2×6") o "Todas".
+ *
+ * Fase 5b (2026-10-02) — organización de la grilla: búsqueda por nombre, chips
+ * por variante encima de cada sección ("Todas" + opciones del producto +
+ * "Sin asignar", con contador) y asignación masiva del filtro a los diseños
+ * sin asignar (resuelve los backfills sin SQL). El filtro de diseños existentes
+ * se edita en la modal de detalle.
  */
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Upload, Trash2, Loader2, ArrowUpDown } from "lucide-react";
+import { Upload, Trash2, Loader2, ArrowUpDown, Search, Layers } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import {
   describeVariantFilter,
+  normalizeVariantFilter,
+  sameVariantFilter,
   type VariantFilterOption,
 } from "@/features/personalization/design-gallery-filter";
-import { uploadGalleryImageAction, deleteGalleryImageAction } from "./actions";
+import {
+  uploadGalleryImageAction,
+  deleteGalleryImageAction,
+  updateGalleryVariantFilterAction,
+  bulkAssignVariantFilterAction,
+} from "./actions";
 import { GalleryDetailModal } from "./gallery-detail-modal";
 
 type Item = {
@@ -83,6 +96,44 @@ function computeStripPreview(
   return swap ? { faceA: topRotated, faceB: bottom } : { faceA: bottom, faceB: topRotated };
 }
 
+/**
+ * Fase 5b — chips de la grilla: "all" (todo el producto), "unassigned"
+ * (variantFilter null = "Todas las variantes") o el JSON de una opción del
+ * selector "Aplica a". El emparejamiento es por igualdad de filtro normalizado
+ * (sameVariantFilter), no por orden de claves del Json.
+ */
+function matchesChip(it: Item, chip: string): boolean {
+  if (chip === "all") return true;
+  const filter = normalizeVariantFilter(it.variantFilter);
+  if (chip === "unassigned") return filter === null;
+  try {
+    return sameVariantFilter(filter, JSON.parse(chip));
+  } catch {
+    return false;
+  }
+}
+
+type ChipCounts = { all: number; unassigned: number; byOption: Map<string, number> };
+
+function chipCounts(items: Item[], options: VariantFilterOption[]): ChipCounts {
+  const byOption = new Map<string, number>(options.map((o) => [JSON.stringify(o.filter), 0]));
+  let unassigned = 0;
+  for (const it of items) {
+    const filter = normalizeVariantFilter(it.variantFilter);
+    if (!filter) {
+      unassigned += 1;
+      continue;
+    }
+    for (const o of options) {
+      if (sameVariantFilter(filter, o.filter)) {
+        byOption.set(JSON.stringify(o.filter), (byOption.get(JSON.stringify(o.filter)) ?? 0) + 1);
+        break;
+      }
+    }
+  }
+  return { all: items.length, unassigned, byOption };
+}
+
 export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOptions: TagOption[] }) {
   const [tag, setTag] = useState(tagOptions[0]?.tag ?? "");
   const [name, setName] = useState("");
@@ -104,6 +155,12 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
   // Fase 5 — filtro "Aplica a": JSON.stringify del variantFilter elegido;
   // "" = "Todas las variantes" (null en DB).
   const [variantFilterJson, setVariantFilterJson] = useState("");
+  // Fase 5b — organización de la grilla: búsqueda por nombre, chip de variante
+  // por sección ("all" | "unassigned" | JSON del filtro) y elección del bulk.
+  const [query, setQuery] = useState("");
+  const [chipByTag, setChipByTag] = useState<Record<string, string>>({});
+  const [bulkChoiceByTag, setBulkChoiceByTag] = useState<Record<string, string>>({});
+  const [notice, setNotice] = useState<string | null>(null);
 
   const needsFaceB = tagOptions.find((t) => t.tag === tag)?.needsFaceB ?? false;
   // Opciones "Aplica a" del producto elegido ([] = no varía por atributos
@@ -178,7 +235,71 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
     });
   }
 
-  const byTag = tagOptions.map((t) => ({ ...t, items: items.filter((i) => i.tag === t.tag) }));
+  /** Fase 5b — persiste el "Aplica a" desde la modal; refleja el cambio en el
+   * detalle abierto sin esperar el refetch de revalidatePath. */
+  async function onSaveVariantFilter(id: string, filterJson: string): Promise<string | null> {
+    const fd = new FormData();
+    fd.set("id", id);
+    if (filterJson) fd.set("variantFilter", filterJson);
+    const res = await updateGalleryVariantFilterAction(fd);
+    if (res.error) return res.error;
+    setDetail((d) =>
+      d && d.id === id
+        ? {
+            ...d,
+            variantFilter: filterJson ? (JSON.parse(filterJson) as Item["variantFilter"]) : null,
+          }
+        : d,
+    );
+    return null;
+  }
+
+  /** Fase 5b — asignación masiva: todos los diseños sin filtro del tag pasan
+   * a la variante elegida (confirmada con el conteo exacto). */
+  function onBulkAssign(group: TagOption, unassignedCount: number) {
+    const filterJson = bulkChoiceByTag[group.tag] ?? "";
+    if (!filterJson) return;
+    const label =
+      group.variantFilterOptions.find((o) => JSON.stringify(o.filter) === filterJson)?.label ??
+      filterJson;
+    if (
+      !window.confirm(
+        `Se asignará «${label}» a ${unassignedCount} diseño${unassignedCount === 1 ? "" : "s"} sin asignar de ${group.label}. ¿Continuar?`,
+      )
+    ) {
+      return;
+    }
+    setNotice(null);
+    setError(null);
+    const fd = new FormData();
+    fd.set("tag", group.tag);
+    fd.set("variantFilter", filterJson);
+    startTransition(async () => {
+      const res = await bulkAssignVariantFilterAction(fd);
+      if (res.error) setError(res.error);
+      else {
+        setNotice(`${res.count ?? 0} diseños de ${group.label} ahora aplican a «${label}».`);
+        setBulkChoiceByTag((m) => ({ ...m, [group.tag]: "" }));
+      }
+    });
+  }
+
+  const normalizedQuery = query.trim().toLocaleLowerCase("es");
+
+  const byTag = tagOptions.map((t) => {
+    const searched = normalizedQuery
+      ? items.filter(
+          (i) => i.tag === t.tag && i.name.toLocaleLowerCase("es").includes(normalizedQuery),
+        )
+      : items.filter((i) => i.tag === t.tag);
+    const chip = chipByTag[t.tag] ?? "all";
+    return {
+      ...t,
+      // Contadores por chip sobre el resultado de la búsqueda (lo que ves).
+      counts: chipCounts(searched, t.variantFilterOptions),
+      items: searched.filter((i) => matchesChip(i, chip)),
+    };
+  });
 
   // Sin productos con galleryTag declarado no hay dónde colgar los diseños:
   // el upload fallaría siempre, así que mejor explicarlo que mostrar un form roto.
@@ -467,81 +588,189 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
       </div>
 
       {/* Listado por producto */}
-      {byTag.map((group) => (
-        <section key={group.tag}>
-          <h3 className="text-brand-purple-dark mb-2 text-lg font-semibold">{group.label}</h3>
-          {group.items.length === 0 ? (
-            <p className="text-brand-muted text-sm italic">
-              Aún no hay diseños. Sube el primero arriba.
-            </p>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6">
-              {group.items.map((it) => {
-                const previewB = formatPreview(it.imageUrlB);
-                return (
-                  <div
-                    key={it.id}
-                    className="border-brand-purple/12 relative rounded-xl border bg-white p-2 shadow-sm"
+      <div className="space-y-2">
+        <label className="text-brand-purple-dark block text-sm font-semibold">
+          Buscar diseño
+          <span className="relative mt-1 block sm:max-w-xs">
+            <Search className="text-brand-muted pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Nombre del diseño…"
+              className="border-brand-purple/25 block w-full rounded-xl border-2 py-2 pr-3 pl-9 text-sm outline-none"
+            />
+          </span>
+        </label>
+        {notice && <p className="text-sm font-semibold text-emerald-700">{notice}</p>}
+        {error && <p className="text-sm text-rose-600">{error}</p>}
+      </div>
+      {byTag.map((group) => {
+        const chip = chipByTag[group.tag] ?? "all";
+        const showChips = group.variantFilterOptions.length > 0;
+        const bulkChoice = bulkChoiceByTag[group.tag] ?? "";
+        return (
+          <section key={group.tag}>
+            <h3 className="text-brand-purple-dark mb-2 text-lg font-semibold">{group.label}</h3>
+
+            {/* Fase 5b — chips por variante con contador. Solo si el producto
+                varía por un atributo filtrable (si no, todo diseño es "Todas"). */}
+            {showChips && (
+              <div
+                className="mb-3 flex flex-wrap gap-1.5"
+                role="group"
+                aria-label="Filtrar por variante"
+              >
+                {[
+                  { key: "all", label: "Todas", count: group.counts.all },
+                  ...group.variantFilterOptions.map((o) => ({
+                    key: JSON.stringify(o.filter),
+                    label: o.label,
+                    count: group.counts.byOption.get(JSON.stringify(o.filter)) ?? 0,
+                  })),
+                  { key: "unassigned", label: "Sin asignar", count: group.counts.unassigned },
+                ].map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={() => setChipByTag((m) => ({ ...m, [group.tag]: c.key }))}
+                    aria-pressed={chip === c.key}
+                    className={
+                      "inline-flex items-center gap-1 rounded-full border-2 px-2.5 py-1 text-xs font-semibold transition-colors " +
+                      (chip === c.key
+                        ? "border-brand-purple bg-brand-purple text-white"
+                        : "border-brand-purple/20 text-brand-purple-dark hover:border-brand-purple/40 bg-white")
+                    }
                   >
-                    {/* Paquete A — click en la tarjeta abre el detalle (caras
-                        A/B lado a lado + ficha). El borrar sigue aparte. */}
-                    <button
-                      type="button"
-                      onClick={() => setDetail(it)}
-                      aria-label={`Ver detalle de ${it.name}`}
-                      aria-haspopup="dialog"
-                      className="focus:ring-brand-turquoise block w-full rounded-lg focus:ring-2 focus:outline-none"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element -- imagen del bucket público */}
-                      <img
-                        src={it.imageUrl}
-                        alt={it.name}
-                        className="aspect-square w-full rounded-lg object-cover"
-                      />
-                    </button>
-                    {previewB && (
-                      <span className="text-brand-purple-dark absolute top-2 left-2 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold shadow">
-                        A/B
-                      </span>
-                    )}
-                    <Hint content={it.name}>
-                      <p className="text-brand-purple-dark mt-1 truncate text-xs font-semibold">
-                        {it.name}
-                      </p>
-                    </Hint>
-                    {/* Fase 5 — badge del filtro por variante ("2×6") o "Todas". */}
+                    {c.label}
                     <span
                       className={
-                        "mt-0.5 inline-block rounded-full px-1.5 py-px text-[10px] font-semibold " +
-                        (it.variantFilter
-                          ? "bg-brand-turquoise/15 text-brand-purple-dark"
-                          : "bg-brand-purple/5 text-brand-muted")
+                        "rounded-full px-1.5 text-[10px] tabular-nums " +
+                        (chip === c.key ? "bg-white/25" : "bg-brand-purple/10")
                       }
                     >
-                      {describeVariantFilter(it.variantFilter)}
+                      {c.count}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => onDelete(it.id)}
-                      disabled={pending}
-                      aria-label={`Borrar ${it.name}`}
-                      className="absolute top-1 right-1 rounded-full bg-white/90 p-1.5 text-rose-600 shadow hover:bg-rose-50 disabled:opacity-50"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-      ))}
+                  </button>
+                ))}
+              </div>
+            )}
 
-      {/* Paquete A — detalle del prediseñado: caras A/B, ficha y borrar. */}
+            {/* Fase 5b — asignación masiva: solo si hay diseños sin asignar y
+                el producto tiene opciones de filtro. */}
+            {showChips && group.counts.unassigned > 0 && (
+              <div className="border-brand-turquoise/40 bg-brand-turquoise/10 mb-3 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2">
+                <Layers className="text-brand-purple-dark h-4 w-4 shrink-0" />
+                <span className="text-brand-purple-dark text-xs font-semibold">
+                  {group.counts.unassigned} sin asignar:
+                </span>
+                <select
+                  value={bulkChoice}
+                  onChange={(e) =>
+                    setBulkChoiceByTag((m) => ({ ...m, [group.tag]: e.target.value }))
+                  }
+                  aria-label={`Variante a asignar en ${group.label}`}
+                  className="border-brand-purple/25 rounded-lg border-2 bg-white px-2 py-1 text-xs outline-none"
+                >
+                  <option value="">Elegir variante…</option>
+                  {group.variantFilterOptions.map((o) => (
+                    <option key={JSON.stringify(o.filter)} value={JSON.stringify(o.filter)}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => onBulkAssign(group, group.counts.unassigned)}
+                  disabled={pending || !bulkChoice}
+                  className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                >
+                  {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  Asignar a todos los sin asignar
+                </button>
+              </div>
+            )}
+
+            {group.items.length === 0 ? (
+              <p className="text-brand-muted text-sm italic">
+                {group.counts.all === 0
+                  ? normalizedQuery
+                    ? "Ningún diseño coincide con la búsqueda."
+                    : "Aún no hay diseños. Sube el primero arriba."
+                  : "No hay diseños con este filtro."}
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6">
+                {group.items.map((it) => {
+                  const previewB = formatPreview(it.imageUrlB);
+                  return (
+                    <div
+                      key={it.id}
+                      className="border-brand-purple/12 relative rounded-xl border bg-white p-2 shadow-sm"
+                    >
+                      {/* Paquete A — click en la tarjeta abre el detalle (caras
+                        A/B lado a lado + ficha). El borrar sigue aparte. */}
+                      <button
+                        type="button"
+                        onClick={() => setDetail(it)}
+                        aria-label={`Ver detalle de ${it.name}`}
+                        aria-haspopup="dialog"
+                        className="focus:ring-brand-turquoise block w-full rounded-lg focus:ring-2 focus:outline-none"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element -- imagen del bucket público */}
+                        <img
+                          src={it.imageUrl}
+                          alt={it.name}
+                          className="aspect-square w-full rounded-lg object-cover"
+                        />
+                      </button>
+                      {previewB && (
+                        <span className="text-brand-purple-dark absolute top-2 left-2 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold shadow">
+                          A/B
+                        </span>
+                      )}
+                      <Hint content={it.name}>
+                        <p className="text-brand-purple-dark mt-1 truncate text-xs font-semibold">
+                          {it.name}
+                        </p>
+                      </Hint>
+                      {/* Fase 5 — badge del filtro por variante ("2×6") o "Todas". */}
+                      <span
+                        className={
+                          "mt-0.5 inline-block rounded-full px-1.5 py-px text-[10px] font-semibold " +
+                          (it.variantFilter
+                            ? "bg-brand-turquoise/15 text-brand-purple-dark"
+                            : "bg-brand-purple/5 text-brand-muted")
+                        }
+                      >
+                        {describeVariantFilter(it.variantFilter)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onDelete(it.id)}
+                        disabled={pending}
+                        aria-label={`Borrar ${it.name}`}
+                        className="absolute top-1 right-1 rounded-full bg-white/90 p-1.5 text-rose-600 shadow hover:bg-rose-50 disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        );
+      })}
+
+      {/* Paquete A — detalle del prediseñado: caras A/B, ficha y borrar.
+          Fase 5b — también edita el "Aplica a" (variantFilter). */}
       <GalleryDetailModal
         item={detail}
         productLabel={
           detail ? (tagOptions.find((t) => t.tag === detail.tag)?.label ?? detail.tag) : ""
+        }
+        variantFilterOptions={
+          detail ? (tagOptions.find((t) => t.tag === detail.tag)?.variantFilterOptions ?? []) : []
         }
         pending={pending}
         onClose={() => setDetail(null)}
@@ -549,6 +778,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
           setDetail(null);
           onDelete(id);
         }}
+        onSaveVariantFilter={onSaveVariantFilter}
       />
     </div>
   );

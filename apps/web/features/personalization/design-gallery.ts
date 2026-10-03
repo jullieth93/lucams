@@ -252,3 +252,57 @@ export async function deleteGalleryImage(id: string): Promise<void> {
     .update({ where: { id }, data: { deletedAt: new Date(), isActive: false } })
     .catch(() => {});
 }
+
+/**
+ * Tag de un diseño (para re-validar un variantFilter contra las variantes del
+ * producto dueño al EDITARLO — updateGalleryVariantFilterAction). null si el
+ * diseño no existe o está borrado.
+ */
+export async function getGalleryImageTag(id: string): Promise<string | null> {
+  const row = await prisma.designGalleryImage.findFirst({
+    where: { id, deletedAt: null },
+    select: { tag: true },
+  });
+  return row?.tag ?? null;
+}
+
+/**
+ * Edición del filtro por variante de UN diseño (modal de detalle del admin).
+ * variantFilter null → DbNull = "aplica a todas las variantes" (misma
+ * materialización que createGalleryImage).
+ */
+export async function updateGalleryVariantFilter(opts: {
+  id: string;
+  variantFilter: VariantFilter | null;
+  adminId: string;
+}): Promise<void> {
+  await prisma.designGalleryImage.update({
+    where: { id: opts.id },
+    data: { variantFilter: opts.variantFilter ?? Prisma.DbNull, updatedBy: opts.adminId },
+  });
+}
+
+/**
+ * Asignación masiva: pone `variantFilter` a TODOS los diseños del tag que aún
+ * no tienen filtro (null = "Todas"; DbNull o JsonNull legacy) y no están
+ * borrados. Resuelve el caso real sin SQL: las 51 imágenes de separadores
+ * subidas antes del selector "Aplica a". Devuelve cuántas filas tocó.
+ */
+export async function assignVariantFilterToUnassigned(opts: {
+  tag: string;
+  variantFilter: VariantFilter;
+  adminId: string;
+}): Promise<number> {
+  const res = await prisma.designGalleryImage.updateMany({
+    where: {
+      tag: opts.tag,
+      deletedAt: null,
+      OR: [
+        { variantFilter: { equals: Prisma.DbNull } },
+        { variantFilter: { equals: Prisma.JsonNull } },
+      ],
+    },
+    data: { variantFilter: opts.variantFilter, updatedBy: opts.adminId },
+  });
+  return res.count;
+}

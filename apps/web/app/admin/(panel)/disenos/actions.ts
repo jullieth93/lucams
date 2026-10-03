@@ -19,10 +19,13 @@ import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
 import { StorageError, sniffImageMime, uploadProductImage } from "@/lib/storage";
 import {
+  assignVariantFilterToUnassigned,
   createGalleryImage,
   deleteGalleryImage,
+  getGalleryImageTag,
   listGalleryTagOptions,
   listGalleryTagVariantAttributes,
+  updateGalleryVariantFilter,
 } from "@/features/personalization/design-gallery";
 import {
   normalizeVariantFilter,
@@ -230,4 +233,76 @@ export async function deleteGalleryImageAction(formData: FormData): Promise<Acti
   });
   revalidatePath("/admin/disenos");
   return {};
+}
+
+/**
+ * Edición del "Aplica a" de un diseño existente (modal de detalle). Re-valida
+ * el filtro contra las variantes REALES del producto dueño del tag de la fila
+ * (no confiamos en el tag del cliente: se lee de DB). "" = todas las variantes.
+ */
+export async function updateGalleryVariantFilterAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Datos inválidos." };
+  const tag = await getGalleryImageTag(id);
+  if (!tag) return { error: "El diseño no existe." };
+
+  const { filter: variantFilter, error: filterError } = await parseVariantFilterInput(
+    formData,
+    tag,
+  );
+  if (filterError) return { error: filterError };
+
+  await updateGalleryVariantFilter({ id, variantFilter, adminId: session.admin.id });
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "galleryImage.updateVariantFilter",
+    entityType: "DesignGalleryImage",
+    entityId: id,
+    metadata: { tag, variantFilter },
+  });
+  revalidatePath("/admin/disenos");
+  return {};
+}
+
+/**
+ * Asignación masiva del "Aplica a": todos los diseños del tag SIN filtro
+ * (variantFilter null = "Todas") pasan al filtro elegido. Pensada para
+ * organizar los diseños subidos antes del selector "Aplica a" (ej. los 51 de
+ * separadores) sin SQL. El filtro vacío se rechaza: asignar "Todas" a los que
+ * ya están en "Todas" sería un no-op confuso.
+ */
+export async function bulkAssignVariantFilterAction(
+  formData: FormData,
+): Promise<ActionResult & { count?: number }> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+
+  const tag = String(formData.get("tag") ?? "");
+  // Misma fuente de verdad que el upload: el tag es válido solo si un producto
+  // activo lo resuelve como su tag de galería.
+  const tagOptions = await listGalleryTagOptions();
+  if (!tagOptions.some((o) => o.tag === tag)) return { error: "Producto inválido." };
+
+  const { filter: variantFilter, error: filterError } = await parseVariantFilterInput(
+    formData,
+    tag,
+  );
+  if (filterError) return { error: filterError };
+  if (!variantFilter) return { error: "Elige la variante a asignar." };
+
+  const count = await assignVariantFilterToUnassigned({
+    tag,
+    variantFilter,
+    adminId: session.admin.id,
+  });
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "galleryImage.bulkVariantFilter",
+    entityType: "DesignGalleryImage",
+    entityId: tag,
+    metadata: { tag, variantFilter, count },
+  });
+  revalidatePath("/admin/disenos");
+  return { count };
 }
