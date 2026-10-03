@@ -11,11 +11,12 @@
  *    valle de encuadernación), texto impreso procedural legible en ambas páginas, bloque de
  *    páginas en cuña (canto de hojas procedural), cubiertas con sobrehueso y lomo inferior.
  *  - 3 separadores DOBLADOS SOBRE EL BORDE SUPERIOR de las páginas (no sobre el lomo), a
- *    distintas alturas gracias al camber. La cara frontal reposa casi plana sobre la hoja
- *    mostrando el diseño del cliente hacia la cámara; la trasera cuelga apenas pasada la
- *    vertical abrazando el canto del bloque — al orbitar detrás se ve con el MISMO diseño
- *    legible de pie (así se imprimen los separadores reales: dos caras). El pliegue abraza el
- *    filo de la hoja (rFold ~2 mm) y las esquinas son REDONDAS (11% del ancho).
+ *    distintas alturas gracias al camber. La cara frontal queda DE PIE sobre la hoja (40°,
+ *    casi de frente a la cámara) mostrando el diseño del cliente con su aspecto real; la
+ *    trasera cae ~35° pasada la vertical abrazando el canto del bloque — al orbitar detrás
+ *    se ve con el MISMO diseño legible de pie (así se imprimen los separadores reales: dos
+ *    caras). El pliegue abraza el filo de la hoja (rFold ~2 mm) y las esquinas son REDONDAS
+ *    (11% del ancho).
  *  - PROPORCIONES REALES (0.3 u/cm): página 17×24 cm (pliego abierto 34×24) vs tira de 6×2 cm
  *    (o 4×4.2 cm) — toda la matemática vive en lib/book-geometry.ts (pura, testeada): el
  *    reposo de la cara frontal sobre la hoja y el aire bajo la cara trasera están verificados.
@@ -45,6 +46,14 @@
  *  - COMPOSICIÓN: el libro tiende a MÁS PLANO (CAMBER_MAX 0.9 → 0.6, elevación ~2 cm) y el
  *    separador queda un punto MÁS ERGUIDO sobre el borde (SEP_FRONT_LIFT_DEG 3° → 14°): la cara
  *    frontal se lee más de frente y la punta sigue reposando sobre la hoja (lib/book-geometry).
+ *
+ * 2026-10-02 (bug STG — separador 4×4.2 "no se ve cuadrado e invade la superficie del libro"):
+ * la cara frontal pasa de 14° a 40° (SEP_FRONT_LIFT_DEG), casi DE FRENTE a la cámara fija
+ * (polar 48°): a 14° el escorzo vertical era ~0.88 y la cara 4×4.2 (0.95:1) se proyectaba
+ * ~1.08:1 apaisada; a 40° la proyección es fiel (factor ~1.0) y la invasión de página baja de
+ * 4.1 a ~3.2 cm. La cresta queda como ÁPICE de la pose de pie (hang·sin 40°) con la punta
+ * reposando sobre la hoja, y la trasera cuelga libre (backLean ya no hace falta para las caras
+ * del catálogo — queda como salvaguarda para caras más largas).
  *
  * Restricciones (idénticas a fridge/calendar 3D):
  *  - CSP estricta: CERO assets externos. Materiales/texturas procedurales en runtime.
