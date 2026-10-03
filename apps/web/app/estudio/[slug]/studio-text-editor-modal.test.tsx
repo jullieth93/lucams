@@ -13,6 +13,14 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StudioTextEditorForm } from "./studio-text-editor-modal";
 import type { TextLayer } from "./types";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import type { ReactElement } from "react";
+
+// El tooltip de marca (Hint, radix) exige un Provider — en la app lo monta
+// app/layout.tsx.
+function renderStudio(ui: ReactElement) {
+  return render(<TooltipProvider delayDuration={0}>{ui}</TooltipProvider>);
+}
 
 // jsdom no trae ResizeObserver (lo pide el Slider de Radix) — stub mínimo.
 class ResizeObserverStub {
@@ -40,7 +48,9 @@ afterEach(cleanup);
 describe("StudioTextEditorForm — estado de procesamiento de «Aplicar» (Lucy 2026-09-08)", () => {
   it("al hacer click en Aplicar: spinner + disabled, y luego aplica el override", async () => {
     const onApply = vi.fn();
-    render(<StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />);
+    renderStudio(
+      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />,
+    );
 
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Te amo mamá" } });
     fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
@@ -61,7 +71,9 @@ describe("StudioTextEditorForm — estado de procesamiento de «Aplicar» (Lucy 
 
   it("sin cambios aplica null (limpia el override) — también con feedback", async () => {
     const onApply = vi.fn();
-    render(<StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />);
+    renderStudio(
+      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
     expect(screen.getByRole("button", { name: /aplicando/i })).toBeDisabled();
@@ -71,7 +83,9 @@ describe("StudioTextEditorForm — estado de procesamiento de «Aplicar» (Lucy 
 
 describe("StudioTextEditorForm — placeholder gris, nunca valor precargado (Ola 25, 2026-09-09)", () => {
   it("el input arranca VACÍO y muestra el default de la plantilla como placeholder", () => {
-    render(<StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />);
+    renderStudio(
+      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />,
+    );
     const input = screen.getByRole("textbox");
     // Regla del dueño: la tarjeta nace sin texto — el default NO es el valor.
     expect(input).toHaveValue("");
@@ -80,7 +94,9 @@ describe("StudioTextEditorForm — placeholder gris, nunca valor precargado (Ola
 
   it("aplicar SIN escribir nada → null (la tarjeta queda sin texto, nada se imprime)", async () => {
     const onApply = vi.fn();
-    render(<StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />);
+    renderStudio(
+      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
     await waitFor(() => expect(onApply).toHaveBeenCalledWith(null));
   });
@@ -90,14 +106,16 @@ describe("StudioTextEditorForm — placeholder gris, nunca valor precargado (Ola
     // layer.text → sin override → no se imprimía). Con el input vacío de entrada,
     // tipearlo es una elección explícita → viaja como texto del cliente.
     const onApply = vi.fn();
-    render(<StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />);
+    renderStudio(
+      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />,
+    );
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Escribe tu mensaje" } });
     fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
     await waitFor(() => expect(onApply).toHaveBeenCalledWith({ text: "Escribe tu mensaje" }));
   });
 
   it("con texto del cliente previo, el input SÍ arranca con ese texto (re-edición)", () => {
-    render(
+    renderStudio(
       <StudioTextEditorForm
         layer={LAYER}
         currentOverride={{ text: "Mi viaje" }}
@@ -109,7 +127,7 @@ describe("StudioTextEditorForm — placeholder gris, nunca valor precargado (Ola
 
   it("borrar el texto que tenía y aplicar → null (vacío = sin texto en la tarjeta)", async () => {
     const onApply = vi.fn();
-    render(
+    renderStudio(
       <StudioTextEditorForm
         layer={LAYER}
         currentOverride={{ text: "Mi viaje" }}
@@ -122,7 +140,7 @@ describe("StudioTextEditorForm — placeholder gris, nunca valor precargado (Ola
   });
 
   it("«Volver al original» deja el input vacío (el default vuelve como placeholder gris)", () => {
-    render(
+    renderStudio(
       <StudioTextEditorForm
         layer={LAYER}
         currentOverride={{ text: "Mi viaje" }}
@@ -140,7 +158,7 @@ describe("StudioTextEditorForm — contraste texto/tarjeta en el preview (Ola 28
   // fondo de la tarjeta y, con contraste casi nulo, cambia a la cuadrícula de
   // "transparencia" + aviso para que lo escrito siempre se vea al editar.
   it("texto blanco sobre tarjeta blanca → preview en cuadrícula + aviso visible", () => {
-    render(
+    renderStudio(
       <StudioTextEditorForm
         layer={LAYER}
         currentOverride={undefined}
@@ -157,7 +175,7 @@ describe("StudioTextEditorForm — contraste texto/tarjeta en el preview (Ola 28
   });
 
   it("texto oscuro sobre tarjeta blanca → fondo tarjeta plano, SIN aviso", () => {
-    render(
+    renderStudio(
       <StudioTextEditorForm
         layer={LAYER}
         currentOverride={undefined}
@@ -176,7 +194,7 @@ describe("StudioTextEditorForm — contraste texto/tarjeta en el preview (Ola 28
   });
 
   it("texto negro sobre tarjeta NEGRA → también avisa (el espejo del caso del owner)", () => {
-    render(
+    renderStudio(
       <StudioTextEditorForm
         layer={LAYER}
         currentOverride={{ text: "Hola!" }}
@@ -191,7 +209,9 @@ describe("StudioTextEditorForm — contraste texto/tarjeta en el preview (Ola 28
   });
 
   it("sin cardColor (superficie sin tarjeta de color) → crema de siempre, sin aviso", () => {
-    render(<StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />);
+    renderStudio(
+      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />,
+    );
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Hola!" } });
     fireEvent.click(screen.getByRole("button", { name: "Blanco" }));
 
@@ -209,7 +229,7 @@ describe("StudioTextEditorForm — color inicial = default del lienzo sobre la t
   // toca la paleta, NO se guarda override de color (el lienzo sigue con su default).
   it("tarjeta rosada + default blanco del lienzo → el preview arranca blanco sobre rosado y Aplicar no guarda fill", async () => {
     const onApply = vi.fn();
-    render(
+    renderStudio(
       <StudioTextEditorForm
         layer={LAYER}
         currentOverride={undefined}
@@ -232,7 +252,9 @@ describe("StudioTextEditorForm — color inicial = default del lienzo sobre la t
   });
 
   it("sin cardDefaultFill (superficie vieja) → la base sigue siendo el fill de la plantilla", () => {
-    render(<StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />);
+    renderStudio(
+      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />,
+    );
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Hola!" } });
     // LAYER no declara fill → base #262626 (comportamiento histórico intacto).
     expect(screen.getByText("Hola!").style.color).toBe("rgb(38, 38, 38)");

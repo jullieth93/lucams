@@ -43,6 +43,7 @@ import { formatCOP } from "@/lib/format";
 import { getCurrentCustomer } from "@/lib/auth";
 import { getCmsBlock } from "@/lib/cms";
 import { CmsText } from "@/components/cms/cms-text";
+import { Hint } from "@/components/ui/tooltip";
 import {
   describeVariantAttributes,
   parseVariantAttributes,
@@ -405,36 +406,34 @@ function ApprovedPage({
                 null;
               const personalized = Boolean(it.designAssetUrl ?? it.design?.previewUrl);
               return (
-                <div
-                  key={it.id}
-                  className="border-brand-purple/10 relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border bg-white"
-                  title={it.variant.product.name}
-                >
-                  {img ? (
-                    <Image
-                      src={img}
-                      alt={it.variant.product.name}
-                      fill
-                      sizes="64px"
-                      className="object-cover"
-                      unoptimized
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center">
-                      <Sparkles className="text-brand-muted h-6 w-6" />
-                    </div>
-                  )}
-                  {it.qty > 1 && (
-                    <span className="bg-brand-purple-dark/85 absolute top-0 right-0 inline-flex h-4 min-w-4 items-center justify-center rounded-bl-md px-1 text-[9px] font-bold text-white">
-                      {it.qty}
-                    </span>
-                  )}
-                  {personalized && (
-                    <span className="bg-brand-purple/90 absolute inset-x-0 bottom-0 text-center text-[8px] font-bold tracking-wide text-white">
-                      <CmsText blockKey="checkout.gracias.custom-badge" fallback="Tu diseño" />
-                    </span>
-                  )}
-                </div>
+                <Hint key={it.id} content={it.variant.product.name}>
+                  <div className="border-brand-purple/10 relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border bg-white">
+                    {img ? (
+                      <Image
+                        src={img}
+                        alt={it.variant.product.name}
+                        fill
+                        sizes="64px"
+                        className="object-cover"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <Sparkles className="text-brand-muted h-6 w-6" />
+                      </div>
+                    )}
+                    {it.qty > 1 && (
+                      <span className="bg-brand-purple-dark/85 absolute top-0 right-0 inline-flex h-4 min-w-4 items-center justify-center rounded-bl-md px-1 text-[9px] font-bold text-white">
+                        {it.qty}
+                      </span>
+                    )}
+                    {personalized && (
+                      <span className="bg-brand-purple/90 absolute inset-x-0 bottom-0 text-center text-[8px] font-bold tracking-wide text-white">
+                        <CmsText blockKey="checkout.gracias.custom-badge" fallback="Tu diseño" />
+                      </span>
+                    )}
+                  </div>
+                </Hint>
               );
             })}
           </div>

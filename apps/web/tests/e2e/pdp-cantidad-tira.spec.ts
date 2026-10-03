@@ -360,7 +360,7 @@ test.describe("regla 2026-09-08b — PDP muestra 'Unidades' (pack size) y el Est
     await expect(unidadesStudio).toBeVisible({ timeout: 20_000 });
     await expect(unidadesStudio.getByText("2 unidades")).toBeVisible();
     await expect(page.getByRole("group", { name: "Cantidad de fotos por imán" })).toHaveCount(0);
-    // El pager de unidades (pill con title="Tira 1 de 2") y el header de sección
+    // El pager de unidades (pill "Tira 1 de 2") y el header de sección
     // (h2) llevan el MISMO texto → el assert se acota al heading (strict mode).
     await expect(page.getByRole("heading", { name: "Tira 1 de 2", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Tira 2 de 2", exact: true })).toBeVisible();

@@ -19,6 +19,7 @@ import { notFound, redirect } from "next/navigation";
 import { Box, User, MapPin, CreditCard, Truck, Package, Undo2 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/components/admin-page";
+import { Hint } from "@/components/ui/tooltip";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getOrder } from "@/features/orders/service";
 import { getProductionAssetSignedUrls } from "@/lib/storage";
@@ -298,13 +299,14 @@ export default async function AdminPedidoDetallePage({
                                   explícita de calidad de fotos (checkbox de la Vista
                                   Previa): evidencia ante reclamos de garantía. */}
                               {it.design.qualityAcknowledgedAt && (
-                                <span
-                                  title={`Aceptación registrada el ${dateFmt.format(it.design.qualityAcknowledgedAt)}`}
-                                  className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700"
+                                <Hint
+                                  content={`Aceptación registrada el ${dateFmt.format(it.design.qualityAcknowledgedAt)}`}
                                 >
-                                  ⚠️ aceptó calidad de fotos (
-                                  {dateFmt.format(it.design.qualityAcknowledgedAt)})
-                                </span>
+                                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                                    ⚠️ aceptó calidad de fotos (
+                                    {dateFmt.format(it.design.qualityAcknowledgedAt)})
+                                  </span>
+                                </Hint>
                               )}
                             </div>
                             <div className="flex flex-wrap gap-1.5">
@@ -313,24 +315,27 @@ export default async function AdminPedidoDetallePage({
                                 const label = `pieza-${String(i + 1).padStart(2, "0")}`;
                                 const approved = it.design?.moderationStatus === "APPROVED";
                                 return url ? (
-                                  <a
+                                  <Hint
                                     key={path}
-                                    href={url}
-                                    download={`${order.number}-${label}.png`}
-                                    title={
+                                    content={
                                       approved
                                         ? undefined
                                         : "No imprimir hasta aprobar en Moderación"
                                     }
-                                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${
-                                      approved
-                                        ? "border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5"
-                                        : "border-amber-200 bg-amber-50/60 text-amber-800 hover:bg-amber-50"
-                                    }`}
                                   >
-                                    ⬇ {label}
-                                    {!approved && <span>⚠️</span>}
-                                  </a>
+                                    <a
+                                      href={url}
+                                      download={`${order.number}-${label}.png`}
+                                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${
+                                        approved
+                                          ? "border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5"
+                                          : "border-amber-200 bg-amber-50/60 text-amber-800 hover:bg-amber-50"
+                                      }`}
+                                    >
+                                      ⬇ {label}
+                                      {!approved && <span>⚠️</span>}
+                                    </a>
+                                  </Hint>
                                 ) : (
                                   <span key={path} className="text-brand-muted text-[11px]">
                                     {label} (no disponible)

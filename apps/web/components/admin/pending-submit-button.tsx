@@ -14,6 +14,7 @@
 import type { ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 import { Loader2 } from "lucide-react";
+import { Hint } from "@/components/ui/tooltip";
 
 export function PendingSubmitButton({
   className,
@@ -33,20 +34,24 @@ export function PendingSubmitButton({
 }) {
   const { pending } = useFormStatus();
   return (
-    <button
-      type="submit"
-      disabled={pending}
-      title={title}
-      aria-label={ariaLabel}
-      aria-busy={pending}
-      className={`${className ?? ""} disabled:opacity-60`}
-    >
-      {/* Envolvemos el ícono (que viene del padre) en un span keyed para que
-          React no lo trate como lista sin key — evita el warning de keys. */}
-      <span key="icon" className="contents">
-        {pending ? <Loader2 className={`${spinnerClass} animate-spin`} /> : idleIcon}
+    <Hint content={title}>
+      {/* span wrapper: el button disabled no recibe hover/foco, el span sí. */}
+      <span tabIndex={pending ? 0 : undefined} className="inline-flex">
+        <button
+          type="submit"
+          disabled={pending}
+          aria-label={ariaLabel}
+          aria-busy={pending}
+          className={`${className ?? ""} disabled:opacity-60`}
+        >
+          {/* Envolvemos el ícono (que viene del padre) en un span keyed para que
+              React no lo trate como lista sin key — evita el warning de keys. */}
+          <span key="icon" className="contents">
+            {pending ? <Loader2 className={`${spinnerClass} animate-spin`} /> : idleIcon}
+          </span>
+          {children}
+        </button>
       </span>
-      {children}
-    </button>
+    </Hint>
   );
 }

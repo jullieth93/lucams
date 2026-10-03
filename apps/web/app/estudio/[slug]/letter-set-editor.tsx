@@ -59,6 +59,7 @@ import { loadCanvasImage } from "./lib/canvas-image";
 import type { Magnet3D } from "./fridge-3d-view";
 import { buildLetterTileTextures, LETTER_TILE_CORNER_RATIO } from "./lib/letter-tile-textures";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { Hint } from "@/components/ui/tooltip";
 import { useIsTouch } from "./use-is-touch";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -951,16 +952,17 @@ export function LetterSetEditor({
                           </button>
                         ))}
                       </nav>
-                      <button
-                        type="button"
-                        onClick={handleApplyToAll}
-                        aria-label={texts.unidades.aplicarATodasAria}
-                        title={texts.unidades.aplicarATodasTitle}
-                        className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-4 py-2 text-xs font-bold transition active:scale-95"
-                      >
-                        <Copy className="h-3.5 w-3.5" aria-hidden />
-                        {texts.unidades.aplicarATodas}
-                      </button>
+                      <Hint content={texts.unidades.aplicarATodasTitle}>
+                        <button
+                          type="button"
+                          onClick={handleApplyToAll}
+                          aria-label={texts.unidades.aplicarATodasAria}
+                          className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-4 py-2 text-xs font-bold transition active:scale-95"
+                        >
+                          <Copy className="h-3.5 w-3.5" aria-hidden />
+                          {texts.unidades.aplicarATodas}
+                        </button>
+                      </Hint>
                     </div>
                   )}
 

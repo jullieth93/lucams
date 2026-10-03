@@ -7,6 +7,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { WebVitalsReporter } from "@/components/web-vitals";
 import { CookiesBanner } from "@/components/cookies-banner";
 import { RouteToasts } from "@/components/route-toasts";
@@ -127,14 +128,16 @@ export default async function RootLayout({
         >
           Saltar al contenido
         </a>
-        {children}
-        <Toaster position="top-right" richColors closeButton />
-        <WebVitalsReporter />
-        <Suspense fallback={null}>
-          <RouteToasts />
-        </Suspense>
-        <CookiesBanner policyVersion={privacyPolicy?.value ?? null} />
-        {editMode ? <CmsEditOverlay /> : null}
+        <TooltipProvider>
+          {children}
+          <Toaster position="top-right" richColors closeButton />
+          <WebVitalsReporter />
+          <Suspense fallback={null}>
+            <RouteToasts />
+          </Suspense>
+          <CookiesBanner policyVersion={privacyPolicy?.value ?? null} />
+          {editMode ? <CmsEditOverlay /> : null}
+        </TooltipProvider>
       </body>
     </html>
   );

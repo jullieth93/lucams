@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Copy, Minus, Plus, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
+import { Hint } from "@/components/ui/tooltip";
 import type Konva from "konva";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
@@ -1307,34 +1308,35 @@ function UnitPagerPill({
     total: unitCount,
   });
   return (
-    <button
-      type="button"
-      onClick={() => {
-        document
-          .getElementById(`studio-unit-${unitIndex}`)
-          ?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }}
-      aria-label={fillStudioText(texts.unidades.progresoAria, {
-        n: filled,
-        total: unitSlots,
-      })}
-      title={label}
-      className="ring-brand-purple/15 text-brand-purple-dark hover:ring-brand-purple/40 focus-visible:ring-brand-turquoise inline-flex h-10 items-center gap-2 rounded-full bg-white px-4 text-sm font-bold shadow-md ring-2 transition-all hover:shadow-lg focus-visible:ring-2 focus-visible:outline-none active:scale-95"
-    >
-      <span
-        aria-hidden
-        className={
-          complete
-            ? "flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white"
-            : filled === 0
-              ? "h-5 w-5 rounded-full bg-red-100 ring-1 ring-red-300"
-              : "bg-brand-purple/15 ring-brand-purple/30 h-5 w-5 rounded-full ring-1"
-        }
+    <Hint content={label}>
+      <button
+        type="button"
+        onClick={() => {
+          document
+            .getElementById(`studio-unit-${unitIndex}`)
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
+        aria-label={fillStudioText(texts.unidades.progresoAria, {
+          n: filled,
+          total: unitSlots,
+        })}
+        className="ring-brand-purple/15 text-brand-purple-dark hover:ring-brand-purple/40 focus-visible:ring-brand-turquoise inline-flex h-10 items-center gap-2 rounded-full bg-white px-4 text-sm font-bold shadow-md ring-2 transition-all hover:shadow-lg focus-visible:ring-2 focus-visible:outline-none active:scale-95"
       >
-        {complete && <Check className="h-3 w-3" aria-hidden />}
-      </span>
-      {label}
-    </button>
+        <span
+          aria-hidden
+          className={
+            complete
+              ? "flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 text-white"
+              : filled === 0
+                ? "h-5 w-5 rounded-full bg-red-100 ring-1 ring-red-300"
+                : "bg-brand-purple/15 ring-brand-purple/30 h-5 w-5 rounded-full ring-1"
+          }
+        >
+          {complete && <Check className="h-3 w-3" aria-hidden />}
+        </span>
+        {label}
+      </button>
+    </Hint>
   );
 }
 
@@ -1389,19 +1391,20 @@ function UnitSectionHeader({
         {filled}/{unitSlots}
       </span>
       {unitCount > 1 && (
-        <button
-          type="button"
-          onClick={() => {
-            applyUnitToAllUnits(unitIndex);
-            onApplied();
-          }}
-          aria-label={texts.unidades.aplicarATodasAria}
-          title={texts.unidades.aplicarATodasTitle}
-          className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 focus-visible:ring-brand-turquoise inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-3.5 py-1.5 text-xs font-bold transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95"
-        >
-          <Copy className="h-3.5 w-3.5" aria-hidden />
-          {texts.unidades.aplicarATodas}
-        </button>
+        <Hint content={texts.unidades.aplicarATodasTitle}>
+          <button
+            type="button"
+            onClick={() => {
+              applyUnitToAllUnits(unitIndex);
+              onApplied();
+            }}
+            aria-label={texts.unidades.aplicarATodasAria}
+            className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 focus-visible:ring-brand-turquoise inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-3.5 py-1.5 text-xs font-bold transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95"
+          >
+            <Copy className="h-3.5 w-3.5" aria-hidden />
+            {texts.unidades.aplicarATodas}
+          </button>
+        </Hint>
       )}
     </div>
   );
@@ -1454,19 +1457,20 @@ function UnitMiniActions({
         {filled}/{unitSlots}
       </span>
       {allowApply && unitCount > 1 && (
-        <button
-          type="button"
-          onClick={() => {
-            applyUnitToAllUnits(unitIndex);
-            onApplied();
-          }}
-          aria-label={texts.unidades.aplicarATodasAria}
-          title={texts.unidades.aplicarATodasTitle}
-          className="text-brand-purple-dark/80 hover:text-brand-purple-dark hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold underline decoration-dotted underline-offset-2 transition-colors focus-visible:ring-2 focus-visible:outline-none"
-        >
-          <Copy className="h-3 w-3" aria-hidden />
-          {texts.unidades.aplicarATodas}
-        </button>
+        <Hint content={texts.unidades.aplicarATodasTitle}>
+          <button
+            type="button"
+            onClick={() => {
+              applyUnitToAllUnits(unitIndex);
+              onApplied();
+            }}
+            aria-label={texts.unidades.aplicarATodasAria}
+            className="text-brand-purple-dark/80 hover:text-brand-purple-dark hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold underline decoration-dotted underline-offset-2 transition-colors focus-visible:ring-2 focus-visible:outline-none"
+          >
+            <Copy className="h-3 w-3" aria-hidden />
+            {texts.unidades.aplicarATodas}
+          </button>
+        </Hint>
       )}
     </div>
   );
@@ -1526,12 +1530,11 @@ function LazySlotPlaceholder({
           {label ? <span className="text-brand-purple-dark">{label}</span> : null}
           <span>{texts.lienzo.slotTocaElegir}</span>
           {optional && (
-            <span
-              className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-bold"
-              title={texts.lienzo.slotCaraBOpcionalTitle}
-            >
-              {texts.lienzo.slotCaraBOpcional}
-            </span>
+            <Hint content={texts.lienzo.slotCaraBOpcionalTitle}>
+              <span className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-bold">
+                {texts.lienzo.slotCaraBOpcional}
+              </span>
+            </Hint>
           )}
         </span>
       )}
@@ -1601,43 +1604,53 @@ export function StudioStageZoomControl({
       })}
       className="ring-brand-purple/15 inline-flex h-11 items-center gap-0.5 rounded-full bg-white px-1 shadow-xl ring-2 sm:h-12 sm:px-1.5 sm:ring-4"
     >
-      <button
-        type="button"
-        onClick={() => onStep(-1)}
-        disabled={zoom <= STAGE_ZOOM_MIN + 0.001}
-        aria-label={texts.lienzo.stageZoomOutAria}
-        title={texts.lienzo.stageZoomOutAria}
-        className={zoomButtonClass}
-      >
-        <Minus className="h-4 w-4" aria-hidden />
-      </button>
+      <Hint content={texts.lienzo.stageZoomOutAria}>
+        {/* Wrapper focusable: al tope mínimo el botón queda disabled y no
+            recibe hover/foco (el tooltip sigue disponible). */}
+        <span tabIndex={0} className="inline-flex">
+          <button
+            type="button"
+            onClick={() => onStep(-1)}
+            disabled={zoom <= STAGE_ZOOM_MIN + 0.001}
+            aria-label={texts.lienzo.stageZoomOutAria}
+            className={zoomButtonClass}
+          >
+            <Minus className="h-4 w-4" aria-hidden />
+          </button>
+        </span>
+      </Hint>
       <span
         className="text-brand-purple-dark w-9 text-center text-xs font-bold tabular-nums sm:w-11"
         aria-hidden
       >
         {Math.round(zoom * 100)}%
       </span>
-      <button
-        type="button"
-        onClick={() => onStep(1)}
-        disabled={zoom >= cap - 0.001}
-        aria-label={texts.lienzo.stageZoomInAria}
-        title={texts.lienzo.stageZoomInAria}
-        className={zoomButtonClass}
-      >
-        <Plus className="h-4 w-4" aria-hidden />
-      </button>
+      <Hint content={texts.lienzo.stageZoomInAria}>
+        {/* Wrapper focusable: al tope máximo el botón queda disabled. */}
+        <span tabIndex={0} className="inline-flex">
+          <button
+            type="button"
+            onClick={() => onStep(1)}
+            disabled={zoom >= cap - 0.001}
+            aria-label={texts.lienzo.stageZoomInAria}
+            className={zoomButtonClass}
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+          </button>
+        </span>
+      </Hint>
       {/* Reset disponible tanto alejado como acercado (≠ 100%). */}
       {Math.abs(zoom - 1) > 0.001 && (
-        <button
-          type="button"
-          onClick={onReset}
-          aria-label={texts.lienzo.stageZoomResetAria}
-          title={texts.lienzo.stageZoomResetAria}
-          className={zoomButtonClass}
-        >
-          <RotateCcw className="h-3.5 w-3.5" aria-hidden />
-        </button>
+        <Hint content={texts.lienzo.stageZoomResetAria}>
+          <button
+            type="button"
+            onClick={onReset}
+            aria-label={texts.lienzo.stageZoomResetAria}
+            className={zoomButtonClass}
+          >
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </Hint>
       )}
     </div>
   );

@@ -19,6 +19,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
+import { Hint } from "@/components/ui/tooltip";
 import { STUDIO_MAX_WIDTH } from "./studio-layout";
 import { STUDIO_CTA_BUSY_CLASSES } from "./studio-busy-cta";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -122,12 +123,11 @@ export function StudioSimpleHeader({
           tarjeta del lienzo sigue iniciando dentro del primer viewport de
           375×812 (verificado con capturas). */}
       <div className="border-brand-purple/10 bg-brand-cream/50 border-t md:hidden">
-        <p
-          className="text-brand-purple-dark truncate px-4 py-1 text-center text-xs font-semibold"
-          title={productName}
-        >
-          {productName}
-        </p>
+        <Hint content={productName}>
+          <p className="text-brand-purple-dark truncate px-4 py-1 text-center text-xs font-semibold">
+            {productName}
+          </p>
+        </Hint>
       </div>
     </header>
   );

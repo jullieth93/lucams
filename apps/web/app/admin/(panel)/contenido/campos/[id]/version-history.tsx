@@ -10,6 +10,7 @@
 import { History, RotateCcw } from "lucide-react";
 import { publishCmsFieldAction } from "@/app/admin/(panel)/contenido/actions";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 
 type Version = {
   id: string;
@@ -97,16 +98,17 @@ export function VersionHistory({
                   name="redirectTo"
                   value={`/admin/contenido/campos/${fieldId}`}
                 />
-                <Button
-                  type="submit"
-                  variant="ghost"
-                  size="sm"
-                  className="text-brand-purple-dark hover:bg-brand-purple/10"
-                  title={`Hacer pública la versión ${v.version}`}
-                >
-                  <RotateCcw className="mr-1 h-3.5 w-3.5" />
-                  Volver a esta
-                </Button>
+                <Hint content={`Hacer pública la versión ${v.version}`}>
+                  <Button
+                    type="submit"
+                    variant="ghost"
+                    size="sm"
+                    className="text-brand-purple-dark hover:bg-brand-purple/10"
+                  >
+                    <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                    Volver a esta
+                  </Button>
+                </Hint>
               </form>
             )}
           </li>

@@ -41,6 +41,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { adminLogoutAction } from "@/app/auth/logout/actions";
+import { Hint } from "@/components/ui/tooltip";
 import { getAdminNav, type NavBadge, type NavGroup } from "@/lib/admin-nav";
 import { filterNavByRole } from "@/lib/admin-rbac";
 import type { AdminRole } from "@lucams/db";
@@ -420,13 +421,14 @@ const NOTIFICATIONS_HREF = "/admin/notificaciones";
 function UnreadNotificationsPill({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <span
-      className="bg-brand-pink min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-[10px] leading-none font-bold text-white"
-      aria-label={`${count} notificaciones sin leer`}
-      title={`${count} sin leer`}
-    >
-      {count > 99 ? "99+" : count}
-    </span>
+    <Hint content={`${count} sin leer`}>
+      <span
+        className="bg-brand-pink min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-[10px] leading-none font-bold text-white"
+        aria-label={`${count} notificaciones sin leer`}
+      >
+        {count > 99 ? "99+" : count}
+      </span>
+    </Hint>
   );
 }
 
@@ -537,14 +539,16 @@ function NavGroupExpandable({
             return (
               <li key={it.href}>
                 {isSoon ? (
-                  <div
-                    className="flex cursor-not-allowed items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-white/55"
-                    title="Próximamente disponible"
-                  >
-                    <ItemIcon className="h-3.5 w-3.5" />
-                    <span className="flex-1 truncate">{it.label}</span>
-                    {it.badge && <BadgePill badge={it.badge} />}
-                  </div>
+                  <Hint content="Próximamente disponible">
+                    <div
+                      tabIndex={0}
+                      className="flex cursor-not-allowed items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-white/55"
+                    >
+                      <ItemIcon className="h-3.5 w-3.5" />
+                      <span className="flex-1 truncate">{it.label}</span>
+                      {it.badge && <BadgePill badge={it.badge} />}
+                    </div>
+                  </Hint>
                 ) : (
                   <Link
                     href={it.href}

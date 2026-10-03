@@ -22,6 +22,7 @@ import {
   AdminPageBody,
   AdminPageHeader,
 } from "@/components/admin-page";
+import { Hint } from "@/components/ui/tooltip";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
@@ -302,15 +303,18 @@ export default async function AdminFinanzasPage({ searchParams }: { searchParams
                           key={b.start.toISOString()}
                           className="flex min-w-0 flex-1 flex-col items-center justify-end self-stretch"
                         >
-                          <div
-                            className={
-                              b.totalCents > 0
-                                ? "bg-brand-purple/80 w-full rounded-t"
-                                : "bg-brand-purple/15 w-full rounded-t"
-                            }
-                            style={{ height: `${heightPct}%` }}
-                            title={`${b.label}: ${formatCOP(b.totalCents)} (${b.count} pedido${b.count === 1 ? "" : "s"})`}
-                          />
+                          <Hint
+                            content={`${b.label}: ${formatCOP(b.totalCents)} (${b.count} pedido${b.count === 1 ? "" : "s"})`}
+                          >
+                            <div
+                              className={
+                                b.totalCents > 0
+                                  ? "bg-brand-purple/80 w-full rounded-t"
+                                  : "bg-brand-purple/15 w-full rounded-t"
+                              }
+                              style={{ height: `${heightPct}%` }}
+                            />
+                          </Hint>
                         </div>
                       );
                     });

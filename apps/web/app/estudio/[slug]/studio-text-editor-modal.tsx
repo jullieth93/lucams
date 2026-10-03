@@ -27,6 +27,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Slider } from "@/components/ui/slider";
+import { Hint } from "@/components/ui/tooltip";
 import { Bold, Check, Italic, Loader2, Type } from "lucide-react";
 import { FONT_PRESETS, TEXT_COLOR_PRESETS } from "./lib/fonts";
 import { isLowContrastOnCard } from "./lib/contrast";
@@ -295,36 +296,38 @@ export function StudioTextEditorForm({
           />
         </div>
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => setIsBold((v) => !v)}
-            aria-pressed={isBold}
-            aria-label={texts.texto.negrita}
-            title={texts.texto.negrita}
-            className={[
-              "focus:ring-brand-turquoise flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:outline-none",
-              isBold
-                ? "bg-brand-purple text-white shadow-sm"
-                : "ring-brand-purple/20 text-brand-purple-dark/70 hover:bg-brand-purple/10 ring-1",
-            ].join(" ")}
-          >
-            <Bold className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsItalic((v) => !v)}
-            aria-pressed={isItalic}
-            aria-label={texts.texto.cursiva}
-            title={texts.texto.cursiva}
-            className={[
-              "focus:ring-brand-turquoise flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:outline-none",
-              isItalic
-                ? "bg-brand-purple text-white shadow-sm"
-                : "ring-brand-purple/20 text-brand-purple-dark/70 hover:bg-brand-purple/10 ring-1",
-            ].join(" ")}
-          >
-            <Italic className="h-4 w-4" />
-          </button>
+          <Hint content={texts.texto.negrita}>
+            <button
+              type="button"
+              onClick={() => setIsBold((v) => !v)}
+              aria-pressed={isBold}
+              aria-label={texts.texto.negrita}
+              className={[
+                "focus:ring-brand-turquoise flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:outline-none",
+                isBold
+                  ? "bg-brand-purple text-white shadow-sm"
+                  : "ring-brand-purple/20 text-brand-purple-dark/70 hover:bg-brand-purple/10 ring-1",
+              ].join(" ")}
+            >
+              <Bold className="h-4 w-4" />
+            </button>
+          </Hint>
+          <Hint content={texts.texto.cursiva}>
+            <button
+              type="button"
+              onClick={() => setIsItalic((v) => !v)}
+              aria-pressed={isItalic}
+              aria-label={texts.texto.cursiva}
+              className={[
+                "focus:ring-brand-turquoise flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:outline-none",
+                isItalic
+                  ? "bg-brand-purple text-white shadow-sm"
+                  : "ring-brand-purple/20 text-brand-purple-dark/70 hover:bg-brand-purple/10 ring-1",
+              ].join(" ")}
+            >
+              <Italic className="h-4 w-4" />
+            </button>
+          </Hint>
         </div>
       </div>
 
@@ -337,30 +340,30 @@ export function StudioTextEditorForm({
           {TEXT_COLOR_PRESETS.map((c) => {
             const isSelected = fill === c.color;
             return (
-              <button
-                key={c.color}
-                type="button"
-                onClick={() => setFill(c.color)}
-                aria-label={c.label}
-                title={c.label}
-                className={[
-                  "focus:ring-brand-turquoise relative h-7 w-7 rounded-full transition-transform hover:scale-110 focus:ring-2 focus:outline-none",
-                  isSelected
-                    ? "ring-brand-turquoise scale-110 ring-2 ring-offset-2"
-                    : "ring-brand-purple/15 hover:ring-brand-purple/40 ring-1",
-                ].join(" ")}
-                style={{ backgroundColor: c.color }}
-              >
-                {isSelected && (
-                  <Check
-                    className={[
-                      "absolute inset-0 m-auto h-4 w-4",
-                      c.color === "#FFFFFF" ? "text-brand-purple-dark" : "text-white",
-                    ].join(" ")}
-                    strokeWidth={3}
-                  />
-                )}
-              </button>
+              <Hint key={c.color} content={c.label}>
+                <button
+                  type="button"
+                  onClick={() => setFill(c.color)}
+                  aria-label={c.label}
+                  className={[
+                    "focus:ring-brand-turquoise relative h-7 w-7 rounded-full transition-transform hover:scale-110 focus:ring-2 focus:outline-none",
+                    isSelected
+                      ? "ring-brand-turquoise scale-110 ring-2 ring-offset-2"
+                      : "ring-brand-purple/15 hover:ring-brand-purple/40 ring-1",
+                  ].join(" ")}
+                  style={{ backgroundColor: c.color }}
+                >
+                  {isSelected && (
+                    <Check
+                      className={[
+                        "absolute inset-0 m-auto h-4 w-4",
+                        c.color === "#FFFFFF" ? "text-brand-purple-dark" : "text-white",
+                      ].join(" ")}
+                      strokeWidth={3}
+                    />
+                  )}
+                </button>
+              </Hint>
             );
           })}
           {/* Fase 1B — opción «Personalizado» (input color nativo, sin dependencias):
@@ -368,37 +371,38 @@ export function StudioTextEditorForm({
           {(() => {
             const isCustom = !TEXT_COLOR_PRESETS.some((c) => c.color === fill);
             return (
-              <label
-                title={texts.texto.colorPersonalizado}
-                className={[
-                  "focus-within:ring-brand-turquoise relative h-7 w-7 cursor-pointer rounded-full transition-transform focus-within:ring-2 hover:scale-110",
-                  isCustom
-                    ? "ring-brand-turquoise scale-110 ring-2 ring-offset-2"
-                    : "ring-brand-purple/15 hover:ring-brand-purple/40 ring-1",
-                ].join(" ")}
-                style={{
-                  background: isCustom
-                    ? fill
-                    : "conic-gradient(#E85B9F, #FFD93D, #5DD9D1, #7C6AAD, #E85B9F)",
-                }}
-              >
-                <input
-                  type="color"
-                  value={isCustom ? fill : "#7C6AAD"}
-                  onChange={(e) => setFill(e.target.value)}
-                  aria-label={texts.texto.colorPersonalizado}
-                  className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                />
-                {isCustom && (
-                  <Check
-                    className={[
-                      "absolute inset-0 m-auto h-4 w-4",
-                      fill === "#FFFFFF" ? "text-brand-purple-dark" : "text-white",
-                    ].join(" ")}
-                    strokeWidth={3}
+              <Hint content={texts.texto.colorPersonalizado}>
+                <label
+                  className={[
+                    "focus-within:ring-brand-turquoise relative h-7 w-7 cursor-pointer rounded-full transition-transform focus-within:ring-2 hover:scale-110",
+                    isCustom
+                      ? "ring-brand-turquoise scale-110 ring-2 ring-offset-2"
+                      : "ring-brand-purple/15 hover:ring-brand-purple/40 ring-1",
+                  ].join(" ")}
+                  style={{
+                    background: isCustom
+                      ? fill
+                      : "conic-gradient(#E85B9F, #FFD93D, #5DD9D1, #7C6AAD, #E85B9F)",
+                  }}
+                >
+                  <input
+                    type="color"
+                    value={isCustom ? fill : "#7C6AAD"}
+                    onChange={(e) => setFill(e.target.value)}
+                    aria-label={texts.texto.colorPersonalizado}
+                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
                   />
-                )}
-              </label>
+                  {isCustom && (
+                    <Check
+                      className={[
+                        "absolute inset-0 m-auto h-4 w-4",
+                        fill === "#FFFFFF" ? "text-brand-purple-dark" : "text-white",
+                      ].join(" ")}
+                      strokeWidth={3}
+                    />
+                  )}
+                </label>
+              </Hint>
             );
           })()}
         </div>
@@ -413,27 +417,27 @@ export function StudioTextEditorForm({
           {FONT_PRESETS.map((f) => {
             const isSelected = fontFamily === f.fontFamily;
             return (
-              <button
-                key={f.fontFamily}
-                type="button"
-                onClick={() => setFontFamily(f.fontFamily)}
-                aria-label={fillStudioText(texts.texto.tipografiaAria, { nombre: f.label })}
-                title={f.mood}
-                className={[
-                  "focus:ring-brand-turquoise flex items-center justify-between rounded-md px-2.5 py-2 text-left transition-all focus:ring-2 focus:outline-none",
-                  isSelected
-                    ? "bg-brand-turquoise/10 ring-brand-turquoise ring-2"
-                    : "ring-brand-purple/15 hover:ring-brand-purple/40 ring-1",
-                ].join(" ")}
-              >
-                <span
-                  className="text-brand-purple-dark text-sm"
-                  style={{ fontFamily: f.fontFamily }}
+              <Hint key={f.fontFamily} content={f.mood}>
+                <button
+                  type="button"
+                  onClick={() => setFontFamily(f.fontFamily)}
+                  aria-label={fillStudioText(texts.texto.tipografiaAria, { nombre: f.label })}
+                  className={[
+                    "focus:ring-brand-turquoise flex items-center justify-between rounded-md px-2.5 py-2 text-left transition-all focus:ring-2 focus:outline-none",
+                    isSelected
+                      ? "bg-brand-turquoise/10 ring-brand-turquoise ring-2"
+                      : "ring-brand-purple/15 hover:ring-brand-purple/40 ring-1",
+                  ].join(" ")}
                 >
-                  {f.label}
-                </span>
-                {isSelected && <Check className="text-brand-turquoise h-3.5 w-3.5" />}
-              </button>
+                  <span
+                    className="text-brand-purple-dark text-sm"
+                    style={{ fontFamily: f.fontFamily }}
+                  >
+                    {f.label}
+                  </span>
+                  {isSelected && <Check className="text-brand-turquoise h-3.5 w-3.5" />}
+                </button>
+              </Hint>
             );
           })}
         </div>

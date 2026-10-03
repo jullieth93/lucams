@@ -26,6 +26,7 @@ import {
 } from "@/components/admin-page";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { getCurrentAdmin } from "@/lib/auth";
 import { listAveonlineWebhooks } from "@/features/shipping/aveonline";
 import { WebhookRegistrationForm } from "./webhook-form";
@@ -156,15 +157,16 @@ export default async function AveonlineIntegrationPage({
                           className="inline"
                         >
                           <input type="hidden" name="url" value={w.url} />
-                          <Button
-                            type="submit"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-rose-600 hover:bg-rose-50"
-                            title="Eliminar este webhook"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          <Hint content="Eliminar este webhook">
+                            <Button
+                              type="submit"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-rose-600 hover:bg-rose-50"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </Hint>
                         </ConfirmAction>
                       )}
                     </td>

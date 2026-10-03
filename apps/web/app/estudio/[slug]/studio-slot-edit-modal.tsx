@@ -19,6 +19,7 @@ import { useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Hint } from "@/components/ui/tooltip";
 import { Slider } from "@/components/ui/slider";
 import { ImageIcon, Type, ChevronLeft, Copy } from "lucide-react";
 import { StudioPhotoAdjustForm } from "./studio-photo-adjust-modal";
@@ -442,16 +443,17 @@ export function StudioSlotEditModal({
               a todos los demás. */}
           <div>
             {applyToAll && (
-              <button
-                type="button"
-                onClick={applyToAll.onApply}
-                aria-label={applyToAll.ariaLabel}
-                title={applyToAll.title}
-                className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 focus-visible:ring-brand-turquoise inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-3.5 py-2 text-xs font-bold transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95"
-              >
-                <Copy className="h-3.5 w-3.5" aria-hidden />
-                {applyToAll.label}
-              </button>
+              <Hint content={applyToAll.title}>
+                <button
+                  type="button"
+                  onClick={applyToAll.onApply}
+                  aria-label={applyToAll.ariaLabel}
+                  className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 focus-visible:ring-brand-turquoise inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-3.5 py-2 text-xs font-bold transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95"
+                >
+                  <Copy className="h-3.5 w-3.5" aria-hidden />
+                  {applyToAll.label}
+                </button>
+              </Hint>
             )}
           </div>
           <Button
@@ -573,21 +575,22 @@ function TextLayersEditor({
                     </div>
                   </button>
                   {canApplyToAll && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onApplyToAll(layer.id, override);
-                        setAppliedLayerId(layer.id);
-                      }}
-                      aria-label={fillStudioText(texts.texto.capaAplicarATodasAria, {
-                        texto: displayText,
-                      })}
-                      title={texts.texto.capaAplicarATodas}
-                      className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 focus-visible:ring-brand-turquoise inline-flex shrink-0 items-center gap-1 rounded-full border-2 bg-white px-2.5 py-1.5 text-[11px] font-bold transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95"
-                    >
-                      <Copy className="h-3 w-3" aria-hidden />
-                      {texts.texto.capaAplicarATodas}
-                    </button>
+                    <Hint content={texts.texto.capaAplicarATodas}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onApplyToAll(layer.id, override);
+                          setAppliedLayerId(layer.id);
+                        }}
+                        aria-label={fillStudioText(texts.texto.capaAplicarATodasAria, {
+                          texto: displayText,
+                        })}
+                        className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 focus-visible:ring-brand-turquoise inline-flex shrink-0 items-center gap-1 rounded-full border-2 bg-white px-2.5 py-1.5 text-[11px] font-bold transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95"
+                      >
+                        <Copy className="h-3 w-3" aria-hidden />
+                        {texts.texto.capaAplicarATodas}
+                      </button>
+                    </Hint>
                   )}
                 </div>
               );
