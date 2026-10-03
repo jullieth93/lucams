@@ -16,6 +16,8 @@ import { resolvePersonalizationSurface } from "./surface";
 import {
   buildVariantFilterOptions,
   matchesVariantFilter,
+  normalizeVariantFilter,
+  sameVariantFilter,
   type VariantFilter,
   type VariantFilterOption,
 } from "./design-gallery-filter";
@@ -198,11 +200,25 @@ export type AdminGalleryImage = {
   variantFilter: VariantFilter | null;
   isActive: boolean;
   order: number;
+  /** B-5 (2026-10-02) — soft-delete; se expone para la sección "Archivados". */
+  deletedAt: Date | null;
 };
 
-export async function listGalleryAdmin(tag?: string): Promise<AdminGalleryImage[]> {
+/**
+ * Lista admin. Por defecto solo las filas NO borradas (vista histórica);
+ * con `includeArchived` trae también los soft-deleted (deletedAt no null) para
+ * la sección "Archivados" del admin — el Estudio nunca los ve (listGalleryImages
+ * filtra deletedAt null + isActive).
+ */
+export async function listGalleryAdmin(
+  tag?: string,
+  opts?: { includeArchived?: boolean },
+): Promise<AdminGalleryImage[]> {
   const rows = await prisma.designGalleryImage.findMany({
-    where: { deletedAt: null, ...(tag ? { tag } : {}) },
+    where: {
+      ...(opts?.includeArchived ? {} : { deletedAt: null }),
+      ...(tag ? { tag } : {}),
+    },
     orderBy: [{ tag: "asc" }, { order: "asc" }],
     select: {
       id: true,
@@ -213,6 +229,7 @@ export async function listGalleryAdmin(tag?: string): Promise<AdminGalleryImage[
       variantFilter: true,
       isActive: true,
       order: true,
+      deletedAt: true,
     },
   });
   return rows as AdminGalleryImage[];
@@ -305,4 +322,87 @@ export async function assignVariantFilterToUnassigned(opts: {
     data: { variantFilter: opts.variantFilter, updatedBy: opts.adminId },
   });
   return res.count;
+}
+
+/**
+ * B-5 (2026-10-02) — pausar/reactivar un diseño SIN borrarlo: isActive=false lo
+ * saca del Estudio (listGalleryImages filtra isActive) pero sigue visible en el
+ * admin, atenuado. Resuelve el "para ocultar hay que borrar" del backlog.
+ */
+export async function setGalleryImageActive(opts: {
+  id: string;
+  isActive: boolean;
+  adminId: string;
+}): Promise<void> {
+  await prisma.designGalleryImage.update({
+    where: { id: opts.id },
+    data: { isActive: opts.isActive, updatedBy: opts.adminId },
+  });
+}
+
+/**
+ * B-5 — restaura un soft-deleted: deletedAt=null y vuelve PAUSADO
+ * (isActive=false) para que Lucy lo revise antes de exponerlo en el Estudio.
+ * Recibe order al final del tag (count de no borrados) para no chocar con el
+ * orden de los que quedaron. false si el diseño no existe o no está archivado.
+ */
+export async function restoreGalleryImage(opts: { id: string; adminId: string }): Promise<boolean> {
+  const row = await prisma.designGalleryImage.findFirst({
+    where: { id: opts.id, deletedAt: { not: null } },
+    select: { tag: true },
+  });
+  if (!row) return false;
+  const count = await prisma.designGalleryImage.count({
+    where: { tag: row.tag, deletedAt: null },
+  });
+  await prisma.designGalleryImage.update({
+    where: { id: opts.id },
+    data: { deletedAt: null, isActive: false, order: count, updatedBy: opts.adminId },
+  });
+  return true;
+}
+
+/**
+ * B-5 — reorden por swap con el ADYACENTE dentro del grupo visible del admin:
+ * mismo tag + mismo variantFilter normalizado (es la partición que muestran los
+ * chips de la grilla: "2×6", "Sin asignar", etc.; en productos sin opciones de
+ * filtro el grupo es todo el tag). Transacción con los dos updates. false si el
+ * diseño no existe, está archivado o no tiene vecino en esa dirección.
+ */
+export async function reorderGalleryImage(opts: {
+  id: string;
+  direction: "up" | "down";
+  adminId: string;
+}): Promise<boolean> {
+  const target = await prisma.designGalleryImage.findFirst({
+    where: { id: opts.id, deletedAt: null },
+    select: { id: true, tag: true, order: true, variantFilter: true },
+  });
+  if (!target) return false;
+  const rows = await prisma.designGalleryImage.findMany({
+    where: { tag: target.tag, deletedAt: null },
+    orderBy: { order: "asc" },
+    select: { id: true, order: true, variantFilter: true },
+  });
+  const targetFilter = normalizeVariantFilter(target.variantFilter);
+  const group = rows.filter((r) =>
+    sameVariantFilter(normalizeVariantFilter(r.variantFilter), targetFilter),
+  );
+  const idx = group.findIndex((r) => r.id === target.id);
+  const neighborIdx = opts.direction === "up" ? idx - 1 : idx + 1;
+  if (idx === -1 || neighborIdx < 0 || neighborIdx >= group.length) return false;
+  const neighbor = group[neighborIdx];
+  // Orders iguales (legacy) harían el swap un no-op invisible: no tocar nada.
+  if (neighbor.order === target.order) return false;
+  await prisma.$transaction([
+    prisma.designGalleryImage.update({
+      where: { id: target.id },
+      data: { order: neighbor.order, updatedBy: opts.adminId },
+    }),
+    prisma.designGalleryImage.update({
+      where: { id: neighbor.id },
+      data: { order: target.order, updatedBy: opts.adminId },
+    }),
+  ]);
+  return true;
 }
