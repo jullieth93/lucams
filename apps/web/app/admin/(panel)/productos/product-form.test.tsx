@@ -214,11 +214,11 @@ describe("ProductForm — tab Personalización (2026-10-02)", () => {
     // cambiar de tipo). Ya NO hay inputs ocultos de preservación.
     expect(screen.queryByLabelText(/tamaño base del lienzo/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/columnas de la grilla/i)).not.toBeInTheDocument();
-    expect(
-      document.querySelector('input[type="hidden"][name="canvasBaseScale"]'),
-    ).toBeNull();
+    expect(document.querySelector('input[type="hidden"][name="canvasBaseScale"]')).toBeNull();
     expect(kindHidden()?.value).toBe("NONE");
-    expect(screen.getByText(/compra directa — el producto se añade al carrito/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/compra directa — el producto se añade al carrito/i),
+    ).toBeInTheDocument();
   });
 
   it("isPersonalizable se deriva del kind: sin checkbox suelto, el estado se muestra read-only", () => {
@@ -226,17 +226,15 @@ describe("ProductForm — tab Personalización (2026-10-02)", () => {
     // El checkbox 🎨 Personalizable ya no existe en el form.
     expect(document.querySelector('input[name="isPersonalizable"]')).toBeNull();
     // Con kind foto, el indicador derivado dice que el Estudio abre en la PDP.
-    expect(
-      screen.getByText(/la página del producto abre el Estudio en vivo/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/la página del producto abre el Estudio en vivo/i)).toBeInTheDocument();
 
     // «Set de letras» es sintético: persiste kind NONE + schema.letterSet.
     fireEvent.change(screen.getByLabelText("Tipo"), { target: { value: "LETTERSET" } });
     expect(kindHidden()?.value).toBe("NONE");
     expect(screen.getByLabelText(/contenido del set/i)).toBeInTheDocument();
-    expect(
-      document.querySelector<HTMLSelectElement>('select[name="letterSet"]')?.value,
-    ).toBe("full");
+    expect(document.querySelector<HTMLSelectElement>('select[name="letterSet"]')?.value).toBe(
+      "full",
+    );
     expect(
       screen.getByText(/el color del marco en el Estudio \(el set físico es fijo\)/i),
     ).toBeInTheDocument();
