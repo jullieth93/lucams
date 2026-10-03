@@ -90,13 +90,17 @@ describe("getAdminNav", () => {
     expect(config?.items?.some((it) => it.href === "/admin/seguridad")).toBe(true);
   });
 
-  it("modo catalog: oculta Precios al por mayor de Promociones pero conserva Cupones", async () => {
+  it("modo catalog: Precios al por mayor VISIBLE en Promociones (desde 2026-10-02 lo consume el carrito)", async () => {
     process.env[KEY] = "catalog";
     const mod = await loadNav();
     const promo = mod.getAdminNav().find((g) => g.title === "Promociones");
 
     expect(promo).toBeDefined();
-    expect(promo?.items?.some((it) => it.href === "/admin/mayorista")).toBe(false);
+    // Hasta 2026-10-02 se ocultaba en modo catálogo (WholesaleTier sin
+    // consumidor). Ese día el carrito pasó a aplicar los niveles como
+    // descuento por volumen público (features/cart/volume-pricing.ts) → el
+    // módulo queda visible en TODOS los modos.
+    expect(promo?.items?.some((it) => it.href === "/admin/mayorista")).toBe(true);
     // Cupones sí aplica en Etapa 1 (se crean ahora, se activan con los pagos).
     expect(promo?.items?.some((it) => it.href === "/admin/cupones")).toBe(true);
   });

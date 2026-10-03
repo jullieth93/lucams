@@ -83,6 +83,11 @@ vi.mock("@/lib/db", () => ({
     product: {
       findFirst: vi.fn(async () => state.product),
     },
+    // Precio por volumen (2026-10-02): el service consulta los tiers activos en
+    // cada mutación. Sin tiers configurados → snapshot intacto (legacy).
+    wholesaleTier: {
+      findMany: vi.fn(async () => []),
+    },
     cart: {
       findFirst: vi.fn(async () => state.cart),
       findUnique: vi.fn(async () => null),

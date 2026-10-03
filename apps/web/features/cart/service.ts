@@ -19,6 +19,13 @@
  *     checkout (si Lucy cambia un precio, aplica a carritos nuevos — cobrar
  *     de más lo ya exhibido sería peor para el cliente y para el Estatuto
  *     del Consumidor; la ventana de exposición la acota el TTL del carrito).
+ *   - Precio por volumen (WholesaleTier, 2026-10-02): si hay niveles activos
+ *     aplicables, el unitPrice de la línea es el del nivel alcanzado por la
+ *     qty (ver volume-pricing.ts — reglas y precedencia). Como el nivel
+ *     depende de la qty, el unitPrice se RE-CALCULA en addProductToCart /
+ *     addPersonalizedToCart / updateCartItemQty cada vez que la qty cambia;
+ *     cuando el producto NO tiene niveles configurados el snapshot queda
+ *     intacto (semántica legacy).
  *   - Variante default ("<sku>-DEFAULT") es la que se usa cuando un
  *     producto no tiene variantes reales — ver features/products/service.ts.
  */
@@ -43,6 +50,7 @@ import {
   letterSetUnitCount,
 } from "@/features/personalization/design-units";
 import { letterSetBorderNote } from "@/features/personalization/letter-set-border";
+import { applyVolumePricing, type VolumeTierInput } from "./volume-pricing";
 
 export type CartLineItem = {
   itemId: string;
@@ -131,6 +139,67 @@ const MAX_QTY_PER_ITEM = 99;
 function stockLimitMessage(productName: string, stock: number, inCart: number): string {
   const base = `Solo quedan ${stock} ${stock === 1 ? "unidad" : "unidades"} de «${productName}»`;
   return inCart > 0 ? `${base} y ya tienes ${inCart} en tu carrito.` : `${base}.`;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Precio por volumen (WholesaleTier → carrito, 2026-10-02)
+// ─────────────────────────────────────────────────────────────────────
+//
+// Descuento por volumen PÚBLICO (todos los clientes, invitados incluidos).
+// La resolución del nivel es pura (volume-pricing.ts); aquí solo se carga la
+// data. ANTI-TAMPER: los tiers se leen server-side desde la DB en cada
+// mutación del carrito (mismo patrón que los multiplicadores por-ficha) —
+// nada del cálculo confía en payloads del cliente.
+//
+// Huella de queries: 1 query acotada por mutación de línea (producto +
+// globales en un solo WHERE OR; el helper decide la precedencia en memoria).
+// En updateCartItemQty es 1 query por línea afectada — aceptable: el stepper
+// mueve una línea a la vez y evita cargar tiers de todo el catálogo.
+
+/**
+ * Tiers activos (isActive, no soft-eliminados) que pueden aplicar al producto:
+ * los propios (productId) y los globales (productId null). Select acotado a
+ * lo que el helper puro necesita.
+ */
+async function loadActiveVolumeTiers(productId: string): Promise<VolumeTierInput[]> {
+  return prisma.wholesaleTier.findMany({
+    where: {
+      isActive: true,
+      deletedAt: null,
+      OR: [{ productId }, { productId: null }],
+    },
+    select: { productId: true, minQty: true, unitPrice: true, isActive: true, deletedAt: true },
+  });
+}
+
+/**
+ * Base VIGENTE de una línea ya en el carrito (sin tier de volumen): replica el
+ * cálculo de alta — `variant.price ?? product.basePrice` + multiplicadores
+ * por-ficha (ADR-057) y multi-unidad (design-units.ts) si la línea tiene
+ * diseño. Todo se deriva de datos server-side (variante, canvasData y metadata
+ * guardados del Design), nunca del cliente.
+ *
+ * Se usa en updateCartItemQty para re-pricear al cruzar un umbral de volumen.
+ * Devuelve null cuando la línea es inconsistente (variante por-ficha con
+ * diseño sin letras — al alta se rechaza; aquí se conserva el snapshot en vez
+ * de inventar un precio).
+ */
+function currentLineBaseUnitPrice(item: RawCart["items"][number]): number | null {
+  let base = item.variant.price ?? item.variant.product.basePrice;
+  if (!item.design) return base;
+  const attrs = parseVariantAttributes(item.variant.attributes);
+  const isPerTile = attrs.pricePerTile === true || attrs.variant === "name";
+  if (isPerTile) {
+    const meta = (item.design.metadata ?? null) as { letters?: unknown } | null;
+    const letters = Array.isArray(meta?.letters) ? meta.letters : null;
+    if (!letters || letters.length < 1) return null;
+    base *= Math.min(40, Math.max(1, letters.length));
+  }
+  const facesPerUnit =
+    parsePhotoProductConfig(item.variant.product.personalizationSchema).facesPerUnit ?? 1;
+  base *= designUnitPriceMultiplier(item.design.canvasData, facesPerUnit);
+  base *= letterSetUnitCount(item.design.metadata);
+  return base;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -407,7 +476,11 @@ export async function addProductToCart(opts: {
     throw new CartError("STOCK_UNAVAILABLE", `«${product.name}» está agotado por ahora.`);
   }
 
-  const unitPrice = variant.price ?? product.basePrice;
+  const baseUnitPrice = variant.price ?? product.basePrice;
+  // Precio por volumen (2026-10-02): tiers activos del producto (o globales si
+  // no tiene propios). El nivel se resuelve con la qty FINAL de la línea (tras
+  // clamp y acumulado) — cruzar un umbral re-pricea la línea existente.
+  const volumeTiers = await loadActiveVolumeTiers(product.id);
 
   const cart = await ensureCart(opts.sessionId, opts.customerId);
 
@@ -431,10 +504,16 @@ export async function addProductToCart(opts: {
     );
   }
   const newQty = Math.min(cap, inCart + opts.qty);
+  // Sin niveles configurados la línea existente conserva su snapshot (legacy);
+  // con niveles se re-pricea contra el base vigente (el tier es absoluto).
+  const unitPrice =
+    volumeTiers.length > 0
+      ? applyVolumePricing(baseUnitPrice, volumeTiers, product.id, newQty)
+      : (existing?.unitPrice ?? baseUnitPrice);
   if (existing) {
     await prisma.cartItem.update({
       where: { id: existing.id },
-      data: { qty: newQty },
+      data: { qty: newQty, unitPrice },
     });
   } else {
     await prisma.cartItem.create({
@@ -617,6 +696,12 @@ export async function addPersonalizedToCart(opts: {
     parsePhotoProductConfig(design.product.personalizationSchema).facesPerUnit ?? 1;
   unitPrice *= designUnitPriceMultiplier(design.canvasData, facesPerUnit);
   unitPrice *= letterSetUnitCount(design.metadata);
+  // Precio por volumen (2026-10-02): el tier REEMPLAZA el unitPrice FINAL por
+  // unidad (tras multiplicadores por-ficha / multi-unidad). La "qty" del nivel
+  // es la cantidad de la LÍNEA (diseños/packs que paga el cliente), no las
+  // unidades internas del diseño — es lo que el cliente ve en el stepper.
+  const baseUnitPrice = unitPrice;
+  const volumeTiers = await loadActiveVolumeTiers(design.product.id);
   const cart = await ensureCart(opts.sessionId, opts.customerId);
 
   // Edición desde el carrito: el diseño original se clonó a este (opts.designId). Reemplazamos EN
@@ -628,7 +713,12 @@ export async function addPersonalizedToCart(opts: {
   if (replacing) {
     await prisma.cartItem.update({
       where: { id: replacing.id },
-      data: { designId: opts.designId, variantId: variant.id, unitPrice },
+      data: {
+        designId: opts.designId,
+        variantId: variant.id,
+        // La línea conserva su qty; el tier se re-evalúa con esa qty.
+        unitPrice: applyVolumePricing(baseUnitPrice, volumeTiers, design.product.id, replacing.qty),
+      },
     });
   } else {
     // Buscar si ya hay un CartItem para este designId — agregar al qty existente.
@@ -678,20 +768,30 @@ export async function addPersonalizedToCart(opts: {
           stockLimitMessage(design.product.name, variant.stock, inCart),
         );
       }
+      const newQty = Math.min(cap, inCart + opts.qty);
       await prisma.cartItem.update({
         where: { id: existing.id },
-        data: { qty: Math.min(cap, inCart + opts.qty) },
+        // Sumar qty puede cruzar un umbral de volumen → re-priceo de la línea.
+        // Sin niveles configurados se conserva el snapshot existente (legacy).
+        data: {
+          qty: newQty,
+          unitPrice:
+            volumeTiers.length > 0
+              ? applyVolumePricing(baseUnitPrice, volumeTiers, design.product.id, newQty)
+              : existing.unitPrice,
+        },
       });
     } else {
       // Alta nueva: el stock>0 ya se validó arriba, así que hay margen; la qty
       // pedida se topa al stock disponible (clamp, no rechazo).
+      const newQty = Math.min(MAX_QTY_PER_ITEM, variant.stock, opts.qty);
       await prisma.cartItem.create({
         data: {
           cartId: cart.id,
           variantId: variant.id,
           designId: opts.designId,
-          qty: Math.min(MAX_QTY_PER_ITEM, variant.stock, opts.qty),
-          unitPrice,
+          qty: newQty,
+          unitPrice: applyVolumePricing(baseUnitPrice, volumeTiers, design.product.id, newQty),
         },
       });
     }
@@ -727,9 +827,26 @@ export async function updateCartItemQty(
         `«${item.variant.product.name}» está agotado por ahora.`,
       );
     }
+    const newQty = Math.min(qty, item.variant.stock);
+    // Re-priceo por volumen (2026-10-02): cruzar un umbral de WholesaleTier al
+    // cambiar la qty debe cambiar el unitPrice de la línea (bajar al subir de
+    // nivel, volver al base al quedar por debajo). El base se recalcula con el
+    // precio VIGENTE (mismo cálculo del alta, currentLineBaseUnitPrice) porque
+    // el tier es absoluto y solo es comparable contra el precio actual.
+    // Si el producto NO tiene niveles configurados, el snapshot queda intacto
+    // (semántica legacy: un cambio de qty nunca tocaba el precio exhibido).
+    // Líneas inconsistentes (base null) conservan su snapshot.
+    let unitPrice = item.unitPrice;
+    const baseUnitPrice = currentLineBaseUnitPrice(item);
+    if (baseUnitPrice !== null) {
+      const volumeTiers = await loadActiveVolumeTiers(item.variant.product.id);
+      if (volumeTiers.length > 0) {
+        unitPrice = applyVolumePricing(baseUnitPrice, volumeTiers, item.variant.product.id, newQty);
+      }
+    }
     await prisma.cartItem.update({
       where: { id: itemId },
-      data: { qty: Math.min(qty, item.variant.stock) },
+      data: { qty: newQty, unitPrice },
     });
   }
   const reloaded = await findCartBySession(sessionId);
