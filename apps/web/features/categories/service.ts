@@ -163,6 +163,11 @@ export async function createCategory(input: CategoryCreateInput, createdBy: stri
       // Roadmap B3 — visual de catálogo (null = fallback por slug/default).
       icon: input.icon ?? null,
       gradient: input.gradient ?? null,
+      // B-6 — contenido de la sub-categoría (null = la tienda omite la sección;
+      // defaultSort null = "recent" en el PLP).
+      richDescription: input.richDescription ?? null,
+      useCase: input.useCase ?? null,
+      defaultSort: input.defaultSort ?? null,
       ...(createdBy ? { createdBy } : {}),
     },
   });

@@ -35,6 +35,9 @@ type CategoryInput = {
   parentId?: string | null;
   icon?: string | null;
   gradient?: string | null;
+  richDescription?: string | null;
+  useCase?: string | null;
+  defaultSort?: string | null;
 };
 
 export function CategoryForm({
@@ -134,6 +137,80 @@ export function CategoryForm({
           disabled={pending}
           className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
         />
+      </div>
+
+      {/* B-6 — contenido de la página de la sub-categoría (storefront
+          /productos/[categoria]/[subcategoria]). Vacío = la tienda omite la
+          sección. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="useCase" className="text-brand-purple-dark text-sm font-semibold">
+            Casos de uso
+          </Label>
+          <Textarea
+            id="useCase"
+            name="useCase"
+            rows={2}
+            defaultValue={initialCategory?.useCase ?? ""}
+            placeholder="Ideal para lectores, regalos para alguien que ama leer…"
+            disabled={pending}
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+          />
+          {state?.fieldErrors?.useCase && (
+            <p className="text-xs text-rose-600">{state.fieldErrors.useCase[0]}</p>
+          )}
+          <p className="text-brand-muted text-[11px]">
+            2-3 frases: se muestran en cursiva bajo el título de la categoría en tu tienda.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="defaultSort" className="text-brand-purple-dark text-sm font-semibold">
+            Orden del grid de productos
+          </Label>
+          <select
+            id="defaultSort"
+            name="defaultSort"
+            defaultValue={initialCategory?.defaultSort ?? ""}
+            disabled={pending}
+            className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-2 text-sm focus:ring-2 focus:outline-none"
+          >
+            <option value="">— Más recientes (default de la tienda) —</option>
+            <option value="recent">Más recientes</option>
+            <option value="price_asc">Precio: menor a mayor</option>
+            <option value="price_desc">Precio: mayor a menor</option>
+            <option value="featured">Destacados primero</option>
+          </select>
+          {state?.fieldErrors?.defaultSort && (
+            <p className="text-xs text-rose-600">{state.fieldErrors.defaultSort[0]}</p>
+          )}
+          <p className="text-brand-muted text-[11px]">
+            Cómo se ordenan los productos al abrir la página de la categoría. Solo aplica a
+            sub-categorías (página propia); las principales usan el orden de la tienda.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="richDescription" className="text-brand-purple-dark text-sm font-semibold">
+          Descripción rica (SEO)
+        </Label>
+        <Textarea
+          id="richDescription"
+          name="richDescription"
+          rows={5}
+          defaultValue={initialCategory?.richDescription ?? ""}
+          placeholder="Texto largo que aparece al final de la página de la categoría y alimenta el SEO…"
+          disabled={pending}
+          className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+        />
+        {state?.fieldErrors?.richDescription && (
+          <p className="text-xs text-rose-600">{state.fieldErrors.richDescription[0]}</p>
+        )}
+        <p className="text-brand-muted text-[11px]">
+          Se muestra como sección “Sobre …” al pie de la página de la categoría y se usa como
+          meta-descripción para Google. Texto plano (los saltos de línea se respetan).
+        </p>
       </div>
 
       {/* Roadmap B3 — visual de la categoría (dato de catálogo, no CMS).
