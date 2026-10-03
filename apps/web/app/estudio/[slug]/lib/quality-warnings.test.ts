@@ -77,6 +77,56 @@ describe("collectQualityWarnings", () => {
     expect(collectQualityWarnings([asset("mala", WARNED)], null)).toEqual([]);
     expect(collectQualityWarnings([asset("mala", WARNED)], canvas(null, null))).toEqual([]);
   });
+
+  // Fase 2 (2026-10-02) — requiresAck: solo el aviso de brillo SUAVE como
+  // único problema es informativo (no exige checkbox). Todo lo demás sí.
+  it("brillo soft como ÚNICO problema → requiresAck false (aviso informativo)", () => {
+    const softBrillo = asset("oscura-deliberada", {
+      validationLevel: "warning-soft",
+      validationMessage:
+        "La foto está algo oscura. Si buscabas un look oscuro o con fondo negro, puedes ignorar este aviso.",
+      validationChecks: { resolution: true, brightness: false, blur: true },
+    });
+    const warnings = collectQualityWarnings([softBrillo], canvas("oscura-deliberada"));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ level: "warning-soft", requiresAck: false });
+  });
+
+  it("brillo STRONG (muy oscura) → requiresAck true, aunque sea el único check fallido", () => {
+    const muyOscura = asset("muy-oscura", {
+      validationLevel: "warning-strong",
+      validationMessage: "La foto se ve muy oscura y puede perder detalle al imprimir.",
+      validationChecks: { resolution: true, brightness: false, blur: true },
+    });
+    const warnings = collectQualityWarnings([muyOscura], canvas("muy-oscura"));
+    expect(warnings[0]).toMatchObject({ level: "warning-strong", requiresAck: true });
+  });
+
+  it("resolución soft (no brillo) → requiresAck true", () => {
+    const justa = asset("res-justa", {
+      validationLevel: "warning-soft",
+      validationMessage: "La resolución está justa para tamaño 5×5 cm.",
+      validationChecks: { resolution: false, brightness: true, blur: true },
+    });
+    const warnings = collectQualityWarnings([justa], canvas("res-justa"));
+    expect(warnings[0]).toMatchObject({ requiresAck: true });
+  });
+
+  it("mixto (brillo soft + nitidez soft) → requiresAck true", () => {
+    const mixta = asset("mixta", {
+      validationLevel: "warning-soft",
+      validationMessage: "La foto tiene poca nitidez.",
+      validationChecks: { resolution: true, brightness: false, blur: false },
+    });
+    const warnings = collectQualityWarnings([mixta], canvas("mixta"));
+    expect(warnings[0]).toMatchObject({ requiresAck: true });
+  });
+
+  it("fail-safe: warning-soft SIN detalle de checks → requiresAck true (como antes)", () => {
+    const sinDetalle = asset("vieja", { validationLevel: "warning-soft" });
+    const warnings = collectQualityWarnings([sinDetalle], canvas("vieja"));
+    expect(warnings[0]).toMatchObject({ requiresAck: true });
+  });
 });
 
 describe("qualityWarningsKey", () => {

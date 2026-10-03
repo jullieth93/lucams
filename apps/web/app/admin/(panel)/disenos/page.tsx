@@ -29,7 +29,13 @@ export default async function DisenosAdminPage() {
   // única: la BD). Tag = galleryTag explícito o, sin él, el slug (default-on
   // 2026-09-09 — mismo fallback que aplica el Estudio). El selector del client y
   // la validación del upload leen de la misma lista.
-  const [items, tagOptions] = await Promise.all([listGalleryAdmin(), listGalleryTagOptions()]);
+  // B-5 (2026-10-02) — includeArchived: el manager separa los soft-deleted en la
+  // sección colapsable "Archivados" (con Restaurar); la grilla principal sigue
+  // mostrando solo los no borrados.
+  const [items, tagOptions] = await Promise.all([
+    listGalleryAdmin(undefined, { includeArchived: true }),
+    listGalleryTagOptions(),
+  ]);
   return (
     // AdminPageBody aporta el padding responsive (px-4 sm:px-6): sin él, en móvil
     // el header y las tarjetas quedaban pegados al borde de la pantalla (2026-10-01).

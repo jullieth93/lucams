@@ -16,6 +16,7 @@ const { state } = vi.hoisted(() => ({
   state: {
     user: null as { id: string } | null,
     redirect: null as { toPath: string; statusCode: number } | null,
+    redirectLookupError: null as Error | null, // B-8 — simula DB caída en el lookup cacheado
     lastLookupPath: null as string | null, // #29 — captura la llave con que el proxy consulta
     cookieOptions: null as Record<string, unknown> | null, // B-2 — lo pasado a createServerClient
     signOutCalls: [] as Array<{ scope?: string }>, // B-8 — revocación server-side al expirar
@@ -40,8 +41,9 @@ vi.mock("@supabase/ssr", () => ({
   },
 }));
 vi.mock("@/features/redirects/service", () => ({
-  lookupActiveRedirect: async (p: string) => {
+  lookupActiveRedirectCached: async (p: string) => {
     state.lastLookupPath = p;
+    if (state.redirectLookupError) throw state.redirectLookupError;
     return state.redirect;
   },
   incrementRedirectHit: async () => {},
@@ -71,6 +73,7 @@ function makeReq(
 beforeEach(() => {
   state.user = null;
   state.redirect = null;
+  state.redirectLookupError = null;
   state.lastLookupPath = null;
   state.cookieOptions = null;
   state.signOutCalls = [];
@@ -246,12 +249,22 @@ describe("proxy · precedencia de redirects", () => {
     expect(loc).toContain("utm_source=ig");
   });
 
-  // #29 — el proxy consulta el UrlRedirect con la llave en minúsculas. Path único para evitar el
-  // cache in-memory (60s) que persiste entre tests → un path ya cacheado no volvería a hacer lookup.
+  // #29 — el proxy consulta el UrlRedirect con la llave en minúsculas. El mock no tiene caché
+  // (B-8: la caché ahora es unstable_cache dentro del service mockeado), así que cada request
+  // vuelve a hacer lookup.
   it("#29 normaliza fromPath a minúsculas para el lookup", async () => {
     state.redirect = { toPath: "/destino", statusCode: 301 };
     await proxy(makeReq("/CamelCase-Unico-29"));
     expect(state.lastLookupPath).toBe("/camelcase-unico-29");
+  });
+
+  // B-8 — fallback ante DB caída: el lookup cacheado rechaza y la request sigue
+  // su curso sin redirect (el sitio no se cae por un redirect que no resolvió).
+  it("si el lookup de redirects falla (DB caída), la request continúa sin redirect", async () => {
+    state.redirectLookupError = new Error("db down");
+    const res = await proxy(makeReq("/ruta-con-db-caida-b8"));
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
   });
 });
 

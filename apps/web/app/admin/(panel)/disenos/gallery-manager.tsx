@@ -14,10 +14,28 @@
  * "Sin asignar", con contador) y asignación masiva del filtro a los diseños
  * sin asignar (resuelve los backfills sin SQL). El filtro de diseños existentes
  * se edita en la modal de detalle.
+ *
+ * B-5 (2026-10-02) — ciclo de vida sin borrar: toggle de visibilidad en la
+ * tarjeta y la modal (pausados = atenuados + badge, fuera del Estudio),
+ * reorden con flechas (swap de `order` con el adyacente del grupo visible:
+ * mismo variantFilter del chip activo) y sección colapsable "Archivados" por
+ * producto con Restaurar (vuelven pausados).
  */
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Upload, Trash2, Loader2, ArrowUpDown, Search, Layers } from "lucide-react";
+import {
+  Upload,
+  Trash2,
+  Loader2,
+  ArrowUpDown,
+  Search,
+  Layers,
+  Eye,
+  EyeOff,
+  ChevronUp,
+  ChevronDown,
+  ArchiveRestore,
+} from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import {
   describeVariantFilter,
@@ -30,6 +48,9 @@ import {
   deleteGalleryImageAction,
   updateGalleryVariantFilterAction,
   bulkAssignVariantFilterAction,
+  toggleGalleryImageActiveAction,
+  restoreGalleryImageAction,
+  reorderGalleryImageAction,
 } from "./actions";
 import { GalleryDetailModal } from "./gallery-detail-modal";
 
@@ -43,6 +64,8 @@ type Item = {
   variantFilter?: Record<string, string | number | boolean> | null;
   isActive: boolean;
   order: number;
+  /** B-5 — soft-delete (serializado desde el server); los archivados van a su sección. */
+  deletedAt?: string | Date | null;
 };
 
 // Llega del server (page.tsx): productos activos que resuelven un tag de
@@ -235,6 +258,43 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
     });
   }
 
+  /** B-5 — pausar/reactivar sin borrar. `active` explícito: toggles
+   * concurrentes no se pisan. Refleja el cambio en el detalle abierto. */
+  async function onToggleActive(id: string, nextActive: boolean): Promise<string | null> {
+    const fd = new FormData();
+    fd.set("id", id);
+    fd.set("active", nextActive ? "1" : "0");
+    const res = await toggleGalleryImageActiveAction(fd);
+    if (res.error) return res.error;
+    setDetail((d) => (d && d.id === id ? { ...d, isActive: nextActive } : d));
+    return null;
+  }
+
+  /** B-5 — restaurar un archivado: vuelve pausado, al final del orden del tag. */
+  function onRestore(id: string) {
+    setError(null);
+    setNotice(null);
+    const fd = new FormData();
+    fd.set("id", id);
+    startTransition(async () => {
+      const res = await restoreGalleryImageAction(fd);
+      if (res.error) setError(res.error);
+      else setNotice("Diseño restaurado: vuelve pausado, revísalo y reactívalo cuando quieras.");
+    });
+  }
+
+  /** B-5 — reorden: swap de `order` con el adyacente del grupo visible. */
+  function onMove(id: string, direction: "up" | "down") {
+    setError(null);
+    const fd = new FormData();
+    fd.set("id", id);
+    fd.set("direction", direction);
+    startTransition(async () => {
+      const res = await reorderGalleryImageAction(fd);
+      if (res.error) setError(res.error);
+    });
+  }
+
   /** Fase 5b — persiste el "Aplica a" desde la modal; refleja el cambio en el
    * detalle abierto sin esperar el refetch de revalidatePath. */
   async function onSaveVariantFilter(id: string, filterJson: string): Promise<string | null> {
@@ -286,18 +346,23 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
 
   const normalizedQuery = query.trim().toLocaleLowerCase("es");
 
+  // B-5 — la grilla principal muestra solo los NO archivados; los soft-deleted
+  // van a la sección colapsable "Archivados" de cada producto.
+  const visibleItems = items.filter((i) => !i.deletedAt);
+
   const byTag = tagOptions.map((t) => {
     const searched = normalizedQuery
-      ? items.filter(
+      ? visibleItems.filter(
           (i) => i.tag === t.tag && i.name.toLocaleLowerCase("es").includes(normalizedQuery),
         )
-      : items.filter((i) => i.tag === t.tag);
+      : visibleItems.filter((i) => i.tag === t.tag);
     const chip = chipByTag[t.tag] ?? "all";
     return {
       ...t,
       // Contadores por chip sobre el resultado de la búsqueda (lo que ves).
       counts: chipCounts(searched, t.variantFilterOptions),
       items: searched.filter((i) => matchesChip(i, chip)),
+      archived: items.filter((i) => i.tag === t.tag && i.deletedAt),
     };
   });
 
@@ -700,8 +765,14 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
               </p>
             ) : (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6">
-                {group.items.map((it) => {
+                {group.items.map((it, idx) => {
                   const previewB = formatPreview(it.imageUrlB);
+                  // B-5 — las flechas reordenan dentro del grupo del chip activo
+                  // (mismo variantFilter). Con chip "Todas" en productos con
+                  // variantes el grupo visible mezcla filtros → se deshabilitan;
+                  // con búsqueda activa la lista no refleja la adyacencia real.
+                  const reorderable =
+                    (group.variantFilterOptions.length === 0 || chip !== "all") && !normalizedQuery;
                   return (
                     <div
                       key={it.id}
@@ -720,12 +791,21 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                         <img
                           src={it.imageUrl}
                           alt={it.name}
-                          className="aspect-square w-full rounded-lg object-cover"
+                          className={
+                            "aspect-square w-full rounded-lg object-cover " +
+                            (it.isActive ? "" : "opacity-50 grayscale")
+                          }
                         />
                       </button>
                       {previewB && (
                         <span className="text-brand-purple-dark absolute top-2 left-2 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold shadow">
                           A/B
+                        </span>
+                      )}
+                      {/* B-5 — pausados: atenuados + badge; NO aparecen en el Estudio. */}
+                      {!it.isActive && (
+                        <span className="absolute top-2 right-9 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-amber-700 shadow">
+                          Pausada
                         </span>
                       )}
                       <Hint content={it.name}>
@@ -744,6 +824,55 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                       >
                         {describeVariantFilter(it.variantFilter)}
                       </span>
+                      {/* B-5 — acciones de la tarjeta: visibilidad + reorden. */}
+                      <div className="mt-1 flex items-center justify-between gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            startTransition(async () => {
+                              const err = await onToggleActive(it.id, !it.isActive);
+                              if (err) setError(err);
+                            })
+                          }
+                          disabled={pending}
+                          aria-label={
+                            it.isActive
+                              ? `Pausar ${it.name} en el Estudio`
+                              : `Reactivar ${it.name} en el Estudio`
+                          }
+                          aria-pressed={it.isActive}
+                          title={it.isActive ? "Visible en el Estudio" : "Pausada"}
+                          className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1 disabled:opacity-50"
+                        >
+                          {it.isActive ? (
+                            <Eye className="h-3.5 w-3.5" />
+                          ) : (
+                            <EyeOff className="h-3.5 w-3.5 text-amber-700" />
+                          )}
+                        </button>
+                        {reorderable && (
+                          <span className="inline-flex items-center gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => onMove(it.id, "up")}
+                              disabled={pending || idx === 0}
+                              aria-label={`Subir ${it.name}`}
+                              className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1 disabled:opacity-30"
+                            >
+                              <ChevronUp className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onMove(it.id, "down")}
+                              disabled={pending || idx === group.items.length - 1}
+                              aria-label={`Bajar ${it.name}`}
+                              className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1 disabled:opacity-30"
+                            >
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            </button>
+                          </span>
+                        )}
+                      </div>
                       <button
                         type="button"
                         onClick={() => onDelete(it.id)}
@@ -757,6 +886,46 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                   );
                 })}
               </div>
+            )}
+
+            {/* B-5 — archivados (soft-deleted) del producto: sección colapsable
+                con Restaurar (vuelven pausados, al final del orden). */}
+            {group.archived.length > 0 && (
+              <details className="border-brand-purple/15 mt-3 rounded-xl border bg-white/60 px-3 py-2">
+                <summary className="text-brand-purple-dark cursor-pointer text-xs font-semibold">
+                  Archivados ({group.archived.length})
+                </summary>
+                <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6 md:grid-cols-8">
+                  {group.archived.map((it) => (
+                    <div
+                      key={it.id}
+                      className="border-brand-purple/12 relative rounded-lg border bg-white p-1.5 opacity-75"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element -- imagen del bucket público */}
+                      <img
+                        src={it.imageUrl}
+                        alt={it.name}
+                        className="aspect-square w-full rounded-md object-cover grayscale"
+                      />
+                      <Hint content={it.name}>
+                        <p className="text-brand-purple-dark mt-1 truncate text-[10px] font-semibold">
+                          {it.name}
+                        </p>
+                      </Hint>
+                      <button
+                        type="button"
+                        onClick={() => onRestore(it.id)}
+                        disabled={pending}
+                        aria-label={`Restaurar ${it.name}`}
+                        className="text-brand-purple hover:bg-brand-purple/10 mt-0.5 inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[10px] font-semibold disabled:opacity-50"
+                      >
+                        <ArchiveRestore className="h-3 w-3" />
+                        Restaurar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </details>
             )}
           </section>
         );
@@ -779,6 +948,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
           onDelete(id);
         }}
         onSaveVariantFilter={onSaveVariantFilter}
+        onToggleActive={onToggleActive}
       />
     </div>
   );

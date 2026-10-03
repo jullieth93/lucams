@@ -485,8 +485,13 @@ export type StudioTexts = {
      *  explícita antes de confirmar (solo aparece si hay avisos). */
     calidadSeccionTitulo: string;
     calidadSeccionIntro: string;
-    /** Texto del checkbox OBLIGATORIO de aceptación (habilita el confirmar). */
+    /** Texto del checkbox OBLIGATORIO de aceptación (habilita el confirmar).
+     *  Solo se muestra cuando hay avisos que exigen aceptación (requiresAck). */
     calidadAcepto: string;
+    /** Fase 2 (2026-10-02) — nota que reemplaza al checkbox cuando TODOS los
+     *  avisos son informativos (brillo suave como único problema): no hay
+     *  nada que aceptar y el confirmar queda habilitado. */
+    calidadNotaInformativa: string;
   };
   /** Vistas 3D y escenas. */
   escenas: {
@@ -1076,10 +1081,14 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     // Paquete C (2026-10-02) — aceptación explícita de calidad en la Vista Previa:
     // solo se muestra cuando el diseño usa fotos con avisos; el checkbox es
     // obligatorio para habilitar el botón de confirmar.
+    // Fase 2 — los avisos de brillo SUAVE (único problema de la foto) son
+    // informativos: no exigen checkbox; se muestra la nota en su lugar.
     calidadSeccionTitulo: "Calidad de tus fotos",
     calidadSeccionIntro: "Estas fotos tienen avisos de calidad. Así como están, así se imprimirán.",
     calidadAcepto:
       "Entiendo que estas fotos pueden imprimirse con menor calidad y acepto el resultado.",
+    calidadNotaInformativa:
+      "Estos avisos son solo informativos — si el look es el que buscabas, puedes continuar sin marcar nada.",
   },
   escenas: {
     titulo: "✨ Míralo en tu espacio",
@@ -1610,6 +1619,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "exportar.calidadSeccionTitulo": "estudio.exportar.calidad-seccion-titulo",
   "exportar.calidadSeccionIntro": "estudio.exportar.calidad-seccion-intro",
   "exportar.calidadAcepto": "estudio.exportar.calidad-acepto",
+  "exportar.calidadNotaInformativa": "estudio.exportar.calidad-nota-informativa",
   "escenas.titulo": "estudio.escenas.titulo",
   "escenas.volverDetalle": "estudio.escenas.volver-detalle",
   "escenas.chipNevera": "estudio.escenas.chip-nevera",

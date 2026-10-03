@@ -120,6 +120,9 @@ export default async function EditCategoryPage({
               parentId: category.parentId,
               icon: category.icon,
               gradient: category.gradient,
+              richDescription: category.richDescription,
+              useCase: category.useCase,
+              defaultSort: category.defaultSort,
             }}
           />
           {category._count.children > 0 && (

@@ -116,9 +116,11 @@ type StudioPreviewModalProps = {
   /**
    * Paquete C (2026-10-02) — fotos CON aviso de calidad que el diseño USA
    * (collectQualityWarnings: solo las asignadas a slots). Si la lista llega
-   * con elementos, se muestra la sección "Calidad de tus fotos" y el cliente
-   * DEBE marcar la aceptación para habilitar el confirmar (la aceptación viaja
-   * en onConfirm y la persiste el servidor en Design.qualityAcknowledgedAt).
+   * con elementos, se muestra la sección "Calidad de tus fotos"; el cliente
+   * DEBE marcar la aceptación solo si hay avisos con requiresAck (fase 2:
+   * el aviso de brillo suave como único problema es informativo y no
+   * bloquea). La aceptación viaja en onConfirm y la persiste el servidor en
+   * Design.qualityAcknowledgedAt.
    * undefined/vacía → flujo idéntico al histórico (sin sección ni checkbox).
    */
   qualityWarnings?: StudioQualityWarning[];
@@ -156,12 +158,15 @@ export function StudioPreviewModal({
   // cuando el diseño usa fotos con aviso. La aceptación queda ligada al CONJUNTO
   // de avisos vigente (su clave): si el cliente vuelve a editar y cambian las fotos
   // con aviso, la aceptación anterior ya no aplica y tiene que marcarla de nuevo.
+  // Fase 2 (2026-10-02) — solo los avisos con requiresAck exigen el checkbox:
+  // el aviso de brillo SUAVE como único problema (look oscuro deliberado) se
+  // muestra igual en la lista, pero es informativo y no bloquea el confirmar.
   const hasQualityWarnings = !!qualityWarnings && qualityWarnings.length > 0;
-  const qualityWarningsKey = (qualityWarnings ?? [])
-    .map((w) => `${w.assetId}:${w.level}`)
-    .join(",");
+  const ackWarnings = (qualityWarnings ?? []).filter((w) => w.requiresAck);
+  const ackRequired = ackWarnings.length > 0;
+  const qualityWarningsKey = ackWarnings.map((w) => `${w.assetId}:${w.level}`).join(",");
   const [acceptedWarningsKey, setAcceptedWarningsKey] = useState<string | null>(null);
-  const qualityAccepted = hasQualityWarnings && acceptedWarningsKey === qualityWarningsKey;
+  const qualityAccepted = ackRequired && acceptedWarningsKey === qualityWarningsKey;
 
   // Modelo multi-unidad (2026-09-09): las unidades van DENTRO del diseño → el
   // carrito recibe qty=1. Path legacy (nombre): copias idénticas (qty 1..99).
@@ -427,7 +432,10 @@ export function StudioPreviewModal({
         {/* Paquete C (2026-10-02) — sección "Calidad de tus fotos": solo cuando el
             diseño USA fotos con avisos de calidad. Lista cada foto con su mensaje
             y la recomendación específica del servidor, y exige la aceptación
-            explícita (checkbox) antes de habilitar el confirmar. */}
+            explícita (checkbox) antes de habilitar el confirmar.
+            Fase 2 (2026-10-02) — el checkbox solo aparece cuando hay avisos que
+            la exigen (requiresAck): si TODOS los avisos son de brillo suave
+            (informativos), se muestra una nota y el confirmar queda habilitado. */}
         {hasQualityWarnings && (
           <section
             aria-labelledby="quality-ack-title"
@@ -469,18 +477,24 @@ export function StudioPreviewModal({
                 </li>
               ))}
             </ul>
-            <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs font-semibold text-amber-950">
-              <input
-                type="checkbox"
-                checked={qualityAccepted}
-                onChange={(e) =>
-                  setAcceptedWarningsKey(e.target.checked ? qualityWarningsKey : null)
-                }
-                disabled={isFinalizing}
-                className="mt-0.5 h-4 w-4 shrink-0 accent-amber-600"
-              />
-              <span>{texts.exportar.calidadAcepto}</span>
-            </label>
+            {ackRequired ? (
+              <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs font-semibold text-amber-950">
+                <input
+                  type="checkbox"
+                  checked={qualityAccepted}
+                  onChange={(e) =>
+                    setAcceptedWarningsKey(e.target.checked ? qualityWarningsKey : null)
+                  }
+                  disabled={isFinalizing}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-amber-600"
+                />
+                <span>{texts.exportar.calidadAcepto}</span>
+              </label>
+            ) : (
+              <p className="mt-3 text-xs font-semibold text-amber-900/80">
+                {texts.exportar.calidadNotaInformativa}
+              </p>
+            )}
           </section>
         )}
 
@@ -516,10 +530,10 @@ export function StudioPreviewModal({
             size="lg"
             onClick={() =>
               onConfirm(confirmQty, {
-                qualityAcknowledged: hasQualityWarnings && qualityAccepted,
+                qualityAcknowledged: ackRequired && qualityAccepted,
               })
             }
-            disabled={isFinalizing || (hasQualityWarnings && !qualityAccepted)}
+            disabled={isFinalizing || (ackRequired && !qualityAccepted)}
             aria-busy={isFinalizing}
             className="bg-gradient-brand text-white hover:brightness-110"
           >

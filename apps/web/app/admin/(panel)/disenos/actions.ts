@@ -8,6 +8,10 @@
  * variantes que contienen ese subset. Se valida contra las variantes REALES
  * del producto (variantFilterMatchesAnyVariant: debe matchear al menos una,
  * si no el diseño quedaría inalcanzable en el Estudio).
+ *
+ * B-5 (2026-10-02, auditoría cableado cliente↔admin) — ciclo de vida completo
+ * sin borrar: toggle isActive (pausar/reactivar), restore de archivados
+ * (vuelven pausados) y reorden por swap de `order` entre adyacentes.
  */
 
 "use server";
@@ -25,6 +29,9 @@ import {
   getGalleryImageTag,
   listGalleryTagOptions,
   listGalleryTagVariantAttributes,
+  reorderGalleryImage,
+  restoreGalleryImage,
+  setGalleryImageActive,
   updateGalleryVariantFilter,
 } from "@/features/personalization/design-gallery";
 import {
@@ -305,4 +312,77 @@ export async function bulkAssignVariantFilterAction(
   });
   revalidatePath("/admin/disenos");
   return { count };
+}
+
+/**
+ * B-5 (2026-10-02) — pausar/reactivar sin borrar: isActive=false lo oculta del
+ * Estudio pero sigue en el admin (atenuado + badge "Pausada"). `active` llega
+ * explícito del cliente ("1"/"0") para que toggles concurrentes no se pisen.
+ */
+export async function toggleGalleryImageActiveAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+
+  const id = String(formData.get("id") ?? "");
+  const activeRaw = formData.get("active");
+  if (!id || (activeRaw !== "1" && activeRaw !== "0")) return { error: "Datos inválidos." };
+  const isActive = activeRaw === "1";
+
+  await setGalleryImageActive({ id, isActive, adminId: session.admin.id });
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "galleryImage.setActive",
+    entityType: "DesignGalleryImage",
+    entityId: id,
+    metadata: { isActive },
+  });
+  revalidatePath("/admin/disenos");
+  return {};
+}
+
+/**
+ * B-5 — restaura un diseño archivado (soft-deleted): vuelve PAUSADO para
+ * revisión, al final del orden de su tag. Mismo guard/audit que el resto.
+ */
+export async function restoreGalleryImageAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Datos inválidos." };
+
+  const restored = await restoreGalleryImage({ id, adminId: session.admin.id });
+  if (!restored) return { error: "El diseño no está archivado." };
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "galleryImage.restore",
+    entityType: "DesignGalleryImage",
+    entityId: id,
+  });
+  revalidatePath("/admin/disenos");
+  return {};
+}
+
+/**
+ * B-5 — reorden por swap con el adyacente dentro del grupo visible (mismo tag +
+ * mismo variantFilter). Sin vecino en esa dirección es un no-op silencioso:
+ * las flechas se deshabilitan en los extremos, pero si la lista cambió entre el
+ * render y el click no hay nada que corregir.
+ */
+export async function reorderGalleryImageAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+
+  const id = String(formData.get("id") ?? "");
+  const dir = formData.get("direction");
+  if (!id || (dir !== "up" && dir !== "down")) return { error: "Datos inválidos." };
+
+  const moved = await reorderGalleryImage({ id, direction: dir, adminId: session.admin.id });
+  if (!moved) return {};
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "galleryImage.reorder",
+    entityType: "DesignGalleryImage",
+    entityId: id,
+    metadata: { direction: dir },
+  });
+  revalidatePath("/admin/disenos");
+  return {};
 }

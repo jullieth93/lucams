@@ -9,12 +9,14 @@
  * expandMissingBackFaces — misma promesa del texto de ayuda del upload).
  * Fase 5b (2026-10-02) — edición del "Aplica a": la ficha muestra el
  * variantFilter actual y un selector lo persiste (updateGalleryVariantFilterAction).
+ * B-5 (2026-10-02) — toggle de visibilidad ("Visible en el Estudio"/"Pausada"):
+ * pausar ya no exige borrar el diseño (toggleGalleryImageActiveAction).
  * A11y: patrón de template-preview-button (role=dialog + useDialogA11y).
  */
 
 import { useRef, useState, useTransition } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trash2, X, Loader2, Check } from "lucide-react";
+import { Trash2, X, Loader2, Check, Eye, EyeOff } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { useDialogA11y } from "../plantillas/use-dialog-a11y";
 import {
@@ -42,6 +44,7 @@ export function GalleryDetailModal({
   onClose,
   onDelete,
   onSaveVariantFilter,
+  onToggleActive,
 }: {
   item: GalleryDetailItem | null;
   /** Nombre visible del producto dueño del tag (tagOptions). */
@@ -56,6 +59,8 @@ export function GalleryDetailModal({
   onDelete: (id: string) => void;
   /** Persiste el filtro elegido; devuelve el mensaje de error o null si ok. */
   onSaveVariantFilter: (id: string, filterJson: string) => Promise<string | null>;
+  /** B-5 — pausa/reactiva sin borrar; devuelve el mensaje de error o null si ok. */
+  onToggleActive: (id: string, nextActive: boolean) => Promise<string | null>;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogA11y(dialogRef, { onClose, active: item !== null });
@@ -69,10 +74,14 @@ export function GalleryDetailModal({
   const [filterError, setFilterError] = useState<string | null>(null);
   const [prevItemKey, setPrevItemKey] = useState(itemKey);
   const [savingFilter, startSaveFilter] = useTransition();
+  // B-5 — toggle de visibilidad: error propio + transition aparte del filtro.
+  const [activeError, setActiveError] = useState<string | null>(null);
+  const [togglingActive, startToggleActive] = useTransition();
   if (itemKey !== prevItemKey) {
     setPrevItemKey(itemKey);
     setFilterJson(currentFilterJson);
     setFilterError(null);
+    setActiveError(null);
   }
 
   const filterDirty = filterJson !== currentFilterJson;
@@ -83,6 +92,15 @@ export function GalleryDetailModal({
     startSaveFilter(async () => {
       const error = await onSaveVariantFilter(item.id, filterJson);
       if (error) setFilterError(error);
+    });
+  }
+
+  function toggleActive() {
+    if (!item) return;
+    setActiveError(null);
+    startToggleActive(async () => {
+      const error = await onToggleActive(item.id, !item.isActive);
+      if (error) setActiveError(error);
     });
   }
 
@@ -202,10 +220,42 @@ export function GalleryDetailModal({
                       (item.isActive ? "text-emerald-700" : "text-brand-muted")
                     }
                   >
-                    {item.isActive ? "Activo" : "Inactivo"}
+                    {item.isActive ? "Visible" : "Pausada"}
                   </dd>
                 </div>
               </dl>
+
+              {/* B-5 — pausar/reactivar SIN borrar: el diseño pausado sale del
+                  Estudio pero sigue en el admin (atenuado) para reactivarlo. */}
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={toggleActive}
+                  disabled={togglingActive || pending}
+                  aria-pressed={item.isActive}
+                  className={
+                    "inline-flex items-center gap-1.5 rounded-xl border-2 px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-60 " +
+                    (item.isActive
+                      ? "border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/5 bg-white"
+                      : "bg-brand-purple hover:bg-brand-purple-dark border-transparent text-white")
+                  }
+                >
+                  {togglingActive ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : item.isActive ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                  {item.isActive ? "Pausar en el Estudio" : "Reactivar en el Estudio"}
+                </button>
+                <p className="text-brand-muted mt-1 text-[11px]">
+                  {item.isActive
+                    ? "Visible en el Estudio: el cliente puede aplicar este diseño."
+                    : "Pausada: no aparece en el Estudio, pero sigue aquí para reactivarla."}
+                </p>
+                {activeError && <p className="mt-1 text-xs text-rose-600">{activeError}</p>}
+              </div>
 
               {/* Editor "Aplica a" — corrige el filtro de diseños existentes
                   (ej. los subidos antes del selector del upload). */}
