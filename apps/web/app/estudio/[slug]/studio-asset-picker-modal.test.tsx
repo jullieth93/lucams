@@ -65,6 +65,18 @@ function renderPicker(assets: StudioAsset[]) {
 }
 
 describe("StudioAssetPickerModal — avisos de calidad con PhotoQualityModal", () => {
+  it("el badge ⚠️ Revisar queda FUERA de la imagen (fila-caption debajo, 2026-10-02)", () => {
+    renderPicker([WARNED]);
+
+    const chip = screen.getByText(/Revisar/);
+    const img = screen.getByAltText("Foto subida");
+    const imageBox = img.parentElement!;
+    // La imagen sigue recortada en su propio contenedor…
+    expect(imageBox.className).toContain("overflow-hidden");
+    // …y el chip ya NO vive dentro de él (antes tapaba la miniatura de ~77px).
+    expect(imageBox.contains(chip)).toBe(false);
+  });
+
   it("click en foto con warning abre el modal de calidad y NO asigna", () => {
     const props = renderPicker([WARNED, OK]);
 
@@ -77,7 +89,7 @@ describe("StudioAssetPickerModal — avisos de calidad con PhotoQualityModal", (
     // El modal compartido se abre (header de severidad fuerte) con el mensaje del asset.
     expect(screen.getByRole("dialog", { name: "Cuidado con esta foto" })).toBeInTheDocument();
     expect(screen.getByText(WARNED.validationMessage!)).toBeInTheDocument();
-    // El badge ⚠️ Revisar sigue visible en la miniatura.
+    // El badge ⚠️ Revisar sigue visible, en la fila-caption debajo de la miniatura.
     expect(screen.getByText(/Revisar/)).toBeInTheDocument();
     // Y NO se asignó nada todavía.
     expect(props.onSelectAsset).not.toHaveBeenCalled();

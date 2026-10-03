@@ -1608,9 +1608,19 @@ model DesignAsset {
   rightsAcceptedAt    DateTime?
   rightsPolicyVersion String?
 
+  // Diseño prediseñado de galería del que nació este asset (ADR-057 Fase B2).
+  // Al aplicar un prediseñado el servidor sube la imagen de la galería como
+  // asset del diseño; sin esta marca, aplicar el mismo diseño N veces creaba N
+  // filas idénticas (duplicados en "Mis fotos"). Con ella la acción dedupea por
+  // (designId, galleryImageId) y reusa el asset existente. Nullable: las fotos
+  // subidas por el cliente (uploadDesignAssetAction) quedan en null.
+  galleryImageId String?
+
   createdAt DateTime @default(now())
 
   @@index([designId])
+  // Dedupe de prediseñados: lookup por diseño + imagen de galería.
+  @@index([designId, galleryImageId])
   @@index([customerId, createdAt])
   @@index([sessionId, createdAt])
 }

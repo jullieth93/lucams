@@ -10,7 +10,8 @@
  * assets suficientes), setSelectedTemplate/applyTemplate (stage distinto →
  * recalcGridLayout con gridCols/gridGap forzados), setBorderColor (no-op),
  * removeAsset (limpia foto principal y foto de perfil, Ola 17), undo/redo
- * (límites del stack), reset y los selectores atómicos.
+ * (límites del stack), reset y los selectores atómicos. addAsset es idempotente
+ * por id (dedupe del boot canvas + DB: reemplaza en su posición, no duplica).
  *
  * Todo puro (zustand vanilla en node): corre en CI sin Supabase.
  */
@@ -362,6 +363,47 @@ describe("setBorderColor", () => {
     expect(store.getState().isDirty).toBe(false);
     store.getState().setBorderColor(null);
     expect(store.getState().canvasData?.borderColor).toBeNull();
+  });
+});
+
+describe("addAsset (idempotente — dedupe del boot canvas + DB, 2026-10-02)", () => {
+  it("id nuevo → apendA al final conservando el orden", () => {
+    const store = setup(); // a0, a3 hidratados desde el canvas
+    store.getState().addAsset(asset("nuevo"));
+    expect(store.getState().assets.map((a) => a.id)).toEqual(["a0", "a3", "nuevo"]);
+  });
+
+  it("id existente → REEMPLAZA la entrada en su posición (no duplica)", () => {
+    const store = setup();
+    // Simula el boot: init() sembró "a0" desde el canvas con width/height 0 y
+    // URL vieja; luego llega la versión de DB con dimensiones reales y
+    // signedUrl fresca → gana la de DB, en el mismo slot del array.
+    const fromDb: StudioAsset = {
+      id: "a0",
+      signedUrl: "https://fresh.example/a0.png",
+      width: 1200,
+      height: 900,
+    };
+    store.getState().addAsset(fromDb);
+    const assets = store.getState().assets;
+    expect(assets.filter((a) => a.id === "a0")).toHaveLength(1);
+    expect(assets.map((a) => a.id)).toEqual(["a0", "a3"]);
+    expect(assets[0]).toEqual(fromDb);
+  });
+
+  it("boot completo (init + addAsset por cada asset de DB) → cero duplicados", () => {
+    const store = setup(); // canvas usa a0 y a3
+    for (const id of ["a0", "a3", "a-nueva"]) {
+      store.getState().addAsset({
+        id,
+        signedUrl: `https://fresh.example/${id}.png`,
+        width: 1000,
+        height: 1000,
+      });
+    }
+    const assets = store.getState().assets;
+    expect(assets.map((a) => a.id)).toEqual(["a0", "a3", "a-nueva"]);
+    expect(assets.every((a) => a.width === 1000)).toBe(true);
   });
 });
 

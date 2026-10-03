@@ -684,7 +684,20 @@ export function createStudioStore() {
     },
 
     addAsset: (asset) => {
-      set((state) => ({ assets: [...state.assets, asset] }));
+      // Idempotente (2026-10-02): el boot siembra assets desde el canvas
+      // (extractAssetsFromCanvas: width/height 0 y signedUrl vieja) Y luego
+      // llama addAsset por cada DesignAsset de DB. Sin dedupe, toda foto usada
+      // en un slot aparecía 2× en "Mis fotos" (y React warning de keys
+      // duplicadas en la sidebar). Si el id ya existe, REEMPLAZA la entrada en
+      // su posición: la versión nueva gana (la de DB trae width/height reales
+      // y signedUrl fresca).
+      set((state) => {
+        const idx = state.assets.findIndex((a) => a.id === asset.id);
+        if (idx === -1) return { assets: [...state.assets, asset] };
+        const assets = state.assets.slice();
+        assets[idx] = asset;
+        return { assets };
+      });
     },
 
     rememberPredesignedAssets: (galleryImageId, entry) => {

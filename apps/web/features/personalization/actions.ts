@@ -22,7 +22,7 @@ import { getOrCreateCartSession, peekCartSession } from "@/lib/cart-session";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { ownerKey, ipKey } from "@/lib/rate-limit-keys";
-import { StorageError, uploadCustomerPhoto } from "@/lib/storage";
+import { StorageError, refreshCustomerUploadSignedUrl, uploadCustomerPhoto } from "@/lib/storage";
 import { getGalleryImageById } from "./design-gallery";
 import { prisma } from "@/lib/db";
 import {
@@ -794,6 +794,8 @@ export async function assignPredesignedToDesignAction(input: {
         height: uploaded.height,
         exifStripped: uploaded.exifStripped,
         malwareScanned: false,
+        // Marca del prediseñado de origen → habilita el dedupe de abajo.
+        galleryImageId,
       },
     });
     return {
@@ -804,11 +806,35 @@ export async function assignPredesignedToDesignAction(input: {
     };
   }
 
+  // Dedupe (2026-10-02): antes cada aplicación creaba un DesignAsset nuevo y
+  // "Mis fotos" se llenaba de filas idénticas (el cache en memoria del cliente,
+  // predesignedAssetsByGalleryId, muere al recargar). Los assets de galería se
+  // sellan con galleryImageId y aquí se reusan por (designId, galleryImageId),
+  // ordenados por createdAt: [0] = cara A, [1] = cara B (separadores 2 caras).
+  // La signed URL del reuso se regenera (la original tiene TTL 1h).
+  const existing = await prisma.designAsset.findMany({
+    where: { designId, galleryImageId },
+    orderBy: { createdAt: "asc" },
+  });
+
+  async function reuseAsset(asset: (typeof existing)[number]) {
+    return {
+      assetId: asset.id,
+      signedUrl: await refreshCustomerUploadSignedUrl(asset.storageUrl),
+      width: asset.width,
+      height: asset.height,
+    };
+  }
+
   try {
-    const assetA = await uploadFromUrl(galleryImage.imageUrl);
+    const assetA = existing[0]
+      ? await reuseAsset(existing[0])
+      : await uploadFromUrl(galleryImage.imageUrl);
     let assetB;
     if (galleryImage.imageUrlB && isAllowedUrl(galleryImage.imageUrlB)) {
-      assetB = await uploadFromUrl(galleryImage.imageUrlB);
+      assetB = existing[1]
+        ? await reuseAsset(existing[1])
+        : await uploadFromUrl(galleryImage.imageUrlB);
     }
     return { ok: true, ...assetA, assetB };
   } catch (err) {

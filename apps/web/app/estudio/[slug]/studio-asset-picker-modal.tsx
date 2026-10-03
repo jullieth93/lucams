@@ -480,6 +480,9 @@ export function StudioAssetPickerModal({
                           className="grid grid-cols-3 gap-2"
                         >
                           {assets.map((asset) => (
+                            // 2026-10-02 — misma decisión que la sidebar: los badges
+                            // de texto van en una fila-caption DEBAJO del thumbnail
+                            // (fuera del overflow-hidden), no flotando sobre la imagen.
                             <button
                               key={asset.id}
                               type="button"
@@ -496,39 +499,48 @@ export function StudioAssetPickerModal({
                                   ? `Asignar foto al slot. Aviso: ${asset.validationMessage}`
                                   : "Asignar esta foto al slot"
                               }
-                              className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none disabled:scale-100 disabled:opacity-50"
+                              className="focus:ring-brand-turquoise flex flex-col gap-1 rounded-md focus:ring-2 focus:outline-none disabled:opacity-50"
                             >
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={asset.signedUrl}
-                                alt={texts.fotos.fotoSubidaAlt}
-                                className="h-full w-full object-cover"
-                                loading="lazy"
-                              />
-                              {/* Lucy 2026-09-09 — spinner sobre la miniatura elegida
-                                mientras el commit + re-render Konva corren. */}
-                              {assigningId === asset.id && (
-                                <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
-                                  <Loader2 className="h-5 w-5 animate-spin text-white" />
-                                </div>
-                              )}
+                              <div className="border-brand-purple/20 hover:border-brand-purple focus-within:border-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 disabled:scale-100">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={asset.signedUrl}
+                                  alt={texts.fotos.fotoSubidaAlt}
+                                  className="h-full w-full object-cover"
+                                  loading="lazy"
+                                />
+                                {/* Lucy 2026-09-09 — spinner sobre la miniatura elegida
+                                  mientras el commit + re-render Konva corren. */}
+                                {assigningId === asset.id && (
+                                  <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
+                                    <Loader2 className="h-5 w-5 animate-spin text-white" />
+                                  </div>
+                                )}
+                              </div>
                               {/* M.3.b.B.2 — Badge de validación calidad foto.
                                 Paquete C (2026-10-02): badge con texto corto y
-                                color por severidad (antes solo un emoji 10px). */}
-                              {asset.validationLevel === "warning-strong" && (
-                                <div
-                                  className="absolute top-1 right-1 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white shadow ring-1 ring-white"
-                                  aria-hidden
-                                >
-                                  ⚠️ {texts.fotos.badgeRevisar}
-                                </div>
-                              )}
-                              {asset.validationLevel === "warning-soft" && (
-                                <div
-                                  className="absolute top-1 right-1 rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-amber-950 shadow ring-1 ring-white"
-                                  aria-hidden
-                                >
-                                  ⚠️ {texts.fotos.badgeRevisar}
+                                color por severidad (antes solo un emoji 10px).
+                                A11Y: aria-hidden — el aviso ya va en el
+                                aria-label del botón. */}
+                              {(asset.validationLevel === "warning-strong" ||
+                                asset.validationLevel === "warning-soft") && (
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {asset.validationLevel === "warning-strong" && (
+                                    <span
+                                      className="rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-800"
+                                      aria-hidden
+                                    >
+                                      ⚠️ {texts.fotos.badgeRevisar}
+                                    </span>
+                                  )}
+                                  {asset.validationLevel === "warning-soft" && (
+                                    <span
+                                      className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-900"
+                                      aria-hidden
+                                    >
+                                      ⚠️ {texts.fotos.badgeRevisar}
+                                    </span>
+                                  )}
                                 </div>
                               )}
                             </button>

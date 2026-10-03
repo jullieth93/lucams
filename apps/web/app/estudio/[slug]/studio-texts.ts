@@ -296,6 +296,9 @@ export type StudioTexts = {
     /** Paquete C — texto corto del badge visible de aviso en las miniaturas
      *  (sidebar y picker; antes solo un emoji). */
     badgeRevisar: string;
+    /** Chip bajo la miniatura cuando la foto ya está asignada a un slot
+     *  (reemplaza el check ✓ flotante sobre la imagen). */
+    badgeAgregada: string;
     calidadCerrar: string;
     /** CTA del modal de calidad en el picker: asignar la foto con warning igual. */
     calidadUsarDeTodosModos: string;
@@ -902,6 +905,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     // del modal de calidad) + badge visible en miniaturas (antes solo un emoji).
     calidadRecomendacionTitulo: "Nuestra recomendación para esta foto",
     badgeRevisar: "Revisar",
+    badgeAgregada: "✓ Agregada",
     calidadCerrar: "Entendido",
     calidadUsarDeTodosModos: "Usar de todos modos",
     pickerTitulo: "Foto para el imán {n} de {total}",
@@ -1456,6 +1460,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "fotos.calidadTip2": "estudio.fotos.calidad-tip-2",
   "fotos.calidadRecomendacionTitulo": "estudio.fotos.calidad-recomendacion-titulo",
   "fotos.badgeRevisar": "estudio.fotos.badge-revisar",
+  "fotos.badgeAgregada": "estudio.fotos.badge-agregada",
   "fotos.calidadCerrar": "estudio.fotos.calidad-cerrar",
   "fotos.calidadUsarDeTodosModos": "estudio.fotos.calidad-usar-de-todos-modos",
   "fotos.pickerTitulo": "estudio.fotos.picker-titulo",

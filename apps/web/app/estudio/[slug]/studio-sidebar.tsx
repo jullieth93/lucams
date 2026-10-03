@@ -829,6 +829,14 @@ function AssetThumb({
               : texts.fotos.thumbArrastrar
         }
       >
+        {/* 2026-10-02 — los badges de texto ("⚠️ Revisar" / "✨ Optimizada" /
+          "✓ Agregada") ya NO flotan absolute sobre la imagen: el thumb es ~77px
+          y los cubrían. El elemento animado del grid es ahora un wrapper
+          vertical (conserva role="listitem", drag y las animaciones de
+          AnimatePresence); la imagen queda limpia (solo el drag-handle
+          hover-only dentro) y los chips viven en una fila-caption debajo.
+          El click-to-quality-modal sigue en el wrapper: cubre el thumb Y los
+          chips (click en "Revisar" también abre el modal por burbuja). */}
         <motion.div
           role="listitem"
           draggable
@@ -838,88 +846,91 @@ function AssetThumb({
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.85 }}
           transition={{ duration: 0.2, delay: idx * 0.04 }}
-          className={[
-            "group/thumb relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all focus-within:ring-2 hover:shadow-md active:cursor-grabbing",
-            asset.validationLevel === "warning-strong"
-              ? "border-red-300/70 focus-within:ring-red-400 hover:border-red-500"
-              : asset.validationLevel === "warning-soft"
-                ? "border-amber-300/70 focus-within:ring-amber-400 hover:border-amber-500"
-                : isUsed
-                  ? "border-emerald-400/70 focus-within:ring-emerald-400 hover:border-emerald-500"
-                  : "border-brand-purple/20 hover:border-brand-purple focus-within:ring-brand-turquoise",
-          ].join(" ")}
+          className="group/thumb flex cursor-grab flex-col gap-1 active:cursor-grabbing"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={asset.signedUrl}
-            alt={`Foto subida ${idx + 1}`}
-            className={[
-              "h-full w-full object-cover transition-opacity",
-              isUsed ? "opacity-75" : "",
-            ].join(" ")}
-            draggable={false}
-          />
-
-          {/* M.3.b.UX.6 — Drag handle visual top-left, sutil, visible solo en hover.
-            Indica al cliente "esta foto se puede arrastrar al imán". */}
           <div
-            className="bg-brand-purple/85 pointer-events-none absolute top-1 left-1 flex h-5 w-5 items-center justify-center rounded-md text-white opacity-0 shadow-sm transition-opacity group-hover/thumb:opacity-100"
-            aria-hidden
+            className={[
+              "relative aspect-square overflow-hidden rounded-md border-2 transition-all focus-within:ring-2 hover:shadow-md",
+              asset.validationLevel === "warning-strong"
+                ? "border-red-300/70 focus-within:ring-red-400 hover:border-red-500"
+                : asset.validationLevel === "warning-soft"
+                  ? "border-amber-300/70 focus-within:ring-amber-400 hover:border-amber-500"
+                  : isUsed
+                    ? "border-emerald-400/70 focus-within:ring-emerald-400 hover:border-emerald-500"
+                    : "border-brand-purple/20 hover:border-brand-purple focus-within:ring-brand-turquoise",
+            ].join(" ")}
           >
-            <GripVertical className="h-3 w-3" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={asset.signedUrl}
+              alt={`Foto subida ${idx + 1}`}
+              className={[
+                "h-full w-full object-cover transition-opacity",
+                isUsed ? "opacity-75" : "",
+              ].join(" ")}
+              draggable={false}
+            />
+
+            {/* M.3.b.UX.6 — Drag handle visual top-left, sutil, visible solo en hover.
+              Indica al cliente "esta foto se puede arrastrar al imán". */}
+            <div
+              className="bg-brand-purple/85 pointer-events-none absolute top-1 left-1 flex h-5 w-5 items-center justify-center rounded-md text-white opacity-0 shadow-sm transition-opacity group-hover/thumb:opacity-100"
+              aria-hidden
+            >
+              <GripVertical className="h-3 w-3" />
+            </div>
           </div>
 
-          {/* P0.2 — Green checkmark cuando foto está usada en al menos 1 slot */}
-          {isUsed && (
-            <motion.div
-              initial={{ scale: 0, rotate: -90 }}
-              animate={{ scale: 1, rotate: 0 }}
-              transition={{ type: "spring", stiffness: 400, damping: 20 }}
-              className="absolute bottom-1 left-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 shadow ring-2 ring-white"
-              aria-label={texts.fotos.usadaAria}
-            >
-              <Check className="h-3 w-3 text-white" strokeWidth={3} />
-            </motion.div>
-          )}
+          {/* Fila-caption de chips (text-[9px], fondos suaves con texto oscuro —
+            A11Y: contraste sobre fondo claro, decisión Paquete C de badges
+            legibles se mantiene; solo cambian de lugar). */}
+          {(hasWarning || autoImproved || isUsed) && (
+            <div className="flex flex-wrap items-center gap-1">
+              {asset.validationLevel === "warning-strong" && (
+                <span
+                  className="rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-800"
+                  aria-label={texts.fotos.resolucionBajaAria}
+                >
+                  ⚠️ {texts.fotos.badgeRevisar}
+                </span>
+              )}
+              {asset.validationLevel === "warning-soft" && (
+                <span
+                  className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-900"
+                  aria-label={texts.fotos.avisoCalidadAria}
+                >
+                  ⚠️ {texts.fotos.badgeRevisar}
+                </span>
+              )}
 
-          {/* M.3.b.B.2 — Badge validación calidad foto (top-right).
-            Paquete C (2026-10-02) — ya no es un emoji solo de 10px: badge con
-            texto corto y color por severidad, visible para cualquier cliente.
-            El thumb entero abre el modal de calidad al click (hasWarning). */}
-          {asset.validationLevel === "warning-strong" && (
-            <div
-              className="absolute top-1 right-1 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white shadow ring-1 ring-white"
-              aria-label={texts.fotos.resolucionBajaAria}
-            >
-              ⚠️ {texts.fotos.badgeRevisar}
-            </div>
-          )}
-          {asset.validationLevel === "warning-soft" && (
-            <div
-              className="absolute top-1 right-1 rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-bold text-amber-950 shadow ring-1 ring-white"
-              aria-label={texts.fotos.avisoCalidadAria}
-            >
-              ⚠️ {texts.fotos.badgeRevisar}
-            </div>
-          )}
+              {/* C2 (owner 2026-09-15) — "✨ Optimizada": la foto se re-muestreó
+                en el navegador al subir (NO crea detalle — el título lo dice
+                explícito, auditoría 2026-09-24). */}
+              {autoImproved && (
+                <Hint content={texts.fotos.badgeMejoradaTitle}>
+                  {/* stopPropagation: el chip tiene su propio Hint — sin esto el
+                      hover abriría ambos tooltips. */}
+                  <span
+                    onPointerMove={(e) => e.stopPropagation()}
+                    className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-bold"
+                    aria-label={texts.fotos.badgeMejoradaTitle}
+                  >
+                    {texts.fotos.badgeMejorada}
+                  </span>
+                </Hint>
+              )}
 
-          {/* C2 (owner 2026-09-15) — Badge "✨ Optimizada": la foto se re-muestreó
-            en el navegador al subir (ajuste al tamaño de impresión; NO crea
-            detalle — el título lo dice explícito, auditoría 2026-09-24).
-            Bottom-right (el check de usada va bottom-left; los avisos de
-            calidad, top-right). */}
-          {autoImproved && (
-            <Hint content={texts.fotos.badgeMejoradaTitle}>
-              {/* stopPropagation: el badge vive DENTRO del thumb con su propio
-                  Hint — sin esto el hover abriría ambos tooltips. */}
-              <span
-                onPointerMove={(e) => e.stopPropagation()}
-                className="bg-brand-turquoise/95 text-brand-purple-dark absolute right-1 bottom-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold shadow ring-1 ring-white"
-                aria-label={texts.fotos.badgeMejoradaTitle}
-              >
-                {texts.fotos.badgeMejorada}
-              </span>
-            </Hint>
+              {/* P0.2 — la foto ya está asignada a al menos 1 slot (antes un
+                check ✓ flotante bottom-left sobre la imagen). */}
+              {isUsed && (
+                <span
+                  className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-800"
+                  aria-label={texts.fotos.usadaAria}
+                >
+                  {texts.fotos.badgeAgregada}
+                </span>
+              )}
+            </div>
           )}
         </motion.div>
       </Hint>

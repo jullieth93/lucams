@@ -1574,9 +1574,16 @@ export function StudioEditor({
       />
 
       <div className="flex flex-1 flex-col lg:flex-row">
-        {/* Sidebar desktop (visible lg+, oculto en mobile — usa sheet drawer) */}
+        {/* Sidebar desktop (visible lg+, oculto en mobile — usa sheet drawer).
+            2026-10-02 (UX scroll) — sticky con scroll PROPIO acotado al viewport:
+            el sidebar puede crecer largo (prediseñados + mis fotos + plantillas)
+            y antes arrastraba el scroll del documento entero, sacando el canvas
+            de vista. lg:self-start es requisito del sticky dentro del flex-row
+            (sin él, stretch le da la altura de la fila y no pega). top-16 ≈ alto
+            del SiteHeader sticky (py-3 + BrandMark sm). Móvil intacto (el sheet
+            ya tiene max-h + overflow propios). */}
         <aside
-          className="border-brand-purple/10 hidden bg-white lg:block lg:w-72 lg:border-r"
+          className="border-brand-purple/10 hidden bg-white lg:sticky lg:top-16 lg:block lg:max-h-[calc(100vh-4rem)] lg:w-72 lg:self-start lg:overflow-y-auto lg:border-r"
           aria-label={texts.lienzo.herramientasAria}
         >
           <StudioSidebar
