@@ -231,6 +231,7 @@ describe("StudioPreviewModal — aceptación explícita de calidad de fotos (Paq
     level: "warning-strong" as const,
     message: "Se va a ver pixelada al imprimir a tamaño real (5×5 cm).",
     recommendation: "Una foto más grande va a quedar mejor al imprimir.",
+    requiresAck: true,
   };
 
   it("sin avisos: no muestra la sección ni el checkbox y el confirmar queda habilitado", () => {
@@ -277,5 +278,54 @@ describe("StudioPreviewModal — aceptación explícita de calidad de fotos (Paq
     expect(cta).toBeEnabled();
     fireEvent.click(checkbox);
     expect(cta).toBeDisabled();
+  });
+});
+
+describe("StudioPreviewModal — avisos informativos de brillo suave (fase 2, 2026-10-02)", () => {
+  // requiresAck:false = el ÚNICO problema de la foto es brillo soft (look
+  // oscuro deliberado) — se muestra en la lista pero NO exige aceptación.
+  const INFO_WARNING = {
+    assetId: "asset-oscura",
+    signedUrl: "https://signed.example/foto-oscura.jpg",
+    level: "warning-soft" as const,
+    message:
+      "La foto está algo oscura. Si buscabas un look oscuro o con fondo negro, puedes ignorar este aviso.",
+    recommendation:
+      "Si el estilo oscuro es a propósito, no hay nada que hacer. Si no, una foto con más luz va a verse mejor.",
+    requiresAck: false,
+  };
+
+  it("solo avisos informativos: la sección se muestra SIN checkbox y el confirmar queda habilitado", () => {
+    const props = baseProps();
+    render(<StudioPreviewModal {...props} qualityWarnings={[INFO_WARNING]} />);
+    expect(screen.getByText("Calidad de tus fotos")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "La foto está algo oscura. Si buscabas un look oscuro o con fondo negro, puedes ignorar este aviso.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    const cta = screen.getByRole("button", { name: "Sí, agregar al carrito" });
+    expect(cta).toBeEnabled();
+    fireEvent.click(cta);
+    expect(props.onConfirm).toHaveBeenCalledWith(1, { qualityAcknowledged: false });
+  });
+
+  it("mixto (informativo + exigible): el checkbox aparece y bloquea el confirmar", () => {
+    const props = baseProps();
+    const ACK_WARNING = {
+      assetId: "asset-pixelada",
+      signedUrl: "https://signed.example/foto-pixelada.jpg",
+      level: "warning-strong" as const,
+      message: "Se va a ver pixelada al imprimir a tamaño real (5×5 cm).",
+      requiresAck: true,
+    };
+    render(<StudioPreviewModal {...props} qualityWarnings={[INFO_WARNING, ACK_WARNING]} />);
+    const cta = screen.getByRole("button", { name: "Sí, agregar al carrito" });
+    expect(cta).toBeDisabled();
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(cta).toBeEnabled();
+    fireEvent.click(cta);
+    expect(props.onConfirm).toHaveBeenCalledWith(1, { qualityAcknowledged: true });
   });
 });

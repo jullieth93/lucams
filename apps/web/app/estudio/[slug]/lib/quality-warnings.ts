@@ -8,7 +8,8 @@
  *
  * Lo consumen:
  *   - StudioPreviewModal (sección "Calidad de tus fotos" + checkbox de
- *     aceptación obligatorio).
+ *     aceptación obligatorio SOLO para los avisos con requiresAck — el aviso
+ *     de brillo suave como único problema es informativo, fase 2 2026-10-02).
  *   - El chip resumen del toolbar ("N por revisar" junto a «Vista previa»).
  *
  * qualityWarningsKey() devuelve un string primitivo para suscripción ATÓMICA
@@ -20,6 +21,22 @@ import type { CanvasDataV2, StudioAsset, StudioQualityWarning } from "../types";
 
 const WARNING_LEVELS = new Set(["warning-soft", "warning-strong", "error"]);
 
+/**
+ * 2026-10-02 (fase 2) — "solo brillo suave": el ÚNICO check que falló es el
+ * de brillo y el nivel agregado es warning-soft (foto algo oscura o levemente
+ * sobreexpuesta). Como el nivel agregado es el peor de los 3 checks, si el
+ * nivel es soft y solo falló brillo, el brillo es necesariamente soft.
+ * Es un aviso INFORMATIVO (look oscuro deliberado) — no exige aceptación.
+ * Fail-safe: sin detalle de checks (fotos validadas antes de esta fase)
+ * devuelve false → el aviso sigue exigiendo el checkbox, como siempre.
+ */
+function isSoftBrightnessOnly(asset: StudioAsset): boolean {
+  if (asset.validationLevel !== "warning-soft") return false;
+  const checks = asset.validationChecks;
+  if (!checks) return false;
+  return checks.brightness === false && checks.resolution === true && checks.blur === true;
+}
+
 function toWarning(asset: StudioAsset): StudioQualityWarning | null {
   if (!asset.validationLevel || !WARNING_LEVELS.has(asset.validationLevel)) return null;
   return {
@@ -28,6 +45,7 @@ function toWarning(asset: StudioAsset): StudioQualityWarning | null {
     level: asset.validationLevel as StudioQualityWarning["level"],
     message: asset.validationMessage,
     recommendation: asset.validationRecommendation,
+    requiresAck: !isSoftBrightnessOnly(asset),
   };
 }
 

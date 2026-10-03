@@ -425,6 +425,14 @@ export type StudioQualityWarning = {
   level: "warning-soft" | "warning-strong" | "error";
   message?: string;
   recommendation?: string;
+  /**
+   * 2026-10-02 (fase 2) — true si el aviso exige la aceptación explícita
+   * (checkbox) antes de confirmar. false solo para el aviso informativo de
+   * brillo SUAVE como único problema (look oscuro deliberado: injusto forzar
+   * la declaración "acepto menor calidad" por una foto intencionalmente
+   * oscura). Fail-safe: assets sin detalle de checks → true (como antes).
+   */
+  requiresAck: boolean;
 };
 
 export type AutoSaveStatus =
