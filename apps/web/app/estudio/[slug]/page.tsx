@@ -363,8 +363,9 @@ export default async function EstudioPage({
   // Paquete D (2026-10-02): la resolución vive en lib/product-kind — el MISMO
   // helper usa el editor (isBookmark) para que el tipo de producto no dependa
   // de dónde se lea.
+  // Fase 5 (2026-10-02): la carga (`listGalleryImages`) va más abajo, ya con
+  // los attributes de la variante EFECTIVA, para filtrar por variantFilter.
   const galleryTag = resolveGalleryTag(mergedSchema, product.slug);
-  const predesigned = await listGalleryImages(galleryTag);
 
   // ADR-057 Fase D — Calendario: slots etiquetados por mes (Ene…Dic) + año, para que el cliente
   // sepa qué foto va en qué mes (hoy son 12 fotos sueltas sin etiqueta).
@@ -505,6 +506,20 @@ export default async function EstudioPage({
   const packVariants = isPhotoPackStudio
     ? packCatalog.filter((v) => v.sizeCm === undefined || v.sizeCm === effectiveSizeCm)
     : [];
+
+  // Fase 5 (2026-10-02) — la galería se filtra server-side por los attributes
+  // de la variante elegida (?variant= o la primera): un diseño con
+  // variantFilter {sizeCm:"2×6"} solo se ofrece si la variante es 2×6 (más los
+  // diseños sin filtro, que aplican a todas). En packs el tamaño EFECTIVO lo
+  // manda el diseño recuperado (canvasData) sobre el del deep-link — misma
+  // precedencia que photoSlots/magnet — así el filtro sigue la variante real
+  // que se está editando. El picker/sidebar reciben la lista YA filtrada
+  // (cero cambios en el cliente).
+  const galleryVariantAttributes: Record<string, unknown> = {
+    ...(selectedVariant ? parseVariantAttributes(selectedVariant.attributes) : {}),
+    ...(effectiveSizeCm ? { sizeCm: effectiveSizeCm } : {}),
+  };
+  const predesigned = await listGalleryImages(galleryTag, galleryVariantAttributes);
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">

@@ -3,10 +3,20 @@
 /*
  * ADR-057 Fase B2 — Gestión de diseños prediseñados: subir imágenes por producto (tag) + borrar.
  * UX admin claro para Lucy (no-técnica): selector de producto, nombre, subir, preview, borrar.
+ *
+ * Fase 5 (2026-10-02) — selector "Aplica a": el diseño puede limitarse a UN
+ * atributo de variante (ej. tamaño 2×6) persistiéndose como variantFilter Json
+ * (subset de attributes; "" = "Todas las variantes"). Las tarjetas muestran
+ * badge con el filtro ("2×6") o "Todas".
  */
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Upload, Trash2, Loader2, ArrowUpDown } from "lucide-react";
+import { Hint } from "@/components/ui/tooltip";
+import {
+  describeVariantFilter,
+  type VariantFilterOption,
+} from "@/features/personalization/design-gallery-filter";
 import { uploadGalleryImageAction, deleteGalleryImageAction } from "./actions";
 import { GalleryDetailModal } from "./gallery-detail-modal";
 
@@ -16,16 +26,20 @@ type Item = {
   name: string;
   imageUrl: string;
   imageUrlB?: string | null;
+  /** Fase 5 — filtro por atributo de variante (null = todas). */
+  variantFilter?: Record<string, string | number | boolean> | null;
   isActive: boolean;
   order: number;
 };
 
-// Llega del server (page.tsx): productos activos que declaran galleryTag en su
-// personalizationSchema. Misma fuente que valida el upload — nada hardcodeado.
+// Llega del server (page.tsx): productos activos que resuelven un tag de
+// galería (galleryTag explícito o slug — misma fuente que valida el upload,
+// nada hardcodeado). variantFilterOptions alimenta el selector "Aplica a".
 type TagOption = {
   tag: string;
   label: string;
   needsFaceB: boolean;
+  variantFilterOptions: VariantFilterOption[];
 };
 
 function formatPreview(src: string | null | undefined) {
@@ -87,8 +101,14 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
   // Paquete A (2026-10-02) — detalle del prediseñado (click en la tarjeta):
   // caras A/B lado a lado + ficha (producto, orden, estado) + borrar.
   const [detail, setDetail] = useState<Item | null>(null);
+  // Fase 5 — filtro "Aplica a": JSON.stringify del variantFilter elegido;
+  // "" = "Todas las variantes" (null en DB).
+  const [variantFilterJson, setVariantFilterJson] = useState("");
 
   const needsFaceB = tagOptions.find((t) => t.tag === tag)?.needsFaceB ?? false;
+  // Opciones "Aplica a" del producto elegido ([] = no varía por atributos
+  // filtrables → solo aplica a todas las variantes).
+  const variantFilterOptions = tagOptions.find((t) => t.tag === tag)?.variantFilterOptions ?? [];
   // El modo tira solo aplica a productos de 2 caras; si el producto elegido no
   // los tiene, forzamos el flujo por caras.
   const effectiveMode = needsFaceB ? uploadMode : "faces";
@@ -125,6 +145,8 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
     const fd = new FormData();
     fd.set("tag", tag);
     fd.set("name", name.trim());
+    // Fase 5 — "Aplica a": "" = todas las variantes (sin clave en el FormData).
+    if (variantFilterJson) fd.set("variantFilter", variantFilterJson);
     if (effectiveMode === "strip") {
       if (!stripFile) {
         setError("Selecciona la tira con las dos caras.");
@@ -182,6 +204,9 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
               onChange={(e) => {
                 setTag(e.target.value);
                 setFileB(null);
+                // Fase 5 — el filtro "Aplica a" es por producto: al cambiar de
+                // producto vuelve a "Todas las variantes".
+                setVariantFilterJson("");
                 if (fileBRef.current) fileBRef.current.value = "";
               }}
               className="border-brand-purple/25 mt-1 block w-full rounded-xl border-2 px-3 py-2 text-sm outline-none"
@@ -203,6 +228,26 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
               className="border-brand-purple/25 mt-1 block w-full rounded-xl border-2 px-3 py-2 text-sm outline-none"
             />
           </label>
+          {/* Fase 5 — "Aplica a": limita el diseño a un atributo de variante
+              (ej. tamaño 2×6). Solo si el producto varía por algún atributo
+              filtrable; si no, todo diseño aplica a todas las variantes. */}
+          {variantFilterOptions.length > 0 && (
+            <label className="text-brand-purple-dark text-sm font-semibold">
+              Aplica a
+              <select
+                value={variantFilterJson}
+                onChange={(e) => setVariantFilterJson(e.target.value)}
+                className="border-brand-purple/25 mt-1 block w-full rounded-xl border-2 px-3 py-2 text-sm outline-none"
+              >
+                <option value="">Todas las variantes</option>
+                {variantFilterOptions.map((o) => (
+                  <option key={JSON.stringify(o.filter)} value={JSON.stringify(o.filter)}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
 
         {needsFaceB && (
@@ -459,12 +504,22 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                         A/B
                       </span>
                     )}
-                    <p
-                      className="text-brand-purple-dark mt-1 truncate text-xs font-semibold"
-                      title={it.name}
+                    <Hint content={it.name}>
+                      <p className="text-brand-purple-dark mt-1 truncate text-xs font-semibold">
+                        {it.name}
+                      </p>
+                    </Hint>
+                    {/* Fase 5 — badge del filtro por variante ("2×6") o "Todas". */}
+                    <span
+                      className={
+                        "mt-0.5 inline-block rounded-full px-1.5 py-px text-[10px] font-semibold " +
+                        (it.variantFilter
+                          ? "bg-brand-turquoise/15 text-brand-purple-dark"
+                          : "bg-brand-purple/5 text-brand-muted")
+                      }
                     >
-                      {it.name}
-                    </p>
+                      {describeVariantFilter(it.variantFilter)}
+                    </span>
                     <button
                       type="button"
                       onClick={() => onDelete(it.id)}

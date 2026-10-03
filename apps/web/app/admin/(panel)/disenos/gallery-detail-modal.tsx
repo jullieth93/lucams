@@ -13,6 +13,7 @@
 import { useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trash2, X, Loader2 } from "lucide-react";
+import { Hint } from "@/components/ui/tooltip";
 import { useDialogA11y } from "../plantillas/use-dialog-a11y";
 
 export type GalleryDetailItem = {
@@ -126,11 +127,10 @@ export function GalleryDetailModal({
                   <dt className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
                     Producto
                   </dt>
-                  <dd
-                    className="text-brand-purple-dark truncate text-xs font-semibold"
-                    title={productLabel}
-                  >
-                    {productLabel}
+                  <dd className="text-brand-purple-dark text-xs font-semibold">
+                    <Hint content={productLabel}>
+                      <span className="block truncate">{productLabel}</span>
+                    </Hint>
                   </dd>
                 </div>
                 <div className="bg-brand-purple/5 rounded-lg px-2 py-1.5">

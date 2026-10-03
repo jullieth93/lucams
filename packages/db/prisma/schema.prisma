@@ -119,36 +119,36 @@ enum ConsentScope {
 // ──────────────────────── IDENTIDAD ────────────────────────
 
 model Customer {
-  id                 String                    @id @default(cuid())
-  email              String                    @unique
-  phone              String?
-  firstName          String?
-  lastName           String?
-  supabaseUserId     String                    @unique
+  id                String                    @id @default(cuid())
+  email             String                    @unique
+  phone             String?
+  firstName         String?
+  lastName          String?
+  supabaseUserId    String                    @unique
   // Datos tributarios DIAN — opcionales en perfil, obligatorios en
   // checkout cuando se emite factura electrónica (Fase 7).
-  documentType       DocumentType?
-  documentNumber     String? // nullable porque se completa en checkout
-  taxResponsibility  TaxResponsibility?
-  loyaltyPoints      Int                       @default(0)
-  referralCode       String                    @unique
-  referredById       String?
-  referredBy         Customer?                 @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
-  referrals          Customer[]                @relation("Referrals")
-  addresses          Address[]
-  orders             Order[]
-  reviews            Review[]
-  loyaltyTxns        LoyaltyTxn[]
-  consents           Consent[]
-  supportTickets     SupportTicket[]
-  warrantyClaims     WarrantyClaim[]
+  documentType      DocumentType?
+  documentNumber    String? // nullable porque se completa en checkout
+  taxResponsibility TaxResponsibility?
+  loyaltyPoints     Int                       @default(0)
+  referralCode      String                    @unique
+  referredById      String?
+  referredBy        Customer?                 @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals         Customer[]                @relation("Referrals")
+  addresses         Address[]
+  orders            Order[]
+  reviews           Review[]
+  loyaltyTxns       LoyaltyTxn[]
+  consents          Consent[]
+  supportTickets    SupportTicket[]
+  warrantyClaims    WarrantyClaim[]
   // Sub-bloque M — Estudio de Personalización (diferenciador #1)
-  designs            Design[]
-  designAssets       DesignAsset[]
-  wishlist           WishlistItem[]
-  backInStockSubs    BackInStockSubscription[]
+  designs           Design[]
+  designAssets      DesignAsset[]
+  wishlist          WishlistItem[]
+  backInStockSubs   BackInStockSubscription[]
   // PLAN_CATALOG_V2 3.9 — tracking de cupones usados.
-  couponUsages       CouponUsage[]
+  couponUsages      CouponUsage[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -332,10 +332,6 @@ model Product {
   minimumQuantity       Int                       @default(1)
   // PLAN_CATALOG_V2 3.3 — máximo opcional (null = sin tope).
   maximumQuantity       Int?
-  // PLAN_CATALOG_V2 5.5 — upcharge porcentual aplicado cuando el cliente elige
-  // un template PREMADE (vs Camino 2 personalizable). Default 0% = mismo precio.
-  // Excepción: Universos pueden tener 10-15% por diseño curado premium.
-  premadeSurcharge      Int                       @default(0)
   images                String[]
   categoryId            String
   category              Category                  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
@@ -384,31 +380,31 @@ model Product {
 }
 
 model ProductVariant {
-  id             String             @id @default(cuid())
+  id             String         @id @default(cuid())
   productId      String
-  product        Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product        Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
   name           String
   // PLAN_CATALOG_V2 2.10 — "¿por qué elegir esta variante vs otra?".
   // Bot AI lo usa para sugerir variant correcto. Ej: "Set 12 ideal para baby shower
   // con muchos invitados; Set 4 perfecto si solo querés un detalle simbólico".
   description    String?
-  sku            String             @unique
+  sku            String         @unique
   price          Int?
   // Lucy 2026-06-27: "precio tachado" (promoción) POR OPCIÓN. Antes vivía en
   // Product.compareAtPrice, pero el precio real es por opción → el descuento
   // podía salir negativo en la tienda. Centavos COP. Null = sin promo.
   compareAtPrice Int?
-  stock          Int                @default(0)
+  stock          Int            @default(0)
   // D1 (Lucy 2026-06-27): fotos propias de la opción. Vacío = hereda
   // Product.images (espeja la herencia de `price`). El PDP cambia la galería
   // al elegir la opción; el admin las sube desde el editor de la opción.
-  images         String[]           @default([])
+  images         String[]       @default([])
   attributes     Json
   inventoryLogs  InventoryLog[]
   cartItems      CartItem[]
   orderItems     OrderItem[]
   quoteItems     QuoteItem[]
-  isActive       Boolean            @default(true)
+  isActive       Boolean        @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -960,7 +956,7 @@ model AbandonedCart {
   // F-11 (security audit 2026-08-24): at rest only the SHA-256 hex digest of
   // the token. It is generated at reminder-send time (not at abandon time) so
   // the plain value only ever lives in the sent email.
-  recoverTokenHash     String?   @unique
+  recoverTokenHash   String?   @unique
   lastReminderSentAt DateTime?
   recoveredAt        DateTime?
 
@@ -1245,14 +1241,14 @@ model EmailEvent {
 // ──────────────────────── SOPORTE ────────────────────────
 
 model SupportTicket {
-  id             String    @id @default(cuid())
+  id             String                 @id @default(cuid())
   customerId     String?
-  customer       Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customer       Customer?              @relation(fields: [customerId], references: [id], onDelete: SetNull)
   email          String
   name           String
   subject        String
   message        String
-  status         String    @default("OPEN") // "OPEN" | "IN_PROGRESS" | "CLOSED"
+  status         String                 @default("OPEN") // "OPEN" | "IN_PROGRESS" | "CLOSED"
   ip             String?
   userAgent      String?
   // Pedido relacionado (Order.number, ej. "LCM-2026-0001"). Lo pide el form de
@@ -1515,43 +1511,43 @@ enum ModerationStatus {
 }
 
 model Design {
-  id               String                   @id @default(cuid())
-  customerId       String?
-  customer         Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  sessionId        String? // anon flow, matches cart_session cookie
-  productId        String
-  product          Product                  @relation(fields: [productId], references: [id], onDelete: Restrict)
-  templateId       String?
-  template         PersonalizationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  status           DesignStatus             @default(DRAFT)
+  id                    String                   @id @default(cuid())
+  customerId            String?
+  customer              Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  sessionId             String? // anon flow, matches cart_session cookie
+  productId             String
+  product               Product                  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  templateId            String?
+  template              PersonalizationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  status                DesignStatus             @default(DRAFT)
   // Moderación de contenido (ADR-062 P0-2). Todo diseño nace PENDING; Lucy lo aprueba/
   // rechaza en /admin/moderacion antes de que su pedido pueda marcarse SHIPPED.
-  moderationStatus ModerationStatus         @default(PENDING)
-  moderationReason String? // motivo del rechazo (visible al cliente en el email)
-  moderatedAt      DateTime?
-  moderatedById    String? // AdminUser.id que moderó (sin relación, como Order.refundedBy)
+  moderationStatus      ModerationStatus         @default(PENDING)
+  moderationReason      String? // motivo del rechazo (visible al cliente en el email)
+  moderatedAt           DateTime?
+  moderatedById         String? // AdminUser.id que moderó (sin relación, como Order.refundedBy)
   // canvasData: Konva stage serialization. Estructura validada por features/
   // personalization/schemas.ts con Zod en cada save.
-  canvasData       Json
+  canvasData            Json
   // previewUrl: snapshot compositado del grid completo (PNG público, bucket
   // design-previews). Visible en cart/order display al cliente. En V1
   // (legacy M.3) es snapshot 1080×1080 single. En V2 (M.3.b multi-slot) es
   // mosaico del grid completo.
-  previewUrl       String?
+  previewUrl            String?
   // productionUrl: V1 legacy single PNG 300 DPI privado. Para V2 está null
   // y la info de producción vive en productionUrls[]. Mantener nullable
   // por retrocompat — designs M.3 existentes siguen siendo descargables.
-  productionUrl    String?
+  productionUrl         String?
   // productionUrls: V2 (M.3.b) — N paths privados en bucket production-assets,
   // uno por imán físico del pack. Admin descarga el ZIP de N PNGs 300 DPI
   // para imprenta. Empty array hasta status=READY o USED_IN_ORDER.
-  productionUrls   String[]                 @default([])
+  productionUrls        String[]                 @default([])
   // Retención post-entrega (feedback Lucy 2026-09-18, Ley 1581 art. 4 lit. f): timestamp del
   // purgado de bytes pesados (fotos crudas de customer-uploads + renders de production-assets)
   // una vez la orden lleva ≥90 días entregada y sin retracto/garantía abierto. Se conservan
   // previewUrl, canvasData y la fila (historial del pedido). null = bytes todavía vivos.
   // También es la marca de idempotencia del cron purge-delivered-designs.
-  purgedAt         DateTime?
+  purgedAt              DateTime?
   // Paquete C (2026-10-02) — aceptación EXPLÍCITA de calidad de fotos en la Vista Previa
   // del Estudio: cuando el diseño usa fotos con avisos de calidad (resolución/nitidez/luz),
   // el cliente debe marcar "entiendo y acepto el resultado" antes de confirmar. Timestamp
@@ -1559,18 +1555,18 @@ model Design {
   // ("llegó pixelada/borroso"). null = diseño sin avisos, o finalizado antes de esta ola.
   qualityAcknowledgedAt DateTime?
   // metadata: selección plantilla + marco + color + ajustes filtros foto-edit.
-  metadata         Json                     @default("{}")
+  metadata              Json                     @default("{}")
   // shareToken: link público read-only para colaboración (sub-bloque K+M
   // futuro: "compartí con tu pareja antes de comprar"). Genera en cliente.
   // F-11 (security audit 2026-08-24): at rest only the SHA-256 hex digest of
   // the token (lookups hash the presented token). The plain token is only
   // returned when (re)generated — an existing link cannot be re-read, asking
   // to share again rotates it.
-  shareTokenHash   String?                  @unique
-  assets           DesignAsset[]
-  cartItems        CartItem[]
-  orderItems       OrderItem[]
-  quoteItems       QuoteItem[]
+  shareTokenHash        String?                  @unique
+  assets                DesignAsset[]
+  cartItems             CartItem[]
+  orderItems            OrderItem[]
+  quoteItems            QuoteItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1701,14 +1697,19 @@ model LetterTile {
 // aplicar a un slot en el editor, en vez de subir su foto). Agrupados por `tag` (ej. "separadores")
 // para reusar el mismo modelo en otros productos (fotoimanes, etc.). Admin-gestionable.
 model DesignGalleryImage {
-  id        String  @id @default(cuid())
-  tag       String // agrupador: "separadores", "fotoimanes", …
-  name      String // nombre visible ("Flores", "Frase motivadora")
-  imageUrl  String // imagen del diseño (bucket público product-images)
+  id            String  @id @default(cuid())
+  tag           String // agrupador: "separadores", "fotoimanes", …
+  name          String // nombre visible ("Flores", "Frase motivadora")
+  imageUrl      String // imagen del diseño (bucket público product-images)
   // Ola 21 — URL opcional de la cara B para productos de separadores (pares A/B).
-  imageUrlB String?
-  order     Int     @default(0)
-  isActive  Boolean @default(true)
+  imageUrlB     String?
+  // Fase 5 (2026-10-02) — SUBSET de ProductVariant.attributes (ej. {"sizeCm":"2×6"}):
+  // el diseño aplica solo a las variantes cuyos attributes contienen ese subset
+  // (matching puro en design-gallery-filter.ts). null = aplica a TODAS las variantes
+  // del producto (comportamiento histórico; backfill natural de las filas previas).
+  variantFilter Json?
+  order         Int     @default(0)
+  isActive      Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1856,25 +1857,25 @@ enum QuoteStatus {
 }
 
 model Quote {
-  id                 String      @id @default(cuid())
+  id                    String      @id @default(cuid())
   // Número humano "COT-XXXXXX" (6 chars alfanuméricos sin ambiguos, generado en
   // app — ver features/quotes/service.ts). Único; el create reintenta ante P2002.
-  number             String      @unique
-  status             QuoteStatus @default(PENDING)
-  customerName       String
+  number                String      @unique
+  status                QuoteStatus @default(PENDING)
+  customerName          String
   // Móvil colombiano normalizado a 10 dígitos (sin +57 ni espacios).
-  customerWhatsapp   String
-  customerEmail      String?
-  city               String
-  department         String
-  notes              String? // notas DEL CLIENTE (formulario público)
+  customerWhatsapp      String
+  customerEmail         String?
+  city                  String
+  department            String
+  notes                 String? // notas DEL CLIENTE (formulario público)
   // Notas internas del admin — NUNCA exponer en la vista pública por token
   // (getQuoteByToken las excluye con select explícito).
-  internalNotes      String?
+  internalNotes         String?
   // Centavos COP (mandato CLAUDE.md — nunca float). En Etapa 1 total == subtotal:
   // no hay envío calculado, cupones ni impuestos en la cotización.
-  subtotal           Int
-  total              Int
+  subtotal              Int
+  total                 Int
   // Token para vista pública /cotizacion/[token] (guest sin login, mismo patrón
   // que Order): 32 chars hex = crypto.randomBytes(16).
   // F-11 (security audit 2026-08-24): at rest only the SHA-256 hex digest of
@@ -1885,9 +1886,9 @@ model Quote {
   // porque es la cotización la que materializa el dato personal; el ledger central puede depurarse
   // y el vínculo con la PII no debe perderse. Nullable: las cotizaciones anteriores a la casilla
   // (2026-07-21) no la tienen.
-  dataConsentAt      DateTime?
-  dataConsentVersion String?
-  items              QuoteItem[]
+  dataConsentAt         DateTime?
+  dataConsentVersion    String?
+  items                 QuoteItem[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

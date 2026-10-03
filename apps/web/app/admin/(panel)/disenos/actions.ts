@@ -2,6 +2,12 @@
  * ADR-057 Fase B2 — Server actions del admin de "Diseños prediseñados". Lucy sube imágenes de
  * diseño listas (por producto/tag); el cliente las aplica a un slot en el editor. Reutiliza
  * uploadProductImage (magic bytes) con el tag como prefijo de carpeta.
+ *
+ * Fase 5 (2026-10-02) — el upload acepta `variantFilter` (JSON, subset de
+ * attributes de variante, ej. {"sizeCm":"2×6"}): el diseño aplica solo a las
+ * variantes que contienen ese subset. Se valida contra las variantes REALES
+ * del producto (variantFilterMatchesAnyVariant: debe matchear al menos una,
+ * si no el diseño quedaría inalcanzable en el Estudio).
  */
 
 "use server";
@@ -16,7 +22,13 @@ import {
   createGalleryImage,
   deleteGalleryImage,
   listGalleryTagOptions,
+  listGalleryTagVariantAttributes,
 } from "@/features/personalization/design-gallery";
+import {
+  normalizeVariantFilter,
+  variantFilterMatchesAnyVariant,
+  type VariantFilter,
+} from "@/features/personalization/design-gallery-filter";
 import {
   GalleryStripError,
   getGalleryStripExpectations,
@@ -27,6 +39,37 @@ type ActionResult = { error?: string };
 
 const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Fase 5 — parsea y valida el `variantFilter` del form (JSON string; vacío =
+ * null = "todas las variantes"). El filtro debe ser subset-match de AL MENOS
+ * una variante activa real del producto del tag — un filtro que no matchea
+ * nada dejaría el diseño invisible en el Estudio (error de captura, no de
+ * concepto), así que se rechaza acá con mensaje amable.
+ */
+async function parseVariantFilterInput(
+  formData: FormData,
+  tag: string,
+): Promise<{ filter: VariantFilter | null; error?: string }> {
+  const raw = String(formData.get("variantFilter") ?? "").trim();
+  if (!raw) return { filter: null };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { filter: null, error: "El filtro de variante no es válido." };
+  }
+  const filter = normalizeVariantFilter(parsed);
+  if (!filter) return { filter: null };
+  const variantsAttributes = await listGalleryTagVariantAttributes(tag);
+  if (!variantFilterMatchesAnyVariant(filter, variantsAttributes)) {
+    return {
+      filter: null,
+      error: "Ese filtro no corresponde a ninguna variante de este producto.",
+    };
+  }
+  return { filter };
+}
 
 export async function uploadGalleryImageAction(formData: FormData): Promise<ActionResult> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
@@ -46,9 +89,23 @@ export async function uploadGalleryImageAction(formData: FormData): Promise<Acti
     return { error: "El nombre debe tener 2–60 caracteres." };
   if (!(file instanceof File)) return { error: "Falta la imagen." };
 
+  // Fase 5 — filtro por atributo de variante ("Aplica a" del admin).
+  const { filter: variantFilter, error: filterError } = await parseVariantFilterInput(
+    formData,
+    tag,
+  );
+  if (filterError) return { error: filterError };
+
   try {
     if (stripMode) {
-      return await uploadStripMode({ tag, name, file, swapFaces, adminId: session.admin.id });
+      return await uploadStripMode({
+        tag,
+        name,
+        file,
+        swapFaces,
+        variantFilter,
+        adminId: session.admin.id,
+      });
     }
     const [{ publicUrl }, urlB] = await Promise.all([
       uploadProductImage({ productId: `gallery-${tag}`, file }),
@@ -63,6 +120,7 @@ export async function uploadGalleryImageAction(formData: FormData): Promise<Acti
       name,
       imageUrl: publicUrl,
       imageUrlB: urlB,
+      variantFilter,
       adminId: session.admin.id,
     });
     await recordAdminAction({
@@ -70,7 +128,7 @@ export async function uploadGalleryImageAction(formData: FormData): Promise<Acti
       action: "galleryImage.create",
       entityType: "DesignGalleryImage",
       entityId: row.id,
-      metadata: { tag, name },
+      metadata: { tag, name, ...(variantFilter ? { variantFilter } : {}) },
     });
     revalidatePath("/admin/disenos");
     return {};
@@ -91,16 +149,18 @@ export async function uploadGalleryImageAction(formData: FormData): Promise<Acti
  * Modo "Una sola imagen (ambas caras)": la tira vertical en formato doblez
  * (cara A abajo derecha, cara B arriba rotada 180°) se parte a la mitad;
  * la cara B se normaliza rotándola 180° (ver gallery-strip.ts). Valida la
- * proporción contra los tamaños de variante del producto antes de subir.
+ * proporción contra los tamaños de variante del producto antes de subir —
+ * Fase 5: si el diseño lleva variantFilter.sizeCm, solo contra ESE tamaño.
  */
 async function uploadStripMode(input: {
   tag: string;
   name: string;
   file: File;
   swapFaces: boolean;
+  variantFilter: VariantFilter | null;
   adminId: string;
 }): Promise<ActionResult> {
-  const { tag, name, file, swapFaces, adminId } = input;
+  const { tag, name, file, swapFaces, variantFilter, adminId } = input;
   if (file.size === 0) return { error: "El archivo está vacío." };
   if (file.size > MAX_UPLOAD_BYTES) {
     return { error: `El archivo excede ${MAX_UPLOAD_BYTES / 1024 / 1024} MB.` };
@@ -111,7 +171,10 @@ async function uploadStripMode(input: {
     return { error: "El archivo no es una imagen válida (jpg/png/webp/avif)." };
   }
 
-  const expected = await getGalleryStripExpectations(tag);
+  const expected = await getGalleryStripExpectations(
+    tag,
+    typeof variantFilter?.sizeCm === "string" ? variantFilter.sizeCm : undefined,
+  );
   if (expected.length === 0) {
     return {
       error:
@@ -131,6 +194,7 @@ async function uploadStripMode(input: {
     name,
     imageUrl: upA.publicUrl,
     imageUrlB: upB.publicUrl,
+    variantFilter,
     adminId,
   });
   await recordAdminAction({
@@ -138,7 +202,14 @@ async function uploadStripMode(input: {
     action: "galleryImage.create",
     entityType: "DesignGalleryImage",
     entityId: row.id,
-    metadata: { tag, name, mode: "strip", matchedSizeCm: split.matchedSizeCm, swapFaces },
+    metadata: {
+      tag,
+      name,
+      mode: "strip",
+      matchedSizeCm: split.matchedSizeCm,
+      swapFaces,
+      ...(variantFilter ? { variantFilter } : {}),
+    },
   });
   revalidatePath("/admin/disenos");
   return {};

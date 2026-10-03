@@ -1,13 +1,24 @@
 /*
  * ADR-057 Fase B2 — Galería de diseños PREDISEÑADOS. Imágenes listas que el cliente aplica a un
- * slot en el editor (en vez de subir su foto). Agrupadas por `tag` (ej. "separadores"). El admin
- * las gestiona; el editor las ofrece + al elegir una, se llena el slot reusando el pipeline de foto.
+ * slot en el editor (en vez de subir su foto). Agrupadas por `tag` (ej. "separadores") y, desde la
+ * Fase 5 (2026-10-02), segregables por ATRIBUTO DE VARIANTE vía `variantFilter` (subset de
+ * ProductVariant.attributes, ej. {"sizeCm":"2×6"}; null = aplica a TODAS las variantes). El
+ * admin las gestiona; el editor las ofrece filtradas por la variante elegida + al elegir una,
+ * se llena el slot reusando el pipeline de foto. El matching es puro y vive en
+ * design-gallery-filter.ts (matchesVariantFilter).
  */
 
 import "server-only";
-import { prisma } from "@/lib/db";
+import { Prisma, prisma } from "@/lib/db";
+import { parseVariantAttributes } from "@/features/products/variant-schemas";
 import { parsePhotoProductConfig } from "./schemas";
 import { resolvePersonalizationSurface } from "./surface";
+import {
+  buildVariantFilterOptions,
+  matchesVariantFilter,
+  type VariantFilter,
+  type VariantFilterOption,
+} from "./design-gallery-filter";
 
 export type GalleryImage = {
   id: string;
@@ -15,16 +26,39 @@ export type GalleryImage = {
   imageUrl: string;
   /** Ola 21 — URL opcional de la cara B (pares A/B para separadores). */
   imageUrlB?: string | null;
+  /**
+   * Fase 5 — subset de attributes de variante al que aplica el diseño
+   * (ej. { sizeCm: "2×6" }). null/undefined = aplica a TODAS las variantes.
+   */
+  variantFilter?: VariantFilter | null;
 };
 
-/** Diseños prediseñados activos de un tag, para el editor (público). */
-export async function listGalleryImages(tag: string): Promise<GalleryImage[]> {
+/**
+ * Diseños prediseñados activos de un tag, para el editor (público).
+ *
+ * Fase 5 — con `variantAttributes` (attributes de la variante elegida en el
+ * Estudio) filtra por subset-match: entran las filas con variantFilter null
+ * (aplican a todas) + las cuyo filtro es subset de esos attributes
+ * (matchesVariantFilter). Filtrado en memoria: la cardinalidad por tag es
+ * chica (decenas) y el criterio puro ya está testeado — un where Json de
+ * Prisma no expresa subset-match. SIN `variantAttributes` (undefined) se
+ * devuelve todo el tag: comportamiento histórico para callers que no conocen
+ * la variante. OJO: `{}` sí filtra (variante sin attributes declarados → solo
+ * diseños sin filtro).
+ */
+export async function listGalleryImages(
+  tag: string,
+  variantAttributes?: Record<string, unknown>,
+): Promise<GalleryImage[]> {
   const rows = await prisma.designGalleryImage.findMany({
     where: { tag, isActive: true, deletedAt: null },
     orderBy: { order: "asc" },
-    select: { id: true, name: true, imageUrl: true, imageUrlB: true },
+    select: { id: true, name: true, imageUrl: true, imageUrlB: true, variantFilter: true },
   });
-  return rows;
+  if (variantAttributes === undefined) return rows as GalleryImage[];
+  return (rows as GalleryImage[]).filter((r) =>
+    matchesVariantFilter(r.variantFilter, variantAttributes),
+  );
 }
 
 /** Ola 21 — Lee el diseño prediseñado completo (cara A y cara B). Es el reader de la acción de llenar slot. */
@@ -51,6 +85,13 @@ export type GalleryTagOption = {
   label: string;
   /** true si el producto tiene 2 caras de diseño (facesPerUnit=2 → pares A/B, separadores). */
   needsFaceB: boolean;
+  /**
+   * Fase 5 — opciones del selector "Aplica a" (filtro por atributo de variante),
+   * derivadas de las variantes ACTIVAS del producto (buildVariantFilterOptions:
+   * el primer atributo filtrable con >1 valor, prioriza sizeCm). [] = el
+   * producto no varía por atributos filtrables → solo "Todas las variantes".
+   */
+  variantFilterOptions: VariantFilterOption[];
 };
 
 /**
@@ -68,7 +109,15 @@ export type GalleryTagOption = {
 export async function listGalleryTagOptions(): Promise<GalleryTagOption[]> {
   const products = await prisma.product.findMany({
     where: { isActive: true, deletedAt: null },
-    select: { name: true, slug: true, personalizationKind: true, personalizationSchema: true },
+    select: {
+      name: true,
+      slug: true,
+      personalizationKind: true,
+      personalizationSchema: true,
+      // Fase 5 — attributes de las variantes activas: alimentan el selector
+      // "Aplica a" del admin (filtro por atributo de variante).
+      variants: { where: { isActive: true }, select: { attributes: true } },
+    },
     orderBy: { name: "asc" },
   });
   const seen = new Set<string>();
@@ -94,9 +143,49 @@ export async function listGalleryTagOptions(): Promise<GalleryTagOption[]> {
       tag,
       label: p.name,
       needsFaceB: parsePhotoProductConfig(p.personalizationSchema).facesPerUnit === 2,
+      variantFilterOptions: buildVariantFilterOptions(
+        p.variants.map((v) => parseVariantAttributes(v.attributes)),
+      ),
     });
   }
   return options;
+}
+
+/**
+ * Attributes (parseados) de las variantes ACTIVAS del producto dueño de un tag
+ * de galería — misma resolución de tag que listGalleryTagOptions (galleryTag
+ * explícito o, sin él, el slug si la superficie es de foto). La usa la
+ * validación del upload (variantFilterMatchesAnyVariant: el filtro debe
+ * corresponder a una variante real) y las expectativas de tira
+ * (gallery-strip.ts). [] si el tag no resuelve producto.
+ */
+export async function listGalleryTagVariantAttributes(
+  tag: string,
+): Promise<Record<string, unknown>[]> {
+  const products = await prisma.product.findMany({
+    where: { isActive: true, deletedAt: null },
+    select: {
+      slug: true,
+      personalizationKind: true,
+      personalizationSchema: true,
+      variants: { where: { isActive: true }, select: { attributes: true } },
+    },
+  });
+  for (const p of products) {
+    const schema = p.personalizationSchema as { galleryTag?: unknown } | null;
+    const explicit = typeof schema?.galleryTag === "string" ? schema.galleryTag : null;
+    const resolved =
+      explicit ??
+      (resolvePersonalizationSurface(
+        p.personalizationKind,
+        p.personalizationSchema as Record<string, unknown> | null,
+      ).surface === "photo"
+        ? p.slug
+        : null);
+    if (resolved !== tag) continue;
+    return p.variants.map((v) => parseVariantAttributes(v.attributes));
+  }
+  return [];
 }
 
 export type AdminGalleryImage = {
@@ -105,12 +194,14 @@ export type AdminGalleryImage = {
   name: string;
   imageUrl: string;
   imageUrlB: string | null;
+  /** Fase 5 — subset de attributes de variante al que aplica (null = todas). */
+  variantFilter: VariantFilter | null;
   isActive: boolean;
   order: number;
 };
 
 export async function listGalleryAdmin(tag?: string): Promise<AdminGalleryImage[]> {
-  return prisma.designGalleryImage.findMany({
+  const rows = await prisma.designGalleryImage.findMany({
     where: { deletedAt: null, ...(tag ? { tag } : {}) },
     orderBy: [{ tag: "asc" }, { order: "asc" }],
     select: {
@@ -119,10 +210,12 @@ export async function listGalleryAdmin(tag?: string): Promise<AdminGalleryImage[
       name: true,
       imageUrl: true,
       imageUrlB: true,
+      variantFilter: true,
       isActive: true,
       order: true,
     },
   });
+  return rows as AdminGalleryImage[];
 }
 
 export async function createGalleryImage(opts: {
@@ -130,6 +223,8 @@ export async function createGalleryImage(opts: {
   name: string;
   imageUrl: string;
   imageUrlB?: string | null;
+  /** Fase 5 — filtro por atributo de variante (null/omitido = todas las variantes). */
+  variantFilter?: VariantFilter | null;
   adminId: string;
 }): Promise<{ id: string }> {
   const count = await prisma.designGalleryImage.count({
@@ -141,6 +236,7 @@ export async function createGalleryImage(opts: {
       name: opts.name,
       imageUrl: opts.imageUrl,
       imageUrlB: opts.imageUrlB ?? null,
+      variantFilter: opts.variantFilter ?? Prisma.DbNull,
       order: count,
       isActive: true,
       createdBy: opts.adminId,
