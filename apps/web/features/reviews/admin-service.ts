@@ -188,6 +188,16 @@ export async function approveReview(id: string, adminUserId: string) {
   });
 }
 
+/**
+ * Featured flag de una reseña (2026-10-05) — lo consulta la página admin para el
+ * notice post-aprobar: si ya está destacada lo dice, si no, muestra el CTA
+ * "¿Mostrarla en la página principal? [Destacar]". null = reseña inexistente.
+ */
+export async function getReviewFeaturedFlag(id: string): Promise<boolean | null> {
+  const r = await prisma.review.findUnique({ where: { id }, select: { featured: true } });
+  return r?.featured ?? null;
+}
+
 export async function rejectReview(id: string, adminUserId: string) {
   // Rechazar = desaprobar (queda pending), no archivar — el admin puede
   // querer reaprobar después tras edición offline con el cliente.

@@ -4,6 +4,8 @@ import { useActionState, useState } from "react";
 import Link from "next/link";
 import { updateCouponAction, type CouponActionState } from "../actions";
 import { formatCOP } from "@/lib/format";
+import { Hint } from "@/components/ui/tooltip";
+import { SlugRestrictionSelect, type SlugOption } from "../slug-restriction-select";
 
 type EditableCoupon = {
   id: string;
@@ -34,7 +36,17 @@ type EditableCoupon = {
  * Fechas: se muestran como YYYY-MM-DD en hora Colombia (en-CA + timeZone
  * explícito, igual que el form de crear) — determinista en SSR e hidratación.
  */
-export function EditCouponForm({ coupon }: { coupon: EditableCoupon }) {
+export function EditCouponForm({
+  coupon,
+  categories,
+  products,
+}: {
+  coupon: EditableCoupon;
+  /** Categorías del catálogo (deletedAt null) y productos activos — alimentan
+   *  los multi-select de restricciones (mismos datos que el form de crear). */
+  categories: SlugOption[];
+  products: SlugOption[];
+}) {
   const [state, formAction, isPending] = useActionState<CouponActionState | null, FormData>(
     updateCouponAction,
     null,
@@ -191,7 +203,14 @@ export function EditCouponForm({ coupon }: { coupon: EditableCoupon }) {
             )}
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-600">Mínimo cantidad unidades</label>
+            <label className="mb-1 flex items-center gap-1 text-xs text-slate-600">
+              Mínimo cantidad unidades
+              <Hint content="Unidades totales del carrito elegible que el cliente debe llevar para que el cupón aplique (ej. 6 = mínimo 6 unidades). Si el cupón restringe por categoría o producto, solo cuentan las unidades elegibles.">
+                <span tabIndex={0} className="cursor-help text-slate-400">
+                  ⓘ
+                </span>
+              </Hint>
+            </label>
             <input
               name="requiresMinQuantity"
               type="number"
@@ -202,7 +221,14 @@ export function EditCouponForm({ coupon }: { coupon: EditableCoupon }) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-600">Máx usos totales</label>
+            <label className="mb-1 flex items-center gap-1 text-xs text-slate-600">
+              Máx usos totales
+              <Hint content="Tope GLOBAL de redenciones: entre todos los clientes el cupón solo se puede usar esta cantidad de veces. Distinto de «Máx usos por cliente», que limita cuántas veces lo usa cada cliente por separado.">
+                <span tabIndex={0} className="cursor-help text-slate-400">
+                  ⓘ
+                </span>
+              </Hint>
+            </label>
             <input
               name="maxUses"
               type="number"
@@ -213,7 +239,14 @@ export function EditCouponForm({ coupon }: { coupon: EditableCoupon }) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-slate-600">Máx usos por cliente</label>
+            <label className="mb-1 flex items-center gap-1 text-xs text-slate-600">
+              Máx usos por cliente
+              <Hint content="Cuántas veces puede usar el cupón CADA cliente (identificado por su email/teléfono). ej. 1 = promoción de una sola vez por persona.">
+                <span tabIndex={0} className="cursor-help text-slate-400">
+                  ⓘ
+                </span>
+              </Hint>
+            </label>
             <input
               name="maxUsesPerCustomer"
               type="number"
@@ -224,25 +257,35 @@ export function EditCouponForm({ coupon }: { coupon: EditableCoupon }) {
             />
           </div>
           <div className="md:col-span-2">
-            <label className="mb-1 block text-xs text-slate-600">
-              Solo aplica en categorías (slugs separados por coma)
+            <label className="mb-1 flex items-center gap-1 text-xs text-slate-600">
+              Solo aplica en estas categorías
+              <Hint content="El descuento solo se aplica a productos de las categorías elegidas. Vacío = aplica a TODO el catálogo. Si también eliges productos abajo, basta con que el item cumpla una de las dos condiciones.">
+                <span tabIndex={0} className="cursor-help text-slate-400">
+                  ⓘ
+                </span>
+              </Hint>
             </label>
-            <input
+            <SlugRestrictionSelect
               name="appliesToCategories"
-              defaultValue={coupon.appliesToCategories.join(", ")}
-              placeholder="ej. de-temporada,cuadros-decoracion"
-              className="w-full rounded border border-slate-300 px-2 py-1 font-mono text-xs"
+              options={categories}
+              initialSelected={coupon.appliesToCategories}
+              placeholder="Buscar categoría…"
             />
           </div>
           <div className="md:col-span-2">
-            <label className="mb-1 block text-xs text-slate-600">
-              Solo aplica en productos (slugs separados por coma)
+            <label className="mb-1 flex items-center gap-1 text-xs text-slate-600">
+              Solo aplica en estos productos
+              <Hint content="El descuento solo se aplica a los productos elegidos. Vacío = aplica a TODO el catálogo. Si también eliges categorías arriba, basta con que el item cumpla una de las dos condiciones.">
+                <span tabIndex={0} className="cursor-help text-slate-400">
+                  ⓘ
+                </span>
+              </Hint>
             </label>
-            <input
+            <SlugRestrictionSelect
               name="appliesToProductSlugs"
-              defaultValue={coupon.appliesToProductSlugs.join(", ")}
-              placeholder="ej. big-box-dia-mama,cuadro-15x15-con-foto"
-              className="w-full rounded border border-slate-300 px-2 py-1 font-mono text-xs"
+              options={products}
+              initialSelected={coupon.appliesToProductSlugs}
+              placeholder="Buscar producto…"
             />
           </div>
         </div>

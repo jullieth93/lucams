@@ -17,6 +17,7 @@ const {
   recordAdminAction,
   processPaidOrder,
   sealManuallyResolvedWebhookEvents,
+  orderUpdateMany,
 } = vi.hoisted(() => ({
   state: {
     aal: null as {
@@ -29,13 +30,14 @@ const {
   recordAdminAction: vi.fn(async () => {}),
   processPaidOrder: vi.fn(async () => ({ status: "ok", trackingNumber: "TRK-1" })),
   sealManuallyResolvedWebhookEvents: vi.fn(async () => ({ sealed: 2 })),
+  orderUpdateMany: vi.fn(async () => ({ count: 1 })),
 }));
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock("@/lib/db", () => ({ prisma: {} }));
+vi.mock("@/lib/db", () => ({ prisma: { order: { updateMany: orderUpdateMany } } }));
 vi.mock("@/lib/admin-rbac-guard", () => ({
   requireAdminAction: vi.fn(async () => ({
     user: { id: "sb_user_1" },
@@ -65,7 +67,7 @@ vi.mock("@/features/anti-abuse/blocklist-service", () => ({
   BlocklistError: class BlocklistError extends Error {},
 }));
 
-import { refundOrderAction, retryShipmentAction } from "./actions";
+import { refundOrderAction, retryShipmentAction, markOrderReconciledAction } from "./actions";
 
 const NOW = new Date("2026-09-04T15:00:00Z");
 const NOW_SEC = Math.floor(NOW.getTime() / 1000);
@@ -252,5 +254,54 @@ describe("retryShipmentAction — sellado de webhooks tras resolución manual (N
 
     expect(res.success).toMatch(/TRK-8/);
     expect(res.error).toBeUndefined();
+  });
+});
+
+describe("markOrderReconciledAction — cierre manual de reconciliación (2026-10-05)", () => {
+  function reconForm(orderId = "order_1", note = "Refund emitido en Wompi y confirmado"): FormData {
+    const fd = new FormData();
+    fd.set("orderId", orderId);
+    fd.set("note", note);
+    return fd;
+  }
+
+  it("sin nota de resolución → RECHAZA sin tocar la orden ni auditar", async () => {
+    const res = await markOrderReconciledAction(null, reconForm("order_1", "   "));
+
+    expect(res.error).toMatch(/nota de resolución/);
+    expect(orderUpdateMany).not.toHaveBeenCalled();
+    expect(recordAdminAction).not.toHaveBeenCalled();
+  });
+
+  it("flag prendido → apaga needsReconciliation, persiste nota/quién/cuándo y audita", async () => {
+    const res = await markOrderReconciledAction(null, reconForm());
+
+    expect(res.error).toBeUndefined();
+    expect(orderUpdateMany).toHaveBeenCalledWith({
+      where: { id: "order_1", needsReconciliation: true },
+      data: expect.objectContaining({
+        needsReconciliation: false,
+        reconciliationNote: "Refund emitido en Wompi y confirmado",
+        reconciledBy: "adm_1",
+        reconciledAt: NOW,
+      }),
+    });
+    expect(recordAdminAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "order.reconcile",
+        entityId: "order_1",
+        metadata: { note: "Refund emitido en Wompi y confirmado" },
+      }),
+    );
+    expect(res.success).toMatch(/gestionada/);
+  });
+
+  it("flag ya apagado (count 0) → error claro, sin auditoría", async () => {
+    orderUpdateMany.mockResolvedValueOnce({ count: 0 });
+
+    const res = await markOrderReconciledAction(null, reconForm());
+
+    expect(res.error).toMatch(/no está marcado para reconciliar/);
+    expect(recordAdminAction).not.toHaveBeenCalled();
   });
 });

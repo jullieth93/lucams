@@ -9,13 +9,22 @@ import { useState } from "react";
 import { SubmitButton } from "@/components/admin/submit-button";
 import { approveDesignAction, rejectDesignAction } from "./actions";
 
-export function ModerationActions({ designId }: { designId: string }) {
+export function ModerationActions({
+  designId,
+  pedidoFilter = "",
+}: {
+  designId: string;
+  /** Filtro ?pedido= activo en la cola: se manda oculto para que el redirect
+   *  tras aprobar/rechazar lo conserve (2026-10-05). */
+  pedidoFilter?: string;
+}) {
   const [rejecting, setRejecting] = useState(false);
 
   if (rejecting) {
     return (
       <form action={rejectDesignAction} className="flex flex-col gap-2">
         <input type="hidden" name="designId" value={designId} />
+        {pedidoFilter && <input type="hidden" name="pedido" value={pedidoFilter} />}
         <textarea
           name="reason"
           required
@@ -43,6 +52,7 @@ export function ModerationActions({ designId }: { designId: string }) {
     <div className="flex flex-col gap-2">
       <form action={approveDesignAction}>
         <input type="hidden" name="designId" value={designId} />
+        {pedidoFilter && <input type="hidden" name="pedido" value={pedidoFilter} />}
         <SubmitButton
           label="Aprobar para imprimir"
           variant="primary"

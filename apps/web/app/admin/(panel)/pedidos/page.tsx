@@ -304,19 +304,37 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
                         <AdminBadge tone={STATUS_TONE[o.status] ?? "slate"}>
                           {STATUS_LABEL[o.status] ?? o.status}
                         </AdminBadge>
-                        {/* #6 — flag visible de reconciliación pendiente. */}
+                        {/* #6 — flag visible de reconciliación pendiente + motivo
+                            legible (2026-10-05): el tooltip solo se veía al hover;
+                            la razón corta va a la vista, la completa sigue en el Hint. */}
                         {o.needsReconciliation && (
                           <Hint
                             content={
-                              o.reconciliationReason ?? "Pago cobrado sin stock — requiere atención"
+                              o.reconciliationReason ??
+                              "Pago cobrado sin stock — requiere gestión manual: decide reembolso o producción de stock y ciérrala desde el detalle del pedido."
                             }
+                            contentClassName="max-w-sm"
                           >
                             <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-800">
                               🔴 Reconciliar
                             </span>
                           </Hint>
                         )}
+                        {/* Flujo regalo (2026-10-05): pedido que lo recibe otra
+                            persona — empacar sin precios visibles. */}
+                        {o.isGift && (
+                          <Hint content="Es regalo: lo recibe otra persona. Empacar sin factura ni precios visibles.">
+                            <span className="border-brand-purple/30 bg-brand-purple/10 text-brand-purple-dark inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold">
+                              🎁 Regalo
+                            </span>
+                          </Hint>
+                        )}
                       </div>
+                      {o.needsReconciliation && o.reconciliationReason && (
+                        <p className="mt-1 line-clamp-2 max-w-xs text-[10px] leading-snug text-red-800/90">
+                          {o.reconciliationReason}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {o.trackingNumber ? (

@@ -291,6 +291,31 @@ function SidebarContent({
   onNavigate: () => void;
 }) {
   const activeHref = activeNavHref(pathname);
+  const groups = filterNavByRole(NAV, admin.role as AdminRole);
+
+  /*
+   * Acordeón EXCLUSIVO (2026-10-05): un solo grupo expandido a la vez. El estado
+   * vive acá (antes cada NavGroupExpandable tenía su propio useState y expandir
+   * uno no colapsaba los demás). Inicial: el grupo del item activo; si no hay,
+   * el primer grupo con defaultOpen (comportamiento previo).
+   * Colapsar el grupo activo a mano es válido (toggle a null).
+   */
+  const [openGroupTitle, setOpenGroupTitle] = useState<string | null>(() => {
+    const withActive = groups.find((g) => g.items?.some((it) => it.href === activeHref));
+    if (withActive) return withActive.title;
+    return groups.find((g) => g.items && g.defaultOpen)?.title ?? null;
+  });
+
+  // Al NAVEGAR, abre el grupo que contiene el item activo (antes hasActive solo
+  // se evaluaba en mount: un grupo colapsado con la ruta activa quedaba cerrado
+  // para siempre). Depende de pathname — un toggle manual no lo re-dispara.
+  // queueMicrotask: react-hooks/set-state-in-effect prefiere setState diferido.
+  useEffect(() => {
+    const gs = filterNavByRole(NAV, admin.role as AdminRole);
+    const withActive = gs.find((g) => g.items?.some((it) => it.href === activeNavHref(pathname)));
+    if (withActive) queueMicrotask(() => setOpenGroupTitle(withActive.title));
+  }, [pathname, admin.role]);
+
   return (
     <div className="relative z-10 flex h-full flex-col overflow-y-auto">
       {/* Header brand */}
@@ -316,13 +341,17 @@ function SidebarContent({
           solo lo que les corresponde (lib/admin-rbac). */}
       <nav className="flex-1 px-3 py-4">
         <ul className="flex flex-col gap-0.5">
-          {filterNavByRole(NAV, admin.role as AdminRole).map((group) => (
+          {groups.map((group) => (
             <NavGroupItem
               key={group.title}
               group={group}
               activeHref={activeHref}
               unreadNotifications={unreadNotifications}
               onNavigate={onNavigate}
+              open={openGroupTitle === group.title}
+              onToggle={() =>
+                setOpenGroupTitle((cur) => (cur === group.title ? null : group.title))
+              }
             />
           ))}
         </ul>
@@ -437,11 +466,16 @@ function NavGroupItem({
   activeHref,
   unreadNotifications,
   onNavigate,
+  open,
+  onToggle,
 }: {
   group: NavGroup;
   activeHref: string | null;
   unreadNotifications: number;
   onNavigate: () => void;
+  /** Acordeón exclusivo: estado elevado a SidebarContent. */
+  open: boolean;
+  onToggle: () => void;
 }) {
   if (!group.items) {
     const isActive = group.href != null && group.href === activeHref;
@@ -491,6 +525,8 @@ function NavGroupItem({
       activeHref={activeHref}
       unreadNotifications={unreadNotifications}
       onNavigate={onNavigate}
+      open={open}
+      onToggle={onToggle}
     />
   );
 }
@@ -500,22 +536,26 @@ function NavGroupExpandable({
   activeHref,
   unreadNotifications,
   onNavigate,
+  open,
+  onToggle,
 }: {
   group: NavGroup;
   activeHref: string | null;
   unreadNotifications: number;
   onNavigate: () => void;
+  /** Controlado desde SidebarContent (acordeón exclusivo). */
+  open: boolean;
+  onToggle: () => void;
 }) {
   const items = group.items ?? [];
   const hasActive = items.some((it) => it.href === activeHref);
-  const [open, setOpen] = useState(group.defaultOpen ?? hasActive);
   const Icon = group.icon;
 
   return (
     <li>
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={onToggle}
         aria-expanded={open}
         className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors ${
           hasActive

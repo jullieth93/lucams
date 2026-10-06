@@ -47,6 +47,8 @@ export async function approveDesignAction(formData: FormData): Promise<void> {
 
   const designId = String(formData.get("designId") ?? "").trim();
   if (!designId) redirect("/admin/moderacion?error=" + encodeURIComponent("Falta el diseño."));
+  // Conserva el filtro ?pedido= de la cola tras el redirect (2026-10-05).
+  const pedido = String(formData.get("pedido") ?? "").trim();
 
   await approveDesign(designId, session.admin.id);
   await recordAdminAction({
@@ -57,7 +59,7 @@ export async function approveDesignAction(formData: FormData): Promise<void> {
   });
   revalidatePath("/admin/moderacion");
   revalidatePath("/admin/dashboard");
-  redirect("/admin/moderacion?approved=1");
+  redirect(`/admin/moderacion?approved=1${pedido ? `&pedido=${encodeURIComponent(pedido)}` : ""}`);
 }
 
 export async function rejectDesignAction(formData: FormData): Promise<void> {
@@ -74,6 +76,8 @@ export async function rejectDesignAction(formData: FormData): Promise<void> {
         encodeURIComponent("Escribe un motivo del rechazo (mínimo 5 caracteres)."),
     );
   }
+  // Conserva el filtro ?pedido= de la cola tras el redirect (2026-10-05).
+  const pedido = String(formData.get("pedido") ?? "").trim();
 
   const result = await rejectDesign(designId, session.admin.id, reason);
   await recordAdminAction({
@@ -88,5 +92,5 @@ export async function rejectDesignAction(formData: FormData): Promise<void> {
 
   revalidatePath("/admin/moderacion");
   revalidatePath("/admin/dashboard");
-  redirect("/admin/moderacion?rejected=1");
+  redirect(`/admin/moderacion?rejected=1${pedido ? `&pedido=${encodeURIComponent(pedido)}` : ""}`);
 }

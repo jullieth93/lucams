@@ -419,11 +419,75 @@ export default async function AdminPedidoDetallePage({
               {ship.notes && (
                 <div className="text-brand-muted mt-2 text-xs italic">Nota: {ship.notes}</div>
               )}
+              {/* Flujo regalo (2026-10-05): la guía sale a nombre de quien recibe;
+                  la facturación sigue siendo del comprador. */}
+              {order.recipientName && (
+                <div className="border-brand-purple/20 bg-brand-purple/5 mt-3 rounded-md border px-3 py-2">
+                  <p className="text-brand-purple-dark text-xs font-bold">
+                    🎁 Lo recibe otra persona
+                  </p>
+                  <p className="text-brand-purple-dark mt-0.5 text-xs">
+                    Recibe: <strong>{order.recipientName}</strong>
+                    {order.recipientPhone ? ` · Tel ${order.recipientPhone}` : ""} — la guía sale a
+                    su nombre.
+                  </p>
+                  {order.isGift && (
+                    <p className="mt-1 text-[11px] font-semibold text-amber-800">
+                      Es regalo: empacar SIN factura ni precios visibles.
+                    </p>
+                  )}
+                  {order.isGift && order.giftMessage && (
+                    <p className="text-brand-muted mt-1 text-xs italic">
+                      Mensaje para la tarjeta: “{order.giftMessage}”
+                    </p>
+                  )}
+                </div>
+              )}
             </Card>
           </div>
 
           {/* Sidebar: totales + pago + envío + acciones */}
           <div className="space-y-4 lg:col-span-1">
+            {/* Reconciliación (2026-10-05) — motivo de la alerta y, si ya se
+                gestionó, la nota de resolución con quién/cuándo. */}
+            {(order.needsReconciliation || order.reconciledAt) && (
+              <Card icon={<Undo2 className="h-4 w-4" />} title="Reconciliación">
+                {order.needsReconciliation ? (
+                  <>
+                    <p className="text-[11px] font-bold text-red-800">
+                      🔴 Pendiente — requiere gestión manual
+                    </p>
+                    {order.reconciliationReason && (
+                      <p className="mt-1 text-xs text-red-900">{order.reconciliationReason}</p>
+                    )}
+                    <p className="text-brand-muted mt-1.5 text-[11px]">
+                      Cuando lo resuelvas (refund en Wompi, stock, etc.), ciérralo con «Marcar
+                      reconciliación como gestionada» en Acciones.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[11px] font-bold text-emerald-800">✔ Gestionada</p>
+                    {order.reconciliationReason && (
+                      <p className="text-brand-muted mt-1 text-[11px]">
+                        Motivo original: {order.reconciliationReason}
+                      </p>
+                    )}
+                    {order.reconciliationNote && (
+                      <p className="mt-1 text-xs text-emerald-900">
+                        Resolución: {order.reconciliationNote}
+                      </p>
+                    )}
+                    {order.reconciledAt && (
+                      <p className="text-brand-muted mt-1 text-[10px]">
+                        Cerrada el {dateFmt.format(order.reconciledAt)}
+                      </p>
+                    )}
+                  </>
+                )}
+              </Card>
+            )}
+
             {/* Totales */}
             <Card icon={<Box className="h-4 w-4" />} title="Totales">
               <dl className="space-y-1.5 text-sm">
@@ -612,6 +676,7 @@ export default async function AdminPedidoDetallePage({
               isNoShow={!!order.noShowAt}
               hasAddressKey={!!order.shippingAddressKey}
               isInternalDelivery={isInternalDelivery}
+              needsReconciliation={order.needsReconciliation}
             />
           </div>
         </div>

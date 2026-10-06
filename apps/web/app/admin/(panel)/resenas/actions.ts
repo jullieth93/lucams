@@ -48,7 +48,13 @@ export async function approveReviewAction(formData: FormData): Promise<void> {
   logger.info({ event: "admin.review.approved", adminId: session.admin.id, reviewId: id });
 
   revalidateForReview(productSlug);
-  redirect("/admin/resenas?approved=1");
+  // Aprobar NO destaca (paso manual a propósito): el id va en la URL para que la
+  // página muestre el CTA "¿Mostrarla en la página principal? [Destacar]" (2026-10-05).
+  redirect(
+    `/admin/resenas?approved=1&approvedId=${encodeURIComponent(id)}${
+      productSlug ? `&slug=${encodeURIComponent(productSlug)}` : ""
+    }`,
+  );
 }
 
 export async function rejectReviewAction(formData: FormData): Promise<void> {
@@ -168,7 +174,9 @@ export async function bulkApproveReviewsAction(formData: FormData): Promise<void
   revalidatePath("/admin/dashboard");
   revalidatePath("/");
   redirect(
-    `/admin/resenas?bulkOk=${encodeURIComponent(`${result.count} reseñas aprobadas y publicadas.`)}`,
+    `/admin/resenas?bulkOk=${encodeURIComponent(
+      `${result.count} reseñas aprobadas: ya salen en sus páginas de producto. Para mostrar alguna en la página principal, usa el botón ★ Destacar de su fila (aprobar no las destaca).`,
+    )}`,
   );
 }
 

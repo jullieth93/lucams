@@ -151,11 +151,13 @@ export default async function GuiaEntregaPage({ params }: { params: Promise<{ nu
           </p>
         </section>
 
-        {/* Destinatario */}
+        {/* Destinatario — con flujo regalo, a nombre de quien recibe (misma
+            regla que la guía Aveonline: resolveShipmentRecipient). */}
         <section className="border-b border-black py-1">
           <p className="text-[8px] font-bold tracking-wide uppercase">Entregar a</p>
           <p className="font-bold">
-            {ship.fullName ?? "—"} · Tel {order.phone || ship.phone || "—"}
+            {order.recipientName ?? ship.fullName ?? "—"} · Tel{" "}
+            {order.recipientPhone ?? order.phone ?? ship.phone ?? "—"}
           </p>
           <p>{[ship.addressLine1, ship.addressLine2].filter(Boolean).join(" · ")}</p>
           <p>

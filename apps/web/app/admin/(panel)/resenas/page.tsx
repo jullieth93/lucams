@@ -31,7 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Hint } from "@/components/ui/tooltip";
 import { getCurrentAdmin } from "@/lib/auth";
-import { listReviewsAdmin } from "@/features/reviews/admin-service";
+import { getReviewFeaturedFlag, listReviewsAdmin } from "@/features/reviews/admin-service";
 import {
   approveReviewAction,
   archiveReviewAction,
@@ -89,6 +89,16 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
   const productId = productIdRaw && /^c[a-z0-9]{24}$/.test(productIdRaw) ? productIdRaw : undefined;
   const page = Number(sp.page) || 1;
 
+  // CTA post-aprobar (2026-10-05): aprobar NO destaca a propósito, pero el paso
+  // debe ser visible. El redirect trae el id de la reseña aprobada; acá se
+  // consulta si ya está destacada para mostrar el CTA o la confirmación.
+  const approvedIdRaw = pickString(sp, "approvedId");
+  const approvedId =
+    approvedIdRaw && /^c[a-z0-9]{24}$/.test(approvedIdRaw) ? approvedIdRaw : undefined;
+  const approvedSlug = pickString(sp, "slug");
+  const approvedFeatured =
+    sp.approved === "1" && approvedId ? await getReviewFeaturedFlag(approvedId) : null;
+
   const { items, total, totalPages, pendingCount } = await listReviewsAdmin({
     q,
     status,
@@ -138,20 +148,40 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
 
       <AdminPageBody>
         <AdminNotice tone="info">
-          <strong>¿Cómo modera?</strong> Las reseñas llegan pendientes. Si te gustan, las{" "}
-          <strong>apruebas</strong> y aparecen en la PDP del producto. Las mejores las{" "}
-          <strong>destacas</strong> y rotan en la home. Si el contenido no sirve, las{" "}
-          <strong>archivas</strong> (no se edita texto ajeno — Ley 1480).
+          <strong>¿Cómo modera?</strong> Las reseñas llegan pendientes y tienen dos pasos
+          independientes: al <strong>aprobarla</strong> sale en la página del producto; si además
+          quieres que rote en la página principal, dale <strong>★ Destacar</strong> (aprobar NO la
+          destaca sola). Si el contenido no sirve, la <strong>archivas</strong> (no se edita texto
+          ajeno — Ley 1480).
         </AdminNotice>
 
-        {sp.approved === "1" && <AdminNotice tone="success">Reseña aprobada.</AdminNotice>}
+        {sp.approved === "1" && (
+          <AdminNotice tone="success">
+            Reseña aprobada — ya sale en la página del producto.{" "}
+            {approvedId && approvedFeatured === false && (
+              <>
+                ¿Mostrarla también en la página principal?{" "}
+                <form action={toggleFeaturedReviewAction} className="ml-1 inline">
+                  <input type="hidden" name="id" value={approvedId} />
+                  {approvedSlug && <input type="hidden" name="productSlug" value={approvedSlug} />}
+                  <button type="submit" className="font-bold underline">
+                    ★ Destacar
+                  </button>
+                </form>
+              </>
+            )}
+            {approvedFeatured === true && "Además ya está destacada: también rota en la home."}
+          </AdminNotice>
+        )}
         {sp.rejected === "1" && (
           <AdminNotice tone="warning">Reseña marcada como pendiente.</AdminNotice>
         )}
         {sp.bulkOk && <AdminNotice tone="success">{String(sp.bulkOk)}</AdminNotice>}
         {sp.bulkError && <AdminNotice tone="error">{String(sp.bulkError)}</AdminNotice>}
         {sp.featured === "1" && (
-          <AdminNotice tone="success">Reseña destacada en la home.</AdminNotice>
+          <AdminNotice tone="success">
+            Reseña destacada: además de la página del producto, ahora rota en la página principal.
+          </AdminNotice>
         )}
         {sp.unfeatured === "1" && (
           <AdminNotice tone="warning">Reseña quitada de destacadas.</AdminNotice>

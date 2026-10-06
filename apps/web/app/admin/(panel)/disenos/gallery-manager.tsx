@@ -20,6 +20,15 @@
  * reorden con flechas (swap de `order` con el adyacente del grupo visible:
  * mismo variantFilter del chip activo) y sección colapsable "Archivados" por
  * producto con Restaurar (vuelven pausados).
+ *
+ * Colapsable por producto (2026-10-05): cada sección es un <details>
+ * CONTROLADO (estado openByTag) — un <details> no controlado pierde su estado
+ * interno si el componente re-renderiza con otro árbol y React no ofrece
+ * defaultOpen. Estado inicial: solo el primer producto expandido. Con búsqueda
+ * activa se FUERZAN abiertas todas (si no, los resultados quedarían invisibles
+ * tras secciones colapsadas). Se eligió colapsable sobre selector-de-un-producto
+ * porque conserva el panorama completo (contadores en cada summary) y permite
+ * comparar productos sin perder el contexto.
  */
 
 import { useEffect, useRef, useState, useTransition } from "react";
@@ -184,6 +193,9 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
   const [chipByTag, setChipByTag] = useState<Record<string, string>>({});
   const [bulkChoiceByTag, setBulkChoiceByTag] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
+  // Colapsable por producto (2026-10-05): override explícito por tag; sin
+  // override, abierto solo el primer producto. Con búsqueda, todo abierto.
+  const [openByTag, setOpenByTag] = useState<Record<string, boolean>>({});
 
   const needsFaceB = tagOptions.find((t) => t.tag === tag)?.needsFaceB ?? false;
   // Opciones "Aplica a" del producto elegido ([] = no varía por atributos
@@ -669,264 +681,292 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
         {notice && <p className="text-sm font-semibold text-emerald-700">{notice}</p>}
         {error && <p className="text-sm text-rose-600">{error}</p>}
       </div>
-      {byTag.map((group) => {
+      {byTag.map((group, groupIndex) => {
         const chip = chipByTag[group.tag] ?? "all";
         const showChips = group.variantFilterOptions.length > 0;
         const bulkChoice = bulkChoiceByTag[group.tag] ?? "";
+        // Colapsable controlado: con búsqueda activa la sección se fuerza
+        // abierta (los resultados no pueden quedar escondidos).
+        const isOpen = normalizedQuery ? true : (openByTag[group.tag] ?? groupIndex === 0);
+        const toggleOpen = () => setOpenByTag((m) => ({ ...m, [group.tag]: !isOpen }));
         return (
           <section key={group.tag}>
-            <h3 className="text-brand-purple-dark mb-2 text-lg font-semibold">{group.label}</h3>
-
-            {/* Fase 5b — chips por variante con contador. Solo si el producto
-                varía por un atributo filtrable (si no, todo diseño es "Todas"). */}
-            {showChips && (
-              <div
-                className="mb-3 flex flex-wrap gap-1.5"
-                role="group"
-                aria-label="Filtrar por variante"
+            <details
+              open={isOpen}
+              className="border-brand-purple/10 rounded-2xl border bg-white/40 px-4 py-3"
+            >
+              {/* preventDefault + estado controlado: el toggle nativo del
+                  summary desincronizaría openByTag. */}
+              <summary
+                onClick={(e) => {
+                  e.preventDefault();
+                  toggleOpen();
+                }}
+                className="text-brand-purple-dark mb-3 flex cursor-pointer items-center gap-2 text-lg font-semibold select-none"
               >
-                {[
-                  { key: "all", label: "Todas", count: group.counts.all },
-                  ...group.variantFilterOptions.map((o) => ({
-                    key: JSON.stringify(o.filter),
-                    label: o.label,
-                    count: group.counts.byOption.get(JSON.stringify(o.filter)) ?? 0,
-                  })),
-                  { key: "unassigned", label: "Sin asignar", count: group.counts.unassigned },
-                ].map((c) => (
-                  <button
-                    key={c.key}
-                    type="button"
-                    onClick={() => setChipByTag((m) => ({ ...m, [group.tag]: c.key }))}
-                    aria-pressed={chip === c.key}
-                    className={
-                      "inline-flex items-center gap-1 rounded-full border-2 px-2.5 py-1 text-xs font-semibold transition-colors " +
-                      (chip === c.key
-                        ? "border-brand-purple bg-brand-purple text-white"
-                        : "border-brand-purple/20 text-brand-purple-dark hover:border-brand-purple/40 bg-white")
-                    }
-                  >
-                    {c.label}
-                    <span
+                <ChevronDown
+                  className={`h-4 w-4 transition-transform ${isOpen ? "" : "-rotate-90"}`}
+                />
+                <span>{group.label}</span>
+                <span className="text-brand-muted text-xs font-semibold">
+                  · {group.counts.all} {group.counts.all === 1 ? "diseño" : "diseños"}
+                  {group.archived.length > 0 &&
+                    ` · ${group.archived.length} archivado${group.archived.length === 1 ? "" : "s"}`}
+                </span>
+              </summary>
+
+              {/* Fase 5b — chips por variante con contador. Solo si el producto
+                varía por un atributo filtrable (si no, todo diseño es "Todas"). */}
+              {showChips && (
+                <div
+                  className="mb-3 flex flex-wrap gap-1.5"
+                  role="group"
+                  aria-label="Filtrar por variante"
+                >
+                  {[
+                    { key: "all", label: "Todas", count: group.counts.all },
+                    ...group.variantFilterOptions.map((o) => ({
+                      key: JSON.stringify(o.filter),
+                      label: o.label,
+                      count: group.counts.byOption.get(JSON.stringify(o.filter)) ?? 0,
+                    })),
+                    { key: "unassigned", label: "Sin asignar", count: group.counts.unassigned },
+                  ].map((c) => (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => setChipByTag((m) => ({ ...m, [group.tag]: c.key }))}
+                      aria-pressed={chip === c.key}
                       className={
-                        "rounded-full px-1.5 text-[10px] tabular-nums " +
-                        (chip === c.key ? "bg-white/25" : "bg-brand-purple/10")
+                        "inline-flex items-center gap-1 rounded-full border-2 px-2.5 py-1 text-xs font-semibold transition-colors " +
+                        (chip === c.key
+                          ? "border-brand-purple bg-brand-purple text-white"
+                          : "border-brand-purple/20 text-brand-purple-dark hover:border-brand-purple/40 bg-white")
                       }
                     >
-                      {c.count}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Fase 5b — asignación masiva: solo si hay diseños sin asignar y
-                el producto tiene opciones de filtro. */}
-            {showChips && group.counts.unassigned > 0 && (
-              <div className="border-brand-turquoise/40 bg-brand-turquoise/10 mb-3 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2">
-                <Layers className="text-brand-purple-dark h-4 w-4 shrink-0" />
-                <span className="text-brand-purple-dark text-xs font-semibold">
-                  {group.counts.unassigned} sin asignar:
-                </span>
-                <select
-                  value={bulkChoice}
-                  onChange={(e) =>
-                    setBulkChoiceByTag((m) => ({ ...m, [group.tag]: e.target.value }))
-                  }
-                  aria-label={`Variante a asignar en ${group.label}`}
-                  className="border-brand-purple/25 rounded-lg border-2 bg-white px-2 py-1 text-xs outline-none"
-                >
-                  <option value="">Elegir variante…</option>
-                  {group.variantFilterOptions.map((o) => (
-                    <option key={JSON.stringify(o.filter)} value={JSON.stringify(o.filter)}>
-                      {o.label}
-                    </option>
+                      {c.label}
+                      <span
+                        className={
+                          "rounded-full px-1.5 text-[10px] tabular-nums " +
+                          (chip === c.key ? "bg-white/25" : "bg-brand-purple/10")
+                        }
+                      >
+                        {c.count}
+                      </span>
+                    </button>
                   ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => onBulkAssign(group, group.counts.unassigned)}
-                  disabled={pending || !bulkChoice}
-                  className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
-                >
-                  {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                  Asignar a todos los sin asignar
-                </button>
-              </div>
-            )}
+                </div>
+              )}
 
-            {group.items.length === 0 ? (
-              <p className="text-brand-muted text-sm italic">
-                {group.counts.all === 0
-                  ? normalizedQuery
-                    ? "Ningún diseño coincide con la búsqueda."
-                    : "Aún no hay diseños. Sube el primero arriba."
-                  : "No hay diseños con este filtro."}
-              </p>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6">
-                {group.items.map((it, idx) => {
-                  const previewB = formatPreview(it.imageUrlB);
-                  // B-5 — las flechas reordenan dentro del grupo del chip activo
-                  // (mismo variantFilter). Con chip "Todas" en productos con
-                  // variantes el grupo visible mezcla filtros → se deshabilitan;
-                  // con búsqueda activa la lista no refleja la adyacencia real.
-                  const reorderable =
-                    (group.variantFilterOptions.length === 0 || chip !== "all") && !normalizedQuery;
-                  return (
-                    <div
-                      key={it.id}
-                      className="border-brand-purple/12 relative rounded-xl border bg-white p-2 shadow-sm"
-                    >
-                      {/* Paquete A — click en la tarjeta abre el detalle (caras
+              {/* Fase 5b — asignación masiva: solo si hay diseños sin asignar y
+                el producto tiene opciones de filtro. */}
+              {showChips && group.counts.unassigned > 0 && (
+                <div className="border-brand-turquoise/40 bg-brand-turquoise/10 mb-3 flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2">
+                  <Layers className="text-brand-purple-dark h-4 w-4 shrink-0" />
+                  <span className="text-brand-purple-dark text-xs font-semibold">
+                    {group.counts.unassigned} sin asignar:
+                  </span>
+                  <select
+                    value={bulkChoice}
+                    onChange={(e) =>
+                      setBulkChoiceByTag((m) => ({ ...m, [group.tag]: e.target.value }))
+                    }
+                    aria-label={`Variante a asignar en ${group.label}`}
+                    className="border-brand-purple/25 rounded-lg border-2 bg-white px-2 py-1 text-xs outline-none"
+                  >
+                    <option value="">Elegir variante…</option>
+                    {group.variantFilterOptions.map((o) => (
+                      <option key={JSON.stringify(o.filter)} value={JSON.stringify(o.filter)}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => onBulkAssign(group, group.counts.unassigned)}
+                    disabled={pending || !bulkChoice}
+                    className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold text-white disabled:opacity-60"
+                  >
+                    {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                    Asignar a todos los sin asignar
+                  </button>
+                </div>
+              )}
+
+              {group.items.length === 0 ? (
+                <p className="text-brand-muted text-sm italic">
+                  {group.counts.all === 0
+                    ? normalizedQuery
+                      ? "Ningún diseño coincide con la búsqueda."
+                      : "Aún no hay diseños. Sube el primero arriba."
+                    : "No hay diseños con este filtro."}
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6">
+                  {group.items.map((it, idx) => {
+                    const previewB = formatPreview(it.imageUrlB);
+                    // B-5 — las flechas reordenan dentro del grupo del chip activo
+                    // (mismo variantFilter). Con chip "Todas" en productos con
+                    // variantes el grupo visible mezcla filtros → se deshabilitan;
+                    // con búsqueda activa la lista no refleja la adyacencia real.
+                    const reorderable =
+                      (group.variantFilterOptions.length === 0 || chip !== "all") &&
+                      !normalizedQuery;
+                    return (
+                      <div
+                        key={it.id}
+                        className="border-brand-purple/12 relative rounded-xl border bg-white p-2 shadow-sm"
+                      >
+                        {/* Paquete A — click en la tarjeta abre el detalle (caras
                         A/B lado a lado + ficha). El borrar sigue aparte. */}
-                      <button
-                        type="button"
-                        onClick={() => setDetail(it)}
-                        aria-label={`Ver detalle de ${it.name}`}
-                        aria-haspopup="dialog"
-                        className="focus:ring-brand-turquoise block w-full rounded-lg focus:ring-2 focus:outline-none"
+                        <button
+                          type="button"
+                          onClick={() => setDetail(it)}
+                          aria-label={`Ver detalle de ${it.name}`}
+                          aria-haspopup="dialog"
+                          className="focus:ring-brand-turquoise block w-full rounded-lg focus:ring-2 focus:outline-none"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element -- imagen del bucket público */}
+                          <img
+                            src={it.imageUrl}
+                            alt={it.name}
+                            className={
+                              "aspect-square w-full rounded-lg object-cover " +
+                              (it.isActive ? "" : "opacity-50 grayscale")
+                            }
+                          />
+                        </button>
+                        {previewB && (
+                          <span className="text-brand-purple-dark absolute top-2 left-2 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold shadow">
+                            A/B
+                          </span>
+                        )}
+                        {/* B-5 — pausados: atenuados + badge; NO aparecen en el Estudio. */}
+                        {!it.isActive && (
+                          <span className="absolute top-2 right-9 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-amber-700 shadow">
+                            Pausada
+                          </span>
+                        )}
+                        <Hint content={it.name}>
+                          <p className="text-brand-purple-dark mt-1 truncate text-xs font-semibold">
+                            {it.name}
+                          </p>
+                        </Hint>
+                        {/* Fase 5 — badge del filtro por variante ("2×6") o "Todas". */}
+                        <span
+                          className={
+                            "mt-0.5 inline-block rounded-full px-1.5 py-px text-[10px] font-semibold " +
+                            (it.variantFilter
+                              ? "bg-brand-turquoise/15 text-brand-purple-dark"
+                              : "bg-brand-purple/5 text-brand-muted")
+                          }
+                        >
+                          {describeVariantFilter(it.variantFilter)}
+                        </span>
+                        {/* B-5 — acciones de la tarjeta: visibilidad + reorden. */}
+                        <div className="mt-1 flex items-center justify-between gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              startTransition(async () => {
+                                const err = await onToggleActive(it.id, !it.isActive);
+                                if (err) setError(err);
+                              })
+                            }
+                            disabled={pending}
+                            aria-label={
+                              it.isActive
+                                ? `Pausar ${it.name} en el Estudio`
+                                : `Reactivar ${it.name} en el Estudio`
+                            }
+                            aria-pressed={it.isActive}
+                            title={it.isActive ? "Visible en el Estudio" : "Pausada"}
+                            className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1 disabled:opacity-50"
+                          >
+                            {it.isActive ? (
+                              <Eye className="h-3.5 w-3.5" />
+                            ) : (
+                              <EyeOff className="h-3.5 w-3.5 text-amber-700" />
+                            )}
+                          </button>
+                          {reorderable && (
+                            <span className="inline-flex items-center gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => onMove(it.id, "up")}
+                                disabled={pending || idx === 0}
+                                aria-label={`Subir ${it.name}`}
+                                className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1 disabled:opacity-30"
+                              >
+                                <ChevronUp className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onMove(it.id, "down")}
+                                disabled={pending || idx === group.items.length - 1}
+                                aria-label={`Bajar ${it.name}`}
+                                className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1 disabled:opacity-30"
+                              >
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onDelete(it.id)}
+                          disabled={pending}
+                          aria-label={`Borrar ${it.name}`}
+                          className="absolute top-1 right-1 rounded-full bg-white/90 p-1.5 text-rose-600 shadow hover:bg-rose-50 disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* B-5 — archivados (soft-deleted) del producto: sección colapsable
+                con Restaurar (vuelven pausados, al final del orden). */}
+              {group.archived.length > 0 && (
+                <details className="border-brand-purple/15 mt-3 rounded-xl border bg-white/60 px-3 py-2">
+                  <summary className="text-brand-purple-dark cursor-pointer text-xs font-semibold">
+                    Archivados ({group.archived.length})
+                  </summary>
+                  <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6 md:grid-cols-8">
+                    {group.archived.map((it) => (
+                      <div
+                        key={it.id}
+                        className="border-brand-purple/12 relative rounded-lg border bg-white p-1.5 opacity-75"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element -- imagen del bucket público */}
                         <img
                           src={it.imageUrl}
                           alt={it.name}
-                          className={
-                            "aspect-square w-full rounded-lg object-cover " +
-                            (it.isActive ? "" : "opacity-50 grayscale")
-                          }
+                          className="aspect-square w-full rounded-md object-cover grayscale"
                         />
-                      </button>
-                      {previewB && (
-                        <span className="text-brand-purple-dark absolute top-2 left-2 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold shadow">
-                          A/B
-                        </span>
-                      )}
-                      {/* B-5 — pausados: atenuados + badge; NO aparecen en el Estudio. */}
-                      {!it.isActive && (
-                        <span className="absolute top-2 right-9 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-amber-700 shadow">
-                          Pausada
-                        </span>
-                      )}
-                      <Hint content={it.name}>
-                        <p className="text-brand-purple-dark mt-1 truncate text-xs font-semibold">
-                          {it.name}
-                        </p>
-                      </Hint>
-                      {/* Fase 5 — badge del filtro por variante ("2×6") o "Todas". */}
-                      <span
-                        className={
-                          "mt-0.5 inline-block rounded-full px-1.5 py-px text-[10px] font-semibold " +
-                          (it.variantFilter
-                            ? "bg-brand-turquoise/15 text-brand-purple-dark"
-                            : "bg-brand-purple/5 text-brand-muted")
-                        }
-                      >
-                        {describeVariantFilter(it.variantFilter)}
-                      </span>
-                      {/* B-5 — acciones de la tarjeta: visibilidad + reorden. */}
-                      <div className="mt-1 flex items-center justify-between gap-1">
+                        <Hint content={it.name}>
+                          <p className="text-brand-purple-dark mt-1 truncate text-[10px] font-semibold">
+                            {it.name}
+                          </p>
+                        </Hint>
                         <button
                           type="button"
-                          onClick={() =>
-                            startTransition(async () => {
-                              const err = await onToggleActive(it.id, !it.isActive);
-                              if (err) setError(err);
-                            })
-                          }
+                          onClick={() => onRestore(it.id)}
                           disabled={pending}
-                          aria-label={
-                            it.isActive
-                              ? `Pausar ${it.name} en el Estudio`
-                              : `Reactivar ${it.name} en el Estudio`
-                          }
-                          aria-pressed={it.isActive}
-                          title={it.isActive ? "Visible en el Estudio" : "Pausada"}
-                          className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1 disabled:opacity-50"
+                          aria-label={`Restaurar ${it.name}`}
+                          className="text-brand-purple hover:bg-brand-purple/10 mt-0.5 inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[10px] font-semibold disabled:opacity-50"
                         >
-                          {it.isActive ? (
-                            <Eye className="h-3.5 w-3.5" />
-                          ) : (
-                            <EyeOff className="h-3.5 w-3.5 text-amber-700" />
-                          )}
+                          <ArchiveRestore className="h-3 w-3" />
+                          Restaurar
                         </button>
-                        {reorderable && (
-                          <span className="inline-flex items-center gap-0.5">
-                            <button
-                              type="button"
-                              onClick={() => onMove(it.id, "up")}
-                              disabled={pending || idx === 0}
-                              aria-label={`Subir ${it.name}`}
-                              className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1 disabled:opacity-30"
-                            >
-                              <ChevronUp className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onMove(it.id, "down")}
-                              disabled={pending || idx === group.items.length - 1}
-                              aria-label={`Bajar ${it.name}`}
-                              className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1 disabled:opacity-30"
-                            >
-                              <ChevronDown className="h-3.5 w-3.5" />
-                            </button>
-                          </span>
-                        )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => onDelete(it.id)}
-                        disabled={pending}
-                        aria-label={`Borrar ${it.name}`}
-                        className="absolute top-1 right-1 rounded-full bg-white/90 p-1.5 text-rose-600 shadow hover:bg-rose-50 disabled:opacity-50"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* B-5 — archivados (soft-deleted) del producto: sección colapsable
-                con Restaurar (vuelven pausados, al final del orden). */}
-            {group.archived.length > 0 && (
-              <details className="border-brand-purple/15 mt-3 rounded-xl border bg-white/60 px-3 py-2">
-                <summary className="text-brand-purple-dark cursor-pointer text-xs font-semibold">
-                  Archivados ({group.archived.length})
-                </summary>
-                <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6 md:grid-cols-8">
-                  {group.archived.map((it) => (
-                    <div
-                      key={it.id}
-                      className="border-brand-purple/12 relative rounded-lg border bg-white p-1.5 opacity-75"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element -- imagen del bucket público */}
-                      <img
-                        src={it.imageUrl}
-                        alt={it.name}
-                        className="aspect-square w-full rounded-md object-cover grayscale"
-                      />
-                      <Hint content={it.name}>
-                        <p className="text-brand-purple-dark mt-1 truncate text-[10px] font-semibold">
-                          {it.name}
-                        </p>
-                      </Hint>
-                      <button
-                        type="button"
-                        onClick={() => onRestore(it.id)}
-                        disabled={pending}
-                        aria-label={`Restaurar ${it.name}`}
-                        className="text-brand-purple hover:bg-brand-purple/10 mt-0.5 inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[10px] font-semibold disabled:opacity-50"
-                      >
-                        <ArchiveRestore className="h-3 w-3" />
-                        Restaurar
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </details>
-            )}
+                    ))}
+                  </div>
+                </details>
+              )}
+            </details>
           </section>
         );
       })}

@@ -1,12 +1,13 @@
 "use client";
 
 import { useActionState } from "react";
-import { RefreshCw, ArrowRight, X, Undo2, Ban, PackageX } from "lucide-react";
+import { RefreshCw, ArrowRight, X, Undo2, Ban, PackageX, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMfaReauthAction } from "@/components/admin/mfa-reauth";
 import {
   blockOrderAddressAction,
   markOrderNoShowAction,
+  markOrderReconciledAction,
   refundOrderAction,
   retryShipmentAction,
   transitionOrderAction,
@@ -24,6 +25,7 @@ export function OrderActions({
   isNoShow = false,
   hasAddressKey = false,
   isInternalDelivery = false,
+  needsReconciliation = false,
 }: {
   orderId: string;
   orderStatus: string;
@@ -35,6 +37,8 @@ export function OrderActions({
   hasAddressKey?: boolean;
   /** Envío propio Lucam's: NO hay guía Aveonline que (re)generar — la entrega es interna. */
   isInternalDelivery?: boolean;
+  /** Reconciliación pendiente: habilita "Marcar como gestionado" (2026-10-05). */
+  needsReconciliation?: boolean;
 }) {
   const [retryState, retryAction, retryPending] = useActionState(retryShipmentAction, null);
   const [transState, transAction, transPending] = useActionState(transitionOrderAction, null);
@@ -44,6 +48,7 @@ export function OrderActions({
     useMfaReauthAction(refundOrderAction);
   const [noShowState, noShowAction, noShowPending] = useActionState(markOrderNoShowAction, null);
   const [blockState, blockAction, blockPending] = useActionState(blockOrderAddressAction, null);
+  const [reconState, reconAction, reconPending] = useActionState(markOrderReconciledAction, null);
   const isCod = paymentMethod === "COD";
   // Anti-abuso COD: no-show para pedidos COD no entregados; bloquear dirección si hay clave.
   const showNoShow = isCod && !isNoShow && orderStatus !== "DELIVERED";
@@ -75,7 +80,8 @@ export function OrderActions({
     !showMarkDelivered &&
     !canCancel &&
     !canRefund &&
-    !showAntiAbuse
+    !showAntiAbuse &&
+    !needsReconciliation
   ) {
     return (
       <section className="border-brand-purple/10 rounded-xl border bg-white p-5 shadow-sm">
@@ -116,6 +122,60 @@ export function OrderActions({
         >
           {refundState.success ?? refundState.error}
         </div>
+      )}
+
+      {/* Reconciliación pendiente (2026-10-05) — cierre manual del caso con nota
+          OBLIGATORIA de resolución (queda en Order.reconciliationNote + auditoría).
+          Va de primero: es la alerta más urgente del pedido. */}
+      {needsReconciliation && (
+        <>
+          {(reconState?.success || reconState?.error) && (
+            <div
+              className={`rounded-md p-2 text-xs ${
+                reconState.success ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"
+              }`}
+            >
+              {reconState.success ?? reconState.error}
+            </div>
+          )}
+          <details
+            className="rounded-md border border-red-200 bg-red-50/40"
+            open={!!reconState?.error}
+          >
+            <summary className="cursor-pointer list-none rounded-md px-3 py-2 text-xs font-semibold text-red-800 hover:bg-red-50">
+              <ClipboardCheck className="mr-1.5 inline h-3.5 w-3.5" />
+              Marcar reconciliación como gestionada…
+            </summary>
+            <form action={reconAction} className="space-y-2 border-t border-red-100 p-3">
+              <input type="hidden" name="orderId" value={orderId} />
+              <label htmlFor="recon-note" className="text-brand-muted block text-[11px]">
+                Nota de resolución (obligatoria — qué hiciste para gestionar el caso)
+              </label>
+              <textarea
+                id="recon-note"
+                name="note"
+                rows={2}
+                required
+                minLength={5}
+                maxLength={500}
+                placeholder="Ej. refund emitido en Wompi el 05/10, cliente confirmó por WhatsApp…"
+                className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
+              />
+              <p className="text-[11px] text-red-800">
+                Apaga la alerta 🔴 de este pedido. Úsalo solo cuando el caso YA esté resuelto por
+                fuera del sistema (el motivo original queda guardado en el detalle).
+              </p>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={reconPending}
+                className="w-full bg-red-600 text-white hover:bg-red-700"
+              >
+                {reconPending ? "Guardando…" : "Confirmar: ya está gestionado"}
+              </Button>
+            </form>
+          </details>
+        </>
       )}
 
       {showRetry && (
