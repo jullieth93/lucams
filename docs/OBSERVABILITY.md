@@ -137,7 +137,8 @@ Panel para el dev/Claude:
 - **Salud de crons:** latido por job (`getCronHealth` — ya visible en `/admin/observability`).
 - **`pg_cron` últimos runs:** ¿están corriendo a tiempo?
 - **Órdenes a reconciliar** (pago vs stock inconsistente): count.
-- **Webhook events processed/failed last 7 days.**
+- **Webhook events processed/failed last 7 days** + tabla **«Webhooks recientes»** (últimos 12 con fuente, ID externo y estado procesado/pendiente — implementada 2026-10-06 en `/admin/observability` tras feedback STG: la recepción ya no exige consultar la DB a mano).
+- **Errores del servidor** con `digest` y stack expandible en `/admin/performance` (2026-10-05: el digest permite cruzar con Vercel Logs y agrupar ocurrencias; en prod Next enmascara los mensajes) + script `scripts/diag-stg/07-errores-recientes.sql` para volcarlos por CLI (crudos, por digest, y `ErrorReport` de cliente sin resolver).
 - **DB connection pool saturation.**
 - **Storage usage:** % del free tier consumido.
 
