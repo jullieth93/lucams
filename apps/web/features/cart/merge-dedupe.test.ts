@@ -126,7 +126,10 @@ vi.mock("@/lib/db", () => {
           data,
         }: {
           where: { id: { in: string[] }; sessionId: string; customerId: null };
-          data: { customerId: string; sessionId: null };
+          // adoptSessionDesigns (login): { customerId, sessionId: null };
+          // retargetSessionDesigns (recuperación sesión→sesión): { sessionId } —
+          // customerId no se toca.
+          data: { customerId?: string | null; sessionId?: string | null };
         }) => {
           let count = 0;
           for (const d of state.designs) {
@@ -136,8 +139,8 @@ vi.mock("@/lib/db", () => {
               d.sessionId === where.sessionId &&
               d.customerId === where.customerId
             ) {
-              d.customerId = data.customerId;
-              d.sessionId = data.sessionId;
+              if (data.customerId !== undefined) d.customerId = data.customerId;
+              if (data.sessionId !== undefined) d.sessionId = data.sessionId;
               count++;
             }
           }
@@ -400,5 +403,75 @@ describe("mergeCartsAdopt — dedupe por contenido (Paquete H)", () => {
     const items = itemsDe(target.id);
     expect(items).toHaveLength(1);
     expect(items[0].qty).toBe(5);
+  });
+});
+
+describe("mergeCartsAdopt — adopción de diseños anónimos (sesión→sesión)", () => {
+  /*
+   * Misma brecha de ownership que se corrigió en el login: el fold movía los
+   * CartItems al carrito recuperado pero los Designs quedaban con el sessionId del
+   * carrito source (borrado en el mismo fold) → «Editar» desde el carrito con la
+   * cookie del target no pasaba getOwnedDesign y el Estudio abría vacío. Ahora los
+   * diseños referenciados se re-sesionan al target en la misma transacción, con el
+   * mismo guard anti-adopción-ajena (sessionId exacto del origen + customerId null).
+   */
+  it("los diseños de los items movidos quedan con el sessionId del carrito target", async () => {
+    state.designs.push({ id: "d1", sessionId: "sess_source", customerId: null });
+    const target = seedCart({ sessionId: "sess_target", items: [] });
+    seedCart({ sessionId: "sess_source", items: [linea({ cartId: "", designId: "d1" })] });
+
+    await mergeCartsAdopt("sess_source", "sess_target");
+
+    expect(state.designs[0]).toEqual({ id: "d1", sessionId: "sess_target", customerId: null });
+    expect(itemsDe(target.id).some((i) => i.designId === "d1")).toBe(true);
+  });
+
+  it("también los diseños de items DEDUPLICADOS (fold por contenido) se re-sesionan", async () => {
+    // El item del source se funde en la línea del target (mismo contenido) y su
+    // Design queda huérfano; igual se re-sesiona (mismo criterio que el login:
+    // adoptar no cuesta y deja el ownership consistente).
+    const canvas = { version: 2, slots: [{ assetId: "foto-A" }] };
+    state.designs.push({ id: "d2", sessionId: "sess_source", customerId: null });
+    const target = seedCart({
+      sessionId: "sess_target",
+      items: [linea({ cartId: "", design: diseno("d1", canvas) })],
+    });
+    seedCart({
+      sessionId: "sess_source",
+      items: [linea({ cartId: "", design: diseno("d2", canvas) })],
+    });
+
+    await mergeCartsAdopt("sess_source", "sess_target");
+
+    expect(itemsDe(target.id)).toHaveLength(1);
+    expect(state.designs[0]).toEqual({ id: "d2", sessionId: "sess_target", customerId: null });
+  });
+
+  it("NO re-sesiona diseños ajenos: otra sesión o ya con customer quedan intactos", async () => {
+    state.designs.push(
+      { id: "d_otra_sesion", sessionId: "sess_otra", customerId: null },
+      { id: "d_de_customer", sessionId: "sess_source", customerId: "cust_9" },
+    );
+    seedCart({ sessionId: "sess_target", items: [] });
+    seedCart({
+      sessionId: "sess_source",
+      items: [
+        linea({ cartId: "", designId: "d_otra_sesion" }),
+        linea({ cartId: "", designId: "d_de_customer", variantId: "var_2" }),
+      ],
+    });
+
+    await mergeCartsAdopt("sess_source", "sess_target");
+
+    expect(state.designs[0]).toEqual({
+      id: "d_otra_sesion",
+      sessionId: "sess_otra",
+      customerId: null,
+    });
+    expect(state.designs[1]).toEqual({
+      id: "d_de_customer",
+      sessionId: "sess_source",
+      customerId: "cust_9",
+    });
   });
 });

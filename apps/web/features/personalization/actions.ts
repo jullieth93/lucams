@@ -70,7 +70,11 @@ function safeUploadMessage(err: unknown, fallback: string): string {
 
 // ──────────── Create draft ────────────
 
-export async function createDraftDesignAction(input: { productId: string; templateId?: string }) {
+export async function createDraftDesignAction(input: {
+  productId: string;
+  templateId?: string;
+  variantId?: string;
+}) {
   const parsed = CreateDraftDesignSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false as const, code: "VALIDATION" as const, message: parsed.error.message };
@@ -102,6 +106,7 @@ export async function createDraftDesignAction(input: { productId: string; templa
     const design = await createDraftDesign({
       productId: parsed.data.productId,
       templateId: parsed.data.templateId,
+      variantId: parsed.data.variantId,
       customerId,
       sessionId,
     });

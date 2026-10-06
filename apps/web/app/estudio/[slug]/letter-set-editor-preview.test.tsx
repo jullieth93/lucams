@@ -91,6 +91,7 @@ function renderEditor(
       | "initialWithBorder"
       | "initialColorTheme"
       | "initialUnitColors"
+      | "replacesCartDesignId"
     >
   >,
 ) {
@@ -209,6 +210,24 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
     expect(fd.get("slotCount")).toBe("1");
     expect(fd.get("preview")).toBeInstanceOf(Blob);
     expect(fd.get("production_0")).toBeInstanceOf(Blob);
+  });
+
+  // Edición desde el carrito (?designId=, 2026-10-05): el editor propaga el designId
+  // ORIGINAL como replaceDesignId → el carrito REEMPLAZA la línea vieja en sitio en
+  // vez de agregar una nueva (sin duplicar — mismo resultado UX que la superficie foto).
+  it("con replacesCartDesignId («Editar» desde el carrito): confirma con replaceDesignId", async () => {
+    renderEditor({ replacesCartDesignId: "design-original-1" });
+    await openPreview();
+
+    fireEvent.click(screen.getByRole("button", { name: /Sí, agregar al carrito/ }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/carrito?personalized=1"));
+    expect(addPersonalizedToCartAction).toHaveBeenCalledWith({
+      designId: "design-1",
+      qty: 1,
+      variantId: "var-1",
+      replaceDesignId: "design-original-1",
+    });
   });
 
   it("si el carrito falla, el mensaje se muestra DENTRO de la vista previa", async () => {

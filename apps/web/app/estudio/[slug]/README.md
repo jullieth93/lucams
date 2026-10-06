@@ -121,16 +121,43 @@ o sessionId anónimo) y cada superficie devuelve al editor lo persistido:
   default del primer estilo), `themeId`, `colors` efectivos por ficha y `withBorder`.
   Los colores se restauran como `activeColors` del snapshot de `useLetterColors`
   (índice a índice, sin depender del barajado aleatorio del tema).
-- **Set de letras (`letterset`)**: mismo criterio (solo lectura de metadata, sin clonar).
+  **Reemplazo en sitio (2026-10-05)**: al venir de `?designId=` con el diseño READY,
+  la página propaga `replacesCartDesignId` al editor y este lo manda como
+  `replaceDesignId` a `addPersonalizedToCart` → la línea que apuntaba al diseño
+  original queda apuntando al NUEVO (misma posición y qty, precio recalculado con
+  las letras nuevas), sin línea duplicada. A diferencia de la superficie foto acá
+  NO hay clon READY→DRAFT: el editor name nunca reusa el id (crea diseño nuevo sí o
+  sí), así que el reemplazo es DE REFERENCIA (la línea cambia de designId) — el
+  diseño original queda huérfano en READY, mismo manejo que los huérfanos del
+  dedupe por contenido (no se borra).
+- **Set de letras (`letterset`)**: mismo criterio (solo lectura de metadata, sin clonar
+  + reemplazo en sitio vía `replacesCartDesignId`).
   Se restauran `language`, `styleSetId`, `withBorder`, `unitCount` (nº de sets) y los
   colores por ficha de CADA set (`metadata.units[u].colors`; el set 0 cae al `colors`
   raíz en diseños de un set) como snapshots iniciales del Map multi-unidad.
+- **Variante del diseño (`metadata.variantId`, 2026-10-05)**: al crear el diseño desde
+  cualquier superficie se persiste la variante (`createDraftDesign` —foto NO-pack—,
+  `createNameDesign`, `createLetterSetDesign`; los packs de foto NO la guardan: su
+  variante exacta se deriva del canvasData en el carrito). El link «Editar» del
+  carrito sigue llevando SOLO `designId`: la página lee `metadata.variantId` del
+  diseño recuperado y entra al Estudio con ESA variante (`resolveRecoverVariantId`,
+  `lib/recover-variant.ts`) — antes caía a la primera del producto y mostraba el
+  precio equivocado en multi-variante. Un `?variant=` explícito siempre manda; un
+  variantId archivado o ausente (diseños legacy) cae a la primera variante, como
+  siempre. El clon de la superficie foto hereda la metadata → conserva la variante.
 - **Ownership tras login**: `mergeAnonCartIntoCustomer` (login/OTP) ADOPTA los diseños
   anónimos referenciados por los items mergeados (`adoptSessionDesigns`: `customerId`
   set, `sessionId` limpio, en la misma transacción del merge). Sin esto, tras loguearse
   el Design seguía con el sessionId anónimo y `getOwnedDesign({customerId})` devolvía
   null → el Estudio abría vacío. El guard del `where` (sessionId exacto + customerId
   null) impide adoptar diseños ajenos aunque un CartItem los referencie.
+- **Ownership en recuperación de carrito abandonado (2026-10-05)**: `mergeCartsAdopt`
+  (link del email, sesión→sesión) tenía la misma brecha — los items se foldaban al
+  carrito recuperado pero los Designs quedaban con el sessionId del carrito source
+  (borrado en el mismo fold). Ahora `retargetSessionDesigns` los re-sesiona al target
+  en la misma transacción, con el mismo guard (sessionId exacto del origen +
+  customerId null); si el cliente se loguea después, el merge de login los adopta
+  por la vía de siempre.
 
 ## Estructura de archivos
 
@@ -189,6 +216,8 @@ apps/web/app/estudio/[slug]/
     ├── cluster-layout.ts              # Clúster 3D a tamaño real (nevera/tablero): columnas
     │                                  #   balanceadas que se abren al superar el alto útil
     ├── canvas-migrate.ts              # migrateCanvasV1ToV2
+    ├── recover-variant.ts             # resolveRecoverVariantId: variante del recover
+    │                                  #   (?designId=) desde Design.metadata.variantId
     ├── photo-filters.ts               # 5 presets + apply Konva filters
     ├── filter-recache.ts              # Debounce del re-cache de filtros Konva en zoom (Paquete J)
     ├── slot-snapshot-cache.ts         # Cache de snapshots toDataURL por slot + yieldToMain (Paquete J);

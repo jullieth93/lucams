@@ -893,6 +893,28 @@ async function adoptSessionDesigns(
   });
 }
 
+/**
+ * Versión sesión→sesión de adoptSessionDesigns (recuperación de carrito abandonado,
+ * mergeCartsAdopt): los items del carrito `source` se foldan en el `target` pero los
+ * Designs seguían con el sessionId del source (que se borra en el mismo fold) → al dar
+ * «Editar» con la cookie del target, getOwnedDesign no los encontraba y el Estudio
+ * abría vacío. Mismo guard anti-adopción-ajena (sessionId exacto del origen +
+ * customerId null): un CartItem solo puede arrastrar diseños anónimos de ESTA sesión,
+ * nunca ajenos ni de un customer. El design conserva customerId null: si el cliente
+ * se loguea después, mergeAnonCartIntoCustomer lo adopta por la vía de siempre.
+ */
+async function retargetSessionDesigns(
+  tx: Pick<typeof prisma, "design">,
+  opts: { designIds: (string | null)[]; fromSessionId: string; toSessionId: string },
+): Promise<void> {
+  const ids = opts.designIds.filter((id): id is string => typeof id === "string");
+  if (ids.length === 0) return;
+  await tx.design.updateMany({
+    where: { id: { in: ids }, sessionId: opts.fromSessionId, customerId: null },
+    data: { sessionId: opts.toSessionId },
+  });
+}
+
 export async function mergeAnonCartIntoCustomer(
   anonSessionId: string,
   customerId: string,
@@ -987,6 +1009,9 @@ export async function mergeAnonCartIntoCustomer(
  * recuperado (target) para NO pisar lo que el cliente ya tenía. Mismo fold que mergeAnonCartIntoCustomer
  * (Paquete H: agrupa por CONTENIDO — variante + identidad del diseño — cap MAX_QTY_PER_ITEM). Se folda
  * hacia el target para preservar el FK AbandonedCart.cartId del carrito recuperado.
+ * Los diseños anónimos referenciados por los items movidos se RE-SESIÓNAN al target
+ * (retargetSessionDesigns, mismo guard que adoptSessionDesigns) — si no, quedaban con el
+ * sessionId del source ya borrado y «Editar» desde el carrito abría el Estudio vacío.
  */
 export async function mergeCartsAdopt(
   sourceSessionId: string,
@@ -1019,6 +1044,13 @@ export async function mergeCartsAdopt(
         });
       }
     }
+    // Los diseños anónimos referenciados por los items movidos siguen al carrito
+    // destino (misma transacción: si el fold falla, ningún diseño cambia a medias).
+    await retargetSessionDesigns(tx, {
+      designIds: source.items.map((i) => i.designId),
+      fromSessionId: sourceSessionId,
+      toSessionId: targetSessionId,
+    });
     await tx.cartItem.deleteMany({ where: { cartId: source.id } });
     await tx.cart.delete({ where: { id: source.id } });
   });

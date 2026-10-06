@@ -93,6 +93,7 @@ function renderEditor(extraProps?: {
   initialStyleId?: string | null;
   initialThemeId?: string;
   initialColors?: string[];
+  replacesCartDesignId?: string | null;
   styles?: {
     id: string;
     name: string;
@@ -213,6 +214,38 @@ describe("NameEditor — vista previa antes del carrito", () => {
 
     await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
     expect(addPersonalizedToCartAction).toHaveBeenCalledWith(expect.objectContaining({ qty: 1 }));
+  });
+
+  // Edición desde el carrito (?designId=, 2026-10-05): el editor propaga el designId
+  // ORIGINAL como replaceDesignId → el carrito REEMPLAZA la línea vieja en sitio en
+  // vez de agregar una nueva (sin duplicar — mismo resultado UX que la superficie foto).
+  it("con replacesCartDesignId («Editar» desde el carrito): confirma con replaceDesignId", async () => {
+    renderEditor({ initialName: "MATEO", replacesCartDesignId: "design-original-1" });
+    await openPreviewWith("MATEO");
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
+    expect(addPersonalizedToCartAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        designId: "design-name-1",
+        variantId: "var-1",
+        replaceDesignId: "design-original-1",
+      }),
+    );
+  });
+
+  it("sin replacesCartDesignId (flujo normal): confirma SIN replaceDesignId", async () => {
+    renderEditor();
+    await openPreviewWith("LUCIA");
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
+    expect(
+      (addPersonalizedToCartAction.mock.calls[0]![0] as { replaceDesignId?: string })
+        .replaceDesignId,
+    ).toBeUndefined();
   });
 
   // 2026-09-25 — nomenclatura imán/ficha según la variante (Ley 1480 art. 23):

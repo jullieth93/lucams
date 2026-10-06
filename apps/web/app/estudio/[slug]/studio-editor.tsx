@@ -682,6 +682,11 @@ export function StudioEditor({
           const result = await createDraftDesignAction({
             productId: product.id,
             ...(bootTemplate ? { templateId: bootTemplate.id } : {}),
+            // Variante de la PDP → metadata.variantId del draft: el recover
+            // (?designId=, «Editar» desde el carrito) reabre el Estudio con la
+            // variante correcta. Packs: NO se manda — la variante exacta se deriva
+            // del canvasData (la ruta del dinero no confía en el cliente).
+            ...(variantId && !isPhotoPack ? { variantId } : {}),
           });
           if (!result.ok) {
             throw new Error(result.message);
@@ -835,6 +840,7 @@ export function StudioEditor({
     bootUnitSlots,
     bootUnitCount,
     isPhotoPack,
+    variantId,
     packSizeCm,
     initialMagnet,
     templates,

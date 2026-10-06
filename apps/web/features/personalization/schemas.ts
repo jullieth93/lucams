@@ -247,6 +247,9 @@ export type CanvasData = z.infer<typeof CanvasDataSchema>;
 export const CreateDraftDesignSchema = z.object({
   productId: z.string().min(1),
   templateId: z.string().optional(),
+  // Variante de la PDP (foto NO-pack) → se persiste en metadata.variantId para el
+  // recover (?designId=). El server la re-valida contra el producto (anti-tamper).
+  variantId: z.string().min(1).optional(),
 });
 export type CreateDraftDesignInput = z.infer<typeof CreateDraftDesignSchema>;
 

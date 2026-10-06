@@ -106,6 +106,10 @@ type NameEditorProps = {
   /** Al re-abrir (?designId=): colores efectivos por ficha persistidos
    *  (metadata.colors) — se restauran tal cual (orden incluido). */
   initialColors?: string[];
+  /** Edición desde el carrito: id del diseño original que la línea del carrito
+   *  referencia hoy. Al confirmar se crea un diseño NUEVO y la línea vieja se
+   *  REEMPLAZA en sitio (replaceDesignId en addPersonalizedToCart) — sin duplicar. */
+  replacesCartDesignId?: string | null;
   /** Estilos ilustrados disponibles (Animales, Navidad…). Vacío = solo "Solo letra". */
   styles: LetterStyle[];
   /**
@@ -277,6 +281,7 @@ export function NameEditor({
   initialStyleId,
   initialThemeId,
   initialColors,
+  replacesCartDesignId,
 }: NameEditorProps) {
   const router = useRouter();
   const [raw, setRaw] = useState(initialName ?? "");
@@ -482,6 +487,8 @@ export function NameEditor({
         designId,
         qty: copies,
         variantId,
+        // Edición desde el carrito: la línea vieja se reemplaza en sitio (no duplicar).
+        replaceDesignId: replacesCartDesignId ?? undefined,
       });
       if (!added.ok) {
         setPreviewError(

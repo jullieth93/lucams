@@ -302,6 +302,7 @@ export function LetterSetEditor({
   initialWithBorder,
   initialColorTheme,
   initialUnitColors,
+  replacesCartDesignId,
   subtitle,
 }: {
   product: { id: string; slug: string; name: string };
@@ -340,6 +341,10 @@ export function LetterSetEditor({
    *  (metadata.units[u].colors; el set 0 cae al `colors` raíz en diseños de un set).
    *  Se restauran tal cual (orden incluido). */
   initialUnitColors?: string[][];
+  /** Edición desde el carrito: id del diseño original que la línea del carrito
+   *  referencia hoy. Al confirmar se crea un diseño NUEVO y la línea vieja se
+   *  REEMPLAZA en sitio (replaceDesignId en addPersonalizedToCart) — sin duplicar. */
+  replacesCartDesignId?: string | null;
   subtitle?: string;
 }) {
   const router = useRouter();
@@ -625,6 +630,8 @@ export function LetterSetEditor({
         designId: created.designId,
         qty: 1,
         variantId: currentVariantId,
+        // Edición desde el carrito: la línea vieja se reemplaza en sitio (no duplicar).
+        replaceDesignId: replacesCartDesignId ?? undefined,
       });
       if (!added.ok) {
         setPreviewError(fillStudioText(texts.exportar.errorCarritoSet, { error: added.message }));

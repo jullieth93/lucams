@@ -32,6 +32,7 @@ import {
 } from "@/features/personalization/letter-tiles";
 import { listGalleryImages } from "@/features/personalization/design-gallery";
 import { resolveGalleryTag } from "./lib/product-kind";
+import { resolveRecoverVariantId } from "./lib/recover-variant";
 import { NameEditor } from "./name-editor";
 import { LetterSetEditor } from "./letter-set-editor";
 import { peekCartSession } from "@/lib/cart-session";
@@ -111,10 +112,30 @@ export default async function EstudioPage({
   // (Abecedario Completo / Pack Vocales) SÍ abre el Estudio (color de marco). El
   // enrutador de superficie decide: los NONE sin marcador caen a direct-cart → redirect.
 
+  // Recover flow (?designId=): el dueño y el diseño se resuelven UNA vez acá y se
+  // reutilizan en las tres superficies (name / letterset / foto). Además la variante
+  // persistida al crear el diseño (metadata.variantId) alimenta selectedVariant más
+  // abajo: el link «Editar» del carrito solo trae designId y sin esto la variante
+  // caía a la primera del producto (precio mostrado incorrecto en multi-variante).
+  let recoverOwner: { customerId: string | null; sessionId: string | null } | null = null;
+  let recoverDesign: Awaited<ReturnType<typeof getOwnedDesign>> = null;
+  if (sp.designId) {
+    const customer = await getCurrentCustomer();
+    recoverOwner = {
+      customerId: customer?.customer.id ?? null,
+      sessionId: customer ? null : await peekCartSession(),
+    };
+    recoverDesign = await getOwnedDesign(sp.designId, recoverOwner);
+  }
+
   // M.3.b.CAT.4 — Si el query trae ?variant=id, mergear sus attributes
   // sobre el personalizationSchema base. Esto cambia photoSlots, sizeCm,
   // shape, etc. del editor según la variant elegida.
-  const requestedVariantId = typeof sp.variant === "string" ? sp.variant : undefined;
+  const requestedVariantId = resolveRecoverVariantId({
+    urlVariantId: typeof sp.variant === "string" ? sp.variant : undefined,
+    designMetadata: recoverDesign?.metadata ?? null,
+    productVariantIds: product.variants.map((v) => v.id),
+  });
   const selectedVariant =
     product.variants.find((v) => v.id === requestedVariantId) ?? product.variants[0] ?? null;
   const {
@@ -181,21 +202,21 @@ export default async function EstudioPage({
     // borde»); si no, el editor arrancaba vacío y el cliente perdía visualmente su
     // diseño. Sin la clave (diseños previos a la opción) withBorder queda en undefined
     // → el editor arranca en CON borde, lo histórico. El editor nunca reusa el id: al
-    // confirmar crea un diseño NUEVO, así que acá solo se LEE el metadata (sin clonar).
+    // confirmar crea un diseño NUEVO, así que acá solo se LEE el metadata (sin clonar)
+    // y se propaga `replacesCartDesignId` para que el carrito REEMPLACE la línea vieja
+    // en sitio (misma UX que la superficie foto, sin duplicar — ver README).
     let initialWithBorder: boolean | undefined;
     let initialName: string | undefined;
     let initialStyleId: string | null | undefined;
     let initialThemeId: string | undefined;
     let initialColors: string[] | undefined;
-    if (sp.designId) {
-      const customer = await getCurrentCustomer();
-      const sessionId = customer ? null : await peekCartSession();
-      const design = await getOwnedDesign(sp.designId, {
-        customerId: customer?.customer.id ?? null,
-        sessionId,
-      });
-      const meta = design?.metadata as Record<string, unknown> | null;
+    let replacesCartDesignId: string | null = null;
+    if (recoverDesign) {
+      const meta = recoverDesign.metadata as Record<string, unknown> | null;
       if (meta && meta.surface === "name") {
+        // Solo un diseño READY puede estar referenciado por una línea del carrito
+        // (el alta exige READY) → solo ahí hay algo que reemplazar.
+        if (recoverDesign.status === "READY") replacesCartDesignId = recoverDesign.id;
         if (typeof meta.withBorder === "boolean") initialWithBorder = meta.withBorder;
         // El display name normalizado es la forma exacta que diseñó el cliente;
         // fallback a las letras sueltas por diseños viejos sin la clave name.
@@ -265,6 +286,9 @@ export default async function EstudioPage({
               initialStyleId={initialStyleId}
               initialThemeId={initialThemeId}
               initialColors={initialColors}
+              // Edición desde el carrito: la línea que apuntaba al diseño original se
+              // reemplaza en sitio al confirmar (no duplicar).
+              replacesCartDesignId={replacesCartDesignId}
             />
           </StudioTextsProvider>
         </main>
@@ -285,22 +309,22 @@ export default async function EstudioPage({
     // ilustrado, borde, nº de sets y los colores por ficha de CADA set); sin esto la
     // rama ni siquiera leía el designId y el Estudio abría siempre en blanco. El editor
     // nunca reusa el id: al confirmar crea un diseño NUEVO, así que acá solo se LEE el
-    // metadata del diseño (sin clonar — mismo criterio que la superficie "name").
+    // metadata del diseño (sin clonar — mismo criterio que la superficie "name") y se
+    // propaga `replacesCartDesignId` para que el carrito REEMPLACE la línea vieja en
+    // sitio (sin duplicar).
     let recoveredLanguage: "es" | "en" | undefined;
     let recoveredStyleId: string | null | undefined;
     let recoveredWithBorder: boolean | undefined;
     let recoveredUnits: number | undefined;
     let recoveredThemeId: string | undefined;
     let recoveredUnitColors: string[][] | undefined;
-    if (sp.designId) {
-      const customer = await getCurrentCustomer();
-      const sessionId = customer ? null : await peekCartSession();
-      const design = await getOwnedDesign(sp.designId, {
-        customerId: customer?.customer.id ?? null,
-        sessionId,
-      });
-      const meta = design?.metadata as Record<string, unknown> | null;
+    let replacesCartDesignId: string | null = null;
+    if (recoverDesign) {
+      const meta = recoverDesign.metadata as Record<string, unknown> | null;
       if (meta && meta.surface === "letterset") {
+        // Solo un diseño READY puede estar referenciado por una línea del carrito
+        // (el alta exige READY) → solo ahí hay algo que reemplazar.
+        if (recoverDesign.status === "READY") replacesCartDesignId = recoverDesign.id;
         if (meta.language === "es" || meta.language === "en") recoveredLanguage = meta.language;
         if (typeof meta.withBorder === "boolean") recoveredWithBorder = meta.withBorder;
         if (typeof meta.frameTheme === "string") recoveredThemeId = meta.frameTheme;
@@ -392,6 +416,9 @@ export default async function EstudioPage({
               initialWithBorder={recoveredWithBorder}
               initialColorTheme={recoveredThemeId}
               initialUnitColors={recoveredUnitColors}
+              // Edición desde el carrito: la línea que apuntaba al diseño original se
+              // reemplaza en sitio al confirmar (no duplicar).
+              replacesCartDesignId={replacesCartDesignId}
               subtitle={letterSetSubtitle(
                 surface.config.letterSet,
                 letters.length,
@@ -537,11 +564,9 @@ export default async function EstudioPage({
   // carrito al finalizar (evita duplicar el item).
   let replacesCartDesignId: string | null = null;
 
-  if (sp.designId) {
-    const customer = await getCurrentCustomer();
-    const sessionId = customer ? null : await peekCartSession();
-    const owner = { customerId: customer?.customer.id ?? null, sessionId };
-    let design = await getOwnedDesign(sp.designId, owner);
+  if (sp.designId && recoverOwner) {
+    const owner = recoverOwner;
+    let design = recoverDesign;
     // Los diseños que están en el carrito son READY. "Editar" desde el carrito → clonamos a un
     // DRAFT editable (el original queda intacto: si el cliente abandona, el item del carrito
     // sigue válido) y al finalizar reemplazamos el item (no duplicar).

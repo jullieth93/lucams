@@ -956,6 +956,35 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
         }),
       ).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
     });
+
+    // Edición desde el carrito (2026-10-05) — superficie NAME: el editor crea un diseño
+    // NUEVO al confirmar y manda replaceDesignId → la línea vieja se REEMPLAZA en sitio
+    // (no duplica) y el precio se recalcula con las letras del nombre NUEVO.
+    it("replaceDesignId (edición desde el carrito): reemplaza en sitio y re-pricea por las letras nuevas", async () => {
+      const sessionId = sid("name-replace");
+      const before = await addPersonalizedToCart({
+        sessionId,
+        customerId: null,
+        designId: nameDesign5Id, // MATEO (5 fichas)
+        variantId: nameVariantId,
+        qty: 1,
+      });
+      expect(before.items).toHaveLength(1);
+      expect(before.items[0].designId).toBe(nameDesign5Id);
+      expect(before.items[0].unitPrice).toBe(5 * NAME_PER_TILE);
+
+      const after = await addPersonalizedToCart({
+        sessionId,
+        customerId: null,
+        designId: nameDesign3Id, // ANA (3 fichas) — la edición confirmada
+        variantId: nameVariantId,
+        qty: 1,
+        replaceDesignId: nameDesign5Id,
+      });
+      expect(after.items).toHaveLength(1); // sin duplicar
+      expect(after.items[0].designId).toBe(nameDesign3Id);
+      expect(after.items[0].unitPrice).toBe(3 * NAME_PER_TILE);
+    });
   });
 
   // ════════════════════════════════════════════════════════════════════════

@@ -648,6 +648,13 @@ async function findUsableEditableTemplate(opts: {
 export async function createDraftDesign(opts: {
   productId: string;
   templateId?: string;
+  /**
+   * Variante elegida en la PDP (superficie foto NO-pack). Se persiste en
+   * metadata.variantId para que el recover (?designId=, «Editar» desde el carrito)
+   * reabra el Estudio con la variante correcta (el link solo trae designId).
+   * Los packs de foto NO la mandan: su variante exacta se deriva del canvasData.
+   */
+  variantId?: string;
   customerId: string | null;
   sessionId: string | null;
 }) {
@@ -662,10 +669,21 @@ export async function createDraftDesign(opts: {
       id: true,
       personalizationKind: true,
       personalizationSchema: true,
+      // Solo para validar el variantId del caller (anti-tamper, mismo criterio
+      // que createNameDesign/createLetterSetDesign).
+      variants: opts.variantId
+        ? {
+            where: { id: opts.variantId, isActive: true, deletedAt: null },
+            select: { id: true },
+          }
+        : undefined,
     },
   });
   if (!product) {
     throw new Error(`createDraftDesign: product ${opts.productId} not found`);
+  }
+  if (opts.variantId && (product.variants?.length ?? 0) === 0) {
+    throw new Error("createDraftDesign: variant not found");
   }
 
   const photoConfig = parsePhotoProductConfig(product.personalizationSchema);
@@ -754,7 +772,12 @@ export async function createDraftDesign(opts: {
       sessionId: opts.sessionId,
       status: "DRAFT",
       canvasData: canvasData as unknown as Prisma.InputJsonValue,
-      metadata: { kind: product.personalizationKind, schemaVersion: 2 },
+      metadata: {
+        kind: product.personalizationKind,
+        schemaVersion: 2,
+        // Recover (?designId=): el Estudio reabre con ESTA variante (ver page.tsx).
+        ...(opts.variantId ? { variantId: opts.variantId } : {}),
+      },
     },
   });
 
@@ -858,6 +881,9 @@ export async function createNameDesign(opts: {
         letters: norm.letters,
         language: surface.config.language,
         variant: typeof merged.variant === "string" ? merged.variant : null,
+        // Recover (?designId=): variante con la que se creó el diseño — el Estudio
+        // reabre con ella (el link «Editar» del carrito solo trae designId).
+        variantId: opts.variantId,
         themeId: opts.themeId ?? "arcoiris",
         colors: Array.isArray(opts.colors) ? opts.colors.slice(0, norm.letters.length) : [],
         // Estilo ilustrado elegido (para producción). null = "Solo letra".
@@ -985,6 +1011,9 @@ export async function createLetterSetDesign(opts: {
         schemaVersion: 2,
         letterSet: schema.letterSet,
         language,
+        // Recover (?designId=): variante con la que se creó el diseño — el Estudio
+        // reabre con ella (el link «Editar» del carrito solo trae designId).
+        variantId: opts.variantId,
         frameTheme: opts.frameTheme,
         letters,
         // Color efectivo por ficha (para producción). Acotado al nº de letras del set.
