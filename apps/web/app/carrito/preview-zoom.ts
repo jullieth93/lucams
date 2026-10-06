@@ -4,8 +4,9 @@
  * La miniatura de la línea es pequeña y el PNG del diseño puede tener texto
  * chico (tiras/separadores): el cliente necesita acercar para revisarlo antes
  * de pagar. El estado del zoom vive en el componente; acá solo hay funciones
- * puras (clamp de escala, pasos de los botones, ratio del pinch, límite del
- * pan) para que la regla sea testeable sin montar el diálogo.
+ * puras (clamp de escala, pasos de los botones y de la rueda, ratio del pinch,
+ * pan anclado al cursor, límite del pan) para que la regla sea testeable sin
+ * montar el diálogo.
  *
  * Módulo PURO (sin server-only ni deps de react) → lo importan client y server.
  */
@@ -18,6 +19,12 @@ export const PREVIEW_ZOOM_MAX = 4;
 export const PREVIEW_ZOOM_STEP = 1.5;
 /** Zoom al alternar con doble click / doble tap. */
 export const PREVIEW_ZOOM_TOGGLE = 2;
+/**
+ * Factor por notch de rueda (×1.2 por tick — más fino que el ×1.5 de los
+ * botones: la rueda dispara ticks seguidos y un paso grueso no deja afinar;
+ * mismo criterio del paso "milimétrico" del Estudio, WHEEL_ZOOM_STEP).
+ */
+export const PREVIEW_ZOOM_WHEEL_STEP = 1.2;
 
 /** Clampa la escala al rango permitido [1, 4]. */
 export function clampPreviewZoom(scale: number): number {
@@ -40,6 +47,34 @@ export function pinchPreviewZoom(
 ): number {
   if (initialDistance <= 0) return clampPreviewZoom(initialScale);
   return clampPreviewZoom(initialScale * (currentDistance / initialDistance));
+}
+
+/**
+ * Escala tras un evento de rueda (deltaY > 0 = alejar): paso multiplicativo
+ * fino con clamp. deltaY = 0 (scroll horizontal puro) no cambia la escala.
+ */
+export function wheelPreviewZoom(scale: number, deltaY: number): number {
+  if (deltaY === 0) return clampPreviewZoom(scale);
+  const factor = deltaY > 0 ? 1 / PREVIEW_ZOOM_WHEEL_STEP : PREVIEW_ZOOM_WHEEL_STEP;
+  return clampPreviewZoom(scale * factor);
+}
+
+/**
+ * Pan en UN eje para que el punto del cursor (`point`, relativo al centro de
+ * la imagen sin transformar) quede fijo al pasar de oldScale a newScale. Con
+ * transform-origin en el centro, un punto a distancia p del centro se dibuja
+ * en p·s + offset; igualando antes/después: offset' = c − (c − offset)·(s'/s).
+ * El caller clampea el resultado con clampPanOffset (en los extremos el zoom
+ * degrada suave hacia el centro).
+ */
+export function zoomPanTowardPoint(
+  offset: number,
+  point: number,
+  oldScale: number,
+  newScale: number,
+): number {
+  if (oldScale <= 0) return offset;
+  return point - (point - offset) * (newScale / oldScale);
 }
 
 /**

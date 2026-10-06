@@ -31,6 +31,8 @@ const mocks = vi.hoisted(() => ({
     naturalHeight: number;
   },
   status: "loading",
+  /** URLs con que se invocó use-image (variante del chrome SVG elegida). */
+  imageSrcs: [] as string[],
   /** Props con que se invocó cada componente Konva mockeado, en orden de render. */
   konvaProps: [] as Array<{ name: string; props: Record<string, unknown> }>,
 }));
@@ -70,7 +72,12 @@ vi.mock("react-konva", async () => {
   };
 });
 
-vi.mock("use-image", () => ({ default: () => [mocks.image, mocks.status] }));
+vi.mock("use-image", () => ({
+  default: (src: string) => {
+    mocks.imageSrcs.push(src);
+    return [mocks.image, mocks.status];
+  },
+}));
 
 import { getShapeBoundingBox, makeShapeClipFunc, nextWheelScale, renderLayer } from "./studio-slot";
 import type { CanvasLayer, ImagePlaceholderLayer, SlotState } from "./types";
@@ -78,6 +85,7 @@ import type { CanvasLayer, ImagePlaceholderLayer, SlotState } from "./types";
 afterEach(() => cleanup());
 beforeEach(() => {
   mocks.konvaProps.length = 0;
+  mocks.imageSrcs.length = 0;
   mocks.image = null;
   mocks.status = "loading";
 });
@@ -400,6 +408,50 @@ describe("renderLayer — asset (chrome SVG)", () => {
     expect(img!.image).toBe(mocks.image);
     expect(img!.opacity).toBe(1);
     expect(img!.listening).toBe(false);
+    expect(mocks.imageSrcs).toContain("/templates/ig_post_3x4_dark.svg");
+  });
+
+  it("IG SIN BORDE con tarjeta oscura: pide la variante _dark_noborder (owner 2026-10-06)", () => {
+    // Con la paleta habilitada en «Sin borde», el negro pinta las franjas y el
+    // chrome (cabecera + iconos) debe salir en su variante oscura legible —
+    // la misma maquinaria de contraste del modo con borde, cableada al modo.
+    mocks.image = { width: 450, height: 600, naturalWidth: 450, naturalHeight: 600 };
+    mocks.status = "loaded";
+    render(
+      renderLayer(
+        assetLayer,
+        slot(),
+        STAGE,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { isIg: true, darkCardBg: true, noBorder: true },
+      ) as React.ReactElement,
+    );
+    expect(mocks.imageSrcs).toContain("/templates/ig_post_3x4_dark_noborder.svg");
+  });
+
+  it("IG SIN BORDE con tarjeta clara: variante _noborder clara (control)", () => {
+    mocks.image = { width: 450, height: 600, naturalWidth: 450, naturalHeight: 600 };
+    mocks.status = "loaded";
+    render(
+      renderLayer(
+        assetLayer,
+        slot(),
+        STAGE,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { isIg: true, darkCardBg: false, noBorder: true },
+      ) as React.ReactElement,
+    );
+    expect(mocks.imageSrcs).toContain("/templates/ig_post_3x4_noborder.svg");
   });
 });
 

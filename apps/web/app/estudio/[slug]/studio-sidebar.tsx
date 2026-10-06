@@ -123,7 +123,13 @@ export function StudioSidebar({
     try {
       const res = await applyPredesignedToSlot({ store, item, targetSlot, facesPerUnit });
       if (!res.ok) {
-        toast.error(res.message || texts.plantillas.toastError);
+        // Fix STG 2026-10-06 — "no-free-slot" no es un error: todos los
+        // lienzos ya tienen diseño y nunca se pisa contenido para abrir sitio.
+        toast.error(
+          res.reason === "no-free-slot"
+            ? texts.plantillas.toastSinLienzoLibre
+            : res.message || texts.plantillas.toastError,
+        );
         return;
       }
       toast.success(fillStudioText(texts.plantillas.toastPredisenado, { nombre: item.name }));

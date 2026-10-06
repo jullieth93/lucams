@@ -60,7 +60,8 @@ type MultiSlotCanvasData = {
   // null = sin marco. Viaja a la cotización y al render de producción.
   borderColor?: string | null;
   // Rediseño IG (2026-10-05) — modo sin-borde de la Polaroid Instagram como FLAG
-  // explícito (foto a lo ancho completo, franjas blancas intactas). Ausente =
+  // explícito (foto a lo ancho completo, franjas intactas; owner 2026-10-06: las
+  // franjas toman el color de tarjeta elegido — blanco/negro). Ausente =
   // diseño previo al flag → fallback por geometría (isInstagramNoBorder).
   igNoBorder?: boolean;
 };
@@ -511,11 +512,12 @@ packages/db/scripts/
 
 - **«Borde de foto» PRIMERO, «Color de tarjeta» DEBAJO** en `studio-style-toolbar.tsx`
   (ambas Polaroids y el resto de productos con marcos). _(El modo «Sin borde» de la
-  Instagram se REDEFINIÓ en el rediseño 2026-10-05: ancho completo con franjas
-  blancas, flag `igNoBorder` explícito y tarjeta forzada a blanco al entrar al
-  modo — excepción a la regla de no-reset del color, solo IG.)_ Con «Sin borde» la paleta de
+  Instagram se REDEFINIÓ dos veces: rediseño 2026-10-05 — ancho completo con franjas,
+  flag `igNoBorder` explícito y tarjeta forzada a blanco al entrar; owner 2026-10-06 —
+  la tarjeta YA NO se fuerza y la paleta queda ACTIVA en el modo: el color pinta las
+  franjas. Ver el fix de esa fecha más abajo.)_ Con «Sin borde» la paleta de
   color queda DESACTIVADA (visible pero inerte: `aria-disabled` + atenuada + aviso CMS
-  `estudio.texto.estilo-color-deshabilitado-hint`) en las plantillas Polaroid — la foto
+  `estudio.texto.estilo-color-deshabilitado-hint`) en la Polaroid Clásica — la foto
   cubre toda la tarjeta y el color no aplica — y en las TIRAS photobooth (aviso propio
   `estudio.texto.estilo-color-deshabilitado-hint-tira`): sin borde ya no hay canaletas
   entre fotos, así que `borderColor` no pinta nada. El estado NO se resetea (al volver
@@ -996,13 +998,22 @@ Validado por el owner en STG; tres cambios de producto sobre la plantilla IG:
     conocen el flag (grilla Konva, preview del modal, production-render-canvas)
     siguen acertando sin cambios, y los diseños creados antes del flag cargan
     intactos. `applyTemplate` limpia el flag (la plantilla nueva trae su rect).
-  - **Franjas SIEMPRE blancas**: al entrar a «Sin borde» la toolbar fuerza la
-    tarjeta blanca (excepción deliberada a la regla Ola 24 de "el color no se
-    resetea" — esa regla nació cuando la foto cubría todo y el color no
-    aplicaba; un negro residual ahora teñiría las franjas). La paleta sigue
-    desactivada en el modo, con hint propio (`estilo-color-deshabilitado-hint-ig`;
-    el hint genérico "la foto cubre toda la tarjeta" ya no describía a IG).
-    Clásica y tiras conservan la regla de no-reset intacta.
+  - **Franjas con color de tarjeta elegible (REDEFINIDO owner 2026-10-06).** Al
+    entrar a «Sin borde» la toolbar forzaba la tarjeta blanca y dejaba la paleta
+    inerte (excepción deliberada a la regla Ola 24 de "el color no se resetea":
+    un negro residual teñiría las franjas). El owner revirtió la excepción: la
+    paleta blanco/negro queda HABILITADA en el modo y el color elegido pinta las
+    franjas — la maquinaria de contraste ya existente cubre el modo sin cableado
+    extra (fondo binario `instagramBackgroundHex`, textos por capa `igTextFill`,
+    chrome `ig_post_3x4_dark_noborder.svg` vía `noBorderChromeSrc(src, true,
+dark)`), y producción/preview/3D heredan la misma geometría del canvasData
+    (WYSIWYG: IG hornea el PNG del cliente). El hint del modo pasó de "paleta
+    desactivada" a informativo (`estilo-color-sin-borde-hint-ig`: "el color pinta
+    las franjas de arriba y abajo de la foto"). Clásica y tiras conservan el
+    apagado de Ola 24 intacto. Contrato en `studio-style-toolbar.test.tsx`.
+    _(Texto original de la excepción, SUPERSEDED: "Franjas SIEMPRE blancas: al
+    entrar a «Sin borde» la toolbar fuerza la tarjeta blanca… La paleta sigue
+    desactivada en el modo, con hint propio (`estilo-color-deshabilitado-hint-ig`).")_
   - `photoBackingHexFor`: sin respaldo lateral en el modo (igNoBorder → null),
     como antes; las franjas viven fuera de la ventana → intactas. IG sigue
     horneando el PNG del cliente (chrome SVG → NEEDS_KONVA), así que producción
@@ -1085,8 +1096,9 @@ Validado por el owner en STG; tres cambios de producto sobre la plantilla IG:
   del diseño cae exactamente donde apuntó el cliente); si la A del par está
   ocupada → el siguiente par con la A libre, buscando hacia adelante y
   retomando desde el inicio; sin ninguna cara A libre → la aplicación FALLA
-  antes de subir el asset (toast de error, nunca se pisa contenido para abrir
-  sitio). Un prediseñado SIN cara B también ancla en cara A. La regla de
+  antes de subir el asset (nunca se pisa contenido para abrir sitio; owner
+  2026-10-06: con razón `no-free-slot` y toast informativo propio — ver el fix
+  de esa fecha más abajo). Un prediseñado SIN cara B también ancla en cara A. La regla de
   Paquete A se mantiene: una cara B ocupada nunca se pisa (`bBlocked` → toast
   CMS). `facesPerUnit` se pasa desde los dos call sites (sidebar y grid).
   Tests de la matriz de anclas en `lib/apply-predesigned.test.ts`.
@@ -1260,6 +1272,37 @@ de calendario / varios separadores demora mucho". Tres frentes:
   con padding sobre fondo neutro claro en `/carrito` (96px) y en el order-summary del
   checkout (48px). Fotos de catálogo siguen en `cover`. Sin tocar el pipeline de generación
   del preview ni el lightbox (`design-preview-dialog.tsx`).
+
+### Fixes STG (owner 2026-10-06) — modal de calidad en portal, toast sin-lienzo-libre, color en IG sin borde
+
+- **El `PhotoQualityModal` se veía DETRÁS de la grilla del lienzo (stacking).** El
+  modal (backdrop + tarjeta, `fixed z-50`) se renderizaba INLINE dentro del
+  `StudioSlot`, atrapado en el stacking context de la celda del grid (un
+  `motion.div` con `transform` de la animación de entrada crea contexto propio):
+  el z-50 pasaba a ser relativo a esa celda y las tarjetas del canvas (p.ej. la
+  grilla del calendario) se pintaban ENCIMA del modal y del backdrop. Fix:
+  homologar con los Radix Dialog del estudio — el modal y su backdrop ahora se
+  renderizan en PORTAL a `document.body` (`createPortal`), conservando z-50 (sigue
+  por encima del picker z-40, que es quien lo abre desde "Mis fotos"). Aplica a
+  los 3 call sites (chip del slot, sidebar, picker modal) de una vez. Los demás
+  modales/overlays del estudio (onboarding, panel IA, galería 3D, picker, preview,
+  overlays 3D) se montan en la raíz del editor, sin ancestros con transform —
+  verificados sin el problema.
+- **Toast correcto cuando no hay lienzo libre para un prediseñado.** Con todos los
+  lienzos ocupados (p.ej. separadores con todas las caras A con diseño), aplicar un
+  prediseñado fallaba con el toast genérico "No pudimos aplicar el diseño. Intenta
+  de nuevo." — no es un error, es la decisión deliberada de nunca pisar contenido.
+  `applyPredesignedToSlot` ahora devuelve `reason: "no-free-slot" | "error"` y los
+  dos call sites (clic del sidebar y drag & drop al lienzo) muestran el texto CMS
+  nuevo `estudio.plantillas.toast-sin-lienzo-libre`: "Todos los lienzos ya tienen
+  un diseño. Si quieres cambiar uno, bórralo primero." Tests extendidos en
+  `lib/apply-predesigned.test.ts` (razón no-free-slot sin subir asset; razón error
+  con el mensaje del servidor).
+- **Polaroid IG SIN BORDE con «Color de tarjeta» habilitado** (redefine la
+  excepción blanca del rediseño 2026-10-05 — ver su sección arriba): la toolbar ya
+  no fuerza el blanco al entrar al modo ni desactiva la paleta; el color
+  (blanco/negro, la paleta binaria de IG) pinta las franjas con contraste
+  automático de textos y chrome oscuro. Clásica y tiras conservan su apagado.
 
 ## DPI y sangrado (estado real 2026-10-05)
 

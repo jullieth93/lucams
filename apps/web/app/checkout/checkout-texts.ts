@@ -144,7 +144,9 @@ export type CheckoutTexts = {
      *  límite (settings LUCAMS_SHIPPING_CUTOFF_HOUR), inyectada por la página. */
     lucamsToday: string;
     /** Promesa "Envío Lucam's" cuando deliveryDays > 0 (fabricación + corte).
-     *  Token {{days}} = días hábiles calculados server-side. */
+     *  Tokens: {{daysLabel}} = cantidad con plural resuelto ("1 día hábil" /
+     *  "N días hábiles" — ver resolveLucamsPromise); {{days}} = solo el número
+     *  (back-compat con plantillas CMS antiguas). */
     lucamsDays: string;
     note: string;
     back: string;
@@ -337,8 +339,10 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     errorWa: "Contáctanos por WhatsApp",
     listTitle: "Opciones de envío",
     free: "Gratis",
-    lucamsToday: "Entrega hoy · pedido antes de las {{cutoff}}:00",
-    lucamsDays: "Entrega en {{days}} día(s) hábil(es) · fabricamos y entregamos con nuestro equipo",
+    lucamsToday:
+      "Te llega hoy mismo · entrega directa con nuestro equipo (pedido antes de las {{cutoff}}:00)",
+    lucamsDays:
+      "Te llega en {{daysLabel}} · lo fabricamos a mano y lo entrega nuestro equipo el mismo día que sale",
     note: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **despachamos en máximo 2 días hábiles** y el tránsito corre **después del despacho**. Con **Envío Lucam's** (mensajería propia) la entrega es el **mismo día del despacho**.",
     back: "← Cambiar dirección",
     next: "Continuar al pago →",
@@ -561,3 +565,27 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "pay.legalDevoluciones": "checkout.pay.legal-devoluciones",
   "pay.legalGarantias": "checkout.pay.legal-garantias",
 };
+
+/**
+ * Resuelve la promesa "Envío Lucam's" con sus tokens: {{cutoff}} = hora límite
+ * de settings (2 dígitos), {{daysLabel}} = cantidad con plural resuelto
+ * ("1 día hábil" / "N días hábiles" — los días ya incluyen fabricación + hora
+ * de corte, calculados server-side con lib/delivery-estimate.ts) y {{days}} =
+ * solo el número (back-compat con plantillas CMS antiguas). deliveryDays = 0 →
+ * texto de entrega hoy. La usan el selector de envío (envio/quote-list) y el
+ * resumen del paso de pago (pago/page) para que la promesa se lea IDÉNTICA en
+ * ambos pasos.
+ */
+export function resolveLucamsPromise(
+  texts: CheckoutTexts["shipping"],
+  deliveryDays: number,
+  cutoffHour: number,
+): string {
+  if (deliveryDays === 0) {
+    return texts.lucamsToday.replace("{{cutoff}}", String(cutoffHour).padStart(2, "0"));
+  }
+  const daysLabel = `${deliveryDays} ${deliveryDays === 1 ? "día hábil" : "días hábiles"}`;
+  return texts.lucamsDays
+    .replace("{{daysLabel}}", daysLabel)
+    .replace("{{days}}", String(deliveryDays));
+}

@@ -110,4 +110,24 @@ describe("QuoteList — logos de transportadora", () => {
     expect(radios[0]).toBeChecked();
     expect(radios[1]).not.toBeChecked();
   });
+
+  it("resuelve la promesa del envío propio: hoy (0 días) vs días hábiles, con el cutoff inyectado", () => {
+    renderList([
+      quote({
+        carrier: "lucams",
+        carrierName: "Envío Lucam's",
+        quoteId: "lucams-bog-chapinero",
+        deliveryDays: 0,
+      }),
+      quote({
+        carrier: "lucams",
+        carrierName: "Envío Lucam's",
+        quoteId: "lucams-bog-usaquen",
+        deliveryDays: 2,
+      }),
+    ]);
+    expect(screen.getByText(/Entrega hoy \(pedido antes de las 12:00\)/)).toBeInTheDocument();
+    expect(screen.getByText(/^2 días hábiles$/)).toBeInTheDocument();
+    expect(screen.getByText(/Envío Lucam's · mismo día/)).toBeInTheDocument();
+  });
 });

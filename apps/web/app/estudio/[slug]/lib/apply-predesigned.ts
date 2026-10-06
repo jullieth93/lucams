@@ -19,7 +19,10 @@
  * la unidad siguiente). Regla de ancla: destino par → ese slot; destino impar
  * → la A de su par si está libre; si está ocupada, el siguiente par con la A
  * libre (hacia adelante, retomando desde el inicio); sin ninguna A libre la
- * aplicación falla ANTES de subir el asset (el caller muestra el error).
+ * aplicación falla ANTES de subir el asset con reason "no-free-slot" (el
+ * caller muestra un mensaje propio: no es un error, es que no queda dónde
+ * poner el diseño sin pisar contenido — fix STG 2026-10-06, antes caía al
+ * toast genérico de error).
  *
  * El MIME del drag viaja como constante para que el origen (sidebar) y el
  * destino (slot) no se desacoplen.
@@ -115,19 +118,31 @@ function resolveFaceAAnchor(
   return null;
 }
 
+/**
+ * Por qué falló la aplicación de un prediseñado (fix STG 2026-10-06):
+ *  - "no-free-slot": no queda ninguna cara A libre donde anclar sin pisar
+ *    contenido (todos los lienzos ya tienen diseño) — el caller muestra un
+ *    mensaje informativo propio, no el toast genérico de error.
+ *  - "error": fallo real (red/servidor) resolviendo o subiendo el asset.
+ */
+export type ApplyPredesignedFailureReason = "no-free-slot" | "error";
+
 export async function applyPredesignedToSlot(opts: {
   store: StoreApi<StudioStoreState>;
   item: PredesignedDragPayload;
   targetSlot: number;
   facesPerUnit?: number;
-}): Promise<{ ok: true; bBlocked?: boolean } | { ok: false; message: string }> {
+}): Promise<
+  | { ok: true; bBlocked?: boolean }
+  | { ok: false; reason: ApplyPredesignedFailureReason; message: string }
+> {
   const slots = opts.store.getState().canvasData?.slots ?? [];
   const anchor = resolveFaceAAnchor(slots, opts.targetSlot, opts.facesPerUnit);
   // Sin cara A libre no hay dónde anclar sin pisar contenido: se reporta y no
   // se sube nada al servidor.
-  if (anchor === null) return { ok: false, message: "" };
+  if (anchor === null) return { ok: false, reason: "no-free-slot", message: "" };
   const resolved = await resolvePredesignedAssets(opts.store, opts.item.id);
-  if (!resolved.ok) return { ok: false, message: resolved.message };
+  if (!resolved.ok) return { ok: false, reason: "error", message: resolved.message };
   const state = opts.store.getState();
   state.assignAssetToSlot(anchor, resolved.a);
   let bBlocked = false;

@@ -13,6 +13,7 @@
  * que el lightbox permite acercar —
  *   · Doble click / doble tap: alterna 100% ↔ 200%.
  *   · Pinch (2 dedos): zoom continuo.
+ *   · Rueda del mouse sobre la imagen: zoom anclado al cursor (2026-10-06).
  *   · Botones +/− (y reset) para teclado y clientes sin gestos.
  *   · Arrastre = pan cuando hay zoom (pointer events, clampa a la imagen).
  * La matemática (clamp de escala y pan) vive en ./preview-zoom.ts (puro, con
@@ -24,7 +25,7 @@
  * patrón que label={<CmsText …/>} en app/pedido/[token]/page.tsx).
  */
 
-import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Eye, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,6 +43,8 @@ import {
   clampPreviewZoom,
   pinchPreviewZoom,
   stepPreviewZoom,
+  wheelPreviewZoom,
+  zoomPanTowardPoint,
 } from "./preview-zoom";
 
 type ZoomState = { scale: number; x: number; y: number };
@@ -74,6 +77,7 @@ export function DesignPreviewDialog({
   // el pan/pinch siga al dedo sin lag.
   const [gesturing, setGesturing] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<{ dist: number; scale: number } | null>(null);
   const panRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(
@@ -98,6 +102,51 @@ export function DesignPreviewDialog({
       y: clampPanOffset(y, nextScale, baseH),
     });
   }, []);
+
+  // Espejo del estado para el listener NATIVO de rueda (se adjunta una sola
+  // vez; sin el ref leería una escala stale del primer render).
+  const zoomRef = useRef<ZoomState>(ZOOM_RESET);
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  // Rueda del mouse sobre la imagen = zoom (2026-10-06, QA owner STG). Va con
+  // listener nativo NO pasivo: el onWheel de React se registra pasivo en la
+  // raíz y el preventDefault sería un no-op (la página scrollearía detrás del
+  // diálogo). A diferencia del Estudio (studio-slot handleWheel, donde la
+  // rueda sola NO zooomea para no atrapar el scroll de la página), acá la
+  // rueda simple SÍ zooomea: el diálogo es modal y ocupa casi toda la
+  // pantalla, así que el gesto no atrapa ningún scroll ajeno — y el scroll
+  // interno del DialogContent sigue disponible con la rueda FUERA del visor.
+  // El zoom se ancla a la posición del cursor (zoomPanTowardPoint); cuando el
+  // pan llega a su límite clampeado, degrada suave hacia un zoom centrado.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY === 0) return; // scroll horizontal puro: no es gesto de zoom
+      e.preventDefault();
+      const current = zoomRef.current;
+      const nextScale = wheelPreviewZoom(current.scale, e.deltaY);
+      const img = imgRef.current;
+      if (!img) {
+        applyZoom(nextScale, current.x, current.y);
+        return;
+      }
+      // Cursor relativo al centro de la imagen SIN transformar: al bounding
+      // rect (ya trasladado/escalado) se le resta el pan actual.
+      const rect = img.getBoundingClientRect();
+      const pointX = e.clientX - (rect.left + rect.width / 2 - current.x);
+      const pointY = e.clientY - (rect.top + rect.height / 2 - current.y);
+      applyZoom(
+        nextScale,
+        zoomPanTowardPoint(current.x, pointX, current.scale, nextScale),
+        zoomPanTowardPoint(current.y, pointY, current.scale, nextScale),
+      );
+    };
+    viewer.addEventListener("wheel", onWheel, { passive: false });
+    return () => viewer.removeEventListener("wheel", onWheel);
+  }, [applyZoom]);
 
   const toggleZoom = useCallback(() => {
     setZoom((z) => {
@@ -153,7 +202,6 @@ export function DesignPreviewDialog({
 
   function handlePointerUp(e: React.PointerEvent<HTMLDivElement>) {
     const wasPinch = pointersRef.current.size >= 2;
-    const down = pointersRef.current.get(e.pointerId);
     pointersRef.current.delete(e.pointerId);
     if (pointersRef.current.size === 0) setGesturing(false);
     pinchRef.current = null;
@@ -174,9 +222,13 @@ export function DesignPreviewDialog({
       return;
     }
 
-    // Doble tap: solo taps simples (sin arrastre) de puntero táctil.
-    if (e.pointerType === "touch" && down && pointersRef.current.size === 0) {
-      const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+    // Doble tap: solo taps simples (sin arrastre) de puntero táctil. La
+    // distancia se mide contra la posición REAL del pointerdown guardada en
+    // panRef: el cache de pointers se actualiza con cada move, así que medir
+    // contra él daría moved ≈ 0 siempre y un arrastre de pan contaría como tap.
+    const downPos = panRef.current;
+    if (e.pointerType === "touch" && downPos && pointersRef.current.size === 0) {
+      const moved = Math.hypot(e.clientX - downPos.startX, e.clientY - downPos.startY);
       const now = Date.now();
       const last = lastTapRef.current;
       lastTapRef.current = moved < 12 ? { time: now, x: e.clientX, y: e.clientY } : null;
@@ -221,6 +273,7 @@ export function DesignPreviewDialog({
             touch-action:none: los gestos (pinch/pan/doble tap) los manejan los
             pointer events de acá; sin esto el navegador secuestra el pinch. */}
         <div
+          ref={viewerRef}
           className="border-brand-purple/15 from-brand-cream touch-none overflow-hidden rounded-xl border bg-gradient-to-br to-white p-4 select-none"
           style={{ cursor: zoomed ? (gesturing ? "grabbing" : "grab") : "zoom-in" }}
           onPointerDown={handlePointerDown}

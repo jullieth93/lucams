@@ -28,6 +28,10 @@ const { calls } = vi.hoisted(() => ({
 vi.mock("@/features/personalization/actions", () => ({
   assignPredesignedToDesignAction: async (input: { designId: string; galleryImageId: string }) => {
     calls.assign.push(input);
+    // Ids "fail-*" simulan un fallo del servidor (reason "error" del helper).
+    if (input.galleryImageId.startsWith("fail-")) {
+      return { ok: false as const, message: "boom" };
+    }
     const withB = input.galleryImageId.endsWith("-ab");
     return {
       ok: true as const,
@@ -90,6 +94,14 @@ beforeEach(() => {
 });
 
 describe("applyPredesignedToSlot — dedupe de assets (Paquete A)", () => {
+  it("fallo del servidor al resolver el asset → reason error con el mensaje crudo", async () => {
+    const store = setup(2);
+    const res = await applyPredesignedToSlot({ store, item: item("fail-1"), targetSlot: 0 });
+    expect(res).toEqual({ ok: false, reason: "error", message: "boom" });
+    // No se asignó nada al slot.
+    expect(store.getState().canvasData!.slots[0]!.assetId).toBeNull();
+  });
+
   it("el mismo diseño aplicado a 2 slots se sube UNA sola vez y ambos slots comparten el asset", async () => {
     const store = setup(2);
     const r1 = await applyPredesignedToSlot({ store, item: item("g1"), targetSlot: 0 });
@@ -184,7 +196,7 @@ describe("applyPredesignedToSlot — paridad Cara A/B (2026-10-05: nunca cruzar 
     expect(slots[3]!.assetId).toBe("own-3");
   });
 
-  it("sin ninguna cara A libre → falla ANTES de subir el asset", async () => {
+  it("sin ninguna cara A libre → falla ANTES de subir el asset con reason no-free-slot", async () => {
     const store = setup(2, [0]);
     const res = await applyPredesignedToSlot({
       store,
@@ -192,7 +204,9 @@ describe("applyPredesignedToSlot — paridad Cara A/B (2026-10-05: nunca cruzar 
       targetSlot: 1,
       facesPerUnit: 2,
     });
-    expect(res.ok).toBe(false);
+    // Fix STG 2026-10-06 — reason propio: el caller muestra "todos los lienzos
+    // ya tienen un diseño…", no el toast genérico de error.
+    expect(res).toEqual({ ok: false, reason: "no-free-slot", message: "" });
     expect(calls.assign).toHaveLength(0);
   });
 
@@ -273,7 +287,7 @@ describe("applyPredesignedToSlot — paridad Cara A/B (2026-10-05: nunca cruzar 
     expect(slots[3]!.assetId).toBe("own-3");
   });
 
-  it("sin ninguna cara A libre → falla ANTES de subir el asset", async () => {
+  it("sin ninguna cara A libre → falla ANTES de subir el asset con reason no-free-slot", async () => {
     const store = setup(2, [0]);
     const res = await applyPredesignedToSlot({
       store,
@@ -281,7 +295,9 @@ describe("applyPredesignedToSlot — paridad Cara A/B (2026-10-05: nunca cruzar 
       targetSlot: 1,
       facesPerUnit: 2,
     });
-    expect(res.ok).toBe(false);
+    // Fix STG 2026-10-06 — reason propio: el caller muestra "todos los lienzos
+    // ya tienen un diseño…", no el toast genérico de error.
+    expect(res).toEqual({ ok: false, reason: "no-free-slot", message: "" });
     expect(calls.assign).toHaveLength(0);
   });
 

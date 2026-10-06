@@ -241,6 +241,25 @@ describe("frame-palette — Ola 4 (cuadrados / tira / instagram)", () => {
     );
   });
 
+  it("IG SIN BORDE con color de tarjeta (owner 2026-10-06): el negro pinta las franjas y el chrome sale oscuro", async () => {
+    // Contrato del cambio que habilitó la paleta en «Sin borde»: la decisión de
+    // fondo (instagramBackgroundHex) y la variante del chrome componen sin
+    // cableado extra — el toolbar solo deja de forzar el blanco.
+    const { instagramBackgroundHex, isDarkColor, noBorderChromeSrc } =
+      await import("./frame-palette");
+    const fondo = instagramBackgroundHex("#221E25", "#FFFFFF");
+    expect(fondo).toBe("#221E25"); // las franjas toman el color elegido
+    expect(isDarkColor(fondo)).toBe(true); // → textos claros (igTextFill lo consume)
+    expect(noBorderChromeSrc("/templates/ig_post_3x4.svg", true, isDarkColor(fondo))).toBe(
+      "/templates/ig_post_3x4_dark_noborder.svg",
+    );
+    // Blanco: franjas blancas y chrome claro (comportamiento previo intacto).
+    const fondoClaro = instagramBackgroundHex("#FFFFFF", "#FFFFFF");
+    expect(noBorderChromeSrc("/templates/ig_post_3x4.svg", true, isDarkColor(fondoClaro))).toBe(
+      "/templates/ig_post_3x4_noborder.svg",
+    );
+  });
+
   it("isInstagramNoBorder: flag explícito + fallback por geometría (legacy y nuevo modo)", async () => {
     const { isInstagramNoBorder } = await import("./frame-palette");
     const stage = { width: 450, height: 600 };

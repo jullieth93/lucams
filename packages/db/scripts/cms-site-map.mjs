@@ -7723,6 +7723,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               body: "Este diseño trae solo el frente: el respaldo se imprime igual que el frente.",
               sortOrder: 210,
             },
+            {
+              key: "estudio.plantillas.toast-sin-lienzo-libre",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Aviso: no queda lienzo libre",
+              helpText:
+                "Mensaje flotante cuando todos los lienzos ya tienen diseño y no hay dónde aplicar el prediseñado (nunca se pisa el contenido del cliente).",
+              category: "HOME",
+              body: "Todos los lienzos ya tienen un diseño. Si quieres cambiar uno, bórralo primero.",
+              sortOrder: 220,
+            },
           ],
         },
         {

@@ -244,6 +244,8 @@ export type StudioTexts = {
     badgeUnaCaraTitle: string;
     toastError: string;
     toastSinSlot: string;
+    /** Fix STG 2026-10-06 — no queda ningún lienzo libre para el prediseñado (nunca se pisa contenido). */
+    toastSinLienzoLibre: string;
     elegirAria: string;
     aplicarDisenoAria: string;
     itemAria: string;
@@ -392,9 +394,9 @@ export type StudioTexts = {
     estiloSinBorde: string;
     /** Ola 24 — aviso cuando la paleta de color queda desactivada por «Sin borde». */
     estiloColorDeshabilitadoHint: string;
-    /** Rediseño IG (2026-10-05) — variante para la Polaroid Instagram: las franjas
-     *  blancas se conservan en «Sin borde» (ya no es "la foto cubre toda la tarjeta"). */
-    estiloColorDeshabilitadoHintIg: string;
+    /** Owner 2026-10-06 — aviso INFORMATIVO de la Instagram en «Sin borde»: la paleta
+     *  queda ACTIVA y el color pinta las franjas de arriba/abajo de la foto. */
+    estiloColorSinBordeHintIg: string;
     /** Ola 24 (tiras) — variante del aviso para la tira photobooth (foto a foto, sin canaletas). */
     estiloColorDeshabilitadoHintTira: string;
     slotEditTitulo: string;
@@ -878,6 +880,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "Este diseño trae solo el frente: el respaldo se imprime igual que el frente.",
     toastError: "No pudimos aplicar el diseño. Intenta de nuevo.",
     toastSinSlot: "Selecciona un slot vacío primero",
+    toastSinLienzoLibre:
+      "Todos los lienzos ya tienen un diseño. Si quieres cambiar uno, bórralo primero.",
     elegirAria: "Selecciona plantilla del imán",
     aplicarDisenoAria: "Aplicar el diseño {nombre} al slot",
     itemAria: "Plantilla {nombre}",
@@ -1013,8 +1017,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     estiloSinBorde: "Sin borde",
     estiloColorDeshabilitadoHint:
       "Con «Sin borde» la foto cubre toda la tarjeta — el color no aplica.",
-    estiloColorDeshabilitadoHintIg:
-      "Con «Sin borde» las franjas se conservan blancas — el color no aplica.",
+    estiloColorSinBordeHintIg:
+      "Con «Sin borde» el color pinta las franjas de arriba y abajo de la foto.",
     estiloColorDeshabilitadoHintTira:
       "Con «Sin borde» las fotos cubren toda la tira — el color no aplica.",
     slotEditTitulo: "Editar {etiqueta}",
@@ -1461,6 +1465,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "plantillas.badgeUnaCaraTitle": "estudio.plantillas.badge-una-cara-title",
   "plantillas.toastError": "estudio.plantillas.toast-error",
   "plantillas.toastSinSlot": "estudio.plantillas.toast-sin-slot",
+  "plantillas.toastSinLienzoLibre": "estudio.plantillas.toast-sin-lienzo-libre",
   "plantillas.elegirAria": "estudio.plantillas.elegir-aria",
   "plantillas.aplicarDisenoAria": "estudio.plantillas.aplicar-diseno-aria",
   "plantillas.itemAria": "estudio.plantillas.item-aria",
@@ -1570,7 +1575,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.estiloConBorde": "estudio.texto.estilo-con-borde",
   "texto.estiloSinBorde": "estudio.texto.estilo-sin-borde",
   "texto.estiloColorDeshabilitadoHint": "estudio.texto.estilo-color-deshabilitado-hint",
-  "texto.estiloColorDeshabilitadoHintIg": "estudio.texto.estilo-color-deshabilitado-hint-ig",
+  "texto.estiloColorSinBordeHintIg": "estudio.texto.estilo-color-sin-borde-hint-ig",
   "texto.estiloColorDeshabilitadoHintTira": "estudio.texto.estilo-color-deshabilitado-hint-tira",
   "texto.slotEditTitulo": "estudio.texto.slot-edit-titulo",
   "texto.slotEditTituloIndice": "estudio.texto.slot-edit-titulo-indice",

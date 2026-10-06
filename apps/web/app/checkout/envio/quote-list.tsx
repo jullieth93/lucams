@@ -11,7 +11,7 @@ import { carrierLogo, formatCarrierName } from "@/lib/carrier-logos";
 import { formatCOP } from "@/lib/format";
 import { selectShippingAction } from "./actions";
 import type { ShippingSelectionInput } from "@/features/checkout/schemas";
-import type { CheckoutTexts } from "../checkout-texts";
+import { resolveLucamsPromise, type CheckoutTexts } from "../checkout-texts";
 
 export function QuoteList({
   quotes,
@@ -43,11 +43,11 @@ export function QuoteList({
   const chosen = quotes.find((q) => q.quoteId === selected);
 
   // Promesas "Envío Lucam's" (CMS con tokens): {{cutoff}} = hora límite de
-  // settings, {{days}} = deliveryDays calculado server-side con la regla
-  // producción + corte (lib/delivery-estimate.ts — ya viene sellado en la oferta).
-  const cutoffLabel = String(lucamsCutoffHour).padStart(2, "0");
-  const lucamsTodayText = texts.lucamsToday.replace("{{cutoff}}", cutoffLabel);
-  const lucamsDaysText = (days: number) => texts.lucamsDays.replace("{{days}}", String(days));
+  // settings, {{daysLabel}} = días hábiles con plural (calculados server-side
+  // con la regla producción + corte, lib/delivery-estimate.ts — ya vienen
+  // sellados en la oferta). La resolución vive en resolveLucamsPromise
+  // (checkout-texts) para que el resumen del paso de pago la lea IDÉNTICA.
+  const lucamsPromise = (days: number) => resolveLucamsPromise(texts, days, lucamsCutoffHour);
 
   return (
     <form action={selectShippingAction} className="space-y-4">
@@ -137,7 +137,7 @@ export function QuoteList({
                             servidor con lib/delivery-estimate.ts). 0 = entrega
                             hoy (solo posible sin fabricación pendiente y antes
                             del cutoff); >0 = días hábiles hasta la entrega. */}
-                        {q.deliveryDays === 0 ? lucamsTodayText : lucamsDaysText(q.deliveryDays)}
+                        {lucamsPromise(q.deliveryDays)}
                         <span className="bg-brand-turquoise/40 rounded px-1.5 py-0.5 text-[10px] font-semibold text-teal-900">
                           {q.deliveryDays === 0 ? "Envío Lucam's · mismo día" : "Envío Lucam's"}
                         </span>

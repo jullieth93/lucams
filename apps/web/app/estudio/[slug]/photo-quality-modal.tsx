@@ -14,9 +14,19 @@
  *      "Usar de todos modos" que asigna igual vía onAction),
  *   3. El chip de calidad del slot en canvas (datos de checkPhotoQuality,
  *      pasados por props severity/message/imageUrl en vez de asset).
+ *
+ * Stacking (fix STG 2026-10-06): el modal y su backdrop se renderizan en
+ * PORTAL a document.body (misma estrategia de los Radix Dialog del estudio).
+ * Montado inline dentro del StudioSlot quedaba atrapado en el stacking
+ * context de la celda (motion.div con transform de la animación de entrada):
+ * el `fixed z-50` pasaba a ser relativo a esa celda y las tarjetas del grid
+ * (p.ej. la grilla del calendario) se pintaban ENCIMA del modal y del
+ * backdrop. z-50 se conserva: queda por encima del picker (z-40), que es
+ * quien lo abre en el caso 2.
  */
 
 import { useRef } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -68,7 +78,11 @@ export function PhotoQualityModal({
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogA11y(dialogRef, { onClose, active: open });
 
-  return (
+  // Guard SSR: el portal necesita document; en server no se renderiza nada
+  // (el modal solo abre por interacción del cliente, ya hidratado).
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -196,6 +210,7 @@ export function PhotoQualityModal({
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }

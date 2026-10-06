@@ -13,14 +13,17 @@
  *     COMPLETO conservando las franjas blancas de header/footer (antes: foto a
  *     sangre total) y el modo viaja como FLAG explícito en canvasData.igNoBorder.
  *   - Color de tarjeta / marco (paleta completa o binario blanco/negro para Instagram).
- *     DEBAJO del borde (Ola 24) y DESACTIVADO cuando el borde es «Sin borde» en las
- *     plantillas Polaroid (en la Clásica la foto cubre toda la tarjeta → el color no
- *     aplica; en la Instagram las franjas son blancas por diseño y al entrar al modo
- *     se fuerza la tarjeta blanca) y en las TIRAS photobooth (sin borde ya no hay
- *     canaletas entre fotos → borderColor no pinta nada) — mismo patrón que los sets
- *     de letras: sección visible pero inerte (aria-disabled + atenuada + aviso del
- *     porqué). En Clásica/tiras el estado de color NO se resetea: al volver a
- *     «Con borde» el color elegido sigue ahí.
+ *     DEBAJO del borde (Ola 24) y DESACTIVADO cuando el borde es «Sin borde» en la
+ *     Polaroid Clásica (la foto cubre toda la tarjeta → el color no aplica) y en las
+ *     TIRAS photobooth (sin borde ya no hay canaletas entre fotos → borderColor no
+ *     pinta nada) — mismo patrón que los sets de letras: sección visible pero inerte
+ *     (aria-disabled + atenuada + aviso del porqué). En Clásica/tiras el estado de
+ *     color NO se resetea: al volver a «Con borde» el color elegido sigue ahí.
+ *     Instagram SIN BORDE quedó HABILITADA (owner 2026-10-06 — antes se forzaba la
+ *     tarjeta blanca al entrar al modo y la paleta quedaba inerte): el color pinta
+ *     las franjas de arriba/abajo de la foto (fondo binario blanco/negro con
+ *     contraste automático de textos y chrome `_dark_noborder`, la misma maquinaria
+ *     del modo con borde) y la tarjeta ya NO se fuerza a blanco al entrar.
  *
  * El componente es store-aware: lee la plantilla activa, el color actual y el
  * rect base del placeholder, y escribe en canvasData.borderColor y
@@ -32,11 +35,7 @@ import { useStore } from "zustand";
 import type { StoreApi } from "zustand";
 import { Frame, Image as ImageIcon, Check } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
-import {
-  frameColorById,
-  frameColorHex,
-  isInstagramTemplate,
-} from "@/features/personalization/frame-palette";
+import { frameColorById, isInstagramTemplate } from "@/features/personalization/frame-palette";
 import type { StudioStoreState } from "./lib/store";
 import { useStudioTexts } from "./studio-texts-provider";
 
@@ -143,32 +142,30 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   const handleBorderToggle = (fullBleed: boolean) => {
     if (fullBleed) {
       setImagePlaceholderRect(fullBleedRect, isIg ? { igNoBorder: true } : undefined);
-      // Rediseño IG (2026-10-05) — en el nuevo modo sin-borde las franjas SIGUEN
-      // visibles y el owner las quiere BLANCAS siempre (post real de IG): al
-      // entrar se fuerza la tarjeta blanca. Excepción deliberada a la regla Ola 24
-      // de "el color NO se resetea" (esa regla nació cuando la foto cubría toda
-      // la tarjeta y el color no aplicaba; ahora un negro residual teñiría las
-      // franjas). Solo IG: Clásica y tiras conservan la regla de no-reset.
-      if (isIg) setBorderColor(frameColorHex("blanco"));
+      // Owner 2026-10-06 — IG sin borde YA NO fuerza la tarjeta blanca: el color
+      // elegido pinta las franjas de arriba/abajo (paleta blanco/negro habilitada
+      // en el modo). Clásica y tiras conservan la regla de no-reset intacta.
     } else if (baseRect) {
       setImagePlaceholderRect(baseRect, isIg ? { igNoBorder: false } : undefined);
     }
   };
 
-  // Ola 24 (Lucy 2026-09-09) — en las plantillas Polaroid (Clásica e Instagram) Y en las
-  // TIRAS photobooth, con «Sin borde» la paleta queda desactivada (visible pero inerte,
-  // con aviso) hasta volver a «Con borde»: en la Clásica la foto cubre TODA la tarjeta
-  // (el color no pinta nada), en la tira ya no hay canaletas entre fotos (la separación
-  // era lo único que pintaba borderColor) y en la Instagram (rediseño 2026-10-05) las
-  // franjas son blancas por diseño — al entrar al modo se fuerza la tarjeta blanca.
-  // En Clásica/tiras el estado de color NO se resetea: al volver a «Con borde» el color
-  // elegido sigue ahí (y en la tira vuelve a pintar las canaletas).
+  // Ola 24 (Lucy 2026-09-09) — en la Polaroid Clásica Y en las TIRAS photobooth, con
+  // «Sin borde» la paleta queda desactivada (visible pero inerte, con aviso) hasta
+  // volver a «Con borde»: en la Clásica la foto cubre TODA la tarjeta (el color no
+  // pinta nada) y en la tira ya no hay canaletas entre fotos (la separación era lo
+  // único que pintaba borderColor). El estado de color NO se resetea: al volver a
+  // «Con borde» el color elegido sigue ahí (y en la tira vuelve a pintar las
+  // canaletas).
+  // Instagram SIN BORDE quedó FUERA del apagado (owner 2026-10-06): sus franjas
+  // SIGUEN visibles en el modo y el color las pinta (misma regla binaria
+  // blanco/negro + contraste automático del modo con borde).
   // En cuadrados NO se desactiva: la franja uniforme de la tarjeta simple usa borderColor
   // aun sin borde.
   // Tira = 1 columna + gap 0 + varios slots (misma detección que isStripPreview del editor).
   const isStrip =
     canvasData.gridLayout.cols === 1 && canvasData.gridLayout.gap === 0 && canvasData.slotCount > 1;
-  const colorDisabled = (isIg || isPolaroidClasica || isStrip) && isFullBleed;
+  const colorDisabled = (isPolaroidClasica || isStrip) && isFullBleed;
 
   return (
     // Ola 32 — chrome móvil compacto (owner 2026-09-18): a 375px esta tarjeta más
@@ -257,14 +254,21 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
                 )}
               </div>
             </div>
-            {colorDisabled && (
+            {colorDisabled ? (
               <p role="note" className="text-brand-muted text-center text-xs">
                 {isStrip
                   ? texts.texto.estiloColorDeshabilitadoHintTira
-                  : isIg
-                    ? texts.texto.estiloColorDeshabilitadoHintIg
-                    : texts.texto.estiloColorDeshabilitadoHint}
+                  : texts.texto.estiloColorDeshabilitadoHint}
               </p>
+            ) : (
+              isIg &&
+              isFullBleed && (
+                // Owner 2026-10-06 — en IG «Sin borde» la paleta queda ACTIVA:
+                // el aviso explica qué pinta el color (las franjas del post).
+                <p role="note" className="text-brand-muted text-center text-xs">
+                  {texts.texto.estiloColorSinBordeHintIg}
+                </p>
+              )
             )}
           </div>
         )}

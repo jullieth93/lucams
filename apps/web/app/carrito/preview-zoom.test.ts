@@ -9,11 +9,14 @@ import { describe, expect, it } from "vitest";
 import {
   PREVIEW_ZOOM_MAX,
   PREVIEW_ZOOM_MIN,
+  PREVIEW_ZOOM_WHEEL_STEP,
   clampPanOffset,
   clampPreviewZoom,
   maxPanOffset,
   pinchPreviewZoom,
   stepPreviewZoom,
+  wheelPreviewZoom,
+  zoomPanTowardPoint,
 } from "./preview-zoom";
 
 describe("clampPreviewZoom", () => {
@@ -43,6 +46,45 @@ describe("pinchPreviewZoom — gesto de dos dedos", () => {
   it("respeta el techo y tolera distancia inicial inválida", () => {
     expect(pinchPreviewZoom(3, 100, 500)).toBe(PREVIEW_ZOOM_MAX);
     expect(pinchPreviewZoom(2, 0, 100)).toBe(2);
+  });
+});
+
+describe("wheelPreviewZoom — rueda del mouse", () => {
+  it("deltaY negativo acerca y positivo aleja en pasos multiplicativos finos", () => {
+    expect(wheelPreviewZoom(1, -100)).toBeCloseTo(PREVIEW_ZOOM_WHEEL_STEP);
+    expect(wheelPreviewZoom(PREVIEW_ZOOM_WHEEL_STEP, 100)).toBeCloseTo(1);
+    // Ticks seguidos componen: dos notches ≈ STEP².
+    expect(wheelPreviewZoom(wheelPreviewZoom(1, -100), -100)).toBeCloseTo(
+      PREVIEW_ZOOM_WHEEL_STEP ** 2,
+    );
+  });
+
+  it("clampa en ambos extremos (la rueda nunca sale de [1, 4])", () => {
+    expect(wheelPreviewZoom(PREVIEW_ZOOM_MAX, -100)).toBe(PREVIEW_ZOOM_MAX);
+    expect(wheelPreviewZoom(3.9, -100)).toBe(PREVIEW_ZOOM_MAX);
+    expect(wheelPreviewZoom(PREVIEW_ZOOM_MIN, 100)).toBe(PREVIEW_ZOOM_MIN);
+    expect(wheelPreviewZoom(1.05, 100)).toBe(PREVIEW_ZOOM_MIN);
+  });
+
+  it("deltaY = 0 (scroll horizontal puro) no cambia la escala", () => {
+    expect(wheelPreviewZoom(2, 0)).toBe(2);
+  });
+});
+
+describe("zoomPanTowardPoint — zoom anclado al cursor", () => {
+  it("el punto bajo el cursor queda fijo al cambiar la escala", () => {
+    // offset=10, cursor a 100px del centro, 1× → 2×: el punto de la imagen
+    // bajo el cursor (p = (100−10)/1 = 90) debe seguir dibujándose en 100.
+    const next = zoomPanTowardPoint(10, 100, 1, 2);
+    expect(90 * 2 + next).toBeCloseTo(100);
+  });
+
+  it("el centro (point = 0) escala el pan proporcionalmente", () => {
+    expect(zoomPanTowardPoint(40, 0, 1, 2)).toBeCloseTo(80);
+  });
+
+  it("escala inválida deja el pan como está", () => {
+    expect(zoomPanTowardPoint(15, 100, 0, 2)).toBe(15);
   });
 });
 
