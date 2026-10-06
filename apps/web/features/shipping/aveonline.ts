@@ -996,6 +996,12 @@ export class AveonlineProvider implements ShippingProvider {
       //   Si el cliente no ingresó CC en checkout, usamos "100001" como placeholder
       //   válido (admin debe completarlo desde /admin/pedidos antes de despachar).
       // - dscorreop con el email real del cliente (Aveonline le notifica).
+      //
+      // FLUJO REGALO (2026-10-05): `delivery.contactName`/`delivery.phone` ya
+      // vienen resueltos por la saga (resolveShipmentRecipient): son los del
+      // DESTINATARIO cuando el pedido es "lo recibe otra persona", así que la
+      // guía (dsnombrecompleto/dstel/dscelular) sale a su nombre sin ningún
+      // cambio acá. El correo (dscorreop) sigue siendo el del comprador.
       destino: formatAveonlineCity(params.delivery.city, params.delivery.department),
       dsdir: params.delivery.address,
       dsbarrio: "", // opcional Aveonline
