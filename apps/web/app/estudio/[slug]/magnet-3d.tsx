@@ -501,7 +501,13 @@ export function ExtrudedMagnetMesh({
           color={tex ? "#ffffff" : blankColor}
           roughness={0.38}
           metalness={0}
-          envMapIntensity={1.15}
+          // Calibración 2026-10-05 (concordancia foto↔3D): el IBL del env-map
+          // sobre la cara impresa queda BAJO — solo micro-relieve especular del
+          // laminado. Con 1.15 la irradiancia total superaba 1 y la cara se veía
+          // MÁS CLARA que la foto original (sobre-exposición PBR). La iluminación
+          // directa de cada escena quedó calibrada a irradiancia difusa frontal
+          // ≈ 1.0 (ver comentarios en fridge/book/polaroid/room-board/calendar).
+          envMapIntensity={0.4}
         />
       </mesh>
       {/* Tapa trasera REAL en su posición física (backZ): la rotación π sobre Y deja la cara B
@@ -515,7 +521,9 @@ export function ExtrudedMagnetMesh({
             color={backTex ? "#ffffff" : "#FDFBF4"}
             roughness={0.5}
             metalness={0}
-            envMapIntensity={1.0}
+            // Misma calibración que la cara frontal (2026-10-05): la cara B
+            // impresa tampoco debe verse más clara que la foto.
+            envMapIntensity={0.4}
           />
         </mesh>
       ) : backGeo && backColor ? (

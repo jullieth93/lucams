@@ -42,8 +42,7 @@ import {
   type StudioStoreState,
 } from "./lib/store";
 import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
-import { compressImageForUpload } from "./client-image-compress";
-import { isStillBelowMinimum, upscalePhotoForPrint } from "./client-photo-upscale";
+import { processPhotoFiles } from "./lib/upload-photo-pipeline";
 import type { StudioAsset, StudioTemplate } from "./types";
 import { PhotoQualityModal } from "./photo-quality-modal";
 import { Hint } from "@/components/ui/tooltip";
@@ -122,7 +121,7 @@ export function StudioSidebar({
     }
     setApplyingPredesignedId(item.id);
     try {
-      const res = await applyPredesignedToSlot({ store, item, targetSlot });
+      const res = await applyPredesignedToSlot({ store, item, targetSlot, facesPerUnit });
       if (!res.ok) {
         toast.error(res.message || texts.plantillas.toastError);
         return;
@@ -164,96 +163,58 @@ export function StudioSidebar({
     }
   };
 
+  // Fix STG (2026-10-05, "subir fotos es demorado") — pipeline UNIFICADO con el
+  // picker modal (lib/upload-photo-pipeline): misma secuencia upscale →
+  // compresión → upload por archivo, con hasta 3 archivos en vuelo (antes era
+  // estrictamente secuencial). Los resultados se publican EN ORDEN de selección:
+  // el orden de "Mis fotos" define la asignación de «Llenar slots», así que no
+  // puede depender de cuál foto terminó primero.
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setUploading(files.length);
     setUploadError(null);
     try {
-      for (const file of Array.from(files)) {
-        // C2 (owner 2026-09-15) — mejora LOCAL previa: si la foto queda bajo la
-        // resolución requerida para imprimir el producto a 300 DPI, se
-        // re-muestrea en el navegador (progresivo + unsharp leve) ANTES de
-        // subir. null = no aplica (HEIC, sin sizeCm) o falló → original.
-        const upscaled = await upscalePhotoForPrint(file, productSizeCm);
-        const improvedButLow = upscaled ? isStillBelowMinimum(upscaled) : false;
-        // Compresión cliente si la foto supera ~4 MB (el tope real de Vercel
-        // es ~4.5 MB por request — fotos full-res de iPhone). HEIC pasa intacto
-        // (el servidor lo decodifica con heic-decode). Ver client-image-compress.ts.
-        const prepared = await compressImageForUpload(upscaled?.file ?? file);
-        const formData = new FormData();
-        formData.append("file", prepared);
-        if (designId) formData.append("designId", designId);
-        formData.append("rightsAccepted", rightsAccepted ? "true" : "false");
-        let result;
-        try {
-          result = await uploadDesignAssetAction(formData);
-        } catch (err) {
-          // Framework/plataforma mató el request ANTES de la acción (413 payload
-          // too large en Vercel ~4.5 MB, 500 "Unexpected end of form", red):
-          // sin este catch el usuario no veía NADA (silencio total — verificación
-          // de uploads 2026-08-05). Damos el motivo y la salida práctica.
-          const reason = err instanceof Error ? err.message : String(err);
-          // El 413 de Vercel llega como HTML no-RSC y Next lo traduce a "An
-          // unexpected response was received from the server" (sin "413" en el
-          // texto — hallazgo H7, 2026-08-06): el mensaje de tamaño también aplica
-          // ahí y, desde luego, si el archivo preparado supera el tope del server
-          // (10 MB), la causa ES el tamaño aunque el error no lo diga.
-          const tooBig =
-            prepared.size > 10 * 1024 * 1024 ||
-            /413|too large|end of form|network|fetch failed|unexpected response/i.test(reason);
-          setUploadError(
-            tooBig
-              ? `No pudimos subir "${file.name}": es muy grande para el servidor. Prueba con una foto de menos de ~4 MB (o baja la resolución en tu cámara).`
-              : `No pudimos subir "${file.name}". Revisa tu conexión e inténtalo de nuevo.`,
-          );
+      await processPhotoFiles(Array.from(files), {
+        productSizeCm,
+        designId,
+        rightsAccepted,
+        upload: uploadDesignAssetAction,
+        onReady: (outcome) => {
           setUploading((n) => Math.max(0, n - 1));
-          continue;
-        }
-        if (result.ok) {
-          addAsset({
-            id: result.assetId,
-            signedUrl: result.signedUrl,
-            width: result.width,
-            height: result.height,
-            // 2026-09-24 — si hubo upscale local, guardamos las dimensiones de la
-            // ORIGINAL (metadata de sesión): el chip de calidad del slot mide la
-            // nitidez real, no los píxeles re-muestreados (que no crean detalle).
-            ...(upscaled?.improved
-              ? { originalWidth: upscaled.originalWidth, originalHeight: upscaled.originalHeight }
-              : {}),
-            validationLevel: result.validationLevel,
-            validationMessage: result.validationMessage,
-            // Paquete C — recomendación específica del caso + checks que
-            // fallaron (el modal de calidad los muestra como contenido principal).
-            validationRecommendation: result.validationRecommendation,
-            validationChecks: result.validationChecks,
-          });
+          if (!outcome.ok) {
+            setUploadError(
+              outcome.kind === "too-big"
+                ? `No pudimos subir "${outcome.fileName}": es muy grande para el servidor. Prueba con una foto de menos de ~4 MB (o baja la resolución en tu cámara).`
+                : outcome.kind === "server"
+                  ? (outcome.serverMessage ?? texts.fotos.errorCalidad)
+                  : `No pudimos subir "${outcome.fileName}". Revisa tu conexión e inténtalo de nuevo.`,
+            );
+            return;
+          }
+          addAsset(outcome.asset);
           // C2 — la foto se re-muestreó en el navegador antes de subir: marcarla
           // para el badge "✨ Optimizada" del thumb (el servidor recibe la versión
           // ya ajustada y no puede saberlo).
-          if (upscaled?.improved) {
-            const { assetId } = result;
-            setImprovedAssetIds((prev) => new Set(prev).add(assetId));
+          if (outcome.improved) {
+            const { id } = outcome.asset;
+            setImprovedAssetIds((prev) => new Set(prev).add(id));
           }
           // M.3.b.B.2 — Si la foto subió con calidad insuficiente, mostrar
           // banner naranja persistente con el mensaje (cliente decide si usarla).
           // C2 — si ya la mejoramos automáticamente y AÚN así quedó bajo el
           // mínimo para imprimir, el aviso lo explica (mensaje mejorado).
-          if (improvedButLow) {
+          if (outcome.improvedButLow) {
             setUploadError(
               fillStudioText(texts.fotos.avisoMejoraAuto, { size: productSizeCm ?? "" }),
             );
           } else if (
-            result.validationLevel === "warning-strong" ||
-            result.validationLevel === "error"
+            outcome.asset.validationLevel === "warning-strong" ||
+            outcome.asset.validationLevel === "error"
           ) {
-            setUploadError(result.validationMessage ?? texts.fotos.errorCalidad);
+            setUploadError(outcome.asset.validationMessage ?? texts.fotos.errorCalidad);
           }
-        } else {
-          setUploadError(result.message);
-        }
-        setUploading((n) => Math.max(0, n - 1));
-      }
+        },
+      });
     } finally {
       setUploading(0);
     }

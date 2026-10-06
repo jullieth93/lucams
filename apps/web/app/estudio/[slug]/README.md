@@ -59,6 +59,10 @@ type MultiSlotCanvasData = {
   // elegido en el Estudio (antes era la variante "Estilo"/"Marco" de la PDP).
   // null = sin marco. Viaja a la cotización y al render de producción.
   borderColor?: string | null;
+  // Rediseño IG (2026-10-05) — modo sin-borde de la Polaroid Instagram como FLAG
+  // explícito (foto a lo ancho completo, franjas blancas intactas). Ausente =
+  // diseño previo al flag → fallback por geometría (isInstagramNoBorder).
+  igNoBorder?: boolean;
 };
 
 type SlotState = {
@@ -99,6 +103,34 @@ Designs existentes con `canvasData.version: 1` se migran al cargar via
 5. `gridLayout` calculado por `generateGridLayout(slotCount, unitTemplate.stage)`
 
 Migración es idempotente: re-llamar con data V2 retorna data V2 sin cambios.
+
+## Recover flow (`?designId=` — «Editar» desde el carrito)
+
+El botón «Editar» de una línea personalizada del carrito enlaza
+`/estudio/<slug>?designId=<id>` (sin `?variant=` ni `?copies=`: todo lo restaurable sale
+del propio Design). La página resuelve ownership con `getOwnedDesign` (customer logueado
+o sessionId anónimo) y cada superficie devuelve al editor lo persistido:
+
+- **Foto (canvas con slots)**: si el diseño está READY (en el carrito) se CLONA a un
+  DRAFT vía `cloneDesignForEdit` (el original queda intacto por si el cliente abandona;
+  al finalizar `replacesCartDesignId` reemplaza el item en sitio). Se hidratan canvas +
+  DesignAssets con signed URLs refrescadas.
+- **Nombre (`name`)**: sin clonar — el editor siempre crea un diseño NUEVO al confirmar.
+  Se lee `Design.metadata` y se le devuelve TODO: `name` (texto), conteo de fichas
+  (largo del nombre), `styleSetId` (null explícito = «Solo letra», manda sobre el
+  default del primer estilo), `themeId`, `colors` efectivos por ficha y `withBorder`.
+  Los colores se restauran como `activeColors` del snapshot de `useLetterColors`
+  (índice a índice, sin depender del barajado aleatorio del tema).
+- **Set de letras (`letterset`)**: mismo criterio (solo lectura de metadata, sin clonar).
+  Se restauran `language`, `styleSetId`, `withBorder`, `unitCount` (nº de sets) y los
+  colores por ficha de CADA set (`metadata.units[u].colors`; el set 0 cae al `colors`
+  raíz en diseños de un set) como snapshots iniciales del Map multi-unidad.
+- **Ownership tras login**: `mergeAnonCartIntoCustomer` (login/OTP) ADOPTA los diseños
+  anónimos referenciados por los items mergeados (`adoptSessionDesigns`: `customerId`
+  set, `sessionId` limpio, en la misma transacción del merge). Sin esto, tras loguearse
+  el Design seguía con el sessionId anónimo y `getOwnedDesign({customerId})` devolvía
+  null → el Estudio abría vacío. El guard del `where` (sessionId exacto + customerId
+  null) impide adoptar diseños ajenos aunque un CartItem los referencie.
 
 ## Estructura de archivos
 
@@ -159,14 +191,29 @@ apps/web/app/estudio/[slug]/
     ├── canvas-migrate.ts              # migrateCanvasV1ToV2
     ├── photo-filters.ts               # 5 presets + apply Konva filters
     ├── filter-recache.ts              # Debounce del re-cache de filtros Konva en zoom (Paquete J)
-    ├── slot-snapshot-cache.ts         # Cache de snapshots toDataURL por slot + yieldToMain (Paquete J)
+    ├── slot-snapshot-cache.ts         # Cache de snapshots toDataURL por slot + yieldToMain (Paquete J);
+    │                                  #   el snapshot sale a 720px fijos (2× celda preview), no al
+    │                                  #   tamaño display del stage (fix STG 2026-10-05)
     ├── smart-crop.ts                  # Smart auto-crop (smartcrop.js) de fotos nuevas
-    │                                  #   (análisis sobre copia ≤256px — Paquete J)
+    │                                  #   (análisis sobre copia ≤256px — Paquete J) +
+    │                                  #   guard anti-carrera vs ajuste manual (2026-10-05)
+    ├── texture-resolution.ts          # Ancho de textura 3D por tamaño físico de pieza
+    │                                  #   (1024 default / 2048 ≥10 cm — propuesta para
+    │                                  #   buildMagnetTextures de studio-editor, hoy 512 fijo)
     ├── upload-guidance.ts             # accept (JPG/PNG/WebP/HEIC) + texto de resolución
+    ├── preview-encode.ts              # Codificación WebP/JPEG del preview + presupuesto de
+    │                                  #   bytes del body del finalize (fitPreviewToBudget)
+    ├── upload-with-retry.ts           # PUTs a signed URLs: concurrencia tope 3, retry con
+    │                                  #   backoff y timeout (fix STG 2026-10-05)
+    ├── upload-photo-pipeline.ts       # Pipeline UNIFICADO de subida (sidebar + picker modal):
+    │                                  #   upscale → compresión → Server Action, concurrencia tope 3,
+    │                                  #   resultados en orden de selección (fix STG 2026-10-05)
     ├── size-comparator.ts             # "5×5 cm" vs objeto cotidiano (reemplazó al
     │                                  #   modal "Ver tamaño real")
     ├── calendar-card-preview.ts       # drawCalendarPage en vivo en el slot de calendario
-    ├── compose-calendar-page.ts       # Composición de página de calendario (3D/confirmación)
+    ├── compose-calendar-page.ts       # Composición de página de calendario (3D/confirmación):
+    │                                  #   cache por página (clave de contenido), fotos vía
+    │                                  #   optimizador Next en paralelo, páginas WebP (fix STG 2026-10-05)
     ├── compose-gift-flatlay.ts        # Flat-lay de regalo del fotoimán (ADR-063)
     ├── compose-shelf-flatlay.ts       # Flat-lay de repisa (ADR-063)
     ├── letter-set-resolve.ts          # Resuelve la variante exacta del set (tema/idioma/tamaño)
@@ -183,6 +230,8 @@ apps/web/features/personalization/
 ├── actions.ts                         # Server Actions con Zod + ownership
 ├── letter-tiles.ts                    # Lógica de sets de letras (ADR-057)
 ├── calendar-layout.ts / calendar-draw.ts  # Layouts y draw de calendarios
+├── photo-fit.ts                       # Matemática ÚNICA cover-scale + clamp [0.5,3] + pinch
+│                                      #   (editor/sharp/canvas — antes triplicada inline)
 ├── production-render*.ts              # Render de producción 300 DPI (tiers sharp/canvas)
 └── … (frame-palette, surface, staged-slots, assembly-sheet, etc.)
 
@@ -432,7 +481,10 @@ packages/db/scripts/
 ### Ola 24 (Lucy 2026-09-09) — toolbar de estilo reordenada + zoom milimétrico
 
 - **«Borde de foto» PRIMERO, «Color de tarjeta» DEBAJO** en `studio-style-toolbar.tsx`
-  (ambas Polaroids y el resto de productos con marcos). Con «Sin borde» la paleta de
+  (ambas Polaroids y el resto de productos con marcos). _(El modo «Sin borde» de la
+  Instagram se REDEFINIÓ en el rediseño 2026-10-05: ancho completo con franjas
+  blancas, flag `igNoBorder` explícito y tarjeta forzada a blanco al entrar al
+  modo — excepción a la regla de no-reset del color, solo IG.)_ Con «Sin borde» la paleta de
   color queda DESACTIVADA (visible pero inerte: `aria-disabled` + atenuada + aviso CMS
   `estudio.texto.estilo-color-deshabilitado-hint`) en las plantillas Polaroid — la foto
   cubre toda la tarjeta y el color no aplica — y en las TIRAS photobooth (aviso propio
@@ -463,7 +515,9 @@ packages/db/scripts/
   recibe el `defaultFill` ya resuelto del call-site en vez del booleano `darkCard`).
 - **Polaroid Instagram — TODOS los textos requeridos para finalizar** (decisión owner):
   usuario, ubicación, título y hashtags son obligatorios (`IG_REQUIRED_TEXT_LAYER_IDS`);
-  el contador "362 me gusta" queda decorativo. Con la tarjeta que nace VACÍA (Ola 25),
+  el contador "362 me gusta" queda decorativo. _(REDEFINIDO por el rediseño
+  2026-10-05: «me gusta» también es REQUERIDO — 5 capas obligatorias, lista
+  decorativa vacía.)_ Con la tarjeta que nace VACÍA (Ola 25),
   una polaroid IG podía finalizarse en blanco → «Vista previa» se BLOQUEA mientras alguna
   capa requerida no tenga override con texto en TODOS los slots del pack
   (`igMissingRequiredTextLayerIds`; un campo falta si ALGÚN slot no lo tiene — cada imán
@@ -795,7 +849,9 @@ de todas las superficies personalizables.**
   (`studio-simple-header.tsx` — idioma del StudioToolbar sin el store zustand:
   pill «Salir», avatar+nombre, total en vivo + CTA «Vista previa»); (2) layout
   a dos columnas en lg (controles en tarjeta lateral `lg:w-80`, lienzo fluido en
-  la tarjeta-unidad `bg-white/70`) y lienzo PRIMERO en móvil; contenedor fluido
+  la tarjeta-unidad `bg-white/70`) y lienzo PRIMERO en móvil _(REDEFINIDO
+  2026-10-05: en móvil los CONTROLES van primero — ver el fix de esa fecha más
+  abajo)_; contenedor fluido
   con cap `STUDIO_MAX_WIDTH=1600` (`studio-layout.ts` — el canvas-grid conserva
   su propia constante inline por estar congelado); (3) fichas del Nombre
   FLUIDAS (ResizeObserver + callback-ref, tope 120px = ficha de producción,
@@ -889,6 +945,74 @@ de todas las superficies personalizables.**
   @1280 ~450px (antes ~293), @375 1 col ~327px; tira @1280 ~640px (antes 429);
   separadores conserva el patrón Magnéticos con caras ~×1.25. Auditoría: 0/70.
 
+### Rediseño Polaroid Instagram (owner 2026-10-05) — sin-borde con franjas, campos asistidos, «Aplicar» arriba
+
+Validado por el owner en STG; tres cambios de producto sobre la plantilla IG:
+
+- **«Sin borde» REDEFINIDO: foto A LO ANCHO COMPLETO con franjas blancas intactas.**
+  Antes el modo sin-borde ponía la foto a sangre TOTAL (x=0 y=0 450×600, chrome
+  encima). Ahora la foto solo pierde los bordes LATERALES (x=0, ancho = stage,
+  conserva y/alto de la ventana base 58→450): las franjas blancas superior
+  (header: usuario/ubicación) e inferior (iconos + likes/título/hashtags) se
+  conservan, como un post real de Instagram. El chrome SVG `_noborder` NO cambió:
+  solo dibuja cabecera (y<58) e iconos (y 468–496) → no se solapa con la nueva
+  ventana. Detalles:
+  - **FLAG EXPLÍCITO `canvasData.igNoBorder`** (schema Zod + types): el toggle
+    «Borde de foto» de la toolbar lo persiste junto al rect
+    (`setImagePlaceholderRect(rect, { igNoBorder })`) — antes el modo se infería
+    comparando el rect del placeholder contra el stage 450×600 con redondeo
+    (frágil). `isInstagramNoBorder(rect, stage, explicit?)` resuelve: flag si
+    está presente; si no, fallback por geometría que reconoce AMBOS modos
+    (sangre total legacy Y ancho-completo nuevo) → los consumidores que no
+    conocen el flag (grilla Konva, preview del modal, production-render-canvas)
+    siguen acertando sin cambios, y los diseños creados antes del flag cargan
+    intactos. `applyTemplate` limpia el flag (la plantilla nueva trae su rect).
+  - **Franjas SIEMPRE blancas**: al entrar a «Sin borde» la toolbar fuerza la
+    tarjeta blanca (excepción deliberada a la regla Ola 24 de "el color no se
+    resetea" — esa regla nació cuando la foto cubría todo y el color no
+    aplicaba; un negro residual ahora teñiría las franjas). La paleta sigue
+    desactivada en el modo, con hint propio (`estilo-color-deshabilitado-hint-ig`;
+    el hint genérico "la foto cubre toda la tarjeta" ya no describía a IG).
+    Clásica y tiras conservan la regla de no-reset intacta.
+  - `photoBackingHexFor`: sin respaldo lateral en el modo (igNoBorder → null),
+    como antes; las franjas viven fuera de la ventana → intactas. IG sigue
+    horneando el PNG del cliente (chrome SVG → NEEDS_KONVA), así que producción
+    hereda la geometría del canvasData (WYSIWYG); el fallback NEEDS_CLIENT_SLOTS
+    no se toca.
+- **Campos "Datos de la publicación" ASISTIDOS** (`studio-ig-post-fields.tsx` +
+  helpers puros testeados en `lib/ig-post-fields.ts`): el override guarda el
+  texto EXACTO del post (se imprime verbatim) y la UI muestra los fijos como
+  adornos fuera del valor editable:
+  - **@usuario**: "@" prefijada SIEMPRE visible (adorno fijo; el override se
+    guarda CON "@"). Sanitización en vivo: sin espacios, solo letras/números/
+    punto/guion bajo (caracteres válidos de usuario IG), tope 30.
+  - **Ubicación**: datalist nativo (sin dependencias) con lista curada
+    "Ciudad, País" (ciudades de Colombia + destinos frecuentes) — asistencia de
+    escritura, no validación: la ubicación libre también vale.
+  - **«Me gusta» pasa a OBLIGATORIO** (`IG_REQUIRED_TEXT_LAYER_IDS` gana
+    `likes_count`; la lista decorativa queda vacía — el guard
+    `igMissingRequiredTextLayerIds` lee el spec, sin tocar studio-editor):
+    input solo numérico mostrado con separador de miles es-CO, y la palabra
+    "me gusta" es sufijo FIJO fuera del input (el override guarda
+    "1.234 me gusta"). NOTA: el mapa de etiquetas del popover de «Vista previa»
+    en studio-editor.tsx usa fallback al id crudo para `likes_count` hasta que
+    se agregue la línea `likes_count: texts.texto.campoIgLikes` (la clave CMS
+    `estudio.texto.campo-ig-likes` ya existe).
+  - **Título (caption)**: contador de caracteres `n/140` (límite decidido: el
+    footer es una línea a 16px sobre 450px de stage — 140 caracteres ≈ 2 líneas
+    reales de post sin riesgo de desborde impreso) y placeholder con ejemplo.
+  - **Hashtags**: NO texto libre — UI de chips para agregar (Enter/coma/espacio)
+    y quitar (× o Backspace con el draft vacío), MÁXIMO 3 tags con aviso claro
+    (`role="alert"`), "#" siempre prefijada y sin espacios dentro de cada tag.
+  - Mensajes de validación en español tuteo (claves CMS `estudio.texto.ig-*`).
+- **«Aplicar» a la parte SUPERIOR del editor de texto** (owner: dos primarios
+  confusos — el «Aplicar» abajo junto a «Restablecer» competía con el «Listo»
+  del footer del modal): `StudioTextEditorForm` muestra «Aplicar» arriba
+  (visible sin scroll), «Restablecer» queda abajo como acción secundaria y el
+  «Listo» del `StudioSlotEditModal` baja a estilo outline (cierra el modal; el
+  primario de la edición es «Aplicar»). La pestaña Foto no tenía botón
+  «Aplicar» (aplica en vivo) → sin cambios allí.
+
 ### Fase 1A (owner 2026-09-27) — sustantivo real de la pieza, popover «qué falta», calendario SIN IMÁN abre su visor
 
 - **`resolveSlotNoun(productKind, magnet, texts)`** (`lib/slot-noun.ts`, puro y
@@ -918,6 +1042,232 @@ de todas las superficies personalizables.**
   lista de escenas queda vacía (`galleryScenes`, puro y testeado) — nevera/
   tablero asumen imán y no se ofrecen — y el botón «Míralo en tu espacio» del
   visor se omite (`onOpenGallery` opcional).
+
+### Fix (owner 2026-10-05) — prediseñados anclados a Cara A + controles del set de letras arriba en móvil
+
+- **Prediseñados respetan la paridad Cara A/B en TODAS las vías** (clic del
+  sidebar y drag & drop al lienzo — el picker modal ya lo hacía). El bug:
+  `applyPredesignedToSlot` mandaba la A al slot destino y la B a `destino+1`
+  siempre; si el destino era una cara B (slot impar — p.ej. el primer slot
+  vacío cuando la A de su par ya tiene diseño), la A caía en una cara B y la B
+  cruzaba a la cara A de la unidad SIGUIENTE. Ahora `resolveFaceAAnchor`
+  (en `lib/apply-predesigned.ts`, con `facesPerUnit = 2`) fija el ancla:
+  destino par → ese slot; destino impar → la A de SU par si está libre (la B
+  del diseño cae exactamente donde apuntó el cliente); si la A del par está
+  ocupada → el siguiente par con la A libre, buscando hacia adelante y
+  retomando desde el inicio; sin ninguna cara A libre → la aplicación FALLA
+  antes de subir el asset (toast de error, nunca se pisa contenido para abrir
+  sitio). Un prediseñado SIN cara B también ancla en cara A. La regla de
+  Paquete A se mantiene: una cara B ocupada nunca se pisa (`bBlocked` → toast
+  CMS). `facesPerUnit` se pasa desde los dos call sites (sidebar y grid).
+  Tests de la matriz de anclas en `lib/apply-predesigned.test.ts`.
+- **"Juegos y Aprendizaje" (sets de letras) — en móvil los CONTROLES van
+  ARRIBA del lienzo** (Tema → Idioma → Borde → Colores primero; el lienzo con
+  la grilla de fichas queda debajo). Solo se invierten las clases `order-*`
+  del `flex flex-col lg:flex-row` de `letter-set-editor.tsx`: `<lg` aside
+  `order-1` / lienzo `order-2`; en `lg` nada cambia (controles a la izquierda
+  `lg:w-80`, lienzo fluido a la derecha). La grilla de fichas y sus anchos por
+  breakpoint (Ola 33/34) no se tocan; el CTA sticky del `StudioSimpleHeader`
+  sigue visible. Contrato de orden en `letter-set-editor-preview.test.tsx`.
+
+### Fixes STG (2026-10-05) — picker "procesando" eterno + confirmar robusto en Vercel
+
+- **Modal "Mis fotos" ya no se queda "procesando" para siempre.** El
+  `StudioAssetPickerModal` vive SIEMPRE montado (el editor solo lo oculta con
+  `isOpen`) y el estado `assigningId` (spinner sobre la miniatura + resto
+  deshabilitado) jamás se reseteaba: al abrir el picker para un segundo slot
+  TODAS las fotos quedaban deshabilitadas. Ahora un `useEffect` sobre `isOpen`
+  limpia `assigningId`/`applyingId` y cancela el timer de feedback de 450 ms
+  al cerrar (que además se limpia solo al disparar y en unmount). Regresión en
+  `studio-asset-picker-modal.test.tsx` (cerrar y reabrir para OTRO slot con
+  las miniaturas habilitadas).
+- **El preview viaja con presupuesto de bytes** (`lib/preview-encode.ts →
+fitPreviewToBudget`): Vercel corta el body de una Function en ~4.5 MB y
+  `serverActions.bodySizeLimit: "50mb"` NO lo levanta (solo configura el
+  parser de Next). Un montaje multi-unidad grande moría en un 413 que el
+  cliente veía como "NetworkError when attempting to fetch resource". Si el
+  preview supera `PREVIEW_UPLOAD_BUDGET_BYTES` (3.5 MB) se re-codifica EN EL
+  CLIENTE antes de armar el FormData (calidad decreciente y luego downscale,
+  misma escalera que `compressPreviewImage` del server); el camino común pasa
+  tal cual. El server conserva su re-compresión 3–8 MB como red de seguridad.
+- **Las subidas a signed URLs son concurrentes y resilientes**
+  (`lib/upload-with-retry.ts`): los PUTs del fallback `NEEDS_CLIENT_SLOTS`
+  eran secuenciales, sin retry ni timeout, y el catch mostraba el error crudo
+  del navegador. Ahora suben con concurrencia tope 3, retry con backoff
+  exponencial (2 reintentos, solo errores de red y 5xx — un 4xx de firma
+  vencida es definitivo) y timeout de 30 s por intento. Cualquier fallo (y los
+  `TypeError` de red del finalize en general) se traduce al texto CMS
+  `estudio.exportar.error-subida-archivos` ("No pudimos subir tus archivos.
+  Revisa tu conexión e inténtalo de nuevo."), nunca el mensaje crudo del
+  motor. Tests en `lib/upload-with-retry.test.ts` (concurrencia, retry, 4xx
+  definitivo, timeout por AbortController) y `lib/preview-encode.test.ts`
+  (tamaño de dataURL + escalera de re-codificación).
+- **`export const maxDuration = 60` en la página del Estudio**: el finalize
+  renderiza los PNG de imprenta server-side (sharp/canvas, hasta 24 páginas de
+  calendario) y las Server Actions heredan el `maxDuration` de la página donde
+  se invocan (mismo patrón que `/checkout/pago`).
+
+### Fixes STG (2026-10-05) — subida de fotos unificada y confirmación de calendario con cache
+
+Hallazgos STG: "subir fotos en Mis Fotos es demorado" y "confirmar Vista Previa
+de calendario / varios separadores demora mucho". Tres frentes:
+
+- **Pipeline de subida UNIFICADO (`lib/upload-photo-pipeline.ts`)**. El picker
+  modal (tap-on-slot) subía el archivo CRUDO (fotos de iPhone de 5-8 MB) por la
+  Server Action, sin el upscale local ni la compresión cliente que el sidebar
+  ya aplicaba → más lento por foto y candidato al 413 de Vercel (~4.5 MB por
+  request). Ahora AMBOS caminos (sidebar "Mis fotos" y picker) corren la misma
+  secuencia por archivo: `upscalePhotoForPrint` (Web Worker) →
+  `compressImageForUpload` (WebP 2400px q0.85 sobre ~2 MB) →
+  `uploadDesignAssetAction`. Multi-archivo: hasta 3 archivos en vuelo
+  (`mapWithConcurrency` de `upload-with-retry`; antes ambos loops eran
+  estrictamente secuenciales) y los resultados se publican EN EL ORDEN EN QUE
+  SE ELIGIERON, no en orden de finalización (flush por prefijo contiguo) — el
+  orden de "Mis fotos" define qué foto cae en qué slot con «Llenar slots»,
+  así que debe ser determinista. El worker del upscale NO es singleton (cada
+  llamada crea y termina el suyo): correr hasta 3 en paralelo es seguro, sin
+  pool. Un archivo que falla no frena a los demás; la clasificación
+  too-big/network/server (`isTooBigUploadError`, pura) se comparte y ambos
+  caminos muestran los mismos mensajes. La Server Action se INYECTA al pipeline
+  (`upload`) para no importar código de servidor y testear con fakes. Tests en
+  `lib/upload-photo-pipeline.test.ts` (orden con uploads fuera de orden, tope
+  de concurrencia real, aislamiento de fallos, 413 → too-big).
+- **Cache de páginas del calendario (`lib/compose-calendar-page.ts`)**. Era el
+  path más pesado sin cache: CADA apertura de la Vista previa o del 3D
+  recomponía las 12+ páginas en un loop secuencial — foto full-res del bucket
+  directo, dibujo 810×1080 y `toDataURL` PNG — y el montaje decodificaba los 12
+  PNG y se re-codificaba (3 pasadas encode/decode, todo main thread). Ahora:
+  (a) cache por página con clave de contenido (`calendarPageCacheKey`: foto,
+  encuadre, mes, año, layout, fuente del título — por VALOR porque el
+  photoTransform se reconstruye en cada llamada; tope 48 con refresco LRU), de
+  modo que re-abrir la Vista previa o abrir el 3D reutiliza las páginas
+  intactas y solo recompone las que cambiaron; (b) las fotos se cargan a 1200px
+  vía el optimizador de Next (`loadCanvasImage`, el patrón del Abecedario)
+  — ~5-10× menos bytes por decodificar que el original — con fallback a la URL
+  directa; (c) las cargas van en paralelo (tope 4) y solo el dibujo queda en
+  main thread, en orden estable; (d) las páginas se codifican WebP q0.9 en vez
+  de PNG (los consumidores — montaje con `<img>` y texturas 3D con
+  TextureLoader — decodifican WebP en todos los browsers del soporte; la página
+  es OPACA, sin riesgo de alfa; si el navegador no codifica WebP, toDataURL
+  devuelve PNG en silencio y también vale). El montaje de confirmación además
+  sale ya en el MIME efectivo (`canvasToPreviewDataUrl`) → el
+  `reencodePreviewDataUrl` del editor queda como no-op y se elimina una pasada
+  encode/decode. Tests en `lib/compose-calendar-page.test.ts` (misma entrada →
+  misma clave/referencia, invalidación al cambiar transform/foto/mes/año/
+  layout/fuente, desalojo FIFO + LRU).
+- **Snapshots a tamaño de celda (`lib/slot-snapshot-cache.ts`)**.
+  `snapshotSlotForPreview` rasterizaba a `pixelRatio: 1` al tamaño DISPLAY del
+  stage (hasta ~1500px con zoom de lienzo 2.5×) para que TODOS los consumidores
+  lo redujeran de inmediato (celdas de 360px del preview compositado, caras de
+  300px de separadores, texturas de 512px del 3D). Ahora el snapshot se toma a
+  un tamaño objetivo fijo (`SNAPSHOT_TARGET_WIDTH` = 720px = 2× la celda de
+  360 → nitidez retina; cubre la cara de 300 a ~2.4× y la textura de 512 a
+  ~1.4×, sin upscale en ningún consumidor), con pixelRatio topado a 2
+  (`snapshotRasterPlan`, puro). UN solo tamaño para todos los consumidores
+  mantiene el cache compartido entre Vista previa / 3D / galería (si cada uno
+  pidiera el suyo se invalidarían entre sí). Consecuencia buscada y testeada:
+  cambiar el ZOOM del lienzo ya NO invalida el cache — la salida es idéntica.
+  La clave guarda el tamaño DE SALIDA (outW/outH) en vez del tamaño del stage.
+  Tests actualizados en `lib/slot-snapshot-cache.test.ts`.
+
+### Concordancia visual del pipeline (2026-10-05) — plantilla → canvas → 3D → preview → carrito → imprenta
+
+- **Carrera smart-crop vs ajuste manual (fix — "la edición difiere del lienzo", separador 2×6).**
+  `analyzeSmartCrop` corre async al cargar la foto y el chequeo `if (photoTransform) return`
+  ocurría al INICIAR el efecto: si el cliente ajustaba el encuadre antes de que el análisis
+  resolviera, el smart-crop le PISABA el ajuste. Ahora un ref espejo (`photoTransformRef`) se
+  relee AL RESOLVER la promesa y el resultado se descarta si ya hay transform — el ajuste
+  manual siempre manda (guard puro `shouldApplySmartCropResult` en `lib/smart-crop.ts`,
+  testeado en `smart-crop.test.ts`).
+- **Sensibilidad de pinch UNIFICADA (grilla = preview del modal).** El preview amplificaba
+  ×1.7 y la grilla interactiva era lineal ×1: el mismo gesto daba zoom distinto en cada lado.
+  La curva vive en `features/personalization/photo-fit.ts` (`PINCH_SENSITIVITY = 1.7`,
+  `pinchAdjustedRatio`) y la consumen ambas superficies.
+- **Matemática cover + clamp [0.5,3] en fuente ÚNICA (`photo-fit.ts`).** La regla estaba
+  triplicada inline en `studio-slot.tsx`, `production-render.ts` y `production-render-canvas.ts`
+  — cualquier divergencia rompía el WYSIWYG. Las tres superficies importan
+  `clampPhotoScale` / `coverScaleBase`; la concordancia es por construcción y los valores
+  exactos quedan fijados en `photo-fit.test.ts`.
+- **Iluminación 3D calibrada (la cara impresa se veía MÁS CLARA que la foto).** Causa:
+  sobre-iluminación PBR — irradiancia difusa frontal >1 por suma de luces directas + IBL del
+  env-map procedural con `envMapIntensity` 1.0–1.15 en la cara impresa. Valores elegidos
+  (irradiancia difusa frontal ≈ 1.0 por escena, IBL de la cara solo micro-relieve especular):
+  - `magnet-3d.tsx` cara A: `envMapIntensity` 1.15 → **0.4**; cara B impresa: 1.0 → **0.4**.
+    Bordes/imán/escena conservan su look (0.9/0.7).
+  - `polaroid-3d-view.tsx` cara impresa: 1.05 → **0.4**; key 1.15 → **0.7**, hemi 0.3 → 0.22
+    (≈ 1.07 total; antes ≈ 1.5).
+  - `fridge-3d-view.tsx` key 1.15 → **0.85**, fill 0.3 → 0.25 (≈ 0.96; antes ≈ 1.16).
+  - `book-view-3d.tsx` key 1.05 → **0.7** (≈ 1.10; la contraluz 0.55 de la cara B NO se toca).
+  - `room-board-view-3d.tsx` key 1.0 → **0.7**, ambient 0.24 → 0.2 (≈ 1.07; antes ≈ 1.33).
+  - `calendar-card-focus.tsx` key 1.05 → **0.75**, hemi 0.34 → 0.28 (≈ 1.07; antes ≈ 1.31).
+    Las texturas siguen en SRGBColorSpace (correcto, no se tocó). **Validación manual pendiente
+    (no se pudo correr navegador)**: comparar en STG la cara impresa del 3D contra el canvas 2D
+    con la MISMA foto — deben leerse con el mismo brillo percibido; si queda oscura, subir el
+    key de la escena ±0.1 antes de tocar el `envMapIntensity`.
+- **Zoom 3D en móvil (minDistance por visor, objetivo: la pieza ≥50% del alto).** Cuenta
+  (fracción del alto ≈ h/(2·d·tan(fov/2)), d = distancia cámara↔pieza):
+  - Nevera (fov 40°, 0.049 u/cm): 7 → **2.6**. Las piezas están sobre la cara frontal
+    (z≈1.85 u) → de frente la pieza queda a ~0.75 u: fotoimán 6.5 cm ≈ 59% del alto (a 7 era
+    ~6%). Piso físico: fuera del nevecón + manijas en todo ángulo polar.
+  - Tablero (fov 42°, 0.1 u/cm): 7 → **1.7** (6.5 cm ≈ 53%).
+  - Libro doblado (fov 40°, 0.3 u/cm): 5 → **3.0** (cara 2×6 ≈ 42% — el 50% exacto exigiría
+    mover el target a la pieza, fuera de alcance; el libro plano baja 3.5 → **2.8**).
+  - Polaroid (fov 42°, 0.25 u/cm): 4 → **3.0** (tarjeta 6.5 cm ≈ 56%).
+  - Calendario detalle: se conserva **3.5** (la tarjeta ~5.4 u ya desborda el alto a esa
+    distancia).
+- **dpr táctil 1.5 → 2** en los 5 Canvas (book/fridge/polaroid/room-board/calendar-focus):
+  el zoom cercano necesitaba la nitidez retina. Trade-off documentado inline: ×1.78 más
+  píxeles/frame en GPU móvil, mitigado por escenas estáticas con sombra horneada (y
+  `frameloop="demand"` en el calendario). **Validar en dispositivo real de gama baja.**
+- **Texturas 3D por tamaño físico (PROPUESTA pendiente de integración).** El zoom cercano
+  también delató el 512 px fijo de `buildMagnetTextures` (studio-editor.tsx ~2625-2688, no
+  editable por este cambio). Helper listo en `lib/texture-resolution.ts`:
+  `magnetTextureWidth({ sizeCm })` → **1024** px por defecto, **2048** px si el lado mayor
+  ≥ 10 cm (tiras, alargados, calendario). Integración propuesta: usarlo donde hoy va el 512
+  fijo. Tests en `texture-resolution.test.ts`.
+- **Glossy del preview recalibrado al acabado real (ver "Acabado glossy" abajo).**
+- **Miniatura de carrito/checkout sin recorte.** El preview del diseño (mosaico de piezas)
+  ya no se pinta `object-cover` cuadrado (se comía los bordes del diseño): `object-contain`
+  con padding sobre fondo neutro claro en `/carrito` (96px) y en el order-summary del
+  checkout (48px). Fotos de catálogo siguen en `cover`. Sin tocar el pipeline de generación
+  del preview ni el lightbox (`design-preview-dialog.tsx`).
+
+## DPI y sangrado (estado real 2026-10-05)
+
+- **Sin cambio de escala todavía** — requiere decisión con imprenta (ver abajo). Esta sección
+  solo documenta el estado real para que esa conversación tenga los números encima de la mesa.
+- **`PRODUCTION_SCALE = 3` fijo** (`features/personalization/production-render.ts`): el PNG
+  de imprenta sale al ancho lógico del stage × 3 (1080 → 3240 px), igual en móvil y desktop
+  (H5: el pixelRatio del snapshot va relativo al tamaño LÓGICO del stage, no al display).
+- **`dpiProduction: 300` es una ETIQUETA** del `stage` del canvasData, no un remuestreo real:
+  el DPI efectivo sale de (ancho del stage × 3 px) / (cm físicos / 2.54) y varía por plantilla
+  (los stages no son todos 1080 px: hay celdas 390×400, caras 600×200 / 400×420, etc.). El
+  rango efectivo medido del catálogo es ≈ **686–762 DPI** — sobra contra los 300 del estándar;
+  el cuello de botella es la resolución de la FOTO del cliente, no el lienzo (de ahí el
+  quality-check `checkPhotoQuality` a 118 px/cm y el upscale local).
+- **Sin bleed (sangrado)** desde 2026-05-15: la guía bleed del overlay se eliminó (la silueta
+  del producto YA es el borde de impresión) y producción renderiza al borde exacto del stage,
+  salvo el **full-bleed de marcos** (`frame-palette.ts`: con `borderColor` la tarjeta entera se
+  pinta del color y la foto va inserta con franja mínima 4% del lado menor — no es sangrado de
+  corte, es la estética del marco). La única guía vigente del overlay es la **safe-area 8%**
+  (~3 mm interior al borde) para texto.
+- **Decisión pendiente con imprenta**: ¿el archivo final necesita sangrado real de corte
+  (p.ej. 2–3 mm por lado → stage ×3 + margen con borde extendido/mirror) o la imprenta
+  troquela al ras del PNG actual? Y si exigen exactamente 300 DPI al tamaño físico, habría que
+  cambiar `PRODUCTION_SCALE` por producto (hoy es fija en 3) — hoy el archivo llega con MÁS
+  resolución de la pedida, que la imprenta remuestrea.
+
+## Acabado glossy (preview vs impresión)
+
+- Producción **NO hornea glossy**: los adornos `name="realism"` (sombra, glossy, edge stroke)
+  se ocultan durante el snapshot de imprenta (studio-editor.tsx — el archivo de producción es
+  la tarjeta limpia). El glossy del overlay es una APROXIMACIÓN en pantalla del laminado PET
+  (brillo especular leve en luz directa), no una simulación física.
+- **2026-10-05 — intensidad recalibrada**: el gradient llegaba a 22% de blanco y el preview se
+  veía más lavado que la pieza impresa. Constantes en `studio-realism-overlay.tsx`:
+  `GLOSSY_HIGHLIGHT_OPACITY = 0.10` (pico), `GLOSSY_MID_OPACITY = 0.02`,
+  `GLOSSY_SHADE_OPACITY = 0.02`. Si Lucy compara contra la pieza física y quiere más/menos
+  brillo, se ajustan esas tres constantes (nunca volver a horneado en producción).
 
 ## Wireframes ASCII
 

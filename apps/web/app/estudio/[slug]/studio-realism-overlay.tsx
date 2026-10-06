@@ -18,15 +18,19 @@
  * Ambos componentes devuelven `<Layer>` Konva — el caller los stack-ea
  * en el orden bottom→top dentro del mismo `<Stage>`.
  *
- * Bleed / safe area:
- *   - Bleed (5mm @ 300dpi) = zona de corte. Lo dibujado acá puede cortarse.
- *     Se marca con dashed yellow. Cliente NO debe poner texto importante acá.
- *   - Safe (3mm más interior) = zona garantizada visible. Dashed green.
- *     Cliente sí puede poner texto importante en esta zona.
+ * Bleed / safe area (estado real 2026-10-05 — este comentario describía el
+ * diseño original de 2026-05-13):
+ *   - El BLEED ya NO existe: se eliminó 2026-05-15 (era la línea amarilla) —
+ *     la silueta del producto físico (heart/circle/rectangle) YA define el
+ *     borde de impresión, y producción renderiza SIN sangrado (salvo el
+ *     full-bleed de marcos, frame-palette.ts). Ver sección "DPI y sangrado"
+ *     del README del Estudio.
+ *   - Safe (única guía vigente, 8% inset) = distancia mínima del texto al
+ *     borde físico. Dashed brand-purple. Cliente sí puede poner texto
+ *     importante en esta zona.
  *
  * Cálculos (porcentajes del width físico, sin asumir sizeCm específico):
- *   - bleedInset  = 4% (representativo de ~5mm en imán típico 5×5cm)
- *   - safeInset   = 8% (representativo de ~3mm más interior)
+ *   - safeInset   = 8% (representativo de ~3mm interior al borde)
  *
  * Formas soportadas:
  *   - rectangle (default, con cornerRadius opcional)
@@ -59,6 +63,17 @@ const HEART_PATH_DATA =
 const SAFE_INSET_PCT = 0.08;
 const SAFE_COLOR = "rgba(124, 106, 173, 0.85)"; // brand-purple — coherente con el resto del editor
 const DASH_SAFE: number[] = [8, 6];
+
+// Acabado glossy del PREVIEW (2026-10-05 — recalibrado): producción NO hornea
+// glossy (studio-editor.tsx lo quita explícito al rasterizar) y el laminado
+// PET real solo da un brillo especular leve en luz directa, no un velo blanco.
+// El gradient viejo llegaba a 22% de blanco → el preview se veía más lavado
+// que la pieza impresa. Valores elegidos: pico 10% (visible al comparar, no
+// altera colores), meseta 2%, contraluz 2%. El preview APROXIMA el acabado —
+// ver sección "Acabado glossy" del README del Estudio.
+const GLOSSY_HIGHLIGHT_OPACITY = 0.1;
+const GLOSSY_MID_OPACITY = 0.02;
+const GLOSSY_SHADE_OPACITY = 0.02;
 
 type Shape = "rectangle" | "circle" | "heart" | "custom";
 type Finish = "matte" | "glossy" | "soft-touch" | "glass";
@@ -152,7 +167,8 @@ export function RealismOverlayLayer({
   showGuides = false,
 }: RealismOverlayProps) {
   // Acabado glossy: gradient blanco semi-transparente diagonal top-left → bottom-right.
-  // Simula reflejo de luz sobre superficie laminada.
+  // Simula reflejo de luz sobre superficie laminada (intensidades calibradas al
+  // acabado real — ver GLOSSY_*_OPACITY arriba).
   // Glass treat como glossy (mismo gradient blanco simula reflejo de vidrio).
   const glossyGradient =
     finish === "glossy" || finish === "glass"
@@ -161,13 +177,13 @@ export function RealismOverlayLayer({
           fillLinearGradientEndPoint: { x: stage.width, y: stage.height },
           fillLinearGradientColorStops: [
             0,
-            "rgba(255, 255, 255, 0.22)",
+            `rgba(255, 255, 255, ${GLOSSY_HIGHLIGHT_OPACITY})`,
             0.35,
-            "rgba(255, 255, 255, 0.04)",
+            `rgba(255, 255, 255, ${GLOSSY_MID_OPACITY})`,
             0.7,
             "rgba(255, 255, 255, 0)",
             1,
-            "rgba(0, 0, 0, 0.04)",
+            `rgba(0, 0, 0, ${GLOSSY_SHADE_OPACITY})`,
           ] as number[] | string[],
           listening: false,
         }

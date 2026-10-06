@@ -217,6 +217,14 @@ export const CanvasDataV2Schema = z.object({
   // El precio NUNCA confía en estos campos: se deriva de slotCount (design-units.ts).
   unitCount: z.number().int().min(1).max(50).optional(),
   unitSlots: z.number().int().min(1).max(50).optional(),
+  // Rediseño IG (owner 2026-10-05) — modo SIN BORDE de la Polaroid Instagram como
+  // FLAG EXPLÍCITO (antes se infería por la geometría del image-placeholder:
+  // comparación exacta contra el stage 450×600, frágil). true = foto a lo ancho
+  // completo conservando las franjas blancas superior/inferior. Ausente = diseño
+  // de antes del cambio → la detección por geometría (isInstagramNoBorder) sigue
+  // como fallback. Sin catchall en este schema: declararla acá es lo que la hace
+  // sobrevivir el auto-save (Zod stripea claves no declaradas).
+  igNoBorder: z.boolean().optional(),
 });
 
 export type CanvasDataV2 = z.infer<typeof CanvasDataV2Schema>;

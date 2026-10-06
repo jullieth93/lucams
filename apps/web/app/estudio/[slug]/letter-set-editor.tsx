@@ -58,6 +58,7 @@ import { resolveLetterSetVariant, type LetterSetVariant } from "./lib/letter-set
 import { loadCanvasImage } from "./lib/canvas-image";
 import type { Magnet3D } from "./fridge-3d-view";
 import { buildLetterTileTextures, LETTER_TILE_CORNER_RATIO } from "./lib/letter-tile-textures";
+import { NAME_TILE_THEMES } from "./letter-tile";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { Hint } from "@/components/ui/tooltip";
 import { useIsTouch } from "./use-is-touch";
@@ -297,6 +298,10 @@ export function LetterSetEditor({
   initialTheme,
   stylesByLanguage,
   initialUnits,
+  initialStyleId,
+  initialWithBorder,
+  initialColorTheme,
+  initialUnitColors,
   subtitle,
 }: {
   product: { id: string; slug: string; name: string };
@@ -322,6 +327,19 @@ export function LetterSetEditor({
    * por todos los sets). undefined → 1. Tope MAX_LETTER_SET_UNITS.
    */
   initialUnits?: number;
+  /** Al re-abrir (?designId=): estilo ilustrado persistido (metadata.styleSetId).
+   *  null explícito = «Solo letra» (manda sobre la preselección de la PDP). */
+  initialStyleId?: string | null;
+  /** Al re-abrir (?designId=): opción «Con borde / Sin borde» persistida
+   *  (metadata.withBorder). Ausente → con borde (default histórico). */
+  initialWithBorder?: boolean;
+  /** Al re-abrir (?designId=): tema de color persistido (metadata.frameTheme), para
+   *  reconstruir los snapshots de color por set junto a initialUnitColors. */
+  initialColorTheme?: string;
+  /** Al re-abrir (?designId=): colores efectivos por ficha de CADA set
+   *  (metadata.units[u].colors; el set 0 cae al `colors` raíz en diseños de un set).
+   *  Se restauran tal cual (orden incluido). */
+  initialUnitColors?: string[][];
   subtitle?: string;
 }) {
   const router = useRouter();
@@ -347,9 +365,22 @@ export function LetterSetEditor({
   // set activo reporta el suyo en cada cambio real (no en cada render); el Map es
   // la fuente para dibujar las láminas de TODOS los sets en la vista previa y para
   // la acción de crear. En estado (no ref): se lee durante el render.
-  const [snapshots, setSnapshots] = useState<ReadonlyMap<number, LetterColorsSnapshot>>(
-    () => new Map(),
-  );
+  // Al re-abrir (?designId=) el Map nace con los colores EFECTIVOS persistidos de
+  // cada set (activeColors = los hex guardados → effectiveColors sale idéntico,
+  // índice a índice, sin depender del barajado aleatorio del tema).
+  const [snapshots, setSnapshots] = useState<ReadonlyMap<number, LetterColorsSnapshot>>(() => {
+    const map = new Map<number, LetterColorsSnapshot>();
+    initialUnitColors?.forEach((colors, u) => {
+      if (colors.length > 0) {
+        map.set(u, {
+          themeId: initialColorTheme ?? NAME_TILE_THEMES[0].id,
+          activeColors: colors,
+          letterColors: {},
+        });
+      }
+    });
+    return map;
+  });
   const recordSnapshot = useCallback((unit: number, snap: LetterColorsSnapshot) => {
     setSnapshots((prev) => {
       if (prev.get(unit) === snap) return prev;
@@ -361,9 +392,11 @@ export function LetterSetEditor({
 
   // Idioma del alfabeto (para vocales no se muestra el selector: mismas 5 letras).
   const [language, setLanguage] = useState<"es" | "en">(initialLanguage);
-  // Tema elegido = LetterTileSet.id (null = "Solo letra"/Default). Preselección: el tema de
-  // la variante de la PDP, resuelto contra los sets del idioma inicial.
+  // Tema elegido = LetterTileSet.id (null = "Solo letra"/Default). Preselección: al
+  // re-abrir (?designId=) manda el persistido (null explícito = «Solo letra»); si no,
+  // el tema de la variante de la PDP, resuelto contra los sets del idioma inicial.
   const [styleId, setStyleId] = useState<string | null>(() => {
+    if (initialStyleId !== undefined) return initialStyleId;
     if (!initialTheme) return null;
     const match = themeOptions[initialLanguage].find((o) => o.theme === initialTheme);
     return match?.id ?? null;
@@ -372,7 +405,8 @@ export function LetterSetEditor({
   const [currentVariantId, setCurrentVariantId] = useState(variantId);
   // Lucy 2026-09-05 — opción de diseño "Con borde / Sin borde" (mismo precio). Default CON borde:
   // es el comportamiento histórico, así los diseños guardados antes de la opción quedan válidos.
-  const [withBorder, setWithBorder] = useState(true);
+  // Al re-abrir (?designId=) arranca con el valor persistido en metadata.withBorder.
+  const [withBorder, setWithBorder] = useState(initialWithBorder !== false);
 
   // Fase 1B — la paleta de colores pinta el BORDE de la ficha (temas con
   // ilustración) pero también el RELLENO de la letra cuando el tema es «Solo
@@ -670,11 +704,13 @@ export function LetterSetEditor({
           {(unit) => (
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:gap-6">
               {/* PREVIEW = el lienzo: tarjeta-unidad estándar del Estudio (mismo
-              lenguaje que las tarjetas del estudio de foto). Primero en móvil;
-              en lg columna fluida a la derecha. */}
+              lenguaje que las tarjetas del estudio de foto). En móvil va DEBAJO
+              de la tarjeta de controles (2026-10-05, owner: primero se elige
+              Tema → Idioma → Borde → Colores y luego se ve el lienzo); en lg
+              columna fluida a la derecha. */}
               <section
                 aria-label={texts.letras.titulo}
-                className="order-1 min-w-0 lg:order-2 lg:flex-1"
+                className="order-2 min-w-0 lg:order-2 lg:flex-1"
               >
                 <div className="border-brand-purple/15 rounded-2xl border bg-white/70 p-2 shadow-sm sm:p-4">
                   {/* Preview del set (WYSIWYG) — cada ficha es seleccionable para pintarla
@@ -783,8 +819,9 @@ export function LetterSetEditor({
               </section>
 
               {/* Controles: tarjeta blanca lateral en lg (idioma del StudioSidebar),
-              debajo del lienzo en móvil. */}
-              <aside className="order-2 lg:order-1 lg:w-80 lg:shrink-0">
+              ARRIBA del lienzo en móvil (2026-10-05: Tema → Idioma → Borde →
+              Colores se eligen antes de ver el lienzo). */}
+              <aside className="order-1 lg:order-1 lg:w-80 lg:shrink-0">
                 <div className="border-brand-purple/12 rounded-3xl border bg-white p-5 shadow-sm sm:p-6">
                   {/* Ola 2A — Selector de TEMA (antes dimensión de la PDP). Siempre visible: Default
             ("Solo letra") + un chip por set del idioma (vacíos degradan a letra estándar). */}

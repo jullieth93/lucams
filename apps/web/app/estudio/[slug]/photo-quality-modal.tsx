@@ -36,9 +36,9 @@ export type PhotoQualityModalProps = {
   /** Thumbnail override (chip del slot usa la URL de la foto asignada). */
   imageUrl?: string | null;
   /**
-   * CTA primario opcional (picker: "Usar de todos modos"). Si hay actionLabel
-   * + onAction, el footer muestra el botón de acción junto a "Entendido";
-   * quién llama decide si también cierra el modal.
+   * CTA opcional (picker: "Usar de todos modos"), en estilo outline junto al
+   * "Entendido" primario morado. Si hay actionLabel + onAction, el footer
+   * muestra ambos botones; quién llama decide si también cierra el modal.
    */
   actionLabel?: string;
   onAction?: () => void;
@@ -172,24 +172,26 @@ export function PhotoQualityModal({
               </div>
             </div>
 
-            {/* Footer actions */}
+            {/* Footer actions — "Entendido" es el CTA primario (morado sólido,
+                feedback STG 2026-10: el ghost pasaba desapercibido); la acción
+                secundaria ("Usar de todos modos") va en outline. */}
             <div className="border-brand-purple/10 flex items-center justify-end gap-2 border-t px-5 py-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="text-brand-purple-dark/70 hover:bg-brand-purple/10 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
-              >
-                {texts.fotos.calidadCerrar}
-              </button>
               {actionLabel && onAction && (
                 <button
                   type="button"
                   onClick={onAction}
-                  className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-turquoise rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors focus:ring-2 focus:outline-none"
+                  className="border-brand-purple/40 text-brand-purple-dark hover:bg-brand-purple/10 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors"
                 >
                   {actionLabel}
                 </button>
               )}
+              <button
+                type="button"
+                onClick={onClose}
+                className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-turquoise rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors focus:ring-2 focus:outline-none"
+              >
+                {texts.fotos.calidadCerrar}
+              </button>
             </div>
           </motion.div>
         </>

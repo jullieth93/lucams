@@ -45,7 +45,6 @@ import { Suspense, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, GradientTexture } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
-import { useIsTouch } from "./use-is-touch";
 import { StudioEnvironment } from "./studio-3d-environment";
 import { MagnetMesh, MAGNET_DEPTH, TILE_DEPTH, magnetWorldSizes } from "./magnet-3d";
 import { clusterLayout, BOARD_SCENE } from "./lib/cluster-layout";
@@ -218,13 +217,16 @@ function Scene({
       </mesh>
 
       {/* FB5 — env-map procedural para reflejos PBR (marco del tablero, imanes). Baja el ambiente
-        directo porque el entorno ya aporta. */}
+        directo porque el entorno ya aporta.
+        Calibración 2026-10-05 (cara impresa = foto original): irradiancia frontal (normal +Z)
+        ≈ 1.0 — key 0.7·cos(≈42°) ≈ 0.52 + hemi 0.35·~0.5 ≈ 0.18 + ambient 0.2 + fill ≈ 0.17
+        → ≈ 1.07 (antes key 1.0 + ambient 0.24 → ≈ 1.33 directo, sobre-expuesta). */}
       <StudioEnvironment intensity={0.9} />
       <hemisphereLight args={["#fff6ea", "#e5dccd", 0.35]} />
-      <ambientLight intensity={0.24} />
+      <ambientLight intensity={0.2} />
       <directionalLight
         position={[4, 6, 8]}
-        intensity={1.0}
+        intensity={0.7}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-8}
@@ -256,7 +258,11 @@ function Scene({
         maxAzimuthAngle={0.9}
         minPolarAngle={Math.PI / 3.5}
         maxPolarAngle={Math.PI / 1.9}
-        minDistance={7}
+        // Zoom móvil 2026-10-05: 7 → 1.7. Pieza chica 6.5 cm = 0.65 u (escala
+        // 0.1 u/cm) a ~1.6 u de la cámara (el frente del tablero está a z≈0.1):
+        // 0.65/(2·1.6·0.384) ≈ 53% del alto (fov 42°) — objetivo ≥50%. Con 7
+        // era ilegible. El piso queda muy por fuera del tablero (z≈0.11).
+        minDistance={1.7}
         maxDistance={60}
         target={[0, 0, 0]}
       />
@@ -276,7 +282,6 @@ export default function RoomBoardView3D({
   /** sizeCm de la variante elegida (ej "6.5×6.5", "7.5×10") — escala física de los imanes. */
   sizeCm?: string;
 }) {
-  const isTouch = useIsTouch();
   if (magnets.length === 0) {
     return (
       <div className="text-brand-muted flex h-full items-center justify-center p-8 text-center text-sm">
@@ -287,7 +292,11 @@ export default function RoomBoardView3D({
   return (
     <Canvas
       shadows
-      dpr={isTouch ? [1, 1.5] : [1, 2]}
+      // dpr hasta 2 también en táctil (2026-10-05): con el zoom cercano nuevo
+      // (minDistance 7 → 1.7) el cap 1.5 se veía borroso en retina móvil.
+      // Trade-off rendimiento: ×1.78 más píxeles/frame en GPU móvil — aceptable
+      // en escena estática con sombra horneada.
+      dpr={[1, 2]}
       camera={{ position: [0, 0.3, 12], fov: 42 }}
       gl={{ preserveDrawingBuffer: false, antialias: true }}
       style={{ width: "100%", height: "100%" }}

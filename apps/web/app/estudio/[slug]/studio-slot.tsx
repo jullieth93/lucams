@@ -72,6 +72,13 @@ import {
   photoBackingHexFor,
 } from "@/features/personalization/frame-palette";
 import { igTextFill } from "@/features/personalization/instagram-template-spec";
+import {
+  PHOTO_SCALE_MIN,
+  PHOTO_SCALE_MAX,
+  clampPhotoScale,
+  coverScaleBase,
+  pinchAdjustedRatio,
+} from "@/features/personalization/photo-fit";
 import { RealismShadowLayer, RealismOverlayLayer } from "./studio-realism-overlay";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
@@ -79,7 +86,7 @@ import type { CalendarFontKey } from "@/features/personalization/schemas";
 
 import { getFilterParams } from "./lib/photo-filters";
 import { createFilterRecacher } from "./lib/filter-recache";
-import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
+import { analyzeSmartCrop, checkPhotoQuality, shouldApplySmartCropResult } from "./lib/smart-crop";
 import { PREDESIGNED_DRAG_MIME, type PredesignedDragPayload } from "./lib/apply-predesigned";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -654,10 +661,9 @@ function StudioSlotImpl({
   }, []);
 
   // ──────────── Photo zoom helpers (M.3.b.UX.v10) ────────────
-  // Constantes compartidas entre wheel (desktop) y pinch (mobile).
-  const SCALE_MIN = 0.5;
-  const SCALE_MAX = 3.0;
-  const clampScale = useCallback((s: number) => Math.max(SCALE_MIN, Math.min(SCALE_MAX, s)), []);
+  // Límites compartidos: PHOTO_SCALE_MIN/MAX (photo-fit, fuente única) usados
+  // directo en wheel y pinch — alias locales disparaban exhaustive-deps.
+  const clampScale = useCallback((s: number) => clampPhotoScale(s), []);
 
   // Pinch state — distance entre 2 touches al inicio + scale al inicio.
   const pinchInitialDistRef = useRef<number | null>(null);
@@ -674,7 +680,7 @@ function StudioSlotImpl({
       if (!e.evt.ctrlKey && !e.evt.metaKey) return; // rueda simple → scroll de página
       e.evt.preventDefault();
       const current = slotState.photoTransform?.scale ?? 1;
-      const next = nextWheelScale(current, e.evt.deltaY, SCALE_MIN, SCALE_MAX);
+      const next = nextWheelScale(current, e.evt.deltaY, PHOTO_SCALE_MIN, PHOTO_SCALE_MAX);
       if (Math.abs(next - current) > 0.001) {
         onPhotoTransformChange({ scale: next });
       }
@@ -695,7 +701,7 @@ function StudioSlotImpl({
       e.preventDefault();
       e.stopPropagation();
       const current = slotState.photoTransform?.scale ?? 1;
-      const next = nextWheelScale(current, e.deltaY, SCALE_MIN, SCALE_MAX);
+      const next = nextWheelScale(current, e.deltaY, PHOTO_SCALE_MIN, PHOTO_SCALE_MAX);
       if (Math.abs(next - current) > 0.001) {
         onPhotoTransformChange?.({ scale: next });
       }
@@ -749,10 +755,12 @@ function StudioSlotImpl({
       const dx = t2.clientX - t1.clientX;
       const dy = t2.clientY - t1.clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      // Ola 10 — pinch más directo (respuesta lineal) para que en móvil el zoom
-      // con dos dedos se sienta inmediato, sin "maña".
+      // Pinch con la sensibilidad ÚNICA compartida con el preview del modal
+      // (pinchAdjustedRatio, photo-fit): el mismo gesto produce el mismo zoom
+      // percibido en ambas superficies (antes la grilla era lineal ×1 y el
+      // preview amplificaba ×1.7 — divergían).
       const rawRatio = dist / pinchInitialDistRef.current;
-      const next = clampScale(pinchInitialScaleRef.current * rawRatio);
+      const next = clampScale(pinchInitialScaleRef.current * pinchAdjustedRatio(rawRatio));
       onPhotoTransformChange({ scale: next });
     },
     [interactiveSlots, onPhotoTransformChange, clampScale],
@@ -2541,16 +2549,33 @@ function ImagePlaceholder({
   //
   // El cliente puede sobreescribir manualmente con drag/zoom igual que antes.
   // La sugerencia es solo el punto inicial, no permanente.
+  //
+  // Carrera async (fix 2026-10-05 — "la edición difiere del lienzo" en
+  // separador 2×6cm): el análisis tarda (downscale + saliency); el chequeo
+  // `if (slotState.photoTransform) return` corre al INICIAR el efecto, así que
+  // si el cliente ajusta el encuadre ANTES de que resuelva la promesa, el
+  // smart-crop le PISABA el ajuste manual. El ref espejo se relee al RESOLVER:
+  // si ya hay transform (ajuste manual del cliente), el resultado se descarta
+  // — el ajuste manual siempre manda (shouldApplySmartCropResult).
+  const photoTransformRef = useRef(slotState.photoTransform);
+  useEffect(() => {
+    photoTransformRef.current = slotState.photoTransform;
+  }, [slotState.photoTransform]);
   useEffect(() => {
     if (!image || !onPhotoTransformChange) return;
     if (slotState.photoTransform) return; // ya editada, no auto-aplicar
-    const coverScale = Math.max(
-      layer.width / image.naturalWidth,
-      layer.height / image.naturalHeight,
+    const coverScale = coverScaleBase(
+      layer.width,
+      layer.height,
+      image.naturalWidth,
+      image.naturalHeight,
     );
     let cancelled = false;
     analyzeSmartCrop(image, layer.width, layer.height, coverScale).then((result) => {
       if (cancelled || !result) return;
+      // El análisis empezó sin transform, pero pudo llegar un ajuste manual
+      // mientras tanto → NO pisar la decisión del cliente.
+      if (!shouldApplySmartCropResult(photoTransformRef.current)) return;
       // Solo aplicar si el offset es significativo (>5% del slot). Si el centro
       // de la imagen ya está bien encuadrado, no molestar.
       const minOffset = Math.min(layer.width, layer.height) * 0.05;
@@ -2593,11 +2618,11 @@ function ImagePlaceholder({
     const srcW = swapDims ? image.height : image.width;
     const srcH = swapDims ? image.width : image.height;
 
-    const coverScaleBase = Math.max(layer.width / srcW, layer.height / srcH);
+    const coverBase = coverScaleBase(layer.width, layer.height, srcW, srcH);
     const userScale = slotState.photoTransform?.scale ?? 1; // Permite zoom-out hasta 0.5 (foto 50% del cover). Floor para evitar
     // tamaños absurdos (foto < 10% del slot).
-    const effectiveScale = Math.max(0.5, Math.min(3, userScale));
-    const finalScale = coverScaleBase * effectiveScale;
+    const effectiveScale = clampPhotoScale(userScale);
+    const finalScale = coverBase * effectiveScale;
 
     const renderedW = image.width * finalScale;
     const renderedH = image.height * finalScale;

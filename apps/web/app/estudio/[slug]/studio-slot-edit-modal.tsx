@@ -456,11 +456,11 @@ export function StudioSlotEditModal({
               </Hint>
             )}
           </div>
-          <Button
-            type="button"
-            onClick={onClose}
-            className="bg-brand-purple hover:bg-brand-purple-dark text-white"
-          >
+          {/* Owner 2026-10-05 — jerarquía de primarios: «Aplicar» (arriba en el
+              formulario de texto) es la acción principal de la edición; «Listo»
+              solo CIERRA el modal → baja a estilo secundario (outline) para que
+              los dos primarios no compitan. */}
+          <Button type="button" variant="outline" onClick={onClose}>
             {texts.texto.slotEditListo}
           </Button>
         </div>

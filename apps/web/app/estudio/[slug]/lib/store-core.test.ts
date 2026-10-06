@@ -224,6 +224,22 @@ describe("setImagePlaceholderRect", () => {
     expect(ph).toMatchObject({ x: 0, y: 0, width: 450, height: 450 });
     expect(bg).toBeDefined(); // intacta
   });
+
+  it("opts.igNoBorder: true escribe el flag, false lo elimina, undefined lo conserva (rediseño IG 2026-10-05)", () => {
+    const store = setup();
+    store
+      .getState()
+      .setImagePlaceholderRect({ x: 0, y: 58, width: 450, height: 392 }, { igNoBorder: true });
+    expect(store.getState().canvasData?.igNoBorder).toBe(true);
+    // Sin opts → el flag se conserva.
+    store.getState().setImagePlaceholderRect({ x: 0, y: 58, width: 450, height: 392 });
+    expect(store.getState().canvasData?.igNoBorder).toBe(true);
+    // false → diseño limpio (la clave desaparece).
+    store
+      .getState()
+      .setImagePlaceholderRect({ x: 29, y: 58, width: 392, height: 392 }, { igNoBorder: false });
+    expect(store.getState().canvasData?.igNoBorder).toBeUndefined();
+  });
 });
 
 describe("swapSlots", () => {

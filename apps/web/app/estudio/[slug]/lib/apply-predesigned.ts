@@ -9,8 +9,17 @@
  *
  * Este helper es la ÚNICA vía de aplicación (clic y drop convergen): sube la
  * imagen de la galería como asset del diseño (server action) y la asigna al
- * slot destino; con par A/B (separadores 2 caras, imageUrlB) la cara B va al
- * slot siguiente vacío, misma convención que el clic.
+ * slot destino; con par A/B (separadores 2 caras, imageUrlB) la cara B va a la
+ * hermana del ancla, misma convención que el clic.
+ *
+ * Paridad Cara A/B (2026-10-05): con `facesPerUnit = 2` el ancla se resuelve
+ * con resolveFaceAAnchor — un prediseñado con Cara A SIEMPRE cae en una cara A
+ * (slot par de su unidad) y la B en su hermana, sin cruzar unidades (antes la
+ * A iba al slot destino aunque fuera una cara B y la B cruzaba a la cara A de
+ * la unidad siguiente). Regla de ancla: destino par → ese slot; destino impar
+ * → la A de su par si está libre; si está ocupada, el siguiente par con la A
+ * libre (hacia adelante, retomando desde el inicio); sin ninguna A libre la
+ * aplicación falla ANTES de subir el asset (el caller muestra el error).
  *
  * El MIME del drag viaja como constante para que el origen (sidebar) y el
  * destino (slot) no se desacoplen.
@@ -78,23 +87,56 @@ async function resolvePredesignedAssets(
   return { ok: true, a, b };
 }
 
+/**
+ * Ancla de CARA A para aplicar un prediseñado (paridad 2026-10-05). Con 1 cara
+ * o destino par el ancla es el propio destino. Con destino impar (cara B):
+ * la A de su par si está libre (la B del diseño cae entonces exactamente donde
+ * apuntó el usuario); si está ocupada, el siguiente par con la A libre buscando
+ * hacia adelante y retomando desde el inicio. null = no queda ninguna cara A
+ * libre (nunca se pisa contenido del usuario para abrir sitio).
+ */
+function resolveFaceAAnchor(
+  slots: ReadonlyArray<{ slotIndex: number; assetUrl?: string | null }>,
+  targetSlot: number,
+  facesPerUnit: number | undefined,
+): number | null {
+  if (facesPerUnit !== 2 || targetSlot % 2 === 0) return targetSlot;
+  const isFreeA = (slotIndex: number) => {
+    const s = slots.find((sl) => sl.slotIndex === slotIndex);
+    return !!s && !s.assetUrl;
+  };
+  if (isFreeA(targetSlot - 1)) return targetSlot - 1;
+  const unitCount = Math.ceil(slots.length / 2);
+  const startUnit = Math.floor(targetSlot / 2);
+  for (let step = 1; step < unitCount; step++) {
+    const a = ((startUnit + step) % unitCount) * 2;
+    if (isFreeA(a)) return a;
+  }
+  return null;
+}
+
 export async function applyPredesignedToSlot(opts: {
   store: StoreApi<StudioStoreState>;
   item: PredesignedDragPayload;
   targetSlot: number;
+  facesPerUnit?: number;
 }): Promise<{ ok: true; bBlocked?: boolean } | { ok: false; message: string }> {
+  const slots = opts.store.getState().canvasData?.slots ?? [];
+  const anchor = resolveFaceAAnchor(slots, opts.targetSlot, opts.facesPerUnit);
+  // Sin cara A libre no hay dónde anclar sin pisar contenido: se reporta y no
+  // se sube nada al servidor.
+  if (anchor === null) return { ok: false, message: "" };
   const resolved = await resolvePredesignedAssets(opts.store, opts.item.id);
   if (!resolved.ok) return { ok: false, message: resolved.message };
   const state = opts.store.getState();
-  state.assignAssetToSlot(opts.targetSlot, resolved.a);
+  state.assignAssetToSlot(anchor, resolved.a);
   let bBlocked = false;
   if (resolved.b) {
-    // Cara B al slot siguiente (convención separadores 2 caras: 2k/2k+1) SOLO
-    // si está vacío — Paquete A: si está ocupado NO se pisa el contenido del
-    // usuario ni se descarta en silencio: se reporta (bBlocked) para que la UI
-    // avise. Slot inexistente (producto de 1 cara o drop sobre una cara B) =
-    // no aplica, sin aviso.
-    const nextSlot = state.canvasData?.slots.find((s) => s.slotIndex === opts.targetSlot + 1);
+    // Cara B a la hermana del ancla (convención separadores 2 caras: 2k/2k+1)
+    // SOLO si está vacía — Paquete A: si está ocupada NO se pisa el contenido
+    // del usuario ni se descarta en silencio: se reporta (bBlocked) para que
+    // la UI avise. Slot inexistente (producto de 1 cara) = no aplica, sin aviso.
+    const nextSlot = slots.find((s) => s.slotIndex === anchor + 1);
     if (nextSlot) {
       if (!nextSlot.assetUrl) state.assignAssetToSlot(nextSlot.slotIndex, resolved.b);
       else bBlocked = true;
@@ -139,6 +181,7 @@ export async function applyPredesignedVarietyToEmptySlots(opts: {
       store,
       item: { id: item.id, name: item.name },
       targetSlot: slot.slotIndex,
+      facesPerUnit,
     });
     if (!res.ok) {
       failed = true;

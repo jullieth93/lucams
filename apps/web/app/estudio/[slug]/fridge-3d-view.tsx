@@ -44,7 +44,6 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, ContactShadows, Center } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
-import { useIsTouch } from "./use-is-touch";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
 import { MagnetMesh, magnetWorldSizes, type MagnetShape } from "./magnet-3d";
 import { frenchDoorClusterLayout, FRIDGE_SCENE } from "./lib/cluster-layout";
@@ -463,14 +462,18 @@ function Scene({ magnets, cols, sizeCm }: FridgeView3DProps) {
     <>
       {/* FB5 — env-map procedural (reflejos PBR reales) + backdrop de estudio (contexto/asiento). La
         iluminación directa baja porque el entorno ya aporta ambiente; el key mantiene el brillo y la
-        sombra proyectada. */}
+        sombra proyectada.
+        Calibración 2026-10-05 (cara impresa = foto original, ni más clara): irradiancia difusa
+        frontal ≈ 1.0 sobre la cara del imán (normal +Z): hemi 0.28·~0.5 ≈ 0.14 + ambient 0.18 +
+        key 0.85·cos(≈54°) ≈ 0.51 + fill 0.25·cos(≈59°) ≈ 0.13 → ≈ 0.96. Antes (key 1.15, fill
+        0.3) sumaba ≈ 1.16 directo + IBL 1.15 de la cara → sobre-expuesta. */}
       <StudioEnvironment intensity={1} />
       <StudioBackdrop position={[0, -FRIDGE_H / 2 - 0.34, -5]} scale={[42, 24, 9]} />
       <hemisphereLight args={["#ffffff", "#cfc9c2", 0.28]} />
       <ambientLight intensity={0.18} />
       <directionalLight
         position={[5, 8, 7]}
-        intensity={1.15}
+        intensity={0.85}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-8}
@@ -481,7 +484,7 @@ function Scene({ magnets, cols, sizeCm }: FridgeView3DProps) {
         shadow-bias={-0.0004}
         shadow-normalBias={0.02}
       />
-      <directionalLight position={[-6, 3, 4]} intensity={0.3} />
+      <directionalLight position={[-6, 3, 4]} intensity={0.25} />
 
       <Center>
         <group>
@@ -515,7 +518,14 @@ function Scene({ magnets, cols, sizeCm }: FridgeView3DProps) {
         autoRotateSpeed={0.8}
         minPolarAngle={Math.PI / 5}
         maxPolarAngle={Math.PI / 1.9}
-        minDistance={7}
+        // Zoom móvil 2026-10-05: 7 → 2.6. Las piezas están sobre la cara frontal
+        // (z ≈ 1.85 u), así que de frente la cámara queda a ~0.75 u de la pieza:
+        // un fotoimán de 6.5 cm (0.32 u) ocupa ≈ 59% del alto (fov 40°: h/(2·d·tan
+        // 20°) = 0.32/(2·0.75·0.364)) — el objetivo ≥50% para poder leerla; una
+        // tira de 26.5 cm (1.31 u) desborda con creces. Con 7 ocupaba ~6%.
+        // Piso físico: 2.6 > frente del nevecón (1.85) + manijas (~0.15) con
+        // margen → la cámara nunca entra al mueble en ningún ángulo polar.
+        minDistance={2.6}
         maxDistance={60}
         target={[0, 0, 0]}
       />
@@ -524,7 +534,6 @@ function Scene({ magnets, cols, sizeCm }: FridgeView3DProps) {
 }
 
 export default function FridgeView3D({ magnets, cols, sizeCm }: FridgeView3DProps) {
-  const isTouch = useIsTouch();
   if (magnets.length === 0) {
     return (
       <div className="text-brand-muted flex h-full items-center justify-center p-8 text-center text-sm">
@@ -535,7 +544,11 @@ export default function FridgeView3D({ magnets, cols, sizeCm }: FridgeView3DProp
   return (
     <Canvas
       shadows
-      dpr={isTouch ? [1, 1.5] : [1, 2]}
+      // dpr hasta 2 también en táctil (2026-10-05): con el zoom cercano nuevo
+      // (minDistance 7 → 2.6) el cap 1.5 se veía borroso en retina móvil.
+      // Trade-off rendimiento: ×1.78 más píxeles/frame en GPU móvil — aceptable
+      // en escena estática con sombra horneada.
+      dpr={[1, 2]}
       camera={{ position: [0, 0.4, 14.5], fov: 40 }}
       gl={{ preserveDrawingBuffer: false, antialias: true }}
       style={{ width: "100%", height: "100%" }}

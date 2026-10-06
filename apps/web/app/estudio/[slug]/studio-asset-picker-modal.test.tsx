@@ -148,3 +148,60 @@ describe("StudioAssetPickerModal — avisos de calidad con PhotoQualityModal", (
     expect(props.onSelectAsset).not.toHaveBeenCalled();
   });
 });
+
+describe("StudioAssetPickerModal — estado 'procesando' se resetea al cerrar (fix STG 2026-10-05)", () => {
+  const OK2: StudioAsset = {
+    id: "ok2",
+    signedUrl: "https://example.com/ok2.jpg",
+    width: 2400,
+    height: 2400,
+  };
+
+  it("reabrir el picker para OTRO slot no deja las miniaturas deshabilitadas ni el spinner", async () => {
+    const props = {
+      isOpen: true,
+      slotIndex: 0,
+      totalSlots: 3,
+      assets: [OK, OK2],
+      designId: null,
+      onClose: vi.fn(),
+      onSelectAsset: vi.fn(),
+      onAssetUploaded: vi.fn(),
+    };
+    // El editor mantiene el componente SIEMPRE montado (solo lo oculta con
+    // isOpen) — la regresión vivía exactamente en ese ciclo de vida.
+    const { rerender } = render(
+      <TooltipProvider>
+        <StudioAssetPickerModal {...props} />
+      </TooltipProvider>,
+    );
+    const renderWith = (isOpen: boolean, slotIndex: number) =>
+      rerender(
+        <TooltipProvider>
+          <StudioAssetPickerModal {...props} isOpen={isOpen} slotIndex={slotIndex} />
+        </TooltipProvider>,
+      );
+
+    // Asignar una foto al slot 1: queda el estado "procesando" (spinner +
+    // resto deshabilitado) hasta que cierra el timer de feedback.
+    fireEvent.click(screen.getAllByRole("gridcell", { name: "Asignar esta foto al slot" })[0]);
+    await vi.waitFor(() => {
+      expect(props.onSelectAsset).toHaveBeenCalledWith(0, OK);
+    });
+    expect(
+      screen.getAllByRole("gridcell", { name: "Asignar esta foto al slot" })[1],
+    ).toBeDisabled();
+
+    // El editor cierra el picker (onClose del timer o backdrop) y luego lo
+    // reabre para el slot 2.
+    renderWith(false, 0);
+    renderWith(true, 1);
+
+    // Todas las miniaturas vuelven a estar habilitadas: sin el fix quedaban
+    // disabled para siempre ("procesando" eterno).
+    for (const cell of screen.getAllByRole("gridcell", { name: "Asignar esta foto al slot" })) {
+      expect(cell).not.toBeDisabled();
+      expect(cell).not.toHaveAttribute("aria-busy", "true");
+    }
+  });
+});

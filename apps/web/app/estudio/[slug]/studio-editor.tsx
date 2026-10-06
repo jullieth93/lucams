@@ -82,9 +82,15 @@ import { faceSlotLabels, previewFacePairOfUnit, deployedSizeCm } from "./lib/fac
 import { isBookmarkGalleryTag, resolveGalleryTag } from "./lib/product-kind";
 import {
   canvasToPreviewDataUrl,
+  fitPreviewToBudget,
   previewFileExtension,
   reencodePreviewDataUrl,
 } from "./lib/preview-encode";
+import {
+  isNetworkError,
+  uploadAllWithRetry,
+  type StoragePutRequest,
+} from "./lib/upload-with-retry";
 import { PHOTO_PACK_UNITS_PER_PACK } from "@/features/products/variant-schemas";
 
 // FOTO4 — la galería de escenas del fotoimán (nevera/mural/repisa/regalo). Las vistas 3D pesadas
@@ -105,6 +111,7 @@ import { resolveSlotNoun, type StudioSlotProductKind } from "./lib/slot-noun";
 import { collectQualityWarnings, qualityWarningsKey } from "./lib/quality-warnings";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
 import { ensureCanvasV2 } from "./lib/canvas-migrate";
+import { magnetTextureWidth, MAGNET_TEXTURE_WIDTH_DEFAULT } from "./lib/texture-resolution";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, type StudioTexts } from "./studio-texts";
 
@@ -121,6 +128,7 @@ function igBlockMessage(missingIds: string[], texts: StudioTexts): string | null
   const labels: Record<string, string> = {
     user_name: texts.texto.campoIgUsuario,
     location: texts.texto.campoIgUbicacion,
+    likes_count: texts.texto.campoIgLikes,
     caption: texts.texto.campoIgTitulo,
     hashtags: texts.texto.campoIgHashtags,
   };
@@ -990,8 +998,8 @@ export function StudioEditor({
           calendarLayout,
           liveCalendarFont,
         );
-        // WebP q0.85 (fallback JPEG): el montaje sale PNG del compositor
-        // (lib/compose-calendar-page, no editable desde acá) → se re-codifica.
+        // El montaje ya sale en el MIME efectivo (WebP/JPEG) del compositor —
+        // reencodePreviewDataUrl queda como red de seguridad no-op.
         setPreviewDataUrl(await reencodePreviewDataUrl(await buildCalendarPreviewMontage(pages)));
         setPreviewModalOpen(true);
         return;
@@ -1072,6 +1080,7 @@ export function StudioEditor({
         state.canvasData,
         slotStagesRef.current,
         productConfig.shape,
+        magnetTextureWidth({ sizeCm: productConfig.sizeCm }),
       );
       if (
         isBookmark &&
@@ -1101,6 +1110,7 @@ export function StudioEditor({
     store,
     productConfig.shape,
     productConfig.noFold,
+    productConfig.sizeCm,
     ensureAllStagesMounted,
     isBookmark,
     bookBuilding,
@@ -1120,6 +1130,7 @@ export function StudioEditor({
         state.canvasData,
         slotStagesRef.current,
         productConfig.shape,
+        magnetTextureWidth({ sizeCm: productConfig.sizeCm }),
       );
       // Ola 6 — los separadores se renderizan de PIE en el libro 3D: la textura horizontal
       // del Estudio debe rotarse 90° para que el diseño lea derecho sobre la cara 2×6 cm.
@@ -1292,6 +1303,14 @@ export function StudioEditor({
           state.setAutoSaveStatus({ kind: "saved", at: Date.now() });
           state.markClean();
         }
+        // 2026-10-05 (fix STG) — presupuesto de bytes del preview: el body de la
+        // Server Action tiene techo duro ~4.5 MB en Vercel (lo corta la plataforma,
+        // NO lo levanta `serverActions.bodySizeLimit`). Si el montaje no cabe se
+        // re-codifica acá (calidad decreciente + downscale) ANTES de armar el
+        // FormData; sin esto el request moría en un 413 que el cliente veía como
+        // "NetworkError when attempting to fetch resource". El camino común
+        // (preview ya bajo el presupuesto) no paga nada: pasa tal cual.
+        const previewForUpload = await fitPreviewToBudget(previewDataUrl);
         const buildFinalizeForm = () => {
           const fd = new FormData();
           fd.set("designId", designId);
@@ -1307,8 +1326,8 @@ export function StudioEditor({
           // formatos y guarda con la extensión correcta — contrato preview).
           fd.set(
             "preview",
-            dataURLtoBlob(previewDataUrl),
-            `preview.${previewFileExtension(previewDataUrl)}`,
+            dataURLtoBlob(previewForUpload),
+            `preview.${previewFileExtension(previewForUpload)}`,
           );
           return fd;
         };
@@ -1332,6 +1351,12 @@ export function StudioEditor({
           // del render server para 1080) igual en móvil y en desktop (antes toDataURL({pixelRatio:3})
           // sobre un slot de ~171px móvil daba ~186 DPI, borroso).
           const logicalStageW = canvasData.unitTemplate.stage.width;
+          // Los snapshots se generan 1 a 1 (Konva exporta en el main thread) pero
+          // las SUBIDAS van en paralelo (tope 3) con retry+timeout — ver
+          // lib/upload-with-retry.ts. Antes eran PUTs secuenciales sin retry y un
+          // micro-corte de red tumbaba el confirmar con el error crudo del
+          // navegador en pantalla (fix STG 2026-10-05).
+          const uploadRequests: StoragePutRequest[] = [];
           for (const { slotIndex, url } of result.uploads) {
             const stage = slotStagesRef.current.get(slotIndex);
             if (!stage) {
@@ -1354,14 +1379,19 @@ export function StudioEditor({
             }
             // FOTO1: heart/circle → recortar a la silueta (transparente afuera).
             dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
-            const put = await fetch(url, {
-              method: "PUT",
-              headers: { "content-type": "image/png", "cache-control": "max-age=3600" },
+            uploadRequests.push({
+              url,
               body: dataURLtoBlob(dataUrl),
+              contentType: "image/png",
             });
-            if (!put.ok) {
-              throw new Error(fillStudioText(texts.exportar.errorSubidaSlot, { n: slotIndex + 1 }));
-            }
+          }
+          try {
+            await uploadAllWithRetry(uploadRequests);
+          } catch {
+            // Mensaje amigable orientado a acción — el error crudo del motor
+            // ("NetworkError when attempting to fetch resource") no le dice
+            // nada al cliente.
+            throw new Error(texts.exportar.errorSubidaArchivos);
           }
           const retry = buildFinalizeForm();
           retry.set("useStagedSlots", "1");
@@ -1406,7 +1436,17 @@ export function StudioEditor({
         router.push("/carrito?personalized=1");
       } catch (err) {
         state.setIsFinalizing(false);
-        setPreviewError(err instanceof Error ? err.message : String(err));
+        // 2026-10-05 (fix STG) — errores de RED (TypeError "Failed to fetch" /
+        // "NetworkError when attempting to fetch resource", AbortError de
+        // timeout) se traducen al mensaje amigable; el texto crudo del navegador
+        // nunca llega a la pantalla.
+        setPreviewError(
+          isNetworkError(err)
+            ? texts.exportar.errorSubidaArchivos
+            : err instanceof Error
+              ? err.message
+              : String(err),
+        );
       }
     },
     [
@@ -2626,12 +2666,15 @@ async function buildMagnetTextures(
   canvasData: CanvasDataV2,
   stages: Map<number, Konva.Stage | null>,
   shape?: "rectangle" | "circle" | "heart" | "custom",
+  // 2026-10-05 — ancho de textura por tamaño físico de la pieza (antes 512 fijo:
+  // borroso con el zoom cercano nuevo + dpr 2). Ver lib/texture-resolution.ts.
+  texWidth: number = MAGNET_TEXTURE_WIDTH_DEFAULT,
 ): Promise<Magnet3D[]> {
   const { unitTemplate, slots } = canvasData;
-  const texW = 512;
+  const texW = texWidth;
   const texH = Math.max(
     64,
-    Math.round(512 * (unitTemplate.stage.height / unitTemplate.stage.width)),
+    Math.round(texW * (unitTemplate.stage.height / unitTemplate.stage.width)),
   );
   // Paquete J (2026-10-02) — snapshots cacheados por slot + decodificación EN
   // PARALELO (antes: N toDataURL + N decodes secuenciales dentro del click

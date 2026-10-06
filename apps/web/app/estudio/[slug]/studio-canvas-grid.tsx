@@ -309,7 +309,12 @@ export function StudioCanvasGrid({
       if (applyingPredesigned) return;
       setApplyingPredesigned(true);
       try {
-        const res = await applyPredesignedToSlot({ store, item, targetSlot: slotIndex });
+        const res = await applyPredesignedToSlot({
+          store,
+          item,
+          targetSlot: slotIndex,
+          facesPerUnit,
+        });
         if (!res.ok) {
           toast.error(res.message || texts.plantillas.toastError);
           return;
@@ -324,7 +329,7 @@ export function StudioCanvasGrid({
         setApplyingPredesigned(false);
       }
     },
-    [store, applyingPredesigned, texts],
+    [store, applyingPredesigned, texts, facesPerUnit],
   );
 
   // Responsive scale (ancho del contenedor, cap MAX_VIEWPORT_WIDTH)

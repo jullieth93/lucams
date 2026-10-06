@@ -241,10 +241,18 @@ describe("frame-palette — Ola 4 (cuadrados / tira / instagram)", () => {
     );
   });
 
-  it("isInstagramNoBorder: detecta la foto a sangre total del modo sin borde", async () => {
+  it("isInstagramNoBorder: flag explícito + fallback por geometría (legacy y nuevo modo)", async () => {
     const { isInstagramNoBorder } = await import("./frame-palette");
     const stage = { width: 450, height: 600 };
+    // Flag explícito (canvasData.igNoBorder, rediseño 2026-10-05): manda siempre.
+    expect(isInstagramNoBorder({ x: 29, y: 58, width: 392, height: 392 }, stage, true)).toBe(true);
+    expect(isInstagramNoBorder({ x: 0, y: 58, width: 450, height: 392 }, stage, false)).toBe(false);
+    // Fallback por geometría (diseños de antes del flag):
+    //  - LEGACY: foto a sangre total (el modo sin-borde de antes del rediseño).
     expect(isInstagramNoBorder({ x: 0, y: 0, width: 450, height: 600 }, stage)).toBe(true);
+    //  - NUEVO: ancho completo conservando las franjas (y > 0, alto < stage).
+    expect(isInstagramNoBorder({ x: 0, y: 58, width: 450, height: 392 }, stage)).toBe(true);
+    // Con borde (ventana de la plantilla) → false.
     expect(isInstagramNoBorder({ x: 29, y: 58, width: 392, height: 392 }, stage)).toBe(false);
     expect(isInstagramNoBorder(undefined, stage)).toBe(false);
   });

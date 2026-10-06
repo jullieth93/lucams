@@ -45,6 +45,20 @@ const LAYER: TextLayer = {
 
 afterEach(cleanup);
 
+describe("StudioTextEditorForm — «Aplicar» arriba (owner 2026-10-05)", () => {
+  it("el botón «Aplicar» va ANTES del input en el DOM (visible sin scroll) y «Restablecer» queda abajo", () => {
+    renderStudio(
+      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />,
+    );
+    const apply = screen.getByRole("button", { name: "Aplicar" });
+    const input = screen.getByRole("textbox");
+    const reset = screen.getByRole("button", { name: /volver al original/i });
+    // DOCUMENT_POSITION_FOLLOWING: apply precede al input y al reset.
+    expect(apply.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(apply.compareDocumentPosition(reset) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
 describe("StudioTextEditorForm — estado de procesamiento de «Aplicar» (Lucy 2026-09-08)", () => {
   it("al hacer click en Aplicar: spinner + disabled, y luego aplica el override", async () => {
     const onApply = vi.fn();

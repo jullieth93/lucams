@@ -12,9 +12,32 @@ import { describe, expect, it, vi } from "vitest";
 const smartcrop = vi.hoisted(() => ({ crop: vi.fn() }));
 vi.mock("smartcrop", () => ({ default: smartcrop }));
 
-import { analyzeSmartCrop, checkPhotoQuality, smartCropOffsetFromCrop } from "./smart-crop";
+import {
+  analyzeSmartCrop,
+  checkPhotoQuality,
+  shouldApplySmartCropResult,
+  smartCropOffsetFromCrop,
+} from "./smart-crop";
 
 const IMAGE = { naturalWidth: 1000, naturalHeight: 800 } as unknown as HTMLImageElement;
+
+// Carrera async (2026-10-05 — "la edición difiere del lienzo", separador 2×6):
+// el análisis tarda y el cliente pudo ajustar el encuadre a mano mientras tanto;
+// al RESOLVER la promesa el smart-crop NO debe pisar ese ajuste.
+describe("shouldApplySmartCropResult — guard de la carrera smart-crop vs ajuste manual", () => {
+  it("sin transform al resolver (foto intacta) → sí aplicar la sugerencia", () => {
+    expect(shouldApplySmartCropResult(null)).toBe(true);
+    expect(shouldApplySmartCropResult(undefined)).toBe(true);
+  });
+
+  it("con transform al resolver (hubo drag/zoom manual durante el análisis) → NO aplicar", () => {
+    // Aunque el ajuste sea mínimo (un drag de 1px), la decisión del cliente manda.
+    expect(shouldApplySmartCropResult({ offsetX: 1, offsetY: 0 })).toBe(false);
+    expect(shouldApplySmartCropResult({ offsetX: 0, offsetY: 0, scale: 1.2 })).toBe(false);
+    // Un smart-crop YA aplicado tampoco se re-aplica (idempotente).
+    expect(shouldApplySmartCropResult({ offsetX: -40, offsetY: 12 })).toBe(false);
+  });
+});
 
 describe("analyzeSmartCrop", () => {
   it("centra el topCrop: offset = (centro imagen − centro crop) × finalScale", async () => {

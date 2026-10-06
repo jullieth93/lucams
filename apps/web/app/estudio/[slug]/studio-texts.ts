@@ -340,6 +340,9 @@ export type StudioTexts = {
     campoIgUbicacion: string;
     campoIgTitulo: string;
     campoIgHashtags: string;
+    /** Rediseño IG (2026-10-05) — «me gusta» ahora es requerido y aparece en el
+     *  aviso de «Vista previa» bloqueado. */
+    campoIgLikes: string;
     /** Fase 1B — bloque de diligenciamiento masivo de la Polaroid Instagram en el
      *  sidebar ("Datos de la publicación"): un campo por capa editable que escribe
      *  en TODAS las fotos del set (equivalente multi-campo de "Tu mensaje"). */
@@ -357,6 +360,15 @@ export type StudioTexts = {
     igVariaPlaceholder: string;
     /** Aviso pack-level del bloque (misma caja destacada del aviso de "Tu mensaje"). */
     igGlobalAviso: string;
+    /** Rediseño asistido (2026-10-05) — ayudas y avisos de los controles por capa. */
+    igUsuarioHint: string;
+    igUbicacionHint: string;
+    igTituloPlaceholder: string;
+    igHashtagsPlaceholder: string;
+    /** Aviso al intentar agregar un 4º hashtag (tope de producto: 3). */
+    igHashtagsMaxAviso: string;
+    /** Nombre accesible del botón × de cada chip de hashtag. {tag} = el hashtag. */
+    igHashtagsQuitarAria: string;
     tamanoLabel: string;
     negrita: string;
     cursiva: string;
@@ -380,6 +392,9 @@ export type StudioTexts = {
     estiloSinBorde: string;
     /** Ola 24 — aviso cuando la paleta de color queda desactivada por «Sin borde». */
     estiloColorDeshabilitadoHint: string;
+    /** Rediseño IG (2026-10-05) — variante para la Polaroid Instagram: las franjas
+     *  blancas se conservan en «Sin borde» (ya no es "la foto cubre toda la tarjeta"). */
+    estiloColorDeshabilitadoHintIg: string;
     /** Ola 24 (tiras) — variante del aviso para la tira photobooth (foto a foto, sin canaletas). */
     estiloColorDeshabilitadoHintTira: string;
     slotEditTitulo: string;
@@ -466,6 +481,8 @@ export type StudioTexts = {
     errorCarritoNombre: string;
     errorCarritoSet: string;
     errorSubidaSlot: string;
+    /** Falla de red/subida en el confirmar: mensaje amigable orientado a acción (nunca el error crudo del navegador). */
+    errorSubidaArchivos: string;
     errorGuardar: string;
     piezaIman: string;
     piezaFicha: string;
@@ -951,6 +968,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     campoIgUbicacion: "ubicación",
     campoIgTitulo: "título",
     campoIgHashtags: "hashtags",
+    campoIgLikes: "me gusta",
     // Fase 1B — diligenciamiento masivo de los textos IG desde el sidebar (owner:
     // la Clásica tiene "Tu mensaje" para todo el set y la Instagram no tenía
     // equivalente). Un campo por capa; cada uno escribe en TODAS las fotos.
@@ -967,6 +985,15 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     igVariaPlaceholder: "Varía por foto — escribe para unificar",
     igGlobalAviso:
       "Estos datos se aplican a TODAS las fotos del set. Para personalizar una en particular, toca la foto.",
+    // Rediseño asistido (owner 2026-10-05) — ayudas/avisos de los controles por
+    // capa: "@" y "me gusta" son fijos, ubicación con sugerencias, título con
+    // contador y hashtags por chips (máx 3).
+    igUsuarioHint: "Sin espacios · letras, números, punto y guion bajo",
+    igUbicacionHint: "Elige una sugerencia o escribe la tuya (Ciudad, País)",
+    igTituloPlaceholder: "Ej: Nuestro paseo de domingo",
+    igHashtagsPlaceholder: "Escribe un hashtag y presiona Enter",
+    igHashtagsMaxAviso: "Máximo 3 hashtags — quita uno para agregar otro",
+    igHashtagsQuitarAria: "Quitar hashtag {tag}",
     tamanoLabel: "Tamaño",
     negrita: "Negrita",
     cursiva: "Cursiva",
@@ -986,6 +1013,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     estiloSinBorde: "Sin borde",
     estiloColorDeshabilitadoHint:
       "Con «Sin borde» la foto cubre toda la tarjeta — el color no aplica.",
+    estiloColorDeshabilitadoHintIg:
+      "Con «Sin borde» las franjas se conservan blancas — el color no aplica.",
     estiloColorDeshabilitadoHintTira:
       "Con «Sin borde» las fotos cubren toda la tira — el color no aplica.",
     slotEditTitulo: "Editar {etiqueta}",
@@ -1071,6 +1100,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     errorCarritoNombre: "Guardamos tu diseño pero no pudimos agregarlo al carrito: {error}",
     errorCarritoSet: "Guardamos el diseño pero no pudimos agregarlo al carrito: {error}",
     errorSubidaSlot: "No pudimos subir la imagen del slot {n}. Reintenta.",
+    errorSubidaArchivos: "No pudimos subir tus archivos. Revisa tu conexión e inténtalo de nuevo.",
     errorGuardar: "No pudimos guardar tus últimos cambios. Intenta de nuevo.",
     piezaIman: "imán",
     piezaFicha: "ficha",
@@ -1504,6 +1534,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.campoIgUbicacion": "estudio.texto.campo-ig-ubicacion",
   "texto.campoIgTitulo": "estudio.texto.campo-ig-titulo",
   "texto.campoIgHashtags": "estudio.texto.campo-ig-hashtags",
+  "texto.campoIgLikes": "estudio.texto.campo-ig-likes",
   "texto.igDatosTitulo": "estudio.texto.ig-datos-titulo",
   "texto.igDatosSub": "estudio.texto.ig-datos-sub",
   "texto.igCampoUsuario": "estudio.texto.ig-campo-usuario",
@@ -1516,6 +1547,12 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.igVariaPorFoto": "estudio.texto.ig-varia-por-foto",
   "texto.igVariaPlaceholder": "estudio.texto.ig-varia-placeholder",
   "texto.igGlobalAviso": "estudio.texto.ig-global-aviso",
+  "texto.igUsuarioHint": "estudio.texto.ig-usuario-hint",
+  "texto.igUbicacionHint": "estudio.texto.ig-ubicacion-hint",
+  "texto.igTituloPlaceholder": "estudio.texto.ig-titulo-placeholder",
+  "texto.igHashtagsPlaceholder": "estudio.texto.ig-hashtags-placeholder",
+  "texto.igHashtagsMaxAviso": "estudio.texto.ig-hashtags-max-aviso",
+  "texto.igHashtagsQuitarAria": "estudio.texto.ig-hashtags-quitar-aria",
   "texto.tamanoLabel": "estudio.texto.tamano-label",
   "texto.negrita": "estudio.texto.negrita",
   "texto.cursiva": "estudio.texto.cursiva",
@@ -1533,6 +1570,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.estiloConBorde": "estudio.texto.estilo-con-borde",
   "texto.estiloSinBorde": "estudio.texto.estilo-sin-borde",
   "texto.estiloColorDeshabilitadoHint": "estudio.texto.estilo-color-deshabilitado-hint",
+  "texto.estiloColorDeshabilitadoHintIg": "estudio.texto.estilo-color-deshabilitado-hint-ig",
   "texto.estiloColorDeshabilitadoHintTira": "estudio.texto.estilo-color-deshabilitado-hint-tira",
   "texto.slotEditTitulo": "estudio.texto.slot-edit-titulo",
   "texto.slotEditTituloIndice": "estudio.texto.slot-edit-titulo-indice",
@@ -1609,6 +1647,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "exportar.errorCarritoNombre": "estudio.exportar.error-carrito-nombre",
   "exportar.errorCarritoSet": "estudio.exportar.error-carrito-set",
   "exportar.errorSubidaSlot": "estudio.exportar.error-subida-slot",
+  "exportar.errorSubidaArchivos": "estudio.exportar.error-subida-archivos",
   "exportar.errorGuardar": "estudio.exportar.error-guardar",
   "exportar.piezaIman": "estudio.exportar.pieza-iman",
   "exportar.piezaFicha": "estudio.exportar.pieza-ficha",

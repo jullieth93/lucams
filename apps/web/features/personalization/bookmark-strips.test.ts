@@ -169,4 +169,51 @@ describe("composeFaceStrips (separadores 2 caras — tira desplegada)", () => {
     const [, , bTop] = await rgbaAt(strips[0], 50, 40);
     expect(bTop).toBe(255);
   });
+
+  // Blindaje de concordancia (2026-10-05) — la convención "cabezas al doblez"
+  // tiene DOS implementaciones independientes que NO comparten código:
+  //   · producción: composeFaceStrips (este módulo, sharp)
+  //   · preview de confirmación: buildBookmarkStripPreview (studio-editor.tsx,
+  //     canvas 2D del navegador — faceRect(i) = plegable { fy: y + (1-i)·faceH }
+  //     / noFold { fx: x + i·faceW }, con la cara B rotada 180° al pintar)
+  // Este test fija la geometría de AMBAS codificada por separado: si una de
+  // las dos cambia la convención, el test deja de cuadrar y la discrepancia
+  // preview↔imprenta se detecta en CI y no en la mesa de Lucy.
+  it("concordancia preview↔producción: la geometría de buildBookmarkStripPreview coincide con la tira impresa", async () => {
+    // Codificación INDEPENDIENTE de la convención del preview (studio-editor).
+    const previewFaceRect = (
+      i: number,
+      noFold: boolean,
+      x: number,
+      y: number,
+      fw: number,
+      fh: number,
+    ) =>
+      noFold
+        ? { fx: x + i * fw, fy: y, rotada180: false }
+        : { fx: x, fy: y + (1 - i) * fh, rotada180: i === 1 };
+
+    const a = await fakeFace(100, 120, "#FF0000");
+    const b = await fakeFace(100, 120, "#0000FF");
+
+    // Plegable: [A, B] → A abajo derecha, B arriba rotada — como la tira sharp.
+    const plegable = [0, 1].map((i) => previewFaceRect(i, false, 0, 0, 100, 120));
+    expect(plegable[0]).toEqual({ fx: 0, fy: 120, rotada180: false }); // A: mitad inferior
+    expect(plegable[1]).toEqual({ fx: 0, fy: 0, rotada180: true }); // B: mitad superior, 180°
+    const stripsP = await composeFaceStrips([a, b]);
+    const metaP = await sharp(stripsP[0]).metadata();
+    expect([metaP.width, metaP.height]).toEqual([100, 240]); // vertical 1×2
+    expect(await rgbaAt(stripsP[0], 50, 60).then((p) => p[2])).toBe(255); // B arriba
+    expect(await rgbaAt(stripsP[0], 50, 180).then((p) => p[0])).toBe(255); // A abajo
+
+    // noFold: [A, B] → A izquierda, B derecha SIN rotar — como la tira sharp.
+    const plano = [0, 1].map((i) => previewFaceRect(i, true, 0, 0, 100, 120));
+    expect(plano[0]).toEqual({ fx: 0, fy: 0, rotada180: false }); // A: izquierda
+    expect(plano[1]).toEqual({ fx: 100, fy: 0, rotada180: false }); // B: derecha
+    const stripsN = await composeFaceStrips([a, b], { noFold: true });
+    const metaN = await sharp(stripsN[0]).metadata();
+    expect([metaN.width, metaN.height]).toEqual([200, 120]); // horizontal 2×1
+    expect(await rgbaAt(stripsN[0], 50, 60).then((p) => p[0])).toBe(255); // A izquierda
+    expect(await rgbaAt(stripsN[0], 150, 60).then((p) => p[2])).toBe(255); // B derecha
+  });
 });

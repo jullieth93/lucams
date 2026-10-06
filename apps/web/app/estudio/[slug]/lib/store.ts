@@ -141,9 +141,17 @@ export type StudioStoreState = {
     override: import("../types").TextOverride | null,
   ) => void;
   /** Ola 3c — reescribe la geometría del image-placeholder del unitTemplate
-   *  (toggle "sin borde" de la Polaroid Instagram: la foto crece a sangre bajo
-   *  el chrome; producción la dibuja igual porque viaja en canvasData → WYSIWYG). */
-  setImagePlaceholderRect: (rect: { x: number; y: number; width: number; height: number }) => void;
+   *  (toggle "sin borde" de la Polaroid Instagram: la foto crece a lo ancho
+   *  completo conservando las franjas de texto; producción la dibuja igual
+   *  porque viaja en canvasData → WYSIWYG).
+   *  `opts.igNoBorder` (rediseño IG 2026-10-05) persiste además el FLAG EXPLÍCITO
+   *  del modo sin-borde en canvasData.igNoBorder (true lo escribe, false lo
+   *  elimina; undefined no lo toca) — el toggle conoce el modo y ya no hace
+   *  falta inferirlo por geometría. */
+  setImagePlaceholderRect: (
+    rect: { x: number; y: number; width: number; height: number },
+    opts?: { igNoBorder?: boolean },
+  ) => void;
   selectSlot: (slotIndex: number | null) => void;
   setSelectedTemplate: (templateId: string | null) => void;
   applyTemplate: (template: StudioTemplate) => void;
@@ -413,7 +421,7 @@ export function createStudioStore() {
       get().setCanvasData(next);
     },
 
-    setImagePlaceholderRect: (rect) => {
+    setImagePlaceholderRect: (rect, opts) => {
       const { canvasData } = get();
       if (!canvasData) return;
       const next: CanvasDataV2 = {
@@ -425,6 +433,10 @@ export function createStudioStore() {
           ),
         },
       };
+      // Rediseño IG (2026-10-05) — flag explícito del modo sin-borde: true lo
+      // escribe, false lo elimina (diseño limpio), undefined lo conserva.
+      if (opts?.igNoBorder === true) next.igNoBorder = true;
+      else if (opts?.igNoBorder === false) delete next.igNoBorder;
       get().setCanvasData(next);
     },
 
@@ -503,6 +515,10 @@ export function createStudioStore() {
       const next: CanvasDataV2 = {
         ...canvasData,
         unitTemplate: template.canvasData,
+        // La plantilla nueva trae su propio rect de placeholder → el flag del
+        // modo sin-borde IG deja de describir la geometría (quedaría diciendo
+        // "sin borde" con la foto enmarcada).
+        igNoBorder: undefined,
         // gridLayout no cambia: depende de slotCount + aspect del stage del
         // nuevo template. Recalcular solo si stage del template difiere.
         // Ola 2A — la plantilla puede fijar las columnas (tira fotobooth: gridCols=1).

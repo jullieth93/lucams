@@ -282,16 +282,16 @@ describe("StudioPreviewModal — aceptación explícita de calidad de fotos (Paq
 });
 
 describe("StudioPreviewModal — avisos informativos de brillo suave (fase 2, 2026-10-02)", () => {
-  // requiresAck:false = el ÚNICO problema de la foto es brillo soft (look
-  // oscuro deliberado) — se muestra en la lista pero NO exige aceptación.
+  // requiresAck:false = el ÚNICO problema de la foto es brillo soft (hoy solo
+  // sobreexposición; el aviso de foto oscura se eliminó 2026-10) — se muestra
+  // en la lista pero NO exige aceptación.
   const INFO_WARNING = {
-    assetId: "asset-oscura",
-    signedUrl: "https://signed.example/foto-oscura.jpg",
+    assetId: "asset-sobreexpuesta",
+    signedUrl: "https://signed.example/foto-sobreexpuesta.jpg",
     level: "warning-soft" as const,
-    message:
-      "La foto está algo oscura. Si buscabas un look oscuro o con fondo negro, puedes ignorar este aviso.",
+    message: "La foto está sobreexpuesta. Algunos detalles podrían perderse al imprimir.",
     recommendation:
-      "Si el estilo oscuro es a propósito, no hay nada que hacer. Si no, una foto con más luz va a verse mejor.",
+      "Una foto con menos exposición (menos quemada) conserva mejor los detalles al imprimir.",
     requiresAck: false,
   };
 
@@ -301,7 +301,7 @@ describe("StudioPreviewModal — avisos informativos de brillo suave (fase 2, 20
     expect(screen.getByText("Calidad de tus fotos")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "La foto está algo oscura. Si buscabas un look oscuro o con fondo negro, puedes ignorar este aviso.",
+        "La foto está sobreexpuesta. Algunos detalles podrían perderse al imprimir.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();

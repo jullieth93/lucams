@@ -14,7 +14,7 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 
@@ -83,7 +83,14 @@ function renderEditor(
   extraProps?: Partial<
     Pick<
       ComponentProps<typeof LetterSetEditor>,
-      "themeOptions" | "stylesByLanguage" | "initialTheme"
+      | "themeOptions"
+      | "stylesByLanguage"
+      | "initialTheme"
+      | "initialUnits"
+      | "initialStyleId"
+      | "initialWithBorder"
+      | "initialColorTheme"
+      | "initialUnitColors"
     >
   >,
 ) {
@@ -134,6 +141,14 @@ async function openPreview() {
 }
 
 describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)", () => {
+  it("móvil: los controles (Tema → Idioma → Borde → Colores) van ARRIBA del lienzo; en lg se mantiene controles-izquierda/lienzo-derecha", () => {
+    const { container } = renderEditor();
+    const aside = container.querySelector("aside");
+    const section = container.querySelector("section");
+    expect(aside).toHaveClass("order-1", "lg:order-1");
+    expect(section).toHaveClass("order-2", "lg:order-2");
+  });
+
   it("'Vista previa' abre la vista previa sin crear diseño ni tocar el carrito", async () => {
     renderEditor();
     await openPreview();
@@ -290,5 +305,105 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
       );
       expect(screen.queryByRole("note")).not.toBeInTheDocument();
     });
+  });
+});
+
+/*
+ * Recover flow (?designId= — «Editar» desde el carrito) — el Estudio debe devolver al
+ * editor la selección persistida del diseño: idioma, estilo ilustrado, borde, nº de sets
+ * y los colores por ficha de CADA set (Design.metadata de createLetterSetDesign). Antes
+ * esta superficie ni siquiera leía el designId: el Estudio abría siempre en blanco.
+ */
+describe("LetterSetEditor — recover flow (?designId=)", () => {
+  // El montaje multi-set de la vista previa (montageLaminaBlobs) usa Image +
+  // URL.createObjectURL + canvas.toDataURL, que jsdom no implementa. Stubs mínimos
+  // acotados a esta suite (los tests de UN set no pasan por el montaje).
+  const RealImage = globalThis.Image;
+  const realCreateObjectURL = URL.createObjectURL;
+  const realRevokeObjectURL = URL.revokeObjectURL;
+  const realToDataURL = HTMLCanvasElement.prototype.toDataURL;
+  beforeAll(() => {
+    class FakeImage {
+      onload: (() => void) | null = null;
+      onerror: ((e: unknown) => void) | null = null;
+      naturalWidth = 100;
+      naturalHeight = 100;
+      set src(_v: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    globalThis.Image = FakeImage as unknown as typeof Image;
+    URL.createObjectURL = () => "blob:fake";
+    URL.revokeObjectURL = () => {};
+    HTMLCanvasElement.prototype.toDataURL = (() =>
+      "data:image/png;base64,iVBORw0KGgo=") as unknown as HTMLCanvasElement["toDataURL"];
+  });
+  afterAll(() => {
+    globalThis.Image = RealImage;
+    URL.createObjectURL = realCreateObjectURL;
+    URL.revokeObjectURL = realRevokeObjectURL;
+    HTMLCanvasElement.prototype.toDataURL = realToDataURL;
+  });
+
+  it("arranca con la opción de borde persistida («Sin borde»)", () => {
+    renderEditor({ initialWithBorder: false });
+
+    expect(screen.getByRole("radio", { name: /Sin borde/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("radio", { name: /Con borde/ })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+
+  it("el estilo ilustrado persistido arranca seleccionado (manda sobre la preselección de la PDP)", () => {
+    renderEditor({ ...ILLUSTRATED_PROPS, initialTheme: null, initialStyleId: "set-animales" });
+
+    expect(screen.getByRole("radio", { name: /Animales/ })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("los colores por set persistidos llegan intactos al crear el diseño (multi-unidad)", async () => {
+    const colorsA = ["#FF0000", "#00FF00", "#0000FF", "#123456", "#654321"];
+    const colorsB = ["#AAAAAA", "#BBBBBB", "#CCCCCC", "#DDDDDD", "#EEEEEE"];
+    renderEditor({
+      initialUnits: 2,
+      initialColorTheme: "nino",
+      initialUnitColors: [colorsA, colorsB],
+    });
+    // Multi-unidad: el pager de sets refleja el nº guardado en el diseño.
+    expect(screen.getByRole("button", { name: /Set 2 de 2/ })).toBeInTheDocument();
+    await openPreview();
+
+    fireEvent.click(screen.getByRole("button", { name: /Sí, agregar al carrito/ }));
+
+    await waitFor(() => expect(createLetterSetDesignAction).toHaveBeenCalledTimes(1));
+    expect(createLetterSetDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        unitCount: 2,
+        frameTheme: "nino",
+        colors: colorsA,
+        units: [{ colors: colorsA }, { colors: colorsB }],
+      }),
+    );
+    // Y se sube UNA lámina de producción por set (2 sets = 2 archivos).
+    const fd = finalizeDesignAction.mock.calls[0]![0];
+    expect(fd.get("slotCount")).toBe("2");
+    expect(fd.get("production_0")).toBeInstanceOf(Blob);
+    expect(fd.get("production_1")).toBeInstanceOf(Blob);
+  });
+
+  it("diseño de UN set: los colores raíz (metadata.colors) se restauran en el set único", async () => {
+    const colors = ["#111111", "#222222", "#333333", "#444444", "#555555"];
+    renderEditor({ initialUnitColors: [colors] });
+    await openPreview();
+
+    fireEvent.click(screen.getByRole("button", { name: /Sí, agregar al carrito/ }));
+
+    await waitFor(() => expect(createLetterSetDesignAction).toHaveBeenCalledTimes(1));
+    expect(createLetterSetDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({ unitCount: 1, colors }),
+    );
   });
 });

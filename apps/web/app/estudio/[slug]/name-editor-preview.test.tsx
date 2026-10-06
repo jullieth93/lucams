@@ -88,6 +88,11 @@ function renderEditor(extraProps?: {
   initialCopies?: number;
   initialWithBorder?: boolean;
   variantMagnet?: boolean;
+  initialName?: string;
+  initialCount?: number;
+  initialStyleId?: string | null;
+  initialThemeId?: string;
+  initialColors?: string[];
   styles?: {
     id: string;
     name: string;
@@ -401,5 +406,98 @@ describe("NameEditor — opción «Con borde / Sin borde» (regla del set de let
       "true",
     );
     expect(screen.getByRole("button", { name: /Arcoíris/ })).toBeEnabled();
+  });
+});
+
+/*
+ * Recover flow (?designId= — «Editar» desde el carrito) — el Estudio debe devolver el
+ * diseño persistido al editor: nombre escrito, nº de fichas, estilo ilustrado, tema y
+ * colores por ficha (Design.metadata de createNameDesign). Antes solo se restauraba
+ * withBorder: el editor abría vacío y el cliente perdía visualmente su trabajo.
+ */
+describe("NameEditor — recover flow (?designId=)", () => {
+  /** Abre la vista previa SIN escribir: el nombre ya viene restaurado. */
+  async function openPreviewDirect() {
+    const ctas = screen.getAllByRole("button", { name: /Vista previa/ });
+    fireEvent.click(ctas[ctas.length - 1]!);
+    await waitFor(() => expect(screen.getByText(/Así se verá tu pedido/i)).toBeInTheDocument());
+  }
+
+  it("arranca con el nombre persistido y el conteo de fichas del diseño", () => {
+    renderEditor({ initialName: "MATEO", initialCount: 5 });
+
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    expect(input.value).toBe("MATEO");
+    // El contador arranca en las 5 fichas del diseño (no en el mínimo del producto).
+    expect(screen.getByText("5/5")).toBeInTheDocument();
+    // Y el total en vivo refleja las letras restauradas (5 × precio por ficha).
+    const total = new Intl.NumberFormat("es-CO", {
+      style: "currency",
+      currency: "COP",
+      maximumFractionDigits: 0,
+    }).format((PRICE_PER_TILE * 5) / 100);
+    const soloDigitos = total.replace(/\D/g, "");
+    expect(
+      screen
+        .getAllByText(/\$/)
+        .some((el) => (el.textContent ?? "").replace(/\D/g, "") === soloDigitos),
+    ).toBe(true);
+  });
+
+  it("sin initialCount explícito, el conteo se deriva del largo del nombre restaurado", () => {
+    renderEditor({ initialName: "MATEO" });
+    expect(screen.getByText("5/5")).toBeInTheDocument();
+  });
+
+  it("los colores y el tema persistidos llegan intactos al crear el diseño (round-trip)", async () => {
+    const colors = ["#FF0000", "#00FF00", "#0000FF", "#123456", "#654321"];
+    renderEditor({
+      initialName: "MATEO",
+      initialCount: 5,
+      initialColors: colors,
+      initialThemeId: "nino",
+    });
+    await openPreviewDirect();
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(createNameDesignAction).toHaveBeenCalledTimes(1));
+    expect(createNameDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "MATEO", themeId: "nino", colors }),
+    );
+  });
+
+  it("initialStyleId null explícito («Solo letra») manda sobre el default del primer estilo", async () => {
+    renderEditor({
+      initialName: "MATEO",
+      initialCount: 5,
+      initialStyleId: null,
+      styles: ILLUSTRATED_STYLES,
+    });
+    await openPreviewDirect();
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(createNameDesignAction).toHaveBeenCalledTimes(1));
+    expect(createNameDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({ styleSetId: null }),
+    );
+  });
+
+  it("el estilo ilustrado persistido arranca seleccionado", async () => {
+    renderEditor({
+      initialName: "MATEO",
+      initialCount: 5,
+      initialStyleId: "style-animales",
+      styles: ILLUSTRATED_STYLES,
+    });
+    await openPreviewDirect();
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(createNameDesignAction).toHaveBeenCalledTimes(1));
+    expect(createNameDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({ styleSetId: "style-animales" }),
+    );
   });
 });

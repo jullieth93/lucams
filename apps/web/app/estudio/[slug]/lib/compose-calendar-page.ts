@@ -5,6 +5,33 @@
  * ve en 3D es exactamente lo que se imprime (WYSIWYG). Toma la foto ORIGINAL de cada mes (assetUrl)
  * + su encuadre (photoTransform) y compone la página completa (foto + mes + año + grilla de días).
  * No pasa por Konva: replica la misma entrada que el server (asset crudo + transform).
+ *
+ * Fix STG (2026-10-05, "confirmar Vista Previa de calendario demora mucho"):
+ *   1. CACHE por página (`calendarPageCacheKey`): antes TODA apertura de la
+ *      vista previa o del 3D recomponía las 12+ páginas desde cero (carga
+ *      full-res + dibujo + encode, ~3 pasadas encode/decode con el montaje).
+ *      La clave cubre TODO lo que afecta el píxel final (foto, encuadre, mes,
+ *      año, layout, fuente del título), así que re-abrir la vista previa o
+ *      abrir el 3D reutiliza las páginas intactas y solo recompone las que
+ *      cambiaron. Invalidación por VALOR (el photoTransform se reconstruye en
+ *      cada llamada, no sirve la referencia como en slot-snapshot-cache).
+ *      Memoria acotada: tope FIFO con refresco LRU liviano.
+ *   2. Las fotos ya NO se cargan full-res del bucket directo: pasan por el
+ *      optimizador de Next (loadCanvasImage, lib/canvas-image) a 1200px — el
+ *      área de foto de la página mide 810px device (1080 × 0.75) y el
+ *      encuadre puede acercar ~1.5×; 1200 cubre con margen y son ~5-10× menos
+ *      bytes por decodificar que el JPEG de 2400+px. El helper cae a la URL
+ *      directa si el optimizador falla (host fuera de remotePatterns, etc.).
+ *   3. Las cargas de imagen van EN PARALELO (tope 4) y solo el dibujo queda
+ *      secuencial en el main thread (ops vectoriales baratas).
+ *   4. Las páginas se codifican WebP q0.9 en vez de PNG: ~5-10× menos bytes
+ *      por dataURL (memoria del cache + decodificación del montaje/3D). Los
+ *      consumidores lo admiten: el montaje las decodifica con <img> y las
+ *      texturas 3D cargan con TextureLoader (ambos vía pipeline de imagen del
+ *      navegador, que decodifica WebP en todos los browsers del soporte). Si
+ *      el navegador no codifica WebP, canvas.toDataURL devuelve PNG en
+ *      silencio — también válido, solo más pesado. La página es OPACA (la
+ *      tarjeta pinta su fondo), así que no hay riesgo de alfa.
  */
 
 import { drawCalendarPage } from "@/features/personalization/calendar-draw";
@@ -18,9 +45,21 @@ import {
   ensureBrandCanvasFontsLoaded,
   ensureCalendarTitleFontLoaded,
 } from "./calendar-card-preview";
+import { loadCanvasImage } from "./canvas-image";
+import { canvasToPreviewDataUrl } from "./preview-encode";
+import { mapWithConcurrency } from "./upload-with-retry";
 
 // Escala del preview: 1080×1520 → ~810×1140. Nítido como textura 3D sin ser pesado.
 const PREVIEW_SCALE = 0.75;
+
+/** Ancho de la foto pedida al optimizador de Next (área de foto 810px device + zoom). */
+const CALENDAR_PHOTO_SRC_WIDTH = 1200;
+
+/** Tope de cargas de foto simultáneas (el dibujo queda en main thread). */
+const CALENDAR_PHOTO_LOAD_CONCURRENCY = 4;
+
+/** Calidad del WebP de cada página (texto de la grilla incluido → q alta). */
+const CALENDAR_PAGE_WEBP_QUALITY = 0.9;
 
 export type CalendarPageInput = {
   assetUrl?: string | null;
@@ -56,10 +95,72 @@ export function buildCalendarPageInputs(
     }));
 }
 
+// ──────────── Cache de páginas compuestas (fix STG 2026-10-05) ────────────
+
+/** Tope de entradas: 2 calendarios de 24 páginas (multi-unidad ×2) con holgura. */
+export const CALENDAR_PAGE_CACHE_LIMIT = 48;
+
+const pageCache = new Map<string, string>();
+
+/**
+ * Clave de contenido de una página compuesta: cubre TODO lo que afecta el
+ * píxel final — foto (assetUrl), encuadre ya reescalado a la página, mes,
+ * año, layout y fuente del título. Misma clave → mismo dataURL (misma
+ * referencia); cualquier cambio (re-encuadre de la foto, otro año, otra
+ * fuente) produce una clave distinta → se recompone solo esa página.
+ */
+export function calendarPageCacheKey(
+  page: CalendarPageInput,
+  year: number,
+  layout?: CalendarLayoutKey,
+  calendarFont?: CalendarFontKey,
+): string {
+  const t = page.photoTransform;
+  return [
+    page.assetUrl ?? "",
+    t ? `${t.offsetX},${t.offsetY},${t.scale}` : "",
+    page.monthIndex0,
+    year,
+    layout ?? "classic",
+    calendarFont ?? "fredoka",
+  ].join("|");
+}
+
+/** Lectura con refresco LRU liviano (el desalojo saca lo realmente más viejo). */
+export function getCachedCalendarPage(key: string): string | undefined {
+  const hit = pageCache.get(key);
+  if (hit !== undefined) {
+    pageCache.delete(key);
+    pageCache.set(key, hit);
+  }
+  return hit;
+}
+
+export function setCachedCalendarPage(key: string, dataUrl: string): void {
+  if (pageCache.size >= CALENDAR_PAGE_CACHE_LIMIT && !pageCache.has(key)) {
+    const oldest = pageCache.keys().next().value;
+    if (oldest !== undefined) pageCache.delete(oldest);
+  }
+  pageCache.set(key, dataUrl);
+}
+
+/** Vacía el cache (tests; la clave se auto-invalida por contenido). */
+export function clearCalendarPageCache(): void {
+  pageCache.clear();
+}
+
+/** Entradas vivas — diagnóstico y tests. */
+export function calendarPageCacheSize(): number {
+  return pageCache.size;
+}
+
 /**
  * #3 (auditoría v3) — apila las páginas ya compuestas (mes + grilla + festivos) en UN PNG en grid,
  * para el modal de confirmación: el cliente ve las páginas REALES que se imprimen, no las fotos
  * sueltas. Espejo estructural de buildCompositedPreview pero sobre páginas de calendario.
+ * 2026-10-05 — la salida ya sale codificada en el MIME efectivo (WebP/JPEG vía
+ * canvasToPreviewDataUrl): el `reencodePreviewDataUrl` del caller se vuelve no-op
+ * y se elimina una pasada encode/decode del camino.
  */
 export async function buildCalendarPreviewMontage(pages: string[]): Promise<string> {
   const cols = Math.min(4, Math.max(1, pages.length));
@@ -85,7 +186,7 @@ export async function buildCalendarPreviewMontage(pages: string[]): Promise<stri
     const y = pad + Math.floor(i / cols) * (cellH + gap);
     ctx.drawImage(img, x, y, cellW, cellH);
   });
-  return canvas.toDataURL("image/png");
+  return canvasToPreviewDataUrl(canvas);
 }
 
 function loadImage(url: string): Promise<HTMLImageElement> {
@@ -99,11 +200,16 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 }
 
 /**
- * Compone las páginas (en el orden dado) → dataURLs PNG. Espera a que las fuentes de marca estén
- * listas para que el título/días salgan con la tipografía elegida (no un fallback).
+ * Compone las páginas (en el orden dado) → dataURLs (WebP q0.9; PNG si el
+ * navegador no lo codifica). Espera a que las fuentes de marca estén listas
+ * para que el título/días salgan con la tipografía elegida (no un fallback).
  * `layout` = composición de la tarjeta declarada por la plantilla ("classic" default | "split").
  * `calendarFont` = key del selector de tipo de letra del título/mes (default "fredoka",
  * retrocompatible con diseños guardados antes del selector — Lucy 2026-09-07).
+ *
+ * Las páginas cuya clave de contenido ya está en cache se devuelven SIN
+ * recomponer (misma referencia); solo las páginas nuevas/cambiadas cargan su
+ * foto (en paralelo, vía optimizador de Next) y se dibujan, en orden estable.
  */
 export async function composeCalendarPages(
   pages: CalendarPageInput[],
@@ -111,6 +217,24 @@ export async function composeCalendarPages(
   layout?: CalendarLayoutKey,
   calendarFont?: CalendarFontKey,
 ): Promise<string[]> {
+  const keys = pages.map((p) => calendarPageCacheKey(p, year, layout, calendarFont));
+  const out: Array<string | undefined> = keys.map((k) => getCachedCalendarPage(k));
+  const missIndexes: number[] = [];
+  out.forEach((dataUrl, i) => {
+    if (dataUrl === undefined) missIndexes.push(i);
+  });
+  if (missIndexes.length === 0) return out as string[];
+
+  // Cargar las fotos de las páginas SIN cache en paralelo (tope 4), a 1200px
+  // vía el optimizador de Next — mucho menos bytes que el original full-res.
+  // loadCanvasImage devuelve null si fallan ambas vías (foto ilegible →
+  // recuadro suave, lo maneja drawCalendarPage).
+  const photos: Array<HTMLImageElement | null> = new Array(pages.length).fill(null);
+  await mapWithConcurrency(missIndexes, CALENDAR_PHOTO_LOAD_CONCURRENCY, async (pageIndex) => {
+    const url = pages[pageIndex]!.assetUrl;
+    if (url) photos[pageIndex] = await loadCanvasImage(url, CALENDAR_PHOTO_SRC_WIDTH);
+  });
+
   // Asegurar fuentes de marca cargadas antes de dibujar texto en el canvas. Ola 4
   // (Lucy 2026-07-23): next/font hashea los nombres de familia → se resuelven via las
   // CSS vars --font-fredoka/--font-inter y se pasan explícitas al dibujo (antes el
@@ -122,8 +246,8 @@ export async function composeCalendarPages(
   const titleFamily = await ensureCalendarTitleFontLoaded(calendarFont ?? "fredoka");
 
   const S = PREVIEW_SCALE;
-  const out: string[] = [];
-  for (const p of pages) {
+  for (const i of missIndexes) {
+    const p = pages[i]!;
     const canvas = document.createElement("canvas");
     canvas.width = Math.round(CALENDAR_PAGE.width * S);
     canvas.height = Math.round(CALENDAR_PAGE.height * S);
@@ -131,17 +255,8 @@ export async function composeCalendarPages(
     if (!ctx) throw new Error("No se pudo crear el contexto 2D para el calendario");
     ctx.scale(S, S);
 
-    let photo: HTMLImageElement | null = null;
-    if (p.assetUrl) {
-      try {
-        photo = await loadImage(p.assetUrl);
-      } catch {
-        photo = null; // foto ilegible → recuadro suave (el helper lo maneja).
-      }
-    }
-
     drawCalendarPage(ctx, {
-      photo,
+      photo: photos[i],
       photoTransform: p.photoTransform,
       year,
       monthIndex0: p.monthIndex0,
@@ -149,7 +264,12 @@ export async function composeCalendarPages(
       fonts: { title: titleFamily ?? brandFonts?.title, body: brandFonts?.body },
       layout,
     });
-    out.push(canvas.toDataURL("image/png"));
+    // WebP q0.9 (~5-10× menos bytes que PNG); si el navegador no lo codifica,
+    // toDataURL devuelve PNG en silencio — ambos formatos los admiten el
+    // montaje y las texturas 3D (la página es opaca: sin riesgo de alfa).
+    const dataUrl = canvas.toDataURL("image/webp", CALENDAR_PAGE_WEBP_QUALITY);
+    setCachedCalendarPage(keys[i]!, dataUrl);
+    out[i] = dataUrl;
   }
-  return out;
+  return out as string[];
 }

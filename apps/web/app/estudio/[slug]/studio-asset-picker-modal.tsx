@@ -31,6 +31,7 @@ import {
 } from "@/features/personalization/actions";
 import type { StudioAsset } from "./types";
 import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
+import { processPhotoFiles } from "./lib/upload-photo-pipeline";
 import { predesignedFaceBadge } from "./lib/predesigned-variety";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -130,6 +131,28 @@ export function StudioAssetPickerModal({
     },
     [],
   );
+  // Fix STG (2026-10-05) — el componente vive SIEMPRE montado (el editor solo lo
+  // oculta con isOpen), así que el estado "procesando" sobrevivía al cierre:
+  // reabrir el picker para otro slot dejaba TODAS las miniaturas deshabilitadas
+  // y el spinner para siempre. Al cerrar se limpian ambos estados de progreso
+  // (patrón "ajustar estado durante el render" — setState directo en efecto
+  // dispara renders en cascada, react-hooks/set-state-in-effect) y cualquier
+  // timer pendiente.
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
+    if (!isOpen) {
+      setAssigningId(null);
+      setApplyingId(null);
+    }
+  }
+  useEffect(() => {
+    if (isOpen) return;
+    if (assigningTimerRef.current !== null) {
+      window.clearTimeout(assigningTimerRef.current);
+      assigningTimerRef.current = null;
+    }
+  }, [isOpen]);
   const [error, setError] = useState<string | null>(null);
   // Paridad desktop/móvil (2026-10-02) — click en foto con warning NO asigna
   // directo: abre el PhotoQualityModal (mismo del sidebar) con CTA "Usar de
@@ -212,7 +235,11 @@ export function StudioAssetPickerModal({
     setAssigningId(asset.id);
     requestAnimationFrame(() => {
       onSelectAsset(slotIndex, asset);
-      assigningTimerRef.current = window.setTimeout(() => onClose(), 450);
+      assigningTimerRef.current = window.setTimeout(() => {
+        assigningTimerRef.current = null;
+        setAssigningId(null);
+        onClose();
+      }, 450);
     });
   };
 
@@ -237,48 +264,59 @@ export function StudioAssetPickerModal({
     }
   };
 
-  // Subida server-side via Server Action
+  // Fix STG (2026-10-05) — pipeline UNIFICADO con el sidebar "Mis fotos"
+  // (lib/upload-photo-pipeline): antes este camino subía el archivo CRUDO
+  // (fotos de iPhone de 5-8 MB) sin upscale ni compresión → más lento y
+  // candidato al 413 de Vercel (~4.5 MB por request). Misma secuencia
+  // upscale → compresión → upload y concurrencia tope 3; los assets se
+  // publican en orden de selección (misma regla del sidebar).
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
+    const list = Array.from(files);
     setUploading(true);
     setError(null);
     try {
-      for (const file of Array.from(files)) {
-        const formData = new FormData();
-        formData.append("file", file);
-        if (designId) formData.append("designId", designId);
-        formData.append("rightsAccepted", rightsAccepted ? "true" : "false");
-        const result = await uploadDesignAssetAction(formData);
-        if (result.ok) {
-          const asset: StudioAsset = {
-            id: result.assetId,
-            signedUrl: result.signedUrl,
-            width: result.width,
-            height: result.height,
-            validationLevel: result.validationLevel,
-            validationMessage: result.validationMessage,
-            // Paquete C — recomendación específica + checks (ver sidebar).
-            validationRecommendation: result.validationRecommendation,
-            validationChecks: result.validationChecks,
-          };
-          onAssetUploaded(asset);
+      await processPhotoFiles(list, {
+        productSizeCm,
+        designId,
+        rightsAccepted,
+        upload: uploadDesignAssetAction,
+        onReady: (outcome) => {
+          if (!outcome.ok) {
+            // El loop viejo cortaba en el PRIMER error (break): con el pipeline
+            // paralelo no se frena el resto, pero el mensaje visible sigue
+            // siendo el primero.
+            setError((prev) =>
+              prev !== null
+                ? prev
+                : outcome.kind === "too-big"
+                  ? `No pudimos subir "${outcome.fileName}": es muy grande para el servidor. Prueba con una foto de menos de ~4 MB (o baja la resolución en tu cámara).`
+                  : outcome.kind === "server"
+                    ? (outcome.serverMessage ?? texts.fotos.errorCalidadMinima)
+                    : `No pudimos subir "${outcome.fileName}". Revisa tu conexión e inténtalo de nuevo.`,
+            );
+            return;
+          }
+          onAssetUploaded(outcome.asset);
           // M.3.b.B.2 — Si validación falló con error, mostrar warning prominente
           // pero NO auto-asignar (cliente decide).
-          if (result.validationLevel === "error") {
-            setError(result.validationMessage ?? texts.fotos.errorCalidadMinima);
-            continue;
+          if (outcome.asset.validationLevel === "error") {
+            setError(outcome.asset.validationMessage ?? texts.fotos.errorCalidadMinima);
+            return;
+          }
+          // C2 — mejorada localmente y AÚN bajo el mínimo: mismo aviso del
+          // sidebar. Solo multi-archivo: con 1 foto la modal cierra abajo y el
+          // aviso no se vería (ese caso lo cubre el chip de calidad del slot).
+          if (outcome.improvedButLow && list.length > 1) {
+            setError(fillStudioText(texts.fotos.avisoMejoraAuto, { size: productSizeCm ?? "" }));
           }
           // Auto-asignar al slot si solo se subió 1 archivo (y no hay error)
-          if (files.length === 1) {
-            if (slotIndex !== null) onSelectAsset(slotIndex, asset);
+          if (list.length === 1) {
+            if (slotIndex !== null) onSelectAsset(slotIndex, outcome.asset);
             onClose();
-            break;
           }
-        } else {
-          setError(result.message);
-          break;
-        }
-      }
+        },
+      });
     } finally {
       setUploading(false);
     }

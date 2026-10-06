@@ -30,6 +30,12 @@ import {
 } from "./studio-slot";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
 import {
+  PHOTO_SCALE_MIN,
+  PHOTO_SCALE_MAX,
+  clampPhotoScale,
+  pinchAdjustedRatio,
+} from "@/features/personalization/photo-fit";
+import {
   isDarkColor,
   isSimpleCardTemplate,
   isStripTemplate,
@@ -68,8 +74,8 @@ export type StudioPhotoPreviewProps = {
   onResetTransform: () => void;
 };
 
-const SCALE_MIN = 0.5;
-const SCALE_MAX = 3.0;
+const SCALE_MIN = PHOTO_SCALE_MIN;
+const SCALE_MAX = PHOTO_SCALE_MAX;
 
 export function StudioPhotoPreview({
   unitTemplate,
@@ -191,7 +197,7 @@ export function StudioPhotoPreview({
   const stageScale = stageWidth / unitTemplate.stage.width;
 
   // ── Gestos de zoom (rueda en desktop, pellizco en táctil) ──
-  const clampScale = useCallback((s: number) => Math.max(SCALE_MIN, Math.min(SCALE_MAX, s)), []);
+  const clampScale = useCallback((s: number) => clampPhotoScale(s), []);
 
   // Listener NATIVO con passive:false — el único camino de zoom por rueda.
   // Es el mismo patrón del slot: garantiza preventDefault incluso dentro del
@@ -247,10 +253,10 @@ export function StudioPhotoPreview({
       const dy = t2.clientY - t1.clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const rawRatio = dist / pinchInitialDistRef.current;
-      // Ola 15 — pinch más sensible en móvil: amplificamos la curva para que
-      // el gesto se sienta inmediato, sin tener que estirar mucho los dedos.
-      const sensitivity = 1.7;
-      const adjustedRatio = 1 + (rawRatio - 1) * sensitivity;
+      // Sensibilidad ÚNICA del pinch (photo-fit, validada Ola 15): la misma
+      // curva amplificada de la grilla interactiva — el mismo gesto produce el
+      // mismo zoom percibido en ambas superficies (antes solo acá era ×1.7).
+      const adjustedRatio = pinchAdjustedRatio(rawRatio);
       onTransformChange({ scale: clampScale(pinchInitialScaleRef.current * adjustedRatio) });
     },
     [onTransformChange, clampScale],

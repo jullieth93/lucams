@@ -8,14 +8,19 @@
  * controles en el sidebar (donde la acción y el resultado quedaban separados).
  *
  * Controles que se muestran según el producto/plantilla:
- *   - Borde de foto: con borde / sin borde (foto a sangre). PRIMERO (Ola 24).
+ *   - Borde de foto: con borde / sin borde. PRIMERO (Ola 24). En Instagram el
+ *     modo sin-borde (rediseño owner 2026-10-05) pone la foto A LO ANCHO
+ *     COMPLETO conservando las franjas blancas de header/footer (antes: foto a
+ *     sangre total) y el modo viaja como FLAG explícito en canvasData.igNoBorder.
  *   - Color de tarjeta / marco (paleta completa o binario blanco/negro para Instagram).
  *     DEBAJO del borde (Ola 24) y DESACTIVADO cuando el borde es «Sin borde» en las
- *     plantillas Polaroid (la foto cubre toda la tarjeta → el color no aplica) y en las
- *     TIRAS photobooth (sin borde ya no hay canaletas entre fotos → borderColor no
- *     pinta nada) — mismo patrón que los sets de letras: sección visible pero inerte
- *     (aria-disabled + atenuada + aviso del porqué); el estado de color NO se resetea,
- *     al volver a «Con borde» el color elegido sigue ahí.
+ *     plantillas Polaroid (en la Clásica la foto cubre toda la tarjeta → el color no
+ *     aplica; en la Instagram las franjas son blancas por diseño y al entrar al modo
+ *     se fuerza la tarjeta blanca) y en las TIRAS photobooth (sin borde ya no hay
+ *     canaletas entre fotos → borderColor no pinta nada) — mismo patrón que los sets
+ *     de letras: sección visible pero inerte (aria-disabled + atenuada + aviso del
+ *     porqué). En Clásica/tiras el estado de color NO se resetea: al volver a
+ *     «Con borde» el color elegido sigue ahí.
  *
  * El componente es store-aware: lee la plantilla activa, el color actual y el
  * rect base del placeholder, y escribe en canvasData.borderColor y
@@ -27,7 +32,11 @@ import { useStore } from "zustand";
 import type { StoreApi } from "zustand";
 import { Frame, Image as ImageIcon, Check } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
-import { frameColorById, isInstagramTemplate } from "@/features/personalization/frame-palette";
+import {
+  frameColorById,
+  frameColorHex,
+  isInstagramTemplate,
+} from "@/features/personalization/frame-palette";
 import type { StudioStoreState } from "./lib/store";
 import { useStudioTexts } from "./studio-texts-provider";
 
@@ -93,19 +102,33 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
     };
   })();
 
-  // Rect "sin borde": la foto cubre TODA la tarjeta y el chrome SVG se dibuja
-  // encima (header + iconos). En Instagram el stage es 450×600 → foto a sangre total.
-  const fullBleedRect = { x: 0, y: 0, width: stageW, height: stageH };
+  // Rect "sin borde":
+  //  - Instagram (rediseño owner 2026-10-05): la foto va A LO ANCHO COMPLETO
+  //    (sin bordes laterales) pero conserva las franjas blancas superior
+  //    (header: usuario/ubicación) e inferior (iconos + likes/título/hashtags),
+  //    como un post real de IG → se toma la y/altura de la ventana base y solo
+  //    se estira al ancho del stage. El chrome SVG `_noborder` (cabecera +
+  //    iconos) queda dentro de las franjas, sin solaparse con la foto.
+  //  - Resto (Polaroid Clásica, tiras): la foto cubre TODA la tarjeta/celda y
+  //    el chrome se dibuja encima.
+  const fullBleedRect =
+    isIg && baseRect
+      ? { x: 0, y: baseRect.y, width: stageW, height: baseRect.height }
+      : { x: 0, y: 0, width: stageW, height: stageH };
 
   const photoPlaceholder = unitTemplate.layers.find((l) => l.type === "image-placeholder") as
     { x?: number; y?: number; width?: number; height?: number } | undefined;
-  const isFullBleed =
+  const geometryFullBleed =
     !!photoPlaceholder &&
     !!baseRect &&
     ((photoPlaceholder.x ?? 0) !== baseRect.x ||
       (photoPlaceholder.y ?? 0) !== baseRect.y ||
       (photoPlaceholder.width ?? 0) !== baseRect.width ||
       (photoPlaceholder.height ?? 0) !== baseRect.height);
+  // Rediseño IG (2026-10-05) — el modo sin-borde de Instagram viaja como FLAG
+  // EXPLÍCITO en canvasData.igNoBorder (lo escribe este mismo toggle); la
+  // comparación de rects queda como fallback para diseños creados antes del flag.
+  const isFullBleed = isIg ? (canvasData.igNoBorder ?? geometryFullBleed) : geometryFullBleed;
 
   // Paleta efectiva: Instagram solo blanco/negro; el resto todas las opciones válidas.
   const frameColors = (frameOptions ?? [])
@@ -119,18 +142,27 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
 
   const handleBorderToggle = (fullBleed: boolean) => {
     if (fullBleed) {
-      setImagePlaceholderRect(fullBleedRect);
+      setImagePlaceholderRect(fullBleedRect, isIg ? { igNoBorder: true } : undefined);
+      // Rediseño IG (2026-10-05) — en el nuevo modo sin-borde las franjas SIGUEN
+      // visibles y el owner las quiere BLANCAS siempre (post real de IG): al
+      // entrar se fuerza la tarjeta blanca. Excepción deliberada a la regla Ola 24
+      // de "el color NO se resetea" (esa regla nació cuando la foto cubría toda
+      // la tarjeta y el color no aplicaba; ahora un negro residual teñiría las
+      // franjas). Solo IG: Clásica y tiras conservan la regla de no-reset.
+      if (isIg) setBorderColor(frameColorHex("blanco"));
     } else if (baseRect) {
-      setImagePlaceholderRect(baseRect);
+      setImagePlaceholderRect(baseRect, isIg ? { igNoBorder: false } : undefined);
     }
   };
 
   // Ola 24 (Lucy 2026-09-09) — en las plantillas Polaroid (Clásica e Instagram) Y en las
-  // TIRAS photobooth, con «Sin borde» la foto cubre TODA la tarjeta/celda y el color deja
-  // de aplicar (en la tira sin borde ya no hay canaletas entre fotos — la separación era
-  // lo único que pintaba borderColor): la paleta queda desactivada (visible pero inerte,
-  // con aviso) hasta volver a «Con borde». El estado de color NO se resetea: al volver a
-  // «Con borde» el color elegido sigue ahí (y en la tira vuelve a pintar las canaletas).
+  // TIRAS photobooth, con «Sin borde» la paleta queda desactivada (visible pero inerte,
+  // con aviso) hasta volver a «Con borde»: en la Clásica la foto cubre TODA la tarjeta
+  // (el color no pinta nada), en la tira ya no hay canaletas entre fotos (la separación
+  // era lo único que pintaba borderColor) y en la Instagram (rediseño 2026-10-05) las
+  // franjas son blancas por diseño — al entrar al modo se fuerza la tarjeta blanca.
+  // En Clásica/tiras el estado de color NO se resetea: al volver a «Con borde» el color
+  // elegido sigue ahí (y en la tira vuelve a pintar las canaletas).
   // En cuadrados NO se desactiva: la franja uniforme de la tarjeta simple usa borderColor
   // aun sin borde.
   // Tira = 1 columna + gap 0 + varios slots (misma detección que isStripPreview del editor).
@@ -229,7 +261,9 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
               <p role="note" className="text-brand-muted text-center text-xs">
                 {isStrip
                   ? texts.texto.estiloColorDeshabilitadoHintTira
-                  : texts.texto.estiloColorDeshabilitadoHint}
+                  : isIg
+                    ? texts.texto.estiloColorDeshabilitadoHintIg
+                    : texts.texto.estiloColorDeshabilitadoHint}
               </p>
             )}
           </div>

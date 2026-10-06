@@ -15,17 +15,31 @@
  *      slot produce un objeto SlotState NUEVO y el cache falla solo. Lo mismo
  *      con unitTemplate (aplicar plantilla lo reemplaza). Además entran en la
  *      clave: borderColor (estilo canvas-level que pinta la tarjeta), el
- *      tamaño en px del stage (cambia con el zoom de lienzo y con
- *      resize/whiteCardTray — toDataURL(pixelRatio:1) sale a ese tamaño) y
- *      document.fonts.status (un snapshot tomado antes de que cargue la
- *      fuente de una capa de texto no debe quedar pegado).
+ *      tamaño DE SALIDA del snapshot (ver abajo) y document.fonts.status (un
+ *      snapshot tomado antes de que cargue la fuente de una capa de texto no
+ *      debe quedar pegado).
  *   2. yieldToMain — entre rasterizaciones el builder cede al event loop
  *      (scheduler.yield si existe, setTimeout 0 si no): el click responde y
  *      los frames largos se trocean aun con cache frío.
  *
+ * Tamaño DE SALIDA fijo (fix STG 2026-10-05): el snapshot se rasterizaba a
+ * pixelRatio 1 al tamaño DISPLAY del stage — con zoom de lienzo 2.5× o slots
+ * desktop de ~600px salían PNG de 1500px de ancho que TODOS los consumidores
+ * reducían de inmediato (celdas de 360px del preview compositado, caras de
+ * 300px de separadores, texturas de 512px del 3D). Ahora el snapshot se toma
+ * a un tamaño objetivo acorde al consumidor: SNAPSHOT_TARGET_WIDTH (720px =
+ * 2× la celda de 360px del preview, nitidez retina; también cubre la cara de
+ * 300 a ~2.4× y la textura de 512 a ~1.4×, sin upscale en ningún caso). Un
+ * UNICO tamaño para todos los consumidores mantiene el cache compartido entre
+ * Vista previa / 3D / galería (si cada uno pidiera su tamaño se invalidarían
+ * entre sí). El pixelRatio resultante se topa a 2: con stages muy pequeños no
+ * se rasteriza más allá de lo que el diseño puede aportar.
+ * Consecuencia buscada: cambiar el ZOOM del lienzo ya NO invalida el cache —
+ * la salida es idéntica (mismo diseño lógico al mismo tamaño de salida).
+ *
  * Memoria: tope SLOT_SNAPSHOT_CACHE_LIMIT entradas con desalojo FIFO (los
- * dataURLs PNG de slots zoomados pueden pesar ~1-3 MB c/u; 32 cubre el
- * calendario de 20 slots con holgura y acota el peor caso).
+ * dataURLs PNG de ~720px pesan ~0.5-1.5 MB c/u; 32 cubre el calendario de 20
+ * slots con holgura y acota el peor caso).
  */
 
 import type { CanvasDataV1, SlotState } from "../types";
@@ -52,13 +66,42 @@ type CacheEntry = {
   slot: SlotState;
   unitTemplate: CanvasDataV1;
   borderColor: string | null;
-  stageW: number;
-  stageH: number;
+  /** Tamaño DE SALIDA del snapshot rasterizado (no el tamaño display del stage). */
+  outW: number;
+  outH: number;
   fontsStatus: string;
   dataUrl: string;
 };
 
 export const SLOT_SNAPSHOT_CACHE_LIMIT = 32;
+
+/**
+ * Ancho objetivo del snapshot: 2× la celda de 360px del preview compositado
+ * (retina). Todos los consumidores comparten este tamaño para no invalidar el
+ * cache entre Vista previa / 3D / galería (ver doc del módulo).
+ */
+export const SNAPSHOT_TARGET_WIDTH = 720;
+
+/** Tope del pixelRatio del raster (stages muy pequeños no se sobremuestrean). */
+export const SNAPSHOT_MAX_PIXEL_RATIO = 2;
+
+/**
+ * pixelRatio y tamaño de salida para rasterizar un stage de `stageW`×`stageH`
+ * al ancho objetivo. Puro — testeado.
+ */
+export function snapshotRasterPlan(
+  stageW: number,
+  stageH: number,
+  targetWidth = SNAPSHOT_TARGET_WIDTH,
+): { pixelRatio: number; outW: number; outH: number } {
+  if (stageW <= 0 || stageH <= 0) return { pixelRatio: 1, outW: stageW, outH: stageH };
+  const pixelRatio = Math.min(SNAPSHOT_MAX_PIXEL_RATIO, targetWidth / stageW);
+  return {
+    pixelRatio,
+    outW: Math.round(stageW * pixelRatio),
+    outH: Math.round(stageH * pixelRatio),
+  };
+}
 
 const cache = new Map<number, CacheEntry>();
 // Contadores de diagnóstico (harness tmp/inp-audit y tests): permiten verificar
@@ -75,14 +118,20 @@ function currentFontsStatus(): string {
  * Devuelve el dataURL PNG del stage del slot, usando el cache si nada de lo
  * que afecta el render cambió desde la última rasterización. Los indicadores
  * de edición (.edit-indicator) se ocultan SOLO cuando se rasteriza de verdad.
+ * El snapshot sale al ancho objetivo (`opts.targetWidth`, default
+ * SNAPSHOT_TARGET_WIDTH), NO al tamaño display del stage — ver doc del módulo.
  */
 export function snapshotSlotForPreview(
   stage: SnapshotStageSource,
   slot: SlotState,
   ctx: SnapshotRenderContext,
+  opts?: { targetWidth?: number },
 ): string {
-  const stageW = stage.width();
-  const stageH = stage.height();
+  const { pixelRatio, outW, outH } = snapshotRasterPlan(
+    stage.width(),
+    stage.height(),
+    opts?.targetWidth,
+  );
   const borderColor = ctx.borderColor ?? null;
   const fontsStatus = currentFontsStatus();
 
@@ -92,8 +141,8 @@ export function snapshotSlotForPreview(
     hit.slot === slot &&
     hit.unitTemplate === ctx.unitTemplate &&
     hit.borderColor === borderColor &&
-    hit.stageW === stageW &&
-    hit.stageH === stageH &&
+    hit.outW === outW &&
+    hit.outH === outH &&
     hit.fontsStatus === fontsStatus
   ) {
     // LRU liviano: refrescar la posición para que el desalojo FIFO saque lo
@@ -111,7 +160,7 @@ export function snapshotSlotForPreview(
   indicators.forEach((l) => l.hide());
   let dataUrl: string;
   try {
-    dataUrl = stage.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
+    dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
   } finally {
     indicators.forEach((l) => l.show());
   }
@@ -124,8 +173,8 @@ export function snapshotSlotForPreview(
     slot,
     unitTemplate: ctx.unitTemplate,
     borderColor,
-    stageW,
-    stageH,
+    outW,
+    outH,
     fontsStatus,
     dataUrl,
   });

@@ -64,7 +64,6 @@ import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
-import { useIsTouch } from "./use-is-touch";
 import { OrbitControls, RoundedBox, ContactShadows } from "@react-three/drei";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
@@ -443,7 +442,10 @@ function Scene({
         targetX: PAGE_W / 2,
         targetZ: 0,
         margin: 1.05,
-        minDistance: 3.5,
+        // Zoom móvil 2026-10-05: 3.5 → 2.8. La pieza plana más chica (4×12 cm =
+        // 3.6 u de largo, escala 0.3 u/cm) ya ocupa >50% del alto a 3.5; 2.8 da
+        // aire para inspeccionar el detalle (texturas más nítidas con dpr 2).
+        minDistance: 2.8,
       };
     }
     return {
@@ -453,7 +455,14 @@ function Scene({
       targetX: 0,
       targetZ: 0,
       margin: 1.12,
-      minDistance: 5,
+      // Zoom móvil 2026-10-05: 5 → 3.0. El separador cuelga del borde superior
+      // de la hoja (z = −3.6 u, detrás del target): de frente la cara 2×6
+      // (hang ≈ 1.8 u) queda a ~6 u de la cámara → ~42% del alto (fov 40°); a
+      // 5 u de minDistance era ~28% (ilegible en móvil). Piso geométrico: a 3.0
+      // la cámara (y ≈ 2.0 sobre la mesa, polar 48°) sigue por encima de la hoja
+      // (superficie ≤ ~0.9) sin entrar al libro. Llegar al 50% exacto exigiría
+      // mover el target a la pieza (pan), fuera de alcance de este ajuste.
+      minDistance: 3.0,
     };
   }, [flat, flatData]);
   return (
@@ -461,11 +470,15 @@ function Scene({
       {/* FB5 — env-map procedural (reflejos en cubierta/cartulina) + ciclorama de estudio. */}
       <StudioEnvironment intensity={0.95} />
       <StudioBackdrop position={[0, -0.02, -6]} scale={[40, 22, 8]} />
+      {/* Calibración 2026-10-05 (cara impresa = foto original): irradiancia difusa sobre la cara
+        frontal del separador ≈ 1.0 — key 0.7·cos(≈45°) ≈ 0.49 + hemi ≈ 0.22 + ambient 0.22 +
+        fill ≈ 0.17 → ≈ 1.10 (antes key 1.05 → ≈ 1.3 directo, sobre-expuesta). La contraluz de la
+        cara B (0.55) NO se toca: es la que la hace legible y casi no aporta al frente. */}
       <hemisphereLight args={["#fff6e8", "#d8cbb8", 0.32]} />
       <ambientLight intensity={0.22} />
       <directionalLight
         position={[4, 7, 8]}
-        intensity={1.05}
+        intensity={0.7}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-8}
@@ -547,7 +560,6 @@ export default function BookView3D({
   /** Ola 17 — marcapáginas plano (Alargados): acostado sobre la hoja, sin doblez. */
   flat?: boolean;
 }) {
-  const isTouch = useIsTouch();
   if (bookmarks.length === 0) {
     return (
       <div className="text-brand-muted flex h-full items-center justify-center p-8 text-center text-sm">
@@ -558,7 +570,11 @@ export default function BookView3D({
   return (
     <Canvas
       shadows
-      dpr={isTouch ? [1, 1.5] : [1, 2]}
+      // dpr hasta 2 también en táctil (2026-10-05): con el zoom cercano nuevo
+      // (minDistance ↓) el cap 1.5 se veía borroso en pantallas retina móviles.
+      // Trade-off rendimiento: ×1.78 más píxeles por frame en GPU móvil —
+      // aceptable porque la escena es estática y la sombra está horneada.
+      dpr={[1, 2]}
       camera={{ position: [0, 9, 12], fov: 40 }}
       gl={{ preserveDrawingBuffer: false, antialias: true }}
       style={{ width: "100%", height: "100%" }}

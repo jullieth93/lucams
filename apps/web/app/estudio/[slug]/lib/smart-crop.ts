@@ -40,6 +40,20 @@ export type SmartCropResult = {
   offsetY: number;
 };
 
+/**
+ * Guard de la carrera async (2026-10-05): `analyzeSmartCrop` resuelve DESPUÉS
+ * de que el cliente pudo ajustar el encuadre a mano. El resultado del análisis
+ * solo se aplica si al resolver NO hay photoTransform (foto intacta desde que
+ * arrancó el análisis). Con cualquier transform presente —aunque sea solo un
+ * offset del drag— el ajuste manual MANDA y el smart-crop se descarta.
+ * Puro para poder fijarlo en test (la promesa no puede re-chequear la prop).
+ */
+export function shouldApplySmartCropResult(
+  photoTransformAtResolve: unknown | null | undefined,
+): boolean {
+  return photoTransformAtResolve == null;
+}
+
 /** Borde largo máximo de la copia que se analiza (saliency no necesita más). */
 const ANALYSIS_MAX_PX = 256;
 

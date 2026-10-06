@@ -24,7 +24,7 @@ import type { LetterStyle, LetterTileMap } from "@/features/personalization/lett
 import { createNameDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { formatCOP } from "@/lib/format";
-import { LetterTile } from "./letter-tile";
+import { LetterTile, NAME_TILE_THEMES } from "./letter-tile";
 import { loadCanvasImage } from "./lib/canvas-image";
 import { buildLetterTileTextures } from "./lib/letter-tile-textures";
 import { useLetterColors } from "./use-letter-colors";
@@ -94,6 +94,18 @@ type NameEditorProps = {
    *  «Con borde / Sin borde» (Design.metadata.withBorder). Ausente → true (default
    *  histórico: los diseños previos a la opción no traen la clave). */
   initialWithBorder?: boolean;
+  /** Al re-abrir (?designId=): nombre persistido (Design.metadata.name) — el editor
+   *  arranca con la palabra ya escrita, no vacío. */
+  initialName?: string;
+  /** Al re-abrir (?designId=): estilo ilustrado persistido (metadata.styleSetId).
+   *  null explícito = «Solo letra» (manda sobre el default del primer estilo). */
+  initialStyleId?: string | null;
+  /** Al re-abrir (?designId=): tema de color persistido (metadata.themeId), para
+   *  reconstruir el snapshot de colores junto a initialColors. */
+  initialThemeId?: string;
+  /** Al re-abrir (?designId=): colores efectivos por ficha persistidos
+   *  (metadata.colors) — se restauran tal cual (orden incluido). */
+  initialColors?: string[];
   /** Estilos ilustrados disponibles (Animales, Navidad…). Vacío = solo "Solo letra". */
   styles: LetterStyle[];
   /**
@@ -261,9 +273,13 @@ export function NameEditor({
   themeOptions,
   initialCopies,
   initialWithBorder,
+  initialName,
+  initialStyleId,
+  initialThemeId,
+  initialColors,
 }: NameEditorProps) {
   const router = useRouter();
-  const [raw, setRaw] = useState("");
+  const [raw, setRaw] = useState(initialName ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const texts = useStudioTexts();
@@ -297,11 +313,14 @@ export function NameEditor({
   // producto) y al TECLEAR crece sola hasta config.max (#11) — nunca se traga letras en silencio.
   // Es el nº de fichas que se cobra.
   const [count, setCount] = useState(() =>
-    Math.min(config.max, Math.max(config.min, initialCount ?? config.min)),
+    Math.min(config.max, Math.max(config.min, initialCount ?? initialName?.length ?? config.min)),
   );
-  // Estilo elegido (null = "Solo letra"/Default). Arranca en el primer estilo ilustrado
-  // disponible (muestra el diferenciador); si no hay ninguno, queda en Default.
-  const [styleId, setStyleId] = useState<string | null>(styles[0]?.id ?? null);
+  // Estilo elegido (null = "Solo letra"/Default). Al re-abrir (?designId=) manda el
+  // persistido (null explícito = «Solo letra»); si no, arranca en el primer estilo
+  // ilustrado disponible (muestra el diferenciador) o en Default si no hay ninguno.
+  const [styleId, setStyleId] = useState<string | null>(
+    initialStyleId !== undefined ? initialStyleId : (styles[0]?.id ?? null),
+  );
   // Lucy 2026-09-09 — opción de diseño "Con borde / Sin borde" (misma regla que el set
   // de letras, Lucy 2026-09-05/08): default CON borde (lo que siempre se imprimió); con
   // "Sin borde" las fichas van blancas a ras (preview, PNG de producción y 3D) y la
@@ -335,6 +354,9 @@ export function NameEditor({
   }
 
   // Colores compartidos con el editor de Set de letras (tema + barajar + color por ficha).
+  // Al re-abrir (?designId=) se reconstruye el snapshot con los colores EFECTIVOS
+  // persistidos: activeColors = los hex guardados → effectiveColors[i] sale idéntico
+  // (mismo orden, índice a índice) sin depender del barajado aleatorio del tema.
   const {
     themeId,
     effectiveColors,
@@ -343,7 +365,16 @@ export function NameEditor({
     applyTheme,
     setColorForSelected,
     customized,
-  } = useLetterColors(letters.length);
+  } = useLetterColors(
+    letters.length,
+    initialColors && initialColors.length > 0
+      ? {
+          themeId: initialThemeId ?? NAME_TILE_THEMES[0].id,
+          activeColors: initialColors,
+          letterColors: {},
+        }
+      : undefined,
+  );
 
   // Letras repetidas → transparencia sobre cuántas fichas iguales lleva.
   const repeats = useMemo(() => {

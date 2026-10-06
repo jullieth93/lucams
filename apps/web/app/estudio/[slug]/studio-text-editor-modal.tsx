@@ -225,6 +225,29 @@ export function StudioTextEditorForm({
 
   return (
     <div className="space-y-4 p-4">
+      {/* Owner 2026-10-05 — «Aplicar» a la parte SUPERIOR del formulario (visible
+          sin scroll): antes estaba abajo junto a «Restablecer» y competía con el
+          «Listo» del footer del modal (dos primarios confusos). Aplica la edición
+          de texto de ESTA capa; «Listo» (ahora secundario) solo cierra el modal. */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={handleApply}
+          disabled={applying}
+          aria-busy={applying}
+          className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1.5 rounded-md px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors disabled:cursor-wait disabled:opacity-80"
+        >
+          {applying ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              <span>{texts.texto.aplicando}</span>
+            </>
+          ) : (
+            texts.texto.aplicar
+          )}
+        </button>
+      </div>
+
       {/* Preview live — más grande (min-h 100px) + escala 70% en vez de 60% */}
       <div
         className={`ring-brand-purple/10 flex min-h-[100px] items-center justify-center rounded-md px-3 py-4 text-center ring-1 ${
@@ -444,28 +467,14 @@ export function StudioTextEditorForm({
       </div>
 
       <div className="flex items-center justify-between pt-2">
+        {/* «Restablecer» queda abajo (acción destructiva secundaria); «Aplicar»
+            se movió a la parte superior del formulario (owner 2026-10-05). */}
         <button
           type="button"
           onClick={handleReset}
           className="text-brand-purple-dark/70 hover:text-brand-purple-dark text-xs font-semibold underline"
         >
           {texts.texto.reset}
-        </button>
-        <button
-          type="button"
-          onClick={handleApply}
-          disabled={applying}
-          aria-busy={applying}
-          className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1.5 rounded-md px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors disabled:cursor-wait disabled:opacity-80"
-        >
-          {applying ? (
-            <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-              <span>{texts.texto.aplicando}</span>
-            </>
-          ) : (
-            texts.texto.aplicar
-          )}
         </button>
       </div>
     </div>

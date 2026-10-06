@@ -67,6 +67,26 @@ describe("faces (Ola 3 — separadores 2 caras)", () => {
     expect(previewFacePairOfUnit(slots, 0, false)).toEqual({ faceA: 0, faceB: 1 });
   });
 
+  // Blindaje de concordancia (2026-10-05): producción expande las caras B
+  // vacías con `byIndex.get(i) ?? byIndex.get(i - 1)` (expandMissingBackFaces,
+  // service.ts) — el espejo es SIEMPRE el slot PAR inmediatamente anterior.
+  // previewFacePairOfUnit debe producir exactamente ese mapeo, o el preview
+  // del cliente mostraría otra cara de la que imprenta recibe.
+  it("el espejo de la B vacía es el slot PAR inmediato anterior (mismo mapeo que expandMissingBackFaces)", () => {
+    for (let unit = 0; unit < 5; unit++) {
+      const { faceA, faceB } = facePairOfUnit(unit);
+      const slots = [
+        { slotIndex: faceA, assetUrl: `a${unit}.jpg` },
+        { slotIndex: faceB, assetUrl: null }, // B vacía
+      ];
+      const pair = previewFacePairOfUnit(slots, unit, true);
+      // Convención de producción: la B (slot i) cae al slot i − 1 (su cara A).
+      expect(pair.faceB).toBe(faceB - 1);
+      expect(pair.faceB).toBe(faceA);
+      expect(pair.faceB % 2).toBe(0); // siempre un slot par (cara A)
+    }
+  });
+
   // 2026-09-22 — cara B opcional (backOptional) y tamaño desplegado.
   it("missingFaceACount cuenta solo las caras A (slots pares) sin foto", () => {
     const slots = [

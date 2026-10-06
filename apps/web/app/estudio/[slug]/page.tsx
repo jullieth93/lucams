@@ -90,6 +90,13 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 // StudioEditor (react-konva) se carga vía <StudioEditorLoader> — frontera CLIENTE con ssr:false, para
 // que react-konva NO se evalúe en el build del servidor (rompía /_global-error, ADR-073).
 
+// El finalize (finalizeDesignAction) renderiza los PNG de imprenta SERVER-SIDE
+// con sharp/canvas (hasta 24 páginas de calendario por diseño) — el default de
+// duración de la plataforma podía matar la función a mitad. Las Server Actions
+// heredan el maxDuration de la página donde se invocan (mismo patrón que
+// /checkout/pago y /admin/pedidos). 60s cabe en el tope de Vercel (300s).
+export const maxDuration = 60;
+
 export default async function EstudioPage({
   params,
   searchParams,
@@ -157,7 +164,7 @@ export default async function EstudioPage({
     const pricePerTile = selectedVariant.price ?? product.basePrice;
     // Hint de cantidad pre-elegido en la ficha (?letters=N), acotado a [min, max].
     const rawCount = Number.parseInt(sp.letters ?? "", 10);
-    const initialCount = Number.isFinite(rawCount)
+    let initialCount = Number.isFinite(rawCount)
       ? Math.min(surface.config.max, Math.max(surface.config.min, rawCount))
       : surface.config.min;
     // Estilos ilustrados del idioma (Animales, Navidad…). Vacío = solo "Solo letra".
@@ -168,13 +175,18 @@ export default async function EstudioPage({
       listLetterStyles(surface.config.language),
       listLetterThemeOptions(surface.config.language),
     ]);
-    // Re-abrir un diseño guardado (?designId= — "Editar" desde el carrito): la opción
-    // «Con borde / Sin borde» vive en Design.metadata.withBorder (Lucy 2026-09-09) y hay
-    // que devolvérsela al editor, si no el toggle reaparece en el default y sobrescribiría
-    // la elección al guardar de nuevo. Sin la clave (diseños previos a la opción) queda en
-    // undefined → el editor arranca en CON borde, lo histórico. El editor nunca reusa el id:
-    // al confirmar crea un diseño NUEVO, así que acá solo se LEE el metadata (sin clonar).
+    // Re-abrir un diseño guardado (?designId= — "Editar" desde el carrito): hay que
+    // devolverle al editor TODO lo persistido en Design.metadata (nombre, nº de fichas,
+    // estilo ilustrado, tema de color, colores por ficha y la opción «Con borde / Sin
+    // borde»); si no, el editor arrancaba vacío y el cliente perdía visualmente su
+    // diseño. Sin la clave (diseños previos a la opción) withBorder queda en undefined
+    // → el editor arranca en CON borde, lo histórico. El editor nunca reusa el id: al
+    // confirmar crea un diseño NUEVO, así que acá solo se LEE el metadata (sin clonar).
     let initialWithBorder: boolean | undefined;
+    let initialName: string | undefined;
+    let initialStyleId: string | null | undefined;
+    let initialThemeId: string | undefined;
+    let initialColors: string[] | undefined;
     if (sp.designId) {
       const customer = await getCurrentCustomer();
       const sessionId = customer ? null : await peekCartSession();
@@ -183,7 +195,39 @@ export default async function EstudioPage({
         sessionId,
       });
       const meta = design?.metadata as Record<string, unknown> | null;
-      if (meta && typeof meta.withBorder === "boolean") initialWithBorder = meta.withBorder;
+      if (meta && meta.surface === "name") {
+        if (typeof meta.withBorder === "boolean") initialWithBorder = meta.withBorder;
+        // El display name normalizado es la forma exacta que diseñó el cliente;
+        // fallback a las letras sueltas por diseños viejos sin la clave name.
+        if (typeof meta.name === "string" && meta.name.trim() !== "") {
+          initialName = meta.name;
+        } else if (Array.isArray(meta.letters)) {
+          const joined = meta.letters.filter((l): l is string => typeof l === "string").join("");
+          if (joined !== "") initialName = joined;
+        }
+        // Conteo de fichas: el del diseño (las letras que diseñó), no el hint de la PDP.
+        if (initialName) {
+          initialCount = Math.min(
+            surface.config.max,
+            Math.max(surface.config.min, initialName.length),
+          );
+        }
+        // Estilo ilustrado: null explícito = «Solo letra» (manda sobre el default del
+        // primer estilo); id solo se acepta si el set sigue existiendo.
+        if (meta.styleSetId === null) {
+          initialStyleId = null;
+        } else if (
+          typeof meta.styleSetId === "string" &&
+          styles.some((s) => s.id === meta.styleSetId)
+        ) {
+          initialStyleId = meta.styleSetId;
+        }
+        if (typeof meta.themeId === "string") initialThemeId = meta.themeId;
+        if (Array.isArray(meta.colors)) {
+          const colors = meta.colors.filter((c): c is string => typeof c === "string");
+          if (colors.length > 0) initialColors = colors;
+        }
+      }
     }
     return (
       <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -216,6 +260,11 @@ export default async function EstudioPage({
               initialCopies={initialCopies}
               // ?designId= (re-apertura) → opción de borde guardada en el diseño.
               initialWithBorder={initialWithBorder}
+              // ?designId= (re-apertura) → nombre, estilo y colores persistidos.
+              initialName={initialName}
+              initialStyleId={initialStyleId}
+              initialThemeId={initialThemeId}
+              initialColors={initialColors}
             />
           </StudioTextsProvider>
         </main>
@@ -231,7 +280,55 @@ export default async function EstudioPage({
     // (para re-resolver la línea de cotización al cambiar tema/idioma conservando
     // tamaño/imantado). La variante de la PDP solo PRESELECCIONA tema e idioma.
     const variantAttrs = parseVariantAttributes(selectedVariant.attributes);
-    const initialLanguage = variantAttrs.language === "en" ? ("en" as const) : ("es" as const);
+    // Re-abrir un diseño guardado (?designId= — "Editar" desde el carrito): hay que
+    // devolverle al editor TODO lo persistido en Design.metadata (idioma, estilo
+    // ilustrado, borde, nº de sets y los colores por ficha de CADA set); sin esto la
+    // rama ni siquiera leía el designId y el Estudio abría siempre en blanco. El editor
+    // nunca reusa el id: al confirmar crea un diseño NUEVO, así que acá solo se LEE el
+    // metadata del diseño (sin clonar — mismo criterio que la superficie "name").
+    let recoveredLanguage: "es" | "en" | undefined;
+    let recoveredStyleId: string | null | undefined;
+    let recoveredWithBorder: boolean | undefined;
+    let recoveredUnits: number | undefined;
+    let recoveredThemeId: string | undefined;
+    let recoveredUnitColors: string[][] | undefined;
+    if (sp.designId) {
+      const customer = await getCurrentCustomer();
+      const sessionId = customer ? null : await peekCartSession();
+      const design = await getOwnedDesign(sp.designId, {
+        customerId: customer?.customer.id ?? null,
+        sessionId,
+      });
+      const meta = design?.metadata as Record<string, unknown> | null;
+      if (meta && meta.surface === "letterset") {
+        if (meta.language === "es" || meta.language === "en") recoveredLanguage = meta.language;
+        if (typeof meta.withBorder === "boolean") recoveredWithBorder = meta.withBorder;
+        if (typeof meta.frameTheme === "string") recoveredThemeId = meta.frameTheme;
+        if (meta.styleSetId === null) {
+          recoveredStyleId = null;
+        } else if (typeof meta.styleSetId === "string") {
+          // Se valida contra los sets del idioma recuperado más abajo (aún no cargados).
+          recoveredStyleId = meta.styleSetId;
+        }
+        // Colores por set: units[u].colors (multi-unidad 2026-09-09); el set 0 cae al
+        // `colors` raíz (diseños de UN set, que no escriben units).
+        const baseColors = Array.isArray(meta.colors)
+          ? meta.colors.filter((c): c is string => typeof c === "string")
+          : [];
+        const unitsMeta = Array.isArray(meta.units) ? meta.units : [];
+        const unitCount =
+          typeof meta.unitCount === "number" && Number.isFinite(meta.unitCount)
+            ? Math.max(1, Math.trunc(meta.unitCount))
+            : 1;
+        recoveredUnits = unitCount;
+        recoveredUnitColors = Array.from({ length: unitCount }, (_, u) => {
+          const raw = (unitsMeta[u] as { colors?: unknown } | undefined)?.colors;
+          if (Array.isArray(raw)) return raw.filter((c): c is string => typeof c === "string");
+          return u === 0 ? baseColors : [];
+        });
+      }
+    }
+    const initialLanguage = recoveredLanguage ?? (variantAttrs.language === "en" ? "en" : "es");
     const selectable = selectableVariants(product.variants);
     const availableLanguages = Array.from(
       new Set(
@@ -246,6 +343,12 @@ export default async function EstudioPage({
       listLetterThemeOptions("es"),
       listLetterThemeOptions("en"),
     ]);
+    // El estilo recuperado solo se acepta si el set sigue existiendo en el idioma
+    // restaurado (un set borrado cae al default, nunca a un id colgado).
+    if (typeof recoveredStyleId === "string") {
+      const stylesForLang = initialLanguage === "en" ? stylesEn : stylesEs;
+      if (!stylesForLang.some((s) => s.id === recoveredStyleId)) recoveredStyleId = undefined;
+    }
     const stylesForSubtitle = initialLanguage === "en" ? stylesEn : stylesEs;
     const letters =
       surface.config.letterSet === "vowels"
@@ -281,8 +384,14 @@ export default async function EstudioPage({
               initialTheme={variantAttrs.theme ?? null}
               stylesByLanguage={{ es: stylesEs, en: stylesEn }}
               // ?copies=N (stepper "Unidades" de la PDP, modelo multi-unidad
-              // 2026-09-09) → N sets a diseñar, cada uno con sus colores.
-              initialUnits={initialCopies}
+              // 2026-09-09) → N sets a diseñar, cada uno con sus colores. Al
+              // re-abrir (?designId=) manda el nº de sets GUARDADO en el diseño.
+              initialUnits={recoveredUnits ?? initialCopies}
+              // ?designId= (re-apertura) → selección persistida del diseño.
+              initialStyleId={recoveredStyleId}
+              initialWithBorder={recoveredWithBorder}
+              initialColorTheme={recoveredThemeId}
+              initialUnitColors={recoveredUnitColors}
               subtitle={letterSetSubtitle(
                 surface.config.letterSet,
                 letters.length,
