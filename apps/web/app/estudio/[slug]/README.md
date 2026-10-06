@@ -131,10 +131,10 @@ o sessionId anónimo) y cada superficie devuelve al editor lo persistido:
   diseño original queda huérfano en READY, mismo manejo que los huérfanos del
   dedupe por contenido (no se borra).
 - **Set de letras (`letterset`)**: mismo criterio (solo lectura de metadata, sin clonar
-  + reemplazo en sitio vía `replacesCartDesignId`).
-  Se restauran `language`, `styleSetId`, `withBorder`, `unitCount` (nº de sets) y los
-  colores por ficha de CADA set (`metadata.units[u].colors`; el set 0 cae al `colors`
-  raíz en diseños de un set) como snapshots iniciales del Map multi-unidad.
+  - reemplazo en sitio vía `replacesCartDesignId`).
+    Se restauran `language`, `styleSetId`, `withBorder`, `unitCount` (nº de sets) y los
+    colores por ficha de CADA set (`metadata.units[u].colors`; el set 0 cae al `colors`
+    raíz en diseños de un set) como snapshots iniciales del Map multi-unidad.
 - **Variante del diseño (`metadata.variantId`, 2026-10-05)**: al crear el diseño desde
   cualquier superficie se persiste la variante (`createDraftDesign` —foto NO-pack—,
   `createNameDesign`, `createLetterSetDesign`; los packs de foto NO la guardan: su
