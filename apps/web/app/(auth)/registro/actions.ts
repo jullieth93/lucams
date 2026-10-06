@@ -273,7 +273,8 @@ export async function signupAction(
       },
     });
 
-    // Referidos v1 — ata del código (Referral PENDING + referredById). La
+    // Referidos v2 — ata del código (Referral PENDING + referredById + cupón
+    // de bienvenida del referido, visible en /mi-cuenta/cupones). La
     // validación ya ocurrió antes del signUp; esto solo persiste el vínculo.
     // Best-effort: un fallo aquí NUNCA aborta el registro.
     if (parsed.data.referralCode?.trim()) {

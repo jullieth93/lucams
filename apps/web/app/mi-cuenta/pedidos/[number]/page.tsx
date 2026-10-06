@@ -308,6 +308,21 @@ export default async function CustomerPedidoDetallePage({
             {texts.order.note} {ship.notes}
           </p>
         )}
+        {/* FLUJO REGALO — destinatario distinto + mensaje de la tarjeta. Esta
+            vista es privada del comprador (su cuenta), así que el mensaje sí
+            se muestra acá. */}
+        {order.recipientName && (
+          <p className="text-brand-purple-dark mt-2 text-sm">
+            Recibe: <strong>{order.recipientName}</strong>
+            {order.recipientPhone ? ` · ${order.recipientPhone}` : ""}
+            {order.isGift ? " 🎁" : ""}
+          </p>
+        )}
+        {order.isGift && order.giftMessage && (
+          <p className="text-brand-muted mt-1 text-xs italic">
+            Mensaje para la tarjeta: “{order.giftMessage}”
+          </p>
+        )}
       </Card>
 
       {/* Envío */}

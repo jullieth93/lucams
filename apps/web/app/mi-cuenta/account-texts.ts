@@ -15,6 +15,7 @@ export type AccountTexts = {
     favoritos: string;
     direcciones: string;
     resenas: string;
+    cupones: string;
     perfil: string;
     soporte: string;
     seguridad: string;
@@ -185,6 +186,7 @@ export const DEFAULT_ACCOUNT_TEXTS: AccountTexts = {
     favoritos: "Favoritos",
     direcciones: "Direcciones",
     resenas: "Reseñas",
+    cupones: "Mis cupones",
     perfil: "Perfil",
     soporte: "Soporte",
     seguridad: "Seguridad",
@@ -362,6 +364,7 @@ export const ACCOUNT_TEXT_KEYS: Record<string, string> = {
   "nav.favoritos": "account.nav.favoritos",
   "nav.direcciones": "account.nav.direcciones",
   "nav.resenas": "account.nav.resenas",
+  "nav.cupones": "account.nav.cupones",
   "nav.perfil": "account.nav.perfil",
   "nav.soporte": "account.nav.soporte",
   "nav.seguridad": "account.nav.seguridad",

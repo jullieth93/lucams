@@ -1,7 +1,7 @@
 /*
  * Resumen del área de cuenta — /mi-cuenta.
  *
- * Hub: saludo + accesos a cada sección (Pedidos, Direcciones, Reseñas,
+ * Hub: saludo + accesos a cada sección (Pedidos, Direcciones, Reseñas, Cupones,
  * Seguridad) + resumen del perfil con enlace a editar. El header/nav/logout
  * los aporta el layout compartido. Guard redundante con el layout (barato por
  * el cache() de getCurrentCustomer) para tener el customer sin prop-drilling.
@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Gift,
   LifeBuoy,
+  Ticket,
 } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
@@ -74,6 +75,16 @@ const SECTIONS = [
     titleFallback: "Mis reseñas",
     descKey: "account.hub.section.resenas.desc",
     descFallback: "Los productos que has calificado.",
+  },
+  {
+    // Referidos v2 (2026-10-05) — cupones personales (bienvenida de referido,
+    // premio del referente) + cupones públicos vigentes.
+    href: "/mi-cuenta/cupones",
+    icon: Ticket,
+    titleKey: "account.hub.section.cupones.title",
+    titleFallback: "Mis cupones",
+    descKey: "account.hub.section.cupones.desc",
+    descFallback: "Tus cupones personales y los descuentos vigentes.",
   },
   {
     // 5.3 (2026-09-13) — bandeja de tickets del cliente (ADR-092 la difería;
@@ -181,9 +192,10 @@ export default async function MiCuentaPage() {
         })}
       </div>
 
-      {/* Invita y gana — referidos v1 (2026-08-11): tu código + compartir +
-          estado de tus referidos. Cuando tu amigo haga su primera compra,
-          ambos reciben un cupón de 10% OFF por email. */}
+      {/* Invita y gana — referidos v2 (2026-10-05): tu código + compartir +
+          estado de tus referidos. Tu amigo recibe su cupón de bienvenida al
+          registrarse; el tuyo llega cuando haga su primera compra (ambos
+          quedan en /mi-cuenta/cupones). */}
       <section className="border-brand-purple/15 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <div className="flex items-start gap-3">
           <span className="bg-brand-turquoise/15 text-brand-purple flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full">
@@ -192,8 +204,8 @@ export default async function MiCuentaPage() {
           <div className="min-w-0 flex-1">
             <h2 className="font-display text-brand-purple-dark text-xl">Invita y gana</h2>
             <p className="text-brand-muted mt-1 text-sm leading-snug">
-              Comparte tu código: cuando un amigo se registre con él y haga su primera compra, los
-              dos reciben un cupón de <strong>10% OFF</strong>.
+              Comparte tu código: tu amigo recibe un cupón de bienvenida de <strong>10% OFF</strong>{" "}
+              apenas se registre, y tú recibes el tuyo cuando haga su primera compra.
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <code className="bg-brand-purple/5 text-brand-purple-dark rounded-md px-3 py-1.5 font-mono text-sm font-bold tracking-wider">
@@ -203,7 +215,7 @@ export default async function MiCuentaPage() {
               <ReferralCopyButton value={referralUrl} label="Copiar link" />
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(
-                  `Regístrate en Lucams con mi código ${customer.referralCode} y los dos ganamos 10% OFF en tu primera compra: ${referralUrl}`,
+                  `Regístrate en Lucams con mi código ${customer.referralCode} y recibe 10% OFF de bienvenida: ${referralUrl}`,
                 )}`}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -222,10 +234,10 @@ export default async function MiCuentaPage() {
                     />
                     {maskEmail(r.referredEmail)} —{" "}
                     {r.status === "REWARDED"
-                      ? "🎁 Cupón entregado"
+                      ? "🎁 Ya tienes tu cupón en Mis cupones"
                       : r.status === "EXPIRED"
                         ? "Ya tenía compras previas"
-                        : "Registrado, pendiente su primera compra"}
+                        : "Registrado: ya recibió su cupón de bienvenida; el tuyo llega con su primera compra"}
                   </li>
                 ))}
               </ul>
