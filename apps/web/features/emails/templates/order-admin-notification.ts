@@ -35,6 +35,17 @@ export type OrderAdminNotificationData = {
   /** Descuento por cupón aplicado (0 = no mostrar la fila), centavos COP. */
   discount: number;
   total: number; // centavos COP
+  /**
+   * FLUJO REGALO — destinatario distinto del comprador ("compro yo, lo recibe
+   * otra persona"): la guía va a SU nombre/teléfono. null = lo recibe el
+   * comprador. La facturación sigue a nombre del comprador.
+   */
+  recipientName?: string | null;
+  recipientPhone?: string | null;
+  /** true = es un regalo: empacar sin factura visible + tarjeta con giftMessage. */
+  isGift?: boolean;
+  /** Mensaje para la tarjeta de regalo (lo escribe producción a mano/imprenta). */
+  giftMessage?: string | null;
   items: Array<{
     name: string;
     qty: number;
@@ -98,6 +109,26 @@ export async function orderAdminNotificationEmail(data: OrderAdminNotificationDa
   <tr><td style="color:#3D2E5C;opacity:0.6;">Ciudad:</td><td>${escapeHtml(location)}</td></tr>
   <tr><td style="color:#3D2E5C;opacity:0.6;">Pago:</td><td>${paymentLabel}</td></tr>
 </table>
+${
+  data.recipientName
+    ? `
+<div style="margin:14px 0;padding:12px 14px;border:1px solid #E9D5FF;background:#F7F2FF;border-radius:10px;font-size:14px;color:#3D2E5C;">
+  <div style="font-weight:700;">🎁 Lo recibe otra persona${data.isGift ? " (REGALO)" : ""}</div>
+  <div>Recibe: <strong>${escapeHtml(data.recipientName)}</strong>${
+    data.recipientPhone ? ` · Tel: ${escapeHtml(data.recipientPhone)}` : ""
+  } — la guía sale a su nombre.</div>
+  ${
+    data.isGift
+      ? `<div style="margin-top:4px;">Empacar SIN factura/precios visibles.${
+          data.giftMessage
+            ? ` Mensaje para la tarjeta: <em>“${escapeHtml(data.giftMessage)}”</em>`
+            : ""
+        }</div>`
+      : ""
+  }
+</div>`
+    : ""
+}
 
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0 0 0;border-collapse:collapse;">
   ${itemsRows}
@@ -138,7 +169,13 @@ Teléfono: ${data.customerPhone}
 Email: ${data.customerEmail}
 Ciudad: ${location}
 Pago: ${paymentLabel}
-
+${
+  data.recipientName
+    ? `
+🎁 Lo recibe otra persona${data.isGift ? " (REGALO — empacar sin precios visibles)" : ""}: ${data.recipientName}${data.recipientPhone ? ` · Tel ${data.recipientPhone}` : ""} (la guía sale a su nombre)${data.isGift && data.giftMessage ? `\nMensaje para la tarjeta: "${data.giftMessage}"` : ""}
+`
+    : ""
+}
 Items:
 ${data.items.map((it) => `  - ${it.name}${it.breakdown && it.breakdown.length > 0 ? ` (${it.breakdown.join(" · ")})` : ""} ×${it.units ?? it.qty} → ${formatCOP(it.lineTotal)}`).join("\n")}
 

@@ -440,6 +440,16 @@ export default async function PublicOrderPage({
               {ship.fullName && <br />}
               {ship.city}, {ship.department}
             </p>
+            {/* FLUJO REGALO — destinatario distinto ("compro yo, lo recibe otra
+                persona"): el comprador confirma a nombre de quién sale la guía.
+                El teléfono de quien recibe queda bajo el desplegable (vista
+                pública por token, link reenviable — minimización PII Ley 1581). */}
+            {order.recipientName && (
+              <p className="text-brand-purple-dark mt-2 text-sm">
+                Recibe: <strong>{order.recipientName}</strong>
+                {order.isGift ? " 🎁" : ""}
+              </p>
+            )}
             <details className="group mt-1">
               <summary className="text-brand-purple-dark hover:text-brand-purple cursor-pointer text-xs font-semibold underline underline-offset-2">
                 Ver dirección exacta
@@ -448,6 +458,11 @@ export default async function PublicOrderPage({
                 {[ship.addressLine1, ship.addressLine2].filter(Boolean).join(", ")}
                 {ship.zip ? ` · ${ship.zip}` : ""}
               </p>
+              {order.recipientPhone && (
+                <p className="text-brand-purple-dark mt-1 text-sm">
+                  Tel. de quien recibe: {order.recipientPhone}
+                </p>
+              )}
             </details>
           </Card>
 

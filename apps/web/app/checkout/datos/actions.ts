@@ -6,7 +6,12 @@ import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { getClientIp } from "@/lib/client-ip";
 import { getCurrentCustomer } from "@/lib/auth";
-import { ContactSchema, BillingSchema } from "@/features/checkout/schemas";
+import {
+  ContactSchema,
+  BillingSchema,
+  GiftSchema,
+  type GiftInput,
+} from "@/features/checkout/schemas";
 import { parseStructuredAddress } from "@/features/checkout/parse-address";
 import { saveAddressStep, saveContactStep } from "@/features/checkout/service";
 import { saveCheckoutAddressToAccount } from "@/features/addresses/service";
@@ -104,9 +109,35 @@ export async function saveDatosAction(
     };
   }
 
+  // ─── Destinatario / regalo (FLUJO REGALO — opcional) ───
+  // Solo se valida cuando el toggle "¿Lo recibe otra persona?" viene marcado:
+  // nombre + teléfono de quien recibe son requeridos. El checkbox "Es un
+  // regalo" (y su mensaje) solo aplica con el toggle on; con el toggle off el
+  // state queda gift=null (lo recibe el comprador). La facturación de arriba
+  // NO cambia: los documentos tributarios son siempre del comprador.
+  let gift: GiftInput | null = null;
+  if (formData.get("hasRecipient") === "on") {
+    const isGift = formData.get("isGift") === "on";
+    const giftParsed = GiftSchema.safeParse({
+      recipientName: String(formData.get("recipientName") ?? "").trim(),
+      recipientPhone: String(formData.get("recipientPhone") ?? "").trim(),
+      isGift,
+      giftMessage: isGift
+        ? String(formData.get("giftMessage") ?? "").trim() || undefined
+        : undefined,
+    });
+    if (!giftParsed.success) {
+      return {
+        error: "Revisa los datos de quien recibe el pedido",
+        fieldErrors: z.flattenError(giftParsed.error).fieldErrors as Record<string, string[]>,
+      };
+    }
+    gift = giftParsed.data;
+  }
+
   try {
     await saveContactStep(contactParsed.data);
-    await saveAddressStep(addressParsed.data, billingParsed.data);
+    await saveAddressStep(addressParsed.data, billingParsed.data, gift);
     // Audit trail Ley 1581: persistir la autorización de tratamiento que el titular marcó arriba.
     // Best-effort: si la escritura de auditoría falla NO rompemos el checkout (la autorización ya
     // se dio, la casilla es la prueba visible) — solo lo logueamos.

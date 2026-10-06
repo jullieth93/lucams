@@ -130,6 +130,9 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
       accountOrderUrl,
       paymentMethod: order.paymentMethod,
       internalDelivery: order.shippingCarrier === LUCAMS_CARRIER,
+      // FLUJO REGALO — con isGift el template oculta los precios del correo.
+      isGift: order.isGift,
+      recipientName: order.recipientName,
     });
 
     const result = await sendEmail({
@@ -621,7 +624,7 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
       type: "ORDER",
       severity: "info",
       title: `Nuevo pedido ${order.number}`,
-      detail: `${customerName} · ${totalLabel} · ${ship.city ?? "ciudad?"}, ${ship.department ?? "depto?"}`,
+      detail: `${customerName} · ${totalLabel} · ${ship.city ?? "ciudad?"}, ${ship.department ?? "depto?"}${order.isGift ? " · 🎁 regalo" : ""}`,
       actionUrl: `/admin/pedidos/${order.number}`,
       actionLabel: "Ver pedido",
       dedupKey: `new-order-${order.id}`,
@@ -649,6 +652,12 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
       shippingCarrier: order.shippingCarrier ? carrierDisplayName(order.shippingCarrier) : null,
       discount: order.discount,
       total: order.total,
+      // FLUJO REGALO — destinatario de la guía + mensaje para la tarjeta
+      // (producción empaca sin precios visibles si isGift).
+      recipientName: order.recipientName,
+      recipientPhone: order.recipientPhone,
+      isGift: order.isGift,
+      giftMessage: order.giftMessage,
       items: order.items.map((it) => ({
         name: it.variant.product.name,
         qty: it.qty,

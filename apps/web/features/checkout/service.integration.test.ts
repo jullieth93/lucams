@@ -664,6 +664,193 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
       await prisma.cart.deleteMany({ where: { id: cart.id } });
     }, 30000);
+
+    it("pre-llena la dirección con la guardada predeterminada cuando el checkout aún no eligió una", async () => {
+      const customer = await prisma.customer.create({
+        data: {
+          email: `${RUN}-addr@lucams.test`,
+          firstName: "Ana",
+          lastName: "Ruiz",
+          supabaseUserId: `${RUN}-sub-addr`,
+          referralCode: `${RUN}-ref-addr`,
+        },
+      });
+      // Dos guardadas: la default es MÁS VIEJA que la otra — si ganara la
+      // reciente, la propuesta sería la rural; debe ganar la default.
+      await prisma.address.create({
+        data: {
+          customerId: customer.id,
+          name: "Casa",
+          line1: "Calle 100 # 15-20",
+          city: "Bogotá",
+          department: "Bogotá D.C.",
+          phone: "3009998877",
+          isDefault: true,
+          structured: { ...validUrbanAddress, notes: "Con vigilancia" },
+          createdAt: new Date("2026-01-01T00:00:00Z"),
+        },
+      });
+      await prisma.address.create({
+        data: {
+          customerId: customer.id,
+          name: "Finca",
+          line1: "Vereda El Roble",
+          city: "Tunja",
+          department: "Boyacá",
+          phone: "3009998877",
+          isDefault: false,
+          structured: validRuralAddress,
+          createdAt: new Date("2026-06-01T00:00:00Z"),
+        },
+      });
+      const sid = uuid();
+      const { cartId } = await createCartWithItem({ sessionId: sid });
+      setCartCookie(sid);
+      mockUser = { id: `${RUN}-sub-addr` };
+
+      const ctx = await loadCheckoutContext();
+      expect(ctx.state.address?.kind).toBe("urban");
+      expect(ctx.state.address?.cityCode).toBe("11001");
+      expect(ctx.state.address?.notes).toBe("Con vigilancia");
+
+      await prisma.cartItem.deleteMany({ where: { cartId } });
+      await prisma.cart.deleteMany({ where: { id: cartId } });
+    }, 30000);
+
+    it("sin default: pre-llena con la guardada más reciente (y con una sola basta)", async () => {
+      const customer = await prisma.customer.create({
+        data: {
+          email: `${RUN}-addr2@lucams.test`,
+          firstName: "Ana",
+          supabaseUserId: `${RUN}-sub-addr2`,
+          referralCode: `${RUN}-ref-addr2`,
+        },
+      });
+      await prisma.address.create({
+        data: {
+          customerId: customer.id,
+          name: "Finca",
+          line1: "Vereda El Roble",
+          city: "Tunja",
+          department: "Boyacá",
+          phone: "3009998877",
+          isDefault: false,
+          structured: validRuralAddress,
+        },
+      });
+      const sid = uuid();
+      const { cartId } = await createCartWithItem({ sessionId: sid });
+      setCartCookie(sid);
+      mockUser = { id: `${RUN}-sub-addr2` };
+
+      const ctx = await loadCheckoutContext();
+      expect(ctx.state.address?.kind).toBe("rural");
+      expect(ctx.state.address?.cityCode).toBe("15001");
+
+      await prisma.cartItem.deleteMany({ where: { cartId } });
+      await prisma.cart.deleteMany({ where: { id: cartId } });
+    }, 30000);
+
+    it("NO pisa la dirección que el cliente ya eligió en el checkout", async () => {
+      const customer = await prisma.customer.create({
+        data: {
+          email: `${RUN}-addr3@lucams.test`,
+          firstName: "Ana",
+          supabaseUserId: `${RUN}-sub-addr3`,
+          referralCode: `${RUN}-ref-addr3`,
+        },
+      });
+      await prisma.address.create({
+        data: {
+          customerId: customer.id,
+          name: "Casa",
+          line1: "Calle 100 # 15-20",
+          city: "Bogotá",
+          department: "Bogotá D.C.",
+          phone: "3009998877",
+          isDefault: true,
+          structured: validUrbanAddress,
+        },
+      });
+      const sid = uuid();
+      const { cartId } = await createCartWithItem({ sessionId: sid });
+      setCartCookie(sid);
+      // El cliente YA eligió una dirección (distinta a la guardada default).
+      await saveAddressStep(validRuralAddress, undefined);
+      mockUser = { id: `${RUN}-sub-addr3` };
+
+      const ctx = await loadCheckoutContext();
+      expect(ctx.state.address?.kind).toBe("rural");
+      expect(ctx.state.address?.city).toBe("Tunja");
+
+      await prisma.cartItem.deleteMany({ where: { cartId } });
+      await prisma.cart.deleteMany({ where: { id: cartId } });
+    }, 30000);
+
+    it("logueado a mitad del checkout: completa SOLO los campos vacíos del contacto (no pisa lo digitado)", async () => {
+      await prisma.customer.create({
+        data: {
+          email: `${RUN}-mid@lucams.test`,
+          firstName: "Perfil",
+          lastName: "Cuenta",
+          phone: "3009998877",
+          documentType: "CC",
+          documentNumber: "1020304050",
+          supabaseUserId: `${RUN}-sub-mid`,
+          referralCode: `${RUN}-ref-mid`,
+        },
+      });
+      const sid = uuid();
+      const { cartId } = await createCartWithItem({ sessionId: sid });
+      setCartCookie(sid);
+      // Empezó como invitado y ya digitó nombre + email; teléfono y documento vacíos.
+      await saveContactStep({
+        fullName: "Digitado Por El",
+        email: `${RUN}-guest@lucams.test`,
+        phone: "",
+      });
+      mockUser = { id: `${RUN}-sub-mid` };
+
+      const ctx = await loadCheckoutContext();
+      // Lo digitado se conserva…
+      expect(ctx.state.contact?.fullName).toBe("Digitado Por El");
+      expect(ctx.state.contact?.email).toBe(`${RUN}-guest@lucams.test`);
+      // …y los vacíos se completan desde el perfil.
+      expect(ctx.state.contact?.phone).toBe("3009998877");
+      expect(ctx.state.contact?.documentType).toBe("CC");
+      expect(ctx.state.contact?.documentNumber).toBe("1020304050");
+
+      await prisma.cartItem.deleteMany({ where: { cartId } });
+      await prisma.cart.deleteMany({ where: { id: cartId } });
+    }, 30000);
+
+    it("pre-llena la facturación desde el perfil cuando wantsInvoice (documento tributario del comprador)", async () => {
+      await prisma.customer.create({
+        data: {
+          email: `${RUN}-bill@lucams.test`,
+          firstName: "Empresa",
+          lastName: "SAS",
+          documentType: "NIT",
+          documentNumber: "900123456",
+          supabaseUserId: `${RUN}-sub-bill`,
+          referralCode: `${RUN}-ref-bill`,
+        },
+      });
+      const sid = uuid();
+      const { cartId } = await createCartWithItem({ sessionId: sid });
+      setCartCookie(sid);
+      // Pidió documento de venta pero aún no digita los datos de facturación.
+      await saveAddressStep(validUrbanAddress, { wantsInvoice: true });
+      mockUser = { id: `${RUN}-sub-bill` };
+
+      const ctx = await loadCheckoutContext();
+      expect(ctx.state.billing?.name).toBe("Empresa SAS");
+      expect(ctx.state.billing?.documentType).toBe("NIT");
+      expect(ctx.state.billing?.documentNumber).toBe("900123456");
+
+      await prisma.cartItem.deleteMany({ where: { cartId } });
+      await prisma.cart.deleteMany({ where: { id: cartId } });
+    }, 30000);
   });
 
   // ───────────────────────── quoteShipping ─────────────────────────

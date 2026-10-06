@@ -19,6 +19,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getSettingValue } from "@/lib/cms";
 import { createOrderFromCart } from "@/features/orders/service";
+import { emailsEqual } from "@/features/orders/order-customer";
 import { processPaidOrder } from "@/features/orders/saga";
 import { assertStockAvailable } from "@/features/orders/stock";
 import {
@@ -51,7 +52,7 @@ import {
   openShippingOffersPayload,
   type CheckoutState,
 } from "@/lib/checkout-session";
-import { composeAddressLine, type ShippingSelectionInput } from "./schemas";
+import { composeAddressLine, AddressSchema, type ShippingSelectionInput } from "./schemas";
 import { assessCodRisk } from "./cod-risk";
 import { assertTransactionalAllowed } from "@/lib/stage-guard";
 
@@ -91,6 +92,9 @@ export class CheckoutError extends Error {
 export type CheckoutContext = {
   cart: NonNullable<Awaited<ReturnType<typeof getCartDetail>>>;
   customerId: string | null;
+  // Email del Customer de sesión (null si guest o no resolvió): finalize lo
+  // contrasta con el email digitado antes de escribir en el perfil (T7).
+  customerEmail: string | null;
   state: CheckoutState;
 };
 
@@ -117,6 +121,7 @@ export async function loadCheckoutContext(): Promise<CheckoutContext> {
 
   // Si hay user logueado, resolver el Customer (id + datos de contacto).
   let customerId: string | null = cart.customerId ?? null;
+  let customerEmail: string | null = null;
   if (user) {
     const customer = await prisma.customer.findFirst({
       where: cart.customerId
@@ -134,21 +139,62 @@ export async function loadCheckoutContext(): Promise<CheckoutContext> {
     });
     if (customer) {
       customerId = customer.id;
-      // Pre-llenar el contacto desde el perfil si el checkout aún no lo tiene
-      // (un cliente logueado no debería retipear su nombre/correo/teléfono/documento).
-      if (!currentState.contact) {
-        currentState.contact = {
-          fullName: [customer.firstName, customer.lastName].filter(Boolean).join(" "),
-          email: customer.email ?? user.email ?? "",
-          phone: customer.phone ?? "",
-          ...(customer.documentType ? { documentType: customer.documentType } : {}),
-          ...(customer.documentNumber ? { documentNumber: customer.documentNumber } : {}),
+      customerEmail = customer.email ?? user.email ?? null;
+      const profileFullName = [customer.firstName, customer.lastName].filter(Boolean).join(" ");
+      const profileEmail = customer.email ?? user.email ?? "";
+      // Pre-llenar el contacto desde el perfil (un cliente logueado no debería
+      // retipear sus datos). Si empezó como invitado y se logueó a mitad del
+      // checkout, se completan SOLO los campos vacíos — jamás se pisa lo que
+      // ya digitó (p. ej. un email de contacto distinto al de su cuenta).
+      const prevContact = currentState.contact;
+      currentState.contact = {
+        fullName: prevContact?.fullName?.trim() ? prevContact.fullName : profileFullName,
+        email: prevContact?.email?.trim() ? prevContact.email : profileEmail,
+        phone: prevContact?.phone?.trim() ? prevContact.phone : (customer.phone ?? ""),
+        documentType: prevContact?.documentType ?? customer.documentType ?? undefined,
+        documentNumber: prevContact?.documentNumber ?? customer.documentNumber ?? undefined,
+      };
+
+      // Dirección: si el checkout aún no tiene una elegida, proponer la guardada
+      // predeterminada (o la más reciente si no hay default). Es una PROPUESTA
+      // en memoria (no se escribe en la cookie): el form la muestra prellenada
+      // y el cliente la confirma o la cambia al enviar el paso — nada le
+      // bloquea elegir otra con el select "Usar dirección guardada".
+      if (!currentState.address) {
+        const saved = await prisma.address.findFirst({
+          where: { customerId: customer.id, deletedAt: null },
+          orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
+          select: { structured: true },
+        });
+        // structured viaja en el MISMO formato estructurado del checkout
+        // (AddressSchema); direcciones legacy (form plano, structured null) o
+        // con shape viejo no pre-llenan — el cliente la digita como antes.
+        const parsed = saved?.structured ? AddressSchema.safeParse(saved.structured) : null;
+        if (parsed?.success) currentState.address = parsed.data;
+      }
+
+      // Facturación: si pidió documento de venta y al perfil le sobran datos,
+      // se completan los vacíos (nombre y documento tributarios del COMPRADOR
+      // — también en pedidos regalo, que igual facturan a quien paga).
+      const billing = currentState.billing;
+      if (billing?.wantsInvoice) {
+        currentState.billing = {
+          ...billing,
+          name: billing.name?.trim() ? billing.name : profileFullName || undefined,
+          // BillingData no admite TI (tarjeta de identidad): un perfil con TI
+          // no pre-llena el tipo, el cliente lo elige a mano.
+          documentType:
+            billing.documentType ??
+            (customer.documentType && customer.documentType !== "TI"
+              ? customer.documentType
+              : undefined),
+          documentNumber: billing.documentNumber ?? customer.documentNumber ?? undefined,
         };
       }
     }
   }
 
-  return { cart, customerId, state: currentState };
+  return { cart, customerId, customerEmail, state: currentState };
 }
 
 /**
@@ -541,6 +587,10 @@ export async function finalizeCheckout(input: {
       },
       shippingSelection: state.shippingSelection,
       billing,
+      // FLUJO REGALO — destinatario/regalo del state (null = lo recibe el
+      // comprador). La facturación de arriba NO cambia: siempre a nombre del
+      // comprador.
+      gift: state.gift ?? null,
       paymentMethod: state.paymentMethod,
       couponCode: state.couponCode, // F1 — se re-valida atómicamente en la tx
       notes: state.address.notes,
@@ -627,13 +677,23 @@ export async function finalizeCheckout(input: {
   // cuando AMBOS campos están vacíos: el updateMany condicional es atómico, así
   // nunca pisa un documento ya guardado (ni en carrera con /mi-cuenta/perfil).
   // Fuente: el documento del contacto; si no hay, el de facturación.
+  //
+  // Gate por email (mismo bug STG LCM-2026-0010): si SABEMOS que el contacto
+  // digitado no es el email del Customer de sesión, el documento capturado
+  // tampoco es de esa cuenta — escribirlo en su perfil contaminaría sus datos
+  // tributarios con los de un tercero. La Order ya guarda el documento en su
+  // snapshot, así que no se pierde para facturación. Cuando el email del
+  // Customer no se conoce (cart heredado sin sesión), se conserva el
+  // comportamiento anterior.
   const profileDoc =
     state.contact.documentType && state.contact.documentNumber
       ? { documentType: state.contact.documentType, documentNumber: state.contact.documentNumber }
       : billing.wantsInvoice && billing.documentType && billing.documentNumber
         ? { documentType: billing.documentType, documentNumber: billing.documentNumber }
         : null;
-  if (ctx.customerId && profileDoc) {
+  const profileIsContactOwner =
+    !ctx.customerEmail || emailsEqual(ctx.customerEmail, state.contact.email);
+  if (ctx.customerId && profileDoc && profileIsContactOwner) {
     try {
       const persisted = await prisma.customer.updateMany({
         where: { id: ctx.customerId, documentType: null, documentNumber: null },
@@ -823,8 +883,12 @@ export async function saveContactStep(contact: NonNullable<CheckoutState["contac
 export async function saveAddressStep(
   address: NonNullable<CheckoutState["address"]>,
   billing?: CheckoutState["billing"],
+  gift?: CheckoutState["gift"],
 ) {
-  await setCheckoutState({ address, billing, step: 2 });
+  // gift siempre se re-escribe (null incluido): si el cliente activó y luego
+  // apagó el toggle "lo recibe otra persona", el destinatario viejo no debe
+  // sobrevivir en la cookie.
+  await setCheckoutState({ address, billing, gift: gift ?? null, step: 2 });
 }
 
 /**

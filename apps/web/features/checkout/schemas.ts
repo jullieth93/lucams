@@ -185,6 +185,27 @@ export const BillingSchema = z
 export type BillingInput = z.infer<typeof BillingSchema>;
 
 /**
+ * FLUJO REGALO — destinatario distinto del comprador ("compro yo, lo recibe
+ * otra persona"). saveDatosAction lo valida SOLO cuando el toggle del form
+ * está on; con el toggle off no se envía nada y el state queda gift=null.
+ * El mensaje de la tarjeta solo se conserva si isGift está marcado.
+ */
+export const GiftSchema = z.object({
+  recipientName: z
+    .string()
+    .min(2, "El nombre debe tener al menos 2 caracteres")
+    .max(120, "Máximo 120 caracteres")
+    .regex(/^[A-Za-zÀ-ÿ\s.''\-]+$/u, "El nombre solo puede tener letras")
+    .trim(),
+  recipientPhone: z
+    .string()
+    .regex(/^3\d{9}$/, "Debe ser un móvil colombiano de 10 dígitos (300...)"),
+  isGift: z.boolean(),
+  giftMessage: z.string().max(300, "Máximo 300 caracteres").trim().optional(),
+});
+export type GiftInput = z.infer<typeof GiftSchema>;
+
+/**
  * Selección de envío — output de cotización Aveonline. Validamos
  * estructura mínima por si el cliente manipula la cookie.
  */

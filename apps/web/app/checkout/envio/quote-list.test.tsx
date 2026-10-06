@@ -89,6 +89,18 @@ describe("QuoteList — logos de transportadora", () => {
     expect(screen.getByText("DHL Express")).toBeInTheDocument();
   });
 
+  it("mapea variantes de Aveonline con sufijo societario al logo existente", () => {
+    renderList([quote({ carrier: "TCC S.A.S.", carrierName: "TCC S.A.S." })]);
+    const img = screen.getByAltText("Logo de TCC");
+    expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain("/carriers/tcc-sa.svg");
+  });
+
+  it("sin logo, el nombre crudo en MAYÚSCULAS se muestra formateado (title case)", () => {
+    renderList([quote({ carrier: "transcol", carrierName: "TRANSCOL SOLUTIONS" })]);
+    expect(screen.getByText("Transcol Solutions")).toBeInTheDocument();
+    expect(screen.queryByText("TRANSCOL SOLUTIONS")).not.toBeInTheDocument();
+  });
+
   it("mantiene la selección por defecto (primer quote) con logos presentes", () => {
     renderList([
       quote({ carrier: "servientrega", quoteId: "q-1" }),

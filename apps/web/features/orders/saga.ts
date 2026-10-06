@@ -32,6 +32,7 @@ import { decrementStockForOrder } from "./stock";
 import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
 import { LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 import { buildShipmentLastError } from "./shipment-error";
+import { resolveShipmentRecipient } from "./shipment-recipient";
 import type { ShippingAddressInput } from "./schemas";
 import {
   sendOrderConfirmationOnce,
@@ -613,6 +614,12 @@ export async function processPaidOrder(
 
   // 6) Delivery desde Order.shippingAddress (snapshot del checkout).
   const ship = order.shippingAddress as unknown as ShippingAddressInput;
+  // FLUJO REGALO — destinatario de la guía: si el pedido lo tiene ("lo recibe
+  // otra persona"), va a SU nombre/teléfono (quien recibe y atiende al
+  // mensajero — en COD, quien paga el efectivo). El correo de la guía sigue
+  // siendo el del comprador (quien pagó y recibe las notificaciones de
+  // Aveonline); la dirección física es la misma en ambos casos.
+  const recipient = resolveShipmentRecipient(order, ship);
 
   // 6.5) #11-P1 (verificación post-launch) — CLAIM ATÓMICO de creación de guía.
   //   El guard `if (order.trackingNumber)` al inicio es read-then-act: dos
@@ -696,8 +703,8 @@ export async function processPaidOrder(
         department: ship.department,
         address: [ship.addressLine1, ship.addressLine2].filter(Boolean).join(" "),
         zip: ship.zip,
-        phone: ship.phone,
-        contactName: ship.fullName,
+        phone: recipient.phone,
+        contactName: recipient.contactName,
         documentNumber: ship.documentNumber,
         email: ship.email,
       },

@@ -103,7 +103,10 @@ async function makeCustomer(overrides?: { firstName?: string; lastName?: string 
       firstName: overrides?.firstName,
       lastName: overrides?.lastName,
     },
-    select: { id: true },
+    // email lo necesitan los tests que pasan customerId a createOrderFromCart:
+    // el service re-resuelve el customer por el email del contacto
+    // (order-customer.ts), así que el shipping email debe SER el del customer.
+    select: { id: true, email: true },
   });
 }
 
@@ -485,6 +488,109 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       expect(o2!.dianStatus).toBe("NOT_REQUIRED");
     });
 
+    it("FLUJO REGALO — persiste destinatario, isGift y mensaje para la tarjeta", async () => {
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
+      const result = await createOrderFromCart(
+        baseInput(cartId, {
+          gift: {
+            recipientName: "Camila Torres",
+            recipientPhone: "3109998877",
+            isGift: true,
+            giftMessage: "¡Feliz cumple!",
+          },
+        }),
+      );
+      const row = await prisma.order.findUnique({
+        where: { id: result.id },
+        select: {
+          recipientName: true,
+          recipientPhone: true,
+          isGift: true,
+          giftMessage: true,
+          // La facturación NO se ve afectada por el regalo (comprador).
+          billingName: true,
+          dianStatus: true,
+        },
+      });
+      expect(row!.recipientName).toBe("Camila Torres");
+      expect(row!.recipientPhone).toBe("3109998877");
+      expect(row!.isGift).toBe(true);
+      expect(row!.giftMessage).toBe("¡Feliz cumple!");
+    });
+
+    it("FLUJO REGALO — sin gift: campos en null/false (lo recibe el comprador)", async () => {
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
+      const result = await createOrderFromCart(baseInput(cartId));
+      const row = await prisma.order.findUnique({
+        where: { id: result.id },
+        select: { recipientName: true, recipientPhone: true, isGift: true, giftMessage: true },
+      });
+      expect(row!.recipientName).toBeNull();
+      expect(row!.recipientPhone).toBeNull();
+      expect(row!.isGift).toBe(false);
+      expect(row!.giftMessage).toBeNull();
+    });
+
+    it("FLUJO REGALO — giftMessage se descarta si isGift=false (state manipulado)", async () => {
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
+      const result = await createOrderFromCart(
+        baseInput(cartId, {
+          gift: {
+            recipientName: "Camila Torres",
+            recipientPhone: "3109998877",
+            isGift: false,
+            giftMessage: "no debería guardarse",
+          },
+        }),
+      );
+      const row = await prisma.order.findUnique({
+        where: { id: result.id },
+        select: { recipientName: true, isGift: true, giftMessage: true },
+      });
+      expect(row!.recipientName).toBe("Camila Torres");
+      expect(row!.isGift).toBe(false);
+      expect(row!.giftMessage).toBeNull();
+    });
+
+    it("FLUJO REGALO — el refresh idempotente (mismo cart sin cambios) actualiza los campos de regalo", async () => {
+      // Carrera real: el cliente va a /checkout/pago, vuelve a /checkout/datos,
+      // activa "lo recibe otra persona" y re-confirma — carrito/total/email
+      // idénticos → camino idempotente, pero el regalo SÍ debe persistirse.
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
+      const shipEmail = email("gift-refresh");
+      const first = await createOrderFromCart(
+        baseInput(cartId, { shipping: { email: shipEmail } }),
+      );
+      const second = await createOrderFromCart(
+        baseInput(cartId, {
+          shipping: { email: shipEmail },
+          gift: {
+            recipientName: "Camila Torres",
+            recipientPhone: "3109998877",
+            isGift: true,
+            giftMessage: "Con cariño",
+          },
+        }),
+      );
+      expect(second.id).toBe(first.id); // misma Order (idempotencia intacta)
+      const row = await prisma.order.findUnique({
+        where: { id: first.id },
+        select: { recipientName: true, recipientPhone: true, isGift: true, giftMessage: true },
+      });
+      expect(row!.recipientName).toBe("Camila Torres");
+      expect(row!.recipientPhone).toBe("3109998877");
+      expect(row!.isGift).toBe(true);
+      expect(row!.giftMessage).toBe("Con cariño");
+    });
+
     it("paymentMethod COD se persiste tal cual", async () => {
       const { cartId } = await makeCartWithItems([
         { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
@@ -503,7 +609,12 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
         [{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }],
         { customerId: customer.id },
       );
-      const result = await createOrderFromCart(baseInput(cartId, { customerId: customer.id }));
+      const result = await createOrderFromCart(
+        baseInput(cartId, {
+          customerId: customer.id,
+          shipping: { email: customer.email },
+        }),
+      );
       const row = await prisma.order.findUnique({
         where: { id: result.id },
         select: { customerId: true },
@@ -695,6 +806,115 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
         select: { stock: true },
       });
       expect(v!.stock).toBe(LOW_STOCK);
+    });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // Customer EFECTIVO del pedido (bug STG LCM-2026-0010 — order-customer.ts):
+  // el customerId de la sesión NO se reusa cuando el email del contacto
+  // digitado es de otra persona.
+  // ════════════════════════════════════════════════════════════════════════
+
+  describe("customer efectivo por email de contacto (bug STG LCM-2026-0010)", () => {
+    async function customerIdOf(orderId: string): Promise<string | null> {
+      const row = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { customerId: true },
+      });
+      return row!.customerId;
+    }
+
+    it("sesión con email A + contacto A (distinto case) → customerId de A", async () => {
+      const customer = await makeCustomer();
+      const { cartId } = await makeCartWithItems(
+        [{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }],
+        { customerId: customer.id },
+      );
+      const result = await createOrderFromCart(
+        baseInput(cartId, {
+          customerId: customer.id,
+          shipping: { email: customer.email.toUpperCase() },
+        }),
+      );
+      expect(await customerIdOf(result.id)).toBe(customer.id);
+    });
+
+    it("sesión con email A + contacto B (B existe) → el pedido queda con el customer de B", async () => {
+      const sessionCustomer = await makeCustomer();
+      const contactCustomer = await makeCustomer();
+      const { cartId } = await makeCartWithItems(
+        [{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }],
+        { customerId: sessionCustomer.id },
+      );
+      const result = await createOrderFromCart(
+        baseInput(cartId, {
+          customerId: sessionCustomer.id,
+          shipping: { email: contactCustomer.email },
+        }),
+      );
+      expect(await customerIdOf(result.id)).toBe(contactCustomer.id);
+    });
+
+    it("sesión con email A + contacto B (B NO existe) → customerId null (guest), email intacto", async () => {
+      const sessionCustomer = await makeCustomer();
+      const guestEmail = email("ghost");
+      const { cartId } = await makeCartWithItems(
+        [{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }],
+        { customerId: sessionCustomer.id },
+      );
+      const result = await createOrderFromCart(
+        baseInput(cartId, {
+          customerId: sessionCustomer.id,
+          shipping: { email: guestEmail },
+        }),
+      );
+      const row = await prisma.order.findUnique({
+        where: { id: result.id },
+        select: { customerId: true, email: true },
+      });
+      expect(row!.customerId).toBeNull();
+      expect(row!.email).toBe(guestEmail);
+    });
+
+    it("guest sin sesión (customerId null) → sigue null aunque el email tenga Customer", async () => {
+      // No hay sesión que corregir: el checkout guest nunca amarra el pedido a
+      // una cuenta (la atribución por email ocurre cuando la persona se registra).
+      const contactCustomer = await makeCustomer();
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
+      const result = await createOrderFromCart(
+        baseInput(cartId, { shipping: { email: contactCustomer.email } }),
+      );
+      expect(await customerIdOf(result.id)).toBeNull();
+    });
+
+    it("la RECONCILIACIÓN de una PENDING existente también corrige el customerId", async () => {
+      const sessionCustomer = await makeCustomer();
+      const contactCustomer = await makeCustomer();
+      const { cartId } = await makeCartWithItems(
+        [{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }],
+        { customerId: sessionCustomer.id },
+      );
+      // Primer intento: contacto = sesión (orden PENDING con customerId de A).
+      const first = await createOrderFromCart(
+        baseInput(cartId, {
+          customerId: sessionCustomer.id,
+          shipping: { email: sessionCustomer.email },
+        }),
+      );
+      expect(await customerIdOf(first.id)).toBe(sessionCustomer.id);
+      // El cliente corrige el contacto al email de B y re-paga: MISMA orden,
+      // customerId re-vinculado a B.
+      const second = await createOrderFromCart(
+        baseInput(cartId, {
+          customerId: sessionCustomer.id,
+          shipping: { email: contactCustomer.email },
+        }),
+      );
+      expect(second.id).toBe(first.id);
+      expect(second.number).toBe(first.number);
+      expect(await customerIdOf(first.id)).toBe(contactCustomer.id);
     });
   });
 
@@ -915,7 +1135,9 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
         [{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }],
         { customerId: customer.id },
       );
-      const created = await createOrderFromCart(baseInput(cartId, { customerId: customer.id }));
+      const created = await createOrderFromCart(
+        baseInput(cartId, { customerId: customer.id, shipping: { email: customer.email } }),
+      );
       const found = await getOrder(created.id);
       expect(found!.customer).not.toBeNull();
       expect(found!.customer!.firstName).toBe("Lina");
@@ -1039,7 +1261,6 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
 
     it("incluye customer.firstName/lastName cuando existe", async () => {
       const customer = await makeCustomer({ firstName: "Sara", lastName: "Ruiz" });
-      const custToken = `${RUN}cust${uniq()}`;
       const { cartId } = await makeCartWithItems(
         [{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }],
         { customerId: customer.id },
@@ -1047,12 +1268,14 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       await createOrderFromCart(
         baseInput(cartId, {
           customerId: customer.id,
-          shipping: { email: `${custToken}@lucams.test` },
+          // El email del contacto DEBE ser el del customer: el service re-vincula
+          // por email del contacto (bug STG LCM-2026-0010 — order-customer.ts).
+          shipping: { email: customer.email },
         }),
       );
       // Buscar por nombre del customer (q pega también contra customer.firstName).
       const res = await listOrders({ q: "Sara" });
-      const mine = res.items.find((o) => o.email === `${custToken}@lucams.test`);
+      const mine = res.items.find((o) => o.email === customer.email);
       expect(mine).toBeTruthy();
       expect(mine!.customer!.firstName).toBe("Sara");
     });

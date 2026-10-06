@@ -53,17 +53,12 @@ export function DatosForm({
   initial,
   savedAddresses = [],
   canSaveAddress = false,
-  lucamsOwnShipping = null,
   texts,
 }: {
   initial: CheckoutState;
   savedAddresses?: CheckoutPrefillAddress[];
   // true solo si hay cliente logueado → ofrecer "guardar esta dirección".
   canSaveAddress?: boolean;
-  /** Zonas con envío propio habilitado ({ cityCode: [zoneId] }) + flag del
-   *  servicio. Solo informativo: marca en el select las zonas SIN envío propio;
-   *  todas siguen seleccionables (dato de dirección). null = no informar. */
-  lucamsOwnShipping?: { enabled: boolean; zones: Record<string, string[]> } | null;
   /** Textos CMS del formulario (roadmap B8) — los resuelve el padre server. */
   texts: CheckoutTexts["datos"];
 }) {
@@ -103,17 +98,6 @@ export function DatosForm({
   const zoneCity = getZoneCityByCode(cityCode);
   const showZoneSelect = zoneCity !== null;
   const zoneOptions = zoneCity?.zones ?? [];
-  // Paquete G (2026-10-02) — zonas SIN envío propio habilitado (para marcarlas
-  // en el select con el sufijo CMS zoneNoOwnSuffix). Solo aplica si el servicio
-  // está activo; si está apagado no se marca nada (no hay oferta que esperar).
-  const zonesWithoutOwnShipping =
-    lucamsOwnShipping?.enabled && zoneCity
-      ? new Set(
-          zoneCity.zones
-            .map((z) => z.id)
-            .filter((id) => !(lucamsOwnShipping.zones[zoneCity.cityCode] ?? []).includes(id)),
-        )
-      : null;
   // Discriminated union urbana/rural (Lucy 2026-05-21)
   const [addressKind, setAddressKind] = useState<"urban" | "rural">(
     initial.address?.kind ?? "urban",
@@ -185,12 +169,28 @@ export function DatosForm({
 
   // Billing
   const [wantsInvoice, setWantsInvoice] = useState<boolean>(initial.billing?.wantsInvoice ?? false);
+  const [billingDocType, setBillingDocType] = useState<"CC" | "CE" | "NIT" | "PP">(
+    initial.billing?.documentType ?? "NIT",
+  );
+  const [billingDocNumber, setBillingDocNumber] = useState(initial.billing?.documentNumber ?? "");
+  const [billingName, setBillingName] = useState(initial.billing?.name ?? "");
   // Autorización de tratamiento de datos (Ley 1581) — obligatoria antes de guardar la PII.
   const [dataConsent, setDataConsent] = useState<boolean>(false);
 
   // "Guardar esta dirección en mi cuenta" (opt-in, solo clientes logueados).
   const [saveToAccount, setSaveToAccount] = useState(false);
   const [saveAddressLabel, setSaveAddressLabel] = useState("");
+
+  // FLUJO REGALO — "compro yo, lo recibe otra persona": toggle de destinatario
+  // distinto (nombre + teléfono van a la guía) + checkbox "Es un regalo" con
+  // mensaje opcional para la tarjeta. La facturación sigue siendo del comprador.
+  const [hasRecipient, setHasRecipient] = useState<boolean>(Boolean(initial.gift));
+  const [recipientName, setRecipientName] = useState(initial.gift?.recipientName ?? "");
+  const [recipientPhoneDisplay, setRecipientPhoneDisplay] = useState(
+    initial.gift?.recipientPhone ? formatPhone(initial.gift.recipientPhone) : "",
+  );
+  const [isGift, setIsGift] = useState<boolean>(initial.gift?.isGift ?? false);
+  const [giftMessage, setGiftMessage] = useState(initial.gift?.giftMessage ?? "");
 
   // Cities filtradas por depto elegido
   const cities = useMemo<DaneCity[]>(
@@ -316,6 +316,16 @@ export function DatosForm({
     // No fuerza guion, solo limpia caracteres no válidos.
     const cleaned = value.replace(/[^\dA-Za-z-]/g, "").toUpperCase();
     setCruceNumber(cleaned);
+  }
+
+  // Copia EXPLÍCITA contacto → facturación (botón, no sincronización opaca):
+  // el cliente la dispara y la puede re-disparar si edita el contacto después.
+  // El documento solo se copia si el contacto lo diligenció y el tipo es válido
+  // para facturación (el select de billing no ofrece TI).
+  function copyContactToBilling() {
+    setBillingName(fullName);
+    if (docType && docType !== "TI") setBillingDocType(docType);
+    if (docNumber) setBillingDocNumber(docNumber);
   }
 
   // Validaciones derivadas
@@ -677,7 +687,6 @@ export function DatosForm({
               {zoneOptions.map((z) => (
                 <option key={z.id} value={z.id}>
                   {z.name}
-                  {zonesWithoutOwnShipping?.has(z.id) ? ` (${texts.zoneNoOwnSuffix})` : ""}
                 </option>
               ))}
             </select>
@@ -995,6 +1004,146 @@ export function DatosForm({
         )}
       </section>
 
+      {/* DESTINATARIO / REGALO (FLUJO REGALO) — sección propia entre dirección
+          y facturación. Con el toggle on, nombre + teléfono de quien recibe
+          son requeridos (van a la guía de la transportadora: es quien atiende
+          al mensajero, y en COD quien paga el efectivo). "Es un regalo" oculta
+          los precios del correo de confirmación y habilita el mensaje para la
+          tarjeta. La facturación (sección siguiente) queda SIEMPRE a nombre
+          del comprador. */}
+      <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
+        <h2 className="text-brand-purple-dark font-display mb-2 text-lg font-bold">
+          ¿Quién recibe el pedido?
+        </h2>
+        <label className="text-brand-purple-dark inline-flex items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            name="hasRecipient"
+            checked={hasRecipient}
+            onChange={(e) => setHasRecipient(e.target.checked)}
+            className="accent-brand-purple h-4 w-4"
+          />
+          Lo recibe otra persona (va a su nombre y teléfono)
+        </label>
+
+        {hasRecipient && (
+          <div className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label
+                  htmlFor="recipientName"
+                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                >
+                  Nombre de quien recibe <span className="text-rose-600">*</span>
+                </Label>
+                <Input
+                  id="recipientName"
+                  name="recipientName"
+                  required
+                  value={recipientName}
+                  onChange={(e) => {
+                    setRecipientName(e.target.value);
+                    clearTouched("recipientName");
+                  }}
+                  onBlur={() => {
+                    if (recipientName.trim()) setRecipientName(capitalizeName(recipientName));
+                    markTouched("recipientName");
+                  }}
+                  placeholder="Ej. Camila Torres"
+                  maxLength={120}
+                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                />
+                <FieldHint
+                  clientError={
+                    recipientName.length > 0 &&
+                    !validateName(recipientName) &&
+                    touched.recipientName
+                      ? "Solo letras, espacios y acentos (sin números)"
+                      : null
+                  }
+                  serverError={err("recipientName")}
+                />
+              </div>
+              <div>
+                <Label
+                  htmlFor="recipientPhone-display"
+                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                >
+                  Teléfono de quien recibe <span className="text-rose-600">*</span>
+                </Label>
+                <Input
+                  id="recipientPhone-display"
+                  type="tel"
+                  required
+                  value={recipientPhoneDisplay}
+                  onChange={(e) => {
+                    setRecipientPhoneDisplay(formatPhone(e.target.value));
+                    clearTouched("recipientPhone");
+                  }}
+                  onBlur={() => markTouched("recipientPhone")}
+                  placeholder="300 887 3826"
+                  maxLength={12}
+                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                  autoComplete="off"
+                  inputMode="numeric"
+                />
+                {/* Valor sin formato (lo que se envía al server) */}
+                <input
+                  type="hidden"
+                  name="recipientPhone"
+                  value={stripPhone(recipientPhoneDisplay)}
+                />
+                <FieldHint
+                  clientError={
+                    recipientPhoneDisplay.length > 0 &&
+                    !validatePhone(recipientPhoneDisplay) &&
+                    touched.recipientPhone
+                      ? "Debe ser un móvil colombiano de 10 dígitos (300...)"
+                      : null
+                  }
+                  serverError={err("recipientPhone")}
+                  hint="La transportadora lo llama a este número al entregar."
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-brand-purple-dark inline-flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  name="isGift"
+                  checked={isGift}
+                  onChange={(e) => setIsGift(e.target.checked)}
+                  className="accent-brand-purple h-4 w-4"
+                />
+                Es un regalo 🎁 (tu correo de confirmación no mostrará precios)
+              </label>
+              {isGift && (
+                <div className="mt-3">
+                  <Label
+                    htmlFor="giftMessage"
+                    className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                  >
+                    Mensaje para la tarjeta (opcional)
+                  </Label>
+                  <textarea
+                    id="giftMessage"
+                    name="giftMessage"
+                    rows={2}
+                    value={giftMessage}
+                    onChange={(e) => setGiftMessage(e.target.value)}
+                    maxLength={300}
+                    placeholder="Ej. ¡Feliz cumpleaños! Con cariño, Lau"
+                    className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
+                  />
+                  <FieldHint clientError={null} serverError={err("giftMessage")} />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
       {/* FACTURACIÓN */}
       <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-brand-purple-dark font-display mb-2 text-lg font-bold">
@@ -1014,59 +1163,73 @@ export function DatosForm({
         </label>
 
         {wantsInvoice && (
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-6">
-            <div className="sm:col-span-2">
-              <Label
-                htmlFor="billingDocumentType"
-                className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-              >
-                {texts.billingTypeLabel} <span className="text-rose-600">*</span>
-              </Label>
-              <select
-                id="billingDocumentType"
-                name="billingDocumentType"
-                defaultValue={initial.billing?.documentType ?? "NIT"}
-                className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none"
-              >
-                <option value="NIT">NIT</option>
-                <option value="CC">CC</option>
-                <option value="CE">CE</option>
-                <option value="PP">Pasaporte</option>
-              </select>
-            </div>
-            <div className="sm:col-span-4">
-              <Label
-                htmlFor="billingDocumentNumber"
-                className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-              >
-                {texts.billingNumberLabel} <span className="text-rose-600">*</span>
-              </Label>
-              <Input
-                id="billingDocumentNumber"
-                name="billingDocumentNumber"
-                required={wantsInvoice}
-                defaultValue={initial.billing?.documentNumber ?? ""}
-                placeholder={texts.billingNumberPlaceholder}
-                className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
-              />
-              <FieldHint clientError={null} serverError={err("billingDocumentNumber")} />
-            </div>
-            <div className="sm:col-span-6">
-              <Label
-                htmlFor="billingName"
-                className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-              >
-                {texts.billingNameLabel} <span className="text-rose-600">*</span>
-              </Label>
-              <Input
-                id="billingName"
-                name="billingName"
-                required={wantsInvoice}
-                defaultValue={initial.billing?.name ?? ""}
-                placeholder={texts.billingNamePlaceholder}
-                className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
-              />
-              <FieldHint clientError={null} serverError={err("billingName")} />
+          <div className="mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={copyContactToBilling}
+              className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 hover:text-brand-purple-dark mb-4"
+            >
+              Usar los datos del comprador
+            </Button>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
+              <div className="sm:col-span-2">
+                <Label
+                  htmlFor="billingDocumentType"
+                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                >
+                  {texts.billingTypeLabel} <span className="text-rose-600">*</span>
+                </Label>
+                <select
+                  id="billingDocumentType"
+                  name="billingDocumentType"
+                  value={billingDocType}
+                  onChange={(e) => setBillingDocType(e.target.value as "CC" | "CE" | "NIT" | "PP")}
+                  className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none"
+                >
+                  <option value="NIT">NIT</option>
+                  <option value="CC">CC</option>
+                  <option value="CE">CE</option>
+                  <option value="PP">Pasaporte</option>
+                </select>
+              </div>
+              <div className="sm:col-span-4">
+                <Label
+                  htmlFor="billingDocumentNumber"
+                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                >
+                  {texts.billingNumberLabel} <span className="text-rose-600">*</span>
+                </Label>
+                <Input
+                  id="billingDocumentNumber"
+                  name="billingDocumentNumber"
+                  required={wantsInvoice}
+                  value={billingDocNumber}
+                  onChange={(e) => setBillingDocNumber(e.target.value)}
+                  placeholder={texts.billingNumberPlaceholder}
+                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                />
+                <FieldHint clientError={null} serverError={err("billingDocumentNumber")} />
+              </div>
+              <div className="sm:col-span-6">
+                <Label
+                  htmlFor="billingName"
+                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                >
+                  {texts.billingNameLabel} <span className="text-rose-600">*</span>
+                </Label>
+                <Input
+                  id="billingName"
+                  name="billingName"
+                  required={wantsInvoice}
+                  value={billingName}
+                  onChange={(e) => setBillingName(e.target.value)}
+                  placeholder={texts.billingNamePlaceholder}
+                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                />
+                <FieldHint clientError={null} serverError={err("billingName")} />
+              </div>
             </div>
           </div>
         )}

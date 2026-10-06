@@ -24,7 +24,21 @@ const { prisma, createOrderFromCart, assertStockAvailable, checkoutState } = vi.
       update: vi.fn(),
     },
     productVariant: { findMany: vi.fn(async () => []) },
-    customer: { findFirst: vi.fn(async () => null), updateMany: vi.fn(async () => ({ count: 0 })) },
+    address: { findFirst: vi.fn(async () => null) },
+    customer: {
+      findFirst: vi.fn(
+        async (): Promise<{
+          id: string;
+          firstName: string | null;
+          lastName: string | null;
+          email: string | null;
+          phone: string | null;
+          documentType: string | null;
+          documentNumber: string | null;
+        } | null> => null,
+      ),
+      updateMany: vi.fn(async () => ({ count: 0 })),
+    },
   },
   createOrderFromCart: vi.fn(),
   assertStockAvailable: vi.fn(async () => {}),
@@ -98,6 +112,7 @@ import {
   fingerprintCartItems,
 } from "./service";
 import { InsufficientStockError, OrderAlreadyPaidError } from "@/features/orders/errors";
+import { getCurrentUser } from "@/lib/auth";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { getLucamsShippingSettings } from "@/features/shipping/settings";
 
@@ -252,6 +267,32 @@ describe("finalizeCheckout — persiste el documento DIAN en el perfil (T7)", ()
 
   it("guest o checkout sin documento: NO escribe en el perfil", async () => {
     mockWompiOk();
+    await finalizeCheckout({ redirectUrl: "https://x.co/gracias" });
+    expect(prisma.customer.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("contacto con email DISTINTO al del customer de sesión: NO escribe el documento en su perfil (bug STG LCM-2026-0010)", async () => {
+    // Sesión de admin@example.co que digita el contacto de otra persona: el
+    // documento capturado no es de la cuenta → jamás debe pisar su perfil.
+    vi.mocked(getCurrentUser).mockResolvedValueOnce({ id: "sub_admin" } as never);
+    prisma.customer.findFirst.mockResolvedValueOnce({
+      id: "cust_admin",
+      firstName: "Admin",
+      lastName: null,
+      email: "admin@example.co",
+      phone: null,
+      documentType: null,
+      documentNumber: null,
+    });
+    checkoutState.current!.contact = {
+      fullName: "Otra Persona",
+      email: "otra@example.co",
+      phone: "3001234567",
+      documentType: "CC",
+      documentNumber: "1234567890",
+    };
+    mockWompiOk();
+
     await finalizeCheckout({ redirectUrl: "https://x.co/gracias" });
     expect(prisma.customer.updateMany).not.toHaveBeenCalled();
   });

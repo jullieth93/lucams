@@ -867,9 +867,31 @@ export async function removeCartItem(sessionId: string, itemId: string): Promise
 //     (carta-misma, recibe a su nuevo dueño).
 //   - Si ambos existen → merge inteligente: folder items del anon en
 //     el cart del customer sumando qty por variantId; soft-delete anon.
+//   - En ambos caminos los Designs anónimos referenciados por los items se
+//     ADOPTAN (customerId set, sessionId limpio) — ver adoptSessionDesigns.
 //
 // Retorna el sessionId que debería quedar en la cookie del usuario
 // (puede ser el del cart del customer si existía uno previo).
+
+/**
+ * Adopta los diseños anónimos referenciados por los items del carrito que se está
+ * mergeando: el CartItem pasa al customer en el login pero el Design seguía con el
+ * sessionId anónimo (customerId null) → al dar «Editar» estando logueado,
+ * getOwnedDesign({customerId, sessionId: null}) no lo encontraba y el Estudio abría
+ * vacío. El guard doble del where (sessionId exacto + customerId null) garantiza que
+ * un CartItem solo puede transferir diseños de ESTA sesión anónima, nunca ajenos.
+ */
+async function adoptSessionDesigns(
+  tx: Pick<typeof prisma, "design">,
+  opts: { designIds: (string | null)[]; anonSessionId: string; customerId: string },
+): Promise<void> {
+  const ids = opts.designIds.filter((id): id is string => typeof id === "string");
+  if (ids.length === 0) return;
+  await tx.design.updateMany({
+    where: { id: { in: ids }, sessionId: opts.anonSessionId, customerId: null },
+    data: { customerId: opts.customerId, sessionId: null },
+  });
+}
 
 export async function mergeAnonCartIntoCustomer(
   anonSessionId: string,
@@ -893,9 +915,16 @@ export async function mergeAnonCartIntoCustomer(
 
   // Caso 1: customer sin cart previo → el anon pasa a ser suyo.
   if (!customerCart) {
-    await prisma.cart.update({
-      where: { id: anonCart.id },
-      data: { customerId },
+    await prisma.$transaction(async (tx) => {
+      await tx.cart.update({
+        where: { id: anonCart.id },
+        data: { customerId },
+      });
+      await adoptSessionDesigns(tx, {
+        designIds: anonCart.items.map((i) => i.designId),
+        anonSessionId,
+        customerId,
+      });
     });
     return anonSessionId;
   }
@@ -934,6 +963,13 @@ export async function mergeAnonCartIntoCustomer(
         });
       }
     }
+    // Los diseños anónimos referenciados por los items mergeados pasan al customer
+    // (misma transacción: si el fold falla, ningún diseño cambia de dueño a medias).
+    await adoptSessionDesigns(tx, {
+      designIds: anonCart.items.map((i) => i.designId),
+      anonSessionId,
+      customerId,
+    });
     // Hard-delete anon cart (CartItem cascade). Cart es data efímera
     // sin valor de auditoría — además `sessionId @unique` no respeta
     // deletedAt, así que un soft-delete bloquearía reusar ese

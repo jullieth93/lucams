@@ -96,6 +96,23 @@ export type BillingData = {
   name?: string;
 };
 
+/**
+ * FLUJO REGALO ("compro yo, lo recibe otra persona" — 2026-10-05).
+ * Solo existe cuando el toggle "¿Lo recibe otra persona?" del step 1 está on;
+ * null/ausente = lo recibe el comprador. La facturación NO se ve afectada:
+ * los documentos tributarios quedan siempre a nombre del comprador.
+ */
+export type GiftData = {
+  /** Nombre de quien recibe (va a la guía de la transportadora). */
+  recipientName: string;
+  /** Móvil colombiano de quien recibe, 10 dígitos sin formato. */
+  recipientPhone: string;
+  /** true = es un regalo: el email de confirmación al comprador oculta precios. */
+  isGift: boolean;
+  /** Mensaje para la tarjeta de regalo (opcional; lo usa producción/admin). */
+  giftMessage?: string;
+};
+
 export type ShippingSelection = {
   carrier: string;
   carrierName: string;
@@ -131,6 +148,8 @@ export type CheckoutState = {
   contact?: ContactData;
   address?: AddressData;
   billing?: BillingData;
+  /** Destinatario distinto / regalo (null = lo recibe el comprador). */
+  gift?: GiftData | null;
   shippingSelection?: ShippingSelection;
   shippingOffers?: ShippingOffersPayload;
   paymentMethod?: "WOMPI" | "COD";

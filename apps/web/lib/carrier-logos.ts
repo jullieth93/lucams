@@ -101,17 +101,54 @@ const CARRIER_LOGOS: Record<string, CarrierLogo> = {
 
 /**
  * Logo de una transportadora a partir de su slug ("tcc-sa") o de su nombre
- * crudo de Aveonline ("TCC SA", "Envía") — se normaliza igual que el provider
- * (lowercase, espacios→guiones) más tildes. Null si no hay logo: el caller
- * muestra el ícono genérico de camión como fallback.
+ * crudo de Aveonline ("TCC SA", "Envía", "COORDINADORA MERCANTIL S.A.S.") —
+ * se normaliza igual que el provider (lowercase, espacios→guiones) más tildes,
+ * puntuación y sufijos societarios (S.A.S./S.A./Ltda) al final del nombre.
+ * Null si no hay logo: el caller muestra el ícono genérico de camión como
+ * fallback con formatCarrierName().
  */
 export function carrierLogo(carrierOrName: string | null | undefined): CarrierLogo | null {
   if (!carrierOrName) return null;
-  const key = carrierOrName
+  return CARRIER_LOGOS[normalizeCarrierKey(carrierOrName)] ?? null;
+}
+
+// Sufijos societarios que Aveonline a veces adjunta al nombre comercial
+// ("TCC S.A.S.", "Coordinadora Mercantil SA") — no hacen parte de la marca.
+const CORPORATE_SUFFIX_TOKENS = new Set(["sa", "sas", "ltda"]);
+
+function normalizeCarrierKey(carrierOrName: string): string {
+  const cleaned = carrierOrName
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
+    // Sin puntos ni comas: "S.A.S." y "SAS" terminan en el mismo token.
+    .replace(/[.,]/g, "")
+    .trim();
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  while (tokens.length > 1 && CORPORATE_SUFFIX_TOKENS.has(tokens[tokens.length - 1]!)) {
+    tokens.pop();
+  }
+  return tokens.join("-");
+}
+
+// Conectores que quedan en minúscula al formatear title case (salvo al inicio).
+const LOWERCASE_NAME_TOKENS = new Set(["de", "del", "la", "las", "los", "y", "e"]);
+
+/**
+ * Nombre de presentación para transportadoras SIN logo en el mapa: el crudo de
+ * Aveonline llega en MAYÚSCULAS ("COORDINADORA MERCANTIL") y se ve agresivo en
+ * la lista — se reformatea a title case. Solo se tocan los tokens
+ * completamente en mayúsculas de 4+ letras (siglas cortas como "TCC" y tokens
+ * ya en mixed case se respetan tal cual).
+ */
+export function formatCarrierName(name: string): string {
+  return name
     .trim()
-    .replace(/\s+/g, "-");
-  return CARRIER_LOGOS[key] ?? null;
+    .split(/\s+/)
+    .map((token, index) => {
+      if (index > 0 && LOWERCASE_NAME_TOKENS.has(token.toLowerCase())) return token.toLowerCase();
+      if (token.length <= 3 || !/\p{Lu}/u.test(token) || /\p{Ll}/u.test(token)) return token;
+      return token.charAt(0) + token.slice(1).toLowerCase();
+    })
+    .join(" ");
 }

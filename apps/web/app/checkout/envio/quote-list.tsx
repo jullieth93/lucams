@@ -7,7 +7,7 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { Truck, Clock, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { carrierLogo } from "@/lib/carrier-logos";
+import { carrierLogo, formatCarrierName } from "@/lib/carrier-logos";
 import { formatCOP } from "@/lib/format";
 import { selectShippingAction } from "./actions";
 import type { ShippingSelectionInput } from "@/features/checkout/schemas";
@@ -55,13 +55,26 @@ export function QuoteList({
         {quotes.map((q) => {
           const isSelected = selected === q.quoteId;
           const logo = carrierLogo(q.carrier);
+          const price =
+            // Precio (o "Gratis"): se renderiza DOS veces — una en la fila
+            // superior de la tarjeta móvil (<sm) y otra al final de la fila en
+            // ≥sm. El `hidden` de cada copia la saca del árbol de accesibilidad,
+            // así que el lector de pantalla solo anuncia una.
+            q.fleteCop === 0 ? (
+              <span className="text-emerald-700">{texts.free}</span>
+            ) : (
+              formatCOP(q.fleteCop)
+            );
           return (
             <li key={q.quoteId}>
               <label
                 className={
                   // has-[:focus-visible]: el radio real es sr-only, así que el anillo de foco
                   // se pinta sobre el label (WCAG 2.4.7 — indicador de foco visible).
-                  "has-[:focus-visible]:ring-brand-purple flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition-all has-[:focus-visible]:ring-2 " +
+                  // <sm: tarjeta apilada (fila superior logo+nombre+precio, fila
+                  // inferior estimado/badges) — en una sola fila sin wrap los
+                  // textos largos se comprimían/solapaban en pantallas angostas.
+                  "has-[:focus-visible]:ring-brand-purple flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-all has-[:focus-visible]:ring-2 sm:items-center " +
                   (isSelected
                     ? "border-brand-purple bg-brand-purple/5 ring-brand-purple/30 ring-2"
                     : "border-brand-purple/15 hover:border-brand-purple/30 hover:bg-brand-purple/[0.02]")
@@ -105,8 +118,15 @@ export function QuoteList({
                   </span>
                 )}
                 <div className="min-w-0 flex-1">
-                  <div className="text-brand-purple-dark text-sm font-semibold">
-                    {q.carrierName}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="text-brand-purple-dark min-w-0 text-sm font-semibold">
+                      {/* Sin logo en el mapa el crudo de Aveonline llega en
+                          MAYÚSCULAS → se muestra formateado (title case). */}
+                      {logo ? q.carrierName : formatCarrierName(q.carrierName)}
+                    </div>
+                    <div className="text-brand-purple-dark flex-shrink-0 text-right text-base font-bold tabular-nums sm:hidden">
+                      {price}
+                    </div>
                   </div>
                   <div className="text-brand-muted mt-0.5 flex flex-wrap items-center gap-2 text-xs">
                     <Clock className="h-3 w-3" />
@@ -140,12 +160,8 @@ export function QuoteList({
                     )}
                   </div>
                 </div>
-                <div className="text-brand-purple-dark flex-shrink-0 text-right text-base font-bold tabular-nums">
-                  {q.fleteCop === 0 ? (
-                    <span className="text-emerald-700">{texts.free}</span>
-                  ) : (
-                    formatCOP(q.fleteCop)
-                  )}
+                <div className="text-brand-purple-dark hidden flex-shrink-0 text-right text-base font-bold tabular-nums sm:block">
+                  {price}
                 </div>
               </label>
             </li>
