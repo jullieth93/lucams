@@ -26,6 +26,16 @@ export type TechHealth = {
     }>;
   };
   webhooks: { total7d: number; processed7d: number; pending: number };
+  /** Últimos eventos recibidos (cualquier fuente) — la tabla "Webhooks recientes"
+   *  de /admin/observability: sin esto la única forma de ver qué llegó era
+   *  consultar la DB a mano (feedback STG 2026-10-06). */
+  recentWebhooks: Array<{
+    id: string;
+    source: string;
+    externalId: string;
+    processedAt: Date | null;
+    createdAt: Date;
+  }>;
   reconciliation: { count: number; orders: Array<{ number: string; reason: string | null }> };
   stockReverts7d: number;
   vitals7d: { good: number; needsImprovement: number; poor: number };
@@ -50,6 +60,7 @@ export async function getTechHealth(): Promise<TechHealth> {
     vitalsRaw,
     clientErrorsOpen,
     clientErrorsTop,
+    recentWebhooks,
   ] = await Promise.all([
     prisma.errorLog.count({ where: { createdAt: { gte: since(24) } } }),
     prisma.errorLog.count({ where: { createdAt: { gte: since(24 * 7) } } }),
@@ -90,6 +101,11 @@ export async function getTechHealth(): Promise<TechHealth> {
       orderBy: { lastSeenAt: "desc" },
       take: 10,
       select: { id: true, message: true, url: true, count: true, lastSeenAt: true },
+    }),
+    prisma.webhookEvent.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 12,
+      select: { id: true, source: true, externalId: true, processedAt: true, createdAt: true },
     }),
   ]);
 
@@ -132,6 +148,7 @@ export async function getTechHealth(): Promise<TechHealth> {
       processed7d: webhookProcessed7d,
       pending: webhookPending,
     },
+    recentWebhooks,
     reconciliation: {
       count: reconCount,
       orders: reconOrders.map((o) => ({ number: o.number, reason: o.reconciliationReason })),

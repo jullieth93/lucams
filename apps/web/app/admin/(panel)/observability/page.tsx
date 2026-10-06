@@ -459,6 +459,44 @@ export default async function AdminObservabilityPage() {
             )}
           </Section>
 
+          {/* Webhooks recientes (2026-10-06, feedback STG): qué eventos han
+              llegado y si se procesaron — antes solo se podía saber consultando
+              la DB a mano. Un evento "Pendiente" viejo indica que la saga falló
+              (Aveonline/Wompi reintentan; la alerta webhooks_stuck lo levanta). */}
+          <Section title="Webhooks recientes" icon={<Webhook className="h-4 w-4" />}>
+            {h.recentWebhooks.length === 0 ? (
+              <Empty>Sin eventos de webhook recibidos todavía. 🎉</Empty>
+            ) : (
+              <ul className="divide-brand-purple/10 divide-y text-sm">
+                {h.recentWebhooks.map((w) => (
+                  <li key={w.id} className="flex items-start justify-between gap-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-brand-purple-dark truncate font-medium">
+                        <span className="text-brand-muted text-xs font-bold uppercase">
+                          {w.source}
+                        </span>{" "}
+                        · {w.externalId}
+                      </p>
+                      <p className="text-brand-muted text-xs">
+                        recibido {dateFmt.format(w.createdAt)}
+                        {w.processedAt ? ` · procesado ${dateFmt.format(w.processedAt)}` : ""}
+                      </p>
+                    </div>
+                    {w.processedAt ? (
+                      <span className="flex-shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
+                        Procesado
+                      </span>
+                    ) : (
+                      <span className="flex-shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">
+                        Pendiente
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
           {/* Órdenes a reconciliar */}
           {h.reconciliation.count > 0 && (
             <Section
