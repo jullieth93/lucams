@@ -363,11 +363,18 @@ export function DatosForm({
 
   function handleCityChange(newCode: string) {
     setCityCode(newCode);
-    // El CP NO se autorrellena con el municipal DANE (fix QA STG 2026-10): el
-    // owner confundió el "110111" prellenado con el número de pedido. Además el
-    // CP no alimenta la cotización Aveonline (quoteShipping no lo envía — solo
-    // se guarda en el snapshot de la orden), así que queda como dato opcional
-    // que el cliente escribe solo si lo conoce.
+    // CP derivado de la ciudad elegida (owner 2026-10-07): el catálogo DANE trae el
+    // CP REAL de las principales ciudades (Bogotá 110111, Medellín 050001, Cali
+    // 760001, …); para las que no lo tienen se prellena el prefijo departamental y
+    // el cliente lo completa. El CP no alimenta la cotización Aveonline (solo se
+    // guarda en el snapshot de la orden) — dato opcional siempre editable.
+    const city = getCityByCode(newCode);
+    if (city?.zip) {
+      setZip(city.zip);
+    } else {
+      const dept = DEPARTMENTS.find((d) => d.code === city?.deptCode);
+      setZip(dept?.zipPrefix ?? "");
+    }
     // La zona es específica de la ciudad — cambiar de ciudad la invalida.
     setLocalityId("");
   }

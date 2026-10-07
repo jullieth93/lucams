@@ -264,7 +264,7 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     // Sin autocompletado municipal (se confundía con el número de pedido, fix
     // QA STG 2026-10): placeholder neutro y el cliente lo escribe si lo conoce.
     zipPlaceholder: "Opcional",
-    zipHint: "6 dígitos si lo conoces — no lo pedimos para cotizar el envío",
+    zipHint: "Se prellena con tu ciudad — cámbialo si necesitas otro (no lo pedimos para cotizar)",
     // "{zona}" se interpola con la etiqueta del catálogo de zonas ("localidad", "comuna"…).
     zoneHint: "Tu {zona} nos ayuda a ofrecerte las mejores opciones de entrega.",
     neighborhoodLabel: "Barrio (opcional)",

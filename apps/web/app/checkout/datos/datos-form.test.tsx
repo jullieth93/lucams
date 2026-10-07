@@ -241,28 +241,48 @@ describe("DatosForm — feedback de errores tras submit fallido", () => {
 });
 
 /*
- * Fix QA STG 2026-10 (item 3.1) — el CP de Bogotá ("110111") se AUTORRELLENABA
- * al elegir ciudad y el owner lo confundió con el número de pedido. Ahora:
- * NO hay autofill, el placeholder es neutro ("Opcional") y el hint explica
- * que no se pide para cotizar.
+ * CP derivado de la ciudad (owner 2026-10-07): el catálogo DANE trae el CP REAL
+ * de las principales ciudades (Bogotá 110111, Medellín 050001) y se prellena al
+ * elegir ciudad — editable siempre. Ciudades sin CP municipal → prefijo
+ * departamental parcial. Placeholder neutro y hint que aclara que no se pide
+ * para cotizar.
  */
-describe("DatosForm — código postal sin autofill (fix QA STG 2026-10)", () => {
-  it("elegir departamento + ciudad NO rellena el CP", () => {
+describe("DatosForm — código postal derivado de la ciudad (owner 2026-10-07)", () => {
+  it("elegir Bogotá prellena el CP real (110111), editable", () => {
     renderForm();
     fireEvent.change(document.querySelector("#deptCode")!, { target: { value: "11" } });
     fireEvent.change(document.querySelector("#cityCode")!, { target: { value: "11001" } });
+    expect(document.querySelector<HTMLInputElement>("#zip")!.value).toBe("110111");
+    fireEvent.change(document.querySelector("#zip")!, { target: { value: "110411" } });
+    expect(document.querySelector<HTMLInputElement>("#zip")!.value).toBe("110411");
+  });
+
+  it("elegir Medellín prellena su CP real (050001), no el de Bogotá", () => {
+    renderForm();
+    fireEvent.change(document.querySelector("#deptCode")!, { target: { value: "05" } });
+    fireEvent.change(document.querySelector("#cityCode")!, { target: { value: "05001" } });
+    expect(document.querySelector<HTMLInputElement>("#zip")!.value).toBe("050001");
+  });
+
+  it("ciudad sin CP municipal → prellena solo el prefijo departamental", () => {
+    renderForm();
+    fireEvent.change(document.querySelector("#deptCode")!, { target: { value: "05" } });
+    // Abejorral (05002) no tiene zip municipal en el catálogo.
+    fireEvent.change(document.querySelector("#cityCode")!, { target: { value: "05002" } });
+    expect(document.querySelector<HTMLInputElement>("#zip")!.value).toBe("05");
+  });
+
+  it("cambiar de departamento limpia el CP", () => {
+    renderForm();
+    fireEvent.change(document.querySelector("#deptCode")!, { target: { value: "11" } });
+    fireEvent.change(document.querySelector("#cityCode")!, { target: { value: "11001" } });
+    fireEvent.change(document.querySelector("#deptCode")!, { target: { value: "05" } });
     expect(document.querySelector<HTMLInputElement>("#zip")!.value).toBe("");
   });
 
   it("el placeholder del CP es neutro (no '110111')", () => {
     renderForm();
     expect(document.querySelector<HTMLInputElement>("#zip")!.placeholder).toBe("Opcional");
-  });
-
-  it("el CP que el cliente escribe se conserva (sigue siendo editable)", () => {
-    renderForm();
-    fireEvent.change(document.querySelector("#zip")!, { target: { value: "110411" } });
-    expect(document.querySelector<HTMLInputElement>("#zip")!.value).toBe("110411");
   });
 });
 

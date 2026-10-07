@@ -121,10 +121,12 @@ export function StructuredAddressFields({
             value={value.cityCode}
             disabled={disabled || !value.deptCode}
             onChange={(e) => {
-              // El CP NO se autorrellena con el municipal DANE (fix QA STG
-              // 2026-10, mismo criterio que el checkout): el "110111"
-              // prellenado se confundía con el número de pedido.
-              onChange({ cityCode: e.target.value });
+              // CP derivado de la ciudad elegida (owner 2026-10-07, mismo criterio
+              // que el checkout): CP real del catálogo DANE; si la ciudad no lo
+              // tiene, prefijo departamental para que el cliente lo complete.
+              const city = getCityByCode(e.target.value);
+              const dept = DEPARTMENTS.find((d) => d.code === city?.deptCode);
+              onChange({ cityCode: e.target.value, zip: city?.zip ?? dept?.zipPrefix ?? "" });
             }}
             className={selectClass}
           >

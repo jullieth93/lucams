@@ -25,19 +25,27 @@ function renderFields(value = EMPTY_STRUCTURED_ADDRESS) {
   return { onChange, ...utils };
 }
 
-describe("StructuredAddressFields — código postal sin autofill (fix QA STG 2026-10)", () => {
+describe("StructuredAddressFields — código postal derivado de la ciudad (owner 2026-10-07)", () => {
   it("el placeholder del CP es neutro (no '110111')", () => {
     const { container } = renderFields();
     expect(container.querySelector<HTMLInputElement>("#zip")!.placeholder).toBe("Opcional");
   });
 
-  it("elegir ciudad NO propaga el zip municipal (onChange solo recibe cityCode)", () => {
+  it("elegir ciudad propaga el CP real del catálogo DANE", () => {
     const { container, onChange } = renderFields({ ...EMPTY_STRUCTURED_ADDRESS, deptCode: "11" });
     fireEvent.change(container.querySelector<HTMLSelectElement>("#cityCode")!, {
       target: { value: "11001" },
     });
-    expect(onChange).toHaveBeenCalledWith({ cityCode: "11001" });
-    expect(onChange.mock.calls[0]![0]).not.toHaveProperty("zip");
+    expect(onChange).toHaveBeenCalledWith({ cityCode: "11001", zip: "110111" });
+  });
+
+  it("ciudad sin CP municipal propaga el prefijo departamental", () => {
+    const { container, onChange } = renderFields({ ...EMPTY_STRUCTURED_ADDRESS, deptCode: "05" });
+    // Abejorral (05002) no tiene zip municipal en el catálogo.
+    fireEvent.change(container.querySelector<HTMLSelectElement>("#cityCode")!, {
+      target: { value: "05002" },
+    });
+    expect(onChange).toHaveBeenCalledWith({ cityCode: "05002", zip: "05" });
   });
 });
 

@@ -1132,7 +1132,7 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               type: "TEXT",
               label: "Ayuda CP",
               category: "SUPPORT",
-              body: "6 dígitos si lo conoces — no lo pedimos para cotizar el envío",
+              body: "Se prellena con tu ciudad — cámbialo si necesitas otro (no lo pedimos para cotizar)",
               sortOrder: 260,
             },
             {
