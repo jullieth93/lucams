@@ -22,6 +22,11 @@ export type StudioTexts = {
      *  letras (antes «¡Listo!», renombrado por el owner): abre la vista previa
      *  de confirmación, no agrega nada al carrito todavía. */
     listo: string;
+    /** QA 1.6 (2026-10-07) — rótulo del CTA del HEADER STICKY en los editores de
+     *  nombre y letras: la misma acción de `listo` (abrir la vista previa) pero
+     *  con texto corto diferenciado — antes ambos botones decían «Vista previa»
+     *  y en pantalla se leían dos CTAs idénticos. */
+    verDiseno: string;
     armando: string;
     preparando: string;
     agregando: string;
@@ -41,6 +46,13 @@ export type StudioTexts = {
     cerrarTip: string;
     cerrarComparador: string;
     saltarTutorial: string;
+    /** Fase 2 · item 2.4 (2026-10-07) — banner "Continuar donde quedaste": se
+     *  ofrece al entrar al Estudio cuando hay un draft previo del mismo
+     *  producto guardado (marcador localStorage validado server-side). */
+    continuarTitulo: string;
+    continuarCuerpo: string;
+    continuarCta: string;
+    continuarDescartar: string;
   };
   /** Lienzo y barra superior. */
   lienzo: {
@@ -90,8 +102,9 @@ export type StudioTexts = {
      *  (separadores 2026-09-25): la cara B puede quedar sin diseñar. */
     slotCaraBOpcional: string;
     /** Paquete A (2026-10-02) — tooltip del badge «Opcional»: la regla única de
-     *  la cara B vacía (se imprime espejo de la cara A; producción:
-     *  expandMissingBackFaces en features/personalization/service.ts). */
+     *  la cara B vacía. Decisión owner 2026-10-07: se imprime EN BLANCO (nunca
+     *  espejo de la cara A; producción: blank-back-face.ts en
+     *  features/personalization). */
     slotCaraBOpcionalTitle: string;
     /** Línea de doblez de la tira de separador (solo plegables, no noFold):
      *  "Doblez · Desplegado: {tamano}" — {tamano} = tamaño total desplegado. */
@@ -307,6 +320,14 @@ export type StudioTexts = {
     pickerTitulo: string;
     pickerDesc: string;
     pickerVacio: string;
+    /** Fase 2 · 2.5 (2026-10-07) — tabs del picker "Mis fotos" / "Prediseñados"
+     *  (antes un solo scroll con Mis fotos sepultada bajo los prediseñados). */
+    pickerTabFotos: string;
+    pickerTabPredisenados: string;
+    pickerTabsAria: string;
+    /** Fase 2 · 2.5 — toggle que colapsa/expande la sección de diseños
+     *  prediseñados de la sidebar (cerrada por defecto cuando hay muchos). */
+    predisenadosToggleAria: string;
     progresoTitulo: string;
     progresoCompleto: string;
     progresoVacio: string;
@@ -365,6 +386,9 @@ export type StudioTexts = {
     /** Rediseño asistido (2026-10-05) — ayudas y avisos de los controles por capa. */
     igUsuarioHint: string;
     igUbicacionHint: string;
+    /** Fase 2 · 2.7 (2026-10-07) — combobox de ubicación: aviso cuando el texto
+     *  no coincide con ninguna sugerencia (la ubicación libre también vale). */
+    igUbicacionSinResultados: string;
     igTituloPlaceholder: string;
     igHashtagsPlaceholder: string;
     /** Aviso al intentar agregar un 4º hashtag (tope de producto: 3). */
@@ -511,6 +535,11 @@ export type StudioTexts = {
      *  avisos son informativos (brillo suave como único problema): no hay
      *  nada que aceptar y el confirmar queda habilitado. */
     calidadNotaInformativa: string;
+    /** Fase 2 · item 2.2 (2026-10-07) — arias del pager de la Vista Previa
+     *  paginada por unidad (flechas anterior/siguiente y grupo de dots). */
+    pagerAnteriorAria: string;
+    pagerSiguienteAria: string;
+    pagerDotsAria: string;
   };
   /** Vistas 3D y escenas. */
   escenas: {
@@ -526,9 +555,13 @@ export type StudioTexts = {
     armando: string;
     error: string;
     errorHint: string;
+    /** Fase 2.10 (owner 2026-10-07) — estado vacío de la galería: TODAS las
+     *  escenas quedaron filtradas por variante SIN IMÁN (p.ej. letters, cuya
+     *  única escena afirma imán). */
+    vacio: string;
+    vacioHint: string;
     hintTouch: string;
     hintMouse: string;
-    hintPlana: string;
     loadingNevera: string;
     loadingTablero: string;
     loadingPolaroid: string;
@@ -650,6 +683,39 @@ export type StudioTexts = {
     descCalendarios: string;
     resumenCalendarios: string;
   };
+  /**
+   * Fase 2 · item 2.8 (2026-10-07) — tour de onboarding POR TIPO DE PRODUCTO:
+   * features del lienzo específico que StudioOnboarding suma tras los 3 pasos
+   * genéricos (config en lib/studio-tour.ts). Título + texto por feature.
+   */
+  tour: {
+    /** Polaroid Instagram: foto de perfil editable en el avatar (pista del
+     *  item 2.7 incluida acá a solicitud del plan), textos del post y marco. */
+    igPerfilTitulo: string;
+    igPerfilTexto: string;
+    igTextosTitulo: string;
+    igTextosTexto: string;
+    igMarcoTitulo: string;
+    igMarcoTexto: string;
+    /** Calendario: sets/unidades y año + tipo de letra. */
+    calSetsTitulo: string;
+    calSetsTexto: string;
+    calAnoTitulo: string;
+    calAnoTexto: string;
+    /** Separadores: caras A/B y la regla del respaldo EN BLANCO (owner 2026-10-07). */
+    sepCarasTitulo: string;
+    sepCarasTexto: string;
+    sepRespaldoTitulo: string;
+    sepRespaldoTexto: string;
+    /** Tiras photobooth: tira continua y unidades. */
+    tiraContinuaTitulo: string;
+    tiraContinuaTexto: string;
+    tiraUnidadesTitulo: string;
+    tiraUnidadesTexto: string;
+    /** Productos con marco de color (Cuadrados y similares). */
+    cuadMarcoTitulo: string;
+    cuadMarcoTexto: string;
+  };
   /** Asistente de ideas (IA). */
   ia: {
     titulo: string;
@@ -682,6 +748,7 @@ export type StudioTexts = {
 export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
   comun: {
     listo: "Vista previa",
+    verDiseno: "Ver diseño",
     armando: "Armando…",
     preparando: "Preparando…",
     agregando: "Agregando…",
@@ -702,6 +769,12 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     cerrarTip: "Cerrar este tip",
     cerrarComparador: "Cerrar comparador",
     saltarTutorial: "Saltar tutorial",
+    // Fase 2 · item 2.4 (2026-10-07) — banner del draft recuperable.
+    continuarTitulo: "Continuar donde quedaste",
+    continuarCuerpo:
+      "Encontramos un diseño tuyo de este producto sin terminar. ¿Retomamos donde lo dejaste?",
+    continuarCta: "Sí, continuar",
+    continuarDescartar: "Descartar y empezar de nuevo",
   },
   lienzo: {
     headerExit: "Salir",
@@ -736,7 +809,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     unitCaraA: "Cara A",
     unitCaraB: "Cara B",
     slotCaraBOpcional: "Opcional",
-    slotCaraBOpcionalTitle: "Si no diseñas el respaldo, lo imprimimos igual que el frente.",
+    slotCaraBOpcionalTitle: "Si no diseñas el respaldo, queda en blanco.",
     doblezDesplegado: "Doblez · Desplegado: {tamano}",
     doblezNotaRotacion:
       "La tira se imprime con las caras cabeza a cabeza hacia el doblez — al doblarla sobre la página ambas se leen derechas.",
@@ -876,8 +949,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     badgeDosCaras: "2 caras",
     badgeUnaCara: "1 cara",
     badgeDosCarasTitle: "Este diseño trae frente y respaldo.",
-    badgeUnaCaraTitle:
-      "Este diseño trae solo el frente: el respaldo se imprime igual que el frente.",
+    badgeUnaCaraTitle: "Este diseño trae solo el frente: el respaldo queda en blanco.",
     toastError: "No pudimos aplicar el diseño. Intenta de nuevo.",
     toastSinSlot: "Selecciona un slot vacío primero",
     toastSinLienzoLibre:
@@ -937,6 +1009,11 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     pickerTitulo: "Foto para el imán {n} de {total}",
     pickerDesc: "Elige una foto ya subida o suma una nueva.",
     pickerVacio: "Todavía no subiste fotos. Empieza arriba.",
+    // Fase 2 · 2.5 (2026-10-07) — tabs del picker + toggle de la sidebar.
+    pickerTabFotos: "Mis fotos",
+    pickerTabPredisenados: "Prediseñados",
+    pickerTabsAria: "Elige el origen de la foto",
+    predisenadosToggleAria: "Mostrar u ocultar los diseños prediseñados",
     progresoTitulo: "Progreso",
     progresoCompleto: "¡Listo! Todas las fotos están cargadas.",
     progresoVacio: "Carga fotos para empezar.",
@@ -994,6 +1071,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     // contador y hashtags por chips (máx 3).
     igUsuarioHint: "Sin espacios · letras, números, punto y guion bajo",
     igUbicacionHint: "Elige una sugerencia o escribe la tuya (Ciudad, País)",
+    igUbicacionSinResultados: "Sin coincidencias — tu ubicación se imprime tal cual la escribas",
     igTituloPlaceholder: "Ej: Nuestro paseo de domingo",
     igHashtagsPlaceholder: "Escribe un hashtag y presiona Enter",
     igHashtagsMaxAviso: "Máximo 3 hashtags — quita uno para agregar otro",
@@ -1123,6 +1201,10 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "Entiendo que estas fotos pueden imprimirse con menor calidad y acepto el resultado.",
     calidadNotaInformativa:
       "Estos avisos son solo informativos — si el look es el que buscabas, puedes continuar sin marcar nada.",
+    // Fase 2 · item 2.2 (2026-10-07) — pager de la Vista Previa por unidad.
+    pagerAnteriorAria: "Unidad anterior",
+    pagerSiguienteAria: "Unidad siguiente",
+    pagerDotsAria: "Unidades de la vista previa",
   },
   escenas: {
     titulo: "✨ Míralo en tu espacio",
@@ -1137,9 +1219,13 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     armando: "Armando la escena…",
     error: "No pudimos armar esta escena en este momento.",
     errorHint: "Prueba otra escena o vuelve al editor.",
+    // Fase 2.10 (owner 2026-10-07) — galería sin escenas: la variante es SIN
+    // IMÁN y todas las escenas del producto afirman imán (p.ej. el tablero
+    // memo de las fichas de letras).
+    vacio: "Esta variante es sin imán y estas escenas muestran el producto adherido con imán.",
+    vacioHint: "Cierra esta ventana para seguir con tu diseño.",
     hintTouch: "Arrastra para girar · pellizca con 2 dedos para acercar",
     hintMouse: "Arrastra para girar · rueda o pellizca para acercar",
-    hintPlana: "Mantén presionada la imagen para guardarla o compartirla 💛",
     loadingNevera: "Cargando la nevera 3D…",
     loadingTablero: "Cargando tu tablero 3D…",
     loadingPolaroid: "Cargando tus polaroids 3D…",
@@ -1250,6 +1336,38 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "Esta es la vista previa de tus {n} calendarios{año} — cada uno con {m} páginas.",
     resumenCalendarios: "{n} calendarios personalizados · {m} páginas c/u",
   },
+  tour: {
+    igPerfilTitulo: "Tu foto de perfil",
+    igPerfilTexto:
+      "Toca el avatar circular del post para subir tu foto de perfil — puedes cambiarla y encuadrarla cuando quieras.",
+    igTextosTitulo: "Los textos del post",
+    igTextosTexto:
+      "Usuario, ubicación, título y hashtags: toca cada texto sobre la tarjeta para escribirlo. Los necesitas todos para ver tu vista previa.",
+    igMarcoTitulo: "El marco de la tarjeta",
+    igMarcoTexto:
+      "Desde el panel puedes cambiar el color del marco — incluso dejar la foto sin borde, a todo color.",
+    calSetsTitulo: "Un set por calendario",
+    calSetsTexto:
+      "Cada calendario son 12 tarjetas, una por mes. Si llevas varios, cada set se diseña en su propia sección.",
+    calAnoTitulo: "Año y tipo de letra",
+    calAnoTexto:
+      "En la barra de arriba eliges el año de tu calendario y la letra del título de cada mes.",
+    sepCarasTitulo: "Cara A y cara B",
+    sepCarasTexto:
+      "Cada separador se imprime por las 2 caras — diseña las dos dentro de su tarjeta.",
+    sepRespaldoTitulo: "Respaldo en blanco",
+    sepRespaldoTexto:
+      "¿No quieres diseñar la cara B? No pasa nada: el respaldo se imprime en blanco.",
+    tiraContinuaTitulo: "Una tira continua",
+    tiraContinuaTexto:
+      "Las fotos de cada tira van apiladas sin separación, como la tira de una cabina de fotos.",
+    tiraUnidadesTitulo: "Cada tira, su sección",
+    tiraUnidadesTexto:
+      "Con varias tiras, cada una se diseña por separado — y «Aplicar este diseño a todas» las iguala en un toque.",
+    cuadMarcoTitulo: "Marco y color de la tarjeta",
+    cuadMarcoTexto:
+      "Elige el color del marco en el panel — la foto queda inserta como en una polaroid.",
+  },
   ia: {
     titulo: "¿Sin ideas? Te ayudo",
     label: "¿Para qué es? (ej. “cumpleaños de mi mamá”, “aniversario”)",
@@ -1284,6 +1402,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
  */
 export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "comun.listo": "estudio.comun.listo",
+  "comun.verDiseno": "estudio.comun.ver-diseno",
   "comun.armando": "estudio.comun.armando",
   "comun.preparando": "estudio.comun.preparando",
   "comun.agregando": "estudio.comun.agregando",
@@ -1303,6 +1422,10 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "comun.cerrarTip": "estudio.comun.cerrar-tip",
   "comun.cerrarComparador": "estudio.comun.cerrar-comparador",
   "comun.saltarTutorial": "estudio.comun.saltar-tutorial",
+  "comun.continuarTitulo": "estudio.comun.continuar-titulo",
+  "comun.continuarCuerpo": "estudio.comun.continuar-cuerpo",
+  "comun.continuarCta": "estudio.comun.continuar-cta",
+  "comun.continuarDescartar": "estudio.comun.continuar-descartar",
   "lienzo.headerExit": "estudio.lienzo.header-exit",
   "lienzo.headerTitle": "estudio.lienzo.header-title",
   "lienzo.autosaveEditando": "estudio.lienzo.autosave-editando",
@@ -1510,6 +1633,10 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "fotos.pickerTitulo": "estudio.fotos.picker-titulo",
   "fotos.pickerDesc": "estudio.fotos.picker-desc",
   "fotos.pickerVacio": "estudio.fotos.picker-vacio",
+  "fotos.pickerTabFotos": "estudio.fotos.picker-tab-fotos",
+  "fotos.pickerTabPredisenados": "estudio.fotos.picker-tab-predisenados",
+  "fotos.pickerTabsAria": "estudio.fotos.picker-tabs-aria",
+  "fotos.predisenadosToggleAria": "estudio.fotos.predisenados-toggle-aria",
   "fotos.progresoTitulo": "estudio.fotos.progreso-titulo",
   "fotos.progresoCompleto": "estudio.fotos.progreso-completo",
   "fotos.progresoVacio": "estudio.fotos.progreso-vacio",
@@ -1554,6 +1681,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.igGlobalAviso": "estudio.texto.ig-global-aviso",
   "texto.igUsuarioHint": "estudio.texto.ig-usuario-hint",
   "texto.igUbicacionHint": "estudio.texto.ig-ubicacion-hint",
+  "texto.igUbicacionSinResultados": "estudio.texto.ig-ubicacion-sin-resultados",
   "texto.igTituloPlaceholder": "estudio.texto.ig-titulo-placeholder",
   "texto.igHashtagsPlaceholder": "estudio.texto.ig-hashtags-placeholder",
   "texto.igHashtagsMaxAviso": "estudio.texto.ig-hashtags-max-aviso",
@@ -1664,6 +1792,9 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "exportar.calidadSeccionIntro": "estudio.exportar.calidad-seccion-intro",
   "exportar.calidadAcepto": "estudio.exportar.calidad-acepto",
   "exportar.calidadNotaInformativa": "estudio.exportar.calidad-nota-informativa",
+  "exportar.pagerAnteriorAria": "estudio.exportar.pager-anterior-aria",
+  "exportar.pagerSiguienteAria": "estudio.exportar.pager-siguiente-aria",
+  "exportar.pagerDotsAria": "estudio.exportar.pager-dots-aria",
   "escenas.titulo": "estudio.escenas.titulo",
   "escenas.volverDetalle": "estudio.escenas.volver-detalle",
   "escenas.chipNevera": "estudio.escenas.chip-nevera",
@@ -1676,9 +1807,10 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "escenas.armando": "estudio.escenas.armando",
   "escenas.error": "estudio.escenas.error",
   "escenas.errorHint": "estudio.escenas.error-hint",
+  "escenas.vacio": "estudio.escenas.vacio",
+  "escenas.vacioHint": "estudio.escenas.vacio-hint",
   "escenas.hintTouch": "estudio.escenas.hint-touch",
   "escenas.hintMouse": "estudio.escenas.hint-mouse",
-  "escenas.hintPlana": "estudio.escenas.hint-plana",
   "escenas.loadingNevera": "estudio.escenas.loading-nevera",
   "escenas.loadingTablero": "estudio.escenas.loading-tablero",
   "escenas.loadingPolaroid": "estudio.escenas.loading-polaroid",
@@ -1772,6 +1904,26 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "unidades.resumenTiraUna": "estudio.unidades.resumen-tira-una",
   "unidades.descCalendarios": "estudio.unidades.desc-calendarios",
   "unidades.resumenCalendarios": "estudio.unidades.resumen-calendarios",
+  "tour.igPerfilTitulo": "estudio.tour.ig-perfil-titulo",
+  "tour.igPerfilTexto": "estudio.tour.ig-perfil-texto",
+  "tour.igTextosTitulo": "estudio.tour.ig-textos-titulo",
+  "tour.igTextosTexto": "estudio.tour.ig-textos-texto",
+  "tour.igMarcoTitulo": "estudio.tour.ig-marco-titulo",
+  "tour.igMarcoTexto": "estudio.tour.ig-marco-texto",
+  "tour.calSetsTitulo": "estudio.tour.cal-sets-titulo",
+  "tour.calSetsTexto": "estudio.tour.cal-sets-texto",
+  "tour.calAnoTitulo": "estudio.tour.cal-ano-titulo",
+  "tour.calAnoTexto": "estudio.tour.cal-ano-texto",
+  "tour.sepCarasTitulo": "estudio.tour.sep-caras-titulo",
+  "tour.sepCarasTexto": "estudio.tour.sep-caras-texto",
+  "tour.sepRespaldoTitulo": "estudio.tour.sep-respaldo-titulo",
+  "tour.sepRespaldoTexto": "estudio.tour.sep-respaldo-texto",
+  "tour.tiraContinuaTitulo": "estudio.tour.tira-continua-titulo",
+  "tour.tiraContinuaTexto": "estudio.tour.tira-continua-texto",
+  "tour.tiraUnidadesTitulo": "estudio.tour.tira-unidades-titulo",
+  "tour.tiraUnidadesTexto": "estudio.tour.tira-unidades-texto",
+  "tour.cuadMarcoTitulo": "estudio.tour.cuad-marco-titulo",
+  "tour.cuadMarcoTexto": "estudio.tour.cuad-marco-texto",
   "ia.titulo": "estudio.ia.titulo",
   "ia.label": "estudio.ia.label",
   "ia.placeholder": "estudio.ia.placeholder",

@@ -14,7 +14,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { BarChart3, FileText, Trophy } from "lucide-react";
+import { FileText, TrendingUp, Trophy } from "lucide-react";
 import type { OrderStatus, QuoteStatus } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { getCurrentAdmin } from "@/lib/auth";
@@ -172,7 +172,7 @@ export default async function AdminMetricasPage() {
   return (
     <AdminPage>
       <AdminPageHeader
-        icon={<BarChart3 className="h-5 w-5" />}
+        icon={<TrendingUp className="h-5 w-5" />}
         title="Métricas de ventas"
         subtitle="Resumen de pedidos, cotizaciones e ingresos. Se calcula en vivo sobre los datos reales."
         breadcrumbs={[

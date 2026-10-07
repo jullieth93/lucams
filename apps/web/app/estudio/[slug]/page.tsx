@@ -48,6 +48,14 @@ import { fillStudioText, splitStudioText, type StudioTexts } from "./studio-text
 type Params = Promise<{ slug: string }>;
 type SearchParams = Promise<{
   designId?: string;
+  /**
+   * Fase 2 · item 2.4 (2026-10-07) — marca el recover del marcador localStorage
+   * ("Continuar donde quedaste"): con resume=1 solo se retoma un DRAFT; un
+   * diseño ya finalizado (READY) NO se clona (ese camino es exclusivo del
+   * «Editar» del carrito) — el Estudio arranca un draft nuevo y el boot
+   * reemplaza el marcador en silencio.
+   */
+  resume?: string;
   template?: string;
   variant?: string;
   /** ADR-057 — nº de letras pre-elegido en la ficha (Nombre por ficha). Hint inicial. */
@@ -570,7 +578,11 @@ export default async function EstudioPage({
     // Los diseños que están en el carrito son READY. "Editar" desde el carrito → clonamos a un
     // DRAFT editable (el original queda intacto: si el cliente abandona, el item del carrito
     // sigue válido) y al finalizar reemplazamos el item (no duplicar).
-    if (design && design.status === "READY") {
+    // Item 2.4 (2026-10-07) — EXCEPTO con resume=1 (retomador del marcador
+    // localStorage): ahí solo se retoma un DRAFT; un READY significa que el
+    // diseño ya se finalizó (p.ej. en otro dispositivo) → draft nuevo abajo y
+    // el boot pisa el marcador viejo, en vez de clonar una copia sorpresa.
+    if (design && design.status === "READY" && sp.resume !== "1") {
       const clone = await cloneDesignForEdit(sp.designId, owner);
       if (clone) {
         replacesCartDesignId = sp.designId;

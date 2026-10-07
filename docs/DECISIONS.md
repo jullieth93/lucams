@@ -3635,7 +3635,9 @@ intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar
 ## ADR-114 — Regla única de cara B vacía: espejo de la cara A en TODOS los renders
 
 **Fecha:** 2026-10-02
-**Estado:** ✅ Aceptada (sesión 2026-10-02, paquetes A/D/E)
+**Estado:** ❌ SUPERSEDIDA por decisión directa del owner 2026-10-07: **«cara B vacía = EN BLANCO»** en TODOS los renders (vista 3D «Ver en un libro», Vista Previa y producción física) — _«si cargo únicamente la Cara A, espero que la Cara B sea en blanco en vista 3D, preview y físico»_. La implementación vigente: 3D → `bookmarkFaceUnits` devuelve `back = null` y la cara trasera se pinta `BLANK_FACE_COLOR` (#FFFFFF); preview → `previewFacePairOfUnit` devuelve `faceB = null` y el compositor rellena el rect en blanco; producción → `blank-back-face.ts` (`blankBackFacePng` / `expandMissingBackFaces` / `blankOutEmptyBackFaces`) genera un PNG blanco puro con las dimensiones/DPI exactas de la cara A. La estructura de UNA sola regla consumida por todos los renders se mantiene; solo cambia la regla. (Texto original de la ADR conservado abajo como registro histórico.)
+
+~~**Estado:** ✅ Aceptada (sesión 2026-10-02, paquetes A/D/E)~~
 
 **Contexto:** los productos de 2 caras (separadores magnéticos y todo `backOptional`) tenían **3 comportamientos contradictorios** cuando el cliente dejaba la cara B vacía: según la superficie, se pintaba en blanco, en negro o como espejo de la cara A. El preview y la producción podían decir cosas distintas del mismo diseño.
 

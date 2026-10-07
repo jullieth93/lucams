@@ -143,3 +143,77 @@ const ZIP_REGEX = /^\d{6}$/;
 export function validateZip(value: string): boolean {
   return ZIP_REGEX.test(value.trim());
 }
+
+// ─── Dirección urbana (nomenclatura colombiana) ───
+// Heurística LOCAL (sin APIs externas) con mensajes que dicen QUÉ falta —
+// fix QA STG 2026-10: "Calle 3 sur #" (sin cruce) pasaba desapercibida o
+// daba un error genérico de formato. Las mismas funciones las usan el schema
+// Zod del server (features/checkout/schemas.ts) y la validación cliente del
+// checkout, así el mensaje es IDÉNTICO en ambos lados.
+
+// Número de vía: dígitos + hasta 3 letras (3, 7A, 13B, 100, 2BIS).
+const VIA_NUMBER_REGEX = /^\d+[A-Z]{0,3}$/i;
+// Cruce completo: NN-NN con letras opcionales (15-20, 13B-42, 100A-25C).
+const CRUCE_NUMBER_REGEX = /^\d+[A-Z]{0,3}-\d+[A-Z]{0,3}$/i;
+// Solo el primer tramo del cruce, con o sin guion ("15", "15-", "13B-").
+const CRUCE_FIRST_SEGMENT_REGEX = /^\d+[A-Z]{0,3}-?$/i;
+
+/**
+ * Error del número de la vía, o null si es válido. Vacío = falta el número;
+ * letras sueltas ("sur") = no empieza con número.
+ */
+export function viaNumberError(value: string): string | null {
+  const v = value.trim();
+  if (!v) return "Falta el número de la vía (ej. Calle 3, Carrera 7A)";
+  if (!VIA_NUMBER_REGEX.test(v)) {
+    return "La vía empieza con número y puede terminar en letras (ej. 3, 7A, 100)";
+  }
+  return null;
+}
+
+/**
+ * Error del cruce, o null si es válido. Distingue el caso típico del cruce
+ * INCOMPLETO ("15" o "15-": falta el segundo tramo) del formato inválido.
+ */
+export function cruceNumberError(value: string): string | null {
+  const v = value.trim();
+  if (!v) return "Falta el número del cruce (ej. #15-20)";
+  if (CRUCE_FIRST_SEGMENT_REGEX.test(v)) {
+    return "Falta el número después del guion — el cruce completo es número-número (ej. 15-20)";
+  }
+  if (!CRUCE_NUMBER_REGEX.test(v)) {
+    return "Formato: número-número (ej. 15-20, 13B-42)";
+  }
+  return null;
+}
+
+// Ejemplo corto de vía principal por tipo (alimenta el hint junto al campo —
+// token {ejemplo} del texto CMS checkout.datos.via-hint).
+const VIA_EXAMPLES: Record<string, string> = {
+  Calle: "Calle 3",
+  Carrera: "Carrera 7A",
+  Diagonal: "Diagonal 40A",
+  Transversal: "Transversal 2Bis",
+  Avenida: "Avenida 19",
+  "Avenida Calle": "Avenida Calle 13",
+  "Avenida Carrera": "Avenida Carrera 7",
+  Autopista: "Autopista Norte 100",
+  Circular: "Circular 2",
+  Manzana: "Manzana 5",
+};
+
+export function viaExample(viaType: string): string {
+  return VIA_EXAMPLES[viaType] ?? "Carrera 7A";
+}
+
+// Hint completo de la vía con el ejemplo del tipo elegido — lo usa el
+// formulario de direcciones de /mi-cuenta, que no lee textos CMS (el checkout
+// usa su propio texto CMS checkout.datos.via-hint con el token {ejemplo}).
+export function viaHintText(viaType: string): string {
+  return `Ej. ${viaExample(viaType)} — el número va primero; las letras (7A, 13B) son opcionales`;
+}
+
+// Hint del cruce (mismo criterio que checkout.datos.cruce-hint del CMS) — lo
+// usa el formulario de direcciones de /mi-cuenta, que no lee textos CMS.
+export const CRUCE_HINT =
+  "El cruce completo lleva guion: ej. 23-45 o 13B-42C — si solo tienes un número, te falta el segundo tramo";

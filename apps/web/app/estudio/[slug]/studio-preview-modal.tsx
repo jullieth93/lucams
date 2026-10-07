@@ -20,7 +20,8 @@
  */
 
 import { Loader2, Pencil, Sparkles, ShoppingCart, AlertTriangle } from "lucide-react";
-import { useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatCOP } from "@/lib/format";
@@ -53,9 +54,154 @@ function StrongVar({
   );
 }
 
+/** Umbral (px) del swipe horizontal para pasar de unidad en el pager. */
+const PAGER_SWIPE_MIN_PX = 40;
+
+/**
+ * Fase 2 · item 2.2 (2026-10-07) — pager de la Vista Previa por unidad física:
+ * UNA página por set/tira/separador/pack con flechas (desktop y táctil), dots
+ * con target táctil grande (44px), swipe horizontal sobre la imagen y flechas
+ * de teclado ←/→. El indicador ("Set 2 de 4") se anuncia con aria-live. La
+ * navegación NO envuelve (tope en la primera/última unidad): el extremo deshabilita
+ * su flecha, patrón más predecible que el carrusel infinito para una compra.
+ */
+function PreviewPagesPager({
+  pages,
+  altBase,
+}: {
+  pages: { dataUrl: string; label: string }[];
+  altBase: string;
+}) {
+  const texts = useStudioTexts();
+  const n = pages.length;
+  const [index, setIndex] = useState(0);
+  // Reinicia al primer set cada vez que se regenera la vista previa (patrón de
+  // estado derivado: ajuste durante el render, no en un effect — regla
+  // react-hooks/set-state-in-effect).
+  const [prevPages, setPrevPages] = useState(pages);
+  if (prevPages !== pages) {
+    setPrevPages(pages);
+    setIndex(0);
+  }
+  const i = Math.min(index, Math.max(0, n - 1));
+  const page = pages[i]!;
+  const go = useCallback(
+    (delta: number) => setIndex((cur) => Math.min(n - 1, Math.max(0, cur + delta))),
+    [n],
+  );
+
+  // Swipe táctil sobre la imagen: solo gestos claramente HORIZONTALES (un
+  // desplazamiento vertical sigue scrolleando el diálogo).
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+
+  const arrowClass =
+    "text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/90 shadow-md transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-30 disabled:hover:bg-white/90";
+
+  return (
+    <div
+      className="border-brand-purple/15 from-brand-cream relative mt-3 overflow-hidden rounded-xl border bg-gradient-to-br to-white p-4 outline-none"
+      tabIndex={0}
+      role="group"
+      aria-roledescription="carrusel"
+      aria-label={page.label}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          go(-1);
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          go(1);
+        }
+      }}
+      onTouchStart={(e) => {
+        const t = e.touches[0];
+        if (t) touchStart.current = { x: t.clientX, y: t.clientY };
+      }}
+      onTouchEnd={(e) => {
+        const start = touchStart.current;
+        touchStart.current = null;
+        if (!start) return;
+        const t = e.changedTouches[0];
+        if (!t) return;
+        const dx = t.clientX - start.x;
+        const dy = t.clientY - start.y;
+        if (Math.abs(dx) >= PAGER_SWIPE_MIN_PX && Math.abs(dx) > Math.abs(dy) * 1.5) {
+          go(dx < 0 ? 1 : -1);
+        }
+      }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- dataURL local del compositor; next/image no aporta optimización acá */}
+      <img
+        src={page.dataUrl}
+        alt={`${altBase} — ${page.label}`}
+        className="mx-auto max-h-[min(28rem,42dvh)] w-auto max-w-full object-contain drop-shadow-lg"
+      />
+      {/* Flechas + indicador "Set 2 de 4" (aria-live para lector de pantalla). */}
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => go(-1)}
+          disabled={i === 0}
+          aria-label={texts.exportar.pagerAnteriorAria}
+          className={arrowClass}
+        >
+          <ChevronLeft className="h-5 w-5" aria-hidden />
+        </button>
+        <p className="text-brand-purple-dark text-sm font-bold" aria-live="polite">
+          {page.label}
+        </p>
+        <button
+          type="button"
+          onClick={() => go(1)}
+          disabled={i === n - 1}
+          aria-label={texts.exportar.pagerSiguienteAria}
+          className={arrowClass}
+        >
+          <ChevronRight className="h-5 w-5" aria-hidden />
+        </button>
+      </div>
+      {/* Dots: target táctil 44px (el área clicable crece con padding, no el dot). */}
+      <div
+        className="mt-1 flex items-center justify-center"
+        role="tablist"
+        aria-label={texts.exportar.pagerDotsAria}
+      >
+        {pages.map((p, k) => (
+          <button
+            key={p.label}
+            type="button"
+            role="tab"
+            aria-selected={k === i}
+            aria-label={p.label}
+            onClick={() => setIndex(k)}
+            className="focus-visible:ring-brand-turquoise inline-flex h-11 w-11 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:outline-none"
+          >
+            <span
+              aria-hidden
+              className={[
+                "rounded-full transition-all",
+                k === i ? "bg-brand-purple h-2.5 w-6" : "bg-brand-purple/25 h-2.5 w-2.5",
+              ].join(" ")}
+            />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 type StudioPreviewModalProps = {
   isOpen: boolean;
   previewUrl: string | null; // dataURL del grid compositado (client-side)
+  /**
+   * Fase 2 · item 2.2 (2026-10-07) — Vista Previa PAGINADA por unidad física
+   * (set/tira/separador/pack): una composición por unidad a tamaño legible con
+   * navegación (flechas + dots + swipe táctil). El `previewUrl` (montaje único)
+   * sigue siendo el que se SUBE al confirmar — las páginas son solo UX de la
+   * modal. null/undefined o 1 página → imagen única de siempre, sin pager.
+   * `label` ya viene resuelto por el editor ("Set 2 de 4", texts.unidades.unidadDe).
+   */
+  pages?: { dataUrl: string; label: string }[] | null;
   productName: string;
   slotCount: number;
   /** Piezas por unidad (tiras: fotos por tira; calendario: páginas por set).
@@ -134,6 +280,7 @@ type StudioPreviewModalProps = {
 export function StudioPreviewModal({
   isOpen,
   previewUrl,
+  pages = null,
   productName,
   slotCount,
   slotsPerUnit,
@@ -242,6 +389,15 @@ export function StudioPreviewModal({
       ? fillStudioText(texts.exportar.resumenTamano, { tamano: sizeCm })
       : fillStudioText(texts.exportar.resumenTamanoCada, { tamano: sizeCm })
     : null;
+  // Alt de la imagen del preview (imagen única o base del alt de cada página
+  // del pager — item 2.2: "{alt} — {Set 2 de 4}").
+  const previewAlt = isCalendar
+    ? `Vista previa de las ${slotCount} páginas de tu calendario${calendarYear ? ` ${calendarYear}` : ""}`
+    : isBookmarks
+      ? `Vista previa de ${slotCount} separadores desplegados con sus 2 caras`
+      : isStrips
+        ? `Vista previa de ${slotCount === 1 ? "tu tira" : `tus ${slotCount} tiras`} — cada una con ${perUnit} fotos`
+        : `Vista previa de ${slotCount} imanes`;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isFinalizing && onEdit()}>
@@ -352,23 +508,22 @@ export function StudioPreviewModal({
             aire lateral): se capa por ALTO de viewport (max-h en dvh) y por
             ancho del diálogo, así la imagen nunca se come el viewport en
             pantallas bajas y el resto del contenido sigue accesible con el
-            scroll del diálogo. */}
-        <div className="border-brand-purple/15 from-brand-cream relative mt-3 overflow-hidden rounded-xl border bg-gradient-to-br to-white p-4">
-          {/* eslint-disable-next-line @next/next/no-img-element -- dataURL local del compositor; next/image no aporta optimización acá (ya iba unoptimized) */}
-          <img
-            src={previewUrl}
-            alt={
-              isCalendar
-                ? `Vista previa de las ${slotCount} páginas de tu calendario${calendarYear ? ` ${calendarYear}` : ""}`
-                : isBookmarks
-                  ? `Vista previa de ${slotCount} separadores desplegados con sus 2 caras`
-                  : isStrips
-                    ? `Vista previa de ${slotCount === 1 ? "tu tira" : `tus ${slotCount} tiras`} — cada una con ${perUnit} fotos`
-                    : `Vista previa de ${slotCount} imanes`
-            }
-            className="mx-auto max-h-[min(28rem,42dvh)] w-auto max-w-full object-contain drop-shadow-lg"
-          />
-        </div>
+            scroll del diálogo.
+            Item 2.2 (2026-10-07) — con varias unidades el preview se PAGINA
+            (una página por set/tira/separador/pack a tamaño legible); con una
+            sola unidad se muestra el montaje único de siempre. */}
+        {pages && pages.length > 1 ? (
+          <PreviewPagesPager pages={pages} altBase={previewAlt} />
+        ) : (
+          <div className="border-brand-purple/15 from-brand-cream relative mt-3 overflow-hidden rounded-xl border bg-gradient-to-br to-white p-4">
+            {/* eslint-disable-next-line @next/next/no-img-element -- dataURL local del compositor; next/image no aporta optimización acá (ya iba unoptimized) */}
+            <img
+              src={previewUrl}
+              alt={previewAlt}
+              className="mx-auto max-h-[min(28rem,42dvh)] w-auto max-w-full object-contain drop-shadow-lg"
+            />
+          </div>
+        )}
 
         {/* Resumen */}
         <div className="border-brand-purple/10 bg-brand-purple/[0.03] rounded-lg border p-3 text-sm">

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   type DocumentType,
+  CRUCE_HINT,
   DOCUMENT_TYPE_LABELS,
   calculateNitDV,
   capitalizeName,
+  cruceNumberError,
   formatPhone,
   getDocumentHelp,
   stripPhone,
@@ -11,6 +13,9 @@ import {
   validateName,
   validatePhone,
   validateZip,
+  viaExample,
+  viaHintText,
+  viaNumberError,
 } from "./colombia-validators";
 
 // Validadores Colombia: cédula, NIT (+ dígito de verificación DIAN),
@@ -466,5 +471,79 @@ describe("validateZip — código postal colombiano (6 dígitos)", () => {
 
   it("rechaza string vacío", () => {
     expect(validateZip("")).toBe(false);
+  });
+});
+
+// ─── Dirección urbana (fix QA STG 2026-10) — heurística local con mensaje
+// específico de QUÉ falta. Los mismos mensajes salen del schema Zod del
+// server (features/checkout/schemas.ts) y de la validación cliente del
+// checkout: una sola fuente de verdad.
+
+describe("viaNumberError — número de la vía", () => {
+  it("null para números válidos con y sin letras", () => {
+    expect(viaNumberError("3")).toBeNull();
+    expect(viaNumberError("7A")).toBeNull();
+    expect(viaNumberError("13B")).toBeNull();
+    expect(viaNumberError("100")).toBeNull();
+    expect(viaNumberError("2BIS")).toBeNull(); // Transv 2Bis
+  });
+
+  it("vacío → falta el número de la vía", () => {
+    expect(viaNumberError("")).toContain("Falta el número de la vía");
+    expect(viaNumberError("   ")).toContain("Falta el número de la vía");
+  });
+
+  it("letras sueltas sin número → debe empezar con número", () => {
+    expect(viaNumberError("SUR")).toContain("empieza con número");
+    expect(viaNumberError("A")).toContain("empieza con número");
+  });
+});
+
+describe("cruceNumberError — cruce #NN-NN", () => {
+  it("null para cruces completos (con letras opcionales)", () => {
+    expect(cruceNumberError("15-20")).toBeNull();
+    expect(cruceNumberError("45-10")).toBeNull();
+    expect(cruceNumberError("68-95")).toBeNull();
+    expect(cruceNumberError("13B-42")).toBeNull();
+    expect(cruceNumberError("1-50")).toBeNull();
+    expect(cruceNumberError("100A-25C")).toBeNull();
+  });
+
+  it("vacío → falta el número del cruce (el caso 'Calle 3 sur #')", () => {
+    expect(cruceNumberError("")).toContain("Falta el número del cruce");
+    expect(cruceNumberError(" ")).toContain("Falta el número del cruce");
+  });
+
+  it("cruce incompleto ('15', '15-', '13B-') → falta el segundo tramo", () => {
+    for (const v of ["15", "15-", "13B-", "7"]) {
+      expect(cruceNumberError(v)).toContain("Falta el número después del guion");
+    }
+  });
+
+  it("formato inválido → mensaje de formato", () => {
+    expect(cruceNumberError("abc-def")).toContain("Formato: número-número");
+    expect(cruceNumberError("15-20-30")).toContain("Formato: número-número");
+  });
+});
+
+describe("viaExample / viaHintText / CRUCE_HINT — ayuda con ejemplo por tipo de vía", () => {
+  it("ejemplo corto por tipo de vía, con fallback para tipos desconocidos", () => {
+    expect(viaExample("Calle")).toBe("Calle 3");
+    expect(viaExample("Carrera")).toBe("Carrera 7A");
+    expect(viaExample("Diagonal")).toBe("Diagonal 40A");
+    expect(viaExample("Transversal")).toBe("Transversal 2Bis");
+    expect(viaExample("Avenida Carrera")).toBe("Avenida Carrera 7");
+    expect(viaExample("Manzana")).toBe("Manzana 5");
+    expect(viaExample("Otra")).toBe("Carrera 7A");
+  });
+
+  it("el hint completo incluye el ejemplo del tipo elegido", () => {
+    expect(viaHintText("Diagonal")).toContain("Diagonal 40A");
+    expect(viaHintText("Calle")).toContain("Calle 3");
+  });
+
+  it("el hint del cruce explica el guion y el segundo tramo", () => {
+    expect(CRUCE_HINT).toContain("23-45");
+    expect(CRUCE_HINT).toContain("segundo tramo");
   });
 });

@@ -7,7 +7,8 @@
  * (Polaroid Clásica) — un CONTROL ASISTIDO por capa editable IG que escribe el
  * override en TODOS los slots vía setTextOverrideAllSlots:
  *  - @usuario: "@" fija fuera del input, sanitización en vivo.
- *  - Ubicación: datalist nativo con sugerencias "Ciudad, País".
+ *  - Ubicación: combobox con búsqueda (2.7b — antes datalist nativo): filtra
+ *    «Ciudad, País» por ciudad y país, teclado accesible y texto libre.
  *  - «Me gusta»: OBLIGATORIO (rediseño), solo numérico, miles es-CO, sufijo fijo.
  *  - Título: contador n/140.
  *  - Hashtags: chips agregar/quitar, máximo 3, "#" fija.
@@ -99,7 +100,7 @@ describe("StudioIgPostFields — diligenciamiento masivo IG (rediseño asistido 
     for (const label of ["@usuario", "«Me gusta»", "Título", "Hashtags"]) {
       expect(screen.getByRole("textbox", { name: new RegExp(label, "i") })).toBeInTheDocument();
     }
-    // La ubicación lleva datalist → su rol implícito es combobox, no textbox.
+    // La ubicación es un combobox con búsqueda (2.7b; antes datalist).
     expect(screen.getByRole("combobox", { name: /ubicación/i })).toBeInTheDocument();
     expect(screen.getByRole("note").textContent).toMatch(/TODAS las fotos del set/i);
   });
@@ -129,20 +130,90 @@ describe("StudioIgPostFields — diligenciamiento masivo IG (rediseño asistido 
     expect(overrides(store, "user_name")).toEqual([undefined, undefined]);
   });
 
-  it("ubicación: datalist nativo con sugerencias «Ciudad, País» (Colombia + frecuentes)", () => {
+  it("ubicación: combobox con búsqueda — filtra por ciudad Y país (insensible a tildes) y escribe en todos los slots", () => {
     const store = makeStore();
     render(<StudioIgPostFields store={store} />);
 
     const input = screen.getByRole("combobox", { name: /ubicación/i }) as HTMLInputElement;
-    const listId = input.getAttribute("list");
-    expect(listId).toBeTruthy();
-    const datalist = document.getElementById(listId!)!;
-    const values = [...datalist.querySelectorAll("option")].map((o) => o.getAttribute("value"));
-    expect(values).toContain("Medellín, Colombia");
-    expect(values).toContain("Madrid, España");
+    expect(input).toHaveAttribute("aria-autocomplete", "list");
+    expect(input).toHaveAttribute("aria-expanded", "false");
 
-    fireEvent.change(input, { target: { value: "Cali, Colombia" } });
-    expect(overrides(store, "location")).toEqual(["Cali, Colombia", "Cali, Colombia"]);
+    // Al enfocar se abre el listbox con TODAS las sugerencias.
+    fireEvent.focus(input);
+    expect(input).toHaveAttribute("aria-expanded", "true");
+    const allOptions = screen.getAllByRole("option");
+    expect(allOptions.length).toBeGreaterThan(20);
+    expect(allOptions.map((o) => o.textContent)).toContain("Medellín, Colombia");
+
+    // Filtra por ciudad sin tildes ("medellin" ≈ "Medellín")…
+    fireEvent.change(input, { target: { value: "medellin" } });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Medellín, Colombia"]);
+    // …y el tipeo también compromete el texto libre en TODOS los slots.
+    expect(overrides(store, "location")).toEqual(["medellin", "medellin"]);
+
+    // Filtra por PAÍS ("españa" → las dos ciudades de España).
+    fireEvent.change(input, { target: { value: "españa" } });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Madrid, España",
+      "Barcelona, España",
+    ]);
+  });
+
+  it("ubicación: teclado accesible — flechas mueven aria-activedescendant, Enter elige, Escape cierra", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+
+    const input = screen.getByRole("combobox", { name: /ubicación/i }) as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "bogo" } });
+
+    // Flecha abajo activa la primera opción y la referencia vía aria-activedescendant.
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    const activeId = input.getAttribute("aria-activedescendant");
+    expect(activeId).toBeTruthy();
+    const active = document.getElementById(activeId!)!;
+    expect(active).toHaveAttribute("aria-selected", "true");
+    expect(active.textContent).toBe("Bogotá, Colombia");
+
+    // Enter compromete la sugerencia activa en TODOS los slots y cierra el listbox.
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(overrides(store, "location")).toEqual(["Bogotá, Colombia", "Bogotá, Colombia"]);
+    expect(input.value).toBe("Bogotá, Colombia");
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(input).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("ubicación: Escape cierra el listbox sin comprometer la opción activa", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+
+    const input = screen.getByRole("combobox", { name: /ubicación/i }) as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "cali" } });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(screen.queryByRole("option")).toBeNull();
+    // El texto libre se conserva (no se reemplazó por la sugerencia activa).
+    expect(input.value).toBe("cali");
+    expect(overrides(store, "location")).toEqual(["cali", "cali"]);
+  });
+
+  it("ubicación: click en una opción la compromete; texto libre sin coincidencias avisa pero vale", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+
+    const input = screen.getByRole("combobox", { name: /ubicación/i }) as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "cart" } });
+    fireEvent.click(screen.getByRole("option", { name: "Cartagena, Colombia" }));
+    expect(overrides(store, "location")).toEqual(["Cartagena, Colombia", "Cartagena, Colombia"]);
+    expect(screen.queryByRole("option")).toBeNull();
+
+    // Texto libre sin coincidencias: se guarda tal cual y avisa que igual se imprime.
+    fireEvent.change(input, { target: { value: "Mi vereda del campo" } });
+    expect(overrides(store, "location")).toEqual(["Mi vereda del campo", "Mi vereda del campo"]);
+    expect(screen.getByRole("status").textContent).toMatch(/Sin coincidencias/);
   });
 
   it("«me gusta»: solo numérico con miles es-CO, sufijo fijo fuera del input", () => {
@@ -229,6 +300,28 @@ describe("StudioIgPostFields — diligenciamiento masivo IG (rediseño asistido 
     fireEvent.change(input, { target: { value: "Título único" } });
     expect(overrides(store, "caption")).toEqual(["Título único", "Título único"]);
     expect(screen.queryByText("Varía por foto")).toBeNull();
+    expect(input.value).toBe("Título único");
+  });
+
+  it("QA 1.2: masivo → edición individual de UNA foto — el campo conserva el valor pack-level (sin chip) y al escribir se unifica", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+    const input = screen.getByRole("textbox", { name: /título/i }) as HTMLInputElement;
+
+    // Masivo "Hola" → todos los slots.
+    fireEvent.change(input, { target: { value: "Hola" } });
+    expect(overrides(store, "caption")).toEqual(["Hola", "Hola"]);
+
+    // Edición individual de la foto 2 (camino del modal del canvas): los demás
+    // conservan "Hola" y el campo masivo NO salta ni muestra «Varía por foto».
+    store.getState().setSlotTextOverride(1, "caption", { text: "Chao" });
+    expect(overrides(store, "caption")).toEqual(["Hola", "Chao"]);
+    expect(input.value).toBe("Hola");
+    expect(screen.queryByText("Varía por foto")).toBeNull();
+
+    // Escribir de nuevo en el masivo unifica todo a la primera.
+    fireEvent.change(input, { target: { value: "Título único" } });
+    expect(overrides(store, "caption")).toEqual(["Título único", "Título único"]);
     expect(input.value).toBe("Título único");
   });
 

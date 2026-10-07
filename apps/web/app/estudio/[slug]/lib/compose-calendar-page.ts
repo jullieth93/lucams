@@ -162,10 +162,17 @@ export function calendarPageCacheSize(): number {
  * canvasToPreviewDataUrl): el `reencodePreviewDataUrl` del caller se vuelve no-op
  * y se elimina una pasada encode/decode del camino.
  */
-export async function buildCalendarPreviewMontage(pages: string[]): Promise<string> {
-  const cols = Math.min(4, Math.max(1, pages.length));
+export async function buildCalendarPreviewMontage(
+  pages: string[],
+  opts?: { cellW?: number; maxCols?: number },
+): Promise<string> {
+  // Fase 2 · item 2.2 (2026-10-07) — montaje POR SET: cuando se compone un solo
+  // set (12 páginas) las celdas crecen (cellW 200 → 240, 3-4 cols) para que la
+  // página de la modal se lea a tamaño razonable; el montaje global (upload)
+  // sigue con los defaults de siempre.
+  const cols = Math.min(opts?.maxCols ?? 4, Math.max(1, pages.length));
   const rows = Math.ceil(pages.length / cols);
-  const cellW = 200;
+  const cellW = opts?.cellW ?? 200;
   const cellH = Math.round(cellW * (CALENDAR_PAGE.height / CALENDAR_PAGE.width)); // ~267 (3:4)
   const gap = 14;
   const pad = 18;

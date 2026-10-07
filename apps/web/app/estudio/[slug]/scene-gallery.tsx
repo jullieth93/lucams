@@ -185,22 +185,36 @@ export function countBadgeLabel(count: number, kind: SceneKind = "photo", cols =
 }
 
 /**
+ * Escenas que AFIRMAN imán: muestran el producto adherido a una superficie
+ * magnética (nevera, mural de corcho con imanes, tablero memo). Con una
+ * variante SIN IMÁN (`magnet === false`) ofrecerlas sería una afirmación
+ * falsa del producto físico (regla owner 2026-10-07, Fase 2.10).
+ * La escena Polaroid NO entra: son tarjetas ACOSTADAS sobre una mesa de
+ * madera (no asumen adherencia a nevera/metal). Las escenas 2D (`shelf`,
+ * `gift`) y el libro (`book`) tampoco asumen imán.
+ */
+const MAGNET_SCENES: ReadonlySet<Scene> = new Set(["fridge", "board", "memo"]);
+
+/**
  * Escenas efectivamente ofrecidas en la galería: las del kind filtradas por
- * polaroid y — Fase 1A (2026-09-27) — por imán SOLO en el calendario: una
- * variante SIN IMÁN del calendario no ofrece las escenas nevera/tablero
- * (asumen imán: mostrarlas sería una afirmación falsa del producto físico) y
- * su flujo vive en el visor de detalle tarjeta-a-tarjeta. Paquete D
- * (2026-10-02): el gate ya no aplica a los demás productos — su 3D es
- * ilustrativo y el botón 3D no se esconde por variante (separadores/tiras
- * sin imán también abren su vista 3D).
+ * polaroid y por imán. Fase 1A (2026-09-27) introdujo el gate SIN IMÁN solo
+ * para el calendario; Paquete D (2026-10-02) lo retiró para los demás
+ * productos ("el 3D es ilustrativo"); el owner REVIRTIÓ Paquete D el
+ * 2026-10-07 (Fase 2.10): con `magnet === false` las escenas que afirman
+ * imán (MAGNET_SCENES) NO se ofrecen en NINGÚN kind — photo conserva las 2D
+ * (repisa/regalo, y polaroid si aplica), bookmark conserva el libro, y
+ * letters (solo tablero memo) queda SIN escenas → la galería muestra un
+ * estado vacío coherente (mismo criterio del calendario: el cliente no sube
+ * a una galería sin destino).
  */
 export function galleryScenes(
   kind: SceneKind = "photo",
   isPolaroid = false,
   magnet?: boolean,
 ): Scene[] {
-  if (magnet === false && kind === "calendar") return [];
-  return filterPhotoScenes(scenesForKind(kind), isPolaroid);
+  const scenes = filterPhotoScenes(scenesForKind(kind), isPolaroid);
+  if (magnet === false) return scenes.filter((s) => !MAGNET_SCENES.has(s));
+  return scenes;
 }
 
 export function SceneGallery({
@@ -216,12 +230,16 @@ export function SceneGallery({
    *  muestra SIN doblez. Misma condición que el modal del Estudio (flat={productConfig.noFold}):
    *  sin esta prop, los Alargados abiertos desde la galería se veían DOBLADOS. */
   flat,
-  /** Fase 1A (2026-09-27) — "¿Con imán?" de la variante. `false` (SIN IMÁN) en el
-   *  CALENDARIO: las escenas que asumen imán (nevera/tablero) NO se ofrecen — pegar
-   *  tarjetas sin imán en la nevera es una afirmación falsa del producto físico; el
-   *  visor de detalle (CalendarCardFocus) sigue disponible. En los demás productos el
-   *  3D es ilustrativo y no se gatea (Paquete D, 2026-10-02). undefined conserva el
-   *  comportamiento de siempre. */
+  /** Fase 1A (2026-09-27) + Fase 2.10 (owner 2026-10-07, reversa de Paquete D):
+   *  "¿Con imán?" de la variante. `false` (SIN IMÁN): las escenas que afirman
+   *  imán (nevera/mural/tablero memo — MAGNET_SCENES) NO se ofrecen en NINGÚN
+   *  kind — adherir piezas sin imán es una afirmación falsa del producto
+   *  físico. Quedan las escenas 2D (repisa/regalo), la polaroid (tarjetas
+   *  acostadas en mesa) y el libro. Si ninguna escena sobrevive (calendario,
+   *  letters), la galería muestra un estado vacío coherente; en el calendario
+   *  el flujo vive en el visor de detalle (CalendarCardFocus) y su botón
+   *  «Míralo en tu espacio» se omite. undefined conserva el comportamiento de
+   *  siempre. */
   magnet,
 }: {
   magnets: Magnet3D[];
@@ -237,12 +255,13 @@ export function SceneGallery({
   facesPerUnit?: number;
   /** Ola 17 — marcapáginas plano (Alargados): la escena Libro los renderiza sin doblez. */
   flat?: boolean;
-  /** Fase 1A — variante SIN IMÁN del calendario (false): sin escenas nevera/tablero. */
+  /** Fase 1A/2.10 — variante SIN IMÁN (false): sin escenas que afirman imán. */
   magnet?: boolean;
 }) {
   const scenes = useMemo(
-    // SIN IMÁN: ninguna escena "en tu espacio" aplica (todas asumen imán) → la
-    // galería queda vacía y el flujo vive en el visor de detalle (calendario).
+    // SIN IMÁN (Fase 2.10, owner 2026-10-07): las escenas que afirman imán se
+    // filtran; si ninguna sobrevive (calendario, letters) la galería muestra
+    // el estado vacío — el calendario además vive en el visor de detalle.
     () => galleryScenes(kind, isPolaroid, magnet),
     [kind, isPolaroid, magnet],
   );
@@ -408,7 +427,18 @@ export function SceneGallery({
       )}
 
       <div className="relative flex-1">
-        {is3D ? (
+        {scenes.length === 0 ? (
+          /* Fase 2.10 (owner 2026-10-07) — TODAS las escenas quedaron filtradas por
+             SIN IMÁN (p.ej. letters: su única escena es el tablero memo, que afirma
+             imán): en vez de un panel en blanco, un estado vacío coherente. Es el
+             mismo criterio del calendario (el cliente no sube a una galería sin
+             destino — allá el botón «Míralo en tu espacio» se omite; acá el modal ya
+             está abierto, así que se explica y se ofrece cerrar). */
+          <div className="text-brand-cream/90 flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm">
+            <p>{texts.escenas.vacio}</p>
+            <p className="text-brand-cream/70 text-xs">{texts.escenas.vacioHint}</p>
+          </div>
+        ) : is3D ? (
           activeScene === "fridge" ? (
             <FridgeView3D magnets={magnets} cols={cols} sizeCm={sizeCm} />
           ) : activeScene === "polaroid" ? (
@@ -457,13 +487,15 @@ export function SceneGallery({
           </p>
         )}
 
-        <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
-          {is3D
-            ? isTouch
-              ? texts.escenas.hintTouch
-              : texts.escenas.hintMouse
-            : texts.escenas.hintPlana}
-        </p>
+        {/* Pill de gestos SOLO en escenas 3D (zoom/rotación). Fase 2.6 (owner
+            2026-10-07): la pill de las escenas planas 2D ("Mantén presionada la
+            imagen para guardarla o compartirla") se ELIMINÓ — la imagen plana no
+            tiene gesto propio que explicar y el texto sobraba sobre la escena. */}
+        {is3D && (
+          <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
+            {isTouch ? texts.escenas.hintTouch : texts.escenas.hintMouse}
+          </p>
+        )}
       </div>
 
       {/* Ola 3 — visor de detalle 1-a-1 (overlay dentro del modal): es la vista INICIAL del

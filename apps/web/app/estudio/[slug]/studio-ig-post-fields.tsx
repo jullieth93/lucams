@@ -12,9 +12,10 @@
  *    sanitiza en vivo (sin espacios; solo letras, números, punto y guion bajo —
  *    caracteres válidos de usuario IG). El override se guarda CON "@" (se imprime
  *    tal cual).
- *  - Ubicación: autocompletado ligero con datalist nativo (sin dependencias) y
- *    una lista curada "Ciudad, País" (Colombia + destinos frecuentes) — es
- *    asistencia de escritura, no validación: la ubicación libre también vale.
+ *  - Ubicación: combobox con búsqueda (Fase 2 · 2.7b — antes datalist nativo):
+ *    filtra la lista curada "Ciudad, País" por ciudad Y país, navegable con
+ *    teclado (flechas/Enter/Escape, aria-activedescendant) y sigue admitiendo
+ *    ubicación libre — es asistencia de escritura, no validación.
  *  - «Me gusta»: OBLIGATORIO desde el rediseño (antes decorativo). El input es
  *    solo numérico y se muestra con separador de miles es-CO; la palabra
  *    "me gusta" es un sufijo FIJO fuera del valor editable (el override guarda
@@ -43,7 +44,7 @@
  * nunca en las demás.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 import type { StoreApi } from "zustand";
 import { AtSign, Hash, X } from "lucide-react";
@@ -52,9 +53,9 @@ import { IG_REQUIRED_TEXT_LAYER_IDS } from "@/features/personalization/instagram
 import {
   IG_CAPTION_MAX,
   IG_HASHTAGS_MAX,
-  IG_LOCATION_SUGGESTIONS,
   IG_LIKES_SUFFIX,
   IG_USERNAME_MAX,
+  filterIgLocationSuggestions,
   igHashtagsFromStored,
   igHashtagsOverride,
   igLikesDisplay,
@@ -115,6 +116,17 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
     ) as { id: string; text: string }[];
     if (editable.length === 0) return null;
     const fields: IgField[] = editable.map((l) => {
+      // QA 1.2 (2026-10-07) — si la capa tiene un valor PACK-LEVEL vigente (el
+      // último aplicado masivamente), ese es el valor del campo y NO hay chip:
+      // las ediciones individuales posteriores pisan solo su slot y el campo
+      // masivo conserva el valor vigente (antes el valor se derivaba de los
+      // slots: editar/limpiar UNA foto hacía "saltar" el campo o marcaba
+      // "Varía por foto" aunque el masivo seguía aplicando). El chip se
+      // reserva para cuando NUNCA hubo masivo y las unidades difieren.
+      const pack = s.packTextValues[l.id];
+      if (typeof pack === "string") {
+        return { id: l.id, defaultText: l.text, value: pack, varies: false };
+      }
       const seen = new Set<string>();
       for (const slot of cd.slots) {
         const t = slot.textOverrides?.[l.id]?.text;
@@ -179,26 +191,12 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
 
       case "location":
         return (
-          <>
-            <input
-              id={inputId}
-              type="text"
-              value={f.value}
-              maxLength={80}
-              placeholder={variesPlaceholder ?? f.defaultText}
-              list="studio-ig-location-suggestions"
-              onChange={(e) => commitText(f.id, e.target.value)}
-              className={INPUT_CLASS}
-            />
-            {/* Autocompletado ligero nativo (sin dependencias): asistencia de
-                escritura, no validación — la ubicación libre también vale. */}
-            <datalist id="studio-ig-location-suggestions">
-              {IG_LOCATION_SUGGESTIONS.map((s) => (
-                <option key={s} value={s} />
-              ))}
-            </datalist>
-            <p className="text-brand-muted mt-1 text-xs">{texts.texto.igUbicacionHint}</p>
-          </>
+          <IgLocationCombobox
+            inputId={inputId}
+            value={f.value}
+            placeholder={variesPlaceholder ?? f.defaultText}
+            onCommit={(text) => commitText(f.id, text)}
+          />
         );
 
       case "likes_count": {
@@ -320,6 +318,142 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
         {texts.texto.igGlobalAviso}
       </p>
     </section>
+  );
+}
+
+/**
+ * Combobox de UBICACIÓN con búsqueda (Fase 2 · 2.7b, reemplaza el datalist
+ * nativo): filtra las sugerencias "Ciudad, País" por ciudad Y país (insensible
+ * a tildes), con teclado accesible (flechas mueven la opción activa vía
+ * aria-activedescendant, Enter elige, Escape cierra) y texto libre — sin
+ * coincidencias la ubicación igual se imprime tal cual (no es validación).
+ *
+ * El commit es por tecla (mismo patrón del bloque: sin draft local, el store
+ * hace undo + auto-save); elegir una sugerencia la escribe completa.
+ */
+function IgLocationCombobox({
+  inputId,
+  value,
+  placeholder,
+  onCommit,
+}: {
+  inputId: string;
+  value: string;
+  placeholder?: string;
+  onCommit: (text: string) => void;
+}) {
+  const texts = useStudioTexts();
+  const listboxId = `${inputId}-listbox`;
+  const [open, setOpen] = useState(false);
+  const [activeIdx, setActiveIdx] = useState(-1);
+
+  const matches = filterIgLocationSuggestions(value);
+  // Texto idéntico a una sugerencia (recién elegida): no reabrir el dropdown.
+  const exactMatch = matches.length === 1 && matches[0] === value;
+  const showList = open && !exactMatch && matches.length > 0;
+
+  // La opción activa por teclado puede quedar fuera del área visible.
+  useEffect(() => {
+    if (!showList || activeIdx < 0) return;
+    const el = document.getElementById(`${listboxId}-opt-${activeIdx}`);
+    if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "nearest" });
+  }, [activeIdx, showList, listboxId]);
+
+  const select = (suggestion: string) => {
+    onCommit(suggestion);
+    setOpen(false);
+    setActiveIdx(-1);
+  };
+
+  return (
+    <div className="relative">
+      <input
+        id={inputId}
+        type="text"
+        role="combobox"
+        aria-expanded={showList}
+        aria-controls={listboxId}
+        aria-autocomplete="list"
+        aria-activedescendant={
+          showList && activeIdx >= 0 ? `${listboxId}-opt-${activeIdx}` : undefined
+        }
+        value={value}
+        maxLength={80}
+        placeholder={placeholder}
+        onChange={(e) => {
+          onCommit(e.target.value);
+          setOpen(true);
+          setActiveIdx(-1);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => {
+          setOpen(false);
+          setActiveIdx(-1);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            if (!showList) {
+              setOpen(true);
+              setActiveIdx(0);
+            } else {
+              setActiveIdx((i) => Math.min(i + 1, matches.length - 1));
+            }
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            if (showList) setActiveIdx((i) => Math.max(i - 1, 0));
+          } else if (e.key === "Enter" && showList && activeIdx >= 0) {
+            const chosen = matches[activeIdx];
+            if (chosen) {
+              e.preventDefault();
+              select(chosen);
+            }
+          } else if (e.key === "Escape" && showList) {
+            e.preventDefault();
+            setOpen(false);
+            setActiveIdx(-1);
+          }
+        }}
+        className={INPUT_CLASS}
+        autoComplete="off"
+      />
+      {showList && (
+        <ul
+          id={listboxId}
+          role="listbox"
+          aria-label={texts.texto.igCampoUbicacion}
+          className="border-brand-purple/15 absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-white py-1 shadow-lg"
+          // onMouseDown preventDefault: conserva el foco en el input — sin esto
+          // el blur cerraría la lista ANTES del click en la opción.
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          {matches.map((s, i) => (
+            <li
+              key={s}
+              id={`${listboxId}-opt-${i}`}
+              role="option"
+              aria-selected={i === activeIdx}
+              onMouseEnter={() => setActiveIdx(i)}
+              onClick={() => select(s)}
+              className={`cursor-pointer px-3 py-2 text-sm ${
+                i === activeIdx
+                  ? "bg-brand-purple/10 text-brand-purple-dark font-semibold"
+                  : "text-brand-purple-dark/80"
+              }`}
+            >
+              {s}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-brand-muted mt-1 text-xs">{texts.texto.igUbicacionHint}</p>
+      {/* Texto libre: sin coincidencias la ubicación igual se imprime tal cual. */}
+      {open && value.trim() !== "" && matches.length === 0 && (
+        <p role="status" className="text-brand-muted mt-1 text-xs">
+          {texts.texto.igUbicacionSinResultados}
+        </p>
+      )}
+    </div>
   );
 }
 

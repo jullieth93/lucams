@@ -329,3 +329,81 @@ describe("StudioPreviewModal — avisos informativos de brillo suave (fase 2, 20
     expect(props.onConfirm).toHaveBeenCalledWith(1, { qualityAcknowledged: true });
   });
 });
+
+describe("StudioPreviewModal — Vista Previa PAGINADA por unidad (Fase 2 · item 2.2)", () => {
+  const PAGES = [
+    { dataUrl: "data:image/png;base64,set1", label: "Set 1 de 3" },
+    { dataUrl: "data:image/png;base64,set2", label: "Set 2 de 3" },
+    { dataUrl: "data:image/png;base64,set3", label: "Set 3 de 3" },
+  ];
+
+  it("con varias páginas: pager con indicador, dots y flechas; NO la imagen única", () => {
+    render(<StudioPreviewModal {...baseProps()} pages={PAGES} unitCount={3} />);
+    // Abre en la primera unidad, indicador anunciado.
+    expect(screen.getByText("Set 1 de 3")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Set 1 de 3/ })).toBeInTheDocument();
+    // 3 dots + 2 flechas con sus arias CMS.
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Unidad anterior" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Unidad siguiente" })).toBeEnabled();
+  });
+
+  it("flechas y dots navegan; la flecha se deshabilita en los extremos (sin wrap)", () => {
+    render(<StudioPreviewModal {...baseProps()} pages={PAGES} unitCount={3} />);
+    fireEvent.click(screen.getByRole("button", { name: "Unidad siguiente" }));
+    expect(screen.getByText("Set 2 de 3")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Set 2 de 3/ })).toBeInTheDocument();
+    // Dot directo a la última → "siguiente" queda deshabilitada (no envuelve).
+    fireEvent.click(screen.getAllByRole("tab")[2]!);
+    expect(screen.getByText("Set 3 de 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unidad siguiente" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Unidad anterior" })).toBeEnabled();
+  });
+
+  it("teclado ← → sobre el pager cambia de unidad", () => {
+    render(<StudioPreviewModal {...baseProps()} pages={PAGES} unitCount={3} />);
+    const pager = screen.getByRole("group", { name: "Set 1 de 3" });
+    fireEvent.keyDown(pager, { key: "ArrowRight" });
+    expect(screen.getByText("Set 2 de 3")).toBeInTheDocument();
+    fireEvent.keyDown(pager, { key: "ArrowLeft" });
+    expect(screen.getByText("Set 1 de 3")).toBeInTheDocument();
+  });
+
+  it("swipe horizontal cambia de unidad; el vertical NO (sigue el scroll del diálogo)", () => {
+    render(<StudioPreviewModal {...baseProps()} pages={PAGES} unitCount={3} />);
+    const pager = screen.getByRole("group", { name: "Set 1 de 3" });
+    // Swipe a la izquierda → siguiente unidad.
+    fireEvent.touchStart(pager, {
+      touches: [{ clientX: 300, clientY: 100 }],
+      changedTouches: [{ clientX: 300, clientY: 100 }],
+    });
+    fireEvent.touchEnd(pager, { changedTouches: [{ clientX: 120, clientY: 108 }] });
+    expect(screen.getByText("Set 2 de 3")).toBeInTheDocument();
+    // Gesto casi vertical → no cambia.
+    fireEvent.touchStart(pager, {
+      touches: [{ clientX: 300, clientY: 100 }],
+      changedTouches: [{ clientX: 300, clientY: 100 }],
+    });
+    fireEvent.touchEnd(pager, { changedTouches: [{ clientX: 250, clientY: 400 }] });
+    expect(screen.getByText("Set 2 de 3")).toBeInTheDocument();
+    // Swipe corto (< umbral) → no cambia.
+    fireEvent.touchStart(pager, {
+      touches: [{ clientX: 300, clientY: 100 }],
+      changedTouches: [{ clientX: 300, clientY: 100 }],
+    });
+    fireEvent.touchEnd(pager, { changedTouches: [{ clientX: 290, clientY: 100 }] });
+    expect(screen.getByText("Set 2 de 3")).toBeInTheDocument();
+  });
+
+  it("UNA sola página (o sin pages): imagen única de siempre, sin pager", () => {
+    const { unmount } = render(
+      <StudioPreviewModal {...baseProps()} pages={[PAGES[0]!]} unitCount={1} />,
+    );
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Unidad siguiente" })).not.toBeInTheDocument();
+    unmount();
+    render(<StudioPreviewModal {...baseProps()} />);
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Vista previa de 6 imanes/ })).toBeInTheDocument();
+  });
+});

@@ -11,28 +11,56 @@ vi.mock("@react-three/drei", () => ({
 }));
 
 import {
-  MAGNET_DEPTH,
-  TILE_DEPTH,
+  BLANK_FACE_COLOR,
+  MAGNET_THICKNESS_CM,
+  MIN_WORLD_DEPTH,
+  TILE_THICKNESS_CM,
   coverRegion,
   foldedFaceRegion,
   foldedStripMetrics,
   magnetWorldSizes,
   parseSizeCm,
+  realWorldDepth,
   textureRegionTransform,
 } from "./magnet-3d";
 
-describe("grosores del extruido (ola 4 — Lucy: fichas OTRO punto más delgadas, no planas)", () => {
-  it("TILE_DEPTH es ~62.5% menos que MAGNET_DEPTH y sigue teniendo cuerpo (no plana)", () => {
-    expect(TILE_DEPTH).toBeGreaterThan(0);
-    expect(TILE_DEPTH).toBeLessThan(MAGNET_DEPTH);
-    const reduction = 1 - TILE_DEPTH / MAGNET_DEPTH;
-    expect(reduction).toBeGreaterThanOrEqual(0.55);
-    expect(reduction).toBeLessThanOrEqual(0.7);
+describe("BLANK_FACE_COLOR (decisión owner 2026-10-07 — cara B vacía EN BLANCO)", () => {
+  it("es blanco PURO (#FFFFFF): el mismo blanco que imprenta recibe (blankBackFacePng)", () => {
+    // La regla espejo del Paquete D quedó revertida: una cara B sin diseñar se
+    // muestra/imprime en blanco puro en 3D, Vista Previa y producción física.
+    expect(BLANK_FACE_COLOR).toBe("#FFFFFF");
+  });
+});
+
+describe("grosor FÍSICO real del extruido (Fase 2.11, owner 2026-10-07)", () => {
+  const FRIDGE_U_PER_CM = 8.8 / 178; // nevera ≈ 0.04944 u/cm (lib/cluster-layout)
+  const BOARD_U_PER_CM = 0.1; // mural de corcho (lib/cluster-layout)
+
+  it("el fotoimán es de 2 mm y las fichas 1.5 mm (rango real 1–3 mm; fichas un punto más finas — Lucy)", () => {
+    expect(MAGNET_THICKNESS_CM).toBe(0.2);
+    expect(TILE_THICKNESS_CM).toBe(0.15);
+    expect(TILE_THICKNESS_CM).toBeLessThan(MAGNET_THICKNESS_CM);
   });
 
-  it("TILE_DEPTH ≈ 60% del grosor anterior (0.025) — bisel y sombra se conservan", () => {
-    expect(TILE_DEPTH).toBeGreaterThanOrEqual(0.012);
-    expect(TILE_DEPTH).toBeLessThanOrEqual(0.018);
+  it("nevera: el grosor real es ~0.0099 u (antes 0.04 u ≈ 0.8 cm — ~4× el real)", () => {
+    const depth = realWorldDepth(FRIDGE_U_PER_CM);
+    expect(depth).toBeCloseTo(0.2 * FRIDGE_U_PER_CM, 9);
+    expect(depth).toBeCloseTo(0.00989, 4);
+    expect(depth).toBeGreaterThan(MIN_WORLD_DEPTH); // el piso NO recorta la escena real
+  });
+
+  it("mural: 2 mm → 0.02 u; fichas memo 1.5 mm → 0.015 u (el relieve de siempre del tablero)", () => {
+    expect(realWorldDepth(BOARD_U_PER_CM)).toBeCloseTo(0.02, 9);
+    expect(realWorldDepth(BOARD_U_PER_CM, TILE_THICKNESS_CM)).toBeCloseTo(0.015, 9);
+  });
+
+  it("piso anti-z-fighting MIN_WORLD_DEPTH: escenas de escala más gruesa no desaparecen", () => {
+    // uPerCm < 0.04 haría el grosor real < piso → gana el piso (la tapa impresa
+    // flota 0.0012 u sobre el bisel; < ~6× ese epsilon hay z-fighting).
+    expect(realWorldDepth(0.02)).toBe(MIN_WORLD_DEPTH);
+    expect(realWorldDepth(0.02, TILE_THICKNESS_CM)).toBe(MIN_WORLD_DEPTH);
+    // El piso es ≥ 6× el epsilon de la tapa (0.0012 u) — justificación del valor.
+    expect(MIN_WORLD_DEPTH).toBeGreaterThanOrEqual(0.0012 * 6);
   });
 });
 

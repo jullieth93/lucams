@@ -599,6 +599,13 @@ model Order {
   trackingUrl             String?
   // PLAN_CATALOG_V2 4.10 — URL de impresión etiqueta (rutaimpresion en Aveonline).
   labelUrl                String?
+  // Fix 1.8 (2026-10-07) — path de la copia PROPIA del PDF de la etiqueta en el
+  // bucket privado production-assets ("shipping-labels/<orderId>.pdf"). Las URLs
+  // externas de Aveonline (labelUrl/trackingUrl) pueden expirar, requerir sesión o
+  // responder no-PDF; esta copia se archiva server-side tras crear la guía y se
+  // sirve al admin via signed URL. Best-effort: null si no pudo archivarse (quedan
+  // las URLs externas como fallback, como antes).
+  labelPath               String?
   // Paquete G (2026-10-02) — último intento FALLIDO de generación de guía,
   // sanitizado (sin PII: scrubPii enmascara emails/teléfonos del mensaje crudo
   // de la transportadora). Shape: { message, at (ISO), carrier, destination

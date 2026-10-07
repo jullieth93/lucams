@@ -10,6 +10,7 @@ import Link from "next/link";
 import {
   Activity,
   AlertTriangle,
+  HeartPulse,
   Webhook,
   RotateCcw,
   Gauge,
@@ -82,7 +83,7 @@ export default async function AdminObservabilityPage() {
   return (
     <AdminPage>
       <AdminPageHeader
-        icon={<Activity className="h-5 w-5" />}
+        icon={<HeartPulse className="h-5 w-5" />}
         title="Salud técnica"
         subtitle={
           <>

@@ -52,7 +52,8 @@ type StudioSlotEditModalProps = {
   onApplyFilter: (filter: PhotoFilterPreset | null) => void;
   onResetTransform: () => void;
   onRotate: () => void;
-  onApplyTextOverride: (layerId: string, override: TextOverride | null) => void;
+  /** null = limpiar el override de la capa; undefined = sin cambios (no-op). */
+  onApplyTextOverride: (layerId: string, override: TextOverride | null | undefined) => void;
   /** Text layer a preseleccionar al abrir la pestaña Texto (ej. al tocar un texto en el canvas). */
   focusTextLayerId?: string;
   /**
@@ -480,7 +481,7 @@ function TextLayersEditor({
 }: {
   layers: TextLayer[];
   currentOverrides: Record<string, TextOverride> | undefined;
-  onApply: (layerId: string, override: TextOverride | null) => void;
+  onApply: (layerId: string, override: TextOverride | null | undefined) => void;
   focusTextLayerId?: string;
   cardColor?: string | null;
   textDefaultFills?: Record<string, string>;

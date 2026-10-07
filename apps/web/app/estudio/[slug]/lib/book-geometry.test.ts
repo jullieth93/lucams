@@ -188,10 +188,10 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
     expect(units[1]!.back?.id).toBe("2B");
   });
 
-  it("unidad impar (no debería con facesPerUnit=2): la última repite su diseño atrás", () => {
+  it("unidad sin cara B (no debería con facesPerUnit=2): la trasera queda EN BLANCO (back = null)", () => {
     const units = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")]);
     expect(units).toHaveLength(2);
-    expect(units[1]!.back?.id).toBe("2A");
+    expect(units[1]!.back).toBeNull();
   });
 
   it("diseños VIEJOS de tira completa (vertical) NO se parean: cada uno repite su diseño", () => {
@@ -230,16 +230,16 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
     ]);
   });
 
-  it("Paquete D (2026-10-02) — REGLA ÚNICA: cara B vacía → espejo de la cara A (back = front)", () => {
-    // Pareo por pares: unidad impar sin cara B.
+  it("Decisión owner 2026-10-07 — REGLA ÚNICA: cara B vacía → EN BLANCO (back = null, nunca espejo)", () => {
+    // Pareo por pares: unidad sin cara B → trasera en blanco.
     const units = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")], undefined, "6×2");
-    expect(units.map((u) => [u.front.id, u.back.id])).toEqual([
+    expect(units.map((u) => [u.front.id, u.back?.id ?? null])).toEqual([
       ["1A", "1B"],
-      ["2A", "2A"], // sin cara B → espejo de A (igual que producción)
+      ["2A", null], // sin cara B → EN BLANCO (igual que producción)
     ]);
     // Pareo por slotIndex (facesPerUnit=2): la cara B existe como slot con su
     // textura de stage (dataUrl SIEMPRE llega) pero SIN assetUrl — la misma
-    // condición "vacía" que producción (expandMissingBackFaces).
+    // condición "vacía" que producción (blankBackFacePng, blank-back-face.ts).
     const slot = (id: string, slotIndex: number, assetUrl?: string) => ({
       id,
       wRatio: 600,
@@ -253,8 +253,8 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
       2,
       "6×2",
     );
-    expect(bySlotUnits.map((u) => [u.front.id, u.back.id])).toEqual([
-      ["1A", "1A"], // B sin assetUrl → espejo de A (antes: reverso blanco papel)
+    expect(bySlotUnits.map((u) => [u.front.id, u.back?.id ?? null])).toEqual([
+      ["1A", null], // B sin assetUrl → EN BLANCO (revierte el espejo del Paquete D)
       ["2A", "2B"], // B diseñada → su propia textura
     ]);
   });

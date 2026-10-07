@@ -34,6 +34,7 @@ import {
   parseVariantAttributes,
 } from "@/features/products/variant-schemas";
 import { buildWhatsAppUrl } from "@/lib/wa";
+import { DesignPreviewDialog } from "@/app/carrito/design-preview-dialog";
 import { reorderGuestAction } from "./actions";
 import { ReorderControl, type ReorderTexts } from "@/components/orders/reorder-control";
 
@@ -390,6 +391,32 @@ export default async function PublicOrderPage({
                         </div>
                       )}
                       {borderNote && <div className="text-brand-muted text-xs">{borderNote}</div>}
+                      {/* Zoom del diseño (fix QA STG 2026-10): la miniatura de
+                          56px no deja revisar el diseño — el botón abre el MISMO
+                          lightbox con zoom del carrito (DesignPreviewDialog:
+                          rueda anclada, pinch, doble-tap, botones +/−). Se
+                          reusan las keys CMS del carrito (cart.ver-diseno…). */}
+                      {previewUrl && (
+                        <div className="mt-1.5">
+                          <DesignPreviewDialog
+                            previewUrl={previewUrl}
+                            productName={it.variant.product.name}
+                            triggerLabel={<CmsText blockKey="cart.ver-diseno" fallback="Ver" />}
+                            title={
+                              <CmsText
+                                blockKey="cart.vista-previa-diseno-titulo"
+                                fallback="Tu diseño ·"
+                              />
+                            }
+                            description={
+                              <CmsText
+                                blockKey="cart.vista-previa-diseno-desc"
+                                fallback="Vista previa ampliada del diseño personalizado de esta línea del pedido."
+                              />
+                            }
+                          />
+                        </div>
+                      )}
                     </div>
                     <div className="text-brand-purple-dark flex-shrink-0 text-right text-sm font-semibold tabular-nums">
                       {formatCOP(it.unitPrice * it.qty)}
@@ -496,17 +523,33 @@ export default async function PublicOrderPage({
                     : "Tu pedido va con nuestro equipo Lucam&apos;s — la entrega es directa, el mismo día del despacho, sin transportadora externa."}
                 </p>
               )}
-              {/* Rastreo (feedback Lucy 2026-08-11): el portal oficial de la
-                  transportadora como enlace principal (el trackingUrl guardado
-                  es el PDF del documento de guía — ahora va etiquetado como tal). */}
+              {/* Rastreo (fix QA STG 2026-10): la opción INTERNA es la
+                  principal — /rastrear con el número prellenado por query (el
+                  correo NUNCA viaja en la URL por PII: lo escribe el cliente;
+                  número + correo rotan un token nuevo, ver rastrear/actions).
+                  El portal externo de la transportadora queda como secundario
+                  (el trackingUrl guardado es el PDF del documento de guía —
+                  va etiquetado como tal). */}
+              <Link
+                href={`/rastrear?number=${encodeURIComponent(order.number)}`}
+                className="bg-brand-purple hover:bg-brand-purple-dark mt-3 inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold text-white shadow-sm"
+              >
+                <CmsText
+                  blockKey="order.status.track-internal-cta"
+                  fallback="Seguir estado en LUCAMS →"
+                />
+              </Link>
               {carrierTrackingPageUrl(order.shippingCarrier) && (
                 <a
                   href={carrierTrackingPageUrl(order.shippingCarrier)!}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-brand-purple mt-2 inline-block text-sm font-semibold underline"
+                  className="text-brand-muted hover:text-brand-purple mt-2 block text-xs underline"
                 >
-                  <CmsText blockKey="order.status.tracking-cta" fallback="Rastrear mi pedido →" />
+                  <CmsText
+                    blockKey="order.status.tracking-cta"
+                    fallback="Rastrear en el portal de la transportadora →"
+                  />
                 </a>
               )}
               {order.trackingUrl && (

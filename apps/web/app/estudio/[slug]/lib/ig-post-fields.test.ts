@@ -12,7 +12,9 @@ import {
   IG_HASHTAG_MAX_LENGTH,
   IG_HASHTAGS_MAX,
   IG_LIKES_SUFFIX,
+  IG_LOCATION_SUGGESTIONS,
   IG_USERNAME_MAX,
+  filterIgLocationSuggestions,
   igHashtagsFromStored,
   igHashtagsOverride,
   igLikesDisplay,
@@ -97,5 +99,28 @@ describe("hashtags — chips, «#» fija y máximo 3", () => {
     expect(IG_HASHTAGS_MAX).toBe(3);
     expect(IG_HASHTAG_MAX_LENGTH).toBe(30);
     expect(sanitizeIgHashtag("a".repeat(40))).toHaveLength(30);
+  });
+});
+
+describe("ubicación — filtro del combobox (Fase 2 · 2.7b)", () => {
+  it("query vacío devuelve TODAS las sugerencias", () => {
+    expect(filterIgLocationSuggestions("")).toEqual([...IG_LOCATION_SUGGESTIONS]);
+    expect(filterIgLocationSuggestions("   ")).toEqual([...IG_LOCATION_SUGGESTIONS]);
+  });
+
+  it("filtra por CIUDAD, insensible a tildes y mayúsculas", () => {
+    expect(filterIgLocationSuggestions("medellin")).toEqual(["Medellín, Colombia"]);
+    expect(filterIgLocationSuggestions("BOGOTA")).toEqual(["Bogotá, Colombia"]);
+  });
+
+  it("filtra por PAÍS (substring sobre «Ciudad, País» completo)", () => {
+    const españa = filterIgLocationSuggestions("españa");
+    expect(españa).toEqual(["Madrid, España", "Barcelona, España"]);
+    // Colombia es el mercado principal: la lista curada es mayoritariamente local.
+    expect(filterIgLocationSuggestions("colombia").length).toBeGreaterThan(15);
+  });
+
+  it("sin coincidencias → lista vacía (el texto libre igual vale: no es validación)", () => {
+    expect(filterIgLocationSuggestions("Mi vereda del campo")).toEqual([]);
   });
 });

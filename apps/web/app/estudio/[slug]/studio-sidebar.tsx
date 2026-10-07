@@ -21,6 +21,7 @@ import {
   Wand2,
   Loader2,
   Check,
+  ChevronDown,
   GripVertical,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -48,6 +49,10 @@ import { PhotoQualityModal } from "./photo-quality-modal";
 import { Hint } from "@/components/ui/tooltip";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
+
+/** Fase 2 · 2.5 (2026-10-07) — con más de este número de diseños prediseñados
+ *  la sección arranca COLAPSADA (cerrada), para no sepultar «Mis fotos». */
+const PREDESIGNED_COLLAPSE_THRESHOLD = 6;
 
 type StudioSidebarProps = {
   store: StoreApi<StudioStoreState>;
@@ -103,6 +108,12 @@ export function StudioSidebar({
   const applyTemplate = useStore(store, (s) => s.applyTemplate);
   const selectedSlotIndex = useStore(store, (s) => s.selectedSlotIndex);
   const [applyingPredesignedId, setApplyingPredesignedId] = useState<string | null>(null);
+  // Fase 2 · 2.5 — sección de prediseñados COLAPSABLE: con muchos diseños
+  // sepultaba el resto de la sidebar («Mis fotos» quedaba lejos). Cerrada por
+  // defecto cuando supera el umbral; el contador queda visible en el header.
+  const [predesignedOpen, setPredesignedOpen] = useState(
+    () => predesigned.length <= PREDESIGNED_COLLAPSE_THRESHOLD,
+  );
 
   // Ola 21 — aplicar un diseño prediseñado al slot seleccionado (o al primer slot vacío).
   // 2026-09-22 — la aplicación vive en applyPredesignedToSlot (helper compartido
@@ -452,100 +463,127 @@ export function StudioSidebar({
           aria-labelledby="sidebar-predisenados"
           className="border-brand-purple/10 border-t pt-5"
         >
-          <div
-            id="sidebar-predisenados"
-            className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
-          >
-            <Sparkles className="text-brand-purple h-4 w-4" />
-            {texts.plantillas.predisenadosTitulo}
-            <span className="text-brand-muted text-xs font-normal">({predesigned.length})</span>
-          </div>
-          <p className="text-brand-muted mb-2 text-[11px]">{texts.plantillas.predisenadosHint}</p>
-          {/* Paquete A — llenado VARIADO de los slots vacíos (round-robin del
-              catálogo: nunca N slots con el mismo diseño habiendo variedad). */}
-          {emptySlots > 0 && (
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div
+              id="sidebar-predisenados"
+              className="text-brand-purple-dark flex items-center gap-2 text-sm font-semibold"
+            >
+              <Sparkles className="text-brand-purple h-4 w-4" />
+              {texts.plantillas.predisenadosTitulo}
+              <span className="text-brand-muted text-xs font-normal">({predesigned.length})</span>
+            </div>
+            {/* Fase 2 · 2.5 — colapsable: cerrada por defecto cuando hay muchos
+                (> PREDESIGNED_COLLAPSE_THRESHOLD), para que «Mis fotos» no quede
+                sepultada. El contador del header sigue visible estando cerrada. */}
             <button
               type="button"
-              onClick={handleFillWithVariety}
-              disabled={applyingVariety || applyingPredesignedId !== null}
-              aria-label={texts.plantillas.predisenadosLlenarAria}
-              className="bg-brand-turquoise/15 text-brand-purple-dark hover:bg-brand-turquoise/25 focus:ring-brand-turquoise mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2.5 text-sm font-semibold transition-colors focus:ring-2 focus:outline-none disabled:opacity-60"
+              onClick={() => setPredesignedOpen((v) => !v)}
+              aria-expanded={predesignedOpen}
+              aria-controls="sidebar-predisenados-panel"
+              aria-label={texts.fotos.predisenadosToggleAria}
+              className="text-brand-muted hover:text-brand-purple-dark hover:bg-brand-cream focus:ring-brand-purple rounded-md p-1.5 transition-colors focus:ring-2 focus:outline-none"
             >
-              {applyingVariety ? (
-                <Loader2 className="text-brand-purple h-4 w-4 animate-spin" />
-              ) : (
-                <Wand2 className="text-brand-purple h-4 w-4" />
-              )}
-              {texts.plantillas.predisenadosLlenarCta}
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${predesignedOpen ? "" : "-rotate-90"}`}
+                aria-hidden
+              />
             </button>
-          )}
-          <div className="grid grid-cols-3 gap-2">
-            {predesigned.map((item) => {
-              const faceBadge = predesignedFaceBadge(facesPerUnit, item.imageUrlB);
-              return (
-                <Hint key={item.id} content={item.name}>
-                  <button
-                    type="button"
-                    onClick={() => handleApplyPredesigned(item)}
-                    disabled={applyingPredesignedId !== null || applyingVariety}
-                    aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
-                      nombre: item.name,
-                    })}
-                    // 2026-09-22 — drag & drop al lienzo (desktop): la tarjeta se
-                    // arrastra hasta un slot (highlight de drop target ya existe en
-                    // el slot). El clic sigue aplicando al slot seleccionado/vacío.
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData(
-                        PREDESIGNED_DRAG_MIME,
-                        JSON.stringify({ id: item.id, name: item.name }),
-                      );
-                      e.dataTransfer.effectAllowed = "copy";
-                    }}
-                    className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none active:cursor-grabbing disabled:opacity-50"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={item.imageUrl}
-                      alt={item.name}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                      // La imagen interna no debe secuestrar el drag del botón.
-                      draggable={false}
-                    />
-                    {/* Paquete A — badge 1/2 caras (solo productos de 2 caras):
-                      "1 cara" = el respaldo se imprime espejo del frente (regla
-                      única de cara B vacía — ver predesigned-variety.ts). */}
-                    {faceBadge && (
-                      <Hint
-                        content={
-                          faceBadge === "two"
-                            ? texts.plantillas.badgeDosCarasTitle
-                            : texts.plantillas.badgeUnaCaraTitle
-                        }
-                      >
-                        {/* stopPropagation: el badge vive DENTRO del botón con su
-                            propio Hint — sin esto el hover abriría ambos tooltips. */}
-                        <span
-                          onPointerMove={(e) => e.stopPropagation()}
-                          className="text-brand-purple-dark absolute top-1 left-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold shadow"
-                        >
-                          {faceBadge === "two"
-                            ? texts.plantillas.badgeDosCaras
-                            : texts.plantillas.badgeUnaCara}
-                        </span>
-                      </Hint>
-                    )}
-                    {applyingPredesignedId === item.id && (
-                      <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
-                        <Loader2 className="h-5 w-5 animate-spin text-white" />
-                      </div>
-                    )}
-                  </button>
-                </Hint>
-              );
-            })}
           </div>
+          {predesignedOpen && (
+            <div id="sidebar-predisenados-panel">
+              <p className="text-brand-muted mb-2 text-[11px]">
+                {texts.plantillas.predisenadosHint}
+              </p>
+              {/* Paquete A — llenado VARIADO de los slots vacíos (round-robin del
+              catálogo: nunca N slots con el mismo diseño habiendo variedad). */}
+              {emptySlots > 0 && (
+                <button
+                  type="button"
+                  onClick={handleFillWithVariety}
+                  disabled={applyingVariety || applyingPredesignedId !== null}
+                  aria-label={texts.plantillas.predisenadosLlenarAria}
+                  className="bg-brand-turquoise/15 text-brand-purple-dark hover:bg-brand-turquoise/25 focus:ring-brand-turquoise mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2.5 text-sm font-semibold transition-colors focus:ring-2 focus:outline-none disabled:opacity-60"
+                >
+                  {applyingVariety ? (
+                    <Loader2 className="text-brand-purple h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="text-brand-purple h-4 w-4" />
+                  )}
+                  {texts.plantillas.predisenadosLlenarCta}
+                </button>
+              )}
+              <div className="grid grid-cols-3 gap-2">
+                {predesigned.map((item) => {
+                  const faceBadge = predesignedFaceBadge(facesPerUnit, item.imageUrlB);
+                  return (
+                    <Hint key={item.id} content={item.name}>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyPredesigned(item)}
+                        disabled={applyingPredesignedId !== null || applyingVariety}
+                        aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
+                          nombre: item.name,
+                        })}
+                        // 2026-09-22 — drag & drop al lienzo (desktop): la tarjeta se
+                        // arrastra hasta un slot (highlight de drop target ya existe en
+                        // el slot). El clic sigue aplicando al slot seleccionado/vacío.
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData(
+                            PREDESIGNED_DRAG_MIME,
+                            JSON.stringify({ id: item.id, name: item.name }),
+                          );
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
+                        className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none active:cursor-grabbing disabled:opacity-50"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={item.thumbUrl ?? item.imageUrl}
+                          alt={item.name}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          // La imagen interna no debe secuestrar el drag del botón.
+                          // 3.10 — disuasión anti-copia: sin menú contextual
+                          // ("Guardar imagen como…") sobre la miniatura.
+                          draggable={false}
+                          onContextMenu={(e) => e.preventDefault()}
+                        />
+                        {/* Paquete A — badge 1/2 caras (solo productos de 2 caras):
+                      "1 cara" = el respaldo se imprime EN BLANCO (regla única de
+                      cara B vacía, owner 2026-10-07 — ver predesigned-variety.ts). */}
+                        {faceBadge && (
+                          <Hint
+                            content={
+                              faceBadge === "two"
+                                ? texts.plantillas.badgeDosCarasTitle
+                                : texts.plantillas.badgeUnaCaraTitle
+                            }
+                          >
+                            {/* stopPropagation: el badge vive DENTRO del botón con su
+                            propio Hint — sin esto el hover abriría ambos tooltips. */}
+                            <span
+                              onPointerMove={(e) => e.stopPropagation()}
+                              className="text-brand-purple-dark absolute top-1 left-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold shadow"
+                            >
+                              {faceBadge === "two"
+                                ? texts.plantillas.badgeDosCaras
+                                : texts.plantillas.badgeUnaCara}
+                            </span>
+                          </Hint>
+                        )}
+                        {applyingPredesignedId === item.id && (
+                          <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
+                            <Loader2 className="h-5 w-5 animate-spin text-white" />
+                          </div>
+                        )}
+                      </button>
+                    </Hint>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </section>
       )}
     </div>

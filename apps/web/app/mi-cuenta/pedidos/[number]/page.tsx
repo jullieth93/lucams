@@ -17,6 +17,8 @@ import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { ChevronLeft, MapPin, Package, Star, Truck, Wallet } from "lucide-react";
 import { prisma } from "@/lib/db";
+import { CmsText } from "@/components/cms/cms-text";
+import { DesignPreviewDialog } from "@/app/carrito/design-preview-dialog";
 import { getCurrentCustomer } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
 import { getRetractableItems } from "@/features/retract/service";
@@ -256,6 +258,29 @@ export default async function CustomerPedidoDetallePage({
                   {variantBreakdown.length > 0 && (
                     <div className="text-brand-purple-dark/70 text-xs">
                       {variantBreakdown.join(" · ")}
+                    </div>
+                  )}
+                  {/* Zoom del diseño (fix QA STG 2026-10): mismo lightbox con
+                      zoom del carrito que en la vista pública /pedido. */}
+                  {previewUrl && (
+                    <div className="mt-1.5">
+                      <DesignPreviewDialog
+                        previewUrl={previewUrl}
+                        productName={it.variant.product.name}
+                        triggerLabel={<CmsText blockKey="cart.ver-diseno" fallback="Ver" />}
+                        title={
+                          <CmsText
+                            blockKey="cart.vista-previa-diseno-titulo"
+                            fallback="Tu diseño ·"
+                          />
+                        }
+                        description={
+                          <CmsText
+                            blockKey="cart.vista-previa-diseno-desc"
+                            fallback="Vista previa ampliada del diseño personalizado de esta línea del pedido."
+                          />
+                        }
+                      />
                     </div>
                   )}
                   {retractByItem.has(it.id) && (

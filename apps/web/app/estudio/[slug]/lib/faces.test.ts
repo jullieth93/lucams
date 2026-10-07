@@ -50,29 +50,30 @@ describe("faces (Ola 3 — separadores 2 caras)", () => {
     expect(facePairOfUnit(2)).toEqual({ faceA: 4, faceB: 5 });
   });
 
-  // Paquete D (2026-10-02) — REGLA ÚNICA de la cara B vacía: en TODOS los
-  // renders (preview cliente, 3D, producción) se pinta ESPEJO de la cara A.
-  it("previewFacePairOfUnit: cara B vacía (backOptional) se pinta con el slot de la cara A", () => {
+  // Decisión owner 2026-10-07 — REGLA ÚNICA de la cara B vacía (revierte la
+  // regla espejo del Paquete D, 2026-10-02): en TODOS los renders (preview
+  // cliente, 3D, producción) la cara B sin diseñar queda EN BLANCO.
+  it("previewFacePairOfUnit: cara B vacía (backOptional) → faceB = null (se pinta EN BLANCO)", () => {
     const slots = [
       { slotIndex: 0, assetUrl: "a.jpg" }, // unidad 0 · A con foto
       { slotIndex: 1, assetUrl: null }, // unidad 0 · B VACÍA
       { slotIndex: 2, assetUrl: "b.jpg" }, // unidad 1 · A con foto
       { slotIndex: 3, assetUrl: "c.jpg" }, // unidad 1 · B diseñada
     ];
-    // B vacía → el slot efectivo de la B es el de su cara A (espejo).
-    expect(previewFacePairOfUnit(slots, 0, true)).toEqual({ faceA: 0, faceB: 0 });
+    // B vacía → faceB = null: el caller pinta ese rect en blanco puro, nunca
+    // espejo de la cara A.
+    expect(previewFacePairOfUnit(slots, 0, true)).toEqual({ faceA: 0, faceB: null });
     // B diseñada → el par real, sin cambios.
     expect(previewFacePairOfUnit(slots, 1, true)).toEqual({ faceA: 2, faceB: 3 });
     // Sin backOptional el par es siempre el real (la B se exige diseñada).
     expect(previewFacePairOfUnit(slots, 0, false)).toEqual({ faceA: 0, faceB: 1 });
   });
 
-  // Blindaje de concordancia (2026-10-05): producción expande las caras B
-  // vacías con `byIndex.get(i) ?? byIndex.get(i - 1)` (expandMissingBackFaces,
-  // service.ts) — el espejo es SIEMPRE el slot PAR inmediatamente anterior.
-  // previewFacePairOfUnit debe producir exactamente ese mapeo, o el preview
-  // del cliente mostraría otra cara de la que imprenta recibe.
-  it("el espejo de la B vacía es el slot PAR inmediato anterior (mismo mapeo que expandMissingBackFaces)", () => {
+  // Concordancia con producción (2026-10-07): la cara B vacía NO usa ningún
+  // slot — producción genera un PNG blanco del tamaño de la cara A
+  // (blankBackFacePng, blank-back-face.ts) y el preview pinta el rect blanco.
+  // Cualquier unidad, sin importar su índice, resuelve faceB = null.
+  it("la B vacía se pinta EN BLANCO en cualquier unidad (faceB = null, mismo blanco que producción)", () => {
     for (let unit = 0; unit < 5; unit++) {
       const { faceA, faceB } = facePairOfUnit(unit);
       const slots = [
@@ -80,10 +81,8 @@ describe("faces (Ola 3 — separadores 2 caras)", () => {
         { slotIndex: faceB, assetUrl: null }, // B vacía
       ];
       const pair = previewFacePairOfUnit(slots, unit, true);
-      // Convención de producción: la B (slot i) cae al slot i − 1 (su cara A).
-      expect(pair.faceB).toBe(faceB - 1);
-      expect(pair.faceB).toBe(faceA);
-      expect(pair.faceB % 2).toBe(0); // siempre un slot par (cara A)
+      expect(pair.faceA).toBe(faceA); // la cara A siempre es su slot par real
+      expect(pair.faceB).toBeNull(); // la B vacía nunca espeja otro slot
     }
   });
 

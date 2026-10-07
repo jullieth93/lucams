@@ -13,7 +13,15 @@ export type RastrearTexts = {
   submit: string;
 };
 
-export function RastrearForm({ texts }: { texts: RastrearTexts }) {
+export function RastrearForm({
+  texts,
+  initialNumber,
+}: {
+  texts: RastrearTexts;
+  /** Número de pedido prellenado desde ?number= (link interno de /pedido —
+   *  el correo nunca viaja por query, lo escribe el cliente). */
+  initialNumber?: string;
+}) {
   const [state, formAction, pending] = useActionState<RastrearState, FormData>(
     rastrearAction,
     null,
@@ -31,6 +39,8 @@ export function RastrearForm({ texts }: { texts: RastrearTexts }) {
           required
           autoComplete="off"
           placeholder="LCM-2026-0001"
+          defaultValue={initialNumber}
+          maxLength={40}
           className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
         />
         <p className="text-brand-muted mt-1 text-xs">{texts.numberHelp}</p>

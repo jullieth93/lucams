@@ -587,8 +587,9 @@ export function NameEditor({
     <>
       {/* Ola 32 — chrome unificado del Estudio: barra sticky con el idioma visual
           del StudioToolbar del estudio de foto (pill «Salir», avatar+nombre del
-          producto, total en vivo + CTA «Vista previa» — la MISMA acción del botón
-          grande del panel de controles). */}
+          producto, total en vivo + CTA «Ver diseño» — la MISMA acción del botón
+          grande «Vista previa» del panel de controles, con rótulo diferenciado
+          para no leer dos botones idénticos en pantalla — QA 1.6, 2026-10-07). */}
       <StudioSimpleHeader
         productName={product.name}
         productSlug={product.slug}
@@ -600,7 +601,7 @@ export function NameEditor({
             </span>
           ) : undefined
         }
-        ctaLabel={texts.comun.listo}
+        ctaLabel={texts.comun.verDiseno}
         ctaBusyLabel={preparingPreview ? texts.comun.preparando : texts.comun.agregando}
         ctaBusy={preparingPreview || submitting}
         ctaDisabled={!valid}

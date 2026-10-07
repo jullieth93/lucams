@@ -261,9 +261,9 @@ export async function saveLucamsShippingSettings(
     SETTING_KEYS.lucamsEnabled,
     input.enabled ? "true" : "false",
     {
-      label: "Envío propio Lucam's activo",
+      label: "Envío propio LUCAMS activo",
       helpText:
-        "Activa la opción «Envío Lucam's» (mensajería propia, por zonas de entrega) en el checkout. Se gestiona desde Envíos (/admin/envios).",
+        "Activa la opción «LUCAMS» (mensajería propia, por zonas de entrega) en el checkout. Se gestiona desde Envíos (/admin/envios).",
       type: "BOOLEAN",
     },
     adminId,

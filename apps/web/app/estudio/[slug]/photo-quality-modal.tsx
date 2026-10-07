@@ -97,117 +97,132 @@ export function PhotoQualityModal({
             className="fixed inset-0 z-50 cursor-default bg-black/40 backdrop-blur-sm"
             tabIndex={-1}
           />
-          {/* Modal */}
-          <motion.div
-            ref={dialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="photo-quality-title"
-            tabIndex={-1}
-            initial={{ opacity: 0, scale: 0.94, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.94, y: 8 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="ring-brand-purple/10 fixed top-1/2 left-1/2 z-50 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl bg-white shadow-2xl ring-1"
-          >
-            {/* Header con icono según severidad */}
-            <div
-              className={[
-                "flex items-start gap-3 px-5 pt-5 pb-3",
-                isStrong ? "bg-red-50" : "bg-amber-50",
-              ].join(" ")}
+          {/* Wrapper de centrado (fix STG 2026-10-07): el centrado vive AQUÍ
+              y no en clases -translate-x/y-1/2 del panel — framer-motion
+              escribe `transform` inline en el panel para la animación
+              (scale/y) y no debe competir con el centrado. Además el panel
+              pasa a flex-col con max-h en dvh: en viewports bajos (móvil
+              HORIZONTAL, p.ej. 844×390) el contenido antes se salía de
+              pantalla y el footer con "Entendido" quedaba INALCANZABLE.
+              pointer-events-none en el wrapper: los clics fuera del panel
+              caen en el backdrop (cierra el modal). */}
+          <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Modal */}
+            <motion.div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="photo-quality-title"
+              tabIndex={-1}
+              initial={{ opacity: 0, scale: 0.94, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 8 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="ring-brand-purple/10 pointer-events-auto flex max-h-[90dvh] w-[92vw] max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1"
             >
+              {/* Header con icono según severidad — shrink-0: siempre visible,
+                  no lo comprime el scroll del body. */}
               <div
                 className={[
-                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl shadow ring-2 ring-white",
-                  isStrong ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800",
+                  "flex shrink-0 items-start gap-3 px-5 pt-5 pb-3",
+                  isStrong ? "bg-red-50" : "bg-amber-50",
                 ].join(" ")}
-                aria-hidden
               >
-                {isStrong ? "⚠️" : "ⓘ"}
-              </div>
-              <div className="flex-1">
-                <h2
-                  id="photo-quality-title"
+                <div
                   className={[
-                    "text-base leading-tight font-bold",
-                    isStrong ? "text-red-800" : "text-amber-900",
+                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl shadow ring-2 ring-white",
+                    isStrong ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800",
                   ].join(" ")}
+                  aria-hidden
                 >
-                  {isStrong ? texts.fotos.calidadTituloFuerte : texts.fotos.calidadTituloSuave}
-                </h2>
-                <p
-                  className={[
-                    "mt-1 text-xs",
-                    isStrong ? "text-red-700/85" : "text-amber-800/85",
-                  ].join(" ")}
-                >
-                  {isSoft ? texts.fotos.calidadSubSuave : texts.fotos.calidadSubFuerte}
-                </p>
-              </div>
-            </div>
-
-            {/* Body con thumbnail + mensaje */}
-            <div className="flex gap-3 px-5 py-4">
-              {/* Thumb grande (opcional: el chip del slot siempre la tiene) */}
-              {thumbUrl && (
-                <div className="ring-brand-purple/10 h-24 w-24 shrink-0 overflow-hidden rounded-md ring-1">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={thumbUrl}
-                    alt={texts.fotos.fotoRevisionAlt}
-                    className="h-full w-full object-cover"
-                  />
+                  {isStrong ? "⚠️" : "ⓘ"}
                 </div>
-              )}
-              <div className="flex flex-1 flex-col justify-center text-sm">
-                <p className="text-brand-purple-dark leading-snug font-medium">{resolvedMessage}</p>
-                {/* Paquete C (2026-10-02) — la recomendación ESPECÍFICA del caso
-                    (resolución / nitidez / luz, generada por el servidor) es el
-                    contenido principal; los tips generales CMS quedan secundarios. */}
-                {resolvedRecommendation && (
-                  <div
+                <div className="flex-1">
+                  <h2
+                    id="photo-quality-title"
                     className={[
-                      "mt-2 rounded-lg px-3 py-2 text-xs leading-snug",
-                      isStrong ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-900",
+                      "text-base leading-tight font-bold",
+                      isStrong ? "text-red-800" : "text-amber-900",
                     ].join(" ")}
                   >
-                    <p className="font-bold">{texts.fotos.calidadRecomendacionTitulo}</p>
-                    <p className="mt-0.5">{resolvedRecommendation}</p>
-                  </div>
-                )}
-                <div className="text-brand-muted mt-2 space-y-1 text-xs">
-                  <p className="font-semibold">{texts.fotos.calidadAccionesTitulo}</p>
-                  <ul className="ml-3 list-disc space-y-0.5">
-                    <li>{texts.fotos.calidadTip1}</li>
-                    <li>{texts.fotos.calidadTip2}</li>
-                  </ul>
+                    {isStrong ? texts.fotos.calidadTituloFuerte : texts.fotos.calidadTituloSuave}
+                  </h2>
+                  <p
+                    className={[
+                      "mt-1 text-xs",
+                      isStrong ? "text-red-700/85" : "text-amber-800/85",
+                    ].join(" ")}
+                  >
+                    {isSoft ? texts.fotos.calidadSubSuave : texts.fotos.calidadSubFuerte}
+                  </p>
                 </div>
               </div>
-            </div>
 
-            {/* Footer actions — "Entendido" es el CTA primario (morado sólido,
+              {/* Body con thumbnail + mensaje — zona SCROLLEABLE: es la única
+                que cede altura (min-h-0) cuando el viewport es bajo. */}
+              <div className="flex min-h-0 flex-1 gap-3 overflow-y-auto px-5 py-4">
+                {/* Thumb grande (opcional: el chip del slot siempre la tiene) */}
+                {thumbUrl && (
+                  <div className="ring-brand-purple/10 h-24 w-24 shrink-0 overflow-hidden rounded-md ring-1">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={thumbUrl}
+                      alt={texts.fotos.fotoRevisionAlt}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                )}
+                <div className="flex flex-1 flex-col justify-center text-sm">
+                  <p className="text-brand-purple-dark leading-snug font-medium">
+                    {resolvedMessage}
+                  </p>
+                  {/* Paquete C (2026-10-02) — la recomendación ESPECÍFICA del caso
+                    (resolución / nitidez / luz, generada por el servidor) es el
+                    contenido principal; los tips generales CMS quedan secundarios. */}
+                  {resolvedRecommendation && (
+                    <div
+                      className={[
+                        "mt-2 rounded-lg px-3 py-2 text-xs leading-snug",
+                        isStrong ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-900",
+                      ].join(" ")}
+                    >
+                      <p className="font-bold">{texts.fotos.calidadRecomendacionTitulo}</p>
+                      <p className="mt-0.5">{resolvedRecommendation}</p>
+                    </div>
+                  )}
+                  <div className="text-brand-muted mt-2 space-y-1 text-xs">
+                    <p className="font-semibold">{texts.fotos.calidadAccionesTitulo}</p>
+                    <ul className="ml-3 list-disc space-y-0.5">
+                      <li>{texts.fotos.calidadTip1}</li>
+                      <li>{texts.fotos.calidadTip2}</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer actions — "Entendido" es el CTA primario (morado sólido,
                 feedback STG 2026-10: el ghost pasaba desapercibido); la acción
                 secundaria ("Usar de todos modos") va en outline. */}
-            <div className="border-brand-purple/10 flex items-center justify-end gap-2 border-t px-5 py-3">
-              {actionLabel && onAction && (
+              <div className="border-brand-purple/10 flex shrink-0 items-center justify-end gap-2 border-t px-5 py-3">
+                {actionLabel && onAction && (
+                  <button
+                    type="button"
+                    onClick={onAction}
+                    className="border-brand-purple/40 text-brand-purple-dark hover:bg-brand-purple/10 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors"
+                  >
+                    {actionLabel}
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={onAction}
-                  className="border-brand-purple/40 text-brand-purple-dark hover:bg-brand-purple/10 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors"
+                  onClick={onClose}
+                  className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-turquoise rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors focus:ring-2 focus:outline-none"
                 >
-                  {actionLabel}
+                  {texts.fotos.calidadCerrar}
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={onClose}
-                className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-turquoise rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors focus:ring-2 focus:outline-none"
-              >
-                {texts.fotos.calidadCerrar}
-              </button>
-            </div>
-          </motion.div>
+              </div>
+            </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>,

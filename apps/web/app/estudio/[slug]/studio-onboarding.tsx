@@ -1,18 +1,27 @@
 "use client";
 
 /*
- * StudioOnboarding — M.3.b.UX.5 (2026-05-14).
+ * StudioOnboarding — M.3.b.UX.5 (2026-05-14); tour POR PRODUCTO (Fase 2 · item
+ * 2.8, 2026-10-07).
  *
- * Lightbox tutorial primera vez. Detecta via localStorage si el cliente ya
- * fue onboardeado. Si no, muestra 3 pasos progresivos con spotlight visual
- * sobre el target de cada paso + mascote + copy en es-CO tuteo.
+ * Lightbox tutorial primera vez. Detecta via localStorage si el cliente ya fue
+ * onboardeado EN ESTA SUPERFICIE. Si no, muestra los 3 pasos genéricos + las
+ * FEATURES del lienzo del producto actual (config declarativa en
+ * lib/studio-tour.ts — p.ej. Polaroid IG: foto de perfil, textos del post,
+ * marco; Calendario: sets, año/letra; Separadores: caras A/B y respaldo en
+ * blanco) con spotlight visual sobre el target de cada paso + mascote + copy
+ * en es-CO tuteo.
  *
  * Triggers:
- *   - Mount del editor + localStorage['lucams_studio_onboarded'] !== "v1"
+ *   - Mount del editor + localStorage['lucams_studio_onboarded_<surface>'] !== "v1"
  *
- * Persistencia:
- *   - Al completar (paso 3 "Listo") O al saltar ("Saltar tutorial") →
- *     localStorage['lucams_studio_onboarded'] = "v1"
+ * Persistencia (item 2.8 — ANTES una sola clave global
+ * 'lucams_studio_onboarded': quien veía el tutorial de los fotoimanes no
+ * aprendía las funciones del lienzo del calendario):
+ *   - Al completar (último paso "Listo") O al saltar ("Saltar tutorial") →
+ *     localStorage['lucams_studio_onboarded_<surface>'] = "v1"
+ *   - La clave global vieja queda sin uso (convive; no se borra): los usuarios
+ *     previos ven UNA vez el tour de cada superficie — la intención del item.
  *   - Si Lucy actualiza el tutorial a v2 en el futuro, cambia la key y se
  *     muestra de nuevo a usuarios viejos.
  *
@@ -21,6 +30,8 @@
  *     hacer agujero CSS-only; usamos opacidad y mascote pointer).
  *   - Card flotante con copy + botones (Skip / Anterior / Siguiente / Listo).
  *   - Mascote LucamsLogo en cada paso para reforzar brand.
+ *   - Las features del producto llevan un ICONO junto al título (mapa lucide
+ *     por clave declarativa del tour).
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -29,12 +40,46 @@ import { LucamsLogo } from "@/components/lucams-logo";
 import { Hint } from "@/components/ui/tooltip";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useDialogA11y } from "./use-dialog-a11y";
-import { ArrowRight, Sparkles, X } from "lucide-react";
+import {
+  ArrowRight,
+  Sparkles,
+  X,
+  CircleUserRound,
+  Type,
+  Frame,
+  CalendarDays,
+  CaseSensitive,
+  Columns2,
+  Square,
+  StretchVertical,
+  Copy,
+  Palette,
+  type LucideIcon,
+} from "lucide-react";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, type StudioTexts } from "./studio-texts";
+import {
+  tourStorageKey,
+  tourFeaturesFor,
+  type StudioTourSurface,
+  type StudioTourIcon,
+} from "./lib/studio-tour";
 
-const ONBOARD_KEY = "lucams_studio_onboarded";
 const ONBOARD_VERSION = "v1";
+
+/** Mapa de los iconos declarativos del tour a componentes lucide. */
+const TOUR_ICONS: Record<StudioTourIcon, LucideIcon> = {
+  user: CircleUserRound,
+  type: Type,
+  frame: Frame,
+  calendar: CalendarDays,
+  font: CaseSensitive,
+  faces: Columns2,
+  blank: Square,
+  strip: StretchVertical,
+  units: Copy,
+  palette: Palette,
+};
 
 type OnboardingStep = {
   title: string;
@@ -43,15 +88,23 @@ type OnboardingStep = {
    *  el patrón en móvil es "toca y sube tu foto" (hallazgo de investigación Fase 3). */
   bodyMobile?: string;
   cta: string;
+  /** Icono de feature del producto (pasos del tour por superficie, item 2.8). */
+  icon?: StudioTourIcon;
 };
 
 // #14 — el sustantivo del slot se parametriza por producto: en /estudio/separadores-libros los slots
 // son "separador", no "imán" (pantalla=físico). #7/#13 — copy en es-CO tuteo (sin voseo).
 // Ola 4 — los formatos salen del CMS (estudio.fotos.formatos, via texts) igual que los uploaders.
 // Roadmap B1 — todos los textos del tutorial son campos CMS (estudio.lienzo.onboarding-*).
-function buildSteps(noun: string, texts: StudioTexts): OnboardingStep[] {
+// Item 2.8 — a los 3 pasos genéricos se suman las FEATURES del lienzo del producto
+// (estudio.tour.*), cada una como un paso con su icono.
+function buildSteps(
+  noun: string,
+  surface: StudioTourSurface,
+  texts: StudioTexts,
+): OnboardingStep[] {
   const vars = { sustantivo: noun, formatos: texts.fotos.formatos };
-  return [
+  const generic: OnboardingStep[] = [
     {
       title: texts.lienzo.onboarding1Titulo,
       body: fillStudioText(texts.lienzo.onboarding1Cuerpo, vars),
@@ -64,12 +117,19 @@ function buildSteps(noun: string, texts: StudioTexts): OnboardingStep[] {
       bodyMobile: fillStudioText(texts.lienzo.onboarding2CuerpoMovil, vars),
       cta: texts.comun.siguiente,
     },
-    {
-      title: texts.lienzo.onboarding3Titulo,
-      body: texts.lienzo.onboarding3Cuerpo,
-      cta: texts.lienzo.onboardingCtaEmpezar,
-    },
   ];
+  const features: OnboardingStep[] = tourFeaturesFor(surface, texts).map((f) => ({
+    title: f.title,
+    body: f.body,
+    cta: texts.comun.siguiente,
+    icon: f.icon,
+  }));
+  const last: OnboardingStep = {
+    title: texts.lienzo.onboarding3Titulo,
+    body: texts.lienzo.onboarding3Cuerpo,
+    cta: texts.lienzo.onboardingCtaEmpezar,
+  };
+  return [...generic, ...features, last];
 }
 
 /** Detecta viewport móvil (< lg) de forma reactiva para elegir el copy correcto. */
@@ -86,20 +146,38 @@ function useIsMobile(): boolean {
   return isMobile;
 }
 
-export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) {
+export function StudioOnboarding({
+  slotNoun = "imán",
+  surface = "default",
+  onOpenChange,
+}: {
+  slotNoun?: string;
+  /** Item 2.8 — superficie del tour (tipo de producto): decide las features y
+   *  la clave de localStorage ("ya lo vi" por superficie). */
+  surface?: StudioTourSurface;
+  /** Item 2.8 — el editor pausa el auto-trigger del banner de gestos mientras
+   *  el tour está abierto (convivencia con StudioGesturesHint). */
+  onOpenChange?: (open: boolean) => void;
+}) {
   const reduced = usePrefersReducedMotion();
   const [isOpen, setIsOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState(0);
   const isMobile = useIsMobile();
   const texts = useStudioTexts();
-  const STEPS = buildSteps(slotNoun, texts);
+  const STEPS = buildSteps(slotNoun, surface, texts);
+
+  // Item 2.8 — reportar el open al editor (suprime el auto-trigger del banner
+  // de gestos mientras el tour tapa la pantalla).
+  useEffect(() => {
+    onOpenChange?.(isOpen);
+  }, [isOpen, onOpenChange]);
 
   useEffect(() => {
     // Solo mostrar en cliente — SSR evita el localStorage
     if (typeof window === "undefined") return;
     try {
-      const stored = window.localStorage.getItem(ONBOARD_KEY);
+      const stored = window.localStorage.getItem(tourStorageKey(surface));
       if (stored !== ONBOARD_VERSION) {
         // Delay 800ms para que el editor termine de montarse antes
         const t = window.setTimeout(() => setIsOpen(true), 800);
@@ -108,16 +186,16 @@ export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) 
     } catch {
       // localStorage podría no estar disponible (private mode iOS Safari pre-iOS 11)
     }
-  }, []);
+  }, [surface]);
 
   const close = useCallback(() => {
     setIsOpen(false);
     try {
-      window.localStorage.setItem(ONBOARD_KEY, ONBOARD_VERSION);
+      window.localStorage.setItem(tourStorageKey(surface), ONBOARD_VERSION);
     } catch {
       // ignore
     }
-  }, []);
+  }, [surface]);
 
   // #15 — foco inicial + trap + Escape + retorno de foco del onboarding.
   useDialogA11y(dialogRef, { onClose: close, active: isOpen });
@@ -136,6 +214,7 @@ export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) 
   };
 
   const current = STEPS[step];
+  const CurrentIcon = current.icon ? TOUR_ICONS[current.icon] : null;
 
   return (
     <AnimatePresence>
@@ -177,8 +256,11 @@ export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) 
                 </p>
                 <h2
                   id="onboarding-title"
-                  className="text-brand-purple-dark mt-1 text-lg leading-tight font-bold"
+                  className="text-brand-purple-dark mt-1 flex items-center gap-2 text-lg leading-tight font-bold"
                 >
+                  {CurrentIcon && (
+                    <CurrentIcon className="text-brand-pink h-5 w-5 shrink-0" aria-hidden />
+                  )}
                   {current.title}
                 </h2>
               </div>

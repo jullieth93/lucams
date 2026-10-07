@@ -1,5 +1,5 @@
 /*
- * Envío propio "Envío Lucam's" — mensajería interna por zonas de entrega
+ * Envío propio "LUCAMS" — mensajería interna por zonas de entrega
  * (multi-ciudad: el catálogo de ciudades/zonas vive en lib/lucams-zones.ts;
  * hoy solo Bogotá con sus 20 localidades).
  *
@@ -28,7 +28,12 @@ import { getLucamsShippingSettings } from "./settings";
 import type { ShippingSelectionInput } from "@/features/checkout/schemas";
 
 export const LUCAMS_CARRIER = "lucams";
-export const LUCAMS_CARRIER_NAME = "Envío Lucam's";
+// Nombre de marca CORTO del envío propio (fix QA STG 2026-10: "Envío Lucam's"
+// → "LUCAMS"). Es el nombre visible en TODOS los contextos derivados del slug
+// "lucams" (selector de envío, resumen de pago, /pedido, /mi-cuenta, admin y
+// emails vía carrierDisplayName) — las órdenes guardan el slug, no el nombre,
+// así que el cambio aplica también a pedidos históricos sin migración.
+export const LUCAMS_CARRIER_NAME = "LUCAMS";
 
 // La regla de la promesa (producción + hora de corte) vive en
 // lib/delivery-estimate.ts; se re-exporta la hora Colombia por compatibilidad

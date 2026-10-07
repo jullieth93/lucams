@@ -4,8 +4,9 @@
  *
  *   1. transitionOrder(orderId, "PAID") + guardar wompiTransactionId.
  *   2. Intentar createShipment con el provider activo (Aveonline).
- *      - Si OK: guardar trackingNumber/labelUrl/trackingUrl + transitionOrder
- *        a FULFILLING (lista para imprimir/despachar).
+ *      - Si OK: guardar trackingNumber/labelUrl/trackingUrl, archivar copia
+ *        propia del PDF de la etiqueta en Storage (labelPath, best-effort — fix
+ *        1.8) y transitionOrder a FULFILLING (lista para imprimir/despachar).
  *      - Si falla: Order queda en PAID; admin puede reintentar manualmente
  *        desde /admin/pedidos/[id]. No revertimos a PENDING_PAYMENT.
  *   3. (Futuro P1.5) disparar email order-confirmation al cliente.
@@ -33,6 +34,7 @@ import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
 import { LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 import { buildShipmentLastError } from "./shipment-error";
 import { resolveShipmentRecipient } from "./shipment-recipient";
+import { archiveShipmentLabel } from "@/features/shipping/label-archive";
 import type { ShippingAddressInput } from "./schemas";
 import {
   sendOrderConfirmationOnce,
@@ -683,6 +685,7 @@ export async function processPaidOrder(
     trackingUrl: string;
     labelUrl: string;
     carrier: string;
+    labelPdfBase64?: string | null;
   };
   try {
     const provider = await getShippingProvider();
@@ -826,6 +829,32 @@ export async function processPaidOrder(
       status: "transition_failed",
       reason: "Guía creada en Aveonline pero no se pudo guardar tracking en DB (reconciliar)",
     };
+  }
+
+  // 8.5) Fix 1.8 (2026-10-07) — Archivar copia PROPIA del PDF de la etiqueta en
+  //    Storage (bucket privado production-assets, path en Order.labelPath). Las
+  //    URLs externas de Aveonline pueden expirar/requerir sesión/responder no-PDF
+  //    según transportadora (reportado: "a veces no descarga guías"). BEST-EFFORT:
+  //    archiveShipmentLabel nunca lanza (devuelve null + log warn) y el catch de
+  //    acá cubre lo inesperado (p.ej. falla el update de labelPath): la orden ya
+  //    tiene tracking persistido y sigue su flujo normal con las URLs externas.
+  try {
+    const labelPath = await archiveShipmentLabel({
+      orderId: order.id,
+      labelUrl: shipmentResult.labelUrl,
+      trackingUrl: shipmentResult.trackingUrl,
+      labelPdfBase64: shipmentResult.labelPdfBase64,
+    });
+    if (labelPath) {
+      await prisma.order.update({ where: { id: order.id }, data: { labelPath } });
+    }
+  } catch (err) {
+    logger.warn({
+      event: "order.saga.paid.label_archive_unexpected",
+      orderId: order.id,
+      orderNumber: order.number,
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 
   // 9) Transicionar a FULFILLING. El tracking YA está en DB, así que si esta

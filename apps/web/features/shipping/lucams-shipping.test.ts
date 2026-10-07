@@ -76,7 +76,7 @@ describe("buildLucamsOffer", () => {
     );
     expect(offer).toMatchObject({
       carrier: LUCAMS_CARRIER,
-      carrierName: "Envío Lucam's",
+      carrierName: "LUCAMS",
       fleteCop: 850_000,
       deliveryDays: 0,
       contraentrega: false,
@@ -136,7 +136,7 @@ describe("bogotaHour", () => {
 
 describe("carrierDisplayName", () => {
   it("el envío propio tiene nombre propio; los demás se capitalizan", () => {
-    expect(carrierDisplayName(LUCAMS_CARRIER)).toBe("Envío Lucam's");
+    expect(carrierDisplayName(LUCAMS_CARRIER)).toBe("LUCAMS");
     expect(carrierDisplayName("tcc-sa")).toBe("Tcc Sa");
     expect(carrierDisplayName(null)).toBe("—");
   });

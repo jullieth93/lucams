@@ -49,6 +49,7 @@
  * 2026-07-22 (ola 3 — feedback Lucy):
  *  - `MAGNET_DEPTH`/`TILE_DEPTH`: grosores del extruido exportados. Las FICHAS DE LETRAS bajan
  *    UN PUNTO (0.04 → 0.025, −37.5%) manteniendo bisel y sombra — "no planas".
+ *    (Constantes de mundo SUPERADAS por Fase 2.11, 2026-10-07 — ver abajo.)
  *  - `FoldedStripMesh` queda cableado a las 2 CARAS REALES del Estudio (cara A al frente, cara B
  *    atrás vía `backDataUrl`) y gana `backLean` para recostar la trasera larga sobre la mesa.
  *
@@ -60,6 +61,16 @@
  *  - La cara B además se veía ESPEJADA desde atrás (la cara gira ~π sobre X): `flipU` nuevo —
  *    flipV+flipU = rotación de 180° de la textura → el diseño B se lee derecho, de pie.
  *  - `TILE_DEPTH` baja OTRO punto (0.025 → 0.015): "siguen muy gruesas", sin llegar a planas.
+ *    (Superado por Fase 2.11, 2026-10-07 — ver abajo.)
+ *
+ * 2026-10-07 (Fase 2.11, owner — GROSOR FÍSICO REAL): `MAGNET_DEPTH`/`TILE_DEPTH` eran
+ * constantes de mundo (0.04/0.015 u): en la nevera el imán medía ~0.8 cm de grosor (~1.1 cm
+ * con bisel) y en el mural ~0.4 cm — un fotoimán real tiene 1–3 mm. Ahora el grosor se
+ * DERIVA de la escala de cada escena: `realWorldDepth(uPerCm, thicknessCm)` con
+ * MAGNET_THICKNESS_CM = 0.2 (2 mm) y TILE_THICKNESS_CM = 0.15 (1.5 mm, conserva el "un
+ * punto más finas" de Lucy), con piso MIN_WORLD_DEPTH = 0.008 u anti-z-fighting (la tapa
+ * impresa flota 0.0012 u sobre el bisel; < ~6× ese epsilon el cuerpo entra en el ruido de
+ * profundidad). Regla "TAMAÑO REAL SIEMPRE" intacta: cambia el GROSOR, nunca la cara.
  *
  * 2026-09-22 (reverso imán + cara B plana espejada):
  *  - REVERSO NEGRO: la cara contraria al diseño de los separadores doblados es el negro de la
@@ -69,8 +80,10 @@
  *    el clon usa los flips de la región, sin forzar flipU. Además se eliminó el mesh BackSide
  *    extra (ola 18) que pintaba la cara B en la posición FRONTAL.
  *  - `backOptional` en FoldedStripMesh (2026-09-22 → RETIRADO en el Paquete D, 2026-10-02):
- *    la cara B vacía se pintaba en BLANCO papel; la REGLA ÚNICA la imprime ESPEJO de la
- *    cara A (igual que producción) y bookmarkFaceUnits la resuelve antes de llegar acá.
+ *    la cara B vacía se pintaba en BLANCO papel; el Paquete D la imprimía ESPEJO de la
+ *    cara A y la decisión owner 2026-10-07 la devolvió al BLANCO en TODOS los renders
+ *    (3D, Vista Previa y producción física). bookmarkFaceUnits la resuelve (back = null)
+ *    antes de llegar acá.
  *
  * 2026-09-25 (bug STG — fotos ROTADAS 90° en el libro 3D): los stages de los separadores
  * doblados ahora son VERTICALES (2×6 → 200×600; 4×4.2 → 400×420) pero el editor sigue
@@ -291,18 +304,51 @@ export function foldedStripMetrics(
  *  (roundRect r = min(8, w/12) px sobre texW=512 → 8/512 del ancho). */
 const LEGACY_CORNER_RATIO = 8 / 512;
 
-/** Grosor del cuerpo extruido de un IMÁN (sin contar el bisel). */
-export const MAGNET_DEPTH = 0.04;
-/** Grosor de las FICHAS DE LETRAS (tablero memo). Ola 3 (2026-07-22): "bajar UN PUNTO, no
- *  planas" (0.04 → 0.025, −37.5%). Ola 4 (2026-07-23 — Lucy: "siguen muy gruesas"): OTRO
- *  punto (0.025 → 0.015, −40% más; 62.5% bajo el imán) con bisel y sombra intactos → relieve
- *  fino, no plana. El z del tablero deriva de este depth (totalThickness) → no se hunden. */
-export const TILE_DEPTH = 0.015;
+/**
+ * Grosor FÍSICO real de la pieza (Fase 2.11, owner 2026-10-07). Un fotoimán
+ * flexible real tiene 1–3 mm; se adopta 2 mm para el imán y 1.5 mm para las
+ * fichas de letras (mismo material, un punto más finas — conserva el feedback
+ * histórico de Lucy: "bajar un punto, no planas"). Antes `MAGNET_DEPTH = 0.04`
+ * era una CONSTANTE DE MUNDO: en la nevera (uPerCm≈0.0494) equivalía a ~0.8 cm
+ * (~1.1 cm con bisel) y en el mural (uPerCm=0.1) a ~0.4 cm (~0.56 cm con
+ * bisel) — 4–8× el grosor real. Ahora el grosor se DERIVA del `uPerCm` de cada
+ * escena (realWorldDepth). Regla "TAMAÑO REAL SIEMPRE" intacta: esto es el
+ * GROSOR de la pieza; la cara (w/h) sigue saliendo de magnetWorldSizes.
+ */
+export const MAGNET_THICKNESS_CM = 0.2;
+export const TILE_THICKNESS_CM = 0.15;
+
+/**
+ * Mínimo de mundo del grosor extruido (Fase 2.11): 0.008 u. Justificación: la
+ * tapa impresa flota 0.0012 u sobre el bisel (frontZ/backZ en
+ * ExtrudedMagnetMesh); un grosor < ~6× ese epsilon deja el cuerpo dentro del
+ * ruido de profundidad (z-fighting contra la superficie en ángulos rasantes),
+ * vuelve el bisel (0.2·depth) sub-píxel y la pieza "desaparece" de perfil.
+ * Las escenas actuales quedan POR ENCIMA del piso con su grosor real (nevera
+ * ≈0.0099 u, mural 0.02 u): el mínimo solo protege escenas futuras de escala
+ * más gruesa (uPerCm < 0.04).
+ */
+export const MIN_WORLD_DEPTH = 0.008;
+
+/**
+ * Grosor de la pieza en unidades de mundo: el grosor FÍSICO (`thicknessCm`,
+ * default 2 mm del fotoimán) convertido con la escala de la escena (`uPerCm`),
+ * con piso MIN_WORLD_DEPTH. Reemplaza a las constantes de mundo MAGNET_DEPTH /
+ * TILE_DEPTH (Fase 2.11).
+ */
+export function realWorldDepth(uPerCm: number, thicknessCm = MAGNET_THICKNESS_CM): number {
+  return Math.max(MIN_WORLD_DEPTH, thicknessCm * uPerCm);
+}
 
 /** Negro del IMÁN (goma ferrita sin laminar): el reverso de los separadores magnéticos — la
  *  cara contraria al diseño — y los cantos/tapas internas (material del imán). NO es el cartón
  *  crema histórico (#F1EBDD): decisión del cliente 2026-09-22. */
 export const MAGNET_BACK_COLOR = "#1A1A1A";
+
+/** Blanco PURO de una cara B sin diseñar (decisión owner 2026-10-07 — revierte la regla
+ *  espejo del Paquete D): lo que se ve en el 3D y en la Vista Previa es lo que imprenta
+ *  recibe (blankBackFacePng — PNG blanco con las dimensiones/DPI de la cara A). */
+export const BLANK_FACE_COLOR = "#FFFFFF";
 
 /** Silueta física centrada en el origen (unidades de mundo). Espejo exacto de buildShapePath. */
 function buildSilhouette(
@@ -363,7 +409,7 @@ export function ExtrudedMagnetMesh({
   width,
   height,
   shape = "rectangle",
-  depth = MAGNET_DEPTH,
+  depth = MIN_WORLD_DEPTH,
   edgeColor = "#F6F1E8",
   backColor,
   backTexture,
@@ -377,7 +423,9 @@ export function ExtrudedMagnetMesh({
   width: number;
   height: number;
   shape?: MagnetShape;
-  /** Grosor del cuerpo (sin contar el bisel). Imanes MAGNET_DEPTH, fichas TILE_DEPTH. */
+  /** Grosor del cuerpo (sin contar el bisel). Los callers pasan `realWorldDepth(uPerCm)`
+   *  de SU escena (Fase 2.11 — grosor físico real ~2 mm); el default es solo el piso
+   *  anti-z-fighting para previews internos sin escala propia. */
   depth?: number;
   /** Color del canto (material base blanco por defecto). */
   edgeColor?: string;
@@ -541,7 +589,7 @@ export function MagnetMesh({
   width,
   height,
   shape = "rectangle",
-  depth = MAGNET_DEPTH,
+  depth = MIN_WORLD_DEPTH,
   edgeColor = "#F6F1E8",
   backColor,
   textureRegion,
@@ -554,7 +602,8 @@ export function MagnetMesh({
   width: number;
   height: number;
   shape?: MagnetShape;
-  /** Grosor del cuerpo (sin contar el bisel). Imanes MAGNET_DEPTH, fichas TILE_DEPTH. */
+  /** Grosor del cuerpo (sin contar el bisel). Los callers pasan `realWorldDepth(uPerCm)`
+   *  de SU escena (Fase 2.11); el default es el piso anti-z-fighting. */
   depth?: number;
   /** Color del canto (material base blanco por defecto). */
   edgeColor?: string;
@@ -615,9 +664,11 @@ const CARD_THICK = 0.012;
  *
  * 2026-09-22 (reverso NEGRO imán): la cara contraria al diseño (la tapa trasera de cada cara)
  * es el negro de la goma ferrita (MAGNET_BACK_COLOR), no el cartón crema — decisión del cliente.
- * 2026-10-02 (Paquete D — REGLA ÚNICA): una cara B sin diseñar llega acá ya resuelta ESPEJO de
- * la cara A (bookmarkFaceUnits la duplica — lo mismo que imprime producción); el 3D ya no
- * pinta reversos en blanco.
+ * 2026-10-02 (Paquete D — REGLA ÚNICA, REVERTIDA 2026-10-07): una cara B sin
+ * diseñar llegaba acá ya resuelta ESPEJO de la cara A (bookmarkFaceUnits la
+ * duplicaba). Decisión owner 2026-10-07: la cara B vacía se imprime EN BLANCO
+ * en TODOS lados (3D, preview y físico) — bookmarkFaceUnits devuelve back = null
+ * y acá la trasera se pinta blanca (BLANK_FACE_COLOR), sin textura.
  *
  * 2026-09-25 (fotos rotadas 90° en STG): la región de cada cara sale de `foldedFaceRegion` —
  * si la textura llega con la orientación cruzada respecto a la cara física (el editor aún rota
@@ -639,7 +690,9 @@ export function FoldedStripMesh({
   position = [0, 0, 0],
 }: {
   dataUrl: string;
-  /** Diseño de la cara TRASERA (cara B de la unidad). Default: el mismo de la frontal. */
+  /** Diseño de la cara TRASERA (cara B de la unidad). Sin él (cara B vacía): la
+   *  trasera se pinta EN BLANCO (BLANK_FACE_COLOR — decisión owner 2026-10-07),
+   *  nunca espejo de la frontal. */
   backDataUrl?: string;
   /** Aspecto del lienzo del diseño (stage.width / stage.height) para el recorte cover. */
   wRatio: number;
@@ -683,20 +736,37 @@ export function FoldedStripMesh({
           flipU = rotación de 180° de la textura: compensa EXACTO la rotación del mesh sobre X,
           así el diseño B se lee DERECHO (de pie, no espejado) al mirarla desde atrás.
           backDataUrl = cara B REAL de la unidad (ola 3); backLean la recuesta sobre la mesa
-          cuando es larga. Sin cara B propia, el caller pasa la cara A (espejo — REGLA
-          ÚNICA) y la trasera muestra ese mismo diseño. */}
+          cuando es larga. Cara B VACÍA (sin backDataUrl — bookmarkFaceUnits la resuelve como
+          back = null): la trasera se pinta EN BLANCO (decisión owner 2026-10-07 — lo mismo
+          que imprime producción), nunca espejo de la cara A. */}
       <group rotation={[Math.PI + delta + backLean, 0, 0]}>
-        <MagnetMesh
-          dataUrl={backDataUrl ?? dataUrl}
-          width={stripW}
-          height={hang}
-          depth={CARD_THICK}
-          edgeColor={cardColor}
-          backColor={MAGNET_BACK_COLOR}
-          textureRegion={{ ...region, flipV: true, flipU: true }}
-          cornerRadiusRatio={cornerRadiusRatio}
-          position={[0, hang / 2, rFold]}
-        />
+        {backDataUrl ? (
+          <MagnetMesh
+            dataUrl={backDataUrl}
+            width={stripW}
+            height={hang}
+            depth={CARD_THICK}
+            edgeColor={cardColor}
+            backColor={MAGNET_BACK_COLOR}
+            textureRegion={{ ...region, flipV: true, flipU: true }}
+            cornerRadiusRatio={cornerRadiusRatio}
+            position={[0, hang / 2, rFold]}
+          />
+        ) : (
+          // Cara B vacía → tapa BLANCA pura sin textura (mismo cuerpo de cartulina
+          // y reverso negro del imán que una cara impresa).
+          <ExtrudedMagnetMesh
+            texture={null}
+            blankColor={BLANK_FACE_COLOR}
+            width={stripW}
+            height={hang}
+            depth={CARD_THICK}
+            edgeColor={cardColor}
+            backColor={MAGNET_BACK_COLOR}
+            cornerRadiusRatio={cornerRadiusRatio}
+            position={[0, hang / 2, rFold]}
+          />
+        )}
       </group>
       {/* Cresta del pliegue: tubo parcial de cartulina abrazando el borde, tangente a ambas
           caras (thetaStart = delta sobre el eje del pliegue, arco = crestArc; sin tapas). */}

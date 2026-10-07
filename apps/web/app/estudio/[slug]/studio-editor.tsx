@@ -30,6 +30,7 @@ import type Konva from "konva";
 import {
   createDraftDesignAction,
   finalizeDesignAction,
+  reopenDesignForEditAction,
   saveCanvasAction,
 } from "@/features/personalization/actions";
 import { parsePhotoProductConfig, CALENDAR_FONT_OPTIONS } from "@/features/personalization/schemas";
@@ -44,7 +45,7 @@ import { StudioGesturesHint, GESTURES_HINT_STORAGE_KEY } from "./studio-gestures
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
 import { readClientCookiePreferences } from "@/lib/cookie-consent";
 import { StudioPreviewModal } from "./studio-preview-modal";
-import { describeVariantAttributes } from "@/features/products/variant-schemas";
+import { studioPreviewVariantLabel } from "./lib/preview-variant-label";
 import {
   Sheet,
   SheetClose,
@@ -70,8 +71,12 @@ import {
   calendarLayoutFromUnitTemplate,
 } from "@/features/personalization/calendar-layout";
 import { SceneGallery, type SceneKind } from "./scene-gallery";
-import { initialFrameColorFromSchema } from "@/features/personalization/frame-palette";
+import {
+  initialFrameColorFromSchema,
+  isInstagramTemplate,
+} from "@/features/personalization/frame-palette";
 import { igMissingRequiredTextLayerIds } from "@/features/personalization/instagram-template-spec";
+import { resolveTourSurface } from "./lib/studio-tour";
 import {
   gridSlotCountForLayout,
   maxUnitsForProduct,
@@ -79,6 +84,13 @@ import {
   designUnitPriceMultiplier,
 } from "@/features/personalization/design-units";
 import { faceSlotLabels, previewFacePairOfUnit, deployedSizeCm } from "./lib/faces";
+import { previewUnitRanges, type PreviewUnitRange } from "./lib/preview-units";
+import {
+  readStudioDraftId,
+  writeStudioDraftId,
+  clearStudioDraftId,
+  shouldOfferDraftResume,
+} from "./lib/draft-marker";
 import { isBookmarkGalleryTag, resolveGalleryTag } from "./lib/product-kind";
 import {
   canvasToPreviewDataUrl,
@@ -290,8 +302,48 @@ export function StudioEditor({
   // flag persistent (no auto-dismiss cuando se abre manualmente con "?").
   const [gesturesHintOpen, setGesturesHintOpen] = useState(false);
   const [gesturesHintPersistent, setGesturesHintPersistent] = useState(false);
+  // Fase 2 · item 2.8 (2026-10-07) — tour por producto: mientras el onboarding
+  // está abierto se suprime el auto-trigger del banner de gestos (convivencia:
+  // el tour es un overlay z-50; el banner aparecería debajo compitiendo).
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
+  // Fase 2 · item 2.4 (2026-10-07) — "Continuar donde quedaste": si hay un
+  // marcador de draft para ESTE producto (localStorage) y la URL no trae
+  // ?designId= (un recover explícito manda sobre el marcador), se ofrece el
+  // interstitial ANTES de bootear. El editor carga ssr:false → window existe
+  // en el primer render (initializer lazy, una sola vez).
+  const [resumeOffer, setResumeOffer] = useState<string | null>(() => {
+    const savedDesignId = readStudioDraftId(product.slug);
+    const urlHasDesignId =
+      typeof window !== "undefined" && new URLSearchParams(window.location.search).has("designId");
+    return shouldOfferDraftResume({
+      savedDesignId,
+      urlHasDesignId,
+      hasInitialDesign: !!initialDesignId,
+    })
+      ? savedDesignId
+      : null;
+  });
+  // Item 2.4 — continuar: navegar al recover flow con resume=1 (el server
+  // valida ownership y exige DRAFT — sin clonar READY como el "Editar" del
+  // carrito; si ya no es válido, arranca draft nuevo y el marcador se
+  // sobrescribe en silencio al bootear). Navegación DURA (no router.replace):
+  // una soft navigation conserva el estado del client component y el
+  // `resumeOffer` vigente bloquearía el boot del diseño recuperado; con la
+  // recarga completa el mount nuevo lee ?designId= de la URL y bootea limpio.
+  const handleResumeDraft = useCallback(() => {
+    if (!resumeOffer) return;
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- navegación DURA a propósito (ver nota arriba): el remount completo es lo que garantiza que el boot lea el recover de la URL sin estado cliente viejo.
+    window.location.assign(
+      `/estudio/${product.slug}?designId=${encodeURIComponent(resumeOffer)}&resume=1`,
+    );
+  }, [product.slug, resumeOffer]);
+  // Item 2.4 — descartar: limpiar el marcador y bootear un draft nuevo.
+  const handleDiscardDraft = useCallback(() => {
+    clearStudioDraftId(product.slug);
+    setResumeOffer(null);
+  }, [product.slug]);
   // PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito: al click «Vista
   // previa» (antes «¡Listo!») generamos preview compositado client-side y
   // abrimos modal. El upload real (production PNGs + finalize + addToCart)
@@ -299,6 +351,13 @@ export function StudioEditor({
   // el modal.
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
+  // Fase 2 · item 2.2 (2026-10-07) — Vista Previa PAGINADA por unidad: una página
+  // por set/tira/separador/pack a tamaño legible (la modal pone flechas + dots +
+  // swipe). El previewDataUrl (montaje único) sigue siendo el que se SUBE al
+  // confirmar — el pager es solo UX de la modal, el contrato no cambia.
+  const [previewPages, setPreviewPages] = useState<{ dataUrl: string; label: string }[] | null>(
+    null,
+  );
   const [previewError, setPreviewError] = useState<string | null>(null);
   // Lucy 2026-09-09 — feedback de PROCESAMIENTO del botón «Vista previa»:
   // componer el preview (snapshots Konva o páginas del calendario) tarda un
@@ -491,12 +550,10 @@ export function StudioEditor({
   const livePriceMultiplier = useStore(store, (s) =>
     s.canvasData ? designUnitPriceMultiplier(s.canvasData, facesPerUnit) : 1,
   );
-  // "Sin imán" (2026-09-22 → REVISADO Paquete D, 2026-10-02): la variante sin imán
-  // ya NO esconde el botón ni la vista 3D — el 3D es ilustrativo del producto
-  // (los separadores y las tiras son magnéticos como producto aunque la variante
-  // no lo sea). La única superficie que sigue gateando por imán es la galería de
-  // escenas del CALENDARIO (sus escenas nevera/tablero afirman imán; su flujo sin
-  // imán vive en el visor de detalle — ver galleryScenes en scene-gallery.tsx).
+  // "Sin imán" (2026-09-22 → Paquete D 2026-10-02 → REVERTIDO por el owner 2026-10-07):
+  // la variante sin imán NO esconde el BOTÓN, pero la galería filtra las escenas que
+  // afirman imán (nevera/tablero/memo) para TODOS los kinds — si no queda ninguna,
+  // la modal muestra un estado vacío explicado (ver MAGNET_SCENES en scene-gallery.tsx).
   // Precio VIVO del pack para el N actual (vista de la modal; el cobro lo
   // resuelve el servidor al agregar al carrito — nunca se confía en este valor).
   const effectiveUnitPrice = useMemo(() => {
@@ -510,6 +567,38 @@ export function StudioEditor({
       unitPriceCents
     );
   }, [isPhotoPack, packVariants, livePhotoSlots, liveMagnet, unitPriceCents]);
+
+  // Fase 2 · item 2.3 (2026-10-07) — desglose COMPLETO de la variante efectiva
+  // para la Vista Previa (antes solo `{ magnet }`): mismo helper
+  // describeVariantAttributes que name/letterset. El personalizationSchema ya
+  // llega mergeado variante-sobre-producto desde page.tsx; en packs mandan los
+  // valores VIVOS del canvas (N de fotos del stepper, tamaño efectivo, imantado
+  // persistido). Se omiten las dimensiones que la modal YA enuncia en su propio
+  // resumen (conteos: "12 páginas"; tamaño: "📐 7.5×10") para no duplicarlas en
+  // líneas contiguas — el resto (imán, idioma, estilo, marco, forma, acabado,
+  // tema) ahora sí aparece en TODAS las superficies foto.
+  const previewVariantLabel = useMemo(
+    () =>
+      studioPreviewVariantLabel({
+        mergedSchema: product.personalizationSchema,
+        live: isPhotoPack
+          ? {
+              photoSlots: livePhotoSlots,
+              ...(packSizeCm ? { sizeCm: packSizeCm } : {}),
+              ...(typeof liveMagnet === "boolean" ? { magnet: liveMagnet } : {}),
+            }
+          : undefined,
+        omit: ["quantity", "photoSlots", ...(productConfig.sizeCm ? (["sizeCm"] as const) : [])],
+      }),
+    [
+      product.personalizationSchema,
+      isPhotoPack,
+      livePhotoSlots,
+      packSizeCm,
+      liveMagnet,
+      productConfig.sizeCm,
+    ],
+  );
 
   // ADR-063 CAL2 — el año del calendario lo ELIGE el cliente (antes era un badge fijo del schema
   // del producto, y podía venir vacío). Default = año del producto → próximo año. Se ofrece un
@@ -536,6 +625,18 @@ export function StudioEditor({
         ? "strips"
         : "magnets";
   const slotNounPair = resolveSlotNoun(slotProductKind, liveMagnet, texts);
+  // Fase 2 · item 2.8 (2026-10-07) — superficie del TOUR por producto: decide
+  // las features del onboarding (lib/studio-tour) y su clave de localStorage.
+  const isIgTemplate = useStore(store, (s) =>
+    s.canvasData ? isInstagramTemplate(s.canvasData.unitTemplate.layers) : false,
+  );
+  const tourSurface = resolveTourSurface({
+    isInstagramTemplate: isIgTemplate,
+    isCalendarMonth,
+    isBookmark,
+    isStrip: liveIsStrip,
+    hasFrameOptions: frameFullBleed,
+  });
   // Labels por slot compartidas por la grilla, el toolbar y el FAB (popover de
   // faltantes de «Vista previa», Fase 1A): calendario → meses ("Ene"…, repetidos
   // por unidad cuando hay N sets); separadores 2 caras → "1A","1B"…; el resto
@@ -639,6 +740,10 @@ export function StudioEditor({
     // está inicializado (p.ej. templates se recrea por render del padre). El boot
     // solo debe correr una vez por mount real del editor.
     if (store.getState().designId) return;
+    // Item 2.4 — con el interstitial "Continuar donde quedaste" pendiente el
+    // boot ESPERA: crear un draft nuevo ahora dejaría dos drafts vivos (el del
+    // marcador y este). Al descartar, resumeOffer → null y el boot corre.
+    if (resumeOffer) return;
     let cancelled = false;
     const boot = async () => {
       try {
@@ -810,6 +915,12 @@ export function StudioEditor({
           selectedTemplateId: templateId ?? findTemplateIdForCanvas(canvasData, templates),
         });
 
+        // Item 2.4 — marcador del draft activo por producto: al recargar sin
+        // ?designId= se ofrece "Continuar donde quedaste" con este id. También
+        // cubre la "limpieza en silencio": si el recover falló (draft purgado,
+        // de otro owner o ya no DRAFT), el draft NUEVO pisa el marcador viejo.
+        writeStudioDraftId(product.slug, designId!);
+
         // Hidratar assets pre-existentes (Design recuperado)
         for (const asset of initialDesignAssets) {
           store.getState().addAsset(asset);
@@ -849,6 +960,7 @@ export function StudioEditor({
     texts,
     isCalendarMonth,
     facesPerUnit,
+    resumeOffer,
   ]);
 
   // ──────────── Auto-save 2s debounce ────────────
@@ -985,8 +1097,23 @@ export function StudioEditor({
       return;
     }
     setPreviewError(null);
+    setPreviewPages(null);
     setPreviewBuilding(true);
     try {
+      // Fase 2 · item 2.2 (2026-10-07) — partición por UNIDAD física para la
+      // Vista Previa paginada (set/tira/separador/pack; 1 rango = sin pager).
+      const unitRanges = previewUnitRanges({
+        slotCount: state.canvasData.slotCount,
+        unitCount: state.canvasData.unitCount,
+        unitSlots: state.canvasData.unitSlots,
+        packGroupSlots: packUnitsPerGroup,
+      });
+      const pageLabel = (u: number) =>
+        fillStudioText(texts.unidades.unidadDe, {
+          nombre: unitNoun,
+          n: u + 1,
+          total: unitRanges.length,
+        });
       // #3 (auditoría v3) — CALENDARIO: el preview de confirmación debe mostrar las PÁGINAS reales
       // (mes + grilla + festivos), no las fotos sueltas rotuladas "imanes". Reusa composeCalendarPages
       // (mismas páginas WYSIWYG que producción/3D) y las apila en un montaje. No usa Konva/stages.
@@ -1007,6 +1134,21 @@ export function StudioEditor({
         // El montaje ya sale en el MIME efectivo (WebP/JPEG) del compositor —
         // reencodePreviewDataUrl queda como red de seguridad no-op.
         setPreviewDataUrl(await reencodePreviewDataUrl(await buildCalendarPreviewMontage(pages)));
+        // Item 2.2 — una página por SET (12 tarjetas c/u) a tamaño legible:
+        // el montaje global con 4 sets quedaba diminuto. Celdas más grandes
+        // que el montaje de upload (es solo UX de la modal).
+        if (unitRanges.length > 1) {
+          const unitSlots = state.canvasData.unitSlots ?? 12;
+          const perSet: { dataUrl: string; label: string }[] = [];
+          for (let u = 0; u < unitRanges.length; u++) {
+            const setPages = pages.slice(u * unitSlots, (u + 1) * unitSlots);
+            perSet.push({
+              dataUrl: await buildCalendarPreviewMontage(setPages, { cellW: 240, maxCols: 3 }),
+              label: pageLabel(u),
+            });
+          }
+          setPreviewPages(perSet);
+        }
         setPreviewModalOpen(true);
         return;
       }
@@ -1020,9 +1162,10 @@ export function StudioEditor({
       // noFold: frente | reverso lado a lado), no una grilla de caras sueltas —
       // es la pieza física que el cliente va a recibir.
       // 2026-09-22 — noFold (Alargados): sin doblez ni "desplegado"; backOptional:
-      // cara B vacía se pinta ESPEJO de la cara A (REGLA ÚNICA, Paquete A
-      // 2026-10-02 — producción: expandMissingBackFaces, service.ts), igual que
-      // en el libro 3D. Lo resuelve previewFacePairOfUnit dentro del compositor.
+      // cara B vacía se pinta EN BLANCO (REGLA ÚNICA, decisión owner 2026-10-07 —
+      // revierte la regla espejo del Paquete A 2026-10-02; producción:
+      // blank-back-face.ts, features/personalization), igual que en el libro 3D.
+      // Lo resuelve previewFacePairOfUnit dentro del compositor (faceB = null).
       const foldCaption = (() => {
         if (facesPerUnit !== 2 || productConfig.noFold) return undefined;
         const deployed = deployedSizeCm(productConfig.sizeCm);
@@ -1044,6 +1187,38 @@ export function StudioEditor({
               productConfig.shape,
             );
       setPreviewDataUrl(previewUrl);
+      // Item 2.2 — una página por UNIDAD (separador con sus 2 caras, tira, pack):
+      // reusar el mismo compositor con el rango de slots de la unidad (los
+      // snapshots de slot están cacheados — cada unidad extra cuesta solo el
+      // dibujo del lienzo de su página).
+      if (unitRanges.length > 1) {
+        const perUnit: { dataUrl: string; label: string }[] = [];
+        for (let u = 0; u < unitRanges.length; u++) {
+          const range = unitRanges[u]!;
+          const dataUrl =
+            facesPerUnit === 2
+              ? await buildBookmarkStripPreview(
+                  state.canvasData,
+                  slotStagesRef.current,
+                  productConfig.cornerRadiusPx,
+                  {
+                    noFold: productConfig.noFold === true,
+                    backOptional,
+                    foldCaption,
+                    unitIndex: u,
+                  },
+                )
+              : await buildCompositedPreview(
+                  state.canvasData,
+                  slotStagesRef.current,
+                  productConfig.shape,
+                  { unitRange: range },
+                );
+          perUnit.push({ dataUrl, label: pageLabel(u) });
+          await yieldToMain();
+        }
+        setPreviewPages(perUnit);
+      }
       setPreviewModalOpen(true);
     } catch (err) {
       // #14 — detalle técnico al log; al cliente un mensaje claro es-CO.
@@ -1069,6 +1244,8 @@ export function StudioEditor({
     calendarLayout,
     liveCalendarFont,
     product.personalizationSchema,
+    packUnitsPerGroup,
+    unitNoun,
     previewBuilding,
     texts,
   ]);
@@ -1295,6 +1472,22 @@ export function StudioEditor({
         // guardado acá es lo que sostiene el mandato de que la pantalla sea el producto físico.
         if (state.isDirty) {
           state.setAutoSaveStatus({ kind: "saving" });
+          // Fix F1.1 (2026-10) — si el finalize ya corrió EN ESTA SESIÓN (p.ej. salió bien
+          // pero el add-to-cart falló y el cliente reintentó tras seguir editando), el diseño
+          // quedó READY y el save lo rechaza ("only DRAFT can be edited") — antes esto
+          // mostraba el error genérico de guardado sin salida. Se reabre a DRAFT y se deja
+          // que el finalize vuelva a correr con el canvas nuevo (idempotente server-side:
+          // re-renderiza producción, así que el WYSIWYG se mantiene).
+          if (finalizedRef.current) {
+            const reopened = await reopenDesignForEditAction(designId);
+            if (!reopened.ok) {
+              state.setAutoSaveStatus({ kind: "error", message: reopened.message });
+              state.setIsFinalizing(false);
+              setPreviewError(reopened.message);
+              return;
+            }
+            finalizedRef.current = false;
+          }
           const saved = await saveCanvasAction({
             designId,
             canvasData,
@@ -1303,7 +1496,9 @@ export function StudioEditor({
           if (!saved.ok) {
             state.setAutoSaveStatus({ kind: "error", message: saved.message });
             state.setIsFinalizing(false);
-            setPreviewError(texts.exportar.errorGuardar);
+            // Los mensajes de fallo de saveCanvasAction son customer-safe por contrato
+            // (F-30): mostrar el específico (p.ej. rate-limit) en vez del genérico.
+            setPreviewError(saved.message || texts.exportar.errorGuardar);
             return;
           }
           state.setAutoSaveStatus({ kind: "saved", at: Date.now() });
@@ -1437,6 +1632,10 @@ export function StudioEditor({
           return;
         }
 
+        // Item 2.4 — el diseño quedó en el carrito (READY): su lugar ahora es
+        // "Mis diseños", no el retomador. Limpiar el marcador del producto.
+        clearStudioDraftId(product.slug);
+
         // Cerramos modal antes de redirigir para evitar flicker visual.
         setPreviewModalOpen(false);
         router.push("/carrito?personalized=1");
@@ -1463,6 +1662,7 @@ export function StudioEditor({
       previewDataUrl,
       replacesCartDesignId,
       productConfig.shape,
+      product.slug,
       isCalendarMonth,
       selectedYear,
       ensureAllStagesMounted,
@@ -1475,10 +1675,11 @@ export function StudioEditor({
   const handleClosePreviewModal = useCallback(() => {
     setPreviewModalOpen(false);
     setPreviewDataUrl(null);
+    setPreviewPages(null);
     setPreviewError(null);
-    // La bandera NO se limpia acá. "Volver a editar" no devuelve el diseño a DRAFT, así que si el
-    // finalize ya pasó, limpiarla solo conseguía que el siguiente intento volviera a llamarlo sobre
-    // un diseño READY. El servidor además ya es idempotente, así que esto es cinturón y tirantes.
+    // La bandera NO se limpia acá. Si el finalize ya pasó y hubo más ediciones, el save
+    // forzado del siguiente confirmar reabre el diseño a DRAFT (fix F1.1) y re-finaliza —
+    // limpiarla haría que el finalize corriera sobre un diseño READY sin reapertura.
   }, []);
 
   // ──────────── Estados de boot ────────────
@@ -1488,6 +1689,55 @@ export function StudioEditor({
         <div className="text-center">
           <p className="text-brand-purple-dark text-lg font-semibold">{texts.errores.bootTitulo}</p>
           <p className="text-brand-purple-dark/70 mt-2 text-sm">{bootError}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Fase 2 · item 2.4 (2026-10-07) — interstitial "Continuar donde quedaste":
+  // hay un marcador de draft de ESTE producto y la URL no trae ?designId=. El
+  // boot está pausado hasta que el cliente elige (continuar → recover flow con
+  // resume=1; descartar → limpiar marcador y boot de draft nuevo).
+  if (booting && resumeOffer) {
+    return (
+      <div className="from-brand-cream/40 flex flex-1 flex-col items-center justify-center bg-gradient-to-b to-white p-8">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="studio-resume-title"
+          className="border-brand-purple/15 w-full max-w-md rounded-2xl border bg-white p-6 text-center shadow-xl"
+        >
+          <div className="relative mx-auto h-12 w-12">
+            <div className="from-brand-purple/40 via-brand-pink/30 to-brand-yellow/30 absolute inset-0 animate-pulse rounded-full bg-gradient-to-br shadow-md" />
+            <div className="absolute inset-1 flex items-center justify-center rounded-full bg-white">
+              <span className="text-xl" role="img" aria-label={texts.lienzo.mascotaAria}>
+                💜
+              </span>
+            </div>
+          </div>
+          <h2
+            id="studio-resume-title"
+            className="text-brand-purple-dark font-display mt-3 text-xl font-bold"
+          >
+            {texts.comun.continuarTitulo}
+          </h2>
+          <p className="text-brand-muted mt-2 text-sm">{texts.comun.continuarCuerpo}</p>
+          <div className="mt-5 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={handleResumeDraft}
+              className="bg-gradient-brand inline-flex h-11 items-center justify-center rounded-full px-5 text-sm font-bold text-white shadow-md transition-all hover:brightness-110 active:scale-[0.98]"
+            >
+              {texts.comun.continuarCta}
+            </button>
+            <button
+              type="button"
+              onClick={handleDiscardDraft}
+              className="text-brand-purple-dark/70 hover:bg-brand-purple/10 inline-flex h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition-colors"
+            >
+              {texts.comun.continuarDescartar}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1753,8 +2003,8 @@ export function StudioEditor({
                 <span>{calendarBuilding ? texts.comun.armando : texts.lienzo.btnCalendario}</span>
                 <span className="sr-only">{texts.lienzo.calBtnSr}</span>
               </button>
-            ) : // Paquete D (2026-10-02): la variante "sin imán" ya NO esconde el
-            // botón 3D — el 3D es ilustrativo del producto (ver nota junto a liveMagnet).
+            ) : // Sin imán (owner 2026-10-07): el botón 3D sigue visible; la
+            // galería filtra las escenas magnéticas por dentro (ver nota junto a liveMagnet).
             isBookmark ? (
               <button
                 type="button"
@@ -1844,6 +2094,9 @@ export function StudioEditor({
             onSlotClick={handleSlotClick}
             stageZoomRaw={stageZoomRaw}
             onStageZoomState={setStageZoomState}
+            // Fase 2 · item 2.1 — pinch-to-zoom del lienzo en táctil: el grid
+            // pide el nuevo zoom (mismo estado de los botones −/+).
+            onStageZoomChange={setStageZoomRaw}
             // Overrides por producto (owner 2026-09-24, admin → Avanzado):
             // columnas de la grilla (fuerza N columnas en desktop) y tamaño
             // base del lienzo (el "100%" del cliente). null = automático.
@@ -2010,6 +2263,9 @@ export function StudioEditor({
       <StudioPreviewModal
         isOpen={previewModalOpen}
         previewUrl={previewDataUrl}
+        // Fase 2 · item 2.2 — páginas por unidad para el pager de la modal
+        // (null/1 página = montaje único de siempre, sin navegación).
+        pages={previewPages}
         productName={product.name}
         // Ola 3 — en separadores la unidad física es la tira (2 caras): el conteo
         // del modal es de UNIDADES (N fotos vivo del stepper), no de slots de
@@ -2044,15 +2300,11 @@ export function StudioEditor({
                   : "magnets"
         }
         calendarYear={selectedYear}
-        // Paquete F (2026-10-02) — imantado vigente (del canvas si el diseño lo
-        // persistió; si no, el de la variante del deep-link). El resto del
-        // desglose (fotos/tamaño) ya lo cubre el resumen de la modal con datos
-        // vivos — no se duplica.
-        variantLabel={
-          liveMagnet === undefined
-            ? undefined
-            : describeVariantAttributes({ magnet: liveMagnet }).join(" · ") || undefined
-        }
+        // Fase 2 · item 2.3 (2026-10-07) — desglose COMPLETO de la variante
+        // efectiva (describeVariantAttributes, mismo de name/letterset): imán,
+        // idioma, estilo, marco, forma… Se omiten conteos/tamaño porque el
+        // resumen propio de la modal ya los enuncia (ver preview-variant-label).
+        variantLabel={previewVariantLabel}
         // Paquete C — fotos con aviso de calidad asignadas al diseño: la modal
         // exige la aceptación explícita antes de habilitar el confirmar.
         qualityWarnings={qualityWarnings}
@@ -2072,9 +2324,14 @@ export function StudioEditor({
         onFinalize={handleFinalize}
       />
 
-      {/* M.3.b.UX.5 — Onboarding tutorial primera vez. Se auto-detecta via
-          localStorage; si ya se onboardeó (key="v1"), no muestra nada. */}
-      <StudioOnboarding slotNoun={slotNounPair.one} />
+      {/* M.3.b.UX.5 — Onboarding tutorial primera vez. Fase 2 · item 2.8 —
+          tour POR PRODUCTO (features del lienzo + clave por superficie); el
+          editor suprime el banner de gestos mientras está abierto. */}
+      <StudioOnboarding
+        slotNoun={slotNounPair.one}
+        surface={tourSurface}
+        onOpenChange={setOnboardingOpen}
+      />
 
       {/* M.3.b.UX.v11/v12 — Banner de gestos. Auto-trigger 1ª vez cuando hay
         foto + abierto manualmente desde botón "?" del toolbar. */}
@@ -2082,6 +2339,9 @@ export function StudioEditor({
         store={store}
         open={gesturesHintOpen}
         persistent={gesturesHintPersistent}
+        // Item 2.8 — el tour por producto tapa la pantalla: sin auto-trigger
+        // del banner de gestos mientras está abierto.
+        suppressAutoTrigger={onboardingOpen}
         onClose={() => {
           setGesturesHintOpen(false);
           setGesturesHintPersistent(false);
@@ -2115,6 +2375,7 @@ function StudioGesturesHintWrapper({
   onClose,
   persistent,
   onAutoTrigger,
+  suppressAutoTrigger = false,
 }: {
   store: ReturnType<typeof createStudioStore>;
   open: boolean;
@@ -2123,6 +2384,8 @@ function StudioGesturesHintWrapper({
   /** Callback que el editor llama internamente cuando se cumple la condición
    *  de auto-open (filledCount > 0 + localStorage no marcado). */
   onAutoTrigger: () => void;
+  /** Item 2.8 — true mientras el tour por producto está abierto (sin auto-trigger). */
+  suppressAutoTrigger?: boolean;
 }) {
   // Conteo de slots con foto — selector atómico primitivo.
   const filledCount = useStore(
@@ -2133,12 +2396,13 @@ function StudioGesturesHintWrapper({
   // Auto-trigger 1ª vez (localStorage check vive acá).
   useEffect(() => {
     if (filledCount === 0) return;
+    if (suppressAutoTrigger) return;
     if (typeof window === "undefined") return;
     const seen = window.localStorage.getItem(GESTURES_HINT_STORAGE_KEY);
     if (seen === "true") return;
     const t = window.setTimeout(() => onAutoTrigger(), 600);
     return () => window.clearTimeout(t);
-  }, [filledCount, onAutoTrigger]);
+  }, [filledCount, onAutoTrigger, suppressAutoTrigger]);
 
   return <StudioGesturesHint open={open} onClose={onClose} persistent={persistent} />;
 }
@@ -2300,25 +2564,42 @@ async function buildCompositedPreview(
   canvasData: CanvasDataV2,
   stages: Map<number, Konva.Stage | null>,
   shape?: "rectangle" | "circle" | "heart" | "custom",
+  opts?: { unitRange?: PreviewUnitRange },
 ): Promise<string> {
   const { gridLayout, unitTemplate, slots } = canvasData;
   // Modelo multi-unidad (2026-09-09): con N unidades multi-slot el gridLayout
   // describe UNA unidad — la Vista previa muestra TODAS las unidades (lo que el
   // cliente va a recibir): las TIRAS se disponen lado a lado (cada una es una
   // pieza continua vertical) y el resto de unidades se apilan en vertical.
-  const unitSlots = canvasData.unitSlots ?? slots.length;
-  const unitCount = canvasData.unitCount ?? 1;
-  const multiUnit = unitCount > 1 && unitSlots > 1;
+  // Fase 2 · item 2.2 (2026-10-07) — `unitRange`: componer UNA unidad aislada
+  // (la página del pager de la modal) en vez del montaje completo.
+  const range = opts?.unitRange;
+  const rangeSlots = range
+    ? slots.filter((s) => s.slotIndex >= range.start && s.slotIndex < range.end)
+    : slots;
+  const unitSlots = range ? rangeSlots.length : (canvasData.unitSlots ?? slots.length);
+  const unitCount = range ? 1 : (canvasData.unitCount ?? 1);
+  const multiUnit = !range && unitCount > 1 && unitSlots > 1;
   // Cell size: 360×(360 * aspect) por slot en el preview
   const cellW = 360;
   const cellH = Math.floor(360 * (unitTemplate.stage.height / unitTemplate.stage.width));
   const gap = gridLayout.gap;
+  // Con unitRange (página de UNA unidad del pager) las filas/columnas se
+  // recalculan sobre los slots del rango: el gridLayout puede describir el
+  // diseño COMPLETO (packs de imán suelto: 12 slots en 3×4) y pintar una
+  // página de 6 con rows=4 dejaría media página en blanco.
+  const layoutCols = range
+    ? Math.max(1, Math.min(gridLayout.cols, rangeSlots.length))
+    : gridLayout.cols;
+  const layoutRows = range
+    ? Math.max(1, Math.ceil(rangeSlots.length / layoutCols))
+    : gridLayout.rows;
   // Ola 4 — TIRA photobooth (1 col, gap 0): la pieza es CONTINUA — sin stroke por celda
   // (separaba las fotos); se dibuja un solo borde exterior al final.
-  const isStripPreview = gridLayout.cols === 1 && gridLayout.gap === 0 && slots.length > 1;
+  const isStripPreview = layoutCols === 1 && gridLayout.gap === 0 && rangeSlots.length > 1;
   const unitGap = 32; // separación ENTRE unidades (dentro de la unidad manda gridLayout.gap)
-  const unitGridW = gridLayout.cols * cellW + (gridLayout.cols - 1) * gap;
-  const unitGridH = gridLayout.rows * cellH + (gridLayout.rows - 1) * gap;
+  const unitGridW = layoutCols * cellW + (layoutCols - 1) * gap;
+  const unitGridH = layoutRows * cellH + (layoutRows - 1) * gap;
   const canvasW =
     multiUnit && isStripPreview ? unitCount * unitGridW + (unitCount - 1) * unitGap : unitGridW;
   const canvasH =
@@ -2345,7 +2626,7 @@ async function buildCompositedPreview(
   // slots, y las decodificaciones dataURL→Image van EN PARALELO. Antes eran
   // N toDataURL síncronos + N decodes secuenciales en el MISMO click.
   const slotShots: Array<{ slot: (typeof slots)[number]; dataUrl: string }> = [];
-  for (const slot of slots) {
+  for (const slot of rangeSlots) {
     const stage = stages.get(slot.slotIndex);
     if (!stage) continue;
     slotShots.push({
@@ -2361,11 +2642,14 @@ async function buildCompositedPreview(
 
   slotShots.forEach(({ slot }, i) => {
     const img = images[i]!;
-    // Posición DENTRO de la unidad (multi-unidad: gridLayout = 1 unidad).
-    const indexInUnit = multiUnit ? slot.slotIndex % unitSlots : slot.slotIndex;
+    // Posición DENTRO de la unidad (multi-unidad: gridLayout = 1 unidad; con
+    // unitRange, el índice relativo al inicio del rango de la página).
+    const indexInUnit = multiUnit
+      ? slot.slotIndex % unitSlots
+      : slot.slotIndex - (range?.start ?? 0);
     const unitIndex = multiUnit ? Math.floor(slot.slotIndex / unitSlots) : 0;
-    const col = indexInUnit % gridLayout.cols;
-    const row = Math.floor(indexInUnit / gridLayout.cols);
+    const col = indexInUnit % layoutCols;
+    const row = Math.floor(indexInUnit / layoutCols);
     const unitOffsetX = multiUnit && isStripPreview ? unitIndex * (unitGridW + unitGap) : 0;
     const unitOffsetY = multiUnit && !isStripPreview ? unitIndex * (unitGridH + unitGap) : 0;
     const x = unitOffsetX + col * (cellW + gap);
@@ -2430,10 +2714,11 @@ async function buildCompositedPreview(
  *  - noFold (Alargados planos): la pieza no se pliega → caras lado a lado
  *    (frente | reverso, B SIN rotar — montaje espalda con espalda) y unidades
  *    apiladas, SIN filete de doblez.
- *  - backOptional: una cara B vacía se dibuja ESPEJO de la cara A de su pareja
- *    (REGLA ÚNICA, Paquete A 2026-10-02 — producción ya lo hace:
- *    expandMissingBackFaces; el slot efectivo lo resuelve previewFacePairOfUnit),
- *    nunca en blanco ni con el placeholder del editor.
+ *  - backOptional: una cara B vacía se dibuja EN BLANCO (REGLA ÚNICA, decisión
+ *    owner 2026-10-07 — revierte la regla espejo del Paquete A/D 2026-10-02;
+ *    producción genera el PNG blanco en blank-back-face.ts; el slot efectivo lo
+ *    resuelve previewFacePairOfUnit: faceB = null → rect blanco puro),
+ *    nunca espejo de la cara A ni con el placeholder del editor.
  *  - foldCaption: indicación del tamaño desplegado bajo cada tira (texto CMS
  *    ya resuelto por el caller, ej. "Doblez · Desplegado: 2×12 cm").
  */
@@ -2441,13 +2726,20 @@ async function buildBookmarkStripPreview(
   canvasData: CanvasDataV2,
   stages: Map<number, Konva.Stage | null>,
   cornerRadiusPx?: number,
-  opts?: { noFold?: boolean; backOptional?: boolean; foldCaption?: string },
+  opts?: { noFold?: boolean; backOptional?: boolean; foldCaption?: string; unitIndex?: number },
 ): Promise<string> {
   const { unitTemplate, slots } = canvasData;
   const noFold = opts?.noFold === true;
   const backOptional = opts?.backOptional === true;
   const foldCaption = opts?.foldCaption;
-  const units = Math.floor(slots.length / 2);
+  const totalUnits = Math.floor(slots.length / 2);
+  // Fase 2 · item 2.2 (2026-10-07) — `unitIndex`: componer SOLO esa unidad (la
+  // página del pager de la modal) en vez del montaje con todas.
+  const unitIndexes =
+    opts?.unitIndex !== undefined
+      ? [Math.min(Math.max(0, opts.unitIndex), Math.max(0, totalUnits - 1))]
+      : Array.from({ length: totalUnits }, (_, u) => u);
+  const units = unitIndexes.length;
   const faceW = 300;
   const faceH = Math.round(faceW * (unitTemplate.stage.height / unitTemplate.stage.width));
   const pad = 24;
@@ -2480,15 +2772,15 @@ async function buildBookmarkStripPreview(
 
   // Paquete J (2026-10-02) — snapshots cacheados por slot + decodificación EN
   // PARALELO antes de pintar (antes: toDataURL + decode secuencial por cara en
-  // el mismo click). Las caras espejo de backOptional repiten el MISMO slot de
-  // la cara A: el cache las resuelve con una sola rasterización.
-  const unitFaces: Array<{ faceA: number; faceB: number }> = [];
+  // el mismo click). La cara B vacía (backOptional) NO se rasteriza: su rect se
+  // pinta en blanco puro (faceB = null — owner 2026-10-07).
+  const unitFaces: Array<{ faceA: number; faceB: number | null }> = [];
   const faceSlotIndices = new Set<number>();
-  for (let unit = 0; unit < units; unit++) {
+  for (const unit of unitIndexes) {
     const pair = previewFacePairOfUnit(slots, unit, backOptional);
     unitFaces.push(pair);
     faceSlotIndices.add(pair.faceA);
-    faceSlotIndices.add(pair.faceB);
+    if (pair.faceB !== null) faceSlotIndices.add(pair.faceB);
   }
   const faceImages = new Map<number, HTMLImageElement>();
   const faceJobs: Array<Promise<void>> = [];
@@ -2509,13 +2801,14 @@ async function buildBookmarkStripPreview(
   }
   await Promise.all(faceJobs);
 
-  for (let unit = 0; unit < units; unit++) {
-    // Cara B vacía (backOptional) → su slot EFECTIVO es el de la cara A:
-    // la tira del preview se pinta A|A-espejo, exactamente lo que producción
-    // imprime (REGLA ÚNICA — previewFacePairOfUnit, lib/faces.ts).
-    const { faceA, faceB } = unitFaces[unit]!;
-    const x = noFold ? pad : pad + unit * (stripW + gap);
-    const y = noFold ? pad + unit * (stripH + captionH + gap) : pad;
+  for (let ui = 0; ui < unitIndexes.length; ui++) {
+    // Cara B vacía (backOptional) → faceB = null: su rect se pinta EN BLANCO,
+    // exactamente lo que producción imprime (REGLA ÚNICA, owner 2026-10-07 —
+    // previewFacePairOfUnit, lib/faces.ts). `ui` = posición en el montaje (con
+    // unitIndex siempre 0 — una sola tira centrada en su página).
+    const { faceA, faceB } = unitFaces[ui]!;
+    const x = noFold ? pad : pad + ui * (stripW + gap);
+    const y = noFold ? pad + ui * (stripH + captionH + gap) : pad;
     // Rect de cada cara dentro de la tira: plegable = apiladas con CABEZAS AL
     // DOBLEZ (2026-09-25, corrección del owner — la convención anterior A arriba
     // / B abajo estaba mal): Cara B en la MITAD SUPERIOR (se rota 180° al pintar,
@@ -2536,6 +2829,13 @@ async function buildBookmarkStripPreview(
     ctx.clip();
     for (const [i, slotIndex] of [faceA, faceB].entries()) {
       const { fx, fy, fw, fh } = faceRect(i);
+      if (slotIndex === null) {
+        // Cara B vacía → EN BLANCO puro (decisión owner 2026-10-07): es la cara
+        // blanca que imprenta recibe (blankBackFacePng) y la que muestra el 3D.
+        ctx.fillStyle = "#FFFFFF";
+        ctx.fillRect(fx, fy, fw, fh);
+        continue;
+      }
       const img = faceImages.get(slotIndex);
       if (!img) continue;
       if (!noFold && i === 1) {

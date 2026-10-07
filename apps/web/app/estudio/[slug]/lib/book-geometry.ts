@@ -134,8 +134,8 @@ export function stripDimsForFace(
 
 /**
  * Agrupa las texturas del Estudio en UNIDADES físicas de separador (ola 3 — convención de
- * lib/faces.ts: slot par = cara A → AL FRENTE, slot impar = cara B → ATRÁS). Con unidad impar
- * (no debería: facesPerUnit=2) la última repite su diseño atrás.
+ * lib/faces.ts: slot par = cara A → AL FRENTE, slot impar = cara B → ATRÁS). Con unidad sin
+ * cara B (no debería: facesPerUnit=2) la trasera queda EN BLANCO (back = null).
  *
  * Ola 6 — cuando llega `sizeCm` (variante de separador con dimensiones reales) forzamos el
  * pareo de caras, aunque las texturas ya hayan sido rotadas 90° en el editor y su aspecto
@@ -145,12 +145,12 @@ export function stripDimsForFace(
  * Diseños VIEJOS de tira completa (lienzo vertical, pre-ola-3): no traen cara B — cada textura
  * es su propia unidad y repite el diseño en ambas caras (comportamiento histórico).
  *
- * 2026-10-02 (Paquete D — REGLA ÚNICA de la cara B vacía): una cara B SIN
- * diseñar (slot sin assetUrl — misma condición que producción,
- * expandMissingBackFaces) se muestra ESPEJO de la cara A de su pareja
- * (back = front), nunca en blanco: es lo que imprenta produce y lo que el
- * cliente aprobó en la Vista Previa. Antes (2026-09-22, backOptional) el 3D
- * pintaba el reverso en blanco papel — contradecía la regla.
+ * 2026-10-07 (decisión owner — REVIERTE la regla espejo del Paquete D, 2026-10-02):
+ * una cara B SIN diseñar (slot sin assetUrl — misma condición que producción,
+ * blank-back-face.ts) se muestra EN BLANCO (back = null; el caller pinta la cara
+ * trasera blanca), nunca espejo de la cara A: es lo que imprenta produce y lo
+ * que el cliente ve en la Vista Previa. "Si cargo únicamente la Cara A, espero
+ * que la Cara B sea en blanco en vista 3D, preview y físico."
  */
 export function bookmarkFaceUnits<
   T extends {
@@ -166,11 +166,11 @@ export function bookmarkFaceUnits<
   facesPerUnit?: number,
   /** sizeCm de la variante: si llega, confirma que estamos en el flujo moderno de caras. */
   sizeCm?: string,
-): { front: T; back: T }[] {
+): { front: T; back: T | null }[] {
   // Ola 10 — si el producto declara facesPerUnit=2, agrupamos por pares de slotIndex
   // (no por orden del array). La cara B sin diseño propio (slot sin assetUrl — el
-  // snapshot del stage existe siempre, así que dataUrl NO discrimina) usa la misma
-  // textura que la cara A: espejo de la REGLA ÚNICA (Paquete D, 2026-10-02).
+  // snapshot del stage existe siempre, así que dataUrl NO discrimina) queda EN
+  // BLANCO: back = null (REGLA ÚNICA, decisión owner 2026-10-07).
   if (
     facesPerUnit === 2 &&
     bookmarks.length > 0 &&
@@ -179,14 +179,14 @@ export function bookmarkFaceUnits<
     const bySlot = new Map<number, T>();
     for (const b of bookmarks) bySlot.set(b.slotIndex!, b);
     const maxSlot = Math.max(...bookmarks.map((b) => b.slotIndex!));
-    const units: { front: T; back: T }[] = [];
+    const units: { front: T; back: T | null }[] = [];
     for (let k = 0; 2 * k <= maxSlot; k++) {
       const front = bySlot.get(2 * k);
       if (!front) continue; // unidad sin cara A: no renderizar
       const back = bySlot.get(2 * k + 1);
       // Cara B con diseño propio ⇔ su slot tiene assetUrl (misma condición que
-      // producción). Sin él → espejo de la cara A.
-      units.push({ front, back: back?.assetUrl ? back : front });
+      // producción). Sin él → EN BLANCO (back = null), nunca espejo de la cara A.
+      units.push({ front, back: back?.assetUrl ? back : null });
     }
     return units;
   }
@@ -195,10 +195,11 @@ export function bookmarkFaceUnits<
     sizeCm !== undefined ||
     (bookmarks.length > 0 && bookmarks.every((b) => b.wRatio / b.hRatio >= FACE_CANVAS_MIN_ASPECT));
   if (!looksLikeFaces) return bookmarks.map((b) => ({ front: b, back: b }));
-  const units: { front: T; back: T }[] = [];
+  const units: { front: T; back: T | null }[] = [];
   for (let k = 0; 2 * k < bookmarks.length; k++) {
     const front = bookmarks[2 * k]!;
-    units.push({ front, back: bookmarks[2 * k + 1] ?? front });
+    // Unidad sin cara B (textura faltante): trasera EN BLANCO (owner 2026-10-07).
+    units.push({ front, back: bookmarks[2 * k + 1] ?? null });
   }
   return units;
 }
@@ -360,22 +361,12 @@ export function flatBookmarkSlots(
  * Colocación de UNA pieza plana acostada sobre la hoja en (bx, bz): y pegada a la
  * superficie de la hoja (pageSurfaceY + medio grosor). El giro (yaw) lo aplica el caller
  * sobre el grupo (rotación mundial Y tras acostar la pieza con −90° en X).
+ * Fase 2.12 (decisión owner 2026-10-07): esta es de nuevo la ÚNICA pose de los Alargados
+ * — la pose DE PIE de Ola 18 (`flatBookmarkPlacementUpright`, eliminada) dejaba una torre
+ * de 15 cm dominando la escena; la pieza NO se encoge, solo cambian pose + cámara.
  */
 export function flatBookmarkPlacement(bx: number, bz: number): [number, number, number] {
   return [bx, pageSurfaceY(bx) + FLAT_BOOKMARK_T / 2 + 0.002, bz];
-}
-
-/**
- * Colocación de UNA pieza plana DE PIE sobre la hoja en (bx, bz): la base de la pieza
- * reposa sobre la superficie de la hoja (y = pageSurfaceY + h/2). El giro (yaw) lo aplica
- * el caller sobre el grupo (rotación mundial Y).
- */
-export function flatBookmarkPlacementUpright(
-  bx: number,
-  bz: number,
-  h: number,
-): [number, number, number] {
-  return [bx, pageSurfaceY(bx) + h / 2, bz];
 }
 
 /** Encuadre de la cámara (FitCameraPolar): pliego completo + holgura, vista desde arriba-3/4. */

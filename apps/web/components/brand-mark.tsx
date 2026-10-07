@@ -34,12 +34,16 @@ const LOGO_PX: Record<Size, number> = {
 
 type Size = "sm" | "md" | "lg";
 
+/** Logo administrable (CMS setting `site.logo` → Mediateca). null = asset estático. */
+export type SiteLogoImage = { url: string; alt: string };
+
 export function BrandMark({
   size = "sm",
   href = "/",
   animated = false,
   className,
   priority = true,
+  logo = null,
 }: {
   size?: Size;
   href?: string;
@@ -50,6 +54,9 @@ export function BrandMark({
   // ("…detected as the Largest Contentful Paint… add loading=eager").
   // priority=true → preload + fetchPriority=high + loading=eager.
   priority?: boolean;
+  /** Fase 3 · 3.9 — logo del CMS (getCmsImage("site.logo")). Sin él, el asset
+   *  estático /brand/lucams-logo.png (REGLA DE ORO del fallback CMS). */
+  logo?: SiteLogoImage | null;
 }) {
   const px = LOGO_PX[size];
 
@@ -70,8 +77,8 @@ export function BrandMark({
         )}
       >
         <Image
-          src="/brand/lucams-logo.png"
-          alt="Lucams_shop"
+          src={logo?.url ?? "/brand/lucams-logo.png"}
+          alt={logo?.alt ?? "Lucams_shop"}
           width={px}
           height={px}
           priority={priority}

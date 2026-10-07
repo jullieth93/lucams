@@ -30,6 +30,7 @@ import { redirect } from "next/navigation";
 import { CheckCircle2, Clock, XCircle, MapPin, Mail, Package, Sparkles } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { Button } from "@/components/ui/button";
+import { LinkPendingLabel } from "@/components/ui/link-pending-label";
 import { getTransaction } from "@/lib/wompi";
 import { logger } from "@/lib/logger";
 import { headers } from "next/headers";
@@ -516,11 +517,13 @@ function ApprovedPage({
         </Link>
         <Button asChild size="lg" className="bg-gradient-brand text-white hover:brightness-110">
           <Link href={orderUrl}>
-            {isGuest ? (
-              <CmsText blockKey="checkout.gracias.order-cta-guest" fallback="Ver mi pedido" />
-            ) : (
-              <CmsText blockKey="checkout.gracias.order-cta-account" fallback="Ver mis pedidos" />
-            )}
+            <LinkPendingLabel>
+              {isGuest ? (
+                <CmsText blockKey="checkout.gracias.order-cta-guest" fallback="Ver mi pedido" />
+              ) : (
+                <CmsText blockKey="checkout.gracias.order-cta-account" fallback="Ver mis pedidos" />
+              )}
+            </LinkPendingLabel>
           </Link>
         </Button>
       </div>
@@ -600,11 +603,13 @@ function PaymentReceivedPage({ orderNumber, txId }: { orderNumber: string; txId:
             <CmsText blockKey="checkout.gracias.support-cta" fallback="Contactar soporte" />
           </Button>
         </Link>
-        <Link href="/">
-          <Button size="lg" className="bg-gradient-brand text-white hover:brightness-110">
-            <CmsText blockKey="checkout.gracias.home-cta" fallback="Volver al inicio" />
-          </Button>
-        </Link>
+        <Button asChild size="lg" className="bg-gradient-brand text-white hover:brightness-110">
+          <Link href="/">
+            <LinkPendingLabel>
+              <CmsText blockKey="checkout.gracias.home-cta" fallback="Volver al inicio" />
+            </LinkPendingLabel>
+          </Link>
+        </Button>
       </div>
     </div>
   );
@@ -675,11 +680,15 @@ function FailedPage({ reason }: { reason: string }) {
             <CmsText blockKey="checkout.gracias.support-cta" fallback="Contactar soporte" />
           </Button>
         </Link>
-        <Link href="/carrito">
-          <Button size="lg" className="bg-gradient-brand text-white hover:brightness-110">
-            <CmsText blockKey="checkout.gracias.cart-cta" fallback="Volver al carrito" />
-          </Button>
-        </Link>
+        {/* #31 — Button asChild (un solo interactivo) + spinner de navegación:
+            es el CTA de REINTENTO de pago, el más propenso al doble-click. */}
+        <Button asChild size="lg" className="bg-gradient-brand text-white hover:brightness-110">
+          <Link href="/carrito">
+            <LinkPendingLabel>
+              <CmsText blockKey="checkout.gracias.cart-cta" fallback="Volver al carrito" />
+            </LinkPendingLabel>
+          </Link>
+        </Button>
       </div>
     </div>
   );

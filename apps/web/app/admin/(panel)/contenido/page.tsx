@@ -11,7 +11,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ExternalLink, FileText, FileWarning, Pencil, RefreshCw, Search } from "lucide-react";
+import {
+  BookOpen,
+  ExternalLink,
+  FileText,
+  FileWarning,
+  Pencil,
+  RefreshCw,
+  Search,
+} from "lucide-react";
 import {
   AdminBadge,
   AdminCard,
@@ -61,7 +69,7 @@ export default async function ContenidoIndexPage({ searchParams }: { searchParam
   return (
     <AdminPage>
       <AdminPageHeader
-        icon={<FileText className="h-5 w-5" />}
+        icon={<BookOpen className="h-5 w-5" />}
         title="Páginas del sitio"
         subtitle="Edita el contenido de tu sitio por página: elige una tarjeta y cambia los textos sin tocar código."
         breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Contenido" }]}

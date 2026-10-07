@@ -11,7 +11,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Package, Plus, Edit3, ShoppingBag } from "lucide-react";
+import { Plus, Edit3, ShoppingBag } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
@@ -115,7 +115,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
   return (
     <AdminPage>
       <AdminPageHeader
-        icon={<Package className="h-5 w-5" />}
+        icon={<ShoppingBag className="h-5 w-5" />}
         title="Productos"
         subtitle={
           <>

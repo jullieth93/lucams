@@ -37,10 +37,11 @@
  *     ?variant= y dedupe quantity/photoSlots intactos.
  *   - Dimensión de 1 SOLO valor (Lucy 2026-07-22): normalmente se oculta por
  *     redundante (Forma igual en todas las variants). EXCEPCIÓN: las claves en
- *     SINGLE_VALUE_VISIBLE_DIMS (hoy `sizeCm`) se muestran igual como chip
- *     único preseleccionado NO clicable — el tamaño físico es información de
- *     compra ("Tamaño: 7.5×10 cm" en polaroid, "6.5×20 cm" en tiras) y deja
- *     el grupo listo para cuando el producto acople más tamaños.
+ *     SINGLE_VALUE_VISIBLE_DIMS (`sizeCm` y, desde Fase 2.9 — owner
+ *     2026-10-07 —, `magnet`) se muestran igual como chip único preseleccionado
+ *     NO clicable — el tamaño físico y el imán son información de compra
+ *     ("Tamaño: 7.5×10 cm" en polaroid, "6.5×20 cm" en tiras, "🧲 Con imán") y
+ *     dejan el grupo listo para cuando el producto acople más valores.
  *
  * Stock por variante (Fase 1): un valor de dimensión cuya combinación con la
  * selección actual existe pero está AGOTADA (ninguna variante con stock > 0)
@@ -210,12 +211,20 @@ function formatDimensionValue(key: string, value: unknown): string {
 /**
  * Dimensiones visibles AUN con 1 solo valor (Lucy 2026-07-22). Regla:
  * una dimensión se muestra si está en VISIBLE_DIMENSIONS y (tiene >1 valor
- * distinto O está en esta lista). Hoy solo `sizeCm`: el tamaño físico es dato
- * de compra ("Tamaño: 7.5×10 cm" polaroid · "6.5×20 cm" tiras) y el grupo
- * queda listo para cuando el producto acople más tamaños. El resto de claves
- * con 1 valor (Forma, Marco fijo…) siguen ocultas por redundantes.
+ * distinto O está en esta lista).
+ *  - `sizeCm`: el tamaño físico es dato de compra ("Tamaño: 7.5×10 cm"
+ *    polaroid · "6.5×20 cm" tiras) y el grupo queda listo para cuando el
+ *    producto acople más tamaños.
+ *  - `magnet` (Fase 2.9, owner 2026-10-07): "¿Con imán?" se muestra AUNQUE
+ *    la variante tenga un solo valor — la presencia/ausencia del imán es un
+ *    atributo físico del producto que el cliente debe VER en la PDP (un
+ *    producto solo-magnético no debe parecer no-magnético). El chip único
+ *    sale preseleccionado (pdpDefaultVariant ya prefiere Con imán) y no
+ *    clicable, como el tamaño fijo.
+ * El resto de claves con 1 valor (Forma, Marco fijo…) siguen ocultas por
+ * redundantes.
  */
-const SINGLE_VALUE_VISIBLE_DIMS: ReadonlySet<string> = new Set(["sizeCm"]);
+const SINGLE_VALUE_VISIBLE_DIMS: ReadonlySet<string> = new Set(["sizeCm", "magnet"]);
 
 /** Dimensiones que representan CANTIDAD de unidades (candidatas al stepper +/−). */
 const QUANTITY_DIM_KEYS: ReadonlySet<string> = new Set(["quantity", "photoSlots"]);

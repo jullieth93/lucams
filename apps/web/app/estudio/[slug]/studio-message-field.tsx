@@ -40,6 +40,14 @@ export function StudioMessageField({ store }: { store: StoreApi<StudioStoreState
   const layerId = layerJson ? (JSON.parse(layerJson) as { id: string }).id : null;
   const currentText = useStore(store, (s) => {
     if (!layerId || !s.canvasData) return null;
+    // QA 1.2 (2026-10-07) — el valor del campo es PACK-LEVEL: el último texto
+    // aplicado masivamente a la capa, NO el primer slot con override (ese slot
+    // es mutable: una edición/limpieza individual desde el canvas lo borraba y
+    // el campo "saltaba" o quedaba vacío — de ahí el "todo se desaparece" del
+    // QA). Fallback: sin masivo registrado (p.ej. diseño recargado), deriva de
+    // los slots como antes.
+    const pack = s.packTextValues[layerId];
+    if (typeof pack === "string") return pack;
     for (const slot of s.canvasData.slots) {
       const t = slot.textOverrides?.[layerId]?.text;
       if (typeof t === "string") return t;

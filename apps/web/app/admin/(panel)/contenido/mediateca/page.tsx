@@ -17,7 +17,7 @@
 
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { ArrowLeft, Images } from "lucide-react";
+import { ArrowLeft, Image as ImageIcon } from "lucide-react";
 import { AdminButton, AdminPage, AdminPageBody, AdminPageHeader } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getCmsMediaUsageDetail, listCmsMedia } from "@/lib/cms-media";
@@ -37,7 +37,7 @@ export default async function MediatecaPage() {
   return (
     <AdminPage>
       <AdminPageHeader
-        icon={<Images className="h-5 w-5" />}
+        icon={<ImageIcon className="h-5 w-5" />}
         title="Mediateca"
         subtitle="Imágenes del sitio listas para usar en campos de imagen (banners, hero, logos). Sube una vez y reutiliza."
         breadcrumbs={[

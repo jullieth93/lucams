@@ -100,6 +100,13 @@ export default async function AdminPedidoDetallePage({
   // descargue e imprima. Antes esto era imposible desde la UI. TTL 1h → refrescar la página si expira.
   const productionPaths = order.items.flatMap((it) => it.design?.productionUrls ?? []);
   const signedProduction = await getProductionAssetSignedUrls(productionPaths);
+  // Fix 1.8 (2026-10-07) — copia PROPIA del PDF de la etiqueta (bucket privado
+  // production-assets, Order.labelPath). Signed URL de TTL corto (15 min): si
+  // expira, recargar la página la renueva. Las URLs externas de Aveonline quedan
+  // solo como respaldo (pueden expirar o pedir sesión según transportadora).
+  const labelSignedUrl = order.labelPath
+    ? ((await getProductionAssetSignedUrls([order.labelPath], 900)).get(order.labelPath) ?? null)
+    : null;
   // ADR-063 T7 — ¿hay piezas finalizadas? → ofrecer el ZIP completo (piezas + hoja de armado).
   const hasProduction = productionPaths.length > 0;
   const productionItems = order.items.filter((it) => (it.design?.productionUrls?.length ?? 0) > 0);
@@ -157,6 +164,11 @@ export default async function AdminPedidoDetallePage({
   const shipmentLastError = order.trackingNumber
     ? null
     : parseShipmentLastError(order.shipmentLastError);
+  // Misma regla de visibilidad del botón de reintento en <OrderActions> — el
+  // mensaje de error de la transportadora apunta a esa acción solo si aplica.
+  const canRetryShipment =
+    !isInternalDelivery &&
+    (order.status === "PAID" || (order.status === "FULFILLING" && !order.trackingNumber));
 
   // Contacto directo: wa.me con el teléfono del comprador (normalizado con
   // indicativo 57 — lib/wa) y mensaje pre-armado con el número de pedido
@@ -596,6 +608,16 @@ export default async function AdminPedidoDetallePage({
                       ⚠️ Guía simulada (modo test). Producción genera guía real.
                     </p>
                   )}
+                  {labelSignedUrl && (
+                    <a
+                      href={labelSignedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-brand-purple hover:bg-brand-purple-dark mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white transition-colors"
+                    >
+                      📄 Descargar etiqueta PDF
+                    </a>
+                  )}
                   {order.trackingUrl && (
                     <a
                       href={order.trackingUrl}
@@ -603,7 +625,9 @@ export default async function AdminPedidoDetallePage({
                       rel="noopener noreferrer"
                       className="text-brand-purple mt-2 block text-xs underline"
                     >
-                      Ver guía en Aveonline →
+                      {labelSignedUrl
+                        ? "Ver guía en Aveonline (enlace externo, puede expirar) →"
+                        : "Ver guía en Aveonline →"}
                     </a>
                   )}
                   {order.labelUrl && (
@@ -611,15 +635,24 @@ export default async function AdminPedidoDetallePage({
                       href={order.labelUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-brand-purple mt-1 block text-xs underline"
+                      className={`mt-1 block text-xs underline ${
+                        labelSignedUrl ? "text-brand-muted" : "text-brand-purple"
+                      }`}
                     >
-                      Descargar etiqueta PDF →
+                      {labelSignedUrl
+                        ? "Etiqueta en Aveonline (respaldo externo) →"
+                        : "Descargar etiqueta PDF →"}
                     </a>
                   )}
                 </>
               ) : (
                 <>
                   <p className="text-brand-muted text-xs">Sin guía generada todavía</p>
+                  {!isInternalDelivery && !shipmentLastError && canRetryShipment && (
+                    <p className="text-brand-muted mt-1 text-[11px]">
+                      Créala con el botón «Generar guía Aveonline» en Acciones ↓.
+                    </p>
+                  )}
                   {/* Paquete G — causa REAL del último intento fallido (mensaje
                       de la transportadora, sanitizado) + sugerencia operativa
                       (docs/INTEGRATIONS_AVEONLINE.md §4.4). */}
@@ -651,6 +684,12 @@ export default async function AdminPedidoDetallePage({
                       <p className="mt-1.5 text-[11px] text-amber-800">
                         💡 {suggestShipmentFailureCause(shipmentLastError)}
                       </p>
+                      {canRetryShipment && (
+                        <p className="mt-1.5 text-[11px] font-medium text-rose-800">
+                          Acción sugerida: reintenta con el botón «Generar guía Aveonline» en
+                          Acciones ↓.
+                        </p>
+                      )}
                     </div>
                   )}
                   {isInternalDelivery && (

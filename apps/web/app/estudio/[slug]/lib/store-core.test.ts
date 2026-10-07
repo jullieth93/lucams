@@ -209,6 +209,20 @@ describe("setSlotTextOverride / setTextOverrideAllSlots", () => {
       true,
     );
   });
+
+  it("QA 1.2 — setTextOverrideAllSlots registra el valor PACK-LEVEL; la edición individual NO lo pisa; null lo limpia", () => {
+    const store = setup();
+    store.getState().setTextOverrideAllSlots("caption", { text: "Hola" });
+    expect(store.getState().packTextValues.caption).toBe("Hola");
+
+    // Edición individual (modal del canvas): pisa el slot, no el valor pack-level.
+    store.getState().setSlotTextOverride(0, "caption", { text: "Chao" });
+    expect(store.getState().packTextValues.caption).toBe("Hola");
+
+    // Masivo vacío/null limpia el valor pack-level junto con los slots.
+    store.getState().setTextOverrideAllSlots("caption", null);
+    expect(store.getState().packTextValues.caption).toBeUndefined();
+  });
 });
 
 describe("setImagePlaceholderRect", () => {

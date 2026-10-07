@@ -67,7 +67,7 @@ import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { OrbitControls, RoundedBox, ContactShadows } from "@react-three/drei";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
-import { FoldedStripMesh, MagnetMesh } from "./magnet-3d";
+import { FoldedStripMesh, MagnetMesh, BLANK_FACE_COLOR } from "./magnet-3d";
 import { getPageEdgesTexture, getPagePrintTexture } from "./lib/procedural-textures";
 import {
   BLOCK_T,
@@ -86,7 +86,7 @@ import {
   bookmarkFaceUnits,
   camber,
   flatBookmarkDims,
-  flatBookmarkPlacementUpright,
+  flatBookmarkPlacement,
   flatBookmarkSlots,
   separatorPlacement,
   stripDimsForFace,
@@ -166,7 +166,7 @@ function Separators({
         <group key={key} position={position} rotation={rotation}>
           <FoldedStripMesh
             dataUrl={unit.front.dataUrl}
-            backDataUrl={unit.back.dataUrl}
+            backDataUrl={unit.back?.dataUrl ?? undefined}
             wRatio={unit.front.wRatio}
             hRatio={unit.front.hRatio}
             stripW={stripW}
@@ -189,7 +189,7 @@ function Separators({
  * varias filas (z distinta). Las piezas NUNCA se encogen: la cámara abre.
  */
 type FlatBookmarkData = {
-  units: { front: Magnet3D; back: Magnet3D }[];
+  units: { front: Magnet3D; back: Magnet3D | null }[];
   dims: { w: number; h: number }[];
   slots: { x: number; z: number; yaw: number }[];
   maxW: number;
@@ -204,6 +204,16 @@ type FlatBookmarkData = {
  * página (al orbitar por debajo no aplica: la pieza reposa sobre la hoja).
  * La textura del Estudio ya viene VERTICAL (stage 400×1500 / 400×1200) → NO se rota,
  * a diferencia de los separadores doblados (textura horizontal rotada 90° en el editor).
+ *
+ * Pose (decisión owner 2026-10-07, Fase 2.12 — REVIERTE la de Ola 18): la pieza vuelve a
+ * ir ACOSTADA sobre la hoja (flatBookmarkPlacement + rotación −90° en X, la pose original
+ * de Ola 17). Ola 18 la había puesto DE PIE para que el cliente viera las 2 caras al
+ * orbitar, pero un separador de 15 cm erguido DOMINABA la escena (torre de ~4.5 u sobre
+ * una hoja de 5 u). Regla "TAMAÑO REAL SIEMPRE" intacta: NO se encoge la pieza — solo
+ * cambian la pose y el encuadre de cámara (rama `flat` del fit en Scene). Con el orden de
+ * Euler XYZ de three la rotación [−π/2, yaw, 0] aplica el yaw PRIMERO (pieza de pie, giro
+ * sobre su eje vertical) y el −90° en X DESPUÉS → la pieza queda echada con el largo en el
+ * plano de la hoja girado `yaw` y la cara A mirando hacia ARRIBA (+Y).
  */
 function FlatBookmarks({ data }: { data: FlatBookmarkData }) {
   return (
@@ -214,18 +224,17 @@ function FlatBookmarks({ data }: { data: FlatBookmarkData }) {
         return (
           <group
             key={i}
-            position={flatBookmarkPlacementUpright(slot.x, slot.z, h)}
-            rotation={[0, slot.yaw, 0]}
+            position={flatBookmarkPlacement(slot.x, slot.z)}
+            rotation={[-Math.PI / 2, slot.yaw, 0]}
           >
-            {/* Ola 18 — la pieza se muestra DE PIE sobre la hoja (sin rotación): la cara A
-                mira a la cámara y la cara B se descubre al orbitar detrás. El diseño físico del
-                alargado es plano, pero para que el cliente vea las 2 caras que montó en el
-                estudio, la pieza 3D se presenta erguida como los separadores doblados.
-                Cara B vacía (REGLA ÚNICA, Paquete D 2026-10-02): bookmarkFaceUnits la
-                resuelve ESPEJO de la cara A — lo mismo que imprime producción. */}
+            {/* Cara B vacía (REGLA ÚNICA, decisión owner 2026-10-07): bookmarkFaceUnits la
+                resuelve EN BLANCO (back = null → tapa trasera blanca pura) — lo mismo que
+                imprime producción, nunca espejo de la cara A. Acostada, la cara B queda
+                contra la página: el reverso físico real. */}
             <MagnetMesh
               dataUrl={unit.front.dataUrl}
-              backDataUrl={unit.back.dataUrl}
+              backDataUrl={unit.back?.dataUrl ?? undefined}
+              backColor={unit.back ? undefined : BLANK_FACE_COLOR}
               width={w}
               height={h}
               shape="rectangle"
@@ -423,22 +432,34 @@ function Scene({
     return { units, dims, slots, maxW, maxH };
   }, [flat, bookmarks, facesPerUnit, sizeCm]);
   // Ola 18/19 — encuadre dinámico:
-  // - Alargados planos (pieza alta 12/15 cm): encuadre más holgado y centrado en la hoja
-  //   derecha para que la pieza completa sea visible; crece con el ancho/alto reales del
-  //   conjunto (2026-09-15: 2 o 12 unidades se ven al mismo tamaño, la cámara abre).
+  // - Alargados planos: encuadre centrado en la hoja derecha que crece con el ancho/alto
+  //   reales del conjunto (2026-09-15: 2 o 12 unidades se ven al mismo tamaño, la cámara
+  //   abre). Fase 2.12 (owner 2026-10-07): con la pieza ACOSTADA ya no domina el alto de
+  //   la escena — el halfH se calcula sobre la proyección del LARGO echado (media pieza a
+  //   cada lado del slot, proyectada a la vertical de pantalla con cos(polar)) y el polar
+  //   sube a 56° (vista más cenital: la cara acostada se lee con menos escorzo; el target
+  //   baja a la superficie de la hoja, ~0.7 u). La pieza NUNCA se encoge: solo pose + cámara.
   // - Separadores doblados (pieza chica 2×6): encuadre más cercano para que la tira se lea.
   const fit = useMemo(() => {
     if (flat) {
+      const polarDeg = 56;
       const spreadX = flatData
         ? flatData.slots.reduce((a, s) => Math.max(a, Math.abs(s.x - PAGE_W / 2)), 0) +
           flatData.maxW / 2
         : 0;
-      const spreadZ = flatData ? flatData.slots.reduce((a, s) => Math.max(a, Math.abs(s.z)), 0) : 0;
+      // Media profundidad del conjunto sobre la hoja: slots ± medio largo de pieza (el largo
+      // queda en el plano de la hoja al ir acostada).
+      const spreadZ = flatData
+        ? flatData.slots.reduce((a, s) => Math.max(a, Math.abs(s.z)), 0) + flatData.maxH / 2
+        : 0;
       return {
-        halfW: Math.max(3.0, spreadX + 0.3),
-        halfH: Math.max(5.0, (flatData?.maxH ?? 4.5) + 0.9 + spreadZ),
-        polarDeg: 48,
-        targetY: 1.2,
+        halfW: Math.max(2.8, spreadX + 0.3),
+        // La profundidad de la hoja proyecta a la vertical de pantalla con cos(polar);
+        // +0.7 cubre la altura física de la hoja (camber) y aire sobre/bajo la pieza.
+        halfH: Math.max(2.2, spreadZ * Math.cos((polarDeg * Math.PI) / 180) + 0.7),
+        polarDeg,
+        // Superficie de la hoja derecha a la altura del centro (pageSurfaceY(PAGE_W/2) ≈ 0.7).
+        targetY: 0.7,
         targetX: PAGE_W / 2,
         targetZ: 0,
         margin: 1.05,

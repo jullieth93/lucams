@@ -39,6 +39,10 @@
  * Pase 2026-07-23 (ola 4 — Lucy: "siguen muy gruesas"): las fichas bajan OTRO punto (0.025 →
  * 0.015, ~62.5% bajo el imán) sin llegar a planas; el z sobre el tablero deriva del depth
  * (totalThickness), así el cambio no hunde ni levanta las fichas.
+ * Pase 2026-10-07 (Fase 2.11, owner — GROSOR FÍSICO REAL): los grosores dejan de ser
+ * constantes de mundo y se derivan del uPerCm del mural (0.1 u/cm) via `realWorldDepth` —
+ * fotoimán 2 mm → 0.02 u (antes 0.04 u, ~4× el real); fichas 1.5 mm → 0.015 u (mismo
+ * relieve de siempre). El z sigue derivando del depth → las piezas ni se hunden ni flotan.
  */
 
 import { Suspense, useMemo } from "react";
@@ -46,7 +50,7 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, GradientTexture } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
 import { StudioEnvironment } from "./studio-3d-environment";
-import { MagnetMesh, MAGNET_DEPTH, TILE_DEPTH, magnetWorldSizes } from "./magnet-3d";
+import { MagnetMesh, realWorldDepth, TILE_THICKNESS_CM, magnetWorldSizes } from "./magnet-3d";
 import { clusterLayout, BOARD_SCENE } from "./lib/cluster-layout";
 import { getCorkTexture } from "./lib/procedural-textures";
 import type { Magnet3D } from "./fridge-3d-view";
@@ -64,12 +68,16 @@ const INNER_W = BOARD_W - FRAME * 2;
 const INNER_H = BOARD_H - FRAME * 2;
 const FRONT_Z = DEPTH / 2;
 
-/** Grosor del extruido por estilo (ola 3 — Lucy: las fichas de letras se ven muy gruesas,
- *  "bajar UN PUNTO, no planas"; ola 4 2026-07-23: "siguen muy gruesas" → OTRO punto):
- *  memo (fichas de letras/nombre/vocales) → TILE_DEPTH (0.015, bisel y sombra intactos);
- *  cork (fotoimanes) → el grosor de imán de siempre. */
+/** Grosor del extruido por estilo (Fase 2.11, owner 2026-10-07 — grosor FÍSICO real
+ *  derivado del uPerCm del mural; antes constantes de mundo MAGNET_DEPTH/TILE_DEPTH):
+ *  memo (fichas de letras/nombre/vocales) → 1.5 mm (TILE_THICKNESS_CM — conserva el "un
+ *  punto más finas, no planas" de Lucy; en este tablero 0.15 cm × 0.1 u/cm = 0.015 u,
+ *  el mismo relieve de siempre); cork (fotoimanes) → 2 mm (0.02 u acá — antes 0.04 u,
+ *  ~4× el grosor real). */
 function boardDepth(style: BoardStyle): number {
-  return style === "memo" ? TILE_DEPTH : MAGNET_DEPTH;
+  return style === "memo"
+    ? realWorldDepth(BOARD_U_PER_CM, TILE_THICKNESS_CM)
+    : realWorldDepth(BOARD_U_PER_CM);
 }
 
 /** Grosor TOTAL del extruido: depth + bisel a ambos lados (bevelThickness = 0.2·depth c/u). */

@@ -134,10 +134,10 @@ const ILLUSTRATED_PROPS = {
 
 /** Pulsa "Vista previa" (antes "¡Listo!") y espera a que la vista previa esté en pantalla. */
 async function openPreview() {
-  // Ola 32 — hay DOS botones «Vista previa» (header sticky + panel de controles;
-  // misma acción). Se pulsa el del panel: el CTA histórico.
-  const ctas = screen.getAllByRole("button", { name: /Vista previa/ });
-  fireEvent.click(ctas[ctas.length - 1]!);
+  // QA 1.6 (2026-10-07) — el botón «Vista previa» es ÚNICO (el del panel de
+  // controles): el CTA del header sticky se diferenció como «Ver diseño» para
+  // no leer dos botones idénticos en pantalla.
+  fireEvent.click(screen.getByRole("button", { name: /Vista previa/ }));
   await screen.findByText("Así se verá tu pedido");
 }
 
@@ -158,6 +158,16 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
     expect(finalizeDesignAction).not.toHaveBeenCalled();
     expect(addPersonalizedToCartAction).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
+  });
+
+  it("QA 1.6: el CTA del header sticky dice «Ver diseño» (no duplica «Vista previa») y abre la MISMA vista previa", async () => {
+    renderEditor();
+    // Un solo «Vista previa» en pantalla (el del panel); el header se diferencia.
+    expect(screen.getAllByRole("button", { name: /Vista previa/ })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: /Ver diseño/ }));
+    await screen.findByText("Así se verá tu pedido");
+    expect(createLetterSetDesignAction).not.toHaveBeenCalled();
+    expect(addPersonalizedToCartAction).not.toHaveBeenCalled();
   });
 
   it("la vista previa cuenta las FICHAS del set (5 vocales), no el archivo de producción", async () => {

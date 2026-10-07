@@ -19,8 +19,8 @@ const PAGE_SIZE = 20;
 
 export type ReviewListOpts = {
   q?: string;
-  /** "pending" (default) | "approved" | "archived" | "all" */
-  status?: "pending" | "approved" | "archived" | "all";
+  /** "pending" (default) | "approved" | "featured" | "archived" | "all" */
+  status?: "pending" | "approved" | "featured" | "archived" | "all";
   /** Filtrar por rating exacto: 1..5. */
   rating?: number;
   /** "recent" (default) | "oldest" | "rating-high" | "rating-low" */
@@ -85,6 +85,10 @@ export async function listReviewsAdmin(opts: ReviewListOpts = {}): Promise<Revie
     switch (opts.status) {
       case "approved":
         return { isApproved: true, deletedAt: null };
+      // "Destacadas" (Fase 3 · 3.5): las que rotan en la home — featured,
+      // aprobadas y no archivadas (mismo criterio que listFeaturedReviews).
+      case "featured":
+        return { featured: true, isApproved: true, deletedAt: null };
       case "archived":
         return { deletedAt: { not: null } };
       case "all":
@@ -174,6 +178,21 @@ export async function listReviewsAdmin(opts: ReviewListOpts = {}): Promise<Revie
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
     pendingCount,
   };
+}
+
+export type ReviewProductOption = { id: string; name: string; slug: string };
+
+/**
+ * Productos que tienen al menos una reseña no archivada (Fase 3 · 3.5) —
+ * opciones del selector visible de producto en /admin/resenas. Orden
+ * alfabético para escanear rápido.
+ */
+export async function listReviewProductOptions(): Promise<ReviewProductOption[]> {
+  return prisma.product.findMany({
+    where: { reviews: { some: { deletedAt: null } } },
+    select: { id: true, name: true, slug: true },
+    orderBy: { name: "asc" },
+  });
 }
 
 /**

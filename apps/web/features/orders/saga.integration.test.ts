@@ -81,6 +81,17 @@ vi.mock("@/features/shipping/provider", () => ({
   }),
 }));
 
+// Fix 1.8 — archivo de la etiqueta stub: controla si hay copia propia (labelPath)
+// sin pegar a las URLs externas ni a Storage. Default: copia archivada OK.
+let labelArchiveResult: string | null = "shipping-labels/FAKE-LABEL.pdf";
+const labelArchiveCalls: Array<{ orderId: string }> = [];
+vi.mock("@/features/shipping/label-archive", () => ({
+  archiveShipmentLabel: async (args: { orderId: string }) => {
+    labelArchiveCalls.push(args);
+    return labelArchiveResult;
+  },
+}));
+
 // Emails stub — registra llamadas. sendOrderConfirmationOnce simula el marcado
 // REAL de confirmationSentAt (para poder ejercer su idempotencia a nivel saga)
 // pero SIN pegar a Resend ni renderizar plantillas.
@@ -251,6 +262,7 @@ async function getOrder(id: string) {
       trackingNumber: true,
       trackingUrl: true,
       labelUrl: true,
+      labelPath: true,
       shippingCarrier: true,
       wompiTransactionId: true,
       confirmationSentAt: true,
@@ -301,6 +313,8 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
     // Reset del estado mutable de los mocks entre tests.
     shipmentCalls.length = 0;
     emailCalls.length = 0;
+    labelArchiveCalls.length = 0;
+    labelArchiveResult = "shipping-labels/FAKE-LABEL.pdf";
     shipmentShouldThrow = null;
     confirmationShouldMark = true;
     shipmentResult = {
@@ -370,6 +384,10 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       expect(o?.trackingNumber).toBe(`${RUN}-GUIA-HP1`);
       expect(o?.trackingUrl).toBe("https://track.test/hp1");
       expect(o?.labelUrl).toBe("https://label.test/hp1.pdf");
+      // Fix 1.8 — copia propia de la etiqueta archivada y referenciada.
+      expect(o?.labelPath).toBe("shipping-labels/FAKE-LABEL.pdf");
+      expect(labelArchiveCalls).toHaveLength(1);
+      expect(labelArchiveCalls[0].orderId).toBe(orderId);
       // El carrier del provider sobrescribe al del pedido.
       expect(o?.shippingCarrier).toBe("coordinadora");
       expect(o?.wompiTransactionId).toBe("wompi-tx-hp1");
@@ -397,6 +415,25 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       expect(emailCalls.filter((c) => c.fn === "sendOrderConfirmationOnce")).toHaveLength(1);
       // Y el aviso al admin (in-app + email) también corre una vez por orden.
       expect(emailCalls.filter((c) => c.fn === "notifyNewOrderToAdmin")).toHaveLength(1);
+    }, 30000);
+
+    it("fix 1.8 — si la etiqueta NO se puede archivar, la orden sigue OK con tracking y labelPath null (fallback URLs externas)", async () => {
+      const variantId = await makeVariant(10, "lbl");
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 5000 }], {
+        numberTag: "LBL1",
+      });
+      labelArchiveResult = null; // simula: Aveonline respondió HTML/expirado y no hubo base64
+
+      const res = await processPaidOrder({ orderId, wompiTransactionId: "wompi-tx-lbl1" });
+
+      // El flujo de la orden NO se rompe: guía + FULFILLING como siempre.
+      expect(res.status).toBe("ok");
+      const o = await getOrder(orderId);
+      expect(o?.status).toBe("FULFILLING");
+      expect(o?.trackingNumber).toBe("TRACK-DEFAULT");
+      expect(o?.labelUrl).toBe("https://label.test/TRACK-DEFAULT.pdf");
+      expect(o?.labelPath).toBeNull();
+      expect(labelArchiveCalls).toHaveLength(1);
     }, 30000);
 
     it("F1 — al PAGAR con cupón: crea CouponUsage e incrementa usedCount (una sola vez)", async () => {

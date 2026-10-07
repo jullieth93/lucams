@@ -28,6 +28,7 @@ import {
   pathFromPublicUrl,
   removeStorage,
   PREVIEWS_BUCKET,
+  PURGE_IDLE_DESIGN_AFTER_DAYS,
 } from "@/features/personalization/retention-service";
 import { supabaseService } from "@/lib/supabase/service";
 import { hashBearerToken } from "@/lib/token-hash";
@@ -406,6 +407,41 @@ export async function cloneDesignForEdit(
     }
     return { id: clone.id };
   });
+}
+
+/**
+ * Reabre un diseño READY a DRAFT para seguir editándolo EN LA MISMA SESIÓN del Estudio
+ * (fix F1.1, plan maduración 2026-10). Contexto: el Estudio finaliza al confirmar la Vista
+ * Previa; si después el cliente siguió editando en la misma sesión (p.ej. el add-to-cart
+ * falló y reintentó), el save forzado pre-finalize chocaba con "only DRAFT can be edited" y
+ * la pantalla mostraba el error genérico de guardado sin salida. Con la reapertura, el save
+ * funciona y el finalize siguiente (idempotente por diseño, ver finalizeDesign) re-renderiza
+ * producción desde el canvasData nuevo — WYSIWYG intacto.
+ *
+ * Solo es seguro si NINGÚN CartItem/OrderItem referencia el diseño (un item de carrito exige
+ * que su diseño esté READY). Si está referenciado se rechaza: el camino correcto ahí es
+ * clonar (cloneDesignForEdit). Un DRAFT se devuelve tal cual (no-op).
+ */
+export async function reopenDesignForEdit(
+  designId: string,
+  owner: { customerId: string | null; sessionId: string | null },
+) {
+  const design = await getOwnedDesign(designId, owner);
+  if (!design) {
+    throw new Error("Design not found or not owned by caller");
+  }
+  if (design.status === "DRAFT") return design;
+  if (design.status !== "READY") {
+    throw new Error(`Design is ${design.status} — only READY can be reopened`);
+  }
+  const [cartRefs, orderRefs] = await Promise.all([
+    prisma.cartItem.count({ where: { designId } }),
+    prisma.orderItem.count({ where: { designId } }),
+  ]);
+  if (cartRefs > 0 || orderRefs > 0) {
+    throw new Error("Design is referenced by a cart/order item — clone instead of reopen");
+  }
+  return prisma.design.update({ where: { id: design.id }, data: { status: "DRAFT" } });
 }
 
 /**
@@ -1201,7 +1237,8 @@ export async function createClientSlotUploadTickets(opts: {
 
   // Cara B opcional (backOptional, 2026-09-22): las caras B sin diseñar (slot
   // impar sin assetUrl) NO reciben ticket — el cliente solo sube caras A y las
-  // B que sí diseñó; finalize duplica la A de la pareja en cada B vacía.
+  // B que sí diseñó; finalize genera una cara B EN BLANCO para cada B vacía
+  // (blank-back-face.ts — decisión owner 2026-10-07, nunca espejo de la A).
   const skipBackSlots = new Set<number>(
     productConfig.facesPerUnit === 2 &&
       productConfig.backOptional === true &&
@@ -1249,19 +1286,25 @@ async function readStagedClientSlots(designId: string, slotIndexes: number[]): P
 }
 
 /**
- * Cara B opcional (backOptional, 2026-09-22): expande un array de buffers que
- * solo cubre los slots REQUERIDOS a uno con un buffer por slot del canvas,
- * duplicando la cara A de la pareja (slot 2k) en cada cara B vacía (2k+1).
- * Sin caras B vacías es identidad.
+ * Cara B EN BLANCO (decisión owner 2026-10-07 — revierte la regla espejo del
+ * Paquete D): carga perezosa del generador (sharp nativo — ver nota en imports).
+ * Si el binario no carga NO caemos a la regla espejo vieja: imprenta recibiría
+ * un producto distinto del que el cliente aprobó. El finalize falla con mensaje
+ * claro y el diseño queda DRAFT para reintentar.
  */
-function expandMissingBackFaces(
-  buffers: Buffer[],
-  requiredSlotIndexes: number[],
-  slotCount: number,
-): Buffer[] {
-  if (requiredSlotIndexes.length === slotCount) return buffers;
-  const byIndex = new Map(requiredSlotIndexes.map((slotIndex, k) => [slotIndex, buffers[k]!]));
-  return Array.from({ length: slotCount }, (_, i) => byIndex.get(i) ?? byIndex.get(i - 1)!);
+async function loadBlankBackFace(): Promise<typeof import("./blank-back-face")> {
+  try {
+    return await import("./blank-back-face");
+  } catch (err) {
+    logger.error(
+      {
+        event: "design.finalize.blank_back_face_error",
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "No se pudo cargar el generador de cara B en blanco (sharp nativo)",
+    );
+    throw new Error("No pudimos preparar la cara B en blanco del separador. Intenta de nuevo.");
+  }
 }
 
 /**
@@ -1353,7 +1396,8 @@ export async function finalizeDesign(opts: {
   // y alargados): cuando el schema del producto lo declara, las caras B (slots
   // impares 2k+1 — convención de lib/faces.ts) pueden quedar SIN diseñar. Solo
   // se exige snapshot de las caras A y de las B que sí tienen asset; producción
-  // duplica la cara A de la pareja en cada B vacía (más abajo, expandMissingBackFaces).
+  // genera una cara B EN BLANCO para cada B vacía (blank-back-face.ts — decisión
+  // owner 2026-10-07, revierte la regla espejo: nunca copia de la cara A).
   const product = await prisma.product.findUnique({
     where: { id: design.productId },
     select: { personalizationSchema: true },
@@ -1386,9 +1430,11 @@ export async function finalizeDesign(opts: {
     }
   }
 
-  // Para el render server-side, las caras B vacías se renderizan como COPIA de
-  // la cara A de su pareja (mismo asset/encuadre): el motor exige un asset por
-  // slot y producción necesita la tira completa A|B.
+  // Para el render server-side, las caras B vacías se alimentan al motor como
+  // COPIA DE TRABAJO de la cara A de su pareja (mismo asset/encuadre): el motor
+  // exige un asset por slot. Esa copia se DESCARTA después del render y se
+  // reemplaza por la cara BLANCA real (blankOutEmptyBackFaces, más abajo) — es
+  // lo que imprenta imprime (owner 2026-10-07).
   const canvasForRender =
     v2 && emptyBackSlots.size > 0
       ? {
@@ -1415,15 +1461,27 @@ export async function finalizeDesign(opts: {
   // 2026-07-25). Resolver primero los PNG deja el efecto de red recién cuando el finalize va a salir.
   // Cuando el render server-side sale bien GANA sobre los snapshots inline del cliente: es el
   // archivo de imprenta de calidad garantizada, sin adornos de pantalla y sin depender del celular.
-  let productionBuffers = opts.productionBuffers
-    ? expandMissingBackFaces(opts.productionBuffers, requiredSlotIndexes, expectedSlotCount)
-    : undefined;
+  let productionBuffers: Buffer[] | undefined;
+  if (opts.productionBuffers) {
+    // Caras B vacías → cara BLANCA del tamaño/DPI de su cara A (owner 2026-10-07).
+    productionBuffers =
+      emptyBackSlots.size > 0
+        ? await (
+            await loadBlankBackFace()
+          ).expandMissingBackFaces(opts.productionBuffers, requiredSlotIndexes, expectedSlotCount)
+        : opts.productionBuffers;
+  }
   if (canvasForRender) {
     const serverBuffers = await tryServerRenderProduction(design.id, canvasForRender, {
       calendarYear: opts.calendarYear,
     });
     if (serverBuffers && serverBuffers.length === expectedSlotCount) {
-      productionBuffers = serverBuffers;
+      // La copia de trabajo de la B vacía (canvasForRender) se descarta: la B se
+      // imprime EN BLANCO (owner 2026-10-07).
+      productionBuffers =
+        emptyBackSlots.size > 0
+          ? await (await loadBlankBackFace()).blankOutEmptyBackFaces(serverBuffers, emptyBackSlots)
+          : serverBuffers;
       logger.info(
         {
           event: "design.finalize.server_render_ok",
@@ -1437,11 +1495,14 @@ export async function finalizeDesign(opts: {
   // Fuera del `if` de v2: con canvasData v1 también se emiten tickets, y dejar la lectura dentro
   // dejaba al cliente en un bucle —sube los PNG, y el finalize vuelve a pedírselos— sin salida.
   if (!productionBuffers && opts.useStagedClientSlots) {
-    productionBuffers = expandMissingBackFaces(
-      await readStagedClientSlots(design.id, requiredSlotIndexes),
-      requiredSlotIndexes,
-      expectedSlotCount,
-    );
+    const staged = await readStagedClientSlots(design.id, requiredSlotIndexes);
+    // Caras B vacías → cara BLANCA del tamaño/DPI de su cara A (owner 2026-10-07).
+    productionBuffers =
+      emptyBackSlots.size > 0
+        ? await (
+            await loadBlankBackFace()
+          ).expandMissingBackFaces(staged, requiredSlotIndexes, expectedSlotCount)
+        : staged;
     logger.info(
       {
         event: "design.finalize.staged_slots_used",
@@ -1454,11 +1515,11 @@ export async function finalizeDesign(opts: {
   if (productionBuffers && emptyBackSlots.size > 0) {
     logger.info(
       {
-        event: "design.finalize.back_faces_duplicated",
+        event: "design.finalize.back_faces_blank",
         designId: design.id,
         backs: [...emptyBackSlots],
       },
-      "Caras B vacías resueltas como copia de la cara A (backOptional)",
+      "Caras B vacías resueltas EN BLANCO (backOptional, owner 2026-10-07)",
     );
   }
   if (!productionBuffers) {
@@ -1700,13 +1761,27 @@ export async function listTemplatesForKind(
 //  Mis diseños (cuenta) + compartir (Fase 3 — /mi-cuenta/disenos + /d/[token])
 // ──────────────────────────────────────────────────────────────────
 
-/** Lista los diseños finalizados del cliente (listos o ya comprados), con producto. */
-export async function listCustomerDesigns(customerId: string) {
+/**
+ * Lista los diseños del cliente para "Mis diseños": los finalizados (listos o
+ * ya comprados, con preview) MÁS los borradores VIGENTES (Fase 2 · item 2.4,
+ * 2026-10-07 — CTA "Seguir editando" → /estudio/<slug>?designId=).
+ *
+ * Vigencia del borrador: la misma ventana de retención que purgeIdleCustomerDesigns
+ * (idle del cliente logueado: PURGE_IDLE_DESIGN_AFTER_DAYS = 90 d por updatedAt;
+ * los anónimos se purgan a 30 d pero no ven esta página — requiere login). Un
+ * DRAFT fuera de ventana puede desaparecer en la próxima purga: listarlo sería
+ * prometer un "seguir editando" que revienta.
+ */
+export async function listCustomerDesigns(customerId: string, opts?: { now?: Date }) {
+  const now = opts?.now ?? new Date();
+  const draftCutoff = new Date(now.getTime() - PURGE_IDLE_DESIGN_AFTER_DAYS * 24 * 60 * 60 * 1000);
   return prisma.design.findMany({
     where: {
       customerId,
-      status: { in: ["READY", "USED_IN_ORDER"] },
-      previewUrl: { not: null },
+      OR: [
+        { status: { in: ["READY", "USED_IN_ORDER"] }, previewUrl: { not: null } },
+        { status: "DRAFT", updatedAt: { gt: draftCutoff } },
+      ],
     },
     orderBy: { updatedAt: "desc" },
     take: 60,
@@ -1716,6 +1791,7 @@ export async function listCustomerDesigns(customerId: string) {
       status: true,
       shareTokenHash: true,
       createdAt: true,
+      updatedAt: true,
       product: { select: { name: true, slug: true } },
     },
   });

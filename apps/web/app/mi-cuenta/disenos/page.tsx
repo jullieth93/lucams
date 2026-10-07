@@ -37,6 +37,10 @@ export default async function DisenosPage() {
     // se puede releer. Pedir el link de nuevo lo ROTA (ver design-grid).
     hasShareToken: Boolean(d.shareTokenHash),
     used: d.status === "USED_IN_ORDER",
+    // Fase 2 · item 2.4 (2026-10-07) — borradores VIGENTES también se listan
+    // (listCustomerDesigns los filtra por la ventana de retención de 90 d):
+    // la tarjeta muestra el CTA «Seguir editando» al Estudio.
+    draft: d.status === "DRAFT",
   }));
 
   return (

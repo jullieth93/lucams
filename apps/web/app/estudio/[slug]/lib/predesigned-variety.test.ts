@@ -66,7 +66,7 @@ describe("predesignedFaceBadge — badge 1 cara / 2 caras (T2)", () => {
     expect(predesignedFaceBadge(2, "https://x/b.png")).toBe("two");
   });
 
-  it("producto de 2 caras + diseño SIN cara B → 'one' (respaldo espejo de A)", () => {
+  it("producto de 2 caras + diseño SIN cara B → 'one' (respaldo EN BLANCO, owner 2026-10-07)", () => {
     expect(predesignedFaceBadge(2, null)).toBe("one");
     expect(predesignedFaceBadge(2, undefined)).toBe("one");
     expect(predesignedFaceBadge(2, "")).toBe("one");

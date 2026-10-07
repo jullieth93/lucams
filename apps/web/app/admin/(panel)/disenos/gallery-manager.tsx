@@ -1,8 +1,8 @@
 "use client";
 
 /*
- * ADR-057 Fase B2 — Gestión de diseños prediseñados: subir imágenes por producto (tag) + borrar.
- * UX admin claro para Lucy (no-técnica): selector de producto, nombre, subir, preview, borrar.
+ * ADR-057 Fase B2 — Gestión de diseños prediseñados: subir imágenes por producto (tag) + archivar.
+ * UX admin claro para Lucy (no-técnica): selector de producto, nombre, subir, preview, archivar.
  *
  * Fase 5 (2026-10-02) — selector "Aplica a": el diseño puede limitarse a UN
  * atributo de variante (ej. tamaño 2×6) persistiéndose como variantFilter Json
@@ -20,6 +20,11 @@
  * reorden con flechas (swap de `order` con el adyacente del grupo visible:
  * mismo variantFilter del chip activo) y sección colapsable "Archivados" por
  * producto con Restaurar (vuelven pausados).
+ *
+ * Fase 3 · 3.6 (2026-10-07) — el viejo botón "Borrar" se renombra ARCHIVAR
+ * (siempre fue soft-delete; el naming engañaba) y la sección Archivados gana
+ * "Eliminar permanentemente" (purge: fila + archivos del bucket, irreversible,
+ * con confirmación fuerte: escribir ELIMINAR — patrón de mi-cuenta/eliminar).
  *
  * Colapsable por producto (2026-10-05): cada sección es un <details>
  * CONTROLADO (estado openByTag) — un <details> no controlado pierde su estado
@@ -43,6 +48,7 @@ import {
   EyeOff,
   ChevronUp,
   ChevronDown,
+  Archive,
   ArchiveRestore,
 } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
@@ -54,7 +60,8 @@ import {
 } from "@/features/personalization/design-gallery-filter";
 import {
   uploadGalleryImageAction,
-  deleteGalleryImageAction,
+  archiveGalleryImageAction,
+  purgeGalleryImageAction,
   updateGalleryVariantFilterAction,
   bulkAssignVariantFilterAction,
   toggleGalleryImageActiveAction,
@@ -182,7 +189,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
   const [swapFaces, setSwapFaces] = useState(false);
   const [stripPreview, setStripPreview] = useState<{ faceA: string; faceB: string } | null>(null);
   // Paquete A (2026-10-02) — detalle del prediseñado (click en la tarjeta):
-  // caras A/B lado a lado + ficha (producto, orden, estado) + borrar.
+  // caras A/B lado a lado + ficha (producto, orden, estado) + archivar.
   const [detail, setDetail] = useState<Item | null>(null);
   // Fase 5 — filtro "Aplica a": JSON.stringify del variantFilter elegido;
   // "" = "Todas las variantes" (null en DB).
@@ -262,11 +269,49 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
     });
   }
 
-  function onDelete(id: string) {
+  /**
+   * 3.6 (2026-10-07) — ARCHIVAR (antes "Borrar"): soft-delete restaurable.
+   * Confirmación ligera (es reversible desde la sección Archivados).
+   */
+  function onArchive(id: string, name: string) {
+    setError(null);
+    if (
+      !window.confirm(
+        `¿Archivar «${name}»? Sale del Estudio y pasa a la sección Archivados; puedes restaurarlo después.`,
+      )
+    ) {
+      return;
+    }
     const fd = new FormData();
     fd.set("id", id);
     startTransition(async () => {
-      await deleteGalleryImageAction(fd);
+      const res = await archiveGalleryImageAction(fd);
+      if (res.error) setError(res.error);
+    });
+  }
+
+  /**
+   * 3.6 — ELIMINAR PERMANENTEMENTE (solo desde Archivados): purga la fila y los
+   * archivos del servidor. IRREVERSIBLE → confirmación FUERTE: escribir la
+   * palabra ELIMINAR (mismo patrón destructivo de mi-cuenta/eliminar).
+   */
+  function onPurge(id: string, name: string) {
+    setError(null);
+    setNotice(null);
+    const typed = window.prompt(
+      `Esta acción es IRREVERSIBLE: «${name}» y sus archivos se borrarán del servidor para siempre (no se puede restaurar).\n\nEscribe ELIMINAR para confirmar:`,
+    );
+    if (typed === null) return;
+    if (typed.trim().toUpperCase() !== "ELIMINAR") {
+      setError("Eliminación cancelada: debes escribir ELIMINAR para confirmar.");
+      return;
+    }
+    const fd = new FormData();
+    fd.set("id", id);
+    startTransition(async () => {
+      const res = await purgeGalleryImageAction(fd);
+      if (res.error) setError(res.error);
+      else setNotice(`«${name}» se eliminó permanentemente.`);
     });
   }
 
@@ -658,8 +703,8 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
 
         <p className="text-brand-muted text-xs">
           Recomendado: imagen en la proporción del producto. Para separadores puedes subir también
-          la cara B; si no, usaremos la misma imagen por ambos lados. Con «Una sola imagen» la tira
-          debe ser vertical: cara A abajo y cara B arriba cabeza abajo (formato doblez de imprenta).
+          la cara B; si no, el respaldo se imprime en blanco. Con «Una sola imagen» la tira debe ser
+          vertical: cara A abajo y cara B arriba cabeza abajo (formato doblez de imprenta).
         </p>
         {error && <p className="text-sm text-rose-600">{error}</p>}
       </div>
@@ -818,7 +863,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                         className="border-brand-purple/12 relative rounded-xl border bg-white p-2 shadow-sm"
                       >
                         {/* Paquete A — click en la tarjeta abre el detalle (caras
-                        A/B lado a lado + ficha). El borrar sigue aparte. */}
+                        A/B lado a lado + ficha). El archivar sigue aparte. */}
                         <button
                           type="button"
                           onClick={() => setDetail(it)}
@@ -912,14 +957,17 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                             </span>
                           )}
                         </div>
+                        {/* 3.6 — ARCHIVAR (antes "Borrar"): soft-delete, va a
+                            la sección Archivados de abajo (restaurable). */}
                         <button
                           type="button"
-                          onClick={() => onDelete(it.id)}
+                          onClick={() => onArchive(it.id, it.name)}
                           disabled={pending}
-                          aria-label={`Borrar ${it.name}`}
+                          aria-label={`Archivar ${it.name}`}
+                          title="Archivar (sale del Estudio, restaurable)"
                           className="absolute top-1 right-1 rounded-full bg-white/90 p-1.5 text-rose-600 shadow hover:bg-rose-50 disabled:opacity-50"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Archive className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     );
@@ -951,16 +999,31 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                             {it.name}
                           </p>
                         </Hint>
-                        <button
-                          type="button"
-                          onClick={() => onRestore(it.id)}
-                          disabled={pending}
-                          aria-label={`Restaurar ${it.name}`}
-                          className="text-brand-purple hover:bg-brand-purple/10 mt-0.5 inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[10px] font-semibold disabled:opacity-50"
-                        >
-                          <ArchiveRestore className="h-3 w-3" />
-                          Restaurar
-                        </button>
+                        <div className="mt-0.5 flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onRestore(it.id)}
+                            disabled={pending}
+                            aria-label={`Restaurar ${it.name}`}
+                            className="text-brand-purple hover:bg-brand-purple/10 inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[10px] font-semibold disabled:opacity-50"
+                          >
+                            <ArchiveRestore className="h-3 w-3" />
+                            Restaurar
+                          </button>
+                          {/* 3.6 — eliminación PERMANENTE (fila + archivos);
+                              confirmación fuerte: escribir ELIMINAR. */}
+                          <button
+                            type="button"
+                            onClick={() => onPurge(it.id, it.name)}
+                            disabled={pending}
+                            aria-label={`Eliminar permanentemente ${it.name}`}
+                            title="Eliminar permanentemente (irreversible)"
+                            className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[10px] font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            Eliminar
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -971,7 +1034,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
         );
       })}
 
-      {/* Paquete A — detalle del prediseñado: caras A/B, ficha y borrar.
+      {/* Paquete A — detalle del prediseñado: caras A/B, ficha y archivar.
           Fase 5b — también edita el "Aplica a" (variantFilter). */}
       <GalleryDetailModal
         item={detail}
@@ -984,8 +1047,9 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
         pending={pending}
         onClose={() => setDetail(null)}
         onDelete={(id) => {
+          const name = detail?.name ?? "";
           setDetail(null);
-          onDelete(id);
+          onArchive(id, name);
         }}
         onSaveVariantFilter={onSaveVariantFilter}
         onToggleActive={onToggleActive}

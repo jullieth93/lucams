@@ -12,6 +12,7 @@
  */
 
 import { z } from "zod";
+import { cruceNumberError, viaNumberError } from "@/lib/colombia-validators";
 
 // Regla ÚNICA de documento de identidad (DIAN) — la reusan el checkout
 // (ContactSchema) y el perfil del cliente (/mi-cuenta/perfil, T7 2026-10-01)
@@ -98,21 +99,29 @@ const BaseAddressFields = z.object({
 //
 // viaNumber: dígitos + letras (7A, 13B, 100). Regex permite "100", "13B", "7AB".
 // cruceNumber: NN-NN con letras opcionales (15-20, 13B-42, 100A-25C).
+// Los mensajes de error los dan viaNumberError/cruceNumberError
+// (lib/colombia-validators.ts) — heurística con mensaje ESPECÍFICO de qué
+// falta ("Falta el número después del guion…"), compartida con la validación
+// cliente del checkout (fix QA STG 2026-10: "Calle 3 sur #" incompleta).
 const UrbanAddressSchema = BaseAddressFields.extend({
   kind: z.literal("urban"),
   viaType: z.enum(VIA_TYPES, { message: "Tipo de vía inválido" }),
   viaNumber: z
     .string()
-    .min(1, "Número de vía requerido")
     .max(10)
-    .regex(/^\d+[A-Z]{0,3}$/i, "Empieza con número, opcional letras (ej. 100, 13B, 7AB)"),
+    .superRefine((val, ctx) => {
+      const msg = viaNumberError(val);
+      if (msg) ctx.addIssue({ code: "custom", message: msg });
+    }),
   viaBis: z.boolean().optional(),
   viaCardinal: z.enum(CARDINAL_POINTS).optional(),
   cruceNumber: z
     .string()
-    .min(2, "Cruce requerido (ej. 15-20)")
     .max(20)
-    .regex(/^\d+[A-Z]{0,3}-\d+[A-Z]{0,3}$/i, "Formato: número-número (ej. 15-20, 13B-42)"),
+    .superRefine((val, ctx) => {
+      const msg = cruceNumberError(val);
+      if (msg) ctx.addIssue({ code: "custom", message: msg });
+    }),
   cruceCardinal: z.enum(CARDINAL_POINTS).optional(),
   detail: z.string().max(200).trim().optional(),
 });

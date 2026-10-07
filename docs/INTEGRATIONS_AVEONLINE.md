@@ -360,9 +360,19 @@ Mismos campos que `cotizarDoble` **+ `idtransportador` obligatorio**. Si `idtran
 Persistir en Order:
 
 - `trackingNumber = numguia.toString()`
-- `labelUrl = rutasticker ?? rutaguia` (preferir térmico)
+- `labelUrl = rutasticker ?? rutaguia ?? rotulo` (preferir térmico; `rotulo` como último
+  fallback — algunas transportadoras solo devuelven ese)
 - `trackingUrl = rutaguia ?? rutasticker`
 - `archivorotulo` (base64 PDF) → guardar en Supabase Storage para impresión offline
+
+> Implementado (fix 1.8, 2026-10-07): tras crear la guía, la saga archiva una copia
+> propia del PDF en el bucket privado `production-assets`
+> (`features/shipping/label-archive.ts` — fuentes: `archivorotulo`/`archivosticker`
+> base64, luego descarga de `labelUrl`/`trackingUrl` con validación %PDF) y guarda
+> el path en `Order.labelPath`. El admin la descarga via signed URL; las URLs
+> externas de Aveonline quedan solo como respaldo. Para transportadoras que no
+> devuelven URL ni base64 (p.ej. tcc-sa), `labelPath` queda null y el admin usa el
+> número de guía (`trackingNumber`) para consultar en el panel Aveonline.
 
 ### 4.4 Errores comunes generación guía
 

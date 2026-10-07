@@ -45,7 +45,7 @@ import { OrbitControls, RoundedBox, ContactShadows, Center } from "@react-three/
 import { FitCamera } from "./fit-camera";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
-import { MagnetMesh, magnetWorldSizes, type MagnetShape } from "./magnet-3d";
+import { MagnetMesh, magnetWorldSizes, realWorldDepth, type MagnetShape } from "./magnet-3d";
 import { frenchDoorClusterLayout, FRIDGE_SCENE } from "./lib/cluster-layout";
 
 export type Magnet3D = {
@@ -106,11 +106,18 @@ const DOOR_FACE_Z = DOOR_Z + DOOR_T / 2; // cara frontal de puertas y gaveta
 // central; la gaveta NO lleva imanes) — regiones en FRIDGE_SCENE.cluster, reparto en
 // frenchDoorClusterLayout (lib/cluster-layout). Si el conjunto desborda, FitCamera reencuadra.
 const MAGNET_GAP = FRIDGE_SCENE.cluster.gap;
-const MAGNET_Z = DOOR_FACE_Z + 0.04; // centro del cuerpo extruido (canto visible sobre el panel)
 
 // Escala física de la escena: nevecón real de 178 cm de alto (8.8 u → 0.04944 u/cm; el ancho
 // 4.499 u ↔ 91 cm y el fondo 3.708 u ↔ 75 cm cuadran con la MISMA escala ✓).
 const FRIDGE_U_PER_CM = FRIDGE_SCENE.uPerCm;
+
+// Fase 2.11 (owner 2026-10-07) — grosor FÍSICO real: 2 mm × uPerCm de la escena
+// (≈0.0099 u acá; antes la constante de mundo 0.04 u ≈ 0.8 cm — ~4× el real).
+const MAGNET_DEPTH = realWorldDepth(FRIDGE_U_PER_CM);
+// Centro del cuerpo extruido: su mitad trasera (depth/2 + bisel 0.2·depth) apoya sobre el
+// panel con un epsilon de 0.003 u (adherido, sin z-fighting). Antes era +0.04 fijo: con el
+// grosor real la pieza habría quedado FLOTANDO ~0.03 u sobre la puerta.
+const MAGNET_Z = DOOR_FACE_Z + MAGNET_DEPTH * 0.7 + 0.003;
 
 // Materiales (gris satinado de electrodoméstico; metalness baja para verse bien sin env-map).
 const BODY_COLOR = "#9297A0";
@@ -138,6 +145,7 @@ function Magnet({
       width={width}
       height={height}
       shape={m.shape}
+      depth={MAGNET_DEPTH}
       cornerRadiusRatio={m.cornerRadiusRatio}
       position={position}
     />

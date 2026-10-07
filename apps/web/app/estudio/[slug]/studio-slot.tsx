@@ -1766,7 +1766,50 @@ export function renderLayer(
  * adorno va marcado `name="edit-indicator"` → NUNCA se hornea en el snapshot de
  * producción/preview. Funciona también SIN foto elegida (ahí es el uso principal:
  * elegirla por primera vez) — el placeholder horneado del SVG queda visible.
+ *
+ * Fase 2 · 2.7a (2026-10-07) — la edición pasaba desapercibida: ahora hay un
+ * affordance PERMANENTE (botón lápiz en la esquina inferior-derecha) y, la
+ * primera vez, un anillo PULSANTE de descubrimiento que se apaga cuando el
+ * cliente toca el avatar o ya tiene foto elegida (persistido en localStorage —
+ * es UI efímera, no dato del diseño; no va al store). Ambos `edit-indicator`.
  */
+
+/** localStorage: el pulso de descubrimiento del avatar IG ya se mostró (2.7a). */
+const PROFILE_AVATAR_HINT_SEEN_KEY = "lucams:studio:profile-avatar-hint-seen";
+
+/**
+ * Anillo pulsante de descubrimiento (2.7a): crece y se desvanece en loop (rAF).
+ * Solo existe mientras el hint no se ha visto; `edit-indicator` → no se hornea.
+ */
+function ProfileAvatarPulse({ x, y, radius }: { x: number; y: number; radius: number }) {
+  const [t, setT] = useState(0);
+  useEffect(() => {
+    // En tests (jsdom) el anillo queda estático: el loop rAF dispararía updates
+    // por frame fuera de act() sin aportar nada al contrato bajo prueba.
+    if (process.env.NODE_ENV === "test") return;
+    let raf = 0;
+    const start = performance.now();
+    const loop = (now: number) => {
+      setT(((now - start) / 1400) % 1);
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return (
+    <Circle
+      name="edit-indicator profile-avatar-pulse"
+      x={x}
+      y={y}
+      radius={(radius + 4) * (1 + t * 0.45)}
+      stroke="#5DD9D1"
+      strokeWidth={2}
+      opacity={0.85 * (1 - t)}
+      listening={false}
+    />
+  );
+}
+
 function ProfilePhotoLayerRenderer({
   layer,
   profileAssetUrl,
@@ -1789,6 +1832,37 @@ function ProfilePhotoLayerRenderer({
   const [image] = useImage(profileAssetUrl ?? "", "anonymous");
   const [hover, setHover] = useState(false);
   const interactive = !!onEdit;
+  // Fase 2 · 2.7a — pulso de descubrimiento: visible solo la PRIMERA vez. El
+  // editor es client-only (ssr: false), así que el lazy-init puede leer
+  // localStorage sin riesgo de mismatch de hidratación; el guard cubre tests.
+  const [hintSeen, setHintSeen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try {
+      return window.localStorage.getItem(PROFILE_AVATAR_HINT_SEEN_KEY) === "1";
+    } catch {
+      // localStorage bloqueado (modo privado estricto): el pulso se muestra igual.
+      return false;
+    }
+  });
+  const markHintSeen = useCallback(() => {
+    setHintSeen(true);
+    try {
+      window.localStorage.setItem(PROFILE_AVATAR_HINT_SEEN_KEY, "1");
+    } catch {
+      // Sin persistencia: solo se apaga en esta sesión.
+    }
+  }, []);
+  // Con foto ya elegida el hint cumplió su propósito: persiste el "visto" (solo
+  // escritura — el estado visible deriva de profileAssetUrl, sin setState acá).
+  useEffect(() => {
+    if (!profileAssetUrl) return;
+    try {
+      window.localStorage.setItem(PROFILE_AVATAR_HINT_SEEN_KEY, "1");
+    } catch {
+      // Sin persistencia no pasa nada: el pulso igual se oculta por la foto.
+    }
+  }, [profileAssetUrl]);
+  const showPulse = interactive && !hintSeen && !profileAssetUrl;
   // Sin foto y sin interactividad no hay NADA que pintar (contrato Ola 17: el
   // placeholder horneado del SVG se ve intacto y el árbol Konva queda vacío).
   if ((!profileAssetUrl || !image) && !interactive) return null;
@@ -1813,6 +1887,12 @@ function ProfilePhotoLayerRenderer({
   const hintW = Math.max(90, Math.min(stageWidth - 8, hintText.length * hintFont * 0.55 + 16));
   const hintH = hintFont * 1.3 + 8;
   const hintX = Math.max(4, Math.min(stageWidth - hintW - 4, layer.x - hintW / 2));
+
+  // 2.7a — affordance permanente: botón lápiz en la esquina inferior-derecha
+  // del avatar (chiquito, no tapa la cara de la foto).
+  const badgeR = Math.max(5.5, layer.radius * 0.38);
+  const badgeX = layer.radius + layer.radius * 0.78;
+  const badgeY = layer.radius + layer.radius * 0.78;
 
   return (
     <Group x={layer.x - layer.radius} y={layer.y - layer.radius}>
@@ -1844,6 +1924,35 @@ function ProfilePhotoLayerRenderer({
           listening={false}
         />
       )}
+      {/* 2.7a — affordance permanente: botón lápiz turquesa en la esquina
+        inferior-derecha del avatar. `edit-indicator` → no se hornea. */}
+      {interactive && (
+        <>
+          <Circle
+            name="edit-indicator profile-avatar-badge"
+            x={badgeX}
+            y={badgeY}
+            radius={badgeR}
+            fill="#5DD9D1"
+            stroke="#FFFFFF"
+            strokeWidth={1.5}
+            listening={false}
+          />
+          <Text
+            text="✎"
+            x={badgeX - badgeR}
+            y={badgeY - badgeR * 0.78}
+            width={badgeR * 2}
+            align="center"
+            fontSize={badgeR * 1.3}
+            fontStyle="bold"
+            fill="#3D2E5C"
+            listening={false}
+          />
+        </>
+      )}
+      {/* 2.7a — pulso de descubrimiento la primera vez (hasta tap o foto elegida). */}
+      {showPulse && <ProfileAvatarPulse x={layer.radius} y={layer.radius} radius={layer.radius} />}
       {/* Hit region: círculo transparente un poco mayor que el avatar. Escucha
         click/tap SOLO cuando hay callback; preventDefault={false} para no matar
         el scroll táctil de la página sobre el avatar (mismo criterio que los
@@ -1870,11 +1979,13 @@ function ProfilePhotoLayerRenderer({
             // Mismo anti-doble-panel que los textos: cortar la propagación al
             // wrapper DOM (que abriría el picker de foto genérico encima).
             e.evt.stopPropagation();
+            markHintSeen();
             onEdit?.();
           }}
           onTap={(e) => {
             e.cancelBubble = true;
             e.evt.stopPropagation();
+            markHintSeen();
             onEdit?.();
           }}
         />

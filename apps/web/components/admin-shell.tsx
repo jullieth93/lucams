@@ -51,6 +51,9 @@ type AdminInfo = {
   role: string;
 };
 
+/** Logo del sitio desde el CMS (setting `site.logo` → Mediateca). null = insignia gradiente actual. */
+export type AdminShellLogo = { url: string; alt: string };
+
 // NAV efectivo según el modo de tienda: getAdminNav() filtra "Finanzas" e
 // "Integraciones" en modo catálogo (Etapa 1 — lib/store-mode). La data base
 // vive en @/lib/admin-nav (compartida con la página catch-all [...placeholder],
@@ -94,11 +97,14 @@ function activeNavHref(pathname: string): string | null {
 export function AdminShell({
   admin,
   unreadNotifications = 0,
+  logo = null,
   children,
 }: {
   admin: AdminInfo;
   /** No leídas del centro de notificaciones (badge en el item del nav). 0 = sin pill. */
   unreadNotifications?: number;
+  /** Fase 3 · 3.9 — logo administrable (CMS `site.logo`); null = estado actual. */
+  logo?: AdminShellLogo | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -127,6 +133,7 @@ export function AdminShell({
           admin={admin}
           pathname={pathname}
           unreadNotifications={unreadNotifications}
+          logo={logo}
           onNavigate={() => {}}
         />
       </aside>
@@ -135,13 +142,15 @@ export function AdminShell({
           antes no había contexto en móvil) y botón hamburguesa. */}
       <div className="from-brand-purple-dark to-brand-purple sticky top-0 z-30 flex items-center justify-between gap-3 bg-gradient-to-r px-4 py-3 text-white shadow-md lg:hidden">
         <Link href="/admin/dashboard" className="flex min-w-0 items-center gap-2.5">
-          <BrandIcon />
+          <BrandIcon logo={logo} />
           <div className="min-w-0">
             <p className="text-[10px] font-semibold tracking-wider text-white/60 uppercase">
               Panel admin
             </p>
+            {/* Fase 3 · 3.9 — wordmark unificado a "LUCAMS" (decisión owner: así
+                va en los envíos; antes "Lucams_shop" hardcodeado). */}
             <p className="font-display truncate text-base leading-tight font-bold text-white">
-              Lucams<span className="text-brand-pink">_shop</span>
+              LUCAMS
             </p>
           </div>
         </Link>
@@ -182,6 +191,7 @@ export function AdminShell({
               admin={admin}
               pathname={pathname}
               unreadNotifications={unreadNotifications}
+              logo={logo}
               onNavigate={() => setMobileOpen(false)}
             />
           </aside>
@@ -247,7 +257,7 @@ function AdminTopBar({ pathname }: { pathname: string }) {
  * Resuelve el label del breadcrumb topbar consultando el NAV compartido.
  * Si la ruta matchea un item del NAV → "{Grupo} · {Item}".
  * Si matchea un top-level leaf → "{Title}".
- * Fallback: "Lucams_shop" (no debería pasar — el catch-all placeholder
+ * Fallback: "LUCAMS" (no debería pasar — el catch-all placeholder
  * cubre cualquier ruta admin no implementada).
  */
 function labelForPath(p: string): string {
@@ -264,12 +274,23 @@ function labelForPath(p: string): string {
       }
     }
   }
-  return "Lucams_shop";
+  return "LUCAMS";
 }
 
 // ─────────────────── Brand icon ───────────────────
 
-function BrandIcon() {
+function BrandIcon({ logo = null }: { logo?: AdminShellLogo | null }) {
+  // Fase 3 · 3.9 — si el negocio configuró un logo en el CMS (Ajustes del
+  // sitio › Identidad de marca), se muestra en badge blanco (funciona sobre
+  // el gradiente oscuro del sidebar); si no, la insignia gradiente de siempre.
+  if (logo) {
+    return (
+      <div className="glow-brand flex h-9 w-9 items-center justify-center rounded-xl bg-white p-1 shadow-lg ring-2 ring-white/30">
+        {/* eslint-disable-next-line @next/next/no-img-element -- logo admin, dimensiones variables */}
+        <img src={logo.url} alt={logo.alt} className="max-h-full max-w-full object-contain" />
+      </div>
+    );
+  }
   return (
     <div className="from-brand-pink via-brand-coral to-brand-yellow glow-brand flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br shadow-lg ring-2 ring-white/30">
       <Sparkles className="h-[18px] w-[18px] text-white" />
@@ -283,11 +304,13 @@ function SidebarContent({
   admin,
   pathname,
   unreadNotifications,
+  logo = null,
   onNavigate,
 }: {
   admin: AdminInfo;
   pathname: string;
   unreadNotifications: number;
+  logo?: AdminShellLogo | null;
   onNavigate: () => void;
 }) {
   const activeHref = activeNavHref(pathname);
@@ -325,14 +348,12 @@ function SidebarContent({
         className="block border-b border-white/10 px-5 py-4 transition-colors hover:bg-white/5"
       >
         <div className="flex items-center gap-3">
-          <BrandIcon />
+          <BrandIcon logo={logo} />
           <div>
             <p className="text-[10px] font-semibold tracking-wider text-white/55 uppercase">
               Panel admin
             </p>
-            <p className="font-display text-xl leading-tight font-bold text-white">
-              Lucams<span className="text-brand-pink">_shop</span>
-            </p>
+            <p className="font-display text-xl leading-tight font-bold text-white">LUCAMS</p>
           </div>
         </div>
       </Link>

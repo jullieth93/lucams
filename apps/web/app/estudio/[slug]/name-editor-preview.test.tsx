@@ -125,10 +125,10 @@ const ILLUSTRATED_STYLES = [{ id: "style-animales", name: "Animales", tiles: {} 
 async function openPreviewWith(name: string): Promise<number> {
   const input = screen.getByRole("textbox");
   fireEvent.change(input, { target: { value: name } });
-  // Ola 32 — hay DOS botones «Vista previa» (el del header sticky y el grande del
-  // panel de controles; misma acción). Se pulsa el del panel: el CTA histórico.
-  const ctas = screen.getAllByRole("button", { name: /Vista previa/ });
-  fireEvent.click(ctas[ctas.length - 1]!);
+  // QA 1.6 (2026-10-07) — el botón «Vista previa» es ÚNICO (el grande del panel
+  // de controles): el CTA del header sticky se diferenció como «Ver diseño»
+  // para no leer dos botones idénticos en pantalla.
+  fireEvent.click(screen.getByRole("button", { name: /Vista previa/ }));
   await waitFor(() => expect(screen.getByText(/Así se verá tu pedido/i)).toBeInTheDocument());
   return name.length;
 }
@@ -141,6 +141,17 @@ describe("NameEditor — vista previa antes del carrito", () => {
 
     expect(createNameDesignAction).not.toHaveBeenCalled();
     expect(finalizeDesignAction).not.toHaveBeenCalled();
+    expect(addPersonalizedToCartAction).not.toHaveBeenCalled();
+  });
+
+  it("QA 1.6: el CTA del header sticky dice «Ver diseño» (no duplica «Vista previa») y abre la MISMA vista previa", async () => {
+    renderEditor();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "LUCIA" } });
+    // Un solo «Vista previa» en pantalla (el del panel); el header se diferencia.
+    expect(screen.getAllByRole("button", { name: /Vista previa/ })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: /Ver diseño/ }));
+    await waitFor(() => expect(screen.getByText(/Así se verá tu pedido/i)).toBeInTheDocument());
+    expect(createNameDesignAction).not.toHaveBeenCalled();
     expect(addPersonalizedToCartAction).not.toHaveBeenCalled();
   });
 
@@ -451,8 +462,8 @@ describe("NameEditor — opción «Con borde / Sin borde» (regla del set de let
 describe("NameEditor — recover flow (?designId=)", () => {
   /** Abre la vista previa SIN escribir: el nombre ya viene restaurado. */
   async function openPreviewDirect() {
-    const ctas = screen.getAllByRole("button", { name: /Vista previa/ });
-    fireEvent.click(ctas[ctas.length - 1]!);
+    // QA 1.6 — «Vista previa» es único (panel); el header dice «Ver diseño».
+    fireEvent.click(screen.getByRole("button", { name: /Vista previa/ }));
     await waitFor(() => expect(screen.getByText(/Así se verá tu pedido/i)).toBeInTheDocument());
   }
 

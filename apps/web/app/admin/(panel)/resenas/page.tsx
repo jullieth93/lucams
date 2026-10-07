@@ -31,7 +31,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Hint } from "@/components/ui/tooltip";
 import { getCurrentAdmin } from "@/lib/auth";
-import { getReviewFeaturedFlag, listReviewsAdmin } from "@/features/reviews/admin-service";
+import {
+  getReviewFeaturedFlag,
+  listReviewProductOptions,
+  listReviewsAdmin,
+} from "@/features/reviews/admin-service";
 import {
   approveReviewAction,
   archiveReviewAction,
@@ -51,11 +55,12 @@ function pickString(sp: Record<string, string | string[] | undefined>, key: stri
   return typeof v === "string" ? v : undefined;
 }
 
-const STATUS_OPTIONS = ["pending", "approved", "archived", "all"] as const;
+const STATUS_OPTIONS = ["pending", "approved", "featured", "archived", "all"] as const;
 const SORT_OPTIONS = ["recent", "oldest", "rating-high", "rating-low"] as const;
 const STATUS_LABEL: Record<(typeof STATUS_OPTIONS)[number], string> = {
   pending: "Pendientes",
   approved: "Aprobadas",
+  featured: "Destacadas",
   archived: "Archivadas",
   all: "Todas",
 };
@@ -99,14 +104,19 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
   const approvedFeatured =
     sp.approved === "1" && approvedId ? await getReviewFeaturedFlag(approvedId) : null;
 
-  const { items, total, totalPages, pendingCount } = await listReviewsAdmin({
-    q,
-    status,
-    sort,
-    rating,
-    page,
-    productId,
-  });
+  const [{ items, total, totalPages, pendingCount }, productOptions] = await Promise.all([
+    listReviewsAdmin({
+      q,
+      status,
+      sort,
+      rating,
+      page,
+      productId,
+    }),
+    // Selector visible de producto (Fase 3 · 3.5): antes el filtro solo se
+    // activaba por URL ?productId= desde el panel del producto.
+    listReviewProductOptions(),
+  ]);
   const hasActiveFilters =
     !!q ||
     status !== "pending" ||
@@ -195,9 +205,7 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
           method="GET"
           className="border-brand-purple/10 grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-12"
         >
-          {/* #13 — preserva el filtro por producto al reenviar el form (método GET). */}
-          {productId && <input type="hidden" name="productId" value={productId} />}
-          <div className="sm:col-span-4">
+          <div className="sm:col-span-6">
             <label
               htmlFor="f-q"
               className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
@@ -213,7 +221,29 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
           </div>
-          <div className="sm:col-span-3">
+          {/* Fase 3 · 3.5 — selector VISIBLE de producto (antes solo ?productId= por URL). */}
+          <div className="sm:col-span-6">
+            <label
+              htmlFor="f-product"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
+              Producto
+            </label>
+            <select
+              id="f-product"
+              name="productId"
+              defaultValue={productId ?? ""}
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
+            >
+              <option value="">Todos los productos</option>
+              {productOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="sm:col-span-4">
             <label
               htmlFor="f-status"
               className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
@@ -233,7 +263,7 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
               ))}
             </select>
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-3">
             <label
               htmlFor="f-rating"
               className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
@@ -254,7 +284,7 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
               <option value="1">1 ★</option>
             </select>
           </div>
-          <div className="sm:col-span-2">
+          <div className="sm:col-span-4">
             <label
               htmlFor="f-sort"
               className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
@@ -295,10 +325,17 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
           )}
         </form>
 
-        {/* #13 — contexto visible cuando se filtra por un producto (desde el panel del producto). */}
+        {/* Contexto cuando se filtra por un producto (el selector de arriba
+            también lo muestra; esta tira enlaza a la PDP del producto). */}
         {productId && (
           <p className="text-brand-purple-dark/80 text-xs">
-            Filtrando reseñas de <strong>{items[0]?.productName ?? "este producto"}</strong>.{" "}
+            Filtrando reseñas de{" "}
+            <strong>
+              {productOptions.find((p) => p.id === productId)?.name ??
+                items[0]?.productName ??
+                "este producto"}
+            </strong>
+            .{" "}
             <Link href="/admin/resenas" className="text-brand-purple font-semibold underline">
               Quitar filtro
             </Link>

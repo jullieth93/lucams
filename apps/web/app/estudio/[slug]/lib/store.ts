@@ -57,6 +57,17 @@ export type StudioStoreState = {
   // Canvas data (V2 multi-slot)
   canvasData: CanvasDataV2 | null;
 
+  /**
+   * QA 1.2 (2026-10-07) — valor PACK-LEVEL vigente por capa de texto: el último
+   * texto aplicado MASIVAMENTE (setTextOverrideAllSlots) a cada capa. Es lo que
+   * muestran los campos masivos del sidebar ("Tu mensaje" / "Datos de la
+   * publicación") en vez de derivarlo de un slot mutable: una edición individual
+   * posterior pisa solo su slot y el campo masivo ya no "salta" ni queda vacío.
+   * Transitorio (no viaja en canvasData: los slots siguen siendo la SoT de lo
+   * impreso) — al recargar el diseño los campos derivan de los slots como antes.
+   */
+  packTextValues: Record<string, string>;
+
   // Selección
   selectedSlotIndex: number | null;
   selectedTemplateId: string | null;
@@ -226,6 +237,7 @@ const initialState = {
   productSlug: "",
   slotCount: 0,
   canvasData: null,
+  packTextValues: {},
   selectedSlotIndex: null,
   selectedTemplateId: null,
   assets: [],
@@ -254,6 +266,7 @@ export function createStudioStore() {
         productSlug: input.productSlug,
         slotCount: input.canvasData.slotCount,
         canvasData: input.canvasData,
+        packTextValues: {},
         templates: input.templates,
         selectedTemplateId: input.selectedTemplateId ?? null,
         // Hidratar assets desde slots ya llenos del canvasData (caso recover Design existente)
@@ -419,6 +432,16 @@ export function createStudioStore() {
         }),
       };
       get().setCanvasData(next);
+      // QA 1.2 — registrar el valor PACK-LEVEL vigente de la capa: es lo que
+      // muestran los campos masivos del sidebar (independiente de los slots,
+      // que una edición individual posterior puede pisar). null/vacío limpia.
+      set((state) => {
+        const packTextValues = { ...state.packTextValues };
+        const text = override?.text?.trim();
+        if (override !== null && text) packTextValues[textLayerId] = override.text!;
+        else delete packTextValues[textLayerId];
+        return { packTextValues };
+      });
     },
 
     setImagePlaceholderRect: (rect, opts) => {

@@ -301,7 +301,7 @@ describe("finalizeCheckout — persiste el documento DIAN en el perfil (T7)", ()
 describe("finalizeCheckout — re-validación zona Lucam's mid-sesión (Paquete G)", () => {
   const LUCAMS_SELECTION = {
     carrier: "lucams",
-    carrierName: "Envío Lucam's",
+    carrierName: "LUCAMS",
     fleteCop: 1_000_000,
     deliveryDays: 1,
     contraentrega: false,

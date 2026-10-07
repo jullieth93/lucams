@@ -122,13 +122,31 @@ afterAll(async () => {
 });
 
 describe("listCustomerDesigns", () => {
-  it("devuelve solo READY/USED_IN_ORDER con preview, del dueño", async () => {
+  it("devuelve READY/USED_IN_ORDER con preview MÁS los DRAFT vigentes, del dueño (item 2.4)", async () => {
     const rows = await listCustomerDesigns(ownerId);
     const ids = rows.map((r) => r.id);
     expect(ids).toContain(readyId);
     expect(ids).toContain(usedId);
-    expect(ids).not.toContain(draftId);
+    // Item 2.4 (2026-10-07) — el DRAFT reciente SÍ se lista (CTA «Seguir editando»).
+    expect(ids).toContain(draftId);
     expect(ids).not.toContain(archivedFixtureId);
+  });
+
+  it("excluye DRAFTs fuera de la ventana de retención (idle 90 d — los purgables)", async () => {
+    const old = await makeDesign({ customerId: ownerId, status: "DRAFT" });
+    await prisma.design.update({
+      where: { id: old },
+      data: { updatedAt: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000) },
+    });
+    const rows = await listCustomerDesigns(ownerId);
+    expect(rows.map((r) => r.id)).not.toContain(old);
+    // Con `now` retrocedido, el mismo draft (reciente en ese momento) SÍ entra.
+    const fresh = await makeDesign({ customerId: ownerId, status: "DRAFT" });
+    const rowsPast = await listCustomerDesigns(ownerId, {
+      now: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000),
+    });
+    expect(rowsPast.map((r) => r.id)).not.toContain(fresh); // aún no existía
+    expect(rowsPast.map((r) => r.id)).toContain(old); // era vigente hace 120 d
   });
 
   it("no filtra diseños de otro cliente", async () => {
@@ -136,7 +154,7 @@ describe("listCustomerDesigns", () => {
     expect(rows).toHaveLength(0);
   });
 
-  it("excluye diseños sin previewUrl", async () => {
+  it("excluye diseños sin previewUrl (READY sin imagen no se muestra)", async () => {
     const noPreview = await makeDesign({ customerId: ownerId, status: "READY", previewUrl: null });
     const rows = await listCustomerDesigns(ownerId);
     expect(rows.map((r) => r.id)).not.toContain(noPreview);

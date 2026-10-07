@@ -878,7 +878,9 @@ de todas las superficies personalizables.**
   partidos en 3 líneas, pills envueltos).
 - **Decisión**: (1) header sticky UNIFICADO para los editores simples
   (`studio-simple-header.tsx` — idioma del StudioToolbar sin el store zustand:
-  pill «Salir», avatar+nombre, total en vivo + CTA «Vista previa»); (2) layout
+  pill «Salir», avatar+nombre, total en vivo + CTA «Ver diseño» —renombrado
+  desde «Vista previa» en QA 1.6 (2026-10-07): la misma acción del botón grande
+  del panel, rótulo diferenciado para no leer dos botones idénticos—); (2) layout
   a dos columnas en lg (controles en tarjeta lateral `lg:w-80`, lienzo fluido en
   la tarjeta-unidad `bg-white/70`) y lienzo PRIMERO en móvil _(REDEFINIDO
   2026-10-05: en móvil los CONTROLES van primero — ver el fix de esa fecha más
@@ -1303,6 +1305,34 @@ de calendario / varios separadores demora mucho". Tres frentes:
   no fuerza el blanco al entrar al modo ni desactiva la paleta; el color
   (blanco/negro, la paleta binaria de IG) pinta las franjas con contraste
   automático de textos y chrome oscuro. Clásica y tiras conservan su apagado.
+
+### Fase 2 (owner 2026-10-07) — SIN IMÁN sin escenas que afirman imán + grosor/pose reales en 3D
+
+- **Reversa del gate de Paquete D (2.10):** con la variante SIN IMÁN
+  (`magnet === false`) las escenas que AFIRMAN imán — nevera, mural de corcho y
+  tablero memo (`MAGNET_SCENES` en `scene-gallery.tsx`) — ya NO se ofrecen en
+  NINGÚN kind (Paquete D las había reabierto para photo/letters: "el 3D es
+  ilustrativo"; el owner lo revirtió: adherir piezas sin imán es una afirmación
+  falsa del producto físico). La escena Polaroid se MANTIENE (tarjetas acostadas
+  en una mesa — no asume adherencia) y las 2D (repisa/regalo) y el libro
+  tampoco asumen imán. Si ninguna escena sobrevive (calendario, letters) la
+  galería muestra un estado vacío coherente (textos CMS nuevos
+  `estudio.escenas.vacio` / `vacio-hint`); en el calendario el flujo sigue
+  viviendo en el visor de detalle y su botón «Míralo en tu espacio» se omite,
+  como desde Fase 1A. Contrato en `scene-gallery.test.ts`.
+- **Pill de las escenas planas 2D eliminada (2.6):** el hint "Mantén presionada
+  la imagen para guardarla o compartirla 💛" (`estudio.escenas.hint-plana`)
+  salió del render, del tipo/default/mapa de `studio-texts.ts` y del
+  `cms-site-map.mjs`. La pill de gestos solo se muestra en escenas 3D.
+- **Grosor físico real en nevera/mural (2.11):** `MAGNET_DEPTH`/`TILE_DEPTH` de
+  `magnet-3d.tsx` ya no son constantes de mundo (0.04 u ≈ 0.8–1.1 cm en nevera):
+  se derivan del `uPerCm` de cada escena a un grosor real de fotoimán (~2 mm)
+  con un mínimo de mundo anti-z-fighting — ver `magnet-3d.tsx` y sus tests.
+- **Separadores largos ACOSTADOS sobre el libro (2.12):** las piezas planas
+  (Alargados, `noFold`) dejan de renderizarse DE PIE (Ola 18) y van echadas
+  sobre la hoja (`flatBookmarkPlacement` + rotación −90° X, como anticipaba el
+  comentario de Ola 17) con encuadre de cámara ajustado — tamaño real intacto,
+  solo pose + cámara (`book-view-3d.tsx`, `lib/book-geometry.ts`).
 
 ## DPI y sangrado (estado real 2026-10-05)
 

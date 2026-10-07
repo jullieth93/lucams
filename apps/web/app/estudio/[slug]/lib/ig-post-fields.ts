@@ -45,10 +45,10 @@ export function igUsernameOverride(display: string): string | null {
 // ── Ubicación ───────────────────────────────────────────────────────────────
 
 /**
- * Sugerencias "Ciudad, País" del autocompletado ligero (datalist nativo, sin
- * dependencias): ciudades de Colombia (mercado principal) + destinos frecuentes
- * de la diáspora y viajes. Es asistencia de escritura, NO validación — el
- * cliente puede escribir cualquier ubicación libre.
+ * Sugerencias "Ciudad, País" del combobox con búsqueda (Fase 2 · 2.7b — antes
+ * datalist nativo): ciudades de Colombia (mercado principal) + destinos
+ * frecuentes de la diáspora y viajes. Es asistencia de escritura, NO
+ * validación — el cliente puede escribir cualquier ubicación libre.
  */
 export const IG_LOCATION_SUGGESTIONS: readonly string[] = [
   "Bogotá, Colombia",
@@ -84,6 +84,26 @@ export const IG_LOCATION_SUGGESTIONS: readonly string[] = [
   "Panamá, Panamá",
   "San José, Costa Rica",
 ] as const;
+
+/** Normaliza para comparar: minúsculas y sin tildes ("bogota" ≈ "Bogotá"). */
+function normalizeIgLocationQuery(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+}
+
+/**
+ * Fase 2 · 2.7b (2026-10-07) — filtro del combobox de ubicación: coincide por
+ * ciudad y por país (substring sobre "Ciudad, País" completo), insensible a
+ * tildes y mayúsculas. Query vacío → todas las sugerencias. Es asistencia de
+ * escritura, NO validación: sin coincidencias el texto libre igual vale.
+ */
+export function filterIgLocationSuggestions(query: string): string[] {
+  const q = normalizeIgLocationQuery(query.trim());
+  if (q === "") return [...IG_LOCATION_SUGGESTIONS];
+  return IG_LOCATION_SUGGESTIONS.filter((s) => normalizeIgLocationQuery(s).includes(q));
+}
 
 // ── «Me gusta» ──────────────────────────────────────────────────────────────
 

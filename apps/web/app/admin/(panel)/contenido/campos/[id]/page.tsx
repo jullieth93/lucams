@@ -22,9 +22,9 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import {
   ArrowLeft,
+  BookOpen,
   CalendarClock,
   Copy,
-  FileText,
   FolderInput,
   History,
   Send,
@@ -156,7 +156,7 @@ export default async function EditarCampoPage({
   return (
     <AdminPage>
       <AdminPageHeader
-        icon={<FileText className="h-5 w-5" />}
+        icon={<BookOpen className="h-5 w-5" />}
         title={field.label}
         subtitle={
           <>

@@ -45,14 +45,17 @@ type StudioTextEditorModalProps = {
   /** Etiqueta del slot que se está editando (ej. "Imán 1 de 6"). */
   slotLabel?: string;
   onClose: () => void;
-  /** Aplicar el override final (combinación de cambios). null = limpiar override. */
-  onApply: (override: TextOverride | null) => void;
+  /** Aplicar el override final (combinación de cambios). null = limpiar override.
+   *  undefined = sin cambios (no-op: NO mutar el store, conservar lo que hay). */
+  onApply: (override: TextOverride | null | undefined) => void;
 };
 
 export type StudioTextEditorFormProps = {
   layer: TextLayer;
   currentOverride: TextOverride | undefined;
-  onApply: (override: TextOverride | null) => void;
+  /** null = limpiar override (el usuario borró el texto explícitamente);
+   *  undefined = sin cambios (no-op, el override vigente se conserva). */
+  onApply: (override: TextOverride | null | undefined) => void;
   /**
    * Ola 28 (owner 2026-09-11, 1.2.1.A) — color de la TARJETA sobre la que se
    * imprime el texto (borderColor del canvas). El preview pinta ese fondo
@@ -171,27 +174,44 @@ export function StudioTextEditorForm({
     [],
   );
 
-  // Construir el override final: solo incluye fields que difieren del base.
+  // Construir el override final: el estado COMPLETO deseado (el store REEMPLAZA
+  // el override del slot entero), comparado contra el vigente para decidir.
   const handleApply = () => {
     if (applying) return;
-    const override: TextOverride = {};
-    // Ola 25 — el texto solo viaja si el cliente ESCRIBIÓ algo (y difiere de lo
-    // que ya tenía). Vacío = sin texto en la tarjeta: no se guarda override.text
-    // (el default de la plantilla es solo el placeholder gris del input).
-    const currentText = currentOverride?.text ?? "";
-    if (text.trim() !== "" && text !== currentText) override.text = text;
+    // QA 1.2 (2026-10-07) — bug: el override solo incluía los campos que
+    // CAMBIARON. Tras "aplicar a todas" (p.ej. texto "Hola" en todos los slots),
+    // abrir el editor de UNA foto y dar «Aplicar» sin tocar nada producía un
+    // override vacío → se enviaba `null` → se BORRABA el override de ese slot
+    // (el texto de la unidad desaparecía). Semántica corregida:
+    //   - El texto vigente viaja SIEMPRE que no esté vacío (aunque no cambió):
+    //     si solo se tocó el estilo, el texto no se pierde en el reemplazo.
+    //   - `null` SOLO cuando el resultado final es vacío (el usuario borró el
+    //     texto explícitamente y dejó el estilo base) → limpiar el override.
+    //   - Sin cambios respecto al override vigente → `undefined` = NO-OP (no
+    //     mutar el store; el override —y el campo masivo— se conservan).
+    const next: TextOverride = {};
+    // Ola 25 — vacío = sin texto en la tarjeta: no se guarda override.text (el
+    // default de la plantilla es solo el placeholder gris del input).
+    if (text.trim() !== "") next.text = text;
     if (fontFamily !== (layer.fontFamily ?? FONT_PRESETS[0].fontFamily))
-      override.fontFamily = fontFamily;
-    if (fill !== baseFill) override.fill = fill;
-    if (fontSize !== baseFontSize) override.fontSize = fontSize;
-    if (computedFontWeight !== baseFontWeight) override.fontWeight = computedFontWeight;
-    // Si nada cambió (o solo se borró el texto), limpiar el override existente (null)
-    const hasChanges = Object.keys(override).length > 0;
+      next.fontFamily = fontFamily;
+    if (fill !== baseFill) next.fill = fill;
+    if (fontSize !== baseFontSize) next.fontSize = fontSize;
+    if (computedFontWeight !== baseFontWeight) next.fontWeight = computedFontWeight;
+    const prev = currentOverride ?? {};
+    const prevKeys = Object.keys(prev) as (keyof TextOverride)[];
+    const nextKeys = Object.keys(next) as (keyof TextOverride)[];
+    const unchanged =
+      prevKeys.length === nextKeys.length && nextKeys.every((k) => next[k] === prev[k]);
     setApplying(true);
     // El commit va un frame DESPUÉS para que el spinner pinte primero (si el commit
     // y el repaint pesado corren en el mismo tick, el spinner nunca se ve).
     requestAnimationFrame(() => {
-      onApply(hasChanges ? override : null);
+      if (unchanged) {
+        onApply(undefined);
+      } else {
+        onApply(nextKeys.length > 0 ? next : null);
+      }
       applyingTimerRef.current = window.setTimeout(() => setApplying(false), 450);
     });
   };

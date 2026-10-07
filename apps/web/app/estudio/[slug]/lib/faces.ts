@@ -47,32 +47,33 @@ export function facePairOfUnit(unitIndex: number): { faceA: number; faceB: numbe
 }
 
 /**
- * REGLA ÚNICA de la cara B vacía (Paquete A, 2026-10-02; render alineado en el
- * Paquete D): una cara B SIN diseñar (slot impar sin assetUrl, solo productos
- * backOptional) se imprime ESPEJO de la cara A de su pareja — producción ya lo
- * hace en `expandMissingBackFaces` (features/personalization/service.ts) y es lo
- * que el admin promete ("usaremos la misma imagen por ambos lados").
+ * REGLA ÚNICA de la cara B vacía (decisión owner 2026-10-07 — REVIERTE la regla
+ * espejo del Paquete A/D, 2026-10-02): una cara B SIN diseñar (slot impar sin
+ * assetUrl, solo productos backOptional) se imprime EN BLANCO — nunca espejo de
+ * la cara A. Vale para TODOS los renders: preview del Estudio, libro 3D y
+ * producción física (`blankBackFacePng` en features/personalization).
  *
  * Devuelve el par de slots A PINTAR en los previews de la unidad: si la cara B
- * está vacía, su slot efectivo es el de la cara A (el caller dibuja el snapshot
- * de A en el rect de B, con la rotación propia del montaje). Con cara B diseñada
- * o producto sin backOptional, el par es el real.
+ * está vacía, `faceB` es null — el caller pinta ese rect EN BLANCO (con la
+ * rotación propia del montaje). Con cara B diseñada o producto sin backOptional,
+ * el par es el real.
  */
 export function previewFacePairOfUnit(
   slots: ReadonlyArray<{ slotIndex: number; assetUrl?: string | null }>,
   unitIndex: number,
   backOptional: boolean,
-): { faceA: number; faceB: number } {
+): { faceA: number; faceB: number | null } {
   const { faceA, faceB } = facePairOfUnit(unitIndex);
   if (!backOptional) return { faceA, faceB };
   const back = slots.find((s) => s.slotIndex === faceB);
-  return back?.assetUrl ? { faceA, faceB } : { faceA, faceB: faceA };
+  return back?.assetUrl ? { faceA, faceB } : { faceA, faceB: null };
 }
 
 /**
  * Cara B OPCIONAL (backOptional, 2026-09-22): faltantes de CARA A (slots
  * pares) — el guard de finalización exige solo las caras A; las B pueden
- * quedar vacías y se imprimen ESPEJO de su cara A — ver previewFacePairOfUnit.
+ * quedar vacías y se imprimen EN BLANCO (owner 2026-10-07) — ver
+ * previewFacePairOfUnit.
  * Productos sin backOptional siguen exigiendo TODAS las caras (no usar este helper).
  */
 export function missingFaceACount(

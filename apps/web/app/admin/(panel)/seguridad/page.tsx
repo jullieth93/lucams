@@ -8,7 +8,7 @@
  */
 
 import type { Metadata } from "next";
-import { ShieldCheck, ShieldAlert, KeyRound } from "lucide-react";
+import { ShieldCheck, ShieldAlert } from "lucide-react";
 import {
   AdminPage,
   AdminPageHeader,
@@ -44,7 +44,7 @@ export default async function AdminSeguridadPage({ searchParams }: { searchParam
   return (
     <AdminPage>
       <AdminPageHeader
-        icon={<KeyRound className="h-5 w-5" />}
+        icon={<ShieldCheck className="h-5 w-5" />}
         title="Seguridad de tu cuenta"
         subtitle="Verificación en 2 pasos para proteger el acceso al panel."
         breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Seguridad" }]}

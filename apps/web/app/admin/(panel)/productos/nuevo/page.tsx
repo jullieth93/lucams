@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Plus } from "lucide-react";
+import { ShoppingBag } from "lucide-react";
 import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { listCategoriesForSelect } from "@/features/products/service";
@@ -20,7 +20,7 @@ export default async function NuevoProductoPage() {
   return (
     <AdminPage>
       <AdminPageHeader
-        icon={<Plus className="h-5 w-5" />}
+        icon={<ShoppingBag className="h-5 w-5" />}
         title="Nuevo producto"
         subtitle="Crea un producto en el catálogo + variante por defecto."
         breadcrumbs={[

@@ -29,6 +29,7 @@ import { isCatalogMode } from "@/lib/store-mode";
 import { peekCartSession } from "@/lib/cart-session";
 import { removeItemAction, updateQtyAction } from "./actions";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { LinkPendingLabel } from "@/components/ui/link-pending-label";
 import { IconSubmitButton } from "./qty-button";
 import { DesignPreviewDialog } from "./design-preview-dialog";
 
@@ -249,7 +250,11 @@ export default async function CarritoPage() {
                   size="lg"
                 >
                   <Link href="/checkout/datos" prefetch={false}>
-                    {catalog ? "Cotizar por WhatsApp →" : "Ir a pagar →"}
+                    {/* Spinner mientras la navegación (sin prefetch) resuelve —
+                        antes el clic no daba señal y el usuario re-clickeaba. */}
+                    <LinkPendingLabel>
+                      {catalog ? "Cotizar por WhatsApp →" : "Ir a pagar →"}
+                    </LinkPendingLabel>
                   </Link>
                 </Button>
                 <Link

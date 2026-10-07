@@ -34,8 +34,8 @@ import { existsSync, readFileSync } from "node:fs";
 // contentType FORZADO y los paths, sin tocar Supabase real. Usamos vi.hoisted
 // para que los mocks existan ANTES de que la factory de vi.mock (hoisteada) los
 // referencie, y a la vez sean accesibles desde el cuerpo del test.
-const { uploadMock, getPublicUrlMock, removeMock, createSignedUrlMock, fromMock } = vi.hoisted(
-  () => {
+const { uploadMock, getPublicUrlMock, removeMock, createSignedUrlMock, listMock, fromMock } =
+  vi.hoisted(() => {
     const uploadMock = vi.fn(
       async (
         _path: string,
@@ -65,15 +65,26 @@ const { uploadMock, getPublicUrlMock, removeMock, createSignedUrlMock, fromMock 
         error: null,
       }),
     );
+    // list: listGalleryThumbPaths (3.10) verifica qué miniaturas EXISTEN bajo
+    // <folder>/thumbs. Default: folder vacío.
+    const listMock = vi.fn(
+      async (
+        _prefix: string,
+        _opts?: { limit?: number },
+      ): Promise<{
+        data: { id: string | null; name: string }[] | null;
+        error: { message: string } | null;
+      }> => ({ data: [], error: null }),
+    );
     const fromMock = vi.fn(() => ({
       upload: uploadMock,
       getPublicUrl: getPublicUrlMock,
       remove: removeMock,
       createSignedUrl: createSignedUrlMock,
+      list: listMock,
     }));
-    return { uploadMock, getPublicUrlMock, removeMock, createSignedUrlMock, fromMock };
-  },
-);
+    return { uploadMock, getPublicUrlMock, removeMock, createSignedUrlMock, listMock, fromMock };
+  });
 
 vi.mock("@/lib/supabase/service", () => ({
   supabaseService: { storage: { from: fromMock } },
@@ -83,9 +94,15 @@ import sharp from "sharp";
 import {
   StorageError,
   deleteProductImage,
+  galleryThumbPath,
+  galleryThumbPathFromUrl,
+  galleryThumbUrlFromImageUrl,
+  generateGalleryThumb,
+  listGalleryThumbPaths,
   refreshCustomerUploadSignedUrl,
   sniffImageMime,
   uploadCustomerPhoto,
+  uploadGalleryThumb,
   uploadProductImage,
 } from "./storage";
 
@@ -165,9 +182,11 @@ beforeEach(() => {
   getPublicUrlMock.mockClear();
   removeMock.mockClear();
   createSignedUrlMock.mockClear();
+  listMock.mockClear();
   fromMock.mockClear();
   uploadMock.mockResolvedValue({ error: null });
   removeMock.mockResolvedValue({ error: null });
+  listMock.mockResolvedValue({ data: [], error: null });
   createSignedUrlMock.mockImplementation(async (path: string) => ({
     data: { signedUrl: `https://ref.supabase.co/sign/${path}?token=tok` },
     error: null,
@@ -903,6 +922,150 @@ describe("uploadCustomerPhoto — HEIC de iPhone (heic-decode)", () => {
       }),
     );
     expect(err.message).toContain("No pudimos procesar la imagen");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Miniaturas con watermark de prediseñados (Fase 3 · 3.10, 2026-10-07)
+// ─────────────────────────────────────────────────────────────────────────────
+// Decisión owner: el Estudio exhibe una miniatura ~800px WebP q78 con watermark
+// LUCAMS en tiling — el original no debería llegar al navegador del cliente.
+// Convención SIN migración: path derivada determinista (gallery-<tag>/thumbs/<uuid>.webp).
+describe("galleryThumbPath / galleryThumbUrlFromImageUrl — path derivada determinista", () => {
+  it("inserta el segmento thumbs/ antes del filename", () => {
+    expect(galleryThumbPath("gallery-separadores/abc-123.webp")).toBe(
+      "gallery-separadores/thumbs/abc-123.webp",
+    );
+    expect(galleryThumbPath("gallery-separadores-b/def.webp")).toBe(
+      "gallery-separadores-b/thumbs/def.webp",
+    );
+  });
+
+  it("null si el path no tiene carpeta (no se puede derivar)", () => {
+    expect(galleryThumbPath("sin-carpeta.webp")).toBeNull();
+  });
+
+  it("de URL pública del bucket deriva path y URL de la miniatura; URL ajena → null", () => {
+    const url =
+      "https://ref.supabase.co/storage/v1/object/public/product-images/gallery-sep/u1.webp";
+    expect(galleryThumbPathFromUrl(url)).toBe("gallery-sep/thumbs/u1.webp");
+    expect(galleryThumbUrlFromImageUrl(url)).toBe(
+      "https://ref.supabase.co/storage/v1/object/public/product-images/gallery-sep/thumbs/u1.webp",
+    );
+    expect(galleryThumbPathFromUrl("https://example.com/x.webp")).toBeNull();
+    expect(galleryThumbUrlFromImageUrl("https://example.com/x.webp")).toBeNull();
+  });
+});
+
+describe("generateGalleryThumb — dimensiones, formato y watermark", () => {
+  it("borde largo ≤800 px (1600×1200 → 800×600), WebP, con tiling LUCAMS visible", async () => {
+    // Imagen SÓLIDA grande: sin watermark, el resize sería uniforme (stdev ≈ 0).
+    const solid = await sharp({
+      create: { width: 1600, height: 1200, channels: 3, background: { r: 40, g: 90, b: 140 } },
+    })
+      .png()
+      .toBuffer();
+
+    const thumb = await generateGalleryThumb(solid);
+
+    expect(thumb.width).toBe(800);
+    expect(thumb.height).toBe(600);
+    const meta = await sharp(thumb.data).metadata();
+    expect(meta.format).toBe("webp");
+
+    // Presencia del watermark: el tiling de texto introduce varianza de píxeles
+    // que una imagen sólida sin marca NO tiene.
+    const stats = await sharp(thumb.data).stats();
+    const maxStdev = Math.max(...stats.channels.map((c) => c.stdev ?? 0));
+    expect(maxStdev).toBeGreaterThan(1);
+
+    // Y difiere de un resize plano del mismo original (el watermark cambia los bytes).
+    const plain = await sharp(solid)
+      .rotate()
+      .resize({ width: 800, height: 800, fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 78 })
+      .toBuffer();
+    expect(thumb.data.equals(plain)).toBe(false);
+  });
+
+  it("no agranda imágenes chicas (withoutEnlargement): 120×90 queda 120×90", async () => {
+    const small = await sharp({
+      create: { width: 120, height: 90, channels: 3, background: { r: 200, g: 200, b: 200 } },
+    })
+      .png()
+      .toBuffer();
+    const thumb = await generateGalleryThumb(small);
+    expect(thumb.width).toBe(120);
+    expect(thumb.height).toBe(90);
+  });
+
+  it("buffer indecodificable → INVALID_TYPE (fail-closed, como optimizeCatalogImage)", async () => {
+    const err = await expectStorageError(generateGalleryThumb(Buffer.from(PNG_BYTES)));
+    expect(err.code).toBe("INVALID_TYPE");
+  });
+});
+
+describe("uploadGalleryThumb — sube la miniatura al path derivado", () => {
+  it("sube a <folder>/thumbs/<file> como image/webp con upsert (idempotente para backfill)", async () => {
+    const result = await uploadGalleryThumb({
+      originalPath: "gallery-sep/u1.webp",
+      source: REAL_PNG_GRANDE,
+    });
+
+    expect(result.path).toBe("gallery-sep/thumbs/u1.webp");
+    expect(result.publicUrl).toBe(
+      "https://ref.supabase.co/storage/v1/object/public/product-images/gallery-sep/thumbs/u1.webp",
+    );
+    expect(uploadMock).toHaveBeenCalledTimes(1);
+    const [uploadedPath, body, opts] = uploadMock.mock.calls[0];
+    expect(uploadedPath).toBe("gallery-sep/thumbs/u1.webp");
+    expect(opts).toMatchObject({ contentType: "image/webp", upsert: true });
+    const meta = await sharp(body as Buffer).metadata();
+    expect(meta.format).toBe("webp");
+    expect(meta.width).toBe(800); // 3000×1500 → 800×400
+    expect(meta.height).toBe(400);
+  });
+
+  it("originalPath sin carpeta → UPLOAD_FAILED sin tocar storage", async () => {
+    const err = await expectStorageError(
+      uploadGalleryThumb({ originalPath: "sueltos.webp", source: REAL_PNG }),
+    );
+    expect(err.code).toBe("UPLOAD_FAILED");
+    expect(uploadMock).not.toHaveBeenCalled();
+  });
+
+  it("error del backend → UPLOAD_FAILED con el mensaje", async () => {
+    uploadMock.mockResolvedValueOnce({ error: { message: "quota exceeded" } });
+    const err = await expectStorageError(
+      uploadGalleryThumb({ originalPath: "gallery-sep/u1.webp", source: REAL_PNG }),
+    );
+    expect(err.code).toBe("UPLOAD_FAILED");
+    expect(err.message).toContain("quota exceeded");
+  });
+});
+
+describe("listGalleryThumbPaths — existencia real de miniaturas (fail-open)", () => {
+  it("devuelve los paths <folder>/thumbs/<name> de los objetos (ignora carpetas y placeholders)", async () => {
+    listMock.mockResolvedValueOnce({
+      data: [
+        { id: "obj-1", name: "a.webp" },
+        { id: null, name: "subcarpeta" }, // carpeta: no es objeto
+        { id: "obj-2", name: ".emptyFolderPlaceholder" },
+        { id: "obj-3", name: "b.webp" },
+      ],
+      error: null,
+    });
+
+    const paths = await listGalleryThumbPaths("gallery-sep");
+
+    expect(listMock).toHaveBeenCalledWith("gallery-sep/thumbs", { limit: 1000 });
+    expect(paths).toEqual(new Set(["gallery-sep/thumbs/a.webp", "gallery-sep/thumbs/b.webp"]));
+  });
+
+  it("error de storage → set vacío (el Estudio degrada al original, no rompe)", async () => {
+    listMock.mockResolvedValueOnce({ data: null, error: { message: "storage down" } });
+    const paths = await listGalleryThumbPaths("gallery-sep");
+    expect(paths.size).toBe(0);
   });
 });
 

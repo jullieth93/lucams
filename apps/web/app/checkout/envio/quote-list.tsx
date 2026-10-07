@@ -6,7 +6,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { Truck, Clock, Check } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/submit-button";
 import { carrierLogo, formatCarrierName } from "@/lib/carrier-logos";
 import { formatCOP } from "@/lib/format";
 import { selectShippingAction } from "./actions";
@@ -42,7 +42,7 @@ export function QuoteList({
 
   const chosen = quotes.find((q) => q.quoteId === selected);
 
-  // Promesas "Envío Lucam's" (CMS con tokens): {{cutoff}} = hora límite de
+  // Promesas del envío propio LUCAMS (CMS con tokens): {{cutoff}} = hora límite de
   // settings, {{daysLabel}} = días hábiles con plural (calculados server-side
   // con la regla producción + corte, lib/delivery-estimate.ts — ya vienen
   // sellados en la oferta). La resolución vive en resolveLucamsPromise
@@ -55,11 +55,13 @@ export function QuoteList({
         {quotes.map((q) => {
           const isSelected = selected === q.quoteId;
           const logo = carrierLogo(q.carrier);
+          const displayName = logo ? q.carrierName : formatCarrierName(q.carrierName);
           const price =
-            // Precio (o "Gratis"): se renderiza DOS veces — una en la fila
-            // superior de la tarjeta móvil (<sm) y otra al final de la fila en
-            // ≥sm. El `hidden` de cada copia la saca del árbol de accesibilidad,
-            // así que el lector de pantalla solo anuncia una.
+            // Precio (o "Gratis"): se renderiza DOS veces — una en su propia
+            // fila al final de la tarjeta móvil (<sm) y otra al final de la
+            // fila en ≥sm. Solo una es visible por viewport y el `hidden` de
+            // la otra la saca del árbol de accesibilidad (el lector de
+            // pantalla anuncia una sola).
             q.fleteCop === 0 ? (
               <span className="text-emerald-700">{texts.free}</span>
             ) : (
@@ -71,9 +73,9 @@ export function QuoteList({
                 className={
                   // has-[:focus-visible]: el radio real es sr-only, así que el anillo de foco
                   // se pinta sobre el label (WCAG 2.4.7 — indicador de foco visible).
-                  // <sm: tarjeta apilada (fila superior logo+nombre+precio, fila
-                  // inferior estimado/badges) — en una sola fila sin wrap los
-                  // textos largos se comprimían/solapaban en pantallas angostas.
+                  // <sm: tarjeta apilada — el precio va en su PROPIA fila al final
+                  // (nunca comparte fila con el nombre: se solapaban en pantallas
+                  // angostas, fix QA STG 2026-10). ≥sm: una sola fila centrada.
                   "has-[:focus-visible]:ring-brand-purple flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-all has-[:focus-visible]:ring-2 sm:items-center " +
                   (isSelected
                     ? "border-brand-purple bg-brand-purple/5 ring-brand-purple/30 ring-2"
@@ -90,19 +92,20 @@ export function QuoteList({
                   aria-checked={isSelected}
                 />
                 {logo ? (
-                  // Logo oficial de la transportadora (o marca Lucam's). Caja
-                  // blanca redondeada: unifica el área visual y da contraste a
-                  // los assets transparentes/oscuros. max-w + object-contain:
-                  // los logos muy anchos (Servientrega 5.9:1) se letterboxean
-                  // sin distorsionar ni romper la fila.
-                  <span className="border-brand-purple/10 flex h-10 flex-shrink-0 items-center justify-center rounded-lg border bg-white px-2">
+                  // Logo oficial de la transportadora (o marca LUCAMS). Caja de
+                  // dimensiones FIJAS (mismo alto Y ancho en todas las filas):
+                  // los assets tienen aspectos dispares (Servientrega 5.9:1,
+                  // mascota ~1:1) y con ancho automático la lista quedaba
+                  // desordenada. object-contain centrado letterboxea sin
+                  // distorsionar (fix QA STG 2026-10).
+                  <span className="border-brand-purple/10 flex h-10 w-24 flex-shrink-0 items-center justify-center rounded-lg border bg-white p-1">
                     <Image
                       src={logo.src}
                       alt={logo.alt}
                       width={logo.width}
                       height={logo.height}
                       unoptimized={logo.src.endsWith(".svg")}
-                      className="h-7 w-auto max-w-24 object-contain"
+                      className="max-h-full max-w-full object-contain"
                     />
                   </span>
                 ) : (
@@ -118,28 +121,28 @@ export function QuoteList({
                   </span>
                 )}
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="text-brand-purple-dark min-w-0 text-sm font-semibold">
-                      {/* Sin logo en el mapa el crudo de Aveonline llega en
-                          MAYÚSCULAS → se muestra formateado (title case). */}
-                      {logo ? q.carrierName : formatCarrierName(q.carrierName)}
-                    </div>
-                    <div className="text-brand-purple-dark flex-shrink-0 text-right text-base font-bold tabular-nums sm:hidden">
-                      {price}
-                    </div>
+                  {/* Nombre en su propia fila (full width): truncate elegante
+                      para nombres largos + title con el nombre completo. Sin
+                      logo en el mapa el crudo de Aveonline llega en MAYÚSCULAS
+                      → se muestra formateado (title case). */}
+                  <div
+                    className="text-brand-purple-dark truncate text-sm font-semibold"
+                    title={displayName}
+                  >
+                    {displayName}
                   </div>
                   <div className="text-brand-muted mt-0.5 flex flex-wrap items-center gap-2 text-xs">
                     <Clock className="h-3 w-3" />
                     {q.carrier === "lucams" ? (
                       <>
-                        {/* Envío propio Lucam's: deliveryDays YA incluye la
+                        {/* Envío propio LUCAMS: deliveryDays YA incluye la
                             fabricación a mano + la hora de corte (lo calculó el
                             servidor con lib/delivery-estimate.ts). 0 = entrega
                             hoy (solo posible sin fabricación pendiente y antes
                             del cutoff); >0 = días hábiles hasta la entrega. */}
                         {lucamsPromise(q.deliveryDays)}
                         <span className="bg-brand-turquoise/40 rounded px-1.5 py-0.5 text-[10px] font-semibold text-teal-900">
-                          {q.deliveryDays === 0 ? "Envío Lucam's · mismo día" : "Envío Lucam's"}
+                          {q.deliveryDays === 0 ? texts.lucamsBadgeToday : texts.lucamsBadge}
                         </span>
                       </>
                     ) : (
@@ -158,6 +161,11 @@ export function QuoteList({
                         Contraentrega
                       </span>
                     )}
+                  </div>
+                  {/* Precio en su PROPIA fila en móvil (<sm), alineado a la
+                      derecha — nunca comparte fila con el nombre. */}
+                  <div className="text-brand-purple-dark mt-1 text-right text-base font-bold tabular-nums sm:hidden">
+                    {price}
                   </div>
                 </div>
                 <div className="text-brand-purple-dark hidden flex-shrink-0 text-right text-base font-bold tabular-nums sm:block">
@@ -201,14 +209,17 @@ export function QuoteList({
         >
           {texts.back}
         </a>
-        <Button
-          type="submit"
+        {/* SubmitButton (useFormStatus): spinner + "Continuando al pago…" +
+            disabled mientras el server action procesa — sin esto el botón se
+            veía igual tras el clic y el doble-click reenviaba la selección. */}
+        <SubmitButton
           disabled={!chosen}
           size="lg"
+          pendingLabel={texts.nextPending}
           className="bg-gradient-brand w-full text-white hover:brightness-110 sm:w-auto"
         >
           {texts.next}
-        </Button>
+        </SubmitButton>
       </div>
     </form>
   );
