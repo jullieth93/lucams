@@ -1834,6 +1834,11 @@ export async function listCustomerDesigns(customerId: string, opts?: { now?: Dat
   return prisma.design.findMany({
     where: {
       customerId,
+      // Con `now` explícito (tests/simulación "a fecha de"): nada creado DESPUÉS
+      // del punto de referencia puede aparecer — sin esto un DRAFT recién creado
+      // cumple el cutoff relativo y rompe la semántica de la ventana (rojo CI
+      // 2026-10-08, service.integration listCustomerDesigns).
+      createdAt: { lte: now },
       OR: [
         { status: { in: ["READY", "USED_IN_ORDER"] }, previewUrl: { not: null } },
         { status: "DRAFT", updatedAt: { gt: draftCutoff } },

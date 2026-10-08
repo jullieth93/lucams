@@ -13,9 +13,11 @@
 
 ## Resumen actual
 
-**🏆 2026-10-06 — CICLO DE MADURACIÓN STG (35/35 HALLAZGOS DEL OWNER) EN develop: 9 commits, 3 migraciones aplicadas a STG, ~5031 tests verdes, webhook Aveonline STG validado end-to-end.** Origen: validaciones funcionales y técnicas del owner en STG (35 puntos: estudio, carrito/checkout, admin, mi-cuenta, seguridad). **① Estudio:** bug del picker «Mis fotos» congelado (`assigningId` sin reset), NetworkError al confirmar (presupuesto 3.5MB + uploads paralelos con retry + `maxDuration=60`), upload unificado con compresión WebP y concurrencia 3 (patrón Abecedario globalizado), calendario con cache por página, carrera smart-crop vs ajuste manual corregida, matemática cover en fuente única (`photo-fit.ts`), 3D recalibrado (luz ≈1.0, envMap 0.4, zoom móvil minDistance por escena, texturas 1024/2048, dpr 2), prediseños siempre anclan Cara A, Polaroid IG rediseñada (sin-borde a lo ancho con franjas, campos asistidos, «me gusta» obligatorio, Aplicar arriba), warning «foto oscura» eliminado, «Entendido» morado, recover de edición en las 3 superficies + reemplazo en sitio + variantId. **② Checkout:** precio por unidad física real, pedido ya no se amarra al customer de sesión si el email difiere (LCM-2026-0010), adopción de diseños anónimos en login y en merge de carrito abandonado, «(adhesivo)», zoom en «Ver», localidad sin sufijo, facturación «usar datos del comprador», carriers móvil en tarjetas + logos normalizados, autofill completo, **flujo regalo completo** (destinatario, isGift, mensaje; guía al destinatario; emails sin precios). **③ Admin:** cupones con selects conectados + tooltips + validación, «Reconciliar» accionable con nota, moderación por pedido, acordeón exclusivo, diseños colapsables, CTA «Destacar» en reseñas, digest+stack en performance, sección «Webhooks recientes» en observability. **④ Referidos v2:** cupón de bienvenida al registro + «Mis cupones» (`Coupon.customerId` + backfill). **⑤ Infra STG:** migraciones `coupon_customer_owner`/`order_reconciliation_resolution`/`order_gift_recipient` aplicadas; diagnosticado y documentado que los previews tienen Vercel Authentication (SSO) — bypass para crons/webhooks; incidente `git reset` de Codex app-server normalizado (proceso terminado, respaldos `refs/backup/`). **Próximo paso:** push de `develop` → validación visual del owner en STG (brillo 3D, pinch, E2E compra móvil) → PR a `production`; decisión de negocio pendiente: cobertura envío propio en Usaquén/Suba/Ciudad Bolívar/Sumapaz (`/admin/envios`); DPI/sangrado a definir con imprenta (documentado en README del estudio).
+**🏆 2026-10-08 — DOS RONDAS DE MADURACIÓN QA DEL OWNER CERTIFICADAS EN STG (RONDA 1: ~30 HALLAZGOS EN 3 FASES; RONDA 2: 15 HALLAZGOS CON CERTIFICACIÓN PLAYWRIGHT 12/12 DESKTOP+MÓVIL CONTRA STG) + CP REAL POR CIUDAD + MARCA "LUCAMS" Y LOGO ADMINISTRABLE.** Origen: validaciones funcionales del owner en STG (móvil/tablet/desktop, admin+cliente). **Ronda 1** (commits `647f719`, `f88797f`): ① bugs críticos — fix estructural "No pudimos guardar tus últimos cambios" (reopen READY→DRAFT + regresión e2e), "aplicar a todas" ya no borra lo individual (tri-estado + `packTextValues`), modal calidad con "Entendido" siempre alcanzable (max-h dvh), checkout datos con resumen de errores clickable + scroll/foco + aria-invalid, feedback pending en todos los CTAs del flujo, "Vista previa" duplicado diferenciado, **Cara B vacía = EN BLANCO en 3D/preview/producción** (revierte espejo Paquete D, decisión owner; ADR-114 superseded), guías Aveonline archivadas en Storage propio (`Order.labelPath` + magic bytes %PDF). ② UX estudios/3D — pinch-to-zoom del stage, Vista Previa paginada por unidad, desglose de variantes en todas las superficies, avance protegido ante recarga (marcador + "Continuar donde quedaste" + DRAFTs en mi-cuenta), picker con tabs "Mis fotos" primero, pill "mantén presionada" eliminada, perfil IG evidente (pulso+badge), combobox ubicación, tour por producto, "¿Con imán?" siempre visible en PDP, SIN IMÁN sin escenas magnéticas, grosor real ~2mm, separadores acostados en el libro. ③ checkout/admin/imágenes — CP sin autofill (luego corregido: **CP REAL del catálogo DANE por ciudad**, aclaración owner), validación de dirección CO reforzada, transportadoras sin solapes + "LUCAMS" + promesa corta, /pedido con zoom + rastreo interno `/rastrear?number=`, reseñas con tab "Destacadas" + selector de producto + chip en home, prediseñados con Archivar + **eliminar permanente** + **miniaturas 800px con watermark LUCAMS** (el original nunca llega al navegador; 192 backfill), fichas con preview, headers admin uniformes, **logo administrable vía CMS** (`site.logo`). **Ronda 2** (commits `55c52d2`, `1b89f1b`, `e3b3314`): tour IG→Clásica sin crash (ErrorReport STG), **resume definitivo con sendBeacon** a `/api/designs/save-canvas` (el flush con action se aborta en unload), nevera 3D reparada (imanes enterrados tras el panel — `PANEL_FACE_Z`), texturas placeholder lila en previews 3D/2D (espera `slot-photo` + cache auto-curativo), toggle "Ver respaldo" en el libro, finalize con uploads paralelos + memoria liberada + timing (causa del "An unexpected response"), perf (thumbs cacheadas, pinch rAF, preview perezoso), webhook Resend sin degradación delivered→opened + `email.sent` sintético + pill "Enviados", **claim de órdenes guest por email al verificar OTP/login**, email de entrega con token de reseña real (`/resena/<token>`), mini-imagen de producto en reseñas del home, ubicación IG mundial (144), campos IG por canvas, **"Ver diseño" en TODOS los CTAs**. **Gates: ~4300 tests unit verdes, tsc/eslint/prettier/build OK, certificación e2e `cert-ronda2` 12/12 desktop+móvil contra STG.** **Próximo paso:** PR develop→production + paquete de datos PRD (migrate `order_label_path`, cms-v2, normalize magnet + 4 NOMAG, backfill thumbs, brand updates, claves "Ver diseño") + webhook Resend para STG (config dashboard, no código).
 
 <details><summary>Historial de resúmenes anteriores</summary>
+
+**🏆 2026-10-06 — CICLO DE MADURACIÓN STG (35/35 HALLAZGOS DEL OWNER) EN develop: 9 commits, 3 migraciones aplicadas a STG, ~5031 tests verdes, webhook Aveonline STG validado end-to-end.** Origen: validaciones funcionales y técnicas del owner en STG (35 puntos: estudio, carrito/checkout, admin, mi-cuenta, seguridad). **① Estudio:** bug del picker «Mis fotos» congelado (`assigningId` sin reset), NetworkError al confirmar (presupuesto 3.5MB + uploads paralelos con retry + `maxDuration=60`), upload unificado con compresión WebP y concurrencia 3 (patrón Abecedario globalizado), calendario con cache por página, carrera smart-crop vs ajuste manual corregida, matemática cover en fuente única (`photo-fit.ts`), 3D recalibrado (luz ≈1.0, envMap 0.4, zoom móvil minDistance por escena, texturas 1024/2048, dpr 2), prediseños siempre anclan Cara A, Polaroid IG rediseñada (sin-borde a lo ancho con franjas, campos asistidos, «me gusta» obligatorio, Aplicar arriba), warning «foto oscura» eliminado, «Entendido» morado, recover de edición en las 3 superficies + reemplazo en sitio + variantId. **② Checkout:** precio por unidad física real, pedido ya no se amarra al customer de sesión si el email difiere (LCM-2026-0010), adopción de diseños anónimos en login y en merge de carrito abandonado, «(adhesivo)», zoom en «Ver», localidad sin sufijo, facturación «usar datos del comprador», carriers móvil en tarjetas + logos normalizados, autofill completo, **flujo regalo completo** (destinatario, isGift, mensaje; guía al destinatario; emails sin precios). **③ Admin:** cupones con selects conectados + tooltips + validación, «Reconciliar» accionable con nota, moderación por pedido, acordeón exclusivo, diseños colapsables, CTA «Destacar» en reseñas, digest+stack en performance, sección «Webhooks recientes» en observability. **④ Referidos v2:** cupón de bienvenida al registro + «Mis cupones» (`Coupon.customerId` + backfill). **⑤ Infra STG:** migraciones `coupon_customer_owner`/`order_reconciliation_resolution`/`order_gift_recipient` aplicadas; diagnosticado y documentado que los previews tienen Vercel Authentication (SSO) — bypass para crons/webhooks; incidente `git reset` de Codex app-server normalizado (proceso terminado, respaldos `refs/backup/`). **Próximo paso:** push de `develop` → validación visual del owner en STG (brillo 3D, pinch, E2E compra móvil) → PR a `production`; decisión de negocio pendiente: cobertura envío propio en Usaquén/Suba/Ciudad Bolívar/Sumapaz (`/admin/envios`); DPI/sangrado a definir con imprenta (documentado en README del estudio).
 
 **🏆 2026-10-03 — CICLO DE MADUREZ GLOBAL DESPLEGADO A PRD (PRs #63 y #64): tooltip de marca global, Estudio pulido (6 bugs del owner), prediseñados por variante, precios por volumen, auditoría de cableado con backlog CERRADO, Dependabot en cero y homologación STG↔PRD 100% OK con scripts reusables.** Origen: validaciones funcionales del owner en STG. **① Tooltips:** primitivo `components/ui/tooltip.tsx` (radix, tarjeta blanca de marca) reemplaza TODOS los `title=` nativos (~120 reales en ~60 archivos; ADR-122). **② Estudio:** «Mis fotos» sin duplicados (store idempotente + `DesignAsset.galleryImageId` para reusar prediseñados), badges de aviso debajo de la miniatura, separadores de pie en el 3D del libro (lift 14°→40°, escorzo 0.9994), alerta «foto oscura» neutral con umbrales más estrictos y SIN checkbox obligatorio cuando el único aviso es brillo suave, sidebar desktop sticky con scroll propio. **③ Admin producto 100% cableado:** tab «Personalización» completo (kind + schema por superficie + galleryTag) — un producto creado desde el admin aparece en Diseños prediseñados y abre el Estudio sin scripts. **④ Prediseñados por variante:** `DesignGalleryImage.variantFilter` (subset de attributes, ej. `{"sizeCm":"4×4.2"}`; null = todas) con selector/validación/chips/edición/asignación masiva en `/admin/disenos` + toggle/restore/reorden (ADR-123; backlog B-5). **⑤ Precios por volumen públicos:** `WholesaleTier` aplicado en carrito (nunca sube el precio, re-priceo al cambiar cantidad — ADR-124); `premadeSurcharge` retirado (campo huérfano del flujo PREMADE muerto — ADR-125). **⑥ Auditoría de cableado cliente↔admin** (`docs/audits/cableado-cliente-admin-20261002.md`): 40 módulos cruzados; backlog B-1…B-8 TODOS resueltos (mayorista, surcharge, invalidaciones ocasiones/mediateca/cupones, redirects con `unstable_cache` tag `redirects`, campos de categoría editables). **⑦ Dependabot en cero:** 4 PRs mergeados + overrides basic-ftp 6.2.1/hono 4.13.12; braces descartada (sin parche publicado, dev-only, documentado). **⑧ Homologación:** sync reusables STG→PRD de galería y catálogo/CMS con clave natural y stock intocable (ADR-126); galería 51 inserts/102 objetos, catálogo 6 inserts/83 updates/4 settings CMS; incidente resuelto: 130 `UrlRedirect` basura de tests itest eliminados de PRD; comparador final 100% OK (excepciones deliberadas documentadas). **Gates: ~3800 tests verdes, CI 8/8 en develop y production, smoke PRD 5/5.** **Próximo paso:** cargar stock operativo de `SEP-DEL-001-DEFAULT` en /admin/inventario (quedó en 0 a propósito) antes de anunciar Separadores Delgados; validación funcional del owner en PRD del ciclo completo; decisión pendiente de fondo: `visibleFilters`/`featuredProductSlug` (sin consumidor — implementar o retirar del payload).
 
@@ -2492,6 +2494,32 @@ choice-overload es real y condicional — calidad > cantidad; leaders categoriza
 **Al retomar:** (a) si Lucy no aprobó plantillas, recordarle abrir `/admin/plantillas`; (b) si dio
 su visión del flujo móvil, ejecutar paso 5; si no, proponérselo con opciones.
 
+## Última sesión — 2026-10-08 (Dos rondas QA owner: ~45 hallazgos certificados en STG + merge a producción)
+
+Dos ciclos completos de maduración del producto a partir de las validaciones del owner en STG
+(el detalle vive en el "Resumen actual" arriba). Lo distintivo de la sesión:
+
+- **Método**: plan aprobado por fases → implementación con subagentes por frentes disjuntos →
+  gates por fase → **certificación con Playwright contra STG** (no solo unit tests): spec
+  `cert-ronda2.spec.ts` 12/12 verde en desktop-chrome y mobile-chrome (nevera 3D con tarjetas
+  visibles, libro con toggle de caras, resume con recarga inmediata, cart-edit, CTA "Ver diseño",
+  reseña home con mini-imagen). Bugs confirmados PRIMERO con evidencia (screenshots, ErrorReport,
+  queries a STG) antes de codificar: la nevera vacía era z-depth tras el panel biselado; la cara
+  "en blanco" del libro eran texturas horneadas con el placeholder de carga; el resume vacío era
+  el fetch del auto-save abortado en unload (fix: sendBeacon a `/api/designs/save-canvas`).
+- **Decisiones del owner registradas**: Cara B vacía = EN BLANCO (revierte ADR-114/Paquete D),
+  anti-copia = miniatura 800px con watermark (pantallazos no se pueden bloquear — el original
+  nunca llega al navegador), direcciones con heurística local (sin API paga), entrega por fases,
+  imán como variante única visible (sin gemelas nuevas), "Ver diseño" como rótulo único de
+  finalizar, CP con el valor real DANE de la ciudad.
+- **Incidente resuelto en la sesión**: CI roja por `listCustomerDesigns` con `now` simulado
+  (faltaba `createdAt <= now` para la semántica "a fecha de"); corregido en service.ts.
+
+**Al retomar:** si el merge a production ya corrió, verificar smoke PRD (home, PDP con imán,
+pedido con guía propia, admin reseñas) y la entregabilidad una vez configurado el webhook de
+Resend para STG (config de dashboard, no código). Pendientes de negocio abiertos: cobertura de
+envío propio (Usaquén/Suba/Ciudad Bolívar/Sumapaz) y DPI/sangrado con imprenta.
+
 ## Última sesión — 2026-07-17 (Estudio P2 inmersivo + variedad de escenas del hogar — ADR-063)
 
 Cierre del bloque **P2 inmersivo** del Estudio (el detalle vive en el "Resumen actual" arriba). Lo
@@ -3575,20 +3603,35 @@ sidebar fijo, Cancelar en cupones.
 
 ## Próximo paso
 
-**🆕 Actualizado 2026-10-02 (tarde — tras la homologación STG↔PRD y el PR #63):**
+**🆕 Actualizado 2026-10-08 (tras las dos rondas QA certificadas en STG):**
 
-1. **Merge del PR #63 (`develop`→`production`) con su checklist** — aplicar primero las 2 migraciones en PRD (`pnpm -C packages/db db:migrate:deploy`: `20261002120000_design_quality_acknowledged_at` + `20261002130000_order_shipment_last_error`) → merge → smoke → crons → decisión envío propio (`LUCAMS_SHIPPING_*` se configura en PRD desde `/admin/envios` cuando el negocio lo decida — ADR-121).
-2. **Validación funcional en dispositivo real** — paso del owner (22 escenarios del reporte original + flujos nuevos E–J).
-3. **Revisión de INP en 3-5 días** — RUM con la sección «INP por elemento (p75)» de `/admin/performance` (budget <200ms móvil); comparar contra el harness `tmp/inp-audit/inp-harness.mjs`.
-4. **Opcional: limpieza de datos de prueba en STG** — pedidos/diseños de smoke acumulados (con backup, mismo patrón de siempre).
-5. **Borrar la key legacy `LUCAMS_SHIPPING_LOCALITIES` en STG/PRD** — sigue vigente (ADR-120); con el fallback retirado después.
+1. **Merge `develop`→`production` con su paquete de datos PRD** (en este orden):
+   `prisma migrate deploy` (`20261007120000_order_label_path`) → `migrate-cms-v2 --apply`
+   (vía DIRECT_URL — el pooler se estanca) → `normalize-magnet-attr.mjs --apply` + fix 4 NOMAG
+   de separadores-alargados (`magnet:false`) → `backfill-gallery-thumbs-20261007.mjs --apply` →
+   `apply-brand-updates-20261007.mjs --apply` (nombre LUCAMS + site.logo) → publicar
+   `estudio.comun.listo` / `estudio.lienzo.finalize-btn` / `estudio.lienzo.finalize-aria` =
+   "Ver diseño" → smoke PRD.
+2. **Webhook de Resend para STG** — registrar un segundo webhook en el dashboard de Resend
+   apuntando a la URL de STG con su propio signing secret (`RESEND_WEBHOOK_SECRET` en Preview);
+   hoy todos los eventos caen en PRD y la entregabilidad de STG lee 0 (con la pill "Enviados"
+   ya es diagnosticable desde `/admin/observability`).
+3. **Validación del owner en STG** de la ronda 2 (12/12 ya certificada por e2e): pinch en
+   dispositivo real iOS, encuadres 3D nuevos, selector de transportadoras en móvil.
+4. **Revisión de Web Vitals en 7 días** — la alerta SLO es ventana móvil de 7 días y se limpia
+   sola tras los fixes de perf (thumbs cacheadas, pinch rAF, preview perezoso, uploads paralelos);
+   confirmar en `/admin/observability` y `/admin/performance`.
 
 **Pendientes previos (siguen vigentes):**
 
 1. **Activar `SAME_DAY_DELIVERY_ENABLED`** — decisión del owner: la FAQ v2 de envío mismo día ya está publicada en STG/PRD pero gateada fail-closed; activarla habilita la promesa visible (la mecánica «Envío Lucam's» se configura en `/admin/envios`).
-2. **Smoke funcional del flujo nuevo en PRD** — recorrido real: checkout con localidad+barrio, promesa de entrega producción+cutoff, garantía/resolución con email, reseña vía `/resena/<token>`, `/mi-cuenta/perfil` con documento DIAN.
-3. **Dependabot de rutina** — PRs #48/#52/#55/#56 (revisar/mergear con CI verde).
-4. **Re-sync develop↔production cuando convenga** — absorber la divergencia de SHAs del merge de PR #58 (mismo patrón que `d2cc6b2` tras PR #57).
+2. **Cobertura envío propio** — Usaquén/Suba/Ciudad Bolívar/Sumapaz: decisión de negocio en `/admin/envios`.
+3. **DPI/sangrado con imprenta** — documentado en el README del estudio.
+4. **Opcional: limpieza de datos de prueba en STG** — pedidos/diseños de smoke acumulados (con backup, mismo patrón de siempre).
+5. **Borrar la key legacy `LUCAMS_SHIPPING_LOCALITIES` en STG/PRD** — sigue vigente (ADR-120).
+6. **Smoke funcional del flujo nuevo en PRD** — recorrido real: checkout con localidad+barrio, promesa de entrega producción+cutoff, garantía/resolución con email, reseña vía `/resena/<token>`, `/mi-cuenta/perfil` con documento DIAN.
+7. **Dependabot de rutina** — PRs #48/#52/#55/#56 (revisar/mergear con CI verde).
+8. **Re-sync develop↔production cuando convenga** — absorber la divergencia de SHAs del merge de PR #58 (mismo patrón que `d2cc6b2` tras PR #57).
 
 **Requiere a Lucy (decisiones / verificación):**
 
@@ -3694,6 +3737,37 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-10-08 — Dos rondas QA owner (~45 hallazgos) certificadas en STG + promoción a producción
+
+- **Ronda 1 (~30 hallazgos, commits `647f719`/`f88797f`)**: bugs críticos (reopen READY→DRAFT
+  para "No pudimos guardar", tri-estado en textos masivos/individuales Polaroid, modal calidad
+  alcanzable, resumen de errores clickable en checkout datos, pending en todos los CTAs, Cara B
+  vacía = BLANCO en 3D/preview/producción — revierte ADR-114, guías Aveonline archivadas en
+  Storage propio `Order.labelPath`), UX estudios/3D (pinch zoom stage, Vista Previa paginada por
+  unidad, variantes completas en resumen, "Continuar donde quedaste", picker con tabs, perfil IG
+  evidente, tour por producto, imán visible preseleccionado, SIN IMÁN sin escenas magnéticas,
+  grosor 2mm real, separadores acostados), y checkout/admin/imágenes (validación dirección CO,
+  transportadoras uniformes + "LUCAMS", /pedido con zoom + rastreo interno, reseñas con
+  "Destacadas" + selector producto + chip home, prediseñados con Archivar/Eliminar permanente +
+  miniaturas watermark 800px anti-copia + backfill 192, fichas con preview, headers uniformes,
+  logo administrable vía CMS).
+- **Aclaración owner (commit `f88797f`)**: el problema del "110111" era el CP FIJO, no el
+  autofill — ahora el CP se deriva del valor REAL del catálogo DANE por ciudad (prefijo
+  departamental como parcial); LUCAMS publicado en PDP y logo subido a Mediateca + `site.logo`.
+- **Ronda 2 (15 hallazgos, commits `55c52d2`/`1b89f1b`/`e3b3314`)**: crash tour IG→Clásica,
+  resume definitivo con sendBeacon `/api/designs/save-canvas`, nevera 3D (PANEL_FACE_Z), texturas
+  placeholder en previews 3D/2D (espera `slot-photo` + cache auto-curativo), toggle "Ver respaldo"
+  en el libro, finalize con uploads paralelos + timing (causa raíz del "An unexpected response"),
+  perf (thumbs cache, pinch rAF, preview perezoso), webhook Resend sin degradación + `email.sent`
+  - pill "Enviados", claim de órdenes guest por email (OTP/login), email de entrega con token de
+    reseña real, mini-imagen en reseñas home, ubicación IG mundial, campos IG por canvas, "Ver
+    diseño" en todos los CTAs (código + CMS STG).
+- **Certificación**: `tests/e2e/cert-ronda2.spec.ts` 12/12 verde desktop-chrome + mobile-chrome
+  contra STG (bugs confirmados primero con evidencia: screenshots, ErrorReport, queries).
+- **Fix CI**: `listCustomerDesigns` con `createdAt <= now` (semántica "a fecha de" del test de
+  integración). Datos STG aplicados: migrate labelPath, cms-v2 (46 campos), normalize magnet
+  (17) + 4 NOMAG, backfill thumbs (192/192), brand updates, claves "Ver diseño" publicadas.
 
 ### 2026-10-03 — Ciclo de madurez global desplegado (PRs #63/#64): tooltips, Estudio, variantes, volumen, auditoría cerrada, Dependabot cero, homologación 100%
 
