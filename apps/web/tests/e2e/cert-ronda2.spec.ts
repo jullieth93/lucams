@@ -38,26 +38,41 @@ async function dismissOverlays(page: Page) {
 }
 
 async function fillAllSlots(page: Page, count: number) {
-  const editarFab = page.getByRole("button", { name: /^Editar/i }).first();
-  if (
-    (await editarFab.count()) &&
-    !(await page
-      .getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i })
-      .isVisible()
-      .catch(() => false))
-  ) {
-    await editarFab.click();
+  // Móvil: el estudio puede auto-abrir el picker de UN slot (input single) y su
+  // consentimiento es idéntico al de la librería — hay que operar SIEMPRE dentro
+  // del bottom sheet ([data-slot="sheet-content"]), que es donde vive la
+  // librería "Mis fotos" con su input multiple y el wand.
+  for (let i = 0; i < 3; i++) {
+    const openDlg = page.locator('div[role="dialog"]:visible');
+    if (!(await openDlg.count())) break;
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(400);
   }
-  const consent = page.getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i });
+  let sheet = page.locator('[data-slot="sheet-content"]');
+  if (!(await sheet.count())) {
+    // El FAB del estudio móvil se llama «Editar : abre las herramientas…» — NO
+    // confundir con los botones «Editar <Mes/Slot>» de cada tarjeta del lienzo
+    // (esos abren el picker single de UN slot y secuestran el flujo).
+    const editarFab = page.getByRole("button", { name: /abre las herramientas/i }).first();
+    if (await editarFab.count()) await editarFab.click();
+    sheet = page.locator('[data-slot="sheet-content"]');
+  }
+  // Scope de la librería: el sheet en móvil; la página en desktop.
+  const scope = (await sheet.count()) ? sheet.first() : page;
+  const consent = scope.getByRole("checkbox", { name: /Tengo derecho a usar esta foto/i });
   await consent.waitFor({ state: "visible", timeout: 30_000 });
   if (!(await consent.isChecked())) await consent.check();
-  const dialogInput = page.locator(
-    'div[role="dialog"] input[type="file"], [data-slot="sheet-content"] input[type="file"]',
-  );
-  const input = (await dialogInput.count())
-    ? dialogInput.first()
-    : page.locator('input[type="file"]').first();
-  await input.setInputFiles(Array.from({ length: count }, () => MASCOT));
+  // Input multiple de la librería; si no existe, subir de a UNA foto por vez.
+  const multiInput = scope.locator('input[type="file"][multiple]');
+  if (await multiInput.count()) {
+    await multiInput.first().setInputFiles(Array.from({ length: count }, () => MASCOT));
+  } else {
+    const single = scope.locator('input[type="file"]').first();
+    for (let i = 0; i < count; i++) {
+      await single.setInputFiles(MASCOT);
+      await page.waitForTimeout(800); // dejar procesar cada subida
+    }
+  }
   const wand = page.getByRole("button", { name: new RegExp(`Llenar ${count} slots?`, "i") });
   await wand.first().waitFor({ state: "visible", timeout: 180_000 });
   await wand.first().click();
@@ -167,6 +182,11 @@ test("3. Resume — «Sí, continuar» devuelve el lienzo CON fotos (recarga inm
   await page.reload({ waitUntil: "domcontentloaded" });
   const continuar = page.getByRole("button", { name: /Sí, continuar/i });
   await continuar.waitFor({ state: "visible", timeout: 20_000 });
+  // Margen humano realista: el sendBeacon del flush va en vuelo al recargar; un
+  // humano tarda ≥1-2 s en leer el interstitial y hacer click (el beacon tarda
+  // ~300-500 ms). Sin este margen el e2e lee el draft ANTES de que aterrice el
+  // flush (race read-after-write, solo reproducible a velocidad de máquina).
+  await page.waitForTimeout(2_000);
   await continuar.click();
   await page.waitForURL(/designId=/, { timeout: 20_000 });
   await dismissOverlays(page);
@@ -200,8 +220,11 @@ test("5. El CTA de finalizar dice «Ver diseño» (foto y letras)", async ({ pag
     .catch(() => {});
   await dismissOverlays(page);
   // El texto VISIBLE del CTA es «Ver diseño» (el aria cambia con el estado de
-  // completitud — botón deshabilitado anuncia lo que falta — así que se aserta el texto).
-  await expect(page.getByText("Ver diseño").first()).toBeVisible({ timeout: 30_000 });
+  // completitud; en móvil el botón del toolbar desktop queda display:none, así
+  // que se filtra por visibilidad real).
+  await expect(page.getByText("Ver diseño").filter({ visible: true }).first()).toBeVisible({
+    timeout: 30_000,
+  });
   // En la página NO queda ningún CTA «Vista previa».
   await expect(page.getByRole("button", { name: /^Vista previa$/i })).toHaveCount(0);
 
@@ -211,7 +234,9 @@ test("5. El CTA de finalizar dice «Ver diseño» (foto y letras)", async ({ pag
     .waitFor({ state: "attached", timeout: 8_000 })
     .catch(() => {});
   await dismissOverlays(page);
-  await expect(page.getByText("Ver diseño").first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Ver diseño").filter({ visible: true }).first()).toBeVisible({
+    timeout: 30_000,
+  });
   await expect(page.getByRole("button", { name: /^Vista previa$/i })).toHaveCount(0);
 });
 
