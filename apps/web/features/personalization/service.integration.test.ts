@@ -136,7 +136,13 @@ describe("listCustomerDesigns", () => {
     const old = await makeDesign({ customerId: ownerId, status: "DRAFT" });
     await prisma.design.update({
       where: { id: old },
-      data: { updatedAt: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000) },
+      // El draft "existe" desde hace ~130 días (createdAt) y no se toca hace 120
+      // (updatedAt) — retroceder ambos: la función filtra por las dos (createdAt
+      // <= now y updatedAt dentro de la ventana, fix CI 2026-10-08).
+      data: {
+        createdAt: new Date(Date.now() - 130 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000),
+      },
     });
     const rows = await listCustomerDesigns(ownerId);
     expect(rows.map((r) => r.id)).not.toContain(old);
