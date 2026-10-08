@@ -71,6 +71,17 @@ type CacheEntry = {
   outH: number;
   fontsStatus: string;
   dataUrl: string;
+  /**
+   * true si al rasterizar el slot tenía assetUrl pero el stage AÚN no montaba el
+   * nodo de la foto (`name="slot-photo"` — la rama "cargando" dibuja el placeholder
+   * #F4ECFF). Una entrada así es PROVISIONAL: la carga de la imagen no cambia el
+   * estado del store, así que la clave (referencia del slot) no se invalida sola
+   * cuando la foto termina de decodificar — si se sirviera tal cual, el placeholder
+   * lila quedaría horneado en previews/3D para siempre (bug STG 2026-10-08). En el
+   * hit se re-valida: si el stage YA tiene la foto, la entrada se descarta y se
+   * re-rasteriza.
+   */
+  photoPending: boolean;
 };
 
 export const SLOT_SNAPSHOT_CACHE_LIMIT = 32;
@@ -134,6 +145,10 @@ export function snapshotSlotForPreview(
   );
   const borderColor = ctx.borderColor ?? null;
   const fontsStatus = currentFontsStatus();
+  // ¿El slot quiere foto pero el stage aún la está cargando? (rama placeholder —
+  // ver CacheEntry.photoPending). El nodo `slot-photo` solo existe con la foto
+  // ya decodificada y renderizada (studio-slot.tsx).
+  const photoPending = !!slot.assetUrl && stage.find(".slot-photo").length === 0;
 
   const hit = cache.get(slot.slotIndex);
   if (
@@ -143,7 +158,11 @@ export function snapshotSlotForPreview(
     hit.borderColor === borderColor &&
     hit.outW === outW &&
     hit.outH === outH &&
-    hit.fontsStatus === fontsStatus
+    hit.fontsStatus === fontsStatus &&
+    // Auto-cura: una entrada rasterizada a medio cargar se desecha en cuanto el
+    // stage ya muestra la foto (si sigue cargando, se sirve — re-rasterizar
+    // produciría el mismo placeholder).
+    !(hit.photoPending && !photoPending)
   ) {
     // LRU liviano: refrescar la posición para que el desalojo FIFO saque lo
     // realmente más viejo.
@@ -177,6 +196,7 @@ export function snapshotSlotForPreview(
     outH,
     fontsStatus,
     dataUrl,
+    photoPending,
   });
   return dataUrl;
 }

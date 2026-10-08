@@ -2796,6 +2796,12 @@ function ImagePlaceholder({
           ref={(n) => {
             imageNodeRef.current = n;
           }}
+          // Marcador de "foto YA decodificada y renderizada": este nodo SOLO existe
+          // cuando useImage resolvió (la rama de carga dibuja el placeholder #F4ECFF).
+          // Los consumidores de snapshots (buildMagnetTextures — libro 3D / galería)
+          // esperan este nombre antes de rasterizar el stage (bug STG 2026-10-08:
+          // textura horneada con el placeholder lila si el snapshot cae en la carrera).
+          name="slot-photo"
           image={image}
           width={renderedW}
           height={renderedH}

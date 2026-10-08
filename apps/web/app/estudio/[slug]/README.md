@@ -1626,6 +1626,14 @@ Estrategias aplicadas:
   finalizar el gesto de zoom (`lib/filter-recache.ts`); smartcrop sobre copia
   ≤256px (`lib/smart-crop.ts`). Harness de medición LoAF: `tmp/inp-audit/`.
   Cierre del ciclo: tabla "INP por elemento" en /admin/performance.
+- **Fix 2026-10-08 (bug STG — separador plano "en blanco" en el libro 3D):** el
+  snapshot podía caer en la ventana "foto subida pero `useImage` aún decodificando"
+  y hornear el placeholder `#F4ECFF` en la textura (y el cache lo conservaba: la
+  decodificación NO cambia la referencia del slot). Ahora el `KonvaImage` de la
+  foto lleva `name="slot-photo"` (studio-slot.tsx), `buildMagnetTextures` espera
+  esos nodos antes de rasterizar (`waitForSlotPhotosReady`, deadline 4 s
+  best-effort) y el cache marca las entradas tomadas a medio cargar
+  (`photoPending`) para re-rasterizarlas en cuanto la foto aparece.
 
 ## Accessibility — checklist WCAG 2.1 AA
 

@@ -1012,9 +1012,11 @@ export function StudioEditor({
     // Ronda 2 QA (2026-10-08) — flush al ocultar/salir de la página: el debounce
     // de 2 s dejaba una ventana en la que una recarga perdía las asignaciones
     // recién hechas y «Continuar donde quedaste» volvía con el lienzo VACÍO
-    // (confirmado con Playwright: 0/6 fotos tras resume en polaroid). Al ocultar
-    // se dispara el save de inmediato (visibilitychange da margen de red; el
-    // request suele completarse).
+    // (confirmado con Playwright: 0/6 fotos tras resume en polaroid). La vía
+    // confiable durante unload es navigator.sendBeacon (fire-and-forget que el
+    // navegador completa aunque la página muera) contra /api/designs/save-canvas
+    // — el fetch de la Server Action se aborta con la navegación (verificado:
+    // el primer flush con action seguía fallando en el e2e de certificación).
     const flushOnHide = () => {
       if (timer) {
         clearTimeout(timer);
@@ -1022,6 +1024,23 @@ export function StudioEditor({
       }
       const current = store.getState();
       if (!current.isDirty || !current.designId || !current.canvasData) return;
+      const payload = JSON.stringify({
+        designId: current.designId,
+        canvasData: current.canvasData,
+        templateId: current.selectedTemplateId ?? undefined,
+      });
+      const blob = new Blob([payload], { type: "application/json" });
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.sendBeacon?.("/api/designs/save-canvas", blob)
+      ) {
+        // Encolado con éxito: el navegador garantiza el envío. Optimista:
+        // el estado queda como guardado (si el server lo rechaza, el próximo
+        // cambio reactiva el auto-save y el error se ve en el header).
+        current.setAutoSaveStatus({ kind: "saved", at: Date.now() });
+        current.markClean();
+        return;
+      }
       void runSave();
     };
     const onVisibility = () => {
@@ -2642,6 +2661,9 @@ async function buildCompositedPreview(
   opts?: { unitRange?: PreviewUnitRange },
 ): Promise<string> {
   const { gridLayout, unitTemplate, slots } = canvasData;
+  // Ronda 2 QA (2026-10-08) — misma carrera que el libro 3D: sin la espera, un
+  // preview abierto justo tras subir fotos hornea el placeholder de carga.
+  await waitForSlotPhotosReady(slots, stages);
   // Modelo multi-unidad (2026-09-09): con N unidades multi-slot el gridLayout
   // describe UNA unidad — la Vista previa muestra TODAS las unidades (lo que el
   // cliente va a recibir): las TIRAS se disponen lado a lado (cada una es una
@@ -2804,6 +2826,9 @@ async function buildBookmarkStripPreview(
   opts?: { noFold?: boolean; backOptional?: boolean; foldCaption?: string; unitIndex?: number },
 ): Promise<string> {
   const { unitTemplate, slots } = canvasData;
+  // Ronda 2 QA (2026-10-08) — misma carrera que el libro 3D: esperar a que las
+  // fotos estén decodificadas antes de rasterizar (si no, placeholder lila).
+  await waitForSlotPhotosReady(slots, stages);
   const noFold = opts?.noFold === true;
   const backOptional = opts?.backOptional === true;
   const foldCaption = opts?.foldCaption;
@@ -3043,6 +3068,43 @@ async function rotateTextures90(magnets: Magnet3D[]): Promise<Magnet3D[]> {
 // silueta física (transparente afuera), para que en la nevera 3D cada imán tenga su forma real
 // (rectángulo/corazón/círculo) y no un rectángulo. Reusa buildShapePath (misma silueta que el
 // preview 2D). Devuelve, además, la proporción física para escalar el plano en la escena.
+
+/**
+ * Espera a que las fotos de los slots estén DECODIFICADAS Y RENDERIZADAS en su stage Konva
+ * antes de rasterizarlo (bug STG 2026-10-08 — separador plano "en blanco" en el libro 3D,
+ * frente y respaldo):
+ *
+ * El contador "N/N fotos" y `slot.assetUrl` se actualizan al terminar la SUBIDA, pero el
+ * `<KonvaImage>` de la foto solo existe cuando el `useImage` del slot resuelve (async:
+ * fetch + decode). Mientras tanto el stage dibuja el placeholder `#F4ECFF` (lila pálido).
+ * Un snapshot tomado en esa ventana hornea el placeholder en la textura — y peor: el cache
+ * de `snapshotSlotForPreview` lo conserva, porque la carga de la imagen NO cambia el estado
+ * del store (la referencia del slot —clave del cache— sigue igual cuando la foto termina de
+ * decodificar). Resultado: ambas caras del 3D "en blanco" con 2/2 slots cargados.
+ *
+ * El marcador determinista es el nodo `name="slot-photo"` (studio-slot.tsx): la rama de
+ * carga renderiza el placeholder SIN ese nodo; la rama con foto lo incluye siempre. Se
+ * espera con rAF y un deadline (best-effort, misma filosofía que ensureAllStagesMounted:
+ * si una imagen falló de verdad, no colgamos el click — se rasteriza lo que haya).
+ */
+async function waitForSlotPhotosReady(
+  slots: readonly { slotIndex: number; assetUrl?: string | null }[],
+  stages: Map<number, Konva.Stage | null>,
+  timeoutMs = 4000,
+): Promise<void> {
+  const pending = () =>
+    slots.some((s) => s.assetUrl && !stages.get(s.slotIndex)?.findOne(".slot-photo"));
+  if (!pending()) return;
+  const deadline = performance.now() + timeoutMs;
+  await new Promise<void>((resolve) => {
+    const tick = () => {
+      if (!pending() || performance.now() > deadline) resolve();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
 async function buildMagnetTextures(
   canvasData: CanvasDataV2,
   stages: Map<number, Konva.Stage | null>,
@@ -3052,6 +3114,9 @@ async function buildMagnetTextures(
   texWidth: number = MAGNET_TEXTURE_WIDTH_DEFAULT,
 ): Promise<Magnet3D[]> {
   const { unitTemplate, slots } = canvasData;
+  // Sin esta espera el snapshot puede caer en la ventana "foto subida pero aún no
+  // decodificada en Konva" y la textura sale con el placeholder lila (ver doc arriba).
+  await waitForSlotPhotosReady(slots, stages);
   const texW = texWidth;
   const texH = Math.max(
     64,
