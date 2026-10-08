@@ -25,6 +25,7 @@
 
 import { create } from "zustand";
 import type { CalendarFontKey } from "@/features/personalization/schemas";
+import { registerActiveStudioStore } from "./active-studio-store";
 import {
   gridSlotCountForLayout,
   unitCountOf,
@@ -257,7 +258,7 @@ const initialState = {
  * pasa via Context o directamente como prop.
  */
 export function createStudioStore() {
-  return create<StudioStoreState>((set, get) => ({
+  const store = create<StudioStoreState>((set, get) => ({
     ...initialState,
 
     init: (input) => {
@@ -814,6 +815,12 @@ export function createStudioStore() {
 
     reset: () => set({ ...initialState }),
   }));
+  // QA ronda 2 (F3, 2026-10-07) — registrar la instancia como store ACTIVO del
+  // Estudio (lib/active-studio-store.ts): lo lee la sección «Campos de
+  // Instagram» de la edición individual por slot, que se renderiza desde
+  // studio-canvas-grid (congelado) y no recibe el store por props.
+  registerActiveStudioStore(store);
+  return store;
 }
 
 export type StudioStore = ReturnType<typeof createStudioStore>;

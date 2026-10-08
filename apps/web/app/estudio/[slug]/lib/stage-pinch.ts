@@ -90,3 +90,50 @@ export function anchoredScrollOffset(
 ): number {
   return Math.max(0, ratio * contentSizeAfter - anchorPoint);
 }
+
+/**
+ * PERF (2026-10-07) — throttle con requestAnimationFrame para el zoom del
+ * gesto. Los touchmove llegan varias veces por frame y cada setStageZoom
+ * REDIMENSIONA los stages Konva (re-render de todos los slots — no es una
+ * transform CSS): aplicarlo por evento era un re-render por frame de gesto
+ * (long tasks / INP móvil). `schedule(value)` conserva el ÚLTIMO valor y lo
+ * aplica una sola vez por frame (trailing); `flush()` aplica el pendiente de
+ * inmediato (commit final en touchend, para que el gesto no termine un frame
+ * atrás); `cancel()` descarta todo (cleanup del listener). raf/caf
+ * inyectables para tests.
+ */
+export function createRafThrottle<T>(
+  apply: (value: T) => void,
+  raf: (cb: () => void) => number = (cb) => requestAnimationFrame(cb),
+  caf: (id: number) => void = (id) => cancelAnimationFrame(id),
+): { schedule: (value: T) => void; flush: () => void; cancel: () => void } {
+  let pending: { value: T } | null = null;
+  let rafId: number | null = null;
+  const run = () => {
+    rafId = null;
+    if (pending === null) return;
+    const { value } = pending;
+    pending = null;
+    apply(value);
+  };
+  return {
+    schedule(value: T) {
+      pending = { value };
+      if (rafId === null) rafId = raf(run);
+    },
+    flush() {
+      if (rafId !== null) {
+        caf(rafId);
+        rafId = null;
+      }
+      run();
+    },
+    cancel() {
+      if (rafId !== null) {
+        caf(rafId);
+        rafId = null;
+      }
+      pending = null;
+    },
+  };
+}

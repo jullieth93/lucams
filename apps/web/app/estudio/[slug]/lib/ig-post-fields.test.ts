@@ -102,7 +102,7 @@ describe("hashtags — chips, «#» fija y máximo 3", () => {
   });
 });
 
-describe("ubicación — filtro del combobox (Fase 2 · 2.7b)", () => {
+describe("ubicación — filtro del combobox (Fase 2 · 2.7b; cobertura MUNDIAL QA ronda 2, 2026-10-07)", () => {
   it("query vacío devuelve TODAS las sugerencias", () => {
     expect(filterIgLocationSuggestions("")).toEqual([...IG_LOCATION_SUGGESTIONS]);
     expect(filterIgLocationSuggestions("   ")).toEqual([...IG_LOCATION_SUGGESTIONS]);
@@ -113,11 +113,44 @@ describe("ubicación — filtro del combobox (Fase 2 · 2.7b)", () => {
     expect(filterIgLocationSuggestions("BOGOTA")).toEqual(["Bogotá, Colombia"]);
   });
 
+  it("cobertura mundial: encuentra ciudades de Europa, Norteamérica y el resto de Latinoamérica", () => {
+    // Madrid (Europa) y Miami (EE.UU.) — pedidos explícitos del owner.
+    expect(filterIgLocationSuggestions("madrid")).toEqual(["Madrid, España"]);
+    expect(filterIgLocationSuggestions("miami")).toEqual(["Miami, Estados Unidos"]);
+    // Argentina: ciudades + el país solo como fallback.
+    expect(filterIgLocationSuggestions("argentina")).toEqual([
+      "Buenos Aires, Argentina",
+      "Córdoba, Argentina",
+      "Rosario, Argentina",
+      "Mendoza, Argentina",
+      "Argentina",
+    ]);
+  });
+
   it("filtra por PAÍS (substring sobre «Ciudad, País» completo)", () => {
     const españa = filterIgLocationSuggestions("españa");
-    expect(españa).toEqual(["Madrid, España", "Barcelona, España"]);
+    // Las 8 ciudades curadas de España + el país solo (fallback).
+    expect(españa).toEqual([
+      "Madrid, España",
+      "Barcelona, España",
+      "Valencia, España",
+      "Sevilla, España",
+      "Bilbao, España",
+      "Málaga, España",
+      "Alicante, España",
+      "Palma de Mallorca, España",
+      "España",
+    ]);
     // Colombia es el mercado principal: la lista curada es mayoritariamente local.
     expect(filterIgLocationSuggestions("colombia").length).toBeGreaterThan(15);
+  });
+
+  it("orden: Colombia primero, luego por región, y los países solos al final", () => {
+    expect(IG_LOCATION_SUGGESTIONS[0]).toBe("Bogotá, Colombia");
+    const soloPaises = IG_LOCATION_SUGGESTIONS.filter((s) => !s.includes(","));
+    // El bloque final son los países solos (fallback), en orden alfabético.
+    expect(IG_LOCATION_SUGGESTIONS.slice(-soloPaises.length)).toEqual(soloPaises);
+    expect(soloPaises).toEqual([...soloPaises].sort((a, b) => a.localeCompare(b, "es")));
   });
 
   it("sin coincidencias → lista vacía (el texto libre igual vale: no es validación)", () => {

@@ -35,7 +35,37 @@ vi.mock("./studio-text-editor-modal", () => ({
 }));
 
 import { StudioSlotEditModal } from "./studio-slot-edit-modal";
-import type { CanvasDataV1 } from "./types";
+import { createStudioStore } from "./lib/store";
+import type { CanvasDataV1, CanvasDataV2, TextLayer } from "./types";
+
+const IG_TEXT_LAYERS: TextLayer[] = [
+  { id: "user_name", type: "text", x: 60, y: 34, text: "@tu_usuario", editable: true },
+  { id: "location", type: "text", x: 60, y: 48, text: "Bogotá, Colombia", editable: true },
+  { id: "likes_count", type: "text", x: 25, y: 510, text: "362 me gusta", editable: true },
+  { id: "caption", type: "text", x: 25, y: 526, text: "Tu título acá", editable: true },
+  { id: "hashtags", type: "text", x: 25, y: 542, text: "#mirecuerdo", editable: true },
+] as unknown as TextLayer[];
+
+/** Canvas IG mínimo para el store activo (lo lee StudioIgSlotFields vía registry). */
+function igCanvasData(): CanvasDataV2 {
+  return {
+    version: 2,
+    unitTemplate: {
+      version: 1,
+      stage: { width: 450, height: 600, dpiPreview: 90, dpiProduction: 300 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        { id: "frame", type: "asset", src: "/templates/ig_post_3x4.svg", x: 0, y: 0 },
+        { id: "p1", type: "image-placeholder", x: 29, y: 58, width: 392, height: 392 },
+        ...IG_TEXT_LAYERS,
+      ],
+    },
+    slotCount: 1,
+    slots: [{ slotIndex: 0, assetId: null, assetUrl: null }],
+    gridLayout: { cols: 1, rows: 1, gap: 24 },
+    borderColor: null,
+  } as unknown as CanvasDataV2;
+}
 
 const UNIT_TEMPLATE: CanvasDataV1 = {
   version: 1,
@@ -179,5 +209,26 @@ describe("StudioSlotEditModal — letra del calendario dentro de «Ajustar Foto�
       <StudioSlotEditModal {...baseProps()} calendarFont="inter" onCalendarFontChange={vi.fn()} />,
     );
     expect(document.querySelector<HTMLSelectElement>("#cal-font-select")!.value).toBe("inter");
+  });
+});
+
+describe("StudioSlotEditModal — campos IG en la pestaña Texto (QA ronda 2, owner 2026-10-07)", () => {
+  it("con plantilla Instagram la pestaña Texto muestra «Campos de Instagram» (store activo vía registry)", () => {
+    // El modal no recibe el store por props (host congelado): la sección lo
+    // lee del store ACTIVO registrado por createStudioStore.
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "set-fotoimanes-polaroid-instagram",
+      canvasData: igCanvasData(),
+      templates: [],
+    });
+    const props = { ...baseProps(), hasText: true, textLayers: IG_TEXT_LAYERS };
+    render(<StudioSlotEditModal {...props} />);
+
+    // Radix Tabs activa el tab en mouseDown (no en click).
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Texto/ }));
+    expect(screen.getByText("Campos de Instagram")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /ubicación/i })).toBeInTheDocument();
   });
 });

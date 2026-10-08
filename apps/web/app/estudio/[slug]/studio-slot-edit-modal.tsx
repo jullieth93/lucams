@@ -8,7 +8,10 @@
  *
  *   - Foto: zoom, pan, rotar, filtros y reset (reutiliza StudioPhotoAdjustForm).
  *   - Texto: editor de cada text layer editable del slot (reutiliza
- *     StudioTextEditorForm).
+ *     StudioTextEditorForm). QA ronda 2 (owner 2026-10-07): con plantilla
+ *     Polaroid Instagram, la pestaña suma la sección «Campos de Instagram»
+ *     (StudioIgSlotFields) — los 5 campos asistidos del post editando el
+ *     override INDIVIDUAL de este canvas.
  *
  * Accesible: Radix Dialog con role=dialog, cierre con Escape, foco inicial
  * y trap. En móvil el modal ocupa casi toda la pantalla; en desktop es un
@@ -25,6 +28,7 @@ import { ImageIcon, Type, ChevronLeft, Copy } from "lucide-react";
 import { StudioPhotoAdjustForm } from "./studio-photo-adjust-modal";
 import { StudioPhotoPreview } from "./studio-photo-preview";
 import { StudioTextEditorForm } from "./studio-text-editor-modal";
+import { StudioIgSlotFields } from "./studio-ig-slot-fields";
 import type { CanvasDataV1, PhotoFilterPreset, TextLayer, TextOverride } from "./types";
 import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
 import { CALENDAR_FONT_OPTIONS, type CalendarFontKey } from "@/features/personalization/schemas";
@@ -424,15 +428,26 @@ export function StudioSlotEditModal({
 
             <TabsContent value="text" className="mt-0 focus-visible:outline-none">
               {hasText && (
-                <TextLayersEditor
-                  layers={textLayers}
-                  currentOverrides={currentTextOverrides}
-                  onApply={onApplyTextOverride}
-                  focusTextLayerId={focusTextLayerId}
-                  cardColor={cardColor}
-                  textDefaultFills={textDefaultFills}
-                  onApplyToAll={onApplyTextToAll}
-                />
+                <div className="space-y-5">
+                  {/* QA ronda 2 (owner 2026-10-07, F3) — los 5 campos de la
+                      Polaroid Instagram también en la edición INDIVIDUAL de este
+                      canvas (escribe el override del slot vía onApplyTextOverride;
+                      no toca los demás). Solo se renderiza con plantilla IG. */}
+                  <StudioIgSlotFields
+                    slotIndex={slotIndex}
+                    currentOverrides={currentTextOverrides}
+                    onApply={onApplyTextOverride}
+                  />
+                  <TextLayersEditor
+                    layers={textLayers}
+                    currentOverrides={currentTextOverrides}
+                    onApply={onApplyTextOverride}
+                    focusTextLayerId={focusTextLayerId}
+                    cardColor={cardColor}
+                    textDefaultFills={textDefaultFills}
+                    onApplyToAll={onApplyTextToAll}
+                  />
+                </div>
               )}
             </TabsContent>
           </div>

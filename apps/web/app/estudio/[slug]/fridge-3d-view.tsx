@@ -114,10 +114,14 @@ const FRIDGE_U_PER_CM = FRIDGE_SCENE.uPerCm;
 // Fase 2.11 (owner 2026-10-07) — grosor FÍSICO real: 2 mm × uPerCm de la escena
 // (≈0.0099 u acá; antes la constante de mundo 0.04 u ≈ 0.8 cm — ~4× el real).
 const MAGNET_DEPTH = realWorldDepth(FRIDGE_U_PER_CM);
+// Cara frontal del PANEL biselado interno de cada puerta: centro en DOOR_FACE_Z+0.012 con
+// 0.03 de grosor → superficie en +0.027 (ver Door). Los imanes se adhieren SOBRE ESE panel:
+// si su centro queda por debajo, la pieza entera queda ENTERRADA en el panel y la nevera se
+// ve vacía (bug confirmado con Playwright STG 2026-10-08: 12 tarjetas invisibles).
+const PANEL_FACE_Z = DOOR_FACE_Z + 0.027;
 // Centro del cuerpo extruido: su mitad trasera (depth/2 + bisel 0.2·depth) apoya sobre el
-// panel con un epsilon de 0.003 u (adherido, sin z-fighting). Antes era +0.04 fijo: con el
-// grosor real la pieza habría quedado FLOTANDO ~0.03 u sobre la puerta.
-const MAGNET_Z = DOOR_FACE_Z + MAGNET_DEPTH * 0.7 + 0.003;
+// panel con un epsilon de 0.003 u (adherido, sin z-fighting).
+const MAGNET_Z = PANEL_FACE_Z + MAGNET_DEPTH * 0.7 + 0.003;
 
 // Materiales (gris satinado de electrodoméstico; metalness baja para verse bien sin env-map).
 const BODY_COLOR = "#9297A0";

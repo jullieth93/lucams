@@ -1366,6 +1366,9 @@ export async function finalizeDesign(opts: {
    */
   qualityAcknowledged?: boolean;
 }) {
+  // PERF (2026-10-07) — reloj de fases para el evento design.finalize.timing
+  // (render / uploads / total): el p95 se lee en los logs de Vercel.
+  const tFinalizeStart = Date.now();
   const design = await getOwnedDesign(opts.designId, opts);
   if (!design) {
     throw new Error("Design not found or not owned by caller");
@@ -1528,6 +1531,9 @@ export async function finalizeDesign(opts: {
       `NEEDS_CLIENT_SLOTS: el servidor no pudo renderizar los ${expectedSlotCount} PNG de imprenta`,
     );
   }
+  // Fase RENDER cerrada: los N buffers de imprenta ya están resueltos (render
+  // server-side, snapshots inline del cliente o área de paso).
+  const renderMs = Date.now() - tFinalizeStart;
 
   // Subir preview compositado del grid completo. La extensión refleja el mime
   // REAL (T2, 2026-09-22: webp/jpg/png) — los consumers (OrderItem.designAssetUrl,
@@ -1605,34 +1611,69 @@ export async function finalizeDesign(opts: {
     }
   }
 
-  // Subir N production PNGs (uno por imán físico; en separadores 2-caras, uno por TIRA)
-  const productionPaths: string[] = [];
+  // Subir N production PNGs (uno por imán físico; en separadores 2-caras, uno por TIRA).
+  // PERF/ROBUSTEZ (2026-10-07) — antes: subidas SECUENCIALES (~200–500 ms c/u;
+  // 24–48 slots ≈ 5–24 s de Function) reteniendo TODOS los buffers en memoria
+  // (50 × 2–5 MB = pico 100–250 MB → OOM intermitente, que el cliente veía como
+  // "An unexpected response was received from the server" por un 500/504 HTML
+  // de plataforma). Ahora, mismo patrón que lib/upload-with-retry.ts del
+  // cliente: concurrencia acotada a 3 lanes (fail-fast: el primer error frena
+  // el despacho y se re-lanza; las subidas en vuelo terminan) y cada buffer se
+  // LIBERA (null out del array) apenas su subida termina — el pico de memoria
+  // deja de crecer con N.
+  const productionPaths: string[] = new Array(productionBuffers.length);
+  // Copia LOCAL del array para el null-out: nunca se muta el array del caller
+  // (puede ser un array compartido/reusado entre llamadas — el null-out sobre
+  // la copia sí libera las referencias cuando los buffers se crearon acá
+  // adentro: render server-side o área de paso, el caso dominante).
+  const buffersToRelease: (Buffer | null)[] = [...productionBuffers];
+  productionBuffers = undefined; // suelta también el binding local
   let totalProductionBytes = 0;
-  for (let i = 0; i < productionBuffers.length; i++) {
-    const buf = productionBuffers[i]!;
-    totalProductionBytes += buf.length;
-    // Ola 3 — con tiras compuestas (separadores 2 caras) el archivo es la TIRA desplegada
-    // de la unidad (cara A + cara B), no una cara suelta: nombre explícito para imprenta.
-    const path = facesComposed
-      ? `${design.id}/tira-${String(i + 1).padStart(2, "0")}.png`
-      : `${design.id}/slot-${String(i + 1).padStart(2, "0")}.png`;
-    const { error: prodErr } = await supabase.storage.from(BUCKET_PRODUCTION).upload(path, buf, {
-      contentType: "image/png",
-      // 1h, alineado con el TTL de los signed URLs (getProductionAssetSignedUrls): el bucket
-      // es PRIVADO y cada acceso genera una firma nueva, así que un cache-control largo no
-      // se aprovecharía (la URL rotativa cambia el query string = cache key distinto). Con
-      // 3600 el navegador sí puede reusar la pieza mientras la firma siga viva (T4).
-      cacheControl: "3600",
-      upsert: true,
-    });
-    if (prodErr) {
-      logger.warn(
-        { event: "design.finalize.upload_production_fail", err: prodErr.message, slotIndex: i },
-        "Production upload fail",
-      );
-      throw new Error(`No pudimos subir el slot ${i + 1}: ${prodErr.message}`);
+  let nextUploadIndex = 0;
+  // Array (no let aplanado): TS no estrecha las escrituras hechas dentro del
+  // closure del runner y el fail-fast lee `length === 0`.
+  const uploadErrors: { index: number; message: string }[] = [];
+  const tUploadsStart = Date.now();
+  const uploadRunner = async () => {
+    while (nextUploadIndex < buffersToRelease.length && uploadErrors.length === 0) {
+      const i = nextUploadIndex++;
+      const buf = buffersToRelease[i]!;
+      // Ola 3 — con tiras compuestas (separadores 2 caras) el archivo es la TIRA desplegada
+      // de la unidad (cara A + cara B), no una cara suelta: nombre explícito para imprenta.
+      const path = facesComposed
+        ? `${design.id}/tira-${String(i + 1).padStart(2, "0")}.png`
+        : `${design.id}/slot-${String(i + 1).padStart(2, "0")}.png`;
+      const { error: prodErr } = await supabase.storage.from(BUCKET_PRODUCTION).upload(path, buf, {
+        contentType: "image/png",
+        // 1h, alineado con el TTL de los signed URLs (getProductionAssetSignedUrls): el bucket
+        // es PRIVADO y cada acceso genera una firma nueva, así que un cache-control largo no
+        // se aprovecharía (la URL rotativa cambia el query string = cache key distinto). Con
+        // 3600 el navegador sí puede reusar la pieza mientras la firma siga viva (T4).
+        cacheControl: "3600",
+        upsert: true,
+      });
+      if (prodErr) {
+        logger.warn(
+          { event: "design.finalize.upload_production_fail", err: prodErr.message, slotIndex: i },
+          "Production upload fail",
+        );
+        uploadErrors.push({ index: i, message: prodErr.message });
+        return;
+      }
+      totalProductionBytes += buf.length;
+      productionPaths[i] = path;
+      buffersToRelease[i] = null; // liberar el buffer apenas sube (pico de memoria ∝ N)
     }
-    productionPaths.push(path);
+  };
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(3, buffersToRelease.length)) }, uploadRunner),
+  );
+  const uploadMs = Date.now() - tUploadsStart;
+  const firstUploadError = uploadErrors[0];
+  if (firstUploadError) {
+    throw new Error(
+      `No pudimos subir el slot ${firstUploadError.index + 1}: ${firstUploadError.message}`,
+    );
   }
 
   // ADR-063 CAL2 — registrar el año del calendario en metadata (fuente para re-render/admin;
@@ -1680,6 +1721,21 @@ export async function finalizeDesign(opts: {
       qualityAcknowledged: opts.qualityAcknowledged === true,
     },
     "Design finalized (V2)",
+  );
+
+  // PERF (2026-10-07) — tiempos por fase para leer el p95 en los logs de Vercel
+  // y detectar regresiones (render server-side vs subidas a Storage).
+  logger.info(
+    {
+      event: "design.finalize.timing",
+      designId: design.id,
+      renderMs,
+      uploadMs,
+      totalMs: Date.now() - tFinalizeStart,
+      productionSlotsCount: productionPaths.length,
+      productionTotalBytes: totalProductionBytes,
+    },
+    "Finalize: tiempos por fase (render / uploads / total)",
   );
 
   // Los definitivos ya están subidos: el área de paso sobra (ADR-081).

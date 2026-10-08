@@ -30,6 +30,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
+import { prisma } from "@/lib/db";
 import { getStorageQuota, getTechHealth } from "@/features/observability/service";
 import { getDailySummary } from "@/features/observability/daily-summary";
 import { getSloStatus, type SloResult } from "@/features/observability/slos";
@@ -42,6 +43,7 @@ import {
   getEmailDeliverabilityStats,
   EMAIL_BOUNCE_RATE_ALERT_PCT,
   EMAIL_BOUNCE_MIN_EVENTS,
+  EMAIL_STATS_WINDOW_DAYS,
 } from "@/features/observability/email-deliverability";
 import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { ClientErrorActions } from "./client-error-actions";
@@ -62,9 +64,27 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / 1024)} KB`;
 }
 
+/**
+ * E1 (2026-10-07) — eventos sintéticos email.sent que registra lib/resend.ts
+ * tras cada envío exitoso: distinguen "no llegan webhooks" de "no se envían".
+ * No vive en getEmailDeliverabilityStats porque su groupBy solo mira estados
+ * de entrega (delivered/bounced/delayed) para la tasa de rebote. Fuera del
+ * componente: Date.now no puede llamarse durante el render (react-hooks/purity).
+ */
+function countSentEmails(windowDays: number): Promise<number> {
+  const from = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  return prisma.emailEvent.count({
+    where: {
+      type: "email.sent",
+      occurredAt: { gte: from },
+      NOT: { to: { endsWith: ".test" } },
+    },
+  });
+}
+
 export default async function AdminObservabilityPage() {
   await requireRole(["SUPERADMIN"]);
-  const [h, ops, slos, crons, email, backup, monitor, storage] = await Promise.all([
+  const [h, ops, slos, crons, email, backup, monitor, storage, emailsSent] = await Promise.all([
     getTechHealth(),
     getDailySummary(),
     getSloStatus(),
@@ -73,6 +93,7 @@ export default async function AdminObservabilityPage() {
     getBackupHealth(),
     getMonitorHealth(),
     getStorageQuota(),
+    countSentEmails(EMAIL_STATS_WINDOW_DAYS),
   ]);
   const revenue = `$${Math.round(ops.revenueLast24hCop / 100).toLocaleString("es-CO")}`;
   const recoveryPct =
@@ -180,6 +201,7 @@ export default async function AdminObservabilityPage() {
           icon={<Mail className="h-4 w-4" />}
         >
           <div className="flex flex-wrap gap-3 text-sm">
+            <VitalPill label="Enviados" value={emailsSent} tone="slate" />
             <VitalPill label="Entregados" value={email.delivered} tone="emerald" />
             <VitalPill
               label="Rebotados"
@@ -217,7 +239,9 @@ export default async function AdminObservabilityPage() {
             )}
             Los eventos a dominios <code>.test</code> (corridas de suites) se excluyen de la tasa
             porque su rebote es esperado por diseño. Fuente: webhook de Resend (
-            <code>/api/webhooks/resend</code>).
+            <code>/api/webhooks/resend</code>) más un evento sintético <code>email.sent</code> que
+            registra la app tras cada envío exitoso — si «Enviados» crece pero «Entregados» queda en
+            0, el webhook no está llegando (revisa su configuración en el dashboard de Resend).
           </p>
         </Section>
 

@@ -878,9 +878,10 @@ de todas las superficies personalizables.**
   partidos en 3 líneas, pills envueltos).
 - **Decisión**: (1) header sticky UNIFICADO para los editores simples
   (`studio-simple-header.tsx` — idioma del StudioToolbar sin el store zustand:
-  pill «Salir», avatar+nombre, total en vivo + CTA «Ver diseño» —renombrado
-  desde «Vista previa» en QA 1.6 (2026-10-07): la misma acción del botón grande
-  del panel, rótulo diferenciado para no leer dos botones idénticos—); (2) layout
+  pill «Salir», avatar+nombre, total en vivo + CTA «Ver diseño» —misma acción
+  del botón grande del panel; QA ronda 2 (owner 2026-10-07): TODOS los CTAs de
+  finalizar comparten el rótulo «Ver diseño», revirtiendo la diferenciación
+  «Vista previa»/«Ver diseño» de QA 1.6—); (2) layout
   a dos columnas en lg (controles en tarjeta lateral `lg:w-80`, lienzo fluido en
   la tarjeta-unidad `bg-white/70`) y lienzo PRIMERO en móvil _(REDEFINIDO
   2026-10-05: en móvil los CONTROLES van primero — ver el fix de esa fecha más
@@ -897,9 +898,9 @@ de todas las superficies personalizables.**
   `whitespace-nowrap`), fila de pills `flex-nowrap overflow-x-auto` en <sm,
   hint del stepper de packs oculto en <sm — el lienzo (tarjeta del pack) ya
   inicia visible en el primer viewport de 375×812.
-- **Contratos**: mismos tests de vista previa (los selectores «Vista previa»
-  ahora resuelven 2 botones — header + panel, misma acción: los specs pulsan el
-  del panel); e2e `estudio-letterset` (orden borde → colores intacto: ambos en
+- **Contratos**: mismos tests de vista previa (los selectores «Ver diseño»
+  resuelven 2 botones — header + panel, mismo rótulo y misma acción: los specs
+  pulsan el del panel); e2e `estudio-letterset` (orden borde → colores intacto: ambos en
   la columna de controles). Auditoría: 70/70 capturas sin overflow ni errores.
 
 ### Ola 33 (owner 2026-09-18) — zoom de lienzo restaurado (tope fijo + scroll-x interno), sondas e2e B4, grilla de letras centrada
@@ -1333,6 +1334,16 @@ de calendario / varios separadores demora mucho". Tres frentes:
   sobre la hoja (`flatBookmarkPlacement` + rotación −90° X, como anticipaba el
   comentario de Ola 17) con encuadre de cámara ajustado — tamaño real intacto,
   solo pose + cámara (`book-view-3d.tsx`, `lib/book-geometry.ts`).
+  - **Revisada 2026-10-07:** la pose se compone con GRUPOS ANIDADOS (yaw →
+    acostar → volteo opcional); la Euler colapsada `[−π/2, yaw, 0]` aplicaba el
+    yaw como ROLL sobre el eje largo y basculaba la cara impresa. Verificado en
+    tests: la cara A mira EXACTA a +Y (`flatFrontNormalWorld`).
+  - **Toggle "Ver respaldo / Ver frente" (owner 2026-10-07):** botón overlay en
+    la vista del libro (`aria-pressed`) que voltea todas las piezas 180° sobre
+    su eje largo (`FACE_FLIP_ROTATION`) mostrando la cara B — en BLANCO si está
+    vacía. Vale para doblados y planos; estado local del modal (cara A al abrir).
+    Textos provisionales en `lib/book-geometry.ts` (`BOOK_FACE_TOGGLE_LABEL`),
+    pendientes de migrar a studio-texts/CMS.
 
 ## DPI y sangrado (estado real 2026-10-05)
 

@@ -55,19 +55,32 @@
  * reposando sobre la hoja, y la trasera cuelga libre (backLean ya no hace falta para las caras
  * del catálogo — queda como salvaguarda para caras más largas).
  *
+ * 2026-10-07 (Fase 2.12 revisada + toggle de caras, owner):
+ *  - Alargados planos ACOSTADOS con la composición ANIDADA de Ola 17 (yaw → acostar → volteo
+ *    opcional): la Euler colapsada [−π/2, yaw, 0] de la primera Fase 2.12 aplicaba el yaw como
+ *    ROLL sobre el eje largo y basculaba la cara impresa fuera de la vertical. Con la pose
+ *    anidada la cara A mira EXACTA a +Y (lib/book-geometry.flatFrontNormalWorld, testeado).
+ *  - Toggle "Ver respaldo / Ver frente": botón overlay (aria-pressed) que voltea TODAS las
+ *    piezas 180° sobre su eje largo (FACE_FLIP_ROTATION) mostrando la cara B — en BLANCO si
+ *    está vacía (misma regla que producción). Sirve para doblados (FoldedStripMesh) y planos
+ *    (flat); el estado es local del modal (cara A siempre al abrir).
+ *    Textos CMS: estudio.escenas.libro-ver-respaldo/-frente (useStudioTexts).
+ *
  * Restricciones (idénticas a fridge/calendar 3D):
  *  - CSP estricta: CERO assets externos. Materiales/texturas procedurales en runtime.
  *  - Client-only (WebGL) → el caller lo importa con dynamic ssr:false.
  */
 
-import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import * as THREE from "three";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { OrbitControls, RoundedBox, ContactShadows } from "@react-three/drei";
+import { FlipHorizontal2 } from "lucide-react";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
-import { FoldedStripMesh, MagnetMesh, BLANK_FACE_COLOR } from "./magnet-3d";
+import { useStudioTexts } from "./studio-texts-provider";
+import { FoldedStripMesh, MagnetMesh, BLANK_FACE_COLOR, FACE_FLIP_ROTATION } from "./magnet-3d";
 import { getPageEdgesTexture, getPagePrintTexture } from "./lib/procedural-textures";
 import {
   BLOCK_T,
@@ -75,6 +88,7 @@ import {
   COVER_OVERHANG,
   COVER_T,
   FLAT_BOOKMARK_T,
+  FLAT_LIE_ROTATION,
   GUTTER_GAP,
   MAX_BACK_LEAN,
   PAGE_D,
@@ -95,6 +109,8 @@ import type { Magnet3D } from "./fridge-3d-view";
 
 const COVER_COLOR = "#8B5E3C"; // tapa de cuero/cartón cálido
 const SPINE_COLOR = "#7C5334";
+/** Rotación cero reutilizable (evita recrear arrays inline en cada render). */
+const IDENTITY_ROTATION: readonly [number, number, number] = [0, 0, 0];
 
 function separatorSlotsForCount(count: number): { x: number; yaw: number }[] {
   if (count <= 0) return [];
@@ -130,10 +146,14 @@ function Separators({
   items,
   sizeCm,
   facesPerUnit,
+  showBack,
 }: {
   items: Magnet3D[];
   sizeCm?: string;
   facesPerUnit?: number;
+  /** "Ver respaldo" (owner 2026-10-07): voltea cada tira 180° sobre su eje largo → la
+   *  cara B (o el blanco si está vacía) queda de frente. */
+  showBack: boolean;
 }) {
   const layout = useMemo(() => {
     const units = bookmarkFaceUnits(items, facesPerUnit, sizeCm);
@@ -164,18 +184,23 @@ function Separators({
     <>
       {layout.map(({ key, unit, stripW, stripL, backLean, position, rotation }) => (
         <group key={key} position={position} rotation={rotation}>
-          <FoldedStripMesh
-            dataUrl={unit.front.dataUrl}
-            backDataUrl={unit.back?.dataUrl ?? undefined}
-            wRatio={unit.front.wRatio}
-            hRatio={unit.front.hRatio}
-            stripW={stripW}
-            stripL={stripL}
-            foldAngle={SEP_FOLD_ANGLE}
-            rFold={SEP_R_FOLD}
-            cornerRadiusRatio={SEP_CORNER_RATIO}
-            backLean={backLean}
-          />
+          {/* "Ver respaldo": el volteo va en el grupo MÁS INTERNO (marco local de la tira,
+              antes de la pose) — π sobre el eje largo Y intercambia las caras sin tocar
+              la pose: la B (o el blanco) queda de frente y la tira sigue colgando igual. */}
+          <group rotation={showBack ? FACE_FLIP_ROTATION : IDENTITY_ROTATION}>
+            <FoldedStripMesh
+              dataUrl={unit.front.dataUrl}
+              backDataUrl={unit.back?.dataUrl ?? undefined}
+              wRatio={unit.front.wRatio}
+              hRatio={unit.front.hRatio}
+              stripW={stripW}
+              stripL={stripL}
+              foldAngle={SEP_FOLD_ANGLE}
+              rFold={SEP_R_FOLD}
+              cornerRadiusRatio={SEP_CORNER_RATIO}
+              backLean={backLean}
+            />
+          </group>
         </group>
       ))}
     </>
@@ -201,21 +226,26 @@ type FlatBookmarkData = {
  * derecha del libro, como el marcapáginas clásico de la foto de referencia (vertical,
  * bordes redondeados, diseño en toda la cara). Se extruye finita (~1 mm) con la textura
  * del frente en la tapa — la cara B va impresa en el reverso físico pero queda contra la
- * página (al orbitar por debajo no aplica: la pieza reposa sobre la hoja).
- * La textura del Estudio ya viene VERTICAL (stage 400×1500 / 400×1200) → NO se rota,
- * a diferencia de los separadores doblados (textura horizontal rotada 90° en el editor).
+ * página (con el toggle "Ver respaldo" la pieza se voltea y la B — o el blanco — queda
+ * arriba). La textura del Estudio ya viene VERTICAL (stage 400×1500 / 400×1200) → NO se
+ * rota, a diferencia de los separadores doblados (textura horizontal rotada 90° en el editor).
  *
  * Pose (decisión owner 2026-10-07, Fase 2.12 — REVIERTE la de Ola 18): la pieza vuelve a
- * ir ACOSTADA sobre la hoja (flatBookmarkPlacement + rotación −90° en X, la pose original
- * de Ola 17). Ola 18 la había puesto DE PIE para que el cliente viera las 2 caras al
- * orbitar, pero un separador de 15 cm erguido DOMINABA la escena (torre de ~4.5 u sobre
- * una hoja de 5 u). Regla "TAMAÑO REAL SIEMPRE" intacta: NO se encoge la pieza — solo
- * cambian la pose y el encuadre de cámara (rama `flat` del fit en Scene). Con el orden de
- * Euler XYZ de three la rotación [−π/2, yaw, 0] aplica el yaw PRIMERO (pieza de pie, giro
- * sobre su eje vertical) y el −90° en X DESPUÉS → la pieza queda echada con el largo en el
- * plano de la hoja girado `yaw` y la cara A mirando hacia ARRIBA (+Y).
+ * ir ACOSTADA sobre la hoja. Ola 18 la había puesto DE PIE para que el cliente viera las
+ * 2 caras al orbitar, pero un separador de 15 cm erguido DOMINABA la escena (torre de
+ * ~4.5 u sobre una hoja de 5 u). Regla "TAMAÑO REAL SIEMPRE" intacta: NO se encoge la
+ * pieza — solo cambian la pose y el encuadre de cámara (rama `flat` del fit en Scene).
+ *
+ * Composición ANIDADA (restaurada de Ola 17 — la pose que se certificó visualmente):
+ * grupo externo con el yaw (giro en el plano de la hoja) → grupo FLAT_LIE_ROTATION
+ * (−90° en X: acostar) → grupo de volteo opcional (FACE_FLIP_ROTATION, "Ver respaldo").
+ * La primera versión de Fase 2.12 colapsó todo a UN Euler [−π/2, yaw, 0]: con el orden
+ * XYZ de three eso aplica el yaw ANTES de acostar — un ROLL alrededor del eje largo ya
+ * echado que BASCULABA la cara fuera de la vertical en vez de trenzarla en el plano.
+ * Con la composición anidada la cara A mira EXACTA a +Y para cualquier yaw (verificado
+ * en book-geometry.test: flatFrontNormalWorld).
  */
-function FlatBookmarks({ data }: { data: FlatBookmarkData }) {
+function FlatBookmarks({ data, showBack }: { data: FlatBookmarkData; showBack: boolean }) {
   return (
     <>
       {data.units.map((unit, i) => {
@@ -225,23 +255,29 @@ function FlatBookmarks({ data }: { data: FlatBookmarkData }) {
           <group
             key={i}
             position={flatBookmarkPlacement(slot.x, slot.z)}
-            rotation={[-Math.PI / 2, slot.yaw, 0]}
+            rotation={[0, slot.yaw, 0]}
           >
-            {/* Cara B vacía (REGLA ÚNICA, decisión owner 2026-10-07): bookmarkFaceUnits la
-                resuelve EN BLANCO (back = null → tapa trasera blanca pura) — lo mismo que
-                imprime producción, nunca espejo de la cara A. Acostada, la cara B queda
-                contra la página: el reverso físico real. */}
-            <MagnetMesh
-              dataUrl={unit.front.dataUrl}
-              backDataUrl={unit.back?.dataUrl ?? undefined}
-              backColor={unit.back ? undefined : BLANK_FACE_COLOR}
-              width={w}
-              height={h}
-              shape="rectangle"
-              depth={FLAT_BOOKMARK_T}
-              cornerRadiusRatio={0.06}
-              position={[0, 0, 0]}
-            />
+            <group rotation={FLAT_LIE_ROTATION}>
+              {/* "Ver respaldo" (owner 2026-10-07): π sobre el eje largo local ANTES de
+                  acostar → la cara B (o el blanco si está vacía) queda mirando +Y y la A
+                  contra la página — como voltear físicamente el marcapáginas. */}
+              <group rotation={showBack ? FACE_FLIP_ROTATION : IDENTITY_ROTATION}>
+                {/* Cara B vacía (REGLA ÚNICA, decisión owner 2026-10-07): bookmarkFaceUnits la
+                    resuelve EN BLANCO (back = null → tapa trasera blanca pura) — lo mismo que
+                    imprime producción, nunca espejo de la cara A. */}
+                <MagnetMesh
+                  dataUrl={unit.front.dataUrl}
+                  backDataUrl={unit.back?.dataUrl ?? undefined}
+                  backColor={unit.back ? undefined : BLANK_FACE_COLOR}
+                  width={w}
+                  height={h}
+                  shape="rectangle"
+                  depth={FLAT_BOOKMARK_T}
+                  cornerRadiusRatio={0.06}
+                  position={[0, 0, 0]}
+                />
+              </group>
+            </group>
           </group>
         );
       })}
@@ -401,12 +437,15 @@ function Scene({
   sizeCm,
   facesPerUnit,
   flat,
+  showBack,
 }: {
   bookmarks: Magnet3D[];
   sizeCm?: string;
   facesPerUnit?: number;
   /** Ola 17 — marcapáginas plano (Alargados): acostado sobre la hoja, sin doblez. */
   flat?: boolean;
+  /** "Ver respaldo" (owner 2026-10-07): piezas volteadas 180° sobre su eje largo. */
+  showBack: boolean;
 }) {
   // Ola 16 — defensa: si el producto no declara 2 caras, el 3D no puede mostrar
   // la cara B real. Log para soporte; el UI del Estudio sigue funcionando con 1 cara.
@@ -527,10 +566,15 @@ function Scene({
       <PageSheet side={-1} />
       {flat ? (
         flatData ? (
-          <FlatBookmarks data={flatData} />
+          <FlatBookmarks data={flatData} showBack={showBack} />
         ) : null
       ) : (
-        <Separators items={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} />
+        <Separators
+          items={bookmarks}
+          sizeCm={sizeCm}
+          facesPerUnit={facesPerUnit}
+          showBack={showBack}
+        />
       )}
 
       {/* Escena estática (el autoRotate mueve la CÁMARA) → sombra horneada 1 vez. */}
@@ -581,6 +625,13 @@ export default function BookView3D({
   /** Ola 17 — marcapáginas plano (Alargados): acostado sobre la hoja, sin doblez. */
   flat?: boolean;
 }) {
+  // Toggle "Ver respaldo / Ver frente" (decisión owner 2026-10-07): voltea TODAS las
+  // piezas 180° sobre su eje largo para mostrar la cara B — en BLANCO si está vacía
+  // (misma regla que producción). Estado LOCAL del componente: el modal lo monta fresco
+  // en cada apertura → el frente (cara A) siempre es la vista inicial y el estado no
+  // sobrevive al cierre (persistente solo durante la sesión del modal).
+  const [showBack, setShowBack] = useState(false);
+  const texts = useStudioTexts();
   if (bookmarks.length === 0) {
     return (
       <div className="text-brand-muted flex h-full items-center justify-center p-8 text-center text-sm">
@@ -589,21 +640,42 @@ export default function BookView3D({
     );
   }
   return (
-    <Canvas
-      shadows
-      // dpr hasta 2 también en táctil (2026-10-05): con el zoom cercano nuevo
-      // (minDistance ↓) el cap 1.5 se veía borroso en pantallas retina móviles.
-      // Trade-off rendimiento: ×1.78 más píxeles por frame en GPU móvil —
-      // aceptable porque la escena es estática y la sombra está horneada.
-      dpr={[1, 2]}
-      camera={{ position: [0, 9, 12], fov: 40 }}
-      gl={{ preserveDrawingBuffer: false, antialias: true }}
-      style={{ width: "100%", height: "100%" }}
-    >
-      <color attach="background" args={["#FFF8F0"]} />
-      <Suspense fallback={null}>
-        <Scene bookmarks={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} flat={flat} />
-      </Suspense>
-    </Canvas>
+    <div className="relative h-full w-full">
+      <Canvas
+        shadows
+        // dpr hasta 2 también en táctil (2026-10-05): con el zoom cercano nuevo
+        // (minDistance ↓) el cap 1.5 se veía borroso en pantallas retina móviles.
+        // Trade-off rendimiento: ×1.78 más píxeles por frame en GPU móvil —
+        // aceptable porque la escena es estática y la sombra está horneada.
+        dpr={[1, 2]}
+        camera={{ position: [0, 9, 12], fov: 40 }}
+        gl={{ preserveDrawingBuffer: false, antialias: true }}
+        style={{ width: "100%", height: "100%" }}
+      >
+        <color attach="background" args={["#FFF8F0"]} />
+        <Suspense fallback={null}>
+          <Scene
+            bookmarks={bookmarks}
+            sizeCm={sizeCm}
+            facesPerUnit={facesPerUnit}
+            flat={flat}
+            showBack={showBack}
+          />
+        </Suspense>
+      </Canvas>
+      {/* Toggle de caras — overlay DOM como los hints (no toca el canvas WebGL).
+          Textos CMS (estudio.escenas.libro-ver-respaldo/-frente, ronda 2 QA).
+          Va arriba a la derecha: el hint de gestos vive abajo-centro y el rótulo
+          de cantidad (galería) arriba-centro. */}
+      <button
+        type="button"
+        aria-pressed={showBack}
+        onClick={() => setShowBack((v) => !v)}
+        className="absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-black/40 px-3.5 py-1.5 text-xs font-bold text-white transition-colors hover:bg-black/55 focus:ring-2 focus:ring-white focus:outline-none"
+      >
+        <FlipHorizontal2 className="h-3.5 w-3.5" aria-hidden />
+        {showBack ? texts.escenas.libroVerFrente : texts.escenas.libroVerRespaldo}
+      </button>
+    </div>
   );
 }

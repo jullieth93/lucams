@@ -10,6 +10,7 @@
 
 import "server-only";
 import { Prisma, prisma } from "@/lib/db";
+import { cachedCms } from "@/lib/cms";
 import {
   deleteProductImage,
   galleryThumbPathFromUrl,
@@ -51,6 +52,23 @@ export type GalleryImage = {
 };
 
 /**
+ * PERF (2026-10-07) — el `storage.list` de miniaturas por tag va cacheado con
+ * `unstable_cache` (tag `gallery-thumbs`, revalidate 1h): antes corría EN CADA
+ * page load del Estudio (página dinámica sin caché) y sumaba 100–500 ms de
+ * TTFB por request. El admin invalida con `updateTag("gallery-thumbs")` al
+ * subir/archivar/purgar diseños (app/admin/(panel)/disenos/actions.ts). El
+ * Set se cachea como array (el incremental cache serializa JSON — un Set no
+ * sobrevive el round-trip) y se re-arma en el caller. Fail-open intacto:
+ * listGalleryThumbPaths ya degrada a set vacío si storage no responde, y
+ * cachedCms ejecuta crudo fuera de un request de Next (vitest/scripts).
+ */
+const listGalleryThumbPathsCached = cachedCms(
+  async (folder: string): Promise<string[]> => [...(await listGalleryThumbPaths(folder))],
+  ["gallery-thumbs"],
+  { tags: ["gallery-thumbs"], revalidate: 3600 },
+);
+
+/**
  * Diseños prediseñados activos de un tag, para el editor (público).
  *
  * Fase 5 — con `variantAttributes` (attributes de la variante elegida en el
@@ -73,8 +91,9 @@ export async function listGalleryImages(
     select: { id: true, name: true, imageUrl: true, imageUrlB: true, variantFilter: true },
   });
   // 3.10 — thumbUrl solo si la miniatura EXISTE en el bucket (un solo list del
-  // folder de thumbs del tag; fail-open a "sin thumbs" → fallback al original).
-  const thumbPaths = await listGalleryThumbPaths(`gallery-${tag}`);
+  // folder de thumbs del tag, CACHEADO — ver listGalleryThumbPathsCached;
+  // fail-open a "sin thumbs" → fallback al original).
+  const thumbPaths = new Set(await listGalleryThumbPathsCached(`gallery-${tag}`));
   const withThumbs = (rows as GalleryImage[]).map((r) => {
     const thumbPath = galleryThumbPathFromUrl(r.imageUrl);
     return {

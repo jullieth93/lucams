@@ -127,7 +127,8 @@ function dlData(
   return {
     orderNumber: "LS-4001",
     customerName: "Carolina",
-    publicTrackingToken: "dtok",
+    reviewUrl: `${SITE_URL}/resena/dtok`,
+    fallbackUrl: `${SITE_URL}/rastrear`,
     ...overrides,
   };
 }
@@ -617,17 +618,34 @@ describe("orderDeliveredEmail", () => {
     expect(r.html).toContain("Dejar una reseña");
   });
 
-  it("con publicTrackingToken el CTA de reseña apunta a /pedido/<token>", async () => {
-    const r = await orderDeliveredEmail(dlData({ publicTrackingToken: "RTOK" }));
-    expect(r.html).toContain(`${SITE_URL}/pedido/RTOK`);
+  it("E3: con reviewUrl el CTA «Dejar una reseña ⭐» apunta a /resena/<token> (no a /rastrear)", async () => {
+    const r = await orderDeliveredEmail(dlData({ reviewUrl: `${SITE_URL}/resena/RTOK` }));
+    expect(r.html).toContain(`${SITE_URL}/resena/RTOK`);
+    expect(r.html).toContain("Dejar una reseña ⭐");
     expect(r.html).not.toContain("/rastrear");
+    expect(r.html).not.toContain("Ver mi pedido");
   });
 
-  it("sin publicTrackingToken el CTA cae a /rastrear (fallback sin login, F-11)", async () => {
-    const r = await orderDeliveredEmail(dlData({ publicTrackingToken: null }));
-    expect(r.html).toContain(`${SITE_URL}/rastrear`);
-    expect(r.html).not.toContain("/pedido/");
-    expect(r.html).not.toContain("/mi-cuenta/pedidos");
+  it("E3: sin reviewUrl el CTA cae a «Ver mi pedido» con la fallbackUrl (nunca promete reseña)", async () => {
+    const r = await orderDeliveredEmail(
+      dlData({ reviewUrl: null, fallbackUrl: `${SITE_URL}/mi-cuenta/pedidos/LS-4001` }),
+    );
+    expect(r.html).toContain("Ver mi pedido");
+    expect(r.html).toContain(`${SITE_URL}/mi-cuenta/pedidos/LS-4001`);
+    expect(r.html).not.toContain("Dejar una reseña");
+    expect(r.html).not.toContain("/resena/");
+  });
+
+  it("E3: el texto plano lleva la reviewUrl cuando hay token y la fallbackUrl cuando no", async () => {
+    const withToken = await orderDeliveredEmail(dlData());
+    expect(withToken.text).toContain("LS-4001");
+    expect(withToken.text).toContain(`${SITE_URL}/resena/dtok`);
+
+    const without = await orderDeliveredEmail(
+      dlData({ reviewUrl: null, fallbackUrl: `${SITE_URL}/rastrear` }),
+    );
+    expect(without.text).toContain(`${SITE_URL}/rastrear`);
+    expect(without.text).not.toContain("/resena/");
   });
 
   it("#23 — retracto 5 días solo para NO personalizados (Ley 1480), personalizados excluidos", async () => {
@@ -641,12 +659,6 @@ describe("orderDeliveredEmail", () => {
     const r = await orderDeliveredEmail(dlData({ customerName: "Caro <img src=x>" }));
     expect(r.html).toContain("Caro &lt;img src=x&gt;");
     expect(r.html).not.toContain("<img src=x>");
-  });
-
-  it("el texto plano incluye orden y link de reseña", async () => {
-    const r = await orderDeliveredEmail(dlData());
-    expect(r.text).toContain("LS-4001");
-    expect(r.text).toContain(`${SITE_URL}/pedido/dtok`);
   });
 
   it("entrega propia (internalDelivery): la entrega la hizo nuestro equipo, no una transportadora", async () => {

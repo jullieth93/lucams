@@ -3,7 +3,8 @@
 /*
  * Test de la VISTA PREVIA pre-carrito del editor de sets de letras (Lucy 2026-07-25).
  *
- * El contrato que blinda: pulsar "Vista previa" (antes "¡Listo!", renombrado 2026-09-09) NO puede
+ * El contrato que blinda: pulsar «Ver diseño» (antes "¡Listo!"/"Vista previa"; QA ronda 2,
+ * owner 2026-10-07: todos los CTAs de finalizar comparten este rótulo) NO puede
  * crear nada — ni diseño, ni archivo subido, ni línea de carrito. Primero se muestra "Así se verá
  * tu pedido" y solo la confirmación dispara la cadena crear → finalizar → agregar. Es la promesa
  * WYSIWYG de la tienda: el cliente aprueba la imagen ANTES de que exista un pedido.
@@ -132,12 +133,13 @@ const ILLUSTRATED_PROPS = {
   initialTheme: "animales",
 };
 
-/** Pulsa "Vista previa" (antes "¡Listo!") y espera a que la vista previa esté en pantalla. */
+/** Pulsa «Ver diseño» (antes "¡Listo!"/"Vista previa") y espera a que la vista previa esté en pantalla. */
 async function openPreview() {
-  // QA 1.6 (2026-10-07) — el botón «Vista previa» es ÚNICO (el del panel de
-  // controles): el CTA del header sticky se diferenció como «Ver diseño» para
-  // no leer dos botones idénticos en pantalla.
-  fireEvent.click(screen.getByRole("button", { name: /Vista previa/ }));
+  // QA ronda 2 (owner 2026-10-07) — TODOS los CTAs de finalizar dicen «Ver
+  // diseño»: hay DOS botones con ese rótulo (header sticky + panel de
+  // controles) con la MISMA acción. Acá se pulsa el del panel (el último en
+  // el DOM), que es el flujo principal.
+  fireEvent.click(screen.getAllByRole("button", { name: /Ver diseño/ }).at(-1)!);
   await screen.findByText("Así se verá tu pedido");
 }
 
@@ -150,7 +152,7 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
     expect(section).toHaveClass("order-2", "lg:order-2");
   });
 
-  it("'Vista previa' abre la vista previa sin crear diseño ni tocar el carrito", async () => {
+  it("'Ver diseño' abre la vista previa sin crear diseño ni tocar el carrito", async () => {
     renderEditor();
     await openPreview();
 
@@ -160,11 +162,15 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("QA 1.6: el CTA del header sticky dice «Ver diseño» (no duplica «Vista previa») y abre la MISMA vista previa", async () => {
+  it("QA ronda 2 (owner 2026-10-07): header sticky y panel dicen «Ver diseño» (mismo rótulo, misma acción)", async () => {
     renderEditor();
-    // Un solo «Vista previa» en pantalla (el del panel); el header se diferencia.
-    expect(screen.getAllByRole("button", { name: /Vista previa/ })).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: /Ver diseño/ }));
+    // Los DOS CTAs de finalizar comparten rótulo (estudio.comun.listo): la
+    // diferenciación «Vista previa»/«Ver diseño» de QA 1.6 se revirtió.
+    const ctas = screen.getAllByRole("button", { name: /Ver diseño/ });
+    expect(ctas).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /Vista previa/ })).toBeNull();
+    // El CTA del header sticky (el primero en el DOM) abre la MISMA vista previa.
+    fireEvent.click(ctas[0]!);
     await screen.findByText("Así se verá tu pedido");
     expect(createLetterSetDesignAction).not.toHaveBeenCalled();
     expect(addPersonalizedToCartAction).not.toHaveBeenCalled();

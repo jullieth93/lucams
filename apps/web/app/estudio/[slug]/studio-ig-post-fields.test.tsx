@@ -151,11 +151,19 @@ describe("StudioIgPostFields — diligenciamiento masivo IG (rediseño asistido 
     // …y el tipeo también compromete el texto libre en TODOS los slots.
     expect(overrides(store, "location")).toEqual(["medellin", "medellin"]);
 
-    // Filtra por PAÍS ("españa" → las dos ciudades de España).
+    // Filtra por PAÍS ("españa" → las 8 ciudades curadas de España + el país
+    // solo como fallback — cobertura mundial, QA ronda 2).
     fireEvent.change(input, { target: { value: "españa" } });
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
       "Madrid, España",
       "Barcelona, España",
+      "Valencia, España",
+      "Sevilla, España",
+      "Bilbao, España",
+      "Málaga, España",
+      "Alicante, España",
+      "Palma de Mallorca, España",
+      "España",
     ]);
   });
 

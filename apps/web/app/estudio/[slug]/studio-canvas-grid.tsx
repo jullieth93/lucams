@@ -82,6 +82,7 @@ import {
   pinchStageZoom,
   pinchAnchorRatio,
   anchoredScrollOffset,
+  createRafThrottle,
 } from "./lib/stage-pinch";
 
 // ADR-063 T5 — lazy-mount de stages Konva. Cada StudioSlot monta un Konva Stage (varios <canvas>
@@ -642,6 +643,16 @@ export function StudioCanvasGrid({
     if (interactiveSlots) return; // solo grilla táctil (los slots no capturan gestos)
     const el = containerRef.current;
     if (!el) return;
+    // PERF (2026-10-07) — un setStageZoom POR FRAME de gesto: el zoom
+    // REDIMENSIONA los stages Konva (re-render de todos los slots); aplicarlo
+    // por cada touchmove era un re-render por evento (long tasks / INP móvil).
+    // El anclaje (pinchAnchorRef) se sigue calculando por evento — es barato —
+    // y queda pareado con el último zoom programado.
+    const zoomThrottle = createRafThrottle((next: number) => {
+      if (Math.abs(next - stageZoomRawRef.current) > 0.001) {
+        onStageZoomChangeRef.current?.(next);
+      }
+    });
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length !== 2) return;
       const a = e.touches[0]!;
@@ -679,12 +690,15 @@ export function StudioCanvasGrid({
         ratioY: pinchAnchorRatio(window.scrollY - docTop, mid.clientY, contentH),
         clientY: mid.clientY,
       };
-      if (Math.abs(next - stageZoomRawRef.current) > 0.001) {
-        onStageZoomChangeRef.current?.(next);
-      }
+      zoomThrottle.schedule(next);
     };
     const onTouchEndOrCancel = (e: TouchEvent) => {
-      if (e.touches.length < 2) pinchRef.current = null;
+      if (e.touches.length < 2) {
+        // Commit final: aplica el zoom pendiente sin esperar al próximo frame
+        // (el gesto no debe terminar un frame atrás del último touchmove).
+        zoomThrottle.flush();
+        pinchRef.current = null;
+      }
     };
     // iOS Safari: sin este preventDefault el pellizco zooomea la PÁGINA.
     const onGestureStart = (e: Event) => e.preventDefault();
@@ -694,6 +708,7 @@ export function StudioCanvasGrid({
     el.addEventListener("touchcancel", onTouchEndOrCancel, { passive: true });
     el.addEventListener("gesturestart", onGestureStart);
     return () => {
+      zoomThrottle.cancel();
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("touchend", onTouchEndOrCancel);

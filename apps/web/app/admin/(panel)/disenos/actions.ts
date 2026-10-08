@@ -22,7 +22,7 @@
 
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
@@ -61,6 +61,17 @@ type ActionResult = { error?: string };
 
 const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+
+/**
+ * PERF (2026-10-07) — el set de miniaturas por tag que lee el Estudio va
+ * cacheado (listGalleryThumbPathsCached en design-gallery.ts, tag
+ * `gallery-thumbs`, revalidate 1h): cualquier cambio del admin sobre las
+ * imágenes de galería (subir/archivar/purgar) lo invalida de inmediato para
+ * no servir thumbs viejos hasta el revalidate.
+ */
+function invalidateGalleryThumbsCache(): void {
+  updateTag("gallery-thumbs");
+}
 
 /**
  * Fase 5 — parsea y valida el `variantFilter` del form (JSON string; vacío =
@@ -160,6 +171,7 @@ export async function uploadGalleryImageAction(formData: FormData): Promise<Acti
       entityId: row.id,
       metadata: { tag, name, ...(variantFilter ? { variantFilter } : {}) },
     });
+    invalidateGalleryThumbsCache();
     revalidatePath("/admin/disenos");
     return {};
   } catch (err) {
@@ -243,6 +255,7 @@ async function uploadStripMode(input: {
       ...(variantFilter ? { variantFilter } : {}),
     },
   });
+  invalidateGalleryThumbsCache();
   revalidatePath("/admin/disenos");
   return {};
 }
@@ -265,6 +278,7 @@ export async function archiveGalleryImageAction(formData: FormData): Promise<Act
     entityType: "DesignGalleryImage",
     entityId: id,
   });
+  invalidateGalleryThumbsCache();
   revalidatePath("/admin/disenos");
   return {};
 }
@@ -306,6 +320,7 @@ export async function purgeGalleryImageAction(formData: FormData): Promise<Actio
     entityType: "DesignGalleryImage",
     entityId: id,
   });
+  invalidateGalleryThumbsCache();
   revalidatePath("/admin/disenos");
   return {};
 }

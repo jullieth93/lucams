@@ -19,6 +19,7 @@ import {
   parseVariantAttributes,
 } from "@/features/products/variant-schemas";
 import { getSiteUrl } from "@/features/emails/layout";
+import { createReviewToken } from "@/features/reviews/review-token";
 import { rotateOrderPublicAccessToken } from "./public-token";
 import {
   renderOrderConfirmationEmail,
@@ -436,19 +437,54 @@ export async function sendOrderDelivered(orderId: string): Promise<void> {
     const order = await prisma.order.findFirst({
       where: { id: orderId, deletedAt: null },
       select: {
+        id: true,
         number: true,
         email: true,
+        customerId: true,
         shippingAddress: true,
         shippingCarrier: true,
+        // E3 — productos del pedido para el token de reseña (dedup por id).
+        items: { select: { variant: { select: { product: { select: { id: true } } } } } },
       },
     });
     if (!order) return;
+
+    // E3 (2026-10-07, F-11 cerrado) — el CTA "Dejar una reseña" lleva token REAL:
+    // /resena/<token> HMAC stateless (features/reviews/review-token.ts, TTL 30d),
+    // sin login, válido para invitados y registrados. Antes publicTrackingToken
+    // iba siempre null y la plantilla caía a /rastrear con copy de reseña — un
+    // callejón sin salida. Si la emisión FALLA (p. ej. CSRF_SECRET ausente) el
+    // correo NO se sacrifica: el CTA pasa a "Ver mi pedido" con el fallback
+    // (registrado → su pedido en la cuenta; invitado → /rastrear).
+    const siteUrl = await getSiteUrl();
+    const productIds = [...new Set(order.items.map((it) => it.variant.product.id))];
+    let reviewUrl: string | null = null;
+    if (productIds.length > 0) {
+      try {
+        reviewUrl = `${siteUrl}/resena/${createReviewToken({
+          orderId: order.id,
+          orderNumber: order.number,
+          email: order.email,
+          productIds,
+        })}`;
+      } catch (err) {
+        logger.error({
+          event: "order.email.delivered.review_token_fail",
+          orderNumber: order.number,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    const fallbackUrl = order.customerId
+      ? `${siteUrl}/mi-cuenta/pedidos/${order.number}`
+      : `${siteUrl}/rastrear`;
 
     const ship = order.shippingAddress as ShippingAddrSnapshot;
     const tpl = await renderOrderDeliveredEmail({
       orderNumber: order.number,
       customerName: ship.fullName ?? "Cliente",
-      publicTrackingToken: null, // F-11 — ver sendOrderConfirmation
+      reviewUrl,
+      fallbackUrl,
       internalDelivery: order.shippingCarrier === LUCAMS_CARRIER,
     });
 

@@ -12,6 +12,7 @@ vi.mock("@react-three/drei", () => ({
 
 import {
   BLANK_FACE_COLOR,
+  FACE_FLIP_ROTATION,
   MAGNET_THICKNESS_CM,
   MIN_WORLD_DEPTH,
   TILE_THICKNESS_CM,
@@ -357,5 +358,38 @@ describe("foldedStripMetrics", () => {
   it("nunca devuelve un hang negativo (tira más corta que el arco)", () => {
     const { hang } = foldedStripMetrics(0.1, 1, Math.PI);
     expect(hang).toBe(0.05);
+  });
+});
+
+describe("FACE_FLIP_ROTATION (volteo 180° sobre el eje largo — 'Ver respaldo', owner 2026-10-07)", () => {
+  // rotY local (eje Y de three) para verificar la constante sin three.
+  const rotY = (v: readonly number[], a: number): [number, number, number] => [
+    v[0]! * Math.cos(a) + v[2]! * Math.sin(a),
+    v[1]!,
+    -v[0]! * Math.sin(a) + v[2]! * Math.cos(a),
+  ];
+
+  it("es exactamente π sobre Y: intercambia las caras (+Z ↔ −Z) sin mover el eje largo", () => {
+    expect(FACE_FLIP_ROTATION[0]).toBe(0);
+    expect(FACE_FLIP_ROTATION[1]).toBeCloseTo(Math.PI, 12);
+    expect(FACE_FLIP_ROTATION[2]).toBe(0);
+    // La tapa frontal (cara A, +Z local del extruido) queda mirando a −Z → la tapa
+    // trasera (cara B, ya mapeada para leerse derecha desde atrás) queda al frente.
+    const front = rotY([0, 0, 1], FACE_FLIP_ROTATION[1]);
+    expect(front[2]).toBeCloseTo(-1, 9);
+    const back = rotY([0, 0, -1], FACE_FLIP_ROTATION[1]);
+    expect(back[2]).toBeCloseTo(1, 9);
+    // El eje largo (Y) NO se mueve: la pieza sigue acostada/colgando igual tras el volteo.
+    const up = rotY([0, 1, 0], FACE_FLIP_ROTATION[1]);
+    expect(up[0]).toBeCloseTo(0, 9);
+    expect(up[1]).toBe(1);
+    expect(up[2]).toBeCloseTo(0, 9);
+  });
+
+  it("aplicado DOS veces vuelve a la identidad (toggle ida y vuelta)", () => {
+    const v = rotY(rotY([0.2, 1, 0.5], FACE_FLIP_ROTATION[1]), FACE_FLIP_ROTATION[1]);
+    expect(v[0]).toBeCloseTo(0.2, 9);
+    expect(v[1]).toBeCloseTo(1, 9);
+    expect(v[2]).toBeCloseTo(0.5, 9);
   });
 });

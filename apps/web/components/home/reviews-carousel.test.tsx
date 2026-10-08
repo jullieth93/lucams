@@ -23,6 +23,7 @@ const REVIEW: StorefrontReview = {
   authorCity: "Bogotá",
   productName: "Imán Abecedario Kawaii",
   productSlug: "iman-abecedario-kawaii",
+  productImage: null,
   createdAt: new Date("2026-10-01T12:00:00Z"),
 };
 
@@ -37,6 +38,26 @@ describe("ReviewCard", () => {
     // Jerarquía clara: el chip ya NO va mezclado con la ciudad en el mismo <p>.
     const city = screen.getByText("Bogotá");
     expect(city.contains(chip)).toBe(false);
+  });
+
+  it("E4: con imagen del producto la miniatura va dentro del link al PDP", () => {
+    render(
+      <ReviewCard
+        review={{ ...REVIEW, productImage: "https://cdn.example.com/iman-kawaii.jpg" }}
+      />,
+    );
+    const chip = screen.getByRole("link", { name: "Ver producto Imán Abecedario Kawaii" });
+    const img = chip.querySelector("img");
+    expect(img).toBeTruthy();
+    expect(img).toHaveAttribute("src", expect.stringContaining("iman-kawaii"));
+    expect(chip).toHaveTextContent("Imán Abecedario Kawaii");
+  });
+
+  it("E4: sin imagen del producto NO renderiza <img> (queda el chip con ícono, como antes)", () => {
+    render(<ReviewCard review={{ ...REVIEW, productImage: null }} />);
+    const chip = screen.getByRole("link", { name: "Ver producto Imán Abecedario Kawaii" });
+    expect(chip.querySelector("img")).toBeNull();
+    expect(chip).toHaveTextContent("Imán Abecedario Kawaii");
   });
 
   it("la ciudad no se duplica dentro del chip de producto", () => {

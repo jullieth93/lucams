@@ -100,6 +100,7 @@ import {
 } from "./lib/preview-encode";
 import {
   isNetworkError,
+  isServerActionCrash,
   uploadAllWithRetry,
   type StoragePutRequest,
 } from "./lib/upload-with-retry";
@@ -355,9 +356,19 @@ export function StudioEditor({
   // por set/tira/separador/pack a tamaño legible (la modal pone flechas + dots +
   // swipe). El previewDataUrl (montaje único) sigue siendo el que se SUBE al
   // confirmar — el pager es solo UX de la modal, el contrato no cambia.
-  const [previewPages, setPreviewPages] = useState<{ dataUrl: string; label: string }[] | null>(
-    null,
-  );
+  // PERF (2026-10-07) — páginas PEREZOSAS: `dataUrl: null` = pendiente; el editor
+  // genera la página de cada unidad solo cuando el cliente NAVEGA a ella en la
+  // modal (handleRequestPreviewPage, con cache local en este mismo array). Antes
+  // se generaban TODAS en el click de «Vista previa» (Canvas2D main thread — el
+  // long task que disparaba el INP del botón).
+  const [previewPages, setPreviewPages] = useState<
+    { dataUrl: string | null; label: string }[] | null
+  >(null);
+  // Generador perezoso de la página de una unidad (lo siembra handleFinalize al
+  // abrir la modal; null = preview de una sola unidad, sin pager) + dedupe de
+  // generaciones en vuelo (doble swipe rápido a la misma página pendiente).
+  const previewPageLoaderRef = useRef<((unitIndex: number) => Promise<string>) | null>(null);
+  const previewPageInflightRef = useRef<Set<number>>(new Set());
   const [previewError, setPreviewError] = useState<string | null>(null);
   // Lucy 2026-09-09 — feedback de PROCESAMIENTO del botón «Vista previa»:
   // componer el preview (snapshots Konva o páginas del calendario) tarda un
@@ -967,35 +978,63 @@ export function StudioEditor({
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
 
+    const runSave = async () => {
+      const current = store.getState();
+      if (!current.designId || !current.canvasData) return;
+      current.setAutoSaveStatus({ kind: "saving" });
+      const result = await saveCanvasAction({
+        designId: current.designId,
+        canvasData: current.canvasData,
+        // N-08 — la plantilla aplicada en el sidebar viaja con el auto-save:
+        // Design.templateId la refleja (el service la valida server-side).
+        templateId: current.selectedTemplateId ?? undefined,
+      });
+      if (result.ok) {
+        current.setAutoSaveStatus({ kind: "saved", at: Date.now() });
+        current.markClean();
+      } else {
+        current.setAutoSaveStatus({ kind: "error", message: result.message });
+      }
+    };
+
     const unsubscribe = store.subscribe((state, prev) => {
       // Solo disparar al cambiar canvasData (no en cada update menor)
       if (state.canvasData === prev.canvasData) return;
       if (!state.isDirty || !state.designId || !state.canvasData) return;
 
       if (timer) clearTimeout(timer);
-      timer = setTimeout(async () => {
-        const current = store.getState();
-        if (!current.designId || !current.canvasData) return;
-        current.setAutoSaveStatus({ kind: "saving" });
-        const result = await saveCanvasAction({
-          designId: current.designId,
-          canvasData: current.canvasData,
-          // N-08 — la plantilla aplicada en el sidebar viaja con el auto-save:
-          // Design.templateId la refleja (el service la valida server-side).
-          templateId: current.selectedTemplateId ?? undefined,
-        });
-        if (result.ok) {
-          current.setAutoSaveStatus({ kind: "saved", at: Date.now() });
-          current.markClean();
-        } else {
-          current.setAutoSaveStatus({ kind: "error", message: result.message });
-        }
+      timer = setTimeout(() => {
+        timer = null;
+        void runSave();
       }, AUTO_SAVE_DELAY_MS);
     });
+
+    // Ronda 2 QA (2026-10-08) — flush al ocultar/salir de la página: el debounce
+    // de 2 s dejaba una ventana en la que una recarga perdía las asignaciones
+    // recién hechas y «Continuar donde quedaste» volvía con el lienzo VACÍO
+    // (confirmado con Playwright: 0/6 fotos tras resume en polaroid). Al ocultar
+    // se dispara el save de inmediato (visibilitychange da margen de red; el
+    // request suele completarse).
+    const flushOnHide = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      const current = store.getState();
+      if (!current.isDirty || !current.designId || !current.canvasData) return;
+      void runSave();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flushOnHide();
+    };
+    window.addEventListener("pagehide", flushOnHide);
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       unsubscribe();
       if (timer) clearTimeout(timer);
+      window.removeEventListener("pagehide", flushOnHide);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [store]);
 
@@ -1079,6 +1118,35 @@ export function StudioEditor({
     [store],
   );
 
+  // PERF (2026-10-07) — generación PEREZOSA de la página por unidad de la Vista
+  // Previa: la modal la pide al navegar a una página pendiente (dataUrl null) y
+  // el resultado queda cacheado en `previewPages` (cache local por unidad —
+  // volver a una unidad ya generada no regenera nada). El loader lo siembra
+  // handleFinalize al abrir la modal.
+  const handleRequestPreviewPage = useCallback(
+    (unitIndex: number) => {
+      const loader = previewPageLoaderRef.current;
+      if (!loader || previewPageInflightRef.current.has(unitIndex)) return;
+      previewPageInflightRef.current.add(unitIndex);
+      loader(unitIndex)
+        .then((dataUrl) => {
+          setPreviewPages((cur) =>
+            cur ? cur.map((p, i) => (i === unitIndex ? { ...p, dataUrl } : p)) : cur,
+          );
+        })
+        .catch((err: unknown) => {
+          // Mismo contrato que el fallo del montaje global: detalle al log,
+          // mensaje customer-safe en la modal.
+          console.error("[studio.preview.page]", err);
+          setPreviewError(texts.errores.preview);
+        })
+        .finally(() => {
+          previewPageInflightRef.current.delete(unitIndex);
+        });
+    },
+    [texts],
+  );
+
   // ─────── Step 1: «Vista previa» → genera preview compositado + abre modal ───────
   //
   // PR A.3 (Lucy 2026-05-21): partimos el finalize en 2 fases. Esta solo
@@ -1098,6 +1166,8 @@ export function StudioEditor({
     }
     setPreviewError(null);
     setPreviewPages(null);
+    previewPageLoaderRef.current = null;
+    previewPageInflightRef.current.clear();
     setPreviewBuilding(true);
     try {
       // Fase 2 · item 2.2 (2026-10-07) — partición por UNIDAD física para la
@@ -1137,17 +1207,17 @@ export function StudioEditor({
         // Item 2.2 — una página por SET (12 tarjetas c/u) a tamaño legible:
         // el montaje global con 4 sets quedaba diminuto. Celdas más grandes
         // que el montaje de upload (es solo UX de la modal).
+        // PERF (2026-10-07) — PEREZOSO: solo placeholders + loader; cada set se
+        // monta cuando el cliente navega a él (las `pages` ya compuestas se
+        // reusan — el costo por navegación es solo el montaje de su set).
         if (unitRanges.length > 1) {
           const unitSlots = state.canvasData.unitSlots ?? 12;
-          const perSet: { dataUrl: string; label: string }[] = [];
-          for (let u = 0; u < unitRanges.length; u++) {
-            const setPages = pages.slice(u * unitSlots, (u + 1) * unitSlots);
-            perSet.push({
-              dataUrl: await buildCalendarPreviewMontage(setPages, { cellW: 240, maxCols: 3 }),
-              label: pageLabel(u),
+          previewPageLoaderRef.current = (u) =>
+            buildCalendarPreviewMontage(pages.slice(u * unitSlots, (u + 1) * unitSlots), {
+              cellW: 240,
+              maxCols: 3,
             });
-          }
-          setPreviewPages(perSet);
+          setPreviewPages(unitRanges.map((_, u) => ({ dataUrl: null, label: pageLabel(u) })));
         }
         setPreviewModalOpen(true);
         return;
@@ -1189,35 +1259,30 @@ export function StudioEditor({
       setPreviewDataUrl(previewUrl);
       // Item 2.2 — una página por UNIDAD (separador con sus 2 caras, tira, pack):
       // reusar el mismo compositor con el rango de slots de la unidad (los
-      // snapshots de slot están cacheados — cada unidad extra cuesta solo el
+      // snapshots de slot están cacheados — cada unidad cuesta solo el
       // dibujo del lienzo de su página).
+      // PERF (2026-10-07) — PEREZOSO: en el click solo se siembra el loader;
+      // la página de cada unidad se genera cuando el cliente NAVEGA a ella en
+      // la modal (antes se generaban TODAS acá — el long task del botón).
       if (unitRanges.length > 1) {
-        const perUnit: { dataUrl: string; label: string }[] = [];
-        for (let u = 0; u < unitRanges.length; u++) {
-          const range = unitRanges[u]!;
-          const dataUrl =
-            facesPerUnit === 2
-              ? await buildBookmarkStripPreview(
-                  state.canvasData,
-                  slotStagesRef.current,
-                  productConfig.cornerRadiusPx,
-                  {
-                    noFold: productConfig.noFold === true,
-                    backOptional,
-                    foldCaption,
-                    unitIndex: u,
-                  },
-                )
-              : await buildCompositedPreview(
-                  state.canvasData,
-                  slotStagesRef.current,
-                  productConfig.shape,
-                  { unitRange: range },
-                );
-          perUnit.push({ dataUrl, label: pageLabel(u) });
-          await yieldToMain();
-        }
-        setPreviewPages(perUnit);
+        const canvasSnapshot = state.canvasData;
+        previewPageLoaderRef.current = (u) =>
+          facesPerUnit === 2
+            ? buildBookmarkStripPreview(
+                canvasSnapshot,
+                slotStagesRef.current,
+                productConfig.cornerRadiusPx,
+                {
+                  noFold: productConfig.noFold === true,
+                  backOptional,
+                  foldCaption,
+                  unitIndex: u,
+                },
+              )
+            : buildCompositedPreview(canvasSnapshot, slotStagesRef.current, productConfig.shape, {
+                unitRange: unitRanges[u]!,
+              });
+        setPreviewPages(unitRanges.map((_, u) => ({ dataUrl: null, label: pageLabel(u) })));
       }
       setPreviewModalOpen(true);
     } catch (err) {
@@ -1645,12 +1710,18 @@ export function StudioEditor({
         // "NetworkError when attempting to fetch resource", AbortError de
         // timeout) se traducen al mensaje amigable; el texto crudo del navegador
         // nunca llega a la pantalla.
+        // 2026-10-07 — la Server Action reventando con un 500/504 HTML de
+        // plataforma (timeout/OOM de la Function) llega como "An unexpected
+        // response was received from the server": mismo tratamiento, copy
+        // propio customer-safe (errorServidorLento) en vez del texto de Next.
         setPreviewError(
-          isNetworkError(err)
-            ? texts.exportar.errorSubidaArchivos
-            : err instanceof Error
-              ? err.message
-              : String(err),
+          isServerActionCrash(err)
+            ? texts.exportar.errorServidorLento
+            : isNetworkError(err)
+              ? texts.exportar.errorSubidaArchivos
+              : err instanceof Error
+                ? err.message
+                : String(err),
         );
       }
     },
@@ -1676,6 +1747,8 @@ export function StudioEditor({
     setPreviewModalOpen(false);
     setPreviewDataUrl(null);
     setPreviewPages(null);
+    previewPageLoaderRef.current = null;
+    previewPageInflightRef.current.clear();
     setPreviewError(null);
     // La bandera NO se limpia acá. Si el finalize ya pasó y hubo más ediciones, el save
     // forzado del siguiente confirmar reabre el diseño a DRAFT (fix F1.1) y re-finaliza —
@@ -2265,7 +2338,9 @@ export function StudioEditor({
         previewUrl={previewDataUrl}
         // Fase 2 · item 2.2 — páginas por unidad para el pager de la modal
         // (null/1 página = montaje único de siempre, sin navegación).
+        // PERF — páginas perezosas: la modal pide cada una al navegar a ella.
         pages={previewPages}
+        onRequestPage={handleRequestPreviewPage}
         productName={product.name}
         // Ola 3 — en separadores la unidad física es la tira (2 caras): el conteo
         // del modal es de UNIDADES (N fotos vivo del stepper), no de slots de

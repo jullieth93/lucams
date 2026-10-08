@@ -20,13 +20,13 @@ export type StudioTexts = {
   comun: {
     /** Lucy 2026-09-09 — rótulo del CTA de cierre en los editores de nombre y
      *  letras (antes «¡Listo!», renombrado por el owner): abre la vista previa
-     *  de confirmación, no agrega nada al carrito todavía. */
+     *  de confirmación, no agrega nada al carrito todavía. QA ronda 2 (owner
+     *  2026-10-07): TODOS los CTAs de finalizar se llaman «Ver diseño» — el
+     *  header sticky y el botón del panel comparten esta misma clave (la
+     *  diferenciación «Vista previa»/«Ver diseño» de QA 1.6 se revirtió a
+     *  pedido del owner; la clave `comun.verDiseno` quedó redundante y se
+     *  eliminó). */
     listo: string;
-    /** QA 1.6 (2026-10-07) — rótulo del CTA del HEADER STICKY en los editores de
-     *  nombre y letras: la misma acción de `listo` (abrir la vista previa) pero
-     *  con texto corto diferenciado — antes ambos botones decían «Vista previa»
-     *  y en pantalla se leían dos CTAs idénticos. */
-    verDiseno: string;
     armando: string;
     preparando: string;
     agregando: string;
@@ -383,6 +383,12 @@ export type StudioTexts = {
     igVariaPlaceholder: string;
     /** Aviso pack-level del bloque (misma caja destacada del aviso de "Tu mensaje"). */
     igGlobalAviso: string;
+    /** QA ronda 2 (owner 2026-10-07, F3) — sección «Campos de Instagram» de la
+     *  edición INDIVIDUAL por slot (pestaña Texto del StudioSlotEditModal): los
+     *  mismos 5 campos asistidos del bloque pack-level pero escribiendo el
+     *  override de ESE canvas (setSlotTextOverride). */
+    igSlotCamposTitulo: string;
+    igSlotCamposHint: string;
     /** Rediseño asistido (2026-10-05) — ayudas y avisos de los controles por capa. */
     igUsuarioHint: string;
     igUbicacionHint: string;
@@ -510,6 +516,10 @@ export type StudioTexts = {
     /** Falla de red/subida en el confirmar: mensaje amigable orientado a acción (nunca el error crudo del navegador). */
     errorSubidaArchivos: string;
     errorGuardar: string;
+    /** La Server Action reventó con un 500/504 HTML de plataforma (timeout/OOM
+     *  de la Function): copy propio en vez del "An unexpected response was
+     *  received from the server" crudo de Next. */
+    errorServidorLento: string;
     piezaIman: string;
     piezaFicha: string;
     piezaImanes: string;
@@ -540,6 +550,9 @@ export type StudioTexts = {
     pagerAnteriorAria: string;
     pagerSiguienteAria: string;
     pagerDotsAria: string;
+    /** PERF (2026-10-07) — indicador de carga de una página PEREZOSA del pager
+     *  (la unidad se genera por demanda al navegar a ella). */
+    pagerCargandoPagina: string;
   };
   /** Vistas 3D y escenas. */
   escenas: {
@@ -560,6 +573,10 @@ export type StudioTexts = {
      *  única escena afirma imán). */
     vacio: string;
     vacioHint: string;
+    /** Ronda 2 QA (owner 2026-10-08) — toggle de caras en la vista del libro:
+     *  muestra la ACCIÓN (a qué cara se cambia al pulsar). */
+    libroVerRespaldo: string;
+    libroVerFrente: string;
     hintTouch: string;
     hintMouse: string;
     loadingNevera: string;
@@ -747,8 +764,7 @@ export type StudioTexts = {
 
 export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
   comun: {
-    listo: "Vista previa",
-    verDiseno: "Ver diseño",
+    listo: "Ver diseño",
     armando: "Armando…",
     preparando: "Preparando…",
     agregando: "Agregando…",
@@ -785,7 +801,9 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     autosaveGuardadoM: "Guardado hace {n}m",
     autosaveError: "Error al guardar",
     progressBadge: "{n}/{total} fotos",
-    finalizeBtn: "Vista previa",
+    // QA ronda 2 (owner 2026-10-07): TODOS los CTAs de finalizar se llaman «Ver diseño»
+    // (antes «Vista previa» — mismo rótulo que comun.listo en nombre/letras).
+    finalizeBtn: "Ver diseño",
     finalizeTooltip: "Faltan {n} fotos por cargar para ver la vista previa",
     finalizeTooltipTextos: "Completa los textos de tu diseño para ver la vista previa: {campos}",
     finalizePopoverAria: "Qué falta para ver la vista previa",
@@ -897,7 +915,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "Si la plantilla tiene textos editables (los marcados con punto turquesa), tócalos para cambiar el contenido, color y tipografía.",
     onboardingCtaEmpezar: "¡Empezar!",
     onboardingSaltar: "Saltar",
-    finalizeAria: "Vista previa de tu pedido",
+    finalizeAria: "Ver diseño de tu pedido",
     finalizeAriaBloqueado: "Vista previa no disponible todavía",
     guiaLinea: "Línea morada",
     guiaDescripcion: "= mantén texto y caras adentro para que no se corten al imprimir",
@@ -1066,6 +1084,11 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     igVariaPlaceholder: "Varía por foto — escribe para unificar",
     igGlobalAviso:
       "Estos datos se aplican a TODAS las fotos del set. Para personalizar una en particular, toca la foto.",
+    // QA ronda 2 (F3, 2026-10-07) — edición individual: los mismos campos IG
+    // pero solo para ESTE canvas (pestaña Texto del editor de slot).
+    igSlotCamposTitulo: "Campos de Instagram",
+    igSlotCamposHint:
+      "Estos datos son SOLO de esta foto. Para editar los de todas a la vez, usa «Datos de la publicación» en el panel.",
     // Rediseño asistido (owner 2026-10-05) — ayudas/avisos de los controles por
     // capa: "@" y "me gusta" son fijos, ubicación con sugerencias, título con
     // contador y hashtags por chips (máx 3).
@@ -1184,6 +1207,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     errorSubidaSlot: "No pudimos subir la imagen del slot {n}. Reintenta.",
     errorSubidaArchivos: "No pudimos subir tus archivos. Revisa tu conexión e inténtalo de nuevo.",
     errorGuardar: "No pudimos guardar tus últimos cambios. Intenta de nuevo.",
+    errorServidorLento:
+      "Estamos tardando más de lo normal preparando tu diseño. Espera un momento e inténtalo de nuevo.",
     piezaIman: "imán",
     piezaFicha: "ficha",
     piezaImanes: "imanes",
@@ -1205,6 +1230,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     pagerAnteriorAria: "Unidad anterior",
     pagerSiguienteAria: "Unidad siguiente",
     pagerDotsAria: "Unidades de la vista previa",
+    // PERF — página perezosa del pager: se genera al navegar a la unidad.
+    pagerCargandoPagina: "Armando la vista de esta unidad…",
   },
   escenas: {
     titulo: "✨ Míralo en tu espacio",
@@ -1224,6 +1251,9 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     // memo de las fichas de letras).
     vacio: "Esta variante es sin imán y estas escenas muestran el producto adherido con imán.",
     vacioHint: "Cierra esta ventana para seguir con tu diseño.",
+    // Ronda 2 QA (owner 2026-10-08) — toggle de caras del libro 3D (acción al pulsar).
+    libroVerRespaldo: "Ver respaldo",
+    libroVerFrente: "Ver frente",
     hintTouch: "Arrastra para girar · pellizca con 2 dedos para acercar",
     hintMouse: "Arrastra para girar · rueda o pellizca para acercar",
     loadingNevera: "Cargando la nevera 3D…",
@@ -1402,7 +1432,6 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
  */
 export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "comun.listo": "estudio.comun.listo",
-  "comun.verDiseno": "estudio.comun.ver-diseno",
   "comun.armando": "estudio.comun.armando",
   "comun.preparando": "estudio.comun.preparando",
   "comun.agregando": "estudio.comun.agregando",
@@ -1679,6 +1708,8 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.igVariaPorFoto": "estudio.texto.ig-varia-por-foto",
   "texto.igVariaPlaceholder": "estudio.texto.ig-varia-placeholder",
   "texto.igGlobalAviso": "estudio.texto.ig-global-aviso",
+  "texto.igSlotCamposTitulo": "estudio.texto.ig-slot-campos-titulo",
+  "texto.igSlotCamposHint": "estudio.texto.ig-slot-campos-hint",
   "texto.igUsuarioHint": "estudio.texto.ig-usuario-hint",
   "texto.igUbicacionHint": "estudio.texto.ig-ubicacion-hint",
   "texto.igUbicacionSinResultados": "estudio.texto.ig-ubicacion-sin-resultados",
@@ -1782,6 +1813,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "exportar.errorSubidaSlot": "estudio.exportar.error-subida-slot",
   "exportar.errorSubidaArchivos": "estudio.exportar.error-subida-archivos",
   "exportar.errorGuardar": "estudio.exportar.error-guardar",
+  "exportar.errorServidorLento": "estudio.exportar.error-servidor-lento",
   "exportar.piezaIman": "estudio.exportar.pieza-iman",
   "exportar.piezaFicha": "estudio.exportar.pieza-ficha",
   "exportar.piezaImanes": "estudio.exportar.pieza-imanes",
@@ -1795,6 +1827,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "exportar.pagerAnteriorAria": "estudio.exportar.pager-anterior-aria",
   "exportar.pagerSiguienteAria": "estudio.exportar.pager-siguiente-aria",
   "exportar.pagerDotsAria": "estudio.exportar.pager-dots-aria",
+  "exportar.pagerCargandoPagina": "estudio.exportar.pager-cargando-pagina",
   "escenas.titulo": "estudio.escenas.titulo",
   "escenas.volverDetalle": "estudio.escenas.volver-detalle",
   "escenas.chipNevera": "estudio.escenas.chip-nevera",
@@ -1809,6 +1842,8 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "escenas.errorHint": "estudio.escenas.error-hint",
   "escenas.vacio": "estudio.escenas.vacio",
   "escenas.vacioHint": "estudio.escenas.vacio-hint",
+  "escenas.libroVerRespaldo": "estudio.escenas.libro-ver-respaldo",
+  "escenas.libroVerFrente": "estudio.escenas.libro-ver-frente",
   "escenas.hintTouch": "estudio.escenas.hint-touch",
   "escenas.hintMouse": "estudio.escenas.hint-mouse",
   "escenas.loadingNevera": "estudio.escenas.loading-nevera",

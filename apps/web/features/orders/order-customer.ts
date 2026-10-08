@@ -12,7 +12,9 @@
  * Customer.supabaseUserId NOT NULL (la fila nace del registro/login Supabase),
  * así que no hay forma válida de crear un Customer "solo email" desde el
  * checkout. El pedido guest conserva el email en Order.email y, si esa
- * persona se registra después, sus pedidos se le atribuyen por email.
+ * persona se registra después, claimGuestOrdersForCustomer
+ * (features/orders/claim-guest-orders.ts, E2) le atribuye esos pedidos al
+ * verificar el OTP del signup o en su primer login.
  *
  * Módulo sin "server-only" (mismo patrón que checkout/address-key.ts) para
  * poder testearlo directo con un client stub.

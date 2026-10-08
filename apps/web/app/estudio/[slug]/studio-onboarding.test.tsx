@@ -87,4 +87,20 @@ describe("StudioOnboarding — tour por producto (item 2.8)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Saltar tutorial" }));
     expect(onOpenChange).toHaveBeenLastCalledWith(false);
   });
+
+  it("cambio de superficie con el tour avanzado NO revienta (ErrorReport STG 2026-10-08)", () => {
+    // IG tiene 6 pasos, default 3: ir al paso 5 y cambiar a default dejaba
+    // STEPS[step] = undefined → "can't access property 'icon', v is undefined"
+    // (el "Algo salió mal" al cambiar de plantilla IG → Clásica).
+    const { rerender } = render(<StudioOnboarding slotNoun="imán" surface="polaroid-ig" />);
+    openTour();
+    for (let i = 0; i < 4; i++) fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    expect(screen.getByText("Paso 5 de 6")).toBeInTheDocument();
+    rerender(<StudioOnboarding slotNoun="imán" surface="default" />);
+    // El tour de la superficie nueva reinicia en su paso 1 (ya marcada como vista
+    // para no re-abrir durante el assert).
+    window.localStorage.setItem(tourStorageKey("default"), "v1");
+    rerender(<StudioOnboarding slotNoun="imán" surface="default" />);
+    expect(screen.getByText("Paso 1 de 3")).toBeInTheDocument();
+  });
 });

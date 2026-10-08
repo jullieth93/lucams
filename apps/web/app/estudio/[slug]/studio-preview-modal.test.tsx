@@ -407,3 +407,63 @@ describe("StudioPreviewModal — Vista Previa PAGINADA por unidad (Fase 2 · ite
     expect(screen.getByRole("img", { name: /Vista previa de 6 imanes/ })).toBeInTheDocument();
   });
 });
+
+describe("StudioPreviewModal — páginas PEREZOSAS por unidad (PERF 2026-10-07)", () => {
+  const LAZY_PAGES: { dataUrl: string | null; label: string }[] = [
+    { dataUrl: null, label: "Set 1 de 3" },
+    { dataUrl: null, label: "Set 2 de 3" },
+    { dataUrl: null, label: "Set 3 de 3" },
+  ];
+
+  it("página pendiente (dataUrl null): indicador de carga + pide la página al editor", () => {
+    const onRequestPage = vi.fn();
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        pages={LAZY_PAGES}
+        unitCount={3}
+        onRequestPage={onRequestPage}
+      />,
+    );
+    // La unidad visible (la primera) se pide de inmediato y muestra el spinner.
+    expect(onRequestPage).toHaveBeenCalledWith(0);
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.getByText("Armando la vista de esta unidad…")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Set 1 de 3/ })).not.toBeInTheDocument();
+  });
+
+  it("navegar a otra página pendiente la pide; una página resuelta muestra la imagen", () => {
+    const onRequestPage = vi.fn();
+    const { rerender } = render(
+      <StudioPreviewModal
+        {...baseProps()}
+        pages={LAZY_PAGES}
+        unitCount={3}
+        onRequestPage={onRequestPage}
+      />,
+    );
+    // El editor resuelve la página 0 (cache local por unidad) → llega con dataUrl.
+    const resolved = LAZY_PAGES.map((p, i) =>
+      i === 0 ? { ...p, dataUrl: "data:image/png;base64,set1" } : p,
+    );
+    rerender(
+      <StudioPreviewModal
+        {...baseProps()}
+        pages={resolved}
+        unitCount={3}
+        onRequestPage={onRequestPage}
+      />,
+    );
+    expect(screen.getByRole("img", { name: /Set 1 de 3/ })).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    // Navegar a la página 2 (pendiente) → spinner + request con su índice.
+    fireEvent.click(screen.getByRole("button", { name: "Unidad siguiente" }));
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    // Volver a la página 0 (ya resuelta) NO la vuelve a pedir (cacheada):
+    // solo 2 requests en total — la inicial de la página 0 y la de la página 1.
+    fireEvent.click(screen.getByRole("button", { name: "Unidad anterior" }));
+    expect(onRequestPage).toHaveBeenCalledTimes(2);
+    expect(onRequestPage).toHaveBeenNthCalledWith(1, 0);
+    expect(onRequestPage).toHaveBeenNthCalledWith(2, 1);
+  });
+});

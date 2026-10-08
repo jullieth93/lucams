@@ -203,13 +203,12 @@ test.describe("estudio — modal «Vista previa» sin stepper «Copias» (regla 
     await page.goto(`/estudio/${product.slug}`, { waitUntil: "domcontentloaded" });
     await dismissCookies();
     const listo = page
-      .getByRole("button", { name: /Vista previa/ })
-      // QA 1.6 (2026-10-07) — «Vista previa» vuelve a ser UN solo botón (el del
-      // panel de controles): el CTA del header sticky se diferenció como
-      // «Ver diseño» (misma acción) para no leer dos botones idénticos.
+      .getByRole("button", { name: /Ver diseño/ })
+      // QA ronda 2 (owner 2026-10-07) — TODOS los CTAs de finalizar dicen «Ver
+      // diseño»: header sticky y panel comparten rótulo (misma acción); se pulsa
+      // el primero visible (el del header sticky queda siempre a la mano).
       .first();
     await expect(listo).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("button", { name: /Ver diseño/ })).toBeVisible();
     await listo.click();
     await expect(previewDialog).toBeVisible({ timeout: 30_000 });
     await expect(previewDialog.getByRole("group", { name: "Copias" })).toHaveCount(0);

@@ -2,13 +2,14 @@
  * Fase 2 · item 2.1 — matemática del pinch-to-zoom del LIENZO (stage).
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   pinchDistance,
   pinchMidpoint,
   pinchStageZoom,
   pinchAnchorRatio,
   anchoredScrollOffset,
+  createRafThrottle,
 } from "./stage-pinch";
 import { STAGE_ZOOM_MIN, STAGE_ZOOM_MAX } from "../studio-canvas-grid-size";
 
@@ -74,5 +75,77 @@ describe("anchoredScrollOffset", () => {
 
   it("nunca negativo (sin scroll antes del inicio del contenido)", () => {
     expect(anchoredScrollOffset(0.01, 400, 1000)).toBe(0);
+  });
+});
+
+describe("createRafThrottle (PERF — un setStageZoom por frame de gesto)", () => {
+  /** rAF falso: cola manual de frames para controlar cuándo corre cada frame. */
+  function fakeRaf() {
+    const queue = new Map<number, () => void>();
+    let nextId = 1;
+    const raf = (cb: () => void) => {
+      const id = nextId++;
+      queue.set(id, cb);
+      return id;
+    };
+    const caf = (id: number) => {
+      queue.delete(id);
+    };
+    const runFrame = () => {
+      const cbs = [...queue.values()];
+      queue.clear();
+      cbs.forEach((cb) => cb());
+    };
+    return { raf, caf, runFrame, queue };
+  }
+
+  it("varios schedule en el mismo frame aplican UNA sola vez con el ÚLTIMO valor", () => {
+    const { raf, caf, runFrame } = fakeRaf();
+    const apply = vi.fn();
+    const t = createRafThrottle(apply, raf, caf);
+    t.schedule(1.1);
+    t.schedule(1.2);
+    t.schedule(1.3);
+    expect(apply).not.toHaveBeenCalled();
+    runFrame();
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenCalledWith(1.3);
+  });
+
+  it("un schedule por frame aplica uno por frame", () => {
+    const { raf, caf, runFrame } = fakeRaf();
+    const apply = vi.fn();
+    const t = createRafThrottle(apply, raf, caf);
+    t.schedule(1.1);
+    runFrame();
+    t.schedule(1.2);
+    runFrame();
+    expect(apply).toHaveBeenCalledTimes(2);
+    expect(apply).toHaveBeenNthCalledWith(2, 1.2);
+  });
+
+  it("flush (commit final del touchend) aplica el pendiente de inmediato y cancela el frame", () => {
+    const { raf, caf, runFrame, queue } = fakeRaf();
+    const apply = vi.fn();
+    const t = createRafThrottle(apply, raf, caf);
+    t.schedule(1.4);
+    t.flush();
+    expect(apply).toHaveBeenCalledTimes(1);
+    expect(apply).toHaveBeenCalledWith(1.4);
+    expect(queue.size).toBe(0);
+    runFrame(); // el frame cancelado no aplica de nuevo
+    expect(apply).toHaveBeenCalledTimes(1);
+  });
+
+  it("flush sin pendiente es no-op; cancel descarta el valor programado", () => {
+    const { raf, caf, runFrame } = fakeRaf();
+    const apply = vi.fn();
+    const t = createRafThrottle(apply, raf, caf);
+    t.flush();
+    expect(apply).not.toHaveBeenCalled();
+    t.schedule(2);
+    t.cancel();
+    runFrame();
+    expect(apply).not.toHaveBeenCalled();
   });
 });

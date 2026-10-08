@@ -22,6 +22,7 @@ import { redirect } from "next/navigation";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { mergeAnonCartIntoCustomer } from "@/features/cart/service";
+import { claimGuestOrdersForCustomer } from "@/features/orders/claim-guest-orders";
 import { peekCartSession, setCartSessionCookie } from "@/lib/cart-session";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -112,6 +113,11 @@ export async function loginAction(
   // un fallo acá NUNCA bloquea el login.
   await ensureCustomerForAuthUser(authData.user);
 
+  // E2 (2026-10-07) — claim de pedidos GUEST hechos con este email (cubre a
+  // quienes se registraron ANTES del fix de confirmar-codigo). El password
+  // válido ya probó la identidad. Best-effort: nunca bloquea el login.
+  if (authData.user.email) await claimGuestOrdersSafely(authData.user.id, authData.user.email);
+
   // Merge anon cart si existía. Errores acá NO bloquean login —
   // un cart roto no debe impedir entrar a la cuenta.
   await mergeCartSafely(authData.user.id);
@@ -159,6 +165,27 @@ async function ensureCustomerForAuthUser(user: {
   } catch (err) {
     logger.error({
       event: "auth.login.customer_jit_fail",
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * E2 — vincula al Customer las órdenes guest (customerId null) hechas con su
+ * email. Corre DESPUÉS de ensureCustomerForAuthUser, así la fila Customer ya
+ * existe aunque la cuenta haya nacido por Admin API. Nunca lanza.
+ */
+async function claimGuestOrdersSafely(supabaseUserId: string, email: string): Promise<void> {
+  try {
+    const customer = await prisma.customer.findFirst({
+      where: { supabaseUserId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!customer) return;
+    await claimGuestOrdersForCustomer(customer.id, email);
+  } catch (err) {
+    logger.warn({
+      event: "order.guest_claim.fail",
       err: err instanceof Error ? err.message : String(err),
     });
   }

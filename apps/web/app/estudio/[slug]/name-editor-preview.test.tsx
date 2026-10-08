@@ -3,8 +3,9 @@
 /*
  * Test de la VISTA PREVIA pre-carrito del editor de nombre (Lucy 2026-07-25).
  *
- * Blinda el mismo contrato que su hermano del set de letras —pulsar "Vista previa" (antes
- * "¡Listo!", renombrado 2026-09-09) no puede crear nada; la cadena crear → finalizar → agregar
+ * Blinda el mismo contrato que su hermano del set de letras —pulsar «Ver diseño» (antes
+ * "¡Listo!"/"Vista previa"; QA ronda 2, owner 2026-10-07) no puede crear nada; la cadena
+ * crear → finalizar → agregar
  * solo corre al confirmar— más lo propio de este editor:
  *
  *   1. El precio de la modal es el TOTAL (nº de letras × precio por ficha), no el de una ficha
@@ -125,16 +126,16 @@ const ILLUSTRATED_STYLES = [{ id: "style-animales", name: "Animales", tiles: {} 
 async function openPreviewWith(name: string): Promise<number> {
   const input = screen.getByRole("textbox");
   fireEvent.change(input, { target: { value: name } });
-  // QA 1.6 (2026-10-07) — el botón «Vista previa» es ÚNICO (el grande del panel
-  // de controles): el CTA del header sticky se diferenció como «Ver diseño»
-  // para no leer dos botones idénticos en pantalla.
-  fireEvent.click(screen.getByRole("button", { name: /Vista previa/ }));
+  // QA ronda 2 (owner 2026-10-07) — TODOS los CTAs de finalizar dicen «Ver
+  // diseño»: hay DOS botones con ese rótulo (header sticky + panel) con la
+  // MISMA acción. Acá se pulsa el del panel (el último en el DOM).
+  fireEvent.click(screen.getAllByRole("button", { name: /Ver diseño/ }).at(-1)!);
   await waitFor(() => expect(screen.getByText(/Así se verá tu pedido/i)).toBeInTheDocument());
   return name.length;
 }
 
 describe("NameEditor — vista previa antes del carrito", () => {
-  it('"Vista previa" abre la previa SIN crear nada en el servidor', async () => {
+  it('"Ver diseño" abre la previa SIN crear nada en el servidor', async () => {
     renderEditor();
 
     await openPreviewWith("LUCIA");
@@ -144,12 +145,16 @@ describe("NameEditor — vista previa antes del carrito", () => {
     expect(addPersonalizedToCartAction).not.toHaveBeenCalled();
   });
 
-  it("QA 1.6: el CTA del header sticky dice «Ver diseño» (no duplica «Vista previa») y abre la MISMA vista previa", async () => {
+  it("QA ronda 2 (owner 2026-10-07): header sticky y panel dicen «Ver diseño» (mismo rótulo, misma acción)", async () => {
     renderEditor();
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "LUCIA" } });
-    // Un solo «Vista previa» en pantalla (el del panel); el header se diferencia.
-    expect(screen.getAllByRole("button", { name: /Vista previa/ })).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: /Ver diseño/ }));
+    // Los DOS CTAs de finalizar comparten rótulo (estudio.comun.listo): la
+    // diferenciación «Vista previa»/«Ver diseño» de QA 1.6 se revirtió.
+    const ctas = screen.getAllByRole("button", { name: /Ver diseño/ });
+    expect(ctas).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /Vista previa/ })).toBeNull();
+    // El CTA del header sticky (el primero en el DOM) abre la MISMA vista previa.
+    fireEvent.click(ctas[0]!);
     await waitFor(() => expect(screen.getByText(/Así se verá tu pedido/i)).toBeInTheDocument());
     expect(createNameDesignAction).not.toHaveBeenCalled();
     expect(addPersonalizedToCartAction).not.toHaveBeenCalled();
@@ -462,8 +467,8 @@ describe("NameEditor — opción «Con borde / Sin borde» (regla del set de let
 describe("NameEditor — recover flow (?designId=)", () => {
   /** Abre la vista previa SIN escribir: el nombre ya viene restaurado. */
   async function openPreviewDirect() {
-    // QA 1.6 — «Vista previa» es único (panel); el header dice «Ver diseño».
-    fireEvent.click(screen.getByRole("button", { name: /Vista previa/ }));
+    // QA ronda 2 — ambos CTAs (header y panel) dicen «Ver diseño» (misma acción).
+    fireEvent.click(screen.getAllByRole("button", { name: /Ver diseño/ }).at(-1)!);
     await waitFor(() => expect(screen.getByText(/Así se verá tu pedido/i)).toBeInTheDocument());
   }
 

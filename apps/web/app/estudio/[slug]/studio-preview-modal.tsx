@@ -21,7 +21,7 @@
 
 import { Loader2, Pencil, Sparkles, ShoppingCart, AlertTriangle } from "lucide-react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatCOP } from "@/lib/format";
@@ -64,13 +64,21 @@ const PAGER_SWIPE_MIN_PX = 40;
  * de teclado ←/→. El indicador ("Set 2 de 4") se anuncia con aria-live. La
  * navegación NO envuelve (tope en la primera/última unidad): el extremo deshabilita
  * su flecha, patrón más predecible que el carrusel infinito para una compra.
+ *
+ * PERF (2026-10-07) — páginas PEREZOSAS: `dataUrl: null` = la página de esa
+ * unidad aún no se genera (el editor la arma por demanda, una por navegación,
+ * en vez de TODAS en el click de «Vista previa» — ese era el long task del
+ * botón). Al llegar a una página pendiente se dispara `onRequestPage(i)` y se
+ * muestra un indicador de carga hasta que el editor la resuelve.
  */
 function PreviewPagesPager({
   pages,
   altBase,
+  onRequestPage,
 }: {
-  pages: { dataUrl: string; label: string }[];
+  pages: { dataUrl: string | null; label: string }[];
   altBase: string;
+  onRequestPage?: (index: number) => void;
 }) {
   const texts = useStudioTexts();
   const n = pages.length;
@@ -89,6 +97,11 @@ function PreviewPagesPager({
     (delta: number) => setIndex((cur) => Math.min(n - 1, Math.max(0, cur + delta))),
     [n],
   );
+
+  // Generación perezosa: pedir la página de la unidad visible si aún no existe.
+  useEffect(() => {
+    if (page.dataUrl === null) onRequestPage?.(i);
+  }, [page.dataUrl, i, onRequestPage]);
 
   // Swipe táctil sobre la imagen: solo gestos claramente HORIZONTALES (un
   // desplazamiento vertical sigue scrolleando el diálogo).
@@ -130,12 +143,25 @@ function PreviewPagesPager({
         }
       }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element -- dataURL local del compositor; next/image no aporta optimización acá */}
-      <img
-        src={page.dataUrl}
-        alt={`${altBase} — ${page.label}`}
-        className="mx-auto max-h-[min(28rem,42dvh)] w-auto max-w-full object-contain drop-shadow-lg"
-      />
+      {/* Página perezosa: pendiente → indicador de carga mientras el editor
+          la genera; resuelta → la imagen de la unidad. */}
+      {page.dataUrl !== null ? (
+        // eslint-disable-next-line @next/next/no-img-element -- dataURL local del compositor; next/image no aporta optimización acá
+        <img
+          src={page.dataUrl}
+          alt={`${altBase} — ${page.label}`}
+          className="mx-auto max-h-[min(28rem,42dvh)] w-auto max-w-full object-contain drop-shadow-lg"
+        />
+      ) : (
+        <div
+          className="flex h-[min(28rem,42dvh)] items-center justify-center gap-2"
+          role="status"
+          aria-label={texts.exportar.pagerCargandoPagina}
+        >
+          <Loader2 className="text-brand-purple h-6 w-6 animate-spin" aria-hidden />
+          <span className="text-brand-muted text-sm">{texts.exportar.pagerCargandoPagina}</span>
+        </div>
+      )}
       {/* Flechas + indicador "Set 2 de 4" (aria-live para lector de pantalla). */}
       <div className="mt-3 flex items-center justify-between gap-2">
         <button
@@ -200,8 +226,16 @@ type StudioPreviewModalProps = {
    * sigue siendo el que se SUBE al confirmar — las páginas son solo UX de la
    * modal. null/undefined o 1 página → imagen única de siempre, sin pager.
    * `label` ya viene resuelto por el editor ("Set 2 de 4", texts.unidades.unidadDe).
+   *
+   * PERF (2026-10-07) — `dataUrl: null` = página PENDIENTE: el editor genera
+   * cada página POR DEMANDA cuando el cliente navega a ella (onRequestPage),
+   * con cache local por unidad; el pager muestra un indicador de carga mientras
+   * tanto. Antes se generaban TODAS en el click de «Vista previa» (long task
+   * Canvas2D en el main thread — el INP del botón).
    */
-  pages?: { dataUrl: string; label: string }[] | null;
+  pages?: { dataUrl: string | null; label: string }[] | null;
+  /** Generación perezosa: el pager la invoca al llegar a una página pendiente. */
+  onRequestPage?: (index: number) => void;
   productName: string;
   slotCount: number;
   /** Piezas por unidad (tiras: fotos por tira; calendario: páginas por set).
@@ -281,6 +315,7 @@ export function StudioPreviewModal({
   isOpen,
   previewUrl,
   pages = null,
+  onRequestPage,
   productName,
   slotCount,
   slotsPerUnit,
@@ -513,7 +548,7 @@ export function StudioPreviewModal({
             (una página por set/tira/separador/pack a tamaño legible); con una
             sola unidad se muestra el montaje único de siempre. */}
         {pages && pages.length > 1 ? (
-          <PreviewPagesPager pages={pages} altBase={previewAlt} />
+          <PreviewPagesPager pages={pages} altBase={previewAlt} onRequestPage={onRequestPage} />
         ) : (
           <div className="border-brand-purple/15 from-brand-cream relative mt-3 overflow-hidden rounded-xl border bg-gradient-to-br to-white p-4">
             {/* eslint-disable-next-line @next/next/no-img-element -- dataURL local del compositor; next/image no aporta optimización acá (ya iba unoptimized) */}

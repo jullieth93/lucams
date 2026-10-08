@@ -167,6 +167,17 @@ export function StudioOnboarding({
   const texts = useStudioTexts();
   const STEPS = buildSteps(slotNoun, surface, texts);
 
+  // Cambio de superficie (ej. el cliente cambia de plantilla IG → Clásica): el
+  // paso vigente puede quedar por fuera de la lista nueva (IG tiene más pasos)
+  // y STEPS[step] sería undefined → crash "can't access property 'icon'"
+  // (ErrorReport STG 2026-10-08). Reset durante render (patrón sancionado por
+  // React para ajustar estado cuando cambian las props — sin cascading renders).
+  const [prevSurface, setPrevSurface] = useState(surface);
+  if (prevSurface !== surface) {
+    setPrevSurface(surface);
+    setStep(0);
+  }
+
   // Item 2.8 — reportar el open al editor (suprime el auto-trigger del banner
   // de gestos mientras el tour tapa la pantalla).
   useEffect(() => {
@@ -213,8 +224,8 @@ export function StudioOnboarding({
     if (step > 0) setStep((s) => s - 1);
   };
 
-  const current = STEPS[step];
-  const CurrentIcon = current.icon ? TOUR_ICONS[current.icon] : null;
+  const current = STEPS[Math.min(step, STEPS.length - 1)];
+  const CurrentIcon = current?.icon ? TOUR_ICONS[current.icon] : null;
 
   return (
     <AnimatePresence>

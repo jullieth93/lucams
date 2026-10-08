@@ -369,6 +369,83 @@ export function flatBookmarkPlacement(bx: number, bz: number): [number, number, 
   return [bx, pageSurfaceY(bx) + FLAT_BOOKMARK_T / 2 + 0.002, bz];
 }
 
+// ── Pose ACOSTADA de la pieza plana + volteo de caras (Fase 2.12 revisada, 2026-10-07) ──
+
+/**
+ * Rotación que ACUESTA la pieza plana sobre la hoja: −90° en X, en un grupo ANIDADO entre
+ * el yaw externo y la pieza. Tras acostarla, la tapa frontal (+Z local, cara A) mira
+ * EXACTA a +Y y el largo queda en el plano de la hoja.
+ *
+ * Ola 17 componía la pose con grupos anidados (yaw externo → acostar) — la pose que se
+ * certificó visualmente. La primera versión de Fase 2.12 la colapsó a UN solo Euler
+ * [−π/2, yaw, 0]: con el orden XYZ de three eso aplica el yaw ANTES de acostar, es decir
+ * como ROLL alrededor del eje largo ya echado — la cara quedaba BASCULADA `yaw` fuera de
+ * la vertical en vez de trenzada en el plano de la hoja (verificado numéricamente en
+ * book-geometry.test). Se restaura la composición anidada.
+ */
+export const FLAT_LIE_ROTATION: readonly [number, number, number] = [-Math.PI / 2, 0, 0];
+
+/**
+ * Rota un vector con R = Rx(x)·Ry(y)·Rz(z) — el mismo convenio que THREE.Euler orden
+ * 'XYZ' (al aplicar al vector rota primero sobre Z, luego Y, luego X). Espejo PURO para
+ * verificar las poses de la escena del libro en tests node, sin three.
+ */
+export function rotateVecEulerXYZ(
+  v: readonly [number, number, number],
+  e: readonly [number, number, number],
+): [number, number, number] {
+  let [x, y, z] = v;
+  const [ex, ey, ez] = e;
+  if (ez !== 0) {
+    const c = Math.cos(ez);
+    const s = Math.sin(ez);
+    [x, y] = [x * c - y * s, x * s + y * c];
+  }
+  if (ey !== 0) {
+    const c = Math.cos(ey);
+    const s = Math.sin(ey);
+    [x, z] = [x * c + z * s, -x * s + z * c];
+  }
+  if (ex !== 0) {
+    const c = Math.cos(ex);
+    const s = Math.sin(ex);
+    [y, z] = [y * c - z * s, y * s + z * c];
+  }
+  return [x, y, z];
+}
+
+/**
+ * Normal MUNDIAL de la tapa frontal (+Z local, cara A) de la pieza plana con la pose
+ * anidada: flip opcional sobre el eje largo local (FACE_FLIP_ROTATION de magnet-3d — π
+ * sobre Y, duplicado acá inline para mantener el módulo sin three) → acostar
+ * (FLAT_LIE_ROTATION) → yaw (giro en el plano de la hoja). Sin flip es EXACTAMENTE +Y
+ * para cualquier yaw; con flip es −Y (la cara B — o el blanco — queda mirando arriba).
+ */
+export function flatFrontNormalWorld(yaw: number, showBack: boolean): [number, number, number] {
+  let n = rotateVecEulerXYZ([0, 0, 1], showBack ? [0, Math.PI, 0] : [0, 0, 0]);
+  n = rotateVecEulerXYZ(n, FLAT_LIE_ROTATION);
+  return rotateVecEulerXYZ(n, [0, yaw, 0]);
+}
+
+/**
+ * Normal MUNDIAL de la cara frontal (+Z local de FoldedStripMesh) del separador DOBLADO
+ * con su pose (grupo externo Euler [tilt, yaw, 0] de separatorPlacement) y el volteo
+ * opcional sobre el eje largo. Sin flip apunta al lector (+Z dominante); con flip apunta
+ * a −Z: la cara B (o el blanco) queda de frente y la pieza sigue colgando igual.
+ */
+export function foldedFrontNormalWorld(
+  tilt: number,
+  yaw: number,
+  showBack: boolean,
+): [number, number, number] {
+  const n = rotateVecEulerXYZ([0, 0, 1], showBack ? [0, Math.PI, 0] : [0, 0, 0]);
+  return rotateVecEulerXYZ(n, [tilt, yaw, 0]);
+}
+
+// ── Toggle "Ver respaldo / Ver frente" (decisión owner 2026-10-07) ──
+// Los textos del toggle viven en studio-texts (estudio.escenas.libro-ver-respaldo/-frente);
+// el componente los lee vía useStudioTexts en book-view-3d.tsx.
+
 /** Encuadre de la cámara (FitCameraPolar): pliego completo + holgura, vista desde arriba-3/4. */
 export const BOOK_FIT = {
   halfW: PAGE_W + COVER_OVERHANG + 0.16,

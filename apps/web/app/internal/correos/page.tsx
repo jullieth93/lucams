@@ -160,7 +160,12 @@ async function buildGroups(): Promise<Group[]> {
       estimatedDays: 3,
       publicTrackingToken: TOKEN,
     }),
-    orderDeliveredEmail({ orderNumber: ORDER, customerName: CUSTOMER, publicTrackingToken: TOKEN }),
+    orderDeliveredEmail({
+      orderNumber: ORDER,
+      customerName: CUSTOMER,
+      reviewUrl: `https://lucamsshop.com/resena/${TOKEN}`,
+      fallbackUrl: "https://lucamsshop.com/rastrear",
+    }),
     orderPaymentFailedEmail({
       orderNumber: ORDER,
       customerName: CUSTOMER,

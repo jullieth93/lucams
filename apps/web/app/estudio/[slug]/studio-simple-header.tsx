@@ -5,7 +5,7 @@
  * Estudio (nombre / set de letras), Ola 32 (2026-09-18).
  *
  * Replica el idioma visual del StudioToolbar del estudio de foto (pill «Salir»
- * sólido, avatar+nombre del producto al centro, CTA «Vista previa» a la derecha)
+ * sólido, avatar+nombre del producto al centro, CTA «Ver diseño» a la derecha)
  * SIN acoplarse a su store zustand: estos editores no tienen slots ni autosave,
  * así que el contenido central y la acción llegan por props. Se crea UNA vez y
  * lo comparten name-editor y letter-set-editor (regla del owner: un solo chrome
@@ -32,7 +32,7 @@ type StudioSimpleHeaderProps = {
   productImageUrl?: string;
   /** Contenido junto al CTA (total en vivo compacto, ej. "$42.000"). */
   trailing?: React.ReactNode;
-  /** Rótulo del CTA (CMS: textos.comun.listo = "Vista previa"). */
+  /** Rótulo del CTA (CMS: textos.comun.listo = "Ver diseño"). */
   ctaLabel: string;
   /** Rótulo mientras procesa (ej. "Preparando…"). */
   ctaBusyLabel?: string;

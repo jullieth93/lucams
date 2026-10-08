@@ -12,10 +12,12 @@
  *    sanitiza en vivo (sin espacios; solo letras, números, punto y guion bajo —
  *    caracteres válidos de usuario IG). El override se guarda CON "@" (se imprime
  *    tal cual).
- *  - Ubicación: combobox con búsqueda (Fase 2 · 2.7b — antes datalist nativo):
- *    filtra la lista curada "Ciudad, País" por ciudad Y país, navegable con
- *    teclado (flechas/Enter/Escape, aria-activedescendant) y sigue admitiendo
- *    ubicación libre — es asistencia de escritura, no validación.
+ *  - Ubicación: combobox con búsqueda (Fase 2 · 2.7b — antes datalist nativo;
+ *    componente compartido en ig-location-combobox.tsx): filtra la lista curada
+ *    "Ciudad, País" (cobertura MUNDIAL desde QA ronda 2, 2026-10-07) por ciudad
+ *    Y país, navegable con teclado (flechas/Enter/Escape,
+ *    aria-activedescendant) y sigue admitiendo ubicación libre — es asistencia
+ *    de escritura, no validación.
  *  - «Me gusta»: OBLIGATORIO desde el rediseño (antes decorativo). El input es
  *    solo numérico y se muestra con separador de miles es-CO; la palabra
  *    "me gusta" es un sufijo FIJO fuera del valor editable (el override guarda
@@ -37,14 +39,17 @@
  *  - Vacío → override null (no se imprime). Las 5 capas son REQUERIDAS para
  *    finalizar (el popover de «Vista previa» lista los faltantes).
  *  - La edición individual en el modal sigue intacta (y el botón «Aplicar a
- *    todas» por capa, complementario, no se retira).
+ *    todas» por capa, complementario, no se retira). QA ronda 2 (2026-10-07):
+ *    el editor de slot suma la sección «Campos de Instagram»
+ *    (studio-ig-slot-fields.tsx) con los MISMOS 5 controles asistidos para el
+ *    canvas individual.
  *
  * Se monta desde StudioMessageField (el sidebar ya lo renderiza cuando
  * allowText) → aparece SOLO con la plantilla Instagram (isInstagramTemplate),
  * nunca en las demás.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useStore } from "zustand";
 import type { StoreApi } from "zustand";
 import { AtSign, Hash, X } from "lucide-react";
@@ -55,7 +60,6 @@ import {
   IG_HASHTAGS_MAX,
   IG_LIKES_SUFFIX,
   IG_USERNAME_MAX,
-  filterIgLocationSuggestions,
   igHashtagsFromStored,
   igHashtagsOverride,
   igLikesDisplay,
@@ -66,14 +70,12 @@ import {
   sanitizeIgLikesInput,
   sanitizeIgUsernameInput,
 } from "./lib/ig-post-fields";
+import { IG_INPUT_CLASS as INPUT_CLASS, IgLocationCombobox } from "./ig-location-combobox";
 import type { StudioStoreState } from "./lib/store";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, type StudioTexts } from "./studio-texts";
 
 const REQUIRED = new Set<string>(IG_REQUIRED_TEXT_LAYER_IDS);
-
-const INPUT_CLASS =
-  "border-brand-purple/15 text-brand-purple-dark focus:border-brand-turquoise focus:ring-brand-turquoise/30 w-full rounded-md border px-3 py-2 text-sm transition-colors focus:ring-2 focus:outline-none";
 
 type IgField = {
   id: string;
@@ -86,7 +88,7 @@ type IgField = {
 };
 
 /** Etiqueta visible de cada capa IG (textos CMS). Fallback: el default de la capa. */
-function fieldLabel(texts: StudioTexts, layerId: string, fallback: string): string {
+export function igFieldLabel(texts: StudioTexts, layerId: string, fallback: string): string {
   switch (layerId) {
     case "user_name":
       return texts.texto.igCampoUsuario;
@@ -252,8 +254,9 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
       case "hashtags":
         return (
           <IgHashtagsEditor
-            field={f}
             inputId={inputId}
+            tags={f.varies ? [] : igHashtagsFromStored(f.value)}
+            placeholder={variesPlaceholder ?? texts.texto.igHashtagsPlaceholder}
             onCommit={(tags) => commitText(f.id, igHashtagsOverride(tags))}
           />
         );
@@ -287,7 +290,7 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
         {fields.map((f) => {
           const required = REQUIRED.has(f.id);
           const inputId = `studio-ig-field-${f.id}`;
-          const label = fieldLabel(texts, f.id, f.defaultText);
+          const label = igFieldLabel(texts, f.id, f.defaultText);
           return (
             <div key={f.id}>
               <label
@@ -322,161 +325,31 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
 }
 
 /**
- * Combobox de UBICACIÓN con búsqueda (Fase 2 · 2.7b, reemplaza el datalist
- * nativo): filtra las sugerencias "Ciudad, País" por ciudad Y país (insensible
- * a tildes), con teclado accesible (flechas mueven la opción activa vía
- * aria-activedescendant, Enter elige, Escape cierra) y texto libre — sin
- * coincidencias la ubicación igual se imprime tal cual (no es validación).
- *
- * El commit es por tecla (mismo patrón del bloque: sin draft local, el store
- * hace undo + auto-save); elegir una sugerencia la escribe completa.
- */
-function IgLocationCombobox({
-  inputId,
-  value,
-  placeholder,
-  onCommit,
-}: {
-  inputId: string;
-  value: string;
-  placeholder?: string;
-  onCommit: (text: string) => void;
-}) {
-  const texts = useStudioTexts();
-  const listboxId = `${inputId}-listbox`;
-  const [open, setOpen] = useState(false);
-  const [activeIdx, setActiveIdx] = useState(-1);
-
-  const matches = filterIgLocationSuggestions(value);
-  // Texto idéntico a una sugerencia (recién elegida): no reabrir el dropdown.
-  const exactMatch = matches.length === 1 && matches[0] === value;
-  const showList = open && !exactMatch && matches.length > 0;
-
-  // La opción activa por teclado puede quedar fuera del área visible.
-  useEffect(() => {
-    if (!showList || activeIdx < 0) return;
-    const el = document.getElementById(`${listboxId}-opt-${activeIdx}`);
-    if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "nearest" });
-  }, [activeIdx, showList, listboxId]);
-
-  const select = (suggestion: string) => {
-    onCommit(suggestion);
-    setOpen(false);
-    setActiveIdx(-1);
-  };
-
-  return (
-    <div className="relative">
-      <input
-        id={inputId}
-        type="text"
-        role="combobox"
-        aria-expanded={showList}
-        aria-controls={listboxId}
-        aria-autocomplete="list"
-        aria-activedescendant={
-          showList && activeIdx >= 0 ? `${listboxId}-opt-${activeIdx}` : undefined
-        }
-        value={value}
-        maxLength={80}
-        placeholder={placeholder}
-        onChange={(e) => {
-          onCommit(e.target.value);
-          setOpen(true);
-          setActiveIdx(-1);
-        }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => {
-          setOpen(false);
-          setActiveIdx(-1);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowDown") {
-            e.preventDefault();
-            if (!showList) {
-              setOpen(true);
-              setActiveIdx(0);
-            } else {
-              setActiveIdx((i) => Math.min(i + 1, matches.length - 1));
-            }
-          } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            if (showList) setActiveIdx((i) => Math.max(i - 1, 0));
-          } else if (e.key === "Enter" && showList && activeIdx >= 0) {
-            const chosen = matches[activeIdx];
-            if (chosen) {
-              e.preventDefault();
-              select(chosen);
-            }
-          } else if (e.key === "Escape" && showList) {
-            e.preventDefault();
-            setOpen(false);
-            setActiveIdx(-1);
-          }
-        }}
-        className={INPUT_CLASS}
-        autoComplete="off"
-      />
-      {showList && (
-        <ul
-          id={listboxId}
-          role="listbox"
-          aria-label={texts.texto.igCampoUbicacion}
-          className="border-brand-purple/15 absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-white py-1 shadow-lg"
-          // onMouseDown preventDefault: conserva el foco en el input — sin esto
-          // el blur cerraría la lista ANTES del click en la opción.
-          onMouseDown={(e) => e.preventDefault()}
-        >
-          {matches.map((s, i) => (
-            <li
-              key={s}
-              id={`${listboxId}-opt-${i}`}
-              role="option"
-              aria-selected={i === activeIdx}
-              onMouseEnter={() => setActiveIdx(i)}
-              onClick={() => select(s)}
-              className={`cursor-pointer px-3 py-2 text-sm ${
-                i === activeIdx
-                  ? "bg-brand-purple/10 text-brand-purple-dark font-semibold"
-                  : "text-brand-purple-dark/80"
-              }`}
-            >
-              {s}
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="text-brand-muted mt-1 text-xs">{texts.texto.igUbicacionHint}</p>
-      {/* Texto libre: sin coincidencias la ubicación igual se imprime tal cual. */}
-      {open && value.trim() !== "" && matches.length === 0 && (
-        <p role="status" className="text-brand-muted mt-1 text-xs">
-          {texts.texto.igUbicacionSinResultados}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/**
  * Editor de hashtags por CHIPS (no texto libre): agregar con Enter/coma/espacio,
  * quitar con la × de cada chip, máximo IG_HASHTAGS_MAX tags con aviso claro al
  * llegar al tope. Cada tag se sanitiza (sin "#" ni espacios dentro) y el override
  * se guarda como "#tag1 #tag2" (se imprime tal cual).
+ *
+ * Compartido: lo usa el bloque MASIVO del sidebar (acá arriba) y la edición
+ * INDIVIDUAL por slot (studio-ig-slot-fields.tsx) — por eso recibe los tags ya
+ * parseados y un placeholder resuelto, no el IgField pack-level.
  */
-function IgHashtagsEditor({
-  field,
+export function IgHashtagsEditor({
   inputId,
+  tags,
+  placeholder,
   onCommit,
 }: {
-  field: IgField;
   inputId: string;
+  /** Tags actuales (sin "#"), ya parseados del texto guardado. */
+  tags: string[];
+  placeholder?: string;
   onCommit: (tags: string[]) => void;
 }) {
   const texts = useStudioTexts();
   const [draft, setDraft] = useState("");
   const [maxReached, setMaxReached] = useState(false);
 
-  const tags = field.varies ? [] : igHashtagsFromStored(field.value);
   const full = tags.length >= IG_HASHTAGS_MAX;
 
   const addTag = (raw: string) => {
@@ -497,7 +370,10 @@ function IgHashtagsEditor({
   return (
     <div>
       {tags.length > 0 && (
-        <ul className="mb-2 flex flex-wrap gap-1.5" aria-label={fieldLabel(texts, "hashtags", "")}>
+        <ul
+          className="mb-2 flex flex-wrap gap-1.5"
+          aria-label={igFieldLabel(texts, "hashtags", "")}
+        >
           {tags.map((tag) => (
             <li
               key={tag}
@@ -524,9 +400,7 @@ function IgHashtagsEditor({
         id={inputId}
         type="text"
         value={draft}
-        placeholder={
-          field.varies ? texts.texto.igVariaPlaceholder : texts.texto.igHashtagsPlaceholder
-        }
+        placeholder={placeholder ?? texts.texto.igHashtagsPlaceholder}
         aria-invalid={maxReached || undefined}
         aria-describedby={maxReached ? `${inputId}-max` : undefined}
         onChange={(e) => {

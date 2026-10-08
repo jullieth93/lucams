@@ -643,6 +643,18 @@ export function MagnetMesh({
 const CARD_THICK = 0.012;
 
 /**
+ * Volteo de 180° sobre el eje LARGO local (Y) de la pieza — el "Ver respaldo" del libro 3D
+ * (decisión owner 2026-10-07). Rotando la pieza π sobre Y en su marco local, la cara B (la
+ * tapa trasera del extruido, ya mapeada para leerse DERECHA desde atrás — la rotación π del
+ * mesh de la tapa ya espeja una vez, sin flipU forzado) queda mirando al lector y la cara A
+ * contra la página. Se aplica como el grupo ANIDADO más interno, ANTES de la pose de la
+ * escena (acostar/tilt/yaw), así la pose no cambia: solo se intercambian las caras.
+ * Funciona para la pieza plana (MagnetMesh) y para el separador doblado (FoldedStripMesh —
+ * su eje largo también es Y: las caras cuelgan hacia −Y y el pliegue corre sobre X).
+ */
+export const FACE_FLIP_ROTATION: readonly [number, number, number] = [0, Math.PI, 0];
+
+/**
  * La tira impresa (stripW × stripL, unidades de mundo) doblada a la mitad sobre un borde: dos
  * caras con grosor de cartulina + cresta redondeada sobre el pliegue. Marco local: eje del
  * pliegue = X (la cresta corre a lo ancho de la tira); cara frontal cuelga hacia −Y del lado +Z

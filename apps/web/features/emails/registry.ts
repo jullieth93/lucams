@@ -189,7 +189,15 @@ export const EMAIL_TEMPLATE_REGISTRY: readonly EmailTemplateEntry[] = [
     description:
       "Cuando la transportadora reporta la entrega (webhook Aveonline DELIVERED). Invita a dejar reseña.",
     render: orderDeliveredEmail,
-    sampleData: { orderNumber: ORDER, customerName: CUSTOMER, publicTrackingToken: TOKEN },
+    // E3 (2026-10-07): el preview refleja el caso CON token de reseña — el CTA
+    // "Dejar una reseña ⭐" apunta a /resena/<token>. Sin reviewUrl el CTA cae
+    // a "Ver mi pedido" con fallbackUrl (variante en /internal/correos).
+    sampleData: {
+      orderNumber: ORDER,
+      customerName: CUSTOMER,
+      reviewUrl: `https://lucamsshop.com/resena/${TOKEN}`,
+      fallbackUrl: "https://lucamsshop.com/rastrear",
+    },
   }),
   define({
     id: "order-payment-declined",

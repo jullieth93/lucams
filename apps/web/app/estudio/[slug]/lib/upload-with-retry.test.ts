@@ -8,6 +8,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   isNetworkError,
+  isServerActionCrash,
   mapWithConcurrency,
   putWithRetry,
   retryDelayMs,
@@ -48,6 +49,21 @@ describe("isNetworkError", () => {
   it("errores de la app NO son de red (conservan su mensaje)", () => {
     expect(isNetworkError(new Error("preview demasiado grande"))).toBe(false);
     expect(isNetworkError("NetworkError when attempting to fetch resource")).toBe(false);
+  });
+});
+
+describe("isServerActionCrash (500/504 HTML de plataforma en la Server Action)", () => {
+  it("detecta el mensaje de Next ante una respuesta no-JSON de la action", () => {
+    expect(
+      isServerActionCrash(new Error("An unexpected response was received from the server.")),
+    ).toBe(true);
+  });
+
+  it("no confunde errores de red ni de la app (cada uno conserva su copy)", () => {
+    expect(isServerActionCrash(new TypeError("Failed to fetch"))).toBe(false);
+    expect(isServerActionCrash(new Error("No pudimos subir el slot 3"))).toBe(false);
+    expect(isServerActionCrash("An unexpected response was received from the server")).toBe(false);
+    expect(isServerActionCrash(null)).toBe(false);
   });
 });
 

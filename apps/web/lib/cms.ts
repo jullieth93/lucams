@@ -164,8 +164,11 @@ export function isPublicSettingKey(key: string): boolean {
  * invariante y ejecutamos la función cruda (sin caché); cualquier otro error se
  * re-lanza. En producción (siempre dentro de un request de Next) el fallback
  * nunca se dispara → el comportamiento cacheado es idéntico.
+ *
+ * Exportada (2026-10-07): el mismo patrón lo reusan otros readers cacheados
+ * fuera del CMS (p.ej. las miniaturas de galería en design-gallery.ts).
  */
-function cachedCms<A extends unknown[], R>(
+export function cachedCms<A extends unknown[], R>(
   fn: (...args: A) => Promise<R>,
   keyParts: string[],
   options: { tags: string[]; revalidate: number },

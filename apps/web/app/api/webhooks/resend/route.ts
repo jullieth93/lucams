@@ -13,6 +13,14 @@
  * tabla EmailEvent. Si Resend reintenta el webhook, el upsert deja la
  * fila intacta.
  *
+ * Jerarquía de terminalidad (E1, 2026-10-07): UN row por email con el
+ * último estado RELEVANTE. Los estados de entrega (delivered/bounced/
+ * complained/delayed) son terminales: NUNCA se degradan por eventos de
+ * engagement (opened/clicked), que llegan después y harían que un email
+ * entregado-y-abierto dejara de contar como "Entregado" en el panel de
+ * observabilidad. opened/clicked sí se actualizan entre sí, y occurredAt
+ * nunca retrocede.
+ *
  * Seguridad: Resend firma cada webhook con HMAC-SHA256 usando
  * RESEND_WEBHOOK_SECRET (configurado en dashboard). Verificamos la
  * firma del header `svix-signature` antes de procesar. Sin secret en
@@ -141,12 +149,24 @@ export async function POST(req: Request): Promise<Response> {
     // supresor nunca se degrada por un evento no-supresor, y un evento con occurredAt
     // más viejo que el almacenado se ignora.
     const SUPPRESSING = ["email.bounced", "email.complained"];
+    // E1 (2026-10-07): los estados de ENTREGA tampoco se degradan por eventos de
+    // engagement. Antes un `email.opened` posterior pisaba el `email.delivered` →
+    // el panel de entregabilidad (groupBy type) dejaba de contarlo como entregado.
+    const DELIVERY_TERMINAL = [...SUPPRESSING, "email.delivered", "email.delayed"];
+    const ENGAGEMENT = ["email.opened", "email.clicked"];
     await prisma.$transaction(async (tx) => {
       const existing = await tx.emailEvent.findUnique({
         where: { resendId: event.data.email_id },
       });
       if (existing && SUPPRESSING.includes(existing.type) && !SUPPRESSING.includes(event.type)) {
         return; // el rebote/queja manda: no degradar el registro
+      }
+      if (
+        existing &&
+        DELIVERY_TERMINAL.includes(existing.type) &&
+        ENGAGEMENT.includes(event.type)
+      ) {
+        return; // la entrega manda sobre opened/clicked (E1)
       }
       if (existing && existing.occurredAt > occurredAt) return; // evento viejo: ignorar
       await tx.emailEvent.upsert({

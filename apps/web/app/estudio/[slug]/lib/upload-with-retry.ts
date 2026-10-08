@@ -58,6 +58,21 @@ export function isNetworkError(err: unknown): boolean {
   return false;
 }
 
+/**
+ * ¿La Server Action reventó con una respuesta que NO es el protocolo JSON de
+ * Next (un 500/504 HTML de plataforma — Vercel cortando la Function por
+ * timeout u OOM en el finalize)? Next lo traduce al mensaje "An unexpected
+ * response was received from the server". Como isNetworkError, ese texto
+ * crudo jamás se muestra al cliente: el caller lo cambia por un copy propio
+ * customer-safe (texts.exportar.errorServidorLento).
+ */
+export function isServerActionCrash(err: unknown): boolean {
+  return (
+    err instanceof Error &&
+    err.message.includes("An unexpected response was received from the server")
+  );
+}
+
 class NonRetryableUploadError extends Error {}
 
 function sleep(ms: number): Promise<void> {

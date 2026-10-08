@@ -60,7 +60,14 @@ vi.mock("@/lib/admin-rbac-guard", () => ({
   })),
 }));
 vi.mock("@/lib/logger", () => ({ logger: mockLogger }));
-vi.mock("next/cache", () => ({ revalidatePath: revalidatePathSpy }));
+vi.mock("next/cache", () => ({
+  revalidatePath: revalidatePathSpy,
+  // Fase 3 · 3.10/P1 — las actions invalidan el cache de miniaturas y lib/cms
+  // envuelve lecturas en unstable_cache: passthrough en tests.
+  updateTag: vi.fn(),
+  revalidateTag: vi.fn(),
+  unstable_cache: (fn: unknown) => fn,
+}));
 // No se ejercitan en estas actions (son del upload), pero actions.ts los
 // importa de arriba: se mockean para no arrastrar Supabase/sharp al test.
 // La derivación de path de la miniatura (3.10) se implementa REAL en el mock:

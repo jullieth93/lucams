@@ -17,6 +17,8 @@ export type StorefrontReview = {
   authorCity: string | null;
   productName: string;
   productSlug: string;
+  /** Imagen principal del producto (images[0], mismo criterio que PDP/catálogo); null si no tiene. */
+  productImage: string | null;
   createdAt: Date;
 };
 
@@ -63,7 +65,7 @@ export async function listFeaturedReviews(limit = 8): Promise<StorefrontReview[]
       authorName: true,
       authorCity: true,
       createdAt: true,
-      product: { select: { name: true, slug: true } },
+      product: { select: { name: true, slug: true, images: true } },
     },
   });
   return items.map((r) => ({
@@ -75,5 +77,8 @@ export async function listFeaturedReviews(limit = 8): Promise<StorefrontReview[]
     createdAt: r.createdAt,
     productName: r.product.name,
     productSlug: r.product.slug,
+    // Mini-imagen de la tarjeta del home (E4, 2026-10-07): la PRINCIPAL del
+    // producto, images[0] — mismo criterio que la PDP y las cards de catálogo.
+    productImage: r.product.images[0] ?? null,
   }));
 }
