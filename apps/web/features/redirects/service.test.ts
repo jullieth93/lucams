@@ -20,6 +20,7 @@ const { mockPrisma, updateTagSpy, cacheState } = vi.hoisted(() => ({
     urlRedirect: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
+      findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
@@ -77,6 +78,7 @@ beforeEach(() => {
   cacheState.mode = "passthrough";
   mockPrisma.urlRedirect.findUnique.mockResolvedValue(null);
   mockPrisma.urlRedirect.findFirst.mockResolvedValue(null);
+  mockPrisma.urlRedirect.findMany.mockResolvedValue([]);
   mockPrisma.urlRedirect.create.mockImplementation(async ({ data }) => ({ id: "r1", ...data }));
   mockPrisma.urlRedirect.update.mockImplementation(async ({ data }) => ({ id: "r1", ...data }));
   mockPrisma.urlRedirect.updateMany.mockResolvedValue({ count: 1 });
@@ -158,18 +160,29 @@ describe("redirects/service — invalidación del tag 'redirects' (B-8)", () => 
   });
 });
 
-describe("lookupActiveRedirectCached — caché del proxy (B-8)", () => {
-  it("delega en el lookup crudo y devuelve { toPath, statusCode }", async () => {
-    mockPrisma.urlRedirect.findFirst.mockResolvedValue({
-      toPath: "/productos",
-      statusCode: 301,
-    });
-    const res = await lookupActiveRedirectCached(nextPath());
+describe("lookupActiveRedirectCached — caché del proxy (B-8; lista completa ADR-131)", () => {
+  it("resuelve desde la LISTA completa cacheada y devuelve { toPath, statusCode }", async () => {
+    const target = nextPath();
+    mockPrisma.urlRedirect.findMany.mockResolvedValue([
+      { fromPath: "/otro", toPath: "/ayuda", statusCode: 302 },
+      { fromPath: target, toPath: "/productos", statusCode: 301 },
+    ]);
+    const res = await lookupActiveRedirectCached(target);
     expect(res).toEqual({ toPath: "/productos", statusCode: 301 });
-    expect(mockPrisma.urlRedirect.findFirst).toHaveBeenCalledWith({
-      where: { fromPath: expect.stringContaining("/b8-test/"), isActive: true, deletedAt: null },
-      select: { toPath: true, statusCode: true },
+    // Una sola query de lista completa (no una por path)
+    expect(mockPrisma.urlRedirect.findMany).toHaveBeenCalledWith({
+      where: { isActive: true, deletedAt: null },
+      select: { fromPath: true, toPath: true, statusCode: true },
     });
+    expect(mockPrisma.urlRedirect.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("devuelve null cuando el path no está en la lista", async () => {
+    mockPrisma.urlRedirect.findMany.mockResolvedValue([
+      { fromPath: "/otro", toPath: "/ayuda", statusCode: 302 },
+    ]);
+    const res = await lookupActiveRedirectCached(nextPath());
+    expect(res).toBeNull();
   });
 
   it("sin incrementalCache (invariante E469 de Next 16) degrada al lookup directo", async () => {
@@ -181,7 +194,7 @@ describe("lookupActiveRedirectCached — caché del proxy (B-8)", () => {
   });
 
   it("un error que NO es E469 se propaga (el proxy decide el fallback)", async () => {
-    mockPrisma.urlRedirect.findFirst.mockRejectedValue(new Error("db down"));
+    mockPrisma.urlRedirect.findMany.mockRejectedValue(new Error("db down"));
     await expect(lookupActiveRedirectCached(nextPath())).rejects.toThrow("db down");
   });
 });
