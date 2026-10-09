@@ -53,7 +53,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@aws-sdk/client-s3": "^3.1142.0",
+    "@aws-sdk/client-s3": "^3.1146.0",
     "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
@@ -62,14 +62,14 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/three": "^0.185.4",
+    "@types/three": "^0.186.0",
     "@vitest/coverage-v8": "^4.1.11",
     "@vitest/ui": "^4.1.11",
     "dotenv": "^16.4.7",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "jsdom": "^29.1.1",
-    "shadcn": "^4.21.0",
+    "shadcn": "^4.21.2",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.11"
