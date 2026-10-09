@@ -86,6 +86,85 @@ describe("POST /api/vitals — backstop global (C-1)", () => {
   });
 });
 
+describe("POST /api/vitals — métricas por pageview (Paquete C, 2026-10-09)", () => {
+  it("acepta LONGTASK (value=ms totales, delta=cantidad)", async () => {
+    const res = await POST(
+      req({ name: "LONGTASK", value: 340, rating: "needs-improvement", delta: 3, route: "/" }),
+    );
+    expect(res.status).toBe(200);
+    expect(webVitalCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ name: "LONGTASK", value: 340, delta: 3 }),
+    });
+  });
+
+  it("acepta PAGEWEIGHT (value=bytes, delta=recursos)", async () => {
+    const res = await POST(
+      req({ name: "PAGEWEIGHT", value: 1_800_000, rating: "good", delta: 42, route: "/" }),
+    );
+    expect(res.status).toBe(200);
+    expect(webVitalCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ name: "PAGEWEIGHT", value: 1_800_000 }),
+    });
+  });
+
+  it("rechaza métricas fuera del enum", async () => {
+    const res = await POST(req({ ...VALID_BODY, name: "MEMORY" }));
+    expect(res.status).toBe(400);
+    expect(webVitalCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/vitals — sessionId desde cookie cart_session (Paquete C)", () => {
+  const CART_UUID = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+
+  function reqWithCookie(body: unknown, cookie?: string): Request {
+    return new Request("https://lucamsshop.com/api/vitals", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-vercel-forwarded-for": "203.0.113.7",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("sin sessionId en el payload, toma la cookie cart_session (HttpOnly — el cliente no la lee)", async () => {
+    const { sessionId: _omit, ...noSession } = VALID_BODY;
+    const res = await POST(reqWithCookie(noSession, `cart_session=${CART_UUID}; other=1`));
+    expect(res.status).toBe(200);
+    expect(webVitalCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ sessionId: CART_UUID }),
+    });
+  });
+
+  it("el sessionId del payload tiene prioridad sobre la cookie", async () => {
+    const res = await POST(reqWithCookie(VALID_BODY, `cart_session=${CART_UUID}`));
+    expect(res.status).toBe(200);
+    expect(webVitalCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ sessionId: "sess-1" }),
+    });
+  });
+
+  it("cookie con valor que no es UUID se ignora (persiste null)", async () => {
+    const { sessionId: _omit, ...noSession } = VALID_BODY;
+    const res = await POST(reqWithCookie(noSession, "cart_session=../../etc/passwd"));
+    expect(res.status).toBe(200);
+    expect(webVitalCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ sessionId: null }),
+    });
+  });
+
+  it("sin cookie persiste null", async () => {
+    const { sessionId: _omit, ...noSession } = VALID_BODY;
+    const res = await POST(reqWithCookie(noSession));
+    expect(res.status).toBe(200);
+    expect(webVitalCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ sessionId: null }),
+    });
+  });
+});
+
 describe("POST /api/vitals — target del INP (2026-09-18)", () => {
   it("persiste el selector del elemento cuando el payload lo trae", async () => {
     const res = await POST(
