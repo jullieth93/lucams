@@ -114,11 +114,32 @@ describe("isRetryableConnectionError", () => {
     expect(isRetryableConnectionError(errWithCode("P2024"))).toBe(true); // pool timeout
   });
 
+  it("también reconoce la variante PrismaClientInitializationError (SIN code) — medida en PRD", () => {
+    // P2024 en cold start de lambda llega como InitializationError sin `code`
+    // (log PRD 2026-10-09 07:20): el retry debe reconocerlo por mensaje.
+    expect(
+      isRetryableConnectionError(
+        new Error(
+          "\nInvalid `prisma.x.findMany()` invocation:\n\n\nTimed out fetching a new connection from the connection pool. More info: http://pris.ly/d/connection-pool (Current connection pool timeout: 20, connection limit: 5)",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isRetryableConnectionError(
+        new Error("Can't reach database server at `aws-0-x.pooler.supabase.com:6543`"),
+      ),
+    ).toBe(true);
+    expect(isRetryableConnectionError(new Error("Server has closed the connection."))).toBe(true);
+  });
+
   it("NO reintenta errores de ejecución/lógica (la query SÍ corrió)", () => {
     expect(isRetryableConnectionError(errWithCode("P2002"))).toBe(false); // unique constraint
     expect(isRetryableConnectionError(errWithCode("P2025"))).toBe(false); // record not found
     expect(isRetryableConnectionError(errWithCode("P1008"))).toBe(false); // operation timeout
     expect(isRetryableConnectionError(new Error("sin código"))).toBe(false);
+    expect(
+      isRetryableConnectionError(new Error("duplicate key value violates unique constraint")),
+    ).toBe(false);
     expect(isRetryableConnectionError(null)).toBe(false);
     expect(isRetryableConnectionError("P1001")).toBe(false);
   });
