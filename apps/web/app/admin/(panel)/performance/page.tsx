@@ -169,6 +169,8 @@ export default async function AdminPerformancePage() {
         select: {
           id: true,
           message: true,
+          digest: true,
+          stack: true,
           routePath: true,
           requestPath: true,
           method: true,
@@ -290,6 +292,24 @@ export default async function AdminPerformancePage() {
                     </td>
                     <td className="text-brand-purple-dark/90 max-w-md px-4 py-3 align-top text-xs break-words">
                       {e.message}
+                      {e.digest && (
+                        <span
+                          className="text-brand-muted mt-1 block font-mono text-[10px]"
+                          title="Digest del error: sirve para cruzar con los logs de Vercel y agrupar ocurrencias del mismo fallo"
+                        >
+                          digest: {e.digest}
+                        </span>
+                      )}
+                      {e.stack && (
+                        <details className="mt-1">
+                          <summary className="text-brand-purple cursor-pointer text-[11px] font-semibold">
+                            Ver stack
+                          </summary>
+                          <pre className="text-brand-muted bg-brand-purple/5 mt-1 max-h-64 overflow-auto rounded p-2 font-mono text-[10px] whitespace-pre-wrap">
+                            {e.stack}
+                          </pre>
+                        </details>
+                      )}
                     </td>
                   </AdminTableRow>
                 ))}

@@ -282,16 +282,16 @@ describe("StudioPreviewModal — aceptación explícita de calidad de fotos (Paq
 });
 
 describe("StudioPreviewModal — avisos informativos de brillo suave (fase 2, 2026-10-02)", () => {
-  // requiresAck:false = el ÚNICO problema de la foto es brillo soft (look
-  // oscuro deliberado) — se muestra en la lista pero NO exige aceptación.
+  // requiresAck:false = el ÚNICO problema de la foto es brillo soft (hoy solo
+  // sobreexposición; el aviso de foto oscura se eliminó 2026-10) — se muestra
+  // en la lista pero NO exige aceptación.
   const INFO_WARNING = {
-    assetId: "asset-oscura",
-    signedUrl: "https://signed.example/foto-oscura.jpg",
+    assetId: "asset-sobreexpuesta",
+    signedUrl: "https://signed.example/foto-sobreexpuesta.jpg",
     level: "warning-soft" as const,
-    message:
-      "La foto está algo oscura. Si buscabas un look oscuro o con fondo negro, puedes ignorar este aviso.",
+    message: "La foto está sobreexpuesta. Algunos detalles podrían perderse al imprimir.",
     recommendation:
-      "Si el estilo oscuro es a propósito, no hay nada que hacer. Si no, una foto con más luz va a verse mejor.",
+      "Una foto con menos exposición (menos quemada) conserva mejor los detalles al imprimir.",
     requiresAck: false,
   };
 
@@ -301,7 +301,7 @@ describe("StudioPreviewModal — avisos informativos de brillo suave (fase 2, 20
     expect(screen.getByText("Calidad de tus fotos")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "La foto está algo oscura. Si buscabas un look oscuro o con fondo negro, puedes ignorar este aviso.",
+        "La foto está sobreexpuesta. Algunos detalles podrían perderse al imprimir.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
@@ -327,5 +327,143 @@ describe("StudioPreviewModal — avisos informativos de brillo suave (fase 2, 20
     expect(cta).toBeEnabled();
     fireEvent.click(cta);
     expect(props.onConfirm).toHaveBeenCalledWith(1, { qualityAcknowledged: true });
+  });
+});
+
+describe("StudioPreviewModal — Vista Previa PAGINADA por unidad (Fase 2 · item 2.2)", () => {
+  const PAGES = [
+    { dataUrl: "data:image/png;base64,set1", label: "Set 1 de 3" },
+    { dataUrl: "data:image/png;base64,set2", label: "Set 2 de 3" },
+    { dataUrl: "data:image/png;base64,set3", label: "Set 3 de 3" },
+  ];
+
+  it("con varias páginas: pager con indicador, dots y flechas; NO la imagen única", () => {
+    render(<StudioPreviewModal {...baseProps()} pages={PAGES} unitCount={3} />);
+    // Abre en la primera unidad, indicador anunciado.
+    expect(screen.getByText("Set 1 de 3")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Set 1 de 3/ })).toBeInTheDocument();
+    // 3 dots + 2 flechas con sus arias CMS.
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Unidad anterior" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Unidad siguiente" })).toBeEnabled();
+  });
+
+  it("flechas y dots navegan; la flecha se deshabilita en los extremos (sin wrap)", () => {
+    render(<StudioPreviewModal {...baseProps()} pages={PAGES} unitCount={3} />);
+    fireEvent.click(screen.getByRole("button", { name: "Unidad siguiente" }));
+    expect(screen.getByText("Set 2 de 3")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Set 2 de 3/ })).toBeInTheDocument();
+    // Dot directo a la última → "siguiente" queda deshabilitada (no envuelve).
+    fireEvent.click(screen.getAllByRole("tab")[2]!);
+    expect(screen.getByText("Set 3 de 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unidad siguiente" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Unidad anterior" })).toBeEnabled();
+  });
+
+  it("teclado ← → sobre el pager cambia de unidad", () => {
+    render(<StudioPreviewModal {...baseProps()} pages={PAGES} unitCount={3} />);
+    const pager = screen.getByRole("group", { name: "Set 1 de 3" });
+    fireEvent.keyDown(pager, { key: "ArrowRight" });
+    expect(screen.getByText("Set 2 de 3")).toBeInTheDocument();
+    fireEvent.keyDown(pager, { key: "ArrowLeft" });
+    expect(screen.getByText("Set 1 de 3")).toBeInTheDocument();
+  });
+
+  it("swipe horizontal cambia de unidad; el vertical NO (sigue el scroll del diálogo)", () => {
+    render(<StudioPreviewModal {...baseProps()} pages={PAGES} unitCount={3} />);
+    const pager = screen.getByRole("group", { name: "Set 1 de 3" });
+    // Swipe a la izquierda → siguiente unidad.
+    fireEvent.touchStart(pager, {
+      touches: [{ clientX: 300, clientY: 100 }],
+      changedTouches: [{ clientX: 300, clientY: 100 }],
+    });
+    fireEvent.touchEnd(pager, { changedTouches: [{ clientX: 120, clientY: 108 }] });
+    expect(screen.getByText("Set 2 de 3")).toBeInTheDocument();
+    // Gesto casi vertical → no cambia.
+    fireEvent.touchStart(pager, {
+      touches: [{ clientX: 300, clientY: 100 }],
+      changedTouches: [{ clientX: 300, clientY: 100 }],
+    });
+    fireEvent.touchEnd(pager, { changedTouches: [{ clientX: 250, clientY: 400 }] });
+    expect(screen.getByText("Set 2 de 3")).toBeInTheDocument();
+    // Swipe corto (< umbral) → no cambia.
+    fireEvent.touchStart(pager, {
+      touches: [{ clientX: 300, clientY: 100 }],
+      changedTouches: [{ clientX: 300, clientY: 100 }],
+    });
+    fireEvent.touchEnd(pager, { changedTouches: [{ clientX: 290, clientY: 100 }] });
+    expect(screen.getByText("Set 2 de 3")).toBeInTheDocument();
+  });
+
+  it("UNA sola página (o sin pages): imagen única de siempre, sin pager", () => {
+    const { unmount } = render(
+      <StudioPreviewModal {...baseProps()} pages={[PAGES[0]!]} unitCount={1} />,
+    );
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Unidad siguiente" })).not.toBeInTheDocument();
+    unmount();
+    render(<StudioPreviewModal {...baseProps()} />);
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Vista previa de 6 imanes/ })).toBeInTheDocument();
+  });
+});
+
+describe("StudioPreviewModal — páginas PEREZOSAS por unidad (PERF 2026-10-07)", () => {
+  const LAZY_PAGES: { dataUrl: string | null; label: string }[] = [
+    { dataUrl: null, label: "Set 1 de 3" },
+    { dataUrl: null, label: "Set 2 de 3" },
+    { dataUrl: null, label: "Set 3 de 3" },
+  ];
+
+  it("página pendiente (dataUrl null): indicador de carga + pide la página al editor", () => {
+    const onRequestPage = vi.fn();
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        pages={LAZY_PAGES}
+        unitCount={3}
+        onRequestPage={onRequestPage}
+      />,
+    );
+    // La unidad visible (la primera) se pide de inmediato y muestra el spinner.
+    expect(onRequestPage).toHaveBeenCalledWith(0);
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.getByText("Armando la vista de esta unidad…")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Set 1 de 3/ })).not.toBeInTheDocument();
+  });
+
+  it("navegar a otra página pendiente la pide; una página resuelta muestra la imagen", () => {
+    const onRequestPage = vi.fn();
+    const { rerender } = render(
+      <StudioPreviewModal
+        {...baseProps()}
+        pages={LAZY_PAGES}
+        unitCount={3}
+        onRequestPage={onRequestPage}
+      />,
+    );
+    // El editor resuelve la página 0 (cache local por unidad) → llega con dataUrl.
+    const resolved = LAZY_PAGES.map((p, i) =>
+      i === 0 ? { ...p, dataUrl: "data:image/png;base64,set1" } : p,
+    );
+    rerender(
+      <StudioPreviewModal
+        {...baseProps()}
+        pages={resolved}
+        unitCount={3}
+        onRequestPage={onRequestPage}
+      />,
+    );
+    expect(screen.getByRole("img", { name: /Set 1 de 3/ })).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    // Navegar a la página 2 (pendiente) → spinner + request con su índice.
+    fireEvent.click(screen.getByRole("button", { name: "Unidad siguiente" }));
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    // Volver a la página 0 (ya resuelta) NO la vuelve a pedir (cacheada):
+    // solo 2 requests en total — la inicial de la página 0 y la de la página 1.
+    fireEvent.click(screen.getByRole("button", { name: "Unidad anterior" }));
+    expect(onRequestPage).toHaveBeenCalledTimes(2);
+    expect(onRequestPage).toHaveBeenNthCalledWith(1, 0);
+    expect(onRequestPage).toHaveBeenNthCalledWith(2, 1);
   });
 });

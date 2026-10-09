@@ -18,7 +18,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import {
-  Sparkles,
+  LayoutDashboard,
   Zap,
   ShoppingBag,
   Layers,
@@ -129,7 +129,7 @@ export default async function AdminDashboardPage({
   return (
     <AdminPage>
       <AdminPageHeader
-        icon={<Sparkles className="h-5 w-5" />}
+        icon={<LayoutDashboard className="h-5 w-5" />}
         title={
           displayName ? (
             <>

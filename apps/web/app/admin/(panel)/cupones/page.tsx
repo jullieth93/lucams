@@ -15,6 +15,7 @@ import { listCoupons } from "@/features/coupons/service";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
+import { prisma } from "@/lib/db";
 import {
   AdminPage,
   AdminPageHeader,
@@ -60,6 +61,20 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
     "recent" | "expiry-asc" | "code" | "uses";
 
   const coupons = await listCoupons({ q, status, sort });
+  // Opciones reales del catálogo para los multi-select de restricciones del
+  // form de crear (un slug digitado a mano fallaba en silencio en redemption).
+  const [categories, products] = await Promise.all([
+    prisma.category.findMany({
+      where: { deletedAt: null },
+      select: { slug: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.product.findMany({
+      where: { isActive: true, deletedAt: null },
+      select: { slug: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
   const now = new Date();
   const hasActiveFilters = !!q || status !== "all" || sort !== "recent";
 
@@ -364,7 +379,7 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
             </span>
           </summary>
           <div className="border-brand-purple/10 border-t px-5 pt-4 pb-5">
-            <CreateCouponForm />
+            <CreateCouponForm categories={categories} products={products} />
           </div>
         </details>
       </AdminPageBody>

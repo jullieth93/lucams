@@ -148,3 +148,181 @@ describe("StudioAssetPickerModal — avisos de calidad con PhotoQualityModal", (
     expect(props.onSelectAsset).not.toHaveBeenCalled();
   });
 });
+
+describe("StudioAssetPickerModal — estado 'procesando' se resetea al cerrar (fix STG 2026-10-05)", () => {
+  const OK2: StudioAsset = {
+    id: "ok2",
+    signedUrl: "https://example.com/ok2.jpg",
+    width: 2400,
+    height: 2400,
+  };
+
+  it("reabrir el picker para OTRO slot no deja las miniaturas deshabilitadas ni el spinner", async () => {
+    const props = {
+      isOpen: true,
+      slotIndex: 0,
+      totalSlots: 3,
+      assets: [OK, OK2],
+      designId: null,
+      onClose: vi.fn(),
+      onSelectAsset: vi.fn(),
+      onAssetUploaded: vi.fn(),
+    };
+    // El editor mantiene el componente SIEMPRE montado (solo lo oculta con
+    // isOpen) — la regresión vivía exactamente en ese ciclo de vida.
+    const { rerender } = render(
+      <TooltipProvider>
+        <StudioAssetPickerModal {...props} />
+      </TooltipProvider>,
+    );
+    const renderWith = (isOpen: boolean, slotIndex: number) =>
+      rerender(
+        <TooltipProvider>
+          <StudioAssetPickerModal {...props} isOpen={isOpen} slotIndex={slotIndex} />
+        </TooltipProvider>,
+      );
+
+    // Asignar una foto al slot 1: queda el estado "procesando" (spinner +
+    // resto deshabilitado) hasta que cierra el timer de feedback.
+    fireEvent.click(screen.getAllByRole("gridcell", { name: "Asignar esta foto al slot" })[0]);
+    await vi.waitFor(() => {
+      expect(props.onSelectAsset).toHaveBeenCalledWith(0, OK);
+    });
+    expect(
+      screen.getAllByRole("gridcell", { name: "Asignar esta foto al slot" })[1],
+    ).toBeDisabled();
+
+    // El editor cierra el picker (onClose del timer o backdrop) y luego lo
+    // reabre para el slot 2.
+    renderWith(false, 0);
+    renderWith(true, 1);
+
+    // Todas las miniaturas vuelven a estar habilitadas: sin el fix quedaban
+    // disabled para siempre ("procesando" eterno).
+    for (const cell of screen.getAllByRole("gridcell", { name: "Asignar esta foto al slot" })) {
+      expect(cell).not.toBeDisabled();
+      expect(cell).not.toHaveAttribute("aria-busy", "true");
+    }
+  });
+});
+
+describe("StudioAssetPickerModal — tabs «Mis fotos» / «Prediseñados» (Fase 2 · 2.5)", () => {
+  const PREDESIGNED = [
+    { id: "g1", name: "Amor pastel", imageUrl: "https://example.com/g1.png" },
+    { id: "g2", name: "Selva", imageUrl: "https://example.com/g2.png" },
+  ];
+
+  function renderPickerWithPredesigned(
+    assets: StudioAsset[],
+    overrides: Partial<Parameters<typeof StudioAssetPickerModal>[0]> = {},
+  ) {
+    const props = {
+      isOpen: true,
+      slotIndex: 0,
+      totalSlots: 3,
+      assets,
+      designId: null,
+      predesigned: PREDESIGNED,
+      onClose: vi.fn(),
+      onSelectAsset: vi.fn(),
+      onAssetUploaded: vi.fn(),
+      ...overrides,
+    };
+    render(
+      <TooltipProvider>
+        <StudioAssetPickerModal {...props} />
+      </TooltipProvider>,
+    );
+    return props;
+  }
+
+  it("con prediseñados: tabs con «Mis fotos» PRIMERO y seleccionada por defecto; «Subir nueva» visible", () => {
+    renderPickerWithPredesigned([OK]);
+
+    const tabs = screen.getAllByRole("tab");
+    // Orden: Mis fotos primero, Prediseñados segundo.
+    expect(tabs[0]).toHaveAccessibleName(/Mis fotos/);
+    expect(tabs[1]).toHaveAccessibleName(/Prediseñados/);
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    expect(tabs[1]).toHaveAttribute("aria-selected", "false");
+
+    // Tab activa = Mis fotos: su grid visible, los prediseñados NO.
+    expect(screen.getByRole("gridcell", { name: "Asignar esta foto al slot" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Aplicar el diseño/ })).toBeNull();
+
+    // "Subir nueva" vive en la zona fija: accesible sin importar el tab.
+    expect(
+      screen.getByRole("button", { name: "Subir foto desde tu dispositivo" }),
+    ).toBeInTheDocument();
+  });
+
+  it("el tab «Prediseñados» muestra su grid y oculta «Mis fotos» (sin scroll eterno)", () => {
+    renderPickerWithPredesigned([OK]);
+
+    // Radix Tabs activa el trigger en mouseDown (no en click).
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Prediseñados/ }));
+
+    expect(
+      screen.getByRole("button", { name: "Aplicar el diseño Amor pastel al slot" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Aplicar el diseño Selva al slot" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("gridcell", { name: "Asignar esta foto al slot" })).toBeNull();
+    // El CTA de subir sigue accesible desde este tab.
+    expect(
+      screen.getByRole("button", { name: "Subir foto desde tu dispositivo" }),
+    ).toBeInTheDocument();
+  });
+
+  it("modo profile (foto de perfil IG): NO hay tab de prediseñados aunque existan", () => {
+    renderPickerWithPredesigned([OK], { mode: "profile" });
+
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Aplicar el diseño/ })).toBeNull();
+    // Mis fotos va directo, con su encabezado de sección (sin tabs).
+    expect(screen.getByRole("gridcell", { name: "Asignar esta foto al slot" })).toBeInTheDocument();
+    expect(screen.getByText(/Mis fotos/)).toBeInTheDocument();
+  });
+
+  it("sin prediseñados: no hay tabs (comportamiento previo intacto)", () => {
+    renderPicker([OK]);
+
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.getByRole("gridcell", { name: "Asignar esta foto al slot" })).toBeInTheDocument();
+  });
+
+  // Fase 3 · 3.10 (2026-10-07) — la tarjeta exhibe la MINIATURA watermark
+  // (thumbUrl) cuando existe; el original solo es fallback transitorio
+  // (filas pre-backfill). Disuasión anti-copia: draggable=false + contextmenu
+  // bloqueado sobre la imagen.
+  it("3.10 — exhibe la miniatura watermark (thumbUrl) con disuasión anti-copia", () => {
+    renderPickerWithPredesigned([OK], {
+      predesigned: [
+        {
+          id: "g1",
+          name: "Amor pastel",
+          imageUrl: "https://example.com/g1.png",
+          thumbUrl: "https://example.com/thumbs/g1.webp",
+        },
+      ],
+    });
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Prediseñados/ }));
+
+    const img = screen.getByAltText("Amor pastel");
+    expect(img).toHaveAttribute("src", "https://example.com/thumbs/g1.webp");
+    expect(img).toHaveAttribute("draggable", "false");
+    const ev = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
+    img.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it("3.10 — sin thumbUrl (pre-backfill) cae al imageUrl original (fallback transitorio)", () => {
+    renderPickerWithPredesigned([OK], {
+      predesigned: [{ id: "g2", name: "Selva", imageUrl: "https://example.com/g2.png" }],
+    });
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Prediseñados/ }));
+
+    expect(screen.getByAltText("Selva")).toHaveAttribute("src", "https://example.com/g2.png");
+  });
+});

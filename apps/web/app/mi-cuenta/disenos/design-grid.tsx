@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Share2, Archive, ExternalLink, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { Share2, Archive, ExternalLink, Loader2, Palette, Pencil } from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { toast } from "sonner";
 import { buildPublicShareUrl } from "@/lib/public-url";
@@ -16,6 +17,9 @@ export type DesignCardData = {
   /** Hay un link /d/<token> activo (F-11: solo el hash vive en DB). */
   hasShareToken: boolean;
   used: boolean;
+  /** Fase 2 · item 2.4 (2026-10-07) — borrador vigente: sin preview ni acciones
+   *  de compartir; la tarjeta ofrece «Seguir editando» al Estudio. */
+  draft?: boolean;
 };
 
 export function DesignGrid({
@@ -27,10 +31,60 @@ export function DesignGrid({
 }) {
   return (
     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-      {designs.map((d) => (
-        <DesignCard key={d.id} design={d} texts={texts} />
-      ))}
+      {designs.map((d) =>
+        d.draft ? (
+          <DraftDesignCard key={d.id} design={d} texts={texts} />
+        ) : (
+          <DesignCard key={d.id} design={d} texts={texts} />
+        ),
+      )}
     </ul>
+  );
+}
+
+/**
+ * Fase 2 · item 2.4 (2026-10-07) — tarjeta de un BORRADOR vigente: el preview
+ * solo existe tras finalizar, así que va un placeholder de marca con el badge
+ * «Borrador» y el CTA «Seguir editando» que reabre el Estudio con ?designId=
+ * (el recover flow del server valida ownership y estado). Sin compartir ni
+ * archivar: compartir exige READY y archivar borradores no está soportado por
+ * la action (su retiro lo hace la purga de retención a los 90 d idle).
+ */
+function DraftDesignCard({
+  design,
+  texts,
+}: {
+  design: DesignCardData;
+  texts: AccountTexts["designs"];
+}) {
+  return (
+    <li className="border-brand-purple/12 overflow-hidden rounded-2xl border border-dashed bg-white shadow-sm">
+      <div
+        className="bg-brand-cream flex aspect-square w-full flex-col items-center justify-center gap-2"
+        aria-hidden
+      >
+        <Palette className="text-brand-purple/50 h-8 w-8" />
+      </div>
+      <div className="p-3">
+        <div className="flex items-center gap-2">
+          <p className="text-brand-purple-dark min-w-0 flex-1 truncate text-sm font-semibold">
+            {design.productName}
+          </p>
+          <span className="bg-brand-purple/10 text-brand-purple-dark flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold">
+            {texts.draftBadge}
+          </span>
+        </div>
+        <div className="mt-3">
+          <Link
+            href={`/estudio/${design.productSlug}?designId=${design.id}`}
+            className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden />
+            {texts.draftResume}
+          </Link>
+        </div>
+      </div>
+    </li>
   );
 }
 

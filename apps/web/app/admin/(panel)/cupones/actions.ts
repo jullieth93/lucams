@@ -16,6 +16,7 @@ import {
 } from "@/features/coupons/service";
 import { CouponCreateSchema, CouponUpdateSchema } from "@/features/coupons/schemas";
 import { cotStartOfDay, cotEndOfDay } from "@/features/coupons/dates";
+import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
 export type CouponActionState = {
@@ -24,6 +25,52 @@ export type CouponActionState = {
     Record<"code" | "type" | "value" | "validFrom" | "validTo" | "minOrder", string[]>
   >;
 };
+
+/*
+ * Defensa en capas sobre el multi-select del form: un slug de categoría o
+ * producto que NO existe en el catálogo haría que el cupón nunca aplicara
+ * (redemption.ts hace match exacto por slug) y antes fallaba en silencio.
+ * Devuelve el mensaje de error listo para mostrar, o null si todo existe.
+ * "Existe" = no soft-deleted (un producto pausado sigue siendo referenciable).
+ */
+async function restrictionSlugsError(payload: {
+  appliesToCategories: string[];
+  appliesToProductSlugs: string[];
+}): Promise<string | null> {
+  const problems: string[] = [];
+  if (payload.appliesToCategories.length > 0) {
+    const found = await prisma.category.findMany({
+      where: { slug: { in: payload.appliesToCategories }, deletedAt: null },
+      select: { slug: true },
+    });
+    const foundSlugs = new Set(found.map((c) => c.slug));
+    const missing = payload.appliesToCategories.filter((s) => !foundSlugs.has(s));
+    if (missing.length > 0) {
+      problems.push(
+        `${missing.length === 1 ? "La categoría" : "Las categorías"} ${missing
+          .map((s) => `«${s}»`)
+          .join(", ")} no existe${missing.length === 1 ? "" : "n"} en el catálogo`,
+      );
+    }
+  }
+  if (payload.appliesToProductSlugs.length > 0) {
+    const found = await prisma.product.findMany({
+      where: { slug: { in: payload.appliesToProductSlugs }, deletedAt: null },
+      select: { slug: true },
+    });
+    const foundSlugs = new Set(found.map((p) => p.slug));
+    const missing = payload.appliesToProductSlugs.filter((s) => !foundSlugs.has(s));
+    if (missing.length > 0) {
+      problems.push(
+        `${missing.length === 1 ? "El producto" : "Los productos"} ${missing
+          .map((s) => `«${s}»`)
+          .join(", ")} no existe${missing.length === 1 ? "" : "n"} en el catálogo`,
+      );
+    }
+  }
+  if (problems.length === 0) return null;
+  return `${problems.join(". ")}. Elígelos desde la lista del formulario.`;
+}
 
 function parsePayload(formData: FormData) {
   const minOrderRaw = formData.get("minOrder");
@@ -78,6 +125,9 @@ export async function createCouponAction(
       fieldErrors: flat.fieldErrors as CouponActionState["fieldErrors"],
     };
   }
+
+  const slugsError = await restrictionSlugsError(parsed.data);
+  if (slugsError) return { error: slugsError };
 
   try {
     const coupon = await createCoupon(parsed.data, session.admin.id);
@@ -134,6 +184,12 @@ export async function updateCouponAction(
       fieldErrors: flat.fieldErrors as CouponActionState["fieldErrors"],
     };
   }
+
+  const slugsError = await restrictionSlugsError({
+    appliesToCategories: parsed.data.appliesToCategories ?? [],
+    appliesToProductSlugs: parsed.data.appliesToProductSlugs ?? [],
+  });
+  if (slugsError) return { error: slugsError };
 
   try {
     await updateCoupon(parsed.data, session.admin.id);

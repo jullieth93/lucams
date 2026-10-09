@@ -164,8 +164,11 @@ export function isPublicSettingKey(key: string): boolean {
  * invariante y ejecutamos la función cruda (sin caché); cualquier otro error se
  * re-lanza. En producción (siempre dentro de un request de Next) el fallback
  * nunca se dispara → el comportamiento cacheado es idéntico.
+ *
+ * Exportada (2026-10-07): el mismo patrón lo reusan otros readers cacheados
+ * fuera del CMS (p.ej. las miniaturas de galería en design-gallery.ts).
  */
-function cachedCms<A extends unknown[], R>(
+export function cachedCms<A extends unknown[], R>(
   fn: (...args: A) => Promise<R>,
   keyParts: string[],
   options: { tags: string[]; revalidate: number },
@@ -263,13 +266,11 @@ export type CmsImageData = {
  * Devuelve `null` si falta el campo, no está publicado, o el asset ya no
  * existe — el caller cae al asset hardcoded del repo (REGLA DE ORO).
  *
- * NOTA N-23 (2026-09-12): hoy NO tiene ningún caller storefront (verificado
- * con grep repo-wide; solo la cubre features/cms/service.integration.test.ts).
- * Se CONSERVA a propósito: es el único reader de los campos IMAGE "sueltos",
- * un tipo de campo que el admin YA puede crear/editar/publicar desde
- * /admin/contenido (create-field-form + field-editor-form) — retirarla dejaría
- * esa capacidad del CMS sin consumidor posible. Si se amarran campos IMAGE a la
- * UI pública, este es el punto de lectura.
+ * NOTA N-23 (2026-09-12, actualizada Fase 3 · 3.9): hasta esa fecha no tenía
+ * ningún caller storefront; hoy la usa el logo administrable `site.logo`
+ * (components/site-header.tsx → BrandMark y app/admin/(panel)/layout.tsx →
+ * AdminShell). Sigue siendo el punto de lectura de los campos IMAGE "sueltos"
+ * que el admin crea/edita/publica desde /admin/contenido.
  */
 export const getCmsImage = cachedCms(
   async (key: string): Promise<CmsImageData | null> => {

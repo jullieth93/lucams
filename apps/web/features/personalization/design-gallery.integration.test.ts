@@ -9,7 +9,7 @@ import {
   listGalleryImages,
   listGalleryAdmin,
   createGalleryImage,
-  deleteGalleryImage,
+  archiveGalleryImage,
   listGalleryTagOptions,
 } from "./design-gallery";
 
@@ -43,8 +43,8 @@ describe.skipIf(!hasDb)("design-gallery — integración", { timeout: 30000 }, (
     const adminList = await listGalleryAdmin(TAG);
     expect(adminList).toHaveLength(2);
 
-    // borrar (soft) → desaparece del list público
-    await deleteGalleryImage(a.id);
+    // archivar (soft) → desaparece del list público
+    await archiveGalleryImage(a.id);
     const after = await listGalleryImages(TAG);
     expect(after.map((i) => i.id)).toEqual([b.id]);
   });

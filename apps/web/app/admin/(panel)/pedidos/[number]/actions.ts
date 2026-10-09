@@ -246,6 +246,61 @@ export async function refundOrderAction(
 }
 
 /**
+ * Reconciliación manual (2026-10-05): apaga Order.needsReconciliation cuando el
+ * admin YA gestionó el caso por fuera del sistema (refund emitido a mano en
+ * Wompi, stock producido, etc.). La nota de resolución es OBLIGATORIA — sin ella
+ * el cierre no explica nada y la auditoría pierde su valor.
+ *
+ * Solo apaga el flag si sigue prendido (updateMany gateado → idempotente: dos
+ * admins marcando a la vez no pisan la primera resolución). NO toca los flujos
+ * automáticos que lo prenden (saga, expire-pending, checkout COD): si la anomalía
+ * se repite, el flag vuelve a prender con su motivo nuevo.
+ */
+export async function markOrderReconciledAction(
+  _prev: { error?: string; success?: string } | null,
+  formData: FormData,
+): Promise<{ error?: string; success?: string }> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+
+  const orderId = String(formData.get("orderId") ?? "");
+  if (!orderId) return { error: "Falta el pedido." };
+  const note = String(formData.get("note") ?? "")
+    .trim()
+    .slice(0, 500);
+  if (note.length < 5) {
+    return {
+      error:
+        "Escribe una nota de resolución (mínimo 5 caracteres): qué se hizo para gestionar el caso.",
+    };
+  }
+
+  const resolved = await prisma.order.updateMany({
+    where: { id: orderId, needsReconciliation: true },
+    data: {
+      needsReconciliation: false,
+      reconciliationNote: note,
+      reconciledAt: new Date(),
+      reconciledBy: session.admin.id,
+    },
+  });
+  if (resolved.count === 0) {
+    return { error: "Este pedido no está marcado para reconciliar (quizá ya lo gestionaron)." };
+  }
+
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "order.reconcile",
+    entityType: "Order",
+    entityId: orderId,
+    metadata: { note },
+  });
+  logger.info({ event: "admin.order.reconciled", adminId: session.admin.id, orderId });
+  revalidatePath("/admin/pedidos");
+  revalidatePath(`/admin/pedidos/[number]`, "page");
+  return { success: "Reconciliación marcada como gestionada. La nota quedó en auditoría." };
+}
+
+/**
  * Anti-abuso COD (ADR-065): marca un pedido contra entrega como NO RECIBIDO (no-show). Señal explícita
  * —distinta del RETURNED del courier— que assessCodRisk usa para vetar futuros COD de la identidad.
  */

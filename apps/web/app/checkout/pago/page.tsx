@@ -24,9 +24,11 @@ import {
   assertCheckoutAvailability,
 } from "@/features/checkout/service";
 import { getSettingValue } from "@/lib/cms";
+import { getLucamsShippingSettings } from "@/features/shipping/settings";
 import { CmsText } from "@/components/cms/cms-text";
 import { formatCityDept } from "@/lib/format";
 import { getCheckoutTexts } from "../checkout-texts.server";
+import { resolveLucamsPromise } from "../checkout-texts";
 
 const STOCK_GONE_MSG = "Uno de los productos ya no está disponible. Por favor revisa tu carrito.";
 
@@ -92,6 +94,19 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
   // Paquete F (2026-10-02) — logo de la transportadora elegida en el resumen
   // de envío (mismo asset que el selector de /checkout/envio vía carrier-logos).
   const shipLogo = carrierLogo(shippingSelection.carrierName);
+
+  // Promesa "Envío Lucam's" (2026-10-06): NO es una transportadora (mensajería
+  // propia) y sus días YA incluyen la fabricación a mano + hora de corte — se
+  // muestra con el MISMO texto del selector de envío (resolveLucamsPromise),
+  // no como "estimado de la transportadora tras el despacho".
+  const lucamsPromise =
+    shippingSelection.carrier === "lucams"
+      ? resolveLucamsPromise(
+          texts.shipping,
+          shippingSelection.deliveryDays,
+          (await getLucamsShippingSettings()).cutoffHour,
+        )
+      : null;
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -200,8 +215,10 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               )}
               <span>
                 {texts.payment.via} {shippingSelection.carrierName}
-                {shippingSelection.deliveryDays > 0 &&
-                  ` · estimado de la transportadora: ${shippingSelection.deliveryDays} día${shippingSelection.deliveryDays === 1 ? "" : "s"} hábil${shippingSelection.deliveryDays === 1 ? "" : "es"} tras el despacho`}
+                {lucamsPromise
+                  ? ` · ${lucamsPromise}`
+                  : shippingSelection.deliveryDays > 0 &&
+                    ` · estimado de la transportadora: ${shippingSelection.deliveryDays} día${shippingSelection.deliveryDays === 1 ? "" : "s"} hábil${shippingSelection.deliveryDays === 1 ? "" : "es"} tras el despacho`}
               </span>
             </p>
           </ReviewCard>

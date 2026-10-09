@@ -10,6 +10,7 @@ import Link from "next/link";
 import {
   Activity,
   AlertTriangle,
+  HeartPulse,
   Webhook,
   RotateCcw,
   Gauge,
@@ -29,6 +30,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
+import { prisma } from "@/lib/db";
 import { getStorageQuota, getTechHealth } from "@/features/observability/service";
 import { getDailySummary } from "@/features/observability/daily-summary";
 import { getSloStatus, type SloResult } from "@/features/observability/slos";
@@ -41,6 +43,7 @@ import {
   getEmailDeliverabilityStats,
   EMAIL_BOUNCE_RATE_ALERT_PCT,
   EMAIL_BOUNCE_MIN_EVENTS,
+  EMAIL_STATS_WINDOW_DAYS,
 } from "@/features/observability/email-deliverability";
 import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { ClientErrorActions } from "./client-error-actions";
@@ -61,9 +64,27 @@ function formatBytes(bytes: number): string {
   return `${Math.round(bytes / 1024)} KB`;
 }
 
+/**
+ * E1 (2026-10-07) — eventos sintéticos email.sent que registra lib/resend.ts
+ * tras cada envío exitoso: distinguen "no llegan webhooks" de "no se envían".
+ * No vive en getEmailDeliverabilityStats porque su groupBy solo mira estados
+ * de entrega (delivered/bounced/delayed) para la tasa de rebote. Fuera del
+ * componente: Date.now no puede llamarse durante el render (react-hooks/purity).
+ */
+function countSentEmails(windowDays: number): Promise<number> {
+  const from = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000);
+  return prisma.emailEvent.count({
+    where: {
+      type: "email.sent",
+      occurredAt: { gte: from },
+      NOT: { to: { endsWith: ".test" } },
+    },
+  });
+}
+
 export default async function AdminObservabilityPage() {
   await requireRole(["SUPERADMIN"]);
-  const [h, ops, slos, crons, email, backup, monitor, storage] = await Promise.all([
+  const [h, ops, slos, crons, email, backup, monitor, storage, emailsSent] = await Promise.all([
     getTechHealth(),
     getDailySummary(),
     getSloStatus(),
@@ -72,6 +93,7 @@ export default async function AdminObservabilityPage() {
     getBackupHealth(),
     getMonitorHealth(),
     getStorageQuota(),
+    countSentEmails(EMAIL_STATS_WINDOW_DAYS),
   ]);
   const revenue = `$${Math.round(ops.revenueLast24hCop / 100).toLocaleString("es-CO")}`;
   const recoveryPct =
@@ -82,7 +104,7 @@ export default async function AdminObservabilityPage() {
   return (
     <AdminPage>
       <AdminPageHeader
-        icon={<Activity className="h-5 w-5" />}
+        icon={<HeartPulse className="h-5 w-5" />}
         title="Salud técnica"
         subtitle={
           <>
@@ -179,6 +201,7 @@ export default async function AdminObservabilityPage() {
           icon={<Mail className="h-4 w-4" />}
         >
           <div className="flex flex-wrap gap-3 text-sm">
+            <VitalPill label="Enviados" value={emailsSent} tone="slate" />
             <VitalPill label="Entregados" value={email.delivered} tone="emerald" />
             <VitalPill
               label="Rebotados"
@@ -216,7 +239,9 @@ export default async function AdminObservabilityPage() {
             )}
             Los eventos a dominios <code>.test</code> (corridas de suites) se excluyen de la tasa
             porque su rebote es esperado por diseño. Fuente: webhook de Resend (
-            <code>/api/webhooks/resend</code>).
+            <code>/api/webhooks/resend</code>) más un evento sintético <code>email.sent</code> que
+            registra la app tras cada envío exitoso — si «Enviados» crece pero «Entregados» queda en
+            0, el webhook no está llegando (revisa su configuración en el dashboard de Resend).
           </p>
         </Section>
 
@@ -453,6 +478,44 @@ export default async function AdminObservabilityPage() {
                       </span>
                       <ClientErrorActions id={e.id} />
                     </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
+          {/* Webhooks recientes (2026-10-06, feedback STG): qué eventos han
+              llegado y si se procesaron — antes solo se podía saber consultando
+              la DB a mano. Un evento "Pendiente" viejo indica que la saga falló
+              (Aveonline/Wompi reintentan; la alerta webhooks_stuck lo levanta). */}
+          <Section title="Webhooks recientes" icon={<Webhook className="h-4 w-4" />}>
+            {h.recentWebhooks.length === 0 ? (
+              <Empty>Sin eventos de webhook recibidos todavía. 🎉</Empty>
+            ) : (
+              <ul className="divide-brand-purple/10 divide-y text-sm">
+                {h.recentWebhooks.map((w) => (
+                  <li key={w.id} className="flex items-start justify-between gap-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-brand-purple-dark truncate font-medium">
+                        <span className="text-brand-muted text-xs font-bold uppercase">
+                          {w.source}
+                        </span>{" "}
+                        · {w.externalId}
+                      </p>
+                      <p className="text-brand-muted text-xs">
+                        recibido {dateFmt.format(w.createdAt)}
+                        {w.processedAt ? ` · procesado ${dateFmt.format(w.processedAt)}` : ""}
+                      </p>
+                    </div>
+                    {w.processedAt ? (
+                      <span className="flex-shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
+                        Procesado
+                      </span>
+                    ) : (
+                      <span className="flex-shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">
+                        Pendiente
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

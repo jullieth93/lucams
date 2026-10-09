@@ -31,6 +31,8 @@ const { state, MockStorageError } = vi.hoisted(() => {
       rateLimitDeny: [] as string[],
       saveCanvasError: null as Error | null,
       finalizeError: null as Error | null,
+      reopenError: null as Error | null,
+      reopenCalls: 0,
       ticketsError: null as Error | null,
       uploadError: null as Error | null,
       assetCreateError: null as Error | null,
@@ -124,6 +126,11 @@ vi.mock("./service", () => ({
     };
   },
   getOwnedDesign: vi.fn(async () => null),
+  reopenDesignForEdit: async (designId: string) => {
+    state.reopenCalls += 1;
+    if (state.reopenError) throw state.reopenError;
+    return { id: designId, status: "DRAFT" };
+  },
   saveCanvas: async (args: Record<string, unknown>) => {
     state.saveCanvasCalls += 1;
     state.saveCanvasArgs.push(args);
@@ -137,6 +144,7 @@ import {
   createLetterSetDesignAction,
   createNameDesignAction,
   finalizeDesignAction,
+  reopenDesignForEditAction,
   saveCanvasAction,
   uploadDesignAssetAction,
 } from "./actions";
@@ -602,5 +610,45 @@ describe("assignPredesignedToDesignAction · dedupe por galleryImageId (2026-10-
     expect(state.uploadCalls).toBe(1);
     expect(state.assetCreateCalls).toBe(1);
     expect(state.assetCreateArgs.at(-1)).toMatchObject({ galleryImageId: "gal_1" });
+  });
+});
+
+describe("reopenDesignForEditAction · READY→DRAFT misma sesión (fix F1.1, 2026-10)", () => {
+  beforeEach(() => {
+    state.reopenError = null;
+    state.reopenCalls = 0;
+    state.rateLimitCalls = [];
+    state.rateLimitDeny = [];
+  });
+
+  it("reabre el diseño del owner y rate-limita por IP", async () => {
+    const res = await reopenDesignForEditAction("design_1");
+    expect(res).toEqual({ ok: true });
+    expect(state.reopenCalls).toBe(1);
+    expect(state.rateLimitCalls[0]?.key).toContain("reopen_design");
+    expect(state.rateLimitCalls[0]?.key).toContain("ip:");
+  });
+
+  it("designId vacío → error customer-safe sin tocar el service", async () => {
+    const res = await reopenDesignForEditAction("  ");
+    expect(res.ok).toBe(false);
+    expect(state.reopenCalls).toBe(0);
+  });
+
+  it("rate-limit por IP → mensaje de espera sin tocar el service", async () => {
+    state.rateLimitDeny = ["reopen_design"];
+    const res = await reopenDesignForEditAction("design_1");
+    expect(res).toMatchObject({ ok: false, message: expect.stringContaining("Espera") });
+    expect(state.reopenCalls).toBe(0);
+  });
+
+  it("error del service (ownership/status/refs) → genérico customer-safe, detalle solo en log", async () => {
+    state.reopenError = new Error("Design is referenced by a cart/order item — clone instead");
+    const res = await reopenDesignForEditAction("design_1");
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.message).not.toContain("referenced");
+      expect(res.message).toContain("WhatsApp");
+    }
   });
 });

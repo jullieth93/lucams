@@ -78,7 +78,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
     return (
       <AdminPage>
         <AdminPageHeader
-          icon={<ShieldCheck className="h-5 w-5" />}
+          icon={<UserPlus className="h-5 w-5" />}
           title="Usuarios y acceso"
           subtitle="Permiso insuficiente"
           breadcrumbs={[
@@ -149,7 +149,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
   return (
     <AdminPage>
       <AdminPageHeader
-        icon={<ShieldCheck className="h-5 w-5" />}
+        icon={<UserPlus className="h-5 w-5" />}
         title="Usuarios y acceso"
         subtitle={
           <>

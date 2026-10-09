@@ -996,6 +996,12 @@ export class AveonlineProvider implements ShippingProvider {
       //   Si el cliente no ingresó CC en checkout, usamos "100001" como placeholder
       //   válido (admin debe completarlo desde /admin/pedidos antes de despachar).
       // - dscorreop con el email real del cliente (Aveonline le notifica).
+      //
+      // FLUJO REGALO (2026-10-05): `delivery.contactName`/`delivery.phone` ya
+      // vienen resueltos por la saga (resolveShipmentRecipient): son los del
+      // DESTINATARIO cuando el pedido es "lo recibe otra persona", así que la
+      // guía (dsnombrecompleto/dstel/dscelular) sale a su nombre sin ningún
+      // cambio acá. El correo (dscorreop) sigue siendo el del comprador.
       destino: formatAveonlineCity(params.delivery.city, params.delivery.department),
       dsdir: params.delivery.address,
       dsbarrio: "", // opcional Aveonline
@@ -1092,6 +1098,8 @@ export class AveonlineProvider implements ShippingProvider {
           rutaguia?: string;
           rotulo?: string;
           rutasticker?: string;
+          archivorotulo?: string;
+          archivosticker?: string;
           transportadora?: string;
         };
       };
@@ -1122,9 +1130,16 @@ export class AveonlineProvider implements ShippingProvider {
 
     const guia = data.resultado.guia;
     const trackingNumber = String(guia.numguia);
-    // labelUrl: preferimos rutasticker (110x120 térmico) por tamaño; fallback rutaguia (PDF normal)
-    const labelUrl = guia.rutasticker ?? guia.rutaguia ?? "";
+    // labelUrl: preferimos rutasticker (110x120 térmico) por tamaño; fallback rutaguia
+    // (PDF normal) y luego rotulo (URL label — algunas transportadoras solo devuelven
+    // este; la copia archivada valida %PDF, así que si rotulo fuera HTML la saga cae
+    // a la siguiente fuente sin romper nada).
+    const labelUrl = guia.rutasticker ?? guia.rutaguia ?? guia.rotulo ?? "";
     const trackingUrl = guia.rutaguia ?? labelUrl;
+    // Fix 1.8 (2026-10-07) — PDF embebido en la respuesta (archivorotulo = base64 PDF
+    // del rótulo, INTEGRATIONS_AVEONLINE §4.3). Es la fuente MÁS confiable para la
+    // copia propia en Storage: no depende de que la URL externa siga viva ni de sesión.
+    const labelPdfBase64 = guia.archivorotulo ?? guia.archivosticker ?? null;
 
     logger.info({
       event: "shipping.aveonline.createshipment.success",
@@ -1137,6 +1152,7 @@ export class AveonlineProvider implements ShippingProvider {
       trackingNumber,
       trackingUrl,
       labelUrl,
+      labelPdfBase64,
       carrier: (guia.transportadora ?? params.carrier).toLowerCase().replace(/\s+/g, "-"),
       // Aveonline no devuelve ETA exacta — caller puede estimar usando deliveryDays
       // del quote previo y guardarlo en Order si lo necesita.

@@ -61,12 +61,9 @@ export type CheckoutTexts = {
     cityWait: string;
     cityMissing: string;
     zipLabel: string;
-    zipHintAuto: string;
+    zipPlaceholder: string;
     zipHint: string;
     zoneHint: string;
-    /** Sufijo para las zonas SIN envío propio habilitado (dato informativo; la
-     *  zona sigue seleccionable como dato de dirección). */
-    zoneNoOwnSuffix: string;
     neighborhoodLabel: string;
     neighborhoodPlaceholder: string;
     neighborhoodHint: string;
@@ -113,6 +110,9 @@ export type CheckoutTexts = {
     consent: string;
     submit: string;
     pending: string;
+    /** Encabezado del resumen de campos inválidos que aparece sobre el botón
+     *  de submit tras un envío fallido (fix QA: errores fuera de pantalla). */
+    errorSummary: string;
   };
   quote: {
     title: string;
@@ -143,15 +143,24 @@ export type CheckoutTexts = {
     errorWa: string;
     listTitle: string;
     free: string;
-    /** Promesa "Envío Lucam's" cuando deliveryDays = 0. Token {{cutoff}} = hora
-     *  límite (settings LUCAMS_SHIPPING_CUTOFF_HOUR), inyectada por la página. */
+    /** Promesa del envío propio LUCAMS cuando deliveryDays = 0. Token {{cutoff}} =
+     *  hora límite (settings LUCAMS_SHIPPING_CUTOFF_HOUR), inyectada por la página. */
     lucamsToday: string;
-    /** Promesa "Envío Lucam's" cuando deliveryDays > 0 (fabricación + corte).
-     *  Token {{days}} = días hábiles calculados server-side. */
+    /** Promesa del envío propio LUCAMS cuando deliveryDays > 0 (fabricación + corte).
+     *  Tokens: {{daysLabel}} = cantidad con plural resuelto ("1 día hábil" /
+     *  "N días hábiles" — ver resolveLucamsPromise); {{days}} = solo el número
+     *  (back-compat con plantillas CMS antiguas). */
     lucamsDays: string;
+    /** Badge de marca junto a la promesa del envío propio (nombre corto). */
+    lucamsBadge: string;
+    /** Badge de marca cuando la entrega es hoy (deliveryDays = 0). */
+    lucamsBadgeToday: string;
     note: string;
     back: string;
     next: string;
+    /** Texto del CTA "Continuar al pago" mientras el server action procesa
+     *  (feedback pending + anti doble-click, patrón SubmitButton). */
+    nextPending: string;
   };
   payment: {
     reviewTitle: string;
@@ -252,11 +261,12 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     cityWait: "Elige departamento primero",
     cityMissing: "No tenemos esa ciudad en el catálogo. Contáctanos por WhatsApp.",
     zipLabel: "Código postal (opcional)",
-    zipHintAuto: "Autocompletado para tu ciudad — ajústalo si conoces el tuyo exacto",
-    zipHint: "6 dígitos",
+    // Sin autocompletado municipal (se confundía con el número de pedido, fix
+    // QA STG 2026-10): placeholder neutro y el cliente lo escribe si lo conoce.
+    zipPlaceholder: "Opcional",
+    zipHint: "Se prellena con tu ciudad — cámbialo si necesitas otro (no lo pedimos para cotizar)",
     // "{zona}" se interpola con la etiqueta del catálogo de zonas ("localidad", "comuna"…).
     zoneHint: "Tu {zona} nos ayuda a ofrecerte las mejores opciones de entrega.",
-    zoneNoOwnSuffix: "sin Envío Lucam's",
     neighborhoodLabel: "Barrio (opcional)",
     neighborhoodPlaceholder: "Ej. Cedritos, La Alameda",
     neighborhoodHint: "Ayuda al courier a ubicar tu dirección más rápido",
@@ -268,9 +278,12 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     addressLabel: "Dirección",
     viaLabel: "Vía principal",
     viaBis: "Bis",
-    viaHint: "Ej. Carrera 7A Bis Sur",
+    // "{ejemplo}" se interpola con un ejemplo corto según el tipo de vía elegido
+    // (viaExample en lib/colombia-validators.ts) — fix QA STG 2026-10.
+    viaHint: "Ej. {ejemplo} — el número va primero; las letras (7A, 13B) son opcionales",
     cruceLabel: "Cruce",
-    cruceHint: "Formato: 23-45 o 13B-42C",
+    cruceHint:
+      "El cruce completo lleva guion: ej. 23-45 o 13B-42C — si solo tienes un número, te falta el segundo tramo",
     cardinalPlaceholder: "— Cuadrante —",
     viaTypeAria: "Tipo de vía",
     viaNumberAria: "Número de vía",
@@ -306,6 +319,7 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
       "Autorizo el **tratamiento de mis datos personales** para procesar y enviar mi pedido, conforme a la [Política de Privacidad](/legal/privacidad) y la [Política de Tratamiento de Datos](/legal/habeas-data). Responsable: Lucams_shop (persona natural), Bogotá D.C. Algunos proveedores (alojamiento y correo) están en EE. UU.",
     submit: "Continuar al envío →",
     pending: "Guardando…",
+    errorSummary: "Revisa estos campos antes de continuar:",
   },
   quote: {
     title: "Productos de tu cotización",
@@ -341,11 +355,14 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     errorWa: "Contáctanos por WhatsApp",
     listTitle: "Opciones de envío",
     free: "Gratis",
-    lucamsToday: "Entrega hoy · pedido antes de las {{cutoff}}:00",
-    lucamsDays: "Entrega en {{days}} día(s) hábil(es) · fabricamos y entregamos con nuestro equipo",
-    note: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **despachamos en máximo 2 días hábiles** y el tránsito corre **después del despacho**. Con **Envío Lucam's** (mensajería propia) la entrega es el **mismo día del despacho**.",
+    lucamsToday: "Te llega hoy · pedido antes de las {{cutoff}}:00",
+    lucamsDays: "Te llega en {{daysLabel}} · se entrega el mismo día del despacho, tras fabricarlo",
+    lucamsBadge: "LUCAMS",
+    lucamsBadgeToday: "LUCAMS · mismo día",
+    note: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **despachamos en máximo 2 días hábiles** y el tránsito corre **después del despacho**. Con **LUCAMS** (mensajería propia) la entrega es el **mismo día del despacho**.",
     back: "← Cambiar dirección",
     next: "Continuar al pago →",
+    nextPending: "Continuando al pago…",
   },
   payment: {
     reviewTitle: "Revisa tu pedido antes de pagar",
@@ -448,10 +465,9 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "datos.cityWait": "checkout.datos.city-wait",
   "datos.cityMissing": "checkout.datos.city-missing",
   "datos.zipLabel": "checkout.datos.zip-label",
-  "datos.zipHintAuto": "checkout.datos.zip-hint-auto",
+  "datos.zipPlaceholder": "checkout.datos.zip-placeholder",
   "datos.zipHint": "checkout.datos.zip-hint",
   "datos.zoneHint": "checkout.datos.zone-hint",
-  "datos.zoneNoOwnSuffix": "checkout.datos.zone-no-own-suffix",
   "datos.neighborhoodLabel": "checkout.datos.neighborhood-label",
   "datos.neighborhoodPlaceholder": "checkout.datos.neighborhood-placeholder",
   "datos.neighborhoodHint": "checkout.datos.neighborhood-hint",
@@ -498,6 +514,7 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "datos.consent": "checkout.datos.consent",
   "datos.submit": "checkout.datos.submit",
   "datos.pending": "checkout.datos.pending",
+  "datos.errorSummary": "checkout.datos.error-summary",
   "quote.title": "checkout.quote.title",
   "quote.heading": "checkout.quote.heading",
   "quote.subtext": "checkout.quote.subtext",
@@ -526,9 +543,12 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "shipping.free": "checkout.shipping.free",
   "shipping.lucamsToday": "checkout.shipping.lucams-today",
   "shipping.lucamsDays": "checkout.shipping.lucams-days",
+  "shipping.lucamsBadge": "checkout.shipping.lucams-badge",
+  "shipping.lucamsBadgeToday": "checkout.shipping.lucams-badge-today",
   "shipping.note": "checkout.shipping.note",
   "shipping.back": "checkout.shipping.back",
   "shipping.next": "checkout.shipping.next",
+  "shipping.nextPending": "checkout.shipping.next-pending",
   "payment.reviewTitle": "checkout.payment.review-title",
   "payment.contact": "checkout.payment.contact",
   "payment.address": "checkout.payment.address",
@@ -566,3 +586,27 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "pay.legalDevoluciones": "checkout.pay.legal-devoluciones",
   "pay.legalGarantias": "checkout.pay.legal-garantias",
 };
+
+/**
+ * Resuelve la promesa del envío propio LUCAMS con sus tokens: {{cutoff}} = hora límite
+ * de settings (2 dígitos), {{daysLabel}} = cantidad con plural resuelto
+ * ("1 día hábil" / "N días hábiles" — los días ya incluyen fabricación + hora
+ * de corte, calculados server-side con lib/delivery-estimate.ts) y {{days}} =
+ * solo el número (back-compat con plantillas CMS antiguas). deliveryDays = 0 →
+ * texto de entrega hoy. La usan el selector de envío (envio/quote-list) y el
+ * resumen del paso de pago (pago/page) para que la promesa se lea IDÉNTICA en
+ * ambos pasos.
+ */
+export function resolveLucamsPromise(
+  texts: CheckoutTexts["shipping"],
+  deliveryDays: number,
+  cutoffHour: number,
+): string {
+  if (deliveryDays === 0) {
+    return texts.lucamsToday.replace("{{cutoff}}", String(cutoffHour).padStart(2, "0"));
+  }
+  const daysLabel = `${deliveryDays} ${deliveryDays === 1 ? "día hábil" : "días hábiles"}`;
+  return texts.lucamsDays
+    .replace("{{daysLabel}}", daysLabel)
+    .replace("{{days}}", String(deliveryDays));
+}

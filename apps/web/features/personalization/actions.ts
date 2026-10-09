@@ -38,6 +38,7 @@ import {
   createLetterSetDesign,
   finalizeDesign,
   getOwnedDesign,
+  reopenDesignForEdit,
   saveCanvas,
 } from "./service";
 import { compressPreviewImage, PREVIEW_ALLOWED_MIME, type PreviewMime } from "./sharp-safe";
@@ -70,7 +71,11 @@ function safeUploadMessage(err: unknown, fallback: string): string {
 
 // ──────────── Create draft ────────────
 
-export async function createDraftDesignAction(input: { productId: string; templateId?: string }) {
+export async function createDraftDesignAction(input: {
+  productId: string;
+  templateId?: string;
+  variantId?: string;
+}) {
   const parsed = CreateDraftDesignSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false as const, code: "VALIDATION" as const, message: parsed.error.message };
@@ -102,6 +107,7 @@ export async function createDraftDesignAction(input: { productId: string; templa
     const design = await createDraftDesign({
       productId: parsed.data.productId,
       templateId: parsed.data.templateId,
+      variantId: parsed.data.variantId,
       customerId,
       sessionId,
     });
@@ -192,6 +198,53 @@ export async function saveCanvasAction(input: {
       code: "INTERNAL" as const,
       message:
         "No pudimos guardar tu diseño. Refresca la página; si sigue, escríbenos por WhatsApp.",
+    };
+  }
+}
+
+// ──────────── Reopen (READY → DRAFT, misma sesión de edición) ────────────
+
+/**
+ * Fix F1.1 (plan maduración 2026-10) — reabre un diseño finalizado a borrador para seguir
+ * editándolo en la MISMA sesión del Estudio. El cliente lo invoca antes del save forzado
+ * pre-finalize cuando el finalize ya corrió en esta sesión (p.ej. salió bien pero el
+ * add-to-cart falló y el usuario reintentó tras editar): sin esto el save choca con
+ * "only DRAFT can be edited" y la Vista Previa mostraba el error genérico de guardado.
+ * El service rechaza diseños referenciados por carrito/pedido (ahí toca clonar).
+ */
+export async function reopenDesignForEditAction(designId: string) {
+  if (typeof designId !== "string" || !designId.trim()) {
+    return { ok: false as const, message: "Diseño inválido." };
+  }
+  const reopenRl = await rateLimit(
+    ipKey("reopen_design", getClientIp(await headers())),
+    process.env.VERCEL_ENV === "production" ? 60 : 200,
+    600,
+  );
+  if (!reopenRl.allowed) {
+    logger.warn({ event: "design.reopen.rate_limited", count: reopenRl.count });
+    return { ok: false as const, message: "Demasiados intentos. Espera un momento." };
+  }
+  const { customerId, sessionId } = await resolveOwner();
+  try {
+    await reopenDesignForEdit(designId, { customerId, sessionId });
+    logger.info({ event: "design.reopen.success", designId }, "reopenDesignForEdit OK");
+    return { ok: true as const };
+  } catch (err) {
+    logger.warn(
+      {
+        event: "design.reopen.fail",
+        designId,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "reopenDesignForEdit failed",
+    );
+    // Los errores del service son internos en inglés (ownership/status/refs) — al cliente,
+    // mensaje genérico customer-safe (mismo criterio F-30 que saveCanvasAction).
+    return {
+      ok: false as const,
+      message:
+        "No pudimos reabrir tu diseño. Refresca la página; si sigue, escríbenos por WhatsApp.",
     };
   }
 }

@@ -12,23 +12,35 @@
  * B-5 (2026-10-02, auditoría cableado cliente↔admin) — ciclo de vida completo
  * sin borrar: toggle isActive (pausar/reactivar), restore de archivados
  * (vuelven pausados) y reorden por swap de `order` entre adyacentes.
+ *
+ * Fase 3 (2026-10-07) — 3.6: el viejo "Borrar" se renombra ARCHIVAR (siempre
+ * fue soft-delete) y aparece la ELIMINACIÓN PERMANENTE (purgeGalleryImageAction:
+ * purga de archivos + fila, solo desde Archivados). 3.10: todo upload genera
+ * ADEMÁS la miniatura ~800px con watermark LUCAMS que exhibe el Estudio
+ * (uploadGalleryThumb — el original deja de servirse al navegador del cliente).
  */
 
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
-import { StorageError, sniffImageMime, uploadProductImage } from "@/lib/storage";
 import {
+  StorageError,
+  sniffImageMime,
+  uploadGalleryThumb,
+  uploadProductImage,
+} from "@/lib/storage";
+import {
+  archiveGalleryImage,
   assignVariantFilterToUnassigned,
   createGalleryImage,
-  deleteGalleryImage,
   getGalleryImageTag,
   listGalleryTagOptions,
   listGalleryTagVariantAttributes,
+  purgeGalleryImage,
   reorderGalleryImage,
   restoreGalleryImage,
   setGalleryImageActive,
@@ -49,6 +61,17 @@ type ActionResult = { error?: string };
 
 const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+
+/**
+ * PERF (2026-10-07) — el set de miniaturas por tag que lee el Estudio va
+ * cacheado (listGalleryThumbPathsCached en design-gallery.ts, tag
+ * `gallery-thumbs`, revalidate 1h): cualquier cambio del admin sobre las
+ * imágenes de galería (subir/archivar/purgar) lo invalida de inmediato para
+ * no servir thumbs viejos hasta el revalidate.
+ */
+function invalidateGalleryThumbsCache(): void {
+  updateTag("gallery-thumbs");
+}
 
 /**
  * Fase 5 — parsea y valida el `variantFilter` del form (JSON string; vacío =
@@ -117,7 +140,7 @@ export async function uploadGalleryImageAction(formData: FormData): Promise<Acti
         adminId: session.admin.id,
       });
     }
-    const [{ publicUrl }, urlB] = await Promise.all([
+    const [upA, urlB] = await Promise.all([
       uploadProductImage({ productId: `gallery-${tag}`, file }),
       fileB instanceof File
         ? uploadProductImage({ productId: `gallery-${tag}-b`, file: fileB }).then(
@@ -125,10 +148,18 @@ export async function uploadGalleryImageAction(formData: FormData): Promise<Acti
           )
         : Promise.resolve(null),
     ]);
+    // 3.10 — miniatura de exhibición con watermark (solo cara A: es la única
+    // que el Estudio muestra). Fail-closed: sin miniatura protegida el diseño
+    // no queda exhibible por el fallback al original (el admin reintenta; el
+    // original ya subido queda huérfano con UUID inalcanzable, inofensivo).
+    await uploadGalleryThumb({
+      originalPath: upA.path,
+      source: Buffer.from(await file.arrayBuffer()),
+    });
     const row = await createGalleryImage({
       tag,
       name,
-      imageUrl: publicUrl,
+      imageUrl: upA.publicUrl,
       imageUrlB: urlB,
       variantFilter,
       adminId: session.admin.id,
@@ -140,6 +171,7 @@ export async function uploadGalleryImageAction(formData: FormData): Promise<Acti
       entityId: row.id,
       metadata: { tag, name, ...(variantFilter ? { variantFilter } : {}) },
     });
+    invalidateGalleryThumbsCache();
     revalidatePath("/admin/disenos");
     return {};
   } catch (err) {
@@ -199,6 +231,8 @@ async function uploadStripMode(input: {
     uploadProductImage({ productId: `gallery-${tag}`, file: toFile(split.faceA, "cara-a.webp") }),
     uploadProductImage({ productId: `gallery-${tag}-b`, file: toFile(split.faceB, "cara-b.webp") }),
   ]);
+  // 3.10 — miniatura watermark de la cara A (la exhibida en el Estudio).
+  await uploadGalleryThumb({ originalPath: upA.path, source: split.faceA });
   const row = await createGalleryImage({
     tag,
     name,
@@ -221,23 +255,72 @@ async function uploadStripMode(input: {
       ...(variantFilter ? { variantFilter } : {}),
     },
   });
+  invalidateGalleryThumbsCache();
   revalidatePath("/admin/disenos");
   return {};
 }
 
-export async function deleteGalleryImageAction(formData: FormData): Promise<ActionResult> {
+/**
+ * Fase 3 · 3.6 (2026-10-07) — ARCHIVAR (antes "Borrar", naming engañoso):
+ * soft-delete restaurable (deletedAt + isActive=false). El borrado REAL, con
+ * purga de archivos, es purgeGalleryImageAction (solo desde Archivados).
+ */
+export async function archiveGalleryImageAction(formData: FormData): Promise<ActionResult> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Datos inválidos." };
 
-  await deleteGalleryImage(id);
+  await archiveGalleryImage(id);
   await recordAdminAction({
     actorId: session.admin.id,
-    action: "galleryImage.delete",
+    action: "galleryImage.archive",
     entityType: "DesignGalleryImage",
     entityId: id,
   });
+  invalidateGalleryThumbsCache();
+  revalidatePath("/admin/disenos");
+  return {};
+}
+
+/**
+ * Fase 3 · 3.6 — ELIMINAR PERMANENTEMENTE un diseño archivado: purga los
+ * archivos físicos del bucket (original A/B + miniaturas watermark) y borra la
+ * fila. Irreversible — la UI pide escribir ELIMINAR. Si la purga de storage
+ * falla se ABORTA y la fila se conserva (reintentable; nunca quedan huérfanos
+ * sin referencia — ver purgeGalleryImage).
+ */
+export async function purgeGalleryImageAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Datos inválidos." };
+
+  try {
+    const purged = await purgeGalleryImage({ id });
+    if (!purged) return { error: "El diseño no está archivado." };
+  } catch (err) {
+    logger.warn(
+      {
+        event: "admin.gallery.purge_fail",
+        adminId: session.admin.id,
+        id,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "Failed to purge gallery image",
+    );
+    return {
+      error:
+        "No se pudieron borrar los archivos del servidor. El diseño sigue archivado; inténtalo de nuevo.",
+    };
+  }
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "galleryImage.purge",
+    entityType: "DesignGalleryImage",
+    entityId: id,
+  });
+  invalidateGalleryThumbsCache();
   revalidatePath("/admin/disenos");
   return {};
 }

@@ -74,24 +74,24 @@ describe("galleryScenes — gate SIN IMÁN", () => {
     expect(galleryScenes("calendar", false, false)).toEqual([]);
   });
 
-  it("Paquete D (2026-10-02): el resto de productos NO se gatea por variante — el 3D es ilustrativo", () => {
-    // Botón 3D presente también con variante "sin imán" (separadores, tiras…).
-    expect(galleryScenes("photo", true, false)).toEqual([
-      "fridge",
-      "polaroid",
-      "board",
-      "shelf",
-      "gift",
-    ]);
-    expect(galleryScenes("photo", false, false)).toEqual(["fridge", "board", "shelf", "gift"]);
+  it("Fase 2.10 (owner 2026-10-07, REVERSA de Paquete D): SIN IMÁN filtra las escenas que afirman imán en TODOS los kinds", () => {
+    // photo: caen nevera y mural; quedan las 2D (repisa/regalo). La escena
+    // Polaroid se MANTIENE: tarjetas acostadas en una mesa — no asume
+    // adherencia a nevera/metal.
+    expect(galleryScenes("photo", true, false)).toEqual(["polaroid", "shelf", "gift"]);
+    expect(galleryScenes("photo", false, false)).toEqual(["shelf", "gift"]);
+    // bookmark: el libro no asume imán → intacto.
     expect(galleryScenes("bookmark", false, false)).toEqual(["book"]);
-    expect(galleryScenes("letters", false, false)).toEqual(["memo"]);
+    // letters: su única escena (tablero memo) afirma imán → galería VACÍA
+    // (la UI muestra el estado vacío coherente, texts.escenas.vacio).
+    expect(galleryScenes("letters", false, false)).toEqual([]);
   });
 
   it("magnet true/undefined: mismas escenas de siempre por kind", () => {
     expect(galleryScenes("calendar", false, true)).toEqual(["fridge", "board"]);
     expect(galleryScenes("calendar", false, undefined)).toEqual(["fridge", "board"]);
     expect(galleryScenes("photo", true)).toEqual(["fridge", "polaroid", "board", "shelf", "gift"]);
+    expect(galleryScenes("letters", false, true)).toEqual(["memo"]);
   });
 });
 

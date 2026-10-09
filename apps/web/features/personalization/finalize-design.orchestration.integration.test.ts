@@ -67,6 +67,7 @@ const PHOTO_ONLY_LAYERS = [
 
 let categoryId = "";
 let productId = "";
+let sepProductId = ""; // separador 2 caras con backOptional (cara B en blanco)
 let ownerId = "";
 let strangerId = "";
 
@@ -163,6 +164,22 @@ describe.skipIf(!hasDb)("finalizeDesign — orquestación (I/O de storage mockea
       select: { id: true },
     });
     productId = product.id;
+    // Separador 2 caras con cara B OPCIONAL (regla owner 2026-10-07: B vacía → EN BLANCO).
+    const sep = await prisma.product.create({
+      data: {
+        slug: `${RUN}-sep`,
+        name: `Separador ${RUN}`,
+        description: "fixture sep",
+        basePrice: 12_000,
+        sku: `${RUN}-SEP`.toUpperCase(),
+        categoryId,
+        isPersonalizable: true,
+        personalizationKind: "PHOTO_PACK",
+        personalizationSchema: { photoSlots: 2, facesPerUnit: 2, backOptional: true },
+      },
+      select: { id: true },
+    });
+    sepProductId = sep.id;
     const owner = await prisma.customer.create({
       data: {
         email: `${RUN}-owner@lucams.test`,
@@ -186,8 +203,10 @@ describe.skipIf(!hasDb)("finalizeDesign — orquestación (I/O de storage mockea
   afterAll(async () => {
     const safe = (p: Promise<unknown>) => p.catch(() => {});
     await safe(prisma.designAsset.deleteMany({ where: { design: { productId } } }));
+    await safe(prisma.designAsset.deleteMany({ where: { design: { productId: sepProductId } } }));
     await safe(prisma.design.deleteMany({ where: { productId } }));
-    await safe(prisma.product.deleteMany({ where: { id: productId } }));
+    await safe(prisma.design.deleteMany({ where: { productId: sepProductId } }));
+    await safe(prisma.product.deleteMany({ where: { id: { in: [productId, sepProductId] } } }));
     await safe(prisma.category.deleteMany({ where: { id: categoryId } }));
     await safe(prisma.customer.deleteMany({ where: { email: { contains: RUN } } }));
   });
@@ -298,5 +317,90 @@ describe.skipIf(!hasDb)("finalizeDesign — orquestación (I/O de storage mockea
     });
     expect(updated.status).toBe("READY");
     expect((updated.metadata as { calendarYear?: number }).calendarYear).toBe(2027);
+  }, 30000);
+
+  it("backOptional (owner 2026-10-07): cara B VACÍA se imprime EN BLANCO — la tira sube A|blanco, nunca espejo", async () => {
+    // Diseño de separador 2 caras: solo la cara A (slot 0) diseñada; la B (slot 1) vacía.
+    const design = await prisma.design.create({
+      data: {
+        customerId: ownerId,
+        sessionId: `${RUN}-sep-session`,
+        productId: sepProductId,
+        status: "DRAFT",
+        canvasData: {},
+      },
+      select: { id: true },
+    });
+    const asset = await prisma.designAsset.create({
+      data: {
+        designId: design.id,
+        storageUrl: `${RUN}/photo.png`,
+        width: 1200,
+        height: 900,
+        sizeBytes: 100,
+        mimeType: "image/png",
+      },
+      select: { id: true },
+    });
+    const canvasData = {
+      version: 2,
+      unitTemplate: { version: 1, stage: STAGE, layers: PHOTO_ONLY_LAYERS },
+      slotCount: 2,
+      slots: [
+        {
+          slotIndex: 0, // cara A diseñada
+          assetId: asset.id,
+          assetUrl: "https://cdn.lucams.test/a.png",
+          filter: null,
+          photoTransform: { offsetX: 0, offsetY: 0, scale: 1 },
+        },
+        {
+          slotIndex: 1, // cara B VACÍA (backOptional)
+          assetId: null,
+          assetUrl: null,
+          filter: null,
+          photoTransform: { offsetX: 0, offsetY: 0, scale: 1 },
+        },
+      ],
+      gridLayout: { cols: 1, rows: 2, gap: 0 },
+    };
+    await prisma.design.update({
+      where: { id: design.id },
+      data: { canvasData: canvasData as never },
+    });
+
+    const updated = await finalizeDesign({
+      designId: design.id,
+      previewBuffer: await tinyPng(100, 100),
+      // Solo UN snapshot: el de la cara A (las B vacías no reciben ticket).
+      productionBuffers: [await tinyPng(50, 50)],
+      customerId: ownerId,
+      sessionId: null,
+    });
+    expect(updated.status).toBe("READY");
+    // Separador 2 caras → UNA tira desplegada (cabeza al doblez: B arriba, A abajo).
+    expect(updated.productionUrls).toEqual([`${design.id}/tira-01.png`]);
+    const up = mock.uploads.find(
+      (u) => u.bucket === "production-assets" && u.path === `${design.id}/tira-01.png`,
+    );
+    expect(up).toBeDefined();
+    const meta = await sharp(up!.bytes).metadata();
+    const w = meta.width!;
+    const h = meta.height!;
+    const pixel = async (x: number, y: number) => {
+      const { data } = await sharp(up!.bytes)
+        .extract({ left: x, top: y, width: 1, height: 1 })
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+      return [data[0], data[1], data[2]];
+    };
+    // Mitad SUPERIOR (cara B) → BLANCO PURO: es la cara B en blanco de la
+    // regla nueva (antes: copia espejo de la cara A).
+    expect(await pixel(Math.floor(w / 2), Math.floor(h / 4))).toEqual([255, 255, 255]);
+    // Mitad INFERIOR (cara A) → la foto del cliente (azul del fixture), NO blanca:
+    // prueba de que el blanco de arriba no es "toda la tira vacía".
+    const [r, g, b] = await pixel(Math.floor(w / 2), Math.floor((3 * h) / 4));
+    expect(b).toBeGreaterThan(r);
+    expect(g).toBeGreaterThan(r);
   }, 30000);
 });

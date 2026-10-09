@@ -23,7 +23,6 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, ContactShadows, useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import { FitCameraPolar } from "./fit-camera-polar";
-import { useIsTouch } from "./use-is-touch";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { StudioEnvironment } from "./studio-3d-environment";
 import { getWoodTexture } from "./lib/procedural-textures";
@@ -100,7 +99,9 @@ function PolaroidCard({
             map-anisotropy={8}
             roughness={0.42}
             metalness={0}
-            envMapIntensity={1.05}
+            // Calibración 2026-10-05: IBL bajo en la cara impresa (solo micro-
+            // relieve especular) — con 1.05 se veía más clara que la foto.
+            envMapIntensity={0.4}
             transparent
           />
         </mesh>
@@ -168,12 +169,15 @@ function Scene({ magnets, sizeCm }: { magnets: Magnet3D[]; sizeCm?: string }) {
 
   return (
     <>
+      {/* Calibración 2026-10-05 (cara impresa = foto original): las tarjetas miran a +Y (acostadas)
+        → irradiancia ≈ 1.0: key 0.7·cos(≈38°) ≈ 0.55 + hemi 0.22 + ambient 0.18 + fill ≈ 0.12
+        → ≈ 1.07 (antes key 1.15 + hemi 0.3 → ≈ 1.5 directo, muy sobre-expuesta). */}
       <StudioEnvironment intensity={1} />
-      <hemisphereLight args={["#fff8ec", "#d9c9b4", 0.3]} />
+      <hemisphereLight args={["#fff8ec", "#d9c9b4", 0.22]} />
       <ambientLight intensity={0.18} />
       <directionalLight
         position={[4, 7, 4]}
-        intensity={1.15}
+        intensity={0.7}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-6}
@@ -218,7 +222,11 @@ function Scene({ magnets, sizeCm }: { magnets: Magnet3D[]; sizeCm?: string }) {
         autoRotateSpeed={0.5}
         minPolarAngle={0.4}
         maxPolarAngle={1.25}
-        minDistance={4}
+        // Zoom móvil 2026-10-05: 4 → 3.0. La tarjeta central está en el target:
+        // una 6.5 cm (cardH = 6.5·0.25 ≈ 1.63 u, proyectada ~1.28 u a polar 52°)
+        // ocupa ≈ 56% del alto (fov 42°) — objetivo ≥50%; a 4 era ~42%. Piso
+        // seguro: a 3.0 la cámara queda a y ≈ 1.85 sobre la mesa, sin clip.
+        minDistance={3.0}
         maxDistance={28}
         target={[0, 0, 0]}
       />
@@ -233,7 +241,6 @@ export default function PolaroidView3D({
   magnets: Magnet3D[];
   sizeCm?: string;
 }) {
-  const isTouch = useIsTouch();
   if (magnets.length === 0) {
     return (
       <div className="text-brand-muted flex h-full items-center justify-center p-8 text-center text-sm">
@@ -244,7 +251,11 @@ export default function PolaroidView3D({
   return (
     <Canvas
       shadows
-      dpr={isTouch ? [1, 1.5] : [1, 2]}
+      // dpr hasta 2 también en táctil (2026-10-05): con el zoom cercano nuevo
+      // (minDistance 4 → 3.0) el cap 1.5 se veía borroso en retina móvil.
+      // Trade-off rendimiento: ×1.78 más píxeles/frame en GPU móvil — aceptable
+      // en escena estática con sombra horneada.
+      dpr={[1, 2]}
       camera={{ position: [0, 5.2, 7.5], fov: 42 }}
       gl={{ preserveDrawingBuffer: false, antialias: true }}
       style={{ width: "100%", height: "100%" }}

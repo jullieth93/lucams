@@ -20,6 +20,7 @@ import { supabaseService } from "@/lib/supabase/service";
 
 const BUCKET = "product-images";
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const PUBLIC_URL_MARKER = `/storage/v1/object/public/${BUCKET}/`;
 
 const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
 
@@ -226,10 +227,177 @@ export async function deleteProductImage(publicUrl: string): Promise<void> {
  * devuelve solo `<path>`. null si no matchea.
  */
 function extractPathFromPublicUrl(url: string): string | null {
-  const marker = `/storage/v1/object/public/${BUCKET}/`;
-  const idx = url.indexOf(marker);
+  const idx = url.indexOf(PUBLIC_URL_MARKER);
   if (idx === -1) return null;
-  return url.slice(idx + marker.length);
+  return url.slice(idx + PUBLIC_URL_MARKER.length);
+}
+
+// ──────────── Miniaturas con watermark de prediseñados (Fase 3 · 3.10) ────────────
+//
+// Decisión owner 2026-10-07: los diseños prediseñados se exhiben en el Estudio
+// como MINIATURA degradada (≤800 px, WebP q78) con marca de agua "LUCAMS" en
+// tiling — el original (hasta 2000 px) nunca debería llegar al navegador del
+// cliente (anti-copia + peso). El original sí lo usa el SERVIDOR
+// (assignPredesignedToDesignAction lo descarga server-side al aplicar el diseño).
+//
+// Convención de path SIN migración (path derivada determinista del original):
+//   gallery-<tag>/<uuid>.webp        → gallery-<tag>/thumbs/<uuid>.webp
+//   gallery-<tag>-b/<uuid>.webp      → gallery-<tag>-b/thumbs/<uuid>.webp
+// Se eligió sobre una columna `thumbUrl` porque el path es una función pura del
+// imageUrl ya persistido: no hay schema drift, el backfill escribe en ese path y
+// el hard-delete purga por el mismo cálculo. La EXISTENCIA se verifica con un
+// list del folder de thumbs (listGalleryThumbPaths) — thumbUrl solo se expone si
+// el objeto existe de verdad.
+
+export const GALLERY_THUMB_MAX_EDGE_PX = 800;
+export const GALLERY_THUMB_WEBP_QUALITY = 78;
+
+/**
+ * Path de la miniatura derivado del path del original: inserta el segmento
+ * `thumbs/` antes del filename (`gallery-<tag>/<uuid>.webp` →
+ * `gallery-<tag>/thumbs/<uuid>.webp`). null si el path no tiene carpeta.
+ */
+export function galleryThumbPath(originalPath: string): string | null {
+  const idx = originalPath.lastIndexOf("/");
+  if (idx === -1) return null;
+  return `${originalPath.slice(0, idx)}/thumbs/${originalPath.slice(idx + 1)}`;
+}
+
+/** Path (bucket) de la miniatura a partir de la URL pública del original. null si no es URL nuestra. */
+export function galleryThumbPathFromUrl(imageUrl: string): string | null {
+  const path = extractPathFromPublicUrl(imageUrl);
+  return path ? galleryThumbPath(path) : null;
+}
+
+/** URL pública de la miniatura derivada de la URL pública del original. null si no es URL nuestra. */
+export function galleryThumbUrlFromImageUrl(imageUrl: string): string | null {
+  const idx = imageUrl.indexOf(PUBLIC_URL_MARKER);
+  if (idx === -1) return null;
+  const thumbPath = galleryThumbPath(imageUrl.slice(idx + PUBLIC_URL_MARKER.length));
+  if (!thumbPath) return null;
+  return imageUrl.slice(0, idx) + PUBLIC_URL_MARKER + thumbPath;
+}
+
+/**
+ * Baldosa SVG del watermark "LUCAMS" en tiling (patrón ladrillo: dos textos
+ * desplazados, rotados -24°). Texto blanco semitransparente con un hairline
+ * oscuro para que se lea también sobre fondos claros. sharp la rasteriza y la
+ * repite con composite({ tile: true }) — nítida a cualquier tamaño y sin
+ * depender de assets de public/brand (que son para UI, no para quemar en imagen).
+ *
+ * tileW/tileH se ajustan al tamaño de la imagen (sharp exige que el input del
+ * composite sea ≤ la base; diseños chicos → baldosa chica) y el viewBox fijo
+ * 380×230 escala el dibujo completo (texto incluido) a ese tamaño.
+ */
+function buildGalleryWatermarkTileSvg(tileW: number, tileH: number): string {
+  const text = (x: number, y: number) =>
+    `<text x="${x}" y="${y}" fill="#ffffff" fill-opacity="0.30" stroke="#000000" stroke-opacity="0.10" stroke-width="1.2">LUCAMS</text>`;
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${tileW}" height="${tileH}" viewBox="0 0 380 230">` +
+    `<g font-family="DejaVu Sans, Verdana, sans-serif" font-size="36" font-weight="700" letter-spacing="8">` +
+    `<g transform="rotate(-24 190 115)">${text(20, 96)}${text(200, 212)}</g>` +
+    `</g></svg>`
+  );
+}
+
+/**
+ * Genera los bytes de la miniatura de exhibición: borde largo ≤800 px (sin
+ * agrandar), watermark LUCAMS en tiling y WebP q78. Fail-closed igual que
+ * optimizeCatalogImage: si sharp no decodifica, INVALID_TYPE (la acción de
+ * upload rechaza — un prediseñado sin miniatura protegida no debe quedar
+ * exhibible por el fallback al original).
+ */
+export async function generateGalleryThumb(buffer: Buffer): Promise<{
+  data: Buffer;
+  width: number;
+  height: number;
+}> {
+  const sharp = (await import("@/features/personalization/sharp-safe")).default;
+  try {
+    const resized = await sharp(buffer)
+      .rotate() // auto-orient por EXIF + strip
+      .resize({
+        width: GALLERY_THUMB_MAX_EDGE_PX,
+        height: GALLERY_THUMB_MAX_EDGE_PX,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .toBuffer({ resolveWithObject: true });
+    const out = await sharp(resized.data)
+      .composite([
+        {
+          input: Buffer.from(
+            buildGalleryWatermarkTileSvg(
+              Math.min(380, resized.info.width),
+              Math.min(230, resized.info.height),
+            ),
+          ),
+          tile: true,
+          blend: "over",
+        },
+      ])
+      .webp({ quality: GALLERY_THUMB_WEBP_QUALITY })
+      .toBuffer({ resolveWithObject: true });
+    return { data: out.data, width: out.info.width, height: out.info.height };
+  } catch {
+    throw new StorageError(
+      "INVALID_TYPE",
+      "No pudimos leer la imagen. ¿Está completa y sin daños?",
+    );
+  }
+}
+
+/**
+ * Genera y sube la miniatura watermark de una imagen de galería ya subida
+ * (`originalPath` = path devuelto por uploadProductImage). upsert: el backfill
+ * one-shot y reintentos escriben el mismo path determinista (idempotente).
+ */
+export async function uploadGalleryThumb(opts: {
+  originalPath: string;
+  source: Buffer;
+}): Promise<UploadedImage> {
+  const thumbPath = galleryThumbPath(opts.originalPath);
+  if (!thumbPath) {
+    throw new StorageError(
+      "UPLOAD_FAILED",
+      "No se pudo derivar el path de la miniatura del diseño.",
+    );
+  }
+  const thumb = await generateGalleryThumb(opts.source);
+  const supabase = supabaseService;
+  const { error: uploadErr } = await supabase.storage.from(BUCKET).upload(thumbPath, thumb.data, {
+    contentType: "image/webp",
+    cacheControl: "31536000", // path con el UUID del original: inmutable como él
+    upsert: true, // idempotente: backfill/reintento reescribe el mismo path
+  });
+  if (uploadErr) {
+    throw new StorageError("UPLOAD_FAILED", `Error subiendo la miniatura: ${uploadErr.message}`);
+  }
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(thumbPath);
+  return { path: thumbPath, publicUrl: data.publicUrl };
+}
+
+/**
+ * Paths de las miniaturas EXISTENTES bajo `<folder>/thumbs/` (un solo list por
+ * tag — la cardinalidad de una galería es de decenas, limit 1000 sobra). Sirve
+ * para exponer thumbUrl solo cuando el objeto existe de verdad (las filas
+ * anteriores al backfill caen al original). Fail-open a set vacío: si storage
+ * no responde, el Estudio degrada al original en vez de romper la página.
+ */
+export async function listGalleryThumbPaths(folder: string): Promise<Set<string>> {
+  try {
+    const { data, error } = await supabaseService.storage
+      .from(BUCKET)
+      .list(`${folder}/thumbs`, { limit: 1000 });
+    if (error || !data) return new Set();
+    return new Set(
+      data
+        .filter((e) => e.id !== null && e.name !== ".emptyFolderPlaceholder")
+        .map((e) => `${folder}/thumbs/${e.name}`),
+    );
+  } catch {
+    return new Set();
+  }
 }
 
 // ──────────── Customer uploads (Estudio M.3) ────────────

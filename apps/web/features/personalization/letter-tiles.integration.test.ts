@@ -247,6 +247,9 @@ describe.skipIf(!canRunStorage)("certificación fichas end-to-end (Ola 2A + Ola 
       });
       expect((meta!.metadata as { styleSetId?: string }).styleSetId).toBe(setId);
       expect((meta!.metadata as { language?: string }).language).toBe("es");
+      // Recover (?designId=): la variante queda persistida para reabrir el Estudio
+      // con ella (el link «Editar» del carrito solo trae designId).
+      expect((meta!.metadata as { variantId?: string }).variantId).toBe(variantId);
 
       // Finalize: preview + producción (1 PNG, canvasData V1) a los buckets reales.
       const preview = await solidTile("#FFF8F0");

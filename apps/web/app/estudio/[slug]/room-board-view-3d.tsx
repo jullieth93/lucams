@@ -39,15 +39,18 @@
  * Pase 2026-07-23 (ola 4 — Lucy: "siguen muy gruesas"): las fichas bajan OTRO punto (0.025 →
  * 0.015, ~62.5% bajo el imán) sin llegar a planas; el z sobre el tablero deriva del depth
  * (totalThickness), así el cambio no hunde ni levanta las fichas.
+ * Pase 2026-10-07 (Fase 2.11, owner — GROSOR FÍSICO REAL): los grosores dejan de ser
+ * constantes de mundo y se derivan del uPerCm del mural (0.1 u/cm) via `realWorldDepth` —
+ * fotoimán 2 mm → 0.02 u (antes 0.04 u, ~4× el real); fichas 1.5 mm → 0.015 u (mismo
+ * relieve de siempre). El z sigue derivando del depth → las piezas ni se hunden ni flotan.
  */
 
 import { Suspense, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, GradientTexture } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
-import { useIsTouch } from "./use-is-touch";
 import { StudioEnvironment } from "./studio-3d-environment";
-import { MagnetMesh, MAGNET_DEPTH, TILE_DEPTH, magnetWorldSizes } from "./magnet-3d";
+import { MagnetMesh, realWorldDepth, TILE_THICKNESS_CM, magnetWorldSizes } from "./magnet-3d";
 import { clusterLayout, BOARD_SCENE } from "./lib/cluster-layout";
 import { getCorkTexture } from "./lib/procedural-textures";
 import type { Magnet3D } from "./fridge-3d-view";
@@ -65,12 +68,16 @@ const INNER_W = BOARD_W - FRAME * 2;
 const INNER_H = BOARD_H - FRAME * 2;
 const FRONT_Z = DEPTH / 2;
 
-/** Grosor del extruido por estilo (ola 3 — Lucy: las fichas de letras se ven muy gruesas,
- *  "bajar UN PUNTO, no planas"; ola 4 2026-07-23: "siguen muy gruesas" → OTRO punto):
- *  memo (fichas de letras/nombre/vocales) → TILE_DEPTH (0.015, bisel y sombra intactos);
- *  cork (fotoimanes) → el grosor de imán de siempre. */
+/** Grosor del extruido por estilo (Fase 2.11, owner 2026-10-07 — grosor FÍSICO real
+ *  derivado del uPerCm del mural; antes constantes de mundo MAGNET_DEPTH/TILE_DEPTH):
+ *  memo (fichas de letras/nombre/vocales) → 1.5 mm (TILE_THICKNESS_CM — conserva el "un
+ *  punto más finas, no planas" de Lucy; en este tablero 0.15 cm × 0.1 u/cm = 0.015 u,
+ *  el mismo relieve de siempre); cork (fotoimanes) → 2 mm (0.02 u acá — antes 0.04 u,
+ *  ~4× el grosor real). */
 function boardDepth(style: BoardStyle): number {
-  return style === "memo" ? TILE_DEPTH : MAGNET_DEPTH;
+  return style === "memo"
+    ? realWorldDepth(BOARD_U_PER_CM, TILE_THICKNESS_CM)
+    : realWorldDepth(BOARD_U_PER_CM);
 }
 
 /** Grosor TOTAL del extruido: depth + bisel a ambos lados (bevelThickness = 0.2·depth c/u). */
@@ -218,13 +225,16 @@ function Scene({
       </mesh>
 
       {/* FB5 — env-map procedural para reflejos PBR (marco del tablero, imanes). Baja el ambiente
-        directo porque el entorno ya aporta. */}
+        directo porque el entorno ya aporta.
+        Calibración 2026-10-05 (cara impresa = foto original): irradiancia frontal (normal +Z)
+        ≈ 1.0 — key 0.7·cos(≈42°) ≈ 0.52 + hemi 0.35·~0.5 ≈ 0.18 + ambient 0.2 + fill ≈ 0.17
+        → ≈ 1.07 (antes key 1.0 + ambient 0.24 → ≈ 1.33 directo, sobre-expuesta). */}
       <StudioEnvironment intensity={0.9} />
       <hemisphereLight args={["#fff6ea", "#e5dccd", 0.35]} />
-      <ambientLight intensity={0.24} />
+      <ambientLight intensity={0.2} />
       <directionalLight
         position={[4, 6, 8]}
-        intensity={1.0}
+        intensity={0.7}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-8}
@@ -256,7 +266,11 @@ function Scene({
         maxAzimuthAngle={0.9}
         minPolarAngle={Math.PI / 3.5}
         maxPolarAngle={Math.PI / 1.9}
-        minDistance={7}
+        // Zoom móvil 2026-10-05: 7 → 1.7. Pieza chica 6.5 cm = 0.65 u (escala
+        // 0.1 u/cm) a ~1.6 u de la cámara (el frente del tablero está a z≈0.1):
+        // 0.65/(2·1.6·0.384) ≈ 53% del alto (fov 42°) — objetivo ≥50%. Con 7
+        // era ilegible. El piso queda muy por fuera del tablero (z≈0.11).
+        minDistance={1.7}
         maxDistance={60}
         target={[0, 0, 0]}
       />
@@ -276,7 +290,6 @@ export default function RoomBoardView3D({
   /** sizeCm de la variante elegida (ej "6.5×6.5", "7.5×10") — escala física de los imanes. */
   sizeCm?: string;
 }) {
-  const isTouch = useIsTouch();
   if (magnets.length === 0) {
     return (
       <div className="text-brand-muted flex h-full items-center justify-center p-8 text-center text-sm">
@@ -287,7 +300,11 @@ export default function RoomBoardView3D({
   return (
     <Canvas
       shadows
-      dpr={isTouch ? [1, 1.5] : [1, 2]}
+      // dpr hasta 2 también en táctil (2026-10-05): con el zoom cercano nuevo
+      // (minDistance 7 → 1.7) el cap 1.5 se veía borroso en retina móvil.
+      // Trade-off rendimiento: ×1.78 más píxeles/frame en GPU móvil — aceptable
+      // en escena estática con sombra horneada.
+      dpr={[1, 2]}
       camera={{ position: [0, 0.3, 12], fov: 42 }}
       gl={{ preserveDrawingBuffer: false, antialias: true }}
       style={{ width: "100%", height: "100%" }}

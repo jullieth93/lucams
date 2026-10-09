@@ -20,6 +20,8 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { getCartDetail } from "@/features/cart/service";
+import { physicalUnitPriceCents } from "@/features/cart/physical-unit-price";
+import { variantNameDisplayLabel } from "@/features/cart/variant-label";
 import { CartCrossSell } from "@/components/cart-cross-sell";
 import { CmsText } from "@/components/cms/cms-text";
 import { formatCOP } from "@/lib/format";
@@ -27,6 +29,7 @@ import { isCatalogMode } from "@/lib/store-mode";
 import { peekCartSession } from "@/lib/cart-session";
 import { removeItemAction, updateQtyAction } from "./actions";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { LinkPendingLabel } from "@/components/ui/link-pending-label";
 import { IconSubmitButton } from "./qty-button";
 import { DesignPreviewDialog } from "./design-preview-dialog";
 
@@ -71,7 +74,11 @@ export default async function CarritoPage() {
                           alt=""
                           fill
                           sizes="96px"
-                          className="object-cover"
+                          // Diseño personalizado: el preview es un MOSAICO de las
+                          // piezas → object-contain con aire para no recortarlo
+                          // (object-cover cuadrado se comía los bordes del
+                          // diseño — line-preview.ts). Foto de catálogo: cover.
+                          className={item.designId ? "object-contain p-1.5" : "object-cover"}
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">
@@ -90,8 +97,12 @@ export default async function CarritoPage() {
                           </Link>
                           {/* Paquete F (2026-10-02) — nombre de la variante + su desglose
                               estructurado (variantBreakdown): el nombre libre no siempre
-                              informa las dimensiones de compra (p. ej. Con/Sin imán). */}
-                          <p className="text-brand-muted mt-0.5 text-xs">{item.variantName}</p>
+                              informa las dimensiones de compra (p. ej. Con/Sin imán).
+                              variantNameDisplayLabel agrega "(adhesivo)" cuando el nombre
+                              indica "sin imán" pero la variante no declara attrs.magnet. */}
+                          <p className="text-brand-muted mt-0.5 text-xs">
+                            {variantNameDisplayLabel(item.variantName, item.variantBreakdown)}
+                          </p>
                           {item.variantBreakdown.length > 0 && (
                             <p className="text-brand-purple-dark/80 mt-0.5 text-xs">
                               {item.variantBreakdown.join(" · ")}
@@ -160,9 +171,10 @@ export default async function CarritoPage() {
                               📐 {item.pieceSummary}
                             </p>
                           )}
-                          <p className="text-brand-purple-dark/70 mt-1 text-sm tabular-nums">
-                            {formatCOP(item.unitPrice)} c/u
-                          </p>
+                          <UnitPriceLabel
+                            unitPrice={item.unitPrice}
+                            designUnits={item.designUnits}
+                          />
                         </div>
                         <form action={removeItemAction}>
                           <input type="hidden" name="itemId" value={item.itemId} />
@@ -238,7 +250,11 @@ export default async function CarritoPage() {
                   size="lg"
                 >
                   <Link href="/checkout/datos" prefetch={false}>
-                    {catalog ? "Cotizar por WhatsApp →" : "Ir a pagar →"}
+                    {/* Spinner mientras la navegación (sin prefetch) resuelve —
+                        antes el clic no daba señal y el usuario re-clickeaba. */}
+                    <LinkPendingLabel>
+                      {catalog ? "Cotizar por WhatsApp →" : "Ir a pagar →"}
+                    </LinkPendingLabel>
                   </Link>
                 </Button>
                 <Link
@@ -282,6 +298,30 @@ function EmptyCart() {
         Ver catálogo →
       </Link>
     </div>
+  );
+}
+
+/**
+ * "c/u" de la línea (bug STG 2026-10): en líneas multi-unidad el unitPrice del
+ * modelo es el precio del PACK (qty=1 × multiplicador de unidades), así que el
+ * "c/u" correcto es por unidad FÍSICA (unitPrice / designUnits) — de lo
+ * contrario "2 unidades" junto a "$5.000 c/u" contradecía el total de línea
+ * ($5.000). Si la división no es exacta se omite el rótulo "c/u" (queda el
+ * precio de la línea a secas): un c/u redondeado podría contradecir el total.
+ * El dinero no cambia: lineTotal = qty × unitPrice sigue mandando.
+ */
+function UnitPriceLabel({
+  unitPrice,
+  designUnits,
+}: {
+  unitPrice: number;
+  designUnits: number | null;
+}) {
+  const perUnit = physicalUnitPriceCents(unitPrice, designUnits);
+  return (
+    <p className="text-brand-purple-dark/70 mt-1 text-sm tabular-nums">
+      {perUnit === null ? formatCOP(unitPrice) : `${formatCOP(perUnit)} c/u`}
+    </p>
   );
 }
 

@@ -3,8 +3,9 @@
 /*
  * Test de la VISTA PREVIA pre-carrito del editor de nombre (Lucy 2026-07-25).
  *
- * Blinda el mismo contrato que su hermano del set de letras —pulsar "Vista previa" (antes
- * "¡Listo!", renombrado 2026-09-09) no puede crear nada; la cadena crear → finalizar → agregar
+ * Blinda el mismo contrato que su hermano del set de letras —pulsar «Ver diseño» (antes
+ * "¡Listo!"/"Vista previa"; QA ronda 2, owner 2026-10-07) no puede crear nada; la cadena
+ * crear → finalizar → agregar
  * solo corre al confirmar— más lo propio de este editor:
  *
  *   1. El precio de la modal es el TOTAL (nº de letras × precio por ficha), no el de una ficha
@@ -88,6 +89,12 @@ function renderEditor(extraProps?: {
   initialCopies?: number;
   initialWithBorder?: boolean;
   variantMagnet?: boolean;
+  initialName?: string;
+  initialCount?: number;
+  initialStyleId?: string | null;
+  initialThemeId?: string;
+  initialColors?: string[];
+  replacesCartDesignId?: string | null;
   styles?: {
     id: string;
     name: string;
@@ -119,22 +126,37 @@ const ILLUSTRATED_STYLES = [{ id: "style-animales", name: "Animales", tiles: {} 
 async function openPreviewWith(name: string): Promise<number> {
   const input = screen.getByRole("textbox");
   fireEvent.change(input, { target: { value: name } });
-  // Ola 32 — hay DOS botones «Vista previa» (el del header sticky y el grande del
-  // panel de controles; misma acción). Se pulsa el del panel: el CTA histórico.
-  const ctas = screen.getAllByRole("button", { name: /Vista previa/ });
-  fireEvent.click(ctas[ctas.length - 1]!);
+  // QA ronda 2 (owner 2026-10-07) — TODOS los CTAs de finalizar dicen «Ver
+  // diseño»: hay DOS botones con ese rótulo (header sticky + panel) con la
+  // MISMA acción. Acá se pulsa el del panel (el último en el DOM).
+  fireEvent.click(screen.getAllByRole("button", { name: /Ver diseño/ }).at(-1)!);
   await waitFor(() => expect(screen.getByText(/Así se verá tu pedido/i)).toBeInTheDocument());
   return name.length;
 }
 
 describe("NameEditor — vista previa antes del carrito", () => {
-  it('"Vista previa" abre la previa SIN crear nada en el servidor', async () => {
+  it('"Ver diseño" abre la previa SIN crear nada en el servidor', async () => {
     renderEditor();
 
     await openPreviewWith("LUCIA");
 
     expect(createNameDesignAction).not.toHaveBeenCalled();
     expect(finalizeDesignAction).not.toHaveBeenCalled();
+    expect(addPersonalizedToCartAction).not.toHaveBeenCalled();
+  });
+
+  it("QA ronda 2 (owner 2026-10-07): header sticky y panel dicen «Ver diseño» (mismo rótulo, misma acción)", async () => {
+    renderEditor();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "LUCIA" } });
+    // Los DOS CTAs de finalizar comparten rótulo (estudio.comun.listo): la
+    // diferenciación «Vista previa»/«Ver diseño» de QA 1.6 se revirtió.
+    const ctas = screen.getAllByRole("button", { name: /Ver diseño/ });
+    expect(ctas).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /Vista previa/ })).toBeNull();
+    // El CTA del header sticky (el primero en el DOM) abre la MISMA vista previa.
+    fireEvent.click(ctas[0]!);
+    await waitFor(() => expect(screen.getByText(/Así se verá tu pedido/i)).toBeInTheDocument());
+    expect(createNameDesignAction).not.toHaveBeenCalled();
     expect(addPersonalizedToCartAction).not.toHaveBeenCalled();
   });
 
@@ -208,6 +230,38 @@ describe("NameEditor — vista previa antes del carrito", () => {
 
     await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
     expect(addPersonalizedToCartAction).toHaveBeenCalledWith(expect.objectContaining({ qty: 1 }));
+  });
+
+  // Edición desde el carrito (?designId=, 2026-10-05): el editor propaga el designId
+  // ORIGINAL como replaceDesignId → el carrito REEMPLAZA la línea vieja en sitio en
+  // vez de agregar una nueva (sin duplicar — mismo resultado UX que la superficie foto).
+  it("con replacesCartDesignId («Editar» desde el carrito): confirma con replaceDesignId", async () => {
+    renderEditor({ initialName: "MATEO", replacesCartDesignId: "design-original-1" });
+    await openPreviewWith("MATEO");
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
+    expect(addPersonalizedToCartAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        designId: "design-name-1",
+        variantId: "var-1",
+        replaceDesignId: "design-original-1",
+      }),
+    );
+  });
+
+  it("sin replacesCartDesignId (flujo normal): confirma SIN replaceDesignId", async () => {
+    renderEditor();
+    await openPreviewWith("LUCIA");
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(addPersonalizedToCartAction).toHaveBeenCalledTimes(1));
+    expect(
+      (addPersonalizedToCartAction.mock.calls[0]![0] as { replaceDesignId?: string })
+        .replaceDesignId,
+    ).toBeUndefined();
   });
 
   // 2026-09-25 — nomenclatura imán/ficha según la variante (Ley 1480 art. 23):
@@ -401,5 +455,98 @@ describe("NameEditor — opción «Con borde / Sin borde» (regla del set de let
       "true",
     );
     expect(screen.getByRole("button", { name: /Arcoíris/ })).toBeEnabled();
+  });
+});
+
+/*
+ * Recover flow (?designId= — «Editar» desde el carrito) — el Estudio debe devolver el
+ * diseño persistido al editor: nombre escrito, nº de fichas, estilo ilustrado, tema y
+ * colores por ficha (Design.metadata de createNameDesign). Antes solo se restauraba
+ * withBorder: el editor abría vacío y el cliente perdía visualmente su trabajo.
+ */
+describe("NameEditor — recover flow (?designId=)", () => {
+  /** Abre la vista previa SIN escribir: el nombre ya viene restaurado. */
+  async function openPreviewDirect() {
+    // QA ronda 2 — ambos CTAs (header y panel) dicen «Ver diseño» (misma acción).
+    fireEvent.click(screen.getAllByRole("button", { name: /Ver diseño/ }).at(-1)!);
+    await waitFor(() => expect(screen.getByText(/Así se verá tu pedido/i)).toBeInTheDocument());
+  }
+
+  it("arranca con el nombre persistido y el conteo de fichas del diseño", () => {
+    renderEditor({ initialName: "MATEO", initialCount: 5 });
+
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    expect(input.value).toBe("MATEO");
+    // El contador arranca en las 5 fichas del diseño (no en el mínimo del producto).
+    expect(screen.getByText("5/5")).toBeInTheDocument();
+    // Y el total en vivo refleja las letras restauradas (5 × precio por ficha).
+    const total = new Intl.NumberFormat("es-CO", {
+      style: "currency",
+      currency: "COP",
+      maximumFractionDigits: 0,
+    }).format((PRICE_PER_TILE * 5) / 100);
+    const soloDigitos = total.replace(/\D/g, "");
+    expect(
+      screen
+        .getAllByText(/\$/)
+        .some((el) => (el.textContent ?? "").replace(/\D/g, "") === soloDigitos),
+    ).toBe(true);
+  });
+
+  it("sin initialCount explícito, el conteo se deriva del largo del nombre restaurado", () => {
+    renderEditor({ initialName: "MATEO" });
+    expect(screen.getByText("5/5")).toBeInTheDocument();
+  });
+
+  it("los colores y el tema persistidos llegan intactos al crear el diseño (round-trip)", async () => {
+    const colors = ["#FF0000", "#00FF00", "#0000FF", "#123456", "#654321"];
+    renderEditor({
+      initialName: "MATEO",
+      initialCount: 5,
+      initialColors: colors,
+      initialThemeId: "nino",
+    });
+    await openPreviewDirect();
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(createNameDesignAction).toHaveBeenCalledTimes(1));
+    expect(createNameDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "MATEO", themeId: "nino", colors }),
+    );
+  });
+
+  it("initialStyleId null explícito («Solo letra») manda sobre el default del primer estilo", async () => {
+    renderEditor({
+      initialName: "MATEO",
+      initialCount: 5,
+      initialStyleId: null,
+      styles: ILLUSTRATED_STYLES,
+    });
+    await openPreviewDirect();
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(createNameDesignAction).toHaveBeenCalledTimes(1));
+    expect(createNameDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({ styleSetId: null }),
+    );
+  });
+
+  it("el estilo ilustrado persistido arranca seleccionado", async () => {
+    renderEditor({
+      initialName: "MATEO",
+      initialCount: 5,
+      initialStyleId: "style-animales",
+      styles: ILLUSTRATED_STYLES,
+    });
+    await openPreviewDirect();
+
+    fireEvent.click(screen.getByRole("button", { name: /agregar al carrito/i }));
+
+    await waitFor(() => expect(createNameDesignAction).toHaveBeenCalledTimes(1));
+    expect(createNameDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({ styleSetId: "style-animales" }),
+    );
   });
 });

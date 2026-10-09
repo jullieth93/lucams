@@ -10,6 +10,13 @@
 
 import "server-only";
 import { Prisma, prisma } from "@/lib/db";
+import { cachedCms } from "@/lib/cms";
+import {
+  deleteProductImage,
+  galleryThumbPathFromUrl,
+  galleryThumbUrlFromImageUrl,
+  listGalleryThumbPaths,
+} from "@/lib/storage";
 import { parseVariantAttributes } from "@/features/products/variant-schemas";
 import { parsePhotoProductConfig } from "./schemas";
 import { resolvePersonalizationSurface } from "./surface";
@@ -29,11 +36,37 @@ export type GalleryImage = {
   /** Ola 21 — URL opcional de la cara B (pares A/B para separadores). */
   imageUrlB?: string | null;
   /**
+   * Fase 3 · 3.10 (2026-10-07) — miniatura de exhibición ~800px WebP con
+   * watermark LUCAMS (anti-copia + peso; decisión owner: el original no debería
+   * llegar al navegador del cliente). Path derivada determinista del imageUrl
+   * (gallery-<tag>/thumbs/<uuid>.webp, SIN columna nueva); null cuando el
+   * objeto aún no existe en el bucket (filas anteriores al backfill) → el
+   * Estudio cae al imageUrl original como fallback transitorio.
+   */
+  thumbUrl?: string | null;
+  /**
    * Fase 5 — subset de attributes de variante al que aplica el diseño
    * (ej. { sizeCm: "2×6" }). null/undefined = aplica a TODAS las variantes.
    */
   variantFilter?: VariantFilter | null;
 };
+
+/**
+ * PERF (2026-10-07) — el `storage.list` de miniaturas por tag va cacheado con
+ * `unstable_cache` (tag `gallery-thumbs`, revalidate 1h): antes corría EN CADA
+ * page load del Estudio (página dinámica sin caché) y sumaba 100–500 ms de
+ * TTFB por request. El admin invalida con `updateTag("gallery-thumbs")` al
+ * subir/archivar/purgar diseños (app/admin/(panel)/disenos/actions.ts). El
+ * Set se cachea como array (el incremental cache serializa JSON — un Set no
+ * sobrevive el round-trip) y se re-arma en el caller. Fail-open intacto:
+ * listGalleryThumbPaths ya degrada a set vacío si storage no responde, y
+ * cachedCms ejecuta crudo fuera de un request de Next (vitest/scripts).
+ */
+const listGalleryThumbPathsCached = cachedCms(
+  async (folder: string): Promise<string[]> => [...(await listGalleryThumbPaths(folder))],
+  ["gallery-thumbs"],
+  { tags: ["gallery-thumbs"], revalidate: 3600 },
+);
 
 /**
  * Diseños prediseñados activos de un tag, para el editor (público).
@@ -57,10 +90,20 @@ export async function listGalleryImages(
     orderBy: { order: "asc" },
     select: { id: true, name: true, imageUrl: true, imageUrlB: true, variantFilter: true },
   });
-  if (variantAttributes === undefined) return rows as GalleryImage[];
-  return (rows as GalleryImage[]).filter((r) =>
-    matchesVariantFilter(r.variantFilter, variantAttributes),
-  );
+  // 3.10 — thumbUrl solo si la miniatura EXISTE en el bucket (un solo list del
+  // folder de thumbs del tag, CACHEADO — ver listGalleryThumbPathsCached;
+  // fail-open a "sin thumbs" → fallback al original).
+  const thumbPaths = new Set(await listGalleryThumbPathsCached(`gallery-${tag}`));
+  const withThumbs = (rows as GalleryImage[]).map((r) => {
+    const thumbPath = galleryThumbPathFromUrl(r.imageUrl);
+    return {
+      ...r,
+      thumbUrl:
+        thumbPath && thumbPaths.has(thumbPath) ? galleryThumbUrlFromImageUrl(r.imageUrl) : null,
+    };
+  });
+  if (variantAttributes === undefined) return withThumbs;
+  return withThumbs.filter((r) => matchesVariantFilter(r.variantFilter, variantAttributes));
 }
 
 /** Ola 21 — Lee el diseño prediseñado completo (cara A y cara B). Es el reader de la acción de llenar slot. */
@@ -264,10 +307,47 @@ export async function createGalleryImage(opts: {
   return row;
 }
 
-export async function deleteGalleryImage(id: string): Promise<void> {
+/**
+ * Fase 3 · 3.6 (2026-10-07) — ARCHIVAR (antes "Borrar", naming engañoso): es un
+ * SOFT-delete (deletedAt + isActive=false) — el diseño sale del Estudio y pasa a
+ * la sección "Archivados" del admin, restaurable. El borrado REAL es
+ * purgeGalleryImage. Best-effort silencioso como siempre (el admin reintenta).
+ */
+export async function archiveGalleryImage(id: string): Promise<void> {
   await prisma.designGalleryImage
     .update({ where: { id }, data: { deletedAt: new Date(), isActive: false } })
     .catch(() => {});
+}
+
+/**
+ * Fase 3 · 3.6 — ELIMINAR PERMANENTEMENTE un diseño ARCHIVADO: purga los
+ * archivos físicos del bucket (cara A, su miniatura watermark 3.10, cara B y la
+ * miniatura de B si existiera) y DESPUÉS borra la fila.
+ *
+ * Ante fallo de storage ABORTA conservando la fila (deleteProductImage lanza
+ * StorageError y el delete de DB no se alcanza): borrar la fila primero dejaría
+ * objetos huérfanos sin referencia en DB, imposibles de descubrir/purgar
+ * después. Con la fila conservada el admin reintenta (los remove son
+ * idempotentes: borrar un objeto inexistente es no-op en Supabase Storage).
+ * false si el diseño no existe o NO está archivado (solo se purga desde la
+ * sección Archivados — un diseño vivo primero se archiva).
+ */
+export async function purgeGalleryImage(opts: { id: string }): Promise<boolean> {
+  const row = await prisma.designGalleryImage.findFirst({
+    where: { id: opts.id, deletedAt: { not: null } },
+    select: { imageUrl: true, imageUrlB: true },
+  });
+  if (!row) return false;
+  for (const url of [row.imageUrl, row.imageUrlB]) {
+    if (!url) continue;
+    const thumbUrl = galleryThumbUrlFromImageUrl(url);
+    // Miniatura primero (no-op silencioso si la URL es ajena al bucket o el
+    // objeto no existe); luego el original.
+    if (thumbUrl) await deleteProductImage(thumbUrl);
+    await deleteProductImage(url);
+  }
+  await prisma.designGalleryImage.delete({ where: { id: opts.id } });
+  return true;
 }
 
 /**

@@ -21,6 +21,7 @@ import {
   Wand2,
   Loader2,
   Check,
+  ChevronDown,
   GripVertical,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -42,13 +43,16 @@ import {
   type StudioStoreState,
 } from "./lib/store";
 import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
-import { compressImageForUpload } from "./client-image-compress";
-import { isStillBelowMinimum, upscalePhotoForPrint } from "./client-photo-upscale";
+import { processPhotoFiles } from "./lib/upload-photo-pipeline";
 import type { StudioAsset, StudioTemplate } from "./types";
 import { PhotoQualityModal } from "./photo-quality-modal";
 import { Hint } from "@/components/ui/tooltip";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
+
+/** Fase 2 · 2.5 (2026-10-07) — con más de este número de diseños prediseñados
+ *  la sección arranca COLAPSADA (cerrada), para no sepultar «Mis fotos». */
+const PREDESIGNED_COLLAPSE_THRESHOLD = 6;
 
 type StudioSidebarProps = {
   store: StoreApi<StudioStoreState>;
@@ -104,6 +108,12 @@ export function StudioSidebar({
   const applyTemplate = useStore(store, (s) => s.applyTemplate);
   const selectedSlotIndex = useStore(store, (s) => s.selectedSlotIndex);
   const [applyingPredesignedId, setApplyingPredesignedId] = useState<string | null>(null);
+  // Fase 2 · 2.5 — sección de prediseñados COLAPSABLE: con muchos diseños
+  // sepultaba el resto de la sidebar («Mis fotos» quedaba lejos). Cerrada por
+  // defecto cuando supera el umbral; el contador queda visible en el header.
+  const [predesignedOpen, setPredesignedOpen] = useState(
+    () => predesigned.length <= PREDESIGNED_COLLAPSE_THRESHOLD,
+  );
 
   // Ola 21 — aplicar un diseño prediseñado al slot seleccionado (o al primer slot vacío).
   // 2026-09-22 — la aplicación vive en applyPredesignedToSlot (helper compartido
@@ -122,9 +132,15 @@ export function StudioSidebar({
     }
     setApplyingPredesignedId(item.id);
     try {
-      const res = await applyPredesignedToSlot({ store, item, targetSlot });
+      const res = await applyPredesignedToSlot({ store, item, targetSlot, facesPerUnit });
       if (!res.ok) {
-        toast.error(res.message || texts.plantillas.toastError);
+        // Fix STG 2026-10-06 — "no-free-slot" no es un error: todos los
+        // lienzos ya tienen diseño y nunca se pisa contenido para abrir sitio.
+        toast.error(
+          res.reason === "no-free-slot"
+            ? texts.plantillas.toastSinLienzoLibre
+            : res.message || texts.plantillas.toastError,
+        );
         return;
       }
       toast.success(fillStudioText(texts.plantillas.toastPredisenado, { nombre: item.name }));
@@ -164,96 +180,58 @@ export function StudioSidebar({
     }
   };
 
+  // Fix STG (2026-10-05, "subir fotos es demorado") — pipeline UNIFICADO con el
+  // picker modal (lib/upload-photo-pipeline): misma secuencia upscale →
+  // compresión → upload por archivo, con hasta 3 archivos en vuelo (antes era
+  // estrictamente secuencial). Los resultados se publican EN ORDEN de selección:
+  // el orden de "Mis fotos" define la asignación de «Llenar slots», así que no
+  // puede depender de cuál foto terminó primero.
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setUploading(files.length);
     setUploadError(null);
     try {
-      for (const file of Array.from(files)) {
-        // C2 (owner 2026-09-15) — mejora LOCAL previa: si la foto queda bajo la
-        // resolución requerida para imprimir el producto a 300 DPI, se
-        // re-muestrea en el navegador (progresivo + unsharp leve) ANTES de
-        // subir. null = no aplica (HEIC, sin sizeCm) o falló → original.
-        const upscaled = await upscalePhotoForPrint(file, productSizeCm);
-        const improvedButLow = upscaled ? isStillBelowMinimum(upscaled) : false;
-        // Compresión cliente si la foto supera ~4 MB (el tope real de Vercel
-        // es ~4.5 MB por request — fotos full-res de iPhone). HEIC pasa intacto
-        // (el servidor lo decodifica con heic-decode). Ver client-image-compress.ts.
-        const prepared = await compressImageForUpload(upscaled?.file ?? file);
-        const formData = new FormData();
-        formData.append("file", prepared);
-        if (designId) formData.append("designId", designId);
-        formData.append("rightsAccepted", rightsAccepted ? "true" : "false");
-        let result;
-        try {
-          result = await uploadDesignAssetAction(formData);
-        } catch (err) {
-          // Framework/plataforma mató el request ANTES de la acción (413 payload
-          // too large en Vercel ~4.5 MB, 500 "Unexpected end of form", red):
-          // sin este catch el usuario no veía NADA (silencio total — verificación
-          // de uploads 2026-08-05). Damos el motivo y la salida práctica.
-          const reason = err instanceof Error ? err.message : String(err);
-          // El 413 de Vercel llega como HTML no-RSC y Next lo traduce a "An
-          // unexpected response was received from the server" (sin "413" en el
-          // texto — hallazgo H7, 2026-08-06): el mensaje de tamaño también aplica
-          // ahí y, desde luego, si el archivo preparado supera el tope del server
-          // (10 MB), la causa ES el tamaño aunque el error no lo diga.
-          const tooBig =
-            prepared.size > 10 * 1024 * 1024 ||
-            /413|too large|end of form|network|fetch failed|unexpected response/i.test(reason);
-          setUploadError(
-            tooBig
-              ? `No pudimos subir "${file.name}": es muy grande para el servidor. Prueba con una foto de menos de ~4 MB (o baja la resolución en tu cámara).`
-              : `No pudimos subir "${file.name}". Revisa tu conexión e inténtalo de nuevo.`,
-          );
+      await processPhotoFiles(Array.from(files), {
+        productSizeCm,
+        designId,
+        rightsAccepted,
+        upload: uploadDesignAssetAction,
+        onReady: (outcome) => {
           setUploading((n) => Math.max(0, n - 1));
-          continue;
-        }
-        if (result.ok) {
-          addAsset({
-            id: result.assetId,
-            signedUrl: result.signedUrl,
-            width: result.width,
-            height: result.height,
-            // 2026-09-24 — si hubo upscale local, guardamos las dimensiones de la
-            // ORIGINAL (metadata de sesión): el chip de calidad del slot mide la
-            // nitidez real, no los píxeles re-muestreados (que no crean detalle).
-            ...(upscaled?.improved
-              ? { originalWidth: upscaled.originalWidth, originalHeight: upscaled.originalHeight }
-              : {}),
-            validationLevel: result.validationLevel,
-            validationMessage: result.validationMessage,
-            // Paquete C — recomendación específica del caso + checks que
-            // fallaron (el modal de calidad los muestra como contenido principal).
-            validationRecommendation: result.validationRecommendation,
-            validationChecks: result.validationChecks,
-          });
+          if (!outcome.ok) {
+            setUploadError(
+              outcome.kind === "too-big"
+                ? `No pudimos subir "${outcome.fileName}": es muy grande para el servidor. Prueba con una foto de menos de ~4 MB (o baja la resolución en tu cámara).`
+                : outcome.kind === "server"
+                  ? (outcome.serverMessage ?? texts.fotos.errorCalidad)
+                  : `No pudimos subir "${outcome.fileName}". Revisa tu conexión e inténtalo de nuevo.`,
+            );
+            return;
+          }
+          addAsset(outcome.asset);
           // C2 — la foto se re-muestreó en el navegador antes de subir: marcarla
           // para el badge "✨ Optimizada" del thumb (el servidor recibe la versión
           // ya ajustada y no puede saberlo).
-          if (upscaled?.improved) {
-            const { assetId } = result;
-            setImprovedAssetIds((prev) => new Set(prev).add(assetId));
+          if (outcome.improved) {
+            const { id } = outcome.asset;
+            setImprovedAssetIds((prev) => new Set(prev).add(id));
           }
           // M.3.b.B.2 — Si la foto subió con calidad insuficiente, mostrar
           // banner naranja persistente con el mensaje (cliente decide si usarla).
           // C2 — si ya la mejoramos automáticamente y AÚN así quedó bajo el
           // mínimo para imprimir, el aviso lo explica (mensaje mejorado).
-          if (improvedButLow) {
+          if (outcome.improvedButLow) {
             setUploadError(
               fillStudioText(texts.fotos.avisoMejoraAuto, { size: productSizeCm ?? "" }),
             );
           } else if (
-            result.validationLevel === "warning-strong" ||
-            result.validationLevel === "error"
+            outcome.asset.validationLevel === "warning-strong" ||
+            outcome.asset.validationLevel === "error"
           ) {
-            setUploadError(result.validationMessage ?? texts.fotos.errorCalidad);
+            setUploadError(outcome.asset.validationMessage ?? texts.fotos.errorCalidad);
           }
-        } else {
-          setUploadError(result.message);
-        }
-        setUploading((n) => Math.max(0, n - 1));
-      }
+        },
+      });
     } finally {
       setUploading(0);
     }
@@ -485,100 +463,127 @@ export function StudioSidebar({
           aria-labelledby="sidebar-predisenados"
           className="border-brand-purple/10 border-t pt-5"
         >
-          <div
-            id="sidebar-predisenados"
-            className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
-          >
-            <Sparkles className="text-brand-purple h-4 w-4" />
-            {texts.plantillas.predisenadosTitulo}
-            <span className="text-brand-muted text-xs font-normal">({predesigned.length})</span>
-          </div>
-          <p className="text-brand-muted mb-2 text-[11px]">{texts.plantillas.predisenadosHint}</p>
-          {/* Paquete A — llenado VARIADO de los slots vacíos (round-robin del
-              catálogo: nunca N slots con el mismo diseño habiendo variedad). */}
-          {emptySlots > 0 && (
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div
+              id="sidebar-predisenados"
+              className="text-brand-purple-dark flex items-center gap-2 text-sm font-semibold"
+            >
+              <Sparkles className="text-brand-purple h-4 w-4" />
+              {texts.plantillas.predisenadosTitulo}
+              <span className="text-brand-muted text-xs font-normal">({predesigned.length})</span>
+            </div>
+            {/* Fase 2 · 2.5 — colapsable: cerrada por defecto cuando hay muchos
+                (> PREDESIGNED_COLLAPSE_THRESHOLD), para que «Mis fotos» no quede
+                sepultada. El contador del header sigue visible estando cerrada. */}
             <button
               type="button"
-              onClick={handleFillWithVariety}
-              disabled={applyingVariety || applyingPredesignedId !== null}
-              aria-label={texts.plantillas.predisenadosLlenarAria}
-              className="bg-brand-turquoise/15 text-brand-purple-dark hover:bg-brand-turquoise/25 focus:ring-brand-turquoise mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2.5 text-sm font-semibold transition-colors focus:ring-2 focus:outline-none disabled:opacity-60"
+              onClick={() => setPredesignedOpen((v) => !v)}
+              aria-expanded={predesignedOpen}
+              aria-controls="sidebar-predisenados-panel"
+              aria-label={texts.fotos.predisenadosToggleAria}
+              className="text-brand-muted hover:text-brand-purple-dark hover:bg-brand-cream focus:ring-brand-purple rounded-md p-1.5 transition-colors focus:ring-2 focus:outline-none"
             >
-              {applyingVariety ? (
-                <Loader2 className="text-brand-purple h-4 w-4 animate-spin" />
-              ) : (
-                <Wand2 className="text-brand-purple h-4 w-4" />
-              )}
-              {texts.plantillas.predisenadosLlenarCta}
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${predesignedOpen ? "" : "-rotate-90"}`}
+                aria-hidden
+              />
             </button>
-          )}
-          <div className="grid grid-cols-3 gap-2">
-            {predesigned.map((item) => {
-              const faceBadge = predesignedFaceBadge(facesPerUnit, item.imageUrlB);
-              return (
-                <Hint key={item.id} content={item.name}>
-                  <button
-                    type="button"
-                    onClick={() => handleApplyPredesigned(item)}
-                    disabled={applyingPredesignedId !== null || applyingVariety}
-                    aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
-                      nombre: item.name,
-                    })}
-                    // 2026-09-22 — drag & drop al lienzo (desktop): la tarjeta se
-                    // arrastra hasta un slot (highlight de drop target ya existe en
-                    // el slot). El clic sigue aplicando al slot seleccionado/vacío.
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData(
-                        PREDESIGNED_DRAG_MIME,
-                        JSON.stringify({ id: item.id, name: item.name }),
-                      );
-                      e.dataTransfer.effectAllowed = "copy";
-                    }}
-                    className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none active:cursor-grabbing disabled:opacity-50"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={item.imageUrl}
-                      alt={item.name}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                      // La imagen interna no debe secuestrar el drag del botón.
-                      draggable={false}
-                    />
-                    {/* Paquete A — badge 1/2 caras (solo productos de 2 caras):
-                      "1 cara" = el respaldo se imprime espejo del frente (regla
-                      única de cara B vacía — ver predesigned-variety.ts). */}
-                    {faceBadge && (
-                      <Hint
-                        content={
-                          faceBadge === "two"
-                            ? texts.plantillas.badgeDosCarasTitle
-                            : texts.plantillas.badgeUnaCaraTitle
-                        }
-                      >
-                        {/* stopPropagation: el badge vive DENTRO del botón con su
-                            propio Hint — sin esto el hover abriría ambos tooltips. */}
-                        <span
-                          onPointerMove={(e) => e.stopPropagation()}
-                          className="text-brand-purple-dark absolute top-1 left-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold shadow"
-                        >
-                          {faceBadge === "two"
-                            ? texts.plantillas.badgeDosCaras
-                            : texts.plantillas.badgeUnaCara}
-                        </span>
-                      </Hint>
-                    )}
-                    {applyingPredesignedId === item.id && (
-                      <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
-                        <Loader2 className="h-5 w-5 animate-spin text-white" />
-                      </div>
-                    )}
-                  </button>
-                </Hint>
-              );
-            })}
           </div>
+          {predesignedOpen && (
+            <div id="sidebar-predisenados-panel">
+              <p className="text-brand-muted mb-2 text-[11px]">
+                {texts.plantillas.predisenadosHint}
+              </p>
+              {/* Paquete A — llenado VARIADO de los slots vacíos (round-robin del
+              catálogo: nunca N slots con el mismo diseño habiendo variedad). */}
+              {emptySlots > 0 && (
+                <button
+                  type="button"
+                  onClick={handleFillWithVariety}
+                  disabled={applyingVariety || applyingPredesignedId !== null}
+                  aria-label={texts.plantillas.predisenadosLlenarAria}
+                  className="bg-brand-turquoise/15 text-brand-purple-dark hover:bg-brand-turquoise/25 focus:ring-brand-turquoise mb-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2.5 text-sm font-semibold transition-colors focus:ring-2 focus:outline-none disabled:opacity-60"
+                >
+                  {applyingVariety ? (
+                    <Loader2 className="text-brand-purple h-4 w-4 animate-spin" />
+                  ) : (
+                    <Wand2 className="text-brand-purple h-4 w-4" />
+                  )}
+                  {texts.plantillas.predisenadosLlenarCta}
+                </button>
+              )}
+              <div className="grid grid-cols-3 gap-2">
+                {predesigned.map((item) => {
+                  const faceBadge = predesignedFaceBadge(facesPerUnit, item.imageUrlB);
+                  return (
+                    <Hint key={item.id} content={item.name}>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyPredesigned(item)}
+                        disabled={applyingPredesignedId !== null || applyingVariety}
+                        aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
+                          nombre: item.name,
+                        })}
+                        // 2026-09-22 — drag & drop al lienzo (desktop): la tarjeta se
+                        // arrastra hasta un slot (highlight de drop target ya existe en
+                        // el slot). El clic sigue aplicando al slot seleccionado/vacío.
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData(
+                            PREDESIGNED_DRAG_MIME,
+                            JSON.stringify({ id: item.id, name: item.name }),
+                          );
+                          e.dataTransfer.effectAllowed = "copy";
+                        }}
+                        className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none active:cursor-grabbing disabled:opacity-50"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={item.thumbUrl ?? item.imageUrl}
+                          alt={item.name}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          // La imagen interna no debe secuestrar el drag del botón.
+                          // 3.10 — disuasión anti-copia: sin menú contextual
+                          // ("Guardar imagen como…") sobre la miniatura.
+                          draggable={false}
+                          onContextMenu={(e) => e.preventDefault()}
+                        />
+                        {/* Paquete A — badge 1/2 caras (solo productos de 2 caras):
+                      "1 cara" = el respaldo se imprime EN BLANCO (regla única de
+                      cara B vacía, owner 2026-10-07 — ver predesigned-variety.ts). */}
+                        {faceBadge && (
+                          <Hint
+                            content={
+                              faceBadge === "two"
+                                ? texts.plantillas.badgeDosCarasTitle
+                                : texts.plantillas.badgeUnaCaraTitle
+                            }
+                          >
+                            {/* stopPropagation: el badge vive DENTRO del botón con su
+                            propio Hint — sin esto el hover abriría ambos tooltips. */}
+                            <span
+                              onPointerMove={(e) => e.stopPropagation()}
+                              className="text-brand-purple-dark absolute top-1 left-1 rounded-full bg-white/90 px-1.5 py-0.5 text-[9px] font-bold shadow"
+                            >
+                              {faceBadge === "two"
+                                ? texts.plantillas.badgeDosCaras
+                                : texts.plantillas.badgeUnaCara}
+                            </span>
+                          </Hint>
+                        )}
+                        {applyingPredesignedId === item.id && (
+                          <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
+                            <Loader2 className="h-5 w-5 animate-spin text-white" />
+                          </div>
+                        )}
+                      </button>
+                    </Hint>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </section>
       )}
     </div>

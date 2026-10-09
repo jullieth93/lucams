@@ -188,10 +188,10 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
     expect(units[1]!.back?.id).toBe("2B");
   });
 
-  it("unidad impar (no debería con facesPerUnit=2): la última repite su diseño atrás", () => {
+  it("unidad sin cara B (no debería con facesPerUnit=2): la trasera queda EN BLANCO (back = null)", () => {
     const units = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")]);
     expect(units).toHaveLength(2);
-    expect(units[1]!.back?.id).toBe("2A");
+    expect(units[1]!.back).toBeNull();
   });
 
   it("diseños VIEJOS de tira completa (vertical) NO se parean: cada uno repite su diseño", () => {
@@ -230,16 +230,16 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
     ]);
   });
 
-  it("Paquete D (2026-10-02) — REGLA ÚNICA: cara B vacía → espejo de la cara A (back = front)", () => {
-    // Pareo por pares: unidad impar sin cara B.
+  it("Decisión owner 2026-10-07 — REGLA ÚNICA: cara B vacía → EN BLANCO (back = null, nunca espejo)", () => {
+    // Pareo por pares: unidad sin cara B → trasera en blanco.
     const units = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")], undefined, "6×2");
-    expect(units.map((u) => [u.front.id, u.back.id])).toEqual([
+    expect(units.map((u) => [u.front.id, u.back?.id ?? null])).toEqual([
       ["1A", "1B"],
-      ["2A", "2A"], // sin cara B → espejo de A (igual que producción)
+      ["2A", null], // sin cara B → EN BLANCO (igual que producción)
     ]);
     // Pareo por slotIndex (facesPerUnit=2): la cara B existe como slot con su
     // textura de stage (dataUrl SIEMPRE llega) pero SIN assetUrl — la misma
-    // condición "vacía" que producción (expandMissingBackFaces).
+    // condición "vacía" que producción (blankBackFacePng, blank-back-face.ts).
     const slot = (id: string, slotIndex: number, assetUrl?: string) => ({
       id,
       wRatio: 600,
@@ -253,8 +253,8 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
       2,
       "6×2",
     );
-    expect(bySlotUnits.map((u) => [u.front.id, u.back.id])).toEqual([
-      ["1A", "1A"], // B sin assetUrl → espejo de A (antes: reverso blanco papel)
+    expect(bySlotUnits.map((u) => [u.front.id, u.back?.id ?? null])).toEqual([
+      ["1A", null], // B sin assetUrl → EN BLANCO (revierte el espejo del Paquete D)
       ["2A", "2B"], // B diseñada → su propia textura
     ]);
   });
@@ -504,5 +504,103 @@ describe("flatBookmarkSlots SIN SOLAPE (2026-09-15 — separación = ancho de pi
   it("1 pieza sigue centrada; 0 piezas → sin slots", () => {
     expect(flatBookmarkSlots(1, { pieceW: PIECE_W })[0]!.x).toBeCloseTo(PAGE_W / 2, 6);
     expect(flatBookmarkSlots(0, { pieceW: PIECE_W })).toEqual([]);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+//  Fase 2.12 revisada (2026-10-07) — pose anidada de la pieza plana + volteo de caras
+// ──────────────────────────────────────────────────────────────────
+
+import {
+  FLAT_LIE_ROTATION,
+  flatFrontNormalWorld,
+  foldedFrontNormalWorld,
+  rotateVecEulerXYZ,
+} from "./book-geometry";
+import { DEFAULT_STUDIO_TEXTS } from "../studio-texts";
+
+describe("rotateVecEulerXYZ (espejo puro de THREE.Euler orden 'XYZ')", () => {
+  it("rota primero sobre Z, luego Y, luego X (igual que three)", () => {
+    // Rx(−90°) manda +Z → +Y y +Y → −Z.
+    const nz = rotateVecEulerXYZ([0, 0, 1], [-Math.PI / 2, 0, 0]);
+    expect(nz[0]).toBeCloseTo(0, 12);
+    expect(nz[1]).toBeCloseTo(1, 12);
+    expect(nz[2]).toBeCloseTo(0, 12);
+    const [, y, z] = rotateVecEulerXYZ([0, 1, 0], [-Math.PI / 2, 0, 0]);
+    expect(y).toBeCloseTo(0, 12);
+    expect(z).toBeCloseTo(-1, 12);
+    // Ry(90°) manda +Z → +X.
+    const [x] = rotateVecEulerXYZ([0, 0, 1], [0, Math.PI / 2, 0]);
+    expect(x).toBeCloseTo(1, 12);
+  });
+});
+
+describe("pose anidada de la pieza plana (fix 2026-10-07 — cara A EXACTA a +Y)", () => {
+  it("sin volteo: la cara A mira EXACTA a +Y para cualquier yaw", () => {
+    for (const yaw of [-0.35, -0.05, 0, 0.07, 0.35]) {
+      const [x, y, z] = flatFrontNormalWorld(yaw, false);
+      expect(x).toBeCloseTo(0, 9);
+      expect(y).toBeCloseTo(1, 9);
+      expect(z).toBeCloseTo(0, 9);
+    }
+  });
+
+  it("la Euler colapsada de la 1ª Fase 2.12 aplicaba el yaw como ROLL (documenta el bug)", () => {
+    // [−π/2, yaw, 0] en orden XYZ: la normal de la cara A queda BASCULADA `yaw` fuera de
+    // la vertical (roll sobre el eje largo) en vez de trenzada en el plano de la hoja.
+    const [x, y] = rotateVecEulerXYZ([0, 0, 1], [-Math.PI / 2, 0.35, 0]);
+    expect(Math.abs(x)).toBeGreaterThan(0.3); // basculada ~20°
+    expect(y).toBeLessThan(0.95); // ya no es la vertical exacta de la pose certificada
+  });
+
+  it("el largo de la pieza queda EN el plano de la hoja, trenzado por el yaw (no roll)", () => {
+    // Eje largo local +Y: tras acostar queda a y≈0 y el yaw lo gira alrededor de la vertical.
+    let l = rotateVecEulerXYZ([0, 1, 0], FLAT_LIE_ROTATION);
+    l = rotateVecEulerXYZ(l, [0, 0.35, 0]);
+    expect(l[1]).toBeCloseTo(0, 9);
+    expect(Math.abs(l[0])).toBeGreaterThan(0.3); // el yaw SÍ trenza en el plano
+  });
+
+  it("con volteo (Ver respaldo): la cara A mira a −Y → la B (o el blanco) queda arriba", () => {
+    for (const yaw of [-0.05, 0, 0.07]) {
+      const [x, y, z] = flatFrontNormalWorld(yaw, true);
+      expect(x).toBeCloseTo(0, 9);
+      expect(y).toBeCloseTo(-1, 9);
+      expect(z).toBeCloseTo(0, 9);
+    }
+  });
+});
+
+describe("volteo del separador DOBLADO sobre su eje largo (FoldedStripMesh)", () => {
+  const { stripL } = stripDimsForFace({ wRatio: 600, hRatio: 200 }, "6×2");
+
+  it("sin volteo la cara A mira al lector (+Z); con volteo mira a −Z → la B queda de frente", () => {
+    for (const { x, yaw } of SEPARATOR_SLOTS) {
+      const p = separatorPlacement(x, stripL);
+      const front = foldedFrontNormalWorld(p.tilt, yaw, false);
+      expect(front[2]).toBeGreaterThan(0.5); // cara A hacia el lector
+      const flipped = foldedFrontNormalWorld(p.tilt, yaw, true);
+      expect(flipped[2]).toBeLessThan(-0.5); // cara B (o el blanco) hacia el lector
+    }
+  });
+
+  it("el volteo es sobre el eje LARGO: la tira sigue colgando hacia abajo, no se vuelca", () => {
+    const p = separatorPlacement(0.55, stripL);
+    for (const showBack of [false, true]) {
+      // Dirección de colgado local (−Y) compuesta con flip + pose: siempre hacia abajo.
+      let d = rotateVecEulerXYZ([0, -1, 0], showBack ? [0, Math.PI, 0] : [0, 0, 0]);
+      d = rotateVecEulerXYZ(d, [p.tilt, 0.07, 0]);
+      expect(d[1]).toBeLessThan(-0.9);
+    }
+  });
+});
+
+describe("toggle 'Ver respaldo / Ver frente' (textos CMS estudio.escenas.libro-ver-*)", () => {
+  it("los defaults del CMS muestran la ACCIÓN según la cara visible", () => {
+    // La lógica vive en book-view-3d.tsx: showBack=false → ofrece "Ver respaldo";
+    // showBack=true → ofrece "Ver frente". Acá se blindan los defaults registrados
+    // en studio-texts (fuente única vía StudioTextsProvider).
+    expect(DEFAULT_STUDIO_TEXTS.escenas.libroVerRespaldo).toBe("Ver respaldo");
+    expect(DEFAULT_STUDIO_TEXTS.escenas.libroVerFrente).toBe("Ver frente");
   });
 });

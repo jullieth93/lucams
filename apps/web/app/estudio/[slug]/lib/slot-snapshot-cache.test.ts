@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearSlotSnapshotCache,
   SLOT_SNAPSHOT_CACHE_LIMIT,
+  snapshotRasterPlan,
   snapshotSlotForPreview,
   slotSnapshotCacheSize,
   type SnapshotStageSource,
@@ -81,17 +82,27 @@ describe("snapshotSlotForPreview — cache e invalidación", () => {
     expect(stage.toDataURL).toHaveBeenCalledTimes(2);
   });
 
-  it("cambio de tamaño del stage (zoom de lienzo / resize) → invalida", () => {
+  it("cambio de tamaño DISPLAY del stage (zoom de lienzo) NO invalida: la salida es fija", () => {
+    // Fix STG 2026-10-05 — el snapshot se rasteriza al ancho objetivo (720px),
+    // no al tamaño display: el mismo diseño al mismo tamaño de salida produce
+    // el mismo PNG aunque el stage esté zoomado, así que el cache PEGA.
     const slot = makeSlot(0);
     const ctx = { unitTemplate: makeTemplate("t1"), borderColor: null };
     const a = makeStage(450, 575);
-    snapshotSlotForPreview(a.stage, slot, ctx);
+    const first = snapshotSlotForPreview(a.stage, slot, ctx);
     const b = makeStage(900, 1150); // zoom 200%
-    snapshotSlotForPreview(b.stage, slot, ctx);
-    expect(b.stage.toDataURL).toHaveBeenCalledTimes(1);
-    // Volver al tamaño original también es un cambio → re-rasteriza.
-    snapshotSlotForPreview(a.stage, slot, ctx);
-    expect(a.stage.toDataURL).toHaveBeenCalledTimes(2);
+    const second = snapshotSlotForPreview(b.stage, slot, ctx);
+    expect(second).toBe(first);
+    expect(b.stage.toDataURL).not.toHaveBeenCalled();
+  });
+
+  it("cambio de tamaño objetivo (otro consumidor) → invalida y re-rasteriza", () => {
+    const { stage } = makeStage();
+    const slot = makeSlot(0);
+    const ctx = { unitTemplate: makeTemplate("t1"), borderColor: null };
+    snapshotSlotForPreview(stage, slot, ctx);
+    snapshotSlotForPreview(stage, slot, ctx, { targetWidth: 1024 });
+    expect(stage.toDataURL).toHaveBeenCalledTimes(2);
   });
 
   it("los indicadores de edición se ocultan SOLO al rasterizar (no en cache hit)", () => {
@@ -139,5 +150,107 @@ describe("snapshotSlotForPreview — cache e invalidación", () => {
     const b = snapshotSlotForPreview(stage, makeSlot(1), ctx);
     expect(a).not.toBe(b);
     expect(stage.toDataURL).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("snapshotRasterPlan — tamaño de salida fijo (fix STG 2026-10-05)", () => {
+  it("stage grande (zoom/desktop) se rasteriza al ancho objetivo, no al display", () => {
+    // 1200px display → 720px de salida (era 1200 a pixelRatio 1).
+    const plan = snapshotRasterPlan(1200, 1520);
+    expect(plan.outW).toBe(720);
+    expect(plan.pixelRatio).toBeCloseTo(0.6);
+    expect(plan.outH).toBe(Math.round(1520 * plan.pixelRatio));
+  });
+
+  it("stage pequeño no se sobremuestrea más allá de pixelRatio 2", () => {
+    const plan = snapshotRasterPlan(300, 380);
+    expect(plan.pixelRatio).toBe(2);
+    expect(plan.outW).toBe(600);
+  });
+
+  it("toDataURL recibe el pixelRatio del plan (no 1 fijo)", () => {
+    clearSlotSnapshotCache();
+    const { stage } = makeStage(1200, 1520);
+    snapshotSlotForPreview(stage, makeSlot(0), {
+      unitTemplate: makeTemplate("t1"),
+      borderColor: null,
+    });
+    expect(stage.toDataURL).toHaveBeenCalledWith({
+      pixelRatio: expect.closeTo(0.6) as unknown as number,
+      mimeType: "image/png",
+    });
+  });
+
+  it("stage degenerado (0) cae a pixelRatio 1 sin dividir por cero", () => {
+    expect(snapshotRasterPlan(0, 0)).toEqual({ pixelRatio: 1, outW: 0, outH: 0 });
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+//  Auto-cura de snapshots tomados a medio cargar (bug STG 2026-10-08 —
+//  separador plano "en blanco" en el libro 3D, frente y respaldo)
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Fake cuyo `find` distingue selectores: `.edit-indicator` siempre devuelve el
+ * indicador; `.slot-photo` solo cuando `photoLoaded` es true (espejo de la rama
+ * de ImagePlaceholder: el nodo de la foto SOLO existe con la imagen decodificada;
+ * mientras carga, el stage dibuja el placeholder #F4ECFF sin ese nodo).
+ */
+function makePhotoStage(photoLoaded: { value: boolean }) {
+  const indicator = { hide: vi.fn(), show: vi.fn() };
+  const photoNode = { hide: vi.fn(), show: vi.fn() };
+  const stage: SnapshotStageSource & { toDataURL: ReturnType<typeof vi.fn> } = {
+    width: () => 450,
+    height: () => 575,
+    find: vi.fn((selector: string) => {
+      if (selector === ".slot-photo") return photoLoaded.value ? [photoNode] : [];
+      return [indicator];
+    }),
+    toDataURL: vi.fn(() => `data:image/png;base64,shot-${Math.random()}`),
+  };
+  return { stage };
+}
+
+describe("photoPending — snapshot a medio cargar (placeholder #F4ECFF)", () => {
+  beforeEach(() => clearSlotSnapshotCache());
+
+  it("se re-rasteriza cuando la foto aparece, AUNQUE la referencia del slot no cambie", () => {
+    // La carga de useImage NO toca el store: sin la re-validación photoPending,
+    // la clave (misma referencia de slot) serviría el placeholder para siempre.
+    const loaded = { value: false };
+    const { stage } = makePhotoStage(loaded);
+    const slot = makeSlot(0);
+    const ctx = { unitTemplate: makeTemplate("t1"), borderColor: null };
+    snapshotSlotForPreview(stage, slot, ctx); // placeholder horneado (cargando)
+    expect(stage.toDataURL).toHaveBeenCalledTimes(1);
+    loaded.value = true; // useImage resolvió y el slot renderizó la foto
+    const second = snapshotSlotForPreview(stage, slot, ctx);
+    expect(stage.toDataURL).toHaveBeenCalledTimes(2); // auto-cura: re-rasteriza
+    expect(second).not.toBe(""); // dataURL nuevo (con la foto)
+    // Tercera llamada: la entrada ya es buena → hit normal, sin re-rasterizar.
+    snapshotSlotForPreview(stage, slot, ctx);
+    expect(stage.toDataURL).toHaveBeenCalledTimes(2);
+  });
+
+  it("mientras la foto SIGUE cargando, el hit provisional se sirve (re-rasterizar daría el mismo placeholder)", () => {
+    const loaded = { value: false };
+    const { stage } = makePhotoStage(loaded);
+    const slot = makeSlot(0);
+    const ctx = { unitTemplate: makeTemplate("t1"), borderColor: null };
+    const first = snapshotSlotForPreview(stage, slot, ctx);
+    const second = snapshotSlotForPreview(stage, slot, ctx);
+    expect(second).toBe(first);
+    expect(stage.toDataURL).toHaveBeenCalledTimes(1);
+  });
+
+  it("slot SIN assetUrl nunca queda provisional (placeholder de slot vacío es contenido válido)", () => {
+    const loaded = { value: false }; // sin foto que esperar
+    const { stage } = makePhotoStage(loaded);
+    const slot = makeSlot(0, { assetUrl: undefined });
+    const ctx = { unitTemplate: makeTemplate("t1"), borderColor: null };
+    snapshotSlotForPreview(stage, slot, ctx);
+    snapshotSlotForPreview(stage, slot, ctx);
+    expect(stage.toDataURL).toHaveBeenCalledTimes(1);
   });
 });

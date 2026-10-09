@@ -149,6 +149,8 @@ model Customer {
   backInStockSubs   BackInStockSubscription[]
   // PLAN_CATALOG_V2 3.9 — tracking de cupones usados.
   couponUsages      CouponUsage[]
+  // Referidos v2 — cupones personales emitidos para este cliente (Mis cupones).
+  personalCoupons   Coupon[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -533,6 +535,15 @@ model Order {
   // nadie ve (mandato #7 sin Sentry). ACCIÓN HUMANA: refund o producir stock.
   needsReconciliation     Boolean            @default(false)
   reconciliationReason    String?
+  // Acción admin "Marcar como gestionado" (2026-10-05): cierre MANUAL de una
+  // reconciliación pendiente, con nota obligatoria de resolución (qué se hizo:
+  // refund emitido en Wompi, stock producido, etc.). Los flujos automáticos que
+  // prenden needsReconciliation no se tocan; este flag solo lo apaga el humano.
+  // reconciledBy = AdminUser.id. Order.notes NO se reusó: es la nota de entrega
+  // del cliente (la escribe el checkout).
+  reconciliationNote      String?
+  reconciledAt            DateTime?
+  reconciledBy            String?
   // Anti-abuso COD (ADR-065): el admin marca un pedido como NO RECIBIDO (no-show) — señal explícita de
   // abuso, distinta del RETURNED del courier. Alimenta assessCodRisk para vetar futuros COD de la identidad.
   noShowAt                DateTime?
@@ -588,6 +599,13 @@ model Order {
   trackingUrl             String?
   // PLAN_CATALOG_V2 4.10 — URL de impresión etiqueta (rutaimpresion en Aveonline).
   labelUrl                String?
+  // Fix 1.8 (2026-10-07) — path de la copia PROPIA del PDF de la etiqueta en el
+  // bucket privado production-assets ("shipping-labels/<orderId>.pdf"). Las URLs
+  // externas de Aveonline (labelUrl/trackingUrl) pueden expirar, requerir sesión o
+  // responder no-PDF; esta copia se archiva server-side tras crear la guía y se
+  // sirve al admin via signed URL. Best-effort: null si no pudo archivarse (quedan
+  // las URLs externas como fallback, como antes).
+  labelPath               String?
   // Paquete G (2026-10-02) — último intento FALLIDO de generación de guía,
   // sanitizado (sin PII: scrubPii enmascara emails/teléfonos del mensaje crudo
   // de la transportadora). Shape: { message, at (ISO), carrier, destination
@@ -602,6 +620,18 @@ model Order {
   // ADR-064 — conciliación del efectivo contraentrega (0..1 por orden; solo existe al resolver).
   codReconciliation       CodReconciliation?
   notes                   String?
+  // FLUJO REGALO ("compro yo, lo recibe otra persona" — 2026-10-05).
+  // recipientName/recipientPhone = quién RECIBE el pedido: la guía Aveonline
+  // va a su nombre/teléfono (es quien atiende al mensajero); null = lo recibe
+  // el comprador. isGift marca el pedido como regalo: el email de confirmación
+  // al comprador oculta los precios. giftMessage es el mensaje para la tarjeta
+  // (lo usa producción/admin; no viaja al destinatario por email). La
+  // facturación y los documentos quedan SIEMPRE a nombre del comprador
+  // (billingDocument*/billingName no se ven afectados por estos campos).
+  recipientName           String?
+  recipientPhone          String?
+  isGift                  Boolean            @default(false)
+  giftMessage             String?
   items                   OrderItem[]
   // DIAN factura electrónica (Fase 7 implementa el envío; aquí el
   // schema queda ready para no remigrar después).
@@ -772,6 +802,11 @@ model Coupon {
   description           String?
   // PLAN_CATALOG_V2 3.9 — mínimo unidades en cart. Ej. "Compra 6+ y 10% off".
   requiresMinQuantity   Int?
+  // Referidos v2 (2026-10-05) — dueño de un cupón PERSONAL (bienvenida de
+  // referido, premio del referente). Null = cupón general (público o de
+  // campaña). Alimenta "Mis cupones" en /mi-cuenta.
+  customerId            String?
+  customer              Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
   orders                Order[]
   usages                CouponUsage[]
 
@@ -793,6 +828,7 @@ model Coupon {
   @@index([code, isActive, deletedAt])
   @@index([validFrom, validTo])
   @@index([isPublic, isActive, deletedAt])
+  @@index([customerId])
 }
 
 // PLAN_CATALOG_V2 3.9 — tracking por cliente de uso de cupones.

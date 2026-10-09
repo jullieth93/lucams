@@ -83,20 +83,22 @@ export const IG_HASHTAGS_LAYER_ID = "hashtags";
 export const IG_HASHTAG_BLUE = "#00376B";
 export const IG_HASHTAG_BLUE_ON_DARK = "#0095F6";
 
-// TEXTOS REQUERIDOS para finalizar (decisión del dueño 2026-09-09): usuario,
-// ubicación, título y hashtags son OBLIGATORIOS — sin override del cliente en
-// TODAS estas capas, «Vista previa» queda bloqueado (con la tarjeta que nace
-// VACÍA, una polaroid IG podía finalizarse en blanco). El contador "362 me
-// gusta" queda DECORATIVO (opcional): no bloquea.
+// TEXTOS REQUERIDOS para finalizar (decisión del dueño 2026-09-09; ampliada
+// 2026-10-05 con el rediseño de la plantilla): usuario, ubicación, «me gusta»,
+// título y hashtags son OBLIGATORIOS — sin override del cliente en TODAS estas
+// capas, «Vista previa» queda bloqueado (con la tarjeta que nace VACÍA, una
+// polaroid IG podía finalizarse en blanco). El contador de «me gusta» dejó de
+// ser decorativo: sin él el post impreso se leía incompleto.
 export const IG_REQUIRED_TEXT_LAYER_IDS = [
   "user_name",
   "location",
+  "likes_count",
   "caption",
   IG_HASHTAGS_LAYER_ID,
 ] as const;
 
 /** Capas de texto editables que NO bloquean la finalización (decorativas). */
-export const IG_DECORATIVE_TEXT_LAYER_IDS = ["likes_count"] as const;
+export const IG_DECORATIVE_TEXT_LAYER_IDS: readonly string[] = [];
 
 /**
  * Color de letra POR DEFECTO de una capa de texto de la plantilla Instagram

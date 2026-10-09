@@ -9,14 +9,15 @@
  *   - Teléfono: 10 dígitos móvil CO con auto-formato "300 887 3826"
  *   - Documento: regex por tipo (CC/CE/NIT/PP/TI)
  *   - Departamento/Ciudad: dropdowns DANE divipola (catálogo curado)
- *   - Código postal: autocompletado por ciudad si DANE lo tiene
+ *   - Código postal: opcional, SIN autocompletado (el CP municipal DANE se
+ *     confundía con el número de pedido — fix QA STG 2026-10)
  *   - Localidad (zona del catálogo lib/lucams-zones.ts): obligatoria si la
  *     ciudad está en el catálogo — dato de dirección, no filtro de oferta
  *   - Barrio: texto libre opcional (todas las ciudades)
  *   - Dirección: 4 campos estructurados (Vía + Número + #Cruce + Detalle)
  */
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
@@ -36,12 +37,15 @@ import { getZoneCityByCode } from "@/lib/lucams-zones";
 import {
   DOCUMENT_TYPE_LABELS,
   capitalizeName,
+  cruceNumberError,
   formatPhone,
   getDocumentHelp,
   stripPhone,
   validateDocument,
   validateName,
   validatePhone,
+  viaExample,
+  viaNumberError,
   type DocumentType,
 } from "@/lib/colombia-validators";
 import { detectEmailTypo, isValidEmail, suggestEmails } from "@/lib/email-domains";
@@ -49,21 +53,70 @@ import { VIA_TYPES } from "@/features/checkout/schemas";
 import type { CheckoutPrefillAddress } from "@/features/addresses/service";
 import type { CheckoutTexts } from "../checkout-texts";
 
+// ─── Feedback de errores (fix QA STG 2026-10: "no pasa nada" al continuar) ───
+// Orden de los campos TAL COMO aparecen en el DOM: decide a cuál se hace
+// scroll + foco cuando un submit falla (el PRIMERO con error visible). Las
+// keys son las de `state.fieldErrors` del server + las de validación cliente.
+const ERROR_FIELD_ORDER = [
+  "fullName",
+  "email",
+  "phone",
+  "documentNumber",
+  "deptCode",
+  "cityCode",
+  "zip",
+  "neighborhood",
+  "localityId",
+  "viaNumber",
+  "cruceNumber",
+  "vereda",
+  "referencia",
+  "recipientName",
+  "recipientPhone",
+  "giftMessage",
+  "billingDocumentNumber",
+  "billingName",
+  "dataConsent",
+] as const;
+type ErrorFieldKey = (typeof ERROR_FIELD_ORDER)[number];
+
+// id del elemento focusable (input/select/textarea/checkbox) de cada campo.
+const ERROR_FIELD_IDS: Record<ErrorFieldKey, string> = {
+  fullName: "fullName",
+  email: "email",
+  phone: "phone-display",
+  documentNumber: "contactDocumentNumber",
+  deptCode: "deptCode",
+  cityCode: "cityCode",
+  zip: "zip",
+  neighborhood: "neighborhood",
+  localityId: "localityId",
+  viaNumber: "viaNumber",
+  cruceNumber: "cruceNumber",
+  vereda: "vereda",
+  referencia: "referencia",
+  recipientName: "recipientName",
+  recipientPhone: "recipientPhone-display",
+  giftMessage: "giftMessage",
+  billingDocumentNumber: "billingDocumentNumber",
+  billingName: "billingName",
+  dataConsent: "dataConsent",
+};
+
+// Clases de error para los <select>/<textarea> nativos del form (el <Input>
+// compartido ya se pinta solo con aria-invalid:border-destructive).
+const ERROR_SELECT_CLASSES = "border-rose-400 focus:border-rose-500 focus:ring-rose-200";
+
 export function DatosForm({
   initial,
   savedAddresses = [],
   canSaveAddress = false,
-  lucamsOwnShipping = null,
   texts,
 }: {
   initial: CheckoutState;
   savedAddresses?: CheckoutPrefillAddress[];
   // true solo si hay cliente logueado → ofrecer "guardar esta dirección".
   canSaveAddress?: boolean;
-  /** Zonas con envío propio habilitado ({ cityCode: [zoneId] }) + flag del
-   *  servicio. Solo informativo: marca en el select las zonas SIN envío propio;
-   *  todas siguen seleccionables (dato de dirección). null = no informar. */
-  lucamsOwnShipping?: { enabled: boolean; zones: Record<string, string[]> } | null;
   /** Textos CMS del formulario (roadmap B8) — los resuelve el padre server. */
   texts: CheckoutTexts["datos"];
 }) {
@@ -103,17 +156,6 @@ export function DatosForm({
   const zoneCity = getZoneCityByCode(cityCode);
   const showZoneSelect = zoneCity !== null;
   const zoneOptions = zoneCity?.zones ?? [];
-  // Paquete G (2026-10-02) — zonas SIN envío propio habilitado (para marcarlas
-  // en el select con el sufijo CMS zoneNoOwnSuffix). Solo aplica si el servicio
-  // está activo; si está apagado no se marca nada (no hay oferta que esperar).
-  const zonesWithoutOwnShipping =
-    lucamsOwnShipping?.enabled && zoneCity
-      ? new Set(
-          zoneCity.zones
-            .map((z) => z.id)
-            .filter((id) => !(lucamsOwnShipping.zones[zoneCity.cityCode] ?? []).includes(id)),
-        )
-      : null;
   // Discriminated union urbana/rural (Lucy 2026-05-21)
   const [addressKind, setAddressKind] = useState<"urban" | "rural">(
     initial.address?.kind ?? "urban",
@@ -185,12 +227,28 @@ export function DatosForm({
 
   // Billing
   const [wantsInvoice, setWantsInvoice] = useState<boolean>(initial.billing?.wantsInvoice ?? false);
+  const [billingDocType, setBillingDocType] = useState<"CC" | "CE" | "NIT" | "PP">(
+    initial.billing?.documentType ?? "NIT",
+  );
+  const [billingDocNumber, setBillingDocNumber] = useState(initial.billing?.documentNumber ?? "");
+  const [billingName, setBillingName] = useState(initial.billing?.name ?? "");
   // Autorización de tratamiento de datos (Ley 1581) — obligatoria antes de guardar la PII.
   const [dataConsent, setDataConsent] = useState<boolean>(false);
 
   // "Guardar esta dirección en mi cuenta" (opt-in, solo clientes logueados).
   const [saveToAccount, setSaveToAccount] = useState(false);
   const [saveAddressLabel, setSaveAddressLabel] = useState("");
+
+  // FLUJO REGALO — "compro yo, lo recibe otra persona": toggle de destinatario
+  // distinto (nombre + teléfono van a la guía) + checkbox "Es un regalo" con
+  // mensaje opcional para la tarjeta. La facturación sigue siendo del comprador.
+  const [hasRecipient, setHasRecipient] = useState<boolean>(Boolean(initial.gift));
+  const [recipientName, setRecipientName] = useState(initial.gift?.recipientName ?? "");
+  const [recipientPhoneDisplay, setRecipientPhoneDisplay] = useState(
+    initial.gift?.recipientPhone ? formatPhone(initial.gift.recipientPhone) : "",
+  );
+  const [isGift, setIsGift] = useState<boolean>(initial.gift?.isGift ?? false);
+  const [giftMessage, setGiftMessage] = useState(initial.gift?.giftMessage ?? "");
 
   // Cities filtradas por depto elegido
   const cities = useMemo<DaneCity[]>(
@@ -305,8 +363,18 @@ export function DatosForm({
 
   function handleCityChange(newCode: string) {
     setCityCode(newCode);
+    // CP derivado de la ciudad elegida (owner 2026-10-07): el catálogo DANE trae el
+    // CP REAL de las principales ciudades (Bogotá 110111, Medellín 050001, Cali
+    // 760001, …); para las que no lo tienen se prellena el prefijo departamental y
+    // el cliente lo completa. El CP no alimenta la cotización Aveonline (solo se
+    // guarda en el snapshot de la orden) — dato opcional siempre editable.
     const city = getCityByCode(newCode);
-    if (city?.zip) setZip(city.zip);
+    if (city?.zip) {
+      setZip(city.zip);
+    } else {
+      const dept = DEPARTMENTS.find((d) => d.code === city?.deptCode);
+      setZip(dept?.zipPrefix ?? "");
+    }
     // La zona es específica de la ciudad — cambiar de ciudad la invalida.
     setLocalityId("");
   }
@@ -316,6 +384,16 @@ export function DatosForm({
     // No fuerza guion, solo limpia caracteres no válidos.
     const cleaned = value.replace(/[^\dA-Za-z-]/g, "").toUpperCase();
     setCruceNumber(cleaned);
+  }
+
+  // Copia EXPLÍCITA contacto → facturación (botón, no sincronización opaca):
+  // el cliente la dispara y la puede re-disparar si edita el contacto después.
+  // El documento solo se copia si el contacto lo diligenció y el tipo es válido
+  // para facturación (el select de billing no ofrece TI).
+  function copyContactToBilling() {
+    setBillingName(fullName);
+    if (docType && docType !== "TI") setBillingDocType(docType);
+    if (docNumber) setBillingDocNumber(docNumber);
   }
 
   // Validaciones derivadas
@@ -328,8 +406,157 @@ export function DatosForm({
     return state?.fieldErrors?.[field]?.[0] ?? null;
   }
 
+  // ─── Errores efectivos por campo (cliente visible ?? servidor) ───
+  // Mismo criterio de prioridad que FieldHint: el error cliente (si ya es
+  // visible por touched/submit) tapa al del server. Se usan para pintar el
+  // borde del campo (aria-invalid), el resumen sobre el botón y el scroll.
+  const fullNameErr =
+    (fullName.length > 0 && !isNameValid && touched.fullName ? texts.nameError : null) ??
+    err("fullName");
+  const emailErr =
+    (email.length > 0 && !isEmailValid && touched.email ? texts.emailError : null) ?? err("email");
+  const phoneErr =
+    (phoneDisplay.length > 0 && !isPhoneValid && touched.phone ? texts.phoneError : null) ??
+    err("phone");
+  const docErr =
+    (docType && docNumber.length > 0 && !isDocValid && touched.documentNumber
+      ? `Formato inválido. ${getDocumentHelp(docType as DocumentType)}`
+      : null) ?? err("documentNumber");
+  const deptErr = err("deptCode");
+  const cityErr = err("cityCode");
+  const zipErr = err("zip");
+  const neighborhoodErr = err("neighborhood");
+  const localityErr = err("localityId");
+  // Dirección urbana: mensaje ESPECÍFICO de qué falta (fix QA STG 2026-10 —
+  // "Calle 3 sur #" incompleta). Los validadores son los mismos del schema
+  // del server, así el mensaje es idéntico en cliente y servidor.
+  const viaClientErr = viaNumber.length > 0 && touched.viaNumber ? viaNumberError(viaNumber) : null;
+  const cruceClientErr =
+    cruceNumber.length > 0 && touched.cruceNumber ? cruceNumberError(cruceNumber) : null;
+  const viaErr = viaClientErr ?? err("viaNumber");
+  const cruceErr = cruceClientErr ?? err("cruceNumber");
+  const veredaErr = err("vereda");
+  const referenciaErr =
+    (referencia.length > 0 && referencia.length < 10 ? texts.refError : null) ?? err("referencia");
+  const recipientNameErr =
+    (recipientName.length > 0 && !validateName(recipientName) && touched.recipientName
+      ? "Solo letras, espacios y acentos (sin números)"
+      : null) ?? err("recipientName");
+  const recipientPhoneErr =
+    (recipientPhoneDisplay.length > 0 &&
+    !validatePhone(recipientPhoneDisplay) &&
+    touched.recipientPhone
+      ? "Debe ser un móvil colombiano de 10 dígitos (300...)"
+      : null) ?? err("recipientPhone");
+  const giftMessageErr = err("giftMessage");
+  // El server reporta la facturación incompleta bajo la key "wantsInvoice":
+  // se reparte a los campos de facturación que quedaron VACÍOS (los que el
+  // cliente debe llenar), no a todos, para no pintar rojo lo que ya está bien.
+  const billingMissing = wantsInvoice ? err("wantsInvoice") : null;
+  const billingNumberErr =
+    err("billingDocumentNumber") ?? (!billingDocNumber.trim() ? billingMissing : null);
+  const billingNameErr = err("billingName") ?? (!billingName.trim() ? billingMissing : null);
+  const consentErr = err("dataConsent");
+
+  // Mapa key → error activo. Los campos ocultos por toggles (destinatario,
+  // facturación, rural/urbano, zona fuera de catálogo) quedan en null para
+  // que no salgan en el resumen ni reciban scroll.
+  const errorByField: Record<ErrorFieldKey, string | null> = {
+    fullName: fullNameErr,
+    email: emailErr,
+    phone: phoneErr,
+    documentNumber: docErr,
+    deptCode: deptErr,
+    cityCode: cityErr,
+    zip: zipErr,
+    neighborhood: neighborhoodErr,
+    localityId: showZoneSelect ? localityErr : null,
+    viaNumber: addressKind === "urban" ? viaErr : null,
+    cruceNumber: addressKind === "urban" ? cruceErr : null,
+    vereda: addressKind === "rural" ? veredaErr : null,
+    referencia: addressKind === "rural" ? referenciaErr : null,
+    recipientName: hasRecipient ? recipientNameErr : null,
+    recipientPhone: hasRecipient ? recipientPhoneErr : null,
+    giftMessage: hasRecipient && isGift ? giftMessageErr : null,
+    billingDocumentNumber: wantsInvoice ? billingNumberErr : null,
+    billingName: wantsInvoice ? billingNameErr : null,
+    dataConsent: consentErr,
+  };
+
+  const errorLabels: Record<ErrorFieldKey, string> = {
+    fullName: texts.nameLabel,
+    email: texts.emailLabel,
+    phone: texts.phoneLabel,
+    documentNumber: "Documento",
+    deptCode: "Departamento",
+    cityCode: texts.cityLabel,
+    zip: "Código postal",
+    neighborhood: "Barrio",
+    localityId: zoneCity?.zoneLabel ?? "Zona de entrega",
+    viaNumber: texts.viaLabel,
+    cruceNumber: texts.cruceLabel,
+    vereda: texts.veredaLabel,
+    referencia: texts.refLabel,
+    recipientName: "Nombre de quien recibe",
+    recipientPhone: "Teléfono de quien recibe",
+    giftMessage: "Mensaje para la tarjeta",
+    billingDocumentNumber: texts.billingNumberLabel,
+    billingName: texts.billingNameLabel,
+    dataConsent: "Autorización de tratamiento de datos",
+  };
+
+  // Lista ordenada (orden del DOM) de campos con error — alimenta el resumen
+  // y el scroll al primero.
+  const invalidFields = ERROR_FIELD_ORDER.filter((k) => errorByField[k]).map((k) => ({
+    key: k,
+    label: errorLabels[k],
+  }));
+
+  // Scroll + foco al primer campo inválido tras un submit fallido. El efecto
+  // corre cuando (a) se intenta enviar (errores cliente visibles al marcar
+  // todo touched) y (b) cuando llega la respuesta del server (state nuevo).
+  const [submitCount, setSubmitCount] = useState(0);
+  const invalidRef = useRef(invalidFields);
+  useEffect(() => {
+    invalidRef.current = invalidFields;
+  });
+
+  function scrollToField(key: ErrorFieldKey) {
+    const el = document.getElementById(ERROR_FIELD_IDS[key]);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.focus({ preventScroll: true });
+  }
+
+  useEffect(() => {
+    if (submitCount === 0) return;
+    const first = invalidRef.current[0];
+    if (first) scrollToField(first.key);
+    // submitCount/state disparan el efecto una vez por intento de submit;
+    // invalidRef siempre tiene la lista fresca sin re-dispararlo al tipear.
+  }, [submitCount, state]);
+
+  // onSubmit del <form>: solo corre si la validación nativa (required) pasó.
+  // Marca todos los campos como touched para que los errores de FORMATO
+  // cliente se vean de una vez (regla "punish after submit") y dispara el
+  // scroll incluso antes de que responda el server.
+  function handleSubmitAttempt() {
+    setTouched((t) => ({
+      ...t,
+      fullName: true,
+      email: true,
+      phone: true,
+      documentNumber: true,
+      recipientName: true,
+      recipientPhone: true,
+      viaNumber: true,
+      cruceNumber: true,
+    }));
+    setSubmitCount((c) => c + 1);
+  }
+
   return (
-    <form action={formAction} className="space-y-6">
+    <form action={formAction} onSubmit={handleSubmitAttempt} className="space-y-6">
       {/* CONTACTO */}
       <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-brand-purple-dark font-display mb-4 text-lg font-bold">
@@ -355,9 +582,12 @@ export function DatosForm({
                 clearTouched("fullName");
               }}
               onBlur={handleNameBlur}
+              aria-invalid={Boolean(fullNameErr)}
+              aria-describedby={fullNameErr ? "fullName-error" : undefined}
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
             <FieldHint
+              id="fullName-error"
               clientError={
                 fullName.length > 0 && !isNameValid && touched.fullName ? texts.nameError : null
               }
@@ -382,6 +612,8 @@ export function DatosForm({
               value={email}
               onChange={(e) => handleEmailChange(e.target.value)}
               onBlur={handleEmailBlur}
+              aria-invalid={Boolean(emailErr)}
+              aria-describedby={emailErr ? "email-error" : undefined}
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
               autoComplete="email"
             />
@@ -406,6 +638,7 @@ export function DatosForm({
               </ul>
             )}
             <FieldHint
+              id="email-error"
               clientError={
                 email.length > 0 && !isEmailValid && touched.email ? texts.emailError : null
               }
@@ -448,6 +681,8 @@ export function DatosForm({
               onChange={(e) => handlePhoneChange(e.target.value)}
               onBlur={() => markTouched("phone")}
               maxLength={12} // 10 dígitos + 2 espacios
+              aria-invalid={Boolean(phoneErr)}
+              aria-describedby={phoneErr ? "phone-error" : undefined}
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
               autoComplete="tel-national"
               inputMode="numeric"
@@ -455,6 +690,7 @@ export function DatosForm({
             {/* Campo hidden con el valor sin formato (lo que se envía al server) */}
             <input type="hidden" name="phone" value={stripPhone(phoneDisplay)} />
             <FieldHint
+              id="phone-error"
               clientError={
                 phoneDisplay.length > 0 && !isPhoneValid && touched.phone ? texts.phoneError : null
               }
@@ -493,10 +729,13 @@ export function DatosForm({
                 onBlur={() => markTouched("documentNumber")}
                 disabled={!docType}
                 placeholder={docType ? "1234567890" : texts.docTypePlaceholder}
+                aria-invalid={Boolean(docErr)}
+                aria-describedby={docErr ? "documentNumber-error" : undefined}
                 className="border-brand-purple/20 focus-visible:ring-brand-purple/30 col-span-2"
               />
             </div>
             <FieldHint
+              id="documentNumber-error"
               clientError={
                 docType && docNumber.length > 0 && !isDocValid && touched.documentNumber
                   ? `Formato inválido. ${getDocumentHelp(docType as DocumentType)}`
@@ -557,7 +796,13 @@ export function DatosForm({
               required
               value={deptCode}
               onChange={(e) => handleDeptChange(e.target.value)}
-              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none"
+              aria-invalid={Boolean(deptErr)}
+              aria-describedby={deptErr ? "deptCode-error" : undefined}
+              className={`h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none ${
+                deptErr
+                  ? ERROR_SELECT_CLASSES
+                  : "border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20"
+              }`}
             >
               <option value="">{texts.deptPlaceholder}</option>
               {DEPARTMENTS.map((d) => (
@@ -566,7 +811,7 @@ export function DatosForm({
                 </option>
               ))}
             </select>
-            <FieldHint clientError={null} serverError={err("deptCode")} />
+            <FieldHint id="deptCode-error" clientError={null} serverError={err("deptCode")} />
             {/* Hidden snapshot human-readable */}
             <input type="hidden" name="department" value={selectedDept?.name ?? ""} />
           </div>
@@ -585,7 +830,13 @@ export function DatosForm({
               value={cityCode}
               onChange={(e) => handleCityChange(e.target.value)}
               disabled={!deptCode}
-              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+              aria-invalid={Boolean(cityErr)}
+              aria-describedby={cityErr ? "cityCode-error" : undefined}
+              className={`h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400 ${
+                cityErr
+                  ? ERROR_SELECT_CLASSES
+                  : "border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20"
+              }`}
             >
               <option value="">{deptCode ? texts.cityPlaceholder : texts.cityWait}</option>
               {cities.map((c) => (
@@ -595,6 +846,7 @@ export function DatosForm({
               ))}
             </select>
             <FieldHint
+              id="cityCode-error"
               clientError={deptCode && cities.length > 0 && !cityCode ? null : null}
               serverError={err("cityCode")}
               hint={deptCode && cities.length === 0 ? texts.cityMissing : undefined}
@@ -614,17 +866,20 @@ export function DatosForm({
               name="zip"
               value={zip}
               onChange={(e) => setZip(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="110111"
+              placeholder={texts.zipPlaceholder}
+              aria-invalid={Boolean(zipErr)}
+              aria-describedby={zipErr ? "zip-error" : undefined}
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
               inputMode="numeric"
             />
-            {/* El CP se autocompleta a nivel MUNICIPAL (DANE): es el estándar que
-                usan las transportadoras para cotizar en Colombia — no existe fuente
-                confiable y gratuita con precisión sub-municipal. */}
+            {/* Campo opcional: NO se autorrellena (el CP municipal DANE se
+                confundía con el número de pedido) y la cotización Aveonline no
+                lo usa — ver handleCityChange. */}
             <FieldHint
+              id="zip-error"
               clientError={null}
               serverError={err("zip")}
-              hint={selectedCity?.zip ? texts.zipHintAuto : texts.zipHint}
+              hint={texts.zipHint}
             />
           </div>
         </div>
@@ -645,9 +900,12 @@ export function DatosForm({
             onChange={(e) => setNeighborhood(e.target.value)}
             placeholder={texts.neighborhoodPlaceholder}
             maxLength={100}
+            aria-invalid={Boolean(neighborhoodErr)}
+            aria-describedby={neighborhoodErr ? "neighborhood-error" : undefined}
             className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:max-w-xs"
           />
           <FieldHint
+            id="neighborhood-error"
             clientError={null}
             serverError={err("neighborhood")}
             hint={texts.neighborhoodHint}
@@ -671,17 +929,23 @@ export function DatosForm({
               value={localityId}
               onChange={(e) => setLocalityId(e.target.value)}
               required
-              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none sm:max-w-xs"
+              aria-invalid={Boolean(localityErr)}
+              aria-describedby={localityErr ? "localityId-error" : undefined}
+              className={`h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none sm:max-w-xs ${
+                localityErr
+                  ? ERROR_SELECT_CLASSES
+                  : "border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20"
+              }`}
             >
               <option value="">Elige tu {zoneCity.zoneLabel.toLowerCase()}…</option>
               {zoneOptions.map((z) => (
                 <option key={z.id} value={z.id}>
                   {z.name}
-                  {zonesWithoutOwnShipping?.has(z.id) ? ` (${texts.zoneNoOwnSuffix})` : ""}
                 </option>
               ))}
             </select>
             <FieldHint
+              id="localityId-error"
               clientError={null}
               serverError={err("localityId")}
               hint={texts.zoneHint.replace("{zona}", zoneCity.zoneLabel.toLowerCase())}
@@ -758,14 +1022,19 @@ export function DatosForm({
                     ))}
                   </select>
                   <Input
+                    id="viaNumber"
                     name="viaNumber"
                     required
                     value={viaNumber}
-                    onChange={(e) =>
-                      setViaNumber(e.target.value.toUpperCase().replace(/[^\dA-Z]/g, ""))
-                    }
+                    onChange={(e) => {
+                      setViaNumber(e.target.value.toUpperCase().replace(/[^\dA-Z]/g, ""));
+                      clearTouched("viaNumber");
+                    }}
+                    onBlur={() => markTouched("viaNumber")}
                     placeholder="7A"
                     maxLength={10}
+                    aria-invalid={Boolean(viaErr)}
+                    aria-describedby={viaErr ? "viaNumber-error" : undefined}
                     className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:col-span-3"
                     aria-label={texts.viaNumberAria}
                   />
@@ -793,7 +1062,12 @@ export function DatosForm({
                     <option value="Oeste">Oeste</option>
                   </select>
                 </div>
-                <FieldHint clientError={null} serverError={err("viaNumber")} hint={texts.viaHint} />
+                <FieldHint
+                  id="viaNumber-error"
+                  clientError={viaClientErr}
+                  serverError={err("viaNumber")}
+                  hint={texts.viaHint.replace("{ejemplo}", viaExample(viaType))}
+                />
               </div>
 
               {/* Segunda fila: Cruce + Cardinal del cruce */}
@@ -806,12 +1080,19 @@ export function DatosForm({
                     #
                   </div>
                   <Input
+                    id="cruceNumber"
                     name="cruceNumber"
                     required
                     value={cruceNumber}
-                    onChange={(e) => handleCruceChange(e.target.value)}
+                    onChange={(e) => {
+                      handleCruceChange(e.target.value);
+                      clearTouched("cruceNumber");
+                    }}
+                    onBlur={() => markTouched("cruceNumber")}
                     placeholder="23-45"
                     maxLength={20}
+                    aria-invalid={Boolean(cruceErr)}
+                    aria-describedby={cruceErr ? "cruceNumber-error" : undefined}
                     className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:col-span-8"
                     aria-label="Cruce"
                   />
@@ -830,7 +1111,8 @@ export function DatosForm({
                   </select>
                 </div>
                 <FieldHint
-                  clientError={null}
+                  id="cruceNumber-error"
+                  clientError={cruceClientErr}
                   serverError={err("cruceNumber")}
                   hint={texts.cruceHint}
                 />
@@ -874,9 +1156,11 @@ export function DatosForm({
                   onChange={(e) => setVereda(e.target.value)}
                   placeholder={texts.veredaPlaceholder}
                   maxLength={120}
+                  aria-invalid={Boolean(veredaErr)}
+                  aria-describedby={veredaErr ? "vereda-error" : undefined}
                   className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
                 />
-                <FieldHint clientError={null} serverError={err("vereda")} />
+                <FieldHint id="vereda-error" clientError={null} serverError={err("vereda")} />
               </div>
               <div>
                 <Label
@@ -912,9 +1196,16 @@ export function DatosForm({
                 rows={3}
                 maxLength={300}
                 placeholder={texts.refPlaceholder}
-                className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
+                aria-invalid={Boolean(referenciaErr)}
+                aria-describedby={referenciaErr ? "referencia-error" : undefined}
+                className={`w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none ${
+                  referenciaErr
+                    ? ERROR_SELECT_CLASSES
+                    : "border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20"
+                }`}
               />
               <FieldHint
+                id="referencia-error"
                 clientError={
                   referencia.length > 0 && referencia.length < 10 ? texts.refError : null
                 }
@@ -995,6 +1286,162 @@ export function DatosForm({
         )}
       </section>
 
+      {/* DESTINATARIO / REGALO (FLUJO REGALO) — sección propia entre dirección
+          y facturación. Con el toggle on, nombre + teléfono de quien recibe
+          son requeridos (van a la guía de la transportadora: es quien atiende
+          al mensajero, y en COD quien paga el efectivo). "Es un regalo" oculta
+          los precios del correo de confirmación y habilita el mensaje para la
+          tarjeta. La facturación (sección siguiente) queda SIEMPRE a nombre
+          del comprador. */}
+      <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
+        <h2 className="text-brand-purple-dark font-display mb-2 text-lg font-bold">
+          ¿Quién recibe el pedido?
+        </h2>
+        <label className="text-brand-purple-dark inline-flex items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            name="hasRecipient"
+            checked={hasRecipient}
+            onChange={(e) => setHasRecipient(e.target.checked)}
+            className="accent-brand-purple h-4 w-4"
+          />
+          Lo recibe otra persona (va a su nombre y teléfono)
+        </label>
+
+        {hasRecipient && (
+          <div className="mt-4 space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label
+                  htmlFor="recipientName"
+                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                >
+                  Nombre de quien recibe <span className="text-rose-600">*</span>
+                </Label>
+                <Input
+                  id="recipientName"
+                  name="recipientName"
+                  required
+                  value={recipientName}
+                  onChange={(e) => {
+                    setRecipientName(e.target.value);
+                    clearTouched("recipientName");
+                  }}
+                  onBlur={() => {
+                    if (recipientName.trim()) setRecipientName(capitalizeName(recipientName));
+                    markTouched("recipientName");
+                  }}
+                  placeholder="Ej. Camila Torres"
+                  maxLength={120}
+                  aria-invalid={Boolean(recipientNameErr)}
+                  aria-describedby={recipientNameErr ? "recipientName-error" : undefined}
+                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                />
+                <FieldHint
+                  id="recipientName-error"
+                  clientError={
+                    recipientName.length > 0 &&
+                    !validateName(recipientName) &&
+                    touched.recipientName
+                      ? "Solo letras, espacios y acentos (sin números)"
+                      : null
+                  }
+                  serverError={err("recipientName")}
+                />
+              </div>
+              <div>
+                <Label
+                  htmlFor="recipientPhone-display"
+                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                >
+                  Teléfono de quien recibe <span className="text-rose-600">*</span>
+                </Label>
+                <Input
+                  id="recipientPhone-display"
+                  type="tel"
+                  required
+                  value={recipientPhoneDisplay}
+                  onChange={(e) => {
+                    setRecipientPhoneDisplay(formatPhone(e.target.value));
+                    clearTouched("recipientPhone");
+                  }}
+                  onBlur={() => markTouched("recipientPhone")}
+                  placeholder="300 887 3826"
+                  maxLength={12}
+                  aria-invalid={Boolean(recipientPhoneErr)}
+                  aria-describedby={recipientPhoneErr ? "recipientPhone-error" : undefined}
+                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                  autoComplete="off"
+                  inputMode="numeric"
+                />
+                {/* Valor sin formato (lo que se envía al server) */}
+                <input
+                  type="hidden"
+                  name="recipientPhone"
+                  value={stripPhone(recipientPhoneDisplay)}
+                />
+                <FieldHint
+                  id="recipientPhone-error"
+                  clientError={
+                    recipientPhoneDisplay.length > 0 &&
+                    !validatePhone(recipientPhoneDisplay) &&
+                    touched.recipientPhone
+                      ? "Debe ser un móvil colombiano de 10 dígitos (300...)"
+                      : null
+                  }
+                  serverError={err("recipientPhone")}
+                  hint="La transportadora lo llama a este número al entregar."
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-brand-purple-dark inline-flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  name="isGift"
+                  checked={isGift}
+                  onChange={(e) => setIsGift(e.target.checked)}
+                  className="accent-brand-purple h-4 w-4"
+                />
+                Es un regalo 🎁 (tu correo de confirmación no mostrará precios)
+              </label>
+              {isGift && (
+                <div className="mt-3">
+                  <Label
+                    htmlFor="giftMessage"
+                    className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                  >
+                    Mensaje para la tarjeta (opcional)
+                  </Label>
+                  <textarea
+                    id="giftMessage"
+                    name="giftMessage"
+                    rows={2}
+                    value={giftMessage}
+                    onChange={(e) => setGiftMessage(e.target.value)}
+                    maxLength={300}
+                    placeholder="Ej. ¡Feliz cumpleaños! Con cariño, Lau"
+                    aria-invalid={Boolean(giftMessageErr)}
+                    aria-describedby={giftMessageErr ? "giftMessage-error" : undefined}
+                    className={`w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none ${
+                      giftMessageErr
+                        ? ERROR_SELECT_CLASSES
+                        : "border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20"
+                    }`}
+                  />
+                  <FieldHint
+                    id="giftMessage-error"
+                    clientError={null}
+                    serverError={err("giftMessage")}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
       {/* FACTURACIÓN */}
       <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-brand-purple-dark font-display mb-2 text-lg font-bold">
@@ -1005,72 +1452,96 @@ export function DatosForm({
         <label className="text-brand-purple-dark inline-flex items-center gap-2 text-sm font-medium">
           <input
             type="checkbox"
+            id="wantsInvoice"
             name="wantsInvoice"
             checked={wantsInvoice}
             onChange={(e) => setWantsInvoice(e.target.checked)}
+            aria-invalid={Boolean(billingMissing)}
             className="accent-brand-purple h-4 w-4"
           />
           {texts.billingCheck}
         </label>
 
         {wantsInvoice && (
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-6">
-            <div className="sm:col-span-2">
-              <Label
-                htmlFor="billingDocumentType"
-                className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-              >
-                {texts.billingTypeLabel} <span className="text-rose-600">*</span>
-              </Label>
-              <select
-                id="billingDocumentType"
-                name="billingDocumentType"
-                defaultValue={initial.billing?.documentType ?? "NIT"}
-                className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none"
-              >
-                <option value="NIT">NIT</option>
-                <option value="CC">CC</option>
-                <option value="CE">CE</option>
-                <option value="PP">Pasaporte</option>
-              </select>
-            </div>
-            <div className="sm:col-span-4">
-              <Label
-                htmlFor="billingDocumentNumber"
-                className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-              >
-                {texts.billingNumberLabel} <span className="text-rose-600">*</span>
-              </Label>
-              <Input
-                id="billingDocumentNumber"
-                name="billingDocumentNumber"
-                required={wantsInvoice}
-                defaultValue={initial.billing?.documentNumber ?? ""}
-                placeholder={texts.billingNumberPlaceholder}
-                className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
-              />
-              <FieldHint clientError={null} serverError={err("billingDocumentNumber")} />
-            </div>
-            <div className="sm:col-span-6">
-              <Label
-                htmlFor="billingName"
-                className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-              >
-                {texts.billingNameLabel} <span className="text-rose-600">*</span>
-              </Label>
-              <Input
-                id="billingName"
-                name="billingName"
-                required={wantsInvoice}
-                defaultValue={initial.billing?.name ?? ""}
-                placeholder={texts.billingNamePlaceholder}
-                className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
-              />
-              <FieldHint clientError={null} serverError={err("billingName")} />
+          <div className="mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={copyContactToBilling}
+              className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 hover:text-brand-purple-dark mb-4"
+            >
+              Usar los datos del comprador
+            </Button>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
+              <div className="sm:col-span-2">
+                <Label
+                  htmlFor="billingDocumentType"
+                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                >
+                  {texts.billingTypeLabel} <span className="text-rose-600">*</span>
+                </Label>
+                <select
+                  id="billingDocumentType"
+                  name="billingDocumentType"
+                  value={billingDocType}
+                  onChange={(e) => setBillingDocType(e.target.value as "CC" | "CE" | "NIT" | "PP")}
+                  className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none"
+                >
+                  <option value="NIT">NIT</option>
+                  <option value="CC">CC</option>
+                  <option value="CE">CE</option>
+                  <option value="PP">Pasaporte</option>
+                </select>
+              </div>
+              <div className="sm:col-span-4">
+                <Label
+                  htmlFor="billingDocumentNumber"
+                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                >
+                  {texts.billingNumberLabel} <span className="text-rose-600">*</span>
+                </Label>
+                <Input
+                  id="billingDocumentNumber"
+                  name="billingDocumentNumber"
+                  required={wantsInvoice}
+                  value={billingDocNumber}
+                  onChange={(e) => setBillingDocNumber(e.target.value)}
+                  placeholder={texts.billingNumberPlaceholder}
+                  aria-invalid={Boolean(billingNumberErr)}
+                  aria-describedby={billingNumberErr ? "wantsInvoice-error" : undefined}
+                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                />
+                <FieldHint clientError={null} serverError={err("billingDocumentNumber")} />
+              </div>
+              <div className="sm:col-span-6">
+                <Label
+                  htmlFor="billingName"
+                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                >
+                  {texts.billingNameLabel} <span className="text-rose-600">*</span>
+                </Label>
+                <Input
+                  id="billingName"
+                  name="billingName"
+                  required={wantsInvoice}
+                  value={billingName}
+                  onChange={(e) => setBillingName(e.target.value)}
+                  placeholder={texts.billingNamePlaceholder}
+                  aria-invalid={Boolean(billingNameErr)}
+                  aria-describedby={billingNameErr ? "wantsInvoice-error" : undefined}
+                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                />
+                <FieldHint clientError={null} serverError={err("billingName")} />
+              </div>
             </div>
           </div>
         )}
-        {err("wantsInvoice") && <p className="mt-2 text-xs text-rose-600">{err("wantsInvoice")}</p>}
+        {err("wantsInvoice") && (
+          <p id="wantsInvoice-error" className="mt-2 text-xs text-rose-600">
+            {err("wantsInvoice")}
+          </p>
+        )}
       </section>
 
       {/* AUTORIZACIÓN DE TRATAMIENTO DE DATOS (Ley 1581) — previa y expresa, también para invitados.
@@ -1079,10 +1550,13 @@ export function DatosForm({
         <label className="flex items-start gap-3 text-sm">
           <input
             type="checkbox"
+            id="dataConsent"
             name="dataConsent"
             required
             checked={dataConsent}
             onChange={(e) => setDataConsent(e.target.checked)}
+            aria-invalid={Boolean(consentErr)}
+            aria-describedby={consentErr ? "dataConsent-error" : undefined}
             className="accent-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
           />
           <span className="text-brand-purple-dark/90 [&_a]:text-brand-purple leading-relaxed [&_a]:underline">
@@ -1091,12 +1565,44 @@ export function DatosForm({
             </ReactMarkdown>
           </span>
         </label>
-        {err("dataConsent") && <p className="mt-2 text-xs text-rose-600">{err("dataConsent")}</p>}
+        {err("dataConsent") && (
+          <p id="dataConsent-error" className="mt-2 text-xs text-rose-600">
+            {err("dataConsent")}
+          </p>
+        )}
       </section>
 
       {state?.error && (
         <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           ⚠️ {state.error}
+        </div>
+      )}
+
+      {/* RESUMEN DE ERRORES (fix QA STG 2026-10): en un form largo el FieldHint
+          queda fuera de pantalla y el submit fallido se percibe como "no pasa
+          nada". Este bloque, visible junto al botón que el cliente acaba de
+          oprimir, lista los campos a revisar; cada item salta al campo. Solo
+          aparece tras un intento de submit (no mientras se diligencia).
+          role="alert" → el lector de pantalla lo anuncia al aparecer. */}
+      {submitCount > 0 && invalidFields.length > 0 && (
+        <div
+          role="alert"
+          className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+        >
+          <p className="font-semibold">{texts.errorSummary}</p>
+          <ul className="mt-1 list-inside list-disc space-y-0.5">
+            {invalidFields.map((f) => (
+              <li key={f.key}>
+                <button
+                  type="button"
+                  onClick={() => scrollToField(f.key)}
+                  className="underline decoration-rose-300 underline-offset-2 hover:text-rose-900"
+                >
+                  {f.label}
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -1124,13 +1630,31 @@ function FieldHint({
   clientError,
   serverError,
   hint,
+  id,
 }: {
   clientError: string | null;
   serverError: string | null;
   hint?: string;
+  /** id para que el input lo referencie con aria-describedby (fix QA 2026-10). */
+  id?: string;
 }) {
-  if (clientError) return <p className="mt-1 text-xs text-rose-600">{clientError}</p>;
-  if (serverError) return <p className="mt-1 text-xs text-rose-600">{serverError}</p>;
-  if (hint) return <p className="text-brand-muted mt-1 text-xs">{hint}</p>;
+  if (clientError)
+    return (
+      <p id={id} className="mt-1 text-xs text-rose-600">
+        {clientError}
+      </p>
+    );
+  if (serverError)
+    return (
+      <p id={id} className="mt-1 text-xs text-rose-600">
+        {serverError}
+      </p>
+    );
+  if (hint)
+    return (
+      <p id={id} className="text-brand-muted mt-1 text-xs">
+        {hint}
+      </p>
+    );
   return null;
 }

@@ -4,8 +4,9 @@
  *
  *   1. transitionOrder(orderId, "PAID") + guardar wompiTransactionId.
  *   2. Intentar createShipment con el provider activo (Aveonline).
- *      - Si OK: guardar trackingNumber/labelUrl/trackingUrl + transitionOrder
- *        a FULFILLING (lista para imprimir/despachar).
+ *      - Si OK: guardar trackingNumber/labelUrl/trackingUrl, archivar copia
+ *        propia del PDF de la etiqueta en Storage (labelPath, best-effort — fix
+ *        1.8) y transitionOrder a FULFILLING (lista para imprimir/despachar).
  *      - Si falla: Order queda en PAID; admin puede reintentar manualmente
  *        desde /admin/pedidos/[id]. No revertimos a PENDING_PAYMENT.
  *   3. (Futuro P1.5) disparar email order-confirmation al cliente.
@@ -32,6 +33,8 @@ import { decrementStockForOrder } from "./stock";
 import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
 import { LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 import { buildShipmentLastError } from "./shipment-error";
+import { resolveShipmentRecipient } from "./shipment-recipient";
+import { archiveShipmentLabel } from "@/features/shipping/label-archive";
 import type { ShippingAddressInput } from "./schemas";
 import {
   sendOrderConfirmationOnce,
@@ -613,6 +616,12 @@ export async function processPaidOrder(
 
   // 6) Delivery desde Order.shippingAddress (snapshot del checkout).
   const ship = order.shippingAddress as unknown as ShippingAddressInput;
+  // FLUJO REGALO — destinatario de la guía: si el pedido lo tiene ("lo recibe
+  // otra persona"), va a SU nombre/teléfono (quien recibe y atiende al
+  // mensajero — en COD, quien paga el efectivo). El correo de la guía sigue
+  // siendo el del comprador (quien pagó y recibe las notificaciones de
+  // Aveonline); la dirección física es la misma en ambos casos.
+  const recipient = resolveShipmentRecipient(order, ship);
 
   // 6.5) #11-P1 (verificación post-launch) — CLAIM ATÓMICO de creación de guía.
   //   El guard `if (order.trackingNumber)` al inicio es read-then-act: dos
@@ -676,6 +685,7 @@ export async function processPaidOrder(
     trackingUrl: string;
     labelUrl: string;
     carrier: string;
+    labelPdfBase64?: string | null;
   };
   try {
     const provider = await getShippingProvider();
@@ -696,8 +706,8 @@ export async function processPaidOrder(
         department: ship.department,
         address: [ship.addressLine1, ship.addressLine2].filter(Boolean).join(" "),
         zip: ship.zip,
-        phone: ship.phone,
-        contactName: ship.fullName,
+        phone: recipient.phone,
+        contactName: recipient.contactName,
         documentNumber: ship.documentNumber,
         email: ship.email,
       },
@@ -819,6 +829,32 @@ export async function processPaidOrder(
       status: "transition_failed",
       reason: "Guía creada en Aveonline pero no se pudo guardar tracking en DB (reconciliar)",
     };
+  }
+
+  // 8.5) Fix 1.8 (2026-10-07) — Archivar copia PROPIA del PDF de la etiqueta en
+  //    Storage (bucket privado production-assets, path en Order.labelPath). Las
+  //    URLs externas de Aveonline pueden expirar/requerir sesión/responder no-PDF
+  //    según transportadora (reportado: "a veces no descarga guías"). BEST-EFFORT:
+  //    archiveShipmentLabel nunca lanza (devuelve null + log warn) y el catch de
+  //    acá cubre lo inesperado (p.ej. falla el update de labelPath): la orden ya
+  //    tiene tracking persistido y sigue su flujo normal con las URLs externas.
+  try {
+    const labelPath = await archiveShipmentLabel({
+      orderId: order.id,
+      labelUrl: shipmentResult.labelUrl,
+      trackingUrl: shipmentResult.trackingUrl,
+      labelPdfBase64: shipmentResult.labelPdfBase64,
+    });
+    if (labelPath) {
+      await prisma.order.update({ where: { id: order.id }, data: { labelPath } });
+    }
+  } catch (err) {
+    logger.warn({
+      event: "order.saga.paid.label_archive_unexpected",
+      orderId: order.id,
+      orderNumber: order.number,
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 
   // 9) Transicionar a FULFILLING. El tracking YA está en DB, así que si esta

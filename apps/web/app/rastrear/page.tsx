@@ -43,7 +43,15 @@ async function cmsTrackText(key: string, fallback: string): Promise<string> {
   return resolveCmsTokens(block?.body ?? fallback);
 }
 
-export default async function RastrearPage() {
+export default async function RastrearPage({
+  searchParams,
+}: {
+  // ?number=LCM-2026-0001 prellena el número (lo usa el link "Seguir estado en
+  // LUCAMS" de /pedido/[token]). El CORREO nunca viaja por query (PII — Ley
+  // 1581): lo escribe el cliente y la prueba número+correo rota un token nuevo.
+  searchParams: Promise<{ number?: string }>;
+}) {
+  const { number: prefillNumber } = await searchParams;
   // En modo catálogo el checkout crea COTIZACIONES (Quote COT-XXXXXX), no
   // pedidos (Order): el formulario de rastreo nunca encontraría nada. El
   // seguimiento real se hace por WhatsApp (auditoría de info pública 2026-09-11).
@@ -106,7 +114,7 @@ export default async function RastrearPage() {
             </div>
           ) : (
             <div className="border-brand-purple/10 mt-8 rounded-2xl border bg-white p-6 shadow-sm">
-              <RastrearForm texts={formTexts} />
+              <RastrearForm texts={formTexts} initialNumber={prefillNumber?.slice(0, 40)} />
             </div>
           )}
 

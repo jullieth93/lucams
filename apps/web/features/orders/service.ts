@@ -34,6 +34,7 @@ import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/r
 import { computeShippingAddressKey } from "@/features/checkout/address-key";
 import { consolidateIdenticalLines } from "@/features/cart/design-identity";
 import { hashBearerToken } from "@/lib/token-hash";
+import { resolveOrderCustomerId } from "./order-customer";
 import { sendOrderRefunded } from "./emails";
 import { assertTransactionalAllowed } from "@/lib/stage-guard";
 
@@ -92,6 +93,8 @@ async function generateOrderNumber(tx: Prisma.TransactionClient): Promise<string
 
 export type CreateOrderFromCartInput = {
   cartId: string;
+  // Customer de la SESIÓN (no necesariamente el del pedido): createOrderFromCart
+  // lo re-resuelve contra el email del contacto (ver order-customer.ts).
   customerId: string | null;
   shipping: ShippingAddressInput;
   shippingSelection: {
@@ -108,6 +111,18 @@ export type CreateOrderFromCartInput = {
     documentNumber?: string;
     name?: string;
   };
+  /**
+   * FLUJO REGALO ("compro yo, lo recibe otra persona" — 2026-10-05).
+   * Destinatario de la entrega + flag/mensaje de regalo; null/undefined =
+   * lo recibe el comprador. NO afecta la facturación: billing* sigue siendo
+   * siempre del comprador.
+   */
+  gift?: {
+    recipientName: string;
+    recipientPhone: string;
+    isGift: boolean;
+    giftMessage?: string;
+  } | null;
   paymentMethod: "WOMPI" | "COD";
   couponCode?: string;
   notes?: string;
@@ -310,6 +325,26 @@ async function createOrderFromCartTx(
       );
     }
 
+    // Customer EFECTIVO del pedido (bug STG LCM-2026-0010 — ver order-customer.ts):
+    // input.customerId es el Customer de la SESIÓN; si el contacto digitado trae
+    // otro email, el pedido NO es de esa cuenta. Se resuelve acá — dentro de la
+    // tx y en el único choke point de creación — para que TODOS los usos de abajo
+    // (tope de cupón por cliente, creación y reconciliación de la PENDING) vean
+    // la misma identidad.
+    const orderCustomerId = await resolveOrderCustomerId(
+      tx,
+      input.customerId,
+      input.shipping.email,
+    );
+    if (orderCustomerId !== input.customerId) {
+      logger.warn({
+        event: "order.create.customer_reassigned",
+        cartId: input.cartId,
+        fromCustomerId: input.customerId,
+        toCustomerId: orderCustomerId,
+      });
+    }
+
     // P0-020 (Lucy 2026-06-26) — Idempotency real por cartId.
     // Si este Cart ya tiene una Order PENDING_PAYMENT activa, NO creamos otra (el unique parcial lo
     // impide igual). Antes la devolvíamos TAL CUAL: si el cliente cambiaba algo entre "ir a pagar" y
@@ -328,6 +363,7 @@ async function createOrderFromCartTx(
         id: true,
         number: true,
         total: true,
+        customerId: true,
         paymentMethod: true,
         email: true,
         shippingCarrier: true,
@@ -359,7 +395,7 @@ async function createOrderFromCartTx(
           code: input.couponCode,
           cartId: input.cartId,
           shippingCost,
-          customerId: input.customerId,
+          customerId: orderCustomerId,
           // #4 — mismo email del pedido que la saga guardará en CouponUsage: la re-validación atómica
           // aplica el tope por-cliente por identidad (customerId O email) también para invitados.
           email: input.shipping.email,
@@ -451,8 +487,25 @@ async function createOrderFromCartTx(
     const dianStatus = input.billing.wantsInvoice
       ? ("PENDING" as const)
       : ("NOT_REQUIRED" as const);
+    // FLUJO REGALO — snapshot del destinatario/regalo. El mensaje solo se
+    // conserva si isGift (con isGift=false el textarea ni siquiera se muestra;
+    // defensa ante un state manipulado). Va aparte de orderScalars para poder
+    // actualizarlo también en el refresh idempotente: activar/quitar el toggle
+    // "lo recibe otra persona" NO cambia total/items/email, así que el check
+    // `identical` de abajo no lo detecta — sin esto, marcar regalo en un
+    // reintento de pago se perdía silenciosamente.
+    const giftScalars = {
+      recipientName: input.gift?.recipientName ?? null,
+      recipientPhone: input.gift?.recipientPhone ?? null,
+      isGift: input.gift?.isGift ?? false,
+      giftMessage: input.gift?.isGift ? (input.gift?.giftMessage ?? null) : null,
+    };
     const orderScalars = {
       couponId, // F1 — null si no hubo cupón válido
+      // Customer efectivo (resuelto por email de contacto arriba): también va en
+      // escalares para que la RECONCILIACIÓN de una PENDING corrija un customerId
+      // obsoleto (p. ej. órdenes creadas antes del fix del bug STG LCM-2026-0010).
+      customerId: orderCustomerId,
       // Consentimiento de derechos de imagen (ADR-062 P0-2, Ley 1581): confirmar el pedido implica
       // aceptar las condiciones (titularidad/uso de las imágenes + autorización de impresión).
       contentRightsAcceptedAt: new Date(),
@@ -472,6 +525,7 @@ async function createOrderFromCartTx(
       billingDocumentNumber: input.billing.documentNumber,
       billingName: input.billing.name,
       dianStatus,
+      ...giftScalars,
       notes: input.notes,
     };
 
@@ -510,6 +564,7 @@ async function createOrderFromCartTx(
       const identical =
         existing.total === total &&
         existing.email === input.shipping.email &&
+        (existing.customerId ?? null) === orderCustomerId &&
         existing.paymentMethod === input.paymentMethod &&
         existing.shippingCarrier === input.shippingSelection.carrier &&
         (existing.couponId ?? null) === (couponId ?? null) &&
@@ -523,7 +578,7 @@ async function createOrderFromCartTx(
         // vista de confirmación en vez de crear otra orden/cobro).
         const gated = await tx.order.updateMany({
           where: { id: existing.id, status: "PENDING_PAYMENT" },
-          data: { publicAccessTokenHash },
+          data: { publicAccessTokenHash, ...giftScalars },
         });
         if (gated.count === 0) throw new OrderAlreadyPaidError(existing.id, existing.number);
         return {
@@ -577,9 +632,9 @@ async function createOrderFromCartTx(
     const order = await tx.order.create({
       data: {
         number,
-        customerId: input.customerId,
-        cartId: input.cartId, // P0-020 idempotency
+        // El customerId efectivo va en orderScalars (resuelto por email de contacto).
         ...orderScalars,
+        cartId: input.cartId, // P0-020 idempotency
         currency: cart.currency,
         status: "PENDING_PAYMENT",
         publicAccessTokenHash,

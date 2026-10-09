@@ -209,6 +209,20 @@ describe("setSlotTextOverride / setTextOverrideAllSlots", () => {
       true,
     );
   });
+
+  it("QA 1.2 — setTextOverrideAllSlots registra el valor PACK-LEVEL; la edición individual NO lo pisa; null lo limpia", () => {
+    const store = setup();
+    store.getState().setTextOverrideAllSlots("caption", { text: "Hola" });
+    expect(store.getState().packTextValues.caption).toBe("Hola");
+
+    // Edición individual (modal del canvas): pisa el slot, no el valor pack-level.
+    store.getState().setSlotTextOverride(0, "caption", { text: "Chao" });
+    expect(store.getState().packTextValues.caption).toBe("Hola");
+
+    // Masivo vacío/null limpia el valor pack-level junto con los slots.
+    store.getState().setTextOverrideAllSlots("caption", null);
+    expect(store.getState().packTextValues.caption).toBeUndefined();
+  });
 });
 
 describe("setImagePlaceholderRect", () => {
@@ -223,6 +237,22 @@ describe("setImagePlaceholderRect", () => {
     const bg = layers?.find((l) => l.type === "background");
     expect(ph).toMatchObject({ x: 0, y: 0, width: 450, height: 450 });
     expect(bg).toBeDefined(); // intacta
+  });
+
+  it("opts.igNoBorder: true escribe el flag, false lo elimina, undefined lo conserva (rediseño IG 2026-10-05)", () => {
+    const store = setup();
+    store
+      .getState()
+      .setImagePlaceholderRect({ x: 0, y: 58, width: 450, height: 392 }, { igNoBorder: true });
+    expect(store.getState().canvasData?.igNoBorder).toBe(true);
+    // Sin opts → el flag se conserva.
+    store.getState().setImagePlaceholderRect({ x: 0, y: 58, width: 450, height: 392 });
+    expect(store.getState().canvasData?.igNoBorder).toBe(true);
+    // false → diseño limpio (la clave desaparece).
+    store
+      .getState()
+      .setImagePlaceholderRect({ x: 29, y: 58, width: 392, height: 392 }, { igNoBorder: false });
+    expect(store.getState().canvasData?.igNoBorder).toBeUndefined();
   });
 });
 

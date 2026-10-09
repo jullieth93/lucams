@@ -80,25 +80,27 @@ describe("collectQualityWarnings", () => {
 
   // Fase 2 (2026-10-02) — requiresAck: solo el aviso de brillo SUAVE como
   // único problema es informativo (no exige checkbox). Todo lo demás sí.
+  // 2026-10: el aviso de foto oscura se eliminó (decisión estética válida);
+  // el único aviso de brillo posible hoy es sobreexposición.
   it("brillo soft como ÚNICO problema → requiresAck false (aviso informativo)", () => {
-    const softBrillo = asset("oscura-deliberada", {
+    const softBrillo = asset("sobreexpuesta", {
       validationLevel: "warning-soft",
       validationMessage:
-        "La foto está algo oscura. Si buscabas un look oscuro o con fondo negro, puedes ignorar este aviso.",
+        "La foto está sobreexpuesta. Algunos detalles podrían perderse al imprimir.",
       validationChecks: { resolution: true, brightness: false, blur: true },
     });
-    const warnings = collectQualityWarnings([softBrillo], canvas("oscura-deliberada"));
+    const warnings = collectQualityWarnings([softBrillo], canvas("sobreexpuesta"));
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatchObject({ level: "warning-soft", requiresAck: false });
   });
 
-  it("brillo STRONG (muy oscura) → requiresAck true, aunque sea el único check fallido", () => {
-    const muyOscura = asset("muy-oscura", {
+  it("blur STRONG como único check fallido → requiresAck true", () => {
+    const muyBorrosa = asset("muy-borrosa", {
       validationLevel: "warning-strong",
-      validationMessage: "La foto se ve muy oscura y puede perder detalle al imprimir.",
-      validationChecks: { resolution: true, brightness: false, blur: true },
+      validationMessage: "La foto se ve muy borrosa. Considera elegir una con más nitidez.",
+      validationChecks: { resolution: true, brightness: true, blur: false },
     });
-    const warnings = collectQualityWarnings([muyOscura], canvas("muy-oscura"));
+    const warnings = collectQualityWarnings([muyBorrosa], canvas("muy-borrosa"));
     expect(warnings[0]).toMatchObject({ level: "warning-strong", requiresAck: true });
   });
 

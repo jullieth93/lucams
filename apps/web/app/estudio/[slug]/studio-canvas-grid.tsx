@@ -17,7 +17,7 @@
  * fallback al primer slot vacío. El handler de drop por slot tiene prioridad.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, Copy, Minus, Plus, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
@@ -74,6 +74,16 @@ import {
   BP_MOBILE,
   STAGE_ZOOM_MIN,
 } from "./studio-canvas-grid-size";
+// Fase 2 · item 2.1 (2026-10-07) — pinch-to-zoom del LIENZO en táctil (matemática
+// pura testeada aparte): escala stageZoom con anclaje al punto medio del gesto.
+import {
+  pinchDistance,
+  pinchMidpoint,
+  pinchStageZoom,
+  pinchAnchorRatio,
+  anchoredScrollOffset,
+  createRafThrottle,
+} from "./lib/stage-pinch";
 
 // ADR-063 T5 — lazy-mount de stages Konva. Cada StudioSlot monta un Konva Stage (varios <canvas>
 // + capas de realismo). Con muchos slots (calendario = 12) eso es pesado en móvil. Por encima de
@@ -182,6 +192,15 @@ type StudioCanvasGridProps = {
   stageZoomRaw: number;
   onStageZoomState: (state: { zoom: number; cap: number }) => void;
   /**
+   * Fase 2 · item 2.1 (2026-10-07) — pinch-to-zoom del LIENZO en táctil: el grid
+   * captura el gesto de 2 dedos sobre el contenedor y pide el nuevo zoom crudo
+   * (el padre lo guarda en `stageZoomRaw`, igual que los botones −/+). Solo se
+   * activa en grilla táctil (`interactiveSlots === false`); el gesto va
+   * anclado al punto medio y respeta STAGE_ZOOM_MIN/MAX. Sin pan de 2 dedos
+   * (decisión documentada en lib/stage-pinch.ts): el pan es el scroll nativo.
+   */
+  onStageZoomChange?: (zoom: number) => void;
+  /**
    * Override de columnas por PRODUCTO (owner 2026-09-24, v2 tras prueba STG —
    * admin → producto → Avanzado, `gridColsOverride` del personalizationSchema):
    * FUERZA las columnas (clamp [1..6], sin capear contra el ancho objetivo ni
@@ -236,6 +255,7 @@ export function StudioCanvasGrid({
   onSlotClick,
   stageZoomRaw,
   onStageZoomState,
+  onStageZoomChange,
   gridColsOverride = null,
   canvasBaseScale = null,
   openEditSlot,
@@ -309,9 +329,20 @@ export function StudioCanvasGrid({
       if (applyingPredesigned) return;
       setApplyingPredesigned(true);
       try {
-        const res = await applyPredesignedToSlot({ store, item, targetSlot: slotIndex });
+        const res = await applyPredesignedToSlot({
+          store,
+          item,
+          targetSlot: slotIndex,
+          facesPerUnit,
+        });
         if (!res.ok) {
-          toast.error(res.message || texts.plantillas.toastError);
+          // Fix STG 2026-10-06 — "no-free-slot" no es un error: todos los
+          // lienzos ya tienen diseño y nunca se pisa contenido para abrir sitio.
+          toast.error(
+            res.reason === "no-free-slot"
+              ? texts.plantillas.toastSinLienzoLibre
+              : res.message || texts.plantillas.toastError,
+          );
           return;
         }
         toast.success(fillStudioText(texts.plantillas.toastPredisenado, { nombre: item.name }));
@@ -324,7 +355,7 @@ export function StudioCanvasGrid({
         setApplyingPredesigned(false);
       }
     },
-    [store, applyingPredesigned, texts],
+    [store, applyingPredesigned, texts, facesPerUnit],
   );
 
   // Responsive scale (ancho del contenedor, cap MAX_VIEWPORT_WIDTH)
@@ -581,6 +612,137 @@ export function StudioCanvasGrid({
     // ninguna otra dep cambiaba → quedaban atrapadas como LazySlotPlaceholder
     // ("Toca para elegir") para siempre. Re-correr re-registra las celdas nuevas.
   }, [lazy, forceMountAll, mountedSlots, canvasData?.slotCount]);
+
+  // ── Fase 2 · item 2.1 (2026-10-07) — PINCH-TO-ZOOM del LIENZO (táctil) ──
+  // Gesto de 2 dedos sobre el contenedor del grid → escala stageZoom anclado al
+  // punto medio (matemática pura en lib/stage-pinch). SOLO en grilla táctil
+  // (interactiveSlots === false): ahí los slots no capturan gestos, así que el
+  // pellizco llega al contenedor sin competir con el drag de fotos; el pinch-
+  // sobre-FOTO vive en el modal de edición a pantalla completa (portal Radix,
+  // fuera de este contenedor → cero interferencia). El scroll de página de 1
+  // dedo queda intacto (solo actuamos con 2 toques). Sin pan de 2 dedos: el pan
+  // es el scroll nativo del wrapper (horizontal) y de la página (vertical) —
+  // decisión documentada en lib/stage-pinch.ts.
+  const scrollWrapperRef = useRef<HTMLDivElement | null>(null);
+  const stageZoomRawRef = useRef(stageZoomRaw);
+  const onStageZoomChangeRef = useRef(onStageZoomChange);
+  useEffect(() => {
+    stageZoomRawRef.current = stageZoomRaw;
+    onStageZoomChangeRef.current = onStageZoomChange;
+  }, [stageZoomRaw, onStageZoomChange]);
+  const pinchRef = useRef<{ startDistance: number; startZoom: number } | null>(null);
+  // Ancla pendiente de aplicar tras el re-render del zoom (el zoom redimensiona
+  // los slots —no es una transform CSS— así que el anclaje se corrige con scroll).
+  const pinchAnchorRef = useRef<{
+    ratioX: number;
+    clientX: number;
+    ratioY: number;
+    clientY: number;
+  } | null>(null);
+  useEffect(() => {
+    if (interactiveSlots) return; // solo grilla táctil (los slots no capturan gestos)
+    const el = containerRef.current;
+    if (!el) return;
+    // PERF (2026-10-07) — un setStageZoom POR FRAME de gesto: el zoom
+    // REDIMENSIONA los stages Konva (re-render de todos los slots); aplicarlo
+    // por cada touchmove era un re-render por evento (long tasks / INP móvil).
+    // El anclaje (pinchAnchorRef) se sigue calculando por evento — es barato —
+    // y queda pareado con el último zoom programado.
+    const zoomThrottle = createRafThrottle((next: number) => {
+      if (Math.abs(next - stageZoomRawRef.current) > 0.001) {
+        onStageZoomChangeRef.current?.(next);
+      }
+    });
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      const a = e.touches[0]!;
+      const b = e.touches[1]!;
+      pinchRef.current = {
+        startDistance: pinchDistance(a, b),
+        startZoom: Math.max(
+          STAGE_ZOOM_MIN,
+          Math.min(computeStageZoomCap(), stageZoomRawRef.current),
+        ),
+      };
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const pinch = pinchRef.current;
+      if (!pinch || e.touches.length !== 2) return;
+      // 2 dedos sobre el lienzo = zoom del stage: ni scroll de página ni pinch
+      // del navegador (listener NO pasivo a propósito).
+      e.preventDefault();
+      const a = e.touches[0]!;
+      const b = e.touches[1]!;
+      const cap = computeStageZoomCap();
+      const next = pinchStageZoom(pinch.startZoom, pinch.startDistance, pinchDistance(a, b), cap);
+      const mid = pinchMidpoint(a, b);
+      // Ratio del contenido bajo el punto medio, en ambos ejes: horizontal en
+      // el wrapper con overflow-x; vertical en la página (scroll de ventana).
+      const wrapper = scrollWrapperRef.current;
+      const elRect = el.getBoundingClientRect();
+      const wRect = wrapper?.getBoundingClientRect() ?? elRect;
+      const contentW = wrapper?.scrollWidth ?? elRect.width;
+      const contentH = el.scrollHeight || elRect.height;
+      const docTop = elRect.top + window.scrollY;
+      pinchAnchorRef.current = {
+        ratioX: pinchAnchorRatio(wrapper?.scrollLeft ?? 0, mid.clientX - wRect.left, contentW),
+        clientX: mid.clientX,
+        ratioY: pinchAnchorRatio(window.scrollY - docTop, mid.clientY, contentH),
+        clientY: mid.clientY,
+      };
+      zoomThrottle.schedule(next);
+    };
+    const onTouchEndOrCancel = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        // Commit final: aplica el zoom pendiente sin esperar al próximo frame
+        // (el gesto no debe terminar un frame atrás del último touchmove).
+        zoomThrottle.flush();
+        pinchRef.current = null;
+      }
+    };
+    // iOS Safari: sin este preventDefault el pellizco zooomea la PÁGINA.
+    const onGestureStart = (e: Event) => e.preventDefault();
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEndOrCancel, { passive: true });
+    el.addEventListener("touchcancel", onTouchEndOrCancel, { passive: true });
+    el.addEventListener("gesturestart", onGestureStart);
+    return () => {
+      zoomThrottle.cancel();
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEndOrCancel);
+      el.removeEventListener("touchcancel", onTouchEndOrCancel);
+      el.removeEventListener("gesturestart", onGestureStart);
+    };
+  }, [interactiveSlots]);
+  // Anclaje del pinch: tras el re-render con el nuevo zoom, corregir el scroll
+  // (wrapper horizontal + ventana) para que el punto del contenido bajo el
+  // punto medio del gesto quede donde estaba.
+  useLayoutEffect(() => {
+    const anchor = pinchAnchorRef.current;
+    if (!anchor) return;
+    pinchAnchorRef.current = null;
+    const el = containerRef.current;
+    if (!el) return;
+    const wrapper = scrollWrapperRef.current;
+    if (wrapper) {
+      const wRect = wrapper.getBoundingClientRect();
+      wrapper.scrollLeft = anchoredScrollOffset(
+        anchor.ratioX,
+        anchor.clientX - wRect.left,
+        wrapper.scrollWidth,
+      );
+    }
+    const elRect = el.getBoundingClientRect();
+    const contentH = el.scrollHeight || elRect.height;
+    const docTop = elRect.top + window.scrollY;
+    const nextScrollY =
+      docTop + anchoredScrollOffset(anchor.ratioY, anchor.clientY, contentH) - anchor.clientY;
+    if (Math.abs(nextScrollY - window.scrollY) > 1) {
+      window.scrollTo(0, nextScrollY);
+    }
+  }, [stageZoomRaw]);
 
   if (!canvasData || !layout) {
     return (
@@ -909,7 +1071,13 @@ export function StudioCanvasGrid({
     <div
       ref={containerRef}
       className="relative mx-auto w-full"
-      style={{ maxWidth: MAX_VIEWPORT_WIDTH }}
+      style={{
+        maxWidth: MAX_VIEWPORT_WIDTH,
+        // Item 2.1 — grilla táctil: el navegador maneja SOLO los pans nativos
+        // (scroll de página y del wrapper); el pinch-zoom del navegador queda
+        // apagado para que el gesto de 2 dedos sea nuestro zoom de lienzo.
+        touchAction: interactiveSlots ? undefined : "pan-x pan-y",
+      }}
       aria-label={texts.lienzo.lienzoAria}
     >
       {/* Modelo multi-unidad (2026-09-09) — pager de unidades: pastillas "Tira 1",
@@ -933,7 +1101,10 @@ export function StudioCanvasGrid({
           contenedor scrollea (overflow-x-auto), nunca la página. Solo se activa
           con overflow real (needsStageHScroll): a zoom ≤100% queda en visible y
           no clipea anillos de selección ni sombras. */}
-      <div className={needsStageHScroll ? "w-full overflow-x-auto" : undefined}>
+      <div
+        ref={scrollWrapperRef}
+        className={needsStageHScroll ? "w-full overflow-x-auto" : undefined}
+      >
         {multiUnitSections ? (
           // Ola 29 (owner 2026-09-11) — las secciones de TIRA van en grilla
           // horizontal de 2-3 por fila (wrap): 4 unidades → 3 + 1. El resto de
@@ -1857,7 +2028,10 @@ function StudioSlotEditModalWrapper({
           setSlotPhotoTransform(slotIndex, { rotation: (slotRotation + 90) % 360 });
       }}
       onApplyTextOverride={(layerId, override) => {
-        if (slotIndex !== null) setSlotTextOverride(slotIndex, layerId, override);
+        // QA 1.2 — undefined = «Aplicar» sin cambios: no-op (no tocar el store,
+        // el override vigente del slot se conserva tal cual).
+        if (slotIndex !== null && override !== undefined)
+          setSlotTextOverride(slotIndex, layerId, override);
       }}
       onChangePhoto={() => {
         if (slotIndex === null) return;

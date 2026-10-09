@@ -26,6 +26,11 @@ overrides:
   # cadena prisma→@prisma/config; solo usa deepmerge(), API estable en v8. Gate 2026-08-28.
   deepmerge-ts: 8.0.2
   "@babel/core": 7.29.6
+  # sharp ≥0.35.5 (2026-10-06, gate CI audit high): GHSA-wq5f-xc86-pv6w /
+  # CVE-2026-96889 — vulnerabilidad en la dependencia librsvg del binario
+  # precompilado. PRODUCCIÓN (render de imprenta + optimizador de Next):
+  # el override fuerza también la copia anidada next>sharp.
+  sharp: 0.35.5
   # Cadena dev shadcn → @modelcontextprotocol/sdk arrastraba hono/@hono/node-server/qs
   # con CVEs moderados (hono <4.12.21: CVE-2026-47673..47676; @hono/node-server
   # <1.19.15: GHSA-frvp-7c67-39w9; qs ≤6.15.1: GHSA-q8mj-m7cp-5q26 / CVE-2026-8723).

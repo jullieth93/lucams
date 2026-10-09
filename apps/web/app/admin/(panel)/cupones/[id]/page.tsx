@@ -14,6 +14,7 @@ import { Ticket } from "lucide-react";
 import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { getCoupon } from "@/features/coupons/service";
 import { requireRole } from "@/lib/admin-rbac-guard";
+import { prisma } from "@/lib/db";
 import { EditCouponForm } from "./edit-coupon-form";
 
 export const metadata: Metadata = {
@@ -26,6 +27,22 @@ export default async function AdminCuponEditPage({ params }: { params: Promise<{
   const { id } = await params;
   const coupon = await getCoupon(id);
   if (!coupon || coupon.deletedAt) notFound();
+
+  // Opciones reales del catálogo para los multi-select de restricciones
+  // (mismas queries que la página de crear — un cupón puede referenciar slugs
+  // que ya no existen; el multi-select los muestra como chips removibles).
+  const [categories, products] = await Promise.all([
+    prisma.category.findMany({
+      where: { deletedAt: null },
+      select: { slug: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.product.findMany({
+      where: { isActive: true, deletedAt: null },
+      select: { slug: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
 
   return (
     <AdminPage>
@@ -60,6 +77,8 @@ export default async function AdminCuponEditPage({ params }: { params: Promise<{
               appliesToCategories: coupon.appliesToCategories,
               appliesToProductSlugs: coupon.appliesToProductSlugs,
             }}
+            categories={categories}
+            products={products}
           />
         </section>
       </AdminPageBody>

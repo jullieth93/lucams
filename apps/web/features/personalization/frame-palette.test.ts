@@ -241,10 +241,37 @@ describe("frame-palette — Ola 4 (cuadrados / tira / instagram)", () => {
     );
   });
 
-  it("isInstagramNoBorder: detecta la foto a sangre total del modo sin borde", async () => {
+  it("IG SIN BORDE con color de tarjeta (owner 2026-10-06): el negro pinta las franjas y el chrome sale oscuro", async () => {
+    // Contrato del cambio que habilitó la paleta en «Sin borde»: la decisión de
+    // fondo (instagramBackgroundHex) y la variante del chrome componen sin
+    // cableado extra — el toolbar solo deja de forzar el blanco.
+    const { instagramBackgroundHex, isDarkColor, noBorderChromeSrc } =
+      await import("./frame-palette");
+    const fondo = instagramBackgroundHex("#221E25", "#FFFFFF");
+    expect(fondo).toBe("#221E25"); // las franjas toman el color elegido
+    expect(isDarkColor(fondo)).toBe(true); // → textos claros (igTextFill lo consume)
+    expect(noBorderChromeSrc("/templates/ig_post_3x4.svg", true, isDarkColor(fondo))).toBe(
+      "/templates/ig_post_3x4_dark_noborder.svg",
+    );
+    // Blanco: franjas blancas y chrome claro (comportamiento previo intacto).
+    const fondoClaro = instagramBackgroundHex("#FFFFFF", "#FFFFFF");
+    expect(noBorderChromeSrc("/templates/ig_post_3x4.svg", true, isDarkColor(fondoClaro))).toBe(
+      "/templates/ig_post_3x4_noborder.svg",
+    );
+  });
+
+  it("isInstagramNoBorder: flag explícito + fallback por geometría (legacy y nuevo modo)", async () => {
     const { isInstagramNoBorder } = await import("./frame-palette");
     const stage = { width: 450, height: 600 };
+    // Flag explícito (canvasData.igNoBorder, rediseño 2026-10-05): manda siempre.
+    expect(isInstagramNoBorder({ x: 29, y: 58, width: 392, height: 392 }, stage, true)).toBe(true);
+    expect(isInstagramNoBorder({ x: 0, y: 58, width: 450, height: 392 }, stage, false)).toBe(false);
+    // Fallback por geometría (diseños de antes del flag):
+    //  - LEGACY: foto a sangre total (el modo sin-borde de antes del rediseño).
     expect(isInstagramNoBorder({ x: 0, y: 0, width: 450, height: 600 }, stage)).toBe(true);
+    //  - NUEVO: ancho completo conservando las franjas (y > 0, alto < stage).
+    expect(isInstagramNoBorder({ x: 0, y: 58, width: 450, height: 392 }, stage)).toBe(true);
+    // Con borde (ventana de la plantilla) → false.
     expect(isInstagramNoBorder({ x: 29, y: 58, width: 392, height: 392 }, stage)).toBe(false);
     expect(isInstagramNoBorder(undefined, stage)).toBe(false);
   });

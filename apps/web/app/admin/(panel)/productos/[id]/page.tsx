@@ -15,7 +15,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { Package, Trash2, Boxes, ArrowRight } from "lucide-react";
+import { ShoppingBag, Trash2, Boxes, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/components/admin-page";
@@ -146,7 +146,7 @@ export default async function ProductoDetallePage({
   return (
     <AdminPage>
       <AdminPageHeader
-        icon={<Package className="h-5 w-5" />}
+        icon={<ShoppingBag className="h-5 w-5" />}
         title={product.name}
         subtitle={
           <>

@@ -203,10 +203,11 @@ test.describe("estudio — modal «Vista previa» sin stepper «Copias» (regla 
     await page.goto(`/estudio/${product.slug}`, { waitUntil: "domcontentloaded" });
     await dismissCookies();
     const listo = page
-      .getByRole("button", { name: /Vista previa/ })
-      // Ola 32 — hay dos botones «Vista previa» (header sticky + panel de
-      // controles; misma acción): se usa el del panel (el CTA histórico).
-      .last();
+      .getByRole("button", { name: /Ver diseño/ })
+      // QA ronda 2 (owner 2026-10-07) — TODOS los CTAs de finalizar dicen «Ver
+      // diseño»: header sticky y panel comparten rótulo (misma acción); se pulsa
+      // el primero visible (el del header sticky queda siempre a la mano).
+      .first();
     await expect(listo).toBeVisible({ timeout: 30_000 });
     await listo.click();
     await expect(previewDialog).toBeVisible({ timeout: 30_000 });

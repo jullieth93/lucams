@@ -25,6 +25,7 @@
 
 import { create } from "zustand";
 import type { CalendarFontKey } from "@/features/personalization/schemas";
+import { registerActiveStudioStore } from "./active-studio-store";
 import {
   gridSlotCountForLayout,
   unitCountOf,
@@ -56,6 +57,17 @@ export type StudioStoreState = {
 
   // Canvas data (V2 multi-slot)
   canvasData: CanvasDataV2 | null;
+
+  /**
+   * QA 1.2 (2026-10-07) — valor PACK-LEVEL vigente por capa de texto: el último
+   * texto aplicado MASIVAMENTE (setTextOverrideAllSlots) a cada capa. Es lo que
+   * muestran los campos masivos del sidebar ("Tu mensaje" / "Datos de la
+   * publicación") en vez de derivarlo de un slot mutable: una edición individual
+   * posterior pisa solo su slot y el campo masivo ya no "salta" ni queda vacío.
+   * Transitorio (no viaja en canvasData: los slots siguen siendo la SoT de lo
+   * impreso) — al recargar el diseño los campos derivan de los slots como antes.
+   */
+  packTextValues: Record<string, string>;
 
   // Selección
   selectedSlotIndex: number | null;
@@ -141,9 +153,17 @@ export type StudioStoreState = {
     override: import("../types").TextOverride | null,
   ) => void;
   /** Ola 3c — reescribe la geometría del image-placeholder del unitTemplate
-   *  (toggle "sin borde" de la Polaroid Instagram: la foto crece a sangre bajo
-   *  el chrome; producción la dibuja igual porque viaja en canvasData → WYSIWYG). */
-  setImagePlaceholderRect: (rect: { x: number; y: number; width: number; height: number }) => void;
+   *  (toggle "sin borde" de la Polaroid Instagram: la foto crece a lo ancho
+   *  completo conservando las franjas de texto; producción la dibuja igual
+   *  porque viaja en canvasData → WYSIWYG).
+   *  `opts.igNoBorder` (rediseño IG 2026-10-05) persiste además el FLAG EXPLÍCITO
+   *  del modo sin-borde en canvasData.igNoBorder (true lo escribe, false lo
+   *  elimina; undefined no lo toca) — el toggle conoce el modo y ya no hace
+   *  falta inferirlo por geometría. */
+  setImagePlaceholderRect: (
+    rect: { x: number; y: number; width: number; height: number },
+    opts?: { igNoBorder?: boolean },
+  ) => void;
   selectSlot: (slotIndex: number | null) => void;
   setSelectedTemplate: (templateId: string | null) => void;
   applyTemplate: (template: StudioTemplate) => void;
@@ -218,6 +238,7 @@ const initialState = {
   productSlug: "",
   slotCount: 0,
   canvasData: null,
+  packTextValues: {},
   selectedSlotIndex: null,
   selectedTemplateId: null,
   assets: [],
@@ -237,7 +258,7 @@ const initialState = {
  * pasa via Context o directamente como prop.
  */
 export function createStudioStore() {
-  return create<StudioStoreState>((set, get) => ({
+  const store = create<StudioStoreState>((set, get) => ({
     ...initialState,
 
     init: (input) => {
@@ -246,6 +267,7 @@ export function createStudioStore() {
         productSlug: input.productSlug,
         slotCount: input.canvasData.slotCount,
         canvasData: input.canvasData,
+        packTextValues: {},
         templates: input.templates,
         selectedTemplateId: input.selectedTemplateId ?? null,
         // Hidratar assets desde slots ya llenos del canvasData (caso recover Design existente)
@@ -411,9 +433,19 @@ export function createStudioStore() {
         }),
       };
       get().setCanvasData(next);
+      // QA 1.2 — registrar el valor PACK-LEVEL vigente de la capa: es lo que
+      // muestran los campos masivos del sidebar (independiente de los slots,
+      // que una edición individual posterior puede pisar). null/vacío limpia.
+      set((state) => {
+        const packTextValues = { ...state.packTextValues };
+        const text = override?.text?.trim();
+        if (override !== null && text) packTextValues[textLayerId] = override.text!;
+        else delete packTextValues[textLayerId];
+        return { packTextValues };
+      });
     },
 
-    setImagePlaceholderRect: (rect) => {
+    setImagePlaceholderRect: (rect, opts) => {
       const { canvasData } = get();
       if (!canvasData) return;
       const next: CanvasDataV2 = {
@@ -425,6 +457,10 @@ export function createStudioStore() {
           ),
         },
       };
+      // Rediseño IG (2026-10-05) — flag explícito del modo sin-borde: true lo
+      // escribe, false lo elimina (diseño limpio), undefined lo conserva.
+      if (opts?.igNoBorder === true) next.igNoBorder = true;
+      else if (opts?.igNoBorder === false) delete next.igNoBorder;
       get().setCanvasData(next);
     },
 
@@ -503,6 +539,10 @@ export function createStudioStore() {
       const next: CanvasDataV2 = {
         ...canvasData,
         unitTemplate: template.canvasData,
+        // La plantilla nueva trae su propio rect de placeholder → el flag del
+        // modo sin-borde IG deja de describir la geometría (quedaría diciendo
+        // "sin borde" con la foto enmarcada).
+        igNoBorder: undefined,
         // gridLayout no cambia: depende de slotCount + aspect del stage del
         // nuevo template. Recalcular solo si stage del template difiere.
         // Ola 2A — la plantilla puede fijar las columnas (tira fotobooth: gridCols=1).
@@ -775,6 +815,12 @@ export function createStudioStore() {
 
     reset: () => set({ ...initialState }),
   }));
+  // QA ronda 2 (F3, 2026-10-07) — registrar la instancia como store ACTIVO del
+  // Estudio (lib/active-studio-store.ts): lo lee la sección «Campos de
+  // Instagram» de la edición individual por slot, que se renderiza desde
+  // studio-canvas-grid (congelado) y no recibe el store por props.
+  registerActiveStudioStore(store);
+  return store;
 }
 
 export type StudioStore = ReturnType<typeof createStudioStore>;

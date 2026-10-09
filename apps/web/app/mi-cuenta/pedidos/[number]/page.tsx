@@ -17,6 +17,8 @@ import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { ChevronLeft, MapPin, Package, Star, Truck, Wallet } from "lucide-react";
 import { prisma } from "@/lib/db";
+import { CmsText } from "@/components/cms/cms-text";
+import { DesignPreviewDialog } from "@/app/carrito/design-preview-dialog";
 import { getCurrentCustomer } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
 import { getRetractableItems } from "@/features/retract/service";
@@ -258,6 +260,29 @@ export default async function CustomerPedidoDetallePage({
                       {variantBreakdown.join(" · ")}
                     </div>
                   )}
+                  {/* Zoom del diseño (fix QA STG 2026-10): mismo lightbox con
+                      zoom del carrito que en la vista pública /pedido. */}
+                  {previewUrl && (
+                    <div className="mt-1.5">
+                      <DesignPreviewDialog
+                        previewUrl={previewUrl}
+                        productName={it.variant.product.name}
+                        triggerLabel={<CmsText blockKey="cart.ver-diseno" fallback="Ver" />}
+                        title={
+                          <CmsText
+                            blockKey="cart.vista-previa-diseno-titulo"
+                            fallback="Tu diseño ·"
+                          />
+                        }
+                        description={
+                          <CmsText
+                            blockKey="cart.vista-previa-diseno-desc"
+                            fallback="Vista previa ampliada del diseño personalizado de esta línea del pedido."
+                          />
+                        }
+                      />
+                    </div>
+                  )}
                   {retractByItem.has(it.id) && (
                     <RetractControl item={retractByItem.get(it.id)!} texts={texts.retract} />
                   )}
@@ -306,6 +331,21 @@ export default async function CustomerPedidoDetallePage({
         {ship.notes && (
           <p className="text-brand-muted mt-2 text-xs italic">
             {texts.order.note} {ship.notes}
+          </p>
+        )}
+        {/* FLUJO REGALO — destinatario distinto + mensaje de la tarjeta. Esta
+            vista es privada del comprador (su cuenta), así que el mensaje sí
+            se muestra acá. */}
+        {order.recipientName && (
+          <p className="text-brand-purple-dark mt-2 text-sm">
+            Recibe: <strong>{order.recipientName}</strong>
+            {order.recipientPhone ? ` · ${order.recipientPhone}` : ""}
+            {order.isGift ? " 🎁" : ""}
+          </p>
+        )}
+        {order.isGift && order.giftMessage && (
+          <p className="text-brand-muted mt-1 text-xs italic">
+            Mensaje para la tarjeta: “{order.giftMessage}”
           </p>
         )}
       </Card>

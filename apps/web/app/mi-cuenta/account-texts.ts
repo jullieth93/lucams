@@ -15,6 +15,7 @@ export type AccountTexts = {
     favoritos: string;
     direcciones: string;
     resenas: string;
+    cupones: string;
     perfil: string;
     soporte: string;
     seguridad: string;
@@ -126,6 +127,10 @@ export type AccountTexts = {
     yes: string;
     no: string;
     archiveAria: string;
+    /** Fase 2 · item 2.4 (2026-10-07) — borradores vigentes en "Mis diseños":
+     *  badge de la tarjeta y CTA que reabre el Estudio con ?designId=. */
+    draftBadge: string;
+    draftResume: string;
   };
   favorites: {
     title: string;
@@ -185,6 +190,7 @@ export const DEFAULT_ACCOUNT_TEXTS: AccountTexts = {
     favoritos: "Favoritos",
     direcciones: "Direcciones",
     resenas: "Reseñas",
+    cupones: "Mis cupones",
     perfil: "Perfil",
     soporte: "Soporte",
     seguridad: "Seguridad",
@@ -301,6 +307,8 @@ export const DEFAULT_ACCOUNT_TEXTS: AccountTexts = {
     yes: "Sí",
     no: "No",
     archiveAria: "Archivar diseño",
+    draftBadge: "Borrador",
+    draftResume: "Seguir editando",
   },
   favorites: {
     title: "Mis favoritos",
@@ -362,6 +370,7 @@ export const ACCOUNT_TEXT_KEYS: Record<string, string> = {
   "nav.favoritos": "account.nav.favoritos",
   "nav.direcciones": "account.nav.direcciones",
   "nav.resenas": "account.nav.resenas",
+  "nav.cupones": "account.nav.cupones",
   "nav.perfil": "account.nav.perfil",
   "nav.soporte": "account.nav.soporte",
   "nav.seguridad": "account.nav.seguridad",
@@ -458,6 +467,8 @@ export const ACCOUNT_TEXT_KEYS: Record<string, string> = {
   "designs.yes": "account.designs.yes",
   "designs.no": "account.designs.no",
   "designs.archiveAria": "account.designs.archive-aria",
+  "designs.draftBadge": "account.designs.draft-badge",
+  "designs.draftResume": "account.designs.draft-resume",
   "favorites.title": "account.favorites.title",
   "favorites.subtitleEmpty": "account.favorites.subtitle-empty",
   "favorites.countSingle": "account.favorites.count-single",

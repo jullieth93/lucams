@@ -86,13 +86,16 @@ function Scene({
   const h = w * (card.hRatio / card.wRatio);
   return (
     <>
+      {/* Calibración 2026-10-05 (cara impresa = foto original): la tarjeta mira a +Y (acostada)
+        → irradiancia ≈ 1.0: key 0.75·cos(≈53°) ≈ 0.45 + hemi 0.28 + ambient 0.22 + fill ≈ 0.12
+        → ≈ 1.07 (antes key 1.05 + hemi 0.34 → ≈ 1.31 directo, sobre-expuesta). */}
       <StudioEnvironment intensity={0.9} />
       <StudioBackdrop position={[0, -0.02, -5]} scale={[26, 14, 6]} />
-      <hemisphereLight args={["#fff6ea", "#e0d6c6", 0.34]} />
+      <hemisphereLight args={["#fff6ea", "#e0d6c6", 0.28]} />
       <ambientLight intensity={0.22} />
       <directionalLight
         position={[4, 6, 7]}
-        intensity={1.05}
+        intensity={0.75}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-5}
@@ -145,6 +148,9 @@ function Scene({
         enableDamping={!reduced}
         minPolarAngle={0.55}
         maxPolarAngle={Math.PI / 1.75}
+        // Se conserva 3.5 (revisión zoom 2026-10-05): la tarjeta (~5.4 u de
+        // alto, escala 0.54 u/cm) ya desborda el alto de pantalla a esa
+        // distancia — sobra para leer la grilla del mes.
         minDistance={3.5}
         maxDistance={40}
         target={[0, 0.03, 0]}
@@ -262,7 +268,11 @@ export default function CalendarCardFocus({
           shadows
           // Vista de LECTURA sin animación propia → se pinta bajo demanda, no a 60 fps continuos.
           frameloop="demand"
-          dpr={isTouch ? [1, 1.5] : [1, 2]}
+          // dpr hasta 2 también en táctil (2026-10-05): el cap 1.5 se veía
+          // borroso en retina móvil al leer la grilla del mes de cerca.
+          // Trade-off rendimiento: ×1.78 más píxeles/frame — mitigado por
+          // frameloop="demand" (solo repinta al orbitar o cambiar de mes).
+          dpr={[1, 2]}
           camera={{ position: [0, 5, 5], fov: 40 }}
           gl={{ preserveDrawingBuffer: false, antialias: true }}
           style={{ width: "100%", height: "100%" }}

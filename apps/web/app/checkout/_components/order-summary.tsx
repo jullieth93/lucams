@@ -61,7 +61,12 @@ export function OrderSummary({
                     alt=""
                     fill
                     sizes="48px"
-                    className="object-cover"
+                    // Preview del diseño (mosaico de piezas): object-contain con
+                    // aire sobre el fondo neutro claro del contenedor — el cover
+                    // cuadrado recortaba el diseño (misma regla que /carrito).
+                    // Foto de catálogo: cover. (Solo clases de imagen — otro
+                    // agente edita este archivo para precios.)
+                    className={item.designPreviewUrl ? "object-contain p-1" : "object-cover"}
                     unoptimized
                   />
                 ) : (

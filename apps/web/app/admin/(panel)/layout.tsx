@@ -15,6 +15,7 @@ import { headers } from "next/headers";
 import { AdminShell } from "@/components/admin-shell";
 import { getCurrentAdmin } from "@/lib/auth";
 import { canAccessAdminPath, adminHomePath } from "@/lib/admin-rbac";
+import { getCmsImage } from "@/lib/cms";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getUnreadCount } from "@/features/notifications/service";
 
@@ -68,10 +69,15 @@ export default async function AdminPanelLayout({ children }: { children: ReactNo
   // para otros roles.
   const unreadNotifications = session.admin.role === "SUPERADMIN" ? await getUnreadCount() : 0;
 
+  // Logo administrable del shell (Fase 3 · 3.9 — setting CMS `site.logo`,
+  // cacheado con tag "cms"; null = insignia gradiente + wordmark de siempre).
+  const siteLogo = await getCmsImage("site.logo");
+
   return (
     <AdminShell
       admin={{ email: session.admin.email, role: session.admin.role }}
       unreadNotifications={unreadNotifications}
+      logo={siteLogo ? { url: siteLogo.url, alt: siteLogo.alt } : null}
     >
       {children}
     </AdminShell>

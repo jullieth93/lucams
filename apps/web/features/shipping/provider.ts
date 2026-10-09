@@ -56,6 +56,13 @@ export type ShippingResult = {
   labelUrl: string;
   carrier: string;
   estimatedDeliveryAt: Date | null;
+  /**
+   * Fix 1.8 (2026-10-07) — PDF de la etiqueta en base64 cuando el provider lo
+   * incluye en la respuesta de generación (Aveonline archivorotulo/archivosticker,
+   * INTEGRATIONS_AVEONLINE §4.3). Permite archivar la copia propia en Storage sin
+   * depender de que las URLs externas sigan vivas. null si el provider no lo da.
+   */
+  labelPdfBase64?: string | null;
 };
 
 export type TrackingStatus = {

@@ -24,6 +24,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { mergeAnonCartIntoCustomer } from "@/features/cart/service";
+import { claimGuestOrdersForCustomer } from "@/features/orders/claim-guest-orders";
 import { peekCartSession, setCartSessionCookie } from "@/lib/cart-session";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -108,7 +109,32 @@ export async function verifyOtpAction(
   // Merge anon cart si existía. Errores no bloquean el signup.
   if (authData.user) await mergeCartSafely(authData.user.id);
 
+  // E2 (2026-10-07) — claim de pedidos GUEST hechos con este email: el OTP
+  // exitoso es la prueba de que controla el buzón (NUNCA antes de este punto,
+  // o cualquiera se adjudicaría pedidos ajenos registrándose con email ajeno).
+  if (authData.user) await claimGuestOrdersSafely(authData.user.id, parsed.data.email);
+
   redirect("/");
+}
+
+/**
+ * E2 — vincula al Customer las órdenes guest (customerId null) hechas con su
+ * email. Best-effort: un fallo acá NUNCA bloquea la verificación del signup.
+ */
+async function claimGuestOrdersSafely(supabaseUserId: string, email: string): Promise<void> {
+  try {
+    const customer = await prisma.customer.findFirst({
+      where: { supabaseUserId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!customer) return;
+    await claimGuestOrdersForCustomer(customer.id, email);
+  } catch (err) {
+    logger.warn({
+      event: "order.guest_claim.fail",
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 async function mergeCartSafely(supabaseUserId: string): Promise<void> {

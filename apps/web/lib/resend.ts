@@ -26,6 +26,13 @@
  *
  * En modo DEV sin RESEND_API_KEY → loguea el email y devuelve
  * { skipped: true, reason: "no-key" } para no bloquear desarrollo.
+ *
+ * Observabilidad (E1, 2026-10-07): tras un envío exitoso se registra un
+ * evento SINTÉTICO `email.sent` en EmailEvent (upsert por resendId con el
+ * id que devuelve Resend) — así el panel de entregabilidad distingue "no
+ * llegan webhooks" de "no se envían". Best-effort: si el insert falla NO
+ * rompe el envío. El upsert lleva update vacío: si el webhook ya creó la
+ * fila (p. ej. delivered), el registro de envío no la pisa.
  */
 
 import "server-only";
@@ -77,6 +84,37 @@ export type SendEmailInput = {
 
 export type SendEmailResult =
   { sent: true; id: string } | { sent: false; reason: string; skipped?: boolean; status?: number };
+
+/**
+ * E1 (2026-10-07) — evento sintético `email.sent` tras un envío exitoso: sin él,
+ * el panel de entregabilidad solo veía lo que llega por webhook y un webhook mal
+ * configurado (o apuntando a otro ambiente) era indistinguible de "no se envía".
+ * Best-effort: un fallo de DB NUNCA rompe el envío (el correo ya salió). El
+ * update del upsert es vacío a propósito: si el webhook llegó primero con un
+ * estado terminal (delivered/bounced), este registro NO lo degrada.
+ */
+async function recordSentEvent(id: string, input: SendEmailInput, from: string): Promise<void> {
+  try {
+    await prisma.emailEvent.upsert({
+      where: { resendId: id },
+      update: {},
+      create: {
+        resendId: id,
+        type: "email.sent",
+        to: Array.isArray(input.to) ? input.to.join(",") : input.to,
+        fromEmail: from,
+        subject: input.subject,
+        occurredAt: new Date(),
+        metadata: { synthetic: true, source: "lib/resend.ts" },
+      },
+    });
+  } catch (err) {
+    logger.warn({
+      event: "email.send.sent_event_fail",
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
 
 async function attemptSend(
   apiKey: string,
@@ -185,6 +223,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
         attempt: attempt + 1,
         id: last.id,
       });
+      await recordSentEvent(last.id, input, from);
       return last;
     }
     const transient = last.status === undefined || last.status >= 500 || last.status === 429;
@@ -213,6 +252,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
         subject: input.subject,
         id: last.id,
       });
+      await recordSentEvent(last.id, input, from);
       return last;
     }
   }

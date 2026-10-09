@@ -17,6 +17,7 @@ import path from "node:path";
 import fs from "node:fs";
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import { RenderNeedsKonvaError, type LoadAssetBytes } from "./production-render";
+import { clampPhotoScale, coverScaleBase } from "./photo-fit";
 import {
   CALENDAR_PAGE,
   scalePhotoTransformToPage,
@@ -424,9 +425,11 @@ async function renderSlotCanvas(
       const srcW = swapDims ? imgH : imgW;
       const srcH = swapDims ? imgW : imgH;
 
-      const coverScaleBase = Math.max(ph.width / srcW, ph.height / srcH);
-      const effectiveScale = Math.max(0.5, Math.min(3, slot.photoTransform?.scale ?? 1));
-      const finalScale = coverScaleBase * effectiveScale;
+      // Regla cover + clamp [0.5,3] compartida (photo-fit.ts) — idéntica al
+      // editor Konva y al tier sharp por construcción.
+      const coverBase = coverScaleBase(ph.width, ph.height, srcW, srcH);
+      const effectiveScale = clampPhotoScale(slot.photoTransform?.scale ?? 1);
+      const finalScale = coverBase * effectiveScale;
       const renderedW = imgW * finalScale;
       const renderedH = imgH * finalScale;
       const offX = slot.photoTransform?.offsetX ?? 0;

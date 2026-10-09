@@ -138,3 +138,53 @@ describe("StudioMessageField — flujo 'Tu mensaje' (Lucy 2026-07-22)", () => {
     expect(screen.queryByRole("textbox", { name: /tu mensaje/i })).toBeNull();
   });
 });
+
+describe("StudioMessageField — QA 1.2: masivo + edición individual conviven (2026-10-07)", () => {
+  // Bug de QA en STG: tras "aplicar a todas", editar el texto de UNA foto desde
+  // el canvas hacía "desaparecer todo". El flujo que debe quedar funcionando:
+  // masivo "Hola" → editar slot 2 a "Chao" → slots 1..N conservan "Hola", el
+  // campo masivo sigue mostrando el valor vigente → re-editar funciona a la 1ª.
+  it("masivo → edición individual de un slot: los demás conservan el masivo y el campo NO salta", () => {
+    const store = makeStore();
+    render(<StudioMessageField store={store} />);
+    const input = screen.getByRole("textbox", { name: /tu mensaje/i }) as HTMLInputElement;
+
+    // 1. Masivo "Hola" → todos los slots.
+    fireEvent.change(input, { target: { value: "Hola" } });
+    for (const s of store.getState().canvasData!.slots) {
+      expect(s.textOverrides?.message?.text).toBe("Hola");
+    }
+
+    // 2. Edición individual del slot 2 (camino del modal del canvas).
+    store.getState().setSlotTextOverride(1, "message", { text: "Chao" });
+
+    // Slots: el 1 conserva "Hola", el 2 tiene "Chao".
+    expect(store.getState().canvasData!.slots[0].textOverrides?.message?.text).toBe("Hola");
+    expect(store.getState().canvasData!.slots[1].textOverrides?.message?.text).toBe("Chao");
+    // El campo masivo sigue mostrando el valor pack-level vigente (no "salta").
+    expect(input.value).toBe("Hola");
+
+    // 3. Re-editar el mismo slot funciona a la primera (el override se pisa, no se borra).
+    store.getState().setSlotTextOverride(1, "message", { text: "Chao 2" });
+    expect(store.getState().canvasData!.slots[1].textOverrides?.message?.text).toBe("Chao 2");
+    expect(store.getState().canvasData!.slots[0].textOverrides?.message?.text).toBe("Hola");
+    expect(input.value).toBe("Hola");
+  });
+
+  it("vaciar el campo masivo tras una edición individual limpia TODOS los slots y el valor pack-level", () => {
+    const store = makeStore();
+    render(<StudioMessageField store={store} />);
+    const input = screen.getByRole("textbox", { name: /tu mensaje/i }) as HTMLInputElement;
+
+    fireEvent.change(input, { target: { value: "Hola" } });
+    store.getState().setSlotTextOverride(1, "message", { text: "Chao" });
+    expect(input.value).toBe("Hola");
+
+    fireEvent.change(input, { target: { value: "" } });
+    for (const s of store.getState().canvasData!.slots) {
+      expect(s.textOverrides?.message).toBeUndefined();
+    }
+    expect(store.getState().packTextValues.message).toBeUndefined();
+    expect(input.value).toBe("");
+  });
+});

@@ -3635,7 +3635,9 @@ intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar
 ## ADR-114 — Regla única de cara B vacía: espejo de la cara A en TODOS los renders
 
 **Fecha:** 2026-10-02
-**Estado:** ✅ Aceptada (sesión 2026-10-02, paquetes A/D/E)
+**Estado:** ❌ SUPERSEDIDA por decisión directa del owner 2026-10-07: **«cara B vacía = EN BLANCO»** en TODOS los renders (vista 3D «Ver en un libro», Vista Previa y producción física) — _«si cargo únicamente la Cara A, espero que la Cara B sea en blanco en vista 3D, preview y físico»_. La implementación vigente: 3D → `bookmarkFaceUnits` devuelve `back = null` y la cara trasera se pinta `BLANK_FACE_COLOR` (#FFFFFF); preview → `previewFacePairOfUnit` devuelve `faceB = null` y el compositor rellena el rect en blanco; producción → `blank-back-face.ts` (`blankBackFacePng` / `expandMissingBackFaces` / `blankOutEmptyBackFaces`) genera un PNG blanco puro con las dimensiones/DPI exactas de la cara A. La estructura de UNA sola regla consumida por todos los renders se mantiene; solo cambia la regla. (Texto original de la ADR conservado abajo como registro histórico.)
+
+~~**Estado:** ✅ Aceptada (sesión 2026-10-02, paquetes A/D/E)~~
 
 **Contexto:** los productos de 2 caras (separadores magnéticos y todo `backOptional`) tenían **3 comportamientos contradictorios** cuando el cliente dejaba la cara B vacía: según la superficie, se pintaba en blanco, en negro o como espejo de la cara A. El preview y la producción podían decir cosas distintas del mismo diseño.
 
@@ -3757,3 +3759,84 @@ intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar
 **Por qué:** homologar no es espejarlo todo a la fuerza: el esquema y el catálogo deben ser idénticos (lo son — catálogo y CMS 100%), pero los IDs internos son detalle de implementación (riesgo alto, beneficio nulo) y las settings de negocio son deliberadamente divergentes por ambiente (igual que los crons de email activos solo en PRD desde 2026-08-05 y `uptime-monitor-prd` solo en STG). Las migraciones de contenido aditivas con verificación por hash permiten ejecutar contra PRD con riesgo acotado y rollback real.
 
 **Consecuencia:** futuras homologaciones usan `scripts/diag-stg/homologacion.sh` como procedimiento canónico (firma de esquema por `psql`, no `pg_dump --schema-only` — el pg_dump local es v13 contra servidores PG17) y aplican estos 4 criterios: esquema/catálogo sí, IDs no, contenido aditivo verificado, settings de negocio por ambiente. Las env vars Vercel quedaron con solo 2 diferencias intencionales (`AVEONLINE_WEBHOOK_SECRET` solo Production, `CRON_JOBS_DISABLED` solo Preview) — cualquier diferencia nueva es señal de drift a investigar.
+
+## ADR-122 — Tooltip de marca global (radix `Hint`) reemplaza TODO `title=` nativo + paridad de advertencias de calidad en el Estudio
+
+**Fecha:** 2026-10-03
+**Estado:** ✅ Aceptada (implementada, en producción vía PR #63)
+
+**Contexto:** el owner reportó que en desktop las advertencias de calidad de foto solo se veían como el tooltip nativo negro del browser (`title=`), mientras en móvil/tablet salía un modal completo. El barrido encontró ~280 ocurrencias de `title=` en ~109 archivos y NINGÚN componente Tooltip propio.
+
+**Decisión:** ① primitivo único `components/ui/tooltip.tsx` (radix `Tooltip` — ya era dependencia del package unificado —, tarjeta blanca de marca con flecha, accesible por hover/focus/Esc) con atajo `<Hint content={…}>` para migraciones y `TooltipProvider` en el layout raíz (cubre tienda y admin). ② Migración total: solo quedan `title` legítimos de `<iframe>` (nombre accesible) y props de componentes que no son tooltips; en elementos `disabled` el trigger se envuelve en `<span tabIndex={0}>`. ③ Paridad de advertencias: `PhotoQualityModal` es componente compartido y se abre por click/tap desde las TRES superficies (thumbnail del sidebar, picker de fotos con CTA «Usar de todos modos», chip de calidad del slot en canvas) — el `title` hover-only era inalcanzable en táctil.
+
+**Por qué:** un solo lenguaje visual de ayuda, accesible por teclado y usable en táctil; el modal exige confirmación explícita antes de asignar una foto con aviso (menos impresiones malas por descuido).
+
+**Consecuencia:** prohibido introducir `title=` nuevo como tooltip — usar `Hint`. El atajo con `content` null/vacío renderiza el trigger pelado (equivale a ausencia de tooltip), lo que hace las migraciones condicionales triviales.
+
+## ADR-123 — Diseños prediseñados segregados por ATRIBUTO de variante (`variantFilter` subset-match) + assets de galería deduplicados por `galleryImageId`
+
+**Fecha:** 2026-10-03
+**Estado:** ✅ Aceptada (implementada, en producción vía PR #63; backfill STG/PRD ejecutado)
+
+**Contexto:** los diseños prediseñados (`DesignGalleryImage`) se agrupaban solo por `tag` (producto): un diseño pensado para separadores 4×4.2 se ofrecía también en la variante 2×6 (proporción equivocada). Además, cada aplicación de un prediseñado creaba un `DesignAsset` nuevo (el dedupe era solo un cache en memoria de sesión) y el boot del Estudio sembraba dos veces cada foto usada → «Mis fotos» mostraba duplicados.
+
+**Decisión:** ① `DesignGalleryImage.variantFilter Json?` = subset de `ProductVariant.attributes` (ej. `{"sizeCm":"4×4.2"}`); `null` = aplica a TODAS las variantes (backfill natural sin migración de datos). Matching puro (`design-gallery-filter.ts`, subset-match estricto); el Estudio filtra server-side con los attributes de la variante elegida; el admin valida contra variantes reales y ofrece selector «Aplica a», chips de filtro con contadores, búsqueda, edición del filtro en diseños existentes y asignación masiva a los sin asignar. ② Asociación por atributo y NO por SKU/variantId: robusta ante recreación de variantes (lección ADR-121: la llave de negocio no es el id). ③ `DesignAsset.galleryImageId` (nullable + índice) — `assignPredesignedToDesignAction` reusa el asset existente por (designId, galleryImageId) incluidos pares cara A/B; el `addAsset` del store es idempotente (id existente → reemplaza, gana la versión de DB con dimensiones reales y URL fresca).
+
+**Por qué:** el filtro por atributo expresa «este diseño es para este tamaño» sin acoplarlo a filas de DB recreables; el dedupe por `galleryImageId` es a prueba de recargas y de sesiones distintas.
+
+**Consecuencia:** al crear variantes con un valor nuevo de atributo filtrable (ej. un tamaño nuevo), los diseños con filtro no aplican hasta que el admin suba/asigne diseños para ese valor — comportamiento deseado (no ofrecer proporciones equivocadas). Pausar/reactivar/restaurar/reordenar diseños también quedó disponible en `/admin/disenos` (backlog B-5) sin tocar el Estudio (lectura fresca por request).
+
+## ADR-124 — Precios por volumen (WholesaleTier) PÚBLICOS en carrito/checkout: sin flag mayorista, nunca suben el precio, re-priceo al cambiar cantidad
+
+**Fecha:** 2026-10-03
+**Estado:** ✅ Aceptada (implementada, en producción vía PR #63)
+
+**Contexto:** `/admin/mayorista` persistía niveles de precio (`minQty` → `unitPrice` absoluto, scope producto o global) pero NADA los consumía (hallazgo A-1 de la auditoría de cableado 2026-10-02). El modelo `Customer` no tiene flag mayorista y el checkout soporta invitados. El roadmap contemplaba «flag `isWholesale`» como opción futura.
+
+**Decisión (owner, 2026-10-03):** los niveles son **descuento por volumen público** — aplican a TODO cliente (logueado o invitado) al alcanzar la cantidad mínima de la línea. Reglas: ① base = precio vigente (`variant.price ?? basePrice` + multiplicadores existentes); ② si el producto tiene niveles propios se miran SOLO esos (el global aplica únicamente a productos sin niveles); ③ gana el mayor `minQty ≤ qty` y su `unitPrice` reemplaza el de la línea; ④ **nunca subir el precio** (tier ≥ base → no aplica, defensa anti-config errónea); ⑤ re-priceo en `addProductToCart`, `addPersonalizedToCart` y `updateCartItemQty` (cruzar el umbral cambia el precio de la línea); ⑥ tiers leídos server-side en cada mutación (anti-tamper); ⑦ si el producto no tiene niveles, el snapshot de la línea NO se toca (semántica legacy intacta). El módulo `/admin/mayorista` dejó de ocultarse en modo catálogo (ahora tiene consumidor real).
+
+**Por qué:** el tier como precio público por volumen es coherente con el checkout de invitados y con la semántica ya modelada (precio absoluto por cantidad con anti-duplicado); el portal B2B con precios negociados por cliente queda como feature futura (flag `isWholesale`, roadmap Fase 6) sin bloquear el valor inmediato.
+
+**Consecuencia:** orden y cotización heredan el precio vía snapshot del carrito sin cambios. Si un día se introduce precio B2B privado, convivirá como capa adicional (cliente con flag), no como reemplazo.
+
+## ADR-125 — Retiro de `Product.premadeSurcharge` (campo huérfano del flujo PREMADE retirado)
+
+**Fecha:** 2026-10-03
+**Estado:** ✅ Aceptada (implementada; migración `20261002150000_drop_product_premade_surcharge` aplicada en STG y PRD)
+
+**Contexto:** `premadeSurcharge` (recargo % por elegir plantilla premium PREMADE, PLAN_CATALOG_V2 5.5) se editaba en el admin, se persistía y se exponía en el API, pero jamás se cobraba: el flujo PREMADE fue retirado del storefront el 2026-09-11 («funcionalidad falsa»: 0 plantillas PREMADE, 0 líneas con `templateId`). El seed lo fijaba en 15% en los 8 Coleccionables Universos. El owner, tras ver la evidencia, decidió retirarlo (2026-10-03).
+
+**Decisión:** eliminar el campo de schema, admin, Zod, service, API de catálogo y seeds, con migración destructiva (`DROP COLUMN` + `DROP` del CHECK). Los campos `CartItem.templateId`/`OrderItem.templateId` se CONSERVAN (schema listo si la feature premium vuelve con diseño propio).
+
+**Por qué:** un campo trampilla en el admin («se configura pero no pasa nada») es peor que no tenerlo — promete algo que el checkout no hace. La reintroducción de plantillas premium será una feature nueva con su propio diseño (precio, validación server-side del modo PREMADE, UI de selección), no un campo resucitado.
+
+**Consecuencia:** si la feature premium vuelve, el recargo se modelará desde cero (posiblemente por plantilla y no por producto). Referencia histórica intacta en PLAN_CATALOG_V2 §5.5 (marcada RETIRADO) y en las migraciones.
+
+## ADR-126 — Sync reusable de contenido STG→PRD (galería + catálogo/CMS) con clave natural, stock intocable y lección «tests contra PRD»
+
+**Fecha:** 2026-10-03
+**Estado:** ✅ Aceptada (ejecutada 2026-10-03: galería 51 inserts/78 updates/102 objetos; catálogo 6 inserts/83 updates/4 versiones CMS/1 objeto; comparador 100% OK)
+
+**Contexto:** ADR-121 dejó los criterios de homologación pero sin herramienta reusable para contenido nuevo (la galería de 2026-10-02 se migró con SQL a mano). El comparador además tenía falsos positivos eternos (checksums con `updatedAt`/cuids) y falsos negativos invisibles (tablas vacías devolvían fila NULL — así pasó desapercibido que PRD tenía 130 `UrlRedirect` y STG 0).
+
+**Decisión:** ① scripts reusables con dry-run por defecto y env-guard: `sync-gallery-stg-to-prd.mjs` y `sync-catalog-stg-to-prd.mjs` (categorías → productos → variantes → CMS → templates, con versiones publicadas de CMS y remapeo de `CmsMedia` por bucket+path). ② Cruce por `id` Y por clave natural (slug/sku/key/(tag,name)) — las filas sembradas por separado en cada ambiente tienen cuids distintas; los updates conservan el id de PRD (FKs), los inserts traen el id de STG (idempotencia). ③ **El stock NUNCA se sincroniza** (el de PRD es operativo real; las variantes nuevas entran con stock 0 y se reportan para carga manual en `/admin/inventario`). ④ Storage: URLs host-agnósticas al comparar, copia de objetos faltantes al bucket de PRD con `upsert:false`. ⑤ Comparador corregido: checksums por clave natural sin timestamps/cuids ni stock/usedCount, con `coalesce` para tablas vacías. ⑥ **Lección del incidente:** los 130 redirects de PRD eran TODOS artefactos `/itest…` de una corrida de tests de integración apuntada a PRD — quedan eliminados y se registra la prohibición operativa: las suites de integración NUNCA se corren con el env de PRD cargado (el env-guard de scripts no protege vitest).
+
+**Por qué:** la homologación de contenido dejó de ser artesanía por evento: es un procedimiento idempotente, auditable y reversible, y el comparador ahora distingue divergencia real de ruido.
+
+**Consecuencia:** OPERATIONS.md § Homologación lista los dos scripts + las excepciones permanentes del comparador (AdminUser de pruebas en STG, datos transaccionales por ambiente, env vars por scope). Cualquier DIFF nuevo fuera de esas excepciones es drift real a investigar.
+
+## ADR-127 — Ciclo de maduración STG 2026-10-05: propiedad del pedido por email de contacto, flujo regalo nativo y referidos v2 con cupón de bienvenida
+
+**Fecha:** 2026-10-06
+**Estado:** ✅ Aceptada (implementada en `develop`, commits `d910982`…`1194d83`; migraciones `20261005120000_coupon_customer_owner`, `20261005130000_order_reconciliation_resolution`, `20261005140000_order_gift_recipient` aplicadas en STG 2026-10-06; pendientes en PRD con el PR de promoción)
+
+**Contexto:** validaciones del owner en STG (35 puntos). Tres de ellos exigían decisión de modelo, no solo fix: ① el pedido de prueba LCM-2026-0010, creado con sesión de admin activa pero contacto de otra persona, quedó con `customerId` de la sesión (el checkout resolvía el customer por sesión y nunca lo reconciliaba con el email digitado); ② el negocio quiere «compro yo, lo recibe otra persona» (regalo); ③ el programa de referidos no generaba cupón al registrarse y los cupones solo llegaban por email (sin bandeja en la cuenta).
+
+**Decisión:**
+① **La identidad del pedido la manda el email de contacto digitado, no la sesión.** `resolveOrderCustomerId` (features/orders/order-customer.ts) en el choke point `createOrderFromCartTx`: si el email del contacto difiere (case-insensitive) del del Customer de sesión, el pedido se vincula al Customer dueño de ese email o queda guest (`Customer.supabaseUserId` es NOT NULL — no se puede crear Customer por email solo). La reconciliación de órdenes PENDING actualiza `customerId` al reintentar (auto-corrección), y el documento DIAN del contacto no se escribe al perfil cuando sabemos que el contacto no es la cuenta. El prefill de contacto/dirección/facturación con sesión se mantiene y se completó (dirección default, mid-login sin pisar lo digitado).
+② **Flujo regalo como datos del pedido, no como nota.** `Order.recipientName/recipientPhone/isGift/giftMessage`: la guía Aveonline sale a nombre del destinatario (`resolveShipmentRecipient` en la saga), pero `dscorreop`, la facturación y los documentos quedan SIEMPRE del comprador. Con `isGift`, el email de confirmación al comprador omite precios (excepción deliberada: en COD el callout de contraentrega conserva el monto — alguien debe tener el efectivo exacto) y el email interno instruye «empacar sin factura/precios visibles» con el mensaje para la tarjeta.
+③ **Referidos v2:** cupón de bienvenida (PERCENT 10, 1 uso, 90 días, `isPublic=false`) creado en la misma transacción de `attachReferral`; en la primera compra pagada solo se genera el cupón del referente (el del referido ya existe; rama legacy para PENDING pre-v2). Relación formal `Coupon.customerId` (FK opcional, backfill v1 por prefijo de `description` + email exacto) y sección `/mi-cuenta/cupones` como canal de entrega (no existe email de bienvenida de cuenta — el de Supabase es template estático sin variables).
+
+**Por qué:** ① un pedido atribuido a quien no compró corrompe Customer 360, prefill y límites de cupón por cliente — y el email de contacto es el único dato definitivo al confirmar el pago; ② «regalo» como campo libre en notas no llega a la guía ni al empaque: tiene que ser dato estructurado del pedido para que la logística y los emails lo respeten; ③ el incentivo del referido debe existir ANTES de su primera compra (si no, no incentiva) y ser visible sin depender del correo.
+
+**Consecuencia:** un checkout logueado cuyo contacto es de otra persona ya NO amarra el pedido (ni el cupón por-cliente) a la sesión — si el negocio usaba «admin compra a nombre de» a propósito, el pedido ahora se atribuye al dueño real del email o queda guest. El doble gate de seguridad de los previews (Vercel Authentication + `x-vercel-protection-bypass`) queda documentado como requisito para cualquier webhook/cron externo nuevo que apunte a STG (ver INTEGRATIONS_AVEONLINE §6.2).

@@ -24,7 +24,7 @@ import { getCartItemCount } from "@/features/cart/service";
 import { getCategoryTree } from "@/lib/catalog";
 import { getCurrentAdmin, getCurrentCustomer } from "@/lib/auth";
 import { peekCartSession } from "@/lib/cart-session";
-import { getCmsBlock } from "@/lib/cms";
+import { getCmsBlock, getCmsImage } from "@/lib/cms";
 import { resolveCmsTokens } from "@/lib/cms-tokens";
 
 // Fallbacks de las etiquetas de ocasión — idénticos a lo que TOP_OCASIONES
@@ -98,18 +98,25 @@ async function getMegaMenuTexts(): Promise<MegaMenuTexts> {
 
 export async function SiteHeader() {
   const sessionId = await peekCartSession();
-  const [session, admin, cartCount, categoryTree, megaMenuTexts] = await Promise.all([
+  const [session, admin, cartCount, categoryTree, megaMenuTexts, siteLogo] = await Promise.all([
     getCurrentCustomer(),
     getCurrentAdmin(),
     sessionId ? getCartItemCount(sessionId) : Promise.resolve(0),
     getCategoryTree(),
     getMegaMenuTexts(),
+    // Logo administrable (Fase 3 · 3.9 — setting CMS `site.logo`, cacheado con
+    // tag "cms" como el resto del contenido; null → asset estático).
+    getCmsImage("site.logo"),
   ]);
 
   return (
     <header className="border-brand-purple/10 sticky top-0 z-40 border-b bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 sm:px-10">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 py-3">
-        <BrandMark size="sm" animated />
+        <BrandMark
+          size="sm"
+          animated
+          logo={siteLogo ? { url: siteLogo.url, alt: siteLogo.alt } : null}
+        />
 
         <nav className="flex items-center gap-1 sm:gap-3">
           {/* Entrada única al catálogo: el mega-menú (trigger "Catálogo").

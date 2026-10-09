@@ -17,6 +17,8 @@ import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 process.env.NEXT_PUBLIC_SITE_URL = "https://lucamsshop.com";
+// E3 — firma del token de reseña (/resena/<token>) que emite sendOrderDelivered.
+process.env.CSRF_SECRET = "test-csrf-secret-reviews";
 
 const state = vi.hoisted(() => ({
   order: null as Record<string, unknown> | null,
@@ -70,7 +72,8 @@ vi.mock("@/lib/cms", () => ({
 
 vi.mock("@/features/notifications/service", () => ({ notify: vi.fn(async () => {}) }));
 
-import { notifyNewOrderToAdmin, sendOrderConfirmation } from "./emails";
+import { notifyNewOrderToAdmin, sendOrderConfirmation, sendOrderDelivered } from "./emails";
+import { verifyReviewToken } from "@/features/reviews/review-token";
 
 const BREAKDOWN_TEXT = "12 fotos · 6×8 cm · Sin imán (adhesivo)";
 
@@ -100,7 +103,7 @@ function orderFixture(over: Record<string, unknown> = {}) {
         variant: {
           sku: "FI-12-SIN",
           attributes: { photoSlots: 12, sizeCm: "6×8", magnet: false },
-          product: { name: "Fotoimanes Cuadrados" },
+          product: { id: "prod_1", name: "Fotoimanes Cuadrados" },
         },
         design: null,
       },
@@ -179,5 +182,80 @@ describe("notifyNewOrderToAdmin — desglose de variantes en el aviso (Paquete H
     expect(state.sent).toHaveLength(1);
     expect(state.sent[0].html).toContain(BREAKDOWN_TEXT);
     expect(state.sent[0].text).toContain(BREAKDOWN_TEXT);
+  });
+});
+
+describe("sendOrderDelivered — CTA de reseña con token real (E3)", () => {
+  it("el CTA «Dejar una reseña ⭐» apunta a /resena/<token> con un token HMAC VÁLIDO del pedido", async () => {
+    state.order = orderFixture({ customerId: null });
+
+    await sendOrderDelivered("ord_1");
+
+    expect(state.sent).toHaveLength(1);
+    const html = state.sent[0].html;
+    expect(html).toContain("Dejar una reseña ⭐");
+    expect(html).not.toContain("/rastrear");
+    const match = html.match(/\/resena\/([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/);
+    expect(match, "el HTML lleva un link /resena/<token>").toBeTruthy();
+    // El token abre y trae el pedido + productos + email del comprador.
+    const payload = verifyReviewToken(match![1]);
+    expect(payload).toMatchObject({
+      orderId: "ord_1",
+      orderNumber: "LCM-2026-1042",
+      email: "camila@example.com",
+      productIds: ["prod_1"],
+    });
+  });
+
+  it("si la emisión del token FALLA (sin CSRF_SECRET) y es REGISTRADO → «Ver mi pedido» a /mi-cuenta/pedidos/<number>", async () => {
+    const prev = process.env.CSRF_SECRET;
+    delete process.env.CSRF_SECRET;
+    try {
+      state.order = orderFixture({ customerId: "cust_1" });
+
+      await sendOrderDelivered("ord_1");
+
+      expect(state.sent).toHaveLength(1);
+      const html = state.sent[0].html;
+      expect(html).toContain("Ver mi pedido");
+      expect(html).toContain("https://lucamsshop.com/mi-cuenta/pedidos/LCM-2026-1042");
+      expect(html).not.toContain("Dejar una reseña");
+      expect(html).not.toContain("/resena/");
+    } finally {
+      process.env.CSRF_SECRET = prev;
+    }
+  });
+
+  it("si la emisión del token FALLA y es INVITADO → «Ver mi pedido» a /rastrear", async () => {
+    const prev = process.env.CSRF_SECRET;
+    delete process.env.CSRF_SECRET;
+    try {
+      state.order = orderFixture({ customerId: null });
+
+      await sendOrderDelivered("ord_1");
+
+      expect(state.sent).toHaveLength(1);
+      const html = state.sent[0].html;
+      expect(html).toContain("Ver mi pedido");
+      expect(html).toContain("https://lucamsshop.com/rastrear");
+      expect(html).not.toContain("/resena/");
+    } finally {
+      process.env.CSRF_SECRET = prev;
+    }
+  });
+
+  it("el token falla pero el correo NO se sacrifica (sale igual, con fallback)", async () => {
+    const prev = process.env.CSRF_SECRET;
+    delete process.env.CSRF_SECRET;
+    try {
+      state.order = orderFixture({});
+
+      await sendOrderDelivered("ord_1");
+
+      expect(state.sent).toHaveLength(1);
+      expect(state.sent[0].to).toBe("camila@example.com");
+    } finally {
+      process.env.CSRF_SECRET = prev;
+    }
   });
 });

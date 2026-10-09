@@ -2,18 +2,24 @@
 
 /*
  * Test del bloque de diligenciamiento MASIVO de la Polaroid Instagram (Fase 1B,
- * owner 2026-09): la sección "Datos de la publicación" del sidebar es el
- * equivalente multi-campo de "Tu mensaje" (Polaroid Clásica) — un campo por capa
- * editable IG (@usuario, ubicación, "me gusta", título, hashtags) que escribe el
- * override en TODOS los slots vía setTextOverrideAllSlots.
+ * owner 2026-09; REDISEÑO ASISTIDO owner 2026-10-05): la sección "Datos de la
+ * publicación" del sidebar es el equivalente multi-campo de "Tu mensaje"
+ * (Polaroid Clásica) — un CONTROL ASISTIDO por capa editable IG que escribe el
+ * override en TODOS los slots vía setTextOverrideAllSlots:
+ *  - @usuario: "@" fija fuera del input, sanitización en vivo.
+ *  - Ubicación: combobox con búsqueda (2.7b — antes datalist nativo): filtra
+ *    «Ciudad, País» por ciudad y país, teclado accesible y texto libre.
+ *  - «Me gusta»: OBLIGATORIO (rediseño), solo numérico, miles es-CO, sufijo fijo.
+ *  - Título: contador n/140.
+ *  - Hashtags: chips agregar/quitar, máximo 3, "#" fija.
  *
  * Contrato blindado:
  *  1. Solo se monta con plantilla Instagram (isInstagramTemplate); en Clásica y
  *     demás no aparece.
- *  2. Cada campo escribe en TODOS los slots por tecla; vacío → override null.
+ *  2. Cada campo escribe en TODOS los slots; vacío → override null.
  *  3. Valor mostrado = el texto compartido; si las unidades difieren, el campo
  *     queda vacío con chip "Varía por foto" y al escribir se unifica.
- *  4. likes_count se anuncia opcional; las 4 requeridas (Ola 26) como obligatorias.
+ *  4. Las 5 capas se anuncian como obligatorias (likes dejó de ser opcional).
  *  5. Aviso pack-level visible (misma caja que "Tu mensaje").
  */
 
@@ -79,46 +85,202 @@ function makeStore(canvas: CanvasDataV2 = igCanvas()) {
   return store;
 }
 
+function overrides(store: ReturnType<typeof makeStore>, layerId: string) {
+  return store.getState().canvasData!.slots.map((s) => s.textOverrides?.[layerId]?.text);
+}
+
 afterEach(cleanup);
 
-describe("StudioIgPostFields — diligenciamiento masivo IG (Fase 1B)", () => {
-  it("renderiza UN campo por capa editable IG con el aviso pack-level", () => {
+describe("StudioIgPostFields — diligenciamiento masivo IG (rediseño asistido 2026-10-05)", () => {
+  it("renderiza UN control por capa editable IG con el aviso pack-level", () => {
     const store = makeStore();
     render(<StudioIgPostFields store={store} />);
 
     expect(screen.getByText("Datos de la publicación")).toBeInTheDocument();
-    for (const label of ["@usuario", "Ubicación", "«Me gusta»", "Título", "Hashtags"]) {
+    for (const label of ["@usuario", "«Me gusta»", "Título", "Hashtags"]) {
       expect(screen.getByRole("textbox", { name: new RegExp(label, "i") })).toBeInTheDocument();
     }
+    // La ubicación es un combobox con búsqueda (2.7b; antes datalist).
+    expect(screen.getByRole("combobox", { name: /ubicación/i })).toBeInTheDocument();
     expect(screen.getByRole("note").textContent).toMatch(/TODAS las fotos del set/i);
   });
 
-  it("marca las 4 capas requeridas como obligatorias y «me gusta» como opcional", () => {
+  it("las 5 capas se anuncian como obligatorias (rediseño: «me gusta» ya no es opcional)", () => {
     const store = makeStore();
     render(<StudioIgPostFields store={store} />);
 
-    expect(screen.getByRole("textbox", { name: /ubicación.*obligatorio/i })).toBeInTheDocument();
-    expect(
-      screen.getByRole("textbox", { name: /me gusta.*opcional.*no se imprime/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /ubicación.*obligatorio/i })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /me gusta.*obligatorio/i })).toBeInTheDocument();
+    expect(screen.queryByText(/no se imprime\)/i)).toBeNull();
   });
 
-  it("cada campo escribe el override en TODOS los slots por tecla; vacío → null", () => {
+  it("usuario: «@» fija visible, sanitiza en vivo y guarda SIEMPRE con «@»; vacío → null", () => {
     const store = makeStore();
     render(<StudioIgPostFields store={store} />);
 
     const input = screen.getByRole("textbox", { name: /@usuario/i }) as HTMLInputElement;
     expect(input.value).toBe("");
 
-    fireEvent.change(input, { target: { value: "@lucy.fotos" } });
-    for (const s of store.getState().canvasData!.slots) {
-      expect(s.textOverrides?.user_name?.text).toBe("@lucy.fotos");
-    }
+    // Espacios y caracteres inválidos se eliminan; la "@" pegada se normaliza.
+    fireEvent.change(input, { target: { value: "@lucy fotos!_26" } });
+    expect(overrides(store, "user_name")).toEqual(["@lucyfotos_26", "@lucyfotos_26"]);
+    expect(input.value).toBe("lucyfotos_26"); // sin "@" (es adorno fijo)
 
     fireEvent.change(input, { target: { value: "" } });
-    for (const s of store.getState().canvasData!.slots) {
-      expect(s.textOverrides?.user_name).toBeUndefined();
-    }
+    expect(overrides(store, "user_name")).toEqual([undefined, undefined]);
+  });
+
+  it("ubicación: combobox con búsqueda — filtra por ciudad Y país (insensible a tildes) y escribe en todos los slots", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+
+    const input = screen.getByRole("combobox", { name: /ubicación/i }) as HTMLInputElement;
+    expect(input).toHaveAttribute("aria-autocomplete", "list");
+    expect(input).toHaveAttribute("aria-expanded", "false");
+
+    // Al enfocar se abre el listbox con TODAS las sugerencias.
+    fireEvent.focus(input);
+    expect(input).toHaveAttribute("aria-expanded", "true");
+    const allOptions = screen.getAllByRole("option");
+    expect(allOptions.length).toBeGreaterThan(20);
+    expect(allOptions.map((o) => o.textContent)).toContain("Medellín, Colombia");
+
+    // Filtra por ciudad sin tildes ("medellin" ≈ "Medellín")…
+    fireEvent.change(input, { target: { value: "medellin" } });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Medellín, Colombia"]);
+    // …y el tipeo también compromete el texto libre en TODOS los slots.
+    expect(overrides(store, "location")).toEqual(["medellin", "medellin"]);
+
+    // Filtra por PAÍS ("españa" → las 8 ciudades curadas de España + el país
+    // solo como fallback — cobertura mundial, QA ronda 2).
+    fireEvent.change(input, { target: { value: "españa" } });
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Madrid, España",
+      "Barcelona, España",
+      "Valencia, España",
+      "Sevilla, España",
+      "Bilbao, España",
+      "Málaga, España",
+      "Alicante, España",
+      "Palma de Mallorca, España",
+      "España",
+    ]);
+  });
+
+  it("ubicación: teclado accesible — flechas mueven aria-activedescendant, Enter elige, Escape cierra", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+
+    const input = screen.getByRole("combobox", { name: /ubicación/i }) as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "bogo" } });
+
+    // Flecha abajo activa la primera opción y la referencia vía aria-activedescendant.
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    const activeId = input.getAttribute("aria-activedescendant");
+    expect(activeId).toBeTruthy();
+    const active = document.getElementById(activeId!)!;
+    expect(active).toHaveAttribute("aria-selected", "true");
+    expect(active.textContent).toBe("Bogotá, Colombia");
+
+    // Enter compromete la sugerencia activa en TODOS los slots y cierra el listbox.
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(overrides(store, "location")).toEqual(["Bogotá, Colombia", "Bogotá, Colombia"]);
+    expect(input.value).toBe("Bogotá, Colombia");
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(input).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("ubicación: Escape cierra el listbox sin comprometer la opción activa", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+
+    const input = screen.getByRole("combobox", { name: /ubicación/i }) as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "cali" } });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(screen.queryByRole("option")).toBeNull();
+    // El texto libre se conserva (no se reemplazó por la sugerencia activa).
+    expect(input.value).toBe("cali");
+    expect(overrides(store, "location")).toEqual(["cali", "cali"]);
+  });
+
+  it("ubicación: click en una opción la compromete; texto libre sin coincidencias avisa pero vale", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+
+    const input = screen.getByRole("combobox", { name: /ubicación/i }) as HTMLInputElement;
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "cart" } });
+    fireEvent.click(screen.getByRole("option", { name: "Cartagena, Colombia" }));
+    expect(overrides(store, "location")).toEqual(["Cartagena, Colombia", "Cartagena, Colombia"]);
+    expect(screen.queryByRole("option")).toBeNull();
+
+    // Texto libre sin coincidencias: se guarda tal cual y avisa que igual se imprime.
+    fireEvent.change(input, { target: { value: "Mi vereda del campo" } });
+    expect(overrides(store, "location")).toEqual(["Mi vereda del campo", "Mi vereda del campo"]);
+    expect(screen.getByRole("status").textContent).toMatch(/Sin coincidencias/);
+  });
+
+  it("«me gusta»: solo numérico con miles es-CO, sufijo fijo fuera del input", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+
+    const input = screen.getByRole("textbox", { name: /me gusta/i }) as HTMLInputElement;
+    expect(input).toHaveAttribute("inputMode", "numeric");
+
+    fireEvent.change(input, { target: { value: "1234" } });
+    // El override guarda el post completo ("1.234 me gusta") — se imprime tal cual.
+    expect(overrides(store, "likes_count")).toEqual(["1.234 me gusta", "1.234 me gusta"]);
+    expect(input.value).toBe("1.234");
+  });
+
+  it("título: contador de caracteres con límite y placeholder con ejemplo", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+
+    const input = screen.getByRole("textbox", { name: /título/i }) as HTMLInputElement;
+    expect(input.placeholder).toMatch(/^Ej:/);
+
+    fireEvent.change(input, { target: { value: "Domingo de playa" } });
+    expect(overrides(store, "caption")).toEqual(["Domingo de playa", "Domingo de playa"]);
+    expect(screen.getByText("16/140")).toBeInTheDocument();
+  });
+
+  it("hashtags: chips con «#» fija, agregar con Enter, quitar con × y máximo 3 con aviso", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+
+    const input = screen.getByRole("textbox", { name: /hashtags/i }) as HTMLInputElement;
+    const add = (tag: string) => {
+      fireEvent.change(input, { target: { value: tag } });
+      fireEvent.keyDown(input, { key: "Enter" });
+    };
+
+    add("playa");
+    expect(overrides(store, "hashtags")).toEqual(["#playa", "#playa"]);
+    expect(screen.getByText("playa")).toBeInTheDocument();
+
+    add("familia");
+    add("viaje2026");
+    expect(overrides(store, "hashtags")).toEqual([
+      "#playa #familia #viaje2026",
+      "#playa #familia #viaje2026",
+    ]);
+
+    // 4º hashtag → no entra y avisa claro.
+    add("demas");
+    expect(screen.getByRole("alert").textContent).toMatch(/Máximo 3 hashtags/i);
+    expect(overrides(store, "hashtags")).toEqual([
+      "#playa #familia #viaje2026",
+      "#playa #familia #viaje2026",
+    ]);
+
+    // Quitar un chip con su ×.
+    fireEvent.click(screen.getByRole("button", { name: /quitar hashtag playa/i }));
+    expect(overrides(store, "hashtags")).toEqual(["#familia #viaje2026", "#familia #viaje2026"]);
   });
 
   it("muestra el valor compartido cuando TODAS las unidades coinciden", () => {
@@ -144,10 +306,30 @@ describe("StudioIgPostFields — diligenciamiento masivo IG (Fase 1B)", () => {
     expect(screen.getByText("Varía por foto")).toBeInTheDocument();
 
     fireEvent.change(input, { target: { value: "Título único" } });
-    for (const s of store.getState().canvasData!.slots) {
-      expect(s.textOverrides?.caption?.text).toBe("Título único");
-    }
+    expect(overrides(store, "caption")).toEqual(["Título único", "Título único"]);
     expect(screen.queryByText("Varía por foto")).toBeNull();
+    expect(input.value).toBe("Título único");
+  });
+
+  it("QA 1.2: masivo → edición individual de UNA foto — el campo conserva el valor pack-level (sin chip) y al escribir se unifica", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+    const input = screen.getByRole("textbox", { name: /título/i }) as HTMLInputElement;
+
+    // Masivo "Hola" → todos los slots.
+    fireEvent.change(input, { target: { value: "Hola" } });
+    expect(overrides(store, "caption")).toEqual(["Hola", "Hola"]);
+
+    // Edición individual de la foto 2 (camino del modal del canvas): los demás
+    // conservan "Hola" y el campo masivo NO salta ni muestra «Varía por foto».
+    store.getState().setSlotTextOverride(1, "caption", { text: "Chao" });
+    expect(overrides(store, "caption")).toEqual(["Hola", "Chao"]);
+    expect(input.value).toBe("Hola");
+    expect(screen.queryByText("Varía por foto")).toBeNull();
+
+    // Escribir de nuevo en el masivo unifica todo a la primera.
+    fireEvent.change(input, { target: { value: "Título único" } });
+    expect(overrides(store, "caption")).toEqual(["Título único", "Título único"]);
     expect(input.value).toBe("Título único");
   });
 

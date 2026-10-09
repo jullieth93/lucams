@@ -840,6 +840,7 @@ logger.info({ event: "order.created", orderId, customerId });
 
 - **Prettier** (`pnpm format` / `format:check`, gate `format-check` en CI) + **ESLint** flat config (`eslint-config-next` core-web-vitals + typescript, más `no-restricted-imports` para sharp — F-4). Pre-commit hook versionado en `scripts/git-hooks/pre-commit` = scan de secretos con **gitleaks** (activar una vez por clone: `git config core.hooksPath scripts/git-hooks`); la capa forzosa es GitHub Push Protection + el job `secrets-scan` de CI.
 - **Gates ANTES de cada push (lección CI 2026-09-15):** `pnpm typecheck && pnpm lint && pnpm format:check && node packages/db/scripts/audit-content-coverage.mjs --check` + la suite de tests que aplique. El ratchet de cobertura CMS solo se regenera con `--write-baseline` cuando el cambio es legítimo (y se commitean juntos).
+- **Verificar CI DESPUÉS de cada push (lección CI 2026-10-06 — un push quedó rojo 4 min por prettier + ratchet CMS sin correr):** los gates locales no reemplazan la confirmación remota. Tras `git push`, vigilar el run con `gh run list --branch <rama> --limit 1` (o `gh run watch`) hasta verlo en verde; si falla, `gh run view <id> --log-failed`, corregir y re-pushear de inmediato — ningún trabajo se da por terminado con el CI en rojo, y el deploy de Vercel NO valida prettier/lint/tests por sí solo.
 - **TypeScript estricto:** `"strict": true` en `apps/web/tsconfig.json`.
 - **No usar `any`.** Si no hay tipo, usar `unknown` y narrow.
 - **Archivos < 400 líneas** (split en submódulos si crece).

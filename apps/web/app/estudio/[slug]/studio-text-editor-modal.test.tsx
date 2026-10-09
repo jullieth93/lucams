@@ -45,6 +45,20 @@ const LAYER: TextLayer = {
 
 afterEach(cleanup);
 
+describe("StudioTextEditorForm — «Aplicar» arriba (owner 2026-10-05)", () => {
+  it("el botón «Aplicar» va ANTES del input en el DOM (visible sin scroll) y «Restablecer» queda abajo", () => {
+    renderStudio(
+      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />,
+    );
+    const apply = screen.getByRole("button", { name: "Aplicar" });
+    const input = screen.getByRole("textbox");
+    const reset = screen.getByRole("button", { name: /volver al original/i });
+    // DOCUMENT_POSITION_FOLLOWING: apply precede al input y al reset.
+    expect(apply.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(apply.compareDocumentPosition(reset) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
 describe("StudioTextEditorForm — estado de procesamiento de «Aplicar» (Lucy 2026-09-08)", () => {
   it("al hacer click en Aplicar: spinner + disabled, y luego aplica el override", async () => {
     const onApply = vi.fn();
@@ -69,7 +83,9 @@ describe("StudioTextEditorForm — estado de procesamiento de «Aplicar» (Lucy 
     });
   });
 
-  it("sin cambios aplica null (limpia el override) — también con feedback", async () => {
+  it("sin cambios es NO-OP (undefined): NO limpia el override — también con feedback", async () => {
+    // QA 1.2 — antes «Aplicar» sin cambios enviaba null → BORRABA el override del
+    // slot. Ahora undefined = no-op (el override vigente se conserva).
     const onApply = vi.fn();
     renderStudio(
       <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />,
@@ -77,7 +93,8 @@ describe("StudioTextEditorForm — estado de procesamiento de «Aplicar» (Lucy 
 
     fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
     expect(screen.getByRole("button", { name: /aplicando/i })).toBeDisabled();
-    await waitFor(() => expect(onApply).toHaveBeenCalledWith(null));
+    await waitFor(() => expect(onApply).toHaveBeenCalledWith(undefined));
+    expect(onApply).not.toHaveBeenCalledWith(null);
   });
 });
 
@@ -92,13 +109,14 @@ describe("StudioTextEditorForm — placeholder gris, nunca valor precargado (Ola
     expect(input).toHaveAttribute("placeholder", "Escribe tu mensaje");
   });
 
-  it("aplicar SIN escribir nada → null (la tarjeta queda sin texto, nada se imprime)", async () => {
+  it("aplicar SIN escribir nada (sin override previo) → no-op (la tarjeta queda sin texto, nada se imprime)", async () => {
     const onApply = vi.fn();
     renderStudio(
       <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
-    await waitFor(() => expect(onApply).toHaveBeenCalledWith(null));
+    // Sin override previo y sin texto escrito no hay nada que mutar: no-op.
+    await waitFor(() => expect(onApply).toHaveBeenCalledWith(undefined));
   });
 
   it("escribir EXACTAMENTE el default SÍ guarda override.text (el cliente lo eligió)", async () => {
@@ -149,6 +167,44 @@ describe("StudioTextEditorForm — placeholder gris, nunca valor precargado (Ola
     );
     fireEvent.click(screen.getByRole("button", { name: /volver al original/i }));
     expect(screen.getByRole("textbox")).toHaveValue("");
+  });
+});
+
+describe("StudioTextEditorForm — QA 1.2: «Aplicar» tras «aplicar a todas» no borra nada (2026-10-07)", () => {
+  // Bug de QA en STG (Polaroid Clásica/Instagram): con el texto masivo aplicado,
+  // abrir el editor de UNA foto y dar «Aplicar» sin tocar nada BORRABA el
+  // override de ese slot (el texto desaparecía y el campo masivo "saltaba").
+  it("«Aplicar» sin cambios sobre un override vigente es NO-OP: el texto se conserva", async () => {
+    const onApply = vi.fn();
+    renderStudio(
+      <StudioTextEditorForm layer={LAYER} currentOverride={{ text: "Hola" }} onApply={onApply} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    await waitFor(() => expect(onApply).toHaveBeenCalledWith(undefined));
+    expect(onApply).not.toHaveBeenCalledWith(null);
+  });
+
+  it("editar el texto de UNA unidad aplica el nuevo texto a la primera", async () => {
+    const onApply = vi.fn();
+    renderStudio(
+      <StudioTextEditorForm layer={LAYER} currentOverride={{ text: "Hola" }} onApply={onApply} />,
+    );
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Chao" } });
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    await waitFor(() => expect(onApply).toHaveBeenCalledWith({ text: "Chao" }));
+  });
+
+  it("cambiar SOLO el estilo conserva el texto vigente (el store reemplaza el override entero)", async () => {
+    // Segundo filo del bug: el override viejo solo llevaba los campos que
+    // CAMBIARON; con un override { text } vigente, tocar la paleta y aplicar
+    // reemplazaba el override por { fill } → el texto se perdía.
+    const onApply = vi.fn();
+    renderStudio(
+      <StudioTextEditorForm layer={LAYER} currentOverride={{ text: "Hola" }} onApply={onApply} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Blanco" }));
+    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    await waitFor(() => expect(onApply).toHaveBeenCalledWith({ text: "Hola", fill: "#FFFFFF" }));
   });
 });
 

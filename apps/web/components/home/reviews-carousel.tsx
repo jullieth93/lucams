@@ -13,8 +13,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import Autoplay from "embla-carousel-autoplay";
+import Image from "next/image";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Pause, Play, Star } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pause, Play, ShoppingBag, Star } from "lucide-react";
 import { useAutoplayWhenVisible } from "@/components/home/use-autoplay-when-visible";
 import { usePrefersReducedMotion } from "@/app/estudio/[slug]/use-prefers-reduced-motion";
 import type { StorefrontReview } from "@/features/reviews/public-service";
@@ -147,7 +148,8 @@ export function ReviewsCarousel({ reviews }: { reviews: StorefrontReview[] }) {
   );
 }
 
-function ReviewCard({ review }: { review: StorefrontReview }) {
+// Exportada para tests colocalizados (reviews-carousel.test.tsx).
+export function ReviewCard({ review }: { review: StorefrontReview }) {
   return (
     <article className="border-brand-purple/10 flex h-full flex-col rounded-xl border bg-white p-5">
       {/* Las estrellas son decorativas: la calificación real va en el sr-only (WCAG 1.1.1). */}
@@ -172,15 +174,29 @@ function ReviewCard({ review }: { review: StorefrontReview }) {
         <p className="text-brand-purple-dark text-sm font-semibold">
           {review.authorName ?? "Cliente Lucams"}
         </p>
-        <p className="text-brand-muted text-xs">
-          {review.authorCity ? `${review.authorCity} · ` : ""}
-          <Link
-            href={`/producto/${review.productSlug}`}
-            className="text-brand-purple hover:underline"
-          >
-            {review.productName}
-          </Link>
-        </p>
+        {review.authorCity && <p className="text-brand-muted text-xs">{review.authorCity}</p>}
+        {/* Fase 3 · 3.5 — el producto reseñado como CHIP visible (link al PDP).
+            Antes era un text-xs muted mezclado con la ciudad y se perdía.
+            E4 (2026-10-07) — mini-imagen del producto junto al nombre (la
+            principal, images[0]); sin imagen queda el chip como antes. */}
+        <Link
+          href={`/producto/${review.productSlug}`}
+          aria-label={`Ver producto ${review.productName}`}
+          className="bg-brand-purple/10 text-brand-purple-dark hover:bg-brand-purple mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-colors hover:text-white"
+        >
+          {review.productImage ? (
+            <Image
+              src={review.productImage}
+              alt=""
+              width={40}
+              height={40}
+              className="h-8 w-8 flex-shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <ShoppingBag className="h-3 w-3 flex-shrink-0" aria-hidden="true" />
+          )}
+          <span className="truncate">{review.productName}</span>
+        </Link>
       </div>
     </article>
   );

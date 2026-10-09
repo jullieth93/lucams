@@ -19,6 +19,7 @@
 import "server-only";
 import sharp, { type OverlayOptions } from "./sharp-safe";
 import type { PhotoFilterPreset } from "@/app/estudio/[slug]/types";
+import { clampPhotoScale, coverScaleBase } from "./photo-fit";
 
 /** Escala de salida = pixelRatio del cliente (stage.toDataURL({pixelRatio:3})) → paridad de px. */
 const PRODUCTION_SCALE = 3;
@@ -186,11 +187,12 @@ async function renderSlot(
   if (imgW <= 0 || imgH <= 0)
     throw new RenderNeedsKonvaError(`foto inválida en slot ${slot.slotIndex}`);
 
-  // Matemática EXACTA del editor (studio-slot.tsx ImagePlaceholder).
-  const coverScaleBase = Math.max(ph.width / imgW, ph.height / imgH);
+  // Matemática EXACTA del editor (studio-slot.tsx ImagePlaceholder) — la regla
+  // cover + clamp [0.5,3] vive en photo-fit.ts, compartida por las 3 superficies.
+  const coverBase = coverScaleBase(ph.width, ph.height, imgW, imgH);
   const userScale = slot.photoTransform?.scale ?? 1;
-  const effectiveScale = Math.max(0.5, Math.min(3, userScale));
-  const finalScale = coverScaleBase * effectiveScale;
+  const effectiveScale = clampPhotoScale(userScale);
+  const finalScale = coverBase * effectiveScale;
   const offX = slot.photoTransform?.offsetX ?? 0;
   const offY = slot.photoTransform?.offsetY ?? 0;
   const IW = imgW * finalScale * S;

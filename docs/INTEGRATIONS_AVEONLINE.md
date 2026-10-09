@@ -360,9 +360,19 @@ Mismos campos que `cotizarDoble` **+ `idtransportador` obligatorio**. Si `idtran
 Persistir en Order:
 
 - `trackingNumber = numguia.toString()`
-- `labelUrl = rutasticker ?? rutaguia` (preferir térmico)
+- `labelUrl = rutasticker ?? rutaguia ?? rotulo` (preferir térmico; `rotulo` como último
+  fallback — algunas transportadoras solo devuelven ese)
 - `trackingUrl = rutaguia ?? rutasticker`
 - `archivorotulo` (base64 PDF) → guardar en Supabase Storage para impresión offline
+
+> Implementado (fix 1.8, 2026-10-07): tras crear la guía, la saga archiva una copia
+> propia del PDF en el bucket privado `production-assets`
+> (`features/shipping/label-archive.ts` — fuentes: `archivorotulo`/`archivosticker`
+> base64, luego descarga de `labelUrl`/`trackingUrl` con validación %PDF) y guarda
+> el path en `Order.labelPath`. El admin la descarga via signed URL; las URLs
+> externas de Aveonline quedan solo como respaldo. Para transportadoras que no
+> devuelven URL ni base64 (p.ej. tcc-sa), `labelPath` queda null y el admin usa el
+> número de guía (`trackingNumber`) para consultar en el panel Aveonline.
 
 ### 4.4 Errores comunes generación guía
 
@@ -485,6 +495,23 @@ Errores no numéricos comunes:
 > eso la clave usa el literal estable **`no-ts`** cuando `hasCarrierTimestamp` es false. La carrera de entregas
 > concurrentes la resuelve el unique de DB (P2002 → 200 "concurrent duplicate"). Ante una excepción de la saga,
 > el evento queda SIN `processedAt` para que Aveonline reintente y la alerta `webhooks_stuck` lo levante.
+>
+> **Actualización 2026-10-06 (webhook en STG — receta completa):** los preview deployments tienen
+> **Vercel Authentication (Deployment Protection/SSO)** activa: TODA request externa recibe 401
+> «Protected deployment» en el edge antes de llegar a la app (verificado en vivo). Receta para STG:
+> ① integración «Webhook Personalizado» en el panel de la **cuenta DEMO** (mis-integraciones) con URL
+> `https://lucams-shop-git-develop-jullieth93s-projects.vercel.app/api/webhooks/aveonline?x-vercel-protection-bypass=<VERCEL_BYPASS_TOKEN>`
+> (cualquiera de los secretos de _Protection Bypass for Automation_ del proyecto sirve; el valor vive
+> también en `.env.stg` y en el vault de STG como `cron_vercel_bypass` — los crons pg_cron ya lo envían
+> como header, migración 023); ② el **Token** de esa integración debe ser IDÉNTICO a
+> `AVEONLINE_WEBHOOK_SECRET` en Vercel scope **Preview** (y al de `.env.stg` para pruebas locales) —
+> son dos secretos distintos: el bypass abre el edge de Vercel, el token abre la app. ③ Cambios de env
+> var exigen redesplegar el preview (y re-apuntar el alias si el redeploy fue manual). **Comportamiento
+> de la cuenta demo verificado:** las guías quedan en estado «Generada» ($0, sin facturación) y NO se
+> pueden anular ni mover por API (§8.2) → la demo NO emite webhooks de forma demostrable; el circuito se
+> validó con evento simulado byte-idéntico (200 + `WebhookEvent` procesado) y la emisión real vive en
+> PRD (integración ID 122). Recepción y procesamiento se auditan en `/admin/observability` (sección
+> «Webhooks recientes», 2026-10-06).
 
 | Campo              | Valor                                                                                                                                                                                                 |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

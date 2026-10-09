@@ -944,6 +944,38 @@ describe("VariantSelector — dimensión de 1 valor visible (Tamaño fijo)", () 
     expect(screen.getAllByRole("group", { name: "Fotos" })).toHaveLength(1);
     expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
   });
+
+  it("muestra '¿Con imán?' aunque TODAS las variants sean Con imán (Fase 2.9, owner 2026-10-07)", () => {
+    // Producto solo-magnético (ej. abecedario 27 fichas, UNA variante): el imán
+    // es un atributo físico que el cliente debe VER en la PDP — sin el grupo el
+    // producto parecería no-magnético. Chip único preseleccionado y no clicable
+    // (pdpDefaultVariant ya prefiere Con imán), como el Tamaño fijo.
+    const variants = [
+      makeVariant("v-abc", { sizeCm: "3×3", quantity: 27, photoSlots: 27, magnet: true }, 890_000),
+    ];
+    render(<VariantSelector productBasePrice={890_000} variants={variants} />);
+    const iman = screen.getByRole("group", { name: "¿Con imán?" });
+    const chip = within(iman).getByRole("button", { name: "🧲 Con imán" });
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+    expect(chip).toBeDisabled();
+  });
+
+  it("muestra '¿Con imán?' con su único valor cuando el producto SOLO existe Sin imán", () => {
+    // Simétrico: una línea solo-sin-imán tampoco esconde el dato — el cliente
+    // ve explícito "✨ Sin imán" (información de compra, no opción).
+    const variants = [
+      makeVariant(
+        "v-cal-sin",
+        { sizeCm: "7.5×10", quantity: 12, photoSlots: 12, magnet: false },
+        1_590_000,
+      ),
+    ];
+    render(<VariantSelector productBasePrice={1_590_000} variants={variants} />);
+    const iman = screen.getByRole("group", { name: "¿Con imán?" });
+    const chip = within(iman).getByRole("button", { name: "✨ Sin imán" });
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+    expect(chip).toBeDisabled();
+  });
 });
 
 /*

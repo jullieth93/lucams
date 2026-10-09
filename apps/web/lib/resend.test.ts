@@ -58,8 +58,21 @@ vi.mock("@/lib/logger", () => ({
 // Referencia ESTABLE vía vi.hoisted para que sobreviva a los resetModules() de loadFresh(): la
 // factory re-corre en cada import dinámico pero devuelve siempre la misma fn. Las suites que no
 // pasan `commercial` nunca la invocan → mock inerte, no altera los tests existentes.
-const { emailEventFindFirst } = vi.hoisted(() => ({ emailEventFindFirst: vi.fn() }));
-vi.mock("@/lib/db", () => ({ prisma: { emailEvent: { findFirst: emailEventFindFirst } } }));
+// E1 — emailEvent.upsert: el evento sintético `email.sent` tras envío exitoso. Mockeado igual
+// para afirmar el registro y para simular su fallo (best-effort: no rompe el envío).
+const { emailEventFindFirst, emailEventUpsert } = vi.hoisted(() => ({
+  emailEventFindFirst: vi.fn(),
+  emailEventUpsert: vi.fn(
+    async (_arg: {
+      where: { resendId: string };
+      update: Record<string, unknown>;
+      create: Record<string, unknown>;
+    }) => ({}),
+  ),
+}));
+vi.mock("@/lib/db", () => ({
+  prisma: { emailEvent: { findFirst: emailEventFindFirst, upsert: emailEventUpsert } },
+}));
 
 import { logger } from "@/lib/logger";
 import type { SendEmailInput, SendEmailResult } from "./resend";
@@ -771,6 +784,85 @@ describe("sendEmail — supresión comercial (#8)", () => {
     // Ante una caída de DB preferimos ENVIAR (no perder el correo) a bloquear por precaución.
     expect(result).toEqual({ sent: true, id: "em_resilient" });
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// =============================================================================
+// E1 — evento sintético email.sent tras envío exitoso (panel de entregabilidad)
+// =============================================================================
+describe("sendEmail — evento sintético email.sent (E1)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    withApiKey();
+    emailEventUpsert.mockReset();
+    emailEventUpsert.mockResolvedValue({});
+  });
+
+  it("envío exitoso → upsert EmailEvent con resendId=id, type email.sent y update vacío", async () => {
+    mockFetchJson({ id: "em_sent_1" }, 200);
+
+    const send = await loadFresh();
+    const result = await runDrained(
+      send,
+      baseInput({ to: "ana@x.co", subject: "Pedido", from: "Tienda <hola@lucamsshop.com>" }),
+    );
+
+    expect(result).toEqual({ sent: true, id: "em_sent_1" });
+    expect(emailEventUpsert).toHaveBeenCalledTimes(1);
+    const arg = emailEventUpsert.mock.calls[0]![0];
+    expect(arg.where).toEqual({ resendId: "em_sent_1" });
+    // Update vacío a propósito: si el webhook ya creó la fila (delivered), no la pisa.
+    expect(arg.update).toEqual({});
+    expect(arg.create).toMatchObject({
+      resendId: "em_sent_1",
+      type: "email.sent",
+      to: "ana@x.co",
+      fromEmail: "Tienda <hola@lucamsshop.com>",
+      subject: "Pedido",
+    });
+    expect(arg.create.occurredAt).toBeInstanceOf(Date);
+  });
+
+  it("to como array se aplana con coma en el evento (mismo criterio que los logs)", async () => {
+    mockFetchJson({ id: "em_sent_2" }, 200);
+
+    const send = await loadFresh();
+    await runDrained(send, baseInput({ to: ["a@x.co", "b@x.co"] }));
+
+    expect(emailEventUpsert.mock.calls[0]![0].create.to).toBe("a@x.co,b@x.co");
+  });
+
+  it("si el upsert FALLA, el envío NO se rompe (best-effort) y se loguea warn", async () => {
+    emailEventUpsert.mockRejectedValue(new Error("db down"));
+    mockFetchJson({ id: "em_resilient" }, 200);
+
+    const send = await loadFresh();
+    const result = await runDrained(send, baseInput());
+
+    expect(result).toEqual({ sent: true, id: "em_resilient" });
+    expect(logger.warn).toHaveBeenCalledWith({
+      event: "email.send.sent_event_fail",
+      err: "db down",
+    });
+  });
+
+  it("envío FALLIDO (4xx) NO registra email.sent", async () => {
+    mockFetchJson({ message: "Invalid `to` field" }, 422);
+
+    const send = await loadFresh();
+    await runDrained(send, baseInput());
+
+    expect(emailEventUpsert).not.toHaveBeenCalled();
+  });
+
+  it("sin API key (dev stub) NO registra email.sent", async () => {
+    vi.stubEnv("RESEND_API_KEY", "");
+    vi.stubEnv("NODE_ENV", "development");
+
+    const send = await loadFresh();
+    await send(baseInput());
+
+    expect(emailEventUpsert).not.toHaveBeenCalled();
   });
 });
 

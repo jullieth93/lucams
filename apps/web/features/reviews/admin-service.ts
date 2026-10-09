@@ -19,8 +19,8 @@ const PAGE_SIZE = 20;
 
 export type ReviewListOpts = {
   q?: string;
-  /** "pending" (default) | "approved" | "archived" | "all" */
-  status?: "pending" | "approved" | "archived" | "all";
+  /** "pending" (default) | "approved" | "featured" | "archived" | "all" */
+  status?: "pending" | "approved" | "featured" | "archived" | "all";
   /** Filtrar por rating exacto: 1..5. */
   rating?: number;
   /** "recent" (default) | "oldest" | "rating-high" | "rating-low" */
@@ -85,6 +85,10 @@ export async function listReviewsAdmin(opts: ReviewListOpts = {}): Promise<Revie
     switch (opts.status) {
       case "approved":
         return { isApproved: true, deletedAt: null };
+      // "Destacadas" (Fase 3 · 3.5): las que rotan en la home — featured,
+      // aprobadas y no archivadas (mismo criterio que listFeaturedReviews).
+      case "featured":
+        return { featured: true, isApproved: true, deletedAt: null };
       case "archived":
         return { deletedAt: { not: null } };
       case "all":
@@ -176,6 +180,21 @@ export async function listReviewsAdmin(opts: ReviewListOpts = {}): Promise<Revie
   };
 }
 
+export type ReviewProductOption = { id: string; name: string; slug: string };
+
+/**
+ * Productos que tienen al menos una reseña no archivada (Fase 3 · 3.5) —
+ * opciones del selector visible de producto en /admin/resenas. Orden
+ * alfabético para escanear rápido.
+ */
+export async function listReviewProductOptions(): Promise<ReviewProductOption[]> {
+  return prisma.product.findMany({
+    where: { reviews: { some: { deletedAt: null } } },
+    select: { id: true, name: true, slug: true },
+    orderBy: { name: "asc" },
+  });
+}
+
 /**
  * Operaciones de moderación. Devuelven la reseña actualizada para que
  * la action layer pueda hacer revalidatePath con datos frescos.
@@ -186,6 +205,16 @@ export async function approveReview(id: string, adminUserId: string) {
     where: { id },
     data: { isApproved: true, updatedBy: adminUserId },
   });
+}
+
+/**
+ * Featured flag de una reseña (2026-10-05) — lo consulta la página admin para el
+ * notice post-aprobar: si ya está destacada lo dice, si no, muestra el CTA
+ * "¿Mostrarla en la página principal? [Destacar]". null = reseña inexistente.
+ */
+export async function getReviewFeaturedFlag(id: string): Promise<boolean | null> {
+  const r = await prisma.review.findUnique({ where: { id }, select: { featured: true } });
+  return r?.featured ?? null;
 }
 
 export async function rejectReview(id: string, adminUserId: string) {

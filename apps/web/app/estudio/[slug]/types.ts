@@ -351,6 +351,16 @@ export type MultiSlotCanvasData = {
    * describiendo el diseño completo (retrocompatible).
    */
   unitSlots?: number;
+  /**
+   * Rediseño IG (owner 2026-10-05) — modo SIN BORDE de la Polaroid Instagram como
+   * FLAG EXPLÍCITO (el toggle «Borde de foto» de la toolbar lo persiste; antes se
+   * infería comparando el rect del image-placeholder contra el stage 450×600 —
+   * frágil). true = la foto va a lo ancho completo conservando las franjas
+   * blancas superior (usuario/ubicación) e inferior (likes/título/hashtags).
+   * Ausente = diseño creado antes del cambio → la detección por geometría
+   * (isInstagramNoBorder, frame-palette) sigue como fallback.
+   */
+  igNoBorder?: boolean;
 };
 
 /** Alias de conveniencia — algunos consumidores usan `CanvasDataV2` por simetría con V1. */

@@ -18,9 +18,9 @@
  */
 
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 
 const circleProps = vi.hoisted(() => [] as Record<string, unknown>[]);
 
@@ -52,6 +52,11 @@ import type { CanvasDataV1, SlotState } from "./types";
 afterEach(() => {
   cleanup();
   circleProps.length = 0;
+});
+
+beforeEach(() => {
+  // 2.7a — el "visto" del pulso de descubrimiento vive en localStorage.
+  window.localStorage.clear();
 });
 
 const IG_TEMPLATE = {
@@ -141,5 +146,72 @@ describe("StudioSlot — avatar tappeable (foto de perfil)", () => {
     renderSlot({ unitTemplate: PLAIN_TEMPLATE, onProfilePhotoEdit: vi.fn() });
     const hits = circleProps.filter((p) => typeof p.onClick === "function");
     expect(hits.length).toBe(0);
+  });
+});
+
+/*
+ * Fase 2 · 2.7a (2026-10-07) — la foto de perfil pasaba desapercibida: affordance
+ * PERMANENTE (botón lápiz, `edit-indicator profile-avatar-badge`) + anillo
+ * PULSANTE de descubrimiento la primera vez (`edit-indicator profile-avatar-pulse`),
+ * que se apaga cuando el cliente toca el avatar o ya tiene foto (localStorage).
+ * Ambos marcados `edit-indicator` → jamás se hornean en el snapshot de producción.
+ * En jsdom el pulso queda estático (sin loop rAF), pero se renderiza.
+ */
+describe("StudioSlot — descubrimiento de la foto de perfil (2.7a)", () => {
+  const PULSE = '[data-name~="profile-avatar-pulse"]';
+  const BADGE = '[data-name~="profile-avatar-badge"]';
+  const SEEN_KEY = "lucams:studio:profile-avatar-hint-seen";
+
+  it("primera vez (sin localStorage ni foto): pulso + badge lápiz sobre el avatar, ambos edit-indicator", () => {
+    const { container } = renderSlot({ onProfilePhotoEdit: vi.fn() });
+
+    // data-name conserva el token "edit-indicator" (el snapshot los excluye por ese token).
+    const pulse = container.querySelector(PULSE);
+    const badge = container.querySelector(BADGE);
+    expect(pulse).not.toBeNull();
+    expect(badge).not.toBeNull();
+    expect(pulse!.getAttribute("data-name")).toContain("edit-indicator");
+    expect(badge!.getAttribute("data-name")).toContain("edit-indicator");
+  });
+
+  it("tap en el avatar: marca el hint como visto (localStorage) y el pulso desaparece", () => {
+    const { container } = renderSlot({ onProfilePhotoEdit: vi.fn() });
+    expect(container.querySelector(PULSE)).not.toBeNull();
+
+    const hit = circleProps.find((p) => !p.name && typeof p.onClick === "function")!;
+    act(() => {
+      (hit.onClick as (e: unknown) => void)({
+        cancelBubble: false,
+        evt: { stopPropagation: vi.fn() },
+      });
+    });
+
+    expect(window.localStorage.getItem(SEEN_KEY)).toBe("1");
+    expect(container.querySelector(PULSE)).toBeNull();
+    // El affordance permanente (badge) NO se va: la edición sigue siendo descubrible.
+    expect(container.querySelector(BADGE)).not.toBeNull();
+  });
+
+  it("hint ya visto (localStorage): no hay pulso, pero el badge permanente sigue", () => {
+    window.localStorage.setItem(SEEN_KEY, "1");
+    const { container } = renderSlot({ onProfilePhotoEdit: vi.fn() });
+
+    expect(container.querySelector(PULSE)).toBeNull();
+    expect(container.querySelector(BADGE)).not.toBeNull();
+  });
+
+  it("con foto de perfil ya elegida: no hay pulso (y persiste el «visto»)", () => {
+    const slot = { ...filledSlot(), profileAssetUrl: "https://img.example/profile.jpg" };
+    const { container } = renderSlot({ slotState: slot, onProfilePhotoEdit: vi.fn() });
+
+    expect(container.querySelector(PULSE)).toBeNull();
+    expect(window.localStorage.getItem(SEEN_KEY)).toBe("1");
+    expect(container.querySelector(BADGE)).not.toBeNull();
+  });
+
+  it("sin onProfilePhotoEdit: ni pulso ni badge (capa no interactiva)", () => {
+    const { container } = renderSlot();
+    expect(container.querySelector(PULSE)).toBeNull();
+    expect(container.querySelector(BADGE)).toBeNull();
   });
 });

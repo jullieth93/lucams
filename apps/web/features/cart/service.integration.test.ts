@@ -956,6 +956,35 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
         }),
       ).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
     });
+
+    // Edición desde el carrito (2026-10-05) — superficie NAME: el editor crea un diseño
+    // NUEVO al confirmar y manda replaceDesignId → la línea vieja se REEMPLAZA en sitio
+    // (no duplica) y el precio se recalcula con las letras del nombre NUEVO.
+    it("replaceDesignId (edición desde el carrito): reemplaza en sitio y re-pricea por las letras nuevas", async () => {
+      const sessionId = sid("name-replace");
+      const before = await addPersonalizedToCart({
+        sessionId,
+        customerId: null,
+        designId: nameDesign5Id, // MATEO (5 fichas)
+        variantId: nameVariantId,
+        qty: 1,
+      });
+      expect(before.items).toHaveLength(1);
+      expect(before.items[0].designId).toBe(nameDesign5Id);
+      expect(before.items[0].unitPrice).toBe(5 * NAME_PER_TILE);
+
+      const after = await addPersonalizedToCart({
+        sessionId,
+        customerId: null,
+        designId: nameDesign3Id, // ANA (3 fichas) — la edición confirmada
+        variantId: nameVariantId,
+        qty: 1,
+        replaceDesignId: nameDesign5Id,
+      });
+      expect(after.items).toHaveLength(1); // sin duplicar
+      expect(after.items[0].designId).toBe(nameDesign3Id);
+      expect(after.items[0].unitPrice).toBe(3 * NAME_PER_TILE);
+    });
   });
 
   // ════════════════════════════════════════════════════════════════════════
@@ -1847,6 +1876,73 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       expect(cart!.items).toHaveLength(1);
       expect(cart!.items[0].qty).toBe(2);
     });
+
+    it(
+      "adopta los Designs anónimos de los items mergeados; un Design AJENO referenciado NO se adopta",
+      async () => {
+        // Fix «Editar» tras login: el merge movía los CartItems al customer pero el
+        // Design quedaba con el sessionId anónimo → getOwnedDesign({customerId}) no lo
+        // encontraba y el Estudio abría vacío.
+        const customer = await makeCustomer();
+        const anonSession = sid("m9-anon");
+        // Diseño del propio anon (caso real: el Estudio lo creó con la cookie de sesión).
+        const ownDesign = await prisma.design.create({
+          data: {
+            sessionId: anonSession,
+            productId: persoProductId,
+            status: "READY",
+            canvasData: { version: 2, marca: "propio-m9" },
+          },
+          select: { id: true },
+        });
+        await addPersonalizedToCart({
+          sessionId: anonSession,
+          customerId: null,
+          designId: ownDesign.id,
+          variantId: persoVariantAId,
+          qty: 1,
+        });
+        // Item sembrado a mano que referencia un diseño de OTRA sesión (contenido
+        // distinto → línea propia en el fold): el guard del where lo deja intacto.
+        const foreignDesign = await prisma.design.create({
+          data: {
+            sessionId: sid("m9-otra-sesion"),
+            productId: persoProductId,
+            status: "READY",
+            canvasData: { version: 2, marca: "ajeno-m9" },
+          },
+          select: { id: true },
+        });
+        const anonCart = await prisma.cart.findFirst({
+          where: { sessionId: anonSession },
+          select: { id: true },
+        });
+        await prisma.cartItem.create({
+          data: {
+            cartId: anonCart!.id,
+            variantId: persoVariantBId,
+            designId: foreignDesign.id,
+            qty: 1,
+            unitPrice: PERSO_VAR_B_PRICE,
+          },
+        });
+
+        await mergeAnonCartIntoCustomer(anonSession, customer.id);
+
+        const adopted = await prisma.design.findUnique({
+          where: { id: ownDesign.id },
+          select: { customerId: true, sessionId: true },
+        });
+        expect(adopted).toEqual({ customerId: customer.id, sessionId: null });
+        const foreign = await prisma.design.findUnique({
+          where: { id: foreignDesign.id },
+          select: { customerId: true, sessionId: true },
+        });
+        expect(foreign!.customerId).toBeNull();
+        expect(foreign!.sessionId).not.toBeNull();
+      },
+      T,
+    );
   });
 
   // ════════════════════════════════════════════════════════════════════════

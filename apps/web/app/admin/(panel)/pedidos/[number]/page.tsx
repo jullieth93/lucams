@@ -100,6 +100,13 @@ export default async function AdminPedidoDetallePage({
   // descargue e imprima. Antes esto era imposible desde la UI. TTL 1h → refrescar la página si expira.
   const productionPaths = order.items.flatMap((it) => it.design?.productionUrls ?? []);
   const signedProduction = await getProductionAssetSignedUrls(productionPaths);
+  // Fix 1.8 (2026-10-07) — copia PROPIA del PDF de la etiqueta (bucket privado
+  // production-assets, Order.labelPath). Signed URL de TTL corto (15 min): si
+  // expira, recargar la página la renueva. Las URLs externas de Aveonline quedan
+  // solo como respaldo (pueden expirar o pedir sesión según transportadora).
+  const labelSignedUrl = order.labelPath
+    ? ((await getProductionAssetSignedUrls([order.labelPath], 900)).get(order.labelPath) ?? null)
+    : null;
   // ADR-063 T7 — ¿hay piezas finalizadas? → ofrecer el ZIP completo (piezas + hoja de armado).
   const hasProduction = productionPaths.length > 0;
   const productionItems = order.items.filter((it) => (it.design?.productionUrls?.length ?? 0) > 0);
@@ -157,6 +164,11 @@ export default async function AdminPedidoDetallePage({
   const shipmentLastError = order.trackingNumber
     ? null
     : parseShipmentLastError(order.shipmentLastError);
+  // Misma regla de visibilidad del botón de reintento en <OrderActions> — el
+  // mensaje de error de la transportadora apunta a esa acción solo si aplica.
+  const canRetryShipment =
+    !isInternalDelivery &&
+    (order.status === "PAID" || (order.status === "FULFILLING" && !order.trackingNumber));
 
   // Contacto directo: wa.me con el teléfono del comprador (normalizado con
   // indicativo 57 — lib/wa) y mensaje pre-armado con el número de pedido
@@ -419,11 +431,75 @@ export default async function AdminPedidoDetallePage({
               {ship.notes && (
                 <div className="text-brand-muted mt-2 text-xs italic">Nota: {ship.notes}</div>
               )}
+              {/* Flujo regalo (2026-10-05): la guía sale a nombre de quien recibe;
+                  la facturación sigue siendo del comprador. */}
+              {order.recipientName && (
+                <div className="border-brand-purple/20 bg-brand-purple/5 mt-3 rounded-md border px-3 py-2">
+                  <p className="text-brand-purple-dark text-xs font-bold">
+                    🎁 Lo recibe otra persona
+                  </p>
+                  <p className="text-brand-purple-dark mt-0.5 text-xs">
+                    Recibe: <strong>{order.recipientName}</strong>
+                    {order.recipientPhone ? ` · Tel ${order.recipientPhone}` : ""} — la guía sale a
+                    su nombre.
+                  </p>
+                  {order.isGift && (
+                    <p className="mt-1 text-[11px] font-semibold text-amber-800">
+                      Es regalo: empacar SIN factura ni precios visibles.
+                    </p>
+                  )}
+                  {order.isGift && order.giftMessage && (
+                    <p className="text-brand-muted mt-1 text-xs italic">
+                      Mensaje para la tarjeta: “{order.giftMessage}”
+                    </p>
+                  )}
+                </div>
+              )}
             </Card>
           </div>
 
           {/* Sidebar: totales + pago + envío + acciones */}
           <div className="space-y-4 lg:col-span-1">
+            {/* Reconciliación (2026-10-05) — motivo de la alerta y, si ya se
+                gestionó, la nota de resolución con quién/cuándo. */}
+            {(order.needsReconciliation || order.reconciledAt) && (
+              <Card icon={<Undo2 className="h-4 w-4" />} title="Reconciliación">
+                {order.needsReconciliation ? (
+                  <>
+                    <p className="text-[11px] font-bold text-red-800">
+                      🔴 Pendiente — requiere gestión manual
+                    </p>
+                    {order.reconciliationReason && (
+                      <p className="mt-1 text-xs text-red-900">{order.reconciliationReason}</p>
+                    )}
+                    <p className="text-brand-muted mt-1.5 text-[11px]">
+                      Cuando lo resuelvas (refund en Wompi, stock, etc.), ciérralo con «Marcar
+                      reconciliación como gestionada» en Acciones.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[11px] font-bold text-emerald-800">✔ Gestionada</p>
+                    {order.reconciliationReason && (
+                      <p className="text-brand-muted mt-1 text-[11px]">
+                        Motivo original: {order.reconciliationReason}
+                      </p>
+                    )}
+                    {order.reconciliationNote && (
+                      <p className="mt-1 text-xs text-emerald-900">
+                        Resolución: {order.reconciliationNote}
+                      </p>
+                    )}
+                    {order.reconciledAt && (
+                      <p className="text-brand-muted mt-1 text-[10px]">
+                        Cerrada el {dateFmt.format(order.reconciledAt)}
+                      </p>
+                    )}
+                  </>
+                )}
+              </Card>
+            )}
+
             {/* Totales */}
             <Card icon={<Box className="h-4 w-4" />} title="Totales">
               <dl className="space-y-1.5 text-sm">
@@ -532,6 +608,16 @@ export default async function AdminPedidoDetallePage({
                       ⚠️ Guía simulada (modo test). Producción genera guía real.
                     </p>
                   )}
+                  {labelSignedUrl && (
+                    <a
+                      href={labelSignedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-brand-purple hover:bg-brand-purple-dark mt-2 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold text-white transition-colors"
+                    >
+                      📄 Descargar etiqueta PDF
+                    </a>
+                  )}
                   {order.trackingUrl && (
                     <a
                       href={order.trackingUrl}
@@ -539,7 +625,9 @@ export default async function AdminPedidoDetallePage({
                       rel="noopener noreferrer"
                       className="text-brand-purple mt-2 block text-xs underline"
                     >
-                      Ver guía en Aveonline →
+                      {labelSignedUrl
+                        ? "Ver guía en Aveonline (enlace externo, puede expirar) →"
+                        : "Ver guía en Aveonline →"}
                     </a>
                   )}
                   {order.labelUrl && (
@@ -547,15 +635,24 @@ export default async function AdminPedidoDetallePage({
                       href={order.labelUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-brand-purple mt-1 block text-xs underline"
+                      className={`mt-1 block text-xs underline ${
+                        labelSignedUrl ? "text-brand-muted" : "text-brand-purple"
+                      }`}
                     >
-                      Descargar etiqueta PDF →
+                      {labelSignedUrl
+                        ? "Etiqueta en Aveonline (respaldo externo) →"
+                        : "Descargar etiqueta PDF →"}
                     </a>
                   )}
                 </>
               ) : (
                 <>
                   <p className="text-brand-muted text-xs">Sin guía generada todavía</p>
+                  {!isInternalDelivery && !shipmentLastError && canRetryShipment && (
+                    <p className="text-brand-muted mt-1 text-[11px]">
+                      Créala con el botón «Generar guía Aveonline» en Acciones ↓.
+                    </p>
+                  )}
                   {/* Paquete G — causa REAL del último intento fallido (mensaje
                       de la transportadora, sanitizado) + sugerencia operativa
                       (docs/INTEGRATIONS_AVEONLINE.md §4.4). */}
@@ -587,6 +684,12 @@ export default async function AdminPedidoDetallePage({
                       <p className="mt-1.5 text-[11px] text-amber-800">
                         💡 {suggestShipmentFailureCause(shipmentLastError)}
                       </p>
+                      {canRetryShipment && (
+                        <p className="mt-1.5 text-[11px] font-medium text-rose-800">
+                          Acción sugerida: reintenta con el botón «Generar guía Aveonline» en
+                          Acciones ↓.
+                        </p>
+                      )}
                     </div>
                   )}
                   {isInternalDelivery && (
@@ -612,6 +715,7 @@ export default async function AdminPedidoDetallePage({
               isNoShow={!!order.noShowAt}
               hasAddressKey={!!order.shippingAddressKey}
               isInternalDelivery={isInternalDelivery}
+              needsReconciliation={order.needsReconciliation}
             />
           </div>
         </div>

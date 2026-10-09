@@ -7,6 +7,9 @@
  *  - VARIEDAD: applyPredesignedVarietyToEmptySlots recorre el catálogo sin
  *    repetir mientras haya diseños (bug: 20 slots con el mismo diseño) y
  *    continúa el round-robin entre llamadas.
+ *  - PARIDAD Cara A/B (2026-10-05): con facesPerUnit 2 la A siempre ancla en
+ *    un slot par de su unidad (destino impar → A del par, o siguiente par con
+ *    la A libre) y la B en su hermana — nunca cruza unidades.
  *
  * La server action está mockeada (vi.mock); el store corre real (zustand
  * vanilla en node), igual que store-core.test.ts.
@@ -25,6 +28,10 @@ const { calls } = vi.hoisted(() => ({
 vi.mock("@/features/personalization/actions", () => ({
   assignPredesignedToDesignAction: async (input: { designId: string; galleryImageId: string }) => {
     calls.assign.push(input);
+    // Ids "fail-*" simulan un fallo del servidor (reason "error" del helper).
+    if (input.galleryImageId.startsWith("fail-")) {
+      return { ok: false as const, message: "boom" };
+    }
     const withB = input.galleryImageId.endsWith("-ab");
     return {
       ok: true as const,
@@ -87,6 +94,14 @@ beforeEach(() => {
 });
 
 describe("applyPredesignedToSlot — dedupe de assets (Paquete A)", () => {
+  it("fallo del servidor al resolver el asset → reason error con el mensaje crudo", async () => {
+    const store = setup(2);
+    const res = await applyPredesignedToSlot({ store, item: item("fail-1"), targetSlot: 0 });
+    expect(res).toEqual({ ok: false, reason: "error", message: "boom" });
+    // No se asignó nada al slot.
+    expect(store.getState().canvasData!.slots[0]!.assetId).toBeNull();
+  });
+
   it("el mismo diseño aplicado a 2 slots se sube UNA sola vez y ambos slots comparten el asset", async () => {
     const store = setup(2);
     const r1 = await applyPredesignedToSlot({ store, item: item("g1"), targetSlot: 0 });
@@ -132,6 +147,188 @@ describe("applyPredesignedToSlot — cara B ocupada (Paquete A: nunca pisar ni d
     const store = setup(1);
     const res = await applyPredesignedToSlot({ store, item: item("g1-ab"), targetSlot: 0 });
     expect(res).toEqual({ ok: true, bBlocked: false });
+  });
+});
+
+describe("applyPredesignedToSlot — paridad Cara A/B (2026-10-05: nunca cruzar unidades)", () => {
+  it("destino en cara B con la A de su par libre → ancla a la A del par y la B cae donde se apuntó", async () => {
+    const store = setup(4);
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1-ab"),
+      targetSlot: 1,
+      facesPerUnit: 2,
+    });
+    expect(res).toEqual({ ok: true, bBlocked: false });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[0]!.assetId).toBe("asset-g1-ab-a"); // cara A del MISMO par
+    expect(slots[1]!.assetId).toBe("asset-g1-ab-b"); // la B cae en el slot apuntado
+    expect(slots[2]!.assetId).toBeNull(); // la unidad siguiente NO se cruza
+  });
+
+  it("destino en cara B con la A ocupada → ancla al siguiente par con la A libre", async () => {
+    const store = setup(4, [0]);
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1-ab"),
+      targetSlot: 1,
+      facesPerUnit: 2,
+    });
+    expect(res).toEqual({ ok: true, bBlocked: false });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[0]!.assetId).toBe("own-0"); // contenido del usuario intacto
+    expect(slots[1]!.assetId).toBeNull(); // la cara B apuntada queda libre
+    expect(slots[2]!.assetId).toBe("asset-g1-ab-a");
+    expect(slots[3]!.assetId).toBe("asset-g1-ab-b");
+  });
+
+  it("la B del ancla reasignado respeta una cara B ocupada (bBlocked)", async () => {
+    const store = setup(4, [0, 3]);
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1-ab"),
+      targetSlot: 1,
+      facesPerUnit: 2,
+    });
+    expect(res).toEqual({ ok: true, bBlocked: true });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[2]!.assetId).toBe("asset-g1-ab-a");
+    expect(slots[3]!.assetId).toBe("own-3");
+  });
+
+  it("sin ninguna cara A libre → falla ANTES de subir el asset con reason no-free-slot", async () => {
+    const store = setup(2, [0]);
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1-ab"),
+      targetSlot: 1,
+      facesPerUnit: 2,
+    });
+    // Fix STG 2026-10-06 — reason propio: el caller muestra "todos los lienzos
+    // ya tienen un diseño…", no el toast genérico de error.
+    expect(res).toEqual({ ok: false, reason: "no-free-slot", message: "" });
+    expect(calls.assign).toHaveLength(0);
+  });
+
+  it("prediseñado SIN cara B igual cae en cara A aunque el destino sea una cara B", async () => {
+    const store = setup(4);
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1"),
+      targetSlot: 3,
+      facesPerUnit: 2,
+    });
+    expect(res).toEqual({ ok: true, bBlocked: false });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[2]!.assetId).toBe("asset-g1-a");
+    expect(slots[3]!.assetId).toBeNull();
+  });
+
+  it("destino en cara A (par) → comportamiento de siempre, sin reubicar", async () => {
+    const store = setup(4);
+    await applyPredesignedToSlot({ store, item: item("g1-ab"), targetSlot: 2, facesPerUnit: 2 });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[2]!.assetId).toBe("asset-g1-ab-a");
+    expect(slots[3]!.assetId).toBe("asset-g1-ab-b");
+  });
+
+  it("producto sin caras (facesPerUnit 1 / ausente) → no se altera el destino", async () => {
+    const store = setup(4);
+    await applyPredesignedToSlot({ store, item: item("g1-ab"), targetSlot: 1 });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[1]!.assetId).toBe("asset-g1-ab-a");
+    expect(slots[2]!.assetId).toBe("asset-g1-ab-b");
+  });
+});
+
+describe("applyPredesignedToSlot — paridad Cara A/B (2026-10-05: nunca cruzar unidades)", () => {
+  it("destino en cara B con la A de su par libre → ancla a la A del par y la B cae donde se apuntó", async () => {
+    const store = setup(4);
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1-ab"),
+      targetSlot: 1,
+      facesPerUnit: 2,
+    });
+    expect(res).toEqual({ ok: true, bBlocked: false });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[0]!.assetId).toBe("asset-g1-ab-a"); // cara A del MISMO par
+    expect(slots[1]!.assetId).toBe("asset-g1-ab-b"); // la B cae en el slot apuntado
+    expect(slots[2]!.assetId).toBeNull(); // la unidad siguiente NO se cruza
+  });
+
+  it("destino en cara B con la A ocupada → ancla al siguiente par con la A libre", async () => {
+    const store = setup(4, [0]);
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1-ab"),
+      targetSlot: 1,
+      facesPerUnit: 2,
+    });
+    expect(res).toEqual({ ok: true, bBlocked: false });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[0]!.assetId).toBe("own-0"); // contenido del usuario intacto
+    expect(slots[1]!.assetId).toBeNull(); // la cara B apuntada queda libre
+    expect(slots[2]!.assetId).toBe("asset-g1-ab-a");
+    expect(slots[3]!.assetId).toBe("asset-g1-ab-b");
+  });
+
+  it("la B del ancla reasignado respeta una cara B ocupada (bBlocked)", async () => {
+    const store = setup(4, [0, 3]);
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1-ab"),
+      targetSlot: 1,
+      facesPerUnit: 2,
+    });
+    expect(res).toEqual({ ok: true, bBlocked: true });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[2]!.assetId).toBe("asset-g1-ab-a");
+    expect(slots[3]!.assetId).toBe("own-3");
+  });
+
+  it("sin ninguna cara A libre → falla ANTES de subir el asset con reason no-free-slot", async () => {
+    const store = setup(2, [0]);
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1-ab"),
+      targetSlot: 1,
+      facesPerUnit: 2,
+    });
+    // Fix STG 2026-10-06 — reason propio: el caller muestra "todos los lienzos
+    // ya tienen un diseño…", no el toast genérico de error.
+    expect(res).toEqual({ ok: false, reason: "no-free-slot", message: "" });
+    expect(calls.assign).toHaveLength(0);
+  });
+
+  it("prediseñado SIN cara B igual cae en cara A aunque el destino sea una cara B", async () => {
+    const store = setup(4);
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1"),
+      targetSlot: 3,
+      facesPerUnit: 2,
+    });
+    expect(res).toEqual({ ok: true, bBlocked: false });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[2]!.assetId).toBe("asset-g1-a");
+    expect(slots[3]!.assetId).toBeNull();
+  });
+
+  it("destino en cara A (par) → comportamiento de siempre, sin reubicar", async () => {
+    const store = setup(4);
+    await applyPredesignedToSlot({ store, item: item("g1-ab"), targetSlot: 2, facesPerUnit: 2 });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[2]!.assetId).toBe("asset-g1-ab-a");
+    expect(slots[3]!.assetId).toBe("asset-g1-ab-b");
+  });
+
+  it("producto sin caras (facesPerUnit 1 / ausente) → no se altera el destino", async () => {
+    const store = setup(4);
+    await applyPredesignedToSlot({ store, item: item("g1-ab"), targetSlot: 1 });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[1]!.assetId).toBe("asset-g1-ab-a");
+    expect(slots[2]!.assetId).toBe("asset-g1-ab-b");
   });
 });
 

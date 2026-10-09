@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
 /*
- * Test de componente — StudioToolbar: botón «Vista previa» (Lucy 2026-09-09).
+ * Test de componente — StudioToolbar: botón «Ver diseño» (Lucy 2026-09-09).
  *
- * Blinda el renombrado «¡Listo!» → «Vista previa» y el feedback de
+ * Blinda el renombrado «Vista previa» → «Ver diseño» (QA ronda 2, owner 2026-10-07) y el feedback de
  * PROCESAMIENTO del botón principal:
  *   1. Diseño completo → habilitado, rótulo «Vista previa» y nombre audible
  *      que empieza con el texto visible (WCAG 2.5.3 label-in-name).
@@ -79,12 +79,12 @@ function setup(opts?: { filled?: number; isPreviewBuilding?: boolean }) {
   return { store, onFinalize };
 }
 
-describe("StudioToolbar — botón «Vista previa»", () => {
+describe("StudioToolbar — botón «Ver diseño»", () => {
   it("diseño completo: habilitado, con el rótulo nuevo y nombre audible coherente", () => {
     setup({ filled: 2 });
-    const btn = screen.getByRole("button", { name: "Vista previa de tu pedido" });
+    const btn = screen.getByRole("button", { name: "Ver diseño de tu pedido" });
     expect(btn).toBeEnabled();
-    expect(btn).toHaveTextContent("Vista previa");
+    expect(btn).toHaveTextContent("Ver diseño");
     expect(btn).toHaveAttribute("aria-busy", "false");
   });
 
@@ -98,7 +98,7 @@ describe("StudioToolbar — botón «Vista previa»", () => {
 
   it("mientras compone la vista previa: spinner «Preparando…», disabled y aria-busy", () => {
     const { onFinalize } = setup({ filled: 2, isPreviewBuilding: true });
-    const btn = screen.getByRole("button", { name: "Vista previa de tu pedido" });
+    const btn = screen.getByRole("button", { name: "Ver diseño de tu pedido" });
     expect(btn).toBeDisabled();
     expect(btn).toHaveAttribute("aria-busy", "true");
     expect(btn).toHaveTextContent("Preparando…");
@@ -111,7 +111,7 @@ describe("StudioToolbar — botón «Vista previa»", () => {
   it("isFinalizing (confirmación en curso): «Guardando diseño...» + aria-busy", () => {
     const { store } = setup({ filled: 2 });
     act(() => store.getState().setIsFinalizing(true));
-    const btn = screen.getByRole("button", { name: "Vista previa de tu pedido" });
+    const btn = screen.getByRole("button", { name: "Ver diseño de tu pedido" });
     expect(btn).toBeDisabled();
     expect(btn).toHaveAttribute("aria-busy", "true");
     expect(btn).toHaveTextContent("Guardando diseño...");
@@ -163,7 +163,7 @@ describe("StudioToolbar — botón «Vista previa»", () => {
         />
       </TooltipProvider>,
     );
-    expect(screen.getByRole("button", { name: "Vista previa de tu pedido" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Ver diseño de tu pedido" })).toBeEnabled();
   });
 
   // 2026-09-22 — cara B opcional (separadores backOptional): el guard exige
@@ -199,7 +199,7 @@ describe("StudioToolbar — botón «Vista previa»", () => {
         onFinalize={onFinalize}
       />,
     );
-    expect(screen.getByRole("button", { name: "Vista previa de tu pedido" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Ver diseño de tu pedido" })).toBeEnabled();
   });
 
   it("backOptional: falta una cara A → bloqueado contando solo las A faltantes", () => {
@@ -304,6 +304,6 @@ describe("StudioToolbar — botón «Vista previa»", () => {
     expect(
       screen.queryByRole("button", { name: "Qué falta para ver la vista previa" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Vista previa de tu pedido" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Ver diseño de tu pedido" })).toBeEnabled();
   });
 });

@@ -285,8 +285,8 @@ export function stripPhotoRect(
 //     construcción", pero con tarjeta oscura la ventana se inundaba del color del
 //     borde al alejar la foto: parecía fondo, no marco).
 // NO aplica a:
-//   - Instagram SIN BORDE (foto a sangre total): ahí el hueco muestra el color de
-//     tarjeta, que en ese modo ES el fondo del diseño.
+//   - Instagram SIN BORDE (foto a lo ancho completo; antes a sangre total): ahí
+//     el hueco muestra el color de tarjeta, que en ese modo ES el fondo del diseño.
 //   - heart/circle (la silueta troquelada manda) y diseños sin borderColor.
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -298,7 +298,7 @@ export function photoBackingHexFor(opts: {
   hasFrameCard: boolean;
   fullBleed: boolean;
   isIg: boolean;
-  /** Instagram en modo SIN BORDE (placeholder a sangre total — isInstagramNoBorder). */
+  /** Instagram en modo SIN BORDE (foto a lo ancho completo — isInstagramNoBorder). */
   igNoBorder: boolean;
   /** heart/circle: la foto cubre el stage completo recortado a la silueta. */
   useFullStage?: boolean;
@@ -392,22 +392,39 @@ export function noBorderChromeSrc(src: string, noBorder: boolean, darkBackground
 
 /**
  * ¿La plantilla Instagram está en modo SIN BORDE?
- * Detecta por el rect del image-placeholder: si la foto cubre TODO el stage
- * (x=0 y=0 w=450 h=600 en el stage 450×600), el asset debe usar su variante
- * `_noborder` (sin tarjeta/marco, solo chrome sobre la foto).
+ *
+ * Rediseño (owner 2026-10-05): el modo sin-borde ya NO es la foto a sangre total
+ * — la foto va A LO ANCHO COMPLETO (sin bordes laterales) pero se CONSERVAN las
+ * franjas blancas superior (header: usuario/ubicación) e inferior (iconos +
+ * likes/título/hashtags), como un post real de Instagram.
+ *
+ * Resolución en dos niveles:
+ *  1. FLAG EXPLÍCITO (`explicit`, persiste en canvasData.igNoBorder desde el
+ *     toggle «Borde de foto» de la toolbar): manda siempre que esté presente.
+ *  2. Fallback por GEOMETRÍA del image-placeholder, para diseños creados antes
+ *     del flag y para los consumidores que solo conocen las capas (grilla
+ *     Konva, preview del modal, render de producción):
+ *      - LEGACY: foto a sangre total (x=0 y=0 w=450 h=600 en el stage 450×600,
+ *        escalado) — el modo sin-borde de antes del rediseño.
+ *      - NUEVO: la foto cubre TODO el ancho del stage pero NO todo el alto
+ *        (empieza bajo el header, y > 0) — las franjas quedan intactas.
  */
 export function isInstagramNoBorder(
   photoRect: { x?: number; y?: number; width?: number; height?: number } | undefined,
   stage: { width: number; height: number },
+  explicit?: boolean | null,
 ): boolean {
+  if (typeof explicit === "boolean") return explicit;
   if (!photoRect) return false;
-  const base = { width: 450, height: 600 };
-  const scale = stage.width / base.width;
-  const x = 0;
-  const y = 0;
-  const w = Math.round(base.width * scale);
-  const h = Math.round(base.height * scale);
-  return photoRect.x === x && photoRect.y === y && photoRect.width === w && photoRect.height === h;
+  const x = photoRect.x ?? 0;
+  const y = photoRect.y ?? 0;
+  const w = photoRect.width ?? 0;
+  const h = photoRect.height ?? 0;
+  const coversFullWidth = x <= 0 && x + w >= stage.width;
+  if (!coversFullWidth) return false;
+  const coversFullHeight = y <= 0 && y + h >= stage.height;
+  // Sangre total (legacy) o ancho completo con franjas (nuevo): ambos son sin-borde.
+  return coversFullHeight || y > 0;
 }
 
 /**

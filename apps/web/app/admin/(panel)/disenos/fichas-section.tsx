@@ -7,6 +7,9 @@
  */
 
 import { listLetterSets, getLetterSet, ALPHABET } from "@/features/personalization/letter-tiles";
+// Fase 3 · 3.7 (agente admin): botón "Vista previa" por set — el componente
+// vive fuera de este módulo (components/admin/letter-set-preview.tsx).
+import { LetterSetPreviewButton } from "@/components/admin/letter-set-preview";
 import { LetterGrid } from "./letter-grid";
 import { CreateSetForm } from "./create-set-form";
 
@@ -64,15 +67,19 @@ export async function FichasSection() {
                       {done === alphabet.length ? "🟢 completo" : "🟡 en progreso"}
                     </p>
                   </div>
-                  <div className="text-right">
-                    <div className="text-brand-purple-dark font-display text-lg font-bold">
-                      {done}/{alphabet.length}
-                    </div>
-                    <div className="bg-brand-cream mt-1 h-1.5 w-28 overflow-hidden rounded-full">
-                      <div
-                        className="bg-brand-turquoise h-full rounded-full"
-                        style={{ width: `${pct}%` }}
-                      />
+                  <div className="flex items-center gap-3">
+                    {/* Fase 3 · 3.7 — preview del set compuesto (render real del Estudio). */}
+                    <LetterSetPreviewButton setName={set.name} alphabet={alphabet} tiles={byChar} />
+                    <div className="text-right">
+                      <div className="text-brand-purple-dark font-display text-lg font-bold">
+                        {done}/{alphabet.length}
+                      </div>
+                      <div className="bg-brand-cream mt-1 h-1.5 w-28 overflow-hidden rounded-full">
+                        <div
+                          className="bg-brand-turquoise h-full rounded-full"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

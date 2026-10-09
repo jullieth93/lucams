@@ -134,8 +134,8 @@ export function stripDimsForFace(
 
 /**
  * Agrupa las texturas del Estudio en UNIDADES físicas de separador (ola 3 — convención de
- * lib/faces.ts: slot par = cara A → AL FRENTE, slot impar = cara B → ATRÁS). Con unidad impar
- * (no debería: facesPerUnit=2) la última repite su diseño atrás.
+ * lib/faces.ts: slot par = cara A → AL FRENTE, slot impar = cara B → ATRÁS). Con unidad sin
+ * cara B (no debería: facesPerUnit=2) la trasera queda EN BLANCO (back = null).
  *
  * Ola 6 — cuando llega `sizeCm` (variante de separador con dimensiones reales) forzamos el
  * pareo de caras, aunque las texturas ya hayan sido rotadas 90° en el editor y su aspecto
@@ -145,12 +145,12 @@ export function stripDimsForFace(
  * Diseños VIEJOS de tira completa (lienzo vertical, pre-ola-3): no traen cara B — cada textura
  * es su propia unidad y repite el diseño en ambas caras (comportamiento histórico).
  *
- * 2026-10-02 (Paquete D — REGLA ÚNICA de la cara B vacía): una cara B SIN
- * diseñar (slot sin assetUrl — misma condición que producción,
- * expandMissingBackFaces) se muestra ESPEJO de la cara A de su pareja
- * (back = front), nunca en blanco: es lo que imprenta produce y lo que el
- * cliente aprobó en la Vista Previa. Antes (2026-09-22, backOptional) el 3D
- * pintaba el reverso en blanco papel — contradecía la regla.
+ * 2026-10-07 (decisión owner — REVIERTE la regla espejo del Paquete D, 2026-10-02):
+ * una cara B SIN diseñar (slot sin assetUrl — misma condición que producción,
+ * blank-back-face.ts) se muestra EN BLANCO (back = null; el caller pinta la cara
+ * trasera blanca), nunca espejo de la cara A: es lo que imprenta produce y lo
+ * que el cliente ve en la Vista Previa. "Si cargo únicamente la Cara A, espero
+ * que la Cara B sea en blanco en vista 3D, preview y físico."
  */
 export function bookmarkFaceUnits<
   T extends {
@@ -166,11 +166,11 @@ export function bookmarkFaceUnits<
   facesPerUnit?: number,
   /** sizeCm de la variante: si llega, confirma que estamos en el flujo moderno de caras. */
   sizeCm?: string,
-): { front: T; back: T }[] {
+): { front: T; back: T | null }[] {
   // Ola 10 — si el producto declara facesPerUnit=2, agrupamos por pares de slotIndex
   // (no por orden del array). La cara B sin diseño propio (slot sin assetUrl — el
-  // snapshot del stage existe siempre, así que dataUrl NO discrimina) usa la misma
-  // textura que la cara A: espejo de la REGLA ÚNICA (Paquete D, 2026-10-02).
+  // snapshot del stage existe siempre, así que dataUrl NO discrimina) queda EN
+  // BLANCO: back = null (REGLA ÚNICA, decisión owner 2026-10-07).
   if (
     facesPerUnit === 2 &&
     bookmarks.length > 0 &&
@@ -179,14 +179,14 @@ export function bookmarkFaceUnits<
     const bySlot = new Map<number, T>();
     for (const b of bookmarks) bySlot.set(b.slotIndex!, b);
     const maxSlot = Math.max(...bookmarks.map((b) => b.slotIndex!));
-    const units: { front: T; back: T }[] = [];
+    const units: { front: T; back: T | null }[] = [];
     for (let k = 0; 2 * k <= maxSlot; k++) {
       const front = bySlot.get(2 * k);
       if (!front) continue; // unidad sin cara A: no renderizar
       const back = bySlot.get(2 * k + 1);
       // Cara B con diseño propio ⇔ su slot tiene assetUrl (misma condición que
-      // producción). Sin él → espejo de la cara A.
-      units.push({ front, back: back?.assetUrl ? back : front });
+      // producción). Sin él → EN BLANCO (back = null), nunca espejo de la cara A.
+      units.push({ front, back: back?.assetUrl ? back : null });
     }
     return units;
   }
@@ -195,10 +195,11 @@ export function bookmarkFaceUnits<
     sizeCm !== undefined ||
     (bookmarks.length > 0 && bookmarks.every((b) => b.wRatio / b.hRatio >= FACE_CANVAS_MIN_ASPECT));
   if (!looksLikeFaces) return bookmarks.map((b) => ({ front: b, back: b }));
-  const units: { front: T; back: T }[] = [];
+  const units: { front: T; back: T | null }[] = [];
   for (let k = 0; 2 * k < bookmarks.length; k++) {
     const front = bookmarks[2 * k]!;
-    units.push({ front, back: bookmarks[2 * k + 1] ?? front });
+    // Unidad sin cara B (textura faltante): trasera EN BLANCO (owner 2026-10-07).
+    units.push({ front, back: bookmarks[2 * k + 1] ?? null });
   }
   return units;
 }
@@ -360,23 +361,90 @@ export function flatBookmarkSlots(
  * Colocación de UNA pieza plana acostada sobre la hoja en (bx, bz): y pegada a la
  * superficie de la hoja (pageSurfaceY + medio grosor). El giro (yaw) lo aplica el caller
  * sobre el grupo (rotación mundial Y tras acostar la pieza con −90° en X).
+ * Fase 2.12 (decisión owner 2026-10-07): esta es de nuevo la ÚNICA pose de los Alargados
+ * — la pose DE PIE de Ola 18 (`flatBookmarkPlacementUpright`, eliminada) dejaba una torre
+ * de 15 cm dominando la escena; la pieza NO se encoge, solo cambian pose + cámara.
  */
 export function flatBookmarkPlacement(bx: number, bz: number): [number, number, number] {
   return [bx, pageSurfaceY(bx) + FLAT_BOOKMARK_T / 2 + 0.002, bz];
 }
 
+// ── Pose ACOSTADA de la pieza plana + volteo de caras (Fase 2.12 revisada, 2026-10-07) ──
+
 /**
- * Colocación de UNA pieza plana DE PIE sobre la hoja en (bx, bz): la base de la pieza
- * reposa sobre la superficie de la hoja (y = pageSurfaceY + h/2). El giro (yaw) lo aplica
- * el caller sobre el grupo (rotación mundial Y).
+ * Rotación que ACUESTA la pieza plana sobre la hoja: −90° en X, en un grupo ANIDADO entre
+ * el yaw externo y la pieza. Tras acostarla, la tapa frontal (+Z local, cara A) mira
+ * EXACTA a +Y y el largo queda en el plano de la hoja.
+ *
+ * Ola 17 componía la pose con grupos anidados (yaw externo → acostar) — la pose que se
+ * certificó visualmente. La primera versión de Fase 2.12 la colapsó a UN solo Euler
+ * [−π/2, yaw, 0]: con el orden XYZ de three eso aplica el yaw ANTES de acostar, es decir
+ * como ROLL alrededor del eje largo ya echado — la cara quedaba BASCULADA `yaw` fuera de
+ * la vertical en vez de trenzada en el plano de la hoja (verificado numéricamente en
+ * book-geometry.test). Se restaura la composición anidada.
  */
-export function flatBookmarkPlacementUpright(
-  bx: number,
-  bz: number,
-  h: number,
+export const FLAT_LIE_ROTATION: readonly [number, number, number] = [-Math.PI / 2, 0, 0];
+
+/**
+ * Rota un vector con R = Rx(x)·Ry(y)·Rz(z) — el mismo convenio que THREE.Euler orden
+ * 'XYZ' (al aplicar al vector rota primero sobre Z, luego Y, luego X). Espejo PURO para
+ * verificar las poses de la escena del libro en tests node, sin three.
+ */
+export function rotateVecEulerXYZ(
+  v: readonly [number, number, number],
+  e: readonly [number, number, number],
 ): [number, number, number] {
-  return [bx, pageSurfaceY(bx) + h / 2, bz];
+  let [x, y, z] = v;
+  const [ex, ey, ez] = e;
+  if (ez !== 0) {
+    const c = Math.cos(ez);
+    const s = Math.sin(ez);
+    [x, y] = [x * c - y * s, x * s + y * c];
+  }
+  if (ey !== 0) {
+    const c = Math.cos(ey);
+    const s = Math.sin(ey);
+    [x, z] = [x * c + z * s, -x * s + z * c];
+  }
+  if (ex !== 0) {
+    const c = Math.cos(ex);
+    const s = Math.sin(ex);
+    [y, z] = [y * c - z * s, y * s + z * c];
+  }
+  return [x, y, z];
 }
+
+/**
+ * Normal MUNDIAL de la tapa frontal (+Z local, cara A) de la pieza plana con la pose
+ * anidada: flip opcional sobre el eje largo local (FACE_FLIP_ROTATION de magnet-3d — π
+ * sobre Y, duplicado acá inline para mantener el módulo sin three) → acostar
+ * (FLAT_LIE_ROTATION) → yaw (giro en el plano de la hoja). Sin flip es EXACTAMENTE +Y
+ * para cualquier yaw; con flip es −Y (la cara B — o el blanco — queda mirando arriba).
+ */
+export function flatFrontNormalWorld(yaw: number, showBack: boolean): [number, number, number] {
+  let n = rotateVecEulerXYZ([0, 0, 1], showBack ? [0, Math.PI, 0] : [0, 0, 0]);
+  n = rotateVecEulerXYZ(n, FLAT_LIE_ROTATION);
+  return rotateVecEulerXYZ(n, [0, yaw, 0]);
+}
+
+/**
+ * Normal MUNDIAL de la cara frontal (+Z local de FoldedStripMesh) del separador DOBLADO
+ * con su pose (grupo externo Euler [tilt, yaw, 0] de separatorPlacement) y el volteo
+ * opcional sobre el eje largo. Sin flip apunta al lector (+Z dominante); con flip apunta
+ * a −Z: la cara B (o el blanco) queda de frente y la pieza sigue colgando igual.
+ */
+export function foldedFrontNormalWorld(
+  tilt: number,
+  yaw: number,
+  showBack: boolean,
+): [number, number, number] {
+  const n = rotateVecEulerXYZ([0, 0, 1], showBack ? [0, Math.PI, 0] : [0, 0, 0]);
+  return rotateVecEulerXYZ(n, [tilt, yaw, 0]);
+}
+
+// ── Toggle "Ver respaldo / Ver frente" (decisión owner 2026-10-07) ──
+// Los textos del toggle viven en studio-texts (estudio.escenas.libro-ver-respaldo/-frente);
+// el componente los lee vía useStudioTexts en book-view-3d.tsx.
 
 /** Encuadre de la cámara (FitCameraPolar): pliego completo + holgura, vista desde arriba-3/4. */
 export const BOOK_FIT = {

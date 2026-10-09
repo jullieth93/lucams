@@ -5,7 +5,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ShieldCheck } from "lucide-react";
+import { BadgeCheck, ShieldCheck } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import {
   listWarrantyClaims,
@@ -72,7 +72,7 @@ export default async function AdminGarantiasPage({ searchParams }: { searchParam
   return (
     <AdminPage>
       <AdminPageHeader
-        icon={<ShieldCheck className="h-5 w-5" />}
+        icon={<BadgeCheck className="h-5 w-5" />}
         title="Garantías"
         subtitle="Reclamos de garantía legal (Ley 1480). Diagnostica y aplica el remedio: reparar, cambiar o devolver."
       />

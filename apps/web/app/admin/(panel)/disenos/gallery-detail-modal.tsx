@@ -4,9 +4,13 @@
  * Paquete A (2026-10-02) — Modal de DETALLE de un diseño prediseñado del
  * admin (/admin/disenos): cara A y cara B lado a lado (mismo markup del
  * preview del corte de tira del upload), nombre, producto (tag), orden y
- * estado, con la acción de borrar existente. Sin cara B muestra solo la A con
- * la nota de la regla única: se imprime espejo de la cara A (producción:
- * expandMissingBackFaces — misma promesa del texto de ayuda del upload).
+ * estado, con la acción de archivar (3.6, 2026-10-07: antes "borrar" — es
+ * soft-delete restaurable; la eliminación permanente vive en la sección
+ * Archivados). Sigue mostrando el ORIGINAL (es admin, no cliente; la
+ * miniatura watermark de 3.10 es para el Estudio). Sin cara B muestra solo
+ * la A con la nota de la regla única: el respaldo se imprime EN BLANCO
+ * (decisión owner 2026-10-07; producción: blank-back-face.ts — misma promesa
+ * del texto de ayuda del upload).
  * Fase 5b (2026-10-02) — edición del "Aplica a": la ficha muestra el
  * variantFilter actual y un selector lo persiste (updateGalleryVariantFilterAction).
  * B-5 (2026-10-02) — toggle de visibilidad ("Visible en el Estudio"/"Pausada"):
@@ -16,7 +20,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trash2, X, Loader2, Check, Eye, EyeOff } from "lucide-react";
+import { Archive, X, Loader2, Check, Eye, EyeOff } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { useDialogA11y } from "../plantillas/use-dialog-a11y";
 import {
@@ -178,7 +182,7 @@ export function GalleryDetailModal({
               </div>
               {!item.imageUrlB && (
                 <p className="text-brand-muted mt-2 text-xs italic">
-                  Sin cara B — se imprime espejo de la cara A (la misma imagen por ambos lados).
+                  Sin cara B — el respaldo se imprime en blanco.
                 </p>
               )}
 
@@ -297,20 +301,23 @@ export function GalleryDetailModal({
               )}
             </div>
 
-            {/* Footer */}
+            {/* Footer — 3.6: "Archivar" (soft-delete restaurable; antes se
+                llamaba "Borrar" y el naming engañaba). La eliminación REAL
+                vive en la sección Archivados del manager. */}
             <div className="flex items-center justify-between gap-2 border-t px-5 py-3">
               <button
                 type="button"
                 onClick={() => onDelete(item.id)}
                 disabled={pending}
+                aria-label={`Archivar ${item.name}`}
                 className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50"
               >
                 {pending ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Archive className="h-3.5 w-3.5" />
                 )}
-                Borrar diseño
+                Archivar diseño
               </button>
               <button
                 type="button"

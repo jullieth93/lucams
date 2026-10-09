@@ -43,6 +43,7 @@ type CartFixture = {
 
 const state = vi.hoisted(() => ({
   carts: [] as CartFixture[],
+  designs: [] as { id: string; sessionId: string | null; customerId: string | null }[],
   nextItemSeq: 1,
 }));
 
@@ -118,6 +119,35 @@ vi.mock("@/lib/db", () => {
         return { count: 0 };
       }),
     },
+    design: {
+      updateMany: vi.fn(
+        async ({
+          where,
+          data,
+        }: {
+          where: { id: { in: string[] }; sessionId: string; customerId: null };
+          // adoptSessionDesigns (login): { customerId, sessionId: null };
+          // retargetSessionDesigns (recuperación sesión→sesión): { sessionId } —
+          // customerId no se toca.
+          data: { customerId?: string | null; sessionId?: string | null };
+        }) => {
+          let count = 0;
+          for (const d of state.designs) {
+            // Mismo guard que el where real: solo diseños de ESTA sesión y sin customer.
+            if (
+              where.id.in.includes(d.id) &&
+              d.sessionId === where.sessionId &&
+              d.customerId === where.customerId
+            ) {
+              if (data.customerId !== undefined) d.customerId = data.customerId;
+              if (data.sessionId !== undefined) d.sessionId = data.sessionId;
+              count++;
+            }
+          }
+          return { count };
+        },
+      ),
+    },
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(prisma)),
   };
   return { prisma };
@@ -171,6 +201,7 @@ function itemsDe(cartId: string): Linea[] {
 
 beforeEach(() => {
   state.carts = [];
+  state.designs = [];
   state.nextItemSeq = 1;
 });
 
@@ -273,6 +304,65 @@ describe("mergeAnonCartIntoCustomer — dedupe por contenido (Paquete H)", () =>
   });
 });
 
+describe("mergeAnonCartIntoCustomer — adopción de diseños anónimos al login", () => {
+  /*
+   * El merge movía los CartItems al customer pero los Designs quedaban con el
+   * sessionId anónimo (customerId null) → al dar «Editar» estando logueado,
+   * getOwnedDesign({customerId, sessionId: null}) devolvía null y el Estudio abría
+   * vacío. Ahora los diseños referenciados por los items mergeados se adoptan
+   * (customerId set, sessionId limpio) en la misma transacción.
+   */
+  it("customer sin carrito previo: adopta los diseños de los items del carrito anon", async () => {
+    state.designs.push({ id: "d1", sessionId: "sess_anon", customerId: null });
+    seedCart({ sessionId: "sess_anon", items: [linea({ cartId: "", designId: "d1" })] });
+
+    await mergeAnonCartIntoCustomer("sess_anon", "cust_1");
+
+    expect(state.designs[0]).toEqual({ id: "d1", sessionId: null, customerId: "cust_1" });
+  });
+
+  it("fold de ambos carritos: adopta el diseño del item movido al carrito del customer", async () => {
+    state.designs.push({ id: "d1", sessionId: "sess_anon", customerId: null });
+    seedCart({
+      sessionId: "sess_cust",
+      customerId: "cust_1",
+      items: [linea({ cartId: "", qty: 1 })],
+    });
+    seedCart({ sessionId: "sess_anon", items: [linea({ cartId: "", designId: "d1" })] });
+
+    await mergeAnonCartIntoCustomer("sess_anon", "cust_1");
+
+    expect(state.designs[0]).toEqual({ id: "d1", sessionId: null, customerId: "cust_1" });
+  });
+
+  it("NO adopta diseños ajenos: otra sesión o ya con customer quedan intactos", async () => {
+    state.designs.push(
+      { id: "d_otra_sesion", sessionId: "sess_otra", customerId: null },
+      { id: "d_otro_customer", sessionId: "sess_anon", customerId: "cust_2" },
+    );
+    seedCart({
+      sessionId: "sess_anon",
+      items: [
+        linea({ cartId: "", designId: "d_otra_sesion" }),
+        linea({ cartId: "", designId: "d_otro_customer", variantId: "var_2" }),
+      ],
+    });
+
+    await mergeAnonCartIntoCustomer("sess_anon", "cust_1");
+
+    expect(state.designs[0]).toEqual({
+      id: "d_otra_sesion",
+      sessionId: "sess_otra",
+      customerId: null,
+    });
+    expect(state.designs[1]).toEqual({
+      id: "d_otro_customer",
+      sessionId: "sess_anon",
+      customerId: "cust_2",
+    });
+  });
+});
+
 describe("mergeCartsAdopt — dedupe por contenido (Paquete H)", () => {
   it("designs distintos pero idénticos → consolida en el carrito recuperado (target)", async () => {
     const dTarget = diseno("d1", { version: 2, slots: [{ assetId: "foto-A" }] });
@@ -313,5 +403,75 @@ describe("mergeCartsAdopt — dedupe por contenido (Paquete H)", () => {
     const items = itemsDe(target.id);
     expect(items).toHaveLength(1);
     expect(items[0].qty).toBe(5);
+  });
+});
+
+describe("mergeCartsAdopt — adopción de diseños anónimos (sesión→sesión)", () => {
+  /*
+   * Misma brecha de ownership que se corrigió en el login: el fold movía los
+   * CartItems al carrito recuperado pero los Designs quedaban con el sessionId del
+   * carrito source (borrado en el mismo fold) → «Editar» desde el carrito con la
+   * cookie del target no pasaba getOwnedDesign y el Estudio abría vacío. Ahora los
+   * diseños referenciados se re-sesionan al target en la misma transacción, con el
+   * mismo guard anti-adopción-ajena (sessionId exacto del origen + customerId null).
+   */
+  it("los diseños de los items movidos quedan con el sessionId del carrito target", async () => {
+    state.designs.push({ id: "d1", sessionId: "sess_source", customerId: null });
+    const target = seedCart({ sessionId: "sess_target", items: [] });
+    seedCart({ sessionId: "sess_source", items: [linea({ cartId: "", designId: "d1" })] });
+
+    await mergeCartsAdopt("sess_source", "sess_target");
+
+    expect(state.designs[0]).toEqual({ id: "d1", sessionId: "sess_target", customerId: null });
+    expect(itemsDe(target.id).some((i) => i.designId === "d1")).toBe(true);
+  });
+
+  it("también los diseños de items DEDUPLICADOS (fold por contenido) se re-sesionan", async () => {
+    // El item del source se funde en la línea del target (mismo contenido) y su
+    // Design queda huérfano; igual se re-sesiona (mismo criterio que el login:
+    // adoptar no cuesta y deja el ownership consistente).
+    const canvas = { version: 2, slots: [{ assetId: "foto-A" }] };
+    state.designs.push({ id: "d2", sessionId: "sess_source", customerId: null });
+    const target = seedCart({
+      sessionId: "sess_target",
+      items: [linea({ cartId: "", design: diseno("d1", canvas) })],
+    });
+    seedCart({
+      sessionId: "sess_source",
+      items: [linea({ cartId: "", design: diseno("d2", canvas) })],
+    });
+
+    await mergeCartsAdopt("sess_source", "sess_target");
+
+    expect(itemsDe(target.id)).toHaveLength(1);
+    expect(state.designs[0]).toEqual({ id: "d2", sessionId: "sess_target", customerId: null });
+  });
+
+  it("NO re-sesiona diseños ajenos: otra sesión o ya con customer quedan intactos", async () => {
+    state.designs.push(
+      { id: "d_otra_sesion", sessionId: "sess_otra", customerId: null },
+      { id: "d_de_customer", sessionId: "sess_source", customerId: "cust_9" },
+    );
+    seedCart({ sessionId: "sess_target", items: [] });
+    seedCart({
+      sessionId: "sess_source",
+      items: [
+        linea({ cartId: "", designId: "d_otra_sesion" }),
+        linea({ cartId: "", designId: "d_de_customer", variantId: "var_2" }),
+      ],
+    });
+
+    await mergeCartsAdopt("sess_source", "sess_target");
+
+    expect(state.designs[0]).toEqual({
+      id: "d_otra_sesion",
+      sessionId: "sess_otra",
+      customerId: null,
+    });
+    expect(state.designs[1]).toEqual({
+      id: "d_de_customer",
+      sessionId: "sess_source",
+      customerId: "cust_9",
+    });
   });
 });

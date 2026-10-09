@@ -11,10 +11,10 @@
  *                            tamaño físico del imán (sizeCm).
  *                            Foto chica = imán pixelado.
  *   2. Brillo (luminance) — mean luminance del canal grayscale.
- *                            Foto oscura = imán negro al imprimir. Ojo:
- *                            un look oscuro / fondo negro deliberado NO es
- *                            un defecto — umbrales estrictos y copy que
- *                            reconoce la intención del cliente.
+ *                            Solo se advierte SOBREEXPOSICIÓN. La oscuridad
+ *                            es decisión estética válida (look oscuro / fondo
+ *                            negro deliberado) y su aviso era ruido sin valor
+ *                            (decisión producto 2026-10, pruebas STG).
  *   3. Borrosidad         — stdev del kernel Laplaciano (técnica
  *                            estándar OpenCV's cv2.Laplacian.var()).
  *                            Foto blurry = imán sin nitidez.
@@ -23,7 +23,7 @@
  *   - "error"           → al menos 1 check failed con severidad bloqueante
  *                          (foto demasiado pequeña). Cliente no puede continuar.
  *   - "warning-strong"  → al menos 1 check con severidad alta (foto muy
- *                          oscura o muy borrosa). Cliente puede continuar
+ *                          borrosa). Cliente puede continuar
  *                          pero con badge rojo persistente.
  *   - "warning-soft"    → al menos 1 check con severidad media. Badge naranja.
  *   - "ok"              → todos los checks pasaron.
@@ -53,13 +53,11 @@ const RES_THRESHOLDS = {
 
 /**
  * Brillo: mean luminance escala 0-255 del canal grayscale.
- * La métrica es una media GLOBAL: un retrato bien iluminado sobre fondo
- * negro (look oscuro deliberado) cae fácilmente bajo 50, así que los
- * umbrales de oscuridad son estrictos para no castigar ese estilo.
+ * Solo se advierte SOBREEXPOSICIÓN: la oscuridad es una decisión estética
+ * válida (look oscuro, fondo negro deliberado) y el aviso generaba ruido
+ * sin valor para el cliente (decisión producto 2026-10, pruebas STG).
  */
 const BRIGHTNESS_THRESHOLDS = {
-  TOO_DARK_BELOW: 20, // muy oscura
-  DARK_BELOW: 40, // borderline oscura
   TOO_BRIGHT_ABOVE: 235, // sobreexpuesta
 };
 
@@ -209,23 +207,7 @@ export async function validatePhotoQuality(
     const greyStats = await sample.clone().grayscale().stats();
     const meanLum = greyStats.channels[0]?.mean ?? 128;
 
-    if (meanLum < BRIGHTNESS_THRESHOLDS.TOO_DARK_BELOW) {
-      brightness = {
-        passed: false,
-        level: "warning-strong",
-        meanLuminance: meanLum,
-        message:
-          "La foto se ve muy oscura y puede perder detalle al imprimir. Si es el estilo que buscabas, puedes usarla igual.",
-      };
-    } else if (meanLum < BRIGHTNESS_THRESHOLDS.DARK_BELOW) {
-      brightness = {
-        passed: false,
-        level: "warning-soft",
-        meanLuminance: meanLum,
-        message:
-          "La foto está algo oscura. Si buscabas un look oscuro o con fondo negro, puedes ignorar este aviso.",
-      };
-    } else if (meanLum > BRIGHTNESS_THRESHOLDS.TOO_BRIGHT_ABOVE) {
+    if (meanLum > BRIGHTNESS_THRESHOLDS.TOO_BRIGHT_ABOVE) {
       brightness = {
         passed: false,
         level: "warning-soft",
@@ -289,7 +271,7 @@ export async function validatePhotoQuality(
       recommendation = "Prueba con una foto más nítida si la tienes.";
     } else if (brightness.level !== "ok") {
       recommendation =
-        "Si el estilo oscuro es a propósito, no hay nada que hacer. Si no, una foto con más luz va a verse mejor.";
+        "Una foto con menos exposición (menos quemada) conserva mejor los detalles al imprimir.";
     }
   }
 

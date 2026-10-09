@@ -30,8 +30,8 @@ export function roundRobinPredesigned<T>(items: readonly T[], count: number, sta
  *  - null  → producto de 1 cara: sin badge (ruido).
  *  - "two" → producto de 2 caras Y el diseño trae cara B (imageUrlB).
  *  - "one" → producto de 2 caras pero el diseño NO trae cara B: el respaldo
- *            sale espejo de la cara A (regla única, ver faces.ts /
- *            expandMissingBackFaces en features/personalization/service.ts).
+ *            se imprime EN BLANCO (regla única, owner 2026-10-07 — ver faces.ts /
+ *            blank-back-face.ts en features/personalization).
  */
 export function predesignedFaceBadge(
   facesPerUnit: number | undefined,

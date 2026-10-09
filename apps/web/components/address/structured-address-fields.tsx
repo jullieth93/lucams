@@ -20,6 +20,7 @@ import {
   getCityByCode,
 } from "@/lib/dane-divipola";
 import { VIA_TYPES } from "@/features/checkout/schemas";
+import { CRUCE_HINT, viaHintText } from "@/lib/colombia-validators";
 
 export type StructuredAddressValue = {
   deptCode: string;
@@ -120,8 +121,12 @@ export function StructuredAddressFields({
             value={value.cityCode}
             disabled={disabled || !value.deptCode}
             onChange={(e) => {
+              // CP derivado de la ciudad elegida (owner 2026-10-07, mismo criterio
+              // que el checkout): CP real del catálogo DANE; si la ciudad no lo
+              // tiene, prefijo departamental para que el cliente lo complete.
               const city = getCityByCode(e.target.value);
-              onChange({ cityCode: e.target.value, ...(city?.zip ? { zip: city.zip } : {}) });
+              const dept = DEPARTMENTS.find((d) => d.code === city?.deptCode);
+              onChange({ cityCode: e.target.value, zip: city?.zip ?? dept?.zipPrefix ?? "" });
             }}
             className={selectClass}
           >
@@ -144,7 +149,7 @@ export function StructuredAddressFields({
             value={value.zip}
             disabled={disabled}
             onChange={(e) => onChange({ zip: e.target.value.replace(/\D/g, "").slice(0, 6) })}
-            placeholder="110111"
+            placeholder="Opcional"
             inputMode="numeric"
             aria-invalid={Boolean(err("zip"))}
           />
@@ -259,7 +264,7 @@ export function StructuredAddressFields({
               </select>
             </div>
             {err("viaNumber") && <p className="text-destructive text-sm">{err("viaNumber")}</p>}
-            <p className="text-brand-muted text-xs">Ej. Carrera 7A Bis Sur</p>
+            <p className="text-brand-muted text-xs">{viaHintText(value.viaType)}</p>
           </div>
 
           <div className="space-y-1.5">
@@ -299,7 +304,7 @@ export function StructuredAddressFields({
               </select>
             </div>
             {err("cruceNumber") && <p className="text-destructive text-sm">{err("cruceNumber")}</p>}
-            <p className="text-brand-muted text-xs">Formato: 23-45 o 13B-42C</p>
+            <p className="text-brand-muted text-xs">{CRUCE_HINT}</p>
           </div>
 
           <div className="space-y-1.5">

@@ -150,7 +150,7 @@ describe("instagram-template-spec (color de texto por capa — Ola 26)", () => {
   });
 });
 
-describe("instagram-template-spec (textos requeridos para finalizar — Ola 26)", () => {
+describe("instagram-template-spec (textos requeridos para finalizar — Ola 26 + rediseño 2026-10-05)", () => {
   // Mini-plantilla IG: asset chrome (marca isInstagramTemplate) + las 5 capas de texto.
   const igLayers = [
     { id: "frame", type: "asset", src: "/templates/ig_post_3x4.svg" },
@@ -177,25 +177,52 @@ describe("instagram-template-spec (textos requeridos para finalizar — Ola 26)"
     }>,
   ) => ({ unitTemplate: { layers }, slots });
 
-  it("requeridos = usuario, ubicación, título y hashtags (likes queda decorativo)", () => {
+  it("requeridos = usuario, ubicación, «me gusta», título y hashtags (rediseño 2026-10-05)", () => {
     expect([...IG_REQUIRED_TEXT_LAYER_IDS]).toEqual([
       "user_name",
       "location",
+      "likes_count",
       "caption",
       "hashtags",
     ]);
-    expect(IG_REQUIRED_TEXT_LAYER_IDS).not.toContain("likes_count");
-    expect([...IG_DECORATIVE_TEXT_LAYER_IDS]).toEqual(["likes_count"]);
+    // «Me gusta» dejó de ser decorativo: sin él el post impreso se leía incompleto.
+    expect([...IG_DECORATIVE_TEXT_LAYER_IDS]).toEqual([]);
   });
 
-  it("tarjeta recién creada (sin overrides) → faltan los 4 campos requeridos, en orden de plantilla", () => {
+  it("tarjeta recién creada (sin overrides) → faltan los 5 campos requeridos, en orden de plantilla", () => {
     const missing = igMissingRequiredTextLayerIds(
       canvasWith(igLayers, [{ textOverrides: undefined }]),
     );
-    expect(missing).toEqual(["user_name", "location", "caption", "hashtags"]);
+    expect(missing).toEqual(["user_name", "location", "likes_count", "caption", "hashtags"]);
   });
 
   it("un campo cuenta faltante si ALGÚN slot no lo tiene (cada imán es un post)", () => {
+    const missing = igMissingRequiredTextLayerIds(
+      canvasWith(igLayers, [
+        {
+          textOverrides: {
+            user_name: { text: "@lucy" },
+            location: { text: "Bogotá" },
+            likes_count: { text: "128 me gusta" },
+            caption: { text: "Mi recuerdo" },
+            hashtags: { text: "#amor" },
+          },
+        },
+        {
+          textOverrides: {
+            user_name: { text: "@lucy" },
+            location: { text: "Bogotá" },
+            likes_count: { text: "128 me gusta" },
+            caption: { text: "Otro" },
+            // hashtags sin llenar en el slot 2
+          },
+        },
+      ]),
+    );
+    expect(missing).toEqual(["hashtags"]);
+  });
+
+  it("«me gusta» vacío en un slot bloquea igual que los demás requeridos", () => {
     const missing = igMissingRequiredTextLayerIds(
       canvasWith(igLayers, [
         {
@@ -206,17 +233,9 @@ describe("instagram-template-spec (textos requeridos para finalizar — Ola 26)"
             hashtags: { text: "#amor" },
           },
         },
-        {
-          textOverrides: {
-            user_name: { text: "@lucy" },
-            location: { text: "Bogotá" },
-            caption: { text: "Otro" },
-            // hashtags sin llenar en el slot 2
-          },
-        },
       ]),
     );
-    expect(missing).toEqual(["hashtags"]);
+    expect(missing).toEqual(["likes_count"]);
   });
 
   it("override con solo espacios o solo estilo cuenta como vacío", () => {
@@ -226,6 +245,7 @@ describe("instagram-template-spec (textos requeridos para finalizar — Ola 26)"
           textOverrides: {
             user_name: { text: "   " },
             location: { fill: "#FF0000" }, // solo estilo, sin texto
+            likes_count: { text: "128 me gusta" },
             caption: { text: "Mi recuerdo" },
             hashtags: { text: "#amor" },
           },
@@ -242,6 +262,7 @@ describe("instagram-template-spec (textos requeridos para finalizar — Ola 26)"
           textOverrides: {
             user_name: { text: "@lucy" },
             location: { text: "Bogotá" },
+            likes_count: { text: "128 me gusta" },
             caption: { text: "Mi recuerdo" },
             hashtags: { text: "#amor" },
           },
@@ -287,6 +308,7 @@ describe("igMissingRequiredTextLayersPerSlot (Fase 1A — detalle por unidad par
           textOverrides: {
             user_name: { text: "@lucy" },
             location: { text: "Bogotá" },
+            likes_count: { text: "128 me gusta" },
             caption: { text: "Mi recuerdo" },
             hashtags: { text: "#amor" },
           },
@@ -294,10 +316,12 @@ describe("igMissingRequiredTextLayersPerSlot (Fase 1A — detalle por unidad par
         { slotIndex: 1, textOverrides: { user_name: { text: "@lu" } } },
       ]),
     );
-    expect(perSlot).toEqual([{ slotIndex: 1, layerIds: ["location", "caption", "hashtags"] }]);
+    expect(perSlot).toEqual([
+      { slotIndex: 1, layerIds: ["location", "likes_count", "caption", "hashtags"] },
+    ]);
   });
 
-  it("tarjeta recién creada → cada slot reporta los 4 campos en orden de plantilla", () => {
+  it("tarjeta recién creada → cada slot reporta los 5 campos en orden de plantilla", () => {
     const perSlot = igMissingRequiredTextLayersPerSlot(
       canvasWith([
         { slotIndex: 0, textOverrides: undefined },
@@ -305,8 +329,8 @@ describe("igMissingRequiredTextLayersPerSlot (Fase 1A — detalle por unidad par
       ]),
     );
     expect(perSlot).toEqual([
-      { slotIndex: 0, layerIds: ["user_name", "location", "caption", "hashtags"] },
-      { slotIndex: 1, layerIds: ["user_name", "location", "caption", "hashtags"] },
+      { slotIndex: 0, layerIds: ["user_name", "location", "likes_count", "caption", "hashtags"] },
+      { slotIndex: 1, layerIds: ["user_name", "location", "likes_count", "caption", "hashtags"] },
     ]);
   });
 

@@ -867,9 +867,53 @@ export async function removeCartItem(sessionId: string, itemId: string): Promise
 //     (carta-misma, recibe a su nuevo dueño).
 //   - Si ambos existen → merge inteligente: folder items del anon en
 //     el cart del customer sumando qty por variantId; soft-delete anon.
+//   - En ambos caminos los Designs anónimos referenciados por los items se
+//     ADOPTAN (customerId set, sessionId limpio) — ver adoptSessionDesigns.
 //
 // Retorna el sessionId que debería quedar en la cookie del usuario
 // (puede ser el del cart del customer si existía uno previo).
+
+/**
+ * Adopta los diseños anónimos referenciados por los items del carrito que se está
+ * mergeando: el CartItem pasa al customer en el login pero el Design seguía con el
+ * sessionId anónimo (customerId null) → al dar «Editar» estando logueado,
+ * getOwnedDesign({customerId, sessionId: null}) no lo encontraba y el Estudio abría
+ * vacío. El guard doble del where (sessionId exacto + customerId null) garantiza que
+ * un CartItem solo puede transferir diseños de ESTA sesión anónima, nunca ajenos.
+ */
+async function adoptSessionDesigns(
+  tx: Pick<typeof prisma, "design">,
+  opts: { designIds: (string | null)[]; anonSessionId: string; customerId: string },
+): Promise<void> {
+  const ids = opts.designIds.filter((id): id is string => typeof id === "string");
+  if (ids.length === 0) return;
+  await tx.design.updateMany({
+    where: { id: { in: ids }, sessionId: opts.anonSessionId, customerId: null },
+    data: { customerId: opts.customerId, sessionId: null },
+  });
+}
+
+/**
+ * Versión sesión→sesión de adoptSessionDesigns (recuperación de carrito abandonado,
+ * mergeCartsAdopt): los items del carrito `source` se foldan en el `target` pero los
+ * Designs seguían con el sessionId del source (que se borra en el mismo fold) → al dar
+ * «Editar» con la cookie del target, getOwnedDesign no los encontraba y el Estudio
+ * abría vacío. Mismo guard anti-adopción-ajena (sessionId exacto del origen +
+ * customerId null): un CartItem solo puede arrastrar diseños anónimos de ESTA sesión,
+ * nunca ajenos ni de un customer. El design conserva customerId null: si el cliente
+ * se loguea después, mergeAnonCartIntoCustomer lo adopta por la vía de siempre.
+ */
+async function retargetSessionDesigns(
+  tx: Pick<typeof prisma, "design">,
+  opts: { designIds: (string | null)[]; fromSessionId: string; toSessionId: string },
+): Promise<void> {
+  const ids = opts.designIds.filter((id): id is string => typeof id === "string");
+  if (ids.length === 0) return;
+  await tx.design.updateMany({
+    where: { id: { in: ids }, sessionId: opts.fromSessionId, customerId: null },
+    data: { sessionId: opts.toSessionId },
+  });
+}
 
 export async function mergeAnonCartIntoCustomer(
   anonSessionId: string,
@@ -893,9 +937,16 @@ export async function mergeAnonCartIntoCustomer(
 
   // Caso 1: customer sin cart previo → el anon pasa a ser suyo.
   if (!customerCart) {
-    await prisma.cart.update({
-      where: { id: anonCart.id },
-      data: { customerId },
+    await prisma.$transaction(async (tx) => {
+      await tx.cart.update({
+        where: { id: anonCart.id },
+        data: { customerId },
+      });
+      await adoptSessionDesigns(tx, {
+        designIds: anonCart.items.map((i) => i.designId),
+        anonSessionId,
+        customerId,
+      });
     });
     return anonSessionId;
   }
@@ -934,6 +985,13 @@ export async function mergeAnonCartIntoCustomer(
         });
       }
     }
+    // Los diseños anónimos referenciados por los items mergeados pasan al customer
+    // (misma transacción: si el fold falla, ningún diseño cambia de dueño a medias).
+    await adoptSessionDesigns(tx, {
+      designIds: anonCart.items.map((i) => i.designId),
+      anonSessionId,
+      customerId,
+    });
     // Hard-delete anon cart (CartItem cascade). Cart es data efímera
     // sin valor de auditoría — además `sessionId @unique` no respeta
     // deletedAt, así que un soft-delete bloquearía reusar ese
@@ -951,6 +1009,9 @@ export async function mergeAnonCartIntoCustomer(
  * recuperado (target) para NO pisar lo que el cliente ya tenía. Mismo fold que mergeAnonCartIntoCustomer
  * (Paquete H: agrupa por CONTENIDO — variante + identidad del diseño — cap MAX_QTY_PER_ITEM). Se folda
  * hacia el target para preservar el FK AbandonedCart.cartId del carrito recuperado.
+ * Los diseños anónimos referenciados por los items movidos se RE-SESIÓNAN al target
+ * (retargetSessionDesigns, mismo guard que adoptSessionDesigns) — si no, quedaban con el
+ * sessionId del source ya borrado y «Editar» desde el carrito abría el Estudio vacío.
  */
 export async function mergeCartsAdopt(
   sourceSessionId: string,
@@ -983,6 +1044,13 @@ export async function mergeCartsAdopt(
         });
       }
     }
+    // Los diseños anónimos referenciados por los items movidos siguen al carrito
+    // destino (misma transacción: si el fold falla, ningún diseño cambia a medias).
+    await retargetSessionDesigns(tx, {
+      designIds: source.items.map((i) => i.designId),
+      fromSessionId: sourceSessionId,
+      toSessionId: targetSessionId,
+    });
     await tx.cartItem.deleteMany({ where: { cartId: source.id } });
     await tx.cart.delete({ where: { id: source.id } });
   });

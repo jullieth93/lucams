@@ -10,7 +10,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, FileWarning, Send, SendHorizonal } from "lucide-react";
+import { ArrowLeft, BookOpen, Send, SendHorizonal } from "lucide-react";
 import {
   AdminBadge,
   AdminButton,
@@ -51,7 +51,7 @@ export default async function BorradoresPage({ searchParams }: { searchParams: S
   return (
     <AdminPage>
       <AdminPageHeader
-        icon={<FileWarning className="h-5 w-5" />}
+        icon={<BookOpen className="h-5 w-5" />}
         title="Solo borradores"
         subtitle="Todos los cambios guardados que todavía no se ven en el sitio. Publícalos uno a uno o todos de una vez."
         breadcrumbs={[
