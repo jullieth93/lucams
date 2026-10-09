@@ -104,6 +104,12 @@ export type StudioStoreState = {
     canvasData: CanvasDataV2;
     templates: StudioTemplate[];
     selectedTemplateId?: string | null;
+    /**
+     * ADR-133 — el boot arranca "dirty" cuando el canvas viene del snapshot
+     * LOCAL de recuperación (más nuevo que el del server): el auto-save debe
+     * re-guardarlo aunque el cliente no toque nada más.
+     */
+    startDirty?: boolean;
   }) => void;
   setCanvasData: (data: CanvasDataV2, opts?: { skipUndo?: boolean }) => void;
   assignAssetToSlot: (slotIndex: number, asset: StudioAsset) => void;
@@ -274,7 +280,7 @@ export function createStudioStore() {
         assets: extractAssetsFromCanvas(input.canvasData),
         undoStack: [],
         redoStack: [],
-        isDirty: false,
+        isDirty: input.startDirty === true,
       });
     },
 

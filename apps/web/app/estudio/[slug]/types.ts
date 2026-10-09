@@ -361,6 +361,14 @@ export type MultiSlotCanvasData = {
    * (isInstagramNoBorder, frame-palette) sigue como fallback.
    */
   igNoBorder?: boolean;
+  /**
+   * ADR-133 (2026-10-08) — reloj del cliente (epoch ms del último cambio) para la
+   * reconciliación del snapshot local de recuperación al re-abrir un draft:
+   * si el canvas del server trae clientRev menor que el snapshot de localStorage,
+   * el flush durante unload se perdió y gana la copia local. Lo estampa el efecto
+   * de auto-save al persistir; ausente = canvas de antes de esta ola.
+   */
+  clientRev?: number;
 };
 
 /** Alias de conveniencia — algunos consumidores usan `CanvasDataV2` por simetría con V1. */

@@ -225,6 +225,13 @@ export const CanvasDataV2Schema = z.object({
   // como fallback. Sin catchall en este schema: declararla acá es lo que la hace
   // sobrevivir el auto-save (Zod stripea claves no declaradas).
   igNoBorder: z.boolean().optional(),
+  // ADR-133 (2026-10-08) — reloj del cliente (epoch ms del último cambio) estampado
+  // por el Estudio al auto-guardar. Lo usa la reconciliación del snapshot local de
+  // recuperación: si el canvas guardado en el server tiene clientRev MENOR que el
+  // snapshot de localStorage, el flush de supervivencia se perdió (sendBeacon
+  // descartado durante el unload) y gana la copia local. Aditivo: ausente = canvas
+  // guardado antes de esta ola → pierde contra cualquier snapshot.
+  clientRev: z.number().int().positive().optional(),
 });
 
 export type CanvasDataV2 = z.infer<typeof CanvasDataV2Schema>;
