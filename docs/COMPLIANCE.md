@@ -192,6 +192,23 @@ borrado seguro). El plazo es más laxo que el anónimo (30d) porque el cliente p
 `ARCHIVED` (decisión explícita del titular; lo cubre la supresión de cuenta). Corre en la misma
 corrida del cron `/api/cron/purge-anon-designs` (`purgeIdleCustomerDesigns`).
 
+### Retención de READYs abandonados — nunca ordenados (2026-10-08, ADR-130)
+
+El Estudio genera los renders de producción 300 DPI (`production-assets`, ~2,6 MB por unidad
+física) cuando el cliente llega a «Ver diseño» (status `READY`). Hasta esta fecha **ninguna
+retención cubría un READY que nunca llegó a pedido ni cotización**: esos bytes (y las fotos
+crudas asociadas) se retenían para siempre sin finalidad vigente — fuga medida en STG el
+2026-10-08: 575 renders / 1,5 GB, 2× la cuota Free de Storage.
+
+**Política:** un diseño `READY` **sin actividad ≥ 90 días** (`PURGE_IDLE_READY_AFTER_DAYS`, env
+var homónima opcional), sin carrito vivo, sin pedido y sin cotización vigente, se purga completo
+(bytes de los 3 buckets + filas; si el borrado de bytes falla, las filas NO se borran y el próximo
+ciclo reintenta). Aplica a anónimos y logueados por igual — el plazo ya es la versión laxa.
+**NO toca** `USED_IN_ORDER` (post-entrega), `ARCHIVED` ni nada reclamado por carrito/pedido/
+cotización. Si el cliente vuelve, los renders son regenerables desde `canvasData` con fotos
+nuevas. Implementación: `purgeIdleReadyDesigns` en `features/personalization/retention-service.ts`,
+misma corrida del cron `/api/cron/purge-anon-designs`.
+
 ### Retención POST-ENTREGA de fotos y renders de producción (2026-09-18)
 
 Cuando la compra SÍ se concreta, la finalidad de las fotos crudas (`customer-uploads`) y de los renders

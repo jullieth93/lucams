@@ -37,9 +37,11 @@
  * ese preview muestra la misma cara y sus bytes ya no existen.
  *
  * NO toca: USED_IN_ORDER (lo rige la retención post-entrega de retention-delivered.ts) /
- * ARCHIVED, READY nunca cotizados, ni nada referenciado por un carrito vivo o un pedido. Los DRAFT
+ * ARCHIVED, ni nada referenciado por un carrito vivo o un pedido. Los DRAFT
  * de clientes logueados los purga purgeIdleCustomerDesigns (abajo) tras 90 días sin actividad
- * (feedback Lucy 2026-09-18); el resto de lo logueado lo rige el ciclo de vida de la cuenta.
+ * (feedback Lucy 2026-09-18); los READY abandonados (que nunca llegaron a pedido) los purga
+ * purgeIdleReadyDesigns (ADR-130, 2026-10-08) — antes quedaban retenidos para siempre con sus
+ * renders 300-DPI (la fuga que infló el storage de STG sobre la cuota Free).
  * Política documentada en docs/COMPLIANCE.md. Se agenda por pg_cron (mandato #11) — ver
  * docs/OPERATIONS.md.
  */
@@ -76,6 +78,17 @@ export const PURGE_AFTER_QUOTE_CLOSED_DAYS = 90;
  * este tiempo la finalidad ya no está vigente y las fotos se purgan aunque el estado siga abierto.
  */
 export const PURGE_STALE_QUOTE_AFTER_DAYS = 365;
+
+/**
+ * Un diseño READY que NUNCA llegó a pedido (ni cotización vigente, ni carrito vivo) y lleva este
+ * tiempo sin actividad se considera abandonado y se purga (ADR-130, 2026-10-08). READY es el
+ * estado más pesado: tiene renders 300-DPI en production-assets (~2.6 MB c/u). Antes de ADR-130
+ * estos diseños NO los cubría ninguna retención y acumulaban bytes para siempre (fuga medida en
+ * STG: 1.5 GB en renders de diseños nunca ordenados). Mismo plazo que el DRAFT de logueado (90d):
+ * el "Volver a pedir" se rehace desde cero con las fotos nuevas; conservar renders de un diseño
+ * que nadie compró ni tocó en 3 meses no tiene finalidad (Ley 1581 art. 4 lit. f).
+ */
+export const PURGE_IDLE_READY_AFTER_DAYS = 90;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -357,6 +370,67 @@ export async function purgeIdleCustomerDesigns(
 
   logger.info({
     event: "retention.purge_idle_customer_designs",
+    designsPurged: result.designsPurged,
+    assetsPurged: result.assetsPurged,
+    olderThanDays: days,
+  });
+  return result;
+}
+
+/**
+ * Resuelve los días de la purga de READYs abandonados: override explícito (tests) > env var
+ * PURGE_IDLE_READY_AFTER_DAYS (ajuste operativo) > default PURGE_IDLE_READY_AFTER_DAYS.
+ */
+function resolveIdleReadyDays(overrideDays: number | undefined): number {
+  if (overrideDays !== undefined) return overrideDays;
+  const raw = process.env.PURGE_IDLE_READY_AFTER_DAYS;
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : PURGE_IDLE_READY_AFTER_DAYS;
+}
+
+/**
+ * Purga los diseños READY ABANDONADOS — nunca llegaron a pedido y nadie los toca
+ * (ADR-130, 2026-10-08). Hasta esta fecha los READY no los cubría NINGUNA retención: el
+ * cliente que llegaba a «Ver diseño» generaba renders 300-DPI en production-assets
+ * (~2.6 MB por unidad física) y, si nunca ordenaba, esos bytes quedaban para siempre
+ * (fuga medida: 575 renders / 1.5 GB en STG, 2× la cuota Free).
+ *
+ * Mismas guardas conservadoras que las pasadas hermanas: sin carrito VIVO, sin pedido
+ * (orderItems: none — un diseño ordenado pasa a USED_IN_ORDER y lo rige
+ * retention-delivered.ts) y sin cotización vigente. Aplica a anónimos y logueados
+ * (customerId indistinto): el plazo de 90d ya es la versión laxa; endurecer anónimos a
+ * 30d quedó deliberadamente fuera para no bifurcar la política (ver ADR-130).
+ * ARCHIVED nunca entra (decisión explícita del cliente). Corre desde el mismo cron
+ * purge-anon-designs.
+ * @param opts.olderThanDays días sin actividad (default PURGE_IDLE_READY_AFTER_DAYS / env var).
+ */
+export async function purgeIdleReadyDesigns(
+  opts?: {
+    olderThanDays?: number;
+    batchSize?: number;
+  } & QuoteRetentionOptions,
+): Promise<PurgeResult> {
+  const now = opts?.now ?? new Date();
+  const days = resolveIdleReadyDays(opts?.olderThanDays);
+  const batchSize = opts?.batchSize ?? 500;
+  const cutoff = new Date(now.getTime() - days * DAY_MS);
+  const stillNeeded = activeQuoteWhere(opts);
+
+  const readys = await prisma.design.findMany({
+    where: {
+      status: "READY",
+      updatedAt: { lt: cutoff },
+      cartItems: NO_LIVE_CART_ITEM,
+      orderItems: { none: {} },
+      quoteItems: { none: { quote: stillNeeded } },
+    },
+    select: CANDIDATE_SELECT,
+    take: batchSize,
+  });
+  const result = await purgeDesignBatch(readys);
+
+  logger.info({
+    event: "retention.purge_idle_ready_designs",
     designsPurged: result.designsPurged,
     assetsPurged: result.assetsPurged,
     olderThanDays: days,
