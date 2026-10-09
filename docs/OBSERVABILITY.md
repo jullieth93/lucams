@@ -142,6 +142,23 @@ Panel para el dev/Claude:
 - **DB connection pool saturation.**
 - **Storage usage:** % del free tier consumido.
 
+### RUM (Real User Monitoring) — tubería y panel `/admin/performance` (actualizado 2026-10-09, ADR-135)
+
+**Tubería:** `components/web-vitals.tsx` (useReportWebVitals, gateado por consentimiento "Analíticas") → `POST /api/vitals` (rate-limit 120/min IP + backstop 3000/5min) → tabla `WebVital` (retención 35 días vía cron `lucams-purge-event-logs`).
+
+**Métricas capturadas** (columnas `name`/`value`/`delta`/`target`/`navType`/`sessionId`/`userAgent`/`route`):
+
+| Métrica                            | Qué es                                                                                                           | Notas                                                                                                                                                  |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| LCP / INP / CLS / FCP / TTFB / FID | Core Web Vitals estándar                                                                                         | `target` (selector CSS del elemento) para INP, **CLS y LCP también desde 2026-10-09** (attribution v5 de web-vitals: `largestShiftTarget` / `element`) |
+| **LONGTASK** (2026-10-09)          | Bloqueo del hilo principal: `value` = duración total (ms) de long tasks (>50ms) en la visita, `delta` = cantidad | Agregada **por pageview** (1 fila/visita — nunca por entrada cruda); umbrales propios 200/600ms                                                        |
+| **PAGEWEIGHT** (2026-10-09)        | Peso de página: `value` = bytes transferidos totales, `delta` = recursos                                         | Agregada por pageview; umbrales propios 2/5 MB; recursos cross-origin sin Timing-Allow-Origin subestiman transferSize (limitación documentada)         |
+
+- **`sessionId`**: la rellena el server desde la cookie HttpOnly `cart_session` cuando el payload no la trae (validada UUID; la del payload gana) — correlación por visita.
+- **`navType`**: navigate / reload / back-forward.
+- **Panel `/admin/performance`:** cards por métrica con **p75** (estándar web.dev — antes promedio), filtros por **dispositivo** (userAgent → móvil/desktop) y **navType**, tabla p75 por ruta (LCP/INP/CLS/TTFB/LONGTASK/PAGEWEIGHT), secciones "por elemento" para INP/CLS/LCP (mínimo 3 muestras) y errores del servidor con digest.
+- **Alertas de latencia:** NO existen aún (las alertas cubren errores/crons/webhooks, no percentiles de vitals — pieza futura si el RUM lo justifica).
+
 ### Dashboard "SLOs"
 
 - Cada SLO con: % cumplimiento ventana actual, error budget remaining, tendencia 30 días.
