@@ -120,10 +120,25 @@ export function withConnectionLimit(baseUrl: string, limit: number, poolTimeoutS
  *   P1001 can't reach the database server (flap del pooler/red)
  *   P1017 server closed the connection (idle kill de Supavisor)
  *   P2024 timed out fetching a new connection from the pool (saturación local)
+ *
+ * Prisma los emite con DOS clases distintas según el punto del fallo: como
+ * PrismaClientKnownRequestError (con `code`) o como PrismaClientInitializationError
+ * (SIN `code` — medido en PRD 2026-10-09: P2024 en cold start de lambda llegó
+ * como InitializationError y el retry por código no lo reconocía). Por eso el
+ * match es por código O por el texto del mensaje (los mensajes de Prisma para
+ * estos tres casos son estables y específicos — no hay riesgo de confundirlos
+ * con errores de ejecución, que siempre llevan código).
  */
 export function isRetryableConnectionError(err: unknown): boolean {
   const code = (err as Prisma.PrismaClientKnownRequestError | null)?.code;
-  return code === "P1001" || code === "P1017" || code === "P2024";
+  if (code === "P1001" || code === "P1017" || code === "P2024") return true;
+  if (code) return false; // error de ejecución con código — jamás reintentar
+  const message = (err as Error | null)?.message ?? "";
+  return (
+    message.includes("Can't reach database server") ||
+    message.includes("Server has closed the connection") ||
+    message.includes("Timed out fetching a new connection from the connection pool")
+  );
 }
 
 const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
