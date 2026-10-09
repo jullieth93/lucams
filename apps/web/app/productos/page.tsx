@@ -272,11 +272,13 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
               ) : (
                 <>
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                    {products.map((p) => (
+                    {products.map((p, i) => (
                       <ProductCard
                         key={p.id}
                         product={p}
                         wishlisted={wishlistedIds ? wishlistedIds.has(p.id) : undefined}
+                        // ADR-132: la primera fila visible (2 col móvil × 2) es el LCP real.
+                        priority={i < 4}
                       />
                     ))}
                   </div>

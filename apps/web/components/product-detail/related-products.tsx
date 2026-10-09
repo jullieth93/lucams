@@ -16,8 +16,10 @@ export function RelatedProducts({ products }: { products: StorefrontProductCard[
         <CmsText blockKey="pdp.related.heading" fallback="También te puede gustar" />
       </h2>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {products.map((p) => (
-          <ProductCard key={p.id} product={p} />
+        {products.map((p, i) => (
+          // ADR-132: primera fila (2 col móvil) eager — el LCP de la PDP caía en una
+          // de estas cards lazy (7.2s medido con Lighthouse móvil, 2026-10-08).
+          <ProductCard key={p.id} product={p} priority={i < 2} />
         ))}
       </div>
     </section>

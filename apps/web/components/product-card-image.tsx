@@ -15,7 +15,22 @@ import { useState } from "react";
 import Image from "next/image";
 import { Sparkles } from "lucide-react";
 
-export function ProductCardImage({ src, outOfStock }: { src: string; outOfStock: boolean }) {
+export function ProductCardImage({
+  src,
+  outOfStock,
+  priority = false,
+}: {
+  src: string;
+  outOfStock: boolean;
+  /**
+   * ADR-132 (2026-10-08): la PRIMERA fila del grid (y las primeras cards de
+   * carruseles/relacionados) es el LCP real en móvil — con loading="lazy"
+   * Lighthouse medía 3.2-4.5s de load delay porque el navegador descubre la
+   * imagen recién tras layout/hidratación. priority=true → fetchpriority=high
+   * + eager. Solo la pasan los callers para las cards above-the-fold.
+   */
+  priority?: boolean;
+}) {
   const [failed, setFailed] = useState(false);
 
   if (failed) {
@@ -32,7 +47,7 @@ export function ProductCardImage({ src, outOfStock }: { src: string; outOfStock:
       alt=""
       fill
       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-      loading="lazy"
+      {...(priority ? { priority: true } : { loading: "lazy" as const })}
       onError={() => setFailed(true)}
       className={`object-cover transition-transform duration-300 group-hover:scale-105 ${
         outOfStock ? "opacity-50 grayscale" : ""

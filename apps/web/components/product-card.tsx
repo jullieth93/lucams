@@ -22,10 +22,13 @@ import type { StorefrontProductCard } from "@/features/products/public-service";
 export function ProductCard({
   product,
   wishlisted,
+  priority = false,
 }: {
   product: StorefrontProductCard;
   /** Si se pasa (cliente logueado), muestra el corazón de favoritos con este estado inicial. */
   wishlisted?: boolean;
+  /** Cards above-the-fold (primera fila del grid / primeras del carrusel) — ver ProductCardImage. */
+  priority?: boolean;
 }) {
   // #20 — el descuento se basa en el precio REALMENTE mostrado (minVariantPrice si aplica), no en el
   // basePrice, para que el tachado y el % coincidan con la cifra visible.
@@ -43,7 +46,7 @@ export function ProductCard({
         {product.images.length > 0 ? (
           // Wrapper client (T5): onError → el mismo placeholder Sparkles de "sin imágenes",
           // para que una URL rota (404) no quede como imagen quebrada.
-          <ProductCardImage src={product.images[0]} outOfStock={outOfStock} />
+          <ProductCardImage src={product.images[0]} outOfStock={outOfStock} priority={priority} />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <Sparkles className="text-brand-muted h-12 w-12" />
