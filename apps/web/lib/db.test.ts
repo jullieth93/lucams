@@ -137,7 +137,9 @@ describe("isRetryableConnectionError", () => {
     expect(isRetryableConnectionError(errWithCode("P2025"))).toBe(false); // record not found
     expect(isRetryableConnectionError(errWithCode("P1008"))).toBe(false); // operation timeout
     expect(isRetryableConnectionError(new Error("sin código"))).toBe(false);
-    expect(isRetryableConnectionError(new Error("duplicate key value violates unique constraint"))).toBe(false);
+    expect(
+      isRetryableConnectionError(new Error("duplicate key value violates unique constraint")),
+    ).toBe(false);
     expect(isRetryableConnectionError(null)).toBe(false);
     expect(isRetryableConnectionError("P1001")).toBe(false);
   });
