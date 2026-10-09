@@ -1,9 +1,13 @@
 import type { Metadata, Viewport } from "next";
-// 2026-09-25 — next/font/local con los TTF ya vendorizados en assets/fonts
-// (los mismos que usa el render de producción 300 DPI): el build ya NO descarga
+// 2026-09-25 — next/font/local con las fuentes vendorizadas en assets/fonts
+// (las mismas familias que usa el render de producción 300 DPI): el build ya NO descarga
 // fuentes de fonts.googleapis.com, que tumbaba el CI intermitentemente
 // (Turbopack: "Can't resolve '@vercel/turbopack-next/internal/font/google/font'").
-// Mismas familias, mismas CSS vars → cero cambio visual aguas abajo.
+// 2026-10-08 (ADR-132) — la web sirve los SUBSETS woff2 latin (Fredoka 159KB→65KB,
+// Inter 876KB→67KB de payload de fuente por página; LCP móvil): los TTF completos
+// se conservan para el render server-side con node-canvas (GlobalFonts los registra
+// por ruta en letter-tile-textures / production-render). Mismas familias, mismas
+// CSS vars → cero cambio visual aguas abajo.
 import localFont from "next/font/local";
 import { Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
@@ -34,14 +38,14 @@ import "./globals.css";
  */
 
 const fredoka = localFont({
-  src: "../assets/fonts/Fredoka.ttf",
+  src: "../assets/fonts/Fredoka.subset.woff2",
   variable: "--font-fredoka",
   weight: "300 700",
   display: "swap",
 });
 
 const inter = localFont({
-  src: "../assets/fonts/Inter.ttf",
+  src: "../assets/fonts/Inter.subset.woff2",
   variable: "--font-inter",
   weight: "100 900",
   display: "swap",

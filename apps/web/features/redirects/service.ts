@@ -508,23 +508,44 @@ export async function lookupActiveRedirect(
   return r;
 }
 
-const cachedLookupActiveRedirect = unstable_cache(
-  async (fromPath: string) => lookupActiveRedirect(fromPath),
-  ["url-redirect-lookup"],
-  { tags: ["redirects"], revalidate: 60 },
-);
+/**
+ * Lista COMPLETA de redirects activos (ADR-131, 2026-10-08): la tabla es chica
+ * (~130 filas en PRD) y una sola query cacheada cubre TODAS las rutas — antes
+ * el lookup era por-path, así que cada MISS de caché (por ruta distinta, por
+ * revalidate de 60s, o tras updateTag) pegaba una query a la DB por request de
+ * página, y en ráfaga esas revalidaciones competían por el pool Prisma de la
+ * lambda (P2024 medidos) o caían en el flap del pooler (P1001). Con la lista
+ * completa hay UN solo cache entry para todo el sitio: a lo sumo 1 query/minuto
+ * por instancia, y la invalidación por tag sigue aplicando al instante.
+ */
+async function listActiveRedirects(): Promise<
+  Array<{ fromPath: string; toPath: string; statusCode: number }>
+> {
+  return prisma.urlRedirect.findMany({
+    where: { isActive: true, deletedAt: null },
+    select: { fromPath: true, toPath: true, statusCode: true },
+  });
+}
+
+const cachedListActiveRedirects = unstable_cache(listActiveRedirects, ["url-redirect-list"], {
+  tags: ["redirects"],
+  revalidate: 60,
+});
 
 /**
  * Lookup que consume el proxy (B-8, auditoría cableado cliente↔admin
- * 2026-10-02). Antes el proxy llevaba un Map in-memory TTL 60s POR INSTANCIA:
- * en un despliegue multi-instancia (Vercel) las copias divergían hasta 60s y
- * un redirect nuevo tardaba en aplicar. `unstable_cache` usa la Data Cache
- * COMPARTIDA con tag "redirects": toda mutación del service emite
- * updateTag("redirects") (expire inmediato) y el revalidate de 60s queda solo
- * como red de seguridad para cambios que bypassen la app (SQL/seed directo).
- * El runtime del proxy en Next 16 es Node.js (fijo, no configurable — ver
- * docs/upgrading/version-16.md § middleware to proxy), así que unstable_cache
- * está disponible.
+ * 2026-10-02; lista completa ADR-131 2026-10-08). Antes el proxy llevaba un Map
+ * in-memory TTL 60s POR INSTANCIA: en un despliegue multi-instancia (Vercel)
+ * las copias divergían hasta 60s y un redirect nuevo tardaba en aplicar.
+ * `unstable_cache` usa la Data Cache COMPARTIDA con tag "redirects": toda
+ * mutación del service emite updateTag("redirects") (expire inmediato) y el
+ * revalidate de 60s queda solo como red de seguridad para cambios que bypassen
+ * la app (SQL/seed directo). El runtime del proxy en Next 16 es Node.js (fijo,
+ * no configurable — ver docs/upgrading/version-16.md § middleware to proxy),
+ * así que unstable_cache está disponible.
+ *
+ * El match se hace en memoria sobre la lista completa cacheada (130 filas) —
+ * una query por minuto por instancia en el peor caso, cero en el típico.
  *
  * Degradación grácil: sin incrementalCache de Next (vitest, scripts
  * standalone) unstable_cache lanza el invariante E469 en Next 16 — lo
@@ -536,7 +557,9 @@ export async function lookupActiveRedirectCached(
   fromPath: string,
 ): Promise<{ toPath: string; statusCode: number } | null> {
   try {
-    return await cachedLookupActiveRedirect(fromPath);
+    const all = await cachedListActiveRedirects();
+    const match = all.find((r) => r.fromPath === fromPath);
+    return match ? { toPath: match.toPath, statusCode: match.statusCode } : null;
   } catch (err) {
     const code = (err as { __NEXT_ERROR_CODE?: string } | null)?.__NEXT_ERROR_CODE;
     const missingCache =

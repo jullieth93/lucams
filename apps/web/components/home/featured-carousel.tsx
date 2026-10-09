@@ -93,12 +93,13 @@ export function FeaturedCarousel({ products }: { products: StorefrontProductCard
       <div className="px-0 sm:px-12">
         <div className="overflow-hidden" ref={emblaRef}>
           <div className="flex gap-4">
-            {products.map((p) => (
+            {products.map((p, i) => (
               <div
                 key={p.id}
                 className="min-w-0 shrink-0 grow-0 basis-1/2 sm:basis-1/3 lg:basis-1/4"
               >
-                <ProductCard product={p} />
+                {/* ADR-132: las 2 primeras cards se ven sin scroll en móvil. */}
+                <ProductCard product={p} priority={i < 2} />
               </div>
             ))}
           </div>

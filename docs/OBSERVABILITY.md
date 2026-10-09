@@ -265,6 +265,34 @@ Definidos en [`CONVENTIONS.md` § Logging](./CONVENTIONS.md#logging-y-request-id
 
 ---
 
+## Punto ciego conocido: la observabilidad depende de la DB que monitorea (2026-10-08)
+
+`ErrorLog` (errores de servidor, vía `instrumentation.ts → onRequestError → captureServerError`),
+`ErrorReport` (errores de navegador, vía `/api/log-error`), `WebVital` y los heartbeats de cron
+(`AlertState`) **viven en la misma Postgres que miden**. Cuando el pooler de Supabase flapea
+(P1001) o el pool de Prisma se satura (P2024), `captureServerError`/`captureClientError` fallan en
+silencio por diseño (best-effort, `lib/error-capture.ts` — nunca rompen el flujo del error
+original) y `/admin/observability` queda ciego **exactamente durante el incidente**. Evidencia:
+ErrorLog sin filas desde 2026-09-20 mientras los logs de Vercel mostraban P1001/P2024 en vivo.
+
+Mitigaciones vigentes:
+
+1. **stdout siempre tiene la verdad**: `onRequestError` loguea `server.error` (y los fallos de
+   captura loguean `observability.capture_fail`) ANTES de intentar persistir — eso llega a los
+   logs de Vercel aunque la DB esté caída.
+2. **Escaneo sin DB**: `scripts/vercel-runtime-errors.sh <alias> <segundos>` captura el stream del
+   CLI y cuenta P1001/P2024/P1017/`server.error`/`capture_fail`/5xx por ventana. Úsalo cuando
+   /admin/observability sospeche de vacío o el sitio reporte degradación. (El CLI solo streamea
+   logs nuevos: la ventana debe cubrir tráfico real).
+3. **Retry de conexión** (ADR-131): los transitorios se reintentan en el cliente Prisma, así que
+   el volumen de errores que necesitan captura debería bajar sustancialmente.
+
+Limitación residual aceptada: sin Sentry (mandato #7) ni log drain configurado, la agregación
+histórica de errores de runtime sigue siendo DB-dependiente; el escaneo CLI es la vía de
+emergencia documentada.
+
+---
+
 ## Métricas custom
 
 > **Pendiente — NO implementado (verificado 2026-09-03):** no existe `app/api/metrics` en el

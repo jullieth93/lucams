@@ -2,7 +2,9 @@
  * Cron de retención: purga los diseños DRAFT ANÓNIMOS abandonados y sus fotos del bucket privado
  * customer-uploads (Ley 1581, temporalidad/minimización — ver retention-service.ts y COMPLIANCE.md).
  * Desde 2026-09-18 también purga los DRAFT idle (≥90 días) de clientes LOGUEADOS en la misma
- * corrida (`purgeIdleCustomerDesigns`).
+ * corrida (`purgeIdleCustomerDesigns`), y desde 2026-10-08 los READY abandonados que nunca
+ * llegaron a pedido (`purgeIdleReadyDesigns`, ADR-130 — cierra la fuga de renders 300-DPI en
+ * production-assets que no cubría ninguna retención).
  * Protegido por CRON_SECRET (header `x-cron-secret` — nunca en la URL, para no filtrarlo en logs). como los demás crons.
  *
  * Se agenda con pg_cron en Supabase (mandato #11) — SQL versionado en la migración de crons HTTP y
@@ -13,6 +15,7 @@ import type { NextRequest } from "next/server";
 import {
   purgeAbandonedAnonymousDesigns,
   purgeIdleCustomerDesigns,
+  purgeIdleReadyDesigns,
 } from "@/features/personalization/retention-service";
 import { logger } from "@/lib/logger";
 import { captureServerError } from "@/lib/error-capture";
@@ -31,8 +34,15 @@ export async function GET(req: NextRequest) {
     const result = await purgeAbandonedAnonymousDesigns();
     // Mismo cron (feedback Lucy 2026-09-18): DRAFTs de logueados sin actividad ≥90 días.
     const idle = await purgeIdleCustomerDesigns();
+    // ADR-130 (2026-10-08): READYs abandonados que nunca llegaron a pedido (renders 300-DPI).
+    const idleReady = await purgeIdleReadyDesigns();
     await recordCronHeartbeat("purge-anon-designs"); // #15 dead-man switch (solo en éxito)
-    return Response.json({ ok: true, ...result, idleDesignsPurged: idle.designsPurged });
+    return Response.json({
+      ok: true,
+      ...result,
+      idleDesignsPurged: idle.designsPurged,
+      idleReadyDesignsPurged: idleReady.designsPurged,
+    });
   } catch (err) {
     logger.error({
       event: "cron.purge_anon_designs.fail",

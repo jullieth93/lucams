@@ -90,6 +90,10 @@ import {
   writeStudioDraftId,
   clearStudioDraftId,
   shouldOfferDraftResume,
+  readStudioCanvasSnapshot,
+  writeStudioCanvasSnapshot,
+  clearStudioCanvasSnapshot,
+  shouldUseCanvasSnapshot,
 } from "./lib/draft-marker";
 import { isBookmarkGalleryTag, resolveGalleryTag } from "./lib/product-kind";
 import {
@@ -343,8 +347,10 @@ export function StudioEditor({
   // Item 2.4 — descartar: limpiar el marcador y bootear un draft nuevo.
   const handleDiscardDraft = useCallback(() => {
     clearStudioDraftId(product.slug);
+    // ADR-133 — también el snapshot de recuperación del draft descartado.
+    if (resumeOffer) clearStudioCanvasSnapshot(resumeOffer);
     setResumeOffer(null);
-  }, [product.slug]);
+  }, [product.slug, resumeOffer]);
   // PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito: al click «Vista
   // previa» (antes «¡Listo!») generamos preview compositado client-side y
   // abrimos modal. El upload real (production PNGs + finalize + addToCart)
@@ -886,6 +892,33 @@ export function StudioEditor({
 
         if (cancelled) return;
 
+        // ADR-133 — reconciliación con el snapshot LOCAL de recuperación: si el
+        // flush durante unload se perdió (sendBeacon descartado en el teardown —
+        // verificado en STG), el server tiene un canvas más viejo que el
+        // localStorage de este navegador. Gana el snapshot (rev del cliente más
+        // nueva) y el boot arranca dirty para re-guardarlo en cuanto corra el
+        // auto-save. Empate o server más nuevo → el snapshot sobra y se limpia.
+        let recoveredFromLocalSnapshot = false;
+        if (initialDesignId && initialDesignCanvas) {
+          const snapshot = readStudioCanvasSnapshot(designId!);
+          if (
+            snapshot &&
+            shouldUseCanvasSnapshot({
+              snapshotRev: snapshot.rev,
+              serverClientRev: canvasData.clientRev ?? null,
+            })
+          ) {
+            try {
+              canvasData = ensureCanvasV2(snapshot.canvasData as CanvasData, initialSlotCount);
+              recoveredFromLocalSnapshot = true;
+            } catch {
+              // snapshot corrupto/manipulado → gana el canvas del server
+            }
+          } else if (snapshot) {
+            clearStudioCanvasSnapshot(designId!);
+          }
+        }
+
         // Lucy 2026-09-05 — packs: el canvasData recuperado (edición desde
         // carrito/diseños) puede ser de ANTES del control de N fotos y no
         // declarar photoSlots en raíz → se fija con el N inicial del deep-link
@@ -924,6 +957,9 @@ export function StudioEditor({
           canvasData,
           templates,
           selectedTemplateId: templateId ?? findTemplateIdForCanvas(canvasData, templates),
+          // ADR-133 — canvas recuperado del snapshot local: arrancar dirty para
+          // que el auto-save lo suba sin esperar un cambio nuevo del cliente.
+          startDirty: recoveredFromLocalSnapshot,
         });
 
         // Item 2.4 — marcador del draft activo por producto: al recargar sin
@@ -977,14 +1013,20 @@ export function StudioEditor({
   // ──────────── Auto-save 2s debounce ────────────
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
+    // ADR-133 — reloj (epoch ms) del último cambio visto por este efecto: se
+    // estampa como clientRev en lo que sube al server y en el snapshot local de
+    // recuperación, para que el boot del recover pueda comparar qué copia es
+    // más nueva.
+    let lastChangeRev = 0;
 
     const runSave = async () => {
       const current = store.getState();
       if (!current.designId || !current.canvasData) return;
       current.setAutoSaveStatus({ kind: "saving" });
+      const savedRev = lastChangeRev;
       const result = await saveCanvasAction({
         designId: current.designId,
-        canvasData: current.canvasData,
+        canvasData: savedRev ? { ...current.canvasData, clientRev: savedRev } : current.canvasData,
         // N-08 — la plantilla aplicada en el sidebar viaja con el auto-save:
         // Design.templateId la refleja (el service la valida server-side).
         templateId: current.selectedTemplateId ?? undefined,
@@ -992,6 +1034,11 @@ export function StudioEditor({
       if (result.ok) {
         current.setAutoSaveStatus({ kind: "saved", at: Date.now() });
         current.markClean();
+        // ADR-133 — el server ya persistió esta revisión: el snapshot local es
+        // redundante SOLO si no capturó un cambio más nuevo mientras el save
+        // estaba en vuelo (por eso se compara rev, no se borra a ciegas).
+        const snapshot = readStudioCanvasSnapshot(current.designId);
+        if (snapshot && snapshot.rev <= savedRev) clearStudioCanvasSnapshot(current.designId);
       } else {
         current.setAutoSaveStatus({ kind: "error", message: result.message });
       }
@@ -1002,12 +1049,37 @@ export function StudioEditor({
       if (state.canvasData === prev.canvasData) return;
       if (!state.isDirty || !state.designId || !state.canvasData) return;
 
+      lastChangeRev = Date.now();
+      // ADR-133 — snapshot local de recuperación: escritura SINCRÓNICA que
+      // sobrevive la recarga aunque el save del debounce y el beacon de unload
+      // mueran (en STG/headless el beacon despachado desde pagehide nunca sale
+      // del navegador — verificado con Playwright + DB 2026-10-08).
+      writeStudioCanvasSnapshot(
+        state.designId,
+        { ...state.canvasData, clientRev: lastChangeRev },
+        lastChangeRev,
+      );
+
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;
         void runSave();
       }, AUTO_SAVE_DELAY_MS);
     });
+
+    // ADR-133 — boot "dirty" (canvas recuperado del snapshot local, más nuevo
+    // que el del server): programar el save aunque no haya un cambio nuevo que
+    // dispare el subscribe.
+    {
+      const booted = store.getState();
+      if (booted.isDirty && booted.designId && booted.canvasData) {
+        lastChangeRev = booted.canvasData.clientRev ?? Date.now();
+        timer = setTimeout(() => {
+          timer = null;
+          void runSave();
+        }, AUTO_SAVE_DELAY_MS);
+      }
+    }
 
     // Ronda 2 QA (2026-10-08) — flush al ocultar/salir de la página: el debounce
     // de 2 s dejaba una ventana en la que una recarga perdía las asignaciones
@@ -1017,6 +1089,10 @@ export function StudioEditor({
     // navegador completa aunque la página muera) contra /api/designs/save-canvas
     // — el fetch de la Server Action se aborta con la navegación (verificado:
     // el primer flush con action seguía fallando en el e2e de certificación).
+    // ADR-133: el beacon queda como MEJOR ESFUERZO (hay entornos donde el
+    // request despachado desde pagehide nunca sale del navegador) — la red de
+    // seguridad real es el snapshot local de arriba, así que acá NUNCA se
+    // limpia el snapshot aunque sendBeacon encole con éxito.
     const flushOnHide = () => {
       if (timer) {
         clearTimeout(timer);
@@ -1026,7 +1102,9 @@ export function StudioEditor({
       if (!current.isDirty || !current.designId || !current.canvasData) return;
       const payload = JSON.stringify({
         designId: current.designId,
-        canvasData: current.canvasData,
+        canvasData: lastChangeRev
+          ? { ...current.canvasData, clientRev: lastChangeRev }
+          : current.canvasData,
         templateId: current.selectedTemplateId ?? undefined,
       });
       const blob = new Blob([payload], { type: "application/json" });
@@ -1719,6 +1797,8 @@ export function StudioEditor({
         // Item 2.4 — el diseño quedó en el carrito (READY): su lugar ahora es
         // "Mis diseños", no el retomador. Limpiar el marcador del producto.
         clearStudioDraftId(product.slug);
+        // ADR-133 — y su snapshot de recuperación (ya no hay draft que retomar).
+        clearStudioCanvasSnapshot(state.designId);
 
         // Cerramos modal antes de redirigir para evitar flicker visual.
         setPreviewModalOpen(false);

@@ -99,6 +99,21 @@ describe("init / setCanvasData", () => {
     expect(store.getState().selectedTemplateId).toBe("tpl-1");
   });
 
+  it("init con startDirty (ADR-133, recover desde snapshot local) arranca dirty; sin él, limpio", () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "p",
+      canvasData: makeCanvasData(),
+      templates: [],
+      startDirty: true,
+    });
+    expect(store.getState().isDirty).toBe(true);
+
+    const clean = setup();
+    expect(clean.getState().isDirty).toBe(false);
+  });
+
   it("setCanvasData sin canvasData previo NO apila undo (primer set)", () => {
     const store = createStudioStore();
     store.getState().setCanvasData(makeCanvasData()); // sin init: canvasData null

@@ -81,3 +81,119 @@ export function shouldOfferDraftResume(opts: {
 }): boolean {
   return !!opts.savedDesignId && !opts.urlHasDesignId && !opts.hasInitialDesign;
 }
+
+// ──────────────────────────────────────────────────────────────────
+//  ADR-133 (2026-10-08) — snapshot local de RECUPERACIÓN del canvas
+// ──────────────────────────────────────────────────────────────────
+//
+// El flush de supervivencia (sendBeacon en pagehide, ADR-129) NO es confiable:
+// verificado con Playwright contra STG que un request despachado desde pagehide
+// durante una recarga nunca sale del navegador (ni beacon ni fetch keepalive,
+// incluso de 2 bytes; el mismo beacon con la página viva sí llega). Si la
+// recarga cae dentro del debounce de 2 s (o con el save en vuelo abortado), el
+// canvas con las fotos recién asignadas se pierde y «Continuar donde quedaste»
+// volvía con el lienzo VACÍO.
+//
+// Por eso el editor escribe en cada cambio un snapshot { rev, canvasData } en
+// localStorage (sincrónico — sobrevive la recarga), con rev = reloj del cliente
+// estampado también en el canvasData que sube al server (clientRev). Al bootear
+// el recover (?designId=), si el snapshot local es más nuevo que el canvas del
+// server, gana el local y el boot arranca "dirty" para re-guardarlo.
+
+export interface StudioCanvasSnapshot {
+  /** Reloj del cliente (epoch ms) del último cambio capturado. */
+  rev: number;
+  /** Cuándo se escribió el snapshot (para poda por edad). */
+  at: number;
+  canvasData: unknown;
+}
+
+/** Snapshots con más de 7 días se podan al escribir (el draft server-side ya
+ *  habrá purgado o el cliente habrá vuelto por otro canal). */
+const SNAPSHOT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function studioCanvasSnapshotKey(designId: string): string {
+  return `lucams_studio_canvas_${designId}`;
+}
+
+function pruneStudioCanvasSnapshots(storage: Storage, now: number): void {
+  try {
+    const stale: string[] = [];
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (!key?.startsWith("lucams_studio_canvas_")) continue;
+      try {
+        const parsed = JSON.parse(storage.getItem(key) ?? "") as Partial<StudioCanvasSnapshot>;
+        if (typeof parsed.at !== "number" || now - parsed.at > SNAPSHOT_MAX_AGE_MS) stale.push(key);
+      } catch {
+        stale.push(key); // entrada corrupta — fuera
+      }
+    }
+    for (const key of stale) storage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
+/** Persiste el snapshot del canvas (mejor esfuerzo: cuota llena / incógnito → no-op). */
+export function writeStudioCanvasSnapshot(
+  designId: string,
+  canvasData: unknown,
+  rev: number,
+): void {
+  const storage = storageOrNull();
+  if (!storage || !designId || !Number.isFinite(rev) || rev <= 0) return;
+  try {
+    const snapshot: StudioCanvasSnapshot = { rev, at: Date.now(), canvasData };
+    storage.setItem(studioCanvasSnapshotKey(designId), JSON.stringify(snapshot));
+    pruneStudioCanvasSnapshots(storage, Date.now());
+  } catch {
+    // cuota llena — el snapshot simplemente no persiste
+  }
+}
+
+/** Lee el snapshot del canvas de un designId (null si no hay o es inválido). */
+export function readStudioCanvasSnapshot(designId: string): StudioCanvasSnapshot | null {
+  const storage = storageOrNull();
+  if (!storage || !designId) return null;
+  try {
+    const raw = storage.getItem(studioCanvasSnapshotKey(designId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StudioCanvasSnapshot>;
+    if (
+      typeof parsed.rev !== "number" ||
+      !parsed.canvasData ||
+      typeof parsed.canvasData !== "object"
+    )
+      return null;
+    return {
+      rev: parsed.rev,
+      at: typeof parsed.at === "number" ? parsed.at : 0,
+      canvasData: parsed.canvasData,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function clearStudioCanvasSnapshot(designId: string): void {
+  const storage = storageOrNull();
+  if (!storage || !designId) return;
+  try {
+    storage.removeItem(studioCanvasSnapshotKey(designId));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * ¿El snapshot local gana sobre el canvas que devolvió el server? Sí solo si es
+ * estrictamente más nuevo (empate → server: ya tiene el mismo contenido).
+ */
+export function shouldUseCanvasSnapshot(opts: {
+  snapshotRev: number | null;
+  serverClientRev: number | null;
+}): boolean {
+  if (opts.snapshotRev === null) return false;
+  return opts.snapshotRev > (opts.serverClientRev ?? 0);
+}
