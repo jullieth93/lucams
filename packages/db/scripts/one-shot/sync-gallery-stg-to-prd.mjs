@@ -51,15 +51,25 @@ import {
 import { diffGallery, collectStorageObjects } from "../lib/gallery-sync.mjs";
 
 const APPLY = process.argv.includes("--apply");
+// 2026-10-09 — destino parametrizable: --to=prd (default, comportamiento
+// histórico intacto) o --to=local. "prdEnv"/"db"/"prdPublicBase"/"prdSecret"
+// quedan como ALIAS del destino elegido en el resto del script.
+let TARGET = "prd";
 for (const arg of process.argv.slice(2)) {
-  if (arg !== "--apply") {
-    console.error(`✗ argumento no reconocido: ${arg} (válidos: --apply)`);
-    process.exit(1);
+  if (arg === "--apply") continue;
+  if (arg === "--to=prd" || arg === "--to=local") {
+    TARGET = arg.slice(5);
+    continue;
   }
+  console.error(`✗ argumento no reconocido: ${arg} (válidos: --apply, --to=prd, --to=local)`);
+  process.exit(1);
 }
 
 const STG_ENV = new URL("../../../../.env.stg", import.meta.url).pathname;
 const PRD_ENV = new URL("../../../../.env.local.nube-backup", import.meta.url).pathname;
+const LOCAL_ENV = new URL("../../../../.env.local", import.meta.url).pathname;
+const TARGET_ENV = TARGET === "local" ? LOCAL_ENV : PRD_ENV;
+const TARGET_LABEL = TARGET === "local" ? ".env.local" : ".env.local.nube-backup";
 
 // Mismo parser de .env que sync-nomag-variants-to-prd.mjs (sin dependencias).
 function loadEnvFile(path) {
@@ -76,6 +86,11 @@ function loadEnvFile(path) {
       const q = val[0];
       const end = val.indexOf(q, 1);
       val = end > 0 ? val.slice(1, end) : val.slice(1);
+    } else {
+      // Comentario inline `KEY=valor  # nota` (usado en .env.local): cortar en
+      // el primer " #" — solo en valores sin comillas.
+      const hash = val.indexOf(" #");
+      if (hash > 0) val = val.slice(0, hash).trim();
     }
     out[key] = val;
   }
@@ -83,16 +98,17 @@ function loadEnvFile(path) {
 }
 
 const stgEnv = loadEnvFile(STG_ENV);
-const prdEnv = loadEnvFile(PRD_ENV);
+const prdEnv = loadEnvFile(TARGET_ENV);
 
 // Fail-closed anti-archivos-cruzados: cada .env debe clasificar como su ambiente
 // (mismos refs que env-guard). Si no, abortar antes de abrir conexiones.
 const stgKind = classifyUrl(stgEnv.DIRECT_URL);
 const prdKind = classifyUrl(prdEnv.DIRECT_URL);
-if (stgKind !== "stg" || prdKind !== "prd") {
+const expectedTargetKind = TARGET === "local" ? "local" : "prd";
+if (stgKind !== "stg" || prdKind !== expectedTargetKind) {
   console.error(
     `✗ credenciales cruzadas o irreconocibles: .env.stg clasifica como "${stgKind}" y ` +
-      `.env.local.nube-backup como "${prdKind}" (esperado: stg y prd). Abortando.`,
+      `${TARGET_LABEL} como "${prdKind}" (esperado: stg y ${expectedTargetKind}). Abortando.`,
   );
   process.exit(1);
 }
@@ -266,6 +282,15 @@ async function main() {
   // 2) Escrituras en DB (fila a fila: un fallo no aborta el lote).
   let inserted = 0;
   let updated = 0;
+  // 2026-10-09 — reescritura de host: las URLs de la galería deben apuntar al
+  // bucket del DESTINO (los objetos ya se copiaron arriba). Antes se copiaban
+  // verbatim con el host de STG → en PRD/LOCAL el guard anti-SSRF de
+  // assignPredesignedToDesignAction las rechazaba con «Diseño no disponible»
+  // (bug latente desde la primera corrida del script, detectado hoy).
+  const toTargetHost = (url) =>
+    typeof url === "string" && stgPublicBase && url.startsWith(stgPublicBase)
+      ? prdPublicBase + url.slice(stgPublicBase.length)
+      : url;
   for (const row of inserts) {
     try {
       await db.designGalleryImage.create({
@@ -273,8 +298,8 @@ async function main() {
           id: row.id, // mismo id: re-corridas idempotentes, sin duplicados
           tag: row.tag,
           name: row.name,
-          imageUrl: row.imageUrl,
-          imageUrlB: row.imageUrlB,
+          imageUrl: toTargetHost(row.imageUrl),
+          imageUrlB: toTargetHost(row.imageUrlB),
           variantFilter: row.variantFilter ?? undefined,
           order: row.order,
           isActive: row.isActive,
@@ -295,7 +320,9 @@ async function main() {
   for (const { row, prdRow, fields } of updates) {
     try {
       const data = { updatedBy: "system:sync-gallery-stg-to-prd" };
-      for (const f of fields) data[f] = f === "variantFilter" ? (row[f] ?? null) : row[f];
+      for (const f of fields)
+        data[f] =
+          f === "variantFilter" ? (row[f] ?? null) : toTargetHost(row[f]);
       // where por id de PRD: en cruces tag+name la cuid difiere de la de STG y se conserva la de PRD.
       await db.designGalleryImage.update({ where: { id: prdRow.id }, data });
       updated++;

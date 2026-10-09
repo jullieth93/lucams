@@ -123,7 +123,14 @@ export function StudioPhotoPreview({
   let displayHeight = displayWidth * aspect;
   if (displayHeight > MAX_H) {
     displayHeight = MAX_H;
-    displayWidth = Math.max(220, Math.round(displayHeight / aspect));
+    // Bug 2026-10-09 (reporte owner: el editor no concuerda con el lienzo en
+    // separadores) — el piso de 220px de ancho ROMPÍA el aspecto en productos
+    // muy altos (aspect > MAX_H/220 ≈ 2.25): el Stage quedaba más ancho que la
+    // proporción real y la parte inferior del contenido quedaba recortada
+    // (overflow hidden), así que la foto NO se veía completa como en la grilla.
+    // El piso ahora es 120px: el catálogo actual (aspect ≤ 3.75 en 4×15) cabe
+    // ≥132px a MAX_H, el aspecto se preserva y el contenido siempre se ve entero.
+    displayWidth = Math.max(120, Math.round(displayHeight / aspect));
   }
 
   // ── Estilo de tarjeta — misma clasificación que StudioSlot (WYSIWYG) ──

@@ -56,6 +56,16 @@ function hasQualityWarning(asset: StudioAsset): boolean {
 /** Fase 2 · 2.5 — estilo segmented-control de los tabs del picker. */
 const PICKER_TAB_TRIGGER_CLASS =
   "text-brand-muted data-[state=active]:text-brand-purple-dark flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-xs font-semibold transition-colors data-[state=active]:bg-white data-[state=active]:shadow-sm";
+/** 2026-10-09 (owner) — hover EVIDENTE en ambos tabs: antes el estado hover era
+ * imperceptible (solo cambiaba el tono del texto). Sombra + fondo + texto. */
+const PICKER_TAB_HOVER_CLASS = "hover:bg-white/80 hover:text-brand-purple-dark hover:shadow-sm";
+/** 2026-10-09 (owner) — el tab «Prediseñados» se diferencia del de «Mis fotos»
+ * (existencia invisible = feature sin uso): acento turquesa de marca incluso
+ * inactivo, más fuerte activo. String COMPLETO (no se compone con el base: los
+ * conflictos text/bg de Tailwind se resuelven por orden del CSS generado, no
+ * del atributo — duplicar las utilidades neutras aquí evita el choque). */
+const PICKER_TAB_PREDESIGNED_CLASS =
+  "bg-brand-turquoise/15 text-brand-purple-dark/80 flex flex-1 items-center justify-center gap-1.5 rounded-md py-2 text-xs font-semibold transition-colors data-[state=active]:bg-brand-turquoise/30 data-[state=active]:text-brand-purple-dark data-[state=active]:shadow-sm";
 
 /** Diseño prediseñado de la galería (ADR-057 B2). */
 export type PredesignedItem = {
@@ -631,12 +641,18 @@ export function StudioAssetPickerModal({
                             aria-label={texts.fotos.pickerTabsAria}
                             className="bg-brand-purple/5 flex w-full gap-1 rounded-lg p-1"
                           >
-                            <TabsTrigger value="fotos" className={PICKER_TAB_TRIGGER_CLASS}>
+                            <TabsTrigger
+                              value="fotos"
+                              className={`${PICKER_TAB_TRIGGER_CLASS} ${PICKER_TAB_HOVER_CLASS}`}
+                            >
                               <ImageIcon className="h-3.5 w-3.5" aria-hidden />
                               {texts.fotos.pickerTabFotos}
                               <span className="tabular-nums">({assets.length})</span>
                             </TabsTrigger>
-                            <TabsTrigger value="predisenados" className={PICKER_TAB_TRIGGER_CLASS}>
+                            <TabsTrigger
+                              value="predisenados"
+                              className={`${PICKER_TAB_PREDESIGNED_CLASS} ${PICKER_TAB_HOVER_CLASS}`}
+                            >
                               <Sparkles className="h-3.5 w-3.5" aria-hidden />
                               {texts.fotos.pickerTabPredisenados}
                               <span className="tabular-nums">({predesigned.length})</span>
