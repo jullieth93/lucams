@@ -3946,3 +3946,38 @@ Conclusión: en este entorno (Chromium headless + HTTPS + latencia real) **ning�
 **Por qué:** la promesa «tu avance está a salvo» tiene que ser cierta aunque TODA la red falle durante el unload (recarga accidental, crash, pestaña cerrada dentro del debounce). localStorage es la única vía sincrónica que sobrevive garantizada; la reconciliación por reloj de cliente la hace segura en multi-dispositivo (la copia más nueva gana) y multi-pestaña razonable.
 
 **Consecuencia:** +~5-30 KB de localStorage por draft activo (podado a 7 d y por confirmación de save). Ventana residual de pérdida: cambios hechos en una sesión que nunca vuelve al Estudio en el mismo navegador Y cuyo save/beacon murieron — el avance queda recuperable solo hasta la próxima visita (aceptable: el borrador server-side sigue existiendo, solo con datos más viejos). `clientRev` es informativo: el precio y la producción nunca lo leen. Tests: `draft-marker.test.ts` (snapshot + decisión) y `store-core.test.ts` (`init startDirty`).
+
+---
+
+## ADR-134 — Eliminación permanente de productos desde la papelera del admin
+
+**Fecha:** 2026-10-09
+**Estado:** ✅ Aceptada (a pedido del owner tras el archivado de separadores-alargados en la homologación 2026-10-09)
+
+**Contexto:** el admin de productos tenía Archivar (soft delete) y Restaurar, pero ninguna vía de borrado real: la papelera crece para siempre y los productos de prueba/error no se pueden limpiar (prediseñados ya tenía el patrón desde la ronda QA 1: `purgeGalleryImageAction`). El owner lo pidió explícitamente al decidir dejar `separadores-alargados` archivado ("debería tener la opción también de eliminar").
+
+**Decisión:** `hardDeleteProduct` (service, Prisma-only) + `purgeProductAction` + botón «Eliminar» en la papelera (`/admin/productos`, filtro archivados). Reglas: ① solo productos ARCHIVADOS (eliminar un vivo nunca es válido); ② bloqueo con mensaje claro si hay referencias: diseños del Estudio (`Design.productId` Restrict), items de pedido o carrito vivo sobre sus variantes (Restrict), reseñas (Cascade — sin la guarda el borrado se llevaría contenido de clientes en silencio); ③ purga de imágenes del bucket (product.images + variant.images) ANTES de borrar la fila — si falla el storage, la fila se conserva (nunca bytes sin fila); ④ confirmación fuerte en UI (escribir ELIMINAR, patrón de mi-cuenta/eliminar); ⑤ audit log `product.purge` + `updateTag("catalog")` + revalidatePath del storefront.
+
+**Por qué:** irreversible por diseño, pero con guardas que hacen imposible romper integridad referencial o perder contenido de clientes por accidente; todo lo demás cuelga con Cascade seguro (variantes, plantillas, wishlist, back-in-stock, tiers, receta, ocasiones).
+
+**Consecuencia:** tests de integración en `service.integration.test.ts` (5 casos: vivo→false, limpio→borra+cascada, bloqueos por Design/CartItem/Review). `separadores-alargados` queda archivado en los 3 ambientes (decisión owner) y es elegible para purga cuando el owner decida (sus diseños QA fueron borrados en el reset STG 2026-10-08; en PRD hay que verificar referencias antes — la acción las reporta).
+
+---
+
+## ADR-135 — RUM extendido: long tasks y peso de página por visita, atribución por elemento para CLS/LCP, sessionId por cookie y admin con p75 + filtros
+
+**Fecha:** 2026-10-09
+**Estado:** ✅ Aceptada (a pedido del owner tras el incidente 2026-10-08: "capturar TODAS las métricas y mapearlas en el admin")
+
+**Contexto:** la tubería RUM (`web-vitals.tsx → /api/vitals → WebVital`) solo capturaba LCP/INP/CLS/FCP/TTFB/FID con `target` solo para INP; `/admin/performance` mostraba promedios (no p75) sin desglose por dispositivo ni tipo de navegación; `sessionId` estaba en el schema pero nunca se enviaba (la cookie `cart_session` es HttpOnly — el cliente no puede leerla); y no había señal de _por qué_ el hilo principal se bloquea (long tasks) ni de peso de página por ruta — justo lo que el owner veía en DevTools → Network.
+
+**Decisión:**
+① **Métricas nuevas agregadas por pageview, NUNCA por entrada cruda** (volumen controlado: 1 fila por métrica por página; WebVital ya crece ~24k filas/semana con retención 35d): `LONGTASK` (PerformanceObserver("longtask"); `value` = duración total ms de tasks >50ms en la visita, `delta` = cantidad) y `PAGEWEIGHT` (`value` = bytes transferidos totales de la página, `delta` = recursos). Mismo gate de consentimiento "Analíticas" y mismos rate limits/backstops del route; el enum Zod se extiende y los umbrales son de la casa (web.dev no publica para ellas: LONGTASK 200/600ms, PAGEWEIGHT 2MB/5MB).
+② **Atribución por elemento para CLS y LCP** con la columna `target` existente (web-vitals v5 attribution ya compilada en Next: `largestShiftTarget` y `element`): cero filas nuevas, secciones "por elemento" en el admin espejo de la de INP.
+③ **sessionId por cookie en el server**: `/api/vitals` toma `cart_session` del header Cookie si el payload no la trae (el cliente no puede leerla por HttpOnly) — validada como UUID; la del payload tiene prioridad.
+④ **Admin `/admin/performance`**: cards por métrica con **p75** (estándar web.dev), filtros por dispositivo (userAgent → móvil/desktop) y navType (navigate/reload/back-forward), secciones Long tasks y Peso de página por ruta.
+⑤ **Perf config** (mismo paquete): `images.minimumCacheTTL` 4h → 7 días (las imágenes del catálogo viven en paths con UUID — inmutables en la práctica; cada miss evita un re-encode del optimizer en serverless). NO se agregó `optimizePackageImports`: Next 16.3 ya lo trae por defecto para `lucide-react` y demás librerías grandes (verificado en `next/dist/server/config.js`), y AVIF quedó descartado por costo de encode en serverless (WebP default se mantiene).
+
+**Por qué:** con p75 por ruta + por elemento + long tasks + peso de página, el "se siente lento" deja de ser anecdótico: cada queja se puede mapear a una ruta, un elemento y una causa (bloqueo de hilo vs bytes vs servidor) — la misma evidencia que se usó para diagnosticar el incidente 2026-10-08 ahora queda capturada de forma continua.
+
+**Consecuencia:** volumen máximo esperado +2 filas por pageview (LONGTASK/PAGEWEIGHT) — absorbido por la retención existente. Riesgo residual: PerformanceObserver("resource") no reporta `transferSize` para recursos cross-origin sin Timing-Allow-Origin (subestima el peso de imágenes del bucket si el bucket no emite TAO — verificar y, si aplica, agregar el header en Supabase Storage o aceptar la subestimación documentada).
