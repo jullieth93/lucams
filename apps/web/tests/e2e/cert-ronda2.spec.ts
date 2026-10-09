@@ -150,7 +150,10 @@ test("1. Calendario — la Nevera 3D muestra las tarjetas", async ({ page }, tes
 test("2. Separadores — Cara A visible arriba + toggle «Ver respaldo»", async ({
   page,
 }, testInfo) => {
-  await openStudioAndFill(page, "separadores-alargados", 2);
+  // 2026-10-09: el objetivo era separadores-alargados, archivado por decisión del
+  // owner — la certificación corre contra el separador activo (mismo libro 3D +
+  // toggle Cara A/B). Si se archiva este, apuntar a otro separador activo.
+  await openStudioAndFill(page, "separadores-magneticos", 2);
   await page
     .getByRole("button", { name: /Ver en un libro/i })
     .first()
