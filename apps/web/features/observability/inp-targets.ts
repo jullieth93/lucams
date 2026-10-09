@@ -1,12 +1,13 @@
 /*
  * Paquete J (2026-10-02) — INP p75 agrupado por ELEMENTO (WebVital.target).
+ * Paquete C (2026-10-09) — generalizado a cualquier métrica con target:
+ * desde esa fecha el RUM también persiste el elemento para CLS
+ * (attribution.largestShiftTarget) y LCP (attribution.element).
  *
- * Desde 2026-09-18 el RUM propio persiste attribution.interactionTarget (el
- * selector CSS del elemento que produjo la interacción lenta). La tabla por
- * ruta de /admin/performance dice QUÉ página duele; esta tabla dice QUÉ
- * elemento — es el cierre del ciclo de medición de la auditoría §E-4 (los
- * sospechosos rankeados se confirman o descartan con esta vista, sin correr
- * el SQL de scripts/diag-stg/04-inp-webvitals.sql a mano).
+ * La tabla por ruta de /admin/performance dice QUÉ página duele; esta tabla
+ * dice QUÉ elemento — es el cierre del ciclo de medición de la auditoría
+ * §E-4 (los sospechosos rankeados se confirman o descartan con esta vista,
+ * sin correr el SQL de scripts/diag-stg/04-inp-webvitals.sql a mano).
  *
  * Función pura sobre las mismas filas crudas de la ventana (el fetch ya las
  * trae para la tabla por ruta — no es una query extra).
@@ -25,12 +26,14 @@ export type InpTargetRow = {
 
 /**
  * Agrupa filas (route, name, value, target) por (route, target) quedándose
- * solo con INP y calculando p50/p75/p95 + max. Mínimo `minSamples` muestras
- * por grupo (como el HAVING del SQL de diagnóstico: con 1-2 muestras el p75
- * no dice nada). Orden: peor p75 primero, tope `limit` filas.
+ * solo con la métrica `metricName` y calculando p50/p75/p95 + max. Mínimo
+ * `minSamples` muestras por grupo (como el HAVING del SQL de diagnóstico:
+ * con 1-2 muestras el p75 no dice nada). Orden: peor p75 primero, tope
+ * `limit` filas.
  */
-export function buildInpTargetTable(
+export function buildTargetTable(
   rows: Array<{ route: string; name: string; value: number; target: string | null }>,
+  metricName: string,
   opts?: { minSamples?: number; limit?: number },
 ): InpTargetRow[] {
   const minSamples = opts?.minSamples ?? 3;
@@ -38,8 +41,8 @@ export function buildInpTargetTable(
 
   const groups = new Map<string, { route: string; target: string; values: number[] }>();
   for (const r of rows) {
-    if (r.name !== "INP" || !r.target) continue;
-    const key = `${r.route}${r.target}`;
+    if (r.name !== metricName || !r.target) continue;
+    const key = `${r.route} ${r.target}`;
     let entry = groups.get(key);
     if (!entry) {
       entry = { route: r.route, target: r.target, values: [] };
@@ -69,4 +72,12 @@ export function buildInpTargetTable(
         a.target.localeCompare(b.target),
     )
     .slice(0, limit);
+}
+
+/** Atajo histórico (Paquete J): buildTargetTable(rows, "INP", opts). */
+export function buildInpTargetTable(
+  rows: Array<{ route: string; name: string; value: number; target: string | null }>,
+  opts?: { minSamples?: number; limit?: number },
+): InpTargetRow[] {
+  return buildTargetTable(rows, "INP", opts);
 }

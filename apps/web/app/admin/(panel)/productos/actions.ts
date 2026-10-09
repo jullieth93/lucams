@@ -17,12 +17,16 @@ import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
 import {
   createProduct,
+  getProductPurgeBlockers,
+  hardDeleteProduct,
   ProductValidationError,
   restoreProduct,
   softDeleteProduct,
   toggleProductActive,
   updateProduct,
 } from "@/features/products/service";
+import { deleteProductImage } from "@/lib/storage";
+import { prisma } from "@/lib/db";
 import { ProductCreateSchema, ProductUpdateSchema } from "@/features/products/schemas";
 
 export type ProductActionState = {
@@ -292,6 +296,74 @@ export async function restoreProductAction(formData: FormData): Promise<void> {
   revalidatePath("/productos");
   revalidatePath("/", "layout");
   redirect("/admin/productos?restored=1");
+}
+
+/**
+ * ELIMINAR PERMANENTEMENTE un producto archivado (2026-10-09, a pedido del
+ * owner — espejo de purgeGalleryImageAction de prediseñados). Purga las
+ * imágenes del bucket (product.images + variant.images) y borra la fila con
+ * sus cascadas seguras. Irreversible — la UI pide escribir ELIMINAR.
+ * Bloquea con mensaje claro si hay diseños, pedidos, carritos o reseñas
+ * referenciando el producto. Si la purga de storage falla se ABORTA y la fila
+ * se conserva (reintentable; nunca quedan bytes sin fila).
+ */
+export async function purgeProductAction(formData: FormData): Promise<ProductActionState> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Datos inválidos." };
+
+  const blockers = await getProductPurgeBlockers(id);
+  const reasons: string[] = [];
+  if (blockers.orderItems > 0) reasons.push(`${blockers.orderItems} pedido(s) lo contienen`);
+  if (blockers.designs > 0) reasons.push(`${blockers.designs} diseño(s) del Estudio lo usan`);
+  if (blockers.cartItems > 0) reasons.push(`${blockers.cartItems} carrito(s) vivo(s) lo tienen`);
+  if (blockers.reviews > 0)
+    reasons.push(`${blockers.reviews} reseña(s) de clientes (bórralas primero si procede)`);
+  if (reasons.length > 0) {
+    return { error: `No se puede eliminar: ${reasons.join("; ")}.` };
+  }
+
+  // Bytes primero: si la purga de storage falla, no se borra la fila.
+  const media = await prisma.product.findUnique({
+    where: { id },
+    select: { images: true, variants: { select: { images: true } } },
+  });
+  if (!media) return { error: "Producto no encontrado." };
+  try {
+    for (const url of [...media.images, ...media.variants.flatMap((v) => v.images)]) {
+      await deleteProductImage(url);
+    }
+  } catch (err) {
+    logger.warn(
+      {
+        event: "admin.product.purge_fail",
+        adminId: session.admin.id,
+        id,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "Failed to purge product images",
+    );
+    return {
+      error:
+        "No se pudieron borrar las imágenes del servidor. El producto sigue archivado; inténtalo de nuevo.",
+    };
+  }
+
+  const purged = await hardDeleteProduct(id);
+  if (!purged) return { error: "El producto no está archivado (archívalo primero)." };
+
+  logger.info({ event: "admin.product.purged", adminId: session.admin.id, productId: id });
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "product.purge",
+    entityType: "Product",
+    entityId: id,
+  });
+  revalidatePath("/admin/productos");
+  revalidatePath("/productos");
+  revalidatePath("/", "layout");
+  return { success: true };
 }
 
 /** Toggle isActive (activa o desactiva sin archivar). Reflejo inmediato en storefront. */

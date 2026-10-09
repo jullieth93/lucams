@@ -372,6 +372,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                       <div className="flex items-center justify-end gap-2">
                         <ProductQuickActions
                           productId={p.id}
+                          productName={p.name}
                           isActive={p.isActive}
                           isArchived={p.deletedAt !== null}
                         />

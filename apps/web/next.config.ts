@@ -41,6 +41,13 @@ const nextConfig: NextConfig = {
     // solo fuera de producción; en Vercel el optimizer solo fetchea supabase.co
     // (IP pública) y el guard queda intacto.
     dangerouslyAllowLocalIP: process.env.NODE_ENV !== "production",
+    // ADR-135 (2026-10-09): el default de Next 16 es 4h (14400s). Las imágenes
+    // del catálogo/galería viven en paths con UUID (cada upload = objeto nuevo,
+    // la URL es efectivamente inmutable), así que el TTL largo no tiene costo
+    // de staleness y cada MISS evita un fetch + re-encode del optimizer en
+    // serverless (medido en el incidente 2026-10-08: imágenes LCP compitiendo
+    // con el JS en móvil 4G).
+    minimumCacheTTL: 604_800, // 7 días
     remotePatterns: [
       {
         protocol: "https",

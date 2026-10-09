@@ -92,15 +92,25 @@ import {
 const SYNC_TAG = "system:sync-catalog-stg-to-prd";
 
 const APPLY = process.argv.includes("--apply");
+// 2026-10-09 — destino parametrizable: --to=prd (default, comportamiento
+// histórico intacto) o --to=local (espejo del stack de desarrollo). El resto
+// del script opera sobre "prdEnv"/"db" como ALIAS del destino elegido.
+let TARGET = "prd";
 for (const arg of process.argv.slice(2)) {
-  if (arg !== "--apply") {
-    console.error(`✗ argumento no reconocido: ${arg} (válidos: --apply)`);
-    process.exit(1);
+  if (arg === "--apply") continue;
+  if (arg === "--to=prd" || arg === "--to=local") {
+    TARGET = arg.slice(5);
+    continue;
   }
+  console.error(`✗ argumento no reconocido: ${arg} (válidos: --apply, --to=prd, --to=local)`);
+  process.exit(1);
 }
 
 const STG_ENV = new URL("../../../../.env.stg", import.meta.url).pathname;
 const PRD_ENV = new URL("../../../../.env.local.nube-backup", import.meta.url).pathname;
+const LOCAL_ENV = new URL("../../../../.env.local", import.meta.url).pathname;
+const TARGET_ENV = TARGET === "local" ? LOCAL_ENV : PRD_ENV;
+const TARGET_LABEL = TARGET === "local" ? ".env.local" : ".env.local.nube-backup";
 
 // Mismo parser de .env que sync-gallery-stg-to-prd.mjs (sin dependencias).
 function loadEnvFile(path) {
@@ -117,6 +127,12 @@ function loadEnvFile(path) {
       const q = val[0];
       const end = val.indexOf(q, 1);
       val = end > 0 ? val.slice(1, end) : val.slice(1);
+    } else {
+      // Comentario inline estilo `KEY=valor  # explicación` (usado en .env.local):
+      // solo en valores SIN comillas, cortar en el primer " #" — las contraseñas
+      // con '#' pegado al contenido no se ven afectadas.
+      const hash = val.indexOf(" #");
+      if (hash > 0) val = val.slice(0, hash).trim();
     }
     out[key] = val;
   }
@@ -124,15 +140,16 @@ function loadEnvFile(path) {
 }
 
 const stgEnv = loadEnvFile(STG_ENV);
-const prdEnv = loadEnvFile(PRD_ENV);
+const prdEnv = loadEnvFile(TARGET_ENV);
 
 // Fail-closed anti-archivos-cruzados: cada .env debe clasificar como su ambiente.
 const stgKind = classifyUrl(stgEnv.DIRECT_URL);
 const prdKind = classifyUrl(prdEnv.DIRECT_URL);
-if (stgKind !== "stg" || prdKind !== "prd") {
+const expectedTargetKind = TARGET === "local" ? "local" : "prd";
+if (stgKind !== "stg" || prdKind !== expectedTargetKind) {
   console.error(
     `✗ credenciales cruzadas o irreconocibles: .env.stg clasifica como "${stgKind}" y ` +
-      `.env.local.nube-backup como "${prdKind}" (esperado: stg y prd). Abortando.`,
+      `${TARGET_LABEL} como "${prdKind}" (esperado: stg y ${expectedTargetKind}). Abortando.`,
   );
   process.exit(1);
 }

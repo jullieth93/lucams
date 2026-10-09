@@ -29,7 +29,10 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const VitalSchema = z.object({
-  name: z.enum(["LCP", "FID", "CLS", "INP", "TTFB", "FCP"]),
+  // 2026-10-09 (Paquete C): LONGTASK (value=ms totales de long tasks,
+  // delta=cantidad) y PAGEWEIGHT (value=bytes transferidos, delta=recursos),
+  // agregadas por pageview en el reporter — 1 fila por página por métrica.
+  name: z.enum(["LCP", "FID", "CLS", "INP", "TTFB", "FCP", "LONGTASK", "PAGEWEIGHT"]),
   value: z.number().finite(),
   rating: z.enum(["good", "needs-improvement", "poor"]),
   delta: z.number().finite(),
@@ -42,10 +45,26 @@ const VitalSchema = z.object({
     .max(200)
     .regex(/^\/[a-zA-Z0-9/_\-[\]]*$/),
   sessionId: z.string().max(100).optional(),
-  // 2026-09-18: selector CSS del elemento que produjo el INP
-  // (attribution.interactionTarget). Solo lo envía el reporter para INP.
+  // Selector CSS del elemento asociado (web-vitals attribution):
+  // INP → interactionTarget, CLS → largestShiftTarget, LCP → element.
   target: z.string().max(200).optional(),
 });
+
+/* sessionId fallback server-side (Paquete C 2026-10-09): la cookie del carrito
+   `cart_session` es HttpOnly (lib/cart-session.ts) — el reporter cliente NO
+   puede leerla, pero el beacon/fetch same-origin la incluye en el header
+   Cookie. La extraemos acá para correlacionar métricas de una misma visita.
+   Misma defensa que peekCartSession: solo se acepta forma UUID. */
+function cartSessionFromCookies(cookieHeader: string | null): string | null {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(/(?:^|;\s*)cart_session=([^;]+)/);
+  const value = match?.[1]?.trim();
+  if (!value) return null;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+    return null;
+  }
+  return value;
+}
 
 export async function POST(request: Request) {
   try {
@@ -76,7 +95,7 @@ export async function POST(request: Request) {
         delta: parsed.data.delta,
         navType: parsed.data.navType ?? null,
         route: parsed.data.route,
-        sessionId: parsed.data.sessionId ?? null,
+        sessionId: parsed.data.sessionId ?? cartSessionFromCookies(request.headers.get("cookie")),
         target: parsed.data.target ?? null,
         userAgent: ua,
       },
