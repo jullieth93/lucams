@@ -3874,3 +3874,75 @@ intactos. Si el pool se satura en dev local, se sube vía `.env.local` sin tocar
 **Por qué:** ① la promesa "tu avance está a salvo" no puede depender de que el debounce haya corrido — el beacon la hace cierta también en recargas accidentales; ② un 504 en la ruta del dinero (agregar al carrito) es el peor lugar para un error crudo del framework; ③ el historial de compras es PII sensible — el claim es correcto solo con prueba de posesión del correo; ④ un CTA que no lleva a ninguna parte es peor que ningún CTA, y la infra de reseña por token ya existía (cron 7-30d) — el email de entrega era el momento natural de mayor disposición a reseñar.
 
 **Consecuencia:** la entregabilidad en STG seguirá en 0 hasta registrar un webhook de Resend apuntando a STG (config de dashboard, no código — hoy los eventos caen en PRD). El claim es idempotente y barato (corre en cada login). La ventana residual de pérdida de datos queda limitada a: recarga <2s tras una edición Y beacon rechazado (cola llena >64KB) — caso extremo documentado; el e2e incluye el margen humano realista (≥1-2s) entre la recarga y el click de continuar.
+
+---
+
+## ADR-130 — Retención: purga de diseños READY abandonados (cierre de la fuga de renders 300-DPI)
+
+**Fecha:** 2026-10-08
+**Estado:** ✅ Aceptada (diagnóstico degradación STG 2026-10-08)
+
+**Contexto:** el Estudio genera renders de producción 300-DPI en `production-assets` (~2.6 MB por unidad física) cuando el cliente llega a «Ver diseño» (status READY). Las retenciones existentes cubrían DRAFT anónimo (30d), DRAFT logueado idle (90d), fotos cotizadas (ciclo de vida de Quote) y bytes pesados post-entrega (90d, retention-delivered) — pero **ninguna cubría un READY que nunca llegó a pedido ni cotización**. Medición STG 2026-10-08: 575 renders / 1.5 GB en `production-assets` + 538 MB en `customer-uploads` — ~2.1 GB total, **2× la cuota Free de Storage (1 GB)**, con riesgo de restricciones de escritura en el bucket (uploads del Estudio fallando → «Algo salió mal»).
+
+**Decisión:** `purgeIdleReadyDesigns` (nueva pasada del cron `purge-anon-designs`, `features/personalization/retention-service.ts`): READY con ≥90 días sin actividad (`updatedAt`), sin carrito vivo, sin pedido y sin cotización vigente → purga completa (bytes de los 3 buckets + filas), misma maquinaria `purgeDesignBatch` (fallo de storage aborta el borrado de filas para reintento). Aplica a anónimos y logueados por igual (el plazo 90d ya es la versión laxa); `PURGE_IDLE_READY_AFTER_DAYS` permite ajuste operativo por env var. NO toca USED_IN_ORDER (retención post-entrega), ARCHIVED (decisión del cliente), ni nada reclamado por carrito/pedido/cotización.
+
+**Por qué:** un diseño completado pero nunca comprado ni tocado en 3 meses no tiene finalidad vigente (Ley 1581 art. 4 lit. f); los renders son regenerables desde canvasData si el cliente vuelve con las fotos nuevas. 90d mantiene simetría con la purga de DRAFT logueado y la ventana de "volver a pedir".
+
+**Consecuencia:** STG quedó reseteado (one-shot `stg-qa-reset-20261008.mjs`: storage 2.1 GB → 25 MB). En PRD la purga corre sola desde el deploy (cron diario); la cuota deja de crecer indefinidamente. Tests: `retention-service.idle-ready.test.ts` (16 casos, fake Prisma que evalúa el where).
+
+## ADR-131 — Pool Prisma por lambda (5 conexiones / pool_timeout 20s) + retry transitorio de adquisición de conexión + redirects del proxy con lista cacheada completa
+
+**Fecha:** 2026-10-08
+**Estado:** ✅ Aceptada (diagnóstico degradación STG 2026-10-08)
+
+**Contexto:** incidente de degradación STG («MUY lenta + "Algo salió mal de nuestro lado" en la mayoría de acciones»). Evidencia en logs Vercel: ráfagas de **P1001** (`Can't reach database server …pooler.supabase.com:6543`) y **P2024** (`Timed out fetching a new connection … connection limit: 3, timeout: 10`). La ráfaga P2024 se reprodujo bajo concurrencia moderada del E2E (~40 req/min): una lambda Next 16 atiende varias requests en el mismo proceso (render RSC + revalidaciones de `unstable_cache` + actions) y `connection_limit=3` × `pool_timeout=10s` colapsaba en timeout → 500 genérico. El P1001 se observó desde Vercel Y desde la VM con el postmaster estable (uptime 68d) → el que flapea es Supavisor/red, no Postgres. El lookup de `UrlRedirect` del proxy era la query más expuesta: una por GET de página con caché por-path (cada ruta distinta = un cache entry y una potencial query de revalidación).
+
+**Decisión:**
+① `packages/db/src/index.ts`: default `PRISMA_CONNECTION_LIMIT` 3→5 y `pool_timeout=20s` pinneado (env var `PRISMA_POOL_TIMEOUT`; params explícitos en DATABASE_URL ganan). No aumenta la presión real sobre Postgres: Supavisor en modo transacción solo ocupa upstream mientras la query corre; el tope físico (max_connections=60 del compute Free) lo vigila el pooler.
+② Extensión `$allOperations` con `runWithDbRetry`: reintenta SOLO errores de adquisición de conexión (P1001/P1017/P2024 — la query nunca se ejecutó, seguro hasta para writes), 3 intentos, backoff 300/600ms. En transacciones interactivas el retry falla rápido y propaga (la tx ya está muerta) — documentado, no empeora nada.
+③ `features/redirects/service.ts`: el lookup del proxy pasa de query por-path a **lista completa cacheada** (~130 filas, un solo cache entry, mismo tag "redirects" + revalidate 60s de red de seguridad; match en memoria). Elimina el round-trip DB por GET de página y las estampidas de revalidación multi-path.
+
+**Por qué:** los 500 genéricos del incidente eran en su mayoría errores de conectividad transitorios amplificados por un pool minúsculo y una query por-request en el proxy. Reintentar adquisición de conexión es la mitigación estándar contra flaps de pooler; la lista cacheada elimina la superficie más expuesta sin cambiar semántica (invalidación por tag intacta).
+
+**Consecuencia:** fail-open del proxy ante DB caída se conserva (`.catch(() => null)`). Los cambios son env-tunables sin redeploy de código. Tests: `lib/db.test.ts` (parsing, injection verbatim, predicate de retry, backoff) y `features/redirects/service.test.ts` (lista completa + fallback E469). Validación en STG: captura de logs Vercel durante cert E2E — 0 P1001/P2024 esperados en la ventana.
+
+---
+
+## ADR-132 — LCP móvil: fuentes subset woff2 latin + primera fila de cards con fetchpriority=high
+
+**Fecha:** 2026-10-08
+**Estado:** ✅ Aceptada (diagnóstico degradación STG 2026-10-08)
+
+**Contexto:** la degradación reportada era "mucho más marcada en móvil". La medición (WebVital STG 7d + Lighthouse móvil Moto G Power/4G contra STG) mostró que el TTFB del servidor es sano (p75 ≤400ms; 90-780ms en Lighthouse) y que la espera se concentra en el cliente: LCP móvil p75 de 4.1-4.7s en `/`, `/productos`, `/producto/[slug]` y `/carrito`. Tres causas medidas: ① payload de fuentes ~550KB/página (Inter TTF variable completo → 448KB servidos; Fredoka 103KB); ② la imagen LCP de la PDP era una card de "También te puede gustar" con `loading="lazy"` (load delay 3.2s + load time 3.0s = LCP 7.2s) — la galería principal YA tenía `priority`; ③ en `/productos` el LCP era la primera card del grid, también lazy (load delay 4.5s).
+
+**Decisión:** ① `app/layout.tsx` sirve los **subsets woff2 latin** (`Fredoka.subset.woff2` 65KB, `Inter.subset.woff2` 67KB, generados con pyftsubset conservando los ejes variables wght y los caracteres es-CO); los TTF completos se conservan en `assets/fonts/` porque el render server-side de producción los registra por ruta con node-canvas (`GlobalFonts.registerFromPath`). ② `ProductCard`/`ProductCardImage` aceptan `priority` (fetchpriority=high + eager): la pasan la primera fila del grid de `/productos` (i<4), las 2 primeras del carrusel de destacados del home y las 2 primeras de relacionados en PDP. El resto sigue lazy.
+
+**Por qué:** en 4G/móvil la imagen LCP lazy se descubre tras layout+JS; con ~1.1MB de JS por página eso son segundos. El subset de fuentes corta ~420KB de descarga crítica por página sin cambio visual (mismas familias, mismas CSS vars, display: swap).
+
+**Consecuencia:** regeneración de los subsets es manual (pyftsubset, comando documentado en el comentario de layout.tsx si cambian las fuentes). Métrica de cierre: Lighthouse móvil local antes/después + WebVital STG en 7 días (LCP p75 móvil <2.5s objetivo). Dos hallazgos de la medición quedan como P2 documentados, no tratados aquí: ① el banner de cookies (cliente, post-hidratación) queda como candidato LCP residual de la home — SSR'lo exigiría `cookies()` en el root layout y volvería dinámica toda la web (tradeoff rechazado); ② el miedo "1.1MB de JS por página pública" resultó ser peso TOTAL de página (imágenes incluidas): los scripts reales de la home son 283KB transferidos en 22 chunks y three.js/konva NO cargan fuera de /estudio — sin acción de bundle pendiente en storefront.
+
+---
+
+## ADR-133 — Durabilidad del avance del Estudio: snapshot local de recuperación reconciliado por `clientRev` (complementa ADR-129①)
+
+**Fecha:** 2026-10-08
+**Estado:** ✅ Aceptada (bug reproducido contra STG: test 3 de `cert-ronda2` «Resume» desktop 0/6 fotos tras recarga inmediata)
+
+**Contexto:** ADR-129① dejó la durabilidad del lienzo dentro de la ventana del debounce (2 s) colgada del flush `navigator.sendBeacon` en `pagehide`/`visibilitychange`. La certificación pasó 12/12 en la mañana y el mismo test falló en la tarde contra STG → carrera latente. Evidencia reunida (trace de Playwright del fallo + probes instrumentados contra STG + verificación directa en DB):
+
+1. En el fallo, el save del debounce disparó **durante** la recarga y su fetch murió con la navegación (status -1 en el trace) y **ningún request a `/api/designs/save-canvas` salió del navegador** — pese a que `sendBeacon` devolvió `true` (probe con wrapper: beacon encolado, 4535 B, `res:true`).
+2. Probe de discriminación contra STG: un beacon dummy de 2 B a la misma ruta **con la página viva llega** (400 del schema — endpoint alcanzable, la protección de Vercel no es el problema); el mismo dummy despachado **desde `pagehide` nunca aparece en red** — igual con `fetch(keepalive)`. En local (dev server, HTTP sin latencia) el mismo mecanismo sí entrega (200 en log).
+3. DB STG lo confirma: los drafts de los probes quedaron con 6 `DesignAsset` y **0 slots llenos** — el canvas nunca se persistió.
+
+Conclusión: en este entorno (Chromium headless + HTTPS + latencia real) **ningún request despachado durante el teardown de una recarga es confiable**, y el diseño no puede depender de entrega en unload como única red de seguridad.
+
+**Decisión:** snapshot de recuperación **cliente-side** independiente de la red:
+
+- En cada cambio del canvas, el efecto de auto-save escribe `localStorage["lucams_studio_canvas_<designId>"] = { rev, at, canvasData }` (sincrónico — sobrevive la recarga), con `rev = Date.now()` del cambio.
+- El `canvasData` que sube al server (action y beacon) lleva ese mismo reloj estampado en la nueva clave `clientRev` (declarada en `CanvasDataV2Schema` — Zod stripea lo no declarado).
+- Al bootear un recover (`?designId=`), si el snapshot local es estrictamente más nuevo que el `clientRev` del canvas del server (`shouldUseCanvasSnapshot`), gana el local y el boot arranca **dirty** (`init({ startDirty })`) para que el auto-save lo re-suba sin esperar otra edición. Empate/server más nuevo → el snapshot sobra y se limpia; snapshot corrupto → gana el server.
+- El beacon de `pagehide` se conserva como **mejor esfuerzo** (en navegadores reales sí entrega), pero ya no limpia nada: el snapshot solo se borra cuando un save CONFIRMADO cubre su revisión, al descartar el draft en el interstitial, o al agregar al carrito; poda por edad (7 d) al escribir.
+
+**Por qué:** la promesa «tu avance está a salvo» tiene que ser cierta aunque TODA la red falle durante el unload (recarga accidental, crash, pestaña cerrada dentro del debounce). localStorage es la única vía sincrónica que sobrevive garantizada; la reconciliación por reloj de cliente la hace segura en multi-dispositivo (la copia más nueva gana) y multi-pestaña razonable.
+
+**Consecuencia:** +~5-30 KB de localStorage por draft activo (podado a 7 d y por confirmación de save). Ventana residual de pérdida: cambios hechos en una sesión que nunca vuelve al Estudio en el mismo navegador Y cuyo save/beacon murieron — el avance queda recuperable solo hasta la próxima visita (aceptable: el borrador server-side sigue existiendo, solo con datos más viejos). `clientRev` es informativo: el precio y la producción nunca lo leen. Tests: `draft-marker.test.ts` (snapshot + decisión) y `store-core.test.ts` (`init startDirty`).
