@@ -61,6 +61,7 @@ vi.mock("next/cache", () => ({
 
 import { prisma, type Prisma } from "@/lib/db";
 import {
+  ProductPurgeBlockedError,
   ProductValidationError,
   VariantValidationError,
   bulkUpdateProductsActive,
@@ -68,6 +69,8 @@ import {
   createProduct,
   createVariant,
   getProductById,
+  getProductPurgeBlockers,
+  hardDeleteProduct,
   listCategoriesForSelect,
   listProducts,
   listVariantsByProduct,
@@ -1638,5 +1641,84 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       expect(e.field).toBe("sku");
       expect(e.message).toBe("SKU ya existe");
     });
+  });
+});
+
+describe.skipIf(!hasDb)("hardDeleteProduct / getProductPurgeBlockers (2026-10-09)", () => {
+  // Limpieza propia ANTES del afterAll global (que borra variants/products por
+  // slug RUN): las referencias Restrict harían fallar ese borrado si quedaran.
+  afterAll(async () => {
+    await prisma.review.deleteMany({ where: { createdBy: RUN } });
+    await prisma.design.deleteMany({ where: { sessionId: RUN } });
+    await prisma.cart.deleteMany({ where: { sessionId: RUN } });
+  });
+
+  it("devuelve false si el producto NO está archivado (hay que archivar primero)", async () => {
+    const cat = await makeCategory({ label: "hd" });
+    const p = await makeProduct({ categoryId: cat.id, label: "hd-vivo", deletedAt: null });
+    expect(await hardDeleteProduct(p.id)).toBe(false);
+    expect(await prisma.product.count({ where: { id: p.id } })).toBe(1);
+  });
+
+  it("elimina el archivado limpio y cascadea sus variantes", async () => {
+    const cat = await makeCategory({ label: "hd" });
+    const p = await makeProduct({
+      categoryId: cat.id,
+      label: "hd-limpio",
+      deletedAt: new Date(),
+      isActive: false,
+      variants: [{ name: "Default", skuSuffix: "D" }],
+    });
+    expect(await getProductPurgeBlockers(p.id)).toEqual({
+      designs: 0,
+      orderItems: 0,
+      cartItems: 0,
+      reviews: 0,
+    });
+    expect(await hardDeleteProduct(p.id)).toBe(true);
+    expect(await prisma.product.count({ where: { id: p.id } })).toBe(0);
+    expect(await prisma.productVariant.count({ where: { productId: p.id } })).toBe(0);
+  });
+
+  it("BLOQUEA con un Design del producto (Restrict) y no borra nada", async () => {
+    const cat = await makeCategory({ label: "hd" });
+    const p = await makeProduct({ categoryId: cat.id, label: "hd-design", deletedAt: new Date() });
+    await prisma.design.create({
+      data: { productId: p.id, sessionId: RUN, canvasData: {} },
+    });
+    const err = await hardDeleteProduct(p.id).catch((e) => e);
+    expect(err).toBeInstanceOf(ProductPurgeBlockedError);
+    expect((err as ProductPurgeBlockedError).blockers.designs).toBe(1);
+    expect(await prisma.product.count({ where: { id: p.id } })).toBe(1);
+  });
+
+  it("BLOQUEA con un CartItem sobre una variante (Restrict) y reporta el conteo", async () => {
+    const cat = await makeCategory({ label: "hd" });
+    const p = await makeProduct({
+      categoryId: cat.id,
+      label: "hd-cart",
+      deletedAt: new Date(),
+      variants: [{ name: "Default", skuSuffix: "D" }],
+    });
+    const cart = await prisma.cart.create({ data: { sessionId: RUN } });
+    await prisma.cartItem.create({
+      data: { cartId: cart.id, variantId: p.variants[0].id, qty: 1, unitPrice: 10_000 },
+    });
+    const blockers = await getProductPurgeBlockers(p.id);
+    expect(blockers.cartItems).toBe(1);
+    await expect(hardDeleteProduct(p.id)).rejects.toBeInstanceOf(ProductPurgeBlockedError);
+    expect(await prisma.product.count({ where: { id: p.id } })).toBe(1);
+  });
+
+  it("BLOQUEA con una reseña (Cascade silencioso de contenido de cliente)", async () => {
+    const cat = await makeCategory({ label: "hd" });
+    const p = await makeProduct({ categoryId: cat.id, label: "hd-review", deletedAt: new Date() });
+    await prisma.review.create({
+      data: { productId: p.id, rating: 5, comment: `fixture ${RUN}`, images: [], createdBy: RUN },
+    });
+    const err = await hardDeleteProduct(p.id).catch((e) => e);
+    expect(err).toBeInstanceOf(ProductPurgeBlockedError);
+    expect((err as ProductPurgeBlockedError).blockers.reviews).toBe(1);
+    expect(await prisma.review.count({ where: { productId: p.id } })).toBe(1);
   });
 });

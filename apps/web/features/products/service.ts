@@ -525,6 +525,62 @@ export async function restoreProduct(id: string, restoredBy: string | null) {
   return restored;
 }
 
+/**
+ * Conteos que BLOQUEAN el hard delete de un producto (2026-10-09, patrón de
+ * purgeGalleryImage para prediseñados): diseños del Estudio (Design.productId
+ * es Restrict — el delete reventaría), items de pedido y de carrito vivos sobre
+ * sus variantes (Restrict — misma razón) y reseñas (Cascade — sin la guarda el
+ * borrado se llevaría contenido de clientes en silencio). Todo lo demás cuelga
+ * con Cascade seguro (variantes, plantillas, wishlist, back-in-stock, tiers,
+ * receta de materiales, ocasiones) o SetNull (QuoteItem).
+ */
+export type ProductPurgeBlockers = {
+  designs: number;
+  orderItems: number;
+  cartItems: number;
+  reviews: number;
+};
+
+export class ProductPurgeBlockedError extends Error {
+  constructor(public readonly blockers: ProductPurgeBlockers) {
+    super("product purge blocked");
+    this.name = "ProductPurgeBlockedError";
+  }
+}
+
+export async function getProductPurgeBlockers(id: string): Promise<ProductPurgeBlockers> {
+  const [designs, orderItems, cartItems, reviews] = await Promise.all([
+    prisma.design.count({ where: { productId: id } }),
+    prisma.orderItem.count({ where: { variant: { productId: id } } }),
+    prisma.cartItem.count({ where: { variant: { productId: id } } }),
+    prisma.review.count({ where: { productId: id } }),
+  ]);
+  return { designs, orderItems, cartItems, reviews };
+}
+
+/**
+ * ELIMINA PERMANENTEMENTE un producto ARCHIVADO (papelera). Irreversible.
+ * Devuelve false si no existe o no está archivado (hay que archivar primero —
+ * la eliminación directa de un producto vivo nunca es válida). Lanza
+ * ProductPurgeBlockedError con los conteos si hay referencias que bloquean.
+ * Las imágenes del bucket las purga el CALLER antes (acción admin) — este
+ * service es Prisma-only por contrato del archivo.
+ */
+export async function hardDeleteProduct(id: string): Promise<boolean> {
+  const product = await prisma.product.findFirst({
+    where: { id },
+    select: { id: true, deletedAt: true },
+  });
+  if (!product || !product.deletedAt) return false;
+  const blockers = await getProductPurgeBlockers(id);
+  if (Object.values(blockers).some((n) => n > 0)) {
+    throw new ProductPurgeBlockedError(blockers);
+  }
+  await prisma.product.delete({ where: { id } });
+  updateTag("catalog");
+  return true;
+}
+
 /** Toggle isActive de un producto (activa/desactiva sin archivar). */
 /**
  * Verifica que cada producto (por id) sea COTIZABLE: para toda su variante viva,
