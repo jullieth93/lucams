@@ -1556,10 +1556,7 @@ export async function finalizeDesign(opts: {
   // recomponer las unidades del montaje: separadores/calendario no son grids
   // uniformes). El thumb queda provisionalmente del global; la primera página
   // lo reemplaza al llegar (miniatura representativa, decisión 2026-10-13).
-  const previewArtifactsOk = await uploadPreviewWatermarkArtifacts(
-    design.id,
-    opts.previewBuffer,
-  );
+  const previewArtifactsOk = await uploadPreviewWatermarkArtifacts(design.id, opts.previewBuffer);
 
   // Ola 3 (Lucy 2026-07-22) — SEPARADORES 2 CARAS: la pieza física cuelga de la página
   // con el DOBLEZ ARRIBA; la imprenta recibe la tira DESPLEGADA VERTICAL en disposición
@@ -2128,9 +2125,7 @@ export async function saveDesignPreviewPages(opts: {
   // nunca se marca una URL que 404.
   const wmReady =
     design.previewWatermarkedAt !== null ||
-    (design.previewUrl
-      ? await ensurePreviewWatermarkGlobal(design.id, design.previewUrl)
-      : false);
+    (design.previewUrl ? await ensurePreviewWatermarkGlobal(design.id, design.previewUrl) : false);
   await prisma.design.update({
     where: { id: design.id },
     // La miniatura representativa (thumb.webp) quedó regenerada desde la

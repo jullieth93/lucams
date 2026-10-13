@@ -42,9 +42,7 @@ export default async function DisenosPage() {
     // LISTOS exhiben la miniatura representativa WATERMARK (thumb.webp =
     // primera unidad legible; fallback al preview limpio si no hay artefactos).
     previewUrl:
-      d.status === "DRAFT"
-        ? (d.draftPreviewUrl ?? "")
-        : (designPreviewDisplay(d)?.thumbUrl ?? ""),
+      d.status === "DRAFT" ? (d.draftPreviewUrl ?? "") : (designPreviewDisplay(d)?.thumbUrl ?? ""),
     productName: d.product.name,
     productSlug: d.product.slug,
     // F-11 — solo sabemos SI hay link activo (hash en DB); el token plano ya no

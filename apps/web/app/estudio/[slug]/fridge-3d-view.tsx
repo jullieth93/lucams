@@ -483,7 +483,8 @@ function Scene({ magnets, cols, sizeCm, thicknessCm }: FridgeView3DProps) {
   // Grosor físico de la pieza (2026-10-12): 2 mm del fotoimán por defecto; el calendario pasa
   // su cartulina (thicknessCm). El z de adherencia deriva del depth → la pieza ni se hunde
   // ni flota al cambiar el grosor.
-  const depth = thicknessCm === undefined ? DEFAULT_MAGNET_DEPTH : realWorldDepth(FRIDGE_U_PER_CM, thicknessCm);
+  const depth =
+    thicknessCm === undefined ? DEFAULT_MAGNET_DEPTH : realWorldDepth(FRIDGE_U_PER_CM, thicknessCm);
   const magnetZ = magnetZForDepth(depth);
   return (
     <>

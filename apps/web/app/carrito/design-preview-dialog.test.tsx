@@ -82,7 +82,10 @@ describe("DesignPreviewDialog — pager por unidad", () => {
   });
 
   it("muestra el aviso de marca de agua solo cuando llega la prop", () => {
-    renderDialog({ pages: PAGES, watermarkNote: "Vista previa con marca de agua — tu impresión final no la lleva." });
+    renderDialog({
+      pages: PAGES,
+      watermarkNote: "Vista previa con marca de agua — tu impresión final no la lleva.",
+    });
     openDialog();
     expect(screen.getByText(/marca de agua/)).toBeInTheDocument();
     cleanup();

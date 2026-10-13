@@ -176,7 +176,7 @@ export function OrderSummary({
         </div>
         {loyaltyEarnPreview != null && loyaltyEarnPreview > 0 && !catalog && (
           <p className="text-brand-purple text-[11px] font-semibold">
-            ✨ Ganarás {loyaltyEarnPreview.toLocaleString("es-CO")} Puntos Lucams con esta compra
+            {texts.loyaltyEarn.replace("{n}", loyaltyEarnPreview.toLocaleString("es-CO"))}
           </p>
         )}
         <p className="text-brand-muted mt-1 text-[10px]">

@@ -112,7 +112,12 @@ export default async function PublicOrderPage({
           design: {
             // 2026-10-13 — sellos de artefactos watermark: el pedido público
             // exhibe la versión con marca de agua (y sus páginas por unidad).
-            select: { previewUrl: true, metadata: true, previewWatermarkedAt: true, previewPagesCount: true },
+            select: {
+              previewUrl: true,
+              metadata: true,
+              previewWatermarkedAt: true,
+              previewPagesCount: true,
+            },
           },
         },
       },

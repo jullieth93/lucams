@@ -27,10 +27,7 @@ function Scene3DFallback() {
   );
 }
 
-export class Scene3DErrorBoundary extends Component<
-  { children: ReactNode },
-  { failed: boolean }
-> {
+export class Scene3DErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false };
 
   static getDerivedStateFromError() {

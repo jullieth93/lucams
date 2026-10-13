@@ -1854,7 +1854,14 @@ function ProfilePhotoLayerRenderer({
           {/* Marcador de "avatar YA decodificado" (mismo contrato que
             `slot-photo`): la espera pre-rasterizado (slot-photo-readiness) lo
             exige antes de snapshotear, o el avatar sale vacío en la textura. */}
-          <KonvaImage name="slot-profile-photo" image={image} x={imgX} y={imgY} width={w} height={h} />
+          <KonvaImage
+            name="slot-profile-photo"
+            image={image}
+            x={imgX}
+            y={imgY}
+            width={w}
+            height={h}
+          />
         </Group>
       )}
       {/* Anillo de affordance PERMANENTE (punteado turquesa, como los textos

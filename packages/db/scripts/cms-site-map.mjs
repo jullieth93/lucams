@@ -893,6 +893,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               body: "Precios en pesos colombianos (COP) · el total es el valor final que pagas",
               sortOrder: 130,
             },
+            {
+              key: "checkout.summary.loyalty-earn",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Puntos a ganar (preview)",
+              helpText:
+                "Aviso bajo el total cuando el programa Puntos Lucams está activo. {n} se reemplaza por los puntos que ganará con la compra.",
+              category: "SUPPORT",
+              body: "✨ Ganarás {n} Puntos Lucams con esta compra",
+              sortOrder: 140,
+            },
           ],
         },
         {
@@ -2024,6 +2035,48 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 170,
             },
             {
+              key: "checkout.payment.loyalty-invalid-applied",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Puntos inválidos: aviso",
+              helpText:
+                "Redención de Puntos Lucams que dejó de valer. {puntos} = cantidad aplicada (se muestra en negrita), {error} = la razón.",
+              category: "SUPPORT",
+              body: "Tus {puntos} ya no aplican: {error}",
+              sortOrder: 172,
+            },
+            {
+              key: "checkout.payment.loyalty-invalid-note",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Puntos inválidos: nota",
+              category: "SUPPORT",
+              body: "Quítalos para continuar con el pago.",
+              sortOrder: 174,
+            },
+            {
+              key: "checkout.payment.loyalty-equivalence",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Puntos: equivalencia y tope",
+              helpText:
+                "Bajo el input de puntos. {min} = mínimo de redención, {valor} = su equivalencia en pesos, {max} = % tope del subtotal. Los valores salen de /admin/fidelizacion.",
+              category: "SUPPORT",
+              body: "{min} puntos = {valor} de descuento · hasta el {max}% del subtotal de tus productos.",
+              sortOrder: 176,
+            },
+            {
+              key: "checkout.payment.loyalty-accumulate",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Puntos: invitación a acumular",
+              helpText:
+                "Cuando el saldo no alcanza el mínimo. {min} = mínimo de redención (config de /admin/fidelizacion).",
+              category: "SUPPORT",
+              body: "Acumula {min} puntos para redimirlos como descuento en tu próxima compra.",
+              sortOrder: 178,
+            },
+            {
               key: "checkout.pay.method-aria",
               kind: "BLOCK",
               type: "TEXT",
@@ -2566,6 +2619,38 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
         // retracto/garantía, direcciones, diseños, favoritos, reseñas,
         // seguridad y eliminación de cuenta.
         {
+          key: "puntos",
+          title: "Puntos Lucams (fidelización)",
+          description:
+            "Textos del programa de puntos en el resumen de cuenta (/mi-cuenta). Visibles solo cuando el programa está activo (/admin/fidelizacion).",
+          prefixes: ["account.loyalty."],
+          sortOrder: 25,
+          fields: [
+            {
+              key: "account.loyalty.balance-value",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Equivalencia del balance",
+              helpText:
+                "Junto al balance de puntos. {valor} se reemplaza por la equivalencia en pesos (ej. «≈ $5.900 de descuento»).",
+              category: "SUPPORT",
+              body: "≈ {valor} de descuento",
+              sortOrder: 10,
+            },
+            {
+              key: "account.loyalty.mechanics",
+              kind: "BLOCK",
+              type: "TEXTAREA",
+              label: "Cómo funciona el programa",
+              helpText:
+                "Explicación de la mecánica. {earn} = pesos por punto, {per1000} = puntos por $1.000 de descuento, {min} = mínimo de redención, {max} = % tope del subtotal. Los valores salen de /admin/fidelizacion — edita solo el texto alrededor.",
+              category: "SUPPORT",
+              body: "Ganas 1 punto por cada ${earn} que pagues en tus pedidos. Al pagar puedes redimirlos como descuento: {per1000} puntos = $1.000 de descuento (mínimo {min} puntos, hasta el {max}% del valor de tus productos). Tus puntos no vencen.",
+              sortOrder: 20,
+            },
+          ],
+        },
+        {
           key: "navegacion",
           title: "Navegación de la cuenta",
           description: "Pestañas del área de cliente y botón de cerrar sesión.",
@@ -2867,6 +2952,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               category: "SUPPORT",
               body: "Lo usamos para pre-llenar tu checkout y para tu documento de venta si lo pides.",
               sortOrder: 60,
+            },
+            {
+              key: "account.perfil.nit-dv-hint",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Dígito de verificación (NIT)",
+              helpText:
+                "Aviso que muestra el DV calculado cuando el documento es NIT. {dv} se reemplaza por el dígito.",
+              category: "SUPPORT",
+              body: "Dígito de verificación: {dv} — lo agregamos al guardar.",
+              sortOrder: 70,
             },
           ],
         },

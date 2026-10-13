@@ -148,7 +148,8 @@ describe("applyPredesignedToSlot — reemplazo limpio sobre slot ocupado (2026-1
   });
 });
 
-describe("applyPredesignedToSlot — cara B ocupada (Paquete A: nunca pisar ni descartar en silencio)", () => {  it("slot B vacío → se aplica la cara B (sin aviso)", async () => {
+describe("applyPredesignedToSlot — cara B ocupada (Paquete A: nunca pisar ni descartar en silencio)", () => {
+  it("slot B vacío → se aplica la cara B (sin aviso)", async () => {
     const store = setup(2);
     const res = await applyPredesignedToSlot({ store, item: item("g1-ab"), targetSlot: 0 });
     expect(res).toEqual({ ok: true, bBlocked: false });

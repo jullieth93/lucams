@@ -35,6 +35,8 @@ export type CheckoutTexts = {
     total: string;
     noteCatalog: string;
     noteFinal: string;
+    /** Preview de puntos a ganar ({n} = cantidad). Puntos Lucams, 2026-10-13. */
+    loyaltyEarn: string;
   };
   datos: {
     contactTitle: string;
@@ -181,6 +183,13 @@ export type CheckoutTexts = {
     couponPlaceholder: string;
     couponApply: string;
     couponAppliedSuffix: string;
+    /** Puntos Lucams en el paso de pago (2026-10-13). Placeholders:
+     *  {puntos} = cantidad aplicada, {error} = razón de invalidez,
+     *  {min}/{max}/{valor} = config del programa. */
+    loyaltyInvalidApplied: string;
+    loyaltyInvalidNote: string;
+    loyaltyEquivalence: string;
+    loyaltyAccumulate: string;
   };
   pay: {
     methodAria: string;
@@ -236,6 +245,7 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     noteCatalog:
       "Precios en pesos colombianos (COP) · el envío se coordina por WhatsApp al confirmar tu cotización",
     noteFinal: "Precios en pesos colombianos (COP) · el total es el valor final que pagas",
+    loyaltyEarn: "✨ Ganarás {n} Puntos Lucams con esta compra",
   },
   datos: {
     contactTitle: "1. Contacto",
@@ -385,6 +395,11 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     couponPlaceholder: "Escribe tu código",
     couponApply: "Aplicar",
     couponAppliedSuffix: "aplicado",
+    loyaltyInvalidApplied: "Tus {puntos} ya no aplican: {error}",
+    loyaltyInvalidNote: "Quítalos para continuar con el pago.",
+    loyaltyEquivalence:
+      "{min} puntos = {valor} de descuento · hasta el {max}% del subtotal de tus productos.",
+    loyaltyAccumulate: "Acumula {min} puntos para redimirlos como descuento en tu próxima compra.",
   },
   pay: {
     methodAria: "Método de pago",
@@ -443,6 +458,7 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "summary.total": "checkout.summary.total",
   "summary.noteCatalog": "checkout.summary.note-catalog",
   "summary.noteFinal": "checkout.summary.note-final",
+  "summary.loyaltyEarn": "checkout.summary.loyalty-earn",
   "datos.contactTitle": "checkout.datos.contact-title",
   "datos.nameLabel": "checkout.datos.name-label",
   "datos.namePlaceholder": "checkout.datos.name-placeholder",
@@ -569,6 +585,10 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "payment.couponPlaceholder": "checkout.payment.coupon-placeholder",
   "payment.couponApply": "checkout.payment.coupon-apply",
   "payment.couponAppliedSuffix": "checkout.payment.coupon-applied-suffix",
+  "payment.loyaltyInvalidApplied": "checkout.payment.loyalty-invalid-applied",
+  "payment.loyaltyInvalidNote": "checkout.payment.loyalty-invalid-note",
+  "payment.loyaltyEquivalence": "checkout.payment.loyalty-equivalence",
+  "payment.loyaltyAccumulate": "checkout.payment.loyalty-accumulate",
   "pay.methodAria": "checkout.pay.method-aria",
   "pay.wompiTitle": "checkout.pay.wompi-title",
   "pay.codTitle": "checkout.pay.cod-title",

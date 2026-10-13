@@ -413,7 +413,8 @@ function toDetail(cart: RawCart): CartDetail {
         // Paquete F (2026-10-02) — sin diseño, la foto de LA VARIANTE manda sobre
         // la genérica del producto (ProductVariant.images, "vacío = hereda
         // Product.images"): el separador 2×6 mostraba la portada del 4×4.2.
-        imageUrl: designDisp?.thumbUrl ?? i.variant.images[0] ?? i.variant.product.images[0] ?? null,
+        imageUrl:
+          designDisp?.thumbUrl ?? i.variant.images[0] ?? i.variant.product.images[0] ?? null,
         designId: i.designId,
         designPreviewUrl: designDisp?.displayUrl ?? null,
         designPreviewPages: designDisp?.pageUrls ?? null,

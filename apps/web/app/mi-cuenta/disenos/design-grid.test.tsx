@@ -56,16 +56,10 @@ describe("DesignGrid — borradores y listos (2026-10-13)", () => {
       />,
     );
     const img = screen.getByRole("img", { name: /borrador de fotoimanes cuadrados/i });
-    expect(img).toHaveAttribute(
-      "src",
-      "https://cdn.test/design-previews/d1/draft-preview.webp",
-    );
+    expect(img).toHaveAttribute("src", "https://cdn.test/design-previews/d1/draft-preview.webp");
     expect(screen.getByText(texts.draftBadge)).toBeInTheDocument();
     const cta = screen.getByRole("link", { name: new RegExp(texts.draftResume) });
-    expect(cta).toHaveAttribute(
-      "href",
-      "/estudio/fotoimanes-cuadrados?designId=d1",
-    );
+    expect(cta).toHaveAttribute("href", "/estudio/fotoimanes-cuadrados?designId=d1");
   });
 
   it("DRAFT sin miniatura todavía: placeholder de marca (sin img), sin romper la tarjeta", () => {

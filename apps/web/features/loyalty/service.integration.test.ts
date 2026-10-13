@@ -56,6 +56,45 @@ const T = 30_000;
 let customerId = "";
 const customerEmail = `${RUN}@lucams.test`;
 
+// Sección global/comercio: en local ya existe (site map sembrado), pero en CI
+// la DB sale SOLO de migraciones (sin seed CMS) y el self-healing de
+// saveLoyaltySettings la necesita. Mismo patrón que ensureSection de
+// features/cms/service.integration.test.ts: el test siembra el mínimo y solo
+// borra lo que él mismo creó.
+let createdGlobalPage = false;
+let createdComercioSectionId: string | null = null;
+async function ensureSettingsSection(): Promise<void> {
+  const page = await prisma.cmsPage.findUnique({
+    where: { slug: "global" },
+    select: { id: true },
+  });
+  if (!page) {
+    createdGlobalPage = true;
+    await prisma.cmsPage.create({
+      data: {
+        slug: "global",
+        title: "Global",
+        sortOrder: 0,
+        sections: {
+          create: { key: "comercio", title: "Comercio", sortOrder: 1 },
+        },
+      },
+    });
+    return;
+  }
+  const section = await prisma.cmsSection.findUnique({
+    where: { pageId_key: { pageId: page.id, key: "comercio" } },
+    select: { id: true },
+  });
+  if (!section) {
+    const created = await prisma.cmsSection.create({
+      data: { pageId: page.id, key: "comercio", title: "Comercio", sortOrder: 999 },
+      select: { id: true },
+    });
+    createdComercioSectionId = created.id;
+  }
+}
+
 function programOn() {
   mockLoyaltySettings.LOYALTY_ENABLED = "true";
 }
@@ -96,6 +135,7 @@ async function balanceOf(id: string): Promise<number> {
 
 describe.skipIf(!hasDb)("loyalty/service — integración DB", { timeout: T }, () => {
   beforeAll(async () => {
+    await ensureSettingsSection();
     const customer = await prisma.customer.create({
       data: {
         email: customerEmail,
@@ -113,6 +153,11 @@ describe.skipIf(!hasDb)("loyalty/service — integración DB", { timeout: T }, (
     await prisma.loyaltyTxn.deleteMany({ where: { customerId } });
     await prisma.order.deleteMany({ where: { email: { contains: RUN } } });
     await prisma.customer.deleteMany({ where: { email: { contains: RUN } } });
+    // Lo sembrado por ensureSettingsSection (solo si lo creó ESTE test — en
+    // local la sección ya existía y no se toca).
+    if (createdGlobalPage) await prisma.cmsPage.deleteMany({ where: { slug: "global" } });
+    else if (createdComercioSectionId)
+      await prisma.cmsSection.deleteMany({ where: { id: createdComercioSectionId } });
   }, T);
 
   it("earn: acredita floor(total/1000) puntos al pagar y es idempotente por orden", async () => {

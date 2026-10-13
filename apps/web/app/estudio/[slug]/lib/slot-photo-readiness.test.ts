@@ -68,7 +68,11 @@ describe("waitForSlotPhotosReady", () => {
     const stages = new Map<number, FakeStage | null>([[0, stage]]);
     setTimeout(() => stage.add(".slot-profile-photo"), 50);
     const start = performance.now();
-    await waitForSlotPhotosReady([slot(0, "https://x/0.png", "https://x/avatar.png")], stages, 2000);
+    await waitForSlotPhotosReady(
+      [slot(0, "https://x/0.png", "https://x/avatar.png")],
+      stages,
+      2000,
+    );
     expect(performance.now() - start).toBeGreaterThanOrEqual(40);
   });
 

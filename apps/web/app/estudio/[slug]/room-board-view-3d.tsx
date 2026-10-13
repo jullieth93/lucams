@@ -335,7 +335,13 @@ export default function RoomBoardView3D({
     >
       <color attach="background" args={["#EBDFCF"]} />
       <Suspense fallback={null}>
-        <Scene magnets={magnets} cols={cols} style={style} sizeCm={sizeCm} thicknessCm={thicknessCm} />
+        <Scene
+          magnets={magnets}
+          cols={cols}
+          style={style}
+          sizeCm={sizeCm}
+          thicknessCm={thicknessCm}
+        />
       </Suspense>
     </Canvas>
   );

@@ -529,11 +529,7 @@ describe("flatBookmarkSlots con LARGO real (2026-10-12 — Alargados 4×15 sin s
   /** Verifica que ningún par de piezas se solape en el plano de la hoja (x/z por separado:
    *  dos piezas se solapan solo si sus rangos se intersectan en AMBOS ejes; el yaw ±0.05 o
    *  π/2±0.05 apenas agranda las cotas, se usa el eje dominante). */
-  function expectNoOverlap2D(
-    slots: { x: number; z: number; yaw: number }[],
-    w: number,
-    l: number,
-  ) {
+  function expectNoOverlap2D(slots: { x: number; z: number; yaw: number }[], w: number, l: number) {
     const boxes = slots.map((s) => {
       const extX = (w * Math.abs(Math.cos(s.yaw)) + l * Math.abs(Math.sin(s.yaw))) / 2;
       const extZ = (w * Math.abs(Math.sin(s.yaw)) + l * Math.abs(Math.cos(s.yaw))) / 2;

@@ -120,9 +120,7 @@ afterAll(async () => {
   const safe = (p: Promise<unknown>) => p.catch(() => {});
   await safe(prisma.design.deleteMany({ where: { productId } }));
   await safe(prisma.product.deleteMany({ where: { id: productId } }));
-  await safe(
-    prisma.category.deleteMany({ where: { slug: `${RUN}-cat` } }),
-  );
+  await safe(prisma.category.deleteMany({ where: { slug: `${RUN}-cat` } }));
   await safe(prisma.customer.deleteMany({ where: { email: { contains: RUN } } }));
 });
 
@@ -174,10 +172,7 @@ describe.skipIf(!hasDb)("saveCanvas — miniatura del borrador (2026-10-13)", ()
     });
 
     const paths = mock.uploads.slice(before).map((u) => u.path);
-    expect(paths).toEqual([
-      `${designId}/draft-preview.webp`,
-      `${designId}/draft-preview.webp`,
-    ]);
+    expect(paths).toEqual([`${designId}/draft-preview.webp`, `${designId}/draft-preview.webp`]);
   });
 
   it("dataURL con bytes que NO son el mime declarado → no sube nada y el canvas se guarda igual (best-effort)", async () => {

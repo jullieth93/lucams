@@ -272,7 +272,12 @@ export function DesignPreviewDialog({
       // Swipe horizontal SIN zoom = cambiar de unidad en el pager (2026-10-13).
       // Solo gestos claramente horizontales: un desplazamiento vertical sigue
       // scrolleando el diálogo. Con zoom activo el arrastre es pan, no swipe.
-      if (pageUrls && zoom.scale <= PREVIEW_ZOOM_MIN && Math.abs(dx) >= 40 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (
+        pageUrls &&
+        zoom.scale <= PREVIEW_ZOOM_MIN &&
+        Math.abs(dx) >= 40 &&
+        Math.abs(dx) > Math.abs(dy) * 1.5
+      ) {
         lastTapRef.current = null;
         goPage(dx < 0 ? 1 : -1);
         if (pointersRef.current.size === 0) panRef.current = null;

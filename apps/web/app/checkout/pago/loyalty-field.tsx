@@ -19,6 +19,7 @@ import { useFormStatus } from "react-dom";
 import { Loader2, Check, AlertTriangle, X, Sparkles } from "lucide-react";
 import { applyLoyaltyAction, removeLoyaltyAction, type LoyaltyActionState } from "./actions";
 import { formatCOP } from "@/lib/format";
+import type { CheckoutTexts } from "../checkout-texts";
 
 function RemoveButton() {
   const { pending } = useFormStatus();
@@ -42,6 +43,7 @@ export function LoyaltyField({
   appliedPoints,
   appliedDiscountCents,
   appliedError,
+  texts,
 }: {
   /** Saldo actual del cliente. */
   balance: number;
@@ -54,6 +56,8 @@ export function LoyaltyField({
   appliedPoints?: number;
   appliedDiscountCents?: number;
   appliedError?: string;
+  /** Textos CMS del paso de pago — los resuelve el padre server con getCheckoutTexts. */
+  texts: CheckoutTexts["payment"];
 }) {
   const [state, action, pending] = useActionState<LoyaltyActionState, FormData>(
     applyLoyaltyAction,
@@ -85,10 +89,11 @@ export function LoyaltyField({
           <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
           <div className="flex-1 text-sm">
             <p role="alert">
-              Tus <span className="font-bold">{appliedPoints.toLocaleString("es-CO")} puntos</span>{" "}
-              ya no aplican: {appliedError}
+              {texts.loyaltyInvalidApplied.split("{puntos}")[0]}
+              <span className="font-bold">{appliedPoints.toLocaleString("es-CO")} puntos</span>
+              {texts.loyaltyInvalidApplied.split("{puntos}")[1]?.replace("{error}", appliedError)}
             </p>
-            <p className="mt-0.5 text-xs text-amber-800">Quítalos para continuar con el pago.</p>
+            <p className="mt-0.5 text-xs text-amber-800">{texts.loyaltyInvalidNote}</p>
           </div>
           <form action={removeLoyaltyAction} className="text-amber-700">
             <RemoveButton />
@@ -136,8 +141,10 @@ export function LoyaltyField({
             </button>
           </div>
           <p className="text-brand-muted text-[11px]">
-            {minPoints.toLocaleString("es-CO")} puntos = {formatCOP(minPoints * pointValueCents)} de
-            descuento · hasta el {maxPercent}% del subtotal de tus productos.
+            {texts.loyaltyEquivalence
+              .replace("{min}", minPoints.toLocaleString("es-CO"))
+              .replace("{valor}", formatCOP(minPoints * pointValueCents))
+              .replace("{max}", String(maxPercent))}
           </p>
           {errorMsg && (
             <p id="loyalty-error" role="alert" className="text-xs text-red-700">
@@ -150,8 +157,7 @@ export function LoyaltyField({
         </form>
       ) : (
         <p className="text-brand-muted text-[11px]">
-          Acumula {minPoints.toLocaleString("es-CO")} puntos para redimirlos como descuento en tu
-          próxima compra.
+          {texts.loyaltyAccumulate.replace("{min}", minPoints.toLocaleString("es-CO"))}
         </p>
       )}
     </div>

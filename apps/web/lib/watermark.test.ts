@@ -12,7 +12,9 @@ import sharp from "sharp";
 import { applyTiledWatermark, buildWatermarkTileSvg } from "./watermark";
 
 async function tinyPng(w = 64, h = 64): Promise<Buffer> {
-  return sharp({ create: { width: w, height: h, channels: 3, background: { r: 200, g: 30, b: 90 } } })
+  return sharp({
+    create: { width: w, height: h, channels: 3, background: { r: 200, g: 30, b: 90 } },
+  })
     .png()
     .toBuffer();
 }
@@ -36,7 +38,9 @@ describe("applyTiledWatermark", () => {
     const meta = await sharp(out.data).metadata();
     expect(meta.format).toBe("webp");
     // El tiling altera píxeles: la salida no puede ser idéntica al recodeo limpio.
-    const clean = await sharp(await tinyPng(64, 48)).webp({ quality: 78 }).toBuffer();
+    const clean = await sharp(await tinyPng(64, 48))
+      .webp({ quality: 78 })
+      .toBuffer();
     expect(out.data.equals(clean)).toBe(false);
   });
 

@@ -65,10 +65,7 @@ export function designPreviewWmPagePath(designId: string, pageNumber: number): s
  * columna): los usa purgeDesignBatch para que la purga de retención borre los
  * mismos bytes que el pipeline creó. pagesCount null/0 → sin páginas.
  */
-export function designPreviewDerivedPaths(
-  designId: string,
-  pagesCount?: number | null,
-): string[] {
+export function designPreviewDerivedPaths(designId: string, pagesCount?: number | null): string[] {
   const paths = [designPreviewWmPath(designId), designPreviewThumbPath(designId)];
   const n = Math.min(PREVIEW_PAGES_MAX, Math.max(0, Math.trunc(pagesCount ?? 0) || 0));
   for (let p = 1; p <= n; p++) {

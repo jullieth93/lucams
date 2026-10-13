@@ -297,10 +297,7 @@ export const SEPARATOR_GAP = 0.25;
  * las tiras vecinas se solapaban en x y, colgando todas del mismo z, se pisaban las caras.
  * El caller pasa el stripW máximo del set (las piezas nunca se encogen: la cámara abre).
  */
-export function separatorSlotsForCount(
-  count: number,
-  stripW = 0,
-): { x: number; yaw: number }[] {
+export function separatorSlotsForCount(count: number, stripW = 0): { x: number; yaw: number }[] {
   if (count <= 0) return [];
   if (count === 1) return [{ x: 0, yaw: 0 }];
   if (count === 2) {

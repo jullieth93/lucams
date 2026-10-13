@@ -199,7 +199,9 @@ export function ProfileForm({
           </p>
           {nitDv && (
             <p className="text-brand-muted text-xs">
-              Dígito de verificación: <strong>{nitDv}</strong> — lo agregamos al guardar.
+              {texts.nitDvHint.split("{dv}")[0]}
+              <strong>{nitDv}</strong>
+              {texts.nitDvHint.split("{dv}")[1]}
             </p>
           )}
         </div>

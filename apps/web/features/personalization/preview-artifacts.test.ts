@@ -23,7 +23,8 @@ import {
   previewPageFileStem,
 } from "./preview-artifacts";
 
-const PREVIEW_URL = "https://ref.supabase.co/storage/v1/object/public/design-previews/abc123/preview.webp";
+const PREVIEW_URL =
+  "https://ref.supabase.co/storage/v1/object/public/design-previews/abc123/preview.webp";
 
 describe("convención de paths (bucket design-previews)", () => {
   it("paths derivados del designId", () => {
@@ -86,7 +87,11 @@ describe("derivación de URLs desde Design.previewUrl", () => {
 describe("designPreviewDisplay — selección con fallback", () => {
   it("sin previewUrl → null", () => {
     expect(
-      designPreviewDisplay({ previewUrl: null, previewWatermarkedAt: null, previewPagesCount: null }),
+      designPreviewDisplay({
+        previewUrl: null,
+        previewWatermarkedAt: null,
+        previewPagesCount: null,
+      }),
     ).toBeNull();
   });
 

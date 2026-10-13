@@ -30,6 +30,7 @@ import { getSiteUrl } from "@/features/emails/layout";
 import { formatCOP } from "@/lib/format";
 import { getReferralSettings } from "@/features/loyalty/settings";
 import { getLoyaltyAccountSummary, LOYALTY_REASON_LABELS } from "@/features/loyalty/service";
+import { getAccountTexts } from "./account-texts.server";
 import { ReferralCopyButton } from "./referral-copy-button";
 
 // Resuelve un bloque CMS a string plano: mismo patrón que cmsMenuText del
@@ -127,7 +128,7 @@ export default async function MiCuentaPage() {
   // resumen de Puntos Lucams (null si el programa está apagado → la sección no
   // se muestra). Los textos de "Invita y gana" interpolan el % VIGENTE de la
   // config (nada quemado: si el admin sube la promo al 25%, acá se lee 25%).
-  const [siteUrl, referrals, referralSettings, loyalty] = await Promise.all([
+  const [siteUrl, referrals, referralSettings, loyalty, accountTexts] = await Promise.all([
     getSiteUrl(),
     prisma.referral.findMany({
       where: { referrerId: customer.id },
@@ -137,6 +138,7 @@ export default async function MiCuentaPage() {
     }),
     getReferralSettings(),
     getLoyaltyAccountSummary(customer.id),
+    getAccountTexts(),
   ]);
   // T8 (2026-10-01) — el link de compartir es el short-link /r/<codigo>
   // (redirect 307 a /registro?ref=<codigo>, ver app/r/[codigo]/route.ts).
@@ -282,18 +284,22 @@ export default async function MiCuentaPage() {
                 {loyalty.balance > 0 && (
                   <>
                     {" "}
-                    ≈ <strong>{formatCOP(loyalty.balanceValueCents)}</strong> de descuento
+                    {accountTexts.loyalty.balanceValue.split("{valor}")[0]}
+                    <strong>{formatCOP(loyalty.balanceValueCents)}</strong>
+                    {accountTexts.loyalty.balanceValue.split("{valor}")[1]}
                   </>
                 )}
                 .
               </p>
               <p className="text-brand-muted mt-1 text-xs leading-snug">
-                Ganas 1 punto por cada ${loyalty.settings.earnCopPerPoint.toLocaleString("es-CO")}{" "}
-                que pagues en tus pedidos. Al pagar puedes redimirlos como descuento:{" "}
-                {loyalty.settings.redeemPointsPer1000.toLocaleString("es-CO")} puntos = $1.000 de
-                descuento (mínimo {loyalty.settings.redeemMinPoints.toLocaleString("es-CO")} puntos,
-                hasta el {loyalty.settings.redeemMaxPercent}% del valor de tus productos). Tus
-                puntos no vencen.
+                {accountTexts.loyalty.mechanics
+                  .replaceAll("{earn}", loyalty.settings.earnCopPerPoint.toLocaleString("es-CO"))
+                  .replaceAll(
+                    "{per1000}",
+                    loyalty.settings.redeemPointsPer1000.toLocaleString("es-CO"),
+                  )
+                  .replaceAll("{min}", loyalty.settings.redeemMinPoints.toLocaleString("es-CO"))
+                  .replaceAll("{max}", String(loyalty.settings.redeemMaxPercent))}
               </p>
               {loyalty.txns.length > 0 && (
                 <ul className="border-brand-purple/10 mt-3 space-y-1.5 border-t pt-3 text-xs">

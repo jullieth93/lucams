@@ -30,6 +30,15 @@ export type AccountTexts = {
     docTypePlaceholder: string;
     docNumberLabel: string;
     docHint: string;
+    /** Hint del DV calculado para NIT ({dv} = el dígito). */
+    nitDvHint: string;
+  };
+  /** Puntos Lucams en el hub /mi-cuenta (2026-10-13). {valor} = equivalencia
+   *  en pesos del balance; {earn}/{per1000}/{min}/{max} = config del programa
+   *  (features/loyalty/settings). */
+  loyalty: {
+    balanceValue: string;
+    mechanics: string;
   };
   orders: {
     countSingle: string;
@@ -210,6 +219,12 @@ export const DEFAULT_ACCOUNT_TEXTS: AccountTexts = {
     docTypePlaceholder: "Elige el tipo",
     docNumberLabel: "Número de documento",
     docHint: "Lo usamos para pre-llenar tu checkout y para tu documento de venta si lo pides.",
+    nitDvHint: "Dígito de verificación: {dv} — lo agregamos al guardar.",
+  },
+  loyalty: {
+    balanceValue: "≈ {valor} de descuento",
+    mechanics:
+      "Ganas 1 punto por cada ${earn} que pagues en tus pedidos. Al pagar puedes redimirlos como descuento: {per1000} puntos = $1.000 de descuento (mínimo {min} puntos, hasta el {max}% del valor de tus productos). Tus puntos no vencen.",
   },
   orders: {
     countSingle: "{n} pedido en tu historial",
@@ -391,6 +406,9 @@ export const ACCOUNT_TEXT_KEYS: Record<string, string> = {
   "perfil.docTypePlaceholder": "account.perfil.doc-type-placeholder",
   "perfil.docNumberLabel": "account.perfil.doc-number-label",
   "perfil.docHint": "account.perfil.doc-hint",
+  "perfil.nitDvHint": "account.perfil.nit-dv-hint",
+  "loyalty.balanceValue": "account.loyalty.balance-value",
+  "loyalty.mechanics": "account.loyalty.mechanics",
   "orders.countSingle": "account.orders.count-single",
   "orders.countMany": "account.orders.count-many",
   "orders.limitNote": "account.orders.limit-note",

@@ -308,6 +308,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
                 appliedPoints={loyalty.applied?.points ?? (ctx.state.loyaltyPoints || undefined)}
                 appliedDiscountCents={loyalty.applied?.discountCents}
                 appliedError={loyalty.error}
+                texts={texts.payment}
               />
             )}
           </div>
