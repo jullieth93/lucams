@@ -203,7 +203,23 @@ async function purgeDesignBatch(designs: PurgeCandidate[]): Promise<PurgeResult>
   if (designs.length === 0) return { designsPurged: 0, assetsPurged: 0 };
 
   const designIds = designs.map((d) => d.id);
-  const uploadPaths = designs.flatMap((d) => d.assets.map((a) => a.storageUrl)).filter(Boolean);
+  let uploadPaths = designs.flatMap((d) => d.assets.map((a) => a.storageUrl)).filter(Boolean);
+  // 2026-10-13 — no borrar bytes COMPARTIDOS con diseños vivos: cloneDesignForEdit
+  // (READY→DRAFT) crea filas DesignAsset NUEVAS con el MISMO storageUrl del original.
+  // Si el clon se borra (poda «últimos N» de draft-lifecycle o una purga idle) mientras
+  // el original READY sigue vivo (carrito, "Mis diseños"), remover esos bytes dejaría
+  // al original sin sus fotos. Solo se remueven los bytes que NINGÚN otro DesignAsset
+  // referencia; las filas del lote se borran igual (son del diseño condenado).
+  if (uploadPaths.length > 0) {
+    const shared = await prisma.designAsset.findMany({
+      where: { storageUrl: { in: uploadPaths }, designId: { notIn: designIds } },
+      select: { storageUrl: true },
+    });
+    if (shared.length > 0) {
+      const sharedUrls = new Set(shared.map((s) => s.storageUrl));
+      uploadPaths = uploadPaths.filter((p) => !sharedUrls.has(p));
+    }
+  }
   const previewPaths = [
     ...designs
       .flatMap((d) => [d.previewUrl, d.draftPreviewUrl])
@@ -247,6 +263,24 @@ async function purgeDesignBatch(designs: PurgeCandidate[]): Promise<PurgeResult>
   ]);
 
   return { designsPurged: designs.length, assetsPurged: uploadPaths.length };
+}
+
+/**
+ * Borra diseños POR ID con todos sus assets (bytes de Storage + filas), reusando el
+ * mismo camino seguro de las purgas de retención (purgeDesignBatch: bytes primero,
+ * filas solo si las fotos crudas salieron, bytes compartidos con diseños vivos
+ * preservados — 2026-10-13). Es la primitiva de borrado que usan la poda «últimos N
+ * borradores» y el vaciado/eliminación manual de borradores de "Mis diseños"
+ * (draft-lifecycle.ts) — el caller es responsable de haber verificado ownership y
+ * estado (DRAFT) antes de llamarla.
+ */
+export async function deleteDesignsWithAssets(designIds: string[]): Promise<PurgeResult> {
+  if (designIds.length === 0) return { designsPurged: 0, assetsPurged: 0 };
+  const designs = await prisma.design.findMany({
+    where: { id: { in: designIds } },
+    select: CANDIDATE_SELECT,
+  });
+  return purgeDesignBatch(designs);
 }
 
 /**

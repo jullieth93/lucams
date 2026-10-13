@@ -173,6 +173,32 @@ o sessionId anónimo) y cada superficie devuelve al editor lo persistido:
   customerId null); si el cliente se loguea después, el merge de login los adopta
   por la vía de siempre.
 
+## Reuso de borrador al entrar + poda «últimos 3» (2026-10-13)
+
+Los DRAFT proliferaban (medido en STG: 91 DRAFT vs 23 READY). La política vive en
+`features/personalization/draft-lifecycle.ts`:
+
+- **Reuso al entrar**: `/estudio/<slug>` SIN `?designId=` (y sin deep-links de diseño
+  nuevo `?template=` / `?copies=`) NO crea un draft si el dueño (customer o sessionId)
+  ya tiene un DRAFT activo del mismo producto: la página redirige a
+  `?designId=<id>` y el recover flow de arriba lo hidrata completo. "Activo" =
+  DRAFT, dentro de la ventana de retención de su dueño (30 d anónimo / 90 d logueado,
+  por `updatedAt`), sin carrito vivo ni pedido. Con `?variant=` explícita solo reusa
+  un DRAFT de ESA variante (o legacy sin variante persistida); sin ella retoma el más
+  reciente y el recover re-selecciona la variante guardada en el propio diseño.
+- **Poda «últimos N»**: tras crear un DRAFT nuevo por CUALQUIER vía (draft del boot,
+  `cloneDesignForEdit`, `cloneDesignForReorder`, `createNameDesign`,
+  `createLetterSetDesign`) se conservan solo los `MAX_DRAFTS_PER_PRODUCT = 3` DRAFT
+  más recientes del mismo dueño+producto; los excedentes se eliminan con sus assets
+  (best-effort, nunca rompe la creación). READY / USED_IN_ORDER nunca entran.
+- El borrado de bytes reusa `purgeDesignBatch` (retention-service), que desde esta
+  fecha PRESERVA los bytes compartidos con diseños vivos: `cloneDesignForEdit` crea
+  filas DesignAsset con el MISMO `storageUrl` del original READY — borrar el clon ya
+  no rompe las fotos del original.
+- En "Mis diseños" los borradores van en una sección colapsable con eliminación
+  individual y «Vaciar borradores» (server actions en
+  `app/mi-cuenta/disenos/actions.ts`).
+
 ## Estructura de archivos
 
 ```
