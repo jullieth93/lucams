@@ -536,19 +536,19 @@ ADR-017 (2026-05-09) decidió `pgmq` + `pg_cron` con consumidores Edge Function.
 
 ### Jobs activos (10 HTTP + 1 SQL puro)
 
-| Job pg_cron                      | Endpoint                            | Schedule (UTC) | Qué hace                                                                                        |
-| -------------------------------- | ----------------------------------- | -------------- | ----------------------------------------------------------------------------------------------- |
-| `lucams-alerts`                  | `/api/cron/alerts`                  | `*/5 * * * *`  | Evalúa alertas operativas (webhooks stuck, SLO, errores, bounce rate, backup)                   |
-| `lucams-daily-summary`           | `/api/cron/daily-summary`           | `0 13 * * *`   | Resumen diario del negocio (8am Colombia)                                                       |
-| `lucams-review-request`          | `/api/cron/review-request`          | `0 17 * * *`   | Emails de solicitud de reseña (~7 días post-entrega)                                            |
-| `lucams-cart-recovery`           | `/api/cron/cart-recovery`           | `0 * * * *`    | Recordatorio de carritos abandonados ≥4h (un solo envío)                                        |
-| `lucams-back-in-stock`           | `/api/cron/back-in-stock`           | `*/30 * * * *` | Avisos "avísame cuando vuelva"                                                                  |
-| `lucams-purge-anon-designs`      | `/api/cron/purge-anon-designs`      | `0 8 * * *`    | Purga de diseños anónimos vencidos (retención) + DRAFT idle de logueados (90d)                  |
-| `lucams-purge-delivered-designs` | `/api/cron/purge-delivered-designs` | `0 9 * * *`    | Purga post-entrega: fotos crudas + renders de pedidos DELIVERED ≥90d (retención, migración 035) |
-| `lucams-purge-event-logs`        | `/api/cron/purge-event-logs`        | `0 3 * * *`    | Purga diaria de EventLog (retención)                                                            |
-| `lucams-cms-publish-scheduled`   | `/api/cron/cms-publish-scheduled`   | `*/5 * * * *`  | Publicación programada de contenido CMS                                                         |
-| `lucams-expire-pending-orders`   | `/api/cron/expire-pending-orders`   | `23 * * * *`   | Auto-cancela pedidos Wompi en PENDING_PAYMENT > 24h (N-12, migración 032)                       |
-| `rate_limit_cleanup` (SQL)       | — (SQL puro en DB)                  | `*/15 * * * *` | Borra buckets de rate limit > 1 día (migración 012; es el único job SQL que queda)              |
+| Job pg_cron                      | Endpoint                            | Schedule (UTC) | Qué hace                                                                                                                                                                                  |
+| -------------------------------- | ----------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lucams-alerts`                  | `/api/cron/alerts`                  | `*/5 * * * *`  | Evalúa alertas operativas (webhooks stuck, SLO, errores, bounce rate, backup)                                                                                                             |
+| `lucams-daily-summary`           | `/api/cron/daily-summary`           | `0 13 * * *`   | Resumen diario del negocio (8am Colombia)                                                                                                                                                 |
+| `lucams-review-request`          | `/api/cron/review-request`          | `0 17 * * *`   | Emails de solicitud de reseña (~7 días post-entrega)                                                                                                                                      |
+| `lucams-cart-recovery`           | `/api/cron/cart-recovery`           | `0 * * * *`    | Recordatorio de carritos abandonados (idle ≥4h, 1 envío — defaults; configurables desde `/admin/carritos/configuracion`, ADR-153; modo manual/disabled → responde ok con `skippedReason`) |
+| `lucams-back-in-stock`           | `/api/cron/back-in-stock`           | `*/30 * * * *` | Avisos "avísame cuando vuelva"                                                                                                                                                            |
+| `lucams-purge-anon-designs`      | `/api/cron/purge-anon-designs`      | `0 8 * * *`    | Purga de diseños anónimos vencidos (retención) + DRAFT idle de logueados (90d)                                                                                                            |
+| `lucams-purge-delivered-designs` | `/api/cron/purge-delivered-designs` | `0 9 * * *`    | Purga post-entrega: fotos crudas + renders de pedidos DELIVERED ≥90d (retención, migración 035)                                                                                           |
+| `lucams-purge-event-logs`        | `/api/cron/purge-event-logs`        | `0 3 * * *`    | Purga diaria de EventLog (retención)                                                                                                                                                      |
+| `lucams-cms-publish-scheduled`   | `/api/cron/cms-publish-scheduled`   | `*/5 * * * *`  | Publicación programada de contenido CMS                                                                                                                                                   |
+| `lucams-expire-pending-orders`   | `/api/cron/expire-pending-orders`   | `23 * * * *`   | Auto-cancela pedidos Wompi en PENDING_PAYMENT > 24h (N-12, migración 032)                                                                                                                 |
+| `rate_limit_cleanup` (SQL)       | — (SQL puro en DB)                  | `*/15 * * * *` | Borra buckets de rate limit > 1 día (migración 012; es el único job SQL que queda)                                                                                                        |
 
 > Fuera de pg_cron hay 3 endpoints cron más (mismo auth `cronSecretOk`):
 >

@@ -1,6 +1,6 @@
 # QA Checklist pre-launch — Lucams_shop
 
-> Última actualización: 2026-09-12 · Sub-bloque L · verificado contra el código 2026-09-12 (remediación 360°: CTA Personalizar → Estudio, cupón en /checkout/pago, /admin/mensajes → /admin/soporte, re-consent de cookies, editor CMS por barra superior + `CmsFieldVersion`; antes: 2026-09-03 MFA admin obligatorio, checkout en modo full, /rastrear)
+> Última actualización: 2026-10-13 · jornada de maduración UX (ADR-150…154: preview paginado unificado en gracias/carrito/pedidos, bottom-sheet de estilo móvil + «Listo», ciclo de vida de borradores, módulo admin `/admin/carritos`, auditoría responsive 6 perfiles) · antes: 2026-09-12 · Sub-bloque L · verificado contra el código 2026-09-12 (remediación 360°: CTA Personalizar → Estudio, cupón en /checkout/pago, /admin/mensajes → /admin/soporte, re-consent de cookies, editor CMS por barra superior + `CmsFieldVersion`; antes: 2026-09-03 MFA admin obligatorio, checkout en modo full, /rastrear)
 >
 > Esta checklist se recorre **manualmente con Lucy + Claude** antes del go-live productivo. Es el último filtro: nada se lanza si quedan rojos. Marcar cada item con ✅ / ⚠️ / ❌ y fecha de verificación.
 
@@ -89,6 +89,8 @@
 - [ ] Merge anon → customer cart al login (sum qty por variantId)
 - [ ] Toast "Agregado al carrito ✨" con CTA "Ver carrito"
 - [ ] Cart icon header con badge muestra count correcto
+- [ ] Línea personalizada multi-unidad: la miniatura es CLICABLE y abre el lightbox paginado por unidad (flechas/dots); badge «N unidades» visible solo con 2+ unidades; el botón «Ver» sigue abriendo el mismo diálogo (ADR-150)
+- [ ] Diseño de 1 unidad: la miniatura abre el lightbox SIN pager (no hay páginas por unidad)
 
 ## E2. Checkout + pedido (modo full)
 
@@ -98,8 +100,22 @@
 - [ ] Pago Wompi sandbox aprobado → webhook confirma → orden PAID + email de confirmación
 - [ ] Pago COD (contraentrega) → la saga confirma inline: orden queda PAID con guía COD `valorrecaudo = total` para conciliar el recaudo al entregar
 - [ ] /checkout/gracias?id=TX_ID muestra confirmación con número de pedido (el estado se verifica contra Wompi, no contra el query param)
+- [ ] /checkout/gracias: cada ítem personalizado es una tarjeta legible (miniatura 96px clicable que abre el preview paginado, nombre, variante+desglose, ×N, badges «Tu diseño» y «N unidades») — ya no una tira de miniaturas estáticas (ADR-150)
+- [ ] /mi-cuenta/pedidos/[number] y /pedido/<token>: miniatura clicable + badge «N unidades» + botón «Ver» intacto (ADR-150)
 - [ ] /rastrear (invitado, sin cuenta): número de pedido + correo → vista pública /pedido/<token> con estado, timeline y guía
 - [ ] /rastrear con datos que no cruzan → error genérico anti-enumeración (no revela si el pedido o el correo existen)
+
+## E3. Estudio de personalización y Mis diseños (ADR-151/152)
+
+- [ ] Móvil (<sm): la toolbar de estilo NO scrollea horizontal — hay botón resumen (swatch + nombre del color + estado del borde) que abre el Sheet bottom
+- [ ] Sheet de estilo: grilla de colores con wrap, toggle Con/Sin borde, «Personalizado», «Elegido: {color}» en vivo y «Listo» sticky que SOLO cierra (la selección ya aplicó)
+- [ ] Desktop/tablet (≥sm): toolbar vertical intacta + indicador «· Elegido: {color}»
+- [ ] Asset picker de fotos: footer sticky con «Listo» que cierra sin asignar
+- [ ] Toggle «Diseños prediseñados» de la sidebar destacado en lila de marca (bg-brand-purple + texto blanco)
+- [ ] Entrar a /estudio/<slug> pelado (sin ?designId=/?template=/?copies=) con un DRAFT activo del mismo producto → redirige a ?designId=<id> y el canvas se hidrata (reuso de borrador)
+- [ ] «Editar» desde el carrito / «Volver a pedir» crean DRAFT NUEVO (no reusan) y la poda conserva solo los últimos 3 DRAFT por producto
+- [ ] Mis diseños: sección «Borradores» colapsable (abierta si ≤3), borrado individual con confirmación y «Vaciar borradores» funcional (solo logueado)
+- [ ] Borrar un borrador clonado NO rompe las fotos del diseño original (bytes compartidos preservados — fix purgeDesignBatch)
 
 ## F. Newsletter
 
@@ -173,6 +189,10 @@
 - [ ] Archivar producto: soft-delete, no se ve en /productos público
 - [ ] /admin/categorias mismo CRUD
 - [ ] /admin/auditoria muestra eventos con filtros funcionando
+- [ ] /admin/carritos: bandeja con filtros estado/email y métricas (tasa de recuperación, valor recuperado, pendientes)
+- [ ] /admin/carritos/[id]: preview real del email en iframe (el CTA del preview lleva token ficticio; el real solo se genera al enviar)
+- [ ] Envío manual individual y bulk respetan el kill-switch y el intervalo anti-duplicación; quedan en AdminActionLog (`cart_recovery.reminder.send` / `.bulk_send`)
+- [ ] /admin/carritos/configuracion (solo SUPERADMIN): kill-switch, modo automatic/manual, idleHours, maxReminders, intervalHours; guardar aplica en la próxima corrida del cron (sin redeploy); modo manual → el cron responde ok con skippedReason y no envía nada
 - [ ] Paginación 30/page funcional
 - [ ] Filtro action prefix "cms.block" matchea variantes
 
@@ -221,6 +241,7 @@
 - [ ] Safari iOS 18: idem
 - [ ] Touch targets ≥ 44×44px en mobile
 - [ ] Sin horizontal scroll en breakpoints 375/414/768/1024
+- [ ] Auditoría responsive automatizada en 6 perfiles (390×844, 844×390, 768×1024, 1024×768, 1280×800, 1920×1080) sin hallazgos critical: `pnpm --filter web test:audit-responsive` (ADR-154)
 - [ ] Inputs no trigger zoom iOS (font-size ≥ 16px)
 
 ## P. Load testing

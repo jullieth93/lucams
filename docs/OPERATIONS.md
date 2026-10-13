@@ -196,7 +196,7 @@ GUARDADA (pg_cron + pg_net) e IDEMPOTENTE.
 | `lucams-alerts`                  | `*/5 * * * *`  | `/api/cron/alerts`                  | Alertas (5xx en pico, reconciliación, webhooks)                                                                                                                                                                        |
 | `lucams-daily-summary`           | `0 13 * * *`   | `/api/cron/daily-summary`           | Resumen diario 8am Colombia                                                                                                                                                                                            |
 | `lucams-review-request`          | `0 17 * * *`   | `/api/cron/review-request`          | Solicitud de reseña 7–30 días post-entrega                                                                                                                                                                             |
-| `lucams-cart-recovery`           | `0 * * * *`    | `/api/cron/cart-recovery`           | Recordatorio de carrito abandonado (≥4h)                                                                                                                                                                               |
+| `lucams-cart-recovery`           | `0 * * * *`    | `/api/cron/cart-recovery`           | Recordatorio de carrito abandonado (idle ≥4h por default; configurable desde `/admin/carritos/configuracion` — ver la sección de abajo)                                                                                |
 | `lucams-back-in-stock`           | `*/30 * * * *` | `/api/cron/back-in-stock`           | "Avísame cuando vuelva"                                                                                                                                                                                                |
 | `lucams-purge-anon-designs`      | `0 8 * * *`    | `/api/cron/purge-anon-designs`      | Retención: diseños DRAFT anónimos (Ley 1581) + DRAFT idle de logueados (90d) + READYs abandonados (ADR-130) + carritos (AbandonedCart ≥90d, carts idle ≥60d/vacíos ≥7d) + barrido de huérfanos de Storage (2026-10-12) |
 | `lucams-purge-delivered-designs` | `0 9 * * *`    | `/api/cron/purge-delivered-designs` | Retención post-entrega: borra fotos crudas + renders de diseños entregados ≥90d (migración 035)                                                                                                                        |
@@ -245,6 +245,42 @@ Sin los secretos, los jobs quedan agendados pero fallan en runtime hasta setearl
 > está creado (verificado 2026-08-01: `net._http_response` devuelve JSON real de los endpoints).
 > El valor es el "protection bypass for automation" del proyecto Vercel (también en `.env.stg` como
 > `VERCEL_BYPASS_TOKEN`).
+
+### Recuperación de carritos abandonados — módulo admin configurable (ADR-153, 2026-10-13)
+
+El módulo `/admin/carritos` convirtió la palanca de recuperación en una capacidad operada
+desde el panel, SIN tocar el agendamiento: el cron `lucams-cart-recovery` conserva su
+schedule pg_cron (`0 * * * *`, migración 015) y lee la config en cada corrida.
+
+- **Configuración (`/admin/carritos/configuracion`, solo SUPERADMIN):** settings
+  `CmsField` kind SETTING (misma convención de loyalty/shipping —
+  `features/cart/recovery-settings.ts`): `CART_RECOVERY_ENABLED` (kill-switch total: ni
+  cron ni manual), `CART_RECOVERY_MODE` (`automatic` = el cron decide; `manual` = solo
+  envíos a voluntad desde el panel), `CART_RECOVERY_IDLE_HOURS` (default 4),
+  `CART_RECOVERY_MAX_REMINDERS` (default 1), `CART_RECOVERY_INTERVAL_HOURS` (default 24).
+  **Los defaults reproducen el comportamiento histórico** (un recordatorio a las 4h):
+  desplegar sin configurar nada no cambia la conducta. Los cambios publican al guardar
+  (kind SETTING) e invalidan el tag `cms` desde la Server Action — el cron los ve en la
+  próxima corrida, sin redeploy.
+- **Comportamiento del cron:** módulo apagado o modo `manual` → responde ok con
+  `skippedReason` (`"disabled"` / `"manual"`) y el heartbeat se registra igual (el
+  dead-man switch mide que el job está vivo, no que haya enviado). En `automatic` aplica
+  idleHours/maxReminders/intervalHours. Con `maxReminders > 1` los recordatorios al mismo
+  carrito se espaciaban por `intervalHours`.
+- **Envío manual (MANAGER_UP / permiso CATALOG):** individual desde el detalle
+  `/admin/carritos/<id>` o bulk desde `enviar/`. `sendReminderToCart(id)` respeta el
+  kill-switch y `intervalHours` (anti-duplicación), NO `maxReminders` (el tope es del
+  brazo automático). El detalle muestra el **preview real del email en iframe** con un
+  token ficticio — el token real solo se genera al enviar (F-11 intacto).
+- **Audit log:** `cart_recovery.settings.save`, `cart_recovery.reminder.send`,
+  `cart_recovery.reminder.bulk_send` (visibles en `/admin/auditoria`).
+- **Migración `20261013140000_abandoned_cart_reminder_count`:** agrega
+  `AbandonedCart.reminderCount Int @default(0)` con backfill =1 donde ya hubo
+  recordatorio. **Aplicada a STG el 2026-10-13; a PRD llega con el deploy del merge**
+  (es aditiva: el código viejo convive con la columna).
+- **Fix asociado:** la idempotency-key de Resend ahora es por intento
+  (`cart-recovery-<id>-<n>`) — con más de un recordatorio por carrito, la clave única por
+  carrito hubiera suprimido los envíos 2..N.
 
 ### Render de producción asíncrono — RenderJob (ADR-136, 2026-10-13)
 
@@ -676,6 +712,11 @@ pnpm test
 
 # Tests E2E (Playwright)
 pnpm --filter web test:e2e
+
+# Auditoría responsive en 6 perfiles de viewport (cliente público/auth/admin;
+# reporte consolidado en tmp/audit-20261013/report.json — ADR-154; con
+# E2E_ENV=stg E2E_AUTH=1 audita también las rutas autenticadas de STG)
+pnpm --filter web test:audit-responsive
 
 # Lighthouse local (Lighthouse CI autorun — el mismo gate del job `lighthouse` de CI)
 pnpm lhci
