@@ -30,7 +30,7 @@ import { isCatalogMode } from "@/lib/store-mode";
 
 export const metadata: Metadata = {
   title: "Estado del sitio",
-  description: "Estado en tiempo real de los servicios de Lucams_shop.",
+  description: "Estado en tiempo real de los servicios de Lucams Shop.",
 };
 
 export const dynamic = "force-dynamic";
@@ -175,7 +175,7 @@ export default async function StatusPage() {
         <div className="mx-auto max-w-2xl">
           <header className="mb-8 text-center">
             <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-              <CmsText blockKey="status.heading" fallback="Estado de Lucams_shop" />
+              <CmsText blockKey="status.heading" fallback="Estado de Lucams Shop" />
             </h1>
             <div
               className={

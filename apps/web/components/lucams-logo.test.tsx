@@ -21,7 +21,7 @@ afterEach(cleanup);
 describe("LucamsLogo — src administrable", () => {
   it("sin src usa el asset estático de /public/brand", () => {
     render(<LucamsLogo variant="full" size={96} />);
-    expect(screen.getByAltText("Logo Lucams_shop")).toHaveAttribute(
+    expect(screen.getByAltText("Logo Lucams Shop")).toHaveAttribute(
       "src",
       "/brand/lucams-logo.png",
     );
@@ -29,7 +29,7 @@ describe("LucamsLogo — src administrable", () => {
 
   it("con src del CMS renderiza esa URL", () => {
     render(<LucamsLogo variant="full" size={96} src="https://cdn.example.com/logo.webp" />);
-    expect(screen.getByAltText("Logo Lucams_shop")).toHaveAttribute(
+    expect(screen.getByAltText("Logo Lucams Shop")).toHaveAttribute(
       "src",
       "https://cdn.example.com/logo.webp",
     );
@@ -39,7 +39,7 @@ describe("LucamsLogo — src administrable", () => {
     const { container } = render(
       <LucamsLogo variant="full" size={96} src="https://cdn.example.com/roto.webp" />,
     );
-    fireEvent.error(screen.getByAltText("Logo Lucams_shop"));
+    fireEvent.error(screen.getByAltText("Logo Lucams Shop"));
     // El badge fallback es aria-hidden y ya no hay <img>.
     expect(container.querySelector("img")).toBeNull();
     expect(container.querySelector("svg")).not.toBeNull();

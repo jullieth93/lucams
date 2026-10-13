@@ -1,5 +1,5 @@
 /*
- * Zonas de entrega del envío propio "Envío Lucam's" — catálogo POR CIUDAD
+ * Zonas de entrega del envío propio "Envío Lucams" — catálogo POR CIUDAD
  * (multi-ciudad modular: hoy solo Bogotá; agregar una ciudad = añadir una
  * entrada a LUCAMS_ZONE_CITIES, sin tocar código).
  *

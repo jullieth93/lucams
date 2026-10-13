@@ -30,7 +30,7 @@ export type OrderConfirmationData = {
     lineTotal: number;
     /**
      * Desglose de la variante (Paquete H, 2026-10-02 — describeVariantAttributes):
-     * ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"]. Se muestra como línea
+     * ["12 fotos", "6×8 cm", "Sin imán"]. Se muestra como línea
      * secundaria bajo el nombre; []/ausente ⇒ solo el nombre.
      */
     breakdown?: string[];
@@ -46,7 +46,7 @@ export type OrderConfirmationData = {
   accountOrderUrl?: string | null;
   /** COD ⇒ el cliente paga en efectivo al recibir (no hubo pago online). */
   paymentMethod?: "WOMPI" | "COD";
-  /** true = entrega propia "Envío Lucam's": no hay guía ni transportadora
+  /** true = entrega propia "Envío Lucams": no hay guía ni transportadora
    *  externa — el texto lo dice en esos términos. */
   internalDelivery?: boolean;
   /**
@@ -150,7 +150,7 @@ ${codCallout}
 ${giftCallout}
 ${
   data.internalDelivery
-    ? `<p>Ya empezamos a preparar tu pedido: lo despachamos en máximo <strong>2 días hábiles</strong> y te lo entregamos <strong>el mismo día del despacho</strong> con <strong>nuestro equipo Lucam's</strong> (entrega directa, sin transportadora externa). Te avisamos apenas salga.</p>`
+    ? `<p>Ya empezamos a preparar tu pedido: lo despachamos en máximo <strong>2 días hábiles</strong> y te lo entregamos <strong>el mismo día del despacho</strong> con <strong>nuestro equipo Lucams</strong> (entrega directa, sin transportadora externa). Te avisamos apenas salga.</p>`
     : `<p>Ya empezamos a preparar tu pedido: lo despachamos en máximo <strong>2 días hábiles</strong> y te avisamos con el número de guía apenas salga. De ahí en adelante el tiempo lo pone la transportadora y depende de tu ciudad.</p>`
 }
 

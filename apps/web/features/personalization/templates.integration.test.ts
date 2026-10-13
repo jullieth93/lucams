@@ -13,6 +13,9 @@
  *   - saveCanvas persiste Design.templateId cuando el cliente cambia de
  *     plantilla en el sidebar, validada en servidor; si no pasa la validación el
  *     canvasData se guarda igual y el templateId queda como estaba.
+ *   - saveCanvas con variantId (2026-10-12 — packs de foto) persiste la variante
+ *     EFECTIVA en metadata.variantId (merge, sin pisar el resto) para el recover;
+ *     una variante ajena al producto se rechaza y la metadata queda como estaba.
  *
  * Mismo patrón que service.integration.test.ts: DB real (DIRECT_URL compartida de
  * dev), todo fixture con prefijo RUN único y limpieza scoped en afterAll. Sin DB
@@ -43,6 +46,8 @@ function canvasV1(stage: typeof STAGE_1X1) {
 let categoryId = "";
 let productAId = ""; // PHOTO_PACK, aspect 1:1, CON plantillas específicas
 let productBId = ""; // PHOTO_PACK, aspect 1:1, con su propia específica
+let variantAId = ""; // variante del producto A (para saveCanvas · variantId)
+let variantBId = ""; // variante de OTRO producto (debe rechazarse)
 
 // Templates (ids se llenan en beforeAll)
 let specA1x1Id = ""; // específica de A, aspect correcto, order 1
@@ -79,6 +84,21 @@ describe.skipIf(!hasDb)("plantillas del Estudio — reglas N-08", { timeout: T }
       });
     productAId = (await mkProduct("prod-a")).id;
     productBId = (await mkProduct("prod-b")).id;
+
+    const mkVariant = (productId: string, tag: string) =>
+      prisma.productVariant.create({
+        data: {
+          productId,
+          name: `Var ${tag}`,
+          sku: `${RUN}-${tag}`.toUpperCase(),
+          price: 10_000,
+          stock: 50,
+          attributes: {},
+        },
+        select: { id: true },
+      });
+    variantAId = (await mkVariant(productAId, "var-a")).id;
+    variantBId = (await mkVariant(productBId, "var-b")).id;
 
     const mkTemplate = (data: {
       productId?: string | null;
@@ -146,6 +166,9 @@ describe.skipIf(!hasDb)("plantillas del Estudio — reglas N-08", { timeout: T }
           OR: [{ productId: { in: [productAId, productBId] } }, { slug: { startsWith: RUN } }],
         },
       }),
+    );
+    await safe(
+      prisma.productVariant.deleteMany({ where: { productId: { in: [productAId, productBId] } } }),
     );
     await safe(prisma.product.deleteMany({ where: { id: { in: [productAId, productBId] } } }));
     await safe(prisma.category.deleteMany({ where: { id: categoryId } }));
@@ -297,6 +320,58 @@ describe.skipIf(!hasDb)("plantillas del Estudio — reglas N-08", { timeout: T }
         select: { templateId: true },
       });
       expect(row!.templateId).toBe(specA1x1Id);
+    });
+  });
+
+  // ──────────── saveCanvas — metadata.variantId (recover de packs, 2026-10-12) ────────────
+
+  describe("saveCanvas · variantId", () => {
+    it("persiste la variante EFECTIVA en metadata.variantId (merge sin pisar el resto)", async () => {
+      const design = await createDraftDesign({ productId: productAId, ...OWNER });
+      await saveCanvas({
+        designId: design.id,
+        canvasData: design.canvasData as never,
+        variantId: variantAId,
+        ...OWNER,
+      });
+      const row = await prisma.design.findUnique({
+        where: { id: design.id },
+        select: { metadata: true },
+      });
+      const meta = row!.metadata as Record<string, unknown>;
+      expect(meta.variantId).toBe(variantAId);
+      // El merge conserva las claves del draft (kind/schemaVersion del create).
+      expect(meta.kind).toBe("PHOTO_PACK");
+    });
+
+    it("con variantId de OTRO producto guarda el canvas igual y CONSERVA la metadata anterior", async () => {
+      const design = await createDraftDesign({ productId: productAId, ...OWNER });
+      const nuevoCanvas = { ...(design.canvasData as object), marca: RUN };
+      await saveCanvas({
+        designId: design.id,
+        canvasData: nuevoCanvas as never,
+        variantId: variantBId, // pertenece al producto B → anti-tamper la rechaza
+        ...OWNER,
+      });
+      const row = await prisma.design.findUnique({
+        where: { id: design.id },
+        select: { metadata: true, canvasData: true },
+      });
+      // El canvasData SÍ se guardó (el canvas es la SoT; el auto-save no se rompe)…
+      expect((row!.canvasData as { marca?: string }).marca).toBe(RUN);
+      // …pero la metadata no quedó apuntando a una variante ajena.
+      expect((row!.metadata as Record<string, unknown>).variantId).toBeUndefined();
+    });
+
+    it("sin variantId en el payload no toca la metadata", async () => {
+      const design = await createDraftDesign({ productId: productAId, ...OWNER });
+      const before = design.metadata as Record<string, unknown>;
+      await saveCanvas({ designId: design.id, canvasData: design.canvasData as never, ...OWNER });
+      const row = await prisma.design.findUnique({
+        where: { id: design.id },
+        select: { metadata: true },
+      });
+      expect(row!.metadata).toEqual(before);
     });
   });
 });

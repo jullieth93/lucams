@@ -541,7 +541,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
                 name="seoTitle"
                 maxLength={70}
                 defaultValue={initialProduct?.seoTitle ?? ""}
-                placeholder="Imán de foto personalizado — Lucams_shop"
+                placeholder="Imán de foto personalizado — Lucams Shop"
                 disabled={pending}
               />
             </Field>

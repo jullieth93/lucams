@@ -301,10 +301,26 @@ export function createStudioStore() {
     assignAssetToSlot: (slotIndex, asset) => {
       const { canvasData } = get();
       if (!canvasData) return;
+      // 2026-10-12 — reemplazo LIMPIO: una foto/prediseño nuevo sobre un slot
+      // ocupado NO hereda el estado del anterior (photoTransform/filtro/textos).
+      // Antes solo se cambiaban assetId/assetUrl: la foto nueva caía con el
+      // zoom/pan viejo ("sobreposición") y el smart auto-crop no corría porque
+      // había photoTransform persistido. Reset tipo clearSlot + asignación.
+      // La foto de perfil IG se CONSERVA: es una capa independiente del diseño
+      // anterior (su avatar lo elige el cliente, no lo trae la composición).
       const next: CanvasDataV2 = {
         ...canvasData,
         slots: canvasData.slots.map((s) =>
-          s.slotIndex === slotIndex ? { ...s, assetId: asset.id, assetUrl: asset.signedUrl } : s,
+          s.slotIndex === slotIndex
+            ? {
+                ...s,
+                assetId: asset.id,
+                assetUrl: asset.signedUrl,
+                filter: null,
+                textOverrides: undefined,
+                photoTransform: undefined,
+              }
+            : s,
         ),
       };
       get().setCanvasData(next);

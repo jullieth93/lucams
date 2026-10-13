@@ -83,7 +83,7 @@ async function flushDetectionEffect() {
 
 /** Espera a que el banner (role=dialog con el título) esté montado. */
 function findBanner() {
-  return screen.findByRole("dialog", { name: /Cookies en Lucams_shop/i });
+  return screen.findByRole("dialog", { name: /Cookies en Lucams Shop/i });
 }
 
 beforeEach(() => {
@@ -133,7 +133,7 @@ describe("CookiesBanner", () => {
     // Un microtask más para dejar correr el efecto del componente.
     await Promise.resolve();
     expect(
-      screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i }),
+      screen.queryByRole("dialog", { name: /Cookies en Lucams Shop/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -146,7 +146,7 @@ describe("CookiesBanner", () => {
     // Banner desaparece tras elegir.
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i }),
+        screen.queryByRole("dialog", { name: /Cookies en Lucams Shop/i }),
       ).not.toBeInTheDocument();
     });
 
@@ -174,7 +174,7 @@ describe("CookiesBanner", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i }),
+        screen.queryByRole("dialog", { name: /Cookies en Lucams Shop/i }),
       ).not.toBeInTheDocument();
     });
 
@@ -317,7 +317,7 @@ describe("CookiesBanner — re-consent por versión del Aviso (N-15)", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i }),
+        screen.queryByRole("dialog", { name: /Cookies en Lucams Shop/i }),
       ).not.toBeInTheDocument();
     });
     const saved = readClientCookiePreferences();
@@ -334,7 +334,7 @@ describe("CookiesBanner — re-consent por versión del Aviso (N-15)", () => {
     render(<CookiesBanner policyVersion="v6" />);
     await flushDetectionEffect();
     expect(
-      screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i }),
+      screen.queryByRole("dialog", { name: /Cookies en Lucams Shop/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -345,7 +345,7 @@ describe("CookiesBanner — re-consent por versión del Aviso (N-15)", () => {
     render(<CookiesBanner policyVersion="v6" />);
     await flushDetectionEffect();
     expect(
-      screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i }),
+      screen.queryByRole("dialog", { name: /Cookies en Lucams Shop/i }),
     ).not.toBeInTheDocument();
 
     // Sana: la cookie conserva la decisión original y queda firmada con "v6"
@@ -363,7 +363,7 @@ describe("CookiesBanner — re-consent por versión del Aviso (N-15)", () => {
     render(<CookiesBanner />);
     await flushDetectionEffect();
     expect(
-      screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i }),
+      screen.queryByRole("dialog", { name: /Cookies en Lucams Shop/i }),
     ).not.toBeInTheDocument();
     expect(readClientCookiePreferences()?.policyVersion).toBeUndefined();
   });
@@ -377,7 +377,7 @@ describe("CookiesReopenLink / openCookiesPreferences", () => {
     fireEvent.click(within(banner).getByRole("button", { name: /Solo necesarias/i }));
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i }),
+        screen.queryByRole("dialog", { name: /Cookies en Lucams Shop/i }),
       ).not.toBeInTheDocument();
     });
     expect(screen.queryByText("Preferencias de cookies")).not.toBeInTheDocument();
@@ -398,7 +398,7 @@ describe("CookiesReopenLink / openCookiesPreferences", () => {
     fireEvent.click(within(banner).getByRole("button", { name: /Aceptar todas/i }));
     await waitFor(() => {
       expect(
-        screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i }),
+        screen.queryByRole("dialog", { name: /Cookies en Lucams Shop/i }),
       ).not.toBeInTheDocument();
     });
 

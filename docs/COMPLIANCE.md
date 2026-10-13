@@ -209,6 +209,50 @@ cotización. Si el cliente vuelve, los renders son regenerables desde `canvasDat
 nuevas. Implementación: `purgeIdleReadyDesigns` en `features/personalization/retention-service.ts`,
 misma corrida del cron `/api/cron/purge-anon-designs`.
 
+### Retención de carritos y barrido de huérfanos de Storage (2026-10-12)
+
+Dos puntos ciegos detectados tras medir ~316 MB de objetos huérfanos en PRD (diseños borrados
+cuyos bytes quedaron en Storage):
+
+1. **Carritos eternos blindaban diseños.** `Cart` y `AbandonedCart` nunca expiraban, y el guard
+   de las purgas de diseños excluye todo diseño referenciado por un carrito VIVO → un carrito
+   abandonado hace años retenía fotos crudas sin finalidad vigente. **Política:** cart vivo sin
+   actividad ≥ **60 días** (`PURGE_STALE_CART_AFTER_DAYS`) o vacío sin actividad ≥ **7 días**
+   (`PURGE_EMPTY_CART_AFTER_DAYS`) → **hard-delete** (patrón del repo para carts:
+   `mergeAnonCartIntoCustomer` — data efímera sin valor de auditoría; además `sessionId
+@unique` no respeta `deletedAt`). No se toca un cart con registro en `AbandonedCart` (link
+   de recuperación potencialmente vivo). Los registros `AbandonedCart` ≥ **90 días**
+   (`PURGE_ABANDONED_CART_AFTER_DAYS`) se borran — recuperados o no, el email ya no es útil (los
+   recordatorios solo se envían dentro de los primeros 7 días). Al purgar el cart **no se borran
+   diseños**: quedan libres del guard y los purga la pasada normal si cumplen su TTL.
+   Implementación: `features/cart/cart-retention.ts`.
+2. **Objetos huérfanos de Storage** (fila `Design` inexistente) no los veía nadie. **Política:**
+   barrido recurrente acotado (500 objetos/corrida) que reclasifica contra la tabla `Design` con
+   las reglas del one-shot `purge-orphan-storage-20261012.mjs` (`<designId>/…` en
+   production-assets/design-previews; `<ownerId>/<designId>/…` en customer-uploads, con gracia de
+   7 días para `pending/`) y borra bytes + fila vía Storage API, con doble verificación en JS
+   antes de borrar. Implementación: `sweepOrphanStorageObjects` en
+   `features/personalization/retention-service.ts`.
+
+Ambas corren en la misma corrida del cron `/api/cron/purge-anon-designs` (los carritos PRIMERO,
+para destrabar diseños en la misma pasada; el barrido de huérfanos al final, como red de fondo).
+
+### Previews derivados del diseño: thumbnails de borrador y versiones con marca de agua (2026-10-13)
+
+Dos derivados nuevos del diseño viven en el bucket `design-previews` bajo el path del propio
+diseño, así que **ninguno introduce una nueva categoría de retención**: se borran con las purgas
+de siempre (por diseño) y los cubre el barrido de huérfanos.
+
+- **Thumbnail de borrador** (`Design.draftPreviewUrl`, ADR-147): snapshot WebP liviano
+  (≤120 KB, 400 px) que el auto-save reescribe con upsert al MISMO path (`<designId>/thumb.webp`)
+  — no acumula versiones. Deriva del lienzo que el cliente ya ve en pantalla.
+- **Previews con marca de agua** (ADR-148): las vistas servidas de diseños (carrito, «Ver»
+  paginado, Mis diseños, `/d` + OG, cotización, gracias, pedido) muestran versiones con tiling
+  LUCAMS (`<designId>/preview-wm.webp`, `<designId>/wm/pages/NN.webp`); el lienzo del Estudio, el
+  3D, el admin y los archivos de producción quedan LIMPIOS. El motivo es anti-copia comercial, no
+  de privacidad: las versiones con marca no amplían el acceso a nada que la vista limpia no
+  mostrara ya. El CMS avisa al cliente que «tu impresión final no la lleva».
+
 ### Retención POST-ENTREGA de fotos y renders de producción (2026-09-18)
 
 Cuando la compra SÍ se concreta, la finalidad de las fotos crudas (`customer-uploads`) y de los renders
@@ -688,25 +732,26 @@ No usamos cookies de idioma/tema ni un request-id en cookie (el `X-Request-Id` v
 
 ## Calendario de cumplimiento
 
-| Hito                                                             | Cuándo                                                                                           | Bloqueante      |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | --------------- |
-| Constituir el negocio (RUES + Cámara de Comercio)                | Antes de Fase 7                                                                                  | ✅ Sí           |
-| Obtener RUT con responsabilidad 42 (facturador electrónico)      | Antes de Fase 7                                                                                  | ✅ Sí           |
-| Solicitar resolución de numeración a DIAN                        | Antes de Fase 7                                                                                  | ✅ Sí           |
-| Firmar contrato con proveedor de facturación electrónica         | Antes de Fase 7                                                                                  | ✅ Sí           |
-| Revisión legal de los 9 documentos del sitio                     | Antes de Fase 7                                                                                  | ✅ Sí (ADR-020) |
-| Política de privacidad y T&C publicados                          | Antes de Fase 7                                                                                  | ✅ Sí           |
-| Banner de consentimiento de cookies funcional                    | Antes de Fase 7                                                                                  | ✅ Sí           |
-| Habilitación de proveedor DIAN (si software propio)              | N/A (usamos PT autorizado)                                                                       | —               |
-| Registro Nacional de Bases de Datos (RNBD) si aplica             | Confirmar con abogado                                                                            | Posible         |
-| Email `habeas-data@lucamsshop.com` operativo + SLA de PQR        | Lanzamiento                                                                                      | ✅ Sí           |
-| Email `retracto@lucamsshop.com` operativo                        | Lanzamiento                                                                                      | ✅ Sí           |
-| Tabla `Consent` registrando cada autorización                    | ✅ Implementado                                                                                  | ✅ Sí           |
-| Exportación de datos self-service                                | Pendiente (hoy: canal manual `habeas-data@`)                                                     | ✅ Sí           |
-| Eliminación de cuenta self-service (anonimización + soft-delete) | ✅ Implementado en `/mi-cuenta/seguridad → Eliminar mi cuenta`                                   | ✅ Sí           |
-| Purga por retención de logs con PII (`purge-event-logs`)         | ✅ Implementado (90/180 días; desde 2026-09-12 también Notification leídas >90d y WebVital >35d) | ✅ Sí           |
-| Purga de fotos anónimas abandonadas (`purge-anon-designs`)       | ✅ Implementado (DRAFT anónimos ≥30d; desde 2026-09-18 también DRAFT idle de logueados ≥90d)     | ✅ Sí           |
-| Purga post-entrega de fotos/renders (`purge-delivered-designs`)  | ✅ Implementado (DELIVERED ≥90d, excluye retracto/garantía abierta; conserva preview + snapshot) | ✅ Sí           |
-| Flujo de retracto end-to-end                                     | ✅ Implementado (`/mi-cuenta/pedidos/[number]` + `/admin/retractos`)                             | ✅ Sí           |
-| Flujo de garantía                                                | ✅ Implementado (`/mi-cuenta/pedidos/[number]` + `/admin/garantias`)                             | ✅ Sí           |
-| Reporte de incidente a SIC ante brecha (procedimiento)           | Documentar en Fase 7                                                                             | ✅ Sí           |
+| Hito                                                                | Cuándo                                                                                                            | Bloqueante      |
+| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------- |
+| Constituir el negocio (RUES + Cámara de Comercio)                   | Antes de Fase 7                                                                                                   | ✅ Sí           |
+| Obtener RUT con responsabilidad 42 (facturador electrónico)         | Antes de Fase 7                                                                                                   | ✅ Sí           |
+| Solicitar resolución de numeración a DIAN                           | Antes de Fase 7                                                                                                   | ✅ Sí           |
+| Firmar contrato con proveedor de facturación electrónica            | Antes de Fase 7                                                                                                   | ✅ Sí           |
+| Revisión legal de los 9 documentos del sitio                        | Antes de Fase 7                                                                                                   | ✅ Sí (ADR-020) |
+| Política de privacidad y T&C publicados                             | Antes de Fase 7                                                                                                   | ✅ Sí           |
+| Banner de consentimiento de cookies funcional                       | Antes de Fase 7                                                                                                   | ✅ Sí           |
+| Habilitación de proveedor DIAN (si software propio)                 | N/A (usamos PT autorizado)                                                                                        | —               |
+| Registro Nacional de Bases de Datos (RNBD) si aplica                | Confirmar con abogado                                                                                             | Posible         |
+| Email `habeas-data@lucamsshop.com` operativo + SLA de PQR           | Lanzamiento                                                                                                       | ✅ Sí           |
+| Email `retracto@lucamsshop.com` operativo                           | Lanzamiento                                                                                                       | ✅ Sí           |
+| Tabla `Consent` registrando cada autorización                       | ✅ Implementado                                                                                                   | ✅ Sí           |
+| Exportación de datos self-service                                   | Pendiente (hoy: canal manual `habeas-data@`)                                                                      | ✅ Sí           |
+| Eliminación de cuenta self-service (anonimización + soft-delete)    | ✅ Implementado en `/mi-cuenta/seguridad → Eliminar mi cuenta`                                                    | ✅ Sí           |
+| Purga por retención de logs con PII (`purge-event-logs`)            | ✅ Implementado (90/180 días; desde 2026-09-12 también Notification leídas >90d y WebVital >35d)                  | ✅ Sí           |
+| Purga de fotos anónimas abandonadas (`purge-anon-designs`)          | ✅ Implementado (DRAFT anónimos ≥30d; desde 2026-09-18 también DRAFT idle de logueados ≥90d)                      | ✅ Sí           |
+| Retención de carritos + huérfanos de Storage (`purge-anon-designs`) | ✅ Implementado (2026-10-12: AbandonedCart ≥90d, carts vivos idle ≥60d/vacíos ≥7d, barrido de objetos sin Design) | ✅ Sí           |
+| Purga post-entrega de fotos/renders (`purge-delivered-designs`)     | ✅ Implementado (DELIVERED ≥90d, excluye retracto/garantía abierta; conserva preview + snapshot)                  | ✅ Sí           |
+| Flujo de retracto end-to-end                                        | ✅ Implementado (`/mi-cuenta/pedidos/[number]` + `/admin/retractos`)                                              | ✅ Sí           |
+| Flujo de garantía                                                   | ✅ Implementado (`/mi-cuenta/pedidos/[number]` + `/admin/garantias`)                                              | ✅ Sí           |
+| Reporte de incidente a SIC ante brecha (procedimiento)              | Documentar en Fase 7                                                                                              | ✅ Sí           |

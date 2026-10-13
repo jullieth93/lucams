@@ -37,7 +37,7 @@ export async function newsletterWelcomeEmail(data: NewsletterWelcomeData) {
 
   const bodyHtml = `
 <h1 style="margin:0 0 12px 0;font-size:22px;color:#3D2E5C;">¡Estás dentro! 💜</h1>
-<p>Gracias por sumarte al newsletter de <strong>Lucams_shop</strong>.</p>
+<p>Gracias por sumarte al newsletter de <strong>Lucams Shop</strong>.</p>
 <p>Una vez al mes (a veces menos, prometido), te vamos a contar:</p>
 <ul style="padding-left:20px;margin:12px 0;">
   <li>Lanzamientos kawaii nuevos</li>
@@ -51,7 +51,7 @@ ${ctaButton(`${siteUrl}/productos`, "Mientras tanto, mira el catálogo →")}
 
   const text = `¡Estás dentro!
 
-Gracias por sumarte al newsletter de Lucams_shop.
+Gracias por sumarte al newsletter de Lucams Shop.
 
 Una vez al mes (a veces menos) te vamos a contar:
 - Lanzamientos kawaii nuevos

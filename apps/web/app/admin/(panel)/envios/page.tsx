@@ -2,10 +2,10 @@
  * Admin > Envíos — casa de la configuración de transporte del checkout.
  *
  * Vive FUERA de /admin/integraciones/aveonline (decisión del owner): el envío
- * propio Lucam's no es parte de la integración Aveonline y las transportadoras
+ * propio Lucams no es parte de la integración Aveonline y las transportadoras
  * que el checkout ofrece son configuración de negocio, no plumbing técnico.
  * Acá se gestionan:
- *   - Lista unificada de transportadoras: «Envío Lucam's» (propio) + carriers
+ *   - Lista unificada de transportadoras: «Envío Lucams» (propio) + carriers
  *     de la cuenta Aveonline, con toggles on/off.
  *   - Configuración del envío propio: precio, hora límite «entrega hoy» y
  *     zonas de entrega por ciudad.
@@ -65,7 +65,7 @@ export default async function EnviosAdminPage() {
       <AdminPageHeader
         icon={<Truck className="h-5 w-5" />}
         title="Envíos"
-        subtitle="Transportadoras del checkout y envío propio Lucam's"
+        subtitle="Transportadoras del checkout y envío propio Lucams"
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
           { label: "Configuración" },
@@ -107,7 +107,7 @@ export default async function EnviosAdminPage() {
           <CarriersSection carriers={carrierRows} lucamsEnabled={lucamsSettings.enabled} />
         </section>
 
-        {/* Envío propio Lucam's — configuración (precio, cutoff, zonas por ciudad) */}
+        {/* Envío propio Lucams — configuración (precio, cutoff, zonas por ciudad) */}
         <section className="border-brand-purple/10 rounded-xl border bg-white p-5 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
             <Bike className="text-brand-purple h-4 w-4" />

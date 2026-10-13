@@ -137,6 +137,7 @@ export function PaymentMethodChooser({
   backHref,
   codEnabled = true,
   couponInvalidAtRender = false,
+  loyaltyInvalidAtRender = false,
   texts,
 }: {
   backHref: string;
@@ -148,6 +149,8 @@ export function PaymentMethodChooser({
    * es false y el backstop atómico lo rebota con aviso (nunca cobramos en silencio un total no visto).
    */
   couponInvalidAtRender?: boolean;
+  /** Ídem para la redención de Puntos Lucams guardada en el state (2026-10-12). */
+  loyaltyInvalidAtRender?: boolean;
   /** Textos CMS de métodos de pago y legales (roadmap B8). */
   texts: CheckoutTexts["pay"];
 }) {
@@ -204,6 +207,9 @@ export function PaymentMethodChooser({
               el server action lo verifica. En dev sin keys es un input vacío (fail-open). */}
           <TurnstileWidget size="flexible" />
           {couponInvalidAtRender && <input type="hidden" name="couponInvalidAtRender" value="1" />}
+          {loyaltyInvalidAtRender && (
+            <input type="hidden" name="loyaltyInvalidAtRender" value="1" />
+          )}
           <SubmitButton method={activeMethod} texts={texts} />
         </form>
       </div>

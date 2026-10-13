@@ -20,6 +20,9 @@ export function OrderSummary({
   shippingLabel,
   discount,
   couponCode,
+  loyaltyDiscount,
+  loyaltyPoints,
+  loyaltyEarnPreview,
   texts,
 }: {
   cart: CartDetail;
@@ -27,13 +30,21 @@ export function OrderSummary({
   shippingLabel?: string;
   discount?: number; // F1 — descuento por cupón (COP centavos)
   couponCode?: string;
+  /** Puntos Lucams (2026-10-12) — descuento por redención de puntos (centavos)
+   *  y cantidad aplicada. Se suma al descuento del cupón (orden de aplicación:
+   *  primero cupón, luego puntos sobre el restante). */
+  loyaltyDiscount?: number;
+  loyaltyPoints?: number;
+  /** Puntos que el cliente ganará con esta compra (programa activo + sesión). */
+  loyaltyEarnPreview?: number;
   /** Textos CMS del resumen (roadmap B8) — los resuelve el padre server con getCheckoutTexts. */
   texts: CheckoutTexts["summary"];
 }) {
   const subtotal = cart.subtotal;
   const shipping = shippingCost ?? null;
   const appliedDiscount = discount ?? 0;
-  const total = Math.max(0, subtotal + (shipping ?? 0) - appliedDiscount);
+  const appliedLoyaltyDiscount = loyaltyDiscount ?? 0;
+  const total = Math.max(0, subtotal + (shipping ?? 0) - appliedDiscount - appliedLoyaltyDiscount);
   const catalog = isCatalogMode();
 
   return (
@@ -142,12 +153,32 @@ export function OrderSummary({
             </dd>
           </div>
         )}
+        {appliedLoyaltyDiscount > 0 && (
+          <div className="flex justify-between">
+            <dt className="text-emerald-700">
+              Puntos Lucams
+              {loyaltyPoints != null && loyaltyPoints > 0 && (
+                <span className="ml-1 font-semibold">
+                  ({loyaltyPoints.toLocaleString("es-CO")} pts)
+                </span>
+              )}
+            </dt>
+            <dd className="font-semibold text-emerald-700 tabular-nums">
+              −{formatCOP(appliedLoyaltyDiscount)}
+            </dd>
+          </div>
+        )}
         <div className="border-brand-purple/10 mt-2 flex justify-between border-t pt-3">
           <dt className="text-brand-purple-dark font-display text-base font-bold">{texts.total}</dt>
           <dd className="text-brand-purple-dark font-display text-lg font-bold tabular-nums">
             {formatCOP(total)}
           </dd>
         </div>
+        {loyaltyEarnPreview != null && loyaltyEarnPreview > 0 && !catalog && (
+          <p className="text-brand-purple text-[11px] font-semibold">
+            {texts.loyaltyEarn.replace("{n}", loyaltyEarnPreview.toLocaleString("es-CO"))}
+          </p>
+        )}
         <p className="text-brand-muted mt-1 text-[10px]">
           {catalog ? texts.noteCatalog : texts.noteFinal}
         </p>

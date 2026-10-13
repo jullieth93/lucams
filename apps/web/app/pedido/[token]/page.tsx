@@ -21,7 +21,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MapPin, Package, Truck, Wallet } from "lucide-react";
 import { CmsText } from "@/components/cms/cms-text";
+import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
 import { LucamsLogo } from "@/components/lucams-logo";
+import { SITE_NAME } from "@/lib/site";
 import { getCmsBlock } from "@/lib/cms";
 import { prisma } from "@/lib/db";
 import { formatCOP, maskEmail } from "@/lib/format";
@@ -107,7 +109,16 @@ export default async function PublicOrderPage({
               product: { select: { slug: true, name: true } },
             },
           },
-          design: { select: { previewUrl: true, metadata: true } },
+          design: {
+            // 2026-10-13 — sellos de artefactos watermark: el pedido público
+            // exhibe la versión con marca de agua (y sus páginas por unidad).
+            select: {
+              previewUrl: true,
+              metadata: true,
+              previewWatermarkedAt: true,
+              previewPagesCount: true,
+            },
+          },
         },
       },
     },
@@ -122,7 +133,7 @@ export default async function PublicOrderPage({
   });
   const progress = timelineProgress(order.status);
   const isCancelled = order.status === "CANCELLED" || order.status === "REFUNDED";
-  // Entrega propia "Envío Lucam's" (trackingNumber INTERNO-*): NO hay guía de
+  // Entrega propia "Envío Lucams" (trackingNumber INTERNO-*): NO hay guía de
   // transportadora ni rastreo externo — el estado se muestra en lenguaje claro
   // con los datos internos (nunca se consulta Aveonline para estas órdenes).
   const isInternalDelivery = order.shippingCarrier === LUCAMS_CARRIER;
@@ -200,7 +211,7 @@ export default async function PublicOrderPage({
           <Link href="/" className="flex items-center gap-2">
             <LucamsLogo variant="full" size={36} />
             <span className="text-brand-purple-dark font-display text-lg font-bold">
-              Lucams_shop
+              {SITE_NAME}
             </span>
           </Link>
           <Link
@@ -351,7 +362,14 @@ export default async function PublicOrderPage({
           <Card icon={<Package className="h-4 w-4" />} title={itemsHeading}>
             <ul className="divide-brand-purple/10 divide-y">
               {order.items.map((it) => {
-                const previewUrl = it.designAssetUrl ?? it.design?.previewUrl ?? null; // ADR-070 — snapshot primero
+                // 2026-10-13 — exhibición CON marca de agua cuando el artefacto
+                // existe (preview-wm.webp / wm/pages/NN.webp); el snapshot limpio
+                // (designAssetUrl) queda de fallback (diseño sin artefactos o ya
+                // purgado — el snapshot sobrevive al borrado del diseño).
+                const disp = it.design ? designPreviewDisplay(it.design) : null;
+                const previewUrl = disp?.watermarked
+                  ? disp.displayUrl
+                  : (it.designAssetUrl ?? it.design?.previewUrl ?? null); // ADR-070 — snapshot primero
                 // Opciones de diseño del set de letras ("Sin borde") — el PNG las refleja, pero el
                 // texto evita que el cliente tenga que deducirlas de la miniatura (2026-09-05).
                 const borderNote = letterSetBorderNote(it.design?.metadata);
@@ -400,6 +418,17 @@ export default async function PublicOrderPage({
                         <div className="mt-1.5">
                           <DesignPreviewDialog
                             previewUrl={previewUrl}
+                            // 2026-10-13 — páginas por unidad (watermark) cuando
+                            // el diseño las tiene: el "Ver" pagina por unidad.
+                            pages={disp?.pageUrls ?? null}
+                            watermarkNote={
+                              disp?.watermarked ? (
+                                <CmsText
+                                  blockKey="cart.vista-previa-watermark-nota"
+                                  fallback="Vista previa con marca de agua — tu impresión final no la lleva."
+                                />
+                              ) : null
+                            }
                             productName={it.variant.product.name}
                             triggerLabel={<CmsText blockKey="cart.ver-diseno" fallback="Ver" />}
                             title={
@@ -425,6 +454,17 @@ export default async function PublicOrderPage({
                 );
               })}
             </ul>
+            {/* 2026-10-13 — aviso de marca de agua cuando algún diseño exhibido la lleva. */}
+            {order.items.some((it) =>
+              it.design ? designPreviewDisplay(it.design)?.watermarked === true : false,
+            ) && (
+              <p className="text-brand-muted mt-2 text-[11px]">
+                <CmsText
+                  blockKey="order.status.watermark-note"
+                  fallback="Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la lleva."
+                />
+              </p>
+            )}
             <dl className="border-brand-purple/10 mt-3 space-y-1 border-t pt-3 text-sm">
               <Row
                 label={<CmsText blockKey="order.status.subtotal-label" fallback="Subtotal" />}
@@ -438,6 +478,16 @@ export default async function PublicOrderPage({
                 <Row
                   label={<CmsText blockKey="order.status.discount-label" fallback="Descuento" />}
                   value={<span className="text-emerald-700">−{formatCOP(order.discount)}</span>}
+                />
+              )}
+              {/* Puntos Lucams (2026-10-12) — línea propia para que el desglose
+                  cuadre con el total cobrado. */}
+              {order.loyaltyDiscount > 0 && (
+                <Row
+                  label={`Puntos Lucams (${order.loyaltyPointsRedeemed.toLocaleString("es-CO")} pts)`}
+                  value={
+                    <span className="text-emerald-700">−{formatCOP(order.loyaltyDiscount)}</span>
+                  }
                 />
               )}
               <div className="border-brand-purple/10 mt-2 flex justify-between border-t pt-2">

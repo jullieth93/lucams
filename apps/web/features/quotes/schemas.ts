@@ -8,14 +8,15 @@
  */
 
 import { z } from "zod";
-import { stripPhone, validatePhone } from "@/lib/colombia-validators";
+import { NAME_REGEX, stripPhone, validatePhone } from "@/lib/colombia-validators";
 
 export const QuoteFormSchema = z.object({
   customerName: z
     .string()
     .min(2, "El nombre debe tener al menos 2 caracteres")
     .max(80, "Máximo 80 caracteres")
-    .regex(/^[A-Za-zÀ-ÿ\s.''\-]+$/u, "El nombre solo puede tener letras")
+    // Misma regex central de nombre (lib/colombia-validators) — no duplicar inline.
+    .regex(NAME_REGEX, "El nombre solo puede tener letras")
     .trim(),
   // Móvil colombiano: 10 dígitos empezando con 3. Se persiste normalizado
   // (sin +57, sin espacios) vía stripPhone — ver lib/colombia-validators.

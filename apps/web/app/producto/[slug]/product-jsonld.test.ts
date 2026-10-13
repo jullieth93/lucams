@@ -47,7 +47,7 @@ describe("buildProductJsonLd — modo catálogo (Etapa 1)", () => {
       description: "Imán con tu foto",
       sku: "IMA-001",
       category: "Imanes",
-      brand: { "@type": "Brand", name: "Lucams_shop" },
+      brand: { "@type": "Brand", name: "Lucams Shop" },
       image: ["/productos/iman-polaroid.jpg"],
       aggregateRating: { "@type": "AggregateRating", ratingValue: "4.5", reviewCount: 12 },
     });
@@ -74,7 +74,7 @@ describe("buildProductJsonLd — modo full (Etapa 2)", () => {
       priceValidUntil: "2027-07-24",
       availability: "https://schema.org/InStock",
       itemCondition: "https://schema.org/NewCondition",
-      seller: { "@type": "Organization", name: "Lucams_shop" },
+      seller: { "@type": "Organization", name: "Lucams Shop" },
     });
   });
 

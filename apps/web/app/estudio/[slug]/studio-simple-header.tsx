@@ -30,6 +30,13 @@ type StudioSimpleHeaderProps = {
   productSlug: string;
   /** Mini avatar del producto (misma idea que el hero del StudioToolbar). */
   productImageUrl?: string;
+  /**
+   * 2026-10-12 — desglose de la variante vigente bajo el nombre del producto
+   * ("5×7 cm · Sin imán · Español", describeVariantAttributes vía
+   * studioPreviewVariantLabel). Opcional: cada editor la pasa con su verdad en
+   * vivo; sin ella el header se renderiza igual que antes.
+   */
+  variantLabel?: string;
   /** Contenido junto al CTA (total en vivo compacto, ej. "$42.000"). */
   trailing?: React.ReactNode;
   /** Rótulo del CTA (CMS: textos.comun.listo = "Ver diseño"). */
@@ -47,6 +54,7 @@ export function StudioSimpleHeader({
   productName,
   productSlug,
   productImageUrl,
+  variantLabel,
   trailing,
   ctaLabel,
   ctaBusyLabel,
@@ -80,9 +88,18 @@ export function StudioSimpleHeader({
             en móvil el ancho es para el CTA y el total. */}
         <div className="hidden min-w-0 flex-1 items-center justify-center gap-3 md:flex">
           <HeaderAvatar productImageUrl={productImageUrl} productName={productName} />
-          <p className="text-brand-purple-dark truncate text-sm font-semibold">
-            {fillStudioText(texts.lienzo.headerTitle, { producto: productName })}
-          </p>
+          <div className="flex min-w-0 flex-col items-start leading-tight">
+            <p className="text-brand-purple-dark truncate text-sm font-semibold">
+              {fillStudioText(texts.lienzo.headerTitle, { producto: productName })}
+            </p>
+            {/* 2026-10-12 — desglose de la variante bajo el nombre (mismo
+                patrón del StudioToolbar del estudio de foto). */}
+            {variantLabel && (
+              <p className="text-brand-muted mt-0.5 truncate text-[11px] font-medium">
+                {variantLabel}
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
@@ -123,9 +140,14 @@ export function StudioSimpleHeader({
           tarjeta del lienzo sigue iniciando dentro del primer viewport de
           375×812 (verificado con capturas). */}
       <div className="border-brand-purple/10 bg-brand-cream/50 border-t md:hidden">
-        <Hint content={productName}>
+        <Hint content={variantLabel ? `${productName} · ${variantLabel}` : productName}>
           <p className="text-brand-purple-dark truncate px-4 py-1 text-center text-xs font-semibold">
             {productName}
+            {/* 2026-10-12 — desglose de la variante junto al nombre en la fila
+                móvil (el hero es md+), secundario y en la misma línea truncada. */}
+            {variantLabel && (
+              <span className="text-brand-muted font-medium"> · {variantLabel}</span>
+            )}
           </p>
         </Hint>
       </div>

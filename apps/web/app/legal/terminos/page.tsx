@@ -21,7 +21,7 @@ Al comprar en **lucamsshop.com** aceptas estos Términos y Condiciones. Léelos 
 
 ## Quiénes somos
 
-**Lucams_shop** es una marca de productos magnéticos personalizados en Colombia, operada por **Lucams_shop (persona natural), Bogotá D.C., Colombia**.
+**Lucams Shop** es una marca de productos magnéticos personalizados en Colombia, operada por **Lucams Shop (persona natural), Bogotá D.C., Colombia**.
 
 - Correo de contacto: **{{email_contacto}}**
 - WhatsApp: disponible en el sitio (botón de contacto).
@@ -32,7 +32,7 @@ Si necesitas nuestros datos para un trámite formal o una reclamación, escríbe
 
 ## Objeto
 
-Estos Términos regulan la relación entre tú (el **consumidor**) y Lucams_shop (la **vendedora**) cuando visitas el sitio, personalizas un producto, pides una cotización o realizas una compra. Al usar el sitio o hacer un pedido, aceptas estas condiciones. Si no estás de acuerdo, por favor no completes tu pedido.
+Estos Términos regulan la relación entre tú (el **consumidor**) y Lucams Shop (la **vendedora**) cuando visitas el sitio, personalizas un producto, pides una cotización o realizas una compra. Al usar el sitio o hacer un pedido, aceptas estas condiciones. Si no estás de acuerdo, por favor no completes tu pedido.
 
 ## Los productos
 
@@ -111,7 +111,7 @@ Nos autorizas a imprimir ese contenido **únicamente** para producir tu pedido. 
 
 ## Propiedad intelectual
 
-Las marcas, ilustraciones, la mascota, los diseños y los contenidos del sitio son de Lucams_shop o de sus titulares. No pueden reproducirse ni usarse sin autorización previa y escrita.
+Las marcas, ilustraciones, la mascota, los diseños y los contenidos del sitio son de Lucams Shop o de sus titulares. No pueden reproducirse ni usarse sin autorización previa y escrita.
 
 ## Tus datos personales
 

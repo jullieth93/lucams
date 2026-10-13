@@ -160,7 +160,7 @@ export async function setDisabledCarriers(names: string[], adminId: string | nul
   );
 }
 
-// ─── Envío propio Lucam's (multi-ciudad) ───
+// ─── Envío propio Lucams (multi-ciudad) ───
 
 export type LucamsShippingSettings = {
   enabled: boolean;
@@ -272,7 +272,7 @@ export async function saveLucamsShippingSettings(
     SETTING_KEYS.lucamsPriceCop,
     String(input.priceCop),
     {
-      label: "Precio envío propio Lucam's (centavos)",
+      label: "Precio envío propio Lucams (centavos)",
       helpText:
         "Precio fijo del envío propio, en centavos COP (1000000 = $10.000). Se gestiona desde Envíos (/admin/envios).",
       type: "NUMBER",

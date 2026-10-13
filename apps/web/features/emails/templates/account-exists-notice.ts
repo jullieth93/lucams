@@ -15,7 +15,7 @@ export async function accountExistsNoticeEmail() {
 
   const bodyHtml = `
 <h1 style="margin:0 0 12px 0;font-size:22px;color:#3D2E5C;">¿Intentaste crear una cuenta?</h1>
-<p>Recibimos una solicitud de registro con <strong>este correo</strong>, pero ya tienes una cuenta en Lucams_shop.</p>
+<p>Recibimos una solicitud de registro con <strong>este correo</strong>, pero ya tienes una cuenta en Lucams Shop.</p>
 <p>Si fuiste tú, inicia sesión directamente. ¿No recuerdas tu contraseña? <a href="${resetUrl}" style="color:#7C6AAD;">Restablécela aquí</a>.</p>
 ${ctaButton(loginUrl, "Iniciar sesión →")}
 <p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">Si no fuiste tú, ignora este correo: nadie puede crear otra cuenta con tu correo y tu cuenta sigue protegida.</p>
@@ -23,7 +23,7 @@ ${ctaButton(loginUrl, "Iniciar sesión →")}
 
   const text = `¿Intentaste crear una cuenta?
 
-Recibimos una solicitud de registro con este correo, pero ya tienes una cuenta en Lucams_shop.
+Recibimos una solicitud de registro con este correo, pero ya tienes una cuenta en Lucams Shop.
 
 Si fuiste tú, inicia sesión: ${loginUrl}
 ¿No recuerdas tu contraseña? Restablécela aquí: ${resetUrl}
@@ -31,7 +31,7 @@ Si fuiste tú, inicia sesión: ${loginUrl}
 Si no fuiste tú, ignora este correo: nadie puede crear otra cuenta con tu correo y tu cuenta sigue protegida.`;
 
   return {
-    subject: "¿Intentaste crear una cuenta en Lucams_shop?",
+    subject: "¿Intentaste crear una cuenta en Lucams Shop?",
     html: await renderEmailLayout({
       preview: "Tu correo ya tiene una cuenta — inicia sesión o restablece tu contraseña.",
       bodyHtml,

@@ -3,7 +3,7 @@
  * integración).
  *
  * La configuración de NEGOCIO del transporte (transportadoras del checkout +
- * envío propio Lucam's) se movió a /admin/envios (decisión del owner: no es
+ * envío propio Lucams) se movió a /admin/envios (decisión del owner: no es
  * parte de la integración Aveonline). Acá quedan solo los webhooks de
  * tracking: registrar uno nuevo (apuntando a /api/webhooks/aveonline) o
  * eliminar los existentes.

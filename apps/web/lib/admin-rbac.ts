@@ -88,7 +88,7 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   { prefix: "/admin/ocasiones", roles: CATALOG },
   { prefix: "/admin/resenas", roles: CATALOG },
   { prefix: "/admin/clientes", roles: CATALOG },
-  // Envíos (transportadoras del checkout + envío propio Lucam's): config de
+  // Envíos (transportadoras del checkout + envío propio Lucams): config de
   // negocio del transporte — CATALOG (= MANAGER_UP), alineado con las actions
   // de la página (requireAdminAction MANAGER_UP). FULFILLMENT opera pedidos
   // pero NO cambia qué transportadoras se ofrecen. La parte TÉCNICA
@@ -97,6 +97,10 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   // Marketing > Suscriptores (Fase 3A): misma matriz que Clientes — la página
   // es solo lectura + export CSV sobre Consent NEWSLETTER, sin mutaciones.
   { prefix: "/admin/marketing", roles: CATALOG },
+  // Fidelización (Puntos Lucams + Invita y gana, 2026-10-12): config con impacto
+  // económico directo — misma barra que Cupones. Declarado explícito (equivale al
+  // deny-by-default, pero queda visible en la matriz — criterio N-21).
+  { prefix: "/admin/fidelizacion", roles: ["SUPERADMIN"] },
   // Contenido del sitio (CMS v2): "Páginas del sitio" (/admin/contenido, incluye
   // /admin/contenido/paginas/global = "Ajustes del sitio"). La página "emails"
   // (asunto/preheader del newsletter welcome, Ruta A) sigue acá con CONTENT.

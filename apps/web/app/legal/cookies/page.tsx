@@ -8,9 +8,9 @@ export const metadata: Metadata = {
 };
 
 const FALLBACK = `
-Las **cookies** son archivos pequeñitos que tu navegador guarda cuando visitas un sitio. Nos sirven para que **Lucams_shop** funcione (que puedas iniciar sesión y que tu carrito no se pierda) y, si tú lo autorizas, para mejorar tu experiencia. Aquí te contamos, sin letra menuda, qué cookies usamos, para qué, cuánto duran y cómo las controlas.
+Las **cookies** son archivos pequeñitos que tu navegador guarda cuando visitas un sitio. Nos sirven para que **Lucams Shop** funcione (que puedas iniciar sesión y que tu carrito no se pierda) y, si tú lo autorizas, para mejorar tu experiencia. Aquí te contamos, sin letra menuda, qué cookies usamos, para qué, cuánto duran y cómo las controlas.
 
-Responsable del tratamiento: **Lucams_shop (persona natural), Bogotá D.C., Colombia**, titular de la marca **Lucams_shop**. Tratamos tus datos conforme a la **Ley 1581 de 2012** y su **Decreto reglamentario 1377 de 2013, compilado en el Decreto 1074 de 2015**. Para dudas o para ejercer tus derechos, escríbenos a **{{email_habeas_data}}** (encuentras el detalle en el **Aviso de Privacidad** y en **Hábeas Data**). Si necesitas nuestros datos para un trámite formal o una reclamación, escríbenos y te los damos.
+Responsable del tratamiento: **Lucams Shop (persona natural), Bogotá D.C., Colombia**, titular de la marca **Lucams Shop**. Tratamos tus datos conforme a la **Ley 1581 de 2012** y su **Decreto reglamentario 1377 de 2013, compilado en el Decreto 1074 de 2015**. Para dudas o para ejercer tus derechos, escríbenos a **{{email_habeas_data}}** (encuentras el detalle en el **Aviso de Privacidad** y en **Hábeas Data**). Si necesitas nuestros datos para un trámite formal o una reclamación, escríbenos y te los damos.
 
 ## Cómo clasificamos las cookies
 
@@ -30,9 +30,9 @@ Las tres categorías opcionales están **desactivadas por defecto** y solo se ac
 | Cookie                     | Para qué sirve                                          | Categoría | Duración    | Responsable         |
 | -------------------------- | ------------------------------------------------------- | --------- | ----------- | ------------------- |
 | \`sb-<proyecto>-auth-token\` | Mantiene tu sesión iniciada (Supabase Auth)             | Necesaria | ~7 días     | Supabase (EE.UU.)   |
-| \`cart_session\`             | Identifica tu carrito antes y después de iniciar sesión | Necesaria | 30 días     | Lucams_shop         |
-| \`checkout_state\`           | Guarda temporalmente el avance de tu compra             | Necesaria | 60 minutos  | Lucams_shop         |
-| \`cookie_consent_v1\`        | Recuerda qué cookies aceptaste                          | Necesaria | 1 año       | Lucams_shop         |
+| \`cart_session\`             | Identifica tu carrito antes y después de iniciar sesión | Necesaria | 30 días     | Lucams Shop         |
+| \`checkout_state\`           | Guarda temporalmente el avance de tu compra             | Necesaria | 60 minutos  | Lucams Shop         |
+| \`cookie_consent_v1\`        | Recuerda qué cookies aceptaste                          | Necesaria | 1 año       | Lucams Shop         |
 | \`__cf_bm\`                  | Seguridad y detección de bots                           | Necesaria | ~30 minutos | Cloudflare (global) |
 
 Las cookies de tu carrito y de tu checkout (\`cart_session\` y \`checkout_state\`) son \`HttpOnly\`: viven solo en tu navegador y ningún script de terceros puede leerlas. Cuando resuelves un reto anti-bot (por ejemplo, al registrarte), Cloudflare puede añadir cookies de seguridad adicionales; las usamos únicamente para protegerte del fraude.

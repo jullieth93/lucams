@@ -12,6 +12,8 @@ vi.mock("@react-three/drei", () => ({
 
 import {
   BLANK_FACE_COLOR,
+  CALENDAR_CARD_THICKNESS_CM,
+  FACE_ALPHA_TEST,
   FACE_FLIP_ROTATION,
   MAGNET_THICKNESS_CM,
   MIN_WORLD_DEPTH,
@@ -24,6 +26,47 @@ import {
   realWorldDepth,
   textureRegionTransform,
 } from "./magnet-3d";
+
+describe("FACE_ALPHA_TEST (2026-10-12 — bug 'tiras negras': píxeles α=0 del PNG troquelado)", () => {
+  it("es un cutout a media altura del alfa (descarta el RGB(0,0,0) transparente, conserva la foto)", () => {
+    // Los píxeles fuera de la silueta del troquel son (0,0,0,0): sin alphaTest renderizan
+    // NEGRO. 0.5 = corte estándar: descarta el fondo transparente y el anti-aliasing más
+    // transparente que la mitad, conserva cualquier píxel mayoritariamente impreso.
+    expect(FACE_ALPHA_TEST).toBeGreaterThan(0);
+    expect(FACE_ALPHA_TEST).toBeLessThan(1);
+    expect(FACE_ALPHA_TEST).toBe(0.5);
+  });
+});
+
+describe("CALENDAR_CARD_THICKNESS_CM (2026-10-12 — tarjetas del calendario = cartulina, no imán)", () => {
+  const FRIDGE_U_PER_CM = 8.8 / 178; // nevera ≈ 0.04944 u/cm (lib/cluster-layout)
+  const BOARD_U_PER_CM = 0.1; // mural de corcho (lib/cluster-layout)
+  const FOCUS_U_PER_CM = 0.54; // visor tarjeta-a-tarjeta (calendar-card-focus)
+
+  it("la tarjeta es cartulina de ~0.4 mm, mucho más fina que el fotoimán de 2 mm", () => {
+    expect(CALENDAR_CARD_THICKNESS_CM).toBeGreaterThanOrEqual(0.03);
+    expect(CALENDAR_CARD_THICKNESS_CM).toBeLessThanOrEqual(0.05);
+    expect(CALENDAR_CARD_THICKNESS_CM).toBeLessThan(TILE_THICKNESS_CM);
+    expect(CALENDAR_CARD_THICKNESS_CM).toBeLessThan(MAGNET_THICKNESS_CM);
+  });
+
+  it("en nevera y mural el piso anti-z-fighting acota la cartulina (y queda ≤ que el imán)", () => {
+    const fridgeCard = realWorldDepth(FRIDGE_U_PER_CM, CALENDAR_CARD_THICKNESS_CM);
+    const boardCard = realWorldDepth(BOARD_U_PER_CM, CALENDAR_CARD_THICKNESS_CM);
+    // 0.04 cm × 0.049 u/cm ≈ 0.002 u y × 0.1 ≈ 0.004 u → ambas bajo el piso 0.008 u.
+    expect(fridgeCard).toBe(MIN_WORLD_DEPTH);
+    expect(boardCard).toBe(MIN_WORLD_DEPTH);
+    // Nunca más gruesa que el imán de la misma escena (el mensaje al cliente es "tarjeta").
+    expect(fridgeCard).toBeLessThan(realWorldDepth(FRIDGE_U_PER_CM));
+    expect(boardCard).toBeLessThan(realWorldDepth(BOARD_U_PER_CM));
+  });
+
+  it("en el visor tarjeta-a-tarjeta (0.54 u/cm) rige el grosor real: 0.0216 u", () => {
+    const d = realWorldDepth(FOCUS_U_PER_CM, CALENDAR_CARD_THICKNESS_CM);
+    expect(d).toBeCloseTo(0.04 * 0.54, 9);
+    expect(d).toBeGreaterThan(MIN_WORLD_DEPTH);
+  });
+});
 
 describe("BLANK_FACE_COLOR (decisión owner 2026-10-07 — cara B vacía EN BLANCO)", () => {
   it("es blanco PURO (#FFFFFF): el mismo blanco que imprenta recibe (blankBackFacePng)", () => {

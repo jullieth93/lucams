@@ -3,7 +3,7 @@
 /*
  * Sección "Transportadoras" de /admin/envios: lista UNIFICADA de lo que el
  * checkout puede ofrecer — las transportadoras de la cuenta Aveonline
- * (toggle → SHIPPING_DISABLED_CARRIERS) + el envío propio "Envío Lucam's"
+ * (toggle → SHIPPING_DISABLED_CARRIERS) + el envío propio "Envío Lucams"
  * como una transportadora más (badge «Propio», toggle →
  * LUCAMS_SHIPPING_ENABLED; su precio/cutoff/zonas se configuran abajo).
  */

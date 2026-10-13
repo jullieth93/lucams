@@ -30,7 +30,7 @@ export async function warrantyResolvedEmail(data: WarrantyResolvedData) {
 <p>Resolvimos tu reclamo de garantía <strong style="font-family:monospace;background:#FFF8F0;padding:2px 6px;border-radius:4px;">#${short}</strong> de <strong>${escapeHtml(data.productName)}</strong> con: <strong>${remedy}</strong>.</p>
 ${noteHtml}
 <p>Gracias por tu paciencia. Si algo no quedó bien, respóndenos este correo.</p>
-<p>Un abrazo,<br>El equipo de Lucams_shop</p>
+<p>Un abrazo,<br>El equipo de Lucams Shop</p>
 `;
   const text = `Tu garantía quedó resuelta
 
@@ -41,7 +41,7 @@ ${data.note ? `\n${data.note}\n` : ""}
 Gracias por tu paciencia. Si algo no quedó bien, respóndenos este correo.
 
 Un abrazo,
-El equipo de Lucams_shop`;
+El equipo de Lucams Shop`;
 
   return {
     subject: `Tu garantía quedó resuelta — #${short}`,

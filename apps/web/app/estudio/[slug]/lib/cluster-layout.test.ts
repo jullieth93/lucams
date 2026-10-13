@@ -14,7 +14,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BOARD_FIT,
   BOARD_SCENE,
+  boardFitHalf,
   clusterColumnCount,
   clusterLayout,
   frenchDoorClusterLayout,
@@ -481,6 +483,55 @@ describe("proporciones físicas de las escenas (Ola 30)", () => {
     for (const it of layout.items) {
       expect(it.w).toBeCloseTo(w, 9);
       expect(it.h).toBeCloseTo(h, 9);
+    }
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+//  2026-10-12 — bug "vista 3D Mural muy gigante": encuadre inicial ponderado al clúster
+// ──────────────────────────────────────────────────────────────────
+
+describe("boardFitHalf — encuadre del mural ponderado al clúster (el tablero NO se encoge)", () => {
+  const HALF_W = BOARD_SCENE.wU / 2; // 6 u ↔ 60 cm
+
+  it("1 pieza chica: ya NO se encuadra el tablero completo (ese era el bug)", () => {
+    const pieceHalf = (6.5 * BOARD_SCENE.uPerCm) / 2; // imán 6.5 cm → 0.325 u
+    const fit = boardFitHalf(pieceHalf, HALF_W);
+    // Piso de contexto: 55% del tablero — el marco se asoma y se lee "tablero".
+    expect(fit).toBeCloseTo(HALF_W * BOARD_FIT.minBoardFrac, 9);
+    expect(fit).toBeLessThan(HALF_W);
+  });
+
+  it("clúster mediano: clúster + margen generoso (7.5 cm de aire), más que el piso", () => {
+    // 4 imanes 6.5 cm en 2×2: halfW ≈ 0.71 u → ponderado 1.46 < piso 3.3 → piso.
+    // Con un clúster de ~6 u de ancho (halfW 3): ponderado 3.75 > piso → ponderado.
+    const fit = boardFitHalf(3, HALF_W);
+    expect(fit).toBeCloseTo(3 + BOARD_FIT.margin, 9);
+  });
+
+  it("clúster que CASI llena el tablero: snap al tablero completo (crop del marco 'por poquito' se veía accidentado)", () => {
+    // 12 tiras 6.5×26.5 en grilla 6×2: halfW ≈ 4.95 → ponderado 5.7 ≥ 85% del tablero (5.1).
+    const fit = boardFitHalf(4.95, HALF_W);
+    expect(fit).toBe(HALF_W);
+  });
+
+  it("clúster que DESBORDA el tablero: el encuadre lo cubre completo (nunca se encoge)", () => {
+    const layoutHalf = HALF_W + 1.3;
+    const fit = boardFitHalf(layoutHalf, HALF_W);
+    expect(fit).toBeCloseTo(layoutHalf + 0.1, 9);
+  });
+
+  it("alto: misma regla sobre el medio-alto del tablero", () => {
+    const HALF_H = BOARD_SCENE.hU / 2; // 4 u
+    expect(boardFitHalf(0.3, HALF_H)).toBeCloseTo(HALF_H * BOARD_FIT.minBoardFrac, 9);
+    expect(boardFitHalf(4.9, HALF_H)).toBeCloseTo(5.0, 9); // desborde → cubre el clúster
+  });
+
+  it("nunca encuadra MENOS que el clúster + margen ni MÁS que tablero/clúster completo", () => {
+    for (const layoutHalf of [0, 0.3, 1, 2, 3, 4, 5, 6, 8, 12]) {
+      const fit = boardFitHalf(layoutHalf, HALF_W);
+      expect(fit).toBeGreaterThanOrEqual(layoutHalf + 0.1 - 1e-9);
+      expect(fit).toBeLessThanOrEqual(Math.max(HALF_W, layoutHalf + 0.1) + 1e-9);
     }
   });
 });

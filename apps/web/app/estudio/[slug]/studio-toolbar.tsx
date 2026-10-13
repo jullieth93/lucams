@@ -58,6 +58,14 @@ type StudioToolbarProps = {
   /** A1.1 — Cantidad total de unidades del pack (ej 6, 12). En separadores 2 caras
    *  es la cantidad de UNIDADES físicas (cada una con 2 caras de diseño). */
   productSlotCount?: number;
+  /**
+   * 2026-10-12 — desglose de la variante efectiva bajo el nombre del producto
+   * ("Con imán · Español", "Corazón · Brillante"…). Lo construye el editor con
+   * studioPreviewVariantLabel (mismo helper de la Vista Previa) ya SIN las
+   * dimensiones que el propio header enuncia (tamaño en el chip 📐 y conteo
+   * con slotNoun): acá llegan solo las que el header no muestra.
+   */
+  variantLabel?: string;
   /** Ola 3 — sustantivo de la unidad. Fase 1A (2026-09-27): par { one, many }
    *  resuelto por resolveSlotNoun (productKind real + magnet — un calendario o
    *  una variante SIN IMÁN nunca dicen "imanes"). */
@@ -79,8 +87,9 @@ type StudioToolbarProps = {
    *  Loader2 del Estudio). */
   isPreviewBuilding?: boolean;
   /**
-   * Lucy 2026-09-05 — packs de fotoimanes: config del stepper "¿Cuántas fotos
-   * lleva tu imán?" (fila propia bajo el header). undefined = producto no pack:
+   * Lucy 2026-09-05 — packs de fotoimanes/separadores: config del stepper de
+   * unidades ("¿Cuántos separadores quieres?" — el sustantivo lo pone
+   * `slotNoun`; fila propia bajo el header). undefined = producto no pack:
    * el control no se renderiza.
    */
   photoCount?: {
@@ -122,6 +131,7 @@ export function StudioToolbar({
   productImageUrl,
   productSizeCm,
   productSlotCount,
+  variantLabel,
   slotNoun = { one: "imán", many: "imanes" },
   slotLabels,
   showRealismGuides,
@@ -187,7 +197,7 @@ export function StudioToolbar({
             <p className="text-brand-purple-dark text-sm font-semibold">
               {fillStudioText(texts.lienzo.headerTitle, { producto: productName })}
             </p>
-            {(productSizeCm || productSlotCount) && (
+            {(productSizeCm || productSlotCount || variantLabel) && (
               <p className="text-brand-muted mt-0.5 flex items-center gap-1.5 text-[11px] font-medium">
                 {productSizeCm && <SizeChipWithComparator sizeCm={productSizeCm} />}
                 {productSlotCount && (
@@ -195,6 +205,9 @@ export function StudioToolbar({
                     · {productSlotCount} {productSlotCount === 1 ? slotNoun.one : slotNoun.many}
                   </span>
                 )}
+                {/* 2026-10-12 — desglose de la variante (imán, idioma, tema…);
+                    tamaño y conteo ya están en los chips de la misma línea. */}
+                {variantLabel && <span className="text-brand-muted">· {variantLabel}</span>}
               </p>
             )}
           </div>
@@ -247,8 +260,8 @@ export function StudioToolbar({
         </div>
       </div>
 
-      {/* Lucy 2026-09-05 — packs de fotoimanes: el N de fotos por imán se elige ACÁ
-          (en el Estudio), no en la PDP. Fila propia visible en mobile y desktop.
+      {/* Lucy 2026-09-05 — packs: el N de unidades se elige ACÁ (en el Estudio),
+          no en la PDP. Fila propia visible en mobile y desktop.
           Ola 28 (owner 2026-09-11) — composición fija (tiras): el stepper de fotos
           sobra ("ya se eligió en la PDP"); en su lugar va el de UNIDADES a diseñar.
           A3 (2026-09-15) — el stepper de UNIDADES es UNIVERSAL: todo producto sin
@@ -262,6 +275,9 @@ export function StudioToolbar({
           max={photoCount.max}
           facesPerUnit={photoCount.facesPerUnit}
           sizeCm={photoCount.sizeCm}
+          // El N del stepper son UNIDADES del producto: el sustantivo es el
+          // mismo del chip ("¿Cuántos separadores quieres?").
+          unitNoun={slotNoun}
           magnet={photoCount.magnet}
         />
       ) : (
@@ -286,6 +302,13 @@ export function StudioToolbar({
             {productName}
           </span>
         </Hint>
+        {/* 2026-10-12 — desglose de la variante también en la fila móvil (el
+            hero es md+): secundario, truncado, sin quitarle espacio al nombre. */}
+        {variantLabel && (
+          <span className="text-brand-muted max-w-[30%] truncate text-[11px] font-medium">
+            {variantLabel}
+          </span>
+        )}
         <span aria-hidden className="text-brand-purple/25">
           ·
         </span>

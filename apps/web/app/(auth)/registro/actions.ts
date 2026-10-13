@@ -19,17 +19,23 @@
 "use server";
 
 import { randomBytes } from "node:crypto";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
+import {
+  CUSTOMER_ACTIVITY_COOKIE,
+  customerActivityCookieOptions,
+  sealCustomerActivityMark,
+} from "@/lib/customer-activity";
 import { logger } from "@/lib/logger";
 import { getRequestOrigin } from "@/lib/origin";
 import { checkPwnedPassword } from "@/lib/pwned-passwords";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { NAME_REGEX, capitalizeName } from "@/lib/colombia-validators";
 import { recordHabeasDataConsent } from "@/features/consent/service";
 import { attachReferral, findReferrerByCode } from "@/features/referrals/service";
 import { renderAccountExistsNoticeEmail } from "@/features/emails/registry";
@@ -43,8 +49,22 @@ const SignupSchema = z
     email: z.string().email("Email inválido"),
     password: z.string().min(8, "Mínimo 8 caracteres").max(72, "Máximo 72 caracteres"),
     passwordConfirm: z.string(),
-    firstName: z.string().min(1, "Tu nombre es obligatorio").max(50, "Máximo 50 caracteres"),
-    lastName: z.string().max(50, "Máximo 50 caracteres").optional(),
+    // Misma regla de nombre del checkout/perfil (lib/colombia-validators):
+    // solo letras y se persiste en title case (respeta de/del/la/las…).
+    firstName: z
+      .string()
+      .trim()
+      .min(1, "Tu nombre es obligatorio")
+      .max(50, "Máximo 50 caracteres")
+      .regex(NAME_REGEX, "Tu nombre solo puede tener letras")
+      .transform(capitalizeName),
+    lastName: z
+      .string()
+      .trim()
+      .max(50, "Máximo 50 caracteres")
+      .regex(NAME_REGEX, "El apellido solo puede tener letras")
+      .transform(capitalizeName)
+      .optional(),
     // Referidos v1 (2026-08-11): código opcional, se valida contra DB en la action.
     referralCode: z.string().max(20, "Máximo 20 caracteres").optional(),
   })
@@ -391,5 +411,13 @@ export async function signupAction(
     redirect(`/confirmar-codigo?${params.toString()}`);
   }
 
+  // Si email confirmation está desactivado (sólo dev), session viene
+  // populated y entramos directo: sellar la marca de actividad del cliente
+  // (idle-timeout 30 días — lib/customer-activity.ts), igual que en login.
+  (await cookies()).set(
+    CUSTOMER_ACTIVITY_COOKIE,
+    sealCustomerActivityMark(Date.now()),
+    customerActivityCookieOptions(),
+  );
   redirect("/");
 }

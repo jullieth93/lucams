@@ -1,4 +1,4 @@
-# apps/web — Storefront + admin Lucams_shop
+# apps/web — Storefront + admin Lucams Shop
 
 Aplicación Next.js 16 (App Router) del e-commerce: storefront público, panel `/admin`,
 Estudio de Personalización (`app/estudio/`), checkout y APIs. Parte del monorepo pnpm;

@@ -8,9 +8,11 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   studioDraftStorageKey,
   readStudioDraftId,
+  readStudioDraftMarker,
   writeStudioDraftId,
   clearStudioDraftId,
   shouldOfferDraftResume,
+  DRAFT_MARKER_MAX_AGE_MS,
   studioCanvasSnapshotKey,
   readStudioCanvasSnapshot,
   writeStudioCanvasSnapshot,
@@ -27,8 +29,12 @@ describe("draft marker (localStorage por producto)", () => {
     );
   });
 
-  it("write → read devuelve el designId; clear lo borra", () => {
+  it("write → read devuelve designId y savedAt; clear lo borra", () => {
+    const before = Date.now();
     writeStudioDraftId("polaroid", "design-123");
+    const marker = readStudioDraftMarker("polaroid");
+    expect(marker?.designId).toBe("design-123");
+    expect(marker?.savedAt).toBeGreaterThanOrEqual(before);
     expect(readStudioDraftId("polaroid")).toBe("design-123");
     clearStudioDraftId("polaroid");
     expect(readStudioDraftId("polaroid")).toBeNull();
@@ -43,10 +49,57 @@ describe("draft marker (localStorage por producto)", () => {
     expect(readStudioDraftId("calendario")).toBe("design-B");
   });
 
-  it("sin marcador o con valor vacío → null", () => {
-    expect(readStudioDraftId("nada")).toBeNull();
-    window.localStorage.setItem(studioDraftStorageKey("vacio"), "");
-    expect(readStudioDraftId("vacio")).toBeNull();
+  it("sin marcador → null", () => {
+    expect(readStudioDraftMarker("nada")).toBeNull();
+  });
+
+  it("marcador LEGACY (string plano, escrito al entrar sin progreso) → null y se AUTO-LIMPIA", () => {
+    // La versión anterior guardaba el designId como string plano en el boot —
+    // sin evidencia de progreso real. No es confiable: no se ofrece y se borra.
+    window.localStorage.setItem(studioDraftStorageKey("polaroid"), "design-viejo");
+    expect(readStudioDraftMarker("polaroid")).toBeNull();
+    expect(window.localStorage.getItem(studioDraftStorageKey("polaroid"))).toBeNull();
+  });
+
+  it("marcador corrupto (JSON inválido o campos faltantes) → null y se limpia", () => {
+    window.localStorage.setItem(studioDraftStorageKey("a"), "{no-json");
+    expect(readStudioDraftMarker("a")).toBeNull();
+    window.localStorage.setItem(studioDraftStorageKey("b"), JSON.stringify({ designId: "x" }));
+    expect(readStudioDraftMarker("b")).toBeNull();
+    window.localStorage.setItem(
+      studioDraftStorageKey("c"),
+      JSON.stringify({ designId: "", savedAt: Date.now() }),
+    );
+    expect(readStudioDraftMarker("c")).toBeNull();
+    expect(window.localStorage.getItem(studioDraftStorageKey("b"))).toBeNull();
+  });
+
+  it("marcador VENCIDO (> DRAFT_MARKER_MAX_AGE_MS — el draft ya pudo purgar server-side) → null y se limpia", () => {
+    const now = Date.now();
+    window.localStorage.setItem(
+      studioDraftStorageKey("viejo"),
+      JSON.stringify({ designId: "design-1", savedAt: now - DRAFT_MARKER_MAX_AGE_MS - 1000 }),
+    );
+    expect(readStudioDraftMarker("viejo", { now })).toBeNull();
+    expect(window.localStorage.getItem(studioDraftStorageKey("viejo"))).toBeNull();
+  });
+
+  it("marcador dentro de la ventana de vigencia → se ofrece", () => {
+    const now = Date.now();
+    window.localStorage.setItem(
+      studioDraftStorageKey("fresco"),
+      JSON.stringify({ designId: "design-1", savedAt: now - DRAFT_MARKER_MAX_AGE_MS + 1000 }),
+    );
+    expect(readStudioDraftMarker("fresco", { now })?.designId).toBe("design-1");
+  });
+
+  it("savedAt en el FUTURO (reloj del cliente disparado) → null y se limpia", () => {
+    const now = Date.now();
+    window.localStorage.setItem(
+      studioDraftStorageKey("futuro"),
+      JSON.stringify({ designId: "design-1", savedAt: now + 10 * 60_000 }),
+    );
+    expect(readStudioDraftMarker("futuro", { now })).toBeNull();
   });
 
   it("write con designId vacío no escribe nada", () => {
@@ -69,6 +122,7 @@ describe("draft marker (localStorage por producto)", () => {
     } as unknown as Storage;
     Object.defineProperty(window, "localStorage", { value: throwing, configurable: true });
     expect(readStudioDraftId("polaroid")).toBeNull();
+    expect(readStudioDraftMarker("polaroid")).toBeNull();
     expect(() => writeStudioDraftId("polaroid", "x")).not.toThrow();
     expect(() => clearStudioDraftId("polaroid")).not.toThrow();
     Object.defineProperty(window, "localStorage", { value: original, configurable: true });
@@ -114,6 +168,32 @@ describe("shouldOfferDraftResume", () => {
         hasInitialDesign: false,
       }),
     ).toBe(false);
+  });
+
+  it("integración: marcador sin progreso real (legacy string) no llega a la decisión", () => {
+    // El bug reportado 2026-10-13: el marcador se escribía al ENTRAR al estudio
+    // y el interstitial salía siempre. El read nuevo lo descarta antes de decidir.
+    window.localStorage.setItem(studioDraftStorageKey("polaroid"), "design-sin-progreso");
+    const marker = readStudioDraftMarker("polaroid");
+    expect(
+      shouldOfferDraftResume({
+        savedDesignId: marker?.designId ?? null,
+        urlHasDesignId: false,
+        hasInitialDesign: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("integración: marcador con progreso real (write tras auto-save) sí ofrece", () => {
+    writeStudioDraftId("polaroid", "design-con-progreso");
+    const marker = readStudioDraftMarker("polaroid");
+    expect(
+      shouldOfferDraftResume({
+        savedDesignId: marker?.designId ?? null,
+        urlHasDesignId: false,
+        hasInitialDesign: false,
+      }),
+    ).toBe(true);
   });
 });
 

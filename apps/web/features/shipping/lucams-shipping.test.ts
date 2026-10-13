@@ -1,5 +1,5 @@
 /*
- * Tests del envío propio "Envío Lucam's" (mensajería interna multi-ciudad):
+ * Tests del envío propio "Envío Lucams" (mensajería interna multi-ciudad):
  * la oferta del checkout (buildLucamsOffer) — cuándo aplica, precio desde
  * settings, promesa producción + hora de corte (deliveryDays = días de
  * fabricación del carrito + 1 si el pedido entra al corte o después —

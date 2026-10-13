@@ -38,6 +38,7 @@
 import "server-only";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/db";
+import { SITE_NAME } from "@/lib/site";
 
 const RESEND_URL = "https://api.resend.com/emails";
 const RESEND_TIMEOUT_MS = 15_000;
@@ -155,7 +156,7 @@ async function attemptSend(
 
 export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
   const apiKey = process.env.RESEND_API_KEY;
-  const fromDefault = process.env.EMAIL_FROM ?? "Lucams_shop <onboarding@resend.dev>";
+  const fromDefault = process.env.EMAIL_FROM ?? `${SITE_NAME} <onboarding@resend.dev>`;
   const from = input.from ?? fromDefault;
 
   if (!apiKey) {

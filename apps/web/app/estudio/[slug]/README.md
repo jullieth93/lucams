@@ -1,6 +1,6 @@
-# Estudio de Personalización — Lucams_shop
+# Estudio de Personalización — Lucams Shop
 
-> **Diferenciador #1 de Lucams_shop**. ADR-013 (concepto) + ADR-035 (arquitectura técnica).
+> **Diferenciador #1 de Lucams Shop**. ADR-013 (concepto) + ADR-035 (arquitectura técnica).
 > Sub-bloque M.3.b — versión v2 productiva (mayo 2026, "tienda que envidiar").
 
 ## Filosofía de diseño
@@ -116,6 +116,14 @@ o sessionId anónimo) y cada superficie devuelve al editor lo persistido:
   DRAFT vía `cloneDesignForEdit` (el original queda intacto por si el cliente abandona;
   al finalizar `replacesCartDesignId` reemplaza el item en sitio). Se hidratan canvas +
   DesignAssets con signed URLs refrescadas.
+  **Re-mapeo de URLs (2026-10-12 — bug "lila translúcido")**: las signed URLs persistidas
+  en `slot.assetUrl` caducan a 1 h y el render usa la del SLOT, así que el boot reescribe
+  los slots del canvasData por `assetId` con las URLs frescas (`lib/remap-canvas-assets.ts`,
+  antes de `store.init`; cubre foto principal y foto de perfil IG). Un asset que ya no
+  existe en el servidor deja su slot VACÍO (estado "vuelve a subirla") y el boot avisa con
+  toast (`estudio.errores.assets-faltantes`) — antes fallaba en silencio con el
+  placeholder lila eterno. La plantilla se restaura priorizando `Design.templateId`
+  persistido sobre el match por dimensiones (`findTemplateIdForCanvas` queda de fallback).
 - **Nombre (`name`)**: sin clonar — el editor siempre crea un diseño NUEVO al confirmar.
   Se lee `Design.metadata` y se le devuelve TODO: `name` (texto), conteo de fichas
   (largo del nombre), `styleSetId` (null explícito = «Solo letra», manda sobre el
@@ -137,15 +145,20 @@ o sessionId anónimo) y cada superficie devuelve al editor lo persistido:
     colores por ficha de CADA set (`metadata.units[u].colors`; el set 0 cae al `colors`
     raíz en diseños de un set) como snapshots iniciales del Map multi-unidad.
 - **Variante del diseño (`metadata.variantId`, 2026-10-05)**: al crear el diseño desde
-  cualquier superficie se persiste la variante (`createDraftDesign` —foto NO-pack—,
-  `createNameDesign`, `createLetterSetDesign`; los packs de foto NO la guardan: su
-  variante exacta se deriva del canvasData en el carrito). El link «Editar» del
+  cualquier superficie se persiste la variante (`createDraftDesign` —foto—,
+  `createNameDesign`, `createLetterSetDesign`). **2026-10-12 — packs de foto TAMBIÉN**:
+  el Estudio persiste la variante EFECTIVA (match del catálogo por el N de fotos +
+  magnet del canvas, `packVariantIdFor`) al crear el draft y en cada auto-save/flush
+  (`saveCanvas` la valida contra el producto y la mergea en metadata). El COBRO sigue
+  derivando la variante del canvasData en el servidor — metadata.variantId es solo
+  para la re-apertura. El link «Editar» del
   carrito sigue llevando SOLO `designId`: la página lee `metadata.variantId` del
   diseño recuperado y entra al Estudio con ESA variante (`resolveRecoverVariantId`,
   `lib/recover-variant.ts`) — antes caía a la primera del producto y mostraba el
   precio equivocado en multi-variante. Un `?variant=` explícito siempre manda; un
   variantId archivado o ausente (diseños legacy) cae a la primera variante, como
-  siempre. El clon de la superficie foto hereda la metadata → conserva la variante.
+  siempre (en packs legacy el canvasData sigue mandando sobre photoSlots/sizeCm/magnet
+  efectivos). El clon de la superficie foto hereda la metadata → conserva la variante.
 - **Ownership tras login**: `mergeAnonCartIntoCustomer` (login/OTP) ADOPTA los diseños
   anónimos referenciados por los items mergeados (`adoptSessionDesigns`: `customerId`
   set, `sessionId` limpio, en la misma transacción del merge). Sin esto, tras loguearse
@@ -181,6 +194,8 @@ apps/web/app/estudio/[slug]/
 ├── studio-text-editor-modal.tsx       # Edición de capas de texto del canvas (M.3.b.D)
 ├── studio-preview-modal.tsx           # "Así se verá tu pedido": preview final + total
 │                                      #   (unitario × copias de la PDP) → recién ahí al carrito
+├── studio-face-choice-modal.tsx       # Elección cara A/B al aplicar prediseño de 1 cara
+│                                      #   en producto de 2 caras (2026-10-12)
 ├── studio-onboarding.tsx              # Modal de bienvenida / tour inicial
 ├── studio-gestures-hint.tsx           # Pista de gestos táctiles (drag/pinch/doble-tap)
 ├── studio-consent-text.tsx            # Consentimiento de derechos de imagen (Ley 1581)
@@ -209,6 +224,8 @@ apps/web/app/estudio/[slug]/
 ├── fridge-3d-view.tsx                 # Vista 3D nevera
 ├── room-board-view-3d.tsx             # Vista 3D tablero magnético en pared
 ├── scene-gallery.tsx                  # Galería "míralo en tu espacio" (ADR-063)
+├── scene-3d-error-boundary.tsx        # ErrorBoundary por escena 3D (un fallo WebGL
+│                                      #   degrada la tarjeta, nunca la página — 2026-10-12)
 ├── studio-3d-environment.tsx          # Entorno/luces compartido de las escenas 3D
 ├── fit-camera.tsx / fit-camera-polar.tsx  # Encuadre de cámara 3D
 ├── use-window-textures.ts             # Texturas de ventana para escenas
@@ -217,6 +234,13 @@ apps/web/app/estudio/[slug]/
     ├── cluster-layout.ts              # Clúster 3D a tamaño real (nevera/tablero): columnas
     │                                  #   balanceadas que se abren al superar el alto útil
     ├── canvas-migrate.ts              # migrateCanvasV1ToV2
+    ├── remap-canvas-assets.ts         # Rehidratación por assetId: signed URLs frescas en
+    │                                  #   el boot del recover; asset ausente → slot vacío + toast
+    ├── draft-marker.ts                # Marcador «Continuar donde quedaste» honesto:
+    │                                  #   {designId, savedAt} solo tras el 1er auto-save real,
+    │                                  #   auto-limpieza de huérfanos/legacy (2026-10-12)
+    ├── slot-photo-readiness.ts        # Espera de decodificación de fotos antes del bake 3D
+    ├── use-debounced-commit.ts        # Commit con debounce 350 ms (campos IG)
     ├── recover-variant.ts             # resolveRecoverVariantId: variante del recover
     │                                  #   (?designId=) desde Design.metadata.variantId
     ├── photo-filters.ts               # 5 presets + apply Konva filters
@@ -410,9 +434,12 @@ packages/db/scripts/
   factor `f = min(1, …)`): cada pieza se dibuja a su tamaño físico (cm × uPerCm) en
   nevera y tablero; el clúster crece en filas/columnas y `FitCamera` encuadra
   nevera + clúster. Alargados en el libro:
-  `flatBookmarkSlots(count, { pieceW })` separa centro-a-centro = pieza + 0.15 u y
-  reparte en filas balanceadas en z si se sale del ancho de la hoja (antes el spread
-  topeado a 0.9 u < pieza de 1.2 u los sobreponía siempre). La galería "en tu espacio"
+  `flatBookmarkSlots(count, { pieceW, pieceL })` separa centro-a-centro = pieza + 0.15 u
+  (más el barrido de esquina del jitter de yaw) y reparte en filas balanceadas en z si se
+  sale del ancho de la hoja, con separación entre filas = LARGO de pieza + gap (2026-10-12 —
+  antes una constante de 0.55 u solapaba cualquier pieza larga: 4 unidades 4×15 quedaban
+  sobrepuestas con z-fighting); si las filas desbordan el fondo de la hoja, las piezas se
+  trenzan 90° (largo a lo ancho). La galería "en tu espacio"
   recibe `flat` (noFold) y ya no rota 90° las texturas de Alargados (misma excepción
   Ola 17 que el modal).
 - **Fix desborde del clúster (mismo día, feedback owner: 12 tiras en UNA columna de 3+ m).**
@@ -490,13 +517,11 @@ packages/db/scripts/
   misma regla (el rect viaja en canvasData).
 - **Tarjeta clara sobre lienzo claro (white-on-white).** El slot lleva un filete DOM de
   contraste (`outline` brand-purple/35) cuando la tarjeta es clara — adorno de pantalla,
-  nunca entra al PNG de producción. **Ola 24:** para la tarjeta BLANCA el filete se
-  reemplaza por una bandeja cuadriculada gris/blanco (patrón "transparencia" de los
-  editores de foto): el Stage se dibuja 6px inset dentro del mismo footprint del slot
-  (`WHITE_CARD_CHECKER` en studio-slot) → la tarjeta blanca se lee en pantalla. Sigue
-  siendo 100% DOM: el snapshot captura solo el canvas Konva. **Ola 25:** la MISMA bandeja
-  se aplica en el preview del modal de edición (`StudioPhotoPreview`) — la tarjeta blanca
-  también se perdía contra el fondo blanco del modal.
+  nunca entra al PNG de producción. **Ola 24 (historia):** la tarjeta BLANCA llevaba una
+  bandeja cuadriculada gris/blanco con el Stage inset (`WHITE_CARD_CHECKER`).
+  **2026-10-12 — ELIMINADA** (uniformidad de canvas): sin cuadrícula ni encogimiento en
+  ningún producto (grilla ni preview del modal); la tarjeta blanca se lee por el mismo
+  filete neutro del resto de tarjetas claras.
 - **Marco máximo consistente del lienzo (T9).** El grid ahora se dimensiona por ancho Y
   por alto: `slotDisplaySize = min(porAncho, porAlto)` donde porAlto sale de un marco del
   78% del alto del viewport (acotado 420–900px). El grid usa ancho explícito (celdas+gaps)
@@ -522,7 +547,10 @@ packages/db/scripts/
   `estudio.texto.estilo-color-deshabilitado-hint-tira`): sin borde ya no hay canaletas
   entre fotos, así que `borderColor` no pinta nada. El estado NO se resetea (al volver
   a «Con borde» el color sigue, y en la tira vuelve a pintar las canaletas). Cuadrados
-  NO se desactivan: su franja uniforme usa `borderColor` aun sin borde.
+  (tarjeta simple) entraron al apagado con el fix 2026-10-12: el toggle escribe
+  `borderColor` (null = sangre total — el render recalcula la ventana con
+  `simpleCardPhotoRect` e ignora el rect del placeholder, así que el toggle que solo
+  movía el rect no cambiaba el canvas) y conserva el último color para restaurarlo.
 - **Zoom de foto "milimétrico"**: la rueda del mouse avanza ×1.04 por notch (antes
   ×1.15 — saltos toscos). La función `nextWheelScale` (studio-slot) la comparten el
   handler Konva, el listener nativo del slot y el preview del modal; el pinch sigue
@@ -557,11 +585,9 @@ packages/db/scripts/
   etiquetas `estudio.texto.campo-ig-*`; el editor pasa `finalizeBlockReason` al
   `StudioToolbar`/`StudioFinalizeFab`, y `handleFinalize` tiene la defensa en profundidad
   con el mismo mensaje).
-- **Checkerboard de la tarjeta blanca más fuerte** ("muy leve"): cuadrados `#CDC7DB`
-  (antes `#ECE9F1`, casi invisible) de 16px (antes 12px) y bandeja de 8px (antes 6px) —
-  `WHITE_CARD_CHECKER`/`WHITE_CARD_CHECKER_SIZE`/`WHITE_CARD_TRAY_PAD` en studio-slot,
-  consumidos también por el preview del modal (studio-photo-preview). Sigue siendo
-  adorno 100% DOM: nunca entra al PNG de producción.
+- **Checkerboard de la tarjeta blanca** (historia Ola 26): la bandeja cuadriculada
+  (`WHITE_CARD_CHECKER`) se ELIMINÓ el 2026-10-12 — canvas uniforme en todos los
+  productos, sin inset del Stage (ver la nota de Ola 23 actualizada más arriba).
 - **Nombre Personalizado — «Borde de las fichas» ARRIBA de «Elige los colores»**
   (name-editor): primero se define el borde; debajo queda la paleta que se desactiva con
   «Sin borde» (mismo orden que la toolbar de estilo, Ola 24). Regla de desactivado intacta.
@@ -661,8 +687,11 @@ de todas las superficies personalizables.**
   viejo "N copias idénticas". Tiras: copy propio ("2 tiras de 3 fotos" — antes se
   leía "3 imanes", incorrecto). Calendario ×2: "tus 2 calendarios — cada uno con
   12 páginas".
-- **Producción (imprenta recibe TODAS las unidades)**: el finalize renderiza/sube
-  los `slotCount` PNG de siempre (ahora N × unitSlots) y el spec de producción
+- **Producción (imprenta recibe TODAS las unidades)**: el finalize encola el render de
+  los `slotCount` PNG (ahora N × unitSlots) en un **RenderJob** (ADR-136, 2026-10-13 —
+  el worker `render-job-service.ts` los produce por unidad, en background, con progreso
+  real vía `/api/designs/<id>/render-status`; antes corrían síncronos en la Server
+  Action y un calendario ×3 la mataba por timeout) y el spec de producción
   (`production-spec.ts`) describe las unidades: "6 archivos que son SEGMENTOS de 2
   tiras (3 por tira)", "24 archivos que forman 2 calendarios de 12 piezas", "2
   láminas (una por set)". `unidadesFisicas` usa el mismo multiplicador del precio.
@@ -697,9 +726,10 @@ de todas las superficies personalizables.**
   tarjeta blanca no se veía): el preview de la pestaña Texto pinta el fondo del
   color REAL de la tarjeta (`cardColor` = borderColor del canvas, cableado
   slot-edit-modal → form) y, con contraste casi nulo (`isLowContrastOnCard`,
-  ratio WCAG < 1.2 — `lib/contrast.ts`), cambia a la cuadrícula de
-  "transparencia" (WHITE_CARD_CHECKER) + aviso CMS
-  (`estudio.texto.color-sin-contraste-hint`). Ayuda 100% DOM del editor: el PNG
+  ratio WCAG < 1.2 — `lib/contrast.ts`), el texto del preview lleva un delineado
+  sutil en la luminancia opuesta + aviso CMS (`estudio.texto.color-sin-contraste-hint`).
+  _(2026-10-12 — antes cambiaba el fondo a la cuadrícula WHITE_CARD_CHECKER;
+  eliminada con la bandeja del lienzo.)_ Ayuda 100% DOM del editor: el PNG
   imprime el color elegido tal cual.
 - **Tiras: el banner del Estudio pasa de "¿Cuántas fotos lleva tu imán?" a
   «Unidades»** (1.3.A): la composición (3/4 fotos por tira) se elige en la PDP y
@@ -760,8 +790,11 @@ de todas las superficies personalizables.**
   El diseño se crea/finaliza y se agrega al carrito RECIÉN al confirmar; si el cliente vuelve
   a editar no queda nada creado. Lo usan tanto el Estudio principal como los editores de letras.
 - **Sets de letras / Abecedario (ADR-057)**: `letter-set-editor.tsx` (Abecedario Completo /
-  Pack Vocales) y `name-editor.tsx` (Nombre Personalizado). El TEMA y el IDIOMA se eligen EN
-  el Estudio (ya no son variantes de la PDP — si la PDP los traía, se preseleccionan);
+  Pack Vocales) y `name-editor.tsx` (Nombre Personalizado). El TEMA se elige EN
+  el Estudio (ya no es variante de la PDP — si la PDP lo traía, se preselecciona).
+  **2026-10-12 (ADR-139): el IDIOMA salió del estudio** — se elige FUERA (PDP) y el
+  estudio lo recibe resuelto; además la cantidad de sets se ajusta con un stepper
+  dedicado y se eliminó el botón duplicado de la superficie;
   `lib/letter-set-resolve.ts` re-resuelve la variante exacta (tamaño/imantado) para que la
   cotización quede precisa; `use-letter-colors.ts` maneja tema + barajar + color por ficha.
   Sets por defecto es/en con `make seed-letter-sets`.
@@ -1107,7 +1140,8 @@ dark)`), y producción/preview/3D heredan la misma geometría del canvasData
   Tests de la matriz de anclas en `lib/apply-predesigned.test.ts`.
 - **"Juegos y Aprendizaje" (sets de letras) — en móvil los CONTROLES van
   ARRIBA del lienzo** (Tema → Idioma → Borde → Colores primero; el lienzo con
-  la grilla de fichas queda debajo). Solo se invierten las clases `order-*`
+  la grilla de fichas queda debajo — **2026-10-12: el selector de Idioma salió
+  del estudio a la PDP**, queda Tema → Borde → Colores). Solo se invierten las clases `order-*`
   del `flex flex-col lg:flex-row` de `letter-set-editor.tsx`: `<lg` aside
   `order-1` / lienzo `order-2`; en `lg` nada cambia (controles a la izquierda
   `lg:w-80`, lienzo fluido a la derecha). La grilla de fichas y sus anchos por
@@ -1344,6 +1378,60 @@ de calendario / varios separadores demora mucho". Tres frentes:
     vacía. Vale para doblados y planos; estado local del modal (cara A al abrir).
     Textos provisionales en `lib/book-geometry.ts` (`BOOK_FACE_TOGGLE_LABEL`),
     pendientes de migrar a studio-texts/CMS.
+
+### Jornada 2026-10-12/13 (ADR-139/140) — recover exacto, cara A/B explícita, marcador honesto, color picker propio
+
+Jornada de maduración transversal del Estudio (decisiones en DECISIONS.md; lo ya
+documentado arriba con fecha 2026-10-12 — rehidratación por `assetId`, bandeja
+checkerboard eliminada, layout del libro por `pieceL` — no se repite):
+
+- **Rehidratación de assets por `assetId`** (`lib/remap-canvas-assets.ts`): ya
+  documentada en «Recover flow» — el boot reescribe los slots del canvasData con
+  signed URLs frescas por `assetId` (foto principal y foto de perfil IG); asset
+  ausente → slot vacío + toast `estudio.errores.assets-faltantes`. La plantilla se
+  restaura priorizando `Design.templateId` persistido (el match por dimensiones
+  `findTemplateIdForCanvas` queda de fallback) y los packs persisten el variantId
+  efectivo en `metadata` (`packVariantIdFor`, al crear y en cada auto-save).
+- **Espera de decodificación antes del bake 3D** (`lib/slot-photo-readiness.ts`):
+  generaliza el fix `slot-photo` del 2026-10-08 — ninguna textura/preview se hornea
+  mientras la foto del slot sigue decodificando (cubre los consumidores nuevos, no
+  solo `buildMagnetTextures`).
+- **Reemplazo limpio al cambiar foto o prediseño:** cambiar la foto de un slot o
+  aplicar otro prediseño resetea el `photoTransform`, el filtro y los
+  `textOverrides` del slot (nada del diseño anterior contamina el nuevo); la foto de
+  perfil IG se CONSERVA (es la identidad del post, no de la foto).
+- **Modal de elección de cara** (`studio-face-choice-modal.tsx`): al aplicar un
+  prediseño de 1 cara a un producto de 2 caras (separadores), el Estudio PREGUNTA
+  qué cara ocupar — la aplicación global automática silenciosa quedó reemplazada por
+  elección explícita.
+- **Header con detalle de variantes:** el header del estudio muestra el
+  `variantLabel` (la variante efectiva, p.ej. «6 unidades · Con imán»), no solo el
+  nombre del producto.
+- **Sustantivo por producto en «Ver diseño»** (`unitNoun`): el CTA/contador usa el
+  sustantivo y género correctos de la pieza («Ver tus separadores», no «tus
+  imanes») — extiende `resolveSlotNoun` de Fase 1A.
+- **Color picker propio multiplataforma** (`apps/web/components/color-picker.tsx` +
+  `apps/web/lib/color.ts`, SIN dependencias nuevas): reemplaza el
+  `<input type="color">` nativo, cuya UI varía por SO/navegador.
+- **Polaroid IG:** la ubicación es texto libre con transformación (máximo 2
+  palabras, capitalización, espacio → ", ") y TODOS los campos IG commitean con
+  **debounce de 350 ms** (`lib/use-debounced-commit.ts`) — antes cada tecla
+  disparaba un render del canvas.
+- **«Continuar donde quedaste» honesto** (`lib/draft-marker.ts`): el marcador JSON
+  `{designId, savedAt}` solo se escribe tras el PRIMER auto-save real confirmado
+  (antes podía prometer un borrador que el servidor nunca recibió); auto-limpieza de
+  marcadores huérfanos (diseño borrado/purgado) y legacy (formato viejo); el
+  interstitial muestra producto y fecha del borrador.
+- **Fix de paginación «Ver diseño»:** la prop `generation` invalida las páginas
+  obsoletas del preview paginado al editar una unidad (antes podía verse la página
+  vieja de una unidad recién cambiada).
+- **3D (ADR-140):** tapas de MagnetMesh con `alphaTest` (adiós al negro en zonas
+  transparentes de la textura); cada escena envuelta en `scene-3d-error-boundary.tsx`
+  (un fallo de WebGL degrada la tarjeta de la escena, nunca tira la página); grosor
+  por producto vía prop `thicknessCm` (`CALENDAR_CARD_THICKNESS_CM = 0.04` — la
+  tarjeta de calendario ya no flota con grosor de imán); encuadre del mural
+  ponderado al clúster (`boardFitHalf` en `cluster-layout`). El layout del libro por
+  `pieceL` + trenzado 90° ya está documentado en Ola 30 (entrada 2026-10-12).
 
 ## DPI y sangrado (estado real 2026-10-05)
 

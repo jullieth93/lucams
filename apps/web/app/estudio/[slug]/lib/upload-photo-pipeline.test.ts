@@ -11,6 +11,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { UPLOAD_PAYLOAD_BUDGET_BYTES } from "../client-image-compress";
 import {
   buildAssetFormData,
   isTooBigUploadError,
@@ -171,5 +172,93 @@ describe("processPhotoFiles — orden, concurrencia y aislamiento de fallos", ()
       kind: "server",
       serverMessage: "Metadata inválida",
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reducción obligatoria al presupuesto del payload + fail-closed (2026-10-13).
+//
+// En jsdom no existe createImageBitmap ni canvas 2D: cualquier archivo sobre el
+// presupuesto NO se puede reducir acá (compress fail-open al original, shrink
+// devuelve null), así que estos tests ejercitan el camino FAIL-CLOSED real —
+// el mismo que toma un HEIC >4 MB en Chrome/Firefox en producción.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("processPhotoFiles — presupuesto del payload (fail-closed honesto)", () => {
+  const overBudget = UPLOAD_PAYLOAD_BUDGET_BYTES + 1;
+
+  it("un archivo que no cabe NI reducido NO se sube: outcome too-big sin llamar la acción", async () => {
+    // HEIC grande (el caso real del bug): jsdom no lo decodifica, igual que
+    // Chrome/Firefox → shrink imposible → fail-closed ANTES del 413 de Vercel.
+    const big = new File([new Uint8Array(overBudget)], "foto-heic-grande.heic", {
+      type: "image/heic",
+    });
+    const upload = vi.fn<UploadAssetFn>();
+
+    const [outcome] = await processPhotoFiles([big], {
+      designId: null,
+      rightsAccepted: true,
+      upload,
+      onReady: () => {},
+    });
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      kind: "too-big",
+      fileName: "foto-heic-grande.heic",
+    });
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it("un JPEG sobre el presupuesto e irreductible acá también cae fail-closed (no 413)", async () => {
+    const big = new File([new Uint8Array(overBudget)], "grande.jpg", { type: "image/jpeg" });
+    const upload = vi.fn<UploadAssetFn>();
+
+    const [outcome] = await processPhotoFiles([big], {
+      designId: null,
+      rightsAccepted: true,
+      productSizeCm: "15×15", // con contexto de producto: el piso DPI no salva lo indecodificable
+      upload,
+      onReady: () => {},
+    });
+
+    expect(outcome).toMatchObject({ ok: false, kind: "too-big" });
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it("los archivos que SÍ caben en el mismo lote se suben igual (aislamiento de fallos)", async () => {
+    const big = new File([new Uint8Array(overBudget)], "grande.heic", { type: "image/heic" });
+    const ok = makeFile("chica.jpg");
+    const upload = vi.fn<UploadAssetFn>(async (fd) => okResult((fd.get("file") as File).name));
+
+    const outcomes = await processPhotoFiles([big, ok], {
+      designId: null,
+      rightsAccepted: true,
+      upload,
+      onReady: () => {},
+    });
+
+    expect(outcomes[0]).toMatchObject({ ok: false, kind: "too-big" });
+    expect(outcomes[1]).toMatchObject({ ok: true, fileName: "chica.jpg" });
+    // Solo se subió la que cabe.
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(((upload.mock.calls[0]![0] as FormData).get("file") as File).name).toBe("chica.jpg");
+  });
+
+  it("un archivo justo EN el presupuesto pasa sin reducción obligatoria", async () => {
+    const exact = new File([new Uint8Array(UPLOAD_PAYLOAD_BUDGET_BYTES)], "exacta.jpg", {
+      type: "image/jpeg",
+    });
+    const upload = vi.fn<UploadAssetFn>(async () => okResult("exacta.jpg"));
+
+    const [outcome] = await processPhotoFiles([exact], {
+      designId: null,
+      rightsAccepted: true,
+      upload,
+      onReady: () => {},
+    });
+
+    expect(outcome.ok).toBe(true);
+    expect(upload).toHaveBeenCalledTimes(1);
   });
 });

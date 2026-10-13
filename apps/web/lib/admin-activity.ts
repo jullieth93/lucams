@@ -15,9 +15,12 @@
  * que un set de cookies robado no pueda fabricar `admin_last_activity=<now>`
  * y evadir el idle-timeout indefinidamente. `node:crypto` es seguro acá: el
  * runtime del proxy en Next.js 16 es `nodejs` (edge ya no se soporta en proxy).
+ *
+ * El primitivo de firma (seal/read) vive en lib/activity-mark.ts, compartido
+ * con la marca de cliente (lib/customer-activity.ts) desde 2026-10-12.
  */
 
-import crypto from "node:crypto";
+import { readActivityMark, sealActivityMark } from "./activity-mark";
 
 export const ADMIN_ACTIVITY_COOKIE = "admin_last_activity";
 
@@ -41,25 +44,9 @@ export function adminActivityCookieOptions() {
   };
 }
 
-function getSecret(): string {
-  const secret = process.env.CSRF_SECRET?.trim();
-  if (!secret || secret.startsWith("GENERATE_WITH")) {
-    throw new Error(
-      "CSRF_SECRET no configurado (usado para firmar la marca de actividad admin). " +
-        "Generar con: openssl rand -hex 32",
-    );
-  }
-  return secret;
-}
-
-function signMark(ts: string): string {
-  return crypto.createHmac("sha256", getSecret()).update(ts).digest("base64url");
-}
-
 /** Emite la marca de actividad firmada para `now` (epoch ms): `<ts>.<hmac-sha256(ts)>`. */
 export function sealAdminActivityMark(now: number): string {
-  const ts = String(now);
-  return `${ts}.${signMark(ts)}`;
+  return sealActivityMark(now);
 }
 
 /**
@@ -68,15 +55,5 @@ export function sealAdminActivityMark(now: number): string {
  * no coincide (forjada) — el caller trata null como stale.
  */
 export function readAdminActivityMark(raw: string | undefined | null): number | null {
-  if (!raw) return null;
-  const dot = raw.lastIndexOf(".");
-  if (dot < 0) return null;
-  const ts = raw.slice(0, dot);
-  const signature = raw.slice(dot + 1);
-  if (!/^\d+$/.test(ts)) return null;
-  const expected = signMark(ts);
-  // timing-safe compare (mismo patrón que lib/checkout-session.ts)
-  if (signature.length !== expected.length) return null;
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
-  return Number(ts);
+  return readActivityMark(raw);
 }

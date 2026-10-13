@@ -3,11 +3,15 @@ import {
   type DocumentType,
   CRUCE_HINT,
   DOCUMENT_TYPE_LABELS,
+  NAME_REGEX,
+  PHONE_REGEX,
   calculateNitDV,
   capitalizeName,
+  countWords,
   cruceNumberError,
   formatPhone,
   getDocumentHelp,
+  normalizePhoneWithDial,
   stripPhone,
   validateDocument,
   validateName,
@@ -545,5 +549,69 @@ describe("viaExample / viaHintText / CRUCE_HINT — ayuda con ejemplo por tipo d
   it("el hint del cruce explica el guion y el segundo tramo", () => {
     expect(CRUCE_HINT).toContain("23-45");
     expect(CRUCE_HINT).toContain("segundo tramo");
+  });
+});
+
+// ─── Estandarización 2026-10-12 (mi-cuenta + cotización + registro) ───
+// NAME_REGEX/PHONE_REGEX exportadas como fuente única (antes duplicadas
+// inline en checkout/quotes); normalizePhoneWithDial alimenta los Server
+// Actions de perfil y direcciones (teléfono con indicativo del PhoneInput).
+
+describe("NAME_REGEX / PHONE_REGEX — exportadas como fuente única", () => {
+  it("NAME_REGEX acepta letras/acentos y rechaza dígitos", () => {
+    expect(NAME_REGEX.test("José Ñandú")).toBe(true);
+    expect(NAME_REGEX.test("Ana2")).toBe(false);
+  });
+
+  it("PHONE_REGEX es el móvil CO estricto (3 + 9 dígitos)", () => {
+    expect(PHONE_REGEX.test("3208873826")).toBe(true);
+    expect(PHONE_REGEX.test("6011234567")).toBe(false);
+  });
+});
+
+describe("countWords — tope de palabras de nombre/apellido", () => {
+  it("cuenta palabras separadas por espacio colapsando múltiples", () => {
+    expect(countWords("Valentina")).toBe(1);
+    expect(countWords("Valentina Rojas Pérez")).toBe(3);
+    expect(countWords("  juan   pablo  ")).toBe(2);
+    expect(countWords("")).toBe(0);
+  });
+});
+
+describe("normalizePhoneWithDial — teléfono con indicativo (PhoneInput)", () => {
+  it("Colombia: '+57 3208873826' → 10 dígitos locales", () => {
+    expect(normalizePhoneWithDial("+57 3208873826")).toBe("3208873826");
+  });
+
+  it("Colombia: tolera espacios/guiones en el nacional", () => {
+    expect(normalizePhoneWithDial("+57 320 887 3826")).toBe("3208873826");
+    expect(normalizePhoneWithDial("+57 320-887-3826")).toBe("3208873826");
+  });
+
+  it("Colombia: rechaza fijo (no empieza en 3) y largos incorrectos", () => {
+    expect(normalizePhoneWithDial("+57 6011234567")).toBeNull();
+    expect(normalizePhoneWithDial("+57 320887382")).toBeNull();
+    expect(normalizePhoneWithDial("+57 32088738261")).toBeNull();
+  });
+
+  it("otro país: persiste '+<indicativo><nacional>' (6-15 dígitos)", () => {
+    expect(normalizePhoneWithDial("+54 9112345678")).toBe("+549112345678");
+    expect(normalizePhoneWithDial("+1 2025550123")).toBe("+12025550123");
+  });
+
+  it("otro país: rechaza nacional de menos de 6 dígitos", () => {
+    expect(normalizePhoneWithDial("+54 12345")).toBeNull();
+  });
+
+  it("sin '+' se interpreta como móvil colombiano (legado)", () => {
+    expect(normalizePhoneWithDial("3208873826")).toBe("3208873826");
+    expect(normalizePhoneWithDial("320 887 3826")).toBe("3208873826");
+    expect(normalizePhoneWithDial("123456")).toBeNull();
+  });
+
+  it("vacío o sin dígitos → null", () => {
+    expect(normalizePhoneWithDial("")).toBeNull();
+    expect(normalizePhoneWithDial("   ")).toBeNull();
+    expect(normalizePhoneWithDial("+57 abc")).toBeNull();
   });
 });

@@ -10,13 +10,16 @@
  *
  * Patrón filename:
  *   <productId>/<uuid>.webp   (desde 2026-09-18 toda imagen de catálogo se
- *   normaliza a WebP ≤2000 px con sharp antes de subir — optimizeCatalogImage)
+ *   normaliza a WebP ≤2000 px con sharp antes de subir — optimizeCatalogImage;
+ *   desde 2026-10-13 los MASTERS de prediseñados usan la variante print-grade
+ *   ≤4000 px q90 — uploadGalleryMasterImage, ver GALLERY_MASTER_*)
  * Garantiza no colisión incluso si dos admins suben simultáneamente.
  */
 
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { supabaseService } from "@/lib/supabase/service";
+import { applyTiledWatermark } from "@/lib/watermark";
 
 const BUCKET = "product-images";
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -50,29 +53,43 @@ export const CATALOG_IMAGE_MAX_EDGE_PX = 2000;
 export const CATALOG_IMAGE_WEBP_QUALITY = 82;
 
 /**
- * Normaliza una imagen de catálogo a WebP optimizado (borde largo ≤2000 px, q82, auto-orient y
- * sin EXIF). FAIL-CLOSED a propósito (a diferencia del compresor del Estudio, que es fail-open):
- * si sharp no puede decodificarla se rechaza con INVALID_TYPE — son imágenes públicas del
- * catálogo y un archivo que no decodifica no debe llegar al bucket (mismo contrato que tenía la
- * mediateca con su prueba de dimensiones). Usa sharp-safe (loaders con CVE bloqueados), la única
- * puerta de entrada a sharp del proyecto.
+ * Master PRINT-GRADE de prediseñados (robustez pipeline 2026-10-13): el original de un
+ * diseño de galería es lo que el SERVIDOR aplica al canvas de producción
+ * (assignPredesignedToDesignAction lo descarga y lo sube como asset del cliente). A 2000 px
+ * quedaba por debajo de 300 DPI en las piezas grandes (~34 cm de borde largo), así que el
+ * master de galería conserva hasta 4000 px con WebP q90 (alta calidad: es insumo de
+ * impresión, no imagen de exhibición — la exhibición usa la miniatura watermark ≤800 px de
+ * uploadGalleryThumb, que NO cambia). Tope de entrada 15 MB: el original puede venir en PNG
+ * pesado; la salida optimizada queda típicamente en 1-3 MB.
  */
-export async function optimizeCatalogImage(buffer: Buffer): Promise<{
-  data: Buffer;
-  width: number;
-  height: number;
-}> {
+export const GALLERY_MASTER_MAX_EDGE_PX = 4000;
+export const GALLERY_MASTER_WEBP_QUALITY = 90;
+export const GALLERY_MASTER_MAX_BYTES = 15 * 1024 * 1024; // 15 MB
+
+/**
+ * Núcleo compartido de normalización a WebP (auto-orient por EXIF + strip, borde largo
+ * ≤ maxEdgePx sin agrandar). FAIL-CLOSED a propósito (a diferencia del compresor del
+ * Estudio, que es fail-open): si sharp no puede decodificarla se rechaza con INVALID_TYPE —
+ * son imágenes públicas del bucket y un archivo que no decodifica no debe llegar ahí (mismo
+ * contrato que tenía la mediateca con su prueba de dimensiones). Usa sharp-safe (loaders
+ * con CVE bloqueados), la única puerta de entrada a sharp del proyecto.
+ */
+async function optimizeToWebp(
+  buffer: Buffer,
+  maxEdgePx: number,
+  quality: number,
+): Promise<{ data: Buffer; width: number; height: number }> {
   const sharp = (await import("@/features/personalization/sharp-safe")).default;
   try {
     const out = await sharp(buffer)
       .rotate() // auto-orient por EXIF + strip
       .resize({
-        width: CATALOG_IMAGE_MAX_EDGE_PX,
-        height: CATALOG_IMAGE_MAX_EDGE_PX,
+        width: maxEdgePx,
+        height: maxEdgePx,
         fit: "inside",
         withoutEnlargement: true, // no inventar píxeles si ya viene chica
       })
-      .webp({ quality: CATALOG_IMAGE_WEBP_QUALITY })
+      .webp({ quality })
       .toBuffer({ resolveWithObject: true });
     return { data: out.data, width: out.info.width, height: out.info.height };
   } catch {
@@ -81,6 +98,32 @@ export async function optimizeCatalogImage(buffer: Buffer): Promise<{
       "No pudimos leer la imagen. ¿Está completa y sin daños?",
     );
   }
+}
+
+/**
+ * Optimización de catálogo (feedback Lucy 2026-09-18): toda imagen pública del catálogo/mediateca
+ * se normaliza a WebP q82 con borde largo ≤2000 px antes de subir. Antes se subía el archivo TAL
+ * CUAL (hasta 5 MB): PNGs de 4 MB servidos crudos a cada visita. 2000 px sobra para PDP/zoom
+ * (el borde largo en pantalla nunca pasa de ~1200 px ×2 DPR) y WebP q82 baja el peso ~5-10×.
+ */
+export async function optimizeCatalogImage(buffer: Buffer): Promise<{
+  data: Buffer;
+  width: number;
+  height: number;
+}> {
+  return optimizeToWebp(buffer, CATALOG_IMAGE_MAX_EDGE_PX, CATALOG_IMAGE_WEBP_QUALITY);
+}
+
+/**
+ * Variante PRINT-GRADE para los masters de prediseñados: WebP q90 con borde largo ≤4000 px
+ * (ver GALLERY_MASTER_*). Mismo contrato fail-closed que optimizeCatalogImage.
+ */
+export async function optimizeGalleryMasterImage(buffer: Buffer): Promise<{
+  data: Buffer;
+  width: number;
+  height: number;
+}> {
+  return optimizeToWebp(buffer, GALLERY_MASTER_MAX_EDGE_PX, GALLERY_MASTER_WEBP_QUALITY);
 }
 
 function inferExtension(mime: string): string {
@@ -148,26 +191,25 @@ export function sniffImageMime(buf: Buffer): string | null {
 }
 
 /**
- * Sube una imagen al bucket. El llamador (server action admin) ya
- * verificó que el usuario es admin — esta función no re-checkea
- * auth, asume llamador autorizado.
- *
- * Pipeline (feedback Lucy 2026-09-18): valida tamaño + MIME declarado + MIME REAL por magic
- * bytes, y luego OPTIMIZA con sharp: redimensiona al borde largo ≤2000 px y convierte a WebP q82
- * (optimizeCatalogImage). La salida es siempre .webp / image/webp, venga en jpg, png, webp o avif.
- * Si sharp falla, RECHAZA (fail-closed: son imágenes públicas del catálogo).
+ * Cuerpo compartido de upload de imagen optimizada al bucket público: valida tamaño +
+ * MIME declarado + MIME REAL por magic bytes, optimiza con sharp (la salida es siempre
+ * .webp / image/webp, venga en jpg, png, webp o avif) y sube con nombre UUID. Si sharp
+ * falla, RECHAZA (fail-closed: son imágenes públicas). El llamador (server action admin)
+ * ya verificó que el usuario es admin — no se re-checkea auth acá.
  */
-export async function uploadProductImage(opts: {
+async function uploadOptimizedImage(opts: {
   productId: string;
   file: File;
+  maxBytes: number;
+  optimize: (buffer: Buffer) => Promise<{ data: Buffer; width: number; height: number }>;
 }): Promise<UploadedImage> {
-  const { productId, file } = opts;
+  const { productId, file, maxBytes } = opts;
 
   if (file.size === 0) {
     throw new StorageError("EMPTY_FILE", "Archivo vacío");
   }
-  if (file.size > MAX_BYTES) {
-    throw new StorageError("FILE_TOO_LARGE", `El archivo excede ${MAX_BYTES / 1024 / 1024} MB`);
+  if (file.size > maxBytes) {
+    throw new StorageError("FILE_TOO_LARGE", `El archivo excede ${maxBytes / 1024 / 1024} MB`);
   }
   if (!ALLOWED_MIME.has(file.type)) {
     throw new StorageError("INVALID_TYPE", `Tipo "${file.type}" no permitido (jpg/png/webp/avif)`);
@@ -184,8 +226,7 @@ export async function uploadProductImage(opts: {
     );
   }
 
-  // Optimización de catálogo: la salida es siempre WebP ≤2000 px (ver optimizeCatalogImage).
-  const optimized = await optimizeCatalogImage(buffer);
+  const optimized = await opts.optimize(buffer);
 
   const filename = `${productId}/${randomUUID()}.webp`;
   const supabase = supabaseService;
@@ -204,6 +245,48 @@ export async function uploadProductImage(opts: {
 
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(filename);
   return { path: filename, publicUrl: data.publicUrl };
+}
+
+/**
+ * Sube una imagen al bucket. El llamador (server action admin) ya
+ * verificó que el usuario es admin — esta función no re-checkea
+ * auth, asume llamador autorizado.
+ *
+ * Pipeline (feedback Lucy 2026-09-18): valida tamaño + MIME declarado + MIME REAL por magic
+ * bytes, y luego OPTIMIZA con sharp: redimensiona al borde largo ≤2000 px y convierte a WebP q82
+ * (optimizeCatalogImage). La salida es siempre .webp / image/webp, venga en jpg, png, webp o avif.
+ * Si sharp falla, RECHAZA (fail-closed: son imágenes públicas del catálogo).
+ */
+export async function uploadProductImage(opts: {
+  productId: string;
+  file: File;
+}): Promise<UploadedImage> {
+  return uploadOptimizedImage({
+    productId: opts.productId,
+    file: opts.file,
+    maxBytes: MAX_BYTES,
+    optimize: optimizeCatalogImage,
+  });
+}
+
+/**
+ * Variante PRINT-GRADE para los masters de la galería de prediseñados (robustez pipeline
+ * 2026-10-13): igual que uploadProductImage pero con tope de entrada de 15 MB y optimización
+ * a ≤4000 px WebP q90 (optimizeGalleryMasterImage). El master es insumo de IMPRESIÓN (el
+ * servidor lo aplica al canvas de producción): a 2000 px quedaba bajo 300 DPI en piezas
+ * grandes. La exhibición en el Estudio sigue siendo la miniatura watermark ≤800 px
+ * (uploadGalleryThumb), que no cambia.
+ */
+export async function uploadGalleryMasterImage(opts: {
+  productId: string;
+  file: File;
+}): Promise<UploadedImage> {
+  return uploadOptimizedImage({
+    productId: opts.productId,
+    file: opts.file,
+    maxBytes: GALLERY_MASTER_MAX_BYTES,
+    optimize: optimizeGalleryMasterImage,
+  });
 }
 
 /**
@@ -236,9 +319,10 @@ function extractPathFromPublicUrl(url: string): string | null {
 //
 // Decisión owner 2026-10-07: los diseños prediseñados se exhiben en el Estudio
 // como MINIATURA degradada (≤800 px, WebP q78) con marca de agua "LUCAMS" en
-// tiling — el original (hasta 2000 px) nunca debería llegar al navegador del
-// cliente (anti-copia + peso). El original sí lo usa el SERVIDOR
-// (assignPredesignedToDesignAction lo descarga server-side al aplicar el diseño).
+// tiling — el original (hasta 4000 px desde 2026-10-13, print-grade) nunca
+// debería llegar al navegador del cliente (anti-copia + peso). El original sí
+// lo usa el SERVIDOR (assignPredesignedToDesignAction lo descarga server-side
+// al aplicar el diseño).
 //
 // Convención de path SIN migración (path derivada determinista del original):
 //   gallery-<tag>/<uuid>.webp        → gallery-<tag>/thumbs/<uuid>.webp
@@ -279,66 +363,26 @@ export function galleryThumbUrlFromImageUrl(imageUrl: string): string | null {
 }
 
 /**
- * Baldosa SVG del watermark "LUCAMS" en tiling (patrón ladrillo: dos textos
- * desplazados, rotados -24°). Texto blanco semitransparente con un hairline
- * oscuro para que se lea también sobre fondos claros. sharp la rasteriza y la
- * repite con composite({ tile: true }) — nítida a cualquier tamaño y sin
- * depender de assets de public/brand (que son para UI, no para quemar en imagen).
- *
- * tileW/tileH se ajustan al tamaño de la imagen (sharp exige que el input del
- * composite sea ≤ la base; diseños chicos → baldosa chica) y el viewBox fijo
- * 380×230 escala el dibujo completo (texto incluido) a ese tamaño.
- */
-function buildGalleryWatermarkTileSvg(tileW: number, tileH: number): string {
-  const text = (x: number, y: number) =>
-    `<text x="${x}" y="${y}" fill="#ffffff" fill-opacity="0.30" stroke="#000000" stroke-opacity="0.10" stroke-width="1.2">LUCAMS</text>`;
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${tileW}" height="${tileH}" viewBox="0 0 380 230">` +
-    `<g font-family="DejaVu Sans, Verdana, sans-serif" font-size="36" font-weight="700" letter-spacing="8">` +
-    `<g transform="rotate(-24 190 115)">${text(20, 96)}${text(200, 212)}</g>` +
-    `</g></svg>`
-  );
-}
-
-/**
  * Genera los bytes de la miniatura de exhibición: borde largo ≤800 px (sin
  * agrandar), watermark LUCAMS en tiling y WebP q78. Fail-closed igual que
  * optimizeCatalogImage: si sharp no decodifica, INVALID_TYPE (la acción de
  * upload rechaza — un prediseñado sin miniatura protegida no debe quedar
  * exhibible por el fallback al original).
+ *
+ * 2026-10-13 — el tiling vive en @/lib/watermark (compartido con las versiones
+ * watermark de los previews de diseños del cliente); mismo SVG y mismos
+ * parámetros que la baldosa original de galería.
  */
 export async function generateGalleryThumb(buffer: Buffer): Promise<{
   data: Buffer;
   width: number;
   height: number;
 }> {
-  const sharp = (await import("@/features/personalization/sharp-safe")).default;
   try {
-    const resized = await sharp(buffer)
-      .rotate() // auto-orient por EXIF + strip
-      .resize({
-        width: GALLERY_THUMB_MAX_EDGE_PX,
-        height: GALLERY_THUMB_MAX_EDGE_PX,
-        fit: "inside",
-        withoutEnlargement: true,
-      })
-      .toBuffer({ resolveWithObject: true });
-    const out = await sharp(resized.data)
-      .composite([
-        {
-          input: Buffer.from(
-            buildGalleryWatermarkTileSvg(
-              Math.min(380, resized.info.width),
-              Math.min(230, resized.info.height),
-            ),
-          ),
-          tile: true,
-          blend: "over",
-        },
-      ])
-      .webp({ quality: GALLERY_THUMB_WEBP_QUALITY })
-      .toBuffer({ resolveWithObject: true });
-    return { data: out.data, width: out.info.width, height: out.info.height };
+    return await applyTiledWatermark(buffer, {
+      maxEdgePx: GALLERY_THUMB_MAX_EDGE_PX,
+      quality: GALLERY_THUMB_WEBP_QUALITY,
+    });
   } catch {
     throw new StorageError(
       "INVALID_TYPE",

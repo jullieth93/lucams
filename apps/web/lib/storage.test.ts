@@ -92,6 +92,8 @@ vi.mock("@/lib/supabase/service", () => ({
 
 import sharp from "sharp";
 import {
+  GALLERY_MASTER_MAX_BYTES,
+  GALLERY_MASTER_MAX_EDGE_PX,
   StorageError,
   deleteProductImage,
   galleryThumbPath,
@@ -102,6 +104,7 @@ import {
   refreshCustomerUploadSignedUrl,
   sniffImageMime,
   uploadCustomerPhoto,
+  uploadGalleryMasterImage,
   uploadGalleryThumb,
   uploadProductImage,
 } from "./storage";
@@ -149,6 +152,7 @@ let REAL_PNG: Buffer; // 120×90
 let REAL_WEBP: Buffer; // 60×40
 let REAL_AVIF: Buffer; // 20×10 (sharp prebuilt sí decodifica/codifica AVIF vía libheif)
 let REAL_PNG_GRANDE: Buffer; // 3000×1500 — para afirmar el resize a ≤2000 px
+let REAL_PNG_XL: Buffer; // 5000×2500 — para el master print-grade (≤4000 px)
 
 beforeAll(async () => {
   const make = (width: number, height: number, bg: { r: number; g: number; b: number }) =>
@@ -158,6 +162,7 @@ beforeAll(async () => {
   REAL_WEBP = await make(60, 40, { r: 10, g: 200, b: 90 }).webp().toBuffer();
   REAL_AVIF = await make(20, 10, { r: 1, g: 2, b: 3 }).avif().toBuffer();
   REAL_PNG_GRANDE = await make(3000, 1500, { r: 30, g: 60, b: 90 }).png().toBuffer();
+  REAL_PNG_XL = await make(5000, 2500, { r: 90, g: 30, b: 60 }).png().toBuffer();
 });
 
 function asFile(bytes: Buffer, type: string, name = "upload"): File {
@@ -307,6 +312,73 @@ describe("uploadProductImage — optimización de catálogo (WebP ≤2000px)", (
     );
     expect(err.code).toBe("INVALID_TYPE");
     expect(err.message).toBe("No pudimos leer la imagen. ¿Está completa y sin daños?");
+    expect(uploadMock).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// uploadGalleryMasterImage — masters PRINT-GRADE de prediseñados (2026-10-13)
+// ─────────────────────────────────────────────────────────────────────────────
+// El master de un prediseño es el insumo del canvas de producción: la variante
+// de catálogo (≤2000 px) quedaba bajo 300 DPI en piezas grandes. Esta variante
+// conserva hasta 4000 px WebP q90 y acepta originales de hasta 15 MB. La
+// miniatura de exhibición (uploadGalleryThumb, ≤800 px watermark) no cambia.
+describe("uploadGalleryMasterImage — master print-grade de prediseñados", () => {
+  it("conserva hasta 4000 px: PNG 5000×2500 → WebP 4000×2000", async () => {
+    const result = await uploadGalleryMasterImage({
+      productId: "gallery-sep",
+      file: asFile(REAL_PNG_XL, "image/png"),
+    });
+
+    expect(result.path).toMatch(/^gallery-sep\/[0-9a-f-]{36}\.webp$/);
+    expect(uploadMock).toHaveBeenCalledTimes(1);
+    const [, body, opts] = uploadMock.mock.calls[0];
+    expect(opts).toMatchObject({ contentType: "image/webp", upsert: false });
+    const meta = await sharp(body as Buffer).metadata();
+    expect(meta.format).toBe("webp");
+    expect(meta.width).toBe(GALLERY_MASTER_MAX_EDGE_PX); // 4000
+    expect(meta.height).toBe(2000);
+  });
+
+  it("NO baja a 2000 px como el catálogo: 3000×1500 queda 3000×1500", async () => {
+    // REAL_PNG_GRANDE (3000×1500) en uploadProductImage sale 2000×1000; acá debe
+    // quedar intacto — esa es la diferencia print-grade que protege el DPI.
+    await uploadGalleryMasterImage({
+      productId: "gallery-sep",
+      file: asFile(REAL_PNG_GRANDE, "image/png"),
+    });
+
+    const [, body] = uploadMock.mock.calls[0];
+    const meta = await sharp(body as Buffer).metadata();
+    expect(meta.width).toBe(3000);
+    expect(meta.height).toBe(1500);
+  });
+
+  it("acepta originales sobre el tope de catálogo (5 MB) y hasta 15 MB", async () => {
+    const big = Buffer.concat([REAL_JPEG, Buffer.alloc(6 * 1024 * 1024)]);
+    const result = await uploadGalleryMasterImage({
+      productId: "gallery-sep",
+      file: asFile(big, "image/jpeg"),
+    });
+    expect(result.path).toMatch(/\.webp$/);
+    expect(uploadMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("RECHAZA sobre 15 MB con FILE_TOO_LARGE (antes de evaluar MIME)", async () => {
+    const big = Buffer.alloc(GALLERY_MASTER_MAX_BYTES + 1);
+    const err = await expectStorageError(
+      uploadGalleryMasterImage({ productId: "gallery-sep", file: asFile(big, "image/png") }),
+    );
+    expect(err.code).toBe("FILE_TOO_LARGE");
+    expect(err.message).toBe("El archivo excede 15 MB");
+    expect(uploadMock).not.toHaveBeenCalled();
+  });
+
+  it("fail-closed igual que catálogo: magic válido pero cuerpo indecodificable → INVALID_TYPE", async () => {
+    const err = await expectStorageError(
+      uploadGalleryMasterImage({ productId: "gallery-sep", file: asFile(PNG_BYTES, "image/png") }),
+    );
+    expect(err.code).toBe("INVALID_TYPE");
     expect(uploadMock).not.toHaveBeenCalled();
   });
 });

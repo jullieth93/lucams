@@ -55,7 +55,7 @@ export function buildProductJsonLd(input: ProductJsonLdInput): Record<string, un
     sku,
     image: images.length > 0 ? images : ["/brand/lucams-logo.png"],
     category: categoryName,
-    brand: { "@type": "Brand", name: "Lucams_shop" },
+    brand: { "@type": "Brand", name: "Lucams Shop" },
     // aggregateRating solo si hay reseñas reales aprobadas (Google rechaza rating vacío/inventado).
     // El valor es visible en la página (sección Reseñas) — requisito de la política de rich results.
     ...(ratingAggregate
@@ -91,7 +91,7 @@ function buildOffers(opts: {
     priceValidUntil: opts.priceValidUntil,
     availability,
     itemCondition: "https://schema.org/NewCondition",
-    seller: { "@type": "Organization", name: "Lucams_shop" },
+    seller: { "@type": "Organization", name: "Lucams Shop" },
   };
   // Los precios llegan en CENTAVOS COP (enteros); schema.org los quiere en pesos.
   return lowPrice === highPrice

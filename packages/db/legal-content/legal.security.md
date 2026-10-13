@@ -1,8 +1,8 @@
 ## Divulgación responsable de vulnerabilidades
 
-En Lucams_shop cuidamos tus datos con el mismo cariño con el que armamos cada imán. Si encontraste una vulnerabilidad de seguridad en nuestro sitio, te agradecemos de corazón que nos la cuentes **antes** de divulgarla públicamente, para poder arreglarla y proteger a quienes compran con nosotros.
+En Lucams Shop cuidamos tus datos con el mismo cariño con el que armamos cada imán. Si encontraste una vulnerabilidad de seguridad en nuestro sitio, te agradecemos de corazón que nos la cuentes **antes** de divulgarla públicamente, para poder arreglarla y proteger a quienes compran con nosotros.
 
-Lucams_shop es operado por **Lucams_shop (persona natural), Bogotá D.C., Colombia**. Si necesitas nuestros datos para un trámite formal, escríbenos y te los damos.
+Lucams Shop es operado por **Lucams Shop (persona natural), Bogotá D.C., Colombia**. Si necesitas nuestros datos para un trámite formal, escríbenos y te los damos.
 
 ## Cómo reportar
 

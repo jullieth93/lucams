@@ -35,7 +35,7 @@ export function OrderActions({
   isNoShow?: boolean;
   /** Anti-abuso COD (ADR-065): el pedido tiene dirección normalizada bloqueable. */
   hasAddressKey?: boolean;
-  /** Envío propio Lucam's: NO hay guía Aveonline que (re)generar — la entrega es interna. */
+  /** Envío propio Lucams: NO hay guía Aveonline que (re)generar — la entrega es interna. */
   isInternalDelivery?: boolean;
   /** Reconciliación pendiente: habilita "Marcar como gestionado" (2026-10-05). */
   needsReconciliation?: boolean;

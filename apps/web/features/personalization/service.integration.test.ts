@@ -20,6 +20,7 @@ import {
   getSharedDesign,
   finalizeDesign,
 } from "./service";
+import { processRenderJobs } from "./render-job-service";
 
 const RUN = `perso${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
 
@@ -343,9 +344,10 @@ describe.skipIf(!canRunStorage)(
       return design.id;
     }
 
-    it("pack solo-foto: la producción se renderiza en el servidor (3240px), NO el PNG de 50px del cliente", async () => {
+    it("pack solo-foto: la producción la MEJORA el worker a server-side (3240px), NO el PNG de 50px del cliente", async () => {
       const designId = await setupDesign(photoOnlyLayers, "photoonly");
-      // Cliente manda un PNG minúsculo (50px) — si el resultado es 3240px, corrió el servidor.
+      // Cliente manda un PNG minúsculo (50px). ADR-131: el finalize sube ese PNG (READY
+      // inmediato) y el RenderJob de mejora lo pisa con el render server-side.
       await finalizeDesign({
         designId,
         previewBuffer: await tinyPng(100, 100),
@@ -353,6 +355,7 @@ describe.skipIf(!canRunStorage)(
         customerId: ownerId,
         sessionId: null,
       });
+      await processRenderJobs({ onlyDesignId: designId });
       const row = await prisma.design.findUnique({
         where: { id: designId },
         select: { status: true, productionUrls: true },
@@ -367,7 +370,7 @@ describe.skipIf(!canRunStorage)(
       expect(meta.height).toBe(1080 * 3);
     }, 30000);
 
-    it("plantilla con TEXTO (Polaroid): se renderiza en el servidor vía canvas A1b (3240px), no el 50px del cliente", async () => {
+    it("plantilla con TEXTO (Polaroid): la mejora del worker la renderiza vía canvas A1b (3240px), no el 50px del cliente", async () => {
       const withText = [...photoOnlyLayers, { id: "t", type: "text", text: "Mi recuerdo" }];
       const designId = await setupDesign(withText, "withtext");
       await finalizeDesign({
@@ -377,6 +380,7 @@ describe.skipIf(!canRunStorage)(
         customerId: ownerId,
         sessionId: null,
       });
+      await processRenderJobs({ onlyDesignId: designId });
       const row = await prisma.design.findUnique({
         where: { id: designId },
         select: { status: true, productionUrls: true },

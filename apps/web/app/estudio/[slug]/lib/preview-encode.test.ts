@@ -7,7 +7,14 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { PREVIEW_UPLOAD_BUDGET_BYTES, dataUrlByteLength, previewFitPlan } from "./preview-encode";
+import {
+  PREVIEW_UPLOAD_BUDGET_BYTES,
+  dataUrlByteLength,
+  previewFitPlan,
+  DRAFT_THUMB_MAX_SIDE,
+  DRAFT_THUMB_BUDGET_BYTES,
+  draftThumbTargetSize,
+} from "./preview-encode";
 
 describe("dataUrlByteLength", () => {
   it("cuenta los bytes del payload base64 sin decodificarlo", () => {
@@ -58,5 +65,31 @@ describe("previewFitPlan", () => {
     expect(moderate.scales).toEqual([1, 0.75, 0.5, 0.35]);
     expect(huge.scales).toEqual([0.5, 0.35, 0.25]);
     expect(moderate.qualities).toEqual(huge.qualities);
+  });
+});
+
+describe("miniatura del DRAFT (Mis diseños, 2026-10-13)", () => {
+  it("draftThumbTargetSize: el borde largo queda en 400 y conserva el aspect", () => {
+    expect(draftThumbTargetSize(1080, 1080)).toEqual({ width: 400, height: 400 });
+    expect(draftThumbTargetSize(1600, 800)).toEqual({ width: 400, height: 200 });
+    expect(draftThumbTargetSize(800, 1600)).toEqual({ width: 200, height: 400 });
+  });
+
+  it("draftThumbTargetSize: NUNCA hace upscale de un montaje chico", () => {
+    expect(draftThumbTargetSize(300, 150)).toEqual({ width: 300, height: 150 });
+  });
+
+  it("draftThumbTargetSize: dimensiones inválidas caen al cuadrado por defecto", () => {
+    expect(draftThumbTargetSize(0, 0)).toEqual({
+      width: DRAFT_THUMB_MAX_SIDE,
+      height: DRAFT_THUMB_MAX_SIDE,
+    });
+  });
+
+  it("el presupuesto del thumbnail cabe con holgura en el cap del schema del server (~220 KB chars)", () => {
+    // base64 infla ~4/3: DRAFT_THUMB_BUDGET_BYTES * 4/3 debe quedar por debajo
+    // del max del SaveCanvasSchema, si no el server rechazaría thumbnails legítimos.
+    expect((DRAFT_THUMB_BUDGET_BYTES * 4) / 3).toBeLessThan(220 * 1024);
+    expect(DRAFT_THUMB_MAX_SIDE).toBeLessThanOrEqual(400);
   });
 });

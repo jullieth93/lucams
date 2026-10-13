@@ -1,6 +1,6 @@
 /*
  * Tests de parseStructuredAddress — la zona de entrega genérica (envío propio
- * Lucam's): se conserva SOLO si la ciudad está en el catálogo de zonas
+ * Lucams): se conserva SOLO si la ciudad está en el catálogo de zonas
  * (lib/lucams-zones.ts) y el id es válido para ESA ciudad; en cualquier otro
  * caso se descarta en silencio (anti-tamper).
  */

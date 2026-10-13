@@ -1,17 +1,11 @@
 // @vitest-environment jsdom
 
 /*
- * Test de la bandeja de tarjeta blanca (WHITE_CARD_TRAY) — dos rondas de QA:
- *
- * 2026-09-22 ("banda azul"): el inset era FIJO en px en ambos ejes y rompía el
- *   aspect en tarjetas no cuadradas → banda de canvas muerta abajo. Fix: el alto
- *   del Stage se deriva del ancho inset.
- * 2026-09-24 (este contrato): en tarjetas MUY altas (aspect ≥ 2, separadores
- *   alargados/magnéticos 1:3+) la bandeja con aspect conservado dejaba márgenes
- *   checkerboard grandes en los 4 lados → el usuario pidió espacio MÍNIMO
- *   alrededor de la imagen: esas tarjetas NO llevan bandeja (el Stage llena el
- *   marco; el borde lo da el filete de contraste). Tarjetas bajas/cuadradas
- *   conservan la bandeja con aspect (Polaroid Clásica blanca, cuadrados).
+ * Test de canvas UNIFORME (2026-10-12 — reemplaza al test de la bandeja
+ * WHITE_CARD_TRAY, eliminada): el Stage SIEMPRE llena el footprint del slot,
+ * en todos los productos — sin bandeja cuadriculada ni encogimiento inset,
+ * también para la tarjeta BLANCA (su legibilidad white-on-white la da el
+ * filete de contraste `outline` del wrapper, no una cuadrícula).
  *
  * Konva no corre en jsdom → react-konva mockeado (patrón de
  * studio-slot-badge.test.tsx); el Stage mock captura sus props.
@@ -53,7 +47,7 @@ afterEach(() => {
   stageProps = null;
 });
 
-// Plantilla de tarjeta BLANCA (fondo #FFFFFF → bandeja cuadriculada activa).
+// Plantilla de tarjeta BLANCA (fondo #FFFFFF — el caso que antes llevaba bandeja).
 function whiteTemplate(width: number, height: number): CanvasDataV1 {
   return {
     version: 1,
@@ -91,35 +85,34 @@ function renderSlot(template: CanvasDataV1, displaySize: number, displayHeight: 
   );
 }
 
-describe("StudioSlot — bandeja de tarjeta blanca conserva el aspect (bug banda inferior)", () => {
-  it("tarjeta blanca baja (1:1.33, tipo Polaroid): bandeja con aspect conservado", () => {
-    // 600×800 → aspect 1.33 < 2 → bandeja activa; alto derivado del ancho inset.
+describe("StudioSlot — canvas uniforme (sin bandeja checkerboard ni inset, 2026-10-12)", () => {
+  it("tarjeta blanca baja (1:1.33, tipo Polaroid): el Stage llena el footprint del slot", () => {
+    // Antes: width 300-16 y height derivado del inset. Ahora: tamaño exacto del slot.
     renderSlot(whiteTemplate(600, 800), 300, 400);
     expect(stageProps).not.toBeNull();
-    expect(stageProps!.width).toBe(300 - 16);
-    expect(stageProps!.height).toBe((300 - 16) * (800 / 600));
+    expect(stageProps!.width).toBe(300);
+    expect(stageProps!.height).toBe(400);
   });
 
-  it("separador alargado 1:3 (4×12): SIN bandeja — el Stage llena el marco (margen mínimo)", () => {
-    // 2026-09-24 (QA STG): con bandeja el usuario veía márgenes checkerboard
-    // grandes alrededor de la foto (el inset con aspect conservado crece con el
-    // aspect). En tarjetas ≥2:1 el Stage llena el marco y el borde lo da el
-    // filete de contraste — cero aire muerto alrededor del diseño.
+  it("separador alargado 1:3 (4×12): mismo contrato — Stage a tamaño completo", () => {
     renderSlot(whiteTemplate(400, 1200), 204, 612);
     expect(stageProps).not.toBeNull();
     expect(stageProps!.width).toBe(204);
     expect(stageProps!.height).toBe(612);
   });
 
-  it("separador alargado 1:3.75 (4×15): mismo contrato (sin bandeja)", () => {
-    renderSlot(whiteTemplate(400, 1500), 176, 660);
-    expect(stageProps!.width).toBe(176);
-    expect(stageProps!.height).toBe(660);
+  it("tarjeta cuadrada (1:1): sin inset — el Stage es el slot", () => {
+    renderSlot(whiteTemplate(1080, 1080), 300, 300);
+    expect(stageProps!.width).toBe(300);
+    expect(stageProps!.height).toBe(300);
   });
 
-  it("tarjeta cuadrada (1:1): bandeja activa, inset simétrico 16px", () => {
-    renderSlot(whiteTemplate(1080, 1080), 300, 300);
-    expect(stageProps!.width).toBe(284);
-    expect(stageProps!.height).toBe(284);
+  it("la tarjeta BLANCA queda legible por el filete de contraste (sin cuadrícula)", () => {
+    const { container } = renderSlot(whiteTemplate(1080, 1080), 300, 300);
+    const wrapper = container.querySelector("[data-slot-index]") as HTMLElement;
+    // Filete neutro sutil (adorno DOM, nunca entra al snapshot)…
+    expect(wrapper.style.outline).toBe("1px solid rgba(124, 106, 173, 0.35)");
+    // …y NADA de checkerboard en el wrapper.
+    expect(wrapper.style.backgroundImage).toBe("");
   });
 });

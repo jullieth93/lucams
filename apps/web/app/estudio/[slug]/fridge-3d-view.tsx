@@ -75,6 +75,10 @@ type FridgeView3DProps = {
   cols: number;
   /** sizeCm de la variante elegida (ej "6.5×6.5", "7.5×10") — escala física de los imanes. */
   sizeCm?: string;
+  /** 2026-10-12 — grosor FÍSICO de la pieza en cm (default: 2 mm del fotoimán,
+   *  MAGNET_THICKNESS_CM). El calendario pasa CALENDAR_CARD_THICKNESS_CM (cartulina ~0.4 mm):
+   *  las tarjetas heredaban el grosor de imán y se veían gruesas como fichas magnéticas. */
+  thicknessCm?: number;
 };
 
 // ── Nevecón FRENCH DOOR de tamaño FIJO (no depende de la cantidad de imanes) ──
@@ -113,7 +117,9 @@ const FRIDGE_U_PER_CM = FRIDGE_SCENE.uPerCm;
 
 // Fase 2.11 (owner 2026-10-07) — grosor FÍSICO real: 2 mm × uPerCm de la escena
 // (≈0.0099 u acá; antes la constante de mundo 0.04 u ≈ 0.8 cm — ~4× el real).
-const MAGNET_DEPTH = realWorldDepth(FRIDGE_U_PER_CM);
+// 2026-10-12: el grosor es PARAMETRIZABLE por producto (`thicknessCm` — p.ej. las tarjetas
+// del calendario son cartulina de ~0.4 mm, no goma de imán de 2 mm) → se calcula por render.
+const DEFAULT_MAGNET_DEPTH = realWorldDepth(FRIDGE_U_PER_CM);
 // Cara frontal del PANEL biselado interno de cada puerta: centro en DOOR_FACE_Z+0.012 con
 // 0.03 de grosor → superficie en +0.027 (ver Door). Los imanes se adhieren SOBRE ESE panel:
 // si su centro queda por debajo, la pieza entera queda ENTERRADA en el panel y la nevera se
@@ -121,7 +127,9 @@ const MAGNET_DEPTH = realWorldDepth(FRIDGE_U_PER_CM);
 const PANEL_FACE_Z = DOOR_FACE_Z + 0.027;
 // Centro del cuerpo extruido: su mitad trasera (depth/2 + bisel 0.2·depth) apoya sobre el
 // panel con un epsilon de 0.003 u (adherido, sin z-fighting).
-const MAGNET_Z = PANEL_FACE_Z + MAGNET_DEPTH * 0.7 + 0.003;
+function magnetZForDepth(depth: number): number {
+  return PANEL_FACE_Z + depth * 0.7 + 0.003;
+}
 
 // Materiales (gris satinado de electrodoméstico; metalness baja para verse bien sin env-map).
 const BODY_COLOR = "#9297A0";
@@ -136,11 +144,13 @@ function Magnet({
   m,
   width,
   height,
+  depth,
   position,
 }: {
   m: Magnet3D;
   width: number;
   height: number;
+  depth: number;
   position: [number, number, number];
 }) {
   return (
@@ -149,7 +159,7 @@ function Magnet({
       width={width}
       height={height}
       shape={m.shape}
-      depth={MAGNET_DEPTH}
+      depth={depth}
       cornerRadiusRatio={m.cornerRadiusRatio}
       position={position}
     />
@@ -455,21 +465,27 @@ function fridgeClusterLayout(
   };
 }
 
-function Magnets({ items }: { items: FridgeItem[] }) {
+function Magnets({ items, depth, z }: { items: FridgeItem[]; depth: number; z: number }) {
   return (
     <>
       {items.map(({ m, w, h, x, y }, i) => (
-        <Magnet key={i} m={m} width={w} height={h} position={[x, y, MAGNET_Z]} />
+        <Magnet key={i} m={m} width={w} height={h} depth={depth} position={[x, y, z]} />
       ))}
     </>
   );
 }
 
-function Scene({ magnets, cols, sizeCm }: FridgeView3DProps) {
+function Scene({ magnets, cols, sizeCm, thicknessCm }: FridgeView3DProps) {
   // #16 — no autorrotar si el usuario pide reducir movimiento.
   const reduced = usePrefersReducedMotion();
   // Clúster a tamaño real + sus bounds: la cámara encuadra nevera Y clúster completo.
   const layout = useMemo(() => fridgeClusterLayout(magnets, cols, sizeCm), [magnets, cols, sizeCm]);
+  // Grosor físico de la pieza (2026-10-12): 2 mm del fotoimán por defecto; el calendario pasa
+  // su cartulina (thicknessCm). El z de adherencia deriva del depth → la pieza ni se hunde
+  // ni flota al cambiar el grosor.
+  const depth =
+    thicknessCm === undefined ? DEFAULT_MAGNET_DEPTH : realWorldDepth(FRIDGE_U_PER_CM, thicknessCm);
+  const magnetZ = magnetZForDepth(depth);
   return (
     <>
       {/* FB5 — env-map procedural (reflejos PBR reales) + backdrop de estudio (contexto/asiento). La
@@ -501,7 +517,7 @@ function Scene({ magnets, cols, sizeCm }: FridgeView3DProps) {
       <Center>
         <group>
           <Fridge />
-          <Magnets items={layout.items} />
+          <Magnets items={layout.items} depth={depth} z={magnetZ} />
         </group>
       </Center>
 
@@ -545,7 +561,7 @@ function Scene({ magnets, cols, sizeCm }: FridgeView3DProps) {
   );
 }
 
-export default function FridgeView3D({ magnets, cols, sizeCm }: FridgeView3DProps) {
+export default function FridgeView3D({ magnets, cols, sizeCm, thicknessCm }: FridgeView3DProps) {
   if (magnets.length === 0) {
     return (
       <div className="text-brand-muted flex h-full items-center justify-center p-8 text-center text-sm">
@@ -567,7 +583,7 @@ export default function FridgeView3D({ magnets, cols, sizeCm }: FridgeView3DProp
     >
       <color attach="background" args={["#FFF8F0"]} />
       <Suspense fallback={null}>
-        <Scene magnets={magnets} cols={cols} sizeCm={sizeCm} />
+        <Scene magnets={magnets} cols={cols} sizeCm={sizeCm} thicknessCm={thicknessCm} />
       </Suspense>
     </Canvas>
   );

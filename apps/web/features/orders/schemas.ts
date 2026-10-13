@@ -26,7 +26,7 @@ export type ShippingAddressInput = {
   addressLine2?: string;
   zip?: string;
   /** Zona de entrega (id + nombre display, lib/lucams-zones.ts) — dato de
-   *  dirección; también alimenta la oferta de envío propio "Envío Lucam's".
+   *  dirección; también alimenta la oferta de envío propio "Envío Lucams".
    *  Nombre histórico "locality*" (V1 solo-Bogotá) — representa la zona genérica. */
   localityId?: string;
   localityName?: string;

@@ -286,6 +286,37 @@ export const SEPARATOR_SLOTS: readonly { x: number; yaw: number }[] = [
   { x: 2.15, yaw: 0.05 },
 ];
 
+/** Aire mínimo entre separadores doblados vecinos sobre el borde superior (eje x). */
+export const SEPARATOR_GAP = 0.25;
+
+/**
+ * Slots de los separadores doblados sobre el borde superior de las páginas (todos al MISMO
+ * crestZ — cuelgan del mismo filo, lado a lado). Con N > 3 se distribuyen uniformemente sobre
+ * el tramo de referencia, pero 2026-10-12: el tramo se EXPANDE si el paso resultante es menor
+ * que stripW + SEPARATOR_GAP — antes con N grande (p.ej. 6+ caras 4×4.2 de 1.2 u de ancho)
+ * las tiras vecinas se solapaban en x y, colgando todas del mismo z, se pisaban las caras.
+ * El caller pasa el stripW máximo del set (las piezas nunca se encogen: la cámara abre).
+ */
+export function separatorSlotsForCount(count: number, stripW = 0): { x: number; yaw: number }[] {
+  if (count <= 0) return [];
+  if (count === 1) return [{ x: 0, yaw: 0 }];
+  if (count === 2) {
+    return [
+      { x: SEPARATOR_SLOTS[0]!.x * 0.55, yaw: SEPARATOR_SLOTS[0]!.yaw },
+      { x: SEPARATOR_SLOTS[2]!.x * 0.55, yaw: SEPARATOR_SLOTS[2]!.yaw },
+    ];
+  }
+  if (count === 3) return SEPARATOR_SLOTS.slice();
+  // >3: distribuir uniformemente, expandiendo el tramo si las tiras se pisarían.
+  const minX = SEPARATOR_SLOTS[0]!.x;
+  const maxX = SEPARATOR_SLOTS[2]!.x;
+  const span = Math.max(maxX - minX, (count - 1) * (stripW + SEPARATOR_GAP));
+  return Array.from({ length: count }, (_, i) => ({
+    x: -span / 2 + (span * i) / (count - 1),
+    yaw: (i % 2 === 0 ? 1 : -1) * 0.05,
+  }));
+}
+
 // ── Ola 17 (2026-07-24) — marcapáginas ALARGADO PLANO (sin doblez) acostado sobre la hoja ──
 //
 // Los "Alargados" (15×4 / 12×4 cm) son piezas PLANAS: no se doblan sobre el borde de la
@@ -315,42 +346,78 @@ export function flatBookmarkDims(
  *  la distancia entre slots es ancho de pieza + gap; antes el spread tenía tope 0.9 u y con
  *  piezas de 1.2 u de ancho (4 cm) se SOLAPABAN siempre que había 2+ unidades). */
 export const FLAT_GAP = 0.15;
-/** Separación entre FILAS (eje z) cuando una sola fila no cabe a lo ancho de la página. */
-export const FLAT_ROW_GAP = 0.55;
 /** Ancho útil de la hoja derecha para UNA fila de piezas (margen al lomo y al corte). */
 const FLAT_ROW_MAX_W = PAGE_W - 0.7;
+/** Fondo útil de la hoja para el conjunto de filas (margen ~2 cm arriba/abajo). */
+const FLAT_ROW_MAX_D = PAGE_D - 1.2;
+/** Giro natural máximo de cada pieza en el plano de la hoja (rad). */
+export const FLAT_YAW_JITTER = 0.05;
 
 /**
  * Slots para piezas planas sobre la hoja DERECHA (x>0), centradas a lo ancho de la página,
- * con giros naturales sutiles. La separación entre piezas vecinas es SIEMPRE ≥ ancho de pieza
- * + gap (nunca se solapan, en cualquier cantidad): si una fila no cabe a lo ancho, el conjunto
- * se reparte en varias filas (z distinta) lo más parejas posible. El caller ajusta el encuadre
- * de cámara al ancho resultante (las piezas NUNCA se encogen).
+ * con giros naturales sutiles. La separación entre piezas vecinas es SIEMPRE ≥ su extensión
+ * en el eje + gap, en AMBOS ejes (nunca se solapan, en cualquier cantidad): a lo ancho de la
+ * fila manda `pieceW` y entre filas (eje z) manda el LARGO real de la pieza (`pieceL`) —
+ * 2026-10-12, bug "4 unidades sobrepuestas y parpadeando": el gap entre filas era una
+ * constante de 0.55 u pensada contra el ANCHO, pero una pieza 4×15 mide 4.5 u de largo en el
+ * plano de la hoja → 2 filas a z=±0.275 se solapaban masivamente a la MISMA altura
+ * (flatBookmarkPlacement) → z-fighting. Ahora la separación en z es ≥ pieceL + gap, y tanto
+ * el paso en x como la separación de filas incluyen el barrido de esquina del giro
+ * (`extensión transversal · sin(FLAT_YAW_JITTER)`): con piezas largas el jitter de ±0.05 rad
+ * mueve la esquina más que el gap y volvía a haber solape real en las puntas.
+ *
+ * Si con esa separación las filas desbordan el fondo de la hoja y la pieza es ALARGADA
+ * (pieceL > pieceW), se prueba la orientación trenzada 90° (largo a lo ancho de la página,
+ * ancho a lo profundo): con 4 piezas 4×15 caben 4 filas de a UNA dentro de la hoja, en vez de
+ * 2 filas solapadas colgando fuera del libro. Se elige la orientación con menor desborde en z.
+ * Las piezas NUNCA se encogen: si ni así cabe, el caller abre la cámara.
  */
 export function flatBookmarkSlots(
   count: number,
-  opts: { pieceW: number; gap?: number; maxRowW?: number },
+  opts: { pieceW: number; pieceL?: number; gap?: number; maxRowW?: number; maxRowD?: number },
 ): { x: number; z: number; yaw: number }[] {
   if (count <= 0) return [];
   const gap = opts.gap ?? FLAT_GAP;
   const maxRowW = opts.maxRowW ?? FLAT_ROW_MAX_W;
+  const maxRowD = opts.maxRowD ?? FLAT_ROW_MAX_D;
   const pieceW = Math.max(0.05, opts.pieceW);
+  const pieceL = Math.max(0.05, opts.pieceL ?? opts.pieceW);
   const cx = PAGE_W / 2;
-  if (count === 1) return [{ x: cx, z: 0, yaw: -0.05 }];
-  // Piezas que caben por fila sin solape; el resto desborda a filas extra (z distinta).
-  const perRow = Math.max(1, Math.floor((maxRowW + gap) / (pieceW + gap)));
-  const rows = Math.ceil(count / perRow);
+  if (count === 1) return [{ x: cx, z: 0, yaw: -FLAT_YAW_JITTER }];
+
+  // Plan de filas para una orientación: `inRow` = extensión de la pieza a lo ancho de la
+  // página (x), `cross` = extensión a lo profundo (z, lo que separa las filas). El paso
+  // centro-a-centro incluye el barrido de esquina del jitter de yaw (cross·sin j en x,
+  // inRow·sin j en z) para que NI SIQUIERA las puntas giradas se toquen.
+  const plan = (inRow: number, cross: number) => {
+    const step = inRow + gap + cross * Math.sin(FLAT_YAW_JITTER);
+    const perRow = Math.max(1, Math.floor((maxRowW - inRow) / step + 1));
+    const rows = Math.ceil(count / perRow);
+    const rowGap = cross + gap + inRow * Math.sin(FLAT_YAW_JITTER);
+    return { perRow, rows, step, rowGap, spanZ: rows * cross + (rows - 1) * (rowGap - cross) };
+  };
+  const vertical = plan(pieceW, pieceL);
+  let chosen = vertical;
+  let turned = false;
+  if (pieceL > pieceW && vertical.spanZ > maxRowD) {
+    const trenzado = plan(pieceL, pieceW);
+    if (trenzado.spanZ < vertical.spanZ) {
+      chosen = trenzado;
+      turned = true;
+    }
+  }
+  const { rows, step, rowGap } = chosen;
   const base = Math.floor(count / rows);
   const extra = count % rows; // las primeras `extra` filas llevan base+1 piezas
   const slots: { x: number; z: number; yaw: number }[] = [];
   for (let r = 0; r < rows; r++) {
     const n = base + (r < extra ? 1 : 0);
-    const z = (r - (rows - 1) / 2) * FLAT_ROW_GAP;
+    const z = (r - (rows - 1) / 2) * rowGap;
     for (let i = 0; i < n; i++) {
       slots.push({
-        x: cx + (i - (n - 1) / 2) * (pieceW + gap),
+        x: cx + (i - (n - 1) / 2) * step,
         z,
-        yaw: (slots.length % 2 === 0 ? -1 : 1) * 0.05,
+        yaw: (turned ? Math.PI / 2 : 0) + (slots.length % 2 === 0 ? -1 : 1) * FLAT_YAW_JITTER,
       });
     }
   }

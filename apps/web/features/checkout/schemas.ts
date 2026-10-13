@@ -12,7 +12,12 @@
  */
 
 import { z } from "zod";
-import { cruceNumberError, viaNumberError } from "@/lib/colombia-validators";
+import {
+  NAME_REGEX,
+  PHONE_REGEX,
+  cruceNumberError,
+  viaNumberError,
+} from "@/lib/colombia-validators";
 
 // Regla ÚNICA de documento de identidad (DIAN) — la reusan el checkout
 // (ContactSchema) y el perfil del cliente (/mi-cuenta/perfil, T7 2026-10-01)
@@ -29,11 +34,12 @@ export const ContactSchema = z.object({
     .string()
     .min(2, "El nombre debe tener al menos 2 caracteres")
     .max(120, "Máximo 120 caracteres")
-    .regex(/^[A-Za-zÀ-ÿ\s.''\-]+$/u, "El nombre solo puede tener letras")
+    // Regex central de nombre (lib/colombia-validators) — fuente única.
+    .regex(NAME_REGEX, "El nombre solo puede tener letras")
     .trim(),
   email: z.email("Email inválido").max(254).trim().toLowerCase(),
   // Móvil colombiano: 10 dígitos empezando con 3 (sin espacios al persistir).
-  phone: z.string().regex(/^3\d{9}$/, "Debe ser un móvil colombiano de 10 dígitos (300...)"),
+  phone: z.string().regex(PHONE_REGEX, "Debe ser un móvil colombiano de 10 dígitos (300...)"),
   documentType: DocumentTypeSchema.optional(),
   documentNumber: DocumentNumberSchema.optional(),
 });
@@ -81,7 +87,7 @@ const BaseAddressFields = z.object({
     .or(z.literal("")),
   // Zona de entrega (id de lib/lucams-zones.ts) — solo ciudades del catálogo.
   // Es DATO DE DIRECCIÓN: la pide siempre el checkout cuando la ciudad está en
-  // el catálogo, y además alimenta la oferta de envío propio "Envío Lucam's".
+  // el catálogo, y además alimenta la oferta de envío propio "Envío Lucams".
   // Nombre histórico "localityId" (V1 solo-Bogotá): representa la zona genérica
   // (localidad, comuna, …). Opcional en el schema: la obligatoriedad la decide
   // el server según el catálogo de zonas (getZoneCityByCode), no según las
@@ -204,11 +210,12 @@ export const GiftSchema = z.object({
     .string()
     .min(2, "El nombre debe tener al menos 2 caracteres")
     .max(120, "Máximo 120 caracteres")
-    .regex(/^[A-Za-zÀ-ÿ\s.''\-]+$/u, "El nombre solo puede tener letras")
+    // Regex central de nombre (lib/colombia-validators) — fuente única.
+    .regex(NAME_REGEX, "El nombre solo puede tener letras")
     .trim(),
   recipientPhone: z
     .string()
-    .regex(/^3\d{9}$/, "Debe ser un móvil colombiano de 10 dígitos (300...)"),
+    .regex(PHONE_REGEX, "Debe ser un móvil colombiano de 10 dígitos (300...)"),
   isGift: z.boolean(),
   giftMessage: z.string().max(300, "Máximo 300 caracteres").trim().optional(),
 });

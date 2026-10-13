@@ -38,6 +38,7 @@ import { getPageSeo } from "@/lib/cms-tokens";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { isCatalogMode } from "@/lib/store-mode";
 import { getCanonicalSiteUrl } from "@/lib/public-url";
+import { SITE_NAME, SITE_TITLE } from "@/lib/site";
 
 /* La home define su PROPIA description y por eso pisa la del layout — que sí se derivaba del modo
    (auditoría 2026-07-21). "Entrega a 1.100+ destinos" es la cobertura del operador logístico, que
@@ -47,7 +48,7 @@ import { getCanonicalSiteUrl } from "@/lib/public-url";
    sobreescribe ambos desde /admin/contenido/paginas/seo; el fallback mantiene el gate de modo. */
 export async function generateMetadata(): Promise<Metadata> {
   const seo = await getPageSeo("seo.page.home", {
-    title: "Lucams_shop — Tus recuerdos en imán",
+    title: SITE_TITLE,
     description: isCatalogMode()
       ? "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia; el envío lo coordinamos contigo por WhatsApp."
       : "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia con entrega a {{cobertura}} destinos.",
@@ -105,7 +106,7 @@ export default async function Home() {
     {
       "@context": "https://schema.org",
       "@type": "Organization",
-      name: "Lucams_shop",
+      name: SITE_NAME,
       url: siteUrl,
       logo: `${siteUrl}/brand/lucams-logo.png`,
       sameAs,
@@ -113,7 +114,7 @@ export default async function Home() {
     {
       "@context": "https://schema.org",
       "@type": "WebSite",
-      name: "Lucams_shop",
+      name: SITE_NAME,
       url: siteUrl,
     },
   ];

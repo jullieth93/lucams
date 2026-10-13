@@ -84,7 +84,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
       type: "website",
       images: [{ url: image, alt: product.name }],
       locale: "es_CO",
-      siteName: "Lucams_shop",
+      siteName: "Lucams Shop",
     },
     twitter: {
       card: "summary_large_image",
@@ -654,7 +654,7 @@ export default async function ProductoDetallePage({
                             fallback="días según tu ciudad. En Bogotá, con"
                           />{" "}
                           <strong>
-                            <CmsText blockKey="pdp.envio.lucams-nombre" fallback="Envío Lucam's" />
+                            <CmsText blockKey="pdp.envio.lucams-nombre" fallback="Envío Lucams" />
                           </strong>{" "}
                           <CmsText
                             blockKey="pdp.envio.lucams-entrega"

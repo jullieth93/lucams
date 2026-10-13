@@ -246,7 +246,7 @@ describe("layout compartido — invariantes en todas las plantillas", () => {
       expect(r.html).toContain("Lucams");
       // Footer con email de contacto y copyright (settings mockeadas).
       expect(r.html).toContain("hola@lucamsshop.com");
-      expect(r.html).toContain("© 2026 Lucams_shop");
+      expect(r.html).toContain("© 2026 Lucams Shop");
       // subject/text siempre presentes y no vacíos.
       expect(r.subject.length).toBeGreaterThan(0);
       expect(r.text.length).toBeGreaterThan(0);
@@ -344,13 +344,13 @@ describe("orderConfirmationEmail", () => {
 
   it("entrega propia (internalDelivery): no promete guía ni transportadora externa", async () => {
     const r = await orderConfirmationEmail(
-      ocData({ shippingCarrier: "Envío Lucam's", internalDelivery: true }),
+      ocData({ shippingCarrier: "Envío Lucams", internalDelivery: true }),
     );
-    expect(r.html).toContain("nuestro equipo Lucam's");
+    expect(r.html).toContain("nuestro equipo Lucams");
     expect(r.html).not.toContain("número de guía");
     expect(r.html).not.toContain("el tiempo lo pone la transportadora");
     // La fila de envío sigue mostrando el nombre del carrier junto al valor.
-    expect(r.html).toContain("Envío Lucam's");
+    expect(r.html).toContain("Envío Lucams");
   });
 
   it("con publicTrackingToken el CTA apunta a la vista guest /pedido/<token>", async () => {
@@ -391,13 +391,13 @@ describe("orderConfirmationEmail", () => {
             name: "Fotoimanes Cuadrados",
             qty: 1,
             lineTotal: 3_000_000,
-            breakdown: ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"],
+            breakdown: ["12 fotos", "6×8 cm", "Sin imán"],
           },
         ],
       }),
     );
-    expect(r.html).toContain("12 fotos · 6×8 cm · Sin imán (adhesivo)");
-    expect(r.text).toContain("(12 fotos · 6×8 cm · Sin imán (adhesivo))");
+    expect(r.html).toContain("12 fotos · 6×8 cm · Sin imán");
+    expect(r.text).toContain("(12 fotos · 6×8 cm · Sin imán)");
   });
 
   it("Paquete H — ítem sin desglose (vacío/ausente) no pinta línea secundaria", async () => {
@@ -585,17 +585,17 @@ describe("orderShippedEmail", () => {
   it("entrega propia (internalDelivery): sin guía ni transportadora externa en el copy", async () => {
     const r = await orderShippedEmail(
       shData({
-        carrier: "Envío Lucam's",
+        carrier: "Envío Lucams",
         trackingNumber: "INTERNO-LS-2001",
         trackingUrl: null,
         internalDelivery: true,
       }),
     );
-    expect(r.html).toContain("nuestro equipo Lucam's");
+    expect(r.html).toContain("nuestro equipo Lucams");
     expect(r.html).not.toContain("Número de guía");
     expect(r.html).not.toContain("Documento de guía");
     expect(r.html).not.toContain("la transportadora intentará");
-    expect(r.text).toContain("nuestro equipo Lucam's");
+    expect(r.text).toContain("nuestro equipo Lucams");
     expect(r.text).not.toContain("Número de guía");
     // El CTA de seguimiento sigue existiendo (vista propia del pedido).
     expect(r.html).toContain("Rastrear mi pedido");
@@ -663,9 +663,9 @@ describe("orderDeliveredEmail", () => {
 
   it("entrega propia (internalDelivery): la entrega la hizo nuestro equipo, no una transportadora", async () => {
     const r = await orderDeliveredEmail(dlData({ internalDelivery: true }));
-    expect(r.html).toContain("nuestro equipo Lucam's entregó");
+    expect(r.html).toContain("nuestro equipo Lucams entregó");
     expect(r.html).not.toContain("según la transportadora");
-    expect(r.text).toContain("lo entregó nuestro equipo Lucam's");
+    expect(r.text).toContain("lo entregó nuestro equipo Lucams");
   });
 });
 
@@ -854,7 +854,7 @@ describe("newsletterWelcomeEmail", () => {
 
   it("HTML de bienvenida menciona la marca y el CTA al catálogo", async () => {
     const r = await newsletterWelcomeEmail(nwData());
-    expect(r.html).toContain("Lucams_shop");
+    expect(r.html).toContain("Lucams Shop");
     expect(r.html).toContain(`${SITE_URL}/productos`);
     expect(r.html).toContain("mira el catálogo");
   });

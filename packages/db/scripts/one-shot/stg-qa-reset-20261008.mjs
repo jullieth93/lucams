@@ -121,12 +121,19 @@ const [
   nCodRec,
 ] = counts;
 
-// auth.users de clientes (los de AdminUser se preservan)
+// auth.users de clientes (los de AdminUser se preservan SIEMPRE — bugfix
+// 2026-10-09: un correo con Customer + AdminUser perdía su auth.user y se
+// quedaba sin poder entrar al admin aunque el AdminUser sobreviviera).
+const adminAuthIds = new Set(
+  (await prisma.adminUser.findMany({ select: { supabaseUserId: true } }))
+    .map((a) => a.supabaseUserId)
+    .filter(Boolean),
+);
 const customerAuthIds = (
   await prisma.customer.findMany({ select: { supabaseUserId: true } })
 )
   .map((c) => c.supabaseUserId)
-  .filter(Boolean);
+  .filter((id) => id && !adminAuthIds.has(id));
 
 const uploadPaths = designs.flatMap((d) => d.assets.map((a) => a.storageUrl)).filter(Boolean);
 const previewPaths = designs

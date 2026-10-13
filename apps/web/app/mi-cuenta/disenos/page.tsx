@@ -1,7 +1,11 @@
 /*
  * /mi-cuenta/disenos — "Mis diseños" del cliente. Lista los diseños finalizados
  * (listos o ya comprados) con su preview, y permite compartirlos por link público
- * (/d/<token>) o archivarlos. Aislamiento por customerId. Fase 3 — compartir diseño.
+ * (/d/<token>), archivarlos o EDITARLOS de nuevo (2026-10-13 — CTA «Editar» que
+ * abre /estudio/<slug>?designId=: el recover clona READY→DRAFT y al finalizar
+ * queda listo otra vez; el original nunca se toca). Los borradores vigentes se
+ * listan con su miniatura del auto-save (Design.draftPreviewUrl) o placeholder.
+ * Aislamiento por customerId. Fase 3 — compartir diseño.
  */
 
 import type { Metadata } from "next";
@@ -10,6 +14,8 @@ import { redirect } from "next/navigation";
 import { ChevronLeft, Palette } from "lucide-react";
 import { getCurrentCustomer } from "@/lib/auth";
 import { listCustomerDesigns } from "@/features/personalization/service";
+import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
+import { CmsText } from "@/components/cms/cms-text";
 import { DesignGrid, type DesignCardData } from "./design-grid";
 import { getAccountTexts } from "../account-texts.server";
 
@@ -30,7 +36,13 @@ export default async function DisenosPage() {
   ]);
   const designs: DesignCardData[] = rows.map((d) => ({
     id: d.id,
-    previewUrl: d.previewUrl ?? "",
+    // 2026-10-13 — los DRAFT no tienen preview final (se genera en el
+    // finalize): su tarjeta usa la miniatura del auto-save (draftPreviewUrl)
+    // cuando existe; sin ella, placeholder de marca en el grid. Los diseños
+    // LISTOS exhiben la miniatura representativa WATERMARK (thumb.webp =
+    // primera unidad legible; fallback al preview limpio si no hay artefactos).
+    previewUrl:
+      d.status === "DRAFT" ? (d.draftPreviewUrl ?? "") : (designPreviewDisplay(d)?.thumbUrl ?? ""),
     productName: d.product.name,
     productSlug: d.product.slug,
     // F-11 — solo sabemos SI hay link activo (hash en DB); el token plano ya no
@@ -55,6 +67,17 @@ export default async function DisenosPage() {
       <header className="mb-6">
         <h1 className="font-display text-brand-purple-dark text-3xl">{texts.designs.title}</h1>
         <p className="text-brand-muted mt-1 text-sm">{texts.designs.subtitle}</p>
+        {/* 2026-10-13 — las miniaturas de diseños listos llevan marca de agua
+            (anti-copia); la impresión final no la lleva. Aviso visible pedido
+            por la decisión de producto del watermark. */}
+        {rows.some((d) => d.status !== "DRAFT" && d.previewWatermarkedAt !== null) && (
+          <p className="text-brand-muted mt-1 text-xs">
+            <CmsText
+              blockKey="account.designs.watermark-note"
+              fallback="Las vistas previas llevan marca de agua — tu impresión final no la lleva."
+            />
+          </p>
+        )}
       </header>
 
       {designs.length === 0 ? (

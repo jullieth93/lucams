@@ -106,4 +106,40 @@ describe("POST /api/designs/save-canvas (beacon flush del Estudio)", () => {
     const res = await POST(req({ designId: "d1", canvasData: VALID_CANVAS }));
     expect(res.status).toBe(500);
   });
+
+  // 2026-10-13 — miniatura del borrador (Mis diseños): el campo es OPCIONAL y
+  // viaja al service cuando es un dataURL de imagen válido y acotado.
+  it("con draftPreviewDataUrl válido viaja al service", async () => {
+    const res = await POST(
+      req({
+        designId: "d1",
+        canvasData: VALID_CANVAS,
+        draftPreviewDataUrl: "data:image/webp;base64,aG9sYQ==",
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(state.saveCalls[0]).toMatchObject({
+      draftPreviewDataUrl: "data:image/webp;base64,aG9sYQ==",
+    });
+  });
+
+  it("draftPreviewDataUrl con formato inválido → 400 (defensa del contrato)", async () => {
+    const res = await POST(
+      req({ designId: "d1", canvasData: VALID_CANVAS, draftPreviewDataUrl: "https://x/y.png" }),
+    );
+    expect(res.status).toBe(400);
+    expect(state.saveCalls).toHaveLength(0);
+  });
+
+  it("draftPreviewDataUrl gigante (por encima del cap) → 400", async () => {
+    const res = await POST(
+      req({
+        designId: "d1",
+        canvasData: VALID_CANVAS,
+        draftPreviewDataUrl: `data:image/png;base64,${"A".repeat(230 * 1024)}`,
+      }),
+    );
+    expect(res.status).toBe(400);
+    expect(state.saveCalls).toHaveLength(0);
+  });
 });

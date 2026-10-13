@@ -17,13 +17,18 @@
 
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { mergeAnonCartIntoCustomer } from "@/features/cart/service";
 import { claimGuestOrdersForCustomer } from "@/features/orders/claim-guest-orders";
 import { peekCartSession, setCartSessionCookie } from "@/lib/cart-session";
+import {
+  CUSTOMER_ACTIVITY_COOKIE,
+  customerActivityCookieOptions,
+  sealCustomerActivityMark,
+} from "@/lib/customer-activity";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
@@ -126,6 +131,14 @@ export async function loginAction(
   // seguro — `safeRedirectTarget` neutraliza open-redirect (//evil.com, etc.) y
   // cae a "/" ante cualquier valor sospechoso o ausente.
   const nextRaw = formData.get("next");
+  // Sella la marca de actividad del cliente al autenticarse (idle-timeout de 30
+  // días deslizante — lib/customer-activity.ts). Firmada con HMAC: sin ella el
+  // proxy trata la sesión como expirada en la primera request (fail-closed).
+  (await cookies()).set(
+    CUSTOMER_ACTIVITY_COOKIE,
+    sealCustomerActivityMark(Date.now()),
+    customerActivityCookieOptions(),
+  );
   redirect(safeRedirectTarget(typeof nextRaw === "string" ? nextRaw : null));
 }
 

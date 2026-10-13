@@ -11,7 +11,9 @@ import {
   EMPTY_STRUCTURED_ADDRESS,
   type StructuredAddressValue,
 } from "@/components/address/structured-address-fields";
+import { PhoneInput } from "@/components/phone-input";
 import { getDepartmentByName, getCityByDeptAndName } from "@/lib/dane-divipola";
+import { getZone, getZoneCityByCode } from "@/lib/lucams-zones";
 import {
   saveAddressAction,
   deleteAddressAction,
@@ -30,6 +32,18 @@ export type AddressView = {
   isDefault: boolean;
   structured: Record<string, unknown> | null;
 };
+
+/** "Localidad: Chapinero" para la tarjeta, cuando la dirección tiene zona del
+ *  catálogo (lib/lucams-zones). null si no aplica o el id ya no es válido. */
+function zoneLine(structured: Record<string, unknown> | null): string | null {
+  if (!structured) return null;
+  const cityCode = typeof structured.cityCode === "string" ? structured.cityCode : null;
+  const localityId = typeof structured.localityId === "string" ? structured.localityId : null;
+  const zone = getZone(cityCode, localityId);
+  if (!zone) return null;
+  const label = getZoneCityByCode(cityCode)?.zoneLabel ?? "Zona";
+  return `${label}: ${zone.name}`;
+}
 
 export function AddressManager({
   addresses,
@@ -127,6 +141,9 @@ function AddressCard({
           <p className="text-brand-muted mt-1 text-sm">
             {address.line1} · {address.city}, {address.department}
           </p>
+          {zoneLine(address.structured) && (
+            <p className="text-brand-muted text-xs">{zoneLine(address.structured)}</p>
+          )}
           {typeof address.structured?.neighborhood === "string" &&
             address.structured.neighborhood && (
               <p className="text-brand-muted text-xs">Barrio {address.structured.neighborhood}</p>
@@ -280,15 +297,20 @@ function AddressForm({
         neighborhoodPlaceholder={texts.neighborhoodPlaceholder}
       />
 
-      <F
-        id="phone"
-        label="Teléfono"
-        type="tel"
-        placeholder="300 000 0000"
-        def={address?.phone}
-        err={state?.fieldErrors?.phone}
-        disabled={pending}
-      />
+      {/* Teléfono con indicativo (+57 🇨🇴 por defecto) — el server valida y
+          normaliza con normalizePhoneWithDial (misma regla del checkout para
+          Colombia: móvil de 10 dígitos empezando en 3). */}
+      <div className="space-y-1.5">
+        <Label htmlFor="phone">Teléfono *</Label>
+        <PhoneInput
+          id="phone"
+          name="phone"
+          required
+          defaultValue={address?.phone ?? ""}
+          disabled={pending}
+          error={state?.fieldErrors?.phone?.[0]}
+        />
+      </div>
 
       <label className="text-brand-purple-dark flex items-center gap-2 text-sm">
         <input

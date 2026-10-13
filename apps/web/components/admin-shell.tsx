@@ -148,7 +148,7 @@ export function AdminShell({
               Panel admin
             </p>
             {/* Fase 3 · 3.9 — wordmark unificado a "LUCAMS" (decisión owner: así
-                va en los envíos; antes "Lucams_shop" hardcodeado). */}
+                va en los envíos; antes "Lucams Shop" hardcodeado). */}
             <p className="font-display truncate text-base leading-tight font-bold text-white">
               LUCAMS
             </p>

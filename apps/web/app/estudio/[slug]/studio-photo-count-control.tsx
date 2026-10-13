@@ -3,7 +3,13 @@
 /*
  * StudioPhotoCountControl — Lucy 2026-09-05: "las fotos se eligen en el Estudio".
  *
- * Stepper "¿Cuántas fotos lleva tu imán?" para packs de fotoimanes (PHOTO_PACK).
+ * Stepper "¿Cuántos separadores quieres?" (antes "¿Cuántas fotos lleva tu
+ * imán?") para packs de fotoimanes y separadores (PHOTO_PACK sin composición
+ * fija). El N que elige el cliente son UNIDADES del producto, no fotos/caras:
+ * el sustantivo llega por prop `unitNoun` (el editor lo resuelve por producto
+ * vía resolveSlotNoun — "separador/es", "imán/imanes", "ficha/s"…) y los textos
+ * CMS son plantillas fillStudioText con {one}/{many}/{cuantos}/{uno}.
+ *
  * Vive junto a la toolbar del Estudio (StudioToolbar lo monta como fila propia
  * bajo el header). Al cambiar N reconstruye el canvas preservando las fotos ya
  * subidas por índice (store.setPhotoSlotsPerUnit) y persiste photoSlots/sizeCm
@@ -19,8 +25,8 @@
  * múltiplos de 6 — fotoSlots 6/12/18/24), el stepper cuenta PACKS y salta de a
  * 6 lienzos (±1 pack = ±6 unidades), coherente con la PDP ("1 pack = 6
  * unidades"). Un diseño legacy recuperado (photoSlots 9/20) cae al conteo de
- * fotos de siempre — sus cantidades ya no existen como variante y el salto de
- * a 6 las dejaría inalcanzables.
+ * unidades de siempre — sus cantidades ya no existen como variante y el salto
+ * de a 6 las dejaría inalcanzables.
  */
 
 import { Loader2, Minus, Plus } from "lucide-react";
@@ -28,19 +34,29 @@ import { useEffect, useState } from "react";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import type { StudioStoreState } from "./lib/store";
+import type { SlotNoun } from "./lib/slot-noun";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 
 export type StudioPhotoCountControlProps = {
   store: StoreApi<StudioStoreState>;
-  /** Mínimo de fotos del tamaño elegido (1 en packs libres). */
+  /** Mínimo de unidades del tamaño elegido (1 en packs libres). */
   min: number;
-  /** Máximo de fotos del tamaño elegido (mayor photoSlots del catálogo para ese tamaño). */
+  /** Máximo de unidades del tamaño elegido (mayor photoSlots del catálogo para ese tamaño). */
   max: number;
   /** Caras de diseño por unidad física (separadores: 2) — deriva N de slotCount en diseños legacy. */
   facesPerUnit: number;
   /** Tamaño físico elegido en la PDP — persiste en el canvasData para el carrito. */
   sizeCm?: string;
+  /**
+   * Sustantivo de la UNIDAD que cuenta el stepper (2026-10-12 — el N son
+   * unidades del producto, no fotos): lo resuelve el editor por productKind
+   * (resolveSlotNoun) y lo pasa la toolbar — "¿Cuántos separadores quieres?",
+   * "¿Cuántos imanes quieres?", "¿Cuántas fichas quieres?" (sin imán).
+   * undefined = fallback a los sustantivos CMS (photoCountOne/Many, "foto/s",
+   * femenino — comportamiento histórico).
+   */
+  unitNoun?: SlotNoun;
   /**
    * "¿Con imán?" (Lucy 2026-09-08): badge READ-ONLY con la elección de la PDP
    * (ya persistida en el canvasData). No es un control — cambiarla implica otra
@@ -56,9 +72,21 @@ export function StudioPhotoCountControl({
   max,
   facesPerUnit,
   sizeCm,
+  unitNoun,
   magnet,
 }: StudioPhotoCountControlProps) {
   const texts = useStudioTexts();
+  // Sustantivo de la unidad + concordancia de género para las plantillas CMS:
+  // {cuantos} = Cuántos/Cuántas, {uno} = un/una, {one}/{many} = el sustantivo.
+  // Sin prop (fallback CMS "foto/fotos", femenino) conserva el copy histórico;
+  // con prop, `feminine` ausente = masculino (separador, imán, pack…).
+  const nounFeminine = unitNoun ? (unitNoun.feminine ?? false) : true;
+  const nounVars = {
+    cuantos: nounFeminine ? "Cuántas" : "Cuántos",
+    uno: nounFeminine ? "una" : "un",
+    one: unitNoun?.one ?? texts.lienzo.photoCountOne,
+    many: unitNoun?.many ?? texts.lienzo.photoCountMany,
+  };
   // N vivo del canvasData (primitivo → comparación Object.is sin re-render extra).
   // Fallback para diseños recuperados sin el campo (legacy): deriva de slotCount.
   const photoSlots = useStore(store, (s) => {
@@ -121,17 +149,23 @@ export function StudioPhotoCountControl({
     <div className="border-brand-purple/10 bg-brand-cream/50 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t px-4 py-2">
       <span className="text-brand-purple-dark text-sm font-bold">
         {/* B3 — en modo packs el grupo es "Packs" (mismo lenguaje de la PDP). */}
-        {packMode ? "Packs" : texts.lienzo.photoCountLabel}
+        {packMode ? "Packs" : fillStudioText(texts.lienzo.photoCountLabel, nounVars)}
       </span>
       <div
         role="group"
-        aria-label={packMode ? "Packs de 6 unidades" : texts.lienzo.photoCountGroupAria}
+        aria-label={
+          packMode
+            ? "Packs de 6 unidades"
+            : fillStudioText(texts.lienzo.photoCountGroupAria, nounVars)
+        }
         aria-busy={busy}
         className="ring-brand-purple/15 inline-flex items-center rounded-lg bg-white ring-1"
       >
         <button
           type="button"
-          aria-label={packMode ? "Quitar un pack" : texts.lienzo.photoCountMinusAria}
+          aria-label={
+            packMode ? "Quitar un pack" : fillStudioText(texts.lienzo.photoCountMinusAria, nounVars)
+          }
           disabled={!canDecrease || busy}
           onClick={() => step(-1)}
           className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-9 w-9 cursor-pointer items-center justify-center rounded-l-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
@@ -147,12 +181,14 @@ export function StudioPhotoCountControl({
           ) : packCount != null ? (
             `${packCount} ${packCount === 1 ? "pack" : "packs"}`
           ) : (
-            `${value} ${value === 1 ? texts.lienzo.photoCountOne : texts.lienzo.photoCountMany}`
+            `${value} ${value === 1 ? nounVars.one : nounVars.many}`
           )}
         </span>
         <button
           type="button"
-          aria-label={packMode ? "Agregar un pack" : texts.lienzo.photoCountPlusAria}
+          aria-label={
+            packMode ? "Agregar un pack" : fillStudioText(texts.lienzo.photoCountPlusAria, nounVars)
+          }
           disabled={!canIncrease || busy}
           onClick={() => step(1)}
           className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-9 w-9 cursor-pointer items-center justify-center rounded-r-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
@@ -168,7 +204,7 @@ export function StudioPhotoCountControl({
           ? // B3 — desglose coherente con la PDP + el hint de conservación (CMS).
             `${packCount} ${packCount === 1 ? "pack" : "packs"} = ${value} unidades · ${texts.lienzo.photoCountHint}`
           : fixed
-            ? fillStudioText(texts.lienzo.photoCountFixedHint, { n: value })
+            ? fillStudioText(texts.lienzo.photoCountFixedHint, { n: value, ...nounVars })
             : texts.lienzo.photoCountHint}
       </span>
       {/* "¿Con imán?" (2026-09-08) — badge read-only de la elección hecha en la

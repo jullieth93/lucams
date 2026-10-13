@@ -1,5 +1,5 @@
 /*
- * Tests de la regla única de la promesa "Envío Lucam's" (producción + hora
+ * Tests de la regla única de la promesa "Envío Lucams" (producción + hora
  * de corte — lib/delivery-estimate.ts). Matriz productionDays {0,1,2} × hora
  * {antes, después} del cutoff con `now` explícito (sin mocks de reloj).
  */

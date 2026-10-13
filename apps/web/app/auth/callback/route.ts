@@ -19,6 +19,11 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  CUSTOMER_ACTIVITY_COOKIE,
+  customerActivityCookieOptions,
+  sealCustomerActivityMark,
+} from "@/lib/customer-activity";
 import { logger } from "@/lib/logger";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -50,5 +55,15 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   logger.info({ event: "auth.callback.success", type });
 
   const destination = type === "recovery" ? "/restablecer-password" : "/";
-  return NextResponse.redirect(new URL(destination, url));
+  const response = NextResponse.redirect(new URL(destination, url));
+  // El exchange PKCE crea sesión: sellar la marca de actividad del cliente
+  // (idle-timeout 30 días — lib/customer-activity.ts). En type=recovery la
+  // sesión es temporal (restablecer-password termina con signOut global), pero
+  // sellar igual es inofensivo y mantiene el invariante "sesión ⇒ marca".
+  response.cookies.set(
+    CUSTOMER_ACTIVITY_COOKIE,
+    sealCustomerActivityMark(Date.now()),
+    customerActivityCookieOptions(),
+  );
+  return response;
 }

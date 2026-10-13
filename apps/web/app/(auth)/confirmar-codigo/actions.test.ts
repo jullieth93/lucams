@@ -27,6 +27,9 @@ const { rateLimit, verifyOtp, resend, redirect } = vi.hoisted(() => ({
 
 vi.mock("next/headers", () => ({
   headers: async () => new Headers({ "x-vercel-forwarded-for": "203.0.113.7" }),
+  // La verificación OTP exitosa SELLA la marca de actividad del cliente
+  // (lib/customer-activity.ts) vía cookies().set — store mínimo.
+  cookies: async () => ({ getAll: () => [], get: () => undefined, set: () => {} }),
 }));
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("@/lib/logger", () => ({
@@ -70,6 +73,8 @@ function rateLimitKeys(): string[] {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // La marca de actividad que sella la verificación OTP va firmada (CSRF_SECRET).
+  vi.stubEnv("CSRF_SECRET", "test-secret-fijo-confirmar-codigo");
   rateLimit.mockResolvedValue(allowed);
 });
 

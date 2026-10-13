@@ -6,6 +6,7 @@
 
 import "server-only";
 import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
 
 const since = (hours: number) => new Date(Date.now() - hours * 3600 * 1000);
 
@@ -182,23 +183,27 @@ export async function setErrorReportStatus(id: string, status: ErrorReportStatus
 // ─────────────────── Cuota de Supabase Storage (Fase 3D) ───────────────────
 
 /**
- * Consumo estimado de Supabase Storage por bucket, para el tile de cuota de
+ * Consumo de Supabase Storage por bucket, para el tile de cuota de
  * /admin/observability. SOLO datos de la DB (la Management API de Supabase
  * exige un token que la app no tiene en runtime — feedback Lucy 2026-09-18:
  * número honesto o "N archivos", nunca inventado).
  *
- * Bytes REALES solo donde el schema los guarda:
- *   - customer-uploads → DesignAsset.sizeBytes (privado, fotos del cliente)
- *   - cms-media        → CmsMedia.bytes (público, mediateca)
- * Los demás buckets no persisten bytes por objeto → se reportan como conteo
- * de archivos (design-previews ← Design.previewUrl; production-assets ←
- * Design.productionUrl + productionUrls; product-images ← Product.images +
- * ProductVariant.images de filas vivas). El TOTAL es por tanto un PISO
- * (lower bound), no el consumo exacto del plan.
+ * Fuente primaria (2026-10-12): la tabla `storage.objects` del propio Supabase
+ * (misma conexión Prisma; el one-shot `purge-orphan-storage-20261012.mjs` probó
+ * que el rol la lee). `metadata->>'size'` es el tamaño real de CADA objeto, así
+ * los 5 buckets reportan bytes reales — antes `production-assets` (el más
+ * pesado), `design-previews` y `product-images` solo contaban archivos y el
+ * total era un piso que dejaba por fuera ~300 MB de huérfanos (la alerta ámbar
+ * de >800 MB nunca los veía). Además el conteo refleja los objetos REALES del
+ * bucket, incluidos los huérfanos que el barrido de retención aún no alcanzó.
+ *
+ * Fallback: si la consulta a `storage.objects` falla (permisos, pooler), se
+ * degrada a las columnas de la app (DesignAsset.sizeBytes, CmsMedia.bytes y
+ * conteos por URLs persistidas) — el tile nunca tumba la página.
  */
 export type StorageBucketUsage = {
   bucket: string;
-  /** Bytes reales sumados desde DB; null = el bucket no guarda tamaños. */
+  /** Bytes reales sumados desde storage.objects; null solo en el fallback (bucket sin tamaños). */
   bytes: number | null;
   files: number;
   /** De dónde sale el número (para la nota del tile). */
@@ -207,11 +212,57 @@ export type StorageBucketUsage = {
 
 export type StorageQuota = {
   buckets: StorageBucketUsage[];
-  /** Suma de los buckets con bytes reales (piso del consumo total). */
+  /** Suma de los buckets con bytes reales. Con la fuente primaria es el consumo TOTAL real. */
   measuredBytes: number;
+  /** true si el número vino del fallback (sin bytes de todos los buckets). */
+  degraded: boolean;
 };
 
-export async function getStorageQuota(): Promise<StorageQuota> {
+/** Buckets conocidos, en orden fijo para el tile. Lista literal en el SQL (constantes, sin input). */
+const STORAGE_BUCKETS = [
+  "customer-uploads",
+  "cms-media",
+  "design-previews",
+  "production-assets",
+  "product-images",
+] as const;
+
+async function measureBucketsFromStorage(): Promise<StorageBucketUsage[] | null> {
+  try {
+    const rows = await prisma.$queryRaw<Array<{ bucket: string; files: bigint; bytes: bigint }>>`
+      SELECT bucket_id AS bucket,
+             COUNT(*)::bigint AS files,
+             COALESCE(SUM(COALESCE((metadata->>'size')::bigint, 0)), 0)::bigint AS bytes
+      FROM storage.objects
+      WHERE bucket_id IN ('customer-uploads', 'cms-media', 'design-previews', 'production-assets', 'product-images')
+      GROUP BY bucket_id
+    `;
+    const byBucket = new Map(
+      rows.map((r) => [r.bucket, { files: Number(r.files), bytes: Number(r.bytes) }]),
+    );
+    return STORAGE_BUCKETS.map((bucket) => ({
+      bucket,
+      bytes: byBucket.get(bucket)?.bytes ?? 0,
+      files: byBucket.get(bucket)?.files ?? 0,
+      source: "storage.objects (metadata.size)",
+    }));
+  } catch (err) {
+    logger.error({
+      event: "observability.storage_quota_fail",
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
+/**
+ * Fallback pre-2026-10-12: bytes REALES solo donde el schema los guarda
+ * (customer-uploads → DesignAsset.sizeBytes; cms-media → CmsMedia.bytes). Los
+ * demás buckets se reportan como conteo de archivos (design-previews ←
+ * Design.previewUrl; production-assets ← Design.productionUrl + productionUrls;
+ * product-images ← Product.images + ProductVariant.images de filas vivas).
+ */
+async function measureBucketsFromAppTables(): Promise<StorageBucketUsage[]> {
   const [cmsMediaAgg, uploadsAgg, previewsCount, productionRows, productImageRows] =
     await Promise.all([
       prisma.cmsMedia.aggregate({ _sum: { bytes: true }, _count: { _all: true } }),
@@ -236,7 +287,7 @@ export async function getStorageQuota(): Promise<StorageQuota> {
       `,
     ]);
 
-  const buckets: StorageBucketUsage[] = [
+  return [
     {
       bucket: "customer-uploads",
       bytes: uploadsAgg._sum.sizeBytes ?? 0,
@@ -268,9 +319,14 @@ export async function getStorageQuota(): Promise<StorageQuota> {
       source: "Product.images + ProductVariant.images (sin bytes guardados)",
     },
   ];
+}
 
+export async function getStorageQuota(): Promise<StorageQuota> {
+  const measured = await measureBucketsFromStorage();
+  const buckets = measured ?? (await measureBucketsFromAppTables());
   return {
     buckets,
     measuredBytes: buckets.reduce((acc, b) => acc + (b.bytes ?? 0), 0),
+    degraded: measured === null,
   };
 }

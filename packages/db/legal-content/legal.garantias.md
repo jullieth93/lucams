@@ -1,8 +1,8 @@
-En Lucams_shop respondemos por lo que hacemos. Todos nuestros productos tienen **garantía legal** — la que te da la ley colombiana (Ley 1480 de 2011, Estatuto del Consumidor). Aquí te contamos cómo funciona, sin letra pequeña y sin trucos.
+En Lucams Shop respondemos por lo que hacemos. Todos nuestros productos tienen **garantía legal** — la que te da la ley colombiana (Ley 1480 de 2011, Estatuto del Consumidor). Aquí te contamos cómo funciona, sin letra pequeña y sin trucos.
 
 ## Quién responde por tu garantía
 
-Lucams_shop es una marca operada por **Lucams_shop (persona natural), Bogotá D.C., Colombia**. Somos quienes respondemos directamente por la garantía de todo lo que compras aquí.
+Lucams Shop es una marca operada por **Lucams Shop (persona natural), Bogotá D.C., Colombia**. Somos quienes respondemos directamente por la garantía de todo lo que compras aquí.
 
 - Correo: **{{email_contacto}}**
 - WhatsApp: el número que ves en nuestro sitio.
@@ -66,7 +66,7 @@ Si tu producto sale con defecto dentro de los **3 meses de garantía**, la ley f
 ## Quién prueba qué (art. 10)
 
 - A ti te basta **mostrar el defecto** (una foto o un video y tu número de pedido): la ley pone la carga de la prueba de nuestro lado, no del tuyo.
-- **Productor y proveedor respondemos solidariamente** por la garantía legal. En Lucams_shop somos ambos, así que respondemos directamente y sin intermediarios.
+- **Productor y proveedor respondemos solidariamente** por la garantía legal. En Lucams Shop somos ambos, así que respondemos directamente y sin intermediarios.
 - Solo quedamos exonerados si **probamos** que el daño viene de una causal del art. 16 (mal uso, fuerza mayor o caso fortuito, hecho de un tercero, o no seguir las instrucciones de uso y conservación).
 
 ## Cómo la haces efectiva

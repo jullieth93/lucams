@@ -51,7 +51,7 @@ import { OrbitControls, RoundedBox, GradientTexture } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
 import { StudioEnvironment } from "./studio-3d-environment";
 import { MagnetMesh, realWorldDepth, TILE_THICKNESS_CM, magnetWorldSizes } from "./magnet-3d";
-import { clusterLayout, BOARD_SCENE } from "./lib/cluster-layout";
+import { clusterLayout, boardFitHalf, BOARD_SCENE } from "./lib/cluster-layout";
 import { getCorkTexture } from "./lib/procedural-textures";
 import type { Magnet3D } from "./fridge-3d-view";
 
@@ -73,8 +73,12 @@ const FRONT_Z = DEPTH / 2;
  *  memo (fichas de letras/nombre/vocales) → 1.5 mm (TILE_THICKNESS_CM — conserva el "un
  *  punto más finas, no planas" de Lucy; en este tablero 0.15 cm × 0.1 u/cm = 0.015 u,
  *  el mismo relieve de siempre); cork (fotoimanes) → 2 mm (0.02 u acá — antes 0.04 u,
- *  ~4× el grosor real). */
-function boardDepth(style: BoardStyle): number {
+ *  ~4× el grosor real).
+ *  2026-10-12: `thicknessCm` explícito manda sobre el default del estilo — el calendario
+ *  pasa su cartulina (~0.4 mm, CALENDAR_CARD_THICKNESS_CM) para que las tarjetas no se
+ *  vean gruesas como imanes. */
+function boardDepth(style: BoardStyle, thicknessCm?: number): number {
+  if (thicknessCm !== undefined) return realWorldDepth(BOARD_U_PER_CM, thicknessCm);
   return style === "memo"
     ? realWorldDepth(BOARD_U_PER_CM, TILE_THICKNESS_CM)
     : realWorldDepth(BOARD_U_PER_CM);
@@ -153,8 +157,16 @@ function boardClusterLayout(
   return { items, halfW: regionW / 2, halfH: regionH / 2 };
 }
 
-function Magnets({ items, style }: { items: BoardItem[]; style: BoardStyle }) {
-  const depth = boardDepth(style);
+function Magnets({
+  items,
+  style,
+  thicknessCm,
+}: {
+  items: BoardItem[];
+  style: BoardStyle;
+  thicknessCm?: number;
+}) {
+  const depth = boardDepth(style, thicknessCm);
   const z = FRONT_Z + totalThickness(depth) / 2 + 0.005;
 
   return (
@@ -206,11 +218,13 @@ function Scene({
   cols,
   style,
   sizeCm,
+  thicknessCm,
 }: {
   magnets: Magnet3D[];
   cols: number;
   style: BoardStyle;
   sizeCm?: string;
+  thicknessCm?: number;
 }) {
   const layout = useMemo(() => boardClusterLayout(magnets, cols, sizeCm), [magnets, cols, sizeCm]);
   return (
@@ -248,14 +262,20 @@ function Scene({
       <directionalLight position={[-5, 2, 5]} intensity={0.3} />
 
       <Board style={style} />
-      <Magnets items={layout.items} style={style} />
+      <Magnets items={layout.items} style={style} thicknessCm={thicknessCm} />
 
       {/* #12 — encuadra el tablero al aspecto del viewport (fit-to-width en móvil vertical).
           2026-09-15: si el clúster a tamaño real desborda el tablero, el encuadre crece hasta
-          cubrir tablero + clúster completo (las piezas NUNCA se encogen). */}
+          cubrir tablero + clúster completo (las piezas NUNCA se encogen).
+          2026-10-12 (bug "Mural muy gigante"): el encuadre INICIAL se pondera al clúster
+          (boardFitHalf, lib/cluster-layout) — con pocas piezas chicas ya no se encuadra el
+          tablero completo de 120 cm (las piezas se veían diminutas): se encuadra el clúster
+          con margen generoso y un piso de contexto del tablero; si el clúster casi llena el
+          tablero o lo desborda, se encuadra todo como antes. El tablero NO se encoge y el
+          zoom manual (minDistance) sigue intacto. */}
       <FitCamera
-        halfW={Math.max(BOARD_W / 2, layout.halfW + 0.1)}
-        halfH={Math.max(BOARD_H / 2, layout.halfH + 0.1)}
+        halfW={boardFitHalf(layout.halfW, BOARD_W / 2)}
+        halfH={boardFitHalf(layout.halfH, BOARD_H / 2)}
         margin={1.12}
         camY={0.3}
       />
@@ -283,12 +303,16 @@ export default function RoomBoardView3D({
   cols,
   style = "memo",
   sizeCm,
+  thicknessCm,
 }: {
   magnets: Magnet3D[];
   cols: number;
   style?: BoardStyle;
   /** sizeCm de la variante elegida (ej "6.5×6.5", "7.5×10") — escala física de los imanes. */
   sizeCm?: string;
+  /** 2026-10-12 — grosor FÍSICO de la pieza en cm (default por estilo: imán 2 mm / ficha
+   *  1.5 mm). El calendario pasa CALENDAR_CARD_THICKNESS_CM (cartulina ~0.4 mm). */
+  thicknessCm?: number;
 }) {
   if (magnets.length === 0) {
     return (
@@ -311,7 +335,13 @@ export default function RoomBoardView3D({
     >
       <color attach="background" args={["#EBDFCF"]} />
       <Suspense fallback={null}>
-        <Scene magnets={magnets} cols={cols} style={style} sizeCm={sizeCm} />
+        <Scene
+          magnets={magnets}
+          cols={cols}
+          style={style}
+          sizeCm={sizeCm}
+          thicknessCm={thicknessCm}
+        />
       </Suspense>
     </Canvas>
   );

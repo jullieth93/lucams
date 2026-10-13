@@ -47,7 +47,7 @@ import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useWindowTextures } from "./use-window-textures";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
-import { ExtrudedMagnetMesh } from "./magnet-3d";
+import { ExtrudedMagnetMesh, realWorldDepth, CALENDAR_CARD_THICKNESS_CM } from "./magnet-3d";
 import type { Magnet3D } from "./fridge-3d-view";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -108,7 +108,10 @@ function Scene({
       />
       <directionalLight position={[-5, 3, 4]} intensity={0.28} />
 
-      {/* La tarjeta acostada sobre la mesa (reverso papel sin imprimir al orbitar bajo). */}
+      {/* La tarjeta acostada sobre la mesa (reverso papel sin imprimir al orbitar bajo).
+          Grosor 2026-10-12: se ALINEA al sistema de grosor físico (Fase 2.11) — cartulina
+          de calendario CALENDAR_CARD_THICKNESS_CM (0.04 cm) × U_PER_CM = 0.0216 u; antes una
+          constante de mundo fija 0.03 u que divergía de las escenas nevera/mural. */}
       <group rotation={[0, CARD_YAW, 0]}>
         <group rotation={[-Math.PI / 2, 0, 0]}>
           <ExtrudedMagnetMesh
@@ -116,7 +119,7 @@ function Scene({
             width={w}
             height={h}
             shape="rectangle"
-            depth={0.03}
+            depth={realWorldDepth(U_PER_CM, CALENDAR_CARD_THICKNESS_CM)}
             backColor="#F4EFE3"
             cornerRadiusRatio={CARD_CORNER_RATIO}
           />

@@ -160,3 +160,66 @@ export async function fitPreviewToBudget(
     "No pudimos preparar la vista previa para enviarla. Intenta de nuevo; si sigue, escríbenos por WhatsApp.",
   );
 }
+
+// ──────────────────────────────────────────────────────────────────
+//  Miniatura del DRAFT para "Mis diseños" (2026-10-13)
+// ──────────────────────────────────────────────────────────────────
+//
+// El auto-save del Estudio compone el montaje del canvas (mismo compositor de
+// la Vista Previa) y lo reduce a una miniatura ≤400 px que viaja OPCIONALMENTE
+// con el save (throttled — no en cada guardado) y el server persiste en
+// Design.draftPreviewUrl. Acotada en pixeles Y en bytes para no inflar el body
+// del auto-save ni el bucket (el path es fijo por diseño: upsert, no acumula).
+
+/** Borde largo máximo de la miniatura del borrador. */
+export const DRAFT_THUMB_MAX_SIDE = 400;
+/** Techo de bytes del thumbnail (el schema del server capa el string en ~160 KB). */
+export const DRAFT_THUMB_BUDGET_BYTES = 120 * 1024;
+
+/**
+ * Tamaño objetivo de la miniatura conservando el aspect ratio: el borde largo
+ * queda en DRAFT_THUMB_MAX_SIDE; NUNCA hace upscale (un montaje chico se queda
+ * como está). Función pura (testeable sin canvas).
+ */
+export function draftThumbTargetSize(
+  width: number,
+  height: number,
+  maxSide = DRAFT_THUMB_MAX_SIDE,
+): { width: number; height: number } {
+  if (!(width > 0) || !(height > 0)) return { width: maxSide, height: maxSide };
+  const scale = Math.min(1, maxSide / Math.max(width, height));
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
+}
+
+/**
+ * Reduce un montaje de preview (dataURL, cualquier tamaño) a la miniatura del
+ * borrador: ≤400 px de borde largo, WebP/JPEG con escalera de calidad hasta
+ * caber en DRAFT_THUMB_BUDGET_BYTES. Lanza si no logra — el caller (auto-save)
+ * la atrapa y guarda SIN thumbnail (best-effort, se reintenta en otro save).
+ */
+export async function fitDraftThumbnail(dataUrl: string): Promise<string> {
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const el = new Image();
+    el.onload = () => resolve(el);
+    el.onerror = () => reject(new Error("No se pudo decodificar el montaje para la miniatura"));
+    el.src = dataUrl;
+  });
+  const target = draftThumbTargetSize(img.naturalWidth, img.naturalHeight);
+  const canvas = document.createElement("canvas");
+  canvas.width = target.width;
+  canvas.height = target.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("No se pudo crear contexto canvas para la miniatura");
+  // Fondo crema opaco (mismo fondo de los compositores; JPEG no tiene alfa).
+  ctx.fillStyle = "#FFF8F0";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  for (const quality of [0.75, 0.6, 0.45]) {
+    const out = canvas.toDataURL(previewMimeType(), quality);
+    if (dataUrlByteLength(out) <= DRAFT_THUMB_BUDGET_BYTES) return out;
+  }
+  throw new Error("La miniatura del borrador no cupo en el presupuesto");
+}

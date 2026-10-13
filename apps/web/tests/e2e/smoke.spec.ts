@@ -14,7 +14,7 @@ import { test, expect } from "@playwright/test";
 test.describe("storefront smoke", () => {
   test("home loads with logo + hero CTA", async ({ page }) => {
     await page.goto("/");
-    await expect(page).toHaveTitle(/Lucams_shop/);
+    await expect(page).toHaveTitle(/Lucams Shop/);
     await expect(page.getByRole("link", { name: /catálogo/i }).first()).toBeVisible();
   });
 

@@ -14,14 +14,20 @@ const texts = DEFAULT_STUDIO_TEXTS;
 
 describe("resolveSlotNoun", () => {
   it("calendar → tarjetas, con o sin imán (el set se vende como tarjetas mes)", () => {
-    expect(resolveSlotNoun("calendar", true, texts)).toEqual({ one: "tarjeta", many: "tarjetas" });
+    expect(resolveSlotNoun("calendar", true, texts)).toEqual({
+      one: "tarjeta",
+      many: "tarjetas",
+      feminine: true,
+    });
     expect(resolveSlotNoun("calendar", false, texts)).toEqual({
       one: "tarjeta",
       many: "tarjetas",
+      feminine: true,
     });
     expect(resolveSlotNoun("calendar", undefined, texts)).toEqual({
       one: "tarjeta",
       many: "tarjetas",
+      feminine: true,
     });
   });
 
@@ -33,12 +39,24 @@ describe("resolveSlotNoun", () => {
   });
 
   it("strips → foto/fotos (el conteo del chip es la composición, no unidades)", () => {
-    expect(resolveSlotNoun("strips", true, texts)).toEqual({ one: "foto", many: "fotos" });
+    expect(resolveSlotNoun("strips", true, texts)).toEqual({
+      one: "foto",
+      many: "fotos",
+      feminine: true,
+    });
   });
 
   it("tiles → ficha/fichas (sets de letras: la pieza puede no llevar imán)", () => {
-    expect(resolveSlotNoun("tiles", true, texts)).toEqual({ one: "ficha", many: "fichas" });
-    expect(resolveSlotNoun("tiles", false, texts)).toEqual({ one: "ficha", many: "fichas" });
+    expect(resolveSlotNoun("tiles", true, texts)).toEqual({
+      one: "ficha",
+      many: "fichas",
+      feminine: true,
+    });
+    expect(resolveSlotNoun("tiles", false, texts)).toEqual({
+      one: "ficha",
+      many: "fichas",
+      feminine: true,
+    });
   });
 
   it("magnets CON imán (true/undefined) → imán/imanes", () => {
@@ -48,7 +66,7 @@ describe("resolveSlotNoun", () => {
 
   it("magnets SIN IMÁN (magnet === false) NUNCA dice imán → ficha/fichas", () => {
     const noun = resolveSlotNoun("magnets", false, texts);
-    expect(noun).toEqual({ one: "ficha", many: "fichas" });
+    expect(noun).toEqual({ one: "ficha", many: "fichas", feminine: true });
     expect(noun.one).not.toContain("imán");
     expect(noun.many).not.toContain("imanes");
   });

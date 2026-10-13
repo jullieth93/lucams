@@ -37,7 +37,7 @@ export async function supportTicketReplyEmail(data: SupportTicketReplyData) {
 <p>Sobre tu ticket <strong style="font-family:monospace;background:#FFF8F0;padding:2px 6px;border-radius:4px;">#${ticketShort}</strong> (<strong>${escapeHtml(SUBJECT_LABELS[data.subject])}</strong>):</p>
 <div style="margin:12px 0;padding:14px 16px;background:#FFF8F0;border-left:4px solid #7C6AAD;border-radius:8px;">${replyHtml}</div>
 <p>Si necesitas contarnos algo más sobre este tema, <strong>responde a este correo</strong> — no hace falta abrir otro ticket.</p>
-<p>Un abrazo,<br>El equipo de Lucams_shop</p>
+<p>Un abrazo,<br>El equipo de Lucams Shop</p>
 `;
 
   const text = `Tenemos respuesta para ti
@@ -51,7 +51,7 @@ ${data.replyBody}
 Si necesitas contarnos algo más sobre este tema, responde a este correo — no hace falta abrir otro ticket.
 
 Un abrazo,
-El equipo de Lucams_shop`;
+El equipo de Lucams Shop`;
 
   return {
     subject: `Respuesta a tu solicitud — Ticket #${ticketShort}`,

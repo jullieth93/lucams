@@ -13,8 +13,12 @@
  *     (packTextValues) → vacío.
  *  3. La edición escribe el override INDIVIDUAL del slot (setSlotTextOverride)
  *     y NO toca los demás slots ni el valor pack-level.
- *  4. El combobox de ubicación (mismo componente compartido del panel global)
- *     filtra la lista MUNDIAL y compromete la elección solo en este slot.
+ *  4. La ubicación es input de texto simple (owner 2026-10-12 — se retiró el
+ *     combobox con sugerencias): máximo 2 palabras, inicial mayúscula, ", "
+ *     al commit; compromete solo en este slot.
+ *
+ * Los campos de texto comprometen al store con DEBOUNCE (IgDebouncedInput):
+ * los tests hacen fireEvent.blur después de escribir para forzar el commit.
  */
 
 import "@testing-library/jest-dom/vitest";
@@ -106,10 +110,12 @@ describe("StudioIgSlotFields — campos IG en la edición individual (QA ronda 2
 
     expect(screen.getByText("Campos de Instagram")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /@usuario/i })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: /ubicación/i })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /ubicación/i })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /me gusta/i })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /título/i })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /hashtags/i })).toBeInTheDocument();
+    // Sin combobox: la ubicación ya no tiene sugerencias (owner 2026-10-12).
+    expect(screen.queryByRole("combobox")).toBeNull();
     // Los ids crudos de capa NO se muestran como etiqueta.
     expect(screen.queryByText("user_name")).toBeNull();
     expect(screen.queryByText("likes_count")).toBeNull();
@@ -144,9 +150,9 @@ describe("StudioIgSlotFields — campos IG en la edición individual (QA ronda 2
     const store = makeStore();
     renderFields(store, 0);
 
-    fireEvent.change(screen.getByRole("textbox", { name: /@usuario/i }), {
-      target: { value: "lucy.fotos" },
-    });
+    const input = screen.getByRole("textbox", { name: /@usuario/i });
+    fireEvent.change(input, { target: { value: "lucy.fotos" } });
+    fireEvent.blur(input);
 
     // El override se guarda CON "@" (se imprime tal cual) SOLO en el slot 0.
     expect(slotOverrides(store, 0)?.user_name?.text).toBe("@lucy.fotos");
@@ -154,27 +160,30 @@ describe("StudioIgSlotFields — campos IG en la edición individual (QA ronda 2
     expect(store.getState().packTextValues.user_name).toBeUndefined();
   });
 
-  it("ubicación: el combobox filtra la lista MUNDIAL y compromete la elección solo en este slot", () => {
+  it("ubicación: input de texto simple — transforma al commit y escribe solo en este slot", () => {
     const store = makeStore();
     renderFields(store, 0);
 
-    const input = screen.getByRole("combobox", { name: /ubicación/i });
-    fireEvent.focus(input);
-    fireEvent.change(input, { target: { value: "madri" } });
-    const option = screen.getByRole("option", { name: "Madrid, España" });
-    fireEvent.click(option);
+    const input = screen.getByRole("textbox", { name: /ubicación/i }) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "bogotá colombia" } });
+    // El commit es debounced: antes del blur no se escribió nada.
+    expect(slotOverrides(store, 0)?.location).toBeUndefined();
 
-    expect(slotOverrides(store, 0)?.location?.text).toBe("Madrid, España");
+    fireEvent.blur(input);
+    expect(slotOverrides(store, 0)?.location?.text).toBe("Bogotá, Colombia");
     expect(slotOverrides(store, 1)?.location).toBeUndefined();
+    // (El input muestra el valor transformado cuando el host re-renderiza con
+    // los overrides frescos — el sync post-commit se prueba en el bloque
+    // pack-level, donde el valor display viene del store en vivo.)
   });
 
   it("«me gusta»: solo numérico con sufijo fijo, individual por slot", () => {
     const store = makeStore();
     renderFields(store, 1);
 
-    fireEvent.change(screen.getByRole("textbox", { name: /me gusta/i }), {
-      target: { value: "1234" },
-    });
+    const input = screen.getByRole("textbox", { name: /me gusta/i });
+    fireEvent.change(input, { target: { value: "1234" } });
+    fireEvent.blur(input);
 
     expect(slotOverrides(store, 1)?.likes_count?.text).toBe("1.234 me gusta");
     expect(slotOverrides(store, 0)?.likes_count).toBeUndefined();

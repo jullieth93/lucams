@@ -29,7 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return getPageSeo("seo.page.ayuda", {
     title: "Ayuda",
     description:
-      "Preguntas frecuentes sobre personalización, envíos, métodos de pago, garantías y devoluciones en Lucams_shop.",
+      "Preguntas frecuentes sobre personalización, envíos, métodos de pago, garantías y devoluciones en Lucams Shop.",
   });
 }
 
@@ -48,7 +48,7 @@ export const dynamic = "force-dynamic";
 // `codEnabled`: el toggle COD del admin (SiteSetting COD_ENABLED) también
 // gobierna la mención de contraentrega — apagarlo quita la promesa (2026-07-22).
 // FAIL-CLOSED (CF-35): setting ausente/despublicada = no se promete contraentrega.
-// La FAQ `envio-mismo-dia` (Envío Lucam's, en construcción paralela en
+// La FAQ `envio-mismo-dia` (Envío Lucams, en construcción paralela en
 // features/shipping) NO se publica aquí sin más: AyudaPage la filtra salvo que
 // la setting SAME_DAY_DELIVERY_ENABLED sea "true" y el modo sea full — mismo
 // patrón fail-closed que COD_ENABLED (ningún texto público promete lo que la
@@ -97,7 +97,7 @@ function buildFallbackFaqs(
     {
       slug: "envio-mismo-dia",
       question: "¿Tienen envío el mismo día en Bogotá?",
-      answer: `Sí: **Envío Lucam's**, nuestro servicio propio de entrega local. Está disponible en **localidades seleccionadas de Bogotá** y la entrega es **el mismo día del despacho**, con **tarifa fija** que ves antes de pagar. Si el producto está **listo (sin fabricación pendiente)** y tu pedido queda confirmado **antes de las ${cutoffHour}:00**, te llega **ese mismo día**; si hay que fabricarlo a mano, primero lo producimos y te llega el día que lo despachemos. Si la opción no aparece en tu checkout, tu localidad aún no está cubierta — siempre puedes elegir el envío por transportadora aliada.`,
+      answer: `Sí: **Envío Lucams**, nuestro servicio propio de entrega local. Está disponible en **localidades seleccionadas de Bogotá** y la entrega es **el mismo día del despacho**, con **tarifa fija** que ves antes de pagar. Si el producto está **listo (sin fabricación pendiente)** y tu pedido queda confirmado **antes de las ${cutoffHour}:00**, te llega **ese mismo día**; si hay que fabricarlo a mano, primero lo producimos y te llega el día que lo despachemos. Si la opción no aparece en tu checkout, tu localidad aún no está cubierta — siempre puedes elegir el envío por transportadora aliada.`,
     },
     {
       slug: "cambios-devoluciones",
@@ -156,7 +156,7 @@ export default async function AyudaPage() {
     ]);
   const catalog = isCatalogMode();
   const codEnabled = codSetting === "true";
-  // Envío Lucam's (mismo día, Bogotá) — feature en construcción paralela. Gate
+  // Envío Lucams (mismo día, Bogotá) — feature en construcción paralela. Gate
   // fail-closed: la FAQ solo se muestra cuando la tienda la tiene activa (setting
   // explícita) y hay checkout donde ver la opción (modo full).
   const sameDayEnabled = sameDaySetting === "true" && !catalog;
@@ -197,7 +197,7 @@ export default async function AyudaPage() {
           fromCms: false as const,
         }));
 
-  // Gate del Envío Lucam's: la FAQ `envio-mismo-dia` se oculta (venga del CMS o del
+  // Gate del Envío Lucams: la FAQ `envio-mismo-dia` se oculta (venga del CMS o del
   // fallback) mientras la setting SAME_DAY_DELIVERY_ENABLED no sea "true" en modo full
   // — la feature se construye en paralelo y ningún texto público puede prometerla antes.
   const visibleItems = sameDayEnabled

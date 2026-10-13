@@ -1,12 +1,28 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DOCUMENT_TYPE_LABELS, type DocumentType } from "@/lib/colombia-validators";
+import { PhoneInput } from "@/components/phone-input";
+import {
+  DOCUMENT_TYPE_LABELS,
+  calculateNitDV,
+  capitalizeName,
+  countWords,
+  getDocumentHelp,
+  normalizePhoneWithDial,
+  validateDocument,
+  validateName,
+  type DocumentType,
+} from "@/lib/colombia-validators";
 import type { AccountTexts } from "../account-texts";
 import { updateProfileAction, type ProfileActionState } from "./actions";
+
+// Topes de palabras acordados (misma regla en el server): nombre máx 3,
+// apellido máx 2. capitalizeName al blur respeta de/del/la/las…
+const MAX_FIRST_NAME_WORDS = 3;
+const MAX_LAST_NAME_WORDS = 2;
 
 export function ProfileForm({
   initial,
@@ -26,6 +42,51 @@ export function ProfileForm({
     updateProfileAction,
     null,
   );
+
+  // Controlados para aplicar transformación (capitalizeName al blur) y
+  // validación live con los mismos validadores del checkout.
+  const [firstName, setFirstName] = useState(initial.firstName);
+  const [lastName, setLastName] = useState(initial.lastName);
+  const [docType, setDocType] = useState(initial.documentType);
+  const [docNumber, setDocNumber] = useState(initial.documentNumber);
+  const [phone, setPhone] = useState({ national: "", dial: "57" });
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const markTouched = (k: string) => setTouched((t) => ({ ...t, [k]: true }));
+
+  const srv = (k: keyof NonNullable<ProfileActionState["fieldErrors"]>) =>
+    state?.fieldErrors?.[k]?.[0];
+
+  // ─── Errores efectivos (cliente tras tocar ?? server) — patrón del checkout ───
+  const nameError = (value: string, maxWords: number): string | null => {
+    if (!value.trim()) return null;
+    if (!validateName(value)) return "Solo letras, sin números ni símbolos (mínimo 2 caracteres).";
+    if (countWords(value) > maxWords) return `Máximo ${maxWords} palabras.`;
+    return null;
+  };
+  const firstNameErr =
+    (touched.firstName ? nameError(firstName, MAX_FIRST_NAME_WORDS) : null) ?? srv("firstName");
+  const lastNameErr =
+    (touched.lastName ? nameError(lastName, MAX_LAST_NAME_WORDS) : null) ?? srv("lastName");
+
+  const phoneClientErr =
+    phone.national &&
+    touched.phone &&
+    normalizePhoneWithDial(`+${phone.dial} ${phone.national}`) === null
+      ? phone.dial === "57"
+        ? "Móvil colombiano: 10 dígitos empezando con 3"
+        : "Revisa el número: entre 6 y 15 dígitos."
+      : null;
+  const phoneErr = phoneClientErr ?? srv("phone");
+
+  const docTyped = docType as DocumentType | "";
+  const docClientErr =
+    docTyped && docNumber.trim() && touched.documentNumber && !validateDocument(docTyped, docNumber)
+      ? `Formato inválido. ${getDocumentHelp(docTyped)}`
+      : null;
+  const docNumberErr = docClientErr ?? srv("documentNumber");
+  // NIT sin DV: mostramos el dígito de verificación que se agregará al guardar.
+  const nitDv =
+    docTyped === "NIT" && /^\d{9}$/.test(docNumber.trim()) ? calculateNitDV(docNumber) : "";
 
   return (
     <form action={formAction} className="space-y-4">
@@ -50,38 +111,56 @@ export function ProfileForm({
         <Field
           id="firstName"
           label="Nombre"
-          defaultValue={initial.firstName}
-          error={state?.fieldErrors?.firstName?.[0]}
+          value={firstName}
+          onChange={(e) => setFirstName(e.target.value)}
+          onBlur={() => {
+            if (firstName.trim()) setFirstName(capitalizeName(firstName));
+            markTouched("firstName");
+          }}
+          error={firstNameErr}
           disabled={pending}
+          autoComplete="given-name"
+          maxLength={60}
         />
         <Field
           id="lastName"
           label="Apellido"
-          defaultValue={initial.lastName}
-          error={state?.fieldErrors?.lastName?.[0]}
+          value={lastName}
+          onChange={(e) => setLastName(e.target.value)}
+          onBlur={() => {
+            if (lastName.trim()) setLastName(capitalizeName(lastName));
+            markTouched("lastName");
+          }}
+          error={lastNameErr}
           disabled={pending}
+          autoComplete="family-name"
+          maxLength={60}
         />
       </div>
 
-      <Field
-        id="phone"
-        label="Teléfono"
-        type="tel"
-        placeholder="300 000 0000"
-        defaultValue={initial.phone}
-        error={state?.fieldErrors?.phone?.[0]}
-        disabled={pending}
-      />
+      <div className="space-y-1.5">
+        <Label htmlFor="phone">Teléfono</Label>
+        <PhoneInput
+          id="phone"
+          name="phone"
+          defaultValue={initial.phone}
+          disabled={pending}
+          error={phoneErr}
+          onChange={(national, dial) => setPhone({ national, dial })}
+          onBlur={() => markTouched("phone")}
+        />
+      </div>
 
-      {/* Documento DIAN (T7): mismo enum + validador del checkout. Las
-          etiquetas llegan por props (CMS) — cero literales nuevos acá. */}
+      {/* Documento DIAN (T7): mismo enum + validador del checkout, con ayuda
+          por tipo (CC solo números, Pasaporte alfanumérico, NIT con DV). */}
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="documentType">{texts.docTypeLabel}</Label>
           <select
             id="documentType"
             name="documentType"
-            defaultValue={initial.documentType}
+            value={docType}
+            onChange={(e) => setDocType(e.target.value)}
             disabled={pending}
             aria-invalid={Boolean(state?.fieldErrors?.documentType?.[0])}
             className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-3 text-sm focus:ring-2 focus:outline-none disabled:opacity-50"
@@ -101,12 +180,30 @@ export function ProfileForm({
           <Field
             id="documentNumber"
             label={texts.docNumberLabel}
-            inputMode="numeric"
-            defaultValue={initial.documentNumber}
-            error={state?.fieldErrors?.documentNumber?.[0]}
+            inputMode={docTyped === "PP" ? "text" : "numeric"}
+            value={docNumber}
+            onChange={(e) =>
+              setDocNumber(
+                docTyped === "PP"
+                  ? e.target.value.replace(/[^\da-zA-Z]/g, "").slice(0, 12)
+                  : e.target.value.replace(/[^\d-]/g, "").slice(0, 11),
+              )
+            }
+            onBlur={() => markTouched("documentNumber")}
+            error={docNumberErr}
             disabled={pending}
+            maxLength={docTyped === "PP" ? 12 : 11}
           />
-          <p className="text-brand-muted text-xs">{texts.docHint}</p>
+          <p className="text-brand-muted text-xs">
+            {docTyped ? getDocumentHelp(docTyped) : texts.docHint}
+          </p>
+          {nitDv && (
+            <p className="text-brand-muted text-xs">
+              {texts.nitDvHint.split("{dv}")[0]}
+              <strong>{nitDv}</strong>
+              {texts.nitDvHint.split("{dv}")[1]}
+            </p>
+          )}
         </div>
       </div>
 
@@ -131,7 +228,7 @@ function Field({
 }: {
   id: string;
   label: string;
-  error?: string;
+  error?: string | null;
 } & React.ComponentProps<typeof Input>) {
   return (
     <div className="space-y-1.5">

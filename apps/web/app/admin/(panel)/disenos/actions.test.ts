@@ -42,6 +42,12 @@ const { mockPrisma, auditSpy, mockLogger, revalidatePathSpy, mockStorage } = vi.
   revalidatePathSpy: vi.fn(),
   mockStorage: {
     deleteProductImage: vi.fn(async (_url: string) => {}),
+    // Master print-grade (2026-10-13): el upload de galería usa esta variante
+    // (≤4000 px q90), NO uploadProductImage de catálogo (≤2000 px q82).
+    uploadGalleryMasterImage: vi.fn(async (opts: { productId: string }) => ({
+      path: `${opts.productId}/uuid-x.webp`,
+      publicUrl: `https://ref.supabase.co/storage/v1/object/public/product-images/${opts.productId}/uuid-x.webp`,
+    })),
     uploadGalleryThumb: vi.fn(async () => ({ path: "t", publicUrl: "https://x/t.webp" })),
     listGalleryThumbPaths: vi.fn(async (_folder: string) => new Set<string>()),
   },
@@ -83,8 +89,9 @@ vi.mock("@/lib/storage", () => ({
       this.name = "StorageError";
     }
   },
+  GALLERY_MASTER_MAX_BYTES: 15 * 1024 * 1024,
   sniffImageMime: vi.fn(),
-  uploadProductImage: vi.fn(),
+  uploadGalleryMasterImage: mockStorage.uploadGalleryMasterImage,
   deleteProductImage: mockStorage.deleteProductImage,
   uploadGalleryThumb: mockStorage.uploadGalleryThumb,
   listGalleryThumbPaths: mockStorage.listGalleryThumbPaths,
@@ -120,6 +127,7 @@ import {
   restoreGalleryImageAction,
   toggleGalleryImageActiveAction,
   updateGalleryVariantFilterAction,
+  uploadGalleryImageAction,
 } from "./actions";
 import { listGalleryImages } from "@/features/personalization/design-gallery";
 
@@ -724,5 +732,70 @@ describe("listGalleryImages — exposición de thumbUrl (3.10)", () => {
 
     // Solo g2 (sin filtro) aplica a 4×4.2; g1 queda fuera con su thumb.
     expect(list.map((i) => i.id)).toEqual(["g2"]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Master PRINT-GRADE (robustez pipeline 2026-10-13) — uploadGalleryImageAction
+// sube los masters con uploadGalleryMasterImage (≤4000 px q90, entrada 15 MB),
+// NO con el optimizeCatalogImage de catálogo (≤2000 px q82): el master es el
+// insumo del canvas de producción y a 2000 px quedaba bajo 300 DPI en piezas
+// grandes. La miniatura watermark se genera igual (uploadGalleryThumb).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("uploadGalleryImageAction — master print-grade", () => {
+  it("sube cara A (y B si viene) con uploadGalleryMasterImage y genera la miniatura de A", async () => {
+    mockPrisma.designGalleryImage.create.mockResolvedValue({ id: "g-new" });
+    const fd = new FormData();
+    fd.set("tag", "separadores");
+    fd.set("name", "Flores print-grade");
+    fd.set("file", new File([new Uint8Array([1, 2, 3])], "cara-a.png", { type: "image/png" }));
+    fd.set("fileB", new File([new Uint8Array([4, 5, 6])], "cara-b.png", { type: "image/png" }));
+
+    const res = await uploadGalleryImageAction(fd);
+
+    expect(res).toEqual({});
+    expect(mockStorage.uploadGalleryMasterImage).toHaveBeenCalledTimes(2);
+    expect(mockStorage.uploadGalleryMasterImage).toHaveBeenCalledWith(
+      expect.objectContaining({ productId: "gallery-separadores" }),
+    );
+    expect(mockStorage.uploadGalleryMasterImage).toHaveBeenCalledWith(
+      expect.objectContaining({ productId: "gallery-separadores-b" }),
+    );
+    // La miniatura watermark se genera del original de la cara A (sin cambios).
+    expect(mockStorage.uploadGalleryThumb).toHaveBeenCalledTimes(1);
+    expect(mockStorage.uploadGalleryThumb).toHaveBeenCalledWith(
+      expect.objectContaining({ originalPath: "gallery-separadores/uuid-x.webp" }),
+    );
+    // La fila persiste las URLs públicas de los masters (no las thumbs).
+    expect(mockPrisma.designGalleryImage.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          imageUrl:
+            "https://ref.supabase.co/storage/v1/object/public/product-images/gallery-separadores/uuid-x.webp",
+          imageUrlB:
+            "https://ref.supabase.co/storage/v1/object/public/product-images/gallery-separadores-b/uuid-x.webp",
+        }),
+      }),
+    );
+    expect(auditSpy.recordAdminAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "galleryImage.create", entityId: "g-new" }),
+    );
+  });
+
+  it("sin cara B solo sube el master A (imageUrlB null)", async () => {
+    mockPrisma.designGalleryImage.create.mockResolvedValue({ id: "g-new" });
+    const fd = new FormData();
+    fd.set("tag", "separadores");
+    fd.set("name", "Solo cara A");
+    fd.set("file", new File([new Uint8Array([1, 2, 3])], "cara-a.png", { type: "image/png" }));
+
+    const res = await uploadGalleryImageAction(fd);
+
+    expect(res).toEqual({});
+    expect(mockStorage.uploadGalleryMasterImage).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.designGalleryImage.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ imageUrlB: null }) }),
+    );
   });
 });

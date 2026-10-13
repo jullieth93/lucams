@@ -33,6 +33,7 @@ import { verifyWebhookSignature, getWompiExpectedWebhookEnv } from "@/lib/wompi"
 import { getClientIp } from "@/lib/client-ip";
 import { recordSecurityEvent, SECURITY_EVENT } from "@/lib/security-events";
 import { processPaidOrder, processFailedPaymentOrder } from "@/features/orders/saga";
+import { findOrderIdByWompiReference } from "@/features/orders/payment-reference";
 import { sendOrderPaymentDeclined } from "@/features/orders/emails";
 
 export const dynamic = "force-dynamic";
@@ -215,11 +216,18 @@ export async function POST(req: Request) {
     amountInCents: transaction.amount_in_cents,
   });
 
-  // 4) Buscar Order por reference (= Order.number como "LCM-2026-0001").
-  const order = await prisma.order.findFirst({
-    where: { number: transaction.reference, deletedAt: null },
-    select: { id: true, number: true, status: true, total: true, trackingNumber: true },
-  });
+  // 4) Buscar Order por reference. La reference puede ser el número base
+  //    (`LCM-2026-0001`, intento 1 / órdenes legacy) o llevar sufijo de intento
+  //    (`LCM-2026-0001-2` — referencia única por intento, ver
+  //    features/orders/payment-reference.ts): se resuelve por wompiReference
+  //    exacta, por number o por el número base extraído del sufijo.
+  const orderId = await findOrderIdByWompiReference(transaction.reference);
+  const order = orderId
+    ? await prisma.order.findFirst({
+        where: { id: orderId, deletedAt: null },
+        select: { id: true, number: true, status: true, total: true, trackingNumber: true },
+      })
+    : null;
 
   if (!order) {
     logger.warn({

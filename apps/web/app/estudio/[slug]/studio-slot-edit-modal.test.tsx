@@ -229,6 +229,7 @@ describe("StudioSlotEditModal — campos IG en la pestaña Texto (QA ronda 2, ow
     // Radix Tabs activa el tab en mouseDown (no en click).
     fireEvent.mouseDown(screen.getByRole("tab", { name: /Texto/ }));
     expect(screen.getByText("Campos de Instagram")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: /ubicación/i })).toBeInTheDocument();
+    // Ubicación: input de texto simple (owner 2026-10-12 — sin combobox de sugerencias).
+    expect(screen.getByRole("textbox", { name: /ubicación/i })).toBeInTheDocument();
   });
 });

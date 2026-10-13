@@ -13,9 +13,12 @@
  * demás slots ni el valor pack-level vigente).
  *
  *  - Mismos controles asistidos del bloque pack-level (mismos helpers puros
- *    de lib/ig-post-fields y los componentes compartidos IgLocationCombobox /
+ *    de lib/ig-post-fields y los componentes compartidos IgDebouncedInput /
  *    IgHashtagsEditor) y mismas etiquetas amigables (igCampo* del CMS) en vez
- *    de los ids de capa crudos.
+ *    de los ids de capa crudos. Owner 2026-10-12: la ubicación es input de
+ *    texto simple (se retiró el combobox con sugerencias) y los campos de
+ *    texto comprometen al store con DEBOUNCE (no por tecla — la plantilla se
+ *    ponía muy lenta).
  *  - Valor mostrado: el override del slot si existe; si no, el valor
  *    pack-level vigente (packTextValues — el último aplicado masivamente);
  *    si tampoco hay, vacío con el default de la capa como placeholder.
@@ -35,19 +38,22 @@ import { IG_REQUIRED_TEXT_LAYER_IDS } from "@/features/personalization/instagram
 import {
   IG_CAPTION_MAX,
   IG_LIKES_SUFFIX,
+  IG_LOCATION_MAX_LENGTH,
   IG_USERNAME_MAX,
   igHashtagsFromStored,
   igHashtagsOverride,
   igLikesDisplay,
   igLikesOverride,
+  igLocationOverride,
   igUsernameDisplay,
   igUsernameOverride,
   sanitizeIgLikesInput,
+  sanitizeIgLocationInput,
   sanitizeIgUsernameInput,
 } from "./lib/ig-post-fields";
 import { getActiveStudioStore } from "./lib/active-studio-store";
 import type { StudioStore } from "./lib/store";
-import { IG_INPUT_CLASS as INPUT_CLASS, IgLocationCombobox } from "./ig-location-combobox";
+import { IG_INPUT_CLASS as INPUT_CLASS, IgDebouncedInput } from "./ig-debounced-input";
 import { IgHashtagsEditor, igFieldLabel } from "./studio-ig-post-fields";
 import { useStudioTexts } from "./studio-texts-provider";
 import type { TextOverride } from "./types";
@@ -103,8 +109,7 @@ function StudioIgSlotFieldsInner({
 
   // Vacío → override null (la capa queda sin texto propio: se imprime el valor
   // pack-level si lo hay, o nada — los requeridos los cobra el popover de «Ver
-  // diseño»). Commit por tecla, mismo patrón del bloque pack-level (el store
-  // ya hace undo + auto-save debounced).
+  // diseño»). El commit llega DEBOUNCED desde IgDebouncedInput (no por tecla).
   const commitText = (layerId: string, text: string | null) =>
     onApply(layerId, text === null || text.trim() === "" ? null : { text });
 
@@ -130,19 +135,15 @@ function StudioIgSlotFieldsInner({
               >
                 @
               </span>
-              <input
-                id={inputId}
-                type="text"
+              <IgDebouncedInput
+                inputId={inputId}
                 value={igUsernameDisplay(value)}
                 maxLength={IG_USERNAME_MAX}
                 placeholder={igUsernameDisplay(layer.text)}
-                onChange={(e) =>
-                  commitText(layer.id, igUsernameOverride(sanitizeIgUsernameInput(e.target.value)))
-                }
+                sanitize={sanitizeIgUsernameInput}
+                onCommit={(draft) => commitText(layer.id, igUsernameOverride(draft))}
                 className={`${INPUT_CLASS} pl-7`}
-                autoComplete="off"
                 autoCapitalize="none"
-                spellCheck={false}
               />
             </div>
             <p className="text-brand-muted mt-1 text-xs">{texts.texto.igUsuarioHint}</p>
@@ -151,28 +152,30 @@ function StudioIgSlotFieldsInner({
 
       case "location":
         return (
-          <IgLocationCombobox
-            inputId={inputId}
-            value={value}
-            placeholder={layer.text}
-            onCommit={(text) => commitText(layer.id, text)}
-          />
+          <>
+            <IgDebouncedInput
+              inputId={inputId}
+              value={value}
+              maxLength={IG_LOCATION_MAX_LENGTH}
+              placeholder={layer.text}
+              sanitize={sanitizeIgLocationInput}
+              onCommit={(draft) => commitText(layer.id, igLocationOverride(draft))}
+            />
+            <p className="text-brand-muted mt-1 text-xs">{texts.texto.igUbicacionHint}</p>
+          </>
         );
 
       case "likes_count":
         return (
           <div className="flex items-center gap-2">
-            <input
-              id={inputId}
-              type="text"
-              inputMode="numeric"
+            <IgDebouncedInput
+              inputId={inputId}
               value={igLikesDisplay(value)}
+              inputMode="numeric"
               placeholder={igLikesDisplay(layer.text)}
-              onChange={(e) =>
-                commitText(layer.id, igLikesOverride(sanitizeIgLikesInput(e.target.value)))
-              }
-              className={INPUT_CLASS}
-              aria-describedby={`${inputId}-suffix`}
+              sanitize={sanitizeIgLikesInput}
+              onCommit={(draft) => commitText(layer.id, igLikesOverride(draft))}
+              describedBy={`${inputId}-suffix`}
             />
             {/* Sufijo FIJO fuera del valor editable: siempre se imprime. */}
             <span id={`${inputId}-suffix`} className="text-brand-purple-dark shrink-0 text-sm">
@@ -181,31 +184,28 @@ function StudioIgSlotFieldsInner({
           </div>
         );
 
-      case "caption": {
-        const length = value.length;
+      case "caption":
         return (
-          <>
-            <input
-              id={inputId}
-              type="text"
-              value={value}
-              maxLength={IG_CAPTION_MAX}
-              placeholder={texts.texto.igTituloPlaceholder}
-              onChange={(e) => commitText(layer.id, e.target.value.slice(0, IG_CAPTION_MAX))}
-              className={INPUT_CLASS}
-              aria-describedby={`${inputId}-count`}
-            />
-            <p
-              id={`${inputId}-count`}
-              className={`mt-1 text-right text-xs tabular-nums ${
-                length >= IG_CAPTION_MAX ? "font-semibold text-red-600" : "text-brand-muted"
-              }`}
-            >
-              {length}/{IG_CAPTION_MAX}
-            </p>
-          </>
+          <IgDebouncedInput
+            inputId={inputId}
+            value={value}
+            maxLength={IG_CAPTION_MAX}
+            placeholder={texts.texto.igTituloPlaceholder}
+            sanitize={(raw) => raw.slice(0, IG_CAPTION_MAX)}
+            onCommit={(draft) => commitText(layer.id, draft)}
+            describedBy={`${inputId}-count`}
+            footer={(draft) => (
+              <p
+                id={`${inputId}-count`}
+                className={`mt-1 text-right text-xs tabular-nums ${
+                  draft.length >= IG_CAPTION_MAX ? "font-semibold text-red-600" : "text-brand-muted"
+                }`}
+              >
+                {draft.length}/{IG_CAPTION_MAX}
+              </p>
+            )}
+          />
         );
-      }
 
       case "hashtags":
         return (
@@ -218,14 +218,12 @@ function StudioIgSlotFieldsInner({
 
       default:
         return (
-          <input
-            id={inputId}
-            type="text"
+          <IgDebouncedInput
+            inputId={inputId}
             value={value}
             maxLength={120}
             placeholder={layer.text}
-            onChange={(e) => commitText(layer.id, e.target.value)}
-            className={INPUT_CLASS}
+            onCommit={(draft) => commitText(layer.id, draft)}
           />
         );
     }

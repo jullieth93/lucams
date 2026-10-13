@@ -62,6 +62,25 @@ export async function GET(_req: Request, ctx: { params: Promise<{ number: string
     return new Response("Este pedido no tiene diseños finalizados para imprimir.", { status: 404 });
   }
 
+  // ADR-131 (2026-10-13) — el render 300 DPI corre EN BACKGROUND tras el finalize: una orden
+  // puede pagarse con los archivos aún en preparación. No servir un ZIP a medias ni uno
+  // vacío silencioso: mientras haya un RenderJob vivo se pide reintentar en unos minutos
+  // (la ventana la absorbe el SLA de producción; el render de un pedido entero son minutos,
+  // no horas). Un job FAILED se reporta en el LEEME.txt con lo que sí haya.
+  const pendingItems = bundle.items.filter((it) => it.renderPending);
+  if (pendingItems.length > 0) {
+    const detail = pendingItems
+      .map(
+        (it) =>
+          `${it.productName}: ${it.renderProgress?.doneUnits ?? 0} de ${it.renderProgress?.totalUnits ?? "?"} piezas`,
+      )
+      .join("; ");
+    return new Response(
+      `Los archivos de impresión de este pedido aún se están preparando (${detail}). Intenta de nuevo en unos minutos.`,
+      { status: 409 },
+    );
+  }
+
   const zip = new JSZip();
   const pieces: AssemblyPiece[] = [];
   let missing = 0;
@@ -89,6 +108,22 @@ export async function GET(_req: Request, ctx: { params: Promise<{ number: string
       "⚠️  ATENCIÓN: hay piezas SIN APROBAR.",
       "    NO imprima los PNG marcados hasta revisarlos en /admin/moderacion.",
       "    La hoja de armado (armado.png) indica cuáles están aprobadas.",
+      "═══════════════════════════════════════════════════════════════",
+      "",
+    );
+  }
+
+  // ADR-131 — items cuyo render de imprenta FALLÓ (RenderJob FAILED): el ZIP sale con lo
+  // que haya, pero el LEEME lo grita para que producción no imprima un pedido incompleto.
+  const failedItems = bundle.items.filter((it) => it.renderFailed);
+  if (failedItems.length > 0) {
+    summary.push(
+      "═══════════════════════════════════════════════════════════════",
+      "⚠️  ATENCIÓN: el render de imprenta FALLÓ para:",
+      ...failedItems.map(
+        (it) =>
+          `    ✗ ${it.productName} (${it.sku}) — reprocesar el RenderJob del diseño o pedir los PNG al cliente.`,
+      ),
       "═══════════════════════════════════════════════════════════════",
       "",
     );

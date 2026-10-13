@@ -51,6 +51,9 @@ export type StudioTexts = {
      *  producto guardado (marcador localStorage validado server-side). */
     continuarTitulo: string;
     continuarCuerpo: string;
+    /** 2026-10-13 — línea de detalle del interstitial: QUÉ se retoma.
+     *  Placeholders {producto} y {fecha} (último guardado del marcador). */
+    continuarDetalle: string;
     continuarCta: string;
     continuarDescartar: string;
   };
@@ -152,10 +155,20 @@ export type StudioTexts = {
     calFontOptionPlayfair: string;
     calFontOptionDancing: string;
     calFontAria: string;
-    /** Lucy 2026-09-05 — packs: stepper "¿Cuántas fotos lleva tu imán?" (junto a la toolbar). */
+    /**
+     * Lucy 2026-09-05 — packs: stepper de CANTIDAD DE UNIDADES (junto a la
+     * toolbar). 2026-10-12: el N son unidades del producto (separadores,
+     * imanes…), no fotos — las claves son plantillas fillStudioText:
+     *   {one}/{many} = sustantivo de la unidad (lo resuelve el Estudio por
+     *     producto; photoCountOne/Many son el fallback si no llega),
+     *   {cuantos} = "Cuántos"/"Cuántas" y {uno} = "un"/"una" (concordancia de
+     *     género, la resuelve el control — no escribirlas a mano),
+     *   {n} = el número (solo photoCountFixedHint).
+     */
     photoCountLabel: string;
     photoCountHint: string;
     photoCountFixedHint: string;
+    /** Fallback del sustantivo cuando el producto no resuelve uno (CMS "foto/s"). */
     photoCountOne: string;
     photoCountMany: string;
     photoCountGroupAria: string;
@@ -259,6 +272,13 @@ export type StudioTexts = {
     toastSinSlot: string;
     /** Fix STG 2026-10-06 — no queda ningún lienzo libre para el prediseñado (nunca se pisa contenido). */
     toastSinLienzoLibre: string;
+    /** Regla de caras (2026-10-12) — pregunta previa al aplicar GLOBALMENTE (sin
+     *  slot específico) un diseño de 1 cara en un producto de 2 caras. Los
+     *  botones de elección reusan lienzo.unitCaraA/unitCaraB. */
+    caraPreguntaTitulo: string;
+    /** Cuerpo de la pregunta de cara. {nombre} = nombre del diseño. */
+    caraPreguntaCuerpo: string;
+    caraPreguntaCancelar: string;
     elegirAria: string;
     aplicarDisenoAria: string;
     itemAria: string;
@@ -391,10 +411,9 @@ export type StudioTexts = {
     igSlotCamposHint: string;
     /** Rediseño asistido (2026-10-05) — ayudas y avisos de los controles por capa. */
     igUsuarioHint: string;
+    /** Owner 2026-10-12 — la ubicación es input de texto simple (sin
+     *  sugerencias): el hint explica la regla de máximo 2 palabras. */
     igUbicacionHint: string;
-    /** Fase 2 · 2.7 (2026-10-07) — combobox de ubicación: aviso cuando el texto
-     *  no coincide con ninguna sugerencia (la ubicación libre también vale). */
-    igUbicacionSinResultados: string;
     igTituloPlaceholder: string;
     igHashtagsPlaceholder: string;
     /** Aviso al intentar agregar un 4º hashtag (tope de producto: 3). */
@@ -509,6 +528,8 @@ export type StudioTexts = {
     volverEditar: string;
     confirmarCta: string;
     confirmarGuardando: string;
+    /** Progreso REAL del render de imprenta en background (ADR-131): polling del RenderJob. */
+    preparandoArchivos: string;
     errorCarrito: string;
     errorCarritoNombre: string;
     errorCarritoSet: string;
@@ -660,6 +681,18 @@ export type StudioTexts = {
     bordeCon: string;
     bordeSin: string;
     bordeSinColoresHint: string;
+    /** Stepper de cantidad de sets en el Estudio (2026-10-12) — cambiar N sin
+     *  volver a la PDP (tope MAX_LETTER_SET_UNITS). Al reducir se recortan los
+     *  sets del final; al aumentar, los nuevos nacen con el tema default
+     *  (misma regla del stepper de unidades del estudio de foto). */
+    setsTitulo: string;
+    setsHint: string;
+    setsGroupAria: string;
+    setsMenosAria: string;
+    setsMasAria: string;
+    /** Valor visible del stepper: "{n} sets" / "{n} set". */
+    setsValor: string;
+    setsValorUno: string;
   };
   /**
    * Modelo MULTI-UNIDAD (owner 2026-09-09): N unidades físicas del mismo
@@ -688,7 +721,14 @@ export type StudioTexts = {
     aplicarATodasTitle: string;
     /** Feedback aria-live tras aplicar a todas. */
     aplicadaFeedback: string;
-    /** Modal de confirmación: línea de unidades ("{n} unidades — cada una…"). */
+    /**
+     * Modal de confirmación: línea de unidades del diseño (se muestra siempre
+     * que el modelo multi-unidad está activo, también con 1 unidad).
+     * Placeholders: {n} = número; {sustantivo} = sustantivo de la unidad ya en
+     * singular o plural según {n} ("1 separador", "3 separadores" — lo resuelve
+     * el editor por producto; sin prop cae a "unidad/unidades"); {uno} =
+     * "uno"/"una" según el género del sustantivo (concordancia con "cada…").
+     */
     modalUnidades: string;
     /** Modal — descripción de TIRAS photobooth (plural y singular). {n} tiras, {m} fotos c/u. */
     descTiras: string;
@@ -759,6 +799,12 @@ export type StudioTexts = {
     espacio: string;
     calendario: string;
     generico: string;
+    /**
+     * 2026-10-12 — recover (?designId=): avisa que N fotos del diseño ya no
+     * existen en el servidor (sus slots quedaron vacíos para re-subir). {n}
+     * es el conteo. Antes fallaba en silencio (placeholder lila eterno).
+     */
+    assetsFaltantes: string;
   };
 };
 
@@ -789,6 +835,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     continuarTitulo: "Continuar donde quedaste",
     continuarCuerpo:
       "Encontramos un diseño tuyo de este producto sin terminar. ¿Retomamos donde lo dejaste?",
+    continuarDetalle: "{producto} · último cambio: {fecha}",
     continuarCta: "Sí, continuar",
     continuarDescartar: "Descartar y empezar de nuevo",
   },
@@ -870,14 +917,14 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     calFontOptionPlayfair: "Elegante (Playfair)",
     calFontOptionDancing: "Caligráfica (Dancing)",
     calFontAria: "Tipo de letra del título del calendario",
-    photoCountLabel: "¿Cuántas fotos lleva tu imán?",
+    photoCountLabel: "¿{cuantos} {many} quieres?",
     photoCountHint: "Tus fotos se conservan al cambiar el número",
-    photoCountFixedHint: "Este tamaño lleva {n} fotos",
+    photoCountFixedHint: "Este tamaño lleva {n} {many}",
     photoCountOne: "foto",
     photoCountMany: "fotos",
-    photoCountGroupAria: "Cantidad de fotos por imán",
-    photoCountMinusAria: "Quitar una foto",
-    photoCountPlusAria: "Agregar una foto",
+    photoCountGroupAria: "Cantidad de {many}",
+    photoCountMinusAria: "Quitar {uno} {one}",
+    photoCountPlusAria: "Agregar {uno} {one}",
     unitsCountLabel: "Unidades",
     unitsCountHint: "Las fotos por tira se eligen en la página del producto",
     unitsCountOne: "unidad",
@@ -972,6 +1019,10 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     toastSinSlot: "Selecciona un slot vacío primero",
     toastSinLienzoLibre:
       "Todos los lienzos ya tienen un diseño. Si quieres cambiar uno, bórralo primero.",
+    caraPreguntaTitulo: "¿En qué cara quieres aplicarlo?",
+    caraPreguntaCuerpo:
+      "«{nombre}» es un diseño de 1 cara: elige si va en el frente (cara A) o en el respaldo (cara B).",
+    caraPreguntaCancelar: "Cancelar",
     elegirAria: "Selecciona plantilla del imán",
     aplicarDisenoAria: "Aplicar el diseño {nombre} al slot",
     itemAria: "Plantilla {nombre}",
@@ -1090,11 +1141,11 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     igSlotCamposHint:
       "Estos datos son SOLO de esta foto. Para editar los de todas a la vez, usa «Datos de la publicación» en el panel.",
     // Rediseño asistido (owner 2026-10-05) — ayudas/avisos de los controles por
-    // capa: "@" y "me gusta" son fijos, ubicación con sugerencias, título con
-    // contador y hashtags por chips (máx 3).
+    // capa: "@" y "me gusta" son fijos, título con contador y hashtags por chips
+    // (máx 3). Owner 2026-10-12: la ubicación es texto simple con regla de
+    // máximo 2 palabras (sin sugerencias).
     igUsuarioHint: "Sin espacios · letras, números, punto y guion bajo",
-    igUbicacionHint: "Elige una sugerencia o escribe la tuya (Ciudad, País)",
-    igUbicacionSinResultados: "Sin coincidencias — tu ubicación se imprime tal cual la escribas",
+    igUbicacionHint: "Máximo 2 palabras — escribe «bogotá colombia» y se imprime Bogotá, Colombia",
     igTituloPlaceholder: "Ej: Nuestro paseo de domingo",
     igHashtagsPlaceholder: "Escribe un hashtag y presiona Enter",
     igHashtagsMaxAviso: "Máximo 3 hashtags — quita uno para agregar otro",
@@ -1201,6 +1252,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     volverEditar: "Volver a editar",
     confirmarCta: "Sí, agregar al carrito",
     confirmarGuardando: "Guardando…",
+    preparandoArchivos: "Preparando archivos de impresión… {hechas} de {total}",
     errorCarrito: "Diseño guardado pero no pudimos agregarlo al carrito: {error}",
     errorCarritoNombre: "Guardamos tu diseño pero no pudimos agregarlo al carrito: {error}",
     errorCarritoSet: "Guardamos el diseño pero no pudimos agregarlo al carrito: {error}",
@@ -1341,6 +1393,13 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     bordeSin: "Sin borde",
     bordeSinColoresHint:
       "Sin borde, las fichas se imprimen sin el marco de color — por eso los colores se desactivan. Vuelve a «Con borde» para pintarlas.",
+    setsTitulo: "¿Cuántos sets quieres?",
+    setsHint: "· cada uno lleva sus propios colores",
+    setsGroupAria: "Cantidad de sets",
+    setsMenosAria: "Quitar un set",
+    setsMasAria: "Agregar un set",
+    setsValor: "{n} sets",
+    setsValorUno: "{n} set",
   },
   unidades: {
     pagerAria: "Unidades de tu diseño",
@@ -1356,7 +1415,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     aplicarATodasAria: "Aplicar el diseño de esta unidad a todas las unidades",
     aplicarATodasTitle: "Copia fotos, encuadres y textos de esta unidad a las demás",
     aplicadaFeedback: "Diseño aplicado a todas las unidades",
-    modalUnidades: "{n} unidades — cada una con su propio diseño",
+    modalUnidades: "{n} {sustantivo} — cada {uno} con su propio diseño",
     descTiras:
       "Esta es la vista previa de las {n} tiras que vas a recibir — cada una con {m} fotos.",
     descTiraUna: "Esta es la vista previa de la tira que vas a recibir — con {m} fotos.",
@@ -1423,6 +1482,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     espacio: "No pudimos abrir la vista de tu espacio. Intenta de nuevo.",
     calendario: "No pudimos armar tu calendario. Intenta de nuevo.",
     generico: "Algo salió mal. Intenta de nuevo en un momento.",
+    assetsFaltantes:
+      "No encontramos {n} de las fotos de tu diseño en el servidor. Esos espacios quedaron vacíos — vuelve a subirlas.",
   },
 };
 
@@ -1453,6 +1514,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "comun.saltarTutorial": "estudio.comun.saltar-tutorial",
   "comun.continuarTitulo": "estudio.comun.continuar-titulo",
   "comun.continuarCuerpo": "estudio.comun.continuar-cuerpo",
+  "comun.continuarDetalle": "estudio.comun.continuar-detalle",
   "comun.continuarCta": "estudio.comun.continuar-cta",
   "comun.continuarDescartar": "estudio.comun.continuar-descartar",
   "lienzo.headerExit": "estudio.lienzo.header-exit",
@@ -1618,6 +1680,9 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "plantillas.toastError": "estudio.plantillas.toast-error",
   "plantillas.toastSinSlot": "estudio.plantillas.toast-sin-slot",
   "plantillas.toastSinLienzoLibre": "estudio.plantillas.toast-sin-lienzo-libre",
+  "plantillas.caraPreguntaTitulo": "estudio.plantillas.cara-pregunta-titulo",
+  "plantillas.caraPreguntaCuerpo": "estudio.plantillas.cara-pregunta-cuerpo",
+  "plantillas.caraPreguntaCancelar": "estudio.plantillas.cara-pregunta-cancelar",
   "plantillas.elegirAria": "estudio.plantillas.elegir-aria",
   "plantillas.aplicarDisenoAria": "estudio.plantillas.aplicar-diseno-aria",
   "plantillas.itemAria": "estudio.plantillas.item-aria",
@@ -1712,7 +1777,6 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.igSlotCamposHint": "estudio.texto.ig-slot-campos-hint",
   "texto.igUsuarioHint": "estudio.texto.ig-usuario-hint",
   "texto.igUbicacionHint": "estudio.texto.ig-ubicacion-hint",
-  "texto.igUbicacionSinResultados": "estudio.texto.ig-ubicacion-sin-resultados",
   "texto.igTituloPlaceholder": "estudio.texto.ig-titulo-placeholder",
   "texto.igHashtagsPlaceholder": "estudio.texto.ig-hashtags-placeholder",
   "texto.igHashtagsMaxAviso": "estudio.texto.ig-hashtags-max-aviso",
@@ -1807,6 +1871,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "exportar.volverEditar": "estudio.exportar.volver-editar",
   "exportar.confirmarCta": "estudio.exportar.confirmar-cta",
   "exportar.confirmarGuardando": "estudio.exportar.confirmar-guardando",
+  "exportar.preparandoArchivos": "estudio.exportar.preparando-archivos",
   "exportar.errorCarrito": "estudio.exportar.error-carrito",
   "exportar.errorCarritoNombre": "estudio.exportar.error-carrito-nombre",
   "exportar.errorCarritoSet": "estudio.exportar.error-carrito-set",
@@ -1919,6 +1984,13 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "letras.bordeCon": "estudio.letras.borde-con",
   "letras.bordeSin": "estudio.letras.borde-sin",
   "letras.bordeSinColoresHint": "estudio.letras.borde-sin-colores-hint",
+  "letras.setsTitulo": "estudio.letras.sets-titulo",
+  "letras.setsHint": "estudio.letras.sets-hint",
+  "letras.setsGroupAria": "estudio.letras.sets-group-aria",
+  "letras.setsMenosAria": "estudio.letras.sets-menos-aria",
+  "letras.setsMasAria": "estudio.letras.sets-mas-aria",
+  "letras.setsValor": "estudio.letras.sets-valor",
+  "letras.setsValorUno": "estudio.letras.sets-valor-uno",
   "unidades.pagerAria": "estudio.unidades.pager-aria",
   "unidades.unidadDe": "estudio.unidades.unidad-de",
   "unidades.nombreTira": "estudio.unidades.nombre-tira",
@@ -1980,6 +2052,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "errores.espacio": "estudio.errores.espacio",
   "errores.calendario": "estudio.errores.calendario",
   "errores.generico": "estudio.errores.generico",
+  "errores.assetsFaltantes": "estudio.errores.assets-faltantes",
 };
 
 /**

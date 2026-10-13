@@ -20,12 +20,17 @@
 
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { mergeAnonCartIntoCustomer } from "@/features/cart/service";
 import { claimGuestOrdersForCustomer } from "@/features/orders/claim-guest-orders";
 import { peekCartSession, setCartSessionCookie } from "@/lib/cart-session";
+import {
+  CUSTOMER_ACTIVITY_COOKIE,
+  customerActivityCookieOptions,
+  sealCustomerActivityMark,
+} from "@/lib/customer-activity";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getRequestOrigin } from "@/lib/origin";
@@ -114,6 +119,13 @@ export async function verifyOtpAction(
   // o cualquiera se adjudicaría pedidos ajenos registrándose con email ajeno).
   if (authData.user) await claimGuestOrdersSafely(authData.user.id, parsed.data.email);
 
+  // El OTP verificado CREA la sesión: sellar la marca de actividad del cliente
+  // (idle-timeout 30 días — lib/customer-activity.ts), igual que en login.
+  (await cookies()).set(
+    CUSTOMER_ACTIVITY_COOKIE,
+    sealCustomerActivityMark(Date.now()),
+    customerActivityCookieOptions(),
+  );
   redirect("/");
 }
 

@@ -63,7 +63,7 @@ export function BrandMark({
   return (
     <Link
       href={href}
-      aria-label="Inicio Lucams_shop"
+      aria-label="Inicio Lucams Shop"
       className={cn("group inline-flex items-center", className)}
     >
       <span
@@ -78,7 +78,7 @@ export function BrandMark({
       >
         <Image
           src={logo?.url ?? "/brand/lucams-logo.png"}
-          alt={logo?.alt ?? "Lucams_shop"}
+          alt={logo?.alt ?? "Lucams Shop"}
           width={px}
           height={px}
           priority={priority}

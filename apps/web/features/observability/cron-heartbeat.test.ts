@@ -58,8 +58,8 @@ describe("cron-heartbeat", () => {
     else process.env.CRON_JOBS_DISABLED = originalDisabled;
   });
 
-  it("rastrea los 11 jobs HTTP, incluidos cms-publish-scheduled (5 min) y expire-pending-orders (N-12)", () => {
-    expect(Object.keys(CRON_JOBS)).toHaveLength(11);
+  it("rastrea los 12 jobs HTTP, incluidos cms-publish-scheduled (5 min) y expire-pending-orders (N-12)", () => {
+    expect(Object.keys(CRON_JOBS)).toHaveLength(12);
     expect(CRON_JOBS["cms-publish-scheduled"]).toEqual({
       intervalMs: 5 * 60 * 1000,
       label: "Publicación programada CMS",
@@ -69,6 +69,11 @@ describe("cron-heartbeat", () => {
     expect(CRON_JOBS["expire-pending-orders"]).toEqual({
       intervalMs: 60 * 60 * 1000,
       label: "Expiración de pedidos sin pagar",
+    });
+    // ADR-131 (2026-10-13): worker de la cola RenderJob — cada minuto, dead-man corto.
+    expect(CRON_JOBS["process-render-jobs"]).toEqual({
+      intervalMs: 60 * 1000,
+      label: "Render de producción asíncrono",
     });
     // Feedback Lucy 2026-09-18: purga post-entrega de fotos + renders (migración pg_cron 035).
     expect(CRON_JOBS["purge-delivered-designs"]).toEqual({

@@ -26,7 +26,7 @@ afterEach(cleanup);
 describe("BrandMark — logo administrable", () => {
   it("sin logo configurado usa el asset estático del repo", () => {
     render(<BrandMark size="sm" />);
-    const img = screen.getByAltText("Lucams_shop");
+    const img = screen.getByAltText("Lucams Shop");
     expect(img).toHaveAttribute("src", "/brand/lucams-logo.png");
   });
 
@@ -49,11 +49,11 @@ describe("BrandMark — logo administrable", () => {
 
   it("logo=null explícito equivale al fallback estático", () => {
     render(<BrandMark size="sm" logo={null} />);
-    expect(screen.getByAltText("Lucams_shop")).toHaveAttribute("src", "/brand/lucams-logo.png");
+    expect(screen.getByAltText("Lucams Shop")).toHaveAttribute("src", "/brand/lucams-logo.png");
   });
 
   it("siempre enlaza al inicio con su nombre accesible", () => {
     render(<BrandMark size="md" />);
-    expect(screen.getByRole("link", { name: "Inicio Lucams_shop" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "Inicio Lucams Shop" })).toHaveAttribute("href", "/");
   });
 });

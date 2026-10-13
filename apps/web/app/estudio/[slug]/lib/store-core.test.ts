@@ -143,6 +143,34 @@ describe("assignAssetToSlot / clearSlot / setSlotFilter", () => {
     expect(s.selectedSlotIndex).toBe(1);
   });
 
+  // 2026-10-12 — reemplazo LIMPIO: una foto nueva sobre un slot ocupado no
+  // hereda encuadre/filtro/textos del diseño anterior (bug "sobreposición":
+  // la foto nueva salía con el zoom/pan viejo y el smart auto-crop no corría
+  // porque había photoTransform persistido).
+  it("assignAssetToSlot sobre slot OCUPADO resetea encuadre, filtro y textos", () => {
+    const store = setup();
+    store.getState().setSlotFilter(0, "vivid");
+    store.getState().setSlotTextOverride(0, "caption", { text: "hola" });
+    store.getState().setSlotPhotoTransform(0, { offsetX: 12, offsetY: -4, scale: 1.6 });
+    store.getState().assignAssetToSlot(0, asset("nueva"));
+    const slot = store.getState().canvasData?.slots[0];
+    expect(slot?.assetId).toBe("nueva");
+    expect(slot?.assetUrl).toBe("https://x/nueva.png");
+    expect(slot?.filter).toBeNull();
+    expect(slot?.textOverrides).toBeUndefined();
+    expect(slot?.photoTransform).toBeUndefined();
+  });
+
+  it("assignAssetToSlot CONSERVA la foto de perfil IG (capa independiente de la foto principal)", () => {
+    const store = setup();
+    store.getState().setSlotProfilePhoto(0, asset("avatar-1"));
+    store.getState().assignAssetToSlot(0, asset("nueva"));
+    const slot = store.getState().canvasData?.slots[0];
+    expect(slot?.assetId).toBe("nueva");
+    expect(slot?.profileAssetId).toBe("avatar-1");
+    expect(slot?.profileAssetUrl).toBe("https://x/avatar-1.png");
+  });
+
   it("clearSlot resetea foto, filtro, overrides y encuadre", () => {
     const store = setup();
     store.getState().setSlotFilter(0, "vivid");

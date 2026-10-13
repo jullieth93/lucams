@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { formatCOP } from "@/lib/format";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, splitStudioText } from "./studio-texts";
+import type { SlotNoun } from "./lib/slot-noun";
 import type { StudioQualityWarning } from "./types";
 
 /**
@@ -75,20 +76,29 @@ function PreviewPagesPager({
   pages,
   altBase,
   onRequestPage,
+  generation,
 }: {
   pages: { dataUrl: string | null; label: string }[];
   altBase: string;
   onRequestPage?: (index: number) => void;
+  /**
+   * Señal de REGENERACIÓN del set de páginas (la incrementa el editor al
+   * armar una vista previa NUEVA). El reset a la primera página solo corre
+   * cuando cambia la generación: el array `pages` cambia de referencia cada
+   * vez que una página perezosa se cachea (dataUrl null → resuelta) y ese
+   * cambio NO debe devolver al cliente a la página 1 (bug 2026-10-12).
+   */
+  generation: number;
 }) {
   const texts = useStudioTexts();
   const n = pages.length;
   const [index, setIndex] = useState(0);
-  // Reinicia al primer set cada vez que se regenera la vista previa (patrón de
+  // Reinicia al primer set solo cuando se REGENERA la vista previa (patrón de
   // estado derivado: ajuste durante el render, no en un effect — regla
   // react-hooks/set-state-in-effect).
-  const [prevPages, setPrevPages] = useState(pages);
-  if (prevPages !== pages) {
-    setPrevPages(pages);
+  const [prevGeneration, setPrevGeneration] = useState(generation);
+  if (prevGeneration !== generation) {
+    setPrevGeneration(generation);
     setIndex(0);
   }
   const i = Math.min(index, Math.max(0, n - 1));
@@ -236,6 +246,13 @@ type StudioPreviewModalProps = {
   pages?: { dataUrl: string | null; label: string }[] | null;
   /** Generación perezosa: el pager la invoca al llegar a una página pendiente. */
   onRequestPage?: (index: number) => void;
+  /**
+   * Contador de REGENERACIÓN de `pages` (lo incrementa el editor al armar una
+   * vista previa nueva). El pager resetea a la primera página solo cuando
+   * cambia — una página perezosa que se resuelve (mismo set, dataUrl null →
+   * con data) NO resetea la navegación.
+   */
+  pagesGeneration?: number;
   productName: string;
   slotCount: number;
   /** Piezas por unidad (tiras: fotos por tira; calendario: páginas por set).
@@ -268,6 +285,14 @@ type StudioPreviewModalProps = {
    */
   unitCount?: number;
   /**
+   * 2026-10-12 — sustantivo de la UNIDAD del diseño para la línea
+   * "{n} {sustantivo} — cada {uno} con su propio diseño" (antes "N unidades"
+   * para todo). Lo resuelve el editor por producto (separador/set/tira/pack/
+   * pieza); el plural y el género ("cada uno"/"cada una") salen del par.
+   * undefined → "unidad/unidades" (texto histórico).
+   */
+  unitNoun?: SlotNoun;
+  /**
    * LEGACY (superficie "nombre", editor hermano): copias IDÉNTICAS de la PDP
    * vía `?copies=N` — la modal las confirma como qty del carrito. Solo se usa
    * cuando `unitCount` no viene; el modelo nuevo prefiere `unitCount`.
@@ -287,7 +312,7 @@ type StudioPreviewModalProps = {
   calendarYear?: number;
   /**
    * Paquete F (2026-10-02) — desglose de la variante/opciones vigentes
-   * ("5×7 cm · Sin imán (adhesivo) · Español", describeVariantAttributes).
+   * ("5×7 cm · Sin imán · Español", describeVariantAttributes).
    * Cada editor lo construye con su verdad EN VIVO (la variante re-resuelta,
    * el magnet del canvas) — nunca con el deep-link de la PDP, que puede haber
    * quedado viejo si el cliente cambió opciones en el Estudio.
@@ -304,6 +329,13 @@ type StudioPreviewModalProps = {
    * undefined/vacía → flujo idéntico al histórico (sin sección ni checkbox).
    */
   qualityWarnings?: StudioQualityWarning[];
+  /**
+   * ADR-131 (2026-10-13) — progreso REAL del render de imprenta en background
+   * ("Preparando archivos de impresión… 12 de 36"), alimentado por el polling del
+   * RenderJob mientras finalize + add-to-cart completan. null = sin dato aún (se
+   * muestra solo el "Guardando…" del botón, como siempre).
+   */
+  renderProgressLabel?: string | null;
   onEdit: () => void;
   /** Recibe el qty para el carrito: 1 en el modelo multi-unidad (el diseño ya
    *  contiene las unidades); las copias de la PDP en el path legacy (nombre).
@@ -316,6 +348,7 @@ export function StudioPreviewModal({
   previewUrl,
   pages = null,
   onRequestPage,
+  pagesGeneration = 0,
   productName,
   slotCount,
   slotsPerUnit,
@@ -324,6 +357,7 @@ export function StudioPreviewModal({
   priceMultiplier,
   noFold = false,
   unitCount,
+  unitNoun,
   initialCopies,
   isFinalizing,
   errorMessage,
@@ -331,6 +365,7 @@ export function StudioPreviewModal({
   calendarYear,
   variantLabel,
   qualityWarnings,
+  renderProgressLabel,
   onEdit,
   onConfirm,
 }: StudioPreviewModalProps) {
@@ -548,7 +583,12 @@ export function StudioPreviewModal({
             (una página por set/tira/separador/pack a tamaño legible); con una
             sola unidad se muestra el montaje único de siempre. */}
         {pages && pages.length > 1 ? (
-          <PreviewPagesPager pages={pages} altBase={previewAlt} onRequestPage={onRequestPage} />
+          <PreviewPagesPager
+            pages={pages}
+            altBase={previewAlt}
+            onRequestPage={onRequestPage}
+            generation={pagesGeneration}
+          />
         ) : (
           <div className="border-brand-purple/15 from-brand-cream relative mt-3 overflow-hidden rounded-xl border bg-gradient-to-br to-white p-4">
             {/* eslint-disable-next-line @next/next/no-img-element -- dataURL local del compositor; next/image no aporta optimización acá (ya iba unoptimized) */}
@@ -603,13 +643,35 @@ export function StudioPreviewModal({
             en el editor — el CTA «Volver a editar» está justo abajo). En la rama
             legacy la nota sigue, con texto actualizado (la cantidad se eligió en
             la PDP). */}
-          {unitCount !== undefined && isMultiUnit ? (
+          {/* Unidades del DISEÑO (modelo multi-unidad 2026-09-09): el cliente ya
+            las diseñó una a una — la línea del carrito es UNA (qty 1) y producción
+            recibe TODAS las unidades. Path legacy (nombre): copias idénticas de la
+            PDP como dato.
+            2026-10-12 — la línea nombra la unidad CON SU SUSTANTIVO ("1 separador",
+            "3 separadores", "2 packs"…), nunca más "N unidades", y se muestra
+            TAMBIÉN con 1 unidad (singular). El sustantivo llega por prop
+            `unitNoun` (lo resuelve el editor por producto); sin prop cae a
+            "unidad/unidades" (texto histórico).
+            QA owner 2026-09-25 — el carrito ya NO tiene stepper para líneas
+            personalizadas: en la rama multi-unidad se eliminó la nota "Puedes
+            ajustar la cantidad en el carrito" (falsa ahí; las unidades se cambian
+            en el editor — el CTA «Volver a editar» está justo abajo). En la rama
+            legacy la nota sigue, con texto actualizado (la cantidad se eligió en
+            la PDP). */}
+          {unitCount !== undefined ? (
             <div className="border-brand-purple/10 mt-3 border-t pt-3">
               <p className="text-brand-purple-dark text-sm font-semibold">
-                {fillStudioText(texts.unidades.modalUnidades, { n: units })}
+                {fillStudioText(texts.unidades.modalUnidades, {
+                  n: units,
+                  sustantivo:
+                    units === 1 ? (unitNoun?.one ?? "unidad") : (unitNoun?.many ?? "unidades"),
+                  // Sin prop, el sustantivo de respaldo es "unidad" (femenino);
+                  // con prop, el flag feminine del par (undefined = masculino).
+                  uno: (unitNoun ? (unitNoun.feminine ?? false) : true) ? "una" : "uno",
+                })}
               </p>
             </div>
-          ) : unitCount === undefined && copies > 1 ? (
+          ) : copies > 1 ? (
             <div className="border-brand-purple/10 mt-3 border-t pt-3">
               <p className="text-brand-purple-dark text-sm font-semibold">
                 {fillStudioText(texts.exportar.copiasIdenticas, { n: copies })}
@@ -692,6 +754,16 @@ export function StudioPreviewModal({
           <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
             ⚠️ {errorMessage}
           </div>
+        )}
+
+        {/* ADR-131 — progreso real del render de imprenta mientras el confirmar corre:
+            el cliente NUNCA espera a ciegas (el "Guardando…" solo del botón era el
+            síntoma del timeout del render síncrono). */}
+        {isFinalizing && renderProgressLabel && (
+          <p className="text-brand-muted flex items-center gap-1.5 text-xs" aria-live="polite">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            {renderProgressLabel}
+          </p>
         )}
 
         {/* Acciones */}

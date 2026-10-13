@@ -91,13 +91,13 @@ describe("order-admin-notification — desglose de variante (Paquete H)", () => 
             name: "Fotoimanes Cuadrados (x6)",
             qty: 1,
             lineTotal: 7_990_000,
-            breakdown: ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"],
+            breakdown: ["12 fotos", "6×8 cm", "Sin imán"],
           },
         ],
       }),
     );
-    expect(r.html).toContain("12 fotos · 6×8 cm · Sin imán (adhesivo)");
-    expect(r.text).toContain("(12 fotos · 6×8 cm · Sin imán (adhesivo))");
+    expect(r.html).toContain("12 fotos · 6×8 cm · Sin imán");
+    expect(r.text).toContain("(12 fotos · 6×8 cm · Sin imán)");
   });
 
   it("ítem sin desglose → solo el nombre (sin línea secundaria vacía)", async () => {

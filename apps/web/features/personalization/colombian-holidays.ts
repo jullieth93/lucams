@@ -7,10 +7,12 @@
  * gregoriano del Domingo de Resurrección (algoritmo anónimo gregoriano / Meeus). Verificado contra
  * fechas conocidas en colombian-holidays.test.ts.
  *
- * Son 18 festivos oficiales al año:
+ * Son 19 festivos oficiales al año:
  *   - 6 de fecha FIJA (no se trasladan): Año Nuevo, Trabajo, Independencia, Boyacá, Inmaculada, Navidad.
- *   - 7 trasladables por Emiliani (al lunes siguiente si no caen en lunes): Reyes, San José, San Pedro
- *     y San Pablo, Asunción, Día de la Raza, Todos los Santos, Independencia de Cartagena.
+ *   - 8 trasladables por Emiliani (al lunes siguiente si no caen en lunes): Reyes, San José, San Pedro
+ *     y San Pablo, Virgen de Chiquinquirá (Ley 2578 de 2026: 9 de julio, trasladable Emiliani —
+ *     en 2026 cayó jueves y el descanso fue el lunes 13 de julio), Asunción, Día de la Raza,
+ *     Todos los Santos, Independencia de Cartagena.
  *   - 5 relativos a Pascua: Jueves y Viernes Santo (NO se trasladan) + Ascensión, Corpus Christi y
  *     Sagrado Corazón (trasladados al lunes por Emiliani).
  */
@@ -88,6 +90,13 @@ export function colombianHolidays(year: number): Holiday[] {
     { date: utc(year, 0, 6), name: "Reyes Magos", short: "Reyes", movable: true },
     { date: utc(year, 2, 19), name: "Día de San José", short: "San José", movable: true },
     { date: utc(year, 5, 29), name: "San Pedro y San Pablo", short: "San Pedro", movable: true },
+    // Ley 2578 de 2026 (sancionada 1 jun 2026): 9 de julio, trasladable al lunes por Emiliani.
+    {
+      date: utc(year, 6, 9),
+      name: "Virgen de Chiquinquirá",
+      short: "Chiquinquirá",
+      movable: true,
+    },
     { date: utc(year, 7, 15), name: "Asunción de la Virgen", short: "Asunción", movable: true },
     { date: utc(year, 9, 12), name: "Día de la Raza", short: "Raza", movable: true },
     {

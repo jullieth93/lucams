@@ -18,6 +18,18 @@
  * purga de archivos + fila, solo desde Archivados). 3.10: todo upload genera
  * ADEMÁS la miniatura ~800px con watermark LUCAMS que exhibe el Estudio
  * (uploadGalleryThumb — el original deja de servirse al navegador del cliente).
+ *
+ * Master PRINT-GRADE (robustez pipeline 2026-10-13): los masters de galería se
+ * suben con uploadGalleryMasterImage (≤4000 px WebP q90, entrada hasta 15 MB)
+ * en vez del optimizeCatalogImage de catálogo (≤2000 px q82): el master es lo
+ * que el servidor aplica al canvas de producción y a 2000 px quedaba bajo
+ * 300 DPI en piezas grandes. La miniatura de exhibición (≤800 px watermark) NO
+ * cambia. BACKFILL: NO hay script — los masters subidos antes ya quedaron
+ * reducidos a ≤2000 px y no se pueden inventar píxeles; los prediseños
+ * existentes deben RESUBIRSE desde este admin para quedar print-grade.
+ * Caveat de plataforma: la Server Action corre bajo el techo de Vercel
+ * (~4.5 MB por request) — un original por encima de eso no llega a la acción;
+ * exportar el diseño a ≤4000 px (WebP/JPEG) antes de subirlo.
  */
 
 "use server";
@@ -28,10 +40,11 @@ import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
 import {
+  GALLERY_MASTER_MAX_BYTES,
   StorageError,
   sniffImageMime,
+  uploadGalleryMasterImage,
   uploadGalleryThumb,
-  uploadProductImage,
 } from "@/lib/storage";
 import {
   archiveGalleryImage,
@@ -60,7 +73,11 @@ import {
 type ActionResult = { error?: string };
 
 const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+// Tope de ENTRADA del upload de galería: alineado con el master print-grade
+// (GALLERY_MASTER_MAX_BYTES, 15 MB — ver header del archivo). Ojo: el techo de
+// plataforma de la Server Action (~4.5 MB) corre primero; el tope acá es la
+// regla de negocio para despliegues sin ese límite.
+const MAX_UPLOAD_BYTES = GALLERY_MASTER_MAX_BYTES;
 
 /**
  * PERF (2026-10-07) — el set de miniaturas por tag que lee el Estudio va
@@ -141,9 +158,9 @@ export async function uploadGalleryImageAction(formData: FormData): Promise<Acti
       });
     }
     const [upA, urlB] = await Promise.all([
-      uploadProductImage({ productId: `gallery-${tag}`, file }),
+      uploadGalleryMasterImage({ productId: `gallery-${tag}`, file }),
       fileB instanceof File
-        ? uploadProductImage({ productId: `gallery-${tag}-b`, file: fileB }).then(
+        ? uploadGalleryMasterImage({ productId: `gallery-${tag}-b`, file: fileB }).then(
             (r) => r.publicUrl,
           )
         : Promise.resolve(null),
@@ -228,8 +245,14 @@ async function uploadStripMode(input: {
   const toFile = (buf: Buffer, filename: string) =>
     new File([new Uint8Array(buf)], filename, { type: "image/webp" });
   const [upA, upB] = await Promise.all([
-    uploadProductImage({ productId: `gallery-${tag}`, file: toFile(split.faceA, "cara-a.webp") }),
-    uploadProductImage({ productId: `gallery-${tag}-b`, file: toFile(split.faceB, "cara-b.webp") }),
+    uploadGalleryMasterImage({
+      productId: `gallery-${tag}`,
+      file: toFile(split.faceA, "cara-a.webp"),
+    }),
+    uploadGalleryMasterImage({
+      productId: `gallery-${tag}-b`,
+      file: toFile(split.faceB, "cara-b.webp"),
+    }),
   ]);
   // 3.10 — miniatura watermark de la cara A (la exhibida en el Estudio).
   await uploadGalleryThumb({ originalPath: upA.path, source: split.faceA });

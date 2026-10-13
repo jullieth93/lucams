@@ -12,17 +12,19 @@ import {
   IG_HASHTAG_MAX_LENGTH,
   IG_HASHTAGS_MAX,
   IG_LIKES_SUFFIX,
-  IG_LOCATION_SUGGESTIONS,
+  IG_LOCATION_MAX_LENGTH,
+  IG_LOCATION_MAX_WORDS,
   IG_USERNAME_MAX,
-  filterIgLocationSuggestions,
   igHashtagsFromStored,
   igHashtagsOverride,
   igLikesDisplay,
   igLikesOverride,
+  igLocationOverride,
   igUsernameDisplay,
   igUsernameOverride,
   sanitizeIgHashtag,
   sanitizeIgLikesInput,
+  sanitizeIgLocationInput,
   sanitizeIgUsernameInput,
 } from "./ig-post-fields";
 
@@ -102,58 +104,44 @@ describe("hashtags — chips, «#» fija y máximo 3", () => {
   });
 });
 
-describe("ubicación — filtro del combobox (Fase 2 · 2.7b; cobertura MUNDIAL QA ronda 2, 2026-10-07)", () => {
-  it("query vacío devuelve TODAS las sugerencias", () => {
-    expect(filterIgLocationSuggestions("")).toEqual([...IG_LOCATION_SUGGESTIONS]);
-    expect(filterIgLocationSuggestions("   ")).toEqual([...IG_LOCATION_SUGGESTIONS]);
+describe("ubicación — texto simple con validación y transformación (owner 2026-10-12, sin sugerencias)", () => {
+  it("el override capitaliza la inicial de cada palabra y une con «, »", () => {
+    expect(igLocationOverride("bogotá colombia")).toBe("Bogotá, Colombia");
+    expect(igLocationOverride("medellín colombia")).toBe("Medellín, Colombia");
+    // Una sola palabra queda sin coma; también vale el país solo.
+    expect(igLocationOverride("colombia")).toBe("Colombia");
   });
 
-  it("filtra por CIUDAD, insensible a tildes y mayúsculas", () => {
-    expect(filterIgLocationSuggestions("medellin")).toEqual(["Medellín, Colombia"]);
-    expect(filterIgLocationSuggestions("BOGOTA")).toEqual(["Bogotá, Colombia"]);
+  it("acepta coma como separador y la normaliza a «, » al commit", () => {
+    expect(igLocationOverride("bogotá,colombia")).toBe("Bogotá, Colombia");
+    expect(igLocationOverride("Bogotá, Colombia")).toBe("Bogotá, Colombia");
   });
 
-  it("cobertura mundial: encuentra ciudades de Europa, Norteamérica y el resto de Latinoamérica", () => {
-    // Madrid (Europa) y Miami (EE.UU.) — pedidos explícitos del owner.
-    expect(filterIgLocationSuggestions("madrid")).toEqual(["Madrid, España"]);
-    expect(filterIgLocationSuggestions("miami")).toEqual(["Miami, Estados Unidos"]);
-    // Argentina: ciudades + el país solo como fallback.
-    expect(filterIgLocationSuggestions("argentina")).toEqual([
-      "Buenos Aires, Argentina",
-      "Córdoba, Argentina",
-      "Rosario, Argentina",
-      "Mendoza, Argentina",
-      "Argentina",
-    ]);
+  it("máximo 2 palabras: la tercera se descarta", () => {
+    expect(IG_LOCATION_MAX_WORDS).toBe(2);
+    expect(igLocationOverride("san pedro sula")).toBe("San, Pedro");
+    expect(igLocationOverride("mi vereda del campo")).toBe("Mi, Vereda");
   });
 
-  it("filtra por PAÍS (substring sobre «Ciudad, País» completo)", () => {
-    const españa = filterIgLocationSuggestions("españa");
-    // Las 8 ciudades curadas de España + el país solo (fallback).
-    expect(españa).toEqual([
-      "Madrid, España",
-      "Barcelona, España",
-      "Valencia, España",
-      "Sevilla, España",
-      "Bilbao, España",
-      "Málaga, España",
-      "Alicante, España",
-      "Palma de Mallorca, España",
-      "España",
-    ]);
-    // Colombia es el mercado principal: la lista curada es mayoritariamente local.
-    expect(filterIgLocationSuggestions("colombia").length).toBeGreaterThan(15);
+  it("vacío o solo espacios → null (sin override; el guard de requeridos lo cobra)", () => {
+    expect(igLocationOverride("")).toBeNull();
+    expect(igLocationOverride("   ")).toBeNull();
   });
 
-  it("orden: Colombia primero, luego por región, y los países solos al final", () => {
-    expect(IG_LOCATION_SUGGESTIONS[0]).toBe("Bogotá, Colombia");
-    const soloPaises = IG_LOCATION_SUGGESTIONS.filter((s) => !s.includes(","));
-    // El bloque final son los países solos (fallback), en orden alfabético.
-    expect(IG_LOCATION_SUGGESTIONS.slice(-soloPaises.length)).toEqual(soloPaises);
-    expect(soloPaises).toEqual([...soloPaises].sort((a, b) => a.localeCompare(b, "es")));
+  it("sanitiza en vivo: caracteres inválidos fuera, espacios colapsados, sin espacio inicial", () => {
+    expect(sanitizeIgLocationInput("bogotá!! colombia?")).toBe("bogotá colombia");
+    expect(sanitizeIgLocationInput("  san   josé")).toBe("san josé");
+    // Conserva tildes/ñ, guion y apóstrofe (nombres reales de lugares).
+    expect(sanitizeIgLocationInput("villa de leyva's")).toBe("villa de");
   });
 
-  it("sin coincidencias → lista vacía (el texto libre igual vale: no es validación)", () => {
-    expect(filterIgLocationSuggestions("Mi vereda del campo")).toEqual([]);
+  it("máximo 2 palabras EN VIVO, conservando el separador para escribir la 2ª palabra", () => {
+    expect(sanitizeIgLocationInput("bogotá ")).toBe("bogotá ");
+    expect(sanitizeIgLocationInput("bogotá colombia extra")).toBe("bogotá colombia");
+  });
+
+  it("largo acotado (una línea corta del post impreso)", () => {
+    expect(IG_LOCATION_MAX_LENGTH).toBe(40);
+    expect(sanitizeIgLocationInput("a".repeat(60))).toHaveLength(40);
   });
 });

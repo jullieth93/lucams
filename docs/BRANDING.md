@@ -1,4 +1,6 @@
-# Branding — Lucams_shop
+# Branding — Lucams Shop
+
+> **Nombre de marca (2026-10-12, ADR-138):** la forma visible correcta es **"Lucams"** o **"Lucams Shop"** — nunca con apóstrofe ("Lucam's") ni con underscore ("Lucams_shop") en textos visibles al cliente o al staff. El underscore solo sobrevive en identificadores técnicos (handles sociales `@lucams_shop`, tenant Aveonline, nombres de cookies, nombres de proyecto Vercel/repo). En el código, el nombre centralizado vive en `apps/web/lib/site.ts` (`SITE_NAME = "Lucams Shop"`) — todo texto nuevo visible debe consumir la constante o la forma correcta. Los documentos legales canónicos `packages/db/legal-content/*.md` quedaron sincronizados a la forma nueva y el one-shot `packages/db/scripts/one-shot/fix-envio-lucams-nombre-20261012.mjs` saneó los datos vivos (aplicado en STG y PRD). El envío propio se nombra **"Envío Lucams"** (o su forma corta **"LUCAMS"**, `LUCAMS_CARRIER_NAME` en `features/shipping/lucams-shipping.ts`); en frases de equipo: "el equipo Lucams".
 
 ## Logo
 
@@ -182,7 +184,7 @@ El mapache es **personaje recurrente**, no solo un logo. Usos:
 
 ## Pendientes de branding
 
-> Lista canónica de pendientes de branding del usuario. `PLAN.md` apunta aquí (no duplica).
+> Lista canónica de pendientes de branding del usuario (referenciada desde `docs/ROADMAP.md`).
 
 - [~] ~~Logo en SVG/PNG transparente alta resolución (entregable del usuario)~~ → **PNG recibido 2026-05-11 y en uso** (`public/brand/lucams-logo.png`). Sigue pendiente solo la versión **SVG** vectorial.
 - [ ] Variantes de la mascota para distintos estados (entregable del usuario o generadas con IA): saludando, empacando, confundida, en bicicleta, sosteniendo monedas (puntos), durmiendo (loader). (El recorte base `lucams-mascot.png` ya existe.)

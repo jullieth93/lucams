@@ -4,7 +4,7 @@ import { getAuthTexts } from "../auth-texts.server";
 
 export const metadata: Metadata = {
   title: "Recuperar contraseña",
-  description: "Recupera el acceso a tu cuenta Lucams_shop.",
+  description: "Recupera el acceso a tu cuenta Lucams Shop.",
   robots: { index: false, follow: false },
 };
 

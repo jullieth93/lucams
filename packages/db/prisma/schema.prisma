@@ -528,6 +528,16 @@ model Order {
   status                  OrderStatus        @default(DRAFT)
   paymentMethod           PaymentMethod
   wompiTransactionId      String?
+  // Referencia de pago única POR INTENTO (bug STG "La referencia ya ha sido
+  // usada"): Wompi consume la reference al primer intento y solo la deja
+  // reintentar ~3 min. paymentAttempt cuenta los checkouts generados (1 = base
+  // `LCM-YYYY-NNNN`, ≥2 = `${number}-${attempt}`); wompiReference/At son la
+  // referencia efectivamente enviada y cuándo. Lo escribe
+  // features/orders/payment-reference.ts con claim atómico; lo leen el webhook
+  // y /checkout/gracias para resolver la orden.
+  paymentAttempt          Int                @default(0)
+  wompiReference          String?
+  wompiReferenceAt        DateTime?
   // #6 (certificación Bloque A 2026-06-26) — caso patológico: Wompi cobró pero
   // el stock se agotó entre PENDING_PAYMENT y PAID (carrera sobre última unidad).
   // La orden queda PENDING_PAYMENT y se marca acá para que sea VISIBLE en
@@ -613,6 +623,15 @@ model Order {
   // y lo limpia al persistir el tracking; lo lee el detalle admin del pedido
   // para mostrar la causa REAL (no solo el throw genérico) + sugerencia.
   shipmentLastError       Json?
+  // Programa "Puntos Lucams" (2026-10-12) — redención de puntos en esta orden.
+  // loyaltyPointsRedeemed = puntos consumidos (reservados al crear/reconciliar
+  // la PENDING_PAYMENT; restaurados por transitionOrder si se cancela/reembolsa).
+  // loyaltyDiscount = su equivalencia en centavos COP ya descontada del total
+  // (total = subtotal + shipping - discount - loyaltyDiscount + tax). Columna
+  // propia para no conflarla con el descuento de cupón. Sus CHECK `>= 0` viven
+  // en la migración 20261012130000_loyalty_points_program (SQL-only, patrón F-24).
+  loyaltyPointsRedeemed   Int                @default(0)
+  loyaltyDiscount         Int                @default(0)
   couponId                String?
   coupon                  Coupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
   // PLAN_CATALOG_V2 3.9 — tracking del uso de cupón (incluye monto descontado).
@@ -672,6 +691,7 @@ model Order {
   @@index([customerId, deletedAt])
   @@index([status, createdAt])
   @@index([wompiTransactionId])
+  @@index([wompiReference])
   @@index([dianStatus])
   @@index([trackingNumber])
   @@index([cartId, status])
@@ -1011,6 +1031,13 @@ model LoyaltyTxn {
   orderId    String?
   createdAt  DateTime  @default(now())
 
+  // NOTA (2026-10-12, programa "Puntos Lucams"): la idempotencia del earn/redeem
+  // por orden vive en el índice único parcial SQL
+  //   "LoyaltyTxn_orderId_reason_key" ON ("orderId", "reason") WHERE orderId IS NOT NULL
+  // (migración 20261012130000_loyalty_points_program). Prisma no expresa índices
+  // parciales — mismo patrón SQL-only que InventoryLog; no regenerar un diff que
+  // lo dropee. Razones en uso: EARN (acumulación al pagar), REDEEM (redención en
+  // checkout), REFUND (restauración al cancelar/reembolsar la orden).
   @@index([customerId, createdAt])
 }
 
@@ -1570,6 +1597,17 @@ model Design {
   // (legacy M.3) es snapshot 1080×1080 single. En V2 (M.3.b multi-slot) es
   // mosaico del grid completo.
   previewUrl            String?
+  // draftPreviewUrl (2026-10-13): miniatura ligera (≤400 px, WebP/JPEG) del
+  // DRAFT, generada en el auto-save del Estudio y subida al bucket público
+  // design-previews en el path FIJO "<designId>/draft-preview.<ext>" (upsert:
+  // sobreescribe, no acumula). Alimenta la tarjeta del borrador en
+  // /mi-cuenta/disenos. Columna SEPARADA de previewUrl a propósito: previewUrl
+  // es el snapshot FINAL del finalize y hay invariantes "READY requiere
+  // previewUrl" (Mis diseños, /d/<token>, vistas de pedido) que un preview de
+  // borrador no debe ensuciar; el finalize escribe previewUrl y esta columna
+  // queda como historial del draft (la purga de retención y el archive borran
+  // sus bytes junto con los del preview final).
+  draftPreviewUrl       String?
   // productionUrl: V1 legacy single PNG 300 DPI privado. Para V2 está null
   // y la info de producción vive en productionUrls[]. Mantener nullable
   // por retrocompat — designs M.3 existentes siguen siendo descargables.
@@ -1590,6 +1628,16 @@ model Design {
   // del finalize que llevó esa aceptación — evidencia ante reclamos de garantía
   // ("llegó pixelada/borroso"). null = diseño sin avisos, o finalizado antes de esta ola.
   qualityAcknowledgedAt DateTime?
+  // Artefactos WATERMARK del preview (2026-10-13, migración
+  // 20261013130000_design_preview_watermark): las superficies de exhibición
+  // (carrito, "Ver diseño", Mis diseños, /d/<token> + OG, cotización, gracias,
+  // pedidos) sirven la versión con marca de agua "LUCAMS"; producción y admin
+  // quedan limpios. Los bytes viven por convención de paths en design-previews
+  // (ver features/personalization/preview-artifacts.ts); estas columnas sellan
+  // su existencia. previewWatermarkedAt null = sin preview-wm.webp/thumb.webp
+  // (fallback al preview limpio); previewPagesCount null/≤1 = sin pager.
+  previewWatermarkedAt DateTime?
+  previewPagesCount    Int?
   // metadata: selección plantilla + marco + color + ajustes filtros foto-edit.
   metadata              Json                     @default("{}")
   // shareToken: link público read-only para colaboración (sub-bloque K+M
@@ -1603,6 +1651,9 @@ model Design {
   cartItems             CartItem[]
   orderItems            OrderItem[]
   quoteItems            QuoteItem[]
+  // Render 300 DPI asíncrono (ADR-131): a lo sumo UN job por diseño; se
+  // resetea si el diseño se re-finaliza. Cascade: purgar el diseño mata el job.
+  renderJob             RenderJob?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1618,6 +1669,50 @@ model Design {
   @@index([status, purgedAt])
   // Cola de moderación: diseños pendientes ordenados por antigüedad.
   @@index([moderationStatus, createdAt])
+}
+
+// Estado del job de render de producción asíncrono (ADR-131). FAILED es
+// terminal tras N reintentos (o de inmediato si el diseño no es renderizable
+// server-side y no hay PNG del cliente que conservar).
+enum RenderJobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+// ADR-131 (2026-10-13) — render de producción FUERA del request de finalize.
+// Antes los N PNG 300 DPI se renderizaban en la Server Action de "Agregar al
+// carrito": un set de calendario ×3 = 36 páginas contra maxDuration=60 →
+// 500/504 y el cliente esperaba a ciegas. Ahora finalize sube el preview,
+// crea este job y responde; el worker (cron /api/cron/process-render-jobs +
+// kick acotado en el propio finalize) renderiza página por página y deja el
+// progreso real en doneUnits para el polling del Estudio.
+//
+// paths: rutas de production-assets ya subidas, en orden de unidad — fuente
+// para reanudar tras crash y para escribir Design.productionUrls al terminar.
+// attempts cuenta FALLOS (y reclamos de lease vencido), no ticks de cron: un
+// job grande que necesita varias pasadas no quema reintentos.
+model RenderJob {
+  id           String          @id @default(cuid())
+  designId     String          @unique
+  design       Design          @relation(fields: [designId], references: [id], onDelete: Cascade)
+  status       RenderJobStatus @default(PENDING)
+  totalUnits   Int
+  doneUnits    Int             @default(0)
+  paths        String[]        @default([])
+  attempts     Int             @default(0)
+  error        String?
+  // Año del calendario mes-a-mes elegido en el Estudio (ADR-063 CAL2): lo
+  // necesita el worker para hornearlo en cada página, fuera del request.
+  calendarYear Int?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  startedAt    DateTime?
+  finishedAt   DateTime?
+
+  // Cola del worker: PENDING (o PROCESSING con lease vencido) por antigüedad.
+  @@index([status, updatedAt])
 }
 
 model DesignAsset {

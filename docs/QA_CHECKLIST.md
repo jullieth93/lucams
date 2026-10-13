@@ -6,10 +6,10 @@
 
 ## Cómo usar este documento
 
-1. **Antes del go-live**, abrir una nueva sección al final con la fecha de la corrida
+1. **Antes del go-live**, recorrer el checklist y registrar la corrida en `tmp/qa/<fecha>.md` (efímero, gitignored)
 2. Recorrer todos los flujos en orden, marcando estado por item
 3. ⚠️ = aceptable pero a mejorar post-launch · ❌ = bloqueante, no se lanza
-4. Cada bloqueante encontrado se documenta en `docs/audits/<fecha>-qa-<flujo>.md`
+4. Cada bloqueante encontrado se documenta en `tmp/qa/<fecha>-qa-<flujo>.md` (efímero, gitignored)
 
 ---
 
@@ -261,7 +261,7 @@
 
 - [ ] Supabase Pro PITR activo (point-in-time recovery)
 - [ ] DR drill: restaurar snapshot a proyecto de prueba
-- [ ] Documentar tiempo recovery en docs/audits/<fecha>-dr-drill.md
+- [ ] Documentar tiempo recovery en tmp/dr-drill-<fecha>.md (efímero)
 - [ ] Target < 30 min
 
 ## T. Compliance Colombia final
@@ -276,17 +276,13 @@
 
 ---
 
-## Corridas históricas
+## Registro de corrida (plantilla)
 
-### Corrida YYYY-MM-DD — pre-launch v1
-
-> Plantilla para llenar la primera corrida real:
+> Las corridas se documentan en `tmp/qa/<fecha>.md` (efímeras). Plantilla:
 >
 > - Responsable: Lucy + Claude
 > - Items verdes: X/Y
 > - Items amarillos: lista
-> - Bloqueantes encontrados (`docs/audits/<fecha>-...`):
+> - Bloqueantes encontrados:
 >   - ...
 > - **Decisión**: GO / NO-GO
-
-_Sin corridas todavía. La primera ocurre antes del go-live productivo._

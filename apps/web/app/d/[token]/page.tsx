@@ -14,7 +14,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
+import { CmsText } from "@/components/cms/cms-text";
+import { SITE_NAME } from "@/lib/site";
 import { getSharedDesign } from "@/features/personalization/service";
+import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
 
 export const dynamic = "force-dynamic";
 
@@ -29,14 +32,17 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const { token } = await params;
   const design = await loadSharedDesign(token);
   if (!design) return { title: "Diseño no encontrado", robots: { index: false } };
+  // 2026-10-13 — la OG image también es la versión WATERMARK (anti-copia al
+  // compartir por WhatsApp/redes); fallback al preview limpio si no existe.
+  const display = designPreviewDisplay(design);
   return {
     title: `Un ${design.product.name} personalizado`,
-    description: `Mira este ${design.product.name} hecho en el Estudio de Lucams_shop. Crea el tuyo con tus fotos.`,
+    description: `Mira este ${design.product.name} hecho en el Estudio de ${SITE_NAME}. Crea el tuyo con tus fotos.`,
     robots: { index: false, follow: false },
     openGraph: {
-      title: `Un ${design.product.name} personalizado · Lucams_shop`,
-      description: "Hecho en el Estudio de Lucams_shop 🦝✨",
-      images: design.previewUrl ? [{ url: design.previewUrl }] : [],
+      title: `Un ${design.product.name} personalizado · ${SITE_NAME}`,
+      description: `Hecho en el Estudio de ${SITE_NAME} 🦝✨`,
+      images: display ? [{ url: display.displayUrl }] : [],
     },
   };
 }
@@ -46,6 +52,10 @@ export default async function SharedDesignPage({ params }: { params: Params }) {
   const design = await loadSharedDesign(token);
   if (!design) notFound();
 
+  // 2026-10-13 — la vista pública exhibe la versión WATERMARK del preview
+  // (anti-copia); el aviso aclara que la impresión final no la lleva.
+  const display = designPreviewDisplay(design);
+
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <header className="border-brand-purple/10 border-b bg-white">
@@ -53,7 +63,7 @@ export default async function SharedDesignPage({ params }: { params: Params }) {
           <Link href="/" className="flex items-center gap-2">
             <LucamsLogo variant="full" size={36} />
             <span className="text-brand-purple-dark font-display text-lg font-bold">
-              Lucams_shop
+              {SITE_NAME}
             </span>
           </Link>
           <Link
@@ -75,16 +85,25 @@ export default async function SharedDesignPage({ params }: { params: Params }) {
           <div className="border-brand-purple/15 mx-auto mt-6 max-w-sm overflow-hidden rounded-2xl border bg-white p-3 shadow-sm">
             {/* eslint-disable-next-line @next/next/no-img-element -- preview público de Supabase */}
             <img
-              src={design.previewUrl ?? ""}
+              src={display?.displayUrl ?? ""}
               alt={`Diseño de ${design.product.name}`}
               className="bg-brand-cream aspect-square w-full rounded-lg object-contain"
             />
           </div>
 
+          {display?.watermarked && (
+            <p className="text-brand-muted mt-3 text-xs">
+              <CmsText
+                blockKey="share.watermark-note"
+                fallback="Vista previa con marca de agua — la impresión final no la lleva."
+              />
+            </p>
+          )}
+
           <p className="text-brand-muted mt-6 text-sm">
             Hecho en el{" "}
-            <strong className="text-brand-purple-dark">Estudio de Personalización</strong> de
-            Lucams_shop. Sube tus fotos y crea el tuyo en minutos.
+            <strong className="text-brand-purple-dark">Estudio de Personalización</strong> de{" "}
+            {SITE_NAME}. Sube tus fotos y crea el tuyo en minutos.
           </p>
 
           <Link

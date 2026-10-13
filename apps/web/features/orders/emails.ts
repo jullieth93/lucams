@@ -117,7 +117,9 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
       total: order.total,
       subtotal: order.subtotal,
       shipping: order.shipping,
-      discount: order.discount,
+      // Puntos Lucams (2026-10-12): la fila "Descuento" suma cupón + redención
+      // de puntos para que el desglose cuadre con el total cobrado.
+      discount: order.discount + order.loyaltyDiscount,
       shippingCarrier: order.shippingCarrier ? carrierDisplayName(order.shippingCarrier) : null,
       items: order.items.map((it) => ({
         name: it.variant.product.name,
@@ -686,7 +688,9 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
       subtotal: order.subtotal,
       shipping: order.shipping,
       shippingCarrier: order.shippingCarrier ? carrierDisplayName(order.shippingCarrier) : null,
-      discount: order.discount,
+      // Puntos Lucams (2026-10-12): cupón + redención de puntos sumados para
+      // que el desglose cuadre con el total.
+      discount: order.discount + order.loyaltyDiscount,
       total: order.total,
       // FLUJO REGALO — destinatario de la guía + mensaje para la tarjeta
       // (producción empaca sin precios visibles si isGift).

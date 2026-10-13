@@ -21,14 +21,14 @@ export type OrderDeliveredData = {
   reviewUrl: string | null;
   /** Destino del CTA cuando NO hay reviewUrl (el pedido del cliente o /rastrear). */
   fallbackUrl: string;
-  /** true = entrega propia "Envío Lucam's": la confirmación la hizo nuestro
+  /** true = entrega propia "Envío Lucams": la confirmación la hizo nuestro
    *  equipo (no una transportadora externa). */
   internalDelivery?: boolean;
 };
 
 export async function orderDeliveredEmail(data: OrderDeliveredData) {
   const deliveredBy = data.internalDelivery
-    ? "nuestro equipo Lucam's entregó"
+    ? "nuestro equipo Lucams entregó"
     : "según la transportadora, llegó";
 
   // El CTA solo promete reseña cuando la URL realmente reseña (E3).
@@ -57,7 +57,7 @@ ${cta}
 
 Hola ${data.customerName},
 
-Tu pedido ${data.orderNumber} ya está en tus manos (${data.internalDelivery ? "lo entregó nuestro equipo Lucam's" : "confirmado por la transportadora"}).
+Tu pedido ${data.orderNumber} ya está en tus manos (${data.internalDelivery ? "lo entregó nuestro equipo Lucams" : "confirmado por la transportadora"}).
 ${
   data.reviewUrl
     ? `

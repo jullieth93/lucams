@@ -100,7 +100,7 @@ describe("EMAIL_TEMPLATE_REGISTRY — render con sample data", () => {
       expect(r.html.startsWith("<!doctype html>"), `${tpl.id}: html con doctype`).toBe(true);
       expect(r.html, `${tpl.id}: lang es-CO`).toContain('lang="es-CO"');
       expect(r.html, `${tpl.id}: marca en header`).toContain("Lucams");
-      expect(r.html, `${tpl.id}: footer con copyright`).toContain("© 2026 Lucams_shop");
+      expect(r.html, `${tpl.id}: footer con copyright`).toContain("© 2026 Lucams Shop");
       expect(r.subject.length, `${tpl.id}: subject no vacío`).toBeGreaterThan(0);
       expect(r.text.length, `${tpl.id}: text no vacío`).toBeGreaterThan(0);
       // El preview pane del layout está presente en todas (preheader editable).

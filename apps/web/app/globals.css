@@ -9,7 +9,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Tokens de Lucams_shop — Tailwind v4 CSS-first config (ADR-015).
+ * Tokens de Lucams Shop — Tailwind v4 CSS-first config (ADR-015).
  *
  * Estructura:
  *  1. @theme inline → tokens que generan utilidades Tailwind (`bg-brand-purple`,

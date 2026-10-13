@@ -89,7 +89,7 @@ export async function setLucamsShippingEnabledAction(
 }
 
 /**
- * Guarda la config del envío propio "Envío Lucam's" (precio, hora límite y
+ * Guarda la config del envío propio "Envío Lucams" (precio, hora límite y
  * zonas por ciudad). El on/off NO se edita acá: vive en la lista unificada de
  * transportadoras (setLucamsShippingEnabledAction); esta acción lo conserva.
  */

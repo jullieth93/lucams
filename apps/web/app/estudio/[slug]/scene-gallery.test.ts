@@ -16,6 +16,7 @@ import {
   galleryEscapeAction,
   galleryScenes,
   initialModalView,
+  sceneThicknessCm,
   scenesForKind,
 } from "./scene-gallery";
 
@@ -150,5 +151,17 @@ describe("countBadgeLabel — rótulo de cantidad en la escena 3D (owner 2026-09
 
   it("kind por defecto es photo (retrocompatible)", () => {
     expect(countBadgeLabel(1)).toBe("1 unidad · tamaño real");
+  });
+});
+
+describe("sceneThicknessCm (2026-10-12 — grosor físico por producto)", () => {
+  it("calendario: cartulina ~0.4 mm (CALENDAR_CARD_THICKNESS_CM), no el imán de 2 mm", () => {
+    expect(sceneThicknessCm("calendar")).toBe(0.04);
+  });
+
+  it("los demás productos usan el default de la escena (undefined → imán 2 mm / ficha 1.5 mm)", () => {
+    expect(sceneThicknessCm("photo")).toBeUndefined();
+    expect(sceneThicknessCm("letters")).toBeUndefined();
+    expect(sceneThicknessCm("bookmark")).toBeUndefined();
   });
 });

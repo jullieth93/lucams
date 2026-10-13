@@ -55,6 +55,11 @@ vi.mock("@/lib/product-redirects", () => ({
 import { NextRequest } from "next/server";
 import { proxy } from "./proxy";
 import { readAdminActivityMark, sealAdminActivityMark } from "@/lib/admin-activity";
+import {
+  CUSTOMER_IDLE_LIMIT_MS,
+  readCustomerActivityMark,
+  sealCustomerActivityMark,
+} from "@/lib/customer-activity";
 
 function makeReq(
   path: string,
@@ -184,6 +189,118 @@ describe("proxy · idle-timeout admin (30 min)", () => {
     );
     // El proxy ya no toca la marca en /admin/login; la acción de login la sobrescribe con `now`.
     expect(res.cookies.get("admin_last_activity")).toBeUndefined();
+  });
+});
+
+/*
+ * Idle-timeout CLIENTE (2026-10-12): sesión persistente de 30 días con ventana
+ * DESLIZANTE (cada request autenticada re-sella la marca firmada
+ * `customer_last_activity`); >30 días sin actividad —o marca ausente/forjada
+ * (fail-closed, mismo criterio B-8 de admin)— → signOut global + borrado sb-* +
+ * redirect a `/` (o /login?next= si la ruta requiere sesión).
+ */
+describe("proxy · idle-timeout cliente (30 días deslizante)", () => {
+  it("marca con >30 días → expira: signOut global, borra sb-* y la marca, redirect a /", async () => {
+    state.user = { id: "u1" };
+    const stale = sealCustomerActivityMark(Date.now() - CUSTOMER_IDLE_LIMIT_MS - 60_000);
+    const res = await proxy(
+      makeReq("/productos-listado", {
+        cookies: { customer_last_activity: stale, "sb-access-token": "tok" },
+      }),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("https://lucamsshop.com/");
+    expect(res.cookies.get("sb-access-token")?.value ?? "").toBe("");
+    expect(res.cookies.get("customer_last_activity")?.value ?? "").toBe("");
+    expect(state.signOutCalls).toEqual([{ scope: "global" }]);
+  });
+
+  it("marca FRESCA → no expira y RENUEVA la marca firmada (ventana deslizante)", async () => {
+    state.user = { id: "u1" };
+    const fresh = sealCustomerActivityMark(Date.now() - 10 * 24 * 60 * 60 * 1000); // 10 días
+    const res = await proxy(
+      makeReq("/productos-listado", { cookies: { customer_last_activity: fresh } }),
+    );
+    expect(res.status).toBe(200);
+    expect(state.signOutCalls).toEqual([]);
+    const renewed = res.cookies.get("customer_last_activity")?.value ?? "";
+    const ts = readCustomerActivityMark(renewed);
+    expect(ts).not.toBeNull();
+    expect(Math.abs((ts ?? 0) - Date.now())).toBeLessThan(10_000);
+  });
+
+  it("marca AUSENTE con sesión → expira (fail-closed: borrar la cookie no reinicia el reloj)", async () => {
+    state.user = { id: "u1" };
+    const res = await proxy(
+      makeReq("/productos-listado", { cookies: { "sb-access-token": "tok" } }),
+    );
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe("https://lucamsshop.com/");
+    expect(state.signOutCalls).toEqual([{ scope: "global" }]);
+  });
+
+  it("marca con firma INVÁLIDA (forjada) → expira", async () => {
+    state.user = { id: "u1" };
+    const res = await proxy(
+      makeReq("/productos-listado", {
+        cookies: { customer_last_activity: String(Date.now()), "sb-access-token": "tok" },
+      }),
+    );
+    expect(res.status).toBe(307);
+    expect(state.signOutCalls).toEqual([{ scope: "global" }]);
+  });
+
+  it("ruta que REQUIERE sesión (/mi-cuenta) → redirect a /login con next + error, no a /", async () => {
+    state.user = { id: "u1" };
+    const stale = sealCustomerActivityMark(Date.now() - CUSTOMER_IDLE_LIMIT_MS - 60_000);
+    const res = await proxy(
+      makeReq("/mi-cuenta/pedidos", { cookies: { customer_last_activity: stale } }),
+    );
+    expect(res.status).toBe(307);
+    const loc = res.headers.get("location") ?? "";
+    expect(loc).toContain("/login");
+    expect(loc).toContain("error=sesion-expirada");
+    expect(loc).toContain("next=" + encodeURIComponent("/mi-cuenta/pedidos"));
+  });
+
+  it("sin sesión NO hay chequeo (anónimos navegan sin marca y sin redirect)", async () => {
+    const res = await proxy(makeReq("/productos-listado"));
+    expect(res.status).toBe(200);
+    expect(res.cookies.get("customer_last_activity")).toBeUndefined();
+    expect(state.signOutCalls).toEqual([]);
+  });
+
+  it("/api/* queda EXCLUIDA del chequeo aun con marca vencida (contratos JSON intactos)", async () => {
+    state.user = { id: "u1" };
+    const stale = sealCustomerActivityMark(Date.now() - CUSTOMER_IDLE_LIMIT_MS - 60_000);
+    const res = await proxy(
+      makeReq("/api/algo", {
+        origin: "https://lucamsshop.com",
+        cookies: { customer_last_activity: stale },
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    expect(state.signOutCalls).toEqual([]);
+  });
+
+  it("/admin/* queda EXCLUIDO del chequeo cliente (lo gobierna el idle-timeout admin)", async () => {
+    state.user = { id: "u1" };
+    const freshAdmin = sealAdminActivityMark(Date.now() - 60 * 1000);
+    // Sin marca de cliente: si el chequeo aplicara acá, expiraría (fail-closed).
+    const res = await proxy(
+      makeReq("/admin/pedidos", { cookies: { admin_last_activity: freshAdmin } }),
+    );
+    expect(res.status).toBe(200);
+    expect(state.signOutCalls).toEqual([]);
+    expect(res.cookies.get("customer_last_activity")).toBeUndefined();
+  });
+
+  it("/auth/* queda EXCLUIDO (callback/logout gestionan su propio ciclo de sesión)", async () => {
+    state.user = { id: "u1" };
+    const res = await proxy(makeReq("/auth/callback?code=x", { method: "GET" }));
+    expect(res.status).toBe(200);
+    expect(state.signOutCalls).toEqual([]);
   });
 });
 

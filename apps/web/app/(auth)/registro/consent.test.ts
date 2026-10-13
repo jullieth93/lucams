@@ -22,6 +22,9 @@ const recordHabeasDataConsent = vi.hoisted(() => vi.fn(async () => {}));
 
 vi.mock("next/headers", () => ({
   headers: async () => new Headers({ "user-agent": "vitest", "x-forwarded-for": "1.2.3.4" }),
+  // signupAction sella la marca de actividad del cliente cuando hay sesión
+  // directa (lib/customer-activity.ts) — store mínimo para cookies().set.
+  cookies: async () => ({ getAll: () => [], get: () => undefined, set: () => {} }),
 }));
 vi.mock("next/navigation", () => ({
   redirect: (to: string) => {

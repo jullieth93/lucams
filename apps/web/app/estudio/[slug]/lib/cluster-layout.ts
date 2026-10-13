@@ -92,6 +92,36 @@ export const BOARD_SCENE = {
   },
 } as const;
 
+/** Constantes del encuadre INICIAL del mural ponderado al clúster (2026-10-12). */
+export const BOARD_FIT = {
+  /** Aire alrededor del clúster (0.75 u ≈ 7.5 cm a cada lado). */
+  margin: 0.75,
+  /** Piso de CONTEXTO: el encuadre muestra al menos esta fracción del tablero (el marco se
+   *  asoma y se lee "tablero colgado", no una textura infinita). */
+  minBoardFrac: 0.55,
+  /** Si el encuadre ponderado ya cubre ≥ esta fracción del tablero, se encuadra el tablero
+   *  COMPLETO (evita un crop del marco "por poquito", que se ve accidentado). */
+  snapFrac: 0.85,
+} as const;
+
+/**
+ * Medio-bound del encuadre inicial del mural (2026-10-12 — bug "vista 3D Mural muy gigante"):
+ * el tablero creció deliberadamente a 120×80 cm (Ola 30: 12 tiras de 26.5 cm no cabían en el
+ * tablerito), pero el FitCamera SIEMPRE encuadraba el tablero completo → con pocas piezas
+ * chicas el mural dominaba el viewport y las piezas se veían diminutas. Ahora el encuadre se
+ * pondera al CLÚSTER: `layoutHalf + margen generoso`, con piso de contexto del tablero
+ * (`minBoardFrac`) y snap al tablero completo cuando el ponderado ya lo cubre casi todo
+ * (`snapFrac`). Si el clúster DESBORDA el tablero, el encuadre cubre todo como antes (nunca
+ * se encoge una pieza). El tablero en sí NO cambia; solo cambia la cámara inicial (el zoom
+ * manual con minDistance sigue intacto).
+ */
+export function boardFitHalf(layoutHalf: number, boardHalf: number): number {
+  const full = Math.max(boardHalf, layoutHalf + 0.1);
+  const weighted = layoutHalf + BOARD_FIT.margin;
+  if (weighted >= boardHalf * BOARD_FIT.snapFrac) return full;
+  return Math.max(weighted, boardHalf * BOARD_FIT.minBoardFrac);
+}
+
 export type ClusterPieceSize = { w: number; h: number };
 
 export type ClusterLayoutOptions = {

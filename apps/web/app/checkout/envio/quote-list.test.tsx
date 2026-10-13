@@ -4,7 +4,7 @@
  *
  * Cubre la rama nueva del step 2 de checkout:
  *   1. Carrier con logo en el mapa (lib/carrier-logos.ts) → <img> con el asset
- *      correcto (Servientrega oficial, mascota Lucam's para el envío propio).
+ *      correcto (Servientrega oficial, mascota Lucams para el envío propio).
  *   2. Carrier SIN logo → fallback al ícono genérico (círculo Truck/Check),
  *      sin <img> de carrier.
  *   3. La lógica de selección queda intacta (primer quote preseleccionado).
@@ -78,7 +78,7 @@ describe("QuoteList — logos de transportadora", () => {
     renderList([
       quote({ carrier: "lucams", carrierName: "LUCAMS", quoteId: "lucams-bog-chapinero" }),
     ]);
-    const img = screen.getByAltText("Logo de Lucam's");
+    const img = screen.getByAltText("Logo de Lucams");
     expect(decodeURIComponent(img.getAttribute("src") ?? "")).toContain("/brand/lucams-mascot.png");
     // Nombre corto de marca (title del div del nombre — también hay badge LUCAMS).
     expect(screen.getByTitle("LUCAMS")).toBeInTheDocument();

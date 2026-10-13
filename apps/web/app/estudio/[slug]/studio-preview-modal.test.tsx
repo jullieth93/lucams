@@ -123,10 +123,13 @@ describe("StudioPreviewModal — modelo MULTI-UNIDAD (unitCount: las unidades va
     expect(props.onConfirm).toHaveBeenCalledWith(1, { qualityAcknowledged: false });
   });
 
-  it("con 1 unidad (unitCount=1): total = precio unitario, sin desglose", () => {
+  it("con 1 unidad (unitCount=1): total = precio unitario, sin c/u, y la línea en singular", () => {
     render(<StudioPreviewModal {...baseProps()} unitCount={1} />);
     expect(screen.getByText(cop(UNIT_PRICE))).toBeInTheDocument();
     expect(screen.queryByText(/c\/u/)).not.toBeInTheDocument();
+    // 2026-10-12 — la línea se muestra TAMBIÉN con 1 unidad (singular); sin
+    // prop unitNoun cae al sustantivo histórico "unidad".
+    expect(screen.getByText("1 unidad — cada una con su propio diseño")).toBeInTheDocument();
     expect(screen.queryByText(/unidades — cada una/)).not.toBeInTheDocument();
   });
 
@@ -221,6 +224,83 @@ describe("StudioPreviewModal — modelo MULTI-UNIDAD (unitCount: las unidades va
     );
     expect(screen.getByText(cop(UNIT_PRICE * 2))).toBeInTheDocument();
     expect(screen.getByText(`${cop(UNIT_PRICE)} c/u`)).toBeInTheDocument();
+  });
+});
+
+describe("StudioPreviewModal — sustantivo de la unidad (2026-10-12, nunca más 'N unidades')", () => {
+  // La línea de unidades usa el sustantivo del producto (prop unitNoun, par
+  // {one, many, feminine} — mismo tipo SlotNoun de lib/slot-noun) con plural/
+  // singular y concordancia de género correctos, y se muestra también con 1.
+
+  it("separadores ×3: plural masculino ('3 separadores — cada uno…')", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productKind="bookmarks"
+        slotCount={3}
+        unitCount={3}
+        unitNoun={{ one: "separador", many: "separadores" }}
+      />,
+    );
+    expect(screen.getByText("3 separadores — cada uno con su propio diseño")).toBeInTheDocument();
+    expect(screen.queryByText(/unidades — cada/)).not.toBeInTheDocument();
+  });
+
+  it("separador ×1: la línea se muestra con SINGULAR ('1 separador — cada uno…')", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productKind="bookmarks"
+        slotCount={1}
+        unitCount={1}
+        unitNoun={{ one: "separador", many: "separadores" }}
+      />,
+    );
+    expect(screen.getByText("1 separador — cada uno con su propio diseño")).toBeInTheDocument();
+  });
+
+  it("packs ×2: plural anglicismo ('2 packs — cada uno…')", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        unitCount={2}
+        unitNoun={{ one: "pack", many: "packs" }}
+      />,
+    );
+    expect(screen.getByText("2 packs — cada uno con su propio diseño")).toBeInTheDocument();
+  });
+
+  it("tiras ×2: concordancia FEMENINA ('2 tiras — cada una…')", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productKind="strips"
+        slotCount={2}
+        slotsPerUnit={3}
+        unitCount={2}
+        unitNoun={{ one: "tira", many: "tiras", feminine: true }}
+      />,
+    );
+    expect(screen.getByText("2 tiras — cada una con su propio diseño")).toBeInTheDocument();
+  });
+
+  it("sets ×2 (calendario/letras): '2 sets — cada uno…'", () => {
+    render(
+      <StudioPreviewModal
+        {...baseProps()}
+        productKind="calendar"
+        slotCount={2}
+        slotsPerUnit={12}
+        unitCount={2}
+        unitNoun={{ one: "set", many: "sets" }}
+      />,
+    );
+    expect(screen.getByText("2 sets — cada uno con su propio diseño")).toBeInTheDocument();
+  });
+
+  it("sin prop unitNoun: cae al sustantivo histórico 'unidad/unidades'", () => {
+    render(<StudioPreviewModal {...baseProps()} unitCount={2} />);
+    expect(screen.getByText("2 unidades — cada una con su propio diseño")).toBeInTheDocument();
   });
 });
 
@@ -414,6 +494,11 @@ describe("StudioPreviewModal — páginas PEREZOSAS por unidad (PERF 2026-10-07)
     { dataUrl: null, label: "Set 2 de 3" },
     { dataUrl: null, label: "Set 3 de 3" },
   ];
+  // Set ya resuelto (mismo shape que el pager recibe tras generar todo).
+  const PAGES_ALL = LAZY_PAGES.map((p, i) => ({
+    ...p,
+    dataUrl: `data:image/png;base64,set${i + 1}`,
+  }));
 
   it("página pendiente (dataUrl null): indicador de carga + pide la página al editor", () => {
     const onRequestPage = vi.fn();
@@ -465,5 +550,56 @@ describe("StudioPreviewModal — páginas PEREZOSAS por unidad (PERF 2026-10-07)
     expect(onRequestPage).toHaveBeenCalledTimes(2);
     expect(onRequestPage).toHaveBeenNthCalledWith(1, 0);
     expect(onRequestPage).toHaveBeenNthCalledWith(2, 1);
+  });
+
+  // Bug 2026-10-12 — el pager reseteaba a la página 1 cada vez que el array
+  // `pages` cambiaba de REFERENCIA, y el cacheo perezoso crea un array nuevo al
+  // resolver cada página: pedir la página 2 te devolvía a la 1. El reset solo
+  // corre cuando el editor REGENERA el set (pagesGeneration nuevo).
+  it("una página perezosa que se resuelve NO devuelve a la página 1 (misma generación)", () => {
+    const onRequestPage = vi.fn();
+    const { rerender } = render(
+      <StudioPreviewModal
+        {...baseProps()}
+        pages={LAZY_PAGES}
+        unitCount={3}
+        onRequestPage={onRequestPage}
+        pagesGeneration={1}
+      />,
+    );
+    // Ir a la página 2 (pendiente) → se pide y muestra el spinner.
+    fireEvent.click(screen.getByRole("button", { name: "Unidad siguiente" }));
+    expect(onRequestPage).toHaveBeenCalledWith(1);
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    // El editor la resuelve: array NUEVO (map del cache), MISMA generación.
+    const resolved = LAZY_PAGES.map((p, i) =>
+      i === 1 ? { ...p, dataUrl: "data:image/png;base64,set2" } : p,
+    );
+    rerender(
+      <StudioPreviewModal
+        {...baseProps()}
+        pages={resolved}
+        unitCount={3}
+        onRequestPage={onRequestPage}
+        pagesGeneration={1}
+      />,
+    );
+    // Sigue en la página 2 y muestra su imagen (antes: saltaba a "Set 1 de 3").
+    expect(screen.getByText("Set 2 de 3")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /Set 2 de 3/ })).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("regenerar la vista previa (nueva generación) SÍ resetea a la primera página", () => {
+    const { rerender } = render(
+      <StudioPreviewModal {...baseProps()} pages={PAGES_ALL} unitCount={3} pagesGeneration={1} />,
+    );
+    fireEvent.click(screen.getAllByRole("tab")[2]!);
+    expect(screen.getByText("Set 3 de 3")).toBeInTheDocument();
+    // Nueva finalización: el editor siembra un set nuevo → generación distinta.
+    rerender(
+      <StudioPreviewModal {...baseProps()} pages={PAGES_ALL} unitCount={3} pagesGeneration={2} />,
+    );
+    expect(screen.getByText("Set 1 de 3")).toBeInTheDocument();
   });
 });

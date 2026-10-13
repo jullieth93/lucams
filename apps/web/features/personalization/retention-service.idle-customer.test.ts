@@ -190,6 +190,9 @@ vi.mock("@/lib/db", () => ({
           .map((d) => ({
             id: d.id,
             previewUrl: `https://cdn.test/storage/v1/object/public/design-previews/${d.id}.png`,
+            // 2026-10-13 — miniatura del borrador (Design.draftPreviewUrl): sus
+            // bytes también deben borrarse con el diseño purgado.
+            draftPreviewUrl: `https://cdn.test/storage/v1/object/public/design-previews/${d.id}/draft-preview.webp`,
             productionUrls: [],
             assets: [{ storageUrl: `uploads/${d.id}.jpg` }],
           })),
@@ -244,6 +247,15 @@ describe("purga de DRAFTs idle de clientes logueados (feedback Lucy 2026-09-18)"
     );
     for (const c of CASES) {
       expect(removedUploads.includes(`uploads/${c.design.id}.jpg`)).toBe(c.purge);
+    }
+  });
+
+  it("borra la miniatura del borrador (draftPreviewUrl) junto con el preview de lo purgado", async () => {
+    await runPurge();
+    const removed = removeMock.mock.calls.flatMap((call) => (call as unknown as [string[]])[0]);
+    for (const c of CASES) {
+      // pathFromPublicUrl extrae el path dentro del bucket design-previews.
+      expect(removed.includes(`${c.design.id}/draft-preview.webp`)).toBe(c.purge);
     }
   });
 

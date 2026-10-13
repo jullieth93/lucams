@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { RegistroForm } from "./registro-form";
 import { getAuthTexts } from "../auth-texts.server";
+import { getReferralSettings } from "@/features/loyalty/settings";
 
 export const metadata: Metadata = {
   title: "Crear cuenta",
-  description: "Crea tu cuenta de Lucams_shop para empezar a personalizar tus productos.",
+  description: "Crea tu cuenta de Lucams Shop para empezar a personalizar tus productos.",
   robots: { index: false, follow: false },
 };
 
@@ -24,5 +25,14 @@ export default async function RegistroPage({
     typeof ref === "string" && /^[A-Za-z0-9-]{4,20}$/.test(ref.trim())
       ? ref.trim().toUpperCase()
       : undefined;
-  return <RegistroForm texts={texts.registro} initialReferralCode={initialReferralCode} />;
+  // El hint del campo interpola el % VIGENTE del programa (config de
+  // /admin/fidelizacion), no un "10" quemado (2026-10-12).
+  const referralSettings = await getReferralSettings();
+  return (
+    <RegistroForm
+      texts={texts.registro}
+      initialReferralCode={initialReferralCode}
+      referralPercent={referralSettings.rewardPercent}
+    />
+  );
 }

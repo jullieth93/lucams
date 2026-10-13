@@ -35,7 +35,7 @@ export async function supportTicketClosedEmail(data: SupportTicketClosedData) {
 <p>Tu ticket <strong style="font-family:monospace;background:#FFF8F0;padding:2px 6px;border-radius:4px;">#${ticketShort}</strong> (<strong>${escapeHtml(SUBJECT_LABELS[data.subject])}</strong>) fue atendido y quedó cerrado.</p>
 <p>Si necesitas algo más sobre este tema, <strong>responde a este correo</strong> y te seguimos ayudando — no hace falta abrir otro ticket.</p>
 <p>Gracias por escribirnos.</p>
-<p>Un abrazo,<br>El equipo de Lucams_shop</p>
+<p>Un abrazo,<br>El equipo de Lucams Shop</p>
 `;
 
   const text = `Atendimos tu solicitud
@@ -49,7 +49,7 @@ Si necesitas algo más sobre este tema, responde a este correo y te seguimos ayu
 Gracias por escribirnos.
 
 Un abrazo,
-El equipo de Lucams_shop`;
+El equipo de Lucams Shop`;
 
   return {
     subject: `Atendimos tu solicitud — Ticket #${ticketShort}`,

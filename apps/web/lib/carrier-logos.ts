@@ -11,8 +11,9 @@
  * que el cliente está eligiendo (uso nominativo — no implica respaldo ni
  * afiliación). Servientrega, Coordinadora, Interrapidísimo, Envía y TCC son
  * los logos oficiales descargados de los sitios públicos de cada empresa;
- * Deprisa, 99minutos y Go Envíos llevan un monograma propio v1 (iniciales
- * sobre su color de marca). Para reemplazar un monograma por el logo oficial
+ * Deprisa, 99minutos, Go Envíos y Transprensa llevan un monograma propio
+ * (iniciales sobre color de marca o neutro — placeholder mientras llega el
+ * logo oficial). Para reemplazar un monograma por el logo oficial
  * basta soltar el archivo en `public/carriers/` con el nombre del slug y
  * actualizar `src`/`width`/`height` acá — sin tocar los componentes.
  *
@@ -31,7 +32,7 @@ export type CarrierLogo = {
 const CARRIER_LOGOS: Record<string, CarrierLogo> = {
   lucams: {
     src: "/brand/lucams-mascot.png",
-    alt: "Logo de Lucam's",
+    alt: "Logo de Lucams",
     width: 370,
     height: 355,
   },
@@ -94,6 +95,16 @@ const CARRIER_LOGOS: Record<string, CarrierLogo> = {
   "go-envios": {
     src: "/carriers/go-envios.svg",
     alt: "Logo de Go Envíos",
+    width: 48,
+    height: 48,
+  },
+  // PLACEHOLDER (2026-10-12): NO tenemos el logo oficial de Transprensa —
+  // monograma neutro "T" (mismo formato que deprisa/99minutos/go-envios).
+  // Reemplazar por el logo oficial en public/carriers/ cuando la empresa lo
+  // comparta y ajustar src/width/height acá.
+  transprensa: {
+    src: "/carriers/transprensa.svg",
+    alt: "Logo de Transprensa",
     width: 48,
     height: 48,
   },

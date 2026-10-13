@@ -96,13 +96,13 @@ import {
   SEP_CORNER_RATIO,
   SEP_FOLD_ANGLE,
   SEP_R_FOLD,
-  SEPARATOR_SLOTS,
   bookmarkFaceUnits,
   camber,
   flatBookmarkDims,
   flatBookmarkPlacement,
   flatBookmarkSlots,
   separatorPlacement,
+  separatorSlotsForCount,
   stripDimsForFace,
 } from "./lib/book-geometry";
 import type { Magnet3D } from "./fridge-3d-view";
@@ -111,25 +111,6 @@ const COVER_COLOR = "#8B5E3C"; // tapa de cuero/cartón cálido
 const SPINE_COLOR = "#7C5334";
 /** Rotación cero reutilizable (evita recrear arrays inline en cada render). */
 const IDENTITY_ROTATION: readonly [number, number, number] = [0, 0, 0];
-
-function separatorSlotsForCount(count: number): { x: number; yaw: number }[] {
-  if (count <= 0) return [];
-  if (count === 1) return [{ x: 0, yaw: 0 }];
-  if (count === 2) {
-    return [
-      { x: SEPARATOR_SLOTS[0]!.x * 0.55, yaw: SEPARATOR_SLOTS[0]!.yaw },
-      { x: SEPARATOR_SLOTS[2]!.x * 0.55, yaw: SEPARATOR_SLOTS[2]!.yaw },
-    ];
-  }
-  if (count === 3) return SEPARATOR_SLOTS.slice();
-  // >3: distribuir uniformemente en el mismo tramo, manteniendo yaws sutiles.
-  const minX = SEPARATOR_SLOTS[0]!.x;
-  const maxX = SEPARATOR_SLOTS[2]!.x;
-  return Array.from({ length: count }, (_, i) => ({
-    x: minX + ((maxX - minX) * i) / (count - 1),
-    yaw: (i % 2 === 0 ? 1 : -1) * 0.05,
-  }));
-}
 
 /**
  * 3 separadores doblados sobre el BORDE SUPERIOR de las páginas (z = −PAGE_D/2), repartidos a
@@ -157,11 +138,16 @@ function Separators({
 }) {
   const layout = useMemo(() => {
     const units = bookmarkFaceUnits(items, facesPerUnit, sizeCm);
-    const slots = separatorSlotsForCount(units.length);
+    // 2026-10-12: el ancho máximo de tira va a separatorSlotsForCount — con N > 3 el tramo
+    // se expande si el paso quedaría < stripW + gap (antes tiras vecinas se solapaban en x
+    // colgando todas del mismo filo z).
+    const dims = units.map((u) => stripDimsForFace(u.front, sizeCm));
+    const maxStripW = dims.reduce((a, d) => Math.max(a, d.stripW), 0);
+    const slots = separatorSlotsForCount(units.length, maxStripW);
     return slots
       .map(({ x, yaw }, i) => {
         const unit = units[i]!;
-        const { stripW, stripL } = stripDimsForFace(unit.front, sizeCm);
+        const { stripW, stripL } = dims[i]!;
         const p = separatorPlacement(x, stripL);
         return { unit, stripW, stripL, x, yaw, p, i };
       })
@@ -467,7 +453,10 @@ function Scene({
     const dims = units.map((u) => flatBookmarkDims(u.front, sizeCm));
     const maxW = Math.max(...dims.map((d) => d.w));
     const maxH = Math.max(...dims.map((d) => d.h));
-    const slots = flatBookmarkSlots(units.length, { pieceW: maxW });
+    // 2026-10-12 (bug "4 unidades sobrepuestas/parpadeando"): el LARGO real de la pieza va al
+    // layout — la separación entre filas (eje z) es ≥ largo + gap y, si aun así desborda el
+    // fondo de la hoja, las piezas se trenzan 90° (largo a lo ancho) para caber sin solape.
+    const slots = flatBookmarkSlots(units.length, { pieceW: maxW, pieceL: maxH });
     return { units, dims, slots, maxW, maxH };
   }, [flat, bookmarks, facesPerUnit, sizeCm]);
   // Ola 18/19 — encuadre dinámico:
@@ -482,15 +471,21 @@ function Scene({
   const fit = useMemo(() => {
     if (flat) {
       const polarDeg = 56;
-      const spreadX = flatData
-        ? flatData.slots.reduce((a, s) => Math.max(a, Math.abs(s.x - PAGE_W / 2)), 0) +
-          flatData.maxW / 2
-        : 0;
-      // Media profundidad del conjunto sobre la hoja: slots ± medio largo de pieza (el largo
-      // queda en el plano de la hoja al ir acostada).
-      const spreadZ = flatData
-        ? flatData.slots.reduce((a, s) => Math.max(a, Math.abs(s.z)), 0) + flatData.maxH / 2
-        : 0;
+      // Extensión REAL del conjunto por eje, por slot: la pieza acostada tiene su largo
+      // trenzado por el yaw (2026-10-12: con el layout anti-solape las piezas pueden ir
+      // trenzadas 90° — el largo corre a lo ancho de la página, no a lo profundo).
+      // eje largo mundo = (−sin yaw, 0, −cos yaw); eje ancho = (cos yaw, 0, −sin yaw).
+      let spreadX = 0;
+      let spreadZ = 0;
+      if (flatData) {
+        flatData.slots.forEach((s, i) => {
+          const d = flatData.dims[i]!;
+          const extX = (d.w * Math.abs(Math.cos(s.yaw)) + d.h * Math.abs(Math.sin(s.yaw))) / 2;
+          const extZ = (d.w * Math.abs(Math.sin(s.yaw)) + d.h * Math.abs(Math.cos(s.yaw))) / 2;
+          spreadX = Math.max(spreadX, Math.abs(s.x - PAGE_W / 2) + extX);
+          spreadZ = Math.max(spreadZ, Math.abs(s.z) + extZ);
+        });
+      }
       return {
         halfW: Math.max(2.8, spreadX + 0.3),
         // La profundidad de la hoja proyecta a la vertical de pantalla con cos(polar);

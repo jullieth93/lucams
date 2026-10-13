@@ -22,7 +22,7 @@ const recordHabeasDataConsent = vi.hoisted(() => vi.fn(async () => {}));
 const sendEmail = vi.hoisted(() => vi.fn(async () => ({ sent: true as const, id: "mail-1" })));
 const renderAccountExistsNoticeEmail = vi.hoisted(() =>
   vi.fn(async () => ({
-    subject: "¿Intentaste crear una cuenta en Lucams_shop?",
+    subject: "¿Intentaste crear una cuenta en Lucams Shop?",
     html: "<p>html</p>",
     text: "texto",
   })),
@@ -31,6 +31,9 @@ const customerCreate = vi.hoisted(() => vi.fn(async () => ({ id: "cust-1" })));
 
 vi.mock("next/headers", () => ({
   headers: async () => new Headers({ "user-agent": "vitest", "x-forwarded-for": "1.2.3.4" }),
+  // El registro con sesión directa (email confirmation off) SELLA la marca de
+  // actividad del cliente (lib/customer-activity.ts) vía cookies().set.
+  cookies: async () => ({ getAll: () => [], get: () => undefined, set: () => {} }),
 }));
 vi.mock("next/navigation", () => ({
   redirect: (to: string) => {
@@ -133,5 +136,31 @@ describe("signupAction — anti-enumeración (B-3)", () => {
     );
     expect(customerCreate).toHaveBeenCalledTimes(1);
     expect(sendEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("signupAction — nombre estandarizado (lib/colombia-validators)", () => {
+  it("nombre con dígitos → error de campo, sin tocar Supabase ni la DB", async () => {
+    const fd = signupForm();
+    fd.set("firstName", "Lucia123");
+    const res = await signupAction(null, fd);
+    expect(res.fieldErrors?.firstName?.[0]).toMatch(/solo puede tener letras/);
+    expect(signUp).not.toHaveBeenCalled();
+    expect(customerCreate).not.toHaveBeenCalled();
+  });
+
+  it("el nombre se persiste capitalizado (capitalizeName)", async () => {
+    signUp.mockResolvedValue({
+      data: { user: { id: "u-nuevo", identities: [{ id: "i1" }] }, session: null },
+      error: null,
+    });
+    const fd = signupForm();
+    fd.set("firstName", "maría fernanda");
+    fd.set("lastName", "DE LEÓN");
+
+    await expect(signupAction(null, fd)).rejects.toThrow(/^REDIRECT:\/confirmar-codigo\?/);
+    expect(customerCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({ firstName: "María Fernanda", lastName: "De León" }),
+    });
   });
 });
