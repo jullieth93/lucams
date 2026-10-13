@@ -1015,6 +1015,11 @@ model AbandonedCart {
   recoverTokenHash   String?   @unique
   lastReminderSentAt DateTime?
   recoveredAt        DateTime?
+  // Recordatorios enviados a este carrito (Fase 4, 2026-10-13): soporta el
+  // setting CART_RECOVERY_MAX_REMINDERS > 1 (antes el gate era lastReminderSentAt
+  // NOT NULL = un solo envío). Backfill en la migración: filas ya recordadas = 1.
+  // El CHECK >= 0 vive en la migración (convención F-24, SQL-only).
+  reminderCount      Int       @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
