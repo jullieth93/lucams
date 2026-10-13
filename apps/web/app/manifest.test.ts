@@ -47,7 +47,7 @@ describe("manifest()", () => {
   it("mantiene nombre, colores e íconos en cualquier modo", async () => {
     process.env[KEY] = "catalog";
     const manifest = await loadManifest();
-    expect(manifest.name).toBe("Lucams_shop — Tus recuerdos en imán");
+    expect(manifest.name).toBe("Lucams Shop — Tus recuerdos en imán");
     expect(manifest.theme_color).toBe("#7C6AAD");
     expect(manifest.icons).toHaveLength(3);
   });

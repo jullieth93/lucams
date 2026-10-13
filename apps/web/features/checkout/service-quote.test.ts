@@ -1,5 +1,5 @@
 /*
- * Unit tests de quoteShipping — oferta "Envío Lucam's" con la regla
+ * Unit tests de quoteShipping — oferta "Envío Lucams" con la regla
  * producción + hora de corte (lib/delivery-estimate.ts):
  *
  *  - maxProductionDays se deriva del carrito (máx. Product.productionDays de
@@ -153,7 +153,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("quoteShipping — oferta Lucam's con producción + cutoff", () => {
+describe("quoteShipping — oferta Lucams con producción + cutoff", () => {
   it("agrega la oferta propia con deliveryDays = max(productionDays) del carrito (antes del cutoff)", async () => {
     const result = await quoteShipping({
       destinationCity: "Bogotá",

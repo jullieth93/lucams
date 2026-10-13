@@ -21,7 +21,7 @@ afterEach(() => {
 
 describe("senderDomainOf", () => {
   it("extrae el dominio del formato `Nombre <buzon@dominio>`", () => {
-    expect(senderDomainOf("Lucams_shop <hola@mail.lucamsshop.com>")).toBe("mail.lucamsshop.com");
+    expect(senderDomainOf("Lucams Shop <hola@mail.lucamsshop.com>")).toBe("mail.lucamsshop.com");
   });
 
   it("extrae el dominio de un correo pelado y normaliza a minúsculas", () => {
@@ -30,7 +30,7 @@ describe("senderDomainOf", () => {
 
   it("devuelve null cuando no hay un correo válido", () => {
     expect(senderDomainOf(undefined)).toBeNull();
-    expect(senderDomainOf("Lucams_shop")).toBeNull();
+    expect(senderDomainOf("Lucams Shop")).toBeNull();
     expect(senderDomainOf("@sindominio")).toBeNull();
     expect(senderDomainOf("sinarroba@")).toBeNull();
   });
@@ -38,7 +38,7 @@ describe("senderDomainOf", () => {
 
 describe("buildSenderReport", () => {
   it("ok cuando el dominio de EMAIL_FROM está verificado y hay EMAIL_REPLY_TO", () => {
-    vi.stubEnv("EMAIL_FROM", "Lucams_shop <hola@mail.lucamsshop.com>");
+    vi.stubEnv("EMAIL_FROM", "Lucams Shop <hola@mail.lucamsshop.com>");
     vi.stubEnv("EMAIL_REPLY_TO", "hola@lucamsshop.com");
 
     const r = buildSenderReport(VERIFIED);
@@ -50,7 +50,7 @@ describe("buildSenderReport", () => {
   });
 
   it("avisa cuando EMAIL_FROM sigue en el sandbox de Resend (el fallo que motivó el check)", () => {
-    vi.stubEnv("EMAIL_FROM", "Lucams_shop <onboarding@resend.dev>");
+    vi.stubEnv("EMAIL_FROM", "Lucams Shop <onboarding@resend.dev>");
     vi.stubEnv("EMAIL_REPLY_TO", "hola@lucamsshop.com");
 
     const r = buildSenderReport(VERIFIED);
@@ -60,7 +60,7 @@ describe("buildSenderReport", () => {
   });
 
   it("avisa cuando el dominio existe pero NO está verificado", () => {
-    vi.stubEnv("EMAIL_FROM", "Lucams_shop <hola@otro.lucamsshop.com>");
+    vi.stubEnv("EMAIL_FROM", "Lucams Shop <hola@otro.lucamsshop.com>");
     vi.stubEnv("EMAIL_REPLY_TO", "hola@lucamsshop.com");
 
     const r = buildSenderReport(VERIFIED);
@@ -70,7 +70,7 @@ describe("buildSenderReport", () => {
   });
 
   it("avisa cuando falta EMAIL_REPLY_TO aunque el dominio esté verificado", () => {
-    vi.stubEnv("EMAIL_FROM", "Lucams_shop <hola@mail.lucamsshop.com>");
+    vi.stubEnv("EMAIL_FROM", "Lucams Shop <hola@mail.lucamsshop.com>");
     vi.stubEnv("EMAIL_REPLY_TO", "");
 
     const r = buildSenderReport(VERIFIED);
@@ -88,7 +88,7 @@ describe("buildSenderReport", () => {
   });
 
   it("no revienta si la cuenta no tiene dominios", () => {
-    vi.stubEnv("EMAIL_FROM", "Lucams_shop <hola@mail.lucamsshop.com>");
+    vi.stubEnv("EMAIL_FROM", "Lucams Shop <hola@mail.lucamsshop.com>");
     vi.stubEnv("EMAIL_REPLY_TO", "hola@lucamsshop.com");
 
     const r = buildSenderReport([]);

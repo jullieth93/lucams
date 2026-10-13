@@ -12,6 +12,8 @@
  *      una "ficha" (mismo criterio de la modal de confirmación — afirmar "imán"
  *      de una pieza sin imán es una afirmación falsa sobre el producto físico).
  *  (c) Plural es-CO correcto: imán→imanes, tarjeta→tarjetas, ficha→fichas…
+ *  (d) `feminine` marca los sustantivos femeninos (tarjeta/ficha/foto) para la
+ *      concordancia de las superficies que preguntan cantidad ("¿Cuántas…?").
  *
  * Conteos (el chip cuenta lo que diseña el cliente por unidad):
  *  - calendar → tarjetas mes (12). bookmarks → separadores (unidades físicas).
@@ -29,6 +31,10 @@ export type SlotNoun = {
   one: string;
   /** Plural ("imanes", "tarjetas", "fichas", "separadores", "fotos"). */
   many: string;
+  /** true cuando el sustantivo es femenino ("tarjeta", "ficha", "foto") —
+   *  concordancia de las preguntas/arias del stepper de cantidad
+   *  ("¿Cuántas…?", "Quitar una…"). undefined/false = masculino. */
+  feminine?: boolean;
 };
 
 export function resolveSlotNoun(
@@ -40,7 +46,7 @@ export function resolveSlotNoun(
     case "calendar":
       // Las tarjetas mes: con o sin imán son "tarjetas" (el set se vende como
       // "Set 12 Tarjetas"; el claim 3D de la galería usa el mismo sustantivo).
-      return { one: "tarjeta", many: "tarjetas" };
+      return { one: "tarjeta", many: "tarjetas", feminine: true };
     case "bookmarks": {
       const one = texts.lienzo.sustantivoSeparador;
       // Plural es-CO de la palabra terminada en consonante ("separador"→"separadores").
@@ -48,14 +54,14 @@ export function resolveSlotNoun(
     }
     case "strips":
       // El conteo del chip es la composición (fotos por tira), no unidades.
-      return { one: "foto", many: "fotos" };
+      return { one: "foto", many: "fotos", feminine: true };
     case "tiles":
-      return { one: texts.exportar.piezaFicha, many: texts.exportar.piezaFichas };
+      return { one: texts.exportar.piezaFicha, many: texts.exportar.piezaFichas, feminine: true };
     case "magnets":
     default:
       // SIN IMÁN (magnet === false): nunca "imán" — la pieza es una ficha.
       if (magnet === false) {
-        return { one: texts.exportar.piezaFicha, many: texts.exportar.piezaFichas };
+        return { one: texts.exportar.piezaFicha, many: texts.exportar.piezaFichas, feminine: true };
       }
       return { one: texts.exportar.piezaIman, many: texts.exportar.piezaImanes };
   }

@@ -59,6 +59,7 @@ import {
   Megaphone,
   MailCheck,
   Truck,
+  Award,
 } from "lucide-react";
 import { isCatalogMode } from "@/lib/store-mode";
 
@@ -230,6 +231,16 @@ export const ADMIN_NAV: NavGroup[] = [
     items: [
       { label: "Cupones", href: "/admin/cupones", icon: Ticket },
       {
+        // 2026-10-12 — casa de la config de lealtad: Puntos Lucams (tasas de
+        // acumulación/redención, mínimo, tope, toggle) + Invita y gana (%, días,
+        // toggle). Ruta SUPERADMIN (misma barra que Cupones: mueve plata).
+        label: "Fidelización",
+        href: "/admin/fidelizacion",
+        icon: Award,
+        description:
+          "Puntos Lucams (acumulación al pagar y redención como descuento en el checkout) y «Invita y gana» (% y vigencia de los cupones de referidos). Los cupones ya emitidos conservan sus condiciones.",
+      },
+      {
         label: "Precios al por mayor",
         href: "/admin/mayorista",
         icon: Building2,
@@ -389,12 +400,12 @@ export const ADMIN_NAV: NavGroup[] = [
       {
         // Casa de la configuración de transporte del checkout (owner 2026-09-29):
         // antes vivía dentro de Integraciones › Aveonline, pero el envío propio
-        // Lucam's no es parte de esa integración — es config de negocio.
+        // Lucams no es parte de esa integración — es config de negocio.
         label: "Envíos",
         href: "/admin/envios",
         icon: Truck,
         description:
-          "Transportadoras que el checkout ofrece (activar/desactivar, incluido el envío propio Lucam's) y configuración del envío propio: precio, hora límite «entrega hoy» y zonas de entrega por ciudad.",
+          "Transportadoras que el checkout ofrece (activar/desactivar, incluido el envío propio Lucams) y configuración del envío propio: precio, hora límite «entrega hoy» y zonas de entrega por ciudad.",
       },
       {
         label: "Integraciones",

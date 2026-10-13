@@ -34,12 +34,12 @@ const SOURCES: Record<Variant, { png: string; svg: string; alt: string }> = {
   full: {
     svg: "/brand/lucams-logo.svg",
     png: "/brand/lucams-logo.png",
-    alt: "Logo Lucams_shop",
+    alt: "Logo Lucams Shop",
   },
   mascot: {
     svg: "/brand/lucams-mascot.svg",
     png: "/brand/lucams-mascot.png",
-    alt: "Mascota Lucams_shop",
+    alt: "Mascota Lucams Shop",
   },
 };
 

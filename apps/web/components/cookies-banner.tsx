@@ -131,7 +131,7 @@ export function CookiesBanner({ policyVersion = null }: { policyVersion?: string
                 className="text-brand-purple-dark flex items-center gap-2 text-sm font-semibold"
               >
                 <Cookie className="text-brand-purple h-4 w-4" />
-                Cookies en Lucams_shop
+                Cookies en Lucams Shop
               </h2>
               <p className="text-brand-purple-dark/75 mt-1 text-xs leading-relaxed">
                 Usamos cookies necesarias para que el sitio funcione (autenticación, carrito) y

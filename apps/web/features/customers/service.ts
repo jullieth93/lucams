@@ -135,9 +135,10 @@ export async function listCustomers(opts: CustomerListOpts = {}): Promise<Custom
  * Detail completo para Customer 360 — incluye relaciones críticas:
  * orders, reviews, addresses, designs.
  *
- * (El include de `loyaltyTxns` se retiró en T7 2026-10-01: la página nunca lo
- * renderizaba — los puntos están ocultos por diseño hasta Fase 5— y era un
- * fetch muerto en el hot path del admin.)
+ * (El include de `loyaltyTxns` se retiró en T7 2026-10-01: era un fetch muerto
+ * en el hot path del admin. Con el programa "Puntos Lucams" activo
+ * (2026-10-12) el balance ya lo trae el campo escalar `loyaltyPoints`; el
+ * historial de movimientos lo vería el cliente en /mi-cuenta.)
  *
  * Limita orders/reviews a últimas 50 para no traer payloads enormes
  * de customers VIP. Si se necesita histórico completo se hace en pages

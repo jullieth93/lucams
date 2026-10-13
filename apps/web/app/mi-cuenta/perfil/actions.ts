@@ -2,9 +2,14 @@
  * Server Action — editar perfil del cliente (nombre + teléfono + documento DIAN).
  * Gate con getCurrentCustomer; actualiza SOLO la fila del cliente logueado.
  *
- * El documento (tipo + número) usa la MISMA regla del checkout
- * (features/checkout/schemas.ts) y es editable siempre: el cliente puede
- * corregirlo (a diferencia del autollenado del checkout, que no pisa).
+ * Misma estandarización del checkout (lib/colombia-validators):
+ *  - Nombre/apellido: solo letras, máx 3/2 palabras, se persisten con
+ *    capitalizeName (title case que respeta de/del/la/las…).
+ *  - Teléfono: llega del PhoneInput como "+<indicativo> <nacional>"; Colombia
+ *    (+57) exige móvil de 10 dígitos y se persiste local, otro país "+dial+n".
+ *  - Documento: validación POR TIPO con validateDocument (CC solo números,
+ *    Pasaporte alfanumérico…); NIT de 9 dígitos sin DV recibe el dígito de
+ *    verificación DIAN (calculateNitDV) al persistir.
  */
 
 "use server";
@@ -16,17 +21,40 @@ import { getCurrentCustomer } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { DocumentTypeSchema, DocumentNumberSchema } from "@/features/checkout/schemas";
+import {
+  NAME_REGEX,
+  calculateNitDV,
+  capitalizeName,
+  countWords,
+  getDocumentHelp,
+  normalizePhoneWithDial,
+  validateDocument,
+} from "@/lib/colombia-validators";
+
+// Nombre/apellido opcionales pero, si vienen, con la regla completa: letras,
+// tope de palabras y normalización title-case (fail-closed igual que el form).
+const OptionalNameSchema = (maxWords: number) =>
+  z
+    .string()
+    .trim()
+    .max(60, "Máximo 60 caracteres.")
+    .refine((v) => !v || v.length >= 2, "Mínimo 2 caracteres.")
+    .refine((v) => !v || NAME_REGEX.test(v), "Solo puede tener letras (sin números ni símbolos).")
+    .refine((v) => !v || countWords(v) <= maxWords, `Máximo ${maxWords} palabras.`)
+    .transform((v) => (v ? capitalizeName(v) : v));
 
 const ProfileSchema = z
   .object({
-    firstName: z.string().trim().max(60, "Máximo 60 caracteres.").optional(),
-    lastName: z.string().trim().max(60, "Máximo 60 caracteres.").optional(),
+    firstName: OptionalNameSchema(3),
+    lastName: OptionalNameSchema(2),
     phone: z
       .string()
       .trim()
-      .max(20, "Máximo 20 caracteres.")
-      .regex(/^[+\d\s()-]*$/, "Solo números, espacios y + ( ) -.")
-      .optional(),
+      .max(30, "Máximo 30 caracteres.")
+      .refine((v) => !v || normalizePhoneWithDial(v) !== null, {
+        message: "Teléfono inválido: en Colombia debe ser un móvil de 10 dígitos (300...).",
+      })
+      .transform((v) => (v ? (normalizePhoneWithDial(v) ?? v) : v)),
     documentType: DocumentTypeSchema.optional(),
     documentNumber: DocumentNumberSchema.optional(),
   })
@@ -39,6 +67,16 @@ const ProfileSchema = z
         code: "custom",
         path: ["documentNumber"],
         message: "Completa el tipo y el número de documento, o deja ambos vacíos.",
+      });
+      return;
+    }
+    // Formato por tipo (misma regla del checkout): CC 6-10 dígitos, CE 6-7,
+    // NIT 9 (+DV opcional), PP alfanumérico 6-12, TI 8-11.
+    if (hasType && hasNumber && !validateDocument(data.documentType!, data.documentNumber!)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["documentNumber"],
+        message: `Formato inválido. ${getDocumentHelp(data.documentType!)}`,
       });
     }
   });
@@ -77,6 +115,13 @@ export async function updateProfileAction(
 
   // Cadena vacía → null (no guardamos "" como valor).
   const norm = (v?: string) => (v && v.trim() ? v.trim() : null);
+  // NIT de 9 dígitos sin dígito de verificación: se lo calculamos (DIAN,
+  // módulo 11) y lo persistimos completo — mismo criterio del checkout.
+  let documentNumber = norm(parsed.data.documentNumber);
+  if (parsed.data.documentType === "NIT" && documentNumber && /^\d{9}$/.test(documentNumber)) {
+    documentNumber = `${documentNumber}-${calculateNitDV(documentNumber)}`;
+  }
+
   await prisma.customer.update({
     where: { id: session.customer.id },
     data: {
@@ -85,7 +130,7 @@ export async function updateProfileAction(
       phone: norm(parsed.data.phone),
       // El enum Zod del checkout calza 1:1 con el enum Prisma DocumentType.
       documentType: norm(parsed.data.documentType) as PrismaDocumentType | null,
-      documentNumber: norm(parsed.data.documentNumber),
+      documentNumber,
       updatedBy: session.customer.id,
     },
   });

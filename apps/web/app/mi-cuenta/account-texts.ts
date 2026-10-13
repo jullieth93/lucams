@@ -131,6 +131,11 @@ export type AccountTexts = {
      *  badge de la tarjeta y CTA que reabre el Estudio con ?designId=. */
     draftBadge: string;
     draftResume: string;
+    /** 2026-10-13 — CTA «Editar» de la tarjeta READY: abre el Estudio con
+     *  ?designId= (el recover clona READY→DRAFT; al finalizar queda listo de
+     *  nuevo) y badge «Listo» para la distinción Borrador/Listo. */
+    edit: string;
+    readyBadge: string;
   };
   favorites: {
     title: string;
@@ -309,6 +314,8 @@ export const DEFAULT_ACCOUNT_TEXTS: AccountTexts = {
     archiveAria: "Archivar diseño",
     draftBadge: "Borrador",
     draftResume: "Seguir editando",
+    edit: "Editar",
+    readyBadge: "Listo",
   },
   favorites: {
     title: "Mis favoritos",
@@ -469,6 +476,8 @@ export const ACCOUNT_TEXT_KEYS: Record<string, string> = {
   "designs.archiveAria": "account.designs.archive-aria",
   "designs.draftBadge": "account.designs.draft-badge",
   "designs.draftResume": "account.designs.draft-resume",
+  "designs.edit": "account.designs.edit",
+  "designs.readyBadge": "account.designs.ready-badge",
   "favorites.title": "account.favorites.title",
   "favorites.subtitleEmpty": "account.favorites.subtitle-empty",
   "favorites.countSingle": "account.favorites.count-single",

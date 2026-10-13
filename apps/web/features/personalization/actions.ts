@@ -40,7 +40,9 @@ import {
   getOwnedDesign,
   reopenDesignForEdit,
   saveCanvas,
+  saveDesignPreviewPages,
 } from "./service";
+import { PREVIEW_PAGES_MAX } from "./preview-artifacts";
 import { compressPreviewImage, PREVIEW_ALLOWED_MIME, type PreviewMime } from "./sharp-safe";
 
 // ──────────── Helpers ────────────
@@ -127,6 +129,10 @@ export async function saveCanvasAction(input: {
   designId: string;
   canvasData: unknown;
   templateId?: string;
+  variantId?: string;
+  /** 2026-10-13 — miniatura del borrador para "Mis diseños" (opcional, throttled
+   *  cliente-side; el service la sube best-effort a design-previews). */
+  draftPreviewDataUrl?: string;
 }) {
   const parsed = SaveCanvasSchema.safeParse(input);
   if (!parsed.success) {
@@ -173,6 +179,13 @@ export async function saveCanvasAction(input: {
       // N-08 — plantilla elegida en el sidebar (si el cliente la envía): el service
       // la valida contra el producto antes de persistirla en Design.templateId.
       templateId: parsed.data.templateId,
+      // 2026-10-12 — variante efectiva del pack (si el cliente la envía): el
+      // service la valida contra el producto y la persiste en metadata.variantId.
+      variantId: parsed.data.variantId,
+      // 2026-10-13 — miniatura del borrador para "Mis diseños" (opcional,
+      // throttled cliente-side): el service la sube best-effort a design-previews
+      // y la persiste en Design.draftPreviewUrl.
+      draftPreviewDataUrl: parsed.data.draftPreviewDataUrl,
       customerId,
       sessionId,
     });
@@ -473,6 +486,65 @@ export async function finalizeDesignAction(formData: FormData): Promise<
           ? msg
           : "No pudimos preparar tu diseño para impresión. Intenta de nuevo en unos minutos.",
     };
+  }
+}
+
+// ──────────── Páginas por unidad del preview (2026-10-13) ────────────
+//
+// Tras el finalize, el Estudio sube las páginas por unidad (set/tira/separador/
+// pack) que compone para su modal «Vista previa»: el servidor las re-codifica a
+// WebP, genera la versión WATERMARK de cada una y la miniatura representativa
+// (thumb.webp = primera página). Alimentan el "Ver" paginado del carrito y la
+// miniatura de la línea. Request APARTE del finalize: el body de una Server
+// Action tiene techo ~4.5 MB en Vercel y el preview ya lo roza.
+// BEST-EFFORT: un fallo acá nunca bloquea la compra — las superficies caen al
+// preview global (watermarked si existe).
+
+/** Tope por página (la componición por unidad es mucho menor que el montaje global). */
+const MAX_PREVIEW_PAGE_BYTES = 2 * 1024 * 1024;
+
+export async function uploadDesignPreviewPagesAction(
+  formData: FormData,
+): Promise<{ ok: true; pagesCount: number } | { ok: false; message: string }> {
+  const designId = String(formData.get("designId") ?? "").trim();
+  if (!designId) return { ok: false, message: "designId requerido" };
+
+  // Mismo blindaje que finalize (escribe a Storage); generoso con reintentos.
+  const rl = await rateLimit(
+    ipKey("design_preview_pages", getClientIp(await headers())),
+    process.env.VERCEL_ENV === "production" ? 20 : 100,
+    600,
+  );
+  if (!rl.allowed) return { ok: false, message: "Demasiados intentos. Espera un momento." };
+
+  const pages: Buffer[] = [];
+  for (let i = 0; i < PREVIEW_PAGES_MAX; i++) {
+    const blob = formData.get(`page_${i}`);
+    if (!(blob instanceof Blob)) break; // las páginas vienen contiguas desde 0
+    if (
+      blob.size === 0 ||
+      blob.size > MAX_PREVIEW_PAGE_BYTES ||
+      !(PREVIEW_ALLOWED_MIME as readonly string[]).includes(blob.type)
+    ) {
+      return { ok: false, message: `página ${i + 1} inválida` };
+    }
+    pages.push(Buffer.from(await blob.arrayBuffer()));
+  }
+  if (pages.length < 1) return { ok: false, message: "sin páginas" };
+
+  const { customerId, sessionId } = await resolveOwner();
+  try {
+    return await saveDesignPreviewPages({ designId, owner: { customerId, sessionId }, pages });
+  } catch (err) {
+    logger.warn(
+      {
+        event: "design.preview_pages.fail",
+        designId,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "saveDesignPreviewPages failed",
+    );
+    return { ok: false, message: "No pudimos guardar las páginas del preview" };
   }
 }
 

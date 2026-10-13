@@ -75,7 +75,7 @@ vi.mock("@/features/notifications/service", () => ({ notify: vi.fn(async () => {
 import { notifyNewOrderToAdmin, sendOrderConfirmation, sendOrderDelivered } from "./emails";
 import { verifyReviewToken } from "@/features/reviews/review-token";
 
-const BREAKDOWN_TEXT = "12 fotos · 6×8 cm · Sin imán (adhesivo)";
+const BREAKDOWN_TEXT = "12 fotos · 6×8 cm · Sin imán";
 
 function orderFixture(over: Record<string, unknown> = {}) {
   return {

@@ -1,5 +1,5 @@
 /*
- * Store mode — salida en 2 etapas (docs/RUNBOOK_GO_LIVE.md, 2026-07-21).
+ * Store mode — salida en 2 etapas (ADR-077, docs/DECISIONS.md).
  *
  *   - "catalog" (Etapa 1): catálogo + cotización por WhatsApp. SIN pagos en
  *     línea (Wompi), SIN envíos integrados (Aveonline), SIN IA (Gemini). El

@@ -54,7 +54,7 @@ export type OrderAdminNotificationData = {
     lineTotal: number; // centavos COP
     /**
      * Desglose de la variante (Paquete H, 2026-10-02 — describeVariantAttributes):
-     * ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"]. Línea secundaria bajo el
+     * ["12 fotos", "6×8 cm", "Sin imán"]. Línea secundaria bajo el
      * nombre; []/ausente ⇒ solo el nombre. A Lucy le dice qué producir sin abrir
      * el admin.
      */

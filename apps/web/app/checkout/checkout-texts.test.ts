@@ -1,6 +1,6 @@
 /*
  * Tests de resolveLucamsPromise (checkout-texts.ts): la promesa "Envío
- * Lucam's" se resuelve con los tokens {{cutoff}} / {{days}} / {{s}} y se lee
+ * Lucams" se resuelve con los tokens {{cutoff}} / {{days}} / {{s}} y se lee
  * IDÉNTICA en el selector de envío (/checkout/envio) y en el resumen del paso
  * de pago (/checkout/pago). El copy debe ser fiel a la regla real de
  * lib/delivery-estimate.ts (producción a mano + hora de corte, entrega el

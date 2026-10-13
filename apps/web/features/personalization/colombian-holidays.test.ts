@@ -26,9 +26,9 @@ describe("computeEaster — domingo de Resurrección (fechas conocidas)", () => 
 });
 
 describe("colombianHolidays", () => {
-  it("son 18 festivos oficiales", () => {
-    expect(colombianHolidays(2026)).toHaveLength(18);
-    expect(colombianHolidays(2027)).toHaveLength(18);
+  it("son 19 festivos oficiales (18 + Virgen de Chiquinquirá, Ley 2578 de 2026)", () => {
+    expect(colombianHolidays(2026)).toHaveLength(19);
+    expect(colombianHolidays(2027)).toHaveLength(19);
   });
 
   it("los de fecha FIJA no se trasladan", () => {
@@ -47,6 +47,17 @@ describe("colombianHolidays", () => {
     const reyes = colombianHolidays(2026).find((x) => x.name === "Reyes Magos")!;
     expect(reyes).toMatchObject({ month: 0, day: 12 });
     expect(utcDow(2026, reyes.month, reyes.day)).toBe(1); // lunes
+  });
+
+  it("Virgen de Chiquinquirá (9 jul, Ley 2578 de 2026) se traslada por Emiliani", () => {
+    // 2026: 9 jul = jueves → descanso el lunes 13 de julio (fecha real celebrada).
+    const h2026 = colombianHolidays(2026).find((x) => x.name === "Virgen de Chiquinquirá")!;
+    expect(h2026).toMatchObject({ month: 6, day: 13 });
+    expect(utcDow(2026, h2026.month, h2026.day)).toBe(1);
+    // 2027: 9 jul = viernes → lunes 12 de julio.
+    const h2027 = colombianHolidays(2027).find((x) => x.name === "Virgen de Chiquinquirá")!;
+    expect(h2027).toMatchObject({ month: 6, day: 12 });
+    expect(utcDow(2027, h2027.month, h2027.day)).toBe(1);
   });
 
   it("Jueves y Viernes Santo 2026 NO se trasladan (Pascua 5 abr → 2 y 3 abr)", () => {
@@ -68,6 +79,7 @@ describe("colombianHolidays", () => {
       "Reyes Magos",
       "Día de San José",
       "San Pedro y San Pablo",
+      "Virgen de Chiquinquirá",
       "Asunción de la Virgen",
       "Día de la Raza",
       "Día de Todos los Santos",
@@ -88,5 +100,13 @@ describe("colombianHolidays", () => {
   it("holidaysForMonth filtra por mes (enero 2026 = Año Nuevo + Reyes)", () => {
     const ene = holidaysForMonth(2026, 0);
     expect(ene.map((h) => h.name).sort()).toEqual(["Año Nuevo", "Reyes Magos"]);
+  });
+
+  it("holidaysForMonth julio 2026 = Chiquinquirá (13) + Independencia (20)", () => {
+    const jul = holidaysForMonth(2026, 6);
+    expect(jul.map((h) => `${h.day} ${h.name}`)).toEqual([
+      "13 Virgen de Chiquinquirá",
+      "20 Día de la Independencia",
+    ]);
   });
 });

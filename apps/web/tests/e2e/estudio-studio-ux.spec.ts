@@ -260,6 +260,22 @@ async function dismissOverlays(page: Page) {
       .catch(() => {});
 }
 
+/**
+ * 2026-10-13 — el tour de onboarding es POR SUPERFICIE (Fase 2 · item 2.8,
+ * studio-tour.ts): al cambiar de plantilla (Clásica → Instagram) la superficie
+ * cambia y el tour de la NUEVA superficie se abre ~800 ms DESPUÉS del switch
+ * (delay de montaje de StudioOnboarding; en el contexto fresco de Playwright
+ * ninguna superficie está marcada como vista). Si no se espera/cierra acá, el
+ * diálogo intercepta los clicks siguientes (wand de llenado, zoom, consent) —
+ * la falla histórica de estos tests era exactamente esa. Espera el mount
+ * tardío y lo salta; si no aparece (tour ya visto), sigue de inmediato.
+ */
+async function dismissLateSurfaceTour(page: Page) {
+  const onboarding = page.locator('div[role="dialog"][aria-labelledby="onboarding-title"]');
+  await onboarding.waitFor({ state: "attached", timeout: 3_000 }).catch(() => {});
+  await dismissOverlays(page);
+}
+
 /** Sidebar desktop o Sheet mobile: misma área de herramientas. */
 async function resolvePanel(page: Page): Promise<Locator> {
   let panel = page.locator('aside[aria-label="Herramientas del Estudio"]');
@@ -351,6 +367,8 @@ test.describe("estudio Ola 22 — identificador fuera del template + avatar tapp
     await expect(igRadio).toBeVisible({ timeout: 15_000 });
     await igRadio.click();
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 30_000 });
+    // El tour por superficie (item 2.8) se re-abre ~800 ms tras el switch a IG.
+    await dismissLateSurfaceTour(page);
 
     await uploadAndFillSlot1(page, panel, ctx.igProductId);
     await dismissOverlays(page);
@@ -409,6 +427,9 @@ test.describe("estudio Ola 22 — zoom de lienzo", () => {
     await expect(igRadio).toBeVisible({ timeout: 15_000 });
     await igRadio.click();
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 30_000 });
+    // El tour por superficie (item 2.8) se re-abre ~800 ms tras el switch a IG
+    // y TAPA los botones del zoom si no se salta acá.
+    await dismissLateSurfaceTour(page);
 
     // Lucy 2026-09-09 — el control vive INLINE en la fila de pills superior
     // (junto a «Ideas» / «Ver en tu espacio»), nunca flotando sobre el lienzo:
@@ -540,14 +561,15 @@ test.describe("estudio — «¿Con imán?» del pack (PDP elige, Estudio muestra
     await page.waitForTimeout(2_500);
     await dismissOverlays(page);
 
-    // Badge read-only junto al stepper "¿Cuántas fotos lleva tu imán?": la
-    // elección la fijó la PDP; en el Estudio NO es un control (no hay botón).
+    // Badge read-only junto al stepper de unidades ("¿Cuántas fichas quieres?"
+    // en la variante sin imán): la elección la fijó la PDP; en el Estudio NO es
+    // un control (no hay botón).
     await expect(page.getByText(/Sin imán/).first()).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/se elige en la página del producto/)).toBeVisible();
 
-    // Forzar un cambio (N de fotos) para que el auto-save escriba el canvasData:
+    // Forzar un cambio (N de unidades) para que el auto-save escriba el canvasData:
     // el magnet elegido en la PDP viaja con él → oráculo DB.
-    await page.getByLabel("Agregar una foto").click();
+    await page.getByLabel("Agregar una ficha").click();
     await expect
       .poll(
         async () => {
@@ -710,6 +732,9 @@ test.describe("estudio Ola 25+28 — textos IG visibles con color por capa + mar
     const igRadio = panel.getByRole("radio", { name: /Instagram/ });
     await igRadio.click();
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 30_000 });
+    // El tour por superficie (item 2.8) se re-abre ~800 ms tras el switch a IG
+    // y TAPA el consent/wand del llenado si no se salta acá.
+    await dismissLateSurfaceTour(page);
     await uploadAndFillSlot1(page, panel, ctx.igProductId);
 
     // A) Los textos por defecto SE VEN (Ola 28, owner 2026-09-11: "no se ve texto
@@ -754,9 +779,18 @@ test.describe("estudio Ola 25+28 — textos IG visibles con color por capa + mar
     await slot.scrollIntoViewIfNeeded();
     const box = (await slot.boundingBox())!;
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    for (let i = 0; i < 18; i++) {
-      await page.mouse.wheel(0, 100);
-      await page.waitForTimeout(60);
+    // 2026-10-13 — el zoom de foto por rueda exige ctrl/cmd (Paquete B 2026-10-02,
+    // studio-slot handleWheel: la rueda SOLA scrollea la página — antes de ese
+    // cambio este bloque zooomeaba sin modificador; sin Control la página se
+    // desplaza y la foto jamás baja al 50%). Se sostiene Control mientras rueda.
+    await page.keyboard.down("Control");
+    try {
+      for (let i = 0; i < 18; i++) {
+        await page.mouse.wheel(0, 100);
+        await page.waitForTimeout(60);
+      }
+    } finally {
+      await page.keyboard.up("Control");
     }
     await page.waitForTimeout(600);
     // Huecos laterales de la ventana (la foto al 50% cubre x≈127..323 del stage).

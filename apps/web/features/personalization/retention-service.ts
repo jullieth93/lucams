@@ -44,6 +44,11 @@
  * renders 300-DPI (la fuga que infló el storage de STG sobre la cuota Free).
  * Política documentada en docs/COMPLIANCE.md. Se agenda por pg_cron (mandato #11) — ver
  * docs/OPERATIONS.md.
+ *
+ * Además este módulo expone el BARRIDO DE HUÉRFANOS de Storage (sweepOrphanStorageObjects,
+ * 2026-10-12): las purgas borran bytes al borrar el diseño, pero objetos cuyo Design YA no
+ * existe (deriva histórica — 316 MB medidos en PRD) no los ve nadie; el barrido los
+ * reclasifica contra la tabla Design y los borra, acotado por batch y con doble verificación.
  */
 
 import "server-only";
@@ -52,6 +57,7 @@ import { prisma } from "@/lib/db";
 import { supabaseService } from "@/lib/supabase/service";
 import { logger } from "@/lib/logger";
 import { listStagedSlotPaths } from "./staged-slots";
+import { designPreviewDerivedPaths } from "./preview-artifacts";
 
 const CUSTOMER_UPLOADS_BUCKET = "customer-uploads";
 export const PREVIEWS_BUCKET = "design-previews";
@@ -170,6 +176,12 @@ const NO_LIVE_CART_ITEM = {
 const CANDIDATE_SELECT = {
   id: true,
   previewUrl: true,
+  // 2026-10-13 — miniatura del DRAFT (Mis diseños): mismo bucket design-previews,
+  // path "<designId>/draft-preview.<ext>". Se borra con el diseño.
+  draftPreviewUrl: true,
+  // 2026-10-13 — páginas por unidad del preview: su conteo permite borrar
+  // pages/NN.webp + wm/pages/NN.webp por convención de paths.
+  previewPagesCount: true,
   productionUrls: true,
   assets: { select: { storageUrl: true } },
 } satisfies Prisma.DesignSelect;
@@ -177,6 +189,8 @@ const CANDIDATE_SELECT = {
 type PurgeCandidate = {
   id: string;
   previewUrl: string | null;
+  draftPreviewUrl: string | null;
+  previewPagesCount: number | null;
   productionUrls: string[];
   assets: Array<{ storageUrl: string }>;
 };
@@ -190,9 +204,18 @@ async function purgeDesignBatch(designs: PurgeCandidate[]): Promise<PurgeResult>
 
   const designIds = designs.map((d) => d.id);
   const uploadPaths = designs.flatMap((d) => d.assets.map((a) => a.storageUrl)).filter(Boolean);
-  const previewPaths = designs
-    .map((d) => (d.previewUrl ? pathFromPublicUrl(d.previewUrl, PREVIEWS_BUCKET) : null))
-    .filter((p): p is string => !!p);
+  const previewPaths = [
+    ...designs
+      .flatMap((d) => [d.previewUrl, d.draftPreviewUrl])
+      .map((url) => (url ? pathFromPublicUrl(url, PREVIEWS_BUCKET) : null))
+      .filter((p): p is string => !!p),
+    // 2026-10-13 — artefactos watermark por convención de paths (preview-wm.webp,
+    // thumb.webp, pages/NN.webp, wm/pages/NN.webp): no viven en ninguna columna,
+    // se derivan del designId (+ previewPagesCount). Los que nunca se generaron
+    // son no-op en el remove; si alguno queda por fuera (p.ej. count stale), lo
+    // reclama el barrido de huérfanos una vez borrada la fila Design.
+    ...designs.flatMap((d) => designPreviewDerivedPaths(d.id, d.previewPagesCount)),
+  ];
   const productionPaths = designs.flatMap((d) => d.productionUrls).filter(Boolean);
   // ADR-081 — el área de paso `{designId}/_client/` no se persiste en ninguna columna, así que sin
   // esto los snapshots de un diseño ABANDONADO tras subirlos se quedaban en el bucket para siempre.
@@ -209,6 +232,9 @@ async function purgeDesignBatch(designs: PurgeCandidate[]): Promise<PurgeResult>
 
   // DesignAsset.design es onDelete:SetNull → hay que borrar las filas explícitamente para no
   // dejar assets huérfanos. Atómico con el borrado del Design.
+  // RenderJob.design es onDelete:Cascade (ADR-131): si el diseño se purga con un render
+  // pendiente/en curso, la fila del job muere con él — el worker nunca procesa un diseño
+  // purgado (buildRenderContext no lo encuentra → error, y la fila ya no existe para reintentar).
   await prisma.$transaction([
     // El preview snapshoteado en la cotización apunta a los bytes que acabamos de borrar y muestra
     // la misma cara: dejar la URL colgada rompería /cotizacion/<token> y conservaría el puntero.
@@ -436,4 +462,148 @@ export async function purgeIdleReadyDesigns(
     olderThanDays: days,
   });
   return result;
+}
+
+// ─────────────────── Barrido de huérfanos de Storage (2026-10-12) ───────────────────
+
+/**
+ * Las pasadas de arriba borran bytes CUANDO purgan el diseño, pero nada limpia objetos cuyo
+ * Design ya no existe (borrados anteriores a ADR-130, borrados a medias, deriva histórica).
+ * Medida en PRD el 2026-10-12: ~316 MB huérfanos (217 MB production-assets, 99 MB
+ * customer-uploads) que inflaron la cuota sin que ninguna métrica los viera. Este barrido
+ * corre en el mismo cron y es la red de fondo: reclasifica contra la tabla Design y borra
+ * (bytes + fila de storage.objects, vía Storage API).
+ *
+ * Reglas de orfandad — MISMAS del one-shot `packages/db/scripts/one-shot/
+ * purge-orphan-storage-20261012.mjs` (convención de paths de apps/web/lib/storage.ts):
+ *   - production-assets:  <designId>/…           → huérfano si designId ∉ Design
+ *   - design-previews:    <designId>/…           → huérfano si designId ∉ Design
+ *   - customer-uploads:   <ownerId>/<designId>/… → huérfano si designId ∉ Design
+ *                         <ownerId>/pending/…    → huérfano solo si tiene > 7 días
+ *                                                  (upload temporal aún asociable)
+ */
+
+/** Gracia para uploads `pending/` de customer-uploads antes de tratarlos como huérfanos. */
+export const ORPHAN_PENDING_AFTER_DAYS = 7;
+
+/** Techo de objetos procesados por corrida — el cron corre a diario y barre el resto después. */
+export const ORPHAN_SWEEP_BATCH_SIZE = 500;
+
+/** La Storage API acota el remove por lote (mismo DELETE_BATCH del one-shot). */
+const STORAGE_REMOVE_BATCH = 100;
+
+export type OrphanReason = "design-inexistente" | "pending-vencido";
+
+/**
+ * Clasifica un objeto de Storage como huérfano (o no). Función pura — la misma regla del
+ * one-shot, exportada para tests y para la doble verificación del barrido.
+ * `designIds` es el set de Designs EXISTENTES.
+ */
+export function classifyStorageOrphan(
+  bucket: string,
+  name: string,
+  createdAt: Date,
+  designIds: ReadonlySet<string>,
+  now: Date,
+): OrphanReason | null {
+  const parts = name.split("/");
+  if (bucket === PRODUCTION_BUCKET || bucket === PREVIEWS_BUCKET) {
+    return !designIds.has(parts[0]) ? "design-inexistente" : null;
+  }
+  if (bucket === CUSTOMER_UPLOADS_BUCKET) {
+    const designPart = parts[1] ?? "";
+    if (designPart === "pending") {
+      return now.getTime() - createdAt.getTime() > ORPHAN_PENDING_AFTER_DAYS * DAY_MS
+        ? "pending-vencido"
+        : null;
+    }
+    return !designIds.has(designPart) ? "design-inexistente" : null;
+  }
+  return null;
+}
+
+export type OrphanSweepResult = {
+  /** Candidatos devueltos por el pre-filtro SQL (acotado por batchSize). */
+  scanned: number;
+  orphansDeleted: number;
+  orphansFailed: number;
+};
+
+/**
+ * Barrido acotado de objetos huérfanos en production-assets / design-previews /
+ * customer-uploads. Doble verificación fail-safe: el SQL hace el anti-join contra Design
+ * (candidatos acotados a batchSize, más viejos primero) y luego JS RELEE esos Design y solo
+ * borra lo que classifyStorageOrphan confirma — un bug en el SQL nunca borra bytes de un
+ * diseño vivo. Borrado por bucket en lotes de 100, best-effort con conteo de fallos (el
+ * próximo ciclo reintenta: el objeto sigue en storage.objects).
+ */
+export async function sweepOrphanStorageObjects(opts?: {
+  batchSize?: number;
+  now?: Date;
+}): Promise<OrphanSweepResult> {
+  const now = opts?.now ?? new Date();
+  const batchSize = opts?.batchSize ?? ORPHAN_SWEEP_BATCH_SIZE;
+  const pendingCutoff = new Date(now.getTime() - ORPHAN_PENDING_AFTER_DAYS * DAY_MS);
+
+  const candidates = await prisma.$queryRaw<
+    Array<{ bucket: string; name: string; createdAt: Date }>
+  >`
+    SELECT o.bucket_id AS "bucket", o.name, o.created_at AS "createdAt"
+    FROM storage.objects o
+    WHERE (
+        o.bucket_id IN ('production-assets', 'design-previews')
+        AND NOT EXISTS (SELECT 1 FROM "Design" d WHERE d.id = split_part(o.name, '/', 1))
+      ) OR (
+        o.bucket_id = 'customer-uploads'
+        AND (
+          (split_part(o.name, '/', 2) = 'pending' AND o.created_at < ${pendingCutoff})
+          OR (
+            split_part(o.name, '/', 2) <> 'pending'
+            AND NOT EXISTS (SELECT 1 FROM "Design" d WHERE d.id = split_part(o.name, '/', 2))
+          )
+        )
+      )
+    ORDER BY o.created_at ASC
+    LIMIT ${batchSize}
+  `;
+
+  // Confirmación en JS: solo se borra lo que la clasificación pura confirma como huérfano.
+  const referencedIds = [
+    ...new Set(
+      candidates
+        .map((c) => {
+          const parts = c.name.split("/");
+          return c.bucket === CUSTOMER_UPLOADS_BUCKET ? (parts[1] ?? "") : parts[0];
+        })
+        .filter((id) => id !== "" && id !== "pending"),
+    ),
+  ];
+  const existing = referencedIds.length
+    ? await prisma.design.findMany({ where: { id: { in: referencedIds } }, select: { id: true } })
+    : [];
+  const designIds = new Set(existing.map((d) => d.id));
+
+  const orphans = candidates.filter((c) =>
+    classifyStorageOrphan(c.bucket, c.name, c.createdAt, designIds, now),
+  );
+
+  let orphansDeleted = 0;
+  let orphansFailed = 0;
+  for (const bucket of [PRODUCTION_BUCKET, PREVIEWS_BUCKET, CUSTOMER_UPLOADS_BUCKET]) {
+    const paths = orphans.filter((o) => o.bucket === bucket).map((o) => o.name);
+    for (let i = 0; i < paths.length; i += STORAGE_REMOVE_BATCH) {
+      const chunk = paths.slice(i, i + STORAGE_REMOVE_BATCH);
+      const ok = await removeStorage(bucket, chunk);
+      if (ok) orphansDeleted += chunk.length;
+      else orphansFailed += chunk.length;
+    }
+  }
+
+  logger.info({
+    event: "retention.orphan_sweep",
+    scanned: candidates.length,
+    orphansDeleted,
+    orphansFailed,
+  });
+  return { scanned: candidates.length, orphansDeleted, orphansFailed };
 }

@@ -151,6 +151,20 @@ export default async function CotizacionPage({ params }: { params: Params }) {
                 );
               })}
             </ul>
+            {/* 2026-10-13 — los diseños cotizados desde entonces exhiben la
+                versión WATERMARK (el snapshot QuoteItem.previewUrl lo toma del
+                carrito, ya watermarked). Cotizaciones históricas con URL limpia
+                no muestran el aviso (no llevaría marca). */}
+            {quote.items.some(
+              (i) => i.previewUrl && /\/(preview-wm|thumb)\.webp$|\/wm\/pages\//.test(i.previewUrl),
+            ) && (
+              <p className="text-brand-muted mt-2 text-[11px]">
+                <CmsText
+                  blockKey="quote.confirmation.watermark-note"
+                  fallback="Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la lleva."
+                />
+              </p>
+            )}
             <div className="border-brand-purple/10 mt-2 flex justify-between border-t pt-3">
               <span className="text-brand-purple-dark font-display text-base font-bold">
                 <CmsText blockKey="quote.confirmation.total-label" fallback="Total" />

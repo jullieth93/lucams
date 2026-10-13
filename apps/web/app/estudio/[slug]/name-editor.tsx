@@ -73,7 +73,7 @@ type NameEditorProps = {
   variantMagnet?: boolean;
   /**
    * Paquete F (2026-10-02) — desglose de la variante elegida en la ficha
-   * (describeVariantAttributes: "Sin imán (adhesivo) · Español"…). En esta
+   * (describeVariantAttributes: "Sin imán · Español"…). En esta
    * superficie la variante es FIJA (se eligió en la PDP y no se cambia acá),
    * así que la etiqueta de la página server es la verdad vigente.
    */
@@ -595,6 +595,9 @@ export function NameEditor({
         productName={product.name}
         productSlug={product.slug}
         productImageUrl={productImageUrl}
+        // 2026-10-12 — desglose de la variante bajo el nombre (el MISMO label
+        // de la Vista Previa; en esta superficie la variante es fija de la PDP).
+        variantLabel={variantLabel}
         trailing={
           letters.length > 0 ? (
             <span className="text-brand-purple-dark text-sm font-bold whitespace-nowrap tabular-nums">

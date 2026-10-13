@@ -5,7 +5,7 @@ import { getCurrentAdmin } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "Iniciar sesión",
-  description: "Acceso al panel administrativo de Lucams_shop.",
+  description: "Acceso al panel administrativo de Lucams Shop.",
 };
 
 export default async function AdminLoginPage({

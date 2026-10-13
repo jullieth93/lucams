@@ -211,9 +211,11 @@ describe("StudioTextEditorForm — QA 1.2: «Aplicar» tras «aplicar a todas» 
 describe("StudioTextEditorForm — contraste texto/tarjeta en el preview (Ola 28, 2026-09-11 · 1.2.1.A)", () => {
   // Reporte del owner: en «Editar» con texto BLANCO sobre tarjeta BLANCA el
   // preview (fondo crema fijo) no mostraba NADA. Ahora el preview pinta el
-  // fondo de la tarjeta y, con contraste casi nulo, cambia a la cuadrícula de
-  // "transparencia" + aviso para que lo escrito siempre se vea al editar.
-  it("texto blanco sobre tarjeta blanca → preview en cuadrícula + aviso visible", () => {
+  // fondo de la tarjeta y, con contraste casi nulo, el texto lleva un delineado
+  // sutil de contraste + aviso para que lo escrito siempre se vea al editar
+  // (2026-10-12 — antes cambiaba el fondo a la cuadrícula de "transparencia";
+  // eliminada con la bandeja checkerboard del lienzo).
+  it("texto blanco sobre tarjeta blanca → fondo tarjeta + delineado de contraste + aviso visible", () => {
     renderStudio(
       <StudioTextEditorForm
         layer={LAYER}
@@ -226,7 +228,10 @@ describe("StudioTextEditorForm — contraste texto/tarjeta en el preview (Ola 28
     fireEvent.click(screen.getByRole("button", { name: "Blanco" }));
 
     const preview = screen.getByText("Hola!");
-    expect(preview.style.backgroundImage).toContain("repeating-conic-gradient");
+    // Sin checkerboard: el fondo es la tarjeta misma y el texto se lee por el halo.
+    expect(preview.style.backgroundImage).toBe("none");
+    expect(preview.style.backgroundColor).toBe("rgb(255, 255, 255)");
+    expect(preview.style.textShadow).toContain("rgba(38, 28, 46");
     expect(screen.getByRole("note")).toHaveTextContent(/casi no se va a ver sobre la tarjeta/);
   });
 
@@ -258,9 +263,11 @@ describe("StudioTextEditorForm — contraste texto/tarjeta en el preview (Ola 28
         cardColor="#221E25"
       />,
     );
-    // fill default #262626 sobre #221E25: ratio ≈ 1.0 → bajo contraste.
+    // fill default #262626 sobre #221E25: ratio ≈ 1.0 → bajo contraste → halo claro.
     const preview = screen.getByText("Hola!");
-    expect(preview.style.backgroundImage).toContain("repeating-conic-gradient");
+    expect(preview.style.backgroundImage).toBe("none");
+    expect(preview.style.backgroundColor).toBe("rgb(34, 30, 37)");
+    expect(preview.style.textShadow).toContain("rgba(255, 255, 255");
     expect(screen.getByRole("note")).toBeInTheDocument();
   });
 

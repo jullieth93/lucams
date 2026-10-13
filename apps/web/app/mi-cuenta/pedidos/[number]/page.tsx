@@ -18,6 +18,7 @@ import { notFound, redirect } from "next/navigation";
 import { ChevronLeft, MapPin, Package, Star, Truck, Wallet } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { CmsText } from "@/components/cms/cms-text";
+import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
 import { DesignPreviewDialog } from "@/app/carrito/design-preview-dialog";
 import { getCurrentCustomer } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
@@ -94,7 +95,11 @@ export default async function CustomerPedidoDetallePage({
               product: { select: { slug: true, name: true } },
             },
           },
-          design: { select: { previewUrl: true } },
+          design: {
+            // 2026-10-13 — sellos de artefactos watermark: el detalle del pedido
+            // exhibe la versión con marca de agua (y sus páginas por unidad).
+            select: { previewUrl: true, previewWatermarkedAt: true, previewPagesCount: true },
+          },
         },
       },
     },
@@ -113,7 +118,7 @@ export default async function CustomerPedidoDetallePage({
   const isCancelled = order.status === "CANCELLED" || order.status === "REFUNDED";
   // #2 — contraentrega: no mostrar "Pagado" (aún no paga); "Confirmado" + aviso del monto en efectivo.
   const isCod = order.paymentMethod === "COD";
-  // Entrega propia "Envío Lucam's": SHIPPED se lee como "en camino con nuestro
+  // Entrega propia "Envío Lucams": SHIPPED se lee como "en camino con nuestro
   // equipo" (no hay courier externo) — coherente con la vista pública /pedido.
   const isInternalDelivery = order.shippingCarrier === LUCAMS_CARRIER;
   const statusText =
@@ -225,7 +230,12 @@ export default async function CustomerPedidoDetallePage({
       >
         <ul className="divide-brand-purple/10 divide-y">
           {order.items.map((it) => {
-            const previewUrl = it.designAssetUrl ?? it.design?.previewUrl ?? null; // ADR-070 — snapshot primero
+            // 2026-10-13 — exhibición CON marca de agua cuando el artefacto
+            // existe; el snapshot limpio (designAssetUrl) queda de fallback.
+            const disp = it.design ? designPreviewDisplay(it.design) : null;
+            const previewUrl = disp?.watermarked
+              ? disp.displayUrl
+              : (it.designAssetUrl ?? it.design?.previewUrl ?? null); // ADR-070 — snapshot primero
             // Paquete F (2026-10-02) — desglose estructurado de la variante.
             const variantBreakdown = describeVariantAttributes(
               parseVariantAttributes(it.variant.attributes),
@@ -266,6 +276,17 @@ export default async function CustomerPedidoDetallePage({
                     <div className="mt-1.5">
                       <DesignPreviewDialog
                         previewUrl={previewUrl}
+                        // 2026-10-13 — páginas por unidad (watermark) cuando el
+                        // diseño las tiene: el "Ver" pagina por unidad.
+                        pages={disp?.pageUrls ?? null}
+                        watermarkNote={
+                          disp?.watermarked ? (
+                            <CmsText
+                              blockKey="cart.vista-previa-watermark-nota"
+                              fallback="Vista previa con marca de agua — tu impresión final no la lleva."
+                            />
+                          ) : null
+                        }
                         productName={it.variant.product.name}
                         triggerLabel={<CmsText blockKey="cart.ver-diseno" fallback="Ver" />}
                         title={
@@ -297,6 +318,17 @@ export default async function CustomerPedidoDetallePage({
             );
           })}
         </ul>
+        {/* 2026-10-13 — aviso de marca de agua cuando algún diseño exhibido la lleva. */}
+        {order.items.some((it) =>
+          it.design ? designPreviewDisplay(it.design)?.watermarked === true : false,
+        ) && (
+          <p className="text-brand-muted mt-2 text-[11px]">
+            <CmsText
+              blockKey="order.status.watermark-note"
+              fallback="Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la lleva."
+            />
+          </p>
+        )}
         <dl className="border-brand-purple/10 mt-3 space-y-1 border-t pt-3 text-sm">
           <Row label={texts.order.subtotal} value={formatCOP(order.subtotal)} />
           <Row label={texts.order.shipping} value={formatCOP(order.shipping)} />
@@ -304,6 +336,13 @@ export default async function CustomerPedidoDetallePage({
             <Row
               label={texts.order.discount}
               value={<span className="text-emerald-700">−{formatCOP(order.discount)}</span>}
+            />
+          )}
+          {/* Puntos Lucams (2026-10-12) — redención de puntos en su línea. */}
+          {order.loyaltyDiscount > 0 && (
+            <Row
+              label={`Puntos Lucams (${order.loyaltyPointsRedeemed.toLocaleString("es-CO")} pts)`}
+              value={<span className="text-emerald-700">−{formatCOP(order.loyaltyDiscount)}</span>}
             />
           )}
           <div className="border-brand-purple/10 mt-2 flex justify-between border-t pt-2">

@@ -14,7 +14,13 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { prisma, createOrderFromCart, assertStockAvailable, checkoutState } = vi.hoisted(() => ({
+const {
+  prisma,
+  createOrderFromCart,
+  assertStockAvailable,
+  checkoutState,
+  resolveWompiPaymentReference,
+} = vi.hoisted(() => ({
   prisma: {
     order: {
       findFirst: vi.fn(
@@ -43,6 +49,7 @@ const { prisma, createOrderFromCart, assertStockAvailable, checkoutState } = vi.
   createOrderFromCart: vi.fn(),
   assertStockAvailable: vi.fn(async () => {}),
   checkoutState: { current: null as null | Record<string, unknown> },
+  resolveWompiPaymentReference: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -57,6 +64,7 @@ vi.mock("@/lib/cms", () => {
 });
 vi.mock("@/lib/stage-guard", () => ({ assertTransactionalAllowed: vi.fn() }));
 vi.mock("@/features/orders/service", () => ({ createOrderFromCart }));
+vi.mock("@/features/orders/payment-reference", () => ({ resolveWompiPaymentReference }));
 vi.mock("@/features/orders/saga", () => ({ processPaidOrder: vi.fn() }));
 vi.mock("@/features/orders/stock", () => ({ assertStockAvailable }));
 vi.mock("@/features/coupons/redemption", () => ({
@@ -169,6 +177,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   cartFixture.customerId = null;
   seedState();
+  // Default: referencia resuelta lista con el número base (intento 1).
+  resolveWompiPaymentReference.mockResolvedValue({
+    kind: "ready",
+    reference: "LCM-2026-0001",
+    attempt: 1,
+  });
 });
 
 describe("finalizeCheckout — OrderAlreadyPaidError (carrera TOCTOU)", () => {
@@ -207,6 +221,86 @@ describe("finalizeCheckout — OrderAlreadyPaidError (carrera TOCTOU)", () => {
     );
     expect(err.code).toBe("ORDER_ALREADY_PAID");
     expect(err.redirectTo).toBe("/");
+  });
+});
+
+describe("finalizeCheckout — referencia única por intento de pago (bug STG reference reusada)", () => {
+  function mockOrderAndProvider() {
+    createOrderFromCart.mockResolvedValue({
+      id: "ord_1",
+      number: "LCM-2026-0001",
+      total: 25_000,
+      subtotal: 20_000,
+      shipping: 5_000,
+      discount: 0,
+      publicAccessToken: "tok",
+      paymentMethod: "WOMPI",
+    });
+    const createCheckout = vi.fn(async () => ({ checkoutUrl: "https://wompi.example/x" }));
+    vi.mocked(getPaymentProvider).mockReturnValue({ createCheckout } as never);
+    return createCheckout;
+  }
+
+  it("primer intento: el checkout usa la referencia base (= Order.number)", async () => {
+    const createCheckout = mockOrderAndProvider();
+
+    const res = await finalizeCheckout({ redirectUrl: "https://x.co/gracias" });
+
+    expect(resolveWompiPaymentReference).toHaveBeenCalledWith("ord_1");
+    expect(createCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({ reference: "LCM-2026-0001" }),
+    );
+    expect(res.checkoutUrl).toBe("https://wompi.example/x");
+  });
+
+  it("reintento tras fallo: el checkout usa la referencia rotada con sufijo", async () => {
+    const createCheckout = mockOrderAndProvider();
+    resolveWompiPaymentReference.mockResolvedValue({
+      kind: "ready",
+      reference: "LCM-2026-0001-2",
+      attempt: 2,
+    });
+
+    await finalizeCheckout({ redirectUrl: "https://x.co/gracias" });
+
+    expect(createCheckout).toHaveBeenCalledWith(
+      expect.objectContaining({ reference: "LCM-2026-0001-2" }),
+    );
+  });
+
+  it("tx previa APPROVED (webhook perdido): ORDER_ALREADY_PAID con redirect a gracias, SIN nuevo checkout", async () => {
+    const createCheckout = mockOrderAndProvider();
+    resolveWompiPaymentReference.mockResolvedValue({ kind: "approved", txId: "tx-999" });
+
+    const err = await finalizeCheckout({ redirectUrl: "https://x.co/gracias" }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(CheckoutError);
+    expect(err.code).toBe("ORDER_ALREADY_PAID");
+    expect(err.redirectTo).toBe("/checkout/gracias?id=tx-999");
+    expect(createCheckout).not.toHaveBeenCalled();
+  });
+
+  it("tx previa PENDING (PSE async): PAYMENT_IN_FLIGHT con redirect, SIN nuevo checkout (doble cobro)", async () => {
+    const createCheckout = mockOrderAndProvider();
+    resolveWompiPaymentReference.mockResolvedValue({ kind: "in_flight", txId: "tx-888" });
+
+    const err = await finalizeCheckout({ redirectUrl: "https://x.co/gracias" }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(CheckoutError);
+    expect(err.code).toBe("PAYMENT_IN_FLIGHT");
+    expect(err.redirectTo).toBe("/checkout/gracias?id=tx-888");
+    expect(createCheckout).not.toHaveBeenCalled();
+  });
+
+  it("API Wompi caída al verificar la tx previa: PAYMENT_INIT_FAILED, SIN rotar a ciegas", async () => {
+    const createCheckout = mockOrderAndProvider();
+    resolveWompiPaymentReference.mockResolvedValue({ kind: "lookup_failed" });
+
+    const err = await finalizeCheckout({ redirectUrl: "https://x.co/gracias" }).catch((e) => e);
+
+    expect(err).toBeInstanceOf(CheckoutError);
+    expect(err.code).toBe("PAYMENT_INIT_FAILED");
+    expect(createCheckout).not.toHaveBeenCalled();
   });
 });
 
@@ -298,7 +392,7 @@ describe("finalizeCheckout — persiste el documento DIAN en el perfil (T7)", ()
   });
 });
 
-describe("finalizeCheckout — re-validación zona Lucam's mid-sesión (Paquete G)", () => {
+describe("finalizeCheckout — re-validación zona Lucams mid-sesión (Paquete G)", () => {
   const LUCAMS_SELECTION = {
     carrier: "lucams",
     carrierName: "LUCAMS",
@@ -339,7 +433,7 @@ describe("finalizeCheckout — re-validación zona Lucam's mid-sesión (Paquete 
     const err = await finalizeCheckout({ redirectUrl: "https://x.co/gracias" }).catch((e) => e);
     expect(err).toBeInstanceOf(CheckoutError);
     expect(err.code).toBe("SHIPPING_SELECTION_INVALID");
-    expect(err.message).toContain("Lucam's");
+    expect(err.message).toContain("Lucams");
     expect(createOrderFromCart).not.toHaveBeenCalled();
   });
 

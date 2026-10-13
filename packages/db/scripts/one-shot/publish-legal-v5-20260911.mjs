@@ -8,7 +8,7 @@
  * Premisa de veracidad verificada antes de publicar (Ley 1480 arts. 23/29 —
  * los textos v5 describen la tienda en línea YA activa):
  *   - PRD opera en modo FULL desde 2026-09-03 (/checkout/pago → 307 /carrito,
- *     checkout con "Pago seguro Wompi" — RUNBOOK_GO_LIVE FASE 11.c).
+ *     checkout con "Pago seguro Wompi" — verificación de modo, ADR-077).
  *   - Wompi producción: llaves reales en Vercel Production (2026-08-02).
  *   - Aveonline producción: cuenta real + facturación armada (2026-08-04).
  *   - Asistente IA del Estudio: visible y funcional en modo full (gate solo

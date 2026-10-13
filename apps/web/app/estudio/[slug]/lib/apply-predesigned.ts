@@ -127,17 +127,52 @@ function resolveFaceAAnchor(
  */
 export type ApplyPredesignedFailureReason = "no-free-slot" | "error";
 
+/**
+ * Regla de caras (2026-10-12) — primer slot LIBRE de la cara pedida en un
+ * producto de 2 caras ("A" = slots pares, "B" = impares, convención
+ * lib/faces.ts). null si no queda ninguno libre: el caller informa y NO se
+ * pisa contenido (misma regla del bloqueo de cara B del Paquete A).
+ */
+export function firstFreeSlotOfFace(
+  slots: ReadonlyArray<{ slotIndex: number; assetUrl?: string | null }>,
+  face: "A" | "B",
+): number | null {
+  const parity = face === "A" ? 0 : 1;
+  let best: number | null = null;
+  for (const s of slots) {
+    if (s.slotIndex % 2 !== parity || s.assetUrl) continue;
+    if (best === null || s.slotIndex < best) best = s.slotIndex;
+  }
+  return best;
+}
+
+/**
+ * Aplica el prediseñado al slot ancla (y su cara B si aplica). La asignación es
+ * un REEMPLAZO LIMPIO (store.assignAssetToSlot, 2026-10-12): si el slot tenía
+ * un diseño previo, su encuadre/filtro/textos NO sobreviven — el prediseño trae
+ * su propia composición y no deben quedar textos huérfanos encima.
+ */
 export async function applyPredesignedToSlot(opts: {
   store: StoreApi<StudioStoreState>;
   item: PredesignedDragPayload;
   targetSlot: number;
   facesPerUnit?: number;
+  /**
+   * Regla de caras (2026-10-12) — el destino es EXACTO: salta el re-anclaje a
+   * cara A de resolveFaceAAnchor. Lo usa la aplicación global con cara ELEGIDA
+   * por el cliente (sidebar, diseño de 1 cara → cara B): el diseño debe caer en
+   * la cara pedida, no moverse al frente. El caller garantiza que el slot existe
+   * y está libre (firstFreeSlotOfFace) — nunca se pisa contenido para abrir sitio.
+   */
+  forceTargetSlot?: boolean;
 }): Promise<
   | { ok: true; bBlocked?: boolean }
   | { ok: false; reason: ApplyPredesignedFailureReason; message: string }
 > {
   const slots = opts.store.getState().canvasData?.slots ?? [];
-  const anchor = resolveFaceAAnchor(slots, opts.targetSlot, opts.facesPerUnit);
+  const anchor = opts.forceTargetSlot
+    ? opts.targetSlot
+    : resolveFaceAAnchor(slots, opts.targetSlot, opts.facesPerUnit);
   // Sin cara A libre no hay dónde anclar sin pisar contenido: se reporta y no
   // se sube nada al servidor.
   if (anchor === null) return { ok: false, reason: "no-free-slot", message: "" };
@@ -146,7 +181,11 @@ export async function applyPredesignedToSlot(opts: {
   const state = opts.store.getState();
   state.assignAssetToSlot(anchor, resolved.a);
   let bBlocked = false;
-  if (resolved.b) {
+  // Con forceTargetSlot sobre una cara B (slot impar) NO se propaga la cara B
+  // del diseño: caería en la cara A de la unidad SIGUIENTE (anchor+1). El flujo
+  // que lo usa (cara elegida por el cliente) es para diseños de 1 cara, así que
+  // esto es solo defensa ante un imageUrlB desactualizado en el catálogo.
+  if (resolved.b && !(opts.forceTargetSlot && anchor % 2 === 1)) {
     // Cara B a la hermana del ancla (convención separadores 2 caras: 2k/2k+1)
     // SOLO si está vacía — Paquete A: si está ocupada NO se pisa el contenido
     // del usuario ni se descarta en silencio: se reporta (bBlocked) para que

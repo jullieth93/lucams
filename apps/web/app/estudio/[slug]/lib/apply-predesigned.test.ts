@@ -18,7 +18,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CanvasDataV2 } from "../types";
 import { createStudioStore } from "./store";
-import { applyPredesignedToSlot, applyPredesignedVarietyToEmptySlots } from "./apply-predesigned";
+import {
+  applyPredesignedToSlot,
+  applyPredesignedVarietyToEmptySlots,
+  firstFreeSlotOfFace,
+} from "./apply-predesigned";
 import type { PredesignedItem } from "../studio-asset-picker-modal";
 
 const { calls } = vi.hoisted(() => ({
@@ -126,8 +130,25 @@ describe("applyPredesignedToSlot — dedupe de assets (Paquete A)", () => {
   });
 });
 
-describe("applyPredesignedToSlot — cara B ocupada (Paquete A: nunca pisar ni descartar en silencio)", () => {
-  it("slot B vacío → se aplica la cara B (sin aviso)", async () => {
+describe("applyPredesignedToSlot — reemplazo limpio sobre slot ocupado (2026-10-12)", () => {
+  // Aplicar un prediseño sobre un slot que YA tenía diseño: la composición
+  // anterior no sobrevive (sin textos huérfanos ni encuadre heredado encima).
+  it("slot ocupado con textos/filtro/encuadre → el prediseño reemplaza TODO el estado del slot", async () => {
+    const store = setup(2, [0]);
+    store.getState().setSlotFilter(0, "vivid");
+    store.getState().setSlotTextOverride(0, "caption", { text: "diseño previo" });
+    store.getState().setSlotPhotoTransform(0, { offsetX: 8, offsetY: 8, scale: 2 });
+    const res = await applyPredesignedToSlot({ store, item: item("g1"), targetSlot: 0 });
+    expect(res.ok).toBe(true);
+    const slot = store.getState().canvasData!.slots[0]!;
+    expect(slot.assetId).toBe("asset-g1-a");
+    expect(slot.filter).toBeNull();
+    expect(slot.textOverrides).toBeUndefined();
+    expect(slot.photoTransform).toBeUndefined();
+  });
+});
+
+describe("applyPredesignedToSlot — cara B ocupada (Paquete A: nunca pisar ni descartar en silencio)", () => {  it("slot B vacío → se aplica la cara B (sin aviso)", async () => {
     const store = setup(2);
     const res = await applyPredesignedToSlot({ store, item: item("g1-ab"), targetSlot: 0 });
     expect(res).toEqual({ ok: true, bBlocked: false });
@@ -393,5 +414,81 @@ describe("applyPredesignedVarietyToEmptySlots — variedad round-robin (Paquete 
     const res = await applyPredesignedVarietyToEmptySlots({ store, items: [item("g1")] });
     expect(res).toEqual({ applied: 0, bBlockedCount: 0, failed: false });
     expect(calls.assign).toHaveLength(0);
+  });
+});
+
+/*
+ * Regla de caras (2026-10-12) — aplicación GLOBAL de un diseño de 1 cara en un
+ * producto de 2 caras con cara ELEGIDA por el cliente (sidebar pregunta "¿En
+ * qué cara…?" primero). forceTargetSlot salta el re-anclaje a cara A y
+ * firstFreeSlotOfFace resuelve el primer slot libre de la cara pedida.
+ */
+describe("firstFreeSlotOfFace — primer slot libre por cara", () => {
+  const slotsOf = (occupied: number[], total = 4) =>
+    Array.from({ length: total }, (_, i) => ({
+      slotIndex: i,
+      assetUrl: occupied.includes(i) ? `https://x/own-${i}.png` : null,
+    }));
+
+  it("cara A = slots pares, cara B = impares; respeta ocupados y devuelve el MENOR libre", () => {
+    expect(firstFreeSlotOfFace(slotsOf([]), "A")).toBe(0);
+    expect(firstFreeSlotOfFace(slotsOf([]), "B")).toBe(1);
+    expect(firstFreeSlotOfFace(slotsOf([0]), "A")).toBe(2);
+    expect(firstFreeSlotOfFace(slotsOf([1, 3]), "B")).toBeNull();
+  });
+
+  it("sin slots de la cara → null (nunca devuelve uno ocupado)", () => {
+    expect(firstFreeSlotOfFace(slotsOf([0, 2]), "A")).toBeNull();
+    expect(firstFreeSlotOfFace([], "A")).toBeNull();
+  });
+
+  it("tolera slots desordenados (devuelve el de menor slotIndex)", () => {
+    const messy = [
+      { slotIndex: 5, assetUrl: null },
+      { slotIndex: 1, assetUrl: "https://x/a.png" },
+      { slotIndex: 3, assetUrl: null },
+    ];
+    expect(firstFreeSlotOfFace(messy, "B")).toBe(3);
+  });
+});
+
+describe("applyPredesignedToSlot — forceTargetSlot (cara elegida por el cliente, 2026-10-12)", () => {
+  it("diseño de 1 cara sobre una cara B libre → cae en ESA cara (sin re-anclar a la A)", async () => {
+    const store = setup(4);
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1"),
+      targetSlot: 3,
+      facesPerUnit: 2,
+      forceTargetSlot: true,
+    });
+    expect(res).toEqual({ ok: true, bBlocked: false });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[3]!.assetId).toBe("asset-g1-a"); // la cara B elegida
+    expect(slots[2]!.assetId).toBeNull(); // la cara A de su par queda libre
+  });
+
+  it("sin forceTargetSlot el mismo caso mantiene el re-anclaje a cara A (comportamiento previo)", async () => {
+    const store = setup(4);
+    await applyPredesignedToSlot({ store, item: item("g1"), targetSlot: 3, facesPerUnit: 2 });
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[2]!.assetId).toBe("asset-g1-a");
+    expect(slots[3]!.assetId).toBeNull();
+  });
+
+  it("defensa: un item con cara B server-side aplicado forzado a una cara B NO cruza a la unidad siguiente", async () => {
+    const store = setup(4);
+    const res = await applyPredesignedToSlot({
+      store,
+      item: item("g1-ab"),
+      targetSlot: 1,
+      facesPerUnit: 2,
+      forceTargetSlot: true,
+    });
+    expect(res.ok).toBe(true);
+    const slots = store.getState().canvasData!.slots;
+    expect(slots[1]!.assetId).toBe("asset-g1-ab-a");
+    // La B del diseño NO cae en el slot 2 (cara A de la unidad siguiente).
+    expect(slots[2]!.assetId).toBeNull();
   });
 });

@@ -12,12 +12,11 @@
  *    sanitiza en vivo (sin espacios; solo letras, números, punto y guion bajo —
  *    caracteres válidos de usuario IG). El override se guarda CON "@" (se imprime
  *    tal cual).
- *  - Ubicación: combobox con búsqueda (Fase 2 · 2.7b — antes datalist nativo;
- *    componente compartido en ig-location-combobox.tsx): filtra la lista curada
- *    "Ciudad, País" (cobertura MUNDIAL desde QA ronda 2, 2026-10-07) por ciudad
- *    Y país, navegable con teclado (flechas/Enter/Escape,
- *    aria-activedescendant) y sigue admitiendo ubicación libre — es asistencia
- *    de escritura, no validación.
+ *  - Ubicación: INPUT DE TEXTO simple (owner 2026-10-12 — se retiró el combobox
+ *    con sugerencias de Fase 2 · 2.7b: la asistencia + el commit por tecla
+ *    hacían MUY LENTA la plantilla). Validación y transformación automática
+ *    (lib/ig-post-fields.ts): máximo 2 palabras, inicial mayúscula y el
+ *    separador se imprime como ", " ("bogotá colombia" → "Bogotá, Colombia").
  *  - «Me gusta»: OBLIGATORIO desde el rediseño (antes decorativo). El input es
  *    solo numérico y se muestra con separador de miles es-CO; la palabra
  *    "me gusta" es un sufijo FIJO fuera del valor editable (el override guarda
@@ -31,8 +30,11 @@
  *
  * Espejo del patrón de "Tu mensaje", adaptado a N campos:
  *  - Cada campo escribe en TODOS los slots vía setTextOverrideAllSlots(layerId, …)
- *    POR TECLA/acción (mismo patrón de commit: sin draft local — el store ya hace
- *    undo + auto-save debounced).
+ *    con commit DEBOUNCED (owner 2026-10-12): estado local inmediato en el
+ *    input + commit al store tras ~350ms sin teclear o al blur
+ *    (IgDebouncedInput → lib/use-debounced-commit.ts). Antes el commit era POR
+ *    TECLA y ponía la aplicación muy lenta (cada tecla reescribía los N slots
+ *    + undo + auto-save).
  *  - Valor mostrado: el texto COMPARTIDO por todas las unidades; si difieren
  *    (alguien editó una foto en el modal), el campo vuelve a vacío con chip
  *    "Varía por foto" y al escribir se unifica.
@@ -59,18 +61,21 @@ import {
   IG_CAPTION_MAX,
   IG_HASHTAGS_MAX,
   IG_LIKES_SUFFIX,
+  IG_LOCATION_MAX_LENGTH,
   IG_USERNAME_MAX,
   igHashtagsFromStored,
   igHashtagsOverride,
   igLikesDisplay,
   igLikesOverride,
+  igLocationOverride,
   igUsernameDisplay,
   igUsernameOverride,
   sanitizeIgHashtag,
   sanitizeIgLikesInput,
+  sanitizeIgLocationInput,
   sanitizeIgUsernameInput,
 } from "./lib/ig-post-fields";
-import { IG_INPUT_CLASS as INPUT_CLASS, IgLocationCombobox } from "./ig-location-combobox";
+import { IG_INPUT_CLASS as INPUT_CLASS, IgDebouncedInput } from "./ig-debounced-input";
 import type { StudioStoreState } from "./lib/store";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, type StudioTexts } from "./studio-texts";
@@ -151,7 +156,7 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
 
   // Vacío → sin override (no se imprime nada; los requeridos los cobra el
   // popover de «Vista previa»). Texto → se imprime tal cual en TODAS las fotos
-  // del set (commit por tecla, mismo patrón de "Tu mensaje").
+  // del set. El commit llega DEBOUNCED desde IgDebouncedInput (no por tecla).
   const commitText = (layerId: string, text: string | null) =>
     setTextOverrideAllSlots(layerId, text === null || text.trim() === "" ? null : { text });
 
@@ -171,19 +176,15 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
               >
                 @
               </span>
-              <input
-                id={inputId}
-                type="text"
+              <IgDebouncedInput
+                inputId={inputId}
                 value={display}
                 maxLength={IG_USERNAME_MAX}
                 placeholder={variesPlaceholder ?? igUsernameDisplay(f.defaultText)}
-                onChange={(e) =>
-                  commitText(f.id, igUsernameOverride(sanitizeIgUsernameInput(e.target.value)))
-                }
+                sanitize={sanitizeIgUsernameInput}
+                onCommit={(draft) => commitText(f.id, igUsernameOverride(draft))}
                 className={`${INPUT_CLASS} pl-7`}
-                autoComplete="off"
                 autoCapitalize="none"
-                spellCheck={false}
               />
             </div>
             <p className="text-brand-muted mt-1 text-xs">{texts.texto.igUsuarioHint}</p>
@@ -193,29 +194,31 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
 
       case "location":
         return (
-          <IgLocationCombobox
-            inputId={inputId}
-            value={f.value}
-            placeholder={variesPlaceholder ?? f.defaultText}
-            onCommit={(text) => commitText(f.id, text)}
-          />
+          <>
+            <IgDebouncedInput
+              inputId={inputId}
+              value={f.varies ? "" : f.value}
+              maxLength={IG_LOCATION_MAX_LENGTH}
+              placeholder={variesPlaceholder ?? f.defaultText}
+              sanitize={sanitizeIgLocationInput}
+              onCommit={(draft) => commitText(f.id, igLocationOverride(draft))}
+            />
+            <p className="text-brand-muted mt-1 text-xs">{texts.texto.igUbicacionHint}</p>
+          </>
         );
 
       case "likes_count": {
         const display = f.varies ? "" : igLikesDisplay(f.value);
         return (
           <div className="flex items-center gap-2">
-            <input
-              id={inputId}
-              type="text"
-              inputMode="numeric"
+            <IgDebouncedInput
+              inputId={inputId}
               value={display}
+              inputMode="numeric"
               placeholder={variesPlaceholder ?? igLikesDisplay(f.defaultText)}
-              onChange={(e) =>
-                commitText(f.id, igLikesOverride(sanitizeIgLikesInput(e.target.value)))
-              }
-              className={INPUT_CLASS}
-              aria-describedby={`${inputId}-suffix`}
+              sanitize={sanitizeIgLikesInput}
+              onCommit={(draft) => commitText(f.id, igLikesOverride(draft))}
+              describedBy={`${inputId}-suffix`}
             />
             {/* Sufijo FIJO fuera del valor editable: siempre se imprime. */}
             <span id={`${inputId}-suffix`} className="text-brand-purple-dark shrink-0 text-sm">
@@ -225,31 +228,28 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
         );
       }
 
-      case "caption": {
-        const length = f.value.length;
+      case "caption":
         return (
-          <>
-            <input
-              id={inputId}
-              type="text"
-              value={f.value}
-              maxLength={IG_CAPTION_MAX}
-              placeholder={variesPlaceholder ?? texts.texto.igTituloPlaceholder}
-              onChange={(e) => commitText(f.id, e.target.value.slice(0, IG_CAPTION_MAX))}
-              className={INPUT_CLASS}
-              aria-describedby={`${inputId}-count`}
-            />
-            <p
-              id={`${inputId}-count`}
-              className={`mt-1 text-right text-xs tabular-nums ${
-                length >= IG_CAPTION_MAX ? "font-semibold text-red-600" : "text-brand-muted"
-              }`}
-            >
-              {length}/{IG_CAPTION_MAX}
-            </p>
-          </>
+          <IgDebouncedInput
+            inputId={inputId}
+            value={f.varies ? "" : f.value}
+            maxLength={IG_CAPTION_MAX}
+            placeholder={variesPlaceholder ?? texts.texto.igTituloPlaceholder}
+            sanitize={(raw) => raw.slice(0, IG_CAPTION_MAX)}
+            onCommit={(draft) => commitText(f.id, draft)}
+            describedBy={`${inputId}-count`}
+            footer={(draft) => (
+              <p
+                id={`${inputId}-count`}
+                className={`mt-1 text-right text-xs tabular-nums ${
+                  draft.length >= IG_CAPTION_MAX ? "font-semibold text-red-600" : "text-brand-muted"
+                }`}
+              >
+                {draft.length}/{IG_CAPTION_MAX}
+              </p>
+            )}
+          />
         );
-      }
 
       case "hashtags":
         return (
@@ -263,14 +263,12 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
 
       default:
         return (
-          <input
-            id={inputId}
-            type="text"
-            value={f.value}
+          <IgDebouncedInput
+            inputId={inputId}
+            value={f.varies ? "" : f.value}
             maxLength={120}
             placeholder={variesPlaceholder ?? f.defaultText}
-            onChange={(e) => commitText(f.id, e.target.value)}
-            className={INPUT_CLASS}
+            onCommit={(draft) => commitText(f.id, draft)}
           />
         );
     }

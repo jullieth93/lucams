@@ -52,8 +52,9 @@ type SearchParams = Promise<{
    * Fase 2 · item 2.4 (2026-10-07) — marca el recover del marcador localStorage
    * ("Continuar donde quedaste"): con resume=1 solo se retoma un DRAFT; un
    * diseño ya finalizado (READY) NO se clona (ese camino es exclusivo del
-   * «Editar» del carrito) — el Estudio arranca un draft nuevo y el boot
-   * reemplaza el marcador en silencio.
+   * «Editar» del carrito) — el Estudio arranca un draft nuevo y el boot LIMPIA
+   * el marcador huérfano en silencio (2026-10-13: antes lo pisaba con el id
+   * del draft nuevo vacío y el retomador se rearmaba sin progreso real).
    */
   resume?: string;
   template?: string;
@@ -306,11 +307,13 @@ export default async function EstudioPage({
 
   // Superficie "letterset": Abecedario Completo / Pack Vocales → color de marco.
   if (surface.surface === "letterset" && selectedVariant) {
-    // Ola 2A (Lucy 2026-07-22) — el TEMA y el IDIOMA ya no son dimensiones de la PDP: se
-    // eligen en el Estudio. Acá se cargan: los sets por idioma (incluidos los vacíos, que
-    // degradan a letra estándar), las fichas ilustradas, los alfabetos y las variantes
-    // (para re-resolver la línea de cotización al cambiar tema/idioma conservando
-    // tamaño/imantado). La variante de la PDP solo PRESELECCIONA tema e idioma.
+    // Ola 2A (Lucy 2026-07-22) — el TEMA ya no es dimensión de la PDP: se elige en el
+    // Estudio. El IDIOMA sí lo es (2026-10-12 — el selector dentro del estudio se
+    // eliminó por duplicado PDP↔estudio): llega de la variante elegida. Acá se cargan:
+    // los sets por idioma (incluidos los vacíos, que degradan a letra estándar), las
+    // fichas ilustradas, los alfabetos y las variantes (para re-resolver la línea de
+    // cotización al cambiar tema conservando tamaño/imantado/idioma). La variante de
+    // la PDP solo PRESELECCIONA el tema.
     const variantAttrs = parseVariantAttributes(selectedVariant.attributes);
     // Re-abrir un diseño guardado (?designId= — "Editar" desde el carrito): hay que
     // devolverle al editor TODO lo persistido en Design.metadata (idioma, estilo
@@ -362,13 +365,9 @@ export default async function EstudioPage({
     }
     const initialLanguage = recoveredLanguage ?? (variantAttrs.language === "en" ? "en" : "es");
     const selectable = selectableVariants(product.variants);
-    const availableLanguages = Array.from(
-      new Set(
-        selectable
-          .map((v) => parseVariantAttributes(v.attributes).language)
-          .filter((l): l is "es" | "en" => l === "es" || l === "en"),
-      ),
-    );
+    // 2026-10-12 — el idioma llega FIJO de la variante de la PDP (initialLanguage);
+    // el selector dentro del estudio se eliminó (duplicado PDP↔estudio), así que ya
+    // no se calcula la lista de idiomas disponibles para el editor.
     const [stylesEs, stylesEn, themeEs, themeEn] = await Promise.all([
       listLetterStyles("es"),
       listLetterStyles("en"),
@@ -410,7 +409,6 @@ export default async function EstudioPage({
               basePrice={product.basePrice}
               letterSet={surface.config.letterSet}
               alphabets={{ es: [...ALPHABET.es], en: [...ALPHABET.en] }}
-              availableLanguages={availableLanguages.length > 0 ? availableLanguages : ["es"]}
               initialLanguage={initialLanguage}
               themeOptions={{ es: themeEs, en: themeEn }}
               initialTheme={variantAttrs.theme ?? null}
@@ -568,6 +566,9 @@ export default async function EstudioPage({
   let initialDesignId: string | null = null;
   let initialDesignCanvas: CanvasData | null = null;
   let initialDesignAssets: StudioAsset[] = [];
+  // 2026-10-12 — plantilla persistida del diseño recuperado: el editor la
+  // prioriza sobre el match por dimensiones al restaurar la selección.
+  let initialDesignTemplateId: string | null = null;
   // Edición desde el carrito (auditoría 2026-07-13): id del diseño original a reemplazar en el
   // carrito al finalizar (evita duplicar el item).
   let replacesCartDesignId: string | null = null;
@@ -581,7 +582,8 @@ export default async function EstudioPage({
     // Item 2.4 (2026-10-07) — EXCEPTO con resume=1 (retomador del marcador
     // localStorage): ahí solo se retoma un DRAFT; un READY significa que el
     // diseño ya se finalizó (p.ej. en otro dispositivo) → draft nuevo abajo y
-    // el boot pisa el marcador viejo, en vez de clonar una copia sorpresa.
+    // el boot LIMPIA el marcador huérfano (2026-10-13), en vez de clonar una
+    // copia sorpresa.
     if (design && design.status === "READY" && sp.resume !== "1") {
       const clone = await cloneDesignForEdit(sp.designId, owner);
       if (clone) {
@@ -592,6 +594,7 @@ export default async function EstudioPage({
     if (design && design.status === "DRAFT") {
       initialDesignId = design.id;
       initialDesignCanvas = design.canvasData as unknown as CanvasData;
+      initialDesignTemplateId = design.templateId ?? null;
       // Hidratar DesignAssets existentes con signed URLs refrescadas
       const dbAssets = await prisma.designAsset.findMany({
         where: { designId: design.id },
@@ -608,8 +611,8 @@ export default async function EstudioPage({
     }
   }
 
-  // ── Lucy 2026-09-05 — packs de fotoimanes: N de fotos en el Estudio ──
-  // Catálogo elegible para el stepper "¿Cuántas fotos lleva tu imán?": las
+  // ── Lucy 2026-09-05 — packs de fotoimanes: N de unidades en el Estudio ──
+  // Catálogo elegible para el stepper de unidades ("¿Cuántos … quieres?"): las
   // variantes que declaran photoSlots, con precio resuelto (override o base).
   // El N y el tamaño EFECTIVOS los manda el diseño recuperado (canvasData
   // guardado) sobre el variant del deep-link: al re-abrir un pack en el Estudio
@@ -630,6 +633,9 @@ export default async function EstudioPage({
     .map((v) => {
       const a = parseVariantAttributes(v.attributes);
       return {
+        // 2026-10-12 — el id viaja al editor: la variante EFECTIVA del pack se
+        // persiste en Design.metadata.variantId para el recover (?designId=).
+        id: v.id,
         photoSlots: a.photoSlots,
         sizeCm: a.sizeCm,
         magnet: a.magnet,
@@ -640,6 +646,7 @@ export default async function EstudioPage({
       (
         v,
       ): v is {
+        id: string;
         photoSlots: number;
         sizeCm: string | undefined;
         magnet: boolean | undefined;
@@ -715,6 +722,7 @@ export default async function EstudioPage({
             initialDesignId={initialDesignId}
             initialDesignCanvas={initialDesignCanvas}
             initialDesignAssets={initialDesignAssets}
+            initialDesignTemplateId={initialDesignTemplateId}
             photoSlots={effectivePhotoSlots}
             // Lucy 2026-09-05 — catálogo del stepper de N fotos (packs; vacío = no pack).
             packVariants={packVariants}

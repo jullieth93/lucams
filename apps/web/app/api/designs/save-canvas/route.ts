@@ -54,6 +54,11 @@ export async function POST(req: Request) {
       designId: parsed.data.designId,
       canvasData: parsed.data.canvasData,
       templateId: parsed.data.templateId,
+      variantId: parsed.data.variantId,
+      // 2026-10-13 — miniatura del borrador (si el beacon la trae; el cliente la
+      // manda solo en el auto-save debounced, no en pagehide, por el límite de
+      // ~64 KB de sendBeacon — el campo queda soportado por contrato).
+      draftPreviewDataUrl: parsed.data.draftPreviewDataUrl,
       customerId,
       sessionId,
     });

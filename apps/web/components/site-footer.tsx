@@ -22,6 +22,7 @@ import { CmsText } from "@/components/cms/cms-text";
 import { CmsSetting } from "@/components/cms/cms-setting";
 import { listStorefrontCategories } from "@/features/products/public-service";
 import { getCmsList, getSettingValue } from "@/lib/cms";
+import { SITE_NAME } from "@/lib/site";
 import { buildWhatsAppUrl, getWhatsAppNumber } from "@/lib/wa";
 
 type LegalLink = { label: string; href: string };
@@ -86,7 +87,7 @@ export async function SiteFooter() {
     getSettingValue("SOCIAL_FACEBOOK_URL", "https://www.facebook.com/lucamsshop"),
     getWhatsAppNumber(),
     getCmsList("footer.legal.links", validateLegalLink, FALLBACK_LEGAL_LINKS),
-    getSettingValue("APP_NAME", "Lucams_shop"),
+    getSettingValue("APP_NAME", SITE_NAME),
     getSettingValue("BUSINESS_LOCATION", "Bogotá D.C., Colombia"),
     getSettingValue("GOVT_SIC_URL", "https://www.sic.gov.co/"),
     getSettingValue("SOCIAL_INSTAGRAM_ENABLED", "true"),
@@ -117,7 +118,7 @@ export async function SiteFooter() {
           {/* Col 1 — Lucams */}
           <div>
             <p className="font-display text-2xl text-white">
-              Lucams<span className="text-brand-pink">_shop</span>
+              Lucams <span className="text-brand-pink">Shop</span>
             </p>
             <p className="mt-2 text-sm text-white/80">
               <CmsText
@@ -322,7 +323,7 @@ export async function SiteFooter() {
           </p>
           <div className="flex flex-col items-center justify-between gap-3 md:flex-row">
             <p>
-              © <CmsSetting settingKey="COPYRIGHT_YEAR" fallback="2026" /> Lucams_shop ·{" "}
+              © <CmsSetting settingKey="COPYRIGHT_YEAR" fallback="2026" /> {SITE_NAME} ·{" "}
               <CmsSetting settingKey="COPYRIGHT_TAGLINE" fallback="Hecho con 💜 en Bogotá" />
             </p>
             {buildVersion && (

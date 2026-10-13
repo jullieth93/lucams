@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 const FALLBACK = `
 Para armar tus imanes, cobrarte de forma segura y llevarte el pedido hasta la puerta, un pequeño equipo de proveedores de confianza nos ayuda entre bambalinas. A esos proveedores la ley los llama **encargados del tratamiento**: tratan tus datos personales **por cuenta nuestra**, solo para lo necesario y bajo un contrato que les exige cuidarlos.
 
-El **responsable del tratamiento** de tus datos es **Lucams_shop (persona natural), Bogotá D.C., Colombia**. Puedes escribirnos a **{{email_contacto}}** o por **WhatsApp** (el número está en el pie de página del sitio). Si necesitas nuestros datos para un trámite formal, escríbenos y te los damos.
+El **responsable del tratamiento** de tus datos es **Lucams Shop (persona natural), Bogotá D.C., Colombia**. Puedes escribirnos a **{{email_contacto}}** o por **WhatsApp** (el número está en el pie de página del sitio). Si necesitas nuestros datos para un trámite formal, escríbenos y te los damos.
 
 ## ¿Qué es un subprocesador?
 

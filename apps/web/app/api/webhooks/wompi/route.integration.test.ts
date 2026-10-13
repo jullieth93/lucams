@@ -442,6 +442,56 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
     expect(o?.wompiTransactionId).toBeNull();
   });
 
+  it("reference con SUFIJO de intento resuelve por wompiReference persistida → saga (referencia única por intento)", async () => {
+    // Reintento de pago (bug STG "la referencia ya ha sido usada"): el intento 2
+    // viaja como `${number}-2`; la orden lo tiene persistido en wompiReference.
+    const ref = `${RUN}-LCM-SUF`;
+    const orderId = await makeOrder(ref, 55000);
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { paymentAttempt: 2, wompiReference: `${ref}-2`, wompiReferenceAt: new Date() },
+    });
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx11`,
+          status: "APPROVED",
+          amountInCents: 55000,
+          reference: `${ref}-2`,
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(sagaCalls).toHaveLength(1);
+    expect(sagaCalls[0]).toMatchObject({ fn: "processPaidOrder", orderId });
+  });
+
+  it("reference con sufijo SIN wompiReference persistida → resuelve por número base extraído (APPROVED tardío)", async () => {
+    // Carrera: el cliente pagó el intento 2 pero entre tanto la tienda ya rotó a
+    // `${number}-3`; el webhook del intento 2 llega con una reference que ya no
+    // es la almacenada. Debe resolver la orden igual vía el número base.
+    const digits = RUN.replace(/\D/g, "").slice(-6);
+    const baseNumber = `LCM-2026-9${digits}`;
+    const orderId = await makeOrder(baseNumber, 55000);
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { paymentAttempt: 3, wompiReference: `${baseNumber}-3`, wompiReferenceAt: new Date() },
+    });
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx12`,
+          status: "APPROVED",
+          amountInCents: 55000,
+          reference: `${baseNumber}-2`, // intento previo: ya no es la persistida
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(sagaCalls).toHaveLength(1);
+    expect(sagaCalls[0]).toMatchObject({ fn: "processPaidOrder", orderId });
+  });
+
   it("carrera de dedup (findUnique miss + create P2002 por entrega concurrente) → 200, sin doble saga ni 500", async () => {
     // Certificación 2026-07-29: dos entregas concurrentes del mismo evento pasan el
     // findUnique; el create perdedor revienta P2002. Antes: 500 crudo → reintentos

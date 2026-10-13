@@ -15,12 +15,16 @@
  * "Elige los colores" se desactiva (las fichas no llevan el marco de color) y se reactiva al
  * volver a "Con borde" conservando la selección de colores.
  *
- * Ola 2A (Lucy 2026-07-22) — el TEMA (default/animales/frutas/profesiones) y el IDIOMA ya NO
- * son variantes de la PDP: se eligen ACÁ en el Estudio. El tema preselecciona el LetterTileSet
+ * Ola 2A (Lucy 2026-07-22) — el TEMA (default/animales/frutas/profesiones) ya NO
+ * es variante de la PDP: se elige ACÁ en el Estudio. El tema preselecciona el LetterTileSet
  * correspondiente (los sets vacíos degradan a letra estándar — se ve tal cual se imprime).
- * Si la PDP traía tema/idioma en la variante, se PRESELECCIONAN. Las vocales son las mismas
- * 5 letras en español e inglés (sin selector de idioma para ellas). Al cambiar tema/idioma se
- * re-resuelve la variante exacta (mismo tamaño/imantado) para que la cotización quede precisa.
+ * Si la PDP traía tema en la variante, se PRESELECCIONA. Las vocales son las mismas
+ * 5 letras en español e inglés.
+ * 2026-10-12 — el IDIOMA vuelve a ser SOLO de la PDP: ya se eligió como variante antes
+ * de entrar (llega en `initialLanguage`, resuelto de los atributos de la variante o del
+ * diseño recuperado) y el selector DENTRO del estudio se eliminó (era una elección
+ * duplicada PDP↔estudio). Al cambiar el tema se re-resuelve la variante exacta (mismo
+ * tamaño/imantado/idioma) para que la cotización quede precisa.
  *
  * Vista previa pre-carrito (Lucy 2026-07-25) — antes este editor mandaba el set al carrito sin que
  * el cliente viera cómo iba a quedar. Ahora "Vista previa" (antes "¡Listo!", renombrado 2026-09-09)
@@ -34,7 +38,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import nextDynamic from "next/dynamic";
-import { Box, Copy, Loader2, Sparkles, X } from "lucide-react";
+import { Box, Copy, Loader2, Minus, Plus, X } from "lucide-react";
 import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
 import {
   createLetterSetDesignAction,
@@ -52,7 +56,6 @@ import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { StudioPreviewModal } from "./studio-preview-modal";
 import { describeVariantAttributes } from "@/features/products/variant-schemas";
 import { StudioSimpleHeader } from "./studio-simple-header";
-import { STUDIO_CTA_DISABLED_CLASSES } from "./studio-busy-cta";
 import { STUDIO_MAX_WIDTH } from "./studio-layout";
 import { resolveLetterSetVariant, type LetterSetVariant } from "./lib/letter-set-resolve";
 import { loadCanvasImage } from "./lib/canvas-image";
@@ -292,7 +295,6 @@ export function LetterSetEditor({
   basePrice,
   letterSet,
   alphabets,
-  availableLanguages,
   initialLanguage,
   themeOptions,
   initialTheme,
@@ -314,18 +316,21 @@ export function LetterSetEditor({
   basePrice: number;
   letterSet: "full" | "vowels";
   alphabets: { es: string[]; en: string[] };
-  availableLanguages: ("es" | "en")[];
+  /** Idioma del alfabeto — viene de la variante elegida en la PDP (o del diseño
+   *  recuperado). 2026-10-12: ya NO se cambia dentro del estudio (selector
+   *  eliminado por duplicado PDP↔estudio). */
   initialLanguage: "es" | "en";
   themeOptions: { es: ThemeOption[]; en: ThemeOption[] };
   /** Tema que venía en la variante de la PDP (preselección). null = "Solo letra". */
   initialTheme: string | null;
   stylesByLanguage: { es: LetterStyle[]; en: LetterStyle[] };
   /**
-   * Modelo MULTI-UNIDAD (owner 2026-09-09): sets a DISEÑAR elegidos en la PDP con
-   * el stepper "Unidades" (`?copies=N` — nombre del parámetro conservado por
-   * compat). Cada set lleva sus propios colores por ficha (multiplicador de sets:
-   * las fichas ya son muchas — tema/idioma/borde quedan a nivel DISEÑO, compartidos
-   * por todos los sets). undefined → 1. Tope MAX_LETTER_SET_UNITS.
+   * Modelo MULTI-UNIDAD (owner 2026-09-09): sets a DISEÑAR. El N inicial llega de
+   * la PDP (`?copies=N` — nombre del parámetro conservado por compat) o del diseño
+   * recuperado, y se puede cambiar ACÁ con el stepper "¿Cuántos sets quieres?"
+   * (2026-10-12). Cada set lleva sus propios colores por ficha (multiplicador de
+   * sets: las fichas ya son muchas — tema/idioma/borde quedan a nivel DISEÑO,
+   * compartidos por todos los sets). undefined → 1. Tope MAX_LETTER_SET_UNITS.
    */
   initialUnits?: number;
   /** Al re-abrir (?designId=): estilo ilustrado persistido (metadata.styleSetId).
@@ -361,7 +366,12 @@ export function LetterSetEditor({
 
   // ── Multi-unidad (2026-09-09) — N sets, cada uno con sus colores ──
   // Tope defensivo (cada set = 1 lámina de producción; validado también en el server).
-  const unitCount = Math.min(MAX_LETTER_SET_UNITS, Math.max(1, Math.trunc(initialUnits ?? 1) || 1));
+  // 2026-10-12 — el N es ESTADO (stepper "¿Cuántos sets quieres?" en el panel):
+  // se puede cambiar sin volver a la PDP; el precio (unitPriceCents × N), el
+  // pager y la vista previa lo siguen en vivo.
+  const [unitCount, setUnitCount] = useState(() =>
+    Math.min(MAX_LETTER_SET_UNITS, Math.max(1, Math.trunc(initialUnits ?? 1) || 1)),
+  );
   // Set visible en pantalla (pager "Set 1 de N") + tick para forzar remonte tras
   // "Aplicar este diseño a todas" (re-lee el snapshot clonado del Map).
   const [activeUnit, setActiveUnit] = useState(0);
@@ -395,8 +405,31 @@ export function LetterSetEditor({
     });
   }, []);
 
-  // Idioma del alfabeto (para vocales no se muestra el selector: mismas 5 letras).
-  const [language, setLanguage] = useState<"es" | "en">(initialLanguage);
+  /**
+   * Stepper de cantidad de sets (2026-10-12). Misma regla del stepper de
+   * unidades del estudio de foto (store.setUnitCount): al REDUCIR se recortan
+   * los sets del FINAL (sus snapshots de color se descartan) y al AUMENTAR los
+   * sets nuevos nacen VACÍOS (sin snapshot → tema default, como un set nunca
+   * visitado). Si el set visible queda por fuera, cae al último disponible.
+   */
+  function handleChangeUnitCount(next: number) {
+    const target = Math.min(MAX_LETTER_SET_UNITS, Math.max(1, Math.trunc(next)));
+    if (!Number.isFinite(target) || target === unitCount) return;
+    if (target < unitCount) {
+      setSnapshots((prev) => {
+        const nextMap = new Map(prev);
+        for (const key of nextMap.keys()) if (key >= target) nextMap.delete(key);
+        return nextMap;
+      });
+      setActiveUnit((u) => Math.min(u, target - 1));
+    }
+    setUnitCount(target);
+  }
+
+  // Idioma del alfabeto: FIJO, llega de la variante elegida en la PDP (2026-10-12 —
+  // el selector dentro del estudio se eliminó por duplicado PDP↔estudio; las vocales
+  // son las mismas 5 letras en ambos idiomas).
+  const language = initialLanguage;
   // Tema elegido = LetterTileSet.id (null = "Solo letra"/Default). Preselección: al
   // re-abrir (?designId=) manda el persistido (null explícito = «Solo letra»); si no,
   // el tema de la variante de la PDP, resuelto contra los sets del idioma inicial.
@@ -406,7 +439,8 @@ export function LetterSetEditor({
     const match = themeOptions[initialLanguage].find((o) => o.theme === initialTheme);
     return match?.id ?? null;
   });
-  // Variante efectiva (se re-resuelve al cambiar tema/idioma → cotización precisa).
+  // Variante efectiva (se re-resuelve al cambiar tema → cotización precisa; el
+  // idioma es fijo — llega de la PDP, 2026-10-12).
   const [currentVariantId, setCurrentVariantId] = useState(variantId);
   // Lucy 2026-09-05 — opción de diseño "Con borde / Sin borde" (mismo precio). Default CON borde:
   // es el comportamiento histórico, así los diseños guardados antes de la opción quedan válidos.
@@ -438,8 +472,6 @@ export function LetterSetEditor({
       return set ? letters.every((l) => set.tiles[l]) : false;
     });
   }, [themeOptions, stylesByLanguage, language, letters]);
-  const selectedOption = styleId ? optionsForLanguage.find((o) => o.id === styleId) : null;
-  const selectedThemeKey = selectedOption?.theme ?? null;
   const activeTiles: LetterTileMap = useMemo(() => {
     if (!styleId) return {};
     const set = (stylesByLanguage[language] ?? []).find((s) => s.id === styleId);
@@ -507,7 +539,7 @@ export function LetterSetEditor({
       ? Math.max(1, board3D?.length ?? 1)
       : Math.ceil(Math.sqrt(board3D.length));
 
-  /** Cambio de tema: actualiza set + re-resuelve la variante (mismo tamaño/imán). */
+  /** Cambio de tema: actualiza set + re-resuelve la variante (mismo tamaño/imán/idioma). */
   function handleSelectTheme(nextId: string | null) {
     setStyleId(nextId);
     const themeKey = nextId
@@ -515,20 +547,6 @@ export function LetterSetEditor({
       : null;
     setCurrentVariantId((cur) =>
       resolveLetterSetVariant(variants, cur, { theme: themeKey, language }),
-    );
-  }
-
-  /** Cambio de idioma: nuevo alfabeto + mismo TEMA en el set del idioma nuevo + variante. */
-  function handleSelectLanguage(next: "es" | "en") {
-    if (next === language) return;
-    setLanguage(next);
-    const nextOptions = themeOptions[next] ?? [];
-    const nextSetId = selectedThemeKey
-      ? (nextOptions.find((o) => o.theme === selectedThemeKey)?.id ?? null)
-      : null;
-    setStyleId(nextSetId);
-    setCurrentVariantId((cur) =>
-      resolveLetterSetVariant(variants, cur, { theme: selectedThemeKey, language: next }),
     );
   }
 
@@ -657,21 +675,34 @@ export function LetterSetEditor({
     setPreviewError(null);
   }
 
-  // El idioma solo se elige cuando cambia el alfabeto (abecedario) y el producto tiene ambos.
-  const showLanguagePicker = letterSet === "full" && availableLanguages.length > 1;
+  // (2026-10-12 — el idioma NO se elige acá: llega de la variante de la PDP,
+  // ver initialLanguage; el selector duplicado dentro del estudio se eliminó.)
+
+  // Desglose de la variante VIGENTE (re-resuelta en vivo al cambiar tema):
+  // imantado, idioma y tema. Lo comparten el header sticky (2026-10-12) y la
+  // Vista Previa; el tamaño lo enuncia la propia modal (sizeCm) y no se duplica.
+  const variantLabel = currentVariant
+    ? describeVariantAttributes({
+        magnet: currentVariant.magnet,
+        language: currentVariant.language,
+        theme: currentVariant.theme,
+      }).join(" · ") || undefined
+    : undefined;
 
   return (
     <>
       {/* Ola 32 — chrome unificado del Estudio: barra sticky con el idioma visual
           del StudioToolbar del estudio de foto (pill «Salir», avatar+nombre del
-          producto, total en vivo + CTA «Ver diseño» — la MISMA acción Y el MISMO
-          rótulo del botón grande del panel de controles: QA ronda 2 (owner
-          2026-10-07) unificó ambos en «Ver diseño», revirtiendo la diferenciación
-          de QA 1.6). */}
+          producto, total en vivo + CTA «Ver diseño»). 2026-10-12 — este CTA es el
+          ÚNICO «Ver diseño» del editor: el botón duplicado al pie del panel de
+          controles se eliminó (misma acción, doble rótulo en pantalla). */}
       <StudioSimpleHeader
         productName={product.name}
         productSlug={product.slug}
         productImageUrl={productImageUrl}
+        // 2026-10-12 — desglose de la variante bajo el nombre (el MISMO label
+        // de la Vista Previa, vivo al cambiar tema/idioma).
+        variantLabel={variantLabel}
         trailing={
           <span className="text-brand-purple-dark text-sm font-bold whitespace-nowrap tabular-nums">
             {priceLabel}
@@ -715,7 +746,8 @@ export function LetterSetEditor({
               {/* PREVIEW = el lienzo: tarjeta-unidad estándar del Estudio (mismo
               lenguaje que las tarjetas del estudio de foto). En móvil va DEBAJO
               de la tarjeta de controles (2026-10-05, owner: primero se elige
-              Tema → Idioma → Borde → Colores y luego se ve el lienzo); en lg
+              Tema → Borde → Sets → Colores y luego se ve el lienzo; el idioma
+              llega fijo de la PDP desde 2026-10-12); en lg
               columna fluida a la derecha. */}
               <section
                 aria-label={texts.letras.titulo}
@@ -828,8 +860,9 @@ export function LetterSetEditor({
               </section>
 
               {/* Controles: tarjeta blanca lateral en lg (idioma del StudioSidebar),
-              ARRIBA del lienzo en móvil (2026-10-05: Tema → Idioma → Borde →
-              Colores se eligen antes de ver el lienzo). */}
+              ARRIBA del lienzo en móvil (2026-10-05: Tema → Borde → Sets →
+              Colores se eligen antes de ver el lienzo; el idioma llega fijo de
+              la PDP — 2026-10-12). */}
               <aside className="order-1 lg:order-1 lg:w-80 lg:shrink-0">
                 <div className="border-brand-purple/12 rounded-3xl border bg-white p-5 shadow-sm sm:p-6">
                   {/* Ola 2A — Selector de TEMA (antes dimensión de la PDP). Siempre visible: Default
@@ -883,41 +916,9 @@ export function LetterSetEditor({
                     </div>
                   </div>
 
-                  {/* Ola 2A — Selector de IDIOMA (antes dimensión de la PDP). Solo abecedario (el
-            alfabeto cambia: la Ñ) y solo si el producto tiene ambos idiomas. */}
-                  {showLanguagePicker && (
-                    <div className="mb-5">
-                      <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
-                        {texts.letras.idiomaTitulo}
-                      </p>
-                      <div
-                        role="radiogroup"
-                        aria-label={texts.letras.idiomaTitulo}
-                        className="flex flex-wrap gap-2"
-                      >
-                        {availableLanguages.map((lang) => {
-                          const active = lang === language;
-                          return (
-                            <button
-                              key={lang}
-                              type="button"
-                              role="radio"
-                              aria-checked={active}
-                              onClick={() => handleSelectLanguage(lang)}
-                              className={`inline-flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-sm font-semibold transition ${
-                                active
-                                  ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
-                                  : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
-                              }`}
-                            >
-                              <span aria-hidden="true">{lang === "es" ? "🇪🇸" : "🇬🇧"}</span>
-                              {lang === "es" ? texts.letras.idiomaEs : texts.letras.idiomaEn}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
+                  {/* 2026-10-12 — el selector de IDIOMA dentro del estudio se eliminó
+            (duplicado PDP↔estudio): el idioma llega fijo de la variante elegida en la
+            página de producto (initialLanguage). */}
 
                   {/* Lucy 2026-09-05 — opción de diseño "Con borde / Sin borde" (mismo precio). Es una
             decisión de LIENZO que viaja en Design.metadata y se refleja en el PNG de producción,
@@ -969,8 +970,55 @@ export function LetterSetEditor({
                     </div>
                   </div>
 
+                  {/* Stepper de cantidad de sets (2026-10-12) — cambiar N SIN volver
+            a la PDP (antes venía fijo de ?copies=N). Mismo patrón visual del stepper
+            del estudio de foto (StudioPhotoCountControl): grupo ring con −/+. Al
+            reducir se recortan los sets del final; al aumentar nacen vacíos (tema
+            default). Tope MAX_LETTER_SET_UNITS; el precio y el pager siguen a N. */}
+                  <div className="mt-5">
+                    <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
+                      {texts.letras.setsTitulo}
+                      <span className="text-brand-muted ml-2 text-xs font-normal">
+                        {texts.letras.setsHint}
+                      </span>
+                    </p>
+                    <div
+                      role="group"
+                      aria-label={texts.letras.setsGroupAria}
+                      className="ring-brand-purple/15 inline-flex items-center rounded-lg bg-white ring-1"
+                    >
+                      <button
+                        type="button"
+                        aria-label={texts.letras.setsMenosAria}
+                        disabled={unitCount <= 1}
+                        onClick={() => handleChangeUnitCount(unitCount - 1)}
+                        className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-9 w-9 cursor-pointer items-center justify-center rounded-l-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                      >
+                        <Minus className="h-4 w-4" aria-hidden />
+                      </button>
+                      <span
+                        aria-live="polite"
+                        className="text-brand-purple-dark flex min-w-14 items-center justify-center text-center text-sm font-bold tabular-nums"
+                      >
+                        {fillStudioText(
+                          unitCount === 1 ? texts.letras.setsValorUno : texts.letras.setsValor,
+                          { n: unitCount },
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label={texts.letras.setsMasAria}
+                        disabled={unitCount >= MAX_LETTER_SET_UNITS}
+                        onClick={() => handleChangeUnitCount(unitCount + 1)}
+                        className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-9 w-9 cursor-pointer items-center justify-center rounded-r-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                      >
+                        <Plus className="h-4 w-4" aria-hidden />
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Multi-unidad (2026-09-09) — pager de sets + "Aplicar este diseño a todas".
-            Cada set lleva sus propios colores por ficha (el tema/idioma/borde son del
+            Cada set lleva sus propios colores por ficha (el tema/borde son del
             diseño completo). Las láminas de TODOS los sets se ven en la Vista previa. */}
                   {unitCount > 1 && (
                     <div className="mt-5 flex flex-col items-center gap-3">
@@ -1051,29 +1099,9 @@ export function LetterSetEditor({
                       )}
                       {building3D ? texts.comun.armando : texts.escenas.setBtnTablero}
                     </button>
-                    {/* El botón ya no agrega al carrito: abre la vista previa. El texto lo dice ("Vista
-              previa", igual que el Estudio principal) y el sr-only completa la promesa sin romper
-              WCAG 2.5.3 (el nombre accesible empieza por el texto visible). */}
-                    <button
-                      type="button"
-                      onClick={handleShowPreview}
-                      disabled={submitting || preparing || building3D}
-                      className={`bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 ${STUDIO_CTA_DISABLED_CLASSES}`}
-                    >
-                      {preparing || submitting ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : (
-                        <Sparkles className="h-5 w-5" />
-                      )}
-                      {preparing
-                        ? texts.comun.preparando
-                        : submitting
-                          ? texts.comun.agregando
-                          : texts.comun.listo}
-                      {!preparing && !submitting && (
-                        <span className="sr-only">{texts.letras.listoSr}</span>
-                      )}
-                    </button>
+                    {/* 2026-10-12 — el CTA «Ver diseño» del panel se eliminó por DUPLICADO:
+                        queda UNO solo, el del header sticky (StudioSimpleHeader, misma
+                        acción y rótulo). El precio se conserva junto a los controles. */}
                     <span className="text-brand-muted text-sm font-semibold">{priceLabel}</span>
                   </div>
                 </div>
@@ -1097,25 +1125,22 @@ export function LetterSetEditor({
         // El cliente cuenta FICHAS, no archivos: el set son N imanes ("los 27 imanes que vas a
         // recibir"). El slotCount=unitCount del finalize es otra cosa: las láminas de producción.
         slotCount={letters.length}
-        // Tamaño real de la variante vigente (la que se re-resuelve al cambiar tema/idioma).
+        // Tamaño real de la variante vigente (la que se re-resuelve al cambiar tema).
         // El atributo se guarda sin unidad ("5×7"); sin esto la modal decía "Cada imán mide 7×10.".
         sizeCm={currentVariant?.sizeCm ? `${currentVariant.sizeCm} cm` : undefined}
         // Paquete F (2026-10-02) — desglose de la variante VIGENTE (re-resuelta en
-        // vivo al cambiar tema/idioma): imantado, idioma y tema. El tamaño ya lo
-        // cubre sizeCm de arriba; no se duplica.
-        variantLabel={
-          currentVariant
-            ? describeVariantAttributes({
-                magnet: currentVariant.magnet,
-                language: currentVariant.language,
-                theme: currentVariant.theme,
-              }).join(" · ") || undefined
-            : undefined
-        }
+        // vivo al cambiar tema): imantado, idioma y tema. El tamaño ya lo
+        // cubre sizeCm de arriba; no se duplica. Misma etiqueta del header (const
+        // variantLabel, extraída 2026-10-12).
+        variantLabel={variantLabel}
         unitPrice={unitPriceCents}
         // Multi-unidad (2026-09-09): el diseño contiene TODOS los sets → total =
         // precio del set × N y la línea del carrito es UNA (qty 1).
         unitCount={unitCount}
+        // 2026-10-12 — sustantivo de la unidad para la línea de la modal
+        // ("2 sets — cada uno con su propio diseño", nunca "N unidades"): el
+        // MISMO del pager de sets (textos CMS unidades.nombreSet).
+        unitNoun={{ one: texts.unidades.nombreSet.toLowerCase(), many: "sets" }}
         isFinalizing={submitting}
         errorMessage={previewError}
         onEdit={handleClosePreview}

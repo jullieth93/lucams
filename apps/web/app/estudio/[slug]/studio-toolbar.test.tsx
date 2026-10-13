@@ -307,3 +307,39 @@ describe("StudioToolbar — botón «Ver diseño»", () => {
     expect(screen.getByRole("button", { name: "Ver diseño de tu pedido" })).toBeEnabled();
   });
 });
+
+describe("StudioToolbar — desglose de la variante en el header (2026-10-12)", () => {
+  // El editor pasa el MISMO label de la Vista Previa (studioPreviewVariantLabel,
+  // ya sin tamaño/conteos que el header enuncia en sus chips) y el toolbar lo
+  // muestra bajo el nombre en desktop y en la fila móvil.
+  it("con variantLabel: visible junto al nombre del producto (desktop y móvil)", () => {
+    const store = createStudioStore();
+    store.getState().init({
+      designId: "d1",
+      productSlug: "fotoimanes-cuadrados",
+      canvasData: makeCanvasData(2),
+      templates: [],
+    });
+    renderStudio(
+      <StudioToolbar
+        store={store}
+        productName="Fotoimanes cuadrados"
+        productSlug="fotoimanes-cuadrados"
+        productSizeCm="5×5"
+        productSlotCount={2}
+        variantLabel="Con imán · Español"
+        onFinalize={vi.fn()}
+      />,
+    );
+    // Hero md+ (prefijo "· ") y fila móvil (<md) — ambas superficies lo llevan.
+    expect(screen.getAllByText(/Con imán · Español/).length).toBeGreaterThanOrEqual(2);
+    // El conteo y el tamaño siguen en sus chips (no duplicados en el label).
+    expect(screen.getByText(/2 imanes/)).toBeInTheDocument();
+  });
+
+  it("sin variantLabel: el header se renderiza igual que antes (sin desglose)", () => {
+    setup({ filled: 2 });
+    expect(screen.queryByText(/Con imán/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ver diseño de tu pedido" })).toBeEnabled();
+  });
+});

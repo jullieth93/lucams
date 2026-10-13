@@ -1,4 +1,4 @@
-# Política de divulgación responsable de Lucams_shop — https://lucamsshop.com/legal/security
+# Política de divulgación responsable de Lucams Shop — https://lucamsshop.com/legal/security
 # Formato: RFC 9116 (https://www.rfc-editor.org/rfc/rfc9116)
 # Nota (ACCIÓN HUMANA): renovar el campo Expires cada año antes de que venza.
 

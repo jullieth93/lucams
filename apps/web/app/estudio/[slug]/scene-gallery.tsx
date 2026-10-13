@@ -44,6 +44,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import nextDynamic from "next/dynamic";
 import { X, ZoomIn } from "lucide-react";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { Scene3DErrorBoundary } from "./scene-3d-error-boundary";
+import { CALENDAR_CARD_THICKNESS_CM } from "./magnet-3d";
 import type { Magnet3D } from "./fridge-3d-view";
 import { composeGiftFlatlay } from "./lib/compose-gift-flatlay";
 import { composeShelfFlatlay } from "./lib/compose-shelf-flatlay";
@@ -158,6 +160,17 @@ export function galleryEscapeAction(
   cardCount: number,
 ): "back-to-detail" | "close" {
   return kind === "calendar" && cardCount > 0 ? "back-to-detail" : "close";
+}
+
+/**
+ * Grosor FÍSICO (cm) de la pieza en las escenas 3D según el tipo de producto
+ * (2026-10-12 — bug "tarjetas de calendario gruesas como imanes"): las tarjetas del
+ * Calendario Set 12 usan las escenas nevera/mural (MagnetMesh) y heredaban el grosor del
+ * fotoimán (2 mm de goma ferrita); son CARTULINA (~0.4 mm). undefined = el default de la
+ * escena (imán 2 mm / ficha memo 1.5 mm).
+ */
+export function sceneThicknessCm(kind: SceneKind): number | undefined {
+  return kind === "calendar" ? CALENDAR_CARD_THICKNESS_CM : undefined;
 }
 
 /**
@@ -439,22 +452,38 @@ export function SceneGallery({
             <p className="text-brand-cream/70 text-xs">{texts.escenas.vacioHint}</p>
           </div>
         ) : is3D ? (
-          activeScene === "fridge" ? (
-            <FridgeView3D magnets={magnets} cols={cols} sizeCm={sizeCm} />
-          ) : activeScene === "polaroid" ? (
-            <PolaroidView3D magnets={magnets} sizeCm={sizeCm} />
-          ) : activeScene === "board" ? (
-            <RoomBoardView3D magnets={magnets} cols={cols} style="cork" sizeCm={sizeCm} />
-          ) : activeScene === "memo" ? (
-            <RoomBoardView3D magnets={magnets} cols={cols} style="memo" sizeCm={sizeCm} />
-          ) : (
-            <BookView3D
-              bookmarks={magnets}
-              sizeCm={sizeCm}
-              facesPerUnit={facesPerUnit}
-              flat={flat}
-            />
-          )
+          /* #18 para las escenas 3D (2026-10-12): si una textura falla al cargar dentro del
+             canvas (useTexture con dataURL inválido/enorme), el boundary muestra el mismo
+             fallback amigable de los compositores 2D en vez de un lienzo negro/colgado. */
+          <Scene3DErrorBoundary>
+            {activeScene === "fridge" ? (
+              <FridgeView3D
+                magnets={magnets}
+                cols={cols}
+                sizeCm={sizeCm}
+                thicknessCm={sceneThicknessCm(kind)}
+              />
+            ) : activeScene === "polaroid" ? (
+              <PolaroidView3D magnets={magnets} sizeCm={sizeCm} />
+            ) : activeScene === "board" ? (
+              <RoomBoardView3D
+                magnets={magnets}
+                cols={cols}
+                style="cork"
+                sizeCm={sizeCm}
+                thicknessCm={sceneThicknessCm(kind)}
+              />
+            ) : activeScene === "memo" ? (
+              <RoomBoardView3D magnets={magnets} cols={cols} style="memo" sizeCm={sizeCm} />
+            ) : (
+              <BookView3D
+                bookmarks={magnets}
+                sizeCm={sizeCm}
+                facesPerUnit={facesPerUnit}
+                flat={flat}
+              />
+            )}
+          </Scene3DErrorBoundary>
         ) : building && !flatUrl ? (
           <div className="text-brand-cream/90 flex h-full items-center justify-center text-sm">
             {texts.escenas.armando}

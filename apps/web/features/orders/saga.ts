@@ -47,6 +47,7 @@ import {
   notifyOrderReturned,
 } from "./emails";
 import { issueReferralRewardsIfFirstPaidOrder } from "@/features/referrals/service";
+import { awardLoyaltyPointsForPaidOrder } from "@/features/loyalty/service";
 import { isCouponPerCustomerLimitError } from "@/features/coupons/redemption";
 
 /**
@@ -504,11 +505,19 @@ export async function processPaidOrder(
   await notifyNewOrderToAdmin(order.id);
 
   // Referidos v1 (2026-08-11): si el comprador llegó con un código y este es
-  // su PRIMER pedido pagado, ambos reciben su cupón (10%, 1 uso, 90 días).
-  // Idempotente por Referral.status y best-effort (nunca interrumpe la saga).
+  // su PRIMER pedido pagado, ambos reciben su cupón (% y vigencia desde la
+  // config REFERRAL_* de /admin/fidelizacion). Idempotente por Referral.status
+  // y best-effort (nunca interrumpe la saga).
   await issueReferralRewardsIfFirstPaidOrder(order.id);
 
-  // Envío propio "Envío Lucam's" (carrier "lucams"): NO se genera guía Aveonline
+  // Puntos Lucams (2026-10-12): el cliente gana floor(totalPagado /
+  // earnCopPerPoint) puntos por el pago confirmado. Mismo sitio de la saga que
+  // la recompensa de referidos: idempotente por orden (índice único
+  // LoyaltyTxn(orderId, "EARN") → el retry es P2002 no-op) y best-effort.
+  // No-op si el programa está apagado o el pedido es de invitado.
+  await awardLoyaltyPointsForPaidOrder(order.id);
+
+  // Envío propio "Envío Lucams" (carrier "lucams"): NO se genera guía Aveonline
   // — la entrega es mensajería interna de Bogotá que se opera a mano desde
   // /admin/pedidos. Se marca trackingNumber INTERNO-<orderNumber>: el guard
   // `if (order.trackingNumber)` de arriba hace los reintentos idempotentes y el

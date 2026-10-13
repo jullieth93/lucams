@@ -17,9 +17,11 @@ import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
 import { PaymentMethodChooser } from "./pay-button";
 import { CouponField } from "./coupon-field";
+import { LoyaltyField } from "./loyalty-field";
 import {
   CheckoutError,
   getAppliedCoupon,
+  getCheckoutLoyalty,
   loadCheckoutContext,
   assertCheckoutAvailability,
 } from "@/features/checkout/service";
@@ -83,6 +85,11 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
   // F1 — cupón aplicado (si hay): descuento vigente + posible aviso si dejó de valer.
   const applied = await getAppliedCoupon();
 
+  // Puntos Lucams (2026-10-12) — redención: null si el programa está apagado o
+  // el checkout es de invitado. `applied` re-tarifado contra el carrito actual;
+  // `error` si la redención guardada dejó de valer (mismo patrón del cupón).
+  const loyalty = await getCheckoutLoyalty();
+
   // Toggle de negocio: ¿se ofrece contra entrega? (editable en /admin/contenido/paginas/global).
   // FAIL-CLOSED (CF-35): setting ausente/despublicada = COD deshabilitado — nunca se
   // ofrece en silencio un método de pago que el negocio no confirmó explícitamente.
@@ -95,7 +102,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
   // de envío (mismo asset que el selector de /checkout/envio vía carrier-logos).
   const shipLogo = carrierLogo(shippingSelection.carrierName);
 
-  // Promesa "Envío Lucam's" (2026-10-06): NO es una transportadora (mensajería
+  // Promesa "Envío Lucams" (2026-10-06): NO es una transportadora (mensajería
   // propia) y sus días YA incluyen la fabricación a mano + hora de corte — se
   // muestra con el MISMO texto del selector de envío (resolveLucamsPromise),
   // no como "estimado de la transportadora tras el despacho".
@@ -252,6 +259,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               backHref="/checkout/envio"
               codEnabled={codEnabled}
               couponInvalidAtRender={Boolean(applied?.error)}
+              loyaltyInvalidAtRender={Boolean(loyalty?.error)}
               texts={texts.pay}
             />
           </section>
@@ -285,12 +293,23 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
         </div>
 
         <div className="order-1 space-y-4 lg:order-none lg:col-span-1">
-          <div className="border-brand-purple/10 rounded-2xl border bg-white p-4 shadow-sm">
+          <div className="border-brand-purple/10 space-y-3 rounded-2xl border bg-white p-4 shadow-sm">
             <CouponField
               appliedCode={applied?.code}
               appliedError={applied?.error}
               texts={texts.payment}
             />
+            {loyalty && (
+              <LoyaltyField
+                balance={loyalty.balance}
+                minPoints={loyalty.minPoints}
+                maxPercent={loyalty.maxPercent}
+                pointValueCents={loyalty.pointValueCents}
+                appliedPoints={loyalty.applied?.points ?? (ctx.state.loyaltyPoints || undefined)}
+                appliedDiscountCents={loyalty.applied?.discountCents}
+                appliedError={loyalty.error}
+              />
+            )}
           </div>
           <OrderSummary
             cart={ctx.cart}
@@ -298,6 +317,9 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
             shippingLabel={shippingSelection.carrierName}
             discount={applied && !applied.error ? applied.discount : 0}
             couponCode={applied && !applied.error ? applied.code : undefined}
+            loyaltyDiscount={loyalty?.applied?.discountCents ?? 0}
+            loyaltyPoints={loyalty?.applied?.points}
+            loyaltyEarnPreview={loyalty?.earnPreviewPoints}
             texts={texts.summary}
           />
         </div>

@@ -10,9 +10,12 @@
  *  - Un `?variant=` explícito en la URL siempre manda (deep-link de la PDP).
  *  - El variantId de metadata solo se acepta si sigue existiendo entre las
  *    variantes del producto (una archivada cae al fallback, nunca a un id colgado).
- *  - Diseños previos a la clave (y packs de foto, cuya variante exacta se deriva
- *    del canvasData en el carrito) → undefined: la página cae a la primera
- *    variante, el comportamiento histórico.
+ *  - Packs de foto (2026-10-12): el Estudio persiste la variante EFECTIVA (match
+ *    del N de fotos + magnet del canvas) en metadata al crear y en cada auto-save
+ *    (saveCanvas) → el recover reabre con ELLA. Diseños de pack LEGACY sin la
+ *    clave → undefined: la página cae a la primera variante y el canvasData sigue
+ *    mandando sobre photoSlots/sizeCm/magnet efectivos (fallback histórico; el
+ *    cobro siempre deriva la variante del canvasData en el servidor).
  */
 export function resolveRecoverVariantId(opts: {
   urlVariantId?: string;

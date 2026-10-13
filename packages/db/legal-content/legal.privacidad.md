@@ -1,10 +1,10 @@
-En **Lucams_shop** cuidamos tus datos personales con el mismo cariño con el que hacemos tus imanes. Este Aviso de Privacidad te explica, en cristiano, quién es responsable de tus datos, qué recolectamos, para qué, cuáles son tus derechos y cómo ejercerlos, conforme a la **Ley 1581 de 2012** y su **Decreto reglamentario 1377 de 2013, compilado en el Decreto 1074 de 2015**.
+En **Lucams Shop** cuidamos tus datos personales con el mismo cariño con el que hacemos tus imanes. Este Aviso de Privacidad te explica, en cristiano, quién es responsable de tus datos, qué recolectamos, para qué, cuáles son tus derechos y cómo ejercerlos, conforme a la **Ley 1581 de 2012** y su **Decreto reglamentario 1377 de 2013, compilado en el Decreto 1074 de 2015**.
 
 Este aviso es un resumen. El documento vinculante y completo es nuestra **Política de Tratamiento de Datos Personales**, que puedes consultar en cualquier momento (ver más abajo).
 
 ## Quién es responsable de tus datos
 
-**Lucams_shop (persona natural), Bogotá D.C., Colombia**, titular de la marca **Lucams_shop**, es la responsable del tratamiento de tus datos personales.
+**Lucams Shop (persona natural), Bogotá D.C., Colombia**, titular de la marca **Lucams Shop**, es la responsable del tratamiento de tus datos personales.
 
 Puedes contactarnos por:
 

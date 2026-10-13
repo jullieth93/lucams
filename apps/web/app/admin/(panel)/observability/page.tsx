@@ -249,9 +249,10 @@ export default async function AdminObservabilityPage() {
          * Fase 3D — cuota de Supabase Storage por bucket. Va FUERA del
          * <details> técnico a propósito (mismo criterio que entregabilidad):
          * llenar el plan Free (1 GB) tumba las subidas de fotos de clientas —
-         * es negocio, no solo técnica. Los bytes salen SOLO de tablas de la
-         * app (la Management API de Supabase no está disponible en runtime);
-         * los buckets sin bytes guardados se reportan como "N archivos".
+         * es negocio, no solo técnica. Los bytes salen de la tabla
+         * storage.objects del propio Supabase (tamaño real de cada objeto,
+         * incluidos huérfanos aún no barridos); si esa consulta falla se
+         * degrada a las columnas de la app y se avisa en la nota.
          */}
         <Section title="Almacenamiento (Supabase Storage)" icon={<HardDrive className="h-4 w-4" />}>
           <div className="flex flex-wrap gap-3 text-sm">
@@ -268,17 +269,28 @@ export default async function AdminObservabilityPage() {
               />
             ))}
             <VitalPill
-              label="Total medido"
+              label={storage.degraded ? "Total medido (piso)" : "Total real"}
               value={formatBytes(storage.measuredBytes)}
               tone={storage.measuredBytes > 800 * 1024 * 1024 ? "amber" : "emerald"}
             />
           </div>
           <p className="text-brand-muted mt-2 text-xs">
-            El total suma solo los buckets que guardan el tamaño de cada archivo en la base de datos
-            (<code>customer-uploads</code> y <code>cms-media</code>) — es un piso: las vistas
-            previas, los PNG de producción y las fotos de producto se cuentan por archivos porque su
-            tamaño no está registrado. Límite del plan Supabase: <strong>1 GB (Free)</strong> ·{" "}
-            <strong>100 GB (Pro)</strong>. Si el total se acerca al límite, limpia la mediateca (
+            {storage.degraded ? (
+              <>
+                <strong>Lectura degradada:</strong> no se pudo consultar Storage directamente, así
+                que el total suma solo los buckets que guardan el tamaño de cada archivo en la base
+                de datos (<code>customer-uploads</code> y <code>cms-media</code>) — es un piso: las
+                vistas previas, los PNG de producción y las fotos de producto se cuentan por
+                archivos. Revisa el log <code>observability.storage_quota_fail</code>.{" "}
+              </>
+            ) : (
+              <>
+                Bytes y archivos medidos directamente sobre Storage (tamaño real de cada objeto, los
+                5 buckets) — el total es el consumo real, no un piso.{" "}
+              </>
+            )}
+            Límite del plan Supabase: <strong>1 GB (Free)</strong> · <strong>100 GB (Pro)</strong>.
+            Si el total se acerca al límite, limpia la mediateca (
             <Link
               href="/admin/contenido/mediateca"
               className="text-brand-purple-dark hover:text-brand-purple font-semibold underline"

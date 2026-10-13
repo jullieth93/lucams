@@ -107,6 +107,79 @@ const ERROR_FIELD_IDS: Record<ErrorFieldKey, string> = {
 // compartido ya se pinta solo con aria-invalid:border-destructive).
 const ERROR_SELECT_CLASSES = "border-rose-400 focus:border-rose-500 focus:ring-rose-200";
 
+// Snapshot de los campos de dirección TAL COMO quedan tras applySavedAddress():
+// defaults de resetAddressFields + los valores de la guardada. Se usa para
+// comparar contra el estado actual del form — si coinciden, la dirección ES la
+// guardada (sin cambios) y "Guardar en mi cuenta" no aplica (ya lo está).
+type SavedAddressSnapshot = {
+  deptCode: string;
+  cityCode: string;
+  zip: string;
+  localityId: string;
+  neighborhood: string;
+  kind: "urban" | "rural";
+  viaType: string;
+  viaNumber: string;
+  viaBis: boolean;
+  viaCardinal: string;
+  cruceNumber: string;
+  cruceCardinal: string;
+  detail: string;
+  vereda: string;
+  finca: string;
+  referencia: string;
+};
+
+// Replica EXACTA de la secuencia resetAddressFields()+set* de applySavedAddress.
+function snapshotFromSavedAddress(a: CheckoutPrefillAddress): SavedAddressSnapshot {
+  const snap: SavedAddressSnapshot = {
+    deptCode: "",
+    cityCode: "",
+    zip: "",
+    localityId: "",
+    neighborhood: "",
+    kind: "urban",
+    viaType: "Calle",
+    viaNumber: "",
+    viaBis: false,
+    viaCardinal: "",
+    cruceNumber: "",
+    cruceCardinal: "",
+    detail: "",
+    vereda: "",
+    finca: "",
+    referencia: "",
+  };
+  const s = a.structured;
+  if (s) {
+    snap.deptCode = String(s.deptCode ?? "");
+    snap.cityCode = String(s.cityCode ?? "");
+    snap.zip = String(s.zip ?? "");
+    snap.localityId = String(s.localityId ?? "");
+    snap.neighborhood = String(s.neighborhood ?? "");
+    snap.kind = s.kind === "rural" ? "rural" : "urban";
+    if (snap.kind === "urban") {
+      snap.viaType = String(s.viaType ?? "Calle") || "Calle";
+      snap.viaNumber = String(s.viaNumber ?? "");
+      snap.viaBis = Boolean(s.viaBis);
+      snap.viaCardinal = String(s.viaCardinal ?? "");
+      snap.cruceNumber = String(s.cruceNumber ?? "");
+      snap.cruceCardinal = String(s.cruceCardinal ?? "");
+      snap.detail = String(s.detail ?? "");
+    } else {
+      snap.vereda = String(s.vereda ?? "");
+      snap.finca = String(s.finca ?? "");
+      snap.referencia = String(s.referencia ?? "");
+    }
+  } else {
+    // Legacy (sin structured): solo se aplican depto/ciudad/CP.
+    if (a.deptCode) snap.deptCode = a.deptCode;
+    if (a.cityCode) snap.cityCode = a.cityCode;
+    if (a.zip) snap.zip = a.zip;
+  }
+  return snap;
+}
+
 export function DatosForm({
   initial,
   savedAddresses = [],
@@ -150,7 +223,7 @@ export function DatosForm({
   // se muestran TODAS las zonas del catálogo y es obligatoria siempre que la
   // ciudad esté en el catálogo, haya o no envío propio activo (las zonas
   // habilitadas en /admin/envios solo deciden si aparece la oferta "Envío
-  // Lucam's" en el paso de envío).
+  // Lucams" en el paso de envío).
   const [localityId, setLocalityId] = useState(initial.address?.localityId ?? "");
   const [neighborhood, setNeighborhood] = useState(initial.address?.neighborhood ?? "");
   const zoneCity = getZoneCityByCode(cityCode);
@@ -238,6 +311,9 @@ export function DatosForm({
   // "Guardar esta dirección en mi cuenta" (opt-in, solo clientes logueados).
   const [saveToAccount, setSaveToAccount] = useState(false);
   const [saveAddressLabel, setSaveAddressLabel] = useState("");
+  // id de la dirección guardada aplicada al form (null = diligenciamiento manual).
+  // Mientras los campos coincidan con ella, "Guardar en mi cuenta" va deshabilitado.
+  const [appliedSavedId, setAppliedSavedId] = useState<string | null>(null);
 
   // FLUJO REGALO — "compro yo, lo recibe otra persona": toggle de destinatario
   // distinto (nombre + teléfono van a la guía) + checkbox "Es un regalo" con
@@ -316,7 +392,64 @@ export function DatosForm({
       if (a.cityCode) setCityCode(a.cityCode);
       if (a.zip) setZip(a.zip);
     }
+    // La dirección cargada YA está en la cuenta: desmarcar "guardar" y registrar
+    // de cuál guardada proviene — el checkbox queda deshabilitado mientras los
+    // campos no difieran de ella (savedAddressMatch). Editar cualquier campo lo
+    // rehabilita (hay cambios que sí tendría sentido guardar como variante).
+    setAppliedSavedId(id);
+    setSaveToAccount(false);
+    setSaveAddressLabel("");
   }
+
+  // true cuando la dirección del form coincide EXACTAMENTE con la guardada que
+  // se aplicó — comparación campo a campo sobre el snapshot de applySavedAddress.
+  const savedAddressMatch = useMemo(() => {
+    if (!appliedSavedId) return false;
+    const a = savedAddresses.find((x) => x.id === appliedSavedId);
+    if (!a) return false;
+    const snap = snapshotFromSavedAddress(a);
+    if (
+      deptCode !== snap.deptCode ||
+      cityCode !== snap.cityCode ||
+      zip !== snap.zip ||
+      localityId !== snap.localityId ||
+      neighborhood !== snap.neighborhood ||
+      addressKind !== snap.kind
+    ) {
+      return false;
+    }
+    if (snap.kind === "urban") {
+      return (
+        viaType === snap.viaType &&
+        viaNumber === snap.viaNumber &&
+        viaBis === snap.viaBis &&
+        viaCardinal === snap.viaCardinal &&
+        cruceNumber === snap.cruceNumber &&
+        cruceCardinal === snap.cruceCardinal &&
+        detail === snap.detail
+      );
+    }
+    return vereda === snap.vereda && finca === snap.finca && referencia === snap.referencia;
+  }, [
+    appliedSavedId,
+    savedAddresses,
+    deptCode,
+    cityCode,
+    zip,
+    localityId,
+    neighborhood,
+    addressKind,
+    viaType,
+    viaNumber,
+    viaBis,
+    viaCardinal,
+    cruceNumber,
+    cruceCardinal,
+    detail,
+    vereda,
+    finca,
+    referencia,
+  ]);
 
   function handleNameBlur() {
     if (fullName.trim()) setFullName(capitalizeName(fullName));
@@ -1251,20 +1384,31 @@ export function DatosForm({
           />
         </div>
 
-        {/* Guardar la dirección para la próxima (solo clientes logueados) */}
+        {/* Guardar la dirección para la próxima (solo clientes logueados).
+            Si la dirección aplicada ES una guardada sin cambios, el checkbox va
+            deshabilitado con hint (guardar algo ya guardado no tendría efecto);
+            editar cualquier campo lo rehabilita — hay una variante que guardar. */}
         {canSaveAddress && (
           <div className="border-brand-purple/10 mt-4 border-t pt-4">
-            <label className="text-brand-purple-dark flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <label
+              className={`text-brand-purple-dark flex items-center gap-2 text-sm font-medium ${
+                savedAddressMatch ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+              }`}
+            >
               <input
                 type="checkbox"
                 name="saveToAccount"
-                checked={saveToAccount}
+                checked={saveToAccount && !savedAddressMatch}
+                disabled={savedAddressMatch}
                 onChange={(e) => setSaveToAccount(e.target.checked)}
                 className="accent-brand-purple h-4 w-4 rounded"
               />
               {texts.saveCheck}
             </label>
-            {saveToAccount && (
+            {savedAddressMatch && (
+              <p className="text-brand-muted mt-1 text-xs">{texts.saveCheckSavedHint}</p>
+            )}
+            {saveToAccount && !savedAddressMatch && (
               <div className="mt-2">
                 <Label
                   htmlFor="saveAddressLabel"

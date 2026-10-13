@@ -632,8 +632,8 @@ describe("describeVariantAttributes", () => {
     expect(describeVariantAttributes({ magnet: true })).toEqual(["Con imán"]);
   });
 
-  it("magnet false → «Sin imán (adhesivo)» (la distinción que faltaba en el set de 12 tarjetas)", () => {
-    expect(describeVariantAttributes({ magnet: false })).toEqual(["Sin imán (adhesivo)"]);
+  it("magnet false → «Sin imán» (la distinción que faltaba en el set de 12 tarjetas)", () => {
+    expect(describeVariantAttributes({ magnet: false })).toEqual(["Sin imán"]);
   });
 
   it("magnet ausente → no se menciona el imantado (no se asume el default)", () => {
@@ -680,6 +680,6 @@ describe("describeVariantAttributes", () => {
         pricePerTile: true,
         magnet: false,
       }),
-    ).toEqual(["Sin imán (adhesivo)"]);
+    ).toEqual(["Sin imán"]);
   });
 });

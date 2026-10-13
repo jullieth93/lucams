@@ -31,7 +31,7 @@ export function AdminLoginForm() {
         </div>
         <CardTitle className="text-2xl font-bold text-slate-900">Panel administrativo</CardTitle>
         <CardDescription className="text-slate-600">
-          Solo personal autorizado de Lucams_shop.
+          Solo personal autorizado de Lucams Shop.
         </CardDescription>
       </CardHeader>
 

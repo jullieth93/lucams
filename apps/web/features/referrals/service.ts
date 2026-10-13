@@ -5,8 +5,9 @@
  *  1. /mi-cuenta muestra tu código + link de compartir (wa.me).
  *  2. El registro acepta "código de referido" (opcional) → crea Referral PENDING,
  *     marca Customer.referredById y emite DE INMEDIATO el cupón de bienvenida
- *     del REFERIDO (PERCENT 10, 1 uso, 90 días, isPublic=false, customerId),
- *     visible en /mi-cuenta/cupones.
+ *     del REFERIDO (PERCENT y días de vigencia desde la config de
+ *     /admin/fidelizacion — settings REFERRAL_*; 1 uso, isPublic=false,
+ *     customerId), visible en /mi-cuenta/cupones.
  *  3. Cuando el referido paga su PRIMER pedido, la saga llama
  *     issueReferralRewardsIfFirstPaidOrder: SOLO el referente recibe su cupón
  *     (el del referido ya existe desde el registro) y la Referral queda
@@ -25,9 +26,14 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
 import { renderReferralRewardEmail } from "@/features/emails/registry";
+import { getReferralSettings } from "@/features/loyalty/settings";
 
-const REWARD_PERCENT = 10;
-const REWARD_DAYS = 90;
+// Recompensa configurable desde /admin/fidelizacion (2026-10-12): % OFF y días
+// de vigencia ya NO son constantes — se leen de las settings REFERRAL_* en cada
+// emisión (features/loyalty/settings.ts). Los cupones YA EMITIDOS conservan sus
+// términos (cada Coupon persiste su value/validTo): un cambio de config aplica
+// solo a emisiones futuras. enabled=false → no se emiten cupones (ni bienvenida
+// ni premio); la Referral se sigue registrando y queda PENDING en espera.
 
 // Prefijo fijo de la description del cupón de bienvenida: lo usa el chequeo
 // legacy de issueReferralRewardsIfFirstPaidOrder para no emitirlo dos veces,
@@ -35,20 +41,16 @@ const REWARD_DAYS = 90;
 // de la migración 20261005120000.
 const WELCOME_DESC_PREFIX = "Referidos: bienvenida para";
 
-function rewardValidityDays() {
-  return new Date(Date.now() + REWARD_DAYS * 24 * 60 * 60 * 1000);
-}
-
 /** Campos comunes de los cupones personales del programa (bienvenida y premio). */
-function personalCouponBase() {
+function personalCouponBase(settings: { rewardPercent: number; rewardDays: number }) {
   return {
     type: "PERCENT" as const,
-    value: REWARD_PERCENT,
+    value: settings.rewardPercent,
     maxUses: 1,
     maxUsesPerCustomer: 1,
     isPublic: false,
     validFrom: new Date(),
-    validTo: rewardValidityDays(),
+    validTo: new Date(Date.now() + settings.rewardDays * 24 * 60 * 60 * 1000),
     createdBy: "referrals-v1",
   };
 }
@@ -97,6 +99,7 @@ export async function attachReferral(input: {
     return { error: "No puedes usar tu propio código de referido." };
   }
   const email = input.refereeEmail.toLowerCase().trim();
+  const settings = await getReferralSettings();
   await prisma.$transaction(async (tx) => {
     // Dedup por email referido: un doble registro no crea una segunda Referral
     // (dos PENDING del mismo email premiarían dos veces al referente en la saga).
@@ -116,9 +119,13 @@ export async function attachReferral(input: {
       where: { id: input.refereeCustomerId },
       data: { referredById: referrer.id },
     });
+    // Programa apagado (REFERRAL_ENABLED=false): la Referral queda registrada
+    // pero NO se emite el cupón de bienvenida (ni se premiará al referente
+    // mientras siga apagado — ver issueReferralRewardsIfFirstPaidOrder).
+    if (!settings.enabled) return;
     await tx.coupon.create({
       data: {
-        ...personalCouponBase(),
+        ...personalCouponBase(settings),
         code: couponCode("REF"),
         description: `${WELCOME_DESC_PREFIX} ${email} (código de ${referrer.email})`,
         customerId: input.refereeCustomerId,
@@ -136,13 +143,20 @@ export async function attachReferral(input: {
 /**
  * Recompensa de referido: si el email del pedido tiene una Referral PENDING
  * y este es su PRIMER pedido pagado, emite el cupón personal del REFERENTE
- * (10%, 1 uso, 90 días) y marca la Referral como REWARDED. El cupón del
+ * (% y vigencia desde la config REFERRAL_* — históricamente 10%, 1 uso, 90
+ * días) y marca la Referral como REWARDED. El cupón del
  * referido ya se emitió en el registro (attachReferral); la única excepción
  * son las Referral PENDING heredadas de v1, que lo reciben aquí una sola vez.
  * Idempotente por status. Best-effort: nunca lanza ni interrumpe la saga.
  */
 export async function issueReferralRewardsIfFirstPaidOrder(orderId: string): Promise<void> {
   try {
+    // Programa apagado (REFERRAL_ENABLED=false): no se emite ningún cupón. La
+    // Referral queda PENDING en espera — si el negocio reactiva el programa, el
+    // PRÓXIMO pedido pagado del referido la re-evalúa (si este fue su primer
+    // pago y ya hizo otro después, el guard paidCount la marca EXPIRED).
+    const settings = await getReferralSettings();
+    if (!settings.enabled) return;
     const order = await prisma.order.findFirst({
       where: { id: orderId, deletedAt: null },
       select: { id: true, number: true, email: true, status: true },
@@ -207,7 +221,7 @@ export async function issueReferralRewardsIfFirstPaidOrder(orderId: string): Pro
           refereeWelcomeCode = couponCode("REF");
           await tx.coupon.create({
             data: {
-              ...personalCouponBase(),
+              ...personalCouponBase(settings),
               code: refereeWelcomeCode,
               description: `${WELCOME_DESC_PREFIX} ${email} (código de ${referrer.email}) · pedido ${order.number}`,
               customerId: referee.id,
@@ -217,7 +231,7 @@ export async function issueReferralRewardsIfFirstPaidOrder(orderId: string): Pro
       }
       await tx.coupon.create({
         data: {
-          ...personalCouponBase(),
+          ...personalCouponBase(settings),
           code: referrerCouponCode,
           description: `Referidos: regalo para ${referrer.email} (trajo a ${email}) · pedido ${order.number}`,
           customerId: referrer.id,
@@ -236,10 +250,12 @@ export async function issueReferralRewardsIfFirstPaidOrder(orderId: string): Pro
       refereeWelcomeCoupon: refereeWelcomeCode,
     });
 
-    // Emails best-effort (fuera de la tx): cada uno recibe SU código.
+    // Emails best-effort (fuera de la tx): cada uno recibe SU código. El % y la
+    // vigencia del copy salen de la config vigente AL EMITIR (los cupones ya
+    // emitidos conservan los términos con que se crearon).
     const rewardData = {
-      percent: REWARD_PERCENT,
-      validDays: REWARD_DAYS,
+      percent: settings.rewardPercent,
+      validDays: settings.rewardDays,
       orderNumber: order.number,
     };
     if (referee && refereeWelcomeCode) {

@@ -10,12 +10,13 @@
  */
 
 import type { MetadataRoute } from "next";
+import { SITE_NAME, SITE_TITLE } from "@/lib/site";
 import { isCatalogMode } from "@/lib/store-mode";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Lucams_shop — Tus recuerdos en imán",
-    short_name: "Lucams_shop",
+    name: SITE_TITLE,
+    short_name: SITE_NAME,
     // Etapa 1 (modo catálogo): sin checkout de pago ni envío calculado — la descripción
     // instalable no puede prometerlos. Derivada del flag, no hardcodeada, para que el
     // texto transaccional vuelva solo al activar el modo full.

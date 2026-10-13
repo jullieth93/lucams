@@ -20,6 +20,7 @@ import { AdminBadge } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Hint } from "@/components/ui/tooltip";
+import { CustomColorPicker } from "@/components/color-picker";
 import {
   publishCmsFieldAction,
   saveCmsFieldAction,
@@ -115,17 +116,19 @@ export function FieldRow({
         className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 text-brand-purple-dark w-full rounded-md border bg-white px-3 py-2 text-sm shadow-sm focus:ring-2 focus:outline-none"
       />
     ) : field.type === "COLOR" ? (
-      <span className="flex items-center gap-2">
-        {/* type=color exige #rrggbb; si el valor guardado no es hex válido
-            arrancamos en negro para que el control no se rompa. */}
+      <span className="flex flex-wrap items-center gap-2">
+        {/* Picker propio (components/color-picker.tsx) — el input color nativo
+            es una rejilla básica en Android/Linux; paridad en toda plataforma.
+            El panel inline cae debajo de la fila (w-full en el flex-wrap). */}
         <input type="hidden" name="body" value={value} />
-        <input
-          type="color"
-          aria-label={`Color de ${field.label}`}
-          value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : "#000000"}
-          onChange={(e) => setValue(e.target.value)}
+        <CustomColorPicker
+          value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : null}
+          onChange={(hex) => setValue(hex)}
+          label={`Color de ${field.label}`}
           disabled={pending}
-          className="border-brand-purple/20 h-9 w-12 cursor-pointer rounded-md border bg-white p-1"
+          className="h-9 w-12 rounded-md"
+          panelClassName="w-full basis-full"
+          fallbackHex="#000000"
         />
         <code className="text-brand-purple-dark/75 font-mono text-xs">{value}</code>
       </span>

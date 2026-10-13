@@ -15,7 +15,7 @@ export type OrderShippedData = {
   trackingUrl: string | null;
   estimatedDays: number | null;
   publicTrackingToken: string | null;
-  /** true = entrega propia "Envío Lucam's" (trackingNumber INTERNO-*): el
+  /** true = entrega propia "Envío Lucams" (trackingNumber INTERNO-*): el
    *  correo NO menciona guía rastreable ni transportadora externa. */
   internalDelivery?: boolean;
 };
@@ -52,7 +52,7 @@ ${data.publicTrackingToken ? "" : `<p style="margin-top:6px;font-size:13px;color
 <p>Hola ${escapeHtml(data.customerName)}, despachamos tu pedido <strong>${escapeHtml(data.orderNumber)}</strong>.</p>
 ${
   internal
-    ? `<p>Va en camino con <strong>nuestro equipo Lucam's</strong> — te llega <strong>hoy mismo</strong>: la entrega es el mismo día del despacho, sin transportadora externa.</p>`
+    ? `<p>Va en camino con <strong>nuestro equipo Lucams</strong> — te llega <strong>hoy mismo</strong>: la entrega es el mismo día del despacho, sin transportadora externa.</p>`
     : `<p>Transportadora: <strong>${escapeHtml(data.carrier)}</strong></p>
 <p>Número de guía: <code style="background:#f5f0eb;padding:2px 6px;border-radius:4px;">${escapeHtml(data.trackingNumber)}</code></p>`
 }
@@ -75,7 +75,7 @@ Despachamos tu pedido ${data.orderNumber}.
 
 ${
   internal
-    ? "Va en camino con nuestro equipo Lucam's — te llega hoy mismo: la entrega es el mismo día del despacho, sin transportadora externa."
+    ? "Va en camino con nuestro equipo Lucams — te llega hoy mismo: la entrega es el mismo día del despacho, sin transportadora externa."
     : `Transportadora: ${data.carrier}
 Número de guía: ${data.trackingNumber}`
 }

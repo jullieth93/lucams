@@ -427,7 +427,7 @@ describe("toDetail — imagen por variante y desglose (Paquete F)", () => {
   it("expone variantBreakdown desde los attributes de la variante (incluye Con/Sin imán)", async () => {
     seedCart([{ qty: 1, stock: 5, attributes: { photoSlots: 12, sizeCm: "6×8", magnet: false } }]);
     const detail = await updateCartItemQty("sess_1", "ci_1", 1);
-    expect(detail.items[0].variantBreakdown).toEqual(["12 fotos", "6×8 cm", "Sin imán (adhesivo)"]);
+    expect(detail.items[0].variantBreakdown).toEqual(["12 fotos", "6×8 cm", "Sin imán"]);
   });
 
   it("variante sin attributes: variantBreakdown vacío (la UI pinta solo el nombre)", async () => {

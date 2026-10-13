@@ -47,7 +47,7 @@ export async function generateMetadata(
   // #25 — heredar las imágenes OG del layout (el merge shallow de Next las borraría).
   const previousImages = (await parent).openGraph?.images ?? [];
   return {
-    // #27 — solo el nombre; el template global añade "· Lucams_shop" una vez (evita duplicarla).
+    // #27 — solo el nombre; el template global añade "· Lucams Shop" una vez (evita duplicarla).
     title: ocasion.name,
     description,
     // Canonical self-referencial (auditoría 2026-07-17): evita indexar variantes con utm_*/fbclid.
@@ -56,7 +56,7 @@ export async function generateMetadata(
       title: `Imanes para ${ocasion.name}`,
       description,
       type: "website",
-      siteName: "Lucams_shop",
+      siteName: "Lucams Shop",
       locale: "es_CO",
       images: previousImages,
     },

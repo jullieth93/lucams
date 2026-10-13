@@ -25,10 +25,14 @@ import type { AuthTexts } from "../auth-texts";
 export function RegistroForm({
   texts,
   initialReferralCode,
+  referralPercent = 10,
 }: {
   texts: AuthTexts["registro"];
   /** Referidos v1: prefill del código desde ?ref= (link de compartir). */
   initialReferralCode?: string;
+  /** % OFF vigente del programa Invita y gana (config /admin/fidelizacion) —
+   *  lo interpola el hint del campo de código. Default 10 (histórico). */
+  referralPercent?: number;
 }) {
   const [state, formAction, pending] = useActionState<SignupActionState | null, FormData>(
     signupAction,
@@ -147,7 +151,7 @@ export function RegistroForm({
               aria-invalid={Boolean(state?.fieldErrors?.referralCode)}
             />
             <p className="text-muted-foreground text-xs">
-              {texts.referralHint.replace("{percent}", "10")}
+              {texts.referralHint.replace("{percent}", String(referralPercent))}
             </p>
             {state?.fieldErrors?.referralCode && (
               <p className="text-destructive text-sm">{state.fieldErrors.referralCode[0]}</p>

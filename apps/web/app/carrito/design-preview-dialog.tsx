@@ -26,7 +26,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { Eye, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -58,12 +58,27 @@ function pointerDistance(a: { x: number; y: number }, b: { x: number; y: number 
 
 export function DesignPreviewDialog({
   previewUrl,
+  pages = null,
+  watermarkNote = null,
   productName,
   triggerLabel,
   title,
   description,
 }: {
   previewUrl: string;
+  /**
+   * 2026-10-13 — páginas por UNIDAD del diseño (set/tira/separador/pack), con
+   * watermark (wm/pages/NN.webp). Con 2+ páginas el lightbox PAGINA (flechas,
+   * dots, swipe, ←/→) como la modal «Vista previa» del Estudio; con 1 o sin
+   * páginas se muestra `previewUrl` como siempre. Son URLs estáticas (no hay
+   * generación perezosa): el reset de página corre al cerrar el diálogo o al
+   * cambiar el SET de páginas (patrón de estado derivado — no reintroducir el
+   * bug 2026-10-12 del pager del Estudio, donde un array nuevo del MISMO set
+   * devolvía al cliente a la página 1).
+   */
+  pages?: string[] | null;
+  /** Aviso "vista previa con marca de agua…" (CMS); null cuando lo exhibido es limpio. */
+  watermarkNote?: ReactNode;
   productName: string;
   /** Rótulo del botón que abre el lightbox (CMS: cart.ver-diseno). */
   triggerLabel: ReactNode;
@@ -73,6 +88,18 @@ export function DesignPreviewDialog({
   description: ReactNode;
 }) {
   const [zoom, setZoom] = useState<ZoomState>(ZOOM_RESET);
+  // Pager por unidad (2026-10-13): índice + reset por CAMBIO DE SET (estado
+  // derivado durante el render) y al cerrar el diálogo (onOpenChange).
+  const pageUrls = pages && pages.length > 1 ? pages : null;
+  const [pageIndexRaw, setPageIndexRaw] = useState(0);
+  const [prevPagesKey, setPrevPagesKey] = useState<string | null>(null);
+  const pagesKey = pageUrls ? pageUrls.join("|") : null;
+  if (prevPagesKey !== pagesKey) {
+    setPrevPagesKey(pagesKey);
+    setPageIndexRaw(0);
+  }
+  const pageIndex = pageUrls ? Math.min(pageIndexRaw, pageUrls.length - 1) : 0;
+  const currentUrl = pageUrls ? pageUrls[pageIndex]! : previewUrl;
   // true mientras hay un puntero presionado: apaga la transición CSS para que
   // el pan/pinch siga al dedo sin lag.
   const [gesturing, setGesturing] = useState(false);
@@ -162,6 +189,17 @@ export function DesignPreviewDialog({
     });
   }, []);
 
+  // Pager: navegar cambia la imagen y restablece el zoom (el pan/escala de la
+  // página anterior no aplican a la nueva). Sin envolver: tope en los extremos.
+  const goPage = useCallback(
+    (delta: number) => {
+      if (!pageUrls) return;
+      setZoom(ZOOM_RESET);
+      setPageIndexRaw((cur) => Math.min(pageUrls.length - 1, Math.max(0, cur + delta)));
+    },
+    [pageUrls],
+  );
+
   function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     e.currentTarget.setPointerCapture(e.pointerId);
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -228,7 +266,18 @@ export function DesignPreviewDialog({
     // contra él daría moved ≈ 0 siempre y un arrastre de pan contaría como tap.
     const downPos = panRef.current;
     if (e.pointerType === "touch" && downPos && pointersRef.current.size === 0) {
-      const moved = Math.hypot(e.clientX - downPos.startX, e.clientY - downPos.startY);
+      const dx = e.clientX - downPos.startX;
+      const dy = e.clientY - downPos.startY;
+      const moved = Math.hypot(dx, dy);
+      // Swipe horizontal SIN zoom = cambiar de unidad en el pager (2026-10-13).
+      // Solo gestos claramente horizontales: un desplazamiento vertical sigue
+      // scrolleando el diálogo. Con zoom activo el arrastre es pan, no swipe.
+      if (pageUrls && zoom.scale <= PREVIEW_ZOOM_MIN && Math.abs(dx) >= 40 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        lastTapRef.current = null;
+        goPage(dx < 0 ? 1 : -1);
+        if (pointersRef.current.size === 0) panRef.current = null;
+        return;
+      }
       const now = Date.now();
       const last = lastTapRef.current;
       lastTapRef.current = moved < 12 ? { time: now, x: e.clientX, y: e.clientY } : null;
@@ -245,7 +294,10 @@ export function DesignPreviewDialog({
   return (
     <Dialog
       onOpenChange={(open) => {
-        if (!open) setZoom(ZOOM_RESET);
+        if (!open) {
+          setZoom(ZOOM_RESET);
+          setPageIndexRaw(0);
+        }
       }}
     >
       <DialogTrigger asChild>
@@ -281,11 +333,29 @@ export function DesignPreviewDialog({
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           onDoubleClick={toggleZoom}
+          // Pager por unidad (2026-10-13): flechas de teclado ←/→ cuando hay
+          // varias páginas (el visor se vuelve focuseable solo en ese caso).
+          {...(pageUrls
+            ? {
+                tabIndex: 0,
+                role: "group" as const,
+                "aria-roledescription": "carrusel",
+                onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => {
+                  if (e.key === "ArrowLeft") {
+                    e.preventDefault();
+                    goPage(-1);
+                  } else if (e.key === "ArrowRight") {
+                    e.preventDefault();
+                    goPage(1);
+                  }
+                },
+              }
+            : {})}
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- el PNG ya está renderizado a su tamaño final; next/image no aporta optimización acá y exigiría declarar un aspecto que no conocemos */}
           <img
             ref={imgRef}
-            src={previewUrl}
+            src={currentUrl}
             alt={`Vista previa de tu diseño de ${productName}`}
             draggable={false}
             className={
@@ -297,6 +367,71 @@ export function DesignPreviewDialog({
             }}
           />
         </div>
+        {/* Pager por unidad (2026-10-13): flechas + indicador "2 / 5" (aria-live)
+            + dots con target táctil 44px. Mismo patrón que el pager de la Vista
+            Previa del Estudio, sin envolver en los extremos. */}
+        {pageUrls && (
+          <div className="mt-2">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => goPage(-1)}
+                disabled={pageIndex === 0}
+                aria-label="Unidad anterior"
+                className="text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/90 shadow-md transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-30 disabled:hover:bg-white/90"
+              >
+                <ChevronLeft className="h-5 w-5" aria-hidden />
+              </button>
+              <p
+                className="text-brand-purple-dark text-sm font-bold tabular-nums"
+                aria-live="polite"
+              >
+                {pageIndex + 1} / {pageUrls.length}
+              </p>
+              <button
+                type="button"
+                onClick={() => goPage(1)}
+                disabled={pageIndex === pageUrls.length - 1}
+                aria-label="Unidad siguiente"
+                className="text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/90 shadow-md transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-30 disabled:hover:bg-white/90"
+              >
+                <ChevronRight className="h-5 w-5" aria-hidden />
+              </button>
+            </div>
+            <div className="mt-1 flex items-center justify-center" role="tablist">
+              {pageUrls.map((url, k) => (
+                <button
+                  key={url}
+                  type="button"
+                  role="tab"
+                  aria-selected={k === pageIndex}
+                  aria-label={`Unidad ${k + 1} de ${pageUrls.length}`}
+                  onClick={() => {
+                    setZoom(ZOOM_RESET);
+                    setPageIndexRaw(k);
+                  }}
+                  className="focus-visible:ring-brand-turquoise inline-flex h-11 w-11 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:outline-none"
+                >
+                  <span
+                    aria-hidden
+                    className={[
+                      "rounded-full transition-all",
+                      k === pageIndex
+                        ? "bg-brand-purple h-2.5 w-6"
+                        : "bg-brand-purple/25 h-2.5 w-2.5",
+                    ].join(" ")}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Aviso anti-copia (decisión de producto 2026-10-13): la impresión
+            final NUNCA lleva la marca de agua — hay que decirlo explícito donde
+            la imagen exhibida la lleva. */}
+        {watermarkNote && (
+          <p className="text-brand-muted mt-1 text-center text-xs">{watermarkNote}</p>
+        )}
         {/* Controles de zoom: alternativa de teclado a los gestos (WCAG 2.5.1 —
             todo gesto de trayectoria/multipunto tiene alternativa de un puntero). */}
         <div className="flex items-center justify-center gap-2">

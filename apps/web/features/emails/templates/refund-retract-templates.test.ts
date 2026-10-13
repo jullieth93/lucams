@@ -64,7 +64,7 @@ describe("refundIssuedEmail", () => {
     expect(r.html.startsWith("<!doctype html>")).toBe(true);
     expect(r.html).toContain('lang="es-CO"');
     expect(r.html).toContain("hola@lucamsshop.com");
-    expect(r.html).toContain("© 2026 Lucams_shop");
+    expect(r.html).toContain("© 2026 Lucams Shop");
   });
 
   it("subject lleva el número de orden y el corazón", async () => {
@@ -301,7 +301,7 @@ describe("orderCancelledEmail", () => {
   it("envuelve el body en el layout compartido", async () => {
     const r = await orderCancelledEmail(base);
     expect(r.html.startsWith("<!doctype html>")).toBe(true);
-    expect(r.html).toContain("© 2026 Lucams_shop");
+    expect(r.html).toContain("© 2026 Lucams Shop");
   });
 
   it("subject lleva el número de orden", async () => {

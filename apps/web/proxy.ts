@@ -17,6 +17,11 @@
  *   5. Auth gate `/admin/*`: redirige anónimos a /admin/login (la verificación
  *      de fila AdminUser activa la hacen las pages con getCurrentAdmin()).
  *   6. Idle-timeout admin (A7): 30 min sin actividad → limpia sesión + re-login.
+ *   7. Idle-timeout cliente (2026-10-12): la sesión de cliente persiste 30 días
+ *      renovándose con actividad (ventana deslizante, cookie firmada
+ *      `customer_last_activity`); >30 días sin actividad → signOut global +
+ *      borrado de sb-* + redirect a `/` (o /login?next= si la ruta requiere
+ *      sesión). Política completa en lib/customer-activity.ts.
  *
  * NO se hace acá:
  *   - Rate limit — vive en `lib/rate-limit.ts` (ADR-016), aplicado en las actions.
@@ -41,6 +46,14 @@ import {
   sealAdminActivityMark,
 } from "@/lib/admin-activity";
 import { buildCsp, isOriginAllowed, SECURITY_HEADERS } from "@/lib/security-headers";
+import {
+  CUSTOMER_ACTIVITY_COOKIE,
+  CUSTOMER_IDLE_LIMIT_MS,
+  CUSTOMER_SESSION_REQUIRED_PREFIXES,
+  customerActivityCookieOptions,
+  readCustomerActivityMark,
+  sealCustomerActivityMark,
+} from "@/lib/customer-activity";
 import { incrementRedirectHit, lookupActiveRedirectCached } from "@/features/redirects/service";
 
 // B-8 (auditoría cableado cliente↔admin 2026-10-02): el lookup de UrlRedirect
@@ -280,13 +293,60 @@ export async function proxy(request: NextRequest) {
       for (const c of request.cookies.getAll()) {
         if (c.name.startsWith("sb-")) expired.cookies.delete(c.name);
       }
-      expired.cookies.delete(ADMIN_ACTIVITY_COOKIE);
+      // La cookie admin tiene path=/admin: el delete debe llevar el mismo path
+      // o el browser no la borra de verdad.
+      expired.cookies.delete({ name: ADMIN_ACTIVITY_COOKIE, path: "/admin" });
       return expired;
     }
     response.cookies.set(
       ADMIN_ACTIVITY_COOKIE,
       sealAdminActivityMark(now),
       adminActivityCookieOptions(),
+    );
+  }
+
+  // Idle-timeout CLIENTE (30 días deslizante — política completa en
+  // lib/customer-activity.ts): si la marca tiene >30 días —O está AUSENTE o con
+  // FIRMA INVÁLIDA (fail-closed, mismo criterio B-8 de admin)— revocamos el
+  // refresh token (scope global), limpiamos las cookies sb-* + la marca y
+  // redirigimos a `/`; si la ruta requiere sesión (/mi-cuenta/*) el redirect es
+  // a /login?next=<ruta> para volver tras re-ingresar. Ventana deslizante: en
+  // cada request autenticada renovamos la marca.
+  //
+  // Alcance deliberado:
+  //   - Solo cuando HAY sesión (`user`): el chequeo no aplica a anónimos.
+  //   - No /api/*: esas rutas hacen su propia verificación de sesión y un
+  //     redirect 307 rompería sus contratos JSON.
+  //   - No /admin/*: gobernado por el idle-timeout admin de 30 min (arriba).
+  //   - No /auth/* (callback/logout): gestionan su propio ciclo de sesión
+  //     (callback SELLA la marca tras el exchange PKCE; logout la borra).
+  const isAuthFlowPath = path.startsWith("/auth/");
+  if (user && !isApi && !path.startsWith("/admin") && !isAuthFlowPath) {
+    const last = readCustomerActivityMark(request.cookies.get(CUSTOMER_ACTIVITY_COOKIE)?.value);
+    const now = Date.now();
+    if (!last || now - last > CUSTOMER_IDLE_LIMIT_MS) {
+      // Best-effort (igual que admin): si el Auth server falla, el borrado
+      // local de cookies igual se hace.
+      await supabase.auth.signOut({ scope: "global" }).catch(() => {});
+      const requiresSession = CUSTOMER_SESSION_REQUIRED_PREFIXES.some(
+        (p) => path === p || path.startsWith(`${p}/`),
+      );
+      const url = new URL(requiresSession ? "/login" : "/", request.url);
+      if (requiresSession) {
+        url.searchParams.set("error", "sesion-expirada");
+        url.searchParams.set("next", path);
+      }
+      const expired = withSecurityHeaders(NextResponse.redirect(url), requestId);
+      for (const c of request.cookies.getAll()) {
+        if (c.name.startsWith("sb-")) expired.cookies.delete(c.name);
+      }
+      expired.cookies.delete(CUSTOMER_ACTIVITY_COOKIE);
+      return expired;
+    }
+    response.cookies.set(
+      CUSTOMER_ACTIVITY_COOKIE,
+      sealCustomerActivityMark(now),
+      customerActivityCookieOptions(),
     );
   }
 

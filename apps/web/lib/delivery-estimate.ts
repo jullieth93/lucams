@@ -1,5 +1,5 @@
 /*
- * Regla ÚNICA de la promesa de entrega "Envío Lucam's" (mensajería interna):
+ * Regla ÚNICA de la promesa de entrega "Envío Lucams" (mensajería interna):
  *
  *   deliveryDays = maxProductionDays + (bogotaHour(now) >= cutoffHour ? 1 : 0)
  *
@@ -56,7 +56,7 @@ export function maxProductionDaysOf(
 }
 
 /**
- * Días hábiles prometidos de entrega con "Envío Lucam's" (ver regla del
+ * Días hábiles prometidos de entrega con "Envío Lucams" (ver regla del
  * docblock del módulo). `maxProductionDays` inválido/ausente → default
  * fail-safe. El resultado 0 significa "entrega hoy".
  */

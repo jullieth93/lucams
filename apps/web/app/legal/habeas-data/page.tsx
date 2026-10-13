@@ -11,13 +11,13 @@ export const metadata: Metadata = {
 // así que es el único texto legal garantizado ante una caída de la base.
 // legal-content-sync.test.ts falla si ambos divergen.
 const FALLBACK = `
-Aquí te contamos, sin letra chiquita imposible, qué hacemos con tus datos y cómo los controlas. Esta es la **Política de Tratamiento de Datos Personales** de Lucams_shop, conforme a la **Ley 1581 de 2012** y su **Decreto reglamentario 1377 de 2013**. Léela con confianza: tú mandas sobre tu información. 🦝
+Aquí te contamos, sin letra chiquita imposible, qué hacemos con tus datos y cómo los controlas. Esta es la **Política de Tratamiento de Datos Personales** de Lucams Shop, conforme a la **Ley 1581 de 2012** y su **Decreto reglamentario 1377 de 2013**. Léela con confianza: tú mandas sobre tu información. 🦝
 
 ## Responsable del tratamiento
 
 El tratamiento de tus datos está a cargo de:
 
-- **Responsable:** **Lucams_shop (persona natural), Bogotá D.C., Colombia**, titular de la marca **Lucams_shop**.
+- **Responsable:** **Lucams Shop (persona natural), Bogotá D.C., Colombia**, titular de la marca **Lucams Shop**.
 - **Domicilio:** Bogotá D.C., Colombia.
 - **Correo de contacto:** {{email_contacto}}
 - **WhatsApp:** disponible en el sitio (botón de WhatsApp).
@@ -93,7 +93,7 @@ Como titular de tus datos personales, la Ley 1581 (art. 8) te garantiza:
 
 ## Área responsable de la atención
 
-La atención de peticiones, consultas y reclamos sobre tus datos está a cargo del **canal de Protección de Datos de Lucams_shop**:
+La atención de peticiones, consultas y reclamos sobre tus datos está a cargo del **canal de Protección de Datos de Lucams Shop**:
 
 - **Correo:** {{email_contacto}}
 - **WhatsApp:** botón disponible en el sitio.
@@ -137,7 +137,7 @@ Si no quedas conforme con nuestra respuesta, puedes acudir a la **Superintendenc
 
 ## Vigencia y cambios
 
-Esta política rige desde su fecha de entrada en vigencia y se mantiene mientras Lucams_shop trate datos personales. Los plazos concretos de conservación están en la tabla **"Cuánto tiempo conservamos tus datos"** de arriba. Si cambiamos esta política, publicaremos la nueva versión aquí y, si el cambio es relevante, te lo informaremos.
+Esta política rige desde su fecha de entrada en vigencia y se mantiene mientras Lucams Shop trate datos personales. Los plazos concretos de conservación están en la tabla **"Cuánto tiempo conservamos tus datos"** de arriba. Si cambiamos esta política, publicaremos la nueva versión aquí y, si el cambio es relevante, te lo informaremos.
 
 ---
 

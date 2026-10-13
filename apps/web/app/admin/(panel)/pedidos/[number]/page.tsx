@@ -358,7 +358,24 @@ export default async function AdminPedidoDetallePage({
                           </div>
                         ) : it.design ? (
                           <div className="text-brand-muted mt-1 text-[11px]">
-                            Sin archivos de producción todavía (el diseño no está finalizado).
+                            {/* ADR-131 — el render 300 DPI corre en background tras el
+                                finalize: distinguir "en preparación" / "falló" del
+                                histórico "no finalizado" (RenderJob del diseño). */}
+                            {it.design.renderJob &&
+                            (it.design.renderJob.status === "PENDING" ||
+                              it.design.renderJob.status === "PROCESSING") ? (
+                              <span className="font-semibold text-sky-700">
+                                Preparando archivos de impresión… {it.design.renderJob.doneUnits} de{" "}
+                                {it.design.renderJob.totalUnits} piezas (render en background).
+                              </span>
+                            ) : it.design.renderJob?.status === "FAILED" ? (
+                              <span className="font-semibold text-rose-600">
+                                ⚠️ El render de imprenta falló — revisar ErrorLog y reprocesar el
+                                RenderJob del diseño antes de producir.
+                              </span>
+                            ) : (
+                              "Sin archivos de producción todavía (el diseño no está finalizado)."
+                            )}
                           </div>
                         ) : null}
                       </div>
@@ -507,6 +524,13 @@ export default async function AdminPedidoDetallePage({
                 <Row label="Envío" value={formatCOP(order.shipping)} />
                 {order.discount > 0 && (
                   <Row label="Descuento" value={`- ${formatCOP(order.discount)}`} />
+                )}
+                {/* Puntos Lucams (2026-10-12) — redención de puntos. */}
+                {order.loyaltyDiscount > 0 && (
+                  <Row
+                    label={`Puntos Lucams (${order.loyaltyPointsRedeemed.toLocaleString("es-CO")} pts)`}
+                    value={`- ${formatCOP(order.loyaltyDiscount)}`}
+                  />
                 )}
                 <div className="border-brand-purple/10 mt-2 flex justify-between border-t pt-2">
                   <dt className="text-brand-purple-dark font-bold">Total</dt>

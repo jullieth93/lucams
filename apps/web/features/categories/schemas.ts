@@ -23,9 +23,9 @@ export type CategorySortOption = (typeof CATEGORY_SORT_OPTIONS)[number];
 // Campos del modelo Category SIN consumidor real (B-6, 2026-10-02):
 // `visibleFilters` y `featuredProductSlug` solo viajan en el payload del API
 // (`lib/catalog.ts`) y aparecen en fixtures de tests — ningún render del
-// storefront ni del bot los usa. Decisión registrada en
-// docs/audits/cableado-cliente-admin-20261002.md (B-6): NO se exponen en el
-// admin; se implementan cuando tengan consumidor o se retiran del payload.
+// storefront ni del bot los usa. Decisión vigente (ver docs/STATE.md §
+// Pendientes): NO se exponen en el admin; se implementan cuando tengan
+// consumidor o se retiran del payload.
 
 export const CategoryCreateSchema = z.object({
   name: z.string().min(2).max(80),

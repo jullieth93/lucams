@@ -65,7 +65,7 @@ export async function generateMetadata({
         title: cat.name,
         description,
         alternates: { canonical },
-        openGraph: { title: `${cat.name} · Lucams_shop`, description, type: "website" },
+        openGraph: { title: `${cat.name} · Lucams Shop`, description, type: "website" },
       };
     }
   }
@@ -75,7 +75,7 @@ export async function generateMetadata({
     title: "Tienda",
     description,
     alternates: { canonical },
-    openGraph: { title: "Tienda · Lucams_shop", description, type: "website" },
+    openGraph: { title: "Tienda · Lucams Shop", description, type: "website" },
   };
 }
 

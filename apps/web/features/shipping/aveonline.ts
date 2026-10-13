@@ -15,6 +15,7 @@
  */
 
 import { CircuitBreaker } from "@/lib/circuit-breaker";
+import { carrierLogo } from "@/lib/carrier-logos";
 import { getSettingValue } from "@/lib/cms";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { logger } from "@/lib/logger";
@@ -864,7 +865,7 @@ export class AveonlineProvider implements ShippingProvider {
     //  - codTransportadora vacío ⇒ quoteId="" (falla min(1)): descartamos esa fila.
     //  - diasentrega puede venir >30 o no-entero (schema tope max(30)): clamp+round.
     //  - total puede venir como string no-numérico ⇒ NaN (falla .int()): coerción a 0.
-    return ok
+    const quotes = ok
       .filter((c) => (c.codTransportadora ?? "") !== "")
       .map((c) => ({
         carrier: (c.nombreTransportadora ?? "carrier").toLowerCase().replace(/\s+/g, "-"),
@@ -874,6 +875,25 @@ export class AveonlineProvider implements ShippingProvider {
         contraentrega: params.contraentrega,
         quoteId: c.codTransportadora ?? "",
       }));
+
+    // Observabilidad de logos (2026-10-12): Aveonline devuelve las
+    // transportadoras habilitadas en la cuenta y el mapa CARRIER_LOGOS
+    // (lib/carrier-logos.ts) se actualiza a mano — una habilitada nueva
+    // (ej. Transprensa al activarla) caía en el ícono genérico de camión sin
+    // que nadie se enterara. Warn por carrier cotizado sin logo (dedup por
+    // slug); NO rompe el flujo — la UI tiene fallback (ícono Truck).
+    const sinLogo = [
+      ...new Set(quotes.filter((q) => !carrierLogo(q.carrierName)).map((q) => q.carrier)),
+    ];
+    if (sinLogo.length > 0) {
+      logger.warn({
+        event: "shipping.aveonline.quote.carrier_without_logo",
+        carriers: sinLogo,
+        hint: "Agregar el slug a CARRIER_LOGOS (lib/carrier-logos.ts) + asset en public/carriers/",
+      });
+    }
+
+    return quotes;
   }
 
   async createShipment(params: {

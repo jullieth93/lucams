@@ -15,6 +15,7 @@
  */
 
 import { getSettingValue } from "@/lib/cms";
+import { SITE_NAME } from "@/lib/site";
 
 /**
  * URL pública del sitio para enlaces en emails (homologación 2026-08-11).
@@ -49,7 +50,7 @@ export async function renderEmailLayout(opts: EmailLayoutOptions): Promise<strin
     // exponer cédula ni dirección exacta (Opción 1). Editable en admin.
     getSettingValue(
       "LEGAL_ENTITY_LINE",
-      "Lucams_shop (persona natural) · Bogotá D.C., Colombia · Identificación de la titular disponible a requerimiento del consumidor",
+      "Lucams Shop (persona natural) · Bogotá D.C., Colombia · Identificación de la titular disponible a requerimiento del consumidor",
     ),
   ]);
 
@@ -62,7 +63,7 @@ export async function renderEmailLayout(opts: EmailLayoutOptions): Promise<strin
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lucams_shop</title>
+<title>${SITE_NAME}</title>
 </head>
 <body style="margin:0;padding:0;background:${BRAND_CREAM};font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:${BRAND_PURPLE_DARK};">
 ${previewHtml}
@@ -71,7 +72,7 @@ ${previewHtml}
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(124,106,173,0.08);">
       <tr><td style="padding:20px 28px;background:linear-gradient(135deg,${BRAND_PURPLE} 0%,${BRAND_PURPLE_DARK} 100%);color:#ffffff;">
         <div style="font-size:22px;font-weight:700;letter-spacing:0.2px;">
-          Lucams<span style="color:${BRAND_PINK};">_shop</span>
+          Lucams <span style="color:${BRAND_PINK};">Shop</span>
         </div>
       </td></tr>
       <tr><td style="padding:28px;font-size:15px;line-height:1.6;">
@@ -79,7 +80,7 @@ ${opts.bodyHtml}
       </td></tr>
       <tr><td style="padding:18px 28px;background:${BRAND_CREAM};font-size:12px;line-height:1.5;color:${BRAND_PURPLE_DARK};opacity:0.7;">
         <p style="margin:0 0 6px 0;">¿Dudas? Escríbenos a <a href="mailto:${contactEmail}" style="color:${BRAND_PURPLE};text-decoration:none;">${contactEmail}</a></p>
-        <p style="margin:0;">© ${escapeHtml(copyrightYear)} Lucams_shop · ${escapeHtml(footerTagline)}</p>
+        <p style="margin:0;">© ${escapeHtml(copyrightYear)} ${SITE_NAME} · ${escapeHtml(footerTagline)}</p>
         <p style="margin:6px 0 0 0;font-size:11px;">${escapeHtml(legalEntityLine)}</p>
         ${
           opts.unsubscribeUrl

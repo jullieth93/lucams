@@ -284,7 +284,7 @@ const productsData = [
     sku: "FI-CUAD-12",
     name: "Fotoimanes Cuadrados",
     description:
-      "Fotoimanes cuadrados con tus fotos. Formato minimalista, sin bordes. Ideal para galerías extensas. Elige el tamaño (4×4, 5×5 o 7×7 cm) y los packs: 1 pack = 6 unidades.",
+      "Fotoimanes cuadrados con tus fotos a sangre total (sin bordes). Si quieres, agrégale un marco de color en el Estudio: 6 colores de marca. Elige el tamaño (4×4, 5×5 o 7×7 cm) y los packs: 1 pack = 6 unidades.",
     basePrice: 2700000,
     categorySlug: "foto-imanes",
     isPersonalizable: true,

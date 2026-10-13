@@ -27,7 +27,7 @@ export async function supportTicketReceivedEmail(data: SupportTicketReceivedData
   <span style="white-space:pre-wrap;color:#3D2E5C;opacity:0.85;">${escapeHtml(data.message)}</span>
 </p>
 <p>Si es urgente, también nos puedes escribir por WhatsApp.</p>
-<p>Un abrazo,<br>El equipo de Lucams_shop</p>
+<p>Un abrazo,<br>El equipo de Lucams Shop</p>
 `;
 
   const text = `¡Recibimos tu mensaje!
@@ -43,7 +43,7 @@ ${data.message}
 Si es urgente, también nos puedes escribir por WhatsApp.
 
 Un abrazo,
-El equipo de Lucams_shop`;
+El equipo de Lucams Shop`;
 
   return {
     subject: `Recibimos tu mensaje — Ticket #${ticketShort}`,

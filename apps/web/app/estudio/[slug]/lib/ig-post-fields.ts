@@ -44,190 +44,58 @@ export function igUsernameOverride(display: string): string | null {
 
 // ── Ubicación ───────────────────────────────────────────────────────────────
 
-/**
- * Sugerencias "Ciudad, País" del combobox con búsqueda (Fase 2 · 2.7b — antes
- * datalist nativo). Cobertura MUNDIAL (QA ronda 2, owner 2026-10-07: "de todo
- * el mundo"): Colombia completa primero (mercado principal), luego por región
- * (Latinoamérica, Norteamérica, Europa; países en orden alfabético dentro de
- * cada región) y al final un set de PAÍSES SOLOS como fallback cuando el
- * cliente solo quiere el país. Es asistencia de escritura, NO validación — el
- * cliente puede escribir cualquier ubicación libre.
+/*
+ * Decisión de producto (owner 2026-10-12): la ubicación es un INPUT DE TEXTO
+ * simple, SIN asistencia de sugerencias — el combobox con la lista curada
+ * (Fase 2 · 2.7b) se retiró porque el commit por tecla + el filtrado por
+ * render hacían MUY LENTA la plantilla. En su lugar hay validación y
+ * transformación automática:
+ *
+ *  - Máximo 2 palabras (Ciudad País).
+ *  - Primera letra de cada palabra SIEMPRE mayúscula (al commit).
+ *  - El separador (espacio o coma) se imprime como ", ": escribe
+ *    "bogotá colombia" → queda "Bogotá, Colombia".
  */
-export const IG_LOCATION_SUGGESTIONS: readonly string[] = [
-  // ── Colombia (mercado principal) ─────────────────────────────────────────
-  "Bogotá, Colombia",
-  "Medellín, Colombia",
-  "Cali, Colombia",
-  "Barranquilla, Colombia",
-  "Cartagena, Colombia",
-  "Bucaramanga, Colombia",
-  "Pereira, Colombia",
-  "Manizales, Colombia",
-  "Santa Marta, Colombia",
-  "Cúcuta, Colombia",
-  "Ibagué, Colombia",
-  "Villavicencio, Colombia",
-  "Neiva, Colombia",
-  "Armenia, Colombia",
-  "Pasto, Colombia",
-  "Montería, Colombia",
-  "Valledupar, Colombia",
-  "Popayán, Colombia",
-  "Tunja, Colombia",
-  "Sincelejo, Colombia",
-  "Riohacha, Colombia",
-  // ── Latinoamérica (países en orden alfabético) ───────────────────────────
-  "Buenos Aires, Argentina",
-  "Córdoba, Argentina",
-  "Rosario, Argentina",
-  "Mendoza, Argentina",
-  "La Paz, Bolivia",
-  "Santa Cruz de la Sierra, Bolivia",
-  "Cochabamba, Bolivia",
-  "São Paulo, Brasil",
-  "Río de Janeiro, Brasil",
-  "Santiago, Chile",
-  "Valparaíso, Chile",
-  "Concepción, Chile",
-  "San José, Costa Rica",
-  "La Habana, Cuba",
-  "Quito, Ecuador",
-  "Guayaquil, Ecuador",
-  "Cuenca, Ecuador",
-  "San Salvador, El Salvador",
-  "Ciudad de Guatemala, Guatemala",
-  "Antigua Guatemala, Guatemala",
-  "Tegucigalpa, Honduras",
-  "San Pedro Sula, Honduras",
-  "Ciudad de México, México",
-  "Guadalajara, México",
-  "Monterrey, México",
-  "Cancún, México",
-  "Puebla, México",
-  "Tijuana, México",
-  "Mérida, México",
-  "Playa del Carmen, México",
-  "Managua, Nicaragua",
-  "Ciudad de Panamá, Panamá",
-  "Asunción, Paraguay",
-  "Lima, Perú",
-  "Cusco, Perú",
-  "Arequipa, Perú",
-  "San Juan, Puerto Rico",
-  "Santo Domingo, República Dominicana",
-  "Punta Cana, República Dominicana",
-  "Montevideo, Uruguay",
-  "Punta del Este, Uruguay",
-  "Caracas, Venezuela",
-  "Maracaibo, Venezuela",
-  "Valencia, Venezuela",
-  // ── Norteamérica ─────────────────────────────────────────────────────────
-  "Toronto, Canadá",
-  "Montreal, Canadá",
-  "Vancouver, Canadá",
-  "Miami, Estados Unidos",
-  "Nueva York, Estados Unidos",
-  "Los Ángeles, Estados Unidos",
-  "Houston, Estados Unidos",
-  "Orlando, Estados Unidos",
-  "Atlanta, Estados Unidos",
-  "Chicago, Estados Unidos",
-  "Dallas, Estados Unidos",
-  "Fort Lauderdale, Estados Unidos",
-  "Tampa, Estados Unidos",
-  "Boston, Estados Unidos",
-  "Washington D.C., Estados Unidos",
-  "San Francisco, Estados Unidos",
-  "San Diego, Estados Unidos",
-  "Las Vegas, Estados Unidos",
-  "Filadelfia, Estados Unidos",
-  "Phoenix, Estados Unidos",
-  // ── Europa (países en orden alfabético) ──────────────────────────────────
-  "Berlín, Alemania",
-  "Múnich, Alemania",
-  "Fráncfort, Alemania",
-  "Viena, Austria",
-  "Bruselas, Bélgica",
-  "Copenhague, Dinamarca",
-  "Madrid, España",
-  "Barcelona, España",
-  "Valencia, España",
-  "Sevilla, España",
-  "Bilbao, España",
-  "Málaga, España",
-  "Alicante, España",
-  "Palma de Mallorca, España",
-  "París, Francia",
-  "Lyon, Francia",
-  "Marsella, Francia",
-  "Niza, Francia",
-  "Atenas, Grecia",
-  "Dublín, Irlanda",
-  "Roma, Italia",
-  "Milán, Italia",
-  "Florencia, Italia",
-  "Venecia, Italia",
-  "Nápoles, Italia",
-  "Oslo, Noruega",
-  "Ámsterdam, Países Bajos",
-  "Róterdam, Países Bajos",
-  "Lisboa, Portugal",
-  "Oporto, Portugal",
-  "Praga, República Checa",
-  "Londres, Reino Unido",
-  "Mánchester, Reino Unido",
-  "Edimburgo, Reino Unido",
-  "Estocolmo, Suecia",
-  "Zúrich, Suiza",
-  "Ginebra, Suiza",
-  // ── Países solos (fallback: solo el país, sin ciudad) ────────────────────
-  "Argentina",
-  "Bolivia",
-  "Brasil",
-  "Canadá",
-  "Chile",
-  "Colombia",
-  "Costa Rica",
-  "Cuba",
-  "Ecuador",
-  "El Salvador",
-  "España",
-  "Estados Unidos",
-  "Francia",
-  "Guatemala",
-  "Honduras",
-  "Italia",
-  "México",
-  "Nicaragua",
-  "Panamá",
-  "Paraguay",
-  "Perú",
-  "Portugal",
-  "Puerto Rico",
-  "Reino Unido",
-  "República Dominicana",
-  "Uruguay",
-  "Venezuela",
-] as const;
 
-/** Normaliza para comparar: minúsculas y sin tildes ("bogota" ≈ "Bogotá"). */
-function normalizeIgLocationQuery(s: string): string {
-  return s
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase();
+/** Máximo de palabras de la ubicación (Ciudad País). */
+export const IG_LOCATION_MAX_WORDS = 2;
+
+/** Largo máximo del input de ubicación (una línea corta del post impreso). */
+export const IG_LOCATION_MAX_LENGTH = 40;
+
+/** Primera letra en mayúscula (locale es-CO: tildes/ñ capitalizan bien). */
+function capitalizeIgLocationWord(word: string): string {
+  return word.charAt(0).toLocaleUpperCase("es") + word.slice(1);
 }
 
 /**
- * Fase 2 · 2.7b (2026-10-07) — filtro del combobox de ubicación: coincide por
- * ciudad y por país (substring sobre "Ciudad, País" completo), insensible a
- * tildes y mayúsculas. Query vacío → todas las sugerencias. Es asistencia de
- * escritura, NO validación: sin coincidencias el texto libre igual vale.
+ * Sanitiza la entrada del campo ubicación EN VIVO: solo letras (con tildes/ñ),
+ * números, espacios, coma, punto, apóstrofe y guion; espacios colapsados; y
+ * MÁXIMO IG_LOCATION_MAX_WORDS palabras — la tercera palabra no entra (el
+ * separador final se conserva para poder escribir la segunda palabra).
  */
-export function filterIgLocationSuggestions(query: string): string[] {
-  const q = normalizeIgLocationQuery(query.trim());
-  if (q === "") return [...IG_LOCATION_SUGGESTIONS];
-  return IG_LOCATION_SUGGESTIONS.filter((s) => normalizeIgLocationQuery(s).includes(q));
+export function sanitizeIgLocationInput(raw: string): string {
+  const clean = raw
+    .replace(/[^\p{L}\p{N}\s,.'’-]/gu, "")
+    .replace(/\s+/g, " ")
+    .replace(/^\s+/, "");
+  const m = clean.match(/^\S+(?:[\s,]+\S*)?/);
+  return (m ? m[0] : "").slice(0, IG_LOCATION_MAX_LENGTH);
+}
+
+/**
+ * Texto a guardar en el override (lo que se imprime): las primeras
+ * IG_LOCATION_MAX_WORDS palabras, cada una con inicial mayúscula, unidas con
+ * ", " ("bogotá colombia" → "Bogotá, Colombia"; una sola palabra queda sin
+ * coma). Vacío → null (sin override; el guard de requeridos lo cobra).
+ */
+export function igLocationOverride(display: string): string | null {
+  const words = display
+    .split(/[\s,]+/)
+    .filter((w) => w !== "")
+    .slice(0, IG_LOCATION_MAX_WORDS);
+  if (words.length === 0) return null;
+  return words.map(capitalizeIgLocationWord).join(", ");
 }
 
 // ── «Me gusta» ──────────────────────────────────────────────────────────────

@@ -20,12 +20,16 @@ import {
   Gift,
   LifeBuoy,
   Ticket,
+  Sparkles,
 } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
 import { getCmsBlock } from "@/lib/cms";
 import { resolveCmsTokens } from "@/lib/cms-tokens";
 import { getSiteUrl } from "@/features/emails/layout";
+import { formatCOP } from "@/lib/format";
+import { getReferralSettings } from "@/features/loyalty/settings";
+import { getLoyaltyAccountSummary, LOYALTY_REASON_LABELS } from "@/features/loyalty/service";
 import { ReferralCopyButton } from "./referral-copy-button";
 
 // Resuelve un bloque CMS a string plano: mismo patrón que cmsMenuText del
@@ -119,7 +123,11 @@ export default async function MiCuentaPage() {
   });
 
   // Referidos v1 (2026-08-11): código propio + estado de los referidos hechos.
-  const [siteUrl, referrals] = await Promise.all([
+  // Fidelización (2026-10-12): la config del programa (%, días, activo) y el
+  // resumen de Puntos Lucams (null si el programa está apagado → la sección no
+  // se muestra). Los textos de "Invita y gana" interpolan el % VIGENTE de la
+  // config (nada quemado: si el admin sube la promo al 25%, acá se lee 25%).
+  const [siteUrl, referrals, referralSettings, loyalty] = await Promise.all([
     getSiteUrl(),
     prisma.referral.findMany({
       where: { referrerId: customer.id },
@@ -127,6 +135,8 @@ export default async function MiCuentaPage() {
       take: 10,
       select: { referredEmail: true, status: true, createdAt: true },
     }),
+    getReferralSettings(),
+    getLoyaltyAccountSummary(customer.id),
   ]);
   // T8 (2026-10-01) — el link de compartir es el short-link /r/<codigo>
   // (redirect 307 a /registro?ref=<codigo>, ver app/r/[codigo]/route.ts).
@@ -195,56 +205,128 @@ export default async function MiCuentaPage() {
       {/* Invita y gana — referidos v2 (2026-10-05): tu código + compartir +
           estado de tus referidos. Tu amigo recibe su cupón de bienvenida al
           registrarse; el tuyo llega cuando haga su primera compra (ambos
-          quedan en /mi-cuenta/cupones). */}
-      <section className="border-brand-purple/15 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
-        <div className="flex items-start gap-3">
-          <span className="bg-brand-turquoise/15 text-brand-purple flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full">
-            <Gift className="h-5 w-5" aria-hidden />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2 className="font-display text-brand-purple-dark text-xl">Invita y gana</h2>
-            <p className="text-brand-muted mt-1 text-sm leading-snug">
-              Comparte tu código: tu amigo recibe un cupón de bienvenida de <strong>10% OFF</strong>{" "}
-              apenas se registre, y tú recibes el tuyo cuando haga su primera compra.
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <code className="bg-brand-purple/5 text-brand-purple-dark rounded-md px-3 py-1.5 font-mono text-sm font-bold tracking-wider">
-                {customer.referralCode}
-              </code>
-              <ReferralCopyButton value={customer.referralCode} label="Copiar código" />
-              <ReferralCopyButton value={referralUrl} label="Copiar link" />
-              <a
-                href={`https://wa.me/?text=${encodeURIComponent(
-                  `Regístrate en Lucams con mi código ${customer.referralCode} y recibe 10% OFF de bienvenida: ${referralUrl}`,
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-md border border-emerald-600/30 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
-              >
-                Compartir por WhatsApp
-              </a>
+          quedan en /mi-cuenta/cupones). El % del copy y del mensaje de
+          WhatsApp sale de la config vigente (/admin/fidelizacion) — nada
+          quemado. Si el programa está apagado, la tarjeta no se muestra
+          (invitar sin recompensa sería engañoso). */}
+      {referralSettings.enabled && (
+        <section className="border-brand-purple/15 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex items-start gap-3">
+            <span className="bg-brand-turquoise/15 text-brand-purple flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full">
+              <Gift className="h-5 w-5" aria-hidden />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="font-display text-brand-purple-dark text-xl">Invita y gana</h2>
+              <p className="text-brand-muted mt-1 text-sm leading-snug">
+                Comparte tu código: tu amigo recibe un cupón de bienvenida de{" "}
+                <strong>{referralSettings.rewardPercent}% OFF</strong> apenas se registre, y tú
+                recibes el tuyo cuando haga su primera compra.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <code className="bg-brand-purple/5 text-brand-purple-dark rounded-md px-3 py-1.5 font-mono text-sm font-bold tracking-wider">
+                  {customer.referralCode}
+                </code>
+                <ReferralCopyButton value={customer.referralCode} label="Copiar código" />
+                <ReferralCopyButton value={referralUrl} label="Copiar link" />
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(
+                    `Regístrate en Lucams con mi código ${customer.referralCode} y recibe ${referralSettings.rewardPercent}% OFF de bienvenida: ${referralUrl}`,
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-emerald-600/30 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+                >
+                  Compartir por WhatsApp
+                </a>
+              </div>
+              {referrals.length > 0 && (
+                <ul className="mt-3 space-y-1 text-xs">
+                  {referrals.map((r) => (
+                    <li key={r.referredEmail} className="text-brand-muted flex items-center gap-2">
+                      <span
+                        className="bg-brand-purple/40 inline-block h-1.5 w-1.5 rounded-full"
+                        aria-hidden
+                      />
+                      {maskEmail(r.referredEmail)} —{" "}
+                      {r.status === "REWARDED"
+                        ? "🎁 Ya tienes tu cupón en Mis cupones"
+                        : r.status === "EXPIRED"
+                          ? "Ya tenía compras previas"
+                          : "Registrado: ya recibió su cupón de bienvenida; el tuyo llega con su primera compra"}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            {referrals.length > 0 && (
-              <ul className="mt-3 space-y-1 text-xs">
-                {referrals.map((r) => (
-                  <li key={r.referredEmail} className="text-brand-muted flex items-center gap-2">
-                    <span
-                      className="bg-brand-purple/40 inline-block h-1.5 w-1.5 rounded-full"
-                      aria-hidden
-                    />
-                    {maskEmail(r.referredEmail)} —{" "}
-                    {r.status === "REWARDED"
-                      ? "🎁 Ya tienes tu cupón en Mis cupones"
-                      : r.status === "EXPIRED"
-                        ? "Ya tenía compras previas"
-                        : "Registrado: ya recibió su cupón de bienvenida; el tuyo llega con su primera compra"}
-                  </li>
-                ))}
-              </ul>
-            )}
           </div>
-        </div>
-      </section>
+        </section>
+      )}
+
+      {/* Puntos Lucams (2026-10-12) — visible SOLO si el programa está activo
+          en /admin/fidelizacion (getLoyaltyAccountSummary devuelve null si
+          está apagado). Balance + equivalencia en pesos + historial de
+          movimientos (LoyaltyTxn) + texto explicativo de la mecánica. */}
+      {loyalty && (
+        <section className="border-brand-purple/15 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
+          <div className="flex items-start gap-3">
+            <span className="bg-brand-purple/10 text-brand-purple flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full">
+              <Sparkles className="h-5 w-5" aria-hidden />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="font-display text-brand-purple-dark text-xl">Puntos Lucams</h2>
+              <p className="mt-1 text-sm">
+                Tienes{" "}
+                <strong className="text-brand-purple-dark">
+                  {loyalty.balance.toLocaleString("es-CO")} puntos
+                </strong>
+                {loyalty.balance > 0 && (
+                  <>
+                    {" "}
+                    ≈ <strong>{formatCOP(loyalty.balanceValueCents)}</strong> de descuento
+                  </>
+                )}
+                .
+              </p>
+              <p className="text-brand-muted mt-1 text-xs leading-snug">
+                Ganas 1 punto por cada ${loyalty.settings.earnCopPerPoint.toLocaleString("es-CO")}{" "}
+                que pagues en tus pedidos. Al pagar puedes redimirlos como descuento:{" "}
+                {loyalty.settings.redeemPointsPer1000.toLocaleString("es-CO")} puntos = $1.000 de
+                descuento (mínimo {loyalty.settings.redeemMinPoints.toLocaleString("es-CO")} puntos,
+                hasta el {loyalty.settings.redeemMaxPercent}% del valor de tus productos). Tus
+                puntos no vencen.
+              </p>
+              {loyalty.txns.length > 0 && (
+                <ul className="border-brand-purple/10 mt-3 space-y-1.5 border-t pt-3 text-xs">
+                  {loyalty.txns.map((t) => (
+                    <li key={t.id} className="flex items-center justify-between gap-2">
+                      <span className="text-brand-muted">
+                        {LOYALTY_REASON_LABELS[t.reason] ?? t.reason}
+                        <span className="text-brand-muted/70">
+                          {" "}
+                          ·{" "}
+                          {t.createdAt.toLocaleDateString("es-CO", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </span>
+                      </span>
+                      <span
+                        className={`font-semibold tabular-nums ${
+                          t.delta > 0 ? "text-emerald-700" : "text-brand-purple-dark"
+                        }`}
+                      >
+                        {t.delta > 0 ? "+" : ""}
+                        {t.delta.toLocaleString("es-CO")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Perfil */}
       <section className="border-brand-purple/15 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
@@ -267,9 +349,10 @@ export default async function MiCuentaPage() {
         </dl>
       </section>
 
-      {/* Puntos: SIGUE OCULTO hasta el programa de fidelidad (Fase 5) — loyaltyPoints
-          es siempre 0 y mostrar UI muerta contradice el mandato #1. Referidos v1
-          (2026-08-11) YA vive en la tarjeta "Invita y gana" de arriba. */}
+      {/* Puntos Lucams (2026-10-12): la sección vive ARRIBA (junto a "Invita y
+          gana") y solo se renderiza si el programa está activo en
+          /admin/fidelizacion — con el programa apagado no se muestra UI muerta
+          (mismo mandato #1 que la mantenía oculta). */}
     </div>
   );
 }

@@ -68,7 +68,7 @@ export const ProductVariantAttributesSchema = z.object({
    * tamaño en el editor. `sizeCm` sigue siendo la medida física; `size` es la etiqueta.
    */
   size: z.string().optional(),
-  /** ADR-057 — true = con imán (default), false = sin imán / adhesivo (más barato). */
+  /** ADR-057 — true = con imán (default), false = sin imán (más barato). */
   magnet: z.boolean().optional(),
   /** ADR-057 — idioma del producto (ej. abecedario "es"/"en"). Dimensión "Idioma". */
   language: z.string().optional(),
@@ -646,9 +646,9 @@ export function describeVariantAttributes(attrs: ProductVariantAttributes): stri
   if (attrs.shape) parts.push(VARIANT_BREAKDOWN_SHAPE_LABELS[attrs.shape] ?? attrs.shape);
   if (attrs.finish) parts.push(VARIANT_BREAKDOWN_FINISH_LABELS[attrs.finish] ?? attrs.finish);
   if (attrs.color) parts.push(`Color ${attrs.color}`);
-  // magnet: "true = con imán (default), false = sin imán / adhesivo" (schema).
+  // magnet: "true = con imán (default), false = sin imán" (schema).
   if (attrs.magnet === true) parts.push("Con imán");
-  if (attrs.magnet === false) parts.push("Sin imán (adhesivo)");
+  if (attrs.magnet === false) parts.push("Sin imán");
   if (attrs.language) {
     parts.push(VARIANT_BREAKDOWN_LANGUAGE_LABELS[attrs.language] ?? attrs.language);
   }

@@ -54,6 +54,7 @@ vi.mock("@/lib/supabase/service", () => ({
 import sharp from "sharp";
 import { prisma } from "@/lib/db";
 import { finalizeDesign } from "./service";
+import { processRenderJobs } from "./render-job-service";
 
 const RUN = `finalorch${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
 const hasDb = Boolean(process.env.DATABASE_URL);
@@ -129,9 +130,13 @@ async function makeDraft(opts: {
   return design.id;
 }
 
-/** Buffer subido al bucket de producción para el slot 1 de un diseño. */
-function productionUpload(designId: string) {
-  return mock.uploads.find(
+/**
+ * ÚLTIMO upload al slot 1 (ADR-131): el finalize sube primero el PNG del cliente y el
+ * RenderJob de mejora lo pisa después con el render server-side (upsert, mismo path) — lo
+ * que vale es la última escritura.
+ */
+function productionUploadLast(designId: string) {
+  return mock.uploads.findLast(
     (u) => u.bucket === "production-assets" && u.path === `${designId}/slot-01.png`,
   );
 }
@@ -211,9 +216,10 @@ describe.skipIf(!hasDb)("finalizeDesign — orquestación (I/O de storage mockea
     await safe(prisma.customer.deleteMany({ where: { email: { contains: RUN } } }));
   });
 
-  it("camino feliz solo-foto: el render server-side reemplaza el PNG del cliente (3240px) y pasa a READY", async () => {
+  it("camino feliz solo-foto: el cliente sube su PNG y el RenderJob lo MEJORA a server-side (3240px) en background", async () => {
     const designId = await makeDraft({ layers: PHOTO_ONLY_LAYERS });
-    // El cliente manda un PNG minúsculo (50px). Si lo subido mide 3240px, corrió el servidor.
+    // El cliente manda un PNG minúsculo (50px). ADR-131: el finalize lo sube tal cual (READY
+    // inmediato) y encola el job de mejora; el render server-side corre en el WORKER.
     const updated = await finalizeDesign({
       designId,
       previewBuffer: await tinyPng(100, 100),
@@ -226,15 +232,68 @@ describe.skipIf(!hasDb)("finalizeDesign — orquestación (I/O de storage mockea
     expect(updated.previewUrl).toBe(
       `https://mock.supabase/design-previews/${designId}/preview.png`,
     );
-    const up = productionUpload(designId);
-    expect(up).toBeDefined();
+    // Antes del worker: lo último subido es el PNG del cliente (50px).
+    const first = productionUploadLast(designId);
+    expect(first).toBeDefined();
+    expect((await sharp(first!.bytes).metadata()).width).toBe(50);
+
+    const jobResult = await processRenderJobs({ onlyDesignId: designId });
+    expect(jobResult.done).toBe(1);
+    const up = productionUploadLast(designId);
     const meta = await sharp(up!.bytes).metadata();
-    // 3240 = 1080×3 (PRODUCTION_SCALE) → el render del servidor corrió y reemplazó el 50px del cliente.
+    // 3240 = 1080×3 (PRODUCTION_SCALE) → el render del servidor corrió EN EL WORKER y
+    // reemplazó el 50px del cliente (misma calidad garantizada que el render síncrono viejo).
     expect(meta.width).toBe(1080 * 3);
     expect(meta.height).toBe(1080 * 3);
+    const job = await prisma.renderJob.findUnique({ where: { designId } });
+    expect(job?.status).toBe("DONE");
+    expect(job?.doneUnits).toBe(job?.totalUnits);
   }, 30000);
 
-  it("fallback: un slot con FILTRO fuerza NEEDS_KONVA en ambos motores → conserva el PNG del cliente (50px)", async () => {
+  it("vía asíncrona (sin PNG del cliente): finalize marca READY de inmediato y el worker produce los archivos", async () => {
+    const designId = await makeDraft({ layers: PHOTO_ONLY_LAYERS });
+    const updated = await finalizeDesign({
+      designId,
+      previewBuffer: await tinyPng(100, 100),
+      customerId: ownerId,
+      sessionId: null,
+    });
+    // READY inmediato aunque el render siga en curso: el carrito puede seguir (ADR-131).
+    expect(updated.status).toBe("READY");
+    await processRenderJobs({ onlyDesignId: designId });
+    const row = await prisma.design.findUnique({
+      where: { id: designId },
+      select: { productionUrls: true },
+    });
+    expect(row!.productionUrls).toEqual([`${designId}/slot-01.png`]);
+    const up = productionUploadLast(designId);
+    expect(up).toBeDefined();
+    const meta = await sharp(up!.bytes).metadata();
+    expect(meta.width).toBe(1080 * 3); // 3240 → lo produjo el worker, no el cliente
+    const job = await prisma.renderJob.findUnique({ where: { designId } });
+    expect(job?.status).toBe("DONE");
+  }, 30000);
+
+  it("guard estático: un slot con FILTRO y SIN PNG del cliente → NEEDS_CLIENT_SLOTS sin encolar job", async () => {
+    const designId = await makeDraft({ layers: PHOTO_ONLY_LAYERS, filter: "vivid" });
+    await expect(
+      finalizeDesign({
+        designId,
+        previewBuffer: await tinyPng(100, 100),
+        customerId: ownerId,
+        sessionId: null,
+      }),
+    ).rejects.toThrow(/NEEDS_CLIENT_SLOTS/);
+    // No quedó ni job ni cambio de estado: el diseño sigue DRAFT para la segunda pasada.
+    expect(await prisma.renderJob.findUnique({ where: { designId } })).toBeNull();
+    const row = await prisma.design.findUnique({
+      where: { id: designId },
+      select: { status: true },
+    });
+    expect(row?.status).toBe("DRAFT");
+  });
+
+  it("fallback: un slot con FILTRO conserva el PNG del cliente (50px) aun tras el job de mejora", async () => {
     // El filtro es la fidelidad exacta de Konva → sharp y canvas lo rechazan (fidelidad → cliente).
     const designId = await makeDraft({ layers: PHOTO_ONLY_LAYERS, filter: "vivid" });
     const updated = await finalizeDesign({
@@ -245,26 +304,85 @@ describe.skipIf(!hasDb)("finalizeDesign — orquestación (I/O de storage mockea
       sessionId: null,
     });
     expect(updated.status).toBe("READY");
-    const up = productionUpload(designId);
+    // El job de mejora corre: NEEDS_KONVA permanente + archivos del cliente presentes →
+    // DONE sin tocar nada (los PNG del cliente quedan vigentes — el fallback de siempre).
+    const jobResult = await processRenderJobs({ onlyDesignId: designId });
+    expect(jobResult.done).toBe(1);
+    const job = await prisma.renderJob.findUnique({ where: { designId } });
+    expect(job?.status).toBe("DONE");
+    const up = productionUploadLast(designId);
     expect(up).toBeDefined();
     const meta = await sharp(up!.bytes).metadata();
-    // 50 → se subió el PNG del cliente (el server hizo fallback), no un render server-side.
+    // 50 → se conserva el PNG del cliente, no un render server-side.
     expect(meta.width).toBe(50);
   }, 30000);
 
-  it("guard: un Design ya READY no se puede re-finalizar", async () => {
+  it("guard: un Design ya READY con producción no se re-finaliza (no-op idempotente)", async () => {
     const designId = await makeDraft({ layers: PHOTO_ONLY_LAYERS });
-    await prisma.design.update({ where: { id: designId }, data: { status: "READY" } });
-    await expect(
-      finalizeDesign({
-        designId,
-        previewBuffer: await tinyPng(10, 10),
-        productionBuffers: [await tinyPng(10, 10)],
-        customerId: ownerId,
-        sessionId: null,
-      }),
-    ).rejects.toThrow(/only DRAFT/);
+    await prisma.design.update({
+      where: { id: designId },
+      data: { status: "READY", productionUrls: [`${designId}/slot-01.png`] },
+    });
+    const uploadsAntes = mock.uploads.length;
+    const again = await finalizeDesign({
+      designId,
+      previewBuffer: await tinyPng(10, 10),
+      productionBuffers: [await tinyPng(10, 10)],
+      customerId: ownerId,
+      sessionId: null,
+    });
+    // No-op: no re-renderiza, no re-sube, no toca nada (idempotencia 2026-07-25).
+    expect(again.productionUrls).toEqual([`${designId}/slot-01.png`]);
+    expect(mock.uploads.length).toBe(uploadsAntes);
   });
+
+  it("guard: READY con render AÚN EN CURSO (job vivo) es no-op; FAILED re-encola y re-patea", async () => {
+    const designId = await makeDraft({ layers: PHOTO_ONLY_LAYERS });
+    await finalizeDesign({
+      designId,
+      previewBuffer: await tinyPng(100, 100),
+      productionBuffers: [await tinyPng(50, 50)],
+      customerId: ownerId,
+      sessionId: null,
+    });
+    // Simula "en curso": productionUrls aún vacío (como recién finalizado por la vía
+    // asíncrona, antes de que el worker escriba los paths) con el job vivo.
+    await prisma.design.update({ where: { id: designId }, data: { productionUrls: [] } });
+    const uploadsAntes = mock.uploads.length;
+    const again = await finalizeDesign({
+      designId,
+      previewBuffer: await tinyPng(10, 10),
+      customerId: ownerId,
+      sessionId: null,
+    });
+    expect(again.status).toBe("READY");
+    expect(mock.uploads.length).toBe(uploadsAntes); // no-op: el job sigue vivo
+
+    // Job FAILED (agotó reintentos): el re-finalize lo re-encola y lo patea (kick) —
+    // el cliente nunca se queda en el callejón «only DRAFT can be finalized».
+    await prisma.renderJob.update({
+      where: { designId },
+      data: { status: "FAILED", attempts: 3 },
+    });
+    const retry = await finalizeDesign({
+      designId,
+      previewBuffer: await tinyPng(10, 10),
+      customerId: ownerId,
+      sessionId: null,
+    });
+    expect(retry.status).toBe("READY");
+    const job = await prisma.renderJob.findUnique({ where: { designId } });
+    expect(job?.attempts).toBe(0); // reseteado por el re-encolar
+    // El kick pudo completarlo dentro del request (1 slot chico); procesar por si quedó.
+    await processRenderJobs({ onlyDesignId: designId });
+    const finalJob = await prisma.renderJob.findUnique({ where: { designId } });
+    expect(finalJob?.status).toBe("DONE");
+    const row = await prisma.design.findUnique({
+      where: { id: designId },
+      select: { productionUrls: true },
+    });
+    expect(row!.productionUrls).toEqual([`${designId}/slot-01.png`]);
+  }, 30000);
 
   it("guard: cantidad de production buffers ≠ slotCount → INCOMPLETE_SLOTS", async () => {
     const designId = await makeDraft({ layers: PHOTO_ONLY_LAYERS, slotCount: 1 });

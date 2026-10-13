@@ -5,17 +5,28 @@
  * Problema: recargar /estudio/<slug> sin ?designId= creaba un draft NUEVO y el
  * anterior (que el auto-save YA había guardado server-side) quedaba huérfano.
  *
- * Flujo (diseño documentado en el item):
- *  a) El boot del editor escribe el designId activo bajo
- *     `lucams_studio_draft_<slug>` (también cuando recupera uno existente).
- *  b) Al entrar sin ?designId= y con marcador guardado, el editor ofrece
+ * Flujo (diseño documentado en el item; endurecido 2026-10-13 — el retomador
+ * solo aparece si hay progreso REAL guardado):
+ *  a) El marcador se escribe bajo `lucams_studio_draft_<slug>` SOLO cuando hay
+ *     progreso real: tras el primer auto-save exitoso con cambios del cliente,
+ *     o cuando el boot recupera un draft existente (?designId= — ese diseño ya
+ *     tiene avance guardado por definición). NUNCA al montar con un draft
+ *     nuevo vacío (bug corregido: antes el boot lo escribía siempre y el
+ *     interstitial salía aunque el cliente no hubiera hecho nada).
+ *     El valor es JSON { designId, savedAt } — savedAt alimenta el detalle del
+ *     interstitial y la poda por edad. Marcadores LEGACY (string plano,
+ *     escritos por la versión que marcaba al entrar) no son confiables: se
+ *     descartan y limpian al leer.
+ *  b) Al entrar sin ?designId= y con marcador VIGENTE, el editor ofrece
  *     "Continuar donde quedaste" (interstitial previo al boot). Confirmar
  *     navega a `?designId=<id>&resume=1`: el recover flow del server valida
  *     ownership y estado (con resume=1 solo acepta DRAFT — un diseño ya
  *     finalizado NO se clona, a diferencia del "Editar" del carrito). Si el
  *     draft ya no existe/no es del owner/no es DRAFT, el server arranca un
- *     draft nuevo y el boot sobrescribe el marcador (limpieza en silencio).
- *     Descartar limpia el marcador y bootea un draft nuevo.
+ *     draft nuevo y el boot LIMPIA el marcador huérfano (antes lo pisaba con
+ *     el draft nuevo vacío, rearmando la mentira). Marcadores con más de
+ *     DRAFT_MARKER_MAX_AGE_MS ni siquiera llegan al interstitial: se limpian
+ *     al leer. Descartar limpia el marcador y bootea un draft nuevo.
  *  c) Al agregar al carrito con éxito se limpia el marcador (el diseño quedó
  *     READY y su lugar es "Mis diseños", no el retomador).
  *
@@ -27,6 +38,20 @@ export function studioDraftStorageKey(productSlug: string): string {
   return `lucams_studio_draft_${productSlug}`;
 }
 
+/**
+ * Marcadores con más de 30 días ya no se ofrecen: es la ventana de purga de
+ * drafts ANÓNIMOS server-side (PURGE_ANON_DESIGN_AFTER_DAYS — los de clientes
+ * logueados viven 90 d, pero esos se retoman desde "Mis diseños"). Un marcador
+ * más viejo apunta casi seguro a un draft purgado → ofrecerlo sería mentir.
+ */
+export const DRAFT_MARKER_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+export interface StudioDraftMarker {
+  designId: string;
+  /** Epoch ms del último guardado real que escribió/refrescó el marcador. */
+  savedAt: number;
+}
+
 function storageOrNull(): Storage | null {
   try {
     if (typeof window === "undefined" || !window.localStorage) return null;
@@ -36,23 +61,67 @@ function storageOrNull(): Storage | null {
   }
 }
 
-/** designId guardado para el slug (null si no hay, es inválido o no se puede leer). */
-export function readStudioDraftId(productSlug: string): string | null {
+function removeMarker(storage: Storage, productSlug: string): void {
+  try {
+    storage.removeItem(studioDraftStorageKey(productSlug));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Lee el marcador del draft con progreso real para el slug. Devuelve null —y
+ * AUTO-LIMPIA la entrada— cuando no hay marcador, es legacy (string plano de
+ * la versión que marcaba al entrar, sin evidencia de progreso), está corrupto
+ * o está vencido (más viejo que DRAFT_MARKER_MAX_AGE_MS). La validez REAL del
+ * diseño (existe, es del owner, sigue DRAFT) la confirma el recover server-side.
+ */
+export function readStudioDraftMarker(
+  productSlug: string,
+  opts?: { now?: number },
+): StudioDraftMarker | null {
   const storage = storageOrNull();
   if (!storage) return null;
+  const now = opts?.now ?? Date.now();
   try {
-    const value = storage.getItem(studioDraftStorageKey(productSlug));
-    return value && value.trim().length > 0 ? value : null;
+    const raw = storage.getItem(studioDraftStorageKey(productSlug));
+    if (!raw) return null;
+    let parsed: Partial<StudioDraftMarker> | null = null;
+    try {
+      const json: unknown = JSON.parse(raw);
+      if (json && typeof json === "object") parsed = json as Partial<StudioDraftMarker>;
+    } catch {
+      parsed = null; // legacy string plano o corrupción — no confiable
+    }
+    if (
+      !parsed ||
+      typeof parsed.designId !== "string" ||
+      parsed.designId.trim().length === 0 ||
+      typeof parsed.savedAt !== "number" ||
+      !Number.isFinite(parsed.savedAt) ||
+      now - parsed.savedAt > DRAFT_MARKER_MAX_AGE_MS ||
+      parsed.savedAt > now + 60_000 // reloj del cliente disparado — no confiable
+    ) {
+      removeMarker(storage, productSlug);
+      return null;
+    }
+    return { designId: parsed.designId, savedAt: parsed.savedAt };
   } catch {
     return null;
   }
+}
+
+/** designId guardado para el slug (null si no hay marcador confiable/vigente). */
+export function readStudioDraftId(productSlug: string): string | null {
+  return readStudioDraftMarker(productSlug)?.designId ?? null;
 }
 
 export function writeStudioDraftId(productSlug: string, designId: string): void {
   const storage = storageOrNull();
   if (!storage || !designId) return;
   try {
-    storage.setItem(studioDraftStorageKey(productSlug), designId);
+    const marker: StudioDraftMarker = { designId, savedAt: Date.now() };
+    storage.setItem(studioDraftStorageKey(productSlug), JSON.stringify(marker));
   } catch {
     // cuota llena / incógnito — el retomador simplemente no persiste
   }
@@ -70,9 +139,11 @@ export function clearStudioDraftId(productSlug: string): void {
 
 /**
  * ¿Ofrecer "Continuar donde quedaste" al entrar al Estudio? Solo cuando hay
- * marcador guardado, el boot NO viene de un recover explícito (?designId= en
- * la URL manda: el cliente siguió un link directo — carrito, "Mis diseños"— y
- * su intención pisa al marcador) y no hay ya un diseño recuperado.
+ * marcador guardado (el caller lo lee con readStudioDraftMarker, que ya exige
+ * progreso real: formato vigente + frescura, con auto-limpieza de huérfanos),
+ * el boot NO viene de un recover explícito (?designId= en la URL manda: el
+ * cliente siguió un link directo — carrito, "Mis diseños"— y su intención pisa
+ * al marcador) y no hay ya un diseño recuperado.
  */
 export function shouldOfferDraftResume(opts: {
   savedDesignId: string | null;

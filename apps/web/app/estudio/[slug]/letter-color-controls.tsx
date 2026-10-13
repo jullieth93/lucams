@@ -7,7 +7,7 @@
  */
 
 import { NAME_TILE_THEMES, LETTER_SWATCHES, LETTER_SWATCH_LABELS } from "./letter-tile";
-import { Hint } from "@/components/ui/tooltip";
+import { CustomColorPicker } from "@/components/color-picker";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, splitStudioText } from "./studio-texts";
 
@@ -94,8 +94,10 @@ export function SwatchRow({
   const texts = useStudioTexts();
   // {letra} se interpola conservando el <span> display de la letra (roadmap B1).
   const titleParts = splitStudioText(texts.nombre.swatchTitulo, "letra");
-  // Fase 1B — opción «Personalizado»: input color nativo (sin dependencias). El hex
-  // entra al mismo estado que un swatch (persiste igual en el diseño).
+  // Opción «Personalizado»: picker propio (components/color-picker.tsx) con
+  // paridad en todas las plataformas. El hex entra al mismo estado que un
+  // swatch (persiste igual en el diseño); el panel inline cae debajo de la
+  // fila (w-full en el flex-wrap).
   const customValue =
     currentColor && !(LETTER_SWATCHES as readonly string[]).includes(currentColor)
       ? currentColor
@@ -128,23 +130,15 @@ export function SwatchRow({
             style={{ backgroundColor: c }}
           />
         ))}
-        <Hint content={texts.nombre.swatchPersonalizadoAria}>
-          <label
-            className="relative h-10 w-10 cursor-pointer rounded-full ring-2 ring-black/5 transition hover:scale-110"
-            style={{
-              background:
-                customValue ?? "conic-gradient(#E85B9F, #FFD93D, #5DD9D1, #7C6AAD, #E85B9F)",
-            }}
-          >
-            <input
-              type="color"
-              value={customValue ?? "#7C6AAD"}
-              onChange={(e) => onPick(e.target.value)}
-              aria-label={texts.nombre.swatchPersonalizadoAria}
-              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-            />
-          </label>
-        </Hint>
+        <CustomColorPicker
+          value={customValue}
+          onChange={onPick}
+          label={texts.nombre.swatchPersonalizadoAria}
+          active={customValue !== null}
+          hint={texts.nombre.swatchPersonalizadoAria}
+          className="h-10 w-10"
+          panelClassName="w-full basis-full"
+        />
       </div>
     </div>
   );

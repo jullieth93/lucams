@@ -39,11 +39,13 @@ import { rateLimit } from "@/lib/rate-limit";
 import { isCatalogMode } from "@/lib/store-mode";
 import { ClearCheckoutSession } from "./clear-checkout-session";
 import { processPaidOrder, flagForeignApprovedPayment } from "@/features/orders/saga";
+import { findOrderIdByWompiReference } from "@/features/orders/payment-reference";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { getCurrentCustomer } from "@/lib/auth";
 import { getCmsBlock } from "@/lib/cms";
 import { CmsText } from "@/components/cms/cms-text";
+import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
 import { Hint } from "@/components/ui/tooltip";
 import {
   describeVariantAttributes,
@@ -144,42 +146,47 @@ export default async function CheckoutGraciasPage({
     );
   }
 
-  // Lookup Order por reference (= Order.number)
-  let order = await prisma.order.findFirst({
-    where: { number: tx.reference, deletedAt: null },
-    select: {
-      id: true,
-      number: true,
-      status: true,
-      total: true,
-      email: true,
-      shippingCarrier: true,
-      shippingAddress: true,
-      // F-02 — necesario para detectar un APPROVED de una tx distinta a la que pagó.
-      wompiTransactionId: true,
-      // F-11 — el publicAccessToken ya no se puede releer de la DB (solo hash);
-      // el invitado rastrea su pedido desde /rastrear (número + correo).
-      // ADR-070 (pieza #1) — miniaturas de lo que pediste; el diseño usa su snapshot autocontenido.
-      items: {
+  // Lookup Order por reference: puede ser el número base o llevar sufijo de
+  // intento (`LCM-2026-0001-2` — referencia única por intento de pago, ver
+  // features/orders/payment-reference.ts).
+  const orderId = await findOrderIdByWompiReference(tx.reference);
+  let order = orderId
+    ? await prisma.order.findFirst({
+        where: { id: orderId, deletedAt: null },
         select: {
           id: true,
-          qty: true,
-          designAssetUrl: true,
-          // Paquete F (2026-10-02) — name/attributes: desglose de la variante bajo
-          // las miniaturas; images: foto propia de la variante antes que la del producto.
-          variant: {
+          number: true,
+          status: true,
+          total: true,
+          email: true,
+          shippingCarrier: true,
+          shippingAddress: true,
+          // F-02 — necesario para detectar un APPROVED de una tx distinta a la que pagó.
+          wompiTransactionId: true,
+          // F-11 — el publicAccessToken ya no se puede releer de la DB (solo hash);
+          // el invitado rastrea su pedido desde /rastrear (número + correo).
+          // ADR-070 (pieza #1) — miniaturas de lo que pediste; el diseño usa su snapshot autocontenido.
+          items: {
             select: {
-              name: true,
-              attributes: true,
-              images: true,
-              product: { select: { name: true, images: true } },
+              id: true,
+              qty: true,
+              designAssetUrl: true,
+              // Paquete F (2026-10-02) — name/attributes: desglose de la variante bajo
+              // las miniaturas; images: foto propia de la variante antes que la del producto.
+              variant: {
+                select: {
+                  name: true,
+                  attributes: true,
+                  images: true,
+                  product: { select: { name: true, images: true } },
+                },
+              },
+              design: { select: { previewUrl: true, previewWatermarkedAt: true } },
             },
           },
-          design: { select: { previewUrl: true } },
         },
-      },
-    },
-  });
+      })
+    : null;
 
   if (tx.status === "APPROVED") {
     // F-02 (certificación release 2026-09-26) — la misma comparación que la saga:
@@ -270,7 +277,7 @@ export default async function CheckoutGraciasPage({
                     product: { select: { name: true, images: true } },
                   },
                 },
-                design: { select: { previewUrl: true } },
+                design: { select: { previewUrl: true, previewWatermarkedAt: true } },
               },
             },
           },
@@ -315,7 +322,7 @@ export default async function CheckoutGraciasPage({
     if (order) {
       await persistPendingWompiTxId(order.id, tx.id);
     }
-    return <PendingPage orderNumber={tx.reference} txId={tx.id} />;
+    return <PendingPage orderNumber={order?.number ?? tx.reference} txId={tx.id} />;
   }
   // DECLINED, VOIDED, ERROR
   return <FailedPage reason={tx.status_message ?? `Estado Wompi: ${tx.status}`} />;
@@ -347,7 +354,7 @@ function ApprovedPage({
         images: string[];
         product: { name: string; images: string[] };
       };
-      design: { previewUrl: string | null } | null;
+      design: { previewUrl: string | null; previewWatermarkedAt: Date | null } | null;
     }[];
   } | null;
   txId: string;
@@ -397,14 +404,20 @@ function ApprovedPage({
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2">
             {order.items.map((it) => {
+              // 2026-10-13 — el diseño personalizado se exhibe CON marca de agua
+              // cuando el artefacto existe (preview-wm.webp por convención de
+              // paths); el snapshot limpio (designAssetUrl) queda de fallback
+              // para diseños sin artefactos o ya purgados.
               // Paquete F (2026-10-02) — la foto de LA VARIANTE antes que la
               // genérica del producto (mismo fallback que el carrito).
-              const img =
-                it.designAssetUrl ??
-                it.design?.previewUrl ??
-                it.variant.images[0] ??
-                it.variant.product.images[0] ??
-                null;
+              const disp = it.design ? designPreviewDisplay(it.design) : null;
+              const img = disp?.watermarked
+                ? disp.displayUrl
+                : (it.designAssetUrl ??
+                  it.design?.previewUrl ??
+                  it.variant.images[0] ??
+                  it.variant.product.images[0] ??
+                  null);
               const personalized = Boolean(it.designAssetUrl ?? it.design?.previewUrl);
               return (
                 <Hint key={it.id} content={it.variant.product.name}>
@@ -438,6 +451,17 @@ function ApprovedPage({
               );
             })}
           </div>
+          {/* 2026-10-13 — aviso de marca de agua cuando alguna miniatura la lleva. */}
+          {order.items.some((it) =>
+            it.design ? designPreviewDisplay(it.design)?.watermarked === true : false,
+          ) && (
+            <p className="text-brand-muted mx-auto mt-2 max-w-md text-[11px]">
+              <CmsText
+                blockKey="checkout.gracias.watermark-note"
+                fallback="Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la lleva."
+              />
+            </p>
+          )}
           {/* Paquete F (2026-10-02) — variante + desglose estructurado de cada ítem
               (las miniaturas solas no informan Con/Sin imán, tamaño, idioma…). */}
           <ul className="mx-auto mt-3 max-w-md space-y-1 text-left">

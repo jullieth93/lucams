@@ -74,7 +74,7 @@ export function calculateNitDV(nit: string): string {
 
 // Móvil colombiano: empieza con 3, total 10 dígitos.
 // Ej: 3208873826
-const PHONE_REGEX = /^3\d{9}$/;
+export const PHONE_REGEX = /^3\d{9}$/;
 
 /**
  * Normaliza a los 10 dígitos locales. Tolera el indicativo país +57: si quedan
@@ -105,16 +105,50 @@ export function stripPhone(value: string): string {
   return normalizeMobileDigits(value).slice(0, 10);
 }
 
+// ─── Teléfono con indicativo internacional (componente PhoneInput) ───
+// El hidden del componente viaja como "+<indicativo> <número nacional>"
+// (ej. "+57 3208873826"). Colombia (+57) se valida estricta (móvil 3XXXXXXXXX)
+// y se persiste como 10 dígitos locales — mismo formato del checkout/courier.
+// Otros países: 6-15 dígitos nacionales (E.164), se persiste "+<indicativo><número>".
+// Un valor SIN "+" se interpreta como móvil colombiano (compatibilidad con lo
+// ya guardado antes del indicativo explícito).
+
+export function normalizePhoneWithDial(raw: string): string | null {
+  const value = raw.trim();
+  if (!value) return null;
+  if (!value.startsWith("+")) {
+    const local = stripPhone(value);
+    return PHONE_REGEX.test(local) ? local : null;
+  }
+  const match = /^\+(\d{1,3})[\s()-]*(\d[\d\s()-]*)$/.exec(value);
+  if (!match) return null;
+  const [, dial, nationalRaw] = match;
+  const national = nationalRaw.replace(/\D/g, "");
+  if (dial === "57") {
+    // normalizeMobileDigits tolera el 57 duplicado ("+57 57320…").
+    const local = normalizeMobileDigits(`57${national}`);
+    return PHONE_REGEX.test(local) ? local : null;
+  }
+  if (national.length < 6 || national.length > 15) return null;
+  return `+${dial}${national}`;
+}
+
 // ─── Nombre ───
 
 // Letras + espacios + acentos españoles + ñ + apóstrofo (D'Angelo) +
 // punto (Dr.) + guión (Garcia-Lopez). Sin dígitos.
-const NAME_REGEX = /^[A-Za-zÀ-ÿ\s.''\-]+$/;
+export const NAME_REGEX = /^[A-Za-zÀ-ÿ\s.''\-]+$/;
 
 export function validateName(value: string): boolean {
   const cleaned = value.trim();
   if (cleaned.length < 2) return false;
   return NAME_REGEX.test(cleaned);
+}
+
+/** Palabras separadas por espacio (colapsa múltiples). Sirve para los topes
+ *  "máx 3 palabras de nombre / 2 de apellido" del perfil. */
+export function countWords(value: string): number {
+  return value.trim().split(/\s+/).filter(Boolean).length;
 }
 
 /**

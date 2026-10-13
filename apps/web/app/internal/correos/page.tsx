@@ -101,7 +101,7 @@ async function buildGroups(): Promise<Group[]> {
           name: "Imán Polaroid personalizado",
           qty: 2,
           lineTotal: 30_000,
-          breakdown: ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"],
+          breakdown: ["12 fotos", "6×8 cm", "Sin imán"],
         },
       ],
       shippingAddress: "Calle 10 # 43-25, Apto 302, Medellín, Antioquia",

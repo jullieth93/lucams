@@ -266,6 +266,16 @@ export type CreateDraftDesignInput = z.infer<typeof CreateDraftDesignSchema>;
 // realistic worst-case (calendario 12 slots con metadata extensa).
 const MAX_CANVAS_DATA_BYTES = 1 * 1024 * 1024;
 
+// 2026-10-13 — miniatura del DRAFT para "Mis diseños": viaja OPCIONALMENTE con
+// el auto-save (throttled cliente-side, no en cada save). El cliente la genera
+// a ≤400 px WebP/JPEG (~10-40 KB); el cap de abajo es defensivo ante un
+// cliente manipulado (un thumbnail legítimo jamás se acerca al techo).
+// Mismo contrato de formato que el preview del finalize (DATA_URL_RE, más
+// abajo — se redeclara acá porque los const no se izan: SaveCanvasSchema se
+// evalúa antes de la sección Finalize).
+const DRAFT_PREVIEW_DATA_URL_RE = /^data:image\/(png|webp|jpeg);base64,/;
+const DRAFT_PREVIEW_MAX_CHARS = 220 * 1024; // ≈160 KB binarios
+
 export const SaveCanvasSchema = z
   .object({
     designId: z.string().min(1),
@@ -274,6 +284,23 @@ export const SaveCanvasSchema = z
     // para que Design.templateId la refleje. El service la re-valida contra el
     // producto (kind/EDITABLE/activa) antes de persistirla.
     templateId: z.string().min(1).max(40).optional(),
+    // 2026-10-12 — packs de foto: la variante EFECTIVA (la que matchea el N de
+    // fotos + magnet del canvas) viaja con el auto-save para persistirse en
+    // metadata.variantId y que el recover (?designId=) reabra con ESA variante.
+    // El service la re-valida contra el producto (anti-tamper, mismo criterio
+    // que templateId). El COBRO sigue derivándose del canvasData — esto es solo
+    // para la re-apertura del Estudio.
+    variantId: z.string().min(1).max(40).optional(),
+    // 2026-10-13 — miniatura del borrador (Mis diseños). Opcional y best-effort:
+    // el service la sube a design-previews/<designId>/draft-preview.<ext>
+    // (upsert — pisa la anterior) y la persiste en Design.draftPreviewUrl; si
+    // el upload falla, el canvas se guarda igual (el thumbnail se reintenta en
+    // un save posterior).
+    draftPreviewDataUrl: z
+      .string()
+      .max(DRAFT_PREVIEW_MAX_CHARS)
+      .regex(DRAFT_PREVIEW_DATA_URL_RE, "Formato inválido (debe ser data:image/png|webp|jpeg)")
+      .optional(),
   })
   .superRefine((data, ctx) => {
     const size = JSON.stringify(data.canvasData).length;

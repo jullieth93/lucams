@@ -19,12 +19,16 @@ import {
   getDepartmentByCode,
   getCityByCode,
 } from "@/lib/dane-divipola";
+import { getZoneCityByCode } from "@/lib/lucams-zones";
 import { VIA_TYPES } from "@/features/checkout/schemas";
 import { CRUCE_HINT, viaHintText } from "@/lib/colombia-validators";
 
 export type StructuredAddressValue = {
   deptCode: string;
   cityCode: string;
+  // Zona de entrega (id de lib/lucams-zones.ts) — mismo campo `localityId` del
+  // checkout: obligatoria cuando la ciudad está en el catálogo de zonas.
+  localityId: string;
   zip: string;
   neighborhood: string;
   kind: "urban" | "rural";
@@ -43,6 +47,7 @@ export type StructuredAddressValue = {
 export const EMPTY_STRUCTURED_ADDRESS: StructuredAddressValue = {
   deptCode: "",
   cityCode: "",
+  localityId: "",
   zip: "",
   neighborhood: "",
   kind: "urban",
@@ -81,6 +86,10 @@ export function StructuredAddressFields({
   const cities = value.deptCode ? getCitiesByDeptCode(value.deptCode) : [];
   const deptName = getDepartmentByCode(value.deptCode)?.name ?? "";
   const cityName = getCityByCode(value.cityCode)?.name ?? "";
+  // Zona de entrega (Localidad/Comuna) — solo si la ciudad está en el catálogo
+  // (mismo criterio del checkout: allí es obligatoria; acá también lo valida el
+  // server de /mi-cuenta/direcciones).
+  const zoneCity = getZoneCityByCode(value.cityCode);
   const err = (k: string) => errors?.[k]?.[0];
 
   return (
@@ -90,7 +99,7 @@ export function StructuredAddressFields({
       <input type="hidden" name="city" value={cityName} />
       <input type="hidden" name="addressKind" value={value.kind} />
 
-      {/* Depto + Ciudad + CP */}
+      {/* Depto → Ciudad → Localidad → Barrio */}
       <div className="grid gap-3 sm:grid-cols-6">
         <div className="space-y-1.5 sm:col-span-3">
           <Label htmlFor="deptCode">Departamento *</Label>
@@ -100,7 +109,9 @@ export function StructuredAddressFields({
             required
             value={value.deptCode}
             disabled={disabled}
-            onChange={(e) => onChange({ deptCode: e.target.value, cityCode: "", zip: "" })}
+            onChange={(e) =>
+              onChange({ deptCode: e.target.value, cityCode: "", localityId: "", zip: "" })
+            }
             className={selectClass}
           >
             <option value="">Elige departamento…</option>
@@ -121,12 +132,12 @@ export function StructuredAddressFields({
             value={value.cityCode}
             disabled={disabled || !value.deptCode}
             onChange={(e) => {
-              // CP derivado de la ciudad elegida (owner 2026-10-07, mismo criterio
-              // que el checkout): CP real del catálogo DANE; si la ciudad no lo
-              // tiene, prefijo departamental para que el cliente lo complete.
+              // CP derivado de la ciudad elegida (mismo criterio que el checkout):
+              // solo el CP REAL del catálogo DANE; si la ciudad no lo tiene, el
+              // campo queda VACÍO (el prefijo departamental no es un CP válido).
+              // La localidad es específica de la ciudad — cambiarla la invalida.
               const city = getCityByCode(e.target.value);
-              const dept = DEPARTMENTS.find((d) => d.code === city?.deptCode);
-              onChange({ cityCode: e.target.value, zip: city?.zip ?? dept?.zipPrefix ?? "" });
+              onChange({ cityCode: e.target.value, localityId: "", zip: city?.zip ?? "" });
             }}
             className={selectClass}
           >
@@ -141,20 +152,28 @@ export function StructuredAddressFields({
           </select>
           {err("cityCode") && <p className="text-destructive text-sm">{err("cityCode")}</p>}
         </div>
-        <div className="space-y-1.5 sm:col-span-6">
-          <Label htmlFor="zip">Código postal (opcional)</Label>
-          <Input
-            id="zip"
-            name="zip"
-            value={value.zip}
-            disabled={disabled}
-            onChange={(e) => onChange({ zip: e.target.value.replace(/\D/g, "").slice(0, 6) })}
-            placeholder="Opcional"
-            inputMode="numeric"
-            aria-invalid={Boolean(err("zip"))}
-          />
-          {err("zip") && <p className="text-destructive text-sm">{err("zip")}</p>}
-        </div>
+        {zoneCity && (
+          <div className="space-y-1.5 sm:col-span-6">
+            <Label htmlFor="localityId">{zoneCity.zoneLabel} *</Label>
+            <select
+              id="localityId"
+              name="localityId"
+              required
+              value={value.localityId}
+              disabled={disabled}
+              onChange={(e) => onChange({ localityId: e.target.value })}
+              className={selectClass}
+            >
+              <option value="">Elige tu {zoneCity.zoneLabel.toLowerCase()}…</option>
+              {zoneCity.zones.map((z) => (
+                <option key={z.id} value={z.id}>
+                  {z.name}
+                </option>
+              ))}
+            </select>
+            {err("localityId") && <p className="text-destructive text-sm">{err("localityId")}</p>}
+          </div>
+        )}
         <div className="space-y-1.5 sm:col-span-6">
           <Label htmlFor="neighborhood">Barrio (opcional)</Label>
           <Input
@@ -368,6 +387,24 @@ export function StructuredAddressFields({
           </div>
         </>
       )}
+
+      {/* Código postal al final (tras el complemento): se autocompleta con el
+          CP REAL de la ciudad cuando el catálogo DANE lo tiene; si no, queda
+          vacío y el cliente puede escribirlo. */}
+      <div className="space-y-1.5">
+        <Label htmlFor="zip">Código postal (opcional)</Label>
+        <Input
+          id="zip"
+          name="zip"
+          value={value.zip}
+          disabled={disabled}
+          onChange={(e) => onChange({ zip: e.target.value.replace(/\D/g, "").slice(0, 6) })}
+          placeholder="Opcional"
+          inputMode="numeric"
+          aria-invalid={Boolean(err("zip"))}
+        />
+        {err("zip") && <p className="text-destructive text-sm">{err("zip")}</p>}
+      </div>
     </div>
   );
 }

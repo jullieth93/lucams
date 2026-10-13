@@ -433,7 +433,7 @@ Para todo incidente de severidad alta o crítica.
 
 ### Timing
 
-- **24 h post-resolución:** primera versión del postmortem en `docs/incidents/YYYY-MM-DD-<slug>.md`.
+- **24 h post-resolución:** primera versión del postmortem en `tmp/incidentes/YYYY-MM-DD-<slug>.md` (efímero, gitignored — política de documentación).
 - **48 h post-resolución:** revisión y publicación final.
 
 ### Plantilla

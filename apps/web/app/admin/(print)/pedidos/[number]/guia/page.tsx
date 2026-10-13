@@ -1,5 +1,5 @@
 /*
- * Guía de entrega interna "Envío Lucam's" — remisión imprimible para el
+ * Guía de entrega interna "Envío Lucams" — remisión imprimible para el
  * transportador propio (mensajería interna, carrier "lucams").
  *
  * Formato: CUARTO DE CARTA portrait (4.25in × 5.5in — una carta dividida en

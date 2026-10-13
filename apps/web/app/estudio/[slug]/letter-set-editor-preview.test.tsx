@@ -84,6 +84,7 @@ function renderEditor(
   extraProps?: Partial<
     Pick<
       ComponentProps<typeof LetterSetEditor>,
+      | "letterSet"
       | "themeOptions"
       | "stylesByLanguage"
       | "initialTheme"
@@ -107,7 +108,6 @@ function renderEditor(
         basePrice={40_000}
         letterSet="vowels"
         alphabets={{ es: ["A", "B"], en: ["A", "B"] }}
-        availableLanguages={["es"]}
         initialLanguage="es"
         themeOptions={{ es: [], en: [] }}
         initialTheme={null}
@@ -135,16 +135,14 @@ const ILLUSTRATED_PROPS = {
 
 /** Pulsa «Ver diseño» (antes "¡Listo!"/"Vista previa") y espera a que la vista previa esté en pantalla. */
 async function openPreview() {
-  // QA ronda 2 (owner 2026-10-07) — TODOS los CTAs de finalizar dicen «Ver
-  // diseño»: hay DOS botones con ese rótulo (header sticky + panel de
-  // controles) con la MISMA acción. Acá se pulsa el del panel (el último en
-  // el DOM), que es el flujo principal.
-  fireEvent.click(screen.getAllByRole("button", { name: /Ver diseño/ }).at(-1)!);
+  // 2026-10-12 — hay UN SOLO CTA «Ver diseño»: el del header sticky (el botón
+  // duplicado al pie del panel de controles se eliminó).
+  fireEvent.click(screen.getByRole("button", { name: /Ver diseño/ }));
   await screen.findByText("Así se verá tu pedido");
 }
 
 describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)", () => {
-  it("móvil: los controles (Tema → Idioma → Borde → Colores) van ARRIBA del lienzo; en lg se mantiene controles-izquierda/lienzo-derecha", () => {
+  it("móvil: los controles (Tema → Borde → Sets → Colores) van ARRIBA del lienzo; en lg se mantiene controles-izquierda/lienzo-derecha", () => {
     const { container } = renderEditor();
     const aside = container.querySelector("aside");
     const section = container.querySelector("section");
@@ -162,18 +160,26 @@ describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)",
     expect(push).not.toHaveBeenCalled();
   });
 
-  it("QA ronda 2 (owner 2026-10-07): header sticky y panel dicen «Ver diseño» (mismo rótulo, misma acción)", async () => {
+  it("2026-10-12: UN solo CTA «Ver diseño» (el del header sticky) — el duplicado del panel se eliminó", async () => {
     renderEditor();
-    // Los DOS CTAs de finalizar comparten rótulo (estudio.comun.listo): la
-    // diferenciación «Vista previa»/«Ver diseño» de QA 1.6 se revirtió.
+    // Antes había DOS botones con el mismo rótulo (header sticky + pie del
+    // panel, misma acción — QA ronda 2, owner 2026-10-07). Ahora queda UNO.
     const ctas = screen.getAllByRole("button", { name: /Ver diseño/ });
-    expect(ctas).toHaveLength(2);
+    expect(ctas).toHaveLength(1);
     expect(screen.queryByRole("button", { name: /Vista previa/ })).toBeNull();
-    // El CTA del header sticky (el primero en el DOM) abre la MISMA vista previa.
+    // El CTA único (header sticky) abre la vista previa sin crear nada.
     fireEvent.click(ctas[0]!);
     await screen.findByText("Así se verá tu pedido");
     expect(createLetterSetDesignAction).not.toHaveBeenCalled();
     expect(addPersonalizedToCartAction).not.toHaveBeenCalled();
+  });
+
+  it("2026-10-12: el selector de idioma NO se muestra dentro del estudio (llega fijo de la variante de la PDP)", () => {
+    renderEditor({ letterSet: "full" });
+    // Duplicado PDP↔estudio eliminado: ni el título ni las opciones de idioma.
+    expect(screen.queryByText("Idioma del alfabeto")).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /Español/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /English/ })).not.toBeInTheDocument();
   });
 
   it("la vista previa cuenta las FICHAS del set (5 vocales), no el archivo de producción", async () => {
@@ -440,5 +446,107 @@ describe("LetterSetEditor — recover flow (?designId=)", () => {
     expect(createLetterSetDesignAction).toHaveBeenCalledWith(
       expect.objectContaining({ unitCount: 1, colors }),
     );
+  });
+});
+
+/*
+ * Stepper "¿Cuántos sets quieres?" (2026-10-12) — la cantidad de sets se puede
+ * cambiar DENTRO del estudio (antes venía fija de ?copies=N de la PDP).
+ * Regla (consistente con el stepper de unidades del estudio de foto): al reducir
+ * se recortan los sets del FINAL (sus colores se descartan); al aumentar, los
+ * sets nuevos nacen vacíos (tema default). Tope MAX_LETTER_SET_UNITS.
+ */
+describe("LetterSetEditor — stepper de cantidad de sets (2026-10-12)", () => {
+  // La vista previa multi-set monta las láminas con Image + createObjectURL +
+  // toDataURL (jsdom no los implementa) — mismos stubs de la suite recover.
+  const RealImage = globalThis.Image;
+  const realCreateObjectURL = URL.createObjectURL;
+  const realRevokeObjectURL = URL.revokeObjectURL;
+  const realToDataURL = HTMLCanvasElement.prototype.toDataURL;
+  beforeAll(() => {
+    class FakeImage {
+      onload: (() => void) | null = null;
+      onerror: ((e: unknown) => void) | null = null;
+      naturalWidth = 100;
+      naturalHeight = 100;
+      set src(_v: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    globalThis.Image = FakeImage as unknown as typeof Image;
+    URL.createObjectURL = () => "blob:fake";
+    URL.revokeObjectURL = () => {};
+    HTMLCanvasElement.prototype.toDataURL = (() =>
+      "data:image/png;base64,iVBORw0KGgo=") as unknown as HTMLCanvasElement["toDataURL"];
+  });
+  afterAll(() => {
+    globalThis.Image = RealImage;
+    URL.createObjectURL = realCreateObjectURL;
+    URL.revokeObjectURL = realRevokeObjectURL;
+    HTMLCanvasElement.prototype.toDataURL = realToDataURL;
+  });
+
+  it("el stepper arranca en 1 set y subir a 2 muestra el pager y duplica el precio", async () => {
+    renderEditor();
+    // Sin pager con 1 solo set; el stepper siempre visible (cambiar N sin volver a la PDP).
+    expect(screen.queryByRole("button", { name: /Set 1 de 1/ })).not.toBeInTheDocument();
+    const group = screen.getByRole("group", { name: "Cantidad de sets" });
+    expect(group).toHaveTextContent("1 set");
+
+    fireEvent.click(screen.getByRole("button", { name: "Agregar un set" }));
+
+    expect(group).toHaveTextContent("2 sets");
+    // Pager multi-set + "Aplicar este diseño a todas" aparecen con N > 1.
+    expect(screen.getByRole("button", { name: /Set 2 de 2/ })).toBeInTheDocument();
+    // Precio en vivo: variante $450 × 2 sets = $ 900 (header + panel).
+    expect(screen.getAllByText(/\$\s?900/).length).toBeGreaterThan(0);
+
+    // Y el diseño se crea con los 2 sets (una lámina de producción por set).
+    await openPreview();
+    fireEvent.click(screen.getByRole("button", { name: /Sí, agregar al carrito/ }));
+    await waitFor(() => expect(createLetterSetDesignAction).toHaveBeenCalledTimes(1));
+    expect(createLetterSetDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({ unitCount: 2 }),
+    );
+    const fd = finalizeDesignAction.mock.calls[0]![0];
+    expect(fd.get("slotCount")).toBe("2");
+    expect(fd.get("production_1")).toBeInstanceOf(Blob);
+  });
+
+  it("al REDUCIR se recortan los sets del final: el set 3 (con sus colores) se descarta", async () => {
+    const colorsA = ["#FF0000", "#00FF00", "#0000FF", "#123456", "#654321"];
+    const colorsB = ["#AAAAAA", "#BBBBBB", "#CCCCCC", "#DDDDDD", "#EEEEEE"];
+    const colorsC = ["#101010", "#202020", "#303030", "#404040", "#505050"];
+    renderEditor({ initialUnits: 3, initialUnitColors: [colorsA, colorsB, colorsC] });
+    expect(screen.getByRole("button", { name: /Set 3 de 3/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Quitar un set" }));
+
+    expect(screen.queryByRole("button", { name: /Set 3/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Set 2 de 2/ })).toBeInTheDocument();
+
+    await openPreview();
+    fireEvent.click(screen.getByRole("button", { name: /Sí, agregar al carrito/ }));
+    await waitFor(() => expect(createLetterSetDesignAction).toHaveBeenCalledTimes(1));
+    // Solo quedan los sets 1 y 2, con SUS colores intactos (recorte del final).
+    expect(createLetterSetDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        unitCount: 2,
+        units: [{ colors: colorsA }, { colors: colorsB }],
+      }),
+    );
+  });
+
+  it("respeta los topes: 1 mínimo y MAX_LETTER_SET_UNITS (10) máximo, con clamp del valor inicial", () => {
+    const { unmount } = renderEditor({ initialUnits: 99 });
+    const group = screen.getByRole("group", { name: "Cantidad de sets" });
+    expect(group).toHaveTextContent("10 sets");
+    expect(screen.getByRole("button", { name: "Agregar un set" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Quitar un set" })).toBeEnabled();
+    unmount();
+
+    renderEditor();
+    expect(screen.getByRole("button", { name: "Quitar un set" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Agregar un set" })).toBeEnabled();
   });
 });

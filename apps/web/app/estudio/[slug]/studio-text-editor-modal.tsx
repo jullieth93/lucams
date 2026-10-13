@@ -28,10 +28,10 @@ import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Slider } from "@/components/ui/slider";
 import { Hint } from "@/components/ui/tooltip";
+import { CustomColorPicker } from "@/components/color-picker";
 import { Bold, Check, Italic, Loader2, Type } from "lucide-react";
 import { FONT_PRESETS, TEXT_COLOR_PRESETS } from "./lib/fonts";
-import { isLowContrastOnCard } from "./lib/contrast";
-import { WHITE_CARD_CHECKER, WHITE_CARD_CHECKER_SIZE } from "./studio-slot";
+import { isLowContrastOnCard, relativeLuminance } from "./lib/contrast";
 import type { TextLayer, TextOverride } from "./types";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -232,16 +232,21 @@ export function StudioTextEditorForm({
 
   // Ola 28 (owner 2026-09-11) — el preview pinta el fondo de la TARJETA (no un
   // crema neutro): es el WYSIWYG real del texto impreso. Si la letra queda casi
-  // invisible sobre ese fondo (blanco sobre blanco), cambiamos a la cuadrícula
-  // de "transparencia" (la misma de la tarjeta blanca en el lienzo) + aviso, así
-  // lo que se escribe SIEMPRE se ve mientras se edita. Adorno DOM del editor:
+  // invisible sobre ese fondo (blanco sobre blanco), el texto del preview lleva
+  // un delineado sutil en la luminancia OPUESTA a la letra + aviso, así lo que
+  // se escribe SIEMPRE se ve mientras se edita (2026-10-12 — antes el fondo
+  // cambiaba a la cuadrícula de "transparencia"; se eliminó junto con la bandeja
+  // checkerboard del lienzo, por uniformidad de canvas). Adorno DOM del editor:
   // el PNG de producción imprime el color elegido tal cual (decisión del cliente).
   const lowContrast = cardColor ? isLowContrastOnCard(fill, cardColor) : false;
-  const previewBackground = !cardColor
-    ? {}
-    : lowContrast
-      ? { backgroundImage: WHITE_CARD_CHECKER, backgroundSize: WHITE_CARD_CHECKER_SIZE }
-      : { background: cardColor };
+  const previewBackground = cardColor ? { background: cardColor } : {};
+  const lowContrastTextShadow = (() => {
+    if (!lowContrast) return undefined;
+    const lum = relativeLuminance(fill);
+    const outline =
+      lum !== null && lum > 0.35 ? "rgba(38, 28, 46, 0.85)" : "rgba(255, 255, 255, 0.9)";
+    return `0 0 2px ${outline}, 0 0 5px ${outline}`;
+  })();
 
   return (
     <div className="space-y-4 p-4">
@@ -282,6 +287,7 @@ export function StudioTextEditorForm({
           fontStyle: isItalic ? "italic" : "normal",
           lineHeight: 1.1,
           wordBreak: "break-word",
+          ...(lowContrastTextShadow ? { textShadow: lowContrastTextShadow } : {}),
         }}
       >
         {text || (
@@ -409,45 +415,19 @@ export function StudioTextEditorForm({
               </Hint>
             );
           })}
-          {/* Fase 1B — opción «Personalizado» (input color nativo, sin dependencias):
-              el hex entra al mismo estado `fill` que un preset (misma persistencia). */}
-          {(() => {
-            const isCustom = !TEXT_COLOR_PRESETS.some((c) => c.color === fill);
-            return (
-              <Hint content={texts.texto.colorPersonalizado}>
-                <label
-                  className={[
-                    "focus-within:ring-brand-turquoise relative h-7 w-7 cursor-pointer rounded-full transition-transform focus-within:ring-2 hover:scale-110",
-                    isCustom
-                      ? "ring-brand-turquoise scale-110 ring-2 ring-offset-2"
-                      : "ring-brand-purple/15 hover:ring-brand-purple/40 ring-1",
-                  ].join(" ")}
-                  style={{
-                    background: isCustom
-                      ? fill
-                      : "conic-gradient(#E85B9F, #FFD93D, #5DD9D1, #7C6AAD, #E85B9F)",
-                  }}
-                >
-                  <input
-                    type="color"
-                    value={isCustom ? fill : "#7C6AAD"}
-                    onChange={(e) => setFill(e.target.value)}
-                    aria-label={texts.texto.colorPersonalizado}
-                    className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                  />
-                  {isCustom && (
-                    <Check
-                      className={[
-                        "absolute inset-0 m-auto h-4 w-4",
-                        fill === "#FFFFFF" ? "text-brand-purple-dark" : "text-white",
-                      ].join(" ")}
-                      strokeWidth={3}
-                    />
-                  )}
-                </label>
-              </Hint>
-            );
-          })()}
+          {/* Opción «Personalizado»: picker propio (components/color-picker.tsx) con
+              paridad en todas las plataformas; el hex entra al mismo estado `fill`
+              que un preset (misma persistencia). El panel inline ocupa toda la fila
+              del grid (col-span-full). */}
+          <CustomColorPicker
+            value={TEXT_COLOR_PRESETS.some((c) => c.color === fill) ? null : fill}
+            onChange={(hex) => setFill(hex)}
+            label={texts.texto.colorPersonalizado}
+            active={!TEXT_COLOR_PRESETS.some((c) => c.color === fill)}
+            hint={texts.texto.colorPersonalizado}
+            className="h-7 w-7"
+            panelClassName="col-span-full"
+          />
         </div>
       </div>
 

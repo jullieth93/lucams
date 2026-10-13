@@ -14,11 +14,13 @@
  *     sangre total) y el modo viaja como FLAG explícito en canvasData.igNoBorder.
  *   - Color de tarjeta / marco (paleta completa o binario blanco/negro para Instagram).
  *     DEBAJO del borde (Ola 24) y DESACTIVADO cuando el borde es «Sin borde» en la
- *     Polaroid Clásica (la foto cubre toda la tarjeta → el color no aplica) y en las
+ *     Polaroid Clásica (la foto cubre toda la tarjeta → el color no aplica), en las
  *     TIRAS photobooth (sin borde ya no hay canaletas entre fotos → borderColor no
- *     pinta nada) — mismo patrón que los sets de letras: sección visible pero inerte
- *     (aria-disabled + atenuada + aviso del porqué). En Clásica/tiras el estado de
- *     color NO se resetea: al volver a «Con borde» el color elegido sigue ahí.
+ *     pinta nada) y en los CUADRADOS (tarjeta simple: sin borderColor la foto va a
+ *     sangre total y el color no pinta nada) — mismo patrón que los sets de letras:
+ *     sección visible pero inerte (aria-disabled + atenuada + aviso del porqué).
+ *     En Clásica/tiras/cuadrados el estado de color NO se resetea: al volver a
+ *     «Con borde» el color elegido sigue ahí.
  *     Instagram SIN BORDE quedó HABILITADA (owner 2026-10-06 — antes se forzaba la
  *     tarjeta blanca al entrar al modo y la paleta quedaba inerte): el color pinta
  *     las franjas de arriba/abajo de la foto (fondo binario blanco/negro con
@@ -31,11 +33,17 @@
  * setImagePlaceholderRect.
  */
 
+import { useRef } from "react";
 import { useStore } from "zustand";
 import type { StoreApi } from "zustand";
 import { Frame, Image as ImageIcon, Check } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
-import { frameColorById, isInstagramTemplate } from "@/features/personalization/frame-palette";
+import { CustomColorPicker } from "@/components/color-picker";
+import {
+  frameColorById,
+  isInstagramTemplate,
+  isSimpleCardTemplate,
+} from "@/features/personalization/frame-palette";
 import type { StudioStoreState } from "./lib/store";
 import { useStudioTexts } from "./studio-texts-provider";
 
@@ -70,6 +78,10 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   const setBorderColor = useStore(store, (s) => s.setBorderColor);
   const setImagePlaceholderRect = useStore(store, (s) => s.setImagePlaceholderRect);
   const texts = useStudioTexts();
+  // Cuadrados — último color de marco elegido: «Sin borde» pone borderColor en null
+  // SIN perder la elección (regla de no-reset de Clásica/tiras) y «Con borde» la
+  // restaura (o cae al primer color de la paleta si nunca hubo una).
+  const lastFrameColorRef = useRef<string | null>(null);
 
   if (!canvasData) return null;
 
@@ -77,6 +89,20 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   const isIg = isInstagramTemplate(unitTemplate.layers);
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
   const isPolaroidClasica = selectedTemplate?.slug === "photo-pack-polaroid-clasica";
+  // Tira = 1 columna + gap 0 + varios slots (misma detección que isStripPreview del editor).
+  const isStrip =
+    canvasData.gridLayout.cols === 1 && canvasData.gridLayout.gap === 0 && canvasData.slotCount > 1;
+  // Tarjeta simple (Fotoimanes Cuadrados): fondo + foto, sin chrome propio. En estas
+  // plantillas el render RECALCULA la ventana de foto con simpleCardPhotoRect a partir
+  // de borderColor e ignora el rect del placeholder → el toggle con/sin borde debe
+  // escribir borderColor, no la geometría (antes solo movía el rect y el canvas no
+  // cambiaba: bug «la variante Con/Sin Borde no hace nada»).
+  const isSimpleCard =
+    !isIg &&
+    !isPolaroidClasica &&
+    !isStrip &&
+    frameOptions.length > 0 &&
+    isSimpleCardTemplate(unitTemplate.layers);
 
   // Solo mostrar la barra si hay algo configurable.
   const hasConfigurableFrame = frameOptions.length > 0 || isIg || isPolaroidClasica;
@@ -127,7 +153,13 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   // Rediseño IG (2026-10-05) — el modo sin-borde de Instagram viaja como FLAG
   // EXPLÍCITO en canvasData.igNoBorder (lo escribe este mismo toggle); la
   // comparación de rects queda como fallback para diseños creados antes del flag.
-  const isFullBleed = isIg ? (canvasData.igNoBorder ?? geometryFullBleed) : geometryFullBleed;
+  // Tarjeta simple (Cuadrados): el modo lo define borderColor — null = foto a
+  // sangre total (simpleCardPhotoRect), set = tarjeta de color con franja.
+  const isFullBleed = isIg
+    ? (canvasData.igNoBorder ?? geometryFullBleed)
+    : isSimpleCard
+      ? borderColor === null
+      : geometryFullBleed;
 
   // Paleta efectiva: Instagram solo blanco/negro; el resto todas las opciones válidas.
   const frameColors = (frameOptions ?? [])
@@ -140,6 +172,18 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   };
 
   const handleBorderToggle = (fullBleed: boolean) => {
+    // Tarjeta simple (Cuadrados): el modo vive en borderColor (la geometría la
+    // recalcula el render) → «Sin borde» = borderColor null (foto a sangre total);
+    // «Con borde» restaura el último color elegido o el primero de la paleta.
+    if (isSimpleCard) {
+      if (fullBleed) {
+        if (borderColor) lastFrameColorRef.current = borderColor;
+        setBorderColor(null);
+      } else {
+        setBorderColor(lastFrameColorRef.current ?? frameColors[0]?.hex ?? null);
+      }
+      return;
+    }
     if (fullBleed) {
       setImagePlaceholderRect(fullBleedRect, isIg ? { igNoBorder: true } : undefined);
       // Owner 2026-10-06 — IG sin borde YA NO fuerza la tarjeta blanca: el color
@@ -160,12 +204,11 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   // Instagram SIN BORDE quedó FUERA del apagado (owner 2026-10-06): sus franjas
   // SIGUEN visibles en el modo y el color las pinta (misma regla binaria
   // blanco/negro + contraste automático del modo con borde).
-  // En cuadrados NO se desactiva: la franja uniforme de la tarjeta simple usa borderColor
-  // aun sin borde.
-  // Tira = 1 columna + gap 0 + varios slots (misma detección que isStripPreview del editor).
-  const isStrip =
-    canvasData.gridLayout.cols === 1 && canvasData.gridLayout.gap === 0 && canvasData.slotCount > 1;
-  const colorDisabled = (isPolaroidClasica || isStrip) && isFullBleed;
+  // CUADRADOS (tarjeta simple) entran al apagado (bug fix 2026-10-12): con «Sin
+  // borde» borderColor es null y la foto va a sangre total — el color no pinta
+  // nada. En este modo el toggle escribe borderColor (no el rect del placeholder,
+  // que el render ignora) y conserva el color elegido para restaurarlo al volver.
+  const colorDisabled = (isPolaroidClasica || isStrip || isSimpleCard) && isFullBleed;
 
   return (
     // Ola 32 — chrome móvil compacto (owner 2026-09-18): a 375px esta tarjeta más
@@ -219,7 +262,9 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
               <div
                 role="radiogroup"
                 aria-label={texts.texto.estiloColorAria}
-                className="flex items-center gap-1.5"
+                // flex-wrap: el panel inline del «Personalizado» cae debajo de
+                // la fila de swatches (basis-full) en vez de ensanchar la fila.
+                className="flex flex-wrap items-center gap-1.5"
               >
                 {isIg ? null : (
                   <ColorButton
@@ -240,9 +285,10 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
                     disabled={colorDisabled}
                   />
                 ))}
-                {/* Fase 1B — color libre (input color nativo): solo donde el producto
-                    permite color libre (NO en Instagram: blanco/negro por diseño) y
-                    sujeto a la misma desactivación por «Sin borde» que los swatches. */}
+                {/* Color libre (picker propio, paridad en todas las plataformas):
+                    solo donde el producto permite color libre (NO en Instagram:
+                    blanco/negro por diseño) y sujeto a la misma desactivación
+                    por «Sin borde» que los swatches. */}
                 {!isIg && (
                   <CustomColorButton
                     value={borderColor}
@@ -358,10 +404,11 @@ function ColorButton({
 }
 
 /**
- * Fase 1B — opción «Personalizado» de la paleta de tarjeta: input color nativo
- * (sin dependencias). El hex entra al mismo estado `borderColor` que un swatch
- * (persiste en el diseño y viaja a producción igual). El botón muestra el color
- * personalizado actual; si no hay uno, un gradiente arcoíris como affordance.
+ * Opción «Personalizado» de la paleta de tarjeta: picker propio
+ * (components/color-picker.tsx, paridad en todas las plataformas). El hex entra
+ * al mismo estado `borderColor` que un swatch (persiste en el diseño y viaja a
+ * producción igual). El panel inline cae DEBAJO de la fila de swatches
+ * (basis-full en el radiogroup flex-wrap).
  */
 function CustomColorButton({
   value,
@@ -380,32 +427,16 @@ function CustomColorButton({
 }) {
   const palette = new Set(paletteHexes.map((h) => h.toUpperCase()));
   const customValue = value && !palette.has(value.toUpperCase()) ? value : null;
-  const active = customValue !== null;
   return (
-    <Hint content={label}>
-      <label
-        aria-disabled={disabled || undefined}
-        className={[
-          "focus-within:ring-brand-turquoise relative flex h-8 w-8 items-center justify-center rounded-full transition-all focus-within:ring-2",
-          disabled ? "cursor-not-allowed" : "cursor-pointer",
-          active
-            ? "ring-brand-turquoise shadow-md ring-2 ring-offset-2"
-            : "ring-brand-purple/20 hover:ring-brand-purple/50 ring-1",
-        ].join(" ")}
-        style={{
-          background: customValue ?? "conic-gradient(#E85B9F, #FFD93D, #5DD9D1, #7C6AAD, #E85B9F)",
-        }}
-      >
-        <input
-          type="color"
-          value={customValue ?? "#7C6AAD"}
-          onChange={(e) => onChange(e.target.value)}
-          aria-label={label}
-          disabled={disabled}
-          className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
-        />
-        {active ? <ActiveCheck dark={LIGHT_HEXES.has(customValue.toUpperCase())} /> : null}
-      </label>
-    </Hint>
+    <CustomColorPicker
+      value={customValue}
+      onChange={onChange}
+      label={label}
+      disabled={disabled}
+      active={customValue !== null}
+      hint={label}
+      className="h-8 w-8"
+      panelClassName="w-full basis-full"
+    />
   );
 }

@@ -20,14 +20,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Stage, Layer } from "react-konva";
 import type Konva from "konva";
-import {
-  renderLayer,
-  nextWheelScale,
-  WHITE_CARD_CHECKER,
-  WHITE_CARD_CHECKER_SIZE,
-  WHITE_CARD_TRAY_PAD,
-  WHITE_CARD_TRAY_MAX_ASPECT,
-} from "./studio-slot";
+import { renderLayer, nextWheelScale } from "./studio-slot";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
 import {
   PHOTO_SCALE_MIN,
@@ -186,21 +179,11 @@ export function StudioPhotoPreview({
     igNoBorder: noBorder,
   });
 
-  // Ola 25 (Lucy 2026-09-09) — tarjeta BLANCA dentro del modal (fondo blanco):
-  // la MISMA bandeja cuadriculada gris/blanco del slot de la grilla (patrón
-  // "transparencia") para que la Polaroid Clásica blanca se lea acá también.
-  // Adorno 100% DOM/pantalla alrededor del Stage — nunca entra al snapshot.
-  // Misma exclusión que en la grilla: modo tira (dibujaría costuras entre celdas).
-  // 2026-09-24 — tarjetas MUY altas (aspect ≥ 2, alargados): SIN bandeja (margen
-  // mínimo alrededor de la imagen, QA STG) — misma regla que StudioSlot.
-  const whiteCardTray =
-    cardBgHex.toUpperCase() === "#FFFFFF" && !isStrip && aspect < WHITE_CARD_TRAY_MAX_ASPECT;
-  const stageWidth = whiteCardTray ? displayWidth - WHITE_CARD_TRAY_PAD * 2 : displayWidth;
-  // Bug 2026-09-22 (mismo de la grilla): el inset fijo en px rompía el aspect en
-  // tarjetas no cuadradas (alargados 1:3+) → banda de canvas muerta abajo. El
-  // alto se deriva del ancho inset: el contenido llena el canvas y la bandeja
-  // (que centra con flex) reparte el aire parejo arriba/abajo.
-  const stageHeight = whiteCardTray ? stageWidth * aspect : displayHeight;
+  // 2026-10-12 — sin bandeja cuadriculada (uniformidad de canvas): el Stage
+  // llena el marco del preview en todos los productos; la tarjeta blanca se
+  // lee por el ring del contenedor.
+  const stageWidth = displayWidth;
+  const stageHeight = displayHeight;
   const stageScale = stageWidth / unitTemplate.stage.width;
 
   // ── Gestos de zoom (rueda en desktop, pellizco en táctil) ──
@@ -280,19 +263,11 @@ export function StudioPhotoPreview({
   return (
     <div ref={containerRef} className="mx-auto w-full max-w-[520px]">
       <div
-        className={[
-          "ring-brand-purple/15 relative mx-auto overflow-hidden rounded-lg shadow-md ring-1",
-          whiteCardTray ? "flex items-center justify-center" : "",
-        ].join(" ")}
+        className="ring-brand-purple/15 relative mx-auto overflow-hidden rounded-lg shadow-md ring-1"
         style={{
           width: displayWidth,
           height: displayHeight,
           touchAction: "none",
-          // Ola 25 — bandeja cuadriculada bajo la tarjeta BLANCA (adorno DOM de
-          // pantalla; el Stage queda inset y centrado, como en la grilla).
-          ...(whiteCardTray
-            ? { backgroundImage: WHITE_CARD_CHECKER, backgroundSize: WHITE_CARD_CHECKER_SIZE }
-            : {}),
         }}
       >
         <Stage

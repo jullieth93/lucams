@@ -317,6 +317,17 @@ const LEGACY_CORNER_RATIO = 8 / 512;
  */
 export const MAGNET_THICKNESS_CM = 0.2;
 export const TILE_THICKNESS_CM = 0.15;
+/**
+ * Tarjetas del Calendario Set 12 (2026-10-12 — bug "tarjetas gruesas como imanes"): las
+ * tarjetas mes usan las escenas nevera/mural y heredaban el grosor del FOTOIMÁN (2 mm de
+ * goma ferrita) → se veían como imanes gruesos, mensaje errado del producto físico. La
+ * tarjeta es CARTULINA (~0.4 mm). En las escenas actuales el piso anti-z-fighting
+ * (MIN_WORLD_DEPTH) manda sobre 0.04 cm (nevera 0.002 u, mural 0.004 u → piso 0.008 u):
+ * la tarjeta queda ~20% más fina que el imán en la nevera (0.008 vs 0.0099 u) y 2.5× más
+ * fina en el mural (0.008 vs 0.02 u); en el visor tarjeta-a-tarjeta (0.54 u/cm) sí rige el
+ * valor real (0.0216 u).
+ */
+export const CALENDAR_CARD_THICKNESS_CM = 0.04;
 
 /**
  * Mínimo de mundo del grosor extruido (Fase 2.11): 0.008 u. Justificación: la
@@ -395,6 +406,19 @@ function buildSilhouette(
   s.closePath();
   return s;
 }
+
+/**
+ * Umbral de corte alfa de las tapas impresas (2026-10-12 — bug "tiras negras"): el PNG
+ * troquelado tiene RGB(0,0,0) donde α=0; sin manejo de alfa esos píxeles renderizan NEGRO en
+ * los bordes de la silueta (donde la geometría extruida y el recorte difieren por el radio de
+ * esquina / anti-aliasing). Se usa alphaTest (cutout, pase OPACO) y NO `transparent`: el
+ * blending mandaría las tapas al pase transparente, ordenado por distancia al centro de la
+ * pieza — con varias piezas coplanares (p.ej. Alargados sobre la hoja) el orden de pintado se
+ * invertiría en ciertos ángulos. No reintroduce el bug histórico de la "cara B NEGRA"
+ * (ola 4): ese era muestreo UV fuera de rango con ClampToEdge, resuelto en
+ * `textureRegionTransform` — acá el muestreo sigue siempre dentro de la región.
+ */
+export const FACE_ALPHA_TEST = 0.5;
 
 /**
  * Núcleo geometría+materiales de la pieza extruida, con la textura YA cargada. La textura se
@@ -549,6 +573,9 @@ export function ExtrudedMagnetMesh({
           color={tex ? "#ffffff" : blankColor}
           roughness={0.38}
           metalness={0}
+          // Píxeles α=0 del PNG troquelado (RGB negro) se DESCARTAN (cutout opaco,
+          // sin blending — ver FACE_ALPHA_TEST): antes renderizaban NEGRO en los bordes.
+          alphaTest={FACE_ALPHA_TEST}
           // Calibración 2026-10-05 (concordancia foto↔3D): el IBL del env-map
           // sobre la cara impresa queda BAJO — solo micro-relieve especular del
           // laminado. Con 1.15 la irradiancia total superaba 1 y la cara se veía
@@ -569,6 +596,8 @@ export function ExtrudedMagnetMesh({
             color={backTex ? "#ffffff" : "#FDFBF4"}
             roughness={0.5}
             metalness={0}
+            // Mismo cutout alfa que la cara frontal (PNG troquelado, FACE_ALPHA_TEST).
+            alphaTest={FACE_ALPHA_TEST}
             // Misma calibración que la cara frontal (2026-10-05): la cara B
             // impresa tampoco debe verse más clara que la foto.
             envMapIntensity={0.4}

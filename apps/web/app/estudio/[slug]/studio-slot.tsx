@@ -109,27 +109,10 @@ export function nextWheelScale(current: number, deltaY: number, min = 0.5, max =
   return Math.max(min, Math.min(max, current * factor));
 }
 
-// Ola 24 (Lucy 2026-09-09) — bandeja cuadriculada gris/blanco (el patrón de
-// "transparencia" de los editores de foto) para que la tarjeta BLANCA se lea
-// sobre el lienzo claro del Estudio (white-on-white). Adorno 100% de pantalla:
-// vive en el DOM alrededor del Stage, nunca entra al snapshot de producción.
-// Ola 25 — exportados para reutilizar la MISMA bandeja en el preview del modal
-// de edición (studio-photo-preview): la tarjeta blanca también se perdía contra
-// el fondo blanco del modal.
-// Ola 26 (Lucy 2026-09-09) — "muy leve": cuadrados más oscuros (#CDC7DB, antes
-// #ECE9F1 — casi indistinguible del blanco) y un poco más grandes (16px, antes
-// 12px), con la bandeja un poco más ancha (8px) → la tarjeta blanca se lee de
-// inmediato sobre el crema del Estudio y el blanco del modal.
-export const WHITE_CARD_CHECKER = "repeating-conic-gradient(#CDC7DB 0% 25%, #FFFFFF 0% 50%)";
-export const WHITE_CARD_CHECKER_SIZE = "16px 16px";
-export const WHITE_CARD_TRAY_PAD = 8;
-// 2026-09-24 (QA STG) — la bandeja NO aplica a tarjetas MUY altas (aspect ≥ 2:
-// separadores alargados/magnéticos 1:3+). Como el inset conserva el aspect, la
-// bandeja vertical crece con el aspect (paspartú de ~24-30px por lado en una
-// tira 1:3.75) y el usuario veía "márgenes checkerboard" por todos lados —
-// pidió espacio MÍNIMO alrededor de la imagen. En esas tarjetas el Stage
-// llena el marco y el borde lo da el filete de contraste (cardContrastEdge).
-export const WHITE_CARD_TRAY_MAX_ASPECT = 2;
+// 2026-10-12 — la bandeja cuadriculada blanco/lila (WHITE_CARD_CHECKER) se ELIMINÓ
+// (uniformidad de canvas: el lienzo se ve igual en todos los productos, sin
+// cuadrícula ni encogimiento del Stage). El caso que resolvía (tarjeta blanca
+// sobre lienzo claro) lo cubre el filete de contraste (cardContrastEdge).
 
 type StudioSlotProps = {
   slotState: SlotState;
@@ -489,40 +472,14 @@ function StudioSlotImpl({
   // PNG de imprenta (lo impreso no cambia). En modo tira se omite por celda (dibujaría
   // costuras entre fotos; la sombra de la pieza continua la pone el contenedor del
   // grid) y en heart/circle la silueta ya va recortada.
-  // Ola 24 (Lucy 2026-09-09) — para la tarjeta BLANCA el filete solo no bastaba
-  // (white-on-white): el dueño eligió la BANDEJA CUADRICULADA (abajo) en su lugar.
+  // 2026-10-12 — la tarjeta BLANCA también lo lleva: la bandeja cuadriculada se
+  // eliminó (uniformidad de canvas) y este filete neutro es lo que la hace
+  // legible sobre el lienzo claro.
   const cardContrastEdge = !darkCardBg && !isStrip && !slotClipPath;
-  // Ola 24 (Lucy 2026-09-09) — tarjeta BLANCA: el Stage se monta unos px más chico
-  // DENTRO del mismo footprint del slot y alrededor queda la bandeja cuadriculada
-  // gris/blanco (WHITE_CARD_CHECKER) → la tarjeta blanca se ve sobre el lienzo claro.
-  // Adorno de PANTALLA a nivel DOM: el snapshot de producción captura solo el canvas
-  // Konva → la bandeja NUNCA se hornea (lo impreso no cambia). Mismas exclusiones
-  // que el filete: tira (costuras entre celdas) y heart/circle (silueta recortada).
-  // 2026-09-24 (QA STG) — tarjetas MUY altas (aspect ≥ TRAY_MAX_ASPECT: separadores
-  // alargados/magnéticos 1:3+): SIN bandeja. Con el inset conservando el aspect (fix
-  // 2026-09-22) la bandeja vertical crecía con el aspect y el usuario veía márgenes
-  // checkerboard grandes arriba/abajo/lados — pidió espacio MÍNIMO alrededor de la
-  // imagen. El Stage llena el marco y el borde lo da el filete de contraste.
-  const whiteCardTray =
-    cardBgHex.toUpperCase() === "#FFFFFF" &&
-    !isStrip &&
-    !slotClipPath &&
-    aspect < WHITE_CARD_TRAY_MAX_ASPECT;
-  // Tamaño/escala EFECTIVOS del Stage: con bandeja, la tarjeta se dibuja inset; sin
-  // ella, llena el slot como siempre. El aspect y el contenido no cambian (todo el
-  // dibujo interno es proporcional vía scale → WYSIWYG intacto).
-  // Bug 2026-09-22 (banda azul del feedback): el inset era FIJO en px en ambos ejes
-  // (slotWidth−16, slotHeight−16), lo que ROMPE la proporción en tarjetas no
-  // cuadradas (separadores alargados 1:3/1:3.75): el contenido escala por ANCHO
-  // (stageScale) y el canvas quedaba más alto que el contenido → banda vacía
-  // grande en la parte INFERIOR del marco (~40px abajo vs 8px arriba en un 4×12).
-  // Ahora el alto del Stage se DERIVA del ancho inset conservando el aspect: el
-  // contenido llena el canvas exactamente y, como la bandeja centra el Stage
-  // (flex items-center justify-center), el aire queda homogéneo arriba/abajo
-  // (más grueso en tarjetas altas, como un paspartú). Bonus: los snapshots
-  // (preview/3D/fallback de producción) ya no hornean la franja muerta.
-  const stageSlotWidth = whiteCardTray ? slotWidth - WHITE_CARD_TRAY_PAD * 2 : slotWidth;
-  const stageSlotHeight = whiteCardTray ? stageSlotWidth * aspect : slotHeight;
+  // El Stage SIEMPRE llena el footprint del slot (sin bandeja ni inset —
+  // 2026-10-12): canvas uniforme en todos los productos.
+  const stageSlotWidth = slotWidth;
+  const stageSlotHeight = slotHeight;
   const stageScale = stageSlotWidth / unitTemplate.stage.width;
   const frameStyle = useMemo(() => {
     if (!borderColor || shape === "heart" || shape === "circle" || hasFrameCard || fullBleed)
@@ -868,21 +825,12 @@ function StudioSlotImpl({
             "group relative cursor-pointer overflow-hidden bg-white outline-none",
             "focus-visible:ring-brand-purple focus-visible:ring-2 focus-visible:ring-offset-2",
             "transition-shadow duration-200",
-            // Ola 24 — con bandeja cuadriculada (tarjeta blanca), el Stage va centrado
-            // e inset dentro del footprint del slot.
-            whiteCardTray ? "flex items-center justify-center" : "",
             isSelected ? "ring-brand-turquoise ring-2 ring-offset-2" : "",
             isDropping ? "ring-brand-turquoise ring-2 ring-offset-2" : "",
           ].join(" ")}
           style={{
             width: slotWidth,
             height: slotHeight,
-            // Ola 24 — bandeja cuadriculada gris/blanco bajo la tarjeta BLANCA (patrón
-            // "transparencia" de los editores de foto). Adorno DOM de pantalla: el
-            // snapshot de producción captura solo el canvas Konva → no se hornea.
-            ...(whiteCardTray
-              ? { backgroundImage: WHITE_CARD_CHECKER, backgroundSize: WHITE_CARD_CHECKER_SIZE }
-              : {}),
             // M.3.b.UX.v13 — borderRadius solo aplica si shape rectangle.
             // Para heart/circle, el clipPath define la silueta y borderRadius
             // sería ignorado igualmente.
@@ -906,13 +854,10 @@ function StudioSlotImpl({
                   ? Math.max(2, cornerRadiusPx * scale)
                   : 8,
             clipPath: slotClipPath,
-            // Ola 23 — filete de contraste para tarjetas claras no-blancas (pasteles);
+            // Ola 23 — filete de contraste para tarjetas claras (pasteles Y la
+            // blanca — desde 2026-10-12, tras eliminar la bandeja cuadriculada);
             // adorno DOM de pantalla: no entra al snapshot de producción.
-            // Ola 24 — para la tarjeta BLANCA la reemplaza la bandeja cuadriculada.
-            outline:
-              cardContrastEdge && !whiteCardTray
-                ? "1px solid rgba(124, 106, 173, 0.35)"
-                : undefined,
+            outline: cardContrastEdge ? "1px solid rgba(124, 106, 173, 0.35)" : undefined,
             // Pinch-zoom (WCAG 1.4.4): la página NUNCA bloquea el zoom a nivel viewport;
             // solo el canvas INTERACTIVO captura el gesto (touch-action:none) para que el
             // pellizco/arrastre actúe sobre la foto y no dispare zoom/scroll de la página
@@ -1906,7 +1851,10 @@ function ProfilePhotoLayerRenderer({
           }}
           listening={false}
         >
-          <KonvaImage image={image} x={imgX} y={imgY} width={w} height={h} />
+          {/* Marcador de "avatar YA decodificado" (mismo contrato que
+            `slot-photo`): la espera pre-rasterizado (slot-photo-readiness) lo
+            exige antes de snapshotear, o el avatar sale vacío en la textura. */}
+          <KonvaImage name="slot-profile-photo" image={image} x={imgX} y={imgY} width={w} height={h} />
         </Group>
       )}
       {/* Anillo de affordance PERMANENTE (punteado turquesa, como los textos
@@ -2798,9 +2746,10 @@ function ImagePlaceholder({
           }}
           // Marcador de "foto YA decodificada y renderizada": este nodo SOLO existe
           // cuando useImage resolvió (la rama de carga dibuja el placeholder #F4ECFF).
-          // Los consumidores de snapshots (buildMagnetTextures — libro 3D / galería)
-          // esperan este nombre antes de rasterizar el stage (bug STG 2026-10-08:
-          // textura horneada con el placeholder lila si el snapshot cae en la carrera).
+          // TODOS los consumidores de snapshots (lib/slot-photo-readiness — previews,
+          // 3D, galería y los PNG de imprenta client-side) esperan este nombre antes
+          // de rasterizar el stage (bug STG 2026-10-08: textura horneada con el
+          // placeholder lila si el snapshot cae en la carrera).
           name="slot-photo"
           image={image}
           width={renderedW}

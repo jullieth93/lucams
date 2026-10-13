@@ -1191,6 +1191,55 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       expect(paymentCalls[0].reference).toBe(paymentCalls[1].reference);
     }, 30000);
 
+    it("REINTENTO fuera de la ventana de Wompi (~3 min): el 2º finalize ROTA la reference a `${number}-2` y la persiste", async () => {
+      // Bug STG "La referencia ya ha sido usada": la orden se reusa por cartId,
+      // pero la reference base ya fue consumida por el intento anterior. El 2º
+      // checkout debe ir con referencia derivada única (ver payment-reference.ts).
+      const sid = uuid();
+      await createCartWithItem({ sessionId: sid, qty: 2, unitPrice: 50_000 });
+      setCartCookie(sid);
+      await seedFullState();
+
+      const first = await finalizeCheckout({ redirectUrl: "https://x.test" });
+      expect(paymentCalls[0].reference).toBe(first.orderNumber);
+
+      // Simular que el primer intento quedó atrás en el tiempo (fuera de la
+      // ventana de reintento): la reference base ya no es reusable en Wompi.
+      // Sin wompiTransactionId persistido no hay tx que verificar → rota directo.
+      await prisma.order.update({
+        where: { id: first.orderId },
+        data: { wompiReferenceAt: new Date(Date.now() - 10 * 60_000) },
+      });
+
+      const second = await finalizeCheckout({ redirectUrl: "https://x.test" });
+      expect(second.orderId).toBe(first.orderId);
+      expect(paymentCalls).toHaveLength(2);
+      expect(paymentCalls[1].reference).toBe(`${first.orderNumber}-2`);
+      expect(paymentCalls[1].reference).not.toBe(paymentCalls[0].reference);
+
+      const order = await prisma.order.findUnique({ where: { id: first.orderId } });
+      expect(order!.paymentAttempt).toBe(2);
+      expect(order!.wompiReference).toBe(`${first.orderNumber}-2`);
+    }, 30000);
+
+    it("REINTENTO INMEDIATO (doble submit): el 2º finalize REUSA la reference fresca (no genera otra)", async () => {
+      const sid = uuid();
+      await createCartWithItem({ sessionId: sid, qty: 2, unitPrice: 50_000 });
+      setCartCookie(sid);
+      await seedFullState();
+
+      const first = await finalizeCheckout({ redirectUrl: "https://x.test" });
+      await finalizeCheckout({ redirectUrl: "https://x.test" });
+
+      expect(paymentCalls).toHaveLength(2);
+      expect(paymentCalls[0].reference).toBe(first.orderNumber);
+      expect(paymentCalls[1].reference).toBe(first.orderNumber);
+      const order = await prisma.order.findUnique({ where: { id: first.orderId } });
+      // Un solo intento reclamado: la segunda llamada reusan la ventana fresca.
+      expect(order!.paymentAttempt).toBe(1);
+      expect(order!.wompiReference).toBe(first.orderNumber);
+    }, 30000);
+
     it("propaga la dirección compuesta (urban) al shippingAddress de la Order", async () => {
       const sid = uuid();
       await createCartWithItem({ sessionId: sid });

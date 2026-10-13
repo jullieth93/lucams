@@ -3,9 +3,12 @@
 /*
  * Test de componente — StudioPhotoCountControl (Lucy 2026-09-05).
  *
- * "¿Cuántas fotos lleva tu imán?" — stepper de N fotos por imán de los packs,
- * junto a la toolbar del Estudio. Blinda el contrato del cambio de N:
- *   1. Muestra el N del diseño y el label preguntado por Lucy.
+ * "¿Cuántos separadores quieres?" — stepper de N UNIDADES del pack (2026-10-12:
+ * el N son unidades del producto, no fotos; el sustantivo llega por prop
+ * `unitNoun`, mismo par {one, many, feminine?} que resuelve resolveSlotNoun en
+ * el editor y pasa la toolbar), junto a la toolbar del Estudio. Blinda el
+ * contrato del cambio de N:
+ *   1. Muestra el N del diseño y el label con el sustantivo de la unidad.
  *   2. Al subir N: slotCount = N × facesPerUnit, slots preservados por índice
  *      (los que quedan fuera sueltan la foto, los nuevos quedan vacíos) y
  *      gridLayout recalculado.
@@ -13,6 +16,7 @@
  *      se conservan por índice.
  *   4. Respeta min/max (max = mayor photoSlots del catálogo para el tamaño).
  *   5. Modo fijo (min === max, ej. tiras): stepper deshabilitado + hint.
+ *   6. Sin unitNoun cae al sustantivo CMS de respaldo ("foto/s", femenino).
  *
  * Los textos CMS caen al DEFAULT_STUDIO_TEXTS sin provider (mismo patrón que
  * studio-preview-modal.test.tsx). El store es una instancia real de zustand.
@@ -23,6 +27,7 @@ import { afterEach, describe, it, expect } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StudioPhotoCountControl } from "./studio-photo-count-control";
 import { createStudioStore } from "./lib/store";
+import type { SlotNoun } from "./lib/slot-noun";
 import type { CanvasDataV2 } from "./types";
 
 afterEach(() => cleanup());
@@ -48,7 +53,13 @@ function makeCanvasData(photoSlots: number): CanvasDataV2 {
   };
 }
 
-function setup(photoSlots = 3, opts?: { min?: number; max?: number; magnet?: boolean }) {
+// Sustantivo que la toolbar pasa para separadores (resolveSlotNoun bookmarks).
+const SEPARADOR: SlotNoun = { one: "separador", many: "separadores" };
+
+function setup(
+  photoSlots = 3,
+  opts?: { min?: number; max?: number; magnet?: boolean; unitNoun?: SlotNoun | null },
+) {
   const store = createStudioStore();
   const canvasData = makeCanvasData(photoSlots);
   store.getState().init({
@@ -64,6 +75,12 @@ function setup(photoSlots = 3, opts?: { min?: number; max?: number; magnet?: boo
       max={opts?.max ?? 6}
       facesPerUnit={2}
       sizeCm="6×6"
+      // null explícito = sin prop (fallback CMS); undefined = el de separadores.
+      {...(opts && "unitNoun" in opts
+        ? opts.unitNoun == null
+          ? {}
+          : { unitNoun: opts.unitNoun }
+        : { unitNoun: SEPARADOR })}
       magnet={opts?.magnet}
     />,
   );
@@ -71,12 +88,28 @@ function setup(photoSlots = 3, opts?: { min?: number; max?: number; magnet?: boo
 }
 
 describe("StudioPhotoCountControl", () => {
-  it("muestra el label y el N del diseño con su sustantivo", () => {
+  it("muestra el label y el N del diseño con el sustantivo de la unidad", () => {
     setup(3);
-    expect(screen.getByText("¿Cuántas fotos lleva tu imán?")).toBeInTheDocument();
-    // El conteo y su sustantivo viven en el mismo nodo ("3 fotos").
-    expect(screen.getByText("3 fotos")).toBeInTheDocument();
+    expect(screen.getByText("¿Cuántos separadores quieres?")).toBeInTheDocument();
+    // El conteo y su sustantivo viven en el mismo nodo ("3 separadores").
+    expect(screen.getByText("3 separadores")).toBeInTheDocument();
     expect(screen.getByText("Tus fotos se conservan al cambiar el número")).toBeInTheDocument();
+  });
+
+  it("concuerda en femenino cuando el sustantivo de la unidad es femenino", () => {
+    setup(3, { unitNoun: { one: "ficha", many: "fichas", feminine: true } });
+    expect(screen.getByText("¿Cuántas fichas quieres?")).toBeInTheDocument();
+    expect(screen.getByText("3 fichas")).toBeInTheDocument();
+    expect(screen.getByLabelText("Quitar una ficha")).toBeInTheDocument();
+    expect(screen.getByLabelText("Agregar una ficha")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Cantidad de fichas" })).toBeInTheDocument();
+  });
+
+  it("sin unitNoun cae al sustantivo CMS de respaldo (foto/fotos)", () => {
+    setup(3, { unitNoun: null });
+    expect(screen.getByText("¿Cuántas fotos quieres?")).toBeInTheDocument();
+    expect(screen.getByText("3 fotos")).toBeInTheDocument();
+    expect(screen.getByLabelText("Quitar una foto")).toBeInTheDocument();
   });
 
   // El cambio de N se aplica en el frame siguiente al click (feedback de
@@ -84,7 +117,7 @@ describe("StudioPhotoCountControl", () => {
   // Konva se redibuja) → los asserts del store esperan el apply con waitFor.
   it("subir N reconstruye slots preservando fotos por índice y recalcula el grid", async () => {
     const store = setup(3);
-    fireEvent.click(screen.getByLabelText("Agregar una foto"));
+    fireEvent.click(screen.getByLabelText("Agregar un separador"));
     await waitFor(() => expect(store.getState().canvasData!.photoSlots).toBe(4));
     const cd = store.getState().canvasData!;
     expect(cd.slotCount).toBe(8); // 4 unidades × 2 caras
@@ -103,7 +136,7 @@ describe("StudioPhotoCountControl", () => {
 
   it("bajar N recorta slots: las fotos dentro del nuevo conteo se conservan", async () => {
     const store = setup(3);
-    fireEvent.click(screen.getByLabelText("Quitar una foto"));
+    fireEvent.click(screen.getByLabelText("Quitar un separador"));
     await waitFor(() => expect(store.getState().canvasData!.photoSlots).toBe(2));
     const cd = store.getState().canvasData!;
     expect(cd.slotCount).toBe(4);
@@ -114,33 +147,33 @@ describe("StudioPhotoCountControl", () => {
 
   it("mientras reconstruye el lienzo da feedback: spinner y stepper bloqueado", async () => {
     const store = setup(3);
-    fireEvent.click(screen.getByLabelText("Agregar una foto"));
+    fireEvent.click(screen.getByLabelText("Agregar un separador"));
     // Feedback inmediato (antes de que corra el rebuild síncrono del canvas):
     // ambos botones bloqueados y el grupo marcado ocupado.
-    expect(screen.getByLabelText("Agregar una foto")).toBeDisabled();
-    expect(screen.getByLabelText("Quitar una foto")).toBeDisabled();
-    expect(screen.getByRole("group", { name: "Cantidad de fotos por imán" })).toHaveAttribute(
+    expect(screen.getByLabelText("Agregar un separador")).toBeDisabled();
+    expect(screen.getByLabelText("Quitar un separador")).toBeDisabled();
+    expect(screen.getByRole("group", { name: "Cantidad de separadores" })).toHaveAttribute(
       "aria-busy",
       "true",
     );
     await waitFor(() => expect(store.getState().canvasData!.photoSlots).toBe(4));
     // Terminó: el stepper vuelve a la normalidad con el nuevo N.
-    expect(screen.getByLabelText("Agregar una foto")).toBeEnabled();
-    expect(screen.getByText("4 fotos")).toBeInTheDocument();
+    expect(screen.getByLabelText("Agregar un separador")).toBeEnabled();
+    expect(screen.getByText("4 separadores")).toBeInTheDocument();
   });
 
   it("respeta max: en el tope del catálogo el + se deshabilita", () => {
     setup(6, { min: 1, max: 6 });
-    expect(screen.getByLabelText("Agregar una foto")).toBeDisabled();
-    expect(screen.getByLabelText("Quitar una foto")).toBeEnabled();
+    expect(screen.getByLabelText("Agregar un separador")).toBeDisabled();
+    expect(screen.getByLabelText("Quitar un separador")).toBeEnabled();
   });
 
-  it("modo fijo (min === max): stepper deshabilitado + hint de fotos fijas", () => {
-    // Réplica tiras-magneticas 6.5×20: ese tamaño lleva siempre 3 fotos.
+  it("modo fijo (min === max): stepper deshabilitado + hint de unidades fijas", () => {
+    // Réplica tiras-magneticas 6.5×20: ese tamaño lleva siempre 3 unidades.
     setup(3, { min: 3, max: 3 });
-    expect(screen.getByLabelText("Agregar una foto")).toBeDisabled();
-    expect(screen.getByLabelText("Quitar una foto")).toBeDisabled();
-    expect(screen.getByText("Este tamaño lleva 3 fotos")).toBeInTheDocument();
+    expect(screen.getByLabelText("Agregar un separador")).toBeDisabled();
+    expect(screen.getByLabelText("Quitar un separador")).toBeDisabled();
+    expect(screen.getByText("Este tamaño lleva 3 separadores")).toBeInTheDocument();
     expect(
       screen.queryByText("Tus fotos se conservan al cambiar el número"),
     ).not.toBeInTheDocument();

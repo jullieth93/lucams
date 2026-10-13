@@ -78,7 +78,7 @@ import { logger } from "@/lib/logger";
 import type { SendEmailInput, SendEmailResult } from "./resend";
 
 const RESEND_URL = "https://api.resend.com/emails";
-const DEFAULT_FROM = "Lucams_shop <onboarding@resend.dev>";
+const DEFAULT_FROM = "Lucams Shop <onboarding@resend.dev>";
 
 type SendEmailFn = (input: SendEmailInput) => Promise<SendEmailResult>;
 

@@ -9,10 +9,12 @@ import { ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import {
   applyCoupon,
+  applyLoyaltyPoints,
   CheckoutError,
   finalizeCheckout,
   finishCheckoutSession,
   removeCoupon,
+  removeLoyaltyPoints,
   savePaymentMethodStep,
 } from "@/features/checkout/service";
 import { InsufficientStockError } from "@/features/orders/errors";
@@ -25,6 +27,7 @@ import { guardTransactionalAction } from "@/lib/stage-guard";
 // detalle queda solo en el log.
 const CUSTOMER_SAFE_CHECKOUT_CODES = new Set([
   "COUPON_INVALIDATED",
+  "LOYALTY_INVALIDATED", // Puntos Lucams — copy customer-safe (mismo criterio que el cupón)
   "STOCK_UNAVAILABLE",
   "COD_NOT_ALLOWED",
   "ORDER_AMOUNT_TOO_LARGE", // #9 — copy customer-safe ("escríbenos y te lo cotizamos")
@@ -86,6 +89,8 @@ export async function payWompiAction(formData: FormData): Promise<void> {
   // nunca cobrar de menos. La carrera (cupón válido al render, inválido al pagar) NO trae el flag →
   // el backstop atómico la rebota con aviso (nunca cobramos en silencio un total no visto).
   if (formData.get("couponInvalidAtRender") === "1") await removeCoupon();
+  // Ídem para la redención de Puntos Lucams inválida al render (2026-10-12).
+  if (formData.get("loyaltyInvalidAtRender") === "1") await removeLoyaltyPoints();
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4000";
   const redirectUrl = `${siteUrl}/checkout/gracias`;
@@ -120,15 +125,33 @@ export async function payWompiAction(formData: FormData): Promise<void> {
     // Carrera TOCTOU (2026-09-29): el webhook pagó la orden mientras se creaba/reconciliaba.
     // No es un error para el cliente — su pedido quedó confirmado; lo llevamos a la vista de
     // confirmación (gracias?id=<txId> verifica la tx contra Wompi y sana la orden).
-    if (err instanceof CheckoutError && err.code === "ORDER_ALREADY_PAID") {
-      logger.info({ event: "checkout.pago.order_already_paid", method: "WOMPI" });
+    // PAYMENT_IN_FLIGHT (referencia única por intento): la tx previa sigue PENDING
+    // en Wompi (PSE/transferencia) → misma redirección, que muestra "verificando".
+    if (
+      err instanceof CheckoutError &&
+      (err.code === "ORDER_ALREADY_PAID" || err.code === "PAYMENT_IN_FLIGHT")
+    ) {
+      logger.info({
+        event: "checkout.pago.order_already_paid",
+        method: "WOMPI",
+        code: err.code,
+      });
       redirect(err.redirectTo ?? "/");
     }
     // #3 caso B — el cupón se invalidó en carrera (válido al render, inválido al pagar). finalize ya
     // limpió el cupón del state; avisamos con un aviso SUAVE (couponNotice) — no es un fallo de pago,
     // la tarjeta nunca se tocó. El cliente re-confirma viendo el total real (nunca cobro silencioso).
-    if (err instanceof CheckoutError && err.code === "COUPON_INVALIDATED") {
-      logger.info({ event: "checkout.pago.coupon_invalidated_bounce", method: "WOMPI" });
+    // LOYALTY_INVALIDATED (2026-10-12): mismo tratamiento para la redención de puntos — finalize ya
+    // limpió los puntos del state y el mensaje es customer-safe.
+    if (
+      err instanceof CheckoutError &&
+      (err.code === "COUPON_INVALIDATED" || err.code === "LOYALTY_INVALIDATED")
+    ) {
+      logger.info({
+        event: "checkout.pago.coupon_invalidated_bounce",
+        method: "WOMPI",
+        code: err.code,
+      });
       redirect(`/checkout/pago?couponNotice=${encodeURIComponent(err.message)}`);
     }
     // N-01 — un item del carrito quedó archivado en carrera (admin lo retiró entre el carrito y
@@ -242,8 +265,16 @@ export async function payCodAction(formData: FormData): Promise<void> {
       redirect(err.redirectTo ?? "/");
     }
     // #3 caso B — cupón invalidado en carrera: aviso suave, no fallo de pago (ver payWompiAction).
-    if (err instanceof CheckoutError && err.code === "COUPON_INVALIDATED") {
-      logger.info({ event: "checkout.pago.coupon_invalidated_bounce", method: "COD" });
+    // LOYALTY_INVALIDATED: mismo canal para la redención de puntos (2026-10-12).
+    if (
+      err instanceof CheckoutError &&
+      (err.code === "COUPON_INVALIDATED" || err.code === "LOYALTY_INVALIDATED")
+    ) {
+      logger.info({
+        event: "checkout.pago.coupon_invalidated_bounce",
+        method: "COD",
+        code: err.code,
+      });
       redirect(`/checkout/pago?couponNotice=${encodeURIComponent(err.message)}`);
     }
     // N-01 — item del carrito archivado en carrera (ver payWompiAction): la orden NO se creó;
@@ -322,5 +353,65 @@ export async function applyCouponAction(
 export async function removeCouponAction(): Promise<void> {
   guardTransactionalAction("removeCouponAction");
   await removeCoupon();
+  revalidatePath("/checkout/pago");
+}
+
+// ─────────────────────── Puntos Lucams ───────────────────────
+
+export type LoyaltyActionState = {
+  ok: boolean;
+  message?: string;
+  points?: number;
+  discountCents?: number;
+} | null;
+
+/**
+ * Aplica una redención de Puntos Lucams al checkout (cliente con sesión).
+ * Rate-limited por IP igual que el cupón. El descuento real se refleja en el
+ * resumen (server) tras revalidar; la reserva atómica ocurre al crear la orden.
+ */
+export async function applyLoyaltyAction(
+  _prev: LoyaltyActionState,
+  formData: FormData,
+): Promise<LoyaltyActionState> {
+  guardTransactionalAction("applyLoyaltyAction");
+
+  const hdrs = await headers();
+  const ip = getClientIp(hdrs);
+  const isProd = process.env.VERCEL_ENV === "production";
+  const rl = await rateLimit(ipKey("loyalty_apply", ip), isProd ? 15 : 100, 600);
+  if (!rl.allowed) {
+    return { ok: false, message: "Demasiados intentos. Espera unos minutos." };
+  }
+
+  const points = Number.parseInt(String(formData.get("points") ?? ""), 10);
+  try {
+    const res = await applyLoyaltyPoints(points);
+    if (!res.ok) return { ok: false, message: res.message };
+    revalidatePath("/checkout/pago");
+    return {
+      ok: true,
+      points: res.points,
+      discountCents: res.discountCents,
+      message:
+        res.cappedBy === "cap"
+          ? "Aplicamos el máximo de puntos que cubre esta compra ✨"
+          : res.cappedBy === "balance"
+            ? "Aplicamos todo tu saldo de puntos ✨"
+            : "Puntos aplicados ✨",
+    };
+  } catch (err) {
+    logger.warn({
+      event: "checkout.loyalty.apply_fail",
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, message: "No pudimos aplicar tus puntos. Inténtalo de nuevo." };
+  }
+}
+
+/** Quita la redención de puntos aplicada y refresca el resumen. */
+export async function removeLoyaltyAction(): Promise<void> {
+  guardTransactionalAction("removeLoyaltyAction");
+  await removeLoyaltyPoints();
   revalidatePath("/checkout/pago");
 }

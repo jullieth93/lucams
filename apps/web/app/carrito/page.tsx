@@ -21,7 +21,6 @@ import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { getCartDetail } from "@/features/cart/service";
 import { physicalUnitPriceCents } from "@/features/cart/physical-unit-price";
-import { variantNameDisplayLabel } from "@/features/cart/variant-label";
 import { CartCrossSell } from "@/components/cart-cross-sell";
 import { CmsText } from "@/components/cms/cms-text";
 import { formatCOP } from "@/lib/format";
@@ -97,12 +96,8 @@ export default async function CarritoPage() {
                           </Link>
                           {/* Paquete F (2026-10-02) — nombre de la variante + su desglose
                               estructurado (variantBreakdown): el nombre libre no siempre
-                              informa las dimensiones de compra (p. ej. Con/Sin imán).
-                              variantNameDisplayLabel agrega "(adhesivo)" cuando el nombre
-                              indica "sin imán" pero la variante no declara attrs.magnet. */}
-                          <p className="text-brand-muted mt-0.5 text-xs">
-                            {variantNameDisplayLabel(item.variantName, item.variantBreakdown)}
-                          </p>
+                              informa las dimensiones de compra (p. ej. Con/Sin imán). */}
+                          <p className="text-brand-muted mt-0.5 text-xs">{item.variantName}</p>
                           {item.variantBreakdown.length > 0 && (
                             <p className="text-brand-purple-dark/80 mt-0.5 text-xs">
                               {item.variantBreakdown.join(" · ")}
@@ -135,6 +130,18 @@ export default async function CarritoPage() {
                                 {item.designPreviewUrl && (
                                   <DesignPreviewDialog
                                     previewUrl={item.designPreviewUrl}
+                                    // 2026-10-13 — páginas por unidad (watermark)
+                                    // cuando el diseño las tiene: el "Ver" pagina
+                                    // como la Vista Previa del Estudio.
+                                    pages={item.designPreviewPages}
+                                    watermarkNote={
+                                      item.designWatermarked ? (
+                                        <CmsText
+                                          blockKey="cart.vista-previa-watermark-nota"
+                                          fallback="Vista previa con marca de agua — tu impresión final no la lleva."
+                                        />
+                                      ) : null
+                                    }
                                     productName={item.productName}
                                     triggerLabel={
                                       <CmsText blockKey="cart.ver-diseno" fallback="Ver" />
@@ -212,6 +219,18 @@ export default async function CarritoPage() {
                   </li>
                 ))}
               </ul>
+
+              {/* 2026-10-13 — las miniaturas/previews de líneas personalizadas se
+                  exhiben CON marca de agua (anti-copia); el aviso tranquila al
+                  cliente: su impresión final no la lleva (decisión de producto). */}
+              {cart.items.some((i) => i.designWatermarked) && (
+                <p className="text-brand-muted mt-2 text-xs">
+                  <CmsText
+                    blockKey="cart.watermark-nota"
+                    fallback="Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la lleva."
+                  />
+                </p>
+              )}
 
               <aside className="border-brand-purple/10 space-y-3 self-start rounded-xl border bg-white p-5">
                 <h2 className="font-display text-brand-purple-dark text-lg">Resumen</h2>

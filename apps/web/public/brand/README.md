@@ -1,4 +1,4 @@
-# Assets de marca Lucams_shop
+# Assets de marca Lucams Shop
 
 Acá viven los archivos del logo oficial Lucams y assets visuales derivados.
 Todo lo que esté en `public/brand/` es servido directo por Next.js bajo

@@ -1,7 +1,7 @@
 "use client";
 
 /*
- * Subsección "Envío propio Lucam's" de /admin/envios: configura la mensajería
+ * Subsección "Envío propio Lucams" de /admin/envios: configura la mensajería
  * interna (precio, hora límite de entrega mismo día y zonas de entrega
  * AGRUPADAS POR CIUDAD — catálogo lib/lucams-zones.ts). El on/off NO se edita
  * acá: vive en la lista unificada de transportadoras.

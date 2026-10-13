@@ -31,9 +31,11 @@ import { uploadDesignAssetAction } from "@/features/personalization/actions";
 import {
   applyPredesignedToSlot,
   applyPredesignedVarietyToEmptySlots,
+  firstFreeSlotOfFace,
   PREDESIGNED_DRAG_MIME,
 } from "./lib/apply-predesigned";
 import { predesignedFaceBadge } from "./lib/predesigned-variety";
+import { StudioFaceChoiceModal } from "./studio-face-choice-modal";
 import { StudioMessageField } from "./studio-message-field";
 import { ConsentText } from "./studio-consent-text";
 import {
@@ -108,6 +110,11 @@ export function StudioSidebar({
   const applyTemplate = useStore(store, (s) => s.applyTemplate);
   const selectedSlotIndex = useStore(store, (s) => s.selectedSlotIndex);
   const [applyingPredesignedId, setApplyingPredesignedId] = useState<string | null>(null);
+  // Regla de caras (2026-10-12) — diseño de 1 cara esperando la elección de
+  // cara (modal "¿En qué cara quieres aplicarlo?"). null = modal cerrada.
+  const [faceChoiceItem, setFaceChoiceItem] = useState<
+    import("./studio-asset-picker-modal").PredesignedItem | null
+  >(null);
   // Fase 2 · 2.5 — sección de prediseñados COLAPSABLE: con muchos diseños
   // sepultaba el resto de la sidebar («Mis fotos» quedaba lejos). Cerrada por
   // defecto cuando supera el umbral; el contador queda visible en el header.
@@ -118,21 +125,20 @@ export function StudioSidebar({
   // Ola 21 — aplicar un diseño prediseñado al slot seleccionado (o al primer slot vacío).
   // 2026-09-22 — la aplicación vive en applyPredesignedToSlot (helper compartido
   // con el drop del lienzo): misma vía para clic y drag & drop.
-  const handleApplyPredesigned = async (
+  const applyPredesigned = async (
     item: import("./studio-asset-picker-modal").PredesignedItem,
+    targetSlot: number,
+    forceTargetSlot = false,
   ) => {
-    if (!designId || applyingPredesignedId) return;
-    const targetSlot =
-      selectedSlotIndex ??
-      store.getState().canvasData?.slots.find((s) => !s.assetUrl)?.slotIndex ??
-      null;
-    if (targetSlot === null) {
-      toast.error(texts.plantillas.toastSinSlot);
-      return;
-    }
     setApplyingPredesignedId(item.id);
     try {
-      const res = await applyPredesignedToSlot({ store, item, targetSlot, facesPerUnit });
+      const res = await applyPredesignedToSlot({
+        store,
+        item,
+        targetSlot,
+        facesPerUnit,
+        forceTargetSlot,
+      });
       if (!res.ok) {
         // Fix STG 2026-10-06 — "no-free-slot" no es un error: todos los
         // lienzos ya tienen diseño y nunca se pisa contenido para abrir sitio.
@@ -153,6 +159,50 @@ export function StudioSidebar({
     } finally {
       setApplyingPredesignedId(null);
     }
+  };
+
+  const handleApplyPredesigned = async (
+    item: import("./studio-asset-picker-modal").PredesignedItem,
+  ) => {
+    if (!designId || applyingPredesignedId) return;
+    // Regla de caras (2026-10-12) — aplicación GLOBAL con destino ambiguo (sin
+    // slot específico seleccionado) de un diseño de 1 cara en un producto de 2
+    // caras: antes caía SIEMPRE en cara A; ahora se pregunta primero (modal
+    // StudioFaceChoiceModal). Sin pregunta: prediseños con imageUrlB (llenan
+    // ambas caras), productos de 1 cara y destino explícito (slot seleccionado,
+    // tap en la grilla, drag & drop).
+    if (facesPerUnit === 2 && !item.imageUrlB && selectedSlotIndex === null) {
+      setFaceChoiceItem(item);
+      return;
+    }
+    const targetSlot =
+      selectedSlotIndex ??
+      store.getState().canvasData?.slots.find((s) => !s.assetUrl)?.slotIndex ??
+      null;
+    if (targetSlot === null) {
+      toast.error(texts.plantillas.toastSinSlot);
+      return;
+    }
+    await applyPredesigned(item, targetSlot);
+  };
+
+  // Regla de caras (2026-10-12) — respuesta del modal "¿En qué cara…?": el
+  // diseño va al primer slot LIBRE de la cara elegida (firstFreeSlotOfFace).
+  // Si la cara elegida no tiene ningún slot libre NUNCA se pisa contenido:
+  // cara A → toast "sin lienzo libre"; cara B → el toast de cara B ocupada
+  // (mismo patrón del bloqueo bBlocked y de handleAssetBSelected del editor).
+  const handleFaceChoice = async (face: "A" | "B") => {
+    const item = faceChoiceItem;
+    setFaceChoiceItem(null);
+    if (!item || !designId) return;
+    const target = firstFreeSlotOfFace(store.getState().canvasData?.slots ?? [], face);
+    if (target === null) {
+      if (face === "A") toast.error(texts.plantillas.toastSinLienzoLibre);
+      else toast.warning(texts.plantillas.toastCaraBOcupada);
+      return;
+    }
+    // Cara B: destino EXACTO (diseño de 1 cara) — sin el re-anclaje a cara A.
+    await applyPredesigned(item, target, face === "B");
   };
 
   // Paquete A (2026-10-02) — llenado VARIADO: recorre el catálogo del tag sin
@@ -201,7 +251,11 @@ export function StudioSidebar({
           if (!outcome.ok) {
             setUploadError(
               outcome.kind === "too-big"
-                ? `No pudimos subir "${outcome.fileName}": es muy grande para el servidor. Prueba con una foto de menos de ~4 MB (o baja la resolución en tu cámara).`
+                ? // Fail-closed (robustez 2026-10-13): el pipeline YA intentó reducirla
+                  // (compresión progresiva con piso de 300 DPI); llegar acá significa que
+                  // no cupo ni así, o que el navegador no puede leer el formato (HEIC
+                  // grande en Chrome/Firefox). Mensaje honesto, no el 413 genérico.
+                  `No pudimos subir "${outcome.fileName}": pesa demasiado y no pudimos reducirla en este dispositivo. Si es una foto HEIC de iPhone, conviértela a JPG (Ajustes → Cámara → Formatos → «Más compatible») o usa una foto más liviana.`
                 : outcome.kind === "server"
                   ? (outcome.serverMessage ?? texts.fotos.errorCalidad)
                   : `No pudimos subir "${outcome.fileName}". Revisa tu conexión e inténtalo de nuevo.`,
@@ -586,6 +640,15 @@ export function StudioSidebar({
           )}
         </section>
       )}
+
+      {/* Regla de caras (2026-10-12) — pregunta la cara destino al aplicar
+          GLOBALMENTE un diseño de 1 cara en un producto de 2 caras. */}
+      <StudioFaceChoiceModal
+        open={faceChoiceItem !== null}
+        designName={faceChoiceItem?.name ?? ""}
+        onPick={(face) => void handleFaceChoice(face)}
+        onClose={() => setFaceChoiceItem(null)}
+      />
     </div>
   );
 }

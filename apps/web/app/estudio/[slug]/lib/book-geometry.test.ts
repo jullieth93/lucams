@@ -19,11 +19,13 @@ import {
   SEP_FOLD_ANGLE,
   SEP_FRONT_LIFT_DEG,
   SEP_R_FOLD,
+  SEPARATOR_GAP,
   SEPARATOR_SLOTS,
   bookmarkFaceUnits,
   camber,
   pageSurfaceY,
   separatorPlacement,
+  separatorSlotsForCount,
   stripDimsForFace,
 } from "./book-geometry";
 
@@ -400,7 +402,7 @@ describe("pose de pie 2026-10-02 (cara frontal a 40°, de frente a la cámara)",
 import {
   FLAT_BOOKMARK_T,
   FLAT_GAP,
-  FLAT_ROW_GAP,
+  FLAT_YAW_JITTER,
   flatBookmarkDims,
   flatBookmarkPlacement,
   flatBookmarkSlots,
@@ -483,14 +485,20 @@ describe("flatBookmarkSlots SIN SOLAPE (2026-09-15 — separación = ancho de pi
     const slots = flatBookmarkSlots(12, { pieceW: PIECE_W });
     expect(slots).toHaveLength(12);
     expectNoOverlap(slots, PIECE_W, FLAT_GAP);
-    // 12 piezas de 1.2 u no caben en una fila de la hoja → varias filas separadas FLAT_ROW_GAP.
-    const zs = [...new Set(slots.map((s) => Math.round(s.z * 1000)))].sort((a, b) => a - b);
+    // 12 piezas de 1.2 u no caben en una fila de la hoja → varias filas. La separación entre
+    // filas es la extensión de la pieza en z + gap (2026-10-12: era la constante 0.55 u, que
+    // solapaba cualquier pieza con largo > 0.55 u — ver describe de Alargados abajo).
+    const zs = [...new Set(slots.map((s) => Math.round(s.z * 1e6)))].sort((a, b) => a - b);
     expect(zs.length).toBeGreaterThan(1);
     for (let i = 1; i < zs.length; i++) {
-      expect((zs[i]! - zs[i - 1]!) / 1000).toBeCloseTo(FLAT_ROW_GAP, 6);
+      // Pieza sin pieceL → cuadrada: separación = lado + gap + barrido de esquina del jitter.
+      expect((zs[i]! - zs[i - 1]!) / 1e6).toBeCloseTo(
+        PIECE_W + FLAT_GAP + PIECE_W * Math.sin(FLAT_YAW_JITTER),
+        5,
+      );
     }
     // Las filas quedan balanceadas (diferencia de a lo sumo 1 pieza entre filas).
-    const counts = zs.map((z) => slots.filter((s) => Math.round(s.z * 1000) === z).length);
+    const counts = zs.map((z) => slots.filter((s) => Math.round(s.z * 1e6) === z).length);
     expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
   });
 
@@ -504,6 +512,142 @@ describe("flatBookmarkSlots SIN SOLAPE (2026-09-15 — separación = ancho de pi
   it("1 pieza sigue centrada; 0 piezas → sin slots", () => {
     expect(flatBookmarkSlots(1, { pieceW: PIECE_W })[0]!.x).toBeCloseTo(PAGE_W / 2, 6);
     expect(flatBookmarkSlots(0, { pieceW: PIECE_W })).toEqual([]);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+//  2026-10-12 — bug "3D Libro con 4 unidades: sobrepuestas y parpadeando (z-fighting)"
+//  La separación entre filas era FLAT_ROW_GAP = 0.55 u, pensada contra el ANCHO de la pieza;
+//  una pieza 4×15 mide 4.5 u de LARGO en el plano de la hoja → 2 filas a z = ±0.275 se
+//  solapaban masivamente a la MISMA altura y (flatBookmarkPlacement) → z-fighting.
+// ──────────────────────────────────────────────────────────────────
+
+describe("flatBookmarkSlots con LARGO real (2026-10-12 — Alargados 4×15 sin solape)", () => {
+  const PIECE_W = 4 * CM; // 1.2 u (ancho)
+  const PIECE_L = 15 * CM; // 4.5 u (largo en el plano de la hoja)
+
+  /** Verifica que ningún par de piezas se solape en el plano de la hoja (x/z por separado:
+   *  dos piezas se solapan solo si sus rangos se intersectan en AMBOS ejes; el yaw ±0.05 o
+   *  π/2±0.05 apenas agranda las cotas, se usa el eje dominante). */
+  function expectNoOverlap2D(
+    slots: { x: number; z: number; yaw: number }[],
+    w: number,
+    l: number,
+  ) {
+    const boxes = slots.map((s) => {
+      const extX = (w * Math.abs(Math.cos(s.yaw)) + l * Math.abs(Math.sin(s.yaw))) / 2;
+      const extZ = (w * Math.abs(Math.sin(s.yaw)) + l * Math.abs(Math.cos(s.yaw))) / 2;
+      return { x0: s.x - extX, x1: s.x + extX, z0: s.z - extZ, z1: s.z + extZ };
+    });
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i]!;
+        const b = boxes[j]!;
+        const overlapX = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+        const overlapZ = Math.min(a.z1, b.z1) - Math.max(a.z0, b.z0);
+        expect(
+          overlapX > 1e-9 && overlapZ > 1e-9,
+          `piezas ${i} y ${j} solapadas (${overlapX.toFixed(2)}×${overlapZ.toFixed(2)} u)`,
+        ).toBe(false);
+      }
+    }
+  }
+
+  it("4 unidades 4×15: SIN SOLAPE (antes 2 filas a z=±0.275 con largo 4.5 → z-fighting)", () => {
+    const slots = flatBookmarkSlots(4, { pieceW: PIECE_W, pieceL: PIECE_L });
+    expect(slots).toHaveLength(4);
+    expectNoOverlap2D(slots, PIECE_W, PIECE_L);
+  });
+
+  it("4 unidades alargadas se TRENZAN 90° (largo a lo ancho) y caben dentro de la hoja", () => {
+    const slots = flatBookmarkSlots(4, { pieceW: PIECE_W, pieceL: PIECE_L });
+    // Verticales desbordarían el fondo: 2 filas × 4.5 + gap = 9.15 u > 6 u útiles → trenzadas.
+    for (const s of slots) {
+      expect(Math.abs(Math.abs(s.yaw) - Math.PI / 2)).toBeLessThan(0.1);
+      // La pieza completa (ancho en z tras trenzar) queda dentro del fondo de la página.
+      expect(Math.abs(s.z) + PIECE_W / 2).toBeLessThanOrEqual(PAGE_D / 2 + 1e-9);
+      // Y el largo a lo ancho queda dentro de la hoja derecha (0..PAGE_W).
+      expect(s.x - PIECE_L / 2).toBeGreaterThanOrEqual(-1e-9);
+      expect(s.x + PIECE_L / 2).toBeLessThanOrEqual(PAGE_W + 1e-9);
+    }
+    // Filas separadas por el ANCHO de la pieza + gap + barrido de esquina del largo trenzado.
+    const zs = [...new Set(slots.map((s) => Math.round(s.z * 1e6)))].sort((a, b) => a - b);
+    for (let i = 1; i < zs.length; i++) {
+      expect((zs[i]! - zs[i - 1]!) / 1e6).toBeCloseTo(
+        PIECE_W + FLAT_GAP + PIECE_L * Math.sin(FLAT_YAW_JITTER),
+        6,
+      );
+    }
+  });
+
+  it("2–3 unidades alargadas siguen VERTICALES en una fila (la foto de referencia)", () => {
+    for (const n of [2, 3]) {
+      const slots = flatBookmarkSlots(n, { pieceW: PIECE_W, pieceL: PIECE_L });
+      expect(slots).toHaveLength(n);
+      for (const s of slots) {
+        expect(Math.abs(s.yaw)).toBeLessThan(0.1); // vertical, largo a lo profundo
+        expect(s.z).toBeCloseTo(0, 9); // una sola fila
+      }
+      expectNoOverlap2D(slots, PIECE_W, PIECE_L);
+    }
+  });
+
+  it("si varias filas verticales SÍ caben en el fondo, no se trenzan (4×12, 2 filas)", () => {
+    // 12×4: largo 3.6 u; 5 unidades → 2 filas → span z = 2·3.6 + 0.15 = 7.35 > 6 útiles:
+    // trenzadas 5 filas × 1.35 = 6.4 u… también desborda apenas, pero MENOS (6.4 < 7.35) →
+    // se elige la orientación con menor desborde. Con 4 unidades: vertical 2 filas = 7.35 > 6,
+    // trenzado 4 filas = 5.05 < 6 → trenzado. Para verificar el camino vertical con filas se
+    // usa una pieza corta: 2 filas × 1.5 + gap = 3.15 ≤ 6 → vertical.
+    const slots = flatBookmarkSlots(4, { pieceW: PIECE_W, pieceL: 5 * CM });
+    expect(new Set(slots.map((s) => Math.round(s.z * 1e6))).size).toBe(2);
+    for (const s of slots) expect(Math.abs(s.yaw)).toBeLessThan(0.1);
+    // La separación entre filas es el LARGO + gap + barrido del ancho, nunca la vieja
+    // constante 0.55.
+    const zs = [...new Set(slots.map((s) => Math.round(s.z * 1e6)))].sort((a, b) => a - b);
+    expect((zs[1]! - zs[0]!) / 1e6).toBeCloseTo(
+      5 * CM + FLAT_GAP + PIECE_W * Math.sin(FLAT_YAW_JITTER),
+      5,
+    );
+    expectNoOverlap2D(slots, PIECE_W, 5 * CM);
+  });
+
+  it("12 unidades 4×15: ninguna se solapa (la cámara abre si el conjunto desborda)", () => {
+    const slots = flatBookmarkSlots(12, { pieceW: PIECE_W, pieceL: PIECE_L });
+    expect(slots).toHaveLength(12);
+    expectNoOverlap2D(slots, PIECE_W, PIECE_L);
+  });
+});
+
+describe("separatorSlotsForCount (2026-10-12 — anti-solape de tiras dobladas en x)", () => {
+  it("≤3 unidades: los slots curados de siempre (foto de referencia)", () => {
+    expect(separatorSlotsForCount(1)).toEqual([{ x: 0, yaw: 0 }]);
+    expect(separatorSlotsForCount(3)).toEqual(SEPARATOR_SLOTS.slice());
+    expect(separatorSlotsForCount(0)).toEqual([]);
+  });
+
+  it("4 unidades de cara 4×4.2 (stripW 1.2 u): paso ≥ stripW + gap — NO se solapan", () => {
+    const { stripW } = stripDimsForFace({ wRatio: 400, hRatio: 420 }, "4×4.2");
+    const slots = separatorSlotsForCount(4, stripW);
+    expect(slots).toHaveLength(4);
+    const xs = slots.map((s) => s.x).sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++) {
+      expect(xs[i]! - xs[i - 1]!).toBeGreaterThanOrEqual(stripW + SEPARATOR_GAP - 1e-9);
+    }
+    // El tramo de referencia (4.4 u) alcanza para 4 tiras de 1.2: queda centrado en ±2.2.
+    expect(xs[0]!).toBeCloseTo(-2.2, 6);
+    expect(xs[3]!).toBeCloseTo(2.2, 6);
+  });
+
+  it("N grande con tiras anchas: el tramo se EXPANDE (antes se pisaban colgando del mismo z)", () => {
+    const { stripW } = stripDimsForFace({ wRatio: 400, hRatio: 420 }, "4×4.2");
+    const slots = separatorSlotsForCount(8, stripW);
+    const xs = slots.map((s) => s.x).sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++) {
+      expect(xs[i]! - xs[i - 1]!).toBeGreaterThanOrEqual(stripW + SEPARATOR_GAP - 1e-9);
+    }
+    // 7 pasos × 1.45 = 10.15 > tramo de referencia 4.4 → expandido y centrado.
+    expect(xs[7]! - xs[0]!).toBeCloseTo(7 * (stripW + SEPARATOR_GAP), 6);
+    expect((xs[0]! + xs[7]!) / 2).toBeCloseTo(0, 9);
   });
 });
 

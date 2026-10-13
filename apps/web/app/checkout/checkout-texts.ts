@@ -97,6 +97,7 @@ export type CheckoutTexts = {
     notesLabel: string;
     notesPlaceholder: string;
     saveCheck: string;
+    saveCheckSavedHint: string;
     saveNameLabel: string;
     saveNamePlaceholder: string;
     billingTitle: string;
@@ -304,6 +305,7 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     notesLabel: "Notas para el courier (opcional)",
     notesPlaceholder: "Ej. timbre 2, dejar con portería",
     saveCheck: "💾 Guardar esta dirección en mi cuenta para la próxima",
+    saveCheckSavedHint: "✓ Ya está guardada en tu cuenta — edítala si quieres guardar una variante",
     saveNameLabel: "Nombre para recordarla (opcional)",
     saveNamePlaceholder: "Ej. Casa, Oficina, Casa de mamá",
     billingTitle: "3. Facturación",
@@ -316,7 +318,7 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     billingNameLabel: "Razón social o nombre",
     billingNamePlaceholder: "Ej. Tu nombre o el de tu empresa",
     consent:
-      "Autorizo el **tratamiento de mis datos personales** para procesar y enviar mi pedido, conforme a la [Política de Privacidad](/legal/privacidad) y la [Política de Tratamiento de Datos](/legal/habeas-data). Responsable: Lucams_shop (persona natural), Bogotá D.C. Algunos proveedores (alojamiento y correo) están en EE. UU.",
+      "Autorizo el **tratamiento de mis datos personales** para procesar y enviar mi pedido, conforme a la [Política de Privacidad](/legal/privacidad) y la [Política de Tratamiento de Datos](/legal/habeas-data). Responsable: Lucams Shop (persona natural), Bogotá D.C. Algunos proveedores (alojamiento y correo) están en EE. UU.",
     submit: "Continuar al envío →",
     pending: "Guardando…",
     errorSummary: "Revisa estos campos antes de continuar:",
@@ -501,6 +503,7 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "datos.notesLabel": "checkout.datos.notes-label",
   "datos.notesPlaceholder": "checkout.datos.notes-placeholder",
   "datos.saveCheck": "checkout.datos.save-check",
+  "datos.saveCheckSavedHint": "checkout.datos.save-check-saved-hint",
   "datos.saveNameLabel": "checkout.datos.save-name-label",
   "datos.saveNamePlaceholder": "checkout.datos.save-name-placeholder",
   "datos.billingTitle": "checkout.datos.billing-title",

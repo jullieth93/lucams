@@ -33,7 +33,7 @@ export async function generateMetadata(
     ? [{ url: cat.image, alt: cat.name }, ...previousImages]
     : previousImages;
   return {
-    // #27 — solo el nombre; el template global añade "· Lucams_shop" una vez.
+    // #27 — solo el nombre; el template global añade "· Lucams Shop" una vez.
     title: cat.name,
     description:
       cat.richDescription?.slice(0, 160) ??
@@ -46,7 +46,7 @@ export async function generateMetadata(
       title: cat.name,
       description: cat.richDescription?.slice(0, 200) ?? cat.description ?? cat.name,
       type: "website",
-      siteName: "Lucams_shop",
+      siteName: "Lucams Shop",
       locale: "es_CO",
       images: ogImages,
     },

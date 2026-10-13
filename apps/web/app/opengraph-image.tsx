@@ -10,9 +10,10 @@
 import { ImageResponse } from "next/og";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { SITE_NAME, SITE_TITLE } from "@/lib/site";
 
 export const runtime = "nodejs";
-export const alt = "Lucams_shop — Tus recuerdos en imán";
+export const alt = SITE_TITLE;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -42,7 +43,7 @@ export default async function Image() {
           gap: 10,
         }}
       >
-        <div style={{ fontSize: 68, fontWeight: 700, color: "#3D2E5C" }}>Lucams_shop</div>
+        <div style={{ fontSize: 68, fontWeight: 700, color: "#3D2E5C" }}>{SITE_NAME}</div>
         <div style={{ fontSize: 40, color: "#7C6AAD" }}>Tus recuerdos en imán</div>
       </div>
     </div>,

@@ -183,7 +183,7 @@ export function NewsletterForm({
           }
         />
         <span>
-          Acepto recibir comunicaciones de Lucams_shop. Podré dar de baja cuando quiera (Ley 1581).
+          Acepto recibir comunicaciones de Lucams Shop. Podré dar de baja cuando quiera (Ley 1581).
         </span>
       </label>
       {/* El enlace va FUERA del label del checkbox: dentro, clicarlo también

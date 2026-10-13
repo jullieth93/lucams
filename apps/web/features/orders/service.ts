@@ -31,6 +31,12 @@ import {
 import { fitsMoneyInt4 } from "@/lib/money";
 import { invalidateCatalogListings } from "@/lib/catalog";
 import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/redemption";
+import {
+  quoteRedemptionForOrder,
+  reserveRedeemedPoints,
+  releaseRedeemedPoints,
+  restoreRedeemedPoints,
+} from "@/features/loyalty/service";
 import { computeShippingAddressKey } from "@/features/checkout/address-key";
 import { consolidateIdenticalLines } from "@/features/cart/design-identity";
 import { hashBearerToken } from "@/lib/token-hash";
@@ -125,6 +131,15 @@ export type CreateOrderFromCartInput = {
   } | null;
   paymentMethod: "WOMPI" | "COD";
   couponCode?: string;
+  /**
+   * Puntos Lucams a redimir (2026-10-12). Viene del CheckoutState sellado; se
+   * re-tarifa y se RESERVA dentro de la tx (balance decrementado + LoyaltyTxn
+   * REDEEM + Order.loyaltyPointsRedeemed/loyaltyDiscount). Si dejó de ser
+   * válida (programa apagado, mínimo/tope cambiado, balance insuficiente por
+   * un gasto en paralelo) lanza LoyaltyRedemptionError — mismo criterio que
+   * CouponInvalidatedError (#8): jamás cobrar un total distinto al exhibido.
+   */
+  loyaltyPointsToRedeem?: number;
   notes?: string;
 };
 
@@ -368,6 +383,7 @@ async function createOrderFromCartTx(
         email: true,
         shippingCarrier: true,
         couponId: true,
+        loyaltyPointsRedeemed: true,
         items: { select: { variantId: true, qty: true, designId: true, unitPrice: true } },
       },
     });
@@ -415,7 +431,26 @@ async function createOrderFromCartTx(
       }
     }
     const tax = 0; // IVA incluido en precios (Colombia); DIAN reporting en F2.4.
-    const total = subtotal + shippingCost - discount + tax;
+
+    // Puntos Lucams (2026-10-12) — redención. ORDEN DE APLICACIÓN: primero el
+    // cupón (arriba), luego los puntos sobre el subtotal de productos RESTANTE
+    // (merchandiseAfterCoupon = subtotal − discount); el tope % de la config se
+    // mide sobre ese restante y el envío NUNCA se paga con puntos. La tarifa se
+    // re-valida DENTRO de la tx (config/balance vigentes): si dejó de ser válida,
+    // LoyaltyRedemptionError aborta — el checkout limpia los puntos del state y
+    // el cliente re-confirma viendo el total real (mismo criterio que #8).
+    let loyaltyPointsRedeemed = 0;
+    let loyaltyDiscount = 0;
+    const loyaltyQuote = await quoteRedemptionForOrder({
+      customerId: orderCustomerId,
+      requestedPoints: input.loyaltyPointsToRedeem,
+      merchandiseAfterCouponCents: subtotal - discount,
+    });
+    if (loyaltyQuote) {
+      loyaltyPointsRedeemed = loyaltyQuote.points;
+      loyaltyDiscount = loyaltyQuote.discountCents;
+    }
+    const total = subtotal + shippingCost - discount - loyaltyDiscount + tax;
 
     // Guard de overflow INT4: las columnas de dinero (subtotal/total/…) son Int (máx
     // MAX_MONEY_CENTS). Un pedido caro × cantidad alta puede superarlo y reventar el INSERT con un
@@ -519,6 +554,11 @@ async function createOrderFromCartTx(
       shipping: shippingCost,
       tax,
       total,
+      // Puntos Lucams — snapshot de la redención (0 si no redimió). El descuento
+      // ya está descontado del total; los puntos se reservan/libera abajo en la
+      // misma tx (reserve/releaseRedeemedPoints).
+      loyaltyPointsRedeemed,
+      loyaltyDiscount,
       paymentMethod: input.paymentMethod,
       shippingCarrier: input.shippingSelection.carrier,
       billingDocumentType: input.billing.documentType,
@@ -568,6 +608,7 @@ async function createOrderFromCartTx(
         existing.paymentMethod === input.paymentMethod &&
         existing.shippingCarrier === input.shippingSelection.carrier &&
         (existing.couponId ?? null) === (couponId ?? null) &&
+        existing.loyaltyPointsRedeemed === loyaltyPointsRedeemed &&
         itemSignature(existing.items) === cartSig;
       if (identical) {
         // Refresh idempotente (reload de /checkout/pago sin cambios) → misma orden.
@@ -609,6 +650,25 @@ async function createOrderFromCartTx(
         data: { ...orderScalars, publicAccessTokenHash },
       });
       if (gated.count === 0) throw new OrderAlreadyPaidError(existing.id, existing.number);
+      // Puntos Lucams — la reserva vieja se libera y se toma la nueva DENTRO de
+      // la tx (si el gate de arriba abortó, nada de esto persiste). La liberación
+      // devuelve los puntos al cliente ORIGINAL de la orden (pudo haberse
+      // reasignado por email — bug STG LCM-2026-0010); la nueva reserva la toma
+      // el cliente efectivo de esta reconciliación.
+      if (existing.loyaltyPointsRedeemed > 0 && existing.customerId) {
+        await releaseRedeemedPoints(tx, {
+          orderId: existing.id,
+          customerId: existing.customerId,
+          points: existing.loyaltyPointsRedeemed,
+        });
+      }
+      if (loyaltyPointsRedeemed > 0 && orderCustomerId) {
+        await reserveRedeemedPoints(tx, {
+          orderId: existing.id,
+          customerId: orderCustomerId,
+          points: loyaltyPointsRedeemed,
+        });
+      }
       await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
       const reconciled = await tx.order.update({
         where: { id: existing.id },
@@ -642,6 +702,16 @@ async function createOrderFromCartTx(
       },
       select: returnSelect,
     });
+    // Puntos Lucams — reserva atómica dentro de la tx: decremento gateado del
+    // balance (LoyaltyRedemptionError si ya no alcanza → rollback completo) +
+    // LoyaltyTxn REDEEM ligada a la orden recién creada.
+    if (loyaltyPointsRedeemed > 0 && orderCustomerId) {
+      await reserveRedeemedPoints(tx, {
+        orderId: order.id,
+        customerId: orderCustomerId,
+        points: loyaltyPointsRedeemed,
+      });
+    }
     await markDesignsUsed();
     return { ...order, publicAccessToken };
   });
@@ -744,6 +814,8 @@ export async function transitionOrder(
         select: {
           id: true,
           number: true,
+          customerId: true,
+          loyaltyPointsRedeemed: true,
           items: { select: { variantId: true, qty: true } },
         },
       });
@@ -768,6 +840,21 @@ export async function transitionOrder(
         await tx.coupon.updateMany({
           where: { id: usage.couponId, usedCount: { gt: 0 } },
           data: { usedCount: { decrement: 1 } },
+        });
+      }
+
+      // Puntos Lucams (2026-10-12) — simétrico a la liberación del cupón: al
+      // cancelar/reembolsar, los puntos REDIMIDOS en la orden vuelven al balance
+      // del cliente (LoyaltyTxn REFUND, idempotente por el índice único
+      // (orderId, "REFUND")). Cubre tanto la cancelación del cron expire-pending
+      // (reserva de una PENDING que nunca se pagó) como el reembolso de una ya
+      // pagada. Los puntos GANADOS por la orden NO se revierten (decisión de
+      // negocio: ajuste manual futuro si abusan).
+      if (orderWithItems?.customerId && orderWithItems.loyaltyPointsRedeemed > 0) {
+        await restoreRedeemedPoints(tx, {
+          orderId,
+          customerId: orderWithItems.customerId,
+          points: orderWithItems.loyaltyPointsRedeemed,
         });
       }
       return updated;
@@ -882,7 +969,7 @@ export async function getOrder(idOrNumber: string) {
               // Paquete F (2026-10-02) — attributes: desglose estructurado de la
               // variante en el detalle del pedido (Con/Sin imán, tamaño, idioma…).
               attributes: true,
-              // productionDays: la promesa de entrega propia ("Envío Lucam's" =
+              // productionDays: la promesa de entrega propia ("Envío Lucams" =
               // fabricación + hora de corte, lib/delivery-estimate.ts) se deriva
               // del Product actual vía los items persistidos — sin snapshot extra.
               product: { select: { name: true, productionDays: true } },
@@ -898,6 +985,10 @@ export async function getOrder(idOrNumber: string) {
               previewUrl: true,
               productionUrls: true,
               moderationStatus: true,
+              // ADR-131 (2026-10-13) — el render 300 DPI corre en background tras el
+              // finalize: con productionUrls vacío, el estado del RenderJob distingue
+              // "en preparación" (PENDING/PROCESSING) de "falló" (FAILED) en el detalle.
+              renderJob: { select: { status: true, doneUnits: true, totalUnits: true } },
               // Paquete C (2026-10-02) — aceptación explícita de calidad de fotos
               // (checkbox de la Vista Previa): evidencia ante reclamos de garantía.
               qualityAcknowledgedAt: true,
@@ -935,6 +1026,10 @@ export async function getOrderProductionBundle(idOrNumber: string) {
               productionUrls: true,
               moderationStatus: true,
               metadata: true,
+              // ADR-131 — con productionUrls vacío el render puede seguir en curso
+              // (PENDING/PROCESSING) o haber fallado (FAILED): el ZIP lo avisa en vez
+              // de omitir el item en silencio.
+              renderJob: { select: { status: true, doneUnits: true, totalUnits: true } },
               product: {
                 select: { name: true, personalizationKind: true, personalizationSchema: true },
               },
@@ -946,9 +1041,17 @@ export async function getOrderProductionBundle(idOrNumber: string) {
   });
   if (!order) return null;
   const items = order.items
-    .filter((it) => (it.design?.productionUrls?.length ?? 0) > 0)
     .map((it) => {
-      const d = it.design!;
+      const d = it.design;
+      if (!d) return null;
+      const jobStatus = d.renderJob?.status ?? null;
+      const renderPending =
+        d.productionUrls.length === 0 && (jobStatus === "PENDING" || jobStatus === "PROCESSING");
+      const renderFailed = d.productionUrls.length === 0 && jobStatus === "FAILED";
+      // Sin archivos y sin render en curso/fallido: nada que imprimir de este item
+      // (diseño sin finalizar). OJO ADR-131: el job de mejora DONE que conservó los PNG
+      // del cliente NO cae acá — esos archivos YA están en productionUrls.
+      if (d.productionUrls.length === 0 && !renderPending && !renderFailed) return null;
       const schema = (d.product?.personalizationSchema as { startMonth?: number } | null) ?? null;
       const meta = (d.metadata as { calendarYear?: number } | null) ?? null;
       return {
@@ -960,8 +1063,14 @@ export async function getOrderProductionBundle(idOrNumber: string) {
         calendarYear: typeof meta?.calendarYear === "number" ? meta.calendarYear : undefined,
         productionUrls: d.productionUrls,
         moderationStatus: d.moderationStatus,
+        renderPending,
+        renderFailed,
+        renderProgress: d.renderJob
+          ? { doneUnits: d.renderJob.doneUnits, totalUnits: d.renderJob.totalUnits }
+          : null,
       };
-    });
+    })
+    .filter((it): it is NonNullable<typeof it> => it !== null);
   return { id: order.id, number: order.number, createdAt: order.createdAt, items };
 }
 

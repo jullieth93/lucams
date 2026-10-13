@@ -9,6 +9,10 @@
  *   - `finalizeDesign` acepta N productionDataUrls (uno por imán físico)
  *     en lugar de 1 monolítico. Sube N PNGs a bucket production-assets y
  *     persiste paths en Design.productionUrls[].
+ *   - ADR-131 (2026-10-13): el render server-side de esos PNG corre ASÍNCRONO
+ *     (RenderJob + worker en render-job-service.ts), fuera del request.
+ *     finalizeDesign solo decide (guard estático + probe de la 1ª unidad vía
+ *     kick acotado), sube el preview y marca READY.
  *
  * Reglas críticas (sin cambios vs M.3):
  *   1. Ownership de Design: customerId (logueado) o sessionId (anon). Server
@@ -44,8 +48,19 @@ import {
 } from "./template-visibility";
 import { normalizeName } from "./name-input";
 import { remapCanvasAssetIds } from "./canvas-remap";
-import { calendarLayoutFromUnitTemplate } from "./calendar-layout";
+import {
+  createOrResetRenderJob,
+  processRenderJobs,
+  staticClientFallbackReason,
+  RENDER_JOB_KICK_BUDGET_MS,
+} from "./render-job-service";
 import { ALPHABET } from "./letter-tiles";
+import {
+  ensurePreviewWatermarkGlobal,
+  uploadPreviewPages,
+  uploadPreviewWatermarkArtifacts,
+} from "./preview-artifacts-server";
+import { PREVIEW_PAGES_MAX, designPreviewDerivedPaths } from "./preview-artifacts";
 import {
   mergeVariantOverProduct,
   parseVariantAttributes,
@@ -57,7 +72,6 @@ import {
 // arrancar la lambda — y si dlopen falla en el runtime serverless, la página entera devuelve
 // 500 aunque nunca renderice nada (caso real 2026-07-28: ERR_DLOPEN_FAILED libvips-cpp.so
 // tumbó /producto/* en Vercel). Mismo patrón que lib/photo-validation.ts y lib/storage.ts.
-import type { LoadAssetBytes } from "./production-render";
 import type { CanvasData, CanvasDataV1, CanvasDataV2 } from "./schemas";
 import type { z } from "zod";
 import type { SlotStateSchema } from "./schemas";
@@ -68,268 +82,11 @@ const BUCKET_PRODUCTION = "production-assets";
 const BUCKET_CUSTOMER_UPLOADS = "customer-uploads";
 
 /**
- * ADR-057 Fase A1a — Intenta re-renderizar los PNG de producción EN EL SERVIDOR desde el
- * canvasData (fuente de verdad: encuadre del usuario), en vez de confiar en el celular del
- * cliente. Devuelve los buffers server-side, o `null` si la plantilla no es solo-foto
- * (NEEDS_KONVA → Fase A1b) o si algo falla → el caller conserva los PNG del cliente (fallback).
+ * ADR-057 A1a / ADR-131 (2026-10-13) — el render server-side de producción YA NO corre en
+ * este módulo ni en el request del finalize: se movió al worker de RenderJob
+ * (render-job-service.ts), que procesa página por página con progreso real y reintentos.
+ * Acá quedan solo la decisión síncrona (guard estático + kick acotado) en finalizeDesign.
  */
-async function tryServerRenderProduction(
-  designId: string,
-  canvasData: CanvasDataV2,
-  overrides?: { calendarYear?: number },
-): Promise<Buffer[] | null> {
-  // Cargar forma + assets + loader (compartido por ambos motores).
-  let shape: string | undefined;
-  let loadAsset: LoadAssetBytes;
-  let personalizationKind: string | undefined;
-  let productSchema: Record<string, unknown> | undefined;
-  try {
-    const design = await prisma.design.findUnique({
-      where: { id: designId },
-      select: {
-        product: { select: { personalizationSchema: true, personalizationKind: true } },
-      },
-    });
-    // Forma del schema del PRODUCTO. En el catálogo actual la forma es a nivel de producto
-    // (Fotoimanes Circular/Corazón/Cuadrado son productos distintos; sus variantes son
-    // tamaño/cantidad, no forma) → esto coincide con lo que renderizó el cliente. Si algún día
-    // una VARIANTE override la forma, habría que persistir la forma efectiva en el diseño (el
-    // diseño no guarda su variantId en finalize). Latente: ningún producto lo usa hoy.
-    shape = (design?.product?.personalizationSchema as { shape?: string } | null)?.shape;
-    personalizationKind = design?.product?.personalizationKind;
-    productSchema =
-      (design?.product?.personalizationSchema as Record<string, unknown> | null) ?? undefined;
-
-    const assets = await prisma.designAsset.findMany({
-      where: { designId },
-      select: { id: true, storageUrl: true },
-    });
-    const assetPaths = new Map(assets.map((a) => [a.id, a.storageUrl]));
-    loadAsset = async (assetId) => {
-      const path = assetPaths.get(assetId);
-      if (!path) return null;
-      const { data, error } = await supabaseService.storage
-        .from(BUCKET_CUSTOMER_UPLOADS)
-        .download(path);
-      if (error || !data) return null;
-      return Buffer.from(await data.arrayBuffer());
-    };
-  } catch (err) {
-    logger.warn(
-      {
-        event: "design.finalize.server_render_error",
-        designId,
-        stage: "load",
-        err: err instanceof Error ? err.message : String(err),
-      },
-      "No se pudieron cargar assets para el render server — usando PNG del cliente",
-    );
-    return null;
-  }
-
-  // Carga perezosa de los motores nativos (sharp / @napi-rs/canvas) — ver nota en imports.
-  // Si el binario no carga en este runtime, el finalize continúa con los PNG del cliente.
-  let renderProductionSlots: typeof import("./production-render").renderProductionSlots;
-  let RenderNeedsKonvaError: typeof import("./production-render").RenderNeedsKonvaError;
-  let renderProductionSlotsCanvas: typeof import("./production-render-canvas").renderProductionSlotsCanvas;
-  let renderCalendarMonthPagesCanvas: typeof import("./production-render-canvas").renderCalendarMonthPagesCanvas;
-  try {
-    const [sharpEngine, canvasEngine] = await Promise.all([
-      import("./production-render"),
-      import("./production-render-canvas"),
-    ]);
-    renderProductionSlots = sharpEngine.renderProductionSlots;
-    RenderNeedsKonvaError = sharpEngine.RenderNeedsKonvaError;
-    renderProductionSlotsCanvas = canvasEngine.renderProductionSlotsCanvas;
-    renderCalendarMonthPagesCanvas = canvasEngine.renderCalendarMonthPagesCanvas;
-  } catch (err) {
-    logger.warn(
-      {
-        event: "design.finalize.server_render_error",
-        designId,
-        stage: "engine-load",
-        err: err instanceof Error ? err.message : String(err),
-      },
-      "Motores de render nativos no cargaron en este runtime — usando PNG del cliente",
-    );
-    return null;
-  }
-
-  // ADR-063 CAL1 — Calendario mes-a-mes: compone la PÁGINA de cada mes (foto + mes + año + grilla),
-  // no la foto desnuda. Reemplaza los dos tiers genéricos para este kind — el PNG del cliente no
-  // trae la grilla, así que no hay fallback útil; si el compositor falla, cae a los PNG del cliente.
-  if (personalizationKind === "CALENDAR_PHOTO_MONTH") {
-    try {
-      // ADR-063 CAL2 — el año lo elige el CLIENTE en el editor (persistido por-diseño). Prioridad:
-      // elección del cliente → default del producto (personalizationSchema.year) → próximo año.
-      const yearRaw = overrides?.calendarYear ?? productSchema?.year;
-      const year =
-        typeof yearRaw === "number" && yearRaw >= 2020 && yearRaw <= 2100
-          ? yearRaw
-          : new Date().getFullYear() + 1;
-      const startRaw = productSchema?.startMonth;
-      const startMonth = typeof startRaw === "number" ? startRaw : 0;
-      const slots = canvasData.slots.map((s) => ({
-        slotIndex: s.slotIndex,
-        assetId: s.assetId,
-        photoTransform: s.photoTransform,
-      }));
-      const bufs = await renderCalendarMonthPagesCanvas({
-        slots,
-        loadAsset,
-        year,
-        startMonth,
-        // Reescala el encuadre (pan) de unidades de la plantilla del editor a la página 1080.
-        templateStageWidth: canvasData.unitTemplate?.stage?.width,
-        // Layout de la tarjeta ("classic" default | "split" lateral) — lo declara la plantilla.
-        layout: calendarLayoutFromUnitTemplate(canvasData.unitTemplate),
-        // Lucy 2026-09-07 — tipo de letra del título/mes elegido en el Estudio. Viaja en el
-        // canvasData persistido; el compositor lo valida contra su lista blanca (ausente o
-        // desconocido → Fredoka). Nunca un string libre del cliente.
-        calendarFont: canvasData.calendarFont,
-      });
-      logger.info(
-        {
-          event: "design.finalize.server_render_ok",
-          designId,
-          engine: "calendar",
-          slots: bufs.length,
-        },
-        "Calendario renderizado en el servidor (páginas de mes)",
-      );
-      return bufs;
-    } catch (err) {
-      logger.warn(
-        {
-          event: "design.finalize.server_render_error",
-          designId,
-          engine: "calendar",
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "Render de calendario falló — usando PNG del cliente",
-      );
-      return null;
-    }
-  }
-
-  // Ola 2A — marco de color elegido en el Estudio (viaja en canvasData). El tier sharp no
-  // dibuja marcos → con marco se entra directo al tier canvas (que sí lo hornea, WYSIWYG).
-  const borderColor =
-    typeof (canvasData as { borderColor?: unknown }).borderColor === "string"
-      ? ((canvasData as { borderColor?: string }).borderColor ?? null)
-      : null;
-  // Ola 3 — ¿el producto admite texto? (Fotoimanes Cuadrados NO: el texto es de la
-  // Polaroid). El editor oculta las capas de texto → producción también (WYSIWYG);
-  // si no, el PNG de imprenta saldría con el "Escribe tu mensaje" de la plantilla.
-  // Schema no cargado → default legacy true (no esconder texto por un fallo de lectura).
-  const includeText = productSchema
-    ? parsePhotoProductConfig(productSchema).allowText === true
-    : true;
-  // Ola 3b (Lucy 2026-07-22) — ¿el producto ofrece marcos de color? Con frameOptions +
-  // borderColor la tarjeta se imprime ENTERA del color y la foto va inserta ("fin del
-  // papel"), no un stroke sobre tarjeta blanca. Misma regla que el editor (WYSIWYG).
-  const frameFullBleed = productSchema
-    ? (parsePhotoProductConfig(productSchema).frameOptions?.length ?? 0) > 0
-    : false;
-  const args = {
-    unitTemplate: canvasData.unitTemplate as never,
-    slots: canvasData.slots as never,
-    shape,
-    loadAsset,
-    borderColor,
-    includeText,
-    frameFullBleed,
-  };
-
-  // Tier 1 — sharp (foto pura, rápido, sin deps nativas). Solo SIN marco y SIN frameOptions.
-  // Ola 4 (Lucy 2026-07-23): los productos con frameOptions (Cuadrados) van DIRECTO al tier
-  // canvas — la regla "sin borde → foto a sangre total / con borde → franja uniforme" solo
-  // vive allá; el tier sharp dibuja la ventana cruda de la plantilla y dejaría la franja.
-  if (!borderColor && !frameFullBleed) {
-    try {
-      return await renderProductionSlots(args);
-    } catch (err) {
-      if (!(err instanceof RenderNeedsKonvaError)) {
-        logger.warn(
-          {
-            event: "design.finalize.server_render_error",
-            designId,
-            engine: "sharp",
-            err: err instanceof Error ? err.message : String(err),
-          },
-          "Render sharp falló — usando PNG del cliente",
-        );
-        return null;
-      }
-      // Tier 2 — canvas (@napi-rs/canvas): la plantilla trae texto/marco/esquinas que sharp no hace.
-      try {
-        const bufs = await renderProductionSlotsCanvas(args);
-        logger.info(
-          {
-            event: "design.finalize.server_render_ok",
-            designId,
-            engine: "canvas",
-            slots: bufs.length,
-          },
-          "Production renderizada en el servidor (canvas)",
-        );
-        return bufs;
-      } catch (err2) {
-        if (err2 instanceof RenderNeedsKonvaError) {
-          logger.info(
-            { event: "design.finalize.server_render_skip", designId, reason: err2.message },
-            "Server render omitido (filtro/fuente/etc.) — usando PNG del cliente",
-          );
-        } else {
-          logger.warn(
-            {
-              event: "design.finalize.server_render_error",
-              designId,
-              engine: "canvas",
-              err: err2 instanceof Error ? err2.message : String(err2),
-            },
-            "Render canvas falló — usando PNG del cliente",
-          );
-        }
-        return null;
-      }
-    }
-  }
-
-  // Con marco (o con frameOptions, Ola 4): directo al tier canvas (sharp no dibuja marcos
-  // ni aplica la regla sangre-total/franja-uniforme de las tarjetas simples).
-  try {
-    const bufs = await renderProductionSlotsCanvas(args);
-    logger.info(
-      {
-        event: "design.finalize.server_render_ok",
-        designId,
-        engine: "canvas",
-        slots: bufs.length,
-      },
-      "Production renderizada en el servidor (canvas, con marco)",
-    );
-    return bufs;
-  } catch (err2) {
-    if (err2 instanceof RenderNeedsKonvaError) {
-      logger.info(
-        { event: "design.finalize.server_render_skip", designId, reason: err2.message },
-        "Server render omitido (filtro/fuente/etc.) — usando PNG del cliente",
-      );
-    } else {
-      logger.warn(
-        {
-          event: "design.finalize.server_render_error",
-          designId,
-          engine: "canvas",
-          err: err2 instanceof Error ? err2.message : String(err2),
-        },
-        "Render canvas falló — usando PNG del cliente",
-      );
-    }
-    return null;
-  }
-}
 
 // ──────────────────────────────────────────────────────────────────
 //  Ownership check
@@ -354,6 +111,15 @@ export async function getOwnedDesign(
  * del canvas a los ids nuevos. El diseño ORIGINAL queda INTACTO → si el cliente abandona la
  * edición, el item del carrito (que apunta al original READY) sigue válido. Devuelve el id del
  * clon, o null si el diseño no es del owner o no está READY.
+ *
+ * 2026-10-13 — el clon NO hereda previewUrl ni draftPreviewUrl (quedan null):
+ * el preview final es del ORIGINAL y el clon regenera su miniatura de borrador
+ * en el primer auto-save del Estudio. Esto habilita el CTA «Editar» de
+ * /mi-cuenta/disenos sobre diseños READY (ver design-grid.tsx): el recover de
+ * /estudio/<slug>?designId= llama acá y pasa replacesCartDesignId al editor;
+ * si el original está en el carrito la línea se reemplaza en sitio al agregar
+ * (cart/service.ts), y si NO está (flujo Mis diseños) el alta es una línea
+ * nueva — el original READY sigue listado y coherente (nunca se toca).
  */
 export async function cloneDesignForEdit(
   originalId: string,
@@ -1096,6 +862,61 @@ export async function createLetterSetDesign(opts: {
 //  validado contra el producto antes de persistirse.
 // ──────────────────────────────────────────────────────────────────
 
+/**
+ * 2026-10-13 — miniatura del DRAFT para "Mis diseños": sube el dataURL (≤400 px,
+ * WebP/JPEG — lo genera el auto-save del Estudio, throttled) al bucket público
+ * design-previews en el path FIJO `<designId>/draft-preview.<ext>` con upsert
+ * (sobreescribe la anterior: NO acumula archivos por diseño; si cambia la
+ * extensión entre navegadores, borra el archivo viejo). Devuelve la URL pública
+ * o null si el payload no es una imagen aceptada. La purga de retención y el
+ * barrido de huérfanos cubren estos bytes (path anclado al designId + columna
+ * Design.draftPreviewUrl en purgeDesignBatch/archiveCustomerDesign).
+ */
+async function uploadDraftPreviewThumbnail(
+  designId: string,
+  dataUrl: string,
+  previousUrl: string | null,
+): Promise<string | null> {
+  const match = dataUrl.match(/^data:(image\/(?:webp|jpeg|png));base64,(.+)$/);
+  if (!match) return null;
+  const mime = match[1] as PreviewMime;
+  if (!PREVIEW_ALLOWED_MIME.includes(mime)) return null;
+  const buf = Buffer.from(match[2]!, "base64");
+  // Cap defensivo server-side (el schema ya limita el string a ~160 KB
+  // binarios): un thumbnail legítimo pesa 10-40 KB.
+  if (buf.length === 0 || buf.length > 256 * 1024) return null;
+  // El bucket es PÚBLICO: verificar que el buffer decodifica como imagen del
+  // mime declarado antes de exponerlo (un blob arbitrario no se sube).
+  const { sniffImageMime } = await import("@/lib/storage");
+  if (sniffImageMime(buf) !== mime) return null;
+
+  const path = `${designId}/draft-preview.${previewExtensionForMime(mime)}`;
+  const previousPath = previousUrl ? pathFromPublicUrl(previousUrl, PREVIEWS_BUCKET) : null;
+  const { error } = await supabaseService.storage.from(BUCKET_PREVIEWS).upload(path, buf, {
+    contentType: mime,
+    // 5 min: el path es fijo y el contenido cambia con cada thumbnail nuevo —
+    // un cacheControl largo serviría la miniatura vieja tras re-editar.
+    cacheControl: "300",
+    upsert: true,
+  });
+  if (error) {
+    logger.warn(
+      { event: "design.save_canvas.draft_preview_upload_fail", designId, err: error.message },
+      "Draft preview upload fail (best-effort: el canvas se guarda igual)",
+    );
+    return null;
+  }
+  // Si la extensión cambió (otro navegador sin WebP), borrar el archivo viejo
+  // para no acumular dos miniaturas del mismo diseño.
+  if (previousPath && previousPath !== path) {
+    await removeStorage(PREVIEWS_BUCKET, [previousPath]);
+  }
+  const {
+    data: { publicUrl },
+  } = supabaseService.storage.from(BUCKET_PREVIEWS).getPublicUrl(path);
+  return publicUrl;
+}
+
 export async function saveCanvas(opts: {
   designId: string;
   canvasData: CanvasData;
@@ -1110,6 +931,23 @@ export async function saveCanvas(opts: {
    * auto-save de 2 s no debe romperse por una FK informativa.
    */
   templateId?: string;
+  /**
+   * 2026-10-12 — variante EFECTIVA de un pack de foto (matchea el N de fotos +
+   * magnet del canvas): se persiste en metadata.variantId para que el recover
+   * (?designId=, «Editar» desde el carrito) reabra el Estudio con ESA variante
+   * en vez de caer a la primera del producto. Se valida contra las variantes
+   * del producto (anti-tamper, mismo criterio que templateId); si no pasa, el
+   * canvasData se guarda igual y la metadata queda como estaba. La ruta del
+   * dinero NO la lee: el carrito deriva la variante del canvasData, como siempre.
+   */
+  variantId?: string;
+  /**
+   * 2026-10-13 — miniatura del borrador para "Mis diseños" (ver
+   * uploadDraftPreviewThumbnail). Opcional y BEST-EFFORT: un fallo de upload
+   * nunca rompe el guardado del canvas (el thumbnail se reintenta en un save
+   * posterior). Solo se procesa en diseños DRAFT (gate de abajo).
+   */
+  draftPreviewDataUrl?: string;
   customerId: string | null;
   sessionId: string | null;
 }) {
@@ -1148,13 +986,69 @@ export async function saveCanvas(opts: {
     }
   }
 
+  let variantId: string | undefined;
+  if (opts.variantId) {
+    const owns = await prisma.productVariant.findFirst({
+      where: { id: opts.variantId, productId: design.productId, isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (owns) {
+      variantId = owns.id;
+    } else {
+      logger.warn(
+        {
+          event: "design.save_canvas.variant_rejected",
+          designId: design.id,
+          variantId: opts.variantId,
+        },
+        "variantId inválido en saveCanvas — se conserva la metadata anterior",
+      );
+    }
+  }
+
   await prisma.design.update({
     where: { id: design.id },
     data: {
       canvasData: opts.canvasData as unknown as Prisma.InputJsonValue,
       ...(templateId ? { templateId } : {}),
+      ...(variantId
+        ? {
+            metadata: {
+              ...((design.metadata as Record<string, unknown> | null) ?? {}),
+              variantId,
+            } as Prisma.InputJsonValue,
+          }
+        : {}),
     },
   });
+
+  // 2026-10-13 — miniatura del borrador (Mis diseños). DESPUÉS del guardado del
+  // canvas (lo importante) y best-effort: cualquier fallo se loguea y el save
+  // sigue OK — el thumbnail se reintenta en el próximo auto-save.
+  if (opts.draftPreviewDataUrl) {
+    try {
+      const url = await uploadDraftPreviewThumbnail(
+        design.id,
+        opts.draftPreviewDataUrl,
+        design.draftPreviewUrl ?? null,
+      );
+      if (url) {
+        await prisma.design.update({
+          where: { id: design.id },
+          data: { draftPreviewUrl: url },
+        });
+      }
+    } catch (err) {
+      logger.warn(
+        {
+          event: "design.save_canvas.draft_preview_fail",
+          designId: design.id,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Draft preview falló (best-effort: el canvas ya quedó guardado)",
+      );
+    }
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -1386,6 +1280,42 @@ export async function finalizeDesign(opts: {
     );
     return design;
   }
+  // ADR-131 — READY pero SIN productionUrls: el render quedó corriendo en background
+  // (RenderJob) cuando el cliente siguió al carrito. Re-finalizar no re-hace nada: si el job
+  // sigue vivo, es no-op; si murió FAILED (o el diseño quedó en este estado sin job), se
+  // re-encola y se patea de nuevo — el carrito nunca se queda sin salida.
+  if (design.status === "READY") {
+    const existingJob = await prisma.renderJob.findUnique({
+      where: { designId: design.id },
+      select: { id: true, status: true },
+    });
+    if (existingJob && (existingJob.status === "PENDING" || existingJob.status === "PROCESSING")) {
+      logger.info(
+        { event: "design.finalize.render_in_flight", designId: design.id },
+        "Finalize idempotente: el render de producción sigue en curso",
+      );
+      return design;
+    }
+    const cd = design.canvasData as unknown as CanvasData;
+    if (cd?.version === 2) {
+      await createOrResetRenderJob({
+        designId: design.id,
+        productId: design.productId,
+        slotCount: (cd as CanvasDataV2).slotCount,
+        calendarYear: opts.calendarYear,
+      });
+      await processRenderJobs({
+        onlyDesignId: design.id,
+        budgetMs: RENDER_JOB_KICK_BUDGET_MS,
+        maxJobs: 1,
+      });
+      logger.info(
+        { event: "design.finalize.render_requeued", designId: design.id },
+        "RenderJob re-encolado desde un finalize repetido",
+      );
+    }
+    return design;
+  }
   if (design.status !== "DRAFT") {
     throw new Error(`Design is ${design.status} — only DRAFT can be finalized`);
   }
@@ -1452,18 +1382,22 @@ export async function finalizeDesign(opts: {
 
   const supabase = supabaseService;
 
-  // ADR-057 A1a — Render de producción EN EL SERVIDOR (independiente del celular del cliente).
-  // ADR-081 — es la vía PRINCIPAL, no una mejora: el cliente ya no manda los PNG salvo que se los
-  // pidamos, porque no caben en el body de una Function de Vercel (4.5 MB contra ~57 MB de un
-  // calendario). Si ningún tier reproduce el diseño con fidelidad (hoy solo el marco SVG de la
-  // Polaroid) se exige el fallback del cliente, que sube por Storage y no por el body.
+  // ADR-057 A1a — El render de producción lo hace el SERVIDOR (independiente del celular del
+  // cliente). ADR-081 — es la vía PRINCIPAL, no una mejora: el cliente ya no manda los PNG
+  // salvo que se los pidamos, porque no caben en el body de una Function de Vercel (4.5 MB
+  // contra ~57 MB de un calendario). Si ningún tier reproduce el diseño con fidelidad (hoy
+  // solo el marco SVG de la Polaroid) se exige el fallback del cliente, que sube por Storage
+  // y no por el body.
+  //
+  // ADR-131 (2026-10-13) — el render ya NO corre en este request: se encola un RenderJob y el
+  // worker (cron + el kick de abajo) lo procesa página por página con progreso real. Antes un
+  // set de calendario ×3 = 36 páginas dentro de la Server Action con maxDuration=60 → la
+  // Function moría (500/504) y el cliente esperaba "Guardando…" a ciegas hasta el crash.
   //
   // Va ANTES de subir el preview a propósito: la primera pasada de un diseño que necesita el
   // fallback termina en `NEEDS_CLIENT_SLOTS`, y si el cliente abandona ahí, un preview ya subido
   // quedaría huérfano en un bucket PÚBLICO sin ninguna fila que lo referencie (revisión adversarial
   // 2026-07-25). Resolver primero los PNG deja el efecto de red recién cuando el finalize va a salir.
-  // Cuando el render server-side sale bien GANA sobre los snapshots inline del cliente: es el
-  // archivo de imprenta de calidad garantizada, sin adornos de pantalla y sin depender del celular.
   let productionBuffers: Buffer[] | undefined;
   if (opts.productionBuffers) {
     // Caras B vacías → cara BLANCA del tamaño/DPI de su cara A (owner 2026-10-07).
@@ -1474,24 +1408,13 @@ export async function finalizeDesign(opts: {
           ).expandMissingBackFaces(opts.productionBuffers, requiredSlotIndexes, expectedSlotCount)
         : opts.productionBuffers;
   }
-  if (canvasForRender) {
-    const serverBuffers = await tryServerRenderProduction(design.id, canvasForRender, {
-      calendarYear: opts.calendarYear,
-    });
-    if (serverBuffers && serverBuffers.length === expectedSlotCount) {
-      // La copia de trabajo de la B vacía (canvasForRender) se descarta: la B se
-      // imprime EN BLANCO (owner 2026-10-07).
-      productionBuffers =
-        emptyBackSlots.size > 0
-          ? await (await loadBlankBackFace()).blankOutEmptyBackFaces(serverBuffers, emptyBackSlots)
-          : serverBuffers;
-      logger.info(
-        {
-          event: "design.finalize.server_render_ok",
-          designId: design.id,
-          slots: serverBuffers.length,
-        },
-        "Production renderizada en el servidor",
+  if (canvasForRender && !opts.productionBuffers && !opts.useStagedClientSlots) {
+    // Guard estático: los motivos de fallback decidibles por slot SIN renderizar (filtro,
+    // rotación, texto multilínea) se resuelven acá — el diseño ni siquiera encola el job.
+    const staticReason = staticClientFallbackReason(canvasForRender);
+    if (staticReason) {
+      throw new Error(
+        `NEEDS_CLIENT_SLOTS: el servidor no puede renderizar este diseño (${staticReason})`,
       );
     }
   }
@@ -1525,14 +1448,72 @@ export async function finalizeDesign(opts: {
       "Caras B vacías resueltas EN BLANCO (backOptional, owner 2026-10-07)",
     );
   }
+  // ADR-131 — sin PNG del cliente, el render pasa al RenderJob ASÍNCRONO: se crea/resetea el
+  // job y se patea con un presupuesto chico (kick). La PRIMERA unidad del kick es además el
+  // probe de renderabilidad real (motor nativo + plantilla + primera foto): si revienta, el
+  // desenlace es el de siempre — NEEDS_CLIENT_SLOTS y el cliente sube sus PNG por Storage.
+  let asyncRenderJob = false;
   if (!productionBuffers) {
-    // El caller traduce esto a un pedido de snapshots al cliente (subida directa a Storage).
-    throw new Error(
-      `NEEDS_CLIENT_SLOTS: el servidor no pudo renderizar los ${expectedSlotCount} PNG de imprenta`,
+    if (!canvasForRender) {
+      // canvasData v1 sin snapshots del cliente: no hay fuente server-side para imprenta.
+      throw new Error(
+        `NEEDS_CLIENT_SLOTS: el servidor no pudo renderizar los ${expectedSlotCount} PNG de imprenta`,
+      );
+    }
+    await createOrResetRenderJob({
+      designId: design.id,
+      productId: design.productId,
+      slotCount: expectedSlotCount,
+      calendarYear: opts.calendarYear,
+    });
+    asyncRenderJob = true;
+    await processRenderJobs({
+      onlyDesignId: design.id,
+      budgetMs: RENDER_JOB_KICK_BUDGET_MS,
+      maxJobs: 1,
+    });
+    const job = await prisma.renderJob.findUnique({
+      where: { designId: design.id },
+      select: {
+        id: true,
+        status: true,
+        totalUnits: true,
+        doneUnits: true,
+        attempts: true,
+        error: true,
+      },
+    });
+    // FAILED en el kick = el probe declaró el diseño no renderizable (NEEDS_KONVA, sin
+    // archivos del cliente que conservar). doneUnits=0 con attempts>0 = la primera unidad
+    // lanzó un error genérico (hoy ese fallo también terminaba en fallback al cliente).
+    if (job && (job.status === "FAILED" || (job.doneUnits === 0 && job.attempts > 0))) {
+      logger.info(
+        {
+          event: "design.finalize.async_probe_failed",
+          designId: design.id,
+          jobStatus: job.status,
+          err: job.error,
+        },
+        "El probe del render asíncrono falló — se piden los snapshots al cliente",
+      );
+      await prisma.renderJob.delete({ where: { id: job.id } }).catch(() => undefined);
+      throw new Error(
+        `NEEDS_CLIENT_SLOTS: el servidor no pudo renderizar los ${expectedSlotCount} PNG de imprenta`,
+      );
+    }
+    logger.info(
+      {
+        event: "design.finalize.async_render_enqueued",
+        designId: design.id,
+        totalUnits: job?.totalUnits,
+        doneUnitsAfterKick: job?.doneUnits,
+        kickCompleted: job?.status === "DONE",
+      },
+      "Render de producción encolado (worker + cron cada minuto)",
     );
   }
-  // Fase RENDER cerrada: los N buffers de imprenta ya están resueltos (render
-  // server-side, snapshots inline del cliente o área de paso).
+  // Fase RENDER cerrada: con buffers del cliente ya están resueltos acá; con RenderJob quedó
+  // encolado/parcialmente procesado (el cron lo termina). renderMs mide el kick en ese caso.
   const renderMs = Date.now() - tFinalizeStart;
 
   // Subir preview compositado del grid completo. La extensión refleja el mime
@@ -1564,6 +1545,22 @@ export async function finalizeDesign(opts: {
     data: { publicUrl: previewPublicUrl },
   } = supabase.storage.from(BUCKET_PREVIEWS).getPublicUrl(previewPath);
 
+  // 2026-10-13 — artefactos WATERMARK del preview (anti-copia en las superficies
+  // de exhibición: carrito, "Ver diseño", Mis diseños, /d/<token> + OG,
+  // cotización, gracias, pedidos): preview-wm.webp + thumb.webp por convención
+  // de paths (preview-artifacts.ts). BEST-EFFORT: si sharp/Storage fallan, el
+  // finalize sigue y las superficies degradan al preview limpio (columna
+  // previewWatermarkedAt queda null = "no existen"). Las páginas por unidad las
+  // sube el Estudio tras el finalize (saveDesignPreviewPages) — el Estudio ya
+  // las compone para su modal y es la fuente más fiel (server-side no puede
+  // recomponer las unidades del montaje: separadores/calendario no son grids
+  // uniformes). El thumb queda provisionalmente del global; la primera página
+  // lo reemplaza al llegar (miniatura representativa, decisión 2026-10-13).
+  const previewArtifactsOk = await uploadPreviewWatermarkArtifacts(
+    design.id,
+    opts.previewBuffer,
+  );
+
   // Ola 3 (Lucy 2026-07-22) — SEPARADORES 2 CARAS: la pieza física cuelga de la página
   // con el DOBLEZ ARRIBA; la imprenta recibe la tira DESPLEGADA VERTICAL en disposición
   // "cabezas al doblez" (tête-bêche): cara B ARRIBA rotada 180°, cara A ABAJO derecha —
@@ -1573,9 +1570,10 @@ export async function finalizeDesign(opts: {
   // espejo del canvas); acá se componen N tiras (slot 2k = cara A, slot 2k+1 = cara B)
   // con las esquinas exteriores redondeadas del troquel.
   // noFold (Alargados planos): composición horizontal A|B sin rotar (histórico).
-  // Aplica igual a buffers server-side o del cliente.
+  // Solo aplica a buffers resueltos EN ESTE REQUEST (inline/staged del cliente);
+  // en la vía asíncrona (ADR-131) las tiras las compone el worker, par por par.
   let facesComposed = false;
-  if (canvasData.version === 2) {
+  if (productionBuffers && canvasData.version === 2) {
     // productConfig ya se cargó arriba (validación de slots / backOptional).
     if (productConfig.facesPerUnit === 2 && productionBuffers.length % 2 === 0) {
       try {
@@ -1612,6 +1610,11 @@ export async function finalizeDesign(opts: {
   }
 
   // Subir N production PNGs (uno por imán físico; en separadores 2-caras, uno por TIRA).
+  // SOLO cuando los buffers se resolvieron en este request (snapshots inline o del área de
+  // paso del cliente). En la vía ADR-131 el upload lo hace el worker por unidad; acá se
+  // conservan los paths que el diseño ya tenía (re-finalize tras reopen: los archivos
+  // anteriores siguen siendo válidos hasta que el job nuevo los pisa con upsert).
+  //
   // PERF/ROBUSTEZ (2026-10-07) — antes: subidas SECUENCIALES (~200–500 ms c/u;
   // 24–48 slots ≈ 5–24 s de Function) reteniendo TODOS los buffers en memoria
   // (50 × 2–5 MB = pico 100–250 MB → OOM intermitente, que el cliente veía como
@@ -1621,59 +1624,65 @@ export async function finalizeDesign(opts: {
   // el despacho y se re-lanza; las subidas en vuelo terminan) y cada buffer se
   // LIBERA (null out del array) apenas su subida termina — el pico de memoria
   // deja de crecer con N.
-  const productionPaths: string[] = new Array(productionBuffers.length);
-  // Copia LOCAL del array para el null-out: nunca se muta el array del caller
-  // (puede ser un array compartido/reusado entre llamadas — el null-out sobre
-  // la copia sí libera las referencias cuando los buffers se crearon acá
-  // adentro: render server-side o área de paso, el caso dominante).
-  const buffersToRelease: (Buffer | null)[] = [...productionBuffers];
-  productionBuffers = undefined; // suelta también el binding local
+  let productionPaths: string[] = asyncRenderJob ? design.productionUrls : [];
   let totalProductionBytes = 0;
-  let nextUploadIndex = 0;
-  // Array (no let aplanado): TS no estrecha las escrituras hechas dentro del
-  // closure del runner y el fail-fast lee `length === 0`.
-  const uploadErrors: { index: number; message: string }[] = [];
-  const tUploadsStart = Date.now();
-  const uploadRunner = async () => {
-    while (nextUploadIndex < buffersToRelease.length && uploadErrors.length === 0) {
-      const i = nextUploadIndex++;
-      const buf = buffersToRelease[i]!;
-      // Ola 3 — con tiras compuestas (separadores 2 caras) el archivo es la TIRA desplegada
-      // de la unidad (cara A + cara B), no una cara suelta: nombre explícito para imprenta.
-      const path = facesComposed
-        ? `${design.id}/tira-${String(i + 1).padStart(2, "0")}.png`
-        : `${design.id}/slot-${String(i + 1).padStart(2, "0")}.png`;
-      const { error: prodErr } = await supabase.storage.from(BUCKET_PRODUCTION).upload(path, buf, {
-        contentType: "image/png",
-        // 1h, alineado con el TTL de los signed URLs (getProductionAssetSignedUrls): el bucket
-        // es PRIVADO y cada acceso genera una firma nueva, así que un cache-control largo no
-        // se aprovecharía (la URL rotativa cambia el query string = cache key distinto). Con
-        // 3600 el navegador sí puede reusar la pieza mientras la firma siga viva (T4).
-        cacheControl: "3600",
-        upsert: true,
-      });
-      if (prodErr) {
-        logger.warn(
-          { event: "design.finalize.upload_production_fail", err: prodErr.message, slotIndex: i },
-          "Production upload fail",
-        );
-        uploadErrors.push({ index: i, message: prodErr.message });
-        return;
+  let uploadMs = 0;
+  if (productionBuffers) {
+    productionPaths = new Array(productionBuffers.length);
+    // Copia LOCAL del array para el null-out: nunca se muta el array del caller
+    // (puede ser un array compartido/reusado entre llamadas — el null-out sobre
+    // la copia sí libera las referencias cuando los buffers se crearon acá
+    // adentro: render server-side o área de paso, el caso dominante).
+    const buffersToRelease: (Buffer | null)[] = [...productionBuffers];
+    productionBuffers = undefined; // suelta también el binding local
+    let nextUploadIndex = 0;
+    // Array (no let aplanado): TS no estrecha las escrituras hechas dentro del
+    // closure del runner y el fail-fast lee `length === 0`.
+    const uploadErrors: { index: number; message: string }[] = [];
+    const tUploadsStart = Date.now();
+    const uploadRunner = async () => {
+      while (nextUploadIndex < buffersToRelease.length && uploadErrors.length === 0) {
+        const i = nextUploadIndex++;
+        const buf = buffersToRelease[i]!;
+        // Ola 3 — con tiras compuestas (separadores 2 caras) el archivo es la TIRA desplegada
+        // de la unidad (cara A + cara B), no una cara suelta: nombre explícito para imprenta.
+        const path = facesComposed
+          ? `${design.id}/tira-${String(i + 1).padStart(2, "0")}.png`
+          : `${design.id}/slot-${String(i + 1).padStart(2, "0")}.png`;
+        const { error: prodErr } = await supabase.storage
+          .from(BUCKET_PRODUCTION)
+          .upload(path, buf, {
+            contentType: "image/png",
+            // 1h, alineado con el TTL de los signed URLs (getProductionAssetSignedUrls): el bucket
+            // es PRIVADO y cada acceso genera una firma nueva, así que un cache-control largo no
+            // se aprovecharía (la URL rotativa cambia el query string = cache key distinto). Con
+            // 3600 el navegador sí puede reusar la pieza mientras la firma siga viva (T4).
+            cacheControl: "3600",
+            upsert: true,
+          });
+        if (prodErr) {
+          logger.warn(
+            { event: "design.finalize.upload_production_fail", err: prodErr.message, slotIndex: i },
+            "Production upload fail",
+          );
+          uploadErrors.push({ index: i, message: prodErr.message });
+          return;
+        }
+        totalProductionBytes += buf.length;
+        productionPaths[i] = path;
+        buffersToRelease[i] = null; // liberar el buffer apenas sube (pico de memoria ∝ N)
       }
-      totalProductionBytes += buf.length;
-      productionPaths[i] = path;
-      buffersToRelease[i] = null; // liberar el buffer apenas sube (pico de memoria ∝ N)
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.max(1, Math.min(3, buffersToRelease.length)) }, uploadRunner),
-  );
-  const uploadMs = Date.now() - tUploadsStart;
-  const firstUploadError = uploadErrors[0];
-  if (firstUploadError) {
-    throw new Error(
-      `No pudimos subir el slot ${firstUploadError.index + 1}: ${firstUploadError.message}`,
+    };
+    await Promise.all(
+      Array.from({ length: Math.max(1, Math.min(3, buffersToRelease.length)) }, uploadRunner),
     );
+    uploadMs = Date.now() - tUploadsStart;
+    const firstUploadError = uploadErrors[0];
+    if (firstUploadError) {
+      throw new Error(
+        `No pudimos subir el slot ${firstUploadError.index + 1}: ${firstUploadError.message}`,
+      );
+    }
   }
 
   // ADR-063 CAL2 — registrar el año del calendario en metadata (fuente para re-render/admin;
@@ -1684,13 +1693,26 @@ export async function finalizeDesign(opts: {
   // carrito/checkout y el spec de producción las leen de metadata sin deserializar
   // el canvas completo (1 = diseño de una unidad; siempre se escribe en V2).
   const designUnits = canvasData.version === 2 ? unitCountOf(canvasData as CanvasDataV2) : 1;
+  // ADR-131 — en la vía asíncrona las tiras 2-caras las compone el WORKER al terminar el job;
+  // la metadata las registra igual desde ya (el admin/imprenta sabe qué esperar de cada PNG).
+  const facesPending =
+    asyncRenderJob &&
+    canvasData.version === 2 &&
+    productConfig.facesPerUnit === 2 &&
+    expectedSlotCount % 2 === 0;
+  const facesComposedOrPending = facesComposed || facesPending;
   const mergedMetadata =
-    typeof opts.calendarYear === "number" || facesComposed || canvasData.version === 2
+    typeof opts.calendarYear === "number" || facesComposedOrPending || canvasData.version === 2
       ? {
           ...((design.metadata as Record<string, unknown> | null) ?? {}),
           ...(typeof opts.calendarYear === "number" ? { calendarYear: opts.calendarYear } : {}),
-          ...(facesComposed
-            ? { faceStrips: { facesPerUnit: 2, strips: productionPaths.length } }
+          ...(facesComposedOrPending
+            ? {
+                faceStrips: {
+                  facesPerUnit: 2,
+                  strips: facesComposed ? productionPaths.length : expectedSlotCount / 2,
+                },
+              }
             : {}),
           ...(canvasData.version === 2 ? { unitCount: designUnits } : {}),
         }
@@ -1701,12 +1723,22 @@ export async function finalizeDesign(opts: {
     data: {
       status: "READY",
       previewUrl: previewPublicUrl,
-      productionUrls: productionPaths,
+      // ADR-131 — en la vía asíncrona productionUrls la escribe SOLO el worker al DONE (lista
+      // completa de una vez). Escribirla acá pisaría con el array viejo lo que el kick ya
+      // completó (race real: kick DONE → update con `design.productionUrls` leído al inicio).
+      // En la vía síncrona (snapshots del cliente) se escribe acá, como siempre.
+      ...(asyncRenderJob ? {} : { productionUrls: productionPaths }),
       // Legacy field: en V2 dejamos null (el array es source-of-truth).
       productionUrl: null,
       // Paquete C — sello de la aceptación explícita de calidad (checkbox de la
       // Vista Previa). Solo se escribe cuando el cliente la marcó.
       ...(opts.qualityAcknowledged ? { qualityAcknowledgedAt: new Date() } : {}),
+      // 2026-10-13 — sello de los artefactos watermark (preview-wm.webp +
+      // thumb.webp subidos arriba, best-effort). En un RE-finalize el conteo de
+      // páginas se resetea: las páginas viejas eran del canvas anterior y el
+      // Estudio las re-sube tras confirmar (saveDesignPreviewPages).
+      previewWatermarkedAt: previewArtifactsOk ? new Date() : null,
+      previewPagesCount: null,
       ...(mergedMetadata ? { metadata: mergedMetadata as Prisma.InputJsonValue } : {}),
     },
   });
@@ -1719,12 +1751,15 @@ export async function finalizeDesign(opts: {
       productionSlotsCount: productionPaths.length,
       productionTotalBytes: totalProductionBytes,
       qualityAcknowledged: opts.qualityAcknowledged === true,
+      renderMode: asyncRenderJob ? "async-job" : "client-snapshots",
     },
     "Design finalized (V2)",
   );
 
   // PERF (2026-10-07) — tiempos por fase para leer el p95 en los logs de Vercel
-  // y detectar regresiones (render server-side vs subidas a Storage).
+  // y detectar regresiones. ADR-131: en la vía asíncrona renderMs mide el KICK
+  // (presupuesto acotado, ~8s máx) y uploadMs queda en 0 — las subidas de
+  // producción las mide el worker (design.render_job.done, durationMs).
   logger.info(
     {
       event: "design.finalize.timing",
@@ -1734,9 +1769,35 @@ export async function finalizeDesign(opts: {
       totalMs: Date.now() - tFinalizeStart,
       productionSlotsCount: productionPaths.length,
       productionTotalBytes: totalProductionBytes,
+      renderMode: asyncRenderJob ? "async-job" : "client-snapshots",
     },
     "Finalize: tiempos por fase (render / uploads / total)",
   );
+
+  // ADR-131 — cuando los PNG vinieron del cliente (inline o área de paso), se encola un job
+  // de MEJORA: el worker intenta el render server-side en background y, si lo logra, pisa los
+  // archivos con la calidad garantizada (sin adornos de pantalla). Si el diseño no es
+  // reproducible server-side, el job cierra DONE y los PNG del cliente quedan vigentes —
+  // exactamente el fallback de antes. Best-effort: los archivos del cliente ya quedaron.
+  if (!asyncRenderJob && v2) {
+    try {
+      await createOrResetRenderJob({
+        designId: design.id,
+        productId: design.productId,
+        slotCount: expectedSlotCount,
+        calendarYear: opts.calendarYear,
+      });
+    } catch (err) {
+      logger.warn(
+        {
+          event: "design.finalize.upgrade_job_fail",
+          designId: design.id,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "No se pudo encolar el job de mejora de render — quedan los PNG del cliente",
+      );
+    }
+  }
 
   // Los definitivos ya están subidos: el área de paso sobra (ADR-081).
   if (opts.useStagedClientSlots) {
@@ -1849,6 +1910,15 @@ export async function listCustomerDesigns(customerId: string, opts?: { now?: Dat
     select: {
       id: true,
       previewUrl: true,
+      // 2026-10-13 — la tarjeta de un diseño LISTO exhibe la miniatura
+      // representativa watermark (thumb.webp) cuando existe; sin ella cae al
+      // preview limpio. Los DRAFT siguen con draftPreviewUrl (sin watermark:
+      // solo los ve el dueño).
+      previewWatermarkedAt: true,
+      previewPagesCount: true,
+      // 2026-10-13 — miniatura del borrador (auto-save del Estudio): la tarjeta
+      // del DRAFT en "Mis diseños" la prefiere sobre el placeholder de ícono.
+      draftPreviewUrl: true,
       status: true,
       shareTokenHash: true,
       createdAt: true,
@@ -1926,6 +1996,8 @@ export async function archiveCustomerDesign(
       id: true,
       status: true,
       previewUrl: true,
+      draftPreviewUrl: true,
+      previewPagesCount: true,
       orderItems: { select: { id: true }, take: 1 },
     },
   });
@@ -1940,11 +2012,27 @@ export async function archiveCustomerDesign(
   // su preview del bucket PÚBLICO (design-previews) para no dejar la foto del cliente de por vida
   // (minimización Ley 1581). El caso USED_IN_ORDER se conserva (las 3 vistas de pedido leen el preview
   // en vivo) hasta implementar el snapshot del preview en OrderItem (ADR-056, opción A elegida por Lucy).
+  // 2026-10-13 — junto con el preview van sus artefactos derivados por convención
+  // de paths (preview-wm.webp, thumb.webp, pages/NN.webp, wm/pages/NN.webp):
+  // muestran la misma cara y nadie los referencia ya.
   const usedInOrder = design.status === "USED_IN_ORDER" || design.orderItems.length > 0;
   if (!usedInOrder && design.previewUrl) {
     const path = pathFromPublicUrl(design.previewUrl, PREVIEWS_BUCKET);
-    if (path && (await removeStorage(PREVIEWS_BUCKET, [path]))) {
-      await prisma.design.update({ where: { id: design.id }, data: { previewUrl: null } });
+    const derived = designPreviewDerivedPaths(design.id, design.previewPagesCount);
+    if (path && (await removeStorage(PREVIEWS_BUCKET, [path, ...derived]))) {
+      await prisma.design.update({
+        where: { id: design.id },
+        data: { previewUrl: null, previewWatermarkedAt: null, previewPagesCount: null },
+      });
+    }
+  }
+  // 2026-10-13 — la miniatura del DRAFT (draftPreviewUrl) no la referencia
+  // NINGUNA vista de pedido: al archivar se borra siempre (misma minimización;
+  // el diseño archivado ya no sale en "Mis diseños").
+  if (design.draftPreviewUrl) {
+    const draftPath = pathFromPublicUrl(design.draftPreviewUrl, PREVIEWS_BUCKET);
+    if (draftPath && (await removeStorage(PREVIEWS_BUCKET, [draftPath]))) {
+      await prisma.design.update({ where: { id: design.id }, data: { draftPreviewUrl: null } });
     }
   }
   return true;
@@ -1988,6 +2076,9 @@ export async function getSharedDesign(shareToken: string) {
     },
     select: {
       previewUrl: true,
+      // 2026-10-13 — la vista pública exhibe la versión WATERMARK cuando existe
+      // (preview-wm.webp por convención de paths); null = fallback al limpio.
+      previewWatermarkedAt: true,
       status: true,
       product: { select: { name: true, slug: true } },
     },
@@ -1996,4 +2087,62 @@ export async function getSharedDesign(shareToken: string) {
     return null;
   }
   return design;
+}
+
+/**
+ * 2026-10-13 — páginas POR UNIDAD del preview (set/tira/separador/pack), para el
+ * "Ver" paginado del carrito/pedidos y la miniatura representativa. Las compone
+ * el Estudio con el MISMO compositor de su modal «Vista previa» (fidelidad
+ * WYSIWYG — server-side no puede recomponer las unidades del montaje global:
+ * separadores tête-bêche y calendarios no son grids uniformes) y las sube en un
+ * request APARTE del finalize (el body de la Server Action tiene techo ~4.5 MB
+ * y el preview ya lo roza; además las páginas perezosas se generan al confirmar,
+ * no hay que inflar el request crítico).
+ *
+ * Best-effort de punta a punta: si falla, las superficies caen al preview
+ * global (watermarked si existe). Por eso no revienta: devuelve ok:false.
+ */
+export async function saveDesignPreviewPages(opts: {
+  designId: string;
+  owner: { customerId: string | null; sessionId: string | null };
+  /** Buffers de las páginas EN ORDEN (página 1 = primera unidad). */
+  pages: Buffer[];
+}): Promise<{ ok: true; pagesCount: number } | { ok: false; message: string }> {
+  const design = await getOwnedDesign(opts.designId, opts.owner);
+  // Solo diseños finalizados: las páginas son del canvas CONFIRMADO (un DRAFT
+  // reabierto para editar invalida las del READY anterior — el re-finalize las
+  // resetea a null y el Estudio las vuelve a subir).
+  if (!design || (design.status !== "READY" && design.status !== "USED_IN_ORDER")) {
+    return { ok: false, message: "Diseño no encontrado" };
+  }
+  if (opts.pages.length < 1 || opts.pages.length > PREVIEW_PAGES_MAX) {
+    return { ok: false, message: "Número de páginas inválido" };
+  }
+  const uploaded = await uploadPreviewPages(design.id, opts.pages);
+  if (uploaded === null) {
+    return { ok: false, message: "No pudimos procesar las páginas del preview" };
+  }
+  // El sello previewWatermarkedAt avala que preview-wm.webp + thumb.webp
+  // EXISTEN. Si el finalize no logró su paso watermark (best-effort), se
+  // regenera el global desde el preview limpio ya público antes de sellar —
+  // nunca se marca una URL que 404.
+  const wmReady =
+    design.previewWatermarkedAt !== null ||
+    (design.previewUrl
+      ? await ensurePreviewWatermarkGlobal(design.id, design.previewUrl)
+      : false);
+  await prisma.design.update({
+    where: { id: design.id },
+    // La miniatura representativa (thumb.webp) quedó regenerada desde la
+    // primera página dentro de uploadPreviewPages.
+    data: {
+      previewPagesCount: uploaded,
+      ...(wmReady ? { previewWatermarkedAt: new Date() } : {}),
+    },
+  });
+  logger.info(
+    { event: "design.preview_pages.saved", designId: design.id, pagesCount: uploaded },
+    "Páginas por unidad del preview subidas",
+  );
+  return { ok: true, pagesCount: uploaded };
 }

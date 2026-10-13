@@ -4,13 +4,14 @@ import { getAuthTexts } from "../auth-texts.server";
 
 export const metadata: Metadata = {
   title: "Iniciar sesión",
-  description: "Accede a tu cuenta de Lucams_shop.",
+  description: "Accede a tu cuenta de Lucams Shop.",
   robots: { index: false, follow: false },
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
   "link-invalido": "El link que abriste no es válido. Por favor inicia sesión.",
   "link-expirado": "El link expiró. Por favor solicita uno nuevo.",
+  "sesion-expirada": "Tu sesión expiró por inactividad. Inicia sesión de nuevo.",
 };
 
 const SUCCESS_MESSAGES: Record<string, string> = {

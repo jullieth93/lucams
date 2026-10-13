@@ -169,7 +169,7 @@ CREATE POLICY "order_read_own_or_admin" ON public."Order"
 - **`service_role` sin DML** sobre tablas de `public` (migración 026): solo REFERENCES/TRIGGER/TRUNCATE. La app opera con Prisma como rol `postgres`, no vía PostgREST con service_role.
 - Funciones de `public` endurecidas (migración 027): `search_path` fijado, `is_active_admin` sin EXECUTE para anon/PUBLIC, `rate_limit_check` solo owner.
 - Backstops anti-escalada (migración 028): `review insert own` fuerza `isApproved=false`/`featured=false`; triggers bloquean que `authenticated` modifique columnas sensibles de `Customer` (loyalty/referral) y `CartItem` (`unitPrice`).
-- Migraciones 025-029 aplicadas y verificadas en stg y prod el 2026-08-29 (detalle: [`audits/auditoria_seguridad_lucams.md` §11](./audits/auditoria_seguridad_lucams.md)).
+- Migraciones 025-029 aplicadas y verificadas en los 3 ambientes (LOCAL/STG/PRD).
 
 ### Tests de RLS (criterio de aceptación de Fase 1)
 
@@ -240,11 +240,11 @@ describe('RLS', () => {
 - **Pre-commit hook** versionado en [`scripts/git-hooks/pre-commit`](../scripts/git-hooks/pre-commit): corre `gitleaks git --staged` sobre los cambios a commitear. Se activa por desarrollador con `git config core.hooksPath scripts/git-hooks` (no hay auto-instalación); si `gitleaks` no está instalado, el hook avisa y deja pasar el commit — las capas que SÍ se enforzan siempre son Push Protection + el CI `secrets-scan`.
 - **CI step** (`secrets-scan` en `.github/workflows/ci.yml`) que escanea el repo completo en cada PR.
 - **GitHub Secret Scanning** habilitado a nivel de repo (gratis para repos públicos; revisar privados).
-- **GitHub Push Protection** activo a nivel de cuenta (rechaza push si detecta credenciales reales). Validado el 2026-05-09 cuando bloqueó un push con `sb_secret_*` real — ver [`docs/incidents/2026-05-09-secret-key-leak.md`](incidents/2026-05-09-secret-key-leak.md).
+- **GitHub Push Protection** activo a nivel de cuenta (rechaza push si detecta credenciales reales — probado en la práctica con un push que contenía un `sb_secret_*` real; la llave se rotó y revocó siguiendo IRP-001).
 
 ### Manipulación segura de archivos de credenciales por agentes IA
 
-> Mandato derivado del incidente del 2026-05-09 (leak de `SUPABASE_SECRET_KEY`). Toda sesión futura de Claude Code u otro agente IA con acceso a filesystem **debe** seguir estas reglas, complementarias a las anteriores.
+> Mandato derivado de un incidente real (una `SUPABASE_SECRET_KEY` entró al transcript de un agente IA por un `Read` sobre `.env.local`; la llave se rotó y revocó el mismo día siguiendo IRP-001). Toda sesión de Claude Code u otro agente IA con acceso a filesystem **debe** seguir estas reglas, complementarias a las anteriores.
 
 **El problema:** las herramientas estándar de los agentes IA (`Read`, `Edit`, `Write`) cargan el contenido del archivo en el contexto del modelo y por lo tanto al transcript persistente de la conversación. Para archivos públicos esto es deseable; para archivos de credenciales es un leak silencioso.
 
@@ -970,7 +970,7 @@ Los jobs vivos son `pg_cron` en Supabase llamando endpoints `/api/cron/*` por HT
 
 #### 6. Lecciones aprendidas
 
-- Postmortem en `docs/incidents/YYYY-MM-DD-<slug>.md` ([plantilla en `OBSERVABILITY.md` § Process de postmortem](./OBSERVABILITY.md#process-de-postmortem)).
+- Postmortem efímero en `tmp/incidentes/YYYY-MM-DD-<slug>.md` (gitignored — política de documentación; al cerrarse, la postura resultante se consolida en este documento y se borra). [Plantilla en `OBSERVABILITY.md` § Process de postmortem](./OBSERVABILITY.md#process-de-postmortem).
 - Acciones concretas con responsable y fecha.
 - Si fue brecha de datos personales: **reporte a SIC dentro de 15 días hábiles** (Ley 1581).
 
@@ -983,7 +983,7 @@ Los jobs vivos son `pg_cron` en Supabase llamando endpoints `/api/cron/*` por HT
 - Commit accidental al repo (mitigado por gitleaks pre-commit + GitHub Push Protection).
 - Logs en producción (mitigado por el redact del logger propio, `lib/logger.ts`).
 - Compartida en chat/email/Slack/issue.
-- **Lectura inadvertida por agente IA** (Claude Code u otro): el agente usa `Read`/`Edit`/`Write` sobre `.env.local` y la key entra al transcript persistente. Vector confirmado en [docs/incidents/2026-05-09-secret-key-leak.md](../incidents/2026-05-09-secret-key-leak.md). Prevención: ver [§ Manipulación segura de archivos de credenciales por agentes IA](#manipulación-segura-de-archivos-de-credenciales-por-agentes-ia).
+- **Lectura inadvertida por agente IA** (Claude Code u otro): el agente usa `Read`/`Edit`/`Write` sobre `.env.local` y la key entra al transcript persistente. Vector confirmado en un incidente real (2026-05, rotada y revocada el mismo día). Prevención: ver [§ Manipulación segura de archivos de credenciales por agentes IA](#manipulación-segura-de-archivos-de-credenciales-por-agentes-ia).
 - Push intentado a GitHub donde Push Protection capturó el valor (incluso si rechazó el push, el sistema lo loggea).
 
 ```
@@ -1031,7 +1031,7 @@ ETA contención: 15 min · ETA reporte SIC: 15 días hábiles
 2. Cerrar el vector inmediatamente (rotar credenciales, parchar, revocar accesos).
 3. Notificar al equipo legal (abogado) o al usuario operador.
 4. Preparar comunicación a titulares afectados (email transparente, sin tecnicismos).
-5. Documentar todo en docs/incidents/YYYY-MM-DD-pii-breach.md.
+5. Documentar todo en tmp/incidentes/YYYY-MM-DD-pii-breach.md (efímero, gitignored).
 6. Reportar a SIC dentro de 15 días hábiles vía formulario oficial.
 7. Postmortem público (sin nombrar titulares) en /legal/incidents.
 ```

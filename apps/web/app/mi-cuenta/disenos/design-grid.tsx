@@ -17,8 +17,10 @@ export type DesignCardData = {
   /** Hay un link /d/<token> activo (F-11: solo el hash vive en DB). */
   hasShareToken: boolean;
   used: boolean;
-  /** Fase 2 · item 2.4 (2026-10-07) — borrador vigente: sin preview ni acciones
-   *  de compartir; la tarjeta ofrece «Seguir editando» al Estudio. */
+  /** Fase 2 · item 2.4 (2026-10-07) — borrador vigente: sin acciones de
+   *  compartir; la tarjeta ofrece «Seguir editando» al Estudio. 2026-10-13 —
+   *  en los borradores `previewUrl` trae la MINIATURA del auto-save
+   *  (Design.draftPreviewUrl) cuando existe, "" si aún no se genera. */
   draft?: boolean;
 };
 
@@ -43,12 +45,16 @@ export function DesignGrid({
 }
 
 /**
- * Fase 2 · item 2.4 (2026-10-07) — tarjeta de un BORRADOR vigente: el preview
- * solo existe tras finalizar, así que va un placeholder de marca con el badge
- * «Borrador» y el CTA «Seguir editando» que reabre el Estudio con ?designId=
+ * Fase 2 · item 2.4 (2026-10-07) — tarjeta de un BORRADOR vigente: badge
+ * «Borrador» y CTA «Seguir editando» que reabre el Estudio con ?designId=
  * (el recover flow del server valida ownership y estado). Sin compartir ni
  * archivar: compartir exige READY y archivar borradores no está soportado por
  * la action (su retiro lo hace la purga de retención a los 90 d idle).
+ *
+ * 2026-10-13 — miniatura real del borrador cuando el auto-save del Estudio ya
+ * la subió (Design.draftPreviewUrl, mapeada a `previewUrl` por la página);
+ * sin miniatura (borradores viejos o sin foto todavía) se conserva el
+ * placeholder de marca.
  */
 function DraftDesignCard({
   design,
@@ -59,12 +65,22 @@ function DraftDesignCard({
 }) {
   return (
     <li className="border-brand-purple/12 overflow-hidden rounded-2xl border border-dashed bg-white shadow-sm">
-      <div
-        className="bg-brand-cream flex aspect-square w-full flex-col items-center justify-center gap-2"
-        aria-hidden
-      >
-        <Palette className="text-brand-purple/50 h-8 w-8" />
-      </div>
+      {design.previewUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- miniatura de Supabase (public bucket)
+        <img
+          src={design.previewUrl}
+          alt={`Borrador de ${design.productName}`}
+          loading="lazy"
+          className="bg-brand-cream aspect-square w-full object-cover"
+        />
+      ) : (
+        <div
+          className="bg-brand-cream flex aspect-square w-full flex-col items-center justify-center gap-2"
+          aria-hidden
+        >
+          <Palette className="text-brand-purple/50 h-8 w-8" />
+        </div>
+      )}
       <div className="p-3">
         <div className="flex items-center gap-2">
           <p className="text-brand-purple-dark min-w-0 flex-1 truncate text-sm font-semibold">
@@ -196,14 +212,32 @@ function DesignCard({ design, texts }: { design: DesignCardData; texts: AccountT
           <p className="text-brand-purple-dark min-w-0 flex-1 truncate text-sm font-semibold">
             {design.productName}
           </p>
-          {design.used && (
+          {/* Distinción clara Borrador/Listo (2026-10-13): el READY sin pedir
+              lleva badge «Listo» (el borrador tiene el suyo en DraftDesignCard). */}
+          {design.used ? (
             <span className="flex-shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
               {texts.used}
+            </span>
+          ) : (
+            <span className="bg-brand-yellow/25 text-brand-purple-dark flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold">
+              {texts.readyBadge}
             </span>
           )}
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {/* 2026-10-13 — «Editar» un diseño listo: abre el Estudio con
+              ?designId=; el recover clona READY→DRAFT (el original queda
+              intacto) y al finalizar el clon queda listo de nuevo. Si el diseño
+              venía del carrito, la línea se reemplaza en sitio; desde aquí se
+              agrega como línea nueva al confirmar. */}
+          <Link
+            href={`/estudio/${design.productSlug}?designId=${design.id}`}
+            className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            <Pencil className="h-3.5 w-3.5" aria-hidden />
+            {texts.edit}
+          </Link>
           <button
             type="button"
             onClick={handleCopy}

@@ -8,6 +8,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCurrentCustomer } from "@/lib/auth";
+import { normalizePhoneWithDial } from "@/lib/colombia-validators";
+import { getZoneCityByCode } from "@/lib/lucams-zones";
 import { parseStructuredAddress } from "@/features/checkout/parse-address";
 import {
   buildAddressInput,
@@ -20,14 +22,19 @@ import {
 
 // Solo etiqueta + teléfono se validan acá; la dirección estructurada usa el mismo
 // parseStructuredAddress + AddressSchema que el checkout (fuente única).
+// El teléfono llega del PhoneInput como "+<indicativo> <nacional>" y se
+// normaliza igual que en el checkout: Colombia → 10 dígitos locales (3XXXXXXXXX).
 const LabelSchema = z.object({
   name: z.string().trim().min(1, "La etiqueta es obligatoria.").max(60, "Máximo 60 caracteres."),
   phone: z
     .string()
     .trim()
     .min(1, "El teléfono es obligatorio.")
-    .max(20)
-    .regex(/^[+\d\s()-]+$/, "Teléfono inválido."),
+    .max(30)
+    .refine((v) => normalizePhoneWithDial(v) !== null, {
+      message: "Teléfono inválido: en Colombia debe ser un móvil de 10 dígitos (300...).",
+    })
+    .transform((v) => normalizePhoneWithDial(v) ?? v),
 });
 
 export type AddressActionState = {
@@ -56,6 +63,23 @@ export async function saveAddressAction(
         ...(addr.ok ? {} : addr.fieldErrors),
       },
     };
+  }
+
+  // Localidad/zona OBLIGATORIA cuando la ciudad está en el catálogo de zonas
+  // (misma regla que saveDatosAction del checkout): sin ella la dirección
+  // guardada no prellena la Localidad al pagar.
+  if (!addr.data.localityId) {
+    const zoneCity = getZoneCityByCode(addr.data.cityCode);
+    if (zoneCity) {
+      return {
+        error: "Revisa los datos.",
+        fieldErrors: {
+          localityId: [
+            `Elige tu ${zoneCity.zoneLabel.toLowerCase()} — la necesitamos para tu dirección de entrega.`,
+          ],
+        },
+      };
+    }
   }
 
   // Mismo mapeo que usa "guardar al pagar" (fuente única en el servicio).

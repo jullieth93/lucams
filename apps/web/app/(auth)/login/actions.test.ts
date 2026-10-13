@@ -23,10 +23,22 @@ const recordSecurityEvent = vi.hoisted(() => vi.fn(async () => {}));
 const customerUpsert = vi.hoisted(() => vi.fn(async () => ({ id: "cust-1" })));
 const peekCartSession = vi.hoisted(() => vi.fn(async () => null as string | null));
 const mergeAnonCartIntoCustomer = vi.hoisted(() => vi.fn(async () => "sess-1"));
+// Cookie store capturado: el login SELLA la marca de actividad del cliente
+// (idle-timeout 30 días, lib/customer-activity.ts) al autenticarse.
+const cookieJar = vi.hoisted(() => new Map<string, string>());
 
 vi.mock("next/headers", () => ({
   headers: async () => new Headers({ "x-forwarded-for": "1.2.3.4" }),
-  cookies: async () => ({ getAll: () => [], get: () => undefined, set: () => {} }),
+  cookies: async () => ({
+    getAll: () => [...cookieJar.entries()].map(([name, value]) => ({ name, value })),
+    get: (name: string) => {
+      const value = cookieJar.get(name);
+      return value === undefined ? undefined : { name, value };
+    },
+    set: (name: string, value: string) => {
+      cookieJar.set(name, value);
+    },
+  }),
 }));
 vi.mock("next/navigation", () => ({
   redirect: (to: string) => {
@@ -64,7 +76,10 @@ function loginForm(overrides: Record<string, string> = {}): FormData {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  cookieJar.clear();
   delete process.env.VERCEL_ENV;
+  // La marca de actividad va firmada con HMAC (CSRF_SECRET) — fijo para tests.
+  vi.stubEnv("CSRF_SECRET", "test-secret-fijo-login");
   rateLimit.mockResolvedValue({ allowed: true, count: 1 });
   peekCartSession.mockResolvedValue(null);
 });
@@ -219,5 +234,26 @@ describe("loginAction — éxito", () => {
     // acá el mock de db solo expone upsert; un findFirst undefined haría
     // fallar el merge, que es best-effort por diseño: el login igual redirige.
     await expect(loginAction(null, loginForm())).rejects.toThrow("REDIRECT:/");
+  });
+
+  it("SELLA la marca de actividad del cliente (customer_last_activity firmada) al autenticarse", async () => {
+    okAuth();
+    await expect(loginAction(null, loginForm())).rejects.toThrow("REDIRECT:/");
+    const mark = cookieJar.get("customer_last_activity");
+    expect(mark).toMatch(/^\d+\.[A-Za-z0-9_-]+$/);
+    // La firma verifica con el lector del módulo (round-trip real).
+    const { readCustomerActivityMark } = await import("@/lib/customer-activity");
+    const ts = readCustomerActivityMark(mark ?? "");
+    expect(ts).not.toBeNull();
+    expect(Math.abs((ts ?? 0) - Date.now())).toBeLessThan(10_000);
+  });
+
+  it("login FALLIDO no sella la marca", async () => {
+    signInWithPassword.mockResolvedValue({
+      data: { user: null },
+      error: { code: "invalid_credentials", status: 400, message: "Invalid login credentials" },
+    });
+    await loginAction(null, loginForm());
+    expect(cookieJar.has("customer_last_activity")).toBe(false);
   });
 });

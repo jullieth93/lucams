@@ -50,6 +50,7 @@ import {
   letterSetUnitCount,
 } from "@/features/personalization/design-units";
 import { letterSetBorderNote } from "@/features/personalization/letter-set-border";
+import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
 import { applyVolumePricing, type VolumeTierInput } from "./volume-pricing";
 
 export type CartLineItem = {
@@ -61,7 +62,7 @@ export type CartLineItem = {
   variantName: string;
   /**
    * Desglose estructurado de la variante (Paquete F, 2026-10-02 —
-   * describeVariantAttributes): ["12 fotos", "6×8 cm", "Sin imán (adhesivo)"].
+   * describeVariantAttributes): ["12 fotos", "6×8 cm", "Sin imán"].
    * El variantName es texto libre y no siempre informa las dimensiones de
    * compra (el set de 12 tarjetas no decía si era CON IMÁN). [] si la variante
    * no declara attributes.
@@ -79,8 +80,17 @@ export type CartLineItem = {
   stock: number;
   imageUrl: string | null;
   designId: string | null;
-  /** Si designId está set, este es el previewUrl del Design (1080×1080 PNG público). */
+  /** Si designId está set, este es el previewUrl del Design (1080×1080 PNG público).
+   *  2026-10-13 — es la versión WATERMARK cuando existe (preview-wm.webp por
+   *  convención de paths; fallback al limpio para diseños sin artefactos). */
   designPreviewUrl: string | null;
+  /**
+   * 2026-10-13 — páginas por unidad del preview (WATERMARK, wm/pages/NN.webp)
+   * para el "Ver" paginado del carrito/pedidos; null = imagen única de siempre.
+   */
+  designPreviewPages: string[] | null;
+  /** true cuando la imagen exhibida de la línea lleva marca de agua (aviso al cliente). */
+  designWatermarked: boolean;
   /**
    * Unidades físicas que contiene el diseño (modelo multi-unidad 2026-09-09,
    * `designDisplayUnits`). El carrito las muestra como texto informativo en vez
@@ -248,6 +258,11 @@ const cartItemsInclude = {
         select: {
           id: true,
           previewUrl: true,
+          // 2026-10-13 — sellos de los artefactos watermark del preview
+          // (preview-wm.webp / thumb.webp / wm/pages/NN.webp por convención de
+          // paths): el carrito exhibe la versión CON marca de agua cuando existe.
+          previewWatermarkedAt: true,
+          previewPagesCount: true,
           status: true,
           // productId + canvasData + metadata: identidad de contenido del diseño
           // (designIdentity) — los merges agrupan líneas con diseños distintos pero
@@ -374,31 +389,40 @@ function toDetail(cart: RawCart): CartDetail {
     // la lectura. El admin que archive un producto efectivamente lo
     // saca de carritos en vuelo, lo cual es correcto.
     .filter((i) => i.variant.product.isActive && i.variant.product.deletedAt === null)
-    .map((i) => ({
-      itemId: i.id,
-      productId: i.variant.product.id,
-      productSlug: i.variant.product.slug,
-      productName: i.variant.product.name,
-      variantId: i.variantId,
-      variantName: i.variant.name,
-      variantBreakdown: describeVariantAttributes(parseVariantAttributes(i.variant.attributes)),
-      isPersonalizable: i.variant.product.isPersonalizable,
-      qty: i.qty,
-      unitPrice: i.unitPrice,
-      lineTotal: i.qty * i.unitPrice,
-      stock: i.variant.stock,
-      // Si CartItem tiene designId vinculado, mostramos el preview del Design
-      // en vez de la imagen genérica del producto. Mejora el "WYSIWYG" del cart.
-      // Paquete F (2026-10-02) — sin diseño, la foto de LA VARIANTE manda sobre
-      // la genérica del producto (ProductVariant.images, "vacío = hereda
-      // Product.images"): el separador 2×6 mostraba la portada del 4×4.2.
-      imageUrl: i.design?.previewUrl ?? i.variant.images[0] ?? i.variant.product.images[0] ?? null,
-      designId: i.designId,
-      designPreviewUrl: i.design?.previewUrl ?? null,
-      designUnits: designDisplayUnits(i.design),
-      pieceSummary: describeLine(i),
-      borderNote: letterSetBorderNote(i.design?.metadata),
-    }));
+    .map((i) => {
+      // 2026-10-13 — exhibición con marca de agua: thumb representativa para la
+      // miniatura de la línea (el montaje completo de un set se veía como
+      // "punticos"), preview watermark para el "Ver" y las cotizaciones que lo
+      // snapshotan. Admin/producción siguen leyendo el preview LIMPIO.
+      const designDisp = i.design ? designPreviewDisplay(i.design) : null;
+      return {
+        itemId: i.id,
+        productId: i.variant.product.id,
+        productSlug: i.variant.product.slug,
+        productName: i.variant.product.name,
+        variantId: i.variantId,
+        variantName: i.variant.name,
+        variantBreakdown: describeVariantAttributes(parseVariantAttributes(i.variant.attributes)),
+        isPersonalizable: i.variant.product.isPersonalizable,
+        qty: i.qty,
+        unitPrice: i.unitPrice,
+        lineTotal: i.qty * i.unitPrice,
+        stock: i.variant.stock,
+        // Si CartItem tiene designId vinculado, mostramos el preview del Design
+        // en vez de la imagen genérica del producto. Mejora el "WYSIWYG" del cart.
+        // Paquete F (2026-10-02) — sin diseño, la foto de LA VARIANTE manda sobre
+        // la genérica del producto (ProductVariant.images, "vacío = hereda
+        // Product.images"): el separador 2×6 mostraba la portada del 4×4.2.
+        imageUrl: designDisp?.thumbUrl ?? i.variant.images[0] ?? i.variant.product.images[0] ?? null,
+        designId: i.designId,
+        designPreviewUrl: designDisp?.displayUrl ?? null,
+        designPreviewPages: designDisp?.pageUrls ?? null,
+        designWatermarked: designDisp?.watermarked ?? false,
+        designUnits: designDisplayUnits(i.design),
+        pieceSummary: describeLine(i),
+        borderNote: letterSetBorderNote(i.design?.metadata),
+      };
+    });
   return {
     cartId: cart.id,
     sessionId: cart.sessionId,

@@ -12,10 +12,11 @@
 
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { SITE_NAME } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: {
-    default: "Panel admin · Lucams_shop",
+    default: `Panel admin · ${SITE_NAME}`,
     template: "%s · Admin Lucams",
   },
   robots: { index: false, follow: false },

@@ -16,6 +16,7 @@ import { WebVitalsReporter } from "@/components/web-vitals";
 import { CookiesBanner } from "@/components/cookies-banner";
 import { RouteToasts } from "@/components/route-toasts";
 import { getCanonicalSiteUrl } from "@/lib/origin";
+import { SITE_NAME, SITE_TITLE } from "@/lib/site";
 import { isCatalogMode } from "@/lib/store-mode";
 import { isCmsEditMode } from "@/lib/cms-edit-mode";
 import { getSiteSetting } from "@/lib/cms";
@@ -63,12 +64,12 @@ export const metadata: Metadata = {
   // #28 — misma fuente que sitemap/robots/canonicals (getCanonicalSiteUrl); consolida la URL base.
   metadataBase: new URL(getCanonicalSiteUrl()),
   title: {
-    default: "Lucams_shop — Tus recuerdos en imán",
-    template: "%s · Lucams_shop",
+    default: SITE_TITLE,
+    template: `%s · ${SITE_NAME}`,
   },
   description: SITE_DESCRIPTION,
-  applicationName: "Lucams_shop",
-  authors: [{ name: "Lucams_shop" }],
+  applicationName: SITE_NAME,
+  authors: [{ name: SITE_NAME }],
   generator: "Next.js",
   referrer: "origin-when-cross-origin",
   formatDetection: {
@@ -82,15 +83,15 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     locale: "es_CO",
-    siteName: "Lucams_shop",
-    title: "Lucams_shop — Tus recuerdos en imán",
+    siteName: SITE_NAME,
+    title: SITE_TITLE,
     description:
       "Imanes magnéticos personalizados hechos en Colombia. Diseña el tuyo en vivo o elige entre nuestros packs kawaii.",
   },
   twitter: {
     // #26 — imagen vía app/twitter-image.tsx (convention). Sin `images` aquí para no duplicar.
     card: "summary_large_image",
-    title: "Lucams_shop — Tus recuerdos en imán",
+    title: SITE_TITLE,
     description: "Imanes magnéticos personalizados hechos en Colombia.",
   },
 };

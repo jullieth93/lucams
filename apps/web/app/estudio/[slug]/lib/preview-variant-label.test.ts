@@ -54,7 +54,7 @@ describe("studioPreviewVariantLabel", () => {
       mergedSchema: { photoSlots: 12, sizeCm: "7.5×10", magnet: false },
       omit: ["quantity", "photoSlots", "sizeCm"],
     });
-    expect(label).toBe("Sin imán (adhesivo)");
+    expect(label).toBe("Sin imán");
   });
 
   it("producto con idioma y estilo: muestra el desglose que antes se perdía", () => {
@@ -79,7 +79,7 @@ describe("studioPreviewVariantLabel", () => {
       live: { photoSlots: 12, magnet: false },
       omit: ["quantity", "photoSlots", "sizeCm"],
     });
-    expect(label).toBe("Sin imán (adhesivo)");
+    expect(label).toBe("Sin imán");
   });
 
   it("sin omitir nada replica el desglose de name/letterset (conteo + tamaño + imán)", () => {

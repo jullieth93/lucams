@@ -316,7 +316,10 @@ export function StudioAssetPickerModal({
               prev !== null
                 ? prev
                 : outcome.kind === "too-big"
-                  ? `No pudimos subir "${outcome.fileName}": es muy grande para el servidor. Prueba con una foto de menos de ~4 MB (o baja la resolución en tu cámara).`
+                  ? // Mismo fail-closed honesto del sidebar: el pipeline ya intentó
+                    // reducirla (piso 300 DPI); HEIC grande sin decode en el navegador
+                    // es el caso típico (ver upload-photo-pipeline.ts, decisión HEIC).
+                    `No pudimos subir "${outcome.fileName}": pesa demasiado y no pudimos reducirla en este dispositivo. Si es una foto HEIC de iPhone, conviértela a JPG (Ajustes → Cámara → Formatos → «Más compatible») o usa una foto más liviana.`
                   : outcome.kind === "server"
                     ? (outcome.serverMessage ?? texts.fotos.errorCalidadMinima)
                     : `No pudimos subir "${outcome.fileName}". Revisa tu conexión e inténtalo de nuevo.`,

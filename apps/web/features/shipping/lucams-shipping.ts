@@ -28,7 +28,7 @@ import { getLucamsShippingSettings } from "./settings";
 import type { ShippingSelectionInput } from "@/features/checkout/schemas";
 
 export const LUCAMS_CARRIER = "lucams";
-// Nombre de marca CORTO del envío propio (fix QA STG 2026-10: "Envío Lucam's"
+// Nombre de marca CORTO del envío propio (fix QA STG 2026-10: "Envío Lucams"
 // → "LUCAMS"). Es el nombre visible en TODOS los contextos derivados del slug
 // "lucams" (selector de envío, resumen de pago, /pedido, /mi-cuenta, admin y
 // emails vía carrierDisplayName) — las órdenes guardan el slug, no el nombre,

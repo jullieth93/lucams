@@ -19,6 +19,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getSettingValue } from "@/lib/cms";
 import { createOrderFromCart } from "@/features/orders/service";
+import { resolveWompiPaymentReference } from "@/features/orders/payment-reference";
 import { emailsEqual } from "@/features/orders/order-customer";
 import { processPaidOrder } from "@/features/orders/saga";
 import { assertStockAvailable } from "@/features/orders/stock";
@@ -29,6 +30,13 @@ import {
   OrderUnavailableItemsError,
 } from "@/features/orders/errors";
 import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/redemption";
+import {
+  LoyaltyRedemptionError,
+  computeEarnedPoints,
+  pointValueCents,
+  quoteRedemption,
+} from "@/features/loyalty/service";
+import { getLoyaltySettings } from "@/features/loyalty/settings";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { getShippingProvider } from "@/features/shipping/provider";
 import {
@@ -72,15 +80,17 @@ export class CheckoutError extends Error {
       | "PAYMENT_INIT_FAILED"
       | "STOCK_UNAVAILABLE"
       | "COUPON_INVALIDATED"
+      | "LOYALTY_INVALIDATED"
       | "CART_ITEMS_UNAVAILABLE"
       | "COD_NOT_ALLOWED"
-      | "ORDER_ALREADY_PAID",
+      | "ORDER_ALREADY_PAID"
+      | "PAYMENT_IN_FLIGHT",
     message?: string,
     /**
      * Destino de redirect customer-safe para códigos que NO muestran mensaje
-     * (hoy: ORDER_ALREADY_PAID → /checkout/gracias?id=<txId>, que verifica la
-     * transacción contra Wompi y sana la orden). Lo construye finalizeCheckout
-     * con datos server-side; las actions solo lo consumen.
+     * (hoy: ORDER_ALREADY_PAID y PAYMENT_IN_FLIGHT → /checkout/gracias?id=<txId>,
+     * que verifica la transacción contra Wompi y sana la orden). Lo construye
+     * finalizeCheckout con datos server-side; las actions solo lo consumen.
      */
     public redirectTo?: string,
   ) {
@@ -338,7 +348,7 @@ export async function quoteShipping(input: {
   });
   const variantById = new Map(variants.map((v) => [v.id, v]));
 
-  // Promesa "Envío Lucam's" = fabricación a mano + hora de corte (regla única
+  // Promesa "Envío Lucams" = fabricación a mano + hora de corte (regla única
   // en lib/delivery-estimate.ts): el despacho toma el MÁXIMO de productionDays
   // del carrito y la entrega es el mismo día del despacho. Se calcula UNA vez
   // acá (al ofrecer) — finalizeCheckout no recotiza: re-valida la selección
@@ -406,7 +416,7 @@ export async function quoteShipping(input: {
   }
 
   // Config operativa del envío (settings CmsField SETTING, /admin/envios):
-  // transportadoras deshabilitadas a filtrar + oferta del envío propio Lucam's
+  // transportadoras deshabilitadas a filtrar + oferta del envío propio Lucams
   // (solo Bogotá con localidad habilitada; null si no aplica).
   const address = ctx.state.address ?? null;
   const [disabledCarriers, lucamsOffer] = await Promise.all([
@@ -508,12 +518,12 @@ export async function finalizeCheckout(input: {
   // o volver al step 1, cambiar la dirección y saltar directo a /checkout/pago por URL.
   // Sin esto, la Order se crea con un flete obsoleto (casi siempre más barato) y
   // Aveonline nos cobra el flete real de la dirección/peso nuevo.
-  // OJO (2026-09-29): acá NO se recotiza la oferta Lucam's — se exige match
+  // OJO (2026-09-29): acá NO se recotiza la oferta Lucams — se exige match
   // exacto contra el set sellado al cotizar (donde se aplicó la regla
   // producción+cutoff de lib/delivery-estimate.ts con el maxProductionDays del
   // carrito). Si el carrito cambió, cartHash ya no matchea y se rechaza.
   // (Paquete G, 2026-10-02): además del match sellado, más abajo se re-valida
-  // que la ZONA Lucam's siga habilitada en las settings vigentes.
+  // que la ZONA Lucams siga habilitada en las settings vigentes.
   const sealedOffers = state.shippingOffers;
   if (
     !sealedOffers ||
@@ -528,7 +538,7 @@ export async function finalizeCheckout(input: {
     throw new CheckoutError("SHIPPING_SELECTION_INVALID", SHIPPING_SELECTION_INVALID_MSG);
   }
 
-  // Paquete G (2026-10-02) — re-validación del envío propio Lucam's contra las
+  // Paquete G (2026-10-02) — re-validación del envío propio Lucams contra las
   // settings VIGENTES. El sello HMAC garantiza que la oferta fue legítima AL
   // COTIZAR, pero el admin pudo deshabilitar la zona (o apagar el servicio)
   // entre la cotización y este click en "pagar": el offersToken sellado seguiría
@@ -593,6 +603,9 @@ export async function finalizeCheckout(input: {
       gift: state.gift ?? null,
       paymentMethod: state.paymentMethod,
       couponCode: state.couponCode, // F1 — se re-valida atómicamente en la tx
+      // Puntos Lucams — se re-tarifa y se reserva atómicamente en la tx (mismo
+      // criterio que el cupón); el descuento queda fijo en Order.total.
+      loyaltyPointsToRedeem: state.loyaltyPoints,
       notes: state.address.notes,
     });
   } catch (err) {
@@ -605,6 +618,19 @@ export async function finalizeCheckout(input: {
       logger.warn({ event: "checkout.finalize.coupon_invalidated", reason: err.reason });
       throw new CheckoutError(
         "COUPON_INVALIDATED",
+        `${err.message} Actualizamos el total de tu pedido; revísalo y confirma de nuevo.`,
+      );
+    }
+    // Puntos Lucams — la redención dejó de ser válida al crear la orden (programa
+    // apagado, mínimo/tope cambiado, o el balance se gastó en otra compra en
+    // paralelo). Mismo tratamiento que el cupón invalidado: limpiar los puntos
+    // del state para que la vista de pago muestre el total REAL y el cliente
+    // re-confirme — nunca cobrar en silencio un total distinto al exhibido.
+    if (err instanceof LoyaltyRedemptionError) {
+      await setCheckoutState({ loyaltyPoints: undefined });
+      logger.warn({ event: "checkout.finalize.loyalty_invalidated" });
+      throw new CheckoutError(
+        "LOYALTY_INVALIDATED",
         `${err.message} Actualizamos el total de tu pedido; revísalo y confirma de nuevo.`,
       );
     }
@@ -831,10 +857,54 @@ export async function finalizeCheckout(input: {
       data: { paymentMethod: "WOMPI" },
     });
   }
+  // Referencia única por intento (bug STG "La referencia ya ha sido usada"):
+  // Wompi consume la reference en el primer intento; si la orden reutilizada ya
+  // tuvo un intento fuera de la ventana de reintento (~3 min), se rota a
+  // `${number}-N`. La decisión verifica la tx previa contra Wompi para no
+  // duplicar un cobro en vuelo (ver features/orders/payment-reference.ts).
+  const referenceResolution = await resolveWompiPaymentReference(order.id);
+  if (referenceResolution.kind === "approved") {
+    // La tx previa quedó APPROVED y el webhook se perdió: NO generar otro
+    // cobro. /checkout/gracias?id= verifica la tx y corre la saga fallback.
+    logger.info({
+      event: "checkout.finalize.previous_tx_approved",
+      orderId: order.id,
+      orderNumber: order.number,
+      txId: referenceResolution.txId,
+    });
+    throw new CheckoutError(
+      "ORDER_ALREADY_PAID",
+      "Tu pago ya fue aprobado. Te llevamos a la confirmación de tu pedido.",
+      `/checkout/gracias?id=${encodeURIComponent(referenceResolution.txId)}`,
+    );
+  }
+  if (referenceResolution.kind === "in_flight") {
+    // PSE/transferencia aún PENDING en Wompi: un checkout nuevo sería un doble
+    // cobro potencial. La página de gracias muestra "estamos verificando".
+    logger.info({
+      event: "checkout.finalize.payment_in_flight",
+      orderId: order.id,
+      orderNumber: order.number,
+      txId: referenceResolution.txId,
+    });
+    throw new CheckoutError(
+      "PAYMENT_IN_FLIGHT",
+      "Ya tienes un pago en verificación con este pedido. Te llevamos a su estado actual.",
+      `/checkout/gracias?id=${encodeURIComponent(referenceResolution.txId)}`,
+    );
+  }
+  if (referenceResolution.kind !== "ready") {
+    // lookup_failed: la tx previa no pudo verificarse (API Wompi caída) o la
+    // orden dejó de ser payable en carrera. No se rota a ciegas (doble cobro).
+    throw new CheckoutError(
+      "PAYMENT_INIT_FAILED",
+      "No pudimos verificar tu intento de pago anterior. Espera unos minutos e inténtalo de nuevo.",
+    );
+  }
   try {
     const provider = getPaymentProvider();
     const result = await provider.createCheckout({
-      reference: order.number,
+      reference: referenceResolution.reference,
       amountInCents: order.total,
       currency: "COP",
       customerEmail: state.contact.email,
@@ -904,7 +974,7 @@ const SHIPPING_SELECTION_INVALID_MSG =
  * código SHIPPING_SELECTION_INVALID → la UI manda a /checkout/envio a re-cotizar.
  */
 const LUCAMS_ZONE_DISABLED_MSG =
-  "El envío Lucam's ya no está disponible para tu localidad. Elige de nuevo tu transportadora.";
+  "El envío Lucams ya no está disponible para tu localidad. Elige de nuevo tu transportadora.";
 
 /**
  * Guarda la selección de envío del step 2. Anti-manipulación de flete
@@ -996,4 +1066,136 @@ export async function getAppliedCoupon(): Promise<{
 
 export async function finishCheckoutSession() {
   await clearCheckoutState();
+}
+
+// ─────────────────────── Puntos Lucams (redención) ───────────────────────
+
+/**
+ * Subtotal de productos menos el descuento del cupón vigente (centavos COP).
+ * ORDEN DE APLICACIÓN DE DESCUENTOS (decisión documentada): primero el cupón,
+ * luego los puntos sobre el restante — el tope % de redención y el descuento
+ * en pesos se miden sobre ESTA base; el envío nunca se cubre con puntos.
+ */
+async function merchandiseAfterCouponCents(ctx: CheckoutContext): Promise<number> {
+  let couponDiscount = 0;
+  if (ctx.state.couponCode) {
+    const priced = await priceCouponForCart({
+      code: ctx.state.couponCode,
+      cartId: ctx.cart.cartId,
+      shippingCost: ctx.state.shippingSelection?.fleteCop ?? 0,
+      customerId: ctx.customerId,
+      email: ctx.state.contact?.email ?? null,
+    });
+    if (priced.ok) couponDiscount = priced.discount;
+  }
+  return Math.max(0, ctx.cart.subtotal - couponDiscount);
+}
+
+export type CheckoutLoyaltyInfo = {
+  /** Config vigente (para el copy del bloque: tasa, mínimo, tope). */
+  balance: number;
+  minPoints: number;
+  maxPercent: number;
+  redeemPointsPer1000: number;
+  earnCopPerPoint: number;
+  /** Centavos COP de descuento por punto (equivalencia visible al cliente). */
+  pointValueCents: number;
+  /** Redención aplicada y vigente (state + re-tarifa contra el carrito actual). */
+  applied: { points: number; discountCents: number } | null;
+  /** La redención guardada dejó de ser válida (el resumen la muestra como aviso). */
+  error?: string;
+  /** Puntos que el cliente ganará con esta compra si paga el total estimado. */
+  earnPreviewPoints: number;
+};
+
+/**
+ * Estado de los Puntos Lucams para el paso de pago: null si el programa está
+ * apagado o el checkout es de invitado (sin cuenta no hay balance que redimir).
+ * Re-tarifa la redención guardada contra el carrito/balance ACTUALES (igual que
+ * getAppliedCoupon): si dejó de valer, devuelve `error` y el resumen no
+ * descuenta.
+ */
+export async function getCheckoutLoyalty(): Promise<CheckoutLoyaltyInfo | null> {
+  const settings = await getLoyaltySettings();
+  if (!settings.enabled) return null;
+  const ctx = await loadCheckoutContext();
+  if (!ctx.customerId) return null;
+  const customer = await prisma.customer.findFirst({
+    where: { id: ctx.customerId, deletedAt: null },
+    select: { loyaltyPoints: true },
+  });
+  const balance = customer?.loyaltyPoints ?? 0;
+  const merchandise = await merchandiseAfterCouponCents(ctx);
+
+  let applied: CheckoutLoyaltyInfo["applied"] = null;
+  let error: string | undefined;
+  const requested = ctx.state.loyaltyPoints;
+  if (requested && requested > 0) {
+    const quote = quoteRedemption({
+      requestedPoints: requested,
+      balance,
+      merchandiseAfterCouponCents: merchandise,
+      settings,
+    });
+    if (quote.ok) applied = { points: quote.points, discountCents: quote.discountCents };
+    else error = quote.message;
+  }
+
+  const shipping = ctx.state.shippingSelection?.fleteCop ?? 0;
+  const estimatedTotal = merchandise + shipping - (applied?.discountCents ?? 0);
+  return {
+    balance,
+    minPoints: settings.redeemMinPoints,
+    maxPercent: settings.redeemMaxPercent,
+    redeemPointsPer1000: settings.redeemPointsPer1000,
+    earnCopPerPoint: settings.earnCopPerPoint,
+    pointValueCents: pointValueCents(settings),
+    applied,
+    error,
+    earnPreviewPoints: computeEarnedPoints(estimatedTotal, settings),
+  };
+}
+
+/**
+ * Guarda en el state los puntos a redimir (solo clientes con sesión y programa
+ * activo). El descuento no se persiste: se re-tarifa al vuelo y se reserva
+ * atómicamente en la tx al crear la orden — mismo criterio que applyCoupon.
+ */
+export async function applyLoyaltyPoints(
+  rawPoints: number,
+): Promise<
+  | { ok: true; points: number; discountCents: number; cappedBy: "balance" | "cap" | null }
+  | { ok: false; message: string }
+> {
+  const settings = await getLoyaltySettings();
+  if (!settings.enabled) {
+    return { ok: false, message: "El programa de puntos está en pausa en este momento." };
+  }
+  const ctx = await loadCheckoutContext();
+  if (!ctx.customerId) {
+    return { ok: false, message: "Inicia sesión para redimir tus Puntos Lucams." };
+  }
+  const customer = await prisma.customer.findFirst({
+    where: { id: ctx.customerId, deletedAt: null },
+    select: { loyaltyPoints: true },
+  });
+  const quote = quoteRedemption({
+    requestedPoints: rawPoints,
+    balance: customer?.loyaltyPoints ?? 0,
+    merchandiseAfterCouponCents: await merchandiseAfterCouponCents(ctx),
+    settings,
+  });
+  if (!quote.ok) return { ok: false, message: quote.message };
+  await setCheckoutState({ loyaltyPoints: quote.points });
+  return {
+    ok: true,
+    points: quote.points,
+    discountCents: quote.discountCents,
+    cappedBy: quote.cappedBy,
+  };
+}
+
+/** Quita la redención de puntos del state. */
+export async function removeLoyaltyPoints(): Promise<void> {
+  await setCheckoutState({ loyaltyPoints: undefined });
 }

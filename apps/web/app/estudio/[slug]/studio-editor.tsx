@@ -32,6 +32,7 @@ import {
   finalizeDesignAction,
   reopenDesignForEditAction,
   saveCanvasAction,
+  uploadDesignPreviewPagesAction,
 } from "@/features/personalization/actions";
 import { parsePhotoProductConfig, CALENDAR_FONT_OPTIONS } from "@/features/personalization/schemas";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
@@ -86,7 +87,7 @@ import {
 import { faceSlotLabels, previewFacePairOfUnit, deployedSizeCm } from "./lib/faces";
 import { previewUnitRanges, type PreviewUnitRange } from "./lib/preview-units";
 import {
-  readStudioDraftId,
+  readStudioDraftMarker,
   writeStudioDraftId,
   clearStudioDraftId,
   shouldOfferDraftResume,
@@ -96,9 +97,11 @@ import {
   shouldUseCanvasSnapshot,
 } from "./lib/draft-marker";
 import { isBookmarkGalleryTag, resolveGalleryTag } from "./lib/product-kind";
+import { remapCanvasAssetUrls } from "./lib/remap-canvas-assets";
 import {
   canvasToPreviewDataUrl,
   fitPreviewToBudget,
+  fitDraftThumbnail,
   previewFileExtension,
   reencodePreviewDataUrl,
 } from "./lib/preview-encode";
@@ -123,8 +126,9 @@ const BookView3D = nextDynamic(() => import("./book-view-3d"), {
   loading: () => <Book3DLoadingFallback />,
 });
 import { createStudioStore } from "./lib/store";
+import { waitForSlotPhotosReady } from "./lib/slot-photo-readiness";
 import { snapshotSlotForPreview, yieldToMain } from "./lib/slot-snapshot-cache";
-import { resolveSlotNoun, type StudioSlotProductKind } from "./lib/slot-noun";
+import { resolveSlotNoun, type SlotNoun, type StudioSlotProductKind } from "./lib/slot-noun";
 import { collectQualityWarnings, qualityWarningsKey } from "./lib/quality-warnings";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
 import { ensureCanvasV2 } from "./lib/canvas-migrate";
@@ -133,6 +137,11 @@ import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, type StudioTexts } from "./studio-texts";
 
 const AUTO_SAVE_DELAY_MS = 2000;
+// 2026-10-13 — miniatura del DRAFT para "Mis diseños": se compone y sube como
+// MÁXIMO una por minuto dentro del auto-save (no en cada guardado de 2 s — el
+// montaje cuesta CPU y el thumbnail cambia poco entre saves vecinos). El path
+// server-side es fijo por diseño (upsert), así que no se acumulan archivos.
+const DRAFT_THUMB_INTERVAL_MS = 60_000;
 
 /**
  * Ola 26 (owner 2026-09-09) — mensaje del guard de finalización de la Polaroid
@@ -195,6 +204,13 @@ export type StudioEditorProps = {
    * re-valida en createDraftDesign; null → arranca con la primera, como siempre.
    */
   initialTemplateId?: string | null;
+  /**
+   * 2026-10-12 — recover (?designId=): plantilla PERSISTIDA del diseño
+   * (Design.templateId — la copia cloneDesignForEdit y la refleja cada
+   * auto-save). Manda sobre el match best-effort por dimensiones
+   * (findTemplateIdForCanvas); solo se acepta si sigue en la lista visible.
+   */
+  initialDesignTemplateId?: string | null;
   initialDesignId: string | null;
   initialDesignCanvas: CanvasData | null;
   initialDesignAssets: StudioAsset[];
@@ -253,6 +269,9 @@ export type StudioEditorProps = {
 
 /** Variante elegible de un pack: N de fotos por imán + precio (centavos, ya resuelto). */
 export type PhotoPackVariantOption = {
+  /** Id de la variante del catálogo (2026-10-12): se persiste en
+   *  Design.metadata.variantId para que el recover reabra con ELLA. */
+  id: string;
   photoSlots: number;
   /** "¿Con imán?" (2026-09-08): el par Con/Sin imán comparte photoSlots — el precio
    *  vivo se lee de la opción que coincide con el magnet del diseño. */
@@ -260,10 +279,29 @@ export type PhotoPackVariantOption = {
   price: number;
 };
 
+/**
+ * 2026-10-12 — variante EFECTIVA del pack para el N de fotos + magnet vigentes
+ * (mismo criterio de match que el precio vivo: magnet exacto primero, fallback
+ * al primero con ese N). Es la que se persiste en Design.metadata.variantId
+ * para el recover — el COBRO sigue derivándose del canvasData en el servidor.
+ */
+function packVariantIdFor(
+  packVariants: readonly PhotoPackVariantOption[],
+  photoSlots: number | undefined,
+  magnet: boolean | undefined,
+): string | undefined {
+  if (photoSlots == null) return undefined;
+  return (
+    packVariants.find((v) => v.photoSlots === photoSlots && v.magnet === magnet)?.id ??
+    packVariants.find((v) => v.photoSlots === photoSlots)?.id
+  );
+}
+
 export function StudioEditor({
   product,
   templates,
   initialTemplateId,
+  initialDesignTemplateId,
   initialDesignId,
   initialDesignCanvas,
   initialDesignAssets,
@@ -318,22 +356,30 @@ export function StudioEditor({
   // ?designId= (un recover explícito manda sobre el marcador), se ofrece el
   // interstitial ANTES de bootear. El editor carga ssr:false → window existe
   // en el primer render (initializer lazy, una sola vez).
-  const [resumeOffer, setResumeOffer] = useState<string | null>(() => {
-    const savedDesignId = readStudioDraftId(product.slug);
-    const urlHasDesignId =
-      typeof window !== "undefined" && new URLSearchParams(window.location.search).has("designId");
-    return shouldOfferDraftResume({
-      savedDesignId,
-      urlHasDesignId,
-      hasInitialDesign: !!initialDesignId,
-    })
-      ? savedDesignId
-      : null;
-  });
+  // Endurecido 2026-10-13: readStudioDraftMarker solo devuelve marcadores con
+  // PROGRESO REAL (se escriben tras el primer auto-save exitoso o al recuperar
+  // un draft con avance — nunca al montar un draft vacío), vigentes (≤30 d) y
+  // bien formados; los huérfanos/legacy se auto-limpian al leer. El marcador
+  // trae savedAt para que el interstitial diga QUÉ se va a retomar.
+  const [resumeOffer, setResumeOffer] = useState<{ designId: string; savedAt: number } | null>(
+    () => {
+      const marker = readStudioDraftMarker(product.slug);
+      const urlHasDesignId =
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).has("designId");
+      return shouldOfferDraftResume({
+        savedDesignId: marker?.designId ?? null,
+        urlHasDesignId,
+        hasInitialDesign: !!initialDesignId,
+      })
+        ? marker
+        : null;
+    },
+  );
   // Item 2.4 — continuar: navegar al recover flow con resume=1 (el server
   // valida ownership y exige DRAFT — sin clonar READY como el "Editar" del
-  // carrito; si ya no es válido, arranca draft nuevo y el marcador se
-  // sobrescribe en silencio al bootear). Navegación DURA (no router.replace):
+  // carrito; si ya no es válido, arranca draft nuevo y el boot LIMPIA el
+  // marcador huérfano). Navegación DURA (no router.replace):
   // una soft navigation conserva el estado del client component y el
   // `resumeOffer` vigente bloquearía el boot del diseño recuperado; con la
   // recarga completa el mount nuevo lee ?designId= de la URL y bootea limpio.
@@ -341,14 +387,14 @@ export function StudioEditor({
     if (!resumeOffer) return;
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- navegación DURA a propósito (ver nota arriba): el remount completo es lo que garantiza que el boot lea el recover de la URL sin estado cliente viejo.
     window.location.assign(
-      `/estudio/${product.slug}?designId=${encodeURIComponent(resumeOffer)}&resume=1`,
+      `/estudio/${product.slug}?designId=${encodeURIComponent(resumeOffer.designId)}&resume=1`,
     );
   }, [product.slug, resumeOffer]);
   // Item 2.4 — descartar: limpiar el marcador y bootear un draft nuevo.
   const handleDiscardDraft = useCallback(() => {
     clearStudioDraftId(product.slug);
     // ADR-133 — también el snapshot de recuperación del draft descartado.
-    if (resumeOffer) clearStudioCanvasSnapshot(resumeOffer);
+    if (resumeOffer) clearStudioCanvasSnapshot(resumeOffer.designId);
     setResumeOffer(null);
   }, [product.slug, resumeOffer]);
   // PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito: al click «Vista
@@ -370,12 +416,22 @@ export function StudioEditor({
   const [previewPages, setPreviewPages] = useState<
     { dataUrl: string | null; label: string }[] | null
   >(null);
+  // Señal de REGENERACIÓN del set de páginas: se incrementa SOLO al armar una
+  // vista previa nueva (click en «Vista previa»), no cuando una página perezosa
+  // se cachea — el pager la usa para NO resetear la navegación en cada cacheo
+  // (bug: pedir la página 2 devolvía a la 1 por el array nuevo).
+  const [previewPagesGeneration, setPreviewPagesGeneration] = useState(0);
   // Generador perezoso de la página de una unidad (lo siembra handleFinalize al
   // abrir la modal; null = preview de una sola unidad, sin pager) + dedupe de
   // generaciones en vuelo (doble swipe rápido a la misma página pendiente).
   const previewPageLoaderRef = useRef<((unitIndex: number) => Promise<string>) | null>(null);
   const previewPageInflightRef = useRef<Set<number>>(new Set());
   const [previewError, setPreviewError] = useState<string | null>(null);
+  // ADR-131 — progreso real del RenderJob durante el confirmar (polling de
+  // /api/designs/<id>/render-status mientras finalize + add-to-cart completan).
+  const [renderProgress, setRenderProgress] = useState<{ done: number; total: number } | null>(
+    null,
+  );
   // Lucy 2026-09-09 — feedback de PROCESAMIENTO del botón «Vista previa»:
   // componer el preview (snapshots Konva o páginas del calendario) tarda un
   // tramo perceptible y antes el click no mostraba NADA. Mientras corre, el
@@ -688,6 +744,21 @@ export function StudioEditor({
         : packUnitsPerGroup
           ? texts.unidades.nombrePack
           : texts.unidades.nombrePieza;
+  // 2026-10-12 — el MISMO sustantivo como par {one, many, feminine} en
+  // minúsculas para la línea de la Vista Previa ("1 separador", "3 separadores
+  // — cada uno con su propio diseño"; antes "N unidades" para todo). El
+  // singular sale del texto CMS del pager (va a mitad de frase); el plural y
+  // el género son explícitos por rama (set→sets y pack→packs llevan +"s", no
+  // la regla general +"es" de separador→separadores).
+  const unitNounPair: SlotNoun = isCalendarMonth
+    ? { one: texts.unidades.nombreSet.toLowerCase(), many: "sets" }
+    : isBookmark
+      ? { one: texts.unidades.nombreSeparador.toLowerCase(), many: "separadores" }
+      : liveIsStrip
+        ? { one: texts.unidades.nombreTira.toLowerCase(), many: "tiras", feminine: true }
+        : packUnitsPerGroup
+          ? { one: texts.unidades.nombrePack.toLowerCase(), many: "packs" }
+          : { one: texts.unidades.nombrePieza.toLowerCase(), many: "piezas", feminine: true };
   const isTouch = useIsTouch(); // #9 — copy del gesto de zoom del libro 3D según táctil vs mouse.
   // FOTO4 — la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo) es la vista por
   // defecto del fotoimán: se muestra cuando NO es calendario ni separador (el `else` del botón).
@@ -771,6 +842,14 @@ export function StudioEditor({
         if (designId && initialDesignCanvas) {
           // Design existente: asegurar V2 (migrar V1 si hace falta)
           canvasData = ensureCanvasV2(initialDesignCanvas, initialSlotCount);
+          // 2026-10-12 — la plantilla PERSISTIDA del diseño manda sobre el match
+          // por dimensiones (findTemplateIdForCanvas): es la que el cliente eligió
+          // de verdad (auto-save la refleja en Design.templateId y el clon la
+          // hereda). Solo se acepta si sigue en la lista visible del producto.
+          templateId =
+            initialDesignTemplateId && templates.some((t) => t.id === initialDesignTemplateId)
+              ? initialDesignTemplateId
+              : null;
           // Multi-unidad (2026-09-09): normalizar diseños legacy (sin unitSlots)
           // al modelo del producto — la unidad se deriva de la plantilla del propio
           // diseño (tira, calendario, separador). unitSlots = 1 (polaroid) no se
@@ -804,11 +883,19 @@ export function StudioEditor({
           const result = await createDraftDesignAction({
             productId: product.id,
             ...(bootTemplate ? { templateId: bootTemplate.id } : {}),
-            // Variante de la PDP → metadata.variantId del draft: el recover
-            // (?designId=, «Editar» desde el carrito) reabre el Estudio con la
-            // variante correcta. Packs: NO se manda — la variante exacta se deriva
-            // del canvasData (la ruta del dinero no confía en el cliente).
-            ...(variantId && !isPhotoPack ? { variantId } : {}),
+            // Variante → metadata.variantId del draft: el recover (?designId=,
+            // «Editar» desde el carrito) reabre el Estudio con la variante
+            // correcta. En packs se manda la EFECTIVA (match del catálogo por el
+            // N de fotos + magnet vigentes — 2026-10-12; antes los packs no
+            // persistían variante y el recover caía a la primera del producto).
+            // El COBRO no la lee: la variante exacta se deriva del canvasData
+            // en el servidor (la ruta del dinero no confía en el cliente).
+            ...(() => {
+              const effective = isPhotoPack
+                ? packVariantIdFor(packVariants, photoSlots, initialMagnet)
+                : variantId;
+              return effective ? { variantId: effective } : {};
+            })(),
           });
           if (!result.ok) {
             throw new Error(result.message);
@@ -951,6 +1038,19 @@ export function StudioEditor({
           canvasData = { ...canvasData, borderColor: initialBorderColor };
         }
 
+        // Recover (?designId= — «Editar» desde carrito/Mis diseños) — las signed
+        // URLs persistidas en los slots caducan a 1 h (lib/storage): se re-mapean
+        // por assetId con las FRESCAS del boot (initialDesignAssets). Sin esto el
+        // render usaba la URL vencida del slot → placeholder lila eterno. Un asset
+        // que ya no existe en el servidor queda como slot vacío (re-subida) y se
+        // avisa con un toast tras hidratar.
+        let missingBootAssets: string[] = [];
+        if (initialDesignId) {
+          const remapped = remapCanvasAssetUrls(canvasData, initialDesignAssets);
+          canvasData = remapped.canvasData;
+          missingBootAssets = remapped.missingAssetIds;
+        }
+
         store.getState().init({
           designId: designId!,
           productSlug: product.slug,
@@ -962,15 +1062,38 @@ export function StudioEditor({
           startDirty: recoveredFromLocalSnapshot,
         });
 
-        // Item 2.4 — marcador del draft activo por producto: al recargar sin
-        // ?designId= se ofrece "Continuar donde quedaste" con este id. También
-        // cubre la "limpieza en silencio": si el recover falló (draft purgado,
-        // de otro owner o ya no DRAFT), el draft NUEVO pisa el marcador viejo.
-        writeStudioDraftId(product.slug, designId!);
+        // Item 2.4 (endurecido 2026-10-13) — el marcador del retomador solo se
+        // escribe con PROGRESO REAL:
+        //  · Recover OK (?designId= → draft existente, con avance guardado por
+        //    definición): se escribe acá para que una recarga posterior sin
+        //    ?designId= lo ofrezca.
+        //  · Draft NUEVO: NO se escribe en el boot — un canvas vacío no es
+        //    "donde quedaste" (ese era el bug: el retomador salía siempre).
+        //    Lo escribe el primer auto-save exitoso (ver runSave).
+        //  · Recover FALLIDO con resume=1 (el server arrancó un draft nuevo
+        //    porque el diseño del marcador fue purgado, es de otro owner o ya
+        //    no es DRAFT): el marcador quedó huérfano → se limpia, no se pisa
+        //    con el id del draft vacío (eso rearmaba la mentira).
+        if (initialDesignId) {
+          writeStudioDraftId(product.slug, designId!);
+        } else if (typeof window !== "undefined") {
+          const bootParams = new URLSearchParams(window.location.search);
+          if (bootParams.has("designId") && bootParams.get("resume") === "1") {
+            clearStudioDraftId(product.slug);
+          }
+        }
 
         // Hidratar assets pre-existentes (Design recuperado)
         for (const asset of initialDesignAssets) {
           store.getState().addAsset(asset);
+        }
+
+        // Recover — aviso VISIBLE de fotos que ya no existen en el servidor
+        // (antes fallaba en silencio: placeholder lila eterno en sus slots).
+        if (missingBootAssets.length > 0) {
+          toast.warning(
+            fillStudioText(texts.errores.assetsFaltantes, { n: missingBootAssets.length }),
+          );
         }
 
         setBooting(false);
@@ -991,6 +1114,7 @@ export function StudioEditor({
     initialDesignCanvas,
     initialDesignAssets,
     initialTemplateId,
+    initialDesignTemplateId,
     product.id,
     product.slug,
     photoSlots,
@@ -999,6 +1123,7 @@ export function StudioEditor({
     bootUnitCount,
     isPhotoPack,
     variantId,
+    packVariants,
     packSizeCm,
     initialMagnet,
     templates,
@@ -1018,22 +1143,60 @@ export function StudioEditor({
     // recuperación, para que el boot del recover pueda comparar qué copia es
     // más nueva.
     let lastChangeRev = 0;
+    // 2026-10-13 — reloj del throttle de la miniatura del borrador (arranca en
+    // 0: el PRIMER save con fotos ya la genera — un draft nuevo con foto puesta
+    // tiene miniatura desde el primer auto-save).
+    let lastDraftThumbAt = 0;
 
     const runSave = async () => {
       const current = store.getState();
       if (!current.designId || !current.canvasData) return;
       current.setAutoSaveStatus({ kind: "saving" });
       const savedRev = lastChangeRev;
+      // 2026-10-13 — miniatura del DRAFT para "Mis diseños": throttled (1/min) y
+      // solo con al menos una foto puesta (un lienzo vacío no ilustra nada).
+      // Best-effort: si el montaje o la compresión fallan, el save sale SIN
+      // thumbnail y se reintenta en un guardado posterior.
+      let draftPreviewDataUrl: string | undefined;
+      if (
+        Date.now() - lastDraftThumbAt >= DRAFT_THUMB_INTERVAL_MS &&
+        current.canvasData.slots?.some((s) => s.assetUrl)
+      ) {
+        try {
+          const montage = await buildCompositedPreview(
+            current.canvasData,
+            slotStagesRef.current,
+            productConfig.shape,
+          );
+          draftPreviewDataUrl = await fitDraftThumbnail(montage);
+          lastDraftThumbAt = Date.now();
+        } catch {
+          // best-effort — el canvas se guarda igual
+        }
+      }
       const result = await saveCanvasAction({
         designId: current.designId,
         canvasData: savedRev ? { ...current.canvasData, clientRev: savedRev } : current.canvasData,
         // N-08 — la plantilla aplicada en el sidebar viaja con el auto-save:
         // Design.templateId la refleja (el service la valida server-side).
         templateId: current.selectedTemplateId ?? undefined,
+        // 2026-10-12 — packs: la variante EFECTIVA (match del catálogo por el N
+        // de fotos + magnet del canvas) viaja con el auto-save → metadata.variantId
+        // para que el recover reabra con ELLA (el cobro la deriva del canvasData).
+        variantId: isPhotoPack
+          ? packVariantIdFor(packVariants, current.canvasData.photoSlots, current.canvasData.magnet)
+          : undefined,
+        // 2026-10-13 — miniatura del borrador (cuando toca por el throttle).
+        draftPreviewDataUrl,
       });
       if (result.ok) {
         current.setAutoSaveStatus({ kind: "saved", at: Date.now() });
         current.markClean();
+        // Item 2.4 (2026-10-13) — el marcador de "Continuar donde quedaste" se
+        // escribe ACÁ (primer auto-save exitoso con cambios reales = progreso
+        // recuperable server-side), no al montar el editor con un draft vacío.
+        // También refresca savedAt en cada save (vigencia del marcador).
+        writeStudioDraftId(product.slug, current.designId);
         // ADR-133 — el server ya persistió esta revisión: el snapshot local es
         // redundante SOLO si no capturó un cambio más nuevo mientras el save
         // estaba en vuelo (por eso se compara rev, no se borra a ciegas).
@@ -1106,6 +1269,11 @@ export function StudioEditor({
           ? { ...current.canvasData, clientRev: lastChangeRev }
           : current.canvasData,
         templateId: current.selectedTemplateId ?? undefined,
+        // 2026-10-12 — packs: misma variante efectiva que el auto-save (el beacon
+        // comparte contrato con saveCanvasAction → SaveCanvasSchema).
+        variantId: isPhotoPack
+          ? packVariantIdFor(packVariants, current.canvasData.photoSlots, current.canvasData.magnet)
+          : undefined,
       });
       const blob = new Blob([payload], { type: "application/json" });
       if (
@@ -1133,7 +1301,7 @@ export function StudioEditor({
       window.removeEventListener("pagehide", flushOnHide);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [store]);
+  }, [store, isPhotoPack, packVariants, product.slug, productConfig.shape]);
 
   // ──────────── Click slot → picker si está vacío, editor unificado si está lleno ────────────
   const handleSlotClick = useCallback(
@@ -1314,6 +1482,7 @@ export function StudioEditor({
               cellW: 240,
               maxCols: 3,
             });
+          setPreviewPagesGeneration((g) => g + 1);
           setPreviewPages(unitRanges.map((_, u) => ({ dataUrl: null, label: pageLabel(u) })));
         }
         setPreviewModalOpen(true);
@@ -1379,6 +1548,7 @@ export function StudioEditor({
             : buildCompositedPreview(canvasSnapshot, slotStagesRef.current, productConfig.shape, {
                 unitRange: unitRanges[u]!,
               });
+        setPreviewPagesGeneration((g) => g + 1);
         setPreviewPages(unitRanges.map((_, u) => ({ dataUrl: null, label: pageLabel(u) })));
       }
       setPreviewModalOpen(true);
@@ -1618,6 +1788,9 @@ export function StudioEditor({
       if (!state.designId || !state.canvasData || state.isFinalizing || !previewDataUrl) return;
       state.setIsFinalizing(true);
       setPreviewError(null);
+      // ADR-131 — timer del polling de progreso del RenderJob; se asigna dentro del try y se
+      // frena en el finally (declarado acá: los bloques try/finally no comparten scope).
+      let renderPoll: ReturnType<typeof setInterval> | null = null;
       try {
         // ADR-081 — el finalize ya NO manda los PNG de imprenta: los renderiza el servidor. Antes se
         // generaban acá los N snapshots y viajaban en el body de la Server Action; un calendario de 12
@@ -1627,6 +1800,27 @@ export function StudioEditor({
         // normal, que era lo más pesado de todo el flujo.
         const designId = state.designId;
         const canvasData = state.canvasData;
+
+        // ADR-131 (2026-10-13) — el render de imprenta ya no corre dentro del finalize:
+        // se encola un RenderJob y el worker va página por página. Este polling lee el
+        // progreso REAL (doneUnits/totalUnits) para mostrarlo en la modal en vez dejar al
+        // cliente esperando "Guardando…" a ciegas (el síntoma del timeout 500/504 de STG).
+        // Best-effort: si el endpoint falla, el flujo no se entera — solo no hay progreso.
+        setRenderProgress(null);
+        renderPoll = setInterval(() => {
+          fetch(`/api/designs/${designId}/render-status`, { cache: "no-store" })
+            .then(async (res) => {
+              if (!res.ok) return;
+              const data = (await res.json()) as {
+                job?: { status: string; totalUnits: number; doneUnits: number } | null;
+              };
+              const job = data.job;
+              if (job && job.totalUnits > 1 && job.status !== "DONE" && job.status !== "FAILED") {
+                setRenderProgress({ done: job.doneUnits, total: job.totalUnits });
+              }
+            })
+            .catch(() => undefined);
+        }, 1500);
 
         // El PNG de imprenta lo renderiza el servidor desde el canvasData GUARDADO, y el auto-guardado
         // tiene 2 s de debounce. Si el cliente mueve una foto y confirma antes de que corra, aprobaría
@@ -1654,6 +1848,10 @@ export function StudioEditor({
             designId,
             canvasData,
             templateId: state.selectedTemplateId ?? undefined,
+            // 2026-10-12 — packs: variante efectiva → metadata.variantId (recover).
+            variantId: isPhotoPack
+              ? packVariantIdFor(packVariants, canvasData.photoSlots, canvasData.magnet)
+              : undefined,
           });
           if (!saved.ok) {
             state.setAutoSaveStatus({ kind: "error", message: saved.message });
@@ -1709,6 +1907,10 @@ export function StudioEditor({
         // DIRECTO a Storage. Ese camino no pasa por la Function, así que no tiene techo de tamaño.
         if (!result.ok && result.code === "NEEDS_CLIENT_SLOTS") {
           await ensureAllStagesMounted(); // T5: garantizar los N stages antes de snapshotear producción
+          // Misma espera de decodificación que los previews/3D (slot-photo-readiness):
+          // el PNG de imprenta NO puede hornear el placeholder lila — el stage
+          // montado no implica foto decodificada (useImage es async).
+          await waitForSlotPhotosReady(canvasData.slots, slotStagesRef.current);
           // H5 (auditoría v3): el pixelRatio va RELATIVO al tamaño LÓGICO del stage, no al display
           // responsive — así el PNG de imprenta sale a resolución FIJA (ancho lógico × 3, = los 3240px
           // del render server para 1080) igual en móvil y en desktop (antes toDataURL({pixelRatio:3})
@@ -1768,6 +1970,28 @@ export function StudioEditor({
         }
         finalizedRef.current = true;
 
+        // 2026-10-13 — páginas POR UNIDAD del preview: se suben en un request
+        // APARTE (uploadDesignPreviewPagesAction) para el "Ver" paginado del
+        // carrito y la miniatura representativa de la línea. Reusa el loader
+        // perezoso de la modal (las páginas ya navegadas vienen cacheadas en
+        // previewPages; las pendientes se generan acá, una sola vez — el
+        // cliente ya está en la espera del confirmar). BEST-EFFORT: un fallo
+        // NO bloquea la compra (el carrito cae al preview global watermarked).
+        if (previewPages && previewPages.length > 1 && previewPageLoaderRef.current) {
+          try {
+            const loader = previewPageLoaderRef.current;
+            const pageBlobs = await Promise.all(
+              previewPages.map(async (p, i) => dataURLtoBlob(p.dataUrl ?? (await loader(i)))),
+            );
+            const pagesForm = new FormData();
+            pagesForm.set("designId", designId);
+            pageBlobs.forEach((blob, i) => pagesForm.set(`page_${i}`, blob, `page-${i + 1}.webp`));
+            await uploadDesignPreviewPagesAction(pagesForm);
+          } catch (pagesErr) {
+            console.error("[studio.preview.pages-upload]", pagesErr);
+          }
+        }
+
         // Add to cart — pasamos variantId del PDP (consolidación familias M.3.b.CAT).
         // replacesCartDesignId: si venimos de "Editar" desde el carrito, reemplaza el item original.
         // qty = 1: UNA línea = el diseño COMPLETO con sus N unidades (modelo
@@ -1822,6 +2046,10 @@ export function StudioEditor({
                 ? err.message
                 : String(err),
         );
+      } finally {
+        // ADR-131 — frena el polling del progreso del render en TODOS los desenlaces
+        // (éxito con redirect, errores con return temprano, excepción).
+        if (renderPoll) clearInterval(renderPoll);
       }
     },
     [
@@ -1829,7 +2057,9 @@ export function StudioEditor({
       store,
       variantId,
       isPhotoPack,
+      packVariants,
       previewDataUrl,
+      previewPages,
       replacesCartDesignId,
       productConfig.shape,
       product.slug,
@@ -1894,6 +2124,20 @@ export function StudioEditor({
             {texts.comun.continuarTitulo}
           </h2>
           <p className="text-brand-muted mt-2 text-sm">{texts.comun.continuarCuerpo}</p>
+          {/* 2026-10-13 — el interstitial dice QUÉ se va a retomar: el producto
+              siempre; la fecha del último guardado cuando el marcador la trae
+              (sin fecha no se inventa nada — la línea simplemente no sale). */}
+          <p className="text-brand-purple-dark/80 mt-2 text-xs font-semibold">
+            {resumeOffer.savedAt > 0
+              ? fillStudioText(texts.comun.continuarDetalle, {
+                  producto: product.name,
+                  fecha: new Intl.DateTimeFormat("es-CO", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  }).format(new Date(resumeOffer.savedAt)),
+                })
+              : product.name}
+          </p>
           <div className="mt-5 flex flex-col gap-2">
             <button
               type="button"
@@ -2009,6 +2253,10 @@ export function StudioEditor({
         productSizeCm={productConfig.sizeCm}
         productSlotCount={livePhotoSlots}
         slotNoun={slotNounPair}
+        // 2026-10-12 — desglose de la variante en el header: el MISMO label de
+        // la Vista Previa (ya omite tamaño/conteos, que el header enuncia en
+        // sus propios chips) → llegan imán, idioma, estilo, marco, forma…
+        variantLabel={previewVariantLabel}
         // Fase 1A — labels por slot para el popover de faltantes de «Vista
         // previa» (mismas de la grilla: "Ene", "1A"…).
         slotLabels={resolvedSlotLabels}
@@ -2440,6 +2688,9 @@ export function StudioEditor({
         // PERF — páginas perezosas: la modal pide cada una al navegar a ella.
         pages={previewPages}
         onRequestPage={handleRequestPreviewPage}
+        // Generación del set de páginas: el pager resetea a la 1ª página solo
+        // cuando se regenera de verdad, no al cachear una página perezosa.
+        pagesGeneration={previewPagesGeneration}
         productName={product.name}
         // Ola 3 — en separadores la unidad física es la tira (2 caras): el conteo
         // del modal es de UNIDADES (N fotos vivo del stepper), no de slots de
@@ -2458,8 +2709,19 @@ export function StudioEditor({
         // Multi-unidad: el diseño YA contiene las unidades → qty 1 al carrito;
         // el total de la modal = precio unitario × unidades.
         unitCount={liveUnitCount}
+        // 2026-10-12 — sustantivo de la unidad para la línea de la modal
+        // ("3 separadores — cada uno con su propio diseño", nunca "N unidades").
+        unitNoun={unitNounPair}
         isFinalizing={isFinalizingFlag}
         errorMessage={previewError}
+        renderProgressLabel={
+          renderProgress
+            ? fillStudioText(texts.exportar.preparandoArchivos, {
+                hechas: renderProgress.done,
+                total: renderProgress.total,
+              })
+            : null
+        }
         productKind={
           isCalendarMonth
             ? "calendar"
@@ -3148,42 +3410,6 @@ async function rotateTextures90(magnets: Magnet3D[]): Promise<Magnet3D[]> {
 // silueta física (transparente afuera), para que en la nevera 3D cada imán tenga su forma real
 // (rectángulo/corazón/círculo) y no un rectángulo. Reusa buildShapePath (misma silueta que el
 // preview 2D). Devuelve, además, la proporción física para escalar el plano en la escena.
-
-/**
- * Espera a que las fotos de los slots estén DECODIFICADAS Y RENDERIZADAS en su stage Konva
- * antes de rasterizarlo (bug STG 2026-10-08 — separador plano "en blanco" en el libro 3D,
- * frente y respaldo):
- *
- * El contador "N/N fotos" y `slot.assetUrl` se actualizan al terminar la SUBIDA, pero el
- * `<KonvaImage>` de la foto solo existe cuando el `useImage` del slot resuelve (async:
- * fetch + decode). Mientras tanto el stage dibuja el placeholder `#F4ECFF` (lila pálido).
- * Un snapshot tomado en esa ventana hornea el placeholder en la textura — y peor: el cache
- * de `snapshotSlotForPreview` lo conserva, porque la carga de la imagen NO cambia el estado
- * del store (la referencia del slot —clave del cache— sigue igual cuando la foto termina de
- * decodificar). Resultado: ambas caras del 3D "en blanco" con 2/2 slots cargados.
- *
- * El marcador determinista es el nodo `name="slot-photo"` (studio-slot.tsx): la rama de
- * carga renderiza el placeholder SIN ese nodo; la rama con foto lo incluye siempre. Se
- * espera con rAF y un deadline (best-effort, misma filosofía que ensureAllStagesMounted:
- * si una imagen falló de verdad, no colgamos el click — se rasteriza lo que haya).
- */
-async function waitForSlotPhotosReady(
-  slots: readonly { slotIndex: number; assetUrl?: string | null }[],
-  stages: Map<number, Konva.Stage | null>,
-  timeoutMs = 4000,
-): Promise<void> {
-  const pending = () =>
-    slots.some((s) => s.assetUrl && !stages.get(s.slotIndex)?.findOne(".slot-photo"));
-  if (!pending()) return;
-  const deadline = performance.now() + timeoutMs;
-  await new Promise<void>((resolve) => {
-    const tick = () => {
-      if (!pending() || performance.now() > deadline) resolve();
-      else requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  });
-}
 
 async function buildMagnetTextures(
   canvasData: CanvasDataV2,

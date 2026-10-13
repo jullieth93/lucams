@@ -36,6 +36,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
 import { createClientSlotUploadTickets, finalizeDesign } from "./service";
+import { processRenderJobs } from "./render-job-service";
 
 /*
  * Interruptor del test de fallback: con `failAll` activo, AMBOS motores de render
@@ -265,7 +266,7 @@ afterAll(async () => {
 }, 180_000);
 
 describe.skipIf(SKIP)("finalizeDesign — el cliente ya no manda los PNG de imprenta", () => {
-  it("camino normal: el servidor renderiza y el diseño queda READY sin recibir un solo blob", async () => {
+  it("camino normal: el servidor renderiza (worker ADR-131) y el diseño queda READY sin recibir un solo blob", async () => {
     const designId = await crearBorradorPropio();
 
     const design = await finalizeDesign({
@@ -275,14 +276,24 @@ describe.skipIf(SKIP)("finalizeDesign — el cliente ya no manda los PNG de impr
       ...OWNER,
     });
 
+    // ADR-131: READY inmediato; el render lo termina el RenderJob (kick + worker). Se
+    // procesa explícito para que el test no dependa de cuánto alcanzó el kick.
     expect(design.status).toBe("READY");
-    expect(design.productionUrls.length).toBeGreaterThan(0);
-    expect(design.previewUrl).toBeTruthy();
+    await processRenderJobs({ onlyDesignId: designId });
+    const job = await prisma.renderJob.findUnique({ where: { designId } });
+    expect(job?.status).toBe("DONE");
+
+    const listo = await prisma.design.findUnique({
+      where: { id: designId },
+      select: { productionUrls: true, previewUrl: true },
+    });
+    expect(listo!.productionUrls.length).toBeGreaterThan(0);
+    expect(listo!.previewUrl).toBeTruthy();
 
     // Y los archivos existen de verdad en Storage, no solo la fila en la base.
     const { data: files } = await supabase.storage.from("production-assets").list(designId);
     const png = (files ?? []).filter((f) => f.name.endsWith(".png"));
-    expect(png.length).toBe(design.productionUrls.length);
+    expect(png.length).toBe(listo!.productionUrls.length);
   }, 600_000);
 
   it("fallback: si ningún tier puede renderizar, se piden los PNG al cliente y suben por Storage", async () => {
@@ -366,6 +377,13 @@ describe.skipIf(SKIP)("finalizeDesign — el cliente ya no manda los PNG de impr
       ...OWNER,
     });
     expect(primero.status).toBe("READY");
+    // ADR-131: el render termina en el worker — procesar antes de comparar urls.
+    await processRenderJobs({ onlyDesignId: designId });
+    const urlsPrimero = (await prisma.design.findUnique({
+      where: { id: designId },
+      select: { productionUrls: true },
+    }))!.productionUrls;
+    expect(urlsPrimero.length).toBeGreaterThan(0);
 
     const segundo = await finalizeDesign({
       designId,
@@ -373,7 +391,7 @@ describe.skipIf(SKIP)("finalizeDesign — el cliente ya no manda los PNG de impr
       ...OWNER,
     });
     expect(segundo.status).toBe("READY");
-    expect(segundo.productionUrls).toEqual(primero.productionUrls);
+    expect(segundo.productionUrls).toEqual(urlsPrimero);
   }, 600_000);
 
   /*

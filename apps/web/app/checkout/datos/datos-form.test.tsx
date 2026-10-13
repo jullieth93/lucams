@@ -329,3 +329,91 @@ describe("DatosForm — validación de vía/cruce con mensaje específico", () =
     expect(document.querySelector("#viaNumber-error")).toHaveTextContent("Transversal 2Bis");
   });
 });
+
+/*
+ * "Guardar esta dirección en mi cuenta" vs direcciones guardadas (2026-10-12):
+ * cuando el cliente logueado aplica una dirección guardada y NO edita nada,
+ * guardarla de nuevo no tendría efecto → el checkbox queda DESHABILITADO con
+ * hint "Ya está guardada en tu cuenta" (más transparente que ocultarlo). Si
+ * edita cualquier campo de la dirección, el checkbox se rehabilita (hay una
+ * variante nueva que sí tiene sentido guardar).
+ */
+describe("DatosForm — 'Guardar en mi cuenta' con dirección guardada aplicada", () => {
+  const SAVED = {
+    id: "addr-1",
+    label: "Casa",
+    line1: "Calle 45 # 12-34 (Apto 301)",
+    isDefault: true,
+    structured: {
+      deptCode: "11",
+      cityCode: "11001",
+      zip: "110111",
+      localityId: "",
+      neighborhood: "Chapinero",
+      kind: "urban",
+      viaType: "Calle",
+      viaNumber: "45",
+      viaBis: false,
+      viaCardinal: "",
+      cruceNumber: "12-34",
+      cruceCardinal: "",
+      detail: "Apto 301",
+    },
+    deptCode: "11",
+    cityCode: "11001",
+    zip: "110111",
+    phone: "3001234567",
+  };
+
+  function renderWithSaved() {
+    return render(
+      <DatosForm
+        initial={{ step: 1, updatedAt: 0 }}
+        texts={DEFAULT_CHECKOUT_TEXTS.datos}
+        canSaveAddress
+        savedAddresses={[SAVED]}
+      />,
+    );
+  }
+
+  function saveCheckbox() {
+    return document.querySelector<HTMLInputElement>('input[name="saveToAccount"]')!;
+  }
+
+  function applySaved() {
+    fireEvent.change(document.querySelector("#saved-address")!, { target: { value: "addr-1" } });
+  }
+
+  it("sin dirección guardada aplicada, el checkbox está habilitado (flujo normal)", () => {
+    renderWithSaved();
+    expect(saveCheckbox()).toBeEnabled();
+  });
+
+  it("aplicar una guardada SIN editar nada → checkbox deshabilitado + hint", () => {
+    renderWithSaved();
+    applySaved();
+    // Sanidad: los campos efectivamente quedaron precargados.
+    expect(document.querySelector<HTMLInputElement>("#viaNumber")!.value).toBe("45");
+    expect(saveCheckbox()).toBeDisabled();
+    expect(saveCheckbox()).not.toBeChecked();
+    expect(screen.getByText(DEFAULT_CHECKOUT_TEXTS.datos.saveCheckSavedHint)).toBeInTheDocument();
+  });
+
+  it("editar cualquier campo de la dirección rehabilita el checkbox", () => {
+    renderWithSaved();
+    applySaved();
+    expect(saveCheckbox()).toBeDisabled();
+    fireEvent.change(document.querySelector("#viaNumber")!, { target: { value: "45A" } });
+    expect(saveCheckbox()).toBeEnabled();
+    expect(screen.queryByText(DEFAULT_CHECKOUT_TEXTS.datos.saveCheckSavedHint)).toBeNull();
+  });
+
+  it("aplicar una guardada desmarca un 'guardar' previamente marcado", () => {
+    renderWithSaved();
+    fireEvent.click(saveCheckbox());
+    expect(saveCheckbox()).toBeChecked();
+    applySaved();
+    expect(saveCheckbox()).not.toBeChecked();
+    expect(saveCheckbox()).toBeDisabled();
+  });
+});

@@ -20,7 +20,28 @@
  *      paralelo son seguros — ver client-photo-upscale.ts).
  *   2. compressImageForUpload — WebP 2400px q0.85 si supera ~2 MB (bajo el
  *      techo de Vercel; evita el 413 también en el picker).
- *   3. uploadDesignAssetAction — la misma Server Action de siempre.
+ *   3. shrinkToFitUploadBudget — reducción OBLIGATORIA si aun así el preparado
+ *      supera el presupuesto del payload (4 MB, bajo el techo de plataforma
+ *      ~4.5 MB): baja borde largo/calidad progresivamente con PISO en el lado
+ *      menor = px de 300 DPI del producto cuando se conoce (nunca sacrifica el
+ *      mínimo de impresión por caber). Ver decisión HEIC abajo.
+ *   4. uploadDesignAssetAction — la misma Server Action de siempre.
+ *
+ * DECISIÓN HEIC (robustez 2026-10-13): los HEIC de iPhone (1-5 MB) no pasaban
+ * por el compresor (el navegador típico no los decodifica) y los de >4.5 MB
+ * reventaban con el 413 genérico de Vercel. Se evaluó subida directa a Storage
+ * con signed upload URL (createSignedUploadUrl + transcode posterior) y se
+ * DESCARTÓ por invasiva: exige una acción nueva de firma, mover la validación
+ * de ownership/límites a dos pasos y un transcode-or-delete sobre objetos ya
+ * persistidos. La ruta elegida cubre los casos reales sin ese costo:
+ *   - Safari decodea HEIC nativamente → el shrink del paso 3 lo convierte a
+ *     WebP/JPEG en cliente y cabe siempre.
+ *   - Chrome/Firefox no decodean HEIC → el HEIC típico de iPhone (1-2.5 MB)
+ *     cabe en el payload y el SERVIDOR lo transcodifica a JPEG q92 con
+ *     heic-decode antes de persistir (uploadCustomerPhoto, lib/storage.ts) —
+ *     el asset y su metadata quedan web-compatible.
+ *   - HEIC >4 MB en navegador sin decode → FAIL-CLOSED honesto (paso 3
+ *     devuelve null): error claro al usuario ANTES de subir, no el 413 mudo.
  *
  * Multi-archivo: `processPhotoFiles` corre hasta 3 archivos en vuelo
  * (mapWithConcurrency de upload-with-retry) y entrega los resultados EN EL
@@ -35,8 +56,13 @@
  * no importe código de servidor y sea testeable con fakes.
  */
 
-import { compressImageForUpload } from "../client-image-compress";
+import {
+  compressImageForUpload,
+  shrinkToFitUploadBudget,
+  UPLOAD_PAYLOAD_BUDGET_BYTES,
+} from "../client-image-compress";
 import { isStillBelowMinimum, upscalePhotoForPrint } from "../client-photo-upscale";
+import { parseSizeCm, PX_PER_CM_300DPI } from "../client-photo-upscale-core";
 import { mapWithConcurrency } from "./upload-with-retry";
 import type { StudioAsset } from "../types";
 
@@ -63,6 +89,12 @@ export const UPLOAD_PIPELINE_CONCURRENCY = 3;
 export type PreparedPhoto = {
   /** Archivo listo para subir (mejorado y/o comprimido, o el original). */
   file: File;
+  /**
+   * false cuando el preparado NO cupo en el presupuesto del payload ni tras
+   * la reducción obligatoria (o el navegador no lo decodifica): el caller NO
+   * debe intentar el upload (sería el 413 genérico) y reporta fail-closed.
+   */
+  fitsBudget: boolean;
   /** true si hubo re-muestreo local por resolución insuficiente. */
   improved: boolean;
   /** true si aun tras el upscale sigue bajo el mínimo absoluto del servidor. */
@@ -73,18 +105,34 @@ export type PreparedPhoto = {
 };
 
 /**
- * Secuencia upscale → compresión compartida por sidebar y picker. Nunca lanza:
- * ambos pasos caen al archivo original ante cualquier fallo (el servidor
- * decide como antes).
+ * Secuencia upscale → compresión → reducción-al-presupuesto compartida por
+ * sidebar y picker. Los dos primeros pasos caen al archivo original ante
+ * cualquier fallo (fail-open: el servidor decide como antes); el tercero es
+ * FAIL-CLOSED solo sobre el presupuesto del payload (fitsBudget=false cuando
+ * no hay forma honesta de hacerlo caber — ver header del módulo).
  */
 export async function preparePhotoForUpload(
   file: File,
   productSizeCm?: string,
 ): Promise<PreparedPhoto> {
   const upscaled = await upscalePhotoForPrint(file, productSizeCm);
-  const prepared = await compressImageForUpload(upscaled?.file ?? file);
+  const compressed = await compressImageForUpload(upscaled?.file ?? file);
+
+  let finalFile = compressed;
+  if (compressed.size > UPLOAD_PAYLOAD_BUDGET_BYTES) {
+    // Piso de impresión: los px de 300 DPI del lado menor del producto cuando
+    // se conoce (misma regla que lib/photo-validation.ts del servidor). Sin
+    // sizeCm, shrinkToFitUploadBudget usa su piso documentado.
+    const parsed = parseSizeCm(productSizeCm);
+    const minEdgeFloorPx = parsed
+      ? Math.ceil(Math.min(parsed.widthCm, parsed.heightCm) * PX_PER_CM_300DPI)
+      : undefined;
+    finalFile = (await shrinkToFitUploadBudget(compressed, { minEdgeFloorPx })) ?? compressed;
+  }
+
   return {
-    file: prepared,
+    file: finalFile,
+    fitsBudget: finalFile.size <= UPLOAD_PAYLOAD_BUDGET_BYTES,
     improved: upscaled?.improved ?? false,
     improvedButLow: upscaled ? isStillBelowMinimum(upscaled) : false,
     ...(upscaled?.improved
@@ -154,6 +202,13 @@ export type ProcessPhotoFilesOptions = {
 
 async function processOne(file: File, opts: ProcessPhotoFilesOptions): Promise<ProcessedPhoto> {
   const prepared = await preparePhotoForUpload(file, opts.productSizeCm);
+  // Fail-closed honesto (robustez 2026-10-13): si el preparado no cupo en el
+  // presupuesto del payload ni tras la reducción obligatoria, NO se intenta el
+  // upload — el request moriría con el 413 genérico de la plataforma y el
+  // usuario no entendería nada. El caller muestra el mensaje de tamaño claro.
+  if (!prepared.fitsBudget) {
+    return { ok: false, fileName: file.name, kind: "too-big" };
+  }
   let result: UploadAssetSuccess | UploadAssetFailure;
   try {
     result = await opts.upload(

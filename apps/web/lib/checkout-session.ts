@@ -154,6 +154,11 @@ export type CheckoutState = {
   shippingOffers?: ShippingOffersPayload;
   paymentMethod?: "WOMPI" | "COD";
   couponCode?: string; // F1 — código aplicado; el descuento se recalcula al vuelo
+  // Puntos Lucams (2026-10-12) — puntos a redimir. Mismo criterio que el cupón:
+  // el descuento NO se persiste acá; se re-tarifa y se reserva atómicamente en
+  // la tx de createOrderFromCart (si dejó de ser válido, la orden no se crea y
+  // el cliente re-confirma con el total real).
+  loyaltyPoints?: number;
   updatedAt: number; // epoch ms
 };
 

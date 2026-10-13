@@ -30,6 +30,11 @@ import {
   adminActivityCookieOptions,
   sealAdminActivityMark,
 } from "@/lib/admin-activity";
+import {
+  CUSTOMER_ACTIVITY_COOKIE,
+  customerActivityCookieOptions,
+  sealCustomerActivityMark,
+} from "@/lib/customer-activity";
 import { adminHomePath } from "@/lib/admin-rbac";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -151,6 +156,15 @@ export async function adminLoginAction(
     ADMIN_ACTIVITY_COOKIE,
     sealAdminActivityMark(Date.now()),
     adminActivityCookieOptions(),
+  );
+  // También la marca de CLIENTE (idle-timeout 30 días, 2026-10-12): un admin es
+  // un user Supabase que también navega la tienda — sin esta marca, su primera
+  // request fuera de /admin se trataría como sesión expirada (fail-closed) y el
+  // signOut global lo sacaría también del panel.
+  (await cookies()).set(
+    CUSTOMER_ACTIVITY_COOKIE,
+    sealCustomerActivityMark(Date.now()),
+    customerActivityCookieOptions(),
   );
   // Destino post-login = home del rol: CMS_EDITOR no tiene acceso a /admin/dashboard
   // (solo contenido), así que aterriza en /admin/contenido (ver adminHomePath).
