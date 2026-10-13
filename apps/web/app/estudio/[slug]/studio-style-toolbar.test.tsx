@@ -17,8 +17,8 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { createStudioStore } from "./lib/store";
 import { StudioStyleToolbar } from "./studio-style-toolbar";
@@ -304,5 +304,106 @@ describe("StudioStyleToolbar — «Personalizado»: picker propio con paridad de
     });
 
     expect(store.getState().canvasData!.borderColor).toBe("#FFFFFF");
+  });
+});
+
+/*
+ * Bottom-sheet de estilo en móvil (Fase 2 UX, 2026-10-13). En <sm la fila con
+ * scroll horizontal se reemplaza por un botón resumen SIEMPRE visible (swatch +
+ * nombre del color elegido + estado del borde) que abre un Sheet inferior con
+ * las secciones en grilla (sin scroll) y un «Listo» sticky que solo cierra —
+ * la selección escribe el MISMO store y aplica en vivo al canvas. Contrato:
+ *  1. El resumen anuncia el estado actual (aria + visible) y abre el sheet.
+ *  2. Elegir un color DENTRO del sheet aplica en vivo (mismo store) y el
+ *     nombre del elegido queda visible bajo la grilla.
+ *  3. «Listo» cierra el sheet y el resumen refleja el nuevo estado.
+ *  4. «Sin borde» dentro del sheet gobierna borderColor igual que en desktop
+ *     (tarjeta simple: null = sangre total).
+ * En jsdom no hay media queries: la rama desktop (hidden sm:block) y la móvil
+ * (sm:hidden) conviven en el DOM — por eso las consultas del sheet se acotan
+ * con within(dialog); Radix además aria-oculta el resto mientras está abierto.
+ */
+describe("StudioStyleToolbar — bottom-sheet de estilo en móvil (2026-10-13)", () => {
+  const RESUMEN_NAME = "Estilo actual: Con borde, color Rosa. Toca para cambiarlo.";
+
+  it("el botón resumen muestra el estado actual y abre el sheet con las dos secciones", async () => {
+    setup({
+      slug: "cuadrados-simple",
+      unitTemplate: squareUnit(),
+      borderColor: "#E85B9F",
+      frameOptions: ["blanco", "rosa"],
+    });
+
+    const resumen = screen.getByRole("button", { name: RESUMEN_NAME });
+    expect(resumen).toHaveTextContent("Rosa");
+    expect(resumen).toHaveTextContent("Con borde");
+
+    fireEvent.click(resumen);
+
+    const sheet = await screen.findByRole("dialog", { name: "Estilo de tu tarjeta" });
+    expect(within(sheet).getByRole("radiogroup", { name: "Borde de foto" })).toBeInTheDocument();
+    expect(within(sheet).getByRole("radiogroup", { name: "Color de tarjeta" })).toBeInTheDocument();
+    // Nombre del color elegido visible bajo la grilla (refuerzo del indicador).
+    expect(within(sheet).getByText("Elegido: Rosa")).toBeInTheDocument();
+  });
+
+  it("elegir color dentro del sheet aplica al canvas en vivo y «Listo» cierra", async () => {
+    const store = setup({
+      slug: "cuadrados-simple",
+      unitTemplate: squareUnit(),
+      borderColor: "#E85B9F",
+      frameOptions: ["blanco", "rosa"],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: RESUMEN_NAME }));
+    const sheet = await screen.findByRole("dialog", { name: "Estilo de tu tarjeta" });
+
+    fireEvent.click(within(sheet).getByRole("radio", { name: "Blanco" }));
+
+    // Aplica en vivo al MISMO store (no es un wizard con apply).
+    expect(store.getState().canvasData!.borderColor).toBe("#FFFFFF");
+    expect(within(sheet).getByText("Elegido: Blanco")).toBeInTheDocument();
+
+    fireEvent.click(within(sheet).getByRole("button", { name: "Listo" }));
+
+    await vi.waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    // El resumen refleja el nuevo estado elegido.
+    expect(
+      screen.getByRole("button", {
+        name: "Estilo actual: Con borde, color Blanco. Toca para cambiarlo.",
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("«Sin borde» dentro del sheet gobierna borderColor (sangre total) y la paleta se apaga", async () => {
+    const store = setup({
+      slug: "cuadrados-simple",
+      unitTemplate: squareUnit(),
+      borderColor: "#E85B9F",
+      frameOptions: ["blanco", "rosa"],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: RESUMEN_NAME }));
+    const sheet = await screen.findByRole("dialog", { name: "Estilo de tu tarjeta" });
+
+    fireEvent.click(within(sheet).getByRole("radio", { name: "Sin borde" }));
+
+    expect(store.getState().canvasData!.borderColor).toBeNull();
+    // Mismo apagado de Ola 24 dentro del sheet: paleta inerte con aviso.
+    expect(within(sheet).getByRole("radio", { name: "Rosa" })).toBeDisabled();
+    expect(within(sheet).getByText(/la foto cubre toda la tarjeta/)).toBeInTheDocument();
+
+    fireEvent.click(within(sheet).getByRole("button", { name: "Listo" }));
+
+    await vi.waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", {
+        name: "Estilo actual: Sin borde, color Sin color. Toca para cambiarlo.",
+      }),
+    ).toBeInTheDocument();
   });
 });

@@ -27,18 +27,35 @@
  *     contraste automático de textos y chrome `_dark_noborder`, la misma maquinaria
  *     del modo con borde) y la tarjeta ya NO se fuerza a blanco al entrar.
  *
+ * Presentación por viewport (Fase 2 UX, 2026-10-13):
+ *   - <sm: un BOTÓN RESUMEN siempre visible (swatch + nombre del color elegido +
+ *     estado del borde) que abre un bottom-sheet (Sheet Radix) con las dos
+ *     secciones en grilla (sin scroll horizontal) y un «Listo» sticky que solo
+ *     cierra — la selección escribe al MISMO store y aplica en vivo al canvas.
+ *   - ≥sm: el apilado de siempre («Borde de foto» arriba, «Color de tarjeta»
+ *     debajo), intacto.
+ *   El nombre del color elegido queda SIEMPRE visible (junto al título en
+ *   desktop, bajo la grilla en el sheet) — refuerzo del indicador de selección.
+ *
  * El componente es store-aware: lee la plantilla activa, el color actual y el
  * rect base del placeholder, y escribe en canvasData.borderColor y
  * canvasData.unitTemplate.layers (image-placeholder) via setBorderColor y
  * setImagePlaceholderRect.
  */
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { StoreApi } from "zustand";
-import { Frame, Image as ImageIcon, Check } from "lucide-react";
+import { Frame, Image as ImageIcon, Check, ChevronUp } from "lucide-react";
 import { Hint } from "@/components/ui/tooltip";
 import { CustomColorPicker } from "@/components/color-picker";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   frameColorById,
   isInstagramTemplate,
@@ -46,14 +63,15 @@ import {
 } from "@/features/personalization/frame-palette";
 import type { StudioStoreState } from "./lib/store";
 import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText } from "./studio-texts";
 
 const LIGHT_HEXES = new Set(["#FFFFFF", "#FFD93D"]);
 
 /** Check legible sobre cualquier color. */
-function ActiveCheck({ dark }: { dark: boolean }) {
+function ActiveCheck({ dark, large = false }: { dark: boolean; large?: boolean }) {
   return (
     <Check
-      className="absolute inset-0 m-auto h-3.5 w-3.5"
+      className={`absolute inset-0 m-auto ${large ? "h-5 w-5" : "h-3.5 w-3.5"}`}
       strokeWidth={3}
       style={{
         color: dark ? "#3D2E5C" : "#FFFFFF",
@@ -82,6 +100,10 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   // SIN perder la elección (regla de no-reset de Clásica/tiras) y «Con borde» la
   // restaura (o cae al primer color de la paleta si nunca hubo una).
   const lastFrameColorRef = useRef<string | null>(null);
+  // Fase 2 UX (2026-10-13) — apertura del bottom-sheet de estilo (solo se usa
+  // en la rama <sm; la rama ≥sm no lo toca). Declarado antes de los early
+  // returns para no romper el orden de hooks.
+  const [styleSheetOpen, setStyleSheetOpen] = useState(false);
 
   if (!canvasData) return null;
 
@@ -210,116 +232,317 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   // que el render ignora) y conserva el color elegido para restaurarlo al volver.
   const colorDisabled = (isPolaroidClasica || isStrip || isSimpleCard) && isFullBleed;
 
-  return (
-    // Ola 32 — chrome móvil compacto (owner 2026-09-18): a 375px esta tarjeta más
-    // el stepper y los pills empujaban el lienzo bajo el fold. En móvil las filas
-    // van EN UNA SOLA LÍNEA con scroll horizontal (labels sin wrap — "Color de
-    // tarjeta" se partía en 3 líneas) y paddings compactos; ≥sm se mantiene
-    // exactamente el apilado centrado de siempre.
-    <div className="border-brand-purple/10 mb-3 w-full max-w-xl rounded-2xl border bg-white/95 px-2.5 py-2 shadow-sm sm:mb-4 sm:px-4 sm:py-3">
-      {/* Ola 24 — «Borde de foto» PRIMERO y «Color de tarjeta» DEBAJO (apilados en ≥sm). */}
-      <div className="flex items-center gap-3 overflow-x-auto sm:flex-col sm:gap-3 sm:overflow-visible">
-        {/* Borde de foto */}
-        {(isIg || isPolaroidClasica || frameColors.length > 0) && (
-          <div className="flex shrink-0 items-center gap-2">
-            <span className="text-brand-purple-dark text-xs font-semibold whitespace-nowrap">
-              {texts.texto.estiloBordeTitulo}
-            </span>
-            <div
-              role="radiogroup"
-              aria-label={texts.texto.estiloBordeAria}
-              className="ring-brand-purple/15 flex gap-1 rounded-lg p-1 ring-1"
-            >
-              <BorderOption
-                active={!isFullBleed}
-                label={texts.texto.estiloConBorde}
-                icon={<Frame className="h-3.5 w-3.5" aria-hidden />}
-                onClick={() => handleBorderToggle(false)}
-              />
-              <BorderOption
-                active={isFullBleed}
-                label={texts.texto.estiloSinBorde}
-                icon={<ImageIcon className="h-3.5 w-3.5" aria-hidden />}
-                onClick={() => handleBorderToggle(true)}
-              />
-            </div>
-          </div>
-        )}
+  const showBorderSection = isIg || isPolaroidClasica || frameColors.length > 0;
+  const showColorSection = frameColors.length > 0;
+  // Fase 2 UX (2026-10-13) — nombre del color elegido, SIEMPRE visible: el
+  // anillo + check del swatch no bastaban para saber cuál es el color activo.
+  // Un hex fuera de la paleta se anuncia como «Personalizado #RRGGBB».
+  const selectedColorLabel =
+    borderColor === null
+      ? texts.texto.estiloSinColor
+      : (frameColors.find((c) => c.hex.toUpperCase() === borderColor.toUpperCase())?.label ??
+        `${texts.texto.estiloColorPersonalizado} ${borderColor.toUpperCase()}`);
+  const borderStateLabel = isFullBleed ? texts.texto.estiloSinBorde : texts.texto.estiloConBorde;
+  const styleSummaryText = [
+    showColorSection ? selectedColorLabel : null,
+    showBorderSection ? borderStateLabel : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const styleSummaryAria = fillStudioText(texts.texto.estiloResumenAria, {
+    borde: borderStateLabel,
+    color: selectedColorLabel,
+  });
 
-        {/* Color de tarjeta */}
-        {frameColors.length > 0 && (
-          <div
-            aria-disabled={colorDisabled || undefined}
-            className={[
-              "flex shrink-0 flex-col items-center gap-1",
-              colorDisabled ? "opacity-60" : "",
-            ].join(" ")}
+  return (
+    <>
+      {/* ── Móvil (<sm) — botón resumen SIEMPRE visible + bottom-sheet (Fase 2
+          UX 2026-10-13). Reemplaza la fila única con scroll horizontal de Ola
+          32: no se veía el estado elegido y los labels quedaban apretados. El
+          sheet escribe al MISMO store (aplica en vivo al canvas); «Listo» solo
+          cierra, no es un wizard con apply. */}
+      <div className="mb-3 w-full max-w-xl sm:hidden">
+        <button
+          type="button"
+          onClick={() => setStyleSheetOpen(true)}
+          aria-label={styleSummaryAria}
+          className="border-brand-purple/10 focus:ring-brand-turquoise flex w-full items-center gap-3 rounded-2xl border bg-white/95 px-4 py-3 text-left shadow-sm transition-colors focus:ring-2 focus:outline-none"
+        >
+          {showColorSection && (
+            <span
+              aria-hidden
+              className="ring-brand-purple/20 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ring-1"
+              style={borderColor ? { backgroundColor: borderColor } : { background: "white" }}
+            >
+              {borderColor === null && (
+                <span className="text-brand-muted text-sm leading-none">∅</span>
+              )}
+            </span>
+          )}
+          <span className="min-w-0 flex-1">
+            {showColorSection && (
+              <span className="text-brand-purple-dark block truncate text-sm font-semibold">
+                {selectedColorLabel}
+              </span>
+            )}
+            {showBorderSection && (
+              <span className="text-brand-muted block text-xs">{borderStateLabel}</span>
+            )}
+          </span>
+          <ChevronUp className="text-brand-purple h-4 w-4 shrink-0" aria-hidden />
+        </button>
+
+        <Sheet open={styleSheetOpen} onOpenChange={setStyleSheetOpen}>
+          <SheetContent
+            side="bottom"
+            className="max-h-[85vh] gap-0 rounded-t-3xl bg-white px-5 pt-3 pb-0"
           >
-            <div className="flex items-center gap-2">
+            {/* Handle de arrastre (adorno visual del bottom-sheet). */}
+            <div aria-hidden className="bg-brand-purple/15 mx-auto mb-3 h-1.5 w-10 rounded-full" />
+            <SheetHeader className="p-0 pb-3 text-left">
+              <SheetTitle className="text-brand-purple-dark font-display text-lg">
+                {texts.texto.estiloSheetTitulo}
+              </SheetTitle>
+              <SheetDescription className="text-brand-muted text-xs">
+                {styleSummaryText}
+              </SheetDescription>
+            </SheetHeader>
+
+            <div className="min-h-0 overflow-y-auto">
+              {/* Borde de foto — mismas opciones Con/Sin de la barra desktop,
+                  en grilla de 2 con targets táctiles ≥44px. */}
+              {showBorderSection && (
+                <section>
+                  <span className="text-brand-purple-dark text-sm font-semibold">
+                    {texts.texto.estiloBordeTitulo}
+                  </span>
+                  <div
+                    role="radiogroup"
+                    aria-label={texts.texto.estiloBordeAria}
+                    className="ring-brand-purple/15 mt-2 grid grid-cols-2 gap-2 rounded-xl p-1.5 ring-1"
+                  >
+                    <BorderOption
+                      large
+                      active={!isFullBleed}
+                      label={texts.texto.estiloConBorde}
+                      icon={<Frame className="h-4 w-4" aria-hidden />}
+                      onClick={() => handleBorderToggle(false)}
+                    />
+                    <BorderOption
+                      large
+                      active={isFullBleed}
+                      label={texts.texto.estiloSinBorde}
+                      icon={<ImageIcon className="h-4 w-4" aria-hidden />}
+                      onClick={() => handleBorderToggle(true)}
+                    />
+                  </div>
+                </section>
+              )}
+
+              {/* Color de tarjeta — grilla que envuelve (sin scroll horizontal)
+                  + nombre del elegido siempre visible bajo la grilla. */}
+              {showColorSection && (
+                <div
+                  aria-disabled={colorDisabled || undefined}
+                  className={["mt-5", colorDisabled ? "opacity-60" : ""].join(" ")}
+                >
+                  <span className="text-brand-purple-dark text-sm font-semibold">
+                    {texts.texto.estiloColorTitulo}
+                  </span>
+                  <div
+                    role="radiogroup"
+                    aria-label={texts.texto.estiloColorAria}
+                    className="mt-3 grid grid-cols-4 justify-items-center gap-3"
+                  >
+                    {isIg ? null : (
+                      <ColorButton
+                        large
+                        active={borderColor === null}
+                        label={texts.texto.estiloSinColor}
+                        onClick={() => handleBorderChange(null)}
+                        kind="none"
+                        disabled={colorDisabled}
+                      />
+                    )}
+                    {frameColors.map((c) => (
+                      <ColorButton
+                        large
+                        key={c.id}
+                        active={borderColor?.toUpperCase() === c.hex.toUpperCase()}
+                        color={c.hex}
+                        label={c.label}
+                        onClick={() => handleBorderChange(c.hex)}
+                        disabled={colorDisabled}
+                      />
+                    ))}
+                    {/* Mismo «Personalizado» de la barra desktop (picker propio);
+                        su panel inline ocupa toda la fila de la grilla. */}
+                    {!isIg && (
+                      <CustomColorButton
+                        value={borderColor}
+                        paletteHexes={frameColors.map((c) => c.hex)}
+                        label={texts.texto.estiloColorPersonalizado}
+                        onChange={handleBorderChange}
+                        disabled={colorDisabled}
+                        triggerClassName="h-11 w-11"
+                        panelClassName="col-span-full"
+                      />
+                    )}
+                  </div>
+                  <p className="text-brand-purple-dark mt-3 flex items-center justify-center gap-1.5 text-sm font-semibold">
+                    <Check className="text-brand-turquoise h-4 w-4" strokeWidth={3} aria-hidden />
+                    {fillStudioText(texts.texto.estiloColorElegido, {
+                      color: selectedColorLabel,
+                    })}
+                  </p>
+                  {colorDisabled ? (
+                    <p role="note" className="text-brand-muted mt-2 text-center text-xs">
+                      {isStrip
+                        ? texts.texto.estiloColorDeshabilitadoHintTira
+                        : texts.texto.estiloColorDeshabilitadoHint}
+                    </p>
+                  ) : (
+                    isIg &&
+                    isFullBleed && (
+                      <p role="note" className="text-brand-muted mt-2 text-center text-xs">
+                        {texts.texto.estiloColorSinBordeHintIg}
+                      </p>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* «Listo» sticky — cierra el sheet (la selección ya aplicó en vivo). */}
+            <div className="border-brand-purple/10 sticky bottom-0 -mx-5 mt-4 border-t bg-white px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setStyleSheetOpen(false)}
+                className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple flex h-12 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+              >
+                {texts.texto.estiloSheetListo}
+              </button>
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
+
+      {/* ── Desktop (≥sm) — apilado de siempre, SIN cambios de layout (Fase 2 UX:
+          solo se agrega el nombre del color elegido junto al título). Las clases
+          móviles del contenedor interno quedan inertes (el padre se oculta <sm). */}
+      <div className="border-brand-purple/10 mb-3 hidden w-full max-w-xl rounded-2xl border bg-white/95 px-2.5 py-2 shadow-sm sm:mb-4 sm:block sm:px-4 sm:py-3">
+        {/* Ola 24 — «Borde de foto» PRIMERO y «Color de tarjeta» DEBAJO (apilados en ≥sm). */}
+        <div className="flex items-center gap-3 overflow-x-auto sm:flex-col sm:gap-3 sm:overflow-visible">
+          {/* Borde de foto */}
+          {showBorderSection && (
+            <div className="flex shrink-0 items-center gap-2">
               <span className="text-brand-purple-dark text-xs font-semibold whitespace-nowrap">
-                {texts.texto.estiloColorTitulo}
+                {texts.texto.estiloBordeTitulo}
               </span>
               <div
                 role="radiogroup"
-                aria-label={texts.texto.estiloColorAria}
-                // flex-wrap: el panel inline del «Personalizado» cae debajo de
-                // la fila de swatches (basis-full) en vez de ensanchar la fila.
-                className="flex flex-wrap items-center gap-1.5"
+                aria-label={texts.texto.estiloBordeAria}
+                className="ring-brand-purple/15 flex gap-1 rounded-lg p-1 ring-1"
               >
-                {isIg ? null : (
-                  <ColorButton
-                    active={borderColor === null}
-                    label={texts.texto.estiloSinColor}
-                    onClick={() => handleBorderChange(null)}
-                    kind="none"
-                    disabled={colorDisabled}
-                  />
-                )}
-                {frameColors.map((c) => (
-                  <ColorButton
-                    key={c.id}
-                    active={borderColor?.toUpperCase() === c.hex.toUpperCase()}
-                    color={c.hex}
-                    label={c.label}
-                    onClick={() => handleBorderChange(c.hex)}
-                    disabled={colorDisabled}
-                  />
-                ))}
-                {/* Color libre (picker propio, paridad en todas las plataformas):
-                    solo donde el producto permite color libre (NO en Instagram:
-                    blanco/negro por diseño) y sujeto a la misma desactivación
-                    por «Sin borde» que los swatches. */}
-                {!isIg && (
-                  <CustomColorButton
-                    value={borderColor}
-                    paletteHexes={frameColors.map((c) => c.hex)}
-                    label={texts.texto.estiloColorPersonalizado}
-                    onChange={handleBorderChange}
-                    disabled={colorDisabled}
-                  />
-                )}
+                <BorderOption
+                  active={!isFullBleed}
+                  label={texts.texto.estiloConBorde}
+                  icon={<Frame className="h-3.5 w-3.5" aria-hidden />}
+                  onClick={() => handleBorderToggle(false)}
+                />
+                <BorderOption
+                  active={isFullBleed}
+                  label={texts.texto.estiloSinBorde}
+                  icon={<ImageIcon className="h-3.5 w-3.5" aria-hidden />}
+                  onClick={() => handleBorderToggle(true)}
+                />
               </div>
             </div>
-            {colorDisabled ? (
-              <p role="note" className="text-brand-muted text-center text-xs">
-                {isStrip
-                  ? texts.texto.estiloColorDeshabilitadoHintTira
-                  : texts.texto.estiloColorDeshabilitadoHint}
-              </p>
-            ) : (
-              isIg &&
-              isFullBleed && (
-                // Owner 2026-10-06 — en IG «Sin borde» la paleta queda ACTIVA:
-                // el aviso explica qué pinta el color (las franjas del post).
+          )}
+
+          {/* Color de tarjeta */}
+          {showColorSection && (
+            <div
+              aria-disabled={colorDisabled || undefined}
+              className={[
+                "flex shrink-0 flex-col items-center gap-1",
+                colorDisabled ? "opacity-60" : "",
+              ].join(" ")}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-brand-purple-dark text-xs font-semibold whitespace-nowrap">
+                  {texts.texto.estiloColorTitulo}
+                </span>
+                {/* Fase 2 UX (2026-10-13) — el nombre del color elegido siempre
+                    visible junto al título (refuerzo del indicador). */}
+                <span className="text-brand-muted text-xs whitespace-nowrap">
+                  ·{" "}
+                  {fillStudioText(texts.texto.estiloColorElegido, {
+                    color: selectedColorLabel,
+                  })}
+                </span>
+                <div
+                  role="radiogroup"
+                  aria-label={texts.texto.estiloColorAria}
+                  // flex-wrap: el panel inline del «Personalizado» cae debajo de
+                  // la fila de swatches (basis-full) en vez de ensanchar la fila.
+                  className="flex flex-wrap items-center gap-1.5"
+                >
+                  {isIg ? null : (
+                    <ColorButton
+                      active={borderColor === null}
+                      label={texts.texto.estiloSinColor}
+                      onClick={() => handleBorderChange(null)}
+                      kind="none"
+                      disabled={colorDisabled}
+                    />
+                  )}
+                  {frameColors.map((c) => (
+                    <ColorButton
+                      key={c.id}
+                      active={borderColor?.toUpperCase() === c.hex.toUpperCase()}
+                      color={c.hex}
+                      label={c.label}
+                      onClick={() => handleBorderChange(c.hex)}
+                      disabled={colorDisabled}
+                    />
+                  ))}
+                  {/* Color libre (picker propio, paridad en todas las plataformas):
+                      solo donde el producto permite color libre (NO en Instagram:
+                      blanco/negro por diseño) y sujeto a la misma desactivación
+                      por «Sin borde» que los swatches. */}
+                  {!isIg && (
+                    <CustomColorButton
+                      value={borderColor}
+                      paletteHexes={frameColors.map((c) => c.hex)}
+                      label={texts.texto.estiloColorPersonalizado}
+                      onChange={handleBorderChange}
+                      disabled={colorDisabled}
+                    />
+                  )}
+                </div>
+              </div>
+              {colorDisabled ? (
                 <p role="note" className="text-brand-muted text-center text-xs">
-                  {texts.texto.estiloColorSinBordeHintIg}
+                  {isStrip
+                    ? texts.texto.estiloColorDeshabilitadoHintTira
+                    : texts.texto.estiloColorDeshabilitadoHint}
                 </p>
-              )
-            )}
-          </div>
-        )}
+              ) : (
+                isIg &&
+                isFullBleed && (
+                  // Owner 2026-10-06 — en IG «Sin borde» la paleta queda ACTIVA:
+                  // el aviso explica qué pinta el color (las franjas del post).
+                  <p role="note" className="text-brand-muted text-center text-xs">
+                    {texts.texto.estiloColorSinBordeHintIg}
+                  </p>
+                )
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -328,11 +551,14 @@ function BorderOption({
   label,
   icon,
   onClick,
+  large = false,
 }: {
   active: boolean;
   label: string;
   icon: React.ReactNode;
   onClick: () => void;
+  /** Fase 2 UX (2026-10-13) — variante del bottom-sheet móvil (target táctil ≥44px). */
+  large?: boolean;
 }) {
   return (
     <button
@@ -341,7 +567,8 @@ function BorderOption({
       aria-checked={active}
       onClick={onClick}
       className={[
-        "focus:ring-brand-turquoise flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all focus:ring-2 focus:outline-none",
+        "focus:ring-brand-turquoise flex items-center justify-center gap-1.5 rounded-md font-semibold transition-all focus:ring-2 focus:outline-none",
+        large ? "min-h-11 px-4 py-3 text-sm" : "px-2.5 py-1.5 text-xs",
         active
           ? "bg-brand-purple text-white shadow-sm"
           : "text-brand-purple-dark/70 hover:bg-brand-purple/10",
@@ -360,6 +587,7 @@ function ColorButton({
   onClick,
   kind = "color",
   disabled = false,
+  large = false,
 }: {
   active: boolean;
   color?: string;
@@ -368,6 +596,8 @@ function ColorButton({
   kind?: "color" | "none";
   /** Ola 24 — paleta desactivada por «Sin borde» (queda visible pero inerte). */
   disabled?: boolean;
+  /** Fase 2 UX (2026-10-13) — variante del bottom-sheet móvil (44px táctil). */
+  large?: boolean;
 }) {
   return (
     <Hint content={label}>
@@ -382,7 +612,8 @@ function ColorButton({
           onClick={onClick}
           disabled={disabled}
           className={[
-            "focus:ring-brand-turquoise relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-all focus:ring-2 focus:outline-none",
+            "focus:ring-brand-turquoise relative flex cursor-pointer items-center justify-center rounded-full transition-all focus:ring-2 focus:outline-none",
+            large ? "h-11 w-11" : "h-8 w-8",
             "disabled:cursor-not-allowed",
             active
               ? "ring-brand-turquoise shadow-md ring-2 ring-offset-2"
@@ -395,7 +626,7 @@ function ColorButton({
               ∅
             </span>
           ) : active ? (
-            <ActiveCheck dark={LIGHT_HEXES.has(color?.toUpperCase() ?? "")} />
+            <ActiveCheck large={large} dark={LIGHT_HEXES.has(color?.toUpperCase() ?? "")} />
           ) : null}
         </button>
       </span>
@@ -408,7 +639,7 @@ function ColorButton({
  * (components/color-picker.tsx, paridad en todas las plataformas). El hex entra
  * al mismo estado `borderColor` que un swatch (persiste en el diseño y viaja a
  * producción igual). El panel inline cae DEBAJO de la fila de swatches
- * (basis-full en el radiogroup flex-wrap).
+ * (basis-full en el radiogroup flex-wrap; col-span-full en la grilla del sheet).
  */
 function CustomColorButton({
   value,
@@ -416,6 +647,8 @@ function CustomColorButton({
   label,
   onChange,
   disabled = false,
+  triggerClassName = "h-8 w-8",
+  panelClassName = "w-full basis-full",
 }: {
   /** borderColor actual (null = sin color). */
   value: string | null;
@@ -424,6 +657,10 @@ function CustomColorButton({
   label: string;
   onChange: (hex: string) => void;
   disabled?: boolean;
+  /** Tamaño del swatch trigger (el sheet móvil usa "h-11 w-11", ≥44px táctil). */
+  triggerClassName?: string;
+  /** Colocación del panel inline en el contenedor padre. */
+  panelClassName?: string;
 }) {
   const palette = new Set(paletteHexes.map((h) => h.toUpperCase()));
   const customValue = value && !palette.has(value.toUpperCase()) ? value : null;
@@ -435,8 +672,8 @@ function CustomColorButton({
       disabled={disabled}
       active={customValue !== null}
       hint={label}
-      className="h-8 w-8"
-      panelClassName="w-full basis-full"
+      className={triggerClassName}
+      panelClassName={panelClassName}
     />
   );
 }

@@ -201,6 +201,7 @@ apps/web/app/estudio/[slug]/
 ├── studio-consent-text.tsx            # Consentimiento de derechos de imagen (Ley 1581)
 ├── studio-ai-panel.tsx                # Asistente IA de ideas (ADR-058) — copy CMS estudio.ia.*
 ├── studio-style-toolbar.tsx           # Toolbar de estilo: marco, fondo, tipografía (Ola 10)
+│                                      #   · bottom-sheet móvil con botón resumen (Fase 2 UX 2026-10-13)
 ├── studio-photo-preview.tsx           # Preview de foto subida (Ola 9)
 ├── studio-texts.ts                    # Tipos + defaults del copy del Estudio
 ├── studio-texts-provider.tsx          # Context client del copy (useStudioTexts)
@@ -1432,6 +1433,34 @@ checkerboard eliminada, layout del libro por `pieceL` — no se repite):
   tarjeta de calendario ya no flota con grosor de imán); encuadre del mural
   ponderado al clúster (`boardFitHalf` en `cluster-layout`). El layout del libro por
   `pieceL` + trenzado 90° ya está documentado en Ola 30 (entrada 2026-10-12).
+
+### Fase 2 UX (2026-10-13) — sheet de estilo móvil, «Listo» en el picker, toggle prediseñados lila
+
+- **Bottom-sheet de estilo en móvil (`<sm`)**: la fila única con scroll horizontal de
+  Ola 32 queda SUPERSEDED para esta toolbar en móvil. En su lugar,
+  `studio-style-toolbar.tsx` muestra un botón resumen siempre visible (swatch del
+  color + nombre + estado del borde + chevron, con `aria-label` descriptivo) que abre
+  un `Sheet` Radix anclado abajo: grilla de colores que envuelve (sin scroll-x),
+  `BorderOption` Con/Sin borde, «Personalizado» (mismo picker propio de Ola 32) y
+  botón «Listo» sticky que SOLO cierra — la selección aplica en vivo sobre el mismo
+  store. Desktop (`≥sm`) intacto: mismo JSX de antes bajo `hidden sm:block`; ambas
+  ramas comparten la lógica derivada del cuerpo del componente (sin duplicar fuentes
+  de verdad). Targets táctiles ≥44px en el sheet (`large` en `BorderOption`/
+  `ColorButton`, trigger `h-11 w-11` del custom).
+- **Nombre del color elegido siempre visible**: nueva clave
+  `estudio.texto.estilo-color-elegido` («Elegido: {color}») bajo la grilla del sheet
+  y junto al título «Color de tarjeta» en desktop. El label resuelve paleta → nombre,
+  fuera de paleta → `Personalizado #HEX`, `null` → «Sin color».
+- **«Listo» sticky del picker de assets** (`studio-asset-picker-modal.tsx`, clave
+  `estudio.fotos.picker-listo`): footer fijo con botón primario que cierra el modal
+  sin asignar — el flujo de slot/tap-to-assign no cambia.
+- **Toggle «Diseños prediseñados» del sidebar** en lila (`bg-brand-purple`, texto
+  blanco); `aria-expanded`/`aria-controls` y el comportamiento colapsable intactos.
+- Claves CMS nuevas registradas en `studio-texts.ts` y `cms-site-map.mjs`:
+  `estudio.fotos.picker-listo`, `estudio.texto.estilo-resumen-aria`,
+  `estudio.texto.estilo-sheet-titulo`, `estudio.texto.estilo-sheet-listo`,
+  `estudio.texto.estilo-color-elegido`. La lógica Instagram blanco/negro y el hint
+  de color deshabilitado se reusan sin cambios dentro del sheet.
 
 ## DPI y sangrado (estado real 2026-10-05)
 
