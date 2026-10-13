@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:audit-responsive": "playwright test audit-responsive.spec --project=desktop-chrome --project=mobile-chrome --project=mobile-landscape --project=tablet --project=tablet-landscape --project=desktop-large",
     "db:backup": "node scripts/backup-db-to-r2.mjs",
     "storage:backup": "node scripts/backup-storage-to-r2.mjs"
   },
