@@ -30,7 +30,8 @@ import { removeItemAction, updateQtyAction } from "./actions";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { LinkPendingLabel } from "@/components/ui/link-pending-label";
 import { IconSubmitButton } from "./qty-button";
-import { DesignPreviewDialog } from "./design-preview-dialog";
+import { DesignPreviewDialog } from "@/components/design-preview-dialog";
+import { DesignUnitsBadge } from "@/components/design-units-badge";
 
 export const metadata: Metadata = {
   title: "Carrito",
@@ -61,12 +62,11 @@ export default async function CarritoPage() {
           ) : (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               <ul className="space-y-3 md:col-span-2">
-                {cart.items.map((item) => (
-                  <li
-                    key={item.itemId}
-                    className="border-brand-purple/10 flex gap-4 rounded-xl border bg-white p-3"
-                  >
-                    <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square h-24 w-24 flex-shrink-0 overflow-hidden rounded-md bg-gradient-to-br">
+                {cart.items.map((item) => {
+                  // Miniatura compartida entre el disparador clicable (diseños
+                  // con preview) y el div estático (catálogo simple).
+                  const thumb = (
+                    <>
                       {item.imageUrl ? (
                         <Image
                           src={item.imageUrl}
@@ -84,140 +84,197 @@ export default async function CarritoPage() {
                           <Sparkles className="text-brand-muted h-7 w-7" />
                         </div>
                       )}
-                    </div>
-                    <div className="flex flex-1 flex-col gap-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <Link
-                            href={`/producto/${item.productSlug}`}
-                            className="text-brand-purple-dark hover:text-brand-purple font-semibold"
-                          >
-                            {item.productName}
-                          </Link>
-                          {/* Paquete F (2026-10-02) — nombre de la variante + su desglose
+                      {/* 2026-10-13 — «N unidades» sobre la miniatura cuando el
+                          diseño trae varias piezas (el «Ver» pagina por unidad). */}
+                      <DesignUnitsBadge
+                        count={item.designPreviewPages?.length ?? 0}
+                        label={<CmsText blockKey="cart.unidades-badge" fallback="unidades" />}
+                      />
+                    </>
+                  );
+                  return (
+                    <li
+                      key={item.itemId}
+                      className="border-brand-purple/10 flex gap-4 rounded-xl border bg-white p-3"
+                    >
+                      {item.designPreviewUrl ? (
+                        // 2026-10-13 — la miniatura del diseño también abre el
+                        // lightbox (además del botón «Ver»: Radix admite un solo
+                        // trigger por Dialog, así que es una 2ª instancia del
+                        // mismo componente con trigger personalizado).
+                        <DesignPreviewDialog
+                          previewUrl={item.designPreviewUrl}
+                          pages={item.designPreviewPages}
+                          watermarkNote={
+                            item.designWatermarked ? (
+                              <CmsText
+                                blockKey="cart.vista-previa-watermark-nota"
+                                fallback="Vista previa con marca de agua — tu impresión final no la lleva."
+                              />
+                            ) : null
+                          }
+                          productName={item.productName}
+                          trigger={
+                            <button
+                              type="button"
+                              aria-label={`Ver el diseño de ${item.productName}`}
+                              className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 focus-visible:ring-brand-turquoise relative aspect-square h-24 w-24 flex-shrink-0 cursor-zoom-in overflow-hidden rounded-md bg-gradient-to-br focus-visible:ring-2 focus-visible:outline-none"
+                            >
+                              {thumb}
+                            </button>
+                          }
+                          title={
+                            <CmsText
+                              blockKey="cart.vista-previa-diseno-titulo"
+                              fallback="Tu diseño ·"
+                            />
+                          }
+                          description={
+                            <CmsText
+                              blockKey="cart.vista-previa-diseno-desc"
+                              fallback="Vista previa ampliada del diseño personalizado de esta línea del carrito."
+                            />
+                          }
+                        />
+                      ) : (
+                        <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square h-24 w-24 flex-shrink-0 overflow-hidden rounded-md bg-gradient-to-br">
+                          {thumb}
+                        </div>
+                      )}
+                      <div className="flex flex-1 flex-col gap-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <Link
+                              href={`/producto/${item.productSlug}`}
+                              className="text-brand-purple-dark hover:text-brand-purple font-semibold"
+                            >
+                              {item.productName}
+                            </Link>
+                            {/* Paquete F (2026-10-02) — nombre de la variante + su desglose
                               estructurado (variantBreakdown): el nombre libre no siempre
                               informa las dimensiones de compra (p. ej. Con/Sin imán). */}
-                          <p className="text-brand-muted mt-0.5 text-xs">{item.variantName}</p>
-                          {item.variantBreakdown.length > 0 && (
-                            <p className="text-brand-purple-dark/80 mt-0.5 text-xs">
-                              {item.variantBreakdown.join(" · ")}
-                            </p>
-                          )}
-                          {item.designId ? (
-                            <div className="mt-1 flex flex-col gap-1.5">
-                              <p className="text-brand-purple/80 text-xs font-medium">
-                                <CmsText blockKey="cart.diseno-badge" fallback="✨ Tu diseño" />
+                            <p className="text-brand-muted mt-0.5 text-xs">{item.variantName}</p>
+                            {item.variantBreakdown.length > 0 && (
+                              <p className="text-brand-purple-dark/80 mt-0.5 text-xs">
+                                {item.variantBreakdown.join(" · ")}
                               </p>
-                              {/* QA owner 2026-09-25 — "Editar" era un texto con forma
+                            )}
+                            {item.designId ? (
+                              <div className="mt-1 flex flex-col gap-1.5">
+                                <p className="text-brand-purple/80 text-xs font-medium">
+                                  <CmsText blockKey="cart.diseno-badge" fallback="✨ Tu diseño" />
+                                </p>
+                                {/* QA owner 2026-09-25 — "Editar" era un texto con forma
                                   de enlace; ahora es un botón outline real (mismo href
                                   al Estudio). "Ver" abre el lightbox con el preview del
                                   diseño (DesignPreviewDialog, client — sus textos bajan
                                   resueltos por props porque el client no lee el CMS). */}
-                              <div className="flex flex-wrap items-center gap-2">
-                                <Button
-                                  asChild
-                                  variant="outline"
-                                  size="sm"
-                                  className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 hover:text-brand-purple-dark"
-                                >
-                                  <Link
-                                    href={`/estudio/${item.productSlug}?designId=${item.designId}`}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Button
+                                    asChild
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 hover:text-brand-purple-dark"
                                   >
-                                    <Pencil aria-hidden="true" />
-                                    Editar
-                                  </Link>
-                                </Button>
-                                {item.designPreviewUrl && (
-                                  <DesignPreviewDialog
-                                    previewUrl={item.designPreviewUrl}
-                                    // 2026-10-13 — páginas por unidad (watermark)
-                                    // cuando el diseño las tiene: el "Ver" pagina
-                                    // como la Vista Previa del Estudio.
-                                    pages={item.designPreviewPages}
-                                    watermarkNote={
-                                      item.designWatermarked ? (
+                                    <Link
+                                      href={`/estudio/${item.productSlug}?designId=${item.designId}`}
+                                    >
+                                      <Pencil aria-hidden="true" />
+                                      Editar
+                                    </Link>
+                                  </Button>
+                                  {item.designPreviewUrl && (
+                                    <DesignPreviewDialog
+                                      previewUrl={item.designPreviewUrl}
+                                      // 2026-10-13 — páginas por unidad (watermark)
+                                      // cuando el diseño las tiene: el "Ver" pagina
+                                      // como la Vista Previa del Estudio.
+                                      pages={item.designPreviewPages}
+                                      watermarkNote={
+                                        item.designWatermarked ? (
+                                          <CmsText
+                                            blockKey="cart.vista-previa-watermark-nota"
+                                            fallback="Vista previa con marca de agua — tu impresión final no la lleva."
+                                          />
+                                        ) : null
+                                      }
+                                      productName={item.productName}
+                                      triggerLabel={
+                                        <CmsText blockKey="cart.ver-diseno" fallback="Ver" />
+                                      }
+                                      title={
                                         <CmsText
-                                          blockKey="cart.vista-previa-watermark-nota"
-                                          fallback="Vista previa con marca de agua — tu impresión final no la lleva."
+                                          blockKey="cart.vista-previa-diseno-titulo"
+                                          fallback="Tu diseño ·"
                                         />
-                                      ) : null
-                                    }
-                                    productName={item.productName}
-                                    triggerLabel={
-                                      <CmsText blockKey="cart.ver-diseno" fallback="Ver" />
-                                    }
-                                    title={
-                                      <CmsText
-                                        blockKey="cart.vista-previa-diseno-titulo"
-                                        fallback="Tu diseño ·"
-                                      />
-                                    }
-                                    description={
-                                      <CmsText
-                                        blockKey="cart.vista-previa-diseno-desc"
-                                        fallback="Vista previa ampliada del diseño personalizado de esta línea del carrito."
-                                      />
-                                    }
-                                  />
-                                )}
+                                      }
+                                      description={
+                                        <CmsText
+                                          blockKey="cart.vista-previa-diseno-desc"
+                                          fallback="Vista previa ampliada del diseño personalizado de esta línea del carrito."
+                                        />
+                                      }
+                                    />
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ) : (
-                            item.isPersonalizable && (
-                              <p className="text-brand-muted text-xs">Personalizable</p>
-                            )
-                          )}
-                          {item.borderNote && (
-                            <p className="text-brand-muted text-xs">{item.borderNote}</p>
-                          )}
-                          {/* Resumen de pieza ("2 tiras de 3 fotos · 6.5×20 cm cada tira"):
+                            ) : (
+                              item.isPersonalizable && (
+                                <p className="text-brand-muted text-xs">Personalizable</p>
+                              )
+                            )}
+                            {item.borderNote && (
+                              <p className="text-brand-muted text-xs">{item.borderNote}</p>
+                            )}
+                            {/* Resumen de pieza ("2 tiras de 3 fotos · 6.5×20 cm cada tira"):
                               mismo dato que muestra el checkout (quote-form) — multi-unidad
                               2026-09-09: la línea describe las unidades del diseño. */}
-                          {item.pieceSummary && (
-                            <p className="text-brand-purple-dark/80 mt-1 text-xs">
-                              📐 {item.pieceSummary}
-                            </p>
-                          )}
-                          <UnitPriceLabel
-                            unitPrice={item.unitPrice}
-                            designUnits={item.designUnits}
-                          />
+                            {item.pieceSummary && (
+                              <p className="text-brand-purple-dark/80 mt-1 text-xs">
+                                📐 {item.pieceSummary}
+                              </p>
+                            )}
+                            <UnitPriceLabel
+                              unitPrice={item.unitPrice}
+                              designUnits={item.designUnits}
+                            />
+                          </div>
+                          <form action={removeItemAction}>
+                            <input type="hidden" name="itemId" value={item.itemId} />
+                            <SubmitButton
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-700 hover:bg-red-50"
+                              aria-label={`Quitar ${item.productName}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </SubmitButton>
+                          </form>
                         </div>
-                        <form action={removeItemAction}>
-                          <input type="hidden" name="itemId" value={item.itemId} />
-                          <SubmitButton
-                            variant="ghost"
-                            size="sm"
-                            className="text-red-700 hover:bg-red-50"
-                            aria-label={`Quitar ${item.productName}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </SubmitButton>
-                        </form>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        {/* Modelo multi-unidad (QA owner 2026-09-25): una línea
+                        <div className="flex items-center justify-between gap-3">
+                          {/* Modelo multi-unidad (QA owner 2026-09-25): una línea
                             personalizada tiene qty=1 y el diseño contiene N unidades
                             — subir qty duplicaría el pack entero (×5 → ×10) y el
                             cliente lo leía como error. Sin stepper: la cantidad se
                             muestra como texto (unidades del diseño × qty) y se cambia
                             editando el diseño. Líneas de catálogo simple conservan
                             el stepper. */}
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                          {item.designId ? (
-                            <DesignUnitsLabel units={item.designUnits} qty={item.qty} />
-                          ) : (
-                            <QtyControls itemId={item.itemId} qty={item.qty} stock={item.stock} />
-                          )}
-                          <LowStockBadge qty={item.qty} stock={item.stock} />
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            {item.designId ? (
+                              <DesignUnitsLabel units={item.designUnits} qty={item.qty} />
+                            ) : (
+                              <QtyControls itemId={item.itemId} qty={item.qty} stock={item.stock} />
+                            )}
+                            <LowStockBadge qty={item.qty} stock={item.stock} />
+                          </div>
+                          <span className="text-brand-purple-dark font-bold tabular-nums">
+                            {formatCOP(item.lineTotal)}
+                          </span>
                         </div>
-                        <span className="text-brand-purple-dark font-bold tabular-nums">
-                          {formatCOP(item.lineTotal)}
-                        </span>
                       </div>
-                    </div>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
 
               {/* 2026-10-13 — las miniaturas/previews de líneas personalizadas se

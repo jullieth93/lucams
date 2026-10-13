@@ -93,4 +93,15 @@ describe("DesignPreviewDialog — pager por unidad", () => {
     openDialog();
     expect(screen.queryByText(/marca de agua/)).not.toBeInTheDocument();
   });
+
+  it("con trigger personalizado (miniatura clicable): reemplaza al botón «Ver»", () => {
+    renderDialog({
+      pages: PAGES,
+      trigger: <button type="button">Miniatura del diseño</button>,
+    });
+    expect(screen.queryByRole("button", { name: "Ver" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Miniatura del diseño" }));
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+    expect(screen.getByRole("img")).toHaveAttribute("src", PAGES[0]);
+  });
 });
