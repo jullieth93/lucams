@@ -20,7 +20,7 @@ import { test, expect, dismissCookieBanner, E2E_ENV } from "./fixtures/auth";
  *
  * Matriz de pantallas (rutas reales de app/ y app/admin/(panel)/):
  *   - cliente público: /, /productos, /producto/<slug vivo>, /carrito,
- *     /checkout, /login, /registro.
+ *     /checkout/datos, /login, /registro.
  *   - cliente autenticado (storageState "client" del global.setup): /mi-cuenta,
  *     pedidos, disenos, perfil. Se SALTA sin storageState (patrón fixtures/auth).
  *   - admin (storageState "admin"): dashboard, pedidos, productos, clientes,
@@ -300,7 +300,19 @@ test.describe("auditoría responsive global — cliente + admin × 6 perfiles", 
     await correrGrupo(
       page,
       "cliente-publico",
-      ["/", "/productos", `/producto/${pdpSlug}`, "/carrito", "/checkout", "/login", "/registro"],
+      // 2026-10-13 — `/checkout` no tiene page.tsx (solo subrutas datos/envio/
+      // pago/gracias) → 404 por diseño. Se audita `/checkout/datos`, que sin
+      // carrito redirige a /carrito (queda registrado como info).
+      [
+        "/",
+        "/productos",
+        `/producto/${pdpSlug}`,
+        `/estudio/${pdpSlug}`,
+        "/carrito",
+        "/checkout/datos",
+        "/login",
+        "/registro",
+      ],
       testInfo,
       { cookies: true },
     );
