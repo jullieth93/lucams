@@ -158,6 +158,16 @@ describe("StudioSidebar — prediseñados colapsables (Fase 2 · 2.5)", () => {
     expect(screen.queryByRole("button", { name: TOGGLE_NAME })).toBeNull();
     expect(screen.queryByText(/Diseños prediseñados/)).toBeNull();
   });
+
+  it("Fase 2 UX (2026-10-13) — el toggle tiene presencia de marca (lila, texto blanco)", () => {
+    renderSidebar(predesignedItems(9));
+
+    const toggle = screen.getByRole("button", { name: TOGGLE_NAME });
+    expect(toggle.className).toContain("bg-brand-purple");
+    expect(toggle.className).toContain("text-white");
+    // Comportamiento intacto: sigue colapsado por defecto con muchos diseños.
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+  });
 });
 
 describe("StudioSidebar — miniatura watermark de prediseñados (3.10, 2026-10-07)", () => {

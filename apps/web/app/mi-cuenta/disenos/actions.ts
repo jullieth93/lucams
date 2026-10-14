@@ -7,6 +7,10 @@ import {
   archiveCustomerDesign,
   revokeDesignShareToken,
 } from "@/features/personalization/service";
+import {
+  deleteCustomerDraftDesign,
+  emptyCustomerDraftDesigns,
+} from "@/features/personalization/draft-lifecycle";
 
 /**
  * Genera el token público del diseño para compartirlo. Si ya había un link activo
@@ -40,4 +44,30 @@ export async function revokeShareAction(designId: string): Promise<{ ok: boolean
   const ok = await revokeDesignShareToken(designId, session.customer.id);
   if (ok) revalidatePath("/mi-cuenta/disenos");
   return { ok };
+}
+
+/**
+ * 2026-10-13 — elimina UN borrador (sección «Borradores» de "Mis diseños").
+ * El service exige DRAFT + ownership; los assets de Storage se borran con el
+ * registro. La UI confirma antes de llamarla (es irreversible).
+ */
+export async function deleteDraftDesignAction(designId: string): Promise<{ ok: boolean }> {
+  const session = await getCurrentCustomer();
+  if (!session) return { ok: false };
+  if (typeof designId !== "string" || !designId.trim()) return { ok: false };
+  const ok = await deleteCustomerDraftDesign(designId, session.customer.id);
+  if (ok) revalidatePath("/mi-cuenta/disenos");
+  return { ok };
+}
+
+/**
+ * 2026-10-13 — «Vaciar borradores»: elimina TODOS los DRAFT del cliente con sus
+ * assets (nunca READY/USED_IN_ORDER). La UI confirma antes de llamarla.
+ */
+export async function emptyDraftsAction(): Promise<{ ok: boolean; deleted: number }> {
+  const session = await getCurrentCustomer();
+  if (!session) return { ok: false, deleted: 0 };
+  const { deleted } = await emptyCustomerDraftDesigns(session.customer.id);
+  if (deleted > 0) revalidatePath("/mi-cuenta/disenos");
+  return { ok: true, deleted };
 }

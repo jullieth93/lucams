@@ -1,10 +1,15 @@
 /*
- * Cron de recuperación de carrito abandonado (palanca de ingreso, auditoría 2026-07-13). Envía UN
- * recordatorio a carritos con email inactivos ≥4h y detecta conversión. Protegido por CRON_SECRET,
- * SOLO vía header `x-cron-secret` (`?secret=` NO se acepta: quedaría en logs de acceso — #14),
- * como los demás crons.
+ * Cron de recuperación de carrito abandonado (palanca de ingreso, auditoría 2026-07-13).
+ * Protegido por CRON_SECRET, SOLO vía header `x-cron-secret` (`?secret=` NO se acepta:
+ * quedaría en logs de acceso — #14), como los demás crons.
  *
  * Se agenda con pg_cron en Supabase (mandato #11) — SQL en docs/OPERATIONS.md.
+ *
+ * Fase 4 (2026-10-13): el schedule pg_cron NO cambia; la CONFIG del módulo
+ * (features/cart/recovery-settings.ts, editable en /admin/carritos/configuracion)
+ * decide por corrida: módulo apagado o modo "manual" → no envía nada y responde
+ * ok con `skippedReason` ("disabled" | "manual"); modo "automatic" → aplica
+ * idleHours/maxReminders/intervalHours.
  */
 
 import type { NextRequest } from "next/server";
@@ -24,7 +29,9 @@ export async function GET(req: NextRequest) {
   }
   try {
     const result = await sendCartRecoveryReminders();
-    await recordCronHeartbeat("cart-recovery"); // #15 dead-man switch (solo en éxito)
+    // #15 dead-man switch: el cron CORRIÓ bien (incluye corridas skipped por
+    // config — el heartbeat mide que el job está vivo, no que haya enviado).
+    await recordCronHeartbeat("cart-recovery");
     return Response.json({ ok: true, ...result });
   } catch (err) {
     logger.error({

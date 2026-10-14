@@ -145,6 +145,16 @@ export type AccountTexts = {
      *  nuevo) y badge «Listo» para la distinción Borrador/Listo. */
     edit: string;
     readyBadge: string;
+    /** 2026-10-13 — sección «Borradores» (colapsable, debajo de los listos):
+     *  título, contador ({n} = cantidad), eliminación individual con
+     *  confirmación y «Vaciar borradores» con confirmación. */
+    draftsSection: string;
+    draftsCountSingle: string;
+    draftsCountMany: string;
+    draftDelete: string;
+    draftDeleteConfirm: string;
+    draftsEmpty: string;
+    draftsEmptyConfirm: string;
   };
   favorites: {
     title: string;
@@ -331,6 +341,13 @@ export const DEFAULT_ACCOUNT_TEXTS: AccountTexts = {
     draftResume: "Seguir editando",
     edit: "Editar",
     readyBadge: "Listo",
+    draftsSection: "Borradores",
+    draftsCountSingle: "{n} borrador",
+    draftsCountMany: "{n} borradores",
+    draftDelete: "Eliminar",
+    draftDeleteConfirm: "¿Eliminar?",
+    draftsEmpty: "Vaciar borradores",
+    draftsEmptyConfirm: "¿Vaciar todos?",
   },
   favorites: {
     title: "Mis favoritos",
@@ -496,6 +513,13 @@ export const ACCOUNT_TEXT_KEYS: Record<string, string> = {
   "designs.draftResume": "account.designs.draft-resume",
   "designs.edit": "account.designs.edit",
   "designs.readyBadge": "account.designs.ready-badge",
+  "designs.draftsSection": "account.designs.drafts-section",
+  "designs.draftsCountSingle": "account.designs.drafts-count-single",
+  "designs.draftsCountMany": "account.designs.drafts-count-many",
+  "designs.draftDelete": "account.designs.draft-delete",
+  "designs.draftDeleteConfirm": "account.designs.draft-delete-confirm",
+  "designs.draftsEmpty": "account.designs.drafts-empty",
+  "designs.draftsEmptyConfirm": "account.designs.drafts-empty-confirm",
   "favorites.title": "account.favorites.title",
   "favorites.subtitleEmpty": "account.favorites.subtitle-empty",
   "favorites.countSingle": "account.favorites.count-single",

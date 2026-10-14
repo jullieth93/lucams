@@ -4,6 +4,12 @@
  * (2) detección de conversión (cart soft-deleted → recoveredAt), (3) el gate de "un solo
  * recordatorio" y "esperar 4h". Comparte la Supabase de dev; fixtures RUN-prefijados.
  * Ver project_integration_tests_share_dev_db.
+ *
+ * Fase 4 (2026-10-13): el cron se gobierna por settings (recovery-settings.ts); acá NO se
+ * mockea getSettingValue → en la DB de test no hay filas CmsField CART_RECOVERY_* → corren
+ * los DEFAULTS (enabled, automático, 4h, 1 recordatorio), que son el comportamiento
+ * histórico que este test verifica. La lógica config-driven (manual, idleHours,
+ * maxReminders, envío manual) se cubre en cart-recovery-config.integration.test.ts.
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -48,10 +54,16 @@ async function makeCartWithItem(tag: string, opts: { deleted?: boolean } = {}): 
 async function makeAbandoned(
   tag: string,
   cartId: string,
-  opts: { createdAt: Date; lastReminderSentAt?: Date | null; recoveredAt?: Date | null },
+  opts: {
+    createdAt: Date;
+    lastReminderSentAt?: Date | null;
+    recoveredAt?: Date | null;
+    reminderCount?: number;
+  },
 ): Promise<void> {
   // F-11 — sin token semilla: el recoverToken se genera al ENVIAR el recordatorio
-  // (en DB solo queda su hash).
+  // (en DB solo queda su hash). Fase 4 (2026-10-13): reminderCount espeja el
+  // backfill de la migración (fila con recordatorio enviado → count 1).
   const ab = await prisma.abandonedCart.create({
     data: {
       cartId,
@@ -59,6 +71,7 @@ async function makeAbandoned(
       createdAt: opts.createdAt,
       lastReminderSentAt: opts.lastReminderSentAt ?? null,
       recoveredAt: opts.recoveredAt ?? null,
+      reminderCount: opts.reminderCount ?? (opts.lastReminderSentAt ? 1 : 0),
     },
     select: { id: true },
   });

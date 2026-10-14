@@ -22,6 +22,7 @@ import {
   getOwnedDesign,
   cloneDesignForEdit,
 } from "@/features/personalization/service";
+import { findReusableDraftDesign } from "@/features/personalization/draft-lifecycle";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { resolvePersonalizationSurface } from "@/features/personalization/surface";
 import { readPhotoPackDesignInfo } from "@/features/products/photo-pack-resolve";
@@ -493,6 +494,34 @@ export default async function EstudioPage({
   // Llegados aquí, las superficies no-foto (name/letterset/phrase/event/logo) ya retornaron y los
   // NONE sin marcador cayeron a direct-cart (redirect). Lo que queda es la ruta de FOTO (kind ≠ NONE).
   if (product.personalizationKind === "NONE") notFound();
+
+  // 2026-10-13 — REUSO de borrador al entrar al Estudio SIN ?designId= (Fase 3,
+  // plan maduración: los DRAFT proliferaban — 91 vs 23 READY en STG). Si el
+  // dueño (cliente o sesión anónima) ya tiene un DRAFT ACTIVO del mismo
+  // producto, se retoma vía redirect a ?designId= (el recover flow de arriba lo
+  // hidrata completo: canvas, assets, variante guardada) en vez de crear uno
+  // nuevo en el boot. Con ?variant= explícita solo reusa un DRAFT de ESA
+  // variante; sin ella, cualquiera (el recover re-selecciona la guardada).
+  // No aplica con deep-links de diseño NUEVO (?template= / ?copies=): ahí la
+  // intención explícita manda. Los clones (Editar / Volver a pedir) nunca pasan
+  // por acá — entran con ?designId=.
+  if (!sp.designId && !sp.template && !sp.copies) {
+    const customer = await getCurrentCustomer();
+    const entryOwner = {
+      customerId: customer?.customer.id ?? null,
+      sessionId: customer ? null : await peekCartSession(),
+    };
+    if (entryOwner.customerId || entryOwner.sessionId) {
+      const reusable = await findReusableDraftDesign({
+        ...entryOwner,
+        productId: product.id,
+        variantId: typeof sp.variant === "string" ? (selectedVariant?.id ?? null) : null,
+      });
+      if (reusable) {
+        redirect(`/estudio/${product.slug}?designId=${reusable.id}`);
+      }
+    }
+  }
 
   const photoConfig = parsePhotoProductConfig(mergedSchema);
 

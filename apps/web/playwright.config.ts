@@ -12,6 +12,14 @@
  *  - Projects: desktop-chrome (1280×800) y mobile-chrome (390×844) — la matriz
  *    flujo × viewport corre gratis: cada spec corre en ambos. El gate de CI
  *    fija --project=desktop-chrome (ci.yml / nightly-full.yml).
+ *    Auditoría responsive global (Fase 5, 2026-10-13): los perfiles extra
+ *    mobile-landscape / tablet / tablet-landscape / desktop-large tienen
+ *    testMatch exclusivo de audit-responsive.spec.ts (no corren la suite, no
+ *    afectan tiempos de CI). Los dos perfiles base (desktop-chrome 1280×800 y
+ *    mobile-chrome 390×844) son los perfiles desktop y móvil-vertical de la
+ *    matriz, así que NO ignoran el spec: la auditoría corre los 6 perfiles
+ *    con `pnpm test:audit-responsive`. CI no se ve afectado — ci.yml y
+ *    nightly-full.yml fijan listas de specs explícitas que no lo incluyen.
  *  - Auth compartida SOLO vía storageState por ambiente, generado en
  *    global.setup cuando E2E_AUTH=1 (homologación). Sin E2E_AUTH el setup es
  *    no-op y los specs que requieren auth se saltan con mensaje claro — así el
@@ -90,6 +98,31 @@ export default defineConfig({
       // (precedente: mobile-admin-audit.spec.ts).
       name: "mobile-chrome",
       use: { ...devices["Mobile Chrome"], viewport: { width: 390, height: 844 } },
+    },
+    {
+      // Auditoría responsive Fase 5 (2026-10-13): móvil HORIZONTAL 844×390.
+      // Solo corre audit-responsive.spec.ts — fuera de la suite y del gate CI.
+      name: "mobile-landscape",
+      use: { ...devices["Mobile Chrome"], viewport: { width: 844, height: 390 } },
+      testMatch: /audit-responsive\.spec\.ts/,
+    },
+    {
+      // Auditoría responsive Fase 5 (2026-10-13): tablet VERTICAL 768×1024.
+      name: "tablet",
+      use: { ...devices["Mobile Chrome"], viewport: { width: 768, height: 1024 } },
+      testMatch: /audit-responsive\.spec\.ts/,
+    },
+    {
+      // Auditoría responsive Fase 5 (2026-10-13): tablet HORIZONTAL 1024×768.
+      name: "tablet-landscape",
+      use: { ...devices["Mobile Chrome"], viewport: { width: 1024, height: 768 } },
+      testMatch: /audit-responsive\.spec\.ts/,
+    },
+    {
+      // Auditoría responsive Fase 5 (2026-10-13): desktop GRANDE 1920×1080.
+      name: "desktop-large",
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1920, height: 1080 } },
+      testMatch: /audit-responsive\.spec\.ts/,
     },
     {
       // Cross-browser §8 ("WebKit/Firefox como matriz ampliada"): storefront

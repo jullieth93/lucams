@@ -7,6 +7,9 @@
  * Regla de contenido (decisión del owner): STG es la fuente de verdad. Una fila
  * presente en ambos ambientes se considera DISTINTA si difiere en cualquiera de
  * CONTENT_FIELDS; las filas solo-PRD nunca se tocan (solo se reportan).
+ * imageUrl/imageUrlB comparan con el host NORMALIZADO a storage:// (cada
+ * ambiente sirve sus propias imágenes; el host no es diferencia de contenido
+ * — misma regla del checksum de homologación).
  */
 
 /** Campos de contenido que mandan en el diff (id/timestamps/auditores no). */
@@ -47,6 +50,18 @@ export function changedFields(stgRow, prdRow) {
 export const keyOf = (row) => `${row.tag}|${row.name}`;
 
 /**
+ * Normaliza una URL pública de Storage a `storage://<bucket>/<path>` para
+ * comparar CONTENIDO entre ambientes: el host difiere por proyecto (decisión
+ * 2026-09-20: cada ambiente sirve sus propias imágenes) y NO es diferencia de
+ * contenido (misma regla del checksum scripts/diag-stg/06-homologacion-datos.sql).
+ * URLs ajenas (Unsplash, relativas) quedan tal cual.
+ */
+export function normalizeStorageUrl(url) {
+  const obj = storageObjectFromUrl(url);
+  return obj ? `storage://${obj.bucket}/${obj.path}` : (url ?? null);
+}
+
+/**
  * Diff entre las filas de STG (fuente) y PRD (destino). Cruce en dos niveles:
  *   1. por id (las cuid se preservan para las filas que YA se sincronizaron así
  *      — re-corridas idempotentes);
@@ -54,6 +69,9 @@ export const keyOf = (row) => `${row.tag}|${row.name}`;
  *      independientemente en cada ambiente (misma clave, cuid distinta) matchean
  *      acá y se UPDATEan en sitio conservando el id de PRD, en vez de
  *      duplicarse. Si la clave está duplicada en PRD no se usa (ambigüedad).
+ * La COMPARACIÓN de imageUrl/imageUrlB se hace con el host normalizado
+ * (normalizeStorageUrl); las filas devueltas conservan las URLs CRUDAS para
+ * que el orquestador pueda reescribir el host al escribir.
  * @param {Array<Record<string, unknown>>} stgRows
  * @param {Array<Record<string, unknown>>} prdRows
  * @returns {{
@@ -63,6 +81,11 @@ export const keyOf = (row) => `${row.tag}|${row.name}`;
  * }}
  */
 export function diffGallery(stgRows, prdRows) {
+  const norm = (r) => ({
+    ...r,
+    imageUrl: normalizeStorageUrl(r.imageUrl),
+    imageUrlB: normalizeStorageUrl(r.imageUrlB),
+  });
   const prdById = new Map(prdRows.map((r) => [r.id, r]));
   const prdByKey = new Map();
   const dupKeys = new Set();
@@ -83,8 +106,9 @@ export function diffGallery(stgRows, prdRows) {
       continue;
     }
     matchedPrdIds.add(prdRow.id);
-    const fields = changedFields(row, prdRow);
-    if (fields.length > 0) updates.push({ row, prdRow, fields, matchedBy: byId ? "id" : "tag+name" });
+    const fields = changedFields(norm(row), norm(prdRow));
+    if (fields.length > 0)
+      updates.push({ row, prdRow, fields, matchedBy: byId ? "id" : "tag+name" });
   }
   const prdOnly = prdRows.filter((r) => !matchedPrdIds.has(r.id));
   return { inserts, updates, prdOnly };
@@ -113,6 +137,40 @@ export function storageObjectFromUrl(url) {
  * @param {Array<Record<string, unknown>>} rows
  * @returns {Array<{ bucket: string, path: string }>}
  */
+/**
+ * Reescribe el host de una URL pública de Storage de un ambiente a otro.
+ * Solo toca URLs que empiezan por `<fromBase>/`; el resto (null, URLs ajenas)
+ * queda intacto. Es la inversa de normalizar: se usa al ESCRIBIR en el destino
+ * (los bytes se copian aparte, al mismo path).
+ */
+export function rewriteStorageHost(value, fromBase, toBase) {
+  if (typeof value === "string" && fromBase && toBase && value.startsWith(`${fromBase}/`)) {
+    return toBase + value.slice(fromBase.length);
+  }
+  return value ?? null;
+}
+
+/**
+ * Data de escritura para DesignGalleryImage a partir de una fila fuente, con
+ * imageUrl/imageUrlB reescritas al host del DESTINO (fromBase → toBase).
+ * fields=null → todos los campos de contenido (INSERT); con array → solo esos
+ * (UPDATE). id/timestamps/auditores los decide el script orquestador.
+ */
+export function buildGalleryData(row, fields, { fromBase, toBase } = {}) {
+  const all = {
+    tag: row.tag,
+    name: row.name,
+    imageUrl: rewriteStorageHost(row.imageUrl, fromBase, toBase),
+    imageUrlB: rewriteStorageHost(row.imageUrlB, fromBase, toBase),
+    variantFilter: row.variantFilter ?? null,
+    order: row.order,
+    isActive: row.isActive,
+    deletedAt: row.deletedAt ?? null,
+  };
+  if (!fields) return all;
+  return Object.fromEntries(fields.map((f) => [f, all[f]]));
+}
+
 export function collectStorageObjects(rows) {
   const seen = new Set();
   const out = [];

@@ -1,11 +1,13 @@
 "use client";
 
 /*
- * Botón "Ver" del carrito — lightbox con la vista previa del diseño
- * personalizado (Design.previewUrl, PNG público del bucket design-previews).
+ * Lightbox compartido con la vista previa del diseño personalizado
+ * (Design.previewUrl, PNG público del bucket design-previews). Lo usan el
+ * carrito ("Ver"), /checkout/gracias, /mi-cuenta/pedidos y /pedido/[token]
+ * (2026-10-13 — vive en components/ porque ya no es exclusivo del carrito).
  *
- * La miniatura de la línea es pequeña (96px) y el cliente quiere revisar su
- * diseño en grande ANTES de pagar sin salir del carrito (QA owner 2026-09-25).
+ * La miniatura de la línea es pequeña y el cliente quiere revisar su diseño
+ * en grande sin salir de la página (QA owner 2026-09-25).
  * Radix Dialog (components/ui/dialog) ya trae foco atrapado, cierre por ESC y
  * por backdrop, y aria-modal — acá solo se compone.
  *
@@ -20,7 +22,7 @@
  * tests). El zoom se restablece al cerrar el diálogo.
  *
  * Es client component y NO puede leer el CMS: sus textos llegan resueltos por
- * props desde app/carrito/page.tsx (server), como <CmsText> por cada rótulo —
+ * props desde las páginas server que lo usan, como <CmsText> por cada rótulo —
  * así el ratchet de cobertura de contenido los cuenta como cubiertos (mismo
  * patrón que label={<CmsText …/>} en app/pedido/[token]/page.tsx).
  */
@@ -61,6 +63,7 @@ export function DesignPreviewDialog({
   pages = null,
   watermarkNote = null,
   productName,
+  trigger = null,
   triggerLabel,
   title,
   description,
@@ -80,8 +83,16 @@ export function DesignPreviewDialog({
   /** Aviso "vista previa con marca de agua…" (CMS); null cuando lo exhibido es limpio. */
   watermarkNote?: ReactNode;
   productName: string;
+  /**
+   * 2026-10-13 — disparador personalizado (p.ej. la miniatura clicable de la
+   * línea). Cuando llega, REEMPLAZA al botón outline por defecto; debe ser un
+   * elemento interactivo propio (<button>) porque DialogTrigger lo clona con
+   * asChild. Para miniatura + botón «Ver» en la misma línea se renderizan dos
+   * instancias del diálogo (Radix admite un solo trigger por Dialog).
+   */
+  trigger?: ReactNode;
   /** Rótulo del botón que abre el lightbox (CMS: cart.ver-diseno). */
-  triggerLabel: ReactNode;
+  triggerLabel?: ReactNode;
   /** Título del lightbox; el nombre del producto se concatena después (CMS: cart.vista-previa-diseno-titulo). */
   title: ReactNode;
   /** Descripción sr-only para lectores de pantalla (CMS: cart.vista-previa-diseno-desc). */
@@ -306,14 +317,16 @@ export function DesignPreviewDialog({
       }}
     >
       <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 hover:text-brand-purple-dark"
-        >
-          <Eye aria-hidden="true" />
-          {triggerLabel}
-        </Button>
+        {trigger ?? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 hover:text-brand-purple-dark"
+          >
+            <Eye aria-hidden="true" />
+            {triggerLabel}
+          </Button>
+        )}
       </DialogTrigger>
       {/* El ancho se sobreescribe con la variante prefijada `sm:max-w-lg` — la
           base del Dialog trae `sm:max-w-sm`, que por orden de cascada le ganaría

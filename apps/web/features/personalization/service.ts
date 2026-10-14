@@ -34,6 +34,7 @@ import {
   PREVIEWS_BUCKET,
   PURGE_IDLE_DESIGN_AFTER_DAYS,
 } from "@/features/personalization/retention-service";
+import { trimExcessDraftDesigns } from "./draft-lifecycle";
 import { supabaseService } from "@/lib/supabase/service";
 import { hashBearerToken } from "@/lib/token-hash";
 import { parsePhotoProductConfig } from "./schemas";
@@ -92,6 +93,30 @@ const BUCKET_CUSTOMER_UPLOADS = "customer-uploads";
 //  Ownership check
 // ──────────────────────────────────────────────────────────────────
 
+/**
+ * 2026-10-13 — poda «últimos N borradores» (draft-lifecycle.ts) tras crear un
+ * DRAFT nuevo. BEST-EFFORT: una poda fallida se loguea y NUNCA rompe el flujo
+ * principal (creación/clon de diseño); los excedentes los recoge la próxima
+ * creación o la purga de retención.
+ */
+async function trimDraftsBestEffort(
+  owner: { customerId: string | null; sessionId: string | null },
+  productId: string,
+): Promise<void> {
+  try {
+    await trimExcessDraftDesigns(owner, productId);
+  } catch (err) {
+    logger.warn(
+      {
+        event: "design.draft_trim.fail",
+        productId,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "Poda de borradores falló (best-effort)",
+    );
+  }
+}
+
 export async function getOwnedDesign(
   designId: string,
   owner: { customerId: string | null; sessionId: string | null },
@@ -129,7 +154,7 @@ export async function cloneDesignForEdit(
   if (!original || original.status !== "READY") return null;
   const assets = await prisma.designAsset.findMany({ where: { designId: original.id } });
 
-  return prisma.$transaction(async (tx) => {
+  const clone = await prisma.$transaction(async (tx) => {
     const clone = await tx.design.create({
       data: {
         productId: original.productId,
@@ -173,6 +198,11 @@ export async function cloneDesignForEdit(
     }
     return { id: clone.id };
   });
+
+  // 2026-10-13 — el clon es un DRAFT nuevo INTENCIONAL (edición): no pasa por el
+  // reuso, pero sí por la poda «últimos N» del mismo dueño+producto.
+  await trimDraftsBestEffort(owner, original.productId);
+  return clone;
 }
 
 /**
@@ -348,6 +378,10 @@ export async function cloneDesignForReorder(
       },
       "Diseño clonado para reorder (bytes copiados, READY)",
     );
+    // 2026-10-13 — el reorder nace DRAFT (y se promueve a READY arriba): es una
+    // creación intencional, no pasa por el reuso, pero sí dispara la poda
+    // «últimos N» de los DRAFT del mismo dueño+producto.
+    await trimDraftsBestEffort(newOwner, original.productId);
     return { id: clone.id };
   } catch (err) {
     logger.warn({
@@ -596,6 +630,15 @@ export async function createDraftDesign(opts: {
     "Draft design created (V2)",
   );
 
+  // 2026-10-13 — poda «últimos N borradores» del mismo dueño+producto (el reuso
+  // al ENTRAR al Estudio vive en app/estudio/[slug]/page.tsx: retoma el DRAFT
+  // activo más reciente en vez de llamar acá; cuando se llega a crear, la poda
+  // acota el acumulado).
+  await trimDraftsBestEffort(
+    { customerId: opts.customerId, sessionId: opts.sessionId },
+    opts.productId,
+  );
+
   return design;
 }
 
@@ -708,6 +751,13 @@ export async function createNameDesign(opts: {
       ownerType: opts.customerId ? "customer" : "session",
     },
     "Name design created",
+  );
+
+  // 2026-10-13 — cada confirmación del editor de nombre crea un DRAFT nuevo
+  // (el editor nunca reusa el id): poda «últimos N» del mismo dueño+producto.
+  await trimDraftsBestEffort(
+    { customerId: opts.customerId, sessionId: opts.sessionId },
+    opts.productId,
   );
 
   return { id: design.id, display: norm.display, letters: norm.letters };
@@ -851,6 +901,13 @@ export async function createLetterSetDesign(opts: {
       frameTheme: opts.frameTheme,
     },
     "Letter set design created",
+  );
+
+  // 2026-10-13 — misma poda «últimos N» que createNameDesign (cada confirmación
+  // del editor de sets crea un DRAFT nuevo del mismo dueño+producto).
+  await trimDraftsBestEffort(
+    { customerId: opts.customerId, sessionId: opts.sessionId },
+    opts.productId,
   );
 
   return { id: design.id, letters, language };

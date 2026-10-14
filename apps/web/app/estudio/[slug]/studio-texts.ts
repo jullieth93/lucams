@@ -340,6 +340,9 @@ export type StudioTexts = {
     pickerTitulo: string;
     pickerDesc: string;
     pickerVacio: string;
+    /** Fase 2 UX (2026-10-13) — cierre explícito del picker (footer sticky): el
+     *  cliente termina de subir/elegir y cierra sin asignar nada más. */
+    pickerListo: string;
     /** Fase 2 · 2.5 (2026-10-07) — tabs del picker "Mis fotos" / "Prediseñados"
      *  (antes un solo scroll con Mis fotos sepultada bajo los prediseñados). */
     pickerTabFotos: string;
@@ -448,6 +451,16 @@ export type StudioTexts = {
     estiloColorSinBordeHintIg: string;
     /** Ola 24 (tiras) — variante del aviso para la tira photobooth (foto a foto, sin canaletas). */
     estiloColorDeshabilitadoHintTira: string;
+    /** Fase 2 UX (2026-10-13) — bottom-sheet de estilo en móvil: nombre audible
+     *  del botón resumen (anuncia el estado actual). {borde}/{color}. */
+    estiloResumenAria: string;
+    /** Título del bottom-sheet de estilo (móvil). */
+    estiloSheetTitulo: string;
+    /** Botón primario que cierra el bottom-sheet de estilo. */
+    estiloSheetListo: string;
+    /** Nombre del color de tarjeta elegido, siempre visible (en el sheet bajo la
+     *  grilla; en desktop junto al título «Color de tarjeta»). {color} = nombre. */
+    estiloColorElegido: string;
     slotEditTitulo: string;
     slotEditTituloIndice: string;
     slotEditDesc: string;
@@ -1078,6 +1091,7 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     pickerTitulo: "Foto para el imán {n} de {total}",
     pickerDesc: "Elige una foto ya subida o suma una nueva.",
     pickerVacio: "Todavía no subiste fotos. Empieza arriba.",
+    pickerListo: "Listo",
     // Fase 2 · 2.5 (2026-10-07) — tabs del picker + toggle de la sidebar.
     pickerTabFotos: "Mis fotos",
     pickerTabPredisenados: "Prediseñados",
@@ -1173,6 +1187,12 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
       "Con «Sin borde» el color pinta las franjas de arriba y abajo de la foto.",
     estiloColorDeshabilitadoHintTira:
       "Con «Sin borde» las fotos cubren toda la tira — el color no aplica.",
+    // Fase 2 UX (2026-10-13) — bottom-sheet de estilo en móvil + nombre del
+    // color elegido siempre visible (refuerzo del indicador de selección).
+    estiloResumenAria: "Estilo actual: {borde}, color {color}. Toca para cambiarlo.",
+    estiloSheetTitulo: "Estilo de tu tarjeta",
+    estiloSheetListo: "Listo",
+    estiloColorElegido: "Elegido: {color}",
     slotEditTitulo: "Editar {etiqueta}",
     slotEditTituloIndice: "Editar espacio {n}",
     slotEditDesc: "Ajusta la foto y el texto de este espacio",
@@ -1727,6 +1747,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "fotos.pickerTitulo": "estudio.fotos.picker-titulo",
   "fotos.pickerDesc": "estudio.fotos.picker-desc",
   "fotos.pickerVacio": "estudio.fotos.picker-vacio",
+  "fotos.pickerListo": "estudio.fotos.picker-listo",
   "fotos.pickerTabFotos": "estudio.fotos.picker-tab-fotos",
   "fotos.pickerTabPredisenados": "estudio.fotos.picker-tab-predisenados",
   "fotos.pickerTabsAria": "estudio.fotos.picker-tabs-aria",
@@ -1800,6 +1821,10 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.estiloColorDeshabilitadoHint": "estudio.texto.estilo-color-deshabilitado-hint",
   "texto.estiloColorSinBordeHintIg": "estudio.texto.estilo-color-sin-borde-hint-ig",
   "texto.estiloColorDeshabilitadoHintTira": "estudio.texto.estilo-color-deshabilitado-hint-tira",
+  "texto.estiloResumenAria": "estudio.texto.estilo-resumen-aria",
+  "texto.estiloSheetTitulo": "estudio.texto.estilo-sheet-titulo",
+  "texto.estiloSheetListo": "estudio.texto.estilo-sheet-listo",
+  "texto.estiloColorElegido": "estudio.texto.estilo-color-elegido",
   "texto.slotEditTitulo": "estudio.texto.slot-edit-titulo",
   "texto.slotEditTituloIndice": "estudio.texto.slot-edit-titulo-indice",
   "texto.slotEditDesc": "estudio.texto.slot-edit-desc",

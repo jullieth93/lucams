@@ -12,7 +12,7 @@
 
 - Catálogo con categorías jerárquicas, sub-categorías, ocasiones (tags transversales), mega-menú, buscador, recomendador y filtros; API pública `/api/catalog/*` + `/api/cms/*` + `/api/coupons/public` versionada y RAG-ready (ADR-038/093).
 - PDP con precio vivo por variante, tachado promocional con reflejo total, badge «Solo quedan N», precios por volumen (`WholesaleTier`) públicos en carrito/checkout (ADR-124).
-- Carrito anónimo/registrado con dedupe, «Ver» paginado por unidad, miniatura = primera página, retención: idle 60 d, vacíos 7 d, `AbandonedCart` 90 d (ADR-143).
+- Carrito anónimo/registrado con dedupe, «Ver» paginado por unidad, miniatura clicable (= primera página) que abre el lightbox + badge «N unidades», retención: idle 60 d, vacíos 7 d, `AbandonedCart` 90 d (ADR-143/150). Preview paginado unificado también en `/checkout/gracias` (tarjetas por ítem con miniatura 96px clicable), `/mi-cuenta/pedidos/[number]` y `/pedido/[token]` — mismo `DesignPreviewDialog` compartido en `components/` (ADR-150).
 - CMS v2 completo (`CmsPage→Section→Field→Version` + `CmsListItem` + mediateca): el 100 % del contenido visible es administrable desde `/admin/contenido` vía site map (`make migrate-cms-v2`); edición in-place en el storefront; banners, FAQs, textos legales, copy de auth/checkout/mi-cuenta, logo del sitio (`site.logo`).
 - Wishlist (`/mi-cuenta/favoritos`), reseñas con moderación + token firmado de un solo uso en email de entrega (ADR-111), newsletter, cupones, referidos con short-link `/r/<codigo>` y cupón de bienvenida (referidos v2, ADR-127).
 
@@ -20,6 +20,8 @@
 
 - Konva + vistas 3D (three.js) por tipo de producto (ADR-035/057): fotoimanes Polaroid/Instagram y Cuadrados (packs de 6), separadores (incl. libro 3D multi-unidad), calendario con grilla real horneada, tiras, letras/abecedario/vocales, nombre personalizado.
 - Plantilla unificada adaptativa (dimensionado por ancho, tarjeta-unidad universal — ADR-103/104), recover robusto por `assetId`, snapshot local reconciliado por `clientRev` (ADR-133) + `sendBeacon` como mejor esfuerzo (ADR-129), marcador «Continuar donde quedaste».
+- Toolbar de estilo en móvil como bottom-sheet (botón resumen → `Sheet` bottom con grilla de colores, toggle de borde y «Listo» sticky; en ≥sm toolbar vertical intacta — ADR-151, supersede el scroll-x de Ola 32); asset picker con «Listo» y toggle de prediseñados destacado en lila de marca.
+- Ciclo de vida de borradores (ADR-152): entrar al Estudio sin deep-link REUSA el DRAFT activo más reciente del producto (redirect a `?designId=`), poda best-effort «últimos 3» por dueño+producto tras cada creación, y gestión manual en Mis diseños (sección «Borradores» colapsable con borrado individual y «Vaciar borradores»); fix de seguridad: las purgas preservan bytes compartidos entre diseños vivos.
 - Cara B vacía = EN BLANCO en 3D/preview/producción (ADR-128, supersede ADR-114).
 - Asistente IA con Gemini vía adaptador `AiProvider` (ADR-058).
 - Uploads con compresión WebP obligatoria: presupuesto 4 MB con piso 300 DPI, HEIC fail-closed (ADR-142).
@@ -44,7 +46,7 @@
 
 **Admin (RBAC: SUPERADMIN/MANAGER/FULFILLMENT/CMS_EDITOR, MFA TOTP enforceado + step-up aal2 en acciones destructivas)**
 
-- Pedidos (transiciones, guía, reintento), inventario con razón, clientes 360, moderación de reseñas/diseños, cupones con edición/archivo, garantías+reclamos fusionados (ADR-110), retractos, soporte end-to-end con email (bandeja en `/mi-cuenta` diferida — ADR-092), cotizaciones, diseños prediseñados (variantFilter, watermark, eliminar permanente), papelera de productos con borrado permanente (ADR-134), contenido CMS, fidelización, observability (errores, webhooks, crons, SLOs, RUM con p75/LONGTASK/PAGEWEIGHT — ADR-135), performance, auditoría (`AdminActionLog`).
+- Pedidos (transiciones, guía, reintento), inventario con razón, clientes 360, moderación de reseñas/diseños, cupones con edición/archivo, garantías+reclamos fusionados (ADR-110), retractos, soporte end-to-end con email (bandeja en `/mi-cuenta` diferida — ADR-092), cotizaciones, diseños prediseñados (variantFilter, watermark, eliminar permanente), papelera de productos con borrado permanente (ADR-134), **carritos abandonados** (bandeja con métricas, preview del email, envío manual individual/bulk y configuración del cron — ADR-153), contenido CMS, fidelización, observability (errores, webhooks, crons, SLOs, RUM con p75/LONGTASK/PAGEWEIGHT — ADR-135), performance, auditoría (`AdminActionLog`).
 
 **Infra / operación**
 
@@ -52,15 +54,16 @@
 - Monitor de uptime externo: job pg_cron en Supabase STG que sondea PRD y reporta a `/api/cron/monitor-heartbeat` (OPERATIONS § Plan de monitoreo).
 - Backups diarios DB + Storage a Cloudflare R2 cifrados (gpg), con heartbeat `backup_stale` (>36 h) y DR drill mensual automatizado que exige dump fresco.
 - Rate limit en Postgres (`rate_limit_check`), cache con `unstable_cache` (tags `cms`, `catalog`, `redirects`); pool Prisma por lambda 5 conexiones/20 s + retry transitorio (ADR-131).
+- Harness de auditoría responsive e2e en 6 perfiles de viewport (cliente público/auth/admin × mobile/tablet/desktop; overflow horizontal como fallo critical, tap targets como warning; `pnpm test:audit-responsive`, sin efecto en CI — ADR-154).
 - RLS en toda tabla (58/58, gate en CI), Turnstile en checkout/registro/reseña, headers CSP con nonce, gitleaks pre-commit + CI + GitHub Push Protection.
 
 ## Ambientes
 
-| Ambiente  | Qué es                                                            | Estado                                                                                                                                                                   |
-| --------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **LOCAL** | Supabase local en podman (espejo nube) + `make web-start` (:4000) | Operativo; superset del catálogo para desarrollo                                                                                                                         |
-| **STG**   | Preview Vercel de `develop` + proyecto Supabase STG               | Operativo; referencia curada de contenido; hospeda el uptime-monitor; jobs de email desagendados a propósito; previews bajo Vercel SSO (crons/webhooks con bypass token) |
-| **PRD**   | `lucamsshop.com` (rama `production`) + Supabase PRD               | **Vendiendo en modo `full`**; homologado con STG (excepciones deliberadas ADR-121); último paquete (ADR-136…149) implementado y testeado, **pendiente de deploy**        |
+| Ambiente  | Qué es                                                            | Estado                                                                                                                                                                                                   |
+| --------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **LOCAL** | Supabase local en podman (espejo nube) + `make web-start` (:4000) | Operativo; superset del catálogo para desarrollo                                                                                                                                                         |
+| **STG**   | Preview Vercel de `develop` + proyecto Supabase STG               | Operativo; referencia curada de contenido; hospeda el uptime-monitor; jobs de email desagendados a propósito; previews bajo Vercel SSO (crons/webhooks con bypass token)                                 |
+| **PRD**   | `lucamsshop.com` (rama `production`) + Supabase PRD               | **Vendiendo en modo `full`**; homologado con STG (excepciones deliberadas ADR-121); paquete ADR-136…149 ya promovido (merge #74); jornada de maduración UX (ADR-150…154) en rama, **pendiente de merge** |
 
 Reglas vigentes: PRD es la fuente de verdad comercial del catálogo (ADR-099); sincronización STG→PRD con los scripts reusables de clave natural (ADR-126); homologación verificable con `scripts/diag-stg/homologacion.sh`.
 
@@ -70,7 +73,7 @@ Reglas vigentes: PRD es la fuente de verdad comercial del catálogo (ADR-099); s
 
 1. **Trámites de facturación electrónica:** NIT, abogado/contador, DIAN. Los pagos ya operan; esto habilita la facturación formal.
 
-**Operativos inmediatos:** 2. Paquete de la jornada 2026-10-12/13 (ADR-136…149): **YA EN PRD** (merge PR #74, deploy Vercel verificado, migración supabase 041 aplicada post-deploy y cron `lucams-process-render-jobs` corriendo OK en PRD). 3. Masters prediseñados: **no requiere acción** — verificado 2026-10-13: los 178 prediseños activos son de separadores (≤15 cm → 2000 px ≈ 318 DPI, suficiente); el print-grade 4000 px (ADR-142) aplica a subidas futuras (p.ej. si algún día hay prediseños de tiras de 26,5 cm). 4. **Logo oficial de Transprensa** (carrier): hoy hay placeholder con warning (ADR-144). 5. **Publicar las claves CMS nuevas** si se quieren overrides de los textos introducidos en la última jornada (sin publicar, sirven los fallbacks; claves ya sembradas en STG y PRD).
+**Operativos inmediatos:** 2. Jornada de maduración UX 2026-10-13 (ADR-150…154 — preview paginado unificado, bottom-sheet de estilo móvil, ciclo de vida de borradores, módulo admin de carritos abandonados, harness responsive): **EN RAMA** (`feat/ux-maduracion-global`), pendiente merge a `develop` → PRD. La migración Prisma `20261013140000_abandoned_cart_reminder_count` ya está aplicada a **STG**; a PRD llega con el deploy (mismo orden de siempre). Las claves CMS nuevas (`*.unidades-badge`, `estudio.fotos.picker-listo`, `estudio.texto.estilo-*`, `account.designs.*`) se materializan con `make migrate-cms-v2` por ambiente (sin publicar, sirven los fallbacks). (El paquete anterior, ADR-136…149, ya está en PRD: merge PR #74, migración supabase 041 aplicada y cron `lucams-process-render-jobs` corriendo OK.) 3. Masters prediseñados: **no requiere acción** — verificado 2026-10-13: los 178 prediseños activos son de separadores (≤15 cm → 2000 px ≈ 318 DPI, suficiente); el print-grade 4000 px (ADR-142) aplica a subidas futuras (p.ej. si algún día hay prediseños de tiras de 26,5 cm). 4. **Logo oficial de Transprensa** (carrier): hoy hay placeholder con warning (ADR-144). 5. **Publicar las claves CMS nuevas** si se quieren overrides de los textos introducidos en la última jornada (sin publicar, sirven los fallbacks; claves ya sembradas en STG y PRD).
 
 **Decisiones del owner aplazadas:** 6. Cupón `LOCURA` (30 %, activo) existe solo en STG: ¿llevarlo a PRD o era de prueba? 7. `Category.visibleFilters` / `featuredProductSlug`: sin consumidor real — implementar en la UI pública o retirar del payload. 8. Oferta «Sin imán» (gemelas `-NOMAG`): vive en LOCAL/STG como banco de validación; decidir si llega a PRD (ADR-099).
 

@@ -9,8 +9,9 @@
  * producción es inmune, ver studio-canvas-grid-size.ts) con ANCLAJE al punto
  * medio del gesto: el punto del contenido bajo los dedos queda fijo mientras
  * cambia la escala (misma idea que zoomPanTowardPoint del lightbox del
- * carrito, app/carrito/preview-zoom.ts, pero expresada como ratio de contenido
- * porque el zoom del stage se implementa REDIMENSIONANDO los slots —no con una
+ * preview de diseño, components/preview-zoom.ts, pero expresada como ratio de
+ * contenido porque el zoom del stage se implementa REDIMENSIONANDO los slots
+ * —no con una
  * transform CSS— así que el anclaje se aplica corrigiendo el scroll tras el
  * re-render).
  *

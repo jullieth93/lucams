@@ -2441,6 +2441,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               body: "Vista previa con marca de agua — tu impresión final no la lleva.",
               sortOrder: 80,
             },
+            {
+              key: "cart.unidades-badge",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Línea personalizada: badge «N unidades»",
+              helpText:
+                "Sello sobre la miniatura cuando el diseño trae varias piezas; el número se agrega solo antes de este texto (2026-10-13).",
+              category: "HOME",
+              body: "unidades",
+              sortOrder: 90,
+            },
           ],
         },
       ],
@@ -3723,7 +3734,8 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               kind: "BLOCK",
               type: "TEXT",
               label: "Nota de marca de agua",
-              helpText: "Aclara que las vistas previas llevan marca de agua pero la impresión final no.",
+              helpText:
+                "Aclara que las vistas previas llevan marca de agua pero la impresión final no.",
               category: "SUPPORT",
               body: "Las vistas previas llevan marca de agua — tu impresión final no la lleva.",
               sortOrder: 180,
@@ -4405,7 +4417,8 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               kind: "BLOCK",
               type: "TEXT",
               label: "Nota de marca de agua",
-              helpText: "Aclara que las vistas previas llevan marca de agua pero la impresión final no.",
+              helpText:
+                "Aclara que las vistas previas llevan marca de agua pero la impresión final no.",
               category: "SUPPORT",
               body: "Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la lleva.",
               sortOrder: 120,
@@ -4712,10 +4725,22 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               kind: "BLOCK",
               type: "TEXT",
               label: "Nota de marca de agua",
-              helpText: "Aclara que las vistas previas llevan marca de agua pero la impresión final no.",
+              helpText:
+                "Aclara que las vistas previas llevan marca de agua pero la impresión final no.",
               category: "SUPPORT",
               body: "Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la lleva.",
               sortOrder: 270,
+            },
+            {
+              key: "order.status.unidades-badge",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Ítem personalizado: badge «N unidades»",
+              helpText:
+                "Sello sobre la miniatura del ítem cuando el diseño trae varias piezas; el número se agrega solo antes de este texto (2026-10-13).",
+              category: "SUPPORT",
+              body: "unidades",
+              sortOrder: 280,
             },
           ],
         },
@@ -5283,6 +5308,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 60,
             },
             {
+              key: "checkout.gracias.unidades-badge",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Ítem personalizado: badge «N unidades»",
+              helpText:
+                "Sello sobre la miniatura del ítem cuando el diseño trae varias piezas; el número se agrega solo antes de este texto (2026-10-13).",
+              category: "SUPPORT",
+              body: "unidades",
+              sortOrder: 65,
+            },
+            {
               key: "checkout.gracias.email-label",
               kind: "BLOCK",
               type: "TEXT",
@@ -5481,7 +5517,8 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               kind: "BLOCK",
               type: "TEXT",
               label: "Nota de marca de agua",
-              helpText: "Aclara que las vistas previas llevan marca de agua pero la impresión final no.",
+              helpText:
+                "Aclara que las vistas previas llevan marca de agua pero la impresión final no.",
               category: "SUPPORT",
               body: "Las vistas previas de tus diseños llevan marca de agua — tu impresión final no la lleva.",
               sortOrder: 260,
@@ -8532,6 +8569,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 334,
             },
             {
+              key: "estudio.fotos.picker-listo",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Ventana de elegir foto: botón «Listo»",
+              helpText:
+                "Botón del pie de la ventana de elegir foto que la cierra cuando el cliente terminó de subir o elegir fotos.",
+              category: "HOME",
+              body: "Listo",
+              sortOrder: 335,
+            },
+            {
               key: "estudio.fotos.progreso-titulo",
               kind: "BLOCK",
               type: "TEXT",
@@ -8942,6 +8990,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 190,
             },
             {
+              key: "estudio.texto.estilo-color-elegido",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Color de tarjeta elegido",
+              helpText:
+                "Nombre del color de tarjeta actualmente elegido, siempre visible (bajo la grilla del panel de estilo en celular y junto al título «Color de tarjeta» en computador). {color} = nombre del color.",
+              category: "HOME",
+              body: "Elegido: {color}",
+              sortOrder: 195,
+            },
+            {
               key: "estudio.texto.estilo-borde-titulo",
               kind: "BLOCK",
               type: "TEXT",
@@ -8992,6 +9051,39 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               category: "HOME",
               body: "Con «Sin borde» las fotos cubren toda la tira — el color no aplica.",
               sortOrder: 226,
+            },
+            {
+              key: "estudio.texto.estilo-resumen-aria",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Botón resumen de estilo: nombre audible",
+              helpText:
+                "Lo que anuncia el lector de pantalla en el botón resumen de estilo (celular) que abre el panel de borde y color. {borde} = «Con borde»/«Sin borde», {color} = nombre del color elegido.",
+              category: "HOME",
+              body: "Estilo actual: {borde}, color {color}. Toca para cambiarlo.",
+              sortOrder: 227,
+            },
+            {
+              key: "estudio.texto.estilo-sheet-titulo",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Panel de estilo (celular): título",
+              helpText:
+                "Título del panel inferior de estilo (borde y color de tarjeta) que se abre en celular.",
+              category: "HOME",
+              body: "Estilo de tu tarjeta",
+              sortOrder: 228,
+            },
+            {
+              key: "estudio.texto.estilo-sheet-listo",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Panel de estilo (celular): botón «Listo»",
+              helpText:
+                "Botón que cierra el panel inferior de estilo en celular (la selección ya se aplicó en vivo al lienzo).",
+              category: "HOME",
+              body: "Listo",
+              sortOrder: 229,
             },
             {
               key: "estudio.texto.slot-edit-titulo",

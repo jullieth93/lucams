@@ -6,7 +6,7 @@
 
 **Lucams Shop** es un e-commerce colombiano de productos magnéticos personalizados. Referencia funcional: magneticas.cl, con mandato de **superarla**, no copiarla. Mandatos no negociables: **no es MVP** (nace 100 % productivo), stack fijo (Next.js 16 + TS + Tailwind v4 + shadcn/ui, monorepo pnpm, Supabase, Vercel), Wompi + Aveonline, WhatsApp solo `wa.me`, sin Sentry (mandatos completos en `CLAUDE.md`).
 
-**Diferenciadores ya operativos:** Estudio de personalización en vivo (Konva) con vistas 3D y asistente IA (Gemini), pagos múltiples (Wompi + COD), envío propio Bogotá además de Aveonline, programa de fidelidad (Puntos Lucams) y referidos, reseñas con moderación, recuperación de carrito abandonado, CMS total administrable por no-técnicos.
+**Diferenciadores ya operativos:** Estudio de personalización en vivo (Konva) con vistas 3D y asistente IA (Gemini), pagos múltiples (Wompi + COD), envío propio Bogotá además de Aveonline, programa de fidelidad (Puntos Lucams) y referidos, reseñas con moderación, recuperación de carrito abandonado administrable desde el panel (`/admin/carritos`, ADR-153), CMS total administrable por no-técnicos.
 
 **Diferenciadores aún sin construir:** Bundle Creator, portal mayorista B2B público, blog/SEO, realtime inventory, PWA, multi-idioma, A/B testing.
 

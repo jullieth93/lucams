@@ -4,7 +4,9 @@
  * (/d/<token>), archivarlos o EDITARLOS de nuevo (2026-10-13 — CTA «Editar» que
  * abre /estudio/<slug>?designId=: el recover clona READY→DRAFT y al finalizar
  * queda listo otra vez; el original nunca se toca). Los borradores vigentes se
- * listan con su miniatura del auto-save (Design.draftPreviewUrl) o placeholder.
+ * listan con su miniatura del auto-save (Design.draftPreviewUrl) o placeholder,
+ * en una sección «Borradores» colapsable debajo de los listos (2026-10-13 —
+ * con eliminación individual y «Vaciar borradores»).
  * Aislamiento por customerId. Fase 3 — compartir diseño.
  */
 

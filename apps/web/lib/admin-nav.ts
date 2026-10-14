@@ -265,6 +265,17 @@ export const ADMIN_NAV: NavGroup[] = [
         description:
           "Audiencia del newsletter: emails suscritos (y dados de baja) con fecha y versión del aviso de privacidad. Exportable a CSV.",
       },
+      {
+        // Fase 4 (2026-10-13): bandeja del módulo de recuperación (antes el
+        // recordatorio solo lo mandaba el cron a ciegas). Listado con estado,
+        // envío manual a voluntad (con preview del correo) y config del módulo
+        // (subpágina /admin/carritos/configuracion, SUPERADMIN).
+        label: "Carritos abandonados",
+        href: "/admin/carritos",
+        icon: ShoppingCart,
+        description:
+          "Carritos que quedaron con email sin pagar: estado (pendiente/recordado/recuperado), valor y productos. Envía el recordatorio a voluntad (con preview del correo) o deja que el cron lo haga solo — se configura desde el propio módulo.",
+      },
     ],
   },
   {

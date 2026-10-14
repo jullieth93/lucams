@@ -13,7 +13,7 @@
  * remoto desconocido) no toca nada y avisa — igual que vitest-global-teardown.
  */
 
-import { existsSync, readdirSync, readFileSync, rmSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
@@ -41,9 +41,70 @@ type CmsGuard = {
   original: { body: string; publishedVersionId: string | null; isPublished: boolean };
 };
 
+/*
+ * Merge del reporte de la auditoría responsive (Fase 5.1-5.2, 2026-10-13):
+ * audit-responsive.spec.ts escribe una parte por perfil×grupo en
+ * tmp/audit-20261013/parts/ (los workers corren perfiles en paralelo — cada
+ * uno escribe su archivo); acá se consolidan en tmp/audit-20261013/report.json
+ * y se borran las partes. No-op si la corrida no incluyó el spec.
+ */
+type AuditHallazgo = { severidad: "critical" | "medium" | "info"; tipo: string; detalle: string };
+type AuditPantalla = { ruta: string; grupo: string; hallazgos: AuditHallazgo[] };
+type AuditParte = {
+  proyecto: string;
+  viewport: { width: number; height: number };
+  tactil: boolean;
+  ambiente: string;
+  generado: string;
+  pantallas: AuditPantalla[];
+};
+
+function mergeAuditResponsiveReport(): void {
+  const outDir = resolve(__dirname, "../../../../tmp/audit-20261013");
+  const partsDir = resolve(outDir, "parts");
+  if (!existsSync(partsDir)) return;
+  try {
+    const porPerfil = new Map<string, AuditParte>();
+    for (const file of readdirSync(partsDir).filter((f) => f.endsWith(".json"))) {
+      const parte = JSON.parse(readFileSync(resolve(partsDir, file), "utf8")) as AuditParte;
+      const actual = porPerfil.get(parte.proyecto) ?? { ...parte, pantallas: [] };
+      actual.pantallas.push(...parte.pantallas);
+      porPerfil.set(parte.proyecto, actual);
+    }
+    const perfiles = [...porPerfil.values()].sort((a, b) => a.proyecto.localeCompare(b.proyecto));
+    const contar = (p: AuditParte, sev: AuditHallazgo["severidad"]) =>
+      p.pantallas.flatMap((s) => s.hallazgos).filter((h) => h.severidad === sev).length;
+    const reporte = {
+      generado: new Date().toISOString(),
+      ambiente: perfiles[0]?.ambiente ?? null,
+      resumen: perfiles.map((p) => ({
+        proyecto: p.proyecto,
+        viewport: p.viewport,
+        pantallas: p.pantallas.length,
+        critical: contar(p, "critical"),
+        medium: contar(p, "medium"),
+        info: contar(p, "info"),
+      })),
+      perfiles,
+    };
+    writeFileSync(resolve(outDir, "report.json"), JSON.stringify(reporte, null, 2));
+    rmSync(partsDir, { recursive: true, force: true });
+    console.log(
+      `[e2e teardown] reporte responsive consolidado (${perfiles.length} perfiles) en tmp/audit-20261013/report.json`,
+    );
+  } catch (err) {
+    // El merge nunca debe romper la limpieza de la homologación.
+    console.warn("[e2e teardown] merge del reporte responsive falló (no bloqueante):", err);
+  }
+}
+
 export default async function globalTeardown() {
   const env = currentEnv();
   loadEnvFor(env);
+
+  // Consolidación de la auditoría responsive: independiente de secretos y de
+  // la guarda de ambiente (solo mueve archivos dentro de tmp/, gitignored).
+  mergeAuditResponsiveReport();
 
   const manifestPath = authManifestPath(env);
   const hasManifest = existsSync(manifestPath);

@@ -65,10 +65,11 @@ lucams_shop/
 │       │   ├── legal/                    # terminos, privacidad, habeas-data…
 │       │   ├── admin/
 │       │   │   ├── login/                # Login + MFA challenge
-│       │   │   └── (panel)/              # Backoffice (62 páginas: productos,
+│       │   │   └── (panel)/              # Backoffice (69 páginas: productos,
 │       │   │                             #   pedidos, inventario, contenido (CMS),
 │       │   │                             #   cupones, clientes, cotizaciones,
 │       │   │                             #   mayorista, materiales/costos, finanzas,
+│       │   │                             #   carritos (abandonados, ADR-153),
 │       │   │                             #   redirects, seguridad…)
 │       │   ├── api/
 │       │   │   ├── webhooks/             # wompi/, aveonline/, resend/
@@ -440,12 +441,14 @@ model AbandonedCart {
   cart                Cart      @relation(fields: [cartId], references: [id])
   email               String
   lastReminderSentAt  DateTime?
+  reminderCount       Int       @default(0) // nº de recordatorios enviados (maxReminders configurable, ADR-153)
   recoveredAt         DateTime?
   createdAt           DateTime  @default(now())
 }
 
-// FUTURO_APROBADO (2026-09-12): el modelo persiste SIN implementación — el
-// programa de fidelidad es una capacidad aprobada del roadmap (Fase 5) aún no construida.
+// PROGRAMA EN OPERACIÓN (ADR-145, 2026-10): Puntos Lucams — 1 pt/$1.000,
+// 100 pts = $1.000, reserva atómica en createOrderFromCart, restauración en
+// CANCELLED/REFUNDED, administrable desde /admin/fidelizacion.
 model LoyaltyTxn {
   id          String   @id @default(cuid())
   customerId  String

@@ -20,6 +20,7 @@ import {
   listItemsChanged,
   collectUrlObjects,
   imageUrlsOf,
+  buildProductData,
 } from "./catalog-sync.mjs";
 
 const STG = "https://mjbdiqdkykhsixvqlrrp.supabase.co";
@@ -63,10 +64,7 @@ describe("ENTITY_DEFS", () => {
     assert.equal(ENTITY_DEFS.product.keyOf({ slug: "s" }), "s");
     assert.equal(ENTITY_DEFS.variant.keyOf({ sku: "K" }), "K");
     assert.equal(ENTITY_DEFS.cmsPage.keyOf({ slug: "inicio" }), "inicio");
-    assert.equal(
-      ENTITY_DEFS.cmsSection.keyOf({ pageSlug: "inicio", key: "hero" }),
-      "inicio|hero",
-    );
+    assert.equal(ENTITY_DEFS.cmsSection.keyOf({ pageSlug: "inicio", key: "hero" }), "inicio|hero");
     assert.equal(ENTITY_DEFS.cmsField.keyOf({ key: "CONTACT_EMAIL" }), "CONTACT_EMAIL");
     assert.equal(ENTITY_DEFS.template.keyOf({ slug: "polaroid-clasico" }), "polaroid-clasico");
   });
@@ -123,11 +121,14 @@ describe("rewriteImageHost", () => {
       rewriteImageHost(`${STG}/storage/v1/object/public/product-images/a.webp`, STG, PRD),
       `${PRD}/storage/v1/object/public/product-images/a.webp`,
     );
-    assert.equal(rewriteImageHost("https://images.unsplash.com/foto", STG, PRD), "https://images.unsplash.com/foto");
-    assert.deepEqual(
-      rewriteImageHost([`${STG}/x/a.webp`, `${PRD}/x/b.webp`], STG, PRD),
-      [`${PRD}/x/a.webp`, `${PRD}/x/b.webp`],
+    assert.equal(
+      rewriteImageHost("https://images.unsplash.com/foto", STG, PRD),
+      "https://images.unsplash.com/foto",
     );
+    assert.deepEqual(rewriteImageHost([`${STG}/x/a.webp`, `${PRD}/x/b.webp`], STG, PRD), [
+      `${PRD}/x/a.webp`,
+      `${PRD}/x/b.webp`,
+    ]);
   });
 });
 
@@ -136,7 +137,10 @@ describe("changedFields", () => {
     const def = ENTITY_DEFS.product;
     const stg = normalizeRowImages(product(), def.imageFields);
     const prd = normalizeRowImages(
-      product({ id: "prd-p9", images: [`${PRD}/storage/v1/object/public/product-images/separadores/a.webp`] }),
+      product({
+        id: "prd-p9",
+        images: [`${PRD}/storage/v1/object/public/product-images/separadores/a.webp`],
+      }),
       def.imageFields,
     );
     assert.deepEqual(changedFields(stg, prd, def.contentFields), []);
@@ -147,7 +151,10 @@ describe("changedFields", () => {
     const stg = normalizeRowImages(product({ basePrice: 12000 }), def.imageFields);
     const prd = normalizeRowImages(product(), def.imageFields);
     assert.deepEqual(changedFields(stg, prd, def.contentFields), ["basePrice"]);
-    const arch = normalizeRowImages(product({ deletedAt: new Date("2026-10-02") }), def.imageFields);
+    const arch = normalizeRowImages(
+      product({ deletedAt: new Date("2026-10-02") }),
+      def.imageFields,
+    );
     assert.deepEqual(changedFields(arch, prd, def.contentFields), ["deletedAt"]);
   });
 });
@@ -156,12 +163,29 @@ describe("diffEntity", () => {
   const def = ENTITY_DEFS.product;
 
   it("inserta lo que falta, actualiza lo distinto, reporta solo-PRD sin tocarlo", () => {
-    const stg = [product({ id: "a" }), product({ id: "b", slug: "nuevo", sku: "N" }), product({ id: "c", slug: "c", sku: "C", basePrice: 999 })];
-    const prd = [product({ id: "a" }), product({ id: "c", slug: "c", sku: "C" }), product({ id: "z", slug: "solo-prd", sku: "Z" })];
+    const stg = [
+      product({ id: "a" }),
+      product({ id: "b", slug: "nuevo", sku: "N" }),
+      product({ id: "c", slug: "c", sku: "C", basePrice: 999 }),
+    ];
+    const prd = [
+      product({ id: "a" }),
+      product({ id: "c", slug: "c", sku: "C" }),
+      product({ id: "z", slug: "solo-prd", sku: "Z" }),
+    ];
     const { inserts, updates, matches, prdOnly } = diffEntity(stg, prd, def);
-    assert.deepEqual(inserts.map((r) => r.id), ["b"]);
-    assert.deepEqual(updates.map((u) => [u.row.id, u.fields]), [["c", ["basePrice"]]]);
-    assert.deepEqual(prdOnly.map((r) => r.id), ["z"]);
+    assert.deepEqual(
+      inserts.map((r) => r.id),
+      ["b"],
+    );
+    assert.deepEqual(
+      updates.map((u) => [u.row.id, u.fields]),
+      [["c", ["basePrice"]]],
+    );
+    assert.deepEqual(
+      prdOnly.map((r) => r.id),
+      ["z"],
+    );
     assert.equal(matches.length, 2);
   });
 
@@ -179,7 +203,10 @@ describe("diffEntity", () => {
   it("idempotente: PRD igualado (salvo host de imágenes) → sin inserts ni updates", () => {
     const stg = [product({ id: "a" })];
     const prd = [
-      product({ id: "a", images: [`${PRD}/storage/v1/object/public/product-images/separadores/a.webp`] }),
+      product({
+        id: "a",
+        images: [`${PRD}/storage/v1/object/public/product-images/separadores/a.webp`],
+      }),
     ];
     const { inserts, updates, prdOnly } = diffEntity(stg, prd, def);
     assert.equal(inserts.length, 0);
@@ -191,15 +218,36 @@ describe("diffEntity", () => {
     const stg = [product({ id: "stg-1" })];
     const prd = [product({ id: "p1" }), product({ id: "p2" })];
     const { inserts, updates, prdOnly } = diffEntity(stg, prd, def);
-    assert.deepEqual(inserts.map((r) => r.id), ["stg-1"]);
+    assert.deepEqual(
+      inserts.map((r) => r.id),
+      ["stg-1"],
+    );
     assert.equal(updates.length, 0);
     assert.equal(prdOnly.length, 2);
   });
 
   it("cmsSection cruza por clave compuesta pageSlug|key", () => {
     const sdef = ENTITY_DEFS.cmsSection;
-    const stg = [{ id: "s1", pageSlug: "inicio", key: "hero", title: "Nuevo", description: null, sortOrder: 1 }];
-    const prd = [{ id: "p1", pageSlug: "inicio", key: "hero", title: "Viejo", description: null, sortOrder: 1 }];
+    const stg = [
+      {
+        id: "s1",
+        pageSlug: "inicio",
+        key: "hero",
+        title: "Nuevo",
+        description: null,
+        sortOrder: 1,
+      },
+    ];
+    const prd = [
+      {
+        id: "p1",
+        pageSlug: "inicio",
+        key: "hero",
+        title: "Viejo",
+        description: null,
+        sortOrder: 1,
+      },
+    ];
     const { updates } = diffEntity(stg, prd, sdef);
     assert.equal(updates.length, 1);
     assert.equal(updates[0].matchedBy, "key");
@@ -210,20 +258,35 @@ describe("diffEntity", () => {
 describe("publishedVersionChanged", () => {
   const ver = (over = {}) => ({ title: "T", body: "cuerpo", metadata: {}, ...over });
   it("false si ambas null o mismo contenido", () => {
-    assert.equal(publishedVersionChanged({ publishedVersion: null }, { publishedVersion: null }), false);
     assert.equal(
-      publishedVersionChanged({ publishedVersion: ver() }, { publishedVersion: ver({ id: "otro", version: 9 }) }),
+      publishedVersionChanged({ publishedVersion: null }, { publishedVersion: null }),
+      false,
+    );
+    assert.equal(
+      publishedVersionChanged(
+        { publishedVersion: ver() },
+        { publishedVersion: ver({ id: "otro", version: 9 }) },
+      ),
       false,
     );
   });
   it("true si una falta o difiere el body/metadata", () => {
-    assert.equal(publishedVersionChanged({ publishedVersion: ver() }, { publishedVersion: null }), true);
     assert.equal(
-      publishedVersionChanged({ publishedVersion: ver({ body: "nuevo" }) }, { publishedVersion: ver() }),
+      publishedVersionChanged({ publishedVersion: ver() }, { publishedVersion: null }),
       true,
     );
     assert.equal(
-      publishedVersionChanged({ publishedVersion: ver({ metadata: { a: 1 } }) }, { publishedVersion: ver() }),
+      publishedVersionChanged(
+        { publishedVersion: ver({ body: "nuevo" }) },
+        { publishedVersion: ver() },
+      ),
+      true,
+    );
+    assert.equal(
+      publishedVersionChanged(
+        { publishedVersion: ver({ metadata: { a: 1 } }) },
+        { publishedVersion: ver() },
+      ),
       true,
     );
   });
@@ -266,5 +329,47 @@ describe("MAPPED_FK_FIELDS", () => {
     for (const f of ["parentSlug", "categorySlug", "productSlug", "sectionRef", "pageSlug"]) {
       assert.ok(MAPPED_FK_FIELDS.has(f), f);
     }
+  });
+});
+
+describe("buildProductData (homologación PRD → espejo)", () => {
+  const row = product({
+    images: [`${PRD}/storage/v1/object/public/product-images/p/a.webp`],
+    categorySlug: "separadores",
+    deletedAt: new Date("2026-10-09T16:21:16.024Z"),
+  });
+
+  it("fields=null → todos los campos, con FK e imágenes al host destino", () => {
+    const data = buildProductData(row, null, {
+      categoryId: "tgt-cat-1",
+      fromBase: PRD,
+      toBase: STG,
+    });
+    assert.equal(data.categoryId, "tgt-cat-1");
+    assert.equal(data.categorySlug, undefined);
+    assert.deepEqual(data.images, [`${STG}/storage/v1/object/public/product-images/p/a.webp`]);
+    assert.equal(data.sku, "SEP-DEL");
+    assert.equal(data.deletedAt.toISOString(), "2026-10-09T16:21:16.024Z");
+    assert.ok(!("stock" in data), "stock NUNCA se sincroniza");
+    assert.ok(!("slug" in data) && !("id" in data), "identidad la decide el orquestador");
+  });
+
+  it("con array de fields → solo esos, traduciendo categorySlug → categoryId", () => {
+    const data = buildProductData(row, ["name", "categorySlug", "images"], {
+      categoryId: "tgt-cat-1",
+      fromBase: PRD,
+      toBase: STG,
+    });
+    assert.deepEqual(Object.keys(data).sort(), ["categoryId", "images", "name"]);
+    assert.equal(data.categoryId, "tgt-cat-1");
+  });
+
+  it("sin categorySlug en fields no pisa la categoría del destino", () => {
+    const data = buildProductData(row, ["deletedAt"], {
+      categoryId: "tgt-cat-1",
+      fromBase: PRD,
+      toBase: STG,
+    });
+    assert.deepEqual(Object.keys(data), ["deletedAt"]);
   });
 });

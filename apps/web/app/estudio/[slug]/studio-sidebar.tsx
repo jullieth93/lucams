@@ -535,7 +535,9 @@ export function StudioSidebar({
               aria-expanded={predesignedOpen}
               aria-controls="sidebar-predisenados-panel"
               aria-label={texts.fotos.predisenadosToggleAria}
-              className="text-brand-muted hover:text-brand-purple-dark hover:bg-brand-cream focus:ring-brand-purple rounded-md p-1.5 transition-colors focus:ring-2 focus:outline-none"
+              // Fase 2 UX (2026-10-13) — presencia de marca: el toggle discreto
+              // (texto muted) pasaba desapercibido y la sección quedaba sin uso.
+              className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple rounded-md p-2 text-white shadow-sm transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
             >
               <ChevronDown
                 className={`h-4 w-4 transition-transform ${predesignedOpen ? "" : "-rotate-90"}`}
