@@ -357,6 +357,27 @@ describe("trimExcessDraftDesigns — política «últimos N» (2026-10-13)", () 
     expect(deletedAssetDesignIds).toEqual(["clon"]);
   });
 
+  it("un fallo de Storage NO impide podar las filas (bytes best-effort; huérfanos los reclama el barrido)", async () => {
+    // 2026-10-14 — regresión del fallo CI 2026-10-13: sin credenciales de Storage
+    // la poda no ejecutaba NUNCA y los DRAFT se acumulaban (el caller best-effort
+    // se tragaba el error). Las filas se borran igual; los bytes huérfanos los
+    // reclama sweepOrphanStorageObjects.
+    removeMock.mockResolvedValue({ error: { message: "storage caído" } });
+    rows = [
+      design("d1", { updatedAt: hoursAgo(0) }),
+      design("d2", { updatedAt: hoursAgo(1) }),
+      design("d3", { updatedAt: hoursAgo(2) }),
+      design("d4", { updatedAt: hoursAgo(3) }),
+    ];
+    syncAssets();
+
+    const res = await trimExcessDraftDesigns(OWNER, "prod-1");
+
+    expect(res.trimmed).toBe(1);
+    expect(deletedIds).toEqual(["d4"]);
+    expect(rows.map((d) => d.id).sort()).toEqual(["d1", "d2", "d3"].sort());
+  });
+
   it("con 3 o menos DRAFT no hace nada", async () => {
     rows = [design("d1"), design("d2", { updatedAt: hoursAgo(2) })];
     syncAssets();

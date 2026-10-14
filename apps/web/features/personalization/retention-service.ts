@@ -198,8 +198,21 @@ type PurgeCandidate = {
 /**
  * Borra los bytes y luego las filas de un lote de diseños. Si falla la remoción de las fotos crudas
  * NO borra nada (devuelve ceros) → el próximo ciclo reintenta y nunca quedan bytes sin registro.
+ *
+ * 2026-10-14 — EXCEPTO con `opts.bestEffortBytes: true` (borrado de BORRADORES de
+ * draft-lifecycle: poda «últimos N» y vaciado/eliminación manual desde "Mis diseños"):
+ * ahí las filas se borran AUNQUE la remoción de bytes falle o no haya credenciales de
+ * Storage (CI de tests corre con las env de Supabase vacías a propósito — "supabaseUrl
+ * is required" — y la poda no ejecutaba NUNCA, fallo CI 2026-10-13). Los bytes que
+ * queden huérfanos sin fila Design los reclama el barrido sweepOrphanStorageObjects,
+ * que existe exactamente para eso (corre en el mismo cron). La invariante estricta de
+ * arriba se conserva para las purgas de retención (ver
+ * retention-service.storage-failure.test.ts).
  */
-async function purgeDesignBatch(designs: PurgeCandidate[]): Promise<PurgeResult> {
+async function purgeDesignBatch(
+  designs: PurgeCandidate[],
+  opts?: { bestEffortBytes?: boolean },
+): Promise<PurgeResult> {
   if (designs.length === 0) return { designsPurged: 0, assetsPurged: 0 };
 
   const designIds = designs.map((d) => d.id);
@@ -244,7 +257,7 @@ async function purgeDesignBatch(designs: PurgeCandidate[]): Promise<PurgeResult>
   const uploadsOk = await removeStorage(CUSTOMER_UPLOADS_BUCKET, uploadPaths);
   await removeStorage(PREVIEWS_BUCKET, previewPaths);
   await removeStorage(PRODUCTION_BUCKET, [...productionPaths, ...stagedPaths]);
-  if (!uploadsOk) return { designsPurged: 0, assetsPurged: 0 };
+  if (!uploadsOk && !opts?.bestEffortBytes) return { designsPurged: 0, assetsPurged: 0 };
 
   // DesignAsset.design es onDelete:SetNull → hay que borrar las filas explícitamente para no
   // dejar assets huérfanos. Atómico con el borrado del Design.
@@ -268,11 +281,16 @@ async function purgeDesignBatch(designs: PurgeCandidate[]): Promise<PurgeResult>
 /**
  * Borra diseños POR ID con todos sus assets (bytes de Storage + filas), reusando el
  * mismo camino seguro de las purgas de retención (purgeDesignBatch: bytes primero,
- * filas solo si las fotos crudas salieron, bytes compartidos con diseños vivos
- * preservados — 2026-10-13). Es la primitiva de borrado que usan la poda «últimos N
- * borradores» y el vaciado/eliminación manual de borradores de "Mis diseños"
- * (draft-lifecycle.ts) — el caller es responsable de haber verificado ownership y
- * estado (DRAFT) antes de llamarla.
+ * bytes compartidos con diseños vivos preservados — 2026-10-13). Es la primitiva de
+ * borrado que usan la poda «últimos N borradores» y el vaciado/eliminación manual de
+ * borradores de "Mis diseños" (draft-lifecycle.ts) — el caller es responsable de
+ * haber verificado ownership y estado (DRAFT) antes de llamarla.
+ *
+ * 2026-10-14 — los bytes son BEST-EFFORT (bestEffortBytes): un fallo de Storage o la
+ * ausencia de credenciales NO impide borrar las filas (a diferencia de las purgas de
+ * retención, que reintentan en el próximo ciclo). Un borrador condenado por la poda o
+ * eliminado por el cliente debe desaparecer igual; los bytes huérfanos resultantes
+ * los reclama sweepOrphanStorageObjects (mismo cron de retención).
  */
 export async function deleteDesignsWithAssets(designIds: string[]): Promise<PurgeResult> {
   if (designIds.length === 0) return { designsPurged: 0, assetsPurged: 0 };
@@ -280,7 +298,7 @@ export async function deleteDesignsWithAssets(designIds: string[]): Promise<Purg
     where: { id: { in: designIds } },
     select: CANDIDATE_SELECT,
   });
-  return purgeDesignBatch(designs);
+  return purgeDesignBatch(designs, { bestEffortBytes: true });
 }
 
 /**
