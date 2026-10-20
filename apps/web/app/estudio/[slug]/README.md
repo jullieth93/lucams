@@ -115,7 +115,7 @@ o sessionId anónimo) y cada superficie devuelve al editor lo persistido:
   DRAFT vía `cloneDesignForEdit` (el original queda intacto por si el cliente abandona;
   al finalizar `replacesCartDesignId` reemplaza el item en sitio). Se hidratan canvas +
   DesignAssets con signed URLs refrescadas.
-  **Re-mapeo de URLs (2026-10-12 — bug "lila translúcido")**: las signed URLs persistidas
+  **Re-mapeo de URLs al boot**: las signed URLs persistidas
   en `slot.assetUrl` caducan a 1 h y el render usa la del SLOT, así que el boot reescribe
   los slots del canvasData por `assetId` con las URLs frescas (`lib/remap-canvas-assets.ts`,
   antes de `store.init`; cubre foto principal y foto de perfil IG). Un asset que ya no
@@ -129,7 +129,7 @@ o sessionId anónimo) y cada superficie devuelve al editor lo persistido:
   default del primer estilo), `themeId`, `colors` efectivos por ficha y `withBorder`.
   Los colores se restauran como `activeColors` del snapshot de `useLetterColors`
   (índice a índice, sin depender del barajado aleatorio del tema).
-  **Reemplazo en sitio (2026-10-05)**: al venir de `?designId=` con el diseño READY,
+  **Reemplazo en sitio**: al venir de `?designId=` con el diseño READY,
   la página propaga `replacesCartDesignId` al editor y este lo manda como
   `replaceDesignId` a `addPersonalizedToCart` → la línea que apuntaba al diseño
   original queda apuntando al NUEVO (misma posición y qty, precio recalculado con
@@ -143,15 +143,15 @@ o sessionId anónimo) y cada superficie devuelve al editor lo persistido:
     Se restauran `language`, `styleSetId`, `withBorder`, `unitCount` (nº de sets) y los
     colores por ficha de CADA set (`metadata.units[u].colors`; el set 0 cae al `colors`
     raíz en diseños de un set) como snapshots iniciales del Map multi-unidad.
-    **2026-10-19 — estilo y borde POR SET**: también se restauran
+    **Estilo y borde POR SET**: también se restauran
     `metadata.units[u].styleSetId` / `metadata.units[u].withBorder` (cada set lleva su
     propio estilo ilustrado, colores y borde); las claves raíz (`styleSetId` /
     `withBorder`) quedan como representante del set 1 y default de sets sin clave
     propia (retrocompat con diseños guardados antes del rediseño). El finalize espera
     UNA lámina de producción por set (`production_i` posicional, `unitCount` exacto).
-- **Variante del diseño (`metadata.variantId`, 2026-10-05)**: al crear el diseño desde
+- **Variante del diseño (`metadata.variantId`)**: al crear el diseño desde
   cualquier superficie se persiste la variante (`createDraftDesign` —foto—,
-  `createNameDesign`, `createLetterSetDesign`). **2026-10-12 — packs de foto TAMBIÉN**:
+  `createNameDesign`, `createLetterSetDesign`). **Packs de foto TAMBIÉN**:
   el Estudio persiste la variante EFECTIVA (match del catálogo por el N de fotos +
   magnet del canvas, `packVariantIdFor`) al crear el draft y en cada auto-save/flush
   (`saveCanvas` la valida contra el producto y la mergea en metadata). El COBRO sigue
@@ -170,7 +170,7 @@ o sessionId anónimo) y cada superficie devuelve al editor lo persistido:
   el Design seguía con el sessionId anónimo y `getOwnedDesign({customerId})` devolvía
   null → el Estudio abría vacío. El guard del `where` (sessionId exacto + customerId
   null) impide adoptar diseños ajenos aunque un CartItem los referencie.
-- **Ownership en recuperación de carrito abandonado (2026-10-05)**: `mergeCartsAdopt`
+- **Ownership en recuperación de carrito abandonado**: `mergeCartsAdopt`
   (link del email, sesión→sesión) tenía la misma brecha — los items se foldaban al
   carrito recuperado pero los Designs quedaban con el sessionId del carrito source
   (borrado en el mismo fold). Ahora `retargetSessionDesigns` los re-sesiona al target
@@ -1018,7 +1018,7 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   rango efectivo medido del catálogo es ≈ **686–762 DPI** — sobra contra los 300 del estándar;
   el cuello de botella es la resolución de la FOTO del cliente, no el lienzo (de ahí el
   quality-check `checkPhotoQuality` a 118 px/cm y el upscale local).
-- **Sin bleed (sangrado)** desde 2026-05-15: la guía bleed del overlay se eliminó (la silueta
+- **Sin bleed (sangrado)**: no hay guía bleed en el overlay (la silueta
   del producto YA es el borde de impresión) y producción renderiza al borde exacto del stage,
   salvo el **full-bleed de marcos** (`frame-palette.ts`: con `borderColor` la tarjeta entera se
   pinta del color y la foto va inserta con franja mínima 4% del lado menor — no es sangrado de
@@ -1036,8 +1036,8 @@ de N unidades diseñables en «Modelo multi-unidad («Unidades»)».
   se ocultan durante el snapshot de imprenta (studio-editor.tsx — el archivo de producción es
   la tarjeta limpia). El glossy del overlay es una APROXIMACIÓN en pantalla del laminado PET
   (brillo especular leve en luz directa), no una simulación física.
-- **2026-10-05 — intensidad recalibrada**: el gradient llegaba a 22% de blanco y el preview se
-  veía más lavado que la pieza impresa. Constantes en `studio-realism-overlay.tsx`:
+- **Intensidad del glossy**: calibrada contra la pieza impresa (un gradient fuerte lava el
+  preview). Constantes en `studio-realism-overlay.tsx`:
   `GLOSSY_HIGHLIGHT_OPACITY = 0.10` (pico), `GLOSSY_MID_OPACITY = 0.02`,
   `GLOSSY_SHADE_OPACITY = 0.02`. Si Lucy compara contra la pieza física y quiere más/menos
   brillo, se ajustan esas tres constantes (nunca volver a horneado en producción).
@@ -1136,7 +1136,7 @@ Canvas fullscreen + sheet drawer pull-up con tabs. Bottom sticky CTA cuando comp
 
 ### Modal: "Ver tamaño real"
 
-> **Reemplazado (2026-05-14, P0.5):** ya no existe `studio-size-modal.tsx`; la comparación de
+> **Reemplazado:** ya no existe `studio-size-modal.tsx`; la comparación de
 > tamaño se hace inline con `lib/size-comparator.ts` (el tamaño en cm contra un objeto cotidiano
 > colombiano, usado en `magnet-3d.tsx` y la leyenda de `studio-toolbar.tsx`). El wireframe de
 > abajo queda como registro del diseño original.
@@ -1278,18 +1278,18 @@ Estrategias aplicadas:
 - SVG mockups inline en lugar de PNG cuando aplique
 - Suspense boundaries por slot (cargan en paralelo)
 - Auto-save debounced 2s + dirty flag (no save si no hubo cambio real)
-- **Paquete J (2026-10-02, INP — auditoría §E-4):** upscale/unsharp de fotos en
+- **INP — upscale/unsharp de fotos en
   Web Worker + OffscreenCanvas (`client-photo-upscale.worker.ts`, fallback inline
   idéntico); snapshots `toDataURL` de preview/3D cacheados por slot con
   invalidación por referencia (`lib/slot-snapshot-cache.ts`) + yields al event
   loop + decodificación en paralelo; re-cache de filtros Konva debounceado al
   finalizar el gesto de zoom (`lib/filter-recache.ts`); smartcrop sobre copia
-  ≤256px (`lib/smart-crop.ts`). Harness de medición LoAF: `tmp/inp-audit/`.
-  Cierre del ciclo: tabla "INP por elemento" en /admin/performance.
-- **Fix 2026-10-08 (bug STG — separador plano "en blanco" en el libro 3D):** el
-  snapshot podía caer en la ventana "foto subida pero `useImage` aún decodificando"
-  y hornear el placeholder `#F4ECFF` en la textura (y el cache lo conservaba: la
-  decodificación NO cambia la referencia del slot). Ahora el `KonvaImage` de la
+  ≤256px (`lib/smart-crop.ts`). Cierre del ciclo: tabla "INP por elemento" en
+  /admin/performance.
+- **Snapshots de foto nunca hornean placeholder:** el snapshot podía caer en la
+  ventana "foto subida pero `useImage` aún decodificando" y hornear el placeholder
+  `#F4ECFF` en la textura (y el cache lo conservaba: la decodificación NO cambia la
+  referencia del slot). Por eso el `KonvaImage` de la
   foto lleva `name="slot-photo"` (studio-slot.tsx), `buildMagnetTextures` espera
   esos nodos antes de rasterizar (`waitForSlotPhotosReady`, deadline 4 s
   best-effort) y el cache marca las entradas tomadas a medio cargar
@@ -1332,4 +1332,3 @@ pnpm lhci autorun     # Lighthouse CI (budgets en lighthouserc.json)
 - **ADR-035**: Arquitectura Estudio v1 — react-konva + 9 kinds + 3 buckets
 - **ADR-035 addendum 2026-05-13**: Paradigma slot-por-imán + decisiones M.3.b
 - **ADR-037**: Filosofía best practices Estudio v2 — sin atajos pragmáticos
-- **Plan completo**: `~/.claude/plans/lee-complemtante-el-proyecto-wiggly-mist.md` § M.3.b
