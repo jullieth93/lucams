@@ -34,8 +34,8 @@ import {
   finalizeDesignAction,
   reopenDesignForEditAction,
   saveCanvasAction,
-  uploadDesignPreviewPagesAction,
 } from "@/features/personalization/actions";
+import { uploadPreviewPagesWithRetry } from "./preview-pages-upload";
 import { parsePhotoProductConfig, CALENDAR_FONT_OPTIONS } from "@/features/personalization/schemas";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { StudioCanvasGrid, StudioStageZoomControl } from "./studio-canvas-grid";
@@ -1998,17 +1998,24 @@ export function StudioEditor({
         // perezoso de la modal (las páginas ya navegadas vienen cacheadas en
         // previewPages; las pendientes se generan acá, una sola vez — el
         // cliente ya está en la espera del confirmar). BEST-EFFORT: un fallo
-        // NO bloquea la compra (el carrito cae al preview global watermarked).
+        // NO bloquea la compra (el carrito cae al preview global watermarked) —
+        // pero desde la revalidación 2026-10-20 va con reintento + reporte a
+        // ErrorReport (antes un fallo era un console.error invisible y la orden
+        // perdía el pager para siempre — caso real del pedido LCM-2026-0001).
         if (previewPages && previewPages.length > 1 && previewPageLoaderRef.current) {
           try {
             const loader = previewPageLoaderRef.current;
             const pageBlobs = await Promise.all(
               previewPages.map(async (p, i) => dataUrlToBlob(p.dataUrl ?? (await loader(i)))),
             );
-            const pagesForm = new FormData();
-            pagesForm.set("designId", designId);
-            pageBlobs.forEach((blob, i) => pagesForm.set(`page_${i}`, blob, `page-${i + 1}.webp`));
-            await uploadDesignPreviewPagesAction(pagesForm);
+            await uploadPreviewPagesWithRetry(designId, () => {
+              const pagesForm = new FormData();
+              pagesForm.set("designId", designId);
+              pageBlobs.forEach((blob, i) =>
+                pagesForm.set(`page_${i}`, blob, `page-${i + 1}.webp`),
+              );
+              return pagesForm;
+            });
           } catch (pagesErr) {
             console.error("[studio.preview.pages-upload]", pagesErr);
           }

@@ -442,28 +442,33 @@ export default async function CustomerPedidoDetallePage({
               </span>
             }
           />
-          {/* Rastreo: portal oficial de la transportadora como enlace principal
-              (trackingUrl guardado = PDF del documento de guía, etiquetado como tal). */}
-          {carrierTrackingPageUrl(order.shippingCarrier) && (
-            <a
-              href={carrierTrackingPageUrl(order.shippingCarrier)!}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-brand-purple mt-2 inline-block text-sm font-semibold underline"
-            >
-              {texts.order.trackCta}
-            </a>
-          )}
-          {order.trackingUrl && (
-            <a
-              href={order.trackingUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-brand-muted hover:text-brand-purple mt-1 block text-xs underline"
-            >
-              Documento de guía (PDF)
-            </a>
-          )}
+          {/* Rastreo (feedback owner 2026-10-20): portal oficial de la
+              transportadora y documento de guía PDF como BOTONES (mismo estilo
+              que /pedido/[token]); el número de guía va visible arriba para
+              copiarlo en el portal. */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {carrierTrackingPageUrl(order.shippingCarrier) && (
+              <a
+                href={carrierTrackingPageUrl(order.shippingCarrier)!}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm"
+              >
+                <Truck aria-hidden className="h-3.5 w-3.5" />
+                {texts.order.trackCta}
+              </a>
+            )}
+            {order.trackingUrl && (
+              <a
+                href={order.trackingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm"
+              >
+                Documento de guía (PDF)
+              </a>
+            )}
+          </div>
         </Card>
       )}
 
