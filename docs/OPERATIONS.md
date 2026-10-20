@@ -278,8 +278,9 @@ schedule pg_cron (`0 * * * *`, migración 015) y lee la config en cada corrida.
   `cart_recovery.reminder.bulk_send` (visibles en `/admin/auditoria`).
 - **Migración `20261013140000_abandoned_cart_reminder_count`:** agrega
   `AbandonedCart.reminderCount Int @default(0)` con backfill =1 donde ya hubo
-  recordatorio. **Aplicada a STG el 2026-10-13; a PRD llega con el deploy del merge**
-  (es aditiva: el código viejo convive con la columna).
+  recordatorio. **Aplicada a STG el 2026-10-13 y a PRD el 2026-10-20** (llegó tarde:
+  el deploy no corre migrate deploy — ver «Release strategy»; el drift check del
+  post-deploy-smoke ahora lo detecta).
 - **Fix asociado:** la idempotency-key de Resend ahora es por intento
   (`cart-recovery-<id>-<n>`) — con más de un recordatorio por carrito, la clave única por
   carrito hubiera suprimido los envíos 2..N.
@@ -1197,6 +1198,7 @@ Cuando se rompan estos límites, abrir issue automático:
 | **Production** | Release: `production` fast-forward a `develop` | 100% del tráfico (`lucamsshop.com`)                                                                    |
 
 - **Smoke post-release:** dos capas. (a) **Automatizada** (F-08, remediación R3 2026-09-26): `.github/workflows/post-deploy-smoke.yml` corre `apps/web/scripts/post-deploy-smoke.mjs` contra PRD — dispara al completarse el CI sobre `production` (proxy del deploy de Vercel, que se integra por Git sin workflow propio), cada 30 min vía schedule (segunda red independiente del monitor de STG) y on-demand. Sonda 5 GETs públicos read-only (`/api/health`, `/api/health/db`, `/api/health/crons`, `/`, `/productos`), exige 200 con reintentos y —desde 2026-09-27 (A11R-04, R7)— aserte contenido mínimo en `/` y `/productos` (marcadores estructurales del layout: `lang="es-CO"`, skip-link `href="#contenido"`, `<main id="contenido">`; un 200 vacío/degradado ya no sale verde) — y sale ROJO si algo no responde — un smoke rojo post-release = evaluar rollback antes de certificar. Sin secrets (todo público). Local/otro ambiente: `SMOKE_BASE_URL=https://… node apps/web/scripts/post-deploy-smoke.mjs`. (b) **Manual profunda:** `apps/web/tests/e2e/release-check-a1.spec.ts` con `PLAYWRIGHT_BASE_URL` apuntando a prod (herramienta A1 del roadmap CMS, reutilizable en cada release).
+- **Migraciones Prisma ANTES del release (2026-10-20 — incidente real):** 4 migraciones quedaron sin aplicar en PRD tras un merge y el cron `cart-recovery` reventó 2 h después (`column does not exist`) — el deploy de Vercel NO corre `prisma migrate deploy`, es paso manual. Procedimiento: con el merge a `production` aprobado y ANTES de certificar, correr `set -a && source .env.local.nube-backup && set +a && cd packages/db && pnpm exec prisma migrate deploy`. **Guard automático:** el `post-deploy-smoke.yml` incluye un drift check que compara las migraciones del repo contra `_prisma_migrations` de PRD (secret `BACKUP_DATABASE_URL`) y sale ROJO si hay pendientes — una deriva así ya no pasa desapercibida más de 30 min.
 - **Versionado:** tags `vX.Y.Z` (semver) en cada release de producción significativa.
   - `X` mayor: cambios que rompen compatibilidad de schema o API público.
   - `Y` menor: features nuevas no rompedoras.
