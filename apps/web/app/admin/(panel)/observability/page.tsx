@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
+import { formatCOP } from "@/lib/format";
 import { getStorageQuota, getTechHealth } from "@/features/observability/service";
 import { getDailySummary } from "@/features/observability/daily-summary";
 import { getSloStatus, type SloResult } from "@/features/observability/slos";
@@ -95,7 +96,7 @@ export default async function AdminObservabilityPage() {
     getStorageQuota(),
     countSentEmails(EMAIL_STATS_WINDOW_DAYS),
   ]);
-  const revenue = `$${Math.round(ops.revenueLast24hCop / 100).toLocaleString("es-CO")}`;
+  const revenue = formatCOP(ops.revenueLast24hCop);
   const recoveryPct =
     ops.abandonedCarts24h > 0
       ? Math.round((ops.recoveredCarts24h / ops.abandonedCarts24h) * 100)
@@ -182,9 +183,7 @@ export default async function AdminObservabilityPage() {
         </div>
         <p className="text-brand-muted mt-2 text-xs">
           💵 Contra entrega <em>por cobrar</em>:{" "}
-          <strong className="text-brand-purple-dark">
-            ${Math.round(ops.codToCollectCop / 100).toLocaleString("es-CO")}
-          </strong>{" "}
+          <strong className="text-brand-purple-dark">{formatCOP(ops.codToCollectCop)}</strong>{" "}
           {ops.codToCollectCop > 0
             ? "(efectivo al entregar — no incluido en Ingresos)."
             : "(sin pedidos contra entrega pendientes en 24h)."}

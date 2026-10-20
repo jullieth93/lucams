@@ -29,6 +29,9 @@ export default defineConfig({
       "**/node_modules/**",
       "**/.next/**",
       "**/tests/e2e/**",
+      // tmp/ es scratch local no versionado: un *.test.ts ahí (p.ej. smoke manuals
+      // contra STG) no debe colarse en `pnpm test` por el glob de include.
+      "**/tmp/**",
       // (Hasta la remediación R3 del 2026-09-26 acá se excluían, con
       // NIGHTLY_LOCALSTACK=1, finalize-server-render y letter-tiles por exigir la
       // DB compartida de dev. A11-05: ambas suites son ahora AUTOCONTENIDAS —

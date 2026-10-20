@@ -19,7 +19,7 @@ import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { CmsValidationError, getCmsFieldByKey, saveCmsFieldDraft } from "@/features/cms/service";
 import { markCodRemitted, flagCodDiscrepancy } from "@/features/orders/cod-reconciliation";
-import { formatCOP } from "@/lib/format";
+import { formatCOP, pesosToCents } from "@/lib/format";
 
 type ActionResult = { error?: string; success?: string; reauthRequired?: boolean };
 
@@ -38,14 +38,6 @@ async function requireRecentMfaOrMarker(): Promise<{ reauthRequired: true } | nu
     if (isMfaReauthRequired(err)) return { reauthRequired: true };
     throw err;
   }
-}
-
-/** Convierte un input en PESOS (lo que teclea Lucy) a centavos COP; vacío → undefined. */
-function pesosToCents(raw: FormDataEntryValue | null): number | undefined {
-  const digits = String(raw ?? "").replace(/[^\d]/g, "");
-  if (!digits) return undefined;
-  const pesos = Number.parseInt(digits, 10);
-  return Number.isFinite(pesos) ? pesos * 100 : undefined;
 }
 
 function revalidateReconciliation() {
@@ -124,7 +116,7 @@ export async function markCodRemittedAction(
 
   const orderId = String(formData.get("orderId") ?? "");
   if (!orderId) return { error: "Falta el pedido" };
-  const remittedAmount = pesosToCents(formData.get("remittedAmountPesos"));
+  const remittedAmount = pesosToCents(formData.get("remittedAmountPesos")) ?? undefined;
   const carrierRef = String(formData.get("carrierRef") ?? "").trim() || undefined;
   const note = String(formData.get("note") ?? "").trim() || undefined;
 
@@ -175,7 +167,7 @@ export async function flagCodDiscrepancyAction(
   if (!orderId) return { error: "Falta el pedido" };
   const discrepancyReason = String(formData.get("discrepancyReason") ?? "").trim();
   if (!discrepancyReason) return { error: "Escribe el motivo de la discrepancia" };
-  const remittedAmount = pesosToCents(formData.get("remittedAmountPesos"));
+  const remittedAmount = pesosToCents(formData.get("remittedAmountPesos")) ?? undefined;
   const note = String(formData.get("note") ?? "").trim() || undefined;
 
   try {

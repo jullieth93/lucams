@@ -1,6 +1,6 @@
 # QA Checklist pre-launch — Lucams_shop
 
-> Última actualización: 2026-10-20 · jornada de maduración integral fases 1-6 (ADR-155…160 + reescrituras de ADR-137/140/152: ledger Wompi por intento, identidad de sesión en checkout/carrito, concurrencia `clientRev`, lettersets multi-set, prediseñados con destino explícito, «Listo» único, retomador de borradores endurecido, checkbox tributario oculto tras flag) · antes: 2026-10-13 · jornada de maduración UX (ADR-150…154: preview paginado unificado en gracias/carrito/pedidos, bottom-sheet de estilo móvil + «Listo», ciclo de vida de borradores, módulo admin `/admin/carritos`, auditoría responsive 6 perfiles) · antes: 2026-09-12 · Sub-bloque L · verificado contra el código 2026-09-12 (remediación 360°: CTA Personalizar → Estudio, cupón en /checkout/pago, /admin/mensajes → /admin/soporte, re-consent de cookies, editor CMS por barra superior + `CmsFieldVersion`; antes: 2026-09-03 MFA admin obligatorio, checkout en modo full, /rastrear)
+> Última verificación integral: 2026-10-20 (jornada de maduración fases 1-6 — ADR-155…160 y reescrituras de ADR-137/140/152). El detalle de cada cambio vive en `docs/DECISIONS.md` y en el historial git; este doc solo registra CUÁNDO se verificó por última vez.
 >
 > Esta checklist se recorre **manualmente con Lucy + Claude** antes del go-live productivo. Es el último filtro: nada se lanza si quedan rojos. Marcar cada item con ✅ / ⚠️ / ❌ y fecha de verificación.
 

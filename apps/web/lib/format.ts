@@ -15,6 +15,25 @@ export function formatCOP(centavos: number): string {
   return copFormatter.format(centavos / 100);
 }
 
+/** Slug URL-safe (minúsculas, sin tildes, guiones, tope 80 chars). Única fuente: admin productos/categorías. */
+export function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+/** Convierte un input en PESOS (lo que teclea el operador) a centavos COP; vacío → null. */
+export function pesosToCents(raw: FormDataEntryValue | null): number | null {
+  const digits = String(raw ?? "").replace(/[^\d]/g, "");
+  if (!digits) return null;
+  const pesos = Number.parseInt(digits, 10);
+  return Number.isFinite(pesos) ? pesos * 100 : null;
+}
+
 /**
  * #30 — Ciudad + departamento sin repetición. En Colombia, Bogotá D.C. es a la vez ciudad (DANE
  * 11001) y departamento (DANE 11) con el mismo nombre → "{city}, {department}" daba "Bogotá D.C.,
@@ -61,4 +80,12 @@ export function splitCityTemplate(template: string): { pre: string; post: string
     pre: template.slice(0, idx),
     post: template.slice(idx + "{{ciudad}}".length),
   };
+}
+
+/**
+ * % de descuento sobre el compareAt del precio REALMENTE mostrado (#20: que el badge
+ * coincida con la cifra visible). Única fuente — cards de listado, recomendador y PDP.
+ */
+export function computeDiscountPct(compareAtPrice: number, displayPrice: number): number {
+  return Math.round(((compareAtPrice - displayPrice) / compareAtPrice) * 100);
 }

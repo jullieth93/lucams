@@ -26,6 +26,7 @@ import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { formatCOP } from "@/lib/format";
 import { LetterTile, NAME_TILE_THEMES } from "./letter-tile";
 import { loadCanvasImage } from "./lib/canvas-image";
+import { dataUrlToBlob } from "./lib/image-utils";
 import { buildLetterTileTextures } from "./lib/letter-tile-textures";
 import { useLetterColors } from "./use-letter-colors";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
@@ -192,21 +193,6 @@ function drawLetterTile(
     ctx.textBaseline = "middle";
     ctx.fillText(ch, x + TILE_W / 2, y + TILE_H / 2 + 2);
   }
-}
-
-/**
- * Convierte un data URL base64 a Blob binario. Los PNG viajan a la server action como bytes
- * en FormData y no como string base64: el protocolo React Flight de Next 16 revienta con
- * "Maximum array nesting exceeded" en strings gigantes (mismo motivo que en studio-editor).
- */
-function dataUrlToBlob(dataUrl: string): Blob {
-  const commaIdx = dataUrl.indexOf(",");
-  if (commaIdx < 0) throw new Error("dataURL inválido (sin coma)");
-  const meta = dataUrl.slice(0, commaIdx);
-  const binary = atob(dataUrl.slice(commaIdx + 1));
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: meta.match(/^data:([^;]+)/)?.[1] ?? "image/png" });
 }
 
 /**

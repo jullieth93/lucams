@@ -67,6 +67,7 @@ import { describeVariantAttributes } from "@/features/products/variant-schemas";
 import { StudioSimpleHeader } from "./studio-simple-header";
 import { STUDIO_MAX_WIDTH } from "./studio-layout";
 import { resolveLetterSetVariant, type LetterSetVariant } from "./lib/letter-set-resolve";
+import { dataUrlToBlob } from "./lib/image-utils";
 import { loadCanvasImage } from "./lib/canvas-image";
 import type { Magnet3D } from "./fridge-3d-view";
 import { buildLetterTileTextures, LETTER_TILE_CORNER_RATIO } from "./lib/letter-tile-textures";
@@ -222,17 +223,6 @@ function blobToDataUrl(blob: Blob): Promise<string> {
     reader.onerror = () => reject(new Error("No se pudo leer la vista previa"));
     reader.readAsDataURL(blob);
   });
-}
-
-/** Convierte un data URL base64 a Blob (mismo motivo que en studio-editor: Flight chunkea strings). */
-function dataUrlToBlob(dataUrl: string): Blob {
-  const commaIdx = dataUrl.indexOf(",");
-  if (commaIdx < 0) throw new Error("dataURL inválido (sin coma)");
-  const meta = dataUrl.slice(0, commaIdx);
-  const binary = atob(dataUrl.slice(commaIdx + 1));
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: meta.match(/^data:([^;]+)/)?.[1] ?? "image/png" });
 }
 
 /** Blob de una lámina → HTMLImageElement (vía objectURL, liberada al cargar). */

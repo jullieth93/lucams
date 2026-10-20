@@ -37,7 +37,7 @@ import {
   CartVariantIdInput,
   CartSubmitButton,
 } from "./variant-actions";
-import { formatCOP } from "@/lib/format";
+import { computeDiscountPct, formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { addToCartAction } from "@/app/carrito/actions";
@@ -265,9 +265,7 @@ export default async function ProductoDetallePage({
   const hasDiscount = displayCompareAt != null && displayCompareAt > displayPrice;
   // A1 (2026-09-15) — badge -% como en la card del listado (misma fórmula:
   // % sobre el compareAt del precio REALMENTE mostrado).
-  const discountPct = hasDiscount
-    ? Math.round(((displayCompareAt! - displayPrice) / displayCompareAt!) * 100)
-    : 0;
+  const discountPct = hasDiscount ? computeDiscountPct(displayCompareAt!, displayPrice) : 0;
 
   const initialWishlisted = customer
     ? (await getWishlistedProductIds(customer.customer.id, [product.id])).has(product.id)

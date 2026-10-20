@@ -9,7 +9,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
-import { formatCOP } from "@/lib/format";
+import { computeDiscountPct, formatCOP } from "@/lib/format";
 import type { CatalogProductSummary } from "@/lib/catalog";
 
 export function ProductFromCatalogCard({
@@ -21,7 +21,7 @@ export function ProductFromCatalogCard({
 }) {
   const hasDiscount = product.compareAtPrice !== null && product.compareAtPrice > product.basePrice;
   const discountPct = hasDiscount
-    ? Math.round(((product.compareAtPrice! - product.basePrice) / product.compareAtPrice!) * 100)
+    ? computeDiscountPct(product.compareAtPrice!, product.basePrice)
     : 0;
   const priceRange =
     product.minPrice === product.maxPrice
