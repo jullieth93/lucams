@@ -73,6 +73,30 @@ function timelineProgress(status: string): number {
   return -1;
 }
 
+/**
+ * Revalidación 2026-10-20 (feedback owner en /pedido) — el timeline solo cubre el
+ * happy path (Pagado→Entregado), pero una orden puede quedar SHIPPED/FULFILLING
+ * con una NOVEDAD o DEVOLUCIÓN del carrier (la saga no auto-transiciona esos
+ * estados: los marca needsReconciliation + avisa al admin, decisión humana). Sin
+ * este banner el cliente veía "En camino" para siempre sin señal del problema.
+ * Deriva el tipo desde reconciliationReason (texto que escribe NUESTRA saga:
+ * "Envío DEVUELTO (…)" / "Envío con novedad (…)") — solo aplica a órdenes ya
+ * pagadas con guía (una reconciliación de pago NO debe pintar banner de envío).
+ */
+function shippingIssueKind(order: {
+  status: string;
+  trackingNumber: string | null;
+  needsReconciliation: boolean;
+  reconciliationReason: string | null;
+}): "returned" | "exception" | null {
+  if (!order.needsReconciliation || !order.trackingNumber) return null;
+  if (!["PAID", "FULFILLING", "SHIPPED"].includes(order.status)) return null;
+  const reason = order.reconciliationReason ?? "";
+  if (/devuelto|devoluci[oó]n/i.test(reason)) return "returned";
+  if (/novedad/i.test(reason)) return "exception";
+  return null;
+}
+
 type ShippingAddrSnapshot = {
   fullName?: string;
   addressLine1?: string;
@@ -151,9 +175,14 @@ export default async function PublicOrderPage({
   // #5 — PENDING_PAYMENT no es un callejón sin salida: en vez del timeline gris mudo, un banner
   // ámbar que explica ("estamos confirmando tu pago") + salida a WhatsApp para resolver.
   const isPending = order.status === "PENDING_PAYMENT";
-  const waUrl = isPending
-    ? await buildWhatsAppUrl({ kind: "order", orderNumber: order.number })
-    : null;
+  // Novedad/devolución del carrier: la orden no retrocede de estado (decisión de
+  // la saga) pero el cliente SÍ debe ver que algo pasa — banner honesto con salida
+  // a WhatsApp, al lado del timeline que de otro modo quedaría "En camino" eterno.
+  const shippingIssue = shippingIssueKind(order);
+  const waUrl =
+    isPending || shippingIssue
+      ? await buildWhatsAppUrl({ kind: "order", orderNumber: order.number })
+      : null;
 
   // Textos con interpolación propia ({total}, {cantidad}, {email}) se leen con
   // getCmsBlock y se reemplazan a mano; el resto va con <CmsText>.
@@ -307,6 +336,48 @@ export default async function PublicOrderPage({
               <h2 className="text-brand-purple-dark mb-4 text-sm font-bold">
                 <CmsText blockKey="order.status.timeline-heading" fallback="Estado de tu pedido" />
               </h2>
+              {/* Novedad/devolución del carrier (revalidación 2026-10-20): el timeline
+                  no retrocede, pero el cliente debe VER que hay un problema logístico
+                  en vez de un "En camino" eterno. */}
+              {shippingIssue && (
+                <div
+                  role="alert"
+                  className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4"
+                >
+                  <p className="text-sm font-semibold text-amber-900">
+                    {shippingIssue === "returned" ? (
+                      <CmsText
+                        blockKey="order.status.shipping-returned-title"
+                        fallback="Tu pedido viene de vuelta con nosotros"
+                      />
+                    ) : (
+                      <CmsText
+                        blockKey="order.status.shipping-issue-title"
+                        fallback="Tu envío tiene una novedad"
+                      />
+                    )}
+                  </p>
+                  <p className="mt-1 text-xs text-amber-800">
+                    <CmsText
+                      blockKey="order.status.shipping-issue-body"
+                      fallback="La transportadora reportó un inconveniente con la entrega. Ya lo estamos gestionando y te contactaremos; si quieres escribirnos antes, estamos atentos."
+                    />
+                  </p>
+                  {waUrl && (
+                    <a
+                      href={waUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                    >
+                      <CmsText
+                        blockKey="order.status.pending-wa-cta"
+                        fallback="Escríbenos por WhatsApp"
+                      />
+                    </a>
+                  )}
+                </div>
+              )}
               <ol className="flex justify-between">
                 {TIMELINE_STEPS.map((s, i) => {
                   const done = progress >= i;
@@ -621,45 +692,40 @@ export default async function PublicOrderPage({
                     : "Tu pedido va con nuestro equipo Lucam&apos;s — la entrega es directa, el mismo día del despacho, sin transportadora externa."}
                 </p>
               )}
-              {/* Rastreo (fix QA STG 2026-10): la opción INTERNA es la
-                  principal — /rastrear con el número prellenado por query (el
-                  correo NUNCA viaja en la URL por PII: lo escribe el cliente;
-                  número + correo rotan un token nuevo, ver rastrear/actions).
-                  El portal externo de la transportadora queda como secundario
-                  (el trackingUrl guardado es el PDF del documento de guía —
-                  va etiquetado como tal). */}
-              <Link
-                href={`/rastrear?number=${encodeURIComponent(order.number)}`}
-                className="bg-brand-purple hover:bg-brand-purple-dark mt-3 inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold text-white shadow-sm"
-              >
-                <CmsText
-                  blockKey="order.status.track-internal-cta"
-                  fallback="Seguir estado en LUCAMS →"
-                />
-              </Link>
-              {carrierTrackingPageUrl(order.shippingCarrier) && (
-                <a
-                  href={carrierTrackingPageUrl(order.shippingCarrier)!}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-brand-muted hover:text-brand-purple mt-2 block text-xs underline"
-                >
-                  <CmsText
-                    blockKey="order.status.tracking-cta"
-                    fallback="Rastrear en el portal de la transportadora →"
-                  />
-                </a>
-              )}
-              {order.trackingUrl && (
-                <a
-                  href={order.trackingUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-brand-muted hover:text-brand-purple mt-1 block text-xs underline"
-                >
-                  Documento de guía (PDF)
-                </a>
-              )}
+              {/* Rastreo (feedback owner 2026-10-20): esta vista YA es el
+                  seguimiento en Lucams — el botón "Seguir estado en LUCAMS" era
+                  redundante acá y se eliminó (sigue teniendo sentido en los
+                  emails). Quedan como BOTONES el portal oficial de la
+                  transportadora (el cliente digita la guía ahí) y el documento
+                  de guía PDF que archiva Aveonline. El número de guía va visible
+                  arriba para copiarlo. */}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {carrierTrackingPageUrl(order.shippingCarrier) && (
+                  <a
+                    href={carrierTrackingPageUrl(order.shippingCarrier)!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm"
+                  >
+                    <Truck aria-hidden className="h-3.5 w-3.5" />
+                    <CmsText
+                      blockKey="order.status.tracking-cta"
+                      fallback="Rastrear en el portal de la transportadora"
+                    />
+                  </a>
+                )}
+                {order.trackingUrl && (
+                  <a
+                    href={order.trackingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs font-semibold shadow-sm"
+                  >
+                    <Package aria-hidden className="h-3.5 w-3.5" />
+                    <CmsText blockKey="order.status.label-cta" fallback="Documento de guía (PDF)" />
+                  </a>
+                )}
+              </div>
             </Card>
           )}
 

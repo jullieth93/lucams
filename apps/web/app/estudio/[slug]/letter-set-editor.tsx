@@ -51,8 +51,8 @@ import type { LetterStyle, LetterTileMap } from "@/features/personalization/lett
 import {
   createLetterSetDesignAction,
   finalizeDesignAction,
-  uploadDesignPreviewPagesAction,
 } from "@/features/personalization/actions";
+import { uploadPreviewPagesWithRetry } from "./preview-pages-upload";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { formatCOP } from "@/lib/format";
 import {
@@ -792,15 +792,19 @@ export function LetterSetEditor({
       // carrito (antes solo el estudio de foto las subía: previewPagesCount
       // quedaba null y el carrito caía a la imagen única). Mismo patrón del
       // estudio de foto: request APARTE tras el finalize, BEST-EFFORT — un
-      // fallo NO bloquea la compra (el carrito cae al preview global).
+      // fallo NO bloquea la compra (el carrito cae al preview global), pero va
+      // con reintento + reporte a ErrorReport (revalidación 2026-10-20: el
+      // fallo silencioso dejaba pedidos sin pager sin que nadie se enterara).
       if (previewPages && previewPages.length > 1) {
         try {
-          const pagesForm = new FormData();
-          pagesForm.set("designId", created.designId);
-          previewPages.forEach((page, i) => {
-            pagesForm.set(`page_${i}`, dataUrlToBlob(page.dataUrl), `set-${i + 1}.webp`);
+          await uploadPreviewPagesWithRetry(created.designId, () => {
+            const pagesForm = new FormData();
+            pagesForm.set("designId", created.designId);
+            previewPages.forEach((page, i) => {
+              pagesForm.set(`page_${i}`, dataUrlToBlob(page.dataUrl), `set-${i + 1}.webp`);
+            });
+            return pagesForm;
           });
-          await uploadDesignPreviewPagesAction(pagesForm);
         } catch (pagesErr) {
           console.error("[studio.letter-set.preview-pages]", pagesErr);
         }
