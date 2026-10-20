@@ -69,7 +69,6 @@ import { usePathname, useSelectedLayoutSegments } from "next/navigation";
 import {
   onCLS,
   onFCP,
-  onFID,
   onINP,
   onLCP,
   onTTFB,
@@ -202,7 +201,9 @@ export function WebVitalsReporter() {
     };
     onCLS(report);
     onFCP(report);
-    onFID(report);
+    // FID no se registra: la métrica está deprecada (reemplazada por INP, ya
+    // suscrita) y web-vitals v5 eliminó onFID — con next ≥16.4 el import ya no
+    // existe y su llamada rompe la hidratación (global-error en el primer hit).
     onINP(report);
     onLCP(report);
     onTTFB(report);

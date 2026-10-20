@@ -55,7 +55,6 @@ vi.mock("next/dist/compiled/web-vitals-attribution", () => {
   return {
     onCLS: register,
     onFCP: register,
-    onFID: register,
     onINP: register,
     onLCP: register,
     onTTFB: register,

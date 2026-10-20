@@ -22,7 +22,6 @@ declare module "next/dist/compiled/web-vitals-attribution" {
   type ReportCallback = (metric: MetricWithAttribution) => void;
   export function onCLS(cb: ReportCallback): void;
   export function onFCP(cb: ReportCallback): void;
-  export function onFID(cb: ReportCallback): void;
   export function onINP(cb: ReportCallback): void;
   export function onLCP(cb: ReportCallback): void;
   export function onTTFB(cb: ReportCallback): void;
