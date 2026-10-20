@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /*
- * Component test — WebVitalsReporter consent gate (F-19, audit 2026-09-04).
+ * Component test — WebVitalsReporter consent gate (F-19, audit 2026-09-04)
+ * y métricas agregadas LONGTASK/PAGEWEIGHT (Paquete C + fix 2026-10-20).
  *
  * The beacon to /api/vitals must respect the "Analíticas" category of the
  * cookie banner (lib/cookie-consent.ts, cookie `cookie_consent_v1`):
@@ -11,8 +12,11 @@
  *    re-render (consent is re-read lazily at fire time).
  *
  * Setup notes:
- *  - next/web-vitals is mocked to CAPTURE the metric callback the component
- *    registers; the test then fires metrics by invoking it directly.
+ *  - next/dist/compiled/web-vitals-attribution is mocked to CAPTURE the
+ *    metric callback the component registers in its mount effect; the test
+ *    then fires metrics by invoking it directly. (Hasta 2026-10-20 se
+ *    mockeaba next/web-vitals — el reporter ya no usa useReportWebVitals
+ *    porque ese build no trae atribución.)
  *  - next/navigation is mocked (no App Router context in jsdom) with a
  *    dynamic-route pathname to also assert route normalization.
  *  - @/lib/cookie-consent is NOT mocked: it is pure client logic over
@@ -20,6 +24,9 @@
  *  - jsdom's navigator has no sendBeacon → the component falls back to
  *    fetch (stubbed via vi.stubGlobal). One test stubs sendBeacon to cover
  *    the primary path.
+ *  - jsdom no implementa PerformanceObserver → el effect de agregados hace
+ *    early-return y no hay beacons LONGTASK/PAGEWEIGHT salvo que el test
+ *    stubee un PerformanceObserver falso (ver describe LONGTASK).
  */
 
 import "@testing-library/jest-dom/vitest";
@@ -35,17 +42,25 @@ type ReportedMetric = {
   attribution?: Record<string, unknown>;
 };
 
-// Holder for the callback the component passes to useReportWebVitals.
+// Holder for the callback the component passes to the attribution handlers.
 const vitals = vi.hoisted(() => ({
   callback: null as null | ((metric: ReportedMetric) => void),
   pathname: "/producto/imantado-corazon-123",
 }));
 
-vi.mock("next/web-vitals", () => ({
-  useReportWebVitals: (cb: (metric: ReportedMetric) => void) => {
+vi.mock("next/dist/compiled/web-vitals-attribution", () => {
+  const register = (cb: (metric: ReportedMetric) => void) => {
     vitals.callback = cb;
-  },
-}));
+  };
+  return {
+    onCLS: register,
+    onFCP: register,
+    onFID: register,
+    onINP: register,
+    onLCP: register,
+    onTTFB: register,
+  };
+});
 
 vi.mock("next/navigation", () => ({
   usePathname: () => vitals.pathname,
@@ -75,8 +90,16 @@ function clearConsentCookie() {
 }
 
 function fireMetric() {
-  if (!vitals.callback) throw new Error("useReportWebVitals callback was not registered");
+  if (!vitals.callback) throw new Error("attribution callback was not registered");
   vitals.callback(METRIC);
+}
+
+/** Payloads JSON que el componente envió vía fetch fallback. */
+function sentPayloads(): Array<Record<string, unknown>> {
+  return fetchMock.mock.calls.map((c) => {
+    const [, init] = c as unknown as [string, { body: string }];
+    return JSON.parse(init.body) as Record<string, unknown>;
+  });
 }
 
 beforeEach(() => {
@@ -190,5 +213,82 @@ describe("WebVitalsReporter — consent gate (F-19)", () => {
     fireMetric(); // LCP sin attribution
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
     expect(JSON.parse(init.body)).not.toHaveProperty("target");
+  });
+});
+
+/*
+ * LONGTASK (fix 2026-10-20): jsdom no implementa PerformanceObserver, así que
+ * se stubee uno falso. Verifica las dos ramas del fix:
+ *  - Con soporte: las entradas se acumulan y el flush (pagehide) envía
+ *    value=ms totales y delta=cantidad.
+ *  - Sin soporte (Firefox/Safari: observe({type:"longtask"}) lanza): el flush
+ *    NO envía fila LONGTASK (un 0/0 sintético ensucia los agregados — en STG
+ *    284/284 filas LONGTASK eran 0 por esta rama), pero PAGEWEIGHT sí sale.
+ */
+class FakePerformanceObserver {
+  static instances: FakePerformanceObserver[] = [];
+  static unsupportedTypes = new Set<string>();
+  private cb: (list: { getEntries: () => Array<{ duration: number }> }) => void;
+  observedType?: string;
+
+  constructor(cb: FakePerformanceObserver["cb"]) {
+    this.cb = cb;
+    FakePerformanceObserver.instances.push(this);
+  }
+
+  observe(opts: { type: string }) {
+    if (FakePerformanceObserver.unsupportedTypes.has(opts.type)) {
+      throw new TypeError(`entry type '${opts.type}' not supported`);
+    }
+    this.observedType = opts.type;
+  }
+
+  disconnect() {}
+
+  emit(entries: Array<{ duration: number }>) {
+    this.cb({ getEntries: () => entries });
+  }
+
+  static reset(unsupported: string[] = []) {
+    FakePerformanceObserver.instances = [];
+    FakePerformanceObserver.unsupportedTypes = new Set(unsupported);
+  }
+}
+
+describe("WebVitalsReporter — LONGTASK por pageview (fix 2026-10-20)", () => {
+  beforeEach(() => {
+    writeClientCookiePreferences(acceptAllPreferences());
+    vi.stubGlobal("PerformanceObserver", FakePerformanceObserver);
+  });
+
+  afterEach(() => {
+    FakePerformanceObserver.reset();
+  });
+
+  it("acumula long tasks y flushéa value=ms totales / delta=cantidad en pagehide", () => {
+    FakePerformanceObserver.reset();
+    render(<WebVitalsReporter />);
+    const longtaskObs = FakePerformanceObserver.instances.find(
+      (o) => o.observedType === "longtask",
+    );
+    expect(longtaskObs).toBeDefined();
+    longtaskObs!.emit([{ duration: 120 }, { duration: 80 }]);
+    window.dispatchEvent(new Event("pagehide"));
+    const longtask = sentPayloads().find((p) => p.name === "LONGTASK");
+    expect(longtask).toMatchObject({
+      value: 200,
+      delta: 2,
+      rating: "good",
+      route: "/producto/[slug]",
+    });
+  });
+
+  it("sin soporte de longtask (Firefox/Safari) NO envía fila LONGTASK pero sí PAGEWEIGHT", () => {
+    FakePerformanceObserver.reset(["longtask"]);
+    render(<WebVitalsReporter />);
+    window.dispatchEvent(new Event("pagehide"));
+    const names = sentPayloads().map((p) => p.name);
+    expect(names).not.toContain("LONGTASK");
+    expect(names).toContain("PAGEWEIGHT");
   });
 });

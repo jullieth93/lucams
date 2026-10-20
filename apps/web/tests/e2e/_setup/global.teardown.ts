@@ -60,7 +60,8 @@ type AuditParte = {
 };
 
 function mergeAuditResponsiveReport(): void {
-  const outDir = resolve(__dirname, "../../../../tmp/audit-20261013");
+  // __dirname = tests/e2e/_setup (un nivel más que el spec) → 5 niveles al root.
+  const outDir = resolve(__dirname, "../../../../../tmp/audit-20261013");
   const partsDir = resolve(outDir, "parts");
   if (!existsSync(partsDir)) return;
   try {
