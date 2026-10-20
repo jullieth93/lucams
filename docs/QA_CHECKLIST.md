@@ -1,6 +1,6 @@
 # QA Checklist pre-launch — Lucams_shop
 
-> Última actualización: 2026-10-13 · jornada de maduración UX (ADR-150…154: preview paginado unificado en gracias/carrito/pedidos, bottom-sheet de estilo móvil + «Listo», ciclo de vida de borradores, módulo admin `/admin/carritos`, auditoría responsive 6 perfiles) · antes: 2026-09-12 · Sub-bloque L · verificado contra el código 2026-09-12 (remediación 360°: CTA Personalizar → Estudio, cupón en /checkout/pago, /admin/mensajes → /admin/soporte, re-consent de cookies, editor CMS por barra superior + `CmsFieldVersion`; antes: 2026-09-03 MFA admin obligatorio, checkout en modo full, /rastrear)
+> Última actualización: 2026-10-20 · jornada de maduración integral fases 1-6 (ADR-155…160 + reescrituras de ADR-137/140/152: ledger Wompi por intento, identidad de sesión en checkout/carrito, concurrencia `clientRev`, lettersets multi-set, prediseñados con destino explícito, «Listo» único, retomador de borradores endurecido, checkbox tributario oculto tras flag) · antes: 2026-10-13 · jornada de maduración UX (ADR-150…154: preview paginado unificado en gracias/carrito/pedidos, bottom-sheet de estilo móvil + «Listo», ciclo de vida de borradores, módulo admin `/admin/carritos`, auditoría responsive 6 perfiles) · antes: 2026-09-12 · Sub-bloque L · verificado contra el código 2026-09-12 (remediación 360°: CTA Personalizar → Estudio, cupón en /checkout/pago, /admin/mensajes → /admin/soporte, re-consent de cookies, editor CMS por barra superior + `CmsFieldVersion`; antes: 2026-09-03 MFA admin obligatorio, checkout en modo full, /rastrear)
 >
 > Esta checklist se recorre **manualmente con Lucy + Claude** antes del go-live productivo. Es el último filtro: nada se lanza si quedan rojos. Marcar cada item con ✅ / ⚠️ / ❌ y fecha de verificación.
 
@@ -104,6 +104,9 @@
 - [ ] /mi-cuenta/pedidos/[number] y /pedido/<token>: miniatura clicable + badge «N unidades» + botón «Ver» intacto (ADR-150)
 - [ ] /rastrear (invitado, sin cuenta): número de pedido + correo → vista pública /pedido/<token> con estado, timeline y guía
 - [ ] /rastrear con datos que no cruzan → error genérico anti-enumeración (no revela si el pedido o el correo existen)
+- [ ] /checkout/datos NO muestra el checkbox «Quiero documento tributario» (flag `BILLING_DOCUMENT_ENABLED=false`, ADR-160); el detalle admin del pedido muestra el bloque «Documento de venta» solo en órdenes históricas con datos
+- [ ] Reintentar el pago Wompi tras un intento fallido → referencia UUID nueva por intento registrada en el ledger (`WompiPaymentAttempt`), sin error «La referencia ya ha sido usada» (ADR-137)
+- [ ] Carrito: una línea cuya variante/producto se desactivó se marca al leer (revalidación de comprabilidad); «Editar» una línea personalizada clona READY→DRAFT y reemplaza la línea en sitio (ADR-155)
 
 ## E3. Estudio de personalización y Mis diseños (ADR-151/152)
 
@@ -112,9 +115,15 @@
 - [ ] Desktop/tablet (≥sm): toolbar vertical intacta + indicador «· Elegido: {color}»
 - [ ] Asset picker de fotos: footer sticky con «Listo» que cierra sin asignar
 - [ ] Toggle «Diseños prediseñados» de la sidebar destacado en lila de marca (bg-brand-purple + texto blanco)
-- [ ] Entrar a /estudio/<slug> pelado (sin ?designId=/?template=/?copies=) con un DRAFT activo del mismo producto → redirige a ?designId=<id> y el canvas se hidrata (reuso de borrador)
-- [ ] «Editar» desde el carrito / «Volver a pedir» crean DRAFT NUEVO (no reusan) y la poda conserva solo los últimos 3 DRAFT por producto
-- [ ] Mis diseños: sección «Borradores» colapsable (abierta si ≤3), borrado individual con confirmación y «Vaciar borradores» funcional (solo logueado)
+- [ ] Entrar a /estudio/<slug> pelado (sin ?designId=/?template=/?copies=) con un DRAFT con progreso real del mismo producto+variante → interstitial «Continuar donde quedaste»; confirmar navega a ?designId=<id>&resume=1 y el canvas se hidrata; descartar bootea fresco y limpia el marcador (ya NO hay reuso silencioso al entrar — ADR-152)
+- [ ] El retomador NO ofrece borradores vacíos, vencidos (7 d invitado / 30 d cuenta) ni cuyas unidades contradicen el ?copies=N de la PDP (mismatch → boot fresco conservando el marcador)
+- [ ] Tab Texto: UN solo «Listo» que aplica y cierra (ya no hay «Aplicar»); ×/Escape cancela sin guardar (ADR-159)
+- [ ] «Borrar el diseño» pide confirmación y es undoable (clearAllSlots)
+- [ ] Click en prediseñado: pregunta destino (cara si ambigua); si no hay lienzo libre → modal «¿Cuál lienzo quieres reemplazar?» con miniaturas; preview emergente en hover (desktop) (ADR-158)
+- [ ] Letterset multi-set (Abecedario/Vocales): estilo/color/borde por set, paleta sticky, finalize exige las N láminas, pager por set en «Ver diseño» del estudio y «Ver» del carrito (ADR-157)
+- [ ] «Ver diseño» del estudio: zoom con rueda/pinch/doble-click, reset al cambiar de página, swipe no pagina con zoom activo
+- [ ] «Editar» desde el carrito / «Volver a pedir» crean DRAFT NUEVO (no reusan) y la poda conserva solo los últimos 3 DRAFT con progreso por producto (los vacíos >1 h también se barren)
+- [ ] Mis diseños: sección «Borradores» colapsable (abierta si ≤3), borrado individual, «Vaciar borradores» y archivado — todos con Dialog de confirmación real (solo logueado)
 - [ ] Borrar un borrador clonado NO rompe las fotos del diseño original (bytes compartidos preservados — fix purgeDesignBatch)
 
 ## F. Newsletter

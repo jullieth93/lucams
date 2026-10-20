@@ -319,6 +319,33 @@ polling (`GET /api/designs/<id>/render-status`) y el render corre en background:
   de producción (`/admin/pedidos/<n>/produccion`) responde **409** mientras haya un job vivo
   (nunca un ZIP a medias) y grita en el LEEME.txt los items con render FAILED.
 
+### Migraciones de la jornada integral 2026-10-17/20 (fases 1-6, ADR-155…160)
+
+| Migración                                                         | Qué crea                                                         | STG           | PRD                       |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------- | ------------- | ------------------------- |
+| Prisma `20261017120000_wompi_payment_ledger`                      | Ledger `WompiPaymentAttempt`/`WompiPaymentTransaction` (ADR-137) | ✅ 2026-10-20 | pendiente (con el deploy) |
+| Prisma `20261017130000_design_client_rev`                         | `Design.clientRev` — concurrencia optimista del editor (ADR-156) | ✅ 2026-10-20 | pendiente (con el deploy) |
+| Prisma `20261020120000_design_archived_from`                      | `Design.archivedFrom`                                            | ✅ 2026-10-20 | pendiente (con el deploy) |
+| SQL `supabase/migrations/00000000000042_wompi_payment_ledger.sql` | RLS del ledger                                                   | ✅ 2026-10-20 | pendiente (con el deploy) |
+
+- Las Prisma viajan con el `prisma migrate deploy` del release (mismo orden de siempre). La SQL
+  042 **no agenda crons** (solo RLS de las tablas nuevas) — segura de aplicar en cualquier
+  momento y no toca los jobs desagendados de STG.
+- **Backfill del ledger:** one-shot
+  `packages/db/scripts/one-shot/wompi-payment-ledger-backfill.mjs` (dry-run por defecto,
+  `--apply` con env-guard) — copia al ledger la evidencia local histórica de órdenes WOMPI
+  (`wompiReference`/`paymentAttempt`/`wompiTransactionId`, marcando `backfilled`); NO consulta
+  la API de Wompi ni infiere estados. **Corrido en STG el 2026-10-20: 0 cambios necesarios.**
+  En PRD: correr tras el `migrate deploy` del release (desde `packages/db`:
+  `pnpm exec dotenv -e ../../.env.local.nube-backup -- node scripts/one-shot/wompi-payment-ledger-backfill.mjs`
+  y luego con `--apply`).
+- **Claves CMS nuevas** de la jornada (`estudio.lienzo.borrar-diseno-*`,
+  `estudio.texto.ig-reaplicar-*`, `estudio.exportar.zoom-*-aria`, `estudio.letras.set-pager-*`,
+  `estudio.plantillas.reemplazo-*`, confirms `account.designs.*` — 7 claves — y el texto
+  `editor-desc` actualizado): ya registradas en `packages/db/scripts/cms-site-map.mjs`; se
+  materializan por ambiente con `make migrate-cms-v2` + «Actualizar caché de contenido» en
+  `/admin/contenido` (mientras no se siembren, sirven los fallbacks del código).
+
 ### Higiene de Supabase Storage — estrategia completa (2026-10-12)
 
 Contexto: el 2026-10-12 se midieron **~316 MB de objetos huérfanos en PRD** (217 MB en

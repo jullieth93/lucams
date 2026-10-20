@@ -5,10 +5,8 @@
  *     USED_IN_ORDER / otros productos / borradores blindados por carrito vivo
  *     NUNCA se tocan; los bytes COMPARTIDOS con un diseño vivo (clon
  *     READY→DRAFT) no se borran (solo la fila).
- *  2. Reuso al entrar al Estudio (findReusableDraftDesign): retoma el DRAFT
- *     activo más reciente del dueño+producto (+ variante explícita si la URL la
- *     fija); ignora READY, otros productos/dueños, borradores fuera de la
- *     ventana de retención y los referenciados por carrito vivo/pedido.
+ *  2. (Eliminado 2026-10-20 el reuso silencioso server-side — la retoma vive
+ *     en el marcador local del Estudio, lib/draft-marker.ts.)
  *  3. Borrado manual desde "Mis diseños" (deleteCustomerDraftDesign /
  *     emptyCustomerDraftDesigns).
  *
@@ -38,9 +36,7 @@ vi.mock("@/lib/supabase/service", () => ({
 // ─────────────────────────── filas en memoria ───────────────────────────
 
 const NOW = new Date("2026-10-13T12:00:00.000Z");
-const DAY_MS = 24 * 60 * 60 * 1000;
 const hoursAgo = (n: number) => new Date(NOW.getTime() - n * 60 * 60 * 1000);
-const daysAgo = (n: number) => new Date(NOW.getTime() - n * DAY_MS);
 
 type FakeAsset = { storageUrl: string; designId: string | null };
 
@@ -256,7 +252,6 @@ import {
   MAX_DRAFTS_PER_PRODUCT,
   deleteCustomerDraftDesign,
   emptyCustomerDraftDesigns,
-  findReusableDraftDesign,
   trimExcessDraftDesigns,
 } from "./draft-lifecycle";
 
@@ -429,131 +424,6 @@ describe("trimExcessDraftDesigns — política «últimos N» (2026-10-13)", () 
     expect(res.trimmed).toBe(0);
     expect(deletedIds).toHaveLength(0);
     expect(removeMock).not.toHaveBeenCalled();
-  });
-});
-
-// ─────────────────────────── reuso al entrar al Estudio ───────────────────────────
-
-describe("findReusableDraftDesign — reuso del borrador activo al entrar al Estudio", () => {
-  it("retoma el DRAFT más reciente del mismo dueño+producto", async () => {
-    rows = [
-      design("viejo", { updatedAt: hoursAgo(5) }),
-      design("reciente", { updatedAt: hoursAgo(1) }),
-    ];
-
-    const found = await findReusableDraftDesign({ ...OWNER, productId: "prod-1", now: NOW });
-
-    expect(found).toEqual({ id: "reciente" });
-  });
-
-  it("ignora READY, otros productos y otros dueños", async () => {
-    rows = [
-      design("listo", { status: "READY" }),
-      design("otro-producto", { productId: "prod-2" }),
-      design("otro-dueno", { customerId: "cus-2" }),
-    ];
-
-    const found = await findReusableDraftDesign({ ...OWNER, productId: "prod-1", now: NOW });
-
-    expect(found).toBeNull();
-  });
-
-  it("un borrador fuera de la ventana de retención de su dueño NO se retoma (30d cuenta / 7d invitado)", async () => {
-    rows = [design("stale", { updatedAt: daysAgo(20) })];
-
-    expect(await findReusableDraftDesign({ ...OWNER, productId: "prod-1", now: NOW })).toEqual({
-      id: "stale",
-    });
-    expect(
-      await findReusableDraftDesign({
-        customerId: null,
-        sessionId: "ses-1",
-        productId: "prod-1",
-        now: NOW,
-      }),
-    ).toBeNull();
-  });
-
-  it("busca por sessionId cuando el dueño es anónimo", async () => {
-    rows = [
-      design("mio", { customerId: null, sessionId: "ses-1" }),
-      design("ajeno", { customerId: null, sessionId: "ses-2" }),
-    ];
-
-    const found = await findReusableDraftDesign({
-      customerId: null,
-      sessionId: "ses-1",
-      productId: "prod-1",
-      now: NOW,
-    });
-
-    expect(found).toEqual({ id: "mio" });
-  });
-
-  it("no retoma borradores referenciados por un carrito vivo o un pedido", async () => {
-    rows = [
-      design("en-carrito", { cartItems: [{ cartDeletedAt: null }] }),
-      design("con-pedido", { orderItems: 1, updatedAt: hoursAgo(2) }),
-    ];
-
-    expect(await findReusableDraftDesign({ ...OWNER, productId: "prod-1", now: NOW })).toBeNull();
-  });
-
-  it("con variante explícita: retoma solo ESA variante; una legacy sin variante no se ofrece", async () => {
-    rows = [
-      design("otra-variante", { updatedAt: hoursAgo(1), metadata: { variantId: "var-2" } }),
-      design("mi-variante", { updatedAt: hoursAgo(2), metadata: { variantId: "var-1" } }),
-    ];
-    expect(
-      await findReusableDraftDesign({
-        ...OWNER,
-        productId: "prod-1",
-        variantId: "var-1",
-        now: NOW,
-      }),
-    ).toEqual({ id: "mi-variante" });
-
-    rows = [design("otra-variante", { metadata: { variantId: "var-2" } })];
-    expect(
-      await findReusableDraftDesign({
-        ...OWNER,
-        productId: "prod-1",
-        variantId: "var-1",
-        now: NOW,
-      }),
-    ).toBeNull();
-
-    rows = [design("legacy", { metadata: { kind: "PHOTO_PACK" } })];
-    expect(
-      await findReusableDraftDesign({
-        ...OWNER,
-        productId: "prod-1",
-        variantId: "var-1",
-        now: NOW,
-      }),
-    ).toBeNull();
-  });
-
-  it("sin variante explícita retoma el más reciente aunque sea de otra variante", async () => {
-    rows = [design("otra-variante", { metadata: { variantId: "var-2" } })];
-
-    expect(await findReusableDraftDesign({ ...OWNER, productId: "prod-1", now: NOW })).toEqual({
-      id: "otra-variante",
-    });
-  });
-
-  it("no retoma un borrador vacío aunque esté vigente", async () => {
-    rows = [
-      design("vacio", {
-        canvasData: {
-          version: 2,
-          slotCount: 1,
-          slots: [{ slotIndex: 0, assetId: null, assetUrl: null }],
-        },
-      }),
-    ];
-
-    expect(await findReusableDraftDesign({ ...OWNER, productId: "prod-1", now: NOW })).toBeNull();
   });
 });
 

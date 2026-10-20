@@ -8,11 +8,13 @@
  * y nada acotaba cuántos se acumulaban por producto.
  *
  * Este módulo concentra la política:
- *   1. REUSO al entrar (findReusableDraftDesign): la página del Estudio retoma
- *      el DRAFT más reciente del mismo dueño + producto (+ variante, si la URL
- *      la fija explícitamente) en vez de crear uno nuevo. Los CLONES
- *      (cloneDesignForEdit / cloneDesignForReorder) NO pasan por acá: son
- *      intencionales y siguen creando un DRAFT nuevo.
+ *   1. Retoma al entrar: NO vive acá. El Estudio retoma vía el marcador local
+ *      "Continuar donde quedaste" (lib/draft-marker.ts, scope
+ *      producto:variante, con gates de progreso real y unidades — ADR-152);
+ *      el recover server-side valida ownership/estado. No hay reuso silencioso
+ *      de DRAFT en el servidor (se eliminó 2026-10-19: cargaba diseños sin
+ *      aviso). Los CLONES (cloneDesignForEdit / cloneDesignForReorder) son
+ *      intencionales y crean un DRAFT nuevo.
  *   2. Poda «últimos N» (trimExcessDraftDesigns): tras crear un DRAFT nuevo por
  *      cualquier vía, se conservan solo los MAX_DRAFTS_PER_PRODUCT más
  *      recientes del mismo dueño + producto; los excedentes se eliminan con sus
@@ -30,11 +32,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { designHasMeaningfulProgress } from "./design-progress";
-import {
-  deleteDesignsWithAssets,
-  PURGE_ANON_DESIGN_AFTER_DAYS,
-  PURGE_IDLE_DESIGN_AFTER_DAYS,
-} from "./retention-service";
+import { deleteDesignsWithAssets } from "./retention-service";
 
 /**
  * 2026-10-13 — techo de borradores CONSERVADOS por dueño + producto: tras crear
@@ -45,7 +43,6 @@ import {
  */
 export const MAX_DRAFTS_PER_PRODUCT = 3;
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const EMPTY_DRAFT_GRACE_MS = 60 * 60 * 1000;
 
 /**
@@ -86,66 +83,6 @@ async function releaseDraftsClaim(owner: Owner, designIds: string[]): Promise<vo
     where: { id: { in: designIds }, ...scope, status: "ARCHIVED" },
     data: { status: "DRAFT" },
   });
-}
-
-/**
- * Ventana de actividad para considerar un DRAFT "activo": la misma que aplica la
- * retención a su dueño (7 días invitado / 30 días con cuenta, por updatedAt). Un borrador
- * fuera de ventana puede desaparecer en la próxima purga: retomarlo sería
- * prometer un avance que revienta a mitad de edición.
- */
-function draftActiveCutoff(owner: Owner, now: Date): Date {
-  const days = owner.customerId ? PURGE_IDLE_DESIGN_AFTER_DAYS : PURGE_ANON_DESIGN_AFTER_DAYS;
-  return new Date(now.getTime() - days * DAY_MS);
-}
-
-/**
- * DRAFT reutilizable más reciente del dueño para el producto, o null si no hay.
- *
- * Guardas: DRAFT, mismo producto, actividad vigente, avance real y sin carrito vivo ni
- * pedido que lo referencie. Con variante explícita solo reusa la misma variante persistida;
- * una entrada legacy sin variante no se ofrece porque puede cargar otra medida/composición.
- */
-export async function findReusableDraftDesign(
-  opts: Owner & {
-    productId: string;
-    /** Variante explícita de la URL; null/undefined = cualquier variante. */
-    variantId?: string | null;
-    /** Reloj inyectable (tests). */
-    now?: Date;
-  },
-): Promise<{ id: string } | null> {
-  const scope = ownerWhere(opts);
-  if (!scope) return null;
-  const now = opts.now ?? new Date();
-
-  const candidates = await prisma.design.findMany({
-    where: {
-      ...scope,
-      productId: opts.productId,
-      status: "DRAFT",
-      updatedAt: { gte: draftActiveCutoff(opts, now) },
-      cartItems: NO_LIVE_CART_ITEM,
-      orderItems: { none: {} },
-    },
-    orderBy: { updatedAt: "desc" },
-    // Tras la poda «últimos N» el universo por dueño+producto es chico; el take
-    // acota cuentas legacy con acumulados históricos.
-    take: 20,
-    select: { id: true, metadata: true, canvasData: true },
-  });
-
-  const requestedVariant = opts.variantId ?? null;
-  for (const c of candidates) {
-    if (!designHasMeaningfulProgress({ canvasData: c.canvasData, metadata: c.metadata })) {
-      continue;
-    }
-    if (!requestedVariant) return { id: c.id };
-    const meta = c.metadata as Record<string, unknown> | null;
-    const draftVariant = typeof meta?.variantId === "string" ? meta.variantId : null;
-    if (draftVariant === requestedVariant) return { id: c.id };
-  }
-  return null;
 }
 
 /**

@@ -517,7 +517,7 @@ hereda los proyectos).
   `browser.newContext()` manual y NO heredan el viewport del proyecto — la spec lo fija
   explícito desde `testInfo.project.use.viewport` (precedente: `mobile-admin-audit.spec.ts`).
 
-### Flujos nuevos por cubrir (jornada maduración UX 2026-10-13)
+### Flujos nuevos por cubrir (jornadas de maduración 2026-10)
 
 Sin E2E dedicado todavía (cubiertos por unit/component tests + la auditoría responsive;
 candidatos a spec si alguno se vuelve crítico):
@@ -526,10 +526,18 @@ candidatos a spec si alguno se vuelve crítico):
   y `/pedido/[token]` (miniatura clicable, pager con `previewPagesCount > 1`, badge «N unidades»).
 - Bottom-sheet de estilo del Estudio en <sm (botón resumen → Sheet → «Listo») y «Listo» del
   asset picker.
-- Ciclo de vida de borradores: reuso al entrar al Estudio, poda «últimos 3», sección
-  «Borradores» de Mis diseños (unit + integración en `draft-lifecycle.*.test.ts`).
+- Ciclo de vida de borradores: retomador «Continuar donde quedaste» por marcador local (gates
+  de progreso real, vigencia 7 d/30 d y unidades vs `?copies=N`), SIN reuso silencioso al
+  entrar; poda «últimos 3 con progreso»; sección «Borradores» de Mis diseños (unit +
+  integración en `draft-lifecycle.*.test.ts` y `draft-marker.test.ts`).
 - Módulo `/admin/carritos`: bandeja, preview del email, envío manual/bulk y configuración
   (integración en `cart-recovery-config.integration.test.ts` + unit de `actions.test.ts`).
+- Jornada fases 1-6 (2026-10-17/20): ledger Wompi por intento (referencias UUID,
+  reconciliación contra la API antes de reusar/rotar — `payment-reference`), identidad de
+  sesión en checkout/carrito, concurrencia optimista `clientRev` (`STALE_REVISION`),
+  lettersets multi-set (estilo por set, finalize que exige N láminas), prediseñados con
+  reemplazo explícito, «Listo» único del tab Texto, flag `BILLING_DOCUMENT_ENABLED`
+  (checkbox oculto y schema que no exige los campos).
 
 ---
 

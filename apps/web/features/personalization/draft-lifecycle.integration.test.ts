@@ -4,10 +4,11 @@
  *   - La poda «últimos 3» corre DENTRO de createDraftDesign: al crear el 4º
  *     DRAFT del mismo dueño+producto quedan 3 (el más viejo se elimina con sus
  *     filas DesignAsset) y los READY del mismo producto quedan intactos.
- *   - findReusableDraftDesign retoma el DRAFT activo más reciente del dueño
- *     (mismo producto, variante explícita o no).
  *   - emptyCustomerDraftDesigns («Vaciar borradores») elimina todos los DRAFT
  *     del cliente y nada más.
+ *
+ * (2026-10-20 — la retoma al entrar vive en el marcador local del Estudio;
+ * findReusableDraftDesign se eliminó con el reuso silencioso del servidor.)
  *
  * Los fixtures no suben bytes a Storage: las filas se borran igual (la remoción
  * de previews/derivados es no-op best-effort; solo un fallo de las fotos crudas
@@ -19,11 +20,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { createDraftDesign, saveCanvas } from "./service";
-import {
-  MAX_DRAFTS_PER_PRODUCT,
-  emptyCustomerDraftDesigns,
-  findReusableDraftDesign,
-} from "./draft-lifecycle";
+import { MAX_DRAFTS_PER_PRODUCT, emptyCustomerDraftDesigns } from "./draft-lifecycle";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 
@@ -133,36 +130,6 @@ describe.skipIf(!hasDb)("draft-lifecycle — integración (2026-10-13)", { timeo
     expect(survivors.map((s) => s.id).sort()).toEqual(ids.slice(1).sort());
     const readyAlive = await prisma.design.findUnique({ where: { id: ready.id } });
     expect(readyAlive?.status).toBe("READY");
-  });
-
-  it("findReusableDraftDesign retoma el DRAFT activo más reciente del dueño+producto", async () => {
-    const found = await findReusableDraftDesign({ customerId, sessionId: null, productId });
-    expect(found).not.toBeNull();
-    const drafts = await prisma.design.findMany({
-      where: { productId, customerId, status: "DRAFT" },
-      orderBy: { updatedAt: "desc" },
-      select: { id: true },
-      take: 1,
-    });
-    expect(found!.id).toBe(drafts[0]!.id);
-  });
-
-  it("con variante explícita distinta a la de los DRAFT no retoma ninguno", async () => {
-    const found = await findReusableDraftDesign({
-      customerId,
-      sessionId: null,
-      productId,
-      variantId: "variante-inexistente",
-    });
-    expect(found).toBeNull();
-    // Y con la variante con la que se crearon (metadata.variantId), sí.
-    const match = await findReusableDraftDesign({
-      customerId,
-      sessionId: null,
-      productId,
-      variantId,
-    });
-    expect(match).not.toBeNull();
   });
 
   it("emptyCustomerDraftDesigns elimina todos los DRAFT del cliente y conserva el READY", async () => {
