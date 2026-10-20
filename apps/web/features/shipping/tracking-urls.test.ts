@@ -5,14 +5,24 @@ describe("carrierTrackingPageUrl", () => {
   it("mapea las transportadoras conocidas (normalizando espacios/case)", () => {
     expect(carrierTrackingPageUrl("servientrega")).toContain("servientrega.com");
     expect(carrierTrackingPageUrl("SERVIENTREGA")).toContain("servientrega.com");
-    expect(carrierTrackingPageUrl("TCC SA")).toContain("tcc.com.co");
-    expect(carrierTrackingPageUrl("envia")).toContain("envia.com.co");
-    expect(carrierTrackingPageUrl("Coordinadora Mercantil")).toContain("coordinadora.com");
+    expect(carrierTrackingPageUrl("TCC SA")).toBe("https://tcc.com.co/rastreo/");
+    // envia.com.co está MUERTO (sin respuesta, verificado 2026-10-20) — el
+    // dominio real de Envía es envia.co (hallazgo del owner).
+    expect(carrierTrackingPageUrl("envia")).toBe("https://envia.co/tracking");
+    expect(carrierTrackingPageUrl("Coordinadora Mercantil")).toBe(
+      "https://coordinadora.com/rastreo/",
+    );
     expect(carrierTrackingPageUrl("interrapidisimo")).toContain("interrapidisimo.com");
+    expect(carrierTrackingPageUrl("GO ENVIOS")).toBe("https://www.goenvios.com/rastreo");
+    expect(carrierTrackingPageUrl("99MINUTOS")).toBe("https://tracking.99minutos.com/");
+    expect(carrierTrackingPageUrl("Domina")).toBe("https://domina.com.co/");
   });
 
-  it("devuelve null para transportadoras desconocidas o vacías", () => {
+  it("devuelve null para transportadoras desconocidas, vacías o sin portal vivo (Saferbo)", () => {
     expect(carrierTrackingPageUrl("dhl-express")).toBeNull();
+    // saferbo.com redirige a una tienda de zapatos (dominio vendido) — sin URL
+    // a propósito, el caller cae a la vista propia /pedido/<token>.
+    expect(carrierTrackingPageUrl("saferbo")).toBeNull();
     expect(carrierTrackingPageUrl("")).toBeNull();
     expect(carrierTrackingPageUrl(null)).toBeNull();
     expect(carrierTrackingPageUrl(undefined)).toBeNull();
