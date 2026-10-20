@@ -203,8 +203,8 @@ export function EmailInput({
         onBlur={(e) => {
           setTouched(true);
           // setTimeout para permitir que el click en sugerencia se procese
-          // antes de cerrar el dropdown.
-          setTimeout(() => setOpen(false), 150);
+          // antes de cerrar el dropdown. En el ref: se cancela al desmontar.
+          blurTimeoutRef.current = setTimeout(() => setOpen(false), 150);
           onBlur?.(e);
         }}
         autoComplete={inputProps.autoComplete ?? "email"}
