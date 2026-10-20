@@ -50,6 +50,7 @@ import {
 import { issueReferralRewardsIfFirstPaidOrder } from "@/features/referrals/service";
 import { awardLoyaltyPointsForPaidOrder } from "@/features/loyalty/service";
 import { isCouponPerCustomerLimitError } from "@/features/coupons/redemption";
+import { notify } from "@/features/notifications/service";
 
 /**
  * 2026-05-22 — actualizado: descubrimos que la cuenta demo `demointegracion`
@@ -927,20 +928,76 @@ export async function processPaidOrder(
  *     decide CANCEL/REFUND manualmente)
  *   - Estados no mapeables → no-op + log
  */
+/**
+ * Incidente LCM-2026-0001 (PRD 2026-10-19) — Aveonline envía la guía SIN ceros a la
+ * izquierda (`"guia":"14164727329"`) aunque `generarGuia2` la devolvió con ellos
+ * (`numguia "014164727329"`, que es lo que persistimos en Order.trackingNumber). El
+ * lookup exacto no encontraba la orden → el webhook se sellaba como procesado sin
+ * transicionar nada → la orden quedó en FULFILLING mientras el carrier reportaba
+ * EN REPARTO. La resolución ahora compara la forma canónica (sin ceros a la
+ * izquierda) de ambos lados; el match exacto sigue primero (camino caliente).
+ */
+function canonicalTrackingNumber(raw: string): string {
+  const trimmed = raw.trim();
+  const stripped = trimmed.replace(/^0+(?=\d)/, "");
+  return stripped || trimmed;
+}
+
+async function findOrderByTrackingNumber(trackingNumber: string) {
+  const select = { id: true, number: true, status: true } as const;
+  const exact = await prisma.order.findFirst({
+    where: { trackingNumber, deletedAt: null },
+    select,
+  });
+  if (exact) return exact;
+  // Fallback por forma canónica (sin ceros a la izquierda): cubre AMBOS sentidos
+  // de la divergencia — la guía guardada con ceros y el evento sin ellos (caso
+  // real LCM-2026-0001) o viceversa. Candidatos por sufijo + confirmación por
+  // igualdad canónica (evita falsos positivos tipo "9"+canonical).
+  const canonical = canonicalTrackingNumber(trackingNumber);
+  const candidates = await prisma.order.findMany({
+    where: { deletedAt: null, trackingNumber: { endsWith: canonical } },
+    select: { ...select, trackingNumber: true },
+    take: 5,
+  });
+  const match = candidates.find(
+    (c) => c.trackingNumber && canonicalTrackingNumber(c.trackingNumber) === canonical,
+  );
+  return match ? { id: match.id, number: match.number, status: match.status } : null;
+}
+
 export async function processTrackingUpdate(input: {
   trackingNumber: string;
   status: "PENDING" | "DISPATCHED" | "IN_TRANSIT" | "DELIVERED" | "RETURNED" | "EXCEPTION";
   carrierStatusRaw: string;
 }): Promise<{ status: "ok" | "no_match" | "noop"; orderNumber?: string; transitionedTo?: string }> {
-  const order = await prisma.order.findFirst({
-    where: { trackingNumber: input.trackingNumber, deletedAt: null },
-    select: { id: true, number: true, status: true },
-  });
+  const order = await findOrderByTrackingNumber(input.trackingNumber);
   if (!order) {
     logger.warn({
       event: "order.saga.tracking.no_match",
       trackingNumber: input.trackingNumber,
     });
+    // El no_match ya no es silencioso (antes solo quedaba en logs y el webhook se
+    // sellaba como procesado → ceguera total, caso LCM-2026-0001). Notificación
+    // in-app con dedup por guía+estado; best-effort (nunca tira el webhook).
+    await notify({
+      type: "ALERT",
+      severity: "warning",
+      title: "Tracking de Aveonline sin orden asociada",
+      detail:
+        `Llegó un evento de tracking para la guía ${input.trackingNumber} ` +
+        `(${input.carrierStatusRaw || input.status}) pero ninguna orden la tiene registrada. ` +
+        `Si la guía existe en el panel Aveonline, asóciala manualmente al pedido.`,
+      actionUrl: "/admin/pedidos",
+      actionLabel: "Revisar pedidos",
+      dedupKey: `tracking-no-match:${input.trackingNumber}:${input.status}`,
+    }).catch((err) =>
+      logger.warn({
+        event: "order.saga.tracking.no_match_notify_fail",
+        trackingNumber: input.trackingNumber,
+        err: err instanceof Error ? err.message : String(err),
+      }),
+    );
     return { status: "no_match" };
   }
 

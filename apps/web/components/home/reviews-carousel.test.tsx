@@ -11,7 +11,16 @@
 
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// Next 16.4 valida el hostname de next/image también en tests (el bump 16.3.8→16.4.2
+// rompió E4 con "unconfigured host"); el patrón del repo es mockear next/image a un
+// <img> plano (ver global-search.test.tsx) — lo que se prueba es la ESTRUCTURA del chip.
+vi.mock("next/image", () => ({
+  // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
+  default: (props: Record<string, unknown>) => <img {...(props as Record<string, string>)} />,
+}));
+
 import { ReviewCard } from "./reviews-carousel";
 import type { StorefrontReview } from "@/features/reviews/public-service";
 

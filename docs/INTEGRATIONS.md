@@ -73,9 +73,35 @@ Cliente               Lucams_shop                   Wompi                 Aveonl
    │                      │ 12. Crea envío Aveonline │                      │
    │                      │     ───────────────────────────────────────────>│
    │                      │ 13. Envía email + log     │                      │
-   │ 14. Redirect a /orden/[id]                        │                      │
+   │ 14. Redirect a /checkout/gracias?id=<txId>            │                      │
    │<──────────────────────────────────────────────────┤                      │
 ```
+
+> **Fuente de verdad del pago (doc oficial Wompi, verificado 2026-10-20):** el webhook
+> firmado `transaction.updated` — textual: "_No utilices la redirección como método de
+> validación de tus transacciones, sino únicamente con propósitos informativos_". La
+> consulta `GET /v1/transactions/{id}` (Bearer llave privada, desde backend) es la vía
+> complementaria. El redirect es SOLO UX. Lucams sigue esa jerarquía: la saga corre desde
+> el webhook; `/checkout/gracias` consulta la API server-side solo para mostrar el estado
+> y como fallback de saga (P0-012); el cron `expire-pending-orders` reconcilia por
+> referencia contra la API antes de cancelar. Reintentos oficiales del webhook si no
+> hay 200: 30 min / 3 h / 24 h (máx 3) — por eso la ventana anti-replay es de 25 h.
+
+### Página de retorno `/checkout/gracias` (endurecida 2026-10-20, incidente LCM-2026-0001)
+
+La primera venta real cobró OK pero el cliente vio "El pago no se completó": la página
+mostraba ese título también cuando la CONSULTA a la API de Wompi fallaba (error
+transitorio, no un rechazo). Hoy:
+
+- **Estados terminales reales** (DECLINED/VOIDED/ERROR) → página de pago no completado.
+- **PENDING** (PSE/transferencia async) → "Estamos verificando tu pago" + persistencia
+  gateada del txId.
+- **Fallo transitorio de la consulta a Wompi** → página honesta "Estamos verificando"
+  (`LookupRetryPage`) — NUNCA la de pago fallido; la orden se confirma igual por
+  webhook/cron.
+- Los tres estados transitorios llevan **auto-refresh** (30 s, máx 20) para que la
+  página converja sola al estado real sin recarga manual (respeta el rate-limit
+  20 req/5 min de la página).
 
 ### Cálculo de firma de integridad
 
@@ -169,7 +195,7 @@ AVEONLINE_WEBHOOK_SECRET=xxxxxxxx  # Credencial compartida del webhook de tracki
 
 - **Cotización:** server-side en `/checkout/envio` vía `quoteShipping()` (`features/checkout/service.ts`) → `cotizarDoble` de Aveonline (multi-carrier). Caché en memoria de la última cotización buena (TTL 10 min, clave origen→destino + COD + items) SOLO como fallback ante fallo transitorio — la UI la anuncia como "tarifa estimada" (`INTEGRATIONS_AVEONLINE.md` §3).
 - **Guías:** se generan inline en la saga post-PAID (`features/orders/saga.ts`), con claim atómico `Order.shipmentClaimedAt` anti doble-guía. Reintentos: re-delivery del webhook de Wompi o retry manual admin desde `/admin/pedidos/[id]` (no hay cola pgmq — ver §9) (`INTEGRATIONS_AVEONLINE.md` §4).
-- **Tracking:** webhook AveCRM en `/api/webhooks/aveonline` → mapea estado del carrier a `OrderStatus` (`INTEGRATIONS_AVEONLINE.md` §6).
+- **Tracking:** webhook AveCRM en `/api/webhooks/aveonline` → mapea estado del carrier a `OrderStatus` (`INTEGRATIONS_AVEONLINE.md` §6). El match orden↔guía es por forma canónica (Aveonline reporta la guía SIN ceros a la izquierda aunque la devolvió con ellos — incidente LCM-2026-0001) y un `no_match` deja notificación admin. **Red de respaldo:** cron `lucams-tracking-sync` (§9) sondea `obtenerEstadoAuth` de las guías activas cada 15 min por si el webhook no llega.
 - **Implementación:** `features/shipping/aveonline.ts` detrás de la interface `ShippingProvider` (`features/shipping/provider.ts`).
 
 ---
@@ -531,24 +557,27 @@ ADR-017 (2026-05-09) decidió `pgmq` + `pg_cron` con consumidores Edge Function.
 
 - **Agendamiento versionado en migraciones** (idempotentes, con guard limpio si faltan las extensiones): `supabase/migrations/00000000000015_pgcron_http_jobs.sql` (6 jobs), `00000000000016_pgcron_purge_event_logs.sql`, `00000000000021_pgcron_cms_publish.sql`, `00000000000023_pgcron_cron_vercel_bypass.sql` (re-agenda los 8 originales con bypass opcional del SSO de Vercel vía secreto `cron_vercel_bypass` en Vault, solo ambientes con protección) y `00000000000032_pgcron_expire_pending_orders.sql` (agenda `lucams-expire-pending-orders`, ya con el bypass opcional; NO toca los demás jobs). La `00000000000033_drop_stock_reservation_cleanup_job.sql` des-agenda el cleanup SQL de `StockReservation` (tabla dropeada en la misma remediación).
 - **Secretos en Vault (acción humana por ambiente):** `cron_base_url` y `cron_secret` (`select vault.create_secret(...)` — ver docs/OPERATIONS.md). Sin ellos los jobs quedan agendados pero fallan en runtime.
-- **Auth del endpoint:** las **13 rutas** `/api/cron/*` verifican el header `x-cron-secret` contra `CRON_SECRET` (env) con el helper compartido `cronSecretOk` (`apps/web/lib/cron-auth.ts`, comparación timing-safe, fail-closed); 401 si falta o no coincide. No se acepta `?secret=` (queda en logs).
+- **Auth del endpoint:** las **15 rutas** `/api/cron/*` verifican el header `x-cron-secret` contra `CRON_SECRET` (env) con el helper compartido `cronSecretOk` (`apps/web/lib/cron-auth.ts`, comparación timing-safe, fail-closed); 401 si falta o no coincide. No se acepta `?secret=` (queda en logs).
 - **Observabilidad:** cada cron registra heartbeat (`recordCronHeartbeat` — dead-man switch supervisado por `/api/health/crons`), captura errores en `ErrorLog` y notifica el FALLO al centro de notificaciones admin (`notifyCronFailure`). Los éxitos no se registran (anti-ruido).
 
-### Jobs activos (10 HTTP + 1 SQL puro)
+### Jobs activos (12 HTTP + 3 SQL puros)
 
-| Job pg_cron                      | Endpoint                            | Schedule (UTC) | Qué hace                                                                                                                                                                                  |
-| -------------------------------- | ----------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lucams-alerts`                  | `/api/cron/alerts`                  | `*/5 * * * *`  | Evalúa alertas operativas (webhooks stuck, SLO, errores, bounce rate, backup)                                                                                                             |
-| `lucams-daily-summary`           | `/api/cron/daily-summary`           | `0 13 * * *`   | Resumen diario del negocio (8am Colombia)                                                                                                                                                 |
-| `lucams-review-request`          | `/api/cron/review-request`          | `0 17 * * *`   | Emails de solicitud de reseña (~7 días post-entrega)                                                                                                                                      |
-| `lucams-cart-recovery`           | `/api/cron/cart-recovery`           | `0 * * * *`    | Recordatorio de carritos abandonados (idle ≥4h, 1 envío — defaults; configurables desde `/admin/carritos/configuracion`, ADR-153; modo manual/disabled → responde ok con `skippedReason`) |
-| `lucams-back-in-stock`           | `/api/cron/back-in-stock`           | `*/30 * * * *` | Avisos "avísame cuando vuelva"                                                                                                                                                            |
-| `lucams-purge-anon-designs`      | `/api/cron/purge-anon-designs`      | `0 8 * * *`    | Purga de diseños anónimos vencidos (retención) + DRAFT idle de logueados (90d)                                                                                                            |
-| `lucams-purge-delivered-designs` | `/api/cron/purge-delivered-designs` | `0 9 * * *`    | Purga post-entrega: fotos crudas + renders de pedidos DELIVERED ≥90d (retención, migración 035)                                                                                           |
-| `lucams-purge-event-logs`        | `/api/cron/purge-event-logs`        | `0 3 * * *`    | Purga diaria de EventLog (retención)                                                                                                                                                      |
-| `lucams-cms-publish-scheduled`   | `/api/cron/cms-publish-scheduled`   | `*/5 * * * *`  | Publicación programada de contenido CMS                                                                                                                                                   |
-| `lucams-expire-pending-orders`   | `/api/cron/expire-pending-orders`   | `23 * * * *`   | Auto-cancela pedidos Wompi en PENDING_PAYMENT > 24h (N-12, migración 032)                                                                                                                 |
-| `rate_limit_cleanup` (SQL)       | — (SQL puro en DB)                  | `*/15 * * * *` | Borra buckets de rate limit > 1 día (migración 012; es el único job SQL que queda)                                                                                                        |
+| Job pg_cron                                                                       | Endpoint                            | Schedule (UTC)              | Qué hace                                                                                                                                                                                                                                                                               |
+| --------------------------------------------------------------------------------- | ----------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lucams-alerts`                                                                   | `/api/cron/alerts`                  | `*/5 * * * *`               | Evalúa alertas operativas (webhooks stuck, SLO, errores, bounce rate, backup)                                                                                                                                                                                                          |
+| `lucams-daily-summary`                                                            | `/api/cron/daily-summary`           | `0 13 * * *`                | Resumen diario del negocio (8am Colombia)                                                                                                                                                                                                                                              |
+| `lucams-review-request`                                                           | `/api/cron/review-request`          | `0 17 * * *`                | Emails de solicitud de reseña (~7 días post-entrega)                                                                                                                                                                                                                                   |
+| `lucams-cart-recovery`                                                            | `/api/cron/cart-recovery`           | `0 * * * *`                 | Recordatorio de carritos abandonados (idle ≥4h, 1 envío — defaults; configurables desde `/admin/carritos/configuracion`, ADR-153; modo manual/disabled → responde ok con `skippedReason`)                                                                                              |
+| `lucams-back-in-stock`                                                            | `/api/cron/back-in-stock`           | `*/30 * * * *`              | Avisos "avísame cuando vuelva"                                                                                                                                                                                                                                                         |
+| `lucams-purge-anon-designs`                                                       | `/api/cron/purge-anon-designs`      | `0 8 * * *`                 | Purga de diseños anónimos vencidos (retención) + DRAFT idle de logueados (90d)                                                                                                                                                                                                         |
+| `lucams-purge-delivered-designs`                                                  | `/api/cron/purge-delivered-designs` | `0 9 * * *`                 | Purga post-entrega: fotos crudas + renders de pedidos DELIVERED ≥90d (retención, migración 035)                                                                                                                                                                                        |
+| `lucams-purge-event-logs`                                                         | `/api/cron/purge-event-logs`        | `0 3 * * *`                 | Purga diaria de EventLog (retención)                                                                                                                                                                                                                                                   |
+| `lucams-cms-publish-scheduled`                                                    | `/api/cron/cms-publish-scheduled`   | `*/5 * * * *`               | Publicación programada de contenido CMS                                                                                                                                                                                                                                                |
+| `lucams-expire-pending-orders`                                                    | `/api/cron/expire-pending-orders`   | `23 * * * *`                | Auto-cancela pedidos Wompi en PENDING_PAYMENT > 24h (N-12, migración 032) — consulta la API de Wompi por la referencia del intento ANTES de cancelar; un APPROVED hallado sana la orden corriendo la saga (`healed`)                                                                   |
+| `lucams-process-render-jobs`                                                      | `/api/cron/process-render-jobs`     | `* * * * *`                 | Worker de la cola RenderJob — renders 300 DPI asíncronos (ADR-136, migración 041)                                                                                                                                                                                                      |
+| `lucams-tracking-sync`                                                            | `/api/cron/tracking-sync`           | `4,19,34,49 * * * *`        | Polling de respaldo del tracking Aveonline (migración 044): `obtenerEstadoAuth` de guías activas (FULFILLING/SHIPPED, no `INTERNO-*`, ≤90d, máx 25/corrida) alimentando el MISMO pipeline del webhook (`processTrackingUpdate`) — la orden converge aunque el webhook AveCRM no llegue |
+| `rate_limit_cleanup` (SQL)                                                        | — (SQL puro en DB)                  | `*/15 * * * *`              | Borra buckets de rate limit > 1 día (migración 012)                                                                                                                                                                                                                                    |
+| `lucams-internal-cron-history-purge` / `lucams-internal-net-response-purge` (SQL) | — (SQL puro)                        | `17 4 * * *` / `43 4 * * *` | Higiene interna: purga `cron.job_run_details` > 14d y `net._http_response` > 24h (migración 043)                                                                                                                                                                                       |
 
 > Fuera de pg_cron hay 3 endpoints cron más (mismo auth `cronSecretOk`):
 >

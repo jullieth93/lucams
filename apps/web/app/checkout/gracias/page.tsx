@@ -9,7 +9,11 @@
  *  - APPROVED: mostrar success + número de orden + tracking futuro
  *    + limpiar cookie checkout.
  *  - PENDING (raro, ej. PSE async): persistir txId en la orden (F-03) +
- *    mostrar mensaje "estamos verificando"
+ *    mostrar mensaje "estamos verificando" (con auto-refresh: la página
+ *    converge sola cuando el webhook confirma — incidente LCM-2026-0001).
+ *  - Fallo transitorio al consultar Wompi: página honesta "estamos
+ *    verificando" con auto-refresh — NUNCA "pago no completado" (ese mensaje
+ *    es solo para estados terminales reales).
  *  - DECLINED/VOIDED/ERROR: mostrar error + CTA "Reintentar pago" → /carrito
  *  - Sin query id (acceso directo): redirect a home.
  *  - Modo catálogo (Etapa 1): no existen TX Wompi → redirect a home (N-16).
@@ -38,6 +42,7 @@ import { getClientIp } from "@/lib/client-ip";
 import { rateLimit } from "@/lib/rate-limit";
 import { isCatalogMode } from "@/lib/store-mode";
 import { ClearCheckoutSession } from "./clear-checkout-session";
+import { AutoRefresh } from "./auto-refresh";
 import { processPaidOrder, flagForeignApprovedPayment } from "@/features/orders/saga";
 import {
   findOrderIdByWompiReference,
@@ -140,14 +145,13 @@ export default async function CheckoutGraciasPage({
       txId,
       err: err instanceof Error ? err.message : String(err),
     });
-    const unknownReasonBlock = await getCmsBlock("checkout.gracias.failed.unknown-reason");
-    return (
-      <FailedPage
-        reason={
-          unknownReasonBlock?.body ?? "No pudimos confirmar tu pago. Si te cobraron, contáctanos."
-        }
-      />
-    );
+    // Incidente LCM-2026-0001: un fallo TRANSITORIO de la consulta (API de Wompi
+    // caída/timeout en el instante del regreso) NO significa que el pago falló —
+    // mostrar "El pago no se completó" a un cliente recién cobrado era mentira y
+    // lo invitaba a reintentar (riesgo de segundo cobro). La orden se confirma
+    // igual por webhook/cron; la página honesta es "estamos verificando" con
+    // auto-refresh, nunca la página de pago fallido.
+    return <LookupRetryPage txId={txId} />;
   }
 
   // Lookup Order por reference: puede ser el número base o llevar sufijo de
@@ -642,6 +646,9 @@ function ApprovedPage({
 function PendingPage({ orderNumber, txId }: { orderNumber: string; txId: string }) {
   return (
     <div className="mx-auto max-w-2xl py-8 text-center">
+      {/* PSE/transferencia confirma en minutos: la página converge sola al estado
+          real sin que el cliente tenga que recargar (incidente LCM-2026-0001). */}
+      <AutoRefresh />
       <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-amber-50 ring-8 ring-amber-100">
         <Clock className="h-12 w-12 text-amber-600" />
       </div>
@@ -681,6 +688,9 @@ function PaymentReceivedPage({ orderNumber, txId }: { orderNumber: string; txId:
   return (
     <div className="mx-auto max-w-2xl py-8 text-center">
       <ClearCheckoutSession />
+      {/* La saga puede estar terminando en background: refresco automático para
+          que el cliente vea la confirmación sin recargar manualmente. */}
+      <AutoRefresh />
       <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-amber-50 ring-8 ring-amber-100">
         <Clock className="h-12 w-12 text-amber-600" />
       </div>
@@ -732,6 +742,9 @@ function PaymentReceivedPage({ orderNumber, txId }: { orderNumber: string; txId:
 function VerifyingPage({ txId }: { txId: string }) {
   return (
     <div className="mx-auto max-w-2xl py-8 text-center">
+      {/* Rate-limited: no llamamos a Wompi, pero el estado puede resolverse
+          (webhook) — refresh automático para converger sin recarga manual. */}
+      <AutoRefresh />
       <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-amber-50 ring-8 ring-amber-100">
         <Clock className="h-12 w-12 text-amber-600" />
       </div>
@@ -756,6 +769,56 @@ function VerifyingPage({ txId }: { txId: string }) {
           <CmsText blockKey="checkout.gracias.home-cta" fallback="Volver al inicio" />
         </Button>
       </Link>
+    </div>
+  );
+}
+
+/**
+ * Fallo TRANSITORIO al consultar el estado en Wompi (API caída, timeout, circuit
+ * breaker). No sabemos si el pago se aprobó — la única página honesta es
+ * "estamos verificando" con auto-refresh (el webhook/cron confirman la orden en
+ * background de todas formas). NUNCA la página de "pago no se completó":
+ * ese mensaje es solo para estados terminales reales (DECLINED/VOIDED/ERROR).
+ */
+function LookupRetryPage({ txId }: { txId: string }) {
+  return (
+    <div className="mx-auto max-w-2xl py-8 text-center">
+      <AutoRefresh />
+      <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-amber-50 ring-8 ring-amber-100">
+        <Clock className="h-12 w-12 text-amber-600" />
+      </div>
+      <h1 className="font-display text-brand-purple-dark mt-6 text-3xl font-bold sm:text-4xl">
+        <CmsText
+          blockKey="checkout.gracias.pending.title"
+          fallback="Estamos verificando tu pago ⏳"
+        />
+      </h1>
+      <p className="text-brand-purple-dark/75 mx-auto mt-3 max-w-md text-sm sm:text-base">
+        <CmsText
+          blockKey="checkout.gracias.lookup-retry.body"
+          fallback="No pudimos consultar el estado de tu pago en este momento. No te preocupes: si tu pago fue aprobado, tu pedido se confirma igual y te llega el correo con todos los detalles. Esta página se actualiza sola."
+        />
+      </p>
+      <p className="text-brand-muted mt-4 text-xs">
+        <CmsText blockKey="checkout.gracias.receipt-label" fallback="Comprobante Wompi" />{" "}
+        <code className="font-mono">{txId.slice(0, 16)}…</code>
+      </p>
+      <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <Link href="/contacto">
+          <Button
+            size="lg"
+            variant="outline"
+            className="border-brand-purple/30 text-brand-purple-dark"
+          >
+            <CmsText blockKey="checkout.gracias.support-cta" fallback="Contactar soporte" />
+          </Button>
+        </Link>
+        <Link href="/" className="inline-block">
+          <Button size="lg" variant="outline" className="border-brand-purple/30">
+            <CmsText blockKey="checkout.gracias.home-cta" fallback="Volver al inicio" />
+          </Button>
+        </Link>
+      </div>
     </div>
   );
 }

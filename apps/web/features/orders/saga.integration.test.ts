@@ -1413,5 +1413,61 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       expect(res.status).toBe("noop");
       expect((await getOrder(orderId))?.status).toBe("DELIVERED");
     }, 30000);
+
+    it("guía guardada CON ceros a la izquierda + webhook SIN ellos → matchea y transiciona (incidente LCM-2026-0001)", async () => {
+      // PRD 2026-10-19/20: generarGuia2 devolvió numguia "014164727329" (persistida
+      // así) pero el webhook AveCRM llegó con "guia":"14164727329" → el match exacto
+      // no encontraba la orden y el tracking quedaba huérfano.
+      const digits = String(Date.now()).slice(-9);
+      const stored = `00${digits}`;
+      const incoming = digits; // forma del webhook (sin ceros a la izquierda)
+      const orderId = await makeFulfillingOrder("LZ", stored);
+
+      const res = await processTrackingUpdate({
+        trackingNumber: incoming,
+        status: "IN_TRANSIT",
+        carrierStatusRaw: "EN REPARTO",
+      });
+
+      expect(res.status).toBe("ok");
+      expect(res.transitionedTo).toBe("SHIPPED");
+      expect((await getOrder(orderId))?.status).toBe("SHIPPED");
+      expect(emailCalls.filter((c) => c.fn === "sendOrderShipped")).toHaveLength(1);
+    }, 30000);
+
+    it("guía con ceros NO matchea una orden cuya parte numérica difiere (sin falsos positivos)", async () => {
+      const digits = String(Date.now() + 7).slice(-9);
+      const orderId = await makeFulfillingOrder("LN", `00${digits}`);
+
+      const res = await processTrackingUpdate({
+        trackingNumber: `9${digits}`, // mismo sufijo distinto número real
+        status: "IN_TRANSIT",
+        carrierStatusRaw: "EN REPARTO",
+      });
+
+      expect(res.status).toBe("no_match");
+      expect((await getOrder(orderId))?.status).toBe("FULFILLING");
+    }, 30000);
+
+    it("no_match deja notificación admin visible (antes era solo un log y el webhook se sellaba)", async () => {
+      const tracking = `${RUN}-NO-MATCH-NOTIFY`;
+      const res = await processTrackingUpdate({
+        trackingNumber: tracking,
+        status: "IN_TRANSIT",
+        carrierStatusRaw: "EN REPARTO",
+      });
+      expect(res.status).toBe("no_match");
+
+      const notif = await prisma.notification.findFirst({
+        where: { dedupKey: `tracking-no-match:${tracking}:IN_TRANSIT` },
+      });
+      expect(notif).toBeTruthy();
+      expect(notif?.type).toBe("ALERT");
+      expect(notif?.title).toContain("sin orden asociada");
+
+      await prisma.notification.deleteMany({
+        where: { dedupKey: `tracking-no-match:${tracking}:IN_TRANSIT` },
+      });
+    }, 30000);
   });
 });
