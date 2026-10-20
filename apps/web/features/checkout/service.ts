@@ -20,7 +20,6 @@ import { logger } from "@/lib/logger";
 import { getSettingValue } from "@/lib/cms";
 import { createOrderFromCart } from "@/features/orders/service";
 import { resolveWompiPaymentReference } from "@/features/orders/payment-reference";
-import { inventoryUnitsForOrderItem } from "@/features/personalization/design-units";
 import { emailsEqual } from "@/features/orders/order-customer";
 import { processPaidOrder } from "@/features/orders/saga";
 import { assertStockAvailable } from "@/features/orders/stock";
