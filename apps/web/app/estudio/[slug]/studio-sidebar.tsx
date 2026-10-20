@@ -36,6 +36,8 @@ import {
 } from "./lib/apply-predesigned";
 import { predesignedFaceBadge } from "./lib/predesigned-variety";
 import { StudioFaceChoiceModal } from "./studio-face-choice-modal";
+import { StudioReplaceSlotModal, type ReplaceSlotOption } from "./studio-replace-slot-modal";
+import { PredesignedHoverPreview } from "./predesigned-hover-preview";
 import { StudioMessageField } from "./studio-message-field";
 import { ConsentText } from "./studio-consent-text";
 import {
@@ -108,13 +110,24 @@ export function StudioSidebar({
   const addAsset = useStore(store, (s) => s.addAsset);
   const autoFillSlots = useStore(store, (s) => s.autoFillSlots);
   const applyTemplate = useStore(store, (s) => s.applyTemplate);
-  const selectedSlotIndex = useStore(store, (s) => s.selectedSlotIndex);
+  // 2026-10-19 — el clic en prediseñados YA NO usa selectedSlotIndex (pregunta
+  // siempre el destino); solo queda la acción para limpiar la selección tras
+  // aplicar (ver applyPredesigned).
+  const selectSlot = useStore(store, (s) => s.selectSlot);
   const [applyingPredesignedId, setApplyingPredesignedId] = useState<string | null>(null);
   // Regla de caras (2026-10-12) — diseño de 1 cara esperando la elección de
   // cara (modal "¿En qué cara quieres aplicarlo?"). null = modal cerrada.
   const [faceChoiceItem, setFaceChoiceItem] = useState<
     import("./studio-asset-picker-modal").PredesignedItem | null
   >(null);
+  // Reemplazo explícito (2026-10-19) — prediseñado esperando la elección del
+  // lienzo OCUPADO a reemplazar (modal StudioReplaceSlotModal). `face` filtra
+  // la lista a la cara elegida cuando viene del modal de cara; null = todas
+  // las candidatas (cara A si el diseño trae imageUrlB — necesita ancla A).
+  const [replaceChoice, setReplaceChoice] = useState<{
+    item: import("./studio-asset-picker-modal").PredesignedItem;
+    face: "A" | "B" | null;
+  } | null>(null);
   // Fase 2 · 2.5 — sección de prediseñados COLAPSABLE: con muchos diseños
   // sepultaba el resto de la sidebar («Mis fotos» quedaba lejos). Cerrada por
   // defecto cuando supera el umbral; el contador queda visible en el header.
@@ -142,6 +155,9 @@ export function StudioSidebar({
       if (!res.ok) {
         // Fix STG 2026-10-06 — "no-free-slot" no es un error: todos los
         // lienzos ya tienen diseño y nunca se pisa contenido para abrir sitio.
+        // 2026-10-19 — este toast queda como FALLBACK (carrera: el estado pudo
+        // cambiar entre abrir el modal de reemplazo y aplicar); el camino
+        // normal sin slot libre abre StudioReplaceSlotModal.
         toast.error(
           res.reason === "no-free-slot"
             ? texts.plantillas.toastSinLienzoLibre
@@ -153,6 +169,14 @@ export function StudioSidebar({
       // Paquete A — la cara B no se descarta en silencio: si su slot estaba
       // ocupado se avisa (no se pisa el contenido del usuario).
       if (res.bBlocked) toast.warning(texts.plantillas.toastCaraBOcupada);
+      // Tarea "pregunta siempre" (owner 2026-10-19) — assignAssetToSlot
+      // AUTO-SELECCIONA el slot recién asignado (feedback visual en el lienzo);
+      // si esa selección sobrevive, el siguiente CLIC en un prediseñado la
+      // tomaría como destino y sobrescribiría sin preguntar. Se limpia acá:
+      // la selección vuelve a null y cada clic vuelve a preguntar destino.
+      // (El auto-select global de store.ts NO se toca: otros flujos —fotos,
+      // drag & drop— dependen de él.)
+      selectSlot(null);
     } catch (err) {
       toast.error(texts.plantillas.toastError);
       void err;
@@ -161,26 +185,73 @@ export function StudioSidebar({
     }
   };
 
+  // 2026-10-19 — opciones del modal de reemplazo: lienzos OCUPADOS candidatos,
+  // filtrados por la cara elegida (flujo cara → reemplazo) o, para diseños con
+  // imageUrlB (2 caras), solo caras A (el diseño necesita ancla A para su par).
+  const buildReplaceOptions = (
+    item: import("./studio-asset-picker-modal").PredesignedItem,
+    face: "A" | "B" | null,
+  ): ReplaceSlotOption[] => {
+    const slots = store.getState().canvasData?.slots ?? [];
+    const parity =
+      face !== null ? (face === "A" ? 0 : 1) : facesPerUnit === 2 && item.imageUrlB ? 0 : null;
+    return slots
+      .filter((s) => !!s.assetUrl)
+      .filter((s) => parity === null || s.slotIndex % 2 === parity)
+      .map((s) => ({
+        slotIndex: s.slotIndex,
+        label: fillStudioText(texts.plantillas.reemplazoLienzoNombre, { n: s.slotIndex + 1 }),
+        faceLabel:
+          facesPerUnit === 2
+            ? s.slotIndex % 2 === 0
+              ? texts.lienzo.unitCaraA
+              : texts.lienzo.unitCaraB
+            : null,
+        thumbUrl: s.assetUrl,
+      }));
+  };
+
+  const openReplaceModal = (
+    item: import("./studio-asset-picker-modal").PredesignedItem,
+    face: "A" | "B" | null,
+  ) => {
+    // Defensa: si no hay NADA ocupado que reemplazar (carrera rara), conserva
+    // el aviso anterior en vez de abrir una lista vacía.
+    if (buildReplaceOptions(item, face).length === 0) {
+      toast.error(texts.plantillas.toastSinLienzoLibre);
+      return;
+    }
+    setReplaceChoice({ item, face });
+  };
+
   const handleApplyPredesigned = async (
     item: import("./studio-asset-picker-modal").PredesignedItem,
   ) => {
     if (!designId || applyingPredesignedId) return;
-    // Regla de caras (2026-10-12) — aplicación GLOBAL con destino ambiguo (sin
-    // slot específico seleccionado) de un diseño de 1 cara en un producto de 2
-    // caras: antes caía SIEMPRE en cara A; ahora se pregunta primero (modal
-    // StudioFaceChoiceModal). Sin pregunta: prediseños con imageUrlB (llenan
-    // ambas caras), productos de 1 cara y destino explícito (slot seleccionado,
-    // tap en la grilla, drag & drop).
-    if (facesPerUnit === 2 && !item.imageUrlB && selectedSlotIndex === null) {
+    // Regla de caras (2026-10-12) + "pregunta SIEMPRE" (owner 2026-10-19): el
+    // clic en la grilla de prediseñados NUNCA toma el selectedSlotIndex como
+    // destino — assignAssetToSlot auto-selecciona el slot recién asignado, así
+    // que tras la primera aplicación los clics siguientes sobrescribían el
+    // mismo lienzo sin preguntar. Ahora el clic siempre arranca el flujo de
+    // destino: cara (si es ambigua) → primer lienzo libre → o reemplazo.
+    // Sin pregunta de cara: prediseños con imageUrlB (llenan ambas caras) y
+    // productos de 1 cara. El destino EXPLÍCITO sigue existiendo vía tap en la
+    // grilla del lienzo y drag & drop (esos flujos no pasan por acá).
+    if (facesPerUnit === 2 && !item.imageUrlB) {
       setFaceChoiceItem(item);
       return;
     }
+    const slots = store.getState().canvasData?.slots ?? [];
+    // Diseño de 2 caras: el ancla debe ser una cara A libre (resolveFaceAAnchor
+    // re-ancla igual, pero el primer par libre es el destino natural).
+    const anchorParity = facesPerUnit === 2 && item.imageUrlB ? 0 : null;
     const targetSlot =
-      selectedSlotIndex ??
-      store.getState().canvasData?.slots.find((s) => !s.assetUrl)?.slotIndex ??
-      null;
+      slots.find((s) => !s.assetUrl && (anchorParity === null || s.slotIndex % 2 === 0))
+        ?.slotIndex ?? null;
     if (targetSlot === null) {
-      toast.error(texts.plantillas.toastSinSlot);
+      // Sin lienzo libre: en vez del toast de error, el cliente elige cuál
+      // lienzo ocupado reemplazar (StudioReplaceSlotModal).
+      openReplaceModal(item, null);
       return;
     }
     await applyPredesigned(item, targetSlot);
@@ -188,21 +259,29 @@ export function StudioSidebar({
 
   // Regla de caras (2026-10-12) — respuesta del modal "¿En qué cara…?": el
   // diseño va al primer slot LIBRE de la cara elegida (firstFreeSlotOfFace).
-  // Si la cara elegida no tiene ningún slot libre NUNCA se pisa contenido:
-  // cara A → toast "sin lienzo libre"; cara B → el toast de cara B ocupada
-  // (mismo patrón del bloqueo bBlocked y de handleAssetBSelected del editor).
+  // 2026-10-19 — si la cara elegida NO tiene slot libre ya no hay toast: se
+  // abre el modal de reemplazo filtrado a los lienzos ocupados DE ESA cara
+  // (nunca se pisa contenido en silencio; el reemplazo es decisión explícita).
   const handleFaceChoice = async (face: "A" | "B") => {
     const item = faceChoiceItem;
     setFaceChoiceItem(null);
     if (!item || !designId) return;
     const target = firstFreeSlotOfFace(store.getState().canvasData?.slots ?? [], face);
     if (target === null) {
-      if (face === "A") toast.error(texts.plantillas.toastSinLienzoLibre);
-      else toast.warning(texts.plantillas.toastCaraBOcupada);
+      openReplaceModal(item, face);
       return;
     }
     // Cara B: destino EXACTO (diseño de 1 cara) — sin el re-anclaje a cara A.
     await applyPredesigned(item, target, face === "B");
+  };
+
+  // Reemplazo explícito (2026-10-19) — el cliente eligió el lienzo ocupado a
+  // reemplazar: aplicación con destino EXACTO (forceTargetSlot) sobre ese slot.
+  const handleReplacePick = async (slotIndex: number) => {
+    const choice = replaceChoice;
+    setReplaceChoice(null);
+    if (!choice || !designId) return;
+    await applyPredesigned(choice.item, slotIndex, true);
   };
 
   // Paquete A (2026-10-02) — llenado VARIADO: recorre el catálogo del tag sin
@@ -572,7 +651,16 @@ export function StudioSidebar({
                 {predesigned.map((item) => {
                   const faceBadge = predesignedFaceBadge(facesPerUnit, item.imageUrlB);
                   return (
-                    <Hint key={item.id} content={item.name}>
+                    // Preview emergente (owner 2026-10-19): sostener el mouse
+                    // ~400 ms sobre la tarjeta abre el diseño en grande (imageUrl,
+                    // no el thumb) con su nombre — reemplaza al tooltip de solo
+                    // texto. En táctil no aplica (hover-only): el tap sigue
+                    // aplicando el diseño como siempre.
+                    <PredesignedHoverPreview
+                      key={item.id}
+                      name={item.name}
+                      imageUrl={item.imageUrl}
+                    >
                       <button
                         type="button"
                         onClick={() => handleApplyPredesigned(item)}
@@ -634,7 +722,7 @@ export function StudioSidebar({
                           </div>
                         )}
                       </button>
-                    </Hint>
+                    </PredesignedHoverPreview>
                   );
                 })}
               </div>
@@ -650,6 +738,16 @@ export function StudioSidebar({
         designName={faceChoiceItem?.name ?? ""}
         onPick={(face) => void handleFaceChoice(face)}
         onClose={() => setFaceChoiceItem(null)}
+      />
+      {/* Reemplazo explícito (2026-10-19) — sin lienzo libre, el cliente elige
+          cuál lienzo ocupado reemplazar (se compone con el modal de cara:
+          primero cara, luego reemplazo si la cara elegida está llena). */}
+      <StudioReplaceSlotModal
+        open={replaceChoice !== null}
+        designName={replaceChoice?.item.name ?? ""}
+        options={replaceChoice ? buildReplaceOptions(replaceChoice.item, replaceChoice.face) : []}
+        onPick={(slotIndex) => void handleReplacePick(slotIndex)}
+        onClose={() => setReplaceChoice(null)}
       />
     </div>
   );

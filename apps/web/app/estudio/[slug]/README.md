@@ -144,6 +144,12 @@ o sessionId anónimo) y cada superficie devuelve al editor lo persistido:
     Se restauran `language`, `styleSetId`, `withBorder`, `unitCount` (nº de sets) y los
     colores por ficha de CADA set (`metadata.units[u].colors`; el set 0 cae al `colors`
     raíz en diseños de un set) como snapshots iniciales del Map multi-unidad.
+    **2026-10-19 — estilo y borde POR SET**: también se restauran
+    `metadata.units[u].styleSetId` / `metadata.units[u].withBorder` (cada set lleva su
+    propio estilo ilustrado, colores y borde); las claves raíz (`styleSetId` /
+    `withBorder`) quedan como representante del set 1 y default de sets sin clave
+    propia (retrocompat con diseños guardados antes del rediseño). El finalize espera
+    UNA lámina de producción por set (`production_i` posicional, `unitCount` exacto).
 - **Variante del diseño (`metadata.variantId`, 2026-10-05)**: al crear el diseño desde
   cualquier superficie se persiste la variante (`createDraftDesign` —foto—,
   `createNameDesign`, `createLetterSetDesign`). **2026-10-12 — packs de foto TAMBIÉN**:

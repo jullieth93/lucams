@@ -43,10 +43,16 @@ const finalizeDesignAction = vi.fn(async (_fd: FormData): Promise<ActionResult> 
 const addPersonalizedToCartAction = vi.fn(async (_input: unknown): Promise<ActionResult> => ({
   ok: true,
 }));
+// 2026-10-19 — páginas por set para el "Ver" paginado del carrito (subida
+// best-effort tras el finalize; se verifica que se INVOQUE, no el servidor).
+const uploadDesignPreviewPagesAction = vi.fn(
+  async (_fd: FormData): Promise<{ ok: true; pagesCount: number }> => ({ ok: true, pagesCount: 2 }),
+);
 
 vi.mock("@/features/personalization/actions", () => ({
   createLetterSetDesignAction: (input: unknown) => createLetterSetDesignAction(input),
   finalizeDesignAction: (fd: FormData) => finalizeDesignAction(fd),
+  uploadDesignPreviewPagesAction: (fd: FormData) => uploadDesignPreviewPagesAction(fd),
 }));
 vi.mock("@/app/carrito/actions", () => ({
   addPersonalizedToCartAction: (input: unknown) => addPersonalizedToCartAction(input),
@@ -78,6 +84,7 @@ beforeEach(() => {
   createLetterSetDesignAction.mockClear();
   finalizeDesignAction.mockClear();
   addPersonalizedToCartAction.mockClear();
+  uploadDesignPreviewPagesAction.mockClear();
 });
 
 function renderEditor(
@@ -90,7 +97,9 @@ function renderEditor(
       | "initialTheme"
       | "initialUnits"
       | "initialStyleId"
+      | "initialUnitStyles"
       | "initialWithBorder"
+      | "initialUnitBorders"
       | "initialColorTheme"
       | "initialUnitColors"
       | "replacesCartDesignId"
@@ -142,7 +151,7 @@ async function openPreview() {
 }
 
 describe("LetterSetEditor — vista previa antes del carrito (Lucy 2026-07-25)", () => {
-  it("móvil: los controles (Tema → Borde → Sets → Colores) van ARRIBA del lienzo; en lg se mantiene controles-izquierda/lienzo-derecha", () => {
+  it("móvil: los controles (Sets → Set activo → Tema → Borde → Colores) van ARRIBA del lienzo; en lg se mantiene controles-izquierda/lienzo-derecha", () => {
     const { container } = renderEditor();
     const aside = container.querySelector("aside");
     const section = container.querySelector("section");
@@ -425,7 +434,12 @@ describe("LetterSetEditor — recover flow (?designId=)", () => {
         unitCount: 2,
         frameTheme: "nino",
         colors: colorsA,
-        units: [{ colors: colorsA }, { colors: colorsB }],
+        // 2026-10-19 — cada set declara además su estilo y su borde (sin
+        // recover de esos valores: null = «Solo letra», true = con borde).
+        units: [
+          { colors: colorsA, styleSetId: null, withBorder: true },
+          { colors: colorsB, styleSetId: null, withBorder: true },
+        ],
       }),
     );
     // Y se sube UNA lámina de producción por set (2 sets = 2 archivos).
@@ -532,7 +546,10 @@ describe("LetterSetEditor — stepper de cantidad de sets (2026-10-12)", () => {
     expect(createLetterSetDesignAction).toHaveBeenCalledWith(
       expect.objectContaining({
         unitCount: 2,
-        units: [{ colors: colorsA }, { colors: colorsB }],
+        units: [
+          { colors: colorsA, styleSetId: null, withBorder: true },
+          { colors: colorsB, styleSetId: null, withBorder: true },
+        ],
       }),
     );
   });
@@ -548,5 +565,158 @@ describe("LetterSetEditor — stepper de cantidad de sets (2026-10-12)", () => {
     renderEditor();
     expect(screen.getByRole("button", { name: "Quitar un set" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Agregar un set" })).toBeEnabled();
+  });
+});
+
+/*
+ * 2026-10-19 (rediseño owner) — estilo, colores y borde POR SET + Vista Previa
+ * PAGINADA por set + subida de las páginas al confirmar (el "Ver" del carrito).
+ *
+ * Antes el estilo ilustrado y el borde eran UN estado global del diseño y solo
+ * los colores eran por set; y la Vista Previa multi-set mostraba solo el montaje
+ * apilado (sin pager) y nunca subía las páginas por set (previewPagesCount quedaba
+ * null → el carrito caía a la imagen única).
+ */
+describe("LetterSetEditor — estilo/borde por set y preview paginado (2026-10-19)", () => {
+  // El montaje multi-set y las páginas ligeras usan Image + URL.createObjectURL +
+  // canvas.toDataURL, que jsdom no implementa — mismos stubs de la suite recover.
+  const RealImage = globalThis.Image;
+  const realCreateObjectURL = URL.createObjectURL;
+  const realRevokeObjectURL = URL.revokeObjectURL;
+  const realToDataURL = HTMLCanvasElement.prototype.toDataURL;
+  beforeAll(() => {
+    class FakeImage {
+      onload: (() => void) | null = null;
+      onerror: ((e: unknown) => void) | null = null;
+      naturalWidth = 100;
+      naturalHeight = 100;
+      set src(_v: string) {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+    globalThis.Image = FakeImage as unknown as typeof Image;
+    URL.createObjectURL = () => "blob:fake";
+    URL.revokeObjectURL = () => {};
+    HTMLCanvasElement.prototype.toDataURL = (() =>
+      "data:image/png;base64,iVBORw0KGgo=") as unknown as HTMLCanvasElement["toDataURL"];
+  });
+  afterAll(() => {
+    globalThis.Image = RealImage;
+    URL.createObjectURL = realCreateObjectURL;
+    URL.revokeObjectURL = realRevokeObjectURL;
+    HTMLCanvasElement.prototype.toDataURL = realToDataURL;
+  });
+
+  it("el estilo y el borde se eligen POR SET y viajan en units[u] al crear el diseño", async () => {
+    renderEditor({ ...ILLUSTRATED_PROPS, initialUnits: 2 });
+    // Set 1 arranca con la preselección de la PDP (animales) y «Con borde».
+    expect(screen.getByRole("radio", { name: /Animales/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: /Con borde/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+
+    // Set 2: «Solo letra» + «Sin borde» (su propio diseño, independiente del set 1).
+    fireEvent.click(screen.getByRole("button", { name: /Set 2 de 2/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Solo letra/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Sin borde/ }));
+    expect(screen.getByRole("radio", { name: /Solo letra/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+
+    // El set 1 conserva SU tema y SU borde al volver (la segregación es real).
+    fireEvent.click(screen.getByRole("button", { name: /Set 1 de 2/ }));
+    expect(screen.getByRole("radio", { name: /Animales/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: /Con borde/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+
+    await openPreview();
+    fireEvent.click(screen.getByRole("button", { name: /Sí, agregar al carrito/ }));
+    await waitFor(() => expect(createLetterSetDesignAction).toHaveBeenCalledTimes(1));
+    expect(createLetterSetDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        unitCount: 2,
+        // Las claves raíz quedan como representante del set 1 (retrocompat).
+        styleSetId: "set-animales",
+        withBorder: true,
+        units: [
+          { colors: expect.any(Array), styleSetId: "set-animales", withBorder: true },
+          { colors: expect.any(Array), styleSetId: null, withBorder: false },
+        ],
+      }),
+    );
+  });
+
+  it("recover (?designId=): el estilo y el borde por set se restauran de metadata.units[u]", async () => {
+    renderEditor({
+      ...ILLUSTRATED_PROPS,
+      initialTheme: null,
+      initialUnits: 2,
+      initialUnitStyles: ["set-animales", null],
+      initialUnitBorders: [true, false],
+    });
+    // Set 1: Animales + Con borde (persistido).
+    expect(screen.getByRole("radio", { name: /Animales/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: /Con borde/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    // Set 2: Solo letra + Sin borde (persistido).
+    fireEvent.click(screen.getByRole("button", { name: /Set 2 de 2/ }));
+    expect(screen.getByRole("radio", { name: /Solo letra/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByRole("radio", { name: /Sin borde/ })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+
+    // Y al confirmar vuelven a salir por set (no se mezclan ni se pierden).
+    await openPreview();
+    fireEvent.click(screen.getByRole("button", { name: /Sí, agregar al carrito/ }));
+    await waitFor(() => expect(createLetterSetDesignAction).toHaveBeenCalledTimes(1));
+    expect(createLetterSetDesignAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        units: [
+          { colors: expect.any(Array), styleSetId: "set-animales", withBorder: true },
+          { colors: expect.any(Array), styleSetId: null, withBorder: false },
+        ],
+      }),
+    );
+  });
+
+  it("multi-set: la Vista Previa PAGINA por set y al confirmar sube las páginas para el carrito", async () => {
+    renderEditor({ initialUnits: 2 });
+    await openPreview();
+
+    // El pager de la modal aparece (pages.length > 1): un tab por set.
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole("button", { name: /Sí, agregar al carrito/ }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/carrito?personalized=1"));
+    // Tras el finalize, las páginas por set se suben en un request aparte
+    // (best-effort) → previewPagesCount → el "Ver" del carrito pagina.
+    expect(uploadDesignPreviewPagesAction).toHaveBeenCalledTimes(1);
+    const fd = uploadDesignPreviewPagesAction.mock.calls[0]![0] as FormData;
+    expect(fd.get("designId")).toBe("design-1");
+    expect(fd.get("page_0")).toBeInstanceOf(Blob);
+    expect(fd.get("page_1")).toBeInstanceOf(Blob);
+  });
+
+  it("un solo set: sin pager ni subida de páginas (comportamiento histórico)", async () => {
+    renderEditor();
+    await openPreview();
+
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Sí, agregar al carrito/ }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/carrito?personalized=1"));
+    expect(uploadDesignPreviewPagesAction).not.toHaveBeenCalled();
   });
 });

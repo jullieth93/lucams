@@ -17,13 +17,44 @@
  * NO bloquea con backdrop modal — el editor sigue visible debajo para
  * que el cliente compare lo que está viendo arriba con lo que queda
  * por debajo.
+ *
+ * Zoom (2026-10-19): el compositado puede tener texto chico (tiras,
+ * separadores, packs de 12) y antes NO había forma de acercar. Mismo lenguaje
+ * del lightbox del carrito (components/design-preview-dialog.tsx), reusando la
+ * matemática pura de components/preview-zoom.ts:
+ *   · Rueda del mouse sobre la imagen: zoom anclado al cursor.
+ *   · Pinch (2 dedos): zoom continuo; arrastre con zoom = pan.
+ *   · Doble click / doble tap: alterna 100% ↔ 200%.
+ *   · Botones −/%/+/reset (alternativa de teclado a los gestos, WCAG 2.5.1).
+ * El zoom se RESTABLECE al cambiar de página del pager; con zoom activo el
+ * swipe horizontal NO cambia de unidad (es pan) y el pinch no dispara el swipe.
  */
 
-import { Loader2, Pencil, Sparkles, ShoppingCart, AlertTriangle } from "lucide-react";
+import {
+  Loader2,
+  Pencil,
+  Sparkles,
+  ShoppingCart,
+  AlertTriangle,
+  RotateCcw,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  PREVIEW_ZOOM_MAX,
+  PREVIEW_ZOOM_MIN,
+  PREVIEW_ZOOM_TOGGLE,
+  clampPanOffset,
+  clampPreviewZoom,
+  pinchPreviewZoom,
+  stepPreviewZoom,
+  wheelPreviewZoom,
+  zoomPanTowardPoint,
+} from "@/components/preview-zoom";
 import { formatCOP } from "@/lib/format";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, splitStudioText } from "./studio-texts";
@@ -57,6 +88,313 @@ function StrongVar({
 
 /** Umbral (px) del swipe horizontal para pasar de unidad en el pager. */
 const PAGER_SWIPE_MIN_PX = 40;
+
+// ──────────────────────────────────────────────────────────────────
+//  Zoom del preview (2026-10-19) — espejo del lightbox del carrito
+//  (design-preview-dialog) sobre la matemática pura de preview-zoom.ts
+// ──────────────────────────────────────────────────────────────────
+
+type PreviewZoomState = { scale: number; x: number; y: number };
+const PREVIEW_ZOOM_RESET: PreviewZoomState = { scale: 1, x: 0, y: 0 };
+
+/** Distancia entre dos punteros activos (gesto pinch). */
+function previewPointerDistance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+/**
+ * Controles de zoom −/%/+/reset: alternativa de TECLADO y de un solo puntero a
+ * los gestos (WCAG 2.5.1). Los textos salen del CMS (estudio.exportar.zoom-*).
+ */
+function PreviewZoomControls({
+  zoom,
+  onStep,
+  onReset,
+}: {
+  zoom: PreviewZoomState;
+  onStep: (direction: 1 | -1) => void;
+  onReset: () => void;
+}) {
+  const texts = useStudioTexts();
+  const zoomed = zoom.scale > PREVIEW_ZOOM_MIN;
+  const btnClass =
+    "border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise inline-flex h-9 w-9 items-center justify-center rounded-full border-2 bg-white transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-40";
+  return (
+    <div className="mt-2 flex items-center justify-center gap-2">
+      <button
+        type="button"
+        aria-label={texts.exportar.zoomAlejarAria}
+        disabled={zoom.scale <= PREVIEW_ZOOM_MIN}
+        onClick={() => onStep(-1)}
+        className={btnClass}
+      >
+        <ZoomOut className="h-4 w-4" aria-hidden />
+      </button>
+      <span
+        className="text-brand-purple-dark/70 w-12 text-center text-xs font-medium tabular-nums"
+        aria-live="polite"
+      >
+        {Math.round(zoom.scale * 100)}%
+      </span>
+      <button
+        type="button"
+        aria-label={texts.exportar.zoomAcercarAria}
+        disabled={zoom.scale >= PREVIEW_ZOOM_MAX}
+        onClick={() => onStep(1)}
+        className={btnClass}
+      >
+        <ZoomIn className="h-4 w-4" aria-hidden />
+      </button>
+      <button
+        type="button"
+        aria-label={texts.exportar.zoomRestablecerAria}
+        disabled={!zoomed}
+        onClick={onReset}
+        className={btnClass}
+      >
+        <RotateCcw className="h-4 w-4" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Imagen del preview CON zoom (2026-10-19) — rueda del mouse anclada al cursor,
+ * pinch (2 dedos), doble click/doble tap (100%↔200%), arrastre = pan con zoom
+ * activo y botones −/%/+/reset. Componente AUTOSUFICIENTE (toda la lógica
+ * inline, espejo del lightbox components/design-preview-dialog.tsx sobre la
+ * matemática pura de preview-zoom.ts): el estado vive acá, así que REMONTARLO
+ * restablece el zoom — el pager lo monta con key={índice de página} y el zoom
+ * se resetea solo al cambiar de unidad.
+ *
+ * `onZoomedChange` reporta si hay zoom activo: el pager lo usa para que el
+ * swipe horizontal NO cambie de página cuando el arrastre es pan (y el pinch
+ * nunca pagina — ver la guardia multi-touch del pager).
+ */
+function ZoomablePreviewImage({
+  src,
+  alt,
+  onZoomedChange,
+}: {
+  src: string;
+  alt: string;
+  onZoomedChange?: (zoomed: boolean) => void;
+}) {
+  const [zoom, setZoom] = useState<PreviewZoomState>(PREVIEW_ZOOM_RESET);
+  // true mientras hay un puntero presionado: apaga la transición CSS para que
+  // el pan/pinch siga al dedo sin lag.
+  const [gesturing, setGesturing] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ dist: number; scale: number } | null>(null);
+  const panRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(
+    null,
+  );
+  // Doble tap (táctil): timestamp + posición del último tap simple.
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+
+  const zoomed = zoom.scale > PREVIEW_ZOOM_MIN;
+
+  // Reporte al host (el pager apaga su swipe con zoom activo). Va en effect:
+  // setState del padre durante el render del hijo está prohibido.
+  useEffect(() => {
+    onZoomedChange?.(zoomed);
+  }, [zoomed, onZoomedChange]);
+
+  // Aplica escala + pan clampeados contra el tamaño base renderizado de la
+  // imagen (offsetWidth/Height ignora el transform — es la caja sin zoom).
+  const applyZoom = useCallback((scale: number, x: number, y: number) => {
+    const nextScale = clampPreviewZoom(scale);
+    if (nextScale === PREVIEW_ZOOM_MIN) {
+      setZoom(PREVIEW_ZOOM_RESET);
+      return;
+    }
+    const baseW = imgRef.current?.offsetWidth ?? 0;
+    const baseH = imgRef.current?.offsetHeight ?? 0;
+    setZoom({
+      scale: nextScale,
+      x: clampPanOffset(x, nextScale, baseW),
+      y: clampPanOffset(y, nextScale, baseH),
+    });
+  }, []);
+
+  // Espejo del estado para el listener NATIVO de rueda (se adjunta una sola
+  // vez; sin el ref leería una escala stale del primer render).
+  const zoomRef = useRef<PreviewZoomState>(PREVIEW_ZOOM_RESET);
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  // Rueda del mouse sobre la imagen = zoom anclado al cursor (listener nativo
+  // NO pasivo: el onWheel de React se registra pasivo en la raíz y el
+  // preventDefault sería un no-op — mismo criterio del lightbox del carrito).
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY === 0) return; // scroll horizontal puro: no es gesto de zoom
+      e.preventDefault();
+      const current = zoomRef.current;
+      const nextScale = wheelPreviewZoom(current.scale, e.deltaY);
+      const img = imgRef.current;
+      if (!img) {
+        applyZoom(nextScale, current.x, current.y);
+        return;
+      }
+      // Cursor relativo al centro de la imagen SIN transformar: al bounding
+      // rect (ya trasladado/escalado) se le resta el pan actual.
+      const rect = img.getBoundingClientRect();
+      const pointX = e.clientX - (rect.left + rect.width / 2 - current.x);
+      const pointY = e.clientY - (rect.top + rect.height / 2 - current.y);
+      applyZoom(
+        nextScale,
+        zoomPanTowardPoint(current.x, pointX, current.scale, nextScale),
+        zoomPanTowardPoint(current.y, pointY, current.scale, nextScale),
+      );
+    };
+    viewer.addEventListener("wheel", onWheel, { passive: false });
+    return () => viewer.removeEventListener("wheel", onWheel);
+  }, [applyZoom]);
+
+  const toggleZoom = useCallback(() => {
+    setZoom((z) => {
+      const next = z.scale === PREVIEW_ZOOM_MIN ? PREVIEW_ZOOM_TOGGLE : PREVIEW_ZOOM_MIN;
+      if (next === PREVIEW_ZOOM_MIN) return PREVIEW_ZOOM_RESET;
+      const baseW = imgRef.current?.offsetWidth ?? 0;
+      const baseH = imgRef.current?.offsetHeight ?? 0;
+      return {
+        scale: next,
+        x: clampPanOffset(z.x, next, baseW),
+        y: clampPanOffset(z.y, next, baseH),
+      };
+    });
+  }, []);
+
+  function handlePointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    // jsdom no implementa pointer capture (los tests de gestos van por los
+    // botones/rueda/doble click); en browser retiene el arrastre.
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* noop en jsdom */
+    }
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    setGesturing(true);
+    const points = [...pointersRef.current.values()];
+    if (points.length === 2) {
+      // Inicia pinch: congela la escala actual como base del ratio.
+      pinchRef.current = {
+        dist: previewPointerDistance(points[0]!, points[1]!),
+        scale: zoom.scale,
+      };
+      panRef.current = null;
+      lastTapRef.current = null;
+    } else if (points.length === 1) {
+      panRef.current = { startX: e.clientX, startY: e.clientY, baseX: zoom.x, baseY: zoom.y };
+    }
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!pointersRef.current.has(e.pointerId)) return;
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const points = [...pointersRef.current.values()];
+    if (points.length === 2 && pinchRef.current) {
+      applyZoom(
+        pinchPreviewZoom(
+          pinchRef.current.scale,
+          pinchRef.current.dist,
+          previewPointerDistance(points[0]!, points[1]!),
+        ),
+        zoom.x,
+        zoom.y,
+      );
+    } else if (points.length === 1 && panRef.current && zoom.scale > PREVIEW_ZOOM_MIN) {
+      applyZoom(
+        zoom.scale,
+        panRef.current.baseX + (e.clientX - panRef.current.startX),
+        panRef.current.baseY + (e.clientY - panRef.current.startY),
+      );
+    }
+  }
+
+  function handlePointerUp(e: React.PointerEvent<HTMLDivElement>) {
+    const wasPinch = pointersRef.current.size >= 2;
+    pointersRef.current.delete(e.pointerId);
+    if (pointersRef.current.size === 0) setGesturing(false);
+    pinchRef.current = null;
+
+    if (wasPinch) {
+      // Queda un dedo tras el pinch: re-inicia el pan desde su posición para
+      // que la imagen no salte al seguir arrastrando.
+      const [remaining] = [...pointersRef.current.entries()];
+      if (remaining) {
+        panRef.current = {
+          startX: remaining[1].x,
+          startY: remaining[1].y,
+          baseX: zoom.x,
+          baseY: zoom.y,
+        };
+      }
+      lastTapRef.current = null;
+      return;
+    }
+
+    // Doble tap: solo taps simples (sin arrastre) de puntero táctil. La
+    // distancia se mide contra la posición REAL del pointerdown guardada en
+    // panRef: el cache de pointers se actualiza con cada move, así que medir
+    // contra él daría moved ≈ 0 siempre y un arrastre de pan contaría como tap.
+    const downPos = panRef.current;
+    if (e.pointerType === "touch" && downPos && pointersRef.current.size === 0) {
+      const dx = e.clientX - downPos.startX;
+      const dy = e.clientY - downPos.startY;
+      const moved = Math.hypot(dx, dy);
+      const now = Date.now();
+      const last = lastTapRef.current;
+      lastTapRef.current = moved < 12 ? { time: now, x: e.clientX, y: e.clientY } : null;
+      if (moved < 12 && last && now - last.time < 350) {
+        lastTapRef.current = null;
+        toggleZoom();
+      }
+    }
+    if (pointersRef.current.size === 0) panRef.current = null;
+  }
+
+  return (
+    <>
+      {/* touch-none: los gestos (pinch/pan/doble tap) los manejan los pointer
+          events de acá; sin esto el navegador secuestra el pinch. */}
+      <div
+        ref={viewerRef}
+        className="touch-none overflow-hidden select-none"
+        style={{ cursor: zoomed ? (gesturing ? "grabbing" : "grab") : "zoom-in" }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onDoubleClick={toggleZoom}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element -- dataURL local del compositor; next/image no aporta optimización acá */}
+        <img
+          ref={imgRef}
+          src={src}
+          alt={alt}
+          draggable={false}
+          className={
+            "mx-auto max-h-[min(28rem,42dvh)] w-auto max-w-full object-contain drop-shadow-lg " +
+            (gesturing ? "" : "transition-transform duration-150")
+          }
+          style={{ transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})` }}
+        />
+      </div>
+      <PreviewZoomControls
+        zoom={zoom}
+        onStep={(dir) => applyZoom(stepPreviewZoom(zoom.scale, dir), zoom.x, zoom.y)}
+        onReset={() => setZoom(PREVIEW_ZOOM_RESET)}
+      />
+    </>
+  );
+}
 
 /**
  * Fase 2 · item 2.2 (2026-10-07) — pager de la Vista Previa por unidad física:
@@ -93,6 +431,11 @@ function PreviewPagesPager({
   const texts = useStudioTexts();
   const n = pages.length;
   const [index, setIndex] = useState(0);
+  // 2026-10-19 — zoom de la página visible (ZoomablePreviewImage: rueda/pinch/
+  // doble click/pan). La imagen se monta con key={generación}-{índice}: cambiar
+  // de unidad o regenerar el set la REMONTA → el zoom se restablece solo.
+  // `zoomed` lo reporta la imagen (onZoomedChange) para la guardia del swipe.
+  const [zoomed, setZoomed] = useState(false);
   // Reinicia al primer set solo cuando se REGENERA la vista previa (patrón de
   // estado derivado: ajuste durante el render, no en un effect — regla
   // react-hooks/set-state-in-effect).
@@ -100,11 +443,14 @@ function PreviewPagesPager({
   if (prevGeneration !== generation) {
     setPrevGeneration(generation);
     setIndex(0);
+    setZoomed(false);
   }
   const i = Math.min(index, Math.max(0, n - 1));
   const page = pages[i]!;
   const go = useCallback(
-    (delta: number) => setIndex((cur) => Math.min(n - 1, Math.max(0, cur + delta))),
+    (delta: number) => {
+      setIndex((cur) => Math.min(n - 1, Math.max(0, cur + delta)));
+    },
     [n],
   );
 
@@ -115,7 +461,12 @@ function PreviewPagesPager({
 
   // Swipe táctil sobre la imagen: solo gestos claramente HORIZONTALES (un
   // desplazamiento vertical sigue scrolleando el diálogo).
+  // 2026-10-19 — convive con el zoom: con zoom activo el arrastre es PAN (no
+  // cambia de página) y un PINCH (2+ dedos) suprime el swipe hasta que todos
+  // los dedos se levantan (sin la guardia, levantar los dedos del pinch se leía
+  // como swipe horizontal y saltaba de unidad).
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const swipeSuppressedRef = useRef(false);
 
   const arrowClass =
     "text-brand-purple hover:bg-brand-purple/10 focus-visible:ring-brand-turquoise inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/90 shadow-md transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:opacity-30 disabled:hover:bg-white/90";
@@ -137,13 +488,24 @@ function PreviewPagesPager({
         }
       }}
       onTouchStart={(e) => {
+        // Pinch en curso (2+ dedos) → este gesto NO es swipe de paginación.
+        if (e.touches.length > 1) swipeSuppressedRef.current = true;
         const t = e.touches[0];
         if (t) touchStart.current = { x: t.clientX, y: t.clientY };
       }}
       onTouchEnd={(e) => {
+        // Gesto multi-touch (pinch): se ignora hasta que TODOS los dedos se
+        // levantan (levantar el penúltimo dedo no debe paginar).
+        const remaining = e.touches?.length ?? 0;
+        if (swipeSuppressedRef.current) {
+          if (remaining === 0) swipeSuppressedRef.current = false;
+          touchStart.current = null;
+          return;
+        }
         const start = touchStart.current;
         touchStart.current = null;
-        if (!start) return;
+        // Con zoom activo el arrastre horizontal es PAN de la imagen, no swipe.
+        if (!start || zoomed) return;
         const t = e.changedTouches[0];
         if (!t) return;
         const dx = t.clientX - start.x;
@@ -154,13 +516,15 @@ function PreviewPagesPager({
       }}
     >
       {/* Página perezosa: pendiente → indicador de carga mientras el editor
-          la genera; resuelta → la imagen de la unidad. */}
+          la genera; resuelta → la imagen de la unidad CON ZOOM
+          (ZoomablePreviewImage, key={generación}-{índice}: cambiar de unidad o
+          regenerar la remonta → el zoom se restablece solo). */}
       {page.dataUrl !== null ? (
-        // eslint-disable-next-line @next/next/no-img-element -- dataURL local del compositor; next/image no aporta optimización acá
-        <img
+        <ZoomablePreviewImage
+          key={`${generation}-${i}`}
           src={page.dataUrl}
           alt={`${altBase} — ${page.label}`}
-          className="mx-auto max-h-[min(28rem,42dvh)] w-auto max-w-full object-contain drop-shadow-lg"
+          onZoomedChange={setZoomed}
         />
       ) : (
         <div
@@ -209,7 +573,12 @@ function PreviewPagesPager({
             role="tab"
             aria-selected={k === i}
             aria-label={p.label}
-            onClick={() => setIndex(k)}
+            onClick={() => {
+              // Cambiar de unidad por dot remonta la imagen (key) → el zoom se
+              // restablece solo; el estado reportado queda alineado de inmediato.
+              setZoomed(false);
+              setIndex(k);
+            }}
             className="focus-visible:ring-brand-turquoise inline-flex h-11 w-11 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:outline-none"
           >
             <span
@@ -591,12 +960,9 @@ export function StudioPreviewModal({
           />
         ) : (
           <div className="border-brand-purple/15 from-brand-cream relative mt-3 overflow-hidden rounded-xl border bg-gradient-to-br to-white p-4">
-            {/* eslint-disable-next-line @next/next/no-img-element -- dataURL local del compositor; next/image no aporta optimización acá (ya iba unoptimized) */}
-            <img
-              src={previewUrl}
-              alt={previewAlt}
-              className="mx-auto max-h-[min(28rem,42dvh)] w-auto max-w-full object-contain drop-shadow-lg"
-            />
+            {/* 2026-10-19 — imagen única CON zoom (rueda/pinch/doble click), mismo
+                lenguaje del pager y del lightbox del carrito. */}
+            <ZoomablePreviewImage src={previewUrl} alt={previewAlt} />
           </div>
         )}
 

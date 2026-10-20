@@ -859,3 +859,158 @@ describe("applyUnitToAllUnits — 'Aplicar este diseño a todas' (multi-unidad 2
     expect(empty.getState().canvasData).toBeNull();
   });
 });
+
+describe("herencia pack-level al expandir slots (2026-10-19 — packs nuevos no nacen sin textos)", () => {
+  // Bug: usuario llena los campos masivos (setTextOverrideAllSlots) con 1 pack
+  // de 6 y DESPUÉS agrega otro pack → los 6 slots nuevos quedaban sin los
+  // textos y el campo masivo no se podía re-aplicar (commit no-op si el texto
+  // no cambia). Ahora los slots nuevos heredan los valores PACK-LEVEL vigentes.
+  it("setPhotoSlotsPerUnit: los slots nuevos heredan los textos masivos, sin copiar fotos", () => {
+    const store = setup(); // 4 slots, 0 y 3 con foto
+    store.getState().setTextOverrideAllSlots("caption", { text: "Hola" });
+    store.getState().setTextOverrideAllSlots("user_name", { text: "@lucy" });
+    store.getState().setPhotoSlotsPerUnit(6, { facesPerUnit: 1, max: 6 });
+    const cd = store.getState().canvasData;
+    expect(cd?.slotCount).toBe(6);
+    // Slots nuevos (4 y 5): sin foto, CON los textos pack-level.
+    for (const idx of [4, 5]) {
+      expect(cd?.slots[idx].assetUrl).toBeNull();
+      expect(cd?.slots[idx].textOverrides).toEqual({
+        caption: { text: "Hola" },
+        user_name: { text: "@lucy" },
+      });
+    }
+    // Los slots viejos conservan lo que tenían (el masivo ya los cubrió).
+    expect(cd?.slots[0].assetId).toBe("a0");
+    expect(cd?.slots[0].textOverrides?.caption?.text).toBe("Hola");
+  });
+
+  it("sin valores pack-level los slots nuevos nacen sin overrides (como siempre)", () => {
+    const store = setup();
+    store.getState().setPhotoSlotsPerUnit(6, { facesPerUnit: 1, max: 6 });
+    expect(store.getState().canvasData?.slots[4].textOverrides).toBeUndefined();
+  });
+
+  it("una edición INDIVIDUAL posterior no se propaga a los packs nuevos (solo lo masivo)", () => {
+    const store = setup();
+    store.getState().setSlotTextOverride(0, "caption", { text: "Solo esta" });
+    store.getState().setPhotoSlotsPerUnit(6, { facesPerUnit: 1, max: 6 });
+    expect(store.getState().canvasData?.slots[4].textOverrides).toBeUndefined();
+  });
+
+  it("setUnitCount (tiras): las unidades nuevas también heredan los textos masivos", () => {
+    const store = setup(
+      makeCanvasData({
+        unitTemplate: makeUnitTemplate({ gridCols: 1, gridGap: 0 } as Partial<CanvasDataV1>),
+        slotCount: 6,
+        unitCount: 2,
+        unitSlots: 3,
+        photoSlots: 3,
+        slots: Array.from({ length: 6 }, (_, i) => ({
+          slotIndex: i,
+          assetId: null,
+          assetUrl: null,
+        })),
+        gridLayout: { cols: 1, rows: 3, gap: 0 },
+      }),
+    );
+    store.getState().setTextOverrideAllSlots("caption", { text: "Pack" });
+    store.getState().setUnitCount(3, { facesPerUnit: 1, max: 4 });
+    const cd = store.getState().canvasData;
+    expect(cd?.slotCount).toBe(9);
+    for (const idx of [6, 7, 8]) {
+      expect(cd?.slots[idx].textOverrides).toEqual({ caption: { text: "Pack" } });
+    }
+  });
+
+  it("el valor masivo se puede RE-APLICAR a todos los slots actuales aunque el texto no cambie", () => {
+    // setTextOverrideAllSlots no es no-op por igualdad: re-escribe SIEMPRE todos
+    // los slots actuales (la vía explícita de re-alineo tras editar una foto).
+    const store = setup();
+    store.getState().setTextOverrideAllSlots("caption", { text: "Hola" });
+    store.getState().setSlotTextOverride(0, "caption", { text: "Distinto" });
+    store.getState().setTextOverrideAllSlots("caption", { text: "Hola" }); // mismo texto
+    expect(store.getState().canvasData?.slots[0].textOverrides?.caption?.text).toBe("Hola");
+    expect(store.getState().packTextValues.caption).toBe("Hola");
+  });
+});
+
+describe("clearAllSlots — «Borrar el diseño» (2026-10-19)", () => {
+  it("resetea TODOS los slots (foto, filtro, textos, encuadre, perfil IG) como clearSlot en lote", () => {
+    const store = setup(); // slots 0 y 3 con foto
+    store.getState().setSlotFilter(0, "bw");
+    store.getState().setSlotTextOverride(1, "caption", { text: "hola" });
+    store.getState().setSlotPhotoTransform(3, { offsetX: 5, scale: 2 });
+    store.getState().setSlotProfilePhoto(0, asset("avatar"));
+    store.getState().clearAllSlots();
+    const slots = store.getState().canvasData?.slots;
+    expect(slots?.every((s) => s.assetId === null && s.assetUrl === null)).toBe(true);
+    expect(
+      slots?.every((s) => s.textOverrides === undefined && !s.filter && !s.photoTransform),
+    ).toBe(true);
+    expect(slots?.every((s) => s.profileAssetId == null)).toBe(true);
+    // Conserva los slotIndex y el conteo.
+    expect(slots?.map((s) => s.slotIndex)).toEqual([0, 1, 2, 3]);
+    expect(store.getState().canvasData?.slotCount).toBe(4);
+  });
+
+  it("NO toca plantilla ni variante (unitTemplate, photoSlots, sizeCm, borderColor)", () => {
+    const store = setup();
+    const templateBefore = store.getState().canvasData?.unitTemplate;
+    store.getState().setBorderColor("#FF0000");
+    store.getState().setPhotoSlotsPerUnit(3, { facesPerUnit: 1, max: 6, sizeCm: "6×6" });
+    store.getState().clearAllSlots();
+    const cd = store.getState().canvasData;
+    expect(cd?.unitTemplate).toBe(templateBefore);
+    expect(cd?.photoSlots).toBe(3);
+    expect(cd?.sizeCm).toBe("6×6");
+    expect(cd?.borderColor).toBe("#FF0000");
+  });
+
+  it("limpia los valores pack-level (un pack agregado después NO revive textos viejos)", () => {
+    const store = setup();
+    store.getState().setTextOverrideAllSlots("caption", { text: "Hola" });
+    store.getState().clearAllSlots();
+    expect(store.getState().packTextValues).toEqual({});
+    store.getState().setPhotoSlotsPerUnit(6, { facesPerUnit: 1, max: 6 });
+    expect(store.getState().canvasData?.slots[4].textOverrides).toBeUndefined();
+  });
+
+  it("suelta la selección de slot y NO borra las fotos de «Mis fotos» (assets)", () => {
+    const store = setup(); // init hidrata a0/a3 como assets
+    store.getState().selectSlot(1);
+    store.getState().clearAllSlots();
+    expect(store.getState().selectedSlotIndex).toBeNull();
+    expect(store.getState().assets.map((a) => a.id)).toEqual(["a0", "a3"]);
+  });
+
+  it("es undoable (va por setCanvasData)", () => {
+    const store = setup();
+    const before = store.getState().canvasData;
+    store.getState().clearAllSlots();
+    store.getState().undo();
+    expect(store.getState().canvasData).toBe(before);
+  });
+
+  it("canvas ya vacío (y sin valores pack-level) → no-op sin ruido de undo", () => {
+    const store = setup(
+      makeCanvasData({
+        slots: Array.from({ length: 4 }, (_, i) => ({
+          slotIndex: i,
+          assetId: null,
+          assetUrl: null,
+        })),
+      }),
+    );
+    store.getState().markClean();
+    store.getState().clearAllSlots();
+    expect(store.getState().isDirty).toBe(false);
+    expect(store.getState().undoStack).toHaveLength(0);
+  });
+
+  it("sin canvasData → no-op (no revienta)", () => {
+    const store = createStudioStore();
+    store.getState().clearAllSlots();
+    expect(store.getState().canvasData).toBeNull();
+  });
+});

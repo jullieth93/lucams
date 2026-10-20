@@ -323,3 +323,74 @@ describe("StudioIgPostFields — diligenciamiento masivo IG (rediseño asistido 
     expect(screen.queryByText("Datos de la publicación")).toBeNull();
   });
 });
+
+describe("StudioIgPostFields — re-aplicado EXPLÍCITO a todos los slots (2026-10-19)", () => {
+  // Bug: con un pack ya lleno masivamente, agregar OTRO pack dejaba los slots
+  // nuevos sin los textos y el campo masivo no se podía re-aplicar (el commit
+  // debounced es no-op cuando el texto no cambió). Solución: los slots nuevos
+  // heredan el valor pack-level al crearse (store) + botón «Aplicar estos datos
+  // a todas las fotos» que re-escribe todos los slots actuales SIEMPRE.
+  it("sin datos llenos el botón NO aparece; con al menos un dato, sí", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+    expect(screen.queryByRole("button", { name: /aplicar estos datos/i })).toBeNull();
+
+    const userInput = screen.getByRole("textbox", { name: /@usuario/i });
+    fireEvent.change(userInput, { target: { value: "lucy" } });
+    fireEvent.blur(userInput); // commit debounced → al blur
+    expect(screen.getByRole("button", { name: /aplicar estos datos/i })).toBeInTheDocument();
+  });
+
+  it("re-aplica el valor pack-level a los slots que quedaron atrás (pack nuevo / edición individual)", () => {
+    const store = makeStore(); // 2 slots
+    render(<StudioIgPostFields store={store} />);
+
+    // Llenado masivo del título.
+    const caption = screen.getByRole("textbox", { name: /título/i });
+    fireEvent.change(caption, { target: { value: "Nuestro paseo" } });
+    fireEvent.blur(caption);
+    expect(overrides(store, "caption")).toEqual(["Nuestro paseo", "Nuestro paseo"]);
+
+    // Se agrega un pack (4 slots) y uno se edita individual (diverge).
+    act(() => {
+      store.getState().setPhotoSlotsPerUnit(4, { facesPerUnit: 1, max: 6 });
+    });
+    // Los slots nuevos YA heredaron el valor pack-level (fix del store).
+    expect(overrides(store, "caption")).toEqual([
+      "Nuestro paseo",
+      "Nuestro paseo",
+      "Nuestro paseo",
+      "Nuestro paseo",
+    ]);
+    act(() => {
+      store.getState().setSlotTextOverride(2, "caption", { text: "Solo esta foto" });
+    });
+    expect(overrides(store, "caption")[2]).toBe("Solo esta foto");
+
+    // Re-aplicado explícito: el MISMO texto vuelve a TODOS los slots actuales.
+    fireEvent.click(screen.getByRole("button", { name: /aplicar estos datos/i }));
+    expect(overrides(store, "caption")).toEqual([
+      "Nuestro paseo",
+      "Nuestro paseo",
+      "Nuestro paseo",
+      "Nuestro paseo",
+    ]);
+  });
+
+  it("las capas que «varían por foto» sin valor pack-level no se tocan al re-aplicar", () => {
+    const store = makeStore();
+    render(<StudioIgPostFields store={store} />);
+    // Solo se llena el título masivamente; la ubicación queda divergente a mano.
+    const caption = screen.getByRole("textbox", { name: /título/i });
+    fireEvent.change(caption, { target: { value: "Nuestro paseo" } });
+    fireEvent.blur(caption);
+    act(() => {
+      store.getState().setSlotTextOverride(0, "location", { text: "Bogotá" });
+      store.getState().setSlotTextOverride(1, "location", { text: "Medellín" });
+    });
+    fireEvent.click(screen.getByRole("button", { name: /aplicar estos datos/i }));
+    // Ubicación sin valor pack-level (y "varía por foto") → intacta.
+    expect(overrides(store, "location")).toEqual(["Bogotá", "Medellín"]);
+    expect(overrides(store, "caption")).toEqual(["Nuestro paseo", "Nuestro paseo"]);
+  });
+});

@@ -431,9 +431,22 @@ export function flatBookmarkSlots(
  * Fase 2.12 (decisión owner 2026-10-07): esta es de nuevo la ÚNICA pose de los Alargados
  * — la pose DE PIE de Ola 18 (`flatBookmarkPlacementUpright`, eliminada) dejaba una torre
  * de 15 cm dominando la escena; la pieza NO se encoge, solo cambian pose + cámara.
+ *
+ * 2026-10-20 (bug "separador largo cortado") — `halfSpanX`: media extensión de la huella
+ * de la pieza sobre el eje x (con el jitter de yaw). La hoja tiene CAMBER (sube hacia el
+ * lomo) y la pieza es RÍGIDA: apoyarla a la altura del centro hundía el borde del lado
+ * del lomo BAJO la superficie (hasta ~2 mm a escala) y la pieza se veía "cortada" por la
+ * página. Ahora se apoya en el punto MÁS ALTO bajo su huella: flota ~1 mm en el borde del
+ * corte (imperceptible) en vez de hundirse en el del lomo.
  */
-export function flatBookmarkPlacement(bx: number, bz: number): [number, number, number] {
-  return [bx, pageSurfaceY(bx) + FLAT_BOOKMARK_T / 2 + 0.002, bz];
+export function flatBookmarkPlacement(
+  bx: number,
+  bz: number,
+  halfSpanX = 0,
+): [number, number, number] {
+  const xInner = Math.max(GUTTER_GAP / 2, bx - halfSpanX); // borde de la huella hacia el lomo
+  const y = Math.max(pageSurfaceY(bx), pageSurfaceY(xInner));
+  return [bx, y + FLAT_BOOKMARK_T / 2 + 0.002, bz];
 }
 
 // ── Pose ACOSTADA de la pieza plana + volteo de caras (Fase 2.12 revisada, 2026-10-07) ──
@@ -451,6 +464,79 @@ export function flatBookmarkPlacement(bx: number, bz: number): [number, number, 
  * book-geometry.test). Se restaura la composición anidada.
  */
 export const FLAT_LIE_ROTATION: readonly [number, number, number] = [-Math.PI / 2, 0, 0];
+
+/**
+ * Encuadre de cámara (FitCameraPolar) de la rama PLANA con corrección de PERSPECTIVA
+ * (2026-10-20 — SUPER BUG "separador largo cortado en el libro 3D").
+ *
+ * El cálculo anterior (`halfH = max(2.2, spreadZ·cos(polar) + 0.7)`) medía la extensión
+ * en z proyectada como si toda la pieza estuviera EN EL PLANO DEL TARGET. Pero la pieza
+ * acostada se extiende HACIA la cámara (z>0): su punta cercana está ~spreadZ·cosφ más
+ * cerca y la perspectiva la agranda por d/(d − r). A la distancia que daba la fórmula
+ * vieja (~6.3 u en desktop), una pieza 4×15 desbordaba el borde inferior del frame en
+ * TODOS los aspectos apaisados (fracción 1.02 con 1 unidad, 1.33 con 4, 1.53 con 6 —
+ * "no se ve el largo"). En móvil vertical el ancho manda y la distancia es tan grande
+ * que no se notaba.
+ *
+ * La corrección es exacta por esquina: con cámara a distancia d y polar φ, una esquina
+ * con offset (Δx, Δy, Δz) al target proyecta a pantalla
+ *   sy = Δy·cosφ − Δz·sinφ   (independiente de d)
+ *   sx = Δx
+ *   r  = Δy·sinφ + Δz·cosφ   (qué tanto se ACERCA a la cámara)
+ * y FitCameraPolar resuelve d = max(halfH, halfW/aspect)/tan·margin, así que pedir
+ *   halfH = sy + r·tanHalfFov   ⇒   d ≈ sy·margin/tan + r·margin   ⇒   fracción ≤ 1/margin.
+ * (El término r·tanHalfFov es la compensación de la profundidad cercana.) En horizontal
+ * se usa la misma corrección con aspect=1 (conservador para apaisado; en vertical el
+ * propio halfW/(tan·aspect) de FitCameraPolar abre mucho más).
+ *
+ * Devuelve halfW/halfH listos para FitCameraPolar; los pisos (2.8/2.2) y el aire se
+ * conservan del encuadre anterior. Las piezas NUNCA se encogen: la cámara abre.
+ */
+export function flatBookmarkFit(
+  slots: readonly { x: number; z: number; yaw: number }[],
+  dims: readonly { w: number; h: number }[],
+  opts: {
+    polarDeg: number;
+    /** tan(fov/2) de la cámara de la escena (fov 40 → 0.364). */
+    tanHalfFov: number;
+    /** Aire vertical extra alrededor del conjunto (unidades de mundo). Default 0.25. */
+    air?: number;
+    /** Altura del target de cámara (superficie de la hoja al centro, ~0.7). */
+    targetY?: number;
+    minHalfW?: number;
+    minHalfH?: number;
+  },
+): { halfW: number; halfH: number } {
+  const phi = (opts.polarDeg * Math.PI) / 180;
+  const cosP = Math.cos(phi);
+  const sinP = Math.sin(phi);
+  const air = opts.air ?? 0.25;
+  const targetY = opts.targetY ?? 0.7;
+  const targetX = PAGE_W / 2;
+  let needH = opts.minHalfH ?? 2.2;
+  let needW = opts.minHalfW ?? 2.8;
+  slots.forEach((s, i) => {
+    const d = dims[i];
+    if (!d) return;
+    const extX = (d.w * Math.abs(Math.cos(s.yaw)) + d.h * Math.abs(Math.sin(s.yaw))) / 2;
+    const [, py] = flatBookmarkPlacement(s.x, s.z, extX);
+    for (const lx of [-d.w / 2, d.w / 2]) {
+      for (const lz of [-d.h / 2, d.h / 2]) {
+        // Eje ancho mundo = (cos yaw, 0, −sin yaw); eje largo mundo = (−sin yaw, 0, −cos yaw).
+        const X = s.x + lx * Math.cos(s.yaw) - lz * Math.sin(s.yaw);
+        const Z = s.z - lx * Math.sin(s.yaw) - lz * Math.cos(s.yaw);
+        const dx = X - targetX;
+        const dy = py - targetY;
+        const dz = Z;
+        const sy = Math.abs(dy * cosP - dz * sinP);
+        const r = dy * sinP + dz * cosP;
+        needH = Math.max(needH, sy + air + r * opts.tanHalfFov);
+        needW = Math.max(needW, Math.abs(dx) + air + r * opts.tanHalfFov);
+      }
+    }
+  });
+  return { halfW: needW, halfH: needH };
+}
 
 /**
  * Rota un vector con R = Rx(x)·Ry(y)·Rz(z) — el mismo convenio que THREE.Euler orden

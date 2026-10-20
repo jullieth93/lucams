@@ -11,7 +11,8 @@
  *                            tamaño físico del imán (sizeCm).
  *                            Foto chica = imán pixelado.
  *   2. Brillo (luminance) — mean luminance del canal grayscale.
- *                            Solo se advierte SOBREEXPOSICIÓN. La oscuridad
+ *                            Solo se advierte el exceso de luz (zonas quemadas,
+ *                            casi blancas: se imprimen sin detalle). La oscuridad
  *                            es decisión estética válida (look oscuro / fondo
  *                            negro deliberado) y su aviso era ruido sin valor
  *                            (decisión producto 2026-10, pruebas STG).
@@ -53,12 +54,15 @@ const RES_THRESHOLDS = {
 
 /**
  * Brillo: mean luminance escala 0-255 del canal grayscale.
- * Solo se advierte SOBREEXPOSICIÓN: la oscuridad es una decisión estética
- * válida (look oscuro, fondo negro deliberado) y el aviso generaba ruido
- * sin valor para el cliente (decisión producto 2026-10, pruebas STG).
+ * Solo se advierte el EXCESO de luz (zonas quemadas / casi blancas, que se
+ * imprimen sin detalle): la oscuridad es una decisión estética válida (look
+ * oscuro, fondo negro deliberado) y el aviso generaba ruido sin valor para el
+ * cliente (decisión producto 2026-10, pruebas STG).
+ * 2026-10-19 — wording: NADA de "sobreexpuesta" (se leía como "la foto se sale
+ * del recuadro"); el texto dice lo que el check mide: zonas quemadas de luz.
  */
 const BRIGHTNESS_THRESHOLDS = {
-  TOO_BRIGHT_ABOVE: 235, // sobreexpuesta
+  TOO_BRIGHT_ABOVE: 235, // brillo medio muy alto → zonas quemadas de luz
 };
 
 /** Blur: stdev del Laplacian. < 10 muy borrosa, 10-25 borrosa moderada. */
@@ -212,7 +216,11 @@ export async function validatePhotoQuality(
         passed: false,
         level: "warning-soft",
         meanLuminance: meanLum,
-        message: "La foto está sobreexpuesta. Algunos detalles podrían perderse al imprimir.",
+        // 2026-10-19 — redacción clara (sin "sobreexpuesta"): el check mide
+        // brillo medio MUY alto → zonas quemadas de luz que se imprimen sin
+        // detalle. El texto dice exactamente eso.
+        message:
+          "La foto tiene zonas quemadas de luz (casi blancas). Esas zonas podrían imprimirse sin detalle.",
       };
     } else {
       brightness = { passed: true, level: "ok", meanLuminance: meanLum };
@@ -270,8 +278,10 @@ export async function validatePhotoQuality(
     } else if (blur.level !== "ok") {
       recommendation = "Prueba con una foto más nítida si la tienes.";
     } else if (brightness.level !== "ok") {
+      // 2026-10-19 — misma claridad que el mensaje: menos luz directa / menos
+      // brillo, no "exposición" (jerga fotográfica que confundía al cliente).
       recommendation =
-        "Una foto con menos exposición (menos quemada) conserva mejor los detalles al imprimir.";
+        "Si tienes una versión con menos brillo o tomada con menos luz directa, úsala: conserva mejor los detalles al imprimir.";
     }
   }
 

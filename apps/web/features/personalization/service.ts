@@ -44,7 +44,7 @@ import { hashBearerToken } from "@/lib/token-hash";
 import { parsePhotoProductConfig } from "./schemas";
 import { listStagedSlotPaths, stagedSlotPath } from "./staged-slots";
 import { resolvePersonalizationSurface } from "./surface";
-import { unitCountOf, MAX_LETTER_SET_UNITS } from "./design-units";
+import { unitCountOf, letterSetUnitCount, MAX_LETTER_SET_UNITS } from "./design-units";
 import { PREVIEW_ALLOWED_MIME, previewExtensionForMime, type PreviewMime } from "./sharp-safe";
 import {
   filterTemplatesByAspectRatio,
@@ -797,8 +797,12 @@ export async function createLetterSetDesign(opts: {
    * colores por ficha. El server valida `units.length === unitCount` y los persiste
    * en metadata.units; el precio ×N sale de `letterSetUnitCount(metadata)` en el
    * carrito (nunca del cliente: units es la única fuente de verdad del N).
+   * 2026-10-19 (rediseño owner) — el estilo ilustrado y el borde también son
+   * POR SET: cada unidad declara su `styleSetId` (null = «Solo letra») y su
+   * `withBorder`; las claves de nivel diseño (styleSetId/withBorder raíz) quedan
+   * como representante del set 0 (retrocompat con clientes/lectores viejos).
    */
-  units?: { colors?: string[] }[];
+  units?: { colors?: string[]; styleSetId?: string | null; withBorder?: boolean }[];
   /** Sets del diseño (1..MAX_LETTER_SET_UNITS). Default 1 (diseño de un set). */
   unitCount?: number;
   customerId: string | null;
@@ -879,11 +883,15 @@ export async function createLetterSetDesign(opts: {
         // (validados arriba: units.length === unitCount). El carrito deriva el
         // precio ×N de `unitCount` (letterSetUnitCount) y producción ve las N
         // láminas. Con 1 set no se escribe (retrocompatible con diseños viejos).
+        // 2026-10-19 — estilo ilustrado y borde POR SET: cada unidad persiste
+        // los suyos (styleSetId null = «Solo letra», withBorder default true).
         ...(unitCount > 1
           ? {
               unitCount,
               units: units.map((u) => ({
                 colors: Array.isArray(u.colors) ? u.colors.slice(0, letters.length) : [],
+                styleSetId: typeof u.styleSetId === "string" ? u.styleSetId : null,
+                withBorder: u.withBorder !== false,
               })),
             }
           : {}),
@@ -1455,7 +1463,13 @@ export async function finalizeDesign(opts: {
   // Si el cliente mandó snapshots, deben ser exactamente uno por slot REQUERIDO.
   const canvasData = design.canvasData as unknown as CanvasData;
   const v2 = canvasData.version === 2 ? (canvasData as CanvasDataV2) : null;
-  const expectedSlotCount = v2 ? v2.slotCount : 1;
+  // Sets de letras (canvasData V1 stub + metadata.surface="letterset"): el Estudio
+  // sube UNA lámina de producción POR SET (production_i, 1 lámina/unidad — el set
+  // es la unidad). El finalize espera exactamente `unitCount` snapshots (validados
+  // al crear: units.length === unitCount), no 1 — antes un diseño multi-set
+  // rebotaba con «INCOMPLETE_SLOTS: expected 1 production snapshots, got N» y la
+  // venta quedaba bloqueada. Los índices son posicionales: production_i = set i.
+  const expectedSlotCount = v2 ? v2.slotCount : letterSetUnitCount(design.metadata);
 
   // Cara B OPCIONAL (backOptional, 2026-09-22 — separadores magnéticos 2×6/4×4.2
   // y alargados): cuando el schema del producto lo declara, las caras B (slots

@@ -21,6 +21,11 @@
  * La matemática (clamp de escala y pan) vive en ./preview-zoom.ts (puro, con
  * tests). El zoom se restablece al cerrar el diálogo.
  *
+ * Pager multi-página (2026-10-19): al abrir el diálogo se PRECARGAN las páginas
+ * webp con new Image() (todas si son ≤ 6; si no, la ventana ±1 y el resto lazy
+ * al paginar) y la página en tránsito muestra un spinner sutil — antes cada
+ * paso descargaba la webp en ese momento y la imagen previa quedaba congelada.
+ *
  * Es client component y NO puede leer el CMS: sus textos llegan resueltos por
  * props desde las páginas server que lo usan, como <CmsText> por cada rótulo —
  * así el ratchet de cobertura de contenido los cuenta como cubiertos (mismo
@@ -28,7 +33,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Eye, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Loader2, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -52,6 +57,15 @@ import {
 type ZoomState = { scale: number; x: number; y: number };
 
 const ZOOM_RESET: ZoomState = { scale: 1, x: 0, y: 0 };
+
+/**
+ * Prefetch del pager (2026-10-19): con pocas páginas se precargan TODAS al
+ * abrir el diálogo; con muchas, solo la ventana ±1 alrededor de la página
+ * visible (el resto llega lazy a medida que el cliente pagina). Sin esto cada
+ * paso del pager descargaba la webp completa EN ESE momento y la imagen
+ * anterior quedaba congelada sin indicador — se sentía "pegado".
+ */
+const PREFETCH_ALL_MAX_PAGES = 6;
 
 /** Distancia entre dos punteros activos (gesto pinch). */
 function pointerDistance(a: { x: number; y: number }, b: { x: number; y: number }): number {
@@ -111,6 +125,44 @@ export function DesignPreviewDialog({
   }
   const pageIndex = pageUrls ? Math.min(pageIndexRaw, pageUrls.length - 1) : 0;
   const currentUrl = pageUrls ? pageUrls[pageIndex]! : previewUrl;
+  // Prefetch + estado de carga por página (2026-10-19): `requestedRef` deduplica
+  // los prefetch (new Image), `loaded` marca las páginas YA decodificadas —
+  // mientras la página actual no está en `loaded` el visor muestra un spinner
+  // sutil en vez de congelar la imagen anterior (el <img> cambia de src de
+  // inmediato pero queda transparente hasta su onLoad, que llega casi gratis
+  // cuando el prefetch ya la trajo al caché).
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState<ReadonlySet<string>>(() => new Set());
+  const requestedRef = useRef(new Set<string>());
+  const markLoaded = useCallback((url: string) => {
+    setLoaded((prev) => (prev.has(url) ? prev : new Set(prev).add(url)));
+  }, []);
+  const prefetchPage = useCallback(
+    (url: string) => {
+      if (requestedRef.current.has(url)) return;
+      requestedRef.current.add(url);
+      const im = new Image();
+      // onerror también marca: mejor la imagen rota del navegador que un
+      // spinner eterno si la webp falla (p. ej. red caída a mitad del pager).
+      im.onload = () => markLoaded(url);
+      im.onerror = () => markLoaded(url);
+      im.src = url;
+    },
+    [markLoaded],
+  );
+  useEffect(() => {
+    if (!open || !pageUrls) return;
+    if (pageUrls.length <= PREFETCH_ALL_MAX_PAGES) {
+      for (const url of pageUrls) prefetchPage(url);
+      return;
+    }
+    // Muchas páginas (p.ej. calendario 12×N): solo la ventana ±1; el resto
+    // precarga al acercarse (este mismo efecto corre en cada cambio de página).
+    for (const k of [pageIndex - 1, pageIndex, pageIndex + 1]) {
+      if (k >= 0 && k < pageUrls.length) prefetchPage(pageUrls[k]!);
+    }
+  }, [open, pageUrls, pageIndex, prefetchPage]);
+  const currentLoading = pageUrls !== null && !loaded.has(currentUrl);
   // true mientras hay un puntero presionado: apaga la transición CSS para que
   // el pan/pinch siga al dedo sin lag.
   const [gesturing, setGesturing] = useState(false);
@@ -309,8 +361,9 @@ export function DesignPreviewDialog({
 
   return (
     <Dialog
-      onOpenChange={(open) => {
-        if (!open) {
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) {
           setZoom(ZOOM_RESET);
           setPageIndexRaw(0);
         }
@@ -344,7 +397,9 @@ export function DesignPreviewDialog({
             pointer events de acá; sin esto el navegador secuestra el pinch. */}
         <div
           ref={viewerRef}
-          className="border-brand-purple/15 from-brand-cream touch-none overflow-hidden rounded-xl border bg-gradient-to-br to-white p-4 select-none"
+          className={`border-brand-purple/15 from-brand-cream relative touch-none overflow-hidden rounded-xl border bg-gradient-to-br to-white p-4 select-none ${
+            currentLoading ? "flex min-h-40 items-center justify-center" : ""
+          }`}
           style={{ cursor: zoomed ? (gesturing ? "grabbing" : "grab") : "zoom-in" }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -376,14 +431,25 @@ export function DesignPreviewDialog({
             src={currentUrl}
             alt={`Vista previa de tu diseño de ${productName}`}
             draggable={false}
+            onLoad={() => markLoaded(currentUrl)}
             className={
               "mx-auto max-h-[min(32rem,65dvh)] w-auto max-w-full object-contain drop-shadow-lg " +
-              (gesturing ? "" : "transition-transform duration-150")
+              (gesturing ? "" : "transition-transform duration-150 ") +
+              (currentLoading ? "absolute opacity-0" : "")
             }
             style={{
               transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})`,
             }}
           />
+          {/* Spinner sutil mientras la página actual termina de bajar (el
+              prefetch de arriba hace que casi siempre sea instantáneo). */}
+          {currentLoading && (
+            <Loader2
+              aria-hidden
+              className="text-brand-purple/60 h-8 w-8 animate-spin"
+              data-testid="page-loading"
+            />
+          )}
         </div>
         {/* Pager por unidad (2026-10-13): flechas + indicador "2 / 5" (aria-live)
             + dots con target táctil 44px. Mismo patrón que el pager de la Vista

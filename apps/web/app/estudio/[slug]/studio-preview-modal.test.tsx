@@ -363,15 +363,17 @@ describe("StudioPreviewModal — aceptación explícita de calidad de fotos (Paq
 
 describe("StudioPreviewModal — avisos informativos de brillo suave (fase 2, 2026-10-02)", () => {
   // requiresAck:false = el ÚNICO problema de la foto es brillo soft (hoy solo
-  // sobreexposición; el aviso de foto oscura se eliminó 2026-10) — se muestra
-  // en la lista pero NO exige aceptación.
+  // zonas quemadas de luz — 2026-10-19, antes "sobreexposición"; el aviso de
+  // foto oscura se eliminó 2026-10) — se muestra en la lista pero NO exige
+  // aceptación.
   const INFO_WARNING = {
-    assetId: "asset-sobreexpuesta",
-    signedUrl: "https://signed.example/foto-sobreexpuesta.jpg",
+    assetId: "asset-zonas-quemadas",
+    signedUrl: "https://signed.example/foto-quemada.jpg",
     level: "warning-soft" as const,
-    message: "La foto está sobreexpuesta. Algunos detalles podrían perderse al imprimir.",
+    message:
+      "La foto tiene zonas quemadas de luz (casi blancas). Esas zonas podrían imprimirse sin detalle.",
     recommendation:
-      "Una foto con menos exposición (menos quemada) conserva mejor los detalles al imprimir.",
+      "Si tienes una versión con menos brillo o tomada con menos luz directa, úsala: conserva mejor los detalles al imprimir.",
     requiresAck: false,
   };
 
@@ -381,7 +383,7 @@ describe("StudioPreviewModal — avisos informativos de brillo suave (fase 2, 20
     expect(screen.getByText("Calidad de tus fotos")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "La foto está sobreexpuesta. Algunos detalles podrían perderse al imprimir.",
+        "La foto tiene zonas quemadas de luz (casi blancas). Esas zonas podrían imprimirse sin detalle.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
@@ -601,5 +603,110 @@ describe("StudioPreviewModal — páginas PEREZOSAS por unidad (PERF 2026-10-07)
       <StudioPreviewModal {...baseProps()} pages={PAGES_ALL} unitCount={3} pagesGeneration={2} />,
     );
     expect(screen.getByText("Set 1 de 3")).toBeInTheDocument();
+  });
+});
+
+describe("StudioPreviewModal — ZOOM del preview (2026-10-19)", () => {
+  // Mismo lenguaje del lightbox del carrito: rueda anclada al cursor, pinch,
+  // doble click/tap, botones −/%/+/reset (la matemática pura la cubre
+  // components/preview-zoom.test.ts). Acá se blinda el CABLEADO en la modal.
+  const PAGES = [
+    { dataUrl: "data:image/png;base64,set1", label: "Set 1 de 3" },
+    { dataUrl: "data:image/png;base64,set2", label: "Set 2 de 3" },
+    { dataUrl: "data:image/png;base64,set3", label: "Set 3 de 3" },
+  ];
+
+  it("imagen única: doble click alterna 100% ↔ 200% (transform de la imagen)", () => {
+    render(<StudioPreviewModal {...baseProps()} />);
+    const img = screen.getByRole("img", { name: /Vista previa de 6 imanes/ });
+    expect(img.style.transform).toContain("scale(1)");
+    fireEvent.doubleClick(img);
+    expect(img.style.transform).toContain("scale(2)");
+    fireEvent.doubleClick(img);
+    expect(img.style.transform).toContain("scale(1)");
+  });
+
+  it("rueda del mouse sobre la imagen = zoom (paso fino ×1.2), con preventDefault", () => {
+    render(<StudioPreviewModal {...baseProps()} />);
+    const img = screen.getByRole("img", { name: /Vista previa de 6 imanes/ });
+    fireEvent.wheel(img, { deltaY: -100 });
+    expect(img.style.transform).toContain("scale(1.2)");
+    // Rueda hacia abajo de vuelta a 100%.
+    fireEvent.wheel(img, { deltaY: 100 });
+    expect(img.style.transform).toContain("scale(1)");
+  });
+
+  it("botones accesibles: «Acercar» → 150%, «Restablecer» vuelve a 100%", () => {
+    render(<StudioPreviewModal {...baseProps()} />);
+    const img = screen.getByRole("img", { name: /Vista previa de 6 imanes/ });
+    const acercar = screen.getByRole("button", { name: "Acercar la vista previa" });
+    const restablecer = screen.getByRole("button", {
+      name: "Restablecer el zoom de la vista previa",
+    });
+    // Sin zoom: alejar y restablecer deshabilitados.
+    expect(screen.getByRole("button", { name: "Alejar la vista previa" })).toBeDisabled();
+    expect(restablecer).toBeDisabled();
+    fireEvent.click(acercar);
+    expect(img.style.transform).toContain("scale(1.5)");
+    expect(screen.getByText("150%")).toBeInTheDocument();
+    fireEvent.click(restablecer);
+    expect(img.style.transform).toContain("scale(1)");
+    expect(screen.getByText("100%")).toBeInTheDocument();
+  });
+
+  it("modo paginado: el zoom existe por página y se RESTABLECE al cambiar de unidad", () => {
+    render(<StudioPreviewModal {...baseProps()} pages={PAGES} unitCount={3} />);
+    const img1 = screen.getByRole("img", { name: /Set 1 de 3/ });
+    fireEvent.doubleClick(img1);
+    expect(img1.style.transform).toContain("scale(2)");
+    // Cambiar de unidad (flecha) → la página nueva arranca sin zoom.
+    fireEvent.click(screen.getByRole("button", { name: "Unidad siguiente" }));
+    const img2 = screen.getByRole("img", { name: /Set 2 de 3/ });
+    expect(img2.style.transform).toContain("scale(1)");
+    expect(screen.getByText("100%")).toBeInTheDocument();
+  });
+
+  it("modo paginado: con zoom ACTIVO el swipe horizontal NO cambia de página (es pan)", () => {
+    render(<StudioPreviewModal {...baseProps()} pages={PAGES} unitCount={3} />);
+    const pager = screen.getByRole("group", { name: "Set 1 de 3" });
+    const img = screen.getByRole("img", { name: /Set 1 de 3/ });
+    fireEvent.doubleClick(img); // zoom 200%
+    // Swipe horizontal amplio sobre el pager: con zoom activo NO pagina.
+    fireEvent.touchStart(pager, {
+      touches: [{ clientX: 300, clientY: 100 }],
+      changedTouches: [{ clientX: 300, clientY: 100 }],
+    });
+    fireEvent.touchEnd(pager, { changedTouches: [{ clientX: 80, clientY: 104 }] });
+    expect(screen.getByText("Set 1 de 3")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Set 2 de 3/ })).not.toBeInTheDocument();
+    // Sin zoom el MISMO gesto sí pagina (comportamiento de siempre intacto).
+    fireEvent.click(screen.getByRole("button", { name: "Restablecer el zoom de la vista previa" }));
+    fireEvent.touchStart(pager, {
+      touches: [{ clientX: 300, clientY: 100 }],
+      changedTouches: [{ clientX: 300, clientY: 100 }],
+    });
+    fireEvent.touchEnd(pager, { changedTouches: [{ clientX: 80, clientY: 104 }] });
+    expect(screen.getByRole("img", { name: /Set 2 de 3/ })).toBeInTheDocument();
+  });
+
+  it("modo paginado: un gesto MULTI-TOUCH (pinch) no dispara el swipe al levantar los dedos", () => {
+    render(<StudioPreviewModal {...baseProps()} pages={PAGES} unitCount={3} />);
+    const pager = screen.getByRole("group", { name: "Set 1 de 3" });
+    // Dos dedos bajan (pinch) y se levantan con desplazamiento horizontal grande:
+    // sin la guardia, el touchEnd final se leía como swipe y saltaba de unidad.
+    fireEvent.touchStart(pager, {
+      touches: [
+        { clientX: 300, clientY: 100 },
+        { clientX: 320, clientY: 100 },
+      ],
+      changedTouches: [{ clientX: 300, clientY: 100 }],
+    });
+    fireEvent.touchEnd(pager, {
+      touches: [{ clientX: 180, clientY: 100 }],
+      changedTouches: [{ clientX: 320, clientY: 100 }],
+    });
+    fireEvent.touchEnd(pager, { changedTouches: [{ clientX: 180, clientY: 100 }] });
+    expect(screen.getByText("Set 1 de 3")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Set 2 de 3/ })).not.toBeInTheDocument();
   });
 });

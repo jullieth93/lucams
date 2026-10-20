@@ -280,9 +280,13 @@ describe("StudioStyleToolbar — «Personalizado»: picker propio con paridad de
     fireEvent.change(input, { target: { value: "#123abc" } });
     expect(store.getState().canvasData!.borderColor).toBe("#123ABC");
 
-    // El trigger refleja el color libre y queda marcado como activo.
+    // 2026-10-19 — el trigger conserva el gradiente multicolor como affordance
+    // (se puede re-abrir el picker) y el hex elegido va en el DISCO INTERIOR.
     const trigger = screen.getByRole("button", { name: "Personalizado" });
-    expect(trigger.style.background).toContain("rgb(18, 58, 188)");
+    expect(trigger.style.background).toContain("conic-gradient");
+    const innerDisc = trigger.querySelector("span[aria-hidden]");
+    expect(innerDisc).not.toBeNull();
+    expect((innerDisc as HTMLElement).style.backgroundColor).toBe("rgb(18, 58, 188)");
 
     fireEvent.keyDown(screen.getByRole("group", { name: "Personalizado" }), { key: "Escape" });
     expect(

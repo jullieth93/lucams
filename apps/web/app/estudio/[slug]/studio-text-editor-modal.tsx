@@ -14,8 +14,10 @@
  * Diseño UX:
  *   - Modal compacto (Radix Dialog), no fullscreen
  *   - Preview en vivo del texto con los cambios mientras editás
- *   - Aplicar al click "Aplicar" → persiste en SlotState.textOverrides
- *   - Cerrar sin aplicar = cancela cambios (no auto-save preview)
+ *   - Aplicar al click "Listo" del footer → persiste en SlotState.textOverrides
+ *     y cierra (2026-10-19 — decisión del owner: UN solo botón; antes coexistían
+ *     «Aplicar» arriba del formulario y un «Listo» que solo cerraba sin guardar).
+ *   - Cerrar sin aplicar (× o Escape) = cancela cambios (no auto-save preview)
  *
  * Constraint técnico: las fonts brand (Fredoka, Caveat, Patrick Hand) deben
  * estar cargadas vía CSS @import en globals.css para que Konva.Text las use.
@@ -29,7 +31,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import { Slider } from "@/components/ui/slider";
 import { Hint } from "@/components/ui/tooltip";
 import { CustomColorPicker } from "@/components/color-picker";
-import { Bold, Check, Italic, Loader2, Type } from "lucide-react";
+import { Bold, Check, Italic, Type } from "lucide-react";
 import { FONT_PRESETS, TEXT_COLOR_PRESETS } from "./lib/fonts";
 import { isLowContrastOnCard, relativeLuminance } from "./lib/contrast";
 import type { TextLayer, TextOverride } from "./types";
@@ -57,6 +59,15 @@ export type StudioTextEditorFormProps = {
    *  undefined = sin cambios (no-op, el override vigente se conserva). */
   onApply: (override: TextOverride | null | undefined) => void;
   /**
+   * 2026-10-19 (owner — un solo «Listo») — el form ya NO tiene botón «Aplicar»
+   * propio: el host (footer del modal) registra acá la función que COMPROMETE
+   * la edición vigente (misma semántica del viejo «Aplicar»: override final,
+   * null = limpiar, undefined = sin cambios) y la invoca desde su «Listo».
+   * El commit es SINCRÓNICO (el modal cierra de inmediato; el spinner del viejo
+   * botón ya no tiene dónde verse).
+   */
+  applyRef?: { current: (() => void) | null };
+  /**
    * Ola 28 (owner 2026-09-11, 1.2.1.A) — color de la TARJETA sobre la que se
    * imprime el texto (borderColor del canvas). El preview pinta ese fondo
    * (WYSIWYG con la tarjeta); si el color de letra elegido casi no contrasta
@@ -79,6 +90,9 @@ export type StudioTextEditorFormProps = {
 export function StudioTextEditorModal(props: StudioTextEditorModalProps) {
   const { isOpen, layer, currentOverride, slotLabel, onClose, onApply } = props;
   const texts = useStudioTexts();
+  // 2026-10-19 — el «Listo» del footer APLICA (persiste el override, como el
+  // viejo «Aplicar» del formulario) y CIERRA. Un solo botón, decisión del owner.
+  const applyRef = useRef<(() => void) | null>(null);
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-md p-0">
@@ -98,16 +112,24 @@ export function StudioTextEditorModal(props: StudioTextEditorModalProps) {
         </div>
 
         {layer && (
-          <StudioTextEditorForm layer={layer} currentOverride={currentOverride} onApply={onApply} />
+          <StudioTextEditorForm
+            layer={layer}
+            currentOverride={currentOverride}
+            onApply={onApply}
+            applyRef={applyRef}
+          />
         )}
 
-        <div className="border-brand-purple/10 bg-brand-cream/30 flex items-center justify-between border-t px-4 py-3">
+        <div className="border-brand-purple/10 bg-brand-cream/30 flex items-center justify-end border-t px-4 py-3">
           <button
             type="button"
-            onClick={onClose}
-            className="text-brand-purple-dark/70 hover:bg-brand-purple/10 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
+            onClick={() => {
+              applyRef.current?.();
+              onClose();
+            }}
+            className="bg-brand-purple hover:bg-brand-purple-dark rounded-md px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors"
           >
-            {texts.texto.editorCerrar}
+            {texts.texto.slotEditListo}
           </button>
         </div>
       </DialogContent>
@@ -119,6 +141,7 @@ export function StudioTextEditorForm({
   layer,
   currentOverride,
   onApply,
+  applyRef,
   cardColor = null,
   cardDefaultFill,
 }: StudioTextEditorFormProps) {
@@ -160,61 +183,43 @@ export function StudioTextEditorForm({
     return "normal";
   })();
 
-  // Lucy 2026-09-08 — estado de PROCESANDO del botón «Aplicar»: antes el click no
-  // mostraba NINGÚN feedback (el commit al store es casi instantáneo pero el
-  // re-render Konva de la grilla puede tardar un frame largo, y el usuario no sabía
-  // si había funcionado). Spinner + disabled hasta completar, con un mínimo visible
-  // para que el feedback se perciba (mismo patrón Loader2 del resto del Estudio).
-  const [applying, setApplying] = useState(false);
-  const applyingTimerRef = useRef<number | null>(null);
-  useEffect(
-    () => () => {
-      if (applyingTimerRef.current !== null) window.clearTimeout(applyingTimerRef.current);
-    },
-    [],
-  );
-
-  // Construir el override final: el estado COMPLETO deseado (el store REEMPLAZA
-  // el override del slot entero), comparado contra el vigente para decidir.
-  const handleApply = () => {
-    if (applying) return;
-    // QA 1.2 (2026-10-07) — bug: el override solo incluía los campos que
-    // CAMBIARON. Tras "aplicar a todas" (p.ej. texto "Hola" en todos los slots),
-    // abrir el editor de UNA foto y dar «Aplicar» sin tocar nada producía un
-    // override vacío → se enviaba `null` → se BORRABA el override de ese slot
-    // (el texto de la unidad desaparecía). Semántica corregida:
-    //   - El texto vigente viaja SIEMPRE que no esté vacío (aunque no cambió):
-    //     si solo se tocó el estilo, el texto no se pierde en el reemplazo.
-    //   - `null` SOLO cuando el resultado final es vacío (el usuario borró el
-    //     texto explícitamente y dejó el estilo base) → limpiar el override.
-    //   - Sin cambios respecto al override vigente → `undefined` = NO-OP (no
-    //     mutar el store; el override —y el campo masivo— se conservan).
-    const next: TextOverride = {};
-    // Ola 25 — vacío = sin texto en la tarjeta: no se guarda override.text (el
-    // default de la plantilla es solo el placeholder gris del input).
-    if (text.trim() !== "") next.text = text;
-    if (fontFamily !== (layer.fontFamily ?? FONT_PRESETS[0].fontFamily))
-      next.fontFamily = fontFamily;
-    if (fill !== baseFill) next.fill = fill;
-    if (fontSize !== baseFontSize) next.fontSize = fontSize;
-    if (computedFontWeight !== baseFontWeight) next.fontWeight = computedFontWeight;
-    const prev = currentOverride ?? {};
-    const prevKeys = Object.keys(prev) as (keyof TextOverride)[];
-    const nextKeys = Object.keys(next) as (keyof TextOverride)[];
-    const unchanged =
-      prevKeys.length === nextKeys.length && nextKeys.every((k) => next[k] === prev[k]);
-    setApplying(true);
-    // El commit va un frame DESPUÉS para que el spinner pinte primero (si el commit
-    // y el repaint pesado corren en el mismo tick, el spinner nunca se ve).
-    requestAnimationFrame(() => {
-      if (unchanged) {
-        onApply(undefined);
-      } else {
-        onApply(nextKeys.length > 0 ? next : null);
-      }
-      applyingTimerRef.current = window.setTimeout(() => setApplying(false), 450);
-    });
-  };
+  // 2026-10-19 (owner — un solo «Listo») — el form ya no tiene botón «Aplicar»
+  // propio: expone al host la función que COMPROMETE la edición vigente vía
+  // applyRef (el «Listo» del footer del modal la invoca y cierra). El commit es
+  // SINCRÓNICO: al cerrar de inmediato no hay dónde mostrar el viejo spinner
+  // (Lucy 2026-09-08) — se retiran el estado `applying` y su deferral de un
+  // frame. La semántica del commit es la de siempre:
+  //   - El texto vigente viaja SIEMPRE que no esté vacío (aunque no cambió):
+  //     si solo se tocó el estilo, el texto no se pierde en el reemplazo.
+  //   - `null` SOLO cuando el resultado final es vacío (el usuario borró el
+  //     texto explícitamente y dejó el estilo base) → limpiar el override.
+  //   - Sin cambios respecto al override vigente → `undefined` = NO-OP (no
+  //     mutar el store; el override —y el campo masivo— se conservan).
+  // Se registra en un effect SIN deps (cada render) para que la closure siempre
+  // capture el estado más reciente; el cleanup la desregistra al desmontar.
+  useEffect(() => {
+    if (!applyRef) return;
+    applyRef.current = () => {
+      const next: TextOverride = {};
+      // Ola 25 — vacío = sin texto en la tarjeta: no se guarda override.text (el
+      // default de la plantilla es solo el placeholder gris del input).
+      if (text.trim() !== "") next.text = text;
+      if (fontFamily !== (layer.fontFamily ?? FONT_PRESETS[0].fontFamily))
+        next.fontFamily = fontFamily;
+      if (fill !== baseFill) next.fill = fill;
+      if (fontSize !== baseFontSize) next.fontSize = fontSize;
+      if (computedFontWeight !== baseFontWeight) next.fontWeight = computedFontWeight;
+      const prev = currentOverride ?? {};
+      const prevKeys = Object.keys(prev) as (keyof TextOverride)[];
+      const nextKeys = Object.keys(next) as (keyof TextOverride)[];
+      const unchanged =
+        prevKeys.length === nextKeys.length && nextKeys.every((k) => next[k] === prev[k]);
+      onApply(unchanged ? undefined : nextKeys.length > 0 ? next : null);
+    };
+    return () => {
+      applyRef.current = null;
+    };
+  });
 
   const handleReset = () => {
     // Ola 25 — "vacío" es el estado por defecto del texto: el input queda en
@@ -250,28 +255,8 @@ export function StudioTextEditorForm({
 
   return (
     <div className="space-y-4 p-4">
-      {/* Owner 2026-10-05 — «Aplicar» a la parte SUPERIOR del formulario (visible
-          sin scroll): antes estaba abajo junto a «Restablecer» y competía con el
-          «Listo» del footer del modal (dos primarios confusos). Aplica la edición
-          de texto de ESTA capa; «Listo» (ahora secundario) solo cierra el modal. */}
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={handleApply}
-          disabled={applying}
-          aria-busy={applying}
-          className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1.5 rounded-md px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors disabled:cursor-wait disabled:opacity-80"
-        >
-          {applying ? (
-            <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-              <span>{texts.texto.aplicando}</span>
-            </>
-          ) : (
-            texts.texto.aplicar
-          )}
-        </button>
-      </div>
+      {/* 2026-10-19 (owner) — ya NO hay «Aplicar» propio: la edición la compromete
+          el «Listo» del footer del modal (vía applyRef). Un solo CTA. */}
 
       {/* Preview live — más grande (min-h 100px) + escala 70% en vez de 60% */}
       <div
@@ -467,8 +452,8 @@ export function StudioTextEditorForm({
       </div>
 
       <div className="flex items-center justify-between pt-2">
-        {/* «Restablecer» queda abajo (acción destructiva secundaria); «Aplicar»
-            se movió a la parte superior del formulario (owner 2026-10-05). */}
+        {/* «Restablecer» queda abajo (acción destructiva secundaria); aplicar lo
+            hace el «Listo» del footer del modal (2026-10-19, owner). */}
         <button
           type="button"
           onClick={handleReset}

@@ -7,8 +7,10 @@
  * "cientos de colores" en TODAS las plataformas, táctil incluido).
  *
  * Punto de entrada = swatch circular con el conic-gradient de marca (idéntico
- * affordance al input nativo anterior). Al abrirse despliega INLINE un panel
- * con:
+ * affordance al input nativo anterior). 2026-10-19 — el gradiente NO se pierde
+ * al elegir un color: el hex elegido va en un disco interior sobre el anillo
+ * arcoíris, así el trigger siempre comunica que el picker se puede re-abrir.
+ * Al abrirse despliega INLINE un panel con:
  *   - área saturación/luminosidad (pointer events con pointer-capture: arrastre
  *     táctil y de mouse; + flechas de teclado, role="slider"),
  *   - slider de TONO nativo (<input type="range">: táctil y teclado gratis),
@@ -295,8 +297,20 @@ export function CustomColorPicker({
         disabled && "cursor-not-allowed opacity-60 hover:scale-100",
         className,
       )}
-      style={{ background: value ?? CUSTOM_COLOR_GRADIENT }}
+      // 2026-10-19 — el trigger conserva SIEMPRE el gradiente multicolor como
+      // affordance ("acá puedes elegir otro color"): antes pintaba el hex plano
+      // (background: value) y al elegir un personalizado el arcoíris desaparecía
+      // — el usuario ya no veía que podía re-abrir el picker. Con color elegido,
+      // el hex va en un DISCO INTERIOR sobre el anillo arcoíris.
+      style={{ background: CUSTOM_COLOR_GRADIENT }}
     >
+      {value ? (
+        <span
+          aria-hidden
+          className="absolute inset-[3px] shadow-inner ring-1 ring-black/10"
+          style={{ backgroundColor: value, borderRadius: "inherit" }}
+        />
+      ) : null}
       {active && value ? (
         <Check
           aria-hidden

@@ -24,6 +24,7 @@ import {
 } from "@/features/personalization/service";
 import { DRAFT_MARKER_ACCOUNT_MAX_AGE_MS, DRAFT_MARKER_GUEST_MAX_AGE_MS } from "./lib/draft-marker";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
+import { declaresUnits, unitCountOf } from "@/features/personalization/design-units";
 import { resolvePersonalizationSurface } from "@/features/personalization/surface";
 import { readPhotoPackDesignInfo } from "@/features/products/photo-pack-resolve";
 import {
@@ -330,6 +331,9 @@ export default async function EstudioPage({
     let recoveredUnits: number | undefined;
     let recoveredThemeId: string | undefined;
     let recoveredUnitColors: string[][] | undefined;
+    // 2026-10-19 — estilo y borde POR SET (metadata.units[u].styleSetId/withBorder).
+    let recoveredUnitStyles: (string | null | undefined)[] | undefined;
+    let recoveredUnitBorders: (boolean | undefined)[] | undefined;
     let replacesCartDesignId: string | null = null;
     if (recoverDesign) {
       const meta = recoverDesign.metadata as Record<string, unknown> | null;
@@ -362,6 +366,19 @@ export default async function EstudioPage({
           if (Array.isArray(raw)) return raw.filter((c): c is string => typeof c === "string");
           return u === 0 ? baseColors : [];
         });
+        // Estilo/borde POR SET (2026-10-19): units[u] manda; sin la clave (diseños
+        // guardados antes del rediseño) el set hereda el valor a nivel DISEÑO
+        // (styleSetId/withBorder raíz) — era global entonces, aplica a todos.
+        recoveredUnitStyles = Array.from({ length: unitCount }, (_, u) => {
+          const raw = (unitsMeta[u] as { styleSetId?: unknown } | undefined)?.styleSetId;
+          // Se valida contra los sets del idioma recuperado más abajo.
+          if (raw === null || typeof raw === "string") return raw;
+          return recoveredStyleId;
+        });
+        recoveredUnitBorders = Array.from({ length: unitCount }, (_, u) => {
+          const raw = (unitsMeta[u] as { withBorder?: unknown } | undefined)?.withBorder;
+          return typeof raw === "boolean" ? raw : recoveredWithBorder;
+        });
       }
     }
     const initialLanguage = recoveredLanguage ?? (variantAttrs.language === "en" ? "en" : "es");
@@ -380,6 +397,19 @@ export default async function EstudioPage({
     if (typeof recoveredStyleId === "string") {
       const stylesForLang = initialLanguage === "en" ? stylesEn : stylesEs;
       if (!stylesForLang.some((s) => s.id === recoveredStyleId)) recoveredStyleId = undefined;
+    }
+    // 2026-10-19 — misma validación por set: un estilo que ya no existe cae a
+    // undefined (el editor usa su default); null explícito («Solo letra») se
+    // respeta. Los sets que heredaron el valor raíz arriba se re-evalúan tras la
+    // validación del representante.
+    if (recoveredUnitStyles) {
+      const stylesForLang = initialLanguage === "en" ? stylesEn : stylesEs;
+      recoveredUnitStyles = recoveredUnitStyles.map((raw) => {
+        if (typeof raw === "string") {
+          return stylesForLang.some((s) => s.id === raw) ? raw : undefined;
+        }
+        return raw === null ? null : recoveredStyleId;
+      });
     }
     const stylesForSubtitle = initialLanguage === "en" ? stylesEn : stylesEs;
     const letters =
@@ -419,8 +449,13 @@ export default async function EstudioPage({
               // re-abrir (?designId=) manda el nº de sets GUARDADO en el diseño.
               initialUnits={recoveredUnits ?? initialCopies}
               // ?designId= (re-apertura) → selección persistida del diseño.
+              // 2026-10-19 — estilo y borde POR SET (metadata.units[u]); las
+              // claves raíz siguen llegando como default del set 1 / sets sin
+              // clave propia (diseños guardados antes del rediseño).
               initialStyleId={recoveredStyleId}
+              initialUnitStyles={recoveredUnitStyles}
               initialWithBorder={recoveredWithBorder}
+              initialUnitBorders={recoveredUnitBorders}
               initialColorTheme={recoveredThemeId}
               initialUnitColors={recoveredUnitColors}
               // Edición desde el carrito: la línea que apuntaba al diseño original se
@@ -591,6 +626,25 @@ export default async function EstudioPage({
         replacesCartDesignId = sp.designId;
         design = await getOwnedDesign(clone.id, owner);
       }
+    }
+    // 2026-10-19 — cobro correcto al RETOMAR (resume=1): si la URL trae la
+    // intención de unidades de la PDP (?copies=N) y el canvas del borrador
+    // declara OTRAS, retomarlo cobraría/describiría las unidades del borrador
+    // y no las elegidas en la ficha (bug: "1 Set de 12" → línea de 2
+    // calendarios de 12 páginas). Se descarta el recover y arranca un draft
+    // fresco. La defensa principal es el gate del marcador en
+    // lib/draft-marker.ts (cliente); esto cubre deep-links que traen ambos
+    // params. Diseños sin unidades declaradas (packs de imán suelto, legacy)
+    // no se pueden comparar → se retoman igual.
+    if (
+      design &&
+      design.status === "DRAFT" &&
+      sp.resume === "1" &&
+      initialCopies !== undefined &&
+      declaresUnits(design.canvasData) &&
+      unitCountOf(design.canvasData) !== initialCopies
+    ) {
+      design = null;
     }
     if (design && design.status === "DRAFT") {
       initialDesignId = design.id;

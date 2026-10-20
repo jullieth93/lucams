@@ -156,6 +156,17 @@ export type AccountTexts = {
     draftDeleteConfirm: string;
     draftsEmpty: string;
     draftsEmptyConfirm: string;
+    /** 2026-10-20 — confirmaciones destructivas como Dialog real (reemplazan el
+     *  confirm inline "Sí/No" de texto xs): cuerpo del diálogo + rótulo del
+     *  botón destructivo por acción, y «Cancelar» compartido. Los títulos del
+     *  diálogo reusan archiveConfirm/draftDeleteConfirm/draftsEmptyConfirm. */
+    archiveBody: string;
+    archiveYes: string;
+    draftDeleteBody: string;
+    draftDeleteYes: string;
+    draftsEmptyBody: string;
+    draftsEmptyYes: string;
+    cancel: string;
   };
   favorites: {
     title: string;
@@ -350,6 +361,15 @@ export const DEFAULT_ACCOUNT_TEXTS: AccountTexts = {
     draftDeleteConfirm: "¿Eliminar?",
     draftsEmpty: "Vaciar borradores",
     draftsEmptyConfirm: "¿Vaciar todos?",
+    archiveBody: "El diseño dejará de aparecer en tu lista de «Mis diseños».",
+    archiveYes: "Sí, archivar",
+    draftDeleteBody:
+      "Se eliminará este borrador con las fotos que subiste. Esta acción no se puede deshacer.",
+    draftDeleteYes: "Sí, eliminar",
+    draftsEmptyBody:
+      "Se eliminarán TODOS tus borradores con las fotos que subiste. Esta acción no se puede deshacer.",
+    draftsEmptyYes: "Sí, vaciar",
+    cancel: "Cancelar",
   },
   favorites: {
     title: "Mis favoritos",
@@ -523,6 +543,13 @@ export const ACCOUNT_TEXT_KEYS: Record<string, string> = {
   "designs.draftDeleteConfirm": "account.designs.draft-delete-confirm",
   "designs.draftsEmpty": "account.designs.drafts-empty",
   "designs.draftsEmptyConfirm": "account.designs.drafts-empty-confirm",
+  "designs.archiveBody": "account.designs.archive-body",
+  "designs.archiveYes": "account.designs.archive-yes",
+  "designs.draftDeleteBody": "account.designs.draft-delete-body",
+  "designs.draftDeleteYes": "account.designs.draft-delete-yes",
+  "designs.draftsEmptyBody": "account.designs.drafts-empty-body",
+  "designs.draftsEmptyYes": "account.designs.drafts-empty-yes",
+  "designs.cancel": "account.designs.cancel",
   "favorites.title": "account.favorites.title",
   "favorites.subtitleEmpty": "account.favorites.subtitle-empty",
   "favorites.countSingle": "account.favorites.count-single",

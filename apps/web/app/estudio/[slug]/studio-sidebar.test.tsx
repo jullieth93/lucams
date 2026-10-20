@@ -202,10 +202,16 @@ describe("StudioSidebar — miniatura watermark de prediseñados (3.10, 2026-10-
  *      nada hasta elegir.
  *   2. Cara A → primer slot PAR libre; cara B → primer slot IMPAR libre
  *      (destino EXACTO vía forceTargetSlot, sin re-anclaje a cara A).
- *   3. Cara elegida sin slots libres → NO se pisa contenido ni se sube nada
- *      (consistente con el bloqueo de cara B del Paquete A: solo aviso toast).
- *   4. Prediseño con imageUrlB → SIN pregunta: llena cara A + cara B del par.
- *   5. Con slot seleccionado o producto de 1 cara → SIN pregunta.
+ *   3. Cara elegida sin slots libres → modal de REEMPLAZO (2026-10-19): lista
+ *      los lienzos ocupados de esa cara y el cliente elige cuál reemplazar
+ *      (antes: solo un toast y callejón sin salida).
+ *   4. Prediseño con imageUrlB → SIN pregunta de cara: llena cara A + cara B
+ *      del primer par libre; sin par libre → modal de reemplazo (caras A).
+ *   5. "Pregunta SIEMPRE" (owner 2026-10-19): el clic de la grilla IGNORA el
+ *      slot seleccionado — assignAssetToSlot lo auto-selecciona al aplicar y
+ *      eso hacía que los clics siguientes sobrescribieran sin preguntar.
+ *      (Destino explícito sigue existiendo: tap en la grilla del lienzo y
+ *      drag & drop, que no pasan por este handler.)
  */
 
 const ONE_FACE: PredesignedItem = {
@@ -301,17 +307,45 @@ describe("StudioSidebar — regla de caras en la aplicación global (2026-10-12)
     expect(faceSlotsOf(store)).toEqual([null, "own-1", null, "asset-g1-a"]);
   });
 
-  it("cara B elegida SIN slots libres → no se aplica ni se pisa contenido (patrón cara B ocupada)", async () => {
+  it("cara B elegida SIN slots libres → modal de REEMPLAZO con los lienzos ocupados de esa cara (2026-10-19)", async () => {
     const store = renderTwoFaceSidebar(4, [1, 3]);
     clickDesign(ONE_FACE);
     fireEvent.click(screen.getByRole("button", { name: "Cara B" }));
 
-    // Ni siquiera se sube el asset al servidor: no había dónde ponerlo.
+    // La pregunta de cara se cierra y abre la de reemplazo; no se sube nada aún.
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: FACE_DIALOG_NAME })).not.toBeInTheDocument(),
     );
+    expect(
+      screen.getByRole("dialog", { name: "¿Cuál lienzo quieres reemplazar?" }),
+    ).toBeInTheDocument();
+    // Solo los lienzos ocupados de la cara B (slots impares 1 y 3).
+    expect(
+      screen.getByRole("button", { name: "Reemplazar el diseño del lienzo 2" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Reemplazar el diseño del lienzo 4" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reemplazar el diseño del lienzo 1" })).toBeNull();
     expect(assignCalls).toHaveLength(0);
     expect(faceSlotsOf(store)).toEqual([null, "own-1", null, "own-3"]);
+  });
+
+  it("elegir un lienzo en el modal de reemplazo aplica el diseño EXACTAMENTE ahí", async () => {
+    const store = renderTwoFaceSidebar(4, [1, 3]);
+    clickDesign(ONE_FACE);
+    fireEvent.click(screen.getByRole("button", { name: "Cara B" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Reemplazar el diseño del lienzo 2" }),
+    );
+
+    await waitFor(() => expect(assignCalls).toHaveLength(1));
+    expect(faceSlotsOf(store)).toEqual([null, "asset-g1-a", null, "own-3"]);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "¿Cuál lienzo quieres reemplazar?" }),
+      ).not.toBeInTheDocument(),
+    );
   });
 
   it("prediseño con imageUrlB → SIN pregunta: llena cara A y cara B del primer par libre", async () => {
@@ -323,15 +357,72 @@ describe("StudioSidebar — regla de caras en la aplicación global (2026-10-12)
     expect(faceSlotsOf(store)).toEqual(["asset-g2-ab-a", "asset-g2-ab-b", null, null]);
   });
 
-  it("con slot seleccionado (destino explícito) → SIN pregunta", async () => {
+  it("con slot seleccionado el clic de la grilla IGUAL pregunta la cara (2026-10-19: la auto-selección no es destino)", async () => {
     const store = renderTwoFaceSidebar();
     // act(): la suscripción useStore debe re-renderizar ANTES del clic.
     act(() => store.getState().selectSlot(2));
     clickDesign(ONE_FACE);
 
-    expect(screen.queryByRole("dialog", { name: FACE_DIALOG_NAME })).not.toBeInTheDocument();
+    // Antes: el slot seleccionado era destino explícito y NO preguntaba — tras
+    // la primera aplicación eso sobrescribía el mismo lienzo en silencio.
+    expect(screen.getByRole("dialog", { name: FACE_DIALOG_NAME })).toBeInTheDocument();
+    expect(assignCalls).toHaveLength(0);
+    expect(faceSlotsOf(store)).toEqual([null, null, null, null]);
+  });
+
+  it("tras aplicar, la selección de slot queda LIMPIA → el clic siguiente vuelve a preguntar", async () => {
+    const store = renderTwoFaceSidebar();
+    clickDesign(ONE_FACE);
+    fireEvent.click(screen.getByRole("button", { name: "Cara A" }));
     await waitFor(() => expect(assignCalls).toHaveLength(1));
-    expect(faceSlotsOf(store)).toEqual([null, null, "asset-g1-a", null]);
+    // assignAssetToSlot auto-seleccionó el slot 0; el flujo lo limpia.
+    expect(store.getState().selectedSlotIndex).toBeNull();
+
+    // Segundo clic en el mismo diseño: vuelve a preguntar la cara (no cae
+    // directo al lienzo recién llenado ni lo sobrescribe en silencio).
+    clickDesign(ONE_FACE);
+    expect(screen.getByRole("dialog", { name: FACE_DIALOG_NAME })).toBeInTheDocument();
+    expect(assignCalls).toHaveLength(1); // no se subió nada todavía
+  });
+
+  it("diseño de 2 caras SIN par libre → modal de reemplazo solo con caras A (anclas de unidad)", async () => {
+    const store = renderTwoFaceSidebar(4, [0, 1, 2, 3]);
+    clickDesign(TWO_FACES);
+
+    expect(
+      await screen.findByRole("dialog", { name: "¿Cuál lienzo quieres reemplazar?" }),
+    ).toBeInTheDocument();
+    // Candidatas: solo las caras A ocupadas (slots 0 y 2 → «Lienzo 1»/«Lienzo 3»).
+    expect(
+      screen.getByRole("button", { name: "Reemplazar el diseño del lienzo 1" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Reemplazar el diseño del lienzo 3" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reemplazar el diseño del lienzo 2" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reemplazar el diseño del lienzo 3" }));
+    await waitFor(() => expect(assignCalls).toHaveLength(1));
+    // La cara A de la unidad 2 se reemplaza; su cara B ocupada NO se pisa
+    // (bBlocked → aviso), misma regla de nunca pisar contenido.
+    expect(faceSlotsOf(store)).toEqual(["own-0", "own-1", "asset-g2-ab-a", "own-3"]);
+  });
+
+  it("producto de 1 cara SIN lienzos libres → modal de reemplazo con TODOS los lienzos ocupados", async () => {
+    const store = renderTwoFaceSidebar(2, [0, 1], 1);
+    clickDesign(ONE_FACE);
+
+    expect(
+      await screen.findByRole("dialog", { name: "¿Cuál lienzo quieres reemplazar?" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Reemplazar el diseño del lienzo 1" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Reemplazar el diseño del lienzo 2" }),
+    ).toBeInTheDocument();
+    expect(assignCalls).toHaveLength(0);
+    expect(faceSlotsOf(store)).toEqual(["own-0", "own-1"]);
   });
 
   it("producto de 1 cara → SIN pregunta aunque el destino sea global", async () => {

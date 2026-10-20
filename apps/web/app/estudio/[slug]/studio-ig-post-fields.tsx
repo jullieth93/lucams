@@ -45,6 +45,11 @@
  *    el editor de slot suma la sección «Campos de Instagram»
  *    (studio-ig-slot-fields.tsx) con los MISMOS 5 controles asistidos para el
  *    canvas individual.
+ *  - 2026-10-19 — botón de re-aplicado EXPLÍCITO (texts.texto.igReaplicarCta):
+ *    re-escribe los valores con contenido en TODOS los slots actuales aunque el
+ *    texto no haya cambiado (el commit debounced sería no-op). Los slots de
+ *    packs agregados después ya heredan el valor pack-level al crearse (store);
+ *    este botón cubre el re-alineo manual.
  *
  * Se monta desde StudioMessageField (el sidebar ya lo renderiza cuando
  * allowText) → aparece SOLO con la plantilla Instagram (isInstagramTemplate),
@@ -150,6 +155,8 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
   });
   const setTextOverrideAllSlots = useStore(store, (s) => s.setTextOverrideAllSlots);
   const texts = useStudioTexts();
+  // 2026-10-19 — feedback aria-live del re-aplicado explícito (ver abajo).
+  const [reapplied, setReapplied] = useState(false);
 
   const fields = fieldsJson ? (JSON.parse(fieldsJson) as IgField[]) : null;
   if (!fields) return null;
@@ -159,6 +166,22 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
   // del set. El commit llega DEBOUNCED desde IgDebouncedInput (no por tecla).
   const commitText = (layerId: string, text: string | null) =>
     setTextOverrideAllSlots(layerId, text === null || text.trim() === "" ? null : { text });
+
+  // 2026-10-19 — re-aplicado EXPLÍCITO de los datos masivos a todos los slots
+  // actuales (bug: al agregar un pack DESPUÉS de llenar los campos, los slots
+  // nuevos nacían sin los textos y re-commit del MISMO texto era no-op del
+  // debounce, así que no había forma de alcanzarlos). Los slots nuevos ya
+  // heredan el valor pack-level al crearse (store.setPhotoSlotsPerUnit /
+  // setUnitCount); este botón queda como vía explícita de re-aplicar a mano
+  // (p.ej. tras editar una foto individual y querer unificar de nuevo).
+  // `f.value` ya viene en formato GUARDADO (con "@", con " me gusta", hashtags
+  // con "#") → se re-aplica tal cual, sin re-transformar. Las capas que "varían
+  // por foto" sin valor pack-level no tienen nada que re-aplicar.
+  const reappliableFields = fields.filter((f) => !f.varies && f.value.trim() !== "");
+  const handleReapplyAll = () => {
+    for (const f of reappliableFields) setTextOverrideAllSlots(f.id, { text: f.value });
+    setReapplied(true);
+  };
 
   const renderControl = (f: IgField) => {
     const inputId = `studio-ig-field-${f.id}`;
@@ -310,6 +333,24 @@ export function StudioIgPostFields({ store }: { store: StoreApi<StudioStoreState
           );
         })}
       </div>
+      {/* 2026-10-19 — re-aplicado explícito a TODOS los slots actuales (incluidos
+          los de packs agregados después): el commit debounced del input es no-op
+          cuando el texto no cambió, así que sin este botón no había forma de
+          re-alcanzar slots que quedaran atrás. */}
+      {reappliableFields.length > 0 && (
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={handleReapplyAll}
+            className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 hover:bg-brand-purple/5 focus-visible:ring-brand-turquoise inline-flex items-center gap-1.5 rounded-full border-2 bg-white px-3.5 py-2 text-xs font-bold transition-all focus-visible:ring-2 focus-visible:outline-none active:scale-95"
+          >
+            {texts.texto.igReaplicarCta}
+          </button>
+          <span aria-live="polite" role="status" className="sr-only">
+            {reapplied ? texts.texto.igReaplicarFeedback : ""}
+          </span>
+        </div>
+      )}
       {/* Mismo estilo de aviso pack-level que "Tu mensaje" (caja destacada, no el
           gris del hint): estos datos se imprimen igual en TODAS las fotos. */}
       <p

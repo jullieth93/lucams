@@ -247,6 +247,14 @@ export type StudioTexts = {
     slotCentrarAria: string;
     slotEditarAria: string;
     slotQuitarAria: string;
+    /** 2026-10-19 — «Borrar el diseño»: reset GLOBAL de los slots del canvas
+     *  (fotos + overrides de texto) con modal de confirmación. La plantilla, la
+     *  variante y las fotos de «Mis fotos» se conservan; es undoable (Ctrl+Z). */
+    borrarDisenoCta: string;
+    borrarDisenoTitulo: string;
+    borrarDisenoCuerpo: string;
+    borrarDisenoConfirmar: string;
+    borrarDisenoCancelar: string;
   };
   /** Plantillas y diseños. */
   plantillas: {
@@ -279,6 +287,18 @@ export type StudioTexts = {
     /** Cuerpo de la pregunta de cara. {nombre} = nombre del diseño. */
     caraPreguntaCuerpo: string;
     caraPreguntaCancelar: string;
+    /** Reemplazo explícito (2026-10-19) — ventana que lista los lienzos OCUPADOS
+     *  cuando no queda ninguno libre para el prediseñado: el cliente elige cuál
+     *  reemplazar (nunca se pisa contenido en silencio). Reemplaza al toast
+     *  toastSinLienzoLibre como primera respuesta (queda como fallback). */
+    reemplazoTitulo: string;
+    /** Cuerpo del aviso de reemplazo. {nombre} = nombre del diseño. */
+    reemplazoCuerpo: string;
+    /** Rótulo numerado de cada lienzo ocupado en la lista. {n} = número (slotIndex+1). */
+    reemplazoLienzoNombre: string;
+    /** Nombre accesible del botón de cada lienzo. {n} = número (slotIndex+1). */
+    reemplazoLienzoAria: string;
+    reemplazoCancelar: string;
     elegirAria: string;
     aplicarDisenoAria: string;
     itemAria: string;
@@ -423,6 +443,13 @@ export type StudioTexts = {
     igHashtagsMaxAviso: string;
     /** Nombre accesible del botón × de cada chip de hashtag. {tag} = el hashtag. */
     igHashtagsQuitarAria: string;
+    /** 2026-10-19 — re-aplicado EXPLÍCITO de los datos masivos a TODOS los slots
+     *  actuales (incluidos los de packs agregados después): el commit debounced
+     *  del input es no-op cuando el texto no cambió, así que sin este botón no
+     *  había forma de re-alcanzarlos. */
+    igReaplicarCta: string;
+    /** Feedback sr-only (aria-live) tras el re-aplicado masivo. */
+    igReaplicarFeedback: string;
     tamanoLabel: string;
     negrita: string;
     cursiva: string;
@@ -587,6 +614,11 @@ export type StudioTexts = {
     /** PERF (2026-10-07) — indicador de carga de una página PEREZOSA del pager
      *  (la unidad se genera por demanda al navegar a ella). */
     pagerCargandoPagina: string;
+    /** 2026-10-19 — arias de los controles de zoom del preview (−/%/+/reset):
+     *  la alternativa accesible a los gestos (rueda/pinch/doble click). */
+    zoomAlejarAria: string;
+    zoomAcercarAria: string;
+    zoomRestablecerAria: string;
   };
   /** Vistas 3D y escenas. */
   escenas: {
@@ -706,6 +738,12 @@ export type StudioTexts = {
     /** Valor visible del stepper: "{n} sets" / "{n} set". */
     setsValor: string;
     setsValorUno: string;
+    /** 2026-10-19 (estilo/colores/borde POR SET) — rótulo del selector de set:
+     *  deja claro EN QUÉ set se está trabajando antes de sus opciones. Solo se
+     *  muestra con más de un set. */
+    setPagerTitulo: string;
+    /** Hint junto al rótulo del selector de set. */
+    setPagerHint: string;
   };
   /**
    * Modelo MULTI-UNIDAD (owner 2026-09-09): N unidades físicas del mismo
@@ -1011,13 +1049,21 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     slotCentrarAria: "Centrar la foto del imán {n}",
     slotEditarAria: "Editar {nombre}",
     slotQuitarAria: "Quitar foto del imán {n}",
+    // 2026-10-19 — borrado GLOBAL del diseño (antes solo existía por slot).
+    borrarDisenoCta: "Borrar el diseño",
+    borrarDisenoTitulo: "¿Borrar todo el diseño?",
+    borrarDisenoCuerpo:
+      "Se quitan las fotos y los textos de todos los espacios. Tus fotos subidas se conservan en «Mis fotos» y la plantilla no cambia. Si te arrepientes, puedes deshacerlo con Ctrl+Z.",
+    borrarDisenoConfirmar: "Sí, borrar todo",
+    borrarDisenoCancelar: "Cancelar",
   },
   plantillas: {
     titulo: "Plantillas",
     vacio: "Aún no hay plantillas para este producto.",
     toastAplicada: 'Plantilla "{nombre}" aplicada',
     predisenadosTitulo: "Diseños prediseñados",
-    predisenadosHint: "Aplica un diseño listo al slot seleccionado (o al primero vacío).",
+    predisenadosHint:
+      "Elige un diseño y decide dónde aplicarlo. Si todo está lleno, tú escoges cuál reemplazar.",
     toastPredisenado: 'Diseño "{nombre}" aplicado',
     toastPredisenadoVarios: "{n} diseños aplicados",
     predisenadosLlenarCta: "Llenar con diseños variados",
@@ -1036,6 +1082,12 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     caraPreguntaCuerpo:
       "«{nombre}» es un diseño de 1 cara: elige si va en el frente (cara A) o en el respaldo (cara B).",
     caraPreguntaCancelar: "Cancelar",
+    reemplazoTitulo: "¿Cuál lienzo quieres reemplazar?",
+    reemplazoCuerpo:
+      "Todos los lienzos ya tienen un diseño y «{nombre}» no encuentra espacio libre. Elige cuál quieres cambiar: su diseño anterior se reemplaza por el nuevo.",
+    reemplazoLienzoNombre: "Lienzo {n}",
+    reemplazoLienzoAria: "Reemplazar el diseño del lienzo {n}",
+    reemplazoCancelar: "Cancelar",
     elegirAria: "Selecciona plantilla del imán",
     aplicarDisenoAria: "Aplicar el diseño {nombre} al slot",
     itemAria: "Plantilla {nombre}",
@@ -1123,7 +1175,9 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     mensajeGlobalAviso:
       "Ojo: este mensaje se imprime igual en TODAS las fotos del set, no una por una.",
     editorTitulo: "Editar texto",
-    editorDesc: 'Click "Aplicar" para guardar',
+    // 2026-10-19 — ya no hay «Aplicar» dentro del formulario: el «Listo» del
+    // footer APLICA y CIERRA (decisión del owner, un solo botón).
+    editorDesc: "Los cambios se guardan con «Listo»",
     editorCerrar: "Cerrar",
     sinTexto: "Sin texto",
     campoLabel: "Texto",
@@ -1164,6 +1218,10 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     igHashtagsPlaceholder: "Escribe un hashtag y presiona Enter",
     igHashtagsMaxAviso: "Máximo 3 hashtags — quita uno para agregar otro",
     igHashtagsQuitarAria: "Quitar hashtag {tag}",
+    // 2026-10-19 — re-aplicado explícito a todos los slots actuales (packs
+    // agregados después de llenar los campos).
+    igReaplicarCta: "Aplicar estos datos a todas las fotos",
+    igReaplicarFeedback: "Datos aplicados a todas las fotos del set",
     tamanoLabel: "Tamaño",
     negrita: "Negrita",
     cursiva: "Cursiva",
@@ -1304,6 +1362,10 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     pagerDotsAria: "Unidades de la vista previa",
     // PERF — página perezosa del pager: se genera al navegar a la unidad.
     pagerCargandoPagina: "Armando la vista de esta unidad…",
+    // 2026-10-19 — zoom del preview (rueda/pinch/doble click + estos botones).
+    zoomAlejarAria: "Alejar la vista previa",
+    zoomAcercarAria: "Acercar la vista previa",
+    zoomRestablecerAria: "Restablecer el zoom de la vista previa",
   },
   escenas: {
     titulo: "✨ Míralo en tu espacio",
@@ -1420,6 +1482,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     setsMasAria: "Agregar un set",
     setsValor: "{n} sets",
     setsValorUno: "{n} set",
+    setPagerTitulo: "¿Qué set quieres diseñar?",
+    setPagerHint: "· cada set lleva su propio estilo, colores y borde",
   },
   unidades: {
     pagerAria: "Unidades de tu diseño",
@@ -1683,6 +1747,11 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "lienzo.slotCentrarAria": "estudio.lienzo.slot-centrar-aria",
   "lienzo.slotEditarAria": "estudio.lienzo.slot-editar-aria",
   "lienzo.slotQuitarAria": "estudio.lienzo.slot-quitar-aria",
+  "lienzo.borrarDisenoCta": "estudio.lienzo.borrar-diseno-cta",
+  "lienzo.borrarDisenoTitulo": "estudio.lienzo.borrar-diseno-titulo",
+  "lienzo.borrarDisenoCuerpo": "estudio.lienzo.borrar-diseno-cuerpo",
+  "lienzo.borrarDisenoConfirmar": "estudio.lienzo.borrar-diseno-confirmar",
+  "lienzo.borrarDisenoCancelar": "estudio.lienzo.borrar-diseno-cancelar",
   "plantillas.titulo": "estudio.plantillas.titulo",
   "plantillas.vacio": "estudio.plantillas.vacio",
   "plantillas.toastAplicada": "estudio.plantillas.toast-aplicada",
@@ -1703,6 +1772,11 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "plantillas.caraPreguntaTitulo": "estudio.plantillas.cara-pregunta-titulo",
   "plantillas.caraPreguntaCuerpo": "estudio.plantillas.cara-pregunta-cuerpo",
   "plantillas.caraPreguntaCancelar": "estudio.plantillas.cara-pregunta-cancelar",
+  "plantillas.reemplazoTitulo": "estudio.plantillas.reemplazo-titulo",
+  "plantillas.reemplazoCuerpo": "estudio.plantillas.reemplazo-cuerpo",
+  "plantillas.reemplazoLienzoNombre": "estudio.plantillas.reemplazo-lienzo-nombre",
+  "plantillas.reemplazoLienzoAria": "estudio.plantillas.reemplazo-lienzo-aria",
+  "plantillas.reemplazoCancelar": "estudio.plantillas.reemplazo-cancelar",
   "plantillas.elegirAria": "estudio.plantillas.elegir-aria",
   "plantillas.aplicarDisenoAria": "estudio.plantillas.aplicar-diseno-aria",
   "plantillas.itemAria": "estudio.plantillas.item-aria",
@@ -1802,6 +1876,8 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "texto.igHashtagsPlaceholder": "estudio.texto.ig-hashtags-placeholder",
   "texto.igHashtagsMaxAviso": "estudio.texto.ig-hashtags-max-aviso",
   "texto.igHashtagsQuitarAria": "estudio.texto.ig-hashtags-quitar-aria",
+  "texto.igReaplicarCta": "estudio.texto.ig-reaplicar-cta",
+  "texto.igReaplicarFeedback": "estudio.texto.ig-reaplicar-feedback",
   "texto.tamanoLabel": "estudio.texto.tamano-label",
   "texto.negrita": "estudio.texto.negrita",
   "texto.cursiva": "estudio.texto.cursiva",
@@ -1918,6 +1994,9 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "exportar.pagerSiguienteAria": "estudio.exportar.pager-siguiente-aria",
   "exportar.pagerDotsAria": "estudio.exportar.pager-dots-aria",
   "exportar.pagerCargandoPagina": "estudio.exportar.pager-cargando-pagina",
+  "exportar.zoomAlejarAria": "estudio.exportar.zoom-alejar-aria",
+  "exportar.zoomAcercarAria": "estudio.exportar.zoom-acercar-aria",
+  "exportar.zoomRestablecerAria": "estudio.exportar.zoom-restablecer-aria",
   "escenas.titulo": "estudio.escenas.titulo",
   "escenas.volverDetalle": "estudio.escenas.volver-detalle",
   "escenas.chipNevera": "estudio.escenas.chip-nevera",
@@ -2016,6 +2095,8 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "letras.setsMasAria": "estudio.letras.sets-mas-aria",
   "letras.setsValor": "estudio.letras.sets-valor",
   "letras.setsValorUno": "estudio.letras.sets-valor-uno",
+  "letras.setPagerTitulo": "estudio.letras.set-pager-titulo",
+  "letras.setPagerHint": "estudio.letras.set-pager-hint",
   "unidades.pagerAria": "estudio.unidades.pager-aria",
   "unidades.unidadDe": "estudio.unidades.unidad-de",
   "unidades.nombreTira": "estudio.unidades.nombre-tira",

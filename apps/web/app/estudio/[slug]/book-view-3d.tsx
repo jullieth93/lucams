@@ -99,6 +99,7 @@ import {
   bookmarkFaceUnits,
   camber,
   flatBookmarkDims,
+  flatBookmarkFit,
   flatBookmarkPlacement,
   flatBookmarkSlots,
   separatorPlacement,
@@ -237,10 +238,14 @@ function FlatBookmarks({ data, showBack }: { data: FlatBookmarkData; showBack: b
       {data.units.map((unit, i) => {
         const { w, h } = data.dims[i]!;
         const slot = data.slots[i]!;
+        // 2026-10-20 — media extensión de la huella en x (con el yaw): la pieza
+        // rígida se apoya en el punto más alto de la hoja bajo ella, no a la
+        // altura del centro (el camber hundía el borde del lomo bajo la página).
+        const halfSpanX = (w * Math.abs(Math.cos(slot.yaw)) + h * Math.abs(Math.sin(slot.yaw))) / 2;
         return (
           <group
             key={i}
-            position={flatBookmarkPlacement(slot.x, slot.z)}
+            position={flatBookmarkPlacement(slot.x, slot.z, halfSpanX)}
             rotation={[0, slot.yaw, 0]}
           >
             <group rotation={FLAT_LIE_ROTATION}>
@@ -463,34 +468,27 @@ function Scene({
   // - Alargados planos: encuadre centrado en la hoja derecha que crece con el ancho/alto
   //   reales del conjunto (2026-09-15: 2 o 12 unidades se ven al mismo tamaño, la cámara
   //   abre). Fase 2.12 (owner 2026-10-07): con la pieza ACOSTADA ya no domina el alto de
-  //   la escena — el halfH se calcula sobre la proyección del LARGO echado (media pieza a
-  //   cada lado del slot, proyectada a la vertical de pantalla con cos(polar)) y el polar
-  //   sube a 56° (vista más cenital: la cara acostada se lee con menos escorzo; el target
-  //   baja a la superficie de la hoja, ~0.7 u). La pieza NUNCA se encoge: solo pose + cámara.
+  //   la escena y el polar sube a 56° (vista más cenital: la cara acostada se lee con
+  //   menos escorzo; el target baja a la superficie de la hoja, ~0.7 u).
+  //   2026-10-20 (bug "separador largo cortado"): el halfH/halfW salen de
+  //   flatBookmarkFit, que proyecta las ESQUINAS reales del conjunto con corrección de
+  //   perspectiva (la punta cercana a la cámara se agranda por d/(d−r) — la fórmula
+  //   anterior, spreadZ·cos(polar) medida en el plano del target, dejaba la punta de una
+  //   pieza 4×15 FUERA del borde inferior en cualquier viewport apaisado). La pieza
+  //   NUNCA se encoge: solo pose + cámara.
   // - Separadores doblados (pieza chica 2×6): encuadre más cercano para que la tira se lea.
   const fit = useMemo(() => {
     if (flat) {
       const polarDeg = 56;
-      // Extensión REAL del conjunto por eje, por slot: la pieza acostada tiene su largo
-      // trenzado por el yaw (2026-10-12: con el layout anti-solape las piezas pueden ir
-      // trenzadas 90° — el largo corre a lo ancho de la página, no a lo profundo).
-      // eje largo mundo = (−sin yaw, 0, −cos yaw); eje ancho = (cos yaw, 0, −sin yaw).
-      let spreadX = 0;
-      let spreadZ = 0;
-      if (flatData) {
-        flatData.slots.forEach((s, i) => {
-          const d = flatData.dims[i]!;
-          const extX = (d.w * Math.abs(Math.cos(s.yaw)) + d.h * Math.abs(Math.sin(s.yaw))) / 2;
-          const extZ = (d.w * Math.abs(Math.sin(s.yaw)) + d.h * Math.abs(Math.cos(s.yaw))) / 2;
-          spreadX = Math.max(spreadX, Math.abs(s.x - PAGE_W / 2) + extX);
-          spreadZ = Math.max(spreadZ, Math.abs(s.z) + extZ);
-        });
-      }
+      const { halfW, halfH } = flatBookmarkFit(flatData?.slots ?? [], flatData?.dims ?? [], {
+        polarDeg,
+        // fov 40 del <Canvas> (abajo) — el tan entra en la corrección de perspectiva.
+        tanHalfFov: Math.tan(((40 / 2) * Math.PI) / 180),
+        targetY: 0.7,
+      });
       return {
-        halfW: Math.max(2.8, spreadX + 0.3),
-        // La profundidad de la hoja proyecta a la vertical de pantalla con cos(polar);
-        // +0.7 cubre la altura física de la hoja (camber) y aire sobre/bajo la pieza.
-        halfH: Math.max(2.2, spreadZ * Math.cos((polarDeg * Math.PI) / 180) + 0.7),
+        halfW,
+        halfH,
         polarDeg,
         // Superficie de la hoja derecha a la altura del centro (pageSurfaceY(PAGE_W/2) ≈ 0.7).
         targetY: 0.7,

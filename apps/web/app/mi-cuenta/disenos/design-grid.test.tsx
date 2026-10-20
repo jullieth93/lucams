@@ -19,10 +19,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 const deleteDraftDesignAction = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 const emptyDraftsAction = vi.hoisted(() => vi.fn(async () => ({ ok: true, deleted: 0 })));
+const archiveDesignAction = vi.hoisted(() => vi.fn(async () => ({ ok: true })));
 
 vi.mock("./actions", () => ({
   shareDesignAction: vi.fn(),
-  archiveDesignAction: vi.fn(),
+  archiveDesignAction,
   revokeShareAction: vi.fn(),
   deleteDraftDesignAction,
   emptyDraftsAction,
@@ -129,15 +130,18 @@ describe("DesignGrid — sección «Borradores» (2026-10-13)", () => {
     expect(screen.getAllByRole("link", { name: new RegExp(texts.draftResume) })).toHaveLength(5);
   });
 
-  it("eliminar individual: pide confirmación y llama deleteDraftDesignAction con el id", async () => {
+  it("eliminar individual: abre el diálogo destructivo y al confirmar llama deleteDraftDesignAction con el id", async () => {
     deleteDraftDesignAction.mockClear();
     render(<DesignGrid designs={drafts(2)} texts={texts} />);
 
     const deleteButtons = screen.getAllByRole("button", { name: texts.draftDelete });
     fireEvent.click(deleteButtons[0]!);
-    // Aún no llama la action: primero la confirmación inline.
+    // Aún no llama la action: primero el diálogo de confirmación (2026-10-20).
     expect(deleteDraftDesignAction).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: texts.yes }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent(texts.draftDeleteConfirm);
+    expect(dialog).toHaveTextContent(texts.draftDeleteBody);
+    fireEvent.click(screen.getByRole("button", { name: texts.draftDeleteYes }));
 
     await waitFor(() => expect(deleteDraftDesignAction).toHaveBeenCalledWith("draft-1"));
     // La tarjeta sale de la lista y el contador baja a 1.
@@ -145,19 +149,52 @@ describe("DesignGrid — sección «Borradores» (2026-10-13)", () => {
     expect(screen.getAllByRole("link", { name: new RegExp(texts.draftResume) })).toHaveLength(1);
   });
 
-  it("«Vaciar borradores»: pide confirmación, llama emptyDraftsAction y retira la sección", async () => {
+  it("eliminar individual: «Cancelar» cierra el diálogo sin llamar la action", async () => {
+    deleteDraftDesignAction.mockClear();
+    render(<DesignGrid designs={drafts(1)} texts={texts} />);
+
+    fireEvent.click(screen.getByRole("button", { name: texts.draftDelete }));
+    fireEvent.click(screen.getByRole("button", { name: texts.cancel }));
+
+    expect(deleteDraftDesignAction).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // La tarjeta sigue en la lista.
+    expect(screen.getByRole("link", { name: new RegExp(texts.draftResume) })).toBeInTheDocument();
+  });
+
+  it("«Vaciar borradores»: abre el diálogo destructivo, confirma con «Sí, vaciar» y retira la sección", async () => {
     emptyDraftsAction.mockClear();
     emptyDraftsAction.mockResolvedValue({ ok: true, deleted: 2 });
     render(<DesignGrid designs={drafts(2)} texts={texts} />);
 
     fireEvent.click(screen.getByRole("button", { name: new RegExp(texts.draftsEmpty) }));
     expect(emptyDraftsAction).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: texts.yes }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent(texts.draftsEmptyConfirm);
+    expect(dialog).toHaveTextContent(texts.draftsEmptyBody);
+    fireEvent.click(screen.getByRole("button", { name: texts.draftsEmptyYes }));
 
     await waitFor(() => expect(emptyDraftsAction).toHaveBeenCalled());
     // Sección vacía → desaparece completa.
     await waitFor(() =>
       expect(screen.queryByRole("button", { name: new RegExp(texts.draftsSection) })).toBeNull(),
     );
+  });
+});
+
+describe("DesignGrid — confirmación destructiva de archivado (2026-10-20)", () => {
+  it("archivar un diseño listo: diálogo destructivo y al confirmar la tarjeta desaparece", async () => {
+    archiveDesignAction.mockClear();
+    render(<DesignGrid designs={[design({})]} texts={texts} />);
+
+    fireEvent.click(screen.getByRole("button", { name: texts.archiveAria }));
+    expect(archiveDesignAction).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent(texts.archiveConfirm);
+    expect(dialog).toHaveTextContent(texts.archiveBody);
+    fireEvent.click(screen.getByRole("button", { name: texts.archiveYes }));
+
+    await waitFor(() => expect(archiveDesignAction).toHaveBeenCalledWith("d1"));
+    await waitFor(() => expect(screen.queryByText("Fotoimanes cuadrados")).not.toBeInTheDocument());
   });
 });

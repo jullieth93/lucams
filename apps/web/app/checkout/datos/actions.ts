@@ -13,6 +13,7 @@ import {
   type GiftInput,
 } from "@/features/checkout/schemas";
 import { parseStructuredAddress } from "@/features/checkout/parse-address";
+import { BILLING_DOCUMENT_ENABLED } from "@/features/checkout/billing-document";
 import { saveAddressStep, saveContactStep } from "@/features/checkout/service";
 import { saveCheckoutAddressToAccount } from "@/features/addresses/service";
 import { recordCheckoutDataConsent } from "@/features/consent/service";
@@ -90,7 +91,9 @@ export async function saveDatosAction(
   }
 
   // ─── Facturación opcional ───
-  const wantsInvoice = formData.get("wantsInvoice") === "on";
+  // 2026-10-20 — BILLING_DOCUMENT_ENABLED off (owner: persona natural sin
+  // trámites DIAN): un wantsInvoice manipulado a mano se ignora → false.
+  const wantsInvoice = BILLING_DOCUMENT_ENABLED && formData.get("wantsInvoice") === "on";
   const billingRaw = {
     wantsInvoice,
     documentType: wantsInvoice

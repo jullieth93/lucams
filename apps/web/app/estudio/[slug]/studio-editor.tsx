@@ -23,6 +23,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { useRouter } from "next/navigation";
 import { useStore } from "zustand";
@@ -57,7 +59,7 @@ import {
 } from "@/components/ui/sheet";
 import { useIsTouch } from "./use-is-touch";
 import { toast } from "sonner";
-import { Sparkles, Box, X, CalendarDays, Loader2 } from "lucide-react";
+import { Sparkles, Box, X, CalendarDays, Loader2, Trash2 } from "lucide-react";
 import nextDynamic from "next/dynamic";
 import type { Magnet3D } from "./fridge-3d-view";
 import { StudioAiPanel } from "./studio-ai-panel";
@@ -91,6 +93,7 @@ import {
   writeStudioDraftId,
   clearStudioDraftId,
   shouldOfferDraftResume,
+  studioDraftHasRealProgress,
   readStudioCanvasSnapshot,
   writeStudioCanvasSnapshot,
   clearStudioCanvasSnapshot,
@@ -375,13 +378,26 @@ export function StudioEditor({
       const urlHasDesignId =
         typeof window !== "undefined" &&
         new URLSearchParams(window.location.search).has("designId");
-      return shouldOfferDraftResume({
+      const eligible = shouldOfferDraftResume({
         savedDesignId: marker?.designId ?? null,
         urlHasDesignId,
         hasInitialDesign: !!initialDesignId,
-      })
-        ? marker
-        : null;
+      });
+      if (!eligible || !marker) return null;
+      // 2026-10-19 — guardia de CONTENIDO REAL: si existe el snapshot local del
+      // draft (ADR-133) y NO tiene progreso visible (cambio deshecho: asignar y
+      // quitar la única foto, o solo cambiar la plantilla), el marcador apunta
+      // a un canvas vacío → limpiar marcador + snapshot y arrancar fresco SIN
+      // preguntar. Sin snapshot local no se puede verificar en cliente (el
+      // contenido vive server-side): se ofrece y el recover/boot aplica la
+      // misma guardia al escribir el marcador (ver boot y runSave).
+      const snapshot = readStudioCanvasSnapshot(marker.designId);
+      if (snapshot && !studioDraftHasRealProgress(snapshot.canvasData)) {
+        clearStudioDraftId(initialDraftScope);
+        clearStudioCanvasSnapshot(marker.designId);
+        return null;
+      }
+      return marker;
     },
   );
   // Item 2.4 — continuar: navegar al recover flow con resume=1 (el server
@@ -465,6 +481,29 @@ export function StudioEditor({
     return () => window.removeEventListener("cookie-consent-changed", handler);
   }, []);
   const slotStagesRef = useRef<Map<number, Konva.Stage | null>>(new Map());
+  // 2026-10-19 — «Borrar el diseño»: resetea TODOS los slots (fotos + textos)
+  // con confirmación. Vive en la fila de acciones globales (junto a Ideas/3D —
+  // «Llenar slots con mis fotos» está en la sidebar, fuera de este archivo).
+  // Boolean primitivo → suscripción atómica (patrón del resto del editor).
+  const hasDesignContent = useStore(store, (s) => {
+    const cd = s.canvasData;
+    if (!cd) return false;
+    if (Object.keys(s.packTextValues).length > 0) return true;
+    return cd.slots.some(
+      (sl) =>
+        sl.assetId ||
+        sl.assetUrl ||
+        sl.profileAssetId ||
+        sl.filter ||
+        sl.photoTransform ||
+        (sl.textOverrides && Object.keys(sl.textOverrides).length > 0),
+    );
+  });
+  const [clearDesignOpen, setClearDesignOpen] = useState(false);
+  const handleClearDesign = useCallback(() => {
+    store.getState().clearAllSlots();
+    setClearDesignOpen(false);
+  }, [store]);
   // Si el finalize ya pasó pero el CARRITO falló, reintentar desde la modal no puede volver a
   // finalizar: el diseño quedó en READY y `finalizeDesign` solo acepta borradores, así que el
   // reintento moría con «Design is READY — only DRAFT can be finalized» y no había salida. Se
@@ -1043,7 +1082,11 @@ export function StudioEditor({
         // escribe con PROGRESO REAL:
         //  · Recover OK (?designId= → draft existente, con avance guardado por
         //    definición): se escribe acá para que una recarga posterior sin
-        //    ?designId= lo ofrezca.
+        //    ?designId= lo ofrezca. 2026-10-19 — solo si el canvas recuperado
+        //    tiene CONTENIDO REAL visible (studioDraftHasRealProgress): un
+        //    recover de un draft vacío (p.ej. resume=1 de un marcador viejo,
+        //    o un cambio deshecho ya guardado) NO rearma el marcador — se
+        //    limpia y la próxima entrada arranca fresco sin preguntar.
         //  · Draft NUEVO: NO se escribe en el boot — un canvas vacío no es
         //    "donde quedaste" (ese era el bug: el retomador salía siempre).
         //    Lo escribe el primer auto-save exitoso (ver runSave).
@@ -1052,7 +1095,11 @@ export function StudioEditor({
         //    no es DRAFT): el marcador quedó huérfano → se limpia, no se pisa
         //    con el id del draft vacío (eso rearmaba la mentira).
         if (initialDesignId) {
-          writeStudioDraftId(initialDraftScope, initialDesignId);
+          if (studioDraftHasRealProgress(canvasData)) {
+            writeStudioDraftId(initialDraftScope, initialDesignId);
+          } else {
+            clearStudioDraftId(initialDraftScope);
+          }
         } else if (typeof window !== "undefined") {
           const bootParams = new URLSearchParams(window.location.search);
           if (bootParams.has("designId") && bootParams.get("resume") === "1") {
@@ -1187,7 +1234,17 @@ export function StudioEditor({
         if (result.ok) {
           const savedScope = studioDraftScope(product.slug, saveVariantId);
           if (savedScope !== initialDraftScope) clearStudioDraftId(initialDraftScope);
-          writeStudioDraftId(savedScope, designId);
+          // 2026-10-19 — el marcador del retomador solo vive con CONTENIDO REAL:
+          // si el canvas guardado quedó vacío (cambio deshecho: asignar y quitar
+          // la única foto, o solo cambiar la plantilla), el marcador se RETIRA en
+          // vez de quedar apuntando a un borrador vacío (el interstitial ya no lo
+          // ofrece — studioDraftHasRealProgress ignora el atajo clientRev>0 de
+          // designHasMeaningfulProgress, que cuenta "se guardó algo alguna vez").
+          if (studioDraftHasRealProgress(canvasData)) {
+            writeStudioDraftId(savedScope, designId);
+          } else {
+            clearStudioDraftId(savedScope);
+          }
           const snapshot = readStudioCanvasSnapshot(designId);
           if (snapshot && snapshot.rev <= savedRev) clearStudioCanvasSnapshot(designId);
           if (isLatest) {
@@ -2451,6 +2508,20 @@ export function StudioEditor({
               onStep={(dir) => setStageZoomRaw((z) => stepStageZoom(z, dir, stageZoomState.cap))}
               onReset={() => setStageZoomRaw(1)}
             />
+            {/* 2026-10-19 — «Borrar el diseño»: acción destructiva GLOBAL (faltaba;
+                solo existía el borrado por slot). Solo se muestra con contenido
+                real en el lienzo; pide confirmación (StudioClearDesignModal) y
+                queda deshacible con Ctrl+Z/undo (va por setCanvasData). */}
+            {hasDesignContent && (
+              <button
+                type="button"
+                onClick={() => setClearDesignOpen(true)}
+                className="inline-flex h-11 items-center gap-1.5 rounded-full border-2 border-red-300 bg-white px-3 text-xs font-bold text-red-700 shadow-sm transition-transform hover:scale-105 hover:border-red-400 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:outline-none active:scale-95 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm"
+              >
+                <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
+                <span>{texts.lienzo.borrarDisenoCta}</span>
+              </button>
+            )}
           </div>
 
           <StudioCanvasGrid
@@ -2660,6 +2731,13 @@ export function StudioEditor({
         onAssetUploaded={handleAssetUploaded}
         getCachedPredesigned={getCachedPredesigned}
         rememberPredesigned={rememberPredesigned}
+      />
+
+      {/* 2026-10-19 — confirmación de «Borrar el diseño» (reset global de slots). */}
+      <StudioClearDesignModal
+        open={clearDesignOpen}
+        onConfirm={handleClearDesign}
+        onClose={() => setClearDesignOpen(false)}
       />
 
       {/* PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito */}
@@ -3463,4 +3541,94 @@ async function buildMagnetTextures(
     await yieldToMain();
   }
   return out;
+}
+
+/**
+ * 2026-10-19 — confirmación de «Borrar el diseño» (reset global de slots del
+ * canvas actual: fotos + overrides de texto; la plantilla/variante y las fotos
+ * subidas en «Mis fotos» se conservan). Mismo patrón visual y de accesibilidad
+ * de StudioFaceChoiceModal: portal a document.body, backdrop, useDialogA11y
+ * (foco inicial + trap + Escape). Es undoable (Ctrl+Z) — el cuerpo no promete
+ * irreversibilidad.
+ */
+function StudioClearDesignModal({
+  open,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const texts = useStudioTexts();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // #15 — foco inicial + trap + Escape + retorno de foco.
+  useDialogA11y(dialogRef, { onClose, active: open });
+
+  // Guard SSR: el portal necesita document (el modal solo abre por interacción).
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <AnimatePresence>
+      {open && (
+        <>
+          {/* Backdrop */}
+          <motion.button
+            type="button"
+            aria-label={texts.comun.cerrar}
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 cursor-default bg-black/40 backdrop-blur-sm"
+            tabIndex={-1}
+          />
+          <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="clear-design-title"
+              aria-describedby="clear-design-desc"
+              tabIndex={-1}
+              initial={{ opacity: 0, scale: 0.94, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 8 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="ring-brand-purple/10 pointer-events-auto flex w-[92vw] max-w-sm flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1"
+            >
+              <div className="px-5 pt-5 pb-3">
+                <h2
+                  id="clear-design-title"
+                  className="text-brand-purple-dark text-base leading-tight font-bold"
+                >
+                  {texts.lienzo.borrarDisenoTitulo}
+                </h2>
+                <p id="clear-design-desc" className="text-brand-muted mt-1 text-xs leading-snug">
+                  {texts.lienzo.borrarDisenoCuerpo}
+                </p>
+              </div>
+              <div className="border-brand-purple/10 flex shrink-0 flex-col gap-2 border-t px-5 py-3">
+                <button
+                  type="button"
+                  onClick={onConfirm}
+                  className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 focus:ring-2 focus:ring-red-400 focus:outline-none"
+                >
+                  {texts.lienzo.borrarDisenoConfirmar}
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="border-brand-purple/40 text-brand-purple-dark hover:bg-brand-purple/10 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors"
+                >
+                  {texts.lienzo.borrarDisenoCancelar}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        </>
+      )}
+    </AnimatePresence>,
+    document.body,
+  );
 }

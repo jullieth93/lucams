@@ -18,7 +18,8 @@
  *     escritos por la versión que marcaba al entrar) no son confiables: se
  *     descartan y limpian al leer.
  *  b) Al entrar sin ?designId= y con marcador VIGENTE, el editor ofrece
- *     "Continuar donde quedaste" (interstitial previo al boot). Confirmar
+ *     "Continuar donde quedaste" (interstitial previo al boot) — sujeto al
+ *     gate de unidades de abajo (2026-10-19). Confirmar
  *     navega a `?designId=<id>&resume=1`: el recover flow del server valida
  *     ownership y estado (con resume=1 solo acepta DRAFT — un diseño ya
  *     finalizado NO se clona, a diferencia del "Editar" del carrito). Si el
@@ -32,7 +33,27 @@
  *
  * Helpers tolerantes: localStorage puede no existir (SSR, modo incógnito) —
  * leer/escribir nunca revienta el boot.
+ *
+ * 2026-10-19 — gate de UNIDADES (cobro correcto): el scope del marcador es
+ * producto:variante y NO incluía las unidades del diseño, así que un borrador
+ * viejo de 2 unidades de la MISMA variante se ofrecía aunque la ficha (PDP)
+ * dijera 1 — y al finalizar mandaba el canvas del borrador (cobrando y
+ * describiendo 2×: "1 Set de 12" terminaba como "2 calendarios de 12
+ * páginas"). Ahora el marcador puede cargar `unitCount` (cosechado del
+ * snapshot local del canvas al escribirse) y readStudioDraftMarker NO ofrece
+ * el borrador cuando la intención de unidades del boot (?copies=N de la PDP;
+ * ?variant= sin copies = 1, porque la PDP omite copies=1) difiere de las
+ * unidades declaradas del borrador. Decisión documentada: NO ofrecer (boot
+ * fresco) en vez de avisar — es la opción segura para el cobro; el marcador
+ * SE CONSERVA (el borrador sigue siendo válido para su propia intención y
+ * retomable desde «Mis diseños» por ?designId=). Marcadores viejos sin
+ * unitCount y sin snapshot → unidades desconocidas → se ofrecen igual:
+ * esconder todo lo desconocido mataría el retomador legítimo.
  */
+
+import { declaresUnits, unitCountOf } from "@/features/personalization/design-units";
+
+import { designHasMeaningfulProgress } from "@/features/personalization/design-progress";
 
 export function studioDraftStorageKey(productSlug: string): string {
   return `lucams_studio_draft_${productSlug}`;
@@ -46,6 +67,64 @@ export interface StudioDraftMarker {
   designId: string;
   /** Epoch ms del último guardado real que escribió/refrescó el marcador. */
   savedAt: number;
+  /**
+   * 2026-10-19 — unidades declaradas del diseño (canvasData.unitCount),
+   * cosechadas al escribir el marcador. Alimenta el gate de unidades del
+   * retomador; ausente en marcadores escritos antes del gate (→ desconocidas,
+   * el borrador se ofrece igual).
+   */
+  unitCount?: number;
+}
+
+/**
+ * Intención de unidades del boot actual, leída de la URL (2026-10-19). La PDP
+ * emite `?copies=N` SOLO cuando N>1; con 1 unidad el CTA trae `?variant=` sin
+ * copies → la intención es 1. Sin ninguno de los dos params (visita directa,
+ * link de plantilla, recarga sin query) NO hay intención declarada → null y
+ * no se gatea nada. Entero acotado a 1..99 (misma regla que page.tsx).
+ */
+export function readStudioBootIntentUnits(): number | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    const rawCopies = Number.parseInt(params.get("copies") ?? "", 10);
+    if (Number.isFinite(rawCopies)) return Math.min(99, Math.max(1, rawCopies));
+    return params.has("variant") ? 1 : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ¿Las unidades del borrador contradicen la intención del boot? Solo con AMBAS
+ * conocidas y distintas: cualquiera desconocida → false (no se puede probar el
+ * desfase y esconder el borrador sería peor que ofrecerlo).
+ */
+export function draftUnitsMismatch(opts: {
+  draftUnits: number | null;
+  intendedUnits: number | null;
+}): boolean {
+  return (
+    opts.draftUnits !== null &&
+    opts.intendedUnits !== null &&
+    opts.draftUnits !== opts.intendedUnits
+  );
+}
+
+/** Unidades declaradas por un canvasData; null cuando el diseño NO las declara
+ *  (packs de imán suelto, diseños legacy) — ahí no hay nada que comparar. */
+function canvasUnitCount(canvasData: unknown): number | null {
+  return declaresUnits(canvasData) ? unitCountOf(canvasData) : null;
+}
+
+/** Unidades del diseño según su snapshot local de recuperación (ADR-133). */
+function snapshotUnitCount(designId: string): number | null {
+  const snapshot = readStudioCanvasSnapshot(designId);
+  return snapshot ? canvasUnitCount(snapshot.canvasData) : null;
+}
+
+function validUnitCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 ? value : null;
 }
 
 function storageOrNull(): Storage | null {
@@ -71,6 +150,11 @@ function removeMarker(storage: Storage, productSlug: string): void {
  * la versión que marcaba al entrar, sin evidencia de progreso), está corrupto
  * o está vencido (más viejo que DRAFT_MARKER_MAX_AGE_MS). La validez REAL del
  * diseño (existe, es del owner, sigue DRAFT) la confirma el recover server-side.
+ *
+ * 2026-10-19 — además devuelve null (SIN limpiar: el borrador sigue válido
+ * para su propia intención) cuando las unidades declaradas del borrador
+ * contradicen la intención de unidades del boot actual — ver el bloque «gate
+ * de UNIDADES» del encabezado.
  */
 export function readStudioDraftMarker(
   productSlug: string,
@@ -102,7 +186,17 @@ export function readStudioDraftMarker(
       removeMarker(storage, productSlug);
       return null;
     }
-    return { designId: parsed.designId, savedAt: parsed.savedAt };
+    // Gate de unidades (2026-10-19): el unitCount del marcador manda; si el
+    // marcador no lo trae (viejos) se intenta el snapshot local del canvas.
+    const draftUnits = validUnitCount(parsed.unitCount) ?? snapshotUnitCount(parsed.designId);
+    if (draftUnitsMismatch({ draftUnits, intendedUnits: readStudioBootIntentUnits() })) {
+      return null;
+    }
+    return {
+      designId: parsed.designId,
+      savedAt: parsed.savedAt,
+      ...(draftUnits !== null ? { unitCount: draftUnits } : {}),
+    };
   } catch {
     return null;
   }
@@ -113,11 +207,28 @@ export function readStudioDraftId(productSlug: string): string | null {
   return readStudioDraftMarker(productSlug)?.designId ?? null;
 }
 
-export function writeStudioDraftId(productSlug: string, designId: string): void {
+/**
+ * Escribe/refresca el marcador del draft. 2026-10-19 — el marcador cosecha las
+ * UNIDADES del diseño para el gate del retomador: el caller puede pasarlas en
+ * `opts.unitCount`; si no, se leen del snapshot local del canvas (ADR-133),
+ * que en el momento del auto-save todavía existe (el editor lo limpia DESPUÉS
+ * de escribir el marcador). Diseños que no declaran unidades (packs de imán
+ * suelto, legacy) → marcador sin unitCount → el gate no aplica.
+ */
+export function writeStudioDraftId(
+  productSlug: string,
+  designId: string,
+  opts?: { unitCount?: number },
+): void {
   const storage = storageOrNull();
   if (!storage || !designId) return;
   try {
-    const marker: StudioDraftMarker = { designId, savedAt: Date.now() };
+    const unitCount = validUnitCount(opts?.unitCount) ?? snapshotUnitCount(designId);
+    const marker: StudioDraftMarker = {
+      designId,
+      savedAt: Date.now(),
+      ...(unitCount !== null ? { unitCount } : {}),
+    };
     storage.setItem(studioDraftStorageKey(productSlug), JSON.stringify(marker));
   } catch {
     // cuota llena / incógnito — el retomador simplemente no persiste
@@ -148,6 +259,22 @@ export function shouldOfferDraftResume(opts: {
   hasInitialDesign: boolean;
 }): boolean {
   return !!opts.savedDesignId && !opts.urlHasDesignId && !opts.hasInitialDesign;
+}
+
+/**
+ * 2026-10-19 — guardia de CONTENIDO REAL para el retomador: ¿el canvas del
+ * draft tiene algo visible (fotos, textos, avatares)? Envuelve a
+ * designHasMeaningfulProgress NEUTRALIZANDO su atajo `clientRev > 0`: ese atajo
+ * cuenta "el cliente tocó y guardó ALGO alguna vez" — válido para la poda de
+ * drafts server-side (draft-lifecycle), no acá: un cambio DESHECHO (asignar y
+ * quitar la única foto, o solo cambiar la plantilla) deja clientRev > 0 sobre
+ * un canvas vacío y el retomador ofrecía un borrador sin nada. Para esta ruta
+ * solo cuenta el contenido visible de los slots.
+ */
+export function studioDraftHasRealProgress(canvasData: unknown): boolean {
+  if (!canvasData || typeof canvasData !== "object") return false;
+  const { clientRev: _ignored, ...rest } = canvasData as Record<string, unknown>;
+  return designHasMeaningfulProgress({ canvasData: rest });
 }
 
 // ──────────────────────────────────────────────────────────────────
