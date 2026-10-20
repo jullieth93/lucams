@@ -95,6 +95,24 @@ export const PURGE_IDLE_READY_AFTER_DAYS = 90;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Auditoría 2026-10-20 — en ambientes NO productivos de Vercel (STG/previews: VERCEL_ENV
+ * definido y ≠ "production") los plazos de retención se acotan a este techo. STG acumula
+ * renders 300-DPI de pruebas/E2E (920 MB medidos en 10 días) y los plazos de negocio
+ * (30/90 días, pensados para PRD) los retienen meses sin finalidad. PRD no cambia; un
+ * override explícito (env var PURGE_* u opts.olderThanDays) siempre manda sobre el techo.
+ * VERCEL_ENV ausente (dev local, scripts) NO aplica el tope: un script local puede apuntar
+ * a la BD de PRD y no debe endurecer plazos por accidente.
+ */
+export const RETENTION_NONPROD_MAX_DAYS = 14;
+
+/** Aplica el techo no-productivo si el ambiente es un preview/staging de Vercel. */
+export function capRetentionDaysNonProd(days: number): number {
+  const vercelEnv = process.env.VERCEL_ENV;
+  if (!vercelEnv || vercelEnv === "production") return days;
+  return Math.min(days, RETENTION_NONPROD_MAX_DAYS);
+}
+
 /** Extrae el path de storage de una URL pública (previews). Si ya es un path, lo devuelve tal cual. */
 export function pathFromPublicUrl(url: string, bucket: string): string | null {
   const marker = `/storage/v1/object/public/${bucket}/`;
@@ -400,7 +418,8 @@ function resolveIdleDays(overrideDays: number | undefined): number {
   if (overrideDays !== undefined) return overrideDays;
   const raw = process.env.PURGE_IDLE_DESIGN_AFTER_DAYS;
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : PURGE_IDLE_DESIGN_AFTER_DAYS;
+  const days = Number.isFinite(parsed) && parsed > 0 ? parsed : PURGE_IDLE_DESIGN_AFTER_DAYS;
+  return capRetentionDaysNonProd(days);
 }
 
 /**
@@ -460,7 +479,8 @@ function resolveIdleReadyDays(overrideDays: number | undefined): number {
   if (overrideDays !== undefined) return overrideDays;
   const raw = process.env.PURGE_IDLE_READY_AFTER_DAYS;
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : PURGE_IDLE_READY_AFTER_DAYS;
+  const days = Number.isFinite(parsed) && parsed > 0 ? parsed : PURGE_IDLE_READY_AFTER_DAYS;
+  return capRetentionDaysNonProd(days);
 }
 
 /**

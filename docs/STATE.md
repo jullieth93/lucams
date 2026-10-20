@@ -53,7 +53,7 @@
 
 **Infra / operación**
 
-- Crons `pg_cron + pg_net → /api/cron/*` con secreto en Vault (9 HTTP + 1 SQL + `lucams-process-render-jobs`); dead-man switch por latidos en `AlertState`; alertas por email con dedup.
+- Crons `pg_cron + pg_net → /api/cron/*` con secreto en Vault (9 HTTP + SQL puros + `lucams-process-render-jobs`); dead-man switch por latidos en `AlertState`; alertas por email con dedup. Higiene interna programada: purga de `cron.job_run_details` (14 d) y `net._http_response` (24 h) — migración 043, ADR-161; alertas de capacidad `capacity_storage_high`/`capacity_db_high` (80 % de la referencia del plan).
 - Monitor de uptime externo: job pg_cron en Supabase STG que sondea PRD y reporta a `/api/cron/monitor-heartbeat` (OPERATIONS § Plan de monitoreo).
 - Backups diarios DB + Storage a Cloudflare R2 cifrados (gpg), con heartbeat `backup_stale` (>36 h) y DR drill mensual automatizado que exige dump fresco.
 - Rate limit en Postgres (`rate_limit_check`), cache con `unstable_cache` (tags `cms`, `catalog`, `redirects`); pool Prisma por lambda 5 conexiones/20 s + retry transitorio (ADR-131).

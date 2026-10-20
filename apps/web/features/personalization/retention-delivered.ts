@@ -47,7 +47,7 @@ import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { listStagedSlotPaths } from "./staged-slots";
-import { removeStorage } from "./retention-service";
+import { capRetentionDaysNonProd, removeStorage } from "./retention-service";
 
 const CUSTOMER_UPLOADS_BUCKET = "customer-uploads";
 const PRODUCTION_BUCKET = "production-assets";
@@ -78,7 +78,10 @@ function resolveRetentionDays(overrideDays: number | undefined): number {
   if (overrideDays !== undefined) return overrideDays;
   const raw = process.env.PURGE_DELIVERED_DESIGN_AFTER_DAYS;
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : PURGE_DELIVERED_DESIGN_AFTER_DAYS;
+  const days = Number.isFinite(parsed) && parsed > 0 ? parsed : PURGE_DELIVERED_DESIGN_AFTER_DAYS;
+  // Tope no-productivo (STG/preview): las órdenes "entregadas" de STG son de prueba —
+  // retener 90d sus renders 300-DPI inflaba el bucket sin finalidad (auditoría 2026-10-20).
+  return capRetentionDaysNonProd(days);
 }
 
 export type PurgeDeliveredResult = { designsPurged: number; assetsPurged: number };
