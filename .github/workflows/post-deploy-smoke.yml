@@ -53,3 +53,31 @@ jobs:
         run: node apps/web/scripts/post-deploy-smoke.mjs
         env:
           SMOKE_BASE_URL: https://lucamsshop.com
+
+      # Deriva de schema (2026-10-20 — incidente real: 4 migraciones Prisma quedaron
+      # sin aplicar en PRD tras un release y el cron cart-recovery reventó 2h después
+      # con "column does not exist"; el smoke de rutas no lo veía). Compara las
+      # migraciones del repo contra `_prisma_migrations` de PRD con psql pelado
+      # (preinstalado en ubuntu-latest) y falla ROJO si hay pendientes — el release
+      # correcto corre `prisma migrate deploy` ANTES del merge (docs/OPERATIONS.md).
+      # Reusa el secret del backup diario; si falta, se salta con warning (mismo
+      # patrón fail-visible de backup.yml).
+      - name: Migraciones Prisma pendientes en PRD (drift check)
+        env:
+          HAS_DB: ${{ secrets.BACKUP_DATABASE_URL != '' }}
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          if [ "$HAS_DB" != "true" ]; then
+            echo "::warning::Drift check inactivo: falta el secret BACKUP_DATABASE_URL"
+            exit 0
+          fi
+          ls packages/db/prisma/migrations | grep -E '^[0-9]{14}_' | sort > /tmp/repo-migrations.txt
+          psql "$BACKUP_DATABASE_URL" -tAc "select migration_name from _prisma_migrations where finished_at is not null" | sort > /tmp/prd-migrations.txt
+          PENDING=$(comm -23 /tmp/repo-migrations.txt /tmp/prd-migrations.txt)
+          if [ -n "$PENDING" ]; then
+            echo "::error::PRD tiene migraciones Prisma SIN aplicar:"
+            echo "$PENDING"
+            echo "Aplicar: source .env.local.nube-backup && cd packages/db && pnpm exec prisma migrate deploy"
+            exit 1
+          fi
+          echo "✓ PRD al día ($(wc -l < /tmp/prd-migrations.txt) migraciones aplicadas)"
