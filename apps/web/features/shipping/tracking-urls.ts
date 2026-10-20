@@ -13,33 +13,51 @@
  */
 
 const CARRIER_TRACKING_PAGES: Record<string, { name: string; url: string }> = {
+  // URLs verificadas en vivo (HTTP 200 + contenido de rastreo real) el
+  // 2026-10-20 — envia.com.co estaba MUERTO (sin respuesta) y el dominio real
+  // de Envía es envia.co (hallazgo del owner, confirmado con curl). Saferbo y
+  // Go Envíos quedan SIN URL a propósito: saferbo.com redirige a una tienda de
+  // zapatos (dominio vendido) y goenvios.com es solo un stub de redirección sin
+  // portal de rastreo verificable → el caller cae a nuestra vista
+  // /pedido/<token> como única opción.
   servientrega: {
     name: "Servientrega",
-    url: "https://www.servientrega.com/wps/portal/Colombia/transacciones/personas/rastrear",
+    url: "https://www.servientrega.com/wps/portal/rastreo-envio",
   },
   envia: {
     name: "Envía",
-    url: "https://www.envia.com.co/",
+    url: "https://envia.co/tracking",
   },
   "tcc-sa": {
     name: "TCC",
-    url: "https://www.tcc.com.co/",
+    url: "https://tcc.com.co/rastreo/",
   },
   tcc: {
     name: "TCC",
-    url: "https://www.tcc.com.co/",
+    url: "https://tcc.com.co/rastreo/",
   },
   "coordinadora-mercantil": {
     name: "Coordinadora Mercantil",
-    url: "https://coordinadora.com/",
+    url: "https://coordinadora.com/rastreo/rastreo-de-guia/",
   },
   coordinadora: {
     name: "Coordinadora Mercantil",
-    url: "https://coordinadora.com/",
+    url: "https://coordinadora.com/rastreo/rastreo-de-guia/",
   },
   interrapidisimo: {
+    // /rastreo/ da 404 tras redirects — el portal raíz es el único destino vivo.
     name: "Interrapidísimo",
     url: "https://www.interrapidisimo.com/",
+  },
+  "99minutos": {
+    name: "99minutos",
+    url: "https://tracking.99minutos.com/",
+  },
+  domina: {
+    // El rastreo de Domina corre sobre la plataforma Infokairos (URL oficial
+    // confirmada por el owner 2026-10-20; verificada 200 con shell de tracking).
+    name: "Domina",
+    url: "https://tracking.infokairos.com.co/",
   },
 };
 
