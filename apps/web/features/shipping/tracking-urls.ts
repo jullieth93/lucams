@@ -13,14 +13,16 @@
  */
 
 const CARRIER_TRACKING_PAGES: Record<string, { name: string; url: string }> = {
-  // URLs verificadas en vivo (HTTP 200) el 2026-10-20 — envia.com.co estaba
-  // MUERTO (sin respuesta) y el dominio real de Envía es envia.co (hallazgo
-  // del owner, confirmado con curl). saferbo.com redirige a una tienda de
-  // zapatos (dominio vendido): Saferbo queda SIN URL a propósito → el caller
-  // cae a nuestra vista /pedido/<token> como única opción.
+  // URLs verificadas en vivo (HTTP 200 + contenido de rastreo real) el
+  // 2026-10-20 — envia.com.co estaba MUERTO (sin respuesta) y el dominio real
+  // de Envía es envia.co (hallazgo del owner, confirmado con curl). Saferbo y
+  // Go Envíos quedan SIN URL a propósito: saferbo.com redirige a una tienda de
+  // zapatos (dominio vendido) y goenvios.com es solo un stub de redirección sin
+  // portal de rastreo verificable → el caller cae a nuestra vista
+  // /pedido/<token> como única opción.
   servientrega: {
     name: "Servientrega",
-    url: "https://www.servientrega.com/wps/portal/Colombia/transacciones/personas/rastrear",
+    url: "https://www.servientrega.com/wps/portal/rastreo-envio",
   },
   envia: {
     name: "Envía",
@@ -47,20 +49,13 @@ const CARRIER_TRACKING_PAGES: Record<string, { name: string; url: string }> = {
     name: "Interrapidísimo",
     url: "https://www.interrapidisimo.com/",
   },
-  "go-envios": {
-    name: "Go Envíos",
-    url: "https://www.goenvios.com/rastreo",
-  },
-  goenvios: {
-    name: "Go Envíos",
-    url: "https://www.goenvios.com/rastreo",
-  },
   "99minutos": {
     name: "99minutos",
     url: "https://tracking.99minutos.com/",
   },
   domina: {
-    // Sin página de rastreo pública (/rastreo, /tracking, /seguimiento → 404).
+    // Sin página de rastreo dedicada (/rastreo, /tracking, /seguimiento → 404),
+    // pero el portal raíz sí contiene el rastreador (verificado 2026-10-20).
     name: "Domina",
     url: "https://domina.com.co/",
   },
