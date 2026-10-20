@@ -311,14 +311,18 @@ describe("validatePhotoQuality · brillo", () => {
     expect(r.brightness.passed).toBe(true);
   });
 
-  it("meanLuminance > 235 → warning-soft (sobreexpuesta)", async () => {
+  it("meanLuminance > 235 → warning-soft (zonas quemadas de luz)", async () => {
     const r = await validatePhotoQuality({ buffer: brightSoftImg, width: 600, height: 600 });
     expect(r.brightness.meanLuminance).toBeCloseTo(237.5, 4);
     expect(r.brightness.level).toBe("warning-soft");
-    expect(r.brightness.message).toContain("sobreexpuesta");
+    // 2026-10-19 — el aviso dice lo que el check mide (zonas quemadas, casi
+    // blancas, que se imprimen sin detalle); NADA de "sobreexpuesta" (se leía
+    // como que la foto se sale del recuadro).
+    expect(r.brightness.message).toContain("quemadas de luz");
+    expect(r.brightness.message).not.toContain("sobreexpuesta");
   });
 
-  it("borde: meanLuminance == 235 NO es sobreexpuesta → OK", async () => {
+  it("borde: meanLuminance == 235 NO dispara el aviso de brillo → OK", async () => {
     const img = await solidGray(50, 235);
     const r = await validatePhotoQuality({ buffer: img, width: 600, height: 600 });
     expect(r.brightness.meanLuminance).toBe(235);
@@ -326,12 +330,12 @@ describe("validatePhotoQuality · brillo", () => {
     expect(r.brightness.level).toBe("ok");
   });
 
-  it("borde: meanLuminance == 236 SÍ es sobreexpuesta (warning-soft)", async () => {
+  it("borde: meanLuminance == 236 SÍ dispara el aviso de brillo (warning-soft)", async () => {
     const img = await solidGray(50, 236);
     const r = await validatePhotoQuality({ buffer: img, width: 600, height: 600 });
     expect(r.brightness.meanLuminance).toBe(236);
     expect(r.brightness.level).toBe("warning-soft");
-    expect(r.brightness.message).toContain("sobreexpuesta");
+    expect(r.brightness.message).toContain("quemadas de luz");
   });
 
   it("brillo medio (40..235) → OK sin mensaje", async () => {
@@ -466,9 +470,9 @@ describe("validatePhotoQuality · agregación de nivel", () => {
   it("recommendation cae a blur cuando resolución OK pero blur warning (con brillo también warning)", async () => {
     // blurSoftImg es brillo ok; necesitamos blur warning + brillo warning + resolución ok.
     // checker(0,30): mean 15 (antes brillo strong) y stdev 15 (blur OK) — no sirve.
-    // Construimos uno: blur soft + brillo soft (sobreexpuesta — el aviso de
-    // oscura se eliminó 2026-10). Contraste pequeño Y media alta: lo=230 hi=245
-    // → mean 237.5 (soft bright), stdev bajo (soft blur).
+    // Construimos uno: blur soft + brillo soft (zonas quemadas de luz — el
+    // aviso de oscura se eliminó 2026-10). Contraste pequeño Y media alta:
+    // lo=230 hi=245 → mean 237.5 (soft bright), stdev bajo (soft blur).
     const img = await checker(120, 230, 245); // mean ~237.5 (soft bright), stdev ~7 (soft blur)
     const r = await validatePhotoQuality({
       buffer: img,

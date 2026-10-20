@@ -25,6 +25,8 @@
 19. [Logging y request ID correlation](#logging-y-request-id-correlation)
 20. [Code style](#code-style)
 21. [CMS — agregar un campo de contenido administrable](#cms--agregar-un-campo-de-contenido-administrable)
+22. [Frontend — bottom-sheet móvil (patrón resumen + Listo)](#frontend--bottom-sheet-móvil-patrón-resumen--listo)
+23. [Frontend — preview de diseño compartido](#frontend--preview-de-diseño-compartido)
 
 ---
 
@@ -884,3 +886,54 @@ Reglas asociadas:
   desde el editor del campo o la mediateca. `alt` siempre obligatorio (WCAG 1.1.1).
 - **Publicación programada** (C3): cualquier versión borrador puede programarse con «Programar»
   en el editor del campo (hora de Colombia); la publica el cron `lucams-cms-publish-scheduled`.
+- **`CmsText` no interpola:** un valor dinámico (contador, número de unidades) NUNCA va dentro
+  del `fallback` ni del `body` del campo — va fuera del componente (`{count} <CmsText … />`).
+  Precedente: `components/design-units-badge.tsx` (badge «N unidades», ADR-150).
+
+---
+
+## Frontend — bottom-sheet móvil (patrón resumen + Listo)
+
+> Convención de la jornada de maduración UX 2026-10-13 (ADR-151). Cuando un control denso
+> (paleta de colores, opciones de estilo) no cabe en el viewport móvil, NO se resuelve con
+> scroll horizontal: se colapsa en un botón resumen que abre un `Sheet` bottom.
+
+Patrón (referencia real: `StudioStyleToolbar` en `app/estudio/[slug]/studio-style-toolbar.tsx`):
+
+1. **Botón resumen siempre visible en <sm** con el estado actual de la selección (swatch +
+   nombre del color + estado del borde) y `aria-label` descriptivo. En ≥sm el control
+   completo queda intacto (el sheet es ADITIVO, no un reemplazo responsive del desktop).
+2. **`Sheet` `side="bottom"`** con la grilla de opciones con wrap (`grid-cols-4`), toggles
+   asociados y línea «Elegido: {valor}» que confirma la selección en vivo.
+3. **La selección aplica en vivo** (sin paso de confirmación); el botón primario sticky
+   «Listo» del footer SOLO cierra el sheet. Mismo patrón en modales/pickers sin acción de
+   confirmación: footer sticky con «Listo» (precedente: asset picker de fotos, que cierra
+   sin asignar).
+4. **Textos por CMS** con fallback exacto (regla de oro de la sección CMS).
+
+Antipatrón SUPERSEDED: toolbar con `overflow-x-auto` + labels `whitespace-nowrap` en <sm
+(scroll-x de Ola 32) — el usuario no descubre las opciones fuera de pantalla.
+
+---
+
+## Frontend — preview de diseño compartido
+
+> Convención 2026-10-13 (ADR-150). Toda superficie cliente que muestra un diseño
+> personalizado (carrito, gracias, pedidos, tracking público) usa el MISMO lightbox.
+
+- **Componente:** `components/design-preview-dialog.tsx` (+ la matemática de zoom pura en
+  `components/preview-zoom.ts`). Vive en `components/` porque es compartido real — no
+  reintroducir copias por ruta (nació en `app/carrito/`).
+- **Miniatura clicable + paginación por unidad:** la miniatura de la línea abre el diálogo;
+  con `Design.previewPagesCount > 1` se pasan las `pages` (vía `designPreviewDisplay()` de
+  `features/personalization/preview-artifacts.ts`) y el lightbox pagina; con 1 unidad no hay
+  páginas y se muestra `previewUrl`. Los selects Prisma de la página deben incluir
+  `previewPagesCount`.
+- **Prop `trigger?: ReactNode`:** Radix solo admite UN trigger por `Dialog` — si la línea
+  tiene dos affordances (miniatura clicable + botón «Ver»), son DOS instancias del diálogo
+  con triggers distintos, no un diálogo con dos triggers.
+- **Badge «N unidades»:** `components/design-units-badge.tsx`, solo cuando el count ≥2
+  (el número va fuera del `CmsText` — ver la regla de interpolación en la sección CMS).
+- **Es client component y NO lee el CMS:** los textos llegan resueltos por props desde las
+  páginas server (patrón `label={<CmsText …/>}`), así el ratchet de cobertura los cuenta
+  como cubiertos.

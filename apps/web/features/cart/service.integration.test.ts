@@ -279,14 +279,14 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
               sku: `${RUN}-PERSO-A`.toUpperCase(),
               price: PERSO_VAR_A_PRICE,
               stock: 50,
-              attributes: {},
+              attributes: { photoSlots: 10 },
             },
             {
               name: "Set 12",
               sku: `${RUN}-PERSO-B`.toUpperCase(),
               price: PERSO_VAR_B_PRICE,
               stock: 50,
-              attributes: {},
+              attributes: { photoSlots: 3 },
             },
           ],
         },
@@ -509,6 +509,29 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       expect(detail.items).toHaveLength(1);
       expect(detail.items[0].qty).toBe(5);
       expect(detail.itemCount).toBe(5);
+    });
+
+    it("el alta simple no incrementa ni repricea una línea personalizada de la misma variante", async () => {
+      const sessionId = sid("add");
+      await addPersonalizedToCart({
+        sessionId,
+        customerId: null,
+        designId: readyDesignId,
+        variantId: persoVariantAId,
+        qty: 1,
+      });
+
+      const detail = await addProductToCart({
+        sessionId,
+        customerId: null,
+        productSlug: `${RUN}-perso`,
+        variantId: persoVariantAId,
+        qty: 1,
+      });
+
+      expect(detail.items).toHaveLength(2);
+      expect(detail.items.find((item) => item.designId)?.qty).toBe(1);
+      expect(detail.items.find((item) => !item.designId)?.qty).toBe(1);
     });
 
     it("clamp: sumar qty que excede MAX_QTY_PER_ITEM (99) se topa en 99", async () => {
@@ -1078,6 +1101,23 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
         variantId: persoVariantAId,
         qty: 1,
       });
+      expect(detail.items[0].unitPrice).toBe(PERSO_VAR_A_PRICE);
+    });
+
+    it("un variantId viejo de la PDP no puede cobrar otra combinación que la del diseño", async () => {
+      const designId = await makeMultiUnitDesign({
+        version: 2,
+        slotCount: 10,
+        photoSlots: 10,
+      });
+      const detail = await addPersonalizedToCart({
+        sessionId: sid("mu"),
+        customerId: null,
+        designId,
+        variantId: persoVariantBId,
+        qty: 1,
+      });
+      expect(detail.items[0].variantId).toBe(persoVariantAId);
       expect(detail.items[0].unitPrice).toBe(PERSO_VAR_A_PRICE);
     });
 
@@ -1744,14 +1784,14 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       expect(await prisma.cart.count({ where: { sessionId: anonSession } })).toBe(0);
 
       // El cart del customer ahora tiene: default 1+3=4, extra 2.
-      const merged = await getCartDetail(custSession);
+      const merged = await getCartDetail(custSession, customer.id);
       expect(merged!.items).toHaveLength(2);
       const byVariant = new Map(merged!.items.map((i) => [i.variantId, i.qty]));
       expect(byVariant.get(simpleDefaultVariantId)).toBe(4); // 1 + 3 (dedup)
       expect(byVariant.get(extraVariantId)).toBe(2); // nuevo item folded
     });
 
-    it("merge clampa la suma de qty a MAX_QTY_PER_ITEM (99)", async () => {
+    it("merge divide el excedente de MAX_QTY_PER_ITEM en otra línea sin perder unidades", async () => {
       const customer = await makeCustomer();
       const custSession = sid("m5-cust");
       await addProductToCart({
@@ -1769,9 +1809,9 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       });
 
       await mergeAnonCartIntoCustomer(anonSession, customer.id);
-      const merged = await getCartDetail(custSession);
-      // 60 + 60 = 120 → clamp 99.
-      expect(merged!.items[0].qty).toBe(99);
+      const merged = await getCartDetail(custSession, customer.id);
+      expect(merged!.items.map((item) => item.qty)).toEqual([99, 21]);
+      expect(merged!.itemCount).toBe(120);
     });
 
     it("merge NO agrupa items con designId distinto y CONTENIDO distinto aunque compartan variantId", async () => {
@@ -1798,7 +1838,7 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       });
 
       await mergeAnonCartIntoCustomer(anonSession, customer.id);
-      const merged = await getCartDetail(custSession);
+      const merged = await getCartDetail(custSession, customer.id);
       // Dos items separados — mismo variant, distinto design → NO se agrupan.
       expect(merged!.items).toHaveLength(2);
       const designIds = merged!.items.map((i) => i.designId).sort();
@@ -1851,7 +1891,7 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       });
 
       await mergeAnonCartIntoCustomer(anonSession, customer.id);
-      const merged = await getCartDetail(custSession);
+      const merged = await getCartDetail(custSession, customer.id);
       // UNA línea con qty 1+2=3 — y sobrevive la línea del customer (su diseño/preview).
       expect(merged!.items).toHaveLength(1);
       expect(merged!.items[0].qty).toBe(3);
@@ -1872,7 +1912,7 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       const result = await mergeAnonCartIntoCustomer(session, customer.id);
       expect(result).toBe(session);
       // Sigue habiendo exactamente 1 cart con 1 item de qty 2.
-      const cart = await getCartDetail(session);
+      const cart = await getCartDetail(session, customer.id);
       expect(cart!.items).toHaveLength(1);
       expect(cart!.items[0].qty).toBe(2);
     });
@@ -1943,6 +1983,94 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       },
       T,
     );
+  });
+
+  describe("aislamiento de identidad", () => {
+    it("una cuenta o un invitado no puede leer ni mutar el carrito de otra cuenta", async () => {
+      const [customerA, customerB] = await Promise.all([makeCustomer(), makeCustomer()]);
+      const sessionA = sid("identity-a");
+      await addProductToCart({
+        sessionId: sessionA,
+        customerId: customerA.id,
+        productSlug: simpleSlug,
+        qty: 1,
+      });
+
+      expect((await getCartDetail(sessionA, customerA.id))?.items).toHaveLength(1);
+      expect(await getCartItemCount(sessionA, customerA.id)).toBe(1);
+      expect(await getCartDetail(sessionA, customerB.id)).toBeNull();
+      expect(await getCartDetail(sessionA, null)).toBeNull();
+      expect(await getCartItemCount(sessionA, customerB.id)).toBe(0);
+      expect(await getCartItemCount(sessionA, null)).toBe(0);
+
+      const itemId = (await getCartDetail(sessionA, customerA.id))!.items[0].itemId;
+      await expect(updateCartItemQty(sessionA, itemId, 8, customerB.id)).rejects.toMatchObject({
+        code: "CART_IDENTITY_MISMATCH",
+      });
+      await expect(
+        addProductToCart({
+          sessionId: sessionA,
+          customerId: customerB.id,
+          productSlug: simpleSlug,
+          qty: 1,
+        }),
+      ).rejects.toMatchObject({ code: "CART_IDENTITY_MISMATCH" });
+
+      const persisted = await getCartDetail(sessionA, customerA.id);
+      expect(persisted!.customerId).toBe(customerA.id);
+      expect(persisted!.items[0].qty).toBe(1);
+    });
+
+    it("un carrito anónimo vacío no oculta el carrito previo del cliente al entrar", async () => {
+      const customer = await makeCustomer();
+      const customerSession = sid("identity-existing");
+      await addProductToCart({
+        sessionId: customerSession,
+        customerId: customer.id,
+        productSlug: simpleSlug,
+        qty: 2,
+      });
+      const empty = await makeEmptyCart();
+
+      const result = await mergeAnonCartIntoCustomer(empty.sessionId, customer.id);
+
+      expect(result).toBe(customerSession);
+      expect(await prisma.cart.count({ where: { id: empty.id } })).toBe(0);
+      expect((await getCartDetail(customerSession, customer.id))!.items[0].qty).toBe(2);
+    });
+
+    it("una sesión ya asociada a otra cuenta nunca se adopta ni se reasigna", async () => {
+      const [customerA, customerB] = await Promise.all([makeCustomer(), makeCustomer()]);
+      const sessionA = sid("identity-foreign");
+      await addProductToCart({
+        sessionId: sessionA,
+        customerId: customerA.id,
+        productSlug: simpleSlug,
+        qty: 1,
+      });
+
+      const result = await mergeAnonCartIntoCustomer(sessionA, customerB.id);
+
+      expect(result).not.toBe(sessionA);
+      const original = await getCartDetail(sessionA, customerA.id);
+      expect(original!.customerId).toBe(customerA.id);
+      expect(original!.items).toHaveLength(1);
+    });
+
+    it("sin carrito anónimo, el login recupera la sesión previa del cliente", async () => {
+      const customer = await makeCustomer();
+      const customerSession = sid("identity-restore");
+      await addProductToCart({
+        sessionId: customerSession,
+        customerId: customer.id,
+        productSlug: simpleSlug,
+        qty: 1,
+      });
+
+      const result = await mergeAnonCartIntoCustomer(sid("identity-missing"), customer.id);
+
+      expect(result).toBe(customerSession);
+    });
   });
 
   // ════════════════════════════════════════════════════════════════════════

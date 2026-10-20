@@ -36,10 +36,11 @@
  * [pendiente verificación del artículo exacto]). Al purgar se limpia también QuoteItem.previewUrl:
  * ese preview muestra la misma cara y sus bytes ya no existen.
  *
- * NO toca: USED_IN_ORDER (lo rige la retención post-entrega de retention-delivered.ts) /
- * ARCHIVED, ni nada referenciado por un carrito vivo o un pedido. Los DRAFT
- * de clientes logueados los purga purgeIdleCustomerDesigns (abajo) tras 90 días sin actividad
- * (feedback Lucy 2026-09-18); los READY abandonados (que nunca llegaron a pedido) los purga
+ * NO toca nada referenciado por un carrito vivo o un pedido. USED_IN_ORDER y los
+ * ARCHIVED desde USED_IN_ORDER los rige retention-delivered.ts; los ARCHIVED desde READY
+ * entran en la misma retención de un READY abandonado. Los DRAFT
+ * de clientes logueados los purga purgeIdleCustomerDesigns (abajo) tras 30 días sin actividad;
+ * los READY abandonados (que nunca llegaron a pedido) los purga
  * purgeIdleReadyDesigns (ADR-130, 2026-10-08) — antes quedaban retenidos para siempre con sus
  * renders 300-DPI (la fuga que infló el storage de STG sobre la cuota Free).
  * Política documentada en docs/COMPLIANCE.md. Se agenda por pg_cron (mandato #11) — ver
@@ -64,14 +65,10 @@ export const PREVIEWS_BUCKET = "design-previews";
 const PRODUCTION_BUCKET = "production-assets";
 
 /** Un diseño DRAFT anónimo sin actividad por este tiempo se considera abandonado y se purga. */
-export const PURGE_ANON_DESIGN_AFTER_DAYS = 30;
+export const PURGE_ANON_DESIGN_AFTER_DAYS = 7;
 
-/**
- * Un diseño DRAFT de cliente LOGUEADO sin actividad por este tiempo se purga igual que el anónimo
- * (feedback Lucy 2026-09-18): la cuenta viva no es finalidad para conservar fotos crudas de un
- * boceto que nadie tocó en 3 meses. Más laxo que el anónimo (30d) porque el cliente puede volver.
- */
-export const PURGE_IDLE_DESIGN_AFTER_DAYS = 90;
+/** Un diseño DRAFT de cliente logueado sin actividad por este tiempo se purga. */
+export const PURGE_IDLE_DESIGN_AFTER_DAYS = 30;
 
 /**
  * Gracia tras apagarse la cotización (CLOSED / DISCARDED / borrada) antes de purgar sus fotos.
@@ -97,6 +94,24 @@ export const PURGE_STALE_QUOTE_AFTER_DAYS = 365;
 export const PURGE_IDLE_READY_AFTER_DAYS = 90;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Auditoría 2026-10-20 — en ambientes NO productivos de Vercel (STG/previews: VERCEL_ENV
+ * definido y ≠ "production") los plazos de retención se acotan a este techo. STG acumula
+ * renders 300-DPI de pruebas/E2E (920 MB medidos en 10 días) y los plazos de negocio
+ * (30/90 días, pensados para PRD) los retienen meses sin finalidad. PRD no cambia; un
+ * override explícito (env var PURGE_* u opts.olderThanDays) siempre manda sobre el techo.
+ * VERCEL_ENV ausente (dev local, scripts) NO aplica el tope: un script local puede apuntar
+ * a la BD de PRD y no debe endurecer plazos por accidente.
+ */
+export const RETENTION_NONPROD_MAX_DAYS = 14;
+
+/** Aplica el techo no-productivo si el ambiente es un preview/staging de Vercel. */
+export function capRetentionDaysNonProd(days: number): number {
+  const vercelEnv = process.env.VERCEL_ENV;
+  if (!vercelEnv || vercelEnv === "production") return days;
+  return Math.min(days, RETENTION_NONPROD_MAX_DAYS);
+}
 
 /** Extrae el path de storage de una URL pública (previews). Si ya es un path, lo devuelve tal cual. */
 export function pathFromPublicUrl(url: string, bucket: string): string | null {
@@ -198,12 +213,41 @@ type PurgeCandidate = {
 /**
  * Borra los bytes y luego las filas de un lote de diseños. Si falla la remoción de las fotos crudas
  * NO borra nada (devuelve ceros) → el próximo ciclo reintenta y nunca quedan bytes sin registro.
+ *
+ * 2026-10-14 — EXCEPTO con `opts.bestEffortBytes: true` (borrado de BORRADORES de
+ * draft-lifecycle: poda «últimos N» y vaciado/eliminación manual desde "Mis diseños"):
+ * ahí las filas se borran AUNQUE la remoción de bytes falle o no haya credenciales de
+ * Storage (CI de tests corre con las env de Supabase vacías a propósito — "supabaseUrl
+ * is required" — y la poda no ejecutaba NUNCA, fallo CI 2026-10-13). Los bytes que
+ * queden huérfanos sin fila Design los reclama el barrido sweepOrphanStorageObjects,
+ * que existe exactamente para eso (corre en el mismo cron). La invariante estricta de
+ * arriba se conserva para las purgas de retención (ver
+ * retention-service.storage-failure.test.ts).
  */
-async function purgeDesignBatch(designs: PurgeCandidate[]): Promise<PurgeResult> {
+async function purgeDesignBatch(
+  designs: PurgeCandidate[],
+  opts?: { bestEffortBytes?: boolean },
+): Promise<PurgeResult> {
   if (designs.length === 0) return { designsPurged: 0, assetsPurged: 0 };
 
   const designIds = designs.map((d) => d.id);
-  const uploadPaths = designs.flatMap((d) => d.assets.map((a) => a.storageUrl)).filter(Boolean);
+  let uploadPaths = designs.flatMap((d) => d.assets.map((a) => a.storageUrl)).filter(Boolean);
+  // 2026-10-13 — no borrar bytes COMPARTIDOS con diseños vivos: cloneDesignForEdit
+  // (READY→DRAFT) crea filas DesignAsset NUEVAS con el MISMO storageUrl del original.
+  // Si el clon se borra (poda «últimos N» de draft-lifecycle o una purga idle) mientras
+  // el original READY sigue vivo (carrito, "Mis diseños"), remover esos bytes dejaría
+  // al original sin sus fotos. Solo se remueven los bytes que NINGÚN otro DesignAsset
+  // referencia; las filas del lote se borran igual (son del diseño condenado).
+  if (uploadPaths.length > 0) {
+    const shared = await prisma.designAsset.findMany({
+      where: { storageUrl: { in: uploadPaths }, designId: { notIn: designIds } },
+      select: { storageUrl: true },
+    });
+    if (shared.length > 0) {
+      const sharedUrls = new Set(shared.map((s) => s.storageUrl));
+      uploadPaths = uploadPaths.filter((p) => !sharedUrls.has(p));
+    }
+  }
   const previewPaths = [
     ...designs
       .flatMap((d) => [d.previewUrl, d.draftPreviewUrl])
@@ -228,7 +272,7 @@ async function purgeDesignBatch(designs: PurgeCandidate[]): Promise<PurgeResult>
   const uploadsOk = await removeStorage(CUSTOMER_UPLOADS_BUCKET, uploadPaths);
   await removeStorage(PREVIEWS_BUCKET, previewPaths);
   await removeStorage(PRODUCTION_BUCKET, [...productionPaths, ...stagedPaths]);
-  if (!uploadsOk) return { designsPurged: 0, assetsPurged: 0 };
+  if (!uploadsOk && !opts?.bestEffortBytes) return { designsPurged: 0, assetsPurged: 0 };
 
   // DesignAsset.design es onDelete:SetNull → hay que borrar las filas explícitamente para no
   // dejar assets huérfanos. Atómico con el borrado del Design.
@@ -247,6 +291,29 @@ async function purgeDesignBatch(designs: PurgeCandidate[]): Promise<PurgeResult>
   ]);
 
   return { designsPurged: designs.length, assetsPurged: uploadPaths.length };
+}
+
+/**
+ * Borra diseños POR ID con todos sus assets (bytes de Storage + filas), reusando el
+ * mismo camino seguro de las purgas de retención (purgeDesignBatch: bytes primero,
+ * bytes compartidos con diseños vivos preservados — 2026-10-13). Es la primitiva de
+ * borrado que usan la poda «últimos N borradores» y el vaciado/eliminación manual de
+ * borradores de "Mis diseños" (draft-lifecycle.ts) — el caller es responsable de
+ * haber verificado ownership y estado (DRAFT) antes de llamarla.
+ *
+ * 2026-10-14 — los bytes son BEST-EFFORT (bestEffortBytes): un fallo de Storage o la
+ * ausencia de credenciales NO impide borrar las filas (a diferencia de las purgas de
+ * retención, que reintentan en el próximo ciclo). Un borrador condenado por la poda o
+ * eliminado por el cliente debe desaparecer igual; los bytes huérfanos resultantes
+ * los reclama sweepOrphanStorageObjects (mismo cron de retención).
+ */
+export async function deleteDesignsWithAssets(designIds: string[]): Promise<PurgeResult> {
+  if (designIds.length === 0) return { designsPurged: 0, assetsPurged: 0 };
+  const designs = await prisma.design.findMany({
+    where: { id: { in: designIds } },
+    select: CANDIDATE_SELECT,
+  });
+  return purgeDesignBatch(designs, { bestEffortBytes: true });
 }
 
 /**
@@ -351,7 +418,8 @@ function resolveIdleDays(overrideDays: number | undefined): number {
   if (overrideDays !== undefined) return overrideDays;
   const raw = process.env.PURGE_IDLE_DESIGN_AFTER_DAYS;
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : PURGE_IDLE_DESIGN_AFTER_DAYS;
+  const days = Number.isFinite(parsed) && parsed > 0 ? parsed : PURGE_IDLE_DESIGN_AFTER_DAYS;
+  return capRetentionDaysNonProd(days);
 }
 
 /**
@@ -411,7 +479,8 @@ function resolveIdleReadyDays(overrideDays: number | undefined): number {
   if (overrideDays !== undefined) return overrideDays;
   const raw = process.env.PURGE_IDLE_READY_AFTER_DAYS;
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : PURGE_IDLE_READY_AFTER_DAYS;
+  const days = Number.isFinite(parsed) && parsed > 0 ? parsed : PURGE_IDLE_READY_AFTER_DAYS;
+  return capRetentionDaysNonProd(days);
 }
 
 /**
@@ -426,8 +495,8 @@ function resolveIdleReadyDays(overrideDays: number | undefined): number {
  * retention-delivered.ts) y sin cotización vigente. Aplica a anónimos y logueados
  * (customerId indistinto): el plazo de 90d ya es la versión laxa; endurecer anónimos a
  * 30d quedó deliberadamente fuera para no bifurcar la política (ver ADR-130).
- * ARCHIVED nunca entra (decisión explícita del cliente). Corre desde el mismo cron
- * purge-anon-designs.
+ * Un ARCHIVED desde READY entra con la misma guarda (archivedFrom conserva el origen).
+ * Corre desde el mismo cron purge-anon-designs.
  * @param opts.olderThanDays días sin actividad (default PURGE_IDLE_READY_AFTER_DAYS / env var).
  */
 export async function purgeIdleReadyDesigns(
@@ -444,7 +513,7 @@ export async function purgeIdleReadyDesigns(
 
   const readys = await prisma.design.findMany({
     where: {
-      status: "READY",
+      OR: [{ status: "READY" }, { status: "ARCHIVED", archivedFrom: "READY" }],
       updatedAt: { lt: cutoff },
       cartItems: NO_LIVE_CART_ITEM,
       orderItems: { none: {} },

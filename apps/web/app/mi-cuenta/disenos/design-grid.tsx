@@ -2,11 +2,35 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { Share2, Archive, ExternalLink, Loader2, Palette, Pencil } from "lucide-react";
+import {
+  Share2,
+  Archive,
+  ExternalLink,
+  Loader2,
+  Palette,
+  Pencil,
+  ChevronDown,
+  Trash2,
+} from "lucide-react";
 import { WhatsAppIcon } from "@/components/icons/brand";
 import { toast } from "sonner";
 import { buildPublicShareUrl } from "@/lib/public-url";
-import { shareDesignAction, archiveDesignAction, revokeShareAction } from "./actions";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  shareDesignAction,
+  archiveDesignAction,
+  revokeShareAction,
+  deleteDraftDesignAction,
+  emptyDraftsAction,
+} from "./actions";
 import type { AccountTexts } from "../account-texts";
 
 export type DesignCardData = {
@@ -17,12 +41,83 @@ export type DesignCardData = {
   /** Hay un link /d/<token> activo (F-11: solo el hash vive en DB). */
   hasShareToken: boolean;
   used: boolean;
+  inCart?: boolean;
   /** Fase 2 · item 2.4 (2026-10-07) — borrador vigente: sin acciones de
    *  compartir; la tarjeta ofrece «Seguir editando» al Estudio. 2026-10-13 —
    *  en los borradores `previewUrl` trae la MINIATURA del auto-save
    *  (Design.draftPreviewUrl) cuando existe, "" si aún no se genera. */
   draft?: boolean;
 };
+
+/**
+ * 2026-10-13 — umbral de la sección «Borradores»: con más de este número la
+ * sección arranca CERRADA (solo el encabezado con el contador), para que una
+ * proliferación histórica de borradores no empuje los diseños listos fuera de
+ * pantalla. Con pocos arranca abierta (el cliente los ve y los retoma).
+ */
+const DRAFTS_OPEN_BY_DEFAULT_MAX = 3;
+
+/**
+ * 2026-10-20 — confirmación destructiva como Dialog REAL (reemplaza el confirm
+ * inline "Sí/No" en texto xs, casi invisible y fácil de tocar por accidente).
+ * Lo usan los tres caminos destructivos del grid: archivar diseño, eliminar
+ * borrador y «Vaciar borradores». Radix Dialog ya trae foco atrapado, cierre
+ * por ESC/backdrop y aria-modal. El botón destructivo es rose sólido (misma
+ * familia que el rose-600 de los confirms viejos) y bloquea doble submit con
+ * `pending`.
+ */
+function ConfirmDestructiveDialog({
+  open,
+  onOpenChange,
+  title,
+  body,
+  confirmLabel,
+  cancelLabel,
+  pending,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  body: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  pending: boolean;
+  onConfirm: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={pending ? undefined : onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="text-brand-purple-dark font-display text-lg font-bold">
+            {title}
+          </DialogTitle>
+          <DialogDescription>{body}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            onClick={() => onOpenChange(false)}
+            className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10"
+          >
+            {cancelLabel}
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            loading={pending}
+            onClick={onConfirm}
+            className="bg-rose-600 text-white hover:bg-rose-700"
+          >
+            {confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export function DesignGrid({
   designs,
@@ -31,16 +126,111 @@ export function DesignGrid({
   designs: DesignCardData[];
   texts: AccountTexts["designs"];
 }) {
+  // 2026-10-13 — los borradores van en su propia sección colapsable DEBAJO de
+  // los listos/pedidos (protagonismo a lo accionable: compartir/pedir otra vez).
+  const ready = designs.filter((d) => !d.draft);
+  const drafts = designs.filter((d) => d.draft);
   return (
-    <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-      {designs.map((d) =>
-        d.draft ? (
-          <DraftDesignCard key={d.id} design={d} texts={texts} />
-        ) : (
-          <DesignCard key={d.id} design={d} texts={texts} />
-        ),
+    <div className="space-y-6">
+      {ready.length > 0 && (
+        <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {ready.map((d) => (
+            <DesignCard key={d.id} design={d} texts={texts} />
+          ))}
+        </ul>
       )}
-    </ul>
+      {drafts.length > 0 && <DraftsSection drafts={drafts} texts={texts} />}
+    </div>
+  );
+}
+
+/**
+ * 2026-10-13 — sección «Borradores»: colapsable (cerrada por defecto cuando hay
+ * muchos — DRAFTS_OPEN_BY_DEFAULT_MAX — con contador "N borradores"), con
+ * eliminación individual por tarjeta y «Vaciar borradores» (ambas con diálogo
+ * destructivo de confirmación — 2026-10-20, mismo patrón que el archivado).
+ */
+function DraftsSection({
+  drafts,
+  texts,
+}: {
+  drafts: DesignCardData[];
+  texts: AccountTexts["designs"];
+}) {
+  const [open, setOpen] = useState(drafts.length <= DRAFTS_OPEN_BY_DEFAULT_MAX);
+  const [confirmEmpty, setConfirmEmpty] = useState(false);
+  const [deletedIds, setDeletedIds] = useState<ReadonlySet<string>>(new Set());
+  const [pending, startTransition] = useTransition();
+
+  const visible = drafts.filter((d) => !deletedIds.has(d.id));
+  if (visible.length === 0) return null;
+
+  const countText = (
+    visible.length === 1 ? texts.draftsCountSingle : texts.draftsCountMany
+  ).replace("{n}", String(visible.length));
+
+  function handleEmpty() {
+    startTransition(async () => {
+      const r = await emptyDraftsAction();
+      if (r.ok) {
+        setDeletedIds(new Set(drafts.map((d) => d.id)));
+        setConfirmEmpty(false);
+        toast.success("Borradores eliminados.");
+      } else {
+        toast.error("No pudimos vaciar tus borradores. Intenta de nuevo.");
+      }
+    });
+  }
+
+  return (
+    <section aria-label={texts.draftsSection}>
+      <div className="border-brand-purple/15 flex flex-wrap items-center gap-2 rounded-2xl border bg-white px-4 py-3 shadow-sm">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="text-brand-purple-dark inline-flex min-w-0 flex-1 items-center gap-2 text-left text-sm font-semibold"
+        >
+          <ChevronDown
+            className={`h-4 w-4 flex-shrink-0 transition-transform ${open ? "" : "-rotate-90"}`}
+            aria-hidden
+          />
+          <span className="truncate">
+            {texts.draftsSection} · {countText}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfirmEmpty(true)}
+          className="text-brand-muted inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium hover:text-rose-600"
+        >
+          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+          {texts.draftsEmpty}
+        </button>
+      </div>
+      <ConfirmDestructiveDialog
+        open={confirmEmpty}
+        onOpenChange={setConfirmEmpty}
+        title={texts.draftsEmptyConfirm}
+        body={texts.draftsEmptyBody}
+        confirmLabel={texts.draftsEmptyYes}
+        cancelLabel={texts.cancel}
+        pending={pending}
+        onConfirm={handleEmpty}
+      />
+      {open && (
+        <ul className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {visible.map((d) => (
+            <DraftDesignCard
+              key={d.id}
+              design={d}
+              texts={texts}
+              onDeleted={(id) => setDeletedIds((prev) => new Set(prev).add(id))}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -49,20 +239,40 @@ export function DesignGrid({
  * «Borrador» y CTA «Seguir editando» que reabre el Estudio con ?designId=
  * (el recover flow del server valida ownership y estado). Sin compartir ni
  * archivar: compartir exige READY y archivar borradores no está soportado por
- * la action (su retiro lo hace la purga de retención a los 90 d idle).
+ * la action.
  *
  * 2026-10-13 — miniatura real del borrador cuando el auto-save del Estudio ya
  * la subió (Design.draftPreviewUrl, mapeada a `previewUrl` por la página);
  * sin miniatura (borradores viejos o sin foto todavía) se conserva el
- * placeholder de marca.
+ * placeholder de marca. Misma fecha: botón «Eliminar» — 2026-10-20 con diálogo
+ * destructivo en vez del confirm inline (deleteDraftDesignAction borra
+ * registro + assets de Storage) — antes el único retiro era la purga de
+ * retención a los 90 d idle.
  */
 function DraftDesignCard({
   design,
   texts,
+  onDeleted,
 }: {
   design: DesignCardData;
   texts: AccountTexts["designs"];
+  onDeleted: (id: string) => void;
 }) {
+  const [pending, startTransition] = useTransition();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  function handleDelete() {
+    startTransition(async () => {
+      const r = await deleteDraftDesignAction(design.id);
+      if (r.ok) {
+        onDeleted(design.id);
+        toast.success("Borrador eliminado.");
+      } else {
+        toast.error("No pudimos eliminar el borrador. Intenta de nuevo.");
+      }
+    });
+  }
+
   return (
     <li className="border-brand-purple/12 overflow-hidden rounded-2xl border border-dashed bg-white shadow-sm">
       {design.previewUrl ? (
@@ -90,7 +300,7 @@ function DraftDesignCard({
             {texts.draftBadge}
           </span>
         </div>
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <Link
             href={`/estudio/${design.productSlug}?designId=${design.id}`}
             className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-white"
@@ -98,8 +308,26 @@ function DraftDesignCard({
             <Pencil className="h-3.5 w-3.5" aria-hidden />
             {texts.draftResume}
           </Link>
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(true)}
+            aria-label={texts.draftDelete}
+            className="text-brand-muted ml-auto inline-flex items-center rounded-full p-1.5 hover:text-rose-600"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
+      <ConfirmDestructiveDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title={texts.draftDeleteConfirm}
+        body={texts.draftDeleteBody}
+        confirmLabel={texts.draftDeleteYes}
+        cancelLabel={texts.cancel}
+        pending={pending}
+        onConfirm={handleDelete}
+      />
     </li>
   );
 }
@@ -212,11 +440,13 @@ function DesignCard({ design, texts }: { design: DesignCardData; texts: AccountT
           <p className="text-brand-purple-dark min-w-0 flex-1 truncate text-sm font-semibold">
             {design.productName}
           </p>
-          {/* Distinción clara Borrador/Listo (2026-10-13): el READY sin pedir
-              lleva badge «Listo» (el borrador tiene el suyo en DraftDesignCard). */}
           {design.used ? (
             <span className="flex-shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
               {texts.used}
+            </span>
+          ) : design.inCart ? (
+            <span className="bg-brand-purple/10 text-brand-purple flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold">
+              {texts.inCartBadge}
             </span>
           ) : (
             <span className="bg-brand-yellow/25 text-brand-purple-dark flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold">
@@ -284,37 +514,26 @@ function DesignCard({ design, texts }: { design: DesignCardData; texts: AccountT
             </>
           )}
 
-          {confirmArchive ? (
-            <span className="ml-auto inline-flex items-center gap-1.5 text-xs">
-              <span className="text-brand-muted">{texts.archiveConfirm}</span>
-              <button
-                type="button"
-                onClick={handleArchive}
-                disabled={pending}
-                className="font-semibold text-rose-600 hover:text-rose-700 disabled:opacity-60"
-              >
-                {texts.yes}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmArchive(false)}
-                className="text-brand-muted"
-              >
-                {texts.no}
-              </button>
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirmArchive(true)}
-              aria-label={texts.archiveAria}
-              className="text-brand-muted ml-auto inline-flex items-center rounded-full p-1.5 hover:text-rose-600"
-            >
-              <Archive className="h-3.5 w-3.5" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setConfirmArchive(true)}
+            aria-label={texts.archiveAria}
+            className="text-brand-muted ml-auto inline-flex items-center rounded-full p-1.5 hover:text-rose-600"
+          >
+            <Archive className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
+      <ConfirmDestructiveDialog
+        open={confirmArchive}
+        onOpenChange={setConfirmArchive}
+        title={texts.archiveConfirm}
+        body={texts.archiveBody}
+        confirmLabel={texts.archiveYes}
+        cancelLabel={texts.cancel}
+        pending={pending}
+        onConfirm={handleArchive}
+      />
     </li>
   );
 }

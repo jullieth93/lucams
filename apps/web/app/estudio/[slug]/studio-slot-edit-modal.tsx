@@ -175,6 +175,12 @@ export function StudioSlotEditModal({
   const defaultTab = hasPhoto ? "photo" : "text";
   const [activeTab, setActiveTab] = useState(defaultTab);
   const texts = useStudioTexts();
+  // 2026-10-19 (owner — un solo «Listo») — commit pendiente del editor de texto
+  // de la pestaña Texto (lo registra el StudioTextEditorForm visible vía
+  // applyRef): el «Listo» del footer lo APLICA y luego cierra. La pestaña Foto
+  // ya aplica inline (filtros/encuadre van directo al store) → allí «Listo»
+  // solo cierra, como siempre.
+  const textApplyRef = useRef<(() => void) | null>(null);
 
   // Bug 2026-09-07 — este componente está SIEMPRE montado (el wrapper del grid lo
   // renderiza aunque el diálogo esté cerrado), así que useState(defaultTab) se
@@ -446,6 +452,7 @@ export function StudioSlotEditModal({
                     cardColor={cardColor}
                     textDefaultFills={textDefaultFills}
                     onApplyToAll={onApplyTextToAll}
+                    applyRef={textApplyRef}
                   />
                 </div>
               )}
@@ -472,11 +479,18 @@ export function StudioSlotEditModal({
               </Hint>
             )}
           </div>
-          {/* Owner 2026-10-05 — jerarquía de primarios: «Aplicar» (arriba en el
-              formulario de texto) es la acción principal de la edición; «Listo»
-              solo CIERRA el modal → baja a estilo secundario (outline) para que
-              los dos primarios no compitan. */}
-          <Button type="button" variant="outline" onClick={onClose}>
+          {/* 2026-10-19 (owner) — UN solo «Listo»: en la pestaña Texto APLICA la
+              edición pendiente (misma persistencia del viejo «Aplicar» superior,
+              vía textApplyRef) y CIERRA; en Foto solo cierra (aplica inline).
+              Ya no compite con un segundo primario dentro del formulario. */}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              if (activeTab === "text") textApplyRef.current?.();
+              onClose();
+            }}
+          >
             {texts.texto.slotEditListo}
           </Button>
         </div>
@@ -493,6 +507,7 @@ function TextLayersEditor({
   cardColor = null,
   textDefaultFills,
   onApplyToAll,
+  applyRef,
 }: {
   layers: TextLayer[];
   currentOverrides: Record<string, TextOverride> | undefined;
@@ -503,6 +518,10 @@ function TextLayersEditor({
   /** Fase 1B — «Aplicar a todas» por capa (replica el override de la capa en
    *  todos los slots). Ausente → el botón no se muestra. */
   onApplyToAll?: (layerId: string, override: TextOverride) => void;
+  /** 2026-10-19 — ref donde el form visible registra su commit (lo dispara el
+   *  «Listo» del footer; «Volver a capas» también aplica antes de salir para no
+   *  perder la edición en curso). */
+  applyRef?: { current: (() => void) | null };
 }) {
   const texts = useStudioTexts();
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(() => {
@@ -529,11 +548,20 @@ function TextLayersEditor({
         layer={selectedLayer}
         currentOverride={currentOverrides?.[selectedLayer.id]}
         onApply={(override) => onApply(selectedLayer.id, override)}
+        applyRef={applyRef}
         cardColor={cardColor}
         cardDefaultFill={textDefaultFills?.[selectedLayer.id]}
       />
     );
   }
+
+  // 2026-10-19 — sin «Aplicar» propio del form, salir de la capa («Volver a
+  // capas» / «Volver») APLICA la edición en curso antes de navegar: sin esto el
+  // texto editado se perdería en silencio al cambiar de capa.
+  const applyAndBack = () => {
+    applyRef?.current?.();
+    setSelectedLayerId(null);
+  };
 
   return (
     <div className="space-y-4">
@@ -542,7 +570,7 @@ function TextLayersEditor({
           {selectedLayerId !== null && (
             <button
               type="button"
-              onClick={() => setSelectedLayerId(null)}
+              onClick={applyAndBack}
               className="text-brand-purple-dark/70 hover:text-brand-purple-dark flex items-center gap-1 text-xs font-semibold underline"
             >
               <ChevronLeft className="h-3.5 w-3.5" />
@@ -622,7 +650,7 @@ function TextLayersEditor({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setSelectedLayerId(null)}
+              onClick={applyAndBack}
               className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-white shadow-md transition-all hover:shadow-lg active:scale-[0.98]"
             >
               <ChevronLeft className="h-3.5 w-3.5" />
@@ -637,10 +665,8 @@ function TextLayersEditor({
           <StudioTextEditorForm
             layer={selectedLayer}
             currentOverride={currentOverrides?.[selectedLayer.id]}
-            onApply={(override) => {
-              onApply(selectedLayer.id, override);
-              setSelectedLayerId(null);
-            }}
+            onApply={(override) => onApply(selectedLayer.id, override)}
+            applyRef={applyRef}
             cardColor={cardColor}
             cardDefaultFill={textDefaultFills?.[selectedLayer.id]}
           />

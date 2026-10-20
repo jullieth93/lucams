@@ -64,14 +64,18 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ ok: true });
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     logger.warn(
       {
         event: "design.save_canvas_beacon.fail",
         designId: parsed.data.designId,
-        err: err instanceof Error ? err.message : String(err),
+        err: message,
       },
       "saveCanvas beacon failed",
     );
+    if (message === "STALE_REVISION") {
+      return NextResponse.json({ ok: false, code: "STALE_REVISION" }, { status: 409 });
+    }
     return NextResponse.json({ ok: false }, { status: 500 });
   }
 }

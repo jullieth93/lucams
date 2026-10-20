@@ -31,41 +31,25 @@ overrides:
   # precompilado. PRODUCCIÓN (render de imprenta + optimizador de Next):
   # el override fuerza también la copia anidada next>sharp.
   sharp: 0.35.5
-  # Cadena dev shadcn → @modelcontextprotocol/sdk arrastraba hono/@hono/node-server/qs
-  # con CVEs moderados (hono <4.12.21: CVE-2026-47673..47676; @hono/node-server
-  # <1.19.15: GHSA-frvp-7c67-39w9; qs ≤6.15.1: GHSA-q8mj-m7cp-5q26 / CVE-2026-8723).
-  # Solo dev/CI (shadcn CLI), nada se despliega a Vercel. Gate 2026-08-29.
-  # hono ^4.12.21 → ^4.13.7 (2026-10-03, Dependabot #19): GHSA XSS — hono/jsx
-  # renderizaba strings planos sin escapar en boundary components (<4.13.7).
-  hono: ^4.13.7
-  "@hono/node-server": ^1.19.15
   # qs ≥6.16.0 (2026-09-30): GHSA-x5fp-wj9c-mxmx / CVE-2026-82562 (array-limit bypass
   # vía bracket-key comma) y GHSA-4mjr-xmp4-gh2g / CVE-2026-82417 (DoS isBuffer).
-  # Consumidores: express 4/5 (body-parser) vía @lhci/cli y shadcn — solo dev/CI.
+  # Consumidor: express 4 (body-parser) vía @lhci/cli — solo dev/CI.
   qs: ^6.16.0
   # Gate dev-tooling 2026-08-29 — todas las cadenas siguientes son DEV-ONLY
-  # (vitest/jsdom en tests, eslint en lint, shadcn y @lhci/cli en CI local); nada se
+  # (vitest/jsdom en tests, eslint en lint, @lhci/cli en CI local); nada se
   # despliega a Vercel. Rangos verificados contra los package.json de los consumidores.
   # vite 8.0.12→8.2.2: GHSA-fx2h-pf6j-xcff y GHSA-v6wh-96g9-6wx3 (launch-editor: NTLMv2
   # hash disclosure vía UNC). vitest/@vitest/mocker 4.1.10 declaran peer ^6||^7||^8.
   vite: 8.2.2
   # undici 7.29.0→7.29.1 (2026-09-30): GHSA-3wwx-pv8p-q78v / CVE-2026-85024 (DoS en
   # WebSocket permessage-deflate). Sobre el pin anterior: 12 advisories resueltos en
-  # 7.29.0 (ver gate 2026-08-29 abajo). jsdom ^7.25.0 y shadcn ^7.27.2 lo admiten.
+  # 7.29.0 (ver gate 2026-08-29 abajo). jsdom ^7.25.0 lo admite.
   undici: 7.29.1
-  # fast-uri 3.1.7→3.1.8 (2026-09-30): GHSA-hrr3-gc8f-f4qj (medium). Se queda en la
-  # línea 3.x porque ajv declara ^3.0.1 (la 4.x es latest pero rompería el rango).
-  # Pins previos: 3.1.7 (CVE-2026-84292, CVE-2026-84394), 3.1.6 (GHSA-4c8g-83qw-93j6
-  # y 2 más). Cadena: ajv vía shadcn→@modelcontextprotocol/sdk — solo dev/CI.
-  fast-uri: 3.1.8
   # ip-address 10.7.0→10.7.2 (2026-09-30): GHSA-j6r3-76f7-8jcv y GHSA-h3mg-xc3c-68pw
   # (medium; primera versión parchada 10.7.1, se pina el último 10.7.2). Pin previo:
   # GHSA-22jq-vg5j-6vgg / GHSA-4xrf-jv44-h6hh / GHSA-mwp4-54f8-5fhr
   # (socks ^10.1.1 vía @lhci/cli→puppeteer; express-rate-limit ^10.2.0).
   ip-address: 10.7.2
-  # body-parser 2.2.2→2.3.0: GHSA-v422-hmwv-36x6. Selector acotado a la línea 2.x
-  # (express@5 ^2.2.1 vía @modelcontextprotocol/sdk); express@4 (~1.20.5) no es vulnerable.
-  "body-parser@^2.2.1": 2.3.0
   # brace-expansion (2026-09-30): 1.1.18→1.1.21 y 5.0.9→5.0.12 por las tandas nuevas
   # GHSA-6j4f-fj2g-mc7p (high), GHSA-qhr7-859c-m2p7 (high) y GHSA-q2hr-2g5m-vwhr
   # (medium) — la versión parchada más alta de cada línea (1.x: 1.1.21; 5.x: 5.0.12).
@@ -114,6 +98,6 @@ auditConfig:
     # GHSA-vfj7-8cjw-p6xm (braces ≤3.0.3, high, 2026-10-03): el advisory declara
     # patched >=3.0.4 pero esa versión NO existe en npm (latest = 3.0.3,
     # 2024-05-21) — advisory prematuro, no hay patch que aplicar. Cadena dev-only
-    # (fast-glob vía eslint-config-next y ts-morph/shadcn): nada se despliega y
+    # (fast-glob vía eslint-config-next): nada se despliega y
     # los consumidores no procesan globs de usuario. Revisar cuando exista 3.0.4.
     - GHSA-vfj7-8cjw-p6xm

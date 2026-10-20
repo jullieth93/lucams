@@ -12,7 +12,11 @@ import {
   writeStudioDraftId,
   clearStudioDraftId,
   shouldOfferDraftResume,
+  studioDraftHasRealProgress,
+  readStudioBootIntentUnits,
+  draftUnitsMismatch,
   DRAFT_MARKER_MAX_AGE_MS,
+  DRAFT_MARKER_GUEST_MAX_AGE_MS,
   studioCanvasSnapshotKey,
   readStudioCanvasSnapshot,
   writeStudioCanvasSnapshot,
@@ -82,6 +86,20 @@ describe("draft marker (localStorage por producto)", () => {
     );
     expect(readStudioDraftMarker("viejo", { now })).toBeNull();
     expect(window.localStorage.getItem(studioDraftStorageKey("viejo"))).toBeNull();
+  });
+
+  it("la vigencia puede acotarse por identidad (invitado: 7 días)", () => {
+    const now = Date.now();
+    window.localStorage.setItem(
+      studioDraftStorageKey("invitado"),
+      JSON.stringify({
+        designId: "design-1",
+        savedAt: now - DRAFT_MARKER_GUEST_MAX_AGE_MS - 1000,
+      }),
+    );
+    expect(
+      readStudioDraftMarker("invitado", { now, maxAgeMs: DRAFT_MARKER_GUEST_MAX_AGE_MS }),
+    ).toBeNull();
   });
 
   it("marcador dentro de la ventana de vigencia → se ofrece", () => {
@@ -197,6 +215,87 @@ describe("shouldOfferDraftResume", () => {
   });
 });
 
+describe("gate de unidades del retomador (2026-10-19 — cobro correcto)", () => {
+  // Canvas V2 multi-unidad: calendario de 2 unidades × 12 páginas.
+  const canvas2u = { version: 2, slotCount: 24, unitCount: 2, unitSlots: 12, slots: [] };
+
+  beforeEach(() => {
+    // URL neutra: sin ?variant= ni ?copies= → sin intención declarada.
+    window.history.replaceState({}, "", "/estudio/calendario");
+  });
+
+  it("writeStudioDraftId cosecha el unitCount del snapshot local del canvas", () => {
+    writeStudioCanvasSnapshot("design-2u", canvas2u, 1000);
+    writeStudioDraftId("calendario", "design-2u");
+    expect(readStudioDraftMarker("calendario")?.unitCount).toBe(2);
+  });
+
+  it("opts.unitCount explícito manda sobre el snapshot", () => {
+    writeStudioCanvasSnapshot("design-2u", canvas2u, 1000);
+    writeStudioDraftId("calendario", "design-2u", { unitCount: 3 });
+    expect(readStudioDraftMarker("calendario")?.unitCount).toBe(3);
+  });
+
+  it("borrador de 2 unidades + PDP de 1 (?variant= sin copies) → NO se ofrece y el marcador SE CONSERVA", () => {
+    writeStudioCanvasSnapshot("design-2u", canvas2u, 1000);
+    writeStudioDraftId("calendario", "design-2u");
+    window.history.replaceState({}, "", "/estudio/calendario?variant=v1");
+    expect(readStudioDraftMarker("calendario")).toBeNull();
+    // No se borra: el borrador sigue siendo retomable para su propia intención.
+    expect(window.localStorage.getItem(studioDraftStorageKey("calendario"))).not.toBeNull();
+  });
+
+  it("borrador de 2 unidades + ?copies=2 → se ofrece (intención coincide)", () => {
+    writeStudioCanvasSnapshot("design-2u", canvas2u, 1000);
+    writeStudioDraftId("calendario", "design-2u");
+    window.history.replaceState({}, "", "/estudio/calendario?variant=v1&copies=2");
+    expect(readStudioDraftMarker("calendario")?.designId).toBe("design-2u");
+  });
+
+  it("borrador de 2 unidades + ?copies=1 explícito → NO se ofrece", () => {
+    writeStudioCanvasSnapshot("design-2u", canvas2u, 1000);
+    writeStudioDraftId("calendario", "design-2u");
+    window.history.replaceState({}, "", "/estudio/calendario?copies=1");
+    expect(readStudioDraftMarker("calendario")).toBeNull();
+  });
+
+  it("unidades DESCONOCIDAS (marcador viejo sin unitCount y sin snapshot) → se ofrece igual", () => {
+    // Compat con marcadores ya escritos en localStorage antes del gate.
+    window.localStorage.setItem(
+      studioDraftStorageKey("calendario"),
+      JSON.stringify({ designId: "design-viejo", savedAt: Date.now() }),
+    );
+    window.history.replaceState({}, "", "/estudio/calendario?variant=v1");
+    expect(readStudioDraftMarker("calendario")?.designId).toBe("design-viejo");
+  });
+
+  it("sin intención en la URL (visita directa / recarga sin query) → se ofrece igual", () => {
+    writeStudioCanvasSnapshot("design-2u", canvas2u, 1000);
+    writeStudioDraftId("calendario", "design-2u");
+    expect(readStudioDraftMarker("calendario")?.designId).toBe("design-2u");
+  });
+
+  it("readStudioBootIntentUnits: copies válido > variante sola (=1) > sin params (null)", () => {
+    window.history.replaceState({}, "", "/estudio/x?variant=v1&copies=3");
+    expect(readStudioBootIntentUnits()).toBe(3);
+    window.history.replaceState({}, "", "/estudio/x?variant=v1");
+    expect(readStudioBootIntentUnits()).toBe(1);
+    window.history.replaceState({}, "", "/estudio/x");
+    expect(readStudioBootIntentUnits()).toBeNull();
+    window.history.replaceState({}, "", "/estudio/x?copies=abc");
+    expect(readStudioBootIntentUnits()).toBeNull();
+    window.history.replaceState({}, "", "/estudio/x?copies=0");
+    expect(readStudioBootIntentUnits()).toBe(1); // acotado a 1..99
+  });
+
+  it("draftUnitsMismatch: solo true con ambas conocidas y distintas", () => {
+    expect(draftUnitsMismatch({ draftUnits: 2, intendedUnits: 1 })).toBe(true);
+    expect(draftUnitsMismatch({ draftUnits: 2, intendedUnits: 2 })).toBe(false);
+    expect(draftUnitsMismatch({ draftUnits: null, intendedUnits: 1 })).toBe(false);
+    expect(draftUnitsMismatch({ draftUnits: 2, intendedUnits: null })).toBe(false);
+  });
+});
+
 describe("canvas snapshot de recuperación (ADR-133)", () => {
   const canvas = { version: 2, slotCount: 6, slots: [] };
 
@@ -281,5 +380,72 @@ describe("shouldUseCanvasSnapshot (ADR-133)", () => {
 
   it("sin snapshot → server", () => {
     expect(shouldUseCanvasSnapshot({ snapshotRev: null, serverClientRev: null })).toBe(false);
+  });
+});
+
+describe("studioDraftHasRealProgress — guardia de contenido REAL del retomador (2026-10-19)", () => {
+  const emptyCanvas = {
+    version: 2,
+    slotCount: 2,
+    slots: [
+      { slotIndex: 0, assetId: null, assetUrl: null },
+      { slotIndex: 1, assetId: null, assetUrl: null },
+    ],
+  };
+
+  it("canvas vacío → false (no se ofrece el borrador)", () => {
+    expect(studioDraftHasRealProgress(emptyCanvas)).toBe(false);
+  });
+
+  it("clientRev > 0 sobre canvas VACÍO → false (cambio deshecho: asignar y quitar la única foto)", () => {
+    // El atajo clientRev de designHasMeaningfulProgress cuenta "se guardó algo
+    // alguna vez" — para el retomador solo cuenta el contenido visible.
+    expect(studioDraftHasRealProgress({ ...emptyCanvas, clientRev: 7 })).toBe(false);
+  });
+
+  it("solo cambio de plantilla/estilo (borderColor, calendarFont) sin slots llenos → false", () => {
+    expect(
+      studioDraftHasRealProgress({ ...emptyCanvas, clientRev: 3, borderColor: "#E85B9F" }),
+    ).toBe(false);
+  });
+
+  it("cuenta contenido real: foto, foto de perfil IG o texto editado", () => {
+    expect(
+      studioDraftHasRealProgress({
+        ...emptyCanvas,
+        slots: [{ slotIndex: 0, assetId: "a", assetUrl: "u" }, emptyCanvas.slots[1]],
+      }),
+    ).toBe(true);
+    expect(
+      studioDraftHasRealProgress({
+        ...emptyCanvas,
+        slots: [{ slotIndex: 0, assetId: null, assetUrl: null, profileAssetUrl: "avatar" }],
+      }),
+    ).toBe(true);
+    expect(
+      studioDraftHasRealProgress({
+        ...emptyCanvas,
+        slots: [
+          { slotIndex: 0, assetId: null, assetUrl: null, textOverrides: { msg: { text: "Hola" } } },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("entradas inválidas → false (nunca revienta la decisión)", () => {
+    expect(studioDraftHasRealProgress(null)).toBe(false);
+    expect(studioDraftHasRealProgress(undefined)).toBe(false);
+    expect(studioDraftHasRealProgress("no-json")).toBe(false);
+  });
+
+  it("integración: snapshot vacío + marcador vigente → la guardia del editor lo descarta", () => {
+    // El initializer del resumeOffer lee el snapshot del marcador; con canvas
+    // vacío limpia marcador + snapshot y bootea fresco sin preguntar.
+    writeStudioDraftId("polaroid", "design-1");
+    writeStudioCanvasSnapshot("design-1", { ...emptyCanvas, clientRev: 9 }, 1000);
+    const marker = readStudioDraftMarker("polaroid");
+    const snapshot = marker ? readStudioCanvasSnapshot(marker.designId) : null;
+    expect(snapshot).not.toBeNull();
+    expect(studioDraftHasRealProgress(snapshot?.canvasData)).toBe(false);
   });
 });

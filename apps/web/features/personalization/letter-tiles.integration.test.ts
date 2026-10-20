@@ -60,6 +60,8 @@ let setId = "";
 let fullSetId = "";
 let defaultSetId = "";
 let designId = "";
+// Diseños extra creados por los tests multi-set (2026-10-19) — misma limpieza.
+const extraDesignIds: string[] = [];
 let categoryId = "";
 let productId = "";
 let variantId = "";
@@ -165,8 +167,9 @@ afterAll(async () => {
   for (const { bucket, paths } of storageCleanup) {
     await safe(supabaseService.storage.from(bucket).remove(paths));
   }
-  if (designId) {
-    await safe(prisma.design.deleteMany({ where: { id: designId } }));
+  const allDesignIds = [designId, ...extraDesignIds].filter(Boolean);
+  if (allDesignIds.length > 0) {
+    await safe(prisma.design.deleteMany({ where: { id: { in: allDesignIds } } }));
   }
   for (const id of [setId, fullSetId, defaultSetId]) {
     if (id) {
@@ -269,6 +272,114 @@ describe.skipIf(!canRunStorage)("certificación fichas end-to-end (Ola 2A + Ola 
       // El preview quedó público (es el thumbnail que ve el carrito/cotización).
       const res = await fetch(finalized.previewUrl!);
       expect(res.status).toBe(200);
+    },
+  );
+
+  /*
+   * Multi-set (2026-10-19 — bug crítico de venta): con >1 set el Estudio sube
+   * UNA lámina de producción POR SET (production_i). El finalize esperaba 1
+   * snapshot (canvasData V1 stub) y rebotaba con «INCOMPLETE_SLOTS: expected 1,
+   * got N» — la compra quedaba bloqueada. El branch letterset del finalize
+   * espera exactamente metadata.unitCount láminas, en orden posicional.
+   */
+  it(
+    "diseño de 2 sets: finalize acepta 2 láminas (1 por set) y persiste estilo/borde por set",
+    { timeout: 60_000 },
+    async () => {
+      const created = await createLetterSetDesign({
+        productId,
+        variantId,
+        frameTheme: "arcoiris",
+        colors: ["#5DD9D1", "#E85B9F", "#7C6AAD", "#FFD93D", "#5DD9D1"],
+        styleSetId: setId,
+        language: "es",
+        unitCount: 2,
+        units: [
+          {
+            colors: ["#5DD9D1", "#E85B9F", "#7C6AAD", "#FFD93D", "#5DD9D1"],
+            styleSetId: setId,
+            withBorder: true,
+          },
+          {
+            colors: ["#111111", "#222222", "#333333", "#444444", "#555555"],
+            styleSetId: null,
+            withBorder: false,
+          },
+        ],
+        customerId: null,
+        sessionId: `test-${RUN}-multi`,
+      });
+      extraDesignIds.push(created.id);
+
+      // Metadata: estilo y borde POR SET (rediseño 2026-10-19) + colores por ficha.
+      const meta = await prisma.design.findUnique({
+        where: { id: created.id },
+        select: { metadata: true },
+      });
+      const units = (meta!.metadata as { units?: unknown[] }).units!;
+      expect(units).toHaveLength(2);
+      expect(units[0]).toMatchObject({ styleSetId: setId, withBorder: true });
+      expect(units[1]).toMatchObject({ styleSetId: null, withBorder: false });
+
+      const page1 = await solidTile("#FFF8F0");
+      const page2 = await solidTile("#FFF0F8");
+      storageCleanup.push({ bucket: "design-previews", paths: [`${created.id}/preview.png`] });
+      storageCleanup.push({
+        bucket: "production-assets",
+        paths: [`${created.id}/slot-01.png`, `${created.id}/slot-02.png`],
+      });
+      const finalized = await finalizeDesign({
+        designId: created.id,
+        previewBuffer: page1,
+        productionBuffers: [page1, page2],
+        customerId: null,
+        sessionId: `test-${RUN}-multi`,
+      });
+      expect(finalized.status).toBe("READY");
+      // 2 láminas de producción, en orden posicional (slot-01 = set 1, slot-02 = set 2).
+      expect(finalized.productionUrls).toEqual([
+        `${created.id}/slot-01.png`,
+        `${created.id}/slot-02.png`,
+      ]);
+    },
+  );
+
+  it(
+    "diseño de 2 sets con MENOS láminas de las esperadas sigue rebotando (INCOMPLETE_SLOTS)",
+    { timeout: 60_000 },
+    async () => {
+      const created = await createLetterSetDesign({
+        productId,
+        variantId,
+        frameTheme: "arcoiris",
+        colors: ["#5DD9D1", "#E85B9F", "#7C6AAD", "#FFD93D", "#5DD9D1"],
+        language: "es",
+        unitCount: 2,
+        units: [
+          { colors: ["#5DD9D1", "#E85B9F", "#7C6AAD", "#FFD93D", "#5DD9D1"] },
+          { colors: ["#111111", "#222222", "#333333", "#444444", "#555555"] },
+        ],
+        customerId: null,
+        sessionId: `test-${RUN}-multi-short`,
+      });
+      extraDesignIds.push(created.id);
+      const preview = await solidTile("#FFF8F0");
+      // Nada se sube a Storage: el guard revienta ANTES de cualquier upload.
+      await expect(
+        finalizeDesign({
+          designId: created.id,
+          previewBuffer: preview,
+          productionBuffers: [preview],
+          customerId: null,
+          sessionId: `test-${RUN}-multi-short`,
+        }),
+      ).rejects.toThrow("INCOMPLETE_SLOTS: expected 2 production snapshots, got 1");
+      // Y el diseño NO queda finalizado a medias.
+      const row = await prisma.design.findUnique({
+        where: { id: created.id },
+        select: { status: true },
+      });
+      expect(row!.status).toBe("DRAFT");
     },
   );
 });

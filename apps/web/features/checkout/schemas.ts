@@ -12,6 +12,7 @@
  */
 
 import { z } from "zod";
+import { BILLING_DOCUMENT_ENABLED } from "./billing-document";
 import {
   NAME_REGEX,
   PHONE_REGEX,
@@ -187,6 +188,9 @@ export const BillingSchema = z
   })
   .refine(
     (data) => {
+      // 2026-10-20 — con el documento tributario apagado (BILLING_DOCUMENT_ENABLED,
+      // owner: persona natural sin trámites DIAN) el schema no exige nada.
+      if (!BILLING_DOCUMENT_ENABLED) return true;
       if (data.wantsInvoice) {
         return !!(data.documentType && data.documentNumber && data.name);
       }

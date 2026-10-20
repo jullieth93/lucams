@@ -1,5 +1,5 @@
 /*
- * Matemática del zoom del lightbox "Ver" del carrito (design-preview-dialog).
+ * Matemática del zoom del lightbox del preview de diseño (design-preview-dialog).
  *
  * La miniatura de la línea es pequeña y el PNG del diseño puede tener texto
  * chico (tiras/separadores): el cliente necesita acercar para revisarlo antes

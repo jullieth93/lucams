@@ -17,6 +17,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { decrementStockForOrder, revertStockForOrder, INVENTORY_REASON } from "./stock";
+import { inventoryUnitsForOrderItem } from "@/features/personalization/design-units";
 import { StockAlreadyAppliedError } from "./errors";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
@@ -222,6 +223,50 @@ describe.skipIf(!hasDb)("stock ledger — integración DB (certificación Bloque
       where: { orderId, reason: INVENTORY_REASON.ORDER_CANCELLED },
     });
     expect(cancelLogs).toHaveLength(2);
+  }, 30000);
+
+  it("multi-set: descuenta y revierte las unidades del diseño, no solo qty=1", async () => {
+    const orderId = `${run}-order-multiset`;
+    const item = {
+      variantId: variantA,
+      qty: 1,
+      customDesign: { version: 1, slotCount: 1 },
+      metadata: { surface: "letterset", unitCount: 3 },
+      variantAttrs: {},
+      productSchema: {},
+    };
+    const inventoryQty = inventoryUnitsForOrderItem(item);
+    expect(inventoryQty).toBe(3);
+    const before = (await prisma.productVariant.findUnique({
+      where: { id: variantA },
+      select: { stock: true },
+    }))!.stock;
+
+    await prisma.$transaction((tx) =>
+      decrementStockForOrder(tx, {
+        id: orderId,
+        number: "LCM-TEST-MULTISET",
+        items: [{ variantId: variantA, qty: inventoryQty }],
+      }),
+    );
+    expect((await prisma.productVariant.findUnique({ where: { id: variantA } }))!.stock).toBe(
+      before - 3,
+    );
+
+    await prisma.$transaction((tx) =>
+      revertStockForOrder(
+        tx,
+        {
+          id: orderId,
+          number: "LCM-TEST-MULTISET",
+          items: [{ variantId: variantA, qty: inventoryQty }],
+        },
+        "ORDER_CANCELLED",
+      ),
+    );
+    expect((await prisma.productVariant.findUnique({ where: { id: variantA } }))!.stock).toBe(
+      before,
+    );
   }, 30000);
 
   it("idempotencia: decrementar dos veces el mismo orderId es no-op la 2da vez", async () => {

@@ -23,6 +23,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { useRouter } from "next/navigation";
 import { useStore } from "zustand";
@@ -57,7 +59,7 @@ import {
 } from "@/components/ui/sheet";
 import { useIsTouch } from "./use-is-touch";
 import { toast } from "sonner";
-import { Sparkles, Box, X, CalendarDays, Loader2 } from "lucide-react";
+import { Sparkles, Box, X, CalendarDays, Loader2, Trash2 } from "lucide-react";
 import nextDynamic from "next/dynamic";
 import type { Magnet3D } from "./fridge-3d-view";
 import { StudioAiPanel } from "./studio-ai-panel";
@@ -84,13 +86,14 @@ import {
   photosPerUnitForEditor,
   designUnitPriceMultiplier,
 } from "@/features/personalization/design-units";
-import { faceSlotLabels, previewFacePairOfUnit, deployedSizeCm } from "./lib/faces";
-import { previewUnitRanges, type PreviewUnitRange } from "./lib/preview-units";
+import { faceSlotLabels, deployedSizeCm } from "./lib/faces";
+import { previewUnitRanges } from "./lib/preview-units";
 import {
   readStudioDraftMarker,
   writeStudioDraftId,
   clearStudioDraftId,
   shouldOfferDraftResume,
+  studioDraftHasRealProgress,
   readStudioCanvasSnapshot,
   writeStudioCanvasSnapshot,
   clearStudioCanvasSnapshot,
@@ -99,12 +102,20 @@ import {
 import { isBookmarkGalleryTag, resolveGalleryTag } from "./lib/product-kind";
 import { remapCanvasAssetUrls } from "./lib/remap-canvas-assets";
 import {
-  canvasToPreviewDataUrl,
   fitPreviewToBudget,
   fitDraftThumbnail,
   previewFileExtension,
   reencodePreviewDataUrl,
 } from "./lib/preview-encode";
+import {
+  buildBookmarkStripPreview,
+  buildCompositedPreview,
+  buildMagnetTextures,
+  clipProductionSnapshotToShape,
+  combineStripTextures,
+  rotateTextures90,
+} from "./lib/production-preview-render";
+import { dataUrlToBlob } from "./lib/image-utils";
 import {
   isNetworkError,
   isServerActionCrash,
@@ -126,13 +137,13 @@ const BookView3D = nextDynamic(() => import("./book-view-3d"), {
   loading: () => <Book3DLoadingFallback />,
 });
 import { createStudioStore } from "./lib/store";
+import { createSerialTaskQueue } from "./lib/serial-task-queue";
 import { waitForSlotPhotosReady } from "./lib/slot-photo-readiness";
-import { snapshotSlotForPreview, yieldToMain } from "./lib/slot-snapshot-cache";
 import { resolveSlotNoun, type SlotNoun, type StudioSlotProductKind } from "./lib/slot-noun";
 import { collectQualityWarnings, qualityWarningsKey } from "./lib/quality-warnings";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
 import { ensureCanvasV2 } from "./lib/canvas-migrate";
-import { magnetTextureWidth, MAGNET_TEXTURE_WIDTH_DEFAULT } from "./lib/texture-resolution";
+import { magnetTextureWidth } from "./lib/texture-resolution";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText, type StudioTexts } from "./studio-texts";
 
@@ -173,26 +184,6 @@ function Book3DLoadingFallback() {
   );
 }
 
-/**
- * Convierte un data URL base64 a Blob binario. Usado al finalizar el
- * diseño para enviar los PNGs como bytes raw vía FormData en vez de
- * strings base64 (que disparan "Maximum array nesting exceeded" en el
- * protocolo React Flight de Next 16 Server Actions).
- */
-function dataURLtoBlob(dataUrl: string): Blob {
-  const commaIdx = dataUrl.indexOf(",");
-  if (commaIdx < 0) throw new Error("dataURL inválido (sin coma)");
-  const meta = dataUrl.slice(0, commaIdx);
-  const base64 = dataUrl.slice(commaIdx + 1);
-  const mimeMatch = meta.match(/^data:([^;]+)/);
-  const mime = mimeMatch?.[1] ?? "image/png";
-  const binary = atob(base64);
-  const len = binary.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: mime });
-}
-
 export type StudioEditorProps = {
   product: StudioProduct;
   templates: StudioTemplate[];
@@ -214,6 +205,7 @@ export type StudioEditorProps = {
   initialDesignId: string | null;
   initialDesignCanvas: CanvasData | null;
   initialDesignAssets: StudioAsset[];
+  draftMarkerMaxAgeMs?: number;
   photoSlots: number;
   /**
    * Lucy 2026-09-05 — packs de fotoimanes: catálogo elegible {photoSlots, price}
@@ -297,6 +289,10 @@ function packVariantIdFor(
   );
 }
 
+function studioDraftScope(productSlug: string, variantId: string | undefined): string {
+  return `${productSlug}:${variantId ?? "default"}`;
+}
+
 export function StudioEditor({
   product,
   templates,
@@ -305,6 +301,7 @@ export function StudioEditor({
   initialDesignId,
   initialDesignCanvas,
   initialDesignAssets,
+  draftMarkerMaxAgeMs,
   photoSlots,
   packVariants = [],
   variantId,
@@ -351,6 +348,7 @@ export function StudioEditor({
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
+  const initialDraftScope = studioDraftScope(product.slug, variantId);
   // Fase 2 · item 2.4 (2026-10-07) — "Continuar donde quedaste": si hay un
   // marcador de draft para ESTE producto (localStorage) y la URL no trae
   // ?designId= (un recover explícito manda sobre el marcador), se ofrece el
@@ -363,17 +361,30 @@ export function StudioEditor({
   // trae savedAt para que el interstitial diga QUÉ se va a retomar.
   const [resumeOffer, setResumeOffer] = useState<{ designId: string; savedAt: number } | null>(
     () => {
-      const marker = readStudioDraftMarker(product.slug);
+      const marker = readStudioDraftMarker(initialDraftScope, { maxAgeMs: draftMarkerMaxAgeMs });
       const urlHasDesignId =
         typeof window !== "undefined" &&
         new URLSearchParams(window.location.search).has("designId");
-      return shouldOfferDraftResume({
+      const eligible = shouldOfferDraftResume({
         savedDesignId: marker?.designId ?? null,
         urlHasDesignId,
         hasInitialDesign: !!initialDesignId,
-      })
-        ? marker
-        : null;
+      });
+      if (!eligible || !marker) return null;
+      // 2026-10-19 — guardia de CONTENIDO REAL: si existe el snapshot local del
+      // draft (ADR-133) y NO tiene progreso visible (cambio deshecho: asignar y
+      // quitar la única foto, o solo cambiar la plantilla), el marcador apunta
+      // a un canvas vacío → limpiar marcador + snapshot y arrancar fresco SIN
+      // preguntar. Sin snapshot local no se puede verificar en cliente (el
+      // contenido vive server-side): se ofrece y el recover/boot aplica la
+      // misma guardia al escribir el marcador (ver boot y runSave).
+      const snapshot = readStudioCanvasSnapshot(marker.designId);
+      if (snapshot && !studioDraftHasRealProgress(snapshot.canvasData)) {
+        clearStudioDraftId(initialDraftScope);
+        clearStudioCanvasSnapshot(marker.designId);
+        return null;
+      }
+      return marker;
     },
   );
   // Item 2.4 — continuar: navegar al recover flow con resume=1 (el server
@@ -392,11 +403,11 @@ export function StudioEditor({
   }, [product.slug, resumeOffer]);
   // Item 2.4 — descartar: limpiar el marcador y bootear un draft nuevo.
   const handleDiscardDraft = useCallback(() => {
-    clearStudioDraftId(product.slug);
+    clearStudioDraftId(initialDraftScope);
     // ADR-133 — también el snapshot de recuperación del draft descartado.
     if (resumeOffer) clearStudioCanvasSnapshot(resumeOffer.designId);
     setResumeOffer(null);
-  }, [product.slug, resumeOffer]);
+  }, [initialDraftScope, resumeOffer]);
   // PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito: al click «Vista
   // previa» (antes «¡Listo!») generamos preview compositado client-side y
   // abrimos modal. El upload real (production PNGs + finalize + addToCart)
@@ -457,11 +468,37 @@ export function StudioEditor({
     return () => window.removeEventListener("cookie-consent-changed", handler);
   }, []);
   const slotStagesRef = useRef<Map<number, Konva.Stage | null>>(new Map());
+  // 2026-10-19 — «Borrar el diseño»: resetea TODOS los slots (fotos + textos)
+  // con confirmación. Vive en la fila de acciones globales (junto a Ideas/3D —
+  // «Llenar slots con mis fotos» está en la sidebar, fuera de este archivo).
+  // Boolean primitivo → suscripción atómica (patrón del resto del editor).
+  const hasDesignContent = useStore(store, (s) => {
+    const cd = s.canvasData;
+    if (!cd) return false;
+    if (Object.keys(s.packTextValues).length > 0) return true;
+    return cd.slots.some(
+      (sl) =>
+        sl.assetId ||
+        sl.assetUrl ||
+        sl.profileAssetId ||
+        sl.filter ||
+        sl.photoTransform ||
+        (sl.textOverrides && Object.keys(sl.textOverrides).length > 0),
+    );
+  });
+  const [clearDesignOpen, setClearDesignOpen] = useState(false);
+  const handleClearDesign = useCallback(() => {
+    store.getState().clearAllSlots();
+    setClearDesignOpen(false);
+  }, [store]);
   // Si el finalize ya pasó pero el CARRITO falló, reintentar desde la modal no puede volver a
   // finalizar: el diseño quedó en READY y `finalizeDesign` solo acepta borradores, así que el
   // reintento moría con «Design is READY — only DRAFT can be finalized» y no había salida. Se
   // limpia al volver a editar, que es cuando el diseño puede cambiar de verdad.
   const finalizedRef = useRef(false);
+  const flushCanvasSaveRef = useRef<
+    (() => Promise<Awaited<ReturnType<typeof saveCanvasAction>>>) | null
+  >(null);
   // ADR-063 T5 — cuando hay muchos slots, el grid monta solo los cercanos al viewport (lazy). Antes
   // de CUALQUIER snapshot (preview, producción, 3D) forzamos el montaje de todos y esperamos a que
   // Konva registre sus stages, para no snapshotear un slot vacío.
@@ -824,10 +861,9 @@ export function StudioEditor({
 
   // ──────────── Boot: crear draft (o recuperar existente) ────────────
   useEffect(() => {
-    // Guard: evita re-boot cuando una prop cambia de referencia pero el store ya
-    // está inicializado (p.ej. templates se recrea por render del padre). El boot
-    // solo debe correr una vez por mount real del editor.
-    if (store.getState().designId) return;
+    // Guard: el boot corre una vez por mount real del editor, también cuando el
+    // diseño nuevo aún no tiene fila server-side.
+    if (store.getState().booted) return;
     // Item 2.4 — con el interstitial "Continuar donde quedaste" pendiente el
     // boot ESPERA: crear un draft nuevo ahora dejaría dos drafts vivos (el del
     // marcador y este). Al descartar, resumeOffer → null y el boot corre.
@@ -870,43 +906,10 @@ export function StudioEditor({
             };
           }
         } else {
-          // Crear draft nuevo. N-08 — plantilla del boot: la del deep-link
-          // `?template=` (ya resuelta en page.tsx contra la lista visible) si
-          // existe; si no, la primera visible, como siempre. Se pasa su id al
-          // servidor, que la RE-VALIDA (kind/EDITABLE/activa/producto) y crea el
-          // draft con ESA misma plantilla — antes el server elegía por su cuenta
-          // ("primera activa del kind", sin aspect) y podía discrepar del canvas
-          // con el que arrancaba el cliente.
           const bootTemplate =
             (initialTemplateId ? templates.find((t) => t.id === initialTemplateId) : undefined) ??
             templates[0];
-          const result = await createDraftDesignAction({
-            productId: product.id,
-            ...(bootTemplate ? { templateId: bootTemplate.id } : {}),
-            // Variante → metadata.variantId del draft: el recover (?designId=,
-            // «Editar» desde el carrito) reabre el Estudio con la variante
-            // correcta. En packs se manda la EFECTIVA (match del catálogo por el
-            // N de fotos + magnet vigentes — 2026-10-12; antes los packs no
-            // persistían variante y el recover caía a la primera del producto).
-            // El COBRO no la lee: la variante exacta se deriva del canvasData
-            // en el servidor (la ruta del dinero no confía en el cliente).
-            ...(() => {
-              const effective = isPhotoPack
-                ? packVariantIdFor(packVariants, photoSlots, initialMagnet)
-                : variantId;
-              return effective ? { variantId: effective } : {};
-            })(),
-          });
-          if (!result.ok) {
-            throw new Error(result.message);
-          }
-          designId = result.designId;
-          // Recargar canvasData del nuevo draft. Como acabamos de crearlo
-          // server-side con V2, asumimos shape correcto.
-          // Para evitar un round-trip extra, reconstruimos el shape esperado:
-          // ADR-063 T4 — sin plantillas curadas, degradar a un template por defecto (mismo que el
-          // server arma en createDraftDesign) en vez de crashear el editor. Boot funcional para
-          // cualquier producto; la foto tiene un placeholder full-stage donde ubicarse.
+          designId = null;
           const unitTemplate = bootTemplate?.canvasData ?? {
             version: 1 as const,
             stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
@@ -1052,7 +1055,7 @@ export function StudioEditor({
         }
 
         store.getState().init({
-          designId: designId!,
+          designId,
           productSlug: product.slug,
           canvasData,
           templates,
@@ -1066,7 +1069,11 @@ export function StudioEditor({
         // escribe con PROGRESO REAL:
         //  · Recover OK (?designId= → draft existente, con avance guardado por
         //    definición): se escribe acá para que una recarga posterior sin
-        //    ?designId= lo ofrezca.
+        //    ?designId= lo ofrezca. 2026-10-19 — solo si el canvas recuperado
+        //    tiene CONTENIDO REAL visible (studioDraftHasRealProgress): un
+        //    recover de un draft vacío (p.ej. resume=1 de un marcador viejo,
+        //    o un cambio deshecho ya guardado) NO rearma el marcador — se
+        //    limpia y la próxima entrada arranca fresco sin preguntar.
         //  · Draft NUEVO: NO se escribe en el boot — un canvas vacío no es
         //    "donde quedaste" (ese era el bug: el retomador salía siempre).
         //    Lo escribe el primer auto-save exitoso (ver runSave).
@@ -1075,11 +1082,15 @@ export function StudioEditor({
         //    no es DRAFT): el marcador quedó huérfano → se limpia, no se pisa
         //    con el id del draft vacío (eso rearmaba la mentira).
         if (initialDesignId) {
-          writeStudioDraftId(product.slug, designId!);
+          if (studioDraftHasRealProgress(canvasData)) {
+            writeStudioDraftId(initialDraftScope, initialDesignId);
+          } else {
+            clearStudioDraftId(initialDraftScope);
+          }
         } else if (typeof window !== "undefined") {
           const bootParams = new URLSearchParams(window.location.search);
           if (bootParams.has("designId") && bootParams.get("resume") === "1") {
-            clearStudioDraftId(product.slug);
+            clearStudioDraftId(initialDraftScope);
           }
         }
 
@@ -1115,15 +1126,13 @@ export function StudioEditor({
     initialDesignAssets,
     initialTemplateId,
     initialDesignTemplateId,
-    product.id,
+    initialDraftScope,
     product.slug,
     photoSlots,
     initialSlotCount,
     bootUnitSlots,
     bootUnitCount,
     isPhotoPack,
-    variantId,
-    packVariants,
     packSizeCm,
     initialMagnet,
     templates,
@@ -1138,90 +1147,143 @@ export function StudioEditor({
   // ──────────── Auto-save 2s debounce ────────────
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
-    // ADR-133 — reloj (epoch ms) del último cambio visto por este efecto: se
-    // estampa como clientRev en lo que sube al server y en el snapshot local de
-    // recuperación, para que el boot del recover pueda comparar qué copia es
-    // más nueva.
     let lastChangeRev = 0;
-    // 2026-10-13 — reloj del throttle de la miniatura del borrador (arranca en
-    // 0: el PRIMER save con fotos ya la genera — un draft nuevo con foto puesta
-    // tiene miniatura desde el primer auto-save).
     let lastDraftThumbAt = 0;
+    const queue = createSerialTaskQueue();
 
-    const runSave = async () => {
+    const performSave = async (): Promise<Awaited<ReturnType<typeof saveCanvasAction>>> => {
       const current = store.getState();
-      if (!current.designId || !current.canvasData) return;
+      if (!current.isDirty || !current.canvasData) return { ok: true };
+      let designId = current.designId;
+      const canvasData = current.canvasData;
+      const savedRev = Math.max(lastChangeRev, canvasData.clientRev ?? 0, 1);
+      lastChangeRev = savedRev;
       current.setAutoSaveStatus({ kind: "saving" });
-      const savedRev = lastChangeRev;
-      // 2026-10-13 — miniatura del DRAFT para "Mis diseños": throttled (1/min) y
-      // solo con al menos una foto puesta (un lienzo vacío no ilustra nada).
-      // Best-effort: si el montaje o la compresión fallan, el save sale SIN
-      // thumbnail y se reintenta en un guardado posterior.
-      let draftPreviewDataUrl: string | undefined;
-      if (
-        Date.now() - lastDraftThumbAt >= DRAFT_THUMB_INTERVAL_MS &&
-        current.canvasData.slots?.some((s) => s.assetUrl)
-      ) {
-        try {
-          const montage = await buildCompositedPreview(
-            current.canvasData,
-            slotStagesRef.current,
-            productConfig.shape,
-          );
-          draftPreviewDataUrl = await fitDraftThumbnail(montage);
-          lastDraftThumbAt = Date.now();
-        } catch {
-          // best-effort — el canvas se guarda igual
+
+      try {
+        const saveVariantId = isPhotoPack
+          ? packVariantIdFor(packVariants, canvasData.photoSlots, canvasData.magnet)
+          : variantId;
+        if (!designId) {
+          const created = await createDraftDesignAction({
+            productId: product.id,
+            templateId: current.selectedTemplateId ?? undefined,
+            ...(saveVariantId ? { variantId: saveVariantId } : {}),
+          });
+          if (!created.ok) {
+            current.setAutoSaveStatus({ kind: "error", message: created.message });
+            return { ok: false, code: "INTERNAL", message: created.message };
+          }
+          store.getState().setDesignId(created.designId);
+          designId = created.designId;
         }
-      }
-      const result = await saveCanvasAction({
-        designId: current.designId,
-        canvasData: savedRev ? { ...current.canvasData, clientRev: savedRev } : current.canvasData,
-        // N-08 — la plantilla aplicada en el sidebar viaja con el auto-save:
-        // Design.templateId la refleja (el service la valida server-side).
-        templateId: current.selectedTemplateId ?? undefined,
-        // 2026-10-12 — packs: la variante EFECTIVA (match del catálogo por el N
-        // de fotos + magnet del canvas) viaja con el auto-save → metadata.variantId
-        // para que el recover reabra con ELLA (el cobro la deriva del canvasData).
-        variantId: isPhotoPack
-          ? packVariantIdFor(packVariants, current.canvasData.photoSlots, current.canvasData.magnet)
-          : undefined,
-        // 2026-10-13 — miniatura del borrador (cuando toca por el throttle).
-        draftPreviewDataUrl,
-      });
-      if (result.ok) {
-        current.setAutoSaveStatus({ kind: "saved", at: Date.now() });
-        current.markClean();
-        // Item 2.4 (2026-10-13) — el marcador de "Continuar donde quedaste" se
-        // escribe ACÁ (primer auto-save exitoso con cambios reales = progreso
-        // recuperable server-side), no al montar el editor con un draft vacío.
-        // También refresca savedAt en cada save (vigencia del marcador).
-        writeStudioDraftId(product.slug, current.designId);
-        // ADR-133 — el server ya persistió esta revisión: el snapshot local es
-        // redundante SOLO si no capturó un cambio más nuevo mientras el save
-        // estaba en vuelo (por eso se compara rev, no se borra a ciegas).
-        const snapshot = readStudioCanvasSnapshot(current.designId);
-        if (snapshot && snapshot.rev <= savedRev) clearStudioCanvasSnapshot(current.designId);
-      } else {
-        current.setAutoSaveStatus({ kind: "error", message: result.message });
+
+        if (finalizedRef.current) {
+          const reopened = await reopenDesignForEditAction(designId);
+          if (!reopened.ok) {
+            current.setAutoSaveStatus({ kind: "error", message: reopened.message });
+            return { ok: false, code: "INTERNAL", message: reopened.message };
+          }
+          finalizedRef.current = false;
+        }
+
+        let draftPreviewDataUrl: string | undefined;
+        if (
+          Date.now() - lastDraftThumbAt >= DRAFT_THUMB_INTERVAL_MS &&
+          canvasData.slots.some((slot) => slot.assetUrl)
+        ) {
+          try {
+            const montage = await buildCompositedPreview(
+              canvasData,
+              slotStagesRef.current,
+              productConfig.shape,
+            );
+            draftPreviewDataUrl = await fitDraftThumbnail(montage);
+            lastDraftThumbAt = Date.now();
+          } catch {
+            // La miniatura se reintenta en el próximo guardado.
+          }
+        }
+
+        const result = await saveCanvasAction({
+          designId,
+          canvasData: { ...canvasData, clientRev: savedRev },
+          templateId: current.selectedTemplateId ?? undefined,
+          variantId: isPhotoPack ? saveVariantId : undefined,
+          draftPreviewDataUrl,
+        });
+        const latest = store.getState();
+        const isLatest =
+          latest.designId === designId &&
+          latest.canvasData === canvasData &&
+          lastChangeRev === savedRev;
+
+        if (result.ok) {
+          const savedScope = studioDraftScope(product.slug, saveVariantId);
+          if (savedScope !== initialDraftScope) clearStudioDraftId(initialDraftScope);
+          // 2026-10-19 — el marcador del retomador solo vive con CONTENIDO REAL:
+          // si el canvas guardado quedó vacío (cambio deshecho: asignar y quitar
+          // la única foto, o solo cambiar la plantilla), el marcador se RETIRA en
+          // vez de quedar apuntando a un borrador vacío (el interstitial ya no lo
+          // ofrece — studioDraftHasRealProgress ignora el atajo clientRev>0 de
+          // designHasMeaningfulProgress, que cuenta "se guardó algo alguna vez").
+          if (studioDraftHasRealProgress(canvasData)) {
+            writeStudioDraftId(savedScope, designId);
+          } else {
+            clearStudioDraftId(savedScope);
+          }
+          const snapshot = readStudioCanvasSnapshot(designId);
+          if (snapshot && snapshot.rev <= savedRev) clearStudioCanvasSnapshot(designId);
+          if (isLatest) {
+            latest.markClean();
+            latest.setAutoSaveStatus({ kind: "saved", at: Date.now() });
+          }
+        } else if (isLatest) {
+          latest.setAutoSaveStatus({ kind: "error", message: result.message });
+        }
+        return result;
+      } catch {
+        const latest = store.getState();
+        const message = texts.exportar.errorGuardar;
+        if (latest.designId === designId && latest.canvasData === canvasData) {
+          latest.setAutoSaveStatus({ kind: "error", message });
+        }
+        return { ok: false, code: "INTERNAL", message };
       }
     };
 
-    const unsubscribe = store.subscribe((state, prev) => {
-      // Solo disparar al cambiar canvasData (no en cada update menor)
-      if (state.canvasData === prev.canvasData) return;
-      if (!state.isDirty || !state.designId || !state.canvasData) return;
+    const runSave = () => queue.run(performSave);
+    const flushSaves = async () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      let result = await runSave();
+      while (result.ok) {
+        const current = store.getState();
+        if (!current.isDirty || !current.canvasData) break;
+        result = await runSave();
+      }
+      return result;
+    };
+    flushCanvasSaveRef.current = flushSaves;
 
-      lastChangeRev = Date.now();
-      // ADR-133 — snapshot local de recuperación: escritura SINCRÓNICA que
-      // sobrevive la recarga aunque el save del debounce y el beacon de unload
-      // mueran (en STG/headless el beacon despachado desde pagehide nunca sale
-      // del navegador — verificado con Playwright + DB 2026-10-08).
-      writeStudioCanvasSnapshot(
-        state.designId,
-        { ...state.canvasData, clientRev: lastChangeRev },
-        lastChangeRev,
+    const unsubscribe = store.subscribe((state, prev) => {
+      if (state.canvasData === prev.canvasData) return;
+      if (!state.isDirty || !state.canvasData) return;
+
+      lastChangeRev = Math.max(
+        Date.now(),
+        lastChangeRev + 1,
+        (state.canvasData.clientRev ?? 0) + 1,
       );
+      if (state.designId) {
+        writeStudioCanvasSnapshot(
+          state.designId,
+          { ...state.canvasData, clientRev: lastChangeRev },
+          lastChangeRev,
+        );
+      }
 
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
@@ -1230,47 +1292,32 @@ export function StudioEditor({
       }, AUTO_SAVE_DELAY_MS);
     });
 
-    // ADR-133 — boot "dirty" (canvas recuperado del snapshot local, más nuevo
-    // que el del server): programar el save aunque no haya un cambio nuevo que
-    // dispare el subscribe.
-    {
-      const booted = store.getState();
-      if (booted.isDirty && booted.designId && booted.canvasData) {
-        lastChangeRev = booted.canvasData.clientRev ?? Date.now();
-        timer = setTimeout(() => {
-          timer = null;
-          void runSave();
-        }, AUTO_SAVE_DELAY_MS);
-      }
+    const booted = store.getState();
+    if (booted.isDirty && booted.canvasData) {
+      lastChangeRev = booted.canvasData.clientRev ?? Date.now();
+      timer = setTimeout(() => {
+        timer = null;
+        void runSave();
+      }, AUTO_SAVE_DELAY_MS);
     }
 
-    // Ronda 2 QA (2026-10-08) — flush al ocultar/salir de la página: el debounce
-    // de 2 s dejaba una ventana en la que una recarga perdía las asignaciones
-    // recién hechas y «Continuar donde quedaste» volvía con el lienzo VACÍO
-    // (confirmado con Playwright: 0/6 fotos tras resume en polaroid). La vía
-    // confiable durante unload es navigator.sendBeacon (fire-and-forget que el
-    // navegador completa aunque la página muera) contra /api/designs/save-canvas
-    // — el fetch de la Server Action se aborta con la navegación (verificado:
-    // el primer flush con action seguía fallando en el e2e de certificación).
-    // ADR-133: el beacon queda como MEJOR ESFUERZO (hay entornos donde el
-    // request despachado desde pagehide nunca sale del navegador) — la red de
-    // seguridad real es el snapshot local de arriba, así que acá NUNCA se
-    // limpia el snapshot aunque sendBeacon encole con éxito.
     const flushOnHide = () => {
       if (timer) {
         clearTimeout(timer);
         timer = null;
       }
       const current = store.getState();
-      if (!current.isDirty || !current.designId || !current.canvasData) return;
+      if (!current.isDirty || !current.canvasData) return;
+      if (!current.designId) {
+        void runSave();
+        return;
+      }
       const payload = JSON.stringify({
         designId: current.designId,
         canvasData: lastChangeRev
           ? { ...current.canvasData, clientRev: lastChangeRev }
           : current.canvasData,
         templateId: current.selectedTemplateId ?? undefined,
-        // 2026-10-12 — packs: misma variante efectiva que el auto-save (el beacon
-        // comparte contrato con saveCanvasAction → SaveCanvasSchema).
         variantId: isPhotoPack
           ? packVariantIdFor(packVariants, current.canvasData.photoSlots, current.canvasData.magnet)
           : undefined,
@@ -1280,9 +1327,6 @@ export function StudioEditor({
         typeof navigator !== "undefined" &&
         navigator.sendBeacon?.("/api/designs/save-canvas", blob)
       ) {
-        // Encolado con éxito: el navegador garantiza el envío. Optimista:
-        // el estado queda como guardado (si el server lo rechaza, el próximo
-        // cambio reactiva el auto-save y el error se ve en el header).
         current.setAutoSaveStatus({ kind: "saved", at: Date.now() });
         current.markClean();
         return;
@@ -1297,11 +1341,22 @@ export function StudioEditor({
 
     return () => {
       unsubscribe();
+      if (flushCanvasSaveRef.current === flushSaves) flushCanvasSaveRef.current = null;
       if (timer) clearTimeout(timer);
       window.removeEventListener("pagehide", flushOnHide);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [store, isPhotoPack, packVariants, product.slug, productConfig.shape]);
+  }, [
+    store,
+    isPhotoPack,
+    initialDraftScope,
+    packVariants,
+    product.id,
+    product.slug,
+    productConfig.shape,
+    variantId,
+    texts.exportar.errorGuardar,
+  ]);
 
   // ──────────── Click slot → picker si está vacío, editor unificado si está lleno ────────────
   const handleSlotClick = useCallback(
@@ -1418,8 +1473,8 @@ export function StudioEditor({
   // genera el preview client-side (rápido, sin red), abre el modal para
   // que el cliente confirme. No sube nada todavía.
   const handleFinalize = useCallback(async () => {
-    const state = store.getState();
-    if (!state.designId || !state.canvasData || state.isFinalizing || previewBuilding) return;
+    let state = store.getState();
+    if (!state.canvasData || state.isFinalizing || previewBuilding) return;
     // Ola 26 (owner 2026-09-09) — GUARD: la Polaroid Instagram no se finaliza con
     // textos requeridos vacíos (usuario, ubicación, título, hashtags). El botón ya
     // se muestra bloqueado con el tooltip; esta es la defensa en profundidad (cualquier
@@ -1435,6 +1490,15 @@ export function StudioEditor({
     previewPageInflightRef.current.clear();
     setPreviewBuilding(true);
     try {
+      const flush = flushCanvasSaveRef.current;
+      const saved = flush ? await flush() : { ok: true as const };
+      if (!saved.ok) {
+        state.setAutoSaveStatus({ kind: "error", message: saved.message });
+        setPreviewError(saved.message);
+        return;
+      }
+      state = store.getState();
+      if (!state.designId || !state.canvasData) return;
       // Fase 2 · item 2.2 (2026-10-07) — partición por UNIDAD física para la
       // Vista Previa paginada (set/tira/separador/pack; 1 rango = sin pager).
       const unitRanges = previewUnitRanges({
@@ -1785,27 +1849,28 @@ export function StudioEditor({
   const handleConfirmFinalize = useCallback(
     async (_copies: number, opts?: { qualityAcknowledged?: boolean }) => {
       const state = store.getState();
-      if (!state.designId || !state.canvasData || state.isFinalizing || !previewDataUrl) return;
+      if (!state.canvasData || state.isFinalizing || !previewDataUrl) return;
       state.setIsFinalizing(true);
       setPreviewError(null);
-      // ADR-131 — timer del polling de progreso del RenderJob; se asigna dentro del try y se
-      // frena en el finally (declarado acá: los bloques try/finally no comparten scope).
       let renderPoll: ReturnType<typeof setInterval> | null = null;
       try {
-        // ADR-081 — el finalize ya NO manda los PNG de imprenta: los renderiza el servidor. Antes se
-        // generaban acá los N snapshots y viajaban en el body de la Server Action; un calendario de 12
-        // páginas pesa ~57 MB y Vercel corta el body de una Function en 4.5 MB, así que en producción
-        // esto fallaba SIEMPRE (en local no, porque el server de dev no tiene ese techo — por eso pasó
-        // desapercibido). De paso el celular se ahorra exportar 12 lienzos de 1800×2400 en el camino
-        // normal, que era lo más pesado de todo el flujo.
-        const designId = state.designId;
-        const canvasData = state.canvasData;
+        const flush = flushCanvasSaveRef.current;
+        const saved = flush ? await flush() : { ok: true as const };
+        if (!saved.ok) {
+          state.setAutoSaveStatus({ kind: "error", message: saved.message });
+          state.setIsFinalizing(false);
+          setPreviewError(saved.message || texts.exportar.errorGuardar);
+          return;
+        }
+        const confirmedState = store.getState();
+        if (!confirmedState.designId || !confirmedState.canvasData) {
+          state.setIsFinalizing(false);
+          setPreviewError(texts.exportar.errorGuardar);
+          return;
+        }
+        const designId = confirmedState.designId;
+        const canvasData = confirmedState.canvasData;
 
-        // ADR-131 (2026-10-13) — el render de imprenta ya no corre dentro del finalize:
-        // se encola un RenderJob y el worker va página por página. Este polling lee el
-        // progreso REAL (doneUnits/totalUnits) para mostrarlo en la modal en vez dejar al
-        // cliente esperando "Guardando…" a ciegas (el síntoma del timeout 500/504 de STG).
-        // Best-effort: si el endpoint falla, el flujo no se entera — solo no hay progreso.
         setRenderProgress(null);
         renderPoll = setInterval(() => {
           fetch(`/api/designs/${designId}/render-status`, { cache: "no-store" })
@@ -1821,49 +1886,6 @@ export function StudioEditor({
             })
             .catch(() => undefined);
         }, 1500);
-
-        // El PNG de imprenta lo renderiza el servidor desde el canvasData GUARDADO, y el auto-guardado
-        // tiene 2 s de debounce. Si el cliente mueve una foto y confirma antes de que corra, aprobaría
-        // una vista previa (que sale del estado EN MEMORIA) distinta de lo que se imprime. Forzar el
-        // guardado acá es lo que sostiene el mandato de que la pantalla sea el producto físico.
-        if (state.isDirty) {
-          state.setAutoSaveStatus({ kind: "saving" });
-          // Fix F1.1 (2026-10) — si el finalize ya corrió EN ESTA SESIÓN (p.ej. salió bien
-          // pero el add-to-cart falló y el cliente reintentó tras seguir editando), el diseño
-          // quedó READY y el save lo rechaza ("only DRAFT can be edited") — antes esto
-          // mostraba el error genérico de guardado sin salida. Se reabre a DRAFT y se deja
-          // que el finalize vuelva a correr con el canvas nuevo (idempotente server-side:
-          // re-renderiza producción, así que el WYSIWYG se mantiene).
-          if (finalizedRef.current) {
-            const reopened = await reopenDesignForEditAction(designId);
-            if (!reopened.ok) {
-              state.setAutoSaveStatus({ kind: "error", message: reopened.message });
-              state.setIsFinalizing(false);
-              setPreviewError(reopened.message);
-              return;
-            }
-            finalizedRef.current = false;
-          }
-          const saved = await saveCanvasAction({
-            designId,
-            canvasData,
-            templateId: state.selectedTemplateId ?? undefined,
-            // 2026-10-12 — packs: variante efectiva → metadata.variantId (recover).
-            variantId: isPhotoPack
-              ? packVariantIdFor(packVariants, canvasData.photoSlots, canvasData.magnet)
-              : undefined,
-          });
-          if (!saved.ok) {
-            state.setAutoSaveStatus({ kind: "error", message: saved.message });
-            state.setIsFinalizing(false);
-            // Los mensajes de fallo de saveCanvasAction son customer-safe por contrato
-            // (F-30): mostrar el específico (p.ej. rate-limit) en vez del genérico.
-            setPreviewError(saved.message || texts.exportar.errorGuardar);
-            return;
-          }
-          state.setAutoSaveStatus({ kind: "saved", at: Date.now() });
-          state.markClean();
-        }
         // 2026-10-05 (fix STG) — presupuesto de bytes del preview: el body de la
         // Server Action tiene techo duro ~4.5 MB en Vercel (lo corta la plataforma,
         // NO lo levanta `serverActions.bodySizeLimit`). Si el montaje no cabe se
@@ -1887,7 +1909,7 @@ export function StudioEditor({
           // formatos y guarda con la extensión correcta — contrato preview).
           fd.set(
             "preview",
-            dataURLtoBlob(previewForUpload),
+            dataUrlToBlob(previewForUpload),
             `preview.${previewFileExtension(previewForUpload)}`,
           );
           return fd;
@@ -1946,7 +1968,7 @@ export function StudioEditor({
             dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
             uploadRequests.push({
               url,
-              body: dataURLtoBlob(dataUrl),
+              body: dataUrlToBlob(dataUrl),
               contentType: "image/png",
             });
           }
@@ -1981,7 +2003,7 @@ export function StudioEditor({
           try {
             const loader = previewPageLoaderRef.current;
             const pageBlobs = await Promise.all(
-              previewPages.map(async (p, i) => dataURLtoBlob(p.dataUrl ?? (await loader(i)))),
+              previewPages.map(async (p, i) => dataUrlToBlob(p.dataUrl ?? (await loader(i)))),
             );
             const pagesForm = new FormData();
             pagesForm.set("designId", designId);
@@ -2005,7 +2027,7 @@ export function StudioEditor({
         // Mandar el variantId de la PDP cobraría la combinación vieja si el
         // cliente cambió N acá (la ruta del dinero no confía en el cliente).
         const addResult = await addPersonalizedToCartAction({
-          designId: state.designId,
+          designId,
           qty: 1,
           variantId: isPhotoPack ? undefined : variantId,
           replaceDesignId: replacesCartDesignId ?? undefined,
@@ -2019,10 +2041,14 @@ export function StudioEditor({
         }
 
         // Item 2.4 — el diseño quedó en el carrito (READY): su lugar ahora es
-        // "Mis diseños", no el retomador. Limpiar el marcador del producto.
-        clearStudioDraftId(product.slug);
+        // "Mis diseños", no el retomador. Limpiar el marcador del producto+variante.
+        clearStudioDraftId(initialDraftScope);
+        const cartVariantId = isPhotoPack
+          ? packVariantIdFor(packVariants, canvasData.photoSlots, canvasData.magnet)
+          : variantId;
+        clearStudioDraftId(studioDraftScope(product.slug, cartVariantId));
         // ADR-133 — y su snapshot de recuperación (ya no hay draft que retomar).
-        clearStudioCanvasSnapshot(state.designId);
+        clearStudioCanvasSnapshot(designId);
 
         // Cerramos modal antes de redirigir para evitar flicker visual.
         setPreviewModalOpen(false);
@@ -2056,6 +2082,7 @@ export function StudioEditor({
       router,
       store,
       variantId,
+      initialDraftScope,
       isPhotoPack,
       packVariants,
       previewDataUrl,
@@ -2468,6 +2495,20 @@ export function StudioEditor({
               onStep={(dir) => setStageZoomRaw((z) => stepStageZoom(z, dir, stageZoomState.cap))}
               onReset={() => setStageZoomRaw(1)}
             />
+            {/* 2026-10-19 — «Borrar el diseño»: acción destructiva GLOBAL (faltaba;
+                solo existía el borrado por slot). Solo se muestra con contenido
+                real en el lienzo; pide confirmación (StudioClearDesignModal) y
+                queda deshacible con Ctrl+Z/undo (va por setCanvasData). */}
+            {hasDesignContent && (
+              <button
+                type="button"
+                onClick={() => setClearDesignOpen(true)}
+                className="inline-flex h-11 items-center gap-1.5 rounded-full border-2 border-red-300 bg-white px-3 text-xs font-bold text-red-700 shadow-sm transition-transform hover:scale-105 hover:border-red-400 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:outline-none active:scale-95 sm:h-12 sm:gap-2 sm:px-4 sm:text-sm"
+              >
+                <Trash2 className="h-4 w-4 sm:h-5 sm:w-5" aria-hidden />
+                <span>{texts.lienzo.borrarDisenoCta}</span>
+              </button>
+            )}
           </div>
 
           <StudioCanvasGrid
@@ -2677,6 +2718,13 @@ export function StudioEditor({
         onAssetUploaded={handleAssetUploaded}
         getCachedPredesigned={getCachedPredesigned}
         rememberPredesigned={rememberPredesigned}
+      />
+
+      {/* 2026-10-19 — confirmación de «Borrar el diseño» (reset global de slots). */}
+      <StudioClearDesignModal
+        open={clearDesignOpen}
+        onConfirm={handleClearDesign}
+        onClose={() => setClearDesignOpen(false)}
       />
 
       {/* PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito */}
@@ -2900,584 +2948,91 @@ function findTemplateIdForCanvas(canvas: CanvasDataV2, templates: StudioTemplate
 }
 
 /**
- * Componer preview del grid completo via Canvas API nativo. Toma los snapshots
- * individuales de cada slot Konva stage y los apila en un mosaico con el
- * gridLayout. Resultado: 1 PNG 1080×~810 (según rows) que el cart muestra.
+ * 2026-10-19 — confirmación de «Borrar el diseño» (reset global de slots del
+ * canvas actual: fotos + overrides de texto; la plantilla/variante y las fotos
+ * subidas en «Mis fotos» se conservan). Mismo patrón visual y de accesibilidad
+ * de StudioFaceChoiceModal: portal a document.body, backdrop, useDialogA11y
+ * (foco inicial + trap + Escape). Es undoable (Ctrl+Z) — el cuerpo no promete
+ * irreversibilidad.
  */
-/**
- * Construye un Path2D según el shape del imán físico (heart/circle/rectangle).
- * El caller puede usarlo para `ctx.clip(path)` o `ctx.stroke(path)`.
- * El path está normalizado a objectBoundingBox 0-1 y se escala al cell.
- *
- * Coords del heart match el SVG clipPath inline de studio-slot.tsx
- * (M.3.b.UX.v13) para que el preview matchee 1:1 lo que ve el cliente
- * en el editor.
- */
-function buildShapePath(
-  shape: "rectangle" | "circle" | "heart" | "custom" | undefined,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): Path2D {
-  const path = new Path2D();
-  if (!shape || shape === "rectangle" || shape === "custom") {
-    const r = Math.min(8, w / 12);
-    path.moveTo(x + r, y);
-    path.lineTo(x + w - r, y);
-    path.quadraticCurveTo(x + w, y, x + w, y + r);
-    path.lineTo(x + w, y + h - r);
-    path.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    path.lineTo(x + r, y + h);
-    path.quadraticCurveTo(x, y + h, x, y + h - r);
-    path.lineTo(x, y + r);
-    path.quadraticCurveTo(x, y, x + r, y);
-    path.closePath();
-    return path;
-  }
-  if (shape === "circle") {
-    path.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
-    return path;
-  }
-  // heart — path normalizado matchea studio-slot.tsx SVG clipPath M.3.b.UX.v13
-  const sx = (n: number) => x + n * w;
-  const sy = (n: number) => y + n * h;
-  path.moveTo(sx(0.5), sy(0.82));
-  path.bezierCurveTo(sx(0.28), sy(0.68), sx(0.06), sy(0.52), sx(0.06), sy(0.32));
-  path.bezierCurveTo(sx(0.06), sy(0.18), sx(0.16), sy(0.08), sx(0.28), sy(0.08));
-  path.bezierCurveTo(sx(0.38), sy(0.08), sx(0.44), sy(0.12), sx(0.5), sy(0.22));
-  path.bezierCurveTo(sx(0.56), sy(0.12), sx(0.62), sy(0.08), sx(0.72), sy(0.08));
-  path.bezierCurveTo(sx(0.84), sy(0.08), sx(0.94), sy(0.18), sx(0.94), sy(0.32));
-  path.bezierCurveTo(sx(0.94), sy(0.52), sx(0.72), sy(0.68), sx(0.5), sy(0.82));
-  path.closePath();
-  return path;
-}
+function StudioClearDesignModal({
+  open,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const texts = useStudioTexts();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // #15 — foco inicial + trap + Escape + retorno de foco.
+  useDialogA11y(dialogRef, { onClose, active: open });
 
-/**
- * ADR-063 FOTO1/T3 — recorta un snapshot de producción (ya limpio, sin realismo) a la SILUETA
- * física para heart/circle, dejando transparente afuera → la imprenta troquela por ese borde.
- * Rectángulo/custom no se tocan (el corte lo da el propio borde del PNG). Se usa en el fallback de
- * cliente (slots con filtro, que el render server-side no reproduce): así un corazón con filtro
- * imprime como corazón, igual que el corazón sin filtro (que sí pasa por el compositor canvas).
- */
-async function clipProductionSnapshotToShape(
-  dataUrl: string,
-  shape: "rectangle" | "circle" | "heart" | "custom" | undefined,
-): Promise<string> {
-  if (!shape || shape === "rectangle" || shape === "custom") return dataUrl;
-  return new Promise<string>((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const c = document.createElement("canvas");
-      c.width = img.naturalWidth;
-      c.height = img.naturalHeight;
-      const ctx = c.getContext("2d");
-      if (!ctx) {
-        reject(new Error("No se pudo crear contexto canvas para recorte de silueta"));
-        return;
-      }
-      ctx.save();
-      ctx.clip(buildShapePath(shape, 0, 0, c.width, c.height));
-      ctx.drawImage(img, 0, 0, c.width, c.height);
-      ctx.restore();
-      resolve(c.toDataURL("image/png"));
-    };
-    img.onerror = () => reject(new Error("No se pudo cargar snapshot para recorte de silueta"));
-    img.src = dataUrl;
-  });
-}
+  // Guard SSR: el portal necesita document (el modal solo abre por interacción).
+  if (typeof document === "undefined") return null;
 
-function loadImage(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("No se pudo cargar imagen para textura 3D"));
-    img.src = dataUrl;
-  });
-}
-
-async function buildCompositedPreview(
-  canvasData: CanvasDataV2,
-  stages: Map<number, Konva.Stage | null>,
-  shape?: "rectangle" | "circle" | "heart" | "custom",
-  opts?: { unitRange?: PreviewUnitRange },
-): Promise<string> {
-  const { gridLayout, unitTemplate, slots } = canvasData;
-  // Ronda 2 QA (2026-10-08) — misma carrera que el libro 3D: sin la espera, un
-  // preview abierto justo tras subir fotos hornea el placeholder de carga.
-  await waitForSlotPhotosReady(slots, stages);
-  // Modelo multi-unidad (2026-09-09): con N unidades multi-slot el gridLayout
-  // describe UNA unidad — la Vista previa muestra TODAS las unidades (lo que el
-  // cliente va a recibir): las TIRAS se disponen lado a lado (cada una es una
-  // pieza continua vertical) y el resto de unidades se apilan en vertical.
-  // Fase 2 · item 2.2 (2026-10-07) — `unitRange`: componer UNA unidad aislada
-  // (la página del pager de la modal) en vez del montaje completo.
-  const range = opts?.unitRange;
-  const rangeSlots = range
-    ? slots.filter((s) => s.slotIndex >= range.start && s.slotIndex < range.end)
-    : slots;
-  const unitSlots = range ? rangeSlots.length : (canvasData.unitSlots ?? slots.length);
-  const unitCount = range ? 1 : (canvasData.unitCount ?? 1);
-  const multiUnit = !range && unitCount > 1 && unitSlots > 1;
-  // Cell size: 360×(360 * aspect) por slot en el preview
-  const cellW = 360;
-  const cellH = Math.floor(360 * (unitTemplate.stage.height / unitTemplate.stage.width));
-  const gap = gridLayout.gap;
-  // Con unitRange (página de UNA unidad del pager) las filas/columnas se
-  // recalculan sobre los slots del rango: el gridLayout puede describir el
-  // diseño COMPLETO (packs de imán suelto: 12 slots en 3×4) y pintar una
-  // página de 6 con rows=4 dejaría media página en blanco.
-  const layoutCols = range
-    ? Math.max(1, Math.min(gridLayout.cols, rangeSlots.length))
-    : gridLayout.cols;
-  const layoutRows = range
-    ? Math.max(1, Math.ceil(rangeSlots.length / layoutCols))
-    : gridLayout.rows;
-  // Ola 4 — TIRA photobooth (1 col, gap 0): la pieza es CONTINUA — sin stroke por celda
-  // (separaba las fotos); se dibuja un solo borde exterior al final.
-  const isStripPreview = layoutCols === 1 && gridLayout.gap === 0 && rangeSlots.length > 1;
-  const unitGap = 32; // separación ENTRE unidades (dentro de la unidad manda gridLayout.gap)
-  const unitGridW = layoutCols * cellW + (layoutCols - 1) * gap;
-  const unitGridH = layoutRows * cellH + (layoutRows - 1) * gap;
-  const canvasW =
-    multiUnit && isStripPreview ? unitCount * unitGridW + (unitCount - 1) * unitGap : unitGridW;
-  const canvasH =
-    multiUnit && !isStripPreview ? unitCount * unitGridH + (unitCount - 1) * unitGap : unitGridH;
-
-  const compositeCanvas = document.createElement("canvas");
-  compositeCanvas.width = canvasW;
-  compositeCanvas.height = canvasH;
-  const ctx = compositeCanvas.getContext("2d");
-  if (!ctx) throw new Error("No se pudo crear contexto canvas para preview");
-
-  // Background brand-cream
-  ctx.fillStyle = "#FFF8F0";
-  ctx.fillRect(0, 0, canvasW, canvasH);
-
-  // Apilar cada slot — clipping por shape del imán físico para que el
-  // preview muestre la silueta real (corazón, círculo, etc.) y no un
-  // rectángulo. El Konva Stage devuelve siempre un rectángulo
-  // (clipping CSS no se traduce a toDataURL); el clip va acá en Canvas2D.
-  //
-  // Paquete J (2026-10-02, auditoría §E-4 candidato #2): los snapshots se
-  // CACHEAN por slot (solo se re-rasteriza lo que cambió desde el último
-  // preview/3D — ver lib/slot-snapshot-cache), cediendo al event loop entre
-  // slots, y las decodificaciones dataURL→Image van EN PARALELO. Antes eran
-  // N toDataURL síncronos + N decodes secuenciales en el MISMO click.
-  const slotShots: Array<{ slot: (typeof slots)[number]; dataUrl: string }> = [];
-  for (const slot of rangeSlots) {
-    const stage = stages.get(slot.slotIndex);
-    if (!stage) continue;
-    slotShots.push({
-      slot,
-      dataUrl: snapshotSlotForPreview(stage, slot, {
-        unitTemplate,
-        borderColor: canvasData.borderColor ?? null,
-      }),
-    });
-    await yieldToMain();
-  }
-  const images = await Promise.all(slotShots.map((s) => loadImage(s.dataUrl)));
-
-  slotShots.forEach(({ slot }, i) => {
-    const img = images[i]!;
-    // Posición DENTRO de la unidad (multi-unidad: gridLayout = 1 unidad; con
-    // unitRange, el índice relativo al inicio del rango de la página).
-    const indexInUnit = multiUnit
-      ? slot.slotIndex % unitSlots
-      : slot.slotIndex - (range?.start ?? 0);
-    const unitIndex = multiUnit ? Math.floor(slot.slotIndex / unitSlots) : 0;
-    const col = indexInUnit % layoutCols;
-    const row = Math.floor(indexInUnit / layoutCols);
-    const unitOffsetX = multiUnit && isStripPreview ? unitIndex * (unitGridW + unitGap) : 0;
-    const unitOffsetY = multiUnit && !isStripPreview ? unitIndex * (unitGridH + unitGap) : 0;
-    const x = unitOffsetX + col * (cellW + gap);
-    const y = unitOffsetY + row * (cellH + gap);
-    const path = buildShapePath(shape, x, y, cellW, cellH);
-    // 1) Foto clipeada al shape (sin fill blanco previo — la propia foto
-    //    es el fondo). Sombra externa via stroke ancho + transparencia.
-    ctx.save();
-    ctx.clip(path);
-    ctx.drawImage(img, x, y, cellW, cellH);
-    ctx.restore();
-    // 2) Borde visible para destacar la silueta sobre el fondo crema
-    //    (Lucy 2026-05-21: "el corazón y el fondo es blanco y no se
-    //    detalla bien el contorno"). Ola 4 — en modo TIRA se omite el
-    //    stroke por celda: la pieza es continua (solo borde exterior).
-    if (!isStripPreview) {
-      ctx.save();
-      ctx.strokeStyle = "rgba(124, 106, 173, 0.7)"; // brand-purple/70
-      ctx.lineWidth = 2.5;
-      ctx.stroke(path);
-      ctx.restore();
-    }
-  });
-
-  // Ola 4 — TIRA: un solo borde exterior alrededor de cada pieza continua
-  // (multi-unidad: un borde por TIRA, no uno global que las agrupe).
-  if (isStripPreview) {
-    for (let u = 0; u < unitCount; u++) {
-      const ox = multiUnit ? u * (unitGridW + unitGap) : 0;
-      ctx.save();
-      ctx.strokeStyle = "rgba(124, 106, 173, 0.7)";
-      ctx.lineWidth = 2.5;
-      ctx.strokeRect(ox + 1.25, 1.25, unitGridW - 2.5, unitGridH - 2.5);
-      ctx.restore();
-    }
-  }
-
-  // 2026-09-22 — WebP q0.85 (fallback JPEG si el navegador no lo soporta en
-  // toDataURL): el PNG sin compresión superaba el límite de 3 MB del servidor.
-  return canvasToPreviewDataUrl(compositeCanvas);
-}
-
-/**
- * Ola 3 (Lucy 2026-07-22) — Preview de confirmación para SEPARADORES 2 CARAS:
- * una TIRA DESPLEGADA por unidad física sobre fondo crema. Es el espejo
- * pequeño de la pieza física que el cliente va a recibir, no una grilla de
- * caras sueltas. Las esquinas exteriores se redondean (troquel).
- *
- * 2026-09-22 — orientación REAL del doblez (feedback QA STG): el separador
- * plegable se pliega por la MITAD de la tira vertical (2×12: 2cm ancho × 12cm
- * alto, doblez en la punta de 2cm) → la tira del preview es VERTICAL con filete
- * de doblez HORIZONTAL en la unión. Las unidades se disponen lado a lado en el
- * montaje.
- * 2026-09-25 (corrección del owner — la convención anterior A arriba/B abajo
- * estaba mal) — geometría "CABEZAS AL DOBLEZ": Cara B en la MITAD SUPERIOR
- * ROTADA 180°, Cara A en la MITAD INFERIOR DERECHA. El separador cuelga del
- * borde superior de la página; con ambas cabezas apuntando al doblez, las dos
- * caras se leen derechas al doblar. EXACTAMENTE como producción
- * (composeFaceStrips) y el libro 3D. Bonus UX: la cara principal (A) se ve
- * derecha en la preview. El texto del modal dice "así se imprime la tira" y la
- * imagen la heredan carrito/admin/correos → fidelidad total a imprenta.
- *  - noFold (Alargados planos): la pieza no se pliega → caras lado a lado
- *    (frente | reverso, B SIN rotar — montaje espalda con espalda) y unidades
- *    apiladas, SIN filete de doblez.
- *  - backOptional: una cara B vacía se dibuja EN BLANCO (REGLA ÚNICA, decisión
- *    owner 2026-10-07 — revierte la regla espejo del Paquete A/D 2026-10-02;
- *    producción genera el PNG blanco en blank-back-face.ts; el slot efectivo lo
- *    resuelve previewFacePairOfUnit: faceB = null → rect blanco puro),
- *    nunca espejo de la cara A ni con el placeholder del editor.
- *  - foldCaption: indicación del tamaño desplegado bajo cada tira (texto CMS
- *    ya resuelto por el caller, ej. "Doblez · Desplegado: 2×12 cm").
- */
-async function buildBookmarkStripPreview(
-  canvasData: CanvasDataV2,
-  stages: Map<number, Konva.Stage | null>,
-  cornerRadiusPx?: number,
-  opts?: { noFold?: boolean; backOptional?: boolean; foldCaption?: string; unitIndex?: number },
-): Promise<string> {
-  const { unitTemplate, slots } = canvasData;
-  // Ronda 2 QA (2026-10-08) — misma carrera que el libro 3D: esperar a que las
-  // fotos estén decodificadas antes de rasterizar (si no, placeholder lila).
-  await waitForSlotPhotosReady(slots, stages);
-  const noFold = opts?.noFold === true;
-  const backOptional = opts?.backOptional === true;
-  const foldCaption = opts?.foldCaption;
-  const totalUnits = Math.floor(slots.length / 2);
-  // Fase 2 · item 2.2 (2026-10-07) — `unitIndex`: componer SOLO esa unidad (la
-  // página del pager de la modal) en vez del montaje con todas.
-  const unitIndexes =
-    opts?.unitIndex !== undefined
-      ? [Math.min(Math.max(0, opts.unitIndex), Math.max(0, totalUnits - 1))]
-      : Array.from({ length: totalUnits }, (_, u) => u);
-  const units = unitIndexes.length;
-  const faceW = 300;
-  const faceH = Math.round(faceW * (unitTemplate.stage.height / unitTemplate.stage.width));
-  const pad = 24;
-  const gap = 18;
-  const captionH = foldCaption ? 20 : 0; // renglón de la indicación bajo la tira
-  // Geometría de la tira por unidad: plegable = VERTICAL (A sobre B, 1 cara de
-  // ancho × 2 de alto); noFold = horizontal (A | B) como siempre.
-  const stripW = noFold ? faceW * 2 : faceW;
-  const stripH = noFold ? faceH : faceH * 2;
-  // Montaje: plegables → unidades LADO A LADO (cada tira es alta); noFold →
-  // unidades apiladas en vertical (cada tira es ancha).
-  const canvasW = noFold ? stripW + pad * 2 : pad * 2 + units * stripW + (units - 1) * gap;
-  const canvasH = noFold
-    ? pad * 2 + units * (stripH + captionH) + (units - 1) * gap
-    : pad * 2 + stripH + captionH;
-
-  const compositeCanvas = document.createElement("canvas");
-  compositeCanvas.width = canvasW;
-  compositeCanvas.height = canvasH;
-  const ctx = compositeCanvas.getContext("2d");
-  if (!ctx) throw new Error("No se pudo crear contexto canvas para preview de tiras");
-
-  ctx.fillStyle = "#FFF8F0";
-  ctx.fillRect(0, 0, canvasW, canvasH);
-
-  // Radio de esquina de la tira escalado al tamaño del preview (mismo criterio
-  // que el troquel de producción: cornerRadiusPx lógico del stage de la cara).
-  const scale = faceW / unitTemplate.stage.width;
-  const radius = Math.max(6, Math.round((cornerRadiusPx ?? 0) * scale));
-
-  // Paquete J (2026-10-02) — snapshots cacheados por slot + decodificación EN
-  // PARALELO antes de pintar (antes: toDataURL + decode secuencial por cara en
-  // el mismo click). La cara B vacía (backOptional) NO se rasteriza: su rect se
-  // pinta en blanco puro (faceB = null — owner 2026-10-07).
-  const unitFaces: Array<{ faceA: number; faceB: number | null }> = [];
-  const faceSlotIndices = new Set<number>();
-  for (const unit of unitIndexes) {
-    const pair = previewFacePairOfUnit(slots, unit, backOptional);
-    unitFaces.push(pair);
-    faceSlotIndices.add(pair.faceA);
-    if (pair.faceB !== null) faceSlotIndices.add(pair.faceB);
-  }
-  const faceImages = new Map<number, HTMLImageElement>();
-  const faceJobs: Array<Promise<void>> = [];
-  for (const slotIndex of faceSlotIndices) {
-    const stage = stages.get(slotIndex);
-    const slot = slots.find((s) => s.slotIndex === slotIndex);
-    if (!stage || !slot) continue;
-    const dataUrl = snapshotSlotForPreview(stage, slot, {
-      unitTemplate,
-      borderColor: canvasData.borderColor ?? null,
-    });
-    faceJobs.push(
-      loadImage(dataUrl).then((img) => {
-        faceImages.set(slotIndex, img);
-      }),
-    );
-    await yieldToMain();
-  }
-  await Promise.all(faceJobs);
-
-  for (let ui = 0; ui < unitIndexes.length; ui++) {
-    // Cara B vacía (backOptional) → faceB = null: su rect se pinta EN BLANCO,
-    // exactamente lo que producción imprime (REGLA ÚNICA, owner 2026-10-07 —
-    // previewFacePairOfUnit, lib/faces.ts). `ui` = posición en el montaje (con
-    // unitIndex siempre 0 — una sola tira centrada en su página).
-    const { faceA, faceB } = unitFaces[ui]!;
-    const x = noFold ? pad : pad + ui * (stripW + gap);
-    const y = noFold ? pad + ui * (stripH + captionH + gap) : pad;
-    // Rect de cada cara dentro de la tira: plegable = apiladas con CABEZAS AL
-    // DOBLEZ (2026-09-25, corrección del owner — la convención anterior A arriba
-    // / B abajo estaba mal): Cara B en la MITAD SUPERIOR (se rota 180° al pintar,
-    // abajo) y Cara A en la MITAD INFERIOR derecha — ambas cabezas apuntan al
-    // doblez horizontal central, así al doblar la tira sobre el borde superior de
-    // la página ambas caras cuelgan leyéndose derechas (igual que producción y
-    // el 3D). Bonus UX: la cara principal del cliente se ve derecha en la
-    // preview. noFold = lado a lado (A izquierda, B derecha), sin rotar.
-    const faceRect = (i: number) =>
-      noFold
-        ? { fx: x + i * faceW, fy: y, fw: faceW, fh: faceH }
-        : { fx: x, fy: y + (1 - i) * faceH, fw: faceW, fh: faceH };
-    // Troquel redondeado de la tira: clipeamos A+B al mismo roundRect → la
-    // silueta impresa coincide con la de producción (WYSIWYG).
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(x, y, stripW, stripH, radius);
-    ctx.clip();
-    for (const [i, slotIndex] of [faceA, faceB].entries()) {
-      const { fx, fy, fw, fh } = faceRect(i);
-      if (slotIndex === null) {
-        // Cara B vacía → EN BLANCO puro (decisión owner 2026-10-07): es la cara
-        // blanca que imprenta recibe (blankBackFacePng) y la que muestra el 3D.
-        ctx.fillStyle = "#FFFFFF";
-        ctx.fillRect(fx, fy, fw, fh);
-        continue;
-      }
-      const img = faceImages.get(slotIndex);
-      if (!img) continue;
-      if (!noFold && i === 1) {
-        // 2026-09-25 — "cabezas al doblez": la Cara B va en la MITAD
-        // SUPERIOR de la tira, ROTADA 180° — al doblar la tira sobre el
-        // borde superior de la página ambas caras cuelgan leyéndose
-        // derechas. Igual que producción (composeFaceStrips) y el libro
-        // 3D — la preview es fiel a imprenta (la heredan
-        // carrito/admin/correos).
-        ctx.save();
-        ctx.translate(fx + fw / 2, fy + fh / 2);
-        ctx.rotate(Math.PI);
-        ctx.drawImage(img, -fw / 2, -fh / 2, fw, fh);
-        ctx.restore();
-      } else {
-        ctx.drawImage(img, fx, fy, fw, fh);
-      }
-    }
-    ctx.restore();
-    // Filete del doblez (pliegue central de la tira) + borde sutil de la
-    // silueta. Plegables: filete HORIZONTAL en la unión (a mitad de la tira
-    // vertical). noFold (Alargados): pieza PLANA → sin filete.
-    ctx.save();
-    if (!noFold) {
-      ctx.strokeStyle = "rgba(124, 106, 173, 0.55)"; // brand-purple/55
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 4]);
-      ctx.beginPath();
-      ctx.moveTo(x + 4, y + faceH);
-      ctx.lineTo(x + faceW - 4, y + faceH);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    ctx.strokeStyle = "rgba(124, 106, 173, 0.7)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.roundRect(x, y, stripW, stripH, radius);
-    ctx.stroke();
-    ctx.restore();
-    // Indicación del tamaño total desplegado bajo la tira (mismo texto CMS que
-    // la tarjeta-unidad del lienzo).
-    if (foldCaption) {
-      ctx.save();
-      ctx.fillStyle = "rgba(60, 45, 100, 0.85)";
-      ctx.font = "600 12px Inter, system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(foldCaption, x + stripW / 2, y + stripH + 14);
-      ctx.restore();
-    }
-  }
-
-  return canvasToPreviewDataUrl(compositeCanvas);
-}
-
-/**
- * Ola 6 (Lucy 2026-07-23) — Tiras magnéticas photobooth: la pieza física es UNA tira continua
- * con N fotos apiladas verticalmente. En la nevera 3D no queremos N imanes sueltos; combinamos
- * los slots de cada tira en un solo Magnet3D con su textura vertical y proporción de tira.
- *
- * El `sizeCm` del producto ya describe la TIRA COMPLETA (p. ej. 5×15 cm), no cada celda, así que
- * conservamos `wCm`/`hCm` tal cual si vienen. El alto de la textura combinada sí crece con la
- * cantidad de fotos (`hRatio *= chunk.length`), de modo que `magnetWorldSizes` derive el tamaño
- * físico respetando el aspecto real de la textura sin deformarla.
- */
-async function combineStripTextures(
-  magnets: Magnet3D[],
-  slotsPerStrip: number,
-): Promise<Magnet3D[]> {
-  if (magnets.length <= 1) return magnets;
-  const out: Magnet3D[] = [];
-  for (let i = 0; i < magnets.length; i += slotsPerStrip) {
-    const chunk = magnets.slice(i, i + slotsPerStrip);
-    if (chunk.length === 1) {
-      out.push(chunk[0]!);
-      continue;
-    }
-    const first = chunk[0]!;
-    const images = await Promise.all(chunk.map((m) => loadImage(m.dataUrl)));
-    const w = images[0]!.naturalWidth;
-    const h = images[0]!.naturalHeight;
-    const c = document.createElement("canvas");
-    c.width = w;
-    c.height = h * images.length;
-    const ctx = c.getContext("2d");
-    if (!ctx) throw new Error("No se pudo crear contexto canvas para tira 3D");
-    images.forEach((img, idx) => ctx.drawImage(img, 0, h * idx));
-    out.push({
-      dataUrl: c.toDataURL("image/png"),
-      wRatio: first.wRatio,
-      hRatio: first.hRatio * chunk.length,
-      shape: first.shape,
-      // El fallback sizeCm del producto describe la tira completa; no duplicamos medidas.
-      wCm: first.wCm,
-      hCm: first.hCm,
-      cornerRadiusRatio: first.cornerRadiusRatio,
-    });
-  }
-  return out;
-}
-
-/**
- * Ola 6 (Lucy 2026-07-23) — Separadores rectangulares: el lienzo del Estudio es horizontal
- * (cara A/B una al lado de la otra), pero en el libro 3D la tira doblada se pone de PIE
- * (largo a lo largo del borde). Rotamos 90° la textura y el lienzo para que el diseño se
- * lea derecho sobre la cara 2×6 cm (o 4.2×4 cm) sin deformarse.
- */
-async function rotateTextures90(magnets: Magnet3D[]): Promise<Magnet3D[]> {
-  return Promise.all(
-    magnets.map(async (m) => {
-      const img = await loadImage(m.dataUrl);
-      const c = document.createElement("canvas");
-      c.width = img.naturalHeight;
-      c.height = img.naturalWidth;
-      const ctx = c.getContext("2d");
-      if (!ctx) throw new Error("No se pudo crear contexto canvas para rotar textura");
-      ctx.translate(c.width / 2, c.height / 2);
-      ctx.rotate(Math.PI / 2);
-      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
-      return {
-        ...m,
-        dataUrl: c.toDataURL("image/png"),
-        wRatio: m.hRatio,
-        hRatio: m.wRatio,
-      };
-    }),
+  return createPortal(
+    <AnimatePresence>
+      {open && (
+        <>
+          {/* Backdrop */}
+          <motion.button
+            type="button"
+            aria-label={texts.comun.cerrar}
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 cursor-default bg-black/40 backdrop-blur-sm"
+            tabIndex={-1}
+          />
+          <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              ref={dialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="clear-design-title"
+              aria-describedby="clear-design-desc"
+              tabIndex={-1}
+              initial={{ opacity: 0, scale: 0.94, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 8 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="ring-brand-purple/10 pointer-events-auto flex w-[92vw] max-w-sm flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1"
+            >
+              <div className="px-5 pt-5 pb-3">
+                <h2
+                  id="clear-design-title"
+                  className="text-brand-purple-dark text-base leading-tight font-bold"
+                >
+                  {texts.lienzo.borrarDisenoTitulo}
+                </h2>
+                <p id="clear-design-desc" className="text-brand-muted mt-1 text-xs leading-snug">
+                  {texts.lienzo.borrarDisenoCuerpo}
+                </p>
+              </div>
+              <div className="border-brand-purple/10 flex shrink-0 flex-col gap-2 border-t px-5 py-3">
+                <button
+                  type="button"
+                  onClick={onConfirm}
+                  className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 focus:ring-2 focus:ring-red-400 focus:outline-none"
+                >
+                  {texts.lienzo.borrarDisenoConfirmar}
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="border-brand-purple/40 text-brand-purple-dark hover:bg-brand-purple/10 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors"
+                >
+                  {texts.lienzo.borrarDisenoCancelar}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        </>
+      )}
+    </AnimatePresence>,
+    document.body,
   );
-}
-
-// P1.4 — Genera una textura PNG por slot para la vista 3D: el snapshot del imán recortado a su
-// silueta física (transparente afuera), para que en la nevera 3D cada imán tenga su forma real
-// (rectángulo/corazón/círculo) y no un rectángulo. Reusa buildShapePath (misma silueta que el
-// preview 2D). Devuelve, además, la proporción física para escalar el plano en la escena.
-
-async function buildMagnetTextures(
-  canvasData: CanvasDataV2,
-  stages: Map<number, Konva.Stage | null>,
-  shape?: "rectangle" | "circle" | "heart" | "custom",
-  // 2026-10-05 — ancho de textura por tamaño físico de la pieza (antes 512 fijo:
-  // borroso con el zoom cercano nuevo + dpr 2). Ver lib/texture-resolution.ts.
-  texWidth: number = MAGNET_TEXTURE_WIDTH_DEFAULT,
-): Promise<Magnet3D[]> {
-  const { unitTemplate, slots } = canvasData;
-  // Sin esta espera el snapshot puede caer en la ventana "foto subida pero aún no
-  // decodificada en Konva" y la textura sale con el placeholder lila (ver doc arriba).
-  await waitForSlotPhotosReady(slots, stages);
-  const texW = texWidth;
-  const texH = Math.max(
-    64,
-    Math.round(texW * (unitTemplate.stage.height / unitTemplate.stage.width)),
-  );
-  // Paquete J (2026-10-02) — snapshots cacheados por slot + decodificación EN
-  // PARALELO (antes: N toDataURL + N decodes secuenciales dentro del click
-  // "3D"/"en tu espacio"). El recorte a la silueta queda síncrono pero cede
-  // al event loop entre slots.
-  const slotShots: Array<{ slot: (typeof slots)[number]; dataUrl: string }> = [];
-  for (const slot of slots) {
-    const stage = stages.get(slot.slotIndex);
-    if (!stage) continue;
-    slotShots.push({
-      slot,
-      dataUrl: snapshotSlotForPreview(stage, slot, {
-        unitTemplate,
-        borderColor: canvasData.borderColor ?? null,
-      }),
-    });
-    await yieldToMain();
-  }
-  const images = await Promise.all(slotShots.map((s) => loadImage(s.dataUrl)));
-
-  const out: Magnet3D[] = [];
-  for (const [i, { slot }] of slotShots.entries()) {
-    const img = images[i]!;
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const c = document.createElement("canvas");
-      c.width = texW;
-      c.height = texH;
-      const ctx = c.getContext("2d");
-      if (!ctx) {
-        reject(new Error("No se pudo crear contexto canvas para textura 3D"));
-        return;
-      }
-      // Recorte a la silueta física → transparencia fuera (sin fondo).
-      const path = buildShapePath(shape, 0, 0, texW, texH);
-      ctx.save();
-      ctx.clip(path);
-      ctx.drawImage(img, 0, 0, texW, texH);
-      ctx.restore();
-      resolve(c.toDataURL("image/png"));
-    });
-    out.push({
-      dataUrl,
-      wRatio: unitTemplate.stage.width,
-      hRatio: unitTemplate.stage.height,
-      // La silueta viaja con la textura → las escenas 3D extruyen el cuerpo con la misma forma.
-      shape,
-      // Ola 10 — metadata del slot para agrupar caras de separadores.
-      slotIndex: slot.slotIndex,
-      assetUrl: slot.assetUrl,
-    });
-    await yieldToMain();
-  }
-  return out;
 }

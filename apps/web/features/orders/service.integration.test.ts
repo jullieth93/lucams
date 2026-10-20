@@ -372,6 +372,23 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       expect(result.total).toBe(3 * SNAP + 15_000);
     });
 
+    it("mismo contenido con precios distintos no se consolida y subtotal = suma de líneas", async () => {
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+        { variantId: variantAId, qty: 2, unitPrice: PRICE_B },
+      ]);
+
+      const result = await createOrderFromCart(baseInput(cartId));
+
+      expect(result.subtotal).toBe(PRICE_A + 2 * PRICE_B);
+      const items = await prisma.orderItem.findMany({
+        where: { orderId: result.id },
+        orderBy: { unitPrice: "asc" },
+      });
+      expect(items).toHaveLength(2);
+      expect(result.subtotal).toBe(items.reduce((sum, item) => sum + item.qty * item.unitPrice, 0));
+    });
+
     it("flete 0 (envío gratis): total == subtotal", async () => {
       const { cartId } = await makeCartWithItems([
         { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
@@ -414,13 +431,13 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       expect(r1.number).not.toBe(r2.number);
     });
 
-    it("marca los Designs vinculados como USED_IN_ORDER (immutable post-checkout)", async () => {
+    it("mantiene los Designs READY mientras la orden sigue pendiente de pago", async () => {
       const design = await prisma.design.create({
         data: {
           sessionId: `${RUN}-d-${uniq()}`,
           productId,
           status: "READY",
-          canvasData: {},
+          canvasData: { version: 2, slotCount: 2, slots: [{ slotIndex: 0 }, { slotIndex: 1 }] },
           previewUrl: "https://cdn.lucams.test/p.png",
         },
         select: { id: true },
@@ -435,14 +452,15 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
         where: { id: design.id },
         select: { status: true },
       });
-      expect(after!.status).toBe("USED_IN_ORDER");
+      expect(after!.status).toBe("READY");
 
       // El OrderItem quedó vinculado al mismo designId (snapshot).
       const item = await prisma.orderItem.findFirst({
         where: { orderId: result.id },
-        select: { designId: true },
+        select: { designId: true, customDesign: true },
       });
       expect(item!.designId).toBe(design.id);
+      expect(item!.customDesign).toMatchObject({ version: 2, slotCount: 2 });
     });
 
     it("billing.wantsInvoice=true → dianStatus PENDING + copia documento y nombre; false → NOT_REQUIRED", async () => {
@@ -929,9 +947,13 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
     // Fixtures propios por test: archivar/despublicar un fixture COMPARTIDO
     // contaminaría el resto de la suite. Se limpian en el afterAll local.
     const createdProductIds: string[] = [];
+    const createdCategoryIds: string[] = [];
 
     /** Crea un producto activo + variante activa dedicados (RUN-scoped). */
-    async function makeArchivableFixture(tag: string): Promise<{
+    async function makeArchivableFixture(
+      tag: string,
+      dedicatedCategoryId?: string,
+    ): Promise<{
       productId: string;
       variantId: string;
       variantSku: string;
@@ -950,7 +972,7 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
           description: "fixture n-01",
           basePrice: price,
           sku: `${RUN}-N01-${tag}-${u}`.toUpperCase(),
-          categoryId,
+          categoryId: dedicatedCategoryId ?? categoryId,
           variants: {
             create: [
               {
@@ -974,6 +996,13 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
         try {
           await prisma.productVariant.deleteMany({ where: { productId: id } });
           await prisma.product.deleteMany({ where: { id } });
+        } catch {
+          /* blip del pooler — fixture RUN-scoped */
+        }
+      }
+      for (const id of createdCategoryIds) {
+        try {
+          await prisma.category.deleteMany({ where: { id } });
         } catch {
           /* blip del pooler — fixture RUN-scoped */
         }
@@ -1049,6 +1078,23 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       await expect(createOrderFromCart(baseInput(cartId))).rejects.toMatchObject({
         name: "OrderUnavailableItemsError",
       });
+    });
+
+    it("categoría pausada en carrera → OrderUnavailableItemsError aunque producto y variante estén activos", async () => {
+      const category = await prisma.category.create({
+        data: { slug: `${RUN}-n01-paused-category-${uniq()}`, name: "Categoría pausada" },
+      });
+      createdCategoryIds.push(category.id);
+      const fx = await makeArchivableFixture("ca", category.id);
+      const { cartId } = await makeCartWithItems([
+        { variantId: fx.variantId, qty: 1, unitPrice: fx.price },
+      ]);
+      await prisma.category.update({ where: { id: category.id }, data: { isActive: false } });
+
+      await expect(createOrderFromCart(baseInput(cartId))).rejects.toMatchObject({
+        name: "OrderUnavailableItemsError",
+      });
+      expect(await prisma.order.count({ where: { cartId } })).toBe(0);
     });
 
     it("también blinda el camino idempotente: order PENDING existente + item archivado después → RECHAZA (no reusa ni reconcilia)", async () => {
@@ -1142,6 +1188,30 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       expect(found!.customer).not.toBeNull();
       expect(found!.customer!.firstName).toBe("Lina");
       expect(found!.customer!.lastName).toBe("Gómez");
+    });
+
+    it("continúa la numeración numérica después de LCM-9999 sin repetir 10000", async () => {
+      const year = new Date().getFullYear();
+      await prisma.order.create({
+        data: {
+          number: `LCM-${year}-9999`,
+          email: `${RUN}-sequence@lucams.test`,
+          phone: "3001112233",
+          shippingAddress: {},
+          subtotal: 1,
+          shipping: 0,
+          total: 1,
+          paymentMethod: "WOMPI",
+          status: "CANCELLED",
+        },
+      });
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
+
+      const result = await createOrderFromCart(baseInput(cartId));
+
+      expect(result.number).toBe(`LCM-${year}-10000`);
     });
   });
 
@@ -1347,8 +1417,7 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
         where: { id: created.id },
         data: { deletedAt: new Date(), deletedBy: "test" },
       });
-      const afterDelete = await countOrdersNeedingReconciliation();
-      expect(afterDelete).toBeLessThan(afterFlag); // nuestra soft-deleted deja de contarse
+      expect(await prisma.order.count({ where: { id: created.id, deletedAt: null } })).toBe(0);
     });
 
     it("listOrders({needsReconciliation:true}) devuelve solo las flagged (verificado vía q para aislar)", async () => {

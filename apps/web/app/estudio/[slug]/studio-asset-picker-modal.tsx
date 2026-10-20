@@ -681,6 +681,21 @@ export function StudioAssetPickerModal({
                       </>
                     )}
                   </div>
+
+                  {/* Footer sticky (Fase 2 UX, 2026-10-13) — botón primario
+                      «Listo»: cierre explícito cuando el cliente terminó de
+                      subir o elegir fotos. NO cambia el flujo de slot: asignar
+                      una foto (o subir UNA) sigue cerrando el modal como antes;
+                      esto es solo la salida explícita que faltaba. */}
+                  <div className="border-brand-purple/10 shrink-0 border-t px-5 py-3">
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="bg-brand-purple hover:bg-brand-purple-dark focus:ring-brand-purple flex h-11 w-full items-center justify-center rounded-xl text-sm font-semibold text-white transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+                    >
+                      {texts.fotos.pickerListo}
+                    </button>
+                  </div>
                 </motion.div>
               </div>
             </motion.div>

@@ -13,13 +13,16 @@ import {
   diffGallery,
   storageObjectFromUrl,
   collectStorageObjects,
+  rewriteStorageHost,
+  buildGalleryData,
 } from "./gallery-sync.mjs";
 
 const row = (over = {}) => ({
   id: "clx1",
   tag: "separadores-magneticos",
   name: "Flores",
-  imageUrl: "https://ref.supabase.co/storage/v1/object/public/product-images/gallery-separadores-magneticos/flores.webp",
+  imageUrl:
+    "https://ref.supabase.co/storage/v1/object/public/product-images/gallery-separadores-magneticos/flores.webp",
   imageUrlB: null,
   variantFilter: null,
   order: 1,
@@ -41,7 +44,11 @@ describe("canon", () => {
 describe("changedFields", () => {
   it("vacío cuando el contenido es igual (aunque difieran timestamps/id de auditoría)", () => {
     const a = row({ createdAt: new Date("2026-01-01"), updatedAt: new Date("2026-01-01") });
-    const b = row({ createdAt: new Date("2026-02-02"), updatedAt: new Date("2026-02-02"), updatedBy: "otro" });
+    const b = row({
+      createdAt: new Date("2026-02-02"),
+      updatedAt: new Date("2026-02-02"),
+      updatedBy: "otro",
+    });
     assert.deepEqual(changedFields(a, b), []);
   });
 
@@ -49,12 +56,22 @@ describe("changedFields", () => {
     const base = row();
     assert.deepEqual(changedFields(row({ name: "Otro" }), base), ["name"]);
     assert.deepEqual(changedFields(row({ imageUrlB: "https://x/b.webp" }), base), ["imageUrlB"]);
-    assert.deepEqual(changedFields(row({ variantFilter: { sizeCm: "2×6" } }), base), ["variantFilter"]);
-    assert.deepEqual(changedFields(row({ order: 9, isActive: false }), base), ["order", "isActive"]);
-    assert.deepEqual(changedFields(row({ deletedAt: new Date("2026-10-02") }), base), ["deletedAt"]);
+    assert.deepEqual(changedFields(row({ variantFilter: { sizeCm: "2×6" } }), base), [
+      "variantFilter",
+    ]);
+    assert.deepEqual(changedFields(row({ order: 9, isActive: false }), base), [
+      "order",
+      "isActive",
+    ]);
+    assert.deepEqual(changedFields(row({ deletedAt: new Date("2026-10-02") }), base), [
+      "deletedAt",
+    ]);
     // variantFilter igual en contenido pero objeto distinto → NO es cambio
     assert.deepEqual(
-      changedFields(row({ variantFilter: { sizeCm: "2×6" } }), row({ variantFilter: { sizeCm: "2×6" } })),
+      changedFields(
+        row({ variantFilter: { sizeCm: "2×6" } }),
+        row({ variantFilter: { sizeCm: "2×6" } }),
+      ),
       [],
     );
   });
@@ -78,12 +95,18 @@ describe("diffGallery", () => {
     const stg = [row({ id: "a" }), row({ id: "b" }), row({ id: "c", name: "Nuevo nombre" })];
     const prd = [row({ id: "a" }), row({ id: "c", name: "Viejo nombre" }), row({ id: "z-prd" })];
     const { inserts, updates, prdOnly } = diffGallery(stg, prd);
-    assert.deepEqual(inserts.map((r) => r.id), ["b"]);
+    assert.deepEqual(
+      inserts.map((r) => r.id),
+      ["b"],
+    );
     assert.deepEqual(
       updates.map((u) => [u.row.id, u.fields]),
       [["c", ["name"]]],
     );
-    assert.deepEqual(prdOnly.map((r) => r.id), ["z-prd"]);
+    assert.deepEqual(
+      prdOnly.map((r) => r.id),
+      ["z-prd"],
+    );
   });
 
   it("idempotente: con PRD ya igualado no hay inserts ni updates", () => {
@@ -97,10 +120,16 @@ describe("diffGallery", () => {
 
   it("cruza por (tag,name) cuando la cuid no se preservó — update en sitio, sin duplicar", () => {
     // Caso real 2026-10-02: 66 filas sembradas independientes en cada ambiente.
-    const stg = [row({ id: "stg-cuid", name: "Flores", order: 5 }), row({ id: "nuevo", name: "Nuevo" })];
+    const stg = [
+      row({ id: "stg-cuid", name: "Flores", order: 5 }),
+      row({ id: "nuevo", name: "Nuevo" }),
+    ];
     const prd = [row({ id: "prd-cuid", name: "Flores", order: 1 })];
     const { inserts, updates, prdOnly } = diffGallery(stg, prd);
-    assert.deepEqual(inserts.map((r) => r.id), ["nuevo"]);
+    assert.deepEqual(
+      inserts.map((r) => r.id),
+      ["nuevo"],
+    );
     assert.equal(updates.length, 1);
     assert.equal(updates[0].matchedBy, "tag+name");
     assert.equal(updates[0].prdRow.id, "prd-cuid"); // el UPDATE apunta al id de PRD
@@ -119,7 +148,10 @@ describe("diffGallery", () => {
     const stg = [row({ id: "stg-1", name: "Flores" })];
     const prd = [row({ id: "p1", name: "Flores" }), row({ id: "p2", name: "Flores" })];
     const { inserts, updates, prdOnly } = diffGallery(stg, prd);
-    assert.deepEqual(inserts.map((r) => r.id), ["stg-1"]);
+    assert.deepEqual(
+      inserts.map((r) => r.id),
+      ["stg-1"],
+    );
     assert.equal(updates.length, 0);
     assert.deepEqual(prdOnly.map((r) => r.id).sort(), ["p1", "p2"]);
   });
@@ -148,7 +180,11 @@ describe("collectStorageObjects", () => {
   it("junta imageUrl e imageUrlB, dedupando por bucket/path", () => {
     const url = "https://r.supabase.co/storage/v1/object/public/product-images/gallery-x/a.webp";
     const rows = [
-      row({ id: "1", imageUrl: url, imageUrlB: "https://r.supabase.co/storage/v1/object/public/product-images/gallery-x/b.webp" }),
+      row({
+        id: "1",
+        imageUrl: url,
+        imageUrlB: "https://r.supabase.co/storage/v1/object/public/product-images/gallery-x/b.webp",
+      }),
       row({ id: "2", imageUrl: url, imageUrlB: null }), // duplicada
       row({ id: "3", imageUrl: "https://images.unsplash.com/externa" }), // ajena, se ignora
     ];
@@ -156,5 +192,75 @@ describe("collectStorageObjects", () => {
       { bucket: "product-images", path: "gallery-x/a.webp" },
       { bucket: "product-images", path: "gallery-x/b.webp" },
     ]);
+  });
+});
+
+describe("rewriteStorageHost / buildGalleryData (homologación PRD → espejo)", () => {
+  const STG = "https://mjbdiqdkykhsixvqlrrp.supabase.co";
+  const PRD = "https://zxkucphbsfygakgxcnik.supabase.co";
+
+  it("reescribe solo URLs del host fuente; null y ajenas quedan intactos", () => {
+    const u = `${PRD}/storage/v1/object/public/product-images/g/x.webp`;
+    assert.equal(
+      rewriteStorageHost(u, PRD, STG),
+      `${STG}/storage/v1/object/public/product-images/g/x.webp`,
+    );
+    assert.equal(rewriteStorageHost(null, PRD, STG), null);
+    assert.equal(
+      rewriteStorageHost("https://images.unsplash.com/x", PRD, STG),
+      "https://images.unsplash.com/x",
+    );
+  });
+
+  it("fields=null → todos los campos de contenido con URLs al host destino", () => {
+    const src = row({
+      imageUrl: `${PRD}/storage/v1/object/public/product-images/g/a.webp`,
+      imageUrlB: `${PRD}/storage/v1/object/public/product-images/g/b.webp`,
+      isActive: false,
+      deletedAt: new Date("2026-09-27T00:11:52.796Z"),
+    });
+    const data = buildGalleryData(src, null, { fromBase: PRD, toBase: STG });
+    assert.equal(data.imageUrl, `${STG}/storage/v1/object/public/product-images/g/a.webp`);
+    assert.equal(data.imageUrlB, `${STG}/storage/v1/object/public/product-images/g/b.webp`);
+    assert.equal(data.isActive, false);
+    assert.equal(data.deletedAt.toISOString(), "2026-09-27T00:11:52.796Z");
+    assert.ok(
+      !("id" in data) && !("createdAt" in data),
+      "identidad/auditoría las decide el orquestador",
+    );
+  });
+
+  it("con array de fields → solo esos (update parcial)", () => {
+    const src = row({ order: 7 });
+    const data = buildGalleryData(src, ["order", "imageUrlB"], { fromBase: PRD, toBase: STG });
+    assert.deepEqual(data, { order: 7, imageUrlB: null });
+  });
+});
+
+describe("diffGallery con host normalizado (regla del checksum)", () => {
+  const STG = "https://mjbdiqdkykhsixvqlrrp.supabase.co";
+  const PRD = "https://zxkucphbsfygakgxcnik.supabase.co";
+  const url = (base, p) => `${base}/storage/v1/object/public/product-images/${p}`;
+
+  it("diferencia SOLO de host NO es cambio (cada ambiente sirve sus imágenes)", () => {
+    const src = [row({ id: "a", imageUrl: url(PRD, "g/x.webp"), imageUrlB: url(PRD, "g/y.webp") })];
+    const dst = [row({ id: "a", imageUrl: url(STG, "g/x.webp"), imageUrlB: url(STG, "g/y.webp") })];
+    const { inserts, updates, prdOnly } = diffGallery(src, dst);
+    assert.equal(inserts.length, 0);
+    assert.equal(updates.length, 0);
+    assert.equal(prdOnly.length, 0);
+  });
+
+  it("diferencia de PATH sí es cambio, y las filas devueltas conservan la URL cruda", () => {
+    const src = [row({ id: "a", imageUrl: url(PRD, "g/nuevo.webp") })];
+    const dst = [row({ id: "a", imageUrl: url(STG, "g/viejo.webp") })];
+    const { updates } = diffGallery(src, dst);
+    assert.equal(updates.length, 1);
+    assert.deepEqual(updates[0].fields, ["imageUrl"]);
+    assert.equal(
+      updates[0].row.imageUrl,
+      url(PRD, "g/nuevo.webp"),
+      "cruda para reescritura de host al escribir",
+    );
   });
 });

@@ -68,6 +68,18 @@ const getEmailDeliverabilityStats = vi.hoisted(() =>
     }),
   ),
 );
+// Capacidad (2026-10-20): storage vía getStorageQuota (mockeado) y DB vía $queryRaw
+// (pg_database_size). Por defecto ambos bajo el umbral → no disparan.
+const getStorageQuota = vi.hoisted(() =>
+  vi.fn(
+    async (): Promise<{
+      buckets: Array<{ bucket: string; bytes: number | null; files: number; source: string }>;
+      measuredBytes: number;
+      degraded: boolean;
+    }> => ({ buckets: [], measuredBytes: 0, degraded: false }),
+  ),
+);
+const queryRaw = vi.hoisted(() => vi.fn(async () => [{ dbBytes: BigInt(0) }]));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({
@@ -76,6 +88,7 @@ vi.mock("@/lib/db", () => ({
     order: { count: orderCount },
     webhookEvent: { count: webhookCount },
     securityEvent: { count: securityEventCount },
+    $queryRaw: queryRaw,
   },
 }));
 vi.mock("@/lib/resend", () => ({ sendEmail: vi.fn(async () => ({ sent: true })) }));
@@ -89,6 +102,7 @@ vi.mock("./cron-heartbeat", () => ({
   BACKUP_STALE_MS: 36 * 60 * 60 * 1000,
 }));
 vi.mock("./email-deliverability", () => ({ getEmailDeliverabilityStats }));
+vi.mock("./service", () => ({ getStorageQuota }));
 
 import { evaluateAlerts } from "./alerts";
 import { PENDING_PAYMENT_EXPIRY_HOURS } from "@/features/orders/constants";
@@ -463,5 +477,55 @@ describe("evaluateAlerts — reglas de seguridad sobre SecurityEvent (F-07, 2026
     const firing = await evaluateAlerts();
 
     expect(firing.some((a) => a.key === "security_webhook_invalid")).toBe(false);
+  });
+});
+
+describe("evaluateAlerts — capacidad de Supabase (auditoría 2026-10-20)", () => {
+  it("storage bajo el umbral → NO dispara", async () => {
+    getStorageQuota.mockResolvedValue({
+      buckets: [],
+      measuredBytes: 100 * 1024 * 1024,
+      degraded: false,
+    });
+
+    const firing = await evaluateAlerts(new Date());
+
+    expect(firing.some((a) => a.key === "capacity_storage_high")).toBe(false);
+  });
+
+  it("storage sobre 800 MB → ALTA con el consumo en MB", async () => {
+    getStorageQuota.mockResolvedValue({
+      buckets: [],
+      measuredBytes: 900 * 1024 * 1024,
+      degraded: false,
+    });
+
+    const firing = await evaluateAlerts(new Date());
+
+    const alert = firing.find((a) => a.key === "capacity_storage_high");
+    expect(alert?.severity).toBe("alta");
+    expect(alert?.title).toContain("900 MB");
+  });
+
+  it("medición degradada → lo advierte en el detalle", async () => {
+    getStorageQuota.mockResolvedValue({
+      buckets: [],
+      measuredBytes: 900 * 1024 * 1024,
+      degraded: true,
+    });
+
+    const firing = await evaluateAlerts(new Date());
+
+    expect(firing.find((a) => a.key === "capacity_storage_high")?.detail).toContain("DEGRADADA");
+  });
+
+  it("BD sobre 400 MB → ALTA; bajo el umbral → NO dispara", async () => {
+    queryRaw.mockResolvedValue([{ dbBytes: BigInt(500 * 1024 * 1024) }]);
+    let firing = await evaluateAlerts(new Date());
+    expect(firing.find((a) => a.key === "capacity_db_high")?.severity).toBe("alta");
+
+    queryRaw.mockResolvedValue([{ dbBytes: BigInt(48 * 1024 * 1024) }]);
+    firing = await evaluateAlerts(new Date());
+    expect(firing.some((a) => a.key === "capacity_db_high")).toBe(false);
   });
 });

@@ -204,6 +204,14 @@ export async function saveCanvasAction(input: {
       { event: "design.save_canvas.fail", err: msg, payloadBytes: payloadSize },
       "saveCanvas failed",
     );
+    if (msg === "STALE_REVISION") {
+      return {
+        ok: false as const,
+        code: "STALE_REVISION" as const,
+        message:
+          "Este diseño cambió en otra pestaña o ventana. Recupera la versión más reciente antes de continuar.",
+      };
+    }
     // F-30 — saveCanvas only throws internal English errors (ownership/status guards, Prisma);
     // none is customer-safe, so the client always gets the generic copy. Detail is in the log.
     return {
@@ -633,6 +641,8 @@ const LetterSetDesignInputSchema = z.object({
   // Modelo MULTI-UNIDAD (2026-09-09) — TODOS los sets con sus colores por ficha.
   // El service exige units.length === unitCount y persiste metadata.units: de ahí
   // sale el precio ×N (nunca de un multiplicador crudo del cliente).
+  // 2026-10-19 — estilo y borde POR SET (rediseño owner): cada unidad puede
+  // declarar su styleSetId (null = «Solo letra») y su withBorder.
   units: z
     .array(
       z.object({
@@ -640,6 +650,8 @@ const LetterSetDesignInputSchema = z.object({
           .array(z.string().regex(/^#[0-9A-Fa-f]{6}$/))
           .max(50)
           .optional(),
+        styleSetId: z.string().max(40).nullable().optional(),
+        withBorder: z.boolean().optional(),
       }),
     )
     .max(10)

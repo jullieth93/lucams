@@ -81,15 +81,16 @@ describe("collectQualityWarnings", () => {
   // Fase 2 (2026-10-02) — requiresAck: solo el aviso de brillo SUAVE como
   // único problema es informativo (no exige checkbox). Todo lo demás sí.
   // 2026-10: el aviso de foto oscura se eliminó (decisión estética válida);
-  // el único aviso de brillo posible hoy es sobreexposición.
+  // el único aviso de brillo posible hoy es el de zonas quemadas de luz
+  // (2026-10-19 — antes "sobreexpuesta", wording que confundía al cliente).
   it("brillo soft como ÚNICO problema → requiresAck false (aviso informativo)", () => {
-    const softBrillo = asset("sobreexpuesta", {
+    const softBrillo = asset("zonas-quemadas", {
       validationLevel: "warning-soft",
       validationMessage:
-        "La foto está sobreexpuesta. Algunos detalles podrían perderse al imprimir.",
+        "La foto tiene zonas quemadas de luz (casi blancas). Esas zonas podrían imprimirse sin detalle.",
       validationChecks: { resolution: true, brightness: false, blur: true },
     });
-    const warnings = collectQualityWarnings([softBrillo], canvas("sobreexpuesta"));
+    const warnings = collectQualityWarnings([softBrillo], canvas("zonas-quemadas"));
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toMatchObject({ level: "warning-soft", requiresAck: false });
   });

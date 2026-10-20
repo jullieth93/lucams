@@ -418,6 +418,19 @@ export default async function AdminPedidoDetallePage({
                   }
                 />
               </dl>
+              {/* 2026-10-20 — «Documento de venta»: solo las órdenes que SÍ
+                  pidieron documento tributario (históricas; el checkbox del
+                  checkout se retiró con BILLING_DOCUMENT_ENABLED=off, pero sus
+                  datos se conservan y se muestran acá). */}
+              {order.billingDocumentType && order.billingDocumentNumber && (
+                <div className="border-brand-purple/20 bg-brand-purple/5 mt-3 rounded-md border px-3 py-2">
+                  <p className="text-brand-purple-dark text-xs font-bold">Documento de venta</p>
+                  <p className="text-brand-purple-dark mt-0.5 text-xs">
+                    {order.billingDocumentType} {order.billingDocumentNumber}
+                    {order.billingName ? ` · ${order.billingName}` : ""}
+                  </p>
+                </div>
+              )}
               {/* Contacto directo: wa.me con el teléfono del comprador y mensaje
                   pre-armado con el número de pedido (Lucy 2026-08-11). */}
               {customerWa && (
@@ -578,6 +591,35 @@ export default async function AdminPedidoDetallePage({
                     </a>
                   }
                 />
+              )}
+              {order.wompiAttempts.length > 0 && (
+                <div className="border-brand-purple/10 mt-3 space-y-2 border-t pt-3">
+                  <p className="text-brand-purple-dark text-xs font-bold">
+                    Intentos y transacciones
+                  </p>
+                  {order.wompiAttempts.map((attempt) => (
+                    <div key={attempt.id} className="bg-brand-cream rounded-lg p-2.5 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold">
+                          Intento {attempt.sequence} · {attempt.status}
+                        </span>
+                        <span>{formatCOP(attempt.amountInCents)}</span>
+                      </div>
+                      <code className="text-brand-muted mt-1 block text-[10px] break-all">
+                        {attempt.reference}
+                      </code>
+                      {attempt.transactions.length > 0 && (
+                        <ul className="mt-1.5 space-y-1">
+                          {attempt.transactions.map((tx) => (
+                            <li key={tx.id} className="break-all">
+                              {tx.status ?? "SIN VERIFICAR"} · {tx.externalId}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
               <Row label="Estado" value={statusLabel} />
             </Card>

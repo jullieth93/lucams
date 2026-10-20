@@ -33,7 +33,10 @@ import { verifyWebhookSignature, getWompiExpectedWebhookEnv } from "@/lib/wompi"
 import { getClientIp } from "@/lib/client-ip";
 import { recordSecurityEvent, SECURITY_EVENT } from "@/lib/security-events";
 import { processPaidOrder, processFailedPaymentOrder } from "@/features/orders/saga";
-import { findOrderIdByWompiReference } from "@/features/orders/payment-reference";
+import {
+  findOrderIdByWompiReference,
+  isWompiTransactionOlderThanOrder,
+} from "@/features/orders/payment-reference";
 import { sendOrderPaymentDeclined } from "@/features/orders/emails";
 
 export const dynamic = "force-dynamic";
@@ -225,7 +228,14 @@ export async function POST(req: Request) {
   const order = orderId
     ? await prisma.order.findFirst({
         where: { id: orderId, deletedAt: null },
-        select: { id: true, number: true, status: true, total: true, trackingNumber: true },
+        select: {
+          id: true,
+          number: true,
+          status: true,
+          total: true,
+          trackingNumber: true,
+          createdAt: true,
+        },
       })
     : null;
 
@@ -239,6 +249,21 @@ export async function POST(req: Request) {
       data: { processedAt: new Date() },
     });
     return NextResponse.json({ ok: true, note: "order not found, ignored" });
+  }
+
+  if (isWompiTransactionOlderThanOrder(order, transaction)) {
+    logger.warn({
+      event: "webhook.wompi.historical_transaction_ignored",
+      orderNumber: order.number,
+      reference: transaction.reference,
+      providerCreatedAt: transaction.created_at,
+      orderCreatedAt: order.createdAt,
+    });
+    await prisma.webhookEvent.update({
+      where: { id: webhookRow.id },
+      data: { processedAt: new Date() },
+    });
+    return NextResponse.json({ ok: true, note: "historical transaction, ignored" });
   }
 
   // 5) Validar monto (defensa anti-tampering — el integrity signature de Wompi

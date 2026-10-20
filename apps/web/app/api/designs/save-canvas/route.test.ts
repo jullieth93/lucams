@@ -43,7 +43,7 @@ const VALID_CANVAS = {
   version: 2,
   unitTemplate: { version: 1, stage: { width: 100, height: 100 }, layers: [] },
   slotCount: 1,
-  slots: [],
+  slots: [{ slotIndex: 0, assetId: null, assetUrl: null }],
   gridLayout: { cols: 1, rows: 1, gap: 0 },
 };
 
@@ -105,6 +105,13 @@ describe("POST /api/designs/save-canvas (beacon flush del Estudio)", () => {
     state.saveError = new Error("Design is READY — only DRAFT can be edited");
     const res = await POST(req({ designId: "d1", canvasData: VALID_CANVAS }));
     expect(res.status).toBe(500);
+  });
+
+  it("revisión vieja → 409 STALE_REVISION, no un 500 genérico", async () => {
+    state.saveError = new Error("STALE_REVISION");
+    const res = await POST(req({ designId: "d1", canvasData: VALID_CANVAS }));
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toMatchObject({ code: "STALE_REVISION" });
   });
 
   // 2026-10-13 — miniatura del borrador (Mis diseños): el campo es OPCIONAL y

@@ -1,173 +1,455 @@
-/*
- * Referencia de pago Wompi única POR INTENTO (bug STG 2026-10).
- *
- * Problema: la reference de Web Checkout era Order.number y createOrderFromCart
- * REUSA la orden PENDING_PAYMENT por cartId. Wompi consume la reference en el
- * primer intento y solo habilita reintentarla ~3 min tras un DECLINED (doc
- * oficial); fuera de esa ventana, cualquier reintento desde la tienda chocaba
- * con "La referencia ya ha sido usada".
- *
- * Diseño:
- *  - Intento 1 → reference = Order.number (`LCM-YYYY-NNNN`). Intento N ≥ 2 →
- *    `${Order.number}-N`. Wompi acepta alfanumérico con guiones (doc
- *    widget-checkout-web, paso 2), así que el formato es válido.
- *  - resolveWompiPaymentReference decide y PERSISTE la referencia con un claim
- *    atómico (updateMany gateado por paymentAttempt + wompiReference leídos):
- *    un doble submit concurrente pierde el claim, re-lee y reusa la referencia
- *    fresca del ganador — nunca genera dos referencias para el mismo intento.
- *  - Reuso: si la referencia almacenada tiene < WOMPI_REFERENCE_RETRY_WINDOW_MS,
- *    sigue siendo válida en Wompi → se reusa (idempotencia del reintento
- *    inmediato, ej. doble click en "Pagar").
- *  - Rotación: vencida la ventana, solo se rota cuando NO hay dinero en vuelo:
- *    si la orden tiene wompiTransactionId se verifica la tx contra la API de
- *    Wompi (mismo patrón que expire-pending). APPROVED → no se cobra de nuevo
- *    (el caller redirige a /checkout/gracias, que sana la orden con la saga
- *    fallback); PENDING (PSE/transferencia async) → no se crea un segundo
- *    cobro; DECLINED/ERROR/VOIDED → terminal sin dinero → se rota. Si la
- *    verificación falla (API caída) NO se rota a ciegas: podría haber un
- *    APPROVED detrás y rotar abriría doble cobro.
- *  - Al rotar se limpia wompiTransactionId (la tx vieja es terminal): el
- *    webhook puede persistir la tx del intento nuevo (gate F-03 exige null).
- *
- * Resolución inversa (webhook / redirect): findOrderIdByWompiReference matchea
- * la reference recibida contra wompiReference exacta, contra number (intento
- * base y órdenes legacy) y, como fallback, contra el número base extraído del
- * sufijo `-N` (cubre un APPROVED tardío de un intento anterior al almacenado).
- */
-
 import "server-only";
+import { randomUUID } from "node:crypto";
+import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { getTransaction } from "@/lib/wompi";
+import { listTransactionsByReference, type WompiTransaction } from "@/lib/wompi";
 
-/**
- * Ventana en la que Wompi acepta reintentar con la MISMA reference (~3 min tras
- * el intento, doc oficial). Medida desde que generamos el checkout: cualquier
- * DECLINED posterior ocurre DESPUÉS de ese timestamp, así que su ventana de
- * reintento extiende al menos hasta acá — reusar dentro de la ventana es seguro.
- */
 export const WOMPI_REFERENCE_RETRY_WINDOW_MS = 3 * 60 * 1000;
+const HISTORICAL_TX_TOLERANCE_MS = 60_000;
 
-/** reference del intento N: 1 = número base; ≥2 = `${number}-N`. */
+const TRANSACTION_SELECT = {
+  id: true,
+  externalId: true,
+  status: true,
+  amountInCents: true,
+  currency: true,
+  providerCreatedAt: true,
+  providerFinalizedAt: true,
+} as const;
+
+const ATTEMPT_SELECT = {
+  id: true,
+  sequence: true,
+  reference: true,
+  amountInCents: true,
+  currency: true,
+  status: true,
+  backfilled: true,
+  presentedAt: true,
+  transactions: { select: TRANSACTION_SELECT },
+} as const;
+
+const ORDER_SELECT = {
+  id: true,
+  number: true,
+  status: true,
+  total: true,
+  currency: true,
+  createdAt: true,
+  paymentAttempt: true,
+  wompiReference: true,
+  wompiReferenceAt: true,
+  wompiTransactionId: true,
+  wompiAttempts: {
+    orderBy: { sequence: "desc" as const },
+    select: ATTEMPT_SELECT,
+  },
+} as const;
+
+type LedgerOrder = Prisma.OrderGetPayload<{ select: typeof ORDER_SELECT }>;
+type LedgerAttempt = LedgerOrder["wompiAttempts"][number];
+
+export type WompiPaymentReferenceResolution =
+  | { kind: "ready"; reference: string; attempt: number; amountInCents: number }
+  | { kind: "approved"; txId: string }
+  | { kind: "in_flight"; txId: string }
+  | { kind: "lookup_failed" };
+
+type SyncResolution =
+  | { kind: "approved"; txId: string }
+  | { kind: "in_flight"; txId: string }
+  | { kind: "empty" }
+  | { kind: "terminal" }
+  | { kind: "lookup_failed" };
+
+/** Formato legacy, conservado para lectores antiguos; los intentos nuevos usan UUID. */
 export function buildWompiReference(orderNumber: string, attempt: number): string {
   return attempt <= 1 ? orderNumber : `${orderNumber}-${attempt}`;
 }
 
-const ORDER_NUMBER_PATTERN = /^(LCM-\d{4}-\d+?)(?:-\d+)?$/;
-
-/**
- * Número de orden base de una reference Wompi. Referencias ajenas al formato
- * (seeds de test, sistemas viejos) se devuelven intactas.
- */
-export function extractOrderNumberFromWompiReference(reference: string): string {
-  return ORDER_NUMBER_PATTERN.exec(reference)?.[1] ?? reference;
+export function buildUniqueWompiReference(orderNumber: string): string {
+  return `${orderNumber}-${randomUUID()}`;
 }
 
-export type WompiPaymentReferenceResolution =
-  | { kind: "ready"; reference: string; attempt: number }
-  /** La tx previa quedó APPROVED pero el webhook se perdió: NO cobrar de nuevo. */
-  | { kind: "approved"; txId: string }
-  /** PSE/transferencia aún PENDING en Wompi: otro checkout sería doble cobro. */
-  | { kind: "in_flight"; txId: string }
-  /** Sin prueba del desenlace del intento previo (API caída, orden no payable). */
-  | { kind: "lookup_failed" };
+export function extractOrderNumberFromWompiReference(reference: string): string {
+  return /^((?:LCM)-\d{4}-\d+?)(?:-|$)/.exec(reference)?.[1] ?? reference;
+}
+
+export function isWompiTransactionOlderThanOrder(
+  order: { createdAt: Date },
+  transaction: { created_at: string },
+): boolean {
+  const providerCreatedAt = Date.parse(transaction.created_at);
+  return (
+    Number.isFinite(providerCreatedAt) &&
+    providerCreatedAt < order.createdAt.getTime() - HISTORICAL_TX_TOLERANCE_MS
+  );
+}
+
+function providerDate(value: string | null): Date | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) throw new Error("Wompi devolvió una fecha inválida");
+  return new Date(parsed);
+}
+
+async function loadOrder(orderId: string): Promise<LedgerOrder | null> {
+  return prisma.order.findFirst({ where: { id: orderId, deletedAt: null }, select: ORDER_SELECT });
+}
+
+async function ensureLegacyAttempt(order: LedgerOrder): Promise<LedgerAttempt | null> {
+  const current = order.wompiAttempts[0];
+  if (current) {
+    if (
+      order.wompiTransactionId &&
+      !current.transactions.some((tx) => tx.externalId === order.wompiTransactionId)
+    ) {
+      await prisma.wompiPaymentTransaction.create({
+        data: {
+          attemptId: current.id,
+          externalId: order.wompiTransactionId,
+          amountInCents: order.total,
+          currency: order.currency,
+          status: null,
+        },
+      });
+      return prisma.wompiPaymentAttempt.findUniqueOrThrow({
+        where: { id: current.id },
+        select: ATTEMPT_SELECT,
+      });
+    }
+    return current;
+  }
+
+  const reference =
+    order.wompiReference ??
+    (order.paymentAttempt > 0 || order.wompiTransactionId ? order.number : null);
+  if (!reference) return null;
+
+  return prisma.wompiPaymentAttempt.create({
+    data: {
+      orderId: order.id,
+      sequence: Math.max(1, order.paymentAttempt),
+      reference,
+      amountInCents: order.total,
+      currency: order.currency,
+      backfilled: true,
+      presentedAt: order.wompiReferenceAt,
+      transactions: order.wompiTransactionId
+        ? {
+            create: {
+              externalId: order.wompiTransactionId,
+              amountInCents: order.total,
+              currency: order.currency,
+              status: null,
+            },
+          }
+        : undefined,
+    },
+    select: ATTEMPT_SELECT,
+  });
+}
+
+async function markReview(
+  order: LedgerOrder,
+  attempt: LedgerAttempt,
+  reason: string,
+  now: Date,
+): Promise<void> {
+  await prisma.$transaction([
+    prisma.wompiPaymentAttempt.update({
+      where: { id: attempt.id },
+      data: { status: "REVIEW", lastSyncedAt: now },
+    }),
+    prisma.order.update({
+      where: { id: order.id },
+      data: { needsReconciliation: true, reconciliationReason: reason },
+    }),
+  ]);
+}
+
+async function syncAttempt(
+  order: LedgerOrder,
+  attempt: LedgerAttempt,
+  now: Date,
+): Promise<SyncResolution> {
+  let transactions: WompiTransaction[];
+  try {
+    transactions = await listTransactionsByReference(attempt.reference);
+    if (transactions.length === 0 && attempt.transactions.length > 0) {
+      logger.warn({
+        event: "order.payment_reference.provider_empty_contradiction",
+        orderId: order.id,
+        attemptId: attempt.id,
+      });
+      return { kind: "lookup_failed" };
+    }
+
+    for (const tx of transactions) {
+      const existing = await prisma.wompiPaymentTransaction.findUnique({
+        where: { externalId: tx.id },
+        select: { attemptId: true },
+      });
+      if (existing && existing.attemptId !== attempt.id) {
+        await markReview(
+          order,
+          attempt,
+          `La transacción ${tx.id} ya estaba asociada a otro intento de pago. Revisar referencia ${attempt.reference}.`,
+          now,
+        );
+        return { kind: "lookup_failed" };
+      }
+      const approvedAt =
+        tx.status === "APPROVED" ? providerDate(tx.finalized_at ?? tx.created_at) : null;
+      await prisma.wompiPaymentTransaction.upsert({
+        where: { externalId: tx.id },
+        update: {
+          status: tx.status,
+          amountInCents: tx.amount_in_cents,
+          currency: tx.currency,
+          paymentMethodType: tx.payment_method_type,
+          statusMessage: tx.status_message,
+          providerCreatedAt: providerDate(tx.created_at),
+          providerFinalizedAt: providerDate(tx.finalized_at),
+          firstApprovedAt: approvedAt ?? undefined,
+          lastSeenAt: now,
+        },
+        create: {
+          attemptId: attempt.id,
+          externalId: tx.id,
+          status: tx.status,
+          amountInCents: tx.amount_in_cents,
+          currency: tx.currency,
+          paymentMethodType: tx.payment_method_type,
+          statusMessage: tx.status_message,
+          providerCreatedAt: providerDate(tx.created_at),
+          providerFinalizedAt: providerDate(tx.finalized_at),
+          firstApprovedAt: approvedAt,
+          lastSeenAt: now,
+        },
+      });
+    }
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      await markReview(
+        order,
+        attempt,
+        `Conflicto de unicidad al sincronizar la referencia ${attempt.reference}. Revisar antes de reintentar el cobro.`,
+        now,
+      );
+    } else {
+      logger.warn({
+        event: "order.payment_reference.lookup_failed",
+        orderId: order.id,
+        attemptId: attempt.id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return { kind: "lookup_failed" };
+  }
+
+  const relevant = transactions.filter((tx) => !isWompiTransactionOlderThanOrder(order, tx));
+  const approved = relevant
+    .filter((tx) => tx.status === "APPROVED")
+    .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+  const pending = relevant.filter((tx) => tx.status === "PENDING");
+  const voided = relevant.filter((tx) => tx.status === "VOIDED");
+  const moneyInFlight = [...approved, ...pending];
+
+  if (
+    moneyInFlight.some(
+      (tx) => tx.amount_in_cents !== attempt.amountInCents || tx.currency !== attempt.currency,
+    )
+  ) {
+    await markReview(
+      order,
+      attempt,
+      `El monto o la moneda de Wompi no coincide con el intento ${attempt.reference}. Revisar antes de cobrar o despachar.`,
+      now,
+    );
+    return { kind: "lookup_failed" };
+  }
+  if (voided.length > 0) {
+    await markReview(
+      order,
+      attempt,
+      `Wompi reportó una transacción VOIDED para ${attempt.reference}. Revisar el estado del dinero antes de otro intento.`,
+      now,
+    );
+    return { kind: "lookup_failed" };
+  }
+
+  if (approved.length > 0) {
+    const paid = approved[0]!;
+    const hasDuplicateCapture =
+      approved.length > 1 ||
+      (order.wompiTransactionId !== null && order.wompiTransactionId !== paid.id);
+    await prisma.$transaction([
+      prisma.wompiPaymentAttempt.update({
+        where: { id: attempt.id },
+        data: { status: "APPROVED", lastSyncedAt: now },
+      }),
+      prisma.order.update({
+        where: { id: order.id },
+        data: {
+          wompiTransactionId: paid.id,
+          ...(hasDuplicateCapture
+            ? {
+                needsReconciliation: true,
+                reconciliationReason: `Wompi reportó más de una captura para ${attempt.reference}. Revisar posible doble cobro.`,
+              }
+            : {}),
+        },
+      }),
+    ]);
+    return { kind: "approved", txId: paid.id };
+  }
+
+  if (pending.length > 0) {
+    const current = pending.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0]!;
+    await prisma.$transaction([
+      prisma.wompiPaymentAttempt.update({
+        where: { id: attempt.id },
+        data: { status: "IN_FLIGHT", lastSyncedAt: now },
+      }),
+      prisma.order.update({
+        where: { id: order.id },
+        data: { wompiTransactionId: current.id },
+      }),
+    ]);
+    return { kind: "in_flight", txId: current.id };
+  }
+
+  if (relevant.length === 0) {
+    await prisma.wompiPaymentAttempt.update({
+      where: { id: attempt.id },
+      data: { status: "OPEN", lastSyncedAt: now },
+    });
+    return { kind: "empty" };
+  }
+
+  await prisma.wompiPaymentAttempt.update({
+    where: { id: attempt.id },
+    data: { status: "FAILED", lastSyncedAt: now },
+  });
+  return { kind: "terminal" };
+}
+
+async function createAttempt(
+  order: LedgerOrder,
+  previous: LedgerAttempt | null,
+  now: Date,
+): Promise<WompiPaymentReferenceResolution> {
+  const sequence =
+    Math.max(
+      order.paymentAttempt,
+      previous?.sequence ?? 0,
+      ...order.wompiAttempts.map((attempt) => attempt.sequence),
+    ) + 1;
+  const reference = buildUniqueWompiReference(order.number);
+
+  const created = await prisma.$transaction(async (tx) => {
+    const attempt = await tx.wompiPaymentAttempt.create({
+      data: {
+        orderId: order.id,
+        sequence,
+        reference,
+        amountInCents: order.total,
+        currency: order.currency,
+        presentedAt: now,
+      },
+      select: ATTEMPT_SELECT,
+    });
+    if (previous) {
+      await tx.wompiPaymentAttempt.updateMany({
+        where: {
+          id: previous.id,
+          status: { notIn: ["APPROVED", "IN_FLIGHT", "REVIEW"] },
+        },
+        data: { status: "SUPERSEDED", supersededAt: now },
+      });
+    }
+    await tx.order.updateMany({
+      where: { id: order.id, status: "PENDING_PAYMENT" },
+      data: {
+        paymentAttempt: sequence,
+        wompiReference: reference,
+        wompiReferenceAt: now,
+        wompiTransactionId: null,
+      },
+    });
+    return attempt;
+  });
+
+  logger.info({
+    event: "order.payment_reference.claimed",
+    orderId: order.id,
+    orderNumber: order.number,
+    attempt: sequence,
+    rotated: previous !== null,
+  });
+  return {
+    kind: "ready",
+    reference: created.reference,
+    attempt: created.sequence,
+    amountInCents: created.amountInCents,
+  };
+}
 
 export async function resolveWompiPaymentReference(
   orderId: string,
   now: Date = new Date(),
 ): Promise<WompiPaymentReferenceResolution> {
-  // 2 rondas: si el claim se pierde por una carrera de doble submit, la segunda
-  // lectura ve la referencia fresca del ganador y la reusa.
-  for (let round = 0; round < 2; round += 1) {
-    const order = await prisma.order.findFirst({
-      where: { id: orderId, deletedAt: null },
-      select: {
-        number: true,
-        status: true,
-        paymentAttempt: true,
-        wompiReference: true,
-        wompiReferenceAt: true,
-        wompiTransactionId: true,
-      },
-    });
+  for (let round = 0; round < 3; round += 1) {
+    const order = await loadOrder(orderId);
     if (!order) return { kind: "lookup_failed" };
     if (order.status !== "PENDING_PAYMENT") {
-      // Carrera con el webhook/cron entre createOrderFromCart y acá.
       return order.wompiTransactionId
         ? { kind: "approved", txId: order.wompiTransactionId }
         : { kind: "lookup_failed" };
     }
 
-    if (
-      order.wompiReference &&
-      order.wompiReferenceAt &&
-      now.getTime() - order.wompiReferenceAt.getTime() < WOMPI_REFERENCE_RETRY_WINDOW_MS
-    ) {
-      return { kind: "ready", reference: order.wompiReference, attempt: order.paymentAttempt };
-    }
+    try {
+      const current = (await ensureLegacyAttempt(order)) ?? null;
+      if (!current) return await createAttempt(order, null, now);
 
-    if (order.wompiTransactionId) {
-      let tx: Awaited<ReturnType<typeof getTransaction>> | null = null;
-      try {
-        tx = await getTransaction(order.wompiTransactionId);
-      } catch (err) {
-        logger.warn({
-          event: "order.payment_reference.tx_lookup_failed",
-          orderId,
-          txId: order.wompiTransactionId,
-          err: err instanceof Error ? err.message : String(err),
-        });
-        return { kind: "lookup_failed" };
+      const synced = await syncAttempt(order, current, now);
+      if (synced.kind !== "empty" && synced.kind !== "terminal") return synced;
+
+      const sameAmount =
+        current.amountInCents === order.total && current.currency === order.currency;
+      if (synced.kind === "empty" && !current.backfilled && sameAmount) {
+        return {
+          kind: "ready",
+          reference: current.reference,
+          attempt: current.sequence,
+          amountInCents: current.amountInCents,
+        };
       }
-      if (tx.status === "APPROVED") return { kind: "approved", txId: tx.id };
-      if (tx.status === "PENDING") return { kind: "in_flight", txId: tx.id };
-      // DECLINED / ERROR / VOIDED: terminal sin dinero movido → rotar.
-    }
-
-    // Órdenes legacy (pre-feature) con txId pero sin contador: la reference base
-    // ya se ofreció a Wompi → el próximo intento arranca en 2, no en 1.
-    const nextAttempt = Math.max(order.paymentAttempt + 1, order.wompiTransactionId ? 2 : 1);
-    const reference = buildWompiReference(order.number, nextAttempt);
-    const claimed = await prisma.order.updateMany({
-      where: {
-        id: orderId,
-        status: "PENDING_PAYMENT",
-        paymentAttempt: order.paymentAttempt,
-        wompiReference: order.wompiReference,
-      },
-      data: {
-        paymentAttempt: nextAttempt,
-        wompiReference: reference,
-        wompiReferenceAt: now,
-        // La tx anterior (si hubo) quedó terminal verificada antes de rotar;
-        // liberar el campo para que el webhook persista la tx del intento nuevo.
-        wompiTransactionId: null,
-      },
-    });
-    if (claimed.count === 1) {
-      logger.info({
-        event: "order.payment_reference.claimed",
+      return await createAttempt(order, current, now);
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        continue;
+      }
+      logger.warn({
+        event: "order.payment_reference.resolution_failed",
         orderId,
-        orderNumber: order.number,
-        attempt: nextAttempt,
-        rotated: nextAttempt > 1,
+        err: err instanceof Error ? err.message : String(err),
       });
-      return { kind: "ready", reference, attempt: nextAttempt };
+      return { kind: "lookup_failed" };
     }
-    // Carrera: otro request reclamó primero → la próxima ronda reusará su
-    // referencia fresca (cae en la ventana de retry).
   }
-  logger.warn({ event: "order.payment_reference.contended", orderId });
   return { kind: "lookup_failed" };
 }
 
-/**
- * Resolución inversa: reference recibida de Wompi → Order.id.
- * Cubre reference exacta persistida, number exacto (intento base / legacy) y el
- * número base extraído de un sufijo `-N` (p.ej. APPROVED tardío del intento 1
- * cuando la orden ya almacena la reference del intento 2).
- */
 export async function findOrderIdByWompiReference(reference: string): Promise<string | null> {
+  const attempt = await prisma.wompiPaymentAttempt.findUnique({
+    where: { reference },
+    select: { orderId: true },
+  });
+  if (attempt) return attempt.orderId;
+
   const base = extractOrderNumberFromWompiReference(reference);
   const order = await prisma.order.findFirst({
     where: {

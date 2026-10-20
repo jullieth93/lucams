@@ -23,8 +23,9 @@ const WARNING_LEVELS = new Set(["warning-soft", "warning-strong", "error"]);
 
 /**
  * 2026-10-02 (fase 2) — "solo brillo suave": el ÚNICO check que falló es el
- * de brillo y el nivel agregado es warning-soft (foto levemente sobreexpuesta
- * — el aviso de foto oscura se eliminó 2026-10 por decisión de producto).
+ * de brillo y el nivel agregado es warning-soft (foto con zonas levemente
+ * quemadas de luz — el aviso de foto oscura se eliminó 2026-10 por decisión
+ * de producto).
  * Como el nivel agregado es el peor de los 3 checks, si el nivel es soft y
  * solo falló brillo, el brillo es necesariamente soft.
  * Es un aviso INFORMATIVO — no exige aceptación.

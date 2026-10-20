@@ -122,13 +122,13 @@ rate-limit — nunca en claro). Los consume `evaluateAlerts` con dos reglas:
 
 ### RBAC — modelo de roles
 
-| Rol                           | Aplica a             | Permisos                                                      |
-| ----------------------------- | -------------------- | ------------------------------------------------------------- |
-| `customer` (default Supabase) | Clientes finales     | Leer/escribir sus propias órdenes, dirección, reseñas         |
-| `SUPERADMIN`                  | Operador del negocio | Todo el `/admin/*`                                            |
-| `MANAGER`                     | Empleado de tienda   | Productos, inventario, órdenes, reseñas                       |
-| `FULFILLMENT`                 | Operador logístico   | Órdenes (cambio de estado, descarga PNG producción)           |
-| `CMS_EDITOR`                  | Editor de contenido  | CMS (páginas, bloques, redirects); home en `/admin/contenido` |
+| Rol                           | Aplica a             | Permisos                                                                                                                                    |
+| ----------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `customer` (default Supabase) | Clientes finales     | Leer/escribir sus propias órdenes, dirección, reseñas                                                                                       |
+| `SUPERADMIN`                  | Operador del negocio | Todo el `/admin/*`                                                                                                                          |
+| `MANAGER`                     | Empleado de tienda   | Productos, inventario, órdenes, reseñas, carritos abandonados (bandeja y envío manual; la configuración del módulo es SUPERADMIN — ADR-153) |
+| `FULFILLMENT`                 | Operador logístico   | Órdenes (cambio de estado, descarga PNG producción)                                                                                         |
+| `CMS_EDITOR`                  | Editor de contenido  | CMS (páginas, bloques, redirects); home en `/admin/contenido`                                                                               |
 
 - Tabla `AdminUser` con `role` y `isActive`.
 - El proxy (`apps/web/proxy.ts` — Next.js 16 renombró `middleware.ts` → `proxy.ts`) solo hace de gate anónimo: redirige a `/admin/login` toda request `/admin/*` sin sesión Supabase. **No corre Prisma ahí.**

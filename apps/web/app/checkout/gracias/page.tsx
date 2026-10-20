@@ -39,14 +39,18 @@ import { rateLimit } from "@/lib/rate-limit";
 import { isCatalogMode } from "@/lib/store-mode";
 import { ClearCheckoutSession } from "./clear-checkout-session";
 import { processPaidOrder, flagForeignApprovedPayment } from "@/features/orders/saga";
-import { findOrderIdByWompiReference } from "@/features/orders/payment-reference";
+import {
+  findOrderIdByWompiReference,
+  isWompiTransactionOlderThanOrder,
+} from "@/features/orders/payment-reference";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { getCurrentCustomer } from "@/lib/auth";
 import { getCmsBlock } from "@/lib/cms";
 import { CmsText } from "@/components/cms/cms-text";
 import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
-import { Hint } from "@/components/ui/tooltip";
+import { DesignPreviewDialog } from "@/components/design-preview-dialog";
+import { DesignUnitsBadge } from "@/components/design-units-badge";
 import {
   describeVariantAttributes,
   parseVariantAttributes,
@@ -161,6 +165,7 @@ export default async function CheckoutGraciasPage({
           email: true,
           shippingCarrier: true,
           shippingAddress: true,
+          createdAt: true,
           // F-02 — necesario para detectar un APPROVED de una tx distinta a la que pagó.
           wompiTransactionId: true,
           // F-11 — el publicAccessToken ya no se puede releer de la DB (solo hash);
@@ -181,12 +186,27 @@ export default async function CheckoutGraciasPage({
                   product: { select: { name: true, images: true } },
                 },
               },
-              design: { select: { previewUrl: true, previewWatermarkedAt: true } },
+              design: {
+                select: { previewUrl: true, previewWatermarkedAt: true, previewPagesCount: true },
+              },
             },
           },
         },
       })
     : null;
+
+  if (order && isWompiTransactionOlderThanOrder(order, tx)) {
+    logger.warn({
+      event: "checkout.gracias.historical_transaction_ignored",
+      orderId: order.id,
+      reference: tx.reference,
+      providerCreatedAt: tx.created_at,
+      orderCreatedAt: order.createdAt,
+    });
+    return (
+      <FailedPage reason="Este comprobante pertenece a un intento de pago anterior. Vuelve al checkout para continuar con tu pedido actual." />
+    );
+  }
 
   if (tx.status === "APPROVED") {
     // F-02 (certificación release 2026-09-26) — la misma comparación que la saga:
@@ -263,6 +283,7 @@ export default async function CheckoutGraciasPage({
             email: true,
             shippingCarrier: true,
             shippingAddress: true,
+            createdAt: true,
             wompiTransactionId: true,
             items: {
               select: {
@@ -277,7 +298,9 @@ export default async function CheckoutGraciasPage({
                     product: { select: { name: true, images: true } },
                   },
                 },
-                design: { select: { previewUrl: true, previewWatermarkedAt: true } },
+                design: {
+                  select: { previewUrl: true, previewWatermarkedAt: true, previewPagesCount: true },
+                },
               },
             },
           },
@@ -354,7 +377,11 @@ function ApprovedPage({
         images: string[];
         product: { name: string; images: string[] };
       };
-      design: { previewUrl: string | null; previewWatermarkedAt: Date | null } | null;
+      design: {
+        previewUrl: string | null;
+        previewWatermarkedAt: Date | null;
+        previewPagesCount: number | null;
+      } | null;
     }[];
   } | null;
   txId: string;
@@ -395,14 +422,18 @@ function ApprovedPage({
         </code>
       </div>
 
-      {/* ADR-070 (pieza #1) — miniaturas de lo que pediste; el diseño personalizado se ve con su
-        snapshot autocontenido (sobrevive aunque el diseño original se borre luego). */}
+      {/* ADR-070 (pieza #1) — tarjetas de lo que pediste; el diseño personalizado se ve con su
+        snapshot autocontenido (sobrevive aunque el diseño original se borre luego).
+        2026-10-13 — rediseño: las miniaturas sueltas de 64px no informaban qué se pidió;
+        ahora cada ítem es una tarjeta con miniatura grande CLICABLE (abre el lightbox
+        compartido del preview, paginado por unidad cuando el diseño tiene páginas),
+        variante + desglose, cantidad y badge «Tu diseño». */}
       {order?.items && order.items.length > 0 && (
         <div className="mt-7">
           <p className="text-brand-muted mb-2 text-xs font-medium">
             <CmsText blockKey="checkout.gracias.items-heading" fallback="Esto es lo que pediste" />
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-2">
+          <ul className="mx-auto grid max-w-xl gap-2.5 text-left">
             {order.items.map((it) => {
               // 2026-10-13 — el diseño personalizado se exhibe CON marca de agua
               // cuando el artefacto existe (preview-wm.webp por convención de
@@ -419,38 +450,109 @@ function ApprovedPage({
                   it.variant.product.images[0] ??
                   null);
               const personalized = Boolean(it.designAssetUrl ?? it.design?.previewUrl);
+              const breakdown = describeVariantAttributes(
+                parseVariantAttributes(it.variant.attributes),
+              );
+              const thumb = (
+                <>
+                  {img ? (
+                    <Image
+                      src={img}
+                      alt={it.variant.product.name}
+                      fill
+                      sizes="96px"
+                      // Diseño personalizado: el preview es un MOSAICO de las
+                      // piezas → object-contain con aire para no recortarlo
+                      // (mismo criterio que el carrito). Foto de catálogo: cover.
+                      className={personalized ? "object-contain p-1.5" : "object-cover"}
+                      unoptimized
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center">
+                      <Sparkles className="text-brand-muted h-6 w-6" />
+                    </div>
+                  )}
+                  <DesignUnitsBadge
+                    count={disp?.pageUrls?.length ?? 0}
+                    label={
+                      <CmsText blockKey="checkout.gracias.unidades-badge" fallback="unidades" />
+                    }
+                  />
+                </>
+              );
               return (
-                <Hint key={it.id} content={it.variant.product.name}>
-                  <div className="border-brand-purple/10 relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border bg-white">
-                    {img ? (
-                      <Image
-                        src={img}
-                        alt={it.variant.product.name}
-                        fill
-                        sizes="64px"
-                        className="object-cover"
-                        unoptimized
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center">
-                        <Sparkles className="text-brand-muted h-6 w-6" />
-                      </div>
+                <li
+                  key={it.id}
+                  className="border-brand-purple/10 flex items-center gap-3.5 rounded-xl border bg-white p-3"
+                >
+                  {disp ? (
+                    // Miniatura clicable → lightbox compartido (zoom + pager por
+                    // unidad). El botón «Ver» no aplica acá: la miniatura ES el
+                    // disparador (prop trigger del diálogo).
+                    <DesignPreviewDialog
+                      previewUrl={disp.displayUrl}
+                      pages={disp.pageUrls}
+                      watermarkNote={
+                        disp.watermarked ? (
+                          <CmsText
+                            blockKey="cart.vista-previa-watermark-nota"
+                            fallback="Vista previa con marca de agua — tu impresión final no la lleva."
+                          />
+                        ) : null
+                      }
+                      productName={it.variant.product.name}
+                      trigger={
+                        <button
+                          type="button"
+                          aria-label={`Ver el diseño de ${it.variant.product.name}`}
+                          className="border-brand-purple/10 focus-visible:ring-brand-turquoise relative h-20 w-20 flex-shrink-0 cursor-zoom-in overflow-hidden rounded-lg border bg-white focus-visible:ring-2 focus-visible:outline-none sm:h-24 sm:w-24"
+                        >
+                          {thumb}
+                        </button>
+                      }
+                      title={
+                        <CmsText
+                          blockKey="cart.vista-previa-diseno-titulo"
+                          fallback="Tu diseño ·"
+                        />
+                      }
+                      description={
+                        <CmsText
+                          blockKey="cart.vista-previa-diseno-desc"
+                          fallback="Vista previa ampliada del diseño personalizado de esta línea del pedido."
+                        />
+                      }
+                    />
+                  ) : (
+                    <div className="border-brand-purple/10 relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg border bg-white sm:h-24 sm:w-24">
+                      {thumb}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-brand-purple-dark text-sm font-semibold">
+                      {it.variant.product.name}
+                    </p>
+                    <p className="text-brand-muted mt-0.5 text-xs">{it.variant.name}</p>
+                    {breakdown.length > 0 && (
+                      <p className="text-brand-purple-dark/80 mt-0.5 text-xs">
+                        {breakdown.join(" · ")}
+                      </p>
                     )}
-                    {it.qty > 1 && (
-                      <span className="bg-brand-purple-dark/85 absolute top-0 right-0 inline-flex h-4 min-w-4 items-center justify-center rounded-bl-md px-1 text-[9px] font-bold text-white">
-                        {it.qty}
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                      <span className="text-brand-purple-dark/70 text-xs font-semibold tabular-nums">
+                        ×{it.qty}
                       </span>
-                    )}
-                    {personalized && (
-                      <span className="bg-brand-purple/90 absolute inset-x-0 bottom-0 text-center text-[8px] font-bold tracking-wide text-white">
-                        <CmsText blockKey="checkout.gracias.custom-badge" fallback="Tu diseño" />
-                      </span>
-                    )}
+                      {personalized && (
+                        <span className="bg-brand-purple/10 text-brand-purple inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold">
+                          <CmsText blockKey="checkout.gracias.custom-badge" fallback="Tu diseño" />
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </Hint>
+                </li>
               );
             })}
-          </div>
+          </ul>
           {/* 2026-10-13 — aviso de marca de agua cuando alguna miniatura la lleva. */}
           {order.items.some((it) =>
             it.design ? designPreviewDisplay(it.design)?.watermarked === true : false,
@@ -462,24 +564,6 @@ function ApprovedPage({
               />
             </p>
           )}
-          {/* Paquete F (2026-10-02) — variante + desglose estructurado de cada ítem
-              (las miniaturas solas no informan Con/Sin imán, tamaño, idioma…). */}
-          <ul className="mx-auto mt-3 max-w-md space-y-1 text-left">
-            {order.items.map((it) => {
-              const breakdown = describeVariantAttributes(
-                parseVariantAttributes(it.variant.attributes),
-              );
-              return (
-                <li key={`desc-${it.id}`} className="text-brand-purple-dark/80 text-xs">
-                  <span className="font-semibold">{it.variant.product.name}</span>
-                  {" — "}
-                  {it.variant.name}
-                  {breakdown.length > 0 && ` · ${breakdown.join(" · ")}`}
-                  {it.qty > 1 && ` (×${it.qty})`}
-                </li>
-              );
-            })}
-          </ul>
         </div>
       )}
 

@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { state } = vi.hoisted(() => ({
   state: {
     updateData: null as Record<string, unknown> | null,
+    designStatus: "DRAFT" as "DRAFT" | "READY",
   },
 }));
 
@@ -24,20 +25,26 @@ vi.mock("@/lib/db", () => ({
         customerId: null,
         sessionId: "sess_test",
         productId: "prod_1",
-        status: "DRAFT",
+        status: state.designStatus,
         canvasData: { version: 1, stage: { width: 1080, height: 1080 }, layers: [] },
         previewUrl: null,
         productionUrl: null,
         productionUrls: [],
         metadata: {},
       }),
-      update: async (args: { data: Record<string, unknown> }) => {
+      updateMany: async (args: { data: Record<string, unknown> }) => {
         state.updateData = args.data;
-        return { id: "design_1", status: "READY", ...args.data };
+        state.designStatus = "READY";
+        return { count: 1 };
       },
+      findUniqueOrThrow: async () => ({
+        id: "design_1",
+        status: state.designStatus,
+        ...(state.updateData ?? {}),
+      }),
     },
     product: {
-      findUnique: async () => ({ personalizationSchema: {} }),
+      findUnique: async () => ({ personalizationSchema: {}, variants: [] }),
     },
   },
 }));
@@ -70,6 +77,7 @@ const BASE_OPTS = {
 
 beforeEach(() => {
   state.updateData = null;
+  state.designStatus = "DRAFT";
 });
 
 describe("finalizeDesign · sello de aceptación de calidad (Paquete C)", () => {

@@ -3,14 +3,19 @@
 /*
  * StudioFaceChoiceModal — regla de caras (2026-10-12).
  *
- * Al aplicar GLOBALMENTE (clic en la tarjeta del sidebar, sin slot específico
- * seleccionado) un diseño de 1 cara en un producto de 2 caras, el destino es
- * ambiguo: antes caía SIEMPRE en cara A. Ahora se pregunta primero
- * "¿En qué cara quieres aplicarlo? Cara A / Cara B".
+ * Al aplicar desde la GRILLA de prediseñados del sidebar un diseño de 1 cara
+ * en un producto de 2 caras, el destino es ambiguo: antes caía SIEMPRE en cara
+ * A. Ahora se pregunta primero "¿En qué cara quieres aplicarlo? Cara A / Cara B".
+ * 2026-10-19 ("pregunta SIEMPRE", owner): el clic de la grilla pregunta incluso
+ * con un slot seleccionado — assignAssetToSlot auto-selecciona el slot recién
+ * asignado y eso hacía que los clics siguientes sobrescribieran sin preguntar.
+ * Si la cara elegida no tiene lienzo libre, el flujo continúa en el modal de
+ * reemplazo (StudioReplaceSlotModal) en vez de un toast de error.
  *
  * No aplica (sin pregunta): productos de 1 cara, prediseños con imageUrlB
  * (llenan ambas caras automáticamente) y aplicación sobre un slot específico
- * (tap en la grilla / drag & drop / slot seleccionado).
+ * (tap en la grilla del lienzo / drag & drop — no pasan por la tarjeta del
+ * sidebar).
  *
  * Mismo patrón visual y de accesibilidad del PhotoQualityModal: portal a
  * document.body (sin stacking contexts del sidebar), backdrop, useDialogA11y

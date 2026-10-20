@@ -12,16 +12,33 @@
  *  - Cualquier otro → no (conservador: no reintentar lo desconocido).
  */
 export function isRetryable(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  if (err.name === "TimeoutError" || err.name === "AbortError") return true;
-  // fetch lanza TypeError en fallo de red (DNS, conexión rechazada, etc.).
-  if (err.name === "TypeError") return true;
-  const status = (err as { status?: unknown }).status;
-  if (typeof status === "number") {
+  if (err instanceof Error) {
+    if (err.name === "TimeoutError" || err.name === "AbortError") return true;
+    // fetch lanza TypeError en fallo de red (DNS, conexión rechazada, etc.).
+    if (err.name === "TypeError") return true;
+  }
+  const status = Number(
+    (err as { status?: unknown; statusCode?: unknown } | null)?.status ??
+      (err as { statusCode?: unknown } | null)?.statusCode,
+  );
+  if (Number.isFinite(status) && status > 0) {
     return status >= 500 || status === 408 || status === 429;
   }
+  const message =
+    err instanceof Error
+      ? err.message
+      : typeof (err as { message?: unknown } | null)?.message === "string"
+        ? (err as { message: string }).message
+        : "";
+  if (
+    /\b(EMAXCONN|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN)\b|fetch failed|socket hang up/i.test(
+      message,
+    )
+  ) {
+    return true;
+  }
   // Marca explícita opcional para errores custom del proyecto.
-  return (err as { retryable?: unknown }).retryable === true;
+  return (err as { retryable?: unknown } | null)?.retryable === true;
 }
 
 export async function withRetry<T>(

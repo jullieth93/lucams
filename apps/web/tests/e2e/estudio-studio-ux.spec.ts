@@ -895,7 +895,9 @@ test.describe("estudio Ola 29 — letra por defecto sobre el color de la tarjeta
     const dlg = page.locator('[role="dialog"]').first();
     await dlg.getByRole("tab", { name: /Texto/i }).click();
     await page.locator("#text-edit-input").fill("Te amo mamá");
-    await dlg.getByRole("button", { name: "Aplicar", exact: true }).click();
+    // 2026-10-19 (owner) — ya no hay «Aplicar» dentro del formulario: el «Listo»
+    // del footer APLICA (persiste el override) y CIERRA. Un solo botón.
+    await dlg.getByRole("button", { name: "Listo", exact: true }).click();
     await page.waitForTimeout(800);
     await page.keyboard.press("Escape").catch(() => {});
     await page.waitForTimeout(400);

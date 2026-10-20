@@ -11,7 +11,7 @@
  */
 
 import "@testing-library/jest-dom/vitest";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import { DesignPreviewDialog } from "./design-preview-dialog";
@@ -92,5 +92,76 @@ describe("DesignPreviewDialog — pager por unidad", () => {
     renderDialog();
     openDialog();
     expect(screen.queryByText(/marca de agua/)).not.toBeInTheDocument();
+  });
+
+  it("con trigger personalizado (miniatura clicable): reemplaza al botón «Ver»", () => {
+    renderDialog({
+      pages: PAGES,
+      trigger: <button type="button">Miniatura del diseño</button>,
+    });
+    expect(screen.queryByRole("button", { name: "Ver" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Miniatura del diseño" }));
+    expect(screen.getByText("1 / 3")).toBeInTheDocument();
+    expect(screen.getByRole("img")).toHaveAttribute("src", PAGES[0]);
+  });
+});
+
+/*
+ * 2026-10-19 — prefetch del pager: al abrir el diálogo se precargan las páginas
+ * con new Image() (todas si ≤ 6; ventana ±1 con más) y la página en tránsito
+ * muestra un spinner hasta su onLoad (en jsdom new Image() nunca carga, así
+ * que el spinner se ve hasta simular el load del <img>).
+ */
+describe("DesignPreviewDialog — prefetch y estado de carga del pager", () => {
+  const MANY = Array.from({ length: 8 }, (_, i) => `${BASE}/wm/pages/${i + 1}.webp`);
+  let prefetchSrcs: string[];
+
+  beforeEach(() => {
+    prefetchSrcs = [];
+    const captured = prefetchSrcs;
+    vi.stubGlobal(
+      "Image",
+      class {
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        set src(v: string) {
+          captured.push(v);
+        }
+      },
+    );
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("con ≤ 6 páginas precarga TODAS al abrir", () => {
+    renderDialog({ pages: PAGES });
+    openDialog();
+    expect(prefetchSrcs).toEqual(PAGES);
+  });
+
+  it("con más de 6 páginas precarga solo la ventana ±1 y amplía al paginar", () => {
+    renderDialog({ pages: MANY });
+    openDialog();
+    // Página 1 visible: ventana = páginas 1 y 2 (no hay anterior).
+    expect(prefetchSrcs).toEqual([MANY[0], MANY[1]]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Unidad siguiente" }));
+    // Página 2 visible: la ventana suma la página 3 (las demás ya pedidas).
+    expect(prefetchSrcs).toEqual([MANY[0], MANY[1], MANY[2]]);
+  });
+
+  it("sin abrir el diálogo NO precarga nada", () => {
+    renderDialog({ pages: PAGES });
+    expect(prefetchSrcs).toEqual([]);
+  });
+
+  it("muestra un spinner sutil mientras la página carga y lo retira en onLoad", () => {
+    renderDialog({ pages: PAGES });
+    openDialog();
+    // jsdom no dispara la carga del <img>: el spinner queda visible.
+    expect(screen.getByTestId("page-loading")).toBeInTheDocument();
+
+    fireEvent.load(screen.getByRole("img"));
+    expect(screen.queryByTestId("page-loading")).not.toBeInTheDocument();
   });
 });

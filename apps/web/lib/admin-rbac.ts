@@ -97,6 +97,13 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   // Marketing > Suscriptores (Fase 3A): misma matriz que Clientes — la página
   // es solo lectura + export CSV sobre Consent NEWSLETTER, sin mutaciones.
   { prefix: "/admin/marketing", roles: CATALOG },
+  // Carritos abandonados (Fase 4, 2026-10-13): la bandeja + envío manual a
+  // voluntad son CATALOG (= MANAGER_UP, alineado con sus actions). La
+  // CONFIGURACIÓN del módulo (habilitar correos comerciales, modo y ritmos)
+  // sube a SUPERADMIN — misma barra que email-templates: el longest-prefix
+  // match hace que /admin/carritos/configuracion gane sobre /admin/carritos.
+  { prefix: "/admin/carritos/configuracion", roles: ["SUPERADMIN"] },
+  { prefix: "/admin/carritos", roles: CATALOG },
   // Fidelización (Puntos Lucams + Invita y gana, 2026-10-12): config con impacto
   // económico directo — misma barra que Cupones. Declarado explícito (equivale al
   // deny-by-default, pero queda visible en la matriz — criterio N-21).

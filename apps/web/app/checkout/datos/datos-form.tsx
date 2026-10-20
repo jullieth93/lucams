@@ -50,6 +50,7 @@ import {
 } from "@/lib/colombia-validators";
 import { detectEmailTypo, isValidEmail, suggestEmails } from "@/lib/email-domains";
 import { VIA_TYPES } from "@/features/checkout/schemas";
+import { BILLING_DOCUMENT_ENABLED } from "@/features/checkout/billing-document";
 import type { CheckoutPrefillAddress } from "@/features/addresses/service";
 import type { CheckoutTexts } from "../checkout-texts";
 
@@ -1586,107 +1587,115 @@ export function DatosForm({
         )}
       </section>
 
-      {/* FACTURACIÓN */}
-      <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
-        <h2 className="text-brand-purple-dark font-display mb-2 text-lg font-bold">
-          {texts.billingTitle}
-        </h2>
-        <p className="text-brand-muted mb-4 text-sm">{texts.billingNote}</p>
+      {/* FACTURACIÓN — 2026-10-20: oculta detrás de BILLING_DOCUMENT_ENABLED
+          (decisión del owner: persona natural sin trámites DIAN; el checkbox
+          prometía un documento que no se opera — Ley 1480). Con el flag off el
+          form no envía wantsInvoice y el server lo fuerza a false; el pipeline
+          de datos queda intacto para reactivar. */}
+      {BILLING_DOCUMENT_ENABLED && (
+        <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="text-brand-purple-dark font-display mb-2 text-lg font-bold">
+            {texts.billingTitle}
+          </h2>
+          <p className="text-brand-muted mb-4 text-sm">{texts.billingNote}</p>
 
-        <label className="text-brand-purple-dark inline-flex items-center gap-2 text-sm font-medium">
-          <input
-            type="checkbox"
-            id="wantsInvoice"
-            name="wantsInvoice"
-            checked={wantsInvoice}
-            onChange={(e) => setWantsInvoice(e.target.checked)}
-            aria-invalid={Boolean(billingMissing)}
-            className="accent-brand-purple h-4 w-4"
-          />
-          {texts.billingCheck}
-        </label>
+          <label className="text-brand-purple-dark inline-flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              id="wantsInvoice"
+              name="wantsInvoice"
+              checked={wantsInvoice}
+              onChange={(e) => setWantsInvoice(e.target.checked)}
+              aria-invalid={Boolean(billingMissing)}
+              className="accent-brand-purple h-4 w-4"
+            />
+            {texts.billingCheck}
+          </label>
 
-        {wantsInvoice && (
-          <div className="mt-4">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={copyContactToBilling}
-              className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 hover:text-brand-purple-dark mb-4"
-            >
-              Usar los datos del comprador
-            </Button>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
-              <div className="sm:col-span-2">
-                <Label
-                  htmlFor="billingDocumentType"
-                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-                >
-                  {texts.billingTypeLabel} <span className="text-rose-600">*</span>
-                </Label>
-                <select
-                  id="billingDocumentType"
-                  name="billingDocumentType"
-                  value={billingDocType}
-                  onChange={(e) => setBillingDocType(e.target.value as "CC" | "CE" | "NIT" | "PP")}
-                  className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none"
-                >
-                  <option value="NIT">NIT</option>
-                  <option value="CC">CC</option>
-                  <option value="CE">CE</option>
-                  <option value="PP">Pasaporte</option>
-                </select>
-              </div>
-              <div className="sm:col-span-4">
-                <Label
-                  htmlFor="billingDocumentNumber"
-                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-                >
-                  {texts.billingNumberLabel} <span className="text-rose-600">*</span>
-                </Label>
-                <Input
-                  id="billingDocumentNumber"
-                  name="billingDocumentNumber"
-                  required={wantsInvoice}
-                  value={billingDocNumber}
-                  onChange={(e) => setBillingDocNumber(e.target.value)}
-                  placeholder={texts.billingNumberPlaceholder}
-                  aria-invalid={Boolean(billingNumberErr)}
-                  aria-describedby={billingNumberErr ? "wantsInvoice-error" : undefined}
-                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
-                />
-                <FieldHint clientError={null} serverError={err("billingDocumentNumber")} />
-              </div>
-              <div className="sm:col-span-6">
-                <Label
-                  htmlFor="billingName"
-                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-                >
-                  {texts.billingNameLabel} <span className="text-rose-600">*</span>
-                </Label>
-                <Input
-                  id="billingName"
-                  name="billingName"
-                  required={wantsInvoice}
-                  value={billingName}
-                  onChange={(e) => setBillingName(e.target.value)}
-                  placeholder={texts.billingNamePlaceholder}
-                  aria-invalid={Boolean(billingNameErr)}
-                  aria-describedby={billingNameErr ? "wantsInvoice-error" : undefined}
-                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
-                />
-                <FieldHint clientError={null} serverError={err("billingName")} />
+          {wantsInvoice && (
+            <div className="mt-4">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={copyContactToBilling}
+                className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 hover:text-brand-purple-dark mb-4"
+              >
+                Usar los datos del comprador
+              </Button>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
+                <div className="sm:col-span-2">
+                  <Label
+                    htmlFor="billingDocumentType"
+                    className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                  >
+                    {texts.billingTypeLabel} <span className="text-rose-600">*</span>
+                  </Label>
+                  <select
+                    id="billingDocumentType"
+                    name="billingDocumentType"
+                    value={billingDocType}
+                    onChange={(e) =>
+                      setBillingDocType(e.target.value as "CC" | "CE" | "NIT" | "PP")
+                    }
+                    className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none"
+                  >
+                    <option value="NIT">NIT</option>
+                    <option value="CC">CC</option>
+                    <option value="CE">CE</option>
+                    <option value="PP">Pasaporte</option>
+                  </select>
+                </div>
+                <div className="sm:col-span-4">
+                  <Label
+                    htmlFor="billingDocumentNumber"
+                    className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                  >
+                    {texts.billingNumberLabel} <span className="text-rose-600">*</span>
+                  </Label>
+                  <Input
+                    id="billingDocumentNumber"
+                    name="billingDocumentNumber"
+                    required={wantsInvoice}
+                    value={billingDocNumber}
+                    onChange={(e) => setBillingDocNumber(e.target.value)}
+                    placeholder={texts.billingNumberPlaceholder}
+                    aria-invalid={Boolean(billingNumberErr)}
+                    aria-describedby={billingNumberErr ? "wantsInvoice-error" : undefined}
+                    className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                  />
+                  <FieldHint clientError={null} serverError={err("billingDocumentNumber")} />
+                </div>
+                <div className="sm:col-span-6">
+                  <Label
+                    htmlFor="billingName"
+                    className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                  >
+                    {texts.billingNameLabel} <span className="text-rose-600">*</span>
+                  </Label>
+                  <Input
+                    id="billingName"
+                    name="billingName"
+                    required={wantsInvoice}
+                    value={billingName}
+                    onChange={(e) => setBillingName(e.target.value)}
+                    placeholder={texts.billingNamePlaceholder}
+                    aria-invalid={Boolean(billingNameErr)}
+                    aria-describedby={billingNameErr ? "wantsInvoice-error" : undefined}
+                    className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                  />
+                  <FieldHint clientError={null} serverError={err("billingName")} />
+                </div>
               </div>
             </div>
-          </div>
-        )}
-        {err("wantsInvoice") && (
-          <p id="wantsInvoice-error" className="mt-2 text-xs text-rose-600">
-            {err("wantsInvoice")}
-          </p>
-        )}
-      </section>
+          )}
+          {err("wantsInvoice") && (
+            <p id="wantsInvoice-error" className="mt-2 text-xs text-rose-600">
+              {err("wantsInvoice")}
+            </p>
+          )}
+        </section>
+      )}
 
       {/* AUTORIZACIÓN DE TRATAMIENTO DE DATOS (Ley 1581) — previa y expresa, también para invitados.
           Sin la casilla marcada, la acción no guarda la PII ni continúa. */}

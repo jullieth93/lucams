@@ -7,7 +7,8 @@
  * fotos crudas (`customer-uploads`) y renders (`production-assets`), y el plan Free de Supabase
  * tiene 1 GB de Storage.
  *
- * POLÍTICA (decisión de negocio 2026-09-18): un diseño USED_IN_ORDER cuya orden asociada está
+ * POLÍTICA (decisión de negocio 2026-09-18): un diseño USED_IN_ORDER —incluido uno
+ * ARCHIVED desde USED_IN_ORDER— cuya orden asociada está
  * DELIVERED desde ≥ PURGE_DELIVERED_DESIGN_AFTER_DAYS (default 90 días, anclado a
  * `Order.deliveredAt` — el webhook de Aveonline, no al cambio de status a mano) se depura así:
  *   - SE BORRAN los bytes: fotos crudas del bucket privado `customer-uploads` (los DesignAsset del
@@ -46,7 +47,7 @@ import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { listStagedSlotPaths } from "./staged-slots";
-import { removeStorage } from "./retention-service";
+import { capRetentionDaysNonProd, removeStorage } from "./retention-service";
 
 const CUSTOMER_UPLOADS_BUCKET = "customer-uploads";
 const PRODUCTION_BUCKET = "production-assets";
@@ -77,7 +78,10 @@ function resolveRetentionDays(overrideDays: number | undefined): number {
   if (overrideDays !== undefined) return overrideDays;
   const raw = process.env.PURGE_DELIVERED_DESIGN_AFTER_DAYS;
   const parsed = raw ? Number.parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : PURGE_DELIVERED_DESIGN_AFTER_DAYS;
+  const days = Number.isFinite(parsed) && parsed > 0 ? parsed : PURGE_DELIVERED_DESIGN_AFTER_DAYS;
+  // Tope no-productivo (STG/preview): las órdenes "entregadas" de STG son de prueba —
+  // retener 90d sus renders 300-DPI inflaba el bucket sin finalidad (auditoría 2026-10-20).
+  return capRetentionDaysNonProd(days);
 }
 
 export type PurgeDeliveredResult = { designsPurged: number; assetsPurged: number };
@@ -96,7 +100,8 @@ const CANDIDATE_SELECT = {
  */
 export function deliveredPurgeCandidateWhere(cutoff: Date): Prisma.DesignWhereInput {
   return {
-    status: "USED_IN_ORDER",
+    status: { in: ["USED_IN_ORDER", "ARCHIVED"] },
+    OR: [{ status: "USED_IN_ORDER" }, { archivedFrom: "USED_IN_ORDER" }],
     purgedAt: null,
     // Gatillo: existe una orden viva (no soft-borrada) entregada hace ≥ el plazo.
     orderItems: {

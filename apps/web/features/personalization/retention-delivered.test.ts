@@ -57,6 +57,7 @@ type FakeItem = { order: FakeOrder; retract: string | null; warranties: string[]
 type FakeDesign = {
   id: string;
   status: string;
+  archivedFrom: string | null;
   purgedAt: Date | null;
   items: FakeItem[];
 };
@@ -65,6 +66,7 @@ function design(id: string, over: Partial<FakeDesign> = {}): FakeDesign {
   return {
     id,
     status: "USED_IN_ORDER",
+    archivedFrom: null,
     purgedAt: null,
     items: [
       {
@@ -89,6 +91,10 @@ const item = (over: Partial<FakeItem> = {}): FakeItem => ({
 const CASES: Array<{ design: FakeDesign; purge: boolean }> = [
   // — el caso feliz: entregado hace 120 días, nada abierto → purga —
   { design: design("entregado-ha-120d"), purge: true },
+  {
+    design: design("archivado-usado", { status: "ARCHIVED", archivedFrom: "USED_IN_ORDER" }),
+    purge: true,
+  },
   {
     design: design("entregado-justo-90d", {
       items: [item({ order: { ...deliveredLongAgo, deliveredAt: daysAgo(90) } })],
@@ -248,8 +254,12 @@ function matchesDesign(where: Record<string, unknown>, d: FakeDesign): boolean {
     switch (key) {
       case "AND":
         return (value as Array<Record<string, unknown>>).every((w) => matchesDesign(w, d));
+      case "OR":
+        return (value as Array<Record<string, unknown>>).some((w) => matchesDesign(w, d));
       case "status":
-        return d.status === value;
+        return matchesStatusOp(value, d.status);
+      case "archivedFrom":
+        return d.archivedFrom === value;
       case "purgedAt":
         if (value !== null) throw new UnsupportedFilter(`purgedAt=${String(value)}`);
         return d.purgedAt === null;

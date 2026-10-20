@@ -12,6 +12,8 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { clearCartSession } from "@/lib/cart-session";
+import { clearCheckoutState } from "@/lib/checkout-session";
 import { CUSTOMER_ACTIVITY_COOKIE } from "@/lib/customer-activity";
 import { logger } from "@/lib/logger";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -24,10 +26,8 @@ export async function logoutAction(): Promise<void> {
 
   await supabase.auth.signOut();
 
-  // Borrar también la marca de actividad del cliente (idle-timeout 30 días):
-  // si quedara, la próxima sesión heredaría un timestamp viejo y podría
-  // expirar de inmediato (o peor: un navegador compartido mezclaría marcas).
   (await cookies()).delete(CUSTOMER_ACTIVITY_COOKIE);
+  await Promise.all([clearCartSession(), clearCheckoutState()]);
 
   if (user) {
     logger.info({ event: "auth.logout.success", userId: user.id });

@@ -1,6 +1,6 @@
 /*
- * Unit tests de la matemática del zoom del lightbox "Ver" del carrito
- * (app/carrito/preview-zoom.ts): la escala nunca sale de [1, 4] y el pan
+ * Unit tests de la matemática del zoom del lightbox del preview de diseño
+ * (components/preview-zoom.ts): la escala nunca sale de [1, 4] y el pan
  * nunca deja ver fondo por el borde opuesto de la imagen.
  */
 

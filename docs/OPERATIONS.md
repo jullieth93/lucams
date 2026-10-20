@@ -2,7 +2,7 @@
 
 Variables de entorno consolidadas, comandos de despliegue, runbook de incidentes y plan de monitoreo. Este documento se actualiza cada vez que se agrega una integración nueva o se cambia un proceso operativo.
 
-> **Estado actual:** el stack opera end-to-end en 3 ambientes (DEV local podman, STG `lucams-stg`, PRD `lucamsshop.com`) — los comandos y runbooks de este documento aplican tal cual. Los cambios de infraestructura, vars o procesos se registran en el «Changelog operativo» al final.
+> **Estado actual:** el stack opera end-to-end en 3 ambientes (DEV local podman, STG `lucams-stg`, PRD `lucamsshop.com`) — los comandos y runbooks de este documento aplican tal cual. Los cambios de infraestructura, vars o procesos se reflejan editando la sección correspondiente (doc vivo, sin changelog — el historial está en git).
 
 ---
 
@@ -191,19 +191,21 @@ GUARDADA (pg_cron + pg_net) e IDEMPOTENTE.
 `CRON_SECRET` desde **Supabase Vault** (`vault.decrypted_secrets`) y manda el secreto por el header
 `x-cron-secret` (no en la URL). El texto versionado solo contiene la BÚSQUEDA en el vault.
 
-| Job                              | Schedule (UTC) | Endpoint                            | Qué hace                                                                                                                                                                                                               |
-| -------------------------------- | -------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lucams-alerts`                  | `*/5 * * * *`  | `/api/cron/alerts`                  | Alertas (5xx en pico, reconciliación, webhooks)                                                                                                                                                                        |
-| `lucams-daily-summary`           | `0 13 * * *`   | `/api/cron/daily-summary`           | Resumen diario 8am Colombia                                                                                                                                                                                            |
-| `lucams-review-request`          | `0 17 * * *`   | `/api/cron/review-request`          | Solicitud de reseña 7–30 días post-entrega                                                                                                                                                                             |
-| `lucams-cart-recovery`           | `0 * * * *`    | `/api/cron/cart-recovery`           | Recordatorio de carrito abandonado (≥4h)                                                                                                                                                                               |
-| `lucams-back-in-stock`           | `*/30 * * * *` | `/api/cron/back-in-stock`           | "Avísame cuando vuelva"                                                                                                                                                                                                |
-| `lucams-purge-anon-designs`      | `0 8 * * *`    | `/api/cron/purge-anon-designs`      | Retención: diseños DRAFT anónimos (Ley 1581) + DRAFT idle de logueados (90d) + READYs abandonados (ADR-130) + carritos (AbandonedCart ≥90d, carts idle ≥60d/vacíos ≥7d) + barrido de huérfanos de Storage (2026-10-12) |
-| `lucams-purge-delivered-designs` | `0 9 * * *`    | `/api/cron/purge-delivered-designs` | Retención post-entrega: borra fotos crudas + renders de diseños entregados ≥90d (migración 035)                                                                                                                        |
-| `lucams-purge-event-logs`        | `0 3 * * *`    | `/api/cron/purge-event-logs`        | Retención: purga logs con PII — EmailEvent + WebhookEvent > 180d (migración 016)                                                                                                                                       |
-| `lucams-cms-publish-scheduled`   | `*/5 * * * *`  | `/api/cron/cms-publish-scheduled`   | CMS: publica versiones programadas (roadmap C3, e.g. campañas)                                                                                                                                                         |
-| `lucams-expire-pending-orders`   | `23 * * * *`   | `/api/cron/expire-pending-orders`   | Expira órdenes WOMPI en PENDING_PAYMENT > 24h (N-12, migración 032)                                                                                                                                                    |
-| `lucams-process-render-jobs`     | `* * * * *`    | `/api/cron/process-render-jobs`     | Render de producción 300 DPI ASÍNCRONO (ADR-136, migración 041): procesa la cola RenderJob página por página con progreso real (doneUnits) y reintentos acotados (FAILED tras 3 → ErrorLog). Ver la sección de abajo   |
+| Job                                  | Schedule (UTC) | Endpoint                            | Qué hace                                                                                                                                                                                                               |
+| ------------------------------------ | -------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lucams-alerts`                      | `*/5 * * * *`  | `/api/cron/alerts`                  | Alertas (5xx en pico, reconciliación, webhooks)                                                                                                                                                                        |
+| `lucams-daily-summary`               | `0 13 * * *`   | `/api/cron/daily-summary`           | Resumen diario 8am Colombia                                                                                                                                                                                            |
+| `lucams-review-request`              | `0 17 * * *`   | `/api/cron/review-request`          | Solicitud de reseña 7–30 días post-entrega                                                                                                                                                                             |
+| `lucams-cart-recovery`               | `0 * * * *`    | `/api/cron/cart-recovery`           | Recordatorio de carrito abandonado (idle ≥4h por default; configurable desde `/admin/carritos/configuracion` — ver la sección de abajo)                                                                                |
+| `lucams-back-in-stock`               | `*/30 * * * *` | `/api/cron/back-in-stock`           | "Avísame cuando vuelva"                                                                                                                                                                                                |
+| `lucams-purge-anon-designs`          | `0 8 * * *`    | `/api/cron/purge-anon-designs`      | Retención: diseños DRAFT anónimos (Ley 1581) + DRAFT idle de logueados (90d) + READYs abandonados (ADR-130) + carritos (AbandonedCart ≥90d, carts idle ≥60d/vacíos ≥7d) + barrido de huérfanos de Storage (2026-10-12) |
+| `lucams-purge-delivered-designs`     | `0 9 * * *`    | `/api/cron/purge-delivered-designs` | Retención post-entrega: borra fotos crudas + renders de diseños entregados ≥90d (migración 035)                                                                                                                        |
+| `lucams-purge-event-logs`            | `0 3 * * *`    | `/api/cron/purge-event-logs`        | Retención: purga logs con PII — EmailEvent + WebhookEvent > 180d (migración 016)                                                                                                                                       |
+| `lucams-cms-publish-scheduled`       | `*/5 * * * *`  | `/api/cron/cms-publish-scheduled`   | CMS: publica versiones programadas (roadmap C3, e.g. campañas)                                                                                                                                                         |
+| `lucams-expire-pending-orders`       | `23 * * * *`   | `/api/cron/expire-pending-orders`   | Expira órdenes WOMPI en PENDING_PAYMENT > 24h (N-12, migración 032)                                                                                                                                                    |
+| `lucams-process-render-jobs`         | `* * * * *`    | `/api/cron/process-render-jobs`     | Render de producción 300 DPI ASÍNCRONO (ADR-136, migración 041): procesa la cola RenderJob página por página con progreso real (doneUnits) y reintentos acotados (FAILED tras 3 → ErrorLog). Ver la sección de abajo   |
+| `lucams-internal-cron-history-purge` | `17 4 * * *`   | SQL puro (sin HTTP)                 | Higiene interna: purga `cron.job_run_details` > 14d (migración 043 — pg_cron NO se auto-limpia; su historial fue el consumidor #1 de la BD: 93 MB en PRD al 2026-10-20)                                                |
+| `lucams-internal-net-response-purge` | `43 4 * * *`   | SQL puro (sin HTTP)                 | Higiene interna: purga `net._http_response` > 24h (migración 043). La app nunca lee las respuestas (fire-and-forget); el único lector es `monitor_uptime_prd()` de STG ~10 min después — 24h cubre con holgura         |
 
 > **STG difiere (2026-08-05): los 5 jobs que envían email quedaron DESAGENDADOS en stg**
 > (`lucams-alerts`, `lucams-daily-summary`, `lucams-review-request`, `lucams-cart-recovery`,
@@ -246,6 +248,42 @@ Sin los secretos, los jobs quedan agendados pero fallan en runtime hasta setearl
 > El valor es el "protection bypass for automation" del proyecto Vercel (también en `.env.stg` como
 > `VERCEL_BYPASS_TOKEN`).
 
+### Recuperación de carritos abandonados — módulo admin configurable (ADR-153, 2026-10-13)
+
+El módulo `/admin/carritos` convirtió la palanca de recuperación en una capacidad operada
+desde el panel, SIN tocar el agendamiento: el cron `lucams-cart-recovery` conserva su
+schedule pg_cron (`0 * * * *`, migración 015) y lee la config en cada corrida.
+
+- **Configuración (`/admin/carritos/configuracion`, solo SUPERADMIN):** settings
+  `CmsField` kind SETTING (misma convención de loyalty/shipping —
+  `features/cart/recovery-settings.ts`): `CART_RECOVERY_ENABLED` (kill-switch total: ni
+  cron ni manual), `CART_RECOVERY_MODE` (`automatic` = el cron decide; `manual` = solo
+  envíos a voluntad desde el panel), `CART_RECOVERY_IDLE_HOURS` (default 4),
+  `CART_RECOVERY_MAX_REMINDERS` (default 1), `CART_RECOVERY_INTERVAL_HOURS` (default 24).
+  **Los defaults reproducen el comportamiento histórico** (un recordatorio a las 4h):
+  desplegar sin configurar nada no cambia la conducta. Los cambios publican al guardar
+  (kind SETTING) e invalidan el tag `cms` desde la Server Action — el cron los ve en la
+  próxima corrida, sin redeploy.
+- **Comportamiento del cron:** módulo apagado o modo `manual` → responde ok con
+  `skippedReason` (`"disabled"` / `"manual"`) y el heartbeat se registra igual (el
+  dead-man switch mide que el job está vivo, no que haya enviado). En `automatic` aplica
+  idleHours/maxReminders/intervalHours. Con `maxReminders > 1` los recordatorios al mismo
+  carrito se espaciaban por `intervalHours`.
+- **Envío manual (MANAGER_UP / permiso CATALOG):** individual desde el detalle
+  `/admin/carritos/<id>` o bulk desde `enviar/`. `sendReminderToCart(id)` respeta el
+  kill-switch y `intervalHours` (anti-duplicación), NO `maxReminders` (el tope es del
+  brazo automático). El detalle muestra el **preview real del email en iframe** con un
+  token ficticio — el token real solo se genera al enviar (F-11 intacto).
+- **Audit log:** `cart_recovery.settings.save`, `cart_recovery.reminder.send`,
+  `cart_recovery.reminder.bulk_send` (visibles en `/admin/auditoria`).
+- **Migración `20261013140000_abandoned_cart_reminder_count`:** agrega
+  `AbandonedCart.reminderCount Int @default(0)` con backfill =1 donde ya hubo
+  recordatorio. **Aplicada a STG el 2026-10-13; a PRD llega con el deploy del merge**
+  (es aditiva: el código viejo convive con la columna).
+- **Fix asociado:** la idempotency-key de Resend ahora es por intento
+  (`cart-recovery-<id>-<n>`) — con más de un recordatorio por carrito, la clave única por
+  carrito hubiera suprimido los envíos 2..N.
+
 ### Render de producción asíncrono — RenderJob (ADR-136, 2026-10-13)
 
 > **Orden de despliegue en PRD (obligatorio):** la migración supabase
@@ -282,6 +320,33 @@ polling (`GET /api/designs/<id>/render-status`) y el render corre en background:
   "Preparando archivos de impresión… X de N" / "el render falló" según el `RenderJob`, y el ZIP
   de producción (`/admin/pedidos/<n>/produccion`) responde **409** mientras haya un job vivo
   (nunca un ZIP a medias) y grita en el LEEME.txt los items con render FAILED.
+
+### Migraciones de la jornada integral 2026-10-17/20 (fases 1-6, ADR-155…160)
+
+| Migración                                                         | Qué crea                                                         | STG           | PRD                       |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------- | ------------- | ------------------------- |
+| Prisma `20261017120000_wompi_payment_ledger`                      | Ledger `WompiPaymentAttempt`/`WompiPaymentTransaction` (ADR-137) | ✅ 2026-10-20 | pendiente (con el deploy) |
+| Prisma `20261017130000_design_client_rev`                         | `Design.clientRev` — concurrencia optimista del editor (ADR-156) | ✅ 2026-10-20 | pendiente (con el deploy) |
+| Prisma `20261020120000_design_archived_from`                      | `Design.archivedFrom`                                            | ✅ 2026-10-20 | pendiente (con el deploy) |
+| SQL `supabase/migrations/00000000000042_wompi_payment_ledger.sql` | RLS del ledger                                                   | ✅ 2026-10-20 | pendiente (con el deploy) |
+
+- Las Prisma viajan con el `prisma migrate deploy` del release (mismo orden de siempre). La SQL
+  042 **no agenda crons** (solo RLS de las tablas nuevas) — segura de aplicar en cualquier
+  momento y no toca los jobs desagendados de STG.
+- **Backfill del ledger:** one-shot
+  `packages/db/scripts/one-shot/wompi-payment-ledger-backfill.mjs` (dry-run por defecto,
+  `--apply` con env-guard) — copia al ledger la evidencia local histórica de órdenes WOMPI
+  (`wompiReference`/`paymentAttempt`/`wompiTransactionId`, marcando `backfilled`); NO consulta
+  la API de Wompi ni infiere estados. **Corrido en STG el 2026-10-20: 0 cambios necesarios.**
+  En PRD: correr tras el `migrate deploy` del release (desde `packages/db`:
+  `pnpm exec dotenv -e ../../.env.local.nube-backup -- node scripts/one-shot/wompi-payment-ledger-backfill.mjs`
+  y luego con `--apply`).
+- **Claves CMS nuevas** de la jornada (`estudio.lienzo.borrar-diseno-*`,
+  `estudio.texto.ig-reaplicar-*`, `estudio.exportar.zoom-*-aria`, `estudio.letras.set-pager-*`,
+  `estudio.plantillas.reemplazo-*`, confirms `account.designs.*` — 7 claves — y el texto
+  `editor-desc` actualizado): ya registradas en `packages/db/scripts/cms-site-map.mjs`; se
+  materializan por ambiente con `make migrate-cms-v2` + «Actualizar caché de contenido» en
+  `/admin/contenido` (mientras no se siembren, sirven los fallbacks del código).
 
 ### Higiene de Supabase Storage — estrategia completa (2026-10-12)
 
@@ -441,6 +506,7 @@ node scripts/one-shot/homologation-diff-20260915.mjs local prd
 - La normalización masiva usa `homologate-20260915.mjs` (espejo STG + overrides documentados, dry-run por defecto, env-guard; PRD con bypass).
 - **Diseños prediseñados (2026-10-03):** `DesignGalleryImage` no lo cubría nada — se creó `packages/db/scripts/one-shot/sync-gallery-stg-to-prd.mjs` (dry-run por defecto; `--apply` con env-guard). Cruce por `id` y por `(tag, name)` — las filas sembradas independiente en cada ambiente tienen cuid distinta y el update conserva el id de PRD (FK `DesignAsset.galleryImageId`). Copia además los objetos del bucket `product-images` que falten en PRD. Preflight: aborta si PRD no tiene la columna `variantFilter` (correr `migrate deploy` antes). El comparador `scripts/diag-stg/06-homologacion-datos.sql` incluye `imageUrlB` y `variantFilter` en el checksum desde la misma fecha.
 - El drift archivado NO se persigue: modificar historia archivada no aporta y confunde.
+- **Homologación comercial PRD → espejo (2026-10-13):** `packages/db/scripts/homologate-catalog-from-prd.mjs` (dry-run por defecto, `--apply`, env-guard que bloquea PRD como destino; PRD se lee vía `.env.local.nube-backup`, NUNCA se escribe) alinea en LOCAL/STG: ① estados isActive/deletedAt de productos/variantes (gemelas `-NOMAG` intactas), ② contenido completo de Product (los campos del checksum de `06-homologacion-datos.sql`), ③ `DesignGalleryImage` (cruce por id y `(tag, name)`, inserts conservan el id de PRD) copiando al bucket del espejo los objetos de `product-images` que falten (mismo path, URLs reescritas al host del espejo). Filas del espejo ausentes en PRD: solo se reportan. Stock NUNCA se sincroniza. Ojo Prisma: en campos `Json?` el `null` plano escribe JSON `'null'` — SQL NULL exige `undefined` (create) o `Prisma.DbNull` (update), y el checksum compara `variantFilter::text`.
 - **Sync de catálogo/CMS (2026-10-03):** `packages/db/scripts/one-shot/sync-catalog-stg-to-prd.mjs` cubre Category/Product/ProductVariant/CmsPage/CmsSection/CmsField/PersonalizationTemplate con el mismo patrón (dry-run, env-guard, clave natural, conserva ids de PRD). El **stock NUNCA se sincroniza** (PRD es operativo real; las variantes nuevas entran con stock 0 y se reportan para carga manual). Ejecutado el 2026-10-03: 6 inserts (producto `separadores-magneticos-delgados` + su variante + 4 settings `LUCAMS_SHIPPING_*`), 83 updates (incl. precio Abecedario $34.900→$33.900, decisión de Lucy), 4 versiones CMS publicadas, 1 objeto de storage.
 - **Excepciones permanentes del comparador (DIFF deliberado, no perseguir):** `AdminUser` (los admins extra de STG son de pruebas; no se replican a PRD por seguridad), `Order`/`Customer` (datos transaccionales por ambiente), env vars por scope (`AVEONLINE_WEBHOOK_SECRET` solo Production, `CRON_JOBS_DISABLED` solo Preview — deliberado). **Incidente 2026-10-03:** los 130 `UrlRedirect` de PRD eran TODOS artefactos `/itest…` de una corrida de tests de integración apuntada a PRD — eliminados; lección: jamás correr suites de integración con el env de PRD cargado (el env-guard de scripts no aplica a vitest; ojo con `dotenv -e .env.local.nube-backup`).
 - **Gate pre-push (lección CI 2026-09-15):** además de typecheck/lint/test/build, correr `pnpm format:check` y `node packages/db/scripts/audit-content-coverage.mjs --check` antes de cada push — fueron los 2 rojos del día (formato + ratchet CMS).
@@ -621,6 +687,10 @@ NEXT_TELEMETRY_DISABLED=1                          # Anonymous telemetry de Next
 # PURGE_EMPTY_CART_AFTER_DAYS=7         # carritos vacíos
 # PURGE_ABANDONED_CART_AFTER_DAYS=90    # AbandonedCart (email de recuperación)
 # PURGE_IDLE_READY_AFTER_DAYS=90        # diseños READY nunca ordenados (ADR-130)
+# Nota (auditoría 2026-10-20): en ambientes Vercel NO productivos (VERCEL_ENV ≠ "production",
+# p.ej. STG) los plazos de diseños se ACOTAN automáticamente a 14 días
+# (capRetentionDaysNonProd, features/personalization/retention-service.ts) — STG no retiene
+# renders 300-DPI de pruebas durante meses. Un override explícito (estas vars) siempre manda.
 ```
 
 > **Nunca commitear los valores reales.** Mantener el archivo `.env.example` (con placeholders) versionado en el repo y `.env.local` (con valores reales) ignorado. Ver [`/.gitignore`](../.gitignore).
@@ -676,6 +746,11 @@ pnpm test
 
 # Tests E2E (Playwright)
 pnpm --filter web test:e2e
+
+# Auditoría responsive en 6 perfiles de viewport (cliente público/auth/admin;
+# reporte consolidado en tmp/audit-20261013/report.json — ADR-154; con
+# E2E_ENV=stg E2E_AUTH=1 audita también las rutas autenticadas de STG)
+pnpm --filter web test:audit-responsive
 
 # Lighthouse local (Lighthouse CI autorun — el mismo gate del job `lighthouse` de CI)
 pnpm lhci

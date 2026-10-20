@@ -41,9 +41,22 @@ export const ENTITY_DEFS = {
     label: "Category",
     keyOf: (r) => r.slug,
     contentFields: [
-      "name", "description", "richDescription", "useCase", "image", "icon",
-      "gradient", "visibleFilters", "defaultSort", "featuredProductSlug",
-      "activeFrom", "activeUntil", "parentSlug", "order", "isActive", "deletedAt",
+      "name",
+      "description",
+      "richDescription",
+      "useCase",
+      "image",
+      "icon",
+      "gradient",
+      "visibleFilters",
+      "defaultSort",
+      "featuredProductSlug",
+      "activeFrom",
+      "activeUntil",
+      "parentSlug",
+      "order",
+      "isActive",
+      "deletedAt",
     ],
     imageFields: ["image"],
   },
@@ -51,12 +64,32 @@ export const ENTITY_DEFS = {
     label: "Product",
     keyOf: (r) => r.slug,
     contentFields: [
-      "sku", "name", "description", "basePrice", "compareAtPrice", "cost",
-      "isPersonalizable", "personalizationKind", "personalizationSchema",
-      "richDescription", "whyChooseThis", "idealFor", "physicalSpecs",
-      "warrantyMonths", "productionDays", "shippingDaysMin", "shippingDaysMax",
-      "minimumQuantity", "maximumQuantity", "images", "categorySlug",
-      "isActive", "isFeatured", "seoTitle", "seoDescription", "deletedAt",
+      "sku",
+      "name",
+      "description",
+      "basePrice",
+      "compareAtPrice",
+      "cost",
+      "isPersonalizable",
+      "personalizationKind",
+      "personalizationSchema",
+      "richDescription",
+      "whyChooseThis",
+      "idealFor",
+      "physicalSpecs",
+      "warrantyMonths",
+      "productionDays",
+      "shippingDaysMin",
+      "shippingDaysMax",
+      "minimumQuantity",
+      "maximumQuantity",
+      "images",
+      "categorySlug",
+      "isActive",
+      "isFeatured",
+      "seoTitle",
+      "seoDescription",
+      "deletedAt",
     ],
     imageFields: ["images"],
   },
@@ -66,8 +99,15 @@ export const ENTITY_DEFS = {
     // OJO: `stock` NO está — el stock de PRD es operativo real y NUNCA se
     // sincroniza (ver header). Testeado en catalog-sync.test.mjs.
     contentFields: [
-      "productSlug", "name", "description", "price", "compareAtPrice",
-      "images", "attributes", "isActive", "deletedAt",
+      "productSlug",
+      "name",
+      "description",
+      "price",
+      "compareAtPrice",
+      "images",
+      "attributes",
+      "isActive",
+      "deletedAt",
     ],
     imageFields: ["images"],
   },
@@ -88,8 +128,17 @@ export const ENTITY_DEFS = {
     label: "CmsField",
     keyOf: (r) => r.key, // key es @unique global ("home.hero.title", "CONTACT_EMAIL")
     contentFields: [
-      "sectionRef", "kind", "label", "helpText", "type", "body", "metadata",
-      "category", "sortOrder", "isPublished", "deletedAt",
+      "sectionRef",
+      "kind",
+      "label",
+      "helpText",
+      "type",
+      "body",
+      "metadata",
+      "category",
+      "sortOrder",
+      "isPublished",
+      "deletedAt",
     ],
     imageFields: [],
   },
@@ -97,15 +146,29 @@ export const ENTITY_DEFS = {
     label: "PersonalizationTemplate",
     keyOf: (r) => r.slug,
     contentFields: [
-      "productSlug", "kind", "mode", "name", "description", "previewUrl",
-      "canvasData", "isActive", "order", "deletedAt",
+      "productSlug",
+      "kind",
+      "mode",
+      "name",
+      "description",
+      "previewUrl",
+      "canvasData",
+      "isActive",
+      "order",
+      "deletedAt",
     ],
     imageFields: ["previewUrl"],
   },
 };
 
 /** Campos aplanados que al escribir se traducen a FK cuid del destino. */
-export const MAPPED_FK_FIELDS = new Set(["parentSlug", "categorySlug", "productSlug", "sectionRef", "pageSlug"]);
+export const MAPPED_FK_FIELDS = new Set([
+  "parentSlug",
+  "categorySlug",
+  "productSlug",
+  "sectionRef",
+  "pageSlug",
+]);
 
 /**
  * Normaliza una URL (o array de URLs) para comparar contenido entre ambientes:
@@ -256,4 +319,54 @@ export function imageUrlsOf(row, imageFields) {
     else if (v) out.push(v);
   }
   return out;
+}
+
+/**
+ * Data de escritura para Product a partir de una fila fuente aplanada (los
+ * campos de ENTITY_DEFS.product.contentFields, con la FK aplanada
+ * `categorySlug`). Pensada para el sentido PRD → espejo (homologate-catalog):
+ *   - `images` se reescribe del host fuente al host destino (los bytes de los
+ *     objetos que falten se copian aparte, al mismo path — collectUrlObjects);
+ *   - `categorySlug` se traduce a `categoryId` (cuid del DESTINO, resuelta por
+ *     el script orquestador vía el slug de la categoría);
+ *   - `stock` no existe en Product y NUNCA se toca el de las variantes.
+ * fields=null → todos los campos (INSERT); con array → solo esos (UPDATE).
+ * id/slug/timestamps/auditores los decide el orquestador.
+ */
+export function buildProductData(row, fields, { categoryId = null, fromBase, toBase } = {}) {
+  const all = {
+    sku: row.sku,
+    name: row.name,
+    description: row.description,
+    basePrice: row.basePrice,
+    compareAtPrice: row.compareAtPrice,
+    cost: row.cost,
+    isPersonalizable: row.isPersonalizable,
+    personalizationKind: row.personalizationKind,
+    personalizationSchema: row.personalizationSchema,
+    richDescription: row.richDescription,
+    whyChooseThis: row.whyChooseThis,
+    idealFor: row.idealFor,
+    physicalSpecs: row.physicalSpecs,
+    warrantyMonths: row.warrantyMonths,
+    productionDays: row.productionDays,
+    shippingDaysMin: row.shippingDaysMin,
+    shippingDaysMax: row.shippingDaysMax,
+    minimumQuantity: row.minimumQuantity,
+    maximumQuantity: row.maximumQuantity,
+    images: rewriteImageHost(row.images, fromBase, toBase),
+    isActive: row.isActive,
+    isFeatured: row.isFeatured,
+    seoTitle: row.seoTitle,
+    seoDescription: row.seoDescription,
+    deletedAt: row.deletedAt,
+    categoryId,
+  };
+  if (!fields) return all;
+  const data = {};
+  for (const f of fields) {
+    const k = f === "categorySlug" ? "categoryId" : f;
+    data[k] = all[k];
+  }
+  return data;
 }

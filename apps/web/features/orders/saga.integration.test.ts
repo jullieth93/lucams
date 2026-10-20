@@ -218,7 +218,7 @@ async function makeVariant(stock: number, tag: string): Promise<string> {
  * vaciado atómico del cart).
  */
 async function makePendingOrder(
-  items: Array<{ variantId: string; qty: number; unitPrice: number }>,
+  items: Array<{ variantId: string; qty: number; unitPrice: number; designId?: string }>,
   opts: {
     cartId?: string;
     numberTag: string;
@@ -349,6 +349,7 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
     }
     await prisma.cart.deleteMany({ where: { id: { startsWith: `${RUN}-cart` } } });
     await prisma.coupon.deleteMany({ where: { code: { startsWith: RUN.toUpperCase() } } });
+    await prisma.design.deleteMany({ where: { productId } });
     if (variantIds.length) {
       await prisma.productVariant.deleteMany({ where: { id: { in: variantIds } } });
     }
@@ -415,6 +416,36 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       expect(emailCalls.filter((c) => c.fn === "sendOrderConfirmationOnce")).toHaveLength(1);
       // Y el aviso al admin (in-app + email) también corre una vez por orden.
       expect(emailCalls.filter((c) => c.fn === "notifyNewOrderToAdmin")).toHaveLength(1);
+    }, 30000);
+
+    it("marca USED_IN_ORDER solo cuando el pago queda confirmado", async () => {
+      const variantId = await makeVariant(5, "design-paid");
+      const design = await prisma.design.create({
+        data: {
+          sessionId: `${RUN}-design-paid`,
+          productId,
+          status: "READY",
+          canvasData: {
+            version: 2,
+            slotCount: 1,
+            slots: [{ slotIndex: 0, assetId: null, assetUrl: null }],
+          },
+        },
+        select: { id: true },
+      });
+      const orderId = await makePendingOrder(
+        [{ variantId, qty: 1, unitPrice: 5000, designId: design.id }],
+        { numberTag: "DESIGN-PAID" },
+      );
+
+      const res = await processPaidOrder({ orderId, wompiTransactionId: "wompi-tx-design" });
+
+      expect(res.status).toBe("ok");
+      const after = await prisma.design.findUnique({
+        where: { id: design.id },
+        select: { status: true },
+      });
+      expect(after?.status).toBe("USED_IN_ORDER");
     }, 30000);
 
     it("fix 1.8 — si la etiqueta NO se puede archivar, la orden sigue OK con tracking y labelPath null (fallback URLs externas)", async () => {

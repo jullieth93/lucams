@@ -159,10 +159,12 @@ export async function applyPredesignedToSlot(opts: {
   facesPerUnit?: number;
   /**
    * Regla de caras (2026-10-12) — el destino es EXACTO: salta el re-anclaje a
-   * cara A de resolveFaceAAnchor. Lo usa la aplicación global con cara ELEGIDA
+   * cara A de resolveFaceAAnchor. Lo usan (a) la aplicación con cara ELEGIDA
    * por el cliente (sidebar, diseño de 1 cara → cara B): el diseño debe caer en
-   * la cara pedida, no moverse al frente. El caller garantiza que el slot existe
-   * y está libre (firstFreeSlotOfFace) — nunca se pisa contenido para abrir sitio.
+   * la cara pedida, no moverse al frente — ahí el caller garantiza el slot libre
+   * (firstFreeSlotOfFace); y (b) el REEMPLAZO EXPLÍCITO (2026-10-19): el cliente
+   * eligió en el modal qué lienzo ocupado reemplazar — la asignación es el
+   * reemplazo limpio de assignAssetToSlot, nunca una sobreescritura en silencio.
    */
   forceTargetSlot?: boolean;
 }): Promise<

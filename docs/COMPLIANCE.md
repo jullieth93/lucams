@@ -589,6 +589,10 @@ Una vez cruzado el umbral (o si Lucy decide ser facturador electrónico voluntar
 
 **Acción humana pendiente**: Lucy define con su contador cuándo activar facturación electrónica + a qué proveedor migrar (ADR-025 pendiente).
 
+**Estado vigente del checkout (2026-10-20, ADR-160):** el checkbox «Quiero documento tributario» de `/checkout/datos` está **OCULTO tras el flag `BILLING_DOCUMENT_ENABLED=false`** (`features/checkout/billing-document.ts`). Razón: la tienda es persona natural no responsable de IVA y sin trámites DIAN operados, así que el checkbox prometía un documento que no se emite (riesgo Ley 1480 arts. 23/29 — ningún texto público promete lo que la tienda no opera). Con el flag apagado: la sección no se renderiza, `saveDatosAction` ignora un `wantsInvoice` manipulado a mano y el schema no exige los campos. El pipeline de datos queda **intacto**: `wantsInvoice=false` viaja como siempre, el snapshot `Order.billingDocumentType/Number/Name` se sigue escribiendo cuando aplique, y el admin muestra el bloque «Documento de venta» solo en órdenes históricas que sí tienen datos. **Condición de reactivación:** que exista operación tributaria real (trámites DIAN, o decisión operada de emitir cuentas de cobro de forma sistemática) → flip del flag a `true` + revisión de los textos públicos si la promesa cambia.
+
+**Verificación de textos públicos (2026-10-20):** ningún texto público promete factura — `legal.terminos.md` declara «la vendedora **no está obligada a expedir factura de venta**» (persona natural no responsable de IVA) y ofrece constancia de la operación; `legal.subprocesadores.md` condiciona el subprocesador DIAN a «si en el futuro activamos la facturación electrónica». El copy B2B correcto sigue siendo «documentación tributaria (cuenta de cobro o factura electrónica según corresponda)».
+
 ---
 
 ## IVA y retenciones

@@ -326,3 +326,38 @@ describe("StudioAssetPickerModal — tabs «Mis fotos» / «Prediseñados» (Fas
     expect(screen.getByAltText("Selva")).toHaveAttribute("src", "https://example.com/g2.png");
   });
 });
+
+describe("StudioAssetPickerModal — botón «Listo» de cierre explícito (Fase 2 UX, 2026-10-13)", () => {
+  it("el footer sticky muestra «Listo» y cierra el picker sin asignar nada", () => {
+    const props = renderPicker([OK]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Listo" }));
+
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+    expect(props.onSelectAsset).not.toHaveBeenCalled();
+  });
+
+  it("«Listo» también está con el tab de prediseñados activo", () => {
+    const props = {
+      isOpen: true,
+      slotIndex: 0,
+      totalSlots: 3,
+      assets: [OK],
+      designId: null,
+      predesigned: [{ id: "g1", name: "Amor pastel", imageUrl: "https://example.com/g1.png" }],
+      onClose: vi.fn(),
+      onSelectAsset: vi.fn(),
+      onAssetUploaded: vi.fn(),
+    };
+    render(
+      <TooltipProvider>
+        <StudioAssetPickerModal {...props} />
+      </TooltipProvider>,
+    );
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Prediseñados/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Listo" }));
+
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+  });
+});

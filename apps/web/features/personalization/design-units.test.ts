@@ -10,6 +10,7 @@ import {
   declaresUnits,
   designUnitPriceMultiplier,
   gridSlotCountForLayout,
+  inventoryUnitsForOrderItem,
   letterSetUnitCount,
   maxUnitsForProduct,
   photosPerUnitForEditor,
@@ -197,5 +198,43 @@ describe("maxUnitsForProduct — tope por el cap de 50 slots", () => {
   it("separadores (2 caras) → 25 · imán suelto → 50", () => {
     expect(maxUnitsForProduct(2)).toBe(25);
     expect(maxUnitsForProduct(1)).toBe(50);
+  });
+});
+
+describe("inventoryUnitsForOrderItem — unidades físicas de inventario", () => {
+  it("multiplica qty comercial, unidades del pack y unidades del diseño", () => {
+    expect(
+      inventoryUnitsForOrderItem({
+        qty: 2,
+        variantAttrs: { quantity: 3 },
+        customDesign: { version: 2, slotCount: 24, unitSlots: 12, unitCount: 2 },
+        metadata: {},
+        productSchema: {},
+      }),
+    ).toBe(12);
+  });
+
+  it("usa metadata de letterset para no perder los sets", () => {
+    expect(
+      inventoryUnitsForOrderItem({
+        qty: 1,
+        variantAttrs: {},
+        customDesign: { version: 1, slotCount: 1 },
+        metadata: { surface: "letterset", unitCount: 3 },
+        productSchema: {},
+      }),
+    ).toBe(3);
+  });
+
+  it("no multiplica dos veces un pack de caras ya incluido en la variante", () => {
+    expect(
+      inventoryUnitsForOrderItem({
+        qty: 1,
+        variantAttrs: { quantity: 1 },
+        customDesign: { version: 2, slotCount: 6, photoSlots: 3, unitSlots: 2 },
+        metadata: {},
+        productSchema: { facesPerUnit: 2 },
+      }),
+    ).toBe(1);
   });
 });

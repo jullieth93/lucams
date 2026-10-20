@@ -3,8 +3,9 @@
 /*
  * CustomColorPicker — paridad de color en todas las plataformas (reemplazo del
  * <input type="color"> nativo). Contrato cubierto:
- *   1. El trigger conserva el affordance de marca (conic-gradient sin color
- *      elegido; hex sólido + check cuando `active` y hay valor).
+ *   1. El trigger conserva SIEMPRE el affordance de marca (conic-gradient,
+ *      también con color elegido — 2026-10-19): el hex va en un disco interior
+ *      sobre el anillo arcoíris, con check cuando `active`.
  *   2. El panel inline abre/cierra con el trigger, con la X y con Escape.
  *   3. Área saturación/luminosidad: arrastre por pointer events (mock de
  *      getBoundingClientRect) y flechas de teclado (role="slider").
@@ -56,10 +57,18 @@ describe("CustomColorPicker — trigger", () => {
     expect(trigger.style.background).toContain("conic-gradient");
   });
 
-  it("con valor + active muestra el hex sólido y el check", () => {
-    setup({ value: "#E85B9F", active: true });
+  it("con valor + active el trigger CONSERVA el gradiente (affordance de re-apertura) y el hex va en el disco interior con check", () => {
+    // 2026-10-19 — antes el trigger pintaba el hex plano y el arcoíris
+    // desaparecía: el usuario ya no veía que podía volver a abrir el picker.
+    setup({ value: "#123ABC", active: true });
     const trigger = screen.getByRole("button", { name: "Personalizado" });
-    expect(trigger.style.background).toContain("rgb(232, 91, 159)");
+    // Anillo arcoíris intacto…
+    expect(trigger.style.background).toContain("conic-gradient");
+    // …disco interior con el hex elegido…
+    const innerDisc = trigger.querySelector("span[aria-hidden]");
+    expect(innerDisc).not.toBeNull();
+    expect((innerDisc as HTMLElement).style.backgroundColor).toBe("rgb(18, 58, 188)");
+    // …y el check de selección encima.
     expect(trigger.querySelector("svg")).toBeInTheDocument();
   });
 

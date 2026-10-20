@@ -14,7 +14,7 @@
 
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
-import { formatCOP } from "@/lib/format";
+import { computeDiscountPct, formatCOP } from "@/lib/format";
 import { WishlistButton } from "@/components/wishlist-button";
 import { ProductCardImage } from "@/components/product-card-image";
 import type { StorefrontProductCard } from "@/features/products/public-service";
@@ -34,9 +34,7 @@ export function ProductCard({
   // basePrice, para que el tachado y el % coincidan con la cifra visible.
   const displayPrice = product.minVariantPrice ?? product.basePrice;
   const hasDiscount = product.compareAtPrice != null && product.compareAtPrice > displayPrice;
-  const discountPct = hasDiscount
-    ? Math.round(((product.compareAtPrice! - displayPrice) / product.compareAtPrice!) * 100)
-    : 0;
+  const discountPct = hasDiscount ? computeDiscountPct(product.compareAtPrice!, displayPrice) : 0;
   // inStock === false → agotado (undefined = paths sin dato de stock → se trata como disponible).
   const outOfStock = product.inStock === false;
 

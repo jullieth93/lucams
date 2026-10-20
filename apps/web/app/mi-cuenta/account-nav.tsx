@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import {
   LayoutDashboard,
   Package,
@@ -22,7 +23,14 @@ import type { AccountTexts } from "./account-texts";
  * exacta para "Resumen" (/mi-cuenta), por prefijo para el resto (para que el
  * detalle /mi-cuenta/pedidos/[number] mantenga "Pedidos" activo).
  *
- * Las etiquetas vienen del CMS (roadmap B9) — el layout las resuelve en server.
+ * Las etiquetas vienen del CMS (roadmap B9) — el layout las resuelve en server;
+ * su largo es desconocido, así que nada acá depende de medidas fijas.
+ *
+ * 2026-10-20 — affordances de overflow en móvil (antes la barra scrolleaba
+ * "a ciegas"): máscara con fade en el borde que tiene más contenido (solo
+ * cuando HAY overflow real en esa dirección), scroll suave + snap por pestaña,
+ * scrollbar oculta y la pestaña activa se auto-centra al entrar/cambiar de
+ * sección (un deep-link ya no deja la activa fuera de pantalla).
  */
 export function AccountNav({ labels }: { labels: AccountTexts["nav"] }) {
   const TABS = [
@@ -38,6 +46,62 @@ export function AccountNav({ labels }: { labels: AccountTexts["nav"] }) {
     { href: "/mi-cuenta/seguridad", label: labels.seguridad, icon: ShieldCheck },
   ] as const;
   const pathname = usePathname();
+  const listRef = useRef<HTMLUListElement>(null);
+  // Bordes con más contenido scrolleable (alimentan el fade). Estado, no valor
+  // derivado del render: scrollWidth/scrollLeft solo existen post-mount.
+  const [edges, setEdges] = useState<{ left: boolean; right: boolean }>({
+    left: false,
+    right: false,
+  });
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const update = () => {
+      setEdges({
+        left: list.scrollLeft > 1,
+        right: list.scrollLeft + list.clientWidth < list.scrollWidth - 1,
+      });
+    };
+    update();
+    list.addEventListener("scroll", update, { passive: true });
+    // ResizeObserver cubre rotación del teléfono, zoom del navegador y el
+    // cambio de largo de las etiquetas CMS; el resize de ventana es el
+    // fallback donde no exista (jsdom, navegadores muy viejos).
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(update);
+      ro.observe(list);
+      return () => {
+        list.removeEventListener("scroll", update);
+        ro.disconnect();
+      };
+    }
+    window.addEventListener("resize", update);
+    return () => {
+      list.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  // Auto-centrar la pestaña activa al montar y al cambiar de sección. El
+  // scroll-smooth del contenedor anima el salto; block:"nearest" evita
+  // mover el scroll vertical de la página.
+  useEffect(() => {
+    const active = listRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    active?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }, [pathname]);
+
+  // Máscara de fade por borde: transparente donde hay más contenido. Se aplica
+  // al <ul> (la máscara es fija respecto al viewport del scroll, el contenido
+  // se desvanece al salir) — sin overlays que tapen el fondo translúcido.
+  const maskImage =
+    edges.left && edges.right
+      ? "linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent)"
+      : edges.left
+        ? "linear-gradient(to right, transparent, black 2rem)"
+        : edges.right
+          ? "linear-gradient(to right, black calc(100% - 2rem), transparent)"
+          : undefined;
 
   return (
     <nav
@@ -45,13 +109,17 @@ export function AccountNav({ labels }: { labels: AccountTexts["nav"] }) {
       className="border-brand-purple/10 border-b bg-white/70 backdrop-blur-sm"
     >
       <div className="mx-auto max-w-4xl px-2">
-        <ul className="flex gap-1 overflow-x-auto">
+        <ul
+          ref={listRef}
+          className="flex snap-x snap-proximity [scrollbar-width:none] gap-1 overflow-x-auto scroll-smooth [&::-webkit-scrollbar]:hidden"
+          style={maskImage ? { maskImage, WebkitMaskImage: maskImage } : undefined}
+        >
           {TABS.map((t) => {
             const active =
               "exact" in t && t.exact ? pathname === t.href : pathname.startsWith(t.href);
             const Icon = t.icon;
             return (
-              <li key={t.href} className="flex-shrink-0">
+              <li key={t.href} className="flex-shrink-0 snap-start">
                 <Link
                   href={t.href}
                   aria-current={active ? "page" : undefined}

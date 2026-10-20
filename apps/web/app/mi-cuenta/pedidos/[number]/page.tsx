@@ -19,7 +19,8 @@ import { ChevronLeft, MapPin, Package, Star, Truck, Wallet } from "lucide-react"
 import { prisma } from "@/lib/db";
 import { CmsText } from "@/components/cms/cms-text";
 import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
-import { DesignPreviewDialog } from "@/app/carrito/design-preview-dialog";
+import { DesignPreviewDialog } from "@/components/design-preview-dialog";
+import { DesignUnitsBadge } from "@/components/design-units-badge";
 import { getCurrentCustomer } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
 import { getRetractableItems } from "@/features/retract/service";
@@ -242,22 +243,62 @@ export default async function CustomerPedidoDetallePage({
             );
             return (
               <li key={it.id} className="flex items-start gap-3 py-3">
-                <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">
-                  {previewUrl ? (
-                    <Image
-                      src={previewUrl}
-                      alt=""
-                      fill
-                      sizes="56px"
-                      className="object-cover"
-                      unoptimized
-                    />
-                  ) : (
+                {previewUrl ? (
+                  // 2026-10-13 — la miniatura también abre el lightbox (además
+                  // del botón «Ver»: Radix admite un solo trigger por Dialog,
+                  // así que es una 2ª instancia con trigger personalizado).
+                  <DesignPreviewDialog
+                    previewUrl={previewUrl}
+                    pages={disp?.pageUrls ?? null}
+                    watermarkNote={
+                      disp?.watermarked ? (
+                        <CmsText
+                          blockKey="cart.vista-previa-watermark-nota"
+                          fallback="Vista previa con marca de agua — tu impresión final no la lleva."
+                        />
+                      ) : null
+                    }
+                    productName={it.variant.product.name}
+                    trigger={
+                      <button
+                        type="button"
+                        aria-label={`Ver el diseño de ${it.variant.product.name}`}
+                        className="bg-brand-purple/5 focus-visible:ring-brand-turquoise relative h-14 w-14 flex-shrink-0 cursor-zoom-in overflow-hidden rounded-lg focus-visible:ring-2 focus-visible:outline-none"
+                      >
+                        <Image
+                          src={previewUrl}
+                          alt=""
+                          fill
+                          sizes="56px"
+                          className="object-cover"
+                          unoptimized
+                        />
+                        {/* 2026-10-13 — «N unidades» cuando el diseño pagina. */}
+                        <DesignUnitsBadge
+                          count={disp?.pageUrls?.length ?? 0}
+                          label={
+                            <CmsText blockKey="order.status.unidades-badge" fallback="unidades" />
+                          }
+                        />
+                      </button>
+                    }
+                    title={
+                      <CmsText blockKey="cart.vista-previa-diseno-titulo" fallback="Tu diseño ·" />
+                    }
+                    description={
+                      <CmsText
+                        blockKey="cart.vista-previa-diseno-desc"
+                        fallback="Vista previa ampliada del diseño personalizado de esta línea del pedido."
+                      />
+                    }
+                  />
+                ) : (
+                  <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">
                     <div className="text-brand-muted flex h-full w-full items-center justify-center text-[10px]">
                       {it.qty}×
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="text-brand-purple-dark text-sm font-semibold">
                     {it.variant.product.name}

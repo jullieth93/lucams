@@ -28,18 +28,23 @@ import crypto from "node:crypto";
 import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { withRetry } from "@/lib/retry";
 import {
   pathFromPublicUrl,
   removeStorage,
   PREVIEWS_BUCKET,
   PURGE_IDLE_DESIGN_AFTER_DAYS,
 } from "@/features/personalization/retention-service";
+import { trimExcessDraftDesigns } from "./draft-lifecycle";
+import { designHasMeaningfulProgress } from "./design-progress";
+import { effectivePersonalizationSchema, resolveEffectiveVariant } from "./effective-variant";
+import { loadEffectiveProductConfig } from "./effective-variant-server";
 import { supabaseService } from "@/lib/supabase/service";
 import { hashBearerToken } from "@/lib/token-hash";
 import { parsePhotoProductConfig } from "./schemas";
 import { listStagedSlotPaths, stagedSlotPath } from "./staged-slots";
 import { resolvePersonalizationSurface } from "./surface";
-import { unitCountOf, MAX_LETTER_SET_UNITS } from "./design-units";
+import { unitCountOf, letterSetUnitCount, MAX_LETTER_SET_UNITS } from "./design-units";
 import { PREVIEW_ALLOWED_MIME, previewExtensionForMime, type PreviewMime } from "./sharp-safe";
 import {
   filterTemplatesByAspectRatio,
@@ -92,6 +97,31 @@ const BUCKET_CUSTOMER_UPLOADS = "customer-uploads";
 //  Ownership check
 // ──────────────────────────────────────────────────────────────────
 
+/**
+ * 2026-10-13 — poda «últimos N borradores» (draft-lifecycle.ts) tras crear un
+ * DRAFT nuevo. BEST-EFFORT: una poda fallida se loguea y NUNCA rompe el flujo
+ * principal (creación/clon de diseño); los excedentes los recoge la próxima
+ * creación o la purga de retención.
+ */
+async function trimDraftsBestEffort(
+  owner: { customerId: string | null; sessionId: string | null },
+  productId: string,
+  protectDesignId?: string,
+): Promise<void> {
+  try {
+    await trimExcessDraftDesigns(owner, productId, { protectDesignId });
+  } catch (err) {
+    logger.warn(
+      {
+        event: "design.draft_trim.fail",
+        productId,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "Poda de borradores falló (best-effort)",
+    );
+  }
+}
+
 export async function getOwnedDesign(
   designId: string,
   owner: { customerId: string | null; sessionId: string | null },
@@ -129,7 +159,7 @@ export async function cloneDesignForEdit(
   if (!original || original.status !== "READY") return null;
   const assets = await prisma.designAsset.findMany({ where: { designId: original.id } });
 
-  return prisma.$transaction(async (tx) => {
+  const clone = await prisma.$transaction(async (tx) => {
     const clone = await tx.design.create({
       data: {
         productId: original.productId,
@@ -173,6 +203,11 @@ export async function cloneDesignForEdit(
     }
     return { id: clone.id };
   });
+
+  // 2026-10-13 — el clon es un DRAFT nuevo INTENCIONAL (edición): no pasa por el
+  // reuso, pero sí por la poda «últimos N» del mismo dueño+producto.
+  await trimDraftsBestEffort(owner, original.productId, clone.id);
+  return clone;
 }
 
 /**
@@ -348,6 +383,10 @@ export async function cloneDesignForReorder(
       },
       "Diseño clonado para reorder (bytes copiados, READY)",
     );
+    // 2026-10-13 — el reorder nace DRAFT (y se promueve a READY arriba): es una
+    // creación intencional, no pasa por el reuso, pero sí dispara la poda
+    // «últimos N» de los DRAFT del mismo dueño+producto.
+    await trimDraftsBestEffort(newOwner, original.productId, clone.id);
     return { id: clone.id };
   } catch (err) {
     logger.warn({
@@ -464,19 +503,16 @@ export async function createDraftDesign(opts: {
     throw new Error("createDraftDesign: requires customerId or sessionId");
   }
 
-  // Cargar producto + su personalizationSchema para saber cuántos slots crear
   const product = await prisma.product.findUnique({
     where: { id: opts.productId },
     select: {
       id: true,
       personalizationKind: true,
       personalizationSchema: true,
-      // Solo para validar el variantId del caller (anti-tamper, mismo criterio
-      // que createNameDesign/createLetterSetDesign).
       variants: opts.variantId
         ? {
             where: { id: opts.variantId, isActive: true, deletedAt: null },
-            select: { id: true },
+            select: { id: true, attributes: true },
           }
         : undefined,
     },
@@ -488,7 +524,12 @@ export async function createDraftDesign(opts: {
     throw new Error("createDraftDesign: variant not found");
   }
 
-  const photoConfig = parsePhotoProductConfig(product.personalizationSchema);
+  const photoConfig = parsePhotoProductConfig(
+    effectivePersonalizationSchema(
+      product.personalizationSchema as Record<string, unknown> | null,
+      product.variants?.[0] ?? null,
+    ),
+  );
   const slotCount = photoConfig.photoSlots;
 
   // Cargar unitTemplate desde PersonalizationTemplate (si se pasó templateId
@@ -594,6 +635,12 @@ export async function createDraftDesign(opts: {
       ownerType: opts.customerId ? "customer" : "session",
     },
     "Draft design created (V2)",
+  );
+
+  await trimDraftsBestEffort(
+    { customerId: opts.customerId, sessionId: opts.sessionId },
+    opts.productId,
+    design.id,
   );
 
   return design;
@@ -710,6 +757,14 @@ export async function createNameDesign(opts: {
     "Name design created",
   );
 
+  // 2026-10-13 — cada confirmación del editor de nombre crea un DRAFT nuevo
+  // (el editor nunca reusa el id): poda «últimos N» del mismo dueño+producto.
+  await trimDraftsBestEffort(
+    { customerId: opts.customerId, sessionId: opts.sessionId },
+    opts.productId,
+    design.id,
+  );
+
   return { id: design.id, display: norm.display, letters: norm.letters };
 }
 
@@ -742,8 +797,12 @@ export async function createLetterSetDesign(opts: {
    * colores por ficha. El server valida `units.length === unitCount` y los persiste
    * en metadata.units; el precio ×N sale de `letterSetUnitCount(metadata)` en el
    * carrito (nunca del cliente: units es la única fuente de verdad del N).
+   * 2026-10-19 (rediseño owner) — el estilo ilustrado y el borde también son
+   * POR SET: cada unidad declara su `styleSetId` (null = «Solo letra») y su
+   * `withBorder`; las claves de nivel diseño (styleSetId/withBorder raíz) quedan
+   * como representante del set 0 (retrocompat con clientes/lectores viejos).
    */
-  units?: { colors?: string[] }[];
+  units?: { colors?: string[]; styleSetId?: string | null; withBorder?: boolean }[];
   /** Sets del diseño (1..MAX_LETTER_SET_UNITS). Default 1 (diseño de un set). */
   unitCount?: number;
   customerId: string | null;
@@ -824,11 +883,15 @@ export async function createLetterSetDesign(opts: {
         // (validados arriba: units.length === unitCount). El carrito deriva el
         // precio ×N de `unitCount` (letterSetUnitCount) y producción ve las N
         // láminas. Con 1 set no se escribe (retrocompatible con diseños viejos).
+        // 2026-10-19 — estilo ilustrado y borde POR SET: cada unidad persiste
+        // los suyos (styleSetId null = «Solo letra», withBorder default true).
         ...(unitCount > 1
           ? {
               unitCount,
               units: units.map((u) => ({
                 colors: Array.isArray(u.colors) ? u.colors.slice(0, letters.length) : [],
+                styleSetId: typeof u.styleSetId === "string" ? u.styleSetId : null,
+                withBorder: u.withBorder !== false,
               })),
             }
           : {}),
@@ -851,6 +914,14 @@ export async function createLetterSetDesign(opts: {
       frameTheme: opts.frameTheme,
     },
     "Letter set design created",
+  );
+
+  // 2026-10-13 — misma poda «últimos N» que createNameDesign (cada confirmación
+  // del editor de sets crea un DRAFT nuevo del mismo dueño+producto).
+  await trimDraftsBestEffort(
+    { customerId: opts.customerId, sessionId: opts.sessionId },
+    opts.productId,
+    design.id,
   );
 
   return { id: design.id, letters, language };
@@ -959,6 +1030,21 @@ export async function saveCanvas(opts: {
     throw new Error(`Design is ${design.status} — only DRAFT can be edited`);
   }
 
+  const referencedAssetIds =
+    opts.canvasData.version === 2
+      ? opts.canvasData.slots.flatMap((slot) => (slot.assetId ? [slot.assetId] : []))
+      : [];
+  if (referencedAssetIds.length > 0) {
+    await prisma.designAsset.updateMany({
+      where: {
+        id: { in: referencedAssetIds },
+        designId: null,
+        ...(opts.customerId ? { customerId: opts.customerId } : { sessionId: opts.sessionId }),
+      },
+      data: { designId: design.id },
+    });
+  }
+
   let templateId: string | undefined;
   if (opts.templateId) {
     const product = await prisma.product.findUnique({
@@ -987,7 +1073,27 @@ export async function saveCanvas(opts: {
   }
 
   let variantId: string | undefined;
-  if (opts.variantId) {
+  const declaresPackVariant =
+    opts.canvasData.version === 2 && typeof opts.canvasData.photoSlots === "number";
+  if (declaresPackVariant) {
+    const variants = await prisma.productVariant.findMany({
+      where: { productId: design.productId, isActive: true, deletedAt: null },
+      select: { id: true, price: true, stock: true, attributes: true },
+    });
+    const effective = resolveEffectiveVariant({ variants, canvasData: opts.canvasData });
+    if (effective) {
+      variantId = effective.id;
+    } else {
+      logger.warn(
+        {
+          event: "design.save_canvas.variant_unresolved",
+          designId: design.id,
+          requestedVariantId: opts.variantId ?? null,
+        },
+        "El canvas no tiene una variante activa exacta — se conserva la metadata anterior",
+      );
+    }
+  } else if (opts.variantId) {
     const owns = await prisma.productVariant.findFirst({
       where: { id: opts.variantId, productId: design.productId, isActive: true, deletedAt: null },
       select: { id: true },
@@ -1006,10 +1112,16 @@ export async function saveCanvas(opts: {
     }
   }
 
-  await prisma.design.update({
-    where: { id: design.id },
+  const incomingClientRev = opts.canvasData.version === 2 ? opts.canvasData.clientRev : undefined;
+  const update = await prisma.design.updateMany({
+    where: {
+      id: design.id,
+      status: "DRAFT",
+      clientRev: incomingClientRev === undefined ? BigInt(0) : { lte: BigInt(incomingClientRev) },
+    },
     data: {
       canvasData: opts.canvasData as unknown as Prisma.InputJsonValue,
+      ...(incomingClientRev === undefined ? {} : { clientRev: BigInt(incomingClientRev) }),
       ...(templateId ? { templateId } : {}),
       ...(variantId
         ? {
@@ -1021,6 +1133,17 @@ export async function saveCanvas(opts: {
         : {}),
     },
   });
+  if (update.count !== 1) {
+    const current = await prisma.design.findUnique({
+      where: { id: design.id },
+      select: { status: true },
+    });
+    if (!current) throw new Error("Design not found or not owned by caller");
+    if (current.status !== "DRAFT") {
+      throw new Error(`Design is ${current.status} — only DRAFT can be edited`);
+    }
+    throw new Error("STALE_REVISION");
+  }
 
   // 2026-10-13 — miniatura del borrador (Mis diseños). DESPUÉS del guardado del
   // canvas (lo importante) y best-effort: cualquier fallo se loguea y el save
@@ -1090,10 +1213,8 @@ const MAX_STAGED_SLOT_BYTES = 20 * 1024 * 1024;
  * Valida propiedad y estado DRAFT antes de emitirlas: una URL firmada es una CAPACIDAD, y emitir
  * una sobre un diseño ajeno dejaría sobrescribir sus archivos de imprenta.
  *
- * Y acota cuántas emite contra el PRODUCTO, no contra el canvas: `canvasData.slotCount` lo escribe
- * el propio cliente con `saveCanvasAction` y el esquema solo lo topa en 50, así que confiar en él
- * regalaba hasta 50 permisos de escritura por llamada a quien quisiera llenarnos el bucket
- * (revisión adversarial 2026-07-25). El producto es la fuente de verdad de cuántas piezas hay.
+ * Y acota cuántas emite contra la variante efectiva, no contra el canvas: `slotCount` lo escribe
+ * el cliente, así que confiar en él regalaría permisos de escritura en el área de paso.
  */
 export async function createClientSlotUploadTickets(opts: {
   designId: string;
@@ -1107,21 +1228,12 @@ export async function createClientSlotUploadTickets(opts: {
   }
   const canvasData = design.canvasData as unknown as CanvasData;
   const slotCount = canvasData.version === 2 ? (canvasData as CanvasDataV2).slotCount : 1;
-  // Modelo multi-unidad (2026-09-09): las unidades declaradas en el diseño (tiras
-  // ×2, calendarios ×2) multiplican los snapshots esperados. El canvas lo escribe
-  // el cliente, pero el tope queda acotado por slotCount ≤ 50 (Zod) y por el cap
-  // de abajo contra el producto — inflarlo no regala más de 50 tickets de la
-  // propia área de paso del diseño (que además se limpia tras el finalize).
   const declaredUnits = canvasData.version === 2 ? unitCountOf(canvasData as CanvasDataV2) : 1;
-
-  const product = await prisma.product.findUnique({
-    where: { id: design.productId },
-    select: { personalizationSchema: true },
-  });
-  const productConfig = parsePhotoProductConfig(product?.personalizationSchema);
-  const allowed = product ? productConfig.photoSlots : 1;
+  const { productConfig, effectiveVariant, metadataVariantId } =
+    await loadEffectiveProductConfig(design);
+  const allowed = productConfig.photoSlots;
   // `facesPerUnit: 2` (separadores) manda 2 snapshots por unidad: el tope es por CARA, no por pieza.
-  const faces = product ? (productConfig.facesPerUnit ?? 1) : 1;
+  const faces = productConfig.facesPerUnit ?? 1;
   const maxSlots = Math.max(1, allowed * faces * declaredUnits);
   if (slotCount > maxSlots) {
     throw new Error(
@@ -1143,16 +1255,44 @@ export async function createClientSlotUploadTickets(opts: {
       : [],
   );
 
+  const ticketContext = {
+    designId: design.id,
+    clientRev: Number(design.clientRev),
+    slotCount,
+    requiredSlots: slotCount - skipBackSlots.size,
+    maxSlots,
+    variantId: effectiveVariant?.id ?? metadataVariantId ?? null,
+    bucket: BUCKET_PRODUCTION,
+  };
+  logger.info({ event: "design.slot_tickets.prepare", ...ticketContext }, "Preparando tickets");
+
   const tickets: { slotIndex: number; url: string }[] = [];
   for (let i = 0; i < slotCount; i++) {
     if (skipBackSlots.has(i)) continue;
-    const { data, error } = await supabaseService.storage
-      .from(BUCKET_PRODUCTION)
-      .createSignedUploadUrl(stagedSlotPath(design.id, i), { upsert: true });
-    if (error || !data) {
-      throw new Error(`No pudimos preparar la subida del slot ${i + 1}: ${error?.message ?? "?"}`);
+    try {
+      const data = await withRetry(
+        async () => {
+          const { data, error } = await supabaseService.storage
+            .from(BUCKET_PRODUCTION)
+            .createSignedUploadUrl(stagedSlotPath(design.id, i), { upsert: true });
+          if (error || !data) throw error ?? new Error("signed upload URL vacía");
+          return data;
+        },
+        { attempts: 3, baseMs: 250, maxMs: 1200 },
+      );
+      tickets.push({ slotIndex: i, url: data.signedUrl });
+    } catch (err) {
+      logger.error(
+        {
+          event: "design.slot_tickets.prepare_failed",
+          ...ticketContext,
+          slotIndex: i,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Falló la emisión del ticket",
+      );
+      throw new Error(`No pudimos preparar la subida del slot ${i + 1}. Intenta de nuevo.`);
     }
-    tickets.push({ slotIndex: i, url: data.signedUrl });
   }
   return tickets;
 }
@@ -1323,7 +1463,13 @@ export async function finalizeDesign(opts: {
   // Si el cliente mandó snapshots, deben ser exactamente uno por slot REQUERIDO.
   const canvasData = design.canvasData as unknown as CanvasData;
   const v2 = canvasData.version === 2 ? (canvasData as CanvasDataV2) : null;
-  const expectedSlotCount = v2 ? v2.slotCount : 1;
+  // Sets de letras (canvasData V1 stub + metadata.surface="letterset"): el Estudio
+  // sube UNA lámina de producción POR SET (production_i, 1 lámina/unidad — el set
+  // es la unidad). El finalize espera exactamente `unitCount` snapshots (validados
+  // al crear: units.length === unitCount), no 1 — antes un diseño multi-set
+  // rebotaba con «INCOMPLETE_SLOTS: expected 1 production snapshots, got N» y la
+  // venta quedaba bloqueada. Los índices son posicionales: production_i = set i.
+  const expectedSlotCount = v2 ? v2.slotCount : letterSetUnitCount(design.metadata);
 
   // Cara B OPCIONAL (backOptional, 2026-09-22 — separadores magnéticos 2×6/4×4.2
   // y alargados): cuando el schema del producto lo declara, las caras B (slots
@@ -1331,11 +1477,7 @@ export async function finalizeDesign(opts: {
   // se exige snapshot de las caras A y de las B que sí tienen asset; producción
   // genera una cara B EN BLANCO para cada B vacía (blank-back-face.ts — decisión
   // owner 2026-10-07, revierte la regla espejo: nunca copia de la cara A).
-  const product = await prisma.product.findUnique({
-    where: { id: design.productId },
-    select: { personalizationSchema: true },
-  });
-  const productConfig = parsePhotoProductConfig(product?.personalizationSchema);
+  const { productConfig } = await loadEffectiveProductConfig(design);
   const backOptional = productConfig.facesPerUnit === 2 && productConfig.backOptional === true;
   const emptyBackSlots = new Set<number>(
     backOptional && v2
@@ -1715,8 +1857,8 @@ export async function finalizeDesign(opts: {
         }
       : undefined;
 
-  const updated = await prisma.design.update({
-    where: { id: design.id },
+  const finalizeUpdate = await prisma.design.updateMany({
+    where: { id: design.id, status: "DRAFT" },
     data: {
       status: "READY",
       previewUrl: previewPublicUrl,
@@ -1739,6 +1881,12 @@ export async function finalizeDesign(opts: {
       ...(mergedMetadata ? { metadata: mergedMetadata as Prisma.InputJsonValue } : {}),
     },
   });
+  if (finalizeUpdate.count !== 1) {
+    const current = await prisma.design.findUnique({ where: { id: design.id } });
+    if (current?.status === "READY") return current;
+    throw new Error("Design is no longer a DRAFT — refresh and try again");
+  }
+  const updated = await prisma.design.findUniqueOrThrow({ where: { id: design.id } });
 
   logger.info(
     {
@@ -1880,22 +2028,15 @@ export async function listTemplatesForKind(
  * ya comprados, con preview) MÁS los borradores VIGENTES (Fase 2 · item 2.4,
  * 2026-10-07 — CTA "Seguir editando" → /estudio/<slug>?designId=).
  *
- * Vigencia del borrador: la misma ventana de retención que purgeIdleCustomerDesigns
- * (idle del cliente logueado: PURGE_IDLE_DESIGN_AFTER_DAYS = 90 d por updatedAt;
- * los anónimos se purgan a 30 d pero no ven esta página — requiere login). Un
- * DRAFT fuera de ventana puede desaparecer en la próxima purga: listarlo sería
- * prometer un "seguir editando" que revienta.
+ * Vigencia del borrador: 30 días sin actividad para cuentas y con avance real. Los
+ * DRAFT vacíos legacy no se listan ni se ofrecen como "seguir editando".
  */
 export async function listCustomerDesigns(customerId: string, opts?: { now?: Date }) {
   const now = opts?.now ?? new Date();
   const draftCutoff = new Date(now.getTime() - PURGE_IDLE_DESIGN_AFTER_DAYS * 24 * 60 * 60 * 1000);
-  return prisma.design.findMany({
+  const rows = await prisma.design.findMany({
     where: {
       customerId,
-      // Con `now` explícito (tests/simulación "a fecha de"): nada creado DESPUÉS
-      // del punto de referencia puede aparecer — sin esto un DRAFT recién creado
-      // cumple el cutoff relativo y rompe la semántica de la ventana (rojo CI
-      // 2026-10-08, service.integration listCustomerDesigns).
       createdAt: { lte: now },
       OR: [
         { status: { in: ["READY", "USED_IN_ORDER"] }, previewUrl: { not: null } },
@@ -1903,26 +2044,34 @@ export async function listCustomerDesigns(customerId: string, opts?: { now?: Dat
       ],
     },
     orderBy: { updatedAt: "desc" },
-    take: 60,
+    take: 100,
     select: {
       id: true,
       previewUrl: true,
-      // 2026-10-13 — la tarjeta de un diseño LISTO exhibe la miniatura
-      // representativa watermark (thumb.webp) cuando existe; sin ella cae al
-      // preview limpio. Los DRAFT siguen con draftPreviewUrl (sin watermark:
-      // solo los ve el dueño).
       previewWatermarkedAt: true,
       previewPagesCount: true,
-      // 2026-10-13 — miniatura del borrador (auto-save del Estudio): la tarjeta
-      // del DRAFT en "Mis diseños" la prefiere sobre el placeholder de ícono.
       draftPreviewUrl: true,
       status: true,
       shareTokenHash: true,
       createdAt: true,
       updatedAt: true,
+      canvasData: true,
+      metadata: true,
+      cartItems: { where: { cart: { deletedAt: null } }, select: { id: true }, take: 1 },
       product: { select: { name: true, slug: true } },
     },
   });
+  return rows
+    .filter(
+      (row) =>
+        row.status !== "DRAFT" ||
+        designHasMeaningfulProgress({ canvasData: row.canvasData, metadata: row.metadata }),
+    )
+    .slice(0, 60)
+    .map(({ canvasData: _canvasData, metadata: _metadata, cartItems, ...row }) => ({
+      ...row,
+      inCart: cartItems.length > 0,
+    }));
 }
 
 /**
@@ -2002,7 +2151,7 @@ export async function archiveCustomerDesign(
 
   await prisma.design.update({
     where: { id: design.id },
-    data: { status: "ARCHIVED", shareTokenHash: null },
+    data: { status: "ARCHIVED", archivedFrom: design.status, shareTokenHash: null },
   });
 
   // #1 (safe slice) — un diseño READY SIN pedido no lo referencia ninguna vista: al archivar borramos

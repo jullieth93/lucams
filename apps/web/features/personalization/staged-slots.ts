@@ -36,11 +36,22 @@ export function stagedSlotPath(designId: string, slotIndex: number): string {
 export async function listStagedSlotPaths(bucket: string, designIds: string[]): Promise<string[]> {
   const out: string[] = [];
   for (const id of designIds) {
-    const { data, error } = await supabaseService.storage
-      .from(bucket)
-      .list(`${id}/${CLIENT_SLOT_PREFIX}`);
-    if (error || !data) continue;
-    for (const f of data) out.push(`${id}/${CLIENT_SLOT_PREFIX}/${f.name}`);
+    // 2026-10-14 — try/catch además del `{ error }`: el cliente de Storage se crea
+    // PEREZOSO y LANZA cuando faltan las env (CI de tests corre con
+    // NEXT_PUBLIC_SUPABASE_URL="" a propósito — "supabaseUrl is required"). El
+    // contrato documentado arriba es "nunca rompe la purga": sin el catch, el throw
+    // abortaba purgeDesignBatch ENTERO (ni bytes ni filas) y, de paso, la poda de
+    // borradores de draft-lifecycle (cuyo caller best-effort se lo tragaba en
+    // silencio — fallo CI 2026-10-13).
+    try {
+      const { data, error } = await supabaseService.storage
+        .from(bucket)
+        .list(`${id}/${CLIENT_SLOT_PREFIX}`);
+      if (error || !data) continue;
+      for (const f of data) out.push(`${id}/${CLIENT_SLOT_PREFIX}/${f.name}`);
+    } catch {
+      continue; // storage inalcanzable/sin credenciales → se devuelve lo recolectado
+    }
   }
   return out;
 }

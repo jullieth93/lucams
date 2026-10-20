@@ -123,84 +123,62 @@ export async function loadCheckoutContext(): Promise<CheckoutContext> {
     throw new CheckoutError("CART_NOT_FOUND", "No hay sesión de carrito activa");
   }
 
-  const cart = await getCartDetail(sessionId);
+  const customer = user
+    ? await prisma.customer.findFirst({
+        where: { supabaseUserId: user.id, deletedAt: null },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          documentType: true,
+          documentNumber: true,
+        },
+      })
+    : null;
+  const customerId = customer?.id ?? null;
+  const cart = await getCartDetail(sessionId, customerId);
   if (!cart) throw new CheckoutError("CART_NOT_FOUND");
   if (cart.items.length === 0) throw new CheckoutError("CART_EMPTY");
 
   const currentState: CheckoutState = state ?? { step: 1, updatedAt: Date.now() };
+  const customerEmail = customer?.email ?? user?.email ?? null;
 
-  // Si hay user logueado, resolver el Customer (id + datos de contacto).
-  let customerId: string | null = cart.customerId ?? null;
-  let customerEmail: string | null = null;
-  if (user) {
-    const customer = await prisma.customer.findFirst({
-      where: cart.customerId
-        ? { id: cart.customerId, deletedAt: null }
-        : { supabaseUserId: user.id, deletedAt: null },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        email: true,
-        phone: true,
-        documentType: true,
-        documentNumber: true,
-      },
-    });
-    if (customer) {
-      customerId = customer.id;
-      customerEmail = customer.email ?? user.email ?? null;
-      const profileFullName = [customer.firstName, customer.lastName].filter(Boolean).join(" ");
-      const profileEmail = customer.email ?? user.email ?? "";
-      // Pre-llenar el contacto desde el perfil (un cliente logueado no debería
-      // retipear sus datos). Si empezó como invitado y se logueó a mitad del
-      // checkout, se completan SOLO los campos vacíos — jamás se pisa lo que
-      // ya digitó (p. ej. un email de contacto distinto al de su cuenta).
-      const prevContact = currentState.contact;
-      currentState.contact = {
-        fullName: prevContact?.fullName?.trim() ? prevContact.fullName : profileFullName,
-        email: prevContact?.email?.trim() ? prevContact.email : profileEmail,
-        phone: prevContact?.phone?.trim() ? prevContact.phone : (customer.phone ?? ""),
-        documentType: prevContact?.documentType ?? customer.documentType ?? undefined,
-        documentNumber: prevContact?.documentNumber ?? customer.documentNumber ?? undefined,
+  if (customer && user) {
+    const profileFullName = [customer.firstName, customer.lastName].filter(Boolean).join(" ");
+    const profileEmail = customer.email ?? user.email ?? "";
+    const prevContact = currentState.contact;
+    currentState.contact = {
+      fullName: prevContact?.fullName?.trim() ? prevContact.fullName : profileFullName,
+      email: prevContact?.email?.trim() ? prevContact.email : profileEmail,
+      phone: prevContact?.phone?.trim() ? prevContact.phone : (customer.phone ?? ""),
+      documentType: prevContact?.documentType ?? customer.documentType ?? undefined,
+      documentNumber: prevContact?.documentNumber ?? customer.documentNumber ?? undefined,
+    };
+
+    if (!currentState.address) {
+      const saved = await prisma.address.findFirst({
+        where: { customerId: customer.id, deletedAt: null },
+        orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
+        select: { structured: true },
+      });
+      const parsed = saved?.structured ? AddressSchema.safeParse(saved.structured) : null;
+      if (parsed?.success) currentState.address = parsed.data;
+    }
+
+    const billing = currentState.billing;
+    if (billing?.wantsInvoice) {
+      currentState.billing = {
+        ...billing,
+        name: billing.name?.trim() ? billing.name : profileFullName || undefined,
+        documentType:
+          billing.documentType ??
+          (customer.documentType && customer.documentType !== "TI"
+            ? customer.documentType
+            : undefined),
+        documentNumber: billing.documentNumber ?? customer.documentNumber ?? undefined,
       };
-
-      // Dirección: si el checkout aún no tiene una elegida, proponer la guardada
-      // predeterminada (o la más reciente si no hay default). Es una PROPUESTA
-      // en memoria (no se escribe en la cookie): el form la muestra prellenada
-      // y el cliente la confirma o la cambia al enviar el paso — nada le
-      // bloquea elegir otra con el select "Usar dirección guardada".
-      if (!currentState.address) {
-        const saved = await prisma.address.findFirst({
-          where: { customerId: customer.id, deletedAt: null },
-          orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
-          select: { structured: true },
-        });
-        // structured viaja en el MISMO formato estructurado del checkout
-        // (AddressSchema); direcciones legacy (form plano, structured null) o
-        // con shape viejo no pre-llenan — el cliente la digita como antes.
-        const parsed = saved?.structured ? AddressSchema.safeParse(saved.structured) : null;
-        if (parsed?.success) currentState.address = parsed.data;
-      }
-
-      // Facturación: si pidió documento de venta y al perfil le sobran datos,
-      // se completan los vacíos (nombre y documento tributarios del COMPRADOR
-      // — también en pedidos regalo, que igual facturan a quien paga).
-      const billing = currentState.billing;
-      if (billing?.wantsInvoice) {
-        currentState.billing = {
-          ...billing,
-          name: billing.name?.trim() ? billing.name : profileFullName || undefined,
-          // BillingData no admite TI (tarjeta de identidad): un perfil con TI
-          // no pre-llena el tipo, el cliente lo elige a mano.
-          documentType:
-            billing.documentType ??
-            (customer.documentType && customer.documentType !== "TI"
-              ? customer.documentType
-              : undefined),
-          documentNumber: billing.documentNumber ?? customer.documentNumber ?? undefined,
-        };
-      }
     }
   }
 
@@ -219,7 +197,7 @@ export async function assertCheckoutAvailability(ctx: CheckoutContext): Promise<
   try {
     await assertStockAvailable(
       prisma,
-      ctx.cart.items.map((it) => ({ variantId: it.variantId, qty: it.qty })),
+      ctx.cart.items.map((it) => ({ variantId: it.variantId, qty: it.inventoryUnits })),
     );
   } catch (err) {
     if (err instanceof InsufficientStockError) {
@@ -381,7 +359,7 @@ export async function quoteShipping(input: {
     }
     return {
       productSlug: it.productSlug,
-      qty: it.qty,
+      qty: it.inventoryUnits,
       weightGrams: dims.weightGrams,
       widthCm: dims.widthCm,
       heightCm: dims.heightCm,
@@ -905,7 +883,7 @@ export async function finalizeCheckout(input: {
     const provider = getPaymentProvider();
     const result = await provider.createCheckout({
       reference: referenceResolution.reference,
-      amountInCents: order.total,
+      amountInCents: referenceResolution.amountInCents,
       currency: "COP",
       customerEmail: state.contact.email,
       redirectUrl: input.redirectUrl,

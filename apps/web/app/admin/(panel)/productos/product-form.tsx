@@ -30,6 +30,7 @@
 import Link from "next/link";
 import { useActionState, useState } from "react";
 import type { createProductAction, ProductActionState, updateProductAction } from "./actions";
+import { slugify } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -1258,16 +1259,6 @@ function Checkbox({
       </span>
     </label>
   );
-}
-
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "") // remove accents
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
 }
 
 /**

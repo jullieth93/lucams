@@ -34,6 +34,7 @@ const { tx, prisma } = vi.hoisted(() => {
       })),
     },
     $executeRaw: vi.fn(async () => 0),
+    $queryRaw: vi.fn(async () => [{ number: "LCM-2026-0001" }]),
   };
   const prisma = {
     $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
@@ -111,7 +112,12 @@ function cartItem(overrides: Record<string, unknown> = {}) {
       name: "Default",
       isActive: true,
       deletedAt: null,
-      product: { isActive: true, deletedAt: null, name: "Imán Nevera" },
+      product: {
+        category: { isActive: true, deletedAt: null },
+        isActive: true,
+        deletedAt: null,
+        name: "Imán Nevera",
+      },
     },
     ...overrides,
   };
@@ -218,7 +224,12 @@ describe("createOrderFromCart — consolidación de líneas idénticas (Paquete 
       name: "Set 12",
       isActive: true,
       deletedAt: null,
-      product: { isActive: true, deletedAt: null, name: "Imán Nevera" },
+      product: {
+        category: { isActive: true, deletedAt: null },
+        isActive: true,
+        deletedAt: null,
+        name: "Imán Nevera",
+      },
     };
     seedCart([
       cartItem({ id: "ci_1", designId: "d1", design: diseno("d1", { color: "rosa" }) }),
@@ -236,7 +247,7 @@ describe("createOrderFromCart — consolidación de líneas idénticas (Paquete 
     expect(createdItems()).toHaveLength(2);
   });
 
-  it("los Designs absorbidos también se marcan USED_IN_ORDER", async () => {
+  it("los Designs absorbidos quedan READY mientras el pago no se confirma", async () => {
     seedCart([
       cartItem({ id: "ci_1", designId: "d1", design: diseno("d1", { slots: [{ assetId: "A" }] }) }),
       cartItem({ id: "ci_2", designId: "d2", design: diseno("d2", { slots: [{ assetId: "A" }] }) }),
@@ -244,8 +255,6 @@ describe("createOrderFromCart — consolidación de líneas idénticas (Paquete 
 
     await createOrderFromCart(INPUT);
 
-    expect(tx.design.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: { in: ["d1", "d2"] } } }),
-    );
+    expect(tx.design.updateMany).not.toHaveBeenCalled();
   });
 });

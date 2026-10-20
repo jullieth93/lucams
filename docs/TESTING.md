@@ -491,6 +491,54 @@ test.describe("Compra Wompi sandbox", () => {
 - **Una sola aserción crítica por test** cuando sea posible (otros chequeos como soft-asserts).
 - **Test data factory** en `tests/e2e/fixtures/` (`data-factory.ts` y compañía) para crear cuentas test, productos test, etc.
 
+### Auditoría responsive (harness 6 perfiles — ADR-154, 2026-10-13)
+
+`tests/e2e/audit-responsive.spec.ts` audita la app completa en **6 perfiles de viewport**:
+los 2 proyectos base (`desktop-chrome` 1280×800, `mobile-chrome` 390×844) más 4 dedicados
+(`mobile-landscape` 844×390, `tablet` 768×1024, `tablet-landscape` 1024×768,
+`desktop-large` 1920×1080). Los 4 proyectos nuevos tienen `testMatch` solo para esta spec,
+así que **CI queda inafectado** (los workflows fijan sus specs explícitas; ningún otro spec
+hereda los proyectos).
+
+- **Matriz:** cliente público (home, /productos, PDP, /carrito, /checkout, login/registro),
+  cliente autenticado (`/mi-cuenta` y subrutas — se salta sin `storageState`) y admin
+  (dashboard, pedidos, productos, clientes, carritos, cupones, contenido, métricas — idem).
+- **Chequeos por pantalla × perfil:** (a) overflow horizontal objetivo
+  (`scrollWidth > clientWidth`) → **critical** (falla el test) con el elemento culpable;
+  (b) tap targets <40px en perfiles táctiles → **medium** (solo se reporta);
+  (c) screenshot full-page por pantalla en `tmp/audit-20261013/<perfil>/`.
+- **Reporte consolidado:** cada worker escribe su parte en `tmp/audit-20261013/parts/` y el
+  `global.teardown` las fusiona en `tmp/audit-20261013/report.json` (evita escrituras
+  concurrentes del mismo archivo).
+- **Comando:** `pnpm --filter web test:audit-responsive` (corre los 6 proyectos). Para las
+  rutas autenticadas: `E2E_ENV=stg E2E_AUTH=1` (mismo `storageState` del `global.setup` que
+  los specs de homologación).
+- **OJO viewport:** los contextos de `fixtures/auth` (`adminPage`/`clientPage`) se crean con
+  `browser.newContext()` manual y NO heredan el viewport del proyecto — la spec lo fija
+  explícito desde `testInfo.project.use.viewport` (precedente: `mobile-admin-audit.spec.ts`).
+
+### Flujos nuevos por cubrir (jornadas de maduración 2026-10)
+
+Sin E2E dedicado todavía (cubiertos por unit/component tests + la auditoría responsive;
+candidatos a spec si alguno se vuelve crítico):
+
+- Preview paginado unificado en `/checkout/gracias`, `/carrito`, `/mi-cuenta/pedidos/[number]`
+  y `/pedido/[token]` (miniatura clicable, pager con `previewPagesCount > 1`, badge «N unidades»).
+- Bottom-sheet de estilo del Estudio en <sm (botón resumen → Sheet → «Listo») y «Listo» del
+  asset picker.
+- Ciclo de vida de borradores: retomador «Continuar donde quedaste» por marcador local (gates
+  de progreso real, vigencia 7 d/30 d y unidades vs `?copies=N`), SIN reuso silencioso al
+  entrar; poda «últimos 3 con progreso»; sección «Borradores» de Mis diseños (unit +
+  integración en `draft-lifecycle.*.test.ts` y `draft-marker.test.ts`).
+- Módulo `/admin/carritos`: bandeja, preview del email, envío manual/bulk y configuración
+  (integración en `cart-recovery-config.integration.test.ts` + unit de `actions.test.ts`).
+- Jornada fases 1-6 (2026-10-17/20): ledger Wompi por intento (referencias UUID,
+  reconciliación contra la API antes de reusar/rotar — `payment-reference`), identidad de
+  sesión en checkout/carrito, concurrencia optimista `clientRev` (`STALE_REVISION`),
+  lettersets multi-set (estilo por set, finalize que exige N láminas), prediseñados con
+  reemplazo explícito, «Listo» único del tab Texto, flag `BILLING_DOCUMENT_ENABLED`
+  (checkbox oculto y schema que no exige los campos).
+
 ---
 
 ## Visual regression

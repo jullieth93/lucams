@@ -175,6 +175,10 @@ function seedState() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks NO resetea implementaciones: re-anclar los defaults de
+  // sesión para que un test "logueado" no contamine al siguiente.
+  vi.mocked(getCurrentUser).mockResolvedValue(null);
+  prisma.customer.findFirst.mockResolvedValue(null);
   cartFixture.customerId = null;
   seedState();
   // Default: referencia resuelta lista con el número base (intento 1).
@@ -184,6 +188,22 @@ beforeEach(() => {
     attempt: 1,
   });
 });
+
+// La identidad del checkout (customerId/customerEmail) viene de la SESIÓN:
+// getCurrentUser → Customer por supabaseUserId. El customerId del cart ya no
+// es fuente (el email-guard LCM-2026-0010 exige conocer el email de la cuenta).
+function mockLoggedInCustomer() {
+  vi.mocked(getCurrentUser).mockResolvedValue({ id: "sub_1", email: "ana@example.co" } as never);
+  prisma.customer.findFirst.mockResolvedValue({
+    id: "cust_1",
+    firstName: "Ana",
+    lastName: "Prueba",
+    email: "ana@example.co",
+    phone: null,
+    documentType: null,
+    documentNumber: null,
+  });
+}
 
 describe("finalizeCheckout — OrderAlreadyPaidError (carrera TOCTOU)", () => {
   it("con txId Wompi: CheckoutError ORDER_ALREADY_PAID con redirect a /checkout/gracias?id=<tx>", async () => {
@@ -201,7 +221,7 @@ describe("finalizeCheckout — OrderAlreadyPaidError (carrera TOCTOU)", () => {
   });
 
   it("sin txId (carrera COD doble-submit): cae a los pedidos de la cuenta si está logueado", async () => {
-    cartFixture.customerId = "cust_1";
+    mockLoggedInCustomer();
     createOrderFromCart.mockRejectedValue(new OrderAlreadyPaidError("ord_1", "LCM-2026-0001"));
     prisma.order.findFirst.mockResolvedValue({ status: "FULFILLING", wompiTransactionId: null });
 
@@ -322,7 +342,7 @@ describe("finalizeCheckout — persiste el documento DIAN en el perfil (T7)", ()
   }
 
   it("customer logueado con documento en el contacto: lo guarda SOLO si el perfil está vacío", async () => {
-    cartFixture.customerId = "cust_1";
+    mockLoggedInCustomer();
     checkoutState.current!.contact = {
       fullName: "Ana Prueba",
       email: "ana@example.co",
@@ -343,7 +363,7 @@ describe("finalizeCheckout — persiste el documento DIAN en el perfil (T7)", ()
   });
 
   it("sin documento en el contacto: cae al de facturación (wantsInvoice)", async () => {
-    cartFixture.customerId = "cust_1";
+    mockLoggedInCustomer();
     checkoutState.current!.billing = {
       wantsInvoice: true,
       documentType: "NIT",

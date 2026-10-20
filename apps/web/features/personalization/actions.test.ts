@@ -462,6 +462,13 @@ describe("F-30 · errores inesperados no devuelven err.message crudo al anónimo
     expect(JSON.stringify(result)).not.toContain("DRAFT");
   });
 
+  it("saveCanvas: una revisión vieja devuelve STALE_REVISION con una acción clara", async () => {
+    state.saveCanvasError = new Error("STALE_REVISION");
+    const result = await saveCanvasAction({ designId: "design_1", canvasData: VALID_CANVAS_V1 });
+    expect(result).toMatchObject({ ok: false, code: "STALE_REVISION" });
+    expect(JSON.stringify(result)).toContain("otra pestaña");
+  });
+
   it("finalize: INCOMPLETE_SLOTS conserva su código y su copy de dominio", async () => {
     state.finalizeError = new Error("INCOMPLETE_SLOTS: slots vacíos 2");
     const result = await finalizeDesignAction(makeFinalizeForm());

@@ -39,6 +39,7 @@ import type {
   SlotState,
   StudioAsset,
   StudioTemplate,
+  TextOverride,
 } from "../types";
 
 const UNDO_LIMIT = 20;
@@ -86,7 +87,7 @@ export type StudioStoreState = {
   // Plantillas disponibles para el kind del producto
   templates: StudioTemplate[];
 
-  // Auto-save tracking
+  booted: boolean;
   isDirty: boolean;
   autoSaveStatus: AutoSaveStatus;
 
@@ -99,7 +100,7 @@ export type StudioStoreState = {
 
   // Actions
   init: (input: {
-    designId: string;
+    designId: string | null;
     productSlug: string;
     canvasData: CanvasDataV2;
     templates: StudioTemplate[];
@@ -114,6 +115,17 @@ export type StudioStoreState = {
   setCanvasData: (data: CanvasDataV2, opts?: { skipUndo?: boolean }) => void;
   assignAssetToSlot: (slotIndex: number, asset: StudioAsset) => void;
   clearSlot: (slotIndex: number) => void;
+  /**
+   * 2026-10-19 — «Borrar el diseño»: clearSlot EN LOTE sobre todos los slots del
+   * canvas actual (foto, encuadre, filtro, overrides de texto y foto de perfil).
+   * NO toca plantilla/variante (unitTemplate, photoSlots, sizeCm, magnet,
+   * borderColor, calendarFont se conservan) ni la bandeja «Mis fotos» (los assets
+   * siguen disponibles para reasignar, igual que clearSlot). También limpia los
+   * valores pack-level (packTextValues): sin ellos, un pack agregado después del
+   * borrado "reviviría" los textos viejos por herencia. Va por setCanvasData →
+   * undo + auto-save. Canvas ya vacío → no-op (sin ruido de undo).
+   */
+  clearAllSlots: () => void;
   swapSlots: (a: number, b: number) => void;
   autoFillSlots: () => void;
   /** M.3.b.B.3 — Aplicar/quitar filter preset a un slot específico. */
@@ -229,6 +241,7 @@ export type StudioStoreState = {
     entry: { a: StudioAsset; b?: StudioAsset },
   ) => void;
   removeAsset: (assetId: string) => void;
+  setDesignId: (designId: string) => void;
   setAutoSaveStatus: (status: AutoSaveStatus) => void;
   setIsFinalizing: (v: boolean) => void;
   markClean: () => void;
@@ -250,6 +263,7 @@ const initialState = {
   assets: [],
   predesignedAssetsByGalleryId: {},
   templates: [],
+  booted: false,
   isDirty: false,
   autoSaveStatus: { kind: "idle" } as AutoSaveStatus,
   isFinalizing: false,
@@ -280,6 +294,7 @@ export function createStudioStore() {
         assets: extractAssetsFromCanvas(input.canvasData),
         undoStack: [],
         redoStack: [],
+        booted: true,
         isDirty: input.startDirty === true,
       });
     },
@@ -358,6 +373,41 @@ export function createStudioStore() {
         ),
       };
       get().setCanvasData(next);
+    },
+
+    clearAllSlots: () => {
+      const { canvasData, packTextValues } = get();
+      if (!canvasData) return;
+      // No-op cuando no hay NADA que borrar: evita ruido en el undo stack y un
+      // auto-save innecesario (mismo criterio que swapSlots con índices malos).
+      const hasContent =
+        canvasData.slots.some(
+          (s) =>
+            s.assetId ||
+            s.assetUrl ||
+            s.profileAssetId ||
+            (s.textOverrides && Object.keys(s.textOverrides).length > 0) ||
+            s.filter ||
+            s.photoTransform,
+        ) || Object.keys(packTextValues).length > 0;
+      if (!hasContent) return;
+      // Patrón clearSlot en lote (2026-10-19): cada slot vuelve a su estado
+      // "vacío" puro. Plantilla, variantes (photoSlots/sizeCm/magnet), marco y
+      // letra del calendario NO se tocan — la acción borra el CONTENIDO, no la
+      // configuración del producto.
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        slots: canvasData.slots.map((s) => ({
+          slotIndex: s.slotIndex,
+          assetId: null,
+          assetUrl: null,
+        })),
+      };
+      get().setCanvasData(next);
+      // Los valores pack-level también se limpian: si no, un pack agregado
+      // después del borrado heredaría los textos viejos (herencia de
+      // setPhotoSlotsPerUnit/setUnitCount, 2026-10-19).
+      set({ packTextValues: {}, selectedSlotIndex: null });
     },
 
     setSlotFilter: (slotIndex, filter) => {
@@ -602,7 +652,7 @@ export function createStudioStore() {
     },
 
     setPhotoSlotsPerUnit: (n, opts) => {
-      const { canvasData, selectedSlotIndex } = get();
+      const { canvasData, selectedSlotIndex, packTextValues } = get();
       if (!canvasData) return;
       const current = canvasData.photoSlots ?? Math.ceil(canvasData.slotCount / opts.facesPerUnit);
       const target = Math.min(opts.max, Math.max(1, Math.trunc(n)));
@@ -617,14 +667,24 @@ export function createStudioStore() {
       const newUnitSlots = isComposition ? target * opts.facesPerUnit : opts.facesPerUnit;
       const newSlotCount = newUnitSlots * unitCount;
       // Preservar fotos por ÍNDICE hasta donde quepan; los slots nuevos quedan
-      // vacíos (los assets siguen en la sidebar para reasignar). Los slots que
-      // se caen sueltan su foto pero no la borran del listado de subidas.
+      // sin foto (los assets siguen en la sidebar para reasignar) PERO heredan
+      // los overrides de texto PACK-LEVEL vigentes (2026-10-19 — bug: al agregar
+      // un pack, "Tu mensaje"/datos IG ya diligenciados masivamente quedaban
+      // vacíos en los slots nuevos y el campo masivo no se podía re-aplicar
+      // porque el texto no cambiaba). Los slots que se caen sueltan su foto
+      // pero no la borran del listado de subidas.
+      const packOverrides = packTextOverridesForNewSlot(packTextValues);
       const oldSlots = canvasData.slots;
       const slots: SlotState[] = Array.from({ length: newSlotCount }, (_, idx) => {
         const prev = oldSlots[idx];
         return prev
           ? { ...prev, slotIndex: idx }
-          : { slotIndex: idx, assetId: null, assetUrl: null };
+          : {
+              slotIndex: idx,
+              assetId: null,
+              assetUrl: null,
+              ...(packOverrides ? { textOverrides: { ...packOverrides } } : {}),
+            };
       });
       const unitTemplate = canvasData.unitTemplate;
       const forcedCols =
@@ -664,7 +724,7 @@ export function createStudioStore() {
     },
 
     setUnitCount: (n, opts) => {
-      const { canvasData, selectedSlotIndex } = get();
+      const { canvasData, selectedSlotIndex, packTextValues } = get();
       if (!canvasData) return;
       const unitSlots = canvasData.unitSlots ?? opts.facesPerUnit;
       // Solo productos de composición (unitSlots > caras — tiras). Con imán
@@ -675,14 +735,21 @@ export function createStudioStore() {
       if (!Number.isFinite(target) || target === current) return;
       const newSlotCount = unitSlots * target;
       // Misma preservación por índice que setPhotoSlotsPerUnit: las unidades
-      // nuevas nacen vacías; al reducir, las últimas se caen (sus fotos siguen
-      // en la sidebar para reasignar).
+      // nuevas nacen sin foto; al reducir, las últimas se caen (sus fotos siguen
+      // en la sidebar para reasignar). Los slots nuevos heredan los overrides de
+      // texto PACK-LEVEL vigentes (2026-10-19 — ver setPhotoSlotsPerUnit).
+      const packOverrides = packTextOverridesForNewSlot(packTextValues);
       const oldSlots = canvasData.slots;
       const slots: SlotState[] = Array.from({ length: newSlotCount }, (_, idx) => {
         const prev = oldSlots[idx];
         return prev
           ? { ...prev, slotIndex: idx }
-          : { slotIndex: idx, assetId: null, assetUrl: null };
+          : {
+              slotIndex: idx,
+              assetId: null,
+              assetUrl: null,
+              ...(packOverrides ? { textOverrides: { ...packOverrides } } : {}),
+            };
       });
       const unitTemplate = canvasData.unitTemplate;
       const forcedCols =
@@ -804,6 +871,7 @@ export function createStudioStore() {
       }
     },
 
+    setDesignId: (designId) => set({ designId }),
     setAutoSaveStatus: (status) => set({ autoSaveStatus: status }),
     setIsFinalizing: (v) => set({ isFinalizing: v }),
     markClean: () => set({ isDirty: false }),
@@ -850,6 +918,20 @@ export type StudioStore = ReturnType<typeof createStudioStore>;
 // ──────────────────────────────────────────────────────────────────
 //  Helpers
 // ──────────────────────────────────────────────────────────────────
+
+/**
+ * Overrides de texto con que nace un slot NUEVO al expandir el pack/unidades
+ * (2026-10-19): los valores PACK-LEVEL vigentes (packTextValues, lo último
+ * aplicado masivamente por capa) como `{ text }` por capa. undefined cuando no
+ * hay ninguno — el slot nace sin overrides, como siempre.
+ */
+function packTextOverridesForNewSlot(
+  packTextValues: Record<string, string>,
+): Record<string, TextOverride> | undefined {
+  const entries = Object.entries(packTextValues).filter(([, text]) => text.trim() !== "");
+  if (entries.length === 0) return undefined;
+  return Object.fromEntries(entries.map(([layerId, text]) => [layerId, { text }]));
+}
 
 /**
  * Recalcula gridLayout cuando la plantilla cambia y el stage difiere.

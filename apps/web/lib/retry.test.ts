@@ -24,6 +24,13 @@ describe("isRetryable", () => {
     expect(isRetryable(withStatus(400))).toBe(false);
     expect(isRetryable(withStatus(404))).toBe(false);
   });
+  it("errores Storage no-Error: 5xx/429 y cortes de conexión → reintentables", () => {
+    expect(isRetryable({ message: "row-level security", statusCode: "403" })).toBe(false);
+    expect(isRetryable({ message: "gateway unavailable", statusCode: "503" })).toBe(true);
+    expect(isRetryable({ message: "too many requests", statusCode: 429 })).toBe(true);
+    expect(isRetryable({ message: "connect EMAXCONN db.internal:5432" })).toBe(true);
+  });
+
   it("errores desconocidos → no reintentable (conservador)", () => {
     expect(isRetryable(new Error("qué será"))).toBe(false);
     expect(isRetryable("string")).toBe(false);

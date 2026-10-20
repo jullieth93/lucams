@@ -29,6 +29,7 @@ import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
 import { notify } from "@/features/notifications/service";
 import { renderQuoteAdminNotificationEmail } from "@/features/emails/registry";
+import { formatCOP } from "@/lib/format";
 
 /** Envia el aviso de cotización nueva al admin. Best-effort: nunca lanza. */
 export async function sendQuoteAdminNotification(quoteId: string): Promise<void> {
@@ -89,7 +90,7 @@ export async function sendQuoteAdminNotification(quoteId: string): Promise<void>
       type: "QUOTE",
       severity: "info",
       title: `Nueva cotización ${quote.number} — ${quote.customerName} (${quote.city})`,
-      detail: `Total: $${Math.round(quote.total / 100).toLocaleString("es-CO")} · ${quote.items.length} item(s) · WhatsApp: ${quote.customerWhatsapp}`,
+      detail: `Total: ${formatCOP(quote.total)} · ${quote.items.length} item(s) · WhatsApp: ${quote.customerWhatsapp}`,
       actionUrl: `/admin/cotizaciones/${quote.id}`,
       actionLabel: "Ver cotización",
       dedupKey: `quote:${quote.id}`,

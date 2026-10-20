@@ -1,18 +1,25 @@
 // @vitest-environment jsdom
 
 /*
- * Test del StudioTextEditorForm — Lucy 2026-09-08: el botón «Aplicar» no mostraba
- * NINGÚN feedback de procesamiento (el commit es casi instantáneo pero el usuario
- * no sabía si había funcionado). Estos tests blindan el estado de procesamiento:
- * spinner + disabled desde el click hasta que el apply completa, y que el override
- * aplicado sigue siendo el correcto (solo campos que difieren del base).
+ * Test del StudioTextEditorForm — 2026-10-19 (decisión del owner): el formulario
+ * ya NO tiene botón «Aplicar» propio; el commit de la edición lo dispara el
+ * «Listo» del footer del modal a través del `applyRef` que el form REGISTRA.
+ * Estos tests blindan el nuevo contrato:
+ *   1. No existe botón «Aplicar» en el formulario.
+ *   2. applyRef queda registrado al montar (y se desregistra al desmontar).
+ *   3. Invocarlo aplica el override SÍNCRONO con la semántica de siempre:
+ *      solo campos que difieren del base, null = limpiar, undefined = no-op.
+ *   4. El «Listo» del modal (StudioTextEditorModal) aplica Y cierra.
+ *
+ * (Historia: los tests del spinner de «Aplicar» — Lucy 2026-09-08 — se retiraron
+ * con el botón: el commit ahora es síncrono y el modal cierra de inmediato.)
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { StudioTextEditorForm } from "./studio-text-editor-modal";
-import type { TextLayer } from "./types";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { StudioTextEditorForm, StudioTextEditorModal } from "./studio-text-editor-modal";
+import type { TextLayer, TextOverride } from "./types";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { ReactElement } from "react";
 
@@ -43,168 +50,133 @@ const LAYER: TextLayer = {
   editable: true,
 } as TextLayer;
 
+type ApplyRef = { current: (() => void) | null };
+
+function renderForm(opts: {
+  currentOverride?: TextOverride;
+  onApply?: (o: TextOverride | null | undefined) => void;
+  cardColor?: string;
+  cardDefaultFill?: string;
+}) {
+  const applyRef: ApplyRef = { current: null };
+  const onApply = opts.onApply ?? vi.fn();
+  const utils = renderStudio(
+    <StudioTextEditorForm
+      layer={LAYER}
+      currentOverride={opts.currentOverride}
+      onApply={onApply}
+      applyRef={applyRef}
+      cardColor={opts.cardColor ?? null}
+      cardDefaultFill={opts.cardDefaultFill}
+    />,
+  );
+  return { applyRef, onApply, ...utils };
+}
+
 afterEach(cleanup);
 
-describe("StudioTextEditorForm — «Aplicar» arriba (owner 2026-10-05)", () => {
-  it("el botón «Aplicar» va ANTES del input en el DOM (visible sin scroll) y «Restablecer» queda abajo", () => {
-    renderStudio(
-      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />,
-    );
-    const apply = screen.getByRole("button", { name: "Aplicar" });
-    const input = screen.getByRole("textbox");
-    const reset = screen.getByRole("button", { name: /volver al original/i });
-    // DOCUMENT_POSITION_FOLLOWING: apply precede al input y al reset.
-    expect(apply.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(apply.compareDocumentPosition(reset) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+describe("StudioTextEditorForm — un solo «Listo» (owner 2026-10-19)", () => {
+  it("ya NO hay botón «Aplicar» dentro del formulario", () => {
+    renderForm({});
+    expect(screen.queryByRole("button", { name: "Aplicar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /aplicando/i })).not.toBeInTheDocument();
   });
-});
 
-describe("StudioTextEditorForm — estado de procesamiento de «Aplicar» (Lucy 2026-09-08)", () => {
-  it("al hacer click en Aplicar: spinner + disabled, y luego aplica el override", async () => {
+  it("applyRef queda registrado al montar y se desregistra al desmontar", () => {
+    const { applyRef, unmount } = renderForm({});
+    expect(applyRef.current).toBeTypeOf("function");
+    unmount();
+    expect(applyRef.current).toBeNull();
+  });
+
+  it("el commit vía applyRef es SÍNCRONO y aplica el override (solo campos que difieren)", () => {
     const onApply = vi.fn();
-    renderStudio(
-      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />,
-    );
-
+    const { applyRef } = renderForm({ onApply });
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Te amo mamá" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
-
-    // Estado de procesamiento visible de inmediato.
-    const busyBtn = screen.getByRole("button", { name: /aplicando/i });
-    expect(busyBtn).toBeDisabled();
-    expect(busyBtn).toHaveAttribute("aria-busy", "true");
-
-    // El commit va un frame después (el spinner pinta primero).
-    await waitFor(() => expect(onApply).toHaveBeenCalledWith({ text: "Te amo mamá" }));
-
-    // Al completar, el botón vuelve a su estado normal.
-    await waitFor(() => expect(screen.getByRole("button", { name: "Aplicar" })).toBeEnabled(), {
-      timeout: 1500,
-    });
+    applyRef.current!();
+    expect(onApply).toHaveBeenCalledWith({ text: "Te amo mamá" });
   });
 
-  it("sin cambios es NO-OP (undefined): NO limpia el override — también con feedback", async () => {
-    // QA 1.2 — antes «Aplicar» sin cambios enviaba null → BORRABA el override del
-    // slot. Ahora undefined = no-op (el override vigente se conserva).
+  it("sin cambios es NO-OP (undefined): NO limpia el override vigente", () => {
+    // QA 1.2 — antes «Aplicar» sin cambios enviaba null → BORRABA el override
+    // del slot. undefined = no-op (el override vigente se conserva).
     const onApply = vi.fn();
-    renderStudio(
-      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
-    expect(screen.getByRole("button", { name: /aplicando/i })).toBeDisabled();
-    await waitFor(() => expect(onApply).toHaveBeenCalledWith(undefined));
+    const { applyRef } = renderForm({ onApply });
+    applyRef.current!();
+    expect(onApply).toHaveBeenCalledWith(undefined);
     expect(onApply).not.toHaveBeenCalledWith(null);
+  });
+
+  it("sin cambios sobre un override vigente (tras «aplicar a todas») es NO-OP: el texto se conserva", () => {
+    const onApply = vi.fn();
+    const { applyRef } = renderForm({ onApply, currentOverride: { text: "Hola" } });
+    applyRef.current!();
+    expect(onApply).toHaveBeenCalledWith(undefined);
+    expect(onApply).not.toHaveBeenCalledWith(null);
+  });
+
+  it("editar el texto aplica el nuevo texto", () => {
+    const onApply = vi.fn();
+    const { applyRef } = renderForm({ onApply, currentOverride: { text: "Hola" } });
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Chao" } });
+    applyRef.current!();
+    expect(onApply).toHaveBeenCalledWith({ text: "Chao" });
+  });
+
+  it("cambiar SOLO el estilo conserva el texto vigente (el store reemplaza el override entero)", () => {
+    const onApply = vi.fn();
+    const { applyRef } = renderForm({ onApply, currentOverride: { text: "Hola" } });
+    fireEvent.click(screen.getByRole("button", { name: "Blanco" }));
+    applyRef.current!();
+    expect(onApply).toHaveBeenCalledWith({ text: "Hola", fill: "#FFFFFF" });
   });
 });
 
 describe("StudioTextEditorForm — placeholder gris, nunca valor precargado (Ola 25, 2026-09-09)", () => {
   it("el input arranca VACÍO y muestra el default de la plantilla como placeholder", () => {
-    renderStudio(
-      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />,
-    );
+    renderForm({});
     const input = screen.getByRole("textbox");
     // Regla del dueño: la tarjeta nace sin texto — el default NO es el valor.
     expect(input).toHaveValue("");
     expect(input).toHaveAttribute("placeholder", "Escribe tu mensaje");
   });
 
-  it("aplicar SIN escribir nada (sin override previo) → no-op (la tarjeta queda sin texto, nada se imprime)", async () => {
+  it("aplicar SIN escribir nada (sin override previo) → no-op (la tarjeta queda sin texto, nada se imprime)", () => {
     const onApply = vi.fn();
-    renderStudio(
-      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    const { applyRef } = renderForm({ onApply });
+    applyRef.current!();
     // Sin override previo y sin texto escrito no hay nada que mutar: no-op.
-    await waitFor(() => expect(onApply).toHaveBeenCalledWith(undefined));
+    expect(onApply).toHaveBeenCalledWith(undefined);
   });
 
-  it("escribir EXACTAMENTE el default SÍ guarda override.text (el cliente lo eligió)", async () => {
+  it("escribir EXACTAMENTE el default SÍ guarda override.text (el cliente lo eligió)", () => {
     // Antes el default precargado hacía que escribirlo fuera un no-op (text ===
     // layer.text → sin override → no se imprimía). Con el input vacío de entrada,
     // tipearlo es una elección explícita → viaja como texto del cliente.
     const onApply = vi.fn();
-    renderStudio(
-      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={onApply} />,
-    );
+    const { applyRef } = renderForm({ onApply });
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Escribe tu mensaje" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
-    await waitFor(() => expect(onApply).toHaveBeenCalledWith({ text: "Escribe tu mensaje" }));
+    applyRef.current!();
+    expect(onApply).toHaveBeenCalledWith({ text: "Escribe tu mensaje" });
   });
 
   it("con texto del cliente previo, el input SÍ arranca con ese texto (re-edición)", () => {
-    renderStudio(
-      <StudioTextEditorForm
-        layer={LAYER}
-        currentOverride={{ text: "Mi viaje" }}
-        onApply={vi.fn()}
-      />,
-    );
+    renderForm({ currentOverride: { text: "Mi viaje" } });
     expect(screen.getByRole("textbox")).toHaveValue("Mi viaje");
   });
 
-  it("borrar el texto que tenía y aplicar → null (vacío = sin texto en la tarjeta)", async () => {
+  it("borrar el texto que tenía y aplicar → null (vacío = sin texto en la tarjeta)", () => {
     const onApply = vi.fn();
-    renderStudio(
-      <StudioTextEditorForm
-        layer={LAYER}
-        currentOverride={{ text: "Mi viaje" }}
-        onApply={onApply}
-      />,
-    );
+    const { applyRef } = renderForm({ onApply, currentOverride: { text: "Mi viaje" } });
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
-    await waitFor(() => expect(onApply).toHaveBeenCalledWith(null));
+    applyRef.current!();
+    expect(onApply).toHaveBeenCalledWith(null);
   });
 
   it("«Volver al original» deja el input vacío (el default vuelve como placeholder gris)", () => {
-    renderStudio(
-      <StudioTextEditorForm
-        layer={LAYER}
-        currentOverride={{ text: "Mi viaje" }}
-        onApply={vi.fn()}
-      />,
-    );
+    renderForm({ currentOverride: { text: "Mi viaje" } });
     fireEvent.click(screen.getByRole("button", { name: /volver al original/i }));
     expect(screen.getByRole("textbox")).toHaveValue("");
-  });
-});
-
-describe("StudioTextEditorForm — QA 1.2: «Aplicar» tras «aplicar a todas» no borra nada (2026-10-07)", () => {
-  // Bug de QA en STG (Polaroid Clásica/Instagram): con el texto masivo aplicado,
-  // abrir el editor de UNA foto y dar «Aplicar» sin tocar nada BORRABA el
-  // override de ese slot (el texto desaparecía y el campo masivo "saltaba").
-  it("«Aplicar» sin cambios sobre un override vigente es NO-OP: el texto se conserva", async () => {
-    const onApply = vi.fn();
-    renderStudio(
-      <StudioTextEditorForm layer={LAYER} currentOverride={{ text: "Hola" }} onApply={onApply} />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
-    await waitFor(() => expect(onApply).toHaveBeenCalledWith(undefined));
-    expect(onApply).not.toHaveBeenCalledWith(null);
-  });
-
-  it("editar el texto de UNA unidad aplica el nuevo texto a la primera", async () => {
-    const onApply = vi.fn();
-    renderStudio(
-      <StudioTextEditorForm layer={LAYER} currentOverride={{ text: "Hola" }} onApply={onApply} />,
-    );
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Chao" } });
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
-    await waitFor(() => expect(onApply).toHaveBeenCalledWith({ text: "Chao" }));
-  });
-
-  it("cambiar SOLO el estilo conserva el texto vigente (el store reemplaza el override entero)", async () => {
-    // Segundo filo del bug: el override viejo solo llevaba los campos que
-    // CAMBIARON; con un override { text } vigente, tocar la paleta y aplicar
-    // reemplazaba el override por { fill } → el texto se perdía.
-    const onApply = vi.fn();
-    renderStudio(
-      <StudioTextEditorForm layer={LAYER} currentOverride={{ text: "Hola" }} onApply={onApply} />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Blanco" }));
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
-    await waitFor(() => expect(onApply).toHaveBeenCalledWith({ text: "Hola", fill: "#FFFFFF" }));
   });
 });
 
@@ -216,14 +188,7 @@ describe("StudioTextEditorForm — contraste texto/tarjeta en el preview (Ola 28
   // (2026-10-12 — antes cambiaba el fondo a la cuadrícula de "transparencia";
   // eliminada con la bandeja checkerboard del lienzo).
   it("texto blanco sobre tarjeta blanca → fondo tarjeta + delineado de contraste + aviso visible", () => {
-    renderStudio(
-      <StudioTextEditorForm
-        layer={LAYER}
-        currentOverride={undefined}
-        onApply={vi.fn()}
-        cardColor="#FFFFFF"
-      />,
-    );
+    renderForm({ cardColor: "#FFFFFF" });
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Hola!" } });
     fireEvent.click(screen.getByRole("button", { name: "Blanco" }));
 
@@ -236,14 +201,7 @@ describe("StudioTextEditorForm — contraste texto/tarjeta en el preview (Ola 28
   });
 
   it("texto oscuro sobre tarjeta blanca → fondo tarjeta plano, SIN aviso", () => {
-    renderStudio(
-      <StudioTextEditorForm
-        layer={LAYER}
-        currentOverride={undefined}
-        onApply={vi.fn()}
-        cardColor="#FFFFFF"
-      />,
-    );
+    renderForm({ cardColor: "#FFFFFF" });
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Hola!" } });
 
     const preview = screen.getByText("Hola!");
@@ -255,14 +213,7 @@ describe("StudioTextEditorForm — contraste texto/tarjeta en el preview (Ola 28
   });
 
   it("texto negro sobre tarjeta NEGRA → también avisa (el espejo del caso del owner)", () => {
-    renderStudio(
-      <StudioTextEditorForm
-        layer={LAYER}
-        currentOverride={{ text: "Hola!" }}
-        onApply={vi.fn()}
-        cardColor="#221E25"
-      />,
-    );
+    renderForm({ currentOverride: { text: "Hola!" }, cardColor: "#221E25" });
     // fill default #262626 sobre #221E25: ratio ≈ 1.0 → bajo contraste → halo claro.
     const preview = screen.getByText("Hola!");
     expect(preview.style.backgroundImage).toBe("none");
@@ -272,9 +223,7 @@ describe("StudioTextEditorForm — contraste texto/tarjeta en el preview (Ola 28
   });
 
   it("sin cardColor (superficie sin tarjeta de color) → crema de siempre, sin aviso", () => {
-    renderStudio(
-      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />,
-    );
+    renderForm({});
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Hola!" } });
     fireEvent.click(screen.getByRole("button", { name: "Blanco" }));
 
@@ -290,17 +239,13 @@ describe("StudioTextEditorForm — color inicial = default del lienzo sobre la t
   // texto". cardDefaultFill (lo calcula el host con la regla del lienzo) fija la
   // base: el form arranca en blanco sobre la tarjeta rosada y, si el cliente no
   // toca la paleta, NO se guarda override de color (el lienzo sigue con su default).
-  it("tarjeta rosada + default blanco del lienzo → el preview arranca blanco sobre rosado y Aplicar no guarda fill", async () => {
+  it("tarjeta rosada + default blanco del lienzo → el preview arranca blanco sobre rosado y aplicar no guarda fill", () => {
     const onApply = vi.fn();
-    renderStudio(
-      <StudioTextEditorForm
-        layer={LAYER}
-        currentOverride={undefined}
-        onApply={onApply}
-        cardColor="#E85B9F"
-        cardDefaultFill="#FFFFFF"
-      />,
-    );
+    const { applyRef } = renderForm({
+      onApply,
+      cardColor: "#E85B9F",
+      cardDefaultFill: "#FFFFFF",
+    });
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Hola!" } });
 
     const preview = screen.getByText("Hola!");
@@ -309,17 +254,53 @@ describe("StudioTextEditorForm — color inicial = default del lienzo sobre la t
     // Blanco sobre rosado SÍ se ve (ratio ≈ 3.3) → sin aviso de bajo contraste.
     expect(screen.queryByRole("note")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Aplicar" }));
+    applyRef.current!();
     // Solo el texto viaja: el fill quedó igual a la base → no se guarda override.
-    await waitFor(() => expect(onApply).toHaveBeenCalledWith({ text: "Hola!" }));
+    expect(onApply).toHaveBeenCalledWith({ text: "Hola!" });
   });
 
   it("sin cardDefaultFill (superficie vieja) → la base sigue siendo el fill de la plantilla", () => {
-    renderStudio(
-      <StudioTextEditorForm layer={LAYER} currentOverride={undefined} onApply={vi.fn()} />,
-    );
+    renderForm({});
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "Hola!" } });
     // LAYER no declara fill → base #262626 (comportamiento histórico intacto).
     expect(screen.getByText("Hola!").style.color).toBe("rgb(38, 38, 38)");
+  });
+});
+
+describe("StudioTextEditorModal — el «Listo» del footer APLICA y CIERRA (2026-10-19)", () => {
+  function renderModal(opts: { currentOverride?: TextOverride } = {}) {
+    const onApply = vi.fn();
+    const onClose = vi.fn();
+    renderStudio(
+      <StudioTextEditorModal
+        isOpen
+        layer={LAYER}
+        currentOverride={opts.currentOverride}
+        onClose={onClose}
+        onApply={onApply}
+      />,
+    );
+    return { onApply, onClose };
+  }
+
+  it("«Listo» persiste el override editado (como el viejo «Aplicar») y cierra el modal", () => {
+    const { onApply, onClose } = renderModal();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Feliz día" } });
+    fireEvent.click(screen.getByRole("button", { name: "Listo" }));
+    expect(onApply).toHaveBeenCalledWith({ text: "Feliz día" });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("«Listo» sin cambios es no-op de datos (undefined) pero igual cierra", () => {
+    const { onApply, onClose } = renderModal({ currentOverride: { text: "Hola" } });
+    fireEvent.click(screen.getByRole("button", { name: "Listo" }));
+    expect(onApply).toHaveBeenCalledWith(undefined);
+    expect(onApply).not.toHaveBeenCalledWith(null);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("la bajada del modal ya no promete un «Aplicar» inexistente", () => {
+    renderModal();
+    expect(screen.getByText("Los cambios se guardan con «Listo»")).toBeInTheDocument();
   });
 });

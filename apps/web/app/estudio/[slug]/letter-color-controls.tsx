@@ -6,6 +6,7 @@
  * Presentacionales puros; el estado vive en useLetterColors.
  */
 
+import { X } from "lucide-react";
 import { NAME_TILE_THEMES, LETTER_SWATCHES, LETTER_SWATCH_LABELS } from "./letter-tile";
 import { CustomColorPicker } from "@/components/color-picker";
 import { useStudioTexts } from "./studio-texts-provider";
@@ -84,12 +85,16 @@ export function SwatchRow({
   letter,
   currentColor,
   onPick,
+  onClose,
 }: {
   letter: string;
   /** Color actual de la ficha seleccionada (si es un hex personalizado —no está en
    *  la paleta— se muestra en el botón del picker libre). */
   currentColor?: string;
   onPick: (color: string) => void;
+  /** 2026-10-19 — el editor de sets la muestra como barra sticky junto a la
+   *  grilla: la X suelta la ficha seleccionada (cierra la paleta). */
+  onClose?: () => void;
 }) {
   const texts = useStudioTexts();
   // {letra} se interpola conservando el <span> display de la letra (roadmap B1).
@@ -103,7 +108,17 @@ export function SwatchRow({
       ? currentColor
       : null;
   return (
-    <div className="border-brand-purple/15 mt-4 rounded-xl border bg-white p-3">
+    <div className="border-brand-purple/15 relative mt-4 rounded-xl border bg-white p-3">
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={texts.comun.cerrar}
+          className="text-brand-muted hover:bg-brand-purple/5 hover:text-brand-purple-dark focus-visible:ring-brand-turquoise absolute top-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
+        >
+          <X className="h-4 w-4" aria-hidden />
+        </button>
+      )}
       <p className="text-brand-purple-dark mb-2 text-center text-xs font-semibold">
         {titleParts ? (
           <>

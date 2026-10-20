@@ -165,6 +165,15 @@ describe("sameLineContent", () => {
       sameLineContent({ variantId: "v1", designId: "d1" }, { variantId: "v1", designId: "d2" }),
     ).toBe(false);
   });
+
+  it("mismo contenido pero snapshots de precio distintos → NO consolida", () => {
+    expect(
+      sameLineContent(
+        { variantId: "v1", designId: null, unitPrice: 10_000 },
+        { variantId: "v1", designId: null, unitPrice: 12_000 },
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("consolidateIdenticalLines", () => {

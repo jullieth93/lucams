@@ -44,7 +44,7 @@ describe("buildDailySummaryEmail", () => {
       NOW,
     );
     expect(subject).toContain("3 pedido");
-    expect(subject).toContain("$165.000"); // 16.500.000 centavos → $165.000
+    expect(subject).toContain("$\u00a0165.000"); // formatCOP: Intl es-CO usa NBSP
   });
 
   it("lista SOLO las filas de atención que aplican, con la acción", () => {
@@ -112,11 +112,11 @@ describe("buildDailySummaryEmail", () => {
       { ...base, revenueLast24hCop: 5000000, codToCollectCop: 9000000 },
       NOW,
     );
-    // Ingresos = solo lo cobrado ($50.000), NO incluye el COD por cobrar ($90.000).
-    expect(html).toContain("$50.000");
+    // Ingresos = solo lo cobrado, NO incluye el COD por cobrar (formatCOP usa NBSP: $\u00a0).
+    expect(html).toContain("$\u00a050.000");
     expect(html).toContain("por cobrar");
-    expect(html).toContain("$90.000");
-    expect(text).toContain("COD por cobrar (al entregar): $90.000");
+    expect(html).toContain("$\u00a090.000");
+    expect(text).toContain("COD por cobrar (al entregar): $\u00a090.000");
   });
 
   it("sin COD por cobrar, no muestra esa línea", () => {
@@ -138,9 +138,9 @@ describe("buildDailySummaryEmail", () => {
       { ...base, codPendingRemitCop: 12000000, codDiscrepancies: 2, codShortfallCop: 4000000 },
       NOW,
     );
-    expect(html).toContain("$120.000</strong> de contra entrega por remitir");
+    expect(html).toContain("$\u00a0120.000</strong> de contra entrega por remitir");
     expect(html).toContain("2</strong> discrepancia(s) de efectivo");
-    expect(html).toContain("$40.000 que no llegó"); // faltante confirmado
+    expect(html).toContain("$\u00a040.000 que no llegó"); // faltante confirmado
     expect(html).toContain("/admin/finanzas/conciliacion");
   });
 

@@ -22,6 +22,7 @@ import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
+import { pesosToCents } from "@/lib/format";
 
 export type MaterialActionState = { error?: string };
 
@@ -37,13 +38,6 @@ type ParsedFields = {
   note: string | null;
   isActive: boolean;
 };
-
-/** Convierte el input de costo en PESOS a centavos COP; vacío → null (opcional). */
-function pesosToCents(raw: FormDataEntryValue | null): number | null {
-  const digits = String(raw ?? "").replace(/[^\d]/g, "");
-  if (!digits) return null;
-  return Number.parseInt(digits, 10) * 100;
-}
 
 function parseNonNegative(raw: FormDataEntryValue | null): number | null {
   const s = String(raw ?? "")

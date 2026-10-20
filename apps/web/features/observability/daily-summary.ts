@@ -21,6 +21,7 @@ import { getCodReconciliationTotals } from "@/features/orders/cod-reconciliation
 import { EXPIRE_PENDING_ACTOR } from "@/features/orders/expire-pending";
 import { getSloStatus } from "./slos";
 import { getEmailDeliverabilityStats } from "./email-deliverability";
+import { formatCOP } from "@/lib/format";
 
 // Estados en los que el dinero YA entró (para contar ingresos).
 const PAID_STATES = ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] as const;
@@ -205,10 +206,6 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
   };
 }
 
-function fmtCop(cents: number): string {
-  return `$${Math.round(cents / 100).toLocaleString("es-CO")}`;
-}
-
 export function buildDailySummaryEmail(
   s: DailySummary,
   now: Date = new Date(),
@@ -219,7 +216,7 @@ export function buildDailySummaryEmail(
     month: "long",
     timeZone: "America/Bogota",
   });
-  const subject = `☀️ Resumen Lucams — ${s.ordersLast24h} pedido(s), ${fmtCop(s.revenueLast24hCop)} en 24h`;
+  const subject = `☀️ Resumen Lucams — ${s.ordersLast24h} pedido(s), ${formatCOP(s.revenueLast24hCop)} en 24h`;
 
   // Filas "necesitan tu atención" — solo las que aplican, con acción.
   const attention: string[] = [];
@@ -235,11 +232,11 @@ export function buildDailySummaryEmail(
     attention.push(`📉 SLO incumplido: <strong>${escapeHtml(slo)}</strong> — /admin/observability`);
   if (s.codDiscrepancies > 0)
     attention.push(
-      `💸 <strong>${s.codDiscrepancies}</strong> discrepancia(s) de efectivo contra entrega${s.codShortfallCop > 0 ? ` (${fmtCop(s.codShortfallCop)} que no llegó)` : ""} — /admin/finanzas/conciliacion`,
+      `💸 <strong>${s.codDiscrepancies}</strong> discrepancia(s) de efectivo contra entrega${s.codShortfallCop > 0 ? ` (${formatCOP(s.codShortfallCop)} que no llegó)` : ""} — /admin/finanzas/conciliacion`,
     );
   if (s.codPendingRemitCop > 0)
     attention.push(
-      `🚚 <strong>${fmtCop(s.codPendingRemitCop)}</strong> de contra entrega por remitir (el mensajero ya cobró) — /admin/finanzas/conciliacion`,
+      `🚚 <strong>${formatCOP(s.codPendingRemitCop)}</strong> de contra entrega por remitir (el mensajero ya cobró) — /admin/finanzas/conciliacion`,
     );
   if (s.toShip > 0)
     attention.push(`📦 <strong>${s.toShip}</strong> pagada(s) por despachar — /admin/pedidos`);
@@ -282,7 +279,7 @@ export function buildDailySummaryEmail(
 
   <table style="border-collapse:collapse;margin-bottom:8px;"><tr>
     ${stat("Pedidos", String(s.ordersLast24h))}
-    ${stat("Ingresos", fmtCop(s.revenueLast24hCop))}
+    ${stat("Ingresos", formatCOP(s.revenueLast24hCop))}
     ${stat("Pagadas", String(s.paidOrdersLast24h))}
   </tr><tr>
     ${stat("En pago", String(s.pendingPayment))}
@@ -292,7 +289,7 @@ export function buildDailySummaryEmail(
 
   ${
     s.codToCollectCop > 0
-      ? `<p style="margin:4px 0 0;font-size:13px;color:#3D2E5C;">💵 <strong>${fmtCop(s.codToCollectCop)}</strong> en contra entrega <em>por cobrar</em> (efectivo, se recauda al entregar — no incluido en Ingresos).</p>`
+      ? `<p style="margin:4px 0 0;font-size:13px;color:#3D2E5C;">💵 <strong>${formatCOP(s.codToCollectCop)}</strong> en contra entrega <em>por cobrar</em> (efectivo, se recauda al entregar — no incluido en Ingresos).</p>`
       : ""
   }
 
@@ -310,8 +307,8 @@ export function buildDailySummaryEmail(
     `Resumen Lucams — ${dateLabel} (últimas 24h)`,
     ``,
     `Pedidos nuevos: ${s.ordersLast24h}`,
-    `Ingresos (cobrado): ${fmtCop(s.revenueLast24hCop)} (${s.paidOrdersLast24h} confirmadas)`,
-    s.codToCollectCop > 0 ? `COD por cobrar (al entregar): ${fmtCop(s.codToCollectCop)}` : null,
+    `Ingresos (cobrado): ${formatCOP(s.revenueLast24hCop)} (${s.paidOrdersLast24h} confirmadas)`,
+    s.codToCollectCop > 0 ? `COD por cobrar (al entregar): ${formatCOP(s.codToCollectCop)}` : null,
     `En pago (sin completar): ${s.pendingPayment}`,
     `Por despachar: ${s.toShip}`,
     `Carritos abandonados: ${s.abandonedCarts24h} (${recoveryPct}% recuperados)`,

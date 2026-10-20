@@ -165,6 +165,43 @@ describe("POST /api/vitals — sessionId desde cookie cart_session (Paquete C)",
   });
 });
 
+describe("POST /api/vitals — techo de valor por métrica (auditoría RUM 2026-10-20)", () => {
+  it("INP de 28680ms (artefacto real de STG 2026-10-02) NO se persiste: 200 ok:false + warn", async () => {
+    const res = await POST(
+      req({ name: "INP", value: 28680, rating: "poor", delta: 28680, route: "/" }),
+    );
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { ok: boolean }).ok).toBe(false);
+    expect(webVitalCreate).not.toHaveBeenCalled();
+  });
+
+  it("INP de 10s exactos (techo) sí se persiste; 10.001s no", async () => {
+    const ok = await POST(
+      req({ name: "INP", value: 10_000, rating: "poor", delta: 10_000, route: "/" }),
+    );
+    expect(ok.status).toBe(200);
+    expect(webVitalCreate).toHaveBeenCalledTimes(1);
+    webVitalCreate.mockClear();
+    const over = await POST(
+      req({ name: "INP", value: 10_001, rating: "poor", delta: 10_001, route: "/" }),
+    );
+    expect(((await over.json()) as { ok: boolean }).ok).toBe(false);
+    expect(webVitalCreate).not.toHaveBeenCalled();
+  });
+
+  it("LCP tiene techo más holgado (60s): 45s se persiste", async () => {
+    const res = await POST(req({ ...VALID_BODY, value: 45_000, rating: "poor" }));
+    expect(res.status).toBe(200);
+    expect(webVitalCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("valores negativos los rechaza el schema (400)", async () => {
+    const res = await POST(req({ ...VALID_BODY, value: -5 }));
+    expect(res.status).toBe(400);
+    expect(webVitalCreate).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST /api/vitals — target del INP (2026-09-18)", () => {
   it("persiste el selector del elemento cuando el payload lo trae", async () => {
     const res = await POST(

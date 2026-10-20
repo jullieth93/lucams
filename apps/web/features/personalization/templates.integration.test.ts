@@ -93,7 +93,7 @@ describe.skipIf(!hasDb)("plantillas del Estudio — reglas N-08", { timeout: T }
           sku: `${RUN}-${tag}`.toUpperCase(),
           price: 10_000,
           stock: 50,
-          attributes: {},
+          attributes: { photoSlots: 4 },
         },
         select: { id: true },
       });
@@ -257,6 +257,18 @@ describe.skipIf(!hasDb)("plantillas del Estudio — reglas N-08", { timeout: T }
       const design = await createDraftDesign({ productId: productAId, ...OWNER });
       expect(design.templateId).toBe(specA1x1Id);
     });
+
+    it("la variante elegida define los slots iniciales del draft", async () => {
+      const design = await createDraftDesign({
+        productId: productAId,
+        variantId: variantAId,
+        ...OWNER,
+      });
+      const canvas = design.canvasData as { slotCount: number; slots: unknown[] };
+      expect(canvas.slotCount).toBe(4);
+      expect(canvas.slots).toHaveLength(4);
+      expect((design.metadata as { variantId?: string }).variantId).toBe(variantAId);
+    });
   });
 
   // ──────────── saveCanvas — persistencia del cambio de plantilla ────────────
@@ -342,6 +354,21 @@ describe.skipIf(!hasDb)("plantillas del Estudio — reglas N-08", { timeout: T }
       expect(meta.variantId).toBe(variantAId);
       // El merge conserva las claves del draft (kind/schemaVersion del create).
       expect(meta.kind).toBe("PHOTO_PACK");
+    });
+
+    it("en un pack, el canvas decide la variante aunque llegue un variantId viejo", async () => {
+      const design = await createDraftDesign({ productId: productAId, ...OWNER });
+      await saveCanvas({
+        designId: design.id,
+        canvasData: { ...(design.canvasData as object), photoSlots: 4 } as never,
+        variantId: variantBId,
+        ...OWNER,
+      });
+      const row = await prisma.design.findUnique({
+        where: { id: design.id },
+        select: { metadata: true },
+      });
+      expect((row!.metadata as Record<string, unknown>).variantId).toBe(variantAId);
     });
 
     it("con variantId de OTRO producto guarda el canvas igual y CONSERVA la metadata anterior", async () => {

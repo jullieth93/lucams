@@ -118,6 +118,16 @@ export function EmailInput({
   const [touched, setTouched] = useState(false);
   const liveMsgId = useId();
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // Timeout del onBlur: se cancela al desmontar — si dispara después (p.ej.
+  // teardown de tests o navegación en los 150 ms), el setState cae sobre un
+  // componente muerto ("window is not defined" en jsdom / warning en React).
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const timeout = blurTimeoutRef;
+    return () => {
+      if (timeout.current) clearTimeout(timeout.current);
+    };
+  }, []);
 
   const value = controlledValue ?? internalValue;
   const setValue = (v: string) => {
@@ -193,8 +203,8 @@ export function EmailInput({
         onBlur={(e) => {
           setTouched(true);
           // setTimeout para permitir que el click en sugerencia se procese
-          // antes de cerrar el dropdown.
-          setTimeout(() => setOpen(false), 150);
+          // antes de cerrar el dropdown. En el ref: se cancela al desmontar.
+          blurTimeoutRef.current = setTimeout(() => setOpen(false), 150);
           onBlur?.(e);
         }}
         autoComplete={inputProps.autoComplete ?? "email"}

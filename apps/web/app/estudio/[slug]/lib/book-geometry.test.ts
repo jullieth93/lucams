@@ -404,6 +404,7 @@ import {
   FLAT_GAP,
   FLAT_YAW_JITTER,
   flatBookmarkDims,
+  flatBookmarkFit,
   flatBookmarkPlacement,
   flatBookmarkSlots,
 } from "./book-geometry";
@@ -451,6 +452,95 @@ describe("flatBookmarkPlacement + slots (acostada sobre la hoja derecha)", () =>
 
   it("sin piezas no hay slots", () => {
     expect(flatBookmarkSlots(0, { pieceW: PIECE_W })).toEqual([]);
+  });
+});
+
+describe("flatBookmarkPlacement con huella (2026-10-20 — la pieza rígida NO se hunde en el camber)", () => {
+  it("con halfSpanX la pieza se apoya en el punto MÁS ALTO bajo su huella (borde del lomo)", () => {
+    const PIECE_W = 4 * CM;
+    const PIECE_L = 15 * CM;
+    const [slot] = flatBookmarkSlots(1, { pieceW: PIECE_W, pieceL: PIECE_L });
+    const halfSpanX =
+      (PIECE_W * Math.abs(Math.cos(slot!.yaw)) + PIECE_L * Math.abs(Math.sin(slot!.yaw))) / 2;
+    const [, y] = flatBookmarkPlacement(slot!.x, slot!.z, halfSpanX);
+    // El borde de la huella hacia el lomo queda SOBRE la hoja (antes se hundía ~2 mm
+    // a escala y la pieza se veía "cortada" por la página).
+    const xInner = slot!.x - halfSpanX;
+    expect(y).toBeGreaterThanOrEqual(pageSurfaceY(xInner) + FLAT_BOOKMARK_T / 2);
+    // Y no flota de más: el apoyo es exactamente el punto más alto + medio grosor.
+    expect(y).toBeLessThanOrEqual(
+      Math.max(pageSurfaceY(slot!.x), pageSurfaceY(xInner)) + FLAT_BOOKMARK_T / 2 + 0.01,
+    );
+  });
+
+  it("sin halfSpanX (default 0) conserva el comportamiento anterior (altura del centro)", () => {
+    const [slot] = flatBookmarkSlots(1, { pieceW: 4 * CM });
+    const [, y] = flatBookmarkPlacement(slot!.x, slot!.z);
+    expect(y).toBeCloseTo(pageSurfaceY(slot!.x) + FLAT_BOOKMARK_T / 2 + 0.002, 6);
+  });
+});
+
+describe("flatBookmarkFit (2026-10-20 — encuadre con corrección de perspectiva, bug separador largo cortado)", () => {
+  // Réplica de la matemática de FitCameraPolar: d = max(halfH, halfW/aspect)/tan·margin,
+  // cámara a polar φ sobre el target (PAGE_W/2, 0.7, 0); cada ESQUINA de cada pieza debe
+  // quedar con fracción de pantalla ≤ 1 (dentro del frame) en cualquier viewport.
+  const POLAR = 56;
+  const TAN = Math.tan((20 * Math.PI) / 180); // fov 40 del Canvas del libro
+  const MARGIN = 1.05;
+
+  function worstScreenFraction(units: number, sizeCm: string, aspect: number): number {
+    const dims = Array.from({ length: units }, () =>
+      flatBookmarkDims({ wRatio: 400, hRatio: 1500 }, sizeCm),
+    );
+    const maxW = Math.max(...dims.map((d) => d.w));
+    const maxH = Math.max(...dims.map((d) => d.h));
+    const slots = flatBookmarkSlots(units, { pieceW: maxW, pieceL: maxH });
+    const { halfW, halfH } = flatBookmarkFit(slots, dims, { polarDeg: POLAR, tanHalfFov: TAN });
+    const dist = Math.max(halfH / TAN, halfW / (TAN * aspect)) * MARGIN;
+    const phi = (POLAR * Math.PI) / 180;
+    const cam = { y: 0.7 + dist * Math.sin(phi), z: dist * Math.cos(phi) };
+    let worst = 0;
+    slots.forEach((s, i) => {
+      const d = dims[i]!;
+      const extX = (d.w * Math.abs(Math.cos(s.yaw)) + d.h * Math.abs(Math.sin(s.yaw))) / 2;
+      const [, py] = flatBookmarkPlacement(s.x, s.z, extX);
+      for (const lx of [-d.w / 2, d.w / 2]) {
+        for (const lz of [-d.h / 2, d.h / 2]) {
+          const X = s.x + lx * Math.cos(s.yaw) - lz * Math.sin(s.yaw);
+          const Z = s.z - lx * Math.sin(s.yaw) - lz * Math.cos(s.yaw);
+          const depth = -(py - cam.y) * Math.sin(phi) - (Z - cam.z) * Math.cos(phi);
+          const sy = (py - cam.y) * Math.cos(phi) - (Z - cam.z) * Math.sin(phi);
+          worst = Math.max(
+            worst,
+            Math.abs(sy) / (TAN * depth),
+            Math.abs(X - PAGE_W / 2) / (TAN * depth * aspect),
+          );
+        }
+      }
+    });
+    return worst;
+  }
+
+  it("1 separador 4×15 cabe COMPLETO en desktop apaisado (regresión: antes fracción 1.02)", () => {
+    expect(worstScreenFraction(1, "4×15", 1280 / 800)).toBeLessThanOrEqual(1);
+  });
+
+  it("1–6 separadores 4×15/4×12 caben en desktop, móvil vertical, móvil apaisado y tablet", () => {
+    const aspects = [1280 / 800, 390 / 844, 844 / 390, 768 / 1024, 1920 / 1080];
+    for (const units of [1, 2, 3, 4, 6]) {
+      for (const size of ["4×15", "4×12"]) {
+        for (const aspect of aspects) {
+          expect(worstScreenFraction(units, size, aspect)).toBeLessThanOrEqual(1);
+        }
+      }
+    }
+  });
+
+  it("sin piezas conserva los pisos del encuadre anterior (2.8 × 2.2)", () => {
+    expect(flatBookmarkFit([], [], { polarDeg: POLAR, tanHalfFov: TAN })).toEqual({
+      halfW: 2.8,
+      halfH: 2.2,
+    });
   });
 });
 

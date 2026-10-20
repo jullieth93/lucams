@@ -144,6 +144,12 @@ o sessionId anónimo) y cada superficie devuelve al editor lo persistido:
     Se restauran `language`, `styleSetId`, `withBorder`, `unitCount` (nº de sets) y los
     colores por ficha de CADA set (`metadata.units[u].colors`; el set 0 cae al `colors`
     raíz en diseños de un set) como snapshots iniciales del Map multi-unidad.
+    **2026-10-19 — estilo y borde POR SET**: también se restauran
+    `metadata.units[u].styleSetId` / `metadata.units[u].withBorder` (cada set lleva su
+    propio estilo ilustrado, colores y borde); las claves raíz (`styleSetId` /
+    `withBorder`) quedan como representante del set 1 y default de sets sin clave
+    propia (retrocompat con diseños guardados antes del rediseño). El finalize espera
+    UNA lámina de producción por set (`production_i` posicional, `unitCount` exacto).
 - **Variante del diseño (`metadata.variantId`, 2026-10-05)**: al crear el diseño desde
   cualquier superficie se persiste la variante (`createDraftDesign` —foto—,
   `createNameDesign`, `createLetterSetDesign`). **2026-10-12 — packs de foto TAMBIÉN**:
@@ -173,6 +179,32 @@ o sessionId anónimo) y cada superficie devuelve al editor lo persistido:
   customerId null); si el cliente se loguea después, el merge de login los adopta
   por la vía de siempre.
 
+## Reuso de borrador al entrar + poda «últimos 3» (2026-10-13)
+
+Los DRAFT proliferaban (medido en STG: 91 DRAFT vs 23 READY). La política vive en
+`features/personalization/draft-lifecycle.ts`:
+
+- **Reuso al entrar**: `/estudio/<slug>` SIN `?designId=` (y sin deep-links de diseño
+  nuevo `?template=` / `?copies=`) NO crea un draft si el dueño (customer o sessionId)
+  ya tiene un DRAFT activo del mismo producto: la página redirige a
+  `?designId=<id>` y el recover flow de arriba lo hidrata completo. "Activo" =
+  DRAFT, dentro de la ventana de retención de su dueño (30 d anónimo / 90 d logueado,
+  por `updatedAt`), sin carrito vivo ni pedido. Con `?variant=` explícita solo reusa
+  un DRAFT de ESA variante (o legacy sin variante persistida); sin ella retoma el más
+  reciente y el recover re-selecciona la variante guardada en el propio diseño.
+- **Poda «últimos N»**: tras crear un DRAFT nuevo por CUALQUIER vía (draft del boot,
+  `cloneDesignForEdit`, `cloneDesignForReorder`, `createNameDesign`,
+  `createLetterSetDesign`) se conservan solo los `MAX_DRAFTS_PER_PRODUCT = 3` DRAFT
+  más recientes del mismo dueño+producto; los excedentes se eliminan con sus assets
+  (best-effort, nunca rompe la creación). READY / USED_IN_ORDER nunca entran.
+- El borrado de bytes reusa `purgeDesignBatch` (retention-service), que desde esta
+  fecha PRESERVA los bytes compartidos con diseños vivos: `cloneDesignForEdit` crea
+  filas DesignAsset con el MISMO `storageUrl` del original READY — borrar el clon ya
+  no rompe las fotos del original.
+- En "Mis diseños" los borradores van en una sección colapsable con eliminación
+  individual y «Vaciar borradores» (server actions en
+  `app/mi-cuenta/disenos/actions.ts`).
+
 ## Estructura de archivos
 
 ```
@@ -201,6 +233,7 @@ apps/web/app/estudio/[slug]/
 ├── studio-consent-text.tsx            # Consentimiento de derechos de imagen (Ley 1581)
 ├── studio-ai-panel.tsx                # Asistente IA de ideas (ADR-058) — copy CMS estudio.ia.*
 ├── studio-style-toolbar.tsx           # Toolbar de estilo: marco, fondo, tipografía (Ola 10)
+│                                      #   · bottom-sheet móvil con botón resumen (Fase 2 UX 2026-10-13)
 ├── studio-photo-preview.tsx           # Preview de foto subida (Ola 9)
 ├── studio-texts.ts                    # Tipos + defaults del copy del Estudio
 ├── studio-texts-provider.tsx          # Context client del copy (useStudioTexts)
@@ -1432,6 +1465,34 @@ checkerboard eliminada, layout del libro por `pieceL` — no se repite):
   tarjeta de calendario ya no flota con grosor de imán); encuadre del mural
   ponderado al clúster (`boardFitHalf` en `cluster-layout`). El layout del libro por
   `pieceL` + trenzado 90° ya está documentado en Ola 30 (entrada 2026-10-12).
+
+### Fase 2 UX (2026-10-13) — sheet de estilo móvil, «Listo» en el picker, toggle prediseñados lila
+
+- **Bottom-sheet de estilo en móvil (`<sm`)**: la fila única con scroll horizontal de
+  Ola 32 queda SUPERSEDED para esta toolbar en móvil. En su lugar,
+  `studio-style-toolbar.tsx` muestra un botón resumen siempre visible (swatch del
+  color + nombre + estado del borde + chevron, con `aria-label` descriptivo) que abre
+  un `Sheet` Radix anclado abajo: grilla de colores que envuelve (sin scroll-x),
+  `BorderOption` Con/Sin borde, «Personalizado» (mismo picker propio de Ola 32) y
+  botón «Listo» sticky que SOLO cierra — la selección aplica en vivo sobre el mismo
+  store. Desktop (`≥sm`) intacto: mismo JSX de antes bajo `hidden sm:block`; ambas
+  ramas comparten la lógica derivada del cuerpo del componente (sin duplicar fuentes
+  de verdad). Targets táctiles ≥44px en el sheet (`large` en `BorderOption`/
+  `ColorButton`, trigger `h-11 w-11` del custom).
+- **Nombre del color elegido siempre visible**: nueva clave
+  `estudio.texto.estilo-color-elegido` («Elegido: {color}») bajo la grilla del sheet
+  y junto al título «Color de tarjeta» en desktop. El label resuelve paleta → nombre,
+  fuera de paleta → `Personalizado #HEX`, `null` → «Sin color».
+- **«Listo» sticky del picker de assets** (`studio-asset-picker-modal.tsx`, clave
+  `estudio.fotos.picker-listo`): footer fijo con botón primario que cierra el modal
+  sin asignar — el flujo de slot/tap-to-assign no cambia.
+- **Toggle «Diseños prediseñados» del sidebar** en lila (`bg-brand-purple`, texto
+  blanco); `aria-expanded`/`aria-controls` y el comportamiento colapsable intactos.
+- Claves CMS nuevas registradas en `studio-texts.ts` y `cms-site-map.mjs`:
+  `estudio.fotos.picker-listo`, `estudio.texto.estilo-resumen-aria`,
+  `estudio.texto.estilo-sheet-titulo`, `estudio.texto.estilo-sheet-listo`,
+  `estudio.texto.estilo-color-elegido`. La lógica Instagram blanco/negro y el hint
+  de color deshabilitado se reusan sin cambios dentro del sheet.
 
 ## DPI y sangrado (estado real 2026-10-05)
 

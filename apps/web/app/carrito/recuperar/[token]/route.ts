@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { setCartSessionCookie, peekCartSession } from "@/lib/cart-session";
 import { mergeCartsAdopt } from "@/features/cart/service";
 import { getClientIp } from "@/lib/client-ip";
+import { getCurrentCustomer } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
 import { hashBearerToken } from "@/lib/token-hash";
@@ -36,19 +37,21 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
       // F-11 — lookup por hash: la columna en claro ya no existe.
       const ab = await prisma.abandonedCart.findUnique({
         where: { recoverTokenHash: hashBearerToken(token) },
-        select: { cart: { select: { sessionId: true, deletedAt: true } } },
+        select: { cart: { select: { sessionId: true, customerId: true, deletedAt: true } } },
       });
       if (ab?.cart?.deletedAt) {
-        // El carrito ya se convirtió en pedido → no hay nada que recuperar.
         dest = "/carrito?success=cart-ya-comprado";
       } else if (ab?.cart) {
-        // #18 — foldar el carrito actual (si lo hay) en el recuperado ANTES de cambiar la cookie.
-        const current = await peekCartSession();
-        if (current && current !== ab.cart.sessionId) {
-          await mergeCartsAdopt(current, ab.cart.sessionId);
+        const customer = await getCurrentCustomer();
+        const canRestore = !ab.cart.customerId || ab.cart.customerId === customer?.customer.id;
+        if (canRestore) {
+          const current = await peekCartSession();
+          if (current && current !== ab.cart.sessionId) {
+            await mergeCartsAdopt(current, ab.cart.sessionId);
+          }
+          await setCartSessionCookie(ab.cart.sessionId);
+          dest = "/carrito?success=cart-recuperado";
         }
-        await setCartSessionCookie(ab.cart.sessionId);
-        dest = "/carrito?success=cart-recuperado";
       }
     }
   } catch (err) {

@@ -55,7 +55,7 @@ const VALID_CANVAS = {
     layers: [],
   },
   slotCount: 1,
-  slots: [],
+  slots: [{ slotIndex: 0, assetId: null, assetUrl: null }],
   gridLayout: { cols: 1, rows: 1, gap: 0 },
 };
 
@@ -220,7 +220,7 @@ describe.skipIf(!hasDb)("saveCanvas — miniatura del borrador (2026-10-13)", ()
     const designId = await makeDraft();
     await saveCanvas({
       designId,
-      canvasData: VALID_CANVAS,
+      canvasData: { ...VALID_CANVAS, clientRev: 1 },
       draftPreviewDataUrl: await tinyWebpDataUrl(),
       customerId: ownerId,
       sessionId: null,
@@ -243,5 +243,102 @@ describe.skipIf(!hasDb)("saveCanvas — miniatura del borrador (2026-10-13)", ()
         sessionId: null,
       }),
     ).rejects.toThrow();
+  });
+
+  it("una revisión vieja no sobrescribe el canvas ni la revisión persistida", async () => {
+    const designId = await makeDraft();
+    await saveCanvas({
+      designId,
+      canvasData: { ...VALID_CANVAS, clientRev: 200 },
+      customerId: ownerId,
+      sessionId: null,
+    });
+
+    await expect(
+      saveCanvas({
+        designId,
+        canvasData: { ...VALID_CANVAS, clientRev: 100 },
+        customerId: ownerId,
+        sessionId: null,
+      }),
+    ).rejects.toThrow("STALE_REVISION");
+
+    const design = await prisma.design.findUnique({ where: { id: designId } });
+    expect(design?.clientRev).toBe(BigInt(200));
+    expect(design?.canvasData).toMatchObject({ clientRev: 200 });
+  });
+
+  it("dos saves que terminan fuera de orden convergen en la revisión mayor", async () => {
+    const designId = await makeDraft();
+    const results = await Promise.allSettled([
+      saveCanvas({
+        designId,
+        canvasData: { ...VALID_CANVAS, clientRev: 400 },
+        customerId: ownerId,
+        sessionId: null,
+      }),
+      saveCanvas({
+        designId,
+        canvasData: { ...VALID_CANVAS, clientRev: 300 },
+        customerId: ownerId,
+        sessionId: null,
+      }),
+    ]);
+
+    expect(results[0]?.status).toBe("fulfilled");
+    const design = await prisma.design.findUnique({ where: { id: designId } });
+    expect(design?.clientRev).toBe(BigInt(400));
+    expect(design?.canvasData).toMatchObject({ clientRev: 400 });
+  });
+
+  it("un save legacy sin revisión no puede pisar una revisión nueva", async () => {
+    const designId = await makeDraft();
+    await saveCanvas({
+      designId,
+      canvasData: { ...VALID_CANVAS, clientRev: 500 },
+      customerId: ownerId,
+      sessionId: null,
+    });
+
+    await expect(
+      saveCanvas({
+        designId,
+        canvasData: VALID_CANVAS,
+        customerId: ownerId,
+        sessionId: null,
+      }),
+    ).rejects.toThrow("STALE_REVISION");
+    const design = await prisma.design.findUnique({ where: { id: designId } });
+    expect(design?.canvasData).toMatchObject({ clientRev: 500 });
+  });
+
+  it("el primer guardado adopta los assets huérfanos referenciados por el canvas", async () => {
+    const designId = await makeDraft();
+    const orphan = await prisma.designAsset.create({
+      data: {
+        customerId: ownerId,
+        designId: null,
+        storageUrl: `${RUN}/orphan.jpg`,
+        mimeType: "image/jpeg",
+        sizeBytes: 100,
+        width: 100,
+        height: 100,
+      },
+      select: { id: true },
+    });
+
+    await saveCanvas({
+      designId,
+      canvasData: {
+        ...VALID_CANVAS,
+        clientRev: 600,
+        slots: [{ slotIndex: 0, assetId: orphan.id, assetUrl: "https://signed.example/photo.jpg" }],
+      },
+      customerId: ownerId,
+      sessionId: null,
+    });
+
+    const asset = await prisma.designAsset.findUnique({ where: { id: orphan.id } });
+    expect(asset?.designId).toBe(designId);
   });
 });

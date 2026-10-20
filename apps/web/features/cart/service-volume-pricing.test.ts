@@ -44,6 +44,8 @@ type CartItemFixture = {
     sku: string;
     price: number | null;
     stock: number;
+    isActive: boolean;
+    deletedAt: null;
     attributes: unknown;
     images: string[];
     product: {
@@ -55,6 +57,7 @@ type CartItemFixture = {
       isPersonalizable: boolean;
       isActive: boolean;
       deletedAt: null;
+      category: { isActive: boolean; deletedAt: null };
       personalizationKind: string;
       personalizationSchema: unknown;
     };
@@ -163,6 +166,8 @@ function makeVariant(
     sku: "IMN-DEFAULT",
     price: opts?.price ?? null,
     stock,
+    isActive: true,
+    deletedAt: null,
     attributes: opts?.attributes ?? {},
     images: [],
     product: {
@@ -174,6 +179,7 @@ function makeVariant(
       isPersonalizable: false,
       isActive: true,
       deletedAt: null,
+      category: { isActive: true, deletedAt: null },
       personalizationKind: "NONE",
       personalizationSchema: null,
     },

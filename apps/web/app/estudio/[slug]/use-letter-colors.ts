@@ -96,6 +96,11 @@ export function useLetterColors(count: number, initial?: LetterColorsSnapshot) {
     setSelectedIndexRaw((cur) => (cur === index ? null : index));
   }
 
+  /** Cierra la paleta contextual de la ficha (2026-10-19 — barra sticky junto a la grilla). */
+  function clearSelected() {
+    setSelectedIndexRaw(null);
+  }
+
   // ¿El tema sigue "limpio" (sin overrides por ficha)? Para el aria-pressed del picker.
   const customized = Object.keys(letterColors).length > 0;
 
@@ -107,6 +112,7 @@ export function useLetterColors(count: number, initial?: LetterColorsSnapshot) {
     effectiveColors,
     selectedIndex,
     toggleSelected,
+    clearSelected,
     applyTheme,
     setColorForSelected,
     customized,

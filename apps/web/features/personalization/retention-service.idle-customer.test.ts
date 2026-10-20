@@ -203,6 +203,9 @@ vi.mock("@/lib/db", () => ({
       },
     },
     designAsset: {
+      // 2026-10-13 — purgeDesignBatch consulta los bytes COMPARTIDOS con otros
+      // diseños antes de borrarlos (protección de clones READY→DRAFT).
+      findMany: async () => [],
       deleteMany: async () => ({ count: 0 }),
     },
     quoteItem: {

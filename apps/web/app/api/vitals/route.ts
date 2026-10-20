@@ -1,12 +1,14 @@
 /*
  * /api/vitals — endpoint para Web Vitals RUM reporting.
  *
- * Recibe payload de `useReportWebVitals` (Next.js hook) y persiste
- * en `WebVital` table. /admin/performance lo agrega (Sub-bloque F)
- * para mostrar p50/p75/p95 por route.
+ * Recibe payload de `components/web-vitals.tsx` (handlers del build de
+ * atribución de web-vitals) y persiste en `WebVital` table.
+ * /admin/performance lo agrega (Sub-bloque F) para mostrar p50/p75/p95
+ * por route.
  *
  * No requiere auth — el RUM se envía desde cualquier visitante. Pero:
- *   - Validación Zod estricta (sanitiza route + name + rating).
+ *   - Validación Zod estricta (sanitiza route + name + rating) + techo de
+ *     valor por métrica (fail-closed: fuera de rango no se persiste).
  *   - Rate-limit por sessionId/IP en sub-bloque F.
  *   - userAgent y sessionId quedan opcionales (no PII).
  *   - Sin email ni customerId en este payload (no necesitamos).
@@ -33,9 +35,11 @@ const VitalSchema = z.object({
   // delta=cantidad) y PAGEWEIGHT (value=bytes transferidos, delta=recursos),
   // agregadas por pageview en el reporter — 1 fila por página por métrica.
   name: z.enum(["LCP", "FID", "CLS", "INP", "TTFB", "FCP", "LONGTASK", "PAGEWEIGHT"]),
-  value: z.number().finite(),
+  // min(0): ninguna métrica de web-vitals ni los agregados propios pueden
+  // ser negativos — un negativo es bug de reporte, no se persiste.
+  value: z.number().finite().min(0),
   rating: z.enum(["good", "needs-improvement", "poor"]),
-  delta: z.number().finite(),
+  delta: z.number().finite().min(0),
   navType: z
     .enum(["navigate", "reload", "back-forward", "back-forward-cache", "prerender"])
     .optional(),
@@ -49,6 +53,25 @@ const VitalSchema = z.object({
   // INP → interactionTarget, CLS → largestShiftTarget, LCP → element.
   target: z.string().max(200).optional(),
 });
+
+type VitalName = z.infer<typeof VitalSchema>["name"];
+
+/* Techo de valor por métrica (auditoría RUM 2026-10-20): 120 filas INP con
+   value=28680ms exactos (2026-10-02, sin sessionId ni target) distorsionaban
+   max/p95 del panel — artefacto de reporte, no latencia real. Los techos son
+   generosos (un INP real p98 está muy por debajo de 10s; un LCP en conexión
+   mala muy por debajo de 60s) y fail-closed: fuera de rango = NO se guarda.
+   Unidades: ms para timings, score para CLS, bytes para PAGEWEIGHT. */
+const MAX_VALUE_BY_METRIC: Record<VitalName, number> = {
+  INP: 10_000,
+  LCP: 60_000,
+  FCP: 60_000,
+  TTFB: 60_000,
+  FID: 60_000,
+  CLS: 100,
+  LONGTASK: 300_000,
+  PAGEWEIGHT: 500_000_000,
+};
 
 /* sessionId fallback server-side (Paquete C 2026-10-09): la cookie del carrito
    `cart_session` es HttpOnly (lib/cart-session.ts) — el reporter cliente NO
@@ -85,6 +108,23 @@ export async function POST(request: Request) {
     const parsed = VitalSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json({ error: "invalid" }, { status: 400 });
+    }
+    // Fail-closed ante valores absurdos (artefactos de reporte): no se
+    // persisten. 200 ok:false para que el beacon no reintente — mismo
+    // criterio que el backstop global de arriba.
+    const maxValue = MAX_VALUE_BY_METRIC[parsed.data.name];
+    if (parsed.data.value > maxValue) {
+      logger.warn(
+        {
+          event: "vitals.out_of_range",
+          name: parsed.data.name,
+          value: parsed.data.value,
+          max: maxValue,
+          route: parsed.data.route,
+        },
+        "Web vital descartada por valor fuera de rango",
+      );
+      return NextResponse.json({ ok: false });
     }
     const ua = request.headers.get("user-agent")?.slice(0, 500) ?? null;
     await prisma.webVital.create({
