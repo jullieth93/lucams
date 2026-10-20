@@ -117,7 +117,7 @@ make db-local-stop    # apaga el stack (los datos quedan en los volúmenes)
 - **Emails:** Mailpit en http://localhost:54324 (bandeja de los correos que
   emita la app en dev — registro, recuperación, cotizaciones).
 - **Logs:** Logflare en :54323 (pestaña Logs del Studio).
-- **pg_cron:** instalado + los 11 jobs de la nube (10 HTTP + 1 SQL puro —
+- **pg_cron:** instalado + los jobs de la nube (12 HTTP + 3 SQL puros —
   habilitado con `CREATE EXTENSION pg_cron` en el setup; homologación verificada
   2026-08-05; conteo actualizado 2026-09-12: entró `lucams-expire-pending-orders` (032)
   y salió `stock_reservation_cleanup` (033); 2026-09-19: entró
@@ -204,6 +204,7 @@ GUARDADA (pg_cron + pg_net) e IDEMPOTENTE.
 | `lucams-cms-publish-scheduled`       | `*/5 * * * *`  | `/api/cron/cms-publish-scheduled`   | CMS: publica versiones programadas (roadmap C3, e.g. campañas)                                                                                                                                                         |
 | `lucams-expire-pending-orders`       | `23 * * * *`   | `/api/cron/expire-pending-orders`   | Expira órdenes WOMPI en PENDING_PAYMENT > 24h (N-12, migración 032)                                                                                                                                                    |
 | `lucams-process-render-jobs`         | `* * * * *`    | `/api/cron/process-render-jobs`     | Render de producción 300 DPI ASÍNCRONO (ADR-136, migración 041): procesa la cola RenderJob página por página con progreso real (doneUnits) y reintentos acotados (FAILED tras 3 → ErrorLog). Ver la sección de abajo   |
+| `lucams-tracking-sync`               | `4,19,34,49 * * * *` | `/api/cron/tracking-sync`     | Polling de respaldo del tracking Aveonline (migración 044): consulta `obtenerEstadoAuth` de las guías activas (FULFILLING/SHIPPED, no INTERNO-*, ≤90d, máx 25/corrida) y alimenta el MISMO pipeline del webhook (`processTrackingUpdate`). Si el webhook AveCRM no llega o se pierde, la orden igual converge a SHIPPED/DELIVERED con su email y `deliveredAt` (ancla retracto)                                                                                                |
 | `lucams-internal-cron-history-purge` | `17 4 * * *`   | SQL puro (sin HTTP)                 | Higiene interna: purga `cron.job_run_details` > 14d (migración 043 — pg_cron NO se auto-limpia; su historial fue el consumidor #1 de la BD: 93 MB en PRD al 2026-10-20)                                                |
 | `lucams-internal-net-response-purge` | `43 4 * * *`   | SQL puro (sin HTTP)                 | Higiene interna: purga `net._http_response` > 24h (migración 043). La app nunca lee las respuestas (fire-and-forget); el único lector es `monitor_uptime_prd()` de STG ~10 min después — 24h cubre con holgura         |
 

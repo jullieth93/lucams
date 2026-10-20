@@ -33,7 +33,7 @@
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
-/** Los crons HTTP versionados en pg_cron (migraciones 015/016/021/023/032) con su intervalo. */
+/** Los crons HTTP versionados en pg_cron (migraciones 015/016/021/023/032/041/044) con su intervalo. */
 export const CRON_JOBS: Record<string, { intervalMs: number; label: string }> = {
   alerts: { intervalMs: 5 * 60 * 1000, label: "Alertas" },
   "daily-summary": { intervalMs: 24 * 60 * 60 * 1000, label: "Resumen diario" },
@@ -53,6 +53,9 @@ export const CRON_JOBS: Record<string, { intervalMs: number; label: string }> = 
   // ADR-131 — migración 041: worker de la cola RenderJob (renders 300 DPI fuera del request
   // de finalize). Cada minuto; si calla, los pedidos quedan "en preparación" — dead-man corto.
   "process-render-jobs": { intervalMs: 60 * 1000, label: "Render de producción asíncrono" },
+  // Revalidación integraciones 2026-10-20 — migración 044: polling de respaldo del tracking
+  // Aveonline (red de convergencia si el webhook AveCRM no llega o se pierde).
+  "tracking-sync": { intervalMs: 15 * 60 * 1000, label: "Sincronización de tracking (Aveonline)" },
   // Vigilante del dominio (2026-09-20, L-H3/L-N1): NO es job pg_cron — su productor es
   // el workflow domain-watch.yml de GitHub Actions (RDAP rechaza las conexiones de pg_net).
   // La ruta /api/cron/domain-watch registra el latido tras cada observación procesada.

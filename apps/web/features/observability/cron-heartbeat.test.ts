@@ -58,8 +58,8 @@ describe("cron-heartbeat", () => {
     else process.env.CRON_JOBS_DISABLED = originalDisabled;
   });
 
-  it("rastrea los 12 jobs HTTP, incluidos cms-publish-scheduled (5 min) y expire-pending-orders (N-12)", () => {
-    expect(Object.keys(CRON_JOBS)).toHaveLength(12);
+  it("rastrea los 13 jobs HTTP, incluidos cms-publish-scheduled (5 min) y expire-pending-orders (N-12)", () => {
+    expect(Object.keys(CRON_JOBS)).toHaveLength(13);
     expect(CRON_JOBS["cms-publish-scheduled"]).toEqual({
       intervalMs: 5 * 60 * 1000,
       label: "Publicación programada CMS",
@@ -85,6 +85,12 @@ describe("cron-heartbeat", () => {
     expect(CRON_JOBS["domain-watch"]).toEqual({
       intervalMs: 31 * 24 * 60 * 60 * 1000,
       label: "Vigilancia del dominio (RDAP)",
+    });
+    // Revalidación integraciones 2026-10-20: polling de respaldo del tracking Aveonline
+    // (migración 044) — cada 15 min, dead-man a 30 min.
+    expect(CRON_JOBS["tracking-sync"]).toEqual({
+      intervalMs: 15 * 60 * 1000,
+      label: "Sincronización de tracking (Aveonline)",
     });
   });
 
