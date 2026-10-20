@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate db-local-start db-local-stop db-local-restart db-local-reset db-local-status db-local-setup db-local-on db-local-off db-local-seed web-start web-stop web-restart local-up local-down local-restart local-status test-local db-stg-setup db-stg-seed seed-products seed-templates seed-ocasiones seed-catalog-v2 migrate-cms-v2 seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores seed-admin admin-mfa-reset seed-clean audit-script-guards audit-slugs audit-content uptime-monitor test test-unit test-e2e test-e2e-fullmode test-rls test-load test-coverage clean fix-fotoimanes
+.PHONY: help install build typecheck lint format migrate db-local-start db-local-stop db-local-restart db-local-reset db-local-status db-local-setup db-local-on db-local-off db-local-seed web-start web-stop web-restart local-up local-down local-restart local-status test-local db-stg-setup db-stg-seed seed-products seed-templates seed-ocasiones seed-catalog-v2 migrate-cms-v2 seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores seed-admin admin-mfa-reset seed-clean audit-script-guards audit-slugs audit-content uptime-monitor test test-unit test-e2e test-e2e-fullmode test-rls test-load test-coverage clean clean-tmp fix-fotoimanes
 
 # Makefile del repo — build/test para CI y devs, más el runtime del entorno
 # local completo: Supabase local en podman (grupo db-local-*) y app Next
@@ -46,6 +46,7 @@ help:
 	@echo "    make test-unit    Vitest"
 	@echo "    make test-e2e     Playwright"
 	@echo "    make test-rls     Tests RLS (rls-coverage + rls-matrix, vía vitest)"
+	@echo "    make clean-tmp    Depura tmp/ (efímero): conserva bin/ + pids/ + logs/"
 
 install:
 	pnpm install --frozen-lockfile
@@ -298,6 +299,16 @@ test-load:
 
 clean:
 	rm -rf apps/web/.next apps/web/node_modules/.cache
+
+# Higiene de tmp/ (gitignored): auditorías/incidentes/artifacts son EFÍMEROS
+# (política de documentación, CLAUDE.md §4). Conserva solo la tooling viva
+# (tmp/bin = CLI supabase/gitleaks usado por este Makefile) y la estructura
+# pids/logs que web-start recrea. Correr al cerrar una auditoría o cuando
+# tmp/ crezca (2026-10-20: acumuló 3 GB de artifacts de sesiones viejas).
+clean-tmp: ## Depura tmp/ (efímero): conserva solo bin/ (tooling) y pids/ + logs/
+	@du -sh tmp 2>/dev/null || true
+	cd tmp && ls -A | grep -vE '^(bin|pids|logs)$$' | xargs rm -rf
+	@echo "✓ tmp/ depurado (conservados: bin/, pids/, logs/)"
 
 seed-separadores:
 	pnpm --filter @lucams/db exec node scripts/restructure-separadores.mjs

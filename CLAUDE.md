@@ -38,7 +38,7 @@
 1. **Los docs son documentos VIVOS, no historiales.** Cada `docs/*.md` describe lo VIGENTE (objetivo, arquitectura, procedimientos actuales). Al cambiar algo se ACTUALIZA el contenido en el sitio — prohibido apilar entradas por fecha/bitácora/sesión. Git conserva la historia; el doc no.
 2. **`docs/DECISIONS.md` = decisiones vigentes** por dominio, con su razón actual. Una decisión reemplazada se reescribe (marcar SUPERSEDED inline si el número se referencia desde código), nunca se acumula una entrada fechada sobre la vieja. Los números ADR referenciados desde código/comentarios se conservan como anclas estables.
 3. **`docs/STATE.md` = estado actual** (qué existe, qué corre, qué falta). Sin bitácora de sesiones.
-4. **Auditorías e incidentes son EFÍMEROS:** se trabajan en `tmp/` (gitignored) y al resolverse se consolidan sus aprendizajes en el doc vivo que corresponda (SECURITY, OPERATIONS…) y se borran. No se commitean.
+4. **Auditorías e incidentes son EFÍMEROS:** se trabajan en `tmp/` (gitignored) y al resolverse se consolidan sus aprendizajes en el doc vivo que corresponda (SECURITY, OPERATIONS…) y se borran. No se commitean. Al cerrar la auditoría: `make clean-tmp` (conserva solo la tooling de `tmp/bin` y la estructura pids/logs). **Los agentes NO exploran `tmp/`** (ni lo listan ni lo leen salvo que la tarea lo pida explícitamente): es scratch local, nunca fuente de verdad.
 5. **Nada temporal o regenerable se versiona:** reportes, screenshots, artefactos de QA, dumps, prompts de marketing. Antes de commitear, revisar que el diff no incluya basura local.
 6. **Mínimo costo de contexto:** docs cortos y densos; un doc que supera ~1500 líneas está acumulando historia y toca podar.
 

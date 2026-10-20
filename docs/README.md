@@ -7,6 +7,7 @@
 | Doc                                 | Qué responde                                                 |
 | ----------------------------------- | ------------------------------------------------------------ |
 | [`README.md`](../README.md)         | Qué es el proyecto y cómo correrlo                           |
+| [`AGENTS.md`](../AGENTS.md)         | Entrada canónica para agentes (apunta a CLAUDE.md)           |
 | [`CLAUDE.md`](../CLAUDE.md)         | Mandatos + guía de lectura para agentes                      |
 | [`docs/STATE.md`](STATE.md)         | Estado actual: qué existe, qué corre, qué falta (pendientes) |
 | [`docs/ROADMAP.md`](ROADMAP.md)     | Visión y alcance + fases (completadas en una línea) + futuro |
