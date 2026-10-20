@@ -13,11 +13,12 @@ describe("carrierTrackingPageUrl", () => {
     // dominio real de Envía es envia.co (hallazgo del owner).
     expect(carrierTrackingPageUrl("envia")).toBe("https://envia.co/tracking");
     expect(carrierTrackingPageUrl("Coordinadora Mercantil")).toBe(
-      "https://coordinadora.com/rastreo/",
+      "https://coordinadora.com/rastreo/rastreo-de-guia/",
     );
     expect(carrierTrackingPageUrl("interrapidisimo")).toContain("interrapidisimo.com");
     expect(carrierTrackingPageUrl("99MINUTOS")).toBe("https://tracking.99minutos.com/");
-    expect(carrierTrackingPageUrl("Domina")).toBe("https://domina.com.co/");
+    // El rastreo de Domina corre sobre la plataforma Infokairos (owner 2026-10-20).
+    expect(carrierTrackingPageUrl("Domina")).toBe("https://tracking.infokairos.com.co/");
   });
 
   it("devuelve null para transportadoras desconocidas, vacías o sin portal vivo (Saferbo, Go Envíos)", () => {

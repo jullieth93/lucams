@@ -38,11 +38,11 @@ const CARRIER_TRACKING_PAGES: Record<string, { name: string; url: string }> = {
   },
   "coordinadora-mercantil": {
     name: "Coordinadora Mercantil",
-    url: "https://coordinadora.com/rastreo/",
+    url: "https://coordinadora.com/rastreo/rastreo-de-guia/",
   },
   coordinadora: {
     name: "Coordinadora Mercantil",
-    url: "https://coordinadora.com/rastreo/",
+    url: "https://coordinadora.com/rastreo/rastreo-de-guia/",
   },
   interrapidisimo: {
     // /rastreo/ da 404 tras redirects — el portal raíz es el único destino vivo.
@@ -54,10 +54,10 @@ const CARRIER_TRACKING_PAGES: Record<string, { name: string; url: string }> = {
     url: "https://tracking.99minutos.com/",
   },
   domina: {
-    // Sin página de rastreo dedicada (/rastreo, /tracking, /seguimiento → 404),
-    // pero el portal raíz sí contiene el rastreador (verificado 2026-10-20).
+    // El rastreo de Domina corre sobre la plataforma Infokairos (URL oficial
+    // confirmada por el owner 2026-10-20; verificada 200 con shell de tracking).
     name: "Domina",
-    url: "https://domina.com.co/",
+    url: "https://tracking.infokairos.com.co/",
   },
 };
 
