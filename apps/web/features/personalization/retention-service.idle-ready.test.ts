@@ -46,6 +46,7 @@ type FakeQuote = { status: string; updatedAt: Date; deletedAt: Date | null };
 type FakeDesign = {
   id: string;
   status: string;
+  archivedFrom: string | null;
   customerId: string | null;
   updatedAt: Date;
   cartItems: Array<{ cartDeletedAt: Date | null }>;
@@ -57,6 +58,7 @@ function design(id: string, over: Partial<FakeDesign> = {}): FakeDesign {
   return {
     id,
     status: "READY",
+    archivedFrom: null,
     customerId: `cus-${id}`,
     updatedAt: daysAgo(120), // idle ≥90d por defecto
     cartItems: [],
@@ -102,6 +104,10 @@ const CASES: Array<{ design: FakeDesign; purge: boolean }> = [
   { design: design("draft-viejo", { status: "DRAFT" }), purge: false },
   { design: design("usado-en-pedido", { status: "USED_IN_ORDER", orderItems: 1 }), purge: false },
   { design: design("archivado", { status: "ARCHIVED" }), purge: false },
+  {
+    design: design("archivado-ready", { status: "ARCHIVED", archivedFrom: "READY" }),
+    purge: true,
+  },
 ];
 
 // ─────────────── fake de Prisma que EVALÚA el where en memoria ───────────────
@@ -143,8 +149,12 @@ function matchesQuote(where: Record<string, unknown>, q: FakeQuote): boolean {
 function matchesDesign(where: Record<string, unknown>, d: FakeDesign): boolean {
   return Object.entries(where).every(([key, value]) => {
     switch (key) {
+      case "OR":
+        return (value as Array<Record<string, unknown>>).some((w) => matchesDesign(w, d));
       case "status":
         return d.status === value;
+      case "archivedFrom":
+        return d.archivedFrom === value;
       case "updatedAt": {
         const lt = (value as { lt?: Date }).lt;
         if (!lt) throw new UnsupportedFilter(`updatedAt=${JSON.stringify(value)}`);
@@ -256,8 +266,8 @@ describe("purga de READYs abandonados (ADR-130, 2026-10-08)", () => {
 
   it("respeta el override de días (con 30d también purga ready-reciente… no: 10d sigue fuera)", async () => {
     const res = await purgeIdleReadyDesigns({ now: NOW, olderThanDays: 30 });
-    // Con 30d: purga los 4 idle de 120d; "ready-reciente" (10d) sigue protegido por recencia.
-    expect(res.designsPurged).toBe(4);
+    // Con 30d: purga los 5 idle de 120d; "ready-reciente" (10d) sigue protegido por recencia.
+    expect(res.designsPurged).toBe(5);
     expect(deletedIds).not.toContain("ready-reciente");
   });
 

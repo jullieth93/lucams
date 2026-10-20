@@ -30,6 +30,7 @@ import { assertTransactionalAllowed } from "@/lib/stage-guard";
 import { transitionOrder, clearCartAfterPaid, OrderTransitionError } from "./service";
 import { FetchTimeoutError } from "@/lib/fetch-with-timeout";
 import { decrementStockForOrder } from "./stock";
+import { inventoryUnitsForOrderItem } from "@/features/personalization/design-units";
 import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
 import { LUCAMS_CARRIER } from "@/features/shipping/lucams-shipping";
 import { buildShipmentLastError } from "./shipment-error";
@@ -184,7 +185,12 @@ export async function processPaidOrder(
               sku: true,
               attributes: true,
               product: {
-                select: { slug: true, name: true, physicalSpecs: true },
+                select: {
+                  slug: true,
+                  name: true,
+                  physicalSpecs: true,
+                  personalizationSchema: true,
+                },
               },
             },
           },
@@ -250,7 +256,10 @@ export async function processPaidOrder(
         await decrementStockForOrder(tx, {
           id: order.id,
           number: order.number,
-          items: order.items.map((it) => ({ variantId: it.variantId, qty: it.qty })),
+          items: order.items.map((it) => ({
+            variantId: it.variantId,
+            qty: inventoryUnitsForOrderItem(it),
+          })),
         });
         // Transición de estado dentro de la misma tx.
         await tx.order.update({
@@ -260,6 +269,13 @@ export async function processPaidOrder(
             ...(input.wompiTransactionId ? { wompiTransactionId: input.wompiTransactionId } : {}),
           },
         });
+        const designIds = order.items.flatMap((item) => (item.designId ? [item.designId] : []));
+        if (designIds.length > 0) {
+          await tx.design.updateMany({
+            where: { id: { in: designIds }, status: "READY" },
+            data: { status: "USED_IN_ORDER" },
+          });
+        }
         // F1 — registrar el uso del cupón AL PAGAR (no al crear la orden: una
         // PENDING_PAYMENT puede no pagarse nunca). Atómico con la transición a
         // PAID, y este bloque solo corre en la transición PENDING_PAYMENT→PAID,
@@ -583,7 +599,7 @@ export async function processPaidOrder(
     }
     items.push({
       productSlug: it.variant.product.slug,
-      qty: it.qty,
+      qty: inventoryUnitsForOrderItem(it),
       weightGrams: dims.weightGrams,
       widthCm: dims.widthCm,
       heightCm: dims.heightCm,

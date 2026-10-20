@@ -204,6 +204,14 @@ export async function saveCanvasAction(input: {
       { event: "design.save_canvas.fail", err: msg, payloadBytes: payloadSize },
       "saveCanvas failed",
     );
+    if (msg === "STALE_REVISION") {
+      return {
+        ok: false as const,
+        code: "STALE_REVISION" as const,
+        message:
+          "Este diseño cambió en otra pestaña o ventana. Recupera la versión más reciente antes de continuar.",
+      };
+    }
     // F-30 — saveCanvas only throws internal English errors (ownership/status guards, Prisma);
     // none is customer-safe, so the client always gets the generic copy. Detail is in the log.
     return {

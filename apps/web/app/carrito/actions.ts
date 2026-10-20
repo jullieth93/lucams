@@ -119,8 +119,14 @@ export async function updateQtyAction(formData: FormData): Promise<void> {
     redirect("/carrito");
   }
 
+  const customer = await getCurrentCustomer();
   try {
-    await updateCartItemQty(sessionId, parsed.data.itemId, parsed.data.qty);
+    await updateCartItemQty(
+      sessionId,
+      parsed.data.itemId,
+      parsed.data.qty,
+      customer?.customer.id ?? null,
+    );
     logger.info({
       event: "cart.update.success",
       sessionId,
@@ -249,8 +255,9 @@ export async function removeItemAction(formData: FormData): Promise<void> {
     redirect("/carrito");
   }
 
+  const customer = await getCurrentCustomer();
   try {
-    await removeCartItem(sessionId, parsed.data.itemId);
+    await removeCartItem(sessionId, parsed.data.itemId, customer?.customer.id ?? null);
     logger.info({
       event: "cart.remove.success",
       sessionId,

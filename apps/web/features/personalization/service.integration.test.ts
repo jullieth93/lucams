@@ -10,6 +10,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { Prisma } from "@lucams/db";
 import sharp from "sharp";
 import { prisma } from "@/lib/db";
 import { supabaseService } from "@/lib/supabase/service";
@@ -63,6 +64,7 @@ async function makeDesign(opts: {
   customerId: string;
   status: "READY" | "USED_IN_ORDER" | "DRAFT" | "ARCHIVED";
   previewUrl?: string | null;
+  canvasData?: Prisma.InputJsonValue;
 }): Promise<string> {
   const d = await prisma.design.create({
     data: {
@@ -70,7 +72,7 @@ async function makeDesign(opts: {
       sessionId: `${RUN}-${Math.random().toString(36).slice(2)}`,
       productId,
       status: opts.status,
-      canvasData: {},
+      canvasData: opts.canvasData ?? { version: 2, clientRev: 1, slots: [] },
       previewUrl: opts.previewUrl === undefined ? "https://cdn.lucams.test/p.png" : opts.previewUrl,
     },
     select: { id: true },
@@ -115,6 +117,9 @@ afterAll(async () => {
   for (const { bucket, paths } of storageCleanup) {
     await safe(supabaseService.storage.from(bucket).remove(paths));
   }
+  await safe(prisma.cartItem.deleteMany({ where: { variant: { productId } } }));
+  await safe(prisma.cart.deleteMany({ where: { sessionId: { contains: RUN } } }));
+  await safe(prisma.productVariant.deleteMany({ where: { productId } }));
   await safe(prisma.designAsset.deleteMany({ where: { design: { productId } } }));
   await safe(prisma.design.deleteMany({ where: { productId } }));
   await safe(prisma.product.deleteMany({ where: { id: productId } }));
@@ -133,7 +138,46 @@ describe("listCustomerDesigns", () => {
     expect(ids).not.toContain(archivedFixtureId);
   });
 
-  it("excluye DRAFTs fuera de la ventana de retención (idle 90 d — los purgables)", async () => {
+  it("no lista un DRAFT vacío aunque esté vigente", async () => {
+    const empty = await makeDesign({
+      customerId: ownerId,
+      status: "DRAFT",
+      canvasData: {
+        version: 2,
+        slotCount: 1,
+        slots: [{ slotIndex: 0, assetId: null, assetUrl: null }],
+      },
+    });
+    const rows = await listCustomerDesigns(ownerId);
+    expect(rows.map((r) => r.id)).not.toContain(empty);
+  });
+
+  it("marca inCart cuando un diseño READY está en un carrito vivo", async () => {
+    const designId = await makeDesign({ customerId: ownerId, status: "READY" });
+    const variant = await prisma.productVariant.create({
+      data: {
+        productId,
+        name: `Variante ${RUN}`,
+        sku: `${RUN}-VAR`.toUpperCase(),
+        price: 10_000,
+        stock: 10,
+        attributes: {},
+      },
+      select: { id: true },
+    });
+    const cart = await prisma.cart.create({
+      data: { sessionId: `${RUN}-cart-incart` },
+      select: { id: true },
+    });
+    await prisma.cartItem.create({
+      data: { cartId: cart.id, variantId: variant.id, designId, qty: 1, unitPrice: 10_000 },
+    });
+
+    const rows = await listCustomerDesigns(ownerId);
+    expect(rows.find((row) => row.id === designId)?.inCart).toBe(true);
+  });
+
+  it("excluye DRAFTs fuera de la ventana de retención (idle 30 d — los purgables)", async () => {
     const old = await makeDesign({ customerId: ownerId, status: "DRAFT" });
     await prisma.design.update({
       where: { id: old },
@@ -233,9 +277,10 @@ describe("getSharedDesign (vista pública)", () => {
     // Revocación real: el shareTokenHash se anula (no solo se apoya en el filtro ARCHIVED).
     const row = await prisma.design.findUnique({
       where: { id: shareId },
-      select: { shareTokenHash: true, status: true },
+      select: { shareTokenHash: true, status: true, archivedFrom: true },
     });
     expect(row!.status).toBe("ARCHIVED");
+    expect(row!.archivedFrom).toBe("READY");
     expect(row!.shareTokenHash).toBeNull();
   });
 

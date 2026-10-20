@@ -31,6 +31,7 @@
  */
 
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
 import {
   describeVariantAttributes,
@@ -40,6 +41,7 @@ import {
   readPhotoPackDesignInfo,
   resolvePhotoPackVariant,
 } from "@/features/products/photo-pack-resolve";
+import { isPurchasableVariant } from "@/features/products/storefront-visibility";
 import { logger } from "@/lib/logger";
 import { designIdentity, sameLineContent } from "./design-identity";
 import { describePieces, pieceKindFor } from "./line-preview";
@@ -47,6 +49,7 @@ import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import {
   designDisplayUnits,
   designUnitPriceMultiplier,
+  inventoryUnitsForOrderItem,
   letterSetUnitCount,
 } from "@/features/personalization/design-units";
 import { letterSetBorderNote } from "@/features/personalization/letter-set-border";
@@ -78,6 +81,8 @@ export type CartLineItem = {
    * stock disponible). No es una reserva — puede cambiar hasta el pago.
    */
   stock: number;
+  /** Unidades físicas de inventario y logística derivadas de la línea, no solo su qty comercial. */
+  inventoryUnits: number;
   imageUrl: string | null;
   designId: string | null;
   /** Si designId está set, este es el previewUrl del Design (1080×1080 PNG público).
@@ -127,7 +132,8 @@ export class CartError extends Error {
       | "NO_DEFAULT_VARIANT"
       | "QTY_INVALID"
       | "ITEM_NOT_FOUND"
-      | "STOCK_UNAVAILABLE",
+      | "STOCK_UNAVAILABLE"
+      | "CART_IDENTITY_MISMATCH",
     /**
      * Copy customer-safe opcional que nombra el producto/stock (p. ej. "Solo
      * quedan 3 unidades de «Imán Nevera»"). Las actions lo prefieren sobre el
@@ -223,6 +229,19 @@ async function findCartBySession(sessionId: string) {
   });
 }
 
+function cartIdentityMatches(
+  cart: { customerId: string | null },
+  customerId: string | null,
+): boolean {
+  return cart.customerId === null || cart.customerId === customerId;
+}
+
+function assertCartIdentity(cart: { customerId: string | null }, customerId: string | null): void {
+  if (!cartIdentityMatches(cart, customerId)) {
+    throw new CartError("CART_IDENTITY_MISMATCH");
+  }
+}
+
 async function findCartByCustomer(customerId: string) {
   return prisma.cart.findFirst({
     where: { customerId, deletedAt: null },
@@ -247,6 +266,7 @@ const cartItemsInclude = {
               isPersonalizable: true,
               isActive: true,
               deletedAt: true,
+              category: { select: { isActive: true, deletedAt: true } },
               // Para describir la pieza física en el checkout (nº de piezas y medida).
               personalizationKind: true,
               personalizationSchema: true,
@@ -282,15 +302,13 @@ const cartItemsInclude = {
 };
 
 async function ensureCart(sessionId: string, customerId: string | null) {
-  // No usar upsert por sessionId — un cart soft-deleted con el mismo
-  // sessionId puede ocupar la unique constraint. Buscar primero los
-  // activos; si no existe, crear nuevo.
   const existing = await prisma.cart.findFirst({
     where: { sessionId, deletedAt: null },
     include: cartItemsInclude,
   });
   if (existing) {
-    if (customerId && existing.customerId !== customerId) {
+    assertCartIdentity(existing, customerId);
+    if (customerId && existing.customerId === null) {
       return prisma.cart.update({
         where: { id: existing.id },
         data: { customerId },
@@ -299,20 +317,15 @@ async function ensureCart(sessionId: string, customerId: string | null) {
     }
     return existing;
   }
-  // `Cart.sessionId` es @unique GLOBAL, no parcial: un carrito soft-borrado sigue ocupando su
-  // sessionId. Como `clearCartAfterPaid` soft-borra el carrito al crear una cotización (y al pagar),
-  // el cliente que ya cotizó conserva la misma cookie de sesión y aquí no encuentra carrito ACTIVO
-  // → el `create` de abajo violaba la restricción y salía un "Algo salió mal" genérico.
-  //
-  // Síntoma real (Lucy, 2026-07-25): tras pedir una cotización, agregar cualquier cosa al carrito
-  // fallaba para siempre en esa sesión. En modo catálogo cotizar ES el flujo principal, así que
-  // rompía el embudo completo desde la primera conversión.
-  //
-  // Se REVIVE el carrito en vez de crear otro: misma sesión, carrito nuevo y vacío. Sus ítems
-  // viejos se borran —`clearCartAfterPaid` solo marca el carrito, los CartItem quedaban vivos— y
-  // eso no pierde nada: la cotización o la orden ya guardaron su propio snapshot de las líneas.
-  const soft = await prisma.cart.findUnique({ where: { sessionId }, select: { id: true } });
+
+  // Un carrito pagado puede revivirse vacío con la misma sesión, pero solo si
+  // también pasa la guarda de identidad; nunca se reasigna a otra cuenta.
+  const soft = await prisma.cart.findUnique({
+    where: { sessionId },
+    select: { id: true, customerId: true },
+  });
   if (soft) {
+    assertCartIdentity(soft, customerId);
     await prisma.cartItem.deleteMany({ where: { cartId: soft.id } });
     return prisma.cart.update({
       where: { id: soft.id },
@@ -385,10 +398,16 @@ function describeLine(item: RawCart["items"][number]): string | null {
 
 function toDetail(cart: RawCart): CartDetail {
   const items: CartLineItem[] = cart.items
-    // Filtra items donde el producto fue archivado entre add-to-cart y
-    // la lectura. El admin que archive un producto efectivamente lo
-    // saca de carritos en vuelo, lo cual es correcto.
-    .filter((i) => i.variant.product.isActive && i.variant.product.deletedAt === null)
+    .filter((i) =>
+      isPurchasableVariant({
+        variantIsActive: i.variant.isActive,
+        variantDeletedAt: i.variant.deletedAt,
+        productIsActive: i.variant.product.isActive,
+        productDeletedAt: i.variant.product.deletedAt,
+        categoryIsActive: i.variant.product.category.isActive,
+        categoryDeletedAt: i.variant.product.category.deletedAt,
+      }),
+    )
     .map((i) => {
       // 2026-10-13 — exhibición con marca de agua: thumb representativa para la
       // miniatura de la línea (el montaje completo de un set se veía como
@@ -408,6 +427,13 @@ function toDetail(cart: RawCart): CartDetail {
         unitPrice: i.unitPrice,
         lineTotal: i.qty * i.unitPrice,
         stock: i.variant.stock,
+        inventoryUnits: inventoryUnitsForOrderItem({
+          qty: i.qty,
+          customDesign: i.design?.canvasData ?? i.customDesign,
+          metadata: i.design?.metadata ?? i.metadata,
+          variantAttrs: i.variant.attributes,
+          productSchema: i.variant.product.personalizationSchema,
+        }),
         // Si CartItem tiene designId vinculado, mostramos el preview del Design
         // en vez de la imagen genérica del producto. Mejora el "WYSIWYG" del cart.
         // Paquete F (2026-10-02) — sin diseño, la foto de LA VARIANTE manda sobre
@@ -438,19 +464,35 @@ function toDetail(cart: RawCart): CartDetail {
 // API pública
 // ─────────────────────────────────────────────────────────────────────
 
-export async function getCartDetail(sessionId: string): Promise<CartDetail | null> {
+export async function getCartDetail(
+  sessionId: string,
+  customerId: string | null = null,
+): Promise<CartDetail | null> {
   const cart = await findCartBySession(sessionId);
-  return cart ? toDetail(cart) : null;
+  if (!cart || !cartIdentityMatches(cart, customerId)) return null;
+  return toDetail(cart);
 }
 
-export async function getCartItemCount(sessionId: string): Promise<number> {
-  // #3 — el badge del header corre en CADA página: sumamos qty en la DB en vez de traer el cart
-  // completo (imágenes, nombre, preview del diseño). Mismo filtro que toDetail: solo items con
-  // producto activo y no borrado. _sum.qty es null sin filas → 0 (idéntico al early-return previo).
+export async function getCartItemCount(
+  sessionId: string,
+  customerId: string | null = null,
+): Promise<number> {
   const { _sum } = await prisma.cartItem.aggregate({
     where: {
-      cart: { sessionId, deletedAt: null },
-      variant: { product: { isActive: true, deletedAt: null } },
+      cart: {
+        sessionId,
+        deletedAt: null,
+        ...(customerId ? { OR: [{ customerId: null }, { customerId }] } : { customerId: null }),
+      },
+      variant: {
+        isActive: true,
+        deletedAt: null,
+        product: {
+          isActive: true,
+          deletedAt: null,
+          category: { isActive: true, deletedAt: null },
+        },
+      },
     },
     _sum: { qty: true },
   });
@@ -474,7 +516,12 @@ export async function addProductToCart(opts: {
   }
 
   const product = await prisma.product.findFirst({
-    where: { slug: opts.productSlug, isActive: true, deletedAt: null },
+    where: {
+      slug: opts.productSlug,
+      isActive: true,
+      deletedAt: null,
+      category: { isActive: true, deletedAt: null },
+    },
     select: {
       id: true,
       basePrice: true,
@@ -485,7 +532,7 @@ export async function addProductToCart(opts: {
         // Sin variantId: la variante legacy `-DEFAULT`.
         where: opts.variantId
           ? { id: opts.variantId, deletedAt: null, isActive: true }
-          : { deletedAt: null, sku: { endsWith: "-DEFAULT" } },
+          : { deletedAt: null, isActive: true, sku: { endsWith: "-DEFAULT" } },
         select: { id: true, price: true, stock: true },
         take: 1,
       },
@@ -512,7 +559,7 @@ export async function addProductToCart(opts: {
   // Upsert por (cartId, variantId) — si ya existe item con esa variante,
   // suma qty. CartItem no tiene unique compuesto, así que lo manejamos
   // a mano.
-  const existing = cart.items.find((i) => i.variantId === variant.id);
+  const existing = cart.items.find((i) => i.variantId === variant.id && !i.designId);
   // Tope efectivo de la línea: min(99, stock) con SEMÁNTICA DE CLAMP
   // (2026-09-29) — sumar más allá del tope se topa al tope, igual que el clamp
   // legacy a 99, ahora también contra el stock real de la variante. Solo se
@@ -626,11 +673,12 @@ export async function addPersonalizedToCart(opts: {
           name: true,
           isActive: true,
           deletedAt: true,
+          category: { select: { isActive: true, deletedAt: true } },
           // Multi-unidad — facesPerUnit para el multiplicador (separadores: 2 caras;
           // verdad del producto, no del canvas).
           personalizationSchema: true,
           variants: {
-            where: { deletedAt: null },
+            where: { deletedAt: null, isActive: true },
             select: { id: true, price: true, sku: true, attributes: true, stock: true },
             orderBy: { createdAt: "asc" },
           },
@@ -638,7 +686,13 @@ export async function addPersonalizedToCart(opts: {
       },
     },
   });
-  if (!design || !design.product.isActive || design.product.deletedAt) {
+  if (
+    !design ||
+    !design.product.isActive ||
+    design.product.deletedAt ||
+    !design.product.category.isActive ||
+    design.product.category.deletedAt
+  ) {
     throw new CartError("PRODUCT_NOT_FOUND");
   }
   if (design.status !== "READY") {
@@ -647,40 +701,19 @@ export async function addPersonalizedToCart(opts: {
     throw new CartError("PRODUCT_NOT_FOUND");
   }
 
-  // Resolver variant: si caller pasó variantId (típico tras consolidación
-  // de familias M.3.b.CAT donde N variants por size/qty), validar que
-  // pertenece al producto del Design. Si no se pasó, fallback histórico:
-  // primera variant disponible (post-M.3.b.CAT la mayoría de productos
-  // tienen al menos 1 variant; pre-consolidación había un "-DEFAULT").
   let variant: { id: string; price: number | null; attributes: unknown; stock: number } | undefined;
-  if (opts.variantId) {
+  if (opts.variantId && !design.product.variants.some((v) => v.id === opts.variantId)) {
+    throw new CartError("NO_DEFAULT_VARIANT");
+  }
+  const packInfo = readPhotoPackDesignInfo(design.canvasData);
+  if (packInfo) {
+    variant = resolvePhotoPackVariant(design.product.variants, packInfo) ?? undefined;
+    if (!variant) throw new CartError("NO_DEFAULT_VARIANT");
+  } else if (opts.variantId) {
     variant = design.product.variants.find((v) => v.id === opts.variantId);
-    if (!variant) {
-      // El variantId no pertenece a este producto → posible tamper
-      // (cliente cambió URL) o variant archivado entre PDP y Estudio.
-      throw new CartError("NO_DEFAULT_VARIANT");
-    }
+    if (!variant) throw new CartError("NO_DEFAULT_VARIANT");
   } else {
-    // Lucy 2026-09-05 — packs de fotoimanes: el N de fotos, el tamaño y (desde
-    // 2026-09-08) el "¿Con imán?" viajan en el canvasData guardado del diseño.
-    // El cliente NO manda variantId para estos packs: el servidor resuelve la
-    // variante exacta (precio + stock SIEMPRE server-side). Si el diseño no
-    // declara photoSlots (legacy / otros kinds), se mantiene el fallback
-    // histórico: primera variante activa.
-    const packInfo = readPhotoPackDesignInfo(design.canvasData);
-    if (packInfo) {
-      variant = resolvePhotoPackVariant(design.product.variants, packInfo) ?? undefined;
-      if (!variant) {
-        // El catálogo ya no reproduce este diseño (Lucy pausó esa combinación
-        // de fotos/tamaño). Error claro: sin variante exacta no hay precio
-        // que cobrar — nunca se inventa uno de otra variante.
-        throw new CartError("NO_DEFAULT_VARIANT");
-      }
-    } else {
-      // Compat: primera variant activa (orden por createdAt). Para productos
-      // mono-variant queda igual; para multi-variant es elección arbitraria.
-      variant = design.product.variants[0];
-    }
+    variant = design.product.variants[0];
   }
   if (!variant) throw new CartError("NO_DEFAULT_VARIANT");
   // Fase 1 (stock por variante): misma regla que addProductToCart — la variante
@@ -830,10 +863,12 @@ export async function updateCartItemQty(
   sessionId: string,
   itemId: string,
   qty: number,
+  customerId: string | null = null,
 ): Promise<CartDetail> {
   if (qty < 0 || qty > MAX_QTY_PER_ITEM) throw new CartError("QTY_INVALID");
   const cart = await findCartBySession(sessionId);
   if (!cart) throw new CartError("ITEM_NOT_FOUND");
+  assertCartIdentity(cart, customerId);
   const item = cart.items.find((i) => i.id === itemId);
   if (!item) throw new CartError("ITEM_NOT_FOUND");
 
@@ -878,8 +913,12 @@ export async function updateCartItemQty(
   return toDetail(reloaded!);
 }
 
-export async function removeCartItem(sessionId: string, itemId: string): Promise<CartDetail> {
-  return updateCartItemQty(sessionId, itemId, 0);
+export async function removeCartItem(
+  sessionId: string,
+  itemId: string,
+  customerId: string | null = null,
+): Promise<CartDetail> {
+  return updateCartItemQty(sessionId, itemId, 0, customerId);
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -944,29 +983,35 @@ export async function mergeAnonCartIntoCustomer(
   anonSessionId: string,
   customerId: string,
 ): Promise<string> {
-  const anonCart = await findCartBySession(anonSessionId);
-  if (!anonCart || anonCart.items.length === 0) {
-    // Sin nada que mergear. Si existe un cart vacío anon, lo dejamos
-    // estar — el cliente puede seguir agregando con su misma cookie.
-    // Pero asociamos customerId para futuro tracking.
-    if (anonCart && anonCart.customerId !== customerId) {
-      await prisma.cart.update({
-        where: { id: anonCart.id },
-        data: { customerId },
-      });
-    }
+  const [anonCart, customerCart] = await Promise.all([
+    findCartBySession(anonSessionId),
+    findCartByCustomer(customerId),
+  ]);
+
+  // Una cookie vieja de otra cuenta nunca se adopta ni se reasigna. Se devuelve
+  // un contexto seguro para que el caller rote la cookie sin tocar ese carrito.
+  if (anonCart?.customerId && anonCart.customerId !== customerId) {
+    return customerCart?.sessionId ?? randomUUID();
+  }
+  if (!anonCart) return customerCart?.sessionId ?? anonSessionId;
+  if (anonCart.customerId === customerId || customerCart?.id === anonCart.id) {
     return anonSessionId;
   }
 
-  const customerCart = await findCartByCustomer(customerId);
+  if (anonCart.items.length === 0) {
+    if (customerCart) {
+      await prisma.cart.deleteMany({
+        where: { id: anonCart.id, customerId: null, items: { none: {} } },
+      });
+      return customerCart.sessionId;
+    }
+    await prisma.cart.update({ where: { id: anonCart.id }, data: { customerId } });
+    return anonSessionId;
+  }
 
-  // Caso 1: customer sin cart previo → el anon pasa a ser suyo.
   if (!customerCart) {
     await prisma.$transaction(async (tx) => {
-      await tx.cart.update({
-        where: { id: anonCart.id },
-        data: { customerId },
-      });
+      await tx.cart.update({ where: { id: anonCart.id }, data: { customerId } });
       await adoptSessionDesigns(tx, {
         designIds: anonCart.items.map((i) => i.designId),
         anonSessionId,
@@ -976,27 +1021,26 @@ export async function mergeAnonCartIntoCustomer(
     return anonSessionId;
   }
 
-  // Caso 2: ambos existen, mismo cart (raro) → noop.
-  if (customerCart.id === anonCart.id) return anonSessionId;
-
-  // Caso 3: merge. Fold del anon en el customer cart.
-  // Paquete H (2026-10-02): el dup se decide por CONTENIDO (sameLineContent),
-  // no solo por (variantId, designId) — dos Designs distintos pero idénticos
-  // (cada pasada por el Estudio crea uno nuevo) quedaban como dos líneas
-  // visualmente iguales en carrito, pedido y emails (reporte STG). Misma regla
-  // que addPersonalizedToCart: misma variante + mismo contenido → UNA línea con
-  // la qty sumada; diseños distintos → líneas separadas. La línea que sobrevive
-  // es la del cart del customer (conserva su diseño/preview); el Design del anon
-  // queda huérfano, igual que en addPersonalizedToCart — no se borra (puede
-  // estar referenciado por auditoría/historial del cliente).
   await prisma.$transaction(async (tx) => {
     for (const anonItem of anonCart.items) {
       const dup = customerCart.items.find((i) => sameLineContent(i, anonItem));
       if (dup) {
-        await tx.cartItem.update({
-          where: { id: dup.id },
-          data: { qty: Math.min(MAX_QTY_PER_ITEM, dup.qty + anonItem.qty) },
-        });
+        const mergedQty = dup.qty + anonItem.qty;
+        if (mergedQty <= MAX_QTY_PER_ITEM) {
+          await tx.cartItem.update({ where: { id: dup.id }, data: { qty: mergedQty } });
+        } else {
+          await tx.cartItem.update({ where: { id: dup.id }, data: { qty: MAX_QTY_PER_ITEM } });
+          await tx.cartItem.create({
+            data: {
+              cartId: customerCart.id,
+              variantId: anonItem.variantId,
+              qty: mergedQty - MAX_QTY_PER_ITEM,
+              unitPrice: anonItem.unitPrice,
+              customDesign: anonItem.customDesign ?? undefined,
+              designId: anonItem.designId ?? undefined,
+            },
+          });
+        }
       } else {
         await tx.cartItem.create({
           data: {
@@ -1005,22 +1049,16 @@ export async function mergeAnonCartIntoCustomer(
             qty: anonItem.qty,
             unitPrice: anonItem.unitPrice,
             customDesign: anonItem.customDesign ?? undefined,
-            designId: anonItem.designId ?? undefined, // M.4 preservar Design vinculado
+            designId: anonItem.designId ?? undefined,
           },
         });
       }
     }
-    // Los diseños anónimos referenciados por los items mergeados pasan al customer
-    // (misma transacción: si el fold falla, ningún diseño cambia de dueño a medias).
     await adoptSessionDesigns(tx, {
       designIds: anonCart.items.map((i) => i.designId),
       anonSessionId,
       customerId,
     });
-    // Hard-delete anon cart (CartItem cascade). Cart es data efímera
-    // sin valor de auditoría — además `sessionId @unique` no respeta
-    // deletedAt, así que un soft-delete bloquearía reusar ese
-    // sessionId para un nuevo cart en el futuro.
     await tx.cartItem.deleteMany({ where: { cartId: anonCart.id } });
     await tx.cart.delete({ where: { id: anonCart.id } });
   });
@@ -1048,14 +1086,29 @@ export async function mergeCartsAdopt(
     findCartBySession(targetSessionId),
   ]);
   if (!target || !source || source.items.length === 0 || source.id === target.id) return;
+  if (source.customerId && source.customerId !== target.customerId) {
+    throw new CartError("CART_IDENTITY_MISMATCH");
+  }
   await prisma.$transaction(async (tx) => {
     for (const it of source.items) {
       const dup = target.items.find((t) => sameLineContent(t, it));
       if (dup) {
-        await tx.cartItem.update({
-          where: { id: dup.id },
-          data: { qty: Math.min(MAX_QTY_PER_ITEM, dup.qty + it.qty) },
-        });
+        const mergedQty = dup.qty + it.qty;
+        if (mergedQty <= MAX_QTY_PER_ITEM) {
+          await tx.cartItem.update({ where: { id: dup.id }, data: { qty: mergedQty } });
+        } else {
+          await tx.cartItem.update({ where: { id: dup.id }, data: { qty: MAX_QTY_PER_ITEM } });
+          await tx.cartItem.create({
+            data: {
+              cartId: target.id,
+              variantId: it.variantId,
+              qty: mergedQty - MAX_QTY_PER_ITEM,
+              unitPrice: it.unitPrice,
+              customDesign: it.customDesign ?? undefined,
+              designId: it.designId ?? undefined,
+            },
+          });
+        }
       } else {
         await tx.cartItem.create({
           data: {

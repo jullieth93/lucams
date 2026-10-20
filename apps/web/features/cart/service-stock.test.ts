@@ -39,6 +39,8 @@ type CartItemFixture = {
     sku: string;
     price: number | null;
     stock: number;
+    isActive: boolean;
+    deletedAt: null;
     attributes: unknown;
     // Paquete F (2026-10-02) — fotos propias de la variante (vacío = hereda
     // Product.images). El DTO las prefiere sobre la genérica del producto.
@@ -52,6 +54,7 @@ type CartItemFixture = {
       isPersonalizable: boolean;
       isActive: boolean;
       deletedAt: null;
+      category: { isActive: boolean; deletedAt: null };
       personalizationKind: string;
       personalizationSchema: unknown;
     };
@@ -147,6 +150,8 @@ function makeVariant(
     sku: "IMN-DEFAULT",
     price: null,
     stock,
+    isActive: true,
+    deletedAt: null,
     attributes: opts?.attributes ?? {},
     images: opts?.images ?? [],
     product: {
@@ -158,6 +163,7 @@ function makeVariant(
       isPersonalizable: false,
       isActive: true,
       deletedAt: null,
+      category: { isActive: true, deletedAt: null },
       personalizationKind: "NONE",
       personalizationSchema: null,
     },

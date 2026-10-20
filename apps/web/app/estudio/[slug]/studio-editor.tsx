@@ -126,6 +126,7 @@ const BookView3D = nextDynamic(() => import("./book-view-3d"), {
   loading: () => <Book3DLoadingFallback />,
 });
 import { createStudioStore } from "./lib/store";
+import { createSerialTaskQueue } from "./lib/serial-task-queue";
 import { waitForSlotPhotosReady } from "./lib/slot-photo-readiness";
 import { snapshotSlotForPreview, yieldToMain } from "./lib/slot-snapshot-cache";
 import { resolveSlotNoun, type SlotNoun, type StudioSlotProductKind } from "./lib/slot-noun";
@@ -214,6 +215,7 @@ export type StudioEditorProps = {
   initialDesignId: string | null;
   initialDesignCanvas: CanvasData | null;
   initialDesignAssets: StudioAsset[];
+  draftMarkerMaxAgeMs?: number;
   photoSlots: number;
   /**
    * Lucy 2026-09-05 — packs de fotoimanes: catálogo elegible {photoSlots, price}
@@ -297,6 +299,10 @@ function packVariantIdFor(
   );
 }
 
+function studioDraftScope(productSlug: string, variantId: string | undefined): string {
+  return `${productSlug}:${variantId ?? "default"}`;
+}
+
 export function StudioEditor({
   product,
   templates,
@@ -305,6 +311,7 @@ export function StudioEditor({
   initialDesignId,
   initialDesignCanvas,
   initialDesignAssets,
+  draftMarkerMaxAgeMs,
   photoSlots,
   packVariants = [],
   variantId,
@@ -351,6 +358,7 @@ export function StudioEditor({
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
+  const initialDraftScope = studioDraftScope(product.slug, variantId);
   // Fase 2 · item 2.4 (2026-10-07) — "Continuar donde quedaste": si hay un
   // marcador de draft para ESTE producto (localStorage) y la URL no trae
   // ?designId= (un recover explícito manda sobre el marcador), se ofrece el
@@ -363,7 +371,7 @@ export function StudioEditor({
   // trae savedAt para que el interstitial diga QUÉ se va a retomar.
   const [resumeOffer, setResumeOffer] = useState<{ designId: string; savedAt: number } | null>(
     () => {
-      const marker = readStudioDraftMarker(product.slug);
+      const marker = readStudioDraftMarker(initialDraftScope, { maxAgeMs: draftMarkerMaxAgeMs });
       const urlHasDesignId =
         typeof window !== "undefined" &&
         new URLSearchParams(window.location.search).has("designId");
@@ -392,11 +400,11 @@ export function StudioEditor({
   }, [product.slug, resumeOffer]);
   // Item 2.4 — descartar: limpiar el marcador y bootear un draft nuevo.
   const handleDiscardDraft = useCallback(() => {
-    clearStudioDraftId(product.slug);
+    clearStudioDraftId(initialDraftScope);
     // ADR-133 — también el snapshot de recuperación del draft descartado.
     if (resumeOffer) clearStudioCanvasSnapshot(resumeOffer.designId);
     setResumeOffer(null);
-  }, [product.slug, resumeOffer]);
+  }, [initialDraftScope, resumeOffer]);
   // PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito: al click «Vista
   // previa» (antes «¡Listo!») generamos preview compositado client-side y
   // abrimos modal. El upload real (production PNGs + finalize + addToCart)
@@ -462,6 +470,9 @@ export function StudioEditor({
   // reintento moría con «Design is READY — only DRAFT can be finalized» y no había salida. Se
   // limpia al volver a editar, que es cuando el diseño puede cambiar de verdad.
   const finalizedRef = useRef(false);
+  const flushCanvasSaveRef = useRef<
+    (() => Promise<Awaited<ReturnType<typeof saveCanvasAction>>>) | null
+  >(null);
   // ADR-063 T5 — cuando hay muchos slots, el grid monta solo los cercanos al viewport (lazy). Antes
   // de CUALQUIER snapshot (preview, producción, 3D) forzamos el montaje de todos y esperamos a que
   // Konva registre sus stages, para no snapshotear un slot vacío.
@@ -824,10 +835,9 @@ export function StudioEditor({
 
   // ──────────── Boot: crear draft (o recuperar existente) ────────────
   useEffect(() => {
-    // Guard: evita re-boot cuando una prop cambia de referencia pero el store ya
-    // está inicializado (p.ej. templates se recrea por render del padre). El boot
-    // solo debe correr una vez por mount real del editor.
-    if (store.getState().designId) return;
+    // Guard: el boot corre una vez por mount real del editor, también cuando el
+    // diseño nuevo aún no tiene fila server-side.
+    if (store.getState().booted) return;
     // Item 2.4 — con el interstitial "Continuar donde quedaste" pendiente el
     // boot ESPERA: crear un draft nuevo ahora dejaría dos drafts vivos (el del
     // marcador y este). Al descartar, resumeOffer → null y el boot corre.
@@ -870,43 +880,10 @@ export function StudioEditor({
             };
           }
         } else {
-          // Crear draft nuevo. N-08 — plantilla del boot: la del deep-link
-          // `?template=` (ya resuelta en page.tsx contra la lista visible) si
-          // existe; si no, la primera visible, como siempre. Se pasa su id al
-          // servidor, que la RE-VALIDA (kind/EDITABLE/activa/producto) y crea el
-          // draft con ESA misma plantilla — antes el server elegía por su cuenta
-          // ("primera activa del kind", sin aspect) y podía discrepar del canvas
-          // con el que arrancaba el cliente.
           const bootTemplate =
             (initialTemplateId ? templates.find((t) => t.id === initialTemplateId) : undefined) ??
             templates[0];
-          const result = await createDraftDesignAction({
-            productId: product.id,
-            ...(bootTemplate ? { templateId: bootTemplate.id } : {}),
-            // Variante → metadata.variantId del draft: el recover (?designId=,
-            // «Editar» desde el carrito) reabre el Estudio con la variante
-            // correcta. En packs se manda la EFECTIVA (match del catálogo por el
-            // N de fotos + magnet vigentes — 2026-10-12; antes los packs no
-            // persistían variante y el recover caía a la primera del producto).
-            // El COBRO no la lee: la variante exacta se deriva del canvasData
-            // en el servidor (la ruta del dinero no confía en el cliente).
-            ...(() => {
-              const effective = isPhotoPack
-                ? packVariantIdFor(packVariants, photoSlots, initialMagnet)
-                : variantId;
-              return effective ? { variantId: effective } : {};
-            })(),
-          });
-          if (!result.ok) {
-            throw new Error(result.message);
-          }
-          designId = result.designId;
-          // Recargar canvasData del nuevo draft. Como acabamos de crearlo
-          // server-side con V2, asumimos shape correcto.
-          // Para evitar un round-trip extra, reconstruimos el shape esperado:
-          // ADR-063 T4 — sin plantillas curadas, degradar a un template por defecto (mismo que el
-          // server arma en createDraftDesign) en vez de crashear el editor. Boot funcional para
-          // cualquier producto; la foto tiene un placeholder full-stage donde ubicarse.
+          designId = null;
           const unitTemplate = bootTemplate?.canvasData ?? {
             version: 1 as const,
             stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
@@ -1052,7 +1029,7 @@ export function StudioEditor({
         }
 
         store.getState().init({
-          designId: designId!,
+          designId,
           productSlug: product.slug,
           canvasData,
           templates,
@@ -1075,11 +1052,11 @@ export function StudioEditor({
         //    no es DRAFT): el marcador quedó huérfano → se limpia, no se pisa
         //    con el id del draft vacío (eso rearmaba la mentira).
         if (initialDesignId) {
-          writeStudioDraftId(product.slug, designId!);
+          writeStudioDraftId(initialDraftScope, initialDesignId);
         } else if (typeof window !== "undefined") {
           const bootParams = new URLSearchParams(window.location.search);
           if (bootParams.has("designId") && bootParams.get("resume") === "1") {
-            clearStudioDraftId(product.slug);
+            clearStudioDraftId(initialDraftScope);
           }
         }
 
@@ -1115,15 +1092,13 @@ export function StudioEditor({
     initialDesignAssets,
     initialTemplateId,
     initialDesignTemplateId,
-    product.id,
+    initialDraftScope,
     product.slug,
     photoSlots,
     initialSlotCount,
     bootUnitSlots,
     bootUnitCount,
     isPhotoPack,
-    variantId,
-    packVariants,
     packSizeCm,
     initialMagnet,
     templates,
@@ -1138,90 +1113,133 @@ export function StudioEditor({
   // ──────────── Auto-save 2s debounce ────────────
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
-    // ADR-133 — reloj (epoch ms) del último cambio visto por este efecto: se
-    // estampa como clientRev en lo que sube al server y en el snapshot local de
-    // recuperación, para que el boot del recover pueda comparar qué copia es
-    // más nueva.
     let lastChangeRev = 0;
-    // 2026-10-13 — reloj del throttle de la miniatura del borrador (arranca en
-    // 0: el PRIMER save con fotos ya la genera — un draft nuevo con foto puesta
-    // tiene miniatura desde el primer auto-save).
     let lastDraftThumbAt = 0;
+    const queue = createSerialTaskQueue();
 
-    const runSave = async () => {
+    const performSave = async (): Promise<Awaited<ReturnType<typeof saveCanvasAction>>> => {
       const current = store.getState();
-      if (!current.designId || !current.canvasData) return;
+      if (!current.isDirty || !current.canvasData) return { ok: true };
+      let designId = current.designId;
+      const canvasData = current.canvasData;
+      const savedRev = Math.max(lastChangeRev, canvasData.clientRev ?? 0, 1);
+      lastChangeRev = savedRev;
       current.setAutoSaveStatus({ kind: "saving" });
-      const savedRev = lastChangeRev;
-      // 2026-10-13 — miniatura del DRAFT para "Mis diseños": throttled (1/min) y
-      // solo con al menos una foto puesta (un lienzo vacío no ilustra nada).
-      // Best-effort: si el montaje o la compresión fallan, el save sale SIN
-      // thumbnail y se reintenta en un guardado posterior.
-      let draftPreviewDataUrl: string | undefined;
-      if (
-        Date.now() - lastDraftThumbAt >= DRAFT_THUMB_INTERVAL_MS &&
-        current.canvasData.slots?.some((s) => s.assetUrl)
-      ) {
-        try {
-          const montage = await buildCompositedPreview(
-            current.canvasData,
-            slotStagesRef.current,
-            productConfig.shape,
-          );
-          draftPreviewDataUrl = await fitDraftThumbnail(montage);
-          lastDraftThumbAt = Date.now();
-        } catch {
-          // best-effort — el canvas se guarda igual
+
+      try {
+        const saveVariantId = isPhotoPack
+          ? packVariantIdFor(packVariants, canvasData.photoSlots, canvasData.magnet)
+          : variantId;
+        if (!designId) {
+          const created = await createDraftDesignAction({
+            productId: product.id,
+            templateId: current.selectedTemplateId ?? undefined,
+            ...(saveVariantId ? { variantId: saveVariantId } : {}),
+          });
+          if (!created.ok) {
+            current.setAutoSaveStatus({ kind: "error", message: created.message });
+            return { ok: false, code: "INTERNAL", message: created.message };
+          }
+          store.getState().setDesignId(created.designId);
+          designId = created.designId;
         }
-      }
-      const result = await saveCanvasAction({
-        designId: current.designId,
-        canvasData: savedRev ? { ...current.canvasData, clientRev: savedRev } : current.canvasData,
-        // N-08 — la plantilla aplicada en el sidebar viaja con el auto-save:
-        // Design.templateId la refleja (el service la valida server-side).
-        templateId: current.selectedTemplateId ?? undefined,
-        // 2026-10-12 — packs: la variante EFECTIVA (match del catálogo por el N
-        // de fotos + magnet del canvas) viaja con el auto-save → metadata.variantId
-        // para que el recover reabra con ELLA (el cobro la deriva del canvasData).
-        variantId: isPhotoPack
-          ? packVariantIdFor(packVariants, current.canvasData.photoSlots, current.canvasData.magnet)
-          : undefined,
-        // 2026-10-13 — miniatura del borrador (cuando toca por el throttle).
-        draftPreviewDataUrl,
-      });
-      if (result.ok) {
-        current.setAutoSaveStatus({ kind: "saved", at: Date.now() });
-        current.markClean();
-        // Item 2.4 (2026-10-13) — el marcador de "Continuar donde quedaste" se
-        // escribe ACÁ (primer auto-save exitoso con cambios reales = progreso
-        // recuperable server-side), no al montar el editor con un draft vacío.
-        // También refresca savedAt en cada save (vigencia del marcador).
-        writeStudioDraftId(product.slug, current.designId);
-        // ADR-133 — el server ya persistió esta revisión: el snapshot local es
-        // redundante SOLO si no capturó un cambio más nuevo mientras el save
-        // estaba en vuelo (por eso se compara rev, no se borra a ciegas).
-        const snapshot = readStudioCanvasSnapshot(current.designId);
-        if (snapshot && snapshot.rev <= savedRev) clearStudioCanvasSnapshot(current.designId);
-      } else {
-        current.setAutoSaveStatus({ kind: "error", message: result.message });
+
+        if (finalizedRef.current) {
+          const reopened = await reopenDesignForEditAction(designId);
+          if (!reopened.ok) {
+            current.setAutoSaveStatus({ kind: "error", message: reopened.message });
+            return { ok: false, code: "INTERNAL", message: reopened.message };
+          }
+          finalizedRef.current = false;
+        }
+
+        let draftPreviewDataUrl: string | undefined;
+        if (
+          Date.now() - lastDraftThumbAt >= DRAFT_THUMB_INTERVAL_MS &&
+          canvasData.slots.some((slot) => slot.assetUrl)
+        ) {
+          try {
+            const montage = await buildCompositedPreview(
+              canvasData,
+              slotStagesRef.current,
+              productConfig.shape,
+            );
+            draftPreviewDataUrl = await fitDraftThumbnail(montage);
+            lastDraftThumbAt = Date.now();
+          } catch {
+            // La miniatura se reintenta en el próximo guardado.
+          }
+        }
+
+        const result = await saveCanvasAction({
+          designId,
+          canvasData: { ...canvasData, clientRev: savedRev },
+          templateId: current.selectedTemplateId ?? undefined,
+          variantId: isPhotoPack ? saveVariantId : undefined,
+          draftPreviewDataUrl,
+        });
+        const latest = store.getState();
+        const isLatest =
+          latest.designId === designId &&
+          latest.canvasData === canvasData &&
+          lastChangeRev === savedRev;
+
+        if (result.ok) {
+          const savedScope = studioDraftScope(product.slug, saveVariantId);
+          if (savedScope !== initialDraftScope) clearStudioDraftId(initialDraftScope);
+          writeStudioDraftId(savedScope, designId);
+          const snapshot = readStudioCanvasSnapshot(designId);
+          if (snapshot && snapshot.rev <= savedRev) clearStudioCanvasSnapshot(designId);
+          if (isLatest) {
+            latest.markClean();
+            latest.setAutoSaveStatus({ kind: "saved", at: Date.now() });
+          }
+        } else if (isLatest) {
+          latest.setAutoSaveStatus({ kind: "error", message: result.message });
+        }
+        return result;
+      } catch {
+        const latest = store.getState();
+        const message = texts.exportar.errorGuardar;
+        if (latest.designId === designId && latest.canvasData === canvasData) {
+          latest.setAutoSaveStatus({ kind: "error", message });
+        }
+        return { ok: false, code: "INTERNAL", message };
       }
     };
 
-    const unsubscribe = store.subscribe((state, prev) => {
-      // Solo disparar al cambiar canvasData (no en cada update menor)
-      if (state.canvasData === prev.canvasData) return;
-      if (!state.isDirty || !state.designId || !state.canvasData) return;
+    const runSave = () => queue.run(performSave);
+    const flushSaves = async () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      let result = await runSave();
+      while (result.ok) {
+        const current = store.getState();
+        if (!current.isDirty || !current.canvasData) break;
+        result = await runSave();
+      }
+      return result;
+    };
+    flushCanvasSaveRef.current = flushSaves;
 
-      lastChangeRev = Date.now();
-      // ADR-133 — snapshot local de recuperación: escritura SINCRÓNICA que
-      // sobrevive la recarga aunque el save del debounce y el beacon de unload
-      // mueran (en STG/headless el beacon despachado desde pagehide nunca sale
-      // del navegador — verificado con Playwright + DB 2026-10-08).
-      writeStudioCanvasSnapshot(
-        state.designId,
-        { ...state.canvasData, clientRev: lastChangeRev },
-        lastChangeRev,
+    const unsubscribe = store.subscribe((state, prev) => {
+      if (state.canvasData === prev.canvasData) return;
+      if (!state.isDirty || !state.canvasData) return;
+
+      lastChangeRev = Math.max(
+        Date.now(),
+        lastChangeRev + 1,
+        (state.canvasData.clientRev ?? 0) + 1,
       );
+      if (state.designId) {
+        writeStudioCanvasSnapshot(
+          state.designId,
+          { ...state.canvasData, clientRev: lastChangeRev },
+          lastChangeRev,
+        );
+      }
 
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
@@ -1230,47 +1248,32 @@ export function StudioEditor({
       }, AUTO_SAVE_DELAY_MS);
     });
 
-    // ADR-133 — boot "dirty" (canvas recuperado del snapshot local, más nuevo
-    // que el del server): programar el save aunque no haya un cambio nuevo que
-    // dispare el subscribe.
-    {
-      const booted = store.getState();
-      if (booted.isDirty && booted.designId && booted.canvasData) {
-        lastChangeRev = booted.canvasData.clientRev ?? Date.now();
-        timer = setTimeout(() => {
-          timer = null;
-          void runSave();
-        }, AUTO_SAVE_DELAY_MS);
-      }
+    const booted = store.getState();
+    if (booted.isDirty && booted.canvasData) {
+      lastChangeRev = booted.canvasData.clientRev ?? Date.now();
+      timer = setTimeout(() => {
+        timer = null;
+        void runSave();
+      }, AUTO_SAVE_DELAY_MS);
     }
 
-    // Ronda 2 QA (2026-10-08) — flush al ocultar/salir de la página: el debounce
-    // de 2 s dejaba una ventana en la que una recarga perdía las asignaciones
-    // recién hechas y «Continuar donde quedaste» volvía con el lienzo VACÍO
-    // (confirmado con Playwright: 0/6 fotos tras resume en polaroid). La vía
-    // confiable durante unload es navigator.sendBeacon (fire-and-forget que el
-    // navegador completa aunque la página muera) contra /api/designs/save-canvas
-    // — el fetch de la Server Action se aborta con la navegación (verificado:
-    // el primer flush con action seguía fallando en el e2e de certificación).
-    // ADR-133: el beacon queda como MEJOR ESFUERZO (hay entornos donde el
-    // request despachado desde pagehide nunca sale del navegador) — la red de
-    // seguridad real es el snapshot local de arriba, así que acá NUNCA se
-    // limpia el snapshot aunque sendBeacon encole con éxito.
     const flushOnHide = () => {
       if (timer) {
         clearTimeout(timer);
         timer = null;
       }
       const current = store.getState();
-      if (!current.isDirty || !current.designId || !current.canvasData) return;
+      if (!current.isDirty || !current.canvasData) return;
+      if (!current.designId) {
+        void runSave();
+        return;
+      }
       const payload = JSON.stringify({
         designId: current.designId,
         canvasData: lastChangeRev
           ? { ...current.canvasData, clientRev: lastChangeRev }
           : current.canvasData,
         templateId: current.selectedTemplateId ?? undefined,
-        // 2026-10-12 — packs: misma variante efectiva que el auto-save (el beacon
-        // comparte contrato con saveCanvasAction → SaveCanvasSchema).
         variantId: isPhotoPack
           ? packVariantIdFor(packVariants, current.canvasData.photoSlots, current.canvasData.magnet)
           : undefined,
@@ -1280,9 +1283,6 @@ export function StudioEditor({
         typeof navigator !== "undefined" &&
         navigator.sendBeacon?.("/api/designs/save-canvas", blob)
       ) {
-        // Encolado con éxito: el navegador garantiza el envío. Optimista:
-        // el estado queda como guardado (si el server lo rechaza, el próximo
-        // cambio reactiva el auto-save y el error se ve en el header).
         current.setAutoSaveStatus({ kind: "saved", at: Date.now() });
         current.markClean();
         return;
@@ -1297,11 +1297,22 @@ export function StudioEditor({
 
     return () => {
       unsubscribe();
+      if (flushCanvasSaveRef.current === flushSaves) flushCanvasSaveRef.current = null;
       if (timer) clearTimeout(timer);
       window.removeEventListener("pagehide", flushOnHide);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [store, isPhotoPack, packVariants, product.slug, productConfig.shape]);
+  }, [
+    store,
+    isPhotoPack,
+    initialDraftScope,
+    packVariants,
+    product.id,
+    product.slug,
+    productConfig.shape,
+    variantId,
+    texts.exportar.errorGuardar,
+  ]);
 
   // ──────────── Click slot → picker si está vacío, editor unificado si está lleno ────────────
   const handleSlotClick = useCallback(
@@ -1418,8 +1429,8 @@ export function StudioEditor({
   // genera el preview client-side (rápido, sin red), abre el modal para
   // que el cliente confirme. No sube nada todavía.
   const handleFinalize = useCallback(async () => {
-    const state = store.getState();
-    if (!state.designId || !state.canvasData || state.isFinalizing || previewBuilding) return;
+    let state = store.getState();
+    if (!state.canvasData || state.isFinalizing || previewBuilding) return;
     // Ola 26 (owner 2026-09-09) — GUARD: la Polaroid Instagram no se finaliza con
     // textos requeridos vacíos (usuario, ubicación, título, hashtags). El botón ya
     // se muestra bloqueado con el tooltip; esta es la defensa en profundidad (cualquier
@@ -1435,6 +1446,15 @@ export function StudioEditor({
     previewPageInflightRef.current.clear();
     setPreviewBuilding(true);
     try {
+      const flush = flushCanvasSaveRef.current;
+      const saved = flush ? await flush() : { ok: true as const };
+      if (!saved.ok) {
+        state.setAutoSaveStatus({ kind: "error", message: saved.message });
+        setPreviewError(saved.message);
+        return;
+      }
+      state = store.getState();
+      if (!state.designId || !state.canvasData) return;
       // Fase 2 · item 2.2 (2026-10-07) — partición por UNIDAD física para la
       // Vista Previa paginada (set/tira/separador/pack; 1 rango = sin pager).
       const unitRanges = previewUnitRanges({
@@ -1785,27 +1805,28 @@ export function StudioEditor({
   const handleConfirmFinalize = useCallback(
     async (_copies: number, opts?: { qualityAcknowledged?: boolean }) => {
       const state = store.getState();
-      if (!state.designId || !state.canvasData || state.isFinalizing || !previewDataUrl) return;
+      if (!state.canvasData || state.isFinalizing || !previewDataUrl) return;
       state.setIsFinalizing(true);
       setPreviewError(null);
-      // ADR-131 — timer del polling de progreso del RenderJob; se asigna dentro del try y se
-      // frena en el finally (declarado acá: los bloques try/finally no comparten scope).
       let renderPoll: ReturnType<typeof setInterval> | null = null;
       try {
-        // ADR-081 — el finalize ya NO manda los PNG de imprenta: los renderiza el servidor. Antes se
-        // generaban acá los N snapshots y viajaban en el body de la Server Action; un calendario de 12
-        // páginas pesa ~57 MB y Vercel corta el body de una Function en 4.5 MB, así que en producción
-        // esto fallaba SIEMPRE (en local no, porque el server de dev no tiene ese techo — por eso pasó
-        // desapercibido). De paso el celular se ahorra exportar 12 lienzos de 1800×2400 en el camino
-        // normal, que era lo más pesado de todo el flujo.
-        const designId = state.designId;
-        const canvasData = state.canvasData;
+        const flush = flushCanvasSaveRef.current;
+        const saved = flush ? await flush() : { ok: true as const };
+        if (!saved.ok) {
+          state.setAutoSaveStatus({ kind: "error", message: saved.message });
+          state.setIsFinalizing(false);
+          setPreviewError(saved.message || texts.exportar.errorGuardar);
+          return;
+        }
+        const confirmedState = store.getState();
+        if (!confirmedState.designId || !confirmedState.canvasData) {
+          state.setIsFinalizing(false);
+          setPreviewError(texts.exportar.errorGuardar);
+          return;
+        }
+        const designId = confirmedState.designId;
+        const canvasData = confirmedState.canvasData;
 
-        // ADR-131 (2026-10-13) — el render de imprenta ya no corre dentro del finalize:
-        // se encola un RenderJob y el worker va página por página. Este polling lee el
-        // progreso REAL (doneUnits/totalUnits) para mostrarlo en la modal en vez dejar al
-        // cliente esperando "Guardando…" a ciegas (el síntoma del timeout 500/504 de STG).
-        // Best-effort: si el endpoint falla, el flujo no se entera — solo no hay progreso.
         setRenderProgress(null);
         renderPoll = setInterval(() => {
           fetch(`/api/designs/${designId}/render-status`, { cache: "no-store" })
@@ -1821,49 +1842,6 @@ export function StudioEditor({
             })
             .catch(() => undefined);
         }, 1500);
-
-        // El PNG de imprenta lo renderiza el servidor desde el canvasData GUARDADO, y el auto-guardado
-        // tiene 2 s de debounce. Si el cliente mueve una foto y confirma antes de que corra, aprobaría
-        // una vista previa (que sale del estado EN MEMORIA) distinta de lo que se imprime. Forzar el
-        // guardado acá es lo que sostiene el mandato de que la pantalla sea el producto físico.
-        if (state.isDirty) {
-          state.setAutoSaveStatus({ kind: "saving" });
-          // Fix F1.1 (2026-10) — si el finalize ya corrió EN ESTA SESIÓN (p.ej. salió bien
-          // pero el add-to-cart falló y el cliente reintentó tras seguir editando), el diseño
-          // quedó READY y el save lo rechaza ("only DRAFT can be edited") — antes esto
-          // mostraba el error genérico de guardado sin salida. Se reabre a DRAFT y se deja
-          // que el finalize vuelva a correr con el canvas nuevo (idempotente server-side:
-          // re-renderiza producción, así que el WYSIWYG se mantiene).
-          if (finalizedRef.current) {
-            const reopened = await reopenDesignForEditAction(designId);
-            if (!reopened.ok) {
-              state.setAutoSaveStatus({ kind: "error", message: reopened.message });
-              state.setIsFinalizing(false);
-              setPreviewError(reopened.message);
-              return;
-            }
-            finalizedRef.current = false;
-          }
-          const saved = await saveCanvasAction({
-            designId,
-            canvasData,
-            templateId: state.selectedTemplateId ?? undefined,
-            // 2026-10-12 — packs: variante efectiva → metadata.variantId (recover).
-            variantId: isPhotoPack
-              ? packVariantIdFor(packVariants, canvasData.photoSlots, canvasData.magnet)
-              : undefined,
-          });
-          if (!saved.ok) {
-            state.setAutoSaveStatus({ kind: "error", message: saved.message });
-            state.setIsFinalizing(false);
-            // Los mensajes de fallo de saveCanvasAction son customer-safe por contrato
-            // (F-30): mostrar el específico (p.ej. rate-limit) en vez del genérico.
-            setPreviewError(saved.message || texts.exportar.errorGuardar);
-            return;
-          }
-          state.setAutoSaveStatus({ kind: "saved", at: Date.now() });
-          state.markClean();
-        }
         // 2026-10-05 (fix STG) — presupuesto de bytes del preview: el body de la
         // Server Action tiene techo duro ~4.5 MB en Vercel (lo corta la plataforma,
         // NO lo levanta `serverActions.bodySizeLimit`). Si el montaje no cabe se
@@ -2005,7 +1983,7 @@ export function StudioEditor({
         // Mandar el variantId de la PDP cobraría la combinación vieja si el
         // cliente cambió N acá (la ruta del dinero no confía en el cliente).
         const addResult = await addPersonalizedToCartAction({
-          designId: state.designId,
+          designId,
           qty: 1,
           variantId: isPhotoPack ? undefined : variantId,
           replaceDesignId: replacesCartDesignId ?? undefined,
@@ -2019,10 +1997,14 @@ export function StudioEditor({
         }
 
         // Item 2.4 — el diseño quedó en el carrito (READY): su lugar ahora es
-        // "Mis diseños", no el retomador. Limpiar el marcador del producto.
-        clearStudioDraftId(product.slug);
+        // "Mis diseños", no el retomador. Limpiar el marcador del producto+variante.
+        clearStudioDraftId(initialDraftScope);
+        const cartVariantId = isPhotoPack
+          ? packVariantIdFor(packVariants, canvasData.photoSlots, canvasData.magnet)
+          : variantId;
+        clearStudioDraftId(studioDraftScope(product.slug, cartVariantId));
         // ADR-133 — y su snapshot de recuperación (ya no hay draft que retomar).
-        clearStudioCanvasSnapshot(state.designId);
+        clearStudioCanvasSnapshot(designId);
 
         // Cerramos modal antes de redirigir para evitar flicker visual.
         setPreviewModalOpen(false);
@@ -2056,6 +2038,7 @@ export function StudioEditor({
       router,
       store,
       variantId,
+      initialDraftScope,
       isPhotoPack,
       packVariants,
       previewDataUrl,

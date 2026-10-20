@@ -105,6 +105,11 @@ vi.mock("@/features/payments/provider", () => ({
   }),
 }));
 
+const { listTransactionsByReference } = vi.hoisted(() => ({
+  listTransactionsByReference: vi.fn(),
+}));
+vi.mock("@/lib/wompi", () => ({ listTransactionsByReference }));
+
 // Shipping provider stub — controla quotes devueltas o fallo de cotización.
 type QuoteArgs = {
   origin: { city: string; department: string };
@@ -271,6 +276,7 @@ beforeEach(() => {
   mockCodSetting = "true";
   paymentCalls.length = 0;
   paymentShouldThrow = null;
+  listTransactionsByReference.mockResolvedValue([]);
   shippingCalls.length = 0;
   shippingShouldThrow = null;
   shippingQuoteResult = [];
@@ -1036,16 +1042,16 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       expect(order!.shippingCarrier).toBe("envia");
       expect(order!.items).toHaveLength(1);
 
-      // El provider de pago recibió el Order.number + total en cents + email.
       expect(paymentCalls).toHaveLength(1);
       expect(paymentCalls[0]).toMatchObject({
-        reference: order!.number,
+        reference: order!.wompiReference,
         amountInCents: 115_000,
         currency: "COP",
         customerEmail: validContact.email,
         redirectUrl: "https://lucamsshop.com/checkout/gracias",
       });
-      expect(result.checkoutUrl).toBe(`https://checkout.wompi.test/p/${order!.number}`);
+      expect(order!.wompiReference).toMatch(new RegExp(`^${order!.number}-[0-9a-f-]{36}$`));
+      expect(result.checkoutUrl).toBe(`https://checkout.wompi.test/p/${order!.wompiReference}`);
     }, 30000);
 
     it("MISSING_CONTACT cuando falta el paso de contacto", async () => {
@@ -1191,38 +1197,46 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       expect(paymentCalls[0].reference).toBe(paymentCalls[1].reference);
     }, 30000);
 
-    it("REINTENTO fuera de la ventana de Wompi (~3 min): el 2º finalize ROTA la reference a `${number}-2` y la persiste", async () => {
-      // Bug STG "La referencia ya ha sido usada": la orden se reusa por cartId,
-      // pero la reference base ya fue consumida por el intento anterior. El 2º
-      // checkout debe ir con referencia derivada única (ver payment-reference.ts).
+    it("REINTENTO con una transacción DECLINED: el 2º finalize rota a otra referencia UUID", async () => {
       const sid = uuid();
       await createCartWithItem({ sessionId: sid, qty: 2, unitPrice: 50_000 });
       setCartCookie(sid);
       await seedFullState();
 
       const first = await finalizeCheckout({ redirectUrl: "https://x.test" });
-      expect(paymentCalls[0].reference).toBe(first.orderNumber);
-
-      // Simular que el primer intento quedó atrás en el tiempo (fuera de la
-      // ventana de reintento): la reference base ya no es reusable en Wompi.
-      // Sin wompiTransactionId persistido no hay tx que verificar → rota directo.
-      await prisma.order.update({
-        where: { id: first.orderId },
-        data: { wompiReferenceAt: new Date(Date.now() - 10 * 60_000) },
-      });
+      const firstReference = paymentCalls[0].reference;
+      expect(firstReference).toMatch(new RegExp(`^${first.orderNumber}-[0-9a-f-]{36}$`));
+      listTransactionsByReference.mockImplementation(async (reference: string) =>
+        reference === firstReference
+          ? [
+              {
+                id: "tx-declined",
+                reference,
+                status: "DECLINED",
+                amount_in_cents: 115_000,
+                currency: "COP",
+                customer_email: null,
+                payment_method_type: "CARD",
+                created_at: new Date().toISOString(),
+                finalized_at: new Date().toISOString(),
+                status_message: null,
+              },
+            ]
+          : [],
+      );
 
       const second = await finalizeCheckout({ redirectUrl: "https://x.test" });
       expect(second.orderId).toBe(first.orderId);
       expect(paymentCalls).toHaveLength(2);
-      expect(paymentCalls[1].reference).toBe(`${first.orderNumber}-2`);
-      expect(paymentCalls[1].reference).not.toBe(paymentCalls[0].reference);
+      expect(paymentCalls[1].reference).not.toBe(firstReference);
+      expect(paymentCalls[1].reference).toMatch(new RegExp(`^${first.orderNumber}-[0-9a-f-]{36}$`));
 
       const order = await prisma.order.findUnique({ where: { id: first.orderId } });
       expect(order!.paymentAttempt).toBe(2);
-      expect(order!.wompiReference).toBe(`${first.orderNumber}-2`);
+      expect(order!.wompiReference).toBe(paymentCalls[1].reference);
     }, 30000);
 
-    it("REINTENTO INMEDIATO (doble submit): el 2º finalize REUSA la reference fresca (no genera otra)", async () => {
+    it("REINTENTO INMEDIATO sin transacciones: el 2º finalize reutiliza el mismo intento", async () => {
       const sid = uuid();
       await createCartWithItem({ sessionId: sid, qty: 2, unitPrice: 50_000 });
       setCartCookie(sid);
@@ -1232,12 +1246,11 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       await finalizeCheckout({ redirectUrl: "https://x.test" });
 
       expect(paymentCalls).toHaveLength(2);
-      expect(paymentCalls[0].reference).toBe(first.orderNumber);
-      expect(paymentCalls[1].reference).toBe(first.orderNumber);
+      expect(paymentCalls[0].reference).toBe(paymentCalls[1].reference);
       const order = await prisma.order.findUnique({ where: { id: first.orderId } });
-      // Un solo intento reclamado: la segunda llamada reusan la ventana fresca.
       expect(order!.paymentAttempt).toBe(1);
-      expect(order!.wompiReference).toBe(first.orderNumber);
+      expect(order!.wompiReference).toBe(paymentCalls[0].reference);
+      expect(await prisma.wompiPaymentAttempt.count({ where: { orderId: first.orderId } })).toBe(1);
     }, 30000);
 
     it("propaga la dirección compuesta (urban) al shippingAddress de la Order", async () => {
@@ -1344,11 +1357,10 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       expect(order!.total).toBe(199_000);
       expect(order!.shipping).toBe(99_000);
 
-      // El 2º finalize vuelve a invocar Wompi con la MISMA referencia (número de orden) pero con el
-      // monto FRESCO (199k) — el cliente paga lo que vio, no el total obsoleto del primer intento.
+      // El cambio de total exige otro intento: cada referencia conserva el monto que vio el cliente.
       expect(paymentCalls).toHaveLength(2);
-      expect(paymentCalls[0].reference).toBe(paymentCalls[1].reference);
-      expect(paymentCalls[1].reference).toBe(first.orderNumber);
+      expect(paymentCalls[0].reference).not.toBe(paymentCalls[1].reference);
+      expect(paymentCalls[1].reference).toBe(order!.wompiReference);
       expect(paymentCalls[0].amountInCents).toBe(115_000);
       expect(paymentCalls[1].amountInCents).toBe(199_000);
     }, 30000);

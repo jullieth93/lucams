@@ -31,6 +31,7 @@ const { tx, prisma } = vi.hoisted(() => {
       })),
     },
     $executeRaw: vi.fn(async () => 0),
+    $queryRaw: vi.fn(async () => [{ number: "LCM-2026-0001" }]),
   };
   const prisma = {
     $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
@@ -116,7 +117,12 @@ function cartItem(overrides: Record<string, unknown> = {}) {
       name: "Default",
       isActive: true,
       deletedAt: null,
-      product: { isActive: true, deletedAt: null, name: "Imán Nevera" },
+      product: {
+        category: { isActive: true, deletedAt: null },
+        isActive: true,
+        deletedAt: null,
+        name: "Imán Nevera",
+      },
     },
     ...overrides,
   };
@@ -224,7 +230,12 @@ describe("createOrderFromCart — OrderUnavailableItemsError nombra el producto"
           name: "Default",
           isActive: false, // admin la despublicó entre el carrito y el pago
           deletedAt: null,
-          product: { isActive: true, deletedAt: null, name: "Imán Nevera" },
+          product: {
+            category: { isActive: true, deletedAt: null },
+            isActive: true,
+            deletedAt: null,
+            name: "Imán Nevera",
+          },
         },
       }),
     ]);
@@ -246,7 +257,12 @@ describe("createOrderFromCart — OrderUnavailableItemsError nombra el producto"
           name: "Set 12 unidades",
           isActive: true,
           deletedAt: null,
-          product: { isActive: false, deletedAt: null, name: "Imán Nevera" },
+          product: {
+            category: { isActive: true, deletedAt: null },
+            isActive: false,
+            deletedAt: null,
+            name: "Imán Nevera",
+          },
         },
       }),
     ]);

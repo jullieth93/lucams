@@ -18,7 +18,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { createDraftDesign } from "./service";
+import { createDraftDesign, saveCanvas } from "./service";
 import {
   MAX_DRAFTS_PER_PRODUCT,
   emptyCustomerDraftDesigns,
@@ -112,6 +112,11 @@ describe.skipIf(!hasDb)("draft-lifecycle — integración (2026-10-13)", { timeo
     for (let i = 0; i < MAX_DRAFTS_PER_PRODUCT + 1; i++) {
       const d = await createDraftDesign({ productId, variantId, ...owner });
       ids.push(d.id);
+      await saveCanvas({
+        designId: d.id,
+        canvasData: { ...(d.canvasData as object), clientRev: i + 1 } as never,
+        ...owner,
+      });
       // updatedAt distintos para un "más reciente" determinista.
       await prisma.design.update({
         where: { id: d.id },

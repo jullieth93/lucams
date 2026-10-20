@@ -86,7 +86,7 @@ export type StudioStoreState = {
   // Plantillas disponibles para el kind del producto
   templates: StudioTemplate[];
 
-  // Auto-save tracking
+  booted: boolean;
   isDirty: boolean;
   autoSaveStatus: AutoSaveStatus;
 
@@ -99,7 +99,7 @@ export type StudioStoreState = {
 
   // Actions
   init: (input: {
-    designId: string;
+    designId: string | null;
     productSlug: string;
     canvasData: CanvasDataV2;
     templates: StudioTemplate[];
@@ -229,6 +229,7 @@ export type StudioStoreState = {
     entry: { a: StudioAsset; b?: StudioAsset },
   ) => void;
   removeAsset: (assetId: string) => void;
+  setDesignId: (designId: string) => void;
   setAutoSaveStatus: (status: AutoSaveStatus) => void;
   setIsFinalizing: (v: boolean) => void;
   markClean: () => void;
@@ -250,6 +251,7 @@ const initialState = {
   assets: [],
   predesignedAssetsByGalleryId: {},
   templates: [],
+  booted: false,
   isDirty: false,
   autoSaveStatus: { kind: "idle" } as AutoSaveStatus,
   isFinalizing: false,
@@ -280,6 +282,7 @@ export function createStudioStore() {
         assets: extractAssetsFromCanvas(input.canvasData),
         undoStack: [],
         redoStack: [],
+        booted: true,
         isDirty: input.startDirty === true,
       });
     },
@@ -804,6 +807,7 @@ export function createStudioStore() {
       }
     },
 
+    setDesignId: (designId) => set({ designId }),
     setAutoSaveStatus: (status) => set({ autoSaveStatus: status }),
     setIsFinalizing: (v) => set({ isFinalizing: v }),
     markClean: () => set({ isDirty: false }),

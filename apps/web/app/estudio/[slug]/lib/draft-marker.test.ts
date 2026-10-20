@@ -13,6 +13,7 @@ import {
   clearStudioDraftId,
   shouldOfferDraftResume,
   DRAFT_MARKER_MAX_AGE_MS,
+  DRAFT_MARKER_GUEST_MAX_AGE_MS,
   studioCanvasSnapshotKey,
   readStudioCanvasSnapshot,
   writeStudioCanvasSnapshot,
@@ -82,6 +83,20 @@ describe("draft marker (localStorage por producto)", () => {
     );
     expect(readStudioDraftMarker("viejo", { now })).toBeNull();
     expect(window.localStorage.getItem(studioDraftStorageKey("viejo"))).toBeNull();
+  });
+
+  it("la vigencia puede acotarse por identidad (invitado: 7 días)", () => {
+    const now = Date.now();
+    window.localStorage.setItem(
+      studioDraftStorageKey("invitado"),
+      JSON.stringify({
+        designId: "design-1",
+        savedAt: now - DRAFT_MARKER_GUEST_MAX_AGE_MS - 1000,
+      }),
+    );
+    expect(
+      readStudioDraftMarker("invitado", { now, maxAgeMs: DRAFT_MARKER_GUEST_MAX_AGE_MS }),
+    ).toBeNull();
   });
 
   it("marcador dentro de la ventana de vigencia → se ofrece", () => {

@@ -51,6 +51,7 @@ async function makeOrder(
   total: number,
   status = "PENDING_PAYMENT",
   paymentMethod: "WOMPI" | "COD" = "WOMPI",
+  createdAt?: Date,
 ): Promise<string> {
   const o = await prisma.order.create({
     data: {
@@ -63,6 +64,7 @@ async function makeOrder(
       total,
       paymentMethod,
       status: status as never,
+      createdAt,
     },
     select: { id: true },
   });
@@ -80,6 +82,7 @@ function signedEvent(opts: {
   environment?: "test" | "prod";
   statusMessage?: string;
   tamperChecksum?: boolean;
+  providerCreatedAt?: string;
 }) {
   const timestamp = opts.timestamp ?? Math.floor(Date.now() / 1000);
   const properties = ["transaction.id", "transaction.status", "transaction.amount_in_cents"];
@@ -89,6 +92,7 @@ function signedEvent(opts: {
     amount_in_cents: opts.amountInCents,
     reference: opts.reference,
     status_message: opts.statusMessage ?? null,
+    created_at: opts.providerCreatedAt,
   };
   const concat =
     String(transaction.id) +
@@ -490,6 +494,38 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
     expect(res.status).toBe(200);
     expect(sagaCalls).toHaveLength(1);
     expect(sagaCalls[0]).toMatchObject({ fn: "processPaidOrder", orderId });
+  });
+
+  it("una aprobación histórica anterior a la orden se ignora y no dispara saga ni reconciliación", async () => {
+    const ref = `${RUN}-LCM-HISTORICAL`;
+    const orderId = await makeOrder(
+      ref,
+      55000,
+      "PENDING_PAYMENT",
+      "WOMPI",
+      new Date("2026-10-17T12:00:00Z"),
+    );
+
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx-historical`,
+          status: "APPROVED",
+          amountInCents: 55000,
+          reference: ref,
+          providerCreatedAt: "2026-08-12T00:43:29.420Z",
+        }),
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(sagaCalls).toHaveLength(0);
+    const order = await prisma.order.findUniqueOrThrow({
+      where: { id: orderId },
+      select: { status: true, needsReconciliation: true },
+    });
+    expect(order.status).toBe("PENDING_PAYMENT");
+    expect(order.needsReconciliation).toBe(false);
   });
 
   it("carrera de dedup (findUnique miss + create P2002 por entrega concurrente) → 200, sin doble saga ni 500", async () => {

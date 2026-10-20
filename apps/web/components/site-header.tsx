@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Hint } from "@/components/ui/tooltip";
 import { getCartItemCount } from "@/features/cart/service";
 import { getCategoryTree } from "@/lib/catalog";
-import { getCurrentAdmin, getCurrentCustomer } from "@/lib/auth";
+import { getCurrentAdmin, getCurrentCustomer, getCurrentUser } from "@/lib/auth";
 import { peekCartSession } from "@/lib/cart-session";
 import { getCmsBlock, getCmsImage } from "@/lib/cms";
 import { resolveCmsTokens } from "@/lib/cms-tokens";
@@ -98,16 +98,16 @@ async function getMegaMenuTexts(): Promise<MegaMenuTexts> {
 
 export async function SiteHeader() {
   const sessionId = await peekCartSession();
-  const [session, admin, cartCount, categoryTree, megaMenuTexts, siteLogo] = await Promise.all([
+  const [session, authUser, admin, categoryTree, megaMenuTexts, siteLogo] = await Promise.all([
     getCurrentCustomer(),
+    getCurrentUser(),
     getCurrentAdmin(),
-    sessionId ? getCartItemCount(sessionId) : Promise.resolve(0),
     getCategoryTree(),
     getMegaMenuTexts(),
-    // Logo administrable (Fase 3 · 3.9 — setting CMS `site.logo`, cacheado con
-    // tag "cms" como el resto del contenido; null → asset estático).
     getCmsImage("site.logo"),
   ]);
+  const cartCount = sessionId ? await getCartItemCount(sessionId, session?.customer.id ?? null) : 0;
+  const isAuthenticated = Boolean(authUser);
 
   return (
     <header className="border-brand-purple/10 sticky top-0 z-40 border-b bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 sm:px-10">
@@ -123,7 +123,7 @@ export async function SiteHeader() {
               Antes había además un link plano "Catálogo" → redundante. */}
           <ShopMegaMenu
             tree={categoryTree}
-            isLoggedIn={!!session}
+            isLoggedIn={isAuthenticated}
             isAdmin={!!admin}
             texts={megaMenuTexts}
           />
@@ -174,9 +174,9 @@ export async function SiteHeader() {
             El ícono lleva a la cuenta si hay sesión, o a login si no. En desktop se oculta (ya están
             los enlaces de texto). */}
           <Link
-            href={session ? "/mi-cuenta" : "/login"}
+            href={isAuthenticated ? "/mi-cuenta" : "/login"}
             className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center p-1.5 sm:hidden"
-            aria-label={session ? "Mi cuenta" : "Ingresar a mi cuenta"}
+            aria-label={isAuthenticated ? "Mi cuenta" : "Ingresar a mi cuenta"}
           >
             <User className="h-5 w-5" />
           </Link>
@@ -190,13 +190,13 @@ export async function SiteHeader() {
             </Link>
           )}
 
-          {session ? (
+          {isAuthenticated ? (
             <>
               <Link
                 href="/mi-cuenta"
                 className="text-brand-purple-dark hover:text-brand-purple hidden text-sm font-medium sm:inline"
               >
-                Hola, <span className="font-semibold">{session.customer.firstName ?? "tú"}</span>
+                Hola, <span className="font-semibold">{session?.customer.firstName ?? "tú"}</span>
               </Link>
               <form action={logoutAction}>
                 <Button

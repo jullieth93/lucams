@@ -37,6 +37,7 @@ vi.mock("@/lib/turnstile", () => ({ verifyTurnstileToken }));
 vi.mock("@/lib/rate-limit", () => ({ rateLimit }));
 vi.mock("@/lib/store-mode", () => ({ isCatalogMode }));
 vi.mock("@/lib/cart-session", () => ({ getOrCreateCartSession: async () => "sess_1" }));
+vi.mock("@/lib/auth", () => ({ getCurrentCustomer: async () => null }));
 vi.mock("./service", () => ({
   createQuoteFromCart,
   QuoteError: class QuoteError extends Error {

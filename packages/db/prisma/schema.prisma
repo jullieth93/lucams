@@ -508,10 +508,10 @@ model CartItem {
 }
 
 model Order {
-  id                      String             @id @default(cuid())
-  number                  String             @unique
+  id                      String                @id @default(cuid())
+  number                  String                @unique
   customerId              String?
-  customer                Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  customer                Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
   email                   String
   phone                   String
   shippingAddress         Json
@@ -520,12 +520,12 @@ model Order {
   // createOrderFromCart (shippingAddress es Json y no filtra eficiente). Null si faltan datos.
   shippingAddressKey      String?
   subtotal                Int
-  discount                Int                @default(0)
+  discount                Int                   @default(0)
   shipping                Int
-  tax                     Int                @default(0)
+  tax                     Int                   @default(0)
   total                   Int
-  currency                String             @default("COP")
-  status                  OrderStatus        @default(DRAFT)
+  currency                String                @default("COP")
+  status                  OrderStatus           @default(DRAFT)
   paymentMethod           PaymentMethod
   wompiTransactionId      String?
   // Referencia de pago única POR INTENTO (bug STG "La referencia ya ha sido
@@ -535,7 +535,7 @@ model Order {
   // referencia efectivamente enviada y cuándo. Lo escribe
   // features/orders/payment-reference.ts con claim atómico; lo leen el webhook
   // y /checkout/gracias para resolver la orden.
-  paymentAttempt          Int                @default(0)
+  paymentAttempt          Int                   @default(0)
   wompiReference          String?
   wompiReferenceAt        DateTime?
   // #6 (certificación Bloque A 2026-06-26) — caso patológico: Wompi cobró pero
@@ -543,7 +543,7 @@ model Order {
   // La orden queda PENDING_PAYMENT y se marca acá para que sea VISIBLE en
   // /admin/pedidos (filtro "Necesitan atención") en vez de morir en un log que
   // nadie ve (mandato #7 sin Sentry). ACCIÓN HUMANA: refund o producir stock.
-  needsReconciliation     Boolean            @default(false)
+  needsReconciliation     Boolean               @default(false)
   reconciliationReason    String?
   // Acción admin "Marcar como gestionado" (2026-10-05): cierre MANUAL de una
   // reconciliación pendiente, con nota obligatoria de resolución (qué se hizo:
@@ -630,10 +630,10 @@ model Order {
   // (total = subtotal + shipping - discount - loyaltyDiscount + tax). Columna
   // propia para no conflarla con el descuento de cupón. Sus CHECK `>= 0` viven
   // en la migración 20261012130000_loyalty_points_program (SQL-only, patrón F-24).
-  loyaltyPointsRedeemed   Int                @default(0)
-  loyaltyDiscount         Int                @default(0)
+  loyaltyPointsRedeemed   Int                   @default(0)
+  loyaltyDiscount         Int                   @default(0)
   couponId                String?
-  coupon                  Coupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  coupon                  Coupon?               @relation(fields: [couponId], references: [id], onDelete: SetNull)
   // PLAN_CATALOG_V2 3.9 — tracking del uso de cupón (incluye monto descontado).
   couponUsage             CouponUsage?
   // ADR-064 — conciliación del efectivo contraentrega (0..1 por orden; solo existe al resolver).
@@ -649,15 +649,16 @@ model Order {
   // (billingDocument*/billingName no se ven afectados por estos campos).
   recipientName           String?
   recipientPhone          String?
-  isGift                  Boolean            @default(false)
+  isGift                  Boolean               @default(false)
   giftMessage             String?
   items                   OrderItem[]
+  wompiAttempts           WompiPaymentAttempt[]
   // DIAN factura electrónica (Fase 7 implementa el envío; aquí el
   // schema queda ready para no remigrar después).
   billingDocumentType     DocumentType?
   billingDocumentNumber   String?
   billingName             String?
-  dianStatus              DianStatus         @default(NOT_REQUIRED)
+  dianStatus              DianStatus            @default(NOT_REQUIRED)
   dianCufe                String? // CUFE devuelto por la DIAN
   dianXmlUrl              String? // URL del XML firmado
   // Token único para vista pública /pedido/[token] — guest checkout sin
@@ -666,7 +667,7 @@ model Order {
   // F-11 (security audit 2026-08-24): at rest we store ONLY the SHA-256 hex
   // digest of the token (lookups hash the presented token); the plain token
   // is handed out once at creation time. Same pattern as AdminRecoveryCode.
-  publicAccessTokenHash   String?            @unique
+  publicAccessTokenHash   String?               @unique
 
   // P0-020 (Lucy 2026-06-26) — Cart de origen para idempotency cart→order.
   // NO FK (el Cart se soft-deletea al transicionar a PAID; la referencia
@@ -793,6 +794,66 @@ model OrderItem {
   @@index([variantId])
   @@index([designId])
   @@index([templateId])
+}
+
+enum WompiAttemptStatus {
+  OPEN
+  IN_FLIGHT
+  APPROVED
+  FAILED
+  SUPERSEDED
+  REVIEW
+}
+
+enum WompiPaymentTransactionStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  VOIDED
+  ERROR
+}
+
+model WompiPaymentAttempt {
+  id            String                    @id @default(cuid())
+  orderId       String
+  order         Order                     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  sequence      Int
+  reference     String                    @unique
+  amountInCents Int
+  currency      String                    @default("COP")
+  status        WompiAttemptStatus        @default(OPEN)
+  backfilled    Boolean                   @default(false)
+  presentedAt   DateTime?
+  lastSyncedAt  DateTime?
+  supersededAt  DateTime?
+  transactions  WompiPaymentTransaction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([orderId, sequence])
+  @@index([orderId, createdAt])
+  @@index([status, lastSyncedAt])
+}
+
+model WompiPaymentTransaction {
+  id                  String                         @id @default(cuid())
+  attemptId           String
+  attempt             WompiPaymentAttempt            @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  externalId          String                         @unique
+  amountInCents       Int
+  currency            String                         @default("COP")
+  status              WompiPaymentTransactionStatus?
+  paymentMethodType   String?
+  statusMessage       String?
+  providerCreatedAt   DateTime?
+  providerFinalizedAt DateTime?
+  firstApprovedAt     DateTime?
+  lastEventAt         DateTime?
+  firstSeenAt         DateTime                       @default(now())
+  lastSeenAt          DateTime                       @default(now()) @updatedAt
+
+  @@index([attemptId, status])
 }
 
 model Coupon {
@@ -1588,6 +1649,7 @@ model Design {
   templateId            String?
   template              PersonalizationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   status                DesignStatus             @default(DRAFT)
+  archivedFrom          DesignStatus?
   // Moderación de contenido (ADR-062 P0-2). Todo diseño nace PENDING; Lucy lo aprueba/
   // rechaza en /admin/moderacion antes de que su pedido pueda marcarse SHIPPED.
   moderationStatus      ModerationStatus         @default(PENDING)
@@ -1597,6 +1659,8 @@ model Design {
   // canvasData: Konva stage serialization. Estructura validada por features/
   // personalization/schemas.ts con Zod en cada save.
   canvasData            Json
+  // Revisión del cliente para escritura condicional del canvas (carreras de autosave).
+  clientRev             BigInt                   @default(0)
   // previewUrl: snapshot compositado del grid completo (PNG público, bucket
   // design-previews). Visible en cart/order display al cliente. En V1
   // (legacy M.3) es snapshot 1080×1080 single. En V2 (M.3.b multi-slot) es
@@ -1641,8 +1705,8 @@ model Design {
   // (ver features/personalization/preview-artifacts.ts); estas columnas sellan
   // su existencia. previewWatermarkedAt null = sin preview-wm.webp/thumb.webp
   // (fallback al preview limpio); previewPagesCount null/≤1 = sin pager.
-  previewWatermarkedAt DateTime?
-  previewPagesCount    Int?
+  previewWatermarkedAt  DateTime?
+  previewPagesCount     Int?
   // metadata: selección plantilla + marco + color + ajustes filtros foto-edit.
   metadata              Json                     @default("{}")
   // shareToken: link público read-only para colaboración (sub-bloque K+M

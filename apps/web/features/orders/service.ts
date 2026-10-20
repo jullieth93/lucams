@@ -39,6 +39,8 @@ import {
 } from "@/features/loyalty/service";
 import { computeShippingAddressKey } from "@/features/checkout/address-key";
 import { consolidateIdenticalLines } from "@/features/cart/design-identity";
+import { isPurchasableVariant } from "@/features/products/storefront-visibility";
+import { inventoryUnitsForOrderItem } from "@/features/personalization/design-units";
 import { hashBearerToken } from "@/lib/token-hash";
 import { resolveOrderCustomerId } from "./order-customer";
 import { sendOrderRefunded } from "./emails";
@@ -87,11 +89,14 @@ async function generateOrderNumber(tx: Prisma.TransactionClient): Promise<string
   // es inmune a huecos y a borrados. Los números de seed de tests que no
   // siguen el formato (LCM-SAGA-…) no calzan el startsWith y no cuentan.
   const prefix = `LCM-${year}-`;
-  const last = await tx.order.findFirst({
-    where: { number: { startsWith: prefix } },
-    orderBy: { number: "desc" },
-    select: { number: true },
-  });
+  const lastRows = await tx.$queryRaw<{ number: string }[]>`
+    SELECT "number"
+    FROM "Order"
+    WHERE "number" LIKE ${`${prefix}%`}
+    ORDER BY length("number") DESC, "number" DESC
+    LIMIT 1
+  `;
+  const last = lastRows[0] ?? null;
   const lastSeq = last ? Number.parseInt(last.number.slice(prefix.length), 10) : 0;
   const nextSeq = (Number.isNaN(lastSeq) ? 0 : lastSeq) + 1;
   return `${prefix}${String(nextSeq).padStart(4, "0")}`;
@@ -276,9 +281,18 @@ async function createOrderFromCartTx(
                 // name (variante + producto): OrderUnavailableItemsError nombra el
                 // producto retirado en el aviso al cliente (2026-09-29).
                 name: true,
+                attributes: true,
                 isActive: true,
                 deletedAt: true,
-                product: { select: { isActive: true, deletedAt: true, name: true } },
+                product: {
+                  select: {
+                    isActive: true,
+                    deletedAt: true,
+                    name: true,
+                    personalizationSchema: true,
+                    category: { select: { isActive: true, deletedAt: true } },
+                  },
+                },
               },
             },
             // ADR-070 (pieza #1) — snapshot autocontenido del diseño en el pedido.
@@ -318,12 +332,14 @@ async function createOrderFromCartTx(
     // existente tampoco puede reutilizarse si su cart hoy tiene un item retirado.
     const unavailableItems = cart.items.filter(
       (it) =>
-        !(
-          it.variant.isActive &&
-          it.variant.deletedAt === null &&
-          it.variant.product.isActive &&
-          it.variant.product.deletedAt === null
-        ),
+        !isPurchasableVariant({
+          variantIsActive: it.variant.isActive,
+          variantDeletedAt: it.variant.deletedAt,
+          productIsActive: it.variant.product.isActive,
+          productDeletedAt: it.variant.product.deletedAt,
+          categoryIsActive: it.variant.product.category.isActive,
+          categoryDeletedAt: it.variant.product.category.deletedAt,
+        }),
     );
     if (unavailableItems.length > 0) {
       logger.warn({
@@ -397,7 +413,8 @@ async function createOrderFromCartTx(
     const publicAccessToken = crypto.randomBytes(16).toString("hex");
     const publicAccessTokenHash = hashBearerToken(publicAccessToken);
 
-    const subtotal = cart.items.reduce((acc, it) => acc + it.unitPrice * it.qty, 0);
+    const consolidatedItems = consolidateIdenticalLines(cart.items);
+    const subtotal = consolidatedItems.reduce((acc, it) => acc + it.unitPrice * it.qty, 0);
     const shippingCost = input.shippingSelection.fleteCop;
     // F1 — aplicar cupón con re-validación atómica DENTRO de la tx: si el código dejó de ser válido
     // (venció, se agotó, tope por cliente) entre que el cliente lo aplicó y pagó, se ABORTA la tx con
@@ -468,7 +485,6 @@ async function createOrderFromCartTx(
     // reporte STG venía de datos así). Se conserva la primera línea de cada
     // grupo (la más vieja: su diseño/preview es el que queda en el snapshot);
     // el qty se suma SIN tope (consolidar no cambia el total comprado).
-    const consolidatedItems = consolidateIdenticalLines(cart.items);
 
     // Firma de items (independiente del orden) para detectar si el carrito cambió respecto a la
     // orden PENDING existente. Incluye designId + unitPrice para captar re-personalizaciones.
@@ -492,9 +508,13 @@ async function createOrderFromCartTx(
       // (borrado de cuenta, solicitud de datos Ley 1581, purga), el pedido conserva la imagen para
       // producción. designAssetUrl = preview público; las URLs de alta resolución van en metadata.
       const baseMeta =
-        ci.metadata && typeof ci.metadata === "object" && !Array.isArray(ci.metadata)
-          ? (ci.metadata as Record<string, unknown>)
-          : {};
+        ci.design?.metadata &&
+        typeof ci.design.metadata === "object" &&
+        !Array.isArray(ci.design.metadata)
+          ? (ci.design.metadata as Record<string, unknown>)
+          : ci.metadata && typeof ci.metadata === "object" && !Array.isArray(ci.metadata)
+            ? (ci.metadata as Record<string, unknown>)
+            : {};
       const metadata: Prisma.InputJsonValue = ci.design
         ? {
             ...baseMeta,
@@ -510,7 +530,7 @@ async function createOrderFromCartTx(
         qty: ci.qty,
         unitPrice: ci.unitPrice,
         designId: ci.designId,
-        customDesign: ci.customDesign ?? Prisma.JsonNull,
+        customDesign: ci.design?.canvasData ?? ci.customDesign ?? Prisma.JsonNull,
         templateId: ci.templateId,
         designAssetUrl: ci.design?.previewUrl ?? null,
         metadata,
@@ -579,25 +599,21 @@ async function createOrderFromCartTx(
       paymentMethod: true,
     } as const;
 
-    // Marcar Designs vinculados como USED_IN_ORDER (immutable post-checkout).
-    // Se marcan TODOS los del carrito, incluidos los gemelos que la consolidación
-    // (Paquete H) absorbió en otra línea: su contenido también va en el pedido.
-    const designIds = cart.items.map((ci) => ci.designId).filter((id): id is string => !!id);
-    const markDesignsUsed = async () => {
-      if (designIds.length > 0) {
-        await tx.design.updateMany({
-          where: { id: { in: designIds } },
-          data: { status: "USED_IN_ORDER" },
-        });
-      }
-    };
-
     // P0-002 — Validar stock disponible antes de crear/reconciliar (lectura; el decremento real
     // ocurre en la saga POST-PAID). La defensa real contra concurrencia es el UPDATE atómico de
     // decrementStockForOrder; esto filtra el caso obvio "ya no hay".
     await assertStockAvailable(
       tx,
-      cart.items.map((it) => ({ variantId: it.variantId, qty: it.qty })),
+      cart.items.map((it) => ({
+        variantId: it.variantId,
+        qty: inventoryUnitsForOrderItem({
+          qty: it.qty,
+          customDesign: it.design?.canvasData ?? it.customDesign,
+          metadata: it.design?.metadata ?? it.metadata,
+          variantAttrs: it.variant.attributes,
+          productSchema: it.variant.product.personalizationSchema,
+        }),
+      })),
     );
 
     if (existing) {
@@ -675,7 +691,6 @@ async function createOrderFromCartTx(
         data: { items: { create: orderItemsCreate } },
         select: returnSelect,
       });
-      await markDesignsUsed();
       logger.info({
         event: "order.create.reconciled_pending",
         cartId: input.cartId,
@@ -712,7 +727,6 @@ async function createOrderFromCartTx(
         points: loyaltyPointsRedeemed,
       });
     }
-    await markDesignsUsed();
     return { ...order, publicAccessToken };
   });
 }
@@ -816,12 +830,35 @@ export async function transitionOrder(
           number: true,
           customerId: true,
           loyaltyPointsRedeemed: true,
-          items: { select: { variantId: true, qty: true } },
+          items: {
+            select: {
+              variantId: true,
+              qty: true,
+              customDesign: true,
+              metadata: true,
+              variant: {
+                select: {
+                  attributes: true,
+                  product: { select: { personalizationSchema: true } },
+                },
+              },
+            },
+          },
         },
       });
       if (orderWithItems) {
         const revertReason = to === "REFUNDED" ? "ORDER_REFUNDED" : "ORDER_CANCELLED";
-        await revertStockForOrder(tx, orderWithItems, revertReason);
+        await revertStockForOrder(
+          tx,
+          {
+            ...orderWithItems,
+            items: orderWithItems.items.map((item) => ({
+              ...item,
+              qty: inventoryUnitsForOrderItem(item),
+            })),
+          },
+          revertReason,
+        );
       }
 
       // F2 — al CANCELAR/REEMBOLSAR, liberar el cupón consumido: borrar el CouponUsage y decrementar
@@ -995,6 +1032,10 @@ export async function getOrder(idOrNumber: string) {
             },
           },
         },
+      },
+      wompiAttempts: {
+        orderBy: { sequence: "asc" },
+        include: { transactions: { orderBy: { providerCreatedAt: "asc" } } },
       },
       customer: { select: { id: true, email: true, firstName: true, lastName: true } },
     },

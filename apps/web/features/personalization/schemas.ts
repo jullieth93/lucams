@@ -178,61 +178,98 @@ export function calendarFontOrDefault(key: unknown): CalendarFontKey {
   return CalendarFontKeySchema.safeParse(key).success ? (key as CalendarFontKey) : "fredoka";
 }
 
-export const CanvasDataV2Schema = z.object({
-  version: z.literal(2),
-  unitTemplate: CanvasDataV1Schema,
-  slotCount: z.number().int().min(1).max(50), // soporte hasta 50 slots (calendarios + extreme cases)
-  slots: z.array(SlotStateSchema).max(50),
-  gridLayout: GridLayoutSchema,
-  // Ola 2A — color del marco alrededor de la foto (estilo elegido en el Estudio; viaja a la
-  // cotización y al render de producción). null = sin marco.
-  borderColor: z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/)
-    .nullable()
-    .optional(),
-  // Lucy 2026-09-05 — packs de fotoimanes: N de fotos por imán elegido DENTRO del
-  // Estudio (antes era dimensión de variante elegida en la PDP) + tamaño físico
-  // elegido en la PDP. Persisten en el canvasData para que el carrito resuelva
-  // la variante server-side sin confiar en un variantId del cliente
-  // (features/products/photo-pack-resolve.ts). SIN catchall en este schema: Zod
-  // stripea claves desconocidas, así que declararlas acá es lo que las hace
-  // sobrevivir el auto-save.
-  photoSlots: z.number().int().min(1).max(50).optional(),
-  sizeCm: z.string().max(40).optional(),
-  // Lucy 2026-09-08 — "¿Con imán?" en los packs de foto: la elección de la PDP
-  // (dimensión `magnet` de la variante) persiste acá para que el carrito la incluya
-  // al resolver la variante server-side. Ausente = legacy → resuelve a Con imán.
-  magnet: z.boolean().optional(),
-  // Lucy 2026-09-07 — tipo de letra del título/mes del calendario (selector en el banner
-  // del Estudio). Ausente = "fredoka" (retrocompatible con diseños guardados antes de
-  // esta ola). Sin catchall en este schema: declararla acá es lo que la hace sobrevivir
-  // el auto-save (Zod stripea claves no declaradas).
-  calendarFont: CalendarFontKeySchema.optional(),
-  // Modelo MULTI-UNIDAD (owner 2026-09-09 — regla general): N unidades físicas del mismo
-  // producto, CADA UNA diseñable por separado en el Estudio (2 tiras = 2 × unitSlots;
-  // 2 calendarios = 2 × 12). Aditivo: ausentes = 1 unidad (diseños legacy intactos).
-  // Invariante: slotCount = unitCount × unitSlots; el editor solo los escribe cuando
-  // unitSlots > 1 (los packs de imán suelto no los declaran — su variante YA es el pack).
-  // El precio NUNCA confía en estos campos: se deriva de slotCount (design-units.ts).
-  unitCount: z.number().int().min(1).max(50).optional(),
-  unitSlots: z.number().int().min(1).max(50).optional(),
-  // Rediseño IG (owner 2026-10-05) — modo SIN BORDE de la Polaroid Instagram como
-  // FLAG EXPLÍCITO (antes se infería por la geometría del image-placeholder:
-  // comparación exacta contra el stage 450×600, frágil). true = foto a lo ancho
-  // completo conservando las franjas blancas superior/inferior. Ausente = diseño
-  // de antes del cambio → la detección por geometría (isInstagramNoBorder) sigue
-  // como fallback. Sin catchall en este schema: declararla acá es lo que la hace
-  // sobrevivir el auto-save (Zod stripea claves no declaradas).
-  igNoBorder: z.boolean().optional(),
-  // ADR-133 (2026-10-08) — reloj del cliente (epoch ms del último cambio) estampado
-  // por el Estudio al auto-guardar. Lo usa la reconciliación del snapshot local de
-  // recuperación: si el canvas guardado en el server tiene clientRev MENOR que el
-  // snapshot de localStorage, el flush de supervivencia se perdió (sendBeacon
-  // descartado durante el unload) y gana la copia local. Aditivo: ausente = canvas
-  // guardado antes de esta ola → pierde contra cualquier snapshot.
-  clientRev: z.number().int().positive().optional(),
-});
+export const CanvasDataV2Schema = z
+  .object({
+    version: z.literal(2),
+    unitTemplate: CanvasDataV1Schema,
+    slotCount: z.number().int().min(1).max(50), // soporte hasta 50 slots (calendarios + extreme cases)
+    slots: z.array(SlotStateSchema).max(50),
+    gridLayout: GridLayoutSchema,
+    // Ola 2A — color del marco alrededor de la foto (estilo elegido en el Estudio; viaja a la
+    // cotización y al render de producción). null = sin marco.
+    borderColor: z
+      .string()
+      .regex(/^#[0-9A-Fa-f]{6}$/)
+      .nullable()
+      .optional(),
+    // Lucy 2026-09-05 — packs de fotoimanes: N de fotos por imán elegido DENTRO del
+    // Estudio (antes era dimensión de variante elegida en la PDP) + tamaño físico
+    // elegido en la PDP. Persisten en el canvasData para que el carrito resuelva
+    // la variante server-side sin confiar en un variantId del cliente
+    // (features/products/photo-pack-resolve.ts). SIN catchall en este schema: Zod
+    // stripea claves desconocidas, así que declararlas acá es lo que las hace
+    // sobrevivir el auto-save.
+    photoSlots: z.number().int().min(1).max(50).optional(),
+    sizeCm: z.string().max(40).optional(),
+    // Lucy 2026-09-08 — "¿Con imán?" en los packs de foto: la elección de la PDP
+    // (dimensión `magnet` de la variante) persiste acá para que el carrito la incluya
+    // al resolver la variante server-side. Ausente = legacy → resuelve a Con imán.
+    magnet: z.boolean().optional(),
+    // Lucy 2026-09-07 — tipo de letra del título/mes del calendario (selector en el banner
+    // del Estudio). Ausente = "fredoka" (retrocompatible con diseños guardados antes de
+    // esta ola). Sin catchall en este schema: declararla acá es lo que la hace sobrevivir
+    // el auto-save (Zod stripea claves no declaradas).
+    calendarFont: CalendarFontKeySchema.optional(),
+    // Modelo MULTI-UNIDAD (owner 2026-09-09 — regla general): N unidades físicas del mismo
+    // producto, CADA UNA diseñable por separado en el Estudio (2 tiras = 2 × unitSlots;
+    // 2 calendarios = 2 × 12). Aditivo: ausentes = 1 unidad (diseños legacy intactos).
+    // Invariante: slotCount = unitCount × unitSlots; el editor solo los escribe cuando
+    // unitSlots > 1 (los packs de imán suelto no los declaran — su variante YA es el pack).
+    // El precio NUNCA confía en estos campos: se deriva de slotCount (design-units.ts).
+    unitCount: z.number().int().min(1).max(50).optional(),
+    unitSlots: z.number().int().min(1).max(50).optional(),
+    // Rediseño IG (owner 2026-10-05) — modo SIN BORDE de la Polaroid Instagram como
+    // FLAG EXPLÍCITO (antes se infería por la geometría del image-placeholder:
+    // comparación exacta contra el stage 450×600, frágil). true = foto a lo ancho
+    // completo conservando las franjas blancas superior/inferior. Ausente = diseño
+    // de antes del cambio → la detección por geometría (isInstagramNoBorder) sigue
+    // como fallback. Sin catchall en este schema: declararla acá es lo que la hace
+    // sobrevivir el auto-save (Zod stripea claves no declaradas).
+    igNoBorder: z.boolean().optional(),
+    // ADR-133 (2026-10-08) — reloj del cliente (epoch ms del último cambio) estampado
+    // por el Estudio al auto-guardar. Lo usa la reconciliación del snapshot local de
+    // recuperación: si el canvas guardado en el server tiene clientRev MENOR que el
+    // snapshot de localStorage, el flush de supervivencia se perdió (sendBeacon
+    // descartado durante el unload) y gana la copia local. Aditivo: ausente = canvas
+    // guardado antes de esta ola → pierde contra cualquier snapshot.
+    clientRev: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+  })
+  .superRefine((canvas, ctx) => {
+    if (canvas.slots.length !== canvas.slotCount) {
+      ctx.addIssue({
+        code: "custom",
+        message: `slots debe contener exactamente ${canvas.slotCount} elementos`,
+        path: ["slots"],
+      });
+    }
+    for (const [index, slot] of canvas.slots.entries()) {
+      if (slot.slotIndex !== index) {
+        ctx.addIssue({
+          code: "custom",
+          message: `slotIndex debe ser único, contiguo y ordenado; se esperaba ${index}`,
+          path: ["slots", index, "slotIndex"],
+        });
+      }
+    }
+    if ((canvas.unitCount === undefined) !== (canvas.unitSlots === undefined)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "unitCount y unitSlots deben declararse juntos",
+        path: canvas.unitCount === undefined ? ["unitCount"] : ["unitSlots"],
+      });
+    }
+    if (
+      canvas.unitCount !== undefined &&
+      canvas.unitSlots !== undefined &&
+      canvas.slotCount !== canvas.unitCount * canvas.unitSlots
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "slotCount debe ser igual a unitCount × unitSlots",
+        path: ["slotCount"],
+      });
+    }
+  });
 
 export type CanvasDataV2 = z.infer<typeof CanvasDataV2Schema>;
 

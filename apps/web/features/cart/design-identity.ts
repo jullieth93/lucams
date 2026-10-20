@@ -85,6 +85,7 @@ export function designIdentity(design: {
 export type LineIdentity = {
   variantId: string;
   designId: string | null;
+  unitPrice?: number;
   design?: {
     productId: string;
     canvasData: Prisma.JsonValue;
@@ -108,6 +109,13 @@ export type LineIdentity = {
  */
 export function sameLineContent(a: LineIdentity, b: LineIdentity): boolean {
   if (a.variantId !== b.variantId) return false;
+  if (
+    typeof a.unitPrice === "number" &&
+    typeof b.unitPrice === "number" &&
+    a.unitPrice !== b.unitPrice
+  ) {
+    return false;
+  }
   if (!a.designId && !b.designId) return true;
   if (a.designId && b.designId) {
     if (a.designId === b.designId) return true;

@@ -145,6 +145,7 @@ export type AccountTexts = {
      *  nuevo) y badge «Listo» para la distinción Borrador/Listo. */
     edit: string;
     readyBadge: string;
+    inCartBadge: string;
     /** 2026-10-13 — sección «Borradores» (colapsable, debajo de los listos):
      *  título, contador ({n} = cantidad), eliminación individual con
      *  confirmación y «Vaciar borradores» con confirmación. */
@@ -341,6 +342,7 @@ export const DEFAULT_ACCOUNT_TEXTS: AccountTexts = {
     draftResume: "Seguir editando",
     edit: "Editar",
     readyBadge: "Listo",
+    inCartBadge: "En carrito",
     draftsSection: "Borradores",
     draftsCountSingle: "{n} borrador",
     draftsCountMany: "{n} borradores",
@@ -513,6 +515,7 @@ export const ACCOUNT_TEXT_KEYS: Record<string, string> = {
   "designs.draftResume": "account.designs.draft-resume",
   "designs.edit": "account.designs.edit",
   "designs.readyBadge": "account.designs.ready-badge",
+  "designs.inCartBadge": "account.designs.in-cart-badge",
   "designs.draftsSection": "account.designs.drafts-section",
   "designs.draftsCountSingle": "account.designs.drafts-count-single",
   "designs.draftsCountMany": "account.designs.drafts-count-many",

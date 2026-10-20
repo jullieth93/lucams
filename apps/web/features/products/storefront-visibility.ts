@@ -95,3 +95,24 @@ export function getStorefrontVisibility(input: StorefrontVisibilityInput): Store
   }
   return { status: "visible" };
 }
+
+export type PurchasableVariantInput = {
+  variantIsActive: boolean;
+  variantDeletedAt: Date | null;
+  productIsActive: boolean;
+  productDeletedAt: Date | null;
+  categoryIsActive: boolean;
+  categoryDeletedAt: Date | null;
+};
+
+/** Regla de compra, no solo de exhibición: se aplica también a carrito y orden. */
+export function isPurchasableVariant(input: PurchasableVariantInput): boolean {
+  return (
+    input.variantIsActive &&
+    input.variantDeletedAt === null &&
+    input.productIsActive &&
+    input.productDeletedAt === null &&
+    input.categoryIsActive &&
+    input.categoryDeletedAt === null
+  );
+}

@@ -38,13 +38,9 @@ export function studioDraftStorageKey(productSlug: string): string {
   return `lucams_studio_draft_${productSlug}`;
 }
 
-/**
- * Marcadores con más de 30 días ya no se ofrecen: es la ventana de purga de
- * drafts ANÓNIMOS server-side (PURGE_ANON_DESIGN_AFTER_DAYS — los de clientes
- * logueados viven 90 d, pero esos se retoman desde "Mis diseños"). Un marcador
- * más viejo apunta casi seguro a un draft purgado → ofrecerlo sería mentir.
- */
-export const DRAFT_MARKER_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+export const DRAFT_MARKER_GUEST_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+export const DRAFT_MARKER_ACCOUNT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+export const DRAFT_MARKER_MAX_AGE_MS = DRAFT_MARKER_ACCOUNT_MAX_AGE_MS;
 
 export interface StudioDraftMarker {
   designId: string;
@@ -78,11 +74,12 @@ function removeMarker(storage: Storage, productSlug: string): void {
  */
 export function readStudioDraftMarker(
   productSlug: string,
-  opts?: { now?: number },
+  opts?: { now?: number; maxAgeMs?: number },
 ): StudioDraftMarker | null {
   const storage = storageOrNull();
   if (!storage) return null;
   const now = opts?.now ?? Date.now();
+  const maxAgeMs = opts?.maxAgeMs ?? DRAFT_MARKER_MAX_AGE_MS;
   try {
     const raw = storage.getItem(studioDraftStorageKey(productSlug));
     if (!raw) return null;
@@ -99,7 +96,7 @@ export function readStudioDraftMarker(
       parsed.designId.trim().length === 0 ||
       typeof parsed.savedAt !== "number" ||
       !Number.isFinite(parsed.savedAt) ||
-      now - parsed.savedAt > DRAFT_MARKER_MAX_AGE_MS ||
+      now - parsed.savedAt > maxAgeMs ||
       parsed.savedAt > now + 60_000 // reloj del cliente disparado — no confiable
     ) {
       removeMarker(storage, productSlug);

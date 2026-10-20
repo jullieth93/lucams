@@ -53,8 +53,9 @@ const { state, MockNeedsKonva } = vi.hoisted(() => {
       },
       design: null as null | {
         id: string;
+        productId: string;
+        metadata: Record<string, unknown>;
         canvasData: Record<string, unknown>;
-        product: { personalizationSchema: unknown; personalizationKind: string };
         productionUrls: string[];
       },
       assets: [] as { id: string; storageUrl: string }[],
@@ -175,7 +176,11 @@ vi.mock("@/lib/db", () => ({
       findMany: async () => state.assets,
     },
     product: {
-      findUnique: async () => ({ personalizationSchema: state.productSchema }),
+      findUnique: async () => ({
+        personalizationSchema: state.productSchema,
+        personalizationKind: "PHOTO_PACK",
+        variants: [],
+      }),
     },
   },
 }));
@@ -245,8 +250,11 @@ function makeSlots(count: number) {
 
 /** Diseño V2 de 3 slots solo-foto listo para el worker. */
 function seedDesign(slotCount = 3, productionUrls: string[] = []) {
+  state.productSchema = { photoSlots: slotCount };
   state.design = {
     id: "design_1",
+    productId: "prod_1",
+    metadata: {},
     canvasData: {
       version: 2,
       slotCount,
@@ -259,10 +267,6 @@ function seedDesign(slotCount = 3, productionUrls: string[] = []) {
         ],
       },
       slots: makeSlots(slotCount),
-    },
-    product: {
-      personalizationSchema: { photoSlots: slotCount },
-      personalizationKind: "PHOTO_PACK",
     },
     productionUrls,
   };
@@ -356,14 +360,14 @@ describe("renderJobTotalUnits", () => {
 
 describe("createOrResetRenderJob", () => {
   it("crea el job PENDING con el totalUnits del producto", async () => {
-    state.productSchema = { photoSlots: 3 };
+    seedDesign(3);
     await createOrResetRenderJob({ designId: "design_1", productId: "prod_1", slotCount: 3 });
     expect(state.job).toMatchObject({ designId: "design_1", status: "PENDING", totalUnits: 3 });
   });
 
   it("resetea un job existente (re-finalize tras reopen): progreso, intentos y error a cero", async () => {
+    seedDesign(3);
     seedJob({ status: "FAILED", attempts: 3, doneUnits: 2, paths: ["a", "b"], error: "x" });
-    state.productSchema = { photoSlots: 3 };
     await createOrResetRenderJob({ designId: "design_1", productId: "prod_1", slotCount: 3 });
     expect(state.job).toMatchObject({
       status: "PENDING",
@@ -457,7 +461,7 @@ describe("processRenderJobs — máquina de estados", () => {
 
   it("separadores 2-caras: la unidad es la TIRA (tira-NN.png), una por par de slots", async () => {
     seedDesign(4);
-    state.design!.product.personalizationSchema = { photoSlots: 4, facesPerUnit: 2 };
+    state.productSchema = { photoSlots: 4, facesPerUnit: 2 };
     seedJob({ totalUnits: 2 });
     const res = await processRenderJobs({ onlyDesignId: "design_1" });
     expect(res.done).toBe(1);

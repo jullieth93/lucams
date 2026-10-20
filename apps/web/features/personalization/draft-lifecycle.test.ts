@@ -52,6 +52,7 @@ type FakeDesign = {
   productId: string;
   updatedAt: Date;
   metadata: Record<string, unknown> | null;
+  canvasData: Record<string, unknown>;
   /** Items de carrito que referencian el diseño (cartDeletedAt null = carrito vivo). */
   cartItems: Array<{ cartDeletedAt: Date | null }>;
   orderItems: number;
@@ -69,6 +70,7 @@ function design(id: string, over: Partial<FakeDesign> = {}): FakeDesign {
     productId: "prod-1",
     updatedAt: hoursAgo(1),
     metadata: { variantId: "var-1" },
+    canvasData: { version: 2, clientRev: 1, slots: [] },
     cartItems: [],
     orderItems: 0,
     uploads: [`uploads/${id}.jpg`],
@@ -142,6 +144,12 @@ function project(d: FakeDesign, select: Record<string, unknown>): Record<string,
       case "metadata":
         out.metadata = d.metadata;
         break;
+      case "updatedAt":
+        out.updatedAt = d.updatedAt;
+        break;
+      case "canvasData":
+        out.canvasData = d.canvasData;
+        break;
       case "cartItems":
         out.cartItems = d.cartItems
           .filter((ci) => ci.cartDeletedAt === null)
@@ -198,6 +206,19 @@ vi.mock("@/lib/db", () => ({
       findFirst: async ({ where }: { where: Record<string, unknown> }) => {
         const found = rows.filter((d) => matchesDesign(where, d));
         return found[0] ? { id: found[0]!.id } : null;
+      },
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: Record<string, unknown>;
+        data: { status?: string };
+      }) => {
+        const found = rows.filter((d) => matchesDesign(where, d));
+        for (const row of found) {
+          if (data.status) row.status = data.status;
+        }
+        return { count: found.length };
       },
       deleteMany: async ({ where }: { where: { id: { in: string[] } } }) => {
         deletedIds.push(...where.id.in);
@@ -378,6 +399,27 @@ describe("trimExcessDraftDesigns — política «últimos N» (2026-10-13)", () 
     expect(rows.map((d) => d.id).sort()).toEqual(["d1", "d2", "d3"].sort());
   });
 
+  it("elimina borradores vacíos aunque no superen el techo de 3", async () => {
+    rows = [
+      design("d1", { updatedAt: hoursAgo(0) }),
+      design("vacio", {
+        updatedAt: hoursAgo(1),
+        canvasData: {
+          version: 2,
+          slotCount: 1,
+          slots: [{ slotIndex: 0, assetId: null, assetUrl: null }],
+        },
+      }),
+    ];
+    syncAssets();
+
+    const res = await trimExcessDraftDesigns(OWNER, "prod-1");
+
+    expect(res.trimmed).toBe(1);
+    expect(deletedIds).toEqual(["vacio"]);
+    expect(rows.map((d) => d.id)).toEqual(["d1"]);
+  });
+
   it("con 3 o menos DRAFT no hace nada", async () => {
     rows = [design("d1"), design("d2", { updatedAt: hoursAgo(2) })];
     syncAssets();
@@ -416,14 +458,12 @@ describe("findReusableDraftDesign — reuso del borrador activo al entrar al Est
     expect(found).toBeNull();
   });
 
-  it("un borrador fuera de la ventana de retención de su dueño NO se retoma (90d logueado / 30d anónimo)", async () => {
-    rows = [design("stale", { updatedAt: daysAgo(45) })];
+  it("un borrador fuera de la ventana de retención de su dueño NO se retoma (30d cuenta / 7d invitado)", async () => {
+    rows = [design("stale", { updatedAt: daysAgo(20) })];
 
-    // Logueado: 45d < 90d → sí se retoma.
     expect(await findReusableDraftDesign({ ...OWNER, productId: "prod-1", now: NOW })).toEqual({
       id: "stale",
     });
-    // Anónimo: 45d > 30d → no.
     expect(
       await findReusableDraftDesign({
         customerId: null,
@@ -459,7 +499,7 @@ describe("findReusableDraftDesign — reuso del borrador activo al entrar al Est
     expect(await findReusableDraftDesign({ ...OWNER, productId: "prod-1", now: NOW })).toBeNull();
   });
 
-  it("con variante explícita: retoma el DRAFT de ESA variante (o legacy sin variante), nunca otra", async () => {
+  it("con variante explícita: retoma solo ESA variante; una legacy sin variante no se ofrece", async () => {
     rows = [
       design("otra-variante", { updatedAt: hoursAgo(1), metadata: { variantId: "var-2" } }),
       design("mi-variante", { updatedAt: hoursAgo(2), metadata: { variantId: "var-1" } }),
@@ -491,7 +531,7 @@ describe("findReusableDraftDesign — reuso del borrador activo al entrar al Est
         variantId: "var-1",
         now: NOW,
       }),
-    ).toEqual({ id: "legacy" });
+    ).toBeNull();
   });
 
   it("sin variante explícita retoma el más reciente aunque sea de otra variante", async () => {
@@ -500,6 +540,20 @@ describe("findReusableDraftDesign — reuso del borrador activo al entrar al Est
     expect(await findReusableDraftDesign({ ...OWNER, productId: "prod-1", now: NOW })).toEqual({
       id: "otra-variante",
     });
+  });
+
+  it("no retoma un borrador vacío aunque esté vigente", async () => {
+    rows = [
+      design("vacio", {
+        canvasData: {
+          version: 2,
+          slotCount: 1,
+          slots: [{ slotIndex: 0, assetId: null, assetUrl: null }],
+        },
+      }),
+    ];
+
+    expect(await findReusableDraftDesign({ ...OWNER, productId: "prod-1", now: NOW })).toBeNull();
   });
 });
 

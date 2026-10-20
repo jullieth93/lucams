@@ -25,6 +25,7 @@ import { CartCrossSell } from "@/components/cart-cross-sell";
 import { CmsText } from "@/components/cms/cms-text";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
+import { getCurrentCustomer } from "@/lib/auth";
 import { peekCartSession } from "@/lib/cart-session";
 import { removeItemAction, updateQtyAction } from "./actions";
 import { SubmitButton } from "@/components/ui/submit-button";
@@ -41,8 +42,8 @@ export const metadata: Metadata = {
 export default async function CarritoPage() {
   // RouteToasts en app/layout.tsx maneja ?added=1 y ?error=... como
   // toast sonner, así que acá ya no rendereamos los banners inline.
-  const sessionId = await peekCartSession();
-  const cart = sessionId ? await getCartDetail(sessionId) : null;
+  const [sessionId, customer] = await Promise.all([peekCartSession(), getCurrentCustomer()]);
+  const cart = sessionId ? await getCartDetail(sessionId, customer?.customer.id ?? null) : null;
   // Etapa 1 (modo catálogo): el CTA principal pide cotización por WhatsApp
   // (misma ruta /checkout/datos, que en este modo es el form de cotización).
   const catalog = isCatalogMode();

@@ -579,6 +579,35 @@ export default async function AdminPedidoDetallePage({
                   }
                 />
               )}
+              {order.wompiAttempts.length > 0 && (
+                <div className="border-brand-purple/10 mt-3 space-y-2 border-t pt-3">
+                  <p className="text-brand-purple-dark text-xs font-bold">
+                    Intentos y transacciones
+                  </p>
+                  {order.wompiAttempts.map((attempt) => (
+                    <div key={attempt.id} className="bg-brand-cream rounded-lg p-2.5 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold">
+                          Intento {attempt.sequence} · {attempt.status}
+                        </span>
+                        <span>{formatCOP(attempt.amountInCents)}</span>
+                      </div>
+                      <code className="text-brand-muted mt-1 block text-[10px] break-all">
+                        {attempt.reference}
+                      </code>
+                      {attempt.transactions.length > 0 && (
+                        <ul className="mt-1.5 space-y-1">
+                          {attempt.transactions.map((tx) => (
+                            <li key={tx.id} className="break-all">
+                              {tx.status ?? "SIN VERIFICAR"} · {tx.externalId}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
               <Row label="Estado" value={statusLabel} />
             </Card>
 

@@ -28,6 +28,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { ipKey, phoneKey } from "@/lib/rate-limit-keys";
 import { logger } from "@/lib/logger";
 import { getClientIp } from "@/lib/client-ip";
+import { getCurrentCustomer } from "@/lib/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { getOrCreateCartSession } from "@/lib/cart-session";
 import { isCatalogMode } from "@/lib/store-mode";
@@ -122,11 +123,19 @@ export async function createQuoteAction(
   }
 
   try {
-    const sessionId = await getOrCreateCartSession();
-    const { id, number, token } = await createQuoteFromCart(parsed.data, sessionId, {
-      ip,
-      userAgent: hdrs.get("user-agent"),
-    });
+    const [sessionId, customer] = await Promise.all([
+      getOrCreateCartSession(),
+      getCurrentCustomer(),
+    ]);
+    const { id, number, token } = await createQuoteFromCart(
+      parsed.data,
+      sessionId,
+      {
+        ip,
+        userAgent: hdrs.get("user-agent"),
+      },
+      customer?.customer.id ?? null,
+    );
     // Aviso interno al admin: si el cliente no pulsa "Enviar por WhatsApp", la cotización igual
     // llega al correo del negocio. Fire-and-forget DESPUÉS de responder — after() porque un
     // `void (async …)()` muere congelado en Vercel (mismo patrón que features/support/actions.ts).

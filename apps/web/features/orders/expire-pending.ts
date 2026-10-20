@@ -69,7 +69,8 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { getTransaction, getWompiConfig } from "@/lib/wompi";
+import { listTransactionsByReference, getWompiConfig } from "@/lib/wompi";
+import { isWompiTransactionOlderThanOrder } from "./payment-reference";
 import { transitionOrder, OrderTransitionError } from "./service";
 import { processPaidOrder } from "./saga";
 import { PENDING_PAYMENT_EXPIRY_HOURS } from "./constants";
@@ -107,8 +108,9 @@ function wompiVerificationAvailable(): boolean {
 type WompiVerdict =
   | "no_txid" // abandonó antes de pagar → cancela directo (sin llamar a Wompi) y SIN flag; visible vía resumen diario (F-03)
   | "not_configured" // sin llaves WOMPI_* → no se puede verificar: cancela + needsReconciliation (F-03)
-  | "not_approved" // PENDING/DECLINED/ERROR/VOIDED → cancela limpio (cobro descartado)
-  | "lookup_failed"; // API caída / tx inexistente (404) → cancela + needsReconciliation (F-03)
+  | "not_approved" // Sin captura o solo estados terminales → cancela limpio
+  | "in_flight" // PENDING confirmado por Wompi → conserva la orden para la próxima verificación
+  | "lookup_failed"; // API caída / respuesta inválida → cancela + needsReconciliation (F-03)
 
 export async function expireStalePendingOrders(
   now: Date = new Date(),
@@ -125,7 +127,15 @@ export async function expireStalePendingOrders(
       // cancelarlas es decisión de un humano, no del cron.
       needsReconciliation: false,
     },
-    select: { id: true, number: true, total: true, wompiTransactionId: true },
+    select: {
+      id: true,
+      number: true,
+      total: true,
+      createdAt: true,
+      paymentAttempt: true,
+      wompiReference: true,
+      wompiTransactionId: true,
+    },
     orderBy: { createdAt: "asc" },
     take: EXPIRE_BATCH_SIZE,
   });
@@ -137,43 +147,42 @@ export async function expireStalePendingOrders(
   let skipped = 0;
   let healed = 0;
   for (const order of stale) {
-    // ── 5.4 — Verificación Wompi antes de cancelar una orden CON transacción ──
-    // La orden tiene wompiTransactionId: pudo pagarse y el webhook perderse.
-    // Consultamos el estado REAL antes de decidir (sin txId → cancela directo).
+    const reference =
+      order.wompiReference ??
+      (order.paymentAttempt > 0 || order.wompiTransactionId ? order.number : null);
     let verdict: WompiVerdict = "no_txid";
-    if (order.wompiTransactionId) {
+    if (reference) {
       if (!canVerifyWompi) {
         verdict = "not_configured";
       } else {
-        // Lookup acotado: SOLO este await tiene red de errores — un fallo de la
-        // saga (más abajo) JAMÁS debe reinterpretarse como "no se pudo verificar"
-        // y derivar en cancelación de una venta APPROVED.
-        let tx: Awaited<ReturnType<typeof getTransaction>> | null = null;
+        let transactions: Awaited<ReturnType<typeof listTransactionsByReference>> | null = null;
         try {
-          tx = await getTransaction(order.wompiTransactionId);
+          transactions = await listTransactionsByReference(reference);
         } catch (err) {
-          // API caída, timeout, circuit-open o tx inexistente (404): sin prueba
-          // de pago se cancela, pero la cancelación fue a ciegas → F-03 la
-          // marca needsReconciliation al cancelar (más abajo).
           verdict = "lookup_failed";
           logger.warn({
             event: "order.expire_pending.wompi_lookup_failed",
             orderId: order.id,
             orderNumber: order.number,
-            txId: order.wompiTransactionId,
+            reference,
             err: err instanceof Error ? err.message : String(err),
           });
         }
-        if (tx?.status === "APPROVED") {
-          if (tx.amount_in_cents !== order.total) {
-            // Simetría con webhook y /checkout/gracias (ambos validan monto
-            // antes de la saga): un APPROVED desfasado no se sana solo ni se
-            // cancela — queda visible para un humano.
+        if (transactions) {
+          const relevant = transactions.filter(
+            (tx) => !isWompiTransactionOlderThanOrder(order, tx),
+          );
+          const approved = relevant
+            .filter((tx) => tx.status === "APPROVED")
+            .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+          const pending = relevant.filter((tx) => tx.status === "PENDING");
+          const mismatch = approved.find((tx) => tx.amount_in_cents !== order.total);
+          if (mismatch) {
             await prisma.order.updateMany({
               where: { id: order.id, needsReconciliation: false },
               data: {
                 needsReconciliation: true,
-                reconciliationReason: `Monto Wompi (${tx.amount_in_cents}) ≠ total de la orden (${order.total}) detectado por el cron expire-pending (tx ${tx.id}). Revisar antes de despachar o reembolsar.`,
+                reconciliationReason: `Monto Wompi (${mismatch.amount_in_cents}) ≠ total de la orden (${order.total}) detectado por el cron expire-pending (tx ${mismatch.id}). Revisar antes de despachar o reembolsar.`,
               },
             });
             skipped += 1;
@@ -182,49 +191,65 @@ export async function expireStalePendingOrders(
               orderId: order.id,
               orderNumber: order.number,
               expected: order.total,
-              received: tx.amount_in_cents,
-              txId: tx.id,
+              received: mismatch.amount_in_cents,
+              txId: mismatch.id,
             });
             continue;
           }
-          // El webhook se perdió: la venta es REAL. Auto-sanación con la saga
-          // (idempotente — si el webhook llegó entre tanto, already_processed).
-          // Si la saga lanza (fallo técnico inesperado), NO cancelamos: el pago
-          // está aprobado; la orden queda y la próxima corrida reintenta.
-          try {
-            const result = await processPaidOrder({
-              orderId: order.id,
-              wompiTransactionId: tx.id,
-            });
-            healed += 1;
-            logger.info({
-              event: "order.expire_pending.healed",
-              orderId: order.id,
-              orderNumber: order.number,
-              txId: tx.id,
-              sagaStatus: result.status,
-              trackingNumber: result.trackingNumber ?? null,
-            });
-          } catch (err) {
-            skipped += 1;
-            logger.error({
-              event: "order.expire_pending.heal_failed",
-              orderId: order.id,
-              orderNumber: order.number,
-              txId: tx.id,
-              err: err instanceof Error ? err.message : String(err),
-            });
+          if (approved.length > 0) {
+            const paid = approved[0]!;
+            try {
+              const result = await processPaidOrder({
+                orderId: order.id,
+                wompiTransactionId: paid.id,
+              });
+              healed += 1;
+              if (approved.length > 1) {
+                await prisma.order.updateMany({
+                  where: { id: order.id, needsReconciliation: false },
+                  data: {
+                    needsReconciliation: true,
+                    reconciliationReason: `Wompi reportó más de una aprobación para ${reference}. Revisar posible doble cobro.`,
+                  },
+                });
+              }
+              logger.info({
+                event: "order.expire_pending.healed",
+                orderId: order.id,
+                orderNumber: order.number,
+                txId: paid.id,
+                sagaStatus: result.status,
+                trackingNumber: result.trackingNumber ?? null,
+              });
+            } catch (err) {
+              skipped += 1;
+              logger.error({
+                event: "order.expire_pending.heal_failed",
+                orderId: order.id,
+                orderNumber: order.number,
+                txId: paid.id,
+                err: err instanceof Error ? err.message : String(err),
+              });
+            }
+            continue;
           }
-          continue;
-        }
-        if (tx) {
+          if (pending.length > 0) {
+            skipped += 1;
+            verdict = "in_flight";
+            logger.info({
+              event: "order.expire_pending.payment_in_flight",
+              orderId: order.id,
+              orderNumber: order.number,
+              reference,
+            });
+            continue;
+          }
           verdict = "not_approved";
           logger.info({
             event: "order.expire_pending.wompi_verified",
             orderId: order.id,
             orderNumber: order.number,
-            txId: tx.id,
-            txStatus: tx.status,
+            reference,
           });
         }
       }

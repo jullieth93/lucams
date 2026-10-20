@@ -32,6 +32,7 @@ export type DesignCardData = {
   /** Hay un link /d/<token> activo (F-11: solo el hash vive en DB). */
   hasShareToken: boolean;
   used: boolean;
+  inCart?: boolean;
   /** Fase 2 · item 2.4 (2026-10-07) — borrador vigente: sin acciones de
    *  compartir; la tarjeta ofrece «Seguir editando» al Estudio. 2026-10-13 —
    *  en los borradores `previewUrl` trae la MINIATURA del auto-save
@@ -389,11 +390,13 @@ function DesignCard({ design, texts }: { design: DesignCardData; texts: AccountT
           <p className="text-brand-purple-dark min-w-0 flex-1 truncate text-sm font-semibold">
             {design.productName}
           </p>
-          {/* Distinción clara Borrador/Listo (2026-10-13): el READY sin pedir
-              lleva badge «Listo» (el borrador tiene el suyo en DraftDesignCard). */}
           {design.used ? (
             <span className="flex-shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
               {texts.used}
+            </span>
+          ) : design.inCart ? (
+            <span className="bg-brand-purple/10 text-brand-purple flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold">
+              {texts.inCartBadge}
             </span>
           ) : (
             <span className="bg-brand-yellow/25 text-brand-purple-dark flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold">

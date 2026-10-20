@@ -7,7 +7,8 @@
  * fotos crudas (`customer-uploads`) y renders (`production-assets`), y el plan Free de Supabase
  * tiene 1 GB de Storage.
  *
- * POLÍTICA (decisión de negocio 2026-09-18): un diseño USED_IN_ORDER cuya orden asociada está
+ * POLÍTICA (decisión de negocio 2026-09-18): un diseño USED_IN_ORDER —incluido uno
+ * ARCHIVED desde USED_IN_ORDER— cuya orden asociada está
  * DELIVERED desde ≥ PURGE_DELIVERED_DESIGN_AFTER_DAYS (default 90 días, anclado a
  * `Order.deliveredAt` — el webhook de Aveonline, no al cambio de status a mano) se depura así:
  *   - SE BORRAN los bytes: fotos crudas del bucket privado `customer-uploads` (los DesignAsset del
@@ -96,7 +97,8 @@ const CANDIDATE_SELECT = {
  */
 export function deliveredPurgeCandidateWhere(cutoff: Date): Prisma.DesignWhereInput {
   return {
-    status: "USED_IN_ORDER",
+    status: { in: ["USED_IN_ORDER", "ARCHIVED"] },
+    OR: [{ status: "USED_IN_ORDER" }, { archivedFrom: "USED_IN_ORDER" }],
     purgedAt: null,
     // Gatillo: existe una orden viva (no soft-borrada) entregada hace ≥ el plazo.
     orderItems: {

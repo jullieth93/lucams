@@ -29,6 +29,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { designHasMeaningfulProgress } from "./design-progress";
 import {
   deleteDesignsWithAssets,
   PURGE_ANON_DESIGN_AFTER_DAYS,
@@ -45,6 +46,7 @@ import {
 export const MAX_DRAFTS_PER_PRODUCT = 3;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const EMPTY_DRAFT_GRACE_MS = 60 * 60 * 1000;
 
 /**
  * Un CartItem solo protege el diseño mientras su Cart siga vivo (misma regla que
@@ -63,9 +65,32 @@ function ownerWhere(owner: Owner): { customerId: string } | { sessionId: string 
   return null;
 }
 
+async function claimDraftsForDeletion(owner: Owner, designIds: string[]): Promise<string[]> {
+  const scope = ownerWhere(owner);
+  if (!scope || designIds.length === 0) return [];
+  await prisma.design.updateMany({
+    where: { id: { in: designIds }, ...scope, status: "DRAFT" },
+    data: { status: "ARCHIVED" },
+  });
+  const claimed = await prisma.design.findMany({
+    where: { id: { in: designIds }, ...scope, status: "ARCHIVED" },
+    select: { id: true },
+  });
+  return claimed.map((design) => design.id);
+}
+
+async function releaseDraftsClaim(owner: Owner, designIds: string[]): Promise<void> {
+  const scope = ownerWhere(owner);
+  if (!scope || designIds.length === 0) return;
+  await prisma.design.updateMany({
+    where: { id: { in: designIds }, ...scope, status: "ARCHIVED" },
+    data: { status: "DRAFT" },
+  });
+}
+
 /**
  * Ventana de actividad para considerar un DRAFT "activo": la misma que aplica la
- * retención a su dueño (30 d anónimo / 90 d logueado, por updatedAt). Un borrador
+ * retención a su dueño (7 días invitado / 30 días con cuenta, por updatedAt). Un borrador
  * fuera de ventana puede desaparecer en la próxima purga: retomarlo sería
  * prometer un avance que revienta a mitad de edición.
  */
@@ -77,14 +102,9 @@ function draftActiveCutoff(owner: Owner, now: Date): Date {
 /**
  * DRAFT reutilizable más reciente del dueño para el producto, o null si no hay.
  *
- * Guardas (un borrador "sigue activo" solo si cumple TODAS): status DRAFT, del
- * mismo producto, con actividad dentro de la ventana de retención de su dueño,
- * sin carrito vivo ni pedido que lo referencie. La variante se evalúa en JS
- * sobre metadata.variantId: si el caller la fija (la URL traía ?variant=
- * explícita) solo reusa un borrador de ESA variante o uno legacy sin variante
- * persistida; si no la fija (entrada pelada a /estudio/<slug>), cualquier
- * variante sirve — el recover reabre el Estudio con la variante guardada en el
- * propio diseño (resolveRecoverVariantId).
+ * Guardas: DRAFT, mismo producto, actividad vigente, avance real y sin carrito vivo ni
+ * pedido que lo referencie. Con variante explícita solo reusa la misma variante persistida;
+ * una entrada legacy sin variante no se ofrece porque puede cargar otra medida/composición.
  */
 export async function findReusableDraftDesign(
   opts: Owner & {
@@ -112,17 +132,18 @@ export async function findReusableDraftDesign(
     // Tras la poda «últimos N» el universo por dueño+producto es chico; el take
     // acota cuentas legacy con acumulados históricos.
     take: 20,
-    select: { id: true, metadata: true },
+    select: { id: true, metadata: true, canvasData: true },
   });
 
   const requestedVariant = opts.variantId ?? null;
   for (const c of candidates) {
+    if (!designHasMeaningfulProgress({ canvasData: c.canvasData, metadata: c.metadata })) {
+      continue;
+    }
     if (!requestedVariant) return { id: c.id };
     const meta = c.metadata as Record<string, unknown> | null;
     const draftVariant = typeof meta?.variantId === "string" ? meta.variantId : null;
-    // Legacy sin variante persistida: elegible (el recover deriva la variante del
-    // canvasData, igual que al retomarlo desde "Mis diseños").
-    if (draftVariant === null || draftVariant === requestedVariant) return { id: c.id };
+    if (draftVariant === requestedVariant) return { id: c.id };
   }
   return null;
 }
@@ -140,6 +161,7 @@ export async function findReusableDraftDesign(
 export async function trimExcessDraftDesigns(
   owner: Owner,
   productId: string,
+  opts?: { protectDesignId?: string },
 ): Promise<{ trimmed: number }> {
   const scope = ownerWhere(owner);
   if (!scope) return { trimmed: 0 };
@@ -150,23 +172,48 @@ export async function trimExcessDraftDesigns(
     take: 50,
     select: {
       id: true,
+      updatedAt: true,
+      canvasData: true,
+      metadata: true,
       cartItems: { where: { cart: { deletedAt: null } }, select: { id: true }, take: 1 },
       orderItems: { select: { id: true }, take: 1 },
     },
   });
 
-  // Los referenciados por carrito vivo/pedido quedan FUERA de la cuenta y del
-  // borrado: un borrador blindado no desplaza ni se poda.
   const trimmable = drafts.filter((d) => d.cartItems.length === 0 && d.orderItems.length === 0);
-  const excess = trimmable.slice(MAX_DRAFTS_PER_PRODUCT);
+  const withProgress = trimmable.filter(
+    (d) =>
+      d.id === opts?.protectDesignId ||
+      designHasMeaningfulProgress({ canvasData: d.canvasData, metadata: d.metadata }),
+  );
+  const emptyCutoff = Date.now() - EMPTY_DRAFT_GRACE_MS;
+  const excess = [
+    ...withProgress.slice(MAX_DRAFTS_PER_PRODUCT),
+    ...trimmable.filter(
+      (d) =>
+        d.id !== opts?.protectDesignId &&
+        d.updatedAt.getTime() < emptyCutoff &&
+        !designHasMeaningfulProgress({ canvasData: d.canvasData, metadata: d.metadata }),
+    ),
+  ];
   if (excess.length === 0) return { trimmed: 0 };
 
-  const result = await deleteDesignsWithAssets(excess.map((d) => d.id));
+  const claimedIds = await claimDraftsForDeletion(
+    owner,
+    excess.map((d) => d.id),
+  );
+  let result: Awaited<ReturnType<typeof deleteDesignsWithAssets>>;
+  try {
+    result = await deleteDesignsWithAssets(claimedIds);
+  } catch (err) {
+    await releaseDraftsClaim(owner, claimedIds);
+    throw err;
+  }
   logger.info({
     event: "design.draft_trim",
     productId,
     ownerType: owner.customerId ? "customer" : "session",
-    kept: Math.min(trimmable.length, MAX_DRAFTS_PER_PRODUCT),
+    kept: Math.min(withProgress.length, MAX_DRAFTS_PER_PRODUCT),
     trimmed: result.designsPurged,
     assetsPurged: result.assetsPurged,
   });
@@ -183,16 +230,24 @@ export async function deleteCustomerDraftDesign(
   designId: string,
   customerId: string,
 ): Promise<boolean> {
-  const design = await prisma.design.findFirst({
+  const claim = await prisma.design.updateMany({
     where: { id: designId, customerId, status: "DRAFT" },
-    select: { id: true },
+    data: { status: "ARCHIVED" },
   });
-  if (!design) return false;
-  const result = await deleteDesignsWithAssets([design.id]);
-  if (result.designsPurged > 0) {
-    logger.info({ event: "design.draft_delete", designId, customerId });
+  if (claim.count !== 1) return false;
+  try {
+    const result = await deleteDesignsWithAssets([designId]);
+    if (result.designsPurged > 0) {
+      logger.info({ event: "design.draft_delete", designId, customerId });
+    }
+    return result.designsPurged > 0;
+  } catch (err) {
+    await prisma.design.updateMany({
+      where: { id: designId, customerId, status: "ARCHIVED" },
+      data: { status: "DRAFT" },
+    });
+    throw err;
   }
-  return result.designsPurged > 0;
 }
 
 /**
@@ -201,23 +256,42 @@ export async function deleteCustomerDraftDesign(
  * por un carrito vivo o un pedido (defensa — el alta al carrito exige READY, así
  * que en la práctica ninguno lo está). READY/USED_IN_ORDER jamás entran.
  */
-export async function emptyCustomerDraftDesigns(customerId: string): Promise<{ deleted: number }> {
-  const drafts = await prisma.design.findMany({
-    where: {
-      customerId,
-      status: "DRAFT",
-      cartItems: NO_LIVE_CART_ITEM,
-      orderItems: { none: {} },
-    },
-    select: { id: true },
-    take: 200,
-  });
-  const result = await deleteDesignsWithAssets(drafts.map((d) => d.id));
-  logger.info({
-    event: "design.drafts_emptied",
+export async function emptyCustomerDraftDesigns(
+  customerId: string,
+): Promise<{ deleted: number; assetsPurged: number; remaining: number }> {
+  const where = {
     customerId,
-    deleted: result.designsPurged,
-    assetsPurged: result.assetsPurged,
-  });
-  return { deleted: result.designsPurged };
+    status: "DRAFT" as const,
+    cartItems: NO_LIVE_CART_ITEM,
+    orderItems: { none: {} },
+  };
+  let deleted = 0;
+  let assetsPurged = 0;
+  let remaining = 0;
+
+  for (;;) {
+    const drafts = await prisma.design.findMany({ where, select: { id: true }, take: 200 });
+    if (drafts.length === 0) break;
+    const claimedIds = await claimDraftsForDeletion(
+      { customerId, sessionId: null },
+      drafts.map((d) => d.id),
+    );
+    let result: Awaited<ReturnType<typeof deleteDesignsWithAssets>>;
+    try {
+      result = await deleteDesignsWithAssets(claimedIds);
+    } catch (err) {
+      await releaseDraftsClaim({ customerId, sessionId: null }, claimedIds);
+      throw err;
+    }
+    deleted += result.designsPurged;
+    assetsPurged += result.assetsPurged;
+    if (result.designsPurged < claimedIds.length) {
+      await releaseDraftsClaim({ customerId, sessionId: null }, claimedIds);
+      remaining = await prisma.design.count({ where });
+      break;
+    }
+  }
+
+  logger.info({ event: "design.drafts_emptied", customerId, deleted, assetsPurged, remaining });
+  return { deleted, assetsPurged, remaining };
 }

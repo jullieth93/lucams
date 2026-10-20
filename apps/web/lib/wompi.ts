@@ -294,6 +294,71 @@ export async function getTransaction(id: string): Promise<WompiTransaction> {
   );
 }
 
+function parseTransaction(value: unknown, reference: string): WompiTransaction {
+  if (!value || typeof value !== "object") {
+    throw new Error("Wompi devolvió una transacción inválida");
+  }
+  const tx = value as Record<string, unknown>;
+  if (
+    typeof tx.id !== "string" ||
+    tx.reference !== reference ||
+    !["PENDING", "APPROVED", "DECLINED", "VOIDED", "ERROR"].includes(String(tx.status)) ||
+    typeof tx.amount_in_cents !== "number" ||
+    !Number.isInteger(tx.amount_in_cents) ||
+    typeof tx.currency !== "string" ||
+    typeof tx.created_at !== "string"
+  ) {
+    throw new Error("Wompi devolvió una transacción incompleta o de otra referencia");
+  }
+  return {
+    id: tx.id,
+    reference,
+    status: tx.status as WompiTransactionStatus,
+    amount_in_cents: tx.amount_in_cents,
+    currency: tx.currency,
+    customer_email: typeof tx.customer_email === "string" ? tx.customer_email : null,
+    payment_method_type: typeof tx.payment_method_type === "string" ? tx.payment_method_type : null,
+    created_at: tx.created_at,
+    finalized_at: typeof tx.finalized_at === "string" ? tx.finalized_at : null,
+    status_message: typeof tx.status_message === "string" ? tx.status_message : null,
+  };
+}
+
+/** Devuelve todas las transacciones de una referencia; nunca decide por data[0]. */
+export async function listTransactionsByReference(reference: string): Promise<WompiTransaction[]> {
+  const cfg = getWompiConfig();
+  const url = `${cfg.apiUrl}/transactions?reference=${encodeURIComponent(reference)}`;
+  return withRetry(() =>
+    wompiCB.exec(async () => {
+      const res = await fetchWithTimeout(url, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${cfg.privateKey}` },
+        cache: "no-store",
+        timeoutMs: 5000,
+      });
+      if (!res.ok) {
+        throw Object.assign(new Error(`Wompi listTransactions HTTP ${res.status}`), {
+          status: res.status,
+        });
+      }
+      const json = (await res.json()) as {
+        data?: unknown;
+        meta?: Record<string, unknown> | null;
+      };
+      if (!Array.isArray(json.data)) {
+        throw new Error("Wompi devolvió una colección inválida");
+      }
+      const meta = json.meta ?? {};
+      const totalPages = Number(meta.total_pages ?? meta.totalPages ?? 1);
+      const next = meta.next ?? meta.next_page ?? meta.nextPage ?? null;
+      if ((Number.isFinite(totalPages) && totalPages > 1) || next) {
+        throw new Error("Wompi devolvió una colección paginada incompleta");
+      }
+      return json.data.map((value) => parseTransaction(value, reference));
+    }),
+  );
+}
+
 /**
  * Verifica firma del webhook. Wompi calcula:
  *   SHA256(propiedades_ordenadas + timestamp + events_secret)

@@ -36,6 +36,7 @@ import { supabaseService } from "@/lib/supabase/service";
 import { logger } from "@/lib/logger";
 import { captureServerError } from "@/lib/error-capture";
 import { parsePhotoProductConfig } from "./schemas";
+import { loadEffectiveProductConfig } from "./effective-variant-server";
 import { calendarLayoutFromUnitTemplate } from "./calendar-layout";
 import type { CanvasDataV2 } from "./schemas";
 import type { LoadAssetBytes } from "./production-render";
@@ -116,11 +117,14 @@ export async function createOrResetRenderJob(opts: {
   slotCount: number;
   calendarYear?: number;
 }) {
-  const product = await prisma.product.findUnique({
-    where: { id: opts.productId },
-    select: { personalizationSchema: true },
+  const design = await prisma.design.findUnique({
+    where: { id: opts.designId },
+    select: { productId: true, metadata: true, canvasData: true },
   });
-  const productConfig = parsePhotoProductConfig(product?.personalizationSchema);
+  if (!design || design.productId !== opts.productId) {
+    throw new Error(`RenderJob inválido para el diseño ${opts.designId}`);
+  }
+  const { productConfig } = await loadEffectiveProductConfig(design);
   const totalUnits = renderJobTotalUnits(productConfig, opts.slotCount);
   return prisma.renderJob.upsert({
     where: { designId: opts.designId },
@@ -184,21 +188,16 @@ type RenderContext = {
 async function buildRenderContext(designId: string): Promise<RenderContext> {
   const design = await prisma.design.findUnique({
     where: { id: designId },
-    select: {
-      canvasData: true,
-      product: { select: { personalizationSchema: true, personalizationKind: true } },
-    },
+    select: { productId: true, metadata: true, canvasData: true },
   });
   if (!design) throw new Error(`RenderJob huérfano: el diseño ${designId} ya no existe`);
   const canvasData = design.canvasData as unknown as CanvasDataV2;
   if (canvasData?.version !== 2) {
     throw new Error(`El diseño ${designId} no tiene canvasData V2 renderizable`);
   }
-  const productSchema =
-    (design.product?.personalizationSchema as Record<string, unknown> | null) ?? undefined;
-  const productConfig = parsePhotoProductConfig(productSchema);
-  const shape = (design.product?.personalizationSchema as { shape?: string } | null)?.shape;
-  const isCalendar = design.product?.personalizationKind === "CALENDAR_PHOTO_MONTH";
+  const { product, productSchema, productConfig } = await loadEffectiveProductConfig(design);
+  const shape = (productSchema as { shape?: string }).shape;
+  const isCalendar = product.personalizationKind === "CALENDAR_PHOTO_MONTH";
 
   const assets = await prisma.designAsset.findMany({
     where: { designId },

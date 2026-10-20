@@ -48,13 +48,13 @@ vi.mock("next/cache", () => ({
 // getTransaction y la auto-sanación processPaidOrder se controlan por test; la
 // DB y transitionOrder son reales. Las órdenes sin txId nunca tocan estos mocks.
 const wompiMocks = vi.hoisted(() => ({
-  getTransaction: vi.fn(),
+  listTransactionsByReference: vi.fn(),
   getWompiConfig: vi.fn(),
   processPaidOrder: vi.fn(),
 }));
 
 vi.mock("@/lib/wompi", () => ({
-  getTransaction: wompiMocks.getTransaction,
+  listTransactionsByReference: wompiMocks.listTransactionsByReference,
   getWompiConfig: wompiMocks.getWompiConfig,
 }));
 
@@ -89,6 +89,7 @@ async function makeOrder(opts: {
   deletedAt?: Date;
   withItem?: boolean;
   wompiTransactionId?: string;
+  wompiReference?: string;
 }): Promise<string> {
   const o = await prisma.order.create({
     data: {
@@ -105,6 +106,7 @@ async function makeOrder(opts: {
       needsReconciliation: opts.needsReconciliation ?? false,
       deletedAt: opts.deletedAt ?? null,
       wompiTransactionId: opts.wompiTransactionId ?? null,
+      wompiReference: opts.wompiReference ?? (opts.wompiTransactionId ? `${RUN}-ref` : null),
       ...(opts.withItem ? { items: { create: [{ variantId, qty: 2, unitPrice: 22_500 }] } } : {}),
     },
     select: { id: true },
@@ -322,8 +324,13 @@ describe.skipIf(!hasDb)(
         };
       }
 
+      function mockTransactions(overrides: Record<string, unknown> = {}) {
+        return [makeTx(overrides)];
+      }
+
       beforeEach(() => {
         vi.clearAllMocks();
+        wompiMocks.listTransactionsByReference.mockResolvedValue([]);
         // Default: Wompi CONFIGURADO (la verificación está habilitada).
         wompiMocks.getWompiConfig.mockReturnValue({
           env: "sandbox",
@@ -351,12 +358,14 @@ describe.skipIf(!hasDb)(
           ageMs: STALE_AGE,
           wompiTransactionId: TX,
         });
-        wompiMocks.getTransaction.mockResolvedValue(makeTx({ status: "APPROVED" }));
+        wompiMocks.listTransactionsByReference.mockResolvedValue(
+          mockTransactions({ status: "APPROVED" }),
+        );
 
         const res = await expireStalePendingOrders();
 
         expect(res.healed).toBeGreaterThanOrEqual(1);
-        expect(wompiMocks.getTransaction).toHaveBeenCalledWith(TX);
+        expect(wompiMocks.listTransactionsByReference).toHaveBeenCalledWith(`${RUN}-ref`);
         expect(wompiMocks.processPaidOrder).toHaveBeenCalledWith({
           orderId: id,
           wompiTransactionId: TX,
@@ -365,14 +374,52 @@ describe.skipIf(!hasDb)(
         expect((await orderState(id))?.status).toBe("PENDING_PAYMENT");
       });
 
+      it("sin txId local pero con APPROVED por referencia → también sana en vez de cancelar", async () => {
+        const id = await makeOrder({
+          tag: "w54-approved-by-reference",
+          ageMs: STALE_AGE,
+          wompiReference: `${RUN}-ref`,
+        });
+        wompiMocks.listTransactionsByReference.mockResolvedValue(
+          mockTransactions({ status: "APPROVED" }),
+        );
+
+        const res = await expireStalePendingOrders();
+
+        expect(res.healed).toBeGreaterThanOrEqual(1);
+        expect(wompiMocks.listTransactionsByReference).toHaveBeenCalledWith(`${RUN}-ref`);
+        expect(wompiMocks.processPaidOrder).toHaveBeenCalledWith({
+          orderId: id,
+          wompiTransactionId: TX,
+        });
+        expect((await orderState(id))?.status).toBe("PENDING_PAYMENT");
+      });
+
+      it("una aprobación histórica anterior a la orden no la sana", async () => {
+        const id = await makeOrder({
+          tag: "w54-historical",
+          ageMs: STALE_AGE,
+          wompiReference: `${RUN}-ref`,
+        });
+        wompiMocks.listTransactionsByReference.mockResolvedValue(
+          mockTransactions({ status: "APPROVED", created_at: "2020-01-01T00:00:00Z" }),
+        );
+
+        const res = await expireStalePendingOrders();
+
+        expect(wompiMocks.processPaidOrder).not.toHaveBeenCalled();
+        expect((await orderState(id))?.status).toBe("CANCELLED");
+        expect(res.healed).toBe(0);
+      });
+
       it("APPROVED con monto desfasado → ni cancela ni sana: needsReconciliation + skipped", async () => {
         const id = await makeOrder({
           tag: "w54-mismatch",
           ageMs: STALE_AGE,
           wompiTransactionId: TX,
         });
-        wompiMocks.getTransaction.mockResolvedValue(
-          makeTx({ status: "APPROVED", amount_in_cents: 55_001 }),
+        wompiMocks.listTransactionsByReference.mockResolvedValue(
+          mockTransactions({ status: "APPROVED", amount_in_cents: 55_001 }),
         );
 
         const res = await expireStalePendingOrders();
@@ -388,7 +435,26 @@ describe.skipIf(!hasDb)(
         expect(res.skipped).toBeGreaterThanOrEqual(1);
       });
 
-      it.each(["PENDING", "DECLINED", "ERROR", "VOIDED"])(
+      it("PENDING confirmado por Wompi → conserva la orden para la próxima verificación", async () => {
+        const id = await makeOrder({
+          tag: "w54-pending-in-flight",
+          ageMs: STALE_AGE,
+          wompiTransactionId: TX,
+        });
+        wompiMocks.listTransactionsByReference.mockResolvedValue(
+          mockTransactions({ status: "PENDING" }),
+        );
+
+        const res = await expireStalePendingOrders();
+
+        expect(wompiMocks.listTransactionsByReference).toHaveBeenCalledWith(`${RUN}-ref`);
+        expect(wompiMocks.processPaidOrder).not.toHaveBeenCalled();
+        expect((await orderState(id))?.status).toBe("PENDING_PAYMENT");
+        expect(res.skipped).toBeGreaterThanOrEqual(1);
+        expect(res.healed).toBe(0);
+      });
+
+      it.each(["DECLINED", "ERROR", "VOIDED"])(
         "tx %s → cancela como siempre (verificó contra Wompi)",
         async (status) => {
           const id = await makeOrder({
@@ -396,11 +462,11 @@ describe.skipIf(!hasDb)(
             ageMs: STALE_AGE,
             wompiTransactionId: TX,
           });
-          wompiMocks.getTransaction.mockResolvedValue(makeTx({ status }));
+          wompiMocks.listTransactionsByReference.mockResolvedValue(mockTransactions({ status }));
 
           const res = await expireStalePendingOrders();
 
-          expect(wompiMocks.getTransaction).toHaveBeenCalledWith(TX);
+          expect(wompiMocks.listTransactionsByReference).toHaveBeenCalledWith(`${RUN}-ref`);
           expect(wompiMocks.processPaidOrder).not.toHaveBeenCalled();
           expect((await orderState(id))?.status).toBe("CANCELLED");
           expect(res.expired).toBeGreaterThanOrEqual(1);
@@ -414,7 +480,9 @@ describe.skipIf(!hasDb)(
           ageMs: STALE_AGE,
           wompiTransactionId: TX,
         });
-        wompiMocks.getTransaction.mockRejectedValue(new Error("Wompi getTransaction HTTP 503"));
+        wompiMocks.listTransactionsByReference.mockRejectedValue(
+          new Error("Wompi getTransaction HTTP 503"),
+        );
 
         await expireStalePendingOrders();
 
@@ -443,7 +511,7 @@ describe.skipIf(!hasDb)(
 
         await expireStalePendingOrders();
 
-        expect(wompiMocks.getTransaction).not.toHaveBeenCalled();
+        expect(wompiMocks.listTransactionsByReference).not.toHaveBeenCalled();
         const o = await prisma.order.findUnique({
           where: { id },
           select: { status: true, needsReconciliation: true },
@@ -469,7 +537,7 @@ describe.skipIf(!hasDb)(
         expect(o?.needsReconciliation).toBe(false);
         // El afterEach del test anterior barrió los fixtures con txId: en esta
         // corrida no hay ninguna orden propia con txId → cero llamadas a Wompi.
-        expect(wompiMocks.getTransaction).not.toHaveBeenCalled();
+        expect(wompiMocks.listTransactionsByReference).not.toHaveBeenCalled();
         expect(wompiMocks.processPaidOrder).not.toHaveBeenCalled();
       });
 
@@ -479,7 +547,9 @@ describe.skipIf(!hasDb)(
           ageMs: STALE_AGE,
           wompiTransactionId: TX,
         });
-        wompiMocks.getTransaction.mockResolvedValue(makeTx({ status: "DECLINED" }));
+        wompiMocks.listTransactionsByReference.mockResolvedValue(
+          mockTransactions({ status: "DECLINED" }),
+        );
 
         await expireStalePendingOrders();
 

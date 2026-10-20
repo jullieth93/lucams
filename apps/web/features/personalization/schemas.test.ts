@@ -408,6 +408,54 @@ describe("CanvasLayerSchema — validación defensiva del src de AssetLayer (M.3
   });
 });
 
+describe("CanvasDataV2Schema — integridad estructural de slots y unidades", () => {
+  const base = {
+    version: 2 as const,
+    unitTemplate: {
+      version: 1 as const,
+      stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
+      layers: [],
+    },
+    slotCount: 2,
+    slots: [
+      { slotIndex: 0, assetId: null, assetUrl: null },
+      { slotIndex: 1, assetId: null, assetUrl: null },
+    ],
+    gridLayout: { cols: 2, rows: 1, gap: 8 },
+  };
+
+  it("acepta slots completos, ordenados y contiguos", () => {
+    expect(CanvasDataV2Schema.safeParse(base).success).toBe(true);
+  });
+
+  it("rechaza slots.length distinto de slotCount", () => {
+    expect(CanvasDataV2Schema.safeParse({ ...base, slots: base.slots.slice(0, 1) }).success).toBe(
+      false,
+    );
+  });
+
+  it("rechaza índices duplicados, huecos y desorden", () => {
+    for (const slots of [
+      [base.slots[0], base.slots[0]],
+      [base.slots[0], { ...base.slots[1], slotIndex: 2 }],
+      [base.slots[1], base.slots[0]],
+    ]) {
+      expect(CanvasDataV2Schema.safeParse({ ...base, slots }).success).toBe(false);
+    }
+  });
+
+  it("exige unitCount y unitSlots juntos y coherentes con slotCount", () => {
+    expect(CanvasDataV2Schema.safeParse({ ...base, unitCount: 2 }).success).toBe(false);
+    expect(CanvasDataV2Schema.safeParse({ ...base, unitSlots: 1 }).success).toBe(false);
+    expect(CanvasDataV2Schema.safeParse({ ...base, unitCount: 2, unitSlots: 2 }).success).toBe(
+      false,
+    );
+    expect(CanvasDataV2Schema.safeParse({ ...base, unitCount: 2, unitSlots: 1 }).success).toBe(
+      true,
+    );
+  });
+});
+
 describe("SaveCanvasSchema — cap defensivo de tamaño del canvasData", () => {
   it("rechaza un canvasData > 1 MB (posible payload corrupto con dataURL base64)", () => {
     const bigLayer = { id: "x", type: "text", text: "a".repeat(1_100_000) };

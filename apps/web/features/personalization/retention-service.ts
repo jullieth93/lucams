@@ -36,10 +36,11 @@
  * [pendiente verificación del artículo exacto]). Al purgar se limpia también QuoteItem.previewUrl:
  * ese preview muestra la misma cara y sus bytes ya no existen.
  *
- * NO toca: USED_IN_ORDER (lo rige la retención post-entrega de retention-delivered.ts) /
- * ARCHIVED, ni nada referenciado por un carrito vivo o un pedido. Los DRAFT
- * de clientes logueados los purga purgeIdleCustomerDesigns (abajo) tras 90 días sin actividad
- * (feedback Lucy 2026-09-18); los READY abandonados (que nunca llegaron a pedido) los purga
+ * NO toca nada referenciado por un carrito vivo o un pedido. USED_IN_ORDER y los
+ * ARCHIVED desde USED_IN_ORDER los rige retention-delivered.ts; los ARCHIVED desde READY
+ * entran en la misma retención de un READY abandonado. Los DRAFT
+ * de clientes logueados los purga purgeIdleCustomerDesigns (abajo) tras 30 días sin actividad;
+ * los READY abandonados (que nunca llegaron a pedido) los purga
  * purgeIdleReadyDesigns (ADR-130, 2026-10-08) — antes quedaban retenidos para siempre con sus
  * renders 300-DPI (la fuga que infló el storage de STG sobre la cuota Free).
  * Política documentada en docs/COMPLIANCE.md. Se agenda por pg_cron (mandato #11) — ver
@@ -64,14 +65,10 @@ export const PREVIEWS_BUCKET = "design-previews";
 const PRODUCTION_BUCKET = "production-assets";
 
 /** Un diseño DRAFT anónimo sin actividad por este tiempo se considera abandonado y se purga. */
-export const PURGE_ANON_DESIGN_AFTER_DAYS = 30;
+export const PURGE_ANON_DESIGN_AFTER_DAYS = 7;
 
-/**
- * Un diseño DRAFT de cliente LOGUEADO sin actividad por este tiempo se purga igual que el anónimo
- * (feedback Lucy 2026-09-18): la cuenta viva no es finalidad para conservar fotos crudas de un
- * boceto que nadie tocó en 3 meses. Más laxo que el anónimo (30d) porque el cliente puede volver.
- */
-export const PURGE_IDLE_DESIGN_AFTER_DAYS = 90;
+/** Un diseño DRAFT de cliente logueado sin actividad por este tiempo se purga. */
+export const PURGE_IDLE_DESIGN_AFTER_DAYS = 30;
 
 /**
  * Gracia tras apagarse la cotización (CLOSED / DISCARDED / borrada) antes de purgar sus fotos.
@@ -478,8 +475,8 @@ function resolveIdleReadyDays(overrideDays: number | undefined): number {
  * retention-delivered.ts) y sin cotización vigente. Aplica a anónimos y logueados
  * (customerId indistinto): el plazo de 90d ya es la versión laxa; endurecer anónimos a
  * 30d quedó deliberadamente fuera para no bifurcar la política (ver ADR-130).
- * ARCHIVED nunca entra (decisión explícita del cliente). Corre desde el mismo cron
- * purge-anon-designs.
+ * Un ARCHIVED desde READY entra con la misma guarda (archivedFrom conserva el origen).
+ * Corre desde el mismo cron purge-anon-designs.
  * @param opts.olderThanDays días sin actividad (default PURGE_IDLE_READY_AFTER_DAYS / env var).
  */
 export async function purgeIdleReadyDesigns(
@@ -496,7 +493,7 @@ export async function purgeIdleReadyDesigns(
 
   const readys = await prisma.design.findMany({
     where: {
-      status: "READY",
+      OR: [{ status: "READY" }, { status: "ARCHIVED", archivedFrom: "READY" }],
       updatedAt: { lt: cutoff },
       cartItems: NO_LIVE_CART_ITEM,
       orderItems: { none: {} },

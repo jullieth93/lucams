@@ -3730,6 +3730,16 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 170,
             },
             {
+              key: "account.designs.in-cart-badge",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Badge «En carrito»",
+              helpText: "Badge de un diseño finalizado que ya está en el carrito y aún no se paga.",
+              category: "SUPPORT",
+              body: "En carrito",
+              sortOrder: 175,
+            },
+            {
               key: "account.designs.watermark-note",
               kind: "BLOCK",
               type: "TEXT",

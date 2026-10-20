@@ -43,6 +43,7 @@ function design(over: Partial<DesignCardData>): DesignCardData {
     productSlug: "fotoimanes-cuadrados",
     hasShareToken: false,
     used: false,
+    inCart: false,
     ...over,
   };
 }
@@ -84,6 +85,12 @@ describe("DesignGrid — borradores y listos (2026-10-13)", () => {
       "src",
       "https://cdn.test/design-previews/d1/preview.webp",
     );
+  });
+
+  it("READY en el carrito: badge «En carrito» en vez de «Listo»", () => {
+    render(<DesignGrid designs={[design({ inCart: true })]} texts={texts} />);
+    expect(screen.getByText(texts.inCartBadge)).toBeInTheDocument();
+    expect(screen.queryByText(texts.readyBadge)).not.toBeInTheDocument();
   });
 
   it("USED_IN_ORDER: badge «Ya pedido» (no «Listo») y el CTA «Editar» sigue disponible", () => {

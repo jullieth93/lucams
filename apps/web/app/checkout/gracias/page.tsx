@@ -39,7 +39,10 @@ import { rateLimit } from "@/lib/rate-limit";
 import { isCatalogMode } from "@/lib/store-mode";
 import { ClearCheckoutSession } from "./clear-checkout-session";
 import { processPaidOrder, flagForeignApprovedPayment } from "@/features/orders/saga";
-import { findOrderIdByWompiReference } from "@/features/orders/payment-reference";
+import {
+  findOrderIdByWompiReference,
+  isWompiTransactionOlderThanOrder,
+} from "@/features/orders/payment-reference";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { getCurrentCustomer } from "@/lib/auth";
@@ -162,6 +165,7 @@ export default async function CheckoutGraciasPage({
           email: true,
           shippingCarrier: true,
           shippingAddress: true,
+          createdAt: true,
           // F-02 — necesario para detectar un APPROVED de una tx distinta a la que pagó.
           wompiTransactionId: true,
           // F-11 — el publicAccessToken ya no se puede releer de la DB (solo hash);
@@ -190,6 +194,19 @@ export default async function CheckoutGraciasPage({
         },
       })
     : null;
+
+  if (order && isWompiTransactionOlderThanOrder(order, tx)) {
+    logger.warn({
+      event: "checkout.gracias.historical_transaction_ignored",
+      orderId: order.id,
+      reference: tx.reference,
+      providerCreatedAt: tx.created_at,
+      orderCreatedAt: order.createdAt,
+    });
+    return (
+      <FailedPage reason="Este comprobante pertenece a un intento de pago anterior. Vuelve al checkout para continuar con tu pedido actual." />
+    );
+  }
 
   if (tx.status === "APPROVED") {
     // F-02 (certificación release 2026-09-26) — la misma comparación que la saga:
@@ -266,6 +283,7 @@ export default async function CheckoutGraciasPage({
             email: true,
             shippingCarrier: true,
             shippingAddress: true,
+            createdAt: true,
             wompiTransactionId: true,
             items: {
               select: {

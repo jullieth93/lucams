@@ -91,8 +91,9 @@ export async function createQuoteFromCart(
   input: CreateQuoteInput,
   sessionId: string,
   consent: QuoteConsentContext,
+  customerId: string | null = null,
 ): Promise<CreateQuoteResult> {
-  const cart = await getCartDetail(sessionId);
+  const cart = await getCartDetail(sessionId, customerId);
   if (!cart) throw new QuoteError("CART_NOT_FOUND");
   if (cart.items.length === 0) throw new QuoteError("EMPTY_CART");
 

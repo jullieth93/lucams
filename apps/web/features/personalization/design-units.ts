@@ -223,3 +223,26 @@ export function letterSetUnitCount(metadata: unknown): number {
     ? Math.min(MAX_LETTER_SET_UNITS, n)
     : 1;
 }
+
+function positiveInt(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 ? parsed : null;
+}
+
+/** Unidades físicas que una línea descuenta de inventario y declara a logística. */
+export function inventoryUnitsForOrderItem(input: {
+  qty: number;
+  customDesign?: unknown;
+  metadata?: unknown;
+  variantAttrs?: unknown;
+  productSchema?: unknown;
+}): number {
+  const variantAttrs = (input.variantAttrs ?? {}) as Record<string, unknown>;
+  const productSchema = (input.productSchema ?? {}) as Record<string, unknown>;
+  const packUnits = positiveInt(variantAttrs.quantity) ?? 1;
+  const facesPerUnit = positiveInt(productSchema.facesPerUnit) ?? 1;
+  const designUnits =
+    designUnitPriceMultiplier(input.customDesign, facesPerUnit) *
+    letterSetUnitCount(input.metadata);
+  return input.qty * packUnits * designUnits;
+}
