@@ -39,8 +39,10 @@ overrides:
   # (vitest/jsdom en tests, eslint en lint, @lhci/cli en CI local); nada se
   # despliega a Vercel. Rangos verificados contra los package.json de los consumidores.
   # vite 8.0.12→8.2.2: GHSA-fx2h-pf6j-xcff y GHSA-v6wh-96g9-6wx3 (launch-editor: NTLMv2
-  # hash disclosure vía UNC). vitest/@vitest/mocker 4.1.10 declaran peer ^6||^7||^8.
-  vite: 8.2.2
+  # hash disclosure vía UNC). →8.2.4 (2026-10-20): el advisory nuevo cubre ≤8.2.3 y
+  # dependabot lo marcó security_update_not_possible con el pin exacto en 8.2.2.
+  # vitest/@vitest/mocker 4.1.x declaran peer ^6||^7||^8.
+  vite: 8.2.4
   # undici 7.29.0→7.29.1 (2026-09-30): GHSA-3wwx-pv8p-q78v / CVE-2026-85024 (DoS en
   # WebSocket permessage-deflate). Sobre el pin anterior: 12 advisories resueltos en
   # 7.29.0 (ver gate 2026-08-29 abajo). jsdom ^7.25.0 lo admite.
