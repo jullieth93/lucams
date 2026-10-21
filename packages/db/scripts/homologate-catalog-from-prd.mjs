@@ -3,9 +3,11 @@
  *
  * Regla de negocio (decisión del orquestador, ratificable por Lucy):
  *   - PRD es la fuente de verdad COMERCIAL (curaduría de la operadora vía admin).
- *   - Las variantes gemelas "-NOMAG" (multi-unidad, seed-magnet-variants) son un
- *     BANCO DE VALIDACIÓN intencional que vive solo en LOCAL/STG hasta que Lucy
- *     decida si la oferta "Sin imán" llega a PRD — el script NO las toca.
+ *   - Las variantes gemelas "-NOMAG" (multi-unidad, seed-magnet-variants) son la
+ *     oferta «Sin imán»: DECIDIDO — viven también en PRD desde 2026-09-14
+ *     (one-shot sync-nomag-variants-to-prd.mjs, idempotente por SKU; decisión
+ *     reconfirmada por Lucy 2026-10-20). Este script sigue sin tocarlas porque
+ *     su dirección es PRD → destino y ellas ya están en ambos.
  *   - PRD se lee y NUNCA se escribe.
  *   - El stock NUNCA se sincroniza (operativo por ambiente: PRD lo descuentan
  *     órdenes reales; LOCAL/STG lo gastan las pruebas).

@@ -9,9 +9,9 @@
  *
  * Marcas de terceros: los logos se usan SOLO para identificar el servicio
  * que el cliente está eligiendo (uso nominativo — no implica respaldo ni
- * afiliación). Servientrega, Coordinadora, Interrapidísimo, Envía y TCC son
- * los logos oficiales descargados de los sitios públicos de cada empresa;
- * Deprisa, 99minutos, Go Envíos y Transprensa llevan un monograma propio
+ * afiliación). Servientrega, Coordinadora, Interrapidísimo, Envía, TCC y
+ * Transprensa son los logos oficiales descargados de los sitios públicos de
+ * cada empresa; Deprisa, 99minutos y Go Envíos llevan un monograma propio
  * (iniciales sobre color de marca o neutro — placeholder mientras llega el
  * logo oficial). Para reemplazar un monograma por el logo oficial
  * basta soltar el archivo en `public/carriers/` con el nombre del slug y
@@ -98,15 +98,14 @@ const CARRIER_LOGOS: Record<string, CarrierLogo> = {
     width: 48,
     height: 48,
   },
-  // PLACEHOLDER (2026-10-12): NO tenemos el logo oficial de Transprensa —
-  // monograma neutro "T" (mismo formato que deprisa/99minutos/go-envios).
-  // Reemplazar por el logo oficial en public/carriers/ cuando la empresa lo
-  // comparta y ajustar src/width/height acá.
   transprensa: {
-    src: "/carriers/transprensa.svg",
+    // Logo oficial descargado del sitio público de la empresa
+    // (transprensa.com, 2026-10-20) — reemplaza el monograma "T" placeholder
+    // (ADR-144). PNG horizontal con transparencia.
+    src: "/carriers/transprensa.png",
     alt: "Logo de Transprensa",
-    width: 48,
-    height: 48,
+    width: 267,
+    height: 65,
   },
 };
 
