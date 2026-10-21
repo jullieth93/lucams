@@ -24,8 +24,12 @@ import {
 import { AddToCartSchema, RemoveItemSchema, UpdateQtySchema } from "@/features/cart/schemas";
 import { getOwnedDesign } from "@/features/personalization/service";
 import { getCurrentCustomer } from "@/lib/auth";
-import { getOrCreateCartSession, peekCartSession } from "@/lib/cart-session";
+import { getOrCreateCartSession, peekCartSession, rotateCartSession } from "@/lib/cart-session";
 import { logger } from "@/lib/logger";
+
+function isCartIdentityMismatch(err: unknown): err is CartError {
+  return err instanceof CartError && err.code === "CART_IDENTITY_MISMATCH";
+}
 
 function errorMessage(err: unknown): string {
   if (err instanceof CartError) {
@@ -47,6 +51,10 @@ function errorMessage(err: unknown): string {
       // Fase 1 — la opción elegida quedó agotada (gate por variante en carrito).
       case "STOCK_UNAVAILABLE":
         return "Esa opción se agotó. Elige otra cantidad o tamaño.";
+      // Red de seguridad: las actions auto-sanan este error rotando la sesión y
+      // reintentando una vez; este copy solo se muestra si el retry también falla.
+      case "CART_IDENTITY_MISMATCH":
+        return "Tuvimos un problema con tu carrito. Recárgalo e inténtalo de nuevo.";
     }
   }
   return "Algo salió mal. Reintenta.";
@@ -70,21 +78,45 @@ export async function addToCartAction(formData: FormData): Promise<void> {
   const { slug, qty, returnTo: returnToValidated, variantId } = parsed.data;
   const returnTo = returnToValidated ?? "/carrito";
 
-  const sessionId = await getOrCreateCartSession();
+  let sessionId = await getOrCreateCartSession();
   const customer = await getCurrentCustomer();
+  const customerId = customer?.customer.id ?? null;
 
   try {
-    await addProductToCart({
-      sessionId,
-      customerId: customer?.customer.id ?? null,
-      productSlug: slug,
-      qty,
-      variantId,
-    });
+    try {
+      await addProductToCart({
+        sessionId,
+        customerId,
+        productSlug: slug,
+        qty,
+        variantId,
+      });
+    } catch (err) {
+      // CART_IDENTITY_MISMATCH: the cart_session cookie points to a cart owned
+      // by ANOTHER customer (shared device / cookie not rotated after an
+      // account switch). Self-heal: rotate the session and retry ONCE with a
+      // fresh cart — the foreign cart stays untouched in DB for its owner.
+      if (!isCartIdentityMismatch(err)) throw err;
+      const rotatedSessionId = await rotateCartSession();
+      logger.info({
+        event: "cart.identity_mismatch.healed",
+        oldSessionId: sessionId,
+        newSessionId: rotatedSessionId,
+        customerId,
+      });
+      sessionId = rotatedSessionId;
+      await addProductToCart({
+        sessionId,
+        customerId,
+        productSlug: slug,
+        qty,
+        variantId,
+      });
+    }
     logger.info({
       event: "cart.add.success",
       sessionId,
-      customerId: customer?.customer.id ?? null,
+      customerId,
       slug,
       qty,
     });
@@ -191,7 +223,7 @@ export async function addPersonalizedToCartAction(input: {
     return { ok: false, code: "VALIDATION", message: parsed.error.message };
   }
 
-  const sessionId = await getOrCreateCartSession();
+  let sessionId = await getOrCreateCartSession();
   const customer = await getCurrentCustomer();
   const customerId = customer?.customer.id ?? null;
 
@@ -209,14 +241,34 @@ export async function addPersonalizedToCartAction(input: {
   }
 
   try {
-    const cart = await addPersonalizedToCart({
-      sessionId,
-      customerId,
-      designId: parsed.data.designId,
-      qty: parsed.data.qty,
-      variantId: parsed.data.variantId,
-      replaceDesignId: parsed.data.replaceDesignId,
-    });
+    const callAdd = () =>
+      addPersonalizedToCart({
+        sessionId,
+        customerId,
+        designId: parsed.data.designId,
+        qty: parsed.data.qty,
+        variantId: parsed.data.variantId,
+        replaceDesignId: parsed.data.replaceDesignId,
+      });
+    let cart;
+    try {
+      cart = await callAdd();
+    } catch (err) {
+      // CART_IDENTITY_MISMATCH: the cart_session cookie points to a cart owned
+      // by ANOTHER customer (shared device / cookie not rotated after an
+      // account switch). Self-heal: rotate the session and retry ONCE with a
+      // fresh cart — the foreign cart stays untouched in DB for its owner.
+      if (!isCartIdentityMismatch(err)) throw err;
+      const rotatedSessionId = await rotateCartSession();
+      logger.info({
+        event: "cart.identity_mismatch.healed",
+        oldSessionId: sessionId,
+        newSessionId: rotatedSessionId,
+        customerId,
+      });
+      sessionId = rotatedSessionId;
+      cart = await callAdd();
+    }
     logger.info({
       event: "cart.add_personalized.success",
       designId: parsed.data.designId,

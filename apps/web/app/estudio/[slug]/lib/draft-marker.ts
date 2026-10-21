@@ -24,8 +24,9 @@
  *     ownership y estado (con resume=1 solo acepta DRAFT — un diseño ya
  *     finalizado NO se clona, a diferencia del "Editar" del carrito). Si el
  *     draft ya no existe/no es del owner/no es DRAFT, el server arranca un
- *     draft nuevo y el boot LIMPIA el marcador huérfano (antes lo pisaba con
- *     el draft nuevo vacío, rearmando la mentira). Marcadores con más de
+ *     draft nuevo y el boot AVISA al cliente (toast `errores.borradorPerdido`)
+ *     y LIMPIA el marcador huérfano (antes lo pisaba con el draft nuevo vacío,
+ *     rearmando la mentira). Marcadores con más de
  *     DRAFT_MARKER_MAX_AGE_MS ni siquiera llegan al interstitial: se limpian
  *     al leer. Descartar limpia el marcador y bootea un draft nuevo.
  *  c) Al agregar al carrito con éxito se limpia el marcador (el diseño quedó

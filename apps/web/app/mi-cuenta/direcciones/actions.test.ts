@@ -4,6 +4,8 @@
  *    (lib/lucams-zones) — misma regla que saveDatosAction del checkout.
  *  - Teléfono con indicativo (PhoneInput): CO → 10 dígitos locales; inválido
  *    → error fail-closed coherente con el cliente.
+ *  - Nombre DERIVADO (sin etiqueta libre): label del destinationType si existe;
+ *    «Mi dirección en {city}» en rural (mismo helper del checkout).
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -35,7 +37,6 @@ import { saveAddressAction } from "./actions";
  *  Incluye destinationType (obligatorio en capturas urbanas desde 2026-10). */
 function addressForm(over: Record<string, string> = {}): FormData {
   const fd = new FormData();
-  fd.set("name", "Casa");
   fd.set("phone", "+57 3208873826");
   fd.set("deptCode", "11");
   fd.set("cityCode", "11001");
@@ -85,6 +86,33 @@ describe("saveAddressAction — localidad obligatoria en ciudades del catálogo"
     );
     expect(res.success).toBeDefined();
     expect(createAddress).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("saveAddressAction — nombre derivado (sin etiqueta libre)", () => {
+  it("urbana con destinationType → name = label limpio del tipo", async () => {
+    const res = await saveAddressAction(
+      null,
+      addressForm({ destinationType: "edificio", apartment: "401" }),
+    );
+    expect(res.success).toBeDefined();
+    expect((createAddress.mock.calls[0]?.[1] as { name: string }).name).toBe(
+      "Edificio / Apartamento",
+    );
+  });
+
+  it("rural (sin destinationType) → fallback «Mi dirección en {city}»", async () => {
+    // Medellín: fuera del catálogo de zonas → no exige localidad.
+    const fd = addressForm({ deptCode: "05", cityCode: "05001", addressKind: "rural" });
+    fd.delete("localityId");
+    fd.delete("destinationType");
+    fd.set("vereda", "El Roble");
+    fd.set("referencia", "A 200m del puente, casa azul de dos pisos");
+    const res = await saveAddressAction(null, fd);
+    expect(res.success).toBeDefined();
+    expect((createAddress.mock.calls[0]?.[1] as { name: string }).name).toBe(
+      "Mi dirección en Medellín",
+    );
   });
 });
 

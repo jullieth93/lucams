@@ -11,6 +11,7 @@ import { getCurrentCustomer } from "@/lib/auth";
 import { normalizePhoneWithDial } from "@/lib/colombia-validators";
 import { getZoneCityByCode } from "@/lib/lucams-zones";
 import { parseStructuredAddress } from "@/features/checkout/parse-address";
+import { deriveAddressName } from "@/features/checkout/destination-types";
 import {
   buildAddressInput,
   createAddress,
@@ -20,12 +21,13 @@ import {
   AddressNotFoundError,
 } from "@/features/addresses/service";
 
-// Solo etiqueta + teléfono se validan acá; la dirección estructurada usa el mismo
-// parseStructuredAddress + AddressSchema que el checkout (fuente única).
+// Solo el teléfono se valida acá; la dirección estructurada usa el mismo
+// parseStructuredAddress + AddressSchema que el checkout (fuente única) y el
+// nombre (Address.name, obligatoria en DB pero solo display) se DERIVA del
+// tipo de destino / ciudad — ya no se captura una etiqueta libre.
 // El teléfono llega del PhoneInput como "+<indicativo> <nacional>" y se
 // normaliza igual que en el checkout: Colombia → 10 dígitos locales (3XXXXXXXXX).
-const LabelSchema = z.object({
-  name: z.string().trim().min(1, "La etiqueta es obligatoria.").max(60, "Máximo 60 caracteres."),
+const PhoneSchema = z.object({
   phone: z
     .string()
     .trim()
@@ -50,16 +52,15 @@ export async function saveAddressAction(
   const session = await getCurrentCustomer();
   if (!session) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
 
-  const label = LabelSchema.safeParse({
-    name: String(formData.get("name") ?? ""),
+  const meta = PhoneSchema.safeParse({
     phone: String(formData.get("phone") ?? ""),
   });
   const addr = parseStructuredAddress(formData);
-  if (!label.success || !addr.ok) {
+  if (!meta.success || !addr.ok) {
     return {
       error: "Revisa los datos.",
       fieldErrors: {
-        ...(label.success ? {} : z.flattenError(label.error).fieldErrors),
+        ...(meta.success ? {} : z.flattenError(meta.error).fieldErrors),
         ...(addr.ok ? {} : addr.fieldErrors),
       },
     };
@@ -82,10 +83,11 @@ export async function saveAddressAction(
     }
   }
 
-  // Mismo mapeo que usa "guardar al pagar" (fuente única en el servicio).
+  // Mismo mapeo que usa "guardar al pagar" (fuente única en el servicio). El
+  // name se deriva (label del tipo de destino / «Mi dirección en {city}»).
   const input = buildAddressInput(addr.data, {
-    name: label.data.name,
-    phone: label.data.phone,
+    name: deriveAddressName(addr.data),
+    phone: meta.data.phone,
     isDefault: formData.get("isDefault") === "on",
   });
 

@@ -66,6 +66,7 @@ import {
   clearCartSession,
   getOrCreateCartSession,
   peekCartSession,
+  rotateCartSession,
   setCartSessionCookie,
 } from "./cart-session";
 
@@ -215,6 +216,26 @@ describe("setCartSessionCookie", () => {
     vi.stubEnv("NODE_ENV", "test");
     await setCartSessionCookie(VALID_UUID);
     expect(store.setCalls[0].options.secure).toBe(false);
+  });
+});
+
+describe("rotateCartSession", () => {
+  it("mints a fresh UUID v4 and replaces the cookie (old session abandoned)", async () => {
+    store.seed(COOKIE_NAME, VALID_UUID);
+    const result = await rotateCartSession();
+    expect(result).toMatch(UUID_V4_RE);
+    expect(result).not.toBe(VALID_UUID);
+    expect(store.setCalls).toHaveLength(1);
+    expect(store.setCalls[0].name).toBe(COOKIE_NAME);
+    expect(store.setCalls[0].value).toBe(result);
+    // Un peek posterior ya lee la sesión NUEVA, no la abandonada.
+    await expect(peekCartSession()).resolves.toBe(result);
+  });
+
+  it("works when there was no prior cookie", async () => {
+    const result = await rotateCartSession();
+    expect(result).toMatch(UUID_V4_RE);
+    expect(store.setCalls).toHaveLength(1);
   });
 });
 

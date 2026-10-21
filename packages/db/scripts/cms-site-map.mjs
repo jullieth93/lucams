@@ -1630,24 +1630,6 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 525,
             },
             {
-              key: "checkout.datos.save-name-label",
-              kind: "BLOCK",
-              type: "TEXT",
-              label: "Etiqueta «nombre para recordarla»",
-              category: "SUPPORT",
-              body: "Nombre para recordarla (opcional)",
-              sortOrder: 530,
-            },
-            {
-              key: "checkout.datos.save-name-placeholder",
-              kind: "BLOCK",
-              type: "TEXT",
-              label: "Ejemplo del nombre",
-              category: "SUPPORT",
-              body: "Ej. Casa, Oficina, Casa de mamá",
-              sortOrder: 540,
-            },
-            {
               key: "checkout.datos.billing-title",
               kind: "BLOCK",
               type: "TEXT",
@@ -1727,7 +1709,7 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               helpText:
                 "La casilla de autorización de datos del checkout (Ley 1581). Enlaces en markdown.",
               category: "LEGAL",
-              body: "Autorizo el **tratamiento de mis datos personales** para procesar y enviar mi pedido, conforme a la [Política de Privacidad](/legal/privacidad) y la [Política de Tratamiento de Datos](/legal/habeas-data). Responsable: Lucams_shop (persona natural), Bogotá D.C. Algunos proveedores (alojamiento y correo) están en EE. UU.",
+              body: "Autorizo el **tratamiento de mis datos personales** para procesar y enviar mi pedido, conforme a la [Política de Privacidad](/legal/privacidad) y la [Política de Tratamiento de Datos](/legal/habeas-data). Responsable: Lucams Shop (persona natural), Bogotá D.C. Algunos proveedores (alojamiento y correo) están en EE. UU.",
               sortOrder: 630,
             },
             {
@@ -1995,7 +1977,7 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               type: "MARKDOWN",
               label: "Nota de tiempos",
               category: "SUPPORT",
-              body: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **despachamos en máximo 2 días hábiles** y el tránsito corre **después del despacho**. Con **LUCAMS** (mensajería propia) la entrega es el **mismo día del despacho**.",
+              body: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **despachamos en máximo 2 días hábiles** y el tránsito corre **después del despacho**.",
               sortOrder: 100,
             },
             {
@@ -2043,7 +2025,7 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               label: "Promesa LUCAMS (N días)",
               helpText: "{{daysLabel}} = días estimados. Mensajería propia (Fase 3 · QA 2026-10).",
               category: "SUPPORT",
-              body: "Te llega en {{daysLabel}} · se entrega el mismo día del despacho, tras fabricarlo",
+              body: "Te llega en {{daysLabel}} · fabricación incluida, entrega el mismo día del despacho",
               sortOrder: 140,
             },
             {
@@ -12141,6 +12123,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               category: "HOME",
               body: "No encontramos {n} de las fotos de tu diseño en el servidor. Esos espacios quedaron vacíos — vuelve a subirlas.",
               sortOrder: 80,
+            },
+            {
+              key: "estudio.errores.borrador-perdido",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Borrador no recuperado",
+              helpText:
+                "Aviso cuando «Continuar donde quedaste» no encuentra el borrador (purgado, de otro dueño o ya finalizado): el Estudio empieza uno nuevo.",
+              category: "HOME",
+              body: "No pudimos recuperar tu borrador: expiró o ya no existe. Empezamos uno nuevo.",
+              sortOrder: 90,
             },
           ],
         },

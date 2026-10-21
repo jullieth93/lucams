@@ -1079,8 +1079,10 @@ export function StudioEditor({
         //    Lo escribe el primer auto-save exitoso (ver runSave).
         //  · Recover FALLIDO con resume=1 (el server arrancó un draft nuevo
         //    porque el diseño del marcador fue purgado, es de otro owner o ya
-        //    no es DRAFT): el marcador quedó huérfano → se limpia, no se pisa
-        //    con el id del draft vacío (eso rearmaba la mentira).
+        //    no es DRAFT): el marcador quedó huérfano → se AVISA al cliente
+        //    (antes se limpiaba en silencio y arrancaba vacío sin más) y solo
+        //    entonces se limpia; no se pisa con el id del draft vacío (eso
+        //    rearmaba la mentira).
         if (initialDesignId) {
           if (studioDraftHasRealProgress(canvasData)) {
             writeStudioDraftId(initialDraftScope, initialDesignId);
@@ -1090,6 +1092,7 @@ export function StudioEditor({
         } else if (typeof window !== "undefined") {
           const bootParams = new URLSearchParams(window.location.search);
           if (bootParams.has("designId") && bootParams.get("resume") === "1") {
+            toast.warning(texts.errores.borradorPerdido);
             clearStudioDraftId(initialDraftScope);
           }
         }

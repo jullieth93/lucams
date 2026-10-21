@@ -120,6 +120,10 @@ vi.mock("@/lib/db", () => {
       }),
     },
     design: {
+      // adoptAnonDraftDesigns (login): los fixtures de este archivo no siembran
+      // drafts con progreso — la adopción de borradores se testea aparte en
+      // merge-adopt-drafts.test.ts.
+      findMany: vi.fn(async () => []),
       updateMany: vi.fn(
         async ({
           where,

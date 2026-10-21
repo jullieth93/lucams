@@ -458,7 +458,6 @@ export function DatosForm({
 
   // "Guardar esta dirección en mi cuenta" (opt-in, solo clientes logueados).
   const [saveToAccount, setSaveToAccount] = useState(false);
-  const [saveAddressLabel, setSaveAddressLabel] = useState("");
   // id de la dirección guardada aplicada al form (null = diligenciamiento manual).
   // Mientras los campos coincidan con ella, "Guardar en mi cuenta" va deshabilitado.
   const [appliedSavedId, setAppliedSavedId] = useState<string | null>(null);
@@ -576,7 +575,6 @@ export function DatosForm({
     // rehabilita (hay cambios que sí tendría sentido guardar como variante).
     setAppliedSavedId(id);
     setSaveToAccount(false);
-    setSaveAddressLabel("");
   }
 
   // true cuando la dirección del form coincide EXACTAMENTE con la guardada que
@@ -1911,24 +1909,6 @@ export function DatosForm({
             </label>
             {savedAddressMatch && (
               <p className="text-brand-muted mt-1 text-xs">{texts.saveCheckSavedHint}</p>
-            )}
-            {saveToAccount && !savedAddressMatch && (
-              <div className="mt-2">
-                <Label
-                  htmlFor="saveAddressLabel"
-                  className="text-brand-muted mb-1 block text-xs font-semibold"
-                >
-                  {texts.saveNameLabel}
-                </Label>
-                <Input
-                  id="saveAddressLabel"
-                  name="saveAddressLabel"
-                  value={saveAddressLabel}
-                  onChange={(e) => setSaveAddressLabel(e.target.value.slice(0, 60))}
-                  placeholder={texts.saveNamePlaceholder}
-                  maxLength={60}
-                />
-              </div>
             )}
           </div>
         )}

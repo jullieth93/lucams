@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useActionState } from "react";
 import { MapPin, Plus, Star, Pencil, Trash2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   StructuredAddressFields,
@@ -14,6 +13,7 @@ import {
 import { PhoneInput } from "@/components/phone-input";
 import { getDepartmentByName, getCityByDeptAndName } from "@/lib/dane-divipola";
 import { getZone, getZoneCityByCode } from "@/lib/lucams-zones";
+import { asDestinationType, DESTINATION_PLAIN_LABELS } from "@/features/checkout/destination-types";
 import {
   saveAddressAction,
   deleteAddressAction,
@@ -43,6 +43,13 @@ function zoneLine(structured: Record<string, unknown> | null): string | null {
   if (!zone) return null;
   const label = getZoneCityByCode(cityCode)?.zoneLabel ?? "Zona";
   return `${label}: ${zone.name}`;
+}
+
+/** Título de la tarjeta: label limpio (sin emoji) del tipo de destino cuando la
+ *  dirección estructurada lo tiene; fallback a `name` para filas legacy/rurales. */
+function cardTitle(address: AddressView): string {
+  const type = asDestinationType(address.structured?.destinationType);
+  return type ? DESTINATION_PLAIN_LABELS[type] : address.name;
 }
 
 export function AddressManager({
@@ -131,7 +138,7 @@ function AddressCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-brand-purple-dark font-semibold">{address.name}</span>
+            <span className="text-brand-purple-dark font-semibold">{cardTitle(address)}</span>
             {address.isDefault && (
               <span className="bg-brand-purple/15 text-brand-purple-dark inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold">
                 <Star className="h-3 w-3" /> {texts.defaultBadge}
@@ -280,14 +287,6 @@ function AddressForm({
         </div>
       )}
 
-      <F
-        id="name"
-        label="Etiqueta (ej. Casa, Oficina)"
-        def={address?.name}
-        err={state?.fieldErrors?.name}
-        disabled={pending}
-      />
-
       {isLegacyEdit && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           <p className="font-semibold">{texts.legacyTitle}</p>
@@ -346,26 +345,5 @@ function AddressForm({
         </Button>
       </div>
     </form>
-  );
-}
-
-function F({
-  id,
-  label,
-  err,
-  def,
-  ...props
-}: {
-  id: string;
-  label: string;
-  err?: string[];
-  def?: string;
-} & React.ComponentProps<typeof Input>) {
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
-      <Input id={id} name={id} defaultValue={def} aria-invalid={Boolean(err)} {...props} />
-      {err?.[0] && <p className="text-destructive text-sm">{err[0]}</p>}
-    </div>
   );
 }
