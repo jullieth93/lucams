@@ -66,10 +66,21 @@ export function ProductFromCatalogCard({
           </span>
         )}
 
-        {product.isPersonalizable && (
-          <span className="bg-brand-purple absolute top-2 left-2 rounded-full px-2 py-0.5 text-[10px] font-bold text-white">
-            Personalizable
-          </span>
+        {/* Badges top-left en columna (mismo patrón que ProductCard):
+            "Destacado" (Category.featuredProductSlug) convive con "Personalizable". */}
+        {(product.isPersonalizable || product.categoryFeatured) && (
+          <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
+            {product.isPersonalizable && (
+              <span className="bg-brand-purple rounded-full px-2 py-0.5 text-[10px] font-bold text-white">
+                Personalizable
+              </span>
+            )}
+            {product.categoryFeatured && (
+              <span className="bg-brand-yellow text-brand-purple-dark rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wider uppercase">
+                Destacado
+              </span>
+            )}
+          </div>
         )}
         {hasDiscount && (
           <span className="bg-brand-pink-ink absolute top-2 right-2 rounded-full px-2 py-0.5 text-[10px] font-bold text-white">

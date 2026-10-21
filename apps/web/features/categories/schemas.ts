@@ -20,12 +20,12 @@ const gradientRegex = /^[A-Za-z0-9][A-Za-z0-9\-/%.[\](),#:]*( [A-Za-z0-9\-/%.[\]
 export const CATEGORY_SORT_OPTIONS = ["recent", "price_asc", "price_desc", "featured"] as const;
 export type CategorySortOption = (typeof CATEGORY_SORT_OPTIONS)[number];
 
-// Campos del modelo Category SIN consumidor real (B-6, 2026-10-02):
-// `visibleFilters` y `featuredProductSlug` solo viajan en el payload del API
-// (`lib/catalog.ts`) y aparecen en fixtures de tests — ningún render del
-// storefront ni del bot los usa. Decisión vigente (ver docs/STATE.md §
-// Pendientes): NO se exponen en el admin; se implementan cuando tengan
-// consumidor o se retiran del payload.
+// `visibleFilters` y `featuredProductSlug` YA tienen consumidor en el
+// storefront (2026-10-20): /productos?categoria=X limita/ordena sus filtros
+// con visibleFilters (lib/visible-filters.ts) y fija el destacado con
+// featuredProductSlug (public-service.getCategoryFeaturedProductCard);
+// /productos/[cat]/[subcat] fija el suyo. Pendiente vigente: NO se exponen en
+// el admin — se editan solo vía seed/SQL (ver docs/STATE.md § Pendientes).
 
 export const CategoryCreateSchema = z.object({
   name: z.string().min(2).max(80),

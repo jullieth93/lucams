@@ -103,6 +103,9 @@ export type CatalogProductSummary = {
   variantCount: number;
   /** #5 — hay al menos una variante activa con stock > 0 (para el badge "Agotado" en las cards). */
   inStock: boolean;
+  /** Category.featuredProductSlug resuelto en la página de la categoría: la card
+   *  pinta el badge "Destacado". Lo setea la página, no las queries. */
+  categoryFeatured?: boolean;
   minPrice: number;
   maxPrice: number;
   ocasionSlugs: string[];

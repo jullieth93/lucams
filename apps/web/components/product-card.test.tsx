@@ -114,6 +114,19 @@ describe("ProductCard", () => {
     expect(screen.getByText(/personalizable/i)).toBeInTheDocument();
   });
 
+  it("badge 'Destacado' solo si categoryFeatured (Category.featuredProductSlug)", () => {
+    const { rerender } = render(<ProductCard product={makeCard()} />);
+    expect(screen.queryByText("Destacado")).not.toBeInTheDocument();
+    rerender(<ProductCard product={makeCard({ categoryFeatured: true })} />);
+    expect(screen.getByText("Destacado")).toBeInTheDocument();
+    // Convive con "Personalizable" sin reemplazarlo.
+    rerender(
+      <ProductCard product={makeCard({ categoryFeatured: true, isPersonalizable: true })} />,
+    );
+    expect(screen.getByText("Destacado")).toBeInTheDocument();
+    expect(screen.getByText(/personalizable/i)).toBeInTheDocument();
+  });
+
   it("badge de descuento con % correcto cuando compareAtPrice > basePrice", () => {
     // compareAt 25000, base 20000 → -20%
     render(<ProductCard product={makeCard({ basePrice: 20_000, compareAtPrice: 25_000 })} />);

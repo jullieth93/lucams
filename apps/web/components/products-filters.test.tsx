@@ -42,6 +42,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { ProductsFilters, ActiveFilterChips } from "./products-filters";
+import type { StorefrontFilterKey } from "@/lib/visible-filters";
 
 afterEach(() => {
   cleanup();
@@ -198,7 +199,6 @@ describe("ProductsFilters — estado activo reflejado desde searchParams", () =>
 });
 
 // ─── ActiveFilterChips ───────────────────────────────────────────────────────
-
 describe("ActiveFilterChips", () => {
   it("no renderiza nada cuando no hay filtros en la URL", () => {
     currentParams = new URLSearchParams();
@@ -240,5 +240,64 @@ describe("ActiveFilterChips", () => {
     render(<ActiveFilterChips categories={categories} />);
     fireEvent.click(screen.getByRole("button", { name: /Personalizable/ }));
     expect(push).toHaveBeenCalledWith("/productos");
+  });
+});
+
+// ─── visibleFilters (Category.visibleFilters, PLAN_CATALOG_V2 7.6) ──────────
+
+describe("ProductsFilters — visibleFilters de la categoría", () => {
+  function renderWithVisible(visibleFilters: StorefrontFilterKey[] | null) {
+    return render(
+      <ProductsFilters
+        categories={categories}
+        priceRange={priceRange}
+        visibleFilters={visibleFilters}
+      />,
+    );
+  }
+
+  it("lista definida → muestra SOLO esas secciones", () => {
+    renderWithVisible(["precio"]);
+    expect(screen.getByText("Precio")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Buscar")).not.toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Personalizable" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Con descuento" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Destacados" })).not.toBeInTheDocument();
+    // Los botones de acción siempre quedan (aplicar/reiniciar).
+    expect(screen.getByRole("button", { name: "Aplicar" })).toBeInTheDocument();
+  });
+
+  it("'sub_categoria' habilita el árbol de categorías (mismo control que 'categoria')", () => {
+    // Formato real sembrado por seed-catalog-v2.mjs para "separadores".
+    renderWithVisible(["sub_categoria", "precio", "ocasion"]);
+    expect(screen.getByRole("radiogroup")).toBeInTheDocument();
+    expect(screen.getByText("Precio")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Buscar")).not.toBeInTheDocument();
+  });
+
+  it("las secciones se renderizan en el ORDEN de la lista", () => {
+    renderWithVisible(["orden", "buscar"]);
+    const buscar = screen.getByLabelText("Buscar");
+    const orden = screen.getByRole("combobox");
+    // "Ordenar por" va primero en la lista → aparece ANTES de "Buscar" en el DOM.
+    expect(buscar.compareDocumentPosition(orden) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+  });
+
+  it("las características se gatean checkbox a checkbox", () => {
+    renderWithVisible(["destacados"]);
+    expect(screen.getByRole("checkbox", { name: "Destacados" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Personalizable" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: "Con descuento" })).not.toBeInTheDocument();
+  });
+
+  it("null (default) → todas las secciones presentes", () => {
+    renderWithVisible(null);
+    expect(screen.getByLabelText("Buscar")).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup")).toBeInTheDocument();
+    expect(screen.getByText("Precio")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Personalizable" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toBeInTheDocument();
   });
 });

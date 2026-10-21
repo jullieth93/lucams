@@ -87,6 +87,9 @@ export type StorefrontProductCard = {
   /** Auditoría 2026-07-13: ¿hay al menos una opción activa con stock > 0? undefined = tratar
    *  como disponible (paths que no consultan stock). false → badge "Agotado" + CTA deshabilitada. */
   inStock?: boolean;
+  /** Category.featuredProductSlug resuelto para la categoría activa (PLP /productos):
+   *  la card pinta el badge "Destacado". Lo setea la página, no las queries. */
+  categoryFeatured?: boolean;
 };
 
 export type StorefrontProductDetail = StorefrontProductCard & {
@@ -184,6 +187,10 @@ const fetchStorefrontCategoryTree = cachedCatalog(
         name: true,
         description: true,
         parentId: true,
+        // Category.visibleFilters / featuredProductSlug: los consume /productos
+        // (filtros visibles por categoría + producto destacado de la categoría).
+        visibleFilters: true,
+        featuredProductSlug: true,
         // Roadmap B3 — visual de catálogo (icono lucide + gradiente del home
         // grid). Null → el componente cae al fallback por slug / default.
         icon: true,
@@ -237,6 +244,12 @@ export type StorefrontFilters = {
   minPrice?: number; // centavos COP
   maxPrice?: number;
   sort?: "recent" | "price-asc" | "price-desc" | "featured" | "name";
+  /** Excluye un producto por slug — /productos lo usa para sacar el destacado de
+   *  la categoría del listado paginado y fijarlo al frente sin duplicarlo entre páginas. */
+  excludeSlug?: string;
+  /** Offset explícito (prioriza sobre el derivado de `page`). Lo usa /productos
+   *  cuando el destacado de la categoría desplaza en 1 la ventana de la página. */
+  skip?: number;
   /** Si se pasa, retorna sin paginar (modo legacy: home featured, related, etc.). */
   limit?: number;
   /** Paginación: número de página (1-based). Default 1. Se ignora si `limit` está presente. */
@@ -304,6 +317,7 @@ function buildStorefrontWhere(opts: StorefrontFilters): Prisma.ProductWhereInput
         }
       : {}),
     ...(opts.featured ? { isFeatured: true } : {}),
+    ...(opts.excludeSlug ? { NOT: { slug: opts.excludeSlug } } : {}),
     ...(opts.isPersonalizable ? { isPersonalizable: true } : {}),
     ...(opts.onlyDiscounted ? { compareAtPrice: { not: null } } : {}),
     ...(opts.minPrice != null || opts.maxPrice != null
@@ -339,50 +353,89 @@ export async function listStorefrontProducts(
   })();
 
   // Paginación: si `page`/`pageSize` se pasaron sin `limit`, aplica skip+take.
-  // Si `limit` está, ignora `page` (modo legacy plano).
+  // Si `limit` está, ignora `page` (modo legacy plano). `skip` explícito
+  // prioriza sobre el derivado de `page` (ventana desplazada por destacado).
   const take = opts.limit ?? opts.pageSize;
   const skip = opts.limit
     ? undefined
-    : opts.page
-      ? (opts.page - 1) * (opts.pageSize ?? 12)
-      : undefined;
+    : (opts.skip ?? (opts.page ? (opts.page - 1) * (opts.pageSize ?? 12) : undefined));
 
   const items = await prisma.product.findMany({
     where,
     orderBy,
     take,
     skip,
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      basePrice: true,
-      compareAtPrice: true,
-      isPersonalizable: true,
-      images: true,
-      category: { select: { slug: true, name: true } },
-      _count: { select: { variants: { where: { deletedAt: null, isActive: true } } } },
-      variants: {
-        where: { deletedAt: null, isActive: true },
-        select: { price: true, stock: true },
-      },
+    select: STOREFRONT_CARD_SELECT,
+  });
+  return items.map(toStorefrontCard);
+}
+
+/** Select + mapping compartidos del listado y de getCategoryFeaturedProductCard. */
+const STOREFRONT_CARD_SELECT = {
+  id: true,
+  slug: true,
+  name: true,
+  basePrice: true,
+  compareAtPrice: true,
+  isPersonalizable: true,
+  images: true,
+  category: { select: { slug: true, name: true } },
+  _count: { select: { variants: { where: { deletedAt: null, isActive: true } } } },
+  variants: {
+    where: { deletedAt: null, isActive: true },
+    select: { price: true, stock: true },
+  },
+} satisfies Prisma.ProductSelect;
+
+function toStorefrontCard({
+  _count,
+  variants,
+  ...p
+}: Prisma.ProductGetPayload<{ select: typeof STOREFRONT_CARD_SELECT }>): StorefrontProductCard {
+  const overridePrices = variants
+    .map((v) => v.price)
+    .filter((price): price is number => price !== null && price > 0);
+  const minVariantPrice =
+    overridePrices.length > 0 ? Math.min(p.basePrice, ...overridePrices) : p.basePrice;
+  // p.compareAtPrice está denormalizado = promo de la opción más barata
+  // (syncProductBasePrice), así que la card muestra el descuento correcto.
+  return {
+    ...p,
+    variantCount: _count.variants,
+    minVariantPrice,
+    inStock: variants.some((v) => v.stock > 0),
+  };
+}
+
+/** Conteo del MISMO where del listado — para paginación con ventana custom (/productos). */
+export async function countStorefrontProducts(opts: StorefrontFilters = {}): Promise<number> {
+  return prisma.product.count({ where: buildStorefrontWhere(opts) });
+}
+
+/**
+ * Resuelve Category.featuredProductSlug a la card del producto destacado de la
+ * categoría (PLP /productos?categoria=X). Solo retorna si el producto pasa el
+ * gate storefront (F-04: activo, no archivado, categoría activa) Y pertenece a
+ * la categoría (directa o vía sub-categoría hija — el listado de una madre
+ * incluye las hijas). Cualquier otro caso → null y la página cae en silencio
+ * al listado normal.
+ */
+export async function getCategoryFeaturedProductCard(
+  categorySlug: string,
+  productSlug: string,
+): Promise<StorefrontProductCard | null> {
+  const p = await prisma.product.findFirst({
+    where: {
+      ...STOREFRONT_WHERE,
+      slug: productSlug,
+      OR: [
+        { category: { ...STOREFRONT_WHERE.category, slug: categorySlug } },
+        { category: { ...STOREFRONT_WHERE.category, parent: { slug: categorySlug } } },
+      ],
     },
+    select: STOREFRONT_CARD_SELECT,
   });
-  return items.map(({ _count, variants, ...p }) => {
-    const overridePrices = variants
-      .map((v) => v.price)
-      .filter((price): price is number => price !== null && price > 0);
-    const minVariantPrice =
-      overridePrices.length > 0 ? Math.min(p.basePrice, ...overridePrices) : p.basePrice;
-    // p.compareAtPrice está denormalizado = promo de la opción más barata
-    // (syncProductBasePrice), así que la card muestra el descuento correcto.
-    return {
-      ...p,
-      variantCount: _count.variants,
-      minVariantPrice,
-      inStock: variants.some((v) => v.stock > 0),
-    };
-  });
+  return p ? toStorefrontCard(p) : null;
 }
 
 /**
