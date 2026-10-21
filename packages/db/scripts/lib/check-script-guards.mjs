@@ -44,6 +44,10 @@ const ALLOWLIST_PRD_DELIBERADO = new Set([
   "one-shot/update-production-days-20260911.mjs",
   "one-shot/publish-legal-v5-20260911.mjs",
   "one-shot/publish-legal-v1-20260929.mjs",
+  // 2026-10-21 — republica la copia rural del checkout cuyo default cambió con la
+  // dirección estructurada (la copia vieja contradice la validación desplegada);
+  // su caso de uso ES correr en los 3 ambientes incl. PRD.
+  "one-shot/republish-checkout-rural-copy-20261021.mjs",
 ]);
 
 const WRITE_RE =

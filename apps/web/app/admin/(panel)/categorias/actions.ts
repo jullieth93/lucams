@@ -15,6 +15,7 @@ import {
   updateCategory,
 } from "@/features/categories/service";
 import { CategoryCreateSchema } from "@/features/categories/schemas";
+import { toCanonicalVisibleFilters } from "@/lib/visible-filters";
 import { logger } from "@/lib/logger";
 
 export type CategoryActionState = {
@@ -29,7 +30,9 @@ export type CategoryActionState = {
       | "gradient"
       | "richDescription"
       | "useCase"
-      | "defaultSort",
+      | "defaultSort"
+      | "visibleFilters"
+      | "featuredProductSlug",
       string[]
     >
   >;
@@ -46,6 +49,13 @@ function parsePayload(formData: FormData) {
   const richDescriptionRaw = String(formData.get("richDescription") ?? "").trim();
   const useCaseRaw = String(formData.get("useCase") ?? "").trim();
   const defaultSortRaw = String(formData.get("defaultSort") ?? "").trim();
+  // Storefront (2026-10-20): los checkboxes llegan en orden de marcado y pueden
+  // traer basura si alguien edita el HTML — se filtran a keys conocidas y se
+  // persisten en orden canónico (output estable). featuredProductSlug: "" = null
+  // (sin destacado); la tienda ignora en silencio un slug que no resuelve.
+  const featuredSlugRaw = String(formData.get("featuredProductSlug") ?? "")
+    .trim()
+    .toLowerCase();
   return {
     name: String(formData.get("name") ?? "").trim(),
     slug: String(formData.get("slug") ?? "")
@@ -60,6 +70,10 @@ function parsePayload(formData: FormData) {
     richDescription: richDescriptionRaw === "" ? null : richDescriptionRaw,
     useCase: useCaseRaw === "" ? null : useCaseRaw,
     defaultSort: defaultSortRaw === "" ? null : defaultSortRaw,
+    visibleFilters: toCanonicalVisibleFilters(
+      formData.getAll("visibleFilters").map((v) => String(v)),
+    ),
+    featuredProductSlug: featuredSlugRaw === "" ? null : featuredSlugRaw,
     // D3: el orden ya NO viene del form — lo auto-asigna el service.
   };
 }

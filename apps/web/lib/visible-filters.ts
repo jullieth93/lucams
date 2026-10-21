@@ -30,6 +30,20 @@ export const STOREFRONT_FILTER_KEYS = [
 
 export type StorefrontFilterKey = (typeof STOREFRONT_FILTER_KEYS)[number];
 
+/** Labels es-CO para el admin (/admin/categorias). El orden del objeto sigue
+ *  el orden canónico de STOREFRONT_FILTER_KEYS. */
+export const STOREFRONT_FILTER_LABELS: Record<StorefrontFilterKey, string> = {
+  buscar: "Búsqueda",
+  categoria: "Categoría",
+  sub_categoria: "Sub-categoría",
+  precio: "Precio",
+  ocasion: "Ocasión",
+  personalizable: "Personalizable",
+  descuento: "Descuento",
+  destacados: "Destacados",
+  orden: "Orden",
+};
+
 const KNOWN_KEYS = new Set<string>(STOREFRONT_FILTER_KEYS);
 
 /**
@@ -52,4 +66,16 @@ export function resolveVisibleFilters(
     }
   }
   return resolved.length > 0 ? resolved : null;
+}
+
+/**
+ * Normalización al GUARDAR desde el admin (checkboxes llegan en orden de
+ * marcado en el FormData): filtra a keys conocidas y retorna en el orden
+ * CANÓNICO de STOREFRONT_FILTER_KEYS — output estable (diffs limpios en DB y
+ * el storefront muestra las secciones en un orden predecible). Sin keys
+ * conocidas → [] (vacío = todos los filtros, default de la decisión 7.6).
+ */
+export function toCanonicalVisibleFilters(input: string[]): StorefrontFilterKey[] {
+  const picked = new Set(input.map((k) => k.trim().toLowerCase()));
+  return STOREFRONT_FILTER_KEYS.filter((k) => picked.has(k));
 }

@@ -8,7 +8,12 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { resolveVisibleFilters } from "./visible-filters";
+import {
+  resolveVisibleFilters,
+  toCanonicalVisibleFilters,
+  STOREFRONT_FILTER_KEYS,
+  STOREFRONT_FILTER_LABELS,
+} from "./visible-filters";
 
 describe("resolveVisibleFilters", () => {
   it("null / undefined / [] → null (todos los filtros, default 7.6)", () => {
@@ -37,5 +42,36 @@ describe("resolveVisibleFilters", () => {
 
   it("lista con SOLO keys desconocidas → null (fallback a todos)", () => {
     expect(resolveVisibleFilters(["forma", "tamano"])).toBeNull();
+  });
+});
+
+describe("toCanonicalVisibleFilters (guardado desde el admin)", () => {
+  it("reordena al orden CANÓNICO sin importar el orden de marcado", () => {
+    expect(toCanonicalVisibleFilters(["ocasion", "buscar", "precio"])).toEqual([
+      "buscar",
+      "precio",
+      "ocasion",
+    ]);
+  });
+
+  it("filtra keys desconocidas, duplicados y normaliza case/espacios", () => {
+    expect(toCanonicalVisibleFilters([" Precio ", "hack", "PRECIO", "orden"])).toEqual([
+      "precio",
+      "orden",
+    ]);
+  });
+
+  it("sin keys conocidas → [] (vacío = todos los filtros)", () => {
+    expect(toCanonicalVisibleFilters([])).toEqual([]);
+    expect(toCanonicalVisibleFilters(["forma"])).toEqual([]);
+  });
+});
+
+describe("STOREFRONT_FILTER_LABELS (admin)", () => {
+  it("cubre TODAS las keys canónicas (el form no puede quedar con un checkbox sin label)", () => {
+    for (const key of STOREFRONT_FILTER_KEYS) {
+      expect(STOREFRONT_FILTER_LABELS[key]).toBeTruthy();
+    }
+    expect(Object.keys(STOREFRONT_FILTER_LABELS)).toHaveLength(STOREFRONT_FILTER_KEYS.length);
   });
 });

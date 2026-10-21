@@ -102,3 +102,52 @@ describe("CategoryCreateSchema — richDescription / useCase / defaultSort (B-6)
     }
   });
 });
+
+describe("CategoryCreateSchema — visibleFilters / featuredProductSlug (storefront 2026-10-20)", () => {
+  it("acepta visibleFilters con keys del vocabulario canónico", () => {
+    const parsed = CategoryCreateSchema.safeParse({
+      ...VALID_BASE,
+      visibleFilters: ["sub_categoria", "precio", "ocasion"],
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.visibleFilters).toEqual(["sub_categoria", "precio", "ocasion"]);
+    }
+  });
+
+  it("visibleFilters vacío es válido (= todos los filtros) y omitido queda undefined", () => {
+    expect(CategoryCreateSchema.safeParse({ ...VALID_BASE, visibleFilters: [] }).success).toBe(
+      true,
+    );
+    const parsed = CategoryCreateSchema.parse(VALID_BASE);
+    expect(parsed.visibleFilters).toBeUndefined();
+  });
+
+  it("rechaza visibleFilters con keys fuera del vocabulario (defensa si alguien salta parsePayload)", () => {
+    expect(
+      CategoryCreateSchema.safeParse({ ...VALID_BASE, visibleFilters: ["precio", "forma"] })
+        .success,
+    ).toBe(false);
+  });
+
+  it("featuredProductSlug exige formato slug kebab-case; null limpia el destacado", () => {
+    expect(
+      CategoryCreateSchema.safeParse({ ...VALID_BASE, featuredProductSlug: "iman-corazon-2" })
+        .success,
+    ).toBe(true);
+    expect(
+      CategoryCreateSchema.safeParse({ ...VALID_BASE, featuredProductSlug: null }).success,
+    ).toBe(true);
+    for (const bad of ["Imán Corazón", "slug_con_guion_bajo", "-arranca-mal", "a".repeat(81)]) {
+      expect(
+        CategoryCreateSchema.safeParse({ ...VALID_BASE, featuredProductSlug: bad }).success,
+      ).toBe(false);
+    }
+  });
+
+  it(".partial() (update) admite mandar solo visibleFilters o solo featuredProductSlug", () => {
+    const update = CategoryCreateSchema.partial();
+    expect(update.safeParse({ visibleFilters: ["orden"] }).success).toBe(true);
+    expect(update.safeParse({ featuredProductSlug: "prod-x" }).success).toBe(true);
+  });
+});

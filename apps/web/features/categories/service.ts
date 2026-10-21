@@ -168,6 +168,9 @@ export async function createCategory(input: CategoryCreateInput, createdBy: stri
       richDescription: input.richDescription ?? null,
       useCase: input.useCase ?? null,
       defaultSort: input.defaultSort ?? null,
+      // Storefront (2026-10-20): filtros visibles (vacío = todos) y destacado.
+      visibleFilters: input.visibleFilters ?? [],
+      featuredProductSlug: input.featuredProductSlug ?? null,
       ...(createdBy ? { createdBy } : {}),
     },
   });
