@@ -856,6 +856,13 @@ export type StudioTexts = {
      * es el conteo. Antes fallaba en silencio (placeholder lila eterno).
      */
     assetsFaltantes: string;
+    /**
+     * 2026-10-20 — recover FALLIDO de «Continuar donde quedaste» (resume=1):
+     * el borrador del marcador fue purgado, es de otro owner o ya no es DRAFT.
+     * Antes el marcador se limpiaba en silencio y el Estudio arrancaba vacío
+     * sin explicación; ahora se avisa y se arranca uno nuevo.
+     */
+    borradorPerdido: string;
   };
 };
 
@@ -1568,6 +1575,8 @@ export const DEFAULT_STUDIO_TEXTS: StudioTexts = {
     generico: "Algo salió mal. Intenta de nuevo en un momento.",
     assetsFaltantes:
       "No encontramos {n} de las fotos de tu diseño en el servidor. Esos espacios quedaron vacíos — vuelve a subirlas.",
+    borradorPerdido:
+      "No pudimos recuperar tu borrador: expiró o ya no existe. Empezamos uno nuevo.",
   },
 };
 
@@ -2159,6 +2168,7 @@ export const STUDIO_TEXT_KEYS: Record<string, string> = {
   "errores.calendario": "estudio.errores.calendario",
   "errores.generico": "estudio.errores.generico",
   "errores.assetsFaltantes": "estudio.errores.assets-faltantes",
+  "errores.borradorPerdido": "estudio.errores.borrador-perdido",
 };
 
 /**

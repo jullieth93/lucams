@@ -53,6 +53,7 @@ import {
   letterSetUnitCount,
 } from "@/features/personalization/design-units";
 import { letterSetBorderNote } from "@/features/personalization/letter-set-border";
+import { designHasMeaningfulProgress } from "@/features/personalization/design-progress";
 import { designPreviewDisplay } from "@/features/personalization/preview-artifacts";
 import { applyVolumePricing, type VolumeTierInput } from "./volume-pricing";
 
@@ -926,13 +927,17 @@ export async function removeCartItem(
 // ─────────────────────────────────────────────────────────────────────
 //
 // Estrategia:
-//   - Si anon cart NO existe → nada que hacer.
+//   - Si anon cart NO existe → nada que hacer con el carrito (los borradores
+//     se adoptan igual: un draft puede existir sin carrito).
 //   - Si customer no tiene cart previo → setear customerId en el anon
 //     (carta-misma, recibe a su nuevo dueño).
 //   - Si ambos existen → merge inteligente: folder items del anon en
 //     el cart del customer sumando qty por variantId; soft-delete anon.
 //   - En ambos caminos los Designs anónimos referenciados por los items se
 //     ADOPTAN (customerId set, sessionId limpio) — ver adoptSessionDesigns.
+//   - Además TODOS los DRAFT anónimos con progreso real de la sesión se
+//     adoptan al inicio (ver adoptAnonDraftDesigns) — sin esto un borrador
+//     que nunca llegó al carrito quedaba huérfano tras el login.
 //
 // Retorna el sessionId que debería quedar en la cookie del usuario
 // (puede ser el del cart del customer si existía uno previo).
@@ -979,6 +984,38 @@ async function retargetSessionDesigns(
   });
 }
 
+/**
+ * Adopta TODOS los borradores (DRAFT) con progreso real de la sesión anónima al
+ * hacer login — no solo los referenciados por ítems del carrito. Un borrador que
+ * nunca se agregó al carrito quedaba HUÉRFANO: el server del Estudio resuelve el
+ * owner como { customerId, sessionId: null } para logueados, así que
+ * getOwnedDesign no lo encontraba y «Continuar donde quedaste» arrancaba vacío.
+ * El progreso real se decide con designHasMeaningfulProgress (misma regla de la
+ * poda de drafts): los drafts vacíos que el Estudio crea en cada boot NO se
+ * adoptan (siguen anónimos y los reclama la purga por edad).
+ * Mismo guard anti-adopción-ajena que adoptSessionDesigns (sessionId exacto +
+ * customerId null, repetido en el updateMany): solo diseños anónimos de ESTA
+ * sesión cambian de dueño. Solo toca ownership (customerId/sessionId) — nunca
+ * assets ni bytes compartidos (ADR-152).
+ */
+async function adoptAnonDraftDesigns(
+  tx: Pick<typeof prisma, "design">,
+  opts: { anonSessionId: string; customerId: string },
+): Promise<void> {
+  const drafts = await tx.design.findMany({
+    where: { sessionId: opts.anonSessionId, customerId: null, status: "DRAFT" },
+    select: { id: true, canvasData: true, metadata: true },
+  });
+  const ids = drafts
+    .filter((d) => designHasMeaningfulProgress({ canvasData: d.canvasData, metadata: d.metadata }))
+    .map((d) => d.id);
+  if (ids.length === 0) return;
+  await tx.design.updateMany({
+    where: { id: { in: ids }, sessionId: opts.anonSessionId, customerId: null },
+    data: { customerId: opts.customerId, sessionId: null },
+  });
+}
+
 export async function mergeAnonCartIntoCustomer(
   anonSessionId: string,
   customerId: string,
@@ -993,6 +1030,14 @@ export async function mergeAnonCartIntoCustomer(
   if (anonCart?.customerId && anonCart.customerId !== customerId) {
     return customerCart?.sessionId ?? randomUUID();
   }
+
+  // Adopción de borradores ANTES de cualquier early-return: un draft puede
+  // existir sin carrito (nunca se agregó) y también debe sobrevivir al login.
+  // Fuera del guard de carrito ajeno de arriba a propósito: si el carrito de la
+  // sesión es de otra cuenta, la sesión entera se trata como ajena y nada se
+  // adopta.
+  await adoptAnonDraftDesigns(prisma, { anonSessionId, customerId });
+
   if (!anonCart) return customerCart?.sessionId ?? anonSessionId;
   if (anonCart.customerId === customerId || customerCart?.id === anonCart.id) {
     return anonSessionId;
