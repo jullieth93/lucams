@@ -349,6 +349,12 @@ polling (`GET /api/designs/<id>/render-status`) y el render corre en background:
   `editor-desc` actualizado): ya registradas en `packages/db/scripts/cms-site-map.mjs`; se
   materializan por ambiente con `make migrate-cms-v2` + «Actualizar caché de contenido» en
   `/admin/contenido` (mientras no se siembren, sirven los fallbacks del código).
+  Sumadas después: `estudio.errores.borrador-perdido` (nueva), defaults actualizados de
+  `checkout.shipping.lucams-days`/`checkout.shipping.note` (el seed es upsert que NO pisa
+  campos ya editados: si el ambiente las tiene publicadas con el texto viejo, actualizarlas a
+  mano en `/admin/contenido`) y `checkout.datos.save-name-label`/`-placeholder` retiradas del
+  site map (borrar las filas en DB si existen — ya sin consumidor). **Ya aplicado en LOCAL**
+  (seed + bodies actualizados directo en DB); pendiente STG y PRD al promover.
 
 ### Higiene de Supabase Storage — estrategia completa (2026-10-12)
 
