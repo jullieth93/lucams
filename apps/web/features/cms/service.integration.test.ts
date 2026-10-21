@@ -975,7 +975,7 @@ describe.skipIf(!hasDb)(
         expect(texts.summary.free).toBe("Gratis");
         expect(texts.summary.itemSingle).toBe("producto");
         expect(texts.datos.consent).toContain("[Política de Privacidad](/legal/privacidad)");
-        expect(texts.datos.refError).toContain("Mínimo 10 caracteres");
+        expect(texts.datos.refError).toContain("Mínimo 20 caracteres");
         expect(texts.datos.viaTypeAria).toBe("Tipo de vía");
         expect(texts.quote.consent).toContain("Ley 1581 de 2012");
         expect(texts.shipping.note).toContain("**estimados por la transportadora**");
