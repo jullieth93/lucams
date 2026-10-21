@@ -25,7 +25,7 @@ describe("carrierLogo", () => {
     expect(carrierLogo("deprisa")?.src).toBe("/carriers/deprisa.svg");
     expect(carrierLogo("99minutos")?.src).toBe("/carriers/99minutos.svg");
     expect(carrierLogo("go-envios")?.src).toBe("/carriers/go-envios.svg");
-    expect(carrierLogo("transprensa")?.src).toBe("/carriers/transprensa.svg");
+    expect(carrierLogo("transprensa")?.src).toBe("/carriers/transprensa.png");
     expect(carrierLogo("lucams")?.src).toBe("/brand/lucams-mascot.png");
   });
 
@@ -34,8 +34,8 @@ describe("carrierLogo", () => {
     expect(carrierLogo("COORDINADORA MERCANTIL")?.src).toBe("/carriers/coordinadora-mercantil.svg");
     expect(carrierLogo("TCC SA")?.src).toBe("/carriers/tcc-sa.svg");
     expect(carrierLogo("Envía")?.src).toBe("/carriers/envia.png");
-    expect(carrierLogo("TRANSPRENSA")?.src).toBe("/carriers/transprensa.svg");
-    expect(carrierLogo("TRANSPRENSA S.A.S.")?.src).toBe("/carriers/transprensa.svg");
+    expect(carrierLogo("TRANSPRENSA")?.src).toBe("/carriers/transprensa.png");
+    expect(carrierLogo("TRANSPRENSA S.A.S.")?.src).toBe("/carriers/transprensa.png");
   });
 
   it("ignora sufijos societarios y puntuación de las variantes de Aveonline", () => {
