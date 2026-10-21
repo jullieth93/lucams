@@ -15,6 +15,7 @@
  * Uso:
  *   const sessionId = await getOrCreateCartSession();   // crea si falta
  *   const sessionId = await peekCartSession();          // null si no hay
+ *   const sessionId = await rotateCartSession();        // sesión nueva (self-heal)
  *   await clearCartSession();                           // logout/checkout
  */
 
@@ -53,6 +54,19 @@ export async function setCartSessionCookie(sessionId: string): Promise<void> {
     path: "/",
     maxAge: COOKIE_MAX_AGE,
   });
+}
+
+/**
+ * Mint a fresh sessionId and replace the cookie, abandoning the current one.
+ * Self-heal for CART_IDENTITY_MISMATCH (shared device / cookie not rotated
+ * after an account switch): the cart of the old sessionId stays untouched in
+ * DB for its real owner; the caller retries the operation once with the new
+ * session.
+ */
+export async function rotateCartSession(): Promise<string> {
+  const sessionId = randomUUID();
+  await setCartSessionCookie(sessionId);
+  return sessionId;
 }
 
 export async function clearCartSession(): Promise<void> {
